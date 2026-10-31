@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:ea85b74c72ddb59af5570dcc6912a47c6113c46258e9c36ca5913bb7184b16a5",
+  "pageVersion": "sha256:2cf84f2e781f580d5fa89aaa4fa68ad92398d483bdbf3194ddacf8f12be84709",
   "claims": [
     {
       "id": "claim_2dd4ad01dd984b80a22d9cb9c9bfd397",
@@ -70,7 +70,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:28076d4133414ca914885979826c6f67929f1ed882fc4953393a2ec2f2865424"
+          "version": "repo-file-v1:sha256:62ef8102ea1a433678ab1c9819d83271f285de18d184bd43e36a68007d056018"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/process_native_control_tests.rs",
@@ -120,7 +120,7 @@
       "evidence": [
         {
           "resource": "repo://codex-runtime.lock.json",
-          "version": "repo-file-v1:sha256:e0f74bd6932ecc942a37423c470da4a104713f5709db3bd4b1f030cda0632738"
+          "version": "repo-file-v1:sha256:8ff31eeb732dee59b1423d74a2c381e1c7828dc87b93e3fd98374e605b06bc2d"
         },
         {
           "resource": "repo://crates/decodex-components/tests/development.rs",
@@ -244,21 +244,21 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_compaction_tests.rs",
-          "version": "repo-file-v1:sha256:7c852c3e9e2b29caeaf56038127f39b6b3492328e848b6f34697f6eac8617eca"
+          "version": "repo-file-v1:sha256:51f3685a98c8ebfc3c3d4a20b198a3dfb8c60782a193246a8dea66a4af690b10"
         }
       ]
     },
     {
       "id": "claim_a9b3c30e842a40e79f50064e788b13af",
-      "statement": "Current qualification separates source dev-small helpers, which Nextest can select through CARGO_BIN_EXE replacement, from exact signed CLI behavior in the Decodex native cohort and standalone probes. The direct signed helper session bypasses that replacement; installed acceptance and historical private launchers retain their own limits.",
+      "statement": "The original dev-small source cohort and direct helper checks keep their recorded source and artifact limits. Current qualification separates those historical receipts from affected checks on the selected signed CLI; a source helper pass does not prove production-API behavior.",
       "evidence": [
         {
-          "resource": "repo://automations/upstream/prompts/maintainer.md#L11-L15",
-          "version": "repo-lines-v1:sha256:3a28a30a9930a4f7bc3e3742d5621684f2e3e671c2be6ad386427976c4f50252:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiM2FlNTg0NDc0Yzc0YWZiZmRmODI1OGU1NTJiY2VjZjk0ZDM3OTc0ZGFmNmNjMWJhNDE0ODZhNjQyZDJhNzFhNCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZTMzOWI3MDcxMzhlYTk2OGQ4YThiY2I4MWI0MGM3Y2M5NmMzYjM2YzAyMjYxZDhiNWRlNTQxOTc5YjgxNmQ1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNjZmYzljNWY4YzJlOTk1NGQwZmIwZWQ0MmRmMGI0YzE3YzZkYTM1M2Y4ZGY3NjIzNWRiYjljYjFmZmE3NWFhNCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYWNkMTIzY2U5MjJjNzAzMDE3N2Q1MTdmZTk3MjViMmEzZTQ5OGFlNGZmNjNlOGExY2M4NjQ5MzZlNGMwN2Y4MyJ9"
+          "resource": "repo://automations/upstream/prompts/maintainer.md",
+          "version": "repo-file-v1:sha256:01bebe4274c10a0d25c17ca9181cb005c26d18abaccde7e780505064f5189b3f"
         },
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:28076d4133414ca914885979826c6f67929f1ed882fc4953393a2ec2f2865424"
+          "version": "repo-file-v1:sha256:62ef8102ea1a433678ab1c9819d83271f285de18d184bd43e36a68007d056018"
         }
       ]
     },
@@ -272,7 +272,7 @@
         },
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:28076d4133414ca914885979826c6f67929f1ed882fc4953393a2ec2f2865424"
+          "version": "repo-file-v1:sha256:62ef8102ea1a433678ab1c9819d83271f285de18d184bd43e36a68007d056018"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/process.rs",
@@ -296,7 +296,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:28076d4133414ca914885979826c6f67929f1ed882fc4953393a2ec2f2865424"
+          "version": "repo-file-v1:sha256:62ef8102ea1a433678ab1c9819d83271f285de18d184bd43e36a68007d056018"
         }
       ]
     },
@@ -326,7 +326,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:28076d4133414ca914885979826c6f67929f1ed882fc4953393a2ec2f2865424"
+          "version": "repo-file-v1:sha256:62ef8102ea1a433678ab1c9819d83271f285de18d184bd43e36a68007d056018"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/tests/capacity.rs",
@@ -774,7 +774,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:28076d4133414ca914885979826c6f67929f1ed882fc4953393a2ec2f2865424"
+          "version": "repo-file-v1:sha256:62ef8102ea1a433678ab1c9819d83271f285de18d184bd43e36a68007d056018"
         },
         {
           "resource": "repo://crates/decodex-runtime/tests/native_qualification/dotenv_startup.py",
@@ -856,7 +856,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:2ccdd340697f4544f1b8778533386d8a93057631edfb8f26f3448b01ca348275"
+          "version": "repo-file-v1:sha256:d553cb9db8a3a506038ff485a006d95eb0a4eca6293b6dfaefc44edc7f23cc23"
         }
       ]
     },
@@ -866,7 +866,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:2ccdd340697f4544f1b8778533386d8a93057631edfb8f26f3448b01ca348275"
+          "version": "repo-file-v1:sha256:d553cb9db8a3a506038ff485a006d95eb0a4eca6293b6dfaefc44edc7f23cc23"
         }
       ]
     },
@@ -884,7 +884,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:2ccdd340697f4544f1b8778533386d8a93057631edfb8f26f3448b01ca348275"
+          "version": "repo-file-v1:sha256:d553cb9db8a3a506038ff485a006d95eb0a4eca6293b6dfaefc44edc7f23cc23"
         }
       ]
     },
@@ -893,8 +893,8 @@
       "statement": "The history_resource_cost qualification records 19 distinct qualified Rust checks, two Menu Bar tests, 14 architecture/gate checks and four upstream test bodies read without execution. Its exact selected-artifact fixture checks nearby native history and registered resource owners using two synthetic turns without additional lookup inference; runtime migration, installed app, live billing and historical upload discovery remain unqualified. Earlier unchanged checks retain their recorded limits; the added current-destination regression fails before repair and passes afterward.",
       "evidence": [
         {
-          "resource": "repo://automations/upstream/retained-evidence.json#L1950-L3358",
-          "version": "repo-lines-v1:sha256:518651ec3976a62b6b98f799cb4d5458be7a5e6b7b345edd6f46af86351d1b8e:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQwOSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZTBlNDg4OWNiNDBmMzBkZjE0YzkxNDU2NGZlYTljNzc2MjY5ZDg3YjRhN2U3NmZkNTcyZmU3MTg5Y2UzMjJmMCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjdlNTc4OGQ1ZDlkNzNkMjRhODFkYmMwYTVhNzRiZmE4MmM5YzNiM2FmOTllNTJhZjc5NmU5MGI0NjhhOGEzZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZjFmNTI4OGJiYzVjNzEzNjhhMmRjYmViM2ZkZWRiOWQ2NDZhNzZjNjU5MDUxY2ZjMzMzNDE5ZDRjYTM3ZjIxMiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjEsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSJ9"
+          "resource": "repo://automations/upstream/retained-evidence.json#L2055-L3464",
+          "version": "repo-lines-v1:sha256:cff4b093d9b92d715365d8c73f97fc30a12365ca3ea500678f3076ffcf24e6f3:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQxMCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZTBlNDg4OWNiNDBmMzBkZjE0YzkxNDU2NGZlYTljNzc2MjY5ZDg3YjRhN2U3NmZkNTcyZmU3MTg5Y2UzMjJmMCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjdlNTc4OGQ1ZDlkNzNkMjRhODFkYmMwYTVhNzRiZmE4MmM5YzNiM2FmOTllNTJhZjc5NmU5MGI0NjhhOGEzZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZjFmNTI4OGJiYzVjNzEzNjhhMmRjYmViM2ZkZWRiOWQ2NDZhNzZjNjU5MDUxY2ZjMzMzNDE5ZDRjYTM3ZjIxMiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjEsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSJ9"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_lookup_tests.rs",
@@ -916,7 +916,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:2ccdd340697f4544f1b8778533386d8a93057631edfb8f26f3448b01ca348275"
+          "version": "repo-file-v1:sha256:d553cb9db8a3a506038ff485a006d95eb0a4eca6293b6dfaefc44edc7f23cc23"
         }
       ]
     },
@@ -934,7 +934,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:2ccdd340697f4544f1b8778533386d8a93057631edfb8f26f3448b01ca348275"
+          "version": "repo-file-v1:sha256:d553cb9db8a3a506038ff485a006d95eb0a4eca6293b6dfaefc44edc7f23cc23"
         }
       ]
     },
@@ -948,7 +948,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:2ccdd340697f4544f1b8778533386d8a93057631edfb8f26f3448b01ca348275"
+          "version": "repo-file-v1:sha256:d553cb9db8a3a506038ff485a006d95eb0a4eca6293b6dfaefc44edc7f23cc23"
         }
       ]
     },
@@ -958,7 +958,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:2ccdd340697f4544f1b8778533386d8a93057631edfb8f26f3448b01ca348275"
+          "version": "repo-file-v1:sha256:d553cb9db8a3a506038ff485a006d95eb0a4eca6293b6dfaefc44edc7f23cc23"
         }
       ]
     },
@@ -976,7 +976,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:2ccdd340697f4544f1b8778533386d8a93057631edfb8f26f3448b01ca348275"
+          "version": "repo-file-v1:sha256:d553cb9db8a3a506038ff485a006d95eb0a4eca6293b6dfaefc44edc7f23cc23"
         }
       ]
     },
@@ -1000,25 +1000,29 @@
     },
     {
       "id": "claim_57fccd532cd1429cadcd35aaf9685f17",
-      "statement": "The runtime lock selects the qualified provider-recovery candidate after fresh affected provider and component checks, with earlier unchanged-artifact cohort evidence reused only within its source and behavior limits. HumanCommand remains unsupported and user-deferred; no upstream suite was executed for the migration.",
+      "statement": "The runtime lock selects the fixed reviewed target after fresh affected native and component checks; previous cohort results remain historical. HumanCommand is unsupported and user-deferred. This migration executed no upstream suite.",
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:28076d4133414ca914885979826c6f67929f1ed882fc4953393a2ec2f2865424"
+          "version": "repo-file-v1:sha256:62ef8102ea1a433678ab1c9819d83271f285de18d184bd43e36a68007d056018"
         },
         {
           "resource": "repo://codex-runtime.lock.json",
-          "version": "repo-file-v1:sha256:e0f74bd6932ecc942a37423c470da4a104713f5709db3bd4b1f030cda0632738"
+          "version": "repo-file-v1:sha256:8ff31eeb732dee59b1423d74a2c381e1c7828dc87b93e3fd98374e605b06bc2d"
         }
       ]
     },
     {
       "id": "claim_4784bdbf4381493982f472c5ee2530b0",
-      "statement": "The current catch-up reads upstream implementation and test bodies but executes zero upstream tests; exact-artifact retained Decodex consumers provide the integration evidence.",
+      "statement": "The current catch-up reads upstream implementation and test bodies but executes zero upstream tests; the selected artifact is exercised through the named Decodex integration checks.",
       "evidence": [
         {
-          "resource": "repo://automations/upstream/current-review.json#L19-L41",
-          "version": "repo-lines-v1:sha256:3233506a2a2ab81f6605f40de231d8ba05c54b0fd5e23ad2c9ab5eace4113799:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY3ODY1YWM5MTM3OThhMzNlMzVlOWJiM2EwMjIyMjYyOGU2ZTgwODA0Nzg0OTVhMWQ2MjA5Yzg2YjZhNTE3ZjQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg1ZDgzNTBjNjdjMTNjMjk1YTBhNGVhNGM1ZTg5OTJmYjM0ZjYxN2Q5ODU2OTc3NjgxMDEzNTRmMDQzNjQ0ZjIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQ5NzkxMzg3YjhiMmI4YWEzOGY4YWQ4NjE4ZjA3MjI5ZThmY2ZiNzEwMzQ0ZWM0Njk5MTQ3MDE5YmUzNTk1NTMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRkMTRhOGE3OTJkNWYxMzVlMTk5NzdmMzI3MGRjMDk2ZjFjMGVmZjljMDcwOGU2MWIyNWMxMjAyZGVmYjllNGUifQ"
+          "resource": "repo://automations/upstream/current-review.json",
+          "version": "repo-file-v1:sha256:7ef5637d9b70f3753ae72a9fc08373556b614daee5ee83fb977bdc48808b6727"
+        },
+        {
+          "resource": "repo://automations/upstream/qualification.json",
+          "version": "repo-file-v1:sha256:62ef8102ea1a433678ab1c9819d83271f285de18d184bd43e36a68007d056018"
         }
       ]
     },
@@ -1038,7 +1042,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:28076d4133414ca914885979826c6f67929f1ed882fc4953393a2ec2f2865424"
+          "version": "repo-file-v1:sha256:62ef8102ea1a433678ab1c9819d83271f285de18d184bd43e36a68007d056018"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_desktop_acceptance.rs",
@@ -1049,10 +1053,24 @@
           "version": "repo-file-v1:sha256:506df593d904b45fa360604bd865aacefece4d5fec1bedc570181e4f0f775af9"
         }
       ]
+    },
+    {
+      "id": "claim_e3cd6ed5e58d4afeb0e2b24fe64e70e9",
+      "statement": "The unreported-reasoning regression checks native compaction before continuation for incomplete responses with and without usage and a completed response without usage. The old artifact fails the first scenario; the selected artifact passes all three. This context estimate does not invent provider spending.",
+      "evidence": [
+        {
+          "resource": "repo://automations/upstream/qualification.json",
+          "version": "repo-file-v1:sha256:62ef8102ea1a433678ab1c9819d83271f285de18d184bd43e36a68007d056018"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_unreported_usage_tests.rs",
+          "version": "repo-file-v1:sha256:666c719f1af160434b50683bba48ccf3ff6c173c7d906970d28d5bc2a65f7a29"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-31T15:39:59.714Z"
+    "at": "2026-10-31T16:06:25.983Z"
   }
 }

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:b7e71a36123e6507d9baa22ca289dca1b7ed9a0e45295caf78a3c825019b1fa4",
+  "pageVersion": "sha256:9ffea6ca0a347ec49e2200613fbede2a02521c4b8e31f6270a829ea7edee2051",
   "claims": [
     {
       "id": "claim_8fa9284d970947ab9981d4144ecb9648",
@@ -172,11 +172,11 @@
     },
     {
       "id": "claim_e52d8cb77a3d41a8acda75806a31a102",
-      "statement": "The source qualification uses dev-small helpers and Nextest can replace CARGO_BIN_EXE paths with source build outputs. Exact production CLI behavior is qualified separately by the Decodex native cohort and probes; the signed Code Mode helper session invokes the compiled test binary directly with explicit helper paths.",
+      "statement": "The original source-cohort record retains its dev-small helper recipe and registered identities; the current qualification identifies the selected artifact and affected native checks. Nextest source helpers do not establish execution of the signed production CLI.",
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:28076d4133414ca914885979826c6f67929f1ed882fc4953393a2ec2f2865424"
+          "version": "repo-file-v1:sha256:62ef8102ea1a433678ab1c9819d83271f285de18d184bd43e36a68007d056018"
         }
       ]
     },
@@ -318,7 +318,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_recap_socket_tests.rs#L126-L131",
-          "version": "repo-lines-v1:sha256:30171dce1b61bf81bb3f86fa8124f3755fc42025a9662a0ef0ad519c38068b3b:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMjY0MmIyMzFiNmVhOTE4ZTkzMDI3NTczMGQ3OTNiZTA0YzNkMWY1OWVlNTJlODk1MjkyNWU2MzM2NTQ1ZDk3YyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDFiYTQ3MTljODBiNmZlOTExYjA5MWE3YzA1MTI0YjY0ZWVlY2U5NjRlMDljMDU4ZWY4Zjk4MDVkYWNhNTQ2YiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOTNjOGM4N2U1Nzg0ZjdiYzZkNGE1MmQ1NDlhN2RmNDcwZjkyYTE0Y2JhN2Q3OTE1YjllYWNlYzkzZjY2NTE3MSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYzk1YWJkMWU3OTQ0NGY1MDc2ZTFmN2NhYzJmMzA0MmI5MDQxMWQxNjkwYmU3NjNkYTY2NjAxM2IyNmY4ZWRlYyJ9"
+          "version": "repo-lines-v1:sha256:3187e2ee657cf262ccb7c4d1c1a4ce4b189a86483a4eefa560b2b5ef3b57f384:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNWUyNTg4MGVmOTJiOTA4MTcyNTdjNjhlZjhjNDU2ZjRlOTcyNmEyMmNkM2RmMmJkYzRmMGExYjc4MzA0OGFiYiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDFiYTQ3MTljODBiNmZlOTExYjA5MWE3YzA1MTI0YjY0ZWVlY2U5NjRlMDljMDU4ZWY4Zjk4MDVkYWNhNTQ2YiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOTNjOGM4N2U1Nzg0ZjdiYzZkNGE1MmQ1NDlhN2RmNDcwZjkyYTE0Y2JhN2Q3OTE1YjllYWNlYzkzZjY2NTE3MSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYzk1YWJkMWU3OTQ0NGY1MDc2ZTFmN2NhYzJmMzA0MmI5MDQxMWQxNjkwYmU3NjNkYTY2NjAxM2IyNmY4ZWRlYyJ9"
         },
         {
           "resource": "repo://scripts/vnext/run_native_regression.py",
@@ -342,7 +342,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:28076d4133414ca914885979826c6f67929f1ed882fc4953393a2ec2f2865424"
+          "version": "repo-file-v1:sha256:62ef8102ea1a433678ab1c9819d83271f285de18d184bd43e36a68007d056018"
         },
         {
           "resource": "repo://crates/decodex-runtime/tests/native_qualification/command_hooks.py",
@@ -442,7 +442,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:28076d4133414ca914885979826c6f67929f1ed882fc4953393a2ec2f2865424"
+          "version": "repo-file-v1:sha256:62ef8102ea1a433678ab1c9819d83271f285de18d184bd43e36a68007d056018"
         },
         {
           "resource": "repo://scripts/vstyle_audit.py",
@@ -480,7 +480,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:2ccdd340697f4544f1b8778533386d8a93057631edfb8f26f3448b01ca348275"
+          "version": "repo-file-v1:sha256:d553cb9db8a3a506038ff485a006d95eb0a4eca6293b6dfaefc44edc7f23cc23"
         }
       ]
     },
@@ -494,7 +494,7 @@
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_recap_socket_tests.rs",
-          "version": "repo-file-v1:sha256:25bdce68a0fe9cb7f38b94ac3e4cc07411444eef3487c91c3f06fee16defe31f"
+          "version": "repo-file-v1:sha256:5febeb2dc9610fa625f32dd11e8ce392d99891cb6e79214f48cd0b42ad31db02"
         },
         {
           "resource": "repo://scripts/vnext/run_native_regression.py",
@@ -512,7 +512,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:2ccdd340697f4544f1b8778533386d8a93057631edfb8f26f3448b01ca348275"
+          "version": "repo-file-v1:sha256:d553cb9db8a3a506038ff485a006d95eb0a4eca6293b6dfaefc44edc7f23cc23"
         }
       ]
     },
@@ -537,6 +537,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-31T15:39:59.714Z"
+    "at": "2026-10-31T16:06:25.983Z"
   }
 }

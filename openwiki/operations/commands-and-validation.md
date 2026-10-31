@@ -108,10 +108,10 @@ sources:
     resource: repo://scripts/vnext/run_native_regression.py
   - id: openwiki-source-d45a647d565211cf9b5cb067
     resource: repo://scripts/vstyle_audit.py
-generated: { by: "codex", at: "2026-10-31T15:21:18.800Z" }
+generated: { by: "codex", at: "2026-10-31T16:06:25.983Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-31T15:39:59.714Z
+    at: 2026-10-31T16:06:25.983Z
 ---
 
 
@@ -270,7 +270,7 @@ The startup probe checks both a missing `.env` and a directory at that path. The
 
 A hook start event can precede native trust verification. The hook regression checks actual script effects after declaration or script changes, enablement changes and restart. The parallel tool regression requires both requests before either reply and verifies result order. The MCP status regression waits for discovery to finish, then checks opaque first-page metadata through tool pagination, status pagination and restart.
 
-Read the current [qualification record](../../automations/upstream/qualification.json) for the recorded source-test helper recipe and exact registered identities. Run an upstream selection only for a concrete compatibility diagnosis or missing retained-fix proof; do not inherit that cohort as a daily gate. The recorded source cohort uses `dev-small` helpers. Nextest can replace requested `CARGO_BIN_EXE_*` values with its own build outputs; those tests do not prove that the signed production CLI ran. Use the Decodex native cohort and standalone probes for exact CLI checks. For the signed Code Mode helper, invoke the compiled `grpc_tcp` test binary directly with both documented helper path variables. Record each actual artifact separately and preserve the original assertions and timeouts. Older private-hook launchers apply only to their recorded source snapshot; do not copy their private configuration into the production CLI.
+Read the [original source-cohort record](https://github.com/acg-box/decodex/blob/4c9b2c5fce988f038569a7a23092c8b97443b53f/automations/upstream/qualification.json) for its source-test helper recipe and registered identities; use the [current qualification](../../automations/upstream/qualification.json) for the selected artifact and affected native checks. Run an upstream selection only for a concrete compatibility diagnosis or missing retained-fix proof; do not inherit that cohort as a daily gate. The recorded source cohort uses `dev-small` helpers. Nextest can replace requested `CARGO_BIN_EXE_*` values with its own build outputs; those tests do not prove that the signed production CLI ran. Use the Decodex native cohort and standalone probes for exact CLI checks. For the signed Code Mode helper, invoke the compiled `grpc_tcp` test binary directly with both documented helper path variables. Record each actual artifact separately and preserve the original assertions and timeouts. Older private-hook launchers apply only to their recorded source snapshot; do not copy their private configuration into the production CLI.
 
 ## Memory, collaboration history and actual usage
 

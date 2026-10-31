@@ -84,6 +84,8 @@ sources:
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_read_state_tests.rs
   - id: openwiki-source-68238f7343c9fc1bd11783f3
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_recap_socket_tests.rs
+  - id: openwiki-source-3d7045bfa872a564d938d3e2
+    resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_unreported_usage_tests.rs
   - id: openwiki-source-ea794ca791dfc854f2ec0a89
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_usage_tests.rs
   - id: openwiki-source-f5d073da07bcb17ee416f3b5
@@ -166,10 +168,10 @@ sources:
     resource: repo://scripts/macos/test_decodex_app_stage.sh
   - id: openwiki-source-e201f60894c32a914dac99ee
     resource: repo://scripts/vnext/run_native_regression.py
-generated: { by: "codex", at: "2026-10-31T15:39:59.714Z" }
+generated: { by: "codex", at: "2026-10-31T16:06:25.983Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-31T15:39:59.714Z
+    at: 2026-10-31T16:06:25.983Z
 ---
 
 # Upstream integration acceptance boundaries
@@ -197,7 +199,7 @@ Workflow-only maintenance uses the checkpoint and portfolio checks in `cargo +st
 
 Read the development lock, [current source review](../../automations/upstream/current-review.json) and [current qualification](../../automations/upstream/qualification.json) for the fixed target, exact CLI/helpers/schema, executed identities and limits. Keep source review, source-test execution, exact production-artifact tests, delivery and installed acceptance separate. Current run counts and hashes belong in those records, not repeated across Wiki pages.
 
-The provider-refusal follow-up resolves [the former compatibility blocker](https://github.com/acg-box/decodex/issues/2575) through the supported native fork. The original cohort remains historical evidence; it is not a freshly rerun matrix. The runtime lock now selects the qualified candidate after fresh affected provider and component checks, with unchanged-artifact cohort evidence reused within its source and behavior limits. Source review continues independently toward each fixed target. HumanCommand support is [user-deferred](https://github.com/acg-box/decodex/issues/2585), unsupported and unadvertised. No upstream test suite was executed for this migration.
+The provider-refusal follow-up resolves [the former compatibility blocker](https://github.com/acg-box/decodex/issues/2575) through the supported native fork. The original cohort remains historical evidence; it is not a freshly rerun matrix. The runtime lock selects the fixed reviewed target after fresh affected native consumer and component checks. Earlier cohort results remain historical and are not counted as passes on a newer artifact. The current source-review record covers every commit through its fixed target. HumanCommand support is [user-deferred](https://github.com/acg-box/decodex/issues/2585), unsupported and unadvertised. No upstream test suite was executed for this migration.
 
 The retired Codex startup-configuration diagnostic is absent from the current router. Its earlier execution remains historical proof. Valid named-permission defaults and an owned Recap working directory repair fixture admission without weakening existing behavior assertions. The exact-artifact development cache test also corrupts and repairs any advertised standalone executor.
 
@@ -205,7 +207,7 @@ The default execution scope is affected Decodex consumers against the prepared a
 
 ## Provider recovery qualification
 
-The `provider_recovery` entry under `candidate_qualification` in the [qualification record](../../automations/upstream/qualification.json) binds the focused local tests, exact candidate and baseline native tests, component signatures and regenerated schemas to the implementation commit. Ordinary forks retain the source provider; cold resume follows native admission after that provider is restored. The new regression uses two loopback providers and verifies an explicit current-provider fork, preserved context after restart, unchanged source history and no inference until a separate send.
+The [original provider-recovery qualification](https://github.com/acg-box/decodex/blob/4c9b2c5fce988f038569a7a23092c8b97443b53f/automations/upstream/qualification.json) binds the focused local tests, exact candidate and baseline native tests, component signatures and regenerated schemas to the implementation commit. The current [qualification record](../../automations/upstream/qualification.json) identifies the later exact-artifact recovery check. Ordinary forks retain the source provider; cold resume follows native admission after that provider is restored. The new regression uses two loopback providers and verifies an explicit current-provider fork, preserved context after restart, unchanged source history and no inference until a separate send.
 
 The UI and receipt tests cover source identity, configuration changes, cancellation, the durable destination choice and preservation of unsent input. The real public-socket fixture also prepares the mismatch before desktop launch. Its setup check substitutes `/usr/bin/true` for the desktop and is not UI acceptance. The [interactive rehearsal command](../operations/commands-and-validation.md#rehearse-provider-recovery) uses a real desktop window and an isolated temporary profile; its two provider names share one local backend. Neither fixture qualifies live accounts, provider policy migration, installed-app behavior or performance. The provider follow-up alone did not change the runtime pin; the later migration has its own qualification. Neither result authorizes installation, release or schedule activation.
 
@@ -368,7 +370,7 @@ The signed stage test checks that the app contains the runtime requirement and S
 
 The [portable qualification record](../../automations/upstream/qualification.json) identifies exact source tests, artifact and helper hashes, reusable probes and limits. The [stable contract catalog](../../automations/upstream/retained-contracts.json) identifies retained consumer requirements and original feature limits. The [current router](../../automations/upstream/retained-evidence.json) links the selected qualification. Native run receipts retain raw output; Git retains replaced compact records.
 
-The source cohort uses `dev-small` helpers. Nextest can replace requested `CARGO_BIN_EXE_*` paths with source build outputs. Only the separate Decodex native cohort and standalone probes establish exact production CLI behavior. The direct signed Code Mode helper test bypasses Nextest path replacement. The qualification record preserves these roles and the original assertions. Older source fixtures that require private startup arguments retain their own launcher and build limits in Git history. Passing a source fixture does not establish behavior through a production API. Test supported production inputs against the exact selected CLI and helpers as a separate step.
+The original source cohort used `dev-small` helpers. Nextest can replace requested `CARGO_BIN_EXE_*` paths with source build outputs. Only the separate Decodex native cohort and standalone probes establish exact production CLI behavior. The direct signed Code Mode helper test bypasses Nextest path replacement. Git retains the original qualification and assertions; the current record links that history separately from its affected native checks. Older source fixtures that require private startup arguments retain their own launcher and build limits in Git history. Passing a source fixture does not establish behavior through a production API. Test supported production inputs against the exact selected CLI and helpers as a separate step.
 
 Earlier conditional remote-credential snapshot cases failed because the host resolver returned a reserved address or could not resolve a fixture hostname. Native address protection remained enabled. Current Decodex runtime consumers use app-server stdio and do not provision a remote executor. The record qualifies retained consumers within that scope; it does not qualify the failed conditional remote behavior. Reopen that qualification only when a concrete retained consumer or required retained-fix proof makes it applicable. A fixture environment becoming available alone does not create daily maintenance work. Preserve the failure evidence, original assertions and native policy.
 
@@ -386,7 +388,7 @@ The same model-error probe checks `policy_capacity_unavailable` over HTTP 503 an
 
 These local tests use synthetic transport. For a runtime change to incomplete responses or final recording, also qualify the selected native runtime. Count provider requests and inspect the terminal status for ordinary sampling and compaction. Cover SSE and WebSocket responses, and keep interrupted-response and content-filter controls separate. Use the upstream regression test to check input that arrives while a turn records its final batch. Keep these results separate from installed-app acceptance.
 
-Keep reported spending and current context separate. The Agent stores cumulative token counters and derives turn usage from their differences. Context comes from the native last-request counters. When an incomplete response reports usage, check that spending increases without replacing the context baseline or causing another compaction. Missing or malformed usage must not become an estimated charge. Compare the previous component and the proposed component with the same fixture.
+Keep reported spending and current context separate. The Agent stores cumulative token counters and derives turn usage from their differences. Context comes from the native last-request counters. Keep provider-reported spending separate from native context estimation. The native owner retains the last usable usage boundary and counts later retained reasoning for automatic compaction, including incomplete and usage-less responses. Missing or malformed usage must not become an estimated charge. The `installed_unreported_reasoning_triggers_compaction_before_continuation` regression in `agent_process_native_unreported_usage_tests.rs` checks incomplete responses with and without usage and a completed response without usage. It verifies compaction before continuation and the resulting native checkpoint. The old artifact failed the first scenario; the qualified target passes all three. Compare the previous component and the proposed component with the same fixture.
 
 ## Failed compaction and cold resume
 

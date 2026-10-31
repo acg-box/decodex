@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:f0ff8812335ae366f9948202f9fdca94b664fe3ddf6e49476ab0dbd77e142281",
+  "pageVersion": "sha256:5cdd502d25f5f58caec9be65b54ea7160b68243e3a2ecf139929a1cde6b04988",
   "claims": [
     {
       "id": "claim_8d60aaceeea74d6189e3d7b0b3ed21fe",
@@ -176,7 +176,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:28076d4133414ca914885979826c6f67929f1ed882fc4953393a2ec2f2865424"
+          "version": "repo-file-v1:sha256:62ef8102ea1a433678ab1c9819d83271f285de18d184bd43e36a68007d056018"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/process.rs#L133-L153",
@@ -328,7 +328,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:2ccdd340697f4544f1b8778533386d8a93057631edfb8f26f3448b01ca348275"
+          "version": "repo-file-v1:sha256:d553cb9db8a3a506038ff485a006d95eb0a4eca6293b6dfaefc44edc7f23cc23"
         }
       ]
     },
@@ -356,7 +356,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:2ccdd340697f4544f1b8778533386d8a93057631edfb8f26f3448b01ca348275"
+          "version": "repo-file-v1:sha256:d553cb9db8a3a506038ff485a006d95eb0a4eca6293b6dfaefc44edc7f23cc23"
         }
       ]
     },
@@ -412,7 +412,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:2ccdd340697f4544f1b8778533386d8a93057631edfb8f26f3448b01ca348275"
+          "version": "repo-file-v1:sha256:d553cb9db8a3a506038ff485a006d95eb0a4eca6293b6dfaefc44edc7f23cc23"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent_context_settings_native_tests.rs",
@@ -430,7 +430,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:2ccdd340697f4544f1b8778533386d8a93057631edfb8f26f3448b01ca348275"
+          "version": "repo-file-v1:sha256:d553cb9db8a3a506038ff485a006d95eb0a4eca6293b6dfaefc44edc7f23cc23"
         }
       ]
     },
@@ -498,7 +498,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:2ccdd340697f4544f1b8778533386d8a93057631edfb8f26f3448b01ca348275"
+          "version": "repo-file-v1:sha256:d553cb9db8a3a506038ff485a006d95eb0a4eca6293b6dfaefc44edc7f23cc23"
         }
       ]
     },
@@ -560,7 +560,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:2ccdd340697f4544f1b8778533386d8a93057631edfb8f26f3448b01ca348275"
+          "version": "repo-file-v1:sha256:d553cb9db8a3a506038ff485a006d95eb0a4eca6293b6dfaefc44edc7f23cc23"
         }
       ]
     },
@@ -588,7 +588,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:28076d4133414ca914885979826c6f67929f1ed882fc4953393a2ec2f2865424"
+          "version": "repo-file-v1:sha256:62ef8102ea1a433678ab1c9819d83271f285de18d184bd43e36a68007d056018"
         },
         {
           "resource": "repo://automations/upstream/retained-contracts.json",
@@ -599,6 +599,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-31T15:39:59.714Z"
+    "at": "2026-10-31T16:06:25.983Z"
   }
 }

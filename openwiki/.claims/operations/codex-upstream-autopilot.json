@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:9ffb229c03edae2061e92692dcc074085986a00f353edf768c7d72edf6387343",
+  "pageVersion": "sha256:7923493bc8cb571357943872f42945cc33c2fa3de155254dd1473233acd26883",
   "claims": [
     {
       "id": "claim_b6c6b65984924f69970e7f0410d50903",
@@ -298,27 +298,63 @@
         },
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:28076d4133414ca914885979826c6f67929f1ed882fc4953393a2ec2f2865424"
+          "version": "repo-file-v1:sha256:62ef8102ea1a433678ab1c9819d83271f285de18d184bd43e36a68007d056018"
         }
       ]
     },
     {
       "id": "claim_f8b7e72801814c438d3346da5599617a",
-      "statement": "The development lock selects the qualified provider-recovery candidate after affected current-main provider and component checks. Historical cohort passes are reused within their identical-artifact and source limits. HumanCommand remains user-deferred; the automation stays paused.",
+      "statement": "Each runtime update qualifies affected native consumers and components against the new artifact; earlier passes stay bound to their original artifact and source. The selected lock preserves provider recovery. HumanCommand stays user-deferred and Automation stays paused.",
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:28076d4133414ca914885979826c6f67929f1ed882fc4953393a2ec2f2865424"
+          "version": "repo-file-v1:sha256:62ef8102ea1a433678ab1c9819d83271f285de18d184bd43e36a68007d056018"
         },
         {
           "resource": "repo://codex-runtime.lock.json",
-          "version": "repo-file-v1:sha256:e0f74bd6932ecc942a37423c470da4a104713f5709db3bd4b1f030cda0632738"
+          "version": "repo-file-v1:sha256:8ff31eeb732dee59b1423d74a2c381e1c7828dc87b93e3fd98374e605b06bc2d"
+        }
+      ]
+    },
+    {
+      "id": "claim_399d6f633db84e6fbc15da4a62ccc483",
+      "statement": "Source preparation accepts an existing local signing identity through DECODEX_APP_SIGN_IDENTITY; an existing signed package can be imported through DECODEX_CODEX_DEVELOPMENT_RUNTIME. Certificate identities stay out of repository evidence.",
+      "evidence": [
+        {
+          "resource": "repo://automations/upstream/qualification.json",
+          "version": "repo-file-v1:sha256:62ef8102ea1a433678ab1c9819d83271f285de18d184bd43e36a68007d056018"
+        },
+        {
+          "resource": "repo://scripts/macos/build_codex_source.mts",
+          "version": "repo-file-v1:sha256:0f7b2aff625be8681a0e67ba70526e044d96a59e7fb050350db5cd2dac057b01"
+        },
+        {
+          "resource": "repo://scripts/macos/prepare_codex.mts",
+          "version": "repo-file-v1:sha256:4d85b6503324c5e81366b10eeaa7f6e41e2c92a9864bb7d61bb90fe34afc4f4b"
+        }
+      ]
+    },
+    {
+      "id": "claim_e9c32e18696747a4ab077143088aa014",
+      "statement": "Native account and cache fixtures keep HOME in system-temporary storage while reusing the owned checkout for the OS-account working-directory boundary.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_cold_settings_tests.rs",
+          "version": "repo-file-v1:sha256:32e20a741494e8696965bfd0c4e09304320faec5f916dd862c258cbcb6dc3e7d"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_recap_socket_tests.rs",
+          "version": "repo-file-v1:sha256:5febeb2dc9610fa625f32dd11e8ce392d99891cb6e79214f48cd0b42ad31db02"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_runtime_submit_tests.rs",
+          "version": "repo-file-v1:sha256:562b204b8ee6bc6c60c055c4c5ec45c4734e65447a3dc7aab4e9c564a426b781"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-31T15:39:59.714Z"
+    "at": "2026-10-31T16:06:25.983Z"
   }
 }
