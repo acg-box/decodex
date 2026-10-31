@@ -30,6 +30,8 @@ impl Snapshot {
 		match self.connection.as_ref().map(|state| &state.state) {
 			Some(ConnectionState::Connected) => "Connected · Pro verification pending",
 			Some(ConnectionState::SignInRequired) => "Sign in to ChatGPT in the research window",
+			Some(ConnectionState::VerificationRequired) =>
+				"Waiting for ChatGPT security verification",
 			Some(ConnectionState::AttentionRequired) =>
 				"Open the research window to continue setup",
 			None => "Not connected",
@@ -169,5 +171,13 @@ mod tests {
 			..Default::default()
 		};
 		assert_eq!(state.status_text(), "Connected · Pro verification pending");
+		let blocked = Snapshot {
+			connection: Some(Connection {
+				state: ConnectionState::VerificationRequired,
+				selected_model: None,
+			}),
+			..Default::default()
+		};
+		assert_eq!(blocked.status_text(), "Waiting for ChatGPT security verification");
 	}
 }

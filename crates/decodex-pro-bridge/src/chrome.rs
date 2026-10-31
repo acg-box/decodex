@@ -182,6 +182,11 @@ impl Chrome {
 		}
 	}
 
+	pub async fn login_target(&mut self, saved: Option<&str>) -> Result<Option<String>> {
+		let targets = self.command("Target.getTargets", json!({})).await?;
+		select_login_target(&targets["targetInfos"], saved)
+	}
+
 	pub async fn open(
 		&mut self,
 		saved_target: Option<&str>,
@@ -281,6 +286,36 @@ impl Chrome {
 	}
 }
 
+fn select_login_target(targets: &Value, saved: Option<&str>) -> Result<Option<String>> {
+	let pages: Vec<_> = targets
+		.as_array()
+		.ok_or("Chrome returned no page inventory.")?
+		.iter()
+		.filter(|target| target["type"] == "page")
+		.collect();
+	if let Some(target) = pages.iter().find(|target| target["targetId"].as_str() == saved) {
+		return Ok(target["targetId"].as_str().map(str::to_owned));
+	}
+	let candidates: Vec<_> = pages
+		.into_iter()
+		.filter(|target| {
+			let Some(raw) = target["url"].as_str() else { return false };
+			let Ok(url) = url::Url::parse(raw) else { return false };
+			url.scheme() == "https"
+				&& match url.host_str() {
+					Some("auth.openai.com") => true,
+					Some("chatgpt.com") => url.path() == "/" || url.path().starts_with("/auth/"),
+					_ => false,
+				}
+		})
+		.collect();
+	match candidates.as_slice() {
+		[] => Ok(None),
+		[target] => Ok(target["targetId"].as_str().map(str::to_owned)),
+		_ => Err("Multiple ChatGPT login pages are open in the research browser. Keep one login page; no new window was opened.".into()),
+	}
+}
+
 fn endpoint(profile: &Path) -> Result<String> {
 	let text = fs::read_to_string(profile.join("DevToolsActivePort")).map_err(|e| e.to_string())?;
 	let mut lines = text.lines();
@@ -338,6 +373,23 @@ mod tests {
 		}
 	}
 
+	#[test]
+	fn login_follows_one_auth_tab_without_selecting_a_research_or_foreign_tab() {
+		let pages = json!([
+			{"type":"page","targetId":"work","url":"https://chatgpt.com/c/research"},
+			{"type":"page","targetId":"foreign","url":"https://auth.openai.com.evil.test/"},
+			{"type":"page","targetId":"login","url":"https://auth.openai.com/oauth/authorize?state=private"}
+		]);
+		assert_eq!(select_login_target(&pages, Some("closed")).unwrap().as_deref(), Some("login"));
+		assert_eq!(select_login_target(&pages, Some("work")).unwrap().as_deref(), Some("work"));
+		assert!(select_login_target(&json!([]), Some("closed")).unwrap().is_none());
+		let ambiguous = json!([
+			{"type":"page","targetId":"one","url":"https://auth.openai.com/oauth/authorize"},
+			{"type":"page","targetId":"two","url":"https://chatgpt.com/"}
+		]);
+		assert!(select_login_target(&ambiguous, None).is_err());
+	}
+
 	#[tokio::test]
 	#[ignore = "Runs installed Chrome in a new headless test profile. No account or network requests."]
 	async fn managed_browser_retains_owned_tab_across_cdp_disconnect() {
@@ -373,6 +425,14 @@ mod tests {
 			second.evaluate(r#"document.querySelector('[data-testid="send-button"]').onclick=()=>{globalThis.sends=(globalThis.sends??0)+1};true"#).await?;
 			crate::page::send(&mut second).await?;
 			if second.evaluate("globalThis.sends").await? != 1 { return Err("Send was not dispatched exactly once.".into()); }
+			second.evaluate("document.title='Just a moment...';document.body.innerHTML='<h1>Performing security verification</h1><p>Cloudflare</p>';true").await?;
+			let challenged = crate::page::connection(&mut second, Duration::ZERO).await?;
+			if challenged.state != crate::ConnectionState::VerificationRequired {
+				return Err("Provider verification was reported as login readiness.".into());
+			}
+			if crate::page::ready(&mut second).await.is_ok() || second.evaluate("globalThis.sends").await? != 1 {
+				return Err("A challenged page must remain blocked without another Send.".into());
+			}
 			// A vanished target without a saved conversation must not open a blank
 			// replacement that could later send the request a second time.
 			let count = second.command("Target.getTargets", json!({})).await?["targetInfos"].as_array().unwrap().len();

@@ -56,13 +56,22 @@ pub(crate) async fn connection(
 	let deadline = Instant::now() + wait;
 	loop {
 		let state = browser.evaluate(&format!(r#"(()=>{{ {CONTROLS}
-            return {{ready:visible(editor)&&visible(model),model:visible(model)?model.innerText:null,
+            const ready=visible(editor)&&visible(model);
+            const verification=!ready&&(!!document.querySelector('script[src*="/cdn-cgi/challenge-platform/"]')||
+              (document.title==='Just a moment...'&&(document.body?.innerText??'').includes('Cloudflare')));
+            return {{ready,verification,model:visible(model)?model.innerText:null,
                 login:buttons.some(b=>visible(b)&&/^(log in|sign in)$/i.test(b.innerText.trim()))}};
         }})()"#)).await?;
 		if state["ready"] == true {
 			return Ok(Connection {
 				state: ConnectionState::Connected,
 				selected_model: state["model"].as_str().map(str::to_owned),
+			});
+		}
+		if state["verification"] == true {
+			return Ok(Connection {
+				state: ConnectionState::VerificationRequired,
+				selected_model: None,
 			});
 		}
 		if state["login"] == true {
@@ -84,6 +93,7 @@ pub(crate) async fn ready(browser: &mut Chrome) -> Result<()> {
 		ConnectionState::SignInRequired =>
 			Err("Sign in to ChatGPT in the dedicated research browser, then resume this request."
 				.into()),
+		ConnectionState::VerificationRequired => Err("ChatGPT requires a security check in the research browser. Research is waiting; no message was sent.".into()),
 		ConnectionState::AttentionRequired =>
 			Err("ChatGPT needs attention in the research browser. No message was sent.".into()),
 	}

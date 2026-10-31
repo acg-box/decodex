@@ -65,6 +65,8 @@ impl Default for Config {
 pub enum ConnectionState {
 	/// The user must sign in to the component's own Chrome profile.
 	SignInRequired,
+	/// The provider requires a human security check; automation must wait.
+	VerificationRequired,
 	/// A provider challenge or changed page requires the user's attention.
 	AttentionRequired,
 	/// ChatGPT's composer and model controls are available.
@@ -175,7 +177,8 @@ impl ProBridge {
 		let store = store::Store::open(&self.root)?;
 		let mut browser = chrome::Chrome::connect(&self.config, &self.root).await?;
 		let saved = store.setup_target()?;
-		browser.open(saved.as_deref(), Some("https://chatgpt.com/"), true).await?;
+		let target = browser.login_target(saved.as_deref()).await?;
+		browser.open(target.as_deref(), Some("https://chatgpt.com/"), true).await?;
 		{
 			let _lease = store.lease()?;
 			store.save_setup_target(browser.target.as_deref().ok_or("Missing setup tab.")?)?;
@@ -186,18 +189,16 @@ impl ProBridge {
 	/// Read setup readiness without opening a window or starting Chrome.
 	pub async fn check(&self) -> Result<Option<Connection>> {
 		let store = store::Store::open(&self.root)?;
-		let Some(target) = store.setup_target()? else { return Ok(None) };
+		let saved = store.setup_target()?;
 		let Some(mut browser) = chrome::Chrome::existing(&self.root).await? else {
 			return Ok(None);
 		};
-		let targets = browser.command("Target.getTargets", serde_json::json!({})).await?;
-		if !targets["targetInfos"]
-			.as_array()
-			.is_some_and(|targets| targets.iter().any(|entry| entry["targetId"] == target))
-		{
-			return Ok(None);
-		}
+		let Some(target) = browser.login_target(saved.as_deref()).await? else { return Ok(None) };
 		browser.open(Some(&target), None, false).await?;
+		if saved.as_deref() != Some(&target) {
+			let _lease = store.lease()?;
+			store.save_setup_target(&target)?;
+		}
 		page::connection(&mut browser, Duration::ZERO).await.map(Some)
 	}
 
