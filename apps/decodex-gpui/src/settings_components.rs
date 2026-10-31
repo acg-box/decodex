@@ -9,6 +9,9 @@ use gpui::{
 
 use crate::{
 	component_plugins::{PluginOperations, Snapshot},
+	component_research::{
+		Action as ResearchAction, ResearchOperations, Snapshot as ResearchSnapshot,
+	},
 	component_runtime::{PreparationState as ComponentState, RuntimePreparation},
 	settings_surface::SettingsSurface,
 	ui_feedback::{self, Feedback},
@@ -20,6 +23,7 @@ use decodex_components::{InstallProgress, PluginAction, RuntimeLock, egm_compone
 enum Action {
 	Prepare,
 	Plugin(PluginAction),
+	Research(ResearchAction),
 }
 
 pub(super) struct Components {
@@ -27,6 +31,8 @@ pub(super) struct Components {
 	shown: ComponentState,
 	optional: PluginOperations,
 	plugin: Snapshot,
+	research: ResearchOperations,
+	research_shown: ResearchSnapshot,
 }
 impl Components {
 	pub(super) fn new(preparation: RuntimePreparation) -> Self {
@@ -37,6 +43,8 @@ impl Components {
 			shown,
 			optional: PluginOperations::new(egm_component(), None),
 			plugin: Snapshot::default(),
+			research: ResearchOperations::default(),
+			research_shown: ResearchSnapshot::default(),
 		}
 	}
 
@@ -47,16 +55,20 @@ impl Components {
 	pub(super) fn poll(&mut self) -> bool {
 		let next = self.preparation.snapshot();
 		let plugin = self.optional.snapshot();
-		let changed = next != self.shown || plugin != self.plugin;
+		let research = self.research.snapshot();
+		let changed =
+			next != self.shown || plugin != self.plugin || research != self.research_shown;
 
 		self.shown = next;
 		self.plugin = plugin;
+		self.research_shown = research;
 
 		changed
 	}
 
 	#[cfg(not(test))]
 	pub(super) fn inspect_optional(&mut self) {
+		self.research.inspect();
 		if matches!(self.preparation.snapshot(), ComponentState::Unchecked | ComponentState::Ready)
 		{
 			self.optional.inspect();
@@ -67,6 +79,10 @@ impl Components {
 
 impl SettingsSurface {
 	pub(crate) fn poll_components(&mut self, cx: &mut Context<Self>) {
+		#[cfg(not(test))]
+		if self.category == super::SettingsCategory::Components {
+			self.components.research.inspect();
+		}
 		#[cfg(not(test))]
 		let preparing = matches!(self.components.shown, ComponentState::Preparing(_));
 
@@ -87,6 +103,7 @@ impl SettingsSurface {
 		match action {
 			Action::Prepare => self.components.prepare_runtime(),
 			Action::Plugin(action) => self.components.optional.start(action),
+			Action::Research(action) => self.components.research.start(action),
 		}
 
 		self.components.poll();
@@ -100,7 +117,11 @@ impl SettingsSurface {
 		action: Action,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
-		let enabled = matches!(action, Action::Prepare) || self.components.plugin.busy.is_none();
+		let enabled = match action {
+			Action::Prepare => true,
+			Action::Plugin(_) => self.components.plugin.busy.is_none(),
+			Action::Research(_) => self.components.research_shown.busy.is_none(),
+		};
 		let button = if enabled {
 			ui_theme::settings_button(id, label)
 		} else {
@@ -209,9 +230,47 @@ impl SettingsSurface {
 			vec![
 				self.component_settings(cx).into_any_element(),
 				self.egm_settings(cx).into_any_element(),
+				self.research_settings(cx).into_any_element(),
 			],
 		)
 		.into_any_element()
+	}
+
+	fn research_settings(&self, cx: &mut Context<Self>) -> Div {
+		let state = &self.components.research_shown;
+		let has_window = state.connection.is_some();
+		let controls = gpui::div()
+			.flex()
+			.items_center()
+			.gap_2()
+			.child(self.component_button(
+				"components-connect-research",
+				if has_window { "Open ChatGPT" } else { "Connect" },
+				Action::Research(ResearchAction::Connect),
+				cx,
+			))
+			.when(has_window, |controls| {
+				controls.child(self.component_button(
+					"components-disconnect-research",
+					"Disconnect",
+					Action::Research(ResearchAction::Disconnect),
+					cx,
+				))
+			});
+		let feedback = state.error.as_ref().map(|error| Feedback::error(error.clone())).or_else(
+			|| match state.busy {
+				Some(ResearchAction::Connect) =>
+					Some(Feedback::loading("Opening the research login window…")),
+				Some(ResearchAction::Disconnect) =>
+					Some(Feedback::loading("Disconnecting the research browser…")),
+				_ => None,
+			},
+		);
+		gpui::div().debug_selector(|| "components-pro-research".into()).w_full().flex().flex_col()
+			.child(ui_theme::settings_row()
+				.child(ui_theme::settings_label("Pro Research · Experimental", format!("{}\nUses your ChatGPT subscription in a separate Chrome window. No API key.\nAgent access stays off until live Pro verification is complete.", state.status_text())))
+				.child(controls))
+			.child(ui_feedback::notice("components-research-feedback", "research", feedback).inline())
 	}
 
 	fn egm_settings(&self, cx: &mut Context<Self>) -> Div {

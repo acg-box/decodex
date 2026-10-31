@@ -1454,6 +1454,7 @@ dependencies = [
  "block2 0.6.2",
  "compiler",
  "decodex-components",
+ "decodex-pro-bridge",
  "decodex-protocol",
  "futures-util",
  "gpui",

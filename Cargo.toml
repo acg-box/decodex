@@ -33,6 +33,7 @@ decodex-codex         = { path = "crates/decodex-codex" }
 decodex-components    = { path = "crates/decodex-components" }
 decodex-core          = { path = "crates/decodex-core" }
 decodex-database      = { path = "database" }
+decodex-pro-bridge    = { path = "crates/decodex-pro-bridge" }
 decodex-protocol      = { path = "crates/decodex-protocol" }
 decodex-runtime       = { path = "crates/decodex-runtime" }
 pulldown-cmark        = { version = "~0.13", default-features = false }

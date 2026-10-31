@@ -21,6 +21,9 @@ mod client_lifecycle;
 #[path = "../component_plugins.rs"]
 mod component_plugins;
 #[allow(dead_code)]
+#[path = "../component_research.rs"]
+mod component_research;
+#[allow(dead_code)]
 #[path = "../component_runtime.rs"]
 mod component_runtime;
 #[allow(dead_code)]

@@ -14,6 +14,7 @@ mod bundled_daemon;
 mod client_cache;
 mod client_lifecycle;
 mod component_plugins;
+mod component_research;
 mod component_runtime;
 mod composer_input;
 mod conversations;
