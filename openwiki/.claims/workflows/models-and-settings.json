@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:47d9c468d1ddff7e4cf60977b38f4a458764d7aa688fe1ab6f4fc84c106c91e7",
+  "pageVersion": "sha256:bfd9228575ab9fc9d596bc66b36908435925241662129a2e8c36185782a3ca2b",
   "claims": [
     {
       "id": "claim_f0c37462522f4442acd94d53819ef75c",
@@ -60,7 +60,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:3dc98c767c1bad34071dd8c4ce33804b9dd86502e0678e8e8fe68978f447ef7b"
+          "version": "repo-file-v1:sha256:28076d4133414ca914885979826c6f67929f1ed882fc4953393a2ec2f2865424"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/process.rs#L133-L153",
@@ -92,11 +92,11 @@
     },
     {
       "id": "claim_781e6a39d4954364aa46b3429385c7c9",
-      "statement": "The current qualified runtime admits an explicitly configured model catalog larger than 1 MiB through native model/list; the synthetic large_catalog.py fixture does not add a provider or account setup control.",
+      "statement": "The historical large_catalog.py probe verifies native model/list with an explicitly configured catalog larger than 1 MiB within its recorded artifact limits; it adds no account or provider setup control.",
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:3dc98c767c1bad34071dd8c4ce33804b9dd86502e0678e8e8fe68978f447ef7b"
+          "version": "repo-file-v1:sha256:28076d4133414ca914885979826c6f67929f1ed882fc4953393a2ec2f2865424"
         },
         {
           "resource": "repo://crates/decodex-runtime/tests/native_qualification/large_catalog.py",
@@ -178,11 +178,11 @@
     },
     {
       "id": "claim_9815b02e2bec42e2972b00e7894ad1f4",
-      "statement": "Side chats preserve source provider and Goal ownership without sending. Cold resume can require the original provider; the approved current-provider fork has targeted qualification without changing the runtime pin. HumanCommand support is separately user-deferred and remains unsupported.",
+      "statement": "Side chats preserve source provider and Goal ownership without sending. Cold resume can require restoration of the original provider; the explicit current-provider fork is qualified in the selected development artifact. HumanCommand remains separately user-deferred and unsupported.",
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:3dc98c767c1bad34071dd8c4ce33804b9dd86502e0678e8e8fe68978f447ef7b"
+          "version": "repo-file-v1:sha256:28076d4133414ca914885979826c6f67929f1ed882fc4953393a2ec2f2865424"
         },
         {
           "resource": "repo://automations/upstream/retained-contracts.json",
@@ -214,7 +214,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:47a3eec19619953b6830ad16c5120a5c0137471e7bbae406e645f261f3a29c3e"
+          "version": "repo-file-v1:sha256:2ccdd340697f4544f1b8778533386d8a93057631edfb8f26f3448b01ca348275"
         },
         {
           "resource": "repo://crates/decodex-protocol/src/model_catalog.rs#L77-L105",
@@ -313,6 +313,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-31T15:31:25.411Z"
+    "at": "2026-10-31T15:40:55.377Z"
   }
 }

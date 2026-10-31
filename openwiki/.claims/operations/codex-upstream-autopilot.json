@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:75a6c851d6a9f61ebe8d7d9a8d2e2b354a448ac8eada1eba6389f70315684f5c",
+  "pageVersion": "sha256:9ffb229c03edae2061e92692dcc074085986a00f353edf768c7d72edf6387343",
   "claims": [
     {
       "id": "claim_b6c6b65984924f69970e7f0410d50903",
@@ -290,39 +290,35 @@
     },
     {
       "id": "claim_902b391431a84a26a82281d6599474d4",
-      "statement": "An exact candidate that fails a retained saved-provider resume contract stays unselected even after completed source review; the selected artifact comparison and independent helper or fixture delivery remain separate evidence.",
+      "statement": "A candidate with an unresolved failure of a current retained contract stays unselected. Source review, artifact comparison and independent component or fixture delivery remain separate evidence.",
       "evidence": [
         {
-          "resource": "repo://automations/upstream/qualification.json#L3346-L3360",
-          "version": "repo-lines-v1:sha256:f9e7259759223f06b2a082c65dc71e73c62de9451bad12821969e9c7d299ea18:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAyOTNjM2Y0NDc3NzA1NjMzYzBlNmZlYzIxODhmYjdlYzlmYWVjOTRkMDMxNjk5OWI5MDcyZDJlNmYyNzdlMmEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc5OWRlODA0ZTk3MWRhZDY3ODVhMGU2MDZlYTVmMmI5ODdiOGIzZTZlYjllMDlkNGVlNDFkNGVlNzFmZTUzZDIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM1ZmYyOWY5NDM1ZGQzY2RmNjdhMDE0Y2MxMjhhNzBhNDdiYjQ5ZjhmODYyZDhmYThhODQ0OWE1M2M5NzI0NmUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY2NDUwMmYwMTM0ZGViMWE3YTViMWIxMDUxMzI1ZGQ5N2IzZDdjMTZlMTU4YzE5MmY0NDE1NjFiZGVmYzY0Y2QifQ"
+          "resource": "repo://automations/upstream/prompts/maintainer.md",
+          "version": "repo-file-v1:sha256:01bebe4274c10a0d25c17ca9181cb005c26d18abaccde7e780505064f5189b3f"
         },
         {
-          "resource": "repo://codex-runtime.lock.json",
-          "version": "repo-file-v1:sha256:cc5ad01847aeedd94f3fad7d425b5f4eaf9011dc440c448a42d6943bbe215ac8"
+          "resource": "repo://automations/upstream/qualification.json",
+          "version": "repo-file-v1:sha256:28076d4133414ca914885979826c6f67929f1ed882fc4953393a2ec2f2865424"
         }
       ]
     },
     {
       "id": "claim_f8b7e72801814c438d3346da5599617a",
-      "statement": "The provider-recovery follow-up resolves its gate through saved-provider resume and an approved current-provider fork. The selected runtime stays unchanged. HumanCommand support is user-deferred in issue 2585, not daily implementation debt; applicable retained-scope qualification remains required before runtime migration.",
+      "statement": "The development lock selects the qualified provider-recovery candidate after affected current-main provider and component checks. Historical cohort passes are reused within their identical-artifact and source limits. HumanCommand remains user-deferred; the automation stays paused.",
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:3dc98c767c1bad34071dd8c4ce33804b9dd86502e0678e8e8fe68978f447ef7b"
-        },
-        {
-          "resource": "repo://automations/upstream/retained-contracts.json",
-          "version": "repo-file-v1:sha256:b7dc0456127348fc734fc70c1e4a07842ddbcc64cea677c320dc52c8b0de2ec9"
+          "version": "repo-file-v1:sha256:28076d4133414ca914885979826c6f67929f1ed882fc4953393a2ec2f2865424"
         },
         {
           "resource": "repo://codex-runtime.lock.json",
-          "version": "repo-file-v1:sha256:cc5ad01847aeedd94f3fad7d425b5f4eaf9011dc440c448a42d6943bbe215ac8"
+          "version": "repo-file-v1:sha256:e0f74bd6932ecc942a37423c470da4a104713f5709db3bd4b1f030cda0632738"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-31T15:31:25.411Z"
+    "at": "2026-10-31T15:39:59.714Z"
   }
 }
