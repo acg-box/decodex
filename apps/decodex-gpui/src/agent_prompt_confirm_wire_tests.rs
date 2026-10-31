@@ -77,6 +77,18 @@ fn provider_branch_confirmation_persists_destination_without_sending(cx: &mut Te
 		Some(PromptForkBoundary::AfterTurn),
 		true,
 		Some("current-provider"),
+		false,
+	);
+}
+
+#[gpui::test]
+fn inputbar_provider_fork_submits_after_preparation_without_confirmation(cx: &mut TestAppContext) {
+	run_confirmation_with_provider(
+		cx,
+		Some(PromptForkBoundary::AfterTurn),
+		true,
+		Some("current-provider"),
+		true,
 	);
 }
 
@@ -85,7 +97,7 @@ fn run_confirmation(
 	boundary: Option<PromptForkBoundary>,
 	from_list: bool,
 ) {
-	run_confirmation_with_provider(cx, boundary, from_list, None);
+	run_confirmation_with_provider(cx, boundary, from_list, None, false);
 }
 
 fn run_confirmation_with_provider(
@@ -93,6 +105,7 @@ fn run_confirmation_with_provider(
 	boundary: Option<PromptForkBoundary>,
 	from_list: bool,
 	provider: Option<&'static str>,
+	direct: bool,
 ) {
 	cx.background_executor.allow_parking();
 
@@ -121,8 +134,9 @@ fn run_confirmation_with_provider(
 			s.prompt_edit.branch_choice = boundary.or(Some(PromptForkBoundary::AfterTurn));
 			s.prompt_edit.branch_provider = provider
 				.map(|p| (WireText::new("original-provider").unwrap(), WireText::new(p).unwrap()));
+			s.prompt_edit.fork_requested = direct;
 		});
-		vec!["locked-branch-confirm"]
+		if direct { vec![] } else { vec!["locked-branch-confirm"] }
 	} else {
 		vec![
 			"prompt-confirm-review",
@@ -158,6 +172,12 @@ fn run_confirmation_with_provider(
 	for _ in 0..300 {
 		visual.run_until_parked();
 		visual.executor().advance_clock(Duration::from_millis(50));
+		if direct {
+			visual.update(|window, cx| {
+				window.draw(cx).clear(cx);
+			});
+			assert!(visual.debug_bounds("prompt-review-close").is_none());
+		}
 
 		if finished.try_recv().is_ok() {
 			break;

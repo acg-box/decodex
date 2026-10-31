@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:7f8b63fd94ae347dcd518c76a82a4ca926ce6f0fe890f553b92d653ffd6a25ad",
+  "pageVersion": "sha256:f362b6c62c1c2dee5ac450b5c4d8930a3608ab4b536c10a93220f3f7fed043ff",
   "claims": [
     {
       "id": "claim_3881a280a4044cdca9e8599100f0a4f0",
@@ -32,7 +32,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_prompt_edit.rs",
-          "version": "repo-file-v1:sha256:9d8aa9c3a2c76ca4fc13652f0fd5e43932e86a3f42a1716705106bf91201c8d4"
+          "version": "repo-file-v1:sha256:05584abc6a99709786d306a91a7f40b00fe81a1160c044059d5e5f26a6cd1c32"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_prompt_fork.rs",
@@ -74,7 +74,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_prompt_edit.rs",
-          "version": "repo-file-v1:sha256:9d8aa9c3a2c76ca4fc13652f0fd5e43932e86a3f42a1716705106bf91201c8d4"
+          "version": "repo-file-v1:sha256:05584abc6a99709786d306a91a7f40b00fe81a1160c044059d5e5f26a6cd1c32"
         }
       ]
     },
@@ -144,7 +144,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:80b2a28e67420267af65edc9c013f4903739144f7187db7d26bf52105081af5c"
+          "version": "repo-file-v1:sha256:def240e9768ac8075120cab0a47125e5a427a75135d7f20e182ccce3f25df626"
         }
       ]
     },
@@ -256,7 +256,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_prompt_edit.rs",
-          "version": "repo-file-v1:sha256:9d8aa9c3a2c76ca4fc13652f0fd5e43932e86a3f42a1716705106bf91201c8d4"
+          "version": "repo-file-v1:sha256:05584abc6a99709786d306a91a7f40b00fe81a1160c044059d5e5f26a6cd1c32"
         },
         {
           "resource": "repo://crates/decodex-codex/src/app_server_client/thread_fork.rs",
@@ -372,11 +372,11 @@
     },
     {
       "id": "claim_ac0e0df4c81c4d18b6bd4e541b196472",
-      "statement": "Locked conversation branching reads the latest visible user prompt from the current native timeline binding and uses the existing guarded native fork path; a stale binding does not provide the entry and the original writer is not taken over.",
+      "statement": "Locked input-bar Fork creates and opens directly from the latest visible readable prompt in the current native timeline binding. It uses the existing guarded native fork path, never acquires the original writer, and is unavailable for a stale binding.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_prompt_edit.rs",
-          "version": "repo-file-v1:sha256:9d8aa9c3a2c76ca4fc13652f0fd5e43932e86a3f42a1716705106bf91201c8d4"
+          "version": "repo-file-v1:sha256:05584abc6a99709786d306a91a7f40b00fe81a1160c044059d5e5f26a6cd1c32"
         }
       ]
     },
@@ -444,7 +444,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:80b2a28e67420267af65edc9c013f4903739144f7187db7d26bf52105081af5c"
+          "version": "repo-file-v1:sha256:def240e9768ac8075120cab0a47125e5a427a75135d7f20e182ccce3f25df626"
         }
       ]
     },
@@ -512,15 +512,15 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_list_branch.rs",
-          "version": "repo-file-v1:sha256:6f2d496127cef1de0840d16153d25613e23b628c679be667664530d028017c1f"
+          "version": "repo-file-v1:sha256:97e4ebce9584cd709dc480d5af61f9cf5b6d6b6199af0346d428b4c747526c3b"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_prompt_confirm_wire_tests.rs",
-          "version": "repo-file-v1:sha256:9c6d7ada71ce89ea842fc8063a9fffe68374e1df20c8cfccadf3279c6e969d11"
+          "version": "repo-file-v1:sha256:a477218223d207e461c2c52b7658c6fa1c22ddcc53cf00742f440f2f0743962d"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_prompt_edit.rs",
-          "version": "repo-file-v1:sha256:9d8aa9c3a2c76ca4fc13652f0fd5e43932e86a3f42a1716705106bf91201c8d4"
+          "version": "repo-file-v1:sha256:05584abc6a99709786d306a91a7f40b00fe81a1160c044059d5e5f26a6cd1c32"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_work_browser.rs",
@@ -578,21 +578,25 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:80b2a28e67420267af65edc9c013f4903739144f7187db7d26bf52105081af5c"
+          "version": "repo-file-v1:sha256:def240e9768ac8075120cab0a47125e5a427a75135d7f20e182ccce3f25df626"
         }
       ]
     },
     {
       "id": "claim_189db8af50ab4ebe80f8cfe678eb1d71",
-      "statement": "After an exact native provider mismatch, the user can restore the source provider or review a latest-completed-turn branch on the current provider; source/configuration are rechecked, creation sends no input, and cancellation keeps the source draft.",
+      "statement": "After an exact native provider mismatch, the user can restore the source provider or click Fork to create and open on the current provider. Source and configuration checks and durable intent remain; there is no second confirmation and creation sends no message.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_list_branch.rs",
-          "version": "repo-file-v1:sha256:6f2d496127cef1de0840d16153d25613e23b628c679be667664530d028017c1f"
+          "version": "repo-file-v1:sha256:97e4ebce9584cd709dc480d5af61f9cf5b6d6b6199af0346d428b4c747526c3b"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:80b2a28e67420267af65edc9c013f4903739144f7187db7d26bf52105081af5c"
+          "resource": "repo://apps/decodex-gpui/src/agent_prompt_confirm_wire_tests.rs",
+          "version": "repo-file-v1:sha256:a477218223d207e461c2c52b7658c6fa1c22ddcc53cf00742f440f2f0743962d"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_prompt_edit.rs",
+          "version": "repo-file-v1:sha256:05584abc6a99709786d306a91a7f40b00fe81a1160c044059d5e5f26a6cd1c32"
         },
         {
           "resource": "repo://crates/decodex-codex/src/app_server_client/thread_fork.rs",
@@ -610,7 +614,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_prompt_confirm_wire_tests.rs",
-          "version": "repo-file-v1:sha256:9c6d7ada71ce89ea842fc8063a9fffe68374e1df20c8cfccadf3279c6e969d11"
+          "version": "repo-file-v1:sha256:a477218223d207e461c2c52b7658c6fa1c22ddcc53cf00742f440f2f0743962d"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/prompt_edit.rs",
@@ -624,29 +628,29 @@
     },
     {
       "id": "claim_463bd32409024c33a3303f2dacb25c92",
-      "statement": "The provider Fork review uses the shared recovery notice and bordered buttons. It replaces the notice inside the disabled input bar; Cancel restores that notice in the same place without sending input.",
+      "statement": "Provider Fork progress and recovery use the shared notice and bordered buttons inside the input bar. An uncertain result checks the saved fork identity rather than creating another branch; the source draft remains saved.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_composer.rs",
-          "version": "repo-file-v1:sha256:cf84c6e1fbb83844cd8a4d99f116dfbc784650d6a2d96c5301ea393dddb971af"
-        },
-        {
           "resource": "repo://apps/decodex-gpui/src/agent_model_settings_wire_tests.rs",
-          "version": "repo-file-v1:sha256:9c561992329df18b83eaa40ecb482de4bad3e790a7a96ceae4703ad2c3df9b31"
+          "version": "repo-file-v1:sha256:63b650287667f1b7d6fd0dc5efce5fd5bdc8606f5594fb67f8f7b3c5769995d4"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_prompt_edit.rs",
-          "version": "repo-file-v1:sha256:9d8aa9c3a2c76ca4fc13652f0fd5e43932e86a3f42a1716705106bf91201c8d4"
+          "version": "repo-file-v1:sha256:05584abc6a99709786d306a91a7f40b00fe81a1160c044059d5e5f26a6cd1c32"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_prompt_fork_wire_tests.rs",
+          "version": "repo-file-v1:sha256:51cef4fc36184fa33abdbc6476b0f919945832f80b4ec4d619b70bd5390fdc4e"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:80b2a28e67420267af65edc9c013f4903739144f7187db7d26bf52105081af5c"
+          "version": "repo-file-v1:sha256:def240e9768ac8075120cab0a47125e5a427a75135d7f20e182ccce3f25df626"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-31T15:12:19.080Z"
+    "at": "2026-10-31T15:20:06.142Z"
   }
 }

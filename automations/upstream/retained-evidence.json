@@ -2912,18 +2912,23 @@
       "native_qualification_repeated": false
     },
     "layout_repair": {
-      "source_commit": "e162fdbf9e235c8b02615c6f0d998de890c7720d",
-      "baseline": "edb7deb060b4bb7de2b4713be3e2cd3390f6ba8e",
-      "behavior": "Place every unavailable-conversation reason and recovery action inside the existing input bar, including Fork review. Reuse bordered settings buttons and wrapping status text; keep local failures with their controls and global notices in the notification center.",
+      "source_commit": "133a9b6484c995812b96a3c8465be9d40a752315",
+      "baseline": "c34238bb76ce9d98ce15b9eb91606dd5c7092888",
+      "behavior": "Input-bar Fork creates and opens the native branch after source preparation without a second confirmation or Cancel control. Keep the original draft, send no message, and use the same settings_button base as Unarchive and Retry.",
       "source_sha256": {
+        "apps/decodex-gpui/src/agent_archive.rs": "38181cf7e65222375141c80fc1e41f2e6ab66a6e8b940402b2415086d0e579d0",
         "apps/decodex-gpui/src/agent_composer.rs": "cf84c6e1fbb83844cd8a4d99f116dfbc784650d6a2d96c5301ea393dddb971af",
-        "apps/decodex-gpui/src/agent_model_settings.rs": "9c022d5bcae53bdb39b24b1bd7cb54904714508e48687cecdd22ebb46296e4b9",
-        "apps/decodex-gpui/src/agent_model_settings_wire_tests.rs": "9c561992329df18b83eaa40ecb482de4bad3e790a7a96ceae4703ad2c3df9b31",
+        "apps/decodex-gpui/src/agent_list_branch.rs": "97e4ebce9584cd709dc480d5af61f9cf5b6d6b6199af0346d428b4c747526c3b",
+        "apps/decodex-gpui/src/agent_model_settings.rs": "4f3ac1830a66a3bd326d36b8c69371dc73047fc0abe33727ceda4cc927a161eb",
+        "apps/decodex-gpui/src/agent_model_settings_wire_tests.rs": "63b650287667f1b7d6fd0dc5efce5fd5bdc8606f5594fb67f8f7b3c5769995d4",
         "apps/decodex-gpui/src/agent_native_agents.rs": "59c8de24cbc2f980e8704e9e55b4a81bda1c6a122787a065aa8bebd8ea0f70d4",
-        "apps/decodex-gpui/src/agent_prompt_edit.rs": "9d8aa9c3a2c76ca4fc13652f0fd5e43932e86a3f42a1716705106bf91201c8d4",
+        "apps/decodex-gpui/src/agent_prompt_confirm_wire_tests.rs": "a477218223d207e461c2c52b7658c6fa1c22ddcc53cf00742f440f2f0743962d",
+        "apps/decodex-gpui/src/agent_prompt_edit.rs": "05584abc6a99709786d306a91a7f40b00fe81a1160c044059d5e5f26a6cd1c32",
+        "apps/decodex-gpui/src/agent_prompt_fork_wire_tests.rs": "51cef4fc36184fa33abdbc6476b0f919945832f80b4ec4d619b70bd5390fdc4e",
         "apps/decodex-gpui/src/agent_surface.rs": "f9f7c95fa09f05307e82c4d0d6ef01024cfc59392bddfb2c3363fe463bc3becf",
-        "apps/decodex-gpui/src/agent_workspace.rs": "80b2a28e67420267af65edc9c013f4903739144f7187db7d26bf52105081af5c",
-        "apps/decodex-gpui/src/ui_feedback.rs": "202428b2c6f2faa91b3ce4ee126a83c738c5e8c9adebf0f644eb56138eb82d44"
+        "apps/decodex-gpui/src/agent_workspace.rs": "def240e9768ac8075120cab0a47125e5a427a75135d7f20e182ccce3f25df626",
+        "apps/decodex-gpui/src/ui_feedback.rs": "202428b2c6f2faa91b3ce4ee126a83c738c5e8c9adebf0f644eb56138eb82d44",
+        "apps/decodex-gpui/src/ui_theme.rs": "ca277ee2ff201b2cf6638032f33b26941c99bc5853e555af577cda36e08fc56a"
       },
       "symbols": [
         "ui_feedback::state_row",
@@ -2936,7 +2941,11 @@
         "AgentSurface::blocked_fork_review_visible",
         "AgentSurface::prompt_edit_panel",
         "AgentSurface::conversation_activity",
-        "connection_recovery_notice"
+        "connection_recovery_notice",
+        "AgentSurface::finish_prompt_review",
+        "AgentSurface::requested_fork_status",
+        "ui_theme::settings_button",
+        "ui_theme::settings_button_base"
       ],
       "tests_read": [
         {
@@ -2945,7 +2954,7 @@
         },
         {
           "file": "apps/decodex-gpui/src/agent_model_settings_wire_tests.rs",
-          "test": "provider_recovery_banner_is_source_bound_and_cancellation_keeps_the_draft"
+          "test": "provider_recovery_uses_shared_button_without_confirmation_and_keeps_the_draft"
         },
         {
           "file": "apps/decodex-gpui/src/agent_native_agents.rs",
@@ -2958,6 +2967,18 @@
         {
           "file": "apps/decodex-gpui/src/agent_reconnect_queue_tests.rs",
           "test": "reconnect_resumes_only_the_persisted_unsent_message_and_preserves_new_edits"
+        },
+        {
+          "file": "apps/decodex-gpui/src/agent_prompt_confirm_wire_tests.rs",
+          "test": "inputbar_provider_fork_submits_after_preparation_without_confirmation"
+        },
+        {
+          "file": "apps/decodex-gpui/src/agent_prompt_fork_wire_tests.rs",
+          "test": "fork_recovery_retains_uncertainty_and_releases_only_matching_rejection"
+        },
+        {
+          "file": "apps/decodex-gpui/src/agent_prompt_fork_wire_tests.rs",
+          "test": "fork_recovery_opens_verified_target_and_keeps_edited_input"
         }
       ],
       "entrypoint": "apps/decodex-gpui/src/main.rs",
@@ -2966,6 +2987,7 @@
         "apps/decodex-gpui/src/agent_model_settings_wire_tests.rs",
         "apps/decodex-gpui/src/agent_native_agents.rs",
         "apps/decodex-gpui/src/agent_prompt_confirm_wire_tests.rs",
+        "apps/decodex-gpui/src/agent_prompt_fork_wire_tests.rs",
         "apps/decodex-gpui/src/agent_reconnect_queue_tests.rs",
         "apps/decodex-gpui/src/agent_workspace.rs",
         "apps/decodex-gpui/src/ui_feedback.rs"
@@ -2982,7 +3004,7 @@
         "decodex-gpui",
         "--all-features",
         "-E",
-        "test(recovery_notice_wraps) | test(provider_recovery_banner) | test(prompt_confirm_tests) | test(parent_managed_composer_shares_lock_geometry) | test(native_connection_notices_share_one_band) | test(archive_read_only) | test(the_slot_measures_content) | test(failed_startup_keeps_unconfirmed) | test(reconnect_resumes_only_the_persisted_unsent_message_and_preserves_new_edits)",
+        "test(recovery_notice_wraps) | test(provider_recovery_uses_shared_button) | test(prompt_confirm_tests) | test(fork_recovery) | test(parent_managed_composer_shares_lock_geometry) | test(native_connection_notices_share_one_band) | test(archive_read_only) | test(the_slot_measures_content) | test(failed_startup_keeps_unconfirmed) | test(reconnect_resumes_only_the_persisted_unsent_message_and_preserves_new_edits)",
         "--test-threads",
         "1",
         "--retries",
@@ -3012,6 +3034,10 @@
         },
         {
           "suite": "decodex-gpui::bin/decodex-gpui",
+          "test": "shell::agent_surface::drafts::storage::prompt_confirm_tests::inputbar_provider_fork_submits_after_preparation_without_confirmation"
+        },
+        {
+          "suite": "decodex-gpui::bin/decodex-gpui",
           "test": "shell::agent_surface::drafts::storage::prompt_confirm_tests::list_branch_confirmation_uses_native_after_turn_without_sending"
         },
         {
@@ -3028,7 +3054,7 @@
         },
         {
           "suite": "decodex-gpui::bin/decodex-gpui",
-          "test": "shell::agent_surface::model_settings::tests::provider_recovery_banner_is_source_bound_and_cancellation_keeps_the_draft"
+          "test": "shell::agent_surface::model_settings::tests::provider_recovery_uses_shared_button_without_confirmation_and_keeps_the_draft"
         },
         {
           "suite": "decodex-gpui::bin/decodex-gpui",
@@ -3037,6 +3063,14 @@
         {
           "suite": "decodex-gpui::bin/decodex-gpui",
           "test": "shell::agent_surface::native_agents::tests::parent_managed_composer_shares_lock_geometry_and_keeps_both_drafts"
+        },
+        {
+          "suite": "decodex-gpui::bin/decodex-gpui",
+          "test": "shell::agent_surface::prompt_edit::fork::tests::fork_recovery_opens_verified_target_and_keeps_edited_input"
+        },
+        {
+          "suite": "decodex-gpui::bin/decodex-gpui",
+          "test": "shell::agent_surface::prompt_edit::fork::tests::fork_recovery_retains_uncertainty_and_releases_only_matching_rejection"
         },
         {
           "suite": "decodex-gpui::bin/decodex-gpui",
@@ -3051,10 +3085,10 @@
           "test": "ui_feedback::tests::the_slot_measures_content_and_animates_height_through_exit"
         }
       ],
-      "passed": 15,
+      "passed": 18,
       "failed": 0,
       "unmatched_selectors": [],
-      "before": "The wrapping fixture failed against the baseline: a 944-point detail exceeded a 280-point viewport. It now checks 280/420-point widths with inline/stacked copy. Notice placement assertions require full containment inside the input bar; the former above-bar assertion was replaced to express that contract. Draft, native Retry and parent-action checks remain.",
+      "before": "PR 2583 qualified input-bar placement and wrapping but still displayed Fork/Cancel review. The direct-Fork follow-up removes that extra interaction. The original 944-point overflow in a 280-point viewport is historical proof retained through PR 2583; current wrapping and containment regressions still execute.",
       "checks": {
         "clippy": [
           "cargo",
@@ -3114,15 +3148,15 @@
         "decodex"
       ],
       "preview_sha256": {
-        "Contents/MacOS/decodex-gpui": "5f8dff759fee812bf278b4beb49c641c2478760b7f892998e71087d57ad53718",
-        "Contents/Helpers/decodex": "eaca7555be3e1ef70d6b78419895c5fcbc37c9851e9a491b07c753c218a82e34"
+        "Contents/MacOS/decodex-gpui": "f6e443ce41cdf39acaad832be825d8cf830d8493314f4728e4244d301f0e6e65",
+        "Contents/Helpers/decodex": "ca866edf6c3a01d72a8b1a8e48db011245ddff4175410bef60e593bbe4ee7571"
       },
-      "limits": "Local UI/layout and loopback confirmation checks only. No upstream test run, native behavior requalification, runtime selection, installation or release. Existing native qualification and its limits remain unchanged.",
+      "limits": "Local GPUI and loopback checks; isolated synthetic-provider preview is separate from the executed test count. No upstream suite, new native-artifact qualification, runtime selection, installation or release. Existing source-bound preparation, durable intent and native fork recovery remain in use.",
       "delivery": [
-        "https://github.com/acg-box/decodex/commit/e162fdbf9e235c8b02615c6f0d998de890c7720d",
-        "https://github.com/acg-box/decodex/pull/2583"
+        "https://github.com/acg-box/decodex/pull/2583",
+        "https://github.com/acg-box/decodex/commit/133a9b6484c995812b96a3c8465be9d40a752315"
       ],
-      "skipped": 1205
+      "skipped": 1203
     }
   }
 }

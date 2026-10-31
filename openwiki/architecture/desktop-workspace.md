@@ -56,6 +56,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_portfolio_tests.rs
   - id: openwiki-source-6a1c55b61be8ac251a493046
     resource: repo://apps/decodex-gpui/src/agent_portfolio.rs
+  - id: openwiki-source-0eea3c2bab20e4a9d8e3d80a
+    resource: repo://apps/decodex-gpui/src/agent_prompt_confirm_wire_tests.rs
   - id: openwiki-source-b2084dffd07b4229957a0f94
     resource: repo://apps/decodex-gpui/src/agent_prompt_edit.rs
   - id: openwiki-source-c222de0005be9c363ba17232
@@ -94,6 +96,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/ui_feedback.rs
   - id: openwiki-source-546812ff3637690f4a184b89
     resource: repo://apps/decodex-gpui/src/ui_preferences.rs
+  - id: openwiki-source-570564020f98df7a4d6d0b61
+    resource: repo://apps/decodex-gpui/src/ui_theme.rs
   - id: openwiki-source-c29d70b5569f29b7122f2f6b
     resource: repo://crates/decodex-runtime/src/native_agents.rs
   - id: openwiki-source-6085af9603cb7ac0ff3ef1cf
@@ -106,10 +110,10 @@ sources:
     resource: repo://database/src/works/commands.rs
   - id: openwiki-source-8fe6f1557e5d45d88b34bd0a
     resource: repo://scripts/macos/generate_workspace_symbols.swift
-generated: { by: "codex", at: "2026-10-31T15:12:19.080Z" }
+generated: { by: "codex", at: "2026-10-31T15:20:06.142Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-31T15:12:19.080Z
+    at: 2026-10-31T15:20:06.142Z
 ---
 
 # Desktop workspace and native glass
@@ -168,7 +172,7 @@ Agent preferences also includes **Side chats**. It lists the newest 100 saved De
 
 `native_material_panel.rs` bridges composition only. GPUI still owns UI state, layout and event handlers. The composer is an attached child window created by the main workspace, not another application or service. Settings must not create one. The workspace remains the main window while an attached control can own keyboard focus. See [conversation presentation](conversation-presentation.md#floating-controls-and-motion) for frame ownership and animation policy.
 
-Archived and blocked conversations keep the normal composer geometry with sending disabled and the draft retained. A locked conversation with a readable, currently bound native prompt offers **Fork**. This opens a reviewed native branch without taking over the original writer. Certain detail/full-screen states omit the composer. Reopening includes a short layout-settling interval; failures fall back to GPUI presentation. Notification placement and opacity belong to the same native-panel composition boundary.
+Archived and blocked conversations keep the normal composer geometry with sending disabled and the draft retained. A locked conversation with a readable, currently bound native prompt offers **Fork**. This creates and opens a native branch directly without taking over the original writer. Certain detail/full-screen states omit the composer. Reopening includes a short layout-settling interval; failures fall back to GPUI presentation. Notification placement and opacity belong to the same native-panel composition boundary.
 
 ## Menu focus and account motion
 
@@ -212,7 +216,7 @@ Keep each label about one user need. Account warning popovers state what happene
 
 Use **Fork** for conversation actions in lists, locked conversations and provider recovery. Keep source boundaries, destination providers and no-send explanations beside the action; keep the button label short. Use **Side chat** for an attached conversation and **Side chats** for its list. Native protocol identifiers and Git branch terminology keep their existing names.
 
-Recovery actions use the shared bordered button style used by Unarchive. Status text wraps within the conversation rail; an inline title and its explanation flow as one text block. A source-bound Fork review for a disabled conversation replaces its notice inside the input bar. Cancel restores the original notice in the same place.
+Fork, Retry and Unarchive use the same bordered `settings_button` base, including height, padding, radius and interaction feedback. Status text wraps within the conversation rail; an inline title and its explanation flow as one text block. Clicking Fork in a disabled input bar starts creation after source preparation, with no second confirmation or Cancel control. Progress and recovery remain in that input bar. Creation sends no message.
 
 Reserve `arrow.triangle.branch` for Fork. Account routing uses `point.topleft.down.to.point.bottomright.curvepath` in both GPUI and Menu Bar, with the existing active color and disabled behavior. New default titles use `(Fork)` or `(Side chat)`; the earlier `(attached branch)` title still displays as a Side chat, and custom titles remain unchanged.
 

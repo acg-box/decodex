@@ -120,10 +120,10 @@ sources:
     resource: repo://database/src/agent_fork.rs
   - id: openwiki-source-fc5ad70343bb20c4e9d12540
     resource: repo://database/src/agent_process/attachments.rs
-generated: { by: "codex", at: "2026-10-31T14:39:55.131Z" }
+generated: { by: "codex", at: "2026-10-31T15:20:06.142Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-31T15:14:40.896Z
+    at: 2026-10-31T15:20:06.142Z
 ---
 
 # Product scope and native ownership
@@ -266,7 +266,7 @@ Items 45 and 48 also retain native ownership. These decisions select no replacem
 
 ## Current integration boundary
 
-The user approved explicit recovery when native Codex reports that a saved conversation and current configuration use different providers. Decodex reuses the existing completed-turn branch review and durable fork receipt. The user can choose **Fork**; creation keeps the original conversation and draft and sends no input. The next explicit send shares inherited context with that provider. Ordinary branches and Side chats still retain their source provider. This decision adds no automatic service switch or native policy bypass. See [provider recovery](../workflows/conversations-and-recovery.md#continue-after-a-provider-change) and the [retained contract](../../automations/upstream/retained-contracts.json).
+The user approved explicit recovery when native Codex reports that a saved conversation and current configuration use different providers. Clicking **Fork** in the input bar creates and opens the branch without a second confirmation or Cancel control. Decodex retains the existing completed-turn source preparation and durable fork receipt. Creation keeps the original conversation and draft and sends no message. The next explicit send shares inherited context with that provider. Ordinary branches and Side chats still retain their source provider. This decision adds no automatic service switch or native policy bypass. See [provider recovery](../workflows/conversations-and-recovery.md#continue-after-a-provider-change) and the [retained contract](../../automations/upstream/retained-contracts.json).
 
 | Area | Decodex responsibility |
 | --- | --- |

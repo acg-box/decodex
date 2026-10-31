@@ -326,7 +326,7 @@
         "Explain source preservation and no automatic send. Provider recovery also names the original and destination providers and explains that a later explicit send shares inherited context.",
         "Keep persisted native identifiers and Git branch terminology. New default titles use (Fork) or (Side chat); recognize the earlier (attached branch) title without renaming saved conversations.",
         "Use arrow.triangle.branch for Fork. Use point.topleft.down.to.point.bottomright.curvepath for account routing in both GPUI and the native Menu Bar. Keep existing active-state color and disabled behavior.",
-        "Use the existing settings_button base for recovery actions and wrap shared status copy. Keep unavailable-conversation reasons, recovery actions and source-bound Fork review inside the existing input bar. Show one explanation; Cancel restores the notice in the same place.",
+        "Use the existing settings_button base for recovery actions and wrap shared status copy. Keep unavailable-conversation reasons and recovery actions inside the input bar. An input-bar Fork click requests creation directly, without a second confirmation or Cancel control; show progress or a source-bound retry/status action in the same row.",
         "Place local field and operation failures beside their owning control and app-wide events in the notification center. Reuse the shared status row for startup failure; keep the native Menu Bar feedback compact."
       ],
       "source_symbols": {
@@ -341,7 +341,9 @@
           "AgentSurface::branch_confirmation_action",
           "AgentSurface::prompt_confirmation_actions",
           "AgentSurface::blocked_fork_review_visible",
-          "AgentSurface::prompt_edit_panel"
+          "AgentSurface::prompt_edit_panel",
+          "AgentSurface::finish_prompt_review",
+          "AgentSurface::requested_fork_status"
         ],
         "apps/decodex-gpui/src/agent_work_browser.rs": [
           "AgentSurface::list_branch_button"
@@ -368,6 +370,10 @@
         ],
         "apps/decodex-gpui/src/agent_composer.rs": [
           "AgentSurface::render_blocked_composer"
+        ],
+        "apps/decodex-gpui/src/ui_theme.rs": [
+          "settings_button",
+          "settings_button_base"
         ]
       },
       "qualification": "automations/upstream/qualification.json#candidate_qualification/provider_recovery/presentation",
@@ -5229,9 +5235,9 @@
     "decision": "User-approved explicit branch on the currently configured provider. Native provider admission and enforcement remain unchanged.",
     "contract": [
       "Offer recovery only after an exact native modelProviderMismatch on the live source connection; unrelated failures are not recovery authority.",
-      "Keep the original conversation, source provider, history and unsent draft. Reuse the reviewed AfterTurn fork and its durable confirmation receipt.",
+      "Keep the original conversation, source provider, history and unsent draft. An input-bar Fork click creates and opens the branch without a second confirmation, using the existing source preparation and durable AfterTurn fork receipt.",
       "Display original and current providers. Recheck source identity and current native configuration before submitting one thread/fork with explicit modelProvider.",
-      "Create without sending. Only a later explicit send shares inherited history with the new provider. Cancel has no fork or inference effect.",
+      "Create without sending a message. Only a later explicit send shares inherited history with the new provider. Pending or uncertain results use the saved fork identity rather than another creation.",
       "Ordinary branches and Side chats continue to preserve the original provider. No automatic provider switch, input replay, configuration mutation or policy bypass."
     ],
     "source_symbols": {

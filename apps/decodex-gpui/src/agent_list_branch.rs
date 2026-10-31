@@ -8,11 +8,15 @@ impl AgentSurface {
 		&mut self,
 		cx: &mut Context<Self>,
 	) {
+		if self.prompt_edit.task.is_some() || self.prompt_edit.list_branch_pending {
+			return;
+		}
 		let Some(providers) = self.selected_provider_mismatch() else { return };
 		let Some(work) = self.selected.clone() else { return };
 		self.review_list_branch(&work, cx);
 		if self.prompt_edit.work == work {
 			self.prompt_edit.branch_provider = Some(providers);
+			self.prompt_edit.fork_requested = true;
 			cx.notify();
 		}
 	}

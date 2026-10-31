@@ -7,7 +7,7 @@
 #[path = "agent_prompt_send.rs"] mod sending;
 
 use crate::{shell::workspace_symbols, ui_feedback};
-use gpui::{AnyElement, AppContext as _, Div, Subscription};
+use gpui::{AnyElement, AppContext as _, Div, InteractiveElement as _, Subscription};
 use tokio::sync::oneshot;
 
 use crate::shell::agent_surface::{
@@ -22,6 +22,7 @@ use removal::Removal;
 pub(super) struct Panel {
 	pub(super) branch_choice: Option<PromptForkBoundary>,
 	pub(super) branch_provider: Option<(WireText, WireText)>,
+	pub(super) fork_requested: bool,
 	list_branch_pending: bool,
 	key: String,
 	profile: Option<ClientProfile>,
@@ -451,6 +452,7 @@ impl AgentSurface {
 			return;
 		};
 		self.review_prompt(&work, &thread, &turn, &item, cx);
+		self.prompt_edit.fork_requested = true;
 	}
 
 	pub(super) fn review_prompt(
@@ -462,6 +464,7 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) {
 		self.prompt_edit.branch_provider = None;
+		self.prompt_edit.fork_requested = false;
 		self.request_prompt_review((work, thread, turn, item), None, None, cx);
 	}
 
@@ -505,8 +508,12 @@ impl AgentSurface {
 		let provider = (self.prompt_edit.work == work && self.prompt_edit.thread == thread)
 			.then(|| self.prompt_edit.branch_provider.clone())
 			.flatten();
+		let fork_requested = self.prompt_edit.work == work
+			&& self.prompt_edit.thread == thread
+			&& self.prompt_edit.fork_requested;
 		let key = self.begin_prompt_review(&profile, work, thread);
 		self.prompt_edit.branch_provider = provider;
+		self.prompt_edit.fork_requested = fork_requested;
 		self.prompt_edit.branch_choice = branch_choice.or(self.prompt_edit.branch_choice);
 		let (send, receive) = oneshot::channel();
 		let request_key = key.clone();
@@ -592,18 +599,8 @@ impl AgentSurface {
 				s.prompt_edit.task = None;
 
 				match result {
-					Ok((draft, turns)) => {
-						s.prompt_edit.feedback =
-							match s.apply_prompt_review(previous.as_ref(), draft, cx) {
-								Ok(()) if s.prompt_edit.branch_choice == Some(PromptForkBoundary::AttachedAfterTurn) => "Open a side chat from this completed turn. Its replies stay separate; the original conversation and draft stay saved.".into(),
-								Ok(()) if s.prompt_edit.branch_choice.is_some() => s.prompt_edit.branch_provider.as_ref().map_or_else(
-                                    || "Continue from this turn in a new chat. The original and draft stay saved.".into(),
-                                    |(original, current)| format!("Fork with “{}”; the original stays on “{}”. Context is sent only with your next message.", current.as_str(), original.as_str())
-                                ),
-                                Ok(()) => format!("Removes {turns} turns, including this one. File changes remain. Confirmation required."),
-								Err(message) => message.into(),
-							};
-					},
+					Ok((draft, turns)) =>
+						s.finish_prompt_review(previous.as_ref(), draft, turns, cx),
 					Err(message) => s.prompt_edit.feedback = message.into(),
 				}
 
@@ -612,6 +609,33 @@ impl AgentSurface {
 		}));
 
 		cx.notify();
+	}
+
+	fn finish_prompt_review(
+		&mut self,
+		previous: Option<&DesktopPromptEditDraft>,
+		draft: DesktopPromptEditDraft,
+		turns: u32,
+		cx: &mut Context<Self>,
+	) {
+		if let Err(message) = self.apply_prompt_review(previous, draft, cx) {
+			self.prompt_edit.feedback = message.into();
+			return;
+		}
+		if self.prompt_edit.fork_requested {
+			if let (Some(draft), Some(boundary)) =
+				(self.prompt_edit.draft.clone(), self.prompt_edit.branch_choice)
+			{
+				self.prompt_edit.confirmation = Some(draft.clone());
+				self.confirm_prompt_branch(draft, boundary, cx);
+			}
+			return;
+		}
+		self.prompt_edit.feedback = match self.prompt_edit.branch_choice {
+			Some(PromptForkBoundary::AttachedAfterTurn) => "Open a side chat from this completed turn. Its replies stay separate; the original conversation and draft stay saved.".into(),
+			Some(_) => "Continue from this turn in a new chat. The original and draft stay saved.".into(),
+			None => format!("Removes {turns} turns, including this one. File changes remain. Confirmation required."),
+		};
 	}
 
 	fn apply_prompt_review(
@@ -811,6 +835,9 @@ impl AgentSurface {
 		}
 
 		if self.prompt_edit.branch_choice.is_some() {
+			if self.prompt_edit.fork_requested {
+				return self.requested_fork_status(cx);
+			}
 			let mut actions = gpui::div().min_w_0().flex().flex_wrap().gap_2();
 			if let Some(draft) = &self.prompt_edit.draft {
 				actions = self.branch_confirmation_action(actions, draft, cx);
@@ -851,6 +878,39 @@ impl AgentSurface {
 			.into_any_element()
 	}
 
+	fn requested_fork_status(&self, cx: &mut Context<Self>) -> AnyElement {
+		let busy = self.prompt_edit.task.is_some() || self.prompt_edit.list_branch_pending;
+		let row = ui_feedback::status_row(
+			"prompt-fork-progress",
+			if busy { ui_feedback::Tone::Neutral } else { ui_feedback::Tone::Warning },
+			"",
+			if busy { "Forking…" } else { &self.prompt_edit.feedback },
+			workspace_symbols::icon_sized(workspace_symbols::Symbol::Fork, 14.),
+		)
+		.debug_selector(|| "prompt-fork-progress".into());
+		if busy {
+			return row.into_any_element();
+		}
+		if let Some(draft) = &self.prompt_edit.draft {
+			return row
+				.child(self.branch_confirmation_action(gpui::div().flex().flex_none(), draft, cx))
+				.into_any_element();
+		}
+		row.child(self.workspace_button(
+			"fork-retry".into(),
+			"Retry".into(),
+			|s, cx| {
+				if s.selected_provider_mismatch().is_some() {
+					s.review_provider_branch(cx);
+				} else {
+					s.review_locked_branch(cx);
+				}
+			},
+			cx,
+		))
+		.into_any_element()
+	}
+
 	fn prompt_close_action(&self, cx: &mut Context<Self>) -> AnyElement {
 		let label = if self.prompt_edit.draft.as_ref().is_some_and(|draft| {
 			draft.receipt_id.is_some()
@@ -888,6 +948,8 @@ impl AgentSurface {
 				"locked-branch-confirm".into(),
 				if pending {
 					"Check status"
+				} else if self.prompt_edit.fork_requested {
+					"Retry"
 				} else if side_chat {
 					"Side chat"
 				} else {

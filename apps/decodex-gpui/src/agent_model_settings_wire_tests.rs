@@ -93,7 +93,7 @@ fn repeated_model_observations_only_invalidate_changed_values() {
 }
 
 #[gpui::test]
-fn provider_recovery_banner_is_source_bound_and_cancellation_keeps_the_draft(
+fn provider_recovery_uses_shared_button_without_confirmation_and_keeps_the_draft(
 	cx: &mut TestAppContext,
 ) {
 	let (_dir, profile, _) = crate::shell::agent_surface::drafts::tests::profiles();
@@ -140,25 +140,19 @@ fn provider_recovery_banner_is_source_bound_and_cancellation_keeps_the_draft(
 			s.prompt_edit.branch_provider.as_ref().map(|(_, p)| p.as_str()),
 			Some("current")
 		);
+		assert!(s.prompt_edit.fork_requested);
 	});
 	visual.update(|window, cx| {
 		window.draw(cx).clear(cx);
 	});
-	let cancel = visual.debug_bounds("prompt-review-close").expect("cancel branch review");
+	assert!(visual.debug_bounds("prompt-review-close").is_none(), "no second confirmation");
+	assert!(visual.debug_bounds("locked-branch-confirm").is_none());
 	assert!(
 		visual.debug_bounds("conversation-unavailable").is_none(),
-		"the review owns the explanation; do not repeat the provider banner"
+		"the Fork operation owns its status; do not repeat the provider banner"
 	);
-	let input = visual.debug_bounds("composer-blocked").unwrap();
-	assert!(input.contains(&cancel.center()), "the review stays inside the disabled input");
-	visual.simulate_click(cancel.center(), Default::default());
-	visual.update(|window, cx| {
-		window.draw(cx).clear(cx);
-	});
-	assert!(
-		visual.debug_bounds("provider-create-branch").is_some(),
-		"cancelling restores the recovery action"
-	);
+	let status = visual.debug_bounds("prompt-fork-progress").expect("inline Fork status");
+	assert!(input.contains(&status.center()), "Fork status stays inside the disabled input");
 	surface.update(visual, |s, cx| {
 		assert_eq!(s.composer.read(cx).content(), "Unrelated unsent input");
 		let work = s.selected.clone().unwrap();

@@ -42,8 +42,6 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_usage_estimates.rs
   - id: openwiki-source-3fa6d6c49e3542409542045b
     resource: repo://apps/decodex-gpui/src/agent_work_browser.rs
-  - id: openwiki-source-5d032c6be684964aa2c401fa
-    resource: repo://apps/decodex-gpui/src/agent_workspace.rs
   - id: openwiki-source-a2f254020dd8eaabd6366c91
     resource: repo://apps/decodex-gpui/src/session_settings.rs
   - id: openwiki-source-0813b2e35e2133631c0aa4db
@@ -58,8 +56,6 @@ sources:
     resource: repo://automations/upstream/prompts/maintainer.md
   - id: openwiki-source-3127fd4c7b2aefcc9cea7961
     resource: repo://automations/upstream/retained-contracts.json
-  - id: openwiki-source-787f8ad27b8519fbed2bd039
-    resource: repo://crates/decodex-codex/src/app_server_client/thread_fork.rs
   - id: openwiki-source-cc0439b23243c3697ba49199
     resource: repo://crates/decodex-protocol/src/lib.rs
   - id: openwiki-source-4a57fba4bea69171318c6323
@@ -78,10 +74,10 @@ sources:
     resource: repo://database/src/schema.rs
   - id: openwiki-source-3b57179b92b257bc3fff51a1
     resource: repo://scripts/macos/stage_decodex_app.sh
-generated: { by: "codex", at: "2026-10-31T14:39:55.131Z" }
+generated: { by: "codex", at: "2026-10-31T15:20:06.142Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-31T15:12:19.080Z
+    at: 2026-10-31T15:20:06.142Z
 ---
 
 # OpenWiki quickstart
@@ -128,7 +124,7 @@ Reported dollars appear beside **Context** in the composer; **Conversation estim
 
 Choose **Fork** on an existing locally managed conversation row to review its latest completed native turn. Confirm **Fork** to use the ordinary after-turn branch path. Source drafts stay preserved, and creation sends no input. Unavailable native history and unmanaged rows cannot provide this shortcut. See [the list workflow](workflows/conversations-and-recovery.md#branch-from-the-conversation-list) and [its qualification](testing/upstream-acceptance-boundaries.md#conversation-list-branch-qualification).
 
-If a conversation uses a different provider from the current configuration, **Fork** reviews a new branch on the current provider. The original history and draft remain, and creation sends no input. See [provider recovery](workflows/conversations-and-recovery.md#continue-after-a-provider-change).
+If a conversation uses a different provider from the current configuration, **Fork** in the input bar creates and opens a branch on the current provider without a second confirmation. The original history and draft remain, and creation sends no input. See [provider recovery](workflows/conversations-and-recovery.md#continue-after-a-provider-change).
 
 ## Persistent attached branches
 
