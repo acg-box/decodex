@@ -181,6 +181,9 @@ async fn fork_receipt_survives_restart_without_repeating_creation_or_changing_so
 
 		let branch = store.get_agent_work_item("branch".into()).await.unwrap();
 
+		let suffix =
+			if boundary == AgentForkBoundary::AttachedAfterTurn { "Side chat" } else { "Fork" };
+		assert_eq!(branch.title, format!("Main ({suffix})"));
 		assert_eq!(branch.parent_goal_id.as_deref(), Some("main"));
 		assert_eq!(branch.codex_thread_id.as_deref(), Some("fork-native"));
 		assert_eq!(branch.dispatch_state, AgentDispatchState::Idle);

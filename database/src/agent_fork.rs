@@ -160,7 +160,7 @@ impl SqliteStore {
 			{ return Ok(None); }
 
 			let attached = attempt.boundary == AgentForkBoundary::AttachedAfterTurn;
-			let mut title = format!("{} ({})", source.title, if attached { "attached branch" } else { "branch" });
+			let mut title = format!("{} ({})", source.title, if attached { "Side chat" } else { "Fork" });
 
 			while title.len() > 1_024 { title.pop(); }
 
@@ -213,7 +213,7 @@ impl SqliteStore {
 				query.query_map([source_work],|r|r.get::<_,String>(0)).map_err(error::sqlite_error)?.collect::<Result<Vec<_>,_>>().map_err(error::sqlite_error)?
 			};
 			let truncated=keys.len()>100;
-			let forks=keys.into_iter().take(100).map(|key|receipt(c,&key)?.ok_or(StoreError::InvalidInput("missing attached branch receipt"))).collect::<Result<Vec<_>,_>>()?;
+			let forks=keys.into_iter().take(100).map(|key|receipt(c,&key)?.ok_or(StoreError::InvalidInput("missing side chat receipt"))).collect::<Result<Vec<_>,_>>()?;
 
 			Ok((forks,truncated))
 		}).await

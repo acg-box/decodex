@@ -79,7 +79,34 @@ fn side_chat_tabs_require_current_confirmed_native_attachments(cx: &mut TestAppC
 	let surface = cx.new(AgentSurface::new);
 	surface.update(cx, |s, cx| {
 		s.visual_side_chat_tabs("agent", cx);
-		assert_eq!(s.conversation_tabs().len(), 3);
+		let source_title = s.conversation_record("agent").unwrap().title.clone();
+		for (id, suffix) in [("side-one", "attached branch"), ("side-two", "Side chat")] {
+			s.snapshot
+				.as_mut()
+				.unwrap()
+				.work_items
+				.iter_mut()
+				.find(|work| work.id == id)
+				.unwrap()
+				.title = format!("{source_title} ({suffix})");
+		}
+		let tabs = s.conversation_tabs();
+		assert_eq!(tabs.len(), 3);
+		assert!(
+			tabs.iter().filter(|tab| tab.closable).all(|tab| tab.label.starts_with("Side chat "))
+		);
+		s.snapshot
+			.as_mut()
+			.unwrap()
+			.work_items
+			.iter_mut()
+			.find(|work| work.id == "side-one")
+			.unwrap()
+			.title = "My research".into();
+		assert_eq!(
+			s.conversation_tabs().iter().find(|tab| tab.id == "side-one").unwrap().label,
+			"My research"
+		);
 		let Some(AttachedBranchesResult::Available { branches, .. }) =
 			&mut s.workspace.attached.result
 		else {

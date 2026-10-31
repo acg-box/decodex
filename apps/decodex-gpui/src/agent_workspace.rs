@@ -928,17 +928,17 @@ impl AgentSurface {
 				ui_feedback::read_only_row(
 					"conversation-unavailable",
 					&format!(
-						"This conversation uses {}. The current provider is {}.",
+						"This conversation uses {}. The current provider is {}",
 						original.as_str(),
 						current.as_str()
 					),
-					"Switch back to continue here, or create a branch with the current provider.",
-					workspace_symbols::icon_sized(workspace_symbols::Symbol::AccountRoute, 14.),
+					"Switch back to continue here, or Fork to use the current provider. The original stays unchanged; nothing is sent.",
+					workspace_symbols::icon_sized(workspace_symbols::Symbol::Fork, 14.),
 				)
 				.debug_selector(|| "conversation-unavailable".into())
 				.child(self.workspace_action(
 					"provider-create-branch".into(),
-					"Create branch…".into(),
+					"Fork".into(),
 					|s, cx| s.review_provider_branch(cx),
 					cx,
 				))
@@ -961,7 +961,7 @@ impl AgentSurface {
 				"conversation-unavailable",
 				PARENT_MANAGED_MESSAGE,
 				"This chat is read-only.",
-				workspace_symbols::icon_sized(workspace_symbols::Symbol::AccountRoute, 14.),
+				workspace_symbols::icon_sized(workspace_symbols::Symbol::TeamParent, 14.),
 			)
 			.debug_selector(|| "conversation-unavailable".into())
 			.child(self.workspace_action(

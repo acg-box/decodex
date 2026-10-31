@@ -47,7 +47,7 @@ impl AgentDispatchRefusal {
 			Self::ManagedProviderChanged =>
 				"Not sent: managed model provider requirements changed. Restart the Codex connection before sending again.",
 			Self::ProviderMismatch =>
-				"Not sent: this conversation uses a different provider. Restore that provider or create a new branch before sending again.",
+				"Not sent: this conversation uses a different provider. Switch back to that provider or Fork before sending again.",
 		}
 	}
 }

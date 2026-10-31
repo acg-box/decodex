@@ -43,7 +43,7 @@ struct AccountPrimaryActionsView: View {
 		HStack(alignment: .center, spacing: PanelSpacing.compact) {
 			CompactAccountActionButton(
 				title: presentation.title(isSwitching: isSwitching),
-				symbol: "arrow.triangle.branch",
+				symbol: "point.topleft.down.to.point.bottomright.curvepath",
 				isActive: presentation.isCurrent,
 				isDisabled: presentation.isDisabled,
 				isVisuallyDisabled: presentation.isVisuallyDisabled,

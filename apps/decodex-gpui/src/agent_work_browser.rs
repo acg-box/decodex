@@ -712,14 +712,14 @@ impl AgentSurface {
 		gpui::div()
 			.id(SharedString::from(format!("branch-{branch}")))
 			.role(Role::Button)
-			.aria_label("Branch conversation")
+			.aria_label("Fork conversation")
 			.tab_index(0)
 			.px_2()
 			.py_1()
 			.rounded(gpui::px(5.))
 			.text_size(gpui::px(11.))
 			.hover(|s| s.bg(ui_theme::rgba(HOVER_FILL)))
-			.child("Branch…")
+			.child("Fork")
 			.on_click(cx.listener(move |s, _, _, cx| {
 				cx.stop_propagation();
 				s.review_list_branch(&branch, cx);
