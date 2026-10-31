@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:529dec924508262855a21af016eac64971c8ac2f2b9732027a97f4533d3ac78e",
+  "pageVersion": "sha256:47d9c468d1ddff7e4cf60977b38f4a458764d7aa688fe1ab6f4fc84c106c91e7",
   "claims": [
     {
       "id": "claim_f0c37462522f4442acd94d53819ef75c",
@@ -60,7 +60,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:5d7708b4a83f830538f9eca55e7efeff23ddd7c92eb5e79a94766a527980c772"
+          "version": "repo-file-v1:sha256:3dc98c767c1bad34071dd8c4ce33804b9dd86502e0678e8e8fe68978f447ef7b"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/process.rs#L133-L153",
@@ -96,7 +96,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:5d7708b4a83f830538f9eca55e7efeff23ddd7c92eb5e79a94766a527980c772"
+          "version": "repo-file-v1:sha256:3dc98c767c1bad34071dd8c4ce33804b9dd86502e0678e8e8fe68978f447ef7b"
         },
         {
           "resource": "repo://crates/decodex-runtime/tests/native_qualification/large_catalog.py",
@@ -131,7 +131,7 @@
       "statement": "Native model metadata and configuration determine the helper backend; the qualified synthetic matrix uses V1 and V2 at Medium without Ultra and leaves model judgment unmeasured.",
       "evidence": [
         {
-          "resource": "repo://automations/upstream/retained-contracts.json#L2835-L2842",
+          "resource": "repo://automations/upstream/retained-contracts.json#L2849-L2856",
           "version": "repo-lines-v1:sha256:8e6e3bdd228d54f00f8683d30913924cbf52ba99ba0384b2584ed81b2906292e:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMjVlMGNmNTA1M2U5YmRiZTc5ZmVlY2E5NWUzZjk4YTJjOGY2ZDZhYWRlZjhjNGIwZWU1ODk0ZTBjY2ExYTBiNSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMzVlZWJkNGIwMjc1ZTcxYmRjNDUwNGIwZDc1MzM2NmQ3ZDhlZGUwNzYyOGMwMDViZTg2Njc2NTNhY2UxYjcwMCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMTM5NGU3YTZlMWU4MGJjNGQ4Y2YzNTVjYjI1ZWU4ZDg0ZGM0NDZhNDkwMThlMjgyNGY1ZTNiZWY1M2ZmM2U0NiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNzYzOTQyY2VjMGEwMGQ0YzE3NDRiOTU5YzA4NTQ3M2Q5ZjlhN2NkY2NhODY0ZTJiYTQ4MjE2ZmJmNTBhMWQyOCJ9"
         },
         {
@@ -178,19 +178,15 @@
     },
     {
       "id": "claim_9815b02e2bec42e2972b00e7894ad1f4",
-      "statement": "Side chats preserve source provider and Goal ownership without sending. Native cold resume can require restoring that provider; the separate approved current-provider fork has targeted qualification while the runtime pin and pending HumanCommand adaptation remain unchanged.",
+      "statement": "Side chats preserve source provider and Goal ownership without sending. Cold resume can require the original provider; the approved current-provider fork has targeted qualification without changing the runtime pin. HumanCommand support is separately user-deferred and remains unsupported.",
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:5d7708b4a83f830538f9eca55e7efeff23ddd7c92eb5e79a94766a527980c772"
+          "version": "repo-file-v1:sha256:3dc98c767c1bad34071dd8c4ce33804b9dd86502e0678e8e8fe68978f447ef7b"
         },
         {
-          "resource": "repo://codex-runtime.lock.json",
-          "version": "repo-file-v1:sha256:cc5ad01847aeedd94f3fad7d425b5f4eaf9011dc440c448a42d6943bbe215ac8"
-        },
-        {
-          "resource": "repo://crates/decodex-codex/src/app_server_client/thread_fork.rs",
-          "version": "repo-file-v1:sha256:2b2ba97fe646c51241ea3c4ff3aa296334595861ca0b35fdc194dd198d8b68ec"
+          "resource": "repo://automations/upstream/retained-contracts.json",
+          "version": "repo-file-v1:sha256:b7dc0456127348fc734fc70c1e4a07842ddbcc64cea677c320dc52c8b0de2ec9"
         }
       ]
     },
@@ -218,7 +214,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:2d394098c68d2b9c5f7f3ced50aaac3e4b3adbc9788fb12eb728fee6bfa015cd"
+          "version": "repo-file-v1:sha256:47a3eec19619953b6830ad16c5120a5c0137471e7bbae406e645f261f3a29c3e"
         },
         {
           "resource": "repo://crates/decodex-protocol/src/model_catalog.rs#L77-L105",
@@ -317,6 +313,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-31T15:20:06.142Z"
+    "at": "2026-10-31T15:31:25.411Z"
   }
 }

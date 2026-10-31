@@ -6,7 +6,7 @@
     "prior_public_evidence": "https://github.com/acg-box/decodex/blob/69fe45a5d2d2a6e093568ce69bff50415378cc41/automations/upstream/qualification.json",
     "current_review_replaced_by": "https://github.com/acg-box/decodex/blob/69ef0e38d74d407a1cbe84ab06ba802adc786a8a/automations/upstream/current-review.json"
   },
-  "consumer_limits": "Selected 33d306d4 retains its original qualification. The reconstruction router has 51 native and two local history selections. Historical candidate cohort: 49/50. Targeted provider follow-up: 2/2 on the same candidate and 1/1 on the selected baseline. The candidate remains unselected pending HumanCommand compatibility and affected qualification.",
+  "consumer_limits": "Selected 33d306d4 retains its original qualification. The reconstruction router has 51 native and two local history selections. Historical candidate cohort: 49/50. Targeted provider follow-up: 2/2 on the same candidate and 1/1 on the selected baseline. HumanCommand support is user-deferred in issue 2585, not daily implementation debt. Candidate runtime selection still requires applicable retained-scope qualification.",
   "limits": [
     "Source review, tests, artifact qualification, merge and installed acceptance are separate.",
     "Only macOS arm64 private stdio and named native consumers/helpers are qualified. Linux, Windows, remote production execution, live accounts/providers, physical audio and installation/release remain unmeasured.",
@@ -3360,8 +3360,10 @@
     "dependent_adaptation": {
       "id": "managed-human-command-approval-compatibility",
       "source_review_record": 92,
-      "status": "necessary_repair_pending_qualified_runtime",
-      "reason": "Agent capability and application projection lack humanCommand. Provider recovery is now qualified, so continue the existing capability/projection repair against the fixed candidate and then qualify the applicable retained approval boundaries before any runtime pin change."
+      "status": "user_deferred",
+      "reason": "The user has no current need for mandatory one-time human-command approval. Do not implement without a new decision. Keep this capability unadvertised and preserve native rejection when no capable client is present; do not fabricate approval.",
+      "issue": "https://github.com/acg-box/decodex/issues/2585",
+      "qualification_limit": "Deferral is not delivered compatibility or runtime qualification. The selected runtime remains unchanged; verify the retained scope before any migration."
     },
     "source_and_fixture_sha256": {
       "crates/decodex-components/src/install.rs": "6c1780a78d4023e27277d7275780db7e8c567c2ef1526e82385ce4dea4155c5f",

@@ -723,7 +723,7 @@
     "evidence": "automations/upstream/qualification.json",
     "source_archive_sha256": "b93e82b67ca9de55fb1cbcf74be03567f529a03d23b4785de02f966f39f1c4b5",
     "schema_sha256": "86c27115a28bf905f4c25ee204b218b2ba9598ef664787efddd30e2d0c20f2d9",
-    "evidence_sha256": "33c98bcc9b908366adb8043a086c26c005a88c010f031b16cac5d0fef1f00602",
+    "evidence_sha256": "3dc98c767c1bad34071dd8c4ce33804b9dd86502e0678e8e8fe68978f447ef7b",
     "limits": [
       "Source review, tests, artifact qualification, merge and installed acceptance are separate.",
       "Only macOS arm64 private stdio and named native consumers/helpers are qualified. Linux, Windows, remote production execution, live accounts/providers, physical audio and installation/release remain unmeasured.",
@@ -947,7 +947,7 @@
   "current_runtime_requalification": {
     "selected_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
     "candidate_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
-    "candidate_status": "provider_recovery_passed_pending_runtime_adaptation",
+    "candidate_status": "provider_recovery_passed_pending_retained_scope_qualification",
     "current_native_selections": 51,
     "current_unmatched_selectors": [],
     "historical_native_cohort": {
@@ -965,18 +965,23 @@
     },
     "evidence": "automations/upstream/qualification.json#candidate_qualification",
     "resolved_issue": "https://github.com/acg-box/decodex/issues/2575",
-    "pending_adaptation": "managed-human-command-approval-compatibility",
-    "retained_manual_deliveries": "Existing approved capabilities remain retained. Deferred product issues are separate from daily maintenance."
+    "retained_manual_deliveries": "Existing approved capabilities remain retained. Deferred product issues are separate from daily maintenance.",
+    "deferred_capability": {
+      "id": "managed-human-command-approval-compatibility",
+      "issue": "https://github.com/acg-box/decodex/issues/2585",
+      "status": "user_deferred",
+      "limit": "Unsupported and unadvertised; not a delivered feature or a waiver of retained runtime qualification."
+    }
   },
   "retained_contracts": {
     "path": "automations/upstream/retained-contracts.json",
-    "sha256": "a98d4bd8b3d63527e8dd136837acc6ecd1b15cc281331807beb1c7bad11fe56d",
+    "sha256": "b7dc0456127348fc734fc70c1e4a07842ddbcc64cea677c320dc52c8b0de2ec9",
     "scope": "Retained requirements, selected product decisions and original feature qualification; stable across routine runtime rolls."
   },
   "workspace_dependencies": {
     "status": "qualified_workspace_dependency_batch",
     "evidence": "automations/upstream/qualification.json#workspace_dependencies",
-    "evidence_sha256": "33c98bcc9b908366adb8043a086c26c005a88c010f031b16cac5d0fef1f00602",
+    "evidence_sha256": "3dc98c767c1bad34071dd8c4ce33804b9dd86502e0678e8e8fe68978f447ef7b",
     "code_commit": "580bf63a570d73af7dbeb18b8e8a537537f5bb65",
     "requirements": "Preserve native archive verification and real WebRTC transport, use inherited minor-line dependencies, and retain explicit source/artifact/installed-app limits.",
     "summary": "Tokio 1.54.1, rusqlite 0.41, latest selected GPUI/Git refs, compatible Astro 7.4 graph and Sparkle 2.10.1. 2993 nonignored Rust cases pass across the ordinary and signed transport lanes; both official WebRTC archives and compiled root probes pass.",
@@ -2889,9 +2894,9 @@
     ],
     "maintenance_workflow_delivery": "https://github.com/acg-box/decodex/pull/2573",
     "native_schedule": "PAUSED; daily cadence preserved; explicit user authorization is required to resume.",
-    "scope": "Provider mismatch recovery reuses the native fork and existing review/receipt flow. Selected runtime unchanged; HumanCommand compatibility remains pending. No schedule activation, installation or release.",
+    "scope": "Provider recovery is delivered and the selected runtime is unchanged. HumanCommand support is user-deferred in issue 2585. Complete applicable retained-scope qualification before runtime selection; no schedule activation, installation or release.",
     "provider_resolution": "https://github.com/acg-box/decodex/issues/2575",
-    "pending_adaptation": "managed-human-command-approval-compatibility"
+    "deferred_capability_issue": "https://github.com/acg-box/decodex/issues/2585"
   },
   "provider_recovery": {
     "contract": "automations/upstream/retained-contracts.json#retained_provider_recovery",

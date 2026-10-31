@@ -461,7 +461,7 @@
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
       "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
       "selected_runtime_contains_commit": false,
-      "qualification_reconciliation": "Provider follow-up: ordinary forks retain provider A and cold-resume after A is restored; explicit user-approved recovery forks to current provider B without sending. Candidate 2/2 and selected baseline 1/1 pass. Prior 49/50 is historical, not a current blocker. The candidate remains unselected pending HumanCommand adaptation; see qualification.json#candidate_qualification/provider_recovery.",
+      "qualification_reconciliation": "Provider follow-up: ordinary forks retain provider A and cold-resume after A is restored; explicit user-approved recovery forks to current provider B without sending. Candidate 2/2 and selected baseline 1/1 pass. Prior 49/50 is historical, not a current blocker. The candidate remains unselected. HumanCommand support is user-deferred in issue 2585; applicable retained-scope qualification remains required.",
       "commit_time": "2026-10-27T21:51:50Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -1025,8 +1025,8 @@
       "selected_runtime_contains_commit": false,
       "commit_time": "2026-10-27T23:14:18Z",
       "status": "source_review_complete",
-      "delivery_disposition": "Independent component verification is implemented in 768690c268e679df140b0c588f02f3d91c633eec; HumanCommand adaptation remains pending a qualified runtime. See qualification.json#candidate_qualification.",
-      "qualification_reconciliation": "Provider follow-up: ordinary forks retain provider A and cold-resume after A is restored; explicit user-approved recovery forks to current provider B without sending. Candidate 2/2 and selected baseline 1/1 pass. Prior 49/50 is historical, not a current blocker. The candidate remains unselected pending HumanCommand adaptation; see qualification.json#candidate_qualification/provider_recovery."
+      "delivery_disposition": "Independent component verification is implemented in 768690c268e679df140b0c588f02f3d91c633eec; HumanCommand support is user-deferred in issue 2585; runtime qualification is separate. See qualification.json#candidate_qualification.",
+      "qualification_reconciliation": "Provider follow-up: ordinary forks retain provider A and cold-resume after A is restored; explicit user-approved recovery forks to current provider B without sending. Candidate 2/2 and selected baseline 1/1 pass. Prior 49/50 is historical, not a current blocker. The candidate remains unselected. HumanCommand support is user-deferred in issue 2585; applicable retained-scope qualification remains required."
     },
     {
       "index": 15,
@@ -1844,7 +1844,7 @@
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
       "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
       "selected_runtime_contains_commit": false,
-      "qualification_reconciliation": "Provider follow-up: ordinary forks retain provider A and cold-resume after A is restored; explicit user-approved recovery forks to current provider B without sending. Candidate 2/2 and selected baseline 1/1 pass. Prior 49/50 is historical, not a current blocker. The candidate remains unselected pending HumanCommand adaptation; see qualification.json#candidate_qualification/provider_recovery.",
+      "qualification_reconciliation": "Provider follow-up: ordinary forks retain provider A and cold-resume after A is restored; explicit user-approved recovery forks to current provider B without sending. Candidate 2/2 and selected baseline 1/1 pass. Prior 49/50 is historical, not a current blocker. The candidate remains unselected. HumanCommand support is user-deferred in issue 2585; applicable retained-scope qualification remains required.",
       "commit_time": "2026-10-28T05:46:04Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -3376,7 +3376,7 @@
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
       "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
       "selected_runtime_contains_commit": false,
-      "qualification_reconciliation": "Provider follow-up: ordinary forks retain provider A and cold-resume after A is restored; explicit user-approved recovery forks to current provider B without sending. Candidate 2/2 and selected baseline 1/1 pass. Prior 49/50 is historical, not a current blocker. The candidate remains unselected pending HumanCommand adaptation; see qualification.json#candidate_qualification/provider_recovery.",
+      "qualification_reconciliation": "Provider follow-up: ordinary forks retain provider A and cold-resume after A is restored; explicit user-approved recovery forks to current provider B without sending. Candidate 2/2 and selected baseline 1/1 pass. Prior 49/50 is historical, not a current blocker. The candidate remains unselected. HumanCommand support is user-deferred in issue 2585; applicable retained-scope qualification remains required.",
       "commit_time": "2026-10-28T21:07:36Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -3528,8 +3528,8 @@
       "selected_runtime_contains_commit": false,
       "commit_time": "2026-10-28T21:09:05Z",
       "status": "source_review_complete",
-      "delivery_disposition": "Independent component verification is implemented in 768690c268e679df140b0c588f02f3d91c633eec; HumanCommand adaptation remains pending a qualified runtime. See qualification.json#candidate_qualification.",
-      "qualification_reconciliation": "Provider follow-up: ordinary forks retain provider A and cold-resume after A is restored; explicit user-approved recovery forks to current provider B without sending. Candidate 2/2 and selected baseline 1/1 pass. Prior 49/50 is historical, not a current blocker. The candidate remains unselected pending HumanCommand adaptation; see qualification.json#candidate_qualification/provider_recovery."
+      "delivery_disposition": "Independent component verification is implemented in 768690c268e679df140b0c588f02f3d91c633eec; HumanCommand support is user-deferred in issue 2585; runtime qualification is separate. See qualification.json#candidate_qualification.",
+      "qualification_reconciliation": "Provider follow-up: ordinary forks retain provider A and cold-resume after A is restored; explicit user-approved recovery forks to current provider B without sending. Candidate 2/2 and selected baseline 1/1 pass. Prior 49/50 is historical, not a current blocker. The candidate remains unselected. HumanCommand support is user-deferred in issue 2585; applicable retained-scope qualification remains required."
     },
     {
       "index": 68,
@@ -3576,7 +3576,7 @@
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
       "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
       "selected_runtime_contains_commit": false,
-      "qualification_reconciliation": "Provider follow-up: ordinary forks retain provider A and cold-resume after A is restored; explicit user-approved recovery forks to current provider B without sending. Candidate 2/2 and selected baseline 1/1 pass. Prior 49/50 is historical, not a current blocker. The candidate remains unselected pending HumanCommand adaptation; see qualification.json#candidate_qualification/provider_recovery.",
+      "qualification_reconciliation": "Provider follow-up: ordinary forks retain provider A and cold-resume after A is restored; explicit user-approved recovery forks to current provider B without sending. Candidate 2/2 and selected baseline 1/1 pass. Prior 49/50 is historical, not a current blocker. The candidate remains unselected. HumanCommand support is user-deferred in issue 2585; applicable retained-scope qualification remains required.",
       "commit_time": "2026-10-28T21:22:06Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -3648,7 +3648,7 @@
         "apps/decodex-gpui/src/agent_prompt_confirm.rs",
         "database/src/agent_fork.rs"
       ],
-      "qualification_reconciliation": "Provider follow-up: ordinary forks retain provider A and cold-resume after A is restored; explicit user-approved recovery forks to current provider B without sending. Candidate 2/2 and selected baseline 1/1 pass. Prior 49/50 is historical, not a current blocker. The candidate remains unselected pending HumanCommand adaptation; see qualification.json#candidate_qualification/provider_recovery."
+      "qualification_reconciliation": "Provider follow-up: ordinary forks retain provider A and cold-resume after A is restored; explicit user-approved recovery forks to current provider B without sending. Candidate 2/2 and selected baseline 1/1 pass. Prior 49/50 is historical, not a current blocker. The candidate remains unselected. HumanCommand support is user-deferred in issue 2585; applicable retained-scope qualification remains required."
     },
     {
       "index": 70,
@@ -4355,7 +4355,7 @@
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
       "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
       "selected_runtime_contains_commit": false,
-      "qualification_reconciliation": "Provider follow-up: ordinary forks retain provider A and cold-resume after A is restored; explicit user-approved recovery forks to current provider B without sending. Candidate 2/2 and selected baseline 1/1 pass. Prior 49/50 is historical, not a current blocker. The candidate remains unselected pending HumanCommand adaptation; see qualification.json#candidate_qualification/provider_recovery.",
+      "qualification_reconciliation": "Provider follow-up: ordinary forks retain provider A and cold-resume after A is restored; explicit user-approved recovery forks to current provider B without sending. Candidate 2/2 and selected baseline 1/1 pass. Prior 49/50 is historical, not a current blocker. The candidate remains unselected. HumanCommand support is user-deferred in issue 2585; applicable retained-scope qualification remains required.",
       "commit_time": "2026-10-29T03:14:13Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -4660,16 +4660,16 @@
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
       "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
       "selected_runtime_contains_commit": false,
-      "qualification_reconciliation": "Provider follow-up: ordinary forks retain provider A and cold-resume after A is restored; explicit user-approved recovery forks to current provider B without sending. Candidate 2/2 and selected baseline 1/1 pass. Prior 49/50 is historical, not a current blocker. The candidate remains unselected pending HumanCommand adaptation; see qualification.json#candidate_qualification/provider_recovery.",
+      "qualification_reconciliation": "Provider follow-up: ordinary forks retain provider A and cold-resume after A is restored; explicit user-approved recovery forks to current provider B without sending. Candidate 2/2 and selected baseline 1/1 pass. Prior 49/50 is historical, not a current blocker. The candidate remains unselected. HumanCommand support is user-deferred in issue 2585; applicable retained-scope qualification remains required.",
       "commit_time": "2026-10-29T11:15:52Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
     },
     {
       "index": 92,
-      "classification": "necessary_repair",
+      "classification": "deferred",
       "behavior": "Add managed prompt-user command checkpoints requiring a fresh one-time human decision. Hooks, Guardian, saved allowances and reusable approval decisions cannot satisfy them. Only initialized capable recipients receive or answer the exact pending approval; child reattachment preserves routing and a checkpoint alone does not start an execution timeline item.",
-      "decodex_consumer": "crates/decodex-codex/src/app_server_client/initialize.rs::for_agent does not advertise requiredHumanApproval. crates/decodex-runtime/src/application.rs::query_agent_request_scoped rejects humanCommand kind, hiding it from the existing approval panel. agent.rs::respond_pending_event already binds the response to the exact live request and owner. Repair these retained human approval boundaries; retain native policy enforcement and offer no new policy editor or automatic approvals.",
+      "decodex_consumer": "InitializeCapabilities::for_agent does not advertise requiredHumanApproval, and query_agent_request_scoped filters humanCommand. The user deferred this new capability in issue 2585. Keep ordinary approvals and native enforcement; do not enable unsupported capability or synthesize a response.",
       "implementation_symbols": [
         "codex-rs/core/src/tools/approvals.rs::check_approval_requirement/request_approval/request_reviewer_approval",
         "codex-rs/core/src/state/turn.rs::PendingApproval::validate",
@@ -4714,10 +4714,11 @@
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
       "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
       "selected_runtime_contains_commit": false,
-      "qualification_reconciliation": "Provider follow-up: ordinary forks retain provider A and cold-resume after A is restored; explicit user-approved recovery forks to current provider B without sending. Candidate 2/2 and selected baseline 1/1 pass. Prior 49/50 is historical, not a current blocker. The candidate remains unselected pending HumanCommand adaptation; see qualification.json#candidate_qualification/provider_recovery.",
+      "qualification_reconciliation": "Provider follow-up: ordinary forks retain provider A and cold-resume after A is restored; explicit user-approved recovery forks to current provider B without sending. Candidate 2/2 and selected baseline 1/1 pass. Prior 49/50 is historical, not a current blocker. The candidate remains unselected. HumanCommand support is user-deferred in issue 2585; applicable retained-scope qualification remains required.",
       "commit_time": "2026-10-29T11:23:51Z",
       "status": "source_review_complete",
-      "delivery_disposition": "Independent component verification is implemented in 768690c268e679df140b0c588f02f3d91c633eec; HumanCommand adaptation remains pending a qualified runtime. See qualification.json#candidate_qualification."
+      "delivery_disposition": "User-deferred capability; not daily maintenance implementation debt. No implementation or native qualification is claimed.",
+      "decision_issue": "https://github.com/acg-box/decodex/issues/2585"
     },
     {
       "index": 93,
@@ -6096,7 +6097,7 @@
       "commit_time": "2026-10-30T00:45:30Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate.",
-      "qualification_reconciliation": "Provider follow-up: ordinary forks retain provider A and cold-resume after A is restored; explicit user-approved recovery forks to current provider B without sending. Candidate 2/2 and selected baseline 1/1 pass. Prior 49/50 is historical, not a current blocker. The candidate remains unselected pending HumanCommand adaptation; see qualification.json#candidate_qualification/provider_recovery."
+      "qualification_reconciliation": "Provider follow-up: ordinary forks retain provider A and cold-resume after A is restored; explicit user-approved recovery forks to current provider B without sending. Candidate 2/2 and selected baseline 1/1 pass. Prior 49/50 is historical, not a current blocker. The candidate remains unselected. HumanCommand support is user-deferred in issue 2585; applicable retained-scope qualification remains required."
     },
     {
       "index": 126,
@@ -7470,7 +7471,7 @@
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
     }
   ],
-  "delivery_status": "Source review remains complete through the unchanged fixed target. Provider recovery and its targeted native follow-up are delivered; the runtime pin remains unchanged pending HumanCommand compatibility and affected qualification.",
+  "delivery_status": "Source review remains complete through the unchanged fixed target. Provider recovery is delivered. HumanCommand support is user-deferred in issue 2585 and is not daily implementation debt. The selected runtime remains unchanged pending applicable retained-scope qualification.",
   "implementation_commits": [
     "https://github.com/acg-box/decodex/commit/768690c268e679df140b0c588f02f3d91c633eec",
     "https://github.com/acg-box/decodex/commit/283741d89b57346bd25ac91283ef682da0a2d327",
