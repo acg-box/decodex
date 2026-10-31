@@ -49,8 +49,11 @@ pub(crate) struct Observation {
 	pub notices: Vec<String>,
 }
 
-pub(crate) async fn connection(browser: &mut Chrome) -> Result<Connection> {
-	let deadline = Instant::now() + std::time::Duration::from_secs(15);
+pub(crate) async fn connection(
+	browser: &mut Chrome,
+	wait: std::time::Duration,
+) -> Result<Connection> {
+	let deadline = Instant::now() + wait;
 	loop {
 		let state = browser.evaluate(&format!(r#"(()=>{{ {CONTROLS}
             return {{ready:visible(editor)&&visible(model),model:visible(model)?model.innerText:null,
@@ -76,7 +79,7 @@ pub(crate) async fn connection(browser: &mut Chrome) -> Result<Connection> {
 }
 
 pub(crate) async fn ready(browser: &mut Chrome) -> Result<()> {
-	match connection(browser).await?.state {
+	match connection(browser, std::time::Duration::from_secs(15)).await?.state {
 		ConnectionState::Connected => Ok(()),
 		ConnectionState::SignInRequired =>
 			Err("Sign in to ChatGPT in the dedicated research browser, then resume this request."

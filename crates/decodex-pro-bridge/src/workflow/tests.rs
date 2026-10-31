@@ -208,3 +208,62 @@ fn pro_label_and_another_turns_identity_cannot_qualify_a_completed_answer() {
 	record.receipt.execution.as_mut().unwrap().message_id = "a".into();
 	assert!(reconcile(&mut record, &observed).unwrap());
 }
+
+#[tokio::test]
+async fn queued_research_keeps_the_journal_available_and_deduplicates_workers() {
+	use std::time::Duration;
+	use tokio::time::{Instant, sleep};
+	let root = tempfile::tempdir().unwrap();
+	let store = Store::open(root.path()).unwrap();
+	let bridge =
+		crate::ProBridge::new(crate::Config::chrome("/missing-chrome"), root.path()).unwrap();
+	bridge
+		.prepare(Request { id: "queued".into(), prompt: "first".into(), previous: None })
+		.unwrap();
+	let execution = store.execution_lease().unwrap().unwrap();
+	let runner = bridge.clone();
+	let worker = tokio::spawn(async move { runner.resume("queued").await });
+	let deadline = Instant::now() + Duration::from_secs(3);
+	loop {
+		if store.worker_lease("queued").unwrap().is_none() {
+			break;
+		}
+		assert!(Instant::now() < deadline, "Worker did not join the queue.");
+		sleep(Duration::from_millis(10)).await;
+	}
+	assert_eq!(bridge.resume("queued").await.unwrap().phase, Phase::Prepared);
+	assert_eq!(
+		bridge
+			.prepare(Request { id: "second".into(), prompt: "second".into(), previous: None })
+			.unwrap()
+			.phase,
+		Phase::Prepared
+	);
+	drop(execution);
+	assert!(worker.await.unwrap().unwrap_err().contains("not installed"));
+	assert_eq!(bridge.status("queued").unwrap().phase, Phase::Prepared);
+	assert!(bridge.status("queued").unwrap().last_error.unwrap().contains("not installed"));
+}
+
+#[test]
+fn result_waits_for_final_text_code_and_links_to_stop_changing() {
+	let mut previous = None;
+	let mut first = observation(vec![message("assistant", "a", "Partial", true)], false);
+	super::wait_for_stable_answer(&mut first, &mut previous);
+	assert!(!first.messages[0].complete);
+	let mut final_text =
+		observation(vec![message("assistant", "a", "Partial and final", true)], false);
+	super::wait_for_stable_answer(&mut final_text, &mut previous);
+	assert!(!final_text.messages[0].complete);
+	let mut final_links =
+		observation(vec![message("assistant", "a", "Partial and final", true)], false);
+	final_links.messages[0].code_blocks.push("full code\n".into());
+	final_links.messages[0]
+		.links
+		.push(crate::Link { label: "Source".into(), url: "https://example.com/".into() });
+	let mut stable = final_links.clone();
+	super::wait_for_stable_answer(&mut final_links, &mut previous);
+	assert!(!final_links.messages[0].complete);
+	super::wait_for_stable_answer(&mut stable, &mut previous);
+	assert!(stable.messages[0].complete);
+}

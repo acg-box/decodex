@@ -59,13 +59,34 @@ impl Store {
 	}
 
 	pub fn lease(&self) -> Result<File> {
+		self.try_lease("records.lock")?
+			.ok_or_else(|| "The research journal is being updated. Try again.".into())
+	}
+
+	pub fn worker_lease(&self, id: &str) -> Result<Option<File>> {
+		validate_id(id)?;
+		self.try_lease(&format!("{id}.worker.lock"))
+	}
+
+	pub fn execution_lease(&self) -> Result<Option<File>> {
+		self.try_lease("execution.lock")
+	}
+
+	pub fn browser_lease(&self) -> Result<Option<File>> {
+		self.try_lease("browser.lock")
+	}
+
+	fn try_lease(&self, name: &str) -> Result<Option<File>> {
 		let mut options = OpenOptions::new();
 		options.read(true).write(true).create(true).truncate(false);
 		#[cfg(unix)]
 		options.mode(0o600);
-		let file = options.open(self.root.join("execution.lock")).map_err(|e| e.to_string())?;
-		file.try_lock().map_err(|_| "Another Pro request is running in this state directory.")?;
-		Ok(file)
+		let file = options.open(self.root.join(name)).map_err(|e| e.to_string())?;
+		match file.try_lock() {
+			Ok(()) => Ok(Some(file)),
+			Err(std::fs::TryLockError::WouldBlock) => Ok(None),
+			Err(error) => Err(error.to_string()),
+		}
 	}
 
 	pub fn load(&self, id: &str) -> Result<Record> {

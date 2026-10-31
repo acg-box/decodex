@@ -6,7 +6,7 @@ use tokio::{
 };
 
 use crate::{
-	Phase, ProBridge, Receipt, Request, Result,
+	Answer, Phase, ProBridge, Receipt, Request, Result,
 	chrome::Chrome,
 	page::{self, Observation},
 	store::{Record, Store},
@@ -39,14 +39,32 @@ async fn work(
 	cancelled: &mut watch::Receiver<bool>,
 ) -> Result<Receipt> {
 	let store = Store::open(&bridge.root)?;
-	let _lease = store.lease()?;
-	let mut record = match request {
-		Some(request) => store.prepare(request)?,
-		None => store.load(id.as_deref().ok_or("A saved request ID is required.")?)?,
+	let mut record = {
+		let _lease = store.lease()?;
+		match request {
+			Some(request) => store.prepare(request)?,
+			None => store.load(id.as_deref().ok_or("A saved request ID is required.")?)?,
+		}
 	};
 	if record.receipt.phase == Phase::Complete {
 		return Ok(record.receipt);
 	}
+	// Duplicate callers observe the same request; only one process may execute it.
+	let Some(_worker) = store.worker_lease(&record.request.id)? else {
+		return Ok(record.receipt);
+	};
+	// One generation per account by default. Queueing does not hold the journal or
+	// block the user from signing in. No control-model polling is involved.
+	let _execution = loop {
+		if let Some(lease) = store.execution_lease()? {
+			break lease;
+		}
+		tokio::select! {
+			_ = sleep(std::time::Duration::from_millis(250)) => {},
+			_ = cancelled.changed() => return Err("Stopped while waiting for the research browser. The request is saved.".into()),
+		}
+	};
+	record = store.load(&record.request.id)?;
 	if candidate.is_some()
 		&& (record.receipt.phase != Phase::Sending || record.receipt.conversation_url.is_some())
 	{
@@ -93,11 +111,12 @@ async fn execute(
 	browser: &mut Chrome,
 	candidate: Option<&str>,
 ) -> Result<()> {
-	let target = candidate.or(record.receipt.conversation_url.as_deref());
+	let target =
+		candidate
+			.or(record.receipt.conversation_url.as_deref())
+			.or((record.receipt.phase == Phase::Prepared).then_some("https://chatgpt.com/"));
 	let material = store.material(record)?;
-	browser
-		.open(record.target_id.as_deref(), target.unwrap_or("https://chatgpt.com/"), false)
-		.await?;
+	browser.open(record.target_id.as_deref(), target, false).await?;
 	record.target_id = browser.target.clone();
 	store.save(record)?;
 	if record.receipt.phase != Phase::Prepared && target.is_some() {
@@ -119,6 +138,7 @@ async fn execute(
 	}
 	let deadline = Instant::now() + bridge.config.answer_timeout;
 	let submission_deadline = Instant::now() + std::time::Duration::from_secs(30);
+	let mut previous_answer = None;
 	loop {
 		if record.receipt.phase == Phase::Sending
 			&& record.receipt.conversation_url.is_none()
@@ -129,7 +149,8 @@ async fn execute(
 			record.receipt.conversation_url = Some(url);
 			store.save(record)?;
 		}
-		let observed = page::observe_request(browser, &record.request.id).await?;
+		let mut observed = page::observe_request(browser, &record.request.id).await?;
+		wait_for_stable_answer(&mut observed, &mut previous_answer);
 		let before = serde_json::to_vec(&record.receipt).map_err(|e| e.to_string())?;
 		if let Some(identity) = browser.identities.iter().rev().find(|identity| {
 			observed.messages.last().is_some_and(|message| {
@@ -164,6 +185,24 @@ async fn execute(
 		}
 		sleep(bridge.config.poll_interval).await;
 	}
+}
+
+// A final transport message can precede the page's final render. Require two
+// unchanged observations of the complete text, code and links before returning.
+fn wait_for_stable_answer(observed: &mut Observation, previous: &mut Option<Answer>) {
+	let Some(message) = observed
+		.messages
+		.last_mut()
+		.filter(|message| message.role == "assistant" && message.complete && !observed.generating)
+	else {
+		*previous = None;
+		return;
+	};
+	let answer = message.answer();
+	if previous.as_ref() != Some(&answer) {
+		message.complete = false;
+	}
+	*previous = Some(answer);
 }
 
 fn validate_before_send(record: &Record, observed: &Observation) -> Result<()> {

@@ -64,10 +64,11 @@ fn execution_lease_prevents_parallel_sends_and_releases_without_a_stale_pid_file
 	let root = tempfile::tempdir().expect("private root");
 	let first = Store::open(root.path()).expect("first");
 	let second = Store::open(root.path()).expect("second");
-	let lease = first.lease().expect("lease");
-	assert!(second.lease().is_err());
+	let lease = first.execution_lease().expect("lease").expect("available");
+	assert!(second.execution_lease().expect("read lock").is_none());
+	assert!(second.lease().is_ok(), "running research must not block journal access");
 	drop(lease);
-	assert!(second.lease().is_ok());
+	assert!(second.execution_lease().expect("read lock").is_some());
 }
 
 #[tokio::test]

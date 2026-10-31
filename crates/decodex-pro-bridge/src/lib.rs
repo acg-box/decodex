@@ -53,8 +53,14 @@ impl Config {
 	}
 }
 
+impl Default for Config {
+	fn default() -> Self {
+		Self::chrome("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome")
+	}
+}
+
 /// User-facing connection state; connected does not imply a verified Pro turn.
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ConnectionState {
 	/// The user must sign in to the component's own Chrome profile.
@@ -66,7 +72,7 @@ pub enum ConnectionState {
 }
 
 /// Compact setup report suitable for the existing Components settings view.
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Connection {
 	/// Authentication and page readiness, separate from per-turn Pro verification.
@@ -156,7 +162,7 @@ pub struct ProBridge {
 }
 
 impl ProBridge {
-	/// Use one absolute private state directory. The runtime is started only by `ask` or `resume`.
+	/// Use one absolute private state directory. Construction starts no browser.
 	pub fn new(config: Config, state_dir: impl Into<PathBuf>) -> Result<Self> {
 		let root = state_dir.into();
 		store::Store::open(&root)?;
@@ -167,12 +173,14 @@ impl ProBridge {
 	/// Open the private login window without sending a question.
 	pub async fn connect(&self) -> Result<Connection> {
 		let store = store::Store::open(&self.root)?;
-		let _lease = store.lease()?;
 		let mut browser = chrome::Chrome::connect(&self.config, &self.root).await?;
 		let saved = store.setup_target()?;
-		browser.open(saved.as_deref(), "https://chatgpt.com/", true).await?;
-		store.save_setup_target(browser.target.as_deref().ok_or("Missing setup tab.")?)?;
-		page::connection(&mut browser).await
+		browser.open(saved.as_deref(), Some("https://chatgpt.com/"), true).await?;
+		{
+			let _lease = store.lease()?;
+			store.save_setup_target(browser.target.as_deref().ok_or("Missing setup tab.")?)?;
+		}
+		page::connection(&mut browser, Duration::from_secs(15)).await
 	}
 
 	/// Read setup readiness without opening a window or starting Chrome.
@@ -189,14 +197,16 @@ impl ProBridge {
 		{
 			return Ok(None);
 		}
-		browser.open(Some(&target), "https://chatgpt.com/", false).await?;
-		page::connection(&mut browser).await.map(Some)
+		browser.open(Some(&target), None, false).await?;
+		page::connection(&mut browser, Duration::ZERO).await.map(Some)
 	}
 
 	/// Close only the dedicated Chrome. Request records and login state remain.
 	pub async fn disconnect(&self) -> Result<()> {
 		let store = store::Store::open(&self.root)?;
-		let _lease = store.lease()?;
+		let _lease = store
+			.execution_lease()?
+			.ok_or("Research is still running. Stop it before disconnecting the browser.")?;
 		if let Some(mut browser) = chrome::Chrome::existing(&self.root).await? {
 			browser.close_browser().await?;
 		}
