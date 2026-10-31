@@ -55,6 +55,7 @@ pub(super) const THREAD_LOCKED_MESSAGE: &str = "In use by another app";
 const PARENT_MANAGED_MESSAGE: &str = "Continue in parent chat";
 const NATIVE_CONNECTION_FAILED_MESSAGE: &str = "Could not connect to this conversation.";
 const NATIVE_CONNECTING_MESSAGE: &str = "Connecting to this conversation…";
+const PROVIDER_MISMATCH_MESSAGE: &str = "This conversation uses a different provider.";
 
 #[derive(Clone)]
 pub(super) struct PageView {
@@ -511,6 +512,28 @@ impl AgentSurface {
 			.into_any_element()
 	}
 
+	pub(super) fn workspace_button(
+		&self,
+		id: String,
+		label: String,
+		action: impl Fn(&mut Self, &mut Context<Self>) + 'static,
+		cx: &mut Context<Self>,
+	) -> AnyElement {
+		let action = Rc::new(action);
+		let click = action.clone();
+		ui_theme::settings_button(id, label)
+			.text_color(ui_theme::rgb(BLUE))
+			.on_click(cx.listener(move |s, _, _, cx| click(s, cx)))
+			.on_key_down(cx.listener(move |s, event: &KeyDownEvent, _, cx| {
+				if !event.is_held && ["enter", "space"].contains(&event.keystroke.key.as_str()) {
+					action(s, cx);
+					cx.stop_propagation();
+				}
+			}))
+			.smooth()
+			.into_any_element()
+	}
+
 	pub(super) fn workspace_sidebar(&self, cx: &mut Context<Self>) -> AnyElement {
 		let mut panel = gpui::div()
 			.id("agent-sidebar")
@@ -834,7 +857,7 @@ impl AgentSurface {
 			return Some("Draft conversation unavailable. Select another conversation.");
 		}
 		if self.selected_provider_mismatch().is_some() {
-			return Some("This conversation uses a different provider.");
+			return Some(PROVIDER_MISMATCH_MESSAGE);
 		}
 
 		let selected = self.selected.as_deref()?;
@@ -909,7 +932,7 @@ impl AgentSurface {
 			)
 			.debug_selector(|| "conversation-unavailable".into())
 			.when(matches!(self.native_agents.connection, NativeConnection::Failed(_)), |row| {
-				row.child(self.workspace_action(
+				row.child(self.workspace_button(
 					"native-connect-retry".into(),
 					"Retry".into(),
 					|s, cx| s.retry_native_connection(cx),
@@ -927,16 +950,16 @@ impl AgentSurface {
 			return Some(
 				ui_feedback::read_only_row(
 					"conversation-unavailable",
+					"Different provider",
 					&format!(
-						"This conversation uses {}. The current provider is {}",
+						"This chat uses “{}”. Fork to continue with “{}”.",
 						original.as_str(),
 						current.as_str()
 					),
-					"Switch back to continue here, or Fork to use the current provider. The original stays unchanged; nothing is sent.",
 					workspace_symbols::icon_sized(workspace_symbols::Symbol::Fork, 14.),
 				)
 				.debug_selector(|| "conversation-unavailable".into())
-				.child(self.workspace_action(
+				.child(self.workspace_button(
 					"provider-create-branch".into(),
 					"Fork".into(),
 					|s, cx| s.review_provider_branch(cx),
@@ -964,9 +987,9 @@ impl AgentSurface {
 				workspace_symbols::icon_sized(workspace_symbols::Symbol::TeamParent, 14.),
 			)
 			.debug_selector(|| "conversation-unavailable".into())
-			.child(self.workspace_action(
+			.child(self.workspace_button(
 				"native-open-parent".into(),
-				"Open parent conversation".into(),
+				"Open parent".into(),
 				|s, cx| s.open_native_parent(cx),
 				cx,
 			))
@@ -2542,11 +2565,19 @@ impl AgentSurface {
 		gpui::div()
 			.debug_selector(|| "conversation-status-band".into())
 			.w_full()
+			.min_w_0()
 			.flex_none()
 			.occlude()
-			.when_some(reason.filter(|reason| *reason != ARCHIVED_MESSAGE), |band, reason| {
-				band.child(ui_feedback::notice_rail(self.connection_notice(reason, cx)))
-			})
+			.when_some(
+				reason.filter(|reason| {
+					*reason != ARCHIVED_MESSAGE
+						&& !(*reason == PROVIDER_MISMATCH_MESSAGE
+							&& self.provider_fork_review_visible())
+				}),
+				|band, reason| {
+					band.child(ui_feedback::notice_rail(self.connection_notice(reason, cx)))
+				},
+			)
 			.child(
 				ui_feedback::notice(
 					"conversation-activity",
@@ -2791,18 +2822,8 @@ fn connection_settings_action(destination: crate::shell::Destination) -> AnyElem
 		("connection-open-diagnostics", "Open Diagnostics")
 	};
 
-	gpui::div()
-		.id(id)
-		.debug_selector(move || id.into())
-		.role(Role::Button)
-		.aria_label(label)
-		.tab_index(0)
-		.flex_none()
-		.px_2()
-		.py_1()
-		.cursor_pointer()
+	ui_theme::settings_button(id, label)
 		.text_color(crate::ui_theme::rgb(BLUE))
-		.child(label)
 		.on_click(move |_, window, cx| open_connection_settings(destination, window, cx))
 		.on_key_down(move |event: &KeyDownEvent, window, cx| {
 			if !event.is_held && ["enter", "space"].contains(&event.keystroke.key.as_str()) {

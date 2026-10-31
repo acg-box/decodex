@@ -453,7 +453,7 @@ fn settings_text(state: &AgentModelSettingsResult) -> String {
 			current_model_provider,
 			..
 		} => format!(
-			"This conversation uses {}. The current provider is {}. Switch back to continue here, or Fork to use the current provider. The original stays unchanged; nothing is sent.",
+			"This chat uses “{}”. Fork to continue with “{}”.",
 			model_provider.as_str(),
 			current_model_provider.as_str()
 		),

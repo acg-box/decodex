@@ -449,6 +449,7 @@ pub(crate) fn composer_block(
 pub(crate) fn notice_rail(content: impl IntoElement) -> Div {
 	gpui::div()
 		.w_full()
+		.min_w_0()
 		.flex()
 		.justify_center()
 		.px(gpui::px(CONVERSATION_INSET))
@@ -488,36 +489,63 @@ fn state_row(
 				.text_color(ui_theme::rgb(tone.color()))
 				.child(icon),
 		)
-		.child(
+		.child(state_copy(title, detail, inline))
+}
+
+fn state_copy(title: &str, detail: &str, inline: bool) -> Div {
+	let copy = gpui::div().flex_1().min_w_0().flex().flex_col().gap(gpui::px(2.));
+	if inline {
+		let text = match (title.is_empty(), detail.is_empty()) {
+			(true, _) => detail.to_owned(),
+			(_, true) => title.to_owned(),
+			_ => format!("{title} {detail}"),
+		};
+		let emphasis = (!title.is_empty()).then(|| {
+			(
+				0..title.len(),
+				gpui::HighlightStyle {
+					font_weight: Some(FontWeight::MEDIUM),
+					color: Some(ui_theme::rgb(TEXT).into()),
+					..Default::default()
+				},
+			)
+		});
+		return copy.child(
 			gpui::div()
-				.flex_1()
+				.w_full()
 				.min_w_0()
-				.flex()
-				.when(inline, |text| {
-					text.flex_wrap().items_center().gap_x(gpui::px(8.)).gap_y(gpui::px(2.))
-				})
-				.when(!inline, |text| text.flex_col().gap(gpui::px(2.)))
-				.when(!title.is_empty(), |text| {
-					text.child(
-						gpui::div()
-							.font_weight(FontWeight::MEDIUM)
-							.text_color(ui_theme::rgb(TEXT))
-							.child(title.to_owned()),
-					)
-				})
-				.when(!detail.is_empty(), |d| {
-					d.child(
-						gpui::div().text_color(ui_theme::rgb(TEXT_MUTED)).child(detail.to_owned()),
-					)
-				}),
+				.debug_selector(|| "status-row-detail".into())
+				.text_color(ui_theme::rgb(TEXT_MUTED))
+				.child(gpui::StyledText::new(text).with_highlights(emphasis)),
+		);
+	}
+	copy.when(!title.is_empty(), |copy| {
+		copy.child(
+			gpui::div()
+				.w_full()
+				.min_w_0()
+				.font_weight(FontWeight::MEDIUM)
+				.text_color(ui_theme::rgb(TEXT))
+				.child(title.to_owned()),
 		)
+	})
+	.when(!detail.is_empty(), |copy| {
+		copy.child(
+			gpui::div()
+				.w_full()
+				.min_w_0()
+				.debug_selector(|| "status-row-detail".into())
+				.text_color(ui_theme::rgb(TEXT_MUTED))
+				.child(detail.to_owned()),
+		)
+	})
 }
 
 #[cfg(test)]
 mod tests {
 	use std::thread;
 
-	use gpui::{ParentElement as _, Render, Styled as _};
+	use gpui::{InteractiveElement as _, ParentElement as _, Render, Styled as _};
 
 	use crate::ui_feedback::{
 		self, Duration, Feedback, Instant, IntoElement, Presence, Window, gpui,
@@ -533,6 +561,52 @@ mod tests {
 				"chat",
 				self.0.clone(),
 			))
+		}
+	}
+
+	struct RecoveryView {
+		inline: bool,
+	}
+	impl Render for RecoveryView {
+		fn render(&mut self, _: &mut Window, _: &mut gpui::Context<Self>) -> impl IntoElement {
+			ui_feedback::notice_rail(
+				ui_feedback::state_row(
+					"recovery-notice", ui_feedback::Tone::Neutral,
+					"Different provider",
+					"This chat uses a previous provider. Fork to continue with the currently configured provider and its inherited conversation context.",
+					ui_feedback::Tone::Neutral.icon(), self.inline,
+				)
+				.debug_selector(|| "recovery-notice".into())
+				.child(crate::ui_theme::settings_button("recovery-fork", "Fork")),
+			)
+		}
+	}
+
+	#[gpui::test]
+	fn recovery_notice_wraps_text_without_pushing_its_action_outside_the_rail(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let (view, visual) = cx.add_window_view(|_, _| RecoveryView { inline: true });
+		for (width, inline) in [(280., true), (420., true), (280., false), (420., false)] {
+			view.update(visual, |v, _| v.inline = inline);
+			visual.simulate_resize(gpui::size(gpui::px(width), gpui::px(300.)));
+			visual.update(crate::ui_frame::draw_current_frame);
+			let row = visual.debug_bounds("recovery-notice").unwrap();
+			let detail = visual.debug_bounds("status-row-detail").unwrap();
+			let button = visual.debug_bounds("recovery-fork").unwrap();
+			assert!(
+				detail.right() <= button.left(),
+				"copy must wrap before the action: {detail:?}, {button:?}"
+			);
+			assert!(button.right() <= row.right(), "action must stay inside the notice rail");
+			assert!(
+				row.bottom() <= gpui::px(300.),
+				"copy must use the available line width rather than a narrow column"
+			);
+			assert!(
+				detail.size.height > gpui::px(super::NOTICE_LINE_HEIGHT),
+				"narrow copy must wrap onto more than one line"
+			);
 		}
 	}
 
