@@ -29,11 +29,11 @@ impl Snapshot {
 	pub fn status_text(&self) -> &'static str {
 		match self.connection.as_ref().map(|state| &state.state) {
 			Some(ConnectionState::Connected) => "Connected · Pro verification pending",
-			Some(ConnectionState::SignInRequired) => "Sign in to ChatGPT in the research window",
+			Some(ConnectionState::SignInRequired) => "Sign in to ChatGPT in the research tab",
 			Some(ConnectionState::VerificationRequired) =>
 				"Waiting for ChatGPT security verification",
 			Some(ConnectionState::AttentionRequired) =>
-				"Open the research window to continue setup",
+				"Open the research tab to continue setup",
 			None => "Not connected",
 		}
 	}

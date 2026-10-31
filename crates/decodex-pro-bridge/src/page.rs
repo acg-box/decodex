@@ -90,7 +90,7 @@ pub(crate) async fn ready(browser: &mut Chrome) -> Result<()> {
 	match connection(browser, std::time::Duration::from_secs(15)).await?.state {
 		ConnectionState::Connected => Ok(()),
 		ConnectionState::SignInRequired =>
-			Err("Sign in to ChatGPT in the dedicated research browser, then resume this request."
+			Err("Sign in to ChatGPT in the research tab, then resume this request."
 				.into()),
 		ConnectionState::VerificationRequired => Err("ChatGPT requires a security check in the research browser. Research is waiting; no message was sent.".into()),
 		ConnectionState::AttentionRequired =>

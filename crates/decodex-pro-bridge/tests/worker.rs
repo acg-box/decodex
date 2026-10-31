@@ -15,8 +15,6 @@ fn detached_worker_records_startup_failure_after_the_calling_process_exits() {
 	let prompt = directory.path().join("question.txt");
 	fs::write(&prompt, "An isolated question. No browser is available in this fixture.").unwrap();
 	let result = Command::new(env!("CARGO_BIN_EXE_decodex-pro-bridge"))
-		.arg("--chrome")
-		.arg(directory.path().join("missing-chrome"))
 		.arg("--state-dir")
 		.arg(directory.path())
 		.args(["start", "--id", "background"])
@@ -25,11 +23,11 @@ fn detached_worker_records_startup_failure_after_the_calling_process_exits() {
 		.output()
 		.unwrap();
 	assert!(result.status.success(), "{}", String::from_utf8_lossy(&result.stderr));
-	let bridge = ProBridge::new(Config::chrome("/unused"), directory.path()).unwrap();
+	let bridge = ProBridge::new(Config::default(), directory.path()).unwrap();
 	let deadline = Instant::now() + Duration::from_secs(5);
 	loop {
 		if let Some(error) = bridge.status("background").unwrap().last_error {
-			assert!(error.contains("not installed"));
+			assert!(error.contains("not connected"));
 			break;
 		}
 		assert!(Instant::now() < deadline, "Independent worker did not publish its failure.");

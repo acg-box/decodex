@@ -25,23 +25,10 @@ pub(crate) async fn run(
 	}
 	// The worker owns shutdown even if its caller drops the returned future.
 	tokio::spawn(async move {
-		let result = work(bridge, request, id, candidate, &mut cancelled, None).await;
+		let result = work(bridge, request, id, candidate, &mut cancelled).await;
 		let _ = reply.send(result);
 	});
 	received.await.map_err(|_| "The Pro component stopped before returning a receipt.")?
-}
-
-pub(crate) async fn run_in_session(
-	bridge: ProBridge,
-	request: Option<Request>,
-	id: Option<String>,
-	browser: &mut Chrome,
-) -> Result<Receipt> {
-	let mut cancelled = bridge.cancelled.subscribe();
-	if *cancelled.borrow() {
-		return Err("The request owner was stopped. Resume with a new owner.".into());
-	}
-	work(bridge, request, id, None, &mut cancelled, Some(browser)).await
 }
 
 async fn work(
@@ -50,7 +37,6 @@ async fn work(
 	id: Option<String>,
 	candidate: Option<String>,
 	cancelled: &mut watch::Receiver<bool>,
-	browser: Option<&mut Chrome>,
 ) -> Result<Receipt> {
 	let store = Store::open(&bridge.root)?;
 	let mut record = {
@@ -94,23 +80,16 @@ async fn work(
 	if bridge.config.poll_interval.is_zero() || bridge.config.answer_timeout.is_zero() {
 		return Err("Polling and answer wait durations must be greater than zero.".into());
 	}
-	let mut opened;
-	let browser = match browser {
-		Some(browser) => browser,
-		None => {
-			opened = match Chrome::connect(&bridge.config, &bridge.root).await {
-				Ok(browser) => browser,
-				Err(error) => {
-					record.receipt.last_error = Some(error.clone());
-					store.save(&record)?;
-					return Err(error);
-				},
-			};
-			&mut opened
+	let mut browser = match Chrome::connect(&bridge.root).await {
+		Ok(browser) => browser,
+		Err(error) => {
+			record.receipt.last_error = Some(error.clone());
+			store.save(&record)?;
+			return Err(error);
 		},
 	};
 	let result = tokio::select! {
-		result = execute(&bridge, &store, &mut record, browser, candidate.as_deref()) => result,
+		result = execute(&bridge, &store, &mut record, &mut browser, candidate.as_deref()) => result,
 		_ = cancelled.changed() => Err("The request was cancelled. Resume its saved ID to reconcile it.".into()),
 	};
 	// Closing a waiter must not cancel research. Keep an incomplete tab for recovery.

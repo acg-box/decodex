@@ -214,8 +214,7 @@ async fn queued_research_keeps_the_journal_available_and_deduplicates_workers() 
 	use tokio::time::{Instant, sleep};
 	let root = tempfile::tempdir().unwrap();
 	let store = Store::open(root.path()).unwrap();
-	let bridge =
-		crate::ProBridge::new(crate::Config::chrome("/missing-chrome"), root.path()).unwrap();
+	let bridge = crate::ProBridge::new(crate::Config::default(), root.path()).unwrap();
 	bridge
 		.prepare(Request { id: "queued".into(), prompt: "first".into(), previous: None })
 		.unwrap();
@@ -239,9 +238,9 @@ async fn queued_research_keeps_the_journal_available_and_deduplicates_workers() 
 		Phase::Prepared
 	);
 	drop(execution);
-	assert!(worker.await.unwrap().unwrap_err().contains("not installed"));
+	assert!(worker.await.unwrap().unwrap_err().contains("not connected"));
 	assert_eq!(bridge.status("queued").unwrap().phase, Phase::Prepared);
-	assert!(bridge.status("queued").unwrap().last_error.unwrap().contains("not installed"));
+	assert!(bridge.status("queued").unwrap().last_error.unwrap().contains("not connected"));
 }
 
 #[test]

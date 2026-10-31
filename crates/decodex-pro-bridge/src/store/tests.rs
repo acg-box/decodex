@@ -32,7 +32,7 @@ fn large_unicode_material_is_immutable_without_a_fixed_prompt_limit() {
 #[test]
 fn async_preparation_is_durable_and_idempotent_while_execution_holds_the_lease() {
 	let root = tempfile::tempdir().expect("private root");
-	let bridge = ProBridge::new(Config::chrome("/missing-app"), root.path()).expect("bridge");
+	let bridge = ProBridge::new(Config::default(), root.path()).expect("bridge");
 	assert_eq!(bridge.prepare(request("accepted")).expect("prepare").phase, Phase::Prepared);
 	let store = Store::open(root.path()).expect("store");
 	let _lease = store.lease().expect("observer lease");
@@ -74,7 +74,7 @@ fn execution_lease_prevents_parallel_sends_and_releases_without_a_stale_pid_file
 #[tokio::test]
 async fn stop_before_worker_start_does_not_lose_cancellation() {
 	let root = tempfile::tempdir().expect("private root");
-	let bridge = ProBridge::new(Config::chrome("/missing-app"), root.path()).expect("bridge");
+	let bridge = ProBridge::new(Config::default(), root.path()).expect("bridge");
 	bridge.prepare(request("one")).expect("prepare");
 	bridge.cancel();
 	assert!(bridge.resume("one").await.expect_err("owner stopped").contains("owner was stopped"));
@@ -97,7 +97,7 @@ async fn uncertain_first_send_does_not_start_a_runtime_or_reset_the_fence() {
 	let mut record = store.prepare(request("one")).expect("record");
 	record.receipt.phase = Phase::Sending;
 	store.save(&record).expect("save fence");
-	let bridge = ProBridge::new(Config::chrome("/missing-app"), root.path()).expect("bridge");
+	let bridge = ProBridge::new(Config::default(), root.path()).expect("bridge");
 	let error = bridge.resume("one").await.expect_err("must stop");
 	assert!(error.contains("uncertain outcome"));
 	assert_eq!(store.load("one").expect("preserved").receipt.phase, Phase::Sending);
@@ -106,7 +106,7 @@ async fn uncertain_first_send_does_not_start_a_runtime_or_reset_the_fence() {
 		.resume_at("one", "https://chatgpt.com/c/candidate")
 		.await
 		.expect_err("the missing runtime cannot verify this candidate");
-	assert!(error.contains("not installed"));
+	assert!(error.contains("not connected"));
 	let fenced = store.load("one").expect("candidate did not change saved identity");
 	assert_eq!(fenced.receipt.phase, Phase::Sending);
 	assert!(fenced.receipt.conversation_url.is_none());
@@ -131,7 +131,7 @@ async fn complete_unicode_code_and_links_survive_restart_without_another_model_t
 	record.target_id = Some("owned-chrome-tab".into());
 	record.answer = Some(answer.clone());
 	store.save(&record).expect("save complete body");
-	let bridge = ProBridge::new(Config::chrome("/missing-app"), root.path()).expect("bridge");
+	let bridge = ProBridge::new(Config::default(), root.path()).expect("bridge");
 	assert_eq!(bridge.read("one").expect("full body"), answer);
 	assert_eq!(bridge.ask(request("one")).await.expect("cached receipt").phase, Phase::Complete);
 	let mut next = request("two");

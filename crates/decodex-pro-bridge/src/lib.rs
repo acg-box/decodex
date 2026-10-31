@@ -1,19 +1,15 @@
-//! Isolated ChatGPT research over CDP, using an existing Chrome installation.
-//!
-//! `connect` opens a dedicated profile for the user's login. Explicit existing-session
-//! connections request Chrome's approval and keep that connection across turns.
-//! Requests run in owned background tabs; Codex and Main are not modified.
-//! No control-model inference, Node, extension or API key is required. Authentication
-//! challenges are returned to the user, never solved or bypassed by this component.
-//!
-//! The request journal fences Send before dispatch. Recovery reads the original
-//! conversation and never replays an uncertain Send. Completion requires a response
-//! identity for the exact assistant message; the UI's Pro label alone is insufficient.
-//! Chrome and its profile survive a worker disconnect so that login and remote work
-//! can continue. `disconnect` explicitly closes this component's browser.
+//! ChatGPT research through Decodex's own Chrome extension and Rust native host.
+//! The extension operates only research tabs that it created in the existing browser.
+//! No official desktop, control-model inference, Node, new browser, or API key is used.
+//! Send fencing and exact message receipts survive controller and host disconnects.
+//! Provider login and verification remain user actions; they are never bypassed.
 
 mod chrome;
 mod identity;
+pub mod install;
+pub mod mcp;
+pub mod native_host;
+mod native_wire;
 mod page;
 mod store;
 mod workflow;
@@ -29,34 +25,18 @@ use tokio::sync::watch;
 /// Component result. Runtime failures retain their action and official failure reason.
 pub type Result<T> = std::result::Result<T, String>;
 
-/// Browser path and bounded wait settings. No global settings are written.
+/// Bounded answer observation settings. The browser is owned by its user.
 #[derive(Clone, Debug)]
 pub struct Config {
-	/// Existing Chrome executable. The component never installs a browser.
-	pub chrome: PathBuf,
-	/// Opt-in for isolated noninteractive tests. Normal login uses visible Chrome.
-	pub headless: bool,
 	/// Maximum wait for one ChatGPT answer. Expiry retains a resumable request.
 	pub answer_timeout: Duration,
 	/// Delay between page observations.
 	pub poll_interval: Duration,
 }
 
-impl Config {
-	/// Select an existing Chrome executable without installing it.
-	pub fn chrome(executable: impl Into<PathBuf>) -> Self {
-		Self {
-			chrome: executable.into(),
-			headless: false,
-			answer_timeout: Duration::from_secs(30 * 60),
-			poll_interval: Duration::from_secs(1),
-		}
-	}
-}
-
 impl Default for Config {
 	fn default() -> Self {
-		Self::chrome("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome")
+		Self { answer_timeout: Duration::from_secs(30 * 60), poll_interval: Duration::from_secs(1) }
 	}
 }
 
@@ -64,7 +44,7 @@ impl Default for Config {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ConnectionState {
-	/// The user must sign in to the component's own Chrome profile.
+	/// The user must sign in to ChatGPT in the owned research tab.
 	SignInRequired,
 	/// The provider requires a human security check; automation must wait.
 	VerificationRequired,
@@ -164,33 +144,6 @@ pub struct ProBridge {
 	cancelled: watch::Sender<bool>,
 }
 
-/// One user-authorized connection to an existing Chrome. Keep this owner alive
-/// across related requests; a new connection can require another Chrome approval.
-pub struct ResearchSession {
-	bridge: ProBridge,
-	browser: chrome::Chrome,
-}
-
-impl ResearchSession {
-	/// Use the same durable request workflow and the same browser authorization.
-	pub async fn ask(&mut self, request: Request) -> Result<Receipt> {
-		workflow::run_in_session(self.bridge.clone(), Some(request), None, &mut self.browser).await
-	}
-
-	/// Recover a request without submitting it again.
-	pub async fn resume(&mut self, id: &str) -> Result<Receipt> {
-		workflow::run_in_session(self.bridge.clone(), None, Some(id.into()), &mut self.browser)
-			.await
-	}
-
-	/// Close only the owned test/research tab and detach; never quit the user's Chrome.
-	pub async fn close(mut self) -> Result<()> {
-		let closed = self.browser.close_tab().await;
-		self.browser.close_browser().await?;
-		closed
-	}
-}
-
 impl ProBridge {
 	/// Use one absolute private state directory. Construction starts no browser.
 	pub fn new(config: Config, state_dir: impl Into<PathBuf>) -> Result<Self> {
@@ -200,10 +153,10 @@ impl ProBridge {
 		Ok(Self { config, root, cancelled })
 	}
 
-	/// Open the private login window without sending a question.
+	/// Open an owned ChatGPT tab in the existing Chrome. Never sends a question.
 	pub async fn connect(&self) -> Result<Connection> {
 		let store = store::Store::open(&self.root)?;
-		let mut browser = chrome::Chrome::connect(&self.config, &self.root).await?;
+		let mut browser = chrome::Chrome::connect(&self.root).await?;
 		let saved = store.setup_target()?;
 		let target = browser.login_target(saved.as_deref()).await?;
 		browser.open(target.as_deref(), Some("https://chatgpt.com/"), true).await?;
@@ -218,7 +171,11 @@ impl ProBridge {
 	pub async fn check(&self) -> Result<Option<Connection>> {
 		let store = store::Store::open(&self.root)?;
 		let saved = store.setup_target()?;
-		let Some(mut browser) = chrome::Chrome::existing(&self.root).await? else {
+		if !native_host::socket_path(&self.root).exists() {
+			return Ok(None);
+		}
+		let mut browser = chrome::Chrome::connect(&self.root).await?;
+		let Some(_) = saved else {
 			return Ok(None);
 		};
 		let Some(target) = browser.login_target(saved.as_deref()).await? else { return Ok(None) };
@@ -230,61 +187,27 @@ impl ProBridge {
 		page::connection(&mut browser, Duration::ZERO).await.map(Some)
 	}
 
-	/// Qualification-only probe for an explicitly authorized existing Chrome.
-	/// Operates one new tab, sends no message, and leaves the browser running.
-	/// This is not connected to the product's automatic research entry point.
-	pub async fn probe_existing(&self, profile: &std::path::Path) -> Result<Connection> {
-		let store = store::Store::open(&self.root)?;
-		let _lease = store.execution_lease()?.ok_or("Another research probe is running.")?;
-		let mut session = self.connect_existing(profile).await?;
-		let browser = &mut session.browser;
-		let result = async {
-			browser.open(None, Some("https://chatgpt.com/"), false).await?;
-			let connected = page::connection(browser, Duration::from_secs(15)).await?;
-			if connected.state == ConnectionState::Connected {
-				browser
-					.command(
-						"Emulation.setFocusEmulationEnabled",
-						serde_json::json!({"enabled":true}),
-					)
-					.await?;
-				page::select_pro(browser).await?;
-				return page::connection(browser, Duration::ZERO).await;
-			}
-			Ok(connected)
-		}
-		.await;
-		let closed = browser.close_tab().await;
-		browser.close_browser().await?;
-		let connected = result?;
-		closed?;
-		Ok(connected)
-	}
-
-	/// Request Chrome's own approval for one persistent connection. This does not
-	/// change browser settings, inspect existing pages or start a new Chrome process.
-	pub async fn connect_existing(&self, profile: &std::path::Path) -> Result<ResearchSession> {
-		let mut cancelled = self.cancelled.subscribe();
-		if *cancelled.borrow() {
-			return Err("Browser connection was cancelled.".into());
-		}
-		let browser = tokio::select! {
-			result = chrome::Chrome::attach_existing(profile) => result?,
-			_ = cancelled.changed() => return Err("Browser connection was cancelled.".into()),
-		};
-		Ok(ResearchSession { bridge: self.clone(), browser })
-	}
-
-	/// Close only the dedicated Chrome. Request records and login state remain.
+	/// Close only the setup tab. Research records, other tabs and Chrome are retained.
 	pub async fn disconnect(&self) -> Result<()> {
 		let store = store::Store::open(&self.root)?;
 		let _lease = store
 			.execution_lease()?
-			.ok_or("Research is still running. Stop it before disconnecting the browser.")?;
-		if let Some(mut browser) = chrome::Chrome::existing(&self.root).await? {
-			browser.close_browser().await?;
+			.ok_or("Research is still running. Wait before disconnecting setup.")?;
+		if !native_host::socket_path(&self.root).exists() {
+			return Ok(());
 		}
-		Ok(())
+		let mut browser = chrome::Chrome::connect(&self.root).await?;
+		if let Some(target) = store.setup_target()? {
+			let targets = browser.command("Target.getTargets", serde_json::json!({})).await?;
+			if targets["targetInfos"]
+				.as_array()
+				.is_some_and(|targets| targets.iter().any(|t| t["targetId"] == target))
+			{
+				browser.target = Some(target);
+				browser.close_tab().await?;
+			}
+		}
+		browser.detach().await
 	}
 
 	/// Persist an exact request before acknowledging it to an asynchronous caller.

@@ -268,7 +268,7 @@ impl SettingsSurface {
 		);
 		gpui::div().debug_selector(|| "components-pro-research".into()).w_full().flex().flex_col()
 			.child(ui_theme::settings_row()
-				.child(ui_theme::settings_label("Pro Research · Experimental", format!("{}\nUses your ChatGPT subscription in a separate Chrome window. No API key.\nAgent access stays off until live Pro verification is complete.", state.status_text())))
+				.child(ui_theme::settings_label("Pro Research · Experimental", format!("{}\nUses your ChatGPT subscription through the Decodex Research Chrome extension. No API key.\nAgent access stays off until live Pro verification is complete.", state.status_text())))
 				.child(controls))
 			.child(ui_feedback::notice("components-research-feedback", "research", feedback).inline())
 	}

@@ -1,0 +1,12 @@
+{
+  "manifest_version": 3,
+  "name": "Decodex Research",
+  "version": "0.1.0",
+  "description": "Connect Decodex to its own ChatGPT research tabs in your existing browser.",
+  "minimum_chrome_version": "118",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAyYFl70TMB3I1fHeWt8fCnktrI+kSxkwfVTnbqNEyBzhuSLKn09//xfgfNjtNM4tbe9EPqdK6C7kU/JbS/I6hSigrZJnCSLVnRWy5IhK9SG+b2xOkKxAn6XtQkfyxhkBzF9bg3SmBu4AdPTMIvRLlQG/8mNP2CPXPlt8y+5bjiwfZyo/0cenCOwix4tCGjfl46oD6ayN5fr9Qtcwzk2iirJxhOC3gg+RjGokMOyvyDErSkAeora6vECFk5foz3FB9Bt38/9yjif1k90UTsmOcfkIV55J/fbcXrDy7byTqnIiqvI/84M/rZPjQ81Je+vx2IObTs4ew1zP++5ZPvmaEDwIDAQAB",
+  "permissions": ["debugger", "nativeMessaging", "storage"],
+  "host_permissions": ["https://chatgpt.com/*"],
+  "background": {"service_worker": "background.js"},
+  "action": {"default_title": "Connect Decodex Research"}
+}
