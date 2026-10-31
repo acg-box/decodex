@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:8e168e4bb75f0e59b6fa649ee0e44d8424435715394a8613fe88f4ca0ecdaa03",
+  "pageVersion": "sha256:77fb7968e020351df9dc5de359fba2582219fdee137485ed13dc3a10521795dc",
   "claims": [
     {
       "id": "claim_41c9eba720934771bd6b671a7aeb8b6e",
@@ -20,7 +20,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:aef53e163b28f792e41ba3b1bed6930f575d3f915998c751855ef836c53de4f3"
+          "version": "repo-file-v1:sha256:80b2a28e67420267af65edc9c013f4903739144f7187db7d26bf52105081af5c"
         }
       ]
     },
@@ -136,7 +136,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:aef53e163b28f792e41ba3b1bed6930f575d3f915998c751855ef836c53de4f3"
+          "version": "repo-file-v1:sha256:80b2a28e67420267af65edc9c013f4903739144f7187db7d26bf52105081af5c"
         }
       ]
     },
@@ -214,23 +214,23 @@
     },
     {
       "id": "claim_b156b2e1ef464a0e85614e94212da5bf",
-      "statement": "Archived and blocked conversations retain normal composer geometry, disable sending and preserve the draft. Archive status, its short explanation and Unarchive stay inside the disabled input; conversation errors and recovery actions share a separate band above it without quote placeholders.",
+      "statement": "Archived and blocked conversations keep the normal composer container, disable sending and preserve the current draft. The reason and recovery action appear inside that input bar, without an empty Message placeholder or duplicate status band.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_archive.rs#L288-L339",
-          "version": "repo-lines-v1:sha256:4432710f970512d02718744e9c3e312bb9d148248ee32e257c2eb7d56f46ea25:eyJzZWxlY3RlZExpbmVDb3VudCI6NTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ0YTA4ZWY2NmVmOTg2YmU4NGU0OTRmZTY5MzE1MTc4ZDY4MDhiYjk3ZmExZDNjNGZmOTMyMDc0ODY1YTZmZjQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUxOGNlMDhmMzJhMzUwZjFmMTUxYmNlZmNlNzJlZDg4ZDc3OGE3MDQwMzI5NTA4YWI0MDNhZWYwY2VkZjAxZTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImFjNzczMzIxOWU1MDgxNzc5MjhmMGFlMmI3ZmEyMDBiZDk1YTlhZTM5YTMyMjVlODFjMzNjOGY0OTYyZGU4ZjAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImRlNmE4NDIwYThlNGFlNTQ1NDIzMzczZmQ0MTRjMmJmMDlkZWMwNTYwMTdkYmY5MmE5Nzg0ZWE1MzI1NGVmNTMifQ"
+          "resource": "repo://apps/decodex-gpui/src/agent_archive.rs",
+          "version": "repo-file-v1:sha256:38181cf7e65222375141c80fc1e41f2e6ab66a6e8b940402b2415086d0e579d0"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_composer.rs#L589-L672",
-          "version": "repo-lines-v1:sha256:b3c4f742bb7e7215427e5d2f1066432730f76fe13f091fd260233b16d711fee1:eyJzZWxlY3RlZExpbmVDb3VudCI6ODQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ3YzM4ZDc0ODkyYTllMjA2MzE3Y2Y0YjdjYWE2MTlkZDcyZTAyNmMxNDZkM2U4MTA3NDRjNzgyYmQzOTVmYWUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFiODc4YWE0ZDRhMGYyOGI1ODZmZWZlZWIwNzlmY2VhOTQzMGU0OGU0YzIwYTQwZjZkMGFiMjdjNzE3ODQ3ZmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjcyNDg3MGJiYzhmMGM2MzQ0OTJjNjgyMzdkZGZmNmNlZGU5ODQ2NjFkNmI3MTk0YzVlOWQ3MjYxYzViNjhhZTQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImJiNTFmNzY2YmM3YTlhYTViNGRlMzQ2OGJmYzYzYWMyMjdhMGU4YWVjNWY2OGU4YjBlYzdhMjI5MWY4M2EyOTQifQ"
+          "resource": "repo://apps/decodex-gpui/src/agent_composer.rs",
+          "version": "repo-file-v1:sha256:cf84c6e1fbb83844cd8a4d99f116dfbc784650d6a2d96c5301ea393dddb971af"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs#L2539-L2606",
-          "version": "repo-lines-v1:sha256:2ec3a6fa7366dc465a280916747dd2115ff45328724802e3be124b27b8006c05:eyJzZWxlY3RlZExpbmVDb3VudCI6NjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjcyYTRmZWQ0MGFjOTI4Mzg2ODQzZjVkY2Y4ZTJhZjYxOGQwYTAzZTYwNDVmZmU3MTdhMWE1ZDY5MmY5MTkxNGQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM3ODUxMzQ0M2ZiOGRmMDJjMGY0Y2UwZWEzMDBjOTU3MWZmNTZjZjg4YWMwYTU0N2I1NDhhZjJjNGE1ODZhZTgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJkZmU5ZTI1NDYzODBlMjFhMmFhMjNhNWE2NTM2NzVhOWRiNTk4YzE2ZmFiYWI5NWVmMjM5OGM1ZTQ5NjVkOTAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ1NTZmMWVmN2M4ZmQ3ZDY3MjU3Mjg2MzNlNjU1MzliMDgzYjQ1ZGNhMzgzZjI5NzIwYzIwYjBmYmY1N2FjY2IifQ"
+          "resource": "repo://apps/decodex-gpui/src/agent_native_agents.rs",
+          "version": "repo-file-v1:sha256:59c8de24cbc2f980e8704e9e55b4a81bda1c6a122787a065aa8bebd8ea0f70d4"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/ui_feedback.rs#L1-L22",
-          "version": "repo-lines-v1:sha256:9e43035590c7f14efa6545d7e3923e78e7f07492611eba7e8ca859635c9c5523:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJiYTBmMTBiMGY1OGNkOTdlMmJiOTRmYzkwZTViZjdjZWRmMTNjMWY0MTgwNTY1NTg1Y2JhMTJmZGE5Zjc3YTciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIxZjFkMTMyYzgwODZiZDU5NjkwNjQ1YTQ2OGVkMDI5OTk3MGM0ZWFmMTM0M2Y2ZTgwODQzZjk1MzY0NThjOTAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ3OWRhYmQzZDU5ZjM0NGQ3MDYwNzJhMDUyNjBlZTQwYjIyZWUzMzQ1NTgyMmZjOGQyZDdhMGUzNTJmNzQwYjIifQ"
+          "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
+          "version": "repo-file-v1:sha256:80b2a28e67420267af65edc9c013f4903739144f7187db7d26bf52105081af5c"
         }
       ]
     },
@@ -280,15 +280,19 @@
     },
     {
       "id": "claim_dd965d5c96df4624a708270fb73ef1a6",
-      "statement": "Parent-managed native chats expose the parent conversation action; only failed native connections expose Retry. A positively unsent message instead keeps its own Not sent and Resend receipt in the scrolling transcript.",
+      "statement": "Parent-managed native chats expose Open parent; only failed native connections expose Retry. A positively unsent message keeps its own Not sent and Resend receipt in the scrolling transcript.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_timeline_inputs.rs#L242-L413",
-          "version": "repo-lines-v1:sha256:9bac70bb2ac628ec4fa2bfe4ff4c6b0f33430ef502649dc0d34003a078113482:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcyLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJmYjcyNzY5NDM0NjhjMTY0OWVjYjYyMmVjN2IzMmUwNjVmODEzYWVlMzBkNzM5NDA0ZjNjODEyOWMxM2M2OWY0IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI2N2NkYTgyZGE2MDYyMzhlMDVlNjIzOTk1NjljNWVlMDM5OTM0MTk2NDhhZTVkNDNhMmJmOGNkNjM0N2Y4MjYzIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJhMGE4NzU2YTk4Yjk1ZWU1NzViZWVlNDYwMDQ4YzdmYzk3YTY3YWQ0ZGQxNTVhYzFhODU5N2VjNjVjNGZhMjgwIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI3MTU3MDIxYjdlM2IxMmU1NmNjOGFjOWQzN2E2MDVlZWMyMGQ5ZTVkNzI0ODQ1ZTBiZDlmYzFiNDlmY2YzZTYyIn0"
+          "resource": "repo://apps/decodex-gpui/src/agent_native_agents.rs",
+          "version": "repo-file-v1:sha256:59c8de24cbc2f980e8704e9e55b4a81bda1c6a122787a065aa8bebd8ea0f70d4"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs#L916-L1014",
-          "version": "repo-lines-v1:sha256:307415f95c1a3b91638c80380e396c5ac29ca4582e9423c90af78c0e4b76e889:eyJzZWxlY3RlZExpbmVDb3VudCI6OTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhjNDk4ZjM3NDllZjZhYzA2OTA3YjUwZGFhMjhkMmUzNWJkZWIwYTE1YjI5YTUzNzBkNjRlZmI2NzU3ZjYzMWUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlkMmQ3ZDZkY2VlYzU4ODRhYTM4NjkzOWQxMGQwMWE2ZjU0YjVhMmI5ODQxZDRlYWZlYzM5ZjA0YTg3YzU3OWYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQ4OWRhZGZmMzlhZTFhZDQ2NzAxYWU4MWYwZjU2YjVhMWRmMDYwZDg2NDNiMGE3ZDdlYmMyMzBkZDNhMmZkOWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImExMDc4YTJiZWVhOTUyMjQ4M2Q1Y2Q4YTEwZWZjMzYyNzk1MmQ0ZGY5MjQ0MDUzMTZiZjkwMDIyMTFmMzcyZjAifQ"
+          "resource": "repo://apps/decodex-gpui/src/agent_timeline_inputs.rs",
+          "version": "repo-file-v1:sha256:1c1827d2d810cb684047c6a83189559fe16fff51c9923ed4f60858279f6e8bef"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
+          "version": "repo-file-v1:sha256:80b2a28e67420267af65edc9c013f4903739144f7187db7d26bf52105081af5c"
         }
       ]
     },
@@ -298,11 +302,11 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_composer.rs",
-          "version": "repo-file-v1:sha256:6061ea67f1f1cffa38b8491b61668d4d9228e063bb9ef4209446ebb4a9138af4"
+          "version": "repo-file-v1:sha256:cf84c6e1fbb83844cd8a4d99f116dfbc784650d6a2d96c5301ea393dddb971af"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_prompt_edit.rs",
-          "version": "repo-file-v1:sha256:c2979f3f3f70a83bb5d3abf4d6b144d9b3a7061304da13529a0642f86b5c6a2a"
+          "version": "repo-file-v1:sha256:9d8aa9c3a2c76ca4fc13652f0fd5e43932e86a3f42a1716705106bf91201c8d4"
         }
       ]
     },
@@ -352,7 +356,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_composer.rs",
-          "version": "repo-file-v1:sha256:6061ea67f1f1cffa38b8491b61668d4d9228e063bb9ef4209446ebb4a9138af4"
+          "version": "repo-file-v1:sha256:cf84c6e1fbb83844cd8a4d99f116dfbc784650d6a2d96c5301ea393dddb971af"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_native_menu.rs",
@@ -418,11 +422,11 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_prompt_edit.rs",
-          "version": "repo-file-v1:sha256:c2979f3f3f70a83bb5d3abf4d6b144d9b3a7061304da13529a0642f86b5c6a2a"
+          "version": "repo-file-v1:sha256:9d8aa9c3a2c76ca4fc13652f0fd5e43932e86a3f42a1716705106bf91201c8d4"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:aef53e163b28f792e41ba3b1bed6930f575d3f915998c751855ef836c53de4f3"
+          "version": "repo-file-v1:sha256:80b2a28e67420267af65edc9c013f4903739144f7187db7d26bf52105081af5c"
         }
       ]
     },
@@ -450,19 +454,53 @@
     },
     {
       "id": "claim_8740905193bc44fcb4b883f690954f1c",
-      "statement": "Recovery actions reuse settings_button styling. Shared status copy wraps within its rail, with inline title and detail in one text flow. A source-bound provider Fork review owns its explanation without a duplicate availability banner; Cancel restores the notice.",
+      "statement": "Recovery actions reuse settings_button styling and shared status copy wraps within its rail. A source-bound Fork review for a disabled conversation replaces its notice inside the input bar; Cancel restores the original notice.",
       "evidence": [
         {
+          "resource": "repo://apps/decodex-gpui/src/agent_composer.rs",
+          "version": "repo-file-v1:sha256:cf84c6e1fbb83844cd8a4d99f116dfbc784650d6a2d96c5301ea393dddb971af"
+        },
+        {
           "resource": "repo://apps/decodex-gpui/src/agent_model_settings_wire_tests.rs",
-          "version": "repo-file-v1:sha256:0a30d473ee8bab39ce0a01787e2bd6dd1643d908d3e0fff8b2606b985a2aaad9"
+          "version": "repo-file-v1:sha256:9c561992329df18b83eaa40ecb482de4bad3e790a7a96ceae4703ad2c3df9b31"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_prompt_edit.rs",
-          "version": "repo-file-v1:sha256:c2979f3f3f70a83bb5d3abf4d6b144d9b3a7061304da13529a0642f86b5c6a2a"
+          "version": "repo-file-v1:sha256:9d8aa9c3a2c76ca4fc13652f0fd5e43932e86a3f42a1716705106bf91201c8d4"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:aef53e163b28f792e41ba3b1bed6930f575d3f915998c751855ef836c53de4f3"
+          "version": "repo-file-v1:sha256:80b2a28e67420267af65edc9c013f4903739144f7187db7d26bf52105081af5c"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/ui_feedback.rs",
+          "version": "repo-file-v1:sha256:202428b2c6f2faa91b3ce4ee126a83c738c5e8c9adebf0f644eb56138eb82d44"
+        }
+      ]
+    },
+    {
+      "id": "claim_0452408448a14a9db6e30791b9bed632",
+      "statement": "Presentation uses three placement rules: disabled conversation reasons and recovery actions in the input bar, field and operation failures beside their control, and app-wide events in the notification center. Whole-page startup failure reuses the shared status row; Menu Bar retains its compact native feedback.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/AccountPanelView.swift",
+          "version": "repo-file-v1:sha256:0de150fd28e57277138f7c466bb065c2edbeba9dc6c1b0e13c835d30f9fb9069"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/account_feedback.rs",
+          "version": "repo-file-v1:sha256:51f922837ec3bbf727e06d5c2719a021ef12ec064f79c0bfe82b87a4d31268e3"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_composer.rs",
+          "version": "repo-file-v1:sha256:cf84c6e1fbb83844cd8a4d99f116dfbc784650d6a2d96c5301ea393dddb971af"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
+          "version": "repo-file-v1:sha256:80b2a28e67420267af65edc9c013f4903739144f7187db7d26bf52105081af5c"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/shell_status.rs",
+          "version": "repo-file-v1:sha256:aa8c56f007f88b08dfefeeeae0ec0a30cecc335c130d09aa3649d88246f3080c"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_feedback.rs",
@@ -473,6 +511,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-31T15:08:14.644Z"
+    "at": "2026-10-31T15:12:19.080Z"
   }
 }

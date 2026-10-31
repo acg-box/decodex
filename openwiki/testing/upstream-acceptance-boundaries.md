@@ -169,7 +169,7 @@ sources:
 generated: { by: "codex", at: "2026-10-31T13:17:02.524Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-31T15:08:14.644Z
+    at: 2026-10-31T15:14:40.896Z
 ---
 
 # Upstream integration acceptance boundaries

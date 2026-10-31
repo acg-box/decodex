@@ -104,10 +104,10 @@ sources:
     resource: repo://scripts/vnext/run_native_regression.py
   - id: openwiki-source-d45a647d565211cf9b5cb067
     resource: repo://scripts/vstyle_audit.py
-generated: { by: "codex", at: "2026-10-31T15:08:14.644Z" }
+generated: { by: "codex", at: "2026-10-31T15:12:19.080Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-31T15:08:14.644Z
+    at: 2026-10-31T15:14:40.896Z
 ---
 
 
@@ -483,4 +483,4 @@ A `LEAK` marker can accompany a passed test when its captured output remains ope
 
 For documentation consolidation, validate page Claims, retained subject coverage, relative links and source paths. Do not rebuild the desktop or launch provider fixtures solely for a Markdown move. Keep historical test counts attached to their original revision. System-temporary fixtures must be cleaned after use; HOME is not a test-output directory.
 
-The Fork recovery layout repair passed 12 focused GPUI checks, strict GPUI Clippy and nightly formatting. The shared notice fixture fails before the repair because its detail extends beyond a 280-point viewport; the final fixture checks 280- and 420-point widths with inline and stacked text. Existing confirmation, cancellation, locked-composer and archive assertions also pass. Exact selectors, source hashes and limits are in `provider_recovery.layout_repair` in the [retained evidence index](../../automations/upstream/retained-evidence.json). These are local presentation checks, not a new native-artifact qualification.
+The disabled-input and Fork layout repair passed 15 focused GPUI checks, strict GPUI Clippy and nightly formatting. The shared notice fixture fails before the repair because its detail extends beyond a 280-point viewport; the final fixture checks 280- and 420-point widths with inline and stacked text. The checks also cover notice and review placement inside the input bar, confirmation, cancellation, parent-managed drafts, archive, failed startup and queued reconnect behavior. Exact selectors, source hashes and limits are in `provider_recovery.layout_repair` in the [retained evidence index](../../automations/upstream/retained-evidence.json). These are local presentation checks, not a new native-artifact qualification.

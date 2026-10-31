@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:81bdb3ef1228405de1cf150e362457d405341f05196e4ad0594d1cb88d7029e2",
+  "pageVersion": "sha256:7f8b63fd94ae347dcd518c76a82a4ca926ce6f0fe890f553b92d653ffd6a25ad",
   "claims": [
     {
       "id": "claim_3881a280a4044cdca9e8599100f0a4f0",
@@ -32,7 +32,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_prompt_edit.rs",
-          "version": "repo-file-v1:sha256:c2979f3f3f70a83bb5d3abf4d6b144d9b3a7061304da13529a0642f86b5c6a2a"
+          "version": "repo-file-v1:sha256:9d8aa9c3a2c76ca4fc13652f0fd5e43932e86a3f42a1716705106bf91201c8d4"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_prompt_fork.rs",
@@ -74,7 +74,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_prompt_edit.rs",
-          "version": "repo-file-v1:sha256:c2979f3f3f70a83bb5d3abf4d6b144d9b3a7061304da13529a0642f86b5c6a2a"
+          "version": "repo-file-v1:sha256:9d8aa9c3a2c76ca4fc13652f0fd5e43932e86a3f42a1716705106bf91201c8d4"
         }
       ]
     },
@@ -101,7 +101,7 @@
           "version": "repo-file-v1:sha256:cdf330e8db97cb474822c98ae2576da9c72d64e996820957197087833b1cadfb"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L2548-L2572",
+          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L2549-L2573",
           "version": "repo-lines-v1:sha256:89f74b3a2767daf923520e0d166a0070e9c62e1517c9c3fa8d17dd826ee08d9c:eyJzZWxlY3RlZExpbmVDb3VudCI6MjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA2NmI1YjkzMDg2NDc5ZmJiMjgzOTZiN2NlZjkzOGY3OWNiMzkyOWE3OGE4M2U2NGUwNjUyYzFkZWY3MmU4MTgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFlNDM4OTRkNmQ1Y2Q5YTQxZmI2MDFmNWI3NjgxMmVhMjNlYTRjODdjNjY1OWY2MTE2MWNkYWE0MzQ1YjBkNDkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImFjZTdkM2E5ZjcwYWZkY2JkOGNmMmZjZTM4NWZhMWZlODJjYWIxNjM1Y2IyYTM2MmVkMzcyYzc0NzYxOWU0YWQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY4ZjZjZjBiYmNlNzE4MjIxMTBlMDZjNDU3ZWE5YmY1YTM5MzEyNjU1YTMwZDRhOGYyMTg3MzBiYWNmYzBhOGMifQ"
         },
         {
@@ -140,11 +140,11 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_surface.rs",
-          "version": "repo-file-v1:sha256:1e30ee3d7f6ec1da8be11cf34f7a8a1cfd1b7480cc717e94a74423e443f8a0a8"
+          "version": "repo-file-v1:sha256:f9f7c95fa09f05307e82c4d0d6ef01024cfc59392bddfb2c3363fe463bc3becf"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:aef53e163b28f792e41ba3b1bed6930f575d3f915998c751855ef836c53de4f3"
+          "version": "repo-file-v1:sha256:80b2a28e67420267af65edc9c013f4903739144f7187db7d26bf52105081af5c"
         }
       ]
     },
@@ -256,7 +256,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_prompt_edit.rs",
-          "version": "repo-file-v1:sha256:c2979f3f3f70a83bb5d3abf4d6b144d9b3a7061304da13529a0642f86b5c6a2a"
+          "version": "repo-file-v1:sha256:9d8aa9c3a2c76ca4fc13652f0fd5e43932e86a3f42a1716705106bf91201c8d4"
         },
         {
           "resource": "repo://crates/decodex-codex/src/app_server_client/thread_fork.rs",
@@ -317,7 +317,7 @@
       "statement": "A failed message uses a normal user bubble at the end of the scrolling transcript and an aligned Not sent and Resend row. The reason is a tooltip, with no disclosure panel or pinning above the input bar. Archived conversations do not offer retry accessories.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L2346-L2377",
+          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L2347-L2378",
           "version": "repo-lines-v1:sha256:f23eb22d81f75af5538eec6a393a7467929e9c440b0bab5cb5fc0837af3c47a0:eyJzZWxlY3RlZExpbmVDb3VudCI6MzIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhkMWE4OGNlMDQ3OWM1ZmE3NTI5MmNiOGE1ZWYxOTBhYTg4NDhlMTMyNzg0MDk1ZTI0ZDI1YzM3NDMwOWU5NDEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI5ODI4NTYwNmQyOGU5MWNlNDRjYWU5MzVjZjg4OTA5MTkxZTA5NWM2YjUzN2NlZTgyNjcyZDdkNzIyYjRhZTAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImMyNTViODhjYjRkNTVjN2VmMjE2NDliZWE5MTRiYTEwYTEyNDE0ZDMyOGVkZDhmNTNlMDg1MWRmNDc5MTBhNDAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY4MDZmNmFkYTg4ZjAzZGE2MDU1NmNkOWZkMGY2MGI3NDhkZGMwNjViYjcwN2M5YmNkZGI5ZTc4YThlNGU2YWQifQ"
         },
         {
@@ -333,7 +333,7 @@
           "version": "repo-lines-v1:sha256:85f0e7de4f42cd2960ab0fa1aa3d5ec2c08e77ab87dd5477e629f7e21f7740d2:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ3OTQ2ZmQzYWEwNjliZmNmMjBiYzBjMDkwOWE5MDVlMWVhODI4OWU0YWRmNTUzOGE0NjE0NmY2MzRlZmFmZWQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJmNzg0OGZiODY0MWE1YjhlZTc4Y2IwMzk2YzdlMDY4NjI5ODA1MDZkZGVjZWU4NjY0OGIzMjI1YTU1OTQ1NjkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg3OGM0NjczYjU4Yzc1ZWQ3NjBiZjM1YTlkY2M0NTAwY2Y2MTEwNTg5YTI0YTdmNDdiMzJmODlhNGNjY2Y0OGIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk5ZDM1ZDI5ZTBmZmE1MmI3YzUyMmFlZGVkZjE5ZGY4ZjMzODkyMDM1MzlkYzZhMWZmNTE3MzQxYzBlYzc1YjcifQ"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs#L1089-L1099",
+          "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs#L1113-L1123",
           "version": "repo-lines-v1:sha256:f1c834ab36d08748f529eafac7ff77239588fdc1f00191fe4f348c755c764e61:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE5NjMwY2E4ZjM1NDNiMzY1Zjg5ODMzMWU3OWI1ZThjMmVmOGIyNDA4MDExMzgwYmIzY2ZhZWI1MjJkMWE5OTgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM3M2FjMDMxZjM0Y2RmZDllMWU0YzJjZjhiNmQyODEzOTkwMDVlZDI0OTlkYzhiNDQ3OWYyMmNjZTRiYjU4YjgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQyZTE3Y2NiZTg1YTFjM2QwNTkyNmY5OTFjMzE2MTFkNjRkZDhlMDQyNmY0ZGEzODQxYjJkNjdmYjM5MDg4NjUifQ"
         }
       ]
@@ -376,7 +376,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_prompt_edit.rs",
-          "version": "repo-file-v1:sha256:c2979f3f3f70a83bb5d3abf4d6b144d9b3a7061304da13529a0642f86b5c6a2a"
+          "version": "repo-file-v1:sha256:9d8aa9c3a2c76ca4fc13652f0fd5e43932e86a3f42a1716705106bf91201c8d4"
         }
       ]
     },
@@ -440,11 +440,11 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_surface.rs",
-          "version": "repo-file-v1:sha256:1e30ee3d7f6ec1da8be11cf34f7a8a1cfd1b7480cc717e94a74423e443f8a0a8"
+          "version": "repo-file-v1:sha256:f9f7c95fa09f05307e82c4d0d6ef01024cfc59392bddfb2c3363fe463bc3becf"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:aef53e163b28f792e41ba3b1bed6930f575d3f915998c751855ef836c53de4f3"
+          "version": "repo-file-v1:sha256:80b2a28e67420267af65edc9c013f4903739144f7187db7d26bf52105081af5c"
         }
       ]
     },
@@ -520,7 +520,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_prompt_edit.rs",
-          "version": "repo-file-v1:sha256:c2979f3f3f70a83bb5d3abf4d6b144d9b3a7061304da13529a0642f86b5c6a2a"
+          "version": "repo-file-v1:sha256:9d8aa9c3a2c76ca4fc13652f0fd5e43932e86a3f42a1716705106bf91201c8d4"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_work_browser.rs",
@@ -578,7 +578,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:aef53e163b28f792e41ba3b1bed6930f575d3f915998c751855ef836c53de4f3"
+          "version": "repo-file-v1:sha256:80b2a28e67420267af65edc9c013f4903739144f7187db7d26bf52105081af5c"
         }
       ]
     },
@@ -592,7 +592,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:aef53e163b28f792e41ba3b1bed6930f575d3f915998c751855ef836c53de4f3"
+          "version": "repo-file-v1:sha256:80b2a28e67420267af65edc9c013f4903739144f7187db7d26bf52105081af5c"
         },
         {
           "resource": "repo://crates/decodex-codex/src/app_server_client/thread_fork.rs",
@@ -624,25 +624,29 @@
     },
     {
       "id": "claim_463bd32409024c33a3303f2dacb25c92",
-      "statement": "The provider Fork review uses the shared recovery notice and bordered buttons. It replaces the availability banner while open, and Cancel restores the original notice without sending input.",
+      "statement": "The provider Fork review uses the shared recovery notice and bordered buttons. It replaces the notice inside the disabled input bar; Cancel restores that notice in the same place without sending input.",
       "evidence": [
         {
+          "resource": "repo://apps/decodex-gpui/src/agent_composer.rs",
+          "version": "repo-file-v1:sha256:cf84c6e1fbb83844cd8a4d99f116dfbc784650d6a2d96c5301ea393dddb971af"
+        },
+        {
           "resource": "repo://apps/decodex-gpui/src/agent_model_settings_wire_tests.rs",
-          "version": "repo-file-v1:sha256:0a30d473ee8bab39ce0a01787e2bd6dd1643d908d3e0fff8b2606b985a2aaad9"
+          "version": "repo-file-v1:sha256:9c561992329df18b83eaa40ecb482de4bad3e790a7a96ceae4703ad2c3df9b31"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_prompt_edit.rs",
-          "version": "repo-file-v1:sha256:c2979f3f3f70a83bb5d3abf4d6b144d9b3a7061304da13529a0642f86b5c6a2a"
+          "version": "repo-file-v1:sha256:9d8aa9c3a2c76ca4fc13652f0fd5e43932e86a3f42a1716705106bf91201c8d4"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:aef53e163b28f792e41ba3b1bed6930f575d3f915998c751855ef836c53de4f3"
+          "version": "repo-file-v1:sha256:80b2a28e67420267af65edc9c013f4903739144f7187db7d26bf52105081af5c"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-31T15:08:14.644Z"
+    "at": "2026-10-31T15:12:19.080Z"
   }
 }

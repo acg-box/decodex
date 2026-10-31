@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:e4a7d9c179f616a9dc33510ab0d5aa04bb16974be86fb967f8e2399426a56516",
+  "pageVersion": "sha256:58e9d8c9382a9d4e09f432adcd6feeded5a9c76882ead42e06a80c4a9b20fd3e",
   "claims": [
     {
       "id": "claim_b34298a8647a4e0b8653926b7568c5d4",
@@ -132,7 +132,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_surface.rs",
-          "version": "repo-file-v1:sha256:1e30ee3d7f6ec1da8be11cf34f7a8a1cfd1b7480cc717e94a74423e443f8a0a8"
+          "version": "repo-file-v1:sha256:f9f7c95fa09f05307e82c4d0d6ef01024cfc59392bddfb2c3363fe463bc3becf"
         },
         {
           "resource": "repo://automations/upstream/retained-contracts.json#L4111-L4327",
@@ -200,7 +200,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_surface.rs",
-          "version": "repo-file-v1:sha256:1e30ee3d7f6ec1da8be11cf34f7a8a1cfd1b7480cc717e94a74423e443f8a0a8"
+          "version": "repo-file-v1:sha256:f9f7c95fa09f05307e82c4d0d6ef01024cfc59392bddfb2c3363fe463bc3becf"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_timeline_find.rs",
@@ -236,7 +236,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_prompt_edit.rs",
-          "version": "repo-file-v1:sha256:c2979f3f3f70a83bb5d3abf4d6b144d9b3a7061304da13529a0642f86b5c6a2a"
+          "version": "repo-file-v1:sha256:9d8aa9c3a2c76ca4fc13652f0fd5e43932e86a3f42a1716705106bf91201c8d4"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_work_browser.rs",
@@ -286,7 +286,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:aef53e163b28f792e41ba3b1bed6930f575d3f915998c751855ef836c53de4f3"
+          "version": "repo-file-v1:sha256:80b2a28e67420267af65edc9c013f4903739144f7187db7d26bf52105081af5c"
         },
         {
           "resource": "repo://crates/decodex-codex/src/app_server_client/thread_fork.rs",
@@ -297,6 +297,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-31T15:08:14.644Z"
+    "at": "2026-10-31T15:12:19.080Z"
   }
 }

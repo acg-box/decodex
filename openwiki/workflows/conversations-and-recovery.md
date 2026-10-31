@@ -10,6 +10,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_async_questions.rs
   - id: openwiki-source-bf03f317e64cfefd11f6ea83
     resource: repo://apps/decodex-gpui/src/agent_attached_branches.rs
+  - id: openwiki-source-48758ba7d154c82885281d2c
+    resource: repo://apps/decodex-gpui/src/agent_composer.rs
   - id: openwiki-source-d56ea7499f2ed784b1b6c970
     resource: repo://apps/decodex-gpui/src/agent_conversation_tab_tests.rs
   - id: openwiki-source-1bf529ea3f1649ac9a28334a
@@ -142,10 +144,10 @@ sources:
     resource: repo://database/src/agent/tests/input_retry.rs
   - id: openwiki-source-28af4781ad8d9558410630da
     resource: repo://database/src/works.rs
-generated: { by: "codex", at: "2026-10-31T15:08:14.644Z" }
+generated: { by: "codex", at: "2026-10-31T15:12:19.080Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-31T15:08:14.644Z
+    at: 2026-10-31T15:12:19.080Z
 ---
 
 # Conversation input, history and recovery
@@ -198,11 +200,11 @@ Review the source, then choose **Fork**. This uses the existing **Fork** (after 
 
 ## Continue after a provider change
 
-If native Codex refuses to resume a conversation because its saved provider differs from the current provider, Decodex keeps its history readable and preserves the original draft. The notice names both providers. Restore the original provider to continue that conversation, or choose **Fork** to use the current provider.
+If native Codex refuses to resume a conversation because its saved provider differs from the current provider, Decodex keeps its history readable and preserves the original draft. The notice inside the disabled input bar names both providers. Restore the original provider to continue that conversation, or choose **Fork** to use the current provider.
 
 The branch action reuses the review of the latest completed native turn. Inspect the boundary and the destination provider, then choose **Fork**. Decodex checks the current native configuration again and creates one ordinary native fork. If the source or configuration changed, review the current state again. It does not change the original conversation, send input, or bypass native policy.
 
-The review uses the shared recovery notice and bordered buttons. It replaces the availability banner while open, so the provider explanation appears only once. **Cancel** restores the original notice.
+The review uses the shared recovery notice and bordered buttons. It replaces the notice inside the input bar, so the provider explanation appears only once. **Cancel** restores the original notice in the same place.
 
 The new branch receives the reviewed history prefix and the ordinary composer draft through the existing branch flow. The next explicit send shares that inherited context with the chosen provider. **Cancel** preserves the source draft and creates nothing. Unsent source messages are not retried automatically. Ordinary branching and Side chats retain their source provider; changing providers is this separate explicit choice.
 

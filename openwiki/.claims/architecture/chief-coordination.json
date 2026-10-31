@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:7f036668207072a569e615a0e03bdfbb2b02dc9fd39a451a54ce899a955bd442",
+  "pageVersion": "sha256:ed10814616bbf123423e6ec93b579bbd1fc28616c033c429155a3216e10af32d",
   "claims": [
     {
       "id": "claim_43786e7afb4249548ed4fab09e0e4afa",
@@ -114,11 +114,11 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_native_agents.rs",
-          "version": "repo-file-v1:sha256:7b55b9f5179ecf8c5f0cbe67a1ab60084afe2937af1a098261b0f08c630e7379"
+          "version": "repo-file-v1:sha256:59c8de24cbc2f980e8704e9e55b4a81bda1c6a122787a065aa8bebd8ea0f70d4"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_surface.rs",
-          "version": "repo-file-v1:sha256:1e30ee3d7f6ec1da8be11cf34f7a8a1cfd1b7480cc717e94a74423e443f8a0a8"
+          "version": "repo-file-v1:sha256:f9f7c95fa09f05307e82c4d0d6ef01024cfc59392bddfb2c3363fe463bc3becf"
         }
       ]
     },
@@ -490,7 +490,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_composer.rs",
-          "version": "repo-file-v1:sha256:6061ea67f1f1cffa38b8491b61668d4d9228e063bb9ef4209446ebb4a9138af4"
+          "version": "repo-file-v1:sha256:cf84c6e1fbb83844cd8a4d99f116dfbc784650d6a2d96c5301ea393dddb971af"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_detail.rs",
@@ -513,6 +513,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-31T15:08:14.644Z"
+    "at": "2026-10-31T15:12:19.080Z"
   }
 }

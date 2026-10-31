@@ -2912,24 +2912,31 @@
       "native_qualification_repeated": false
     },
     "layout_repair": {
-      "source_commit": "a8605968ffd7c5adb30f206a53befd9a4f61e8e3",
+      "source_commit": "e162fdbf9e235c8b02615c6f0d998de890c7720d",
       "baseline": "edb7deb060b4bb7de2b4713be3e2cd3390f6ba8e",
-      "behavior": "Use the existing settings_button style for recovery actions, wrap common status text within its rail, and show one provider explanation during Fork review.",
+      "behavior": "Place every unavailable-conversation reason and recovery action inside the existing input bar, including Fork review. Reuse bordered settings buttons and wrapping status text; keep local failures with their controls and global notices in the notification center.",
       "source_sha256": {
-        "apps/decodex-gpui/src/agent_composer.rs": "6061ea67f1f1cffa38b8491b61668d4d9228e063bb9ef4209446ebb4a9138af4",
+        "apps/decodex-gpui/src/agent_composer.rs": "cf84c6e1fbb83844cd8a4d99f116dfbc784650d6a2d96c5301ea393dddb971af",
         "apps/decodex-gpui/src/agent_model_settings.rs": "9c022d5bcae53bdb39b24b1bd7cb54904714508e48687cecdd22ebb46296e4b9",
-        "apps/decodex-gpui/src/agent_model_settings_wire_tests.rs": "0a30d473ee8bab39ce0a01787e2bd6dd1643d908d3e0fff8b2606b985a2aaad9",
-        "apps/decodex-gpui/src/agent_prompt_edit.rs": "c2979f3f3f70a83bb5d3abf4d6b144d9b3a7061304da13529a0642f86b5c6a2a",
-        "apps/decodex-gpui/src/agent_workspace.rs": "aef53e163b28f792e41ba3b1bed6930f575d3f915998c751855ef836c53de4f3",
+        "apps/decodex-gpui/src/agent_model_settings_wire_tests.rs": "9c561992329df18b83eaa40ecb482de4bad3e790a7a96ceae4703ad2c3df9b31",
+        "apps/decodex-gpui/src/agent_native_agents.rs": "59c8de24cbc2f980e8704e9e55b4a81bda1c6a122787a065aa8bebd8ea0f70d4",
+        "apps/decodex-gpui/src/agent_prompt_edit.rs": "9d8aa9c3a2c76ca4fc13652f0fd5e43932e86a3f42a1716705106bf91201c8d4",
+        "apps/decodex-gpui/src/agent_surface.rs": "f9f7c95fa09f05307e82c4d0d6ef01024cfc59392bddfb2c3363fe463bc3becf",
+        "apps/decodex-gpui/src/agent_workspace.rs": "80b2a28e67420267af65edc9c013f4903739144f7187db7d26bf52105081af5c",
         "apps/decodex-gpui/src/ui_feedback.rs": "202428b2c6f2faa91b3ce4ee126a83c738c5e8c9adebf0f644eb56138eb82d44"
       },
       "symbols": [
         "ui_feedback::state_row",
         "ui_feedback::state_copy",
+        "AgentSurface::render_blocked_composer",
         "AgentSurface::workspace_button",
+        "AgentSurface::connection_notice",
+        "AgentSurface::waiting_connection_notice",
         "AgentSurface::provider_connection_notice",
-        "AgentSurface::provider_fork_review_visible",
-        "AgentSurface::prompt_edit_panel"
+        "AgentSurface::blocked_fork_review_visible",
+        "AgentSurface::prompt_edit_panel",
+        "AgentSurface::conversation_activity",
+        "connection_recovery_notice"
       ],
       "tests_read": [
         {
@@ -2939,15 +2946,29 @@
         {
           "file": "apps/decodex-gpui/src/agent_model_settings_wire_tests.rs",
           "test": "provider_recovery_banner_is_source_bound_and_cancellation_keeps_the_draft"
+        },
+        {
+          "file": "apps/decodex-gpui/src/agent_native_agents.rs",
+          "test": "native_connection_notices_share_one_band_without_quotes_or_toolbar_errors"
+        },
+        {
+          "file": "apps/decodex-gpui/src/agent_native_agents.rs",
+          "test": "parent_managed_composer_shares_lock_geometry_and_keeps_both_drafts"
+        },
+        {
+          "file": "apps/decodex-gpui/src/agent_reconnect_queue_tests.rs",
+          "test": "reconnect_resumes_only_the_persisted_unsent_message_and_preserves_new_edits"
         }
       ],
       "entrypoint": "apps/decodex-gpui/src/main.rs",
       "test_files": [
-        "apps/decodex-gpui/src/ui_feedback.rs",
+        "apps/decodex-gpui/src/agent_archive.rs",
         "apps/decodex-gpui/src/agent_model_settings_wire_tests.rs",
-        "apps/decodex-gpui/src/agent_prompt_confirm_wire_tests.rs",
         "apps/decodex-gpui/src/agent_native_agents.rs",
-        "apps/decodex-gpui/src/agent_archive.rs"
+        "apps/decodex-gpui/src/agent_prompt_confirm_wire_tests.rs",
+        "apps/decodex-gpui/src/agent_reconnect_queue_tests.rs",
+        "apps/decodex-gpui/src/agent_workspace.rs",
+        "apps/decodex-gpui/src/ui_feedback.rs"
       ],
       "test_command": [
         "cargo",
@@ -2961,7 +2982,7 @@
         "decodex-gpui",
         "--all-features",
         "-E",
-        "test(recovery_notice_wraps) | test(provider_recovery_banner) | test(prompt_confirm_tests) | test(parent_managed_composer_shares_lock_geometry) | test(archive_read_only) | test(the_slot_measures_content)",
+        "test(recovery_notice_wraps) | test(provider_recovery_banner) | test(prompt_confirm_tests) | test(parent_managed_composer_shares_lock_geometry) | test(native_connection_notices_share_one_band) | test(archive_read_only) | test(the_slot_measures_content) | test(failed_startup_keeps_unconfirmed) | test(reconnect_resumes_only_the_persisted_unsent_message_and_preserves_new_edits)",
         "--test-threads",
         "1",
         "--retries",
@@ -3003,11 +3024,23 @@
         },
         {
           "suite": "decodex-gpui::bin/decodex-gpui",
+          "test": "shell::agent_surface::drafts::storage::reconnect::reconnect_resumes_only_the_persisted_unsent_message_and_preserves_new_edits"
+        },
+        {
+          "suite": "decodex-gpui::bin/decodex-gpui",
           "test": "shell::agent_surface::model_settings::tests::provider_recovery_banner_is_source_bound_and_cancellation_keeps_the_draft"
         },
         {
           "suite": "decodex-gpui::bin/decodex-gpui",
+          "test": "shell::agent_surface::native_agents::tests::native_connection_notices_share_one_band_without_quotes_or_toolbar_errors"
+        },
+        {
+          "suite": "decodex-gpui::bin/decodex-gpui",
           "test": "shell::agent_surface::native_agents::tests::parent_managed_composer_shares_lock_geometry_and_keeps_both_drafts"
+        },
+        {
+          "suite": "decodex-gpui::bin/decodex-gpui",
+          "test": "shell::agent_surface::workspace::tests::failed_startup_keeps_unconfirmed_history_hidden_and_preserves_the_draft"
         },
         {
           "suite": "decodex-gpui::bin/decodex-gpui",
@@ -3018,10 +3051,10 @@
           "test": "ui_feedback::tests::the_slot_measures_content_and_animates_height_through_exit"
         }
       ],
-      "passed": 12,
+      "passed": 15,
       "failed": 0,
       "unmatched_selectors": [],
-      "before": "The new wrapping fixture failed against the baseline status row: a 944-point detail extended beyond a 280-point viewport. The final fixture covers 280/420-point widths and inline/stacked copy; the existing parent-managed geometry assertions remain unchanged.",
+      "before": "The wrapping fixture failed against the baseline: a 944-point detail exceeded a 280-point viewport. It now checks 280/420-point widths with inline/stacked copy. Notice placement assertions require full containment inside the input bar; the former above-bar assertion was replaced to express that contract. Draft, native Retry and parent-action checks remain.",
       "checks": {
         "clippy": [
           "cargo",
@@ -3081,13 +3114,15 @@
         "decodex"
       ],
       "preview_sha256": {
-        "Contents/MacOS/decodex-gpui": "f81e9dc991fcd7ba4bd0f78dee57f7388efd32af92cf9b799fe27b20f06fa7bb",
-        "Contents/Helpers/decodex": "4e91ad5e5b8b22665d9cd29502ff69285532ee44b80fcf80f69b54dd68f179a5"
+        "Contents/MacOS/decodex-gpui": "5f8dff759fee812bf278b4beb49c641c2478760b7f892998e71087d57ad53718",
+        "Contents/Helpers/decodex": "eaca7555be3e1ef70d6b78419895c5fcbc37c9851e9a491b07c753c218a82e34"
       },
       "limits": "Local UI/layout and loopback confirmation checks only. No upstream test run, native behavior requalification, runtime selection, installation or release. Existing native qualification and its limits remain unchanged.",
       "delivery": [
-        "https://github.com/acg-box/decodex/commit/a8605968ffd7c5adb30f206a53befd9a4f61e8e3"
-      ]
+        "https://github.com/acg-box/decodex/commit/e162fdbf9e235c8b02615c6f0d998de890c7720d",
+        "https://github.com/acg-box/decodex/pull/2583"
+      ],
+      "skipped": 1205
     }
   }
 }

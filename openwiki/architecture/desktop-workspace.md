@@ -6,6 +6,8 @@ tags: [decodex, architecture, desktop, presentation]
 sources:
   - id: openwiki-source-98e7b23c4cc276d20fcb4649
     resource: repo://apps/decodex-gpui/menubar/Sources/DecodexApp/AccountControlViews.swift
+  - id: openwiki-source-5a86016f9b186e0f5551ac19
+    resource: repo://apps/decodex-gpui/menubar/Sources/DecodexApp/AccountPanelView.swift
   - id: openwiki-source-b469e348e65d4cdbb569fb27
     resource: repo://apps/decodex-gpui/menubar/Sources/DecodexApp/AccountRows.swift
   - id: openwiki-source-51c6a903a86b67bbf46fe288
@@ -42,6 +44,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_memory.rs
   - id: openwiki-source-09a2c045309673f306153f39
     resource: repo://apps/decodex-gpui/src/agent_model_settings_wire_tests.rs
+  - id: openwiki-source-1e0b3343cd024646618a1f95
+    resource: repo://apps/decodex-gpui/src/agent_native_agents.rs
   - id: openwiki-source-ae2ce5cda718ede63f50be9b
     resource: repo://apps/decodex-gpui/src/agent_native_composer.rs
   - id: openwiki-source-e59b6fade5576eca54cd30f7
@@ -102,10 +106,10 @@ sources:
     resource: repo://database/src/works/commands.rs
   - id: openwiki-source-8fe6f1557e5d45d88b34bd0a
     resource: repo://scripts/macos/generate_workspace_symbols.swift
-generated: { by: "codex", at: "2026-10-31T15:08:14.644Z" }
+generated: { by: "codex", at: "2026-10-31T15:12:19.080Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-31T15:08:14.644Z
+    at: 2026-10-31T15:12:19.080Z
 ---
 
 # Desktop workspace and native glass
@@ -186,7 +190,7 @@ The history rail follows the reading position. Expanding collaboration exchanges
 
 ## State and errors
 
-Conversation errors and recovery actions share one band above the input bar. The input is disabled, its draft is retained, and quote placeholders stay hidden. Parent-managed native chats offer Open parent; Retry is reserved for a failed native connection.
+When sending is unavailable, the reason and recovery actions appear inside the disabled input bar. The current draft is retained and remains readable. There is no empty Message placeholder or duplicate status band above it. Parent-managed native chats offer Open parent; Retry is reserved for a failed native connection.
 
 Archive is a normal read-only state. Archived and the short explanation Unarchive to send messages appear inside the disabled input bar, with Unarchive on the right. Read-only notices use a short state followed by one plain sentence about its effect or next action; the explanation wraps when necessary. Background archive-read failures preserve the last confirmed state. A restore failure replaces the ordinary explanation with its actual feedback.
 
@@ -195,6 +199,8 @@ A failed send stays beside its own message in the scrolling transcript, with Not
 ## Consistent status presentation
 
 GPUI uses the shared `ui_feedback` presentation for account problems and operation notices. Status rows use severity color with an icon and explicit wording. Account problems appear beside the affected account without requiring a popup. The native menu-bar feedback control keeps its compact icon and explanatory popover.
+
+Use three placement rules: put a disabled conversation's reason and recovery action inside its input bar; keep a field or operation failure beside its control; put app-wide events in the notification center. Use the shared status text and button styles. A whole-page startup failure uses the same status row when no workspace is available. Keep the native menu-bar counterpart compact.
 
 The GPUI notification center orders errors before warnings and information when it selects the bell and badge color. Its status rows use the same feedback component. A notification can be dismissed or cleared from that presentation; this does not remove its underlying source condition. Native feedback popovers close without clearing their source. These are separate interactions.
 
@@ -206,7 +212,7 @@ Keep each label about one user need. Account warning popovers state what happene
 
 Use **Fork** for conversation actions in lists, locked conversations and provider recovery. Keep source boundaries, destination providers and no-send explanations beside the action; keep the button label short. Use **Side chat** for an attached conversation and **Side chats** for its list. Native protocol identifiers and Git branch terminology keep their existing names.
 
-Recovery actions use the shared bordered button style used by Unarchive. Status text wraps within the conversation rail; an inline title and its explanation flow as one text block. During provider Fork review, the confirmation owns the explanation and the duplicate availability banner is hidden. Cancel restores the original notice.
+Recovery actions use the shared bordered button style used by Unarchive. Status text wraps within the conversation rail; an inline title and its explanation flow as one text block. A source-bound Fork review for a disabled conversation replaces its notice inside the input bar. Cancel restores the original notice in the same place.
 
 Reserve `arrow.triangle.branch` for Fork. Account routing uses `point.topleft.down.to.point.bottomright.curvepath` in both GPUI and Menu Bar, with the existing active color and disabled behavior. New default titles use `(Fork)` or `(Side chat)`; the earlier `(attached branch)` title still displays as a Side chat, and custom titles remain unchanged.
 
