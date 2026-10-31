@@ -609,6 +609,14 @@ impl AgentSurface {
 
 		let draft = input.read(cx).content().to_owned();
 		let archived = reason == ARCHIVED_MESSAGE;
+		let reviewing = self.blocked_fork_review_visible();
+		let notice = if reviewing {
+			self.selected.as_deref().map(|work| self.prompt_edit_panel(work, cx))
+		} else if archived {
+			self.conversation_work().map(|work| self.archive_notice(&work, cx))
+		} else {
+			Some(self.connection_notice(reason, cx))
+		};
 		let draft_key = format!(
 			"composer-saved-draft-{:?}-{}",
 			input.entity_id(),
@@ -626,17 +634,7 @@ impl AgentSurface {
 				.flex()
 				.flex_col()
 				.justify_center()
-				.when(archived, |d| {
-					d.children(self.conversation_work().map(|work| self.archive_notice(&work, cx)))
-				})
-				.when(!archived && draft.is_empty(), |d| {
-					d.child(
-						gpui::div()
-							.debug_selector(|| "composer-blocked-placeholder".into())
-							.text_color(crate::ui_theme::rgb(TEXT_MUTED))
-							.child("Message"),
-					)
-				})
+				.children(notice)
 				.when(!archived && !draft.is_empty(), |d| {
 					d.child(
 						gpui::div()
@@ -650,7 +648,7 @@ impl AgentSurface {
 							.child(SelectableText::plain(draft_key, draft)),
 					)
 				})
-				.when(self.locked_branch_source().is_some(), |d| {
+				.when(!reviewing && self.locked_branch_source().is_some(), |d| {
 					d.child(self.workspace_button(
 						"locked-thread-branch".into(),
 						"Fork".into(),

@@ -779,8 +779,10 @@ impl AgentSurface {
 		saved.into_any_element()
 	}
 
-	pub(super) fn provider_fork_review_visible(&self) -> bool {
-		self.prompt_edit.branch_provider.is_some() && self.prompt_editor_source_current()
+	pub(super) fn blocked_fork_review_visible(&self) -> bool {
+		self.prompt_edit.branch_choice.is_some()
+			&& self.prompt_editor_source_current()
+			&& self.composer_unavailable_reason().is_some()
 	}
 
 	pub(super) fn prompt_editor_visible(&self, work: &str) -> bool {

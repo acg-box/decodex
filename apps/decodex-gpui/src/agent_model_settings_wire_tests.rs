@@ -132,6 +132,8 @@ fn provider_recovery_banner_is_source_bound_and_cancellation_keeps_the_draft(
 	});
 	let button = visual.debug_bounds("provider-create-branch").expect("provider recovery action");
 	assert_eq!(button.size.height, gpui::px(crate::ui_theme::SETTINGS_CONTROL_HEIGHT));
+	let input = visual.debug_bounds("composer-blocked").unwrap();
+	assert!(input.contains(&button.center()), "Fork recovery belongs inside the input bar");
 	visual.simulate_click(button.center(), Default::default());
 	surface.update(visual, |s, _| {
 		assert_eq!(
@@ -147,6 +149,8 @@ fn provider_recovery_banner_is_source_bound_and_cancellation_keeps_the_draft(
 		visual.debug_bounds("conversation-unavailable").is_none(),
 		"the review owns the explanation; do not repeat the provider banner"
 	);
+	let input = visual.debug_bounds("composer-blocked").unwrap();
+	assert!(input.contains(&cancel.center()), "the review stays inside the disabled input");
 	visual.simulate_click(cancel.center(), Default::default());
 	visual.update(|window, cx| {
 		window.draw(cx).clear(cx);

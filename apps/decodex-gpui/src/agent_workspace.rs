@@ -971,7 +971,31 @@ impl AgentSurface {
 		None
 	}
 
-	fn connection_notice(&self, reason: &'static str, cx: &mut Context<Self>) -> AnyElement {
+	fn waiting_connection_notice(&self, cx: &mut Context<Self>) -> AnyElement {
+		ui_feedback::read_only_row(
+			"conversation-unavailable",
+			"Waiting for connection",
+			"Nothing sent yet.",
+			Tone::Neutral.icon(),
+		)
+		.debug_selector(|| "conversation-unavailable".into())
+		.child(self.workspace_button(
+			"cancel-waiting-send".into(),
+			"Cancel send".into(),
+			|s, cx| s.cancel_waiting_send(cx),
+			cx,
+		))
+		.into_any_element()
+	}
+
+	pub(super) fn connection_notice(
+		&self,
+		reason: &'static str,
+		cx: &mut Context<Self>,
+	) -> AnyElement {
+		if self.waiting_for_reconnect() {
+			return self.waiting_connection_notice(cx);
+		}
 		if let Some(notice) = self.native_connection_notice(cx) {
 			return notice;
 		}
@@ -2539,12 +2563,16 @@ impl AgentSurface {
 	fn conversation_activity(&self, cx: &mut Context<Self>) -> AnyElement {
 		let reason = self.composer_unavailable_reason();
 		let waiting = self.waiting_for_reconnect();
-		let feedback = if waiting {
+		let feedback = if reason.is_some() {
+			None
+		} else if waiting {
 			Some(Feedback::neutral("Waiting for connection · Nothing sent yet"))
 		} else {
-			reason.is_none().then(|| self.visible_conversation_feedback()).flatten()
+			self.visible_conversation_feedback()
 		};
-		let action = if waiting {
+		let action = if reason.is_some() {
+			None
+		} else if waiting {
 			Some(self.workspace_action(
 				"cancel-waiting-send".into(),
 				"Cancel send".into(),
@@ -2568,16 +2596,6 @@ impl AgentSurface {
 			.min_w_0()
 			.flex_none()
 			.occlude()
-			.when_some(
-				reason.filter(|reason| {
-					*reason != ARCHIVED_MESSAGE
-						&& !(*reason == PROVIDER_MISMATCH_MESSAGE
-							&& self.provider_fork_review_visible())
-				}),
-				|band, reason| {
-					band.child(ui_feedback::notice_rail(self.connection_notice(reason, cx)))
-				},
-			)
 			.child(
 				ui_feedback::notice(
 					"conversation-activity",
@@ -2790,29 +2808,17 @@ fn connection_recovery_notice(
 	message: &'static str,
 	destination: crate::shell::Destination,
 ) -> AnyElement {
-	gpui::div()
-		.id("conversation-unavailable")
-		.debug_selector(|| "conversation-unavailable".into())
-		.role(Role::Status)
-		.aria_label(format!("Error: {message}"))
-		.w_full()
-		.min_w_0()
-		.flex()
-		.flex_col()
-		.items_center()
-		.gap(gpui::px(12.))
-		.text_size(gpui::px(12.))
-		.line_height(gpui::px(18.))
-		.child(Tone::Error.icon())
-		.child(
-			gpui::div()
-				.w_full()
-				.text_center()
-				.text_color(crate::ui_theme::rgb(Tone::Error.color()))
-				.child(message),
-		)
-		.child(connection_settings_action(destination))
-		.into_any_element()
+	ui_feedback::status_row(
+		"conversation-unavailable",
+		Tone::Error,
+		"",
+		message,
+		Tone::Error.icon(),
+	)
+	.debug_selector(|| "conversation-unavailable".into())
+	.max_w(gpui::px(CONVERSATION_WIDTH))
+	.child(connection_settings_action(destination))
+	.into_any_element()
 }
 
 fn connection_settings_action(destination: crate::shell::Destination) -> AnyElement {
