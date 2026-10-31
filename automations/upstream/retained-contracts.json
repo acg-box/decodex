@@ -5170,5 +5170,65 @@
     },
     "diagnostics_and_privacy": "Retain Decodex diagnostics and normal warnings. Do not restore Codex/app-server self-diagnostic UI, diagnostic exports or uploads. Item 24 remains rejected for privacy; normal retained conversation export has its existing scope.",
     "schedule_contract": "Keep the daily cadence declared, but keep native scheduling paused until the user explicitly authorizes resumption. A completed review or a repository update does not resume it."
+  },
+  "retained_provider_recovery": {
+    "decision": "User-approved explicit branch on the currently configured provider. Native provider admission and enforcement remain unchanged.",
+    "contract": [
+      "Offer recovery only after an exact native modelProviderMismatch on the live source connection; unrelated failures are not recovery authority.",
+      "Keep the original conversation, source provider, history and unsent draft. Reuse the reviewed AfterTurn fork and its durable confirmation receipt.",
+      "Display original and current providers. Recheck source identity and current native configuration before submitting one thread/fork with explicit modelProvider.",
+      "Create without sending. Only a later explicit send shares inherited history with the new provider. Cancel has no fork or inference effect.",
+      "Ordinary branches and Side chats continue to preserve the original provider. No automatic provider switch, input replay, configuration mutation or policy bypass."
+    ],
+    "source_symbols": {
+      "crates/decodex-codex/src/app_server_client/provider_recovery.rs": [
+        "NativeProviderMismatch::from_error",
+        "AppServerClient::refresh_provider_mismatch",
+        "AppServerClient::provider_matches_configuration"
+      ],
+      "crates/decodex-codex/src/app_server_client/thread_fork.rs": [
+        "AppServerClient::fork_thread_with_provider"
+      ],
+      "crates/decodex-runtime/src/agent.rs": [
+        "AgentCoordinator::wake_pending"
+      ],
+      "crates/decodex-runtime/src/agent/prompt_edit.rs": [
+        "AgentCoordinator::fork_prompt_edit_with_provider"
+      ],
+      "crates/decodex-runtime/src/agent_model_settings.rs": [
+        "read"
+      ],
+      "apps/decodex-gpui/src/agent_workspace.rs": [
+        "AgentSurface::provider_connection_notice"
+      ],
+      "apps/decodex-gpui/src/agent_list_branch.rs": [
+        "AgentSurface::review_provider_branch"
+      ],
+      "apps/decodex-gpui/src/agent_prompt_confirm.rs": [
+        "AgentSurface::confirm_prompt_branch",
+        "confirm_worker"
+      ],
+      "database/src/agent_fork.rs": [
+        "AgentForkAttempt"
+      ]
+    },
+    "regressions": {
+      "native_entrypoint": "crates/decodex-runtime/src/lib.rs",
+      "native_tests": [
+        "account_launch::agent_process::native_tests::cold_settings::recap_socket::fork::installed_fork_preserves_source_provider_after_default_changes",
+        "account_launch::agent_process::native_tests::cold_settings::recap_socket::fork::installed_provider_recovery_fork_preserves_context_and_restarts_on_current_provider"
+      ],
+      "local_entrypoints": [
+        "crates/decodex-codex/src/lib.rs",
+        "crates/decodex-runtime/src/lib.rs",
+        "database/src/lib.rs",
+        "apps/decodex-gpui/src/main.rs"
+      ],
+      "evidence": "automations/upstream/qualification.json#candidate_qualification/provider_recovery"
+    },
+    "delivery": [
+      "https://github.com/acg-box/decodex/commit/20be50137551a46a4ffde709ccfafbfe56ccc6b9"
+    ],
+    "limits": "Verified against the frozen 5be57bedd0 development artifact with loopback providers; the selected 33d306d4 runtime and installed application are unchanged."
   }
 }

@@ -9,8 +9,8 @@
   "fixed_target_remaining": 0,
   "source_review_complete": true,
   "decodex_consumer_baseline": "594c71c98e0719662e5847ff0360921b61b863fa",
-  "current_main_reconciliation": "69ef0e38d74d407a1cbe84ab06ba802adc786a8a",
-  "main_delta_limit": "Main added native overlay/search/speed presentation only; no component/runtime/fixture overlap. Those changes are outside this catch-up validation scope.",
+  "current_main_reconciliation": "0124198ac97fd63c7855c95822e2d7c0855b597e",
+  "main_delta_limit": "Provider recovery is based on current main. Earlier certified source ranges are unchanged; this follow-up reviews and validates only the provider boundary, durable fork flow and related presentation.",
   "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
   "selected_runtime_qualification": "automations/upstream/qualification.json",
   "classification_counts": {
@@ -368,7 +368,7 @@
         "codex-rs/app-server-protocol/src/protocol/v2/process.rs::ProcessExitedNotification"
       ],
       "validation_limits": [
-        "Source and full selected test bodies read; zero upstream tests executed. Existing exact-artifact normal execution and CodeMode retained cases passed on 5be57bedd0; Windows and exhaustive backpressure schedules were not executed. The separate provider-resume failure blocks runtime migration."
+        "Historical provider-refusal qualification has been reconciled by the targeted provider_recovery receipt. The other source/test and behavior limits recorded for this commit still apply."
       ],
       "commit": "6562117a81a9457c9d67a4d15b884bf80e7805f7",
       "source_review_complete": true,
@@ -461,7 +461,7 @@
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
       "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
       "selected_runtime_contains_commit": false,
-      "qualification_reconciliation": "The fixed candidate passed 49 of 50 current retained integration contracts. Existing execution, CodeMode, Guardian, usage and child-input cases passed within their recorded fixture limits. This does not qualify every changed native branch; the provider-resume failure blocks runtime migration. See qualification.json#candidate_qualification.",
+      "qualification_reconciliation": "Provider follow-up: ordinary forks retain provider A and cold-resume after A is restored; explicit user-approved recovery forks to current provider B without sending. Candidate 2/2 and selected baseline 1/1 pass. Prior 49/50 is historical, not a current blocker. The candidate remains unselected pending HumanCommand adaptation; see qualification.json#candidate_qualification/provider_recovery.",
       "commit_time": "2026-10-27T21:51:50Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -991,7 +991,7 @@
         ".github/scripts/macos-signing/sign_macos_cli_package.py::main"
       ],
       "validation_limits": [
-        "Relevant package/signing implementation and complete selected source test bodies read; zero upstream tests executed. The exact final 5be57bedd0 package includes the standalone executor. Decodex now signs it and verifies its signature, source commit and offline corruption repair through the common component path. Component and helper checks passed; runtime migration remains unmerged because the separate retained cold provider-resume contract fails."
+        "Historical provider-refusal qualification has been reconciled by the targeted provider_recovery receipt. The other source/test and behavior limits recorded for this commit still apply."
       ],
       "commit": "cf2c04b325e1929732727e7776243226fbbe19bc",
       "source_review_complete": true,
@@ -1025,7 +1025,8 @@
       "selected_runtime_contains_commit": false,
       "commit_time": "2026-10-27T23:14:18Z",
       "status": "source_review_complete",
-      "delivery_disposition": "Independent component verification is implemented in 768690c268e679df140b0c588f02f3d91c633eec; HumanCommand adaptation remains pending a qualified runtime. See qualification.json#candidate_qualification."
+      "delivery_disposition": "Independent component verification is implemented in 768690c268e679df140b0c588f02f3d91c633eec; HumanCommand adaptation remains pending a qualified runtime. See qualification.json#candidate_qualification.",
+      "qualification_reconciliation": "Provider follow-up: ordinary forks retain provider A and cold-resume after A is restored; explicit user-approved recovery forks to current provider B without sending. Candidate 2/2 and selected baseline 1/1 pass. Prior 49/50 is historical, not a current blocker. The candidate remains unselected pending HumanCommand adaptation; see qualification.json#candidate_qualification/provider_recovery."
     },
     {
       "index": 15,
@@ -1843,7 +1844,7 @@
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
       "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
       "selected_runtime_contains_commit": false,
-      "qualification_reconciliation": "The fixed candidate passed 49 of 50 current retained integration contracts. Existing execution, CodeMode, Guardian, usage and child-input cases passed within their recorded fixture limits. This does not qualify every changed native branch; the provider-resume failure blocks runtime migration. See qualification.json#candidate_qualification.",
+      "qualification_reconciliation": "Provider follow-up: ordinary forks retain provider A and cold-resume after A is restored; explicit user-approved recovery forks to current provider B without sending. Candidate 2/2 and selected baseline 1/1 pass. Prior 49/50 is historical, not a current blocker. The candidate remains unselected pending HumanCommand adaptation; see qualification.json#candidate_qualification/provider_recovery.",
       "commit_time": "2026-10-28T05:46:04Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -3351,7 +3352,7 @@
         "codex-rs/ext/guardian-reviewer/src/outcome.rs::into_assessment/From"
       ],
       "validation_limits": [
-        "Complete changed bodies, full selected regression and ephemeral-spawn callee read; zero upstream tests executed. Existing candidate Guardian boundary cases passed, while this isolated internal direct-review endpoint was not executed. Runtime migration remains blocked by provider resume."
+        "Historical provider-refusal qualification has been reconciled by the targeted provider_recovery receipt. The other source/test and behavior limits recorded for this commit still apply."
       ],
       "commit": "3da7de59b6411caa96b56856ac87370518ac1653",
       "source_review_complete": true,
@@ -3375,7 +3376,7 @@
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
       "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
       "selected_runtime_contains_commit": false,
-      "qualification_reconciliation": "The fixed candidate passed 49 of 50 current retained integration contracts. Existing execution, CodeMode, Guardian, usage and child-input cases passed within their recorded fixture limits. This does not qualify every changed native branch; the provider-resume failure blocks runtime migration. See qualification.json#candidate_qualification.",
+      "qualification_reconciliation": "Provider follow-up: ordinary forks retain provider A and cold-resume after A is restored; explicit user-approved recovery forks to current provider B without sending. Candidate 2/2 and selected baseline 1/1 pass. Prior 49/50 is historical, not a current blocker. The candidate remains unselected pending HumanCommand adaptation; see qualification.json#candidate_qualification/provider_recovery.",
       "commit_time": "2026-10-28T21:07:36Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -3486,7 +3487,7 @@
         ".github/scripts/macos-signing/provisioned_macos_cli_package.py::HELPERS"
       ],
       "validation_limits": [
-        "Relevant package/signing implementation and complete selected source test bodies read; zero upstream tests executed. The exact final 5be57bedd0 package includes the standalone executor. Decodex now signs it and verifies its signature, source commit and offline corruption repair through the common component path. Component and helper checks passed; runtime migration remains unmerged because the separate retained cold provider-resume contract fails."
+        "Historical provider-refusal qualification has been reconciled by the targeted provider_recovery receipt. The other source/test and behavior limits recorded for this commit still apply."
       ],
       "commit": "b91f2515f5719446dad5402036ac59f43a4c407a",
       "source_review_complete": true,
@@ -3527,7 +3528,8 @@
       "selected_runtime_contains_commit": false,
       "commit_time": "2026-10-28T21:09:05Z",
       "status": "source_review_complete",
-      "delivery_disposition": "Independent component verification is implemented in 768690c268e679df140b0c588f02f3d91c633eec; HumanCommand adaptation remains pending a qualified runtime. See qualification.json#candidate_qualification."
+      "delivery_disposition": "Independent component verification is implemented in 768690c268e679df140b0c588f02f3d91c633eec; HumanCommand adaptation remains pending a qualified runtime. See qualification.json#candidate_qualification.",
+      "qualification_reconciliation": "Provider follow-up: ordinary forks retain provider A and cold-resume after A is restored; explicit user-approved recovery forks to current provider B without sending. Candidate 2/2 and selected baseline 1/1 pass. Prior 49/50 is historical, not a current blocker. The candidate remains unselected pending HumanCommand adaptation; see qualification.json#candidate_qualification/provider_recovery."
     },
     {
       "index": 68,
@@ -3542,7 +3544,7 @@
         "codex-rs/core/src/compact.rs::drain_to_completed"
       ],
       "validation_limits": [
-        "Relevant diff, complete accounting helpers and both full selected regressions read. Existing candidate usage and compaction boundary cases passed; zero upstream tests executed and no full accounting/performance benchmark. Runtime migration remains blocked by provider resume."
+        "Historical provider-refusal qualification has been reconciled by the targeted provider_recovery receipt. The other source/test and behavior limits recorded for this commit still apply."
       ],
       "commit": "c62e9df39f3bc2e1eae124a79075e9bc5555fe1a",
       "source_review_complete": true,
@@ -3574,7 +3576,7 @@
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
       "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
       "selected_runtime_contains_commit": false,
-      "qualification_reconciliation": "The fixed candidate passed 49 of 50 current retained integration contracts. Existing execution, CodeMode, Guardian, usage and child-input cases passed within their recorded fixture limits. This does not qualify every changed native branch; the provider-resume failure blocks runtime migration. See qualification.json#candidate_qualification.",
+      "qualification_reconciliation": "Provider follow-up: ordinary forks retain provider A and cold-resume after A is restored; explicit user-approved recovery forks to current provider B without sending. Candidate 2/2 and selected baseline 1/1 pass. Prior 49/50 is historical, not a current blocker. The candidate remains unselected pending HumanCommand adaptation; see qualification.json#candidate_qualification/provider_recovery.",
       "commit_time": "2026-10-28T21:22:06Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -3583,7 +3585,7 @@
       "index": 69,
       "classification": "native_owned",
       "behavior": "Return structured provider mismatch, missing-provider or policy-conflict errors before resume/input. Preserve saved provider validation even when clients override model/effort/provider, and allow recovery when the provider configuration is restored.",
-      "decodex_consumer": "crates/decodex-codex/src/app_server_client.rs::RpcError preserves message and private data; resume.rs retries only exact pre-acceptance closing refusals and returns provider refusals without resubmitting input. Current account launch owns provider configuration; no local policy bypass or automatic provider migration is added. Later source commits in this fixed target can supersede admission details.",
+      "decodex_consumer": "Decodex observes the exact native provider refusal and holds unsent input. The approved recovery reuses the reviewed native fork with an explicit current provider; it preserves original history and native enforcement.",
       "implementation_symbols": [
         "codex-rs/app-server/src/config_manager.rs::load_for_resume/check_thread_model_provider/check_thread_model_provider_for_input/load_with_validation",
         "codex-rs/core/src/config/mod.rs::ConfigBuilder::build_inner",
@@ -3594,7 +3596,7 @@
       "validation_limits": [
         "Full validation/config materialization/error implementation and three selected complete test bodies read, plus current Decodex error and bounded resume retry source/test bodies. Zero upstream tests executed. No live account/provider migration or policy acceptance claimed; actual final candidate behavior must be qualified at retained boundaries.",
         "Cold thread_resume_inner and loaded resume_running_thread complete bodies were also read to confirm admission ordering and history preservation.",
-        "Exact 5be57bedd0 retained cold fork test fails at thread/resume with a saved fixture/current other provider mismatch; the original 33d306d4 artifact passes the same test. Preserve the selected baseline and all assertions. Source review is complete, runtime compatibility is not."
+        "Historical provider-refusal qualification has been reconciled by the targeted provider_recovery receipt. The other source/test and behavior limits recorded for this commit still apply."
       ],
       "commit": "7ce5fa7bdc1e816cc1306f93dba7dc7bede3a3de",
       "source_review_complete": true,
@@ -3634,7 +3636,19 @@
       "selected_runtime_contains_commit": false,
       "commit_time": "2026-10-28T21:33:02Z",
       "status": "source_review_complete",
-      "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
+      "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate.",
+      "consumer_refs": [
+        "crates/decodex-codex/src/app_server_client/provider_recovery.rs",
+        "crates/decodex-codex/src/app_server_client/thread_fork.rs",
+        "crates/decodex-runtime/src/agent.rs",
+        "crates/decodex-runtime/src/agent/prompt_edit.rs",
+        "crates/decodex-runtime/src/agent_model_settings.rs",
+        "apps/decodex-gpui/src/agent_workspace.rs",
+        "apps/decodex-gpui/src/agent_list_branch.rs",
+        "apps/decodex-gpui/src/agent_prompt_confirm.rs",
+        "database/src/agent_fork.rs"
+      ],
+      "qualification_reconciliation": "Provider follow-up: ordinary forks retain provider A and cold-resume after A is restored; explicit user-approved recovery forks to current provider B without sending. Candidate 2/2 and selected baseline 1/1 pass. Prior 49/50 is historical, not a current blocker. The candidate remains unselected pending HumanCommand adaptation; see qualification.json#candidate_qualification/provider_recovery."
     },
     {
       "index": 70,
@@ -4341,7 +4355,7 @@
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
       "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
       "selected_runtime_contains_commit": false,
-      "qualification_reconciliation": "The fixed candidate passed 49 of 50 current retained integration contracts. Existing execution, CodeMode, Guardian, usage and child-input cases passed within their recorded fixture limits. This does not qualify every changed native branch; the provider-resume failure blocks runtime migration. See qualification.json#candidate_qualification.",
+      "qualification_reconciliation": "Provider follow-up: ordinary forks retain provider A and cold-resume after A is restored; explicit user-approved recovery forks to current provider B without sending. Candidate 2/2 and selected baseline 1/1 pass. Prior 49/50 is historical, not a current blocker. The candidate remains unselected pending HumanCommand adaptation; see qualification.json#candidate_qualification/provider_recovery.",
       "commit_time": "2026-10-29T03:14:13Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -4646,7 +4660,7 @@
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
       "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
       "selected_runtime_contains_commit": false,
-      "qualification_reconciliation": "The fixed candidate passed 49 of 50 current retained integration contracts. Existing execution, CodeMode, Guardian, usage and child-input cases passed within their recorded fixture limits. This does not qualify every changed native branch; the provider-resume failure blocks runtime migration. See qualification.json#candidate_qualification.",
+      "qualification_reconciliation": "Provider follow-up: ordinary forks retain provider A and cold-resume after A is restored; explicit user-approved recovery forks to current provider B without sending. Candidate 2/2 and selected baseline 1/1 pass. Prior 49/50 is historical, not a current blocker. The candidate remains unselected pending HumanCommand adaptation; see qualification.json#candidate_qualification/provider_recovery.",
       "commit_time": "2026-10-29T11:15:52Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -4700,7 +4714,7 @@
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
       "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
       "selected_runtime_contains_commit": false,
-      "qualification_reconciliation": "HumanCommand capability/projection adaptation remains necessary and unimplemented. The current selected 33d306d4 runtime lacks the new API; do not advertise it until an exact replacement runtime preserves the retained provider-resume contract. No new policy editor.",
+      "qualification_reconciliation": "Provider follow-up: ordinary forks retain provider A and cold-resume after A is restored; explicit user-approved recovery forks to current provider B without sending. Candidate 2/2 and selected baseline 1/1 pass. Prior 49/50 is historical, not a current blocker. The candidate remains unselected pending HumanCommand adaptation; see qualification.json#candidate_qualification/provider_recovery.",
       "commit_time": "2026-10-29T11:23:51Z",
       "status": "source_review_complete",
       "delivery_disposition": "Independent component verification is implemented in 768690c268e679df140b0c588f02f3d91c633eec; HumanCommand adaptation remains pending a qualified runtime. See qualification.json#candidate_qualification."
@@ -6042,7 +6056,7 @@
       "index": 125,
       "classification": "not_applicable",
       "behavior": "TUI lists old-provider history across providers, opens mismatches read-only and offers a guarded new-chat continuation draft without sending it. The native mismatch admission rule remains in force.",
-      "decodex_consumer": "Decodex owns history/draft UX and already requests all-provider catalogs. This terminal workflow does not repair its retained cold fork resume contract: candidate rejects fixture versus other, while selected 33d306d4 passes. Keep the runtime migration pending instead of calling this TUI commit equivalent.",
+      "decodex_consumer": "Decodex owns history/draft UX and all-provider catalogs. TUI continuation is not adopted; the approved desktop recovery uses native thread/fork with explicit current provider. See qualification.json#candidate_qualification/provider_recovery.",
       "implementation_symbols": [
         "codex-rs/tui/src/app/resume_preparation.rs::prepare_target_session",
         "codex-rs/tui/src/chatwidget/provider_error.rs::show_provider_error/provider_error_message",
@@ -6081,7 +6095,8 @@
       "selected_runtime_contains_commit": false,
       "commit_time": "2026-10-30T00:45:30Z",
       "status": "source_review_complete",
-      "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
+      "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate.",
+      "qualification_reconciliation": "Provider follow-up: ordinary forks retain provider A and cold-resume after A is restored; explicit user-approved recovery forks to current provider B without sending. Candidate 2/2 and selected baseline 1/1 pass. Prior 49/50 is historical, not a current blocker. The candidate remains unselected pending HumanCommand adaptation; see qualification.json#candidate_qualification/provider_recovery."
     },
     {
       "index": 126,
@@ -7455,10 +7470,11 @@
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
     }
   ],
-  "delivery_status": "Source review complete; independent helper and fixture repair recorded by exact commits. Runtime pin remains unchanged and migration is blocked by the retained provider-resume contract.",
+  "delivery_status": "Source review remains complete through the unchanged fixed target. Provider recovery and its targeted native follow-up are delivered; the runtime pin remains unchanged pending HumanCommand compatibility and affected qualification.",
   "implementation_commits": [
     "https://github.com/acg-box/decodex/commit/768690c268e679df140b0c588f02f3d91c633eec",
-    "https://github.com/acg-box/decodex/commit/283741d89b57346bd25ac91283ef682da0a2d327"
+    "https://github.com/acg-box/decodex/commit/283741d89b57346bd25ac91283ef682da0a2d327",
+    "https://github.com/acg-box/decodex/commit/20be50137551a46a4ffde709ccfafbfe56ccc6b9"
   ],
-  "blocking_issue": "https://github.com/acg-box/decodex/issues/2575"
+  "provider_resolution": "automations/upstream/qualification.json#candidate_qualification/provider_recovery"
 }
