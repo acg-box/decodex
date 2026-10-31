@@ -37,6 +37,15 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Action {
+	/// Run two authorized synthetic questions on one Chrome connection.
+	VerifyExisting {
+		#[arg(long)]
+		user_data_dir: PathBuf,
+		#[arg(long)]
+		first_prompt: PathBuf,
+		#[arg(long)]
+		follow_up: PathBuf,
+	},
 	/// Verify an explicitly authorized Chrome 144+ profile in one new tab.
 	/// Sends no question and leaves the existing browser and its tabs running.
 	ProbeExisting {
@@ -111,6 +120,32 @@ async fn run(cli: Cli) -> Result<()> {
 	let detached = matches!(&cli.command, Action::Start { .. });
 	let action = async {
 		match cli.command {
+			Action::VerifyExisting { user_data_dir, first_prompt, follow_up } => {
+				let first_text = fs::read_to_string(first_prompt).map_err(|e| e.to_string())?;
+				let follow_up_text = fs::read_to_string(follow_up).map_err(|e| e.to_string())?;
+				let mut session = bridge.connect_existing(&user_data_dir).await?;
+				let result: Result<()> = async {
+					let first = "existing-chrome-first";
+					let second = "existing-chrome-followup";
+					let receipt = session
+						.ask(Request { id: first.into(), prompt: first_text, previous: None })
+						.await?;
+					print_json(&receipt)?;
+					let receipt = session
+						.ask(Request {
+							id: second.into(),
+							prompt: follow_up_text,
+							previous: Some(first.into()),
+						})
+						.await?;
+					print_json(&receipt)?;
+					Ok(())
+				}
+				.await;
+				let closed = session.close().await;
+				result?;
+				closed?;
+			},
 			Action::ProbeExisting { user_data_dir } =>
 				print_json(&bridge.probe_existing(&user_data_dir).await?)?,
 			Action::Connect => print_json(&bridge.connect().await?)?,

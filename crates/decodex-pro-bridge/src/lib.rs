@@ -1,7 +1,8 @@
 //! Isolated ChatGPT research over CDP, using an existing Chrome installation.
 //!
-//! `connect` opens a dedicated profile for the user's login. Requests run in owned
-//! background tabs; the ordinary Chrome profile, Codex and Main are not modified.
+//! `connect` opens a dedicated profile for the user's login. Explicit existing-session
+//! connections request Chrome's approval and keep that connection across turns.
+//! Requests run in owned background tabs; Codex and Main are not modified.
 //! No control-model inference, Node, extension or API key is required. Authentication
 //! challenges are returned to the user, never solved or bypassed by this component.
 //!
@@ -163,6 +164,33 @@ pub struct ProBridge {
 	cancelled: watch::Sender<bool>,
 }
 
+/// One user-authorized connection to an existing Chrome. Keep this owner alive
+/// across related requests; a new connection can require another Chrome approval.
+pub struct ResearchSession {
+	bridge: ProBridge,
+	browser: chrome::Chrome,
+}
+
+impl ResearchSession {
+	/// Use the same durable request workflow and the same browser authorization.
+	pub async fn ask(&mut self, request: Request) -> Result<Receipt> {
+		workflow::run_in_session(self.bridge.clone(), Some(request), None, &mut self.browser).await
+	}
+
+	/// Recover a request without submitting it again.
+	pub async fn resume(&mut self, id: &str) -> Result<Receipt> {
+		workflow::run_in_session(self.bridge.clone(), None, Some(id.into()), &mut self.browser)
+			.await
+	}
+
+	/// Close only the owned test/research tab and detach; never quit the user's Chrome.
+	pub async fn close(mut self) -> Result<()> {
+		let closed = self.browser.close_tab().await;
+		self.browser.close_browser().await?;
+		closed
+	}
+}
+
 impl ProBridge {
 	/// Use one absolute private state directory. Construction starts no browser.
 	pub fn new(config: Config, state_dir: impl Into<PathBuf>) -> Result<Self> {
@@ -224,6 +252,15 @@ impl ProBridge {
 		let connected = result?;
 		closed?;
 		Ok(connected)
+	}
+
+	/// Request Chrome's own approval for one persistent connection. This does not
+	/// change browser settings, inspect existing pages or start a new Chrome process.
+	pub async fn connect_existing(&self, profile: &std::path::Path) -> Result<ResearchSession> {
+		Ok(ResearchSession {
+			bridge: self.clone(),
+			browser: chrome::Chrome::attach_existing(profile).await?,
+		})
 	}
 
 	/// Close only the dedicated Chrome. Request records and login state remain.
