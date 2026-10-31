@@ -31,18 +31,26 @@ sources:
     resource: repo://crates/decodex-components/src/install.rs
   - id: openwiki-source-2d990e4e2bc233a95b4894b9
     resource: repo://crates/decodex-components/src/pin.rs
+  - id: openwiki-source-e18c489d56f597683c242bb1
+    resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_cold_settings_tests.rs
+  - id: openwiki-source-68238f7343c9fc1bd11783f3
+    resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_recap_socket_tests.rs
+  - id: openwiki-source-1e1e3397756e63672a9c1f2d
+    resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_runtime_submit_tests.rs
   - id: openwiki-source-dbc533dc306a3f520c4241e0
     resource: repo://crates/decodex-runtime/src/agent.rs
   - id: openwiki-source-30c7edf894a639091ecbafc6
     resource: repo://crates/decodex-runtime/src/agent/tests/external_context.rs
   - id: openwiki-source-87eeaebc39a3d2229938f9d2
     resource: repo://scripts/macos/build_codex_source.mts
+  - id: openwiki-source-58e225584250806d8658ea09
+    resource: repo://scripts/macos/prepare_codex.mts
   - id: openwiki-source-3b57179b92b257bc3fff51a1
     resource: repo://scripts/macos/stage_decodex_app.sh
-generated: { by: "codex", at: "2026-10-31T15:39:59.714Z" }
+generated: { by: "codex", at: "2026-10-31T16:06:25.983Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-31T15:39:59.714Z
+    at: 2026-10-31T16:06:25.983Z
 ---
 
 
@@ -80,6 +88,8 @@ Upstream owns generic Codex correctness. Read the relevant upstream implementati
 Run a small upstream selection only for a concrete compatibility defect or specific missing proof for a retained fix. State the consumer and missing proof first. Do not inherit an earlier source-test cohort or select broad suites from changed paths or function-name patterns. An unresolved upstream fixture with no selected consumer remains a diagnostic limit; it does not create a Decodex repair item. Unread source or relevant test bodies still block the review cursor.
 
 Register exact selectors and check the executed count and unmatched selectors. Nextest can replace binary environment paths with its own build outputs. Use the existing direct compiled-test entrypoint or native fixture when the signed helpers must run. Use already-managed tools and the repository version files. Workflow-only changes do not need app, provider or upstream suites. After code settles, run the final affected gate once and retain its actual scope.
+
+For a source build, set `DECODEX_APP_SIGN_IDENTITY` to an existing valid local signing identity before `cargo +stable make prepare-codex`. Keep certificate identities out of repository evidence. Import an existing signed artifact with `DECODEX_CODEX_DEVELOPMENT_RUNTIME="<qualified-runtime>" cargo +stable make prepare-codex`. Native account and cache fixtures use a system-temporary HOME; working-directory authority still follows the OS account, so reuse the owned-checkout fixture for execution.
 
 ## Publish a checkpoint
 
@@ -122,7 +132,7 @@ The runtime lock can select an exact official source archive. Use the explicit d
 
 Read the development lock and linked current qualification for the selected source, component identities, executed identities and limits. Do not copy each daily target or cohort count into this procedure. A source test can select its own helpers; that result does not establish execution of the signed production artifact.
 
-The provider-recovery follow-up distinguishes native admission from an obsolete fixture expectation. A saved-provider conversation resumes after its provider is restored. The approved alternative creates a new native fork on the current provider through the existing review and receipt flow. Keep source-provider and history assertions, test both routes against the exact artifact, and record the revised contract separately from the earlier failure. The qualified development lock now selects that candidate after the affected current-main provider and component checks passed. Historical cohort passes are reused only for the identical artifact and recorded source scope. HumanCommand support is user-deferred in [issue 2585](https://github.com/acg-box/decodex/issues/2585), not a required daily implementation task. Keep it unsupported and unadvertised; runtime migration still requires qualification of the retained scope. Automation stays paused.
+The provider-recovery follow-up distinguishes native admission from an obsolete fixture expectation. A saved-provider conversation resumes after its provider is restored. The approved alternative creates a new native fork on the current provider through the existing review and receipt flow. Keep source-provider and history assertions, test both routes against the exact artifact, and record the revised contract separately from the earlier failure. The qualified development lock preserves that recovery route. Each later runtime update must pass the affected native consumer and component checks against the new artifact. Historical cohort passes remain bound to the original artifact and source scope. HumanCommand support is user-deferred in [issue 2585](https://github.com/acg-box/decodex/issues/2585), not a required daily implementation task. Keep it unsupported and unadvertised; runtime migration still requires qualification of the retained scope. Automation stays paused.
 
 ## Retain evidence after artifact cleanup
 

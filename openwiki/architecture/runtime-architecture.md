@@ -34,6 +34,8 @@ sources:
     resource: repo://automations/upstream/README.md
   - id: openwiki-source-3127fd4c7b2aefcc9cea7961
     resource: repo://automations/upstream/retained-contracts.json
+  - id: openwiki-source-7eedab1ccdf82ac9ccd3ab32
+    resource: repo://automations/upstream/retained-evidence.json
   - id: openwiki-source-651d1fb6c9e49916a916ab51
     resource: repo://Cargo.toml
   - id: openwiki-source-f02ae41e2bd15dda85dc86b9
@@ -60,8 +62,8 @@ sources:
     resource: repo://crates/decodex-protocol/src/wire.rs
   - id: openwiki-source-1f19769e3cb97a2389e92f82
     resource: repo://crates/decodex-runtime/src/account_launch.rs
-  - id: openwiki-source-9e21e877b2d7ad96b0a4d637
-    resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_capacity_tests.rs
+  - id: openwiki-source-3d7045bfa872a564d938d3e2
+    resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_unreported_usage_tests.rs
   - id: openwiki-source-b2869e6da778a74cb6afc667
     resource: repo://crates/decodex-runtime/src/account_launch/process.rs
   - id: openwiki-source-4e8482c0f2dbe370858a1b11
@@ -126,10 +128,10 @@ sources:
     resource: repo://scripts/macos/stage_decodex_app.sh
   - id: openwiki-source-76081c1a47ca8cf32593de34
     resource: repo://scripts/macos/test_decodex_app_stage.sh
-generated: { by: "codex", at: "2026-10-31T15:39:59.714Z" }
+generated: { by: "codex", at: "2026-10-31T16:06:25.983Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-31T15:39:59.714Z
+    at: 2026-10-31T16:06:25.983Z
 ---
 
 # Runtime Architecture
@@ -255,13 +257,13 @@ The [portable qualification record](../../automations/upstream/qualification.jso
 
 Read the development lock and current qualification for the selected source, artifact and synthetic consumer limits. Keep the selected runtime, source-review cursor and installed binary as separate identities. A workflow or evidence update does not change those identities.
 
-The development lock selects the qualified `5be57bedd0` artifact. Provider recovery preserves the source conversation: ordinary forks keep its provider, and cold resume succeeds after that provider is restored. A user can explicitly create a separate native fork on the current provider. The service rechecks the observed refusal and current configuration before the existing fork write, retains the draft and uncertain-result receipt, and sends no input. Current qualification combines the original candidate consumer receipts with fresh provider and component checks; it does not rerun every historical probe. HumanCommand remains user-deferred in [issue 2585](https://github.com/acg-box/decodex/issues/2585), unsupported and unadvertised. Runtime selection does not install the app or resume the automation.
+The development lock selects the qualified `67f0994b53` artifact. Provider recovery preserves the source conversation: ordinary forks keep its provider, and cold resume succeeds after that provider is restored. A user can explicitly create a separate native fork on the current provider. The service rechecks the observed refusal and current configuration before the existing fork write, retains the draft and uncertain-result receipt, and sends no input. Current qualification checks the affected native consumers and component cache against this exact artifact. Earlier executions retain their original source and artifact limits. Native context accounting includes retained reasoning after incomplete or usage-less responses before automatic compaction; Decodex uses the native result. HumanCommand remains user-deferred in [issue 2585](https://github.com/acg-box/decodex/issues/2585), unsupported and unadvertised. Runtime selection does not install the app or resume the automation.
 
 The separate `retained_project_agent_work.installed_acceptance` entry records the local installed development app, its executable identities and observed behavior. It includes the independent-Agent composer and input-routing repairs. It retains its own limits and does not extend the earlier synthetic native qualification. See [acceptance boundaries](../testing/upstream-acceptance-boundaries.md#project-agent-work-and-global-guardian).
 
-The current qualification retains terminal `modelNotFound` classification through live, stored and cold history without native retries or Decodex capacity retries. The earlier artifact probes separately checked that an explicitly configured model catalog larger than 1 MiB reaches native model discovery; those probes retain their original artifact limits. Reusable fixtures belong to `crates/decodex-runtime/tests/native_qualification/`; these synthetic provider cases do not add an account type or a provider setup control.
+The previous `5be57bedd0` qualification retains terminal `modelNotFound` classification through live, stored and cold history without native retries or Decodex capacity retries. The earlier artifact probes separately checked that an explicitly configured model catalog larger than 1 MiB reaches native model discovery; those probes retain their original artifact limits. Reusable fixtures belong to `crates/decodex-runtime/tests/native_qualification/`; these synthetic provider cases do not add an account type or a provider setup control.
 
-Native `policyCapacityUnavailable` remains a distinct persisted error. It does not select Decodex overload retries. The local HTTP fixture permits native request retries; those are separate from a Decodex continuation. Native permission checkpoints retain acknowledged approval and reviewer settings through fork and cold resume despite stale turn context. Startup also skips a directory at `.env`. The reusable fixtures and source-inclusion records retain these bounded behavior requirements. Historical probe execution applies to its recorded artifact; current migration checks and reused candidate tests are listed separately in qualification.json.
+Native `policyCapacityUnavailable` remains a distinct persisted error. It does not select Decodex overload retries. The local HTTP fixture permits native request retries; those are separate from a Decodex continuation. Native permission checkpoints retain acknowledged approval and reviewer settings through fork and cold resume despite stale turn context. Startup also skips a directory at `.env`. The reusable fixtures and source-inclusion records retain these bounded behavior requirements. Historical probe execution applies to its recorded artifact; current migration checks and historical results are listed separately in qualification.json.
 
 Production staging selects a separate official Release requirement. Release pinning requires the Release to contain the current development baseline, and behavioral qualification must cover retained fixes. An older official Release is not a fallback. Packaging includes the requirement and Sparkle, but no Codex binary or schemas. See [Commands and validation](../operations/commands-and-validation.md).
 

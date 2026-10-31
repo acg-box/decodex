@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:bfd9228575ab9fc9d596bc66b36908435925241662129a2e8c36185782a3ca2b",
+  "pageVersion": "sha256:8eec39738f38050ef63d4e819bb48005384083f1a12f969cbd5471021ed70ba6",
   "claims": [
     {
       "id": "claim_f0c37462522f4442acd94d53819ef75c",
@@ -60,7 +60,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:28076d4133414ca914885979826c6f67929f1ed882fc4953393a2ec2f2865424"
+          "version": "repo-file-v1:sha256:62ef8102ea1a433678ab1c9819d83271f285de18d184bd43e36a68007d056018"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/process.rs#L133-L153",
@@ -96,7 +96,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:28076d4133414ca914885979826c6f67929f1ed882fc4953393a2ec2f2865424"
+          "version": "repo-file-v1:sha256:62ef8102ea1a433678ab1c9819d83271f285de18d184bd43e36a68007d056018"
         },
         {
           "resource": "repo://crates/decodex-runtime/tests/native_qualification/large_catalog.py",
@@ -178,11 +178,11 @@
     },
     {
       "id": "claim_9815b02e2bec42e2972b00e7894ad1f4",
-      "statement": "Side chats preserve source provider and Goal ownership without sending. Cold resume can require restoration of the original provider; the explicit current-provider fork is qualified in the selected development artifact. HumanCommand remains separately user-deferred and unsupported.",
+      "statement": "Side chats preserve source provider and Goal ownership without sending. Original branch tests retain their historical artifact limits; current qualification separately checks the explicit current-provider recovery fork. HumanCommand remains user-deferred and unsupported.",
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:28076d4133414ca914885979826c6f67929f1ed882fc4953393a2ec2f2865424"
+          "version": "repo-file-v1:sha256:62ef8102ea1a433678ab1c9819d83271f285de18d184bd43e36a68007d056018"
         },
         {
           "resource": "repo://automations/upstream/retained-contracts.json",
@@ -214,7 +214,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:2ccdd340697f4544f1b8778533386d8a93057631edfb8f26f3448b01ca348275"
+          "version": "repo-file-v1:sha256:d553cb9db8a3a506038ff485a006d95eb0a4eca6293b6dfaefc44edc7f23cc23"
         },
         {
           "resource": "repo://crates/decodex-protocol/src/model_catalog.rs#L77-L105",
@@ -313,6 +313,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-31T15:40:55.377Z"
+    "at": "2026-10-31T16:06:25.983Z"
   }
 }

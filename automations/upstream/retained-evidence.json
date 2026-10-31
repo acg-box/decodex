@@ -1,7 +1,7 @@
 {
   "version": 1,
   "scope": "Portable retained integration requirements. Native automation state owns the review cursor and pending work. This index does not attest missing historical test results.",
-  "source_baseline": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+  "source_baseline": "67f0994b532b8740f14b5b738af7b7b2a915b1d6",
   "delivery": [
     "https://github.com/acg-box/decodex/pull/2451",
     "https://github.com/acg-box/decodex/pull/2452",
@@ -36,9 +36,13 @@
           "test": "account_launch::agent_process::native_tests::archive::installed_native_archive_roundtrip_refreshes_without_restarting_either_process"
         },
         "uses_exact_native_artifact": true,
-        "passed": true,
-        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
-        "evidence_kind": "reused_identical_artifact_execution"
+        "current_artifact_executed": false,
+        "historical_execution": {
+          "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+          "passed": true,
+          "evidence_kind": "reused_identical_artifact_execution",
+          "qualification": "https://github.com/acg-box/decodex/blob/4c9b2c5fce988f038569a7a23092c8b97443b53f/automations/upstream/qualification.json"
+        }
       },
       {
         "test": "installed_model_not_found_does_not_schedule_capacity_retries",
@@ -49,9 +53,13 @@
           "test": "account_launch::agent_process::native_tests::capacity::installed_model_not_found_does_not_schedule_capacity_retries"
         },
         "uses_exact_native_artifact": true,
-        "passed": true,
-        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
-        "evidence_kind": "reused_identical_artifact_execution"
+        "current_artifact_executed": false,
+        "historical_execution": {
+          "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+          "passed": true,
+          "evidence_kind": "reused_identical_artifact_execution",
+          "qualification": "https://github.com/acg-box/decodex/blob/4c9b2c5fce988f038569a7a23092c8b97443b53f/automations/upstream/qualification.json"
+        }
       },
       {
         "test": "installed_native_code_mode_yielded_cells_keep_their_outputs",
@@ -62,9 +70,13 @@
           "test": "account_launch::agent_process::native_tests::code_mode::installed_native_code_mode_yielded_cells_keep_their_outputs"
         },
         "uses_exact_native_artifact": true,
-        "passed": true,
-        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
-        "evidence_kind": "reused_identical_artifact_execution"
+        "current_artifact_executed": false,
+        "historical_execution": {
+          "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+          "passed": true,
+          "evidence_kind": "reused_identical_artifact_execution",
+          "qualification": "https://github.com/acg-box/decodex/blob/4c9b2c5fce988f038569a7a23092c8b97443b53f/automations/upstream/qualification.json"
+        }
       },
       {
         "test": "installed_native_parallel_dynamic_tools_preserve_ids_and_result_order",
@@ -75,9 +87,10 @@
           "test": "account_launch::agent_process::native_tests::code_mode::installed_native_parallel_dynamic_tools_preserve_ids_and_result_order"
         },
         "uses_exact_native_artifact": true,
+        "current_artifact_executed": true,
+        "source_commit": "67f0994b532b8740f14b5b738af7b7b2a915b1d6",
         "passed": true,
-        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
-        "evidence_kind": "reused_identical_artifact_execution"
+        "evidence_kind": "fresh_execution"
       },
       {
         "test": "installed_fork_preserves_source_provider_after_default_changes",
@@ -88,9 +101,13 @@
           "test": "account_launch::agent_process::native_tests::cold_settings::recap_socket::fork::installed_fork_preserves_source_provider_after_default_changes"
         },
         "uses_exact_native_artifact": true,
-        "passed": true,
-        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
-        "evidence_kind": "fresh_execution"
+        "current_artifact_executed": false,
+        "historical_execution": {
+          "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+          "passed": true,
+          "evidence_kind": "fresh_execution",
+          "qualification": "https://github.com/acg-box/decodex/blob/4c9b2c5fce988f038569a7a23092c8b97443b53f/automations/upstream/qualification.json"
+        }
       },
       {
         "test": "installed_recap_public_socket_preserves_parent_and_exact_request_identity",
@@ -101,9 +118,13 @@
           "test": "account_launch::agent_process::native_tests::cold_settings::recap_socket::installed_recap_public_socket_preserves_parent_and_exact_request_identity"
         },
         "uses_exact_native_artifact": true,
-        "passed": true,
-        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
-        "evidence_kind": "reused_identical_artifact_execution"
+        "current_artifact_executed": false,
+        "historical_execution": {
+          "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+          "passed": true,
+          "evidence_kind": "reused_identical_artifact_execution",
+          "qualification": "https://github.com/acg-box/decodex/blob/4c9b2c5fce988f038569a7a23092c8b97443b53f/automations/upstream/qualification.json"
+        }
       },
       {
         "test": "installed_native_discards_partial_compaction_output_after_restart",
@@ -114,9 +135,13 @@
           "test": "account_launch::agent_process::native_tests::compaction::installed_native_discards_partial_compaction_output_after_restart"
         },
         "uses_exact_native_artifact": true,
-        "passed": true,
-        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
-        "evidence_kind": "reused_identical_artifact_execution"
+        "current_artifact_executed": false,
+        "historical_execution": {
+          "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+          "passed": true,
+          "evidence_kind": "reused_identical_artifact_execution",
+          "qualification": "https://github.com/acg-box/decodex/blob/4c9b2c5fce988f038569a7a23092c8b97443b53f/automations/upstream/qualification.json"
+        }
       },
       {
         "test": "installed_native_preserves_prompt_before_compaction_error_and_after_restart",
@@ -127,9 +152,13 @@
           "test": "account_launch::agent_process::native_tests::compaction::installed_native_preserves_prompt_before_compaction_error_and_after_restart"
         },
         "uses_exact_native_artifact": true,
-        "passed": true,
-        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
-        "evidence_kind": "reused_identical_artifact_execution"
+        "current_artifact_executed": false,
+        "historical_execution": {
+          "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+          "passed": true,
+          "evidence_kind": "reused_identical_artifact_execution",
+          "qualification": "https://github.com/acg-box/decodex/blob/4c9b2c5fce988f038569a7a23092c8b97443b53f/automations/upstream/qualification.json"
+        }
       },
       {
         "test": "installed_native_streams_auto_compaction_and_resumes_its_checkpoint",
@@ -140,9 +169,10 @@
           "test": "account_launch::agent_process::native_tests::compaction::installed_native_streams_auto_compaction_and_resumes_its_checkpoint"
         },
         "uses_exact_native_artifact": true,
+        "current_artifact_executed": true,
+        "source_commit": "67f0994b532b8740f14b5b738af7b7b2a915b1d6",
         "passed": true,
-        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
-        "evidence_kind": "reused_identical_artifact_execution"
+        "evidence_kind": "fresh_execution"
       },
       {
         "test": "installed_native_daybreak_preference_is_staged_without_selecting_access",
@@ -153,9 +183,13 @@
           "test": "account_launch::agent_process::native_tests::config_recovery::installed_native_daybreak_preference_is_staged_without_selecting_access"
         },
         "uses_exact_native_artifact": true,
-        "passed": true,
-        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
-        "evidence_kind": "reused_identical_artifact_execution"
+        "current_artifact_executed": false,
+        "historical_execution": {
+          "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+          "passed": true,
+          "evidence_kind": "reused_identical_artifact_execution",
+          "qualification": "https://github.com/acg-box/decodex/blob/4c9b2c5fce988f038569a7a23092c8b97443b53f/automations/upstream/qualification.json"
+        }
       },
       {
         "test": "installed_native_patch_pages_survive_cold_restart_without_replay",
@@ -166,9 +200,13 @@
           "test": "account_launch::agent_process::native_tests::detail::installed_native_patch_pages_survive_cold_restart_without_replay"
         },
         "uses_exact_native_artifact": true,
-        "passed": true,
-        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
-        "evidence_kind": "reused_identical_artifact_execution"
+        "current_artifact_executed": false,
+        "historical_execution": {
+          "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+          "passed": true,
+          "evidence_kind": "reused_identical_artifact_execution",
+          "qualification": "https://github.com/acg-box/decodex/blob/4c9b2c5fce988f038569a7a23092c8b97443b53f/automations/upstream/qualification.json"
+        }
       },
       {
         "test": "installed_native_enterprise_mcp_requires_thread_and_rejects_project_downgrade",
@@ -179,9 +217,13 @@
           "test": "account_launch::agent_process::native_tests::discovery::installed_native_enterprise_mcp_requires_thread_and_rejects_project_downgrade"
         },
         "uses_exact_native_artifact": true,
-        "passed": true,
-        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
-        "evidence_kind": "reused_identical_artifact_execution"
+        "current_artifact_executed": false,
+        "historical_execution": {
+          "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+          "passed": true,
+          "evidence_kind": "reused_identical_artifact_execution",
+          "qualification": "https://github.com/acg-box/decodex/blob/4c9b2c5fce988f038569a7a23092c8b97443b53f/automations/upstream/qualification.json"
+        }
       },
       {
         "test": "installed_native_mcp_capabilities_survive_tool_discovery_failure",
@@ -192,9 +234,10 @@
           "test": "account_launch::agent_process::native_tests::discovery::installed_native_mcp_capabilities_survive_tool_discovery_failure"
         },
         "uses_exact_native_artifact": true,
+        "current_artifact_executed": true,
+        "source_commit": "67f0994b532b8740f14b5b738af7b7b2a915b1d6",
         "passed": true,
-        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
-        "evidence_kind": "reused_identical_artifact_execution"
+        "evidence_kind": "fresh_execution"
       },
       {
         "test": "installed_native_configured_flex_survives_cold_resume",
@@ -205,9 +248,13 @@
           "test": "account_launch::agent_process::native_tests::flex::installed_native_configured_flex_survives_cold_resume"
         },
         "uses_exact_native_artifact": true,
-        "passed": true,
-        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
-        "evidence_kind": "reused_identical_artifact_execution"
+        "current_artifact_executed": false,
+        "historical_execution": {
+          "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+          "passed": true,
+          "evidence_kind": "reused_identical_artifact_execution",
+          "qualification": "https://github.com/acg-box/decodex/blob/4c9b2c5fce988f038569a7a23092c8b97443b53f/automations/upstream/qualification.json"
+        }
       },
       {
         "test": "installed_native_flex_survives_settings_and_cold_resume",
@@ -218,9 +265,13 @@
           "test": "account_launch::agent_process::native_tests::flex::installed_native_flex_survives_settings_and_cold_resume"
         },
         "uses_exact_native_artifact": true,
-        "passed": true,
-        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
-        "evidence_kind": "reused_identical_artifact_execution"
+        "current_artifact_executed": false,
+        "historical_execution": {
+          "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+          "passed": true,
+          "evidence_kind": "reused_identical_artifact_execution",
+          "qualification": "https://github.com/acg-box/decodex/blob/4c9b2c5fce988f038569a7a23092c8b97443b53f/automations/upstream/qualification.json"
+        }
       },
       {
         "test": "installed_active_goal_preserves_native_budget_and_elapsed_accounting",
@@ -231,9 +282,13 @@
           "test": "account_launch::agent_process::native_tests::goals::installed_active_goal_preserves_native_budget_and_elapsed_accounting"
         },
         "uses_exact_native_artifact": true,
-        "passed": true,
-        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
-        "evidence_kind": "reused_identical_artifact_execution"
+        "current_artifact_executed": false,
+        "historical_execution": {
+          "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+          "passed": true,
+          "evidence_kind": "reused_identical_artifact_execution",
+          "qualification": "https://github.com/acg-box/decodex/blob/4c9b2c5fce988f038569a7a23092c8b97443b53f/automations/upstream/qualification.json"
+        }
       },
       {
         "test": "installed_native_goal_reads_preserve_native_state_after_restart",
@@ -244,9 +299,13 @@
           "test": "account_launch::agent_process::native_tests::goals::installed_native_goal_reads_preserve_native_state_after_restart"
         },
         "uses_exact_native_artifact": true,
-        "passed": true,
-        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
-        "evidence_kind": "reused_identical_artifact_execution"
+        "current_artifact_executed": false,
+        "historical_execution": {
+          "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+          "passed": true,
+          "evidence_kind": "reused_identical_artifact_execution",
+          "qualification": "https://github.com/acg-box/decodex/blob/4c9b2c5fce988f038569a7a23092c8b97443b53f/automations/upstream/qualification.json"
+        }
       },
       {
         "test": "installed_hook_trust_enablement_and_modified_content_are_independent",
@@ -257,9 +316,13 @@
           "test": "account_launch::agent_process::native_tests::hook_settings::installed_hook_trust_enablement_and_modified_content_are_independent"
         },
         "uses_exact_native_artifact": true,
-        "passed": true,
-        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
-        "evidence_kind": "reused_identical_artifact_execution"
+        "current_artifact_executed": false,
+        "historical_execution": {
+          "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+          "passed": true,
+          "evidence_kind": "reused_identical_artifact_execution",
+          "qualification": "https://github.com/acg-box/decodex/blob/4c9b2c5fce988f038569a7a23092c8b97443b53f/automations/upstream/qualification.json"
+        }
       },
       {
         "test": "installed_native_memory_view_selects_versions_without_model_calls_or_fallback",
@@ -270,9 +333,13 @@
           "test": "account_launch::agent_process::native_tests::memory::installed_native_memory_view_selects_versions_without_model_calls_or_fallback"
         },
         "uses_exact_native_artifact": true,
-        "passed": true,
-        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
-        "evidence_kind": "reused_identical_artifact_execution"
+        "current_artifact_executed": false,
+        "historical_execution": {
+          "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+          "passed": true,
+          "evidence_kind": "reused_identical_artifact_execution",
+          "qualification": "https://github.com/acg-box/decodex/blob/4c9b2c5fce988f038569a7a23092c8b97443b53f/automations/upstream/qualification.json"
+        }
       },
       {
         "test": "installed_native_continuation_uses_live_details_and_rejects_restart_authority",
@@ -283,9 +350,13 @@
           "test": "account_launch::agent_process::native_tests::misalignment::installed_native_continuation_uses_live_details_and_rejects_restart_authority"
         },
         "uses_exact_native_artifact": true,
-        "passed": true,
-        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
-        "evidence_kind": "reused_identical_artifact_execution"
+        "current_artifact_executed": false,
+        "historical_execution": {
+          "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+          "passed": true,
+          "evidence_kind": "reused_identical_artifact_execution",
+          "qualification": "https://github.com/acg-box/decodex/blob/4c9b2c5fce988f038569a7a23092c8b97443b53f/automations/upstream/qualification.json"
+        }
       },
       {
         "test": "installed_native_model_access_metadata_refreshes_after_cold_restart",
@@ -296,9 +367,13 @@
           "test": "account_launch::agent_process::native_tests::model_access::installed_native_model_access_metadata_refreshes_after_cold_restart"
         },
         "uses_exact_native_artifact": true,
-        "passed": true,
-        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
-        "evidence_kind": "reused_identical_artifact_execution"
+        "current_artifact_executed": false,
+        "historical_execution": {
+          "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+          "passed": true,
+          "evidence_kind": "reused_identical_artifact_execution",
+          "qualification": "https://github.com/acg-box/decodex/blob/4c9b2c5fce988f038569a7a23092c8b97443b53f/automations/upstream/qualification.json"
+        }
       },
       {
         "test": "installed_named_permission_selection_during_active_turn_survives_restart",
@@ -309,9 +384,13 @@
           "test": "account_launch::agent_process::native_tests::permissions::installed_named_permission_selection_during_active_turn_survives_restart"
         },
         "uses_exact_native_artifact": true,
-        "passed": true,
-        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
-        "evidence_kind": "reused_identical_artifact_execution"
+        "current_artifact_executed": false,
+        "historical_execution": {
+          "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+          "passed": true,
+          "evidence_kind": "reused_identical_artifact_execution",
+          "qualification": "https://github.com/acg-box/decodex/blob/4c9b2c5fce988f038569a7a23092c8b97443b53f/automations/upstream/qualification.json"
+        }
       },
       {
         "test": "installed_permission_selection_publishes_and_survives_native_restart",
@@ -322,9 +401,13 @@
           "test": "account_launch::agent_process::native_tests::permissions::installed_permission_selection_publishes_and_survives_native_restart"
         },
         "uses_exact_native_artifact": true,
-        "passed": true,
-        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
-        "evidence_kind": "reused_identical_artifact_execution"
+        "current_artifact_executed": false,
+        "historical_execution": {
+          "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+          "passed": true,
+          "evidence_kind": "reused_identical_artifact_execution",
+          "qualification": "https://github.com/acg-box/decodex/blob/4c9b2c5fce988f038569a7a23092c8b97443b53f/automations/upstream/qualification.json"
+        }
       },
       {
         "test": "installed_prediction_fork_inherits_context_and_cleans_up_without_parent_replay",
@@ -335,9 +418,13 @@
           "test": "account_launch::agent_process::native_tests::prediction::installed_prediction_fork_inherits_context_and_cleans_up_without_parent_replay"
         },
         "uses_exact_native_artifact": true,
-        "passed": true,
-        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
-        "evidence_kind": "reused_identical_artifact_execution"
+        "current_artifact_executed": false,
+        "historical_execution": {
+          "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+          "passed": true,
+          "evidence_kind": "reused_identical_artifact_execution",
+          "qualification": "https://github.com/acg-box/decodex/blob/4c9b2c5fce988f038569a7a23092c8b97443b53f/automations/upstream/qualification.json"
+        }
       },
       {
         "test": "native_new_project_conversations_materialize_before_first_input",
@@ -348,9 +435,13 @@
           "test": "account_launch::agent_process::native_tests::project_sync::native_new_project_conversations_materialize_before_first_input"
         },
         "uses_exact_native_artifact": true,
-        "passed": true,
-        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
-        "evidence_kind": "reused_identical_artifact_execution"
+        "current_artifact_executed": false,
+        "historical_execution": {
+          "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+          "passed": true,
+          "evidence_kind": "reused_identical_artifact_execution",
+          "qualification": "https://github.com/acg-box/decodex/blob/4c9b2c5fce988f038569a7a23092c8b97443b53f/automations/upstream/qualification.json"
+        }
       },
       {
         "test": "native_project_reconciles_retained_conversation_and_survives_restart",
@@ -361,9 +452,13 @@
           "test": "account_launch::agent_process::native_tests::project_sync::native_project_reconciles_retained_conversation_and_survives_restart"
         },
         "uses_exact_native_artifact": true,
-        "passed": true,
-        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
-        "evidence_kind": "reused_identical_artifact_execution"
+        "current_artifact_executed": false,
+        "historical_execution": {
+          "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+          "passed": true,
+          "evidence_kind": "reused_identical_artifact_execution",
+          "qualification": "https://github.com/acg-box/decodex/blob/4c9b2c5fce988f038569a7a23092c8b97443b53f/automations/upstream/qualification.json"
+        }
       },
       {
         "test": "native_guardian_details_survive_cold_resume_without_raw_subscription",
@@ -374,9 +469,13 @@
           "test": "account_launch::agent_process::native_tests::project_work::native_guardian_details_survive_cold_resume_without_raw_subscription"
         },
         "uses_exact_native_artifact": true,
-        "passed": true,
-        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
-        "evidence_kind": "reused_identical_artifact_execution"
+        "current_artifact_executed": false,
+        "historical_execution": {
+          "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+          "passed": true,
+          "evidence_kind": "reused_identical_artifact_execution",
+          "qualification": "https://github.com/acg-box/decodex/blob/4c9b2c5fce988f038569a7a23092c8b97443b53f/automations/upstream/qualification.json"
+        }
       },
       {
         "test": "native_legacy_continuation_preserves_history_and_permissions_after_restart",
@@ -387,9 +486,13 @@
           "test": "account_launch::agent_process::native_tests::project_work::native_legacy_continuation_preserves_history_and_permissions_after_restart"
         },
         "uses_exact_native_artifact": true,
-        "passed": true,
-        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
-        "evidence_kind": "reused_identical_artifact_execution"
+        "current_artifact_executed": false,
+        "historical_execution": {
+          "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+          "passed": true,
+          "evidence_kind": "reused_identical_artifact_execution",
+          "qualification": "https://github.com/acg-box/decodex/blob/4c9b2c5fce988f038569a7a23092c8b97443b53f/automations/upstream/qualification.json"
+        }
       },
       {
         "test": "native_project_global_review_and_private_records_cross_retained_bridge",
@@ -400,9 +503,13 @@
           "test": "account_launch::agent_process::native_tests::project_work::native_project_global_review_and_private_records_cross_retained_bridge"
         },
         "uses_exact_native_artifact": true,
-        "passed": true,
-        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
-        "evidence_kind": "reused_identical_artifact_execution"
+        "current_artifact_executed": false,
+        "historical_execution": {
+          "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+          "passed": true,
+          "evidence_kind": "reused_identical_artifact_execution",
+          "qualification": "https://github.com/acg-box/decodex/blob/4c9b2c5fce988f038569a7a23092c8b97443b53f/automations/upstream/qualification.json"
+        }
       },
       {
         "test": "installed_native_read_state_preserves_new_results_and_cold_marks",
@@ -413,9 +520,13 @@
           "test": "account_launch::agent_process::native_tests::read_state::installed_native_read_state_preserves_new_results_and_cold_marks"
         },
         "uses_exact_native_artifact": true,
-        "passed": true,
-        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
-        "evidence_kind": "reused_identical_artifact_execution"
+        "current_artifact_executed": false,
+        "historical_execution": {
+          "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+          "passed": true,
+          "evidence_kind": "reused_identical_artifact_execution",
+          "qualification": "https://github.com/acg-box/decodex/blob/4c9b2c5fce988f038569a7a23092c8b97443b53f/automations/upstream/qualification.json"
+        }
       },
       {
         "test": "installed_native_realtime_history_survives_agent_and_cold_bridge",
@@ -426,9 +537,10 @@
           "test": "account_launch::agent_process::native_tests::realtime::installed_native_realtime_history_survives_agent_and_cold_bridge"
         },
         "uses_exact_native_artifact": true,
+        "current_artifact_executed": true,
+        "source_commit": "67f0994b532b8740f14b5b738af7b7b2a915b1d6",
         "passed": true,
-        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
-        "evidence_kind": "reused_identical_artifact_execution"
+        "evidence_kind": "fresh_execution"
       },
       {
         "test": "installed_recap_uses_native_history_and_invalidates_after_new_input",
@@ -439,9 +551,13 @@
           "test": "account_launch::agent_process::native_tests::recap_service::installed_recap_uses_native_history_and_invalidates_after_new_input"
         },
         "uses_exact_native_artifact": true,
-        "passed": true,
-        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
-        "evidence_kind": "reused_identical_artifact_execution"
+        "current_artifact_executed": false,
+        "historical_execution": {
+          "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+          "passed": true,
+          "evidence_kind": "reused_identical_artifact_execution",
+          "qualification": "https://github.com/acg-box/decodex/blob/4c9b2c5fce988f038569a7a23092c8b97443b53f/automations/upstream/qualification.json"
+        }
       },
       {
         "test": "installed_native_guardian_preserves_large_action",
@@ -452,9 +568,10 @@
           "test": "account_launch::agent_process::native_tests::reviewer::installed_native_guardian_preserves_large_action"
         },
         "uses_exact_native_artifact": true,
+        "current_artifact_executed": true,
+        "source_commit": "67f0994b532b8740f14b5b738af7b7b2a915b1d6",
         "passed": true,
-        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
-        "evidence_kind": "reused_identical_artifact_execution"
+        "evidence_kind": "fresh_execution"
       },
       {
         "test": "installed_native_child_inherits_updated_step_model",
@@ -465,9 +582,10 @@
           "test": "account_launch::agent_process::native_tests::reviewer::store::live_model::child_model::installed_native_child_inherits_updated_step_model"
         },
         "uses_exact_native_artifact": true,
+        "current_artifact_executed": true,
+        "source_commit": "67f0994b532b8740f14b5b738af7b7b2a915b1d6",
         "passed": true,
-        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
-        "evidence_kind": "reused_identical_artifact_execution"
+        "evidence_kind": "fresh_execution"
       },
       {
         "test": "installed_native_spawn_description_follows_updated_step_model",
@@ -478,9 +596,13 @@
           "test": "account_launch::agent_process::native_tests::reviewer::store::live_model::child_model::installed_native_spawn_description_follows_updated_step_model"
         },
         "uses_exact_native_artifact": true,
-        "passed": true,
-        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
-        "evidence_kind": "reused_identical_artifact_execution"
+        "current_artifact_executed": false,
+        "historical_execution": {
+          "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+          "passed": true,
+          "evidence_kind": "reused_identical_artifact_execution",
+          "qualification": "https://github.com/acg-box/decodex/blob/4c9b2c5fce988f038569a7a23092c8b97443b53f/automations/upstream/qualification.json"
+        }
       },
       {
         "test": "installed_native_voice_policy_read_does_not_use_user_feature_flags",
@@ -491,9 +613,13 @@
           "test": "account_launch::agent_process::native_tests::reviewer::store::voice_settings_start::installed_native_voice_policy_read_does_not_use_user_feature_flags"
         },
         "uses_exact_native_artifact": true,
-        "passed": true,
-        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
-        "evidence_kind": "reused_identical_artifact_execution"
+        "current_artifact_executed": false,
+        "historical_execution": {
+          "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+          "passed": true,
+          "evidence_kind": "reused_identical_artifact_execution",
+          "qualification": "https://github.com/acg-box/decodex/blob/4c9b2c5fce988f038569a7a23092c8b97443b53f/automations/upstream/qualification.json"
+        }
       },
       {
         "test": "installed_native_warning_crosses_bridge_owner_history_and_reopen",
@@ -504,9 +630,13 @@
           "test": "account_launch::agent_process::native_tests::reviewer::store::warning_tests::installed_native_warning_crosses_bridge_owner_history_and_reopen"
         },
         "uses_exact_native_artifact": true,
-        "passed": true,
-        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
-        "evidence_kind": "reused_identical_artifact_execution"
+        "current_artifact_executed": false,
+        "historical_execution": {
+          "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+          "passed": true,
+          "evidence_kind": "reused_identical_artifact_execution",
+          "qualification": "https://github.com/acg-box/decodex/blob/4c9b2c5fce988f038569a7a23092c8b97443b53f/automations/upstream/qualification.json"
+        }
       },
       {
         "test": "installed_native_sampling_preserves_parent_and_blocks_tools_without_replay",
@@ -517,9 +647,13 @@
           "test": "account_launch::agent_process::native_tests::sample::installed_native_sampling_preserves_parent_and_blocks_tools_without_replay"
         },
         "uses_exact_native_artifact": true,
-        "passed": true,
-        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
-        "evidence_kind": "reused_identical_artifact_execution"
+        "current_artifact_executed": false,
+        "historical_execution": {
+          "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+          "passed": true,
+          "evidence_kind": "reused_identical_artifact_execution",
+          "qualification": "https://github.com/acg-box/decodex/blob/4c9b2c5fce988f038569a7a23092c8b97443b53f/automations/upstream/qualification.json"
+        }
       },
       {
         "test": "installed_skill_picker_inventory_and_exact_input_use_native_skill_owner",
@@ -530,9 +664,13 @@
           "test": "account_launch::agent_process::native_tests::skills::installed_skill_picker_inventory_and_exact_input_use_native_skill_owner"
         },
         "uses_exact_native_artifact": true,
-        "passed": true,
-        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
-        "evidence_kind": "reused_identical_artifact_execution"
+        "current_artifact_executed": false,
+        "historical_execution": {
+          "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+          "passed": true,
+          "evidence_kind": "reused_identical_artifact_execution",
+          "qualification": "https://github.com/acg-box/decodex/blob/4c9b2c5fce988f038569a7a23092c8b97443b53f/automations/upstream/qualification.json"
+        }
       },
       {
         "test": "installed_temporary_requests_isolate_environment_and_preserve_custom_permissions",
@@ -543,9 +681,13 @@
           "test": "account_launch::agent_process::native_tests::structured::installed_temporary_requests_isolate_environment_and_preserve_custom_permissions"
         },
         "uses_exact_native_artifact": true,
-        "passed": true,
-        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
-        "evidence_kind": "reused_identical_artifact_execution"
+        "current_artifact_executed": false,
+        "historical_execution": {
+          "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+          "passed": true,
+          "evidence_kind": "reused_identical_artifact_execution",
+          "qualification": "https://github.com/acg-box/decodex/blob/4c9b2c5fce988f038569a7a23092c8b97443b53f/automations/upstream/qualification.json"
+        }
       },
       {
         "test": "installed_native_usage_restores_agent_baseline_after_cold_resume",
@@ -556,9 +698,13 @@
           "test": "account_launch::agent_process::native_tests::usage::installed_native_usage_restores_agent_baseline_after_cold_resume"
         },
         "uses_exact_native_artifact": true,
-        "passed": true,
-        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
-        "evidence_kind": "reused_identical_artifact_execution"
+        "current_artifact_executed": false,
+        "historical_execution": {
+          "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+          "passed": true,
+          "evidence_kind": "reused_identical_artifact_execution",
+          "qualification": "https://github.com/acg-box/decodex/blob/4c9b2c5fce988f038569a7a23092c8b97443b53f/automations/upstream/qualification.json"
+        }
       },
       {
         "test": "installed_native_context_preferences_share_config_and_preserve_thresholds",
@@ -569,9 +715,13 @@
           "test": "account_launch::process::context_preferences_native_tests::installed_native_context_preferences_share_config_and_preserve_thresholds"
         },
         "uses_exact_native_artifact": true,
-        "passed": true,
-        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
-        "evidence_kind": "reused_identical_artifact_execution"
+        "current_artifact_executed": false,
+        "historical_execution": {
+          "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+          "passed": true,
+          "evidence_kind": "reused_identical_artifact_execution",
+          "qualification": "https://github.com/acg-box/decodex/blob/4c9b2c5fce988f038569a7a23092c8b97443b53f/automations/upstream/qualification.json"
+        }
       },
       {
         "test": "installed_native_qualified_defaults_preserve_multi_agent_selection",
@@ -582,9 +732,13 @@
           "test": "account_launch::process::native_control_tests::installed_native_qualified_defaults_preserve_multi_agent_selection"
         },
         "uses_exact_native_artifact": true,
-        "passed": true,
-        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
-        "evidence_kind": "reused_identical_artifact_execution"
+        "current_artifact_executed": false,
+        "historical_execution": {
+          "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+          "passed": true,
+          "evidence_kind": "reused_identical_artifact_execution",
+          "qualification": "https://github.com/acg-box/decodex/blob/4c9b2c5fce988f038569a7a23092c8b97443b53f/automations/upstream/qualification.json"
+        }
       },
       {
         "test": "native_child_completion_wakes_idle_root_once",
@@ -595,9 +749,13 @@
           "test": "agent::tests::native_agent_wake::native_child_completion_wakes_idle_root_once"
         },
         "uses_exact_native_artifact": true,
-        "passed": true,
-        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
-        "evidence_kind": "reused_identical_artifact_execution"
+        "current_artifact_executed": false,
+        "historical_execution": {
+          "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+          "passed": true,
+          "evidence_kind": "reused_identical_artifact_execution",
+          "qualification": "https://github.com/acg-box/decodex/blob/4c9b2c5fce988f038569a7a23092c8b97443b53f/automations/upstream/qualification.json"
+        }
       },
       {
         "test": "native_nested_code_mode_work_attribution_survives_store_reopen",
@@ -608,9 +766,13 @@
           "test": "agent::tests::native_agent_wake::native_nested_code_mode_work_attribution_survives_store_reopen"
         },
         "uses_exact_native_artifact": true,
-        "passed": true,
-        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
-        "evidence_kind": "reused_identical_artifact_execution"
+        "current_artifact_executed": false,
+        "historical_execution": {
+          "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+          "passed": true,
+          "evidence_kind": "reused_identical_artifact_execution",
+          "qualification": "https://github.com/acg-box/decodex/blob/4c9b2c5fce988f038569a7a23092c8b97443b53f/automations/upstream/qualification.json"
+        }
       },
       {
         "test": "native_v1_nested_code_mode_keeps_exact_work_attribution",
@@ -621,9 +783,13 @@
           "test": "agent::tests::native_agent_wake::native_v1_nested_code_mode_keeps_exact_work_attribution"
         },
         "uses_exact_native_artifact": true,
-        "passed": true,
-        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
-        "evidence_kind": "reused_identical_artifact_execution"
+        "current_artifact_executed": false,
+        "historical_execution": {
+          "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+          "passed": true,
+          "evidence_kind": "reused_identical_artifact_execution",
+          "qualification": "https://github.com/acg-box/decodex/blob/4c9b2c5fce988f038569a7a23092c8b97443b53f/automations/upstream/qualification.json"
+        }
       },
       {
         "test": "native_v1_work_attribution_uses_the_native_executor",
@@ -634,9 +800,13 @@
           "test": "agent::tests::native_agent_wake::native_v1_work_attribution_uses_the_native_executor"
         },
         "uses_exact_native_artifact": true,
-        "passed": true,
-        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
-        "evidence_kind": "reused_identical_artifact_execution"
+        "current_artifact_executed": false,
+        "historical_execution": {
+          "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+          "passed": true,
+          "evidence_kind": "reused_identical_artifact_execution",
+          "qualification": "https://github.com/acg-box/decodex/blob/4c9b2c5fce988f038569a7a23092c8b97443b53f/automations/upstream/qualification.json"
+        }
       },
       {
         "test": "native_agent_resume_preserves_selected_profile_policy_and_cwd",
@@ -647,9 +817,13 @@
           "test": "agent::tests::native_permissions::native_agent_resume_preserves_selected_profile_policy_and_cwd"
         },
         "uses_exact_native_artifact": true,
-        "passed": true,
-        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
-        "evidence_kind": "reused_identical_artifact_execution"
+        "current_artifact_executed": false,
+        "historical_execution": {
+          "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+          "passed": true,
+          "evidence_kind": "reused_identical_artifact_execution",
+          "qualification": "https://github.com/acg-box/decodex/blob/4c9b2c5fce988f038569a7a23092c8b97443b53f/automations/upstream/qualification.json"
+        }
       },
       {
         "test": "native_child_mcp_input_preserves_policy_and_exact_request",
@@ -660,9 +834,13 @@
           "test": "agent::tests::native_subagent_live::mcp::native_child_mcp_input_preserves_policy_and_exact_request"
         },
         "uses_exact_native_artifact": true,
-        "passed": true,
-        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
-        "evidence_kind": "reused_identical_artifact_execution"
+        "current_artifact_executed": false,
+        "historical_execution": {
+          "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+          "passed": true,
+          "evidence_kind": "reused_identical_artifact_execution",
+          "qualification": "https://github.com/acg-box/decodex/blob/4c9b2c5fce988f038569a7a23092c8b97443b53f/automations/upstream/qualification.json"
+        }
       },
       {
         "test": "native_child_approval_round_trip",
@@ -673,9 +851,13 @@
           "test": "agent::tests::native_subagent_live::native_child_approval_round_trip"
         },
         "uses_exact_native_artifact": true,
-        "passed": true,
-        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
-        "evidence_kind": "reused_identical_artifact_execution"
+        "current_artifact_executed": false,
+        "historical_execution": {
+          "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+          "passed": true,
+          "evidence_kind": "reused_identical_artifact_execution",
+          "qualification": "https://github.com/acg-box/decodex/blob/4c9b2c5fce988f038569a7a23092c8b97443b53f/automations/upstream/qualification.json"
+        }
       },
       {
         "test": "native_search_filters_foreign_work_and_preserves_cursor_and_exact_sources",
@@ -686,8 +868,12 @@
           "test": "agent::tests::task_history::native_search_filters_foreign_work_and_preserves_cursor_and_exact_sources"
         },
         "uses_exact_native_artifact": false,
-        "passed": true,
-        "evidence_kind": "historical_local_execution_not_rerun"
+        "current_artifact_executed": false,
+        "historical_execution": {
+          "passed": true,
+          "evidence_kind": "historical_local_execution_not_rerun",
+          "qualification": "https://github.com/acg-box/decodex/blob/4c9b2c5fce988f038569a7a23092c8b97443b53f/automations/upstream/qualification.json"
+        }
       },
       {
         "test": "native_search_keeps_empty_filtered_pages_and_rejects_repeated_cursors",
@@ -698,8 +884,12 @@
           "test": "agent::tests::task_history::native_search_keeps_empty_filtered_pages_and_rejects_repeated_cursors"
         },
         "uses_exact_native_artifact": false,
-        "passed": true,
-        "evidence_kind": "historical_local_execution_not_rerun"
+        "current_artifact_executed": false,
+        "historical_execution": {
+          "passed": true,
+          "evidence_kind": "historical_local_execution_not_rerun",
+          "qualification": "https://github.com/acg-box/decodex/blob/4c9b2c5fce988f038569a7a23092c8b97443b53f/automations/upstream/qualification.json"
+        }
       },
       {
         "test": "installed_provider_recovery_fork_preserves_context_and_restarts_on_current_provider",
@@ -710,13 +900,44 @@
           "test": "account_launch::agent_process::native_tests::cold_settings::recap_socket::fork::installed_provider_recovery_fork_preserves_context_and_restarts_on_current_provider"
         },
         "uses_exact_native_artifact": true,
-        "passed": true,
-        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
         "qualification": "automations/upstream/qualification.json#candidate_qualification/provider_recovery",
+        "current_artifact_executed": true,
+        "source_commit": "67f0994b532b8740f14b5b738af7b7b2a915b1d6",
+        "passed": true,
+        "evidence_kind": "fresh_execution"
+      },
+      {
+        "test": "installed_unreported_reasoning_triggers_compaction_before_continuation",
+        "package": "decodex-runtime",
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_unreported_usage_tests.rs",
+        "executed_identity": {
+          "binary_id": "decodex-runtime",
+          "test": "account_launch::agent_process::native_tests::compaction::unreported_usage::installed_unreported_reasoning_triggers_compaction_before_continuation"
+        },
+        "uses_exact_native_artifact": true,
+        "contract": "Account for retained reasoning after incomplete or usage-less responses and compact before continuation.",
+        "current_artifact_executed": true,
+        "source_commit": "67f0994b532b8740f14b5b738af7b7b2a915b1d6",
+        "passed": true,
+        "evidence_kind": "fresh_execution"
+      },
+      {
+        "test": "installed_cold_runtime_settings_read_and_submit_without_replaying",
+        "package": "decodex-runtime",
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_cold_settings_tests.rs",
+        "executed_identity": {
+          "binary_id": "decodex-runtime",
+          "test": "account_launch::agent_process::native_tests::cold_settings::installed_cold_runtime_settings_read_and_submit_without_replaying"
+        },
+        "uses_exact_native_artifact": true,
+        "contract": "Read saved model settings and continue after restart without replay, with separate temporary account state and an authorized working directory.",
+        "current_artifact_executed": true,
+        "source_commit": "67f0994b532b8740f14b5b738af7b7b2a915b1d6",
+        "passed": true,
         "evidence_kind": "fresh_execution"
       }
     ],
-    "exact_artifact_test_count": 51,
+    "exact_artifact_test_count": 53,
     "local_history_test_count": 2,
     "unmatched_selectors": [],
     "command": [
@@ -802,20 +1023,14 @@
       "reason": "Current source retires automatic native context replacement; retained legacy conversations continue original context. Source and current test body verified. Historical migration test remains a historical delivery claim only.",
       "counted_as_executed": false
     },
-    "limits": "51 current native contract selectors and two local history selectors form the reconstruction router. This migration freshly executes two native provider contracts and one component contract. Reuse 49 passed native contracts from the identical candidate artifact; do not count the two local history selectors as rerun.",
-    "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+    "limits": "This registry retains reconstruction selectors. Nine named native contracts executed against the current artifact. All other test results remain bound to their historical artifact and source; they were not rerun or counted as current passes.",
+    "source_commit": "67f0994b532b8740f14b5b738af7b7b2a915b1d6",
     "historical_execution": {
-      "candidate_revision": "fc3933c1fd1d831a10d5fd630ea22070874bc72b",
-      "candidate_executed": 50,
-      "candidate_passed": 49,
-      "candidate_failed": 1,
-      "candidate_evidence": "https://github.com/acg-box/decodex/blob/c75adc57a5c6ac33423cc3aef7d701613eb4e488/automations/upstream/qualification.json#candidate_qualification",
-      "provider_followup_revision": "20be50137551a46a4ffde709ccfafbfe56ccc6b9",
-      "provider_candidate_passed": 2,
-      "selected_baseline_passed": 1,
-      "provider_evidence": "https://github.com/acg-box/decodex/blob/c75adc57a5c6ac33423cc3aef7d701613eb4e488/automations/upstream/qualification.json#candidate_qualification/provider_recovery"
+      "qualification": "https://github.com/acg-box/decodex/blob/4c9b2c5fce988f038569a7a23092c8b97443b53f/automations/upstream/qualification.json",
+      "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "limit": "Prior 49 identical-artifact passes and the two provider follow-ups retain their original scope; none is counted as a new 67f0994b execution."
     },
-    "selected_count": 53,
+    "selected_count": 9,
     "retired_selectors": [
       {
         "selector": "account_launch::process::startup_config::tests::installed_native_startup_configuration_preserves_auth_config_and_locked_history",
@@ -823,14 +1038,15 @@
         "reason": "User excluded Codex startup diagnostics; current source and the stable contract record removal. Do not restore it.",
         "historical_execution_preserved": true
       }
-    ]
+    ],
+    "current_executed_count": 9
   },
   "qualification": {
     "status": "qualified_fixed_development_artifact",
     "evidence": "automations/upstream/qualification.json",
-    "source_archive_sha256": "a97ffa43d05f3451dd1b55d50eeac43f283222e9f0a9751a3d5345daed0bbd40",
-    "schema_sha256": "8eb9c847ea19633cbdd4b943ec53515037723020006a8952d3c7bafb1fde903a",
-    "evidence_sha256": "28076d4133414ca914885979826c6f67929f1ed882fc4953393a2ec2f2865424",
+    "source_archive_sha256": "ae1def152189e98c782126c849bf5cc068e66138501d0832dfa15a2ae0898e02",
+    "schema_sha256": "41f4e1160b888dfedeab92306b68cec13b961f4df8f1883283a9e3b150baf59e",
+    "evidence_sha256": "62ef8102ea1a433678ab1c9819d83271f285de18d184bd43e36a68007d056018",
     "limits": [
       "Source review, tests, artifact qualification, merge and installed acceptance are separate.",
       "Only macOS arm64 private stdio and named native consumers/helpers are qualified. Linux, Windows, remote production execution, live accounts/providers, physical audio and installation/release remain unmeasured.",
@@ -996,43 +1212,29 @@
   "component_cache_repair": {
     "source": "crates/decodex-components/tests/development.rs",
     "test": "fixed_commit_import_offline_repair_and_wrong_commit_rejection",
-    "command": [
-      "cargo",
-      "+stable",
-      "nextest",
-      "run",
-      "--locked",
-      "-p",
-      "decodex-components",
-      "--test",
-      "development",
-      "--run-ignored",
-      "only",
-      "-E",
-      "test(=fixed_commit_import_offline_repair_and_wrong_commit_rejection)",
-      "--test-threads",
-      "1",
-      "--retries",
-      "0"
-    ],
     "executed": 1,
     "passed": 1,
     "failed": 0,
-    "unmatched": [],
-    "elapsed_seconds": 130.33,
-    "contract": "Import the fixed artifact, repair corrupt CLI/schema/three helpers offline, reject missing/wrong sources and preserve unrelated cached versions."
+    "unmatched_selectors": [],
+    "contract": "Import, corrupt and repair CLI, schema and all three helpers offline; reject a wrong source commit and preserve the prior cache."
   },
   "source_review_summary": {
-    "range_start_exclusive": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-    "range_end_inclusive": "5be57bedd04d717cdde3a768ea7b71e97733736b",
-    "fixed_target_observed_at": "2026-10-30T17:33:53.818815+00:00",
-    "screened": 158,
-    "completed_review": 158,
+    "range_start_exclusive": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+    "range_end_inclusive": "67f0994b532b8740f14b5b738af7b7b2a915b1d6",
+    "fixed_target_observed_at": "2026-10-31T15:35:10.524901+00:00",
+    "screened": 21,
+    "completed_review": 21,
     "remaining": 0,
-    "test_or_fixture_bodies_read": 381,
+    "test_or_fixture_bodies_read": 63,
     "upstream_tests_executed": 0,
     "source_review_evidence": "automations/upstream/current-review.json",
-    "limit": "Source review complete; candidate runtime qualification remains partial. Historical certified ranges and their recorded limits remain in native state."
+    "previous_review": {
+      "start_exclusive": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
+      "end_inclusive": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "count": 158,
+      "evidence": "https://github.com/acg-box/decodex/blob/4c9b2c5fce988f038569a7a23092c8b97443b53f/automations/upstream/current-review.json"
+    },
+    "limit": "Completed source review and named exact-artifact checks; no upstream suite or installed-app acceptance."
   },
   "documentation_lifecycle": {
     "method": "OpenWiki supported page-job lifecycle",
@@ -1040,128 +1242,31 @@
       "openwiki/architecture/runtime-architecture.md",
       "openwiki/operations/codex-upstream-autopilot.md",
       "openwiki/testing/upstream-acceptance-boundaries.md",
-      "openwiki/workflows/conversations-and-recovery.md",
-      "openwiki/workflows/models-and-settings.md",
-      "openwiki/decisions/upstream-product-scope.md"
+      "openwiki/workflows/models-and-settings.md"
     ],
     "state_source": "OpenWiki-managed metadata and the public delivery reference identify lifecycle and delivery status.",
     "limits": "Documentation reconciliation does not requalify the artifact or establish installation/release."
   },
   "current_delivery": {
-    "status": "qualified_development_lock_commit",
-    "scope": "Select the qualified 5be57bedd0 artifact after provider recovery and current-main component verification. HumanCommand and shared MCP remain deferred.",
-    "state_source": "Native checkpoint records exact-head PR checks and merge readback; installed-app acceptance is separate.",
-    "code_commit": "ef68f8360488ae9f4e58e36cb9b382631715d720",
-    "reference": "https://github.com/acg-box/decodex/commit/ef68f8360488ae9f4e58e36cb9b382631715d720"
+    "status": "qualified_development_code_commit",
+    "code_commit": "76d0172bfd9286c1f06889dad355a329a41356bc",
+    "reference": "https://github.com/acg-box/decodex/commit/76d0172bfd9286c1f06889dad355a329a41356bc",
+    "state_source": "Public delivery and native checkpoint retain PR, exact-head CI and merge confirmation separately from qualification."
   },
   "current_runtime_requalification": {
-    "selected_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
-    "candidate_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
-    "candidate_status": "qualified_selected",
-    "current_native_selections": 51,
-    "current_unmatched_selectors": [],
-    "historical_native_cohort": {
-      "executed": 50,
-      "passed": 49,
-      "failed": 1,
-      "revision": "fc3933c1fd1d831a10d5fd630ea22070874bc72b"
-    },
-    "provider_followup": {
-      "candidate_executed": 2,
-      "candidate_passed": 2,
-      "selected_baseline_executed": 1,
-      "selected_baseline_passed": 1,
-      "local_unique_passed": 55
-    },
-    "evidence": "automations/upstream/qualification.json#candidate_qualification",
-    "resolved_issue": "https://github.com/acg-box/decodex/issues/2575",
-    "retained_manual_deliveries": "Existing approved capabilities remain retained. Deferred product issues are separate from daily maintenance.",
+    "selected_source": "67f0994b532b8740f14b5b738af7b7b2a915b1d6",
+    "status": "qualified_fixed_development_artifact",
+    "evidence": "automations/upstream/qualification.json",
+    "fresh_native_executed": 9,
+    "fresh_component_executed": 1,
+    "passed": 10,
+    "failed": 0,
+    "unmatched_selectors": [],
+    "previous_qualification": "https://github.com/acg-box/decodex/blob/4c9b2c5fce988f038569a7a23092c8b97443b53f/automations/upstream/qualification.json",
     "deferred_capability": {
-      "id": "managed-human-command-approval-compatibility",
       "issue": "https://github.com/acg-box/decodex/issues/2585",
       "status": "user_deferred",
-      "limit": "Unsupported and unadvertised; not a delivered feature or a waiver of retained runtime qualification."
-    },
-    "current_main_recheck": {
-      "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
-      "previous_selected_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "decodex_source_revision": "c75adc57a5c6ac33423cc3aef7d701613eb4e488",
-      "components_reused": true,
-      "components_match_original_candidate": true,
-      "fresh_prepare_exit": 0,
-      "fresh_native_tests": {
-        "executed": 2,
-        "passed": 2,
-        "failed": 0,
-        "unmatched": [],
-        "command": [
-          "cargo",
-          "+stable",
-          "nextest",
-          "run",
-          "--locked",
-          "-p",
-          "decodex-runtime",
-          "--lib",
-          "--all-features",
-          "--run-ignored",
-          "only",
-          "-E",
-          "test(=account_launch::agent_process::native_tests::cold_settings::recap_socket::fork::installed_fork_preserves_source_provider_after_default_changes) | test(=account_launch::agent_process::native_tests::cold_settings::recap_socket::fork::installed_provider_recovery_fork_preserves_context_and_restarts_on_current_provider)",
-          "--test-threads",
-          "1",
-          "--retries",
-          "0",
-          "--no-fail-fast"
-        ]
-      },
-      "fresh_component_tests": {
-        "source": "crates/decodex-components/tests/development.rs",
-        "test": "fixed_commit_import_offline_repair_and_wrong_commit_rejection",
-        "command": [
-          "cargo",
-          "+stable",
-          "nextest",
-          "run",
-          "--locked",
-          "-p",
-          "decodex-components",
-          "--test",
-          "development",
-          "--run-ignored",
-          "only",
-          "-E",
-          "test(=fixed_commit_import_offline_repair_and_wrong_commit_rejection)",
-          "--test-threads",
-          "1",
-          "--retries",
-          "0"
-        ],
-        "executed": 1,
-        "passed": 1,
-        "failed": 0,
-        "unmatched": [],
-        "elapsed_seconds": 130.33,
-        "contract": "Import the fixed artifact, repair corrupt CLI/schema/three helpers offline, reject missing/wrong sources and preserve unrelated cached versions."
-      },
-      "reused_native_tests": {
-        "executed_in_original_receipt": 50,
-        "passed": 49,
-        "superseded_provider_failure": 1,
-        "qualification": "https://github.com/acg-box/decodex/blob/c75adc57a5c6ac33423cc3aef7d701613eb4e488/automations/upstream/qualification.json#candidate_qualification"
-      },
-      "source_reconciliation": {
-        "provider_followup_revision": "20be50137551a46a4ffde709ccfafbfe56ccc6b9",
-        "checked_files": 19,
-        "identical_files": 13,
-        "changed_files": 6,
-        "changes": "Fork wording, input presentation and optional fixture metadata only. Provider admission and fork-client implementation are unchanged."
-      },
-      "limits": [
-        "Fresh executions total three tests, not a new full-suite run.",
-        "No upstream suite, live provider/account, physical audio, remote production execution, performance, installed desktop or release acceptance.",
-        "HumanCommand remains unsupported and unadvertised under issue 2585; shared MCP remains separately deferred under issue 2522."
-      ]
+      "limit": "Unsupported and unadvertised; not required daily implementation debt."
     }
   },
   "retained_contracts": {
@@ -3077,16 +3182,17 @@
   },
   "upstream_catchup": {
     "source_review": "automations/upstream/current-review.json",
-    "candidate_qualification": "automations/upstream/qualification.json#candidate_qualification",
+    "candidate_qualification": "https://github.com/acg-box/decodex/blob/4c9b2c5fce988f038569a7a23092c8b97443b53f/automations/upstream/qualification.json",
     "selected_runtime_qualification": "automations/upstream/qualification.json",
     "implementation_commits": [
       "https://github.com/acg-box/decodex/commit/768690c268e679df140b0c588f02f3d91c633eec",
       "https://github.com/acg-box/decodex/commit/283741d89b57346bd25ac91283ef682da0a2d327",
-      "https://github.com/acg-box/decodex/commit/ef68f8360488ae9f4e58e36cb9b382631715d720"
+      "https://github.com/acg-box/decodex/commit/ef68f8360488ae9f4e58e36cb9b382631715d720",
+      "https://github.com/acg-box/decodex/commit/76d0172bfd9286c1f06889dad355a329a41356bc"
     ],
     "maintenance_workflow_delivery": "https://github.com/acg-box/decodex/pull/2573",
     "native_schedule": "PAUSED; daily cadence preserved; explicit user authorization is required to resume.",
-    "scope": "Provider recovery and the qualified 5be57bedd0 development baseline are in the referenced code commit. Source review continues separately toward the fixed target. HumanCommand remains user-deferred; Automation remains paused.",
+    "scope": "The fixed 21-commit range is fully source-reviewed; the new development artifact and affected native regressions are qualified. Provider recovery remains retained. HumanCommand and shared MCP remain deferred. Automation stays paused.",
     "provider_resolution": "https://github.com/acg-box/decodex/issues/2575",
     "deferred_capability_issue": "https://github.com/acg-box/decodex/issues/2585"
   },

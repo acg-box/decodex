@@ -47,6 +47,7 @@ pub(super) fn application(
 }
 
 pub(super) async fn qualify(runtime: &ConversationRuntime, store: &SqliteStore, home: &Path) {
+	let directory = super::recap_socket::fixture_working_directory();
 	let conversation_id =
 		ConversationId::new("61000000-0000-4000-8000-000000000001").expect("conversation");
 	let instructions = home.join(".codex/AGENTS.md");
@@ -61,7 +62,7 @@ pub(super) async fn qualify(runtime: &ConversationRuntime, store: &SqliteStore, 
 			causation_id: None,
 			conversation_id: conversation_id.clone(),
 			message: "Create runtime fixture".into(),
-			working_directory: home.to_str().expect("home").into(),
+			working_directory: directory.to_str().expect("owned checkout").into(),
 			execution: crate::conversation::ConversationExecutionSettings {
 				model: "cold-native-model".into(),
 				reasoning_effort: Some("provider-effort".into()),
@@ -105,6 +106,7 @@ pub(super) async fn submit_inherited(
 	key: &str,
 	turn: &str,
 ) -> usize {
+	let directory = super::recap_socket::fixture_working_directory();
 	let id = ConversationId::new("61000000-0000-4000-8000-000000000001").expect("conversation");
 	let source = store
 		.read_ordinary_runtime_session_for_resume(&id)
@@ -125,8 +127,10 @@ pub(super) async fn submit_inherited(
 			conversation_id: EntityId::new(id.as_str()).expect("id"),
 			turn_id: EntityId::new(turn).expect("turn"),
 			message: HistoryText::new("Keep native settings").expect("message"),
-			working_directory: ConversationWorkingDirectory::new(home.to_str().expect("home"))
-				.expect("directory"),
+			working_directory: ConversationWorkingDirectory::new(
+				directory.to_str().expect("owned checkout"),
+			)
+			.expect("directory"),
 			execution: decodex_protocol::ConversationExecutionSettings {
 				model: ConversationModel::new("deliberately-stale-model").expect("model"),
 				reasoning_effort: Some(
@@ -252,7 +256,12 @@ async fn complete(runtime: &ConversationRuntime, store: &SqliteStore, home: &Pat
 
 				assert_eq!(observed.model.as_str(), "cold-native-model");
 				assert_eq!(observed.model_provider, "fixture");
-				assert_eq!(observed.cwd, home.to_str().expect("fixture directory"));
+				assert_eq!(
+					observed.cwd,
+					super::recap_socket::fixture_working_directory()
+						.to_str()
+						.expect("owned checkout")
+				);
 
 				return notices;
 			},
