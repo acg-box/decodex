@@ -44,6 +44,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_mermaid.rs
   - id: openwiki-source-cdf91143ee7350a723ed596e
     resource: repo://apps/decodex-gpui/src/agent_mermaid/tests.rs
+  - id: openwiki-source-09a2c045309673f306153f39
+    resource: repo://apps/decodex-gpui/src/agent_model_settings_wire_tests.rs
   - id: openwiki-source-ae2ce5cda718ede63f50be9b
     resource: repo://apps/decodex-gpui/src/agent_native_composer.rs
   - id: openwiki-source-0eea3c2bab20e4a9d8e3d80a
@@ -136,10 +138,10 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent/timeline/metrics.rs
   - id: openwiki-source-6197a876b2effbe992b1e2ec
     resource: repo://database/src/agent.rs
-generated: { by: "codex", at: "2026-10-31T14:39:55.131Z" }
+generated: { by: "codex", at: "2026-10-31T15:12:19.080Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-31T14:39:55.131Z
+    at: 2026-10-31T15:12:19.080Z
 ---
 
 
@@ -217,9 +219,9 @@ Submitted input has message delivery state separate from the current editor. A p
 
 An unsent input uses the normal right-aligned user bubble at the end of the transcript. Its full text wraps and scrolls with the conversation; it is not pinned above the input bar. One compact row below it aligns **Not sent** and, when available, **Resend**. Hover over the status to inspect the reason. There is no separate error panel, disclosure header, copy action or dismiss action. Archived conversations do not show retry accessories.
 
-Saved edit recovery and history refresh/source controls live in Details. Failed input remains an ordinary message in the transcript. Active editing and unresolved-operation notices also use the chat flow. There is no permanent list of saved drafts. See [conversation recovery](../workflows/conversations-and-recovery.md) for edit and Fork ownership.
+Saved edit recovery and history refresh/source controls live in Details. Failed input remains an ordinary message in the transcript. Active editing and unresolved-operation notices use the chat flow. A Fork review for a disabled conversation stays inside that input bar. There is no permanent list of saved drafts. See [conversation recovery](../workflows/conversations-and-recovery.md) for edit and Fork ownership.
 
-After a native provider mismatch, a read-only notice identifies the original and current providers. **Fork** opens the existing branch review. Its confirmation identifies the destination provider and explains that a later send shares the inherited context. Creation sends no input, and cancellation retains the original draft. Ordinary branches and Side chats keep their source provider.
+After a native provider mismatch, a read-only notice inside the input bar identifies the original and current providers. **Fork** opens the existing branch review in the same place and replaces that notice. Its confirmation identifies the destination provider and explains that a later send shares the inherited context. Creation sends no input, and cancellation retains the original draft. Ordinary branches and Side chats keep their source provider.
 
 ## Prose links and formulas
 

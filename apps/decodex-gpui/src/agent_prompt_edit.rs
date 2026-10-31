@@ -6,6 +6,7 @@
 #[path = "agent_prompt_remove.rs"] mod removal;
 #[path = "agent_prompt_send.rs"] mod sending;
 
+use crate::{shell::workspace_symbols, ui_feedback};
 use gpui::{AnyElement, AppContext as _, Div, Subscription};
 use tokio::sync::oneshot;
 
@@ -595,7 +596,10 @@ impl AgentSurface {
 						s.prompt_edit.feedback =
 							match s.apply_prompt_review(previous.as_ref(), draft, cx) {
 								Ok(()) if s.prompt_edit.branch_choice == Some(PromptForkBoundary::AttachedAfterTurn) => "Open a side chat from this completed turn. Its replies stay separate; the original conversation and draft stay saved.".into(),
-								Ok(()) if s.prompt_edit.branch_choice.is_some() => "Fork after this turn to continue in a new conversation. The original conversation and draft stay saved. Nothing is sent.".into(),
+								Ok(()) if s.prompt_edit.branch_choice.is_some() => s.prompt_edit.branch_provider.as_ref().map_or_else(
+                                    || "Continue from this turn in a new chat. The original and draft stay saved.".into(),
+                                    |(original, current)| format!("Fork with “{}”; the original stays on “{}”. Context is sent only with your next message.", current.as_str(), original.as_str())
+                                ),
                                 Ok(()) => format!("Removes {turns} turns, including this one. File changes remain. Confirmation required."),
 								Err(message) => message.into(),
 							};
@@ -775,6 +779,12 @@ impl AgentSurface {
 		saved.into_any_element()
 	}
 
+	pub(super) fn blocked_fork_review_visible(&self) -> bool {
+		self.prompt_edit.branch_choice.is_some()
+			&& self.prompt_editor_source_current()
+			&& self.composer_unavailable_reason().is_some()
+	}
+
 	pub(super) fn prompt_editor_visible(&self, work: &str) -> bool {
 		(self.prompt_edit.work == work && self.prompt_editor_source_current())
 			|| self.saved_prompt_editors(work).iter().any(|draft| {
@@ -793,11 +803,32 @@ impl AgentSurface {
 					"Unfinished edit · Review".into(),
 					|s, cx| {
 						s.workspace.details_visible = true;
-
 						cx.notify();
 					},
 					cx,
 				)
+				.into_any_element();
+		}
+
+		if self.prompt_edit.branch_choice.is_some() {
+			let mut actions = gpui::div().min_w_0().flex().flex_wrap().gap_2();
+			if let Some(draft) = &self.prompt_edit.draft {
+				actions = self.branch_confirmation_action(actions, draft, cx);
+			}
+			return gpui::div()
+				.w_full()
+				.min_w_0()
+				.flex()
+				.flex_col()
+				.gap_2()
+				.child(ui_feedback::status_row(
+					"prompt-fork-review",
+					ui_feedback::Tone::Neutral,
+					"",
+					&self.prompt_edit.feedback,
+					workspace_symbols::icon_sized(workspace_symbols::Symbol::Fork, 14.),
+				))
+				.child(actions.child(self.prompt_close_action(cx)))
 				.into_any_element();
 		}
 
@@ -808,47 +839,43 @@ impl AgentSurface {
 			.flex_col()
 			.gap_2()
 			.child(self.prompt_edit.feedback.clone());
-
-		if self.prompt_edit.branch_choice.is_none() {
-			for (_, editor) in &self.prompt_edit.editors {
-				panel = panel.child(editor.clone());
-			}
+		for (_, editor) in &self.prompt_edit.editors {
+			panel = panel.child(editor.clone());
 		}
-
 		if let Some(draft) = &self.prompt_edit.draft {
 			panel = self.prompt_edit_actions(panel, draft, cx);
 		}
-
-		panel = panel.child(self.prompt_removal_panel(cx));
-
 		panel
-			.child(
-				self.workspace_action(
-					"prompt-review-close".into(),
-					if self.prompt_edit.draft.as_ref().is_some_and(|draft| {
-						draft.receipt_id.is_some()
-							|| draft.handback_pending
-							|| draft.confirmation_key.is_some()
-							|| draft.fork.is_some()
-							|| draft.pending_send.is_some()
-					}) {
-						"Close"
-					} else if self.prompt_edit.branch_choice.is_some() {
-						"Cancel"
-					} else {
-						"Cancel edit"
-					}
-					.into(),
-					|s, cx| s.close_prompt_editor(cx),
-					cx,
-				),
-			)
+			.child(self.prompt_removal_panel(cx))
+			.child(gpui::div().flex().child(self.prompt_close_action(cx)))
 			.into_any_element()
+	}
+
+	fn prompt_close_action(&self, cx: &mut Context<Self>) -> AnyElement {
+		let label = if self.prompt_edit.draft.as_ref().is_some_and(|draft| {
+			draft.receipt_id.is_some()
+				|| draft.handback_pending
+				|| draft.confirmation_key.is_some()
+				|| draft.fork.is_some()
+				|| draft.pending_send.is_some()
+		}) {
+			"Close"
+		} else if self.prompt_edit.branch_choice.is_some() {
+			"Cancel"
+		} else {
+			"Cancel edit"
+		};
+		self.workspace_button(
+			"prompt-review-close".into(),
+			label.into(),
+			|s, cx| s.close_prompt_editor(cx),
+			cx,
+		)
 	}
 
 	fn branch_confirmation_action(
 		&self,
-		mut panel: Div,
+		panel: Div,
 		draft: &DesktopPromptEditDraft,
 		cx: &mut Context<Self>,
 	) -> Div {
@@ -856,13 +883,8 @@ impl AgentSurface {
 		let expected = draft.clone();
 		let pending = draft.fork.is_some();
 		let side_chat = boundary == PromptForkBoundary::AttachedAfterTurn;
-		if let Some((original, current)) = &self.prompt_edit.branch_provider {
-			panel = panel.child(agent_surface::muted(&format!(
-				"This fork will use {}. Nothing is sent until you send a message, which shares the inherited context with that provider. The original conversation stays on {}.", current.as_str(), original.as_str()
-			)));
-		}
 		panel.child(
-			self.workspace_action(
+			self.workspace_button(
 				"locked-branch-confirm".into(),
 				if pending {
 					"Check status"
@@ -894,10 +916,6 @@ impl AgentSurface {
 		draft: &DesktopPromptEditDraft,
 		cx: &mut Context<Self>,
 	) -> Div {
-		if self.prompt_edit.branch_choice.is_some() {
-			return self.branch_confirmation_action(panel, draft, cx);
-		}
-
 		if draft.receipt_id.is_some() && !draft.handback_pending {
 			let expected = draft.clone();
 			let checking = draft.pending_send.is_some();
@@ -1028,7 +1046,7 @@ impl AgentSurface {
 			if expected.confirmation_key.is_none() {
 				panel = panel
 					.child(agent_surface::muted("Fork before this prompt to edit it in a new conversation."))
-					.child(self.workspace_action(
+					.child(self.workspace_button(
 						"prompt-confirm-branch".into(),
 						"Fork".into(),
 						move |s, cx| {
@@ -1041,7 +1059,7 @@ impl AgentSurface {
 						cx,
 					))
 					.child(agent_surface::muted("Fork after this turn to continue from its reply."))
-					.child(self.workspace_action(
+					.child(self.workspace_button(
 						"prompt-confirm-after".into(),
 						"Fork".into(),
 						move |s, cx| {
@@ -1054,7 +1072,7 @@ impl AgentSurface {
 						cx,
 					))
 					.child(agent_surface::muted("Open a side chat after this turn."))
-					.child(self.workspace_action(
+					.child(self.workspace_button(
 						"prompt-confirm-attached".into(),
 						"Side chat".into(),
 						move |s, cx| {
@@ -1071,7 +1089,7 @@ impl AgentSurface {
 
 			panel = panel
 				.child(
-					self.workspace_action(
+					self.workspace_button(
 						"prompt-confirm-apply".into(),
 						if expected.confirmation_key.is_some() {
 							"Continue saved choice"
@@ -1083,7 +1101,7 @@ impl AgentSurface {
 						cx,
 					),
 				)
-				.child(self.workspace_action(
+				.child(self.workspace_button(
 					"prompt-confirm-cancel".into(),
 					"Cancel".into(),
 					|s, cx| {

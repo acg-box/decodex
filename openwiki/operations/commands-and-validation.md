@@ -14,6 +14,8 @@ sources:
     resource: repo://apps/decodex-gpui/menubar/Tests/DecodexAppTests/NativeJournalFixture.swift
   - id: openwiki-source-ca95ba5564216bb4898c8392
     resource: repo://apps/decodex-gpui/src/native_voice_online_tests.rs
+  - id: openwiki-source-2f256c95c226c1326d164ad3
+    resource: repo://apps/decodex-gpui/src/ui_feedback.rs
   - id: openwiki-source-f7ecbc6c02d8c1b7873858d6
     resource: repo://automations/upstream/checkpoint.test.mts
   - id: openwiki-source-7dcbb082d2502f1ec4386c39
@@ -102,10 +104,10 @@ sources:
     resource: repo://scripts/vnext/run_native_regression.py
   - id: openwiki-source-d45a647d565211cf9b5cb067
     resource: repo://scripts/vstyle_audit.py
-generated: { by: "codex", at: "2026-10-31T14:39:55.131Z" }
+generated: { by: "codex", at: "2026-10-31T15:12:19.080Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-31T14:39:55.131Z
+    at: 2026-10-31T15:14:40.896Z
 ---
 
 
@@ -481,4 +483,4 @@ A `LEAK` marker can accompany a passed test when its captured output remains ope
 
 For documentation consolidation, validate page Claims, retained subject coverage, relative links and source paths. Do not rebuild the desktop or launch provider fixtures solely for a Markdown move. Keep historical test counts attached to their original revision. System-temporary fixtures must be cleaned after use; HOME is not a test-output directory.
 
-The current Fork wording and routing-symbol update passed 18 focused GPUI checks, 5 database/runtime checks and 3 Menu Bar checks. Strict Clippy passed for the three affected Rust packages; nightly formatting passed. These are local presentation and compatibility checks, not a fresh upstream or native-artifact qualification. Exact selectors and source/asset digests are in `candidate_qualification.provider_recovery.presentation` in the [qualification index](../../automations/upstream/qualification.json).
+The disabled-input and Fork layout repair passed 15 focused GPUI checks, strict GPUI Clippy and nightly formatting. The shared notice fixture fails before the repair because its detail extends beyond a 280-point viewport; the final fixture checks 280- and 420-point widths with inline and stacked text. The checks also cover notice and review placement inside the input bar, confirmation, cancellation, parent-managed drafts, archive, failed startup and queued reconnect behavior. Exact selectors, source hashes and limits are in `provider_recovery.layout_repair` in the [retained evidence index](../../automations/upstream/retained-evidence.json). These are local presentation checks, not a new native-artifact qualification.

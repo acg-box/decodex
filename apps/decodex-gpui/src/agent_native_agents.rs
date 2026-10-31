@@ -1385,11 +1385,14 @@ mod tests {
 			let notice = visual.debug_bounds("conversation-unavailable").unwrap();
 
 			assert!(
-				notice.bottom() <= composer.top(),
-				"the same notice band stays above the input bar"
+				notice.left() >= composer.left()
+					&& notice.right() <= composer.right()
+					&& notice.top() >= composer.top()
+					&& notice.bottom() <= composer.bottom(),
+				"the shared disabled notice stays inside the input bar"
 			);
 			assert!(visual.debug_bounds("composer-editor-area").is_none());
-			assert!(visual.debug_bounds("composer-blocked-placeholder").is_some());
+			assert!(visual.debug_bounds("composer-blocked-placeholder").is_none());
 			assert!(visual.debug_bounds("native-connection-error").is_none());
 			assert_eq!(visual.debug_bounds("native-connect-retry").is_some(), retry);
 			assert_eq!(visual.debug_bounds("native-open-parent").is_some(), parent);

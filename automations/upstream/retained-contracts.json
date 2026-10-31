@@ -325,15 +325,23 @@
         "Use Side chat for a persistent attached conversation and Side chats for its list. Keep distinct before-input, after-turn and attached native boundaries.",
         "Explain source preservation and no automatic send. Provider recovery also names the original and destination providers and explains that a later explicit send shares inherited context.",
         "Keep persisted native identifiers and Git branch terminology. New default titles use (Fork) or (Side chat); recognize the earlier (attached branch) title without renaming saved conversations.",
-        "Use arrow.triangle.branch for Fork. Use point.topleft.down.to.point.bottomright.curvepath for account routing in both GPUI and the native Menu Bar. Keep existing active-state color and disabled behavior."
+        "Use arrow.triangle.branch for Fork. Use point.topleft.down.to.point.bottomright.curvepath for account routing in both GPUI and the native Menu Bar. Keep existing active-state color and disabled behavior.",
+        "Use the existing settings_button base for recovery actions and wrap shared status copy. Keep unavailable-conversation reasons, recovery actions and source-bound Fork review inside the existing input bar. Show one explanation; Cancel restores the notice in the same place.",
+        "Place local field and operation failures beside their owning control and app-wide events in the notification center. Reuse the shared status row for startup failure; keep the native Menu Bar feedback compact."
       ],
       "source_symbols": {
         "apps/decodex-gpui/src/agent_workspace.rs": [
-          "AgentSurface::provider_connection_notice"
+          "AgentSurface::provider_connection_notice",
+          "AgentSurface::workspace_button",
+          "AgentSurface::connection_notice",
+          "AgentSurface::conversation_activity",
+          "connection_recovery_notice"
         ],
         "apps/decodex-gpui/src/agent_prompt_edit.rs": [
           "AgentSurface::branch_confirmation_action",
-          "AgentSurface::prompt_confirmation_actions"
+          "AgentSurface::prompt_confirmation_actions",
+          "AgentSurface::blocked_fork_review_visible",
+          "AgentSurface::prompt_edit_panel"
         ],
         "apps/decodex-gpui/src/agent_work_browser.rs": [
           "AgentSurface::list_branch_button"
@@ -353,6 +361,13 @@
         ],
         "scripts/macos/generate_workspace_symbols.swift": [
           "symbols"
+        ],
+        "apps/decodex-gpui/src/ui_feedback.rs": [
+          "state_row",
+          "state_copy"
+        ],
+        "apps/decodex-gpui/src/agent_composer.rs": [
+          "AgentSurface::render_blocked_composer"
         ]
       },
       "qualification": "automations/upstream/qualification.json#candidate_qualification/provider_recovery/presentation",
