@@ -467,7 +467,9 @@ async fn serve(
 			}
 		}
 
-		let (status, content_type, body) = if first.starts_with("GET ") {
+		let (status, content_type, body) = if first.starts_with("GET ")
+			|| (first.starts_with("POST ") && path == "/backend-api/wham/usage/thread_usage/query")
+		{
 			metadata.fetch_add(1, Ordering::AcqRel);
 
 			metadata_response(&path)
