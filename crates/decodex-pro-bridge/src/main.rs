@@ -37,6 +37,12 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Action {
+	/// Verify an explicitly authorized Chrome 144+ profile in one new tab.
+	/// Sends no question and leaves the existing browser and its tabs running.
+	ProbeExisting {
+		#[arg(long)]
+		user_data_dir: PathBuf,
+	},
 	/// Open only the component's login window. Never sends a message.
 	Connect,
 	/// Check the login window without opening or focusing a browser.
@@ -105,6 +111,8 @@ async fn run(cli: Cli) -> Result<()> {
 	let detached = matches!(&cli.command, Action::Start { .. });
 	let action = async {
 		match cli.command {
+			Action::ProbeExisting { user_data_dir } =>
+				print_json(&bridge.probe_existing(&user_data_dir).await?)?,
 			Action::Connect => print_json(&bridge.connect().await?)?,
 			Action::Check => print_json(&bridge.check().await?)?,
 			Action::Disconnect => bridge.disconnect().await?,

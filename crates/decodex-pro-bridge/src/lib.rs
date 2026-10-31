@@ -202,6 +202,30 @@ impl ProBridge {
 		page::connection(&mut browser, Duration::ZERO).await.map(Some)
 	}
 
+	/// Qualification-only probe for an explicitly authorized existing Chrome.
+	/// Operates one new tab, sends no message, and leaves the browser running.
+	/// This is not connected to the product's automatic research entry point.
+	pub async fn probe_existing(&self, profile: &std::path::Path) -> Result<Connection> {
+		let store = store::Store::open(&self.root)?;
+		let _lease = store.execution_lease()?.ok_or("Another research probe is running.")?;
+		let mut browser = chrome::Chrome::attach_existing(profile).await?;
+		let result = async {
+			browser.open(None, Some("https://chatgpt.com/"), false).await?;
+			let connected = page::connection(&mut browser, Duration::from_secs(15)).await?;
+			if connected.state == ConnectionState::Connected {
+				page::select_pro(&mut browser).await?;
+				return page::connection(&mut browser, Duration::ZERO).await;
+			}
+			Ok(connected)
+		}
+		.await;
+		let closed = browser.close_tab().await;
+		browser.close_browser().await?;
+		let connected = result?;
+		closed?;
+		Ok(connected)
+	}
+
 	/// Close only the dedicated Chrome. Request records and login state remain.
 	pub async fn disconnect(&self) -> Result<()> {
 		let store = store::Store::open(&self.root)?;

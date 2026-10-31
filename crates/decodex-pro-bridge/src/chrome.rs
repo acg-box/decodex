@@ -20,6 +20,7 @@ use crate::{Config, Result, identity::ExecutionIdentity, store::Store};
 
 pub(crate) struct Chrome {
 	socket: WebSocketStream<MaybeTlsStream<TcpStream>>,
+	owned: bool,
 	next_id: u64,
 	session: Option<String>,
 	pub target: Option<String>,
@@ -29,6 +30,22 @@ pub(crate) struct Chrome {
 }
 
 impl Chrome {
+	/// Chrome 144+ owns the permission prompt for an existing browser. Do not
+	/// change its launch options, profile settings, cookies or automation signals.
+	pub async fn attach_existing(profile: &Path) -> Result<Self> {
+		let endpoint = endpoint(profile).map_err(|_| "Open Chrome and enable Remote Debugging at chrome://inspect/#remote-debugging before requesting a connection.")?;
+		let mut browser = timeout(Duration::from_secs(90), Self::attach(&endpoint))
+			.await
+			.map_err(|_| "Chrome did not approve the connection in time.")??;
+		browser.owned = false;
+		// Some Chrome versions accept the socket before resolving the approval UI.
+		// Keep the same connection and let Chrome allow or refuse the first command.
+		browser
+			.command_with_timeout("Browser.getVersion", json!({}), Duration::from_secs(90))
+			.await?;
+		Ok(browser)
+	}
+
 	pub async fn existing(root: &Path) -> Result<Option<Self>> {
 		let profile = root.join("chrome-profile");
 		if !profile.join("DevToolsActivePort").is_file() {
@@ -116,6 +133,7 @@ impl Chrome {
 			tokio_tungstenite::connect_async(endpoint).await.map_err(|e| e.to_string())?;
 		Ok(Self {
 			socket,
+			owned: true,
 			next_id: 0,
 			session: None,
 			target: None,
@@ -126,6 +144,15 @@ impl Chrome {
 	}
 
 	pub async fn command(&mut self, method: &str, params: Value) -> Result<Value> {
+		self.command_with_timeout(method, params, Duration::from_secs(30)).await
+	}
+
+	async fn command_with_timeout(
+		&mut self,
+		method: &str,
+		params: Value,
+		wait: Duration,
+	) -> Result<Value> {
 		self.next_id += 1;
 		let id = self.next_id;
 		let mut request = json!({"id":id,"method":method,"params":params});
@@ -136,7 +163,7 @@ impl Chrome {
 			.send(Message::Text(request.to_string().into()))
 			.await
 			.map_err(|e| format!("Chrome disconnected: {e}"))?;
-		timeout(Duration::from_secs(30), async {
+		timeout(wait, async {
 			loop {
 				let message = self
 					.socket
@@ -212,13 +239,13 @@ impl Chrome {
 				.ok_or("Chrome returned no target identity.")?
 				.to_owned()
 		};
+		self.target = Some(target.clone());
 		let attached = self
 			.command("Target.attachToTarget", json!({"targetId":target,"flatten":true}))
 			.await?;
 		self.session = Some(
 			attached["sessionId"].as_str().ok_or("Chrome returned no session identity.")?.into(),
 		);
-		self.target = Some(target.clone());
 		self.command("Page.enable", json!({})).await?;
 		self.command("Runtime.enable", json!({})).await?;
 		self.command("Network.enable", json!({})).await?;
@@ -275,6 +302,9 @@ impl Chrome {
 
 	pub async fn close_browser(&mut self) -> Result<()> {
 		self.session = None;
+		if !self.owned {
+			return self.socket.close(None).await.map_err(|e| e.to_string());
+		}
 		// Browser.close can close the socket before its acknowledgement.
 		self.next_id += 1;
 		self.socket
@@ -388,6 +418,41 @@ mod tests {
 			{"type":"page","targetId":"two","url":"https://chatgpt.com/"}
 		]);
 		assert!(select_login_target(&ambiguous, None).is_err());
+	}
+
+	#[tokio::test]
+	async fn borrowed_browser_disconnect_never_sends_browser_close() {
+		let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+		let port = listener.local_addr().unwrap().port();
+		let profile = tempfile::tempdir().unwrap();
+		fs::write(
+			profile.path().join("DevToolsActivePort"),
+			format!("{port}\n/devtools/browser/approved\n"),
+		)
+		.unwrap();
+		let server = tokio::spawn(async move {
+			let (stream, _) = listener.accept().await.unwrap();
+			let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
+			let frame = socket.next().await.unwrap().unwrap();
+			let command: Value = serde_json::from_str(frame.to_text().unwrap()).unwrap();
+			assert_eq!(command["method"], "Browser.getVersion");
+			socket
+				.send(Message::Text(
+					json!({"id":command["id"],"result":{"product":"Chrome/156"}})
+						.to_string()
+						.into(),
+				))
+				.await
+				.unwrap();
+			assert!(
+				matches!(socket.next().await.unwrap().unwrap(), Message::Close(_)),
+				"Borrowed Chrome must only disconnect, never quit"
+			);
+		});
+		let mut browser = Chrome::attach_existing(profile.path()).await.unwrap();
+		assert!(!browser.owned);
+		browser.close_browser().await.unwrap();
+		server.await.unwrap();
 	}
 
 	#[tokio::test]
