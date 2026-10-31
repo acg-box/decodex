@@ -385,6 +385,7 @@ impl AgentSurface {
 			branches.insert(
 				0,
 				PromptForkStatus {
+					model_provider: None,
 					work_id: EntityId::new(root).expect("fixture source"),
 					thread_id: WireText::new(format!("source-{root}")).expect("fixture thread"),
 					review_token: WireText::new(format!("review-{id}")).expect("fixture review"),

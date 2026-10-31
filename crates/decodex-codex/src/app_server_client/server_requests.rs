@@ -41,9 +41,30 @@ pub(super) struct ServerRequests(
 struct Metrics {
 	output: OutputRates,
 	timing: ObservedTimings,
+	providers: super::provider_recovery::ProviderMismatches,
 }
 
 impl ServerRequests {
+	pub(super) fn provider_mismatch(&self, thread: &str) -> Option<super::NativeProviderMismatch> {
+		self.9.providers.get(thread)
+	}
+
+	pub(super) fn observe_provider_result(
+		&self,
+		thread: &str,
+		result: &Result<Value, super::RpcError>,
+	) {
+		self.9.providers.observe(thread, result);
+	}
+
+	pub(super) fn clear_provider_mismatch(
+		&self,
+		thread: &str,
+		expected: &super::NativeProviderMismatch,
+	) {
+		self.9.providers.clear_if(thread, expected);
+	}
+
 	pub(super) fn take_timing(&self, thread: &str, turn: &str) -> Option<ObservedTurnTiming> {
 		self.9.timing.take(thread, turn)
 	}
@@ -248,6 +269,7 @@ impl ServerRequests {
 	}
 
 	pub(super) fn clear(&self) {
+		self.9.providers.clear();
 		self.9.timing.clear();
 		self.9.output.clear();
 		self.8.clear();

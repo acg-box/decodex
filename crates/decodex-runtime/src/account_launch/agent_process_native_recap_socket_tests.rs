@@ -195,6 +195,12 @@ async fn qualify(home: &Path) {
 	));
 
 	write_native_configuration(&native_home, address);
+	if env::var_os("DECODEX_TEST_PROVIDER_RECOVERY").is_some() {
+		let path = native_home.join("config.toml");
+		let current = fs::read_to_string(&path).expect("isolated native configuration");
+		fs::write(path, format!("thread_unload_delay_secs=0\n{current}"))
+			.expect("immediate idle unload for provider rehearsal");
+	}
 
 	let root = DecodexRoot::new(home.join(if interactive { ".decodex" } else { "product" }))
 		.expect("fixture root");
@@ -229,7 +235,15 @@ async fn qualify(home: &Path) {
 	}
 
 	let profile = task::spawn_blocking(move || {
-		AttestedAppServerProfile::attest(directory, Duration::from_secs(15))
+		if env::var_os("DECODEX_TEST_PROVIDER_RECOVERY").is_some() {
+			let binary = env::var_os("DECODEX_TEST_CODEX_BINARY")
+				.expect("explicit provider rehearsal executable");
+			Ok(crate::account_launch::process::native_control_tests::attested_profile(
+				&binary, &directory,
+			))
+		} else {
+			AttestedAppServerProfile::attest(directory, Duration::from_secs(15))
+		}
 	})
 	.await
 	.expect("profile task")
@@ -261,7 +275,7 @@ async fn qualify(home: &Path) {
 			Duration::from_secs(interaction_seconds(interactive)),
 			async {
 				if interactive {
-					desktop::check(&client, home, &account, &requests).await;
+					desktop::check(&client, &runtime, home, &account, &requests).await;
 				} else if env::var("DECODEX_TEST_MEDIA").as_deref() == Ok("1") {
 					media::check(&client, &runtime, home, &account, &requests).await;
 				} else {

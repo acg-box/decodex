@@ -1,14 +1,14 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:501cadfa074cb15d8ce4905edc7400556dc20a373c5e61a915b03443033f15ad",
+  "pageVersion": "sha256:c99ed2fc5ed2d2b5f8bd06271d7943f829c219e933c69a937d15d3e9c9267c61",
   "claims": [
     {
       "id": "claim_f0c37462522f4442acd94d53819ef75c",
       "statement": "Model settings observations are accepted only while native settings, exact task ownership and account/process source identity remain current.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/agent_model_settings.rs#L1-L40",
-          "version": "repo-lines-v1:sha256:70d30fdb44d468c6171283a395344e8891df0377dc39617bb8cb7f2211ae7d6f:eyJzZWxlY3RlZExpbmVDb3VudCI6NDAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Zjc3MmEwYzE4N2UzOTg4NWI1YmQ1MWQyNjM1ZmM5NDM1OTMwN2FmY2U2NjNlMTlkOTIxZmU1YTgxNTk0NWUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNjM2EyMDc3NGQ1YzJiYjRjNzkwYzE4ODkwYTljNDk0Y2NiNTEwZmM4ZThjMDllYzc0NTE5YmMxNjRmYzc4NGIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImYwN2E3ZmIzYzJlY2QxOTNhNjVkYTVmMjgyYzliNDhiYTFiMzRiMWE0MjNkMmUwNDEyZWEwNzM5Yjc3MGE5NDIifQ"
+          "resource": "repo://crates/decodex-runtime/src/agent_model_settings.rs#L1-L70",
+          "version": "repo-lines-v1:sha256:1cc7b8ba42d1df9414743760ab0b76612eb69c70d0315bd09589b2e593194023:eyJzZWxlY3RlZExpbmVDb3VudCI6NzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Zjc3MmEwYzE4N2UzOTg4NWI1YmQ1MWQyNjM1ZmM5NDM1OTMwN2FmY2U2NjNlMTlkOTIxZmU1YTgxNTk0NWUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZjZDdhNzBlZjIwMDZhNjVmNzBmOWJlMjY4MzdjZmEyYTg2NTkzODExMzM1YjNjNWM2NmI4Y2Y1MmRjNTQxMzIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImYwN2E3ZmIzYzJlY2QxOTNhNjVkYTVmMjgyYzliNDhiYTFiMzRiMWE0MjNkMmUwNDEyZWEwNzM5Yjc3MGE5NDIifQ"
         }
       ]
     },
@@ -60,7 +60,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:d85ab12f4fe6a67a0b13cb507d4c97ff21b456fc0712e3a1015cd79f1c4369b8"
+          "version": "repo-file-v1:sha256:ecaa9f3bfc2cacc6ae4c51dc69084930f7d6728656c434b507a7ff49ca1d6426"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/process.rs#L133-L153",
@@ -96,7 +96,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:d85ab12f4fe6a67a0b13cb507d4c97ff21b456fc0712e3a1015cd79f1c4369b8"
+          "version": "repo-file-v1:sha256:ecaa9f3bfc2cacc6ae4c51dc69084930f7d6728656c434b507a7ff49ca1d6426"
         },
         {
           "resource": "repo://crates/decodex-runtime/tests/native_qualification/large_catalog.py",
@@ -178,11 +178,11 @@
     },
     {
       "id": "claim_9815b02e2bec42e2972b00e7894ad1f4",
-      "statement": "Attached branches preserve source provider and Goal ownership and create no model input. Selected runtime qualification covers paginated attachment, legacy-attachment refusal, ordinary forks and restart. A newer candidate that fails saved-provider cold resume remains unselected; installed desktop acceptance stays separate.",
+      "statement": "Attached branches preserve source provider and Goal ownership without sending. Native cold resume can require restoring that provider; the separate approved current-provider fork has targeted qualification while the runtime pin and pending HumanCommand adaptation remain unchanged.",
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:d85ab12f4fe6a67a0b13cb507d4c97ff21b456fc0712e3a1015cd79f1c4369b8"
+          "version": "repo-file-v1:sha256:ecaa9f3bfc2cacc6ae4c51dc69084930f7d6728656c434b507a7ff49ca1d6426"
         },
         {
           "resource": "repo://codex-runtime.lock.json",
@@ -190,11 +190,7 @@
         },
         {
           "resource": "repo://crates/decodex-codex/src/app_server_client/thread_fork.rs",
-          "version": "repo-file-v1:sha256:eb622f54077106962241838083ffe1a07b73c2309ac7c509eadf80470b285cf9"
-        },
-        {
-          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_fork_tests.rs#L254-L367",
-          "version": "repo-lines-v1:sha256:81ddd1f7b67f7532b1f28a927d31a2fd52770eb47786e31cd9ee2c81f3d95ef3:eyJzZWxlY3RlZExpbmVDb3VudCI6MTE0LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI5ODAxNTU2ZDk3YWRiYjgyZGY5NTMzYjFiYWEwNmE2NzE4ZTc4MzFiYzVjMGNhYmY3NDM5MjBhOWQ1NmRlMjQzIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJmMmE4NThjOTc2ZmM3YTJiMzBlMGY0OWI3MGUwNmIzMTNjNGQzMmU1ZjA3YmE4NGU0MGQyYzg5OTRjMWQ4MzYzIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJmMjk2NDA3OWMzYzVjODE1MjBlZjMzYTJiOWQyZTE1YTFiODRkNzI4MGRiODU5MGRjZDY1NzQ3ZTNlMDEyYTQwIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI1MGE1ZTE2NjZjNDQwNjZiZGIzZDk3NDY1MDEyMmE1MzZiZTA3NWU4ZWJlZTdkMGQ1MmMyOTcyOWQ5YTAyZjM2In0"
+          "version": "repo-file-v1:sha256:2b2ba97fe646c51241ea3c4ff3aa296334595861ca0b35fdc194dd198d8b68ec"
         }
       ]
     },
@@ -203,7 +199,7 @@
       "statement": "The Agent model catalog refreshes through native model/list every 60 seconds, with account, directory and process binding. Model and effort cycling have no fixed fallback list when the catalog is unavailable.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L1689-L1695",
+          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L1695-L1701",
           "version": "repo-lines-v1:sha256:94822da03cc24717c86a1aa5781a22c5c4fb39bb3eba280843acf0a8d9a36fb4:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMDFiYTQ3MTljODBiNmZlOTExYjA5MWE3YzA1MTI0YjY0ZWVlY2U5NjRlMDljMDU4ZWY4Zjk4MDVkYWNhNTQ2YiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDFiYTQ3MTljODBiNmZlOTExYjA5MWE3YzA1MTI0YjY0ZWVlY2U5NjRlMDljMDU4ZWY4Zjk4MDVkYWNhNTQ2YiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNzhhZThkZGM3MTdhMDlmMzU0ZmUzMWU4ZWI3YTU3MWNkZDQwZGQ3NmU0MjVhZjliYjU2MTM3ZTVhZDlkZTEzNiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOTdhZjQ0ZjllMmU0MDU4YzAyNDA0YTJhMDI0M2JjNTk1ZWE2ZmIxOGUxNzdmMjJiOWEyOWMzZDQ3ZjAwZTExOSJ9"
         },
         {
@@ -222,7 +218,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:1b1d46266e71ee0e531979bdbb08afb607500c619f85a9f994e72f880663cb8b"
+          "version": "repo-file-v1:sha256:5ba4c7a7e8cc51e15f89e5a0eee89c3562150d2e4e27ac12a92dbfd43bf49aee"
         },
         {
           "resource": "repo://crates/decodex-protocol/src/model_catalog.rs#L77-L105",
@@ -284,25 +280,43 @@
     },
     {
       "id": "claim_7817c7b72e854491af3db423ce49d596",
-      "statement": "Cost estimate in the conversation header and Conversation estimates in Menu Bar reuse native provider estimates, prefer reported USD over credits, preserve missing values, retain account scope and explicit refresh, and do not invent account totals or final billing.",
+      "statement": "The composer displays native or estimated dollars beside Context and hides missing dollar data; Menu Bar Conversation estimates retains source-account labels and explicit refresh without inventing account totals or final billing.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/ConversationEstimatesView.swift",
-          "version": "repo-file-v1:sha256:12138f8a2a818d8a851f5bb063fc96c6ffd61c51e201432c846574e1148a1527"
+          "version": "repo-file-v1:sha256:8df4f4b14d3b134dbdad77a78de41beac274e44f980a0d237499db97c5309f35"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_usage_estimates.rs#L65-L126",
-          "version": "repo-lines-v1:sha256:12cece0bcc021ddc297c9cd7dbb1ed78a6b4a4421063d5e9857a6f8e5e2247bb:eyJzZWxlY3RlZExpbmVDb3VudCI6NjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYxOGIyN2ZkYTUzNDU1MjM2N2FlODRiMmNhZmNlMzM4YmEyMzE5M2Q4MWFhYzhkMzkwOTdmMzY1MDQ0ZmM5OTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZmYmMyNWQ5Njk5ZmVkMjUwNjczYzVmNzNjM2YwODM3YjU2NTc4OTZiM2RmMjk1NjdjMmVmYTljNzkzOWI1OTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY5N2ZkMjUyNTAwZmM0MjI2OTk5ZmUzNTUwNzU1MGE4MTI0ZmQzMTc3NWRjODFhMDg3NzAwMTk0ODUzNjc3MzAifQ"
+          "resource": "repo://apps/decodex-gpui/src/agent_usage_estimates.rs",
+          "version": "repo-file-v1:sha256:d736fe30fd04de6fd8a981609cf29c61a4ac3159571e0dc29f847197fa241b05"
         },
         {
           "resource": "repo://crates/decodex-app-client-ffi/src/conversation_estimates.rs",
-          "version": "repo-file-v1:sha256:8a465b0198f60825b2d902aec9edb7539dd89fe9d7e5edc11c2b40711476be91"
+          "version": "repo-file-v1:sha256:ad071eccb3e39d40e1c793cb4846ede9a720c04e6d63af342d67a839579cd869"
+        }
+      ]
+    },
+    {
+      "id": "claim_b403cce16b8a42b79b8abb25469f6870",
+      "statement": "The provider mismatch observation identifies source and current providers under the exact account/process/thread guards; explicit current-provider fork rechecks native configuration without changing global settings or automatically sending input.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-codex/src/app_server_client/provider_recovery.rs",
+          "version": "repo-file-v1:sha256:bcacad447daf80f5b63a28d7120013947f7e336c574820449e5bb3c263ce2ff3"
+        },
+        {
+          "resource": "repo://crates/decodex-codex/src/app_server_client/thread_fork.rs",
+          "version": "repo-file-v1:sha256:2b2ba97fe646c51241ea3c4ff3aa296334595861ca0b35fdc194dd198d8b68ec"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent_model_settings.rs",
+          "version": "repo-file-v1:sha256:cbb54b8e333d8a4a8ede6a373b4c116be186051ce1bbd0068e1f737bad7cfdea"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-30T20:00:55.995Z"
+    "at": "2026-10-31T13:17:02.524Z"
   }
 }

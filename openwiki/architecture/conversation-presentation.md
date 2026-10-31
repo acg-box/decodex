@@ -8,6 +8,8 @@ sources:
     resource: repo://apps/decodex-gpui/menubar/Sources/DecodexApp/BrandLoading.swift
   - id: openwiki-source-bf03f317e64cfefd11f6ea83
     resource: repo://apps/decodex-gpui/src/agent_attached_branches.rs
+  - id: openwiki-source-48758ba7d154c82885281d2c
+    resource: repo://apps/decodex-gpui/src/agent_composer.rs
   - id: openwiki-source-0a61b25348131fe1bb6e1d12
     resource: repo://apps/decodex-gpui/src/agent_context_settings_wire_tests.rs
   - id: openwiki-source-c76550e85b25876b339f9255
@@ -44,6 +46,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_mermaid/tests.rs
   - id: openwiki-source-ae2ce5cda718ede63f50be9b
     resource: repo://apps/decodex-gpui/src/agent_native_composer.rs
+  - id: openwiki-source-0eea3c2bab20e4a9d8e3d80a
+    resource: repo://apps/decodex-gpui/src/agent_prompt_confirm_wire_tests.rs
   - id: openwiki-source-b2084dffd07b4229957a0f94
     resource: repo://apps/decodex-gpui/src/agent_prompt_edit.rs
   - id: openwiki-source-56b561d7e6dd906d218aa9d1
@@ -132,10 +136,10 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent/timeline/metrics.rs
   - id: openwiki-source-6197a876b2effbe992b1e2ec
     resource: repo://database/src/agent.rs
-generated: { by: "codex", at: "2026-10-30T15:17:49.972Z" }
+generated: { by: "codex", at: "2026-10-31T13:17:02.524Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-30T20:00:55.995Z
+    at: 2026-10-31T13:17:02.524Z
 ---
 
 
@@ -155,7 +159,7 @@ A completed response also has a question action on hover or keyboard focus. Sele
 
 A collapsed command row shows the number of native-retained output lines when that count is available. Opening the output removes the count label. The count excludes command text and discarded output; it does not claim terminal wrapping or recovery of truncated bytes.
 
-The conversation header provides **Cost estimate**. On request, it shows reported approximate USD or, when USD is absent, reported credits. Open its details to inspect the source and refresh the estimate. Missing data stays unavailable. See [usage estimates](../workflows/models-and-settings.md#conversation-cost-estimates) for the Menu Bar view and coverage limits.
+The composer shows a reported dollar amount beside **Context**. A native amount uses `$`; an estimated amount uses `≈ $`. Missing dollar data stays hidden. The source-bound read refreshes when the conversation becomes idle after an update; an unchanged idle conversation does not poll billing. See [usage estimates](../workflows/models-and-settings.md#conversation-cost-estimates) for the Menu Bar view and coverage limits.
 
 ### Observed turn activity
 
@@ -214,6 +218,8 @@ Submitted input has message delivery state separate from the current editor. A p
 An unsent input uses the normal right-aligned user bubble at the end of the transcript. Its full text wraps and scrolls with the conversation; it is not pinned above the input bar. One compact row below it aligns **Not sent** and, when available, **Resend**. Hover over the status to inspect the reason. There is no separate error panel, disclosure header, copy action or dismiss action. Archived conversations do not show retry accessories.
 
 Saved edit recovery and history refresh/source controls live in Details. Failed input remains an ordinary message in the transcript. Active editing and unresolved-operation notices also use the chat flow. There is no permanent list of saved drafts. See [conversation recovery](../workflows/conversations-and-recovery.md) for edit and Fork ownership.
+
+After a native provider mismatch, a read-only notice identifies the original and current providers. **Create branch…** opens the existing branch review. Its confirmation identifies the destination provider and explains that a later send shares the inherited context. Creation sends no input, and cancellation retains the original draft. Ordinary branches and Side chats keep their source provider.
 
 ## Prose links and formulas
 

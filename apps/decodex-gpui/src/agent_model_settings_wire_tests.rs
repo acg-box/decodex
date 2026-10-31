@@ -93,6 +93,75 @@ fn repeated_model_observations_only_invalidate_changed_values() {
 }
 
 #[gpui::test]
+fn provider_recovery_banner_is_source_bound_and_cancellation_keeps_the_draft(
+	cx: &mut TestAppContext,
+) {
+	let (_dir, profile, _) = crate::shell::agent_surface::drafts::tests::profiles();
+	let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+	surface.update(visual, |s, cx| {
+		s.bind_drafts(Some(&profile), cx);
+		s.profile = Some(profile);
+		s.visual_workspace_fixture(cx);
+		let work = s.selected.clone().unwrap();
+		s.snapshot
+			.as_mut()
+			.unwrap()
+			.work_items
+			.iter_mut()
+			.find(|item| item.id == work)
+			.unwrap()
+			.codex_thread_id = Some("thread".into());
+		s.composer.update(cx, |input, cx| input.set_content("Unrelated unsent input", cx));
+		s.model_settings.observe(
+			work.clone(),
+			AgentModelSettingsResult::ProviderMismatch {
+				work_id: EntityId::new(&work).unwrap(),
+				thread_id: EntityId::new("thread").unwrap(),
+				account_id: EntityId::new("account").unwrap(),
+				model_provider: WireText::new("original").unwrap(),
+				current_model_provider: WireText::new("current").unwrap(),
+			},
+		);
+		assert!(s.selected_provider_mismatch().is_some());
+		cx.notify();
+	});
+	visual.run_until_parked();
+	visual.update(|window, cx| {
+		window.resize(gpui::size(gpui::px(1200.), gpui::px(900.)));
+		window.draw(cx).clear(cx);
+	});
+	let button = visual.debug_bounds("provider-create-branch").expect("provider recovery action");
+	visual.simulate_click(button.center(), Default::default());
+	surface.update(visual, |s, _| {
+		assert_eq!(
+			s.prompt_edit.branch_provider.as_ref().map(|(_, p)| p.as_str()),
+			Some("current")
+		);
+	});
+	visual.update(|window, cx| {
+		window.draw(cx).clear(cx);
+	});
+	let cancel = visual.debug_bounds("prompt-review-close").expect("cancel branch review");
+	visual.simulate_click(cancel.center(), Default::default());
+	surface.update(visual, |s, cx| {
+		assert_eq!(s.composer.read(cx).content(), "Unrelated unsent input");
+		let work = s.selected.clone().unwrap();
+		s.snapshot
+			.as_mut()
+			.unwrap()
+			.work_items
+			.iter_mut()
+			.find(|item| item.id == work)
+			.unwrap()
+			.codex_thread_id = Some("replacement".into());
+		assert!(
+			s.selected_provider_mismatch().is_none(),
+			"never reuse a refusal for another conversation"
+		);
+	});
+}
+
+#[gpui::test]
 fn model_settings_click_refreshes_idle_task_and_rejects_foreign_reply(cx: &mut TestAppContext) {
 	let (_dir, profile, server) = fixture();
 	let (view, visual) = cx.add_window_view(|_, cx| {

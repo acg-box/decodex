@@ -31,6 +31,7 @@ mod permissions;
 mod prediction;
 mod projects;
 mod prompt_edit;
+mod provider_recovery;
 mod provider_wait;
 mod read_state;
 mod realtime_preferences;
@@ -84,6 +85,7 @@ pub use self::{
 	},
 	prediction::{NativePredictionThread, is_prediction_fork},
 	prompt_edit::PromptEditCandidate,
+	provider_recovery::NativeProviderMismatch,
 	read_state::{NativeReadState, NativeUnreadPosition, is_thread_read_state_update},
 	realtime_preferences::{NativeVoiceSettings, is_realtime_voice_write},
 	recovery_auth::NativeRecoveryAuth,
@@ -837,6 +839,7 @@ impl AppServerProcess {
 struct PendingReply {
 	reply: Reply,
 	permissions: Option<PermissionHydration>,
+	provider_thread: Option<String>,
 }
 
 fn new_connection_identity() -> String {
@@ -885,6 +888,9 @@ fn dispatch(
 		};
 
 		if let Some(pending) = pending.remove(&id) {
+			if let Some(thread) = pending.provider_thread {
+				server_requests.observe_provider_result(&thread, &result);
+			}
 			if let (Some(hydration), Ok(response)) = (pending.permissions, &result) {
 				hydration.observe(response, server_requests);
 			}
@@ -1046,6 +1052,8 @@ async fn run_frames(
 						sequence = next;
 
 						let id = RequestId::Number(sequence);
+						let provider_thread = matches!(method.as_str(), "thread/resume" | "turn/start")
+							.then(|| params["threadId"].as_str().map(str::to_owned)).flatten();
 						let permissions=match method.as_str() {
 							"thread/start"|"thread/fork"=>Some(PermissionHydration::Start{revision:server_requests.permission_revision()}),
 							"thread/resume"=>params["threadId"].as_str().and_then(|thread|server_requests.thread_settings_guard(thread).map(|guard|PermissionHydration::Resume{thread:thread.into(),guard})),
@@ -1065,7 +1073,7 @@ async fn run_frames(
 							continue;
 						}
 
-						pending.insert(id.clone(), PendingReply{reply,permissions});
+						pending.insert(id.clone(), PendingReply{reply,permissions,provider_thread});
 
 						if let Err(error) = result { break error; }
 

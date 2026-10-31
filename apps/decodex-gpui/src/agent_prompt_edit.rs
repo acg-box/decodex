@@ -20,6 +20,7 @@ use removal::Removal;
 #[derive(Default)]
 pub(super) struct Panel {
 	pub(super) branch_choice: Option<PromptForkBoundary>,
+	pub(super) branch_provider: Option<(WireText, WireText)>,
 	list_branch_pending: bool,
 	key: String,
 	profile: Option<ClientProfile>,
@@ -459,6 +460,7 @@ impl AgentSurface {
 		item: &str,
 		cx: &mut Context<Self>,
 	) {
+		self.prompt_edit.branch_provider = None;
 		self.request_prompt_review((work, thread, turn, item), None, None, cx);
 	}
 
@@ -499,7 +501,11 @@ impl AgentSurface {
 		else {
 			return;
 		};
+		let provider = (self.prompt_edit.work == work && self.prompt_edit.thread == thread)
+			.then(|| self.prompt_edit.branch_provider.clone())
+			.flatten();
 		let key = self.begin_prompt_review(&profile, work, thread);
+		self.prompt_edit.branch_provider = provider;
 		self.prompt_edit.branch_choice = branch_choice.or(self.prompt_edit.branch_choice);
 		let (send, receive) = oneshot::channel();
 		let request_key = key.clone();
@@ -842,7 +848,7 @@ impl AgentSurface {
 
 	fn branch_confirmation_action(
 		&self,
-		panel: Div,
+		mut panel: Div,
 		draft: &DesktopPromptEditDraft,
 		cx: &mut Context<Self>,
 	) -> Div {
@@ -850,11 +856,19 @@ impl AgentSurface {
 		let expected = draft.clone();
 		let pending = draft.fork.is_some();
 		let side_chat = boundary == PromptForkBoundary::AttachedAfterTurn;
+		let provider_change = self.prompt_edit.branch_provider.is_some();
+		if let Some((original, current)) = &self.prompt_edit.branch_provider {
+			panel = panel.child(agent_surface::muted(&format!(
+				"The new branch will use {}. Sending its next message shares the inherited context with that provider. The original conversation remains on {}.", current.as_str(), original.as_str()
+			)));
+		}
 		panel.child(
 			self.workspace_action(
 				"locked-branch-confirm".into(),
 				if pending {
 					"Check branch status"
+				} else if provider_change {
+					"Create branch with current provider"
 				} else if side_chat {
 					"Create side chat"
 				} else {

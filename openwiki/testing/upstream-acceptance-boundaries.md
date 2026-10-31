@@ -64,6 +64,8 @@ sources:
     resource: repo://crates/decodex-components/tests/official_release.rs
   - id: openwiki-source-aee901c2feaee74f17637372
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_compaction_tests.rs
+  - id: openwiki-source-8fd14b27958d10f11e115032
+    resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_desktop_acceptance.rs
   - id: openwiki-source-4a57fba4bea69171318c6323
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_fork_tests.rs
   - id: openwiki-source-8d32d49a0bc31600300d9335
@@ -164,10 +166,10 @@ sources:
     resource: repo://scripts/macos/test_decodex_app_stage.sh
   - id: openwiki-source-e201f60894c32a914dac99ee
     resource: repo://scripts/vnext/run_native_regression.py
-generated: { by: "codex", at: "2026-10-30T20:00:55.995Z" }
+generated: { by: "codex", at: "2026-10-31T13:17:02.524Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-30T20:00:55.995Z
+    at: 2026-10-31T13:17:02.524Z
 ---
 
 # Upstream integration acceptance boundaries
@@ -195,11 +197,17 @@ Workflow-only maintenance uses the checkpoint and portfolio checks in `cargo +st
 
 Read the development lock, [current source review](../../automations/upstream/current-review.json) and [current qualification](../../automations/upstream/qualification.json) for the fixed target, exact CLI/helpers/schema, executed identities and limits. Keep source review, source-test execution, exact production-artifact tests, delivery and installed acceptance separate. Current run counts and hashes belong in those records, not repeated across Wiki pages.
 
-The current candidate has 50 retained native selections: 49 pass and saved-provider cold fork resume fails. The original selected artifact passes that same fork test and four affected permission/Recap comparisons. Source review is complete through the fixed target, but the runtime lock remains on the qualified baseline. See [the compatibility blocker](https://github.com/acg-box/decodex/issues/2575). No upstream test suite was executed for this catch-up.
+The provider-refusal follow-up resolves [the former compatibility blocker](https://github.com/acg-box/decodex/issues/2575) through the supported native fork. The original cohort remains historical evidence; it is not a freshly rerun matrix. Source review is complete through the fixed target, but the runtime lock remains on the qualified baseline. HumanCommand compatibility and its affected qualification remain pending. No upstream test suite was executed for this follow-up.
 
 The retired Codex startup-configuration diagnostic is absent from the current router. Its earlier execution remains historical proof. Valid named-permission defaults and an owned Recap working directory repair fixture admission without weakening existing behavior assertions. The exact-artifact development cache test also corrupts and repairs any advertised standalone executor.
 
 The default execution scope is affected Decodex consumers against the prepared artifact and the applicable repository gate. Read relevant upstream implementation and test bodies for source review; execute upstream tests only for a concrete compatibility question or missing retained-fix proof. An unconsumed fixture failure remains a diagnostic limit and is not counted as passed. It does not create a Decodex repair item. This does not relax the evidence needed to advance the source-review cursor or qualify an artifact.
+
+## Provider recovery qualification
+
+The `provider_recovery` entry under `candidate_qualification` in the [qualification record](../../automations/upstream/qualification.json) binds the focused local tests, exact candidate and baseline native tests, component signatures and regenerated schemas to the implementation commit. Ordinary forks retain the source provider; cold resume follows native admission after that provider is restored. The new regression uses two loopback providers and verifies an explicit current-provider fork, preserved context after restart, unchanged source history and no inference until a separate send.
+
+The UI and receipt tests cover source identity, configuration changes, cancellation, the durable destination choice and preservation of unsent input. The real public-socket fixture also prepares the mismatch before desktop launch. Its setup check substitutes `/usr/bin/true` for the desktop and is not UI acceptance. The [interactive rehearsal command](../operations/commands-and-validation.md#rehearse-provider-recovery) uses a real desktop window and an isolated temporary profile; its two provider names share one local backend. Neither fixture qualifies live accounts, provider policy migration, installed-app behavior or performance. No runtime pin, installation, release or schedule activation follows from these results.
 
 ## Observed turn timings
 

@@ -6,7 +6,7 @@
     "prior_public_evidence": "https://github.com/acg-box/decodex/blob/69fe45a5d2d2a6e093568ce69bff50415378cc41/automations/upstream/qualification.json",
     "current_review_replaced_by": "https://github.com/acg-box/decodex/blob/69ef0e38d74d407a1cbe84ab06ba802adc786a8a/automations/upstream/current-review.json"
   },
-  "consumer_limits": "Selected 33d306d4 retains its original qualification. The current router has 50 native and two local history selections after explicit diagnostic retirement. Candidate 5be57bedd0 passes 49/50 native contracts and remains unselected; original 33d306d4 passes five affected comparison contracts.",
+  "consumer_limits": "Selected 33d306d4 retains its original qualification. The reconstruction router has 51 native and two local history selections. Historical candidate cohort: 49/50. Targeted provider follow-up: 2/2 on the same candidate and 1/1 on the selected baseline. The candidate remains unselected pending HumanCommand compatibility and affected qualification.",
   "limits": [
     "Source review, tests, artifact qualification, merge and installed acceptance are separate.",
     "Only macOS arm64 private stdio and named native consumers/helpers are qualified. Linux, Windows, remote production execution, live accounts/providers, physical audio and installation/release remain unmeasured.",
@@ -2766,7 +2766,7 @@
     }
   },
   "candidate_qualification": {
-    "status": "blocked_provider_resume",
+    "status": "provider_recovery_passed_pending_runtime_adaptation",
     "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
     "selected": false,
     "candidate_lock": {
@@ -3141,7 +3141,9 @@
         "historical_execution_preserved": true
       },
       "local_history_projections_executed": 0,
-      "upstream_tests_executed": 0
+      "upstream_tests_executed": 0,
+      "evidence_scope": "Historical pre-recovery cohort, retained at the original source revision. Current targeted follow-up is provider_recovery; these 50 were not all rerun.",
+      "historical_revision": "fc3933c1fd1d831a10d5fd630ea22070874bc72b"
     },
     "reproduce": {
       "environment": {
@@ -3342,23 +3344,24 @@
       "limit": "Repeated failed diagnostics and before/after runs are actual executions, not additional unique contracts. Two ad hoc comparison failures occurred before native behavior."
     },
     "blocking_contract": {
-      "test": "account_launch::agent_process::native_tests::cold_settings::recap_socket::fork::installed_fork_preserves_source_provider_after_default_changes",
+      "status": "resolved_by_explicit_native_fork",
       "issue": "https://github.com/acg-box/decodex/issues/2575",
-      "observed_error": "This chat uses fixture, but your current provider is other. Switch to fixture to continue.",
-      "source": "codex-rs/app-server/src/config_manager.rs::ConfigManager::load_for_resume",
-      "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
-      "source_review_records": [
-        69,
-        125
+      "historical_evidence": "https://github.com/acg-box/decodex/blob/fc3933c1fd1d831a10d5fd630ea22070874bc72b/automations/upstream/qualification.json#candidate_qualification",
+      "reconciliation": "The old synthetic test required resuming saved provider A while global provider B was current. Upstream intentionally rejects this. Keep ordinary forks on A and restore A before cold resume; explicitly approved recovery creates a separate native fork on B.",
+      "assertions": "All source-provider, history, lineage, archive and no-inference assertions remain. The new two-provider regression also proves B-only inference after an explicit send and cold restart.",
+      "current_tests": [
+        "account_launch::agent_process::native_tests::cold_settings::recap_socket::fork::installed_fork_preserves_source_provider_after_default_changes",
+        "account_launch::agent_process::native_tests::cold_settings::recap_socket::fork::installed_provider_recovery_fork_preserves_context_and_restarts_on_current_provider"
       ],
-      "selected_baseline_passed": true,
-      "next_action": "Establish a supported native route that preserves saved-provider cold resume, then rerun this exact retained regression against the frozen artifact and its helpers. Preserve the baseline; do not weaken assertions or silently change global provider configuration."
+      "delivery": [
+        "https://github.com/acg-box/decodex/commit/20be50137551a46a4ffde709ccfafbfe56ccc6b9"
+      ]
     },
     "dependent_adaptation": {
       "id": "managed-human-command-approval-compatibility",
       "source_review_record": 92,
       "status": "necessary_repair_pending_qualified_runtime",
-      "reason": "Agent capability and application projection lack humanCommand. Current selected runtime does not support this new API; do not advertise it before runtime qualification. Reuse the guarded approval panel, no policy editor."
+      "reason": "Agent capability and application projection lack humanCommand. Provider recovery is now qualified, so continue the existing capability/projection repair against the fixed candidate and then qualify the applicable retained approval boundaries before any runtime pin change."
     },
     "source_and_fixture_sha256": {
       "crates/decodex-components/src/install.rs": "6c1780a78d4023e27277d7275780db7e8c567c2ef1526e82385ce4dea4155c5f",
@@ -3459,14 +3462,516 @@
     },
     "limits": [
       "macOS arm64, system-temporary synthetic accounts/providers and local transports only.",
-      "Candidate integrity and 49 passing retained contracts do not qualify a runtime migration while the saved-provider resume contract fails.",
+      "Provider recovery is qualified only by the targeted follow-up below. Runtime migration still requires HumanCommand compatibility and applicable retained qualification. Selected runtime remains unchanged.",
       "No live account/provider, physical audio, remote production execution, billing, performance or installed-app acceptance.",
       "Historical certified source ranges and coverage uncertainty remain unchanged; retired Codex diagnostic is excluded from current maintenance."
     ],
     "implementation_commits": [
       "https://github.com/acg-box/decodex/commit/768690c268e679df140b0c588f02f3d91c633eec",
-      "https://github.com/acg-box/decodex/commit/283741d89b57346bd25ac91283ef682da0a2d327"
-    ]
+      "https://github.com/acg-box/decodex/commit/283741d89b57346bd25ac91283ef682da0a2d327",
+      "https://github.com/acg-box/decodex/commit/20be50137551a46a4ffde709ccfafbfe56ccc6b9"
+    ],
+    "provider_recovery": {
+      "decodex_source_revision": "20be50137551a46a4ffde709ccfafbfe56ccc6b9",
+      "source_symbols": {
+        "crates/decodex-codex/src/app_server_client/provider_recovery.rs": [
+          "NativeProviderMismatch::from_error",
+          "AppServerClient::refresh_provider_mismatch",
+          "AppServerClient::provider_matches_configuration"
+        ],
+        "crates/decodex-codex/src/app_server_client/thread_fork.rs": [
+          "AppServerClient::fork_thread_with_provider"
+        ],
+        "crates/decodex-runtime/src/agent.rs": [
+          "AgentCoordinator::wake_pending"
+        ],
+        "crates/decodex-runtime/src/agent/prompt_edit.rs": [
+          "AgentCoordinator::fork_prompt_edit_with_provider"
+        ],
+        "crates/decodex-runtime/src/agent_model_settings.rs": [
+          "read"
+        ],
+        "apps/decodex-gpui/src/agent_workspace.rs": [
+          "AgentSurface::provider_connection_notice"
+        ],
+        "apps/decodex-gpui/src/agent_list_branch.rs": [
+          "AgentSurface::review_provider_branch"
+        ],
+        "apps/decodex-gpui/src/agent_prompt_confirm.rs": [
+          "AgentSurface::confirm_prompt_branch",
+          "confirm_worker"
+        ],
+        "database/src/agent_fork.rs": [
+          "AgentForkAttempt"
+        ]
+      },
+      "delivery": [
+        "https://github.com/acg-box/decodex/commit/20be50137551a46a4ffde709ccfafbfe56ccc6b9"
+      ],
+      "tests_executed": {
+        "focused-final": {
+          "tests": [
+            {
+              "package": "decodex-codex",
+              "test": "app_server_client::dispatch_refusal::tests::native_refusals_require_exact_code_and_message"
+            },
+            {
+              "package": "decodex-codex",
+              "test": "app_server_client::thread_model_settings::tests::nullable_settings_are_distinct_from_missing_or_invalid_metadata"
+            },
+            {
+              "package": "decodex-codex",
+              "test": "app_server_client::dispatch_refusal::tests::structured_shutdown_never_falls_back_over_present_data"
+            },
+            {
+              "package": "decodex-codex",
+              "test": "app_server_client::thread_model_settings::tests::provider_is_native_metadata_and_never_a_local_fallback"
+            },
+            {
+              "package": "decodex-codex",
+              "test": "app_server_client::thread_model_settings::tests::settings_read_uses_only_exact_thread_read"
+            },
+            {
+              "package": "decodex-codex",
+              "test": "app_server_client::provider_recovery::tests::provider_recovery_requires_exact_native_refusal_and_clears_after_resume"
+            },
+            {
+              "package": "decodex-codex",
+              "test": "app_server_client::thread_fork::tests::provider_fork_rechecks_current_config_and_never_sends_input"
+            },
+            {
+              "package": "decodex-database",
+              "test": "agent_fork::tests::definite_fork_refusal_resolves_only_the_new_unbound_work"
+            },
+            {
+              "package": "decodex-database",
+              "test": "agent_fork::tests::attached_branch_retains_its_exact_source_instead_of_becoming_a_sibling"
+            },
+            {
+              "package": "decodex-database",
+              "test": "agent::tests::dispatch_refusals::capacity_retry_waits_for_unknown_permission_selection_after_reopen"
+            },
+            {
+              "package": "decodex-gpui::bin/decodex-gpui",
+              "test": "conversations::model_settings::tests::reverted_selection_cannot_admit_an_old_settings_reply"
+            },
+            {
+              "package": "decodex-gpui::bin/decodex-gpui",
+              "test": "conversations::model_settings::tests::observed_defaults_refresh_but_explicit_choices_survive_restore_and_reconnect"
+            },
+            {
+              "package": "decodex-gpui::bin/decodex-gpui",
+              "test": "conversations::model_settings::tests::model_choice_keeps_its_required_effort_adjustment_during_a_native_read"
+            },
+            {
+              "package": "decodex-gpui::bin/decodex-gpui",
+              "test": "conversations::model_settings::tests::cold_settings_never_reuse_another_editors_unknown_tier"
+            },
+            {
+              "package": "decodex-gpui::bin/decodex-gpui",
+              "test": "shell::agent_surface::model_settings::tests::model_settings_snapshot_identity_aba_requires_a_fresh_read"
+            },
+            {
+              "package": "decodex-gpui::bin/decodex-gpui",
+              "test": "shell::agent_surface::model_settings::tests::inspecting_a_worker_does_not_replace_the_composers_model_observation"
+            },
+            {
+              "package": "decodex-gpui::bin/decodex-gpui",
+              "test": "shell::agent_surface::model_settings::tests::failed_refresh_keeps_the_same_threads_last_native_model"
+            },
+            {
+              "package": "decodex-gpui::bin/decodex-gpui",
+              "test": "shell::agent_surface::model_settings::tests::a_new_explicit_model_uses_its_own_capabilities_not_the_observed_model"
+            },
+            {
+              "package": "decodex-gpui::bin/decodex-gpui",
+              "test": "shell::agent_surface::model_settings::tests::missing_native_binding_reports_unavailable_without_starting_a_read"
+            },
+            {
+              "package": "decodex-gpui::bin/decodex-gpui",
+              "test": "shell::agent_surface::model_settings::tests::main_and_other_chats_keep_their_models_across_navigation_and_turn_changes"
+            },
+            {
+              "package": "decodex-gpui::bin/decodex-gpui",
+              "test": "shell::agent_surface::model_settings::tests::model_default_reasoning_has_the_same_value_in_new_and_existing_chats"
+            },
+            {
+              "package": "decodex-gpui::bin/decodex-gpui",
+              "test": "shell::agent_surface::model_settings::tests::observed_settings_do_not_replace_newer_manual_intent"
+            },
+            {
+              "package": "decodex-gpui::bin/decodex-gpui",
+              "test": "shell::agent_surface::model_settings::tests::model_settings_click_refreshes_idle_task_and_rejects_foreign_reply"
+            },
+            {
+              "package": "decodex-gpui::bin/decodex-gpui",
+              "test": "shell::agent_surface::prompt_edit::list_branch::tests::list_branch_requires_the_completed_turns_own_input"
+            },
+            {
+              "package": "decodex-gpui::bin/decodex-gpui",
+              "test": "shell::agent_surface::model_settings::tests::repeated_model_observations_only_invalidate_changed_values"
+            },
+            {
+              "package": "decodex-protocol",
+              "test": "tests::negotiation_accepts_only_the_current_major_and_minor"
+            },
+            {
+              "package": "decodex-gpui::bin/decodex-gpui",
+              "test": "shell::agent_surface::model_settings::tests::unavailable_service_clears_model_observations_but_detail_close_keeps_them"
+            },
+            {
+              "package": "decodex-gpui::bin/decodex-gpui",
+              "test": "shell::agent_surface::prompt_edit::list_branch::tests::list_branch_rejects_changed_source_and_unmanaged_rows"
+            },
+            {
+              "package": "decodex-gpui::bin/decodex-gpui",
+              "test": "shell::agent_surface::prompt_edit::list_branch::tests::list_branch_selects_the_latest_completed_turn_not_live_input"
+            },
+            {
+              "package": "decodex-gpui::bin/decodex-gpui",
+              "test": "shell::agent_surface::prompt_edit::list_branch::tests::list_branch_entry_preserves_drafts_and_cancellation"
+            },
+            {
+              "package": "decodex-gpui::bin/decodex-gpui",
+              "test": "shell::agent_surface::model_settings::tests::ordinary_snapshot_refresh_keeps_model_settings_read"
+            },
+            {
+              "package": "decodex-gpui::bin/decodex-gpui",
+              "test": "shell::agent_surface::drafts::storage::prompt_confirm_tests::list_branch_confirmation_uses_native_after_turn_without_sending"
+            },
+            {
+              "package": "decodex-gpui::bin/decodex-gpui",
+              "test": "shell::agent_surface::drafts::storage::prompt_confirm_tests::provider_branch_confirmation_persists_destination_without_sending"
+            },
+            {
+              "package": "decodex-gpui::bin/decodex-gpui",
+              "test": "shell::agent_surface::drafts::storage::prompt_confirm_tests::branch_after_turn_needs_no_input_preflight"
+            },
+            {
+              "package": "decodex-gpui::bin/decodex-gpui",
+              "test": "shell::agent_surface::drafts::storage::prompt_confirm_tests::branch_confirmation_saves_choice_before_native_dispatch"
+            },
+            {
+              "package": "decodex-gpui::bin/decodex-gpui",
+              "test": "shell::agent_surface::drafts::storage::prompt_confirm_tests::attached_branch_confirmation_is_saved_and_skips_unsent_input_preflight"
+            },
+            {
+              "package": "decodex-runtime",
+              "test": "agent::tests::native_settings::known_settings_refusal_preserves_unsent_input_for_user_decision"
+            },
+            {
+              "package": "decodex-runtime",
+              "test": "agent::tests::unsent_input::local_question_refusal_releases_only_the_exact_pending_answer"
+            },
+            {
+              "package": "decodex-runtime",
+              "test": "agent::tests::unsent_input::provider_recovery_keeps_unsent_input_without_automatic_retry"
+            },
+            {
+              "package": "decodex-runtime",
+              "test": "agent::tests::unsent_input::explicit_retry_uses_the_original_input_once_through_normal_dispatch"
+            },
+            {
+              "package": "decodex-runtime",
+              "test": "agent_model_settings::tests::model_settings_do_not_read_a_foreign_thread"
+            },
+            {
+              "package": "decodex-runtime",
+              "test": "agent::tests::completion_contract::busy_worker_refuses_unsent_input_then_continues_once_idle"
+            },
+            {
+              "package": "decodex-runtime",
+              "test": "account_launch::agent_process::native_tests::reviewer::store::model_settings_tests::live_model_choices_are_bound_to_the_task_and_discarded_after_source_change"
+            },
+            {
+              "package": "decodex-runtime",
+              "test": "agent::tests::prompt_edit::provider_fork_uses_the_existing_receipt_and_rejects_changed_configuration"
+            },
+            {
+              "package": "decodex-runtime",
+              "test": "agent_model_settings::tests::model_settings_read_other_conversations_hosted_by_the_same_process"
+            },
+            {
+              "package": "decodex-database",
+              "test": "agent::tests::dispatch_refusals::every_proven_capacity_refusal_preserves_failed_delivery_after_reopen"
+            },
+            {
+              "package": "decodex-database",
+              "test": "agent_fork::tests::fork_receipt_survives_restart_without_repeating_creation_or_changing_source"
+            },
+            {
+              "package": "decodex-runtime",
+              "test": "conversation::model_settings::tests::active_settings_read_delivers_completion_once_on_success_and_rejection"
+            },
+            {
+              "package": "decodex-gpui::bin/decodex-gpui",
+              "test": "shell::agent_surface::native_timeline::receipts::tests::unsent_input_shows_its_message_and_stays_separate_from_native_diagnostics"
+            },
+            {
+              "package": "decodex-runtime",
+              "test": "agent::tests::prompt_edit::prompt_fork_preserves_source_and_recovers_acknowledged_identity_without_replay"
+            },
+            {
+              "package": "decodex-runtime",
+              "test": "account_launch::agent_process::native_tests::reviewer::store::model_settings_tests::live_model_publication_checks_capabilities_and_keeps_uncertain_receipts"
+            },
+            {
+              "package": "decodex-gpui::bin/decodex-gpui",
+              "test": "shell::agent_surface::model_settings::tests::provider_recovery_banner_is_source_bound_and_cancellation_keeps_the_draft"
+            },
+            {
+              "package": "decodex-runtime",
+              "test": "agent::tests::unsent_input::only_local_refusals_without_prior_effects_release_input_after_restart"
+            },
+            {
+              "package": "decodex-runtime",
+              "test": "conversation::model_settings::tests::ordinary_settings_read_preserves_terminal_events_and_native_identity"
+            },
+            {
+              "package": "decodex-runtime",
+              "test": "agent_model_settings::tests::model_settings_discard_changed_sources_and_preserve_null_metadata"
+            }
+          ],
+          "passed": 55,
+          "command": [
+            "cargo",
+            "+stable",
+            "nextest",
+            "run",
+            "--locked",
+            "--no-fail-fast",
+            "-p",
+            "decodex-codex",
+            "-p",
+            "decodex-database",
+            "-p",
+            "decodex-protocol",
+            "-p",
+            "decodex-runtime",
+            "-p",
+            "decodex-gpui",
+            "-E",
+            "test(provider_recovery) | test(provider_fork) | test(prompt_fork) | test(branch_confirmation) | test(branch_after_turn) | test(list_branch) | test(agent_fork::) | test(model_settings) | test(dispatch_refusal) | test(unsent_input) | test(negotiation_accepts)"
+          ],
+          "entrypoints": [
+            "apps/decodex-gpui/src/main.rs",
+            "crates/decodex-codex/src/lib.rs",
+            "crates/decodex-protocol/src/lib.rs",
+            "crates/decodex-runtime/src/lib.rs",
+            "database/src/lib.rs"
+          ]
+        },
+        "native-candidate-final": {
+          "tests": [
+            {
+              "package": "decodex-runtime",
+              "test": "account_launch::agent_process::native_tests::cold_settings::recap_socket::fork::installed_fork_preserves_source_provider_after_default_changes"
+            },
+            {
+              "package": "decodex-runtime",
+              "test": "account_launch::agent_process::native_tests::cold_settings::recap_socket::fork::installed_provider_recovery_fork_preserves_context_and_restarts_on_current_provider"
+            }
+          ],
+          "passed": 2,
+          "command": [
+            "cargo",
+            "+stable",
+            "nextest",
+            "run",
+            "--locked",
+            "-p",
+            "decodex-runtime",
+            "--lib",
+            "--run-ignored",
+            "only",
+            "--test-threads",
+            "1",
+            "-E",
+            "test(=account_launch::agent_process::native_tests::cold_settings::recap_socket::fork::installed_fork_preserves_source_provider_after_default_changes) | test(=account_launch::agent_process::native_tests::cold_settings::recap_socket::fork::installed_provider_recovery_fork_preserves_context_and_restarts_on_current_provider)"
+          ],
+          "entrypoints": [
+            "crates/decodex-runtime/src/lib.rs"
+          ],
+          "artifact_source": "5be57bedd04d717cdde3a768ea7b71e97733736b"
+        },
+        "native-baseline-final": {
+          "tests": [
+            {
+              "package": "decodex-runtime",
+              "test": "account_launch::agent_process::native_tests::cold_settings::recap_socket::fork::installed_fork_preserves_source_provider_after_default_changes"
+            }
+          ],
+          "passed": 1,
+          "command": [
+            "cargo",
+            "+stable",
+            "nextest",
+            "run",
+            "--locked",
+            "-p",
+            "decodex-runtime",
+            "--lib",
+            "--run-ignored",
+            "only",
+            "--test-threads",
+            "1",
+            "-E",
+            "test(=account_launch::agent_process::native_tests::cold_settings::recap_socket::fork::installed_fork_preserves_source_provider_after_default_changes)"
+          ],
+          "entrypoints": [
+            "crates/decodex-runtime/src/lib.rs"
+          ],
+          "artifact_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
+          "cli_sha256": "cb933d4981df419760215afba381372b400d0906bd3c2bc5d29186b200740986"
+        },
+        "ui_final_recheck": {
+          "passed": 7,
+          "failed": 0,
+          "command": [
+            "cargo",
+            "+stable",
+            "nextest",
+            "run",
+            "--locked",
+            "-p",
+            "decodex-gpui",
+            "-E",
+            "test(provider_recovery_banner) | test(provider_branch_confirmation) | test(list_branch)"
+          ],
+          "limit": "Repeats selected UI cases after final panel-state and rendering changes; included in the 55 unique local tests."
+        },
+        "rehearsal_setup": {
+          "executed": 1,
+          "passed": 1,
+          "command": [
+            "python3",
+            "scripts/vnext/run_native_regression.py",
+            "--runtime",
+            "<exact-candidate-runtime>",
+            "--lock",
+            "<candidate-lock-json>",
+            "--desktop",
+            "/usr/bin/true",
+            "--provider-recovery"
+          ],
+          "limit": "Real native service, public socket and provider mismatch setup only; /usr/bin/true replaces the desktop. No UI acceptance."
+        }
+      },
+      "tests_read": {
+        "upstream_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+        "bodies": [
+          "codex-rs/app-server/tests/suite/v2/thread_resume.rs::thread_resume_returns_provider_error_even_with_provider_override",
+          "codex-rs/app-server/tests/suite/v2/thread_resume.rs::thread_resume_recovers_after_provider_configuration_is_restored",
+          "codex-rs/app-server/tests/suite/v2/thread_unsubscribe.rs::thread_unsubscribe_keeps_thread_loaded_until_idle_timeout"
+        ],
+        "upstream_tests_executed": 0
+      },
+      "upstream_symbols": [
+        "codex-rs/app-server/src/config_manager.rs::ConfigManager::load_for_resume",
+        "codex-rs/app-server/src/request_processors/thread_processor.rs::thread_fork_inner",
+        "codex-rs/app-server/src/request_processors/thread_processor.rs::thread_unsubscribe_response_inner",
+        "codex-rs/app-server-protocol/src/protocol/v2/thread.rs::ThreadForkParams"
+      ],
+      "source_and_fixture_sha256": {
+        "crates/decodex-codex/src/app_server_client/provider_recovery.rs": "bcacad447daf80f5b63a28d7120013947f7e336c574820449e5bb3c263ce2ff3",
+        "crates/decodex-codex/src/app_server_client/thread_fork.rs": "2b2ba97fe646c51241ea3c4ff3aa296334595861ca0b35fdc194dd198d8b68ec",
+        "crates/decodex-runtime/src/agent.rs": "6b4aa27874903e180c7f6f6b51f727bbe87c35815de7a39b3c9a14eec33ec881",
+        "crates/decodex-runtime/src/agent/prompt_edit.rs": "d198431233dabf9e7996d3dafc9703588b36993b3505ffd54fad4afe0839571e",
+        "crates/decodex-runtime/src/agent_model_settings.rs": "cbb54b8e333d8a4a8ede6a373b4c116be186051ce1bbd0068e1f737bad7cfdea",
+        "apps/decodex-gpui/src/agent_workspace.rs": "0e3a55a87eb70004a67ff7782104afcfed5e0fd633fff13e652b4b76e770b02c",
+        "apps/decodex-gpui/src/agent_list_branch.rs": "6f2d496127cef1de0840d16153d25613e23b628c679be667664530d028017c1f",
+        "apps/decodex-gpui/src/agent_prompt_confirm.rs": "4cd6bbaef269440527655dff3b1d8c44d50d74adc881906e636eb5fdd2af3d2d",
+        "database/src/agent_fork.rs": "1dcdfc3171e3592a550063154aeb70c404ef5c035674f3da51e31ba3ca8668ab",
+        "crates/decodex-runtime/src/account_launch/agent_process_native_fork_tests.rs": "506df593d904b45fa360604bd865aacefece4d5fec1bedc570181e4f0f775af9",
+        "crates/decodex-runtime/src/account_launch/agent_process_native_recap_socket_tests.rs": "25bdce68a0fe9cb7f38b94ac3e4cc07411444eef3487c91c3f06fee16defe31f",
+        "crates/decodex-runtime/src/account_launch/agent_process_native_desktop_acceptance.rs": "6aa74017010d9a91b4a5c6208022eef8a8d6858ae12928362c3d48d9f2b11b50",
+        "crates/decodex-runtime/src/agent/tests/prompt_edit.rs": "f4adbf33e52f5328de551ba54f7b3f4a2f53f3b4db48799f1e5488fba4ead2b8",
+        "crates/decodex-runtime/src/agent/tests/unsent_input.rs": "48d7cf337d22bd5626a34176ae3ea476a66eef1c49ea619ba7126ea56f3aef35",
+        "apps/decodex-gpui/src/agent_model_settings_wire_tests.rs": "f0ffcb2b8cf23dda4fc4752b1d774d81a9c246c1dd6b5b239f85db76059187a2",
+        "apps/decodex-gpui/src/agent_prompt_confirm_wire_tests.rs": "9c6d7ada71ce89ea842fc8063a9fffe68374e1df20c8cfccadf3279c6e969d11",
+        "scripts/vnext/run_native_regression.py": "566ce4f9baaaa539ee13662b47eb96cfc7940f25c1b322c371c40f64bb0974c0",
+        "crates/decodex-protocol/src/agent_model_settings.rs": "05ec7eb694193d9c8861b70eabeb90cefaad21246982c04e36c564016d02d1c2",
+        "crates/decodex-protocol/src/agent_prompt_edit.rs": "451b31d173f2197c13f217174f285dbc2b0e8fb5c243cd8e7727ec479ec2611f"
+      },
+      "components_rechecked": [
+        {
+          "path": "CodexCLI.app/Contents/MacOS/codex",
+          "sha256": "7403fcc802a5bf9afc4b41e07fb99429db0c495976e6a4dd5ab233f0945fe759",
+          "signature_exit": 0
+        },
+        {
+          "path": "bin/codex-code-mode-host",
+          "sha256": "1a21f6b9cd87227a35335904f183ad3fb4d2d1c79dc479a806254ac8db0c21bb",
+          "signature_exit": 0
+        },
+        {
+          "path": "bin/codex-exec-server",
+          "sha256": "7fc43fc7b75347d945953b783b8e2808ca1cc3d98beb27011ef02576e6c415ea",
+          "signature_exit": 0
+        },
+        {
+          "path": "codex-path/rg",
+          "sha256": "9e471bfc08a71af5b96f6781bafa043b622c55b6e0c090931d7b3ac2466d2d8e",
+          "signature_exit": 0
+        }
+      ],
+      "schema_regenerated": {
+        "stable": {
+          "ThreadForkParams.json": {
+            "sha256": "60540b97d453ddbc5e12bfaa007a3718f31847d18dec0da59a5e4b89be4717ad",
+            "canonical_sha256": "8b5a0c6af181f85f7581ad2e0eac485875243fea53ae0e12e932954c36fc95fd"
+          },
+          "ModelProviderError.json": {
+            "sha256": "a038bc2605df850147bceeeb780430f853f276e1be1addd4ebc485a2a01b679a",
+            "canonical_sha256": "0108c55f87e40e97a161fb2934b93f293cada277f4d494b28c3082fa494f28d1"
+          },
+          "ThreadResumeParams.json": {
+            "sha256": "8dceca415b2c16693b55658ea629cba5ffc82ac300dcd403db0ba7455e491496",
+            "canonical_sha256": "e8689b1824a3afceb788c084beb6f00fd6dea97e919e5811fc691f6b919754c8"
+          }
+        },
+        "experimental": {
+          "ThreadForkParams.json": {
+            "sha256": "9c85b0347ef12c9a7eef7f08b3710d859569a16414bdf0f18254b0c42560a47e",
+            "canonical_sha256": "19d2515d8d51f320a442cdff4374a723b786d11a47000023937ecf0b907c5a25"
+          },
+          "ModelProviderError.json": {
+            "sha256": "a038bc2605df850147bceeeb780430f853f276e1be1addd4ebc485a2a01b679a",
+            "canonical_sha256": "0108c55f87e40e97a161fb2934b93f293cada277f4d494b28c3082fa494f28d1"
+          },
+          "ThreadResumeParams.json": {
+            "sha256": "8152ea774ace4eb5623081abd64a1135f28cbff1e73ca641cfb80ac16f6eed32",
+            "canonical_sha256": "9a2e449f58cc6afc00d088091ef563c4b8e27ab0db3e42c05c688e8f9638fcee"
+          }
+        }
+      },
+      "other_checks": {
+        "strict_clippy_packages": [
+          "decodex-codex",
+          "decodex-database",
+          "decodex-protocol",
+          "decodex-runtime",
+          "decodex-gpui"
+        ],
+        "command_owner": "scripts/lint_rust_workspace.py::clippy_command, unversioned stable compiler",
+        "format": "rustup run nightly cargo fmt --all -- --check",
+        "whitespace": "git diff --check",
+        "desktop_build": "cargo +stable build --locked -p decodex-gpui --bin decodex-gpui",
+        "clippy_limit": "Replace four pre-existing fixture unwrap calls with context; narrowly expect too_many_lines on the data-only state constructor. No test assertion is suppressed."
+      },
+      "limits": [
+        "55 unique local tests; 7 selected UI cases repeated after final changes. Two candidate native tests and one selected-baseline comparison. No full native cohort rerun.",
+        "The previous 49 successes remain historical evidence within their original source, artifact and behavior limits; do not report 51 freshly executed native passes.",
+        "macOS arm64, synthetic loopback services and temporary profiles. No real account, policy migration, billing, performance or installed-app acceptance.",
+        "Candidate remains unselected. HumanCommand compatibility and affected artifact qualification remain separate pending maintenance; no schedule activation, installation or release."
+      ],
+      "interactive_reproduction": {
+        "command": "python3 scripts/vnext/run_native_regression.py --runtime <exact-candidate-runtime> --lock <candidate-lock-json> --desktop <built-decodex-gpui> --provider-recovery",
+        "prerequisite": "Explicitly prepare the exact artifact from candidate_lock and build the desktop executable. The command verifies candidate components in temporary storage.",
+        "behavior": "Starts the actual desktop against its own public socket and temporary HOME with an old-provider conversation and a current-provider mismatch. Quit that window to end the fixture and remove its temporary profile.",
+        "limit": "The two provider names share one loopback backend for UI rehearsal. The separate native regression proves routing with two distinct servers."
+      }
+    }
   },
   "selected_runtime_recheck": {
     "source_commit": "33d306d457a4632b22bebf214e0c25d91f90f6e8",

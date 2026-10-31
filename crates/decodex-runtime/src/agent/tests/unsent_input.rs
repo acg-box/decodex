@@ -7,6 +7,46 @@ use crate::agent::tests::{
 use decodex_core::DecodexRoot;
 
 #[tokio::test]
+async fn provider_recovery_keeps_unsent_input_without_automatic_retry() {
+	let (mut agent, mut sent, _directory) = tests::fixture_with_history(serde_json::json!({"_resume_failures":2,"_resume_error":{"code":-32600,"message":"provider mismatch","data":{"type":"modelProviderMismatch","modelProvider":"original","currentModelProvider":"current"}}})).await;
+	agent.start_agent("agent", "Start").await.unwrap();
+	tests::complete(&mut agent, "agent").await;
+	agent.loaded_threads.clear();
+	agent.enqueue_user_message("agent", "pending", "Keep this unsent input").await.unwrap();
+	let pending = agent
+		.store
+		.list_pending_agent_events(100)
+		.await
+		.unwrap()
+		.into_iter()
+		.find(|event| event.event_kind == "user_message")
+		.unwrap();
+	while sent.try_recv().is_ok() {}
+	agent.wake_pending().await.unwrap();
+	let saved = agent.store.get_agent_inbox_event(pending.id).await.unwrap();
+	assert_eq!(saved.disposition, Some(AgentDisposition::UserDecision));
+	assert_eq!(saved.payload, pending.payload);
+	assert!(saved.delivered_turn_id.is_none());
+	assert!(
+		agent
+			.store
+			.list_pending_agent_events(100)
+			.await
+			.unwrap()
+			.iter()
+			.all(|event| event.event_kind != "user_message")
+	);
+	let observed = iter::from_fn(|| sent.try_recv().ok()).collect::<Vec<_>>();
+	assert!(observed.iter().any(|r| r["method"] == "thread/resume"));
+	assert!(observed.iter().all(|r| r["method"] != "turn/start"));
+	agent.wake_pending().await.unwrap();
+	assert!(
+		iter::from_fn(|| sent.try_recv().ok())
+			.all(|r| r["method"] != "thread/resume" && r["method"] != "turn/start")
+	);
+}
+
+#[tokio::test]
 async fn explicit_retry_uses_the_original_input_once_through_normal_dispatch() {
 	let (mut agent, mut sent, _directory) = tests::fixture().await;
 

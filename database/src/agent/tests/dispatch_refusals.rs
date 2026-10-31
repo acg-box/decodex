@@ -8,6 +8,7 @@ async fn every_proven_capacity_refusal_preserves_failed_delivery_after_reopen() 
 	for refusal in [
 		AgentDispatchRefusal::ServerDraining,
 		AgentDispatchRefusal::ManagedProviderChanged,
+		AgentDispatchRefusal::ProviderMismatch,
 		AgentDispatchRefusal::SettingsChanged,
 		AgentDispatchRefusal::RequestTooLarge,
 		AgentDispatchRefusal::RequestQueueFull,

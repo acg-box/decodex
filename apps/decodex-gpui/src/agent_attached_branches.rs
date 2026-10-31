@@ -280,6 +280,7 @@ mod tests {
 					owner: Some((source.id.clone(), runtime)),
 					result: Some(AttachedBranchesResult::Available {
 						branches: vec![PromptForkStatus {
+							model_provider: None,
 							work_id: EntityId::new(source.id).unwrap(),
 							thread_id: WireText::new(source.codex_thread_id.unwrap()).unwrap(),
 							review_token: WireText::new("a".repeat(64)).unwrap(),

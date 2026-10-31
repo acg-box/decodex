@@ -168,17 +168,18 @@ impl AgentSurface {
 		let id = self.selected.clone().expect("selected fixture conversation");
 		self.snapshot
 			.as_mut()
-			.unwrap()
+			.expect("usage estimate visual fixture")
 			.work_items
 			.iter_mut()
 			.find(|work| work.id == id)
-			.unwrap()
+			.expect("usage estimate visual fixture")
 			.codex_thread_id = Some("cost-fixture-thread".into());
 		self.usage_estimate = Some((
 			id.clone(),
 			Some(AgentUsageEstimateResult::Available {
-				work_id: EntityId::new(id).unwrap(),
-				account_id: EntityId::new("cost-fixture-account").unwrap(),
+				work_id: EntityId::new(id).expect("usage estimate visual fixture"),
+				account_id: EntityId::new("cost-fixture-account")
+					.expect("usage estimate visual fixture"),
 				observed_at_micros: 1,
 				estimate: decodex_protocol::ThreadUsageEstimate {
 					thread_id: "cost-fixture-thread".into(),

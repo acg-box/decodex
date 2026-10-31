@@ -160,7 +160,7 @@ fn late_hydration_cannot_restore_invalidated_or_foreign_permission_facts() {
 			let facts = if malformed { serde_json::json!({}) } else { permission_facts("new") };
 			let mut pending = HashMap::from([(
 				RequestId::Number(1),
-				PendingReply { reply, permissions: Some(hydration) },
+				PendingReply { reply, permissions: Some(hydration), provider_thread: None },
 			)]);
 
 			app_server_client::dispatch(serde_json::json!({"method":"thread/settings/updated", "params":{"threadId":"task", "threadSettings":facts}}), &mut pending, &events, &requests).unwrap();
@@ -197,7 +197,7 @@ fn late_hydration_cannot_restore_invalidated_or_foreign_permission_facts() {
 	};
 	let mut pending = HashMap::from([(
 		RequestId::Number(1),
-		PendingReply { reply, permissions: Some(hydration) },
+		PendingReply { reply, permissions: Some(hydration), provider_thread: None },
 	)]);
 	let mut response = permission_facts("foreign");
 

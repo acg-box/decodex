@@ -50,6 +50,8 @@ sources:
     resource: repo://crates/decodex-codex/src/app_server_client/goals.rs
   - id: openwiki-source-9819ced71ede01a1ddc5af56
     resource: repo://crates/decodex-codex/src/app_server_client/memory.rs
+  - id: openwiki-source-05eed4188305f36a07538b31
+    resource: repo://crates/decodex-codex/src/app_server_client/provider_recovery.rs
   - id: openwiki-source-3515e2ff1d1ef96caaa97617
     resource: repo://crates/decodex-codex/src/app_server_client/search_preferences.rs
   - id: openwiki-source-787f8ad27b8519fbed2bd039
@@ -60,8 +62,6 @@ sources:
     resource: repo://crates/decodex-codex/src/conversation.rs
   - id: openwiki-source-0d29990b5fd295fa89a495ad
     resource: repo://crates/decodex-protocol/src/model_catalog.rs
-  - id: openwiki-source-4a57fba4bea69171318c6323
-    resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_fork_tests.rs
   - id: openwiki-source-e5be8be8499e6ccee0cf7ad0
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_memory_tests.rs
   - id: openwiki-source-f5d073da07bcb17ee416f3b5
@@ -94,10 +94,10 @@ sources:
     resource: repo://crates/decodex-runtime/tests/native_qualification/thread_settings.py
   - id: openwiki-source-8c78df4b382026886ac50894
     resource: repo://database/src/usage_evidence.rs
-generated: { by: "codex", at: "2026-10-30T20:00:55.995Z" }
+generated: { by: "codex", at: "2026-10-31T13:17:02.524Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-30T20:00:55.995Z
+    at: 2026-10-31T13:17:02.524Z
 ---
 
 # Model selection and settings ownership
@@ -148,6 +148,8 @@ Shared native configuration writes retain file/version identity and arbitration.
 
 Cold resume inherits the saved native thread settings without reapplying creation settings. A model-only update preserves the native tier, provider and collaboration settings. The reusable qualification probe checks that the saved service tier and summary setting survive changed global defaults in both legacy and paginated thread modes. The probe also checks acknowledged approval, reviewer and read-only permission recovery despite stale turn context during fork and cold resume in both history modes. Each recovery case makes one inference request and does not replay the saved turn. This evidence applies to the selected qualified artifact; it does not establish installed-app acceptance. See [saved settings and diagnostic storage](../testing/upstream-acceptance-boundaries.md#saved-settings-and-diagnostic-storage) for the commands and limits.
 
+An exact native provider mismatch is shown with the source and current provider identities. The user can [create a branch on the current provider](conversations-and-recovery.md#continue-after-a-provider-change) through the existing fork review. A fresh native configuration check guards that write; it neither changes global settings nor resumes or sends input automatically.
+
 Plugin installation and selection are configured in Codex. Maintenance of the current model controls does not authorize a new editor for every upstream setting.
 
 ## Native model retirement
@@ -174,7 +176,7 @@ The Goal panel reads and edits the Goal attached to the exact owned native threa
 
 The reviewed source, thread and Goal identity must still match before a write. Long objectives use a native objective attachment instead of silently truncating the submitted objective. Display truncation is marked separately. An uncertain save requires a fresh native read; it is not permission to repeat the mutation.
 
-**Attached branch after this turn** keeps the source provider even when the configured default changes. It starts without a copied native Goal and leaves the source Goal unchanged. Creating or opening the branch sends no input. Continue it with a separate explicit message, or use its normal Goal controls after selecting that branch. The selected runtime qualification checks ordinary forks in both history modes, attached creation in paginated history and explicit native rejection of legacy attachment. It checks restart separately and does not certify the installed desktop. A newer candidate that rejects cold resume after a provider-default change remains unselected; source review alone does not replace this retained contract. See [conversation branches](conversations-and-recovery.md#edit-or-branch-at-an-earlier-input).
+**Attached branch after this turn** keeps the source provider even when the configured default changes. It starts without a copied native Goal and leaves the source Goal unchanged. Creating or opening the branch sends no input. Continue it with a separate explicit message, or use its normal Goal controls after selecting that branch. The selected runtime qualification checks ordinary forks in both history modes, attached creation in paginated history and explicit native rejection of legacy attachment. It checks restart separately and does not certify the installed desktop. When the configured provider differs, native admission can refuse cold resume. Restore the original provider to continue that conversation, or use the separate explicit current-provider branch flow. Its targeted qualification does not select a newer runtime or complete the pending HumanCommand adaptation. See [conversation branches](conversations-and-recovery.md#edit-or-branch-at-an-earlier-input).
 
 ## Search defaults and memory observation
 
@@ -194,9 +196,9 @@ Only the native read method is admitted through the retained bridge. This view d
 
 ## Conversation cost estimates
 
-Use **Cost estimate** in the conversation header to read the existing native provider estimate. The compact amount shows approximate USD when reported, otherwise credits. Open the details for the source account, observation time and **Refresh estimate**. Closing and reopening cached details does not issue another read. A changed conversation or runtime source discards the old observation.
+The composer displays reported dollars beside **Context**. Native dollars use `$`; estimated dollars use `≈ $`. Missing dollar data is hidden and reported zero remains zero. A source-bound background read refreshes after an idle conversation update; unchanged idle conversations do not poll billing. A changed conversation or runtime source discards the old observation.
 
-The Menu Bar account surface has **Conversation estimates** and **Refresh estimates**. Opening it reads up to eight recent locally managed native conversations with available sources. Each reported row retains its source-account label. Email visibility follows the existing privacy preference. The view is a recent-conversation list, not an account total, and unavailable conversations stay unavailable.
+The Menu Bar account surface has **Conversation estimates** and **Refresh estimates**. Opening it reads up to eight recent locally managed native conversations with available sources. Each row with a reported dollar amount retains its source-account label. Rows without a dollar amount stay hidden. Email visibility follows the existing privacy preference. The view is a recent-conversation list, not an account total, and unavailable conversations stay unavailable.
 
 Native estimates can lag activity. A missing USD value is not zero; reported zero stays zero. No local model price table, incomplete account sum, final-bill promise or quota calculation is added. The main view and Menu Bar reuse the existing service usage path. See [the retained qualification](../../automations/upstream/retained-evidence.json) for the `history_resource_cost` entry, named checks and installed-app limits.
 

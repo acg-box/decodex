@@ -66,6 +66,7 @@ impl AgentHost {
 				review_token,
 				target_work_id,
 				boundary,
+				model_provider,
 			} => {
 				let boundary = match boundary {
 					PromptForkBoundary::BeforeInput => AgentForkBoundary::BeforeInput,
@@ -82,6 +83,8 @@ impl AgentHost {
 					if receipt.attempt.source.thread != thread_id.as_str()
 						|| receipt.attempt.target_work != target_work_id.as_str()
 						|| receipt.attempt.boundary != boundary
+						|| receipt.attempt.model_provider.as_deref()
+							!= model_provider.as_ref().map(WireText::as_str)
 					{
 						return Err("Branch intent changed".into());
 					}
@@ -92,7 +95,12 @@ impl AgentHost {
 				let review = self.take_prompt_review(&work_id, &thread_id, &review_token).await?;
 
 				agent
-					.fork_prompt_edit(review, target_work_id.as_str().into(), boundary)
+					.fork_prompt_edit_with_provider(
+						review,
+						target_work_id.as_str().into(),
+						boundary,
+						model_provider.map(|v| v.as_str().to_owned()),
+					)
 					.await
 					.map_err(|_| {
 						AgentHostError::Unknown(
@@ -409,6 +417,7 @@ fn fork_status(saved: AgentForkReceipt) -> Option<decodex_protocol::PromptForkSt
 			AgentForkBoundary::AfterTurn => PromptForkBoundary::AfterTurn,
 			AgentForkBoundary::AttachedAfterTurn => PromptForkBoundary::AttachedAfterTurn,
 		},
+		model_provider: saved.attempt.model_provider.map(WireText::new).transpose().ok()?,
 		phase: match saved.state.as_str() {
 			"reserved" => PromptForkPhase::Uncertain,
 			"acknowledged" => PromptForkPhase::Acknowledged,

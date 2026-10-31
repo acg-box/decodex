@@ -598,9 +598,22 @@
         },
         "uses_exact_native_artifact": false,
         "passed": true
+      },
+      {
+        "test": "installed_provider_recovery_fork_preserves_context_and_restarts_on_current_provider",
+        "package": "decodex-runtime",
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_fork_tests.rs",
+        "executed_identity": {
+          "binary_id": "decodex-runtime",
+          "test": "account_launch::agent_process::native_tests::cold_settings::recap_socket::fork::installed_provider_recovery_fork_preserves_context_and_restarts_on_current_provider"
+        },
+        "uses_exact_native_artifact": true,
+        "passed": true,
+        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+        "qualification": "automations/upstream/qualification.json#candidate_qualification/provider_recovery"
       }
     ],
-    "exact_artifact_test_count": 50,
+    "exact_artifact_test_count": 51,
     "local_history_test_count": 2,
     "unmatched_selectors": [],
     "command": [
@@ -647,6 +660,22 @@
         "--no-fail-fast",
         "--status-level",
         "fail"
+      ],
+      [
+        "cargo",
+        "+stable",
+        "nextest",
+        "run",
+        "--locked",
+        "-p",
+        "decodex-runtime",
+        "--lib",
+        "--run-ignored",
+        "only",
+        "--test-threads",
+        "1",
+        "-E",
+        "test(=account_launch::agent_process::native_tests::cold_settings::recap_socket::fork::installed_fork_preserves_source_provider_after_default_changes) | test(=account_launch::agent_process::native_tests::cold_settings::recap_socket::fork::installed_provider_recovery_fork_preserves_context_and_restarts_on_current_provider)"
       ]
     ],
     "managed_commands": [
@@ -670,7 +699,7 @@
       "reason": "Current source retires automatic native context replacement; retained legacy conversations continue original context. Source and current test body verified. Historical migration test remains a historical delivery claim only.",
       "counted_as_executed": false
     },
-    "limits": "Current reconstruction router: 50 exact-artifact native tests and two local history projections. Historical passes refer to selected 33d306d4 only. Current candidate results are under candidate_qualification; no new run of the two local projections or historical artifact probes.",
+    "limits": "Current reconstruction router: 51 exact-artifact native tests and two local history projections. Earlier passes refer to selected 33d306d4. The new provider recovery case is qualified only on frozen 5be57bedd0; current targeted results and historical cohort limits are in candidate_qualification.",
     "source_commit": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
     "historical_execution": {
       "source_commit": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
@@ -679,7 +708,7 @@
       "evidence": "https://github.com/acg-box/decodex/blob/69ef0e38d74d407a1cbe84ab06ba802adc786a8a/automations/upstream/qualification.json#retained_consumers",
       "limit": "These are historical executed counts, including one now-retired diagnostic. Do not relabel them as current-run executions."
     },
-    "selected_count": 52,
+    "selected_count": 53,
     "retired_selectors": [
       {
         "selector": "account_launch::process::startup_config::tests::installed_native_startup_configuration_preserves_auth_config_and_locked_history",
@@ -918,21 +947,30 @@
   "current_runtime_requalification": {
     "selected_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
     "candidate_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
-    "candidate_status": "blocked_provider_resume",
-    "current_native_selections": 50,
-    "candidate_passed": 49,
-    "candidate_failed": 1,
+    "candidate_status": "provider_recovery_passed_pending_runtime_adaptation",
+    "current_native_selections": 51,
     "current_unmatched_selectors": [],
-    "retired_selector_count": 1,
-    "selected_baseline_comparison_tests": 5,
-    "selected_baseline_passed": 5,
+    "historical_native_cohort": {
+      "executed": 50,
+      "passed": 49,
+      "failed": 1,
+      "revision": "fc3933c1fd1d831a10d5fd630ea22070874bc72b"
+    },
+    "provider_followup": {
+      "candidate_executed": 2,
+      "candidate_passed": 2,
+      "selected_baseline_executed": 1,
+      "selected_baseline_passed": 1,
+      "local_unique_passed": 55
+    },
     "evidence": "automations/upstream/qualification.json#candidate_qualification",
-    "blocking_issue": "https://github.com/acg-box/decodex/issues/2575",
-    "retained_manual_deliveries": "Existing approved manual capabilities and their portable contracts remain retained. Deferred product issues are separate from maintenance debt."
+    "resolved_issue": "https://github.com/acg-box/decodex/issues/2575",
+    "pending_adaptation": "managed-human-command-approval-compatibility",
+    "retained_manual_deliveries": "Existing approved capabilities remain retained. Deferred product issues are separate from daily maintenance."
   },
   "retained_contracts": {
     "path": "automations/upstream/retained-contracts.json",
-    "sha256": "36617ee9e47944cf5637795bbc48f42227b2967c37b2bb97bfc64c44a5b16ac3",
+    "sha256": "a98d4bd8b3d63527e8dd136837acc6ecd1b15cc281331807beb1c7bad11fe56d",
     "scope": "Retained requirements, selected product decisions and original feature qualification; stable across routine runtime rolls."
   },
   "workspace_dependencies": {
@@ -2850,8 +2888,18 @@
       "https://github.com/acg-box/decodex/commit/283741d89b57346bd25ac91283ef682da0a2d327"
     ],
     "maintenance_workflow_delivery": "https://github.com/acg-box/decodex/pull/2573",
-    "blocking_issue": "https://github.com/acg-box/decodex/issues/2575",
     "native_schedule": "PAUSED; daily cadence preserved; explicit user authorization is required to resume.",
-    "scope": "Sign and verify advertised executor with shared acquisition/cache repair; fix existing fixture prerequisites and improve isolated error detail. No runtime pin, product capability, app installation or release."
+    "scope": "Provider mismatch recovery reuses the native fork and existing review/receipt flow. Selected runtime unchanged; HumanCommand compatibility remains pending. No schedule activation, installation or release.",
+    "provider_resolution": "https://github.com/acg-box/decodex/issues/2575",
+    "pending_adaptation": "managed-human-command-approval-compatibility"
+  },
+  "provider_recovery": {
+    "contract": "automations/upstream/retained-contracts.json#retained_provider_recovery",
+    "qualification": "automations/upstream/qualification.json#candidate_qualification/provider_recovery",
+    "delivery": [
+      "https://github.com/acg-box/decodex/commit/20be50137551a46a4ffde709ccfafbfe56ccc6b9"
+    ],
+    "source_review_cursor_advanced": false,
+    "selected_runtime_changed": false
   }
 }

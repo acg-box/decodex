@@ -28,6 +28,7 @@ async fn acknowledged_fork_keeps_the_live_source_owner_without_adopting_other_ma
 
 	let generation = Some(tests::generation_id(1).as_str().to_owned());
 	let attempt = AgentForkAttempt {
+		model_provider: None,
 		source: AgentPromptEditAttempt {
 			work: "root".into(),
 			thread: "native-source".into(),

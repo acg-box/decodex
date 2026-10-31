@@ -5,6 +5,7 @@ use crate::{
 
 fn attempt(boundary: AgentForkBoundary) -> AgentForkAttempt {
 	AgentForkAttempt {
+		model_provider: None,
 		source: AgentPromptEditAttempt {
 			work: "main".into(),
 			thread: "source-native".into(),

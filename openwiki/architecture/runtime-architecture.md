@@ -44,6 +44,8 @@ sources:
     resource: repo://crates/decodex-codex/src/app_server_client/context_preferences.rs
   - id: openwiki-source-94c4593cb5944bf1f2ecf050
     resource: repo://crates/decodex-codex/src/app_server_client/dispatch_refusal.rs
+  - id: openwiki-source-05eed4188305f36a07538b31
+    resource: repo://crates/decodex-codex/src/app_server_client/provider_recovery.rs
   - id: openwiki-source-787f8ad27b8519fbed2bd039
     resource: repo://crates/decodex-codex/src/app_server_client/thread_fork.rs
   - id: openwiki-source-0d4c68456f2e50c6fc7ad5eb
@@ -134,10 +136,10 @@ sources:
     resource: repo://scripts/macos/stage_decodex_app.sh
   - id: openwiki-source-76081c1a47ca8cf32593de34
     resource: repo://scripts/macos/test_decodex_app_stage.sh
-generated: { by: "codex", at: "2026-10-30T20:00:55.995Z" }
+generated: { by: "codex", at: "2026-10-31T13:17:02.524Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-30T20:00:55.995Z
+    at: 2026-10-31T13:17:02.524Z
 ---
 
 # Runtime Architecture
@@ -263,7 +265,7 @@ The [portable qualification record](../../automations/upstream/qualification.jso
 
 Read the development lock and current qualification for the selected source, artifact and synthetic consumer limits. Keep the selected runtime, source-review cursor and installed binary as separate identities. A workflow or evidence update does not change those identities.
 
-The selected development runtime remains `33d306d4`. Source review through `5be57bedd0` is complete, but that candidate passes 49 of 50 retained native contracts. Cold resume of a fork with its saved provider fails after the configured default changes; the original selected artifact passes the same test. [The compatibility issue](https://github.com/acg-box/decodex/issues/2575) blocks the runtime pin. The completed source review and shared component repair do not qualify the candidate or an installed application.
+The selected development runtime remains `33d306d4`, and source review through `5be57bedd0` remains complete. The provider-refusal follow-up resolves [the compatibility issue](https://github.com/acg-box/decodex/issues/2575): ordinary forks keep the original provider and resume after that provider is restored. A user can explicitly create a separate native fork on the current provider. The service rechecks the observed refusal and current configuration before the existing fork write; it preserves the source, draft and uncertain-result receipt and sends no input. Targeted native checks pass on the exact candidate and selected baseline. The earlier cohort remains historical evidence. HumanCommand compatibility and its affected qualification remain pending before a runtime migration; this change does not select or install the candidate.
 
 The separate `retained_project_agent_work.installed_acceptance` entry records the local installed development app, its executable identities and observed behavior. It includes the independent-Agent composer and input-routing repairs. It retains its own limits and does not extend the earlier synthetic native qualification. See [acceptance boundaries](../testing/upstream-acceptance-boundaries.md#project-agent-work-and-global-guardian).
 
@@ -275,7 +277,7 @@ Production staging selects a separate official Release requirement. Release pinn
 
 ## Protocol and safety
 
-Clients use same-UID local transport and exact protocol/artifact compatibility. Protocol 4.3 exposes current Project, Agent, Work, Guardian and attached-branch operations. An incompatible client fails explicitly; there is no parallel alias rollout. Publication-instance receipts remain enabled for this generation, including reconnect and idempotent command recovery. Credentials do not enter normal product projections. Revisions and stable command identities guard mutations. An unknown outcome requires authoritative readback, not blind retry.
+Clients use same-UID local transport and exact protocol/artifact compatibility. Protocol 4.4 exposes current Project, Agent, Work, Guardian and attached-branch operations. An incompatible client fails explicitly; there is no parallel alias rollout. Publication-instance receipts remain enabled for this generation, including reconnect and idempotent command recovery. Credentials do not enter normal product projections. Revisions and stable command identities guard mutations. An unknown outcome requires authoritative readback, not blind retry.
 
 Diagnostics covers Decodex product storage, local transport and integration failures. The standalone Codex startup-configuration check, its local query and its dedicated qualification helper are retired. Codex owns its app-server self-diagnostics. Ordinary error and warning presentation and user-requested conversation Markdown export remain supported. This retirement does not qualify an installed protocol 4.0 application against the current service.
 

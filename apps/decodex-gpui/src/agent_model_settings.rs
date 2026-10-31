@@ -54,6 +54,32 @@ impl Panel {
 }
 
 impl AgentSurface {
+	pub(super) fn selected_provider_mismatch(
+		&self,
+	) -> Option<(decodex_protocol::WireText, decodex_protocol::WireText)> {
+		let selected = self.selected.as_ref()?;
+		let current_thread = self
+			.snapshot
+			.as_ref()?
+			.work_items
+			.iter()
+			.find(|work| &work.id == selected)?
+			.codex_thread_id
+			.as_deref()?;
+		let AgentModelSettingsResult::ProviderMismatch {
+			work_id,
+			thread_id,
+			model_provider,
+			current_model_provider,
+			..
+		} = self.model_settings.observations.get(selected)?
+		else {
+			return None;
+		};
+		(work_id.as_str() == selected && thread_id.as_str() == current_thread)
+			.then(|| (model_provider.clone(), current_model_provider.clone()))
+	}
+
 	pub(super) fn refresh_composer_model_settings(&mut self, cx: &mut Context<Self>) {
 		self.refresh_composer_permissions(false, cx);
 		if self.is_new_conversation() || self.sending || self.profile.is_none() {
@@ -390,7 +416,7 @@ impl AgentSurface {
 					return;
 				}
 
-				let state = if matches!(&state,AgentModelSettingsResult::Available{thread_id,work_id,..} if thread_id.as_str()!=thread || work_id.as_str()!=work) {AgentModelSettingsResult::Unavailable} else {state};
+				let state = if matches!(&state,AgentModelSettingsResult::Available{thread_id,work_id,..}|AgentModelSettingsResult::ProviderMismatch{thread_id,work_id,..} if thread_id.as_str()!=thread || work_id.as_str()!=work) {AgentModelSettingsResult::Unavailable} else {state};
 				let effort = s.effort.clone();
 
 				s.adopt_composer_observation(&work, &state, intent_revision, &input_at_read, cx);
@@ -422,6 +448,15 @@ pub(super) fn model_choice_label(model: &AgentModelDto) -> String {
 
 fn settings_text(state: &AgentModelSettingsResult) -> String {
 	match state {
+		AgentModelSettingsResult::ProviderMismatch {
+			model_provider,
+			current_model_provider,
+			..
+		} => format!(
+			"This conversation uses {}. The current provider is {}. Switch back or create a branch with the current provider.",
+			model_provider.as_str(),
+			current_model_provider.as_str()
+		),
 		AgentModelSettingsResult::Available {
 			account_id,
 			model,

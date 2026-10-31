@@ -70,10 +70,29 @@ fn side_chat_confirmation_keeps_the_attached_boundary(cx: &mut TestAppContext) {
 	run_confirmation(cx, Some(PromptForkBoundary::AttachedAfterTurn), true);
 }
 
+#[gpui::test]
+fn provider_branch_confirmation_persists_destination_without_sending(cx: &mut TestAppContext) {
+	run_confirmation_with_provider(
+		cx,
+		Some(PromptForkBoundary::AfterTurn),
+		true,
+		Some("current-provider"),
+	);
+}
+
 fn run_confirmation(
 	cx: &mut TestAppContext,
 	boundary: Option<PromptForkBoundary>,
 	from_list: bool,
+) {
+	run_confirmation_with_provider(cx, boundary, from_list, None);
+}
+
+fn run_confirmation_with_provider(
+	cx: &mut TestAppContext,
+	boundary: Option<PromptForkBoundary>,
+	from_list: bool,
+	provider: Option<&'static str>,
 ) {
 	cx.background_executor.allow_parking();
 
@@ -92,14 +111,16 @@ fn run_confirmation(
 	let inspect = store.clone();
 	let scope = profile.draft_scope_key();
 	let (done, finished) = mpsc::channel();
-	let server = spawn_confirmation_server(listener, inspect, scope, boundary, done);
+	let server = spawn_confirmation_server(listener, inspect, scope, boundary, provider, done);
 	let (view, visual) =
 		cx.add_window_view(|_, cx| confirmation_view(store.clone(), profile.clone(), cx));
 
 	let buttons = if from_list {
 		let surface = view.read_with(visual, |v, _| v.surface.clone());
 		surface.update(visual, |s, _| {
-			s.prompt_edit.branch_choice = boundary.or(Some(PromptForkBoundary::AfterTurn))
+			s.prompt_edit.branch_choice = boundary.or(Some(PromptForkBoundary::AfterTurn));
+			s.prompt_edit.branch_provider = provider
+				.map(|p| (WireText::new("original-provider").unwrap(), WireText::new(p).unwrap()));
 		});
 		vec!["locked-branch-confirm"]
 	} else {
@@ -160,6 +181,7 @@ fn spawn_confirmation_server(
 	inspect: ClientDraftStore,
 	scope: String,
 	boundary: Option<PromptForkBoundary>,
+	provider: Option<&'static str>,
 	done: Sender<()>,
 ) -> JoinHandle<()> {
 	thread::spawn(move || {
@@ -194,14 +216,15 @@ fn spawn_confirmation_server(
 
 									work_id
 								},
-								AgentActionDto::ForkPromptEdit { work_id, review_token, target_work_id, boundary: actual, .. } if step == 3 => {
+								AgentActionDto::ForkPromptEdit { work_id, review_token, target_work_id, boundary: actual, model_provider, .. } if step == 3 => {
 									assert_eq!(Some(actual), boundary);
+                                    assert_eq!(model_provider.as_ref().map(WireText::as_str), provider);
 
 									let disk = DesktopDraftDocument::decode(&inspect.load().unwrap().payload).unwrap();
 									let saved = &disk.profiles[&scope].prompt_edits[review_token.as_str()];
 
 									assert_eq!(saved.confirmation_key.as_ref(), Some(&command.idempotency_key));
-									assert_eq!(saved.fork, Some(PromptForkIntent {target_work_id, boundary: actual}));
+									assert_eq!(saved.fork, Some(PromptForkIntent {target_work_id, boundary: actual, model_provider}));
 									assert!(saved.handback_pending && saved.receipt_id.is_none());
 									assert_eq!(disk.profiles[&scope].composer.text, "Unrelated main input");
 

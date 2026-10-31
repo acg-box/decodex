@@ -365,6 +365,10 @@ impl AgentSurface {
 		surface
 	}
 
+	#[expect(
+		clippy::too_many_lines,
+		reason = "This data-only constructor lists independent state defaults without control flow."
+	)]
 	fn initial_state(
 		inputs: AgentInputs,
 		presentations: SurfacePresentations,

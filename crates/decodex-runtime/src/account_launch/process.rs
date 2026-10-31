@@ -4557,6 +4557,7 @@ fn conversation_rejection_reason(
 			NativeDispatchRefusal::ServerDraining => ConversationRejectionReason::ServerDraining,
 			NativeDispatchRefusal::ManagedProviderChanged =>
 				ConversationRejectionReason::ManagedProviderChanged,
+			NativeDispatchRefusal::ProviderMismatch => ConversationRejectionReason::Other,
 		};
 	}
 	if let Some(thread) = resume_thread_id {

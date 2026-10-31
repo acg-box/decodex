@@ -32,6 +32,8 @@ sources:
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_archive_tests.rs
   - id: openwiki-source-1a964823f348372d89aa1920
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_code_mode_tests.rs
+  - id: openwiki-source-8fd14b27958d10f11e115032
+    resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_desktop_acceptance.rs
   - id: openwiki-source-9145039d5c88ff2144ae6a60
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_discovery_tests.rs
   - id: openwiki-source-053611cb863c8c6865cef2ca
@@ -100,10 +102,10 @@ sources:
     resource: repo://scripts/vnext/run_native_regression.py
   - id: openwiki-source-d45a647d565211cf9b5cb067
     resource: repo://scripts/vstyle_audit.py
-generated: { by: "codex", at: "2026-10-30T20:00:55.995Z" }
+generated: { by: "codex", at: "2026-10-31T13:17:02.524Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-30T20:07:24.899Z
+    at: 2026-10-31T13:17:02.524Z
 ---
 
 
@@ -383,6 +385,21 @@ DECODEX_TEST_NATIVE_FORK=1 python3 scripts/vnext/run_native_regression.py \
 The `retained_attached_forks` record in the [stable contract catalog](../../automations/upstream/retained-contracts.json) lists the other four exact-artifact native tests and all reproducible commands. The final cohort passed five native tests, 57 focused backend tests and six focused UI tests with zero unmatched selectors. The complete workspace run passed 3006 tests with 1227 skipped and one passed-test LEAK; the affected composer test then passed in the clean focused cohort. These overlapping selections do not establish the cleanup cause.
 
 Strict Clippy for five affected packages, nightly formatting, 28 Python checks, the schema59 database gate and the full 1076-file style audit passed. This style result is separate from the earlier read-only-view audit failure. The native provider is synthetic. These checks did not install or launch the desktop app, qualify real-provider behavior, migrate the runtime baseline, advance upstream review or change the schedule.
+
+## Rehearse provider recovery
+
+Build the desktop executable, then reuse the native public-socket fixture with an explicitly prepared candidate runtime and its matching lock:
+
+```sh
+cargo +stable build --locked -p decodex-gpui --bin decodex-gpui
+python3 scripts/vnext/run_native_regression.py \
+  --runtime "$CANDIDATE_RUNTIME" --lock "$CANDIDATE_LOCK" \
+  --desktop "$BUILT_DECODEX_GPUI" --provider-recovery
+```
+
+Use absolute paths for the three inputs. The runner verifies the supplied components in temporary storage and uses the existing native executable attestation. It starts a real Decodex window and service with synthetic account data, creates history under one provider, then selects another provider and exposes the native mismatch. The two provider names share a loopback backend for this UI rehearsal. The separate native fork regression uses two servers to check routing.
+
+Choose **Create branch…**, inspect the destination provider, then confirm or cancel. Creation sends no input. Send a message only when ready to continue the branch. Quit the rehearsal window to end the fixture and remove its temporary profile. The runner does not install the app, select a runtime for the normal profile, or modify the automation schedule. Passing this fixture's setup is separate from a user's UI acceptance.
 
 ## Prepare Codex components
 

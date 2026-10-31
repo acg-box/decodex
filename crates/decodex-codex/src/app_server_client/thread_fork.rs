@@ -23,6 +23,18 @@ impl AppServerClient {
 		boundary: ThreadForkBoundary<'_>,
 		guard: HistoryGuard,
 	) -> Result<Value, ClientError> {
+		self.fork_thread_with_provider(source, boundary, guard, None).await
+	}
+
+	/// Explicit recovery may create a new branch on the native current provider.
+	/// The ordinary fork continues to retain its source provider.
+	pub async fn fork_thread_with_provider(
+		&self,
+		source: &str,
+		boundary: ThreadForkBoundary<'_>,
+		guard: HistoryGuard,
+		current_provider: Option<&str>,
+	) -> Result<Value, ClientError> {
 		let (field, turn, attached) = match boundary {
 			ThreadForkBoundary::BeforeInput(turn) => ("beforeTurnId", turn, false),
 			ThreadForkBoundary::AfterTurn(turn) => ("lastTurnId", turn, false),
@@ -46,13 +58,28 @@ impl AppServerClient {
 		let guard =
 			self.with_thread_settings_guard(source, guard).ok_or(ClientError::StaleHistory)?;
 		// Native fork resolves omitted providers from current creation defaults.
-		// A reviewed branch must retain the source provider after config changes.
+		// Keep the source provider unless the user requested explicit recovery below.
 		let provider = self
 			.thread_model_settings(source, guard.clone())
 			.await
 			.map_err(|_| ClientError::StaleHistory)?
 			.and_then(|settings| settings.model_provider)
 			.ok_or(ClientError::StaleHistory)?;
+
+		let provider = if let Some(target) = current_provider {
+			let mismatch = self.provider_mismatch(source).ok_or(ClientError::StaleHistory)?;
+			if mismatch.model_provider != provider || mismatch.current_model_provider != target {
+				return Err(ClientError::StaleHistory);
+			}
+			if !self.provider_matches_configuration(source, target).await?
+				|| self.provider_mismatch(source).as_ref() != Some(&mismatch)
+			{
+				return Err(ClientError::StaleHistory);
+			}
+			target.to_owned()
+		} else {
+			provider
+		};
 
 		params["modelProvider"] = serde_json::json!(provider);
 
@@ -77,6 +104,73 @@ mod tests {
 	use crate::app_server_client::thread_fork::{
 		AppServerClient, ClientError, ThreadForkBoundary, Value,
 	};
+
+	#[tokio::test]
+	async fn provider_fork_rechecks_current_config_and_never_sends_input() {
+		for changed in [false, true] {
+			let (local, remote) = io::duplex(16_384);
+			let (read, write) = io::split(local);
+			let (client, _events) = AppServerClient::from_io(read, write);
+			let server = tokio::spawn(async move {
+				let (read, mut write) = io::split(remote);
+				let mut lines = BufReader::new(read).lines();
+				for step in 0..if changed { 4 } else { 5 } {
+					let request: Value =
+						serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
+					let result = match step {
+						0 => {
+							assert_eq!(request["method"], "thread/resume");
+							let error = serde_json::json!({"id":request["id"],"error":{"code":-32600,"message":"mismatch","data":{"type":"modelProviderMismatch","modelProvider":"old","currentModelProvider":"new"}}});
+							write.write_all(format!("{error}\n").as_bytes()).await.unwrap();
+							continue;
+						},
+						1 | 2 => {
+							assert_eq!(request["method"], "thread/read");
+							serde_json::json!({"thread":{"id":"source","modelProvider":"old","model":"model","reasoningEffort":null,"cwd":"/workspace"}})
+						},
+						3 => {
+							assert_eq!(request["method"], "config/read");
+							assert_eq!(request["params"]["cwd"], "/workspace");
+							serde_json::json!({"config":{"model_provider":if changed {"third"} else {"new"}}})
+						},
+						_ => {
+							assert_eq!(request["method"], "thread/fork");
+							assert_eq!(request["params"]["modelProvider"], "new");
+							assert_eq!(request["params"]["lastTurnId"], "turn");
+							assert_eq!(request["params"]["deferGoalContinuation"], true);
+							serde_json::json!({"thread":{"id":"branch","forkedFromId":"source","modelProvider":"new"}})
+						},
+					};
+					write
+						.write_all(
+							format!(
+								"{}\n",
+								serde_json::json!({"id":request["id"],"result":result})
+							)
+							.as_bytes(),
+						)
+						.await
+						.unwrap();
+				}
+				assert!(
+					lines.next_line().await.unwrap().is_none(),
+					"no input, configuration write, or second fork"
+				);
+			});
+			assert!(client.thread_resume(serde_json::json!({"threadId":"source"})).await.is_err());
+			let result = client
+				.fork_thread_with_provider(
+					"source",
+					ThreadForkBoundary::AfterTurn("turn"),
+					client.thread_settings_guard("source").unwrap(),
+					Some("new"),
+				)
+				.await;
+			assert_eq!(result.is_ok(), !changed);
+			client.close();
+			server.await.unwrap();
+		}
+	}
 
 	#[tokio::test]
 	async fn fork_does_not_submit_with_missing_or_changed_source_provider() {

@@ -22,6 +22,8 @@ pub struct AgentForkAttempt {
 	pub source: AgentPromptEditAttempt,
 	pub target_work: String,
 	pub boundary: AgentForkBoundary,
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub model_provider: Option<String>,
 }
 impl AgentForkAttempt {
 	fn key(&self) -> String {
@@ -30,6 +32,14 @@ impl AgentForkAttempt {
 
 	fn validate(&self) -> Result<(), StoreError> {
 		self.source.validate()?;
+		if self.model_provider.as_ref().is_some_and(|provider| {
+			self.boundary != AgentForkBoundary::AfterTurn
+				|| provider.is_empty()
+				|| provider.len() > 512
+				|| provider.chars().any(char::is_control)
+		}) {
+			return Err(StoreError::InvalidInput("invalid recovery provider"));
+		}
 
 		if self.target_work.is_empty()
 			|| self.target_work.len() > 512

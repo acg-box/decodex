@@ -11,6 +11,8 @@ pub enum AgentDispatchRefusal {
 	ServerDraining,
 	/// Managed provider changed before native dispatch.
 	ManagedProviderChanged,
+	/// The chat provider differs from the current native configuration.
+	ProviderMismatch,
 	/// Native task settings changed before the transport write.
 	SettingsChanged,
 	/// The local request was too large to send.
@@ -26,6 +28,9 @@ impl AgentDispatchRefusal {
 			Self::SettingsChanged => "settingsChanged",
 			Self::ServerDraining => "serverDraining",
 			Self::ManagedProviderChanged => "managedProviderChanged",
+			// A provider change is a settings refusal. Keep the stored category compatible;
+			// the note and live native observation retain the specific cause.
+			Self::ProviderMismatch => "settingsChanged",
 		}
 	}
 
@@ -41,6 +46,8 @@ impl AgentDispatchRefusal {
 				"Not sent: the native server is draining. Reconnect and send again.",
 			Self::ManagedProviderChanged =>
 				"Not sent: managed model provider requirements changed. Restart the Codex connection before sending again.",
+			Self::ProviderMismatch =>
+				"Not sent: this conversation uses a different provider. Restore that provider or create a new branch before sending again.",
 		}
 	}
 }
