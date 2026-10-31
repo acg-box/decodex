@@ -952,9 +952,9 @@ impl AgentSurface {
 					"conversation-unavailable",
 					"Different provider",
 					&format!(
-						"This chat uses “{}”. Fork to continue with “{}”.",
-						original.as_str(),
-						current.as_str()
+						"Fork to “{}”; this chat stays on “{}”. Nothing is sent.",
+						current.as_str(),
+						original.as_str()
 					),
 					workspace_symbols::icon_sized(workspace_symbols::Symbol::Fork, 14.),
 				)

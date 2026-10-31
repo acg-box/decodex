@@ -453,9 +453,9 @@ fn settings_text(state: &AgentModelSettingsResult) -> String {
 			current_model_provider,
 			..
 		} => format!(
-			"This chat uses “{}”. Fork to continue with “{}”.",
-			model_provider.as_str(),
-			current_model_provider.as_str()
+			"Fork to “{}”; this chat stays on “{}”. Nothing is sent.",
+			current_model_provider.as_str(),
+			model_provider.as_str()
 		),
 		AgentModelSettingsResult::Available {
 			account_id,
