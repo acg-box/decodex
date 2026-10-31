@@ -22,7 +22,7 @@ source-backed release checkpoint.
 - Do not write Decodex content candidates, social posts, or
   `social_publish_reservation/v1`. Decodex Publisher owns social artifacts.
 - Treat `upstream_impact/v1`, release deltas, reviews, and signals as optional Radar
-  evidence. They do not create a Content Manager candidate or authorize publication.
+  evidence. They do not create a publication candidate or authorize publication.
 - Use compare metadata to identify PR/commit gaps; route behavior claims that need code
   review to `upstream_analysis_required`.
 

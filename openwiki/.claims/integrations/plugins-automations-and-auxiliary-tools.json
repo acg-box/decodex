@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:a3d941841c6dde6c31786b6894c5ab5b67c94244c0e902082886d40e50bb676d",
+  "pageVersion": "sha256:bdc09bf2976e378936f3d7fb1e406acfe7d0cfe78f350825e7058245ece10b4d",
   "claims": [
     {
       "id": "claim_ebacb67e562646d8af9fccd8e644cb32",
@@ -14,11 +14,15 @@
     },
     {
       "id": "claim_58efa26b5e4e42c4b7f8a05763ec1de2",
-      "statement": "The portfolio defines three native tasks: the upstream Maintainer explicitly selects ACTIVE with the existing daily cadence; Content Manager and Xurl Publisher inherit ACTIVE. Manual catch-up requires a pause and explicit resume authorization. Repository configuration does not establish live scheduler status.",
+      "statement": "The portfolio defines only the upstream Maintainer, which explicitly selects ACTIVE with its existing daily cadence. Content Manager and Xurl Publisher schedules and prompts are retired. Manual catch-up requires a pause and explicit resume authorization. Repository configuration does not establish live scheduler status.",
       "evidence": [
         {
+          "resource": "repo://automations/decodex/README.md",
+          "version": "repo-file-v1:sha256:9f7c5029ab38ff344eb049a601812a4d571b3bdc0f1a7fcf067719557065e32b"
+        },
+        {
           "resource": "repo://automations/portfolio.toml",
-          "version": "repo-file-v1:sha256:4516f1b1a314f734812ae1e2516c223723945f99d0bcd3899428c5bb068957f5"
+          "version": "repo-file-v1:sha256:a56486557134cf6e720d5ec4bd3183a7b52e34a97d185f55016cbd7a32a7e462"
         },
         {
           "resource": "repo://automations/upstream/prompts/maintainer.md",
@@ -29,6 +33,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-31T16:42:36.938Z"
+    "at": "2026-10-31T17:07:05.970Z"
   }
 }

@@ -4,16 +4,18 @@ title: "Native integrations, automations and auxiliary tools"
 description: "Native integrations, automations and auxiliary tools"
 tags: ["decodex", "architecture"]
 sources:
+  - id: openwiki-source-f5d4f5acdb41fe7c4e985337
+    resource: repo://automations/decodex/README.md
   - id: openwiki-source-14193a66abfb7d3230f476bf
     resource: repo://automations/portfolio.toml
   - id: openwiki-source-7dcbb082d2502f1ec4386c39
     resource: repo://automations/upstream/prompts/maintainer.md
   - id: openwiki-source-e9d609e612bb7e44111ec4b1
     resource: repo://crates/decodex-runtime/src/agent_integrations.rs
-generated: { by: "codex", at: "2026-10-31T16:42:36.938Z" }
+generated: { by: "codex", at: "2026-10-31T17:07:05.970Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-31T16:42:36.938Z
+    at: 2026-10-31T17:07:05.970Z
 ---
 
 
@@ -27,7 +29,7 @@ Plugin installation and connection configuration belong to Codex. Decodex retain
 
 ## Automation boundary
 
-`automations/portfolio.toml` defines desired configuration for three managed native roles: upstream Maintainer, Content Manager and Xurl Publisher. The upstream Maintainer has an explicit `ACTIVE` override and retains its daily cadence. Pause it during manual catch-up; resume it only with explicit user authorization. The Content Manager and Xurl Publisher inherit the `ACTIVE` repository default. These values do not establish live scheduler status. Desired configuration does not prove host registration or execution, and a documentation refresh must not resume a paused host task. The retired upstream Reviewer and Health roles are not active requirements. Agent follow-up events are a separate service behavior.
+`automations/portfolio.toml` defines desired configuration for one managed native role: the upstream Maintainer. It has an explicit `ACTIVE` override and retains its daily cadence. Pause it during manual catch-up; resume it only with explicit user authorization. The Content Manager and Xurl Publisher schedules and prompts are retired. These values do not establish live scheduler status. Desired configuration does not prove host registration or execution, and a documentation refresh must not resume a paused host task. The retired upstream Reviewer and Health roles are not active requirements. Agent follow-up events are a separate service behavior.
 
 ```sh
 python3 automations/decodex/scripts/config/render_automation_plan.py --json

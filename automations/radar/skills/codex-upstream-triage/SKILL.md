@@ -81,8 +81,8 @@ update, or public changelog. For Codex releases and prereleases, summarize from 
 commit/PR analysis whenever possible, then use compare data to find gaps.
 
 Record an editorial angle only after there is technical source evidence. It remains
-advisory. The Content Manager independently verifies official sources before it
-records content evidence.
+advisory. A caller must independently verify official sources before recording
+content evidence.
 
 ## Output
 

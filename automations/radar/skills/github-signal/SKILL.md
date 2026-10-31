@@ -59,5 +59,5 @@ radar render-signal \
 radar validate .agent/automations/radar/cache/site-content/signals
 ```
 
-This skill does not publish to X. Content Manager separately researches current
-sources and records one candidate or no-op through Decodex Publisher.
+This skill does not publish to X. Its output remains advisory; publication
+requires separate explicit authority and the Decodex Publisher boundary.

@@ -63,12 +63,19 @@ class PortfolioTests(unittest.TestCase):
     def test_global_status_does_not_override_explicit_manual_pause(self) -> None:
         manifest = portfolio.load_manifest()
         manifest["automations"][0]["status"] = "PAUSED"
+        inherited = {
+            **manifest["automations"][0],
+            "id": "inherited-default-fixture",
+            "name": "Inherited defaults fixture",
+        }
+        inherited.pop("status")
+        manifest["automations"].append(inherited)
         for status in ("PAUSED", "ACTIVE"):
             candidate = {**manifest, "status": status}
             self.assertEqual(portfolio.validate_manifest(candidate), [])
             rendered = {item["id"]: item for item in portfolio.rendered_automations(candidate)}
             self.assertEqual(rendered["codex-upstream-maintainer"]["status"], "PAUSED")
-            self.assertEqual(rendered["decodex-content-manager"]["status"], status)
+            self.assertEqual(rendered["inherited-default-fixture"]["status"], status)
         candidate = {**manifest, "automations": [dict(item) for item in manifest["automations"]]}
         candidate["automations"][0]["status"] = "DISABLED"
         self.assertTrue(any("invalid status" in error for error in portfolio.validate_manifest(candidate)))

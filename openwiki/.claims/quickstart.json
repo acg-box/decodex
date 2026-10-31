@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:5f38b87af484f22e7380c90a60340472031e3b3a8f26f66a0d7afea57d44d745",
+  "pageVersion": "sha256:a6eec582ab8e2d448dde5f92e18388cbc76d8012709165394f15adf7b8f46577",
   "claims": [
     {
       "id": "claim_b34298a8647a4e0b8653926b7568c5d4",
@@ -82,11 +82,15 @@
     },
     {
       "id": "claim_ff1c469c90a84778af3fc5cc4d53d84b",
-      "statement": "The portfolio enables the upstream Maintainer with its existing daily cadence. Manual catch-up requires a pause and explicit resume authorization through supported native tools; repository configuration and documentation do not establish scheduler state.",
+      "statement": "The portfolio retains only the upstream Maintainer with its existing daily cadence. The two content schedules and prompts are retired. Manual catch-up requires a pause and explicit resume authorization through supported native tools; repository configuration and documentation do not establish scheduler state.",
       "evidence": [
         {
+          "resource": "repo://automations/decodex/README.md",
+          "version": "repo-file-v1:sha256:9f7c5029ab38ff344eb049a601812a4d571b3bdc0f1a7fcf067719557065e32b"
+        },
+        {
           "resource": "repo://automations/portfolio.toml",
-          "version": "repo-file-v1:sha256:4516f1b1a314f734812ae1e2516c223723945f99d0bcd3899428c5bb068957f5"
+          "version": "repo-file-v1:sha256:a56486557134cf6e720d5ec4bd3183a7b52e34a97d185f55016cbd7a32a7e462"
         },
         {
           "resource": "repo://automations/upstream/prompts/maintainer.md",
@@ -297,6 +301,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-31T16:42:36.938Z"
+    "at": "2026-10-31T17:07:05.970Z"
   }
 }
