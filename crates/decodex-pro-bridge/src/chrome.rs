@@ -290,3 +290,63 @@ fn conversation_endpoint(raw: &str, owned: Option<&str>) -> bool {
 				.and_then(|url| url.strip_prefix("https://chatgpt.com/c/"))
 				.is_some_and(|id| url.path() == format!("/backend-api/conversations/{id}")))
 }
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[tokio::test]
+	async fn pro_selection_waits_for_the_closed_picker_and_refuses_an_unconfirmed_maximum() {
+		for pro_after_close in [true, false] {
+			let root = tempfile::tempdir().unwrap();
+			let listener =
+				tokio::net::UnixListener::bind(crate::native_host::socket_path(root.path()))
+					.unwrap();
+			let server = tokio::spawn(async move {
+				let (stream, _) = listener.accept().await.unwrap();
+				let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
+				let mut closed = false;
+				while let Some(Ok(Message::Text(text))) = socket.next().await {
+					let req: Value = serde_json::from_str(&text).unwrap();
+					let result = match req["method"].as_str().unwrap() {
+						"Decodex.ping" =>
+							json!({"protocol":1,"extensionId":crate::native_host::EXTENSION_ID}),
+						"Runtime.evaluate" => {
+							let expression = req["params"]["expression"].as_str().unwrap();
+							let value = if expression.contains("const label=model.cloneNode") {
+								json!(closed && pro_after_close)
+							} else if expression.contains("const choices=") {
+								json!({"power":true,"options":["Power"]})
+							} else if expression.contains("value:Number(slider.getAttribute") {
+								// The range has reached Pro while the open picker still has its old
+								// label.
+								json!({"value":4,"max":4})
+							} else {
+								json!({"x":10,"y":10})
+							};
+							json!({"result":{"value":value}})
+						},
+						"Input.dispatchMouseEvent" => json!({}),
+						"Input.dispatchKeyEvent" => {
+							assert_eq!(req["params"]["key"], "Escape");
+							closed = true;
+							json!({})
+						},
+						other => panic!("Unexpected operation {other}"),
+					};
+					socket
+						.send(Message::Text(
+							json!({"id":req["id"],"result":result}).to_string().into(),
+						))
+						.await
+						.unwrap();
+				}
+			});
+			let mut browser = Chrome::connect(root.path()).await.unwrap();
+			let result = crate::page::select_pro(&mut browser).await;
+			assert_eq!(result.is_ok(), pro_after_close, "{result:?}");
+			drop(browser);
+			server.await.unwrap();
+		}
+	}
+}

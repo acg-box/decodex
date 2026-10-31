@@ -100,6 +100,7 @@ pub(crate) async fn ready(browser: &mut Chrome) -> Result<()> {
 
 pub(crate) async fn select_pro(browser: &mut Chrome) -> Result<()> {
 	if pro_selected(browser).await? {
+		key(browser, "Escape", "Escape", 27).await?;
 		return Ok(());
 	}
 	let point = browser.evaluate(&format!(r#"(()=>{{ {CONTROLS} if(!visible(model)||model.disabled||model.getAttribute('aria-disabled')==='true')throw Error('Model selector unavailable');if(model.getAttribute('aria-expanded')==='true')return null;model.scrollIntoView({{block:'nearest',inline:'nearest'}});const r=model.getBoundingClientRect();return {{x:r.x+r.width/2,y:r.y+r.height/2}}; }})()"#)).await?;
@@ -132,13 +133,15 @@ pub(crate) async fn select_pro(browser: &mut Chrome) -> Result<()> {
 			result["options"]
 		));
 	}
-	if !pro_selected(browser).await? {
-		return Err("ChatGPT did not retain the Pro selection. No message was sent.".into());
-	}
 	key(browser, "Escape", "Escape", 27).await?;
-	sleep(std::time::Duration::from_millis(300)).await;
-	if !pro_selected(browser).await? {
-		return Err("ChatGPT did not retain the Pro selection. No message was sent.".into());
+	// The slider can commit before React updates the picker label. Verify the
+	// closed control, not an intermediate menu render; never Send on the range alone.
+	let deadline = Instant::now() + std::time::Duration::from_secs(2);
+	while !pro_selected(browser).await? {
+		if Instant::now() >= deadline {
+			return Err("ChatGPT did not retain the Pro selection. No message was sent.".into());
+		}
+		sleep(std::time::Duration::from_millis(100)).await;
 	}
 	Ok(())
 }
@@ -171,7 +174,10 @@ async fn select_pro_power(browser: &mut Chrome) -> Result<()> {
 		let Some(max) = state["max"].as_u64().filter(|max| *max <= 16) else {
 			return Err("ChatGPT's Power range could not be read. No message was sent.".into());
 		};
-		if value >= max || previous == Some(value) {
+		if value == max {
+			return Ok(());
+		}
+		if value > max || previous == Some(value) {
 			return Err(
 				"Pro is not available through ChatGPT's Power control. No message was sent.".into(),
 			);
@@ -263,8 +269,13 @@ pub(crate) async fn fill(browser: &mut Chrome, material: &Material) -> Result<()
 }
 
 pub(crate) async fn send(browser: &mut Chrome) -> Result<()> {
-	let point = browser.evaluate(&format!(r#"(()=>{{ {CONTROLS} if(!visible(send)||send.disabled)throw Error('Send unavailable');send.scrollIntoView({{block:'nearest',inline:'nearest'}});const r=send.getBoundingClientRect();return {{x:r.x+r.width/2,y:r.y+r.height/2}}; }})()"#)).await?;
-	click(browser, &point).await
+	// Use the rendered button's normal click/submit handler. Background pointer
+	// coordinates can become stale when composer focus changes its layout.
+	browser.evaluate(&format!(r#"(()=>{{ {CONTROLS}
+        if(!visible(send)||send.disabled||send.getAttribute('aria-disabled')==='true')throw Error('Send unavailable');
+        send.click();return true;
+    }})()"#)).await?;
+	Ok(())
 }
 
 pub(crate) async fn observe(browser: &mut Chrome) -> Result<Observation> {
