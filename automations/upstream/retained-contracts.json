@@ -325,11 +325,13 @@
         "Use Side chat for a persistent attached conversation and Side chats for its list. Keep distinct before-input, after-turn and attached native boundaries.",
         "Explain source preservation and no automatic send. Provider recovery also names the original and destination providers and explains that a later explicit send shares inherited context.",
         "Keep persisted native identifiers and Git branch terminology. New default titles use (Fork) or (Side chat); recognize the earlier (attached branch) title without renaming saved conversations.",
-        "Use arrow.triangle.branch for Fork. Use point.topleft.down.to.point.bottomright.curvepath for account routing in both GPUI and the native Menu Bar. Keep existing active-state color and disabled behavior."
+        "Use arrow.triangle.branch for Fork. Use point.topleft.down.to.point.bottomright.curvepath for account routing in both GPUI and the native Menu Bar. Keep existing active-state color and disabled behavior.",
+        "Use the existing settings_button base for recovery actions. Wrap shared status copy within the available rail. While a source-bound provider Fork review is open, show its explanation once and hide the duplicate availability banner."
       ],
       "source_symbols": {
         "apps/decodex-gpui/src/agent_workspace.rs": [
-          "AgentSurface::provider_connection_notice"
+          "AgentSurface::provider_connection_notice",
+          "AgentSurface::workspace_button"
         ],
         "apps/decodex-gpui/src/agent_prompt_edit.rs": [
           "AgentSurface::branch_confirmation_action",
@@ -353,6 +355,10 @@
         ],
         "scripts/macos/generate_workspace_symbols.swift": [
           "symbols"
+        ],
+        "apps/decodex-gpui/src/ui_feedback.rs": [
+          "state_row",
+          "state_copy"
         ]
       },
       "qualification": "automations/upstream/qualification.json#candidate_qualification/provider_recovery/presentation",

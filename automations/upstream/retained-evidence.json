@@ -2910,6 +2910,184 @@
       "local_tests_passed": 26,
       "remaining_unmatched_selectors": [],
       "native_qualification_repeated": false
+    },
+    "layout_repair": {
+      "source_commit": "a8605968ffd7c5adb30f206a53befd9a4f61e8e3",
+      "baseline": "edb7deb060b4bb7de2b4713be3e2cd3390f6ba8e",
+      "behavior": "Use the existing settings_button style for recovery actions, wrap common status text within its rail, and show one provider explanation during Fork review.",
+      "source_sha256": {
+        "apps/decodex-gpui/src/agent_composer.rs": "6061ea67f1f1cffa38b8491b61668d4d9228e063bb9ef4209446ebb4a9138af4",
+        "apps/decodex-gpui/src/agent_model_settings.rs": "9c022d5bcae53bdb39b24b1bd7cb54904714508e48687cecdd22ebb46296e4b9",
+        "apps/decodex-gpui/src/agent_model_settings_wire_tests.rs": "0a30d473ee8bab39ce0a01787e2bd6dd1643d908d3e0fff8b2606b985a2aaad9",
+        "apps/decodex-gpui/src/agent_prompt_edit.rs": "c2979f3f3f70a83bb5d3abf4d6b144d9b3a7061304da13529a0642f86b5c6a2a",
+        "apps/decodex-gpui/src/agent_workspace.rs": "aef53e163b28f792e41ba3b1bed6930f575d3f915998c751855ef836c53de4f3",
+        "apps/decodex-gpui/src/ui_feedback.rs": "202428b2c6f2faa91b3ce4ee126a83c738c5e8c9adebf0f644eb56138eb82d44"
+      },
+      "symbols": [
+        "ui_feedback::state_row",
+        "ui_feedback::state_copy",
+        "AgentSurface::workspace_button",
+        "AgentSurface::provider_connection_notice",
+        "AgentSurface::provider_fork_review_visible",
+        "AgentSurface::prompt_edit_panel"
+      ],
+      "tests_read": [
+        {
+          "file": "apps/decodex-gpui/src/ui_feedback.rs",
+          "test": "recovery_notice_wraps_text_without_pushing_its_action_outside_the_rail"
+        },
+        {
+          "file": "apps/decodex-gpui/src/agent_model_settings_wire_tests.rs",
+          "test": "provider_recovery_banner_is_source_bound_and_cancellation_keeps_the_draft"
+        }
+      ],
+      "entrypoint": "apps/decodex-gpui/src/main.rs",
+      "test_files": [
+        "apps/decodex-gpui/src/ui_feedback.rs",
+        "apps/decodex-gpui/src/agent_model_settings_wire_tests.rs",
+        "apps/decodex-gpui/src/agent_prompt_confirm_wire_tests.rs",
+        "apps/decodex-gpui/src/agent_native_agents.rs",
+        "apps/decodex-gpui/src/agent_archive.rs"
+      ],
+      "test_command": [
+        "cargo",
+        "+stable",
+        "nextest",
+        "run",
+        "--locked",
+        "-p",
+        "decodex-gpui",
+        "--bin",
+        "decodex-gpui",
+        "--all-features",
+        "-E",
+        "test(recovery_notice_wraps) | test(provider_recovery_banner) | test(prompt_confirm_tests) | test(parent_managed_composer_shares_lock_geometry) | test(archive_read_only) | test(the_slot_measures_content)",
+        "--test-threads",
+        "1",
+        "--retries",
+        "0",
+        "--no-fail-fast"
+      ],
+      "tests_executed": [
+        {
+          "suite": "decodex-gpui::bin/decodex-gpui",
+          "test": "shell::agent_surface::archive::tests::archive_read_only_applies_only_to_the_selected_confirmed_thread"
+        },
+        {
+          "suite": "decodex-gpui::bin/decodex-gpui",
+          "test": "shell::agent_surface::drafts::storage::prompt_confirm_tests::attached_branch_confirmation_is_saved_and_skips_unsent_input_preflight"
+        },
+        {
+          "suite": "decodex-gpui::bin/decodex-gpui",
+          "test": "shell::agent_surface::drafts::storage::prompt_confirm_tests::branch_after_turn_needs_no_input_preflight"
+        },
+        {
+          "suite": "decodex-gpui::bin/decodex-gpui",
+          "test": "shell::agent_surface::drafts::storage::prompt_confirm_tests::branch_confirmation_saves_choice_before_native_dispatch"
+        },
+        {
+          "suite": "decodex-gpui::bin/decodex-gpui",
+          "test": "shell::agent_surface::drafts::storage::prompt_confirm_tests::confirmation_waits_for_disk_and_keeps_the_main_composer"
+        },
+        {
+          "suite": "decodex-gpui::bin/decodex-gpui",
+          "test": "shell::agent_surface::drafts::storage::prompt_confirm_tests::list_branch_confirmation_uses_native_after_turn_without_sending"
+        },
+        {
+          "suite": "decodex-gpui::bin/decodex-gpui",
+          "test": "shell::agent_surface::drafts::storage::prompt_confirm_tests::provider_branch_confirmation_persists_destination_without_sending"
+        },
+        {
+          "suite": "decodex-gpui::bin/decodex-gpui",
+          "test": "shell::agent_surface::drafts::storage::prompt_confirm_tests::side_chat_confirmation_keeps_the_attached_boundary"
+        },
+        {
+          "suite": "decodex-gpui::bin/decodex-gpui",
+          "test": "shell::agent_surface::model_settings::tests::provider_recovery_banner_is_source_bound_and_cancellation_keeps_the_draft"
+        },
+        {
+          "suite": "decodex-gpui::bin/decodex-gpui",
+          "test": "shell::agent_surface::native_agents::tests::parent_managed_composer_shares_lock_geometry_and_keeps_both_drafts"
+        },
+        {
+          "suite": "decodex-gpui::bin/decodex-gpui",
+          "test": "ui_feedback::tests::recovery_notice_wraps_text_without_pushing_its_action_outside_the_rail"
+        },
+        {
+          "suite": "decodex-gpui::bin/decodex-gpui",
+          "test": "ui_feedback::tests::the_slot_measures_content_and_animates_height_through_exit"
+        }
+      ],
+      "passed": 12,
+      "failed": 0,
+      "unmatched_selectors": [],
+      "before": "The new wrapping fixture failed against the baseline status row: a 944-point detail extended beyond a 280-point viewport. The final fixture covers 280/420-point widths and inline/stacked copy; the existing parent-managed geometry assertions remain unchanged.",
+      "checks": {
+        "clippy": [
+          "cargo",
+          "+stable",
+          "clippy",
+          "--package",
+          "decodex-gpui",
+          "--all-features",
+          "--all-targets",
+          "--keep-going",
+          "--locked",
+          "--",
+          "--no-deps",
+          "-D",
+          "clippy::all",
+          "-D",
+          "clippy::too_many_lines",
+          "-D",
+          "clippy::unwrap_used",
+          "-D",
+          "clippy::use_self",
+          "-D",
+          "clippy::wildcard_imports",
+          "-D",
+          "missing-docs",
+          "-D",
+          "unused-crate-dependencies",
+          "-D",
+          "warnings"
+        ],
+        "format": [
+          "cargo",
+          "+nightly",
+          "fmt",
+          "--all",
+          "--",
+          "--check"
+        ],
+        "whitespace": [
+          "git",
+          "diff",
+          "--check"
+        ]
+      },
+      "preview_build": [
+        "cargo",
+        "+stable",
+        "build",
+        "--locked",
+        "-p",
+        "decodex-gpui",
+        "--bin",
+        "decodex-gpui",
+        "-p",
+        "decodex-cli",
+        "--bin",
+        "decodex"
+      ],
+      "preview_sha256": {
+        "Contents/MacOS/decodex-gpui": "f81e9dc991fcd7ba4bd0f78dee57f7388efd32af92cf9b799fe27b20f06fa7bb",
+        "Contents/Helpers/decodex": "4e91ad5e5b8b22665d9cd29502ff69285532ee44b80fcf80f69b54dd68f179a5"
+      },
+      "limits": "Local UI/layout and loopback confirmation checks only. No upstream test run, native behavior requalification, runtime selection, installation or release. Existing native qualification and its limits remain unchanged.",
+      "delivery": [
+        "https://github.com/acg-box/decodex/commit/a8605968ffd7c5adb30f206a53befd9a4f61e8e3"
+      ]
     }
   }
 }

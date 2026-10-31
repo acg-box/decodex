@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:8d6572ef0591ac377def99a3fb1c187bcb5cfc80d7510982f8627250c677441f",
+  "pageVersion": "sha256:6cfaba6aca25e60320b625670a701e8fda63a909f6005c79490555a044bafe43",
   "claims": [
     {
       "id": "claim_b6c6b65984924f69970e7f0410d50903",
@@ -189,7 +189,7 @@
       "statement": "Project Agent Work retains original source and artifact qualification and a separate authorized installed development acceptance with its own application identity and limits; neither advances native source-review state nor authorizes release, schedule activation or a runtime-baseline change.",
       "evidence": [
         {
-          "resource": "repo://automations/upstream/retained-contracts.json#L2617-L4104",
+          "resource": "repo://automations/upstream/retained-contracts.json#L2623-L4110",
           "version": "repo-lines-v1:sha256:dca51e28f266f3fd054b394a5451bb61a595544c5b5e6c017bbc9a2bff362c86:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQ4OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYTRlOTQ2ZjE1NzYwNjdhMTM0ZWZiZDhhZTE1MjI2MDI5NzdkMDBlOTFkNjY2YzYyMGE3Yzg0NjdjYjY0ZjE4OSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNGQ1Y2QyZmI0ZjNkZjg4NDUxNTI1NWIzOTUyM2YyZjhiNTQ3MmJlZWE5ZjU2NmZmY2EyMDRkYjgwMjU2MTA0MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMDhlNmNhNGUyMTVlOTEyMDdlOWZlMDk3ZDUyZGI5M2ViNjVkZTRjOThmZDgwYjE3OTY3MjliM2UxMWQ3MTY5YSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMzIyZjc2YzIxZjc0OTU3ZDkyNWUxOGQzYTY0YWJiNTYwN2ZmMDgwYTc3NDU2MjA4ZThlMDY3ODQ0MDJjMGNhMSJ9"
         }
       ]
@@ -204,7 +204,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-contracts.json",
-          "version": "repo-file-v1:sha256:feffcb8ae1ec98375e5c0f023263edb2b483b31eacc5524379f1cb5f7cbb1f0f"
+          "version": "repo-file-v1:sha256:97323df55c18485fce9469e77c76a3828646f7ad55d9c5effcc63808619df01c"
         }
       ]
     },
@@ -312,7 +312,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-contracts.json",
-          "version": "repo-file-v1:sha256:feffcb8ae1ec98375e5c0f023263edb2b483b31eacc5524379f1cb5f7cbb1f0f"
+          "version": "repo-file-v1:sha256:97323df55c18485fce9469e77c76a3828646f7ad55d9c5effcc63808619df01c"
         },
         {
           "resource": "repo://codex-runtime.lock.json",
@@ -323,6 +323,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-31T14:39:55.131Z"
+    "at": "2026-10-31T15:08:14.644Z"
   }
 }

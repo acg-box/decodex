@@ -30,6 +30,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_list_status_tests.rs
   - id: openwiki-source-02f8a02cdfa0616877cdad62
     resource: repo://apps/decodex-gpui/src/agent_list_status.rs
+  - id: openwiki-source-09a2c045309673f306153f39
+    resource: repo://apps/decodex-gpui/src/agent_model_settings_wire_tests.rs
   - id: openwiki-source-ae2ce5cda718ede63f50be9b
     resource: repo://apps/decodex-gpui/src/agent_native_composer.rs
   - id: openwiki-source-6a1c55b61be8ac251a493046
@@ -140,10 +142,10 @@ sources:
     resource: repo://database/src/agent/tests/input_retry.rs
   - id: openwiki-source-28af4781ad8d9558410630da
     resource: repo://database/src/works.rs
-generated: { by: "codex", at: "2026-10-31T14:41:33.010Z" }
+generated: { by: "codex", at: "2026-10-31T15:08:14.644Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-31T14:41:33.010Z
+    at: 2026-10-31T15:08:14.644Z
 ---
 
 # Conversation input, history and recovery
@@ -199,6 +201,8 @@ Review the source, then choose **Fork**. This uses the existing **Fork** (after 
 If native Codex refuses to resume a conversation because its saved provider differs from the current provider, Decodex keeps its history readable and preserves the original draft. The notice names both providers. Restore the original provider to continue that conversation, or choose **Fork** to use the current provider.
 
 The branch action reuses the review of the latest completed native turn. Inspect the boundary and the destination provider, then choose **Fork**. Decodex checks the current native configuration again and creates one ordinary native fork. If the source or configuration changed, review the current state again. It does not change the original conversation, send input, or bypass native policy.
+
+The review uses the shared recovery notice and bordered buttons. It replaces the availability banner while open, so the provider explanation appears only once. **Cancel** restores the original notice.
 
 The new branch receives the reviewed history prefix and the ordinary composer draft through the existing branch flow. The next explicit send shares that inherited context with the chosen provider. **Cancel** preserves the source draft and creates nothing. Unsent source messages are not retried automatically. Ordinary branching and Side chats retain their source provider; changing providers is this separate explicit choice.
 
