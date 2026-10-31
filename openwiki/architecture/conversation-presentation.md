@@ -136,10 +136,10 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent/timeline/metrics.rs
   - id: openwiki-source-6197a876b2effbe992b1e2ec
     resource: repo://database/src/agent.rs
-generated: { by: "codex", at: "2026-10-31T13:17:02.524Z" }
+generated: { by: "codex", at: "2026-10-31T14:39:55.131Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-31T13:17:02.524Z
+    at: 2026-10-31T14:39:55.131Z
 ---
 
 
@@ -191,13 +191,13 @@ Item pages have no canonical timeline ordinals. They remain separate from the ca
 
 ## Side chat tabs
 
-The conversation header contains the source conversation and its open Side chats. Each tab shows the existing activity state. The tab strip scrolls horizontally and brings the selected tab into view. The adjacent **+** action reviews a branch from the source conversation's latest completed turn. **Create side chat** confirms that review; it does not send a message.
+The conversation header contains the source conversation and its open Side chats. Each tab shows the existing activity state. The tab strip scrolls horizontally and brings the selected tab into view. The adjacent **+** action reviews a branch from the source conversation's latest completed turn. **Side chat** confirms that review; it does not send a message.
 
 A Side chat uses the existing native attached fork. Its visible history starts empty, while its model context includes the reviewed source prefix. Later messages in the source do not automatically enter the Side chat. Each conversation keeps its own draft and history position through the existing workspace navigation.
 
 Only confirmed native attachments with matching source, target and runtime identities belong to the tab family. A local parent link is a lookup hint, not evidence of an attachment. The workspace owns this attachment cache independently of the prompt editor and clears it when the relevant source or runtime changes. Current-family Side chats do not also appear as duplicate sidebar rows.
 
-Close hides a tab and returns to its exact source conversation. It does not archive or delete the native branch. Use **Agent preferences → Attached branches** to reopen it. The source remains available in the tab strip.
+Close hides a tab and returns to its exact source conversation. It does not archive or delete the native branch. Use **Agent preferences → Side chats** to reopen it. The source remains available in the tab strip.
 
 ## Conversation layout
 
@@ -219,7 +219,7 @@ An unsent input uses the normal right-aligned user bubble at the end of the tran
 
 Saved edit recovery and history refresh/source controls live in Details. Failed input remains an ordinary message in the transcript. Active editing and unresolved-operation notices also use the chat flow. There is no permanent list of saved drafts. See [conversation recovery](../workflows/conversations-and-recovery.md) for edit and Fork ownership.
 
-After a native provider mismatch, a read-only notice identifies the original and current providers. **Create branch…** opens the existing branch review. Its confirmation identifies the destination provider and explains that a later send shares the inherited context. Creation sends no input, and cancellation retains the original draft. Ordinary branches and Side chats keep their source provider.
+After a native provider mismatch, a read-only notice identifies the original and current providers. **Fork** opens the existing branch review. Its confirmation identifies the destination provider and explains that a later send shares the inherited context. Creation sends no input, and cancellation retains the original draft. Ordinary branches and Side chats keep their source provider.
 
 ## Prose links and formulas
 

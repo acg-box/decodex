@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:80ff3bbbf731752b9b3b01bb0efdea4f87d8294bf278b1af579d5d9c47cb154e",
+  "pageVersion": "sha256:e645c8e0630410d37c148786bbf0e6829d407768bb9092d1ed8921f181435b14",
   "claims": [
     {
       "id": "claim_36b9a49ffa87416e8add8befc7d10efe",
@@ -78,7 +78,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:0e3a55a87eb70004a67ff7782104afcfed5e0fd633fff13e652b4b76e770b02c"
+          "version": "repo-file-v1:sha256:96e4002e73e0d85b34c579f5c78c2546228fe8b34428a3bcab6da0f52eaf68db"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/composer_text.rs",
@@ -142,7 +142,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_prompt_edit.rs",
-          "version": "repo-file-v1:sha256:bdddb87f4a12c68d58f87aea7cec6bb609dd99edc3623c9f2cdea465ec3ff119"
+          "version": "repo-file-v1:sha256:2d77f0280977cd82d0ae3a4d15449301a158466df044f03bd7aa1855daa0e7ce"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L2346-L2377",
@@ -326,7 +326,7 @@
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent.rs",
-          "version": "repo-file-v1:sha256:6b4aa27874903e180c7f6f6b51f727bbe87c35815de7a39b3c9a14eec33ec881"
+          "version": "repo-file-v1:sha256:23720f5a11d7b2b707cfe1ec8e757845d1f4f887c276dd699a9ca2b55c0f965b"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/timeline/metrics.rs",
@@ -444,7 +444,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:0e3a55a87eb70004a67ff7782104afcfed5e0fd633fff13e652b4b76e770b02c"
+          "version": "repo-file-v1:sha256:96e4002e73e0d85b34c579f5c78c2546228fe8b34428a3bcab6da0f52eaf68db"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_loading.rs",
@@ -498,7 +498,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_composer.rs",
-          "version": "repo-file-v1:sha256:1a2c015b1aaf85012ce10c1dcb250b618bc2db3fd89010b7c9628a269d574e7d"
+          "version": "repo-file-v1:sha256:a3a22943688a5f016b7342f7cfa2ce5aa6f65677c0783012cc31c0a6920ed598"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_usage_estimates.rs",
@@ -562,37 +562,37 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_conversation_tab_tests.rs",
-          "version": "repo-file-v1:sha256:d6626000e231a9084835abc25ec73607bf5af3afaede1bdf60cef54b565d2de8"
+          "version": "repo-file-v1:sha256:69ec8f3bd6ea77495955715740034a251b2893196f0f7a974f7b635eb5470797"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_conversation_tabs.rs",
-          "version": "repo-file-v1:sha256:0c65f9fe80409a74162a357c5b97056de2a0af6cb3cde58e297627330b407f95"
+          "version": "repo-file-v1:sha256:37e8422d2942da071d326797f754fe648d05ab8738ef1fedc5054b8684051810"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:0e3a55a87eb70004a67ff7782104afcfed5e0fd633fff13e652b4b76e770b02c"
+          "version": "repo-file-v1:sha256:96e4002e73e0d85b34c579f5c78c2546228fe8b34428a3bcab6da0f52eaf68db"
         }
       ]
     },
     {
       "id": "claim_d6ace9382afd44289eb84b6bdce434ca",
-      "statement": "The workspace owns the attachment cache; a local parent link is only a lookup hint. Closing a Side chat hides its tab and returns to its exact source without deleting or archiving the branch; Attached branches can reopen it.",
+      "statement": "The workspace owns the attachment cache; a local parent link is only a lookup hint. Closing a Side chat hides its tab and returns to its exact source without deleting or archiving the branch; Side chats can reopen it.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_attached_branches.rs",
-          "version": "repo-file-v1:sha256:dcaa6488547ecf1322f32f56d4ef5ac6a017e264fec5d750fd0ff4283aca5ebc"
+          "version": "repo-file-v1:sha256:56e16cc761ecfa446826572dcb227e828029937017d66c5b88f913ce10cb2ba6"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_conversation_tab_tests.rs",
-          "version": "repo-file-v1:sha256:d6626000e231a9084835abc25ec73607bf5af3afaede1bdf60cef54b565d2de8"
+          "version": "repo-file-v1:sha256:69ec8f3bd6ea77495955715740034a251b2893196f0f7a974f7b635eb5470797"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_conversation_tabs.rs",
-          "version": "repo-file-v1:sha256:0c65f9fe80409a74162a357c5b97056de2a0af6cb3cde58e297627330b407f95"
+          "version": "repo-file-v1:sha256:37e8422d2942da071d326797f754fe648d05ab8738ef1fedc5054b8684051810"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:0e3a55a87eb70004a67ff7782104afcfed5e0fd633fff13e652b4b76e770b02c"
+          "version": "repo-file-v1:sha256:96e4002e73e0d85b34c579f5c78c2546228fe8b34428a3bcab6da0f52eaf68db"
         }
       ]
     },
@@ -606,17 +606,17 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_prompt_edit.rs",
-          "version": "repo-file-v1:sha256:bdddb87f4a12c68d58f87aea7cec6bb609dd99edc3623c9f2cdea465ec3ff119"
+          "version": "repo-file-v1:sha256:2d77f0280977cd82d0ae3a4d15449301a158466df044f03bd7aa1855daa0e7ce"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:0e3a55a87eb70004a67ff7782104afcfed5e0fd633fff13e652b4b76e770b02c"
+          "version": "repo-file-v1:sha256:96e4002e73e0d85b34c579f5c78c2546228fe8b34428a3bcab6da0f52eaf68db"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-31T13:17:02.524Z"
+    "at": "2026-10-31T14:39:55.131Z"
   }
 }

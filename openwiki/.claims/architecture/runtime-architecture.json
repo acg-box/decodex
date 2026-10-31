@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:54162d09d419bb48a4b01428c8a1e4634a1e87c81e0aca687c4c599194a072b5",
+  "pageVersion": "sha256:a78c0961a9551ad3be93d6210812ee4756c8428c273a309db73c60058c93efcc",
   "claims": [
     {
       "id": "claim_613df7e7c10d49d28b26d6db94c525e5",
@@ -54,7 +54,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:ecaa9f3bfc2cacc6ae4c51dc69084930f7d6728656c434b507a7ff49ca1d6426"
+          "version": "repo-file-v1:sha256:5d7708b4a83f830538f9eca55e7efeff23ddd7c92eb5e79a94766a527980c772"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/process.rs#L133-L153",
@@ -279,7 +279,7 @@
           "version": "repo-lines-v1:sha256:d3a762ea3fa395e01d0024e6adcb575ab10587a29978a7282f5aa40a817d9cfd:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUxM2U5ODE0M2JiNjI2ZWJmZDFiOGVjZTI3ZDVlNmE5Yzg2YzIxMGQ5ZGFjNTE0YjFjY2YyMTQ0YzUwZGEyNzciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYzZTIxOTRlM2Y2NjU0MGU5YzE2YjhkMDA2MmYyZGUzNTFkNTNhOTA3MmQ3MzIxYjI2ZTMwMzgzNjU1NDU5YmEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgwOTNkZjFmNmNiZmVhNDEwM2JkYjAyMGNhMDg2MWFkNjg5NjliMjdlMDViYWY5ZmJkN2RkYmYwNWY2MjBlNGMifQ"
         },
         {
-          "resource": "repo://automations/upstream/retained-contracts.json#L2578-L4065",
+          "resource": "repo://automations/upstream/retained-contracts.json#L2617-L4104",
           "version": "repo-lines-v1:sha256:dca51e28f266f3fd054b394a5451bb61a595544c5b5e6c017bbc9a2bff362c86:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQ4OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYTRlOTQ2ZjE1NzYwNjdhMTM0ZWZiZDhhZTE1MjI2MDI5NzdkMDBlOTFkNjY2YzYyMGE3Yzg0NjdjYjY0ZjE4OSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNGQ1Y2QyZmI0ZjNkZjg4NDUxNTI1NWIzOTUyM2YyZjhiNTQ3MmJlZWE5ZjU2NmZmY2EyMDRkYjgwMjU2MTA0MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMDhlNmNhNGUyMTVlOTEyMDdlOWZlMDk3ZDUyZGI5M2ViNjVkZTRjOThmZDgwYjE3OTY3MjliM2UxMWQ3MTY5YSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMzIyZjc2YzIxZjc0OTU3ZDkyNWUxOGQzYTY0YWJiNTYwN2ZmMDgwYTc3NDU2MjA4ZThlMDY3ODQ0MDJjMGNhMSJ9"
         }
       ]
@@ -290,7 +290,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:ecaa9f3bfc2cacc6ae4c51dc69084930f7d6728656c434b507a7ff49ca1d6426"
+          "version": "repo-file-v1:sha256:5d7708b4a83f830538f9eca55e7efeff23ddd7c92eb5e79a94766a527980c772"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_capacity_tests.rs",
@@ -372,7 +372,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/agent.rs",
-          "version": "repo-file-v1:sha256:6b4aa27874903e180c7f6f6b51f727bbe87c35815de7a39b3c9a14eec33ec881"
+          "version": "repo-file-v1:sha256:23720f5a11d7b2b707cfe1ec8e757845d1f4f887c276dd699a9ca2b55c0f965b"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/project.rs",
@@ -450,7 +450,7 @@
     },
     {
       "id": "claim_eba4a83c31ed467ba492a65f6b1aa06b",
-      "statement": "Attached branches reuse the prompt-fork journal, exact source Agent parent and retained Project, role and provider identity; creation copies no native Goal and sends no input. Unknown outcomes require recovery of the retained receipt without replay.",
+      "statement": "Side chats reuse the prompt-fork journal, exact source Agent parent and retained Project, role and provider identity; creation copies no native Goal and sends no input. Unknown outcomes require recovery of the retained receipt without replay.",
       "evidence": [
         {
           "resource": "repo://crates/decodex-codex/src/app_server_client/thread_fork.rs",
@@ -461,8 +461,8 @@
           "version": "repo-file-v1:sha256:d198431233dabf9e7996d3dafc9703588b36993b3505ffd54fad4afe0839571e"
         },
         {
-          "resource": "repo://database/src/agent_fork.rs#L141-L191",
-          "version": "repo-lines-v1:sha256:12f8e82473246aef825b63e5e6a6e6250a5db65da5cbb2f65d53fe1cf1262301:eyJzZWxlY3RlZExpbmVDb3VudCI6NTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI2NTg2ZjkwNjg5YmVhZDM4MWVlYzVhYmFmZTYxYmY3MWU4MWI5MDZiNGM1Mzc2MzM2ZWFmYzg3OWY2YzQ2NmUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE0MzNlNGRjNDFhNTIxNGEzYzM1YmU5YzQxY2E4N2UzMWZiMjg1MDVlY2YwNTg4MmVhYjY1MDU1ODIyMzkzMGUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjczMzVmYmNlNWEzODNkZjM3MDU1OGZlZTRlYzA3YWJlYmRjZjVjOTA5MTU2M2VjYzEwNDU4Mjk2Y2E4NDEzODcifQ"
+          "resource": "repo://database/src/agent_fork.rs",
+          "version": "repo-file-v1:sha256:8c3db3442ab83bd8b9182349ab200e70289444b48b90fc424d8aa90eaf2a095c"
         }
       ]
     },
@@ -471,16 +471,12 @@
       "statement": "The attached-branch query bounds retained Decodex receipts to the newest 100 for an exact source. Native archive observation uses exact attachment filters and source binding; incomplete discovery remains unknown.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-codex/src/app_server_client/archive.rs#L133-L197",
-          "version": "repo-lines-v1:sha256:d61ea7ba6579b8e0150b9f5a9cc6f238ff59b95f5d9907447cad28513510a3f9:eyJzZWxlY3RlZExpbmVDb3VudCI6NjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFkZTY2YjYyYTBhMTlmYjgyZDg0M2JkYWJlNzFlMzEzODUxMzAwMTMzNzQxYWE3MmIxNGRjOWRlMjY3OTczOWYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYzY2E5YjEyODg3NGVlZjE1YWIyZjMxOGQ3ZjNjYjg5ZWE0MGJhNGE1NTFlZDkzYjEzYjNjN2Q4YjlmMTUyMmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhmMzAxZDk0YzFiZGU5NzhkYzVmMjljMWRiODNiZDNlOTI2MzQ1YzkxMTQ1MjAyYTY4ZDI2NjEyY2UyOWQ2ZDQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU3MzBiM2I0N2U3ZGVlYTkzM2Q0Yjk5MWNmYjgwMDdkM2I3NzA5ZmRkNmI1NzlkMzZmM2M4ZjQ5OTkxZTFlYjcifQ"
+          "resource": "repo://crates/decodex-codex/src/app_server_client/archive.rs",
+          "version": "repo-file-v1:sha256:9dc524e6c077a8178a92642f6022cdae244a70a5a49c3371a5c12c223d5a7be2"
         },
         {
-          "resource": "repo://crates/decodex-codex/src/app_server_client/archive.rs#L242-L291",
-          "version": "repo-lines-v1:sha256:07969700d0430c1a5d563b0415eecc8de36f1353f657bd13c8b485ea4ef4620a:eyJzZWxlY3RlZExpbmVDb3VudCI6NTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI5ZTU0YTQwYWYwNTM3YjBlZjJlN2U0MjZjMTM4OTVlMzVmZWMxMmRmZjJhYjdiYmM5NDUyOWMyN2UxY2M4ZjAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc4YTU0NWM5ZjAyNjZmNzVlMzEyNmZlMGI5NDVlMjQ4NTMzM2ExZWI3OTFhOWEzYzI1ZDVhOWM1OWYxYzU4OTIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjljOGFlYzAyZDAwYTczZTUwNzlmNzAzMTY2MDhlZGViMDA0ZWVlMjZiNDU5YmFlOWU5ZTRkYzg5MDY3MzhkOTAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFkYTljYTFkM2Y1Zjc1OThkY2Q2NGJiYjBkOTFhOGJiMzJiNzBhYTlhN2JlNTA5YzY0YmVhOTQyN2UyMDJlNTUifQ"
-        },
-        {
-          "resource": "repo://database/src/agent_fork.rs#L203-L221",
-          "version": "repo-lines-v1:sha256:2d15578fba236716e8b7f90e0963dee7200872bbfec4d00a885499899d580e3b:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM1ZDg2ZTJhM2I1NmJlN2NjNWFkOTA1Y2Q5YzEwYjczZDU3MzdmZDM3ZDMzNzdhMWFlOTZiN2ZkYzU1NjE1YzMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg2NDA3MTllMTQ1Nzg2YzExMDJkNTU2Yjc2YTI1MTA5NWZjZTA3YjVhYmM1MDIzZmFlNGYxZTk4OGE2ODA4ZTAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjBhM2I2MjJkNjZiNzljYThlZTgwNGI4YTE5YTMzYzVlZGZlNWNlMmM0ZWUyODU3ZDM4MTgyNzAwNmIyNWM0MTIifQ"
+          "resource": "repo://database/src/agent_fork.rs",
+          "version": "repo-file-v1:sha256:8c3db3442ab83bd8b9182349ab200e70289444b48b90fc424d8aa90eaf2a095c"
         }
       ]
     },
@@ -490,7 +486,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:ecaa9f3bfc2cacc6ae4c51dc69084930f7d6728656c434b507a7ff49ca1d6426"
+          "version": "repo-file-v1:sha256:5d7708b4a83f830538f9eca55e7efeff23ddd7c92eb5e79a94766a527980c772"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/tests/capacity.rs",
@@ -542,7 +538,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-contracts.json",
-          "version": "repo-file-v1:sha256:a98d4bd8b3d63527e8dd136837acc6ecd1b15cc281331807beb1c7bad11fe56d"
+          "version": "repo-file-v1:sha256:feffcb8ae1ec98375e5c0f023263edb2b483b31eacc5524379f1cb5f7cbb1f0f"
         },
         {
           "resource": "repo://crates/decodex-protocol/src/wire.rs",
@@ -606,7 +602,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:ecaa9f3bfc2cacc6ae4c51dc69084930f7d6728656c434b507a7ff49ca1d6426"
+          "version": "repo-file-v1:sha256:5d7708b4a83f830538f9eca55e7efeff23ddd7c92eb5e79a94766a527980c772"
         },
         {
           "resource": "repo://codex-runtime.lock.json",
@@ -635,6 +631,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-31T13:17:02.524Z"
+    "at": "2026-10-31T14:39:55.131Z"
   }
 }

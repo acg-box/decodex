@@ -2900,6 +2900,16 @@
       "https://github.com/acg-box/decodex/commit/20be50137551a46a4ffde709ccfafbfe56ccc6b9"
     ],
     "source_review_cursor_advanced": false,
-    "selected_runtime_changed": false
+    "selected_runtime_changed": false,
+    "presentation": {
+      "contract": "automations/upstream/retained-contracts.json#retained_presentation/conversation_fork_wording",
+      "qualification": "automations/upstream/qualification.json#candidate_qualification/provider_recovery/presentation",
+      "delivery": [
+        "https://github.com/acg-box/decodex/commit/1871f4b900e6acdfddf454c42ada8c43f6c70260"
+      ],
+      "local_tests_passed": 26,
+      "remaining_unmatched_selectors": [],
+      "native_qualification_repeated": false
+    }
   }
 }

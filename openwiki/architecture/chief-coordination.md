@@ -108,10 +108,10 @@ sources:
     resource: repo://database/src/works/collaboration.rs
   - id: openwiki-source-c0eb738b42368debe7ef7545
     resource: repo://database/src/works/commands.rs
-generated: { by: "codex", at: "2026-10-30T15:17:49.972Z" }
+generated: { by: "codex", at: "2026-10-31T14:39:55.131Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-31T13:17:02.524Z
+    at: 2026-10-31T14:39:55.131Z
 ---
 
 # Project, Agent and Work coordination
@@ -222,7 +222,7 @@ Decodex reserves a new local work item before the native request. It saves the a
 
 An ordinary branch is an independent user-created conversation. An attached branch keeps its exact source Agent as its local parent. It is a persistent Agent conversation, not a native Subagent. Both forms keep the source role, Project association and recorded tool version. It does not copy pending inbox work or dependency edges. An acknowledged fork has an explicit ownership record that permits it to use the source process. Independent Agents do not gain that authority from an old parent identifier. A branch does not create another Assistant or silently upgrade native tools.
 
-Before-input branches use the existing canonical input and draft handback owner. After-turn branches do not prefill the selected input. They preserve the source draft and copy its ordinary composer text, attachments and references into the new branch. The **Attached branches** list shows retained Decodex creation receipts, including unresolved outcomes. Opening a ready branch uses the existing conversation controls and preserves the source draft. Closing a tab keeps the branch; native Codex owns archive, restore and parent-deletion safeguards. See [conversation recovery](../workflows/conversations-and-recovery.md) for the user actions and uncertain-result behavior.
+Before-input branches use the existing canonical input and draft handback owner. After-turn branches do not prefill the selected input. They preserve the source draft and copy its ordinary composer text, attachments and references into the new branch. The **Side chats** list shows retained Decodex creation receipts, including unresolved outcomes. Opening a ready branch uses the existing conversation controls and preserves the source draft. Closing a tab keeps the branch; native Codex owns archive, restore and parent-deletion safeguards. See [conversation recovery](../workflows/conversations-and-recovery.md) for the user actions and uncertain-result behavior.
 
 ## Verification and navigation
 

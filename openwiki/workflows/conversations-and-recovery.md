@@ -140,10 +140,10 @@ sources:
     resource: repo://database/src/agent/tests/input_retry.rs
   - id: openwiki-source-28af4781ad8d9558410630da
     resource: repo://database/src/works.rs
-generated: { by: "codex", at: "2026-10-31T13:17:02.524Z" }
+generated: { by: "codex", at: "2026-10-31T14:41:33.010Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-31T13:17:02.524Z
+    at: 2026-10-31T14:41:33.010Z
 ---
 
 # Conversation input, history and recovery
@@ -190,17 +190,17 @@ After Codex restores the original thread, a positive active-list observation res
 
 ## Branch from the conversation list
 
-For an existing locally managed conversation, choose **Branch…** on its list row. Decodex opens that exact source, preserves the current drafts, and reads the latest completed native turn and its own user input. If needed, it uses the existing bounded earlier-history pages. An active turn is not selected. Incomplete, unavailable or summary-only history cannot supply a branch boundary.
+For an existing locally managed conversation, choose **Fork** on its list row. Decodex opens that exact source, preserves the current drafts, and reads the latest completed native turn and its own user input. If needed, it uses the existing bounded earlier-history pages. An active turn is not selected. Incomplete, unavailable or summary-only history cannot supply a branch boundary.
 
-Review the source, then choose **Create new branch**. This uses the existing **Branch after this turn** path; creation sends no input. **Cancel branch** closes the review without changing the source draft. A profile, thread, selected source or history change cancels the pending review. A native-only inventory row without a local source does not offer this shortcut and is not adopted. The [qualification](../testing/upstream-acceptance-boundaries.md#conversation-list-branch-qualification) records the focused checks and limits.
+Review the source, then choose **Fork**. This uses the existing **Fork** (after this turn) path; creation sends no input. **Cancel** closes the review without changing the source draft. A profile, thread, selected source or history change cancels the pending review. A native-only inventory row without a local source does not offer this shortcut and is not adopted. The [qualification](../testing/upstream-acceptance-boundaries.md#conversation-list-branch-qualification) records the focused checks and limits.
 
 ## Continue after a provider change
 
-If native Codex refuses to resume a conversation because its saved provider differs from the current provider, Decodex keeps its history readable and preserves the original draft. The notice names both providers. Restore the original provider to continue that conversation, or choose **Create branch…** to use the current provider.
+If native Codex refuses to resume a conversation because its saved provider differs from the current provider, Decodex keeps its history readable and preserves the original draft. The notice names both providers. Restore the original provider to continue that conversation, or choose **Fork** to use the current provider.
 
-The branch action reuses the review of the latest completed native turn. Inspect the boundary and the destination provider, then choose **Create branch with current provider**. Decodex checks the current native configuration again and creates one ordinary native fork. If the source or configuration changed, review the current state again. It does not change the original conversation, send input, or bypass native policy.
+The branch action reuses the review of the latest completed native turn. Inspect the boundary and the destination provider, then choose **Fork**. Decodex checks the current native configuration again and creates one ordinary native fork. If the source or configuration changed, review the current state again. It does not change the original conversation, send input, or bypass native policy.
 
-The new branch receives the reviewed history prefix and the ordinary composer draft through the existing branch flow. The next explicit send shares that inherited context with the chosen provider. **Cancel branch** preserves the source draft and creates nothing. Unsent source messages are not retried automatically. Ordinary branching and Side chats retain their source provider; changing providers is this separate explicit choice.
+The new branch receives the reviewed history prefix and the ordinary composer draft through the existing branch flow. The next explicit send shares that inherited context with the chosen provider. **Cancel** preserves the source draft and creates nothing. Unsent source messages are not retried automatically. Ordinary branching and Side chats retain their source provider; changing providers is this separate explicit choice.
 
 The [qualification record](../testing/upstream-acceptance-boundaries.md#provider-recovery-qualification) distinguishes the exact native tests from a user's experience. Use the [isolated rehearsal](../operations/commands-and-validation.md#rehearse-provider-recovery) to try the real desktop flow without using account data or changing the normal runtime selection.
 
@@ -214,22 +214,22 @@ Filtering reads the already retained list. It does not send input, change Work s
 
 ## Edit or branch at an earlier input
 
-A locked conversation can offer **Continue in a new branch…** when its current native timeline contains a readable user prompt. The entry reviews the latest visible prompt's turn and then offers **Create new branch**. It uses the existing native fork and receipt recovery path. It does not acquire the original writer's lease or unlock the source conversation. A stale timeline binding does not offer this entry.
+A locked conversation can offer **Fork** when its current native timeline contains a readable user prompt. The entry reviews the latest visible prompt's turn and then offers **Fork**. It uses the existing native fork and receipt recovery path. It does not acquire the original writer's lease or unlock the source conversation. A stale timeline binding does not offer this entry.
 
 Review the exact native item and complete input, including image, skill and mention identity. The confirmation panel offers four explicit choices:
 
 | Choice | Native history | Draft |
 | --- | --- | --- |
-| **Edit in new branch** | Create a fork before the selected input; keep the original conversation unchanged | Restore the edited canonical input on the new branch |
-| **Branch after this turn** | Copy the selected completed turn and all earlier turns; keep the original unchanged | Copy the separate ordinary composer draft, including attachments and references; do not prefill the selected historical input |
-| **Attached branch after this turn** | Attach a persistent native branch to the reviewed source boundary; native inference retains the parent context while the child view contains only child turns | Open the branch without prefilling or sending input |
+| **Fork** (before this prompt) | Create a fork before the selected input; keep the original conversation unchanged | Restore the edited canonical input on the new branch |
+| **Fork** (after this turn) | Copy the selected completed turn and all earlier turns; keep the original unchanged | Copy the separate ordinary composer draft, including attachments and references; do not prefill the selected historical input |
+| **Side chat** | Attach a persistent native branch to the reviewed source boundary; native inference retains the parent context while the child view contains only child turns | Open the branch without prefilling or sending input |
 | **Remove turns from original and keep draft** | Revert the original before the selected input, removing it and all later turns | Keep the edited draft on the original thread |
 
 A branch before the first input is an empty-prefix native fork, not an unrelated replacement conversation. Ordinary branches defer copied Goal continuation. An attached branch starts without a copied native Goal; the source Goal remains unchanged. Its visible history is initially empty, and later child turns are independent of the parent view. The saved source turn IDs retain the reviewed boundary. This choice requires paginated source history, as checked by the public flow. Opening any branch does not send input or start a model turn. Neither a fork nor a same-thread revert undoes workspace file changes.
 
 The desktop saves the exact choice, destination and edited draft before dispatch. The service reserves the operation before one native write. It saves a returned fork ID before a separate visible-history read. Ordinary forks validate the reviewed prefix; attached creation validates an empty child view. If creation acceptance is unknown, retain the draft and read its receipt; do not create another branch. Known fork recovery only reads native identity and history. The source keeps its normal history and has no branch-draft input fence.
 
-An attached branch retains the exact source Agent as its local parent and keeps its Project, role, provider and tool revision. In the source Agent's preferences, open **Attached branches**, then **Open branch** to continue a verified active branch. Navigation preserves the source draft. The list reads the newest 100 saved Decodex attached-branch receipts and discloses truncation; it does not adopt branches created outside Decodex. Refresh is explicit.
+An attached branch retains the exact source Agent as its local parent and keeps its Project, role, provider and tool revision. In the source Agent's preferences, open **Side chats**, then **Open** to continue a verified active branch. Navigation preserves the source draft. The list reads the newest 100 saved Decodex attached-branch receipts and discloses truncation; it does not adopt branches created outside Decodex. Refresh is explicit.
 
 An uncertain creation stays unconfirmed. Keep the saved choice and recover it instead of creating another branch. An acknowledged identity can require saved-choice recovery before history is ready. If a branch is archived, restore it in Codex and refresh the list. Native archive and parent-deletion rules remain authoritative. This workflow adds no automatic follow-up, scheduling, result merge or deletion control. The [attached-branch acceptance record](../testing/upstream-acceptance-boundaries.md#persistent-attached-branches) separates executed fixtures from installed-app acceptance.
 
@@ -237,11 +237,11 @@ For a before-input branch or same-thread edit, projection refresh and durable dr
 
 ## Open Side chats in tabs
 
-The conversation header keeps the source conversation and multiple Side chats in one tab strip. Use **+** beside the tabs to review a Side chat from the source's latest completed turn, then choose **Create side chat**. The source must have readable full native history for that completed turn. Creation uses native attachment and sends no message.
+The conversation header keeps the source conversation and multiple Side chats in one tab strip. Use **+** beside the tabs to review a Side chat from the source's latest completed turn, then choose **Side chat**. The source must have readable full native history for that completed turn. Creation uses native attachment and sends no message.
 
 Each Side chat starts with an empty visible history and the reviewed source prefix in its model context. Later source messages do not automatically enter an existing Side chat. Continue the Side chat with its own composer. Switching tabs restores each conversation's draft and reading position. The strip scrolls horizontally and reveals the selected tab; existing activity indicators and header controls remain available.
 
-Close hides a Side chat tab and returns to its exact source. It does not delete or archive the native conversation. To reopen it, use the source's **Agent preferences → Attached branches → Open branch**. Only verified native attachments belong to a source's tabs; a local parent relationship alone does not establish that membership. Open Side chats in this family do not also appear as duplicate sidebar rows.
+Close hides a Side chat tab and returns to its exact source. It does not delete or archive the native conversation. To reopen it, use the source's **Agent preferences → Side chats → Open**. Only verified native attachments belong to a source's tabs; a local parent relationship alone does not establish that membership. Open Side chats in this family do not also appear as duplicate sidebar rows.
 
 ## Finish or cancel an edit
 

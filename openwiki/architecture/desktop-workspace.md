@@ -4,6 +4,8 @@ title: "Desktop workspace and native glass"
 description: "Workspace ownership, native menu focus, compositor motion, and consistent status presentation."
 tags: [decodex, architecture, desktop, presentation]
 sources:
+  - id: openwiki-source-98e7b23c4cc276d20fcb4649
+    resource: repo://apps/decodex-gpui/menubar/Sources/DecodexApp/AccountControlViews.swift
   - id: openwiki-source-b469e348e65d4cdbb569fb27
     resource: repo://apps/decodex-gpui/menubar/Sources/DecodexApp/AccountRows.swift
   - id: openwiki-source-51c6a903a86b67bbf46fe288
@@ -90,14 +92,18 @@ sources:
     resource: repo://crates/decodex-runtime/src/native_agents.rs
   - id: openwiki-source-6085af9603cb7ac0ff3ef1cf
     resource: repo://crates/decodex-runtime/src/work_portfolio.rs
+  - id: openwiki-source-58c0167d31c3e40dc89591ab
+    resource: repo://database/src/agent_fork.rs
   - id: openwiki-source-d1279ad243eb550afec4d0e6
     resource: repo://database/src/guardian_settings.rs
   - id: openwiki-source-c0eb738b42368debe7ef7545
     resource: repo://database/src/works/commands.rs
-generated: { by: "codex", at: "2026-10-30T15:17:49.972Z" }
+  - id: openwiki-source-8fe6f1557e5d45d88b34bd0a
+    resource: repo://scripts/macos/generate_workspace_symbols.swift
+generated: { by: "codex", at: "2026-10-31T14:39:55.131Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-31T13:17:02.524Z
+    at: 2026-10-31T14:39:55.131Z
 ---
 
 # Desktop workspace and native glass
@@ -148,7 +154,7 @@ Agent preferences includes **Memory summary** for the current native root conver
 
 The existing Collaboration panel includes retained question answers and independent contribution cycles. Exact reply delivery and receiving-turn outcome remain distinct from question resolution or Work assessment. Repair cycles preserve their own sources. See [Agent coordination](chief-coordination.md#read-only-collaboration-evidence-and-usage) for the joins and [acceptance boundaries](../testing/upstream-acceptance-boundaries.md#selected-read-only-views) for verification limits.
 
-Agent preferences also includes **Attached branches**. It lists the newest 100 saved Decodex branch receipts for the exact source conversation. **Open branch** uses the existing conversation navigation and preserves the source draft. An uncertain creation stays unconfirmed; the list does not repeat it. An archived branch must be restored in Codex before refresh can open it. See [conversation recovery](../workflows/conversations-and-recovery.md) for creation and recovery.
+Agent preferences also includes **Side chats**. It lists the newest 100 saved Decodex branch receipts for the exact source conversation. **Open** uses the existing conversation navigation and preserves the source draft. An uncertain creation stays unconfirmed; the list does not repeat it. An archived branch must be restored in Codex before refresh can open it. See [conversation recovery](../workflows/conversations-and-recovery.md) for creation and recovery.
 
 ## Material and focus ownership
 
@@ -156,7 +162,7 @@ Agent preferences also includes **Attached branches**. It lists the newest 100 s
 
 `native_material_panel.rs` bridges composition only. GPUI still owns UI state, layout and event handlers. The composer is an attached child window created by the main workspace, not another application or service. Settings must not create one. The workspace remains the main window while an attached control can own keyboard focus. See [conversation presentation](conversation-presentation.md#floating-controls-and-motion) for frame ownership and animation policy.
 
-Archived and blocked conversations keep the normal composer geometry with sending disabled and the draft retained. A locked conversation with a readable, currently bound native prompt offers **Continue in a new branch…**. This opens a reviewed native branch without taking over the original writer. Certain detail/full-screen states omit the composer. Reopening includes a short layout-settling interval; failures fall back to GPUI presentation. Notification placement and opacity belong to the same native-panel composition boundary.
+Archived and blocked conversations keep the normal composer geometry with sending disabled and the draft retained. A locked conversation with a readable, currently bound native prompt offers **Fork**. This opens a reviewed native branch without taking over the original writer. Certain detail/full-screen states omit the composer. Reopening includes a short layout-settling interval; failures fall back to GPUI presentation. Notification placement and opacity belong to the same native-panel composition boundary.
 
 ## Menu focus and account motion
 
@@ -195,6 +201,10 @@ The GPUI notification center orders errors before warnings and information when 
 Use short, direct action or status labels. Do not add a status sentence below an account to repeat its warning icon. Use an ellipsis only for an ongoing operation such as `Loading activity…`. Use complete sentences and normal punctuation for explanations in notifications, popovers and hover text.
 
 Keep each label about one user need. Account warning popovers state what happened and the useful next action. Do not append storage labels to an error or join unrelated messages with a bullet. Describe what happened and the next useful action in plain language. Keep internal error variant names and credential-refresh mechanics out of user-facing account explanations.
+
+Use **Fork** for conversation actions in lists, locked conversations and provider recovery. Keep source boundaries, destination providers and no-send explanations beside the action; keep the button label short. Use **Side chat** for an attached conversation and **Side chats** for its list. Native protocol identifiers and Git branch terminology keep their existing names.
+
+Reserve `arrow.triangle.branch` for Fork. Account routing uses `point.topleft.down.to.point.bottomright.curvepath` in both GPUI and Menu Bar, with the existing active color and disabled behavior. New default titles use `(Fork)` or `(Side chat)`; the earlier `(attached branch)` title still displays as a Side chat, and custom titles remain unchanged.
 
 ## Verification
 

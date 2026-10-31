@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:3132783a197879312dc246c436853669c191e7584349a202fbcbd985ced45e0b",
+  "pageVersion": "sha256:81ae3363081ba6da3fdb935e90d915c0df8cc10bcc7887540bba92b44ab0a671",
   "claims": [
     {
       "id": "claim_738021d152cc4128af3d3b4b217fe92c",
@@ -173,10 +173,28 @@
           "version": "repo-lines-v1:sha256:f4ab73c96db8b6f37758ce1744964c4fd9161637a22734a4d8f75d74c91ef58b:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM2NjhhZWFjYTU4OWQxM2M2ZTc1YjBhOTYyNDBkZDYxMWM0ZDgyMDc3ZTczNzBmYjI4MDJiNGEyNzE1ZDEwNjEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjVhZjRhNDVlOWIxYzdjOTU5ZTE4OTczOGFjMDJkZDc1NTJmNzgzZWI0NjNhMzc3Nzk4MTQ0OGJiNWY5YTAwOWQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQ5NWM4ZGYzZjNlNTJlNGIzYTczYTk1ZTQ1MjI2NTFjZDcwZGM5ZjAzMDBlZDFhYTRmMzIyMjYzOTUxOTJjNDIifQ"
         }
       ]
+    },
+    {
+      "id": "claim_10dc05bc441c44248108ad45b18d4d48",
+      "statement": "Account routing uses point.topleft.down.to.point.bottomright.curvepath in GPUI and Menu Bar, retaining existing active color and disabled behavior; arrow.triangle.branch is reserved for conversation Fork actions.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/AccountControlViews.swift",
+          "version": "repo-file-v1:sha256:f3a399a69b8cef0bbe483b5fe562b444680dbb3ab480b262276c1a20522e3713"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/workspace_symbols.rs",
+          "version": "repo-file-v1:sha256:9a49de476abaa2be2d9169f34c69417e1108a655f37ea3f9f141844775534c31"
+        },
+        {
+          "resource": "repo://scripts/macos/generate_workspace_symbols.swift",
+          "version": "repo-file-v1:sha256:ea22b64bce4e6024c00ba3d62bb7a629588903bb3831353799d1b0591608fce8"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-30T17:36:00.319Z"
+    "at": "2026-10-31T14:39:55.131Z"
   }
 }

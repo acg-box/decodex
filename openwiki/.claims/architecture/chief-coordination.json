@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:4ae30eb52649734a1d766df87b3b45fc3bcb2aedda665f215300176db8426638",
+  "pageVersion": "sha256:09cc4df050eedffc63bf6a71281c5e983d17503734ae109671fd574aa77297be",
   "claims": [
     {
       "id": "claim_43786e7afb4249548ed4fab09e0e4afa",
@@ -18,7 +18,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/agent.rs",
-          "version": "repo-file-v1:sha256:6b4aa27874903e180c7f6f6b51f727bbe87c35815de7a39b3c9a14eec33ec881"
+          "version": "repo-file-v1:sha256:23720f5a11d7b2b707cfe1ec8e757845d1f4f887c276dd699a9ca2b55c0f965b"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent_host.rs",
@@ -52,7 +52,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/agent.rs",
-          "version": "repo-file-v1:sha256:6b4aa27874903e180c7f6f6b51f727bbe87c35815de7a39b3c9a14eec33ec881"
+          "version": "repo-file-v1:sha256:23720f5a11d7b2b707cfe1ec8e757845d1f4f887c276dd699a9ca2b55c0f965b"
         }
       ]
     },
@@ -62,7 +62,7 @@
       "evidence": [
         {
           "resource": "repo://database/src/agent_fork.rs",
-          "version": "repo-file-v1:sha256:1dcdfc3171e3592a550063154aeb70c404ef5c035674f3da51e31ba3ca8668ab"
+          "version": "repo-file-v1:sha256:8c3db3442ab83bd8b9182349ab200e70289444b48b90fc424d8aa90eaf2a095c"
         },
         {
           "resource": "repo://database/src/agent_process.rs",
@@ -164,7 +164,7 @@
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent.rs",
-          "version": "repo-file-v1:sha256:6b4aa27874903e180c7f6f6b51f727bbe87c35815de7a39b3c9a14eec33ec881"
+          "version": "repo-file-v1:sha256:23720f5a11d7b2b707cfe1ec8e757845d1f4f887c276dd699a9ca2b55c0f965b"
         }
       ]
     },
@@ -249,7 +249,7 @@
       "statement": "Native V2 continuation and V1 waits retain native ownership without Ultra; V1 nested Work attribution and V2 nesting explicitly permitted by native configuration are qualified while the V2 default remains direct-only.",
       "evidence": [
         {
-          "resource": "repo://automations/upstream/retained-contracts.json#L2578-L4065",
+          "resource": "repo://automations/upstream/retained-contracts.json#L2617-L4104",
           "version": "repo-lines-v1:sha256:dca51e28f266f3fd054b394a5451bb61a595544c5b5e6c017bbc9a2bff362c86:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQ4OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYTRlOTQ2ZjE1NzYwNjdhMTM0ZWZiZDhhZTE1MjI2MDI5NzdkMDBlOTFkNjY2YzYyMGE3Yzg0NjdjYjY0ZjE4OSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNGQ1Y2QyZmI0ZjNkZjg4NDUxNTI1NWIzOTUyM2YyZjhiNTQ3MmJlZWE5ZjU2NmZmY2EyMDRkYjgwMjU2MTA0MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMDhlNmNhNGUyMTVlOTEyMDdlOWZlMDk3ZDUyZGI5M2ViNjVkZTRjOThmZDgwYjE3OTY3MjliM2UxMWQ3MTY5YSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMzIyZjc2YzIxZjc0OTU3ZDkyNWUxOGQzYTY0YWJiNTYwN2ZmMDgwYTc3NDU2MjA4ZThlMDY3ODQ0MDJjMGNhMSJ9"
         },
         {
@@ -268,7 +268,7 @@
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent.rs",
-          "version": "repo-file-v1:sha256:6b4aa27874903e180c7f6f6b51f727bbe87c35815de7a39b3c9a14eec33ec881"
+          "version": "repo-file-v1:sha256:23720f5a11d7b2b707cfe1ec8e757845d1f4f887c276dd699a9ca2b55c0f965b"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/project.rs",
@@ -345,7 +345,7 @@
       "statement": "The control acceptance follow-up verified native owner links and exact encrypted delivery for the old venue and lodging helpers. Their own returned messages identified the expected contributions, but prepared-plaintext proof remained unavailable and no inferred Work binding was written.",
       "evidence": [
         {
-          "resource": "repo://automations/upstream/retained-contracts.json#L3600-L3652",
+          "resource": "repo://automations/upstream/retained-contracts.json#L3639-L3691",
           "version": "repo-lines-v1:sha256:482a3cd124f141c018411af1c9b15b63413a068a7097b33ea3cc47cff6c592ec:eyJzZWxlY3RlZExpbmVDb3VudCI6NTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQzZTBhYWIxMWFmZWMyN2I0NTg4YmY2ODFmOTEzZjNhZjgwNzQwYTY4NGY5YzI0MzdkZmFhNGVjNGQ2NDRkYzIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJmZWEwMmExM2E5ZDAwMmVjZWUxM2ZkMTMzNzNiMWQ2NWZlNWEwYzRiOTI0Mzk4M2UxN2ZkZTEzNDUzYTIyOTYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImVhZDdlY2Q5ZGUxOTU4OTVlOTcwYWM3ZDIzZWMwOTViYjFhZDEwYTc4YjYwNmI5ODRmYzAzNmE3ZmY1NmNlNjIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNjMjU5MzBjZDdjZWVhODkxMWRmYjRkZTE3MmE5OTgwMjI2YzhlZmNmNTU5MTk1OGVjZmVlMDU0NmU0ZWU4ZjQifQ"
         }
       ]
@@ -392,11 +392,11 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_attached_branches.rs",
-          "version": "repo-file-v1:sha256:dcaa6488547ecf1322f32f56d4ef5ac6a017e264fec5d750fd0ff4283aca5ebc"
+          "version": "repo-file-v1:sha256:56e16cc761ecfa446826572dcb227e828029937017d66c5b88f913ce10cb2ba6"
         },
         {
           "resource": "repo://database/src/agent_fork.rs",
-          "version": "repo-file-v1:sha256:1dcdfc3171e3592a550063154aeb70c404ef5c035674f3da51e31ba3ca8668ab"
+          "version": "repo-file-v1:sha256:8c3db3442ab83bd8b9182349ab200e70289444b48b90fc424d8aa90eaf2a095c"
         }
       ]
     },
@@ -470,7 +470,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_prompt_fork.rs#L105-L141",
-          "version": "repo-lines-v1:sha256:1ab655f1f7149d16cbabbf7cb89d8f1760435860ff56b9c521241d147e96dda7:eyJzZWxlY3RlZExpbmVDb3VudCI6MzcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYyMzM3Njk4NzE0OWZiMDdmNmI0YjdkOGU4ZGZiODNkMmIxMDE2MWU1NDU0YTRjYmRhZGZiMWVhYjQ3YzllMzEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRhMTc4MDFhNzdhZjc0ZDAwM2M5ZmVjNmQ1ODU4MjNiYTExNzhkMzQ2ZGY1MTMwNTc1ZDFmMTFhNTliOGQ1OGIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUxMGNkNmNmMzhmZWQ5Y2NhNDkyMjhiOGFlMWQ1YmQzNjM5MGI5ZjUxYzgwY2E0ODJjZjU5OGI5ZDg0MzJkMDkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFlNmM2NzI5MTkyNGYzYWYzOGEwNzU3NzgyNzIxNDliNGNjZjRhZjU3OWJhMmI2NjAxY2RkNjU3NDVhODI0MmMifQ"
+          "version": "repo-lines-v1:sha256:8b86e0b1f013b49e36aae20919ca83392259f625799c6d4a0e739239ad988159:eyJzZWxlY3RlZExpbmVDb3VudCI6MzcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYyMzM3Njk4NzE0OWZiMDdmNmI0YjdkOGU4ZGZiODNkMmIxMDE2MWU1NDU0YTRjYmRhZGZiMWVhYjQ3YzllMzEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRhMTc4MDFhNzdhZjc0ZDAwM2M5ZmVjNmQ1ODU4MjNiYTExNzhkMzQ2ZGY1MTMwNTc1ZDFmMTFhNTliOGQ1OGIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUxMGNkNmNmMzhmZWQ5Y2NhNDkyMjhiOGFlMWQ1YmQzNjM5MGI5ZjUxYzgwY2E0ODJjZjU5OGI5ZDg0MzJkMDkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFlNmM2NzI5MTkyNGYzYWYzOGEwNzU3NzgyNzIxNDliNGNjZjRhZjU3OWJhMmI2NjAxY2RkNjU3NDVhODI0MmMifQ"
         }
       ]
     },
@@ -490,7 +490,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_composer.rs",
-          "version": "repo-file-v1:sha256:1a2c015b1aaf85012ce10c1dcb250b618bc2db3fd89010b7c9628a269d574e7d"
+          "version": "repo-file-v1:sha256:a3a22943688a5f016b7342f7cfa2ce5aa6f65677c0783012cc31c0a6920ed598"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_detail.rs",
@@ -513,6 +513,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-31T13:17:02.524Z"
+    "at": "2026-10-31T14:39:55.131Z"
   }
 }

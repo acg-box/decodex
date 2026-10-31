@@ -4,6 +4,8 @@ title: "Account routing and recovery"
 description: "Service-owned account routing and recovery, compact account rows, quota alignment, and cached activity status."
 tags: [decodex, accounts, operations, presentation]
 sources:
+  - id: openwiki-source-98e7b23c4cc276d20fcb4649
+    resource: repo://apps/decodex-gpui/menubar/Sources/DecodexApp/AccountControlViews.swift
   - id: openwiki-source-51c6a903a86b67bbf46fe288
     resource: repo://apps/decodex-gpui/menubar/Sources/DecodexApp/ResetCardSectionView.swift
   - id: openwiki-source-fecafeb22abda7dad3877372
@@ -12,6 +14,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/quota_meter.rs
   - id: openwiki-source-1291f5243fa6c9cb52149bda
     resource: repo://apps/decodex-gpui/src/shell.rs
+  - id: openwiki-source-35beef376e748f87821e9639
+    resource: repo://apps/decodex-gpui/src/workspace_symbols.rs
   - id: openwiki-source-b52eea0658a5f27f944ae338
     resource: repo://crates/decodex-runtime/src/account_api/activation.rs
   - id: openwiki-source-7415e92f61bcf0ca4195142c
@@ -32,10 +36,12 @@ sources:
     resource: repo://database/src/account_lifecycle.rs
   - id: openwiki-source-9b561c5dd3054cdff0599fb9
     resource: repo://database/src/quota_activation.rs
-generated: { by: "codex", at: "2026-10-28T06:51:55.940Z" }
+  - id: openwiki-source-8fe6f1557e5d45d88b34bd0a
+    resource: repo://scripts/macos/generate_workspace_symbols.swift
+generated: { by: "codex", at: "2026-10-31T14:39:55.131Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-30T17:36:00.319Z
+    at: 2026-10-31T14:39:55.131Z
 ---
 
 # Account routing and recovery
@@ -77,6 +83,8 @@ Swift and GPUI use the same interaction model. Normal accounts retain route, pow
 Each account has independent expanded state. Opening one account does not close another. Details contain the saved activity metrics, usage graph and Reset Cards. Do not add a second Reset Cards disclosure or duplicate logout control. The GPUI account hover covers the row. Native menu focus and synchronized expansion belong to the [desktop presentation boundary](../architecture/desktop-workspace.md).
 
 GPUI keeps `5h` and `7d` quota slots in one row. Labels, percentages and local reset timestamps have stable columns, and a separator distinguishes the two windows. Progress tracks fill the remaining width. An unavailable window keeps its slot with `—` or `N/A`; it does not become a fake zero-percent value. Both clients show the local reset date and time. On macOS, Foundation supplies the system hour-cycle preference, locale and time zone for quota reset and Reset Card expiry labels. This changes presentation only; it does not change the native reset instant or quota evidence.
+
+The route action uses a curved connection between two endpoints in Settings and Menu Bar. Its existing active color and disabled behavior remain. The branching-arrow icon is reserved for conversation Fork actions.
 
 ## Saved activity status
 

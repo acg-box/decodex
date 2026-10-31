@@ -120,10 +120,10 @@ sources:
     resource: repo://database/src/agent_fork.rs
   - id: openwiki-source-fc5ad70343bb20c4e9d12540
     resource: repo://database/src/agent_process/attachments.rs
-generated: { by: "codex", at: "2026-10-31T13:17:02.524Z" }
+generated: { by: "codex", at: "2026-10-31T14:39:55.131Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-31T13:17:02.524Z
+    at: 2026-10-31T14:39:55.131Z
 ---
 
 # Product scope and native ownership
@@ -160,7 +160,7 @@ These views are available through local protocol 4.4 and the same source owners.
 
 In the earlier six-item review, items 1–3 are delivered through the selected read-only views above. The user selected **item 4, persistent attached branches**. An explicit completed-turn branch uses native attachment, retains the exact source relationship and can be reopened from Agent preferences. Creation sends no input and copies no native Goal. The child-visible history starts empty, while native inference retains the reviewed parent context. Source turn IDs preserve boundary provenance. Native attachment requires paginated source history; the public branch flow already checks this. It adds no automatic follow-up, scheduling, result merge or deletion policy. The retained `retained_attached_forks` evidence identifies its regressions and qualification limits.
 
-The user also selected multiple Side chats in the conversation header. The source and open Side chats share a horizontal tab strip. **+** reviews the latest completed source turn before **Create side chat** confirms an attached fork. Switching retains each draft and history position. Closing hides a tab without deleting the native branch; Agent preferences can reopen it. This presentation reuses the selected attachment boundary and adds no runtime or scheduling policy.
+The user also selected multiple Side chats in the conversation header. The source and open Side chats share a horizontal tab strip. **+** reviews the latest completed source turn before **Side chat** confirms an attached fork. Switching retains each draft and history position. Closing hides a tab without deleting the native branch; Agent preferences can reopen it. This presentation reuses the selected attachment boundary and adds no runtime or scheduling policy.
 
 **Ask separately** remains a one-shot question. Direct composer, completed-response and text-selection actions open its shared popover. It preserves the main draft and reading position and does not create a Side chat. See [conversation presentation](../architecture/conversation-presentation.md).
 
@@ -232,7 +232,7 @@ The manual proposal records have current dispositions. Deferred research does no
 
 ## Conversation list and remaining manual scope
 
-**Item 59 is delivered** in [PR 2559](https://github.com/acg-box/decodex/pull/2559). A locally managed conversation row offers **Branch…**. The action opens that exact source, reads its latest completed native turn and reuses the existing explicit after-turn confirmation. Source and unrelated drafts survive navigation and cancellation. Creation sends no input. Native inventory rows without a local managed source gain no adoption path. The focused client checks do not establish installed-app or live-provider acceptance.
+**Item 59 is delivered** in [PR 2559](https://github.com/acg-box/decodex/pull/2559). A locally managed conversation row offers **Fork**. The action opens that exact source, reads its latest completed native turn and reuses the existing explicit after-turn confirmation. Source and unrelated drafts survive navigation and cancellation. Creation sends no input. Native inventory rows without a local managed source gain no adoption path. The focused client checks do not establish installed-app or live-provider acceptance.
 
 **Item 74 is implemented** as independent status filters in the existing conversation browser and Project-grouped Work list. Each view saves its selection through the existing host-local presentation preference owner and offers **All statuses** to clear it. The filter reuses displayed status facts and combines with Project and search filters. Exact row opening, source drafts and Work details retain their existing owners. It adds no model grouping, command center, execution policy or native runtime change. Five focused GPUI tests and affected static checks passed; physical app restart, installed UI and live-provider acceptance remain separate. The [portable evidence](../../automations/upstream/retained-evidence.json) records the source and limits, and native maintenance state owns merge reconciliation.
 
@@ -266,7 +266,7 @@ Items 45 and 48 also retain native ownership. These decisions select no replacem
 
 ## Current integration boundary
 
-The user approved explicit recovery when native Codex reports that a saved conversation and current configuration use different providers. Decodex reuses the existing completed-turn branch review and durable fork receipt. The user can choose **Create branch with current provider**; creation keeps the original conversation and draft and sends no input. The next explicit send shares inherited context with that provider. Ordinary branches and Side chats still retain their source provider. This decision adds no automatic service switch or native policy bypass. See [provider recovery](../workflows/conversations-and-recovery.md#continue-after-a-provider-change) and the [retained contract](../../automations/upstream/retained-contracts.json).
+The user approved explicit recovery when native Codex reports that a saved conversation and current configuration use different providers. Decodex reuses the existing completed-turn branch review and durable fork receipt. The user can choose **Fork**; creation keeps the original conversation and draft and sends no input. The next explicit send shares inherited context with that provider. Ordinary branches and Side chats still retain their source provider. This decision adds no automatic service switch or native policy bypass. See [provider recovery](../workflows/conversations-and-recovery.md#continue-after-a-provider-change) and the [retained contract](../../automations/upstream/retained-contracts.json).
 
 | Area | Decodex responsibility |
 | --- | --- |
