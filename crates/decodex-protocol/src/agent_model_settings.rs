@@ -7,6 +7,19 @@ use crate::{EntityId, WireText};
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "outcome", rename_all = "snake_case")]
 pub enum AgentModelSettingsResult {
+	/// Native resume or input refused a different provider on this exact live connection.
+	ProviderMismatch {
+		/// Exact local task.
+		work_id: EntityId,
+		/// Exact native chat.
+		thread_id: EntityId,
+		/// Account that owns the native process.
+		account_id: EntityId,
+		/// Original chat provider.
+		model_provider: WireText,
+		/// Current native provider; a new branch may use it after explicit confirmation.
+		current_model_provider: WireText,
+	},
 	/// Native read completed under the same source ownership.
 	Available {
 		/// Exact local task.

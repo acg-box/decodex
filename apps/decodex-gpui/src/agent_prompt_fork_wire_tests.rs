@@ -49,6 +49,7 @@ fn fork_recovery_retains_uncertainty_and_releases_only_matching_rejection(cx: &m
 		let surface = cx.new(AgentSurface::new);
 		let original = install_pending(&surface, profile, cx);
 		let mut status = PromptForkStatus {
+			model_provider: None,
 			work_id: original.work_id.clone(),
 			thread_id: original.thread_id.clone(),
 			review_token: original.review_token.clone(),
@@ -161,6 +162,7 @@ fn install_pending(
 			receipt_id: None,
 			confirmation_key: Some(IdempotencyKey::new("original-confirmation").unwrap()),
 			fork: Some(PromptForkIntent {
+				model_provider: None,
 				target_work_id: EntityId::new("branch").unwrap(),
 				boundary: PromptForkBoundary::BeforeInput,
 			}),
@@ -334,6 +336,7 @@ fn fork_recovery_opens_verified_target_and_keeps_edited_input(cx: &mut TestAppCo
 			(snapshot, source)
 		});
 		let status = PromptForkStatus {
+			model_provider: None,
 			work_id: pending.work_id.clone(),
 			thread_id: pending.thread_id.clone(),
 			review_token: pending.review_token.clone(),

@@ -1804,7 +1804,7 @@ impl AgentClient {
 
 		match completed.value {
 			QueryResultPayload::AgentModelSettings(result) => {
-				if matches!(&result, AgentModelSettingsResult::Available {work_id: owner,..} if owner != &work_id)
+				if matches!(&result, AgentModelSettingsResult::Available {work_id: owner,..} | AgentModelSettingsResult::ProviderMismatch {work_id: owner,..} if owner != &work_id)
 				{
 					return Err(ClientFailure::ProtocolMalformed);
 				}

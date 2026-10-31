@@ -523,6 +523,9 @@ pub enum AgentActionDto {
 		target_work_id: EntityId,
 		/// Explicit prefix choice.
 		boundary: PromptForkBoundary,
+		/// Explicit current-provider recovery; absent for ordinary source-preserving forks.
+		#[serde(default, skip_serializing_if = "Option::is_none")]
+		model_provider: Option<WireText>,
 	},
 	/// Recover a saved fork identity by reading only.
 	RecoverPromptFork {

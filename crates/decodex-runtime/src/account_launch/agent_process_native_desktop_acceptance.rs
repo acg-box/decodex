@@ -20,6 +20,7 @@ use crate::account_launch::agent_process::native_tests::cold_settings::recap_soc
 
 pub(super) async fn check(
 	client: &AgentClient,
+	runtime: &crate::conversation::ConversationRuntime,
 	home: &Path,
 	account: &AccountId,
 	requests: &AtomicUsize,
@@ -28,9 +29,14 @@ pub(super) async fn check(
 
 	assert!(std::path::Path::new(&binary).is_absolute());
 
-	let workspace = home.join("workspace");
-
-	fs::create_dir(&workspace).expect("create isolated workspace");
+	let provider_recovery = env::var_os("DECODEX_TEST_PROVIDER_RECOVERY").is_some();
+	let workspace = if provider_recovery {
+		env::current_dir().expect("owned fixture checkout")
+	} else {
+		let workspace = home.join("workspace");
+		fs::create_dir(&workspace).expect("create isolated workspace");
+		workspace
+	};
 	recap_socket::accepted(
 		client,
 		AgentActionDto::Start(AgentStartDto {
@@ -53,6 +59,9 @@ pub(super) async fn check(
 	.await;
 
 	let thread = recap_socket::settled(client).await;
+	if provider_recovery {
+		prepare_provider_recovery(client, runtime, home, &thread).await;
+	}
 	let background_recap = env::var_os("DECODEX_TEST_DESKTOP_BACKGROUND_RECAP").is_some();
 
 	if background_recap {
@@ -97,6 +106,9 @@ pub(super) async fn check(
 		}
 		if !exited && let Some(status) = child.try_wait().expect("read desktop exit status") {
 			assert!(status.success(), "signed desktop failed; inspect desktop.log");
+			if provider_recovery {
+				break;
+			}
 
 			exited = true;
 			exits += 1;
@@ -135,6 +147,67 @@ pub(super) async fn check(
 
 		time::sleep(Duration::from_millis(100)).await;
 	}
+}
+
+async fn prepare_provider_recovery(
+	client: &AgentClient,
+	runtime: &crate::conversation::ConversationRuntime,
+	home: &Path,
+	thread: &str,
+) {
+	let path = home.join(".codex/config.toml");
+	let original = fs::read_to_string(&path).expect("isolated native config");
+	let definition = original.split_once("[model_providers.fixture]").expect("fixture provider").1;
+	let changed = format!(
+		"{}\n[model_providers.current]\n{}",
+		original.replacen("model_provider=\"fixture\"", "model_provider=\"current\"", 1),
+		definition
+	);
+	fs::write(&path, changed).expect("switch only the isolated provider");
+	let (_, native) = runtime.agent_catalog_client().expect("fixture native client");
+	native
+		.request("thread/unsubscribe", serde_json::json!({"threadId":thread}))
+		.await
+		.expect("unsubscribe idle fixture chat");
+	time::timeout(Duration::from_secs(5), async {
+		loop {
+			let read = native
+				.thread_read(serde_json::json!({"threadId":thread}))
+				.await
+				.expect("fixture chat status");
+			if read["thread"]["status"]["type"] == "notLoaded" {
+				break;
+			}
+			time::sleep(Duration::from_millis(25)).await;
+		}
+	})
+	.await
+	.expect("fixture chat unloads before cold resume");
+	assert!(
+		native
+			.thread_resume(serde_json::json!({"threadId":thread,"excludeTurns":true}))
+			.await
+			.is_err()
+	);
+	time::timeout(Duration::from_secs(10), async {
+		loop {
+			if matches!(
+				client
+					.model_settings(
+						EntityId::new("recap-root").expect("provider rehearsal fixture")
+					)
+					.await
+					.expect("provider rehearsal fixture"),
+				decodex_protocol::AgentModelSettingsResult::ProviderMismatch { .. }
+			) {
+				break;
+			}
+			time::sleep(Duration::from_millis(50)).await;
+		}
+	})
+	.await
+	.expect("provider mismatch visible before desktop launch");
+	fs::write(home.join("provider-recovery-ready.json"), serde_json::to_vec_pretty(&serde_json::json!({"source_provider":"fixture","current_provider":"current","thread":thread,"synthetic":true})).expect("provider rehearsal fixture")).expect("provider rehearsal fixture");
 }
 
 fn launch_desktop(binary: &OsStr, home: &Path) -> Child {

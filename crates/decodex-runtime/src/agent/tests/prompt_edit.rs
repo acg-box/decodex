@@ -36,6 +36,7 @@ fn transport(
 				is_fork
 					|| request["params"]["threadId"] == "opaque thread/1"
 					|| request["method"] == "thread/list"
+					|| request["method"] == "config/read"
 			);
 
 			if is_fork && mode == "fork-read-failure" {
@@ -71,7 +72,13 @@ fn transport(
 				}
 			}
 
+			if method == "thread/resume" && mode.starts_with("provider-") {
+				incoming.send(Ok(serde_json::json!({"id":request["id"],"error":{"code":-32600,"message":"provider mismatch","data":{"type":"modelProviderMismatch","modelProvider":"fixture-provider","currentModelProvider":"current-provider"}}}))).await.unwrap();
+				continue;
+			}
 			let result = match method {
+				"config/read" =>
+					serde_json::json!({"config":{"model_provider":if mode == "provider-changed" {"other-provider"} else {"current-provider"}}}),
 				"thread/fork" => {
 					fork = Some(fork_prefix(&request, &visible));
 
@@ -82,14 +89,14 @@ fn transport(
 					serde_json::json!({"thread":{"id":"branch-thread","forkedFromId":"opaque thread/1","historyMode":"paginated","turns":[]}})
 				},
 				"thread/read" if is_fork =>
-					serde_json::json!({"thread":{"id":"branch-thread","forkedFromId":"opaque thread/1","cwd":"/fixture","historyMode":"paginated","turns":[]}}),
+					serde_json::json!({"thread":{"id":"branch-thread","forkedFromId":"opaque thread/1","cwd":"/fixture","modelProvider":if mode.starts_with("provider-") {"current-provider"} else {"fixture-provider"},"historyMode":"paginated","turns":[]}}),
 				"thread/list" => {
 					assert_eq!(request["params"]["attachedToThreadId"], "opaque thread/1");
 
 					serde_json::json!({"data":if request["params"]["archived"]==true {serde_json::json!([])} else {serde_json::json!([{"id":"branch-thread"}])},"nextCursor":null})
 				},
 				"thread/read" | "thread/revert" =>
-					serde_json::json!({"thread":{"id":"opaque thread/1","historyMode":"paginated","turns":[],"model":"fixture-model","reasoningEffort":null,"modelProvider":"fixture-provider"}}),
+					serde_json::json!({"thread":{"id":"opaque thread/1","cwd":"/fixture","historyMode":"paginated","turns":[],"model":"fixture-model","reasoningEffort":null,"modelProvider":"fixture-provider"}}),
 				"thread/turns/list" => {
 					let mut turns = visible.clone();
 
@@ -530,5 +537,69 @@ async fn prompt_fork_preserves_source_and_recovers_acknowledged_identity_without
 		server.abort();
 
 		let _ = server.await;
+	}
+}
+
+#[tokio::test]
+async fn provider_fork_uses_the_existing_receipt_and_rejects_changed_configuration() {
+	for mode in ["provider-success", "provider-changed"] {
+		let (mut agent, _old_reads, _directory) = tests::fixture().await;
+		agent.start_agent("agent", "Start").await.unwrap();
+		tests::complete(&mut agent, "agent").await;
+		let native = history();
+		let original = native.lock().unwrap().clone();
+		let (client, mut reads, server) = transport(mode, native.clone());
+		agent.client = client;
+		assert!(
+			agent
+				.client
+				.thread_resume(serde_json::json!({"threadId":"opaque thread/1"}))
+				.await
+				.is_err()
+		);
+		let review = agent
+			.prepare_prompt_edit(
+				"agent",
+				"opaque thread/1",
+				"selected",
+				"selected-input",
+				"provider-review",
+			)
+			.await
+			.unwrap()
+			.unwrap();
+		let receipt = agent
+			.fork_prompt_edit_with_provider(
+				review,
+				"provider-branch".into(),
+				AgentForkBoundary::AfterTurn,
+				Some("current-provider".into()),
+			)
+			.await
+			.unwrap();
+		assert_eq!(receipt.attempt.model_provider.as_deref(), Some("current-provider"));
+		assert_eq!(receipt.state, if mode == "provider-success" { "forked" } else { "rejected" });
+		assert_eq!(*native.lock().unwrap(), original);
+		let requests = iter::from_fn(|| reads.try_recv().ok()).collect::<Vec<_>>();
+		assert_eq!(
+			requests.iter().filter(|r| r["method"] == "thread/fork").count(),
+			usize::from(mode == "provider-success")
+		);
+		assert!(requests.iter().all(|r| !matches!(
+			r["method"].as_str(),
+			Some("turn/start" | "thread/revert" | "config/value/write")
+		)));
+		if mode == "provider-success" {
+			assert_eq!(receipt.target_thread.as_deref(), Some("branch-thread"));
+			let again = agent
+				.recover_prompt_fork("agent", &receipt.attempt.source.review_token)
+				.await
+				.unwrap()
+				.unwrap();
+			assert_eq!(again, receipt);
+			assert!(reads.try_recv().is_err(), "confirmed recovery must not create or send again");
+		}
+		agent.client.close();
+		server.await.unwrap();
 	}
 }

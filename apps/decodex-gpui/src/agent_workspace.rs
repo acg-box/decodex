@@ -833,6 +833,9 @@ impl AgentSurface {
 		if !self.draft_owner_available() {
 			return Some("Draft conversation unavailable. Select another conversation.");
 		}
+		if self.selected_provider_mismatch().is_some() {
+			return Some("This conversation uses a different provider.");
+		}
 
 		let selected = self.selected.as_deref()?;
 		let snapshot = self.snapshot.as_ref()?;
@@ -917,8 +920,39 @@ impl AgentSurface {
 		)
 	}
 
+	fn provider_connection_notice(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+		if !self.uncertain
+			&& let Some((original, current)) = self.selected_provider_mismatch()
+		{
+			return Some(
+				ui_feedback::read_only_row(
+					"conversation-unavailable",
+					&format!(
+						"This conversation uses {}. The current provider is {}.",
+						original.as_str(),
+						current.as_str()
+					),
+					"Switch back to continue here, or create a branch with the current provider.",
+					workspace_symbols::icon_sized(workspace_symbols::Symbol::AccountRoute, 14.),
+				)
+				.debug_selector(|| "conversation-unavailable".into())
+				.child(self.workspace_action(
+					"provider-create-branch".into(),
+					"Create branch…".into(),
+					|s, cx| s.review_provider_branch(cx),
+					cx,
+				))
+				.into_any_element(),
+			);
+		}
+		None
+	}
+
 	fn connection_notice(&self, reason: &'static str, cx: &mut Context<Self>) -> AnyElement {
 		if let Some(notice) = self.native_connection_notice(cx) {
+			return notice;
+		}
+		if let Some(notice) = self.provider_connection_notice(cx) {
 			return notice;
 		}
 

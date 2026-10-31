@@ -1183,8 +1183,22 @@ impl SqliteStore {
 	/// Keep unsent input visible in history, but require a new user send after an ownership
 	/// conflict.
 	pub async fn hold_agent_unsent_input(&self, work: String) -> Result<(), StoreError> {
+		self.hold_agent_unsent_input_with_reason(
+			work,
+			"Not sent: conversation was in use elsewhere. Send again when ready.".into(),
+		)
+		.await
+	}
+
+	/// Preserve unsubmitted input after a known refusal; only a new user action may resend it.
+	pub async fn hold_agent_unsent_input_with_reason(
+		&self,
+		work: String,
+		reason: String,
+	) -> Result<(), StoreError> {
+		bounded(&reason, 2_048)?;
 		self.run(move |connection| {
-            connection.execute("UPDATE agent_inbox_events SET disposition='user_decision', disposition_note='Not sent: conversation was in use elsewhere. Send again when ready.', disposed_at_micros=max(created_at_micros,?2) WHERE work_item_id=?1 AND event_kind='user_message' AND disposition IS NULL AND delivered_turn_id IS NULL", rusqlite::params![work,crate::unix_micros()?]).map_err(error::sqlite_error)?;
+            connection.execute("UPDATE agent_inbox_events SET disposition='user_decision', disposition_note=?3, disposed_at_micros=max(created_at_micros,?2) WHERE work_item_id=?1 AND event_kind='user_message' AND disposition IS NULL AND delivered_turn_id IS NULL", rusqlite::params![work,crate::unix_micros()?,reason]).map_err(error::sqlite_error)?;
 
             Ok(())
         }).await

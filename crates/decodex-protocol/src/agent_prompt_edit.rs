@@ -131,6 +131,9 @@ pub struct PromptForkStatus {
 	pub target_thread_id: Option<WireText>,
 	/// Explicit prefix choice.
 	pub boundary: PromptForkBoundary,
+	/// Explicit destination provider, absent for ordinary forks.
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub model_provider: Option<WireText>,
 	/// Durable progress.
 	pub phase: PromptForkPhase,
 	/// Before-input branches use the existing canonical draft handback.
@@ -170,4 +173,7 @@ pub struct PromptForkIntent {
 	pub target_work_id: EntityId,
 	/// Explicit prefix choice.
 	pub boundary: PromptForkBoundary,
+	/// Explicit destination provider, retained with the confirmation before dispatch.
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub model_provider: Option<WireText>,
 }

@@ -7,6 +7,8 @@ pub enum NativeDispatchRefusal {
 	ServerDraining,
 	/// Current managed requirements reject the retained provider configuration.
 	ManagedProviderChanged,
+	/// Native configuration selects a different provider from this chat.
+	ProviderMismatch,
 }
 
 /// Classify the native shutdown reason, with exact-message fallback for older servers.
@@ -18,6 +20,15 @@ pub fn classify_dispatch_refusal(
 ) -> Option<NativeDispatchRefusal> {
 	if code != -32_600 {
 		return None;
+	}
+	if super::NativeProviderMismatch::from_error(&super::RpcError {
+		code,
+		message: String::new(),
+		data: data.cloned(),
+	})
+	.is_some()
+	{
+		return Some(NativeDispatchRefusal::ProviderMismatch);
 	}
 	if data.and_then(|value| value.get("reason")).and_then(serde_json::Value::as_str)
 		== Some("serverShuttingDown")

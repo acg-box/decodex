@@ -25,12 +25,41 @@ where
 		return decodex_protocol::AgentModelSettingsResult::Unavailable;
 	};
 	let response = before.client.thread_model_settings(&before.key.thread, guard.clone()).await;
+	let mismatch = before.client.refresh_provider_mismatch(&before.key.thread).await;
 
 	if !guard.is_live()
 		|| source().await.is_none_or(|after| after.key != before.key)
 		|| !hosted(store, &before).await
 	{
 		return decodex_protocol::AgentModelSettingsResult::Unavailable;
+	}
+	let Ok(mismatch) = mismatch else {
+		return decodex_protocol::AgentModelSettingsResult::Unavailable;
+	};
+	if let Some(mismatch) = mismatch {
+		let (
+			Ok(work_id),
+			Ok(thread_id),
+			Ok(account_id),
+			Ok(model_provider),
+			Ok(current_model_provider),
+		) = (
+			EntityId::new(before.key.work),
+			EntityId::new(before.key.thread),
+			EntityId::new(before.key.account.as_str().to_owned()),
+			WireText::new(mismatch.model_provider),
+			WireText::new(mismatch.current_model_provider),
+		)
+		else {
+			return decodex_protocol::AgentModelSettingsResult::Unavailable;
+		};
+		return decodex_protocol::AgentModelSettingsResult::ProviderMismatch {
+			work_id,
+			thread_id,
+			account_id,
+			model_provider,
+			current_model_provider,
+		};
 	}
 
 	let settings = match response {

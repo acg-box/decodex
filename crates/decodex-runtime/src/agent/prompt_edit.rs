@@ -36,6 +36,16 @@ impl AgentCoordinator {
 		target_work: String,
 		boundary: AgentForkBoundary,
 	) -> Result<AgentForkReceipt, AgentError> {
+		self.fork_prompt_edit_with_provider(review, target_work, boundary, None).await
+	}
+
+	pub(crate) async fn fork_prompt_edit_with_provider(
+		&mut self,
+		review: PromptEditReview,
+		target_work: String,
+		boundary: AgentForkBoundary,
+		model_provider: Option<String>,
+	) -> Result<AgentForkReceipt, AgentError> {
 		let a = review.attempt;
 		let generation = self.native_generation.as_ref().map(|g| g.as_str().to_owned());
 
@@ -54,7 +64,7 @@ impl AgentCoordinator {
 			return Err(rejected());
 		}
 
-		let attempt = AgentForkAttempt { source: a, target_work, boundary };
+		let attempt = AgentForkAttempt { source: a, target_work, boundary, model_provider };
 
 		self.store.reserve_agent_fork(attempt.clone()).await?.ok_or_else(rejected)?;
 
@@ -68,10 +78,11 @@ impl AgentCoordinator {
 		};
 		let response = time::timeout(
 			Duration::from_secs(60),
-			self.client.fork_thread_at_boundary(
+			self.client.fork_thread_with_provider(
 				&attempt.source.thread,
 				native_boundary,
 				current.guard,
+				attempt.model_provider.as_deref(),
 			),
 		)
 		.await;
@@ -144,6 +155,11 @@ impl AgentCoordinator {
 
 		if metadata["thread"]["id"] != thread.as_str()
 			|| metadata["thread"]["forkedFromId"] != saved.attempt.source.thread
+			|| saved
+				.attempt
+				.model_provider
+				.as_ref()
+				.is_some_and(|provider| metadata["thread"]["modelProvider"] != provider.as_str())
 		{
 			return Err(rejected());
 		}

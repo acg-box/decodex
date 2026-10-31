@@ -174,6 +174,7 @@ async fn recover_branch(client: AgentClient, original: DesktopPromptEditDraft) -
 	if status.thread_id != original.thread_id
 		|| status.target_work_id != intent.target_work_id
 		|| status.boundary != intent.boundary
+		|| status.model_provider != intent.model_provider
 	{
 		return Err("Saved branch does not match this draft");
 	}

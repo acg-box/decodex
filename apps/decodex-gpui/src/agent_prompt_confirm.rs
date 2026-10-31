@@ -50,9 +50,13 @@ impl AgentSurface {
 			return;
 		};
 		let resuming = expected.confirmation_key.is_some();
-		let Some(pending) = pending_prompt_confirmation(&expected, boundary, resuming) else {
+		let Some(mut pending) = pending_prompt_confirmation(&expected, boundary, resuming) else {
 			return;
 		};
+		if !resuming && let Some(intent) = pending.fork.as_mut() {
+			intent.model_provider =
+				self.prompt_edit.branch_provider.as_ref().map(|(_, current)| current.clone());
+		}
 		let execution = self.draft_profiles.execution.choice(expected.work_id.as_str());
 		let expected_execution = execution.clone();
 		let worker_draft = pending.clone();
@@ -342,6 +346,7 @@ fn pending_prompt_confirmation(
 				target_work_id: EntityId::new(agent_surface::unique_command())
 					.expect("bounded branch identity"),
 				boundary,
+				model_provider: None,
 			});
 		}
 
@@ -410,6 +415,7 @@ async fn confirm_worker(
 			review_token: worker_draft.review_token,
 			target_work_id: fork.target_work_id,
 			boundary: fork.boundary,
+			model_provider: fork.model_provider,
 		},
 		None => AgentActionDto::ConfirmPromptEdit {
 			work_id: worker_draft.work_id,

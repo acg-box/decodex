@@ -77,6 +77,7 @@ pub(super) async fn check(
 			.expect("read prepared review");
 		let token = review.evidence.expect("prepared review evidence").review_token;
 		let action = AgentActionDto::ForkPromptEdit {
+			model_provider: None,
 			work_id: work.clone(),
 			thread_id: WireText::new(thread).expect("source thread identity"),
 			review_token: token.clone(),
@@ -251,6 +252,120 @@ async fn installed_fork_preserves_source_provider_after_default_changes() {
 	}
 }
 
+#[tokio::test]
+#[ignore = "requires DECODEX_TEST_CODEX_BINARY with native provider mismatch enforcement"]
+async fn installed_provider_recovery_fork_preserves_context_and_restarts_on_current_provider() {
+	let binary = env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit native binary");
+	let home = tempfile::tempdir().expect("provider recovery fixture");
+	let mut backends = Vec::new();
+	let mut counts = Vec::new();
+	let mut inputs = Vec::new();
+	let mut addresses = Vec::new();
+	for _ in 0..2 {
+		let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+		addresses.push(listener.local_addr().unwrap());
+		let count = Arc::new(AtomicUsize::new(0));
+		let bodies = Arc::new(std::sync::Mutex::new(Vec::new()));
+		backends.push(tokio::spawn(native_tests::serve_fixture(listener, count.clone(), None, Some(bodies.clone()), None, |_| serde_json::json!({"type":"message","role":"assistant","id":"answer","content":[{"type":"output_text","text":"Done"}]}))));
+		counts.push(count);
+		inputs.push(bodies);
+	}
+	let config = format!(
+		"model=\"gpt-5.6-sol\"\nmodel_provider=\"original\"\n[model_providers.original]\nname=\"Original\"\nbase_url=\"http://{}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n[model_providers.current]\nname=\"Current\"\nbase_url=\"http://{}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n",
+		addresses[0], addresses[1]
+	);
+	fs::write(home.path().join("config.toml"), &config).unwrap();
+	let mut session = NativeSession::start(&binary, home.path());
+	let started = session.client.thread_start(serde_json::json!({"cwd":home.path(),"historyMode":"paginated","approvalPolicy":"never","sandbox":"read-only"})).await.unwrap();
+	let source = started["thread"]["id"].as_str().unwrap().to_owned();
+	let turn = session.client.request("turn/start",serde_json::json!({"threadId":source,"input":[{"type":"text","text":"Remember the original context: orchid."}]})).await.unwrap()["turn"]["id"].as_str().unwrap().to_owned();
+	time::timeout(Duration::from_secs(30), async {
+		while let Some(event) = session.events.recv().await {
+			if matches!(event, ServerEvent::Notification {ref method,ref params} if method=="turn/completed" && params["threadId"]==source) {break;}
+		}
+	}).await.unwrap();
+	drop(session);
+	fs::write(
+		home.path().join("config.toml"),
+		config.replacen("model_provider=\"original\"", "model_provider=\"current\"", 1),
+	)
+	.unwrap();
+	let session = NativeSession::start(&binary, home.path());
+	assert!(
+		session
+			.client
+			.thread_resume(serde_json::json!({"threadId":source,"excludeTurns":true}))
+			.await
+			.is_err()
+	);
+	let mismatch = session.client.provider_mismatch(&source).expect("structured provider refusal");
+	assert_eq!(mismatch.model_provider, "original");
+	assert_eq!(mismatch.current_model_provider, "current");
+	let history = session.client.thread_turns_since(&source, None).await.unwrap();
+	let fork = session
+		.client
+		.fork_thread_with_provider(
+			&source,
+			ThreadForkBoundary::AfterTurn(&turn),
+			session.client.thread_settings_guard(&source).unwrap(),
+			Some("current"),
+		)
+		.await
+		.unwrap();
+	let target = fork["thread"]["id"].as_str().unwrap().to_owned();
+	assert_eq!(fork["modelProvider"], "current");
+	assert_eq!(fork["thread"]["forkedFromId"], source);
+	assert_eq!(counts[0].load(Ordering::Acquire), 1);
+	assert_eq!(counts[1].load(Ordering::Acquire), 0, "creating a branch must not infer");
+	assert_eq!(session.client.thread_turns_since(&source, None).await.unwrap(), history);
+	fs::write(home.path().join("config.toml"), &config).unwrap();
+	assert!(session.client.refresh_provider_mismatch(&source).await.unwrap().is_none());
+	fs::write(
+		home.path().join("config.toml"),
+		config.replacen("model_provider=\"original\"", "model_provider=\"current\"", 1),
+	)
+	.unwrap();
+	drop(session);
+	let mut restarted = NativeSession::start(&binary, home.path());
+	let resumed = restarted
+		.client
+		.thread_resume(serde_json::json!({"threadId":target,"excludeTurns":true}))
+		.await
+		.unwrap();
+	assert_eq!(resumed["modelProvider"], "current");
+	restarted.client.request("turn/start",serde_json::json!({"threadId":target,"input":[{"type":"text","text":"Continue on the new provider."}]})).await.unwrap();
+	time::timeout(Duration::from_secs(30),async {
+		while let Some(event)=restarted.events.recv().await {
+			if matches!(event,ServerEvent::Notification {ref method,ref params} if method=="turn/completed" && params["threadId"]==target) {break;}
+		}
+	}).await.unwrap();
+	assert_eq!(
+		counts[0].load(Ordering::Acquire),
+		1,
+		"no continuation sent to the original provider"
+	);
+	assert_eq!(counts[1].load(Ordering::Acquire), 1);
+	let input = inputs[1].lock().unwrap().last().unwrap()["input"].to_string();
+	assert!(input.contains("orchid"));
+	assert!(input.contains("Continue on the new provider."));
+	assert_eq!(restarted.client.thread_turns_since(&source, None).await.unwrap(), history);
+	drop(restarted);
+	fs::write(home.path().join("config.toml"), &config).unwrap();
+	let restored = NativeSession::start(&binary, home.path());
+	assert_eq!(
+		restored
+			.client
+			.thread_resume(serde_json::json!({"threadId":source,"excludeTurns":true}))
+			.await
+			.unwrap()["modelProvider"],
+		"original"
+	);
+	drop(restored);
+	for backend in backends {
+		backend.abort();
+	}
+}
+
 async fn qualify_native_fork(binary: &OsStr, history_mode: &str) {
 	let home = tempfile::tempdir().expect("native fork fixture");
 	let listener = TcpListener::bind("127.0.0.1:0").await.expect("native fork fixture");
@@ -323,6 +438,8 @@ async fn qualify_native_fork(binary: &OsStr, history_mode: &str) {
 	drop(session);
 
 	let (parent, fork, is_attached) = attached.expect("native fork fixture");
+	// Fork identity survives changing defaults. Cold resume follows native provider admission.
+	fs::write(home.path().join("config.toml"), &config).expect("restore original provider");
 	let mut restarted = NativeSession::start(binary, home.path());
 
 	time::timeout(Duration::from_secs(30), async {

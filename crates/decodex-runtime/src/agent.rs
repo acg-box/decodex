@@ -1283,6 +1283,8 @@ impl AgentCoordinator {
 								decodex_database::AgentDispatchRefusal::ServerDraining,
 							NativeDispatchRefusal::ManagedProviderChanged =>
 								decodex_database::AgentDispatchRefusal::ManagedProviderChanged,
+							NativeDispatchRefusal::ProviderMismatch =>
+								decodex_database::AgentDispatchRefusal::ProviderMismatch,
 						},
 					)
 				});
@@ -2617,6 +2619,9 @@ impl AgentCoordinator {
 						self.store.retire_archived_agent_threads(vec![thread.clone()]).await?;
 					},
 				Err(AgentError::ProjectPending(_)) => {},
+				Err(AgentError::ProviderMismatch { .. }) => {
+					self.store.hold_agent_unsent_input_with_reason(agent.id.clone(), "Not sent: this conversation uses a different provider. Restore that provider or create a new branch before sending again.".into()).await?;
+				},
 				Err(error @ AgentError::ThreadOwnedElsewhere { .. }) => {
 					self.store.hold_agent_unsent_input(agent.id.clone()).await?;
 					self.store
@@ -2688,6 +2693,11 @@ pub(crate) struct AgentInputExtras<'a> {
 /// A coordination failure, including uncertain external execution.
 #[derive(Debug)]
 pub enum AgentError {
+	/// Native refused the retained provider before this chat could resume.
+	ProviderMismatch {
+		/// Exact native chat; other conversations can continue independently.
+		thread_id: String,
+	},
 	/// Exact native resume refused because the selected session is archived.
 	ThreadArchived,
 	/// Another Codex client owns the persisted thread writer; no turn was dispatched.
@@ -2821,6 +2831,11 @@ fn append_attachments(input: &mut Vec<Value>, files: &[AgentAttachmentDto]) {
 }
 
 fn resume_error(error: ClientError, thread: &str) -> AgentError {
+	if let ClientError::Remote(remote) = &error
+		&& app_server_client::NativeProviderMismatch::from_error(remote).is_some()
+	{
+		return AgentError::ProviderMismatch { thread_id: thread.into() };
+	}
 	if let ClientError::Remote(remote) = &error
 		&& remote.code == -32_600
 		&& remote.message

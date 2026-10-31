@@ -4,6 +4,19 @@ use decodex_protocol::{AgentTimelineContent, AgentTimelineEntry};
 use super::{AgentSurface, Context};
 
 impl AgentSurface {
+	pub(in crate::shell::agent_surface) fn review_provider_branch(
+		&mut self,
+		cx: &mut Context<Self>,
+	) {
+		let Some(providers) = self.selected_provider_mismatch() else { return };
+		let Some(work) = self.selected.clone() else { return };
+		self.review_list_branch(&work, cx);
+		if self.prompt_edit.work == work {
+			self.prompt_edit.branch_provider = Some(providers);
+			cx.notify();
+		}
+	}
+
 	pub(in crate::shell::agent_surface) fn review_list_branch(
 		&mut self,
 		work: &str,
