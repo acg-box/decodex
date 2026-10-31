@@ -1487,12 +1487,13 @@ name = "decodex-pro-bridge"
 version = "0.2.0"
 dependencies = [
  "clap",
- "decodex-codex",
+ "futures-util",
  "serde",
  "serde_json",
  "sha2 0.11.1",
  "tempfile",
  "tokio",
+ "tokio-tungstenite",
  "url",
 ]
 

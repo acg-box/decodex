@@ -1,28 +1,18 @@
-//! Small official browser API calls. Rust owns workflow and durable state.
+//! Small ChatGPT UI adapter. Page selectors are separate from durable workflow state.
 
 use serde::Deserialize;
-use serde_json::{Value, json};
+use serde_json::json;
+use tokio::time::{Instant, sleep};
 use url::Url;
 
-use crate::{Answer, Config, Link, Result, native::NativeSession, store::Material};
+use crate::{Answer, Connection, ConnectionState, Link, Result, chrome::Chrome, store::Material};
 
-mod input;
-pub(crate) use input::fill;
-
-// Read-only DOM queries can outlast the extension's 3 s CDP limit while ChatGPT
-// initializes or expands a large message. This never retries a Send or input action.
-const READ: &str = r#"
-var proRead=async read=>{
- const deadline=Date.now()+30000;
- for(;;){try{return await read();}catch(error){
-  const text=String(error);
-  const timeout=/^(Error: )?Timed out after \d+ms waiting for /.test(text)&&
-   /(waiting for CDP command (Runtime\.evaluate|Page\.getFrameTree)\.|CDP operation exceeded its deadline before command dispatch)/.test(text);
-  const dispatch=/^(Error: )?CDP operation exceeded its deadline before command dispatch/.test(text);
-  if(Date.now()>=deadline||!(timeout||dispatch))throw error;
-  await new Promise(resolve=>setTimeout(resolve,500));
- }}
-};
+const CONTROLS: &str = r#"
+const visible=e=>!!e&&e.getClientRects().length>0;
+const editor=document.querySelector('#prompt-textarea,[role="textbox"][aria-label="Ask ChatGPT"]');
+const model=document.querySelector('[data-testid="model-switcher-dropdown-button"],button[aria-label="Select ChatGPT model"]');
+const buttons=Array.from(document.querySelectorAll('button'));
+const send=document.querySelector('[data-testid="send-button"],button[aria-label="Send prompt"],button[aria-label="Send"]');
 "#;
 
 #[derive(Clone, Debug, Deserialize)]
@@ -59,262 +49,166 @@ pub(crate) struct Observation {
 	pub notices: Vec<String>,
 }
 
-pub(crate) async fn connect(
-	native: &mut NativeSession,
-	config: &Config,
-	instance: Option<&str>,
-) -> Result<String> {
-	let module = serde_json::to_string(&config.browser_client).map_err(|e| e.to_string())?;
-	let text = native
-		.eval(
-			format!(
-				"var {{setupBrowserRuntime}}=await import({module});var proAgent=await setupBrowserRuntime();\
-		 nodeRepl.write(JSON.stringify(await proAgent.browsers.list()));"
-			),
-			"Discover the existing official Chrome extension",
-		)
-		.await?;
-	let browsers: Vec<Value> =
-		serde_json::from_str(&text).map_err(|_| "Browser discovery returned invalid data.")?;
-	let browser = select_browser(&browsers, instance)?;
-	let extension_instance = browser["metadata"]["extensionInstanceId"]
-		.as_str()
-		.filter(|id| !id.is_empty())
-		.ok_or("The official Chrome extension did not expose its instance identity.")?
-		.to_owned();
-	let id = serde_json::to_string(&browser["id"]).map_err(|e| e.to_string())?;
-	// Read the installed API contract before any page action. It is not stored or logged.
-	native
-		.eval(
-			format!(
-				"var proBrowser=await proAgent.browsers.get({id});var proApi=await proBrowser.documentation();\
-		 {READ}nodeRepl.write(JSON.stringify({{apiChars:proApi.length}}));"
-			),
-			"Read the official browser API contract",
-		)
-		.await?;
-	Ok(extension_instance)
-}
-
-#[cfg(test)]
-pub(crate) async fn open(
-	native: &mut NativeSession,
-	config: &Config,
-	url: Option<&str>,
-) -> Result<()> {
-	connect(native, config, config.extension_instance.as_deref()).await?;
-	open_connected(native, url).await
-}
-
-pub(crate) async fn open_connected(native: &mut NativeSession, url: Option<&str>) -> Result<()> {
-	let target = match url {
-		Some(url) => conversation_url(url)?,
-		None => "https://chatgpt.com/".into(),
-	};
-	let quoted = serde_json::to_string(&target).map_err(|e| e.to_string())?;
-	// Set ownership before the RPC: an uncertain create is cleaned by native turn shutdown.
-	native.tab_open = true;
-	native
-		.eval(
-			format!(
-				"await proBrowser.nameSession(\"🧪 Decodex Pro\");var proTab=await proBrowser.tabs.new();\
-		 await proTab.goto({quoted});\
-		 nodeRepl.write(JSON.stringify({{tabId:proTab.id}}));"
-			),
-			"Open only this component's request tab",
-		)
-		.await?;
-	wait_ready(native).await?;
-	if url.is_some() {
-		native
-			.eval(
-				"await proRead(()=>proTab.playwright.getByRole(\"region\",{name:\"Conversation\",exact:true})\
-			.waitFor({state:\"visible\",timeoutMs:20000}));await proRead(()=>proTab.playwright.getByRole(\"heading\",\
-			{name:\"You said:\",exact:true}).first().waitFor({state:\"visible\",timeoutMs:20000}));\
-			nodeRepl.write(\"ready\");"
-					.into(),
-				"Wait for the saved conversation",
-			)
-			.await?;
+pub(crate) async fn connection(browser: &mut Chrome) -> Result<Connection> {
+	let deadline = Instant::now() + std::time::Duration::from_secs(15);
+	loop {
+		let state = browser.evaluate(&format!(r#"(()=>{{ {CONTROLS}
+            return {{ready:visible(editor)&&visible(model),model:visible(model)?model.innerText:null,
+                login:buttons.some(b=>visible(b)&&/^(log in|sign in)$/i.test(b.innerText.trim()))}};
+        }})()"#)).await?;
+		if state["ready"] == true {
+			return Ok(Connection {
+				state: ConnectionState::Connected,
+				selected_model: state["model"].as_str().map(str::to_owned),
+			});
+		}
+		if state["login"] == true {
+			return Ok(Connection { state: ConnectionState::SignInRequired, selected_model: None });
+		}
+		if Instant::now() >= deadline {
+			return Ok(Connection {
+				state: ConnectionState::AttentionRequired,
+				selected_model: None,
+			});
+		}
+		sleep(std::time::Duration::from_millis(250)).await;
 	}
-	Ok(())
 }
 
-pub(crate) fn bound_instance<'a>(
-	configured: Option<&'a str>,
-	saved: Option<&'a str>,
-) -> Result<Option<&'a str>> {
-	if let (Some(configured), Some(saved)) = (configured, saved)
-		&& configured != saved
+pub(crate) async fn ready(browser: &mut Chrome) -> Result<()> {
+	match connection(browser).await?.state {
+		ConnectionState::Connected => Ok(()),
+		ConnectionState::SignInRequired =>
+			Err("Sign in to ChatGPT in the dedicated research browser, then resume this request."
+				.into()),
+		ConnectionState::AttentionRequired =>
+			Err("ChatGPT needs attention in the research browser. No message was sent.".into()),
+	}
+}
+
+pub(crate) async fn select_pro(browser: &mut Chrome) -> Result<()> {
+	let selected = observe(browser).await?.model;
+	if selected.trim().eq_ignore_ascii_case("pro")
+		|| selected.split_whitespace().last() == Some("Pro")
 	{
-		return Err("This conversation belongs to a different Chrome extension instance. Use its saved profile; no page was opened or message sent.".into());
-	}
-	Ok(saved.or(configured))
-}
-
-async fn wait_ready(native: &mut NativeSession) -> Result<()> {
-	native.eval(r#"
-var proReadyDeadline=Date.now()+30000;
-for(;;){
- var proReady=await proRead(()=>proTab.playwright.evaluate(()=>{
-   const button=document.querySelector('button[aria-label="Select ChatGPT model"]');
-   const editor=document.querySelector('[role="textbox"][aria-label="Ask ChatGPT"]');
-   return !!button&&button.getClientRects().length>0&&!!editor&&editor.getClientRects().length>0;
-  },undefined,{timeoutMs:20000}));
- if(proReady)break;
- if(Date.now()>=proReadyDeadline){
-  const state=await proRead(()=>proTab.playwright.evaluate(()=>({title:document.title,
-   headings:Array.from(document.querySelectorAll('h1,h2,[role="alert"],[role="status"]')).map(n=>n.innerText).filter(Boolean).slice(0,8),
-   buttons:Array.from(document.querySelectorAll('button')).filter(b=>b.getClientRects().length>0).map(b=>({name:b.getAttribute('aria-label')??b.innerText,disabled:b.disabled})).slice(-12)})));
-  throw new Error('The ChatGPT model control did not become ready. No message was sent. '+JSON.stringify(state));
- }
- await new Promise(resolve=>setTimeout(resolve,500));
-}
-nodeRepl.write('ready');
-"#.into(),"Wait for the visible ChatGPT model control after application initialization").await?;
-	Ok(())
-}
-
-fn select_browser<'a>(browsers: &'a [Value], instance: Option<&str>) -> Result<&'a Value> {
-	let candidates: Vec<_> = browsers
-		.iter()
-		.filter(|browser| {
-			browser["type"] == "extension"
-				&& browser["family"] == "chrome"
-				&& instance.is_none_or(|id| browser["metadata"]["extensionInstanceId"] == id)
-		})
-		.collect();
-	if candidates.len() == 1 {
-		return Ok(candidates[0]);
-	}
-	Err(if candidates.is_empty() && instance.is_some() {
-		"The required Chrome extension instance is not connected. Reconnect its original profile; no other profile was selected."
-	} else if candidates.is_empty() {
-		"The official Chrome extension is not connected."
-	} else {
-		"Multiple Chrome instances are connected. Select an extension instance explicitly."
-	}
-	.into())
-}
-
-pub(crate) async fn select_pro(native: &mut NativeSession) -> Result<()> {
-	if observe(native).await?.model == "Pro" {
 		return Ok(());
 	}
-	native.eval("await proTab.playwright.getByRole(\"button\",{name:\"Select ChatGPT model\",exact:true}).click();\
-		nodeRepl.write(\"opened\");".into(), "Open the ChatGPT model controls").await?;
-	for _ in 0..6 {
-		let label = native
-			.eval(
-				"nodeRepl.write(JSON.stringify(await proTab.playwright.getByRole(\"menuitem\",\
-			{name:\"Select model\",exact:true}).innerText()));"
-					.into(),
-				"Read the visible thinking-power label",
-			)
-			.await?;
-		if serde_json::from_str::<String>(&label).map_err(|_| "The model label was invalid.")?
-			== "Pro"
-		{
-			native.eval("await proTab.playwright.getByRole(\"menuitem\",{name:\"Power\",exact:true}).press(\"Escape\");\
-				nodeRepl.write(\"selected\");".into(), "Keep the automatically selected Pro setting").await?;
-			return if observe(native).await?.model == "Pro" {
-				Ok(())
-			} else {
-				Err("ChatGPT did not retain the Pro setting.".into())
-			};
-		}
-		native.eval("await proTab.playwright.getByRole(\"menuitem\",{name:\"Power\",exact:true}).press(\"ArrowRight\");\
-			nodeRepl.write(\"adjusted\");".into(), "Adjust the visible Power control with its keyboard shortcut").await?;
+	browser.evaluate(&format!(r#"(()=>{{ {CONTROLS} if(!visible(model))throw Error('Model selector unavailable');model.click();return true; }})()"#)).await?;
+	// Read the visible menu. Never force an inaccessible option or edit React state.
+	sleep(std::time::Duration::from_millis(150)).await;
+	let result = browser.evaluate(r#"(()=>{
+        const visible=e=>e.getClientRects().length>0;
+        const choices=Array.from(document.querySelectorAll('[role="menuitem"],[role="radio"],[role="option"],button'))
+          .filter(e=>visible(e)&&/^Pro(?:\s|$)/.test(e.innerText.trim()));
+        if(choices.length===1){choices[0].click();return {selected:true};}
+        const power=Array.from(document.querySelectorAll('[role="menuitem"],[role="slider"]'))
+          .find(e=>visible(e)&&/Power/i.test(e.getAttribute('aria-label')??e.innerText));
+        return {selected:false,power:!!power};
+    })()"#).await?;
+	if result["selected"] != true {
+		return Err("The visible ChatGPT model menu does not expose one unambiguous Pro option. No message was sent.".into());
 	}
-	Err("The visible model controls did not expose Pro. No message was sent.".into())
-}
-
-pub(crate) async fn send(native: &mut NativeSession) -> Result<()> {
-	native
-		.eval(
-			"await proTab.playwright.getByRole(\"button\",{name:\"Send\",exact:true}).click();\
-		nodeRepl.write(\"send_attempted\");"
-				.into(),
-			"Send this request exactly once after its durable fence",
-		)
-		.await?;
+	browser.evaluate("document.activeElement?.blur();true").await?;
+	sleep(std::time::Duration::from_millis(100)).await;
+	let selected = observe(browser).await?.model;
+	if !selected.split_whitespace().any(|part| part == "Pro") {
+		return Err("ChatGPT did not retain the Pro selection. No message was sent.".into());
+	}
 	Ok(())
 }
 
-pub(crate) async fn current_url(native: &mut NativeSession) -> Result<Option<String>> {
-	let text = native
-		.eval(
-			r#"var proRouteDeadline=Date.now()+10000;var proRoute=null;
-for(;;){const url=await proTab.url();if(new URL(url).pathname.startsWith('/c/')){proRoute=url;break;}
- if(Date.now()>=proRouteDeadline)break;await new Promise(resolve=>setTimeout(resolve,500));}
-nodeRepl.write(JSON.stringify(proRoute));"#.into(),
-			"Wait for only this owned request tab's submitted URL for durable recovery",
-		)
+pub(crate) async fn fill(browser: &mut Chrome, material: &Material) -> Result<()> {
+	let bytes = std::fs::read(&material.path).map_err(|e| e.to_string())?;
+	if bytes.len() != material.bytes || crate::store::digest(&bytes) != material.sha256 {
+		return Err("The immutable request changed. No message was sent.".into());
+	}
+	let text = String::from_utf8(bytes).map_err(|e| e.to_string())?;
+	let text = text.trim_end_matches('\n');
+	let draft = browser
+		.evaluate(&format!(
+			r#"(()=>{{ {CONTROLS}
+        if(!visible(editor))throw Error('ChatGPT composer unavailable');
+        editor.focus();return editor.innerText;
+    }})()"#
+		))
 		.await?;
-	serde_json::from_str(&text).map_err(|_| "The owned tab URL was invalid.".into())
+	if draft.as_str().is_some_and(|draft| !draft.is_empty() && !text.starts_with(draft)) {
+		return Err("The owned composer has a different draft. No message was sent.".into());
+	}
+	// CDP inserts ordinary text through Chromium's input path, without clipboard or paste
+	// attachments.
+	browser.command("Input.dispatchKeyEvent", json!({"type":"keyDown","key":"a","code":"KeyA","modifiers":if cfg!(target_os="macos"){4}else{2},"windowsVirtualKeyCode":65})).await?;
+	browser.command("Input.dispatchKeyEvent", json!({"type":"keyUp","key":"a","code":"KeyA","modifiers":if cfg!(target_os="macos"){4}else{2},"windowsVirtualKeyCode":65})).await?;
+	browser.command("Input.insertText", json!({"text":text})).await?;
+	let prepared = browser.evaluate(&format!(r#"(()=>{{ {CONTROLS}
+        const block=n=>n?.nodeType===1&&/^(P|DIV)$/.test(n.tagName);
+        const read=n=>{{
+          if(n.nodeType===3)return n.nodeValue??'';
+          if(n.nodeType!==1)return '';
+          if(n.tagName==='BR')return n.classList.contains('ProseMirror-trailingBreak')?'':'\n';
+          if(block(n)&&n.childNodes.length===1&&n.firstChild.nodeName==='BR')return '';
+          return Array.from(n.childNodes).map((c,i,all)=>(i>0&&(block(c)||block(all[i-1]))?'\n':'')+read(c)).join('');
+        }};
+        return {{text:editor?read(editor):'',ready:visible(send)&&!send.disabled}};
+    }})()"#)).await?;
+	if prepared["text"].as_str().map(|s| crate::store::digest(s.trim().as_bytes())).as_deref()
+		!= Some(material.normalized_sha256.as_str())
+		|| prepared["ready"] != true
+	{
+		return Err(format!(
+			"The complete composer text could not be verified (expected {} bytes, observed {}; send ready: {}). No message was sent.",
+			text.len(),
+			prepared["text"].as_str().map_or(0, str::len),
+			prepared["ready"]
+		));
+	}
+	Ok(())
 }
 
-// These selectors were read from the rendered ChatGPT UI. They do not access React,
-// private endpoints, cookies, local storage, or other hidden application state.
-const OBSERVE: &str = r#"
-var proMessages=await proRead(()=>proTab.playwright.evaluate(marker=>Array.from(document.querySelectorAll('[data-chatgpt-search-message-ids]')).map(m=>{
- const parts=text=>{const result=[];for(let i=0;i<text.length;){
-  let end=Math.min(i+16000,text.length);
-  const last=text.charCodeAt(end-1);if(end<text.length&&last>=0xd800&&last<=0xdbff)end--;
-  result.push(text.slice(i,end));i=end;
- }return result;};
- const role=(m.getAttribute('data-chatgpt-search-unit-key')??'').split(':').pop();
- const body=role==='user'?m.querySelector('[data-user-message-bubble] [dir="auto"]'):m.querySelector('[data-markdown-text-style="assistant-message"]');
- const ids=(m.getAttribute('data-chatgpt-search-message-ids')??'').split(/\s+/).filter(Boolean);
- const id=m.querySelector('[data-chatgpt-selection-message-id]')?.getAttribute('data-chatgpt-selection-message-id')??ids[0]??'';
- const turn=m.closest('[data-talvt-turn-state]');
- const readBody=role!=='user'||(marker&&body?.textContent?.trimStart().startsWith(marker));
- return {role,id,textParts:parts(readBody?body?.innerText??'':''),complete:turn?.getAttribute('data-talvt-turn-state')==='complete'&&!!turn?.querySelector('button[aria-label="Regenerate response"]'),
- codeParts:role==='user'?[]:Array.from(body?.querySelectorAll('code')??[]).map(c=>parts(c.textContent??'')),
- links:role==='user'?[]:Array.from(body?.querySelectorAll('a[href]')??[]).map(a=>({label:a.innerText,url:a.href}))};
-}).filter(m=>m.role==='user'||m.role==='assistant'),proObservedMarker));
-var proReadCrypto=await import('node:crypto');
-for(var proMessage of proMessages){
- proMessage.text=proMessage.textParts.join('');delete proMessage.textParts;
- proMessage.codeBlocks=proMessage.codeParts.map(parts=>parts.join(''));delete proMessage.codeParts;
- if(proMessage.role==='user'){
- proMessage.textSha256=proMessage.text.length?proReadCrypto.createHash('sha256').update(proMessage.text.trim(),'utf8').digest('hex'):null;
- proMessage.text='';proMessage.codeBlocks=[];proMessage.links=[];
-}}
-nodeRepl.write(JSON.stringify({url:await proTab.url(),model:await proRead(()=>proTab.playwright.getByRole('button',{name:'Select ChatGPT model',exact:true}).innerText()),
- generating:(await proRead(()=>proTab.playwright.getByRole('button',{name:'Stop',exact:true}).count()))>0,messages:proMessages,
- notices:await proRead(()=>proTab.playwright.evaluate(()=>Array.from(document.querySelectorAll('[role="alert"],[role="alertdialog"]')).map(n=>n.innerText).filter(Boolean)))}));
-"#;
+pub(crate) async fn send(browser: &mut Chrome) -> Result<()> {
+	browser.evaluate(&format!(r#"(()=>{{ {CONTROLS} if(!visible(send)||send.disabled)throw Error('Send unavailable');send.click();return true; }})()"#)).await?;
+	Ok(())
+}
 
-pub(crate) async fn observe_request(native: &mut NativeSession, id: &str) -> Result<Observation> {
+pub(crate) async fn observe(browser: &mut Chrome) -> Result<Observation> {
+	observe_request(browser, "").await
+}
+
+pub(crate) async fn observe_request(browser: &mut Chrome, id: &str) -> Result<Observation> {
 	let marker = serde_json::to_string(&format!("[Decodex Pro request: {id}]"))
 		.map_err(|e| e.to_string())?;
-	native.eval(format!("var proCollapsed=proTab.playwright.locator('[data-user-message-bubble]')\
-		.filter({{hasText:{marker}}}).getByRole('button',{{name:'Show more',exact:true}});\
-		var proCollapsedCount=await proRead(()=>proCollapsed.count());\
-		for(var proExpansion=0;proExpansion<proCollapsedCount;proExpansion++){{await proCollapsed.first().click();}}\
-		nodeRepl.write('expanded this request only');"),"Expand only this request's matching user message before exact text verification").await?;
-	read_observation(native, &marker).await
-}
-
-pub(crate) async fn observe(native: &mut NativeSession) -> Result<Observation> {
-	read_observation(native, "null").await
-}
-
-async fn read_observation(native: &mut NativeSession, marker: &str) -> Result<Observation> {
-	let text = native
-		.eval(
-			format!("var proObservedMarker={marker};{OBSERVE}"),
-			"Read only this request's rendered messages and completion state",
-		)
-		.await?;
-	let observation: Observation =
-		serde_json::from_str(&text).map_err(|_| "The ChatGPT page observation was invalid.")?;
-	if observation.messages.iter().any(|m| m.id.is_empty()) {
-		return Err(
-			"The rendered ChatGPT message structure is unavailable or still loading.".into()
-		);
+	let value = browser.evaluate(&format!(r#"(()=>{{ {CONTROLS}
+        const marker={marker};
+        const generating=buttons.some(b=>visible(b)&&/^(stop|stop generating|stop streaming)$/i.test(b.getAttribute('aria-label')??''));
+        const traditional=Array.from(document.querySelectorAll('[data-message-author-role][data-message-id]'));
+        const elements=traditional.length?traditional:Array.from(document.querySelectorAll('[data-chatgpt-search-message-ids]'));
+        const messages=elements.map(m=>{{
+          const role=m.getAttribute('data-message-author-role')??(m.getAttribute('data-chatgpt-search-unit-key')??'').split(':').pop();
+          const turn=m.closest('article,[data-talvt-turn-state]')??m;
+          const id=m.getAttribute('data-message-id')??m.querySelector('[data-chatgpt-selection-message-id]')?.getAttribute('data-chatgpt-selection-message-id')??(m.getAttribute('data-chatgpt-search-message-ids')??'').split(/\s+/)[0];
+          const body=role==='assistant'?(m.querySelector('.markdown,[data-markdown-text-style="assistant-message"]')??m):(m.querySelector('[data-user-message-bubble] [dir="auto"]')??m);
+          if(role==='user'&&body.textContent.trimStart().startsWith(marker)){{
+            const more=Array.from(turn.querySelectorAll('button')).find(b=>/^(show more|read more)$/i.test(b.innerText.trim()));more?.click();
+          }}
+          return {{role,id,text:body.innerText,complete:!generating&&!!turn.querySelector('button[data-testid="copy-turn-action-button"],button[aria-label="Copy"],button[aria-label="Regenerate response"]'),
+            codeBlocks:role==='assistant'?Array.from(body.querySelectorAll('pre code')).map(c=>c.textContent):[],
+            links:role==='assistant'?Array.from(body.querySelectorAll('a[href]')).map(a=>({{label:a.innerText,url:a.href}})):[]}};
+        }}).filter(m=>m.role==='user'||m.role==='assistant');
+        return {{url:location.href,model:model?.innerText??'',generating,messages,
+            notices:Array.from(document.querySelectorAll('[role="alert"],[role="alertdialog"]')).map(e=>e.innerText).filter(Boolean)}};
+    }})()"#)).await?;
+	let mut observation: Observation =
+		serde_json::from_value(value).map_err(|e| format!("ChatGPT page changed: {e}"))?;
+	for message in &mut observation.messages {
+		if message.id.is_empty() {
+			return Err("A rendered ChatGPT message has no identity yet.".into());
+		}
+		if message.role == "user" {
+			message.text_sha256 = Some(crate::store::digest(message.text.trim().as_bytes()));
+			message.text.clear();
+		}
 	}
+	browser.collect_identity().await?;
 	Ok(observation)
 }
 
@@ -337,12 +231,6 @@ pub(crate) fn conversation_url(raw: &str) -> Result<String> {
 		return Err("Only an exact https://chatgpt.com/c/ conversation URL can be resumed.".into());
 	}
 	Ok(url.to_string())
-}
-
-pub(crate) fn scope(id: &str, material: &Material, conversation: Option<&str>) -> Value {
-	json!({"requestId":id,"material":material,"conversationUrl":conversation,
-		"actions":["open one owned tab","select Pro","send this prompt once if not submitted","read the complete answer","close the owned tab"],
-		"recovery":"Observe the saved conversation; never replay an uncertain Send."})
 }
 
 #[cfg(test)] mod tests;

@@ -1,6 +1,6 @@
 [package]
 authors.workspace    = true
-description          = "Independent ChatGPT Pro component using the official Codex browser runtime."
+description          = "Isolated ChatGPT research through a Decodex-managed Chrome profile."
 edition.workspace    = true
 homepage.workspace   = true
 license.workspace    = true
@@ -9,11 +9,12 @@ repository.workspace = true
 version.workspace    = true
 
 [dependencies]
-clap          = { workspace = true }
-decodex-codex = { workspace = true }
-serde         = { workspace = true }
-serde_json    = { workspace = true }
-sha2          = { workspace = true }
-tempfile      = { workspace = true }
-tokio         = { workspace = true, features = ["io-util", "process"] }
-url           = { workspace = true }
+clap              = { workspace = true }
+futures-util      = { workspace = true }
+serde             = { workspace = true }
+serde_json        = { workspace = true }
+sha2              = { workspace = true }
+tempfile          = { workspace = true }
+tokio             = { workspace = true, features = ["io-util", "process"] }
+tokio-tungstenite = { workspace = true }
+url               = { workspace = true }

@@ -23,9 +23,8 @@ pub(crate) struct Record {
 	pub receipt: Receipt,
 	pub answer: Option<Answer>,
 	pub parent_answer_id: Option<String>,
-	/// A conversation stays on the extension instance that opened it.
-	#[serde(default)]
-	pub extension_instance: Option<String>,
+	/// Owned browser target saved before Send, so a missing URL can be recovered.
+	pub target_id: Option<String>,
 }
 
 impl Record {
@@ -97,6 +96,7 @@ impl Store {
 				phase: Phase::Prepared,
 				conversation_url: parent.as_ref().and_then(|r| r.receipt.conversation_url.clone()),
 				model: None,
+				execution: None,
 				user_message_id: None,
 				baseline_messages: 0,
 				last_error: None,
@@ -104,7 +104,7 @@ impl Store {
 			parent_answer_id: parent
 				.as_ref()
 				.and_then(|r| r.answer.as_ref().map(|a| a.message_id.clone())),
-			extension_instance: parent.and_then(|r| r.extension_instance),
+			target_id: parent.and_then(|r| r.target_id),
 			request,
 			answer: None,
 		};
@@ -137,6 +137,18 @@ impl Store {
 
 	fn path(&self, id: &str) -> PathBuf {
 		self.root.join(format!("{id}.json"))
+	}
+
+	pub fn setup_target(&self) -> Result<Option<String>> {
+		match fs::read_to_string(self.root.join("setup-target")) {
+			Ok(id) => Ok(Some(id)),
+			Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+			Err(error) => Err(error.to_string()),
+		}
+	}
+
+	pub fn save_setup_target(&self, id: &str) -> Result<()> {
+		fs::write(self.root.join("setup-target"), id).map_err(|e| e.to_string())
 	}
 }
 

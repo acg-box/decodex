@@ -37,6 +37,11 @@ fn recovery_binds_the_exact_prompt_and_does_not_complete_from_a_stale_or_streami
 		.expect("record");
 	record.receipt.phase = Phase::Sending;
 	record.receipt.model = Some("Pro".into());
+	record.receipt.execution = Some(crate::ExecutionIdentity {
+		message_id: "assistant-one".into(),
+		model: "gpt-test-pro".into(),
+		mode: None,
+	});
 	assert!(
 		!reconcile(
 			&mut record,
@@ -116,6 +121,11 @@ fn recovery_accepts_only_the_exact_observed_terminal_hard_break_representation()
 		.expect("record");
 	record.receipt.phase = Phase::Sending;
 	record.receipt.model = Some("Pro".into());
+	record.receipt.execution = Some(crate::ExecutionIdentity {
+		message_id: "answer-one".into(),
+		model: "gpt-test-pro".into(),
+		mode: None,
+	});
 	let rendered = format!("{}\\", record.wire_prompt().trim_end_matches('\n'));
 	for changed in [
 		rendered.replace("question", "changed"),
@@ -168,4 +178,33 @@ fn a_literal_backslash_does_not_match_a_prompt_without_a_terminal_lf() {
 		.expect("stay fenced")
 	);
 	assert_eq!(record.receipt.phase, Phase::Sending);
+}
+
+#[test]
+fn pro_label_and_another_turns_identity_cannot_qualify_a_completed_answer() {
+	let root = tempfile::tempdir().unwrap();
+	let store = Store::open(root.path()).unwrap();
+	let mut record = store
+		.prepare(Request { id: "identity".into(), prompt: "question".into(), previous: None })
+		.unwrap();
+	record.receipt.phase = Phase::Sending;
+	record.receipt.model = Some("Pro".into());
+	let observed = observation(
+		vec![
+			message("user", "u", &record.wire_prompt(), true),
+			message("assistant", "a", "Full answer", true),
+		],
+		false,
+	);
+	assert!(reconcile(&mut record, &observed).unwrap_err().contains("unconfirmed"));
+	assert_eq!(record.answer.as_ref().unwrap().text, "Full answer");
+	assert_eq!(record.receipt.phase, Phase::Submitted);
+	record.receipt.execution = Some(crate::ExecutionIdentity {
+		message_id: "another-answer".into(),
+		model: "gpt-5-pro".into(),
+		mode: None,
+	});
+	assert!(reconcile(&mut record, &observed).is_err());
+	record.receipt.execution.as_mut().unwrap().message_id = "a".into();
+	assert!(reconcile(&mut record, &observed).unwrap());
 }

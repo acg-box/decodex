@@ -7,7 +7,7 @@ use tokio::{
 
 use crate::{
 	Phase, ProBridge, Receipt, Request, Result,
-	native::NativeSession,
+	chrome::Chrome,
 	page::{self, Observation},
 	store::{Record, Store},
 };
@@ -18,14 +18,14 @@ pub(crate) async fn run(
 	id: Option<String>,
 	candidate: Option<String>,
 ) -> Result<Receipt> {
-	let (mut reply, received) = oneshot::channel();
+	let (reply, received) = oneshot::channel();
 	let mut cancelled = bridge.cancelled.subscribe();
 	if *cancelled.borrow() {
 		return Err("The request owner was stopped. Resume with a new owner.".into());
 	}
 	// The worker owns shutdown even if its caller drops the returned future.
 	tokio::spawn(async move {
-		let result = work(bridge, request, id, candidate, &mut reply, &mut cancelled).await;
+		let result = work(bridge, request, id, candidate, &mut cancelled).await;
 		let _ = reply.send(result);
 	});
 	received.await.map_err(|_| "The Pro component stopped before returning a receipt.")?
@@ -36,7 +36,6 @@ async fn work(
 	request: Option<Request>,
 	id: Option<String>,
 	candidate: Option<String>,
-	reply: &mut oneshot::Sender<Result<Receipt>>,
 	cancelled: &mut watch::Receiver<bool>,
 ) -> Result<Receipt> {
 	let store = Store::open(&bridge.root)?;
@@ -56,20 +55,29 @@ async fn work(
 	if candidate.is_none()
 		&& record.receipt.phase == Phase::Sending
 		&& record.receipt.conversation_url.is_none()
+		&& record.target_id.is_none()
 	{
 		return Err("Send has an uncertain outcome and no saved conversation URL. Reconcile it before continuing; this component will not resend it.".into());
 	}
 	if bridge.config.poll_interval.is_zero() || bridge.config.answer_timeout.is_zero() {
 		return Err("Polling and answer wait durations must be greater than zero.".into());
 	}
-	let mut native = NativeSession::spawn(&bridge.config, &bridge.root)?;
+	let mut browser = match Chrome::connect(&bridge.config, &bridge.root).await {
+		Ok(browser) => browser,
+		Err(error) => {
+			record.receipt.last_error = Some(error.clone());
+			store.save(&record)?;
+			return Err(error);
+		},
+	};
 	let result = tokio::select! {
-		result = execute(&bridge, &store, &mut record, &mut native, candidate.as_deref()) => result,
-		_ = reply.closed() => Err("The caller cancelled the request. Resume its saved ID to reconcile it.".into()),
+		result = execute(&bridge, &store, &mut record, &mut browser, candidate.as_deref()) => result,
 		_ = cancelled.changed() => Err("The request was cancelled. Resume its saved ID to reconcile it.".into()),
 	};
-	// No model inference, reply, or sibling process is needed to end this control turn.
-	native.shutdown().await;
+	// Closing a waiter must not cancel research. Keep an incomplete tab for recovery.
+	if result.is_ok() {
+		let _ = browser.close_tab().await;
+	}
 	if let Err(error) = &result {
 		record.receipt.last_error = Some(error.clone());
 		store.save(&record)?;
@@ -82,54 +90,55 @@ async fn execute(
 	bridge: &ProBridge,
 	store: &Store,
 	record: &mut Record,
-	native: &mut NativeSession,
+	browser: &mut Chrome,
 	candidate: Option<&str>,
 ) -> Result<()> {
-	let instance = page::bound_instance(
-		bridge.config.extension_instance.as_deref(),
-		record.extension_instance.as_deref(),
-	)?;
 	let target = candidate.or(record.receipt.conversation_url.as_deref());
 	let material = store.material(record)?;
-	let scope = page::scope(&record.request.id, &material, target);
-	native.start(&bridge.root, scope).await?;
-	let instance = page::connect(native, &bridge.config, instance).await?;
-	if record.extension_instance.as_deref() != Some(&instance) {
-		record.extension_instance = Some(instance);
-		store.save(record)?;
+	browser
+		.open(record.target_id.as_deref(), target.unwrap_or("https://chatgpt.com/"), false)
+		.await?;
+	record.target_id = browser.target.clone();
+	store.save(record)?;
+	if record.receipt.phase != Phase::Prepared && target.is_some() {
+		browser.command("Page.reload", serde_json::json!({})).await?;
 	}
-	page::open_connected(native, target).await?;
+	page::ready(browser).await?;
 	if record.receipt.phase == Phase::Prepared {
-		let observed = page::observe(native).await?;
+		let observed = page::observe(browser).await?;
 		validate_before_send(record, &observed)?;
-		page::select_pro(native).await?;
-		page::fill(native, &material).await?;
-		let observed = page::observe(native).await?;
+		page::select_pro(browser).await?;
+		page::fill(browser, &material).await?;
+		let observed = page::observe(browser).await?;
 		validate_before_send(record, &observed)?;
-		if observed.model != "Pro" {
-			return Err("Pro was not selected. No message was sent.".into());
-		}
-		record.receipt.model = Some("Pro".into());
 		record.receipt.baseline_messages = observed.messages.len();
 		record.receipt.phase = Phase::Sending;
 		record.receipt.last_error = None;
 		store.save(record)?;
-		page::send(native).await?;
+		page::send(browser).await?;
 	}
 	let deadline = Instant::now() + bridge.config.answer_timeout;
 	let submission_deadline = Instant::now() + std::time::Duration::from_secs(30);
 	loop {
 		if record.receipt.phase == Phase::Sending
 			&& record.receipt.conversation_url.is_none()
-			&& let Some(url) = page::current_url(native).await?
-			&& let Ok(url) = page::conversation_url(&url)
+			&& let Some(url) = browser.evaluate("location.href").await?.as_str()
+			&& let Ok(url) = page::conversation_url(url)
 		{
 			// Keep the phase fenced. The URL alone does not confirm the submitted text.
 			record.receipt.conversation_url = Some(url);
 			store.save(record)?;
 		}
-		let observed = page::observe_request(native, &record.request.id).await?;
+		let observed = page::observe_request(browser, &record.request.id).await?;
 		let before = serde_json::to_vec(&record.receipt).map_err(|e| e.to_string())?;
+		if let Some(identity) = browser.identities.iter().rev().find(|identity| {
+			observed.messages.last().is_some_and(|message| {
+				message.role == "assistant" && message.id == identity.message_id
+			})
+		}) {
+			record.receipt.model = Some(identity.model.clone());
+			record.receipt.execution = Some(identity.clone());
+		}
 		let complete = reconcile(record, &observed)?;
 		if before != serde_json::to_vec(&record.receipt).map_err(|e| e.to_string())? {
 			store.save(record)?;
@@ -192,9 +201,6 @@ fn validate_before_send(record: &Record, observed: &Observation) -> Result<()> {
 }
 
 fn reconcile(record: &mut Record, observed: &Observation) -> Result<bool> {
-	if record.receipt.model.as_deref() != Some("Pro") || observed.model != "Pro" {
-		return Err("The request does not have a verified Pro setting.".into());
-	}
 	let wire_prompt = record.wire_prompt();
 	let prompt_sha256 = crate::store::digest(wire_prompt.trim().as_bytes());
 	// A previously submitted editor hard break can render as one final backslash.
@@ -253,6 +259,14 @@ fn reconcile(record: &mut Record, observed: &Observation) -> Result<bool> {
 		answer.filter(|answer| !observed.generating && answer.complete && !answer.text.is_empty())
 	{
 		record.answer = Some(answer.answer());
+		if !record
+			.receipt
+			.execution
+			.as_ref()
+			.is_some_and(|identity| identity.message_id == answer.id && identity.is_pro())
+		{
+			return Err("The full answer was saved, but its Pro execution identity is unconfirmed. Resume to read the original conversation; this request will not be sent again.".into());
+		}
 		record.receipt.phase = Phase::Complete;
 		return Ok(true);
 	}

@@ -1,4 +1,4 @@
-//! Immutable outbound text. Native control receives this descriptor, not the text.
+//! Immutable outbound text, transferred by Rust without a control-model turn.
 
 use std::{fs, io::Write as _, path::PathBuf};
 

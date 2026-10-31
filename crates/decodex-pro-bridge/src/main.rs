@@ -1,27 +1,33 @@
 //! Standalone command interface. This executable does not start Decodex Main.
 
-use std::{fs, path::PathBuf, process::ExitCode, time::Duration};
+use std::{
+	fs,
+	path::PathBuf,
+	process::{ExitCode, Stdio},
+	time::Duration,
+};
 
 use clap::{Parser, Subcommand};
-use decodex_codex as _;
 use decodex_pro_bridge::{Config, ProBridge, Request, Result};
+use futures_util as _;
 use serde as _;
 use sha2 as _;
 use tempfile as _;
+use tokio_tungstenite as _;
 use url as _;
 
 #[derive(Parser)]
-#[command(about = "Independent ChatGPT Pro component using the existing official Chrome extension")]
+#[command(about = "ChatGPT research in a dedicated Chrome profile; no API key or control model")]
 struct Cli {
-	/// Existing ChatGPT.app bundle. No installation or configuration is performed.
-	#[arg(long, default_value = "/Applications/ChatGPT.app")]
-	app: PathBuf,
+	/// Existing Chrome executable. No browser installation is performed.
+	#[arg(long, default_value = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome")]
+	chrome: PathBuf,
 	/// Absolute private component directory (0700). It is separate from the Decodex database.
 	#[arg(long)]
 	state_dir: PathBuf,
-	/// Exact extension instance when more than one Chrome instance is connected.
+	/// Use a headless browser in isolated tests; normal login needs a window.
 	#[arg(long)]
-	extension_instance: Option<String>,
+	headless: bool,
 	/// Maximum answer wait. A timeout retains the request for `resume`.
 	#[arg(long, default_value_t = 1800)]
 	wait_seconds: u64,
@@ -31,6 +37,12 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Action {
+	/// Open only the component's login window. Never sends a message.
+	Connect,
+	/// Check the login window without opening or focusing a browser.
+	Check,
+	/// Close only the dedicated browser; keep saved requests and login state.
+	Disconnect,
 	/// Submit one authorized question, or recover the same exact request ID.
 	Ask {
 		#[arg(long)]
@@ -38,6 +50,15 @@ enum Action {
 		#[arg(long)]
 		prompt_file: PathBuf,
 		/// Completed component request whose ChatGPT conversation will continue.
+		#[arg(long)]
+		previous: Option<String>,
+	},
+	/// Persist the request, start an independent worker and return its ID immediately.
+	Start {
+		#[arg(long)]
+		id: String,
+		#[arg(long)]
+		prompt_file: PathBuf,
 		#[arg(long)]
 		previous: Option<String>,
 	},
@@ -77,15 +98,55 @@ async fn main() -> ExitCode {
 }
 
 async fn run(cli: Cli) -> Result<()> {
-	let mut config = Config::installed_app(cli.app);
-	config.extension_instance = cli.extension_instance;
+	let mut config = Config::chrome(cli.chrome.clone());
+	config.headless = cli.headless;
 	config.answer_timeout = Duration::from_secs(cli.wait_seconds);
-	let bridge = ProBridge::new(config, cli.state_dir)?;
+	let bridge = ProBridge::new(config, cli.state_dir.clone())?;
+	let detached = matches!(&cli.command, Action::Start { .. });
 	let action = async {
 		match cli.command {
-			Action::Ask { id, prompt_file, previous } => {
+			Action::Connect => print_json(&bridge.connect().await?)?,
+			Action::Check => print_json(&bridge.check().await?)?,
+			Action::Disconnect => bridge.disconnect().await?,
+			Action::Ask { id, prompt_file, previous }
+			| Action::Start { id, prompt_file, previous } => {
 				let prompt = fs::read_to_string(prompt_file).map_err(|e| e.to_string())?;
-				print_json(&bridge.ask(Request { id, prompt, previous }).await?)?;
+				let request = Request { id: id.clone(), prompt, previous };
+				if detached {
+					let receipt = bridge.prepare(request)?;
+					if receipt.phase != decodex_pro_bridge::Phase::Complete {
+						let mut worker = std::process::Command::new(
+							std::env::current_exe().map_err(|e| e.to_string())?,
+						);
+						worker
+							.arg("--chrome")
+							.arg(&cli.chrome)
+							.arg("--state-dir")
+							.arg(&cli.state_dir)
+							.arg("--wait-seconds")
+							.arg(cli.wait_seconds.to_string());
+						if cli.headless {
+							worker.arg("--headless");
+						}
+						worker
+							.args(["resume", "--id", &id])
+							.stdin(Stdio::null())
+							.stdout(Stdio::null())
+							.stderr(Stdio::null());
+						#[cfg(unix)]
+						{
+							use std::os::unix::process::CommandExt as _;
+							worker.process_group(0);
+						}
+						let mut child = worker.spawn().map_err(|e| e.to_string())?;
+						std::thread::spawn(move || {
+							let _ = child.wait();
+						});
+					}
+					print_json(&receipt)?;
+				} else {
+					print_json(&bridge.ask(request).await?)?;
+				}
 			},
 			Action::Resume { id, conversation } => {
 				let receipt = match conversation {
