@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:eeef1c73bab313e1015c2ccd9dafe9bb77de6a6754b4392d8b73b4cbcc5a180d",
+  "pageVersion": "sha256:a602904b42b424d5cae6bfd1b54867d997754f81d7de5183f7c1be8ccbe7d583",
   "claims": [
     {
       "id": "claim_2dd4ad01dd984b80a22d9cb9c9bfd397",
@@ -982,7 +982,7 @@
       "evidence": [
         {
           "resource": "repo://automations/decodex/scripts/config/tests/test_portfolio.py",
-          "version": "repo-file-v1:sha256:e21165087a2b7b90efa00e2f1c1ab2497637cf2dd74cd383452968665a222b8e"
+          "version": "repo-file-v1:sha256:3122f566cec86c1e0b31a6f7f9eac318919bef98917ad0b776e912ae68cef559"
         },
         {
           "resource": "repo://automations/upstream/README.md",
@@ -1067,6 +1067,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-31T16:42:36.938Z"
+    "at": "2026-10-31T17:07:05.970Z"
   }
 }

@@ -1,14 +1,18 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:1b201e5d38655fcbf00d24beca58729f0a49b7c805b591dc6204154332411bf9",
+  "pageVersion": "sha256:7ad362ec0b9d8d35688ee405eae63d0afd0be4082478e3a95deefb45607cfd2e",
   "claims": [
     {
       "id": "claim_b6c6b65984924f69970e7f0410d50903",
-      "statement": "The repository portfolio specifies one upstream Maintainer and separate content research and publication roles; its desired configuration does not prove live scheduler registration or execution.",
+      "statement": "The repository portfolio specifies only the upstream Maintainer. Content Manager and Xurl Publisher schedules and prompts are retired; desired configuration does not prove live scheduler registration or execution.",
       "evidence": [
         {
+          "resource": "repo://automations/decodex/README.md",
+          "version": "repo-file-v1:sha256:9f7c5029ab38ff344eb049a601812a4d571b3bdc0f1a7fcf067719557065e32b"
+        },
+        {
           "resource": "repo://automations/portfolio.toml",
-          "version": "repo-file-v1:sha256:4516f1b1a314f734812ae1e2516c223723945f99d0bcd3899428c5bb068957f5"
+          "version": "repo-file-v1:sha256:a56486557134cf6e720d5ec4bd3183a7b52e34a97d185f55016cbd7a32a7e462"
         },
         {
           "resource": "repo://automations/upstream/prompts/maintainer.md#L1-L3",
@@ -22,7 +26,7 @@
       "evidence": [
         {
           "resource": "repo://automations/portfolio.toml",
-          "version": "repo-file-v1:sha256:4516f1b1a314f734812ae1e2516c223723945f99d0bcd3899428c5bb068957f5"
+          "version": "repo-file-v1:sha256:a56486557134cf6e720d5ec4bd3183a7b52e34a97d185f55016cbd7a32a7e462"
         },
         {
           "resource": "repo://automations/upstream/prompts/maintainer.md",
@@ -200,7 +204,7 @@
       "evidence": [
         {
           "resource": "repo://automations/portfolio.toml",
-          "version": "repo-file-v1:sha256:4516f1b1a314f734812ae1e2516c223723945f99d0bcd3899428c5bb068957f5"
+          "version": "repo-file-v1:sha256:a56486557134cf6e720d5ec4bd3183a7b52e34a97d185f55016cbd7a32a7e462"
         },
         {
           "resource": "repo://automations/upstream/retained-contracts.json",
@@ -359,6 +363,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-31T16:42:36.938Z"
+    "at": "2026-10-31T17:07:05.970Z"
   }
 }

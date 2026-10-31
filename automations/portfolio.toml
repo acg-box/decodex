@@ -14,19 +14,3 @@ reasoning_effort      = "max"
 rrule                 = "DTSTART:20260919T200500Z\nRRULE:FREQ=DAILY;BYHOUR=20;BYMINUTE=5;BYSECOND=0"
 # Keep daily runs paused during manual catch-up and until explicit resume approval.
 status = "ACTIVE"
-
-[[automations]]
-id               = "decodex-content-manager"
-model            = "gpt-5.6-luna"
-name             = "Decodex Content Manager"
-prompt_file      = "automations/decodex/prompts/content-manager.md"
-reasoning_effort = "max"
-rrule            = "FREQ=DAILY;BYHOUR=9;BYMINUTE=50;BYSECOND=0"
-
-[[automations]]
-id               = "decodex-xurl-publisher"
-model            = "gpt-5.6-luna"
-name             = "Decodex Xurl Publisher"
-prompt_file      = "automations/decodex/prompts/xurl-publisher.md"
-reasoning_effort = "max"
-rrule            = "FREQ=DAILY;BYHOUR=10,16,22;BYMINUTE=20;BYSECOND=0"

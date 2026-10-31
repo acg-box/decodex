@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:298cbbef01bb315e184d3a5b44fe9d1e70bd13972957aeb035c8984b569e10d5",
+  "pageVersion": "sha256:6c4b41913ac751399f23b781f95f895bc5cb2b97cb3345c16c8c940327d0cdd5",
   "claims": [
     {
       "id": "claim_86c25cbab2c043ba9c7f55a2af5d3ca5",
@@ -33,10 +33,28 @@
           "version": "repo-file-v1:sha256:d692d2ef71ff9c5af692adbd4adff51a08554e8b28a29ba26ed7235abe0153be"
         }
       ]
+    },
+    {
+      "id": "claim_53dd5a29001d41359d7e078e76d9c349",
+      "statement": "The portfolio retains only the daily upstream Maintainer. Content Manager and Xurl Publisher schedules and prompts are retired; the standalone Publisher implementation and historical social schemas and records remain separate from scheduler registration.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-publisher/README.md",
+          "version": "repo-file-v1:sha256:4cfe605878980319da760d593d251ea36757c70838eceba89cd490c1f50d3f07"
+        },
+        {
+          "resource": "repo://automations/decodex/README.md",
+          "version": "repo-file-v1:sha256:9f7c5029ab38ff344eb049a601812a4d571b3bdc0f1a7fcf067719557065e32b"
+        },
+        {
+          "resource": "repo://automations/portfolio.toml",
+          "version": "repo-file-v1:sha256:a56486557134cf6e720d5ec4bd3183a7b52e34a97d185f55016cbd7a32a7e462"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-28T03:55:33.038Z"
+    "at": "2026-10-31T17:07:05.970Z"
   }
 }

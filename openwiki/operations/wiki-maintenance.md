@@ -6,12 +6,14 @@ tags: ["decodex", "architecture"]
 sources:
   - id: openwiki-source-8037e2358a2c4f9b2c722a11
     resource: repo://AGENTS.md
+  - id: openwiki-source-f5d4f5acdb41fe7c4e985337
+    resource: repo://automations/decodex/README.md
   - id: openwiki-source-14193a66abfb7d3230f476bf
     resource: repo://automations/portfolio.toml
-generated: { by: "codex", at: "2026-09-29T06:24:17.023Z" }
+generated: { by: "codex", at: "2026-10-31T17:07:05.970Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-31T16:42:36.938Z
+    at: 2026-10-31T17:07:05.970Z
 ---
 
 # Wiki maintenance
@@ -34,6 +36,6 @@ Root README and policy files are concise entrypoints. Temporary task logs stay o
 
 ## Scheduling
 
-The checked-in portfolio defines an upstream Maintainer, Content Manager and Xurl Publisher. It has no dedicated Wiki role. An old generated setup sentence is not evidence of an active scheduled Wiki workflow. Verify scheduler registration separately before claiming automatic refresh.
+The checked-in portfolio defines only the daily upstream Maintainer. Content Manager and Xurl Publisher schedules and prompts are retired. There is no dedicated Wiki role. An old generated setup sentence is not evidence of an active scheduled Wiki workflow. Verify scheduler registration separately before claiming automatic refresh.
 
 See [Quickstart](../quickstart.md), [Commands and validation](commands-and-validation.md) and [Upstream maintenance](codex-upstream-autopilot.md).

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:989bc0ab4a49e0bce4cdaeb865136c34c2e9f090ddcf1bb6f23b1039dc7edfac",
+  "pageVersion": "sha256:a03b115505dce774c2663ae335cafe9405a6194f4ae0562b602c53f38ac1b9b9",
   "claims": [
     {
       "id": "claim_b2a02c31d4c84b959a4c49ad2fc064b0",
@@ -75,10 +75,28 @@
           "version": "repo-file-v1:sha256:7d7e4481f613365ce46173c832a594f96192bb19f769e44507a8a73ae54ac75f"
         }
       ]
+    },
+    {
+      "id": "claim_67c31e856eaf4d8880fe731828fde0c8",
+      "statement": "Content Manager and Xurl Publisher schedules and prompts are retired. The retained Publisher implementation and schemas require separate publication authority; their source presence does not register a native automation.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-publisher/README.md",
+          "version": "repo-file-v1:sha256:4cfe605878980319da760d593d251ea36757c70838eceba89cd490c1f50d3f07"
+        },
+        {
+          "resource": "repo://automations/decodex/README.md",
+          "version": "repo-file-v1:sha256:9f7c5029ab38ff344eb049a601812a4d571b3bdc0f1a7fcf067719557065e32b"
+        },
+        {
+          "resource": "repo://automations/portfolio.toml",
+          "version": "repo-file-v1:sha256:a56486557134cf6e720d5ec4bd3183a7b52e34a97d185f55016cbd7a32a7e462"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-28T03:55:33.038Z"
+    "at": "2026-10-31T17:07:05.970Z"
   }
 }

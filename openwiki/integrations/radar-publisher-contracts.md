@@ -5,20 +5,26 @@ description: "Radar And Publisher Contracts"
 tags: ["decodex", "architecture"]
 openwiki_generated: true
 sources:
+  - id: openwiki-source-afbe0bf0241c9df872f71b0c
+    resource: repo://apps/decodex-publisher/README.md
   - id: openwiki-source-8afa0db2c4f33cb5f9924d1c
     resource: repo://apps/decodex-publisher/src/social_contracts.rs
   - id: openwiki-source-281fbf8eca61c5e14e9af3fb
     resource: repo://apps/decodex-publisher/src/social_workflow.rs
   - id: openwiki-source-e631b7e718f7140e71df9fc2
     resource: repo://apps/radar/src/paths.rs
+  - id: openwiki-source-f5d4f5acdb41fe7c4e985337
+    resource: repo://automations/decodex/README.md
+  - id: openwiki-source-14193a66abfb7d3230f476bf
+    resource: repo://automations/portfolio.toml
   - id: openwiki-source-986e29707183495223eebed9
     resource: repo://site/astro.config.mjs
   - id: openwiki-source-cb47fe9c0d47072a7555387e
     resource: repo://site/package.json
-generated: { by: "codex", at: "2026-09-29T06:49:47.866Z" }
+generated: { by: "codex", at: "2026-10-31T17:07:05.970Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-28T03:55:33.038Z
+    at: 2026-10-31T17:07:05.970Z
 ---
 
 > Current boundary rechecked: Radar and Publisher remain auxiliary CLIs in the Rust workspace. The retirement of built-in repository/PR orchestration does not remove these tools or grant them Chief product-state authority. Checked-in automation definitions are desired state, not proof that a host scheduler is running. See [Wiki maintenance](../operations/wiki-maintenance.md) for documentation freshness.
@@ -38,9 +44,10 @@ Radar owns optional repository-local research artifacts:
 - `signal_entry/v1` and `release_delta/v1` for static content;
 - the bounded private Radar cache and disposable ledger.
 
-Radar has no native scheduled role in the current three-role portfolio. The Maintainer
-and Content Manager may use its output as discovery or supporting editorial
-input. They can also research official sources directly.
+The portfolio retains only the daily upstream Maintainer. Content Manager and
+Xurl Publisher schedules and prompts are retired. Radar has no native scheduled
+role. The Maintainer may use its output for discovery and must verify official
+sources independently.
 
 Radar does not own a content handoff, candidate selection, review pair,
 eligibility decision, activation marker, or Publisher path. Its metadata cannot
@@ -57,8 +64,9 @@ Publisher owns:
 - xurl authorization, pricing, budget ledger, attempt journal, and exact
   external readback.
 
-Content Manager sends Publisher one private candidate or no-op through
-`social record-candidate`. Source URLs are direct evidence. A primary source is
+The standalone Publisher accepts one private candidate or no-op through
+`social record-candidate` when a separate task authorizes that work. No content
+schedule invokes this flow. Source URLs are direct evidence. A primary source is
 required and has class `official_codex` or `landed_decodex`. A CodexRadar URL may
 have class `radar_secondary`, but it cannot be the only evidence.
 
@@ -77,8 +85,9 @@ makes one bounded ordinary HTTPS GET to the exact official pricing Markdown. It
 uses no OAuth or token and makes zero X API calls. Strict parser failure or rate
 drift blocks paid work through the private pricing receipt boundary.
 
-The Content Manager and Publisher prompts never invoke a browser, X MCP, or
-direct HTTP API for X. Radar never invokes X.
+Retiring the schedules grants no publication authority. Any separately authorized
+publication must use the retained Publisher boundary, which forbids a browser,
+X MCP or a direct X API client. Radar never invokes X.
 
 ## Local Data
 

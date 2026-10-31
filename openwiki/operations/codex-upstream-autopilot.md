@@ -7,6 +7,8 @@ openwiki_generated: true
 sources:
   - id: openwiki-source-c76550e85b25876b339f9255
     resource: repo://apps/decodex-gpui/src/agent_context_settings.rs
+  - id: openwiki-source-f5d4f5acdb41fe7c4e985337
+    resource: repo://automations/decodex/README.md
   - id: openwiki-source-14193a66abfb7d3230f476bf
     resource: repo://automations/portfolio.toml
   - id: openwiki-source-99e1051d423378c9417d6a88
@@ -47,10 +49,10 @@ sources:
     resource: repo://scripts/macos/prepare_codex.mts
   - id: openwiki-source-3b57179b92b257bc3fff51a1
     resource: repo://scripts/macos/stage_decodex_app.sh
-generated: { by: "codex", at: "2026-10-31T16:42:36.938Z" }
+generated: { by: "codex", at: "2026-10-31T17:07:05.970Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-31T16:42:36.938Z
+    at: 2026-10-31T17:07:05.970Z
 ---
 
 
@@ -58,7 +60,7 @@ verified:
 
 ## Desired registration and authority
 
-The checked-in portfolio contains one upstream Maintainer, plus the separate Content Manager and Xurl Publisher. The earlier upstream Reviewer and Health role descriptions are historical. The portfolio enables the upstream Maintainer with model `gpt-6.1-sol`, reasoning effort `max`, worktree execution and the existing daily UTC 20:05 schedule. Pause it during manual catch-up and resume it only with explicit user authorization through the supported native tools. Its prompt is `automations/upstream/prompts/maintainer.md`. A repository definition is not proof of host registration or execution. Verify host state through supported automation tools before changing it.
+The checked-in portfolio contains only the upstream Maintainer. Content Manager and Xurl Publisher schedules and prompts are retired. The earlier upstream Reviewer and Health role descriptions are historical. The portfolio enables the upstream Maintainer with model `gpt-6.1-sol`, reasoning effort `max`, worktree execution and the existing daily UTC 20:05 schedule. Pause it during manual catch-up and resume it only with explicit user authorization through the supported native tools. Its prompt is `automations/upstream/prompts/maintainer.md`. A repository definition is not proof of host registration or execution. Verify host state through supported automation tools before changing it.
 
 The checked-in prompt requires the automation to remain paused during manual catch-up. A completed catch-up or documentation update does not authorize resumption; that requires an explicit user instruction. When maintenance is authorized to run, existing-capability fixes may be implemented and merged after required checks; new product capabilities still require a user decision. Content publication has separate scope and is not part of upstream compatibility work.
 

@@ -50,6 +50,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/settings_native.rs
   - id: openwiki-source-a16804a567889414868e5d67
     resource: repo://apps/decodex-gpui/src/settings_surface.rs
+  - id: openwiki-source-f5d4f5acdb41fe7c4e985337
+    resource: repo://automations/decodex/README.md
   - id: openwiki-source-14193a66abfb7d3230f476bf
     resource: repo://automations/portfolio.toml
   - id: openwiki-source-7dcbb082d2502f1ec4386c39
@@ -74,10 +76,10 @@ sources:
     resource: repo://database/src/schema.rs
   - id: openwiki-source-3b57179b92b257bc3fff51a1
     resource: repo://scripts/macos/stage_decodex_app.sh
-generated: { by: "codex", at: "2026-10-31T16:42:36.938Z" }
+generated: { by: "codex", at: "2026-10-31T17:07:05.970Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-31T16:42:36.938Z
+    at: 2026-10-31T17:07:05.970Z
 ---
 
 # OpenWiki quickstart
@@ -161,7 +163,7 @@ When reviewing an earlier message, choose **Side chat** to create a persistent n
 - Account Route is synchronous and service-owned. Shared-auth liveness, exact source identity and readback govern completion. Same-account refresh adopts a valid non-older native winner instead of restoring a losing token.
 - Unknown submission outcomes require exact receipts or native history. They do not authorize replay. Unavailable conversations keep readable history.
 - Generic plugin management and embedded MCP HTML widgets are retired. The explicit EGM component uses the native Codex plugin lifecycle through Settings > Components. Codex owns configuration and execution; Decodex retains tool observations, native forms and readable history.
-- The checked-in automation portfolio enables the upstream maintainer with its existing daily cadence. Pause it during manual catch-up; resume it only with explicit user authorization through the supported native tools. This is configuration evidence, not scheduler readback. Documentation generation does not enable automations, install an app or publish a release.
+- The checked-in automation portfolio retains only the upstream maintainer with its existing daily cadence. The two content schedules and their prompts are retired; retained Publisher tools do not register a schedule. Pause it during manual catch-up; resume it only with explicit user authorization through the supported native tools. This is configuration evidence, not scheduler readback. Documentation generation does not enable automations, install an app or publish a release.
 
 ## Build and evidence
 

@@ -127,7 +127,7 @@ sources:
 generated: { by: "codex", at: "2026-10-31T16:42:36.938Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-31T16:42:36.938Z
+    at: 2026-10-31T17:07:05.970Z
 ---
 
 # Product scope and native ownership

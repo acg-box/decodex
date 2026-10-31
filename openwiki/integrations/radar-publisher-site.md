@@ -5,6 +5,8 @@ description: "Radar, Publisher, And Site Contracts"
 tags: ["decodex", "architecture"]
 openwiki_generated: true
 sources:
+  - id: openwiki-source-afbe0bf0241c9df872f71b0c
+    resource: repo://apps/decodex-publisher/README.md
   - id: openwiki-source-8afa0db2c4f33cb5f9924d1c
     resource: repo://apps/decodex-publisher/src/social_contracts.rs
   - id: openwiki-source-281fbf8eca61c5e14e9af3fb
@@ -13,6 +15,10 @@ sources:
     resource: repo://apps/radar/src/ledger/schema/setup.rs
   - id: openwiki-source-e631b7e718f7140e71df9fc2
     resource: repo://apps/radar/src/paths.rs
+  - id: openwiki-source-f5d4f5acdb41fe7c4e985337
+    resource: repo://automations/decodex/README.md
+  - id: openwiki-source-14193a66abfb7d3230f476bf
+    resource: repo://automations/portfolio.toml
   - id: openwiki-source-c8b1a2a9f2113ec43d4066da
     resource: repo://Makefile.toml
   - id: openwiki-source-016127f3ab4fb65e6830b0bf
@@ -25,10 +31,10 @@ sources:
     resource: repo://site/package-lock.json
   - id: openwiki-source-cb47fe9c0d47072a7555387e
     resource: repo://site/package.json
-generated: { by: "codex", at: "2026-10-28T03:55:33.038Z" }
+generated: { by: "codex", at: "2026-10-31T17:07:05.970Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-28T03:55:33.038Z
+    at: 2026-10-31T17:07:05.970Z
 ---
 
 > Current boundary rechecked: Radar and Publisher remain auxiliary CLIs in the Rust workspace. The retirement of built-in repository/PR orchestration does not remove these tools or grant them Chief product-state authority. Checked-in automation definitions are desired state, not proof that a host scheduler is running. See [Wiki maintenance](../operations/wiki-maintenance.md) for documentation freshness.
@@ -45,7 +51,7 @@ architecture](../architecture/runtime-architecture.md).
 Radar is an optional auxiliary tool for GitHub and Codex evidence. It owns change
 bundles, review queues, upstream impact artifacts, signal entries, release deltas,
 bounded local retention, validation, and bundle generation. Radar has no native
-schedule and is not workflow state for the three managed automations.
+schedule and is not workflow state for the retained upstream Maintainer.
 
 Radar artifacts live under `.agent/automations/radar/cache` when generated locally. Checked-in source for Radar behavior lives in `apps/radar/`, `automations/radar/`, and related tests.
 
@@ -79,8 +85,7 @@ Generated analysis drafts are not final signals until curated and validated.
 
 Release deltas compare release objects and summarize material changes. They preserve
 release identity, compare targets, reused signals, and explicit evidence. They can
-help discovery, but the Maintainer and Content Manager must verify the official
-sources themselves.
+help discovery, but the caller must verify the official sources independently.
 
 ## Radar ledger and retention
 
@@ -104,17 +109,18 @@ effects, exact readback, outcome observation, and social validation. Publisher
 artifacts live under `.agent/automations/decodex/cache/social` when generated
 locally.
 
-The Content Manager researches official Codex and landed Decodex sources directly.
-CodexRadar can be secondary editorial input, but it cannot be the only factual
-source. Publisher does not research or choose topics. It enforces the deterministic
-write boundary.
+Content Manager and Xurl Publisher schedules and prompts are retired. The
+standalone Publisher and its schemas remain available for separately authorized
+work. A caller must research official Codex and landed Decodex sources directly.
+CodexRadar can supply secondary evidence. Publisher does not research or choose
+topics; it enforces the deterministic write boundary.
 
 ## Social publishing contract
 
 One `decodex/content-evidence/1` document records a publish or no-op decision.
 Publisher derives its immutable content identity and allows at most one unresolved
 candidate. The `publish-next` and `observe-due` commands hide reservation, ledger,
-journal, recovery, and readback steps from the X Publisher agent. Published posts
+journal, recovery, and readback steps from an authorized caller. Published posts
 must contain no URL, unsupported claim, private detail, local path, credential, or
 hidden reasoning.
 

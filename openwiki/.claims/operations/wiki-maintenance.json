@@ -1,14 +1,18 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:c0768c8b64e51a8803e5858c4dbbef8a2c401ab39fc7b3ad8fe0256b765f6d19",
+  "pageVersion": "sha256:e7d19c9bf874d925dc151f0436e35d6907aca3d7f88e11b4c3b269f0c93646ee",
   "claims": [
     {
       "id": "claim_07eac3dd8c6142068d996cdae3e4884c",
-      "statement": "The checked-in portfolio defines three upstream/content tasks and no dedicated OpenWiki task; repository status values do not establish actual scheduler registration or execution.",
+      "statement": "The checked-in portfolio defines only the daily upstream Maintainer and no dedicated OpenWiki task. Content Manager and Xurl Publisher schedules and prompts are retired. Repository status values do not establish scheduler registration or execution.",
       "evidence": [
         {
+          "resource": "repo://automations/decodex/README.md",
+          "version": "repo-file-v1:sha256:9f7c5029ab38ff344eb049a601812a4d571b3bdc0f1a7fcf067719557065e32b"
+        },
+        {
           "resource": "repo://automations/portfolio.toml",
-          "version": "repo-file-v1:sha256:4516f1b1a314f734812ae1e2516c223723945f99d0bcd3899428c5bb068957f5"
+          "version": "repo-file-v1:sha256:a56486557134cf6e720d5ec4bd3183a7b52e34a97d185f55016cbd7a32a7e462"
         }
       ]
     },
@@ -35,6 +39,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-31T16:42:36.938Z"
+    "at": "2026-10-31T17:07:05.970Z"
   }
 }
