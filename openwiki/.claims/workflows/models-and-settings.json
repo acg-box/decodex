@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:230daba255c8c0f08cebf57e343a7d060ea6f558c5f5b9a9b7dd06693fe987e8",
+  "pageVersion": "sha256:529dec924508262855a21af016eac64971c8ac2f2b9732027a97f4533d3ac78e",
   "claims": [
     {
       "id": "claim_f0c37462522f4442acd94d53819ef75c",
@@ -131,7 +131,7 @@
       "statement": "Native model metadata and configuration determine the helper backend; the qualified synthetic matrix uses V1 and V2 at Medium without Ultra and leaves model judgment unmeasured.",
       "evidence": [
         {
-          "resource": "repo://automations/upstream/retained-contracts.json#L2829-L2836",
+          "resource": "repo://automations/upstream/retained-contracts.json#L2835-L2842",
           "version": "repo-lines-v1:sha256:8e6e3bdd228d54f00f8683d30913924cbf52ba99ba0384b2584ed81b2906292e:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMjVlMGNmNTA1M2U5YmRiZTc5ZmVlY2E5NWUzZjk4YTJjOGY2ZDZhYWRlZjhjNGIwZWU1ODk0ZTBjY2ExYTBiNSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMzVlZWJkNGIwMjc1ZTcxYmRjNDUwNGIwZDc1MzM2NmQ3ZDhlZGUwNzYyOGMwMDViZTg2Njc2NTNhY2UxYjcwMCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMTM5NGU3YTZlMWU4MGJjNGQ4Y2YzNTVjYjI1ZWU4ZDg0ZGM0NDZhNDkwMThlMjgyNGY1ZTNiZWY1M2ZmM2U0NiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNzYzOTQyY2VjMGEwMGQ0YzE3NDRiOTU5YzA4NTQ3M2Q5ZjlhN2NkY2NhODY0ZTJiYTQ4MjE2ZmJmNTBhMWQyOCJ9"
         },
         {
@@ -218,7 +218,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:d6b02b0aafb1ad50b6496164a30ebff0f0277036e584dfdb1bc5d4b7ead5ad52"
+          "version": "repo-file-v1:sha256:2d394098c68d2b9c5f7f3ced50aaac3e4b3adbc9788fb12eb728fee6bfa015cd"
         },
         {
           "resource": "repo://crates/decodex-protocol/src/model_catalog.rs#L77-L105",
@@ -317,6 +317,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-31T15:14:40.896Z"
+    "at": "2026-10-31T15:20:06.142Z"
   }
 }

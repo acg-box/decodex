@@ -10,8 +10,6 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_async_questions.rs
   - id: openwiki-source-bf03f317e64cfefd11f6ea83
     resource: repo://apps/decodex-gpui/src/agent_attached_branches.rs
-  - id: openwiki-source-48758ba7d154c82885281d2c
-    resource: repo://apps/decodex-gpui/src/agent_composer.rs
   - id: openwiki-source-d56ea7499f2ed784b1b6c970
     resource: repo://apps/decodex-gpui/src/agent_conversation_tab_tests.rs
   - id: openwiki-source-1bf529ea3f1649ac9a28334a
@@ -44,6 +42,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_prompt_confirm.rs
   - id: openwiki-source-b2084dffd07b4229957a0f94
     resource: repo://apps/decodex-gpui/src/agent_prompt_edit.rs
+  - id: openwiki-source-1fce7fb96d5047e0528f5301
+    resource: repo://apps/decodex-gpui/src/agent_prompt_fork_wire_tests.rs
   - id: openwiki-source-5e245e8cc4db92f2dbe2ba47
     resource: repo://apps/decodex-gpui/src/agent_prompt_fork.rs
   - id: openwiki-source-0f9840ddf9e841a062aa905a
@@ -144,10 +144,10 @@ sources:
     resource: repo://database/src/agent/tests/input_retry.rs
   - id: openwiki-source-28af4781ad8d9558410630da
     resource: repo://database/src/works.rs
-generated: { by: "codex", at: "2026-10-31T15:12:19.080Z" }
+generated: { by: "codex", at: "2026-10-31T15:20:06.142Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-31T15:12:19.080Z
+    at: 2026-10-31T15:20:06.142Z
 ---
 
 # Conversation input, history and recovery
@@ -202,11 +202,11 @@ Review the source, then choose **Fork**. This uses the existing **Fork** (after 
 
 If native Codex refuses to resume a conversation because its saved provider differs from the current provider, Decodex keeps its history readable and preserves the original draft. The notice inside the disabled input bar names both providers. Restore the original provider to continue that conversation, or choose **Fork** to use the current provider.
 
-The branch action reuses the review of the latest completed native turn. Inspect the boundary and the destination provider, then choose **Fork**. Decodex checks the current native configuration again and creates one ordinary native fork. If the source or configuration changed, review the current state again. It does not change the original conversation, send input, or bypass native policy.
+Choose **Fork** once to create and open a branch on the named current provider. Decodex reads the latest completed native turn, checks the current source and native configuration, and persists the existing fork intent before dispatch. There is no second confirmation. If the source or configuration changed, creation stops. It does not change the original conversation, send input, or bypass native policy.
 
-The review uses the shared recovery notice and bordered buttons. It replaces the notice inside the input bar, so the provider explanation appears only once. **Cancel** restores the original notice in the same place.
+Progress and recovery stay inside the input bar and use the shared notice and bordered button styles. An uncertain result checks the saved fork identity instead of creating another branch. The original draft remains saved.
 
-The new branch receives the reviewed history prefix and the ordinary composer draft through the existing branch flow. The next explicit send shares that inherited context with the chosen provider. **Cancel** preserves the source draft and creates nothing. Unsent source messages are not retried automatically. Ordinary branching and Side chats retain their source provider; changing providers is this separate explicit choice.
+The new branch receives the reviewed history prefix and the ordinary composer draft through the existing branch flow. The next explicit send shares that inherited context with the chosen provider. Unsent source messages are not retried automatically. Ordinary branching and Side chats retain their source provider; changing providers is this separate explicit choice.
 
 The [qualification record](../testing/upstream-acceptance-boundaries.md#provider-recovery-qualification) distinguishes the exact native tests from a user's experience. Use the [isolated rehearsal](../operations/commands-and-validation.md#rehearse-provider-recovery) to try the real desktop flow without using account data or changing the normal runtime selection.
 
@@ -220,7 +220,7 @@ Filtering reads the already retained list. It does not send input, change Work s
 
 ## Edit or branch at an earlier input
 
-A locked conversation can offer **Fork** when its current native timeline contains a readable user prompt. The entry reviews the latest visible prompt's turn and then offers **Fork**. It uses the existing native fork and receipt recovery path. It does not acquire the original writer's lease or unlock the source conversation. A stale timeline binding does not offer this entry.
+A locked conversation can offer **Fork** when its current native timeline contains a readable user prompt. Clicking it creates and opens a branch from that prompt's turn without a second confirmation. It uses the existing source preparation, native fork and receipt recovery path. It does not acquire the original writer's lease or unlock the source conversation. A stale timeline binding does not offer this entry.
 
 Review the exact native item and complete input, including image, skill and mention identity. The confirmation panel offers four explicit choices:
 

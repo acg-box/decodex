@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:03387dfc7a01340e50d1874065bea42068e34cc60c152c4f19615d96f291b19e",
+  "pageVersion": "sha256:561d3e2ccf3c0a51a6459e3db76848284df07688f48cc45d2ad1b99ae879d419",
   "claims": [
     {
       "id": "claim_36b9a49ffa87416e8add8befc7d10efe",
@@ -78,7 +78,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:80b2a28e67420267af65edc9c013f4903739144f7187db7d26bf52105081af5c"
+          "version": "repo-file-v1:sha256:def240e9768ac8075120cab0a47125e5a427a75135d7f20e182ccce3f25df626"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/composer_text.rs",
@@ -134,7 +134,7 @@
     },
     {
       "id": "claim_f591a4d003dd4eaba5893bb1837aa273",
-      "statement": "Saved edit recovery and history controls stay in Details. Active editing and unresolved-operation notices use the chat flow, but a Fork review for a disabled conversation is rendered inside its input bar. Failed input stays in the transcript and there is no permanent saved-draft list.",
+      "statement": "Saved edit recovery and history controls stay in Details. Active editing and unresolved-operation notices use the chat flow, while Fork progress and recovery for a disabled conversation stay inside its input bar. Failed input stays in the transcript and there is no permanent saved-draft list.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_composer.rs",
@@ -146,7 +146,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_prompt_edit.rs",
-          "version": "repo-file-v1:sha256:9d8aa9c3a2c76ca4fc13652f0fd5e43932e86a3f42a1716705106bf91201c8d4"
+          "version": "repo-file-v1:sha256:05584abc6a99709786d306a91a7f40b00fe81a1160c044059d5e5f26a6cd1c32"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_surface.rs",
@@ -448,7 +448,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:80b2a28e67420267af65edc9c013f4903739144f7187db7d26bf52105081af5c"
+          "version": "repo-file-v1:sha256:def240e9768ac8075120cab0a47125e5a427a75135d7f20e182ccce3f25df626"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_loading.rs",
@@ -574,7 +574,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:80b2a28e67420267af65edc9c013f4903739144f7187db7d26bf52105081af5c"
+          "version": "repo-file-v1:sha256:def240e9768ac8075120cab0a47125e5a427a75135d7f20e182ccce3f25df626"
         }
       ]
     },
@@ -596,39 +596,39 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:80b2a28e67420267af65edc9c013f4903739144f7187db7d26bf52105081af5c"
+          "version": "repo-file-v1:sha256:def240e9768ac8075120cab0a47125e5a427a75135d7f20e182ccce3f25df626"
         }
       ]
     },
     {
       "id": "claim_72ea579e26634a44b14ba5888ba67085",
-      "statement": "An exact native provider mismatch shows a read-only notice inside the input bar. Fork replaces it with the current-provider review in the same place. Creation sends no input and cancellation preserves the original draft.",
+      "statement": "An exact native provider mismatch shows the provider names inside the input bar. Fork creates and opens after source preparation without a second confirmation or Cancel control. Progress and recovery stay in that input bar; creation sends no message and preserves the original draft.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_composer.rs",
-          "version": "repo-file-v1:sha256:cf84c6e1fbb83844cd8a4d99f116dfbc784650d6a2d96c5301ea393dddb971af"
+          "resource": "repo://apps/decodex-gpui/src/agent_list_branch.rs",
+          "version": "repo-file-v1:sha256:97e4ebce9584cd709dc480d5af61f9cf5b6d6b6199af0346d428b4c747526c3b"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_model_settings_wire_tests.rs",
-          "version": "repo-file-v1:sha256:9c561992329df18b83eaa40ecb482de4bad3e790a7a96ceae4703ad2c3df9b31"
+          "version": "repo-file-v1:sha256:63b650287667f1b7d6fd0dc5efce5fd5bdc8606f5594fb67f8f7b3c5769995d4"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_prompt_confirm_wire_tests.rs",
-          "version": "repo-file-v1:sha256:9c6d7ada71ce89ea842fc8063a9fffe68374e1df20c8cfccadf3279c6e969d11"
+          "version": "repo-file-v1:sha256:a477218223d207e461c2c52b7658c6fa1c22ddcc53cf00742f440f2f0743962d"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_prompt_edit.rs",
-          "version": "repo-file-v1:sha256:9d8aa9c3a2c76ca4fc13652f0fd5e43932e86a3f42a1716705106bf91201c8d4"
+          "version": "repo-file-v1:sha256:05584abc6a99709786d306a91a7f40b00fe81a1160c044059d5e5f26a6cd1c32"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:80b2a28e67420267af65edc9c013f4903739144f7187db7d26bf52105081af5c"
+          "version": "repo-file-v1:sha256:def240e9768ac8075120cab0a47125e5a427a75135d7f20e182ccce3f25df626"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-31T15:12:19.080Z"
+    "at": "2026-10-31T15:20:06.142Z"
   }
 }

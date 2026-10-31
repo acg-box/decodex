@@ -12,10 +12,14 @@ sources:
     resource: repo://apps/decodex-gpui/menubar/Sources/DecodexApp/DecodexNativeClient.swift
   - id: openwiki-source-90188458ff8e2e5499bd7ca8
     resource: repo://apps/decodex-gpui/menubar/Tests/DecodexAppTests/NativeJournalFixture.swift
+  - id: openwiki-source-77ad5024b567271a0f618fd7
+    resource: repo://apps/decodex-gpui/src/agent_list_branch.rs
+  - id: openwiki-source-0eea3c2bab20e4a9d8e3d80a
+    resource: repo://apps/decodex-gpui/src/agent_prompt_confirm_wire_tests.rs
+  - id: openwiki-source-b2084dffd07b4229957a0f94
+    resource: repo://apps/decodex-gpui/src/agent_prompt_edit.rs
   - id: openwiki-source-ca95ba5564216bb4898c8392
     resource: repo://apps/decodex-gpui/src/native_voice_online_tests.rs
-  - id: openwiki-source-2f256c95c226c1326d164ad3
-    resource: repo://apps/decodex-gpui/src/ui_feedback.rs
   - id: openwiki-source-f7ecbc6c02d8c1b7873858d6
     resource: repo://automations/upstream/checkpoint.test.mts
   - id: openwiki-source-7dcbb082d2502f1ec4386c39
@@ -104,10 +108,10 @@ sources:
     resource: repo://scripts/vnext/run_native_regression.py
   - id: openwiki-source-d45a647d565211cf9b5cb067
     resource: repo://scripts/vstyle_audit.py
-generated: { by: "codex", at: "2026-10-31T15:12:19.080Z" }
+generated: { by: "codex", at: "2026-10-31T15:21:18.800Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-31T15:14:40.896Z
+    at: 2026-10-31T15:21:18.800Z
 ---
 
 
@@ -401,7 +405,7 @@ python3 scripts/vnext/run_native_regression.py \
 
 Use absolute paths for the three inputs. The runner verifies the supplied components in temporary storage and uses the existing native executable attestation. It starts a real Decodex window and service with synthetic account data, creates history under one provider, then selects another provider and exposes the native mismatch. The two provider names share a loopback backend for this UI rehearsal. The separate native fork regression uses two servers to check routing.
 
-Choose **Fork**, inspect the destination provider, then confirm or cancel. Creation sends no input. Send a message only when ready to continue the branch. Quit the rehearsal window to end the fixture and remove its temporary profile. The runner does not install the app, select a runtime for the normal profile, or modify the automation schedule. Passing this fixture's setup is separate from a user's UI acceptance.
+Check the destination provider in the input-bar notice, then choose **Fork** once. It creates and opens the branch without a second confirmation or sending a message. Send only when ready to continue the branch. Quit the rehearsal window to end the fixture and remove its temporary profile. The runner does not install the app, select a runtime for the normal profile, or modify the automation schedule. Passing this fixture's setup is separate from a user's UI acceptance.
 
 ## Prepare Codex components
 
@@ -483,4 +487,4 @@ A `LEAK` marker can accompany a passed test when its captured output remains ope
 
 For documentation consolidation, validate page Claims, retained subject coverage, relative links and source paths. Do not rebuild the desktop or launch provider fixtures solely for a Markdown move. Keep historical test counts attached to their original revision. System-temporary fixtures must be cleaned after use; HOME is not a test-output directory.
 
-The disabled-input and Fork layout repair passed 15 focused GPUI checks, strict GPUI Clippy and nightly formatting. The shared notice fixture fails before the repair because its detail extends beyond a 280-point viewport; the final fixture checks 280- and 420-point widths with inline and stacked text. The checks also cover notice and review placement inside the input bar, confirmation, cancellation, parent-managed drafts, archive, failed startup and queued reconnect behavior. Exact selectors, source hashes and limits are in `provider_recovery.layout_repair` in the [retained evidence index](../../automations/upstream/retained-evidence.json). These are local presentation checks, not a new native-artifact qualification.
+The disabled-input and direct-Fork follow-up passed 18 focused GPUI checks, strict GPUI Clippy and nightly formatting. The checks cover 280- and 420-point wrapping, contained actions, direct provider-fork submission after source preparation, durable intent, retained recovery, parent-managed drafts, archive, failed startup and queued reconnect behavior. Input-bar Fork has no second confirmation or Cancel control. The earlier overflow reproduction remains historical evidence in PR 2583. Exact selectors, source hashes and limits are in `provider_recovery.layout_repair` in the [retained evidence index](../../automations/upstream/retained-evidence.json). These checks do not qualify a new native artifact.
