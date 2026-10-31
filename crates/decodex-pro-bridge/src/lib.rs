@@ -236,13 +236,20 @@ impl ProBridge {
 	pub async fn probe_existing(&self, profile: &std::path::Path) -> Result<Connection> {
 		let store = store::Store::open(&self.root)?;
 		let _lease = store.execution_lease()?.ok_or("Another research probe is running.")?;
-		let mut browser = chrome::Chrome::attach_existing(profile).await?;
+		let mut session = self.connect_existing(profile).await?;
+		let browser = &mut session.browser;
 		let result = async {
 			browser.open(None, Some("https://chatgpt.com/"), false).await?;
-			let connected = page::connection(&mut browser, Duration::from_secs(15)).await?;
+			let connected = page::connection(browser, Duration::from_secs(15)).await?;
 			if connected.state == ConnectionState::Connected {
-				page::select_pro(&mut browser).await?;
-				return page::connection(&mut browser, Duration::ZERO).await;
+				browser
+					.command(
+						"Emulation.setFocusEmulationEnabled",
+						serde_json::json!({"enabled":true}),
+					)
+					.await?;
+				page::select_pro(browser).await?;
+				return page::connection(browser, Duration::ZERO).await;
 			}
 			Ok(connected)
 		}
@@ -257,10 +264,15 @@ impl ProBridge {
 	/// Request Chrome's own approval for one persistent connection. This does not
 	/// change browser settings, inspect existing pages or start a new Chrome process.
 	pub async fn connect_existing(&self, profile: &std::path::Path) -> Result<ResearchSession> {
-		Ok(ResearchSession {
-			bridge: self.clone(),
-			browser: chrome::Chrome::attach_existing(profile).await?,
-		})
+		let mut cancelled = self.cancelled.subscribe();
+		if *cancelled.borrow() {
+			return Err("Browser connection was cancelled.".into());
+		}
+		let browser = tokio::select! {
+			result = chrome::Chrome::attach_existing(profile) => result?,
+			_ = cancelled.changed() => return Err("Browser connection was cancelled.".into()),
+		};
+		Ok(ResearchSession { bridge: self.clone(), browser })
 	}
 
 	/// Close only the dedicated Chrome. Request records and login state remain.

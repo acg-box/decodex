@@ -13,7 +13,7 @@ use futures_util::{SinkExt as _, StreamExt as _};
 use serde_json::{Value, json};
 use tokio::{
 	net::TcpStream,
-	time::{Instant, sleep, timeout, timeout_at},
+	time::{Instant, sleep, timeout},
 };
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream, tungstenite::Message};
 
@@ -35,20 +35,13 @@ impl Chrome {
 	/// change its launch options, profile settings, cookies or automation signals.
 	pub async fn attach_existing(profile: &Path) -> Result<Self> {
 		let endpoint = endpoint(profile).map_err(|_| "Open Chrome and enable Remote Debugging at chrome://inspect/#remote-debugging before requesting a connection.")?;
-		let deadline = Instant::now() + Duration::from_secs(5 * 60);
-		let mut browser = timeout_at(deadline, Self::attach(&endpoint)).await.map_err(
-			|_| "Timed out waiting for Chrome connection approval. No page was opened.",
-		)??;
+		// This is a human confirmation boundary, not an ordinary request timeout.
+		// The owner can cancel it; returning to Chrome later must not invalidate it.
+		let mut browser = Self::attach(&endpoint).await?;
 		browser.owned = false;
 		// Some Chrome versions accept the socket before resolving the approval UI.
 		// Keep the same connection and let Chrome allow or refuse the first command.
-		browser
-			.command_with_timeout(
-				"Browser.getVersion",
-				json!({}),
-				deadline.saturating_duration_since(Instant::now()),
-			)
-			.await?;
+		browser.command_with_timeout("Browser.getVersion", json!({}), None).await?;
 		Ok(browser)
 	}
 
@@ -150,14 +143,14 @@ impl Chrome {
 	}
 
 	pub async fn command(&mut self, method: &str, params: Value) -> Result<Value> {
-		self.command_with_timeout(method, params, Duration::from_secs(30)).await
+		self.command_with_timeout(method, params, Some(Duration::from_secs(30))).await
 	}
 
 	async fn command_with_timeout(
 		&mut self,
 		method: &str,
 		params: Value,
-		wait: Duration,
+		wait: Option<Duration>,
 	) -> Result<Value> {
 		self.next_id += 1;
 		let id = self.next_id;
@@ -169,7 +162,7 @@ impl Chrome {
 			.send(Message::Text(request.to_string().into()))
 			.await
 			.map_err(|e| format!("Chrome disconnected: {e}"))?;
-		timeout(wait, async {
+		let response = async {
 			loop {
 				let message = self
 					.socket
@@ -187,11 +180,13 @@ impl Chrome {
 				}
 				self.event(&value);
 			}
-		})
-		.await
-		.map_err(|_| {
-			format!("Chrome timed out during {method}. The saved request can be resumed.")
-		})?
+		};
+		match wait {
+			Some(wait) => timeout(wait, response).await.map_err(|_| {
+				format!("Chrome timed out during {method}. The saved request can be resumed.")
+			})?,
+			None => response.await,
+		}
 	}
 
 	fn event(&mut self, value: &Value) {
@@ -462,6 +457,42 @@ mod tests {
 	}
 
 	#[tokio::test]
+	async fn waiting_for_user_approval_can_be_cancelled_without_opening_a_page() {
+		let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+		let port = listener.local_addr().unwrap().port();
+		let profile = tempfile::tempdir().unwrap();
+		fs::write(
+			profile.path().join("DevToolsActivePort"),
+			format!("{port}\n/devtools/browser/pending\n"),
+		)
+		.unwrap();
+		let (reached, pending) = tokio::sync::oneshot::channel();
+		let server = tokio::spawn(async move {
+			let (stream, _) = listener.accept().await.unwrap();
+			let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
+			let frame = socket.next().await.unwrap().unwrap();
+			let command: Value = serde_json::from_str(frame.to_text().unwrap()).unwrap();
+			assert_eq!(command["method"], "Browser.getVersion");
+			reached.send(()).unwrap();
+			let next = socket.next().await;
+			assert!(
+				!matches!(next, Some(Ok(Message::Text(_)))),
+				"Cancellation must not issue another browser command"
+			);
+		});
+		let state = tempfile::tempdir().unwrap();
+		let bridge = crate::ProBridge::new(Config::default(), state.path()).unwrap();
+		let owned = bridge.clone();
+		let profile = profile.path().to_path_buf();
+		let waiter = tokio::spawn(async move { owned.connect_existing(&profile).await });
+		pending.await.unwrap();
+		bridge.cancel();
+		let outcome = timeout(Duration::from_secs(1), waiter).await.unwrap().unwrap();
+		assert!(matches!(outcome, Err(error) if error.contains("cancelled")));
+		server.await.unwrap();
+	}
+
+	#[tokio::test]
 	#[ignore = "Runs installed Chrome in a new headless test profile. No account or network requests."]
 	async fn managed_browser_retains_owned_tab_across_cdp_disconnect() {
 		let directory = tempfile::tempdir().unwrap();
@@ -482,9 +513,25 @@ mod tests {
 			if second.target.as_deref() != Some(target.as_str()) || second.evaluate("globalThis.recoveryMarker").await? != "kept" {
 				return Err("The recovered browser target changed.".into());
 			}
+			// The current picker is disabled while it loads, then exposes a keyboard
+			// Power control. A visible shell alone must not qualify as ready.
+			second.evaluate(r#"document.body.innerHTML='<div id="prompt-textarea" contenteditable="true"></div><button data-testid="model-switcher-dropdown-button" disabled>Medium</button>';
+                const trigger=document.querySelector('button');trigger.innerHTML='Medium<span aria-hidden="true"> Pro</span>';
+                setTimeout(()=>{trigger.disabled=false},50);
+                trigger.onpointerdown=()=>{
+                  trigger.setAttribute('aria-expanded','true');
+                  const power=document.createElement('div');power.setAttribute('role','menuitem');power.setAttribute('aria-label','Power');power.setAttribute('data-reasoning-slider','true');power.tabIndex=0;
+                  power.innerHTML='<span role="slider" aria-valuenow="1" aria-valuemax="4"></span>';
+                  power.onkeydown=e=>{if(e.key==='ArrowRight'){const slider=power.firstChild;const n=Math.min(4,Number(slider.getAttribute('aria-valuenow'))+1);slider.setAttribute('aria-valuenow',String(n));trigger.innerText=['Light','Medium','High','Extended','Pro'][n];trigger.setAttribute('data-selected-reasoning-effort',n===4?'pro':'other')}if(e.key==='Escape'){power.remove();trigger.setAttribute('aria-expanded','false')}};
+                  document.body.append(power);
+                };true"#).await?;
+			crate::page::ready(&mut second).await?;
+			if second.evaluate("document.querySelector('button').disabled").await? != false { return Err("A disabled model picker was treated as ready.".into()); }
+			crate::page::select_pro(&mut second).await?;
+			if second.evaluate("document.querySelector('button').getAttribute('data-selected-reasoning-effort')").await? != "pro" { return Err("The Power picker did not select Pro.".into()); }
 			// Exercise real Chromium input and result extraction without a provider account.
 			second.evaluate(r#"document.body.innerHTML='<div id="prompt-textarea" contenteditable="true"></div><button data-testid="model-switcher-dropdown-button">Instant</button><button data-testid="send-button">Send</button>';
-                document.querySelector('[data-testid="model-switcher-dropdown-button"]').onclick=()=>{
+                document.querySelector('[data-testid="model-switcher-dropdown-button"]').onpointerdown=()=>{
                   const choice=document.createElement('button');choice.setAttribute('role','menuitem');choice.innerText='Pro';
                   choice.onclick=()=>{document.querySelector('[data-testid="model-switcher-dropdown-button"]').innerText='Pro';choice.remove()};document.body.append(choice);
                 };true"#).await?;
@@ -492,6 +539,9 @@ mod tests {
 			let store = Store::open(directory.path())?;
 			let record = store.prepare(crate::Request { id:"unicode-input".into(), prompt:"研究资料🧪".repeat(20_000), previous:None })?;
 			let material = store.material(&record)?;
+			second.evaluate("document.querySelector('#prompt-textarea').innerText='Unrelated draft';true").await?;
+			if crate::page::fill(&mut second, &material).await.is_ok() { return Err("A different draft was overwritten.".into()); }
+			second.evaluate("document.querySelector('#prompt-textarea').innerHTML='<p><br class=ProseMirror-trailingBreak></p>';true").await?;
 			crate::page::fill(&mut second, &material).await?;
 			second.evaluate(r#"document.querySelector('[data-testid="send-button"]').onclick=()=>{globalThis.sends=(globalThis.sends??0)+1};true"#).await?;
 			crate::page::send(&mut second).await?;

@@ -144,6 +144,11 @@ async fn execute(
 		browser.command("Page.reload", serde_json::json!({})).await?;
 	}
 	page::ready(browser).await?;
+	// Keep this owned page responsive without activating a browser tab. Chrome's
+	// normal focus emulation lets React menus and streamed content render offscreen.
+	browser
+		.command("Emulation.setFocusEmulationEnabled", serde_json::json!({"enabled":true}))
+		.await?;
 	if record.receipt.phase == Phase::Prepared {
 		let observed = page::observe(browser).await?;
 		validate_before_send(record, &observed)?;

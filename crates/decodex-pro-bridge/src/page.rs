@@ -1,7 +1,7 @@
 //! Small ChatGPT UI adapter. Page selectors are separate from durable workflow state.
 
 use serde::Deserialize;
-use serde_json::json;
+use serde_json::{Value, json};
 use tokio::time::{Instant, sleep};
 use url::Url;
 
@@ -42,7 +42,6 @@ impl Message {
 #[derive(Clone, Debug, Deserialize)]
 pub(crate) struct Observation {
 	pub url: String,
-	pub model: String,
 	pub generating: bool,
 	pub messages: Vec<Message>,
 	#[serde(default)]
@@ -56,7 +55,7 @@ pub(crate) async fn connection(
 	let deadline = Instant::now() + wait;
 	loop {
 		let state = browser.evaluate(&format!(r#"(()=>{{ {CONTROLS}
-            const ready=visible(editor)&&visible(model);
+            const ready=visible(editor)&&visible(model)&&!model.disabled&&model.getAttribute('aria-disabled')!=='true';
             const verification=!ready&&(!!document.querySelector('script[src*="/cdn-cgi/challenge-platform/"]')||
               (document.title==='Just a moment...'&&(document.body?.innerText??'').includes('Cloudflare')));
             return {{ready,verification,model:visible(model)?model.innerText:null,
@@ -100,35 +99,112 @@ pub(crate) async fn ready(browser: &mut Chrome) -> Result<()> {
 }
 
 pub(crate) async fn select_pro(browser: &mut Chrome) -> Result<()> {
-	let selected = observe(browser).await?.model;
-	if selected.trim().eq_ignore_ascii_case("pro")
-		|| selected.split_whitespace().last() == Some("Pro")
-	{
+	if pro_selected(browser).await? {
 		return Ok(());
 	}
-	browser.evaluate(&format!(r#"(()=>{{ {CONTROLS} if(!visible(model))throw Error('Model selector unavailable');model.click();return true; }})()"#)).await?;
+	let point = browser.evaluate(&format!(r#"(()=>{{ {CONTROLS} if(!visible(model)||model.disabled||model.getAttribute('aria-disabled')==='true')throw Error('Model selector unavailable');if(model.getAttribute('aria-expanded')==='true')return null;model.scrollIntoView({{block:'nearest',inline:'nearest'}});const r=model.getBoundingClientRect();return {{x:r.x+r.width/2,y:r.y+r.height/2}}; }})()"#)).await?;
+	if !point.is_null() {
+		click(browser, &point).await?;
+	}
 	// Read the visible menu. Never force an inaccessible option or edit React state.
-	sleep(std::time::Duration::from_millis(150)).await;
-	let result = browser.evaluate(r#"(()=>{
+	let deadline = Instant::now() + std::time::Duration::from_secs(3);
+	let result = loop {
+		let result = browser.evaluate(r#"(()=>{
         const visible=e=>e.getClientRects().length>0;
         const choices=Array.from(document.querySelectorAll('[role="menuitem"],[role="radio"],[role="option"],button'))
-          .filter(e=>visible(e)&&/^Pro(?:\s|$)/.test(e.innerText.trim()));
-        if(choices.length===1){choices[0].click();return {selected:true};}
-        const power=Array.from(document.querySelectorAll('[role="menuitem"],[role="slider"]'))
-          .find(e=>visible(e)&&/Power/i.test(e.getAttribute('aria-label')??e.innerText));
-        return {selected:false,power:!!power,options:Array.from(document.querySelectorAll('[role="menuitem"],[role="radio"],[role="option"]')).filter(visible).map(e=>(e.innerText||e.getAttribute('aria-label')||'').slice(0,160)).slice(0,16)};
+          .filter(e=>visible(e)&&!e.disabled&&e.getAttribute('aria-disabled')!=='true'&&/^Pro(?:\s|$)/.test(e.innerText.trim()));
+        if(choices.length===1){choices[0].scrollIntoView({block:'nearest',inline:'nearest'});const r=choices[0].getBoundingClientRect();return {point:{x:r.x+r.width/2,y:r.y+r.height/2}};}
+        const power=document.querySelector('[role="menuitem"][data-reasoning-slider][aria-label="Power"]');
+        return {power:!!power&&visible(power),options:Array.from(document.querySelectorAll('[role="menuitem"],[role="radio"],[role="option"]')).filter(visible).map(e=>(e.innerText||e.getAttribute('aria-label')||'').slice(0,160)).slice(0,16)};
     })()"#).await?;
-	if result["selected"] != true {
+		if result.get("point").is_some() || result["power"] == true || Instant::now() >= deadline {
+			break result;
+		}
+		sleep(std::time::Duration::from_millis(100)).await;
+	};
+	if let Some(point) = result.get("point") {
+		click(browser, point).await?;
+	} else if result["power"] == true {
+		select_pro_power(browser).await?;
+	} else {
 		return Err(format!(
 			"The visible ChatGPT model menu does not expose one unambiguous Pro option. No message was sent. Visible options: {}",
 			result["options"]
 		));
 	}
-	browser.evaluate("document.activeElement?.blur();true").await?;
-	sleep(std::time::Duration::from_millis(100)).await;
-	let selected = observe(browser).await?.model;
-	if !selected.split_whitespace().any(|part| part == "Pro") {
+	if !pro_selected(browser).await? {
 		return Err("ChatGPT did not retain the Pro selection. No message was sent.".into());
+	}
+	key(browser, "Escape", "Escape", 27).await?;
+	sleep(std::time::Duration::from_millis(300)).await;
+	if !pro_selected(browser).await? {
+		return Err("ChatGPT did not retain the Pro selection. No message was sent.".into());
+	}
+	Ok(())
+}
+
+async fn pro_selected(browser: &mut Chrome) -> Result<bool> {
+	let state = browser.evaluate(&format!(r#"(()=>{{ {CONTROLS}
+        if(!model)return false;
+        const label=model.cloneNode(true);label.querySelectorAll('[aria-hidden="true"]').forEach(e=>e.remove());
+        return /(^|\s)Pro($|\s)/.test(label.textContent??'');
+    }})()"#)).await?;
+	Ok(state == true)
+}
+
+async fn select_pro_power(browser: &mut Chrome) -> Result<()> {
+	let mut previous = None;
+	loop {
+		if pro_selected(browser).await? {
+			return Ok(());
+		}
+		let state = browser.evaluate(r#"(()=>{
+          const power=document.querySelector('[role="menuitem"][data-reasoning-slider][aria-label="Power"]');
+          const slider=power?.querySelector('[role="slider"]');
+          if(!power||!slider||power.getAttribute('aria-disabled')==='true'||power.querySelector('[data-locked="true"]'))return null;
+          power.focus({preventScroll:true});
+          return {value:Number(slider.getAttribute('aria-valuenow')),max:Number(slider.getAttribute('aria-valuemax'))};
+        })()"#).await?;
+		let Some(value) = state["value"].as_u64() else {
+			return Err("ChatGPT's Power control is unavailable. No message was sent.".into());
+		};
+		let Some(max) = state["max"].as_u64().filter(|max| *max <= 16) else {
+			return Err("ChatGPT's Power range could not be read. No message was sent.".into());
+		};
+		if value >= max || previous == Some(value) {
+			return Err(
+				"Pro is not available through ChatGPT's Power control. No message was sent.".into(),
+			);
+		}
+		previous = Some(value);
+		key(browser, "ArrowRight", "ArrowRight", 39).await?;
+		sleep(std::time::Duration::from_millis(150)).await;
+	}
+}
+
+async fn key(browser: &mut Chrome, key: &str, code: &str, key_code: u32) -> Result<()> {
+	for kind in ["keyDown", "keyUp"] {
+		browser
+			.command(
+				"Input.dispatchKeyEvent",
+				json!({"type":kind,"key":key,"code":code,"windowsVirtualKeyCode":key_code}),
+			)
+			.await?;
+	}
+	Ok(())
+}
+
+async fn click(browser: &mut Chrome, point: &Value) -> Result<()> {
+	let x = point["x"]
+		.as_f64()
+		.filter(|value| value.is_finite())
+		.ok_or("The control is not visible.")?;
+	let y = point["y"]
+		.as_f64()
+		.filter(|value| value.is_finite())
+		.ok_or("The control is not visible.")?;
+	for (kind, buttons) in [("mouseMoved", 0), ("mousePressed", 1), ("mouseReleased", 0)] {
+		browser.command("Input.dispatchMouseEvent", json!({"type":kind,"x":x,"y":y,"button":if kind=="mouseMoved" {"none"} else {"left"},"buttons":buttons,"clickCount":1})).await?;
 	}
 	Ok(())
 }
@@ -148,8 +224,13 @@ pub(crate) async fn fill(browser: &mut Chrome, material: &Material) -> Result<()
     }})()"#
 		))
 		.await?;
-	if draft.as_str().is_some_and(|draft| !draft.is_empty() && !text.starts_with(draft)) {
-		return Err("The owned composer has a different draft. No message was sent.".into());
+	if let Some(draft) =
+		draft.as_str().filter(|draft| !draft.trim().is_empty() && !text.starts_with(*draft))
+	{
+		return Err(format!(
+			"The owned composer has a different draft ({} non-whitespace characters). No message was sent.",
+			draft.trim().chars().count()
+		));
 	}
 	// CDP inserts ordinary text through Chromium's input path, without clipboard or paste
 	// attachments.
@@ -182,8 +263,8 @@ pub(crate) async fn fill(browser: &mut Chrome, material: &Material) -> Result<()
 }
 
 pub(crate) async fn send(browser: &mut Chrome) -> Result<()> {
-	browser.evaluate(&format!(r#"(()=>{{ {CONTROLS} if(!visible(send)||send.disabled)throw Error('Send unavailable');send.click();return true; }})()"#)).await?;
-	Ok(())
+	let point = browser.evaluate(&format!(r#"(()=>{{ {CONTROLS} if(!visible(send)||send.disabled)throw Error('Send unavailable');send.scrollIntoView({{block:'nearest',inline:'nearest'}});const r=send.getBoundingClientRect();return {{x:r.x+r.width/2,y:r.y+r.height/2}}; }})()"#)).await?;
+	click(browser, &point).await
 }
 
 pub(crate) async fn observe(browser: &mut Chrome) -> Result<Observation> {
@@ -210,7 +291,7 @@ pub(crate) async fn observe_request(browser: &mut Chrome, id: &str) -> Result<Ob
             codeBlocks:role==='assistant'?Array.from(body.querySelectorAll('pre code')).map(c=>c.textContent):[],
             links:role==='assistant'?Array.from(body.querySelectorAll('a[href]')).map(a=>({{label:a.innerText,url:a.href}})):[]}};
         }}).filter(m=>m.role==='user'||m.role==='assistant');
-        return {{url:location.href,model:model?.innerText??'',generating,messages,
+        return {{url:location.href,generating,messages,
             notices:Array.from(document.querySelectorAll('[role="alert"],[role="alertdialog"]')).map(e=>e.innerText).filter(Boolean)}};
     }})()"#)).await?;
 	let mut observation: Observation =

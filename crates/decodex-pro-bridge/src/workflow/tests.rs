@@ -22,7 +22,6 @@ fn observation(messages: Vec<Message>, generating: bool) -> Observation {
 	Observation {
 		notices: Vec::new(),
 		url: "https://chatgpt.com/c/owned".into(),
-		model: "Pro".into(),
 		generating,
 		messages,
 	}

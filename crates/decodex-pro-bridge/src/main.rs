@@ -123,13 +123,17 @@ async fn run(cli: Cli) -> Result<()> {
 			Action::VerifyExisting { user_data_dir, first_prompt, follow_up } => {
 				let first_text = fs::read_to_string(first_prompt).map_err(|e| e.to_string())?;
 				let follow_up_text = fs::read_to_string(follow_up).map_err(|e| e.to_string())?;
+				let first = "existing-chrome-first";
+				let second = "existing-chrome-followup";
+				let request = Request { id: first.into(), prompt: first_text, previous: None };
+				bridge.prepare(request.clone())?;
+				print_json(
+					&serde_json::json!({"event":"waiting_for_browser_approval","requestId":first}),
+				)?;
 				let mut session = bridge.connect_existing(&user_data_dir).await?;
+				print_json(&serde_json::json!({"event":"browser_connected","requestId":first}))?;
 				let result: Result<()> = async {
-					let first = "existing-chrome-first";
-					let second = "existing-chrome-followup";
-					let receipt = session
-						.ask(Request { id: first.into(), prompt: first_text, previous: None })
-						.await?;
+					let receipt = session.ask(request).await?;
 					print_json(&receipt)?;
 					let receipt = session
 						.ask(Request {
