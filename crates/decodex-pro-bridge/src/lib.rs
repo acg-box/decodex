@@ -27,8 +27,10 @@
 //! Supply an absolute private `--state-dir` and, if needed, `--extension-instance`.
 //!
 //! The opt-in `installed_official_runtime_selects_pro_in_background` test uses
-//! `DECODEX_PRO_LIVE_APP` and `DECODEX_PRO_LIVE_EXTENSION`. It operates one temporary
-//! test tab and sends no ChatGPT message. Normal tests do not use the account or browser.
+//! `DECODEX_PRO_LIVE_APP` and, when discovery is ambiguous, `DECODEX_PRO_LIVE_EXTENSION`.
+//! `DECODEX_PRO_LIVE_CODEX` can select an existing native component for comparison.
+//! It operates one temporary test tab and sends no ChatGPT message. Normal tests do not
+//! use the account or browser.
 
 mod native;
 mod page;

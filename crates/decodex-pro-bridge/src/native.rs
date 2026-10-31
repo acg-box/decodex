@@ -100,7 +100,14 @@ impl NativeSession {
 			// Thread config uses native dotted paths, not the CLI's TOML key parser.
 			overrides.insert(format!("mcp_servers.{name}.enabled"), json!(false));
 		}
-		let thread = self.rpc("thread/start", json!({"cwd":cwd,"ephemeral":true,"config":overrides,
+		// This component owns Chrome tabs, not desktop-app browser surfaces.
+		overrides.insert(
+			format!("mcp_servers.{}.env.BROWSER_USE_AVAILABLE_BACKENDS", self.server),
+			json!("chrome"),
+		);
+		let models = self.rpc("model/list", json!({})).await?;
+		let model = default_controller_model(&models)?;
+		let thread = self.rpc("thread/start", json!({"cwd":cwd,"ephemeral":true,"config":overrides,"model":model,
 			"dynamicTools":[{"type":"function","name":CONTROL_TOOL,
 				"description":"Run the user-authorized ChatGPT Pro request through the local Rust client. Call after recording genuine native metadata.",
 				"inputSchema":{"type":"object","properties":{},"additionalProperties":false}}]})).await?;
@@ -257,6 +264,15 @@ impl NativeSession {
 	}
 }
 
+fn default_controller_model(catalog: &Value) -> Result<&str> {
+	catalog["data"]
+		.as_array()
+		.and_then(|models| models.iter().find(|model| model["isDefault"] == true))
+		.and_then(|model| model["model"].as_str())
+		.filter(|model| !model.is_empty())
+		.ok_or_else(|| "The native runtime did not report its default controller model.".into())
+}
+
 fn control_turn_params(thread: &str, prompt: &str, origin: ControlOrigin) -> Value {
 	match origin {
 		ControlOrigin::User => json!({"threadId":thread,"effort":"low","turnTrigger":"user",
@@ -277,9 +293,20 @@ fn event_failure(event: &ServerEvent, thread: Option<&str>, turn: Option<&str>) 
 			Some(format!("A native user decision is required: {method}.")),
 		ServerEvent::Notification { method, params } if params["threadId"].as_str() == thread =>
 			if method == "turn/completed" && params["turn"]["id"].as_str() == turn {
-				Some("The native control turn ended before the browser request completed.".into())
+				Some(match params["turn"]["error"]["message"].as_str() {
+					Some(message) => format!(
+						"The native control turn failed: {message}\nNo browser request was replayed."
+					),
+					None =>
+						"The native control turn ended before the browser request completed.".into(),
+				})
 			} else if method == "error" && params["willRetry"] != true {
-				Some("The native control turn failed. No browser request was replayed.".into())
+				let message = params["error"]["message"]
+					.as_str()
+					.unwrap_or("The native runtime did not report an error detail.");
+				Some(format!(
+					"The native control turn failed: {message}\nNo browser request was replayed."
+				))
 			} else {
 				None
 			},

@@ -187,11 +187,6 @@ fn select_browser<'a>(browsers: &'a [Value], instance: Option<&str>) -> Result<&
 	if candidates.len() == 1 {
 		return Ok(candidates[0]);
 	}
-	let named: Vec<_> =
-		candidates.iter().filter(|browser| browser["profileName"] == "Your Chrome").collect();
-	if instance.is_none() && named.len() == 1 {
-		return Ok(named[0]);
-	}
 	Err(if candidates.is_empty() && instance.is_some() {
 		"The required Chrome extension instance is not connected. Reconnect its original profile; no other profile was selected."
 	} else if candidates.is_empty() {

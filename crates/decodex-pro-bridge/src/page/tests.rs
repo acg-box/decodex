@@ -24,7 +24,7 @@ fn recovery_accepts_only_exact_canonical_chatgpt_conversations() {
 #[test]
 fn multiple_browsers_need_an_explicit_instance_instead_of_an_arbitrary_first_profile() {
 	let browsers = vec![
-		json!({"id":"1","type":"extension","family":"chrome","metadata":{"extensionInstanceId":"first"}}),
+		json!({"id":"1","type":"extension","family":"chrome","profileName":"Your Chrome","metadata":{"extensionInstanceId":"first"}}),
 		json!({"id":"2","type":"extension","family":"chrome","metadata":{"extensionInstanceId":"second"}}),
 	];
 	assert!(select_browser(&browsers, None).is_err());

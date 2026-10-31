@@ -5,13 +5,15 @@ use serde_json::{Value, json};
 use crate::{Config, Result, native::NativeSession, page};
 
 #[tokio::test]
-#[ignore = "Requires DECODEX_PRO_LIVE_APP, DECODEX_PRO_LIVE_EXTENSION, and signed-in Chrome. Operates one owned test tab; no message is sent."]
+#[ignore = "Requires DECODEX_PRO_LIVE_APP and signed-in Chrome. Set DECODEX_PRO_LIVE_EXTENSION when discovery is ambiguous. Operates one owned test tab; no message is sent."]
 async fn installed_official_runtime_selects_pro_in_background() {
 	let mut config = Config::installed_app(
 		std::env::var_os("DECODEX_PRO_LIVE_APP").expect("installed app path"),
 	);
-	config.extension_instance =
-		Some(std::env::var("DECODEX_PRO_LIVE_EXTENSION").expect("exact Chrome extension instance"));
+	config.extension_instance = std::env::var("DECODEX_PRO_LIVE_EXTENSION").ok();
+	if let Some(codex) = std::env::var_os("DECODEX_PRO_LIVE_CODEX") {
+		config.codex = codex.into();
+	}
 	let directory = tempfile::tempdir().expect("private test directory");
 	let mut native =
 		NativeSession::spawn(&config, directory.path()).expect("spawn official runtime");

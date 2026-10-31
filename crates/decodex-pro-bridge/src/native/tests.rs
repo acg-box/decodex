@@ -1,6 +1,10 @@
 use serde_json::{Value, json};
 
-use super::{control_turn_params, native_metadata, tool_text};
+use decodex_codex::app_server_client::ServerEvent;
+
+use super::{
+	control_turn_params, default_controller_model, event_failure, native_metadata, tool_text,
+};
 use crate::ControlOrigin;
 
 #[test]
@@ -55,4 +59,36 @@ fn an_official_review_rejection_is_not_converted_to_a_success_or_retried() {
 	let result =
 		json!({"isError":true,"content":[{"type":"text","text":"Explicit approval required."}]});
 	assert!(tool_text(&result).expect_err("rejected").contains("Explicit approval required"));
+}
+
+#[test]
+fn native_failures_keep_the_reported_reason_and_ignore_other_threads() {
+	for (method, params) in [
+		(
+			"error",
+			json!({"threadId":"owned","willRetry":false,"error":{"message":"Native account is unavailable"}}),
+		),
+		(
+			"turn/completed",
+			json!({"threadId":"owned","turn":{"id":"turn","error":{"message":"Native account is unavailable"}}}),
+		),
+	] {
+		let event = ServerEvent::Notification { method: method.into(), params };
+		assert!(
+			event_failure(&event, Some("owned"), Some("turn"))
+				.expect("native failure")
+				.contains("Native account is unavailable")
+		);
+		assert!(event_failure(&event, Some("different"), Some("turn")).is_none());
+	}
+}
+
+#[test]
+fn controller_uses_the_native_default_instead_of_a_display_name_or_shared_config_alias() {
+	let catalog = json!({"data":[
+		{"id":"first","model":"other-native-model","displayName":"GPT Something","isDefault":false},
+		{"id":"default","model":"native-controller","displayName":"GPT Default","isDefault":true}
+	]});
+	assert_eq!(default_controller_model(&catalog).expect("native default"), "native-controller");
+	assert!(default_controller_model(&json!({"data":[]})).is_err());
 }
