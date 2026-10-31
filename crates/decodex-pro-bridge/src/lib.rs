@@ -142,7 +142,7 @@ pub struct Link {
 	pub url: String,
 }
 
-/// Complete DOM-backed answer, with code and links retained separately.
+/// Complete answer, using original response text when available and retaining code and links.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Answer {

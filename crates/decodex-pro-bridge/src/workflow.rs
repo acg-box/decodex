@@ -165,6 +165,7 @@ async fn execute(
 	let deadline = Instant::now() + bridge.config.answer_timeout;
 	let submission_deadline = Instant::now() + std::time::Duration::from_secs(30);
 	let mut previous_answer = None;
+	let mut refreshed_final = false;
 	loop {
 		if record.receipt.phase == Phase::Sending
 			&& record.receipt.conversation_url.is_none()
@@ -177,6 +178,24 @@ async fn execute(
 		}
 		let mut observed = page::observe_request(browser, &record.request.id).await?;
 		wait_for_stable_answer(&mut observed, &mut previous_answer);
+		// A stream can contain deltas instead of a final message. Read the same
+		// completed conversation once to recover its original text and model fields.
+		if !refreshed_final
+			&& record.receipt.conversation_url.is_some()
+			&& observed.messages.last().is_some_and(|message| {
+				message.role == "assistant"
+					&& message.complete
+					&& (!browser.messages.get(&message.id).is_some_and(|native| native.complete)
+						|| !browser
+							.identities
+							.iter()
+							.any(|identity| identity.message_id == message.id))
+			}) {
+			refreshed_final = true;
+			browser.command("Page.reload", serde_json::json!({})).await?;
+			page::ready(browser).await?;
+			continue;
+		}
 		let before = serde_json::to_vec(&record.receipt).map_err(|e| e.to_string())?;
 		if let Some(identity) = browser.identities.iter().rev().find(|identity| {
 			observed.messages.last().is_some_and(|message| {

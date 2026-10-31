@@ -2,7 +2,7 @@
 //! Borrowed browsers are disconnected, never terminated.
 
 use std::{
-	collections::BTreeSet,
+	collections::{BTreeMap, BTreeSet},
 	fs,
 	path::Path,
 	process::{Command, Stdio},
@@ -25,9 +25,11 @@ pub(crate) struct Chrome {
 	next_id: u64,
 	session: Option<String>,
 	pub target: Option<String>,
+	conversation_url: Option<String>,
 	responses: BTreeSet<String>,
 	finished: BTreeSet<String>,
 	pub identities: Vec<ExecutionIdentity>,
+	pub messages: BTreeMap<String, crate::identity::NativeMessage>,
 }
 
 impl Chrome {
@@ -136,9 +138,11 @@ impl Chrome {
 			next_id: 0,
 			session: None,
 			target: None,
+			conversation_url: None,
 			responses: BTreeSet::new(),
 			finished: BTreeSet::new(),
 			identities: Vec::new(),
+			messages: BTreeMap::new(),
 		})
 	}
 
@@ -196,7 +200,27 @@ impl Chrome {
 		let params = &value["params"];
 		let Some(id) = params["requestId"].as_str() else { return };
 		match value["method"].as_str() {
-			Some("Network.responseReceived") if conversation_response(&params["response"]) => {
+			Some("Network.requestWillBeSent")
+				if params["request"]["method"] == "POST"
+					&& params["request"]["url"].as_str().is_some_and(|url| {
+						conversation_endpoint(url, self.conversation_url.as_deref())
+					}) =>
+			{
+				if let Some(body) = params["request"]["postData"].as_str() {
+					// Observe only the user message the page actually submitted. Requested
+					// models and assistant context in a request never prove execution identity.
+					for message in crate::identity::from_response(body)
+						.messages
+						.into_iter()
+						.filter(|message| message.role == "user")
+					{
+						self.messages.insert(message.id.clone(), message);
+					}
+				}
+			},
+			Some("Network.responseReceived")
+				if conversation_response(&params["response"], self.conversation_url.as_deref()) =>
+			{
 				self.responses.insert(id.into());
 			},
 			Some("Network.loadingFinished") if self.responses.contains(id) => {
@@ -221,6 +245,7 @@ impl Chrome {
 		url: Option<&str>,
 		visible: bool,
 	) -> Result<()> {
+		self.bind_conversation_url(url.unwrap_or_default());
 		let targets = self.command("Target.getTargets", json!({})).await?;
 		let existing = saved_target.and_then(|id| {
 			targets["targetInfos"]
@@ -247,6 +272,10 @@ impl Chrome {
 		self.session = Some(
 			attached["sessionId"].as_str().ok_or("Chrome returned no session identity.")?.into(),
 		);
+		self.responses.clear();
+		self.finished.clear();
+		self.identities.clear();
+		self.messages.clear();
 		self.command("Page.enable", json!({})).await?;
 		self.command("Runtime.enable", json!({})).await?;
 		self.command("Network.enable", json!({})).await?;
@@ -279,6 +308,10 @@ impl Chrome {
 		Ok(result["result"]["value"].clone())
 	}
 
+	pub fn bind_conversation_url(&mut self, url: &str) {
+		self.conversation_url = crate::page::conversation_url(url).ok();
+	}
+
 	pub async fn collect_identity(&mut self) -> Result<()> {
 		for id in std::mem::take(&mut self.finished) {
 			self.responses.remove(&id);
@@ -287,7 +320,17 @@ impl Chrome {
 				&& body["base64Encoded"] != true
 				&& let Some(body) = body["body"].as_str()
 			{
-				self.identities.extend(crate::identity::from_response(body));
+				let data = crate::identity::from_response(body);
+				self.identities.extend(data.identities);
+				for message in data.messages {
+					if !self
+						.messages
+						.get(&message.id)
+						.is_some_and(|known| known.complete && !message.complete)
+					{
+						self.messages.insert(message.id.clone(), message);
+					}
+				}
 			}
 		}
 		Ok(())
@@ -363,14 +406,20 @@ fn endpoint(profile: &Path) -> Result<String> {
 	Ok(format!("ws://127.0.0.1:{port}{path}"))
 }
 
-fn conversation_response(response: &Value) -> bool {
+fn conversation_response(response: &Value, owned: Option<&str>) -> bool {
 	let Some(raw) = response["url"].as_str() else { return false };
+	conversation_endpoint(raw, owned) && response["status"].as_u64() == Some(200)
+}
+
+fn conversation_endpoint(raw: &str, owned: Option<&str>) -> bool {
 	let Ok(url) = url::Url::parse(raw) else { return false };
 	url.scheme() == "https"
 		&& url.host_str() == Some("chatgpt.com")
 		&& url.path().starts_with("/backend-api/")
-		&& url.path().split('/').any(|part| part == "conversation")
-		&& response["status"].as_u64().is_some_and(|status| status == 200)
+		&& (url.path().split('/').any(|part| part == "conversation")
+			|| owned
+				.and_then(|url| url.strip_prefix("https://chatgpt.com/c/"))
+				.is_some_and(|id| url.path() == format!("/backend-api/conversations/{id}")))
 }
 
 #[cfg(test)]
@@ -393,14 +442,25 @@ mod tests {
 	#[test]
 	fn identity_capture_excludes_credentials_and_other_origins() {
 		assert!(conversation_response(
-			&json!({"url":"https://chatgpt.com/backend-api/conversation/one","status":200})
+			&json!({"url":"https://chatgpt.com/backend-api/conversation/one","status":200}),
+			None
+		));
+		assert!(conversation_response(
+			&json!({"url":"https://chatgpt.com/backend-api/conversations/owned-id","status":200}),
+			Some("https://chatgpt.com/c/owned-id")
 		));
 		for url in [
 			"https://chatgpt.com/backend-api/me",
 			"https://chatgpt.com/backend-api/conversations?limit=20",
+			"https://chatgpt.com/backend-api/conversations/",
+			"https://chatgpt.com/backend-api/conversations/owned-id/other",
+			"https://chatgpt.com/backend-api/conversations/another-id",
 			"https://chatgpt.com.evil.test/backend-api/conversation/one",
 		] {
-			assert!(!conversation_response(&json!({"url":url,"status":200})));
+			assert!(!conversation_response(
+				&json!({"url":url,"status":200}),
+				Some("https://chatgpt.com/c/owned-id")
+			));
 		}
 	}
 
@@ -453,6 +513,36 @@ mod tests {
 		let mut browser = Chrome::attach_existing(profile.path()).await.unwrap();
 		assert!(!browser.owned);
 		browser.close_browser().await.unwrap();
+		server.await.unwrap();
+	}
+
+	#[tokio::test]
+	async fn outgoing_requests_bind_input_but_never_supply_model_identity() {
+		let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+		let address = listener.local_addr().unwrap();
+		let server = tokio::spawn(async move {
+			let (stream, _) = listener.accept().await.unwrap();
+			let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
+			let _ = socket.next().await;
+		});
+		let mut browser =
+			Chrome::attach(&format!("ws://{address}/devtools/browser/test")).await.unwrap();
+		browser.session = Some("owned".into());
+		let body = json!({"model":"gpt-6-pro","messages":[
+			{"id":"user-1","author":{"role":"user"},"content":{"parts":["**Exact**\n\n\ninput"]}},
+			{"id":"assistant-context","author":{"role":"assistant"},"metadata":{"model_slug":"gpt-6-pro"}}
+		]});
+		let event = json!({"sessionId":"owned","method":"Network.requestWillBeSent","params":{"requestId":"request","request":{"url":"https://chatgpt.com/backend-api/f/conversation","method":"POST","postData":body.to_string(),"headers":{"Authorization":"never retain"}}}});
+		browser.event(&event);
+		assert_eq!(browser.messages["user-1"].text, "**Exact**\n\n\ninput");
+		assert!(browser.identities.is_empty());
+		assert!(!browser.messages.contains_key("assistant-context"));
+		let mut foreign = event;
+		foreign["sessionId"] = json!("foreign");
+		browser.messages.clear();
+		browser.event(&foreign);
+		assert!(browser.messages.is_empty());
+		drop(browser);
 		server.await.unwrap();
 	}
 

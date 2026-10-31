@@ -296,17 +296,64 @@ pub(crate) async fn observe_request(browser: &mut Chrome, id: &str) -> Result<Ob
     }})()"#)).await?;
 	let mut observation: Observation =
 		serde_json::from_value(value).map_err(|e| format!("ChatGPT page changed: {e}"))?;
+	browser.bind_conversation_url(&observation.url);
+	browser.collect_identity().await?;
 	for message in &mut observation.messages {
 		if message.id.is_empty() {
 			return Err("A rendered ChatGPT message has no identity yet.".into());
+		}
+		if let Some(native) = browser.messages.get(&message.id) {
+			apply_native_message(message, native);
 		}
 		if message.role == "user" {
 			message.text_sha256 = Some(crate::store::digest(message.text.trim().as_bytes()));
 			message.text.clear();
 		}
 	}
-	browser.collect_identity().await?;
 	Ok(observation)
+}
+
+fn apply_native_message(message: &mut Message, native: &crate::identity::NativeMessage) {
+	if message.id != native.id || message.role != native.role || !native.complete {
+		return;
+	}
+	message.text.clone_from(&native.text);
+	if message.role == "assistant" {
+		message.code_blocks = markdown_code_blocks(&native.text);
+	}
+}
+
+fn markdown_code_blocks(markdown: &str) -> Vec<String> {
+	let mut blocks = Vec::new();
+	let mut fence: Option<(u8, usize)> = None;
+	let mut content = String::new();
+	for line in markdown.split_inclusive('\n') {
+		let trimmed = line.trim_end_matches(['\r', '\n']);
+		let indent = trimmed.bytes().take_while(|byte| *byte == b' ').count();
+		let trimmed = &trimmed[indent..];
+		let marker = trimmed.as_bytes().first().copied();
+		let length =
+			marker.map_or(0, |marker| trimmed.bytes().take_while(|byte| *byte == marker).count());
+		let delimiter = indent <= 3 && matches!(marker, Some(b'`' | b'~')) && length >= 3;
+		if let Some((kind, open_length)) = fence {
+			if delimiter
+				&& marker == Some(kind)
+				&& length >= open_length
+				&& trimmed[length..].trim().is_empty()
+			{
+				blocks.push(std::mem::take(&mut content));
+				fence = None;
+			} else {
+				content.push_str(line);
+			}
+		} else if delimiter && (marker != Some(b'`') || !trimmed[length..].contains('`')) {
+			fence = Some((marker.unwrap(), length));
+		}
+	}
+	if fence.is_some() {
+		blocks.push(content);
+	}
+	blocks
 }
 
 pub(crate) fn conversation_url(raw: &str) -> Result<String> {
