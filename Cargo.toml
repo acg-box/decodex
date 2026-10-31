@@ -10,6 +10,7 @@ members = [
 	"crates/decodex-codex",
 	"crates/decodex-components",
 	"crates/decodex-core",
+	"crates/decodex-pro-bridge",
 	"crates/decodex-protocol",
 	"crates/decodex-runtime",
 	"crates/decodex-webrtc-build",

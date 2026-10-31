@@ -1,0 +1,19 @@
+[package]
+authors.workspace    = true
+description          = "Independent ChatGPT Pro component using the official Codex browser runtime."
+edition.workspace    = true
+homepage.workspace   = true
+license.workspace    = true
+name                 = "decodex-pro-bridge"
+repository.workspace = true
+version.workspace    = true
+
+[dependencies]
+clap          = { workspace = true }
+decodex-codex = { workspace = true }
+serde         = { workspace = true }
+serde_json    = { workspace = true }
+sha2          = { workspace = true }
+tempfile      = { workspace = true }
+tokio         = { workspace = true, features = ["io-util", "process"] }
+url           = { workspace = true }
