@@ -47,10 +47,10 @@ sources:
     resource: repo://scripts/macos/prepare_codex.mts
   - id: openwiki-source-3b57179b92b257bc3fff51a1
     resource: repo://scripts/macos/stage_decodex_app.sh
-generated: { by: "codex", at: "2026-10-31T16:06:25.983Z" }
+generated: { by: "codex", at: "2026-10-31T16:42:36.938Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-31T16:06:25.983Z
+    at: 2026-10-31T16:42:36.938Z
 ---
 
 
@@ -58,7 +58,7 @@ verified:
 
 ## Desired registration and authority
 
-The checked-in portfolio contains one upstream Maintainer, plus the separate Content Manager and Xurl Publisher. The earlier upstream Reviewer and Health role descriptions are historical. The repository keeps the upstream Maintainer **PAUSED** during manual catch-up and until explicit resume approval, with model `gpt-6.1-sol`, reasoning effort `max`, worktree execution and a daily UTC 20:05 schedule. Its prompt is `automations/upstream/prompts/maintainer.md`. A repository definition is not proof of host registration or execution. Verify host state through supported automation tools before changing it.
+The checked-in portfolio contains one upstream Maintainer, plus the separate Content Manager and Xurl Publisher. The earlier upstream Reviewer and Health role descriptions are historical. The portfolio enables the upstream Maintainer with model `gpt-6.1-sol`, reasoning effort `max`, worktree execution and the existing daily UTC 20:05 schedule. Pause it during manual catch-up and resume it only with explicit user authorization through the supported native tools. Its prompt is `automations/upstream/prompts/maintainer.md`. A repository definition is not proof of host registration or execution. Verify host state through supported automation tools before changing it.
 
 The checked-in prompt requires the automation to remain paused during manual catch-up. A completed catch-up or documentation update does not authorize resumption; that requires an explicit user instruction. When maintenance is authorized to run, existing-capability fixes may be implemented and merged after required checks; new product capabilities still require a user decision. Content publication has separate scope and is not part of upstream compatibility work.
 
@@ -132,7 +132,7 @@ The runtime lock can select an exact official source archive. Use the explicit d
 
 Read the development lock and linked current qualification for the selected source, component identities, executed identities and limits. Do not copy each daily target or cohort count into this procedure. A source test can select its own helpers; that result does not establish execution of the signed production artifact.
 
-The provider-recovery follow-up distinguishes native admission from an obsolete fixture expectation. A saved-provider conversation resumes after its provider is restored. The approved alternative creates a new native fork on the current provider through the existing review and receipt flow. Keep source-provider and history assertions, test both routes against the exact artifact, and record the revised contract separately from the earlier failure. The qualified development lock preserves that recovery route. Each later runtime update must pass the affected native consumer and component checks against the new artifact. Historical cohort passes remain bound to the original artifact and source scope. HumanCommand support is user-deferred in [issue 2585](https://github.com/acg-box/decodex/issues/2585), not a required daily implementation task. Keep it unsupported and unadvertised; runtime migration still requires qualification of the retained scope. Automation stays paused.
+The provider-recovery follow-up distinguishes native admission from an obsolete fixture expectation. A saved-provider conversation resumes after its provider is restored. The approved alternative creates a new native fork on the current provider through the existing review and receipt flow. Keep source-provider and history assertions, test both routes against the exact artifact, and record the revised contract separately from the earlier failure. The qualified development lock preserves that recovery route. Each later runtime update must pass the affected native consumer and component checks against the new artifact. Historical cohort passes remain bound to the original artifact and source scope. HumanCommand support is user-deferred in [issue 2585](https://github.com/acg-box/decodex/issues/2585), not a required daily implementation task. Keep it unsupported and unadvertised; runtime migration still requires qualification of the retained scope. Runtime qualification does not activate the schedule; explicit user authorization and native readback govern resumption.
 
 ## Retain evidence after artifact cleanup
 

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:7923493bc8cb571357943872f42945cc33c2fa3de155254dd1473233acd26883",
+  "pageVersion": "sha256:1b201e5d38655fcbf00d24beca58729f0a49b7c805b591dc6204154332411bf9",
   "claims": [
     {
       "id": "claim_b6c6b65984924f69970e7f0410d50903",
@@ -8,7 +8,7 @@
       "evidence": [
         {
           "resource": "repo://automations/portfolio.toml",
-          "version": "repo-file-v1:sha256:f12d49a70146b60d4e2230e7cc30c77eff56fc36eeccbc1b321df455abb49210"
+          "version": "repo-file-v1:sha256:4516f1b1a314f734812ae1e2516c223723945f99d0bcd3899428c5bb068957f5"
         },
         {
           "resource": "repo://automations/upstream/prompts/maintainer.md#L1-L3",
@@ -18,15 +18,15 @@
     },
     {
       "id": "claim_d1a992e40d1147c3928b5de580178ed5",
-      "statement": "The portfolio retains three native automation roles and keeps the upstream Maintainer PAUSED during manual catch-up and until explicit resume approval, preserving its daily cadence, model, reasoning effort and worktree execution.",
+      "statement": "The portfolio enables the upstream Maintainer with its existing daily UTC 20:05 cadence, model, reasoning effort and worktree execution. Manual catch-up requires a pause; explicit user authorization and the supported native tools control resumption.",
       "evidence": [
         {
           "resource": "repo://automations/portfolio.toml",
-          "version": "repo-file-v1:sha256:f12d49a70146b60d4e2230e7cc30c77eff56fc36eeccbc1b321df455abb49210"
+          "version": "repo-file-v1:sha256:4516f1b1a314f734812ae1e2516c223723945f99d0bcd3899428c5bb068957f5"
         },
         {
-          "resource": "repo://automations/upstream/prompts/maintainer.md#L1-L3",
-          "version": "repo-lines-v1:sha256:5ee9f284ed180ea5076618b07373423b1617c3d133f68e6495a64e5bdd684166:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOGNlMGVlMTJiZDEyMzEzZmVkMDMzMDllYjEzYWNmODQwOTBlZTI0NTVjMThlNGE2NWRlNjViZjRjMzBiNjdmNiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjIxNjdmODRlNzNiMzVkYWE0NjRhYWE2YmIwNGU2ZmYzNGU4OGU2MDkyMTliNWYyYWJjNTRkMGMyNzkyZmUzOSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjAsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNzU0ZTU4YjM0MDk1Mzg5ODJiMjY5YTc5NjcyZDliOTBmYmU2MTRjZjViZjcxNzkyZDVhYjViOWEzMjY2YzI0ZSJ9"
+          "resource": "repo://automations/upstream/prompts/maintainer.md",
+          "version": "repo-file-v1:sha256:01bebe4274c10a0d25c17ca9181cb005c26d18abaccde7e780505064f5189b3f"
         }
       ]
     },
@@ -200,7 +200,7 @@
       "evidence": [
         {
           "resource": "repo://automations/portfolio.toml",
-          "version": "repo-file-v1:sha256:f12d49a70146b60d4e2230e7cc30c77eff56fc36eeccbc1b321df455abb49210"
+          "version": "repo-file-v1:sha256:4516f1b1a314f734812ae1e2516c223723945f99d0bcd3899428c5bb068957f5"
         },
         {
           "resource": "repo://automations/upstream/retained-contracts.json",
@@ -304,8 +304,12 @@
     },
     {
       "id": "claim_f8b7e72801814c438d3346da5599617a",
-      "statement": "Each runtime update qualifies affected native consumers and components against the new artifact; earlier passes stay bound to their original artifact and source. The selected lock preserves provider recovery. HumanCommand stays user-deferred and Automation stays paused.",
+      "statement": "Each runtime update qualifies affected native consumers and components against the new artifact; earlier passes retain their original limits. The selected lock preserves provider recovery and HumanCommand stays user-deferred. Runtime qualification does not activate the schedule.",
       "evidence": [
+        {
+          "resource": "repo://automations/upstream/prompts/maintainer.md",
+          "version": "repo-file-v1:sha256:01bebe4274c10a0d25c17ca9181cb005c26d18abaccde7e780505064f5189b3f"
+        },
         {
           "resource": "repo://automations/upstream/qualification.json",
           "version": "repo-file-v1:sha256:62ef8102ea1a433678ab1c9819d83271f285de18d184bd43e36a68007d056018"
@@ -355,6 +359,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-31T16:06:25.983Z"
+    "at": "2026-10-31T16:42:36.938Z"
   }
 }

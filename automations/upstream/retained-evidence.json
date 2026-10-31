@@ -3191,8 +3191,8 @@
       "https://github.com/acg-box/decodex/commit/76d0172bfd9286c1f06889dad355a329a41356bc"
     ],
     "maintenance_workflow_delivery": "https://github.com/acg-box/decodex/pull/2573",
-    "native_schedule": "PAUSED; daily cadence preserved; explicit user authorization is required to resume.",
-    "scope": "The fixed 21-commit range is fully source-reviewed; the new development artifact and affected native regressions are qualified. Provider recovery remains retained. HumanCommand and shared MCP remain deferred. Automation stays paused.",
+    "native_schedule": "Daily cadence; use the native definition for current status. Pause during manual catch-up; resume only with explicit user authorization.",
+    "scope": "The fixed 21-commit range is fully source-reviewed; the new development artifact and affected native regressions are qualified. Provider recovery remains retained. HumanCommand and shared MCP remain deferred. Schedule status remains native-owned; explicit user authorization controls resumption.",
     "provider_resolution": "https://github.com/acg-box/decodex/issues/2575",
     "deferred_capability_issue": "https://github.com/acg-box/decodex/issues/2585"
   },

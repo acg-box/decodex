@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:2cf84f2e781f580d5fa89aaa4fa68ad92398d483bdbf3194ddacf8f12be84709",
+  "pageVersion": "sha256:eeef1c73bab313e1015c2ccd9dafe9bb77de6a6754b4392d8b73b4cbcc5a180d",
   "claims": [
     {
       "id": "claim_2dd4ad01dd984b80a22d9cb9c9bfd397",
@@ -856,7 +856,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:d553cb9db8a3a506038ff485a006d95eb0a4eca6293b6dfaefc44edc7f23cc23"
+          "version": "repo-file-v1:sha256:ec6e11128c0b0b5625486801b1057d517ae5a41756824534e9dfd71eb3e41bbe"
         }
       ]
     },
@@ -866,25 +866,21 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:d553cb9db8a3a506038ff485a006d95eb0a4eca6293b6dfaefc44edc7f23cc23"
+          "version": "repo-file-v1:sha256:ec6e11128c0b0b5625486801b1057d517ae5a41756824534e9dfd71eb3e41bbe"
         }
       ]
     },
     {
       "id": "claim_e1701086aa6349bfa5508e75ad68fe14",
-      "statement": "The Codex startup-configuration diagnostic control and helper are retired. Its previous executions remain historical evidence and impose no current regression requirement. Current validation covers Decodex product/integration behavior without advancing source review or activating the paused automation.",
+      "statement": "The Codex startup-configuration diagnostic control and helper are retired; earlier executions remain historical evidence and impose no current regression requirement. The retirement itself does not advance source review or change the native schedule.",
       "evidence": [
-        {
-          "resource": "repo://automations/portfolio.toml",
-          "version": "repo-file-v1:sha256:f12d49a70146b60d4e2230e7cc30c77eff56fc36eeccbc1b321df455abb49210"
-        },
         {
           "resource": "repo://automations/upstream/retained-contracts.json",
           "version": "repo-file-v1:sha256:b7dc0456127348fc734fc70c1e4a07842ddbcc64cea677c320dc52c8b0de2ec9"
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:d553cb9db8a3a506038ff485a006d95eb0a4eca6293b6dfaefc44edc7f23cc23"
+          "version": "repo-file-v1:sha256:ec6e11128c0b0b5625486801b1057d517ae5a41756824534e9dfd71eb3e41bbe"
         }
       ]
     },
@@ -894,7 +890,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json#L2055-L3464",
-          "version": "repo-lines-v1:sha256:cff4b093d9b92d715365d8c73f97fc30a12365ca3ea500678f3076ffcf24e6f3:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQxMCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZTBlNDg4OWNiNDBmMzBkZjE0YzkxNDU2NGZlYTljNzc2MjY5ZDg3YjRhN2U3NmZkNTcyZmU3MTg5Y2UzMjJmMCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjdlNTc4OGQ1ZDlkNzNkMjRhODFkYmMwYTVhNzRiZmE4MmM5YzNiM2FmOTllNTJhZjc5NmU5MGI0NjhhOGEzZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZjFmNTI4OGJiYzVjNzEzNjhhMmRjYmViM2ZkZWRiOWQ2NDZhNzZjNjU5MDUxY2ZjMzMzNDE5ZDRjYTM3ZjIxMiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjEsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSJ9"
+          "version": "repo-lines-v1:sha256:5455a3d02b7013d55734f2733a33da0d0c4220cc602c055cbfb12b30397bd0e7:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQxMCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZTBlNDg4OWNiNDBmMzBkZjE0YzkxNDU2NGZlYTljNzc2MjY5ZDg3YjRhN2U3NmZkNTcyZmU3MTg5Y2UzMjJmMCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjdlNTc4OGQ1ZDlkNzNkMjRhODFkYmMwYTVhNzRiZmE4MmM5YzNiM2FmOTllNTJhZjc5NmU5MGI0NjhhOGEzZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZjFmNTI4OGJiYzVjNzEzNjhhMmRjYmViM2ZkZWRiOWQ2NDZhNzZjNjU5MDUxY2ZjMzMzNDE5ZDRjYTM3ZjIxMiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjEsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSJ9"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_lookup_tests.rs",
@@ -916,7 +912,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:d553cb9db8a3a506038ff485a006d95eb0a4eca6293b6dfaefc44edc7f23cc23"
+          "version": "repo-file-v1:sha256:ec6e11128c0b0b5625486801b1057d517ae5a41756824534e9dfd71eb3e41bbe"
         }
       ]
     },
@@ -934,7 +930,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:d553cb9db8a3a506038ff485a006d95eb0a4eca6293b6dfaefc44edc7f23cc23"
+          "version": "repo-file-v1:sha256:ec6e11128c0b0b5625486801b1057d517ae5a41756824534e9dfd71eb3e41bbe"
         }
       ]
     },
@@ -948,7 +944,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:d553cb9db8a3a506038ff485a006d95eb0a4eca6293b6dfaefc44edc7f23cc23"
+          "version": "repo-file-v1:sha256:ec6e11128c0b0b5625486801b1057d517ae5a41756824534e9dfd71eb3e41bbe"
         }
       ]
     },
@@ -958,7 +954,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:d553cb9db8a3a506038ff485a006d95eb0a4eca6293b6dfaefc44edc7f23cc23"
+          "version": "repo-file-v1:sha256:ec6e11128c0b0b5625486801b1057d517ae5a41756824534e9dfd71eb3e41bbe"
         }
       ]
     },
@@ -976,7 +972,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:d553cb9db8a3a506038ff485a006d95eb0a4eca6293b6dfaefc44edc7f23cc23"
+          "version": "repo-file-v1:sha256:ec6e11128c0b0b5625486801b1057d517ae5a41756824534e9dfd71eb3e41bbe"
         }
       ]
     },
@@ -1071,6 +1067,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-31T16:06:25.983Z"
+    "at": "2026-10-31T16:42:36.938Z"
   }
 }

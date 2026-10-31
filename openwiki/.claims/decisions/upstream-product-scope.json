@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:5cdd502d25f5f58caec9be65b54ea7160b68243e3a2ecf139929a1cde6b04988",
+  "pageVersion": "sha256:3b13e500ee8f6717fc0a355b37987726e42ed6c16801691baa83ea60ca780cb5",
   "claims": [
     {
       "id": "claim_8d60aaceeea74d6189e3d7b0b3ed21fe",
@@ -328,7 +328,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:d553cb9db8a3a506038ff485a006d95eb0a4eca6293b6dfaefc44edc7f23cc23"
+          "version": "repo-file-v1:sha256:ec6e11128c0b0b5625486801b1057d517ae5a41756824534e9dfd71eb3e41bbe"
         }
       ]
     },
@@ -356,7 +356,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:d553cb9db8a3a506038ff485a006d95eb0a4eca6293b6dfaefc44edc7f23cc23"
+          "version": "repo-file-v1:sha256:ec6e11128c0b0b5625486801b1057d517ae5a41756824534e9dfd71eb3e41bbe"
         }
       ]
     },
@@ -412,7 +412,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:d553cb9db8a3a506038ff485a006d95eb0a4eca6293b6dfaefc44edc7f23cc23"
+          "version": "repo-file-v1:sha256:ec6e11128c0b0b5625486801b1057d517ae5a41756824534e9dfd71eb3e41bbe"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent_context_settings_native_tests.rs",
@@ -430,7 +430,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:d553cb9db8a3a506038ff485a006d95eb0a4eca6293b6dfaefc44edc7f23cc23"
+          "version": "repo-file-v1:sha256:ec6e11128c0b0b5625486801b1057d517ae5a41756824534e9dfd71eb3e41bbe"
         }
       ]
     },
@@ -498,7 +498,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:d553cb9db8a3a506038ff485a006d95eb0a4eca6293b6dfaefc44edc7f23cc23"
+          "version": "repo-file-v1:sha256:ec6e11128c0b0b5625486801b1057d517ae5a41756824534e9dfd71eb3e41bbe"
         }
       ]
     },
@@ -560,7 +560,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:d553cb9db8a3a506038ff485a006d95eb0a4eca6293b6dfaefc44edc7f23cc23"
+          "version": "repo-file-v1:sha256:ec6e11128c0b0b5625486801b1057d517ae5a41756824534e9dfd71eb3e41bbe"
         }
       ]
     },
@@ -595,10 +595,24 @@
           "version": "repo-file-v1:sha256:b7dc0456127348fc734fc70c1e4a07842ddbcc64cea677c320dc52c8b0de2ec9"
         }
       ]
+    },
+    {
+      "id": "claim_adb60fd2604a46ce91755ec8aee0f646",
+      "statement": "Manual catch-up pauses the maintainer; resumption requires explicit user authorization and the supported native tools.",
+      "evidence": [
+        {
+          "resource": "repo://automations/portfolio.toml",
+          "version": "repo-file-v1:sha256:4516f1b1a314f734812ae1e2516c223723945f99d0bcd3899428c5bb068957f5"
+        },
+        {
+          "resource": "repo://automations/upstream/prompts/maintainer.md",
+          "version": "repo-file-v1:sha256:01bebe4274c10a0d25c17ca9181cb005c26d18abaccde7e780505064f5189b3f"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-31T16:06:25.983Z"
+    "at": "2026-10-31T16:42:36.938Z"
   }
 }

@@ -32,8 +32,6 @@ sources:
     resource: repo://apps/decodex-gpui/src/ui_preferences.rs
   - id: openwiki-source-3122dd472ce3039751b99877
     resource: repo://automations/decodex/scripts/config/tests/test_portfolio.py
-  - id: openwiki-source-14193a66abfb7d3230f476bf
-    resource: repo://automations/portfolio.toml
   - id: openwiki-source-f7ecbc6c02d8c1b7873858d6
     resource: repo://automations/upstream/checkpoint.test.mts
   - id: openwiki-source-a5b9d61b2b9a5f7492d602ac
@@ -168,10 +166,10 @@ sources:
     resource: repo://scripts/macos/test_decodex_app_stage.sh
   - id: openwiki-source-e201f60894c32a914dac99ee
     resource: repo://scripts/vnext/run_native_regression.py
-generated: { by: "codex", at: "2026-10-31T16:06:25.983Z" }
+generated: { by: "codex", at: "2026-10-31T16:42:36.938Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-31T16:06:25.983Z
+    at: 2026-10-31T16:42:36.938Z
 ---
 
 # Upstream integration acceptance boundaries
@@ -298,7 +296,7 @@ The 25 test assertions passed. One pure layout-state case received a nextest pro
 
 The selected native source remains `33d306d457a4632b22bebf214e0c25d91f90f6e8`. The CLI, Code Mode helper and `rg` byte digests still match the earlier qualification. The previously generated exact-artifact schema document passed its canonical digest check and contains the nullable model/effort metadata. This work made no runtime migration or provider request. An offscreen native workspace-loading capture shows the cloud mark. Installed interactions, physical display timing, native child-window focus and packaged SwiftUI rendering remain unmeasured. Find covers loaded retained text and explicit earlier pages; shortened output remains incomplete.
 
-The standalone Codex startup-configuration diagnostic capability and its dedicated helper are retired. Historical executions of that control remain evidence at their original source revision and create no current validation requirement. Decodex product/integration diagnostics and normal warning presentation remain supported. The source-review cursor and paused automation are unchanged.
+The standalone Codex startup-configuration diagnostic capability and its dedicated helper are retired. Historical executions of that control remain evidence at their original source revision and create no current validation requirement. Decodex product/integration diagnostics and normal warning presentation remain supported. That retirement does not advance the source-review cursor or change the native schedule.
 
 ## Conversation-list branch qualification
 
