@@ -123,7 +123,7 @@ fn start_recap_parent(work: &EntityId, directory: &Path, account: &AccountId) ->
 	})
 }
 
-fn fixture_working_directory() -> PathBuf {
+pub(super) fn fixture_working_directory() -> PathBuf {
 	// Account/config fixtures stay temporary. Execution authority follows the OS account,
 	// so every service mode uses the owned checkout instead of the overridden HOME.
 	env::current_dir().expect("owned test checkout")

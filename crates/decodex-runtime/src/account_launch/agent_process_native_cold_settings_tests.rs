@@ -162,6 +162,7 @@ async fn installed_cold_runtime_settings_read_and_submit_without_replaying() {
 
 async fn qualify(home: &Path) {
 	let native_home = home.join(".codex");
+	let working_directory = recap_socket::fixture_working_directory();
 
 	fs::create_dir(&native_home).expect("native cold-read qualification");
 
@@ -184,7 +185,7 @@ async fn qualify(home: &Path) {
 	.expect("native cold-read qualification");
 	fs::write(native_home.join("config.toml"), format!("model=\"cold-native-model\"\nmodel_reasoning_effort=\"provider-effort\"\nmodel_catalog_json={}\nmodel_provider=\"fixture\"\nchatgpt_base_url=\"http://{address}/backend-api\"\ncli_auth_credentials_store=\"file\"\n[features]\nenable_request_compression=false\napps=false\nremote_plugins=false\n[analytics]\nenabled=false\n[model_providers.fixture]\nname=\"Isolated fixture\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n", serde_json::json!(catalog))).expect("native cold-read qualification");
 
-	let thread = seed_native_thread(&binary, &native_home, home).await;
+	let thread = seed_native_thread(&binary, &native_home, &working_directory).await;
 	// The saved fixture turn did not need authentication. The production reader
 	// uses the enrolled ChatGPT account and must admit native token projection.
 	let config = native_home.join("config.toml");
@@ -222,7 +223,7 @@ async fn qualify(home: &Path) {
 		.await
 		.expect("native cold-read qualification");
 
-	seed(&root, &account, &thread, home);
+	seed(&root, &account, &thread, &working_directory);
 
 	let runtime = runtime(&root, &store, accounts.clone(), profile.clone()).await;
 	let id = ConversationId::new("44000000-0000-4000-8000-000000000001")
@@ -279,12 +280,12 @@ async fn qualify(home: &Path) {
 	backend.abort();
 }
 
-async fn seed_native_thread(binary: &OsStr, native_home: &Path, home: &Path) -> String {
+async fn seed_native_thread(binary: &OsStr, native_home: &Path, directory: &Path) -> String {
 	let mut native = NativeSession::start(binary, native_home);
 	let started = native
 		.client
 		.thread_start(
-			serde_json::json!({"cwd":home,"approvalPolicy":"never","sandbox":"read-only"}),
+			serde_json::json!({"cwd":directory,"approvalPolicy":"never","sandbox":"read-only"}),
 		)
 		.await
 		.expect("native cold-read qualification");

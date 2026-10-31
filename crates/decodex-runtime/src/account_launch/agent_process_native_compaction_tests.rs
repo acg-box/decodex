@@ -1,5 +1,6 @@
 //! Qualify streamed compaction and cold continuation through the installed native bridge.
 #[path = "agent_process_native_code_compaction_tests.rs"] mod code_metadata;
+#[path = "agent_process_native_unreported_usage_tests.rs"] mod unreported_usage;
 
 use std::{
 	env, fs,
