@@ -5,14 +5,15 @@ struct ConversationEstimateRow: Decodable, Identifiable, Equatable, Sendable {
 	let title: String
 	let account_id: String?
 	let usd_micros: UInt64?
+	let native_usd_micros: UInt64?
 	let credits_micros: UInt64?
 	let observed_at_micros: Int64?
 	var id: String { work_id }
 
-	var amount: String {
+	var amount: String? {
+		if let native_usd_micros { return "$\(Self.micros(native_usd_micros))" }
 		if let usd_micros { return "≈ $\(Self.micros(usd_micros))" }
-		if let credits_micros { return "≈ \(Self.micros(credits_micros)) credits" }
-		return "Estimate unavailable"
+		return nil
 	}
 
 	static func micros(_ value: UInt64) -> String {
@@ -53,19 +54,21 @@ struct ConversationEstimatesView: View {
 				if loading { BrandLoading() }
 				if let result, result.available {
 					ForEach(result.rows) { row in
-						VStack(alignment: .leading, spacing: 2) {
-							HStack {
-								Text(row.title).lineLimit(1)
-								Spacer()
-								Text(row.amount).monospacedDigit()
+						if let amount = row.amount {
+							VStack(alignment: .leading, spacing: 2) {
+								HStack {
+									Text(row.title).lineLimit(1)
+									Spacer()
+									Text(amount).monospacedDigit()
+								}
+								if let id = row.account_id {
+									Text(accountLabel(id)).font(.caption).foregroundStyle(.secondary)
+								}
 							}
-							if let id = row.account_id {
-								Text(accountLabel(id)).font(.caption).foregroundStyle(.secondary)
-							}
+							.help(row.title)
 						}
-						.help(row.title)
 					}
-					Text(result.rows.isEmpty ? "No native conversations available." :
+					Text(result.rows.allSatisfy { $0.amount == nil } ? "No conversation costs reported." :
 						(result.more_available ? "Latest 8 conversations · not an account total" : "Reported conversations · not an account total"))
 						.font(.caption).foregroundStyle(.secondary)
 					Text("Provider estimates may lag activity.").font(.caption).foregroundStyle(.secondary)

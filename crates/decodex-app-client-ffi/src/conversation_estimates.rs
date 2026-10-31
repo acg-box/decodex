@@ -13,6 +13,7 @@ struct Row {
 	title: String,
 	account_id: Option<String>,
 	usd_micros: Option<u64>,
+	native_usd_micros: Option<u64>,
 	credits_micros: Option<u64>,
 	observed_at_micros: Option<i64>,
 }
@@ -56,6 +57,7 @@ pub(super) async fn read(profile: ClientProfile) -> Result<Value, RequestFailure
 				title,
 				account_id: None,
 				usd_micros: None,
+				native_usd_micros: None,
 				credits_micros: None,
 				observed_at_micros: None,
 			};
@@ -68,6 +70,7 @@ pub(super) async fn read(profile: ClientProfile) -> Result<Value, RequestFailure
 			{
 				row.account_id = Some(account_id.as_str().to_owned());
 				row.usd_micros = estimate.estimated_usage_usd_micros;
+				row.native_usd_micros = estimate.native_usage_usd_micros;
 				row.credits_micros = Some(estimate.estimated_usage_credits_micros);
 				row.observed_at_micros = Some(observed_at_micros);
 			}

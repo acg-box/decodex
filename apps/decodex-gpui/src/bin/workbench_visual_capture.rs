@@ -235,6 +235,20 @@ fn main() -> Result<()> {
 	let screenshot = cx.capture_screenshot(window)?;
 
 	screenshot.save(&output)?;
+	if let Some(composer_output) = env::var_os("DECODEX_VISUAL_COMPOSER_OUTPUT") {
+		let children: Vec<_> = cx
+			.update(|cx| cx.windows())
+			.into_iter()
+			.filter(|child| {
+				cx.update_window(*child, |_, window, _| window.window_title() == "Decodex Composer")
+					.unwrap_or(false)
+			})
+			.collect();
+		let [composer] = children.as_slice() else {
+			return Err(Error::other("Composer capture requires one native child window").into());
+		};
+		cx.capture_screenshot(*composer)?.save(PathBuf::from(composer_output))?;
+	}
 
 	println!("{}", output.display());
 

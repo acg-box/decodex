@@ -1372,6 +1372,26 @@ impl AgentSurface {
 	}
 
 	pub(super) fn usage_line(&self, _cx: &mut Context<Self>) -> Option<AnyElement> {
+		let context = self.context_usage_line();
+		let cost = self.conversation_cost();
+		if context.is_none() && cost.is_none() {
+			return None;
+		}
+		Some(
+			gpui::div()
+				.debug_selector(|| "composer-usage-line".into())
+				.min_w_0()
+				.flex_shrink(1.)
+				.flex()
+				.items_center()
+				.gap(gpui::px(8.))
+				.children(context)
+				.children(cost)
+				.into_any_element(),
+		)
+	}
+
+	fn context_usage_line(&self) -> Option<AnyElement> {
 		let (id, AgentHistoryResult::Available { usage: Some(usage), .. }) =
 			self.history.as_ref()?
 		else {
