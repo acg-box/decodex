@@ -16,7 +16,7 @@ context.exceptionHandler = { _, error in fputs("\(error?.toString() ?? "JavaScri
 let parse: @convention(block) (String) -> NSDictionary? = { text in
     guard let parts = URLComponents(string: text), let scheme = parts.scheme, let host = parts.host else { return nil }
     let port = parts.port.map { $0 == 443 && scheme == "https" ? "" : ":\($0)" } ?? ""
-    return ["origin": "\(scheme.lowercased())://\(host.lowercased())\(port)", "username": parts.user ?? "", "password": parts.password ?? ""]
+    return ["origin": "\(scheme.lowercased())://\(host.lowercased())\(port)", "username": parts.user ?? "", "password": parts.password ?? "", "pathname": parts.percentEncodedPath]
 }
 context.setObject(parse, forKeyedSubscript: "parseURL" as NSString)
 context.evaluateScript(try String(contentsOf: directory.appendingPathComponent("tests/extension_fixture.js"), encoding: .utf8))

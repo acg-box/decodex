@@ -1,20 +1,21 @@
 //! Private atomic records and an OS-held execution lease. A crash releases the lease.
 
-use std::{
-	fs::{self, DirBuilder, File, OpenOptions},
-	io::Write as _,
-	path::{Path, PathBuf},
-};
+mod material;
+
+pub(crate) use material::{INLINE_BYTES, Material, digest};
 
 #[cfg(unix)]
 use std::os::unix::fs::{DirBuilderExt as _, OpenOptionsExt as _, PermissionsExt as _};
+use std::{
+	fs::{self, DirBuilder, File, OpenOptions, TryLockError},
+	io::{ErrorKind, Write as _},
+	path::{Path, PathBuf},
+};
 
 use serde::{Deserialize, Serialize};
+use tempfile::NamedTempFile;
 
-use crate::{Answer, Phase, Receipt, Request, Result};
-
-mod material;
-pub(crate) use material::{Material, digest};
+use crate::{Answer, Attachment, Delivery, Phase, Project, Receipt, Request, Result};
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -25,29 +26,42 @@ pub(crate) struct Record {
 	pub parent_answer_id: Option<String>,
 	/// Owned browser target saved before Send, so a missing URL can be recovered.
 	pub target_id: Option<String>,
+	#[serde(default)]
+	pub project: Option<Project>,
 }
-
 impl Record {
 	pub fn wire_prompt(&self) -> String {
-		format!("[Decodex Pro request: {}]\n\n{}", self.request.id, self.request.prompt)
+		let body = match &self.receipt.attachment {
+			Some(file) if file.includes_question => format!(
+				"Read the attached UTF-8 file {}. It contains the complete research question and any selected supporting context. Follow that question and return your complete answer in this conversation.",
+				file.name
+			),
+			Some(_) => self.request.prompt.clone(),
+			None => self.request.inline_text(),
+		};
+
+		format!("[Decodex Pro request: {}]\n\n{body}", self.request.id)
 	}
 }
 
 pub(crate) struct Store {
 	root: PathBuf,
 }
-
 impl Store {
 	pub fn open(root: &Path) -> Result<Self> {
 		if !root.is_absolute() {
 			return Err("The component state directory must be absolute.".into());
 		}
+
 		let mut builder = DirBuilder::new();
+
 		builder.recursive(true);
 		#[cfg(unix)]
 		builder.mode(0o700);
 		builder.create(root).map_err(|e| e.to_string())?;
+
 		let metadata = fs::symlink_metadata(root).map_err(|e| e.to_string())?;
+
 		if !metadata.is_dir() {
 			return Err("The component state directory must be a real directory.".into());
 		}
@@ -55,6 +69,7 @@ impl Store {
 		if metadata.permissions().mode() & 0o077 != 0 {
 			return Err("The component state directory must have mode 0700.".into());
 		}
+
 		Ok(Self { root: root.into() })
 	}
 
@@ -65,6 +80,7 @@ impl Store {
 
 	pub fn worker_lease(&self, id: &str) -> Result<Option<File>> {
 		validate_id(id)?;
+
 		self.try_lease(&format!("{id}.worker.lock"))
 	}
 
@@ -78,40 +94,94 @@ impl Store {
 
 	fn try_lease(&self, name: &str) -> Result<Option<File>> {
 		let mut options = OpenOptions::new();
+
 		options.read(true).write(true).create(true).truncate(false);
 		#[cfg(unix)]
 		options.mode(0o600);
+
 		let file = options.open(self.root.join(name)).map_err(|e| e.to_string())?;
+
 		match file.try_lock() {
 			Ok(()) => Ok(Some(file)),
-			Err(std::fs::TryLockError::WouldBlock) => Ok(None),
+			Err(TryLockError::WouldBlock) => Ok(None),
 			Err(error) => Err(error.to_string()),
 		}
 	}
 
 	pub fn load(&self, id: &str) -> Result<Record> {
 		validate_id(id)?;
+
 		let bytes = fs::read(self.path(id)).map_err(|e| e.to_string())?;
 		let record: Record = serde_json::from_slice(&bytes).map_err(|e| e.to_string())?;
+
 		if record.request.id != id || record.receipt.id != id {
 			return Err("The request record identity changed.".into());
 		}
+
 		Ok(record)
 	}
 
 	pub fn prepare(&self, request: Request) -> Result<Record> {
 		validate_id(&request.id)?;
+
 		if request.prompt.is_empty() {
 			return Err("The prompt must not be empty.".into());
 		}
+
 		if let Some(saved) = self.existing(&request)? {
 			return Ok(saved);
 		}
+
 		let parent = request.previous.as_deref().map(|id| self.load(id)).transpose()?;
+
 		if parent.as_ref().is_some_and(|r| r.receipt.phase != Phase::Complete) {
 			return Err("The previous request must be complete before continuation.".into());
 		}
+
+		let project = parent
+			.as_ref()
+			.and_then(|r| r.project.clone())
+			.or_else(|| request.project.clone())
+			.unwrap_or_else(|| Project { id: "general".into(), name: "General".into() });
+
+		if project.id.trim().is_empty() || project.name.trim().is_empty() {
+			return Err("A project requires a stable ID and a name.".into());
+		}
+
+		if let Some(parent) = &parent
+			&& request.project.as_ref().is_some_and(|p| {
+				Some(p.id.as_str()) != parent.project.as_ref().map(|p| p.id.as_str())
+			}) {
+			return Err(
+				"A continuation cannot change its project. Start a new research conversation."
+					.into(),
+			);
+		}
+
+		let delivery = match request.delivery {
+			Delivery::Auto
+				if request.prompt.len() + request.context.as_ref().map_or(0, String::len)
+					> INLINE_BYTES =>
+				Delivery::Attachment,
+			Delivery::Auto => Delivery::Inline,
+			explicit => explicit,
+		};
+		let attachment = (delivery == Delivery::Attachment).then(|| {
+			let includes_question = request.prompt.len() > INLINE_BYTES
+				|| request.context.as_ref().is_none_or(String::is_empty);
+			let text = request.attachment_text(includes_question);
+			let sha256 = digest(text.as_bytes());
+
+			Attachment {
+				name: format!("decodex-source-{}-{}.txt", request.id, &sha256[..12]),
+				bytes: text.len(),
+				sha256,
+				includes_question,
+				file_id: None,
+			}
+		});
 		let record = Record {
+			project: Some(project),
 			receipt: Receipt {
 				id: request.id.clone(),
 				phase: Phase::Prepared,
@@ -120,8 +190,11 @@ impl Store {
 				execution: None,
 				user_message_id: None,
 				input_binding: None,
+				project_url: parent.as_ref().and_then(|r| r.receipt.project_url.clone()),
 				baseline_messages: 0,
 				last_error: None,
+				delivery,
+				attachment,
 			},
 			parent_answer_id: parent
 				.as_ref()
@@ -130,30 +203,38 @@ impl Store {
 			request,
 			answer: None,
 		};
+
 		self.save(&record)?;
+
 		Ok(record)
 	}
 
 	pub fn existing(&self, request: &Request) -> Result<Option<Record>> {
 		validate_id(&request.id)?;
+
 		if !self.path(&request.id).exists() {
 			return Ok(None);
 		}
+
 		let saved = self.load(&request.id)?;
+
 		if saved.request != *request {
 			return Err("The request ID already identifies different input.".into());
 		}
+
 		Ok(Some(saved))
 	}
 
 	pub fn save(&self, record: &Record) -> Result<()> {
 		validate_id(&record.request.id)?;
+
 		let bytes = serde_json::to_vec_pretty(record).map_err(|e| e.to_string())?;
-		let mut temporary =
-			tempfile::NamedTempFile::new_in(&self.root).map_err(|e| e.to_string())?;
+		let mut temporary = NamedTempFile::new_in(&self.root).map_err(|e| e.to_string())?;
+
 		temporary.write_all(&bytes).map_err(|e| e.to_string())?;
 		temporary.as_file().sync_all().map_err(|e| e.to_string())?;
 		temporary.persist(self.path(&record.request.id)).map_err(|e| e.to_string())?;
+
 		File::open(&self.root).and_then(|f| f.sync_all()).map_err(|e| e.to_string())
 	}
 
@@ -164,7 +245,7 @@ impl Store {
 	pub fn setup_target(&self) -> Result<Option<String>> {
 		match fs::read_to_string(self.root.join("setup-target")) {
 			Ok(id) => Ok(Some(id)),
-			Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+			Err(error) if error.kind() == ErrorKind::NotFound => Ok(None),
 			Err(error) => Err(error.to_string()),
 		}
 	}
@@ -179,6 +260,7 @@ fn validate_id(id: &str) -> Result<()> {
 	{
 		return Err("Request IDs must contain 1 to 64 ASCII letters, digits, or hyphens.".into());
 	}
+
 	Ok(())
 }
 

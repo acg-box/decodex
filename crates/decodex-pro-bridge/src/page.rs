@@ -1,15 +1,23 @@
 //! Small ChatGPT UI adapter. Page selectors are separate from durable workflow state.
 
+use std::{fs, mem};
+
+use pulldown_cmark::{Event, Parser, Tag, TagEnd};
 use serde::Deserialize;
-use serde_json::{Value, json};
-use tokio::time::{Instant, sleep};
+use serde_json::Value;
+use tokio::time::{self, Instant};
 use url::Url;
 
-use crate::{Answer, Connection, ConnectionState, Link, Result, chrome::Chrome, store::Material};
+use crate::{
+	Answer, Connection, ConnectionState, Link, Result,
+	chrome::Chrome,
+	identity::{NativeMessage, SubmittedFile},
+	store::{self, Material},
+};
 
 const CONTROLS: &str = r#"
 const visible=e=>!!e&&e.getClientRects().length>0;
-const editor=document.querySelector('#prompt-textarea,[role="textbox"][aria-label="Ask ChatGPT"]');
+const editor=document.querySelector('#prompt-textarea,[role="textbox"][aria-label="Ask ChatGPT"],[role="textbox"][aria-label^="New chat in "]');
 const model=document.querySelector('[data-testid="model-switcher-dropdown-button"],button[aria-label="Select ChatGPT model"]');
 const buttons=Array.from(document.querySelectorAll('button'));
 const send=document.querySelector('[data-testid="send-button"],button[aria-label="Send prompt"],button[aria-label="Send"]');
@@ -28,8 +36,9 @@ pub(crate) struct Message {
 	pub complete: bool,
 	pub code_blocks: Vec<String>,
 	pub links: Vec<Link>,
+	#[serde(default)]
+	pub attachments: Option<Vec<SubmittedFile>>,
 }
-
 impl Message {
 	pub fn answer(&self) -> Answer {
 		Answer {
@@ -50,19 +59,49 @@ pub(crate) struct Observation {
 	pub notices: Vec<String>,
 }
 
+pub(crate) fn conversation_url(raw: &str) -> Result<String> {
+	let url = Url::parse(raw).map_err(|_| "The ChatGPT conversation URL is invalid.")?;
+	let parts: Vec<_> = url.path_segments().ok_or("Invalid conversation path.")?.collect();
+
+	if url.scheme() != "https"
+		|| url.host_str() != Some("chatgpt.com")
+		|| url.port().is_some()
+		|| !url.username().is_empty()
+		|| url.password().is_some()
+		|| url.query().is_some()
+		|| url.fragment().is_some()
+		|| url.as_str() != raw
+		|| !matches!(parts.as_slice(), ["c", id] if valid_id(id))
+			&& !matches!(parts.as_slice(), ["g", project, "c", id] if crate::projects::project_segment(project) && valid_id(id))
+	{
+		return Err("Only an exact ChatGPT conversation URL can be resumed.".into());
+	}
+
+	Ok(url.to_string())
+}
+
+pub(crate) fn same_conversation(left: &str, right: &str) -> bool {
+	conversation_url(left).is_ok()
+		&& conversation_url(right).is_ok()
+		&& left.rsplit('/').next() == right.rsplit('/').next()
+}
+
 pub(crate) async fn connection(
 	browser: &mut Chrome,
 	wait: std::time::Duration,
 ) -> Result<Connection> {
 	let deadline = Instant::now() + wait;
+
 	loop {
 		let state = browser.evaluate(&format!(r#"(()=>{{ {CONTROLS}
-            const ready=visible(editor)&&visible(model)&&!model.disabled&&model.getAttribute('aria-disabled')!=='true';
-            const verification=!ready&&(!!document.querySelector('script[src*="/cdn-cgi/challenge-platform/"]')||
+            const login=buttons.some(b=>visible(b)&&/^(log in|sign in)$/i.test(b.innerText.trim()));
+            const ready=visible(editor)&&!login;
+            const verification=!ready&&(visible(document.querySelector('#challenge-form,iframe[src*="challenges.cloudflare.com"]'))||
               (document.title==='Just a moment...'&&(document.body?.innerText??'').includes('Cloudflare')));
             return {{ready,verification,model:visible(model)?model.innerText:null,
-                login:buttons.some(b=>visible(b)&&/^(log in|sign in)$/i.test(b.innerText.trim()))}};
+                login}};
         }})()"#)).await?;
+
 		if state["ready"] == true {
 			return Ok(Connection {
 				state: ConnectionState::Connected,
@@ -84,7 +123,8 @@ pub(crate) async fn connection(
 				selected_model: None,
 			});
 		}
-		sleep(std::time::Duration::from_millis(250)).await;
+
+		time::sleep(std::time::Duration::from_millis(250)).await;
 	}
 }
 
@@ -94,21 +134,25 @@ pub(crate) async fn ready(browser: &mut Chrome) -> Result<()> {
 		ConnectionState::SignInRequired =>
 			Err("Sign in to ChatGPT in the research tab, then resume this request."
 				.into()),
-		ConnectionState::VerificationRequired => Err("ChatGPT requires a security check in the research browser. Research is waiting; no message was sent.".into()),
+		ConnectionState::VerificationRequired => Err("ChatGPT requires a security check in the research tab. Complete it, then resume this request.".into()),
 		ConnectionState::AttentionRequired =>
-			Err("ChatGPT needs attention in the research browser. No message was sent.".into()),
+			Err("ChatGPT needs attention in the research tab. Open it, then resume this request.".into()),
 	}
 }
 
 pub(crate) async fn select_pro(browser: &mut Chrome) -> Result<()> {
 	if pro_selected(browser).await? {
 		key(browser, "Escape", "Escape", 27).await?;
+
 		return Ok(());
 	}
+
 	let point = browser.evaluate(&format!(r#"(()=>{{ {CONTROLS} if(!visible(model)||model.disabled||model.getAttribute('aria-disabled')==='true')throw Error('Model selector unavailable');if(model.getAttribute('aria-expanded')==='true')return null;model.scrollIntoView({{block:'nearest',inline:'nearest'}});const r=model.getBoundingClientRect();return {{x:r.x+r.width/2,y:r.y+r.height/2}}; }})()"#)).await?;
+
 	if !point.is_null() {
 		click(browser, &point).await?;
 	}
+
 	// Read the visible menu. Never force an inaccessible option or edit React state.
 	let deadline = Instant::now() + std::time::Duration::from_secs(3);
 	let result = loop {
@@ -120,11 +164,14 @@ pub(crate) async fn select_pro(browser: &mut Chrome) -> Result<()> {
         const power=document.querySelector('[role="menuitem"][data-reasoning-slider][aria-label="Power"]');
         return {power:!!power&&visible(power),options:Array.from(document.querySelectorAll('[role="menuitem"],[role="radio"],[role="option"]')).filter(visible).map(e=>(e.innerText||e.getAttribute('aria-label')||'').slice(0,160)).slice(0,16)};
     })()"#).await?;
+
 		if result.get("point").is_some() || result["power"] == true || Instant::now() >= deadline {
 			break result;
 		}
-		sleep(std::time::Duration::from_millis(100)).await;
+
+		time::sleep(std::time::Duration::from_millis(100)).await;
 	};
+
 	if let Some(point) = result.get("point") {
 		click(browser, point).await?;
 	} else if result["power"] == true {
@@ -135,149 +182,143 @@ pub(crate) async fn select_pro(browser: &mut Chrome) -> Result<()> {
 			result["options"]
 		));
 	}
+
 	key(browser, "Escape", "Escape", 27).await?;
+
 	// The slider can commit before React updates the picker label. Verify the
 	// closed control, not an intermediate menu render; never Send on the range alone.
 	let deadline = Instant::now() + std::time::Duration::from_secs(2);
+
 	while !pro_selected(browser).await? {
 		if Instant::now() >= deadline {
 			return Err("ChatGPT did not retain the Pro selection. No message was sent.".into());
 		}
-		sleep(std::time::Duration::from_millis(100)).await;
+
+		time::sleep(std::time::Duration::from_millis(100)).await;
 	}
+
 	Ok(())
 }
 
-async fn pro_selected(browser: &mut Chrome) -> Result<bool> {
-	let state = browser.evaluate(&format!(r#"(()=>{{ {CONTROLS}
-        if(!model)return false;
-        const label=model.cloneNode(true);label.querySelectorAll('[aria-hidden="true"]').forEach(e=>e.remove());
-        return /(^|\s)Pro($|\s)/.test(label.textContent??'');
-    }})()"#)).await?;
-	Ok(state == true)
-}
+/// Use the ordinary document input. Chrome owns upload authentication and processing.
+pub(crate) async fn attach(browser: &mut Chrome, material: &Material) -> Result<()> {
+	let name = material
+		.path
+		.file_name()
+		.and_then(|name| name.to_str())
+		.ok_or("The source has no UTF-8 file name.")?;
+	let state = attachment_state(browser, name).await?;
 
-async fn select_pro_power(browser: &mut Chrome) -> Result<()> {
-	let mut previous = None;
+	if state["otherFiles"] != 0 {
+		return Err("The research draft contains another attachment. No message was sent.".into());
+	}
+	if state["matchingFiles"] == 0 {
+		let text = fs::read_to_string(&material.path).map_err(|e| e.to_string())?;
+
+		browser.evaluate(&format!(r#"(async()=>{{
+          const candidates=Array.from(document.querySelectorAll('input[type="file"]')).filter(e=>!e.disabled&&e.accept==='');
+          if(candidates.length!==1)throw Error('ChatGPT has no unique document upload input. No message was sent.');
+          const input=candidates[0];if(input.files.length)throw Error('The document input already contains a file. No message was sent.');
+          const file=new File([{text}],{name},{{type:'text/plain',lastModified:1}});
+          const sha=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',await file.arrayBuffer()))).map(x=>x.toString(16).padStart(2,'0')).join('');
+          if(file.size!=={bytes}||sha!=={sha256})throw Error('The browser source bytes differ from the saved manifest. No message was sent.');
+          const data=new DataTransfer();data.items.add(file);input.files=data.files;
+          input.dispatchEvent(new Event('change',{{bubbles:true}}));
+          return {{bytes:file.size,sha256:sha}};
+        }})()"#,text=serde_json::to_string(&text).map_err(|e|e.to_string())?,name=serde_json::to_string(name).map_err(|e|e.to_string())?,bytes=material.bytes,sha256=serde_json::to_string(&material.sha256).map_err(|e|e.to_string())?)).await?;
+	}
+
+	let deadline = Instant::now() + std::time::Duration::from_secs(120);
+
 	loop {
-		if pro_selected(browser).await? {
-			return Ok(());
-		}
-		let state = browser.evaluate(r#"(()=>{
-          const power=document.querySelector('[role="menuitem"][data-reasoning-slider][aria-label="Power"]');
-          const slider=power?.querySelector('[role="slider"]');
-          if(!power||!slider||power.getAttribute('aria-disabled')==='true'||power.querySelector('[data-locked="true"]'))return null;
-          power.focus({preventScroll:true});
-          return {value:Number(slider.getAttribute('aria-valuenow')),max:Number(slider.getAttribute('aria-valuemax'))};
-        })()"#).await?;
-		let Some(value) = state["value"].as_u64() else {
-			return Err("ChatGPT's Power control is unavailable. No message was sent.".into());
-		};
-		let Some(max) = state["max"].as_u64().filter(|max| *max <= 16) else {
-			return Err("ChatGPT's Power range could not be read. No message was sent.".into());
-		};
-		if value == max {
-			return Ok(());
-		}
-		if value > max || previous == Some(value) {
+		let state = attachment_state(browser, name).await?;
+
+		if state["otherFiles"] != 0 {
 			return Err(
-				"Pro is not available through ChatGPT's Power control. No message was sent.".into(),
+				"The research draft contains another attachment. No message was sent.".into()
 			);
 		}
-		previous = Some(value);
-		key(browser, "ArrowRight", "ArrowRight", 39).await?;
-		sleep(std::time::Duration::from_millis(150)).await;
-	}
-}
+		if state["matchingFiles"] == 1 && state["canSend"] == true {
+			return Ok(());
+		}
+		if Instant::now() >= deadline {
+			return Err(format!(
+				"ChatGPT did not finish preparing the source attachment. No message was sent. {}",
+				state["alerts"]
+			));
+		}
 
-async fn key(browser: &mut Chrome, key: &str, code: &str, key_code: u32) -> Result<()> {
-	for kind in ["keyDown", "keyUp"] {
-		browser
-			.command(
-				"Input.dispatchKeyEvent",
-				json!({"type":kind,"key":key,"code":code,"windowsVirtualKeyCode":key_code}),
-			)
-			.await?;
+		time::sleep(std::time::Duration::from_millis(250)).await;
 	}
-	Ok(())
-}
-
-async fn click(browser: &mut Chrome, point: &Value) -> Result<()> {
-	let x = point["x"]
-		.as_f64()
-		.filter(|value| value.is_finite())
-		.ok_or("The control is not visible.")?;
-	let y = point["y"]
-		.as_f64()
-		.filter(|value| value.is_finite())
-		.ok_or("The control is not visible.")?;
-	for (kind, buttons) in [("mouseMoved", 0), ("mousePressed", 1), ("mouseReleased", 0)] {
-		browser.command("Input.dispatchMouseEvent", json!({"type":kind,"x":x,"y":y,"button":if kind=="mouseMoved" {"none"} else {"left"},"buttons":buttons,"clickCount":1})).await?;
-	}
-	Ok(())
 }
 
 pub(crate) async fn fill(browser: &mut Chrome, material: &Material) -> Result<()> {
-	let bytes = std::fs::read(&material.path).map_err(|e| e.to_string())?;
-	if bytes.len() != material.bytes || crate::store::digest(&bytes) != material.sha256 {
+	let bytes = fs::read(&material.path).map_err(|e| e.to_string())?;
+
+	if bytes.len() != material.bytes || store::digest(&bytes) != material.sha256 {
 		return Err("The immutable request changed. No message was sent.".into());
 	}
+
 	let text = String::from_utf8(bytes).map_err(|e| e.to_string())?;
 	let text = text.trim_end_matches('\n');
-	let draft = browser
-		.evaluate(&format!(
-			r#"(()=>{{ {CONTROLS}
-        if(!visible(editor))throw Error('ChatGPT composer unavailable');
-        editor.focus();return editor.innerText;
-    }})()"#
-		))
-		.await?;
+	let draft = composer_text(browser, true).await?;
+
 	if let Some(draft) =
-		draft.as_str().filter(|draft| !draft.trim().is_empty() && !text.starts_with(*draft))
+		Some(draft.as_str()).filter(|draft| !draft.trim().is_empty() && !text.starts_with(*draft))
 	{
 		return Err(format!(
 			"The owned composer has a different draft ({} non-whitespace characters). No message was sent.",
 			draft.trim().chars().count()
 		));
 	}
+
 	// CDP inserts ordinary text through Chromium's input path, without clipboard or paste
 	// attachments.
-	browser.command("Input.dispatchKeyEvent", json!({"type":"keyDown","key":"a","code":"KeyA","modifiers":if cfg!(target_os="macos"){4}else{2},"windowsVirtualKeyCode":65})).await?;
-	browser.command("Input.dispatchKeyEvent", json!({"type":"keyUp","key":"a","code":"KeyA","modifiers":if cfg!(target_os="macos"){4}else{2},"windowsVirtualKeyCode":65})).await?;
-	browser.command("Input.insertText", json!({"text":text})).await?;
-	let prepared = browser.evaluate(&format!(r#"(()=>{{ {CONTROLS}
-        const block=n=>n?.nodeType===1&&/^(P|DIV)$/.test(n.tagName);
-        const read=n=>{{
-          if(n.nodeType===3)return n.nodeValue??'';
-          if(n.nodeType!==1)return '';
-          if(n.tagName==='BR')return n.classList.contains('ProseMirror-trailingBreak')?'':'\n';
-          if(block(n)&&n.childNodes.length===1&&n.firstChild.nodeName==='BR')return '';
-          return Array.from(n.childNodes).map((c,i,all)=>(i>0&&(block(c)||block(all[i-1]))?'\n':'')+read(c)).join('');
-        }};
-        return {{text:editor?read(editor):'',ready:visible(send)&&!send.disabled}};
-    }})()"#)).await?;
-	if prepared["text"].as_str().map(|s| crate::store::digest(s.trim().as_bytes())).as_deref()
-		!= Some(material.normalized_sha256.as_str())
-		|| prepared["ready"] != true
-	{
+	browser.command("Input.dispatchKeyEvent", serde_json::json!({"type":"keyDown","key":"a","code":"KeyA","modifiers":if cfg!(target_os="macos"){4}else{2},"windowsVirtualKeyCode":65})).await?;
+	browser.command("Input.dispatchKeyEvent", serde_json::json!({"type":"keyUp","key":"a","code":"KeyA","modifiers":if cfg!(target_os="macos"){4}else{2},"windowsVirtualKeyCode":65})).await?;
+
+	browser.command("Input.insertText", serde_json::json!({"text":text})).await?;
+
+	let prepared = composer_text(browser, false).await?;
+
+	if store::digest(prepared.trim().as_bytes()) != material.normalized_sha256 {
 		return Err(format!(
-			"The complete composer text could not be verified (expected {} bytes, observed {}; send ready: {}). No message was sent.",
+			"The complete composer text could not be verified (expected {} bytes, observed {}). No message was sent.",
 			text.len(),
-			prepared["text"].as_str().map_or(0, str::len),
-			prepared["ready"]
+			prepared.len()
 		));
 	}
+
+	// ChatGPT can prepare a long message after its editor has accepted the text.
+	// Keep the request Prepared until its ordinary Send control is enabled.
+	let deadline = Instant::now() + std::time::Duration::from_secs(15);
+
+	while browser.evaluate(&format!(r#"(()=>{{ {CONTROLS} return visible(send)&&!send.disabled&&send.getAttribute('aria-disabled')!=='true'; }})()"#)).await? != true {
+		if Instant::now() >= deadline {
+			return Err(match send_block_reason(browser).await? {
+				Some(reason) => format!("ChatGPT disabled Send: {reason}. No message was sent."),
+				None => "ChatGPT has not enabled Send for the verified draft. No message was sent. Inspect the research tab before resuming.".into(),
+			});
+		}
+
+		time::sleep(std::time::Duration::from_millis(100)).await;
+	}
+
 	Ok(())
 }
 
-pub(crate) async fn send(browser: &mut Chrome) -> Result<()> {
+pub(crate) async fn send(browser: &mut Chrome) -> Result<bool> {
 	// Use the rendered button's normal click/submit handler. Background pointer
 	// coordinates can become stale when composer focus changes its layout.
-	browser.evaluate(&format!(r#"(()=>{{ {CONTROLS}
-        if(!visible(send)||send.disabled||send.getAttribute('aria-disabled')==='true')throw Error('Send unavailable');
+	browser
+		.evaluate(&format!(
+			r#"(()=>{{ {CONTROLS}
+        if(!visible(send)||send.disabled||send.getAttribute('aria-disabled')==='true')return false;
         send.click();return true;
-    }})()"#)).await?;
-	Ok(())
+    }})()"#
+		))
+		.await
+		.map(|sent| sent == true)
 }
 
 pub(crate) async fn observe(browser: &mut Chrome) -> Result<Observation> {
@@ -309,31 +350,40 @@ pub(crate) async fn observe_request(browser: &mut Chrome, id: &str) -> Result<Ob
     }})()"#)).await?;
 	let mut observation: Observation =
 		serde_json::from_value(value).map_err(|e| format!("ChatGPT page changed: {e}"))?;
+
 	browser.bind_conversation_url(&observation.url);
 	browser.collect_identity().await?;
+
 	for message in &mut observation.messages {
 		if message.id.is_empty() {
 			return Err("A rendered ChatGPT message has no identity yet.".into());
 		}
+
 		if let Some(native) = browser.messages.get(&message.id) {
 			apply_native_message(message, native);
 		}
+
 		if message.role == "user" {
-			message.text_sha256 = Some(crate::store::digest(message.text.trim().as_bytes()));
+			message.text_sha256 = Some(store::digest(message.text.trim().as_bytes()));
+
 			message.text.clear();
 		}
 	}
+
 	Ok(observation)
 }
 
-fn apply_native_message(message: &mut Message, native: &crate::identity::NativeMessage) {
+fn apply_native_message(message: &mut Message, native: &NativeMessage) {
 	if message.id != native.id || message.role != native.role || !native.complete {
 		return;
 	}
+
 	message.text.clone_from(&native.text);
+	message.attachments.clone_from(&native.attachments);
+
 	if message.role == "user" && native.markdown {
-		message.markdown_text_sha256 = markdown_user_text(&native.text)
-			.map(|text| crate::store::digest(text.trim().as_bytes()));
+		message.markdown_text_sha256 =
+			markdown_user_text(&native.text).map(|text| store::digest(text.trim().as_bytes()));
 	}
 	if message.role == "assistant" {
 		message.code_blocks = markdown_code_blocks(&native.text);
@@ -344,26 +394,29 @@ fn apply_native_message(message: &mut Message, native: &crate::identity::NativeM
 /// inline presentation are accepted. Links must show their complete destination;
 /// hidden destinations, titles, images and HTML cannot disappear from verification.
 fn markdown_user_text(markdown: &str) -> Option<String> {
-	use pulldown_cmark::{Event, Parser, Tag, TagEnd};
 	let mut text = String::new();
 	let mut paragraph = false;
 	let mut link: Option<(String, usize)> = None;
+
 	for event in Parser::new(markdown) {
 		match event {
 			Event::Start(Tag::Paragraph) => {
 				if paragraph {
 					text.push_str("\n\n");
 				}
+
 				paragraph = true;
 			},
 			Event::Start(Tag::Link { dest_url, title, .. }) => {
 				if link.is_some() || !title.is_empty() {
 					return None;
 				}
+
 				link = Some((dest_url.into_string(), text.len()));
 			},
 			Event::End(TagEnd::Link) => {
 				let (destination, start) = link.take()?;
+
 				if text[start..] != destination {
 					return None;
 				}
@@ -377,6 +430,7 @@ fn markdown_user_text(markdown: &str) -> Option<String> {
 			_ => return None,
 		}
 	}
+
 	link.is_none().then_some(text)
 }
 
@@ -384,6 +438,7 @@ fn markdown_code_blocks(markdown: &str) -> Vec<String> {
 	let mut blocks = Vec::new();
 	let mut fence: Option<(u8, usize)> = None;
 	let mut content = String::new();
+
 	for line in markdown.split_inclusive('\n') {
 		let trimmed = line.trim_end_matches(['\r', '\n']);
 		let indent = trimmed.bytes().take_while(|byte| *byte == b' ').count();
@@ -392,13 +447,15 @@ fn markdown_code_blocks(markdown: &str) -> Vec<String> {
 		let length =
 			marker.map_or(0, |marker| trimmed.bytes().take_while(|byte| *byte == marker).count());
 		let delimiter = indent <= 3 && matches!(marker, Some(b'`' | b'~')) && length >= 3;
+
 		if let Some((kind, open_length)) = fence {
 			if delimiter
 				&& marker == Some(kind)
 				&& length >= open_length
 				&& trimmed[length..].trim().is_empty()
 			{
-				blocks.push(std::mem::take(&mut content));
+				blocks.push(mem::take(&mut content));
+
 				fence = None;
 			} else {
 				content.push_str(line);
@@ -407,31 +464,170 @@ fn markdown_code_blocks(markdown: &str) -> Vec<String> {
 			fence = marker.map(|kind| (kind, length));
 		}
 	}
+
 	if fence.is_some() {
 		blocks.push(content);
 	}
+
 	blocks
 }
 
-pub(crate) fn conversation_url(raw: &str) -> Result<String> {
-	let url = Url::parse(raw).map_err(|_| "The ChatGPT conversation URL is invalid.")?;
-	let parts: Vec<_> = url.path_segments().ok_or("Invalid conversation path.")?.collect();
-	if url.scheme() != "https"
-		|| url.host_str() != Some("chatgpt.com")
-		|| url.port().is_some()
-		|| !url.username().is_empty()
-		|| url.password().is_some()
-		|| url.query().is_some()
-		|| url.fragment().is_some()
-		|| url.as_str() != raw
-		|| parts.len() != 2
-		|| parts[0] != "c"
-		|| parts[1].is_empty()
-		|| !parts[1].bytes().all(|c| c.is_ascii_alphanumeric() || c == b'-')
-	{
-		return Err("Only an exact https://chatgpt.com/c/ conversation URL can be resumed.".into());
+fn valid_id(id: &str) -> bool {
+	!id.is_empty() && id.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'-')
+}
+
+async fn pro_selected(browser: &mut Chrome) -> Result<bool> {
+	let state = browser.evaluate(&format!(r#"(()=>{{ {CONTROLS}
+        if(!model)return false;
+        const label=model.cloneNode(true);label.querySelectorAll('[aria-hidden="true"]').forEach(e=>e.remove());
+        return /(^|\s)Pro($|\s)/.test(label.textContent??'');
+    }})()"#)).await?;
+
+	Ok(state == true)
+}
+
+async fn select_pro_power(browser: &mut Chrome) -> Result<()> {
+	let mut previous = None;
+
+	loop {
+		if pro_selected(browser).await? {
+			return Ok(());
+		}
+
+		let state = browser.evaluate(r#"(()=>{
+          const power=document.querySelector('[role="menuitem"][data-reasoning-slider][aria-label="Power"]');
+          const slider=power?.querySelector('[role="slider"]');
+          if(!power||!slider||power.getAttribute('aria-disabled')==='true'||power.querySelector('[data-locked="true"]'))return null;
+          power.focus({preventScroll:true});
+          return {value:Number(slider.getAttribute('aria-valuenow')),max:Number(slider.getAttribute('aria-valuemax'))};
+        })()"#).await?;
+		let Some(value) = state["value"].as_u64() else {
+			return Err("ChatGPT's Power control is unavailable. No message was sent.".into());
+		};
+		let Some(max) = state["max"].as_u64().filter(|max| *max <= 16) else {
+			return Err("ChatGPT's Power range could not be read. No message was sent.".into());
+		};
+
+		if value == max {
+			return Ok(());
+		}
+		if value > max || previous == Some(value) {
+			return Err(
+				"Pro is not available through ChatGPT's Power control. No message was sent.".into(),
+			);
+		}
+
+		previous = Some(value);
+
+		key(browser, "ArrowRight", "ArrowRight", 39).await?;
+
+		time::sleep(std::time::Duration::from_millis(150)).await;
 	}
-	Ok(url.to_string())
+}
+
+async fn key(browser: &mut Chrome, key: &str, code: &str, key_code: u32) -> Result<()> {
+	for kind in ["keyDown", "keyUp"] {
+		browser
+			.command(
+				"Input.dispatchKeyEvent",
+				serde_json::json!({"type":kind,"key":key,"code":code,"windowsVirtualKeyCode":key_code}),
+			)
+			.await?;
+	}
+
+	Ok(())
+}
+
+async fn click(browser: &mut Chrome, point: &Value) -> Result<()> {
+	let x = point["x"]
+		.as_f64()
+		.filter(|value| value.is_finite())
+		.ok_or("The control is not visible.")?;
+	let y = point["y"]
+		.as_f64()
+		.filter(|value| value.is_finite())
+		.ok_or("The control is not visible.")?;
+
+	for (kind, buttons) in [("mouseMoved", 0), ("mousePressed", 1), ("mouseReleased", 0)] {
+		browser.command("Input.dispatchMouseEvent", serde_json::json!({"type":kind,"x":x,"y":y,"button":if kind=="mouseMoved" {"none"} else {"left"},"buttons":buttons,"clickCount":1})).await?;
+	}
+
+	Ok(())
+}
+
+async fn attachment_state(browser: &mut Chrome, name: &str) -> Result<Value> {
+	browser
+		.evaluate(&format!(
+			r#"(()=>{{ {CONTROLS}
+      const name={name};
+      const files=buttons.filter(b=>visible(b)&&/^Remove /i.test(b.getAttribute('aria-label')??''));
+      const matching=files.filter(b=>b.getAttribute('aria-label')==='Remove '+name);
+      return {{matchingFiles:matching.length,otherFiles:files.length-matching.length,
+        canSend:visible(send)&&!send.disabled&&send.getAttribute('aria-disabled')!=='true',
+        alerts:Array.from(document.querySelectorAll('[role="alert"]')).map(e=>e.innerText)}};
+    }})()"#,
+			name = serde_json::to_string(name).map_err(|e| e.to_string())?
+		))
+		.await
+}
+
+// Read both saved drafts and newly inserted text through the same DOM rules.
+// innerText adds presentation line breaks that are not part of the input.
+async fn composer_text(browser: &mut Chrome, focus: bool) -> Result<String> {
+	let focus = if focus { "editor.focus();" } else { "" };
+	let value = browser.evaluate(&format!(r#"(()=>{{ {CONTROLS}
+        if(!visible(editor))throw Error('ChatGPT composer unavailable');
+        {focus}
+        const block=n=>n?.nodeType===1&&/^(P|DIV)$/.test(n.tagName);
+        const read=n=>{{
+          if(n.nodeType===3)return n.nodeValue??'';
+          if(n.nodeType!==1)return '';
+          if(n.tagName==='BR')return n.classList.contains('ProseMirror-trailingBreak')?'':'\n';
+          if(block(n)&&n.childNodes.length===1&&n.firstChild.nodeName==='BR')return '';
+          return Array.from(n.childNodes).map((c,i,all)=>(i>0&&(block(c)||block(all[i-1]))?'\n':'')+read(c)).join('');
+        }};
+        return read(editor);
+    }})()"#)).await?;
+
+	value.as_str().map(str::to_owned).ok_or_else(|| "ChatGPT composer has no text.".into())
+}
+
+async fn send_block_reason(browser: &mut Chrome) -> Result<Option<String>> {
+	let point = browser
+		.evaluate(&format!(
+			r#"(()=>{{ {CONTROLS}
+        if(!visible(send))return null;
+        const r=send.getBoundingClientRect();return {{x:r.x+r.width/2,y:r.y+r.height/2}};
+    }})()"#
+		))
+		.await?;
+
+	if point.is_null() {
+		return Ok(None);
+	}
+
+	// Read the page's own disabled-control explanation. Do not remove aria-disabled
+	// or force Send, and do not infer a model window from the editor's estimate.
+	browser
+		.command(
+			"Input.dispatchMouseEvent",
+			serde_json::json!({"type":"mouseMoved","x":point["x"],"y":point["y"],"button":"none","buttons":0}),
+		)
+		.await?;
+
+	time::sleep(std::time::Duration::from_millis(350)).await;
+
+	let reason = browser
+		.evaluate(
+			r#"(()=>{
+        const reasons=[...new Set(Array.from(document.querySelectorAll('[role="tooltip"]'))
+          .filter(e=>e.getClientRects().length>0).map(e=>e.innerText.trim()).filter(Boolean))];
+        return reasons.length===1?reasons[0]:null;
+    })()"#,
+		)
+		.await?;
+
+	Ok(reason.as_str().map(str::to_owned))
 }
 
 #[cfg(test)] mod tests;

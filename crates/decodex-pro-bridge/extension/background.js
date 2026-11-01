@@ -14,10 +14,25 @@ let nextFragment = 0;
 let reconnect;
 const attached = new Set();
 const owned = new Set();
-// Session storage survives worker restarts but not browser restarts and tab-ID reuse.
-const ready = chrome.storage.session.get("researchTabs").then(saved => {
-  for (const id of saved.researchTabs || []) owned.add(id);
-});
+const groups = new Map();
+// Chrome clears storage.session when an extension reloads. Retain ownership in
+// local storage, bound to the actual Chrome parent process's identity. A browser
+// restart cannot adopt stale IDs that now belong to a user's unrelated tabs.
+let browserSession;
+let resolveReady;
+const ready = new Promise(resolve => { resolveReady = resolve; });
+async function restoreSession(session) {
+  if (browserSession === session) return;
+  const saved = await chrome.storage.local.get(["browserSession", "researchTabs", "researchGroups"]);
+  owned.clear(); groups.clear(); attached.clear();
+  if (saved.browserSession === session) {
+    for (const id of saved.researchTabs || []) owned.add(id);
+    for (const [windowId, groupId] of saved.researchGroups || []) groups.set(windowId, groupId);
+  }
+  browserSession = session;
+  await saveTabs();
+  resolveReady();
+}
 
 function chatUrl(value) {
   try { const u = new URL(value); return u.origin === "https://chatgpt.com" && !u.username && !u.password; }
@@ -25,7 +40,27 @@ function chatUrl(value) {
 }
 
 async function saveTabs() {
-  await chrome.storage.session.set({researchTabs: [...owned]});
+  await chrome.storage.local.set({browserSession, researchTabs: [...owned], researchGroups: [...groups]});
+}
+
+// Reuse only group identities created by this extension. A matching user group title
+// does not grant ownership of either its tabs or its group.
+async function groupTab(tab) {
+  let groupId = groups.get(tab.windowId);
+  if (groupId !== undefined) {
+    try {
+      const group = await chrome.tabGroups.get(groupId);
+      if (group.windowId !== tab.windowId) groupId = undefined;
+    } catch { groupId = undefined; }
+  }
+  if (groupId === undefined) {
+    groupId = await chrome.tabs.group({tabIds: [tab.id]});
+    groups.set(tab.windowId, groupId);
+    await chrome.tabGroups.update(groupId, {title: "Decodex Research", color: "blue", collapsed: !tab.active});
+  } else {
+    await chrome.tabs.group({tabIds: [tab.id], groupId});
+  }
+  await saveTabs();
 }
 
 async function ownedTab(value) {
@@ -43,10 +78,21 @@ async function dispatch(request) {
   const p = request.params || {};
   switch (request.method) {
     case "Decodex.ping": return {extensionId: chrome.runtime.id, protocol: 1};
+    case "Decodex.reload": {
+      await saveTabs();
+      setTimeout(() => chrome.runtime.reload(), 100);
+      return {reloading: true};
+    }
+    case "Decodex.uninstall": {
+      // This official self-removal API needs no management permission and cannot
+      // remove any other extension. Return before Chrome closes the native port.
+      setTimeout(() => chrome.management.uninstallSelf({showConfirmDialog: false}), 100);
+      return {uninstalling: true};
+    }
     case "Target.getTargets": {
       const targets = [];
       for (const id of [...owned]) {
-        try { const t = await ownedTab(id); targets.push({targetId: String(id), type: "page", url: t.url || "about:blank"}); }
+        try { const t = await ownedTab(id); targets.push({targetId: String(id), type: "page", url: t.url || "about:blank", groupId: t.groupId}); }
         catch { /* Never expose unrelated tabs or login pages. */ }
       }
       return {targetInfos: targets};
@@ -56,6 +102,7 @@ async function dispatch(request) {
       const tab = await chrome.tabs.create({url: "https://chatgpt.com/", active: !p.background});
       owned.add(tab.id);
       await saveTabs();
+      await groupTab(tab);
       return {targetId: String(tab.id)};
     }
     case "Target.attachToTarget": {
@@ -68,6 +115,7 @@ async function dispatch(request) {
     }
     case "Target.activateTarget": {
       const tab = await ownedTab(p.targetId);
+      if (groups.get(tab.windowId) === tab.groupId) await chrome.tabGroups.update(tab.groupId, {collapsed: false});
       await chrome.tabs.update(tab.id, {active: true});
       await chrome.windows.update(tab.windowId, {focused: true});
       return {};
@@ -108,6 +156,10 @@ function send(value, recipient = port) {
 
 function receive(value, source = port) {
   if (source !== port) return;
+  if (value.kind === "session" && typeof value.browserSession === "string") {
+    void restoreSession(value.browserSession);
+    return;
+  }
   if (value.kind === "fragment") {
     if (value.index !== nextFragment || typeof value.text !== "string" || fragments.length + value.text.length > LIMIT) {
       fragments = ""; nextFragment = 0;
@@ -138,10 +190,47 @@ function connect() {
     // Keep owned tabs and their work. Installing or restarting the host does not resend.
     reconnect = setTimeout(connect, 5000);
   });
+  active.postMessage({kind: "hello"});
+}
+
+function conversationTraffic(raw) {
+  try {
+    const u = new URL(raw);
+    return chatUrl(raw) && u.pathname.startsWith("/backend-api/") && /(?:^|\/)conversations?(?:\/|$)/.test(u.pathname)
+      ? u.origin + u.pathname : undefined;
+  } catch { return undefined; }
+}
+
+function researchEvent(method, p) {
+  const requestId = p.requestId;
+  switch (method) {
+    case "Network.requestWillBeSent": {
+      const url = conversationTraffic(p.request?.url);
+      if (!url || p.request.method !== "POST") return;
+      let postData;
+      try {
+        const body = JSON.parse(p.request.postData);
+        const messages = body.messages?.filter(m => (m.author?.role || m.role) === "user");
+        if (messages?.length) postData = JSON.stringify({messages});
+      } catch { /* Missing input remains unconfirmed, never resent. */ }
+      return {requestId, request: {url, method: "POST", postData}};
+    }
+    case "Network.responseReceived": {
+      const url = conversationTraffic(p.response?.url);
+      if (url) return {requestId, response: {url, mimeType: p.response.mimeType, status: p.response.status}};
+      return;
+    }
+    case "Network.loadingFinished": return {requestId, encodedDataLength: p.encodedDataLength};
+    case "Network.loadingFailed": return {requestId, errorText: p.errorText, canceled: p.canceled, blockedReason: p.blockedReason, corsErrorStatus: p.corsErrorStatus};
+  }
 }
 
 chrome.debugger.onEvent.addListener((source, method, params) => {
-  if (owned.has(source.tabId)) send({sessionId: String(source.tabId), method, params});
+  if (!owned.has(source.tabId)) return;
+  // Authentication headers, cookies, login bodies and unrelated traffic stay in
+  // Chrome. Rust receives only conversation evidence needed for this research.
+  const evidence = researchEvent(method, params);
+  if (evidence) send({sessionId: String(source.tabId), method, params: evidence});
 });
 chrome.debugger.onDetach.addListener((source, reason) => {
   attached.delete(source.tabId);

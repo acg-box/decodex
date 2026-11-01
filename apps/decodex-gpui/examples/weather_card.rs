@@ -44,6 +44,7 @@ use {
 	objc2_core_audio_types as _, objc2_core_foundation as _, rtrb as _,
 };
 
+use decodex_pro_bridge as _;
 use decodex_protocol::WeatherForecast;
 
 struct Preview {

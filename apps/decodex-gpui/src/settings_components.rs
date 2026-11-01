@@ -1,4 +1,6 @@
 //! Optional components use their native lifecycle, separate from application updates.
+use std::time::Duration;
+
 use gpui::{
 	AnyElement, Context, Div, KeyDownEvent,
 	prelude::{
@@ -8,31 +10,29 @@ use gpui::{
 };
 
 use crate::{
-	component_plugins::{PluginOperations, Snapshot},
-	component_research::{
-		Action as ResearchAction, ResearchOperations, Snapshot as ResearchSnapshot,
-	},
-	component_runtime::{PreparationState as ComponentState, RuntimePreparation},
+	component_plugins::{self, PluginOperations},
+	component_research::{self, ResearchOperations},
+	component_runtime::{self, RuntimePreparation},
 	settings_surface::SettingsSurface,
 	ui_feedback::{self, Feedback},
 	ui_theme::{self, BLUE},
 };
-use decodex_components::{InstallProgress, PluginAction, RuntimeLock, egm_component};
+use decodex_components::{InstallProgress, PluginAction, RuntimeLock};
 
 #[derive(Clone, Copy)]
 enum Action {
 	Prepare,
 	Plugin(PluginAction),
-	Research(ResearchAction),
+	Research(component_research::Action),
 }
 
 pub(super) struct Components {
 	preparation: RuntimePreparation,
-	shown: ComponentState,
+	shown: component_runtime::PreparationState,
 	optional: PluginOperations,
-	plugin: Snapshot,
+	plugin: component_plugins::Snapshot,
 	research: ResearchOperations,
-	research_shown: ResearchSnapshot,
+	research_shown: component_research::Snapshot,
 }
 impl Components {
 	pub(super) fn new(preparation: RuntimePreparation) -> Self {
@@ -41,10 +41,10 @@ impl Components {
 		Self {
 			preparation,
 			shown,
-			optional: PluginOperations::new(egm_component(), None),
-			plugin: Snapshot::default(),
+			optional: PluginOperations::new(decodex_components::egm_component(), None),
+			plugin: component_plugins::Snapshot::default(),
 			research: ResearchOperations::default(),
-			research_shown: ResearchSnapshot::default(),
+			research_shown: component_research::Snapshot::default(),
 		}
 	}
 
@@ -69,8 +69,12 @@ impl Components {
 	#[cfg(not(test))]
 	pub(super) fn inspect_optional(&mut self) {
 		self.research.inspect();
-		if matches!(self.preparation.snapshot(), ComponentState::Unchecked | ComponentState::Ready)
-		{
+
+		if matches!(
+			self.preparation.snapshot(),
+			component_runtime::PreparationState::Unchecked
+				| component_runtime::PreparationState::Ready
+		) {
 			self.optional.inspect();
 			self.poll();
 		}
@@ -83,13 +87,16 @@ impl SettingsSurface {
 		if self.category == super::SettingsCategory::Components {
 			self.components.research.inspect();
 		}
+
 		#[cfg(not(test))]
-		let preparing = matches!(self.components.shown, ComponentState::Preparing(_));
+		let preparing =
+			matches!(self.components.shown, component_runtime::PreparationState::Preparing(_));
 
 		if self.components.poll() {
 			#[cfg(not(test))]
-			if preparing && self.components.shown == ComponentState::Ready {
+			if preparing && self.components.shown == component_runtime::PreparationState::Ready {
 				self.components.optional.invalidate();
+
 				if self.category == super::SettingsCategory::Components {
 					self.components.inspect_optional();
 				}
@@ -159,8 +166,9 @@ impl SettingsSurface {
 			})
 			.unwrap_or_else(|_| "Version unavailable".into());
 		let action = match self.components.shown {
-			ComponentState::Preparing(_) => None,
-			ComponentState::Failed(_) => Some(("components-retry-runtime", "Retry setup")),
+			component_runtime::PreparationState::Preparing(_) => None,
+			component_runtime::PreparationState::Failed(_) =>
+				Some(("components-retry-runtime", "Retry setup")),
 			_ => Some(("components-prepare-runtime", "Verify")),
 		};
 		let mut component = gpui::div().w_full().flex().flex_col().child(
@@ -177,22 +185,22 @@ impl SettingsSurface {
 		);
 
 		match &self.components.shown {
-			ComponentState::Unchecked => {},
-			ComponentState::Ready => {
+			component_runtime::PreparationState::Unchecked => {},
+			component_runtime::PreparationState::Ready => {
 				component = component.children(ui_feedback::inline_feedback(
 					"components-component-ready",
 					"",
 					&Feedback::success("Ready"),
 				));
 			},
-			ComponentState::Failed(error) => {
+			component_runtime::PreparationState::Failed(error) => {
 				component = component.children(ui_feedback::inline_feedback(
 					"components-component-error",
 					"Could not prepare Codex",
 					&Feedback::error(error.clone()),
 				));
 			},
-			ComponentState::Preparing(progress) => {
+			component_runtime::PreparationState::Preparing(progress) => {
 				component = component.children(ui_feedback::inline_feedback(
 					"components-component-status",
 					"Preparing Codex",
@@ -238,39 +246,104 @@ impl SettingsSurface {
 
 	fn research_settings(&self, cx: &mut Context<Self>) -> Div {
 		let state = &self.components.research_shown;
-		let has_window = state.connection.is_some();
-		let controls = gpui::div()
-			.flex()
-			.items_center()
-			.gap_2()
-			.child(self.component_button(
-				"components-connect-research",
-				if has_window { "Open ChatGPT" } else { "Connect" },
-				Action::Research(ResearchAction::Connect),
-				cx,
-			))
-			.when(has_window, |controls| {
-				controls.child(self.component_button(
+		let actions: Vec<_> = if state.installed.is_none() {
+			vec![("components-install-research", "Install", component_research::Action::Install)]
+		} else {
+			vec![
+				(
+					"components-connect-research",
+					if state.connection.is_some() { "Open ChatGPT" } else { "Connect" },
+					component_research::Action::Connect,
+				),
+				("components-update-research", "Update", component_research::Action::Update),
+				("components-remove-research", "Remove", component_research::Action::Remove),
+			]
+		};
+		let mut controls = gpui::div().flex().items_center().gap_2();
+
+		for (id, label, action) in actions {
+			controls =
+				controls.child(self.component_button(id, label, Action::Research(action), cx));
+		}
+
+		let explanation = if state.installed.is_none() {
+			"Use your ChatGPT Pro subscription. Installs a local helper and Chrome extension files; no API key."
+		} else if state.connection.is_none() {
+			"In Chrome, enable Developer mode and choose Load unpacked, then select the extension folder. "
+		} else if !state.tools.as_ref().is_some_and(|p| p.enabled) {
+			"Chrome is connected. Enable native research tools for Agents. Installation sends no messages."
+		} else {
+			"Research tools are enabled. Conversations stay in their ChatGPT Project. Every answer verifies its actual Pro model."
+		};
+		let mut details = gpui::div().flex().items_center().gap_2();
+
+		if state.installed.is_some() {
+			for (id, label, action) in [
+				(
+					"components-research-extension",
+					"Chrome extension",
+					component_research::Action::OpenExtension,
+				),
+				(
+					"components-research-folder",
+					"Show folder",
+					component_research::Action::RevealExtension,
+				),
+			] {
+				details =
+					details.child(self.component_button(id, label, Action::Research(action), cx));
+			}
+
+			if state.connection.is_some() {
+				details = details.child(self.component_button(
 					"components-disconnect-research",
-					"Disconnect",
-					Action::Research(ResearchAction::Disconnect),
+					"Close setup",
+					Action::Research(component_research::Action::Disconnect),
 					cx,
-				))
-			});
-		let feedback = state.error.as_ref().map(|error| Feedback::error(error.clone())).or_else(
-			|| match state.busy {
-				Some(ResearchAction::Connect) =>
-					Some(Feedback::loading("Opening the ChatGPT setup tab…")),
-				Some(ResearchAction::Disconnect) =>
-					Some(Feedback::loading("Closing the ChatGPT setup tab…")),
+				));
+			}
+			if !state.tools.as_ref().is_some_and(|p| p.enabled) {
+				details = details.child(self.component_button(
+					"components-research-tools",
+					"Enable Agent tools",
+					Action::Research(component_research::Action::EnableTools),
+					cx,
+				));
+			}
+		}
+
+		let feedback = state.error.as_ref().map(|e| Feedback::error(e.clone())).or_else(|| {
+			state.busy.and_then(|a| match a {
+				component_research::Action::Inspect => None,
+				component_research::Action::Install | component_research::Action::Update =>
+					Some(Feedback::loading("Preparing research component…")),
+				component_research::Action::EnableTools =>
+					Some(Feedback::loading("Enabling native research tools…")),
+				component_research::Action::Remove =>
+					Some(Feedback::loading("Removing component; keeping results…")),
+				component_research::Action::Connect =>
+					Some(Feedback::loading("Opening ChatGPT setup…")),
 				_ => None,
-			},
-		);
-		gpui::div().debug_selector(|| "components-pro-research".into()).w_full().flex().flex_col()
-			.child(ui_theme::settings_row()
-				.child(ui_theme::settings_label("Pro Research · Experimental", format!("{}\nUses your ChatGPT subscription through the Decodex Research Chrome extension. No API key.\nAgent access requires the optional Decodex Research plugin. Each answer verifies its actual model.", state.status_text())))
-				.child(controls))
-			.child(ui_feedback::notice("components-research-feedback", "research", feedback).inline())
+			})
+		});
+
+		gpui::div()
+			.debug_selector(|| "components-pro-research".into())
+			.w_full()
+			.flex()
+			.flex_col()
+			.child(
+				ui_theme::settings_row()
+					.child(ui_theme::settings_label(
+						"Pro Research · Experimental",
+						format!("{}\n{explanation}", state.status_text()),
+					))
+					.child(controls),
+			)
+			.when(state.installed.is_some(), |d| d.child(details))
+			.child(
+				ui_feedback::notice("components-research-feedback", "research", feedback).inline(),
+			)
 	}
 
 	fn egm_settings(&self, cx: &mut Context<Self>) -> Div {
@@ -282,6 +355,7 @@ impl SettingsSurface {
 			Action::Plugin(PluginAction::Refresh),
 			cx,
 		));
+
 		if state.inspected {
 			let (label, action) = match &state.installed {
 				None => ("Install", PluginAction::Install),
@@ -320,7 +394,7 @@ impl SettingsSurface {
 			.child(controls))
 			.child(ui_feedback::notice("components-egm-feedback", "egm", feedback).inline()
 				.when(state.busy == Some(PluginAction::Refresh), |notice| {
-					notice.loading_delay(std::time::Duration::from_millis(500))
+					notice.loading_delay(Duration::from_millis(500))
 				}))
 	}
 }
@@ -341,8 +415,9 @@ fn progress_text(progress: &InstallProgress) -> String {
 mod tests {
 	use decodex_components::{PluginAction, PluginInstallation};
 
-	use crate::settings_surface::components::{
-		ComponentState, RuntimePreparation, SettingsSurface,
+	use crate::{
+		component_runtime,
+		settings_surface::components::{RuntimePreparation, SettingsSurface},
 	};
 
 	#[gpui::test]
@@ -451,7 +526,10 @@ mod tests {
 
 			s.refresh(cx);
 
-			assert_eq!(s.components.preparation.snapshot(), ComponentState::Unchecked);
+			assert_eq!(
+				s.components.preparation.snapshot(),
+				component_runtime::PreparationState::Unchecked
+			);
 		});
 
 		visual.update(crate::ui_frame::draw_current_frame);
@@ -474,8 +552,9 @@ mod tests {
 		});
 
 		settings.update(visual, |settings, cx| {
-			settings.components.preparation =
-				RuntimePreparation::fixture(ComponentState::Failed("Download failed".into()));
+			settings.components.preparation = RuntimePreparation::fixture(
+				component_runtime::PreparationState::Failed("Download failed".into()),
+			);
 
 			settings.poll_components(cx);
 		});

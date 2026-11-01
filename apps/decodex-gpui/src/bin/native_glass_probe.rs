@@ -669,6 +669,7 @@ use {
 };
 #[cfg(test)] use {tempfile as _, tokio_tungstenite as _};
 
+use decodex_pro_bridge as _;
 use decodex_protocol as _;
 
 #[cfg(not(target_os = "macos"))]

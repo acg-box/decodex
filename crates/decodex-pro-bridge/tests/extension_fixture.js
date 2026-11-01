@@ -1,25 +1,38 @@
 // Browser API fixture. No network or user browser state is accessed.
 var testDone = false, testError = "";
 var URL = function(raw) { const p = parseURL(raw); if (!p) throw Error("Invalid URL"); Object.assign(this, p); };
-var setTimeout = function() { return 1; }, clearTimeout = function() {};
+const scheduled = [];
+var setTimeout = function(callback, delay) { scheduled.push({callback, delay}); return scheduled.length; }, clearTimeout = function() {};
 const callbacks = {};
 const event = name => ({addListener: cb => { callbacks[name] = cb; }});
 const records = new Map([[1, {id: 1, url: "https://chatgpt.com/", windowId: 1}]]);
+const groupRecords = new Map([[5, {id: 5, title: "Decodex Research", windowId: 1}]]);
+let nextGroup = 100, uninstalled = false;
 const storage = {};
 const frames = [];
 let created = 0, nativeConnections = 0, commands = 0, pendingReply;
 var chrome = {
-  storage: {session: {get: async () => storage, set: async value => Object.assign(storage, value)}},
+  storage: {local: {get: async () => storage, set: async value => Object.assign(storage, value)}},
   runtime: {
     id: "fixture",
     onInstalled: event("installed"), onStartup: event("startup"),
     connectNative: () => { nativeConnections++; return {onMessage: event("message"), onDisconnect: event("disconnect"), postMessage: value => frames.push(value), disconnect: () => callbacks.disconnect()}; }
   },
   action: {onClicked: event("action")},
+  management: {uninstallSelf: async options => { uninstalled = options.showConfirmDialog === false; }},
   tabs: {
     create: async value => { created++; const tab = {id: 10 + created, windowId: 1, ...value}; records.set(tab.id, tab); return tab; },
     get: async id => { if (!records.has(id)) throw Error("Missing tab"); return records.get(id); },
+    group: async ({tabIds, groupId}) => {
+      if (groupId === undefined) { groupId = ++nextGroup; groupRecords.set(groupId, {id: groupId, windowId: records.get(tabIds[0]).windowId}); }
+      for (const id of tabIds) records.get(id).groupId = groupId;
+      return groupId;
+    },
     remove: async id => records.delete(id), update: async () => {}, onRemoved: event("removed")
+  },
+  tabGroups: {
+    get: async id => { if (!groupRecords.has(id)) throw Error("Missing group"); return groupRecords.get(id); },
+    update: async (id, update) => Object.assign(groupRecords.get(id), update)
   },
   windows: {update: async () => {}},
   debugger: {
@@ -32,10 +45,18 @@ var chrome = {
 async function runChecks() {
   const assert = (ok, message) => { if (!ok) throw Error(message); };
   const rejects = async action => { try { await action(); } catch { return; } throw Error("Unsafe command accepted"); };
+  receive({kind: "session", browserSession: "fixture-browser"});
   await ready;
   await rejects(() => dispatch({method: "Target.attachToTarget", params: {targetId: "1"}}));
   assert((await dispatch({method: "Target.getTargets"})).targetInfos.length === 0, "Unrelated tab leaked");
   const {targetId} = await dispatch({method: "Target.createTarget", params: {url: "about:blank", background: true}});
+  const groupId = records.get(Number(targetId)).groupId;
+  assert(groupId !== 5 && groupRecords.get(groupId).collapsed, "Research adopted a user group or did not stay in the background");
+  const second = await dispatch({method: "Target.createTarget", params: {url: "about:blank", background: true}});
+  assert(records.get(Number(second.targetId)).groupId === groupId, "Research tabs were not grouped together");
+  await dispatch({method: "Target.activateTarget", params: {targetId}});
+  assert(!groupRecords.get(groupId).collapsed, "Opening research kept its group hidden");
+  await dispatch({method: "Target.closeTarget", params: {targetId: second.targetId}});
   await dispatch({method: "Target.attachToTarget", params: {targetId}});
   const cdp = (method, params) => dispatch({method, params, sessionId: targetId});
   await cdp("Runtime.evaluate", {expression: "1 + 1"});
@@ -63,15 +84,44 @@ async function runChecks() {
   frames.length = 0;
   callbacks.event({tabId: 1}, "Network.responseReceived", {});
   assert(frames.length === 0, "Unrelated tab events leaked");
+  const ownEvent = (method, params) => callbacks.event({tabId: Number(targetId)}, method, params);
+  ownEvent("Network.requestWillBeSent", {requestId: "login", request: {url: "https://auth.openai.com/login", method: "POST", postData: "password=not-a-real-secret", headers: {Cookie: "not-a-real-cookie"}}});
+  ownEvent("Runtime.consoleAPICalled", {args: ["not-a-real-secret"]});
+  assert(frames.length === 0, "Login or unrelated runtime data left Chrome");
+  const user = {id: "user", author: {role: "user"}, content: {content_type: "text", parts: [text]}};
+  ownEvent("Network.requestWillBeSent", {requestId: "research", request: {url: "https://chatgpt.com/backend-api/f/conversation?token=not-a-real-token", method: "POST", headers: {Authorization: "not-a-real-secret"}, postData: JSON.stringify({messages: [user], access_token: "not-a-real-secret"})}});
+  const evidence = JSON.parse(frames.map(frame => frame.text || JSON.stringify(frame)).join(""));
+  assert(evidence.params.request.url === "https://chatgpt.com/backend-api/f/conversation" && !JSON.stringify(evidence).includes("not-a-real"), "Authentication metadata left Chrome");
+  assert(JSON.parse(evidence.params.request.postData).messages[0].content.parts[0] === text, "Filtering changed the complete user input");
+  frames.length = 0;
+  ownEvent("Network.responseReceived", {requestId: "research", response: {url: "https://chatgpt.com/backend-api/conversation/owned", mimeType: "application/json", status: 200, headers: {"set-cookie": "not-a-real-cookie"}}});
+  assert(!JSON.stringify(frames).includes("not-a-real"), "Response authentication headers left Chrome");
+  frames.length = 0;
   receive({id: 123, method: "Runtime.evaluate", sessionId: targetId, params: {expression: "pending"}});
   for (let tick = 0; tick < 50 && !pendingReply; tick++) await Promise.resolve();
   assert(pendingReply, "Fixture did not start pending command");
   callbacks.disconnect(); connect();
+  receive({kind: "session", browserSession: "fixture-browser"});
+  frames.length = 0;
   pendingReply({late: true});
   for (let tick = 0; tick < 50; tick++) await Promise.resolve();
   assert(frames.length === 0, "Old host response leaked into reconnected host");
   callbacks.detach({tabId: Number(targetId)}, "canceled_by_user");
   await rejects(() => cdp("Input.insertText", {text: "must not send"}));
-  assert(created === 1 && nativeConnections === 2, "Reconnect created a tab or failed to reconnect");
+  assert(created === 2 && nativeConnections === 2, "Reconnect created a tab or failed to reconnect");
   assert(storage.researchTabs.length === 1, "Owned scope was not preserved across worker reconnect");
+  const reload = await dispatch({method: "Decodex.reload", params: {}});
+  assert(reload.reloading && storage.researchTabs.length === 1, "Updating the extension lost owned tabs");
+  browserSession = undefined; owned.clear(); groups.clear();
+  await restoreSession("fixture-browser");
+  assert((await dispatch({method: "Target.getTargets"})).targetInfos[0]?.targetId === targetId && groups.get(1) === groupId,
+    "Reloading the extension lost its owned tab or group");
+  const uninstall = await dispatch({method: "Decodex.uninstall", params: {}});
+  assert(uninstall.uninstalling && scheduled[scheduled.length - 1].delay === 100, "Removal did not acknowledge before closing the native port");
+  await scheduled[scheduled.length - 1].callback();
+  assert(uninstalled, "Removal did not use the self-only Chrome API");
+  await restoreSession("another-browser-process");
+  assert((await dispatch({method: "Target.getTargets"})).targetInfos.length === 0,
+    "A browser restart adopted stale tab IDs");
+  await rejects(() => dispatch({method: "Target.attachToTarget", params: {targetId}}));
 }
