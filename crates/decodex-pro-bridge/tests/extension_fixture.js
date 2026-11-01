@@ -5,6 +5,8 @@ var setTimeout = function() { return 1; }, clearTimeout = function() {};
 const callbacks = {};
 const event = name => ({addListener: cb => { callbacks[name] = cb; }});
 const records = new Map([[1, {id: 1, url: "https://chatgpt.com/", windowId: 1}]]);
+const groupRecords = new Map([[5, {id: 5, title: "Decodex Research", windowId: 1}]]);
+let nextGroup = 100;
 const storage = {};
 const frames = [];
 let created = 0, nativeConnections = 0, commands = 0, pendingReply;
@@ -19,7 +21,16 @@ var chrome = {
   tabs: {
     create: async value => { created++; const tab = {id: 10 + created, windowId: 1, ...value}; records.set(tab.id, tab); return tab; },
     get: async id => { if (!records.has(id)) throw Error("Missing tab"); return records.get(id); },
+    group: async ({tabIds, groupId}) => {
+      if (groupId === undefined) { groupId = ++nextGroup; groupRecords.set(groupId, {id: groupId, windowId: records.get(tabIds[0]).windowId}); }
+      for (const id of tabIds) records.get(id).groupId = groupId;
+      return groupId;
+    },
     remove: async id => records.delete(id), update: async () => {}, onRemoved: event("removed")
+  },
+  tabGroups: {
+    get: async id => { if (!groupRecords.has(id)) throw Error("Missing group"); return groupRecords.get(id); },
+    update: async (id, update) => Object.assign(groupRecords.get(id), update)
   },
   windows: {update: async () => {}},
   debugger: {
@@ -36,6 +47,13 @@ async function runChecks() {
   await rejects(() => dispatch({method: "Target.attachToTarget", params: {targetId: "1"}}));
   assert((await dispatch({method: "Target.getTargets"})).targetInfos.length === 0, "Unrelated tab leaked");
   const {targetId} = await dispatch({method: "Target.createTarget", params: {url: "about:blank", background: true}});
+  const groupId = records.get(Number(targetId)).groupId;
+  assert(groupId !== 5 && groupRecords.get(groupId).collapsed, "Research adopted a user group or did not stay in the background");
+  const second = await dispatch({method: "Target.createTarget", params: {url: "about:blank", background: true}});
+  assert(records.get(Number(second.targetId)).groupId === groupId, "Research tabs were not grouped together");
+  await dispatch({method: "Target.activateTarget", params: {targetId}});
+  assert(!groupRecords.get(groupId).collapsed, "Opening research kept its group hidden");
+  await dispatch({method: "Target.closeTarget", params: {targetId: second.targetId}});
   await dispatch({method: "Target.attachToTarget", params: {targetId}});
   const cdp = (method, params) => dispatch({method, params, sessionId: targetId});
   await cdp("Runtime.evaluate", {expression: "1 + 1"});
@@ -72,6 +90,6 @@ async function runChecks() {
   assert(frames.length === 0, "Old host response leaked into reconnected host");
   callbacks.detach({tabId: Number(targetId)}, "canceled_by_user");
   await rejects(() => cdp("Input.insertText", {text: "must not send"}));
-  assert(created === 1 && nativeConnections === 2, "Reconnect created a tab or failed to reconnect");
+  assert(created === 2 && nativeConnections === 2, "Reconnect created a tab or failed to reconnect");
   assert(storage.researchTabs.length === 1, "Owned scope was not preserved across worker reconnect");
 }

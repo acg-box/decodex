@@ -14,9 +14,11 @@ let nextFragment = 0;
 let reconnect;
 const attached = new Set();
 const owned = new Set();
+const groups = new Map();
 // Session storage survives worker restarts but not browser restarts and tab-ID reuse.
-const ready = chrome.storage.session.get("researchTabs").then(saved => {
+const ready = chrome.storage.session.get(["researchTabs", "researchGroups"]).then(saved => {
   for (const id of saved.researchTabs || []) owned.add(id);
+  for (const [windowId, groupId] of saved.researchGroups || []) groups.set(windowId, groupId);
 });
 
 function chatUrl(value) {
@@ -25,7 +27,27 @@ function chatUrl(value) {
 }
 
 async function saveTabs() {
-  await chrome.storage.session.set({researchTabs: [...owned]});
+  await chrome.storage.session.set({researchTabs: [...owned], researchGroups: [...groups]});
+}
+
+// Reuse only group identities created by this extension. A matching user group title
+// does not grant ownership of either its tabs or its group.
+async function groupTab(tab) {
+  let groupId = groups.get(tab.windowId);
+  if (groupId !== undefined) {
+    try {
+      const group = await chrome.tabGroups.get(groupId);
+      if (group.windowId !== tab.windowId) groupId = undefined;
+    } catch { groupId = undefined; }
+  }
+  if (groupId === undefined) {
+    groupId = await chrome.tabs.group({tabIds: [tab.id]});
+    groups.set(tab.windowId, groupId);
+    await chrome.tabGroups.update(groupId, {title: "Decodex Research", color: "blue", collapsed: !tab.active});
+  } else {
+    await chrome.tabs.group({tabIds: [tab.id], groupId});
+  }
+  await saveTabs();
 }
 
 async function ownedTab(value) {
@@ -46,7 +68,7 @@ async function dispatch(request) {
     case "Target.getTargets": {
       const targets = [];
       for (const id of [...owned]) {
-        try { const t = await ownedTab(id); targets.push({targetId: String(id), type: "page", url: t.url || "about:blank"}); }
+        try { const t = await ownedTab(id); targets.push({targetId: String(id), type: "page", url: t.url || "about:blank", groupId: t.groupId}); }
         catch { /* Never expose unrelated tabs or login pages. */ }
       }
       return {targetInfos: targets};
@@ -56,6 +78,7 @@ async function dispatch(request) {
       const tab = await chrome.tabs.create({url: "https://chatgpt.com/", active: !p.background});
       owned.add(tab.id);
       await saveTabs();
+      await groupTab(tab);
       return {targetId: String(tab.id)};
     }
     case "Target.attachToTarget": {
@@ -68,6 +91,7 @@ async function dispatch(request) {
     }
     case "Target.activateTarget": {
       const tab = await ownedTab(p.targetId);
+      if (groups.get(tab.windowId) === tab.groupId) await chrome.tabGroups.update(tab.groupId, {collapsed: false});
       await chrome.tabs.update(tab.id, {active: true});
       await chrome.windows.update(tab.windowId, {focused: true});
       return {};
