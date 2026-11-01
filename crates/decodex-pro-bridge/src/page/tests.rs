@@ -106,6 +106,10 @@ fn complete_original_markdown_preserves_code_that_a_virtualized_view_omits() {
 #[test]
 fn recovery_accepts_only_exact_canonical_chatgpt_conversations() {
 	assert_eq!(
+		super::conversation_url("https://chatgpt.com/g/g-p-owned/c/thread-one").unwrap(),
+		"https://chatgpt.com/g/g-p-owned/c/thread-one"
+	);
+	assert_eq!(
 		conversation_url("https://chatgpt.com/c/owned-test").expect("owned"),
 		"https://chatgpt.com/c/owned-test"
 	);
@@ -117,6 +121,9 @@ fn recovery_accepts_only_exact_canonical_chatgpt_conversations() {
 		"https://chatgpt.com/c/one#part",
 		"https://chatgpt.com:443/c/one",
 		"https://chatgpt.com/",
+		"https://chatgpt.com/g/custom-gpt/c/one",
+		"https://chatgpt.com/g/g-p-owner/project",
+		"https://chatgpt.com/g/g-p-owner/c/one/extra",
 	] {
 		assert!(conversation_url(url).is_err(), "{url}");
 	}

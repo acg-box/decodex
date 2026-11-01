@@ -11,7 +11,7 @@ use std::os::unix::fs::{DirBuilderExt as _, OpenOptionsExt as _, PermissionsExt 
 
 use serde::{Deserialize, Serialize};
 
-use crate::{Answer, Phase, Receipt, Request, Result};
+use crate::{Answer, Phase, Project, Receipt, Request, Result};
 
 mod material;
 pub(crate) use material::{Material, digest};
@@ -25,6 +25,8 @@ pub(crate) struct Record {
 	pub parent_answer_id: Option<String>,
 	/// Owned browser target saved before Send, so a missing URL can be recovered.
 	pub target_id: Option<String>,
+	#[serde(default)]
+	pub project: Option<Project>,
 }
 
 impl Record {
@@ -111,7 +113,25 @@ impl Store {
 		if parent.as_ref().is_some_and(|r| r.receipt.phase != Phase::Complete) {
 			return Err("The previous request must be complete before continuation.".into());
 		}
+		let project = parent
+			.as_ref()
+			.and_then(|r| r.project.clone())
+			.or_else(|| request.project.clone())
+			.unwrap_or_else(|| Project { id: "general".into(), name: "General".into() });
+		if project.id.trim().is_empty() || project.name.trim().is_empty() {
+			return Err("A project requires a stable ID and a name.".into());
+		}
+		if let Some(parent) = &parent
+			&& request.project.as_ref().is_some_and(|p| {
+				Some(p.id.as_str()) != parent.project.as_ref().map(|p| p.id.as_str())
+			}) {
+			return Err(
+				"A continuation cannot change its project. Start a new research conversation."
+					.into(),
+			);
+		}
 		let record = Record {
+			project: Some(project),
 			receipt: Receipt {
 				id: request.id.clone(),
 				phase: Phase::Prepared,
@@ -120,6 +140,7 @@ impl Store {
 				execution: None,
 				user_message_id: None,
 				input_binding: None,
+				project_url: parent.as_ref().and_then(|r| r.receipt.project_url.clone()),
 				baseline_messages: 0,
 				last_error: None,
 			},

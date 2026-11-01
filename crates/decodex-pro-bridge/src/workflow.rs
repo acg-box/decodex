@@ -129,6 +129,13 @@ async fn execute(
 		.command("Emulation.setFocusEmulationEnabled", serde_json::json!({"enabled":true}))
 		.await?;
 	if record.receipt.phase == Phase::Prepared {
+		if record.parent_answer_id.is_none()
+			&& let Some(project) = &record.project
+		{
+			record.receipt.project_url =
+				Some(crate::projects::enter(browser, &bridge.root, project).await?);
+			store.save(record)?;
+		}
 		let observed = page::observe(browser).await?;
 		validate_before_send(record, &observed)?;
 		page::select_pro(browser).await?;
@@ -254,7 +261,9 @@ fn validate_before_send(record: &Record, observed: &Observation) -> Result<()> {
 				);
 			}
 		},
-		None if !observed.messages.is_empty() || observed.url != "https://chatgpt.com/" =>
+		None if !observed.messages.is_empty()
+			|| (observed.url != "https://chatgpt.com/"
+				&& Some(observed.url.as_str()) != record.receipt.project_url.as_deref()) =>
 			return Err(
 				"A new request requires an empty owned ChatGPT page. No message was sent.".into()
 			),

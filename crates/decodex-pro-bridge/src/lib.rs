@@ -11,6 +11,7 @@ pub mod mcp;
 pub mod native_host;
 mod native_wire;
 mod page;
+mod projects;
 mod store;
 mod workflow;
 
@@ -74,6 +75,19 @@ pub struct Request {
 	pub prompt: String,
 	/// Completed request in this store whose ChatGPT conversation will continue.
 	pub previous: Option<String>,
+	/// Stable Decodex project identity. Continuations inherit the original project.
+	#[serde(default)]
+	pub project: Option<Project>,
+}
+
+/// A Decodex project, distinct from its display name and ChatGPT URL.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Project {
+	/// Stable project ID supplied by the calling Agent.
+	pub id: String,
+	/// Human-readable project name.
+	pub name: String,
 }
 
 /// Durable submission state. `Sending` must be reconciled, never replayed.
@@ -108,6 +122,8 @@ pub struct Receipt {
 	pub user_message_id: Option<String>,
 	/// Whether the full input matched verbatim or through declared Markdown encoding.
 	pub input_binding: Option<String>,
+	/// ChatGPT Project that owns this research conversation.
+	pub project_url: Option<String>,
 	/// Number of messages observed before this request was submitted.
 	pub baseline_messages: usize,
 	/// Most recent recoverable failure. It can include rendered UI diagnostics.

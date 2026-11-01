@@ -287,7 +287,8 @@ fn conversation_endpoint(raw: &str, owned: Option<&str>) -> bool {
 		&& url.path().starts_with("/backend-api/")
 		&& (url.path().split('/').any(|part| part == "conversation")
 			|| owned
-				.and_then(|url| url.strip_prefix("https://chatgpt.com/c/"))
+				.and_then(|url| crate::page::conversation_url(url).ok())
+				.and_then(|url| url.rsplit('/').next().map(str::to_owned))
 				.is_some_and(|id| url.path() == format!("/backend-api/conversations/{id}")))
 }
 

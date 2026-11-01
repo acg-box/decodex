@@ -424,14 +424,16 @@ pub(crate) fn conversation_url(raw: &str) -> Result<String> {
 		|| url.query().is_some()
 		|| url.fragment().is_some()
 		|| url.as_str() != raw
-		|| parts.len() != 2
-		|| parts[0] != "c"
-		|| parts[1].is_empty()
-		|| !parts[1].bytes().all(|c| c.is_ascii_alphanumeric() || c == b'-')
+		|| !matches!(parts.as_slice(), ["c", id] if valid_id(id))
+			&& !matches!(parts.as_slice(), ["g", project, "c", id] if crate::projects::project_segment(project) && valid_id(id))
 	{
-		return Err("Only an exact https://chatgpt.com/c/ conversation URL can be resumed.".into());
+		return Err("Only an exact ChatGPT conversation URL can be resumed.".into());
 	}
 	Ok(url.to_string())
+}
+
+fn valid_id(id: &str) -> bool {
+	!id.is_empty() && id.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'-')
 }
 
 #[cfg(test)] mod tests;

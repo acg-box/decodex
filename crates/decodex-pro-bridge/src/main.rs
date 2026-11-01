@@ -3,7 +3,7 @@
 use std::{fs, path::PathBuf, process::ExitCode, time::Duration};
 
 use clap::{Parser, Subcommand};
-use decodex_pro_bridge::{Config, ProBridge, Request, Result, install, mcp, native_host};
+use decodex_pro_bridge::{Config, ProBridge, Project, Request, Result, install, mcp, native_host};
 use futures_util as _;
 use pulldown_cmark as _;
 use serde as _;
@@ -56,6 +56,10 @@ enum Action {
 		prompt_file: PathBuf,
 		#[arg(long)]
 		previous: Option<String>,
+		#[arg(long, requires = "project_name")]
+		project_id: Option<String>,
+		#[arg(long, requires = "project_id")]
+		project_name: Option<String>,
 	},
 	/// Save a question, start its worker and return the receipt immediately.
 	Start {
@@ -65,6 +69,10 @@ enum Action {
 		prompt_file: PathBuf,
 		#[arg(long)]
 		previous: Option<String>,
+		#[arg(long, requires = "project_name")]
+		project_id: Option<String>,
+		#[arg(long, requires = "project_id")]
+		project_name: Option<String>,
 	},
 	/// Recover saved work without replaying uncertain input.
 	Resume {
@@ -121,12 +129,13 @@ async fn run(cli: Cli) -> Result<()> {
 			Action::Connect => print_json(&bridge.connect().await?)?,
 			Action::Check => print_json(&bridge.check().await?)?,
 			Action::Disconnect => bridge.disconnect().await?,
-			Action::Ask { id, prompt_file, previous }
-			| Action::Start { id, prompt_file, previous } => {
+			Action::Ask { id, prompt_file, previous, project_id, project_name }
+			| Action::Start { id, prompt_file, previous, project_id, project_name } => {
 				let request = Request {
 					id: id.clone(),
 					prompt: fs::read_to_string(prompt_file).map_err(|e| e.to_string())?,
 					previous,
+					project: project_id.zip(project_name).map(|(id, name)| Project { id, name }),
 				};
 				if detached {
 					bridge.prepare(request)?;

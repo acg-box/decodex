@@ -3,7 +3,33 @@ use crate::{Answer, Config, Phase, ProBridge, Request};
 use super::Store;
 
 fn request(id: &str) -> Request {
-	Request { id: id.into(), prompt: "A harmless test question.".into(), previous: None }
+	Request {
+		id: id.into(),
+		prompt: "A harmless test question.".into(),
+		previous: None,
+		project: None,
+	}
+}
+
+#[test]
+fn continuations_inherit_project_identity_and_reject_cross_project_reuse() {
+	let root = tempfile::tempdir().unwrap();
+	let store = Store::open(root.path()).unwrap();
+	let project = crate::Project { id: "native-project-one".into(), name: "Shared name".into() };
+	let mut first = request("first-project");
+	first.project = Some(project.clone());
+	let mut parent = store.prepare(first).unwrap();
+	parent.receipt.phase = Phase::Complete;
+	parent.receipt.project_url = Some("https://chatgpt.com/g/g-p-one/project".into());
+	store.save(&parent).unwrap();
+	let mut follow = request("follow-project");
+	follow.previous = Some(parent.request.id.clone());
+	let saved = store.prepare(follow.clone()).unwrap();
+	assert_eq!(saved.project, Some(project.clone()));
+	assert_eq!(saved.receipt.project_url, parent.receipt.project_url);
+	follow.id = "other-project".into();
+	follow.project = Some(crate::Project { id: "native-project-two".into(), ..project });
+	assert!(store.prepare(follow).unwrap_err().contains("cannot change its project"));
 }
 
 #[test]

@@ -33,7 +33,12 @@ fn recovery_binds_the_exact_prompt_and_does_not_complete_from_a_stale_or_streami
 	let root = tempfile::tempdir().expect("root");
 	let store = Store::open(root.path()).expect("store");
 	let mut record = store
-		.prepare(Request { id: "one".into(), prompt: "question".into(), previous: None })
+		.prepare(Request {
+			id: "one".into(),
+			prompt: "question".into(),
+			previous: None,
+			project: None,
+		})
 		.expect("record");
 	record.receipt.phase = Phase::Sending;
 	record.receipt.model = Some("Pro".into());
@@ -80,7 +85,12 @@ fn first_submission_waits_until_chatgpt_publishes_its_conversation_url() {
 	let root = tempfile::tempdir().expect("root");
 	let store = Store::open(root.path()).expect("store");
 	let mut record = store
-		.prepare(Request { id: "one".into(), prompt: "question".into(), previous: None })
+		.prepare(Request {
+			id: "one".into(),
+			prompt: "question".into(),
+			previous: None,
+			project: None,
+		})
 		.expect("record");
 	record.receipt.phase = Phase::Sending;
 	record.receipt.model = Some("Pro".into());
@@ -101,7 +111,12 @@ fn continuation_refuses_a_conversation_that_another_user_message_advanced() {
 	let root = tempfile::tempdir().expect("root");
 	let store = Store::open(root.path()).expect("store");
 	let mut record = store
-		.prepare(Request { id: "one".into(), prompt: "question".into(), previous: None })
+		.prepare(Request {
+			id: "one".into(),
+			prompt: "question".into(),
+			previous: None,
+			project: None,
+		})
 		.expect("record");
 	record.parent_answer_id = Some("saved-answer".into());
 	record.receipt.conversation_url = Some("https://chatgpt.com/c/owned".into());
@@ -121,7 +136,12 @@ fn recovery_accepts_only_the_exact_observed_terminal_hard_break_representation()
 	let root = tempfile::tempdir().expect("root");
 	let store = Store::open(root.path()).expect("store");
 	let mut record = store
-		.prepare(Request { id: "hard-break".into(), prompt: "question\n".into(), previous: None })
+		.prepare(Request {
+			id: "hard-break".into(),
+			prompt: "question\n".into(),
+			previous: None,
+			project: None,
+		})
 		.expect("record");
 	record.receipt.phase = Phase::Sending;
 	record.receipt.model = Some("Pro".into());
@@ -169,7 +189,12 @@ fn a_literal_backslash_does_not_match_a_prompt_without_a_terminal_lf() {
 	let root = tempfile::tempdir().expect("root");
 	let store = Store::open(root.path()).expect("store");
 	let mut record = store
-		.prepare(Request { id: "no-break".into(), prompt: "question".into(), previous: None })
+		.prepare(Request {
+			id: "no-break".into(),
+			prompt: "question".into(),
+			previous: None,
+			project: None,
+		})
 		.expect("record");
 	record.receipt.phase = Phase::Sending;
 	record.receipt.model = Some("Pro".into());
@@ -189,7 +214,12 @@ fn pro_label_and_another_turns_identity_cannot_qualify_a_completed_answer() {
 	let root = tempfile::tempdir().unwrap();
 	let store = Store::open(root.path()).unwrap();
 	let mut record = store
-		.prepare(Request { id: "identity".into(), prompt: "question".into(), previous: None })
+		.prepare(Request {
+			id: "identity".into(),
+			prompt: "question".into(),
+			previous: None,
+			project: None,
+		})
 		.unwrap();
 	record.receipt.phase = Phase::Sending;
 	record.receipt.model = Some("Pro".into());
@@ -221,7 +251,12 @@ async fn queued_research_keeps_the_journal_available_and_deduplicates_workers() 
 	let store = Store::open(root.path()).unwrap();
 	let bridge = crate::ProBridge::new(crate::Config::default(), root.path()).unwrap();
 	bridge
-		.prepare(Request { id: "queued".into(), prompt: "first".into(), previous: None })
+		.prepare(Request {
+			id: "queued".into(),
+			prompt: "first".into(),
+			previous: None,
+			project: None,
+		})
 		.unwrap();
 	let execution = store.execution_lease().unwrap().unwrap();
 	let runner = bridge.clone();
@@ -237,7 +272,12 @@ async fn queued_research_keeps_the_journal_available_and_deduplicates_workers() 
 	assert_eq!(bridge.resume("queued").await.unwrap().phase, Phase::Prepared);
 	assert_eq!(
 		bridge
-			.prepare(Request { id: "second".into(), prompt: "second".into(), previous: None })
+			.prepare(Request {
+				id: "second".into(),
+				prompt: "second".into(),
+				previous: None,
+				project: None
+			})
 			.unwrap()
 			.phase,
 		Phase::Prepared
