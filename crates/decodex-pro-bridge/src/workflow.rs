@@ -142,6 +142,9 @@ async fn execute(
 		observe_before_send(record, browser).await?;
 		page::select_pro(browser).await?;
 		page::fill(browser, &material).await?;
+		if let Some(attachment) = store.attachment(record)? {
+			page::attach(browser, &attachment).await?;
+		}
 		let observed = observe_before_send(record, browser).await?;
 		record.receipt.baseline_messages = observed.messages.len();
 		record.receipt.phase = Phase::Sending;
@@ -378,6 +381,19 @@ fn reconcile(record: &mut Record, observed: &Observation) -> Result<bool> {
 	);
 	record.receipt.phase = Phase::Submitted;
 	record.receipt.last_error = None;
+	if let Some(expected) = &mut record.receipt.attachment {
+		let Some(files) = &user.attachments else { return Ok(false) };
+		let [file] = files.as_slice() else {
+			return Err("The submitted message does not contain exactly the saved source attachment. This request will not be resent.".into());
+		};
+		if file.name != expected.name
+			|| file.bytes != expected.bytes
+			|| expected.file_id.as_ref().is_some_and(|id| id != &file.id)
+		{
+			return Err("The submitted source attachment differs from the saved manifest. This request will not be resent.".into());
+		}
+		expected.file_id = Some(file.id.clone());
+	}
 	let answer =
 		observed.messages[index + 1..].iter().rev().find(|message| message.role == "assistant");
 	if let Some(answer) =

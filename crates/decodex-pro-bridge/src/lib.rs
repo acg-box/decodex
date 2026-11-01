@@ -78,6 +78,45 @@ pub struct Request {
 	/// Stable Decodex project identity. Continuations inherit the original project.
 	#[serde(default)]
 	pub project: Option<Project>,
+	/// Selected UTF-8 source content, saved before the caller returns.
+	#[serde(default)]
+	pub context: Option<String>,
+	/// Auto keeps short input inline and sends large input as a source attachment.
+	#[serde(default)]
+	pub delivery: Delivery,
+}
+
+/// Source delivery preference. Receipts contain the resolved Inline or Attachment value.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize, clap::ValueEnum)]
+#[serde(rename_all = "snake_case")]
+pub enum Delivery {
+	/// Use the component's text-size threshold; this is not a model context limit.
+	#[default]
+	Auto,
+	/// Put all selected input in the composer, including acknowledged source parts.
+	Inline,
+	/// Send a short question with one immutable UTF-8 file.
+	Attachment,
+}
+
+/// Immutable source manifest and the exact file reference observed after Send.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Attachment {
+	/// Generated .txt name, including the request ID and content digest prefix.
+	pub name: String,
+	/// Exact UTF-8 file length.
+	pub bytes: usize,
+	/// Full SHA-256 of the uploaded bytes.
+	pub sha256: String,
+	/// Whether the file contains the question as well as its selected context.
+	pub includes_question: bool,
+	/// Provider file ID bound to the exact submitted user message, when observed.
+	pub file_id: Option<String>,
+}
+
+fn inline_delivery() -> Delivery {
+	Delivery::Inline
 }
 
 /// A Decodex project, distinct from its display name and ChatGPT URL.
@@ -128,6 +167,12 @@ pub struct Receipt {
 	pub baseline_messages: usize,
 	/// Most recent recoverable failure. It can include rendered UI diagnostics.
 	pub last_error: Option<String>,
+	/// Actual saved delivery mode. Existing plain-text records remain inline.
+	#[serde(default = "inline_delivery")]
+	pub delivery: Delivery,
+	/// Source integrity and submission evidence; absent for inline input.
+	#[serde(default)]
+	pub attachment: Option<Attachment>,
 }
 
 /// Link rendered inside the completed assistant message.

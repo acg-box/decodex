@@ -29,6 +29,8 @@ fn installed_helper_survives_the_original_build_path_and_uninstalls_without_losi
 			prompt: "Retain this input".into(),
 			previous: None,
 			project: None,
+			context: None,
+			delivery: Default::default(),
 		})
 		.unwrap();
 	decodex_pro_bridge::install::uninstall(&root, &registry).unwrap();

@@ -31,6 +31,16 @@ pub(crate) struct NativeMessage {
 	pub complete: bool,
 	/// The provider explicitly declares the user body's wire representation.
 	pub markdown: bool,
+	/// Complete provider file metadata, tied to this user message.
+	pub attachments: Option<Vec<SubmittedFile>>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+pub(crate) struct SubmittedFile {
+	pub id: String,
+	pub name: String,
+	#[serde(rename = "size")]
+	pub bytes: usize,
 }
 
 #[derive(Debug, Default, Eq, PartialEq)]
@@ -87,6 +97,14 @@ fn collect(value: &Value, data: &mut ObservedData) {
 				|| value["end_turn"] == true
 				|| value["status"] == "finished_successfully",
 			markdown: value["metadata"]["serialization_metadata"]["render_format"] == "markdown",
+			attachments: match value["metadata"].get("attachments") {
+				None => Some(Vec::new()),
+				Some(files) => serde_json::from_value::<Vec<SubmittedFile>>(files.clone())
+					.ok()
+					.filter(|files| {
+						files.iter().all(|file| !file.id.is_empty() && !file.name.is_empty())
+					}),
+			},
 		});
 	}
 	match value {
@@ -142,5 +160,19 @@ mod tests {
 		assert!(data.messages[1].complete);
 		assert_eq!(data.identities.len(), 1);
 		assert!(!data.identities[0].is_pro());
+	}
+
+	#[test]
+	fn submitted_files_stay_bound_to_their_user_message_and_missing_metadata_is_explicit() {
+		let body = r#"{"messages":[{"id":"user","author":{"role":"user"},"content":{"parts":["Question"]},"metadata":{"attachments":[{"id":"file-one","name":"source.txt","size":4914555,"mime_type":"text/plain"}]}},{"id":"other","author":{"role":"user"},"content":{"parts":["Follow up"]}}]}"#;
+		let data = from_response(body);
+		let files = data.messages[0].attachments.as_ref().unwrap();
+		assert_eq!(
+			files,
+			&[SubmittedFile { id: "file-one".into(), name: "source.txt".into(), bytes: 4_914_555 }]
+		);
+		assert_eq!(data.messages[1].attachments, Some(vec![]));
+		let malformed = body.replace("\"size\":4914555,", "");
+		assert!(from_response(&malformed).messages[0].attachments.is_none());
 	}
 }

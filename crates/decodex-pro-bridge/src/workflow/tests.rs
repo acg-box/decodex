@@ -16,6 +16,7 @@ fn message(role: &str, id: &str, text: &str, complete: bool) -> Message {
 		complete,
 		code_blocks: vec![],
 		links: vec![],
+		attachments: None,
 	}
 }
 
@@ -41,6 +42,8 @@ async fn continuation_waits_for_history_after_a_cold_composer_mount() {
 			prompt: "follow up".into(),
 			previous: None,
 			project: None,
+			context: None,
+			delivery: Default::default(),
 		})
 		.unwrap();
 	record.parent_answer_id = Some("previous".into());
@@ -91,6 +94,8 @@ fn recovery_binds_the_exact_prompt_and_does_not_complete_from_a_stale_or_streami
 			prompt: "question".into(),
 			previous: None,
 			project: None,
+			context: None,
+			delivery: Default::default(),
 		})
 		.expect("record");
 	record.receipt.phase = Phase::Sending;
@@ -143,6 +148,8 @@ fn first_submission_waits_until_chatgpt_publishes_its_conversation_url() {
 			prompt: "question".into(),
 			previous: None,
 			project: None,
+			context: None,
+			delivery: Default::default(),
 		})
 		.expect("record");
 	record.receipt.phase = Phase::Sending;
@@ -180,6 +187,8 @@ fn continuation_refuses_a_conversation_that_another_user_message_advanced() {
 			prompt: "question".into(),
 			previous: None,
 			project: None,
+			context: None,
+			delivery: Default::default(),
 		})
 		.expect("record");
 	record.parent_answer_id = Some("saved-answer".into());
@@ -205,6 +214,8 @@ fn recovery_accepts_only_the_exact_observed_terminal_hard_break_representation()
 			prompt: "question\n".into(),
 			previous: None,
 			project: None,
+			context: None,
+			delivery: Default::default(),
 		})
 		.expect("record");
 	record.receipt.phase = Phase::Sending;
@@ -258,6 +269,8 @@ fn a_literal_backslash_does_not_match_a_prompt_without_a_terminal_lf() {
 			prompt: "question".into(),
 			previous: None,
 			project: None,
+			context: None,
+			delivery: Default::default(),
 		})
 		.expect("record");
 	record.receipt.phase = Phase::Sending;
@@ -283,6 +296,8 @@ fn pro_label_and_another_turns_identity_cannot_qualify_a_completed_answer() {
 			prompt: "question".into(),
 			previous: None,
 			project: None,
+			context: None,
+			delivery: Default::default(),
 		})
 		.unwrap();
 	record.receipt.phase = Phase::Sending;
@@ -320,6 +335,8 @@ async fn queued_research_keeps_the_journal_available_and_deduplicates_workers() 
 			prompt: "first".into(),
 			previous: None,
 			project: None,
+			context: None,
+			delivery: Default::default(),
 		})
 		.unwrap();
 	let execution = store.execution_lease().unwrap().unwrap();
@@ -340,7 +357,9 @@ async fn queued_research_keeps_the_journal_available_and_deduplicates_workers() 
 				id: "second".into(),
 				prompt: "second".into(),
 				previous: None,
-				project: None
+				project: None,
+				context: None,
+				delivery: Default::default(),
 			})
 			.unwrap()
 			.phase,
@@ -373,4 +392,64 @@ fn result_waits_for_final_text_code_and_links_to_stop_changing() {
 	assert!(!final_links.messages[0].complete);
 	super::wait_for_stable_answer(&mut stable, &mut previous);
 	assert!(stable.messages[0].complete);
+}
+
+#[test]
+fn attachment_recovery_requires_the_exact_submitted_file_before_completing() {
+	let root = tempfile::tempdir().unwrap();
+	let store = Store::open(root.path()).unwrap();
+	let mut saved = store
+		.prepare(Request {
+			id: "attached".into(),
+			prompt: "Compare this source.".into(),
+			previous: None,
+			project: None,
+			context: Some("private source".repeat(20_000)),
+			delivery: crate::Delivery::Auto,
+		})
+		.unwrap();
+	saved.receipt.phase = Phase::Sending;
+	saved.receipt.execution = Some(crate::ExecutionIdentity {
+		message_id: "answer".into(),
+		model: "gpt-test-pro".into(),
+		mode: None,
+	});
+	let file = saved.receipt.attachment.clone().unwrap();
+	let mut user = message("user", "submitted", &saved.wire_prompt(), true);
+	let answer = message("assistant", "answer", "Complete answer", true);
+	let mut missing = saved.clone();
+	assert!(
+		!reconcile(&mut missing, &observation(vec![user.clone(), answer.clone()], false)).unwrap()
+	);
+	assert_eq!(missing.receipt.phase, Phase::Submitted);
+	assert!(missing.answer.is_none());
+	user.attachments = Some(vec![]);
+	assert!(
+		reconcile(&mut saved.clone(), &observation(vec![user.clone(), answer.clone()], false))
+			.unwrap_err()
+			.contains("exactly the saved source")
+	);
+	user.attachments = Some(vec![crate::identity::SubmittedFile {
+		id: "file-one".into(),
+		name: "wrong.txt".into(),
+		bytes: file.bytes,
+	}]);
+	assert!(
+		reconcile(&mut saved.clone(), &observation(vec![user.clone(), answer.clone()], false))
+			.unwrap_err()
+			.contains("differs from the saved manifest")
+	);
+	user.attachments.as_mut().unwrap()[0].name = file.name;
+	assert!(
+		reconcile(&mut saved, &observation(vec![user.clone(), answer.clone()], false)).unwrap()
+	);
+	assert_eq!(saved.receipt.attachment.as_ref().unwrap().file_id.as_deref(), Some("file-one"));
+	store.save(&saved).unwrap();
+	let mut recovered = store.load("attached").unwrap();
+	user.attachments.as_mut().unwrap()[0].id = "file-replaced".into();
+	assert!(
+		reconcile(&mut recovered, &observation(vec![user, answer], false))
+			.unwrap_err()
+			.contains("differs from the saved manifest")
+	);
 }

@@ -67,6 +67,7 @@ fn declared_markdown_user_text_decodes_the_entire_input_and_keeps_link_destinati
 		text: encoded.into(),
 		complete: true,
 		markdown: false,
+		attachments: Some(vec![]),
 	};
 	let mut rendered = super::Message {
 		id: "user".into(),
@@ -77,6 +78,7 @@ fn declared_markdown_user_text_decodes_the_entire_input_and_keeps_link_destinati
 		complete: true,
 		code_blocks: vec![],
 		links: vec![],
+		attachments: None,
 	};
 	super::apply_native_message(&mut rendered, &native);
 	assert!(rendered.markdown_text_sha256.is_none(), "an undeclared format must remain verbatim");
@@ -99,6 +101,7 @@ fn native_message_binding_preserves_source_instead_of_display_whitespace() {
 		text: text.into(),
 		complete: true,
 		markdown: false,
+		attachments: Some(vec![]),
 	};
 	let mut rendered = super::Message {
 		id: "u1".into(),
@@ -109,6 +112,7 @@ fn native_message_binding_preserves_source_instead_of_display_whitespace() {
 		complete: true,
 		code_blocks: vec![],
 		links: vec![],
+		attachments: None,
 	};
 	super::apply_native_message(&mut rendered, &native);
 	assert_eq!(rendered.text, text);
@@ -128,6 +132,7 @@ fn complete_original_markdown_preserves_code_that_a_virtualized_view_omits() {
 		text: text.clone(),
 		complete: false,
 		markdown: false,
+		attachments: Some(vec![]),
 	};
 	let mut rendered = super::Message {
 		id: "a1".into(),
@@ -138,6 +143,7 @@ fn complete_original_markdown_preserves_code_that_a_virtualized_view_omits() {
 		complete: false,
 		code_blocks: vec![],
 		links: vec![],
+		attachments: None,
 	};
 	super::apply_native_message(&mut rendered, &native);
 	assert_eq!(rendered.text, "Partial display");

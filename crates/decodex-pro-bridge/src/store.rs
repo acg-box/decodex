@@ -11,10 +11,10 @@ use std::os::unix::fs::{DirBuilderExt as _, OpenOptionsExt as _, PermissionsExt 
 
 use serde::{Deserialize, Serialize};
 
-use crate::{Answer, Phase, Project, Receipt, Request, Result};
+use crate::{Answer, Attachment, Delivery, Phase, Project, Receipt, Request, Result};
 
 mod material;
-pub(crate) use material::{Material, digest};
+pub(crate) use material::{INLINE_BYTES, Material, digest};
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -31,7 +31,15 @@ pub(crate) struct Record {
 
 impl Record {
 	pub fn wire_prompt(&self) -> String {
-		format!("[Decodex Pro request: {}]\n\n{}", self.request.id, self.request.prompt)
+		let body = match &self.receipt.attachment {
+			Some(file) if file.includes_question => format!(
+				"Read the attached UTF-8 file {}. It contains the complete research question and any selected supporting context. Follow that question and return your complete answer in this conversation.",
+				file.name
+			),
+			Some(_) => self.request.prompt.clone(),
+			None => self.request.inline_text(),
+		};
+		format!("[Decodex Pro request: {}]\n\n{body}", self.request.id)
 	}
 }
 
@@ -130,6 +138,27 @@ impl Store {
 					.into(),
 			);
 		}
+		let delivery = match request.delivery {
+			Delivery::Auto
+				if request.prompt.len() + request.context.as_ref().map_or(0, String::len)
+					> INLINE_BYTES =>
+				Delivery::Attachment,
+			Delivery::Auto => Delivery::Inline,
+			explicit => explicit,
+		};
+		let attachment = (delivery == Delivery::Attachment).then(|| {
+			let includes_question = request.prompt.len() > INLINE_BYTES
+				|| request.context.as_ref().is_none_or(String::is_empty);
+			let text = request.attachment_text(includes_question);
+			let sha256 = digest(text.as_bytes());
+			Attachment {
+				name: format!("decodex-source-{}-{}.txt", request.id, &sha256[..12]),
+				bytes: text.len(),
+				sha256,
+				includes_question,
+				file_id: None,
+			}
+		});
 		let record = Record {
 			project: Some(project),
 			receipt: Receipt {
@@ -143,6 +172,8 @@ impl Store {
 				project_url: parent.as_ref().and_then(|r| r.receipt.project_url.clone()),
 				baseline_messages: 0,
 				last_error: None,
+				delivery,
+				attachment,
 			},
 			parent_answer_id: parent
 				.as_ref()

@@ -8,7 +8,7 @@ use std::{
 use serde_json::{Value, json};
 use tokio::io::{AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
 
-use crate::{Config, Phase, ProBridge, Project, Receipt, Request, Result};
+use crate::{Config, Delivery, Phase, ProBridge, Project, Receipt, Request, Result};
 
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -16,6 +16,9 @@ struct Input {
 	id: String,
 	prompt: Option<String>,
 	prompt_file: Option<std::path::PathBuf>,
+	context_file: Option<std::path::PathBuf>,
+	#[serde(default)]
+	delivery: Delivery,
 	previous: Option<String>,
 	project: Option<Project>,
 }
@@ -27,7 +30,23 @@ impl Input {
 			(None, Some(path)) if path.is_absolute() => std::fs::read_to_string(path).map_err(|e| e.to_string())?,
 			_ => return Err("Provide exactly one of prompt or an absolute promptFile. The file is read once and saved as immutable request input.".into()),
 		};
-		Ok(Request { id: self.id, prompt, previous: self.previous, project: self.project })
+		let context = self
+			.context_file
+			.map(|path| {
+				if !path.is_absolute() {
+					return Err("contextFile must be an absolute UTF-8 source-file path.".into());
+				}
+				std::fs::read_to_string(path).map_err(|e| e.to_string())
+			})
+			.transpose()?;
+		Ok(Request {
+			id: self.id,
+			prompt,
+			previous: self.previous,
+			project: self.project,
+			context,
+			delivery: self.delivery,
+		})
 	}
 }
 
@@ -120,7 +139,7 @@ pub fn start_worker(executable: &Path, root: &Path, id: &str, config: &Config) -
 fn tools() -> Vec<Value> {
 	let identity = json!({"type":"string","pattern":"^[A-Za-z0-9-]{1,64}$"});
 	[
-		("pro_research", "Ask ChatGPT Pro an authorized difficult research question. Provide prompt or promptFile; files avoid copying long context through the Agent. project uses a stable Decodex ID and name; omitted projects use General. previous continues a completed request and inherits its project. Returns a durable ID immediately.", json!({"id":identity,"prompt":{"type":"string","minLength":1},"promptFile":{"type":"string","description":"Absolute UTF-8 input file. Read once; the saved input is immutable."},"project":{"type":"object","properties":{"id":{"type":"string","minLength":1},"name":{"type":"string","minLength":1}},"required":["id","name"],"additionalProperties":false},"previous":{"type":["string","null"]}}), vec!["id"]),
+		("pro_research", "Ask ChatGPT Pro an authorized research question. Provide prompt or promptFile, with optional contextFile for selected source material. Auto sends short input inline and input above 128 KiB as one UTF-8 attachment; delivery can override this. Files are read once and saved immutably. project uses a stable Decodex ID and name; omission uses General. previous continues a completed request and inherits its project and earlier attachments. Returns a durable ID immediately.", json!({"id":identity,"prompt":{"type":"string","minLength":1},"promptFile":{"type":"string","description":"Absolute UTF-8 question-file path; not an attachment selector."},"contextFile":{"type":"string","description":"Absolute UTF-8 source-file path. Read once; large material is attached by default."},"delivery":{"type":"string","enum":["auto","inline","attachment"],"default":"auto","description":"Auto uses a 128 KiB UTF-8 byte threshold, not a token limit. Use inline for acknowledged source parts."},"project":{"type":"object","properties":{"id":{"type":"string","minLength":1},"name":{"type":"string","minLength":1}},"required":["id","name"],"additionalProperties":false},"previous":{"type":["string","null"]}}), vec!["id"]),
 		("pro_status", "Read saved research state without reconnecting or sending a message.", json!({"id":identity}), vec!["id"]),
 		("pro_result", "Read the complete saved answer, code, links, conversation URL and execution identity.", json!({"id":identity}), vec!["id"]),
 		("pro_resume", "Recover the saved request after a disconnect or timeout. Does not resend uncertain input.", json!({"id":identity}), vec!["id"]),
@@ -146,5 +165,35 @@ mod tests {
 		conflicting["prompt"] = json!("second source");
 		assert!(serde_json::from_value::<Input>(conflicting).unwrap().request().is_err());
 		assert!(serde_json::from_value::<Input>(json!({"id":"none"})).unwrap().request().is_err());
+	}
+
+	#[test]
+	fn context_files_are_saved_once_and_the_catalog_exposes_delivery_control() {
+		let root = tempfile::tempdir().unwrap();
+		let source = root.path().join("source.txt");
+		let content = "独立资料🧪\n".repeat(20_000);
+		std::fs::write(&source, &content).unwrap();
+		let input = json!({"id":"with-source","prompt":"Review the source.","contextFile":source});
+		let request = serde_json::from_value::<Input>(input).unwrap().request().unwrap();
+		let bridge = ProBridge::new(Config::default(), root.path()).unwrap();
+		let receipt = bridge.prepare(request).unwrap();
+		assert_eq!(receipt.delivery, Delivery::Attachment);
+		assert_eq!(receipt.attachment.unwrap().sha256, crate::store::digest(content.as_bytes()));
+		std::fs::remove_file(source).unwrap();
+		let record = crate::store::Store::open(root.path()).unwrap().load("with-source").unwrap();
+		assert_eq!(record.request.context.as_deref(), Some(content.as_str()));
+		let catalog = tools();
+		let schema = &catalog.iter().find(|tool| tool["name"] == "pro_research").unwrap()["inputSchema"]
+			["properties"];
+		assert_eq!(schema["delivery"]["enum"], json!(["auto", "inline", "attachment"]));
+		assert!(schema.get("contextFile").is_some());
+		assert!(
+			serde_json::from_value::<Input>(
+				json!({"id":"relative","prompt":"Q","contextFile":"relative.txt"})
+			)
+			.unwrap()
+			.request()
+			.is_err()
+		);
 	}
 }

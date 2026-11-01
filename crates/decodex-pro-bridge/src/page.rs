@@ -5,7 +5,10 @@ use serde_json::{Value, json};
 use tokio::time::{Instant, sleep};
 use url::Url;
 
-use crate::{Answer, Connection, ConnectionState, Link, Result, chrome::Chrome, store::Material};
+use crate::{
+	Answer, Connection, ConnectionState, Link, Result, chrome::Chrome, identity::SubmittedFile,
+	store::Material,
+};
 
 const CONTROLS: &str = r#"
 const visible=e=>!!e&&e.getClientRects().length>0;
@@ -28,6 +31,8 @@ pub(crate) struct Message {
 	pub complete: bool,
 	pub code_blocks: Vec<String>,
 	pub links: Vec<Link>,
+	#[serde(default)]
+	pub attachments: Option<Vec<SubmittedFile>>,
 }
 
 impl Message {
@@ -218,6 +223,68 @@ async fn click(browser: &mut Chrome, point: &Value) -> Result<()> {
 	Ok(())
 }
 
+/// Use the ordinary document input. Chrome owns upload authentication and processing.
+pub(crate) async fn attach(browser: &mut Chrome, material: &Material) -> Result<()> {
+	let name = material
+		.path
+		.file_name()
+		.and_then(|name| name.to_str())
+		.ok_or("The source has no UTF-8 file name.")?;
+	let state = attachment_state(browser, name).await?;
+	if state["otherFiles"] != 0 {
+		return Err("The research draft contains another attachment. No message was sent.".into());
+	}
+	if state["matchingFiles"] == 0 {
+		let text = std::fs::read_to_string(&material.path).map_err(|e| e.to_string())?;
+		browser.evaluate(&format!(r#"(async()=>{{
+          const candidates=Array.from(document.querySelectorAll('input[type="file"]')).filter(e=>!e.disabled&&e.accept==='');
+          if(candidates.length!==1)throw Error('ChatGPT has no unique document upload input. No message was sent.');
+          const input=candidates[0];if(input.files.length)throw Error('The document input already contains a file. No message was sent.');
+          const file=new File([{text}],{name},{{type:'text/plain',lastModified:1}});
+          const sha=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',await file.arrayBuffer()))).map(x=>x.toString(16).padStart(2,'0')).join('');
+          if(file.size!=={bytes}||sha!=={sha256})throw Error('The browser source bytes differ from the saved manifest. No message was sent.');
+          const data=new DataTransfer();data.items.add(file);input.files=data.files;
+          input.dispatchEvent(new Event('change',{{bubbles:true}}));
+          return {{bytes:file.size,sha256:sha}};
+        }})()"#,text=serde_json::to_string(&text).map_err(|e|e.to_string())?,name=serde_json::to_string(name).map_err(|e|e.to_string())?,bytes=material.bytes,sha256=serde_json::to_string(&material.sha256).map_err(|e|e.to_string())?)).await?;
+	}
+	let deadline = Instant::now() + std::time::Duration::from_secs(120);
+	loop {
+		let state = attachment_state(browser, name).await?;
+		if state["otherFiles"] != 0 {
+			return Err(
+				"The research draft contains another attachment. No message was sent.".into()
+			);
+		}
+		if state["matchingFiles"] == 1 && state["canSend"] == true {
+			return Ok(());
+		}
+		if Instant::now() >= deadline {
+			return Err(format!(
+				"ChatGPT did not finish preparing the source attachment. No message was sent. {}",
+				state["alerts"]
+			));
+		}
+		sleep(std::time::Duration::from_millis(250)).await;
+	}
+}
+
+async fn attachment_state(browser: &mut Chrome, name: &str) -> Result<Value> {
+	browser
+		.evaluate(&format!(
+			r#"(()=>{{ {CONTROLS}
+      const name={name};
+      const files=buttons.filter(b=>visible(b)&&/^Remove /i.test(b.getAttribute('aria-label')??''));
+      const matching=files.filter(b=>b.getAttribute('aria-label')==='Remove '+name);
+      return {{matchingFiles:matching.length,otherFiles:files.length-matching.length,
+        canSend:visible(send)&&!send.disabled&&send.getAttribute('aria-disabled')!=='true',
+        alerts:Array.from(document.querySelectorAll('[role="alert"]')).map(e=>e.innerText)}};
+    }})()"#,
+			name = serde_json::to_string(name).map_err(|e| e.to_string())?
+		))
+		.await
+}
+
 // Read both saved drafts and newly inserted text through the same DOM rules.
 // innerText adds presentation line breaks that are not part of the input.
 async fn composer_text(browser: &mut Chrome, focus: bool) -> Result<String> {
@@ -380,6 +447,7 @@ fn apply_native_message(message: &mut Message, native: &crate::identity::NativeM
 		return;
 	}
 	message.text.clone_from(&native.text);
+	message.attachments.clone_from(&native.attachments);
 	if message.role == "user" && native.markdown {
 		message.markdown_text_sha256 = markdown_user_text(&native.text)
 			.map(|text| crate::store::digest(text.trim().as_bytes()));

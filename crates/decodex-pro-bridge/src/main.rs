@@ -3,7 +3,9 @@
 use std::{fs, path::PathBuf, process::ExitCode, time::Duration};
 
 use clap::{Parser, Subcommand};
-use decodex_pro_bridge::{Config, ProBridge, Project, Request, Result, install, mcp, native_host};
+use decodex_pro_bridge::{
+	Config, Delivery, ProBridge, Project, Request, Result, install, mcp, native_host,
+};
 use futures_util as _;
 use pulldown_cmark as _;
 use serde as _;
@@ -55,6 +57,10 @@ enum Action {
 		#[arg(long)]
 		prompt_file: PathBuf,
 		#[arg(long)]
+		context_file: Option<PathBuf>,
+		#[arg(long, value_enum, default_value = "auto")]
+		delivery: Delivery,
+		#[arg(long)]
 		previous: Option<String>,
 		#[arg(long, requires = "project_name")]
 		project_id: Option<String>,
@@ -67,6 +73,10 @@ enum Action {
 		id: String,
 		#[arg(long)]
 		prompt_file: PathBuf,
+		#[arg(long)]
+		context_file: Option<PathBuf>,
+		#[arg(long, value_enum, default_value = "auto")]
+		delivery: Delivery,
 		#[arg(long)]
 		previous: Option<String>,
 		#[arg(long, requires = "project_name")]
@@ -131,13 +141,34 @@ async fn run(cli: Cli) -> Result<()> {
 			Action::Connect => print_json(&bridge.connect().await?)?,
 			Action::Check => print_json(&bridge.check().await?)?,
 			Action::Disconnect => bridge.disconnect().await?,
-			Action::Ask { id, prompt_file, previous, project_id, project_name }
-			| Action::Start { id, prompt_file, previous, project_id, project_name } => {
+			Action::Ask {
+				id,
+				prompt_file,
+				context_file,
+				delivery,
+				previous,
+				project_id,
+				project_name,
+			}
+			| Action::Start {
+				id,
+				prompt_file,
+				context_file,
+				delivery,
+				previous,
+				project_id,
+				project_name,
+			} => {
 				let request = Request {
 					id: id.clone(),
 					prompt: fs::read_to_string(prompt_file).map_err(|e| e.to_string())?,
 					previous,
 					project: project_id.zip(project_name).map(|(id, name)| Project { id, name }),
+					context: context_file
+						.map(fs::read_to_string)
+						.transpose()
+						.map_err(|e| e.to_string())?,
+					delivery,
 				};
 				if detached {
 					bridge.prepare(request)?;
