@@ -101,9 +101,7 @@ impl Chrome {
 		match value["method"].as_str() {
 			Some("Network.requestWillBeSent")
 				if params["request"]["method"] == "POST"
-					&& params["request"]["url"].as_str().is_some_and(|url| {
-						conversation_endpoint(url, self.conversation_url.as_deref())
-					}) =>
+					&& params["request"]["url"].as_str().is_some_and(submission_endpoint) =>
 			{
 				self.submissions.insert(id.into());
 				if let Some(body) = params["request"]["postData"].as_str() {
@@ -309,6 +307,15 @@ fn conversation_response(response: &Value, owned: Option<&str>) -> bool {
 	conversation_endpoint(raw, owned) && response["status"].as_u64() == Some(200)
 }
 
+fn submission_endpoint(raw: &str) -> bool {
+	let Ok(url) = url::Url::parse(raw) else { return false };
+	// Preparation and response-stream recovery are separate page requests. In
+	// particular, a missing resume stream does not prove the original Send failed.
+	url.scheme() == "https"
+		&& url.host_str() == Some("chatgpt.com")
+		&& matches!(url.path(), "/backend-api/conversation" | "/backend-api/f/conversation")
+}
+
 fn conversation_endpoint(raw: &str, owned: Option<&str>) -> bool {
 	let Ok(url) = url::Url::parse(raw) else { return false };
 	url.scheme() == "https"
@@ -349,6 +356,22 @@ mod tests {
 		assert_eq!(browser.submission_failure, None);
 		browser.event(&json!({"sessionId":"another-tab","method":"Network.requestWillBeSent","params":{"requestId":"foreign","request":{"method":"POST","url":"https://chatgpt.com/backend-api/f/conversation"}}}));
 		assert!(browser.submissions.is_empty());
+		for (id, path) in [
+			("resume", "f/conversation/resume"),
+			("prepare", "f/conversation/prepare"),
+			("feedback", "conversation/owned/feedback"),
+		] {
+			let url = format!("https://chatgpt.com/backend-api/{path}");
+			browser.event(&event(
+				"Network.requestWillBeSent",
+				json!({"requestId":id,"request":{"method":"POST","url":url}}),
+			));
+			browser.event(&event(
+				"Network.responseReceived",
+				json!({"requestId":id,"response":{"status":404,"url":url,"mimeType":"application/json"}}),
+			));
+			assert!(browser.submission_failure.is_none(), "{path} is not a new submission");
+		}
 		browser.event(&event("Network.requestWillBeSent", json!({"requestId":"own","request":{"method":"POST","url":"https://chatgpt.com/backend-api/f/conversation"}})));
 		browser.event(&event("Network.responseReceived", json!({"requestId":"own","response":{"status":413,"url":"https://chatgpt.com/backend-api/f/conversation","mimeType":"text/html"}})));
 		assert_eq!(
