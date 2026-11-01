@@ -40,6 +40,26 @@ pub(crate) fn project_segment(segment: &str) -> bool {
 	})
 }
 
+fn segment_key(segment: &str) -> Option<&str> {
+	let id = segment.strip_prefix("g-p-")?;
+	if id.len() >= 32
+		&& id.as_bytes()[..32].iter().all(u8::is_ascii_hexdigit)
+		&& (id.len() == 32 || id.as_bytes()[32] == b'-')
+	{
+		Some(&id[..32])
+	} else {
+		Some(id)
+	}
+}
+
+pub(crate) fn contains_url(project: &str, page: &str) -> bool {
+	let Ok(project) = url::Url::parse(project) else { return false };
+	let Ok(page) = url::Url::parse(page) else { return false };
+	let expected = project.path_segments().and_then(|mut p| p.nth(1)).and_then(segment_key);
+	let observed = page.path_segments().and_then(|mut p| p.nth(1)).and_then(segment_key);
+	expected.is_some() && expected == observed
+}
+
 pub(crate) async fn enter(browser: &mut Chrome, root: &Path, project: &Project) -> Result<String> {
 	let path = root.join(format!("project-{}.json", crate::store::digest(project.id.as_bytes())));
 	let saved = match fs::read(&path) {
@@ -56,6 +76,7 @@ pub(crate) async fn enter(browser: &mut Chrome, root: &Path, project: &Project) 
 		}
 	}
 	let name = format!("Decodex · {}", saved.as_ref().map_or(&project.name, |b| &b.project.name));
+	open_projects(browser).await?;
 	let existing = find(browser, &name).await?;
 	if saved.is_some() {
 		let url = existing.ok_or("Project creation has an uncertain outcome. Open its setup tab to recover; no duplicate project was created.")?;
@@ -101,17 +122,19 @@ async fn find(browser: &mut Chrome, name: &str) -> Result<Option<String>> {
 }
 
 async fn prepare_create(browser: &mut Chrome, name: &str) -> Result<()> {
-	browser.evaluate(r#"(()=>{const b=Array.from(document.querySelectorAll('button,a,[role="button"]')).find(b=>b.getClientRects().length&&/^new project$/i.test(b.innerText.trim()));if(!b)throw Error('ChatGPT New project control is unavailable');b.click();return true;})()"#).await?;
-	let deadline = Instant::now() + Duration::from_secs(5);
+	let deadline = Instant::now() + Duration::from_secs(15);
 	loop {
-		let ready = browser.evaluate(r#"(()=>{const d=Array.from(document.querySelectorAll('[role="dialog"],dialog')).find(d=>d.getClientRects().length);const input=d?.querySelector('input:not([type="hidden"])');if(!input)return false;input.focus();return true;})()"#).await?;
+		// A cold Projects view can expose its server-rendered Create button before
+		// its event handler is mounted. Retry opening this reversible dialog only;
+		// the final Create project action remains fenced and is never repeated.
+		let ready = browser.evaluate(r#"(()=>{const d=Array.from(document.querySelectorAll('[role="dialog"],dialog')).find(d=>d.getClientRects().length&&d.innerText.includes('Create project'));const input=d?.querySelector('input:not([type="hidden"])');if(input){input.focus();return true;}const b=Array.from(document.querySelectorAll('button')).find(b=>b.getClientRects().length&&location.pathname==='/projects'&&b.innerText.trim()==='Create');if(b)b.click();return false;})()"#).await?;
 		if ready == true {
 			break;
 		}
 		if Instant::now() >= deadline {
 			return Err("ChatGPT project dialog did not open. No project was created.".into());
 		}
-		sleep(Duration::from_millis(100)).await;
+		sleep(Duration::from_millis(300)).await;
 	}
 	browser.command("Input.insertText", json!({"text":name})).await?;
 	let observed = browser.evaluate(r#"Array.from(document.querySelectorAll('[role="dialog"] input,dialog input')).find(e=>e.getClientRects().length)?.value"#).await?;
@@ -123,14 +146,31 @@ async fn prepare_create(browser: &mut Chrome, name: &str) -> Result<()> {
 	Ok(())
 }
 
+async fn open_projects(browser: &mut Chrome) -> Result<()> {
+	// This is an ordinary observed navigation route, not a private service endpoint.
+	browser.command("Page.navigate", json!({"url":"https://chatgpt.com/projects"})).await?;
+	let deadline = Instant::now() + Duration::from_secs(10);
+	loop {
+		let ready=browser.evaluate(r#"document.readyState==='complete'&&location.pathname==='/projects'&&Array.from(document.querySelectorAll('button')).some(b=>b.getClientRects().length&&b.innerText.trim()==='Create')"#).await?;
+		if ready == true {
+			return Ok(());
+		}
+		if Instant::now() >= deadline {
+			return Err("ChatGPT Projects did not load. No project was created.".into());
+		}
+		sleep(Duration::from_millis(100)).await;
+	}
+}
+
 async fn navigate(browser: &mut Chrome, url: &str) -> Result<String> {
 	browser.command("Page.navigate", json!({"url":url})).await?;
 	page::ready(browser).await?;
 	let location = browser.evaluate("location.href").await?;
-	if location.as_str() != Some(url) {
+	let actual = location.as_str().ok_or("ChatGPT has no project location")?;
+	if project_url(actual).is_err() || !contains_url(url, actual) {
 		return Err("The saved ChatGPT Project is unavailable. No message was sent.".into());
 	}
-	Ok(url.into())
+	Ok(actual.into())
 }
 
 fn save(path: &Path, project: &Project, url: Option<String>) -> Result<()> {
@@ -177,15 +217,24 @@ mod tests {
 						"Decodex.ping" =>
 							json!({"protocol":1,"extensionId":crate::native_host::EXTENSION_ID}),
 						"Runtime.evaluate" => {
-							assert!(
-								request["params"]["expression"]
-									.as_str()
-									.unwrap()
-									.contains("a[href]"),
-								"A Create action must not run"
-							);
-							json!({"result":{"value":if pending {json!([])} else {json!(["https://chatgpt.com/g/g-p-user/project"])}}})
+							if request["params"]["expression"]
+								.as_str()
+								.unwrap()
+								.contains("document.readyState")
+							{
+								json!({"result":{"value":true}})
+							} else {
+								assert!(
+									request["params"]["expression"]
+										.as_str()
+										.unwrap()
+										.contains("a[href]"),
+									"A Create action must not run"
+								);
+								json!({"result":{"value":if pending {json!([])} else {json!(["https://chatgpt.com/g/g-p-user/project"])}}})
+							}
 						},
+						"Page.navigate" => json!({}),
 						method => panic!("Unexpected operation {method}"),
 					};
 					socket

@@ -65,6 +65,9 @@ async fn work(
 		}
 	};
 	record = store.load(&record.request.id)?;
+	if record.receipt.last_error.take().is_some() {
+		store.save(&record)?;
+	}
 	if candidate.is_some()
 		&& (record.receipt.phase != Phase::Sending || record.receipt.conversation_url.is_some())
 	{
@@ -255,7 +258,12 @@ fn validate_before_send(record: &Record, observed: &Observation) -> Result<()> {
 					observed.messages.len()
 				));
 			}
-			if record.receipt.conversation_url.as_deref() != Some(observed.url.as_str()) {
+			if !record
+				.receipt
+				.conversation_url
+				.as_deref()
+				.is_some_and(|saved| page::same_conversation(saved, &observed.url))
+			{
 				return Err(
 					"The continuation opened a different conversation. No message was sent.".into(),
 				);
@@ -316,10 +324,20 @@ fn reconcile(record: &mut Record, observed: &Observation) -> Result<bool> {
 			return Ok(false),
 		Err(error) => return Err(error),
 	};
-	if record.receipt.conversation_url.as_ref().is_some_and(|saved| saved != &url)
+	if record
+		.receipt
+		.conversation_url
+		.as_ref()
+		.is_some_and(|saved| !page::same_conversation(saved, &url))
 		|| record.receipt.user_message_id.as_ref().is_some_and(|saved| saved != &user.id)
 	{
 		return Err("The saved submission identity changed.".into());
+	}
+	if let Some(project) = record.receipt.project_url.as_deref()
+		&& url.contains("/g/g-p-")
+		&& !crate::projects::contains_url(project, &url)
+	{
+		return Err("The research conversation moved to a different project.".into());
 	}
 	record.receipt.conversation_url = Some(url);
 	record.receipt.user_message_id = Some(user.id.clone());

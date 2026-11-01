@@ -104,6 +104,17 @@ fn first_submission_waits_until_chatgpt_publishes_its_conversation_url() {
 	assert!(!reconcile(&mut record, &observed).expect("submission is confirmed"));
 	assert_eq!(record.receipt.phase, Phase::Submitted);
 	assert_eq!(record.receipt.user_message_id.as_deref(), Some("user-one"));
+	let project = "https://chatgpt.com/g/g-p-6ae73c95938c819187c369cc68995079/project";
+	record.receipt.project_url = Some(project.into());
+	observed.url =
+		"https://chatgpt.com/g/g-p-6ae73c95938c819187c369cc68995079-trial/c/owned".into();
+	assert!(
+		!reconcile(&mut record, &observed)
+			.expect("a friendly project suffix keeps the submission identity")
+	);
+	observed.url =
+		"https://chatgpt.com/g/g-p-6ae73c95938c819187c369cc68995070-trial/c/owned".into();
+	assert!(reconcile(&mut record, &observed).unwrap_err().contains("different project"));
 }
 
 #[test]

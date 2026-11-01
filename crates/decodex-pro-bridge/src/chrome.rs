@@ -173,8 +173,12 @@ impl Chrome {
 		self.messages.clear();
 		self.command("Page.enable", json!({})).await?;
 		self.command("Runtime.enable", json!({})).await?;
-		self.command("Network.enable", json!({})).await?;
-		if existing.is_none() {
+		// Retain the entire submitted body for input identity, including long research
+		// material. Chrome's default post-data capture can omit a large input.
+		self.command("Network.enable", json!({"maxPostDataSize":32*1024*1024})).await?;
+		if existing.is_none()
+			|| url.is_some_and(|url| existing.is_some_and(|target| target["url"] != url))
+		{
 			self.command("Page.navigate", json!({"url":url.ok_or("Missing target URL.")?})).await?;
 		}
 		if visible {
@@ -295,6 +299,51 @@ fn conversation_endpoint(raw: &str, owned: Option<&str>) -> bool {
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[tokio::test]
+	async fn retry_navigates_the_owned_projects_view_back_to_the_requested_page() {
+		let root = tempfile::tempdir().unwrap();
+		let listener =
+			tokio::net::UnixListener::bind(crate::native_host::socket_path(root.path())).unwrap();
+		let server = tokio::spawn(async move {
+			let (stream, _) = listener.accept().await.unwrap();
+			let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
+			let mut navigations = 0;
+			while let Some(Ok(Message::Text(text))) = socket.next().await {
+				let request: Value = serde_json::from_str(&text).unwrap();
+				let result = match request["method"].as_str().unwrap() {
+					"Decodex.ping" =>
+						json!({"protocol":1,"extensionId":crate::native_host::EXTENSION_ID}),
+					"Target.getTargets" =>
+						json!({"targetInfos":[{"targetId":"owned","type":"page","url":"https://chatgpt.com/projects"}]}),
+					"Target.attachToTarget" => json!({"sessionId":"owned"}),
+					"Page.navigate" => {
+						assert_eq!(request["params"]["url"], "https://chatgpt.com/");
+						navigations += 1;
+						json!({})
+					},
+					"Network.enable" => {
+						assert_eq!(request["params"]["maxPostDataSize"], 32 * 1024 * 1024);
+						json!({})
+					},
+					"Page.enable" | "Runtime.enable" => json!({}),
+					other => panic!("Unexpected operation {other}"),
+				};
+				socket
+					.send(Message::Text(
+						json!({"id":request["id"],"result":result}).to_string().into(),
+					))
+					.await
+					.unwrap();
+			}
+			navigations
+		});
+		let mut browser = Chrome::connect(root.path()).await.unwrap();
+		browser.open(Some("owned"), Some("https://chatgpt.com/"), false).await.unwrap();
+		assert_eq!(browser.target.as_deref(), Some("owned"));
+		drop(browser);
+		assert_eq!(server.await.unwrap(), 1);
+	}
 
 	#[tokio::test]
 	async fn pro_selection_waits_for_the_closed_picker_and_refuses_an_unconfirmed_maximum() {

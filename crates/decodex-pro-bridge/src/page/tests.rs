@@ -105,6 +105,16 @@ fn complete_original_markdown_preserves_code_that_a_virtualized_view_omits() {
 
 #[test]
 fn recovery_accepts_only_exact_canonical_chatgpt_conversations() {
+	let project = "https://chatgpt.com/g/g-p-6ae73c95938c819187c369cc68995079/project";
+	let named =
+		"https://chatgpt.com/g/g-p-6ae73c95938c819187c369cc68995079-research-trial/c/same-id";
+	assert!(super::same_conversation("https://chatgpt.com/c/same-id", named));
+	assert!(crate::projects::contains_url(project, named));
+	assert!(!crate::projects::contains_url(
+		"https://chatgpt.com/g/g-p-6ae73c95938c819187c369cc68995070/project",
+		named
+	));
+	assert!(!super::same_conversation("https://chatgpt.com/c/other-id", named));
 	assert_eq!(
 		super::conversation_url("https://chatgpt.com/g/g-p-owned/c/thread-one").unwrap(),
 		"https://chatgpt.com/g/g-p-owned/c/thread-one"

@@ -9,7 +9,7 @@ use crate::{Answer, Connection, ConnectionState, Link, Result, chrome::Chrome, s
 
 const CONTROLS: &str = r#"
 const visible=e=>!!e&&e.getClientRects().length>0;
-const editor=document.querySelector('#prompt-textarea,[role="textbox"][aria-label="Ask ChatGPT"]');
+const editor=document.querySelector('#prompt-textarea,[role="textbox"][aria-label="Ask ChatGPT"],[role="textbox"][aria-label^="New chat in "]');
 const model=document.querySelector('[data-testid="model-switcher-dropdown-button"],button[aria-label="Select ChatGPT model"]');
 const buttons=Array.from(document.querySelectorAll('button'));
 const send=document.querySelector('[data-testid="send-button"],button[aria-label="Send prompt"],button[aria-label="Send"]');
@@ -58,7 +58,7 @@ pub(crate) async fn connection(
 	loop {
 		let state = browser.evaluate(&format!(r#"(()=>{{ {CONTROLS}
             const ready=visible(editor)&&visible(model)&&!model.disabled&&model.getAttribute('aria-disabled')!=='true';
-            const verification=!ready&&(!!document.querySelector('script[src*="/cdn-cgi/challenge-platform/"]')||
+            const verification=!ready&&(visible(document.querySelector('#challenge-form,iframe[src*="challenges.cloudflare.com"]'))||
               (document.title==='Just a moment...'&&(document.body?.innerText??'').includes('Cloudflare')));
             return {{ready,verification,model:visible(model)?model.innerText:null,
                 login:buttons.some(b=>visible(b)&&/^(log in|sign in)$/i.test(b.innerText.trim()))}};
@@ -434,6 +434,12 @@ pub(crate) fn conversation_url(raw: &str) -> Result<String> {
 
 fn valid_id(id: &str) -> bool {
 	!id.is_empty() && id.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'-')
+}
+
+pub(crate) fn same_conversation(left: &str, right: &str) -> bool {
+	conversation_url(left).is_ok()
+		&& conversation_url(right).is_ok()
+		&& left.rsplit('/').next() == right.rsplit('/').next()
 }
 
 #[cfg(test)] mod tests;
