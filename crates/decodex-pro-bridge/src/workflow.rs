@@ -139,12 +139,10 @@ async fn execute(
 				Some(crate::projects::enter(browser, &bridge.root, project).await?);
 			store.save(record)?;
 		}
-		let observed = page::observe(browser).await?;
-		validate_before_send(record, &observed)?;
+		observe_before_send(record, browser).await?;
 		page::select_pro(browser).await?;
 		page::fill(browser, &material).await?;
-		let observed = page::observe(browser).await?;
-		validate_before_send(record, &observed)?;
+		let observed = observe_before_send(record, browser).await?;
 		record.receipt.baseline_messages = observed.messages.len();
 		record.receipt.phase = Phase::Sending;
 		record.receipt.last_error = None;
@@ -208,12 +206,8 @@ async fn execute(
 		if observed.notices.iter().any(|notice| notice.contains("Resume stream unavailable")) {
 			return Err("ChatGPT could not resume its response stream. The saved request is retained and will not be resent.".into());
 		}
-		if record.receipt.phase == Phase::Sending
-			&& let Some(failure) = &browser.submission_failure
-		{
-			return Err(format!(
-				"{failure} Submission is unconfirmed. Resume this request; it will not be resent."
-			));
+		if let Some(failure) = &browser.submission_failure {
+			return Err(format!("{failure} Resume this saved request; no input will be resent."));
 		}
 		if Instant::now() >= deadline {
 			let reason = if record.receipt.phase == Phase::Sending {
@@ -243,6 +237,28 @@ fn wait_for_stable_answer(observed: &mut Observation, previous: &mut Option<Answ
 		message.complete = false;
 	}
 	*previous = Some(answer);
+}
+
+async fn observe_before_send(record: &Record, browser: &mut Chrome) -> Result<Observation> {
+	let deadline = Instant::now() + std::time::Duration::from_secs(15);
+	loop {
+		let observed = page::observe(browser).await?;
+		// A cold page can mount its composer before it restores conversation history.
+		// Wait for the exact saved answer, without treating an empty first frame as drift.
+		let restored = record.parent_answer_id.as_ref().is_none_or(|parent| {
+			observed.messages.last().is_some_and(|m| &m.id == parent && m.complete)
+		});
+		let advanced = record.parent_answer_id.as_ref().is_some_and(|parent| {
+			observed.messages.iter().position(|m| &m.id == parent).is_some_and(|index| {
+				observed.messages[index + 1..].iter().any(|m| m.role == "user")
+			})
+		});
+		if restored || advanced || observed.generating || Instant::now() >= deadline {
+			validate_before_send(record, &observed)?;
+			return Ok(observed);
+		}
+		sleep(std::time::Duration::from_millis(100)).await;
+	}
 }
 
 fn validate_before_send(record: &Record, observed: &Observation) -> Result<()> {

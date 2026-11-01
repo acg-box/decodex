@@ -28,6 +28,59 @@ fn observation(messages: Vec<Message>, generating: bool) -> Observation {
 	}
 }
 
+#[tokio::test]
+async fn continuation_waits_for_history_after_a_cold_composer_mount() {
+	use futures_util::{SinkExt as _, StreamExt as _};
+	use serde_json::{Value, json};
+	use tokio_tungstenite::tungstenite::Message as Frame;
+	let root = tempfile::tempdir().unwrap();
+	let store = Store::open(root.path()).unwrap();
+	let mut record = store
+		.prepare(Request {
+			id: "cold".into(),
+			prompt: "follow up".into(),
+			previous: None,
+			project: None,
+		})
+		.unwrap();
+	record.parent_answer_id = Some("previous".into());
+	record.receipt.conversation_url = Some("https://chatgpt.com/c/owned".into());
+	let listener =
+		tokio::net::UnixListener::bind(crate::native_host::socket_path(root.path())).unwrap();
+	let server = tokio::spawn(async move {
+		let (stream, _) = listener.accept().await.unwrap();
+		let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
+		let mut reads = 0;
+		while let Some(Ok(Frame::Text(text))) = socket.next().await {
+			let request: Value = serde_json::from_str(&text).unwrap();
+			let result = match request["method"].as_str().unwrap() {
+				"Decodex.ping" =>
+					json!({"protocol":1,"extensionId":crate::native_host::EXTENSION_ID}),
+				"Runtime.evaluate" => {
+					reads += 1;
+					let messages = if reads < 3 {
+						json!([])
+					} else {
+						json!([{"id":"previous","role":"assistant","text":"ready","complete":true,"codeBlocks":[],"links":[]}])
+					};
+					json!({"result":{"value":{"url":"https://chatgpt.com/c/owned","generating":false,"messages":messages}}})
+				},
+				method => panic!("Cold restoration must not send input: {method}"),
+			};
+			socket
+				.send(Frame::Text(json!({"id":request["id"],"result":result}).to_string().into()))
+				.await
+				.unwrap();
+		}
+		reads
+	});
+	let mut browser = crate::chrome::Chrome::connect(root.path()).await.unwrap();
+	let restored = super::observe_before_send(&record, &mut browser).await.unwrap();
+	assert_eq!(restored.messages.last().unwrap().id, "previous");
+	drop(browser);
+	assert_eq!(server.await.unwrap(), 3);
+}
+
 #[test]
 fn recovery_binds_the_exact_prompt_and_does_not_complete_from_a_stale_or_streaming_answer() {
 	let root = tempfile::tempdir().expect("root");
