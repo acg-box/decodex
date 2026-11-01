@@ -1219,22 +1219,25 @@
     "contract": "Import, corrupt and repair CLI, schema and all three helpers offline; reject a wrong source commit and preserve the prior cache."
   },
   "source_review_summary": {
-    "range_start_exclusive": "5be57bedd04d717cdde3a768ea7b71e97733736b",
-    "range_end_inclusive": "67f0994b532b8740f14b5b738af7b7b2a915b1d6",
-    "fixed_target_observed_at": "2026-10-31T15:35:10.524901+00:00",
-    "screened": 21,
-    "completed_review": 21,
+    "range_start_exclusive": "67f0994b532b8740f14b5b738af7b7b2a915b1d6",
+    "range_end_inclusive": "4b4a5cf25aa5b064c866218b405c848745fd280f",
+    "fixed_target_observed_at": "2026-11-01T20:04:13.613181+00:00",
+    "screened": 9,
+    "completed_review": 9,
     "remaining": 0,
-    "test_or_fixture_bodies_read": 63,
+    "test_or_fixture_bodies_read": 21,
     "upstream_tests_executed": 0,
     "source_review_evidence": "automations/upstream/current-review.json",
+    "source_review_sha256": "4c21aff8f8be249349d2e03a5669a0af9cf88b36d3219f8326393a241d89b7b3",
     "previous_review": {
-      "start_exclusive": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "end_inclusive": "5be57bedd04d717cdde3a768ea7b71e97733736b",
-      "count": 158,
-      "evidence": "https://github.com/acg-box/decodex/blob/4c9b2c5fce988f038569a7a23092c8b97443b53f/automations/upstream/current-review.json"
+      "start_exclusive": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "end_inclusive": "67f0994b532b8740f14b5b738af7b7b2a915b1d6",
+      "count": 21,
+      "evidence": "https://github.com/acg-box/decodex/blob/f7387fd2c86d085e554d865850d0e669d6f83e65/automations/upstream/current-review.json"
     },
-    "limit": "Completed source review and named exact-artifact checks; no upstream suite or installed-app acceptance."
+    "selected_runtime_source": "67f0994b532b8740f14b5b738af7b7b2a915b1d6",
+    "runtime_changed": false,
+    "limit": "Source review only. Preserve existing artifact qualification. No new upstream or exact-artifact tests, installed acceptance or generic CI success is claimed."
   },
   "documentation_lifecycle": {
     "method": "OpenWiki supported page-job lifecycle",
@@ -3192,7 +3195,7 @@
     ],
     "maintenance_workflow_delivery": "https://github.com/acg-box/decodex/pull/2573",
     "native_schedule": "Daily cadence; use the native definition for current status. Pause during manual catch-up; resume only with explicit user authorization.",
-    "scope": "The fixed 21-commit range is fully source-reviewed; the new development artifact and affected native regressions are qualified. Provider recovery remains retained. HumanCommand and shared MCP remain deferred. Schedule status remains native-owned; explicit user authorization controls resumption.",
+    "scope": "The fixed 21-commit qualification remains bound to the selected development artifact. The later nine-commit source-only review is in current-review.json and changes no runtime. Provider recovery remains retained; HumanCommand and shared MCP keep their recorded gates. Native tools own schedule status.",
     "provider_resolution": "https://github.com/acg-box/decodex/issues/2575",
     "deferred_capability_issue": "https://github.com/acg-box/decodex/issues/2585"
   },

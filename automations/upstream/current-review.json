@@ -1,1231 +1,573 @@
 {
   "version": 1,
-  "start_exclusive": "5be57bedd04d717cdde3a768ea7b71e97733736b",
-  "end_inclusive": "67f0994b532b8740f14b5b738af7b7b2a915b1d6",
-  "fixed_target_observed_at": "2026-10-31T15:35:10.524901+00:00",
-  "count": 21,
-  "screened_count": 21,
-  "reviewed_count": 21,
+  "start_exclusive": "67f0994b532b8740f14b5b738af7b7b2a915b1d6",
+  "end_inclusive": "4b4a5cf25aa5b064c866218b405c848745fd280f",
+  "fixed_target_observed_at": "2026-11-01T20:04:13.613181+00:00",
+  "count": 9,
+  "screened_count": 9,
+  "reviewed_count": 9,
   "fixed_target_remaining": 0,
   "source_review_complete": true,
-  "decodex_consumer_baseline": "4c9b2c5fce988f038569a7a23092c8b97443b53f",
+  "decodex_consumer_baseline": "f7387fd2c86d085e554d865850d0e669d6f83e65",
   "selected_runtime_source": "67f0994b532b8740f14b5b738af7b7b2a915b1d6",
   "selected_runtime_qualification": "automations/upstream/qualification.json",
   "classification_counts": {
-    "native_owned": 10,
-    "not_applicable": 11
+    "not_applicable": 6,
+    "native_owned": 3
   },
-  "review_summary": {
-    "test_bodies_read": 63,
-    "upstream_tests_executed": 0,
-    "local_native_tests_executed": 9,
-    "local_component_tests_executed": 1,
-    "local_failed": 0,
-    "unmatched_selectors": []
-  },
-  "scope": "Read relevant diffs, affected implementation bodies, test bodies and concrete current consumers. Screening alone is not counted as completed review. Runtime and delivery evidence stay separate.",
+  "review_summary": [
+    "Six changes belong to the unconsumed TUI. Three changes retain native CI, release and HTTP/TLS ownership.",
+    "No required Decodex adaptation or new optional choice was identified. Preserve the qualified development artifact and all original limits.",
+    "The fixed source target is newer than the selected runtime. Source review does not establish artifact inclusion or fresh qualification."
+  ],
+  "scope": "Read each relevant diff, affected implementation and named complete test bodies, and inspect the current Decodex consumer or exclusion. Keep source review, execution, artifact qualification, delivery and installed acceptance separate.",
   "previous_source_review": {
-    "start_exclusive": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-    "end_inclusive": "5be57bedd04d717cdde3a768ea7b71e97733736b",
-    "count": 158,
-    "evidence": "https://github.com/acg-box/decodex/blob/4c9b2c5fce988f038569a7a23092c8b97443b53f/automations/upstream/current-review.json"
+    "start_exclusive": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+    "end_inclusive": "67f0994b532b8740f14b5b738af7b7b2a915b1d6",
+    "count": 21,
+    "evidence": "https://github.com/acg-box/decodex/blob/f7387fd2c86d085e554d865850d0e669d6f83e65/automations/upstream/current-review.json"
   },
   "records": [
     {
       "index": 1,
-      "commit": "a94ba8bdd03f8026db2d11d159a7bd93c54c712b",
-      "commit_time": "2026-10-30T18:02:30Z",
+      "commit": "456ae93b6326306f9efd34b2d6b6321d3caa5e07",
+      "commit_time": "2026-11-01T15:38:07Z",
       "classification": "not_applicable",
-      "behavior": "Use one jemalloc arena per four CPUs in Linux musl Cargo and Bazel builds. macOS does not compile the cfg-gated jemalloc allocator.",
+      "behavior": "Extract fresh-session activation into PreparedFreshSession and adopt_fresh_session. Preserve saved input, settings, naming, blank-session registration and attachment errors; start_fresh_session supplies the Fresh presentation.",
       "implementation_symbols": [
-        "MODULE.bazel::tikv-jemalloc-sys build_script_env",
-        "codex-rs/.cargo/config.toml::env",
-        "codex-rs/cli/src/main.rs::ALLOCATOR",
-        "codex-rs/app-server/src/main.rs::ALLOCATOR",
-        "codex-rs/exec-server-cli/src/main.rs::ALLOCATOR"
+        "codex-rs/tui/src/app/session_lifecycle.rs::PreparedFreshSession",
+        "codex-rs/tui/src/app/session_lifecycle.rs::App::start_fresh_session",
+        "codex-rs/tui/src/app/session_lifecycle.rs::App::adopt_fresh_session"
       ],
-      "decodex_consumer": "Decodex prepares only the qualified aarch64-apple-darwin artifact; its allocator is not this Linux musl path.",
+      "decodex_consumer": "Decodex launches the verified CLI with APP_SERVER_ARGS (app-server --stdio). It does not run the TUI session lifecycle or import codex-tui. Native conversation admission remains app-server-owned.",
       "consumer_refs": [
-        "codex-runtime.lock.json::targets",
+        "crates/decodex-runtime/src/account_launch/process.rs::APP_SERVER_ARGS",
+        "crates/decodex-runtime/src/account_launch/process.rs::AppServerCommand::production_from_resolved",
+        "scripts/macos/build_codex_source.mts::buildSource"
+      ],
+      "source_review_complete": true,
+      "diff_read": true,
+      "tests_read": [
+        {
+          "source": "codex-rs/tui/src/app/tests.rs",
+          "symbol": "new_session_requests_shutdown_for_previous_conversation",
+          "revision": "456ae93b6326306f9efd34b2d6b6321d3caa5e07",
+          "body_read": true
+        }
+      ],
+      "tests_executed": [],
+      "test_review_limit": "Named test bodies are source evidence, not execution receipts.",
+      "validation_limits": [
+        "Source review only. Upstream tests were read and not executed; no upstream suite pass is claimed.",
+        "The selected CLI and helpers remain at 67f0994b532b8740f14b5b738af7b7b2a915b1d6 and do not include this delta. No artifact is rebuilt, imported, executed or newly qualified.",
+        "Official PR check reports contain failures and skipped/cancelled checks. Their causes remain undiagnosed; no failed check is counted as passed.",
+        "No application start, installation, live-provider acceptance, release, tag, publication or native automation-definition change."
+      ],
+      "source_sha256": {
+        "codex-rs/tui/src/app/session_lifecycle.rs": "2db3ee6ae71b14d362ea46e7dd64a600ab482c3543b489c51b8e68ff3020879a",
+        "codex-rs/tui/src/app/tests.rs": "c6daaa677b6a6ee36019dc5df146ad6a559c6d8dd7a947f467ee4dd337b4711e"
+      },
+      "selected_runtime_source": "67f0994b532b8740f14b5b738af7b7b2a915b1d6",
+      "source_included_in_selected_commit": false,
+      "full_commit_diff_sha256": "d833fffc9a8b506e8fa00b52cf8c9971e164e0a2454ecbe6eeed9da7334eee86",
+      "diff_digest_command": "git show --no-ext-diff --no-textconv --binary --format= --no-renames <commit>",
+      "diff_scope": "Relevant changed implementation and test bodies were read. Full patch hashing includes snapshots and workflow definitions; it is separate from semantic review.",
+      "upstream_ci_evidence": {
+        "url": "https://github.com/openai/codex/pull/58713/checks",
+        "observed_conclusions": {
+          "FAILURE": 68,
+          "SUCCESS": 27,
+          "SKIPPED": 11
+        },
+        "execution_owner": "Official upstream CI; not executed by this run",
+        "failure_cause": "unknown; not diagnosed"
+      }
+    },
+    {
+      "index": 2,
+      "commit": "f7f1f0196c710238eb586b02110247a030644a6e",
+      "commit_time": "2026-11-01T15:39:27Z",
+      "classification": "not_applicable",
+      "behavior": "Sort unpinned TUI tasks by descending update time inside status groups. Keep pinned tasks first in each status group in pin order, use a pin title marker, and retain selection by thread identity after refresh and filtering.",
+      "implementation_symbols": [
+        "codex-rs/tui/src/app/agents_overview_view.rs::AgentsOverviewView::new",
+        "codex-rs/tui/src/app/agents_overview_grouping.rs::AgentsOverviewView::visible_indices",
+        "codex-rs/tui/src/app/agents_overview_grouping.rs::AgentsOverviewView::same_group",
+        "codex-rs/tui/src/app/agent_center/rows.rs::AgentsOverviewView"
+      ],
+      "decodex_consumer": "The upstream TUI task list is not a Decodex consumer. Decodex GPUI status filters use agent_list_status::Filters and host-local preferences. This upstream presentation change does not authorize a new sorting control or policy.",
+      "consumer_refs": [
+        "crates/decodex-runtime/src/account_launch/process.rs::APP_SERVER_ARGS",
+        "crates/decodex-runtime/src/account_launch/process.rs::AppServerCommand::production_from_resolved",
+        "scripts/macos/build_codex_source.mts::buildSource",
+        "apps/decodex-gpui/src/agent_list_status.rs::Filters"
+      ],
+      "source_review_complete": true,
+      "diff_read": true,
+      "tests_read": [
+        {
+          "source": "codex-rs/tui/src/app/agent_center_tests.rs",
+          "symbol": "live_center_keeps_status_order_across_progress_refreshes",
+          "revision": "f7f1f0196c710238eb586b02110247a030644a6e",
+          "body_read": true
+        },
+        {
+          "source": "codex-rs/tui/src/app/agent_center_tests.rs",
+          "symbol": "live_center_sorts_arrivals_and_status_transitions_by_update_time",
+          "revision": "f7f1f0196c710238eb586b02110247a030644a6e",
+          "body_read": true
+        },
+        {
+          "source": "codex-rs/tui/src/app/agent_center_tests.rs",
+          "symbol": "live_center_status_order_tracks_updates_while_filtered_and_pinned",
+          "revision": "f7f1f0196c710238eb586b02110247a030644a6e",
+          "body_read": true
+        }
+      ],
+      "tests_executed": [],
+      "test_review_limit": "Named test bodies are source evidence, not execution receipts.",
+      "validation_limits": [
+        "Source review only. Upstream tests were read and not executed; no upstream suite pass is claimed.",
+        "The selected CLI and helpers remain at 67f0994b532b8740f14b5b738af7b7b2a915b1d6 and do not include this delta. No artifact is rebuilt, imported, executed or newly qualified.",
+        "Official PR check reports contain failures and skipped/cancelled checks. Their causes remain undiagnosed; no failed check is counted as passed.",
+        "No application start, installation, live-provider acceptance, release, tag, publication or native automation-definition change."
+      ],
+      "source_sha256": {
+        "codex-rs/tui/src/app/agent_center/rows.rs": "28ddd6c803278a8cc86a9d127a25712f8c4b119c4f2ec9402b76dcedc4084210",
+        "codex-rs/tui/src/app/agent_center_tests.rs": "609c773e680da81c5ba9e423d6d48468a1fb89015794af6c0943d6827bb65241",
+        "codex-rs/tui/src/app/agents_overview_actions_tests.rs": "3106982c0fcee218bd3af0945d349ad20ac8fa21c62b534730113ccd59bb481f",
+        "codex-rs/tui/src/app/agents_overview_grouping.rs": "8c57f07684c6d86d1955f94f8a18c4915acde8226f6da15bd5c087e3edd66aaf",
+        "codex-rs/tui/src/app/agents_overview_view.rs": "9b0f2e0d938984681cd6fee2d4514b22fe9ac07f6c1f767da1585c7e0a2bb74e",
+        "codex-rs/tui/src/app/snapshots/codex_tui__app__agents_overview__tests__actions__hiding_tasks_keeps_selection_adjacent_in_display_order.snap": "dc2b0718de38a5b650be3d001571b0a8e6e8725ee888656986e393fecb877bcd",
+        "codex-rs/tui/src/app/snapshots/codex_tui__app__agents_overview__tests__command_center__live_center_keeps_status_order_across_progress_refreshes.snap": "55a3b7fb6a68f6681adf3e6baa4f5afd39c61e6e3ffc75061e05ebb6e3bc0fa4"
+      },
+      "selected_runtime_source": "67f0994b532b8740f14b5b738af7b7b2a915b1d6",
+      "source_included_in_selected_commit": false,
+      "full_commit_diff_sha256": "12e068ee083fd81c13d5cb8ef6700bd7d291342e4b909783e71d2acc9d7085a8",
+      "diff_digest_command": "git show --no-ext-diff --no-textconv --binary --format= --no-renames <commit>",
+      "diff_scope": "Relevant changed implementation and test bodies were read. Full patch hashing includes snapshots and workflow definitions; it is separate from semantic review.",
+      "upstream_ci_evidence": {
+        "url": "https://github.com/openai/codex/pull/58714/checks",
+        "observed_conclusions": {
+          "FAILURE": 67,
+          "SUCCESS": 28,
+          "SKIPPED": 11
+        },
+        "execution_owner": "Official upstream CI; not executed by this run",
+        "failure_cause": "unknown; not diagnosed"
+      }
+    },
+    {
+      "index": 3,
+      "commit": "5e07d1f694972c0caa62c2e7d4108fa47695d2c7",
+      "commit_time": "2026-11-01T15:39:52Z",
+      "classification": "not_applicable",
+      "behavior": "Prepare deferred OSC 52 bytes in the clipboard worker. Prefer TMUX over STY; GNU screen receives 252-byte DCS payload chunks that reconstruct one complete OSC 52 sequence. Native clipboard confirmation retains precedence.",
+      "implementation_symbols": [
+        "codex-rs/tui/src/clipboard_copy.rs::Osc52Target",
+        "codex-rs/tui/src/clipboard_copy.rs::osc52_sequence",
+        "codex-rs/tui/src/clipboard_copy.rs::write_osc52",
+        "codex-rs/tui/src/clipboard_copy/worker.rs::ClipboardWorker"
+      ],
+      "decodex_consumer": "Decodex uses GPUI/native clipboard presentation and app-server stdio, not TUI terminal clipboard forwarding. No GNU screen or OSC 52 path is adopted.",
+      "consumer_refs": [
+        "crates/decodex-runtime/src/account_launch/process.rs::APP_SERVER_ARGS",
+        "crates/decodex-runtime/src/account_launch/process.rs::AppServerCommand::production_from_resolved",
+        "scripts/macos/build_codex_source.mts::buildSource"
+      ],
+      "source_review_complete": true,
+      "diff_read": true,
+      "tests_read": [
+        {
+          "source": "codex-rs/tui/src/clipboard_copy/routing_tests.rs",
+          "symbol": "screen_forwards_one_complete_osc52_across_bounded_passthrough_strings",
+          "revision": "5e07d1f694972c0caa62c2e7d4108fa47695d2c7",
+          "body_read": true
+        }
+      ],
+      "tests_executed": [],
+      "test_review_limit": "Named test bodies are source evidence, not execution receipts.",
+      "validation_limits": [
+        "Source review only. Upstream tests were read and not executed; no upstream suite pass is claimed.",
+        "The selected CLI and helpers remain at 67f0994b532b8740f14b5b738af7b7b2a915b1d6 and do not include this delta. No artifact is rebuilt, imported, executed or newly qualified.",
+        "Official PR check reports contain failures and skipped/cancelled checks. Their causes remain undiagnosed; no failed check is counted as passed.",
+        "No application start, installation, live-provider acceptance, release, tag, publication or native automation-definition change."
+      ],
+      "source_sha256": {
+        "codex-rs/tui/src/clipboard_copy.rs": "370f5d2fcc9b4b022da3f5a65671d41982f29f0126ffdbe9ab1d98a61998d2b4",
+        "codex-rs/tui/src/clipboard_copy/routing_tests.rs": "f9a599fe19a3590b71cbe3c0337647682bf1ded94bfefd237994c0b23d907ec6",
+        "codex-rs/tui/src/clipboard_copy/worker.rs": "9b9c3ff79a7fbf022eb26642a0f784c4a274cd99a05f50f12fc0a38fe32fab95",
+        "codex-rs/tui/src/clipboard_copy/worker_tests.rs": "c75176e324674751dbfa69d5237f1d4ea5d63178bee10c5447a04a1c3dc36f08"
+      },
+      "selected_runtime_source": "67f0994b532b8740f14b5b738af7b7b2a915b1d6",
+      "source_included_in_selected_commit": false,
+      "full_commit_diff_sha256": "8adbefe250a2f124cf798f55811ba04de9d2b6a9d4e33dc106a85b052d8796f7",
+      "diff_digest_command": "git show --no-ext-diff --no-textconv --binary --format= --no-renames <commit>",
+      "diff_scope": "Relevant changed implementation and test bodies were read. Full patch hashing includes snapshots and workflow definitions; it is separate from semantic review.",
+      "upstream_ci_evidence": {
+        "url": "https://github.com/openai/codex/pull/58716/checks",
+        "observed_conclusions": {
+          "FAILURE": 67,
+          "SUCCESS": 28,
+          "SKIPPED": 11
+        },
+        "execution_owner": "Official upstream CI; not executed by this run",
+        "failure_cause": "unknown; not diagnosed"
+      }
+    },
+    {
+      "index": 4,
+      "commit": "231c8abd2f4f7e3e14aa3e54bcf8136435e6f2f3",
+      "commit_time": "2026-11-01T15:40:16Z",
+      "classification": "native_owned",
+      "behavior": "Remove Bazel from the blocking aggregate, make Bazel argument-comment and SDK jobs advisory, and restrict official release matrices and download patterns to Cargo artifacts while the upstream BuildBuddy credential is unavailable.",
+      "implementation_symbols": [
+        ".github/workflows/blocking-ci.yml::jobs.required",
+        ".github/workflows/rust-ci.yml::argument_comment_lint_prebuilt and CI results",
+        ".github/workflows/rust-release.yml::build/package/publish matrices",
+        ".github/workflows/rust-release-provisioned-macos.yml::Cargo matrices",
+        ".github/workflows/rust-release-windows.yml::Cargo matrices",
+        ".github/workflows/sdk.yml::sdks"
+      ],
+      "decodex_consumer": "Official CI and release infrastructure remains upstream-owned. Decodex buildSource calls the official native package builder with stable locked Cargo; the selected source archive and artifact remain unchanged. No release asset is imported in this run.",
+      "consumer_refs": [
+        "crates/decodex-runtime/src/account_launch/process.rs::APP_SERVER_ARGS",
+        "crates/decodex-runtime/src/account_launch/process.rs::AppServerCommand::production_from_resolved",
         "scripts/macos/build_codex_source.mts::buildSource"
       ],
       "source_review_complete": true,
       "diff_read": true,
       "tests_read": [],
       "tests_executed": [],
+      "test_review_limit": "Read the named complete test bodies. Workflow-only commits introduce no unit test body; workflow job and step definitions were inspected.",
       "validation_limits": [
-        "Complete two-file diff and allocator cfg bodies read. No test changed or supplied for this configuration-only setting. No Linux build or RSS benchmark executed."
+        "Source review only. Upstream tests were read and not executed; no upstream suite pass is claimed.",
+        "The selected CLI and helpers remain at 67f0994b532b8740f14b5b738af7b7b2a915b1d6 and do not include this delta. No artifact is rebuilt, imported, executed or newly qualified.",
+        "Official PR check reports contain failures and skipped/cancelled checks. Their causes remain undiagnosed; no failed check is counted as passed.",
+        "No application start, installation, live-provider acceptance, release, tag, publication or native automation-definition change."
       ],
       "source_sha256": {
-        "codex-rs/exec-server-cli/src/main.rs": "f771fe599b2f44dd3af151a4d1225b7fa9acfb71b8fae99b7c1cb4e37d9cbe8e",
-        "codex-rs/app-server/src/main.rs": "e0fb50054d6adabe7af2cdc10232d2cffb19b0cc96a59880d3f03d0988643a9e",
-        "codex-rs/.cargo/config.toml": "32854def9dfc277c850fc8feb1fbd62a781bc72165efc263ab4dbaa5eb55a001",
-        "codex-rs/cli/src/main.rs": "73e0f3bdfc8839b38f975a6f031f0c1fbc851225fc1aca950394fe6bbf3867b6",
-        "MODULE.bazel": "e035784b5648f37eeaa5785ba77d4a837db5da9bf5bd5b2d71e545bf38118893"
+        ".github/workflows/blocking-ci.yml": "20b53cfe66d4eaee34f0aa6da0178a252725bbd4789fa23043171e8542432b10",
+        ".github/workflows/rust-ci.yml": "bb1a8ea918990d677f935a359e9af7bc8b4f28af06e61e074b3ac81bf07c3cfd",
+        ".github/workflows/rust-release-provisioned-macos.yml": "414143c2edac76e4c490f61f795aa7bd0d82ebc48e91b8f3f6dbd3588fd5e154",
+        ".github/workflows/rust-release-windows.yml": "b5c66dcbc7339a31f69324423ab8940eb5124ac135f3f4db7068d11370ff97fa",
+        ".github/workflows/rust-release.yml": "6128dc154f583299c9ffbc7609baf0a9a728ba46d3a3924bcebc105ee35b415c",
+        ".github/workflows/sdk.yml": "9508c1e64782e4e20f76fdefe6d19e895a21b30658eeb0939615fcf00008f95a"
       },
       "selected_runtime_source": "67f0994b532b8740f14b5b738af7b7b2a915b1d6",
-      "reviewed_patch_sha256": "5522baf44bd1c7358f2f09bea67b37a10da9f5a689b4d7c2214c3e9636438e87",
-      "full_commit_diff_sha256": "6020434a862866ca03b18816e837545646e4f3319162aed3299147b679dcc321",
+      "source_included_in_selected_commit": false,
+      "full_commit_diff_sha256": "363a86409b3955106f2e15cef96f9643dc3813c474ccc4fcff739293194f52a8",
       "diff_digest_command": "git show --no-ext-diff --no-textconv --binary --format= --no-renames <commit>",
-      "diff_scope": "Relevant source and test bodies were reviewed. Full-diff hashing also includes generated files and does not claim behavioral review of generated output.",
-      "source_included_in_selected_commit": true
-    },
-    {
-      "index": 2,
-      "commit": "e7b8d3a36db7ca5c05428b95a0099dd2f6d37eb7",
-      "commit_time": "2026-10-30T18:12:10Z",
-      "classification": "not_applicable",
-      "behavior": "Run non-Windows CLI package-manager updates with cwd / so project hooks/config cannot influence the update, including when TMPDIR is inside the project.",
-      "implementation_symbols": [
-        "codex-rs/cli/src/main.rs::run_update_action"
-      ],
-      "decodex_consumer": "Decodex uses its component store and explicit prepare-codex; it does not call the interactive CLI UpdateAction or global package-manager self-update.",
-      "consumer_refs": [
-        "crates/decodex-components/src/install.rs::install",
-        "scripts/macos/prepare_codex.mts"
-      ],
-      "source_review_complete": true,
-      "diff_read": true,
-      "tests_read": [
-        {
-          "source": "codex-rs/cli/src/daemon_update_tests.rs",
-          "symbol": "package_update_runs_outside_the_project",
-          "revision": "e7b8d3a36db7ca5c05428b95a0099dd2f6d37eb7",
-          "body_read": true
-        }
-      ],
-      "tests_executed": [],
-      "validation_limits": [
-        "Complete diff, update-action body and fake-pnpm subprocess test read. No package-manager update or upstream tests executed."
-      ],
-      "source_sha256": {
-        "codex-rs/cli/src/main.rs": "fdd2b41303dba1f0d022c1d40268ffc0c1cb086c852a87ef437937822bda5339",
-        "codex-rs/cli/src/daemon_update_tests.rs": "ace275e288d4758d2b5627688dc9908ccb608519ef87120812ddf0b8bc4cccb1"
-      },
-      "selected_runtime_source": "67f0994b532b8740f14b5b738af7b7b2a915b1d6",
-      "reviewed_patch_sha256": "cc464e705f8018f4536c1aea69a6f4074a6510571ae6df633a850a10450f955c",
-      "full_commit_diff_sha256": "0b55f2f1f1c82648a3c44e542e7c71096b66e34777480ed065388463d2562c10",
-      "diff_digest_command": "git show --no-ext-diff --no-textconv --binary --format= --no-renames <commit>",
-      "diff_scope": "Relevant source and test bodies were reviewed. Full-diff hashing also includes generated files and does not claim behavioral review of generated output.",
-      "source_included_in_selected_commit": true
-    },
-    {
-      "index": 3,
-      "commit": "7a030b97699b9fc7f997dd322a3926c03faaeb6c",
-      "commit_time": "2026-10-30T18:12:39Z",
-      "classification": "native_owned",
-      "behavior": "Track the last usable server-usage history boundary; keep failed or usage-less response output in context estimates, count empty-success input once, and align recomputation/remote compaction without double-counting reasoning.",
-      "implementation_symbols": [
-        "codex-rs/core/src/context_manager/history.rs::update_token_info/reset_last_usage_boundary/items_since_last_usage/get_total_token_usage",
-        "codex-rs/core/src/session/mod.rs::record_token_usage_info/recompute_token_usage",
-        "codex-rs/core/src/session/turn.rs::run_sampling_request/ResponseEvent::Completed",
-        "codex-rs/core/src/compact_remote_v2_attempt.rs::run_remote_compact_v2_attempt"
-      ],
-      "decodex_consumer": "Native app-server context accounting and auto compaction for Decodex conversations. The previous 5be artifact misses retained reasoning after an incomplete response; the qualified 67f artifact passes the reusable native regression.",
-      "consumer_refs": [
-        "crates/decodex-runtime/src/account_launch/agent_process_native_compaction_tests.rs",
-        "crates/decodex-codex/src/app_server_client/output_rate.rs::observe",
-        "crates/decodex-runtime/src/account_launch/agent_process_native_usage_tests.rs"
-      ],
-      "source_review_complete": true,
-      "diff_read": true,
-      "tests_read": [
-        {
-          "source": "codex-rs/core/src/context_manager/history_tests.rs",
-          "symbol": "items_since_last_usage_include_initial_input",
-          "revision": "7a030b97699b9fc7f997dd322a3926c03faaeb6c",
-          "body_read": true
+      "diff_scope": "Relevant changed implementation and test bodies were read. Full patch hashing includes snapshots and workflow definitions; it is separate from semantic review.",
+      "upstream_ci_evidence": {
+        "url": "https://github.com/openai/codex/pull/58717/checks",
+        "observed_conclusions": {
+          "FAILURE": 64,
+          "SUCCESS": 32,
+          "SKIPPED": 10
         },
-        {
-          "source": "codex-rs/core/src/context_manager/history_tests.rs",
-          "symbol": "items_since_last_usage_include_user_and_tool_output",
-          "revision": "7a030b97699b9fc7f997dd322a3926c03faaeb6c",
-          "body_read": true
-        },
-        {
-          "source": "codex-rs/core/src/context_manager/history_tests.rs",
-          "symbol": "non_last_reasoning_tokens_ignore_entries_after_last_user",
-          "revision": "7a030b97699b9fc7f997dd322a3926c03faaeb6c",
-          "body_read": true
-        },
-        {
-          "source": "codex-rs/core/src/context_manager/history_tests.rs",
-          "symbol": "total_token_usage_respects_saved_reasoning_accounting",
-          "revision": "7a030b97699b9fc7f997dd322a3926c03faaeb6c",
-          "body_read": true
-        },
-        {
-          "source": "codex-rs/core/src/context_manager/history_tests.rs",
-          "symbol": "total_token_usage_includes_all_items_since_last_usage",
-          "revision": "7a030b97699b9fc7f997dd322a3926c03faaeb6c",
-          "body_read": true
-        },
-        {
-          "source": "codex-rs/core/src/session/tests.rs",
-          "symbol": "record_token_usage_info_notifies_extension_contributors",
-          "revision": "7a030b97699b9fc7f997dd322a3926c03faaeb6c",
-          "body_read": true
-        },
-        {
-          "source": "codex-rs/core/src/session/guardian_checkpoint_tests.rs",
-          "symbol": "guardian_checkpoint_preserves_live_context_without_storage",
-          "revision": "7a030b97699b9fc7f997dd322a3926c03faaeb6c",
-          "body_read": true
-        },
-        {
-          "source": "codex-rs/core/tests/suite/compact.rs",
-          "symbol": "auto_compact_accounts_for_unreported_reasoning",
-          "revision": "7a030b97699b9fc7f997dd322a3926c03faaeb6c",
-          "body_read": true
-        }
-      ],
-      "tests_executed": [],
-      "validation_limits": [
-        "All eight selected upstream test bodies were read; zero upstream tests executed. The new local exact-artifact regression fails on 5be57bedd0 and passes all three scenarios on 67f0994b; native auto compaction and checkpoint recovery also pass."
-      ],
-      "source_sha256": {
-        "codex-rs/core/src/context_manager/history.rs": "4e29bce26cbea3fd9c8895199a0f726a0f867c03c1efa8a3390b260ad3dbc706",
-        "codex-rs/core/src/context_manager/history_tests.rs": "7a7458ec3736984925f011af813278e9dd541b9bc2842c9888ae3e8c506d7ebf",
-        "codex-rs/core/src/compact_remote_v2_attempt.rs": "42e81a425a5f652f7e9ee281279d83cc65f9d8b54ad26c632b19ed8f75212e9f",
-        "codex-rs/core/tests/suite/compact.rs": "fe212de69980f8159bf47507aba081792a44b4641fc209db40f408498fb05558",
-        "codex-rs/core/src/session/tests.rs": "266946661b53302d0ec6a88114e07470ee7b42381883151739cfb580cbdd667e",
-        "codex-rs/core/src/session/guardian_checkpoint_tests.rs": "616e36379053eaa73cca5197ce7ea2ce18c2818c2cdbafa22d12142fbb5e3dec",
-        "codex-rs/core/src/session/mod.rs": "ba7b9d56851939338d7c4f04977cb4232c8abc40fbe1ddf4f4ce4ad44d2cc61b",
-        "codex-rs/core/src/session/turn.rs": "243cd51cc45a7822c5e669e06f85fed52ceb70ad1be69c2959bdf72908161bb1"
-      },
-      "selected_runtime_source": "67f0994b532b8740f14b5b738af7b7b2a915b1d6",
-      "selected_runtime_contains_commit": true,
-      "reviewed_patch_sha256": "076a904a3ff344f77623c3c762721951448815de501124c0845d3e38ed368959",
-      "full_commit_diff_sha256": "bb8610f32b7704dc2fd1cb7c660d5f0fff6cf984cb0af1bc4e6f210663dfce20",
-      "diff_digest_command": "git show --no-ext-diff --no-textconv --binary --format= --no-renames <commit>",
-      "diff_scope": "Relevant source and test bodies were reviewed. Full-diff hashing also includes generated files and does not claim behavioral review of generated output.",
-      "fixture_references": [
-        {
-          "source": "codex-rs/core/tests/common/responses.rs",
-          "symbol": "ev_reasoning_item",
-          "revision": "7a030b97699b9fc7f997dd322a3926c03faaeb6c",
-          "body_read": true,
-          "sha256": "197d8af315de0496e636d8dc50dcb4a8f3fe3dba69f12d548b36216178136f96",
-          "scope": "Base64 envelope and native reasoning-size estimate used by the local regression."
-        }
-      ],
-      "source_included_in_selected_commit": true,
-      "native_consumer_validation": {
-        "qualification": "automations/upstream/qualification.json",
-        "execution_receipts": [
-          "target-native"
-        ],
-        "limit": "Only named native fixtures were executed. Upstream tests listed above were read, not run."
-      }
-    },
-    {
-      "index": 4,
-      "commit": "8cb81f649021b86f12c4410e4c3f50addabd474e",
-      "commit_time": "2026-10-30T18:19:38Z",
-      "classification": "native_owned",
-      "behavior": "Add a default-off native flag to omit model-ID announcements in incremental context. Changed instructions and tools still appear, and the stored model snapshot advances even when no announcement is emitted.",
-      "implementation_symbols": [
-        "codex-rs/core/src/context/world_state/model.rs::ModelInstructionsState::render_diff",
-        "codex-rs/core/src/session/world_state.rs::build_world_state_for_step",
-        "codex-rs/features/src/lib.rs::SuppressModelChangeAnnouncements"
-      ],
-      "decodex_consumer": "Decodex selects native model settings and displays its own model labels. It does not replace native context construction or enable this flag; default-off behavior remains native-owned.",
-      "consumer_refs": [
-        "crates/decodex-codex/src/app_server_client/thread_model_settings.rs",
-        "crates/decodex-runtime/src/account_launch/process.rs"
-      ],
-      "source_review_complete": true,
-      "diff_read": true,
-      "tests_read": [
-        {
-          "source": "codex-rs/core/src/context/world_state/model_tests.rs",
-          "symbol": "legacy_model_snapshot_keeps_its_window_until_model_change_or_compaction",
-          "revision": "8cb81f649021b86f12c4410e4c3f50addabd474e",
-          "body_read": true
-        },
-        {
-          "source": "codex-rs/core/src/context/world_state/model_tests.rs",
-          "symbol": "suppressed_model_changes_advance_snapshot_without_repeated_updates",
-          "revision": "8cb81f649021b86f12c4410e4c3f50addabd474e",
-          "body_read": true
-        },
-        {
-          "source": "codex-rs/core/tests/suite/scenarios_incremental_tools.rs",
-          "symbol": "incremental_tools_append_changed_catalog_without_rewriting_history",
-          "revision": "8cb81f649021b86f12c4410e4c3f50addabd474e",
-          "body_read": true
-        },
-        {
-          "source": "codex-rs/features/src/tests.rs",
-          "symbol": "model_change_suppression_config_preserves_omission_and_explicit_values",
-          "revision": "8cb81f649021b86f12c4410e4c3f50addabd474e",
-          "body_read": true
-        }
-      ],
-      "tests_executed": [],
-      "validation_limits": [
-        "Default native model and child behavior passed the selected exact-artifact child fixture. The opt-out flag stays default-off and has no Decodex control."
-      ],
-      "source_sha256": {
-        "codex-rs/core/src/session/world_state.rs": "d613c1653cc1e3551443b908e341013f9a48ce3bac005b521f09f2e912daa5e1",
-        "codex-rs/features/src/lib.rs": "b288a4f48bf90192ba58d13b7010ea8da1772af79d01080d5c3a523341f7fcd5",
-        "codex-rs/features/src/tests.rs": "5b44fe9aabbc838eb32003c54f09238b583d4444be70a90af15ebfc5cf419a2f",
-        "codex-rs/core/tests/suite/scenarios_incremental_tools.rs": "b291a82182c1e778c2be7dbf83549438ac54e8945ff5b0019ea36cda676d35d1",
-        "codex-rs/core/src/context/world_state/model_tests.rs": "9b29f730e8e15cd7dd392360ccef08835faf03afa50c6a384fd3ebb3739199f9",
-        "codex-rs/core/src/context/world_state/model.rs": "1f0bca123edbc92f405ef1ab7e2e52e282de1789c3bba4c97b276ff40affaced"
-      },
-      "selected_runtime_source": "67f0994b532b8740f14b5b738af7b7b2a915b1d6",
-      "selected_runtime_contains_commit": true,
-      "reviewed_patch_sha256": "7fa9a9e60774f9d10fc48bf9660da618bad8671ec8dd480dd34281a7c867f5b1",
-      "full_commit_diff_sha256": "8d3e64ca52a3e57eacb5f288108db769261b720c7ed258a44a29a78453293908",
-      "diff_digest_command": "git show --no-ext-diff --no-textconv --binary --format= --no-renames <commit>",
-      "diff_scope": "Relevant source and test bodies were reviewed. Full-diff hashing also includes generated files and does not claim behavioral review of generated output.",
-      "source_included_in_selected_commit": true,
-      "native_consumer_validation": {
-        "qualification": "automations/upstream/qualification.json",
-        "execution_receipts": [
-          "target-native"
-        ],
-        "limit": "Only named native fixtures were executed. Upstream tests listed above were read, not run."
+        "execution_owner": "Official upstream CI; not executed by this run",
+        "failure_cause": "unknown; not diagnosed"
       }
     },
     {
       "index": 5,
-      "commit": "615be37b2b0901b6d6810c37f02c1c7e96c99a15",
-      "commit_time": "2026-10-30T18:20:57Z",
+      "commit": "8c811e8d93839103b5185d1f6324ebd2671adff1",
+      "commit_time": "2026-11-01T15:50:25Z",
       "classification": "not_applicable",
-      "behavior": "Expose trusted-host startup attachments for fixed thread instructions and independent execution-policy snapshots. Reject isolated sessions, incompatible managed requirements, local/transported policy collisions and rules that weaken basename or network denials.",
+      "behavior": "Split TUI conversation preparation, painting and post-draw work. Clip layout and input hit regions to an inset area, retain neighboring cells and image registrations on redraw, and keep centered dialogs relative to the whole viewport.",
       "implementation_symbols": [
-        "codex-rs/core/src/exec_policy/inheritance.rs::ExecPolicyManager::from_inherited",
-        "codex-rs/core/src/thread_manager.rs::StartThreadOptions::set_inherited_thread_instructions/set_inherited_exec_policy",
-        "codex-rs/execpolicy/src/policy.rs::preserves_managed_requirements/can_weaken_fallback",
-        "codex-rs/ext/extension-api/src/state.rs::ExtensionDataInit::remove"
+        "codex-rs/tui/src/app/owned_transcript.rs::ConversationFrame",
+        "codex-rs/tui/src/app/owned_transcript.rs::App::prepare_conversation",
+        "codex-rs/tui/src/app/owned_transcript.rs::App::paint_conversation",
+        "codex-rs/tui/src/app/owned_transcript.rs::App::finish_conversation",
+        "codex-rs/tui/src/app/owned_transcript.rs::App::paint_centered_dialog",
+        "codex-rs/tui/src/bottom_pane/chat_composer.rs::ChatComposer",
+        "codex-rs/tui/src/transcript_image.rs::ImagePlacement::registration"
       ],
-      "decodex_consumer": "The new setters have only core-test callers at this commit, not an app-server protocol route. Decodex uses RPC thread/fork and native permission settings rather than importing Codex core or transporting execution-policy snapshots.",
+      "decodex_consumer": "Decodex renders its transcript, composer, dialogs and images in GPUI. Its native process runs app-server --stdio. The TUI rectangle, terminal-buffer and input-redraw implementations are not consumed.",
       "consumer_refs": [
-        "crates/decodex-codex/src/app_server_client/thread_fork.rs",
-        "crates/decodex-runtime/src/agent/native_subagents.rs"
+        "crates/decodex-runtime/src/account_launch/process.rs::APP_SERVER_ARGS",
+        "crates/decodex-runtime/src/account_launch/process.rs::AppServerCommand::production_from_resolved",
+        "scripts/macos/build_codex_source.mts::buildSource"
       ],
       "source_review_complete": true,
       "diff_read": true,
       "tests_read": [
         {
-          "source": "codex-rs/core/src/thread_manager_tests.rs",
-          "symbol": "child_and_grandchild_inherit_session_amendments_and_managed_rules",
-          "revision": "615be37b2b0901b6d6810c37f02c1c7e96c99a15",
+          "source": "codex-rs/tui/src/app/owned_transcript_tests.rs",
+          "symbol": "owned_details_keep_the_composer_cursor_and_screen",
+          "revision": "8c811e8d93839103b5185d1f6324ebd2671adff1",
           "body_read": true
         },
         {
-          "source": "codex-rs/core/src/thread_manager_tests.rs",
-          "symbol": "policy_transfer_rejects_changed_sources_and_weakened_destination_rules",
-          "revision": "615be37b2b0901b6d6810c37f02c1c7e96c99a15",
+          "source": "codex-rs/tui/src/app/owned_transcript_follow_tests.rs",
+          "symbol": "follow_control_click_preserves_draft_caret_and_composer_geometry",
+          "revision": "8c811e8d93839103b5185d1f6324ebd2671adff1",
           "body_read": true
         },
         {
-          "source": "codex-rs/core/src/thread_manager_tests.rs",
-          "symbol": "fixed_thread_text_supersedes_the_live_provider_and_isolated_helpers_reject_inheritance",
-          "revision": "615be37b2b0901b6d6810c37f02c1c7e96c99a15",
+          "source": "codex-rs/tui/src/app/owned_transcript_input_tests.rs",
+          "symbol": "enter_preserves_search_backtrack_and_modal_ownership_while_scrolled",
+          "revision": "8c811e8d93839103b5185d1f6324ebd2671adff1",
           "body_read": true
         },
         {
-          "source": "codex-rs/core/src/exec_policy_tests.rs",
-          "symbol": "ignore_user_project_rules_keeps_system_policy_files",
-          "revision": "615be37b2b0901b6d6810c37f02c1c7e96c99a15",
-          "body_read": true
-        },
-        {
-          "source": "codex-rs/execpolicy/tests/basic.rs",
-          "symbol": "inherited_absolute_amendments_preserve_managed_basename_restrictions",
-          "revision": "615be37b2b0901b6d6810c37f02c1c7e96c99a15",
-          "body_read": true
-        },
-        {
-          "source": "codex-rs/execpolicy/tests/basic.rs",
-          "symbol": "inherited_absolute_amendment_respects_existing_exact_denials",
-          "revision": "615be37b2b0901b6d6810c37f02c1c7e96c99a15",
-          "body_read": true
-        },
-        {
-          "source": "codex-rs/core/tests/suite/exec_policy.rs",
-          "symbol": "inherited_policy_allows_remembered_commands_and_enforces_managed_denials",
-          "revision": "615be37b2b0901b6d6810c37f02c1c7e96c99a15",
-          "body_read": true
-        },
-        {
-          "source": "codex-rs/core/tests/suite/scenarios_shared_instructions.rs",
-          "symbol": "running_descendants_refresh_only_shared_thread_instructions",
-          "revision": "615be37b2b0901b6d6810c37f02c1c7e96c99a15",
+          "source": "codex-rs/tui/src/app/turn_tips_tests.rs",
+          "symbol": "turn_tip_placements_and_completion_barrier",
+          "revision": "8c811e8d93839103b5185d1f6324ebd2671adff1",
           "body_read": true
         }
       ],
       "tests_executed": [],
+      "test_review_limit": "Named test bodies are source evidence, not execution receipts.",
       "validation_limits": [
-        "Complete new inheritance, policy validation, startup insertion and test diffs read; full shared-instruction and system-rule test bodies read. Repository-wide caller search found no app-server invocation of the new setters. Existing absolute-path matching is factored into the same helper without a new Decodex policy. Zero upstream tests or transported-host scenario execution."
+        "Source review only. Upstream tests were read and not executed; no upstream suite pass is claimed.",
+        "The selected CLI and helpers remain at 67f0994b532b8740f14b5b738af7b7b2a915b1d6 and do not include this delta. No artifact is rebuilt, imported, executed or newly qualified.",
+        "Official PR check reports contain failures and skipped/cancelled checks. Their causes remain undiagnosed; no failed check is counted as passed.",
+        "No application start, installation, live-provider acceptance, release, tag, publication or native automation-definition change."
       ],
       "source_sha256": {
-        "codex-rs/ext/extension-api/src/state.rs": "5d9f841e13edb3001a6ab6bb304a3e2157c96d10b83cf9dc9bd8b3464c21d754",
-        "codex-rs/execpolicy/tests/basic.rs": "217534e853e1d4f4c17c8bbad9a330122deaa6482ae1f9fd64fd2a3ae2749103",
-        "codex-rs/core/tests/suite/exec_policy.rs": "8a60166ce68d19c03631712a54a3edf37927c4caebd9f2dea95aaca05a6725cc",
-        "codex-rs/core/tests/suite/scenarios_shared_instructions.rs": "a8601f7d06538b3f8c3f60d29e617434c2da9f9439e54fcf80b1cee923cab490",
-        "codex-rs/core/src/exec_policy_tests.rs": "67843f9773332c468c057f24bed4b87a225379f1e9e6a97acfa5aa268e562f90",
-        "codex-rs/execpolicy/src/policy.rs": "65053acdf6989046b3184d2a6819e81cf6fc17b9b46caeb4e2a06e58dae8e39c",
-        "codex-rs/core/src/thread_manager.rs": "a694695f3d17d0ed5044a328109c2f6607dc5c809fa463def022439ef7042bd5",
-        "codex-rs/core/src/thread_manager_tests.rs": "a636b9616ca9661ddab1ce5174035f5c57efa6f36c53f6c1cefe568a814df68e",
-        "codex-rs/core/src/exec_policy/inheritance.rs": "c8d7551ee802eb2b2a77f6e584f1d72f538a15f085271c1a80a56451fc13db1c"
+        "codex-rs/tui/src/app.rs": "73f9e01e25cd745ce7a405d49f2cc55f91a6d3ee9e5b1948fbe43e1bdb432b99",
+        "codex-rs/tui/src/app/event_dispatch.rs": "51ad6b4665a4d72ff82baeef3ab92255c8ec1c3e33403a9370709fc7bd958e20",
+        "codex-rs/tui/src/app/footer_selection.rs": "ba4a892af6b0b8cc8339c8168197c6539f250177fb997f0eefc831e4157140f3",
+        "codex-rs/tui/src/app/owned_transcript.rs": "64c62305fc0073221c594c3e8a3c59d3d1b9309b9761e8af9c64e3a5d94980e8",
+        "codex-rs/tui/src/app/owned_transcript_follow_tests.rs": "d0a5d5c116badab5281343a70caf44ec4eb364001d2e741dbddd05681fb2355e",
+        "codex-rs/tui/src/app/owned_transcript_input_tests.rs": "138286420601e0be00567274e7877ba002fe7def5a493b98a39e96e57b01556a",
+        "codex-rs/tui/src/app/owned_transcript_tests.rs": "7ef2ff3583bb72cc69987cfb8f60432a664b82eac36bc1e5f6b1d2ca15c0c1be",
+        "codex-rs/tui/src/app/snapshots/codex_tui__app__owned_transcript__tests__conversation_in_offset_rect.snap": "db12adcff1412bcfcacab7b890f3456a1eb596269570e193ea22e570632009f9",
+        "codex-rs/tui/src/app/startup.rs": "fbbedd6664ddb1df28fa49ac055bac130b1c7996815ead701fecddcbd41565cf",
+        "codex-rs/tui/src/app/test_support.rs": "b5834ffcaf678109feee8feb395ea2cdc46900254132cac1e2c5d22f6c310dc4",
+        "codex-rs/tui/src/app/tests.rs": "523cc6cba82431bae51acacecdff718b71fce3617d7e444cfa74898c3a571dfb",
+        "codex-rs/tui/src/app/turn_tips_tests.rs": "000d787cd2ebdb91b9d2a2aa99e84eac3e94aac3a30ceca97b083e3d27a1fc89",
+        "codex-rs/tui/src/bottom_pane/chat_composer.rs": "444553520573f052fdd9a8668794b2aad0846c312be24ad530596a5c53bf48eb",
+        "codex-rs/tui/src/bottom_pane/chat_composer/footer_state.rs": "9c5281045cd1810346e79efd788c0fe90a50947e8c1e42496299ad4153eac1aa",
+        "codex-rs/tui/src/bottom_pane/view_stack.rs": "efc78b51e31f3a75b42fe9502a1339c3ef50f46f773ae3a5de6ed666d499c40c",
+        "codex-rs/tui/src/empty_state_animation.rs": "fc2222ff2a9de8b690b82d6e5b341949b6e1f528aa4cc91cc83890a3ad385a5d",
+        "codex-rs/tui/src/empty_state_animation_tests.rs": "e87a3d2ac56bdb98c47d6d15a6d176b89640e6b9ed72142aa3deea3a90fdb38e",
+        "codex-rs/tui/src/startup_draft_layout.rs": "51ae753fb521c152ba91624c0066364355e1fdf948096d0de6db48e1be419d6b",
+        "codex-rs/tui/src/transcript_image.rs": "8b53d7676dfaeb6f62083f37a6baebd289f16342a4ef46fe9985a46d476200b5"
       },
       "selected_runtime_source": "67f0994b532b8740f14b5b738af7b7b2a915b1d6",
-      "reviewed_patch_sha256": "0d4bb9476264dcac285227e6c3dd7284ecfe62bc500587df237d73dfe8eb0781",
-      "full_commit_diff_sha256": "45cbb3ecac8216f534e8cf39b29a10a08823fcdbb677325c1e258edbcb735053",
+      "source_included_in_selected_commit": false,
+      "full_commit_diff_sha256": "33b0378ccdb96bda15c35242c173e011a1238fa283523e5a79c7ca9907ab0920",
       "diff_digest_command": "git show --no-ext-diff --no-textconv --binary --format= --no-renames <commit>",
-      "diff_scope": "Relevant source and test bodies were reviewed. Full-diff hashing also includes generated files and does not claim behavioral review of generated output.",
-      "source_included_in_selected_commit": true
+      "diff_scope": "Relevant changed implementation and test bodies were read. Full patch hashing includes snapshots and workflow definitions; it is separate from semantic review.",
+      "upstream_ci_evidence": {
+        "url": "https://github.com/openai/codex/pull/58718/checks",
+        "observed_conclusions": {
+          "FAILURE": 63,
+          "SUCCESS": 32,
+          "SKIPPED": 11
+        },
+        "execution_owner": "Official upstream CI; not executed by this run",
+        "failure_cause": "unknown; not diagnosed"
+      }
     },
     {
       "index": 6,
-      "commit": "0e31c29e2512dfe3d2a3fcec83160626772deca5",
-      "commit_time": "2026-10-30T18:33:14Z",
+      "commit": "e02a32cd51ab40b503e2e6eac42b47585851134d",
+      "commit_time": "2026-11-01T15:50:50Z",
       "classification": "native_owned",
-      "behavior": "Enable deferred-tool world state by default. Move namespace discovery hints from repeated tool-search descriptions to bounded native context snapshots/deltas, preserving explicit disable, empty catalogs, removal and resume.",
+      "behavior": "Produce and validate same-commit voice SDK/runtime inputs for full Cargo CI, relocate metadata and nextest runtime files, isolate musl, and prepare host-native Windows tooling. Traverse io::Error inner errors for TLS failure classification. Test-only changes isolate skill-root markers, select native TLS fixtures, allow a non-loopback MCP test host, filter discovery assertions to POST, and provide git in remote test containers.",
       "implementation_symbols": [
-        "codex-rs/features/src/lib.rs::DeferredToolWorldState",
-        "codex-rs/core/src/context/world_state/tools.rs::ToolsState::render_diff/render_namespace_groups",
-        "codex-rs/core/src/session/world_state.rs::build_world_state_for_step",
-        "codex-rs/core/src/tools/spec_plan.rs::append_tool_search_executor"
+        "codex-rs/http-client/src/route_aware_client_pool.rs::RouteAwareRequestError::failure_class",
+        "codex-rs/http-client/src/route_aware_tls_fallback_tests.rs::use_native_tls_for_direct_route",
+        "third_party/voice/cargo_ci.py::read_receipt",
+        "third_party/voice/cargo_ci.py::stage",
+        "third_party/voice/cargo_ci.py::environment",
+        ".github/workflows/rust-ci-full.yml::cargo_voice_inputs",
+        "codex-rs/rmcp-client/src/bin/test_streamable_http_server.rs::main"
       ],
-      "decodex_consumer": "Decodex consumes native MCP discovery and native model tool execution; it neither parses tool-search descriptions nor rebuilds this catalog. Native context generation owns the transition.",
+      "decodex_consumer": "Codex owns route-aware HTTP/TLS and voice dependency production. Decodex launches the qualified CLI and verifies its native package/helpers; it imports none of the new cargo-ci workflow. The selected artifact does not include this change. No retained-consumer TLS classification defect or affected app-server/helper contract was found; no local TLS replacement or runtime migration is required.",
       "consumer_refs": [
-        "crates/decodex-codex/src/app_server_client/integrations.rs",
-        "crates/decodex-runtime/src/account_launch/agent_process_native_discovery_tests.rs"
+        "crates/decodex-runtime/src/account_launch/process.rs::APP_SERVER_ARGS",
+        "crates/decodex-runtime/src/account_launch/process.rs::AppServerCommand::production_from_resolved",
+        "scripts/macos/build_codex_source.mts::buildSource"
       ],
       "source_review_complete": true,
       "diff_read": true,
       "tests_read": [
         {
-          "source": "codex-rs/core/tests/suite/mcp_tool_exposure.rs",
-          "symbol": "deferred_tool_world_state_tracks_initial_unchanged_and_removed_namespaces",
-          "revision": "0e31c29e2512dfe3d2a3fcec83160626772deca5",
+          "source": "codex-rs/http-client/src/route_aware_client_pool_tests.rs",
+          "symbol": "request_failures_classify_real_untrusted_certificate_handshakes",
+          "revision": "e02a32cd51ab40b503e2e6eac42b47585851134d",
           "body_read": true
         },
         {
-          "source": "codex-rs/core/tests/suite/mcp_tool_exposure.rs",
-          "symbol": "initially_empty_deferred_tool_world_state_is_not_rendered_or_persisted",
-          "revision": "0e31c29e2512dfe3d2a3fcec83160626772deca5",
+          "source": "codex-rs/http-client/src/route_aware_client_pool_tests.rs",
+          "symbol": "request_failures_classify_real_untrusted_rustls_certificate_handshakes",
+          "revision": "e02a32cd51ab40b503e2e6eac42b47585851134d",
           "body_read": true
         },
         {
-          "source": "codex-rs/core/tests/suite/mcp_tool_exposure.rs",
-          "symbol": "deferred_tool_world_state_survives_resume_without_duplicate_updates",
-          "revision": "0e31c29e2512dfe3d2a3fcec83160626772deca5",
+          "source": "codex-rs/http-client/src/route_aware_tls_fallback_tests.rs",
+          "symbol": "default_pool_does_not_retry_a_native_tls_protocol_failure",
+          "revision": "e02a32cd51ab40b503e2e6eac42b47585851134d",
           "body_read": true
         },
         {
-          "source": "codex-rs/core/tests/suite/search_tool.rs",
-          "symbol": "search_tool_adds_discovery_instructions_when_world_state_is_disabled",
-          "revision": "0e31c29e2512dfe3d2a3fcec83160626772deca5",
+          "source": "codex-rs/http-client/src/route_aware_tls_fallback_tests.rs",
+          "symbol": "retries_a_native_tls_protocol_failure_once_with_rustls",
+          "revision": "e02a32cd51ab40b503e2e6eac42b47585851134d",
           "body_read": true
         },
         {
-          "source": "codex-rs/core/tests/suite/search_tool.rs",
-          "symbol": "search_tool_omits_sources_with_deferred_tool_world_state_by_default",
-          "revision": "0e31c29e2512dfe3d2a3fcec83160626772deca5",
+          "source": "third_party/voice/test_cargo_ci.py",
+          "symbol": "CargoCiTests.test_relocated_metadata_runtime_and_cargo_probe",
+          "revision": "e02a32cd51ab40b503e2e6eac42b47585851134d",
+          "body_read": true
+        },
+        {
+          "source": "third_party/voice/test_cargo_ci.py",
+          "symbol": "CargoCiTests.test_arm64_import_library_and_dll_with_x64_host_pkgconf",
+          "revision": "e02a32cd51ab40b503e2e6eac42b47585851134d",
+          "body_read": true
+        },
+        {
+          "source": "third_party/voice/test_cargo_ci.py",
+          "symbol": "CargoCiTests.test_mismatched_receipt_and_corrupt_sdk_fail_staging",
+          "revision": "e02a32cd51ab40b503e2e6eac42b47585851134d",
+          "body_read": true
+        },
+        {
+          "source": "codex-rs/ext/skills/src/host_roots_tests.rs",
+          "symbol": "repo_ancestry_without_project_marker_does_not_walk_parents",
+          "revision": "e02a32cd51ab40b503e2e6eac42b47585851134d",
+          "body_read": true
+        },
+        {
+          "source": "codex-rs/rmcp-client/tests/mcp_2026_discovery.rs",
+          "symbol": "read_only_tool_requests_preserve_host_policy_and_caller_metadata",
+          "revision": "e02a32cd51ab40b503e2e6eac42b47585851134d",
           "body_read": true
         }
       ],
       "tests_executed": [],
+      "test_review_limit": "Named test bodies are source evidence, not execution receipts.",
       "validation_limits": [
-        "Native MCP discovery and parallel Code Mode helper checks passed. No local catalog or new setting was added."
+        "Source review only. Upstream tests were read and not executed; no upstream suite pass is claimed.",
+        "The selected CLI and helpers remain at 67f0994b532b8740f14b5b738af7b7b2a915b1d6 and do not include this delta. No artifact is rebuilt, imported, executed or newly qualified.",
+        "Official PR check reports contain failures and skipped/cancelled checks. Their causes remain undiagnosed; no failed check is counted as passed.",
+        "No application start, installation, live-provider acceptance, release, tag, publication or native automation-definition change."
       ],
       "source_sha256": {
-        "codex-rs/core/src/context/world_state/tools.rs": "98106cb45f69b752d0c3c0634aaafff8c4b0b98ecda5b93626e110d7e25071d0",
-        "codex-rs/core/src/tools/spec_plan.rs": "d2bc16c3fb57c9cb7459efff6723f8bd14fa079ab531de2afe0616d28a5bc2ce",
-        "codex-rs/core/tests/suite/search_tool.rs": "812269502815c2d56545c93d94b2f69de5f149ceb6d7faf6cb5d1ec4ff65a409",
-        "codex-rs/core/src/session/world_state.rs": "d613c1653cc1e3551443b908e341013f9a48ce3bac005b521f09f2e912daa5e1",
-        "codex-rs/core/tests/suite/mcp_tool_exposure.rs": "3fb973365f66c3a752a4dbb87e8972f93a168a646844de7ed89365daf5ad6305",
-        "codex-rs/features/src/lib.rs": "905c8c54b2104d7f37eb4b15b963c37f9ff15850dc9c46662a6dc5be0b77e396"
+        ".github/actions/run-argument-comment-lint/action.yml": "f0bc4ad9bf48a1b6af4089986030b6c7b74ddc7d9a48d857cc0e1da4adf35085",
+        ".github/actions/setup-ci/action.yml": "21ecb8a11be4dcf986b2ed361325ad4f75a08d33609d4d7a4ed9ba039fd9641e",
+        ".github/scripts/run-argument-comment-lint-bazel.sh": "991fef2e5bb7345e515f2a3e8d94765963af4f32e492234e6544fcd17bd38351",
+        ".github/workflows/rust-ci-full-nextest-platform.yml": "5cea8bb0b33ed39163cdbcc9dc4c4a55289afed4ea226f548847b6da3a875356",
+        ".github/workflows/rust-ci-full.yml": "d4e13538cde43971d4748df01cda07f6af9227f3fbb0eaa9ee2d4458b0f112ab",
+        "codex-rs/ext/skills/src/host_roots_tests.rs": "e22c6102ff7917f7263fb3cded1d35ab70262940c6a70b39de8bd879d144aba0",
+        "codex-rs/http-client/src/route_aware_client_pool.rs": "72cd83963ddb9181bae4bb88bcfa7457fdda05e269f70475080d6ceb513a25ae",
+        "codex-rs/http-client/src/route_aware_client_pool_tests.rs": "cfacc7e23e6ffe63da29045e70d04a04213306132c8261c8492ea46c42414452",
+        "codex-rs/http-client/src/route_aware_tls_fallback_tests.rs": "8c8599fd7ed94fc4c7ee9335d6d1ff4a97075c2ef9c8ff376e95f22a1e2be786",
+        "codex-rs/rmcp-client/src/bin/test_streamable_http_server.rs": "583d4097607671cca6be8c7e213856747e6e7b9a886a71c2fe9661f7f2e533d8",
+        "codex-rs/rmcp-client/tests/mcp_2026_discovery.rs": "adf339d180dfe036f32a9fee62347941b1da50d7e6f01c0bec5689439a4acdef",
+        "scripts/test-remote-env.sh": "996576141bbb3d092a8d534f456cf289f181124c5b2cb64a9bab078de347180d",
+        "third_party/voice/cargo-ci/produce/action.yml": "feeed73a79106bac4da25f9816a2fec7414e286a6749d1e877ee2f4e5ed054f6",
+        "third_party/voice/cargo-ci/setup/action.yml": "2c0226f2a8176292a38f8b4965112b980455a9284728ce15aaecb293ef037931",
+        "third_party/voice/cargo-ci/windows-setup/action.yml": "60b71b5a30d5529521a726d0bf259b9587cea3a862eb9e78b0b65d92b8e61694",
+        "third_party/voice/cargo_ci.py": "d07027fde20567409c4828b10f9dadaf1743898aca89491442622853e6f4c4c5",
+        "third_party/voice/test_cargo_ci.py": "e69a8ec5f17264d63ef95fd53bf6a792f0cfab5556e4acd559f09ae7efe7b44e"
       },
       "selected_runtime_source": "67f0994b532b8740f14b5b738af7b7b2a915b1d6",
-      "selected_runtime_contains_commit": true,
-      "reviewed_patch_sha256": "ff5e0d345b1b9bbd89d5b71c9768ec9f121f2df170a627a09e789814c7b7d8b0",
-      "full_commit_diff_sha256": "00d85d069cdcd16f49e7d951f2371c37f63926c92667f85978d0d9321590eb81",
+      "source_included_in_selected_commit": false,
+      "full_commit_diff_sha256": "f29363ba6a214b5304f9a63cb74b2818137597abb8071c54554c33f0da3160df",
       "diff_digest_command": "git show --no-ext-diff --no-textconv --binary --format= --no-renames <commit>",
-      "diff_scope": "Relevant source and test bodies were reviewed. Full-diff hashing also includes generated files and does not claim behavioral review of generated output.",
-      "source_included_in_selected_commit": true,
-      "native_consumer_validation": {
-        "qualification": "automations/upstream/qualification.json",
-        "execution_receipts": [
-          "target-native"
-        ],
-        "limit": "Only named native fixtures were executed. Upstream tests listed above were read, not run."
+      "diff_scope": "Relevant changed implementation and test bodies were read. Full patch hashing includes snapshots and workflow definitions; it is separate from semantic review.",
+      "upstream_ci_evidence": {
+        "url": "https://github.com/openai/codex/pull/58719/checks",
+        "observed_conclusions": {
+          "FAILURE": 76,
+          "SUCCESS": 53,
+          "SKIPPED": 6,
+          "CANCELLED": 1
+        },
+        "execution_owner": "Official upstream CI; not executed by this run",
+        "failure_cause": "unknown; not diagnosed"
       }
     },
     {
       "index": 7,
-      "commit": "6df44f08dd556ec2f2554561d53bc75f6f1f4313",
-      "commit_time": "2026-10-30T18:34:10Z",
-      "classification": "native_owned",
-      "behavior": "Expose non-consuming host input waits and share the primitive with wait_agent. Distinguish agent mail from steering, retain steering precedence for pending input, and let independent observers survive turn replacement without consuming messages.",
+      "commit": "181b4a853d396f009a3a02b9c36eb393e6acbe75",
+      "commit_time": "2026-11-01T15:51:11Z",
+      "classification": "not_applicable",
+      "behavior": "Prioritize pending approvals in the TUI subagent picker, preserve selection by thread ID, refresh labels and notices after requests, metadata and reconnect, and distinguish unnamed agents with UUID suffixes.",
       "implementation_symbols": [
-        "codex-rs/core/src/thread_input.rs::wait_for_input_activity/subscribe_input_activity/wait_for_activity",
-        "codex-rs/core/src/session/input_queue.rs::TurnInput::wait_activity/TurnInputQueue::pending_activity",
-        "codex-rs/core/src/tools/handlers/multi_agents_v2/wait.rs::Handler::handle_call",
-        "codex-rs/core/src/codex_thread.rs::wait_for_input_activity"
+        "codex-rs/tui/src/app/agent_picker.rs::App::refresh_agent_picker",
+        "codex-rs/tui/src/app/session_lifecycle.rs::App::agent_picker_selection_view_params",
+        "codex-rs/tui/src/app/thread_routing.rs::App::thread_label",
+        "codex-rs/tui/src/app/thread_routing.rs::App::refresh_pending_thread_approvals",
+        "codex-rs/tui/src/app/agent_navigation.rs::AgentNavigationState::pending_approval_threads"
       ],
-      "decodex_consumer": "Decodex uses native multiagent tools and its current input/message bridge. The direct Rust host API has no local RPC consumer. Native wait_agent reuses the queue primitive without a new local mailbox or wait workflow.",
+      "decodex_consumer": "Decodex does not display the native TUI /subagents picker. Native approval requests and enforcement remain on the retained app-server boundary; this patch changes neither that protocol nor Decodex approval ownership.",
       "consumer_refs": [
-        "crates/decodex-runtime/src/agent/native_subagents.rs",
-        "crates/decodex-runtime/src/account_launch/agent_process.rs"
+        "crates/decodex-runtime/src/account_launch/process.rs::APP_SERVER_ARGS",
+        "crates/decodex-runtime/src/account_launch/process.rs::AppServerCommand::production_from_resolved",
+        "scripts/macos/build_codex_source.mts::buildSource"
       ],
       "source_review_complete": true,
       "diff_read": true,
       "tests_read": [
         {
-          "source": "codex-rs/core/src/session/input_queue.rs",
-          "symbol": "input_queue_distinguishes_new_agent_input_from_pending_steering",
-          "revision": "6df44f08dd556ec2f2554561d53bc75f6f1f4313",
-          "body_read": true
-        },
-        {
-          "source": "codex-rs/core/tests/suite/pending_input.rs",
-          "symbol": "plugin_wait_wakes_on_turn_input",
-          "revision": "6df44f08dd556ec2f2554561d53bc75f6f1f4313",
-          "body_read": true
-        },
-        {
-          "source": "codex-rs/core/tests/suite/pending_input.rs",
-          "symbol": "host_input_wait_observes_activity_after_original_turn_ends",
-          "revision": "6df44f08dd556ec2f2554561d53bc75f6f1f4313",
+          "source": "codex-rs/tui/src/app/tests.rs",
+          "symbol": "open_agent_picker_selects_path_backed_agent",
+          "revision": "181b4a853d396f009a3a02b9c36eb393e6acbe75",
           "body_read": true
         }
       ],
       "tests_executed": [],
+      "test_review_limit": "Named test bodies are source evidence, not execution receipts.",
       "validation_limits": [
-        "Existing native child execution passed. Drop, multiple observers and turn replacement remain source-test evidence; the new host wait API is not exposed by Decodex."
+        "Source review only. Upstream tests were read and not executed; no upstream suite pass is claimed.",
+        "The selected CLI and helpers remain at 67f0994b532b8740f14b5b738af7b7b2a915b1d6 and do not include this delta. No artifact is rebuilt, imported, executed or newly qualified.",
+        "Official PR check reports contain failures and skipped/cancelled checks. Their causes remain undiagnosed; no failed check is counted as passed.",
+        "No application start, installation, live-provider acceptance, release, tag, publication or native automation-definition change."
       ],
       "source_sha256": {
-        "codex-rs/core/src/codex_thread.rs": "5f5474c061b0d2b9158c4b0a86d0091b675ac72569444db109bfe8de996f948a",
-        "codex-rs/core/tests/suite/pending_input.rs": "fd844482283d1eb3875dde5f9e93f39e2cde884101e6b81810ca353a12caeae8",
-        "codex-rs/core/src/session/input_queue.rs": "347b94333213f9ee5e38f233d9572f8fce07860ba60e3067f6dafe31bceddf89",
-        "codex-rs/core/src/tools/handlers/multi_agents_v2/wait.rs": "a38f1d9ada718c09fa9d821cfc017e456a8363297e6757a120ee69de66c5803a",
-        "codex-rs/core/src/thread_input.rs": "d597c5fdbf946e5e41cd0157de8462403c06fc4e06333d6d3393bfc5ea3093b2"
+        "codex-rs/tui/src/app/agent_navigation.rs": "c691c55fc6bc6f8d040328f0459ba03ca4acf9db5babc8b72cbd4182d99cd8c8",
+        "codex-rs/tui/src/app/agent_picker.rs": "989835442a8573a08084a612a4a47f3e8d87ce5fe70052c956d6172812136a00",
+        "codex-rs/tui/src/app/reconnect.rs": "defc628c098436e669ec4ab44d4da10337f2ab5d3cf31e7abe45d410bffd366b",
+        "codex-rs/tui/src/app/session_lifecycle.rs": "7b706ce2f7e2096c122f1e6dd35078019f342c6c617dc4509acfd37dfaa19ce9",
+        "codex-rs/tui/src/app/side.rs": "4bebdf527723a31491c8071d49a777873753f25caa7238b80fb449483c00a039",
+        "codex-rs/tui/src/app/tests.rs": "4f71285a953a11aa35dd06c8165d8819c7000b678e40e94e381bfbad639a5b0a",
+        "codex-rs/tui/src/app/thread_routing.rs": "66c033a471500ecb9a02cc81e43eecc44cef4442513dfa55853f2616079a5a94",
+        "codex-rs/tui/src/bottom_pane/pending_thread_approvals.rs": "0d26b502effe113c8b5455543025af9b49997418dd126821d55a7787049874d4",
+        "codex-rs/tui/src/snapshots/codex_tui__app__tests__path_backed_agent_picker.snap": "29ed7c2a96e2fec71ea319b5015e059a53c148c32ed4abfa781ca5921c6db747"
       },
       "selected_runtime_source": "67f0994b532b8740f14b5b738af7b7b2a915b1d6",
-      "selected_runtime_contains_commit": true,
-      "reviewed_patch_sha256": "ebf9b4eadfe4a323a5d1dff09bee947baf7dbe42c0559ce61354e9aae73f11a3",
-      "full_commit_diff_sha256": "92beced8ca35b7ab576a9340e5975daa8d9d80588063d6e423f574698d621035",
+      "source_included_in_selected_commit": false,
+      "full_commit_diff_sha256": "b394ae6a590c6baa25d6687f73b87aede68ce02348af130f9b27a7aa6c739f28",
       "diff_digest_command": "git show --no-ext-diff --no-textconv --binary --format= --no-renames <commit>",
-      "diff_scope": "Relevant source and test bodies were reviewed. Full-diff hashing also includes generated files and does not claim behavioral review of generated output.",
-      "source_included_in_selected_commit": true,
-      "native_consumer_validation": {
-        "qualification": "automations/upstream/qualification.json",
-        "execution_receipts": [
-          "target-native"
-        ],
-        "limit": "Only named native fixtures were executed. Upstream tests listed above were read, not run."
+      "diff_scope": "Relevant changed implementation and test bodies were read. Full patch hashing includes snapshots and workflow definitions; it is separate from semantic review.",
+      "upstream_ci_evidence": {
+        "url": "https://github.com/openai/codex/pull/58720/checks",
+        "observed_conclusions": {
+          "FAILURE": 51,
+          "SUCCESS": 48,
+          "SKIPPED": 9,
+          "CANCELLED": 2
+        },
+        "execution_owner": "Official upstream CI; not executed by this run",
+        "failure_cause": "unknown; not diagnosed"
       }
     },
     {
       "index": 8,
-      "commit": "275a9a89b6a2689b5b5a8b3b4aa5dc3c02e7d64a",
-      "commit_time": "2026-10-30T18:53:11Z",
+      "commit": "54201ea65a3501d09a87c776376a0c16aa39db70",
+      "commit_time": "2026-11-01T15:59:49Z",
       "classification": "not_applicable",
-      "behavior": "Treat a bang exposed by deletion as literal TUI text. Preserve explicit shell-mode intent across paste, Vim repeat/undo, queue submission and draft restoration.",
+      "behavior": "Add TUI backend display names, first-listening lookup and registration-order cycling. Skip closed streams and the current backend; wrap to earlier entries. Naming helpers are preparatory and explicitly marked for the next stack stage.",
       "implementation_symbols": [
-        "codex-rs/tui/src/bottom_pane/chat_composer.rs::ShellPrefixHandling/set_text_content_with_shell_prefix/snapshot_draft/restore_draft/is_bang_shell_command",
-        "codex-rs/tui/src/bottom_pane/textarea.rs::prefix_insertion_revision",
-        "codex-rs/tui/src/bottom_pane/chat_composer/paste_input.rs::insert_str"
+        "codex-rs/tui/src/app/backend_sessions.rs::BackendSessions::displayed_name",
+        "codex-rs/tui/src/app/backend_sessions.rs::BackendSessions::first_listening_backend",
+        "codex-rs/tui/src/app/backend_sessions.rs::BackendSessions::next_listening_backend"
       ],
-      "decodex_consumer": "Decodex uses its GPUI ComposerInput and PromptDraft. It has no leading-bang shell-mode parser or TUI composer dependency; typed text remains ordinary user input.",
+      "decodex_consumer": "Decodex owns its verified process/account boundary and does not import TUI BackendSessions. Preparatory upstream navigation does not select a new Decodex backend-switching workflow.",
       "consumer_refs": [
-        "apps/decodex-gpui/src/composer_input.rs",
-        "crates/decodex-protocol/src/agent_prompt_draft.rs"
-      ],
-      "source_review_complete": true,
-      "diff_read": true,
-      "tests_read": [
-        {
-          "source": "codex-rs/tui/src/bottom_pane/chat_composer.rs",
-          "symbol": "deleting_prefix_keeps_bang_literal_on_submission",
-          "revision": "275a9a89b6a2689b5b5a8b3b4aa5dc3c02e7d64a",
-          "body_read": true
-        },
-        {
-          "source": "codex-rs/tui/src/bottom_pane/chat_composer.rs",
-          "symbol": "deleting_prefix_keeps_bang_editable_snapshot",
-          "revision": "275a9a89b6a2689b5b5a8b3b4aa5dc3c02e7d64a",
-          "body_read": true
-        },
-        {
-          "source": "codex-rs/tui/src/bottom_pane/chat_composer/vim_history_tests.rs",
-          "symbol": "repeated_deletion_leaves_exposed_bang_literal",
-          "revision": "275a9a89b6a2689b5b5a8b3b4aa5dc3c02e7d64a",
-          "body_read": true
-        },
-        {
-          "source": "codex-rs/tui/src/bottom_pane/chat_composer/vim_history_tests.rs",
-          "symbol": "cancelled_history_search_preserves_literal_bang_draft",
-          "revision": "275a9a89b6a2689b5b5a8b3b4aa5dc3c02e7d64a",
-          "body_read": true
-        },
-        {
-          "source": "codex-rs/tui/src/bottom_pane/chat_composer/vim_history_tests.rs",
-          "symbol": "editor_actions_insert_shell_prefixes",
-          "revision": "275a9a89b6a2689b5b5a8b3b4aa5dc3c02e7d64a",
-          "body_read": true
-        }
-      ],
-      "tests_executed": [],
-      "validation_limits": [
-        "Relevant TUI diff, full new intent/restore bodies and five complete test bodies read. GPUI parser search and native text state confirm no consumer. No TUI tests executed or shell feature imported."
-      ],
-      "source_sha256": {
-        "codex-rs/tui/src/bottom_pane/textarea.rs": "09c5c1d58cf5791ce55f91b15ccf685eb7271a33e9577039d42a101a8a3f0bf0",
-        "codex-rs/tui/src/bottom_pane/chat_composer/paste_input.rs": "67eefbaf46afad271d08425efb36f7cc73ea98e352dc6ff85d1cfdacc67e49f6",
-        "codex-rs/tui/src/bottom_pane/chat_composer/vim_history_tests.rs": "d732af587ab478ae17dde1cb5beb0620480fbcccb78dcecc1aa8e03622921b6c",
-        "codex-rs/tui/src/bottom_pane/chat_composer.rs": "3461171efd1084000817668e75672a25cd87228deeb72ce29acc4e2421846e8e"
-      },
-      "selected_runtime_source": "67f0994b532b8740f14b5b738af7b7b2a915b1d6",
-      "reviewed_patch_sha256": "6408e1a255b00e16973e0ee769cb744440f879abc911542f086fe6315151d71a",
-      "full_commit_diff_sha256": "ce09e56af49ab1986046dc2019780b99b034e19e4f11e01a3517c39367504f0d",
-      "diff_digest_command": "git show --no-ext-diff --no-textconv --binary --format= --no-renames <commit>",
-      "diff_scope": "Relevant source and test bodies were reviewed. Full-diff hashing also includes generated files and does not claim behavioral review of generated output.",
-      "source_included_in_selected_commit": true
-    },
-    {
-      "index": 9,
-      "commit": "8801b9a8a6c606508736d4e01dedabe52833d637",
-      "commit_time": "2026-10-30T19:26:26Z",
-      "classification": "not_applicable",
-      "behavior": "Inline recorded exec review validation/preparation and return the invocation call ID with its optional assessment; preserve hook rewriting, apply_patch interception, policy refusal, cancellation and deadline behavior.",
-      "implementation_symbols": [
-        "codex-rs/core/src/guardian/recorded_tool_call.rs::review_tool_call",
-        "codex-rs/core/src/codex_thread.rs::guardian_review"
-      ],
-      "decodex_consumer": "The direct injected-record review API is not called by Decodex. Its current Guardian settings and saved Review Details use native automatic approval and local observation, not a request to review a recorded exec call.",
-      "consumer_refs": [
-        "crates/decodex-codex/src/app_server_client/live_settings.rs",
-        "crates/decodex-runtime/src/agent_guardian.rs"
-      ],
-      "source_review_complete": true,
-      "diff_read": true,
-      "tests_read": [
-        {
-          "source": "codex-rs/core/tests/suite/scenarios_guardian_direct_review.rs",
-          "symbol": "direct_exec_review_matches_live_action_without_execution",
-          "revision": "8801b9a8a6c606508736d4e01dedabe52833d637",
-          "body_read": true
-        }
-      ],
-      "tests_executed": [],
-      "validation_limits": [
-        "Full refactor diff, entire recorded-review body and complete existing direct/live equivalence test read. No upstream execution or new recorded-review control. Ordinary Guardian behavior is qualified separately."
-      ],
-      "source_sha256": {
-        "codex-rs/core/tests/suite/scenarios_guardian_direct_review.rs": "58f7af4046832db8db0369bdad8778aafecce231373e41c1541325388456e331",
-        "codex-rs/core/src/codex_thread.rs": "5f5474c061b0d2b9158c4b0a86d0091b675ac72569444db109bfe8de996f948a",
-        "codex-rs/core/src/guardian/recorded_tool_call.rs": "718138f8f0d478ae76366b79894e4089bb4fae23c190a0276ba8a3b7e6c7643c"
-      },
-      "selected_runtime_source": "67f0994b532b8740f14b5b738af7b7b2a915b1d6",
-      "reviewed_patch_sha256": "def8b63ffacc8a070da8ace36b65087ca3fd1c7024989c87c0f58839ff2f8ec4",
-      "full_commit_diff_sha256": "61e3121f69815186e7e03c8afa10cf6e0704af61a7e427ae24c8ddd1ee915223",
-      "diff_digest_command": "git show --no-ext-diff --no-textconv --binary --format= --no-renames <commit>",
-      "diff_scope": "Relevant source and test bodies were reviewed. Full-diff hashing also includes generated files and does not claim behavioral review of generated output.",
-      "source_included_in_selected_commit": true
-    },
-    {
-      "index": 10,
-      "commit": "22b336515659dc1c228d04ae9230f61cf2689013",
-      "commit_time": "2026-10-30T20:26:22Z",
-      "classification": "not_applicable",
-      "behavior": "Group API key, Bedrock and GCP login in a TUI submenu. Preserve login-policy gating and consume held/repeated activation keys so submenu entry cannot also save a prefilled key.",
-      "implementation_symbols": [
-        "codex-rs/tui/src/onboarding/auth.rs::AuthModeWidget::displayed_sign_in_options/activate_highlighted_mode/handle_key_event",
-        "codex-rs/tui/src/onboarding/onboarding_screen.rs::handle_key_event"
-      ],
-      "decodex_consumer": "Decodex has its own account-management UI and native login RPC integration. It does not embed TUI onboarding or use its key bindings. No auth protocol or credential persistence behavior is changed for the local integration.",
-      "consumer_refs": [
-        "apps/decodex-gpui/src/account_login.rs",
-        "crates/decodex-codex/src/app_server_client.rs"
-      ],
-      "source_review_complete": true,
-      "diff_read": true,
-      "tests_read": [
-        {
-          "source": "codex-rs/tui/src/onboarding/auth/activation_key_tests.rs",
-          "symbol": "held_enter_requires_a_fresh_confirmation_to_save_a_prefilled_api_key",
-          "revision": "22b336515659dc1c228d04ae9230f61cf2689013",
-          "body_read": true
-        }
-      ],
-      "tests_executed": [],
-      "validation_limits": [
-        "Full source diff, menu/activation implementation and complete new held-key regression read. Other TUI snapshots support layout only. No TUI, cloud-provider or credential tests executed."
-      ],
-      "source_sha256": {
-        "codex-rs/tui/src/onboarding/auth.rs": "712c1778fc7fa391f37c7a94f3adcf88b890b0e7d34ad7be4271c7e1e0a9b1d8",
-        "codex-rs/tui/src/onboarding/onboarding_screen.rs": "a1f623d420210ea9be0ff034b1f29173ec1918b6c9f1f26a41b09da194b01fdd",
-        "codex-rs/tui/src/onboarding/auth/activation_key_tests.rs": "bad19e873186ad66fe76e0794d1fcc92b40e48cd4c6553db3c22d6314ed0ea8d"
-      },
-      "selected_runtime_source": "67f0994b532b8740f14b5b738af7b7b2a915b1d6",
-      "reviewed_patch_sha256": "8bf63fcc4323071e38bec4d4fdcf09db60bef6feac07694e076721fc714e3ba8",
-      "full_commit_diff_sha256": "3ab1dd74d97e8f615b2361c497085c3072e6bcaebfbc68c0714598a3182c4def",
-      "diff_digest_command": "git show --no-ext-diff --no-textconv --binary --format= --no-renames <commit>",
-      "diff_scope": "Relevant source and test bodies were reviewed. Full-diff hashing also includes generated files and does not claim behavioral review of generated output.",
-      "source_included_in_selected_commit": true
-    },
-    {
-      "index": 11,
-      "commit": "b9858217d89c29e5624592970b1231306993859a",
-      "commit_time": "2026-10-30T20:39:47Z",
-      "classification": "native_owned",
-      "behavior": "Resolve enabled-plugin Apps policy into effective apps config with deterministic plugin ordering and explicit top-level overrides. Project field origins accordingly; exclude Apps-only policy changes from the plugin content cache key.",
-      "implementation_symbols": [
-        "codex-rs/connectors/src/app_tool_policy.rs::apps_config_from_layer_stack/apps_config_origins_from_layer_stack/apps_config_overlays",
-        "codex-rs/app-server/src/config_manager_service.rs::ConfigManager::read",
-        "codex-rs/core-plugins/src/manager.rs::PluginLoadCacheKey::new"
-      ],
-      "decodex_consumer": "Decodex reads native effective and user-layer Apps settings through config/read. Its adapter keeps native precedence and writable-layer version checks; the additive plugin field is carried by native config without a new local merge or UI.",
-      "consumer_refs": [
-        "crates/decodex-codex/src/app_server_client/app_link_settings.rs",
-        "crates/decodex-codex/src/app_server_client/app_tool_exposure.rs"
-      ],
-      "source_review_complete": true,
-      "diff_read": true,
-      "tests_read": [
-        {
-          "source": "codex-rs/connectors/src/app_tool_policy_tests.rs",
-          "symbol": "nested_apps_respect_plugin_enablement_and_top_level_overrides",
-          "revision": "b9858217d89c29e5624592970b1231306993859a",
-          "body_read": true
-        },
-        {
-          "source": "codex-rs/core-plugins/src/manager_tests.rs",
-          "symbol": "plugin_cache_reuses_effective_configurations",
-          "revision": "b9858217d89c29e5624592970b1231306993859a",
-          "body_read": true
-        },
-        {
-          "source": "codex-rs/core/tests/suite/plugins.rs",
-          "symbol": "explicit_plugin_mentions_use_apps_for_chatgpt_dual_surface_plugins",
-          "revision": "b9858217d89c29e5624592970b1231306993859a",
-          "body_read": true
-        }
-      ],
-      "tests_executed": [],
-      "validation_limits": [
-        "Existing account-bound cold settings read, submit and restart passed. Plugin policy precedence is covered by source/test-body review, not a dedicated live plugin scenario."
-      ],
-      "source_sha256": {
-        "codex-rs/core/tests/suite/plugins.rs": "82e1afd4590a6adf9bc2be67adcf5264c127bebdc1ea04f02dd51bf6ef14cabf",
-        "codex-rs/core-plugins/src/manager.rs": "9719bccd786891686ff2c6e2194aff4c6adc0065e75c41509ec4fe4dc1430ab9",
-        "codex-rs/connectors/src/app_tool_policy_tests.rs": "9a16a5474856c7bb41b0d52bba8f2352c7b1aeaf3818a9e30d15cad6217a905b",
-        "codex-rs/core-plugins/src/manager_tests.rs": "d7f9eb5a0557597ded6fc1694f352edacaf1c2893ef2242ea71e24994a25a53f",
-        "codex-rs/connectors/src/app_tool_policy.rs": "184cceaf71761852f0643f041d87f328eed57bf4f783aeda759eb46520a230aa",
-        "codex-rs/app-server/src/config_manager_service.rs": "993ae697e3d6153250e962551d74ab8d40538e162fe4c4d5b30652c4c9227b17"
-      },
-      "selected_runtime_source": "67f0994b532b8740f14b5b738af7b7b2a915b1d6",
-      "selected_runtime_contains_commit": true,
-      "reviewed_patch_sha256": "ca5bdbc9f146e55652f5c1127c65ead88afc6fc8cc6a440f9e9bd0b6f59054fd",
-      "full_commit_diff_sha256": "220449ad79e9534765c8c34c08f85ee0f9469f6b92f035419241ebfa5279738b",
-      "diff_digest_command": "git show --no-ext-diff --no-textconv --binary --format= --no-renames <commit>",
-      "diff_scope": "Relevant source and test bodies were reviewed. Full-diff hashing also includes generated files and does not claim behavioral review of generated output.",
-      "source_included_in_selected_commit": true,
-      "native_consumer_validation": {
-        "qualification": "automations/upstream/qualification.json",
-        "execution_receipts": [
-          "target-settings"
-        ],
-        "limit": "Only named native fixtures were executed. Upstream tests listed above were read, not run."
-      }
-    },
-    {
-      "index": 12,
-      "commit": "2546265e3ee71b02b13fa10b3058282211f7ce50",
-      "commit_time": "2026-10-30T20:53:25Z",
-      "classification": "native_owned",
-      "behavior": "Add inline/file AudioReference wire forms, preserve mixed legacy history order, and budget opaque files conservatively. Uploaded audio remains explicitly unsupported: reject raw injection and typed/steered file inputs before inference while preserving surrounding text. Existing inline audio fields remain wire-compatible.",
-      "implementation_symbols": [
-        "codex-rs/app-server-protocol/src/protocol/v2/turn.rs::AudioReference/UserInput",
-        "codex-rs/protocol/src/models.rs::AudioReference/ResponseInputItem",
-        "codex-rs/core/src/session/inject.rs::validate_injected_response_item",
-        "codex-rs/core/src/session/turn.rs::run_turn/run_hooks_and_record_inputs",
-        "codex-rs/core/src/context_manager/history.rs::estimate_audio_reference_bytes",
-        "codex-rs/app-server-protocol/src/protocol/thread_history.rs::ThreadHistoryBuilder",
-        "codex-rs/thread-store/src/local/rollout_migration/legacy_event.rs::user_message_item",
-        "codex-rs/thread-store/src/local/rollout_migration/rollback_plan.rs::user_response_matches_event"
-      ],
-      "decodex_consumer": "Decodex retains inline/local audio and voice history through native RPC. PromptDraft requires audio.url and does not submit file-backed audio; its media reader rejects unsupported forms. Existing inline fields remain unchanged, so no upload workflow or local fallback is added.",
-      "consumer_refs": [
-        "crates/decodex-protocol/src/agent_prompt_draft.rs",
-        "crates/decodex-runtime/src/agent/timeline/media.rs",
-        "crates/decodex-runtime/src/agent/timeline/attachments.rs",
-        "crates/decodex-runtime/src/account_launch/agent_process_native_realtime_tests.rs"
-      ],
-      "source_review_complete": true,
-      "diff_read": true,
-      "tests_read": [
-        {
-          "source": "codex-rs/app-server-protocol/src/protocol/v2/tests.rs",
-          "symbol": "audio_references_round_trip_through_core_and_json",
-          "revision": "2546265e3ee71b02b13fa10b3058282211f7ce50",
-          "body_read": true
-        },
-        {
-          "source": "codex-rs/app-server-protocol/src/protocol/thread_history.rs",
-          "symbol": "rebuilds_uploaded_and_inline_audio_in_order_from_legacy_events",
-          "revision": "2546265e3ee71b02b13fa10b3058282211f7ce50",
-          "body_read": true
-        },
-        {
-          "source": "codex-rs/core/src/context_manager/history_tests.rs",
-          "symbol": "uploaded_audio_estimate_accounts_for_each_recording_instead_of_its_id",
-          "revision": "2546265e3ee71b02b13fa10b3058282211f7ce50",
-          "body_read": true
-        },
-        {
-          "source": "codex-rs/core/src/tasks/mod_tests.rs",
-          "symbol": "task_finish_rejects_uploaded_audio_without_losing_other_pending_input",
-          "revision": "2546265e3ee71b02b13fa10b3058282211f7ce50",
-          "body_read": true
-        },
-        {
-          "source": "codex-rs/core/tests/suite/scenarios_audio_file_tests.rs",
-          "symbol": "unsupported_steered_audio_is_rejected_before_continuation_and_resume",
-          "revision": "2546265e3ee71b02b13fa10b3058282211f7ce50",
-          "body_read": true
-        },
-        {
-          "source": "codex-rs/core/tests/suite/scenarios_audio_file_tests.rs",
-          "symbol": "unsupported_uploaded_audio_fails_before_inference_without_poisoning_follow_up",
-          "revision": "2546265e3ee71b02b13fa10b3058282211f7ce50",
-          "body_read": true
-        },
-        {
-          "source": "codex-rs/core/tests/suite/scenarios_preparation.rs",
-          "symbol": "raw_injection_rejects_uploaded_audio_before_modifying_history",
-          "revision": "2546265e3ee71b02b13fa10b3058282211f7ce50",
-          "body_read": true
-        },
-        {
-          "source": "codex-rs/history/src/tests.rs",
-          "symbol": "uploaded_audio_round_trips_in_canonical_message_content",
-          "revision": "2546265e3ee71b02b13fa10b3058282211f7ce50",
-          "body_read": true
-        },
-        {
-          "source": "codex-rs/protocol/src/models.rs",
-          "symbol": "serializes_audio_user_input_without_tags",
-          "revision": "2546265e3ee71b02b13fa10b3058282211f7ce50",
-          "body_read": true
-        }
-      ],
-      "tests_executed": [],
-      "validation_limits": [
-        "Existing synthetic realtime history and cold-bridge projection passed. File-based audio remains rejected by native admission and is not exposed; no real microphone/provider acceptance."
-      ],
-      "source_sha256": {
-        "codex-rs/core/tests/suite/scenarios_audio_file_tests.rs": "f38043ffca21c92efa6393b2b68b69288dbbf18221ef946edf44b240c5bcdbf7",
-        "codex-rs/core/src/session/turn.rs": "cd2f3c0f347641afc1a11ac720c5779dd5ec373dd872c6c8b9174436181c6408",
-        "codex-rs/app-server-protocol/src/protocol/v2/tests.rs": "fde785961c2dbb56fa82b1397a818a3106cbd51c5a03a4a995a20978544a2581",
-        "codex-rs/history/src/tests.rs": "54300fe71a9bb41cbf462935a99f6b475ab647ac54bafb2b2479a76f9ca759e5",
-        "codex-rs/core/src/session/inject.rs": "9aab4447d759c1220fd31b3fcc3f92c706188543619fe02969ed454c9db74dca",
-        "codex-rs/app-server-protocol/src/protocol/v2/turn.rs": "198434210e6d0d9b11ddc842e499004a34184185ef19d80a47023056fa9c2a6b",
-        "codex-rs/app-server-protocol/src/protocol/thread_history.rs": "7a0d0277be6be10d670929edae8aae03d43ab562731177443c6e9023502eb066",
-        "codex-rs/thread-store/src/local/rollout_migration/legacy_event.rs": "99474fc71fa3eeaba82e97bf6fc36f146bbcd714720674adf6a033aad0f4ead8",
-        "codex-rs/protocol/src/models.rs": "daeb5bd499ed49b364be4c031e3c754f7fb39945531214c0b8fe00896eb3da82",
-        "codex-rs/thread-store/src/local/rollout_migration/rollback_plan.rs": "b4c9157f86b8f496f8e69db237af715363d1b4081a6bf708ea5741c77d5f3378",
-        "codex-rs/core/src/context_manager/history_tests.rs": "f88221197c299669ba118eb049946ee70b0c473a16d378b02178cc5c145bd6db",
-        "codex-rs/core/tests/suite/scenarios_preparation.rs": "bafe7599bce2166f66470e55272fc6f57ea47b250dd6859ab48b07d8efca8558",
-        "codex-rs/core/src/context_manager/history.rs": "60e30e1ca546e1e186c14fe1b21a50cfea6f677f3294089c4396ca263c4322b1",
-        "codex-rs/core/src/tasks/mod_tests.rs": "624d9a180a65c924c8441c73af141e1750f540ac9e0b62e4e986c9a7ac6bd1d4"
-      },
-      "selected_runtime_source": "67f0994b532b8740f14b5b738af7b7b2a915b1d6",
-      "selected_runtime_contains_commit": true,
-      "reviewed_patch_sha256": "d088c173dd0aad608108b204e98b92137f29fea5a7753868de9316407dfb272f",
-      "full_commit_diff_sha256": "004394eb0e8b21004d50f4a1a22f04bf6d84852185014dff9b790e5e5ac985df",
-      "diff_digest_command": "git show --no-ext-diff --no-textconv --binary --format= --no-renames <commit>",
-      "diff_scope": "Relevant source and test bodies were reviewed. Full-diff hashing also includes generated files and does not claim behavioral review of generated output.",
-      "source_included_in_selected_commit": true,
-      "native_consumer_validation": {
-        "qualification": "automations/upstream/qualification.json",
-        "execution_receipts": [
-          "target-native"
-        ],
-        "limit": "Only named native fixtures were executed. Upstream tests listed above were read, not run."
-      }
-    },
-    {
-      "index": 13,
-      "commit": "5a7353f0401b970c44cf7d428ef23d74f3c366d5",
-      "commit_time": "2026-10-30T21:01:23Z",
-      "classification": "native_owned",
-      "behavior": "Classify six explicit audio-validation provider codes as terminal InvalidAudioInput over HTTP 400 and SSE errors. Preserve the provider message, map to native BadRequest, and do not retry; generic diagnostics retain redaction.",
-      "implementation_symbols": [
-        "codex-rs/codex-api/src/error.rs::parse_terminal_provider_error",
-        "codex-rs/codex-api/src/api_bridge.rs::map_api_error/map_api_error_details",
-        "codex-rs/protocol/src/error.rs::CodexErr::retry_delay/to_codex_protocol_error"
-      ],
-      "decodex_consumer": "Existing native audio/voice errors cross the same generic BadRequest and failed-turn bridge. Decodex capacity retries require the separate overload classification, so no new error UI or retry policy is needed.",
-      "consumer_refs": [
-        "crates/decodex-runtime/src/agent/observations.rs",
-        "crates/decodex-runtime/src/agent/tests/capacity.rs"
-      ],
-      "source_review_complete": true,
-      "diff_read": true,
-      "tests_read": [
-        {
-          "source": "codex-rs/codex-api/src/sse/responses_error_tests.rs",
-          "symbol": "audio_validation_codes_map_to_non_retryable_audio_input_errors_on_all_transports",
-          "revision": "5a7353f0401b970c44cf7d428ef23d74f3c366d5",
-          "body_read": true
-        }
-      ],
-      "tests_executed": [],
-      "validation_limits": [
-        "Complete changed parser, error mapping, non-retry arm and six-code/three-transport test read. Native diagnostic changes are not a request to restore Codex diagnostics. Zero upstream tests; no live audio upload or provider validation performed."
-      ],
-      "source_sha256": {
-        "codex-rs/protocol/src/error.rs": "aff6eb1c3ce3a2ff6f346dc928d344ae10a9dca69a4a684176507216a99dbcff",
-        "codex-rs/codex-api/src/sse/responses_error_tests.rs": "915179b74cc5b073a05a463476c952e77c139ae2c62fda023b328e6d476c52ec",
-        "codex-rs/codex-api/src/api_bridge.rs": "6244b845f833e6a94f149e017452c7047aa61fbadccf4b9cc89d08afef926881",
-        "codex-rs/codex-api/src/error.rs": "3bb66f83d9224e263feadd8dd6af11df9733344c82304c9d306e1f0b4f8873b5"
-      },
-      "selected_runtime_source": "67f0994b532b8740f14b5b738af7b7b2a915b1d6",
-      "selected_runtime_contains_commit": true,
-      "reviewed_patch_sha256": "b8e341b82633fa8267d3881c38902b2eb831e1b9e01746e3ad2ae5380eff81a3",
-      "full_commit_diff_sha256": "6631dee99d303f8b886e89f8cd617af11816c0036e10db62a639648f61062225",
-      "diff_digest_command": "git show --no-ext-diff --no-textconv --binary --format= --no-renames <commit>",
-      "diff_scope": "Relevant source and test bodies were reviewed. Full-diff hashing also includes generated files and does not claim behavioral review of generated output.",
-      "source_included_in_selected_commit": true,
-      "native_consumer_validation": {
-        "qualification": "automations/upstream/qualification.json",
-        "execution_receipts": [],
-        "limit": "Only named native fixtures were executed. Upstream tests listed above were read, not run."
-      }
-    },
-    {
-      "index": 14,
-      "commit": "0ffae14a4316d67eae25a0539e72345d0ece7118",
-      "commit_time": "2026-10-30T21:27:28Z",
-      "classification": "not_applicable",
-      "behavior": "Add accessible inline-viewer tabs, variant carousel and touch tooltips with shadow-root listeners; refresh typography, controls, density and responsive styles.",
-      "implementation_symbols": [
-        "codex-rs/tui/assets/inline_visualization/visualize.html::codex-visualization-tabs/codex-visualization-carousel/tooltip listeners",
-        "codex-rs/tui/assets/inline_visualization/visualize.css::control and responsive styles"
-      ],
-      "decodex_consumer": "Decodex uses its GPUI message renderer and link handling. No repository consumer imports the TUI visualization HTML/CSS; this does not change app-server protocol or native execution.",
-      "consumer_refs": [
-        "apps/decodex-gpui/src/agent_markdown.rs",
-        "apps/decodex-gpui/src/agent_text_links.rs"
-      ],
-      "source_review_complete": true,
-      "diff_read": true,
-      "tests_read": [
-        {
-          "source": "codex-rs/tui/src/inline_visualization_tests.rs",
-          "symbol": "viewer_embeds_interactive_controls",
-          "revision": "0ffae14a4316d67eae25a0539e72345d0ece7118",
-          "body_read": true
-        }
-      ],
-      "tests_executed": [],
-      "validation_limits": [
-        "Complete CSS/HTML diff, all added interaction functions and full document-contract test read. Consumer search found no TUI asset integration. No browser, visual, TUI test execution or new Decodex visualization control."
-      ],
-      "source_sha256": {
-        "codex-rs/tui/assets/inline_visualization/visualize.css": "ddd4b65c03fb3b877b006d30902030fdfef170e4ff18eaf5f381dc71cfb7a893",
-        "codex-rs/tui/src/inline_visualization_tests.rs": "25f2c114fc61af6d09edbb704a9b9e73554bbfb88495af62b35d78c833cac0ba",
-        "codex-rs/tui/assets/inline_visualization/visualize.html": "034b208f4bb86f467aee8725a05acbf46c0904d12a3254e84bf0eee73a280069"
-      },
-      "selected_runtime_source": "67f0994b532b8740f14b5b738af7b7b2a915b1d6",
-      "reviewed_patch_sha256": "2a31c4cb40599485502a4ca63ac62ebca80507f491f2759b9ae4f98d1da95430",
-      "full_commit_diff_sha256": "a11f3cdb8ad4476358fff600f67b0993cbb0b4761fcf0c1acce1cd70ed0fe4a8",
-      "diff_digest_command": "git show --no-ext-diff --no-textconv --binary --format= --no-renames <commit>",
-      "diff_scope": "Relevant source and test bodies were reviewed. Full-diff hashing also includes generated files and does not claim behavioral review of generated output.",
-      "source_included_in_selected_commit": true
-    },
-    {
-      "index": 15,
-      "commit": "22fbf8de8ec18144c770dc94bf1efbebc08688b3",
-      "commit_time": "2026-10-30T22:02:26Z",
-      "classification": "native_owned",
-      "behavior": "Preserve optional model-catalog Apps usage instructions byte-for-byte through JSON and model-message overrides; missing/null differ from literal empty or whitespace text. The field is preparation for a future runtime consumer.",
-      "implementation_symbols": [
-        "codex-rs/protocol/src/openai_models.rs::ModelMessages/AppsMessages",
-        "codex-rs/models-manager/src/model_info_tests.rs::base_instruction_override_is_literal_and_preserves_catalog_messages"
-      ],
-      "decodex_consumer": "Decodex selects model IDs through the native catalog; it does not render or execute model_messages.apps. Native serialization owns this additive metadata; no local model instruction or UI is added.",
-      "consumer_refs": [
-        "crates/decodex-protocol/src/model_catalog.rs",
-        "crates/decodex-codex/src/app_server_client/model_defaults.rs"
-      ],
-      "source_review_complete": true,
-      "diff_read": true,
-      "tests_read": [
-        {
-          "source": "codex-rs/protocol/src/openai_models.rs",
-          "symbol": "apps_messages_preserve_nullable_and_literal_wire_values",
-          "revision": "22fbf8de8ec18144c770dc94bf1efbebc08688b3",
-          "body_read": true
-        }
-      ],
-      "tests_executed": [],
-      "validation_limits": [
-        "Full field/serde diff and complete nullable/literal regression read. No current runtime reference to the new Apps wording was found in the native context owner. Zero upstream tests; metadata preservation is not a delivered new product capability."
-      ],
-      "source_sha256": {
-        "codex-rs/models-manager/src/model_info_tests.rs": "c703a3bf4669a5ce8e2b8fbeaaf9b57735f229bfcc150ddf1162dffece6d3505",
-        "codex-rs/protocol/src/openai_models.rs": "d38767cc1f05750c73e5aa265e22413098f4de740df2075733baf38e9eb70c84"
-      },
-      "selected_runtime_source": "67f0994b532b8740f14b5b738af7b7b2a915b1d6",
-      "selected_runtime_contains_commit": true,
-      "reviewed_patch_sha256": "e9a412e7e7f8f27850e1e17517d3c1ac9ebc25b6b8accb607ea9912ac74f58e3",
-      "full_commit_diff_sha256": "24ef8a032fa11517e8c8c809d3fb55bf544625ed42c635dd6a89eaefcf60593e",
-      "diff_digest_command": "git show --no-ext-diff --no-textconv --binary --format= --no-renames <commit>",
-      "diff_scope": "Relevant source and test bodies were reviewed. Full-diff hashing also includes generated files and does not claim behavioral review of generated output.",
-      "source_included_in_selected_commit": true,
-      "native_consumer_validation": {
-        "qualification": "automations/upstream/qualification.json",
-        "execution_receipts": [],
-        "limit": "Only named native fixtures were executed. Upstream tests listed above were read, not run."
-      }
-    },
-    {
-      "index": 16,
-      "commit": "2f452e74b2dfd7e927f90d8b1d573beae521b9c8",
-      "commit_time": "2026-10-30T22:24:56Z",
-      "classification": "native_owned",
-      "behavior": "Prepare elastic Guardian text entries before allocation, cap required and optional supporting text once, mark shortened sources incomplete, and keep exact action JSON, images and opaque native payloads whole.",
-      "implementation_symbols": [
-        "codex-rs/guardian-context/src/preparation/elastic.rs::ComposedContext::prepare_elastic_entries",
-        "codex-rs/guardian-context/src/truncation.rs::truncate_content_to_fit",
-        "codex-rs/guardian-context/src/action.rs::PlannedAction::render_content",
-        "codex-rs/guardian-context/src/composition.rs::SectionContent",
-        "codex-rs/guardian-context/src/allocation.rs::PreparedElasticContext"
-      ],
-      "decodex_consumer": "Decodex keeps native approval enforcement and consumes review events. At the fixed target, prepare_elastic_entries has test callers only; no Decodex allocator, truncation policy or new Guardian switch is introduced. Exact action composition still crosses the existing native reviewer boundary.",
-      "consumer_refs": [
-        "crates/decodex-runtime/src/account_launch/agent_process_native_reviewer_tests.rs",
-        "crates/decodex-codex/src/guardian.rs"
-      ],
-      "source_review_complete": true,
-      "diff_read": true,
-      "tests_read": [
-        {
-          "source": "codex-rs/guardian-context/src/preparation/elastic_tests.rs",
-          "symbol": "entry_caps_bound_required_and_optional_text_preserving_metadata_and_opaque_payloads",
-          "revision": "2f452e74b2dfd7e927f90d8b1d573beae521b9c8",
-          "body_read": true
-        },
-        {
-          "source": "codex-rs/guardian-context/src/preparation/elastic_tests.rs",
-          "symbol": "exact_actions_stay_whole_while_supporting_context_is_capped",
-          "revision": "2f452e74b2dfd7e927f90d8b1d573beae521b9c8",
-          "body_read": true
-        }
-      ],
-      "tests_executed": [],
-      "validation_limits": [
-        "Exact-artifact native Guardian preserved the complete large action and review routing. Elastic preparation remains inactive in production."
-      ],
-      "source_sha256": {
-        "codex-rs/guardian-context/src/preparation/elastic_tests.rs": "ce43ad53ed8a5c77608b7f8db215c61928b643361466e65647d0e67542e8f693",
-        "codex-rs/guardian-context/src/composition.rs": "4d7bd582e9d4154af17afc20eb2ede49d26f460a9dd73a65d12641c54a092888",
-        "codex-rs/guardian-context/src/preparation/elastic.rs": "0cf50f76f44b20ed95098b3f1c295b20b3bd545be96b1348b0f8436eb6a44334",
-        "codex-rs/guardian-context/src/action.rs": "73c616c688b908ac8fc5d971a3e5f1142ea1c06fb4f9d32541160a2f441b2d3f",
-        "codex-rs/guardian-context/src/truncation.rs": "e1af80a8a9dfac5c8b15e565efdd87a081cd03e26d1725a9349022f36de21289",
-        "codex-rs/guardian-context/src/allocation.rs": "9fa1fbf384bc687cd5c9a7dbc999d8ccc5461fc3cdd35564914465752ac535a8"
-      },
-      "selected_runtime_source": "67f0994b532b8740f14b5b738af7b7b2a915b1d6",
-      "selected_runtime_contains_commit": true,
-      "reviewed_patch_sha256": "20c140ebf4e8e85008da892bb1c13a3202bb69356e382584813a726d4f9bf5ce",
-      "full_commit_diff_sha256": "05c9955e00fd170edd1caff70f9c8c14265e53fcd5b095b1e157ba15d0722289",
-      "diff_digest_command": "git show --no-ext-diff --no-textconv --binary --format= --no-renames <commit>",
-      "diff_scope": "Relevant source and test bodies were reviewed. Full-diff hashing also includes generated files and does not claim behavioral review of generated output.",
-      "source_included_in_selected_commit": true,
-      "native_consumer_validation": {
-        "qualification": "automations/upstream/qualification.json",
-        "execution_receipts": [
-          "target-native"
-        ],
-        "limit": "Only named native fixtures were executed. Upstream tests listed above were read, not run."
-      }
-    },
-    {
-      "index": 17,
-      "commit": "a795f961be68383738e56ac396742b3e8451696a",
-      "commit_time": "2026-10-30T22:30:53Z",
-      "classification": "not_applicable",
-      "behavior": "Make TUI viewed-image labels link to canonical local regular image files only, suppress links for remote workspaces or SSH, and preserve hyperlink columns in narrow/wrapped history.",
-      "implementation_symbols": [
-        "codex-rs/tui/src/app/history_ui.rs::link_viewed_image",
-        "codex-rs/tui/src/history_cell/patches.rs::ViewImageHistoryCell",
-        "codex-rs/tui/src/terminal_hyperlinks.rs::TerminalHyperlink::viewed_image"
-      ],
-      "decodex_consumer": "Decodex does not use TUI history cells or terminal hyperlinks. Its own media resolver keeps imageView unsupported without executor identity and uses native attachment routes for supported media.",
-      "consumer_refs": [
-        "crates/decodex-runtime/src/agent/timeline/media.rs",
-        "apps/decodex-gpui/src/agent_text_links.rs"
-      ],
-      "source_review_complete": true,
-      "diff_read": true,
-      "tests_read": [
-        {
-          "source": "codex-rs/tui/src/app/history_ui_tests.rs",
-          "symbol": "viewed_image_links_follow_workspace_locality",
-          "revision": "a795f961be68383738e56ac396742b3e8451696a",
-          "body_read": true
-        },
-        {
-          "source": "codex-rs/tui/src/history_cell/patches_tests.rs",
-          "symbol": "viewed_image_narrow_summary",
-          "revision": "a795f961be68383738e56ac396742b3e8451696a",
-          "body_read": true
-        }
-      ],
-      "tests_executed": [],
-      "validation_limits": [
-        "Full relevant source diff and complete locality/narrow-link test bodies read. No TUI execution, file-opening action or local media policy expansion."
-      ],
-      "source_sha256": {
-        "codex-rs/tui/src/history_cell/patches.rs": "e73674c29e79a102086acece60818ee4f3e3f174388098cc24d40f356443fa34",
-        "codex-rs/tui/src/app/history_ui.rs": "f20f015753b726a1fdf69b4547e1f09267b418abb3eeed54829f8762680aa9e2",
-        "codex-rs/tui/src/app/history_ui_tests.rs": "678386a5a6310987c2c1d58bcb3996597ce89d213dc480a41a65ac4d16728708",
-        "codex-rs/tui/src/terminal_hyperlinks.rs": "996246786d2fda80d2945e8210965aa4b4e868d3584264cb4d60da74f131422c",
-        "codex-rs/tui/src/history_cell/patches_tests.rs": "d3a26bf671274f0cddbdbd64e9a8b9a5ecd268ab034cb37b9b02824443fe6229"
-      },
-      "selected_runtime_source": "67f0994b532b8740f14b5b738af7b7b2a915b1d6",
-      "reviewed_patch_sha256": "3eb7c90063f27d677ff453405665a356af750534456aa18eebc8c72e545159ee",
-      "full_commit_diff_sha256": "cada021535695af21ad206a5f2607602dcf1f4224da79fcc35323f7d2fa59b75",
-      "diff_digest_command": "git show --no-ext-diff --no-textconv --binary --format= --no-renames <commit>",
-      "diff_scope": "Relevant source and test bodies were reviewed. Full-diff hashing also includes generated files and does not claim behavioral review of generated output.",
-      "source_included_in_selected_commit": true
-    },
-    {
-      "index": 18,
-      "commit": "26cc28631406375d55d2915c5730d42a016847b3",
-      "commit_time": "2026-10-30T23:54:38Z",
-      "classification": "native_owned",
-      "behavior": "Add explicit Fixed/Elastic Guardian root and REPL preparation. Elastic preparation keeps captured candidates until later entry budgeting; fixed callers retain their current per-section limits and matching semantics.",
-      "implementation_symbols": [
-        "codex-rs/guardian-context/src/preparation/root.rs::prepare_root_context/prepare_root_assistant_messages",
-        "codex-rs/guardian-context/src/preparation/repl.rs::select_node_repl_responses",
-        "codex-rs/guardian-context/src/preparation/mod.rs::ContextBudgeting",
-        "codex-rs/core/src/agent/control/user_authorization.rs::CapturedRootConversation::prepare"
-      ],
-      "decodex_consumer": "Current native production callers still select Fixed, including the child authorization snapshot and REPL evidence. Decodex continues consuming native approvals and review details without choosing an elastic policy.",
-      "consumer_refs": [
-        "crates/decodex-runtime/src/agent/guardian_details.rs",
-        "crates/decodex-runtime/src/account_launch/agent_process_native_reviewer_tests.rs"
-      ],
-      "source_review_complete": true,
-      "diff_read": true,
-      "tests_read": [
-        {
-          "source": "codex-rs/guardian-context/src/preparation/source_tests.rs",
-          "symbol": "elastic_root_preparation_preserves_captured_messages",
-          "revision": "26cc28631406375d55d2915c5730d42a016847b3",
-          "body_read": true
-        },
-        {
-          "source": "codex-rs/guardian-context/src/preparation/source_tests.rs",
-          "symbol": "elastic_repl_rendering_keeps_stored_text_images_and_omissions",
-          "revision": "26cc28631406375d55d2915c5730d42a016847b3",
-          "body_read": true
-        }
-      ],
-      "tests_executed": [],
-      "validation_limits": [
-        "Complete preparation diff, full root selection body, source/REPL tests and fixed production call sites read. Elastic API is not an automatic policy activation. No source tests executed; no additional stored evidence or Decodex budget controls."
-      ],
-      "source_sha256": {
-        "codex-rs/core/src/agent/control/user_authorization.rs": "7b321b0fd4d0132d517ff2a2cb822fce15c1dd74c96abadd90008651b1791864",
-        "codex-rs/guardian-context/src/preparation/root.rs": "3a64547c6d9f65419a242b15eb8367815ac3d0eea5856f1654d4489e62e69176",
-        "codex-rs/guardian-context/src/preparation/source_tests.rs": "7435d52e1568df623596942b4f01acb04ab59c37f2e5ec98f3e230d77bab2795",
-        "codex-rs/guardian-context/src/preparation/mod.rs": "38ecbf355826d6ca9bfa20c5fd2b2b2a06449e75aaba9af3801b3bff2326ac5c",
-        "codex-rs/guardian-context/src/preparation/repl.rs": "1017507289d904c4e1b50ec4fc66d8536023dc5f8904805d0c4ea1d70db2cfd4"
-      },
-      "selected_runtime_source": "67f0994b532b8740f14b5b738af7b7b2a915b1d6",
-      "selected_runtime_contains_commit": true,
-      "reviewed_patch_sha256": "df5a1cc6669f23b08a129fbf4a00795c771a211c1284ba5dd63db187d4ba1cdc",
-      "full_commit_diff_sha256": "f3f001fac14869223f66d0ca805d86a829004325ff62316f7025910f0265eab3",
-      "diff_digest_command": "git show --no-ext-diff --no-textconv --binary --format= --no-renames <commit>",
-      "diff_scope": "Relevant source and test bodies were reviewed. Full-diff hashing also includes generated files and does not claim behavioral review of generated output.",
-      "source_included_in_selected_commit": true,
-      "native_consumer_validation": {
-        "qualification": "automations/upstream/qualification.json",
-        "execution_receipts": [
-          "target-native"
-        ],
-        "limit": "Only named native fixtures were executed. Upstream tests listed above were read, not run."
-      }
-    },
-    {
-      "index": 19,
-      "commit": "7656a23b8d404447f6eb0b4b947f45e5e139e49e",
-      "commit_time": "2026-10-30T23:55:47Z",
-      "classification": "not_applicable",
-      "behavior": "Attach explicitly incomplete output to failed native inference traces, ignoring unknown or duplicate items and restoring the completed-item vector before normal continuation. Do not stream or execute the attempted tool call.",
-      "implementation_symbols": [
-        "codex-rs/codex-api/src/sse/responses.rs::process_responses_event",
-        "codex-rs/core/src/client.rs::map_response_events",
-        "codex-rs/protocol/src/error.rs::ResponseIncompleteError"
-      ],
-      "decodex_consumer": "Decodex does not collect Codex inference trace bundles. Its visible error/stream/history boundary receives the same completed items; no diagnostic export or attempted-call replay is added.",
-      "consumer_refs": [
-        "crates/decodex-runtime/src/agent/observations.rs",
-        "crates/decodex-runtime/src/account_launch/agent_process_native_compaction_tests.rs"
-      ],
-      "source_review_complete": true,
-      "diff_read": true,
-      "tests_read": [
-        {
-          "source": "codex-rs/codex-api/src/sse/responses.rs",
-          "symbol": "incomplete_response_retains_partial_output_on_the_error",
-          "revision": "7656a23b8d404447f6eb0b4b947f45e5e139e49e",
-          "body_read": true
-        },
-        {
-          "source": "codex-rs/core/src/client_tests.rs",
-          "symbol": "incomplete_response_traces_attempted_call_without_streaming_it",
-          "revision": "7656a23b8d404447f6eb0b4b947f45e5e139e49e",
-          "body_read": true
-        }
-      ],
-      "tests_executed": [],
-      "validation_limits": [
-        "Full error/trace diff and both complete regressions read. The trace-only items are removed before downstream cache/dispatch. Zero upstream tests or diagnostics feature adoption."
-      ],
-      "source_sha256": {
-        "codex-rs/codex-api/src/sse/responses.rs": "3056d91cc81b40c60f4b9b40c83702e99cfe4b694032a46b50344bb1c6d6a79a",
-        "codex-rs/protocol/src/error.rs": "75674edb03fa3a8c64097d66e117405af62ada656f4216a433c15eb4f5274a02",
-        "codex-rs/core/src/client_tests.rs": "6e1e109cabc9cf1d1e269050c316e700bd74770ab047791a84ee1e8e470e2e1e",
-        "codex-rs/core/src/client.rs": "662cf64d10f4b0d7eaf3ad046e53b1eb6dcf8dfb3cb5a425a3c8c222adc05da5"
-      },
-      "selected_runtime_source": "67f0994b532b8740f14b5b738af7b7b2a915b1d6",
-      "reviewed_patch_sha256": "c85b536ed198ae11019d993702d50564fbd8d04d45c95b82d07ec47255cd2d0f",
-      "full_commit_diff_sha256": "b9b707a7e9187d0f94a3fe5489bbb1213513dfe7a4ef93adb32ce025f33a86a2",
-      "diff_digest_command": "git show --no-ext-diff --no-textconv --binary --format= --no-renames <commit>",
-      "diff_scope": "Relevant source and test bodies were reviewed. Full-diff hashing also includes generated files and does not claim behavioral review of generated output.",
-      "source_included_in_selected_commit": true
-    },
-    {
-      "index": 20,
-      "commit": "1da2aefe001b333340fe8b012b18b072c49cc743",
-      "commit_time": "2026-10-30T23:56:12Z",
-      "classification": "not_applicable",
-      "behavior": "Switch the TUI displayed conversation through its owning backend, preserve drafts/settings, park only background approval requests, and keep disconnect, voice and reconnect events attached to their backend. Remove one obsolete upstream advisory exception without changing dependencies.",
-      "implementation_symbols": [
-        "codex-rs/tui/src/app/backend_selection.rs::App::resume_backend_session",
-        "codex-rs/tui/src/app/backend_sessions.rs::BackendSessions::next_event",
-        "codex-rs/tui/src/app/agents_overview.rs::restore_session_draft",
-        "codex-rs/tui/src/app/startup.rs::backend event loop",
-        "codex-rs/tui/src/app/voice_owner.rs::detach_current_thread_for_navigation"
-      ],
-      "decodex_consumer": "Decodex owns separate account/process routing and uses its existing explicit current-provider Fork recovery. This commit changes the TUI multi-backend session picker, not native saved-provider admission or the app-server protocol; it does not supersede the merged Fork repair.",
-      "consumer_refs": [
-        "crates/decodex-codex/src/app_server_client/provider_recovery.rs",
-        "crates/decodex-runtime/src/account_launch/process.rs",
-        "apps/decodex-gpui/src/agent_prompt_confirm.rs"
+        "crates/decodex-runtime/src/account_launch/process.rs::APP_SERVER_ARGS",
+        "crates/decodex-runtime/src/account_launch/process.rs::AppServerCommand::production_from_resolved",
+        "scripts/macos/build_codex_source.mts::buildSource"
       ],
       "source_review_complete": true,
       "diff_read": true,
@@ -1233,87 +575,108 @@
         {
           "source": "codex-rs/tui/src/app/tests/backend_sessions_tests.rs",
           "symbol": "backend_sessions_parked_request_does_not_hide_disconnect",
-          "revision": "1da2aefe001b333340fe8b012b18b072c49cc743",
+          "revision": "54201ea65a3501d09a87c776376a0c16aa39db70",
           "body_read": true
         },
         {
-          "source": "codex-rs/tui/src/app/tests/new_session_tests.rs",
-          "symbol": "backend_handoff_errors_are_snapshotted",
-          "revision": "1da2aefe001b333340fe8b012b18b072c49cc743",
-          "body_read": true
-        },
-        {
-          "source": "codex-rs/tui/src/app/tests/new_session_tests.rs",
-          "symbol": "resumed_backend_handoff_detaches_through_the_source_connection",
-          "revision": "1da2aefe001b333340fe8b012b18b072c49cc743",
+          "source": "codex-rs/tui/src/app/tests/backend_sessions_tests.rs",
+          "symbol": "backend_sessions_poll_three_sources_and_isolate_closed_or_paused_streams",
+          "revision": "54201ea65a3501d09a87c776376a0c16aa39db70",
           "body_read": true
         }
       ],
       "tests_executed": [],
+      "test_review_limit": "Named test bodies are source evidence, not execution receipts.",
       "validation_limits": [
-        "Full non-snapshot TUI diff, complete new backend preparation/wait bodies and all three new tests read. Existing provider admission source remains separate. No TUI, new backend control, live provider switch or dependency audit executed."
+        "Source review only. Upstream tests were read and not executed; no upstream suite pass is claimed.",
+        "The selected CLI and helpers remain at 67f0994b532b8740f14b5b738af7b7b2a915b1d6 and do not include this delta. No artifact is rebuilt, imported, executed or newly qualified.",
+        "Official PR check reports contain failures and skipped/cancelled checks. Their causes remain undiagnosed; no failed check is counted as passed.",
+        "No application start, installation, live-provider acceptance, release, tag, publication or native automation-definition change."
       ],
       "source_sha256": {
-        "codex-rs/tui/src/app/voice_owner.rs": "10d6d8b4e25364c6435d52b184eefc0433002a83310b11633a3621df19abed06",
-        "codex-rs/tui/src/app/backend_selection.rs": "aeaee81e277900aec33286d3634452954333155c50d619f6ba408fb5ada002c9",
-        "codex-rs/tui/src/app/tests/new_session_tests.rs": "80e5cad570c7c4aeab730762fb2d3bd5d8b3450d7ffe23f9886f816ea4d55889",
-        "codex-rs/tui/src/app/tests/backend_sessions_tests.rs": "a563e1aef435b15f911d6bd67865c7619e4eb7d0fc31511e216d335627bdce76",
-        "codex-rs/tui/src/app/startup.rs": "0f91670a6854aee30d5fb895daae1a779de0022f9677d33fdf671b82e7fd073b",
-        "codex-rs/tui/src/app/backend_sessions.rs": "e8e497b6c7e11cde9b4e5a8063a3f45f98f2189913e3a7b3c1e1bc70dff4a4e3",
-        "codex-rs/tui/src/app/agents_overview.rs": "621ad3ab91d10e16588a4fdcf7887d9f5aa2c3fdcd86e9c17fa4dfffd61a764a"
+        "codex-rs/tui/src/app/backend_sessions.rs": "c181f816ca1de2292b87ca1fcb6bdaf8d9436762c43580903d517e6ac134d5fb",
+        "codex-rs/tui/src/app/tests/backend_sessions_tests.rs": "9c68c3f834d18aedd4c0b0ea756190d577b0374e2e03da86e714b52f96c5b3ae"
       },
       "selected_runtime_source": "67f0994b532b8740f14b5b738af7b7b2a915b1d6",
-      "reviewed_patch_sha256": "c40f901fd905382fe6591f9e4cc36bcfa047541d066cf989ad5d98d9ab8a6628",
-      "full_commit_diff_sha256": "33236429d2202509b5a4b921161f799d890ac8f15ff412839a0b82b89435920b",
+      "source_included_in_selected_commit": false,
+      "full_commit_diff_sha256": "a2dec3a518568dba6f17a6db4effbc6264b5c66e5e25589992d804ec3d012c66",
       "diff_digest_command": "git show --no-ext-diff --no-textconv --binary --format= --no-renames <commit>",
-      "diff_scope": "Relevant source and test bodies were reviewed. Full-diff hashing also includes generated files and does not claim behavioral review of generated output.",
-      "source_included_in_selected_commit": true
+      "diff_scope": "Relevant changed implementation and test bodies were read. Full patch hashing includes snapshots and workflow definitions; it is separate from semantic review.",
+      "upstream_ci_evidence": {
+        "url": "https://github.com/openai/codex/pull/58722/checks",
+        "observed_conclusions": {
+          "FAILURE": 52,
+          "SUCCESS": 47,
+          "SKIPPED": 9,
+          "CANCELLED": 2
+        },
+        "execution_owner": "Official upstream CI; not executed by this run",
+        "failure_cause": "unknown; not diagnosed"
+      }
     },
     {
-      "index": 21,
-      "commit": "67f0994b532b8740f14b5b738af7b7b2a915b1d6",
-      "commit_time": "2026-10-31T00:12:17Z",
-      "classification": "not_applicable",
-      "behavior": "Disable Insta snapshot updates during Bazel CI, including the local fallback, and stop/join the OTLP loopback server even when bounded exporter shutdown returns an error.",
+      "index": 9,
+      "commit": "4b4a5cf25aa5b064c866218b405c848745fd280f",
+      "commit_time": "2026-11-01T16:44:41Z",
+      "classification": "native_owned",
+      "behavior": "Pass an empty BuildBuddy API key to Linux, macOS and Windows voice release steps so official Bazel wrappers use local configuration.",
       "implementation_symbols": [
-        ".bazelrc::test:ci INSTA_UPDATE",
-        ".github/scripts/run-bazel-ci.sh::local test fallback",
-        "codex-rs/otel/tests/suite/otlp_http_loopback.rs::otlp_http_exporter_sends_traces_to_collector_with_bounded_shutdown_in_tokio_runtime"
+        ".github/workflows/rust-release.yml::native voice release steps",
+        ".github/workflows/rust-release-windows.yml::native voice release step"
       ],
-      "decodex_consumer": "Decodex builds the fixed native runtime with the explicit Cargo preparation command. It neither runs upstream Bazel CI nor the OTLP test fixture; no runtime implementation or local test policy changes.",
+      "decodex_consumer": "These are upstream release runner settings. Decodex selected source, native package builder, runtime lock and artifact/helper identities are unchanged; no release build or package import is performed.",
       "consumer_refs": [
-        "scripts/macos/build_codex_source.mts",
-        "Makefile.toml"
+        "crates/decodex-runtime/src/account_launch/process.rs::APP_SERVER_ARGS",
+        "crates/decodex-runtime/src/account_launch/process.rs::AppServerCommand::production_from_resolved",
+        "scripts/macos/build_codex_source.mts::buildSource"
       ],
       "source_review_complete": true,
       "diff_read": true,
-      "tests_read": [
-        {
-          "source": "codex-rs/otel/tests/suite/otlp_http_loopback.rs",
-          "symbol": "otlp_http_exporter_sends_traces_to_collector_with_bounded_shutdown_in_tokio_runtime",
-          "revision": "67f0994b532b8740f14b5b738af7b7b2a915b1d6",
-          "body_read": true
-        }
-      ],
+      "tests_read": [],
       "tests_executed": [],
+      "test_review_limit": "Read the named complete test bodies. Workflow-only commits introduce no unit test body; workflow job and step definitions were inspected.",
       "validation_limits": [
-        "Complete CI/test diff and full affected OTLP test body read. No upstream CI, telemetry export or loopback test execution; this source-test cleanup requires no local adaptation."
+        "Source review only. Upstream tests were read and not executed; no upstream suite pass is claimed.",
+        "The selected CLI and helpers remain at 67f0994b532b8740f14b5b738af7b7b2a915b1d6 and do not include this delta. No artifact is rebuilt, imported, executed or newly qualified.",
+        "Official PR check reports contain failures and skipped/cancelled checks. Their causes remain undiagnosed; no failed check is counted as passed.",
+        "No application start, installation, live-provider acceptance, release, tag, publication or native automation-definition change."
       ],
       "source_sha256": {
-        ".github/scripts/run-bazel-ci.sh": "182e95365b2383b0da6c5e8fa76169746bbf3148255a259105afdfa32981504a",
-        "codex-rs/otel/tests/suite/otlp_http_loopback.rs": "aa2478feca91550b45d8b953aa153ec4b745b6080816515d5ae145553621287e",
-        ".bazelrc": "0f8645ce5449f0e4e7d647e749024f42b2c3d94052f587a8d40c47fdbb00eaf5"
+        ".github/workflows/rust-release-windows.yml": "f7d42add7d43d0c41a1b7213ba371452763447d05fdf331c1e9981f44b1fef7a",
+        ".github/workflows/rust-release.yml": "f181ba37d0c7f6ebb8028ca050eca043d9b961fb93958da6430a6092826ffc4b"
       },
       "selected_runtime_source": "67f0994b532b8740f14b5b738af7b7b2a915b1d6",
-      "reviewed_patch_sha256": "14ad8ebe9c86e34e7a79c37fc39c488a408e1565e6f38739d2485a6563d71f61",
-      "full_commit_diff_sha256": "1334c1c98833175302121be903eaa6540ff945844be80982b1fa3e7637fc35dd",
+      "source_included_in_selected_commit": false,
+      "full_commit_diff_sha256": "955cc614dd6e987289e8f05e5ad749243729c5c69d68f52b5470f7ae88ee35f6",
       "diff_digest_command": "git show --no-ext-diff --no-textconv --binary --format= --no-renames <commit>",
-      "diff_scope": "Relevant source and test bodies were reviewed. Full-diff hashing also includes generated files and does not claim behavioral review of generated output.",
-      "source_included_in_selected_commit": true
+      "diff_scope": "Relevant changed implementation and test bodies were read. Full patch hashing includes snapshots and workflow definitions; it is separate from semantic review.",
+      "upstream_ci_evidence": {
+        "url": "https://github.com/openai/codex/pull/58727/checks",
+        "observed_conclusions": {
+          "FAILURE": 51,
+          "SUCCESS": 49,
+          "SKIPPED": 11,
+          "CANCELLED": 1
+        },
+        "execution_owner": "Official upstream CI; not executed by this run",
+        "failure_cause": "unknown; not diagnosed"
+      }
     }
   ],
-  "delivery_status": "Qualified fixed-target code commit; native checkpoint retains PR and merge readback.",
-  "implementation_commits": [
-    "https://github.com/acg-box/decodex/commit/76d0172bfd9286c1f06889dad355a329a41356bc"
-  ]
+  "delivery_status": "Portable source-review evidence only. Native checkpoint owns pending PR, exact-head CI and merge observations.",
+  "implementation_commits": [],
+  "qualification_disposition": {
+    "runtime_changed": false,
+    "fresh_native_executed": 0,
+    "source_review_target": "4b4a5cf25aa5b064c866218b405c848745fd280f",
+    "selected_runtime_source": "67f0994b532b8740f14b5b738af7b7b2a915b1d6",
+    "reason": "No reproduced retained-consumer defect requires migration; app-server protocol, locked dependencies, native helpers and the native package builder are unchanged.",
+    "limits": [
+      "Source review only. Upstream tests were read and not executed; no upstream suite pass is claimed.",
+      "The selected CLI and helpers remain at 67f0994b532b8740f14b5b738af7b7b2a915b1d6 and do not include this delta. No artifact is rebuilt, imported, executed or newly qualified.",
+      "Official PR check reports contain failures and skipped/cancelled checks. Their causes remain undiagnosed; no failed check is counted as passed.",
+      "No application start, installation, live-provider acceptance, release, tag, publication or native automation-definition change."
+    ]
+  },
+  "documentation_disposition": "Stable product contracts, runtime procedures and qualification are unchanged. No OpenWiki page update is required for this source-review-only delta."
 }
