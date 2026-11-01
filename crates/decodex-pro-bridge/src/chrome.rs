@@ -3,16 +3,26 @@
 
 use std::{
 	collections::{BTreeMap, BTreeSet},
+	mem,
 	path::Path,
 	time::Duration,
 };
 
 use futures_util::{SinkExt as _, StreamExt as _};
-use serde_json::{Value, json};
-use tokio::{net::UnixStream, time::timeout};
+use serde_json::Value;
+use tokio::{
+	net::UnixStream,
+	time::{self},
+};
 use tokio_tungstenite::{WebSocketStream, tungstenite::Message};
+use url::Url;
 
-use crate::{Result, identity::ExecutionIdentity};
+use crate::{
+	Result,
+	identity::{self, ExecutionIdentity, NativeMessage},
+	native_host::{self, EXTENSION_ID},
+	page,
+};
 
 pub(crate) struct Chrome {
 	socket: WebSocketStream<UnixStream>,
@@ -26,12 +36,11 @@ pub(crate) struct Chrome {
 	pub submission_failure: Option<String>,
 	pub resume_failure: Option<String>,
 	pub identities: Vec<ExecutionIdentity>,
-	pub messages: BTreeMap<String, crate::identity::NativeMessage>,
+	pub messages: BTreeMap<String, NativeMessage>,
 }
-
 impl Chrome {
 	pub async fn connect(root: &Path) -> Result<Self> {
-		let stream = UnixStream::connect(crate::native_host::socket_path(root)).await
+		let stream = UnixStream::connect(native_host::socket_path(root)).await
 			.map_err(|_| "Decodex Research is not connected. Enable its Chrome extension, then recover the saved request.")?;
 		let (socket, _) = tokio_tungstenite::client_async("ws://localhost/research", stream)
 			.await
@@ -50,27 +59,33 @@ impl Chrome {
 			identities: Vec::new(),
 			messages: BTreeMap::new(),
 		};
-		let hello = browser.command("Decodex.ping", json!({})).await?;
-		if hello["protocol"] != 1 || hello["extensionId"] != crate::native_host::EXTENSION_ID {
+		let hello = browser.command("Decodex.ping", serde_json::json!({})).await?;
+
+		if hello["protocol"] != 1 || hello["extensionId"] != EXTENSION_ID {
 			return Err(
 				"The research extension identity or protocol does not match this component.".into(),
 			);
 		}
+
 		Ok(browser)
 	}
 
 	pub async fn command(&mut self, method: &str, params: Value) -> Result<Value> {
 		self.next_id += 1;
+
 		let id = self.next_id;
-		let mut request = json!({"id":id,"method":method,"params":params});
+		let mut request = serde_json::json!({"id":id,"method":method,"params":params});
+
 		if let Some(session) = &self.session {
-			request["sessionId"] = json!(session);
+			request["sessionId"] = serde_json::json!(session);
 		}
+
 		let response = async {
 			self.socket
 				.send(Message::Text(request.to_string().into()))
 				.await
 				.map_err(|e| format!("Chrome disconnected: {e}"))?;
+
 			loop {
 				let message = self
 					.socket
@@ -80,16 +95,20 @@ impl Chrome {
 					.map_err(|e| e.to_string())?;
 				let Message::Text(text) = message else { continue };
 				let value: Value = serde_json::from_str(&text).map_err(|e| e.to_string())?;
+
 				if value["id"] == id {
 					if let Some(error) = value.get("error") {
 						return Err(format!("Chrome {method}: {error}"));
 					}
+
 					return Ok(value["result"].clone());
 				}
+
 				self.event(&value);
 			}
 		};
-		timeout(Duration::from_secs(30), response).await.map_err(|_| {
+
+		time::timeout(Duration::from_secs(30), response).await.map_err(|_| {
 			format!("Chrome timed out during {method}. The saved request can be resumed.")
 		})?
 	}
@@ -98,18 +117,21 @@ impl Chrome {
 		if value["sessionId"].as_str() != self.session.as_deref() {
 			return;
 		}
+
 		let params = &value["params"];
 		let Some(id) = params["requestId"].as_str() else { return };
+
 		match value["method"].as_str() {
 			Some("Network.requestWillBeSent")
 				if params["request"]["method"] == "POST"
 					&& params["request"]["url"].as_str().is_some_and(submission_endpoint) =>
 			{
 				self.submissions.insert(id.into());
+
 				if let Some(body) = params["request"]["postData"].as_str() {
 					// Observe only the user message the page actually submitted. Requested
 					// models and assistant context in a request never prove execution identity.
-					for message in crate::identity::from_response(body)
+					for message in identity::from_response(body)
 						.messages
 						.into_iter()
 						.filter(|message| message.role == "user")
@@ -127,6 +149,7 @@ impl Chrome {
 						"ChatGPT response-stream recovery returned HTTP {status:.0}."
 					));
 				}
+
 				if self.submissions.contains(id)
 					&& let Some(status) =
 						params["response"]["status"].as_f64().filter(|s| *s >= 400.)
@@ -140,6 +163,7 @@ impl Chrome {
 			},
 			Some("Network.loadingFinished") => {
 				self.submissions.remove(id);
+
 				if self.responses.contains(id) {
 					self.finished.insert(id.into());
 				}
@@ -153,6 +177,7 @@ impl Chrome {
 						)
 					});
 				}
+
 				self.responses.remove(id);
 				self.finished.remove(id);
 			},
@@ -161,7 +186,8 @@ impl Chrome {
 	}
 
 	pub async fn login_target(&mut self, saved: Option<&str>) -> Result<Option<String>> {
-		let targets = self.command("Target.getTargets", json!({})).await?;
+		let targets = self.command("Target.getTargets", serde_json::json!({})).await?;
+
 		select_login_target(&targets["targetInfos"], saved)
 	}
 
@@ -172,7 +198,8 @@ impl Chrome {
 		visible: bool,
 	) -> Result<()> {
 		self.bind_conversation_url(url.unwrap_or_default());
-		let targets = self.command("Target.getTargets", json!({})).await?;
+
+		let targets = self.command("Target.getTargets", serde_json::json!({})).await?;
 		let existing = saved_target.and_then(|id| {
 			targets["targetInfos"]
 				.as_array()?
@@ -185,42 +212,62 @@ impl Chrome {
 			if url.is_none() {
 				return Err("The pending request tab is gone and no conversation URL was saved. The request was not resent.".into());
 			}
-			self.command("Target.createTarget", json!({"url":"about:blank","background":!visible}))
-				.await?["targetId"]
+
+			self.command(
+				"Target.createTarget",
+				serde_json::json!({"url":"about:blank","background":!visible}),
+			)
+			.await?["targetId"]
 				.as_str()
 				.ok_or("Chrome returned no target identity.")?
 				.to_owned()
 		};
+
 		self.target = Some(target.clone());
+
 		let attached = self
-			.command("Target.attachToTarget", json!({"targetId":target,"flatten":true}))
+			.command("Target.attachToTarget", serde_json::json!({"targetId":target,"flatten":true}))
 			.await?;
+
 		self.session = Some(
 			attached["sessionId"].as_str().ok_or("Chrome returned no session identity.")?.into(),
 		);
+
 		self.responses.clear();
 		self.finished.clear();
 		self.identities.clear();
 		self.messages.clear();
 		self.submissions.clear();
+
 		self.submission_failure = None;
 		self.resume_failure = None;
-		self.command("Page.enable", json!({})).await?;
-		self.command("Runtime.enable", json!({})).await?;
+
+		self.command("Page.enable", serde_json::json!({})).await?;
+		self.command("Runtime.enable", serde_json::json!({})).await?;
 		// Retain the entire submitted body for input identity, including long research
 		// material. Chrome's default post-data capture can omit a large input.
-		self.command("Network.enable", json!({"maxPostDataSize":32*1024*1024})).await?;
+		self.command("Network.enable", serde_json::json!({"maxPostDataSize":32*1_024*1_024}))
+			.await?;
+
 		if existing.is_none()
 			|| url.is_some_and(|url| existing.is_some_and(|target| target["url"] != url))
 		{
-			self.command("Page.navigate", json!({"url":url.ok_or("Missing target URL.")?})).await?;
+			self.command(
+				"Page.navigate",
+				serde_json::json!({"url":url.ok_or("Missing target URL.")?}),
+			)
+			.await?;
 		}
 		if visible {
 			self.session = None;
-			self.command("Target.activateTarget", json!({"targetId":target})).await?;
+
+			self.command("Target.activateTarget", serde_json::json!({"targetId":target})).await?;
+
 			self.session = Some(attached["sessionId"].as_str().unwrap_or_default().into());
-			self.command("Page.bringToFront", json!({})).await?;
+
+			self.command("Page.bringToFront", serde_json::json!({})).await?;
 		}
+
 		Ok(())
 	}
 
@@ -228,33 +275,40 @@ impl Chrome {
 		let result = self
 			.command(
 				"Runtime.evaluate",
-				json!({"expression":expression,"awaitPromise":true,"returnByValue":true}),
+				serde_json::json!({"expression":expression,"awaitPromise":true,"returnByValue":true}),
 			)
 			.await?;
+
 		if result.get("exceptionDetails").is_some() {
 			let description = result["exceptionDetails"]["exception"]["description"]
 				.as_str()
 				.or_else(|| result["exceptionDetails"]["text"].as_str())
 				.unwrap_or("Page operation failed.");
+
 			return Err(description.into());
 		}
+
 		Ok(result["result"]["value"].clone())
 	}
 
 	pub fn bind_conversation_url(&mut self, url: &str) {
-		self.conversation_url = crate::page::conversation_url(url).ok();
+		self.conversation_url = page::conversation_url(url).ok();
 	}
 
 	pub async fn collect_identity(&mut self) -> Result<()> {
-		for id in std::mem::take(&mut self.finished) {
+		for id in mem::take(&mut self.finished) {
 			self.responses.remove(&id);
+
 			// A reload can evict an old body. The page observation remains recoverable.
-			if let Ok(body) = self.command("Network.getResponseBody", json!({"requestId":id})).await
+			if let Ok(body) =
+				self.command("Network.getResponseBody", serde_json::json!({"requestId":id})).await
 				&& body["base64Encoded"] != true
 				&& let Some(body) = body["body"].as_str()
 			{
-				let data = crate::identity::from_response(body);
+				let data = identity::from_response(body);
+
 				self.identities.extend(data.identities);
+
 				for message in data.messages {
 					if !self
 						.messages
@@ -266,19 +320,23 @@ impl Chrome {
 				}
 			}
 		}
+
 		Ok(())
 	}
 
 	pub async fn close_tab(&mut self) -> Result<()> {
 		self.session = None;
+
 		if let Some(target) = self.target.take() {
-			self.command("Target.closeTarget", json!({"targetId":target})).await?;
+			self.command("Target.closeTarget", serde_json::json!({"targetId":target})).await?;
 		}
+
 		Ok(())
 	}
 
 	pub async fn detach(&mut self) -> Result<()> {
 		self.session = None;
+
 		self.socket.close(None).await.map_err(|e| e.to_string())
 	}
 }
@@ -290,14 +348,17 @@ fn select_login_target(targets: &Value, saved: Option<&str>) -> Result<Option<St
 		.iter()
 		.filter(|target| target["type"] == "page")
 		.collect();
+
 	if let Some(target) = pages.iter().find(|target| target["targetId"].as_str() == saved) {
 		return Ok(target["targetId"].as_str().map(str::to_owned));
 	}
+
 	let candidates: Vec<_> = pages
 		.into_iter()
 		.filter(|target| {
 			let Some(raw) = target["url"].as_str() else { return false };
-			let Ok(url) = url::Url::parse(raw) else { return false };
+			let Ok(url) = Url::parse(raw) else { return false };
+
 			url.scheme() == "https"
 				&& match url.host_str() {
 					Some("auth.openai.com") => true,
@@ -306,6 +367,7 @@ fn select_login_target(targets: &Value, saved: Option<&str>) -> Result<Option<St
 				}
 		})
 		.collect();
+
 	match candidates.as_slice() {
 		[] => Ok(None),
 		[target] => Ok(target["targetId"].as_str().map(str::to_owned)),
@@ -315,11 +377,13 @@ fn select_login_target(targets: &Value, saved: Option<&str>) -> Result<Option<St
 
 fn conversation_response(response: &Value, owned: Option<&str>) -> bool {
 	let Some(raw) = response["url"].as_str() else { return false };
+
 	conversation_endpoint(raw, owned) && response["status"].as_u64() == Some(200)
 }
 
 fn submission_endpoint(raw: &str) -> bool {
-	let Ok(url) = url::Url::parse(raw) else { return false };
+	let Ok(url) = Url::parse(raw) else { return false };
+
 	// Preparation and response-stream recovery are separate page requests. In
 	// particular, a missing resume stream does not prove the original Send failed.
 	url.scheme() == "https"
@@ -328,26 +392,32 @@ fn submission_endpoint(raw: &str) -> bool {
 }
 
 fn conversation_endpoint(raw: &str, owned: Option<&str>) -> bool {
-	let Ok(url) = url::Url::parse(raw) else { return false };
+	let Ok(url) = Url::parse(raw) else { return false };
+
 	url.scheme() == "https"
 		&& url.host_str() == Some("chatgpt.com")
 		&& url.path().starts_with("/backend-api/")
 		&& (url.path().split('/').any(|part| part == "conversation")
 			|| owned
-				.and_then(|url| crate::page::conversation_url(url).ok())
+				.and_then(|url| page::conversation_url(url).ok())
 				.and_then(|url| url.rsplit('/').next().map(str::to_owned))
 				.is_some_and(|id| url.path() == format!("/backend-api/conversations/{id}")))
 }
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use futures_util::{SinkExt as _, StreamExt as _};
+
+	use crate::{
+		chrome::{Chrome, Message, Value},
+		native_host, page,
+	};
 
 	#[tokio::test]
 	async fn submission_failures_keep_the_network_cause_and_ignore_unrelated_traffic() {
 		let root = tempfile::tempdir().unwrap();
 		let listener =
-			tokio::net::UnixListener::bind(crate::native_host::socket_path(root.path())).unwrap();
+			tokio::net::UnixListener::bind(native_host::socket_path(root.path())).unwrap();
 		let server = tokio::spawn(async move {
 			let (stream, _) = listener.accept().await.unwrap();
 			let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
@@ -355,62 +425,81 @@ mod tests {
 				panic!("Missing request")
 			};
 			let request: Value = serde_json::from_str(&request).unwrap();
-			socket.send(Message::Text(json!({"id":request["id"],"result":{"protocol":1,"extensionId":crate::native_host::EXTENSION_ID}}).to_string().into())).await.unwrap();
+
+			socket.send(Message::Text(serde_json::json!({"id":request["id"],"result":{"protocol":1,"extensionId":crate::native_host::EXTENSION_ID}}).to_string().into())).await.unwrap();
 		});
 		let mut browser = Chrome::connect(root.path()).await.unwrap();
+
 		browser.session = Some("owned".into());
-		let event = |method: &str, params: Value| json!({"sessionId":"owned","method":method,"params":params});
+
+		let event = |method: &str, params: Value| serde_json::json!({"sessionId":"owned","method":method,"params":params});
+
 		browser.event(&event(
 			"Network.loadingFailed",
-			json!({"requestId":"unrelated","errorText":"net::ERR_FAILED"}),
+			serde_json::json!({"requestId":"unrelated","errorText":"net::ERR_FAILED"}),
 		));
+
 		assert_eq!(browser.submission_failure, None);
-		browser.event(&json!({"sessionId":"another-tab","method":"Network.requestWillBeSent","params":{"requestId":"foreign","request":{"method":"POST","url":"https://chatgpt.com/backend-api/f/conversation"}}}));
+
+		browser.event(&serde_json::json!({"sessionId":"another-tab","method":"Network.requestWillBeSent","params":{"requestId":"foreign","request":{"method":"POST","url":"https://chatgpt.com/backend-api/f/conversation"}}}));
+
 		assert!(browser.submissions.is_empty());
+
 		for (id, path) in [
 			("resume", "f/conversation/resume"),
 			("prepare", "f/conversation/prepare"),
 			("feedback", "conversation/owned/feedback"),
 		] {
 			let url = format!("https://chatgpt.com/backend-api/{path}");
+
 			browser.event(&event(
 				"Network.requestWillBeSent",
-				json!({"requestId":id,"request":{"method":"POST","url":url}}),
+				serde_json::json!({"requestId":id,"request":{"method":"POST","url":url}}),
 			));
 			browser.event(&event(
 				"Network.responseReceived",
-				json!({"requestId":id,"response":{"status":404,"url":url,"mimeType":"application/json"}}),
+				serde_json::json!({"requestId":id,"response":{"status":404,"url":url,"mimeType":"application/json"}}),
 			));
+
 			assert!(browser.submission_failure.is_none(), "{path} is not a new submission");
 		}
+
 		assert_eq!(
 			browser.resume_failure.as_deref(),
 			Some("ChatGPT response-stream recovery returned HTTP 404.")
 		);
-		browser.event(&event("Network.requestWillBeSent", json!({"requestId":"own","request":{"method":"POST","url":"https://chatgpt.com/backend-api/f/conversation"}})));
-		browser.event(&event("Network.responseReceived", json!({"requestId":"own","response":{"status":413,"url":"https://chatgpt.com/backend-api/f/conversation","mimeType":"text/html"}})));
+
+		browser.event(&event("Network.requestWillBeSent", serde_json::json!({"requestId":"own","request":{"method":"POST","url":"https://chatgpt.com/backend-api/f/conversation"}})));
+		browser.event(&event("Network.responseReceived", serde_json::json!({"requestId":"own","response":{"status":413,"url":"https://chatgpt.com/backend-api/f/conversation","mimeType":"text/html"}})));
+
 		assert_eq!(
 			browser.submission_failure.as_deref(),
 			Some("ChatGPT returned HTTP 413 for this submission.")
 		);
+
 		browser.event(&event(
 			"Network.loadingFailed",
-			json!({"requestId":"own","errorText":"net::ERR_FAILED"}),
+			serde_json::json!({"requestId":"own","errorText":"net::ERR_FAILED"}),
 		));
+
 		assert_eq!(
 			browser.submission_failure.as_deref(),
 			Some("ChatGPT returned HTTP 413 for this submission.")
 		);
+
 		browser.submission_failure = None;
-		browser.event(&event("Network.requestWillBeSent", json!({"requestId":"next","request":{"method":"POST","url":"https://chatgpt.com/backend-api/f/conversation"}})));
+
+		browser.event(&event("Network.requestWillBeSent", serde_json::json!({"requestId":"next","request":{"method":"POST","url":"https://chatgpt.com/backend-api/f/conversation"}})));
 		browser.event(&event(
 			"Network.loadingFailed",
-			json!({"requestId":"next","errorText":"net::ERR_FAILED"}),
+			serde_json::json!({"requestId":"next","errorText":"net::ERR_FAILED"}),
 		));
+
 		assert_eq!(
 			browser.submission_failure.as_deref(),
 			Some("ChatGPT submission transport failed: net::ERR_FAILED.")
 		);
+
 		server.await.unwrap();
 	}
 
@@ -418,44 +507,54 @@ mod tests {
 	async fn retry_navigates_the_owned_projects_view_back_to_the_requested_page() {
 		let root = tempfile::tempdir().unwrap();
 		let listener =
-			tokio::net::UnixListener::bind(crate::native_host::socket_path(root.path())).unwrap();
+			tokio::net::UnixListener::bind(native_host::socket_path(root.path())).unwrap();
 		let server = tokio::spawn(async move {
 			let (stream, _) = listener.accept().await.unwrap();
 			let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
 			let mut navigations = 0;
+
 			while let Some(Ok(Message::Text(text))) = socket.next().await {
 				let request: Value = serde_json::from_str(&text).unwrap();
 				let result = match request["method"].as_str().unwrap() {
 					"Decodex.ping" =>
-						json!({"protocol":1,"extensionId":crate::native_host::EXTENSION_ID}),
+						serde_json::json!({"protocol":1,"extensionId":crate::native_host::EXTENSION_ID}),
 					"Target.getTargets" =>
-						json!({"targetInfos":[{"targetId":"owned","type":"page","url":"https://chatgpt.com/projects"}]}),
-					"Target.attachToTarget" => json!({"sessionId":"owned"}),
+						serde_json::json!({"targetInfos":[{"targetId":"owned","type":"page","url":"https://chatgpt.com/projects"}]}),
+					"Target.attachToTarget" => serde_json::json!({"sessionId":"owned"}),
 					"Page.navigate" => {
 						assert_eq!(request["params"]["url"], "https://chatgpt.com/");
+
 						navigations += 1;
-						json!({})
+
+						serde_json::json!({})
 					},
 					"Network.enable" => {
-						assert_eq!(request["params"]["maxPostDataSize"], 32 * 1024 * 1024);
-						json!({})
+						assert_eq!(request["params"]["maxPostDataSize"], 32 * 1_024 * 1_024);
+
+						serde_json::json!({})
 					},
-					"Page.enable" | "Runtime.enable" => json!({}),
+					"Page.enable" | "Runtime.enable" => serde_json::json!({}),
 					other => panic!("Unexpected operation {other}"),
 				};
+
 				socket
 					.send(Message::Text(
-						json!({"id":request["id"],"result":result}).to_string().into(),
+						serde_json::json!({"id":request["id"],"result":result}).to_string().into(),
 					))
 					.await
 					.unwrap();
 			}
+
 			navigations
 		});
 		let mut browser = Chrome::connect(root.path()).await.unwrap();
+
 		browser.open(Some("owned"), Some("https://chatgpt.com/"), false).await.unwrap();
+
 		assert_eq!(browser.target.as_deref(), Some("owned"));
+
 		drop(browser);
+
 		assert_eq!(server.await.unwrap(), 1);
 	}
 
@@ -464,52 +563,59 @@ mod tests {
 		for pro_after_close in [true, false] {
 			let root = tempfile::tempdir().unwrap();
 			let listener =
-				tokio::net::UnixListener::bind(crate::native_host::socket_path(root.path()))
-					.unwrap();
+				tokio::net::UnixListener::bind(native_host::socket_path(root.path())).unwrap();
 			let server = tokio::spawn(async move {
 				let (stream, _) = listener.accept().await.unwrap();
 				let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
 				let mut closed = false;
+
 				while let Some(Ok(Message::Text(text))) = socket.next().await {
 					let req: Value = serde_json::from_str(&text).unwrap();
 					let result = match req["method"].as_str().unwrap() {
 						"Decodex.ping" =>
-							json!({"protocol":1,"extensionId":crate::native_host::EXTENSION_ID}),
+							serde_json::json!({"protocol":1,"extensionId":crate::native_host::EXTENSION_ID}),
 						"Runtime.evaluate" => {
 							let expression = req["params"]["expression"].as_str().unwrap();
 							let value = if expression.contains("const label=model.cloneNode") {
-								json!(closed && pro_after_close)
+								serde_json::json!(closed && pro_after_close)
 							} else if expression.contains("const choices=") {
-								json!({"power":true,"options":["Power"]})
+								serde_json::json!({"power":true,"options":["Power"]})
 							} else if expression.contains("value:Number(slider.getAttribute") {
 								// The range has reached Pro while the open picker still has its old
 								// label.
-								json!({"value":4,"max":4})
+								serde_json::json!({"value":4,"max":4})
 							} else {
-								json!({"x":10,"y":10})
+								serde_json::json!({"x":10,"y":10})
 							};
-							json!({"result":{"value":value}})
+
+							serde_json::json!({"result":{"value":value}})
 						},
-						"Input.dispatchMouseEvent" => json!({}),
+						"Input.dispatchMouseEvent" => serde_json::json!({}),
 						"Input.dispatchKeyEvent" => {
 							assert_eq!(req["params"]["key"], "Escape");
+
 							closed = true;
-							json!({})
+
+							serde_json::json!({})
 						},
 						other => panic!("Unexpected operation {other}"),
 					};
+
 					socket
 						.send(Message::Text(
-							json!({"id":req["id"],"result":result}).to_string().into(),
+							serde_json::json!({"id":req["id"],"result":result}).to_string().into(),
 						))
 						.await
 						.unwrap();
 				}
 			});
 			let mut browser = Chrome::connect(root.path()).await.unwrap();
-			let result = crate::page::select_pro(&mut browser).await;
+			let result = page::select_pro(&mut browser).await;
+
 			assert_eq!(result.is_ok(), pro_after_close, "{result:?}");
+
 			drop(browser);
+
 			server.await.unwrap();
 		}
 	}

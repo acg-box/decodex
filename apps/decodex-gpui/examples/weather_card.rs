@@ -14,7 +14,6 @@ mod ui_theme;
 #[path = "../src/agent_weather.rs"] mod weather_card;
 
 use base64 as _;
-use decodex_pro_bridge as _;
 use futures_util as _;
 use gpui::{
 	AppContext as _, Bounds, ClipboardItem, Context, Render, TitlebarOptions, Window,
@@ -45,6 +44,7 @@ use {
 	objc2_core_audio_types as _, objc2_core_foundation as _, rtrb as _,
 };
 
+use decodex_pro_bridge as _;
 use decodex_protocol::WeatherForecast;
 
 struct Preview {

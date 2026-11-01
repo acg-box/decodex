@@ -650,7 +650,6 @@ mod probe {
 
 // This probe shares the application's package dependency set.
 use base64 as _;
-use decodex_pro_bridge as _;
 #[cfg(any(test, target_os = "macos"))] use futures_util as _;
 use libc as _;
 use ondine as _;
@@ -670,6 +669,7 @@ use {
 };
 #[cfg(test)] use {tempfile as _, tokio_tungstenite as _};
 
+use decodex_pro_bridge as _;
 use decodex_protocol as _;
 
 #[cfg(not(target_os = "macos"))]

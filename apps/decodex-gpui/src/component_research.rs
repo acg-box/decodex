@@ -1,11 +1,15 @@
 //! Opt-in research connection setup. It never starts model work or alters Codex.
 
 use std::{
+	env,
 	path::PathBuf,
+	process::Command,
 	sync::{Arc, Mutex},
 	thread,
 	time::{Duration, Instant},
 };
+
+use tokio::runtime::Runtime;
 
 use decodex_components::{
 	ComponentStore, NativePlugins, PluginAction, PluginComponent, PluginInstallation,
@@ -37,12 +41,12 @@ pub(crate) struct Snapshot {
 	pub busy: Option<Action>,
 	pub error: Option<String>,
 }
-
 impl Snapshot {
 	pub fn status_text(&self) -> &'static str {
 		if self.installed.is_none() {
 			return "Not installed";
 		}
+
 		match self.connection.as_ref().map(|state| &state.state) {
 			Some(ConnectionState::Connected) => "Connected · Pro verification pending",
 			Some(ConnectionState::SignInRequired) => "Sign in to ChatGPT in the research tab",
@@ -60,15 +64,6 @@ pub(crate) struct ResearchOperations {
 	/// Tests supply a private home. Production resolves the shared component store.
 	directory: Option<PathBuf>,
 }
-
-#[derive(Default)]
-struct State {
-	shown: Snapshot,
-	reading: bool,
-	last_read: Option<Instant>,
-	revision: u64,
-}
-
 impl ResearchOperations {
 	pub fn snapshot(&self) -> Snapshot {
 		self.state.lock().expect("research setup").shown.clone()
@@ -81,6 +76,7 @@ impl ResearchOperations {
 
 	pub fn start(&self, action: Action) {
 		let mut state = self.state.lock().expect("research setup");
+
 		if state.shown.busy.is_some() {
 			return;
 		}
@@ -91,29 +87,39 @@ impl ResearchOperations {
 			{
 				return;
 			}
+
 			state.reading = true;
 		} else {
 			state.shown.busy = Some(action);
 			state.shown.error = None;
 		}
+
 		state.revision += 1;
+
 		let revision = state.revision;
+
 		drop(state);
+
 		let owned = self.clone();
 		let spawned =
 			thread::Builder::new().name("decodex-research-setup".into()).spawn(move || {
 				let result = owned.apply(action);
 				let mut state = owned.state.lock().expect("research setup");
+
 				if action == Action::Inspect {
 					state.reading = false;
 				}
+
 				state.last_read = Some(Instant::now());
+
 				// A passive read must not overwrite a newer user action.
 				if state.revision != revision {
 					return;
 				}
+
 				state.shown.busy = None;
 				state.shown.inspected = true;
+
 				match result {
 					Ok(mut shown) => {
 						shown.inspected = true;
@@ -124,8 +130,10 @@ impl ResearchOperations {
 					Err(error) => state.shown.error = Some(error),
 				}
 			});
+
 		if let Err(error) = spawned {
 			let mut state = self.state.lock().expect("research setup");
+
 			if action == Action::Inspect {
 				state.reading = false;
 			}
@@ -147,24 +155,30 @@ impl ResearchOperations {
 			registration_directory()?
 		};
 		let mut shown = self.snapshot();
+
 		shown.installed = install::inspect(&directory, &registration)?;
+
 		let component = PluginComponent {
 			name: "decodex-research".into(),
 			marketplace: "decodex-research".into(),
 			source: directory.to_string_lossy().into_owned(),
 		};
+
 		match action {
 			Action::Install | Action::Update => {
 				shown.installed =
 					Some(install::install(&directory, &registration, &bundled_helper()?)?);
+
 				if shown.tools.is_some() {
 					shown.tools =
 						NativePlugins::for_user()?.apply(&component, PluginAction::Update)?;
 				}
 				if action == Action::Update && directory.join("extension.sock").exists() {
 					let bridge = ProBridge::new(Config::default(), &directory)?;
+
 					research_runtime()?.block_on(bridge.reload_extension())?;
 				}
+
 				shown.connection = None;
 			},
 			Action::EnableTools => {
@@ -173,13 +187,19 @@ impl ResearchOperations {
 			},
 			Action::Remove => {
 				let bridge = ProBridge::new(Config::default(), &directory)?;
+
 				research_runtime()?.block_on(bridge.remove_extension())?;
+
 				install::removal_ready(&directory)?;
+
 				let native = NativePlugins::for_user()?;
+
 				if native.apply(&component, PluginAction::Refresh)?.is_some() {
 					native.apply(&component, PluginAction::Remove)?;
 				}
+
 				install::uninstall(&directory, &registration)?;
+
 				shown.installed = None;
 				shown.tools = None;
 				shown.connection = None;
@@ -198,18 +218,22 @@ impl ResearchOperations {
 				if shown.installed.is_none() {
 					return Ok(shown);
 				}
+
 				let bridge = ProBridge::new(Config::default(), &directory)?;
+
 				shown.connection = research_runtime()?.block_on(async {
 					match action {
 						Action::Inspect => bridge.check().await,
 						Action::Connect => bridge.connect().await.map(Some),
 						Action::Disconnect => {
 							bridge.disconnect().await?;
+
 							Ok(None)
 						},
 						_ => unreachable!(),
 					}
 				})?;
+
 				if !shown.inspected && self.directory.is_none() {
 					shown.tools = NativePlugins::for_user()
 						.and_then(|host| host.apply(&component, PluginAction::Refresh))
@@ -218,54 +242,73 @@ impl ResearchOperations {
 				}
 			},
 		}
+
 		Ok(shown)
 	}
 }
 
-fn research_runtime() -> Result<tokio::runtime::Runtime, String> {
+#[derive(Default)]
+struct State {
+	shown: Snapshot,
+	reading: bool,
+	last_read: Option<Instant>,
+	revision: u64,
+}
+
+fn research_runtime() -> Result<Runtime, String> {
 	tokio::runtime::Builder::new_current_thread().enable_all().build().map_err(|e| e.to_string())
 }
 
 fn bundled_helper() -> Result<PathBuf, String> {
-	let executable = std::env::current_exe().map_err(|e| e.to_string())?;
+	let executable = env::current_exe().map_err(|e| e.to_string())?;
 	let parent = executable.parent().ok_or("App location is unavailable")?;
 	let helper = if parent.file_name().is_some_and(|name| name == "MacOS") {
 		parent.parent().ok_or("App bundle is unavailable")?.join("Helpers/decodex-pro-bridge")
 	} else {
 		parent.join("decodex-pro-bridge")
 	};
+
 	if !helper.is_file() {
 		return Err("This app build does not include the research component.".into());
 	}
+
 	Ok(helper)
 }
 
 fn registration_directory() -> Result<PathBuf, String> {
-	let home = std::env::var_os("HOME").ok_or("Home is unavailable")?;
+	let home = env::var_os("HOME").ok_or("Home is unavailable")?;
+
 	Ok(PathBuf::from(home).join("Library/Application Support/Google/Chrome/NativeMessagingHosts"))
 }
 
 fn open(target: &str, chrome: bool) -> Result<(), String> {
-	let mut command = std::process::Command::new("/usr/bin/open");
+	let mut command = Command::new("/usr/bin/open");
+
 	if chrome {
 		command.args(["-a", "Google Chrome"]);
 	}
+
 	let status = command.arg(target).status().map_err(|e| e.to_string())?;
+
 	if !status.success() {
 		return Err("The setup location could not be opened.".into());
 	}
+
 	Ok(())
 }
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::component_research::{
+		Action, Connection, ConnectionState, Installation, ResearchOperations, Snapshot,
+	};
 
 	#[test]
 	fn visiting_components_does_not_create_component_data() {
 		let root = tempfile::tempdir().unwrap();
 		let directory = root.path().join("pro-research");
 		let setup = ResearchOperations { directory: Some(directory.clone()), ..Default::default() };
+
 		assert!(setup.apply(Action::Inspect).unwrap().installed.is_none());
 		assert!(setup.apply(Action::Disconnect).unwrap().installed.is_none());
 		assert!(!directory.exists());
@@ -287,7 +330,9 @@ mod tests {
 			}),
 			..Default::default()
 		};
+
 		assert_eq!(state.status_text(), "Connected · Pro verification pending");
+
 		let blocked = Snapshot {
 			installed: state.installed.clone(),
 			connection: Some(Connection {
@@ -296,6 +341,7 @@ mod tests {
 			}),
 			..Default::default()
 		};
+
 		assert_eq!(blocked.status_text(), "Waiting for ChatGPT security verification");
 	}
 }

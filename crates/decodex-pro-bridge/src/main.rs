@@ -1,18 +1,21 @@
 //! Standalone component commands. No Main, browser or official App is started.
 
-use std::{fs, path::PathBuf, process::ExitCode, time::Duration};
+use std::{env, fs, path::PathBuf, process::ExitCode, time::Duration};
 
 use clap::{Parser, Subcommand};
-use decodex_pro_bridge::{
-	Config, Delivery, ProBridge, Project, Request, Result, install, mcp, native_host,
-};
 use futures_util as _;
 use pulldown_cmark as _;
 use serde as _;
+use serde::Serialize;
 use sha2 as _;
 use tempfile as _;
+use tokio::signal;
 use tokio_tungstenite as _;
 use url as _;
+
+use decodex_pro_bridge::{
+	Config, Delivery, ProBridge, Project, Request, Result, install, mcp, native_host,
+};
 
 #[derive(Parser)]
 #[command(about = "ChatGPT Pro research through the Decodex Chrome extension")]
@@ -21,7 +24,7 @@ struct Cli {
 	#[arg(long)]
 	state_dir: PathBuf,
 	/// Maximum answer wait; expiry preserves the request for recovery.
-	#[arg(long, default_value_t = 1800)]
+	#[arg(long, default_value_t = 1_800)]
 	wait_seconds: u64,
 	#[command(subcommand)]
 	command: Action,
@@ -105,12 +108,19 @@ enum Action {
 	},
 }
 
+fn print_json(value: &impl Serialize) -> Result<()> {
+	println!("{}", serde_json::to_string_pretty(value).map_err(|e| e.to_string())?);
+
+	Ok(())
+}
+
 #[tokio::main]
 async fn main() -> ExitCode {
 	match run(Cli::parse()).await {
 		Ok(()) => ExitCode::SUCCESS,
 		Err(error) => {
 			eprintln!("Decodex Research: {error}");
+
 			ExitCode::FAILURE
 		},
 	}
@@ -124,14 +134,16 @@ async fn run(cli: Cli) -> Result<()> {
 			return print_json(&install::install(
 				&cli.state_dir,
 				&registration_dir,
-				&std::env::current_exe().map_err(|e| e.to_string())?,
+				&env::current_exe().map_err(|e| e.to_string())?,
 			)?),
 		Action::Uninstall { registration_dir } => {
 			ProBridge::new(Config::default(), &cli.state_dir)?.remove_extension().await?;
+
 			return install::uninstall(&cli.state_dir, &registration_dir);
 		},
 		_ => {},
 	}
+
 	let config =
 		Config { answer_timeout: Duration::from_secs(cli.wait_seconds), ..Default::default() };
 	let bridge = ProBridge::new(config.clone(), &cli.state_dir)?;
@@ -170,10 +182,12 @@ async fn run(cli: Cli) -> Result<()> {
 						.map_err(|e| e.to_string())?,
 					delivery,
 				};
+
 				if detached {
 					bridge.prepare(request)?;
+
 					print_json(&mcp::start_worker(
-						&std::env::current_exe().map_err(|e| e.to_string())?,
+						&env::current_exe().map_err(|e| e.to_string())?,
 						&cli.state_dir,
 						&id,
 						&config,
@@ -189,6 +203,7 @@ async fn run(cli: Cli) -> Result<()> {
 			Action::Status { id } => print_json(&bridge.status(&id)?)?,
 			Action::Read { id, json } => {
 				let answer = bridge.read(&id)?;
+
 				if json {
 					print_json(&answer)?;
 				} else {
@@ -197,22 +212,24 @@ async fn run(cli: Cli) -> Result<()> {
 			},
 			_ => unreachable!("handled before research work"),
 		}
+
 		Ok(())
 	};
+
 	tokio::pin!(action);
+
 	tokio::select! {
 		biased;
+
 		result = &mut action => result,
-		signal = tokio::signal::ctrl_c() => {
+		signal = signal::ctrl_c() => {
 			bridge.cancel();
+
 			let result = action.await;
+
 			signal.map_err(|e| e.to_string())?;
+
 			result
 		},
 	}
-}
-
-fn print_json(value: &impl serde::Serialize) -> Result<()> {
-	println!("{}", serde_json::to_string_pretty(value).map_err(|e| e.to_string())?);
-	Ok(())
 }

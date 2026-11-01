@@ -3,7 +3,11 @@
 
 use std::{
 	collections::HashMap,
+	fs,
+	io::ErrorKind,
+	os::unix::process,
 	path::{Path, PathBuf},
+	process::Command,
 	sync::{
 		Arc, Mutex,
 		atomic::{AtomicU64, Ordering},
@@ -12,13 +16,15 @@ use std::{
 };
 
 use futures_util::{SinkExt as _, StreamExt as _};
-use serde_json::{Value, json};
+use serde_json::Value;
 use tokio::{
-	io::{AsyncRead, AsyncWrite},
+	io::{self, AsyncRead, AsyncWrite},
 	net::{UnixListener, UnixStream},
 	sync::{broadcast, mpsc, oneshot},
+	task::JoinSet,
+	time,
 };
-use tokio_tungstenite::{accept_async, tungstenite::Message};
+use tokio_tungstenite::tungstenite::Message;
 
 use crate::{Result, native_wire, store::Store};
 
@@ -26,6 +32,58 @@ use crate::{Result, native_wire, store::Store};
 pub const HOST_NAME: &str = "box.acg.decodex.research";
 /// Stable ID derived from the extension manifest's public key.
 pub const EXTENSION_ID: &str = "appokabijkobnaennkffkjldbikangai";
+
+struct SocketGuard(PathBuf);
+impl Drop for SocketGuard {
+	fn drop(&mut self) {
+		let _ = fs::remove_file(&self.0);
+	}
+}
+
+struct Hub {
+	outbound: mpsc::Sender<Value>,
+	pending: Mutex<HashMap<u64, oneshot::Sender<Value>>>,
+	events: broadcast::Sender<Value>,
+	next: AtomicU64,
+}
+impl Hub {
+	async fn request(&self, mut value: Value) -> Value {
+		let original = value["id"].clone();
+		let id = self.next.fetch_add(1, Ordering::Relaxed);
+
+		value["id"] = serde_json::json!(id);
+
+		let (send, reply) = oneshot::channel();
+
+		self.pending.lock().expect("pending native requests").insert(id, send);
+
+		let _pending = Pending(self, id);
+		let result = async {
+			self.outbound.send(value).await.map_err(|_| "Research extension disconnected")?;
+
+			time::timeout(Duration::from_secs(30), reply)
+				.await
+				.map_err(
+					|_| "Research extension command timed out; inspect the saved request before retrying",
+				)?
+				.map_err(|_| "Research extension disconnected")
+		}
+		.await;
+		let mut result =
+			result.unwrap_or_else(|message| serde_json::json!({"error":{"message":message}}));
+
+		result["id"] = original;
+
+		result
+	}
+}
+
+struct Pending<'a>(&'a Hub, u64);
+impl Drop for Pending<'_> {
+	fn drop(&mut self) {
+		self.0.pending.lock().expect("pending native requests").remove(&self.1);
+	}
+}
 
 pub(crate) fn socket_path(root: &Path) -> PathBuf {
 	root.join("extension.sock")
@@ -36,20 +94,23 @@ pub async fn serve(root: &Path, origin: &str) -> Result<()> {
 	if origin != format!("chrome-extension://{EXTENSION_ID}/") {
 		return Err("The native host only accepts the Decodex Research extension.".into());
 	}
-	serve_io(root, tokio::io::stdin(), tokio::io::stdout(), browser_session()?).await
+
+	serve_io(root, io::stdin(), io::stdout(), browser_session()?).await
 }
 
 fn browser_session() -> Result<String> {
-	let parent = std::os::unix::process::parent_id();
-	let output = std::process::Command::new("/bin/ps")
+	let parent = process::parent_id();
+	let output = Command::new("/bin/ps")
 		.args(["-p", &parent.to_string(), "-o", "lstart="])
 		.env("LC_ALL", "C")
 		.output()
 		.map_err(|e| e.to_string())?;
 	let started = String::from_utf8(output.stdout).map_err(|e| e.to_string())?;
+
 	if !output.status.success() || started.trim().is_empty() {
 		return Err("Cannot identify the Chrome process that started this research host.".into());
 	}
+
 	Ok(format!("{parent}:{}", started.trim()))
 }
 
@@ -62,15 +123,17 @@ async fn serve_io(
 	let store = Store::open(root)?;
 	let _lease = store.browser_lease()?.ok_or("Another research host is connected.")?;
 	let path = socket_path(root);
-	match std::fs::remove_file(&path) {
+
+	match fs::remove_file(&path) {
 		Ok(()) => {},
-		Err(e) if e.kind() == std::io::ErrorKind::NotFound => {},
+		Err(e) if e.kind() == ErrorKind::NotFound => {},
 		Err(e) => return Err(e.to_string()),
 	}
+
 	let listener = UnixListener::bind(&path).map_err(|e| e.to_string())?;
 	let _socket = SocketGuard(path);
 	let (outbound, mut outgoing) = mpsc::channel::<Value>(32);
-	let (events, _) = broadcast::channel(1024);
+	let (events, _) = broadcast::channel(1_024);
 	let hub = Arc::new(Hub {
 		outbound,
 		pending: Mutex::new(HashMap::new()),
@@ -82,6 +145,7 @@ async fn serve_io(
 		while let Some(value) = outgoing.recv().await {
 			native_wire::write_packet(&mut writer, &value).await.map_err(|e| e.to_string())?;
 		}
+
 		Ok(())
 	};
 	let mut reader = read;
@@ -89,10 +153,11 @@ async fn serve_io(
 	let read_loop = async move {
 		loop {
 			let value = native_wire::read_packet(&mut reader).await.map_err(|e| e.to_string())?;
+
 			if value["kind"] == "hello" {
 				input_hub
 					.outbound
-					.send(json!({"kind":"session","browserSession":browser_session}))
+					.send(serde_json::json!({"kind":"session","browserSession":browser_session}))
 					.await
 					.map_err(|e| e.to_string())?;
 			} else if let Some(id) = value["id"].as_u64() {
@@ -105,23 +170,28 @@ async fn serve_io(
 				let _ = input_hub.events.send(value);
 			}
 		}
+
 		#[allow(unreachable_code)]
 		Ok(())
 	};
 	let clients = async {
-		let mut clients = tokio::task::JoinSet::new();
+		let mut clients = JoinSet::new();
+
 		loop {
 			tokio::select! {
 				connection = listener.accept() => {
 					let (stream, _) = connection.map_err(|e| e.to_string())?;
+
 					clients.spawn(serve_client(stream, hub.clone()));
 				},
 				_ = clients.join_next(), if !clients.is_empty() => {},
 			}
 		}
+
 		#[allow(unreachable_code)]
 		Ok(())
 	};
+
 	// Extension EOF ends the host and all local observers. Saved work is not resent.
 	tokio::select! {
 		result = read_loop => result,
@@ -130,60 +200,16 @@ async fn serve_io(
 	}
 }
 
-struct SocketGuard(PathBuf);
-impl Drop for SocketGuard {
-	fn drop(&mut self) {
-		let _ = std::fs::remove_file(&self.0);
-	}
-}
-
-struct Hub {
-	outbound: mpsc::Sender<Value>,
-	pending: Mutex<HashMap<u64, oneshot::Sender<Value>>>,
-	events: broadcast::Sender<Value>,
-	next: AtomicU64,
-}
-
-struct Pending<'a>(&'a Hub, u64);
-impl Drop for Pending<'_> {
-	fn drop(&mut self) {
-		self.0.pending.lock().expect("pending native requests").remove(&self.1);
-	}
-}
-
-impl Hub {
-	async fn request(&self, mut value: Value) -> Value {
-		let original = value["id"].clone();
-		let id = self.next.fetch_add(1, Ordering::Relaxed);
-		value["id"] = json!(id);
-		let (send, reply) = oneshot::channel();
-		self.pending.lock().expect("pending native requests").insert(id, send);
-		let _pending = Pending(self, id);
-		let result = async {
-			self.outbound.send(value).await.map_err(|_| "Research extension disconnected")?;
-			tokio::time::timeout(Duration::from_secs(30), reply)
-				.await
-				.map_err(
-					|_| "Research extension command timed out; inspect the saved request before retrying",
-				)?
-				.map_err(|_| "Research extension disconnected")
-		}
-		.await;
-		let mut result = result.unwrap_or_else(|message| json!({"error":{"message":message}}));
-		result["id"] = original;
-		result
-	}
-}
-
 async fn serve_client(stream: UnixStream, hub: Arc<Hub>) -> Result<()> {
-	let socket = accept_async(stream).await.map_err(|e| e.to_string())?;
+	let socket = tokio_tungstenite::accept_async(stream).await.map_err(|e| e.to_string())?;
+	let (reply, mut replies) = mpsc::channel::<Message>(16);
 	let (mut write, mut read) = socket.split();
 	let mut events = hub.events.subscribe();
-	let (reply, mut replies) = mpsc::channel::<Message>(16);
 	// Read independently of event writes. Both sides can send multi-megabyte
 	// packets; waiting for one write before reading the other side deadlocks.
 	let read_loop = async move {
-		let mut requests = tokio::task::JoinSet::new();
+		let mut requests = JoinSet::new();
+
 		loop {
 			tokio::select! {
 				message = read.next() => {
@@ -191,6 +217,7 @@ async fn serve_client(stream: UnixStream, hub: Arc<Hub>) -> Result<()> {
 						Some(Ok(Message::Text(text))) => {
 							let value: Value = serde_json::from_str(&text).map_err(|e| e.to_string())?;
 							let (hub, reply) = (hub.clone(), reply.clone());
+
 							requests.spawn(async move {
 								let result = hub.request(value).await;
 								let _ = reply.send(Message::Text(result.to_string().into())).await;
@@ -212,13 +239,16 @@ async fn serve_client(stream: UnixStream, hub: Arc<Hub>) -> Result<()> {
 				Some(reply) = replies.recv() => write.send(reply).await.map_err(|e| e.to_string())?,
 				event = events.recv() => {
 					let value = event.map_err(|_| "Research events were lost; recover the saved request")?;
+
 					write.send(Message::Text(value.to_string().into())).await.map_err(|e| e.to_string())?;
 				},
 			}
 		}
+
 		#[allow(unreachable_code)]
 		Ok(())
 	};
+
 	tokio::select! {
 		result = read_loop => result,
 		result = write_loop => result,

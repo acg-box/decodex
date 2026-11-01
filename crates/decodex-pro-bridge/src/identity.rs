@@ -3,7 +3,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 /// Execution identity reported for one observed assistant response.
 pub struct ExecutionIdentity {
@@ -14,7 +14,6 @@ pub struct ExecutionIdentity {
 	/// Explicit response mode, when provided by ChatGPT.
 	pub mode: Option<String>,
 }
-
 impl ExecutionIdentity {
 	/// Requested models, subscription plans and the answer's text are not identity evidence.
 	pub fn is_pro(&self) -> bool {
@@ -35,7 +34,7 @@ pub(crate) struct NativeMessage {
 	pub attachments: Option<Vec<SubmittedFile>>,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize)]
 pub(crate) struct SubmittedFile {
 	pub id: String,
 	pub name: String,
@@ -51,6 +50,7 @@ pub(crate) struct ObservedData {
 
 pub(crate) fn from_response(body: &str) -> ObservedData {
 	let mut data = ObservedData::default();
+
 	if let Ok(value) = serde_json::from_str::<Value>(body) {
 		collect(&value, &mut data);
 	} else {
@@ -60,6 +60,7 @@ pub(crate) fn from_response(body: &str) -> ObservedData {
 			}
 		}
 	}
+
 	data
 }
 
@@ -75,12 +76,14 @@ fn collect(value: &Value, data: &mut ObservedData) {
 			.as_str()
 			.or(metadata["thinking_mode"].as_str())
 			.map(str::to_owned);
+
 		data.identities.push(ExecutionIdentity {
 			message_id: id.into(),
 			model: model.into(),
 			mode,
 		});
 	}
+
 	if let (Some(id), Some(role), Some(parts)) = (
 		value["id"].as_str(),
 		value["author"]["role"].as_str(),
@@ -107,6 +110,7 @@ fn collect(value: &Value, data: &mut ObservedData) {
 			},
 		});
 	}
+
 	match value {
 		Value::Object(object) =>
 			for nested in object.values() {
@@ -122,16 +126,19 @@ fn collect(value: &Value, data: &mut ObservedData) {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::identity::{self, SubmittedFile};
 
 	#[test]
 	fn actual_response_model_is_distinct_from_requested_model_and_prose() {
 		let body = r#"{"message":{"id":"answer","author":{"role":"assistant"},"metadata":{"model_slug":"gpt-5","requested_model_slug":"gpt-5-pro"},"content":{"parts":["I am Pro"]}}}"#;
-		let identities = from_response(body).identities;
+		let identities = identity::from_response(body).identities;
+
 		assert_eq!(identities.len(), 1);
 		assert!(!identities[0].is_pro());
+
 		let body = body.replace("\"model_slug\":\"gpt-5\"", "\"model_slug\":\"gpt-5-pro\"");
-		assert!(from_response(&body).identities[0].is_pro());
+
+		assert!(identity::from_response(&body).identities[0].is_pro());
 	}
 
 	#[test]
@@ -139,10 +146,11 @@ mod tests {
 		let message = r#"{"message":{"id":"answer-2","author":{"role":"assistant"},"metadata":{"model_slug":"gpt-6","thinking_mode":"pro"}}}"#;
 		let history = format!("{{\"mapping\":{{\"node\":{message}}}}}");
 		let sse = format!("data: {message}\n\ndata: [DONE]\n");
-		assert_eq!(from_response(&history), from_response(&sse));
-		assert!(from_response(&sse).identities[0].is_pro());
+
+		assert_eq!(identity::from_response(&history), identity::from_response(&sse));
+		assert!(identity::from_response(&sse).identities[0].is_pro());
 		assert!(
-			from_response(
+			identity::from_response(
 				r#"{"author":{"role":"user"},"id":"u","metadata":{"model_slug":"gpt-5-pro"}}"#
 			)
 			.identities
@@ -153,7 +161,8 @@ mod tests {
 	#[test]
 	fn raw_messages_preserve_markdown_and_do_not_promote_default_models() {
 		let body = r#"{"default_model_slug":"gpt-6-pro","data":{"messages":[{"id":"u","author":{"role":"user"},"content":{"parts":["**Research**\n\n\nExact whitespace"]}},{"id":"a","author":{"role":"assistant"},"status":"finished_successfully","content":{"parts":["```rust\nlet x = 1;\n```"]},"metadata":{"model_slug":"gpt-6"}}]}}"#;
-		let data = from_response(body);
+		let data = identity::from_response(body);
+
 		assert_eq!(data.messages.len(), 2);
 		assert_eq!(data.messages[0].text, "**Research**\n\n\nExact whitespace");
 		assert_eq!(data.messages[1].text, "```rust\nlet x = 1;\n```");
@@ -165,14 +174,17 @@ mod tests {
 	#[test]
 	fn submitted_files_stay_bound_to_their_user_message_and_missing_metadata_is_explicit() {
 		let body = r#"{"messages":[{"id":"user","author":{"role":"user"},"content":{"parts":["Question"]},"metadata":{"attachments":[{"id":"file-one","name":"source.txt","size":4914555,"mime_type":"text/plain"}]}},{"id":"other","author":{"role":"user"},"content":{"parts":["Follow up"]}}]}"#;
-		let data = from_response(body);
+		let data = identity::from_response(body);
 		let files = data.messages[0].attachments.as_ref().unwrap();
+
 		assert_eq!(
 			files,
 			&[SubmittedFile { id: "file-one".into(), name: "source.txt".into(), bytes: 4_914_555 }]
 		);
 		assert_eq!(data.messages[1].attachments, Some(vec![]));
+
 		let malformed = body.replace("\"size\":4914555,", "");
-		assert!(from_response(&malformed).messages[0].attachments.is_none());
+
+		assert!(identity::from_response(&malformed).messages[0].attachments.is_none());
 	}
 }
