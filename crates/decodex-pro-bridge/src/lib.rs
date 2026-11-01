@@ -205,6 +205,17 @@ impl ProBridge {
 		page::connection(&mut browser, Duration::ZERO).await.map(Some)
 	}
 
+	/// Reload updated extension files after idle installation. Keep its owned tabs.
+	pub async fn reload_extension(&self) -> Result<()> {
+		let store = store::Store::open(&self.root)?;
+		let _execution = store
+			.execution_lease()?
+			.ok_or("Wait for research to finish before reloading its extension.")?;
+		let mut browser = chrome::Chrome::connect(&self.root).await?;
+		browser.command("Decodex.reload", serde_json::json!({})).await?;
+		Ok(())
+	}
+
 	/// Close only the setup tab. Research records, other tabs and Chrome are retained.
 	pub async fn disconnect(&self) -> Result<()> {
 		let store = store::Store::open(&self.root)?;

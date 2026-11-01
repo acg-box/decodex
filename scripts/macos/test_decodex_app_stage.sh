@@ -18,6 +18,7 @@ info="$contents/Info.plist"
 test -d "$app_path"
 test -x "$contents/MacOS/decodex-gpui"
 test -x "$contents/Helpers/decodex"
+test -x "$contents/Helpers/decodex-pro-bridge"
 test ! -e "$contents/Helpers/decodexd"
 test -x "$contents/Frameworks/libDecodexMenuBar.dylib"
 test -s "$contents/Resources/ThirdPartyNotices/libwebrtc.txt"
@@ -51,7 +52,7 @@ test -x "$contents/MacOS/decodex-gpui"
 test "$(plutil -extract SUFeedURL raw "$info")" = 'https://github.com/acg-box/decodex/releases/latest/download/appcast.xml'
 codesign --verify --deep --strict "$contents/Frameworks/Sparkle.framework"
 test "$(find "$contents/MacOS" -type f | wc -l | tr -d ' ')" = 1
-test "$(find "$contents/Helpers" -maxdepth 1 -type f | wc -l | tr -d ' ')" = 1
+test "$(find "$contents/Helpers" -maxdepth 1 -type f | wc -l | tr -d ' ')" = 2
 test "$(find "$contents/Frameworks" -maxdepth 1 -type f | wc -l | tr -d ' ')" = 2
 
 test -n "$(plutil -extract NSMicrophoneUsageDescription raw "$info")"
@@ -66,6 +67,7 @@ test -n "$app_team"
 printf '%s\n' "$app_signing" | grep '^Authority=' >/dev/null
 for nested_code in \
   "$contents/Helpers/decodex" \
+  "$contents/Helpers/decodex-pro-bridge" \
   "$contents/Frameworks/libDecodexMenuBar.dylib" \
   "$contents/Frameworks/libdecodex_app_client_ffi.dylib"
 do

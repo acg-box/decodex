@@ -92,4 +92,6 @@ async function runChecks() {
   await rejects(() => cdp("Input.insertText", {text: "must not send"}));
   assert(created === 2 && nativeConnections === 2, "Reconnect created a tab or failed to reconnect");
   assert(storage.researchTabs.length === 1, "Owned scope was not preserved across worker reconnect");
+  const reload = await dispatch({method: "Decodex.reload", params: {}});
+  assert(reload.reloading && storage.researchTabs.length === 1, "Updating the extension lost owned tabs");
 }

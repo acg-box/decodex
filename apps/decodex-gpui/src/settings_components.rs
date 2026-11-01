@@ -238,39 +238,93 @@ impl SettingsSurface {
 
 	fn research_settings(&self, cx: &mut Context<Self>) -> Div {
 		let state = &self.components.research_shown;
-		let has_window = state.connection.is_some();
-		let controls = gpui::div()
-			.flex()
-			.items_center()
-			.gap_2()
-			.child(self.component_button(
-				"components-connect-research",
-				if has_window { "Open ChatGPT" } else { "Connect" },
-				Action::Research(ResearchAction::Connect),
-				cx,
-			))
-			.when(has_window, |controls| {
-				controls.child(self.component_button(
+		let mut controls = gpui::div().flex().items_center().gap_2();
+		let actions: Vec<_> = if state.installed.is_none() {
+			vec![("components-install-research", "Install", ResearchAction::Install)]
+		} else {
+			vec![
+				(
+					"components-connect-research",
+					if state.connection.is_some() { "Open ChatGPT" } else { "Connect" },
+					ResearchAction::Connect,
+				),
+				("components-update-research", "Update", ResearchAction::Update),
+				("components-remove-research", "Remove", ResearchAction::Remove),
+			]
+		};
+		for (id, label, action) in actions {
+			controls =
+				controls.child(self.component_button(id, label, Action::Research(action), cx));
+		}
+		let explanation = if state.installed.is_none() {
+			"Use your ChatGPT Pro subscription. Installs a local helper and Chrome extension files; no API key."
+		} else if state.connection.is_none() {
+			"In Chrome, enable Developer mode and choose Load unpacked, then select the extension folder. "
+		} else if !state.tools.as_ref().is_some_and(|p| p.enabled) {
+			"Chrome is connected. Enable native research tools for Agents. Installation sends no messages."
+		} else {
+			"Research tools are enabled. Conversations stay in their ChatGPT Project. Every answer verifies its actual Pro model."
+		};
+		let mut details = gpui::div().flex().items_center().gap_2();
+		if state.installed.is_some() {
+			for (id, label, action) in [
+				(
+					"components-research-extension",
+					"Chrome extension",
+					ResearchAction::OpenExtension,
+				),
+				("components-research-folder", "Show folder", ResearchAction::RevealExtension),
+			] {
+				details =
+					details.child(self.component_button(id, label, Action::Research(action), cx));
+			}
+			if state.connection.is_some() {
+				details = details.child(self.component_button(
 					"components-disconnect-research",
-					"Disconnect",
+					"Close setup",
 					Action::Research(ResearchAction::Disconnect),
 					cx,
-				))
-			});
-		let feedback = state.error.as_ref().map(|error| Feedback::error(error.clone())).or_else(
-			|| match state.busy {
-				Some(ResearchAction::Connect) =>
-					Some(Feedback::loading("Opening the ChatGPT setup tab…")),
-				Some(ResearchAction::Disconnect) =>
-					Some(Feedback::loading("Closing the ChatGPT setup tab…")),
+				));
+			}
+			if !state.tools.as_ref().is_some_and(|p| p.enabled) {
+				details = details.child(self.component_button(
+					"components-research-tools",
+					"Enable Agent tools",
+					Action::Research(ResearchAction::EnableTools),
+					cx,
+				));
+			}
+		}
+		let feedback = state.error.as_ref().map(|e| Feedback::error(e.clone())).or_else(|| {
+			state.busy.and_then(|a| match a {
+				ResearchAction::Inspect => None,
+				ResearchAction::Install | ResearchAction::Update =>
+					Some(Feedback::loading("Preparing research component…")),
+				ResearchAction::EnableTools =>
+					Some(Feedback::loading("Enabling native research tools…")),
+				ResearchAction::Remove =>
+					Some(Feedback::loading("Removing component; keeping results…")),
+				ResearchAction::Connect => Some(Feedback::loading("Opening ChatGPT setup…")),
 				_ => None,
-			},
-		);
-		gpui::div().debug_selector(|| "components-pro-research".into()).w_full().flex().flex_col()
-			.child(ui_theme::settings_row()
-				.child(ui_theme::settings_label("Pro Research · Experimental", format!("{}\nUses your ChatGPT subscription through the Decodex Research Chrome extension. No API key.\nAgent access requires the optional Decodex Research plugin. Each answer verifies its actual model.", state.status_text())))
-				.child(controls))
-			.child(ui_feedback::notice("components-research-feedback", "research", feedback).inline())
+			})
+		});
+		gpui::div()
+			.debug_selector(|| "components-pro-research".into())
+			.w_full()
+			.flex()
+			.flex_col()
+			.child(
+				ui_theme::settings_row()
+					.child(ui_theme::settings_label(
+						"Pro Research · Experimental",
+						format!("{}\n{explanation}", state.status_text()),
+					))
+					.child(controls),
+			)
+			.when(state.installed.is_some(), |d| d.child(details))
+			.child(
+				ui_feedback::notice("components-research-feedback", "research", feedback).inline(),
+			)
 	}
 
 	fn egm_settings(&self, cx: &mut Context<Self>) -> Div {

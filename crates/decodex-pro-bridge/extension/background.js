@@ -65,6 +65,11 @@ async function dispatch(request) {
   const p = request.params || {};
   switch (request.method) {
     case "Decodex.ping": return {extensionId: chrome.runtime.id, protocol: 1};
+    case "Decodex.reload": {
+      await saveTabs();
+      setTimeout(() => chrome.runtime.reload(), 100);
+      return {reloading: true};
+    }
     case "Target.getTargets": {
       const targets = [];
       for (const id of [...owned]) {

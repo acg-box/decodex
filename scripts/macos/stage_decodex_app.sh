@@ -61,6 +61,7 @@ cp "$RUNTIME_LOCK" "$RESOURCES/codex-runtime.lock.json"
 
 cargo +stable build --locked --release --bin decodex-gpui
 cargo +stable build --locked --release --bin decodex
+cargo +stable build --locked --release -p decodex-pro-bridge --bin decodex-pro-bridge
 cargo +stable build --locked --release -p decodex-app-client-ffi --lib
 SWIFT_BIN=$(swift build --package-path "$MENU_BAR_PACKAGE" --force-resolved-versions -c release --product DecodexMenuBar --show-bin-path)
 swift build --package-path "$MENU_BAR_PACKAGE" --force-resolved-versions -c release --product DecodexMenuBar
@@ -68,6 +69,7 @@ swift build --package-path "$MENU_BAR_PACKAGE" --force-resolved-versions -c rele
 cp "$ROOT/apps/decodex-gpui/packaging/Info.plist" "$CONTENTS/Info.plist"
 cp "$BUILD_ROOT/release/decodex-gpui" "$MACOS/decodex-gpui"
 cp "$BUILD_ROOT/release/decodex" "$HELPERS/decodex"
+cp "$BUILD_ROOT/release/decodex-pro-bridge" "$HELPERS/decodex-pro-bridge"
 cp "$BUILD_ROOT/release/$NATIVE_CLIENT_LIBRARY" "$FRAMEWORKS/$NATIVE_CLIENT_LIBRARY"
 cp "$SWIFT_BIN/$MENU_BAR_LIBRARY" "$FRAMEWORKS/$MENU_BAR_LIBRARY"
 SPARKLE_FRAMEWORK=$(find "$MENU_BAR_PACKAGE/.build/artifacts" -type d -path '*/macos-arm64_x86_64/Sparkle.framework' -print -quit)
@@ -105,6 +107,7 @@ plutil -insert DecodexIconBuildKind -string native-liquid-glass "$CONTENTS/Info.
 chmod 755 \
 	"$MACOS/decodex-gpui" \
 	"$HELPERS/decodex" \
+	"$HELPERS/decodex-pro-bridge" \
 	"$FRAMEWORKS/$NATIVE_CLIENT_LIBRARY" \
 	"$FRAMEWORKS/$MENU_BAR_LIBRARY"
 
@@ -118,6 +121,8 @@ python3 "$ROOT/scripts/macos/verify_decodex_bundle_contracts.py" \
 codesign --force --options runtime --timestamp=none --sign "$SIGN_IDENTITY" \
 	--identifier box.acg.decodex.cli "$HELPERS/decodex"
 codesign --force --options runtime --timestamp=none --sign "$SIGN_IDENTITY" \
+	--identifier box.acg.decodex.research "$HELPERS/decodex-pro-bridge"
+codesign --force --options runtime --timestamp=none --sign "$SIGN_IDENTITY" \
 	--identifier box.acg.decodex.native-client "$FRAMEWORKS/$NATIVE_CLIENT_LIBRARY"
 codesign --force --options runtime --timestamp=none --sign "$SIGN_IDENTITY" \
 	--identifier box.acg.decodex.menu-bar "$FRAMEWORKS/$MENU_BAR_LIBRARY"
@@ -125,6 +130,7 @@ codesign --force --options runtime --timestamp=none --sign "$SIGN_IDENTITY" \
     --entitlements "$ROOT/apps/decodex-gpui/packaging/Decodex.entitlements" "$APP"
 for signed_path in \
 	"$HELPERS/decodex" \
+	"$HELPERS/decodex-pro-bridge" \
 	"$FRAMEWORKS/$NATIVE_CLIENT_LIBRARY" \
 	"$FRAMEWORKS/$MENU_BAR_LIBRARY"
 do
@@ -143,6 +149,7 @@ test -s "$RESOURCES/Assets.car"
 test -f "$RESOURCES/StatusBarIcon.png"
 test ! -e "$CONTENTS/Library/LoginItems"
 test -x "$HELPERS/decodex"
+test -x "$HELPERS/decodex-pro-bridge"
 test -x "$FRAMEWORKS/$NATIVE_CLIENT_LIBRARY"
 test -x "$FRAMEWORKS/$MENU_BAR_LIBRARY"
 
