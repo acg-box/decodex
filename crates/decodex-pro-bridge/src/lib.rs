@@ -71,7 +71,7 @@ pub struct Connection {
 pub struct Request {
 	/// Idempotency key, using 1 to 64 ASCII letters, digits, or hyphens.
 	pub id: String,
-	/// Exact question to send to ChatGPT, preceded by a component request marker.
+	/// Original question, retained verbatim even when delivered inside an attachment.
 	pub prompt: String,
 	/// Completed request in this store whose ChatGPT conversation will continue.
 	pub previous: Option<String>,
@@ -159,7 +159,8 @@ pub struct Receipt {
 	pub execution: Option<ExecutionIdentity>,
 	/// Exact matching user message identity.
 	pub user_message_id: Option<String>,
-	/// Whether the full input matched verbatim or through declared Markdown encoding.
+	/// Whether message text matched verbatim or through declared Markdown encoding.
+	/// Attachment integrity and submitted-file identity are recorded separately.
 	pub input_binding: Option<String>,
 	/// ChatGPT Project that owns this research conversation.
 	pub project_url: Option<String>,
