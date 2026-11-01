@@ -209,6 +209,9 @@ async fn execute(
 		if let Some(failure) = &browser.submission_failure {
 			return Err(format!("{failure} Resume this saved request; no input will be resent."));
 		}
+		if let Some(failure) = &browser.resume_failure {
+			return Err(format!("{failure} The saved request is retained and will not be resent."));
+		}
 		if Instant::now() >= deadline {
 			let reason = if record.receipt.phase == Phase::Sending {
 				"Send could not be confirmed. The request remains fenced and will not be resent."

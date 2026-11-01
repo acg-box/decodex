@@ -24,6 +24,7 @@ pub(crate) struct Chrome {
 	finished: BTreeSet<String>,
 	submissions: BTreeSet<String>,
 	pub submission_failure: Option<String>,
+	pub resume_failure: Option<String>,
 	pub identities: Vec<ExecutionIdentity>,
 	pub messages: BTreeMap<String, crate::identity::NativeMessage>,
 }
@@ -45,6 +46,7 @@ impl Chrome {
 			finished: BTreeSet::new(),
 			submissions: BTreeSet::new(),
 			submission_failure: None,
+			resume_failure: None,
 			identities: Vec::new(),
 			messages: BTreeMap::new(),
 		};
@@ -117,6 +119,14 @@ impl Chrome {
 				}
 			},
 			Some("Network.responseReceived") => {
+				if let Some(status) = params["response"]["status"].as_f64().filter(|s| *s >= 400.)
+					&& params["response"]["url"].as_str().is_some_and(|url| {
+						conversation_endpoint(url, None) && url.ends_with("/conversation/resume")
+					}) {
+					self.resume_failure = Some(format!(
+						"ChatGPT response-stream recovery returned HTTP {status:.0}."
+					));
+				}
 				if self.submissions.contains(id)
 					&& let Some(status) =
 						params["response"]["status"].as_f64().filter(|s| *s >= 400.)
@@ -194,6 +204,7 @@ impl Chrome {
 		self.messages.clear();
 		self.submissions.clear();
 		self.submission_failure = None;
+		self.resume_failure = None;
 		self.command("Page.enable", json!({})).await?;
 		self.command("Runtime.enable", json!({})).await?;
 		// Retain the entire submitted body for input identity, including long research
@@ -372,6 +383,10 @@ mod tests {
 			));
 			assert!(browser.submission_failure.is_none(), "{path} is not a new submission");
 		}
+		assert_eq!(
+			browser.resume_failure.as_deref(),
+			Some("ChatGPT response-stream recovery returned HTTP 404.")
+		);
 		browser.event(&event("Network.requestWillBeSent", json!({"requestId":"own","request":{"method":"POST","url":"https://chatgpt.com/backend-api/f/conversation"}})));
 		browser.event(&event("Network.responseReceived", json!({"requestId":"own","response":{"status":413,"url":"https://chatgpt.com/backend-api/f/conversation","mimeType":"text/html"}})));
 		assert_eq!(
