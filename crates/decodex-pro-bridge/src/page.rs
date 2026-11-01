@@ -272,11 +272,47 @@ pub(crate) async fn fill(browser: &mut Chrome, material: &Material) -> Result<()
 	let deadline = Instant::now() + std::time::Duration::from_secs(15);
 	while browser.evaluate(&format!(r#"(()=>{{ {CONTROLS} return visible(send)&&!send.disabled&&send.getAttribute('aria-disabled')!=='true'; }})()"#)).await? != true {
 		if Instant::now() >= deadline {
-			return Err("ChatGPT has not enabled Send. No message was sent; resume this request after its preparation finishes.".into());
+			return Err(match send_block_reason(browser).await? {
+				Some(reason) => format!("ChatGPT disabled Send: {reason}. No message was sent."),
+				None => "ChatGPT has not enabled Send for the verified draft. No message was sent. Inspect the research tab before resuming.".into(),
+			});
 		}
 		sleep(std::time::Duration::from_millis(100)).await;
 	}
 	Ok(())
+}
+
+async fn send_block_reason(browser: &mut Chrome) -> Result<Option<String>> {
+	let point = browser
+		.evaluate(&format!(
+			r#"(()=>{{ {CONTROLS}
+        if(!visible(send))return null;
+        const r=send.getBoundingClientRect();return {{x:r.x+r.width/2,y:r.y+r.height/2}};
+    }})()"#
+		))
+		.await?;
+	if point.is_null() {
+		return Ok(None);
+	}
+	// Read the page's own disabled-control explanation. Do not remove aria-disabled
+	// or force Send, and do not infer a model window from the editor's estimate.
+	browser
+		.command(
+			"Input.dispatchMouseEvent",
+			json!({"type":"mouseMoved","x":point["x"],"y":point["y"],"button":"none","buttons":0}),
+		)
+		.await?;
+	sleep(std::time::Duration::from_millis(350)).await;
+	let reason = browser
+		.evaluate(
+			r#"(()=>{
+        const reasons=[...new Set(Array.from(document.querySelectorAll('[role="tooltip"]'))
+          .filter(e=>e.getClientRects().length>0).map(e=>e.innerText.trim()).filter(Boolean))];
+        return reasons.length===1?reasons[0]:null;
+    })()"#,
+		)
+		.await?;
+	Ok(reason.as_str().map(str::to_owned))
 }
 
 pub(crate) async fn send(browser: &mut Chrome) -> Result<bool> {

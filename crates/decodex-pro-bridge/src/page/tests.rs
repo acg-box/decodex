@@ -1,5 +1,53 @@
 use super::conversation_url;
 
+#[tokio::test]
+async fn disabled_send_reports_the_page_reason_without_clicking() {
+	use futures_util::{SinkExt as _, StreamExt as _};
+	use serde_json::{Value, json};
+	use tokio_tungstenite::tungstenite::Message;
+	let root = tempfile::tempdir().unwrap();
+	let listener =
+		tokio::net::UnixListener::bind(crate::native_host::socket_path(root.path())).unwrap();
+	let server = tokio::spawn(async move {
+		let (stream, _) = listener.accept().await.unwrap();
+		let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
+		let mut moves = 0;
+		while let Some(Ok(Message::Text(text))) = socket.next().await {
+			let request: Value = serde_json::from_str(&text).unwrap();
+			let result = match request["method"].as_str().unwrap() {
+				"Decodex.ping" =>
+					json!({"protocol":1,"extensionId":crate::native_host::EXTENSION_ID}),
+				"Runtime.evaluate" => {
+					let point = request["params"]["expression"]
+						.as_str()
+						.unwrap()
+						.contains("getBoundingClientRect");
+					json!({"result":{"value":if point {json!({"x":25,"y":35})}else{json!("Message is too long")}}})
+				},
+				"Input.dispatchMouseEvent" => {
+					assert_eq!(request["params"]["type"], "mouseMoved");
+					assert_eq!(request["params"]["buttons"], 0);
+					moves += 1;
+					json!({})
+				},
+				other => panic!("Unexpected browser action: {other}"),
+			};
+			socket
+				.send(Message::Text(json!({"id":request["id"],"result":result}).to_string().into()))
+				.await
+				.unwrap();
+		}
+		assert_eq!(moves, 1);
+	});
+	let mut browser = super::Chrome::connect(root.path()).await.unwrap();
+	assert_eq!(
+		super::send_block_reason(&mut browser).await.unwrap().as_deref(),
+		Some("Message is too long")
+	);
+	drop(browser);
+	server.await.unwrap();
+}
+
 #[test]
 fn declared_markdown_user_text_decodes_the_entire_input_and_keeps_link_destinations() {
 	let original = "[Decodex Pro request: binding]\n\nUse [Reference](https://example.com/).\nKeep every line.";
