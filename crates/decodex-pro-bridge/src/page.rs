@@ -57,11 +57,12 @@ pub(crate) async fn connection(
 	let deadline = Instant::now() + wait;
 	loop {
 		let state = browser.evaluate(&format!(r#"(()=>{{ {CONTROLS}
-            const ready=visible(editor)&&visible(model)&&!model.disabled&&model.getAttribute('aria-disabled')!=='true';
+            const login=buttons.some(b=>visible(b)&&/^(log in|sign in)$/i.test(b.innerText.trim()));
+            const ready=visible(editor)&&!login;
             const verification=!ready&&(visible(document.querySelector('#challenge-form,iframe[src*="challenges.cloudflare.com"]'))||
               (document.title==='Just a moment...'&&(document.body?.innerText??'').includes('Cloudflare')));
             return {{ready,verification,model:visible(model)?model.innerText:null,
-                login:buttons.some(b=>visible(b)&&/^(log in|sign in)$/i.test(b.innerText.trim()))}};
+                login}};
         }})()"#)).await?;
 		if state["ready"] == true {
 			return Ok(Connection {
@@ -94,9 +95,9 @@ pub(crate) async fn ready(browser: &mut Chrome) -> Result<()> {
 		ConnectionState::SignInRequired =>
 			Err("Sign in to ChatGPT in the research tab, then resume this request."
 				.into()),
-		ConnectionState::VerificationRequired => Err("ChatGPT requires a security check in the research browser. Research is waiting; no message was sent.".into()),
+		ConnectionState::VerificationRequired => Err("ChatGPT requires a security check in the research tab. Complete it, then resume this request.".into()),
 		ConnectionState::AttentionRequired =>
-			Err("ChatGPT needs attention in the research browser. No message was sent.".into()),
+			Err("ChatGPT needs attention in the research tab. Open it, then resume this request.".into()),
 	}
 }
 
@@ -217,6 +218,26 @@ async fn click(browser: &mut Chrome, point: &Value) -> Result<()> {
 	Ok(())
 }
 
+// Read both saved drafts and newly inserted text through the same DOM rules.
+// innerText adds presentation line breaks that are not part of the input.
+async fn composer_text(browser: &mut Chrome, focus: bool) -> Result<String> {
+	let focus = if focus { "editor.focus();" } else { "" };
+	let value = browser.evaluate(&format!(r#"(()=>{{ {CONTROLS}
+        if(!visible(editor))throw Error('ChatGPT composer unavailable');
+        {focus}
+        const block=n=>n?.nodeType===1&&/^(P|DIV)$/.test(n.tagName);
+        const read=n=>{{
+          if(n.nodeType===3)return n.nodeValue??'';
+          if(n.nodeType!==1)return '';
+          if(n.tagName==='BR')return n.classList.contains('ProseMirror-trailingBreak')?'':'\n';
+          if(block(n)&&n.childNodes.length===1&&n.firstChild.nodeName==='BR')return '';
+          return Array.from(n.childNodes).map((c,i,all)=>(i>0&&(block(c)||block(all[i-1]))?'\n':'')+read(c)).join('');
+        }};
+        return read(editor);
+    }})()"#)).await?;
+	value.as_str().map(str::to_owned).ok_or_else(|| "ChatGPT composer has no text.".into())
+}
+
 pub(crate) async fn fill(browser: &mut Chrome, material: &Material) -> Result<()> {
 	let bytes = std::fs::read(&material.path).map_err(|e| e.to_string())?;
 	if bytes.len() != material.bytes || crate::store::digest(&bytes) != material.sha256 {
@@ -224,16 +245,9 @@ pub(crate) async fn fill(browser: &mut Chrome, material: &Material) -> Result<()
 	}
 	let text = String::from_utf8(bytes).map_err(|e| e.to_string())?;
 	let text = text.trim_end_matches('\n');
-	let draft = browser
-		.evaluate(&format!(
-			r#"(()=>{{ {CONTROLS}
-        if(!visible(editor))throw Error('ChatGPT composer unavailable');
-        editor.focus();return editor.innerText;
-    }})()"#
-		))
-		.await?;
+	let draft = composer_text(browser, true).await?;
 	if let Some(draft) =
-		draft.as_str().filter(|draft| !draft.trim().is_empty() && !text.starts_with(*draft))
+		Some(draft.as_str()).filter(|draft| !draft.trim().is_empty() && !text.starts_with(*draft))
 	{
 		return Err(format!(
 			"The owned composer has a different draft ({} non-whitespace characters). No message was sent.",
@@ -245,39 +259,38 @@ pub(crate) async fn fill(browser: &mut Chrome, material: &Material) -> Result<()
 	browser.command("Input.dispatchKeyEvent", json!({"type":"keyDown","key":"a","code":"KeyA","modifiers":if cfg!(target_os="macos"){4}else{2},"windowsVirtualKeyCode":65})).await?;
 	browser.command("Input.dispatchKeyEvent", json!({"type":"keyUp","key":"a","code":"KeyA","modifiers":if cfg!(target_os="macos"){4}else{2},"windowsVirtualKeyCode":65})).await?;
 	browser.command("Input.insertText", json!({"text":text})).await?;
-	let prepared = browser.evaluate(&format!(r#"(()=>{{ {CONTROLS}
-        const block=n=>n?.nodeType===1&&/^(P|DIV)$/.test(n.tagName);
-        const read=n=>{{
-          if(n.nodeType===3)return n.nodeValue??'';
-          if(n.nodeType!==1)return '';
-          if(n.tagName==='BR')return n.classList.contains('ProseMirror-trailingBreak')?'':'\n';
-          if(block(n)&&n.childNodes.length===1&&n.firstChild.nodeName==='BR')return '';
-          return Array.from(n.childNodes).map((c,i,all)=>(i>0&&(block(c)||block(all[i-1]))?'\n':'')+read(c)).join('');
-        }};
-        return {{text:editor?read(editor):'',ready:visible(send)&&!send.disabled}};
-    }})()"#)).await?;
-	if prepared["text"].as_str().map(|s| crate::store::digest(s.trim().as_bytes())).as_deref()
-		!= Some(material.normalized_sha256.as_str())
-		|| prepared["ready"] != true
-	{
+	let prepared = composer_text(browser, false).await?;
+	if crate::store::digest(prepared.trim().as_bytes()) != material.normalized_sha256 {
 		return Err(format!(
-			"The complete composer text could not be verified (expected {} bytes, observed {}; send ready: {}). No message was sent.",
+			"The complete composer text could not be verified (expected {} bytes, observed {}). No message was sent.",
 			text.len(),
-			prepared["text"].as_str().map_or(0, str::len),
-			prepared["ready"]
+			prepared.len()
 		));
+	}
+	// ChatGPT can prepare a long message after its editor has accepted the text.
+	// Keep the request Prepared until its ordinary Send control is enabled.
+	let deadline = Instant::now() + std::time::Duration::from_secs(15);
+	while browser.evaluate(&format!(r#"(()=>{{ {CONTROLS} return visible(send)&&!send.disabled&&send.getAttribute('aria-disabled')!=='true'; }})()"#)).await? != true {
+		if Instant::now() >= deadline {
+			return Err("ChatGPT has not enabled Send. No message was sent; resume this request after its preparation finishes.".into());
+		}
+		sleep(std::time::Duration::from_millis(100)).await;
 	}
 	Ok(())
 }
 
-pub(crate) async fn send(browser: &mut Chrome) -> Result<()> {
+pub(crate) async fn send(browser: &mut Chrome) -> Result<bool> {
 	// Use the rendered button's normal click/submit handler. Background pointer
 	// coordinates can become stale when composer focus changes its layout.
-	browser.evaluate(&format!(r#"(()=>{{ {CONTROLS}
-        if(!visible(send)||send.disabled||send.getAttribute('aria-disabled')==='true')throw Error('Send unavailable');
+	browser
+		.evaluate(&format!(
+			r#"(()=>{{ {CONTROLS}
+        if(!visible(send)||send.disabled||send.getAttribute('aria-disabled')==='true')return false;
         send.click();return true;
-    }})()"#)).await?;
-	Ok(())
+    }})()"#
+		))
+		.await
+		.map(|sent| sent == true)
 }
 
 pub(crate) async fn observe(browser: &mut Chrome) -> Result<Observation> {

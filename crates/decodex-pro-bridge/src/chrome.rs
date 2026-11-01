@@ -22,6 +22,8 @@ pub(crate) struct Chrome {
 	conversation_url: Option<String>,
 	responses: BTreeSet<String>,
 	finished: BTreeSet<String>,
+	submissions: BTreeSet<String>,
+	pub submission_failure: Option<String>,
 	pub identities: Vec<ExecutionIdentity>,
 	pub messages: BTreeMap<String, crate::identity::NativeMessage>,
 }
@@ -41,6 +43,8 @@ impl Chrome {
 			conversation_url: None,
 			responses: BTreeSet::new(),
 			finished: BTreeSet::new(),
+			submissions: BTreeSet::new(),
+			submission_failure: None,
 			identities: Vec::new(),
 			messages: BTreeMap::new(),
 		};
@@ -60,11 +64,11 @@ impl Chrome {
 		if let Some(session) = &self.session {
 			request["sessionId"] = json!(session);
 		}
-		self.socket
-			.send(Message::Text(request.to_string().into()))
-			.await
-			.map_err(|e| format!("Chrome disconnected: {e}"))?;
 		let response = async {
+			self.socket
+				.send(Message::Text(request.to_string().into()))
+				.await
+				.map_err(|e| format!("Chrome disconnected: {e}"))?;
 			loop {
 				let message = self
 					.socket
@@ -101,6 +105,7 @@ impl Chrome {
 						conversation_endpoint(url, self.conversation_url.as_deref())
 					}) =>
 			{
+				self.submissions.insert(id.into());
 				if let Some(body) = params["request"]["postData"].as_str() {
 					// Observe only the user message the page actually submitted. Requested
 					// models and assistant context in a request never prove execution identity.
@@ -113,15 +118,33 @@ impl Chrome {
 					}
 				}
 			},
-			Some("Network.responseReceived")
-				if conversation_response(&params["response"], self.conversation_url.as_deref()) =>
-			{
-				self.responses.insert(id.into());
+			Some("Network.responseReceived") => {
+				if self.submissions.contains(id)
+					&& let Some(status) =
+						params["response"]["status"].as_f64().filter(|s| *s >= 400.)
+				{
+					self.submission_failure =
+						Some(format!("ChatGPT returned HTTP {status:.0} for this submission."));
+				}
+				if conversation_response(&params["response"], self.conversation_url.as_deref()) {
+					self.responses.insert(id.into());
+				}
 			},
-			Some("Network.loadingFinished") if self.responses.contains(id) => {
-				self.finished.insert(id.into());
+			Some("Network.loadingFinished") => {
+				self.submissions.remove(id);
+				if self.responses.contains(id) {
+					self.finished.insert(id.into());
+				}
 			},
 			Some("Network.loadingFailed") => {
+				if self.submissions.remove(id) && params["canceled"] != true {
+					self.submission_failure.get_or_insert_with(|| {
+						format!(
+							"ChatGPT submission transport failed: {}.",
+							params["errorText"].as_str().unwrap_or("connection interrupted")
+						)
+					});
+				}
 				self.responses.remove(id);
 				self.finished.remove(id);
 			},
@@ -171,6 +194,8 @@ impl Chrome {
 		self.finished.clear();
 		self.identities.clear();
 		self.messages.clear();
+		self.submissions.clear();
+		self.submission_failure = None;
 		self.command("Page.enable", json!({})).await?;
 		self.command("Runtime.enable", json!({})).await?;
 		// Retain the entire submitted body for input identity, including long research
@@ -299,6 +324,57 @@ fn conversation_endpoint(raw: &str, owned: Option<&str>) -> bool {
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[tokio::test]
+	async fn submission_failures_keep_the_network_cause_and_ignore_unrelated_traffic() {
+		let root = tempfile::tempdir().unwrap();
+		let listener =
+			tokio::net::UnixListener::bind(crate::native_host::socket_path(root.path())).unwrap();
+		let server = tokio::spawn(async move {
+			let (stream, _) = listener.accept().await.unwrap();
+			let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
+			let Message::Text(request) = socket.next().await.unwrap().unwrap() else {
+				panic!("Missing request")
+			};
+			let request: Value = serde_json::from_str(&request).unwrap();
+			socket.send(Message::Text(json!({"id":request["id"],"result":{"protocol":1,"extensionId":crate::native_host::EXTENSION_ID}}).to_string().into())).await.unwrap();
+		});
+		let mut browser = Chrome::connect(root.path()).await.unwrap();
+		browser.session = Some("owned".into());
+		let event = |method: &str, params: Value| json!({"sessionId":"owned","method":method,"params":params});
+		browser.event(&event(
+			"Network.loadingFailed",
+			json!({"requestId":"unrelated","errorText":"net::ERR_FAILED"}),
+		));
+		assert_eq!(browser.submission_failure, None);
+		browser.event(&json!({"sessionId":"another-tab","method":"Network.requestWillBeSent","params":{"requestId":"foreign","request":{"method":"POST","url":"https://chatgpt.com/backend-api/f/conversation"}}}));
+		assert!(browser.submissions.is_empty());
+		browser.event(&event("Network.requestWillBeSent", json!({"requestId":"own","request":{"method":"POST","url":"https://chatgpt.com/backend-api/f/conversation"}})));
+		browser.event(&event("Network.responseReceived", json!({"requestId":"own","response":{"status":413,"url":"https://chatgpt.com/backend-api/f/conversation","mimeType":"text/html"}})));
+		assert_eq!(
+			browser.submission_failure.as_deref(),
+			Some("ChatGPT returned HTTP 413 for this submission.")
+		);
+		browser.event(&event(
+			"Network.loadingFailed",
+			json!({"requestId":"own","errorText":"net::ERR_FAILED"}),
+		));
+		assert_eq!(
+			browser.submission_failure.as_deref(),
+			Some("ChatGPT returned HTTP 413 for this submission.")
+		);
+		browser.submission_failure = None;
+		browser.event(&event("Network.requestWillBeSent", json!({"requestId":"next","request":{"method":"POST","url":"https://chatgpt.com/backend-api/f/conversation"}})));
+		browser.event(&event(
+			"Network.loadingFailed",
+			json!({"requestId":"next","errorText":"net::ERR_FAILED"}),
+		));
+		assert_eq!(
+			browser.submission_failure.as_deref(),
+			Some("ChatGPT submission transport failed: net::ERR_FAILED.")
+		);
+		server.await.unwrap();
+	}
 
 	#[tokio::test]
 	async fn retry_navigates_the_owned_projects_view_back_to_the_requested_page() {

@@ -51,7 +51,7 @@ pub enum ConnectionState {
 	VerificationRequired,
 	/// A provider challenge or changed page requires the user's attention.
 	AttentionRequired,
-	/// ChatGPT's composer and model controls are available.
+	/// ChatGPT's signed-in composer is available. Model selection is checked per request.
 	Connected,
 }
 

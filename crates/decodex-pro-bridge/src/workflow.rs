@@ -149,7 +149,12 @@ async fn execute(
 		record.receipt.phase = Phase::Sending;
 		record.receipt.last_error = None;
 		store.save(record)?;
-		page::send(browser).await?;
+		if !page::send(browser).await? {
+			// The page confirmed that no click ran. Transport errors remain Sending.
+			record.receipt.phase = Phase::Prepared;
+			store.save(record)?;
+			return Err("ChatGPT disabled Send before submission. No message was sent; resume this request.".into());
+		}
 	}
 	let deadline = Instant::now() + bridge.config.answer_timeout;
 	let mut previous_answer = None;
@@ -199,6 +204,16 @@ async fn execute(
 		}
 		if complete {
 			return Ok(());
+		}
+		if observed.notices.iter().any(|notice| notice.contains("Resume stream unavailable")) {
+			return Err("ChatGPT could not resume its response stream. The saved request is retained and will not be resent.".into());
+		}
+		if record.receipt.phase == Phase::Sending
+			&& let Some(failure) = &browser.submission_failure
+		{
+			return Err(format!(
+				"{failure} Submission is unconfirmed. Resume this request; it will not be resent."
+			));
 		}
 		if Instant::now() >= deadline {
 			let reason = if record.receipt.phase == Phase::Sending {
