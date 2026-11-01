@@ -11,7 +11,7 @@ const storage = {};
 const frames = [];
 let created = 0, nativeConnections = 0, commands = 0, pendingReply;
 var chrome = {
-  storage: {session: {get: async () => storage, set: async value => Object.assign(storage, value)}},
+  storage: {local: {get: async () => storage, set: async value => Object.assign(storage, value)}},
   runtime: {
     id: "fixture",
     onInstalled: event("installed"), onStartup: event("startup"),
@@ -43,6 +43,7 @@ var chrome = {
 async function runChecks() {
   const assert = (ok, message) => { if (!ok) throw Error(message); };
   const rejects = async action => { try { await action(); } catch { return; } throw Error("Unsafe command accepted"); };
+  receive({kind: "session", browserSession: "fixture-browser"});
   await ready;
   await rejects(() => dispatch({method: "Target.attachToTarget", params: {targetId: "1"}}));
   assert((await dispatch({method: "Target.getTargets"})).targetInfos.length === 0, "Unrelated tab leaked");
@@ -85,6 +86,8 @@ async function runChecks() {
   for (let tick = 0; tick < 50 && !pendingReply; tick++) await Promise.resolve();
   assert(pendingReply, "Fixture did not start pending command");
   callbacks.disconnect(); connect();
+  receive({kind: "session", browserSession: "fixture-browser"});
+  frames.length = 0;
   pendingReply({late: true});
   for (let tick = 0; tick < 50; tick++) await Promise.resolve();
   assert(frames.length === 0, "Old host response leaked into reconnected host");
@@ -94,4 +97,12 @@ async function runChecks() {
   assert(storage.researchTabs.length === 1, "Owned scope was not preserved across worker reconnect");
   const reload = await dispatch({method: "Decodex.reload", params: {}});
   assert(reload.reloading && storage.researchTabs.length === 1, "Updating the extension lost owned tabs");
+  browserSession = undefined; owned.clear(); groups.clear();
+  await restoreSession("fixture-browser");
+  assert((await dispatch({method: "Target.getTargets"})).targetInfos[0]?.targetId === targetId && groups.get(1) === groupId,
+    "Reloading the extension lost its owned tab or group");
+  await restoreSession("another-browser-process");
+  assert((await dispatch({method: "Target.getTargets"})).targetInfos.length === 0,
+    "A browser restart adopted stale tab IDs");
+  await rejects(() => dispatch({method: "Target.attachToTarget", params: {targetId}}));
 }

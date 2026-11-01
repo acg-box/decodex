@@ -2,6 +2,65 @@ use super::*;
 use tokio::io::{duplex, split};
 
 #[tokio::test]
+async fn large_browser_events_do_not_block_an_incoming_long_prompt() {
+	let root = tempfile::tempdir().unwrap();
+	let (native, extension) = duplex(8192);
+	let (read, write) = split(native);
+	let directory = root.path().to_owned();
+	let host =
+		tokio::spawn(
+			async move { serve_io(&directory, read, write, "fixture-browser".into()).await },
+		);
+	while !socket_path(root.path()).exists() {
+		tokio::task::yield_now().await;
+	}
+	let (mut client, _) = tokio_tungstenite::client_async(
+		"ws://localhost/research",
+		UnixStream::connect(socket_path(root.path())).await.unwrap(),
+	)
+	.await
+	.unwrap();
+	let (mut read, mut write) = split(extension);
+	let text = "context ".repeat(300_000);
+	native_wire::write_packet(
+		&mut write,
+		&json!({"sessionId":"owned","method":"Network.requestWillBeSent","params":{"text":text}}),
+	)
+	.await
+	.unwrap();
+	// The browser event exceeds the Unix socket buffer. The client deliberately
+	// sends its next large command before reading that event.
+	tokio::time::sleep(Duration::from_millis(20)).await;
+	tokio::time::timeout(
+		Duration::from_secs(2),
+		client.send(Message::Text(
+			json!({"id":1,"method":"Input.insertText","sessionId":"owned","params":{"text":text}})
+				.to_string()
+				.into(),
+		)),
+	)
+	.await
+	.expect("A pending browser event must not deadlock a large outgoing prompt")
+	.unwrap();
+	let request = native_wire::read_packet(&mut read).await.unwrap();
+	assert_eq!(request["params"]["text"], text);
+	let Message::Text(event) = client.next().await.unwrap().unwrap() else {
+		panic!("Missing event")
+	};
+	assert_eq!(serde_json::from_str::<Value>(&event).unwrap()["params"]["text"], text);
+	native_wire::write_packet(&mut write, &json!({"id":request["id"],"result":true}))
+		.await
+		.unwrap();
+	let Message::Text(reply) = client.next().await.unwrap().unwrap() else {
+		panic!("Missing reply")
+	};
+	assert_eq!(serde_json::from_str::<Value>(&reply).unwrap()["result"], true);
+	drop(write);
+	drop(read);
+	assert!(host.await.unwrap().is_err());
+}
+
+#[tokio::test]
 async fn local_clients_share_one_native_connection_and_recover_after_host_exit() {
 	let root = tempfile::tempdir().unwrap();
 	let path = socket_path(root.path());
@@ -9,7 +68,9 @@ async fn local_clients_share_one_native_connection_and_recover_after_host_exit()
 		let (native, extension) = duplex(8192);
 		let (read, write) = split(native);
 		let directory = root.path().to_owned();
-		let host = tokio::spawn(async move { serve_io(&directory, read, write).await });
+		let host = tokio::spawn(async move {
+			serve_io(&directory, read, write, "fixture-browser-session".into()).await
+		});
 		let deadline = tokio::time::Instant::now() + Duration::from_secs(3);
 		while !path.exists() {
 			assert!(tokio::time::Instant::now() < deadline);
@@ -27,6 +88,10 @@ async fn local_clients_share_one_native_connection_and_recover_after_host_exit()
 		)
 		.await
 		.unwrap();
+		let (mut read, mut write) = split(extension);
+		native_wire::write_packet(&mut write, &json!({"kind":"hello"})).await.unwrap();
+		let session = native_wire::read_packet(&mut read).await.unwrap();
+		assert_eq!(session, json!({"kind":"session","browserSession":"fixture-browser-session"}));
 		first
 			.send(Message::Text(json!({"id":1,"method":"first"}).to_string().into()))
 			.await
@@ -35,7 +100,6 @@ async fn local_clients_share_one_native_connection_and_recover_after_host_exit()
 			.send(Message::Text(json!({"id":1,"method":"second"}).to_string().into()))
 			.await
 			.unwrap();
-		let (mut read, mut write) = split(extension);
 		let one = native_wire::read_packet(&mut read).await.unwrap();
 		let two = native_wire::read_packet(&mut read).await.unwrap();
 		assert_ne!(one["id"], two["id"]);

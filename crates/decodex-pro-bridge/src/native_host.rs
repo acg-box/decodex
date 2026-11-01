@@ -36,13 +36,28 @@ pub async fn serve(root: &Path, origin: &str) -> Result<()> {
 	if origin != format!("chrome-extension://{EXTENSION_ID}/") {
 		return Err("The native host only accepts the Decodex Research extension.".into());
 	}
-	serve_io(root, tokio::io::stdin(), tokio::io::stdout()).await
+	serve_io(root, tokio::io::stdin(), tokio::io::stdout(), browser_session()?).await
+}
+
+fn browser_session() -> Result<String> {
+	let parent = std::os::unix::process::parent_id();
+	let output = std::process::Command::new("/bin/ps")
+		.args(["-p", &parent.to_string(), "-o", "lstart="])
+		.env("LC_ALL", "C")
+		.output()
+		.map_err(|e| e.to_string())?;
+	let started = String::from_utf8(output.stdout).map_err(|e| e.to_string())?;
+	if !output.status.success() || started.trim().is_empty() {
+		return Err("Cannot identify the Chrome process that started this research host.".into());
+	}
+	Ok(format!("{parent}:{}", started.trim()))
 }
 
 async fn serve_io(
 	root: &Path,
 	read: impl AsyncRead + Unpin + Send + 'static,
 	write: impl AsyncWrite + Unpin + Send + 'static,
+	browser_session: String,
 ) -> Result<()> {
 	let store = Store::open(root)?;
 	let _lease = store.browser_lease()?.ok_or("Another research host is connected.")?;
@@ -74,7 +89,13 @@ async fn serve_io(
 	let read_loop = async move {
 		loop {
 			let value = native_wire::read_packet(&mut reader).await.map_err(|e| e.to_string())?;
-			if let Some(id) = value["id"].as_u64() {
+			if value["kind"] == "hello" {
+				input_hub
+					.outbound
+					.send(json!({"kind":"session","browserSession":browser_session}))
+					.await
+					.map_err(|e| e.to_string())?;
+			} else if let Some(id) = value["id"].as_u64() {
 				if let Some(reply) =
 					input_hub.pending.lock().expect("pending native requests").remove(&id)
 				{
@@ -158,30 +179,49 @@ async fn serve_client(stream: UnixStream, hub: Arc<Hub>) -> Result<()> {
 	let socket = accept_async(stream).await.map_err(|e| e.to_string())?;
 	let (mut write, mut read) = socket.split();
 	let mut events = hub.events.subscribe();
-	let (reply, mut replies) = mpsc::channel::<Value>(16);
-	let mut requests = tokio::task::JoinSet::new();
-	loop {
-		tokio::select! {
-			message = read.next() => {
-				match message {
-					Some(Ok(Message::Text(text))) => {
-						let value: Value = serde_json::from_str(&text).map_err(|e| e.to_string())?;
-						let (hub, reply) = (hub.clone(), reply.clone());
-						requests.spawn(async move { let _ = reply.send(hub.request(value).await).await; });
-					},
-					Some(Ok(Message::Ping(bytes))) => write.send(Message::Pong(bytes)).await.map_err(|e| e.to_string())?,
-					Some(Ok(Message::Close(_))) | None => return Ok(()),
-					Some(Err(error)) => return Err(error.to_string()),
-					_ => {},
-				}
-			},
-			Some(reply) = replies.recv() => write.send(Message::Text(reply.to_string().into())).await.map_err(|e| e.to_string())?,
-			event = events.recv() => {
-				let value = event.map_err(|_| "Research events were lost; recover the saved request")?;
-				write.send(Message::Text(value.to_string().into())).await.map_err(|e| e.to_string())?;
-			},
-			_ = requests.join_next(), if !requests.is_empty() => {},
+	let (reply, mut replies) = mpsc::channel::<Message>(16);
+	// Read independently of event writes. Both sides can send multi-megabyte
+	// packets; waiting for one write before reading the other side deadlocks.
+	let read_loop = async move {
+		let mut requests = tokio::task::JoinSet::new();
+		loop {
+			tokio::select! {
+				message = read.next() => {
+					match message {
+						Some(Ok(Message::Text(text))) => {
+							let value: Value = serde_json::from_str(&text).map_err(|e| e.to_string())?;
+							let (hub, reply) = (hub.clone(), reply.clone());
+							requests.spawn(async move {
+								let result = hub.request(value).await;
+								let _ = reply.send(Message::Text(result.to_string().into())).await;
+							});
+						},
+						Some(Ok(Message::Ping(bytes))) => reply.send(Message::Pong(bytes)).await.map_err(|e|e.to_string())?,
+						Some(Ok(Message::Close(_))) | None => return Ok(()),
+						Some(Err(error)) => return Err(error.to_string()),
+						_ => {},
+					}
+				},
+				_ = requests.join_next(), if !requests.is_empty() => {},
+			}
 		}
+	};
+	let write_loop = async move {
+		loop {
+			tokio::select! {
+				Some(reply) = replies.recv() => write.send(reply).await.map_err(|e| e.to_string())?,
+				event = events.recv() => {
+					let value = event.map_err(|_| "Research events were lost; recover the saved request")?;
+					write.send(Message::Text(value.to_string().into())).await.map_err(|e| e.to_string())?;
+				},
+			}
+		}
+		#[allow(unreachable_code)]
+		Ok(())
+	};
+	tokio::select! {
+		result = read_loop => result,
+		result = write_loop => result,
 	}
 }
 

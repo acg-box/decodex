@@ -15,11 +15,24 @@ let reconnect;
 const attached = new Set();
 const owned = new Set();
 const groups = new Map();
-// Session storage survives worker restarts but not browser restarts and tab-ID reuse.
-const ready = chrome.storage.session.get(["researchTabs", "researchGroups"]).then(saved => {
-  for (const id of saved.researchTabs || []) owned.add(id);
-  for (const [windowId, groupId] of saved.researchGroups || []) groups.set(windowId, groupId);
-});
+// Chrome clears storage.session when an extension reloads. Retain ownership in
+// local storage, bound to the actual Chrome parent process's identity. A browser
+// restart cannot adopt stale IDs that now belong to a user's unrelated tabs.
+let browserSession;
+let resolveReady;
+const ready = new Promise(resolve => { resolveReady = resolve; });
+async function restoreSession(session) {
+  if (browserSession === session) return;
+  const saved = await chrome.storage.local.get(["browserSession", "researchTabs", "researchGroups"]);
+  owned.clear(); groups.clear(); attached.clear();
+  if (saved.browserSession === session) {
+    for (const id of saved.researchTabs || []) owned.add(id);
+    for (const [windowId, groupId] of saved.researchGroups || []) groups.set(windowId, groupId);
+  }
+  browserSession = session;
+  await saveTabs();
+  resolveReady();
+}
 
 function chatUrl(value) {
   try { const u = new URL(value); return u.origin === "https://chatgpt.com" && !u.username && !u.password; }
@@ -27,7 +40,7 @@ function chatUrl(value) {
 }
 
 async function saveTabs() {
-  await chrome.storage.session.set({researchTabs: [...owned], researchGroups: [...groups]});
+  await chrome.storage.local.set({browserSession, researchTabs: [...owned], researchGroups: [...groups]});
 }
 
 // Reuse only group identities created by this extension. A matching user group title
@@ -137,6 +150,10 @@ function send(value, recipient = port) {
 
 function receive(value, source = port) {
   if (source !== port) return;
+  if (value.kind === "session" && typeof value.browserSession === "string") {
+    void restoreSession(value.browserSession);
+    return;
+  }
   if (value.kind === "fragment") {
     if (value.index !== nextFragment || typeof value.text !== "string" || fragments.length + value.text.length > LIMIT) {
       fragments = ""; nextFragment = 0;
@@ -167,6 +184,7 @@ function connect() {
     // Keep owned tabs and their work. Installing or restarting the host does not resend.
     reconnect = setTimeout(connect, 5000);
   });
+  active.postMessage({kind: "hello"});
 }
 
 chrome.debugger.onEvent.addListener((source, method, params) => {
