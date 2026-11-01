@@ -193,8 +193,44 @@ function connect() {
   active.postMessage({kind: "hello"});
 }
 
+function conversationTraffic(raw) {
+  try {
+    const u = new URL(raw);
+    return chatUrl(raw) && u.pathname.startsWith("/backend-api/") && /(?:^|\/)conversations?(?:\/|$)/.test(u.pathname)
+      ? u.origin + u.pathname : undefined;
+  } catch { return undefined; }
+}
+
+function researchEvent(method, p) {
+  const requestId = p.requestId;
+  switch (method) {
+    case "Network.requestWillBeSent": {
+      const url = conversationTraffic(p.request?.url);
+      if (!url || p.request.method !== "POST") return;
+      let postData;
+      try {
+        const body = JSON.parse(p.request.postData);
+        const messages = body.messages?.filter(m => (m.author?.role || m.role) === "user");
+        if (messages?.length) postData = JSON.stringify({messages});
+      } catch { /* Missing input remains unconfirmed, never resent. */ }
+      return {requestId, request: {url, method: "POST", postData}};
+    }
+    case "Network.responseReceived": {
+      const url = conversationTraffic(p.response?.url);
+      if (url) return {requestId, response: {url, mimeType: p.response.mimeType, status: p.response.status}};
+      return;
+    }
+    case "Network.loadingFinished": return {requestId, encodedDataLength: p.encodedDataLength};
+    case "Network.loadingFailed": return {requestId, errorText: p.errorText, canceled: p.canceled, blockedReason: p.blockedReason, corsErrorStatus: p.corsErrorStatus};
+  }
+}
+
 chrome.debugger.onEvent.addListener((source, method, params) => {
-  if (owned.has(source.tabId)) send({sessionId: String(source.tabId), method, params});
+  if (!owned.has(source.tabId)) return;
+  // Authentication headers, cookies, login bodies and unrelated traffic stay in
+  // Chrome. Rust receives only conversation evidence needed for this research.
+  const evidence = researchEvent(method, params);
+  if (evidence) send({sessionId: String(source.tabId), method, params: evidence});
 });
 chrome.debugger.onDetach.addListener((source, reason) => {
   attached.delete(source.tabId);
