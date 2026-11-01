@@ -152,7 +152,6 @@ async fn execute(
 		page::send(browser).await?;
 	}
 	let deadline = Instant::now() + bridge.config.answer_timeout;
-	let submission_deadline = Instant::now() + std::time::Duration::from_secs(30);
 	let mut previous_answer = None;
 	let mut refreshed_final = false;
 	loop {
@@ -201,21 +200,13 @@ async fn execute(
 		if complete {
 			return Ok(());
 		}
-		if record.receipt.phase == Phase::Sending && Instant::now() >= submission_deadline {
-			return Err(format!(
-				"Send could not be confirmed. The request remains fenced and will not be resent. {}",
-				observed.notices.join("\n")
-			)
-			.trim()
-			.into());
-		}
 		if Instant::now() >= deadline {
-			return Err(format!(
-				"The Pro answer is still pending. Resume the same request ID to continue observing it. {}",
-				observed.notices.join("\n")
-			)
-			.trim()
-			.into());
+			let reason = if record.receipt.phase == Phase::Sending {
+				"Send could not be confirmed. The request remains fenced and will not be resent."
+			} else {
+				"The Pro answer is still pending. Resume the same request ID to continue observing it."
+			};
+			return Err(format!("{reason} {}", observed.notices.join("\n")).trim().into());
 		}
 		sleep(bridge.config.poll_interval).await;
 	}
