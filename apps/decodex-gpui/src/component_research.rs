@@ -85,8 +85,7 @@ impl ResearchOperations {
 			return;
 		}
 		if action == Action::Inspect {
-			if state.shown.error.is_some()
-				|| (state.shown.inspected && state.shown.connection.is_none())
+			if (state.shown.inspected && state.shown.installed.is_none())
 				|| state.reading
 				|| state.last_read.is_some_and(|at| at.elapsed() < Duration::from_secs(3))
 			{
