@@ -35,7 +35,7 @@ pub(crate) fn project_url(raw: &str) -> Result<String> {
 }
 
 pub(crate) fn project_segment(segment: &str) -> bool {
-	segment.strip_prefix("g-p-").is_some_and(|id| {
+	segment_key(segment).is_some_and(|id| {
 		!id.is_empty() && id.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'-')
 	})
 }

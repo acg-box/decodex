@@ -110,6 +110,10 @@ fn recovery_accepts_only_exact_canonical_chatgpt_conversations() {
 		"https://chatgpt.com/g/g-p-6ae73c95938c819187c369cc68995079-research-trial/c/same-id";
 	assert!(super::same_conversation("https://chatgpt.com/c/same-id", named));
 	assert!(crate::projects::contains_url(project, named));
+	let translated =
+		"https://chatgpt.com/g/g-p-6ae73c95938c819187c369cc68995079-%E7%A0%94%E7%A9%B6/c/same-id";
+	assert_eq!(super::conversation_url(translated).unwrap(), translated);
+	assert!(crate::projects::contains_url(project, translated));
 	assert!(!crate::projects::contains_url(
 		"https://chatgpt.com/g/g-p-6ae73c95938c819187c369cc68995070/project",
 		named
