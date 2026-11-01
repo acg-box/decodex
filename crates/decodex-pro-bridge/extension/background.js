@@ -83,6 +83,12 @@ async function dispatch(request) {
       setTimeout(() => chrome.runtime.reload(), 100);
       return {reloading: true};
     }
+    case "Decodex.uninstall": {
+      // This official self-removal API needs no management permission and cannot
+      // remove any other extension. Return before Chrome closes the native port.
+      setTimeout(() => chrome.management.uninstallSelf({showConfirmDialog: false}), 100);
+      return {uninstalling: true};
+    }
     case "Target.getTargets": {
       const targets = [];
       for (const id of [...owned]) {

@@ -116,8 +116,10 @@ async fn run(cli: Cli) -> Result<()> {
 				&registration_dir,
 				&std::env::current_exe().map_err(|e| e.to_string())?,
 			)?),
-		Action::Uninstall { registration_dir } =>
-			return install::uninstall(&cli.state_dir, &registration_dir),
+		Action::Uninstall { registration_dir } => {
+			ProBridge::new(Config::default(), &cli.state_dir)?.remove_extension().await?;
+			return install::uninstall(&cli.state_dir, &registration_dir);
+		},
 		_ => {},
 	}
 	let config =

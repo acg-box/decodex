@@ -163,11 +163,7 @@ impl ResearchOperations {
 				}
 				if action == Action::Update && directory.join("extension.sock").exists() {
 					let bridge = ProBridge::new(Config::default(), &directory)?;
-					let runtime = tokio::runtime::Builder::new_current_thread()
-						.enable_all()
-						.build()
-						.map_err(|e| e.to_string())?;
-					runtime.block_on(bridge.reload_extension())?;
+					research_runtime()?.block_on(bridge.reload_extension())?;
 				}
 				shown.connection = None;
 			},
@@ -176,6 +172,8 @@ impl ResearchOperations {
 					NativePlugins::for_user()?.apply(&component, PluginAction::Install)?;
 			},
 			Action::Remove => {
+				let bridge = ProBridge::new(Config::default(), &directory)?;
+				research_runtime()?.block_on(bridge.remove_extension())?;
 				install::removal_ready(&directory)?;
 				let native = NativePlugins::for_user()?;
 				if native.apply(&component, PluginAction::Refresh)?.is_some() {
@@ -201,11 +199,7 @@ impl ResearchOperations {
 					return Ok(shown);
 				}
 				let bridge = ProBridge::new(Config::default(), &directory)?;
-				let runtime = tokio::runtime::Builder::new_current_thread()
-					.enable_all()
-					.build()
-					.map_err(|e| e.to_string())?;
-				shown.connection = runtime.block_on(async {
+				shown.connection = research_runtime()?.block_on(async {
 					match action {
 						Action::Inspect => bridge.check().await,
 						Action::Connect => bridge.connect().await.map(Some),
@@ -226,6 +220,10 @@ impl ResearchOperations {
 		}
 		Ok(shown)
 	}
+}
+
+fn research_runtime() -> Result<tokio::runtime::Runtime, String> {
+	tokio::runtime::Builder::new_current_thread().enable_all().build().map_err(|e| e.to_string())
 }
 
 fn bundled_helper() -> Result<PathBuf, String> {

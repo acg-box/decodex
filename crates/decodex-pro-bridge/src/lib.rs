@@ -216,6 +216,30 @@ impl ProBridge {
 		Ok(())
 	}
 
+	/// Remove only the connected research extension through Chrome's self-removal API.
+	/// If Chrome is not connected, its extension can also be removed in Chrome settings.
+	pub async fn remove_extension(&self) -> Result<()> {
+		let store = store::Store::open(&self.root)?;
+		let _execution = store
+			.execution_lease()?
+			.ok_or("Wait for research to finish before removing its extension.")?;
+		if !native_host::socket_path(&self.root).exists() {
+			return Ok(());
+		}
+		let mut browser = chrome::Chrome::connect(&self.root).await?;
+		browser.command("Decodex.uninstall", serde_json::json!({})).await?;
+		let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+		loop {
+			if store.browser_lease()?.is_some() {
+				return Ok(());
+			}
+			if tokio::time::Instant::now() >= deadline {
+				return Err("Chrome did not remove its research extension. Remove Decodex Research in Chrome, then retry.".into());
+			}
+			tokio::time::sleep(Duration::from_millis(100)).await;
+		}
+	}
+
 	/// Close only the setup tab. Research records, other tabs and Chrome are retained.
 	pub async fn disconnect(&self) -> Result<()> {
 		let store = store::Store::open(&self.root)?;

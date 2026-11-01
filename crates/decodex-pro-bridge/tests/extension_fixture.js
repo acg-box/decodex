@@ -1,12 +1,13 @@
 // Browser API fixture. No network or user browser state is accessed.
 var testDone = false, testError = "";
 var URL = function(raw) { const p = parseURL(raw); if (!p) throw Error("Invalid URL"); Object.assign(this, p); };
-var setTimeout = function() { return 1; }, clearTimeout = function() {};
+const scheduled = [];
+var setTimeout = function(callback, delay) { scheduled.push({callback, delay}); return scheduled.length; }, clearTimeout = function() {};
 const callbacks = {};
 const event = name => ({addListener: cb => { callbacks[name] = cb; }});
 const records = new Map([[1, {id: 1, url: "https://chatgpt.com/", windowId: 1}]]);
 const groupRecords = new Map([[5, {id: 5, title: "Decodex Research", windowId: 1}]]);
-let nextGroup = 100;
+let nextGroup = 100, uninstalled = false;
 const storage = {};
 const frames = [];
 let created = 0, nativeConnections = 0, commands = 0, pendingReply;
@@ -18,6 +19,7 @@ var chrome = {
     connectNative: () => { nativeConnections++; return {onMessage: event("message"), onDisconnect: event("disconnect"), postMessage: value => frames.push(value), disconnect: () => callbacks.disconnect()}; }
   },
   action: {onClicked: event("action")},
+  management: {uninstallSelf: async options => { uninstalled = options.showConfirmDialog === false; }},
   tabs: {
     create: async value => { created++; const tab = {id: 10 + created, windowId: 1, ...value}; records.set(tab.id, tab); return tab; },
     get: async id => { if (!records.has(id)) throw Error("Missing tab"); return records.get(id); },
@@ -101,6 +103,10 @@ async function runChecks() {
   await restoreSession("fixture-browser");
   assert((await dispatch({method: "Target.getTargets"})).targetInfos[0]?.targetId === targetId && groups.get(1) === groupId,
     "Reloading the extension lost its owned tab or group");
+  const uninstall = await dispatch({method: "Decodex.uninstall", params: {}});
+  assert(uninstall.uninstalling && scheduled[scheduled.length - 1].delay === 100, "Removal did not acknowledge before closing the native port");
+  await scheduled[scheduled.length - 1].callback();
+  assert(uninstalled, "Removal did not use the self-only Chrome API");
   await restoreSession("another-browser-process");
   assert((await dispatch({method: "Target.getTargets"})).targetInfos.length === 0,
     "A browser restart adopted stale tab IDs");
