@@ -82,7 +82,7 @@ impl AgentSurface {
 }
 
 fn reference_draft(reference: &str) -> String {
-	let mut text = String::from("About this passage:\n\n");
+	let mut text = String::new();
 	for line in reference.lines() {
 		text.push_str("> ");
 		text.push_str(line);

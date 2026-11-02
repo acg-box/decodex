@@ -143,10 +143,7 @@ fn a_retained_question_action_does_not_open_a_side_chat_for_a_replaced_source(
 
 #[test]
 fn a_large_reference_is_marked_and_leaves_room_for_the_question() {
-	assert_eq!(
-		reference_draft("First line\nSecond line"),
-		"About this passage:\n\n> First line\n> Second line\n\n"
-	);
+	assert_eq!(reference_draft("First line\nSecond line"), "> First line\n> Second line\n\n");
 	let text = reference_draft(&"中文\n".repeat(5000));
 	assert!(text.ends_with("… (excerpt)\n\n"));
 	assert!(text.len() < crate::composer_input::MAX_COMPOSER_BYTES);
