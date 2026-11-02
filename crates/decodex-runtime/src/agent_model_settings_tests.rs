@@ -321,6 +321,56 @@ async fn model_settings_do_not_read_a_foreign_thread() {
 }
 
 #[tokio::test]
+async fn model_settings_read_saved_threads_without_adopting_their_process() {
+	let home = tempfile::tempdir().unwrap();
+	let (local, remote) = io::duplex(4_096);
+	let (r, w) = io::split(local);
+	let (client, _events) = AppServerClient::from_io(r, w);
+	let owner = OwnedReviewer::new(home.path(), &client, "thread", "turn").await;
+	let mut key = owner.key.clone();
+	key.generation = ProcessGenerationId::new("30000000-0000-4000-8000-000000000002").unwrap();
+	let mut foreign = key.clone();
+	foreign.account = AccountId::new("10000000-0000-4000-8000-000000000002").unwrap();
+	assert_eq!(
+		agent_model_settings::read(&owner.store, || async { Some(owner.source(&foreign)) }).await,
+		AgentModelSettingsResult::Unavailable
+	);
+	let (release, released) = oneshot::channel::<()>();
+	let server = tokio::spawn(async move {
+		let (r, mut w) = io::split(remote);
+		let mut lines = BufReader::new(r).lines();
+		let request: Value =
+			serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
+		assert_eq!(request["method"], "thread/read");
+		assert_eq!(
+			request["params"],
+			serde_json::json!({"threadId":"thread","includeTurns":false})
+		);
+		let response = serde_json::json!({"id":request["id"],"result":{"thread":{
+			"id":"thread","model":"saved-model","reasoningEffort":"low","modelProvider":"openai"
+		}}});
+		w.write_all(format!("{response}\n").as_bytes()).await.unwrap();
+		let _ = released.await;
+	});
+	let result =
+		agent_model_settings::read(&owner.store, || async { Some(owner.source(&key)) }).await;
+	let _ = release.send(());
+	assert!(
+		matches!(result, AgentModelSettingsResult::Available { model: Some(ref model), .. } if model.as_str()=="saved-model"),
+		"read saved native settings: {result:?}"
+	);
+	assert!(
+		!owner
+			.store
+			.agent_thread_is_owned(key.work, key.thread, Some(key.generation.as_str().into()))
+			.await
+			.unwrap(),
+		"a metadata read must not adopt execution ownership"
+	);
+	server.await.unwrap();
+}
+
+#[tokio::test]
 async fn model_settings_read_other_conversations_hosted_by_the_same_process() {
 	let home = tempfile::tempdir().unwrap();
 	let (local, remote) = io::duplex(4_096);

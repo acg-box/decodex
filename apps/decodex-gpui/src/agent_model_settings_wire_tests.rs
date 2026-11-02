@@ -427,6 +427,23 @@ fn failed_refresh_keeps_the_same_threads_last_native_model(cx: &mut TestAppConte
 }
 
 #[gpui::test]
+fn new_conversation_model_does_not_depend_on_a_cold_existing_root(cx: &mut TestAppContext) {
+	let surface = cx.new(AgentSurface::new);
+	surface.update(cx, |s, cx| {
+		s.apply_result(Ok(AgentSnapshotResult::Available(snapshot())));
+		s.model.update(cx, |input, cx| input.set_content("gpt-6.1-sol", cx));
+		s.model_settings.observe("root".into(), AgentModelSettingsResult::Unavailable);
+		s.new_work_conversation(cx);
+		assert_eq!(s.composer_model_value(cx).as_deref(), Some("gpt-6.1-sol"));
+		assert_eq!(s.composer_model_label(cx), "gpt-6.1-sol");
+		s.open_page("root", cx);
+		assert_eq!(s.composer_model_label(cx), "Model unavailable");
+		s.new_work_conversation(cx);
+		assert_eq!(s.composer_model_value(cx).as_deref(), Some("gpt-6.1-sol"));
+	});
+}
+
+#[gpui::test]
 fn model_default_reasoning_has_the_same_value_in_new_and_existing_chats(cx: &mut TestAppContext) {
 	let surface = cx.new(AgentSurface::new);
 

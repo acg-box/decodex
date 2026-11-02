@@ -123,8 +123,20 @@ impl AgentSurface {
 
 	fn composer_model_settings(&self, cx: &Context<Self>) -> (Option<String>, Option<String>) {
 		let (model, effort) = if let Some(owner) =
-			self.composer_manager.clone().or_else(|| self.root_id())
+			self.selected.as_deref().filter(|_| self.is_new_conversation())
 		{
+			let choice = self.draft_profiles.execution.choice(owner);
+			(
+				choice
+					.model
+					.map(|model| model.as_str().to_owned())
+					.or_else(|| Some(self.model.read(cx).content().to_owned())),
+				choice
+					.reasoning_effort
+					.map(|effort| effort.as_str().to_owned())
+					.or_else(|| self.creation_effort().map(|effort| effort.as_str().to_owned())),
+			)
+		} else if let Some(owner) = self.composer_manager.clone().or_else(|| self.root_id()) {
 			let choice = self.draft_profiles.execution.choice(&owner);
 			let (model, effort) = match self.model_settings.observations.get(&owner) {
 				Some(AgentModelSettingsResult::Available { model, reasoning_effort, .. }) => (

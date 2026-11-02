@@ -8,7 +8,7 @@ import { extractSourceArchive, validateSource } from './build_codex_source.mts';
 
 test('source builds require the exact official commit archive', () => {
   const upstreamCommit = 'a'.repeat(40);
-  const lock = { version: '0.0.0', upstreamCommit, targets: {}, source: {
+  const lock = { version: '0.166.0+decodex.aaaaaaaaaaaa', upstreamCommit, targets: {}, source: {
     url: `https://codeload.github.com/openai/codex/tar.gz/${upstreamCommit}`, sha256: 'b'.repeat(64),
   } };
   assert.doesNotThrow(() => validateSource(lock));
@@ -18,6 +18,27 @@ test('source builds require the exact official commit archive', () => {
     { ...lock.source, sha256: 'missing' },
   ]) assert.throws(() => validateSource({ ...lock, source }));
   assert.throws(() => validateSource({ ...lock, upstreamCommit: '../elsewhere' }));
+  assert.throws(() => validateSource({ ...lock, version: '0.0.0' }));
+});
+
+test('source version preparation regenerates the lock without changing dependencies', () => {
+  const source = mkdtempSync(join(tmpdir(), 'decodex-source-version-'));
+  try {
+    const workspace = join(source, 'codex-rs');
+    for (const member of ['core', 'vendor']) mkdirSync(join(workspace, member, 'src'), { recursive: true });
+    writeFileSync(join(workspace, 'Cargo.toml'), '[workspace]\nmembers=["core"]\nexclude=["vendor"]\nresolver="2"\n[workspace.package]\nversion="0.0.0"\nedition="2021"\n');
+    writeFileSync(join(workspace, 'core/Cargo.toml'), '[package]\nname="codex-core"\nversion.workspace=true\nedition.workspace=true\n[dependencies]\nvendor={path="../vendor"}\n');
+    writeFileSync(join(workspace, 'vendor/Cargo.toml'), '[package]\nname="vendor"\nversion="4.2.0"\nedition="2021"\n');
+    for (const member of ['core', 'vendor']) writeFileSync(join(workspace, member, 'src/lib.rs'), 'pub fn current() {}\n');
+    execFileSync('cargo', ['+stable', 'generate-lockfile', '--offline'], { cwd: workspace });
+    const version = '0.166.0+decodex.aaaaaaaaaaaa';
+    execFileSync('python3', [new URL('./version_codex_source.py', import.meta.url).pathname, source, version]);
+    const metadata = JSON.parse(execFileSync('cargo', ['+stable', 'metadata', '--locked', '--offline', '--no-deps', '--format-version', '1'], { cwd: workspace, encoding: 'utf8' }));
+    assert.equal(metadata.packages.find((entry: { name: string }) => entry.name === 'codex-core').version, version);
+    assert.match(readFileSync(join(workspace, 'Cargo.lock'), 'utf8'), /name = "vendor"\nversion = "4.2.0"/);
+  } finally {
+    rmSync(source, { recursive: true, force: true });
+  }
 });
 
 test('source extraction replaces stale files and refreshes archive timestamps', () => {

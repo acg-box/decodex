@@ -17,7 +17,7 @@ where
 		return decodex_protocol::AgentModelSettingsResult::Unavailable;
 	};
 
-	if !hosted(store, &before).await {
+	if !readable(store, &before).await {
 		return decodex_protocol::AgentModelSettingsResult::Unavailable;
 	}
 
@@ -29,7 +29,7 @@ where
 
 	if !guard.is_live()
 		|| source().await.is_none_or(|after| after.key != before.key)
-		|| !hosted(store, &before).await
+		|| !readable(store, &before).await
 	{
 		return decodex_protocol::AgentModelSettingsResult::Unavailable;
 	}
@@ -98,19 +98,16 @@ where
 	}
 }
 
-async fn hosted(store: &SqliteStore, source: &Source) -> bool {
+async fn readable(store: &SqliteStore, source: &Source) -> bool {
 	let k = &source.key;
 
-	// This is a user observation across the host's conversations. Agent execution
-	// keeps its separate, narrower manager ownership check.
-	store
-		.agent_thread_is_restorable(
-			k.work.clone(),
-			k.thread.clone(),
-			Some(k.generation.as_str().into()),
-		)
-		.await
-		.unwrap_or(false)
+	// Like history and archive inspection, this reads the shared native catalog
+	// without adopting a saved conversation's execution process.
+	store.account_is_ready_at_revision(&k.account, k.revision).await.unwrap_or(false)
+		&& store
+			.get_agent_work_item(k.work.clone())
+			.await
+			.is_ok_and(|work| work.codex_thread_id.as_deref() == Some(k.thread.as_str()))
 }
 
 #[cfg(test)]

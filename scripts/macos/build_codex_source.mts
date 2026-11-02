@@ -18,10 +18,10 @@ export async function digest(path: string): Promise<string> {
 }
 
 export function validateSource(lock: SourceLock): void {
-  if (!/^[0-9a-f]{40}$/.test(lock.upstreamCommit)
+  if (lock.version === '0.0.0' || !/^[0-9a-f]{40}$/.test(lock.upstreamCommit)
       || !/^[0-9a-f]{64}$/.test(lock.source.sha256)
       || lock.source.url !== `https://codeload.github.com/openai/codex/tar.gz/${lock.upstreamCommit}`) {
-    throw new Error('Expected an exact official Codex source commit and archive digest.');
+    throw new Error('Expected a reviewed compatible version, official Codex source commit and archive digest.');
   }
 }
 
@@ -45,6 +45,10 @@ export async function buildSource(root: string, lock: SourceLock, runtime: strin
   const source = join(cache, 'source');
   // Recreate only this script's source cache; never trust edits left in an extracted tree.
   extractSourceArchive(archive, source);
+  // Upstream main resets its workspace to 0.0.0. Build with the reviewed compatible
+  // release version; native model discovery uses this version as a capability input.
+  execFileSync('python3', [join(root, 'scripts/macos/version_codex_source.py'), source, lock.version],
+    { cwd: root, stdio: 'inherit' });
   const cargo = join(cache, 'cargo-stable-locked');
   writeFileSync(cargo, '#!/bin/sh\nexec cargo +stable "$@" --locked\n', { mode: 0o700 });
   const packageDir = join(cache, 'package');
