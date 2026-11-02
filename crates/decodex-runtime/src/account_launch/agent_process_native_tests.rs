@@ -19,6 +19,7 @@
 #[path = "agent_process_native_flex_tests.rs"] mod flex;
 #[path = "agent_process_native_folder_trust_tests.rs"] mod folder_trust;
 #[path = "agent_process_native_goal_tests.rs"] mod goals;
+#[path = "agent_process_native_history_recovery_tests.rs"] mod history_recovery;
 #[path = "agent_process_native_hook_settings_tests.rs"] mod hook_settings;
 #[path = "agent_process_native_lookup_tests.rs"] mod lookup;
 #[path = "agent_process_native_mcp_sharing_tests.rs"] mod mcp_sharing;

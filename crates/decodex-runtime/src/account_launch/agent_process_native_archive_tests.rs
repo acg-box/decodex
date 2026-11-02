@@ -20,7 +20,7 @@ use decodex_protocol::{
 	AgentDispatchStateDto, AgentSnapshotDto, AgentWorkItemDto, AgentWorkKindDto, AgentWorkStatusDto,
 };
 
-fn seed_unrelated_archive(home: &Path, source: &str) {
+fn seed_unrelated_archive(home: &Path, source: &str, count: usize) {
 	let mut db =
 		Connection::open(home.join("state_5.sqlite")).expect("open isolated native database");
 
@@ -46,7 +46,7 @@ fn seed_unrelated_archive(home: &Path, source: &str) {
 	let sql = format!("INSERT INTO threads SELECT {values} FROM threads WHERE id=?2");
 	let transaction = db.transaction().expect("start isolated archive seed");
 
-	for index in 0..10_300 {
+	for index in 0..count {
 		let id = format!("10000000-0000-4000-8000-{index:012}");
 
 		assert_eq!(
@@ -138,7 +138,7 @@ async fn installed_native_archive_roundtrip_refreshes_without_restarting_either_
 		ids.push(id);
 	}
 
-	seed_unrelated_archive(home.path(), &ids[0]);
+	seed_unrelated_archive(home.path(), &ids[0], 10_300);
 
 	let observer = NativeSession::start(&binary, home.path());
 	let process_ids = (observer.child.0.id(), actor.child.0.id());
@@ -212,6 +212,59 @@ async fn installed_native_archive_roundtrip_refreshes_without_restarting_either_
 		"archive observations must not start additional turns"
 	);
 
+	backend.abort();
+}
+
+#[tokio::test]
+#[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated native catalog timestamp ties"]
+async fn installed_native_archive_catalog_pages_every_timestamp_tie() {
+	let binary = env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit native binary");
+	let home = tempfile::tempdir_in("/tmp").expect("isolated catalog home");
+	let listener = TcpListener::bind("127.0.0.1:0").await.expect("catalog fixture listener");
+	let address = listener.local_addr().expect("catalog fixture address");
+	let requests = Arc::new(AtomicUsize::new(0));
+	let backend = tokio::spawn(native_tests::serve(listener, requests.clone()));
+	fs::write(home.path().join("config.toml"), format!("model=\"gpt-5.6-sol\"\nmodel_provider=\"fixture\"\n[model_providers.fixture]\nname=\"Catalog fixture\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n")).expect("catalog fixture configuration");
+	let mut session = NativeSession::start(&binary, home.path());
+	let source = session.client.thread_start(serde_json::json!({"cwd":home.path(),"historyMode":"paginated","approvalPolicy":"never","sandbox":"read-only"})).await.expect("catalog source")["thread"]["id"].as_str().expect("source identity").to_owned();
+	session
+		.client
+		.turn_start(
+			serde_json::json!({"threadId":source,"input":[{"type":"text","text":"Catalog seed"}]}),
+		)
+		.await
+		.expect("persist catalog source");
+	wait_for_completion(&mut session, &source).await;
+	seed_unrelated_archive(home.path(), &source, 7);
+	let expected: HashSet<_> =
+		(0..7).map(|index| format!("10000000-0000-4000-8000-{index:012}")).collect();
+
+	for key in ["created_at", "updated_at"] {
+		for direction in ["asc", "desc"] {
+			let mut cursor = None;
+			let mut cursors = HashSet::new();
+			let mut seen = HashSet::new();
+			for _ in 0..5 {
+				let page = session.client.request("thread/list", serde_json::json!({"archived":true,"useStateDbOnly":true,"limit":2,"sortKey":key,"sortDirection":direction,"cursor":cursor})).await.expect("read tied catalog page");
+				for thread in page["data"].as_array().expect("catalog page") {
+					assert!(
+						seen.insert(thread["id"].as_str().expect("catalog identity").to_owned()),
+						"duplicate catalog identity"
+					);
+				}
+				cursor = page["nextCursor"].as_str().map(str::to_owned);
+				let Some(next) = cursor.as_ref() else { break };
+				assert!(cursors.insert(next.clone()), "catalog cursor repeated");
+			}
+			assert!(cursor.is_none(), "catalog did not reach its end");
+			assert_eq!(seen, expected, "timestamp ties lost catalog entries: {key} {direction}");
+		}
+	}
+	assert_eq!(
+		requests.load(std::sync::atomic::Ordering::Acquire),
+		1,
+		"catalog reads must not infer"
+	);
 	backend.abort();
 }
 
