@@ -31,6 +31,7 @@ use decodex_codex as _;
 #[cfg(target_os = "macos")] use decodex_components as _;
 use decodex_core::RepositoryContentRevision;
 use decodex_database as _;
+use decodex_pro_bridge as _;
 use decodex_protocol as _;
 use decodex_runtime::{
 	self, ProtectedWorktreeFingerprint, ProtectedWorktreeStateProbe, SupervisedValidationEvidence,

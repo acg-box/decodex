@@ -130,12 +130,19 @@ async fn run(cli: Cli) -> Result<()> {
 	match cli.command {
 		Action::NativeHost { origin } => return native_host::serve(&cli.state_dir, &origin).await,
 		Action::Mcp => return mcp::serve(&cli.state_dir).await,
-		Action::Install { registration_dir } =>
-			return print_json(&install::install(
+		Action::Install { registration_dir } => {
+			let installed = install::install(
 				&cli.state_dir,
 				&registration_dir,
 				&env::current_exe().map_err(|e| e.to_string())?,
-			)?),
+			)?;
+
+			if cli.state_dir.join("extension.sock").exists() {
+				ProBridge::new(Config::default(), &cli.state_dir)?.reload_extension().await?;
+			}
+
+			return print_json(&installed);
+		},
 		Action::Uninstall { registration_dir } => {
 			ProBridge::new(Config::default(), &cli.state_dir)?.remove_extension().await?;
 

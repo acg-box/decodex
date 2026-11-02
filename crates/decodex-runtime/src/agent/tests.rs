@@ -29,6 +29,7 @@
 #[path = "tests/native_task_references.rs"] mod native_task_references;
 #[path = "tests/prompt_edit.rs"] mod prompt_edit;
 #[path = "tests/reasoning_summary.rs"] mod reasoning_summary;
+#[path = "tests/research.rs"] mod research;
 #[path = "tests/result_integrity.rs"] mod result_integrity;
 #[path = "tests/settings_observations.rs"] mod settings_observations;
 #[path = "tests/steer_receipts.rs"] mod steer_receipts;

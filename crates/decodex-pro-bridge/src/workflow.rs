@@ -10,6 +10,7 @@ use tokio::{
 use crate::{
 	Answer, Phase, ProBridge, Receipt, Request, Result,
 	chrome::Chrome,
+	events,
 	page::{self, Message, Observation},
 	projects,
 	store::{self, Material, Record, Store},
@@ -20,6 +21,7 @@ pub(crate) async fn run(
 	request: Option<Request>,
 	id: Option<String>,
 	candidate: Option<String>,
+	observe_only: bool,
 ) -> Result<Receipt> {
 	let (reply, received) = oneshot::channel();
 	let mut cancelled = bridge.cancelled.subscribe();
@@ -30,7 +32,14 @@ pub(crate) async fn run(
 
 	// The worker owns shutdown even if its caller drops the returned future.
 	tokio::spawn(async move {
-		let result = work(bridge, request, id, candidate, &mut cancelled).await;
+		let root = bridge.root.clone();
+		let request_id = id.clone().or_else(|| request.as_ref().map(|r| r.id.clone()));
+		let result = work(bridge, request, id, candidate, &mut cancelled, observe_only).await;
+
+		if let Some(id) = request_id {
+			events::publish(&root, &id).await;
+		}
+
 		let _ = reply.send(result);
 	});
 
@@ -237,6 +246,7 @@ async fn work(
 	id: Option<String>,
 	candidate: Option<String>,
 	cancelled: &mut Receiver<bool>,
+	observe_only: bool,
 ) -> Result<Receipt> {
 	let store = Store::open(&bridge.root)?;
 	let mut record = {
@@ -271,6 +281,9 @@ async fn work(
 
 	record = store.load(&record.request.id)?;
 
+	if observe_only && record.receipt.phase == Phase::Prepared {
+		return Ok(record.receipt);
+	}
 	if record.receipt.last_error.take().is_some() {
 		store.save(&record)?;
 	}

@@ -36,6 +36,7 @@ use decodex_codex as _;
 #[cfg(target_os = "macos")] use decodex_components as _;
 use decodex_core::{DecodexRoot, ProcessExecutionAuthorization, ServerIdentity};
 use decodex_database as _;
+use decodex_pro_bridge as _;
 use decodex_protocol::{
 	AccountClient, AccountCommandResponse, AccountInspectResult, AccountProfileResult,
 	AccountQuotaStateDto, AgentActionDto, AgentCapabilitiesResult, AgentClient,

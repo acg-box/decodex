@@ -26,7 +26,12 @@ use tokio::{
 use crate::{
 	AgentConfig, AgentCoordinator, AgentError,
 	account_observation::AccountObservationService,
-	agent::{AgentInputExtras, misalignment, native_subagents, timeline, timeline::media},
+	agent::{
+		AgentInputExtras, misalignment, native_subagents,
+		research::{self, Events},
+		timeline,
+		timeline::media,
+	},
 	agent_app_exposure, agent_capabilities, agent_context_settings, agent_detail, agent_hooks,
 	agent_integrations, agent_live_settings, agent_memory, agent_model_settings, agent_models,
 	agent_native_goal, agent_permissions, agent_read_state,
@@ -1023,11 +1028,14 @@ impl AgentHost {
 		let Some(mut voice_requests) = self.voice.take_receiver().await else {
 			return;
 		};
+		let research_directory = research::directory();
 		let mut active = None;
+		let mut research_events = Events::new(research_directory.clone());
 		// The stop receiver must remain polled while attach, recovery, and RPCs await.
 		let drive = async {
 			active = self.restore().await;
 
+			self.research_update(research_directory.as_deref(), None, true, &mut active).await;
 			self.initializing.send_replace(false);
 
 			let mut recovery = RecoverySchedule::new();
@@ -1037,6 +1045,9 @@ impl AgentHost {
 
 			loop {
 				tokio::select! {
+					id = research_events.next() => {
+						self.research_update(research_directory.as_deref(), id.clone(), id.is_none(), &mut active).await;
+					},
 					voice_request=voice_requests.recv()=> {
 						if let Some(request)=voice_request {self.handle_voice(request,&mut active).await;}
 					},
@@ -1109,6 +1120,22 @@ impl AgentHost {
 
 		if let Some(root) = root {
 			let _ = self.runtime.close_agent_connection(&root).await;
+		}
+	}
+
+	async fn research_update(
+		&self,
+		directory: Option<&Path>,
+		id: Option<String>,
+		recover: bool,
+		active: &mut Option<(String, AgentCoordinator, mpsc::Receiver<ServerEvent>)>,
+	) {
+		let Some(directory) = directory else { return };
+		let result = research::reconcile(&self.store, directory, id, recover).await;
+
+		if let Some((root, agent, _)) = active.as_mut() {
+			self.record_delivery(root, result).await;
+			self.record_delivery(root, agent.wake_pending().await).await;
 		}
 	}
 

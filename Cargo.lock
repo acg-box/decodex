@@ -1544,6 +1544,7 @@ dependencies = [
  "decodex-components",
  "decodex-core",
  "decodex-database",
+ "decodex-pro-bridge",
  "decodex-protocol",
  "futures-util",
  "libc",

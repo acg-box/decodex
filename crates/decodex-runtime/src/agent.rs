@@ -5,6 +5,7 @@ pub(crate) mod image_generation;
 pub(crate) mod misalignment;
 pub(crate) mod native_subagents;
 pub(crate) mod observations;
+pub(crate) mod research;
 pub(crate) mod timeline;
 
 mod activity;
@@ -36,7 +37,7 @@ pub use prompt_edit::PromptEditReview;
 use std::{
 	error::Error,
 	fmt::{Display, Formatter},
-	path::Path,
+	path::{Path, PathBuf},
 	process,
 	time::{SystemTime, UNIX_EPOCH},
 };
@@ -44,18 +45,19 @@ use std::{
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::{agent_resources, agent_slots, startup_trace::Phase};
+use crate::{agent_capabilities, agent_resources, agent_slots, startup_trace::Phase};
 use decodex_codex::app_server_client::{
-	self, AppServerClient, ClientError, HistoryGuard, NativeDispatchRefusal, RequestId, ServerEvent,
+	self, AppServerClient, ClientError, HistoryGuard, NativeDispatchRefusal,
+	NativeProviderMismatch, RequestId, ServerEvent,
 };
-use decodex_core::ProcessGenerationId;
+use decodex_core::{PermissionMode, ProcessGenerationId};
 use decodex_database::{
 	AgentDispatchState, AgentDisposition, AgentInboxEvent, AgentOutputUpdate, AgentTurnExecution,
 	AgentWorkItem, AgentWorkKind, AgentWorkStatus, EnqueueAgentEvent, SqliteStore, StoreError,
 };
 use decodex_protocol::{
-	AgentAsyncQuestionDto, AgentAttachmentDto, AgentExecutionOverrides, AgentTaskReferenceDto,
-	ConversationReasoningEffort,
+	AgentAsyncQuestionDto, AgentAttachmentDto, AgentExecutionOverrides, AgentModelDto,
+	AgentTaskReferenceDto, ConversationReasoningEffort,
 };
 use file_changes::PendingFileChanges;
 use resume_recovery::ClosingResume;
@@ -121,6 +123,7 @@ pub struct AgentCoordinator {
 	pending_file_changes: PendingFileChanges,
 	native_generation: Option<ProcessGenerationId>,
 	dispatch_paused: bool,
+	research_directory: Option<PathBuf>,
 	async_recovery_queued: bool,
 	handled_question_revision: u64,
 	completed_chats: Vec<(String, String, String)>,
@@ -176,6 +179,7 @@ impl AgentCoordinator {
 			pending_file_changes: Default::default(),
 			native_generation: None,
 			dispatch_paused: false,
+			research_directory: research::directory(),
 			async_recovery_queued: false,
 		})
 	}
@@ -461,6 +465,7 @@ impl AgentCoordinator {
 			serde_json::json!(self.config.approvals_reviewer.as_deref().unwrap_or("user"));
 		params["config"]["features.guardian_recorded_items"] =
 			serde_json::json!(guardian.review_details);
+
 		// Capture the user's creation choice only when creating this native thread.
 		// Later turns and recovery use native settings, never these old defaults.
 		if item.codex_thread_id.is_none() {
@@ -475,16 +480,16 @@ impl AgentCoordinator {
 				.and_then(|event| serde_json::from_str::<Value>(&event.payload).ok())
 				.and_then(|value| value.pointer("/options/permissionMode").cloned())
 				.filter(|value| !value.is_null())
-				.map(serde_json::from_value::<decodex_core::PermissionMode>)
+				.map(serde_json::from_value::<PermissionMode>)
 				.transpose()
 				.map_err(|_| AgentError::Invalid("Invalid initial permission mode".into()))?;
+
 			if let Some(mode) = mode {
 				params["sandbox"] = serde_json::json!(mode.sandbox());
 				params["approvalPolicy"] = serde_json::json!(mode.approval_policy());
 				params["approvalsReviewer"] = serde_json::json!(mode.reviewer());
 			}
 		}
-
 		// User-created Agents have native user sources. Retained legacy execution
 		// rows must not gain that eligibility through the business migration.
 		if item.parent_goal_id.is_none() {
@@ -1008,14 +1013,16 @@ impl AgentCoordinator {
 		self.store.begin_agent_thread_creation(item.id.clone()).await?;
 
 		let mut params = self.work_thread_params(item).await?;
-		if let Some(catalog) = crate::agent_capabilities::read_catalog(&self.client).await {
+
+		if let Some(catalog) = agent_capabilities::read_catalog(&self.client).await {
 			let now = SystemTime::now()
 				.duration_since(UNIX_EPOCH)
 				.ok()
 				.and_then(|time| i64::try_from(time.as_secs()).ok());
+
 			if let Some((target, _)) = params["model"].as_str().and_then(|model| {
 				now.and_then(|now| {
-					decodex_protocol::AgentModelDto::retired_default(
+					AgentModelDto::retired_default(
 						model,
 						&catalog.models,
 						catalog.default_model.as_ref(),
@@ -1024,6 +1031,7 @@ impl AgentCoordinator {
 				})
 			}) {
 				params["model"] = serde_json::json!(target.model);
+
 				if params["config"]["model_reasoning_effort"].as_str().is_some_and(|effort| {
 					!target.efforts.iter().any(|value| value.as_str() == effort)
 				}) {
@@ -1035,6 +1043,7 @@ impl AgentCoordinator {
 				}
 			}
 		}
+
 		let expected_model = params["model"].as_str().map(str::to_owned);
 		let expected_effort =
 			params["config"]["model_reasoning_effort"].as_str().map(str::to_owned);
@@ -1059,6 +1068,7 @@ impl AgentCoordinator {
 		};
 		let bound =
 			self.store.acknowledge_agent_thread_creation(item.id.clone(), thread.clone()).await?;
+
 		if !Self::hydrated_thread_matches(&response, &thread)
 			|| response["model"].as_str() != expected_model.as_deref()
 			|| expected_effort
@@ -1149,10 +1159,12 @@ impl AgentCoordinator {
 
 		let (mut params, external) =
 			self.dispatch_input(&item, prompt, &events, retry.is_some()).await?;
+
 		// Apply the user's permission choice during cold hydration as well as
 		// turn start, before a resumed native Goal can continue under old settings.
 		self.hydrate_dispatch_thread(thread, &params).await?;
 		self.sync_native_project(&item).await?;
+
 		let question_guard = history_guard.is_some();
 		let history_guard = match history_guard {
 			Some(guard) => self.client.with_thread_settings_guard(thread, guard),
@@ -1923,6 +1935,9 @@ impl AgentCoordinator {
 		method: &str,
 		params: &Value,
 	) -> Result<bool, AgentError> {
+		if method == "item/started" || method == "item/completed" {
+			self.observe_research_call(params).await?;
+		}
 		if method == "rawResponseItem/completed" {
 			self.observe_native_work_dispatch(params).await?;
 		}
@@ -2529,6 +2544,12 @@ impl AgentCoordinator {
 			return Err(AgentError::Invalid("invalid due-check time".into()));
 		}
 
+		// Reuse the local recovery tick for a hint lost before publication. Read
+		// saved receipts only: no model call, browser request, or Send is involved.
+		if let Some(directory) = &self.research_directory {
+			research::reconcile(&self.store, directory, None, false).await?;
+		}
+
 		// Fresh input takes precedence over a saved retry, including after restart.
 		self.wake_pending().await?;
 
@@ -2601,7 +2622,20 @@ impl AgentCoordinator {
 				continue;
 			}
 
-			let events = self.store.list_agent_wake_events(agent.id.clone(), 1_000).await?;
+			let mut events = self.store.list_agent_wake_events(agent.id.clone(), 1_000).await?;
+
+			if events.iter().any(|event| {
+				matches!(event.event_kind.as_str(), "research_completed" | "research_attention")
+			}) && self.research_goal_held(agent.codex_thread_id.as_deref()).await?
+			{
+				events.retain(|event| {
+					!matches!(
+						event.event_kind.as_str(),
+						"research_completed" | "research_attention"
+					)
+				});
+			}
+
 			let batch = if let Some(input) = events.iter().find(|event| {
 				event.event_kind == "user_message" && event.delivered_turn_id.is_none()
 			}) {
@@ -2858,7 +2892,7 @@ fn append_attachments(input: &mut Vec<Value>, files: &[AgentAttachmentDto]) {
 
 fn resume_error(error: ClientError, thread: &str) -> AgentError {
 	if let ClientError::Remote(remote) = &error
-		&& app_server_client::NativeProviderMismatch::from_error(remote).is_some()
+		&& NativeProviderMismatch::from_error(remote).is_some()
 	{
 		return AgentError::ProviderMismatch { thread_id: thread.into() };
 	}

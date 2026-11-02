@@ -10,7 +10,7 @@ use std::{
 	process::Command,
 	sync::{
 		Arc, Mutex,
-		atomic::{AtomicU64, Ordering},
+		atomic::{AtomicBool, AtomicU64, Ordering},
 	},
 	time::Duration,
 };
@@ -26,7 +26,12 @@ use tokio::{
 };
 use tokio_tungstenite::tungstenite::Message;
 
-use crate::{Result, native_wire, store::Store};
+use crate::{
+	Phase, Result,
+	events::{PUBLISH, SUBSCRIBE},
+	native_wire,
+	store::Store,
+};
 
 /// Chrome Native Messaging registration name.
 pub const HOST_NAME: &str = "box.acg.decodex.research";
@@ -114,6 +119,36 @@ fn browser_session() -> Result<String> {
 	Ok(format!("{parent}:{}", started.trim()))
 }
 
+// Local result hints never enter Chrome's command channel.
+fn research_request(
+	root: &Path,
+	hub: &Hub,
+	request: &Value,
+	subscribed: &AtomicBool,
+) -> Option<Value> {
+	match request["method"].as_str()? {
+		SUBSCRIBE => subscribed.store(true, Ordering::Relaxed),
+		PUBLISH => {
+			let ready = request["params"]["id"]
+				.as_str()
+				.and_then(|id| Store::open(root).ok()?.load(id).ok())
+				.filter(|r| {
+					(r.receipt.phase == Phase::Complete && r.answer.is_some())
+						|| r.receipt.last_error.is_some()
+				});
+
+			if let Some(record) = ready {
+				let _ = hub.events.send(
+					serde_json::json!({"method":crate::events::UPDATED,"params":{"id":record.receipt.id}}),
+				);
+			}
+		},
+		_ => return None,
+	}
+
+	Some(serde_json::json!({"id":request["id"],"result":{}}))
+}
+
 async fn serve_io(
 	root: &Path,
 	read: impl AsyncRead + Unpin + Send + 'static,
@@ -182,7 +217,7 @@ async fn serve_io(
 				connection = listener.accept() => {
 					let (stream, _) = connection.map_err(|e| e.to_string())?;
 
-					clients.spawn(serve_client(stream, hub.clone()));
+					clients.spawn(serve_client(stream, hub.clone(), root.to_path_buf()));
 				},
 				_ = clients.join_next(), if !clients.is_empty() => {},
 			}
@@ -200,8 +235,10 @@ async fn serve_io(
 	}
 }
 
-async fn serve_client(stream: UnixStream, hub: Arc<Hub>) -> Result<()> {
+async fn serve_client(stream: UnixStream, hub: Arc<Hub>, root: PathBuf) -> Result<()> {
 	let socket = tokio_tungstenite::accept_async(stream).await.map_err(|e| e.to_string())?;
+	let research = Arc::new(AtomicBool::new(false));
+	let read_research = research.clone();
 	let (reply, mut replies) = mpsc::channel::<Message>(16);
 	let (mut write, mut read) = socket.split();
 	let mut events = hub.events.subscribe();
@@ -216,6 +253,13 @@ async fn serve_client(stream: UnixStream, hub: Arc<Hub>) -> Result<()> {
 					match message {
 						Some(Ok(Message::Text(text))) => {
 							let value: Value = serde_json::from_str(&text).map_err(|e| e.to_string())?;
+
+							if let Some(result) = research_request(&root,&hub,&value,&read_research) {
+								reply.send(Message::Text(result.to_string().into())).await.map_err(|e|e.to_string())?;
+
+								continue;
+							}
+
 							let (hub, reply) = (hub.clone(), reply.clone());
 
 							requests.spawn(async move {
@@ -239,6 +283,10 @@ async fn serve_client(stream: UnixStream, hub: Arc<Hub>) -> Result<()> {
 				Some(reply) = replies.recv() => write.send(reply).await.map_err(|e| e.to_string())?,
 				event = events.recv() => {
 					let value = event.map_err(|_| "Research events were lost; recover the saved request")?;
+
+						if (value["method"] == crate::events::UPDATED) != research.load(Ordering::Relaxed) {
+							continue;
+						}
 
 					write.send(Message::Text(value.to_string().into())).await.map_err(|e| e.to_string())?;
 				},

@@ -143,17 +143,23 @@ fn call(bridge: &ProBridge, root: &Path, executable: &Path, params: &Value) -> R
 
 			bridge.prepare(request)?;
 
-			serde_json::to_value(start_worker(executable, root, id, &bridge.config)?)
-				.map_err(|e| e.to_string())
+			asynchronous_receipt(start_worker(executable, root, id, &bridge.config)?)
 		},
 		Some("pro_resume") =>
-			serde_json::to_value(start_worker(executable, root, id, &bridge.config)?)
-				.map_err(|e| e.to_string()),
+			asynchronous_receipt(start_worker(executable, root, id, &bridge.config)?),
 		Some("pro_status") => serde_json::to_value(bridge.status(id)?).map_err(|e| e.to_string()),
 		Some("pro_result") =>
 			Ok(serde_json::json!({"receipt":bridge.status(id)?,"answer":bridge.read(id)?})),
 		_ => Err("Unknown research tool".into()),
 	}
+}
+
+fn asynchronous_receipt(receipt: Receipt) -> Result<Value> {
+	let mut value = serde_json::to_value(receipt).map_err(|e| e.to_string())?;
+
+	value["completionNotification"] = serde_json::json!("decodex");
+
+	Ok(value)
 }
 
 fn tools() -> Vec<Value> {

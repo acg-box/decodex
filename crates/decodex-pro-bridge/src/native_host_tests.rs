@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::{fs, time::Duration};
 
 use futures_util::{SinkExt as _, StreamExt as _};
 use serde_json::Value;
@@ -10,7 +10,12 @@ use tokio::{
 };
 use tokio_tungstenite::tungstenite::Message;
 
-use crate::{native_host, native_wire};
+use crate::{
+	Answer, Delivery, Phase, ProBridge, Request,
+	events::{self, Completions},
+	native_host, native_wire,
+	store::Store,
+};
 
 #[tokio::test]
 async fn large_browser_events_do_not_block_an_incoming_long_prompt() {
@@ -166,4 +171,113 @@ async fn local_clients_share_one_native_connection_and_recover_after_host_exit()
 		assert!(time::timeout(Duration::from_secs(2), host).await.unwrap().unwrap().is_err());
 		assert!(!path.exists(), "host shutdown must remove only its own socket");
 	}
+}
+
+#[tokio::test]
+async fn research_completion_reuses_host_without_browser_commands() {
+	let root = tempfile::tempdir().unwrap();
+	let store = Store::open(root.path()).unwrap();
+	let record = store
+		.prepare(Request {
+			id: "events-test".into(),
+			prompt: "Fixture".into(),
+			previous: None,
+			project: None,
+			context: None,
+			delivery: Delivery::Auto,
+		})
+		.unwrap();
+	let (native, extension) = io::duplex(8_192);
+	let (read, write) = io::split(native);
+	let directory = root.path().to_owned();
+	let host = tokio::spawn(async move {
+		native_host::serve_io(&directory, read, write, "events-browser".into()).await
+	});
+
+	while !native_host::socket_path(root.path()).exists() {
+		task::yield_now().await;
+	}
+
+	let mut subscriber = Completions::connect(root.path()).await.unwrap();
+	let mut record = record;
+
+	events::publish(root.path(), "events-test").await;
+
+	assert!(
+		time::timeout(Duration::from_millis(30), subscriber.recv()).await.is_err(),
+		"Prepared is not completion"
+	);
+
+	record.receipt.last_error = Some("Sign in required in the research tab".into());
+
+	store.save(&record).unwrap();
+
+	events::publish(root.path(), "events-test").await;
+
+	assert_eq!(
+		time::timeout(Duration::from_secs(2), subscriber.recv()).await.unwrap().unwrap(),
+		Some("events-test".into())
+	);
+
+	record.receipt.last_error = None;
+	record.receipt.phase = Phase::Complete;
+	record.answer = Some(Answer {
+		message_id: "answer".into(),
+		text: "Complete fixture answer".into(),
+		code_blocks: vec![],
+		links: vec![],
+	});
+
+	store.save(&record).unwrap();
+
+	for _ in 0..2 {
+		events::publish(root.path(), "events-test").await;
+
+		assert_eq!(
+			time::timeout(Duration::from_secs(2), subscriber.recv()).await.unwrap().unwrap(),
+			Some("events-test".into())
+		);
+	}
+
+	let (mut read, write) = io::split(extension);
+
+	assert!(
+		time::timeout(Duration::from_millis(30), native_wire::read_packet(&mut read))
+			.await
+			.is_err(),
+		"Local completion traffic must never reach Chrome"
+	);
+
+	drop(write);
+	drop(read);
+
+	assert!(host.await.unwrap().is_err());
+	assert!(!matches!(
+		time::timeout(Duration::from_secs(2), subscriber.recv()).await,
+		Ok(Ok(Some(_)))
+	));
+	assert_eq!(store.load("events-test").unwrap().answer, record.answer);
+}
+
+#[tokio::test]
+async fn passive_collection_never_submits_prepared_work() {
+	let root = tempfile::tempdir().unwrap();
+	let bridge = ProBridge::new(Default::default(), root.path()).unwrap();
+
+	bridge
+		.prepare(Request {
+			id: "never-send".into(),
+			prompt: "No Send authorized by recovery".into(),
+			previous: None,
+			project: None,
+			context: None,
+			delivery: Default::default(),
+		})
+		.unwrap();
+
+	let before = fs::read(root.path().join("never-send.json")).unwrap();
+
+	assert_eq!(bridge.collect("never-send").await.unwrap().phase, crate::Phase::Prepared);
+	assert_eq!(fs::read(root.path().join("never-send.json")).unwrap(), before);
+	assert!(!native_host::socket_path(root.path()).exists());
 }

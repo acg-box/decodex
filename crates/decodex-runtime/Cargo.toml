@@ -17,6 +17,7 @@ decodex-account-login = { workspace = true }
 decodex-codex         = { workspace = true }
 decodex-core          = { workspace = true }
 decodex-database      = { workspace = true }
+decodex-pro-bridge    = { workspace = true }
 decodex-protocol      = { workspace = true }
 futures-util          = { workspace = true }
 libc                  = { workspace = true }
