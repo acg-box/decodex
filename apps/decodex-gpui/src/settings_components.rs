@@ -14,10 +14,10 @@ use crate::{
 	component_research::{self, ResearchOperations},
 	component_runtime::{self, RuntimePreparation},
 	settings_surface::SettingsSurface,
-	shell::workspace_symbols::{self, Symbol},
+	shell::workspace_symbols,
 	ui_feedback::{self, Feedback},
 	ui_motion::{self, SmoothControl as _},
-	ui_theme::{self, BLUE, HOVER_FILL, PRESSED_FILL, SETTINGS_HELP_SIZE, TEXT, TEXT_MUTED},
+	ui_theme::{self, BLUE, SETTINGS_LABEL_SIZE, TEXT, TEXT_MUTED},
 };
 use decodex_components::{InstallProgress, PluginAction, RuntimeLock};
 
@@ -177,7 +177,7 @@ impl SettingsSurface {
 		};
 		let mut component = gpui::div().w_full().flex().flex_col().child(
 			ui_theme::settings_row()
-				.child(ui_theme::settings_label("Codex", version))
+				.child(self.component_label(0, "components-codex-details", "Codex", version, cx))
 				.when_some(action, |row, (id, label)| {
 					row.child(self.component_button(id, label, Action::Prepare, cx))
 				}),
@@ -228,40 +228,43 @@ impl SettingsSurface {
 			},
 		}
 
-		component.child(self.component_details(
+		component.child(self.component_body(
 			0,
-			"components-codex-details",
-			"Required for conversations. Follows the runtime included with this Decodex build.",
-			cx,
+			"components-codex-body",
+			ui_theme::settings_description(
+				"Required for conversations. Follows the runtime included with this Decodex build.",
+			),
 		))
 	}
 
-	fn component_details(
+	fn component_label(
 		&self,
 		index: usize,
 		id: &'static str,
-		text: &'static str,
+		title: &'static str,
+		status: impl Into<SharedString>,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
 		let expanded = self.components.details[index];
-		let toggle = gpui::div()
+		gpui::div()
 			.id(id)
 			.debug_selector(move || id.into())
 			.role(Role::Button)
 			.tab_index(0)
-			.aria_label("Component details")
+			.aria_label(title)
 			.aria_expanded(expanded)
+			.flex_1()
+			.min_w_0()
 			.flex()
-			.items_center()
-			.gap_1()
-			.py_1()
-			.px_1()
+			.flex_col()
+			.gap(gpui::px(2.))
 			.rounded(gpui::px(4.))
 			.cursor_pointer()
-			.text_size(gpui::px(SETTINGS_HELP_SIZE))
-			.text_color(ui_theme::rgb(TEXT_MUTED))
-			.hover(|s| s.bg(ui_theme::rgba(HOVER_FILL)).text_color(ui_theme::rgb(TEXT)))
-			.active(|s| s.bg(ui_theme::rgba(PRESSED_FILL)))
+			.text_size(gpui::px(SETTINGS_LABEL_SIZE))
+			.line_height(gpui::px(18.))
+			.text_color(ui_theme::rgb(TEXT))
+			.hover(|s| s.text_color(ui_theme::rgb(BLUE)))
+			.active(|s| s.opacity(0.75))
 			.on_click(cx.listener(move |this, _, _, cx| {
 				this.components.details[index] = !this.components.details[index];
 
@@ -275,27 +278,31 @@ impl SettingsSurface {
 					cx.stop_propagation();
 				}
 			}))
-			.child(workspace_symbols::icon_sized(
-				if expanded { Symbol::ChevronDown } else { Symbol::Forward },
-				10.,
+			.child(gpui::div().flex().items_center().gap_1().child(title).child(
+				gpui::div().text_color(ui_theme::rgb(TEXT_MUTED)).child(
+					workspace_symbols::process_chevron(
+						SharedString::from(format!("{id}-chevron")),
+						expanded,
+					),
+				),
 			))
-			.child("Details")
-			.smooth();
-
-		gpui::div()
-			.w_full()
-			.flex()
-			.flex_col()
-			.items_start()
-			.child(toggle)
-			.child(ui_motion::disclosure(
-				SharedString::from(format!("{id}-body")),
-				expanded,
-				ui_theme::settings_description(text)
-					.py_1()
-					.debug_selector(move || format!("{id}-content")),
-			))
+			.child(ui_theme::settings_description(status))
+			.smooth()
 			.into_any_element()
+	}
+
+	fn component_body(
+		&self,
+		index: usize,
+		id: &'static str,
+		content: impl gpui::IntoElement,
+	) -> AnyElement {
+		ui_motion::disclosure(
+			id,
+			self.components.details[index],
+			gpui::div().w_full().pt_1().child(content),
+		)
+		.into_any_element()
 	}
 
 	pub(super) fn components_content(&self, cx: &mut Context<Self>) -> AnyElement {
@@ -402,18 +409,27 @@ impl SettingsSurface {
 			.flex_col()
 			.child(
 				ui_theme::settings_row()
-					.child(ui_theme::settings_label(
+					.child(self.component_label(
+						2,
+						"components-research-details",
 						"Pro Research · Experimental",
 						state.status_text(),
+						cx,
 					))
 					.child(controls),
 			)
-			.child(self.component_details(2, "components-research-details", explanation, cx))
-			.child(ui_motion::disclosure(
-				"components-research-setup",
-				self.components.details[2] && state.installed.is_some(),
-				details,
-			))
+			.child(
+				self.component_body(
+					2,
+					"components-research-body",
+					gpui::div()
+						.flex()
+						.flex_col()
+						.gap_2()
+						.child(ui_theme::settings_description(explanation))
+						.when(state.installed.is_some(), |body| body.child(details)),
+				),
+			)
 			.child(
 				ui_feedback::notice("components-research-feedback", "research", feedback).inline(),
 			)
@@ -466,9 +482,9 @@ impl SettingsSurface {
 			});
 
 		gpui::div().debug_selector(|| "components-egm".into()).w_full().flex().flex_col().child(ui_theme::settings_row()
-			.child(ui_theme::settings_label("Elephant–Goldfish (EGM)", status))
+			.child(self.component_label(1, "components-egm-details", "Elephant–Goldfish (EGM)", status, cx))
 			.child(controls))
-			.child(self.component_details(1,"components-egm-details","Google's complete design and review plugin. Optional; uses your Codex subscription. Start a new conversation after installing or updating.",cx))
+			.child(self.component_body(1,"components-egm-body",ui_theme::settings_description("Google's complete design and review plugin. Optional; uses your Codex subscription. Start a new conversation after installing or updating.")))
 			.child(ui_feedback::notice("components-egm-feedback", "egm", feedback).inline()
 				.when(state.busy == Some(PluginAction::Refresh), |notice| {
 					notice.loading_delay(Duration::from_millis(500))
@@ -637,6 +653,13 @@ mod tests {
 		assert_eq!(settings.read_with(visual, |s, _| s.components.details), [false; 3]);
 
 		let toggle = visual.debug_bounds("components-egm-details").unwrap();
+		let action = visual.debug_bounds("components-refresh-egm").unwrap();
+
+		assert!(
+			toggle.top() <= action.center().y && toggle.bottom() >= action.center().y,
+			"the disclosure belongs in the component header, not a separate Details row"
+		);
+		assert!(toggle.right() < action.left(), "component actions stay outside the disclosure");
 
 		visual.simulate_click(toggle.center(), Default::default());
 
