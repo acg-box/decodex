@@ -68,7 +68,7 @@ impl AgentHost {
 			return Some(());
 		}
 		if state.reviewed_through >= review.completed_event
-			|| (state.generated && review.new_exchanges < 4)
+			|| (state.generated && review.new_exchanges < 7)
 		{
 			return Some(());
 		}
