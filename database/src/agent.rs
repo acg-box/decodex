@@ -999,7 +999,7 @@ impl SqliteStore {
 		owner: String,
 	) -> Result<(), StoreError> {
 		self.run(move |c| {
-			c.execute("UPDATE agent_inbox_events SET disposition='resolved',disposition_note='Full research result retrieved; Work assessment remains separate.',disposed_at_micros=max(created_at_micros,?4) WHERE work_item_id=?3 AND disposition IS NULL AND (source_event_id=json_array('research_completed',?1,?2) OR (event_kind='research_attention' AND json_extract(payload,'$.directory')=?1 AND json_extract(payload,'$.requestId')=?2))",rusqlite::params![directory,id,owner,crate::unix_micros()?]).map_err(error::sqlite_error)?;
+			c.execute("UPDATE agent_inbox_events SET disposition='resolved',disposition_note='Full research result retrieved; Work assessment remains separate.',disposed_at_micros=max(created_at_micros,?4) WHERE (work_item_id=?3 OR delivery_work_item_id=?3) AND disposition IS NULL AND (source_event_id=json_array('research_completed',?1,?2) OR (event_kind='research_attention' AND json_extract(payload,'$.directory')=?1 AND json_extract(payload,'$.requestId')=?2))",rusqlite::params![directory,id,owner,crate::unix_micros()?]).map_err(error::sqlite_error)?;
 
 			Ok(())
 		}).await

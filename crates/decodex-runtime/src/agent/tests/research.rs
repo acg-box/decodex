@@ -189,6 +189,36 @@ async fn research_read_before_completion_hint_does_not_wake_again() {
 }
 
 #[tokio::test]
+async fn research_result_read_by_inbox_recipient_acknowledges_child_notification() {
+	let (mut agent, _sent, home) = tests::fixture().await;
+	let root = home.path().join("research");
+
+	agent.research_directory = Some(root.clone());
+
+	agent.start_agent("agent", "Coordinate research").await.unwrap();
+	agent.create_goal("agent", "child", "Review this part").await.unwrap();
+	agent.store.bind_agent_thread("child".into(), "child-native".into()).await.unwrap();
+	agent.observe_research_call(&serde_json::json!({"threadId":"child-native","item":{"type":"mcpToolCall","server":"decodex_research","tool":"pro_research","arguments":{"id":"child-result"}}})).await.unwrap();
+
+	complete_record(&root, "child-result");
+
+	research::reconcile(&agent.store, &root, None, false).await.unwrap();
+	tests::complete(&mut agent, "agent").await;
+
+	let events = agent.store.list_agent_wake_events("agent".into(), 100).await.unwrap();
+	let parent = agent.store.get_agent_work_item("agent".into()).await.unwrap();
+	let bridge = ProBridge::new(Default::default(), &root).unwrap();
+
+	assert_eq!(events.len(), 1);
+	assert_eq!(events[0].work_item_id, "child");
+	assert_eq!(events[0].delivered_turn_id, parent.active_turn_id);
+
+	agent.observe_research_call(&serde_json::json!({"threadId":parent.codex_thread_id,"item":{"type":"mcpToolCall","server":"decodex_research","tool":"pro_result","status":"completed","arguments":{"id":"child-result"},"result":{"structuredContent":{"receipt":bridge.status("child-result").unwrap(),"answer":bridge.read("child-result").unwrap()}}}})).await.unwrap();
+
+	assert!(agent.store.list_agent_wake_events("agent".into(), 100).await.unwrap().is_empty());
+}
+
+#[tokio::test]
 async fn research_socket_reconnect_reads_missed_completion_and_acknowledges_full_result() {
 	let (mut agent, mut sent, home) = tests::fixture().await;
 	let root = home.path().join("research");
