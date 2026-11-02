@@ -134,7 +134,7 @@ pub fn install(
 		check_registration(&registration, &launcher)?;
 	}
 
-	let value = serde_json::json!({"name":HOST_NAME,"description":"Decodex Research","path":launcher,"type":"stdio","allowed_origins":[format!("chrome-extension://{EXTENSION_ID}/")]});
+	let value = serde_json::json!({"name":HOST_NAME,"description":"Decodex Pro Research","path":launcher,"type":"stdio","allowed_origins":[format!("chrome-extension://{EXTENSION_ID}/")]});
 
 	atomic_file(&registration, &serde_json::to_vec_pretty(&value).map_err(|e| e.to_string())?)?;
 
@@ -145,7 +145,7 @@ pub fn install(
 /// Chrome extension removal and native Codex plugin removal use their own installers.
 pub fn removal_ready(root: &Path) -> Result<()> {
 	let store = Store::open(root)?;
-	let _browser = store.browser_lease()?.ok_or("Remove Decodex Research from Chrome first, then remove this component. Saved results will remain available.")?;
+	let _browser = store.browser_lease()?.ok_or("Remove Decodex Pro Research from Chrome first, then remove this component. Saved results will remain available.")?;
 	let _execution = store
 		.execution_lease()?
 		.ok_or("Wait for research to finish before removing its component.")?;
@@ -161,7 +161,7 @@ pub fn uninstall(root: &Path, registration_directory: &Path) -> Result<()> {
 		.ok_or("Wait for research to finish before removing its component.")?;
 	let _lease = store
 		.browser_lease()?
-		.ok_or("Turn off Decodex Research in Chrome before removing the component.")?;
+		.ok_or("Turn off Decodex Pro Research in Chrome before removing the component.")?;
 	let launcher = root.join("native-host");
 	let registration = registration_directory.join(format!("{HOST_NAME}.json"));
 

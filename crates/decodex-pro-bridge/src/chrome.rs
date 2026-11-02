@@ -41,7 +41,7 @@ pub(crate) struct Chrome {
 impl Chrome {
 	pub async fn connect(root: &Path) -> Result<Self> {
 		let stream = UnixStream::connect(native_host::socket_path(root)).await
-			.map_err(|_| "Decodex Research is not connected. Enable its Chrome extension, then recover the saved request.")?;
+			.map_err(|_| "Decodex Pro Research is not connected. Enable its Chrome extension, then recover the saved request.")?;
 		let (socket, _) = tokio_tungstenite::client_async("ws://localhost/research", stream)
 			.await
 			.map_err(|e| e.to_string())?;

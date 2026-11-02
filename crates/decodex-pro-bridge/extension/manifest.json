@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Decodex Research",
+  "name": "Decodex Pro Research",
   "version": "0.1.0",
   "description": "Connect Decodex to its own ChatGPT research tabs in your existing browser.",
   "minimum_chrome_version": "118",
@@ -8,5 +8,5 @@
   "permissions": ["debugger", "nativeMessaging", "storage", "tabGroups"],
   "host_permissions": ["https://chatgpt.com/*"],
   "background": {"service_worker": "background.js"},
-  "action": {"default_title": "Connect Decodex Research"}
+  "action": {"default_title": "Connect Decodex Pro Research"}
 }

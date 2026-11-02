@@ -119,7 +119,7 @@ async fn main() -> ExitCode {
 	match run(Cli::parse()).await {
 		Ok(()) => ExitCode::SUCCESS,
 		Err(error) => {
-			eprintln!("Decodex Research: {error}");
+			eprintln!("Decodex Pro Research: {error}");
 
 			ExitCode::FAILURE
 		},

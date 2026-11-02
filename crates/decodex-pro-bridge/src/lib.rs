@@ -262,7 +262,7 @@ impl ProBridge {
 				return Ok(());
 			}
 			if Instant::now() >= deadline {
-				return Err("Chrome did not remove its research extension. Remove Decodex Research in Chrome, then retry.".into());
+				return Err("Chrome did not remove its research extension. Remove Decodex Pro Research in Chrome, then retry.".into());
 			}
 
 			time::sleep(Duration::from_millis(100)).await;

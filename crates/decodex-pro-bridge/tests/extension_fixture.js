@@ -6,7 +6,7 @@ var setTimeout = function(callback, delay) { scheduled.push({callback, delay}); 
 const callbacks = {};
 const event = name => ({addListener: cb => { callbacks[name] = cb; }});
 const records = new Map([[1, {id: 1, url: "https://chatgpt.com/", windowId: 1}]]);
-const groupRecords = new Map([[5, {id: 5, title: "Decodex Research", windowId: 1}]]);
+const groupRecords = new Map([[5, {id: 5, title: "Decodex Pro Research", windowId: 1}]]);
 let nextGroup = 100, uninstalled = false;
 const storage = {};
 const frames = [];

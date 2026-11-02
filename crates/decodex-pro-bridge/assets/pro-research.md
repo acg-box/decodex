@@ -3,9 +3,9 @@ name: pro-research
 description: Consult ChatGPT Pro for a difficult research or design question when the user requests Pro or this Agent has permission to delegate research to its connected ChatGPT subscription.
 ---
 
-# Pro research
+# Decodex Pro Research
 
-Use the Decodex Research tools for questions that benefit from an independent, deeper analysis. Keep ordinary execution in this Agent. Send only the task, relevant evidence and constraints; do not forward the full chat by default. Browser login remains with Chrome. Do not read or copy login credentials.
+Use the Decodex Pro Research tools for questions that benefit from an independent, deeper analysis. Keep ordinary execution in this Agent. Send only the task, relevant evidence and constraints; do not forward the full chat by default. Browser login remains with Chrome. Do not read or copy login credentials.
 
 `pro_research` saves a question and returns a request ID immediately. Keep this ID. Use `previous` with a completed request ID to continue its ChatGPT conversation. Different research threads use separate first requests. The same ID must always identify the same input.
 

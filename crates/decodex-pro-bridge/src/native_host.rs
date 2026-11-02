@@ -97,7 +97,7 @@ pub(crate) fn socket_path(root: &Path) -> PathBuf {
 /// Run only for the registered extension origin. Chrome supplies this argument.
 pub async fn serve(root: &Path, origin: &str) -> Result<()> {
 	if origin != format!("chrome-extension://{EXTENSION_ID}/") {
-		return Err("The native host only accepts the Decodex Research extension.".into());
+		return Err("The native host only accepts the Decodex Pro Research extension.".into());
 	}
 
 	serve_io(root, io::stdin(), io::stdout(), browser_session()?).await

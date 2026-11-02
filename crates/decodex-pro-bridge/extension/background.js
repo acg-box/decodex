@@ -56,7 +56,7 @@ async function groupTab(tab) {
   if (groupId === undefined) {
     groupId = await chrome.tabs.group({tabIds: [tab.id]});
     groups.set(tab.windowId, groupId);
-    await chrome.tabGroups.update(groupId, {title: "Decodex Research", color: "blue", collapsed: !tab.active});
+    await chrome.tabGroups.update(groupId, {title: "Decodex Pro Research", color: "blue", collapsed: !tab.active});
   } else {
     await chrome.tabs.group({tabIds: [tab.id], groupId});
   }
