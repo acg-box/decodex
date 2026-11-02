@@ -59,6 +59,15 @@ fn declared_markdown_user_text_decodes_the_entire_input_and_keeps_link_destinati
 }
 
 #[test]
+fn declared_markdown_preserves_exact_paragraph_spacing_and_escaped_source() {
+	let original = "Question\n\n\nmanifest.json\n  {\n    \"path\": \"workflow.rs\"\n  }\n\n\nKeep every source line.";
+	let encoded = "Question\n\n\nmanifest.json\n&#x20; {\n&#x20;   \"path\": \"workflow\\.rs\"\n&#x20; }\n\n\nKeep every source line.";
+
+	assert_eq!(super::markdown_user_text(encoded).as_deref(), Some(original));
+	assert_ne!(super::markdown_user_text(encoded).unwrap(), original.replace("\n\n\n", "\n\n"));
+}
+
+#[test]
 fn native_message_binding_preserves_source_instead_of_display_whitespace() {
 	let text = "**Context**\n\n\nDo not alter this.";
 	let native = NativeMessage {
