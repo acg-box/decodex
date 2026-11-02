@@ -419,7 +419,7 @@ fn fork_recovery_opens_verified_target_and_keeps_edited_input(cx: &mut TestAppCo
 				if boundary == PromptForkBoundary::AfterTurn {
 					"Separate unsent input"
 				} else if reference.is_some() {
-					"About this passage:\n\n> Uses cursor pagination.\n\n"
+					"> Uses cursor pagination.\n\n"
 				} else {
 					""
 				}
@@ -430,10 +430,7 @@ fn fork_recovery_opens_verified_target_and_keeps_edited_input(cx: &mut TestAppCo
 			assert_eq!(s.composer.read(cx).content(), "Separate unsent input");
 			if reference.is_some() {
 				s.open_page("branch", cx);
-				assert_eq!(
-					s.composer.read(cx).content(),
-					"About this passage:\n\n> Uses cursor pagination.\n\n"
-				);
+				assert_eq!(s.composer.read(cx).content(), "> Uses cursor pagination.\n\n");
 				assert!(!s.sending);
 			}
 		});
