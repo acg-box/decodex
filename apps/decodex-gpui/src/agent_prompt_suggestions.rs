@@ -77,7 +77,7 @@ impl AgentSurface {
 			&& self.voice.is_none()
 			&& self.dictation.is_none()
 		{
-			self.open_sample_panel(true, false, cx);
+			self.open_prompt_suggestion(cx);
 		}
 	}
 }

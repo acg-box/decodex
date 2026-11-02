@@ -23,15 +23,16 @@ pub(super) struct Panel {
 	pub(super) branch_choice: Option<PromptForkBoundary>,
 	pub(super) branch_provider: Option<(WireText, WireText)>,
 	pub(super) fork_requested: bool,
-	list_branch_pending: bool,
+	pub(in crate::shell::agent_surface) side_chat_reference: Option<String>,
+	pub(in crate::shell::agent_surface) list_branch_pending: bool,
 	key: String,
 	profile: Option<ClientProfile>,
-	work: String,
+	pub(in crate::shell::agent_surface) work: String,
 	thread: String,
 	draft: Option<DesktopPromptEditDraft>,
 	editors: Vec<(usize, Entity<ComposerInput>)>,
 	subscriptions: Vec<Subscription>,
-	task: Option<Task<()>>,
+	pub(in crate::shell::agent_surface) task: Option<Task<()>>,
 	feedback: String,
 	removal: Option<Removal>,
 	confirmation: Option<DesktopPromptEditDraft>,
@@ -511,9 +512,14 @@ impl AgentSurface {
 		let fork_requested = self.prompt_edit.work == work
 			&& self.prompt_edit.thread == thread
 			&& self.prompt_edit.fork_requested;
+		let side_chat_reference = (self.prompt_edit.work == work
+			&& self.prompt_edit.thread == thread)
+			.then(|| self.prompt_edit.side_chat_reference.clone())
+			.flatten();
 		let key = self.begin_prompt_review(&profile, work, thread);
 		self.prompt_edit.branch_provider = provider;
 		self.prompt_edit.fork_requested = fork_requested;
+		self.prompt_edit.side_chat_reference = side_chat_reference;
 		self.prompt_edit.branch_choice = branch_choice.or(self.prompt_edit.branch_choice);
 		let (send, receive) = oneshot::channel();
 		let request_key = key.clone();
@@ -884,7 +890,14 @@ impl AgentSurface {
 			"prompt-fork-progress",
 			if busy { ui_feedback::Tone::Neutral } else { ui_feedback::Tone::Warning },
 			"",
-			if busy { "Forking…" } else { &self.prompt_edit.feedback },
+			if busy && self.prompt_edit.branch_choice == Some(PromptForkBoundary::AttachedAfterTurn)
+			{
+				"Opening side chat…"
+			} else if busy {
+				"Forking…"
+			} else {
+				&self.prompt_edit.feedback
+			},
 			workspace_symbols::icon_sized(workspace_symbols::Symbol::Fork, 14.),
 		)
 		.debug_selector(|| "prompt-fork-progress".into());
@@ -900,7 +913,10 @@ impl AgentSurface {
 			"fork-retry".into(),
 			"Retry".into(),
 			|s, cx| {
-				if s.selected_provider_mismatch().is_some() {
+				if s.prompt_edit.branch_choice == Some(PromptForkBoundary::AttachedAfterTurn) {
+					let reference = s.prompt_edit.side_chat_reference.clone();
+					s.start_side_chat(reference, cx);
+				} else if s.selected_provider_mismatch().is_some() {
 					s.review_provider_branch(cx);
 				} else {
 					s.review_locked_branch(cx);

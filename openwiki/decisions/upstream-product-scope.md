@@ -8,6 +8,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_attached_branches.rs
   - id: openwiki-source-d9c9b48c73ee4a2adc90f01c
     resource: repo://apps/decodex-gpui/src/agent_collaboration_cases.rs
+  - id: openwiki-source-48758ba7d154c82885281d2c
+    resource: repo://apps/decodex-gpui/src/agent_composer.rs
   - id: openwiki-source-c76550e85b25876b339f9255
     resource: repo://apps/decodex-gpui/src/agent_context_settings.rs
   - id: openwiki-source-1bf529ea3f1649ac9a28334a
@@ -30,10 +32,14 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_read_state.rs
   - id: openwiki-source-296a92a9cefecb19f0fc1f95
     resource: repo://apps/decodex-gpui/src/agent_sample_tests.rs
-  - id: openwiki-source-309d7ec654ab4d531c906212
-    resource: repo://apps/decodex-gpui/src/agent_sample_ui.rs
+  - id: openwiki-source-912dbe8f46e7ec6026887bbe
+    resource: repo://apps/decodex-gpui/src/agent_sample.rs
+  - id: openwiki-source-012d0a3289dff03dd84a5971
+    resource: repo://apps/decodex-gpui/src/agent_side_chat_question.rs
   - id: openwiki-source-01379a7fb49ab2d638863891
     resource: repo://apps/decodex-gpui/src/agent_skills.rs
+  - id: openwiki-source-73d67d21d29d49e7272436e0
+    resource: repo://apps/decodex-gpui/src/agent_timeline_render.rs
   - id: openwiki-source-5606e779f593d160176b0a27
     resource: repo://apps/decodex-gpui/src/agent_transcript.rs
   - id: openwiki-source-0d053d4de2f668168f982629
@@ -68,6 +74,8 @@ sources:
     resource: repo://crates/decodex-codex/src/app_server_client/history_item.rs
   - id: openwiki-source-830a575f82404942511da59b
     resource: repo://crates/decodex-codex/src/app_server_client/prediction.rs
+  - id: openwiki-source-38991dd5f5687970bfc48ba1
+    resource: repo://crates/decodex-codex/src/app_server_client/sample.rs
   - id: openwiki-source-787f8ad27b8519fbed2bd039
     resource: repo://crates/decodex-codex/src/app_server_client/thread_fork.rs
   - id: openwiki-source-e379b8a714d71f87371ae328
@@ -124,10 +132,10 @@ sources:
     resource: repo://database/src/agent_fork.rs
   - id: openwiki-source-fc5ad70343bb20c4e9d12540
     resource: repo://database/src/agent_process/attachments.rs
-generated: { by: "codex", at: "2026-10-31T16:42:36.938Z" }
+generated: { by: "codex", at: "2026-11-02T02:42:46.593Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-31T17:07:05.970Z
+    at: 2026-11-02T04:34:00.067Z
 ---
 
 # Product scope and native ownership
@@ -164,9 +172,11 @@ These views are available through local protocol 4.4 and the same source owners.
 
 In the earlier six-item review, items 1–3 are delivered through the selected read-only views above. The user selected **item 4, persistent attached branches**. An explicit completed-turn branch uses native attachment, retains the exact source relationship and can be reopened from Agent preferences. Creation sends no input and copies no native Goal. The child-visible history starts empty, while native inference retains the reviewed parent context. Source turn IDs preserve boundary provenance. Native attachment requires paginated source history; the public branch flow already checks this. It adds no automatic follow-up, scheduling, result merge or deletion policy. The retained `retained_attached_forks` evidence identifies its regressions and qualification limits.
 
-The user also selected multiple Side chats in the conversation header. The source and open Side chats share a horizontal tab strip. **+** reviews the latest completed source turn before **Side chat** confirms an attached fork. Switching retains each draft and history position. Closing hides a tab without deleting the native branch; Agent preferences can reopen it. This presentation reuses the selected attachment boundary and adds no runtime or scheduling policy.
+The user selected multiple Side chats in the conversation header. The source and open Side chats share a horizontal tab strip. **+** prepares the selected conversation's latest completed turn and opens an attached fork without a second confirmation. Switching retains each draft and history position. Closing hides a tab without deleting the native branch; Agent preferences can reopen it. Creation sends no message.
 
-**Ask separately** remains a one-shot question. Direct composer, completed-response and text-selection actions open its shared popover. It preserves the main draft and reading position and does not create a Side chat. See [conversation presentation](../architecture/conversation-presentation.md).
+The user replaced the manual **Ask separately** popover with **Ask in side chat**. Completed-response and text-selection actions create an attached Side chat and stage the referenced passage in its unsent draft. The source draft stays separate. The user sends through the normal composer and can continue asking questions. The manual sampler toolbar and menu entries are removed. See [conversation presentation](../architecture/conversation-presentation.md).
+
+The native `thread/sample` API remains for next-message suggestions. It produces one response on a temporary inherited fork without executing tools or adding input to the source. Native Codex owns cleanup. Persistent Side chats use `thread/fork` with `attachToSource`; subsequent messages use normal turns. These are different API contracts. This product choice retains sampling and changes only the manual question presentation.
 
 **Item 5, the native Guardian V3 experiment, waits for upstream maturity** ([issue #2563](https://github.com/acg-box/decodex/issues/2563)). **Item 6, a custom managed configuration server, is deferred by the user** ([issue #2564](https://github.com/acg-box/decodex/issues/2564)). Neither is selected for implementation. Existing global Guardian and native managed requirements keep their current scope. There is no outstanding new decision in this six-item list.
 

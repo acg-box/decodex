@@ -1,4 +1,5 @@
 //! Find retained attached conversations through the existing branch and navigation owners.
+#[path = "agent_side_chat_question.rs"] mod questions;
 #[path = "agent_conversation_tabs.rs"] mod tabs;
 use gpui::AnyElement;
 use tokio::runtime::Builder;

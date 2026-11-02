@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:19b52a01987af737182a23914ea32cff3379d6b01d7cbf9d28dcfe87c364a833",
+  "pageVersion": "sha256:0e5615d5db3b313fd3c71e12de870a87c5cd6d88e9a7ff29d688fc9454c45998",
   "claims": [
     {
       "id": "claim_3f139c853db04d169600a9ee50a8d9b8",
@@ -65,7 +65,7 @@
       "statement": "The local API does not expose connector approval/reviewer configuration commands; native integration observations and pending approval handling remain separate supported capabilities.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-protocol/src/agent.rs#L642-L681",
+          "resource": "repo://crates/decodex-protocol/src/agent.rs#L645-L684",
           "version": "repo-lines-v1:sha256:78cd5ebe6b09647e80befcc16abb384c93dd85503140de19438f8598c9ccbf33:eyJzZWxlY3RlZExpbmVDb3VudCI6NDAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk4YTAwOWNiODY3NGYwN2U0M2Y3ODg1ZjIyNTJkNDk5NzUyOGY3NzBhNzYzZGVjYjJhOGEzZmZiNTUyYmM4YTIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMzMDdkZDhhMmUyMzI0ZGViMWU5NDQ4MzMwYTUzZjBjYWFmOGEwZWI3MmMxYTM1NzhjNjMyM2Q4NzBlY2IzYjEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImI0NjhlOWU4Y2ZmZDFiMzkxOTQzMjQ2MWRmY2E1N2RlODUzYTkxZDY5NmRmMDkzMmIzMjQ4YzA5MzJlMGNlMTAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImZlZjk2YmVlZWZiY2I0MTBiMTc5NDg0NzhjMzVlMWRiYTk1MmNkYzM2N2ZkMmQ1Mjg0ZmVkZjA5ZWFiNzFlOTMifQ"
         },
         {
@@ -88,7 +88,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:56c363be2b1204ee1837fcb3d259a97054ca93f9430d6669503476764ec3d34a"
+          "version": "repo-file-v1:sha256:7b9715be9b8616e8c2786b8e0fa1eed8d951f6d0fd66afdc9a6f2ad56f76bf77"
         },
         {
           "resource": "repo://crates/decodex-components/src/plugins.rs",
@@ -99,6 +99,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-30T17:36:00.319Z"
+    "at": "2026-11-02T02:42:46.593Z"
   }
 }

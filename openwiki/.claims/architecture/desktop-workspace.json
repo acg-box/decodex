@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:b60183c92fbea115de226085a0e9e316775654fa754c3260521492fe4eb29cac",
+  "pageVersion": "sha256:12e9c8df72c796665f47138287a79cea4b5be6ff60c06a86c40a378062703ad6",
   "claims": [
     {
       "id": "claim_41c9eba720934771bd6b671a7aeb8b6e",
@@ -20,7 +20,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:def240e9768ac8075120cab0a47125e5a427a75135d7f20e182ccce3f25df626"
+          "version": "repo-file-v1:sha256:4b0bd2d5f0f9c6c3f40622264c11971b37c748b69411742d29c42f3989351abf"
         }
       ]
     },
@@ -58,7 +58,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_text_selection.rs",
-          "version": "repo-file-v1:sha256:e6f7dac4769a409f80fd60d408d58a8ed7eef2423b0f4fedf0b242784ade225b"
+          "version": "repo-file-v1:sha256:6c27fe42a62c3ef9dde2795e36114e3f5c1dbf5355d29a5b75bebc0dee95c9b0"
         }
       ]
     },
@@ -136,7 +136,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:def240e9768ac8075120cab0a47125e5a427a75135d7f20e182ccce3f25df626"
+          "version": "repo-file-v1:sha256:4b0bd2d5f0f9c6c3f40622264c11971b37c748b69411742d29c42f3989351abf"
         }
       ]
     },
@@ -222,7 +222,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_composer.rs",
-          "version": "repo-file-v1:sha256:cf84c6e1fbb83844cd8a4d99f116dfbc784650d6a2d96c5301ea393dddb971af"
+          "version": "repo-file-v1:sha256:614044f8710b5218baba0de8bf5af3aa8155f60b1a4e5a5513ba5d0a4c35a38a"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_native_agents.rs",
@@ -230,7 +230,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:def240e9768ac8075120cab0a47125e5a427a75135d7f20e182ccce3f25df626"
+          "version": "repo-file-v1:sha256:4b0bd2d5f0f9c6c3f40622264c11971b37c748b69411742d29c42f3989351abf"
         }
       ]
     },
@@ -239,11 +239,11 @@
       "statement": "Agent preferences lists at most the newest 100 retained Decodex attached-branch receipts for the exact source. Verified branch navigation preserves the source draft, uncertain creation is not repeated, and archived branches require native restoration before refresh.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_attached_branches.rs#L253-L354",
+          "resource": "repo://apps/decodex-gpui/src/agent_attached_branches.rs#L254-L355",
           "version": "repo-lines-v1:sha256:7ae16f0a95656443098c03b2d9670e03cca5fb80c647745261643ecb60fb64b4:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAyLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJlNDdlM2UyODMwNGI3YmQ3YTZjYmM0ZWQyZjk1NGE4ZmM0NmRiMDBlNTliNmQ3MDhiNzdkY2MwMWRmZWFmMjQ4IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI1Yjk5MGEzOTRhZmM4YmY0YjVkNzc1MzczOTQ5ZTBjNjVhOWUzNDJkZTE0ZDg1OGM0NjJmMzNmODFiZDQ2NDg5IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJmMTI2OWJhMGQ1Mjg0MjM2OGNhMjIwMWI0NGYyMTNhOWMwNGJmOTkzNjFiODE4YzljMjM1MzhjZjM1MWQ2MjgxIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIyN2VmMDA0YzE1NzE0YjliMDYxMWY2MjZkMTA1ODRmYTY4ZjQyYjUxMDk1MGQ5MDViZWQxMWEzZTc0ZTQ1MzU3In0"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_attached_branches.rs#L107-L237",
+          "resource": "repo://apps/decodex-gpui/src/agent_attached_branches.rs#L108-L238",
           "version": "repo-lines-v1:sha256:cbba70fadc5ac4f1565548a812abb26dd759ae7bbd0d4b83e09b6019d2377b4b:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMxLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI1NDNjZDJhYWQ2MzU4YzAxMDUyOGNlOWJiYTQzNDMzZDA3YTliZDJmNjg2NzRlNTA0MjQxMDYxN2FmMzU1NTIxIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI4ZTA0ZTdhOGU4NjFmOThhMDY5YTA2MmJiZjNhMDkxYjJiMjQ5ODY3NjY1YWQwNDM4ODkzOGZiNmIyNzA0ZGNmIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI1NGUxOTVlZmZkNDk4MjZhYzA3MjQ2NDA1NzIwZWU5Y2FjYTBhNDI3ZGIxZTk2M2QzZjc2NTRjNGUyN2U2OTA3IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJkZWMyMzRkNTU1MDhmZjk0NDNjNjUzMzU0YmRlMjRmZTYwZjkwNjBlNTI3MzQyYWIzNThmOWZmZGM1OWZhZGFmIn0"
         }
       ]
@@ -292,7 +292,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:def240e9768ac8075120cab0a47125e5a427a75135d7f20e182ccce3f25df626"
+          "version": "repo-file-v1:sha256:4b0bd2d5f0f9c6c3f40622264c11971b37c748b69411742d29c42f3989351abf"
         }
       ]
     },
@@ -302,11 +302,11 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_composer.rs",
-          "version": "repo-file-v1:sha256:cf84c6e1fbb83844cd8a4d99f116dfbc784650d6a2d96c5301ea393dddb971af"
+          "version": "repo-file-v1:sha256:614044f8710b5218baba0de8bf5af3aa8155f60b1a4e5a5513ba5d0a4c35a38a"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_prompt_edit.rs",
-          "version": "repo-file-v1:sha256:05584abc6a99709786d306a91a7f40b00fe81a1160c044059d5e5f26a6cd1c32"
+          "version": "repo-file-v1:sha256:fa795f10ae94669b9aade482d2a5321fe2d654239d70cfe1b7b5d07a7cbd8d33"
         }
       ]
     },
@@ -356,7 +356,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_composer.rs",
-          "version": "repo-file-v1:sha256:cf84c6e1fbb83844cd8a4d99f116dfbc784650d6a2d96c5301ea393dddb971af"
+          "version": "repo-file-v1:sha256:614044f8710b5218baba0de8bf5af3aa8155f60b1a4e5a5513ba5d0a4c35a38a"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_native_menu.rs",
@@ -400,7 +400,7 @@
     },
     {
       "id": "claim_8325c9c33c34427c8c1f3443885a7765",
-      "statement": "The conversation header groups each source with multiple open native Side chats. Its add action requires a reviewed branch choice; switching preserves per-conversation drafts and closing retains the native branch.",
+      "statement": "The conversation header groups each source with multiple open native Side chats. The + action creates and opens an attached branch from the selected conversation after source preparation without a second confirmation or message send. Switching preserves per-conversation drafts and closing retains the native branch.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_conversation_tab_tests.rs",
@@ -408,7 +408,11 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_conversation_tabs.rs",
-          "version": "repo-file-v1:sha256:37e8422d2942da071d326797f754fe648d05ab8738ef1fedc5054b8684051810"
+          "version": "repo-file-v1:sha256:65d22f0d45c040e5c84783851d1abe77c765f3875db509f1a8ea4b1b4d822dba"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_prompt_confirm_wire_tests.rs",
+          "version": "repo-file-v1:sha256:55c6c83c6e489618f3e0e4b1db3d04163e18f10164986ea774cb5d7e25189ccd"
         }
       ]
     },
@@ -418,15 +422,15 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_attached_branches.rs",
-          "version": "repo-file-v1:sha256:56e16cc761ecfa446826572dcb227e828029937017d66c5b88f913ce10cb2ba6"
+          "version": "repo-file-v1:sha256:fd9c7dc64620953c2b968994a79ac8159ece13ae50cd0f9ab1f99fdbdfd9288c"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_prompt_edit.rs",
-          "version": "repo-file-v1:sha256:05584abc6a99709786d306a91a7f40b00fe81a1160c044059d5e5f26a6cd1c32"
+          "version": "repo-file-v1:sha256:fa795f10ae94669b9aade482d2a5321fe2d654239d70cfe1b7b5d07a7cbd8d33"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:def240e9768ac8075120cab0a47125e5a427a75135d7f20e182ccce3f25df626"
+          "version": "repo-file-v1:sha256:4b0bd2d5f0f9c6c3f40622264c11971b37c748b69411742d29c42f3989351abf"
         }
       ]
     },
@@ -440,7 +444,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_conversation_tabs.rs",
-          "version": "repo-file-v1:sha256:37e8422d2942da071d326797f754fe648d05ab8738ef1fedc5054b8684051810"
+          "version": "repo-file-v1:sha256:65d22f0d45c040e5c84783851d1abe77c765f3875db509f1a8ea4b1b4d822dba"
         },
         {
           "resource": "repo://database/src/agent_fork.rs",
@@ -466,15 +470,15 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_prompt_confirm_wire_tests.rs",
-          "version": "repo-file-v1:sha256:a477218223d207e461c2c52b7658c6fa1c22ddcc53cf00742f440f2f0743962d"
+          "version": "repo-file-v1:sha256:55c6c83c6e489618f3e0e4b1db3d04163e18f10164986ea774cb5d7e25189ccd"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_prompt_edit.rs",
-          "version": "repo-file-v1:sha256:05584abc6a99709786d306a91a7f40b00fe81a1160c044059d5e5f26a6cd1c32"
+          "version": "repo-file-v1:sha256:fa795f10ae94669b9aade482d2a5321fe2d654239d70cfe1b7b5d07a7cbd8d33"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:def240e9768ac8075120cab0a47125e5a427a75135d7f20e182ccce3f25df626"
+          "version": "repo-file-v1:sha256:4b0bd2d5f0f9c6c3f40622264c11971b37c748b69411742d29c42f3989351abf"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_feedback.rs",
@@ -500,11 +504,11 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_composer.rs",
-          "version": "repo-file-v1:sha256:cf84c6e1fbb83844cd8a4d99f116dfbc784650d6a2d96c5301ea393dddb971af"
+          "version": "repo-file-v1:sha256:614044f8710b5218baba0de8bf5af3aa8155f60b1a4e5a5513ba5d0a4c35a38a"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:def240e9768ac8075120cab0a47125e5a427a75135d7f20e182ccce3f25df626"
+          "version": "repo-file-v1:sha256:4b0bd2d5f0f9c6c3f40622264c11971b37c748b69411742d29c42f3989351abf"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/shell_status.rs",
@@ -519,6 +523,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-31T15:20:06.142Z"
+    "at": "2026-11-02T02:42:46.593Z"
   }
 }

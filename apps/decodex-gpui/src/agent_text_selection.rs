@@ -300,8 +300,8 @@ fn selection_action(
 						let key_quote = quote.clone();
 						crate::ui_theme::menu_row("ask-selected-text", true)
 							.debug_selector(|| "ask-selected-text".into())
-							.aria_label("Ask about selection")
-							.child("Ask about selection")
+							.aria_label("Ask in side chat")
+							.child("Ask in side chat")
 							.on_mouse_down(MouseButton::Left, move |_, window, cx| {
 								ask_from_selection(&mouse_ask, &mouse_quote, parent, window, cx);
 								cx.stop_propagation();

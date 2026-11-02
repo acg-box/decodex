@@ -58,12 +58,12 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_read_state.rs
   - id: openwiki-source-15d320ea458ddf705d950ba9
     resource: repo://apps/decodex-gpui/src/agent_response_metrics.rs
-  - id: openwiki-source-309d7ec654ab4d531c906212
-    resource: repo://apps/decodex-gpui/src/agent_sample_ui.rs
-  - id: openwiki-source-912dbe8f46e7ec6026887bbe
-    resource: repo://apps/decodex-gpui/src/agent_sample.rs
   - id: openwiki-source-77f7f96f348908c8779b5df6
     resource: repo://apps/decodex-gpui/src/agent_selectable_text.rs
+  - id: openwiki-source-ff9ae5d5274ad341f8658d86
+    resource: repo://apps/decodex-gpui/src/agent_side_chat_question_tests.rs
+  - id: openwiki-source-012d0a3289dff03dd84a5971
+    resource: repo://apps/decodex-gpui/src/agent_side_chat_question.rs
   - id: openwiki-source-5da2f5dd568514f1f464d177
     resource: repo://apps/decodex-gpui/src/agent_surface.rs
   - id: openwiki-source-04e81f339ea9d70e791f5b0e
@@ -122,6 +122,8 @@ sources:
     resource: repo://crates/decodex-codex/src/app_server_client/context_preferences.rs
   - id: openwiki-source-de4d0cc1dfd69783c61c375f
     resource: repo://crates/decodex-codex/src/app_server_client/observed_timing.rs
+  - id: openwiki-source-787f8ad27b8519fbed2bd039
+    resource: repo://crates/decodex-codex/src/app_server_client/thread_fork.rs
   - id: openwiki-source-c01ab8da738707861c64c143
     resource: repo://crates/decodex-protocol/src/desktop_message_delivery.rs
   - id: openwiki-source-dbc533dc306a3f520c4241e0
@@ -140,10 +142,10 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent/timeline/metrics.rs
   - id: openwiki-source-6197a876b2effbe992b1e2ec
     resource: repo://database/src/agent.rs
-generated: { by: "codex", at: "2026-10-31T15:20:06.142Z" }
+generated: { by: "codex", at: "2026-11-02T04:34:00.067Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-31T15:20:06.142Z
+    at: 2026-11-02T04:34:00.067Z
 ---
 
 
@@ -159,7 +161,7 @@ Interleaved user input remains in source order. A native turn can contain severa
 
 Response metadata stays compact at the end of the answer: duration and abbreviated input/output amounts. Hover reveals grouped details in a window-anchored overlay. It does not insert a large block into the transcript. Copy controls are separate actions, not part of the statistics disclosure.
 
-A completed response also has a question action on hover or keyboard focus. Selected response text offers **Ask about selection**, and the composer toolbar provides **Ask separately** without a quote. All three use the same bounded, one-shot sampler and a shared anchored popover. The question and answer stay outside the transcript, and opening the popover preserves the main draft and reading position. Selection callbacks carry the visible excerpt and reject a replaced source; native sampling still owns execution and cancellation. See [separate questions](../workflows/conversations-and-recovery.md#ask-a-separate-question).
+A completed response has an **Ask in side chat** question action on hover or keyboard focus. Selected response text offers the same action. Each action opens a native Side chat and adds the referenced passage to its ordinary, unsent draft. The source keeps its own draft. Selection callbacks reject a replaced source. A long passage uses a marked excerpt within the normal composer limit. The user can add a question, send it, and continue the discussion in that Side chat. See [questions about a passage](../workflows/conversations-and-recovery.md#ask-about-a-passage-in-a-side-chat).
 
 A collapsed command row shows the number of native-retained output lines when that count is available. Opening the output removes the count label. The count excludes command text and discarded output; it does not claim terminal wrapping or recovery of truncated bytes.
 
@@ -195,9 +197,11 @@ Item pages have no canonical timeline ordinals. They remain separate from the ca
 
 ## Side chat tabs
 
-The conversation header contains the source conversation and its open Side chats. Each tab shows the existing activity state. The tab strip scrolls horizontally and brings the selected tab into view. The adjacent **+** action reviews a branch from the source conversation's latest completed turn. **Side chat** confirms that review; it does not send a message.
+The conversation header contains the source conversation and its open Side chats. Each tab shows the existing activity state. The tab strip scrolls horizontally and brings the selected tab into view. The adjacent **+** action prepares and opens an attached branch from the selected conversation's latest completed turn. Creation needs no second confirmation and sends no message.
 
 A Side chat uses the existing native attached fork. Its visible history starts empty, while its model context includes the reviewed source prefix. Later messages in the source do not automatically enter the Side chat. Each conversation keeps its own draft and history position through the existing workspace navigation.
+
+Ordinary forks and Side chats pass the source conversation's current native model, reasoning effort and service tier when reported. This prevents creation defaults from replacing a model that the user changed. An explicit provider-recovery fork uses the target provider defaults. Native Codex still owns model admission and execution.
 
 Only confirmed native attachments with matching source, target and runtime identities belong to the tab family. A local parent link is a lookup hint, not evidence of an attachment. The workspace owns this attachment cache independently of the prompt editor and clears it when the relevant source or runtime changes. Current-family Side chats do not also appear as duplicate sidebar rows.
 
