@@ -142,10 +142,10 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent/timeline/metrics.rs
   - id: openwiki-source-6197a876b2effbe992b1e2ec
     resource: repo://database/src/agent.rs
-generated: { by: "codex", at: "2026-11-02T04:34:00.067Z" }
+generated: { by: "codex", at: "2026-11-02T05:23:45.661Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-11-02T04:34:00.067Z
+    at: 2026-11-02T05:23:45.661Z
 ---
 
 
@@ -197,7 +197,7 @@ Item pages have no canonical timeline ordinals. They remain separate from the ca
 
 ## Side chat tabs
 
-The conversation header contains the source conversation and its open Side chats. Each tab shows the existing activity state. The tab strip scrolls horizontally and brings the selected tab into view. The adjacent **+** action prepares and opens an attached branch from the selected conversation's latest completed turn. Creation needs no second confirmation and sends no message.
+The conversation header contains the source conversation and its open Side chats. The source tab is **Main**. Other tabs use **Side chat 1**, **Side chat 2** and so on, independently of sidebar conversation names. Renaming a conversation does not replace these local labels. Each tab shows the existing activity state. The tab strip scrolls horizontally and brings the selected tab into view. The adjacent **+** action prepares and opens an attached branch from the selected conversation's latest completed turn. Creation needs no second confirmation and sends no message.
 
 A Side chat uses the existing native attached fork. Its visible history starts empty, while its model context includes the reviewed source prefix. Later messages in the source do not automatically enter the Side chat. Each conversation keeps its own draft and history position through the existing workspace navigation.
 

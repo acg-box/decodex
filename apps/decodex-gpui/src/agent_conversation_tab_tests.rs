@@ -92,8 +92,9 @@ fn side_chat_tabs_require_current_confirmed_native_attachments(cx: &mut TestAppC
 		}
 		let tabs = s.conversation_tabs();
 		assert_eq!(tabs.len(), 3);
-		assert!(
-			tabs.iter().filter(|tab| tab.closable).all(|tab| tab.label.starts_with("Side chat "))
+		assert_eq!(
+			tabs.iter().map(|tab| tab.label.as_str()).collect::<Vec<_>>(),
+			["Main", "Side chat 1", "Side chat 2"]
 		);
 		s.snapshot
 			.as_mut()
@@ -103,9 +104,18 @@ fn side_chat_tabs_require_current_confirmed_native_attachments(cx: &mut TestAppC
 			.find(|work| work.id == "side-one")
 			.unwrap()
 			.title = "My research".into();
+		s.snapshot
+			.as_mut()
+			.unwrap()
+			.work_items
+			.iter_mut()
+			.find(|work| work.id == "agent")
+			.unwrap()
+			.title = "A renamed sidebar conversation".into();
+		let renamed = s.conversation_tabs();
 		assert_eq!(
-			s.conversation_tabs().iter().find(|tab| tab.id == "side-one").unwrap().label,
-			"My research"
+			renamed.iter().map(|tab| &tab.label).collect::<Vec<_>>(),
+			tabs.iter().map(|tab| &tab.label).collect::<Vec<_>>()
 		);
 		let Some(AttachedBranchesResult::Available { branches, .. }) =
 			&mut s.workspace.attached.result

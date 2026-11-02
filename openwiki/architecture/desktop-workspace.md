@@ -110,10 +110,10 @@ sources:
     resource: repo://database/src/works/commands.rs
   - id: openwiki-source-8fe6f1557e5d45d88b34bd0a
     resource: repo://scripts/macos/generate_workspace_symbols.swift
-generated: { by: "codex", at: "2026-11-02T02:42:46.593Z" }
+generated: { by: "codex", at: "2026-11-02T05:23:45.661Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-11-02T02:42:46.593Z
+    at: 2026-11-02T05:23:45.661Z
 ---
 
 # Desktop workspace and native glass
@@ -218,7 +218,7 @@ Use **Fork** for conversation actions in lists, locked conversations and provide
 
 Fork, Retry and Unarchive use the same bordered `settings_button` base, including height, padding, radius and interaction feedback. Status text wraps within the conversation rail; an inline title and its explanation flow as one text block. Clicking Fork in a disabled input bar starts creation after source preparation, with no second confirmation or Cancel control. Progress and recovery remain in that input bar. Creation sends no message.
 
-Reserve `arrow.triangle.branch` for Fork. Account routing uses `point.topleft.down.to.point.bottomright.curvepath` in both GPUI and Menu Bar, with the existing active color and disabled behavior. New default titles use `(Fork)` or `(Side chat)`; the earlier `(attached branch)` title still displays as a Side chat, and custom titles remain unchanged.
+Reserve `arrow.triangle.branch` for Fork. Account routing uses `point.topleft.down.to.point.bottomright.curvepath` in both GPUI and Menu Bar, with the existing active color and disabled behavior. New stored default titles use `(Fork)` or `(Side chat)`; existing stored names remain unchanged. The conversation header uses **Main** and numbered **Side chat** labels independently of those names.
 
 ## Verification
 
