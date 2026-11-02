@@ -123,6 +123,7 @@ pub struct AgentCoordinator {
 	dispatch_paused: bool,
 	async_recovery_queued: bool,
 	handled_question_revision: u64,
+	completed_chats: Vec<(String, String, String)>,
 }
 impl AgentCoordinator {
 	/// Bind one provider connection to its durable store and explicit execution policy.
@@ -162,6 +163,7 @@ impl AgentCoordinator {
 
 		Ok(Self {
 			voice: None,
+			completed_chats: Vec::new(),
 			store,
 			handled_question_revision: client.question_revision(),
 			client,
@@ -176,6 +178,10 @@ impl AgentCoordinator {
 			dispatch_paused: false,
 			async_recovery_queued: false,
 		})
+	}
+
+	pub(crate) fn take_completed_chats(&mut self) -> Vec<(String, String, String)> {
+		std::mem::take(&mut self.completed_chats)
 	}
 
 	pub(crate) fn bind_native_generation(&mut self, generation: ProcessGenerationId) {
@@ -337,6 +343,8 @@ impl AgentCoordinator {
 		let observed_timing =
 			usage_complete.then(|| self.client.take_observed_turn_timing(&thread, &turn)).flatten();
 
+		let completed_chat = (item.id.clone(), thread.clone(), turn.clone());
+		let succeeded = params["turn"]["status"] == "completed";
 		self.store
 			.complete_agent_turn_with_event(
 				item.id.clone(),
@@ -351,6 +359,9 @@ impl AgentCoordinator {
 				},
 			)
 			.await?;
+		if succeeded {
+			self.completed_chats.push(completed_chat);
+		}
 		self.recover_async_questions().await?;
 
 		Ok(())
@@ -1062,6 +1073,21 @@ impl AgentCoordinator {
 		// A paginated context is initially staged by Codex. Persist its metadata
 		// through the native API before Project reconciliation or a restart.
 		self.client.name_thread(&thread, &item.title).await?;
+		let _ = self
+			.store
+			.observe_agent_title(
+				item.id.clone(),
+				thread.clone(),
+				self.native_generation.as_ref().map(|g| g.as_str().into()),
+				decodex_database::AgentConversationTitle {
+					name: Some(item.title.clone()),
+					automatic: true,
+					generated: false,
+					reviewed_through: 0,
+				},
+				true,
+			)
+			.await;
 		self.attach_native_thread_owner(&thread).await?;
 		self.store.initialize_agent_usage(thread.clone()).await?;
 		self.persist_task_settings(&thread).await?;

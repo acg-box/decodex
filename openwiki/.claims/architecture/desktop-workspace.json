@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:67c0b7bcb989adbd29929f3667c4577b413d5a78709dfef93957bdccda554a8e",
+  "pageVersion": "sha256:cbc9b41d7b445ce34f65efd9b0aae772891ddc178ceeb2204e50c40427393add",
   "claims": [
     {
       "id": "claim_41c9eba720934771bd6b671a7aeb8b6e",
@@ -20,7 +20,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:4b0bd2d5f0f9c6c3f40622264c11971b37c748b69411742d29c42f3989351abf"
+          "version": "repo-file-v1:sha256:eeafa51f5b72adc8511e9ca44c9e7b1b1da8687fcbb6da6bcc2288cc3cb75852"
         }
       ]
     },
@@ -136,7 +136,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:4b0bd2d5f0f9c6c3f40622264c11971b37c748b69411742d29c42f3989351abf"
+          "version": "repo-file-v1:sha256:eeafa51f5b72adc8511e9ca44c9e7b1b1da8687fcbb6da6bcc2288cc3cb75852"
         }
       ]
     },
@@ -181,7 +181,7 @@
       "statement": "Each independent Agent owns its displayed composer, and submitted input targets that Agent's saved conversation instead of the first root.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_portfolio_tests.rs#L162-L179",
+          "resource": "repo://apps/decodex-gpui/src/agent_portfolio_tests.rs#L163-L180",
           "version": "repo-lines-v1:sha256:bb605643030f764b7b56a78a63ffa2c97bd25355f36ec54175cf56a660562d00:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM2ZDM3NDI5MTRmZTFkODY2ZTY2NGE4NDMzM2FhZWI0Nzk1NDE2ZmZjNDc0NTczYjVhMDU2OWI1ZjEzODQ0ZDMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI3NjI0ZTFlZGM1Zjk5NjhjNjRhZTkwMTMwNDk5ZTI2ZTE3ZDRmYTMyMWRhYTAzYmQ4OGJkZTA0MmQyZTQ2YjgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjMwMTJhNDJhNmNmMTg3ZTMzNzAwNDBjMDk5ZjMyNjMxOTBhYWQyNWRlNzMwYzc5OGJlNDU4NDU0YzFiYmMwNWMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImJhMDg2OTgyMTQ5NzY5MTc1Y2FiYjA2NWU0OWQwODBiNDI0ZDkyZTg0YmIyMmNkYzQzYzc3MDUwNjIwZDdiY2MifQ"
         },
         {
@@ -218,7 +218,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_archive.rs",
-          "version": "repo-file-v1:sha256:38181cf7e65222375141c80fc1e41f2e6ab66a6e8b940402b2415086d0e579d0"
+          "version": "repo-file-v1:sha256:da20c30cd7051670a5b738225daea28621f8a1b584102357908da4d2f73728f2"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_composer.rs",
@@ -230,7 +230,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:4b0bd2d5f0f9c6c3f40622264c11971b37c748b69411742d29c42f3989351abf"
+          "version": "repo-file-v1:sha256:eeafa51f5b72adc8511e9ca44c9e7b1b1da8687fcbb6da6bcc2288cc3cb75852"
         }
       ]
     },
@@ -292,7 +292,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:4b0bd2d5f0f9c6c3f40622264c11971b37c748b69411742d29c42f3989351abf"
+          "version": "repo-file-v1:sha256:eeafa51f5b72adc8511e9ca44c9e7b1b1da8687fcbb6da6bcc2288cc3cb75852"
         }
       ]
     },
@@ -404,11 +404,11 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_conversation_tab_tests.rs",
-          "version": "repo-file-v1:sha256:63a83edbf47937c54d604b845bc023e6c856ae7ccaf24389e330bee76ad8295e"
+          "version": "repo-file-v1:sha256:4cb209014e7798785b0a199faa30697a6f7f0e81f2942766834c840021404dc2"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_conversation_tabs.rs",
-          "version": "repo-file-v1:sha256:5843c560fb0e3dfd9e27690528edb00c009bd0731821d59c4d00bb23a8ace402"
+          "version": "repo-file-v1:sha256:f6b181400a6d0b94fc959a329095723dfac7bde6734f858484e0f5671f409c36"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_prompt_confirm_wire_tests.rs",
@@ -430,13 +430,13 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:4b0bd2d5f0f9c6c3f40622264c11971b37c748b69411742d29c42f3989351abf"
+          "version": "repo-file-v1:sha256:eeafa51f5b72adc8511e9ca44c9e7b1b1da8687fcbb6da6bcc2288cc3cb75852"
         }
       ]
     },
     {
       "id": "claim_bc91903827fb410fbb6886f1401a8466",
-      "statement": "Fork uses arrow.triangle.branch; account routing uses point.topleft.down.to.point.bottomright.curvepath in GPUI and Menu Bar with existing active and disabled states. New stored default titles use Fork or Side chat, while the conversation header uses Main and numbered Side chat labels independently of stored names.",
+      "statement": "Fork uses arrow.triangle.branch; account routing uses point.topleft.down.to.point.bottomright.curvepath in GPUI and Menu Bar with existing active and disabled states. New local Agent records retain Fork or Side chat identity suffixes; native conversation topics update separately. Main stays fixed and Side chat tabs use current topics, with numbered labels before a title is available.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/AccountControlViews.swift",
@@ -444,7 +444,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_conversation_tabs.rs",
-          "version": "repo-file-v1:sha256:5843c560fb0e3dfd9e27690528edb00c009bd0731821d59c4d00bb23a8ace402"
+          "version": "repo-file-v1:sha256:f6b181400a6d0b94fc959a329095723dfac7bde6734f858484e0f5671f409c36"
         },
         {
           "resource": "repo://database/src/agent_fork.rs",
@@ -462,11 +462,11 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_archive.rs",
-          "version": "repo-file-v1:sha256:38181cf7e65222375141c80fc1e41f2e6ab66a6e8b940402b2415086d0e579d0"
+          "version": "repo-file-v1:sha256:da20c30cd7051670a5b738225daea28621f8a1b584102357908da4d2f73728f2"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_model_settings_wire_tests.rs",
-          "version": "repo-file-v1:sha256:63b650287667f1b7d6fd0dc5efce5fd5bdc8606f5594fb67f8f7b3c5769995d4"
+          "version": "repo-file-v1:sha256:89fe4a8502e41f44504b3d00ad24d41ab77476a3e108cb26b9331ada20716532"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_prompt_confirm_wire_tests.rs",
@@ -478,7 +478,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:4b0bd2d5f0f9c6c3f40622264c11971b37c748b69411742d29c42f3989351abf"
+          "version": "repo-file-v1:sha256:eeafa51f5b72adc8511e9ca44c9e7b1b1da8687fcbb6da6bcc2288cc3cb75852"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_feedback.rs",
@@ -508,7 +508,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:4b0bd2d5f0f9c6c3f40622264c11971b37c748b69411742d29c42f3989351abf"
+          "version": "repo-file-v1:sha256:eeafa51f5b72adc8511e9ca44c9e7b1b1da8687fcbb6da6bcc2288cc3cb75852"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/shell_status.rs",
@@ -523,6 +523,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-11-02T05:23:45.661Z"
+    "at": "2026-11-02T07:10:57.562Z"
   }
 }

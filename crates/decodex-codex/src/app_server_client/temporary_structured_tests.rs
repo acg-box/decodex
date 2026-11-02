@@ -293,3 +293,66 @@ async fn temporary_collector_rejects_tool_approval_and_user_input_requests() {
 		));
 	}
 }
+
+#[tokio::test]
+async fn isolated_run_routes_native_events_privately_and_keeps_foreground_events_public() {
+	let (local, remote) = io::duplex(16_384);
+	let (read, write) = io::split(local);
+	let (client, mut events) = AppServerClient::from_io(read, write);
+	let foreground = client.question_guard(client.question_revision()).unwrap();
+	let server = tokio::spawn(async move {
+		let (read, mut write) = io::split(remote);
+		let mut lines = BufReader::new(read).lines();
+		for method in ["turn/start", "thread/unsubscribe"] {
+			let req: Value =
+				serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
+			assert_eq!(req["method"], method);
+			let result = if method == "turn/start" {
+				serde_json::json!({"turn":{"id":"title-turn","status":"inProgress"}})
+			} else {
+				serde_json::json!({"status":"unsubscribed"})
+			};
+			write
+				.write_all(
+					format!("{}\n", serde_json::json!({"id":req["id"],"result":result})).as_bytes(),
+				)
+				.await
+				.unwrap();
+			if method == "turn/start" {
+				for frame in [
+					serde_json::json!({"method":"item/completed","params":{"threadId":"temporary","turnId":"title-turn","item":{"id":"private-input","type":"userMessage","content":[{"type":"text","text":"Private title request"}]}}}),
+					serde_json::json!({"method":"item/completed","params":{"threadId":"foreground","turnId":"user-turn","item":{"type":"agentMessage","text":"Foreground answer"}}}),
+					serde_json::json!({"method":"item/completed","params":{"threadId":"temporary","turnId":"title-turn","item":{"type":"agentMessage","text":"{\"title\":\"Native topic\"}"}}}),
+					serde_json::json!({"method":"turn/completed","params":{"threadId":"temporary","turn":{"id":"title-turn","status":"completed"}}}),
+				] {
+					write.write_all(format!("{frame}\n").as_bytes()).await.unwrap();
+				}
+			}
+		}
+	});
+	let (_cancel, cancel) = watch::channel(false);
+	let temporary = temporary_structured::TemporaryStructuredThread::from_ephemeral(
+		client.clone(),
+		"temporary".into(),
+	);
+	let result = temporary
+		.run_isolated(
+			"Title".into(),
+			serde_json::json!({"type":"object"}),
+			Some("low".into()),
+			cancel,
+		)
+		.await
+		.unwrap();
+	assert!(result.contains("Native topic"));
+	assert!(foreground.is_live(), "private inference must not invalidate foreground reviews");
+	assert!(
+		matches!(events.recv().await,Some(ServerEvent::Notification {params,..}) if params["threadId"]=="foreground")
+	);
+	server.await.unwrap();
+	while let Ok(event) = events.try_recv() {
+		assert!(
+			!matches!(event,ServerEvent::Notification {params,..}|ServerEvent::Request {params,..} if params["threadId"]=="temporary")
+		);
+	}
+}

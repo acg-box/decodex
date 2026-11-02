@@ -287,7 +287,7 @@ impl AgentSurface {
 	fn visual_reference_usage(&mut self) {
 		let rows = self.factory_rows();
 
-		self.snapshot.as_mut().expect("visual snapshot").agent_slots =
+		*self.snapshot.as_mut().expect("visual snapshot").agent_slots =
 			rows.iter().enumerate().map(|(index, row)| (row.key.clone(), index as u32)).collect();
 		self.work_board.usage = Some(
 			rows.into_iter()

@@ -86,12 +86,18 @@ sources:
     resource: repo://apps/decodex-gpui/src/shell.rs
   - id: openwiki-source-f580b10e16f1d25ebfea3bf8
     resource: repo://automations/upstream/qualification.json
+  - id: openwiki-source-b1948e1beb6e361503aa2db1
+    resource: repo://crates/decodex-codex/src/app_server_client.rs
   - id: openwiki-source-ecdf4586908bb6226955607a
     resource: repo://crates/decodex-codex/src/app_server_client/history_item.rs
   - id: openwiki-source-08977baecd43b927489f58e8
     resource: repo://crates/decodex-codex/src/app_server_client/item_context.rs
   - id: openwiki-source-830a575f82404942511da59b
     resource: repo://crates/decodex-codex/src/app_server_client/prediction.rs
+  - id: openwiki-source-f13eb50e9ef32ef30a001558
+    resource: repo://crates/decodex-codex/src/app_server_client/server_requests.rs
+  - id: openwiki-source-70cef05a60580eb56e0ed4e5
+    resource: repo://crates/decodex-codex/src/app_server_client/temporary_events.rs
   - id: openwiki-source-dc292a3cdb3064363ab29907
     resource: repo://crates/decodex-codex/src/app_server_client/temporary_structured.rs
   - id: openwiki-source-787f8ad27b8519fbed2bd039
@@ -106,16 +112,24 @@ sources:
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_capacity_tests.rs
   - id: openwiki-source-4a57fba4bea69171318c6323
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_fork_tests.rs
+  - id: openwiki-source-ddbcad5474bc4311e2556223
+    resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_recap_service_tests.rs
   - id: openwiki-source-b2869e6da778a74cb6afc667
     resource: repo://crates/decodex-runtime/src/account_launch/process.rs
   - id: openwiki-source-720a745d503e0e60ebcad0c5
     resource: repo://crates/decodex-runtime/src/agent_detail.rs
+  - id: openwiki-source-c3df87a54ef9d43795de5124
+    resource: repo://crates/decodex-runtime/src/agent_message_history.rs
   - id: openwiki-source-3d25cb6558fde84d70520ac2
     resource: repo://crates/decodex-runtime/src/agent_read_state.rs
   - id: openwiki-source-ac4b738d63d48fc19492febe
     resource: repo://crates/decodex-runtime/src/agent_resources.rs
   - id: openwiki-source-72323573c4abb11c31ffbeec
     resource: repo://crates/decodex-runtime/src/agent_sample.rs
+  - id: openwiki-source-c6a513f4a72008998a474ca0
+    resource: repo://crates/decodex-runtime/src/agent_titles.rs
+  - id: openwiki-source-7111b71a47931c3e55d3ff6f
+    resource: repo://crates/decodex-runtime/src/agent_titles/host.rs
   - id: openwiki-source-5a9a9e8bb72a23939f23f6f6
     resource: repo://crates/decodex-runtime/src/agent_transcript.rs
   - id: openwiki-source-f4bc7020783c49a911b7fb29
@@ -140,16 +154,18 @@ sources:
     resource: repo://database/src/agent_fork.rs
   - id: openwiki-source-19db8626100a957faa6818d2
     resource: repo://database/src/agent_questions.rs
+  - id: openwiki-source-82bb214209944301d2efacfb
+    resource: repo://database/src/agent_titles.rs
   - id: openwiki-source-dd880acfb699314e78cc9985
     resource: repo://database/src/agent/archive.rs
   - id: openwiki-source-7cbe85f6b9884923ffd5cbfa
     resource: repo://database/src/agent/tests/input_retry.rs
   - id: openwiki-source-28af4781ad8d9558410630da
     resource: repo://database/src/works.rs
-generated: { by: "codex", at: "2026-11-02T05:23:45.661Z" }
+generated: { by: "codex", at: "2026-11-02T08:00:19.527Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-11-02T05:23:45.661Z
+    at: 2026-11-02T08:00:19.527Z
 ---
 
 # Conversation input, history and recovery
@@ -245,7 +261,7 @@ For a before-input branch or same-thread edit, projection refresh and durable dr
 
 ## Open Side chats in tabs
 
-The conversation header keeps the source conversation and multiple Side chats in one tab strip. The source tab is **Main**; Side chats use numbered labels such as **Side chat 1** and **Side chat 2**. These labels are independent of sidebar conversation names. Use **+** beside the tabs to create and open a Side chat from the selected conversation's latest completed turn. Source preparation runs without a second confirmation. The source must be idle and have readable full native history for that completed turn. Creation uses native attachment and sends no message.
+The conversation header keeps the source conversation and multiple Side chats in one tab strip. The source tab is **Main**. Side chats use their current native conversation topics. Before the first title is available, they use numbered labels such as **Side chat 1** and **Side chat 2**. The sidebar keeps the source title without repeating it in Main. Use **+** beside the tabs to create and open a Side chat from the selected conversation's latest completed turn. Source preparation runs without a second confirmation. The source must be idle and have readable full native history for that completed turn. Creation uses native attachment and sends no message.
 
 Each Side chat starts with an empty visible history and the reviewed source prefix in its model context. Later source messages do not automatically enter an existing Side chat. Continue the Side chat with its own composer. Switching tabs restores each conversation's draft and reading position. The strip scrolls horizontally and reveals the selected tab; existing activity indicators and header controls remain available.
 
@@ -302,6 +318,20 @@ Native history also keeps one nonempty item identity when a provider assistant m
 Task preferences shows the native read state for the current root conversation and explicit read/unread actions. Refresh does not acknowledge a result. A mark is bound to the reviewed source and native receipt revision; source drift, an unavailable receipt or a stale revision requires a fresh read rather than an automatic retry. Native child conversations and the Dock's local status are separate.
 
 Expanded tool and file details can read the exact native history item. Unsupported item-read methods fall back to the existing full-thread path; unrelated errors do not. This does not replace complete transcript export or add a bulk media loader.
+
+## Automatic conversation titles
+
+Titles are automatic and require no extra action. After the first eligible completed user exchange, the service summarizes the goal in a short title in the user's language. A generated title has at most 36 characters. It describes the topic instead of copying the opening words. The sidebar, conversation browser and Side chat tabs read the same native topic; the source tab stays Main. Agent identity and Work titles do not change.
+
+After four more completed user exchanges, the service reviews the recent focus against the current title. Details, progress updates and brief tangents keep that title. A sustained change of focus can replace it. Opening saved history and snapshot refresh do not start inference. Existing conversations wait for an eligible completion; this is not a bulk history rename.
+
+The service uses the current account and provider. It selects GPT-5.6-Luna at low effort only if that choice appears in the live OpenAI catalog; otherwise it uses the source model. The bounded prompt contains recent public user and final assistant messages, excluding native tool and reasoning frames. It runs through the isolated ephemeral structured adapter shared with Recap. Native connection-owned routes keep temporary events private, then interrupt or detach the exact temporary turn as required. Private inference does not invalidate foreground questions or reviews. Source history, draft and normal input remain separate.
+
+The native name is authoritative. The service checks the originating source, current settings and native name before publishing through `thread/name/set`, then reads it back. An observed manual rename cancels automatic replacement. Name revisions have a separate guard, so an automatic title update preserves an existing Recap and task settings. An unavailable source, failed inference, malformed result or failed readback keeps the previous title. The next eligible completion can retry. A successful review advances the durable checkpoint even when the title stays the same.
+
+Title observations use the existing resolved inbox journal. They do not wake an Agent or enter transcript pages. Current bindings and their title map share the atomic work snapshot. No new title table, timer, preference or startup migration is required.
+
+The implementation reference is the official [TUI title owner at selected source 67f0994b](https://github.com/openai/codex/blob/67f0994b532b8740f14b5b738af7b7b2a915b1d6/codex-rs/tui/src/app/thread_title.rs) and its isolated structured-request helper. That source supplies initial title generation; the four-exchange topic review is Decodex policy. Schemas generated from the selected binary verify the native primitives. This does not imply a dedicated server title-generation API or use `thread/sample` for titles. See [qualification boundaries](../testing/upstream-acceptance-boundaries.md#automatic-conversation-title-qualification).
 
 ## Recap and questions
 

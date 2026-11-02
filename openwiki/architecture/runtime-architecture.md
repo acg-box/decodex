@@ -40,6 +40,8 @@ sources:
     resource: repo://Cargo.toml
   - id: openwiki-source-f02ae41e2bd15dda85dc86b9
     resource: repo://codex-runtime.lock.json
+  - id: openwiki-source-b1948e1beb6e361503aa2db1
+    resource: repo://crates/decodex-codex/src/app_server_client.rs
   - id: openwiki-source-d0b9aaf952250307abc4342e
     resource: repo://crates/decodex-codex/src/app_server_client/archive.rs
   - id: openwiki-source-2b08587e9b26e203156110c8
@@ -48,6 +50,12 @@ sources:
     resource: repo://crates/decodex-codex/src/app_server_client/dispatch_refusal.rs
   - id: openwiki-source-05eed4188305f36a07538b31
     resource: repo://crates/decodex-codex/src/app_server_client/provider_recovery.rs
+  - id: openwiki-source-f13eb50e9ef32ef30a001558
+    resource: repo://crates/decodex-codex/src/app_server_client/server_requests.rs
+  - id: openwiki-source-70cef05a60580eb56e0ed4e5
+    resource: repo://crates/decodex-codex/src/app_server_client/temporary_events.rs
+  - id: openwiki-source-dc292a3cdb3064363ab29907
+    resource: repo://crates/decodex-codex/src/app_server_client/temporary_structured.rs
   - id: openwiki-source-787f8ad27b8519fbed2bd039
     resource: repo://crates/decodex-codex/src/app_server_client/thread_fork.rs
   - id: openwiki-source-0d4c68456f2e50c6fc7ad5eb
@@ -62,6 +70,8 @@ sources:
     resource: repo://crates/decodex-protocol/src/wire.rs
   - id: openwiki-source-1f19769e3cb97a2389e92f82
     resource: repo://crates/decodex-runtime/src/account_launch.rs
+  - id: openwiki-source-ddbcad5474bc4311e2556223
+    resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_recap_service_tests.rs
   - id: openwiki-source-3d7045bfa872a564d938d3e2
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_unreported_usage_tests.rs
   - id: openwiki-source-b2869e6da778a74cb6afc667
@@ -78,8 +88,12 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent_item_context.rs
   - id: openwiki-source-dc51b38db429ec5fe466c5f2
     resource: repo://crates/decodex-runtime/src/agent_memory.rs
+  - id: openwiki-source-0fd8aafba525326a72dee733
+    resource: repo://crates/decodex-runtime/src/agent_recap/host.rs
   - id: openwiki-source-ac4b738d63d48fc19492febe
     resource: repo://crates/decodex-runtime/src/agent_resources.rs
+  - id: openwiki-source-7111b71a47931c3e55d3ff6f
+    resource: repo://crates/decodex-runtime/src/agent_titles/host.rs
   - id: openwiki-source-dbc533dc306a3f520c4241e0
     resource: repo://crates/decodex-runtime/src/agent.rs
   - id: openwiki-source-a4a2658e06fa2cf48ff4589e
@@ -114,6 +128,10 @@ sources:
     resource: repo://database/src/agent_fork.rs
   - id: openwiki-source-fc5ad70343bb20c4e9d12540
     resource: repo://database/src/agent_process/attachments.rs
+  - id: openwiki-source-82bb214209944301d2efacfb
+    resource: repo://database/src/agent_titles.rs
+  - id: openwiki-source-6197a876b2effbe992b1e2ec
+    resource: repo://database/src/agent.rs
   - id: openwiki-source-8c78df4b382026886ac50894
     resource: repo://database/src/usage_evidence.rs
   - id: openwiki-source-28af4781ad8d9558410630da
@@ -128,10 +146,10 @@ sources:
     resource: repo://scripts/macos/stage_decodex_app.sh
   - id: openwiki-source-76081c1a47ca8cf32593de34
     resource: repo://scripts/macos/test_decodex_app_stage.sh
-generated: { by: "codex", at: "2026-10-31T16:06:25.983Z" }
+generated: { by: "codex", at: "2026-11-02T08:00:19.527Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-11-02T05:23:45.661Z
+    at: 2026-11-02T08:00:19.527Z
 ---
 
 # Runtime Architecture
@@ -192,6 +210,18 @@ Native memory inspection and retained usage use read-only local queries. The mem
 Side chats use the existing prompt-fork journal and persistent Agent records. Native `thread/fork` attaches a completed-turn prefix to the exact source. Decodex retains that source Agent as the local parent and preserves Project, role and provider identity. It does not copy the native Goal or send input during creation. Unknown creation outcomes retain the original receipt for recovery without replay. Attached children expose only their own turns. Source turn IDs retain the reviewed boundary, and native inference still receives the parent context. The retained public workflow requires paginated source history.
 
 The read-only `GetAttachedBranches` query returns the newest 100 retained Decodex receipts for one exact source. It does not adopt external native branches. Native archive observation checks hidden attached conversations through `attachedToThreadId` and verifies the source binding before reporting membership. Incomplete metadata or catalog reads remain unknown. [Retained attached-fork evidence](../../automations/upstream/retained-contracts.json) records the exact artifact and executed regressions separately from historical acceptance.
+
+## Conversation topic ownership
+
+The Agent host schedules automatic title reviews from accepted successful turn completions. The title owner checks for delivered user input and an idle, currently bound conversation. It does not scan saved chats or run inference from snapshot reads. The first eligible exchange gets a title. Later reviews wait for four more completed user exchanges.
+
+The owner sends a bounded excerpt of recent public user and final assistant messages through the existing isolated ephemeral structured-request adapter. It uses GPT-5.6-Luna at low effort only when the current OpenAI catalog advertises that choice; otherwise it uses the source model and provider. The adapter requests disabled tools, extensions, hooks and skills, rejects unexpected tool requests, then detaches the temporary thread. Native model catalogs can still contain required tool entries; the request policy does not prove that every tool name is absent. Private event routing belongs to the native connection and is shared with recap requests. It retains temporary thread settings and cleanup observations without changing foreground question, review or timing state. It does not add turns to the source conversation.
+
+Native `thread/name/set` owns the conversation name. The service rechecks the originating account, process, binding, settings and native name before a guarded write, then reads back the result. An observed manual rename stops automatic replacement. Failed or cancelled reviews keep the current title and can retry on a later user completion. Only a successful review advances its durable checkpoint.
+
+Native name revisions have a separate guard. A manual rename invalidates an outstanding title write. An automatic title update does not invalidate task permissions, model settings or an existing Recap.
+
+SQLite keeps title provenance and the review checkpoint as resolved `conversation_title` observations in the existing indexed inbox journal. They do not wake an Agent or enter transcript pages. The work snapshot reads topics and current bindings in one transaction; local protocol 4.5 supplies the resulting thread-keyed map. No new schema or startup migration is required. Agent identity and Work titles remain separate. See [the title workflow](../workflows/conversations-and-recovery.md#automatic-conversation-titles).
 
 ## Native history and resource lookup
 
@@ -269,7 +299,7 @@ Production staging selects a separate official Release requirement. Release pinn
 
 ## Protocol and safety
 
-Clients use same-UID local transport and exact protocol/artifact compatibility. Protocol 4.4 exposes current Project, Agent, Work, Guardian and attached-branch operations. An incompatible client fails explicitly; there is no parallel alias rollout. Publication-instance receipts remain enabled for this generation, including reconnect and idempotent command recovery. Credentials do not enter normal product projections. Revisions and stable command identities guard mutations. An unknown outcome requires authoritative readback, not blind retry.
+Clients use same-UID local transport and exact protocol/artifact compatibility. Protocol 4.5 exposes current Project, Agent, Work, Guardian and attached-branch operations. An incompatible client fails explicitly; there is no parallel alias rollout. Publication-instance receipts remain enabled for this generation, including reconnect and idempotent command recovery. Credentials do not enter normal product projections. Revisions and stable command identities guard mutations. An unknown outcome requires authoritative readback, not blind retry.
 
 Diagnostics covers Decodex product storage, local transport and integration failures. The standalone Codex startup-configuration check, its local query and its dedicated qualification helper are retired. Codex owns its app-server self-diagnostics. Ordinary error and warning presentation and user-requested conversation Markdown export remain supported. This retirement does not qualify an installed protocol 4.0 application against the current service.
 

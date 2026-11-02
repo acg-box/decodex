@@ -5,7 +5,6 @@ use tokio::{sync::oneshot::Receiver, time};
 
 use crate::{
 	agent_host::{AgentHost, AgentHostError},
-	agent_recap,
 	agent_usage_estimate::Source,
 };
 use decodex_codex::app_server_client::{ClientError, NativeThreadSampleOutcome};
@@ -147,7 +146,7 @@ impl AgentHost {
 				.await
 				.ok_or(ClientError::Closed)?;
 
-			if !agent_recap::same_owner(&source, &current)
+			if !crate::agent_usage_estimate::same_owner(&source, &current)
 				|| self
 					.store
 					.agent_voice_history_revision(

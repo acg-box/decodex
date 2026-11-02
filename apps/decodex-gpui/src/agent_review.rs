@@ -202,8 +202,8 @@ impl AgentSurface {
 			.into_iter()
 			.enumerate()
 			.map(|(index, row)| (row.key, index as u32))
-			.collect();
-		self.snapshot.as_mut().expect("capture snapshot").agent_slots = slots;
+			.collect::<std::collections::BTreeMap<_, _>>();
+		*self.snapshot.as_mut().expect("capture snapshot").agent_slots = slots;
 		for row in self.factory_rows() {
 			let Some(page) =
 				data.pages.iter().find(|page| Some(&page.thread_id) == row.thread.as_ref())

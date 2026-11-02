@@ -2,13 +2,12 @@
 use tokio::io::{self, DuplexStream};
 
 use crate::{
-	agent_recap::{
-		self, EntityId, Recaps, ServerEvent, Source, TaskRecap, TaskRecapPhase, mpsc::Receiver,
-	},
+	agent_recap::{self, EntityId, Recaps, ServerEvent, Source, TaskRecap, TaskRecapPhase},
 	agent_usage_estimate::SourceKey,
 };
-use decodex_codex::app_server_client::{AppServerClient, RequestId};
+use decodex_codex::app_server_client::AppServerClient;
 use decodex_core::{AccountId, ProcessGenerationId};
+use tokio::sync::mpsc::Receiver;
 
 fn source() -> (Source, DuplexStream, Receiver<ServerEvent>) {
 	let (local, remote) = io::duplex(4_096);
@@ -80,7 +79,7 @@ async fn exact_cancel_and_source_changes_never_replace_a_newer_request() {
 	assert!(*cancel.borrow());
 	assert!(recaps.start(copy(&source), "two", Default::default()).is_err());
 
-	recaps.finish("work", "one", None, Some(result()));
+	recaps.finish("work", "one", Some(result()));
 
 	assert_eq!(
 		recaps.status(EntityId::new("work").expect("id"), Some(&source)).phase,
@@ -89,14 +88,14 @@ async fn exact_cancel_and_source_changes_never_replace_a_newer_request() {
 
 	let _second = recaps.start(copy(&source), "two", Default::default()).expect("cleanup finished");
 
-	recaps.finish("work", "one", None, Some(result()));
+	recaps.finish("work", "one", Some(result()));
 
 	assert_eq!(
 		recaps.status(EntityId::new("work").expect("id"), Some(&source)).phase,
 		TaskRecapPhase::Pending
 	);
 
-	recaps.finish("work", "two", None, Some(result()));
+	recaps.finish("work", "two", Some(result()));
 
 	assert_eq!(
 		recaps.status(EntityId::new("work").expect("id"), Some(&source)).phase,
@@ -115,39 +114,17 @@ async fn exact_cancel_and_source_changes_never_replace_a_newer_request() {
 }
 
 #[tokio::test]
-async fn temporary_events_are_private_and_new_user_input_invalidates_only_its_source() {
+async fn new_user_input_invalidates_only_its_recap_source() {
 	let (source, _remote, _events) = source();
 	let recaps = Recaps::default();
 	let cancelled = recaps.start(copy(&source), "one", Default::default()).expect("request");
-	let event = |thread: &str, method: &str| ServerEvent::Notification {
-		method: method.into(),
+	let event = |thread: &str| ServerEvent::Notification {
+		method: "item/completed".into(),
 		params: serde_json::json!({"threadId":thread,"item":{"type":"userMessage"}}),
 	};
-	let mut routed = recaps.register("temporary").expect("route");
-
-	assert!(recaps.route(event("temporary", "turn/completed")).is_none());
-	assert!(routed.recv().await.is_some());
-
-	for method in
-		["item/tool/call", "item/commandExecution/requestApproval", "item/tool/requestUserInput"]
-	{
-		let request = ServerEvent::Request {
-			id: RequestId::Number(91),
-			method: method.into(),
-			params: serde_json::json!({"threadId":"temporary","turnId":"turn"}),
-		};
-
-		assert!(
-			recaps.route(request).is_none(),
-			"hidden requests must not reach interactive routing"
-		);
-		assert!(matches!(routed.recv().await, Some(ServerEvent::Request { .. })));
-	}
-
+	recaps.observe(&event("other"));
 	assert!(!*cancelled.borrow());
-	assert!(recaps.route(event("other", "thread/reverted")).is_some());
-	assert!(!*cancelled.borrow());
-	assert!(recaps.route(event("native", "item/completed")).is_some());
+	recaps.observe(&event("native"));
 	assert!(*cancelled.borrow());
 }
 
@@ -162,7 +139,7 @@ async fn restarting_the_transient_owner_does_not_restore_or_replay_a_recap() {
 
 	assert!(recaps.start(other, "two", Default::default()).is_err());
 
-	recaps.finish("work", "one", None, Some(result()));
+	recaps.finish("work", "one", Some(result()));
 
 	let restarted = Recaps::default();
 	let state = restarted.status(EntityId::new("work").expect("id"), Some(&source));
@@ -178,7 +155,7 @@ async fn transport_observed_changes_hide_ready_results_before_service_event_deli
 	let recaps = Recaps::default();
 	let cancelled = recaps.start(copy(&source), "one", Default::default()).expect("request");
 
-	recaps.finish("work", "one", None, Some(result()));
+	recaps.finish("work", "one", Some(result()));
 	remote.write_all(format!("{}\n",serde_json::json!({"method":"turn/started","params":{"threadId":"native","turn":{"id":"new","status":"inProgress"}}})).as_bytes()).await.expect("native notification");
 
 	let _queued = events.recv().await.expect("transport observed event");
@@ -202,7 +179,7 @@ async fn voice_transcripts_retire_a_recap_before_service_routing_without_a_nativ
 		let cancelled =
 			recaps.start(copy(&source), "voice-recap", Default::default()).expect("request");
 
-		recaps.finish("work", "voice-recap", None, Some(result()));
+		recaps.finish("work", "voice-recap", Some(result()));
 
 		for (thread, text, expected) in [
 			("another-thread", "Spoken correction", TaskRecapPhase::Ready),
@@ -226,9 +203,41 @@ async fn voice_transcripts_retire_a_recap_before_service_routing_without_a_nativ
 
 			assert_eq!(state.phase, expected, "{method} {role} {thread}");
 			assert!(!*cancelled.borrow(), "readonly status must not cancel native inference");
-			assert!(recaps.route(event).is_some(), "voice still reaches its normal owner");
+			recaps.observe(&event);
 		}
 
 		assert!(*cancelled.borrow(), "service routing retires the exact recap");
 	}
+}
+#[test]
+fn unicode_excerpt_keeps_answer_and_latest_correction_ends_within_full_prompt_budget() {
+	use super::{excerpts, prompt};
+	use crate::agent_message_history::excerpts::Exchange;
+	let exchange = |user: String, assistant: String| Exchange { user, assistant };
+	let exchanges = vec![
+		exchange("old".repeat(20_000), "old answer".into()),
+		exchange(
+			format!("START{}END", "中".repeat(30_000)),
+			format!("FIXED{}NOT INSTALLED", "汉".repeat(30_000)),
+		),
+		exchange(format!("LATEST{}CORRECTION", "字".repeat(20_000)), String::new()),
+	];
+	let history = excerpts::render(&exchanges);
+	let prompt = prompt::build(&history);
+
+	assert!(prompt.len() <= prompt::MAX_BYTES);
+
+	for value in [
+		"Earlier exchanges omitted",
+		"START",
+		"END",
+		"FIXED",
+		"NOT INSTALLED",
+		"LATEST",
+		"CORRECTION",
+	] {
+		assert!(prompt.contains(value), "missing {value}");
+	}
+
+	assert!(!prompt.contains("old answer"));
 }

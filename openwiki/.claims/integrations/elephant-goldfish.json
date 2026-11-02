@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:48f93e6f906cf3ef11f37b8384b54c5b0b1c9ff65be619142aba1d810b4a5def",
+  "pageVersion": "sha256:55d28a5611420bee254934f076003a2fc815c7766ea7edc8a740c723d718e2bc",
   "claims": [
     {
       "id": "claim_95da7355536d42fb9ba017dae9558113",
@@ -79,11 +79,11 @@
       "statement": "New Lead guidance conditionally selects original EGM skills for useful independent design review, keeps simple tasks direct, and preserves fresh reviewer context and original human decisions without replacing existing conversation instructions.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/agent.rs#L624-L647",
+          "resource": "repo://crates/decodex-runtime/src/agent.rs#L635-L658",
           "version": "repo-lines-v1:sha256:826834bf758b81ae18865205f8a94973ec4f59b24242e0edd299fb6f294e468e:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQwNGEyM2VkM2Q0ZjMzNjVjNWI3ZmJjYmFhN2Q5MzQ1YzY4ZTExZGU4NjVjMWU5MTI4YTUxYzQ5YmU5NzJlODYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjExMGYzYWI4ODk2ZTkzZDUwMjMzMDQ1NTA0ZjAwZGE5YWNjNjIxN2MyYjNiN2Y1NDZjZDAwYzBhMzg5OTk0ZmUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUxZjU2YmIyNmM0ZjE2NjU5YmYwYjI1NjFiYTA0MzEwMzU3N2RlNTI1N2JiZWJlNTRiMjljMDBkZjRlMDI1MmIifQ"
         },
         {
-          "resource": "repo://crates/decodex-runtime/src/agent.rs#L990-L998",
+          "resource": "repo://crates/decodex-runtime/src/agent.rs#L1001-L1009",
           "version": "repo-lines-v1:sha256:fb1b26291086ee7b1da2bd688e8dd69028ac26f705931f83c49a8bcb0e0e80d8:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMDFiYTQ3MTljODBiNmZlOTExYjA5MWE3YzA1MTI0YjY0ZWVlY2U5NjRlMDljMDU4ZWY4Zjk4MDVkYWNhNTQ2YiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDFiYTQ3MTljODBiNmZlOTExYjA5MWE3YzA1MTI0YjY0ZWVlY2U5NjRlMDljMDU4ZWY4Zjk4MDVkYWNhNTQ2YiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNjk4ZTg4ZWYzNDIwNjJiZDNmMjM0NWVmNmM4M2UxMzc1NDg1YzViYmVjMjRlOTQ1MmQ4N2NhNmIzYWNlZTIzZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYTE5ODlhYzQzODRlZWEwN2EwM2QwMzA4NzBhOTdkZjcxNzQzYTUxMWMzNjU1ZDNmNDE4ODNhOTM3YWVjOWU0OSJ9"
         },
         {
@@ -116,7 +116,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_review.rs",
-          "version": "repo-file-v1:sha256:a535b5e08456375eb9a07b788bf8edf0ce9120cdb91e75f16499684348fef343"
+          "version": "repo-file-v1:sha256:72e83107f390ddd8bace768c0d399a278102ae575e11776d0f4cf2058a9142f4"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/review_activity.rs",
@@ -127,6 +127,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-11-02T02:42:46.593Z"
+    "at": "2026-11-02T07:10:57.562Z"
   }
 }

@@ -68,20 +68,24 @@ sources:
     resource: repo://crates/decodex-runtime/src/account_service.rs
   - id: openwiki-source-ff8abff5a675874c627f1969
     resource: repo://crates/decodex-runtime/src/account_service/tests/plan_scope.rs
+  - id: openwiki-source-7111b71a47931c3e55d3ff6f
+    resource: repo://crates/decodex-runtime/src/agent_titles/host.rs
   - id: openwiki-source-acd129fd3a88516b785fc929
     resource: repo://crates/decodex-runtime/src/agent/instructions.md
   - id: openwiki-source-a67672a943dfe221574b2501
     resource: repo://crates/decodex-runtime/src/shared_auth_coordinator.rs
   - id: openwiki-source-003f00974f49a9f106bbcbea
     resource: repo://database/schema.sql
+  - id: openwiki-source-82bb214209944301d2efacfb
+    resource: repo://database/src/agent_titles.rs
   - id: openwiki-source-dc8958560b1230967470835f
     resource: repo://database/src/schema.rs
   - id: openwiki-source-3b57179b92b257bc3fff51a1
     resource: repo://scripts/macos/stage_decodex_app.sh
-generated: { by: "codex", at: "2026-11-02T05:23:45.661Z" }
+generated: { by: "codex", at: "2026-11-02T07:10:57.562Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-11-02T05:23:45.661Z
+    at: 2026-11-02T08:00:19.527Z
 ---
 
 # OpenWiki quickstart
@@ -112,7 +116,7 @@ The conversation browser and Work list have independent saved **status filters**
 
 ## Side chats
 
-Tabs use **Main**, **Side chat 1**, **Side chat 2** and so on. These short labels are independent of sidebar conversation names.
+The source tab stays **Main**. Side chat tabs use their conversation topics, with numbered labels only before a title is available. Topics are summarized automatically after the first eligible completed user exchange and reviewed after four more exchanges. The sidebar keeps the source title, and Agent identity stays separate. See [automatic titles](workflows/conversations-and-recovery.md#automatic-conversation-titles).
 
 Use **+** in the conversation header to open a Side chat from the selected idle conversation's latest completed turn. Creation needs no second confirmation and sends no message. Each tab keeps its own draft and reading position. Closing a tab retains the native branch; reopen it from **Agent preferences → Side chats**.
 

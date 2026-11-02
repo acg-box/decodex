@@ -5,6 +5,7 @@
 #[path = "agent_prompt_upload_host.rs"] mod prompt_upload;
 #[path = "agent_recap/host.rs"] mod recap;
 #[path = "agent_sample_host.rs"] mod sample;
+#[path = "agent_titles/host.rs"] mod titles;
 #[path = "agent_weather.rs"] mod weather;
 
 use std::{
@@ -98,6 +99,7 @@ pub(crate) struct AgentHost {
 	recovery_cursor: Arc<Mutex<Option<String>>>,
 	prompt_edits: Reviews,
 	recaps: Recaps,
+	titles: crate::agent_titles::Titles,
 	samples: Samples,
 	transcripts: Transcripts,
 	weather_cache: Arc<Mutex<Option<CachedWeather>>>,
@@ -121,6 +123,7 @@ impl AgentHost {
 			recovery_cursor: Default::default(),
 			voice: crate::agent_voice::VoiceGateway::new(),
 			recaps: Default::default(),
+			titles: Default::default(),
 			samples: Default::default(),
 			transcripts: Default::default(),
 			prompt_edits: Default::default(),
@@ -744,6 +747,24 @@ impl AgentHost {
 		.await
 	}
 
+	pub(crate) async fn owned_timeline_source(
+		&self,
+		work: &str,
+		thread: &str,
+	) -> Option<crate::agent_usage_estimate::Source> {
+		let source = self.timeline_source(work, thread).await?;
+
+		self.store
+			.agent_thread_is_owned(
+				work.into(),
+				thread.into(),
+				Some(source.key.generation.as_str().into()),
+			)
+			.await
+			.ok()?
+			.then_some(source)
+	}
+
 	async fn timeline_source(
 		&self,
 		work: &str,
@@ -1070,6 +1091,7 @@ impl AgentHost {
 		}
 
 		self.recaps.stop();
+		self.titles.stop();
 		requests.close();
 
 		while let Ok(request) = requests.try_recv() {
@@ -1103,9 +1125,13 @@ impl AgentHost {
 
 			if closed {
 				self.recaps.stop();
+				self.titles.stop();
 			}
 
-			let event = event.and_then(|event| self.recaps.route(event));
+			if let Some(event) = &event {
+				self.recaps.observe(event);
+				self.titles.observe(event);
+			}
 
 			if let Some(event) = event.as_ref()
 				&& let Some(generation) = agent.native_generation()
@@ -1155,6 +1181,10 @@ impl AgentHost {
 						)
 						.await;
 				}
+			}
+
+			for (work, thread, turn) in agent.take_completed_chats() {
+				self.schedule_title(work, thread, turn);
 			}
 
 			if closed {

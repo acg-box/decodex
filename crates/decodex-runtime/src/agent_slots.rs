@@ -37,7 +37,7 @@ pub(crate) async fn synchronize(
 		.map(|work| (work.id.clone(), work.id.clone(), work.codex_thread_id.clone()))
 		.collect();
 
-	snapshot.agent_slots = store
+	*snapshot.agent_slots = store
 		.reconcile_agent_slots(active, retired)
 		.await?
 		.into_iter()

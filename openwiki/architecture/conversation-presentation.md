@@ -126,6 +126,10 @@ sources:
     resource: repo://crates/decodex-codex/src/app_server_client/thread_fork.rs
   - id: openwiki-source-c01ab8da738707861c64c143
     resource: repo://crates/decodex-protocol/src/desktop_message_delivery.rs
+  - id: openwiki-source-c6a513f4a72008998a474ca0
+    resource: repo://crates/decodex-runtime/src/agent_titles.rs
+  - id: openwiki-source-7111b71a47931c3e55d3ff6f
+    resource: repo://crates/decodex-runtime/src/agent_titles/host.rs
   - id: openwiki-source-dbc533dc306a3f520c4241e0
     resource: repo://crates/decodex-runtime/src/agent.rs
   - id: openwiki-source-4a97944ff4c701a054e27291
@@ -140,12 +144,14 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent/timeline/media.rs
   - id: openwiki-source-74145d84eb83d80ec3062595
     resource: repo://crates/decodex-runtime/src/agent/timeline/metrics.rs
+  - id: openwiki-source-82bb214209944301d2efacfb
+    resource: repo://database/src/agent_titles.rs
   - id: openwiki-source-6197a876b2effbe992b1e2ec
     resource: repo://database/src/agent.rs
-generated: { by: "codex", at: "2026-11-02T05:23:45.661Z" }
+generated: { by: "codex", at: "2026-11-02T07:10:57.562Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-11-02T05:23:45.661Z
+    at: 2026-11-02T08:00:19.527Z
 ---
 
 
@@ -197,7 +203,7 @@ Item pages have no canonical timeline ordinals. They remain separate from the ca
 
 ## Side chat tabs
 
-The conversation header contains the source conversation and its open Side chats. The source tab is **Main**. Other tabs use **Side chat 1**, **Side chat 2** and so on, independently of sidebar conversation names. Renaming a conversation does not replace these local labels. Each tab shows the existing activity state. The tab strip scrolls horizontally and brings the selected tab into view. The adjacent **+** action prepares and opens an attached branch from the selected conversation's latest completed turn. Creation needs no second confirmation and sends no message.
+The conversation header contains the source conversation and its open Side chats. The source tab is **Main**. A Side chat tab uses its confirmed native conversation title, also used by the conversation browser. Until a topic is available, it uses **Side chat 1**, **Side chat 2** and so on. The sidebar uses the source conversation title, so Main does not repeat it. Each tab shows the existing activity state. The tab strip scrolls horizontally and brings the selected tab into view. The adjacent **+** action prepares and opens an attached branch from the selected conversation's latest completed turn. Creation needs no second confirmation and sends no message.
 
 A Side chat uses the existing native attached fork. Its visible history starts empty, while its model context includes the reviewed source prefix. Later messages in the source do not automatically enter the Side chat. Each conversation keeps its own draft and history position through the existing workspace navigation.
 
@@ -206,6 +212,12 @@ Ordinary forks and Side chats pass the source conversation's current native mode
 Only confirmed native attachments with matching source, target and runtime identities belong to the tab family. A local parent link is a lookup hint, not evidence of an attachment. The workspace owns this attachment cache independently of the prompt editor and clears it when the relevant source or runtime changes. Current-family Side chats do not also appear as duplicate sidebar rows.
 
 Close hides a tab and returns to its exact source conversation. It does not archive or delete the native branch. Use **Agent preferences → Side chats** to reopen it. The source remains available in the tab strip.
+
+## Automatic conversation topics
+
+The service summarizes the first completed user exchange into a short title in the user's language. It checks the title after four more completed user exchanges. A detail, progress update or brief tangent keeps the current title. A sustained change of focus can produce a new title. Generated titles have at most 36 characters.
+
+The same topic serves the sidebar, conversation browser and Side chat tab. Agent names and Work titles keep their existing owners. Native manual renames take priority. A failed or cancelled title review keeps the previous title and does not block input. See [automatic titles](../workflows/conversations-and-recovery.md#automatic-conversation-titles) for native ownership and recovery.
 
 ## Conversation layout
 

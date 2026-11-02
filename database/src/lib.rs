@@ -33,6 +33,7 @@ mod agent_response_usage;
 mod agent_settings_observations;
 mod agent_slots;
 mod agent_task_references;
+mod agent_titles;
 mod agent_turn_execution;
 mod agent_voice;
 mod agent_voice_history;
@@ -102,6 +103,7 @@ pub use self::{
 	agent_reasoning_summary::AgentReasoningSummaryChange,
 	agent_response_usage::AgentResponseUsageSummary,
 	agent_settings_observations::AgentTaskSettingsObservation,
+	agent_titles::{AgentConversationTitle, AgentTitleReview},
 	agent_turn_execution::AgentTurnExecution,
 	agent_voice::AgentVoiceCall,
 	agent_voice_history::{

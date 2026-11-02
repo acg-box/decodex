@@ -5757,22 +5757,24 @@ async fn query_agent_snapshot(store: &ProductStore) -> decodex_protocol::AgentSn
 	else {
 		return decodex_protocol::AgentSnapshotResult::Unavailable;
 	};
-	let (work_items, dependencies, pending_events, managers, projects) = match records {
-		AgentStoreSnapshot::CapacityExceeded { work_items, dependencies, pending_events } => {
-			return decodex_protocol::AgentSnapshotResult::CapacityExceeded {
+	let (work_items, dependencies, pending_events, managers, projects, conversation_titles) =
+		match records {
+			AgentStoreSnapshot::CapacityExceeded { work_items, dependencies, pending_events } => {
+				return decodex_protocol::AgentSnapshotResult::CapacityExceeded {
+					work_items,
+					dependencies,
+					pending_events,
+				};
+			},
+			AgentStoreSnapshot::Complete {
 				work_items,
 				dependencies,
 				pending_events,
-			};
-		},
-		AgentStoreSnapshot::Complete {
-			work_items,
-			dependencies,
-			pending_events,
-			managers,
-			projects,
-		} => (work_items, dependencies, pending_events, managers, projects),
-	};
+				managers,
+				projects,
+				conversation_titles,
+			} => (work_items, dependencies, pending_events, managers, projects, conversation_titles),
+		};
 	let counts = (work_items.len() as u64, dependencies.len() as u64, pending_events.len() as u64);
 	let Some(context_references) = query_agent_context_references(store).await else {
 		return decodex_protocol::AgentSnapshotResult::Unavailable;
@@ -5788,6 +5790,7 @@ async fn query_agent_snapshot(store: &ProductStore) -> decodex_protocol::AgentSn
 		portfolio: Box::new(portfolio),
 		archived_work_ids: Default::default(),
 		agent_slots: Default::default(),
+		conversation_titles: Box::new(conversation_titles),
 		context_references,
 		connection_initializing: false,
 		runtime_source: None,

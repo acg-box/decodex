@@ -1,21 +1,19 @@
 //! Read public native messages through the existing bounded item-page owner.
+pub(crate) mod excerpts;
 use std::{collections::HashSet, mem, time::Duration};
 
 use serde_json::Value;
 use tokio::time;
 
-use crate::{
-	agent,
-	agent_recap::{excerpts, excerpts::Exchange},
-};
+use crate::{agent, agent_message_history::excerpts::Exchange};
 use decodex_codex::app_server_client::{AppServerClient, ClientError, MAX_FRAME_BYTES};
 
-pub(super) struct History {
+pub(crate) struct History {
 	pub exchanges: Vec<Exchange>,
 	pub latest_turn: Option<String>,
 }
 
-pub(super) struct Message {
+pub(crate) struct Message {
 	pub user: bool,
 	pub text: String,
 }
@@ -23,6 +21,7 @@ pub(super) struct Message {
 #[derive(Default)]
 struct Recent {
 	voice: bool,
+	final_only: bool,
 	seen: HashSet<String>,
 	messages: Vec<Message>,
 	latest: Option<String>,
@@ -53,7 +52,12 @@ impl Recent {
 		let items = items.as_array().ok_or(ClientError::InvalidFrame)?;
 		let filtered: Vec<_> = items
 			.iter()
-			.filter(|item| !self.voice || !agent::voice_handoff(item))
+			.filter(|item| {
+				(!self.voice || !agent::voice_handoff(item))
+					&& (!self.final_only
+						|| item["type"] != "agentMessage"
+						|| item["phase"].as_str().is_none_or(|phase| phase == "final_answer"))
+			})
 			.cloned()
 			.collect();
 		let mut next = visible(&filtered)?;
@@ -90,7 +94,7 @@ impl Recent {
 }
 
 // Input is newest-first, including native item order within each turn.
-pub(super) fn select(messages: &[Message]) -> Vec<Exchange> {
+pub(crate) fn select(messages: &[Message]) -> Vec<Exchange> {
 	let mut exchanges = Vec::new();
 	let mut current = Exchange::default();
 	let mut answered = 0;
@@ -124,12 +128,21 @@ pub(super) fn select(messages: &[Message]) -> Vec<Exchange> {
 	exchanges
 }
 
-pub(super) async fn read(
+pub(crate) async fn read(
 	client: &AppServerClient,
 	thread: &str,
 	voice: bool,
 ) -> Result<History, ClientError> {
-	time::timeout(Duration::from_secs(25), read_inner(client, thread, voice))
+	time::timeout(Duration::from_secs(25), read_inner(client, thread, voice, false))
+		.await
+		.map_err(|_| ClientError::Io)?
+}
+
+pub(crate) async fn read_for_title(
+	client: &AppServerClient,
+	thread: &str,
+) -> Result<History, ClientError> {
+	time::timeout(Duration::from_secs(25), read_inner(client, thread, false, true))
 		.await
 		.map_err(|_| ClientError::Io)?
 }
@@ -142,9 +155,7 @@ fn turn_id(turn: &Value) -> Result<&str, ClientError> {
 }
 
 fn finish(exchanges: Vec<Exchange>, latest_turn: Option<String>) -> Result<History, ClientError> {
-	let history = excerpts::render(&exchanges);
-
-	if history.is_empty() {
+	if exchanges.iter().all(|e| e.user.is_empty() && e.assistant.is_empty()) {
 		return Err(ClientError::InvalidFrame);
 	}
 
@@ -199,6 +210,7 @@ async fn read_inner(
 	client: &AppServerClient,
 	thread: &str,
 	voice: bool,
+	final_only: bool,
 ) -> Result<History, ClientError> {
 	let metadata = client.thread_read(serde_json::json!({"threadId":thread})).await?;
 
@@ -206,7 +218,7 @@ async fn read_inner(
 		return Err(ClientError::InvalidFrame);
 	}
 
-	let mut recent = Recent { voice, ..Default::default() };
+	let mut recent = Recent { voice, final_only, ..Default::default() };
 
 	match metadata["thread"]["historyMode"].as_str() {
 		None | Some("legacy") => {
@@ -274,5 +286,5 @@ async fn read_pages(
 }
 
 #[cfg(test)]
-#[path = "history_tests.rs"]
+#[path = "agent_message_history/tests.rs"]
 mod tests;

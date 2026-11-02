@@ -178,6 +178,9 @@ pub(crate) fn retain_active(snapshot: &mut AgentSnapshotDto, archived: &HashSet<
 	}
 
 	snapshot.work_items.retain(|work| !inactive.contains(&work.id));
+	snapshot.conversation_titles.retain(|thread, _| {
+		snapshot.work_items.iter().any(|w| w.codex_thread_id.as_ref() == Some(thread))
+	});
 	snapshot.agents.retain(|agent| !inactive.contains(&agent.id));
 
 	for work in &mut snapshot.work_items {
@@ -243,6 +246,7 @@ mod tests {
 			portfolio: Default::default(),
 			archived_work_ids: Default::default(),
 			agent_slots: Default::default(),
+			conversation_titles: Default::default(),
 			context_references: vec![],
 			connection_initializing: false,
 			runtime_source: None,

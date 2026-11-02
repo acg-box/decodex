@@ -134,7 +134,14 @@ impl AgentSurface {
 			if id != selected && !self.workspace.pages.iter().any(|page| page == id) {
 				continue;
 			}
-			let label = format!("Side chat {}", index + 1);
+			let label = snapshot
+				.work_items
+				.iter()
+				.find(|work| work.id == id)
+				.and_then(|work| work.codex_thread_id.as_ref())
+				.and_then(|thread| snapshot.conversation_titles.get(thread))
+				.cloned()
+				.unwrap_or_else(|| format!("Side chat {}", index + 1));
 			tabs.push(Tab { id: id.into(), label, closable: true });
 		}
 		tabs

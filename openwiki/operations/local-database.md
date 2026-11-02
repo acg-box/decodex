@@ -22,6 +22,10 @@ sources:
     resource: repo://database/src/agent_process/attachments.rs
   - id: openwiki-source-d31590aa1b62ee057094fb38
     resource: repo://database/src/agent_process/tests/attachments.rs
+  - id: openwiki-source-82bb214209944301d2efacfb
+    resource: repo://database/src/agent_titles.rs
+  - id: openwiki-source-6197a876b2effbe992b1e2ec
+    resource: repo://database/src/agent.rs
   - id: openwiki-source-d1279ad243eb550afec4d0e6
     resource: repo://database/src/guardian_settings.rs
   - id: openwiki-source-dc8958560b1230967470835f
@@ -32,10 +36,10 @@ sources:
     resource: repo://database/src/works/commands.rs
   - id: openwiki-source-960cb6b925f1fa45c737a735
     resource: repo://scripts/macos/verify_decodex_bundle_contracts.py
-generated: { by: "codex", at: "2026-10-31T14:39:55.131Z" }
+generated: { by: "codex", at: "2026-11-02T07:10:57.562Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-31T14:39:55.131Z
+    at: 2026-11-02T07:10:57.562Z
 ---
 
 # Local database operations
@@ -60,7 +64,7 @@ Ordinary input resumes its original native context and recorded tool declaration
 
 Global Guardian stores the Review Details opt-in and private review records. Conversation permission settings have a separate owner. Private records are deduplicated by reviewer thread, turn and item. Records are bounded to 64 KiB and the newest 128; small snapshot previews and exact selected reads stay separate. These records do not grant execution authority or complete Work.
 
-Local clients and service must agree on exact protocol 4.4. Publication-instance and command receipts preserve reconnect and idempotent recovery. Exact native bundle ABI checks remain a separate verification boundary. See [commands](commands-and-validation.md) and [the canonical contract](../decisions/project-agent-work.md).
+Local clients and service must agree on exact protocol 4.5. Publication-instance and command receipts preserve reconnect and idempotent recovery. Exact native bundle ABI checks remain a separate verification boundary. See [commands](commands-and-validation.md) and [the canonical contract](../decisions/project-agent-work.md).
 
 ## Authority and paths
 
@@ -110,3 +114,5 @@ The embedded schema defines one current layout. The application has no ordered u
 OAuth credentials use their current version-1 payload and fingerprint representation. PAT credentials use version 2 and retain verified user identity without fabricated OAuth refresh or expiry values. These are distinct supported credential kinds. The current schema accepts both and enforces their dependent authority directly; no old credential migration runs at startup.
 
 Explicit conversation branches reuse durable inbox event records for their intent, native acknowledgement and expected visible history. Ordinary branches expose their reviewed source prefix. Attached children expose only their own turns, so creation is acknowledged against an empty child view while the saved source IDs retain the reviewed boundary. Native inference keeps the parent context. Each target has its own work and native thread identity. Side chats retain the exact source Agent as parent and keep its Project, role and tool revision. The read-only list selects the newest 100 saved attached receipts for that exact source; it adds no schema migration. Before-input branches reuse the existing canonical prompt-edit draft and upload records. Unknown creation does not authorize a second request. See [conversation recovery](../workflows/conversations-and-recovery.md).
+
+Native conversation topics use resolved `conversation_title` observations in the existing indexed inbox journal. The observation keeps the native name, automatic-name provenance and the last successful review checkpoint. It does not wake work or consume transcript pages. Work snapshots join these topics to current native bindings in the same transaction. Agent identity and business Work titles remain separate; the database schema stays at version 60. See [automatic titles](../workflows/conversations-and-recovery.md#automatic-conversation-titles).

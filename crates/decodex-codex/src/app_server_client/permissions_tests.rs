@@ -14,6 +14,23 @@ use crate::app_server_client::{
 	},
 };
 
+fn dispatch(
+	frame: Value,
+	pending: &mut HashMap<RequestId, PendingReply>,
+	events: &mpsc::Sender<ServerEvent>,
+	requests: &ServerRequests,
+) -> Result<(), ClientError> {
+	app_server_client::dispatch(
+		frame,
+		pending,
+		events,
+		&app_server_client::EventRouter {
+			requests: requests.clone(),
+			temporary: Default::default(),
+		},
+	)
+}
+
 #[test]
 fn selection_cannot_carry_unrelated_policy_or_configuration() {
 	let wire =
@@ -112,13 +129,11 @@ fn wire_publication_invalidates_old_authority_before_owner_consumption() {
 	let (events, mut receiver) = mpsc::channel(8);
 	let mut pending = HashMap::new();
 
-	app_server_client::dispatch(publish(permission_facts("old")), &mut pending, &events, &requests)
-		.unwrap();
+	dispatch(publish(permission_facts("old")), &mut pending, &events, &requests).unwrap();
 
 	let (_, old_guard) = requests.permission_observation("task").unwrap();
 
-	app_server_client::dispatch(publish(permission_facts("new")), &mut pending, &events, &requests)
-		.unwrap();
+	dispatch(publish(permission_facts("new")), &mut pending, &events, &requests).unwrap();
 
 	assert!(!old_guard.is_live());
 
@@ -129,13 +144,8 @@ fn wire_publication_invalidates_old_authority_before_owner_consumption() {
 	// Both publications are still queued for the coordinator.
 	assert_eq!(receiver.len(), 2);
 
-	app_server_client::dispatch(
-		publish(serde_json::json!({"cwd":"/native"})),
-		&mut pending,
-		&events,
-		&requests,
-	)
-	.unwrap();
+	dispatch(publish(serde_json::json!({"cwd":"/native"})), &mut pending, &events, &requests)
+		.unwrap();
 
 	assert!(!current_guard.is_live());
 	assert!(requests.permission_observation("task").is_none());
@@ -154,7 +164,7 @@ fn late_hydration_cannot_restore_invalidated_or_foreign_permission_facts() {
 			} else {
 				PermissionHydration::Resume {
 					thread: "task".into(),
-					guard: requests.thread_settings_guard("task").unwrap(),
+					guard: Box::new(requests.thread_settings_guard("task").unwrap()),
 				}
 			};
 			let facts = if malformed { serde_json::json!({}) } else { permission_facts("new") };
@@ -163,20 +173,15 @@ fn late_hydration_cannot_restore_invalidated_or_foreign_permission_facts() {
 				PendingReply { reply, permissions: Some(hydration), provider_thread: None },
 			)]);
 
-			app_server_client::dispatch(serde_json::json!({"method":"thread/settings/updated", "params":{"threadId":"task", "threadSettings":facts}}), &mut pending, &events, &requests).unwrap();
+			dispatch(serde_json::json!({"method":"thread/settings/updated", "params":{"threadId":"task", "threadSettings":facts}}), &mut pending, &events, &requests).unwrap();
 
 			let mut old = permission_facts("old");
 
 			old["sandbox"] = old["sandboxPolicy"].take();
 			old["thread"] = serde_json::json!({"id":"task"});
 
-			app_server_client::dispatch(
-				serde_json::json!({"id":1,"result":old}),
-				&mut pending,
-				&events,
-				&requests,
-			)
-			.unwrap();
+			dispatch(serde_json::json!({"id":1,"result":old}), &mut pending, &events, &requests)
+				.unwrap();
 
 			let observed = requests.permission_observation("task");
 
@@ -193,7 +198,7 @@ fn late_hydration_cannot_restore_invalidated_or_foreign_permission_facts() {
 	let (reply, _result) = oneshot::channel();
 	let hydration = PermissionHydration::Resume {
 		thread: "task".into(),
-		guard: requests.thread_settings_guard("task").unwrap(),
+		guard: Box::new(requests.thread_settings_guard("task").unwrap()),
 	};
 	let mut pending = HashMap::from([(
 		RequestId::Number(1),
@@ -204,13 +209,8 @@ fn late_hydration_cannot_restore_invalidated_or_foreign_permission_facts() {
 	response["sandbox"] = response["sandboxPolicy"].take();
 	response["thread"] = serde_json::json!({"id":"other"});
 
-	app_server_client::dispatch(
-		serde_json::json!({"id":1,"result":response}),
-		&mut pending,
-		&events,
-		&requests,
-	)
-	.unwrap();
+	dispatch(serde_json::json!({"id":1,"result":response}), &mut pending, &events, &requests)
+		.unwrap();
 
 	assert!(requests.permission_observation("task").is_none());
 	assert!(requests.permission_observation("other").is_none());
@@ -254,17 +254,11 @@ fn idle_permission_facts_return_only_after_exact_turn_completion_without_revivin
 		let (events, _receiver) = mpsc::channel(8);
 		let mut pending = HashMap::new();
 
-		app_server_client::dispatch(
-			publish(permission_facts("old")),
-			&mut pending,
-			&events,
-			&requests,
-		)
-		.unwrap();
+		dispatch(publish(permission_facts("old")), &mut pending, &events, &requests).unwrap();
 
 		let (_, old_guard) = requests.permission_observation("task").unwrap();
 
-		app_server_client::dispatch(
+		dispatch(
 			serde_json::json!({"method":"turn/started","params":{"threadId":"task","turn":{"id":"active"}}}),
 			&mut pending,
 			&events,
@@ -282,20 +276,11 @@ fn idle_permission_facts_return_only_after_exact_turn_completion_without_revivin
 		assert!(selection_guard.is_live());
 
 		match update {
-			"changed" => app_server_client::dispatch(
-				publish(permission_facts("new")),
-				&mut pending,
-				&events,
-				&requests,
-			)
-			.unwrap(),
-			"malformed" => app_server_client::dispatch(
-				publish(serde_json::json!({})),
-				&mut pending,
-				&events,
-				&requests,
-			)
-			.unwrap(),
+			"changed" =>
+				dispatch(publish(permission_facts("new")), &mut pending, &events, &requests)
+					.unwrap(),
+			"malformed" =>
+				dispatch(publish(serde_json::json!({})), &mut pending, &events, &requests).unwrap(),
 			_ => {},
 		}
 
@@ -316,7 +301,7 @@ fn idle_permission_facts_return_only_after_exact_turn_completion_without_revivin
 		assert_eq!(selection_guard.is_live(), update == "unchanged");
 		assert!(requests.permission_observation("task").is_none());
 
-		app_server_client::dispatch(
+		dispatch(
 			serde_json::json!({"method":"turn/completed","params":{"threadId":"task","turn":{"id":"older"}}}),
 			&mut pending,
 			&events,
@@ -326,7 +311,7 @@ fn idle_permission_facts_return_only_after_exact_turn_completion_without_revivin
 
 		assert!(requests.permission_observation("task").is_none());
 
-		app_server_client::dispatch(
+		dispatch(
 			serde_json::json!({"method":"turn/completed","params":{"threadId":"task","turn":{"id":"active"}}}),
 			&mut pending,
 			&events,
@@ -362,7 +347,8 @@ fn permission_lifecycle_revokes_facts_and_pending_resume_hydration() {
 		requests.observe_permission_hydration("task", &facts);
 
 		let (_, guard) = requests.permission_observation("task").unwrap();
-		let hydration = PermissionHydration::Resume { thread: "task".into(), guard: guard.clone() };
+		let hydration =
+			PermissionHydration::Resume { thread: "task".into(), guard: Box::new(guard.clone()) };
 
 		requests
 			.observe(&ServerEvent::Notification {
@@ -527,4 +513,18 @@ async fn newer_wire_settings_reject_permission_write_before_owner_drain() {
 		Err(ClientError::StaleHistory)
 	));
 	assert!(time::timeout(std::time::Duration::from_millis(20), lines.next_line()).await.is_err());
+}
+
+#[tokio::test]
+async fn native_manual_rename_invalidates_pending_title_write_before_service_routing() {
+	let (local, mut remote) = io::duplex(4096);
+	let (reader, writer) = io::split(local);
+	let (client, mut events) = AppServerClient::from_io(reader, writer);
+	let settings = client.thread_settings_guard("task").unwrap();
+	let guard = client.with_thread_name_guard("task", settings.clone()).unwrap();
+	remote.write_all(format!("{}\n",serde_json::json!({"method":"thread/name/updated","params":{"threadId":"task","threadName":"Manual title"}})).as_bytes()).await.unwrap();
+	let _queued = events.recv().await.unwrap();
+	assert!(!guard.is_live());
+	assert!(settings.is_live(), "a title is not a permission or model change");
+	assert!(client.name_thread_guarded("task", "Late generated title", guard).await.is_err());
 }

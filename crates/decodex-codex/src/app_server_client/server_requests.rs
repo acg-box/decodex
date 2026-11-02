@@ -34,14 +34,15 @@ pub(super) struct ServerRequests(
 	SettingsObservations<super::NativeTaskModelSettings>,
 	LiveReviews,
 	ProviderWait,
-	Arc<Metrics>,
+	Arc<Observations>,
 );
 
 #[derive(Default)]
-struct Metrics {
+struct Observations {
 	output: OutputRates,
 	timing: ObservedTimings,
 	providers: super::provider_recovery::ProviderMismatches,
+	names: SettingsRevisions,
 }
 
 impl ServerRequests {
@@ -105,6 +106,7 @@ impl ServerRequests {
 				questions: false,
 				review: Some(review),
 				settings: None,
+				name: None,
 			},
 		))
 	}
@@ -116,6 +118,7 @@ impl ServerRequests {
 			questions: false,
 			review: None,
 			settings: None,
+			name: None,
 		})
 	}
 
@@ -214,6 +217,7 @@ impl ServerRequests {
 			questions: true,
 			review: None,
 			settings: None,
+			name: None,
 		})
 	}
 
@@ -236,6 +240,18 @@ impl ServerRequests {
 
 		guard.settings = Some(self.3.capture(thread)?);
 
+		Some(guard)
+	}
+
+	pub(super) fn with_thread_name_guard(
+		&self,
+		thread: &str,
+		mut guard: HistoryGuard,
+	) -> Option<HistoryGuard> {
+		if !guard.belongs_to(self) || !guard.is_live() {
+			return None;
+		}
+		guard.name = Some(self.9.names.capture(thread)?);
 		Some(guard)
 	}
 
@@ -270,6 +286,7 @@ impl ServerRequests {
 
 	pub(super) fn clear(&self) {
 		self.9.providers.clear();
+		self.9.names.clear();
 		self.9.timing.clear();
 		self.9.output.clear();
 		self.8.clear();
@@ -284,7 +301,7 @@ impl ServerRequests {
 		}
 	}
 
-	fn observe_permission_event(&self, event: &ServerEvent) {
+	pub(super) fn observe_thread_state(&self, event: &ServerEvent) {
 		let ServerEvent::Notification { method, params } = event else { return };
 
 		if method == "thread/reverted" {
@@ -294,6 +311,9 @@ impl ServerRequests {
 		}
 
 		let Some(thread) = params["threadId"].as_str() else { return };
+		if method == "thread/name/updated" {
+			self.9.names.invalidate(thread);
+		}
 
 		if matches!(
 			method.as_str(),
@@ -350,7 +370,7 @@ impl ServerRequests {
 		self.9.output.observe(event);
 		self.7.observe(event)?;
 		self.8.observe(event);
-		self.observe_permission_event(event);
+		self.observe_thread_state(event);
 
 		let mut rows = self.0.lock().map_err(|_| ClientError::Closed)?;
 
@@ -422,6 +442,7 @@ pub struct HistoryGuard {
 	questions: bool,
 	review: Option<LiveReviewGuard>,
 	settings: Option<super::settings_guard::SettingsGuard>,
+	name: Option<super::settings_guard::SettingsGuard>,
 }
 impl HistoryGuard {
 	/// Identity of the exact live review, absent for history guards or invalidated evidence.
@@ -440,6 +461,9 @@ impl HistoryGuard {
 
 	/// Whether the selected native state is unchanged since this version.
 	pub fn is_live(&self) -> bool {
+		if self.name.as_ref().is_some_and(|name| !name.is_live()) {
+			return false;
+		}
 		if let Some(review) = &self.review {
 			return review.is_live()
 				&& self

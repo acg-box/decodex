@@ -27,20 +27,6 @@ impl AgentHost {
 		}
 	}
 
-	async fn recap_source(&self, work: &str, thread: &str) -> Option<Source> {
-		let source = self.timeline_source(work, thread).await?;
-
-		self.store
-			.agent_thread_is_owned(
-				work.into(),
-				thread.into(),
-				Some(source.key.generation.as_str().into()),
-			)
-			.await
-			.ok()?
-			.then_some(source)
-	}
-
 	pub(crate) async fn recap_status(&self, work: EntityId) -> TaskRecapStatus {
 		let source = match self
 			.store
@@ -49,7 +35,7 @@ impl AgentHost {
 			.ok()
 			.and_then(|v| v.codex_thread_id)
 		{
-			Some(thread) => self.recap_source(work.as_str(), &thread).await,
+			Some(thread) => self.owned_timeline_source(work.as_str(), &thread).await,
 			None => None,
 		};
 		let mut result = self.recaps.status(work.clone(), source.as_ref());
@@ -79,8 +65,10 @@ impl AgentHost {
 		work: &str,
 		thread: &str,
 	) -> Result<String, AgentHostError> {
-		let source =
-			self.recap_source(work, thread).await.ok_or("Task connection is unavailable")?;
+		let source = self
+			.owned_timeline_source(work, thread)
+			.await
+			.ok_or("Task connection is unavailable")?;
 		let voice = self
 			.store
 			.read_agent_voice_history(work.into(), thread.into())
@@ -119,9 +107,9 @@ impl AgentHost {
 			return false;
 		}
 
-		self.recap_source(&source.key.work, &source.key.thread)
+		self.owned_timeline_source(&source.key.work, &source.key.thread)
 			.await
-			.is_some_and(|current| agent_recap::same_owner(source, &current))
+			.is_some_and(|current| crate::agent_usage_estimate::same_owner(source, &current))
 	}
 
 	async fn run_recap(
@@ -131,7 +119,6 @@ impl AgentHost {
 		cancelled: Receiver<bool>,
 		voice: AgentVoiceHistory,
 	) {
-		let mut temporary_id = None;
 		let result = async {
 			let prepared = agent_recap::prepare(&source, Some(&voice)).await?;
 
@@ -145,8 +132,6 @@ impl AgentHost {
 			let temporary =
 				source.client.start_temporary_structured(prepared.options).await.ok()?;
 
-			temporary_id = Some(temporary.id().to_owned());
-
 			let latest = source.client.thread_latest_turn_id(&source.key.thread).await;
 
 			if *cancelled.borrow()
@@ -159,13 +144,8 @@ impl AgentHost {
 				return None;
 			}
 
-			let Some(events) = self.recaps.register(temporary.id()) else {
-				let _ = temporary.cancel().await;
-
-				return None;
-			};
 			let output = temporary
-				.run(prepared.prompt, agent_recap::schema(), None, events, cancelled.clone())
+				.run_isolated(prepared.prompt, agent_recap::schema(), None, cancelled.clone())
 				.await
 				.ok()?;
 
@@ -180,6 +160,6 @@ impl AgentHost {
 		}
 		.await;
 
-		self.recaps.finish(&source.key.work, &key, temporary_id.as_deref(), result);
+		self.recaps.finish(&source.key.work, &key, result);
 	}
 }

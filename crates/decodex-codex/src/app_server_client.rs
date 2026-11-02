@@ -43,6 +43,7 @@ mod search_preferences;
 mod server_requests;
 mod settings_guard;
 mod task_settings;
+mod temporary_events;
 mod temporary_structured;
 mod thread_fork;
 mod thread_model_selection;
@@ -298,7 +299,7 @@ impl FrameSink {
 // Start has no identity before its reply. Intervening publications invalidate hydration.
 enum PermissionHydration {
 	Start { revision: u64 },
-	Resume { thread: String, guard: HistoryGuard },
+	Resume { thread: String, guard: Box<HistoryGuard> },
 }
 impl PermissionHydration {
 	fn observe(self, response: &Value, requests: &ServerRequests) {
@@ -344,6 +345,7 @@ pub struct AppServerClient {
 	outbound: mpsc::Sender<Outbound>,
 	closed: watch::Sender<bool>,
 	server_requests: ServerRequests,
+	temporary_events: temporary_events::TemporaryEvents,
 }
 impl AppServerClient {
 	/// Check the complete JSON-RPC request before an earlier related side effect.
@@ -476,8 +478,16 @@ impl AppServerClient {
 		let (events, receiver) = mpsc::channel(MAX_BUFFERED_EVENTS);
 		let (closed, cancellation) = watch::channel(false);
 		let server_requests = ServerRequests::default();
+		let temporary_events = temporary_events::TemporaryEvents::default();
 
-		tokio::spawn(run(reader, writer, commands, events, cancellation, server_requests.clone()));
+		tokio::spawn(run(
+			reader,
+			writer,
+			commands,
+			events,
+			cancellation,
+			EventRouter { requests: server_requests.clone(), temporary: temporary_events.clone() },
+		));
 
 		(
 			Self {
@@ -486,6 +496,7 @@ impl AppServerClient {
 				outbound,
 				closed,
 				server_requests,
+				temporary_events,
 			},
 			receiver,
 		)
@@ -507,6 +518,7 @@ impl AppServerClient {
 		let (events, receiver) = mpsc::channel(MAX_BUFFERED_EVENTS);
 		let (closed, cancellation) = watch::channel(false);
 		let server_requests = ServerRequests::default();
+		let temporary_events = temporary_events::TemporaryEvents::default();
 
 		tokio::spawn(run_frames(
 			FrameSink::Channel(outgoing),
@@ -515,7 +527,7 @@ impl AppServerClient {
 			incoming,
 			next_request_id - 1,
 			cancellation,
-			server_requests.clone(),
+			EventRouter { requests: server_requests.clone(), temporary: temporary_events.clone() },
 		));
 
 		Ok((
@@ -525,6 +537,7 @@ impl AppServerClient {
 				outbound,
 				closed,
 				server_requests,
+				temporary_events,
 			},
 			receiver,
 		))
@@ -586,6 +599,18 @@ impl AppServerClient {
 		}
 
 		self.server_requests.with_thread_settings_guard(thread, guard)
+	}
+
+	/// Add a title-only name fence without invalidating permission, model or recap observations.
+	pub fn with_thread_name_guard(
+		&self,
+		thread: &str,
+		guard: HistoryGuard,
+	) -> Option<HistoryGuard> {
+		if *self.closed.borrow() || self.outbound.is_closed() {
+			return None;
+		}
+		self.server_requests.with_thread_name_guard(thread, guard)
 	}
 
 	/// Capture continuation details received live on this connection, invalidated by new input,
@@ -853,12 +878,18 @@ fn new_connection_identity() -> String {
 	)
 }
 
+struct EventRouter {
+	requests: ServerRequests,
+	temporary: temporary_events::TemporaryEvents,
+}
+
 fn dispatch(
 	frame: Value,
 	pending: &mut HashMap<RequestId, PendingReply>,
 	events: &mpsc::Sender<ServerEvent>,
-	server_requests: &ServerRequests,
+	router: &EventRouter,
 ) -> Result<(), ClientError> {
+	let server_requests = &router.requests;
 	let object = frame.as_object().ok_or(ClientError::InvalidFrame)?;
 	let id = object
 		.get("id")
@@ -903,6 +934,9 @@ fn dispatch(
 		ServerEvent::UnmatchedResponse { id, result }
 	};
 
+	let Some(event) = router.temporary.route(event, server_requests)? else {
+		return Ok(());
+	};
 	server_requests.observe(&event)?;
 
 	events.try_send(event).map_err(|error| match error {
@@ -938,7 +972,7 @@ async fn run<R, W>(
 	commands: mpsc::Receiver<Outbound>,
 	events: mpsc::Sender<ServerEvent>,
 	cancellation: watch::Receiver<bool>,
-	server_requests: ServerRequests,
+	router: EventRouter,
 ) where
 	R: AsyncRead + Unpin + Send + 'static,
 	W: AsyncWrite + Unpin + Send + 'static,
@@ -971,16 +1005,8 @@ async fn run<R, W>(
 		}
 	});
 
-	run_frames(
-		FrameSink::Io(Box::new(writer)),
-		commands,
-		events,
-		frames,
-		0,
-		cancellation,
-		server_requests,
-	)
-	.await;
+	run_frames(FrameSink::Io(Box::new(writer)), commands, events, frames, 0, cancellation, router)
+		.await;
 
 	reader_task.abort();
 }
@@ -992,8 +1018,9 @@ async fn run_frames(
 	mut frames: mpsc::Receiver<Result<Value, ClientError>>,
 	mut sequence: i64,
 	mut cancellation: watch::Receiver<bool>,
-	server_requests: ServerRequests,
+	router: EventRouter,
 ) {
+	let server_requests = &router.requests;
 	let mut pending: HashMap<RequestId, PendingReply> = HashMap::new();
 	let reason = 'transport: loop {
 		tokio::select! {
@@ -1009,10 +1036,10 @@ async fn run_frames(
 					for _ in 0..frames.len() {
 						let frame=match frames.try_recv() {Ok(Ok(frame))=>frame,Ok(Err(error))=>break 'transport error,Err(_)=>break};
 
-						if let Err(error)=dispatch(frame,&mut pending,&events,&server_requests) {break 'transport error;}
+						if let Err(error)=dispatch(frame,&mut pending,&events,&router) {break 'transport error;}
 					}
 
-					if let Err(error) = guard.validate(&server_requests) {
+					if let Err(error) = guard.validate(server_requests) {
 						let reply=match command {Outbound::Request{reply,..}|Outbound::Message{reply,..}|Outbound::Shutdown{reply}=>reply};
 						let _=reply.send(Err(error));
 
@@ -1056,7 +1083,7 @@ async fn run_frames(
 							.then(|| params["threadId"].as_str().map(str::to_owned)).flatten();
 						let permissions=match method.as_str() {
 							"thread/start"|"thread/fork"=>Some(PermissionHydration::Start{revision:server_requests.permission_revision()}),
-							"thread/resume"=>params["threadId"].as_str().and_then(|thread|server_requests.thread_settings_guard(thread).map(|guard|PermissionHydration::Resume{thread:thread.into(),guard})),
+							"thread/resume"=>params["threadId"].as_str().and_then(|thread|server_requests.thread_settings_guard(thread).map(|guard|PermissionHydration::Resume{thread:thread.into(),guard:Box::new(guard)})),
 							_=>None,
 						};
 						let result = writer.write(serde_json::json!({"id": id, "method": method, "params": params})).await;
@@ -1084,12 +1111,13 @@ async fn run_frames(
 			frame = frames.recv() => {
 				let frame = match frame { Some(Ok(frame)) => frame, Some(Err(error)) => break error, None => break ClientError::Closed };
 
-				if let Err(error) = dispatch(frame, &mut pending, &events, &server_requests) { break error; }
+				if let Err(error) = dispatch(frame, &mut pending, &events, &router) { break error; }
 			},
 		}
 	};
 
 	server_requests.clear();
+	router.temporary.close(&reason);
 
 	drop(writer);
 

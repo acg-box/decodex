@@ -1061,7 +1061,10 @@ pub struct AgentSnapshotDto {
 	pub archived_work_ids: BTreeSet<String>,
 	/// Runtime-owned reusable display slots. Never use these numbers for message routing.
 	#[serde(default)]
-	pub agent_slots: BTreeMap<String, u32>,
+	pub agent_slots: Box<BTreeMap<String, u32>>,
+	/// Confirmed native conversation topics keyed by thread ID; separate from Agent identity.
+	#[serde(default)]
+	pub conversation_titles: Box<BTreeMap<String, String>>,
 	/// Explicit selected context references, not inferred from prose.
 	#[serde(default)]
 	pub context_references: Vec<AgentContextReferenceDto>,
@@ -1090,6 +1093,14 @@ impl AgentSnapshotDto {
 
 		self.projects.len() <= MAX_AGENT_WORK_ITEMS
 			&& self.archived_work_ids.iter().all(|id| ids.contains(id.as_str()))
+			&& self.conversation_titles.len() <= MAX_AGENT_WORK_ITEMS
+			&& self.conversation_titles.iter().all(|(thread, title)| {
+				text(thread, 512)
+					&& text(title, 1024)
+					&& !title.chars().any(char::is_control)
+					&& !decodex_core::contains_credential_material(title)
+					&& self.work_items.iter().any(|w| w.codex_thread_id.as_ref() == Some(thread))
+			})
 			&& self.agent_slots.len() <= 1_024
 			&& self.agent_slots.keys().all(|key| text(key, 1_536))
 			&& self.agent_slots.values().collect::<HashSet<_>>().len() == self.agent_slots.len()
@@ -1382,6 +1393,7 @@ mod tests {
 				portfolio: Default::default(),
 				archived_work_ids: Default::default(),
 				agent_slots: Default::default(),
+				conversation_titles: Default::default(),
 				context_references: vec![],
 				connection_initializing: false,
 				runtime_source: None,
@@ -1409,6 +1421,7 @@ mod tests {
 				portfolio: Default::default(),
 				archived_work_ids: Default::default(),
 				agent_slots: Default::default(),
+				conversation_titles: Default::default(),
 				context_references: vec![],
 				connection_initializing: false,
 				runtime_source: None,

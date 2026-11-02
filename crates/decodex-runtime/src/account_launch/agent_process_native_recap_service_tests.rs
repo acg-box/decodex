@@ -107,25 +107,42 @@ async fn qualify(mode: &str) {
 	let before = prepared.latest_turn;
 	let temporary =
 		session.client.start_temporary_structured(prepared.options).await.expect("isolated thread");
-	let temporary_id = temporary.id().to_owned();
-	let private = recaps.register(&temporary_id).expect("route");
 	let (stop, mut stopped) = oneshot::channel::<()>();
 	let routing = recaps.clone();
+	let (named, name_observed) = oneshot::channel();
+	let mut named = Some(named);
 	let (_placeholder, empty) = mpsc::channel(1);
 	let mut events = mem::replace(&mut session.events, empty);
 	let forward = tokio::spawn(async move {
 		loop {
-			tokio::select! {_=&mut stopped=>break,event=events.recv()=>match event {Some(event)=>{let _=routing.route(event);},None=>break,}}
+			tokio::select! {_=&mut stopped=>break,event=events.recv()=>match event {Some(event)=>{if matches!(&event,ServerEvent::Notification {method,..} if method=="thread/name/updated") && let Some(named)=named.take() { let _=named.send(()); } routing.observe(&event);},None=>break,}}
 		}
 
 		events
 	});
 	let result = temporary
-		.run(prepared.prompt, agent_recap::schema(), None, private, cancelled)
+		.run_isolated(prepared.prompt, agent_recap::schema(), None, cancelled)
 		.await
 		.expect("native recap inference");
 
-	recaps.finish("work", "recap-one", Some(&temporary_id), agent_recap::parse(&result));
+	recaps.finish("work", "recap-one", agent_recap::parse(&result));
+
+	let (_, settings_guard) =
+		session.client.configured_task_permissions(&thread).expect("source permissions");
+	let title_guard = session
+		.client
+		.with_thread_name_guard(&thread, settings_guard.clone())
+		.expect("title source");
+	session
+		.client
+		.name_thread_guarded(&thread, "Automatic topic title", title_guard)
+		.await
+		.expect("native title update");
+	time::timeout(Duration::from_secs(2), name_observed)
+		.await
+		.expect("name publication")
+		.expect("observed native name");
+	assert!(settings_guard.is_live(), "title updates preserve recap and permission state");
 
 	assert_eq!(
 		recaps.status(EntityId::new("work").expect("id"), Some(&source)).phase,

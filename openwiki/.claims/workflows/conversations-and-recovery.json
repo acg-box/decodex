@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:977c1b0a1b09ff59c6b31e71e3d0690c846a13b4638ed3bc69e6a84571bd99d2",
+  "pageVersion": "sha256:45adec8e8e1f83206ff4c9e0cf73fc97542b4556b325e6c63762ea932d685a0e",
   "claims": [
     {
       "id": "claim_3881a280a4044cdca9e8599100f0a4f0",
@@ -8,7 +8,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/agent/prompt_edit.rs",
-          "version": "repo-file-v1:sha256:d198431233dabf9e7996d3dafc9703588b36993b3505ffd54fad4afe0839571e"
+          "version": "repo-file-v1:sha256:d0ad2a62a35f06793817ceda8d0aed4ee626c5c6ed5271db8452ffcc36f16fc9"
         }
       ]
     },
@@ -60,7 +60,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-codex/src/app_server_client/temporary_structured.rs",
-          "version": "repo-file-v1:sha256:0076b94f4a735c8f73b1764b87e703fa8a1988bb930e0e9cea8cfafffe4860bf"
+          "version": "repo-file-v1:sha256:7e82b7a254fb397acaeea8f1246f20f792ceeb02edb37115cfac3f552acccb13"
         }
       ]
     },
@@ -140,11 +140,11 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_surface.rs",
-          "version": "repo-file-v1:sha256:f9f7c95fa09f05307e82c4d0d6ef01024cfc59392bddfb2c3363fe463bc3becf"
+          "version": "repo-file-v1:sha256:5ace3c0b0cc96aeb4c90ffcc5ac477da6aed15fafda1b87ed2035f122b2364eb"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:4b0bd2d5f0f9c6c3f40622264c11971b37c748b69411742d29c42f3989351abf"
+          "version": "repo-file-v1:sha256:eeafa51f5b72adc8511e9ca44c9e7b1b1da8687fcbb6da6bcc2288cc3cb75852"
         }
       ]
     },
@@ -154,15 +154,15 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_archive.rs",
-          "version": "repo-file-v1:sha256:38181cf7e65222375141c80fc1e41f2e6ab66a6e8b940402b2415086d0e579d0"
+          "version": "repo-file-v1:sha256:da20c30cd7051670a5b738225daea28621f8a1b584102357908da4d2f73728f2"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_archive_tests.rs",
-          "version": "repo-file-v1:sha256:1951a539a369c8b709c2ca28c67d648ea81f390fc2f915e0d8b3edda8ca84c30"
+          "version": "repo-file-v1:sha256:6e116750aa4f05a22271c6a27c84ba44d5e1b3530b06a078016bacdb699415cf"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent_visibility.rs",
-          "version": "repo-file-v1:sha256:c22e94efa56e00be6d1b025e158b6aaa903137ab9f85ab877587169667d66dec"
+          "version": "repo-file-v1:sha256:e9c6afbbb9a0138f8a8996ea9eb950024727b9cbae9db58fc94326096787d95a"
         }
       ]
     },
@@ -172,7 +172,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/agent_visibility.rs",
-          "version": "repo-file-v1:sha256:c22e94efa56e00be6d1b025e158b6aaa903137ab9f85ab877587169667d66dec"
+          "version": "repo-file-v1:sha256:e9c6afbbb9a0138f8a8996ea9eb950024727b9cbae9db58fc94326096787d95a"
         }
       ]
     },
@@ -196,7 +196,7 @@
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent_sample.rs",
-          "version": "repo-file-v1:sha256:b31b30d50054b094143e06c532751124ca97510ba457abeb2e1448bfb8152023"
+          "version": "repo-file-v1:sha256:59dde81e6cd671712d7c9bb472dba31284300964dffe0389996c6c0786a8dd21"
         }
       ]
     },
@@ -228,7 +228,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/agent.rs",
-          "version": "repo-file-v1:sha256:23720f5a11d7b2b707cfe1ec8e757845d1f4f887c276dd699a9ca2b55c0f965b"
+          "version": "repo-file-v1:sha256:37f8225f4db0006b18b2a03f15e6fdb865745d46683d46f40d6d15787de1c6b1"
         }
       ]
     },
@@ -436,11 +436,11 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_surface.rs",
-          "version": "repo-file-v1:sha256:f9f7c95fa09f05307e82c4d0d6ef01024cfc59392bddfb2c3363fe463bc3becf"
+          "version": "repo-file-v1:sha256:5ace3c0b0cc96aeb4c90ffcc5ac477da6aed15fafda1b87ed2035f122b2364eb"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:4b0bd2d5f0f9c6c3f40622264c11971b37c748b69411742d29c42f3989351abf"
+          "version": "repo-file-v1:sha256:eeafa51f5b72adc8511e9ca44c9e7b1b1da8687fcbb6da6bcc2288cc3cb75852"
         }
       ]
     },
@@ -520,7 +520,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_work_browser.rs",
-          "version": "repo-file-v1:sha256:60091e8fc5974cd4b39f7110a3bfee7ddec18c125cb8d4ef67afaf25e0c7cf49"
+          "version": "repo-file-v1:sha256:5318bc9f0e5f4c8a43e7f1a21f00e44ce8ccc39a41dca50fc60c7cbd783795d0"
         }
       ]
     },
@@ -570,11 +570,11 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_conversation_tab_tests.rs",
-          "version": "repo-file-v1:sha256:63a83edbf47937c54d604b845bc023e6c856ae7ccaf24389e330bee76ad8295e"
+          "version": "repo-file-v1:sha256:4cb209014e7798785b0a199faa30697a6f7f0e81f2942766834c840021404dc2"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_conversation_tabs.rs",
-          "version": "repo-file-v1:sha256:5843c560fb0e3dfd9e27690528edb00c009bd0731821d59c4d00bb23a8ace402"
+          "version": "repo-file-v1:sha256:f6b181400a6d0b94fc959a329095723dfac7bde6734f858484e0f5671f409c36"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_prompt_confirm_wire_tests.rs",
@@ -618,7 +618,7 @@
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/prompt_edit.rs",
-          "version": "repo-file-v1:sha256:d198431233dabf9e7996d3dafc9703588b36993b3505ffd54fad4afe0839571e"
+          "version": "repo-file-v1:sha256:d0ad2a62a35f06793817ceda8d0aed4ee626c5c6ed5271db8452ffcc36f16fc9"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/tests/unsent_input.rs",
@@ -632,7 +632,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_model_settings_wire_tests.rs",
-          "version": "repo-file-v1:sha256:63b650287667f1b7d6fd0dc5efce5fd5bdc8606f5594fb67f8f7b3c5769995d4"
+          "version": "repo-file-v1:sha256:89fe4a8502e41f44504b3d00ad24d41ab77476a3e108cb26b9331ada20716532"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_prompt_edit.rs",
@@ -644,7 +644,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:4b0bd2d5f0f9c6c3f40622264c11971b37c748b69411742d29c42f3989351abf"
+          "version": "repo-file-v1:sha256:eeafa51f5b72adc8511e9ca44c9e7b1b1da8687fcbb6da6bcc2288cc3cb75852"
         }
       ]
     },
@@ -660,17 +660,83 @@
     },
     {
       "id": "claim_728c53d690fc4ad8baf6c49b9fc24d72",
-      "statement": "The source tab is Main and Side chat tabs use numbered labels independently of sidebar conversation names.",
+      "statement": "The source tab is Main. Side chat tabs use confirmed native conversation topics shared with conversation labels, falling back to numbered labels until a title is available.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_conversation_tabs.rs#L122-L143",
-          "version": "repo-lines-v1:sha256:7f6c08d68983c6ffaab7f50b6f203109e14262fec608eaf3a525c1f75d971fdf:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhiMWQwZDg1M2JhMjQ3YjI1MmM1OTkwYjViM2M0NzQ2OWMyZTVhNTE4YmMzN2Q3NmZhNGYzNGE4OGU3YjIzNDMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBlYWRmM2ZkYmE1NDNhZjY3YjY2MDMxNjk0OWIxODQ4MjU0MmI3OTNiNzU1NWM1NTcwYWQ0NTcyMWIzMjA3YzUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE5OTFiYmViOWNjNWRlYTM2ZTE4OWI2Y2QzYjA5ZGQwYWMxODM4YmRjY2M1ODg4NTI1MzUyMmI1YzViYzMwYjQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAwMjljY2MwNTQ2MDlkYWIzOGE4OTdmZDE4NzgzZjAwNjVkNjA1MzQxOTBjZWU1MGEwYjhmNzdhNmMxMzY5NzkifQ"
+          "resource": "repo://apps/decodex-gpui/src/agent_conversation_tabs.rs#L122-L147",
+          "version": "repo-lines-v1:sha256:116e534c44447fb5d049bafb926d6f2be41f6a5494f93ca7cecfd826afff19bf:eyJzZWxlY3RlZExpbmVDb3VudCI6MjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhiMWQwZDg1M2JhMjQ3YjI1MmM1OTkwYjViM2M0NzQ2OWMyZTVhNTE4YmMzN2Q3NmZhNGYzNGE4OGU3YjIzNDMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRkNjQ5OTI5MjJiZWE0MTI3NzkzODVlZDcxNzAwNTM0MTZmMDFkMzViODkwOTI5OTc4YTI2OGNlZTJjMzM2ZjIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE5OTFiYmViOWNjNWRlYTM2ZTE4OWI2Y2QzYjA5ZGQwYWMxODM4YmRjY2M1ODg4NTI1MzUyMmI1YzViYzMwYjQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjBkNTMyNzAxNWNkYzdlNmZjOGEwZjBlODM0YWQ1YzIzYjUyODQwNjNkZTM1OTlmNjZhMTdmYTc0YzM2N2EzZjMifQ"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs#L1881-L1886",
+          "version": "repo-lines-v1:sha256:8302e452081033bda2faddbbe05ddcf005f9263b6756bbfd1a2bdd7cea4caf4b:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNTk3YmQzNjg3YTZjOTQ4ZmUyZjczODZhYTdiZGU5NmFjYTdjMzA1N2QxMDQ0NmM4OTE5NmE0ZmYyNDRhNTEwYyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNjdjZGE4MmRhNjA2MjM4ZTA1ZTYyMzk5NTY5YzVlZTAzOTkzNDE5NjQ4YWU1ZDQzYTJiZjhjZDYzNDdmODI2MyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYzczYWMwMzFmMzRjZGZkOWUxZTRjMmNmOGI2ZDI4MTM5OTAwNWVkMjQ5OWRjOGI0NDc5ZjIyY2NlNGJiNThiOCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNDQzOGNjYjM4NzRkN2YxMTgyODljYjdjNDVlYjNlOGVjOTRjMWJiNjM5MjgwZDVmOTZkZjQxNGM1MmYzNzY5MSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_5ec05a9c22d048949cb6a91748785e84",
+      "statement": "Automatic titles generate from the first eligible completed user exchange, review after four more completed user exchanges and ask the model to preserve the current title unless sustained recent focus makes it misleading. Generated metadata is bounded to 36 characters and checked for credential material.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent_titles.rs",
+          "version": "repo-file-v1:sha256:63dd0379eb3d50075ca3812d18953edd1bd4baa0804a8f456e92b56505d4e9ad"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent_titles/host.rs",
+          "version": "repo-file-v1:sha256:e9d0c2a4646d77c4b019f2e96e31569ea6e70673a6e83ce623ceabd61e2feccc"
+        },
+        {
+          "resource": "repo://database/src/agent_titles.rs",
+          "version": "repo-file-v1:sha256:26778d2e1b8fa80141e34b0a0cbdf3e34664a4b0e6fd75d10a05354869296fd8"
+        }
+      ]
+    },
+    {
+      "id": "claim_732557aa0fea4a8fb63595382ac08db2",
+      "statement": "Title inference uses an isolated ephemeral structured request on the current native account, with Luna low only when advertised by the live OpenAI catalog and the source model otherwise. The shared native event router keeps temporary events private; source history is unchanged, and only successful native-name readback advances the title checkpoint.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-codex/src/app_server_client/temporary_events.rs",
+          "version": "repo-file-v1:sha256:e2fb80d873e1c03193c7405ecd1136da444eae28acd379d25211f070ca4d705b"
+        },
+        {
+          "resource": "repo://crates/decodex-codex/src/app_server_client/temporary_structured.rs",
+          "version": "repo-file-v1:sha256:7e82b7a254fb397acaeea8f1246f20f792ceeb02edb37115cfac3f552acccb13"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent_message_history.rs",
+          "version": "repo-file-v1:sha256:faf729d22176e624b5a7d7082a2e4e780de0b37059e5d3d06e6fbdaa186f2d1c"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent_titles/host.rs",
+          "version": "repo-file-v1:sha256:e9d0c2a4646d77c4b019f2e96e31569ea6e70673a6e83ce623ceabd61e2feccc"
+        }
+      ]
+    },
+    {
+      "id": "claim_8d032be5e5054041ac45f837502eef26",
+      "statement": "Private title inference preserves foreground questions and reviews. Native name revisions have a separate guard so an automatic title update preserves Recap and task settings, while a manual rename cancels an outstanding automatic write.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-codex/src/app_server_client.rs#L934-L945",
+          "version": "repo-lines-v1:sha256:cab6cb7ade455d629409e29456c153e75af65d8e006c23f55ecd917d8ecefff8:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUwNWYzNTg4YjFhYWY5OTdkNTU5OWVlNmNkMTZkZGQyZjJmOTczNWEyMGM3ZGU0MWY2NjEyZWUxMjA3ZTJmOTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc3YTliNWU5MDE5YzhkYjg3ODNlYzljM2ZlYmIwYTJjOTg2MmY2MWEwNWMzMDhmZTg5NWU0YTliZWQwM2VkYjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZkYzAwNTU0NjNhMjAxZjRhOWNmNmYzMzlhN2M2NDQ1MDI3MTViZDAyM2EzMDUwNGQwY2E2MmFhZmJkNDZkYjAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAxMGY2MDdmMzIzYmRjNDliNmQ4NmM0ZmM3ZmFlZTQ4YTc2ODY0ZGJlZTFjZTJlMzhmMDMzODRjODBjNjc4YjcifQ"
+        },
+        {
+          "resource": "repo://crates/decodex-codex/src/app_server_client/server_requests.rs",
+          "version": "repo-file-v1:sha256:804612839f906b5699d3ef433cf8c68b945920bd39589bc9acc488d5c3710cb6"
+        },
+        {
+          "resource": "repo://crates/decodex-codex/src/app_server_client/temporary_events.rs",
+          "version": "repo-file-v1:sha256:e2fb80d873e1c03193c7405ecd1136da444eae28acd379d25211f070ca4d705b"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_recap_service_tests.rs",
+          "version": "repo-file-v1:sha256:da77b964fb448ea5706561c440533467e980481a59922696c822eb74bb21d862"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-11-02T05:23:45.661Z"
+    "at": "2026-11-02T08:00:19.527Z"
   }
 }

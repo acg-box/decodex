@@ -623,7 +623,7 @@ impl AgentSurface {
 					.snapshot
 					.as_ref()
 					.and_then(|s| s.work_items.iter().find(|w| w.id == id))
-					.map(|w| self.work_label(w))
+					.map(|w| self.conversation_label(w))
 					.unwrap_or_else(|| "Agent".into());
 
 				vec![(id, name, false)]
@@ -639,7 +639,7 @@ impl AgentSurface {
 								.work_items
 								.iter()
 								.find(|w| &w.id == id)
-								.map(|w| self.work_label(w))
+								.map(|w| self.conversation_label(w))
 						})
 						.map(|label| (id.clone(), label, true))
 				},
@@ -1878,6 +1878,13 @@ impl AgentSurface {
 			.into_any_element()
 	}
 
+	pub(super) fn conversation_label(&self, work: &AgentWorkItemDto) -> String {
+		work.codex_thread_id
+			.as_ref()
+			.and_then(|thread| self.snapshot.as_ref()?.conversation_titles.get(thread).cloned())
+			.unwrap_or_else(|| self.work_label(work))
+	}
+
 	pub(super) fn work_label(&self, work: &AgentWorkItemDto) -> String {
 		if Some(&work.id) == self.root_id().as_ref()
 			&& ["Agent", "Main"].contains(&work.title.as_str())
@@ -2264,6 +2271,18 @@ impl AgentSurface {
 
 		match page {
 			"side-chat-tabs" => self.visual_side_chat_tabs("agent", cx),
+			"side-chat-titles" => {
+				self.visual_side_chat_tabs("agent", cx);
+				let titles =
+					&mut self.snapshot.as_mut().expect("fixture snapshot").conversation_titles;
+				for (thread, title) in [
+					("source-agent", "Improve Sidechat"),
+					("native-side-one", "Design automatic conversation titles"),
+					("native-side-two", "Keep titles stable across follow-ups"),
+				] {
+					titles.insert(thread.into(), title.into());
+				}
+			},
 			"workbench" | "workbench-agent" | "workbench-history" | "workbench-split" =>
 				self.visual_workbench_page(page, cx),
 			"factory" | "relations" | "relations-resource" => {
@@ -2369,6 +2388,7 @@ impl AgentSurface {
 			portfolio: Default::default(),
 			archived_work_ids: Default::default(),
 			agent_slots: Default::default(),
+			conversation_titles: Default::default(),
 			context_references: vec![],
 			connection_initializing: false,
 			runtime_source: None,
@@ -2465,6 +2485,7 @@ impl AgentSurface {
 			portfolio: Default::default(),
 			archived_work_ids: Default::default(),
 			agent_slots: Default::default(),
+			conversation_titles: Default::default(),
 			context_references: vec![],
 			connection_initializing: false,
 			runtime_source: None,
