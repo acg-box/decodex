@@ -29,7 +29,7 @@ def set_version(source: Path, version: str) -> None:
         raise ValueError("Upstream workspace version is missing")
     manifest.write_text(contents[:section.start()] + updated + contents[section.end():])
     subprocess.run(
-        ["cargo", "+stable", "update", "--workspace", "--offline"],
+        ["cargo", "+stable", "update", "--workspace"],
         cwd=workspace,
         check=True,
     )
