@@ -215,7 +215,7 @@ impl ProBridge {
 		};
 		let Some(target) = browser.login_target(saved.as_deref()).await? else { return Ok(None) };
 
-		browser.open(Some(&target), None, false).await?;
+		browser.attach(&target).await?;
 
 		if saved.as_deref() != Some(&target) {
 			let _lease = store.lease()?;

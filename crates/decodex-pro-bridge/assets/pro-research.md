@@ -9,6 +9,8 @@ Use the Decodex Pro Research tools for questions that benefit from an independen
 
 `pro_research` saves a question and returns a request ID immediately. Keep this ID. Use `previous` with a completed request ID to continue its ChatGPT conversation. Different research threads use separate first requests. The same ID must always identify the same input.
 
+Research uses an isolated editor state in the existing signed-in Chrome. After the complete result is saved, its empty tab closes automatically. Continuations reopen the saved ChatGPT conversation. Tabs with unsent content or pending recovery stay open.
+
 Keep the question concise. Write selected source material to a UTF-8 file and pass its absolute path as `contextFile`. Use `prompt` for the question, or `promptFile` when the question itself is in a file. Both files are read once and saved as immutable input. Do not copy their contents into status checks or recovery calls.
 
 Default `delivery: "auto"` sends input up to 128 KiB inline and larger input as one UTF-8 attachment. This is a byte-based transport preference, not a token or model limit. If the question itself is large, the attachment contains the complete question. Explicit `attachment` and `inline` modes are also available. The receipt reports the selected mode and the file's name, size, hash and submitted file ID. File availability does not guarantee that the full source remains in the model's active context.

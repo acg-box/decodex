@@ -320,7 +320,7 @@ async fn work(
 
 	// Closing a waiter must not cancel research. Keep an incomplete tab for recovery.
 	if result.is_ok() {
-		let _ = browser.close_tab().await;
+		let _ = browser.close_completed_tab().await;
 	}
 
 	if let Err(error) = &result {

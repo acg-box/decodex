@@ -321,6 +321,18 @@ pub(crate) async fn send(browser: &mut Chrome) -> Result<bool> {
 		.map(|sent| sent == true)
 }
 
+// A completed answer can share its tab with a newly typed, unsent question.
+// Keep that tab rather than discard the user's text or source attachment.
+pub(crate) async fn can_close(browser: &mut Chrome) -> Result<bool> {
+	Ok(browser.evaluate(&format!(r#"(()=>{{ {CONTROLS}
+        const form=editor?.closest('form');
+        return visible(editor)&&!!form&&!editor.textContent.trim()&&
+          !Array.from(form.querySelectorAll('input[type="file"]')).some(input=>input.files?.length)&&
+          !Array.from(form.querySelectorAll('button')).some(b=>visible(b)&&/^Remove /i.test(b.getAttribute('aria-label')??''))&&
+          !visible(document.querySelector('[data-testid="stop-button"],button[aria-label="Stop generating"]'));
+    }})()"#)).await? == true)
+}
+
 pub(crate) async fn observe(browser: &mut Chrome) -> Result<Observation> {
 	observe_request(browser, "").await
 }
