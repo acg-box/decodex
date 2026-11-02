@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:0f256b22ee467f21d73ff4b01c53b7ae621db36381f7fb9b9e66655d6617b297",
+  "pageVersion": "sha256:977c1b0a1b09ff59c6b31e71e3d0690c846a13b4638ed3bc69e6a84571bd99d2",
   "claims": [
     {
       "id": "claim_3881a280a4044cdca9e8599100f0a4f0",
@@ -570,11 +570,11 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_conversation_tab_tests.rs",
-          "version": "repo-file-v1:sha256:69ec8f3bd6ea77495955715740034a251b2893196f0f7a974f7b635eb5470797"
+          "version": "repo-file-v1:sha256:63a83edbf47937c54d604b845bc023e6c856ae7ccaf24389e330bee76ad8295e"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_conversation_tabs.rs",
-          "version": "repo-file-v1:sha256:65d22f0d45c040e5c84783851d1abe77c765f3875db509f1a8ea4b1b4d822dba"
+          "version": "repo-file-v1:sha256:5843c560fb0e3dfd9e27690528edb00c009bd0731821d59c4d00bb23a8ace402"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_prompt_confirm_wire_tests.rs",
@@ -657,10 +657,20 @@
           "version": "repo-lines-v1:sha256:a4abc355d67dc272d86a350163aaa33cd4d51fc9a5ea246b8c17ec668ac2cc3b:eyJzZWxlY3RlZExpbmVDb3VudCI6NDEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU5ZmZmZjdmMzQ4NTE5NDY1ZWM4MmMyNGRkYmYzN2I4OWVlMmNjZmEwZDViZjJjMDhjMmY5NWNmZDE1OGQyZDAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY4YTY2NmIzNzE0NDgwZDFmMmVhNTAwNzZiMjRjNWQ1ZmEzYjc4MjdiNzY1NGYwN2E5Nzg5NzI2YTIzMTdiZjYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjBhNzkyNDQ2NmJhNzQ0MThmZmJjMTQ3ZjZhOWRiYjNmZjgxYzUwYWEwZTZmYWE5MDkzN2E3NzgyNTgwYTNiNjkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFmMThhNzJiOWYzN2Q2OGQ1YmI0MDU4MTNmOWI1YmM4NzljOTYxNzgzYmI2NDBhNmY3OGFlYTlkNTUwMDQ4NWQifQ"
         }
       ]
+    },
+    {
+      "id": "claim_728c53d690fc4ad8baf6c49b9fc24d72",
+      "statement": "The source tab is Main and Side chat tabs use numbered labels independently of sidebar conversation names.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_conversation_tabs.rs#L122-L143",
+          "version": "repo-lines-v1:sha256:7f6c08d68983c6ffaab7f50b6f203109e14262fec608eaf3a525c1f75d971fdf:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhiMWQwZDg1M2JhMjQ3YjI1MmM1OTkwYjViM2M0NzQ2OWMyZTVhNTE4YmMzN2Q3NmZhNGYzNGE4OGU3YjIzNDMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBlYWRmM2ZkYmE1NDNhZjY3YjY2MDMxNjk0OWIxODQ4MjU0MmI3OTNiNzU1NWM1NTcwYWQ0NTcyMWIzMjA3YzUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE5OTFiYmViOWNjNWRlYTM2ZTE4OWI2Y2QzYjA5ZGQwYWMxODM4YmRjY2M1ODg4NTI1MzUyMmI1YzViYzMwYjQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAwMjljY2MwNTQ2MDlkYWIzOGE4OTdmZDE4NzgzZjAwNjVkNjA1MzQxOTBjZWU1MGEwYjhmNzdhNmMxMzY5NzkifQ"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-11-02T04:34:00.067Z"
+    "at": "2026-11-02T05:23:45.661Z"
   }
 }

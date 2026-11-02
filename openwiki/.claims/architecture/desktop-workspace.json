@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:12e9c8df72c796665f47138287a79cea4b5be6ff60c06a86c40a378062703ad6",
+  "pageVersion": "sha256:67c0b7bcb989adbd29929f3667c4577b413d5a78709dfef93957bdccda554a8e",
   "claims": [
     {
       "id": "claim_41c9eba720934771bd6b671a7aeb8b6e",
@@ -404,11 +404,11 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_conversation_tab_tests.rs",
-          "version": "repo-file-v1:sha256:69ec8f3bd6ea77495955715740034a251b2893196f0f7a974f7b635eb5470797"
+          "version": "repo-file-v1:sha256:63a83edbf47937c54d604b845bc023e6c856ae7ccaf24389e330bee76ad8295e"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_conversation_tabs.rs",
-          "version": "repo-file-v1:sha256:65d22f0d45c040e5c84783851d1abe77c765f3875db509f1a8ea4b1b4d822dba"
+          "version": "repo-file-v1:sha256:5843c560fb0e3dfd9e27690528edb00c009bd0731821d59c4d00bb23a8ace402"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_prompt_confirm_wire_tests.rs",
@@ -436,7 +436,7 @@
     },
     {
       "id": "claim_bc91903827fb410fbb6886f1401a8466",
-      "statement": "Fork uses arrow.triangle.branch; account routing uses point.topleft.down.to.point.bottomright.curvepath in GPUI and Menu Bar with existing active and disabled states. New default titles use Fork or Side chat; legacy attached branch titles still map to Side chat labels and custom titles remain unchanged.",
+      "statement": "Fork uses arrow.triangle.branch; account routing uses point.topleft.down.to.point.bottomright.curvepath in GPUI and Menu Bar with existing active and disabled states. New stored default titles use Fork or Side chat, while the conversation header uses Main and numbered Side chat labels independently of stored names.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/AccountControlViews.swift",
@@ -444,7 +444,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_conversation_tabs.rs",
-          "version": "repo-file-v1:sha256:65d22f0d45c040e5c84783851d1abe77c765f3875db509f1a8ea4b1b4d822dba"
+          "version": "repo-file-v1:sha256:5843c560fb0e3dfd9e27690528edb00c009bd0731821d59c4d00bb23a8ace402"
         },
         {
           "resource": "repo://database/src/agent_fork.rs",
@@ -523,6 +523,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-11-02T02:42:46.593Z"
+    "at": "2026-11-02T05:23:45.661Z"
   }
 }

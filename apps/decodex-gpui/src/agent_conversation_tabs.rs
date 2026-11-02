@@ -123,16 +123,10 @@ impl AgentSurface {
 		let Some(selected) = self.conversation_page() else { return Vec::new() };
 		let Some(snapshot) = &self.snapshot else { return Vec::new() };
 		let root = self.workspace.attached.family_root(&selected, snapshot).unwrap_or(&selected);
-		let label = self
-			.conversation_record(root)
-			.map(|work| self.work_label(work))
-			.unwrap_or_else(|| "Conversation".into());
-		let mut tabs = vec![Tab { id: root.into(), label, closable: false }];
+		let mut tabs = vec![Tab { id: root.into(), label: "Main".into(), closable: false }];
 		if self.workspace.attached.family_root(&selected, snapshot).is_none() {
 			return tabs;
 		}
-		let source_title =
-			self.conversation_record(root).map(|work| work.title.as_str()).unwrap_or_default();
 		for (index, branch) in
 			self.workspace.attached.branches(snapshot).into_iter().rev().enumerate()
 		{
@@ -140,18 +134,7 @@ impl AgentSurface {
 			if id != selected && !self.workspace.pages.iter().any(|page| page == id) {
 				continue;
 			}
-			let work =
-				snapshot.work_items.iter().find(|work| work.id == id).expect("validated branch");
-			let label = if [
-				format!("{source_title} (attached branch)"),
-				format!("{source_title} (Side chat)"),
-			]
-			.contains(&work.title)
-			{
-				format!("Side chat {}", index + 1)
-			} else {
-				self.work_label(work)
-			};
+			let label = format!("Side chat {}", index + 1);
 			tabs.push(Tab { id: id.into(), label, closable: true });
 		}
 		tabs
@@ -260,6 +243,12 @@ impl AgentSurface {
 			.debug_selector(|| "new-side-chat".into())
 			.role(Role::Button)
 			.aria_label("New side chat")
+			.tooltip(|_, cx| {
+				cx.new(|_| {
+					crate::shell::agent_surface::composer::ComposerTip("New side chat".into())
+				})
+				.into()
+			})
 			.tab_index(if ready { 0 } else { -1 })
 			.size(gpui::px(25.))
 			.flex_none()

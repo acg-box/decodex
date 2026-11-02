@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:c5d6abeefbee4d50915720c21a419dd141a6fdd736720b606f80717e1641978d",
+  "pageVersion": "sha256:1e963567aa66caa3eebc93e8d6d6e17497e967d4834b8d76e32a1620c8e1ef9e",
   "claims": [
     {
       "id": "claim_36b9a49ffa87416e8add8befc7d10efe",
@@ -570,11 +570,11 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_conversation_tab_tests.rs",
-          "version": "repo-file-v1:sha256:69ec8f3bd6ea77495955715740034a251b2893196f0f7a974f7b635eb5470797"
+          "version": "repo-file-v1:sha256:63a83edbf47937c54d604b845bc023e6c856ae7ccaf24389e330bee76ad8295e"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_conversation_tabs.rs",
-          "version": "repo-file-v1:sha256:65d22f0d45c040e5c84783851d1abe77c765f3875db509f1a8ea4b1b4d822dba"
+          "version": "repo-file-v1:sha256:5843c560fb0e3dfd9e27690528edb00c009bd0731821d59c4d00bb23a8ace402"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_prompt_confirm_wire_tests.rs",
@@ -596,11 +596,11 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_conversation_tab_tests.rs",
-          "version": "repo-file-v1:sha256:69ec8f3bd6ea77495955715740034a251b2893196f0f7a974f7b635eb5470797"
+          "version": "repo-file-v1:sha256:63a83edbf47937c54d604b845bc023e6c856ae7ccaf24389e330bee76ad8295e"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_conversation_tabs.rs",
-          "version": "repo-file-v1:sha256:65d22f0d45c040e5c84783851d1abe77c765f3875db509f1a8ea4b1b4d822dba"
+          "version": "repo-file-v1:sha256:5843c560fb0e3dfd9e27690528edb00c009bd0731821d59c4d00bb23a8ace402"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
@@ -643,10 +643,24 @@
           "version": "repo-lines-v1:sha256:a4abc355d67dc272d86a350163aaa33cd4d51fc9a5ea246b8c17ec668ac2cc3b:eyJzZWxlY3RlZExpbmVDb3VudCI6NDEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU5ZmZmZjdmMzQ4NTE5NDY1ZWM4MmMyNGRkYmYzN2I4OWVlMmNjZmEwZDViZjJjMDhjMmY5NWNmZDE1OGQyZDAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY4YTY2NmIzNzE0NDgwZDFmMmVhNTAwNzZiMjRjNWQ1ZmEzYjc4MjdiNzY1NGYwN2E5Nzg5NzI2YTIzMTdiZjYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjBhNzkyNDQ2NmJhNzQ0MThmZmJjMTQ3ZjZhOWRiYjNmZjgxYzUwYWEwZTZmYWE5MDkzN2E3NzgyNTgwYTNiNjkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFmMThhNzJiOWYzN2Q2OGQ1YmI0MDU4MTNmOWI1YmM4NzljOTYxNzgzYmI2NDBhNmY3OGFlYTlkNTUwMDQ4NWQifQ"
         }
       ]
+    },
+    {
+      "id": "claim_eb74f0c8970043d29db86f90ebce0005",
+      "statement": "Conversation-local tabs use Main for the source and numbered Side chat labels for attached branches, independently of sidebar conversation names or later renames.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_conversation_tab_tests.rs#L80-L125",
+          "version": "repo-lines-v1:sha256:0cf8c1fcec6f18b0915359fb62174678c1d9406f79e188d44220ba69ef71c054:eyJzZWxlY3RlZExpbmVDb3VudCI6NDYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVmM2M5MjdjYTdkNWFmYWJlOWEzYjRlNjNiMmFmNGIyODkxYmU4NmQxOTAwYTJlZDM3ZTkxYTY2ZWNjYmY5YWYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUxNmNhNTcwNzQ0NGQ0MjQwOTIxOTcyNjhjOTY1MjJiN2MyZWI3MGJiZTdhMjI2NzZiZjQzY2M0YmNlY2EzOTkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjEyY2Y4ZDM5ZTRhYjE3MzJkYmVjMWZhYTAzNjU4MjQxMGNiMDU0M2ZlMjc2YmY5MjBhOWY3NjJjMmY2MGQwMWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZiNDE1NDA2YjUzN2IyYjkwZjExMGIwZGFiMTdmN2FkYzMzNDEzZTZhYzdlMzkzMmM5MTBiYTc3NmY5NTY2ODMifQ"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_conversation_tabs.rs#L122-L143",
+          "version": "repo-lines-v1:sha256:7f6c08d68983c6ffaab7f50b6f203109e14262fec608eaf3a525c1f75d971fdf:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhiMWQwZDg1M2JhMjQ3YjI1MmM1OTkwYjViM2M0NzQ2OWMyZTVhNTE4YmMzN2Q3NmZhNGYzNGE4OGU3YjIzNDMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBlYWRmM2ZkYmE1NDNhZjY3YjY2MDMxNjk0OWIxODQ4MjU0MmI3OTNiNzU1NWM1NTcwYWQ0NTcyMWIzMjA3YzUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE5OTFiYmViOWNjNWRlYTM2ZTE4OWI2Y2QzYjA5ZGQwYWMxODM4YmRjY2M1ODg4NTI1MzUyMmI1YzViYzMwYjQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAwMjljY2MwNTQ2MDlkYWIzOGE4OTdmZDE4NzgzZjAwNjVkNjA1MzQxOTBjZWU1MGEwYjhmNzdhNmMxMzY5NzkifQ"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-11-02T04:34:00.067Z"
+    "at": "2026-11-02T05:23:45.661Z"
   }
 }

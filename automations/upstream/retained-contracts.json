@@ -4679,7 +4679,7 @@
       "contracts": [
         "Use confirmed native attached-fork receipts to group open tabs. Local parent links are lookup candidates only; a fresh miss keeps an independent Agent independent.",
         "Switch through the existing conversation, draft and native-history owners. Closing a tab returns to its exact source and preserves the native conversation.",
-        "Keep the source tab fixed; scroll overflow tabs into view and retain existing cost and panel controls. Present active Side chats in the header without duplicate sidebar rows.",
+        "Label the source tab Main and attached tabs Side chat 1, Side chat 2 and so on, independently of sidebar conversation titles. Keep the source tab fixed; scroll overflow tabs into view and retain existing cost and panel controls. Present active Side chats in the header without duplicate sidebar rows.",
         "Create after bounded source preparation through the durable attached-fork confirmation owner, without a second user confirmation. Opening a Side chat or switching tabs sends no input.",
         "Clear the workspace attachment index on profile/runtime identity changes. Uncertain or replaced native bindings cannot supply a Side chat tab."
       ],

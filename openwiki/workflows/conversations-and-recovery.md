@@ -146,10 +146,10 @@ sources:
     resource: repo://database/src/agent/tests/input_retry.rs
   - id: openwiki-source-28af4781ad8d9558410630da
     resource: repo://database/src/works.rs
-generated: { by: "codex", at: "2026-11-02T04:34:00.067Z" }
+generated: { by: "codex", at: "2026-11-02T05:23:45.661Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-11-02T04:34:00.067Z
+    at: 2026-11-02T05:23:45.661Z
 ---
 
 # Conversation input, history and recovery
@@ -245,7 +245,7 @@ For a before-input branch or same-thread edit, projection refresh and durable dr
 
 ## Open Side chats in tabs
 
-The conversation header keeps the source conversation and multiple Side chats in one tab strip. Use **+** beside the tabs to create and open a Side chat from the selected conversation's latest completed turn. Source preparation runs without a second confirmation. The source must be idle and have readable full native history for that completed turn. Creation uses native attachment and sends no message.
+The conversation header keeps the source conversation and multiple Side chats in one tab strip. The source tab is **Main**; Side chats use numbered labels such as **Side chat 1** and **Side chat 2**. These labels are independent of sidebar conversation names. Use **+** beside the tabs to create and open a Side chat from the selected conversation's latest completed turn. Source preparation runs without a second confirmation. The source must be idle and have readable full native history for that completed turn. Creation uses native attachment and sends no message.
 
 Each Side chat starts with an empty visible history and the reviewed source prefix in its model context. Later source messages do not automatically enter an existing Side chat. Continue the Side chat with its own composer. Switching tabs restores each conversation's draft and reading position. The strip scrolls horizontally and reveals the selected tab; existing activity indicators and header controls remain available.
 
