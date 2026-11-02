@@ -20,8 +20,12 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_portfolio_tests.rs
   - id: openwiki-source-0eea3c2bab20e4a9d8e3d80a
     resource: repo://apps/decodex-gpui/src/agent_prompt_confirm_wire_tests.rs
+  - id: openwiki-source-1fce7fb96d5047e0528f5301
+    resource: repo://apps/decodex-gpui/src/agent_prompt_fork_wire_tests.rs
   - id: openwiki-source-218f7834832fc84c2fbc7cf7
     resource: repo://apps/decodex-gpui/src/agent_reconnect_queue_tests.rs
+  - id: openwiki-source-ff9ae5d5274ad341f8658d86
+    resource: repo://apps/decodex-gpui/src/agent_side_chat_question_tests.rs
   - id: openwiki-source-032278b78f4f6cac0e654ef0
     resource: repo://apps/decodex-gpui/src/native_audio_owner_tests.rs
   - id: openwiki-source-ca95ba5564216bb4898c8392
@@ -54,6 +58,8 @@ sources:
     resource: repo://crates/decodex-account-login/src/system_proxy.rs
   - id: openwiki-source-02bd3cfc9d4db9d1d1d8fd59
     resource: repo://crates/decodex-codex/src/app_server_client/context_preferences_tests.rs
+  - id: openwiki-source-787f8ad27b8519fbed2bd039
+    resource: repo://crates/decodex-codex/src/app_server_client/thread_fork.rs
   - id: openwiki-source-0d4c68456f2e50c6fc7ad5eb
     resource: repo://crates/decodex-components/src/install.rs
   - id: openwiki-source-8bbd4ba0cf275fa1b4da9acf
@@ -166,10 +172,10 @@ sources:
     resource: repo://scripts/macos/test_decodex_app_stage.sh
   - id: openwiki-source-e201f60894c32a914dac99ee
     resource: repo://scripts/vnext/run_native_regression.py
-generated: { by: "codex", at: "2026-10-31T16:42:36.938Z" }
+generated: { by: "codex", at: "2026-11-02T04:34:00.067Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-31T17:07:05.970Z
+    at: 2026-11-02T04:34:00.067Z
 ---
 
 # Upstream integration acceptance boundaries
@@ -274,11 +280,21 @@ A Work result or delivery identifies a linked native turn; it does not prove tha
 
 ## Separate-question popover qualification
 
-The [portable separate-question record](../../automations/upstream/retained-evidence.json#quick_separate_questions) identifies source `b26ecc90d27116263afd8312ac1b8f54efe97699`, the retained UI contract, exact test names, commands and source/test-artifact digests.
+This section records the historical manual popover, which is now removed. The [portable separate-question record](../../automations/upstream/retained-evidence.json#quick_separate_questions) identifies source `b26ecc90d27116263afd8312ac1b8f54efe97699`, the retained UI contract, exact test names, commands and source/test-artifact digests.
 
 The focused cohort passed 28 tests: 17 sampling and suggestion checks plus 11 rich-text selection checks, with 1,176 skipped and no unmatched selector. It covers direct toolbar and response entry, selected excerpts, draft and reading-position preservation, Escape, stale-source rejection, Unicode excerpt bounds, separate suggestion results and one-request readback. These are GPUI TestPlatform and loopback-wire checks.
 
 That historical build used `gpui_platform/runtime_shaders` because the host lacked the Metal Toolchain. The default-build gap and the existing archive-renderer Clippy violation were resolved in [PR 2570](https://github.com/acg-box/decodex/pull/2570). The Side chat check below also passed the default build and strict GPUI Clippy. This does not turn the historical run into a default-build result.
+
+## Side chat question actions
+
+Current GPUI question-action fixtures check response and selected-text references, source replacement, bounded Unicode excerpts and preservation of the main draft. The creation wire fixture checks automatic attached-fork submission after source preparation without a second confirmation. The recovery fixture checks that the quoted passage enters only the verified target draft and survives navigation without sending. These are synthetic presentation and loopback checks. They do not establish installed-app interaction, live inference, latency or provider cost. Native sampling remains covered separately for next-message suggestions.
+
+The [Side chat question-entry receipt](../../automations/upstream/retained-evidence.json#side_chat_question_entry) records a separate real-provider check in an isolated, signed debug preview. Response and selection actions staged unsent references. A child answered a source-only marker, then retained a child-only marker through continued questions, tab closure and a GUI restart. The retained child reopened from the Side chats list. The source draft remained intact. The header plus opened an empty child with no model turn.
+
+The first live fork exposed a creation-default model regression. The repair passes the source's current native model, reasoning effort and service tier through the bounded fork bridge. The same live flow then passed. The receipt identifies the selected native executable and generated schema separately from the reviewed upstream main revision. Local protocol checks retain the target-provider defaults for explicit provider recovery.
+
+Affected tests, strict lint, formatting and checkpoint checks passed. The optional whole-workspace style audit still fails; the baseline comparison does not classify all current findings as inherited. This acceptance covers one model and one subscription account with an idle source. It does not qualify performance, other providers, an upstream test suite, installation, notarization or release. The preview reused compatible installed framework libraries and left the normal installed app unchanged.
 
 ## Side chat tab qualification
 
@@ -459,7 +475,7 @@ The native launch fixture checks admitted Code Mode launch arguments, child cont
 
 The [retained coordination evidence](../../automations/upstream/retained-contracts.json) links the bounded historical real-model evaluations for self-resolution, peer coordination, parent escalation, user decisions and persistent Agent completion. Those evaluations cover the legacy managed-worker contract for exact inbox receipts, separate child-goal resolution and an idle-only Busy refusal. In that legacy continuation path, Busy means the instruction was not sent or queued, so the caller waits for the same worker. The new default uses native Subagents; independent Collaboration Requests have their own durable busy queue and acceptance contract. Do not apply the legacy Busy refusal as the current peer-queue behavior. The historical evaluations used one model and effort with controlled scenarios and predefined user choices. Current synthetic child-approval and local library regressions are separate requalification; they do not repeat real-model judgment or establish every model, permission configuration, race or installed interaction.
 
-The [sampling qualification](../../automations/upstream/qualification.json) separately records explicit cancellation of Ask separately. Closing its panel only hides presentation; Cancel answer targets the exact native sampling request. A cancellation request, native acknowledgement and a result that wins a race are different outcomes. Preserve exact request ownership and uncertain-state readback. This is not cancellation of the parent conversation or a general scheduler. These receipts do not establish installed-app acceptance.
+The [sampling qualification](../../automations/upstream/qualification.json) retains historical cancellation receipts for the former Ask separately panel. In that UI, closing the panel hid presentation, while Cancel answer targeted the exact native sampling request. The manual panel is removed; next-message suggestions retain native sampling and exact-request cancellation. A cancellation request, native acknowledgement and a result that wins a race are different outcomes. Preserve exact request ownership and uncertain-state readback. This is not cancellation of the parent conversation or a general scheduler. These receipts do not establish installed-app acceptance.
 
 These fixture definitions specify what can be checked. They do not claim a new execution result from this documentation refresh, installed-app acceptance, or release delivery.
 

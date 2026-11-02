@@ -3464,5 +3464,102 @@
       ],
       "skipped": 1203
     }
+  },
+  "side_chat_question_entry": {
+    "baseline": "d39c6ac84de1acf78067a99764f313474b4073e6",
+    "contract": "automations/upstream/retained-contracts.json#retained_attached_forks.tab_presentation",
+    "source_sha256": {
+      "apps/decodex-gpui/src/agent_side_chat_question.rs": "21dd92ba8bac6aeeee34cc7d9428690e061e71d0cac915570179ecfb9af53ce7",
+      "apps/decodex-gpui/src/agent_side_chat_question_tests.rs": "1bcfc53e37f56a1df59afee510f0361bcf53ec248713fa7fc182574f2a709617",
+      "apps/decodex-gpui/src/agent_conversation_tabs.rs": "65d22f0d45c040e5c84783851d1abe77c765f3875db509f1a8ea4b1b4d822dba",
+      "apps/decodex-gpui/src/agent_prompt_edit.rs": "fa795f10ae94669b9aade482d2a5321fe2d654239d70cfe1b7b5d07a7cbd8d33",
+      "apps/decodex-gpui/src/agent_prompt_fork.rs": "d8bc5b83695309c44752478dd94062fe9d14839536419eb6adeb168ffe0483ce",
+      "apps/decodex-gpui/src/agent_prompt_confirm_wire_tests.rs": "55c6c83c6e489618f3e0e4b1db3d04163e18f10164986ea774cb5d7e25189ccd",
+      "apps/decodex-gpui/src/agent_prompt_fork_wire_tests.rs": "f601d537cff81536e02dcb2561368f09bb3bf5782a421fa775fdda210de78ffe",
+      "apps/decodex-gpui/src/agent_sample.rs": "699bb045d10b7f80876457784540399d1d6c4774644b1008e57ba95b60d15713",
+      "crates/decodex-codex/src/app_server_client/thread_fork.rs": "b51f00fd7955dcb28d49659f58b7afbf18098335b44d0a7850035c0b76d8ff85",
+      "crates/decodex-runtime/src/account_launch/agent_process.rs": "97e987fcf2967dc1ac56fd032403ce30f99df549c9087c109ef42bbd752dae07"
+    },
+    "upstream_reference": {
+      "main_reviewed": "a09812981de703f18f38015cd5d500ab373f616c",
+      "selected_runtime_source": "67f0994b532b8740f14b5b738af7b7b2a915b1d6",
+      "selected_macho_sha256": "ae105c1b83a9f6f19d6f0114b26d3706413397874ddb94b0f740530f38264e7f",
+      "generated_thread_fork_params_sha256": "9c85b0347ef12c9a7eef7f08b3710d859569a16414bdf0f18254b0c42560a47e",
+      "support": "The selected native schema and fork implementation accept model, model_reasoning_effort config and nullable serviceTier. Source and attached-fork tests were read; the upstream suite was not executed.",
+      "runtime_pin_changed": false
+    },
+    "tests_executed": {
+      "codex_client": {
+        "passed": 256,
+        "failed": 0,
+        "skipped": 7,
+        "command": "cargo +stable nextest run --locked --all-features -p decodex-codex --lib",
+        "log_sha256": "d72b3f7187e972a967bd5550bc52070a0bcfc1737b7ba387dbce8478e155cf9f"
+      },
+      "runtime_fork_bridge": {
+        "passed": 2,
+        "failed": 0,
+        "skipped": 1010,
+        "command": "cargo +stable nextest run --locked --all-features -p decodex-runtime --lib -E 'test(fork_bridge)'",
+        "log_sha256": "8902d357006b8e6ddd5466d248830d3fbf05cfd5a9b5ceb11a1e6c991674fc38"
+      },
+      "gpui": {
+        "passed": 38,
+        "failed": 0,
+        "skipped": 1182,
+        "command": "cargo +stable nextest run --locked --all-features --package decodex-gpui --bin decodex-gpui -E 'test(attached_branches::) | test(prompt_edit::) | test(sample::) | test(confirmation_waits_for_disk) | test(branch_confirmation) | test(branch_after_turn) | test(list_branch_confirmation) | test(side_chat_) | test(inputbar_provider)'",
+        "log_sha256": "1864bfa0a26586383e8d6591144b496c3983a8aa763acf09d7d9dbaee77b0df4"
+      }
+    },
+    "checks": {
+      "format": "cargo +stable make fmt-rust-check passed; the repository task uses the unversioned nightly formatter.",
+      "strict_clippy": "All features and all targets passed for decodex-codex, decodex-runtime and decodex-gpui with the repository deny flags.",
+      "checkpoint": "All 8 upstream checkpoint tests passed.",
+      "whitespace": "git diff HEAD --check passed.",
+      "workspace_style_audit": {
+        "passed": false,
+        "baseline_findings": 4416,
+        "current_findings": 4371,
+        "limit": "The optional whole-workspace audit still fails. This aggregate decrease does not establish that every current finding predates this change. No style policy or exemption was changed."
+      }
+    },
+    "real_desktop_acceptance": {
+      "kind": "Signed debug preview with an isolated product profile and native account home, using one real subscription account.",
+      "model": "GPT-5.6-Luna",
+      "reasoning_effort": "low",
+      "permissions": "read-only",
+      "cases": [
+        "The response question action opened a Side chat with the complete response in an unsent ordinary draft, without a second confirmation.",
+        "The child correctly answered a source-only marker that was absent from the quoted response.",
+        "The same child completed three explicit turns. After closing the tab and restarting the GUI, it recalled a child-only marker and retained its history.",
+        "Conversation settings > Side chats > Open reopened the retained child and its three completed turns in the final build.",
+        "Selecting one displayed Han character staged only that selection. The child identified the complete technical term from inherited source context.",
+        "One click on the header plus opened a Side chat with an empty draft and zero turns; no quote, source draft or automatic message was sent.",
+        "The source unsent draft remained intact after creation, switching, closing and restarting."
+      ],
+      "regression_fixed": "The first real fork reverted to an obsolete creation-default model and failed. Ordinary forks now pass the current native model, reasoning effort and service tier through the existing bounded bridge; the same real workflow passed after the fix.",
+      "completed_turn_counts": {
+        "source": 1,
+        "response_child": 3,
+        "selection_child": 1,
+        "plus_child": 0
+      },
+      "bundle_checks": "The isolated bundle passed the repository ABI contract verifier and was signed with an existing development identity. The normal installed app was not replaced.",
+      "evidence_sha256": {
+        "02-response-entry-fixed.jpg": "a50868b76b9f6350b6a8529d404e8c45769eebfab6c4d160c8e2c98fd0be2c19",
+        "05-reopened-followup.ax.txt": "fd91839c98794614a8ca674e8c2cfcebd0852140b5dba9f000b616550952d31c",
+        "07-selection-answer.ax.txt": "a7fede78448d08bc0a497164b7673373974b32f349becd956e77860e323e163c",
+        "08-plus-empty-draft.ax.txt": "d3ab2bd39786df522202489d615ecb4408fc99fc2129e9e47cdadea914edcf73",
+        "09-reopen-list.jpg": "9703b362ea325788bd9172a846f42863b1010e7426a13509435da609120123a9",
+        "10-final-reopened.ax.txt": "08baccc42b12a5388bb494f312b8f5c8f05eb795e8f46909d90032f63e5134e3",
+        "11-final-parent-draft.ax.txt": "acbb94af1cc91307be2c0ada7de2687df4dac653b17169f6b5ce78fdcbf05046"
+      }
+    },
+    "limits": [
+      "The live check covers the named model, one subscription account and an idle completed source conversation; it does not qualify other models, providers, concurrent source turns or performance.",
+      "The preview reuses compatible installed framework dylibs. It is not a full release-stage, notarization, installation or public-release qualification.",
+      "Explicit target-provider recovery behavior is covered by the local protocol regression; it was not rerun against a second live provider.",
+      "Sampler-based next-message suggestions remain supported. Future thread/sample product uses are deferred to issue #2594."
+    ]
   }
 }

@@ -59,16 +59,16 @@ impl AppServerClient {
 			self.with_thread_settings_guard(source, guard).ok_or(ClientError::StaleHistory)?;
 		// Native fork resolves omitted providers from current creation defaults.
 		// Keep the source provider unless the user requested explicit recovery below.
-		let provider = self
+		let settings = self
 			.thread_model_settings(source, guard.clone())
 			.await
 			.map_err(|_| ClientError::StaleHistory)?
-			.and_then(|settings| settings.model_provider)
 			.ok_or(ClientError::StaleHistory)?;
+		let provider = settings.model_provider.as_ref().ok_or(ClientError::StaleHistory)?;
 
 		let provider = if let Some(target) = current_provider {
 			let mismatch = self.provider_mismatch(source).ok_or(ClientError::StaleHistory)?;
-			if mismatch.model_provider != provider || mismatch.current_model_provider != target {
+			if &mismatch.model_provider != provider || mismatch.current_model_provider != target {
 				return Err(ClientError::StaleHistory);
 			}
 			if !self.provider_matches_configuration(source, target).await?
@@ -78,10 +78,22 @@ impl AppServerClient {
 			}
 			target.to_owned()
 		} else {
-			provider
+			provider.clone()
 		};
 
 		params["modelProvider"] = serde_json::json!(provider);
+		if current_provider.is_none() {
+			// Native creation defaults can differ from the source's current settings.
+			if let Some(model) = settings.model {
+				params["model"] = serde_json::json!(model);
+			}
+			if let Some(effort) = settings.reasoning_effort {
+				params["config"] = serde_json::json!({"model_reasoning_effort":effort});
+			}
+			if let Some(tier) = settings.service_tier {
+				params["serviceTier"] = if tier == "default" { Value::Null } else { tier.into() };
+			}
+		}
 
 		let response = self.request_with_history("thread/fork", params, guard).await?;
 		let thread = &response["thread"];
@@ -136,6 +148,8 @@ mod tests {
 						_ => {
 							assert_eq!(request["method"], "thread/fork");
 							assert_eq!(request["params"]["modelProvider"], "new");
+							assert!(request["params"].get("model").is_none());
+							assert!(request["params"].get("config").is_none());
 							assert_eq!(request["params"]["lastTurnId"], "turn");
 							assert_eq!(request["params"]["deferGoalContinuation"], true);
 							serde_json::json!({"thread":{"id":"branch","forkedFromId":"source","modelProvider":"new"}})
@@ -230,22 +244,24 @@ mod tests {
 					serde_json::json!({"threadId":"source","includeTurns":false})
 				);
 
-				write.write_all(format!("{}\n", serde_json::json!({"id":read["id"],"result":{"thread":{"id":"source","model":"model","reasoningEffort":null,"modelProvider":"source-provider"}}})).as_bytes()).await.unwrap();
+				let tier = if mode == 2 { Value::Null } else { serde_json::json!("flex") };
+				write.write_all(format!("{}\n", serde_json::json!({"id":read["id"],"result":{"thread":{"id":"source","model":"current-source-model","reasoningEffort":"low","modelProvider":"source-provider","serviceTier":tier}}})).as_bytes()).await.unwrap();
 
 				let request: Value =
 					serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
 
 				assert_eq!(request["method"], "thread/fork");
-				assert_eq!(
-					request["params"],
-					if before {
-						serde_json::json!({"threadId":"source","beforeTurnId":"first","deferGoalContinuation":true,"excludeTurns":true,"modelProvider":"source-provider"})
-					} else if mode == 1 {
-						serde_json::json!({"threadId":"source","lastTurnId":"first","deferGoalContinuation":true,"excludeTurns":true,"modelProvider":"source-provider"})
-					} else {
-						serde_json::json!({"threadId":"source","lastTurnId":"first","attachToSource":true,"excludeTurns":true,"modelProvider":"source-provider"})
-					}
-				);
+				let mut expected = if before {
+					serde_json::json!({"threadId":"source","beforeTurnId":"first","deferGoalContinuation":true,"excludeTurns":true,"modelProvider":"source-provider"})
+				} else if mode == 1 {
+					serde_json::json!({"threadId":"source","lastTurnId":"first","deferGoalContinuation":true,"excludeTurns":true,"modelProvider":"source-provider"})
+				} else {
+					serde_json::json!({"threadId":"source","lastTurnId":"first","attachToSource":true,"excludeTurns":true,"modelProvider":"source-provider"})
+				};
+				expected["model"] = serde_json::json!("current-source-model");
+				expected["config"] = serde_json::json!({"model_reasoning_effort":"low"});
+				expected["serviceTier"] = tier;
+				assert_eq!(request["params"], expected);
 
 				write
 					.write_all(

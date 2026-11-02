@@ -30,8 +30,10 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_prompt_confirm_wire_tests.rs
   - id: openwiki-source-b2084dffd07b4229957a0f94
     resource: repo://apps/decodex-gpui/src/agent_prompt_edit.rs
-  - id: openwiki-source-309d7ec654ab4d531c906212
-    resource: repo://apps/decodex-gpui/src/agent_sample_ui.rs
+  - id: openwiki-source-5e245e8cc4db92f2dbe2ba47
+    resource: repo://apps/decodex-gpui/src/agent_prompt_fork.rs
+  - id: openwiki-source-012d0a3289dff03dd84a5971
+    resource: repo://apps/decodex-gpui/src/agent_side_chat_question.rs
   - id: openwiki-source-5da2f5dd568514f1f464d177
     resource: repo://apps/decodex-gpui/src/agent_surface.rs
   - id: openwiki-source-2fb9e466c6aafdf4f4950bc1
@@ -76,10 +78,10 @@ sources:
     resource: repo://database/src/schema.rs
   - id: openwiki-source-3b57179b92b257bc3fff51a1
     resource: repo://scripts/macos/stage_decodex_app.sh
-generated: { by: "codex", at: "2026-10-31T17:07:05.970Z" }
+generated: { by: "codex", at: "2026-11-02T02:42:46.593Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-31T17:07:05.970Z
+    at: 2026-11-02T04:34:00.067Z
 ---
 
 # OpenWiki quickstart
@@ -108,11 +110,11 @@ These views preserve unknown coverage and resolution limits. Their retained qual
 
 The conversation browser and Work list have independent saved **status filters**, combined with the existing Project and search filters. Choose **All statuses** to clear a status choice without changing a draft or Work state. See [list filtering](workflows/conversations-and-recovery.md#filter-existing-lists-by-status).
 
-## Side chats and separate questions
+## Side chats
 
-The conversation header holds the source and its open Side chats as tabs. Use **+** to review a Side chat from the latest completed source turn, then confirm **Side chat**. Each tab keeps its own draft and reading position. Closing a tab retains the native branch; reopen it from **Agent preferences → Side chats**.
+Use **+** in the conversation header to open a Side chat from the selected idle conversation's latest completed turn. Creation needs no second confirmation and sends no message. Each tab keeps its own draft and reading position. Closing a tab retains the native branch; reopen it from **Agent preferences → Side chats**.
 
-For one quick question, use **Ask separately** in the composer toolbar, the question action beside a completed response, or **Ask about selection**. The popover preserves the main draft. See [the conversation workflow](workflows/conversations-and-recovery.md#open-side-chats-in-tabs) for both forms and their native boundaries.
+Select response text and choose **Ask in side chat**, or click the question action beside a completed response. The Side chat opens with that passage in its unsent draft. Add your question, send it, and continue the discussion there. The source draft stays saved. See [the conversation workflow](workflows/conversations-and-recovery.md#ask-about-a-passage-in-a-side-chat).
 
 ## Find and reconnect
 

@@ -300,10 +300,11 @@ fn serve_recovery(
 fn fork_recovery_opens_verified_target_and_keeps_edited_input(cx: &mut TestAppContext) {
 	cx.background_executor.allow_parking();
 
-	for boundary in [
-		PromptForkBoundary::BeforeInput,
-		PromptForkBoundary::AfterTurn,
-		PromptForkBoundary::AttachedAfterTurn,
+	for (boundary, reference) in [
+		(PromptForkBoundary::BeforeInput, None),
+		(PromptForkBoundary::AfterTurn, None),
+		(PromptForkBoundary::AttachedAfterTurn, None),
+		(PromptForkBoundary::AttachedAfterTurn, Some("Uses cursor pagination.")),
 	] {
 		let (service, profile, _) = tests::profiles();
 		let surface = cx.new(AgentSurface::new);
@@ -314,7 +315,10 @@ fn fork_recovery_opens_verified_target_and_keeps_edited_input(cx: &mut TestAppCo
 
 		pending.fork.as_mut().unwrap().boundary = boundary;
 
-		surface.update(cx, |s, cx| s.install_prompt_editors(pending.clone(), cx).unwrap());
+		surface.update(cx, |s, cx| {
+			s.install_prompt_editors(pending.clone(), cx).unwrap();
+			s.prompt_edit.side_chat_reference = reference.map(str::to_owned);
+		});
 
 		let (snapshot, source) = surface.read_with(cx, |s, _| {
 			let mut snapshot = s.snapshot.clone().unwrap();
@@ -414,6 +418,8 @@ fn fork_recovery_opens_verified_target_and_keeps_edited_input(cx: &mut TestAppCo
 				s.composer.read(cx).content(),
 				if boundary == PromptForkBoundary::AfterTurn {
 					"Separate unsent input"
+				} else if reference.is_some() {
+					"About this passage:\n\n> Uses cursor pagination.\n\n"
 				} else {
 					""
 				}
@@ -422,6 +428,14 @@ fn fork_recovery_opens_verified_target_and_keeps_edited_input(cx: &mut TestAppCo
 			s.open_page(pending.work_id.as_str(), cx);
 
 			assert_eq!(s.composer.read(cx).content(), "Separate unsent input");
+			if reference.is_some() {
+				s.open_page("branch", cx);
+				assert_eq!(
+					s.composer.read(cx).content(),
+					"About this passage:\n\n> Uses cursor pagination.\n\n"
+				);
+				assert!(!s.sending);
+			}
 		});
 	}
 }

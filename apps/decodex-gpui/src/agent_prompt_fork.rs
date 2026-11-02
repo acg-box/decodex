@@ -113,8 +113,15 @@ impl AgentSurface {
 									)
 								});
 
+								let side_reference = (boundary
+									== PromptForkBoundary::AttachedAfterTurn)
+									.then(|| s.prompt_edit.side_chat_reference.clone())
+									.flatten();
 								s.apply_result(Ok(snapshot));
 								s.open_page(work.as_str(), cx);
+								if let Some(reference) = side_reference {
+									s.stage_side_chat_reference(work.as_str(), &reference, cx);
+								}
 								if let Some((text, attachments, references)) = continuation {
 									s.composer.update(cx, |input, cx| input.set_content(&text, cx));
 									s.attachments = attachments;

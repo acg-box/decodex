@@ -519,8 +519,7 @@ impl AgentSurface {
 										cx,
 									))
 								},
-							)
-							.children(self.sample_toolbar_action(cx));
+							);
 
 						if self.voice_on_current_conversation() {
 							capsule.child(
@@ -738,18 +737,6 @@ impl AgentSurface {
 				cx,
 			))
 			.child(ui_theme::menu_separator())
-			.when(self.can_open_sample(), |menu| {
-				menu.child(self.composer_control(
-					"task-sample-item",
-					"Ask separately…".into(),
-					"Ask separately",
-					|s, cx| {
-						s.composer_menu = None;
-						s.open_sample(cx);
-					},
-					cx,
-				))
-			})
 			.child(self.composer_control(
 				"task-recap-item",
 				"Task recap".into(),

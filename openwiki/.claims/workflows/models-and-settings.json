@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:cc9988e4d09e2358701453dec1e57963bb059c8bdc328448b9f593c4a2096fee",
+  "pageVersion": "sha256:df1a23f004740ebaa3011500a5e845827d3d78548ab6738c4ddf4d0371d41b71",
   "claims": [
     {
       "id": "claim_f0c37462522f4442acd94d53819ef75c",
@@ -131,7 +131,7 @@
       "statement": "Native model metadata and configuration determine the helper backend; the qualified synthetic matrix uses V1 and V2 at Medium without Ultra and leaves model judgment unmeasured.",
       "evidence": [
         {
-          "resource": "repo://automations/upstream/retained-contracts.json#L2849-L2856",
+          "resource": "repo://automations/upstream/retained-contracts.json#L2854-L2861",
           "version": "repo-lines-v1:sha256:8e6e3bdd228d54f00f8683d30913924cbf52ba99ba0384b2584ed81b2906292e:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMjVlMGNmNTA1M2U5YmRiZTc5ZmVlY2E5NWUzZjk4YTJjOGY2ZDZhYWRlZjhjNGIwZWU1ODk0ZTBjY2ExYTBiNSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMzVlZWJkNGIwMjc1ZTcxYmRjNDUwNGIwZDc1MzM2NmQ3ZDhlZGUwNzYyOGMwMDViZTg2Njc2NTNhY2UxYjcwMCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMTM5NGU3YTZlMWU4MGJjNGQ4Y2YzNTVjYjI1ZWU4ZDg0ZGM0NDZhNDkwMThlMjgyNGY1ZTNiZWY1M2ZmM2U0NiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNzYzOTQyY2VjMGEwMGQ0YzE3NDRiOTU5YzA4NTQ3M2Q5ZjlhN2NkY2NhODY0ZTJiYTQ4MjE2ZmJmNTBhMWQyOCJ9"
         },
         {
@@ -186,7 +186,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-contracts.json",
-          "version": "repo-file-v1:sha256:b7dc0456127348fc734fc70c1e4a07842ddbcc64cea677c320dc52c8b0de2ec9"
+          "version": "repo-file-v1:sha256:34830387df7bc5e021776182a289d9455ff9a74f5df98a34e05f381874a7232f"
         }
       ]
     },
@@ -214,7 +214,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:ec6e11128c0b0b5625486801b1057d517ae5a41756824534e9dfd71eb3e41bbe"
+          "version": "repo-file-v1:sha256:b442edad7f88b72bbde4875f1c0b1e3f1428f60bb2f58b4e6d7209fb21d4890a"
         },
         {
           "resource": "repo://crates/decodex-protocol/src/model_catalog.rs#L77-L105",
@@ -258,11 +258,11 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_prompt_suggestions.rs",
-          "version": "repo-file-v1:sha256:013e88dab474927c5746040de92b86a07f459ed2989df13012cea1cc26fd2dae"
+          "version": "repo-file-v1:sha256:09c3742917387465e58596e912fa8ce406259518806cad8149e0df13ab9f1b57"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_sample_tests.rs",
-          "version": "repo-file-v1:sha256:1bb662232bb2f3fc01c6d3ab2ea9346641cecdb36c40adeb35a7116bc4e55368"
+          "version": "repo-file-v1:sha256:5c51cdadcf62fa6cd15b011097c10c80c1fc502763f33c8470532961e14c6899"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_surface.rs",
@@ -302,17 +302,31 @@
         },
         {
           "resource": "repo://crates/decodex-codex/src/app_server_client/thread_fork.rs",
-          "version": "repo-file-v1:sha256:2b2ba97fe646c51241ea3c4ff3aa296334595861ca0b35fdc194dd198d8b68ec"
+          "version": "repo-file-v1:sha256:b51f00fd7955dcb28d49659f58b7afbf18098335b44d0a7850035c0b76d8ff85"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent_model_settings.rs",
           "version": "repo-file-v1:sha256:cbb54b8e333d8a4a8ede6a373b4c116be186051ce1bbd0068e1f737bad7cfdea"
         }
       ]
+    },
+    {
+      "id": "claim_c8c1b24201f547d6a100bf95f4ceceaa",
+      "statement": "Ordinary forks and Side chats forward current reported native model, reasoning effort and service tier, including an explicit default tier, through the bounded fork bridge; explicit provider recovery uses target defaults without source model or effort overrides.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-codex/src/app_server_client/thread_fork.rs#L59-L99",
+          "version": "repo-lines-v1:sha256:a4abc355d67dc272d86a350163aaa33cd4d51fc9a5ea246b8c17ec668ac2cc3b:eyJzZWxlY3RlZExpbmVDb3VudCI6NDEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU5ZmZmZjdmMzQ4NTE5NDY1ZWM4MmMyNGRkYmYzN2I4OWVlMmNjZmEwZDViZjJjMDhjMmY5NWNmZDE1OGQyZDAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY4YTY2NmIzNzE0NDgwZDFmMmVhNTAwNzZiMjRjNWQ1ZmEzYjc4MjdiNzY1NGYwN2E5Nzg5NzI2YTIzMTdiZjYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjBhNzkyNDQ2NmJhNzQ0MThmZmJjMTQ3ZjZhOWRiYjNmZjgxYzUwYWEwZTZmYWE5MDkzN2E3NzgyNTgwYTNiNjkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFmMThhNzJiOWYzN2Q2OGQ1YmI0MDU4MTNmOWI1YmM4NzljOTYxNzgzYmI2NDBhNmY3OGFlYTlkNTUwMDQ4NWQifQ"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process.rs#L470-L523",
+          "version": "repo-lines-v1:sha256:48433c5a6f5ae56deefcf362f12192a5f5dfbcc91a529169790eceaeead51f77:eyJzZWxlY3RlZExpbmVDb3VudCI6NTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJmMTIyNGQzOTRmMDEzNjNjYzA1YmIyN2YwMTRmNmVkZTE3Y2NiZDNiMGZiMDdmNWVmY2M3YWUwMDFjNWU0Y2IiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZjYzQwZWFmOTg0NWQ4OWU4NzE4MWM0MWMyZjM3MjQ5ZTFkYTNlMjIwMTBmZmE0Njk1MjBmMmRhN2MwODE5NTciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE1MjE2MDRiMzVmYzQwYWYwMGNiYTRlZWEyZmQ1ZTJjM2FmMTg2M2IzOTExODVkN2JmNGJiMDllNzJkMGM4YjMifQ"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-31T16:42:36.938Z"
+    "at": "2026-11-02T04:34:00.067Z"
   }
 }

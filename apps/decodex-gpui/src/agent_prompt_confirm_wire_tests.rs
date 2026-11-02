@@ -71,6 +71,17 @@ fn side_chat_confirmation_keeps_the_attached_boundary(cx: &mut TestAppContext) {
 }
 
 #[gpui::test]
+fn side_chat_submits_after_preparation_without_a_second_confirmation(cx: &mut TestAppContext) {
+	run_confirmation_with_provider(
+		cx,
+		Some(PromptForkBoundary::AttachedAfterTurn),
+		true,
+		None,
+		true,
+	);
+}
+
+#[gpui::test]
 fn provider_branch_confirmation_persists_destination_without_sending(cx: &mut TestAppContext) {
 	run_confirmation_with_provider(
 		cx,

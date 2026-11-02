@@ -157,17 +157,34 @@ impl AgentSurface {
 		tabs
 	}
 
-	fn review_side_chat(&mut self, cx: &mut Context<Self>) {
-		if !self.command_connection_ready()
-			|| self.running_turn().is_some()
-			|| self.native_agents.selected.is_some()
-		{
+	pub(in crate::shell::agent_surface) fn can_start_side_chat(&self) -> bool {
+		self.command_connection_ready()
+			&& self.running_turn().is_none()
+			&& self.native_agents.selected.is_none()
+			&& self.selected_is_agent()
+			&& !self.selected_is_archived()
+			&& !self.voice_on_current_conversation()
+			&& self.prompt_edit.task.is_none()
+			&& !self.prompt_edit.list_branch_pending
+	}
+
+	pub(in crate::shell::agent_surface) fn start_side_chat(
+		&mut self,
+		reference: Option<String>,
+		cx: &mut Context<Self>,
+	) {
+		if !self.can_start_side_chat() {
 			return;
 		}
-		let Some(tab) = self.conversation_tabs().into_iter().next() else { return };
-		self.review_list_branch(&tab.id, cx);
+		let Some(work) = self.selected.clone() else { return };
+		self.review_list_branch(&work, cx);
+		if self.prompt_edit.work != work {
+			return;
+		}
 		self.prompt_edit.branch_choice = Some(PromptForkBoundary::AttachedAfterTurn);
-		self.workspace.details_visible = true;
+		self.prompt_edit.fork_requested = true;
+		self.prompt_edit.side_chat_reference = reference;
+		self.workspace.details_visible = false;
 		cx.notify();
 	}
 
@@ -237,11 +254,7 @@ impl AgentSurface {
 	}
 
 	fn new_side_chat_button(&self, cx: &mut Context<Self>) -> AnyElement {
-		let ready = self.command_connection_ready()
-			&& self.running_turn().is_none()
-			&& self.selected_is_agent()
-			&& !self.selected_is_archived()
-			&& self.native_agents.selected.is_none();
+		let ready = self.can_start_side_chat();
 		let add = gpui::div()
 			.id("new-side-chat")
 			.debug_selector(|| "new-side-chat".into())
@@ -259,7 +272,7 @@ impl AgentSurface {
 			.hover(|style| style.bg(ui_theme::rgba(ui_theme::HOVER_FILL)))
 			.on_click(cx.listener(move |s, _, _, cx| {
 				if ready {
-					s.review_side_chat(cx);
+					s.start_side_chat(None, cx);
 				}
 			}))
 			.on_key_down(cx.listener(move |s, event: &KeyDownEvent, _, cx| {
@@ -268,7 +281,7 @@ impl AgentSurface {
 					&& matches!(event.keystroke.key.as_str(), "enter" | "space")
 				{
 					cx.stop_propagation();
-					s.review_side_chat(cx);
+					s.start_side_chat(None, cx);
 				}
 			}))
 			.child(workspace_symbols::icon_sized(workspace_symbols::Symbol::Plus, 13.));

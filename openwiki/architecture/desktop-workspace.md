@@ -110,10 +110,10 @@ sources:
     resource: repo://database/src/works/commands.rs
   - id: openwiki-source-8fe6f1557e5d45d88b34bd0a
     resource: repo://scripts/macos/generate_workspace_symbols.swift
-generated: { by: "codex", at: "2026-10-31T15:20:06.142Z" }
+generated: { by: "codex", at: "2026-11-02T02:42:46.593Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-31T15:20:06.142Z
+    at: 2026-11-02T02:42:46.593Z
 ---
 
 # Desktop workspace and native glass
@@ -134,7 +134,7 @@ Settings > Agents supplies permission and speed defaults for new independent con
 
 Shift-Esc toggles Graph or conversation fullscreen according to the active pane. Pane capture tracks clicks across cached Graph layers, and the native composer forwards actions to the persistent shell. Graph fullscreen hides both sidebars and restores their saved visibility and width preferences on exit.
 
-The conversation header groups each source with its open Side chats. Use **+** to review and create another native attached branch. Switching tabs preserves each conversation's draft and reading position; closing a tab retains the native branch. See [Side chat tabs](conversation-presentation.md#side-chat-tabs).
+The conversation header groups each source with its open Side chats. Use **+** to create and open a native attached branch from the selected conversation after source preparation. Creation needs no second confirmation and sends no message. Switching tabs preserves each conversation's draft and reading position; closing a tab retains the native branch. See [Side chat tabs](conversation-presentation.md#side-chat-tabs).
 
 ## Project Work and Guardian
 

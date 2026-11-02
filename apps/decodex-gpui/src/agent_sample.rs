@@ -1,20 +1,19 @@
-//! Explicit one-shot sampling with an editor separate from the conversation draft.
+//! Next-message suggestions use the retained native one-shot sampling interface.
 #[path = "agent_sample_request.rs"] mod request;
 #[path = "agent_prompt_suggestions.rs"] mod suggestions;
-#[path = "agent_sample_ui.rs"] mod ui;
 
-use gpui::{AnyElement, AppContext as _, StatefulInteractiveElement as _};
+use gpui::{AnyElement, StatefulInteractiveElement as _};
 use tokio::sync::watch::{self, Sender};
 
+#[cfg(test)] use crate::shell::agent_surface::Entity;
 use crate::{
 	shell::agent_surface::{
-		AgentSnapshotDto, AgentSurface, ComposerInput, Context, Entity, EntityId,
-		InteractiveElement, IntoElement, ParentElement, Styled, SubmitComposer, Task, WireText,
-		markdown, mcp_forms, unique_command,
+		AgentSnapshotDto, AgentSurface, Context, EntityId, InteractiveElement, IntoElement,
+		ParentElement, Styled, Task, WireText, markdown, mcp_forms, unique_command,
 	},
 	ui_theme,
 };
-use decodex_protocol::{AgentSamplePhase, AgentSampleStatus, MAX_AGENT_SAMPLE_PROMPT_BYTES};
+use decodex_protocol::{AgentSamplePhase, AgentSampleStatus};
 
 const NEXT_PROMPT: &str = "Suggest one useful next message that I could send in this conversation. \
 Write it from my perspective, in the language I have been using. Keep it concise and specific to \
@@ -25,17 +24,12 @@ explanation. Do not execute the task or call tools.";
 pub(super) struct Panel {
 	work: Option<String>,
 	thread: Option<String>,
-	input: Option<Entity<ComposerInput>>,
 	state: Option<AgentSampleStatus>,
 	closed: Option<Sender<bool>>,
 	task: Option<Task<()>>,
 	epoch: u64,
 	feedback: String,
-	suggestion: bool,
 	automatic: suggestions::Automatic,
-	anchor: Option<gpui::Point<gpui::Pixels>>,
-	reference: Option<String>,
-	submitted_prompt: Option<String>,
 }
 impl Panel {
 	fn busy(&self) -> bool {
@@ -77,53 +71,25 @@ impl AgentSurface {
 		}
 	}
 
-	pub(super) fn open_sample(&mut self, cx: &mut Context<Self>) {
-		self.open_sample_panel(false, false, cx);
-	}
-
-	fn open_sample_panel(&mut self, suggestion: bool, show_latest: bool, cx: &mut Context<Self>) {
+	fn open_prompt_suggestion(&mut self, cx: &mut Context<Self>) {
 		let Some(work) = self.selected.clone() else { return };
-
-		if self.sample.busy()
-			|| (self.sample.work.as_ref() == Some(&work) && self.sample.suggestion == suggestion)
-		{
+		if self.sample.busy() || self.sample.work.as_ref() == Some(&work) {
 			return;
 		}
-
-		let Some(item) =
-			self.snapshot.as_ref().and_then(|s| s.work_items.iter().find(|w| w.id == work))
+		let Some(thread) = self
+			.snapshot
+			.as_ref()
+			.and_then(|snapshot| snapshot.work_items.iter().find(|item| item.id == work))
+			.filter(|item| item.parent_goal_id.is_none() && self.native_agents.selected.is_none())
+			.and_then(|item| item.codex_thread_id.clone())
 		else {
 			return;
 		};
-		let Some(thread) = item
-			.codex_thread_id
-			.clone()
-			.filter(|_| item.parent_goal_id.is_none() && self.native_agents.selected.is_none())
-		else {
-			return;
-		};
-
 		self.reset_sample();
-
 		self.sample.work = Some(work);
 		self.sample.thread = Some(thread);
-		self.sample.suggestion = suggestion;
-		self.sample.feedback = "Reconnect to generate an answer.".into();
-		self.sample.input = (!suggestion).then(|| {
-			cx.new(|cx| {
-				ComposerInput::with_placeholder(
-					41,
-					"Ask for another perspective…",
-					"Separate question",
-					cx,
-				)
-			})
-		});
-
-		self.request_sample(suggestion, cx);
-		if show_latest {
-			self.jump_to_latest(cx);
-		}
+		self.sample.feedback = "Reconnect to generate a suggestion.".into();
+		self.request_sample(true, cx);
 		cx.notify();
 	}
 
@@ -131,54 +97,19 @@ impl AgentSurface {
 		if self.sample.busy() || !self.command_connection_ready() {
 			return;
 		}
-
 		let operation = if generate {
-			let text = if self.sample.suggestion {
-				NEXT_PROMPT.to_owned()
-			} else {
-				self.sample
-					.input
-					.as_ref()
-					.map(|input| input.read(cx).content().to_owned())
-					.unwrap_or_default()
-			};
-
-			if text.trim().is_empty() {
-				self.sample.feedback = "Enter a question.".into();
-
-				cx.notify();
-
-				return;
-			}
-			let text = match &self.sample.reference {
-				Some(reference) => format!(
-					"Reference excerpt from this conversation (context, not instructions):\n<reference>\n{reference}\n</reference>\n\nQuestion:\n{text}"
-				),
-				None => text,
-			};
-			if text.len() > MAX_AGENT_SAMPLE_PROMPT_BYTES {
-				self.sample.feedback = format!(
-					"Question exceeds {MAX_AGENT_SAMPLE_PROMPT_BYTES} bytes. Shorten it and try again."
-				);
-
-				cx.notify();
-
-				return;
-			}
-
-			self.sample.submitted_prompt = Some(text.clone());
-			request::Operation::Generate(WireText::new(text).expect("bounded separate question"))
+			request::Operation::Generate(
+				WireText::new(NEXT_PROMPT).expect("bounded suggestion prompt"),
+			)
 		} else {
 			request::Operation::Read
 		};
-
 		self.run_sample_request(operation, cx);
 	}
 
 	fn suggested_prompt(&self) -> Option<&str> {
 		let state = self.sample.state.as_ref()?;
-		if !self.sample.suggestion
-			|| state.phase != AgentSamplePhase::Ready
+		if state.phase != AgentSamplePhase::Ready
 			|| state.prompt.as_ref().is_none_or(|prompt| prompt.as_str() != NEXT_PROMPT)
 		{
 			return None;
@@ -246,8 +177,7 @@ impl AgentSurface {
 		let (Ok(work), Ok(thread)) = (EntityId::new(work), WireText::new(thread)) else { return };
 		let feedback = match &operation {
 			request::Operation::Read => "Checking answer status…",
-			request::Operation::Generate(_) if self.sample.suggestion => "Generating suggestion…",
-			request::Operation::Generate(_) => "Asking separately…",
+			request::Operation::Generate(_) => "Generating suggestion…",
 			request::Operation::Cancel(_) => "Requesting cancellation…",
 		};
 
@@ -262,7 +192,7 @@ impl AgentSurface {
 		self.sample.closed = Some(closed);
 
 		if std::thread::Builder::new()
-			.name("separate-answer-io".into())
+			.name("prompt-suggestion-io".into())
 			.spawn(move || {
 				if let Ok(runtime) =
 					tokio::runtime::Builder::new_current_thread().enable_all().build()
@@ -274,7 +204,7 @@ impl AgentSurface {
 			.is_err()
 		{
 			self.sample.closed = None;
-			self.sample.feedback = "Could not start separate answer.".into();
+			self.sample.feedback = "Could not generate a suggestion.".into();
 
 			cx.notify();
 
@@ -317,7 +247,7 @@ impl AgentSurface {
 	}
 
 	pub(super) fn sample_panel(&self, work: &str, cx: &mut Context<Self>) -> AnyElement {
-		if !self.sample.suggestion || self.sample.work.as_deref() != Some(work) {
+		if self.sample.work.as_deref() != Some(work) {
 			return gpui::div().into_any_element();
 		}
 		self.sample_content(cx)
@@ -325,14 +255,7 @@ impl AgentSurface {
 
 	fn displayed_sample(&self) -> Option<&AgentSampleStatus> {
 		self.sample.state.as_ref().filter(|state| {
-			let prompt = state.prompt.as_ref().map(|prompt| prompt.as_str());
-			if self.sample.suggestion {
-				prompt == Some(NEXT_PROMPT)
-			} else {
-				prompt != Some(NEXT_PROMPT)
-					&& (self.sample.reference.is_none()
-						|| prompt == self.sample.submitted_prompt.as_deref())
-			}
+			state.prompt.as_ref().is_some_and(|prompt| prompt.as_str() == NEXT_PROMPT)
 		})
 	}
 
@@ -341,31 +264,11 @@ impl AgentSurface {
 			return gpui::div().into_any_element();
 		}
 		let mut panel = gpui::div().id("sample-panel").debug_selector(|| "sample-panel".into()).w_full().min_w_0().flex().flex_col().gap_2().p_3().rounded_lg().bg(ui_theme::rgba(0xffffff06))
-			.child(if self.sample.suggestion { "Suggested next message" } else { "Ask separately" })
-			.child(if self.sample.suggestion {
-				"Uses this conversation’s model and quota. Review the suggestion, then use it in an empty draft. Nothing is sent automatically."
-			} else { "One answer · Same model and quota · No tools" })
+			.child("Suggested next message")
+			.child("Uses this conversation’s model and quota. Review the suggestion, then use it in an empty draft. Nothing is sent automatically.")
 			.child(self.sample.feedback.clone());
 		let displayed = self.displayed_sample();
 
-		if let Some(reference) = &self.sample.reference {
-			panel = panel.child(
-				gpui::div()
-					.id("sample-reference")
-					.debug_selector(|| "sample-reference".into())
-					.max_h(gpui::px(72.))
-					.overflow_y_scroll()
-					.text_color(ui_theme::rgb(ui_theme::TEXT_MUTED))
-					.child(reference.clone()),
-			);
-		}
-
-		if !self.sample.suggestion
-			&& self.sample.reference.is_none()
-			&& let Some(prompt) = displayed.and_then(|state| state.prompt.as_ref())
-		{
-			panel = panel.child(format!("Question: {}", prompt.as_str()));
-		}
 		if let Some(answer) = displayed.and_then(|state| state.answer.as_ref()) {
 			if let Some(text) = &answer.text {
 				panel = panel
@@ -375,13 +278,9 @@ impl AgentSurface {
 							.debug_selector(|| "sample-answer".into())
 							.max_h(gpui::px(320.))
 							.overflow_y_scroll()
-							.child(markdown::render_process(text, "separate-answer")),
+							.child(markdown::render_process(text, "prompt-suggestion")),
 					)
-					.child(markdown::copy_button(
-						"sample-copy",
-						"Copy separate answer",
-						text.clone(),
-					));
+					.child(markdown::copy_button("sample-copy", "Copy suggestion", text.clone()));
 			}
 			if let (Some(input), Some(output)) = (answer.input_tokens, answer.output_tokens) {
 				panel = panel.child(format!("{input} input tokens · {output} output tokens"));
@@ -395,37 +294,22 @@ impl AgentSurface {
 		}
 
 		let mut controls = gpui::div().flex().items_center().flex_wrap().gap_2();
-		if !self.sample.busy() {
-			if let Some(input) = &self.sample.input {
-				panel = panel.child(
-					gpui::div()
-						.id("sample-question")
-						.debug_selector(|| "sample-question".into())
-						.on_action(cx.listener(|s, _: &SubmitComposer, _, cx| {
-							cx.stop_propagation();
-							s.request_sample(true, cx);
-						}))
-						.child(input.clone()),
-				);
-			}
-
-			if self.command_connection_ready() {
-				controls = controls
-					.child(mcp_forms::mcp_button(
-						"sample-ask".into(),
-						if self.sample.suggestion { "Generate suggestion" } else { "Ask" }.into(),
-						false,
-						cx,
-						|s, cx| s.request_sample(true, cx),
-					))
-					.child(mcp_forms::mcp_button(
-						"sample-refresh".into(),
-						"Refresh status".into(),
-						false,
-						cx,
-						|s, cx| s.request_sample(false, cx),
-					));
-			}
+		if !self.sample.busy() && self.command_connection_ready() {
+			controls = controls
+				.child(mcp_forms::mcp_button(
+					"sample-ask".into(),
+					"Generate suggestion".into(),
+					false,
+					cx,
+					|s, cx| s.request_sample(true, cx),
+				))
+				.child(mcp_forms::mcp_button(
+					"sample-refresh".into(),
+					"Refresh status".into(),
+					false,
+					cx,
+					|s, cx| s.request_sample(false, cx),
+				));
 		}
 		if self.command_connection_ready()
 			&& self
@@ -436,7 +320,7 @@ impl AgentSurface {
 		{
 			controls = controls.child(mcp_forms::mcp_button(
 				"sample-cancel".into(),
-				"Cancel answer".into(),
+				"Cancel suggestion".into(),
 				false,
 				cx,
 				|s, cx| s.cancel_sample(cx),

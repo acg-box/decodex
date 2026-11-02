@@ -62,6 +62,8 @@ sources:
     resource: repo://crates/decodex-protocol/src/model_catalog.rs
   - id: openwiki-source-e5be8be8499e6ccee0cf7ad0
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_memory_tests.rs
+  - id: openwiki-source-a0063c7b07a1bc990ee9af6c
+    resource: repo://crates/decodex-runtime/src/account_launch/agent_process.rs
   - id: openwiki-source-f5d073da07bcb17ee416f3b5
     resource: repo://crates/decodex-runtime/src/account_launch/process_native_control_tests.rs
   - id: openwiki-source-b2869e6da778a74cb6afc667
@@ -92,10 +94,10 @@ sources:
     resource: repo://crates/decodex-runtime/tests/native_qualification/thread_settings.py
   - id: openwiki-source-8c78df4b382026886ac50894
     resource: repo://database/src/usage_evidence.rs
-generated: { by: "codex", at: "2026-10-31T16:06:25.983Z" }
+generated: { by: "codex", at: "2026-11-02T04:34:00.067Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-31T16:42:36.938Z
+    at: 2026-11-02T04:34:00.067Z
 ---
 
 # Model selection and settings ownership
@@ -145,6 +147,8 @@ A review binds the displayed source and current settings to an explicit action. 
 Shared native configuration writes retain file/version identity and arbitration. Historical model journals remain readable; old unresolved records are not converted into successful modern operations or replayed through a second writer. Queued user execution choices must not be overwritten by an unrelated settings edit.
 
 Cold resume inherits the saved native thread settings without reapplying creation settings. A model-only update preserves the native tier, provider and collaboration settings. The reusable qualification probe checks that the saved service tier and summary setting survive changed global defaults in both legacy and paginated thread modes. The probe also checks acknowledged approval, reviewer and read-only permission recovery despite stale turn context during fork and cold resume in both history modes. Each recovery case makes one inference request and does not replay the saved turn. This evidence applies to the selected qualified artifact; it does not establish installed-app acceptance. See [saved settings and diagnostic storage](../testing/upstream-acceptance-boundaries.md#saved-settings-and-diagnostic-storage) for the commands and limits.
+
+Ordinary forks and Side chats read the current native source settings before creation. They pass the reported model, reasoning effort and service tier, including an explicit default tier, so an older creation default cannot replace the selected model. The existing fork bridge permits only these bounded settings overrides. An explicit current-provider recovery fork omits the source model and effort overrides and uses the target provider defaults. Native Codex validates the resulting configuration.
 
 An exact native provider mismatch is shown with the source and current provider identities. The user can [create a branch on the current provider](conversations-and-recovery.md#continue-after-a-provider-change) through the existing fork review. A fresh native configuration check guards that write; it neither changes global settings nor resumes or sends input automatically.
 

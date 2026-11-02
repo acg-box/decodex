@@ -233,7 +233,7 @@ impl AgentSurface {
 			markdown::render_with_selection_action(
 				text,
 				&identity,
-				if kind == "agentMessage" { self.sample_selection_action(cx) } else { None },
+				if kind == "agentMessage" { self.side_chat_selection_action(cx) } else { None },
 			),
 		);
 
@@ -255,7 +255,7 @@ impl AgentSurface {
 						"Copy response",
 						text.clone(),
 					))
-					.children(self.sample_response_action(text, &identity, cx)),
+					.children(self.side_chat_response_action(text, &identity, cx)),
 			);
 		}
 		if kind == "agentMessage"
@@ -653,7 +653,7 @@ turn_id: turn, kind, .. } if turn == turn_id && kind == "agentMessage")
 					draft.is_none(),
 				)
 				.settled(self.timeline.native.completions.output(item_id))
-				.on_ask(self.sample_selection_action(cx))
+				.on_ask(self.side_chat_selection_action(cx))
 				.into_any_element()
 			});
 
@@ -667,7 +667,7 @@ turn_id: turn, kind, .. } if turn == turn_id && kind == "agentMessage")
 				if kind == "userMessage" {
 					self.native_prompt_action(work, content, identity, cx)
 				} else if complete {
-					self.sample_response_action(text, identity, cx)
+					self.side_chat_response_action(text, identity, cx)
 				} else {
 					None
 				},

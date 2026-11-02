@@ -56,10 +56,12 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_reconnect_queue_tests.rs
   - id: openwiki-source-833f63423276cad9a26295cf
     resource: repo://apps/decodex-gpui/src/agent_resource_owners.rs
-  - id: openwiki-source-309d7ec654ab4d531c906212
-    resource: repo://apps/decodex-gpui/src/agent_sample_ui.rs
   - id: openwiki-source-912dbe8f46e7ec6026887bbe
     resource: repo://apps/decodex-gpui/src/agent_sample.rs
+  - id: openwiki-source-ff9ae5d5274ad341f8658d86
+    resource: repo://apps/decodex-gpui/src/agent_side_chat_question_tests.rs
+  - id: openwiki-source-012d0a3289dff03dd84a5971
+    resource: repo://apps/decodex-gpui/src/agent_side_chat_question.rs
   - id: openwiki-source-5da2f5dd568514f1f464d177
     resource: repo://apps/decodex-gpui/src/agent_surface.rs
   - id: openwiki-source-2fb9e466c6aafdf4f4950bc1
@@ -144,10 +146,10 @@ sources:
     resource: repo://database/src/agent/tests/input_retry.rs
   - id: openwiki-source-28af4781ad8d9558410630da
     resource: repo://database/src/works.rs
-generated: { by: "codex", at: "2026-10-31T15:20:06.142Z" }
+generated: { by: "codex", at: "2026-11-02T04:34:00.067Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-31T16:06:25.983Z
+    at: 2026-11-02T04:34:00.067Z
 ---
 
 # Conversation input, history and recovery
@@ -243,7 +245,7 @@ For a before-input branch or same-thread edit, projection refresh and durable dr
 
 ## Open Side chats in tabs
 
-The conversation header keeps the source conversation and multiple Side chats in one tab strip. Use **+** beside the tabs to review a Side chat from the source's latest completed turn, then choose **Side chat**. The source must have readable full native history for that completed turn. Creation uses native attachment and sends no message.
+The conversation header keeps the source conversation and multiple Side chats in one tab strip. Use **+** beside the tabs to create and open a Side chat from the selected conversation's latest completed turn. Source preparation runs without a second confirmation. The source must be idle and have readable full native history for that completed turn. Creation uses native attachment and sends no message.
 
 Each Side chat starts with an empty visible history and the reviewed source prefix in its model context. Later source messages do not automatically enter an existing Side chat. Continue the Side chat with its own composer. Switching tabs restores each conversation's draft and reading position. The strip scrolls horizontally and reveals the selected tab; existing activity indicators and header controls remain available.
 
@@ -315,15 +317,17 @@ A pending submission is not recovered as a new answer. Replayed historical quest
 
 For parent escalation and exact event receipts, use [Agent coordination](../architecture/chief-coordination.md#native-contributions-and-independent-collaboration).
 
-## Ask a separate question
+## Ask about a passage in a Side chat
 
-In an idle root conversation, use **Ask separately** in the composer toolbar, the question icon beside a completed response, or **Ask about selection** after selecting response text. The response icon appears on hover or keyboard focus. The existing composer-menu entry remains available.
+Select response text and choose **Ask in side chat**, or use the question icon beside a completed response. The icon appears on hover or keyboard focus. Both actions use the same Side chat creation path as **+** and need an idle source conversation.
 
-A compact popover holds its own question field and answer. Press **Enter** to ask. Opening the popover preserves the main draft and reading position. A response action includes the response text; a selection action includes only the displayed selection. A long reference is marked as an excerpt and bounded to half the native prompt limit. The complete reference and question must still fit the native request limit.
+The new Side chat opens with the selected text or clicked response quoted in its normal message draft. Add a question and send it. Creation does not send the quote. Follow-up questions use the same composer and retain the Side chat's earlier replies. The source conversation keeps its own draft and history.
 
-The request uses the current conversation context and an explicit reference. It does not rewind history to the selected message or create a multi-turn side chat. A cached next-message suggestion is not presented as a manual answer.
+Ordinary forks and Side chats keep the source provider and pass its current native model, reasoning effort and service tier when reported. This uses the conversation settings rather than its older creation defaults. A fork that explicitly recovers onto another provider uses that target provider's defaults.
 
-**Escape**, an outside click, or **Close** hides the popover. Closing does not cancel native generation. **Cancel answer** requests cancellation of the exact original sampling request. Late results and uncertain cancellation keep that request identity; the parent conversation is not cancelled. The existing idle-root, no-tools and source-invalidation rules still apply.
+A long quote uses a marked, Unicode-safe excerpt within the normal composer limit, with space left for the question. Selection callbacks reject a replaced source. The model inherits the prepared conversation prefix; selecting an earlier passage does not rewind that context to the passage's turn. Later source messages do not automatically enter the Side chat.
+
+The former manual **Ask separately** popover and composer entry are removed. Native `thread/sample` remains available for next-message suggestions below. It obtains one response without running tools, creating a persistent Side chat or adding input to the source.
 
 ## Next-message suggestions
 
@@ -333,7 +337,7 @@ Review the result in **Suggested next message**. Focus the same idle conversatio
 
 Existing history and snapshot refreshes observe the new completed answer. Opening saved history, repeated refreshes and failed turns do not trigger generation. Generation can finish while the user edits a draft; it does not replace that draft. Attachments, task references and active voice input also keep the current draft in place. A skipped trigger does not run later when the editor is cleared. Automatic generation does not move the scroll position.
 
-The panel shares the existing separate-answer lifecycle. **Cancel answer** targets its original request; **Close** hides the panel. Status refresh does not generate another suggestion. A native tool attempt can return no text, and an unsupported or unavailable sampler remains visible as a failure. There is no automatic fallback to a tool-enabled prediction fork or separate polling timer.
+The suggestion panel uses native sampling. **Cancel suggestion** targets its original request; **Close** hides the panel. Closing does not cancel native generation. Late results and uncertain cancellation retain the original request identity; the parent conversation is not cancelled. Status refresh does not generate another suggestion. A native tool attempt can return no text, and an unsupported or unavailable sampler remains visible as a failure. There is no automatic fallback to a tool-enabled prediction fork or separate polling timer.
 
 The [retained contract and test identities](../../automations/upstream/retained-contracts.json) record the scoped interface and wire checks. Existing native sampling qualification is reused; these checks do not establish live-provider suggestion quality or installed-app acceptance.
 

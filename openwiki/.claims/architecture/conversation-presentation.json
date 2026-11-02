@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:561d3e2ccf3c0a51a6459e3db76848284df07688f48cc45d2ad1b99ae879d419",
+  "pageVersion": "sha256:c5d6abeefbee4d50915720c21a419dd141a6fdd736720b606f80717e1641978d",
   "claims": [
     {
       "id": "claim_36b9a49ffa87416e8add8befc7d10efe",
@@ -56,7 +56,7 @@
       "evidence": [
         {
           "resource": "repo://Cargo.toml",
-          "version": "repo-file-v1:sha256:2a11182300dabda4508310ea1663e9deb79bdab69f6c9ad5e4984a9862a3eee3"
+          "version": "repo-file-v1:sha256:ef6f6d3e9bd13a1f7264219a54533319b0034057ea7de5dcf658cb6fe99dfb04"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_mermaid.rs",
@@ -78,7 +78,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:def240e9768ac8075120cab0a47125e5a427a75135d7f20e182ccce3f25df626"
+          "version": "repo-file-v1:sha256:4b0bd2d5f0f9c6c3f40622264c11971b37c748b69411742d29c42f3989351abf"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/composer_text.rs",
@@ -138,7 +138,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_composer.rs",
-          "version": "repo-file-v1:sha256:cf84c6e1fbb83844cd8a4d99f116dfbc784650d6a2d96c5301ea393dddb971af"
+          "version": "repo-file-v1:sha256:614044f8710b5218baba0de8bf5af3aa8155f60b1a4e5a5513ba5d0a4c35a38a"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_inspection.rs",
@@ -146,7 +146,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_prompt_edit.rs",
-          "version": "repo-file-v1:sha256:05584abc6a99709786d306a91a7f40b00fe81a1160c044059d5e5f26a6cd1c32"
+          "version": "repo-file-v1:sha256:fa795f10ae94669b9aade482d2a5321fe2d654239d70cfe1b7b5d07a7cbd8d33"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_surface.rs",
@@ -415,7 +415,7 @@
           "version": "repo-lines-v1:sha256:4e6bf22b18dd8392c809fd9520af81190b4041b85b8325f35b7ea974d848bcb3:eyJzZWxlY3RlZExpbmVDb3VudCI6NzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlkYTgxMGEzZGU2ZWEwODJjYzMwN2ExMWUxZmZiOGFlNDc5ZWY2OWM2NTI0ZTRiY2VhOTdkMzgxNzYwN2U0NGUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRmNzEyMTI4NjkzM2U3NzgyYWQ4ZDIzYzI2YzM1MzAxNTg0ZDZmZmE1MjhlZDY3MzFmMmM4YjBmMTI0NGIyMjEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM3M2FjMDMxZjM0Y2RmZDllMWU0YzJjZjhiNmQyODEzOTkwMDVlZDI0OTlkYzhiNDQ3OWYyMmNjZTRiYjU4YjgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjYyMzI1ZDVlYTMyNzM3OTYyNjM1ZmI0YjdmYzA4ZGE5ZjYxNWM5NTkxZWEzMTQ2YmU0Njk3NDY2ZjQyMGE0MjMifQ"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs#L1604-L1613",
+          "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs#L1603-L1612",
           "version": "repo-lines-v1:sha256:ba207ddc6422c7fc5648b8738aea19ca0591070b9ea9137be0418e8b668e1012:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3NTdmNGQ5OGIzODJkZGY0OWFhZDEzYWQwMWNiYWFkMDNmY2M3NTkyNDgwNDM4N2E3MjIwNTI3NzkwMGU1NTAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE3MTZkNmM3YjA1NGJmZTBiYWEwOTM3MTcyY2FiNGQxY2JjMzFhMTgxZjVjYzRmMDk2OTk1YzZhYWZiMTk3YjAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZjNTlkNmYxNmY0OTBmYTZiNjdiOGIyNWM3ZTQzMTU5YzEyNTY2MDg4MzRiMmM5ZTkwNWY1MWNhMzlkOGE0ZGEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ0ZGUxNzkwNzM1OTQwZjRkNmIwYWVkMjY5MDhhM2VhMjc1M2IyZDExY2RlMmI0MjhhODFhZmRjOTU2Y2QzNTMifQ"
         }
       ]
@@ -448,7 +448,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:def240e9768ac8075120cab0a47125e5a427a75135d7f20e182ccce3f25df626"
+          "version": "repo-file-v1:sha256:4b0bd2d5f0f9c6c3f40622264c11971b37c748b69411742d29c42f3989351abf"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_loading.rs",
@@ -474,7 +474,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_timeline_render.rs",
-          "version": "repo-file-v1:sha256:e2321d45477ba2005424026f4f72220b40a3c339e359cd929af2139013392432"
+          "version": "repo-file-v1:sha256:8c9bf3c09c473d627da4a4fa7e2f798b466f8efadd030bc36efb5225c66b51f4"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_timeline_scroll.rs",
@@ -502,7 +502,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_composer.rs",
-          "version": "repo-file-v1:sha256:cf84c6e1fbb83844cd8a4d99f116dfbc784650d6a2d96c5301ea393dddb971af"
+          "version": "repo-file-v1:sha256:614044f8710b5218baba0de8bf5af3aa8155f60b1a4e5a5513ba5d0a4c35a38a"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_usage_estimates.rs",
@@ -548,21 +548,25 @@
     },
     {
       "id": "claim_97d08f7419344cd0abbeb75e4dc0bab4",
-      "statement": "Completed-response, text-selection and composer entry points open the same one-shot Ask separately popover. The main draft and reading position remain owned by the conversation, and sampling uses native execution and cancellation.",
+      "statement": "Completed-response and text-selection question actions open a native Side chat and stage a bounded, marked passage in its ordinary unsent draft. The source draft stays separate and selection callbacks reject a replaced source.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_sample.rs",
-          "version": "repo-file-v1:sha256:19c1cc091a0383d3ec201112025be51f56d71962012ff393b03345deddc5fe00"
+          "resource": "repo://apps/decodex-gpui/src/agent_side_chat_question.rs",
+          "version": "repo-file-v1:sha256:21dd92ba8bac6aeeee34cc7d9428690e061e71d0cac915570179ecfb9af53ce7"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_sample_ui.rs",
-          "version": "repo-file-v1:sha256:d225f3c61b25a5885330001048fa28e4d051a314c017255c7cd8c8249b98e4ef"
+          "resource": "repo://apps/decodex-gpui/src/agent_side_chat_question_tests.rs",
+          "version": "repo-file-v1:sha256:1bcfc53e37f56a1df59afee510f0361bcf53ec248713fa7fc182574f2a709617"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_timeline_render.rs",
+          "version": "repo-file-v1:sha256:8c9bf3c09c473d627da4a4fa7e2f798b466f8efadd030bc36efb5225c66b51f4"
         }
       ]
     },
     {
       "id": "claim_6129c6d0895d44fe86392c3c1b856dbd",
-      "statement": "The conversation header groups a source and multiple open Side chats using confirmed native attachment identities. It scrolls to the selected tab, reviews the latest completed source turn before creation, and reuses existing per-conversation drafts and navigation.",
+      "statement": "The conversation header groups a source and multiple open Side chats using confirmed native attachment identities. It scrolls to the selected tab. The + action prepares and opens an attached branch from the selected conversation's latest completed turn without a second confirmation or a message send, and reuses existing per-conversation drafts and navigation.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_conversation_tab_tests.rs",
@@ -570,11 +574,15 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_conversation_tabs.rs",
-          "version": "repo-file-v1:sha256:37e8422d2942da071d326797f754fe648d05ab8738ef1fedc5054b8684051810"
+          "version": "repo-file-v1:sha256:65d22f0d45c040e5c84783851d1abe77c765f3875db509f1a8ea4b1b4d822dba"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_prompt_confirm_wire_tests.rs",
+          "version": "repo-file-v1:sha256:55c6c83c6e489618f3e0e4b1db3d04163e18f10164986ea774cb5d7e25189ccd"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:def240e9768ac8075120cab0a47125e5a427a75135d7f20e182ccce3f25df626"
+          "version": "repo-file-v1:sha256:4b0bd2d5f0f9c6c3f40622264c11971b37c748b69411742d29c42f3989351abf"
         }
       ]
     },
@@ -584,7 +592,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_attached_branches.rs",
-          "version": "repo-file-v1:sha256:56e16cc761ecfa446826572dcb227e828029937017d66c5b88f913ce10cb2ba6"
+          "version": "repo-file-v1:sha256:fd9c7dc64620953c2b968994a79ac8159ece13ae50cd0f9ab1f99fdbdfd9288c"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_conversation_tab_tests.rs",
@@ -592,11 +600,11 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_conversation_tabs.rs",
-          "version": "repo-file-v1:sha256:37e8422d2942da071d326797f754fe648d05ab8738ef1fedc5054b8684051810"
+          "version": "repo-file-v1:sha256:65d22f0d45c040e5c84783851d1abe77c765f3875db509f1a8ea4b1b4d822dba"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:def240e9768ac8075120cab0a47125e5a427a75135d7f20e182ccce3f25df626"
+          "version": "repo-file-v1:sha256:4b0bd2d5f0f9c6c3f40622264c11971b37c748b69411742d29c42f3989351abf"
         }
       ]
     },
@@ -614,21 +622,31 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_prompt_confirm_wire_tests.rs",
-          "version": "repo-file-v1:sha256:a477218223d207e461c2c52b7658c6fa1c22ddcc53cf00742f440f2f0743962d"
+          "version": "repo-file-v1:sha256:55c6c83c6e489618f3e0e4b1db3d04163e18f10164986ea774cb5d7e25189ccd"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_prompt_edit.rs",
-          "version": "repo-file-v1:sha256:05584abc6a99709786d306a91a7f40b00fe81a1160c044059d5e5f26a6cd1c32"
+          "version": "repo-file-v1:sha256:fa795f10ae94669b9aade482d2a5321fe2d654239d70cfe1b7b5d07a7cbd8d33"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:def240e9768ac8075120cab0a47125e5a427a75135d7f20e182ccce3f25df626"
+          "version": "repo-file-v1:sha256:4b0bd2d5f0f9c6c3f40622264c11971b37c748b69411742d29c42f3989351abf"
+        }
+      ]
+    },
+    {
+      "id": "claim_81fa5957581c4202b50558f5a1106675",
+      "statement": "Ordinary forks and Side chats pass the current reported native source model, reasoning effort and service tier; explicit provider-recovery forks use target provider defaults.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-codex/src/app_server_client/thread_fork.rs#L59-L99",
+          "version": "repo-lines-v1:sha256:a4abc355d67dc272d86a350163aaa33cd4d51fc9a5ea246b8c17ec668ac2cc3b:eyJzZWxlY3RlZExpbmVDb3VudCI6NDEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU5ZmZmZjdmMzQ4NTE5NDY1ZWM4MmMyNGRkYmYzN2I4OWVlMmNjZmEwZDViZjJjMDhjMmY5NWNmZDE1OGQyZDAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY4YTY2NmIzNzE0NDgwZDFmMmVhNTAwNzZiMjRjNWQ1ZmEzYjc4MjdiNzY1NGYwN2E5Nzg5NzI2YTIzMTdiZjYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjBhNzkyNDQ2NmJhNzQ0MThmZmJjMTQ3ZjZhOWRiYjNmZjgxYzUwYWEwZTZmYWE5MDkzN2E3NzgyNTgwYTNiNjkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFmMThhNzJiOWYzN2Q2OGQ1YmI0MDU4MTNmOWI1YmM4NzljOTYxNzgzYmI2NDBhNmY3OGFlYTlkNTUwMDQ4NWQifQ"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-31T15:20:06.142Z"
+    "at": "2026-11-02T04:34:00.067Z"
   }
 }

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:7e35a0053ebb2de20a58e89d4693de73dd4d5de3d9e037a4a4c876499866c74f",
+  "pageVersion": "sha256:953cde28c5688f15fc0b62d3927316685c6d341d06ef16f4ebd6fd98f55b6985",
   "claims": [
     {
       "id": "claim_070657bf065541118dc7ae41cdeffc2c",
@@ -16,15 +16,15 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/Cargo.toml",
-          "version": "repo-file-v1:sha256:7cdd78769cbe9c174f0b29946cc1635e4ebd774d72872fee4854e3567b31ebd7"
+          "version": "repo-file-v1:sha256:9ca5169241bfe367fb84e9dcf9b5617d98d187c7afc10d34922f46d5fe1abcd7"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/bin/native_glass_probe.rs",
-          "version": "repo-file-v1:sha256:c4b4117818ebd8c03fa7e13c1ba16ac402c59ce65273d673eae23fdbf307e390"
+          "version": "repo-file-v1:sha256:7f2d69d24f7763c0e2b2db22d17eff3d01c48cfed33cf75bd1572bd882fc6f88"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/bin/workbench_visual_capture.rs",
-          "version": "repo-file-v1:sha256:1fcb9790b9083d26abec8261b706cf2f1deb5dc325694260d5c4cddca1216e26"
+          "version": "repo-file-v1:sha256:b315fc45fe5b90d462ca95e27d2f2f40167352d9e06bfaf6cf07e6f9a91c9f02"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/bin/workbench_visual_capture/send.rs",
@@ -32,7 +32,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/main.rs",
-          "version": "repo-file-v1:sha256:8dda74ae8f28467e52a4166ff88638ba6073cd8fc70cc4bf945ceffb229bd205"
+          "version": "repo-file-v1:sha256:93339cc91a69030042b84f4475ecdedf25828adc74e4af7a20491f85df2dc585"
         }
       ]
     },
@@ -61,7 +61,7 @@
       "statement": "The original Project Work appearance-fade LEAK retains its limits; the separate native media follow-up records passing full-suite and repeated checks with recovered lock and firewall history, without a new controlled lock comparison or an explanation of the earlier LEAK.",
       "evidence": [
         {
-          "resource": "repo://automations/upstream/retained-contracts.json#L2578-L4065",
+          "resource": "repo://automations/upstream/retained-contracts.json#L2657-L4144",
           "version": "repo-lines-v1:sha256:dca51e28f266f3fd054b394a5451bb61a595544c5b5e6c017bbc9a2bff362c86:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQ4OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYTRlOTQ2ZjE1NzYwNjdhMTM0ZWZiZDhhZTE1MjI2MDI5NzdkMDBlOTFkNjY2YzYyMGE3Yzg0NjdjYjY0ZjE4OSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNGQ1Y2QyZmI0ZjNkZjg4NDUxNTI1NWIzOTUyM2YyZjhiNTQ3MmJlZWE5ZjU2NmZmY2EyMDRkYjgwMjU2MTA0MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMDhlNmNhNGUyMTVlOTEyMDdlOWZlMDk3ZDUyZGI5M2ViNjVkZTRjOThmZDgwYjE3OTY3MjliM2UxMWQ3MTY5YSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMzIyZjc2YzIxZjc0OTU3ZDkyNWUxOGQzYTY0YWJiNTYwN2ZmMDgwYTc3NDU2MjA4ZThlMDY3ODQ0MDJjMGNhMSJ9"
         }
       ]
@@ -81,7 +81,7 @@
       "statement": "The native Project and nested Work follow-up retains its initial three full-suite failures and unexplained resume-test LEAK, ten isolated passes of the unchanged UI artifact, fixture correction and final 2921-pass workspace run as separate evidence rather than rewriting earlier failures.",
       "evidence": [
         {
-          "resource": "repo://automations/upstream/retained-contracts.json#L2578-L4065",
+          "resource": "repo://automations/upstream/retained-contracts.json#L2657-L4144",
           "version": "repo-lines-v1:sha256:dca51e28f266f3fd054b394a5451bb61a595544c5b5e6c017bbc9a2bff362c86:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQ4OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYTRlOTQ2ZjE1NzYwNjdhMTM0ZWZiZDhhZTE1MjI2MDI5NzdkMDBlOTFkNjY2YzYyMGE3Yzg0NjdjYjY0ZjE4OSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNGQ1Y2QyZmI0ZjNkZjg4NDUxNTI1NWIzOTUyM2YyZjhiNTQ3MmJlZWE5ZjU2NmZmY2EyMDRkYjgwMjU2MTA0MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMDhlNmNhNGUyMTVlOTEyMDdlOWZlMDk3ZDUyZGI5M2ViNjVkZTRjOThmZDgwYjE3OTY3MjliM2UxMWQ3MTY5YSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMzIyZjc2YzIxZjc0OTU3ZDkyNWUxOGQzYTY0YWJiNTYwN2ZmMDgwYTc3NDU2MjA4ZThlMDY3ODQ0MDJjMGNhMSJ9"
         }
       ]
@@ -91,7 +91,7 @@
       "statement": "The later lifecycle acceptance preserves two earlier leaky passes and clean isolated controls separately from its final 2924-pass, 1159-skipped workspace run with no LEAK; the earlier marker cause remains unknown.",
       "evidence": [
         {
-          "resource": "repo://automations/upstream/retained-contracts.json#L2578-L4065",
+          "resource": "repo://automations/upstream/retained-contracts.json#L2657-L4144",
           "version": "repo-lines-v1:sha256:dca51e28f266f3fd054b394a5451bb61a595544c5b5e6c017bbc9a2bff362c86:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQ4OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYTRlOTQ2ZjE1NzYwNjdhMTM0ZWZiZDhhZTE1MjI2MDI5NzdkMDBlOTFkNjY2YzYyMGE3Yzg0NjdjYjY0ZjE4OSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNGQ1Y2QyZmI0ZjNkZjg4NDUxNTI1NWIzOTUyM2YyZjhiNTQ3MmJlZWE5ZjU2NmZmY2EyMDRkYjgwMjU2MTA0MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMDhlNmNhNGUyMTVlOTEyMDdlOWZlMDk3ZDUyZGI5M2ViNjVkZTRjOThmZDgwYjE3OTY3MjliM2UxMWQ3MTY5YSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMzIyZjc2YzIxZjc0OTU3ZDkyNWUxOGQzYTY0YWJiNTYwN2ZmMDgwYTc3NDU2MjA4ZThlMDY3ODQ0MDJjMGNhMSJ9"
         }
       ]
@@ -101,7 +101,7 @@
       "statement": "The historical control follow-up retained setup failures and passed three native permission tests and one database hold test without repeating the full workspace suite. The current native permission fixture keeps Review Details independent and retains its profile, policy, directory and request-count assertions.",
       "evidence": [
         {
-          "resource": "repo://automations/upstream/retained-contracts.json#L2578-L4065",
+          "resource": "repo://automations/upstream/retained-contracts.json#L2657-L4144",
           "version": "repo-lines-v1:sha256:dca51e28f266f3fd054b394a5451bb61a595544c5b5e6c017bbc9a2bff362c86:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQ4OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYTRlOTQ2ZjE1NzYwNjdhMTM0ZWZiZDhhZTE1MjI2MDI5NzdkMDBlOTFkNjY2YzYyMGE3Yzg0NjdjYjY0ZjE4OSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNGQ1Y2QyZmI0ZjNkZjg4NDUxNTI1NWIzOTUyM2YyZjhiNTQ3MmJlZWE5ZjU2NmZmY2EyMDRkYjgwMjU2MTA0MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMDhlNmNhNGUyMTVlOTEyMDdlOWZlMDk3ZDUyZGI5M2ViNjVkZTRjOThmZDgwYjE3OTY3MjliM2UxMWQ3MTY5YSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMzIyZjc2YzIxZjc0OTU3ZDkyNWUxOGQzYTY0YWJiNTYwN2ZmMDgwYTc3NDU2MjA4ZThlMDY3ODQ0MDJjMGNhMSJ9"
         },
         {
@@ -119,7 +119,7 @@
           "version": "repo-file-v1:sha256:82f0f0fdf0fd24a0cad38d4b17cb60bcb67b3f8d67f8c8699e71963e23243e64"
         },
         {
-          "resource": "repo://automations/upstream/retained-contracts.json#L2578-L4065",
+          "resource": "repo://automations/upstream/retained-contracts.json#L2657-L4144",
           "version": "repo-lines-v1:sha256:dca51e28f266f3fd054b394a5451bb61a595544c5b5e6c017bbc9a2bff362c86:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQ4OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYTRlOTQ2ZjE1NzYwNjdhMTM0ZWZiZDhhZTE1MjI2MDI5NzdkMDBlOTFkNjY2YzYyMGE3Yzg0NjdjYjY0ZjE4OSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNGQ1Y2QyZmI0ZjNkZjg4NDUxNTI1NWIzOTUyM2YyZjhiNTQ3MmJlZWE5ZjU2NmZmY2EyMDRkYjgwMjU2MTA0MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMDhlNmNhNGUyMTVlOTEyMDdlOWZlMDk3ZDUyZGI5M2ViNjVkZTRjOThmZDgwYjE3OTY3MjliM2UxMWQ3MTY5YSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMzIyZjc2YzIxZjc0OTU3ZDkyNWUxOGQzYTY0YWJiNTYwN2ZmMDgwYTc3NDU2MjA4ZThlMDY3ODQ0MDJjMGNhMSJ9"
         }
       ]
@@ -145,6 +145,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-31T13:17:02.524Z"
+    "at": "2026-11-02T02:42:46.593Z"
   }
 }
