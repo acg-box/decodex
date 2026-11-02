@@ -1,5 +1,6 @@
 // Execute the real page adapter against a native-like storage boundary.
 var location = {origin: "https://chatgpt.com"};
+var origin = "https://chatgpt.com";
 var crypto = {randomUUID: () => "research-scope-a"};
 var sessionStorage = {getItem: key => sessionStorage[key] ?? null, setItem: (key, value) => { sessionStorage[key] = value; }};
 class IDBObjectStore {

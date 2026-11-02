@@ -3,7 +3,8 @@
 // Cookies, account access and other records keep their normal behavior.
 // The user's original editor state is never overwritten.
 (scope => {
-  if (location.origin !== "https://chatgpt.com") return;
+  // A same-origin about:blank teardown document retains the window origin.
+  if (globalThis.origin !== "https://chatgpt.com") return;
   const marker = Symbol.for("decodex.research.browser-state");
   if (globalThis[marker]) return;
   const originalKey = "codex.browser.persistedAtomState";

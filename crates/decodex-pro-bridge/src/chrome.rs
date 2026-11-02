@@ -385,8 +385,20 @@ impl Chrome {
 			return Ok(());
 		}
 
-		self.evaluate("globalThis[Symbol.for('decodex.research.browser-state')]?.release()")
-			.await?;
+		// Stop the application before deleting its state. A queued settings write
+		// can otherwise recreate the record between deletion and tab closure.
+		// The inert document inherits ChatGPT's origin and needs no network request.
+		let _ = time::timeout(Duration::from_secs(2), async {
+			self.evaluate("location.replace('about:blank');true").await?;
+
+			loop {
+				if self.evaluate("location.href==='about:blank' && typeof globalThis[Symbol.for('decodex.research.browser-state')]?.release==='function'").await? == true {
+					return self.evaluate("globalThis[Symbol.for('decodex.research.browser-state')].release()").await.map(|_| ());
+				}
+
+				time::sleep(Duration::from_millis(50)).await;
+			}
+		}).await;
 
 		self.close_tab().await
 	}
@@ -728,6 +740,7 @@ mod tests {
 				let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
 				let mut released = false;
 				let mut closed = false;
+				let mut stopped = false;
 
 				while let Some(Ok(Message::Text(text))) = socket.next().await {
 					let request: Value = serde_json::from_str(&text).unwrap();
@@ -735,12 +748,14 @@ mod tests {
 						"Decodex.ping" =>
 							serde_json::json!({"protocol":1,"extensionId":crate::native_host::EXTENSION_ID}),
 						"Runtime.evaluate" => {
-							if request["params"]["expression"]
-								.as_str()
-								.unwrap()
-								.contains("?.release()")
-							{
+							let expression = request["params"]["expression"].as_str().unwrap();
+
+							if expression.contains("location.replace") {
+								stopped = true;
+							}
+							if expression.contains("].release()") {
 								assert!(can_close);
+								assert!(stopped, "The application can still write its state");
 
 								released = true;
 							}
