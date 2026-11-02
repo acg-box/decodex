@@ -204,8 +204,8 @@ impl AgentCoordinator {
 		Ok(result)
 	}
 
-	/// Read a non-waking review for exact visible input. The caller owns visible-selection and
-	/// attachment-restoration validation; this method also excludes internal voice handoffs.
+	/// Reconnect an idle saved source when needed, then review its visible input without sending.
+	/// The caller owns selection and attachment validation; internal voice handoffs are excluded.
 	pub async fn prepare_prompt_edit(
 		&self,
 		work: &str,
@@ -222,7 +222,31 @@ impl AgentCoordinator {
 
 		if !self.store.agent_thread_is_owned(work.into(), thread.into(), generation.clone()).await?
 		{
-			return Ok(None);
+			let source = self.store.get_agent_work_item(work.into()).await?;
+			let Some(current_generation) = generation.as_deref() else { return Ok(None) };
+			if source.parent_goal_id.is_some()
+				|| source.codex_thread_id.as_deref() != Some(thread)
+				|| source.active_turn_id.is_some()
+				|| source.dispatch_state != decodex_database::AgentDispatchState::Idle
+			{
+				return Ok(None);
+			}
+			crate::native_agents::prepare(
+				&self.store,
+				&self.client,
+				work,
+				thread,
+				current_generation,
+			)
+			.await
+			.map_err(|message| AgentError::Rejected(message.into()))?;
+			if !self
+				.store
+				.agent_thread_is_owned(work.into(), thread.into(), generation.clone())
+				.await?
+			{
+				return Ok(None);
+			}
 		}
 
 		let Some(candidate) = self.client.prompt_edit_candidate(thread, turn, item).await? else {

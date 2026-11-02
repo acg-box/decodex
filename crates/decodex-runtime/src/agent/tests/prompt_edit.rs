@@ -77,6 +77,13 @@ fn transport(
 				continue;
 			}
 			let result = match method {
+				"thread/resume" if mode == "cold-source" => {
+					assert_eq!(
+						request["params"],
+						serde_json::json!({"threadId":"opaque thread/1","excludeTurns":true})
+					);
+					serde_json::json!({"thread":{"id":"opaque thread/1"},"cwd":"/fixture","model":"fixture-model","modelProvider":"fixture-provider","reasoningEffort":"low","approvalPolicy":"on-request","approvalsReviewer":"user","sandbox":{"type":"readOnly"},"activePermissionProfile":{"id":":read-only"}})
+				},
 				"config/read" =>
 					serde_json::json!({"config":{"model_provider":if mode == "provider-changed" {"other-provider"} else {"current-provider"}}}),
 				"thread/fork" => {
@@ -160,6 +167,85 @@ fn fork_prefix(request: &Value, visible: &[Value]) -> Vec<Value> {
 	let end = visible.iter().position(|t| t["id"] == selected).unwrap() + usize::from(after);
 
 	if request["params"]["attachToSource"] == true { Vec::new() } else { visible[..end].to_vec() }
+}
+
+#[tokio::test]
+async fn prompt_review_reconnects_a_saved_independent_source_without_sending_input() {
+	use crate::{agent::AgentConfig, agent_model_settings::tests::OwnedReviewer};
+	use decodex_database::AgentDispatchState;
+
+	let directory = tempfile::tempdir().unwrap();
+	let (client, mut reads, server) = transport("cold-source", history());
+	let owner = OwnedReviewer::new(directory.path(), &client, "host-thread", "host-turn").await;
+	let host = owner.store.get_agent_work_item("root".into()).await.unwrap();
+	let mut saved = host.clone();
+	saved.id = "saved".into();
+	saved.codex_thread_id = None;
+	saved.active_turn_id = None;
+	saved.dispatch_state = AgentDispatchState::Idle;
+	owner.store.create_agent_manager(saved).await.unwrap();
+	owner.store.bind_agent_thread("saved".into(), "opaque thread/1".into()).await.unwrap();
+	let generation = Some(owner.key.generation.as_str().to_owned());
+	assert!(
+		!owner
+			.store
+			.agent_thread_is_owned("saved".into(), "opaque thread/1".into(), generation.clone())
+			.await
+			.unwrap()
+	);
+	let mut agent = AgentCoordinator::new(
+		owner.store.clone(),
+		client,
+		AgentConfig::new("creation-default".into(), "high".into(), "/different-default".into()),
+	)
+	.unwrap();
+	agent.bind_native_generation(owner.key.generation.clone());
+	for review in ["cold-review", "connected-review"] {
+		assert!(
+			agent
+				.prepare_prompt_edit(
+					"saved",
+					"opaque thread/1",
+					"selected",
+					"selected-input",
+					review
+				)
+				.await
+				.unwrap()
+				.is_some(),
+			"a saved independent source must reconnect for review"
+		);
+	}
+	assert!(
+		agent
+			.prepare_prompt_edit(
+				"saved",
+				"different-thread",
+				"selected",
+				"selected-input",
+				"foreign-review"
+			)
+			.await
+			.unwrap()
+			.is_none()
+	);
+	assert!(
+		owner
+			.store
+			.agent_thread_is_owned("saved".into(), "opaque thread/1".into(), generation)
+			.await
+			.unwrap()
+	);
+	assert_eq!(owner.store.get_agent_work_item("root".into()).await.unwrap(), host);
+	assert!(owner.store.list_pending_agent_events(100).await.unwrap().is_empty());
+	let requests = iter::from_fn(|| reads.try_recv().ok()).collect::<Vec<_>>();
+	assert_eq!(requests.iter().filter(|r| r["method"] == "thread/resume").count(), 1);
+	assert!(requests.iter().all(|r| {
+		["thread/read", "thread/resume", "thread/turns/list", "thread/items/list"]
+			.contains(&r["method"].as_str().unwrap())
+	}));
+	server.abort();
+	let _ = server.await;
 }
 
 #[tokio::test]
