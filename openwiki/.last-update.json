@@ -1,8 +1,8 @@
 {
-  "updatedAt": "2026-11-02T08:02:38.146Z",
+  "updatedAt": "2026-11-02T20:56:48.929Z",
   "command": "update",
   "gitHead": "89312ceb718d86f82f1affa2557a250b2a85a37c",
   "model": "host-agent/codex",
-  "status": "complete",
+  "status": "interrupted",
   "language": "en"
 }

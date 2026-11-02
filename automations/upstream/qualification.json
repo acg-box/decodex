@@ -1,18 +1,18 @@
 {
   "version": 1,
   "status": "qualified_fixed_development_artifact",
-  "source_commit": "67f0994b532b8740f14b5b738af7b7b2a915b1d6",
-  "source_archive_sha256": "ae1def152189e98c782126c849bf5cc068e66138501d0832dfa15a2ae0898e02",
-  "cargo_lock_sha256": "d8e759f9b0417d2edc5edaa5d8efb1d6b78f16b5023d03bafa0a72d61af9540e",
-  "schema_sha256": "41f4e1160b888dfedeab92306b68cec13b961f4df8f1883283a9e3b150baf59e",
+  "source_commit": "ba0dfd38979033f514a28d9514215bad46957a18",
+  "development_version": "0.166.0+decodex.ba0dfd389790",
+  "source_archive_sha256": "1055ede18b64beb27dc8bf55c8271156b0da3e09d4abdf891bf2ec94f8ec1425",
+  "cargo_lock_sha256": "0ada2f9bbc080c0c0ba576376afc872e2205bbb2018c9ee851dcfe627ee77301",
+  "schema_sha256": "e14be56799f33bae587421c180dbdc4e333815612580fd9f67d114f5517c0e84",
   "schema_identity": {
-    "fingerprint": "41f4e1160b888dfedeab92306b68cec13b961f4df8f1883283a9e3b150baf59e",
-    "binary_sha256": "58ad0dde61345c3af5f57a8881468c2ed64fff34fc984586049566f307d8706e",
-    "canonical_document_sha256": {
-      "ClientRequest.json": "e82183723d9ec3384f9270f5ffb8d790b3a803f2145af999b6a075b48832dd33",
+    "fingerprint": "e14be56799f33bae587421c180dbdc4e333815612580fd9f67d114f5517c0e84",
+    "documents": {
+      "ClientRequest.json": "5300733d026bd3307c14e0bd52471fd100a928f47d8c23db4be63f63091208bc",
       "ServerRequest.json": "e0ea4e3d53092e699637271b9eed4d2a177db64fca6440091204ea6538c4099e",
       "ServerNotification.json": "1efb2d023d9a1fe31e7e3fce414978aa298d9250e0bfc03964d04517e686f4ce",
-      "codex_app_server_protocol.v2.schemas.json": "88a36ae089e8fc9c3f61570ff6398fa0036a2e6ba36fcb01117b2d51f8fba9c1",
+      "codex_app_server_protocol.v2.schemas.json": "cd785b080db5071ec567cb3fb7e838008aeb5b40ba623ff6b5090ba51fc47464",
       "v2/LoginAccountParams.json": "7b41b6881d98b4ec6872d73d7981f5ab61e5960e4296510728d08d4abbfaebf2",
       "ChatgptAuthTokensRefreshParams.json": "74d490082dab616ac01c94d388c9a836304c96092db37290cfdd10a46b0f3ef9",
       "ChatgptAuthTokensRefreshResponse.json": "ff76f5cc58bff40216f9d5f3c5be921268059f6d66d6c034970cddf0e08f0ced",
@@ -20,96 +20,93 @@
       "v2/ThreadStartParams.json": "44a122637f6208314268b9d58c395b8fe7e9277f05af11f9d199b327db7d71e5",
       "v2/TurnStartParams.json": "6353f2a6e5028ede1d691b750c89304555686dcfc6f4a6a0fdb49a1e3e1d488d"
     },
-    "generator": "codex app-server generate-json-schema --experimental --out <temporary-directory>",
-    "measured_from_actual_signed_cli": true
+    "generator": [
+      "codex",
+      "app-server",
+      "generate-json-schema",
+      "--experimental",
+      "--out",
+      "<isolated-schema-directory>"
+    ],
+    "measured_from_actual_signed_cli": true,
+    "binary_sha256": "8bf2c65ddfa0fd0e1cf30f8149d7964696f590c134a13f3dfff92cf415ad289a",
+    "schema_files": 474
   },
   "components": [
     {
       "path": "CodexCLI.app/Contents/MacOS/codex",
-      "sha256": "58ad0dde61345c3af5f57a8881468c2ed64fff34fc984586049566f307d8706e",
-      "bytes": 265508992,
-      "strict_signature_exit": 0,
-      "embedded_source_commit": "67f0994b532b8740f14b5b738af7b7b2a915b1d6"
+      "sha256": "8bf2c65ddfa0fd0e1cf30f8149d7964696f590c134a13f3dfff92cf415ad289a",
+      "bytes": 267148976,
+      "signature_strict": true
     },
     {
       "path": "bin/codex-code-mode-host",
-      "sha256": "7116687247a58d6ccd1655a334f59f44ed51fe0f80856f4f37b96dab4b5ac614",
-      "bytes": 69997680,
-      "strict_signature_exit": 0,
-      "embedded_source_commit": "67f0994b532b8740f14b5b738af7b7b2a915b1d6"
+      "sha256": "1ad15b2577b310ec4213da5397f1d282f38ca0c7599f01993ba8e3fbf0796258",
+      "bytes": 69964128,
+      "signature_strict": true
     },
     {
       "path": "bin/codex-exec-server",
-      "sha256": "6116a56c46a8afd4d536b3d14ac2ff7199563ae9f8a17d007d2a6737ad01bcaa",
-      "bytes": 60088128,
-      "strict_signature_exit": 0,
-      "embedded_source_commit": "67f0994b532b8740f14b5b738af7b7b2a915b1d6"
+      "sha256": "71de84f1c0cca4d486aa707c515e75210f515fa90e6ee0c4cec604834af8ca71",
+      "bytes": 60088368,
+      "signature_strict": true
     },
     {
       "path": "codex-path/rg",
-      "sha256": "f5637789d6d0fdd941eca64e7453cc80c6b8af47b5ae2e261bdf6b066b627019",
+      "sha256": "2a3981738e25d97e72adeb18f49b367023c928e5038f06cbadb43525d550d90f",
       "bytes": 4009552,
-      "strict_signature_exit": 0
+      "signature_strict": true
     }
   ],
-  "decodex_source_revision": "76d0172bfd9286c1f06889dad355a329a41356bc",
-  "decodex_main_baseline": "4c9b2c5fce988f038569a7a23092c8b97443b53f",
-  "qualified_scope": "macOS arm64 fixed-source signed CLI and three packaged helpers; nine affected private-stdio native contracts and one component-cache contract with synthetic loopback fixtures.",
+  "decodex_source_revision": "822d0373781cfdf2b956fe0e8d818f3e9bdf6e17",
+  "decodex_main_baseline": "490f4ec21f48d0d49f676fd9a86112ab7b67ae05",
+  "qualified_scope": "Exact signed macOS arm64 CLI and three packaged helpers; eleven retained Decodex private-stdio consumers, one offline component-cache repair contract and 1197 affected package tests.",
   "limits": [
-    "Source review, tests, artifact qualification, merge and installed acceptance are separate.",
-    "Only macOS arm64 private stdio and named native consumers/helpers are qualified. Linux, Windows, remote production execution, live accounts/providers, physical audio and installation/release remain unmeasured.",
-    "No latency, throughput, memory, billing or cost benchmark.",
-    "Historical dependency findings retain their recorded sources and dates; no new security audit or ignored advisory.",
-    "Earlier certified ranges and missing historical 153-test manifest remain unchanged.",
-    "HumanCommand is user-deferred and unadvertised. Shared MCP, remote production execution and optional product experiments are outside this qualification."
+    "Source review, artifact qualification, local tests, PR delivery and installed acceptance are separate.",
+    "Only macOS arm64 private stdio, the named native consumers and packaged helpers are qualified with synthetic loopback fixtures. No desktop app startup, installation, live-account/provider acceptance, physical audio, release, tag or publication.",
+    "No broad upstream source suite was run. Official CI observations are partial and contain failures; causes remain unknown and no generic upstream pass is claimed.",
+    "The steering fixture verifies live/cold exact IDs and no replay. It does not force the internal final-flush barrier; the reviewed upstream deterministic test is source evidence only.",
+    "The new history fixture verifies ordinary and attached fork cold resume and continuation with an intact managed ancestor copy. It does not qualify every compressed/corrupt lineage variant tested in upstream source.",
+    "Other historical test results remain bound to their original source/artifact/configuration. Earlier certified ranges and unrecovered historical claims are preserved.",
+    "Shared MCP, remote production execution, Guardian V3, HumanCommand and deferred product experiments remain outside current qualification.",
+    "No latency, throughput, memory, billing, cost or new dependency-security benchmark/audit."
   ],
   "historical_scope": {
-    "certified_ranges": "Preserved in native state; this qualification covers only the fixed current target and retained source/behavior limits.",
+    "previous_selected_source": "67f0994b532b8740f14b5b738af7b7b2a915b1d6",
+    "previous_qualification": "https://github.com/acg-box/decodex/blob/490f4ec21f48d0d49f676fd9a86112ab7b67ae05/automations/upstream/qualification.json",
+    "previous_review": "https://github.com/acg-box/decodex/blob/490f4ec21f48d0d49f676fd9a86112ab7b67ae05/automations/upstream/current-review.json",
+    "certified_ranges": "Preserve native certificates with their original coverage limits.",
     "unrecovered": "Older exact 153-test manifest remains unknown.",
-    "conditional_remote_credential_snapshot": "Earlier qualification could not qualify conditional remote credential snapshots because fixture DNS failed or returned a reserved address. Native address protection stays enabled. Current consumers use private stdio; reopen only with a concrete retained remote consumer. Original source assertions and historical delivery evidence remain in Git.",
-    "prior_public_evidence": "https://github.com/acg-box/decodex/blob/69fe45a5d2d2a6e093568ce69bff50415378cc41/automations/upstream/qualification.json",
-    "current_review_replaced_by": "https://github.com/acg-box/decodex/blob/69ef0e38d74d407a1cbe84ab06ba802adc786a8a/automations/upstream/current-review.json",
-    "previous_selected_runtime": {
-      "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
-      "qualification": "https://github.com/acg-box/decodex/blob/4c9b2c5fce988f038569a7a23092c8b97443b53f/automations/upstream/qualification.json",
-      "delivery": "https://github.com/acg-box/decodex/pull/2587"
-    },
-    "older_certified_ranges": "Retained in native checkpoint and Git history. This migration does not change their coverage limits.",
-    "unrecovered_historical_claims": "The older exact 153-test manifest remains unknown. No historical claim was filled from a rebuilt artifact."
+    "current_cache_observation": "The compatible-version cache at the previous source has different component hashes from the historical qualification. Its two fresh failing regression executions are a baseline comparison, not reused qualification."
   },
   "source_integrity": {
-    "source_archive_url": "https://codeload.github.com/openai/codex/tar.gz/67f0994b532b8740f14b5b738af7b7b2a915b1d6",
-    "archive_sha256": "ae1def152189e98c782126c849bf5cc068e66138501d0832dfa15a2ae0898e02",
-    "build_owner": "scripts/macos/build_codex_source.mts::buildSource",
+    "source_archive_url": "https://codeload.github.com/openai/codex/tar.gz/ba0dfd38979033f514a28d9514215bad46957a18",
+    "archive_regular_files_compared": 9890,
+    "missing_archive_files": [],
+    "source_changes": [
+      "codex-rs/Cargo.lock",
+      "codex-rs/Cargo.toml"
+    ],
+    "source_change_scope": "Only repository-owned compatible workspace version preparation; no Rust behavior change and no external dependency graph change.",
+    "build_owner": "scripts/macos/build_codex_source.mts#buildSource",
     "upstream_entrypoint": "scripts/build_codex_package.py",
-    "source_modifications": false,
-    "cargo_lock_unchanged": true,
     "compiler": "stable",
     "profile": "release",
     "cargo_locked": true,
-    "build_commit_env": "STABLE_GIT_COMMIT=67f0994b532b8740f14b5b738af7b7b2a915b1d6",
-    "signing_recovery": {
-      "initial_prepare_exit": 105,
-      "cause": "The configured default signing identity was unavailable.",
-      "resolution": "Use the existing valid certificate matching the previous qualified artifact and the same repository-owned component signing commands.",
-      "source_rebuilt": false,
-      "strict_component_verification": true
-    },
-    "limit": "The exact official archive was built anew; the package and generated schema were measured, not inferred from version or ancestry."
+    "build_commit_env": "STABLE_GIT_COMMIT=ba0dfd38979033f514a28d9514215bad46957a18",
+    "source_rebuilt_for_signing_recovery": false,
+    "signing_recovery": "The isolated build HOME could not see existing host keychains. The same repository-owned signing commands used the existing matching identity in the host signing context only. No keychain or host tool configuration changed.",
+    "exact_package_import_passed": true
   },
   "prepared_development_package": {
-    "package_metadata": {
-      "layoutVersion": 1,
-      "version": "0.0.0",
-      "target": "aarch64-apple-darwin",
-      "variant": "codex",
-      "entrypoint": "bin/codex",
-      "execServer": "bin/codex-exec-server",
-      "resourcesDir": "codex-resources",
-      "pathDir": "codex-path"
-    },
-    "entrypoint": "DECODEX_APP_SIGN_IDENTITY=\"<existing-signing-identity>\" cargo +stable make prepare-codex",
-    "scope": "Explicit preparation only; app packaging and startup do not compile Codex. Select an existing valid code-signing identity when rebuilding; no certificate fingerprint is retained here."
+    "layoutVersion": 1,
+    "version": "0.166.0+decodex.ba0dfd389790",
+    "target": "aarch64-apple-darwin",
+    "variant": "codex",
+    "entrypoint": "bin/codex",
+    "execServer": "bin/codex-exec-server",
+    "resourcesDir": "codex-resources",
+    "pathDir": "codex-path"
   },
   "development_preparation": {
     "build_command": [
@@ -118,1080 +115,1034 @@
       "make",
       "prepare-codex"
     ],
-    "rebuild_environment": {
-      "DECODEX_APP_SIGN_IDENTITY": "<existing-valid-code-signing-identity>"
-    },
-    "verification_command": "DECODEX_CODEX_DEVELOPMENT_RUNTIME=\"<qualified-runtime>\" cargo +stable make prepare-codex",
-    "verification_exit_code": 0,
-    "schema_expectation": "Use the schema generated by the actual signed CLI; the source-only provisional fingerprint was replaced before final import."
+    "verification_command": [
+      "DECODEX_CODEX_DEVELOPMENT_RUNTIME=<exact-signed-runtime>",
+      "cargo",
+      "+stable",
+      "make",
+      "prepare-codex"
+    ],
+    "initial_build_exit": 105,
+    "initial_failure": "Signing identity unavailable only in isolated HOME; source/package build completed.",
+    "final_import_exit": 0,
+    "schema_expectation": "Generated from the actual signed candidate and independently accepted by common component verification.",
+    "environment": "System-temporary native homes, explicit CLI/runtime paths, preserved host Cargo/Rustup locations, managed Node 26.10.0 and stable Rust."
   },
   "retained_source_inclusion": {
-    "selected": "5be57bedd04d717cdde3a768ea7b71e97733736b",
-    "candidate": "67f0994b532b8740f14b5b738af7b7b2a915b1d6",
+    "selected": "67f0994b532b8740f14b5b738af7b7b2a915b1d6",
+    "candidate": "ba0dfd38979033f514a28d9514215bad46957a18",
     "records": [
       {
         "source": "codex-rs/app-server-protocol/src/protocol/thread_history.rs",
-        "selected_sha256": "6fa206f5ed76b79504281e433ea581c7b1761dac53c4e85be00af361d1291223",
-        "candidate_sha256": "7a0d0277be6be10d670929edae8aae03d43ab562731177443c6e9023502eb066",
+        "selected_sha256": "7a0d0277be6be10d670929edae8aae03d43ab562731177443c6e9023502eb066",
+        "candidate_sha256": "a37262f8bfa6c1915421925d266f3ac88775ec1f24a9fe5ddb616dba22f29442",
         "byte_identical": false,
-        "certified_review_records": [
-          12
+        "certified_changes": [
+          {
+            "commit": "fe16bc0a97d9ffe548b3afddb96ca6ae261f0d81",
+            "index": 1,
+            "range": "current_36",
+            "classification": "native_owned"
+          }
         ]
       },
       {
         "source": "codex-rs/app-server-protocol/src/protocol/v2/mcp.rs",
         "selected_sha256": "71ff45af71302857a5637dee47d8f24b85e8660e145ceb8012d39db432944b12",
         "candidate_sha256": "71ff45af71302857a5637dee47d8f24b85e8660e145ceb8012d39db432944b12",
-        "byte_identical": true,
-        "certified_review_records": []
+        "byte_identical": true
       },
       {
         "source": "codex-rs/app-server-protocol/src/protocol/v2/thread.rs",
         "selected_sha256": "f5a99bd250950ddaa3a07a8cae84e434c77d645650c11ec037e140945fa2c500",
-        "candidate_sha256": "f5a99bd250950ddaa3a07a8cae84e434c77d645650c11ec037e140945fa2c500",
-        "byte_identical": true,
-        "certified_review_records": []
+        "candidate_sha256": "7078523782a03ae0e7b71354bf2d497854777281b449162af2de2a4edea8ee8a",
+        "byte_identical": false,
+        "certified_changes": [
+          {
+            "commit": "8806313db4c82c89efcae3e6ac682bed6f4d6a66",
+            "index": 17,
+            "range": "current_36",
+            "classification": "native_owned"
+          }
+        ]
       },
       {
         "source": "codex-rs/app-server-protocol/src/protocol/v2/thread_sample.rs",
         "selected_sha256": "eb0ab21863171071d4da4084cd71816cfe402989dc067a05b4e8cb19d78be0ae",
         "candidate_sha256": "eb0ab21863171071d4da4084cd71816cfe402989dc067a05b4e8cb19d78be0ae",
-        "byte_identical": true,
-        "certified_review_records": []
+        "byte_identical": true
       },
       {
         "source": "codex-rs/app-server-protocol/src/protocol/v2/turn.rs",
-        "selected_sha256": "fbf1d95b1ee6a24d06e86955a17e45957448622b9128b3a11fe5fa36bc1fa8f8",
+        "selected_sha256": "198434210e6d0d9b11ddc842e499004a34184185ef19d80a47023056fa9c2a6b",
         "candidate_sha256": "198434210e6d0d9b11ddc842e499004a34184185ef19d80a47023056fa9c2a6b",
-        "byte_identical": false,
-        "certified_review_records": [
-          12
-        ]
+        "byte_identical": true
       },
       {
         "source": "codex-rs/app-server/src/bespoke_event_handling.rs",
         "selected_sha256": "be97e0152518ba89d99324b3d194bb487349c0d84ecbc6947fc950cc5c111b2d",
         "candidate_sha256": "be97e0152518ba89d99324b3d194bb487349c0d84ecbc6947fc950cc5c111b2d",
-        "byte_identical": true,
-        "certified_review_records": []
+        "byte_identical": true
       },
       {
         "source": "codex-rs/app-server/src/config_manager_service.rs",
-        "selected_sha256": "df592530732f148a0042408159379481da9d52680cc41ee77f045d59e25b35ac",
-        "candidate_sha256": "993ae697e3d6153250e962551d74ab8d40538e162fe4c4d5b30652c4c9227b17",
+        "selected_sha256": "993ae697e3d6153250e962551d74ab8d40538e162fe4c4d5b30652c4c9227b17",
+        "candidate_sha256": "fa66b3f53f6925aff01f0da4b1d96756e4b253c1de24ca35d2f75194d1553353",
         "byte_identical": false,
-        "certified_review_records": [
-          11
+        "certified_changes": [
+          {
+            "commit": "3026a8e54e0f48c4d8074cd700f35b0697abc329",
+            "index": 6,
+            "range": "current_36",
+            "classification": "not_applicable"
+          },
+          {
+            "commit": "053e5b1ca914981275db97b1262a391d16e42556",
+            "index": 7,
+            "range": "current_36",
+            "classification": "not_applicable"
+          }
         ]
       },
       {
         "source": "codex-rs/app-server/src/request_processors/catalog_processor.rs",
         "selected_sha256": "a0beba234ce4e90dbd11d6f290bb91a35ce1975be4fddf18473de8f0b630a5d8",
-        "candidate_sha256": "a0beba234ce4e90dbd11d6f290bb91a35ce1975be4fddf18473de8f0b630a5d8",
-        "byte_identical": true,
-        "certified_review_records": []
+        "candidate_sha256": "5072ce2b38ffc9551609df13d3c907b913e81ac34281b32c78f16f9d957d484d",
+        "byte_identical": false,
+        "certified_changes": [
+          {
+            "commit": "053e5b1ca914981275db97b1262a391d16e42556",
+            "index": 7,
+            "range": "current_36",
+            "classification": "not_applicable"
+          }
+        ]
       },
       {
         "source": "codex-rs/app-server/src/request_processors/thread_attachments.rs",
         "selected_sha256": "68e6225863604c923de96d5a6eb4c527e8204d4a53069ac776f4917e20f89e7d",
         "candidate_sha256": "68e6225863604c923de96d5a6eb4c527e8204d4a53069ac776f4917e20f89e7d",
-        "byte_identical": true,
-        "certified_review_records": []
+        "byte_identical": true
       },
       {
         "source": "codex-rs/app-server/src/request_processors/thread_processor.rs",
         "selected_sha256": "269b0f282c95c4b4345cd421c9477f0b492f2b424a2659ed70efb9be3768a372",
-        "candidate_sha256": "269b0f282c95c4b4345cd421c9477f0b492f2b424a2659ed70efb9be3768a372",
-        "byte_identical": true,
-        "certified_review_records": []
+        "candidate_sha256": "474604874e02f5ddfa148a65825e6728b7e4be9d5993f28724809b2a36256d52",
+        "byte_identical": false,
+        "certified_changes": [
+          {
+            "commit": "fe16bc0a97d9ffe548b3afddb96ca6ae261f0d81",
+            "index": 1,
+            "range": "current_36",
+            "classification": "native_owned"
+          },
+          {
+            "commit": "1e8b536dc7f834540ef76bf935b45b2f2b4eeedd",
+            "index": 10,
+            "range": "current_36",
+            "classification": "not_applicable"
+          },
+          {
+            "commit": "8806313db4c82c89efcae3e6ac682bed6f4d6a66",
+            "index": 17,
+            "range": "current_36",
+            "classification": "native_owned"
+          }
+        ]
       },
       {
         "source": "codex-rs/app-server/src/request_processors/turn_processor.rs",
         "selected_sha256": "63293d7e2073442d9d5df8c2c146041b28f8ab363c28a4304057ded7c179afb5",
-        "candidate_sha256": "63293d7e2073442d9d5df8c2c146041b28f8ab363c28a4304057ded7c179afb5",
-        "byte_identical": true,
-        "certified_review_records": []
+        "candidate_sha256": "b1d3ae907b06e0f0e333a5969d37df6068ea30a94b87148bb1b842244fae7b9e",
+        "byte_identical": false,
+        "certified_changes": [
+          {
+            "commit": "05c08d76552371400d273d4539c2a116d6340755",
+            "index": 5,
+            "range": "current_36",
+            "classification": "native_owned"
+          }
+        ]
       },
       {
         "source": "codex-rs/app-server/src/startup_config.rs",
         "selected_sha256": "fda9fa408bc2870ea1519f025cf37220a6e15f62767866da107da5b04385790a",
         "candidate_sha256": "fda9fa408bc2870ea1519f025cf37220a6e15f62767866da107da5b04385790a",
-        "byte_identical": true,
-        "certified_review_records": []
+        "byte_identical": true
       },
       {
         "source": "codex-rs/app-server/src/thread_sample.rs",
         "selected_sha256": "57e8c99a79c9e7f1fbc513d15947095fc11b12c62c2b1f4cf767c0bc519ea145",
         "candidate_sha256": "57e8c99a79c9e7f1fbc513d15947095fc11b12c62c2b1f4cf767c0bc519ea145",
-        "byte_identical": true,
-        "certified_review_records": []
+        "byte_identical": true
       },
       {
         "source": "codex-rs/app-server/tests/suite/v2/thread_inject_items.rs",
         "selected_sha256": "ab9e8b6c9a56fef4ae6c6766610c35c0d4383ca733a309e1d390066454c4a5f3",
         "candidate_sha256": "ab9e8b6c9a56fef4ae6c6766610c35c0d4383ca733a309e1d390066454c4a5f3",
-        "byte_identical": true,
-        "certified_review_records": []
+        "byte_identical": true
       },
       {
         "source": "codex-rs/app-server/tests/suite/v2/turn_start.rs",
         "selected_sha256": "9d585679984f7d1b7a567e15e2ddfacbbc9f3538c0579b374b1c5a0c37d9f5f1",
-        "candidate_sha256": "9d585679984f7d1b7a567e15e2ddfacbbc9f3538c0579b374b1c5a0c37d9f5f1",
-        "byte_identical": true,
-        "certified_review_records": []
+        "candidate_sha256": "c562324ef91a7f3f96d64696ffeab20805aabf8504834f808609f6774a48c4bd",
+        "byte_identical": false,
+        "certified_changes": [
+          {
+            "commit": "8806313db4c82c89efcae3e6ac682bed6f4d6a66",
+            "index": 17,
+            "range": "current_36",
+            "classification": "native_owned"
+          }
+        ]
       },
       {
         "source": "codex-rs/app-server/tests/suite/v2/turn_steer.rs",
         "selected_sha256": "165e2792da6556b41d303486bc652463560413943b0f90c56217da1cbcad980b",
         "candidate_sha256": "165e2792da6556b41d303486bc652463560413943b0f90c56217da1cbcad980b",
-        "byte_identical": true,
-        "certified_review_records": []
+        "byte_identical": true
       },
       {
         "source": "codex-rs/exec-server-cli/src/command.rs",
         "selected_sha256": "770abee73a95c63b83f86c28e975881270b033b0e07fc0b718e6b186b1f87d01",
         "candidate_sha256": "770abee73a95c63b83f86c28e975881270b033b0e07fc0b718e6b186b1f87d01",
-        "byte_identical": true,
-        "certified_review_records": []
+        "byte_identical": true
       },
       {
         "source": "codex-rs/exec-server-cli/src/exec_server_credential.rs",
         "selected_sha256": "8b81f34bd61b4d2f062ce8bc731da34dcc5e6fb39aa62c5dbbb787feb322381f",
         "candidate_sha256": "8b81f34bd61b4d2f062ce8bc731da34dcc5e6fb39aa62c5dbbb787feb322381f",
-        "byte_identical": true,
-        "certified_review_records": []
+        "byte_identical": true
       },
       {
         "source": "codex-rs/exec-server-cli/src/exec_server_telemetry.rs",
         "selected_sha256": "657944a07c562258e51a2ac52c1ed021d00d1047767221dec4e5a74d574d298d",
         "candidate_sha256": "657944a07c562258e51a2ac52c1ed021d00d1047767221dec4e5a74d574d298d",
-        "byte_identical": true,
-        "certified_review_records": []
+        "byte_identical": true
       },
       {
         "source": "codex-rs/code-mode-runtime/src/lib.rs",
         "selected_sha256": "3c6973ff5328c76d71f9be7d029fdaca364cfb5b3db4b1367d51ebc7a54069eb",
         "candidate_sha256": "3c6973ff5328c76d71f9be7d029fdaca364cfb5b3db4b1367d51ebc7a54069eb",
-        "byte_identical": true,
-        "certified_review_records": []
+        "byte_identical": true
       },
       {
         "source": "codex-rs/code-mode-runtime/src/v8_init.rs",
         "selected_sha256": "d923e9be4ac679c0f3b09e3c0f84bf381eb2a0de81a8a88838aea64ac6d34ff7",
         "candidate_sha256": "d923e9be4ac679c0f3b09e3c0f84bf381eb2a0de81a8a88838aea64ac6d34ff7",
-        "byte_identical": true,
-        "certified_review_records": []
+        "byte_identical": true
       },
       {
         "source": "codex-rs/codex-api/src/api_bridge.rs",
-        "selected_sha256": "c169f92948739d2e89c12f68d97846d4985972668850c7cdce5b2ff7a2952f2e",
+        "selected_sha256": "6244b845f833e6a94f149e017452c7047aa61fbadccf4b9cc89d08afef926881",
         "candidate_sha256": "6244b845f833e6a94f149e017452c7047aa61fbadccf4b9cc89d08afef926881",
-        "byte_identical": false,
-        "certified_review_records": [
-          13
-        ]
+        "byte_identical": true
       },
       {
         "source": "codex-rs/codex-api/src/error.rs",
-        "selected_sha256": "66246271de1f66146cb74c3dc3462e93c6faeaa993baf71c377af592b25c7f4d",
+        "selected_sha256": "3bb66f83d9224e263feadd8dd6af11df9733344c82304c9d306e1f0b4f8873b5",
         "candidate_sha256": "3bb66f83d9224e263feadd8dd6af11df9733344c82304c9d306e1f0b4f8873b5",
-        "byte_identical": false,
-        "certified_review_records": [
-          13
-        ]
+        "byte_identical": true
       },
       {
         "source": "codex-rs/codex-mcp/src/client_tool_catalog.rs",
         "selected_sha256": "f2e897412330005b7eb60e4e7cc3864d3240ea459ddba3f315af02c101fb47e9",
         "candidate_sha256": "f2e897412330005b7eb60e4e7cc3864d3240ea459ddba3f315af02c101fb47e9",
-        "byte_identical": true,
-        "certified_review_records": []
+        "byte_identical": true
       },
       {
         "source": "codex-rs/codex-mcp/src/connection_manager.rs",
         "selected_sha256": "968b726959997b7fe8b89612bf31e4a7fc901e5bc0a4ff4dedf9de4c6f8b03fd",
         "candidate_sha256": "968b726959997b7fe8b89612bf31e4a7fc901e5bc0a4ff4dedf9de4c6f8b03fd",
-        "byte_identical": true,
-        "certified_review_records": []
+        "byte_identical": true
       },
       {
         "source": "codex-rs/codex-mcp/src/connection_manager/tool_catalog.rs",
         "selected_sha256": "24ace696aeec69aed8099059ae3a5632c6d4f2793831d9bc3c0e8d64bb808d5a",
         "candidate_sha256": "24ace696aeec69aed8099059ae3a5632c6d4f2793831d9bc3c0e8d64bb808d5a",
-        "byte_identical": true,
-        "certified_review_records": []
+        "byte_identical": true
       },
       {
         "source": "codex-rs/codex-mcp/src/mcp/mod.rs",
         "selected_sha256": "79a8900bdbf4810f5e894325a8f033e6993a5935f7432d875585835f13ea45bf",
         "candidate_sha256": "79a8900bdbf4810f5e894325a8f033e6993a5935f7432d875585835f13ea45bf",
-        "byte_identical": true,
-        "certified_review_records": []
+        "byte_identical": true
       },
       {
         "source": "codex-rs/codex-mcp/src/rmcp_client.rs",
         "selected_sha256": "441575e72e8a8ceeba7fac4513792f3b4b6e23c21515b55a380fc5f99afcf94c",
         "candidate_sha256": "441575e72e8a8ceeba7fac4513792f3b4b6e23c21515b55a380fc5f99afcf94c",
-        "byte_identical": true,
-        "certified_review_records": []
+        "byte_identical": true
       },
       {
         "source": "codex-rs/codex-mcp/src/tool_catalog_cache.rs",
         "selected_sha256": "3abb0785975e5c262df255e8119acac430d2cafc717db93b0a87157caa8bd80e",
         "candidate_sha256": "3abb0785975e5c262df255e8119acac430d2cafc717db93b0a87157caa8bd80e",
-        "byte_identical": true,
-        "certified_review_records": []
+        "byte_identical": true
       },
       {
         "source": "codex-rs/config/src/types.rs",
-        "selected_sha256": "3524a2be1e24af0494ced0e1660207d5a8de39e44f92a42d771295b7ed2d7ac6",
+        "selected_sha256": "99a4377be6d6f834f853acb530e3bd0c546f6096387afc708785b459233897b2",
         "candidate_sha256": "99a4377be6d6f834f853acb530e3bd0c546f6096387afc708785b459233897b2",
-        "byte_identical": false,
-        "certified_review_records": [
-          11
-        ]
+        "byte_identical": true
       },
       {
         "source": "codex-rs/connectors/src/connector_runtime/mod.rs",
         "selected_sha256": "bad1272e99926f3672f1f9047ed8b12fb14ec3df71a37effa4c68c683bfa86ea",
         "candidate_sha256": "bad1272e99926f3672f1f9047ed8b12fb14ec3df71a37effa4c68c683bfa86ea",
-        "byte_identical": true,
-        "certified_review_records": []
+        "byte_identical": true
       },
       {
         "source": "codex-rs/core-plugins/src/loader.rs",
-        "selected_sha256": "a3842709f53e8d1c6604d0e278f6f7afc309bc3451db8e61267aa0a794501802",
+        "selected_sha256": "0c16f0a25e4cb0c210c0d3cad21069d52b12a123273d1fe12bfbf54903b33c39",
         "candidate_sha256": "0c16f0a25e4cb0c210c0d3cad21069d52b12a123273d1fe12bfbf54903b33c39",
-        "byte_identical": false,
-        "certified_review_records": [
-          11
-        ]
+        "byte_identical": true
       },
       {
         "source": "codex-rs/core/src/agent/agent_resolver.rs",
         "selected_sha256": "937b7e27ea39a5970ee0ad9696aad8db8d118a118313d83fb4ea0bc8b632946a",
         "candidate_sha256": "937b7e27ea39a5970ee0ad9696aad8db8d118a118313d83fb4ea0bc8b632946a",
-        "byte_identical": true,
-        "certified_review_records": []
+        "byte_identical": true
       },
       {
         "source": "codex-rs/core/src/agent/child_config.rs",
         "selected_sha256": "e41280fdf7e69dedc98dd1f4f66db56d6ea22cda3525e96e0480dabae3b49f51",
         "candidate_sha256": "e41280fdf7e69dedc98dd1f4f66db56d6ea22cda3525e96e0480dabae3b49f51",
-        "byte_identical": true,
-        "certified_review_records": []
+        "byte_identical": true
       },
       {
         "source": "codex-rs/core/src/agent/control/api.rs",
         "selected_sha256": "64184e5f2927f5befbc3f08baefb8dc4ed6d750b541b16d68a5dab2c4225dd46",
         "candidate_sha256": "64184e5f2927f5befbc3f08baefb8dc4ed6d750b541b16d68a5dab2c4225dd46",
-        "byte_identical": true,
-        "certified_review_records": []
+        "byte_identical": true
       },
       {
         "source": "codex-rs/core/src/agent/control/spawn.rs",
         "selected_sha256": "5e1ee008a227c0923ff8f69337e76823d73e40a8e402425c34e883bc7f3368e3",
         "candidate_sha256": "5e1ee008a227c0923ff8f69337e76823d73e40a8e402425c34e883bc7f3368e3",
-        "byte_identical": true,
-        "certified_review_records": []
+        "byte_identical": true
       },
       {
         "source": "codex-rs/core/src/agent/control/spawn_guard.rs",
         "selected_sha256": "184d302e8507153c48eaee0b0ef52582180b692577f3bb7df444d833beb119d4",
         "candidate_sha256": "184d302e8507153c48eaee0b0ef52582180b692577f3bb7df444d833beb119d4",
-        "byte_identical": true,
-        "certified_review_records": []
+        "byte_identical": true
       },
       {
         "source": "codex-rs/core/src/agent/control_tests.rs",
         "selected_sha256": "37700e5581e69f54e20470e39859bb7848f6b5c55ac365a639a361a20d549352",
-        "candidate_sha256": "37700e5581e69f54e20470e39859bb7848f6b5c55ac365a639a361a20d549352",
-        "byte_identical": true,
-        "certified_review_records": []
+        "candidate_sha256": "a0aa7899b6f4026b0c6998c64025b03fa8f3b4afebe9f573f1ba762a9615b27a",
+        "byte_identical": false,
+        "certified_changes": [
+          {
+            "commit": "ac9372e521e12d986f8e218ef09719a4adfcb772",
+            "index": 31,
+            "range": "current_36",
+            "classification": "native_owned"
+          }
+        ]
       },
       {
         "source": "codex-rs/core/src/mcp_tool_call.rs",
         "selected_sha256": "7dcde75d8d18649d9b6fc3f4f14bd67f1ca065488da7a71d11cfb536fdd567c0",
         "candidate_sha256": "7dcde75d8d18649d9b6fc3f4f14bd67f1ca065488da7a71d11cfb536fdd567c0",
-        "byte_identical": true,
-        "certified_review_records": []
+        "byte_identical": true
       },
       {
         "source": "codex-rs/core/src/session_rollout_init_error.rs",
         "selected_sha256": "10a50d445e53527f048c7709b00766d973382eaf0420397b1c1c6eb48132a91e",
         "candidate_sha256": "10a50d445e53527f048c7709b00766d973382eaf0420397b1c1c6eb48132a91e",
-        "byte_identical": true,
-        "certified_review_records": []
+        "byte_identical": true
       },
       {
         "source": "codex-rs/core/src/thread_manager/shutdown.rs",
         "selected_sha256": "9cc938d0f4c55e40d954a1e7b793e3fad19321b48983f0966420c47ef06afdbe",
         "candidate_sha256": "9cc938d0f4c55e40d954a1e7b793e3fad19321b48983f0966420c47ef06afdbe",
-        "byte_identical": true,
-        "certified_review_records": []
+        "byte_identical": true
       },
       {
         "source": "codex-rs/core/src/thread_spawn.rs",
         "selected_sha256": "32d0a382e893a6103631f01f2c74b1da56a3119d068966c77691fdc30438c7dd",
         "candidate_sha256": "32d0a382e893a6103631f01f2c74b1da56a3119d068966c77691fdc30438c7dd",
-        "byte_identical": true,
-        "certified_review_records": []
+        "byte_identical": true
       },
       {
         "source": "codex-rs/core/src/tools/approvals.rs",
         "selected_sha256": "0ec12637d65ac587b0e42509a606e6e7e1a054a09841c4259c26bbad75504d43",
         "candidate_sha256": "0ec12637d65ac587b0e42509a606e6e7e1a054a09841c4259c26bbad75504d43",
-        "byte_identical": true,
-        "certified_review_records": []
+        "byte_identical": true
       },
       {
         "source": "codex-rs/core/src/tools/handlers/dynamic.rs",
         "selected_sha256": "97986c9a4af552ff6f069781f7c3356d0ad671596376f6084c3d3d871870eb94",
         "candidate_sha256": "97986c9a4af552ff6f069781f7c3356d0ad671596376f6084c3d3d871870eb94",
-        "byte_identical": true,
-        "certified_review_records": []
+        "byte_identical": true
       },
       {
         "source": "codex-rs/core/src/tools/handlers/mcp.rs",
         "selected_sha256": "d2685131da1da1402fd7a2282d06a7ab13cbc8087a2c96719b044305983ac1f9",
         "candidate_sha256": "d2685131da1da1402fd7a2282d06a7ab13cbc8087a2c96719b044305983ac1f9",
-        "byte_identical": true,
-        "certified_review_records": []
+        "byte_identical": true
       },
       {
         "source": "codex-rs/core/src/tools/handlers/multi_agents_v2/message_tool.rs",
         "selected_sha256": "bcd9b05f785196f211f7e36a072b99c6ec7c332702b677d6ba64f12a675cd27f",
         "candidate_sha256": "bcd9b05f785196f211f7e36a072b99c6ec7c332702b677d6ba64f12a675cd27f",
-        "byte_identical": true,
-        "certified_review_records": []
+        "byte_identical": true
       },
       {
         "source": "codex-rs/core/src/tools/handlers/request_user_input.rs",
         "selected_sha256": "f4975978234d0ff7c143e6a5616d5523b9bddac044a6e39f8a0a32dcf0f56a38",
         "candidate_sha256": "f4975978234d0ff7c143e6a5616d5523b9bddac044a6e39f8a0a32dcf0f56a38",
-        "byte_identical": true,
-        "certified_review_records": []
+        "byte_identical": true
       },
       {
         "source": "codex-rs/core/src/tools/handlers/request_user_input_tests.rs",
         "selected_sha256": "7ba46eda1f8eb96886be6894cf19f1ddce5b7022c267df36882e9462e62cd095",
         "candidate_sha256": "7ba46eda1f8eb96886be6894cf19f1ddce5b7022c267df36882e9462e62cd095",
-        "byte_identical": true,
-        "certified_review_records": []
+        "byte_identical": true
       },
       {
         "source": "codex-rs/core/src/tools/spec_plan.rs",
         "selected_sha256": "d2bc16c3fb57c9cb7459efff6723f8bd14fa079ab531de2afe0616d28a5bc2ce",
         "candidate_sha256": "d2bc16c3fb57c9cb7459efff6723f8bd14fa079ab531de2afe0616d28a5bc2ce",
-        "byte_identical": true,
-        "certified_review_records": []
+        "byte_identical": true
       },
       {
         "source": "codex-rs/core/tests/suite/request_user_input_async.rs",
         "selected_sha256": "4fac245ea53486672d8b4902369fec80adf9571c171cafde541095063fdbd722",
         "candidate_sha256": "4fac245ea53486672d8b4902369fec80adf9571c171cafde541095063fdbd722",
-        "byte_identical": true,
-        "certified_review_records": []
+        "byte_identical": true
       },
       {
         "source": "codex-rs/exec-server/src/client.rs",
         "selected_sha256": "2de6e42219fc783d55b5380b9cb841301085d53e9dc48819c447b9402a33201f",
         "candidate_sha256": "2de6e42219fc783d55b5380b9cb841301085d53e9dc48819c447b9402a33201f",
-        "byte_identical": true,
-        "certified_review_records": []
+        "byte_identical": true
       },
       {
         "source": "codex-rs/exec-server/src/client_transport.rs",
         "selected_sha256": "9a3cd08249b20665bba2a0f5734fd35158d438a7e99259aeea1064e489e57bef",
         "candidate_sha256": "9a3cd08249b20665bba2a0f5734fd35158d438a7e99259aeea1064e489e57bef",
-        "byte_identical": true,
-        "certified_review_records": []
+        "byte_identical": true
       },
       {
         "source": "codex-rs/exec-server/src/local_file_system.rs",
         "selected_sha256": "cdde849d2bd265cf199bb01bd9051060d3c9576d2b6757104d52324bf6dcaea2",
         "candidate_sha256": "cdde849d2bd265cf199bb01bd9051060d3c9576d2b6757104d52324bf6dcaea2",
-        "byte_identical": true,
-        "certified_review_records": []
+        "byte_identical": true
       },
       {
         "source": "codex-rs/exec-server/src/process_sandbox.rs",
         "selected_sha256": "e66a8116655beeef5ccb9070f43b9945f9688adf8277ed6a7a91b0a04969aebe",
         "candidate_sha256": "e66a8116655beeef5ccb9070f43b9945f9688adf8277ed6a7a91b0a04969aebe",
-        "byte_identical": true,
-        "certified_review_records": []
+        "byte_identical": true
       },
       {
         "source": "codex-rs/exec-server/src/remote_file_system.rs",
         "selected_sha256": "95bda4ecd1e85c50bcca88eca730dbaf60174da57a838b6e02dc832e16a0f1ff",
         "candidate_sha256": "95bda4ecd1e85c50bcca88eca730dbaf60174da57a838b6e02dc832e16a0f1ff",
-        "byte_identical": true,
-        "certified_review_records": []
+        "byte_identical": true
       },
       {
         "source": "codex-rs/exec-server/src/shell_snapshot.rs",
         "selected_sha256": "911a6ac4e5e5cc3132323a4a44a51479dfdf915b79fa6c275e7ab25d64b96af5",
         "candidate_sha256": "911a6ac4e5e5cc3132323a4a44a51479dfdf915b79fa6c275e7ab25d64b96af5",
-        "byte_identical": true,
-        "certified_review_records": []
+        "byte_identical": true
       },
       {
         "source": "codex-rs/exec-server/src/shell_snapshot_credentials.rs",
         "selected_sha256": "b755489fd98ee23fe99781343c1d4d6a2a31e4a4c9556b63385013de4f5b9a26",
         "candidate_sha256": "b755489fd98ee23fe99781343c1d4d6a2a31e4a4c9556b63385013de4f5b9a26",
-        "byte_identical": true,
-        "certified_review_records": []
+        "byte_identical": true
       },
       {
         "source": "codex-rs/exec/src/lib.rs",
         "selected_sha256": "53e0d7cac90466dc088dd5457c72813ef8c0a8c56fe6466eb602c85b8f45a6f3",
-        "candidate_sha256": "53e0d7cac90466dc088dd5457c72813ef8c0a8c56fe6466eb602c85b8f45a6f3",
-        "byte_identical": true,
-        "certified_review_records": []
+        "candidate_sha256": "f50982898adc7c8d2b5b5030ca7554864fc4fd8f8d3aa1b32a40e0079f002009",
+        "byte_identical": false,
+        "certified_changes": [
+          {
+            "commit": "8806313db4c82c89efcae3e6ac682bed6f4d6a66",
+            "index": 17,
+            "range": "current_36",
+            "classification": "native_owned"
+          }
+        ]
       },
       {
         "source": "codex-rs/ext/guardian-v2/src/async_scorer/decisions.rs",
         "selected_sha256": "52a082dd3f4c4f17e150aca46218182ca5460074f464afe509da97b940d2ca45",
         "candidate_sha256": "52a082dd3f4c4f17e150aca46218182ca5460074f464afe509da97b940d2ca45",
-        "byte_identical": true,
-        "certified_review_records": []
+        "byte_identical": true
       },
       {
         "source": "codex-rs/ext/guardian-v2/src/async_scorer/metrics.rs",
-        "selected_sha256": "1fb41ceb64f28592126e7f80d95ad573e07362c2db5376208346d825fe69ddb7",
+        "selected_sha256": "76657c3b556be6546b2854a0f5a833fc167c7f1e592c374c63af8909d60c2082",
         "candidate_sha256": "76657c3b556be6546b2854a0f5a833fc167c7f1e592c374c63af8909d60c2082",
-        "byte_identical": false,
-        "certified_review_records": [
-          13
-        ]
+        "byte_identical": true
       },
       {
         "source": "codex-rs/ext/image-generation/src/tool.rs",
         "selected_sha256": "498d8a9504df3ee7a6a696ad92c8521e9bd66b7189edcef77b94ea85ae08fe58",
         "candidate_sha256": "498d8a9504df3ee7a6a696ad92c8521e9bd66b7189edcef77b94ea85ae08fe58",
-        "byte_identical": true,
-        "certified_review_records": []
+        "byte_identical": true
       },
       {
         "source": "codex-rs/ext/items/src/image_generation.rs",
         "selected_sha256": "95cf9912f208a98c580a6c05eb7033d67ee485d83e7edf460c3b1a904a793978",
         "candidate_sha256": "95cf9912f208a98c580a6c05eb7033d67ee485d83e7edf460c3b1a904a793978",
-        "byte_identical": true,
-        "certified_review_records": []
+        "byte_identical": true
       },
       {
         "source": "codex-rs/features/src/lib.rs",
-        "selected_sha256": "c29e2b1a8def4b973788a4bc41044561cc49e062da678a9298e4e6abbae595af",
-        "candidate_sha256": "905c8c54b2104d7f37eb4b15b963c37f9ff15850dc9c46662a6dc5be0b77e396",
+        "selected_sha256": "905c8c54b2104d7f37eb4b15b963c37f9ff15850dc9c46662a6dc5be0b77e396",
+        "candidate_sha256": "5694391aafce6da94d61472ef9c46ad4facb4b15878044d7fb3649d3dea72c1a",
         "byte_identical": false,
-        "certified_review_records": [
-          6,
-          4
+        "certified_changes": [
+          {
+            "commit": "1e8b536dc7f834540ef76bf935b45b2f2b4eeedd",
+            "index": 10,
+            "range": "current_36",
+            "classification": "not_applicable"
+          },
+          {
+            "commit": "a5c409243744c3b99776259eea2f3a13d6af4447",
+            "index": 26,
+            "range": "current_36",
+            "classification": "not_applicable"
+          }
         ]
       },
       {
         "source": "codex-rs/file-system/src/environment_accessor.rs",
         "selected_sha256": "9654519862cea3002ea18d3a0fa145716f18b85f925eec62c5ed64c557de7164",
         "candidate_sha256": "9654519862cea3002ea18d3a0fa145716f18b85f925eec62c5ed64c557de7164",
-        "byte_identical": true,
-        "certified_review_records": []
+        "byte_identical": true
       },
       {
         "source": "codex-rs/file-system/src/lib.rs",
         "selected_sha256": "0d33b04bdc0d2494352cfa403df50b3e4a6e918c99e1aee0a6222e06a58f5f22",
         "candidate_sha256": "0d33b04bdc0d2494352cfa403df50b3e4a6e918c99e1aee0a6222e06a58f5f22",
-        "byte_identical": true,
-        "certified_review_records": []
+        "byte_identical": true
       },
       {
         "source": "codex-rs/file-system/src/nfs.rs",
         "selected_sha256": "ebd4950d3bcbdf287485cfdcfd45910167e1717923f47ac5a42cf2831fd977da",
         "candidate_sha256": "ebd4950d3bcbdf287485cfdcfd45910167e1717923f47ac5a42cf2831fd977da",
-        "byte_identical": true,
-        "certified_review_records": []
+        "byte_identical": true
       },
       {
         "source": "codex-rs/hooks/src/engine/command_runner.rs",
         "selected_sha256": "8f30ad4d5f31633822b3718dd3e967df98a17b1b0fd42c9a12f8cb52973c3166",
         "candidate_sha256": "8f30ad4d5f31633822b3718dd3e967df98a17b1b0fd42c9a12f8cb52973c3166",
-        "byte_identical": true,
-        "certified_review_records": []
+        "byte_identical": true
       },
       {
         "source": "codex-rs/hooks/src/engine/discovery.rs",
         "selected_sha256": "b61b90060075bf60ecad8fea012cfa332526a5badc5c2f541fda61446513d094",
         "candidate_sha256": "b61b90060075bf60ecad8fea012cfa332526a5badc5c2f541fda61446513d094",
-        "byte_identical": true,
-        "certified_review_records": []
+        "byte_identical": true
       },
       {
         "source": "codex-rs/hooks/src/engine/mcp_runner.rs",
         "selected_sha256": "40543c670568ca7ae64110f86f5cd3cdf2c27208c02c6892796516fb96c6f8b7",
         "candidate_sha256": "40543c670568ca7ae64110f86f5cd3cdf2c27208c02c6892796516fb96c6f8b7",
-        "byte_identical": true,
-        "certified_review_records": []
+        "byte_identical": true
       },
       {
         "source": "codex-rs/hooks/src/engine/plugin_fingerprint.rs",
         "selected_sha256": "66ab09a229f4c0230f1dd012692102e5fd3b1aad21c915ec05b4d9f529911dbf",
         "candidate_sha256": "66ab09a229f4c0230f1dd012692102e5fd3b1aad21c915ec05b4d9f529911dbf",
-        "byte_identical": true,
-        "certified_review_records": []
+        "byte_identical": true
       },
       {
         "source": "codex-rs/hooks/src/engine/plugin_trust.rs",
         "selected_sha256": "75e15014d76f19da6d932ac297a6d9df79fe2c6320933f9cb00b176235e7facf",
         "candidate_sha256": "75e15014d76f19da6d932ac297a6d9df79fe2c6320933f9cb00b176235e7facf",
-        "byte_identical": true,
-        "certified_review_records": []
+        "byte_identical": true
       },
       {
         "source": "codex-rs/network-proxy/src/runtime.rs",
         "selected_sha256": "3356c23eada6bc5f79fec7a89535f651343509a672c10ee93b252254983a2dc7",
         "candidate_sha256": "3356c23eada6bc5f79fec7a89535f651343509a672c10ee93b252254983a2dc7",
-        "byte_identical": true,
-        "certified_review_records": []
+        "byte_identical": true
       },
       {
         "source": "codex-rs/protocol/src/mcp_approval_meta.rs",
         "selected_sha256": "d5acc7ac1ea70e399941852e6364b369976be19f610fe8f257c44d35d599cce6",
         "candidate_sha256": "d5acc7ac1ea70e399941852e6364b369976be19f610fe8f257c44d35d599cce6",
-        "byte_identical": true,
-        "certified_review_records": []
+        "byte_identical": true
       },
       {
         "source": "codex-rs/responses-api-proxy/src/lib.rs",
         "selected_sha256": "e080ce9ef9b8e858ceee145842ad8b84ce3b38056c892e3f2115d5caeae71b71",
         "candidate_sha256": "e080ce9ef9b8e858ceee145842ad8b84ce3b38056c892e3f2115d5caeae71b71",
-        "byte_identical": true,
-        "certified_review_records": []
+        "byte_identical": true
       },
       {
         "source": "codex-rs/rmcp-client/src/auth_status.rs",
         "selected_sha256": "c63ae45d67cd71988e6414b6c6136fc9c74da203d334932d19cc96073ef40ed6",
         "candidate_sha256": "c63ae45d67cd71988e6414b6c6136fc9c74da203d334932d19cc96073ef40ed6",
-        "byte_identical": true,
-        "certified_review_records": []
+        "byte_identical": true
       },
       {
         "source": "codex-rs/rmcp-client/src/tool_list_changes.rs",
         "selected_sha256": "608ce48fe2457addf6c2de1e3bd4d914ff8308fd657c4b5f440383983ec0ac74",
         "candidate_sha256": "608ce48fe2457addf6c2de1e3bd4d914ff8308fd657c4b5f440383983ec0ac74",
-        "byte_identical": true,
-        "certified_review_records": []
+        "byte_identical": true
       },
       {
         "source": "codex-rs/shell-command/src/shell_snapshot_restore.rs",
         "selected_sha256": "90a6188a126a0be1e2e5b0e5e2193c879b8d5d9e3443650285bfdfdd29025a29",
         "candidate_sha256": "90a6188a126a0be1e2e5b0e5e2193c879b8d5d9e3443650285bfdfdd29025a29",
-        "byte_identical": true,
-        "certified_review_records": []
+        "byte_identical": true
       },
       {
         "source": "codex-rs/state/src/runtime/reclamation.rs",
         "selected_sha256": "833104f1e57768ae96c58f5df71d2ae3d658b3c3aeea7141ce960f68ef660650",
         "candidate_sha256": "833104f1e57768ae96c58f5df71d2ae3d658b3c3aeea7141ce960f68ef660650",
-        "byte_identical": true,
-        "certified_review_records": []
+        "byte_identical": true
       },
       {
         "source": "codex-rs/state/src/sqlite.rs",
         "selected_sha256": "b388a260007fa8036c1007b63f44a20f7611536c66244e5e5393484ee387bfe9",
         "candidate_sha256": "b388a260007fa8036c1007b63f44a20f7611536c66244e5e5393484ee387bfe9",
-        "byte_identical": true,
-        "certified_review_records": []
+        "byte_identical": true
       },
       {
         "source": "codex-rs/thread-store/src/error.rs",
         "selected_sha256": "d45eccd31e1c13db7d85cae513644dec5cd812a6c324a08218f3ad74120ce105",
         "candidate_sha256": "d45eccd31e1c13db7d85cae513644dec5cd812a6c324a08218f3ad74120ce105",
-        "byte_identical": true,
-        "certified_review_records": []
+        "byte_identical": true
       },
       {
         "source": "codex-rs/thread-store/src/local/thread_history_materialization.rs",
         "selected_sha256": "47f5225cbe581f14debfc3ac197152005ed81b66d4b5c1fb993febf174dcf430",
-        "candidate_sha256": "47f5225cbe581f14debfc3ac197152005ed81b66d4b5c1fb993febf174dcf430",
-        "byte_identical": true,
-        "certified_review_records": []
+        "candidate_sha256": "8afb5be7a421ad35c9c90367dade3a2d88668a1ad12ad937dd97a671ee6ade99",
+        "byte_identical": false,
+        "certified_changes": [
+          {
+            "commit": "b7ca29d25b918fffaa62185594bc1970fc037226",
+            "index": 35,
+            "range": "current_36",
+            "classification": "necessary_repair"
+          }
+        ]
       },
       {
         "source": "codex-rs/app-server/tests/suite/v2/attached_thread_tests.rs",
         "selected_sha256": "ee073d7c9d54f79b750b9f4b00fdb2303c1f4fd26f47407ac4cd66650e3590ca",
         "candidate_sha256": "ee073d7c9d54f79b750b9f4b00fdb2303c1f4fd26f47407ac4cd66650e3590ca",
-        "byte_identical": true,
-        "certified_review_records": []
+        "byte_identical": true
       },
       {
         "source": "codex-rs/app-server/tests/suite/v2/memory_read.rs",
         "selected_sha256": "5984fa0788103a81ce37d61aba61ef00dfb71ca61be2cb6b4a3df05864d3aada",
         "candidate_sha256": "5984fa0788103a81ce37d61aba61ef00dfb71ca61be2cb6b4a3df05864d3aada",
-        "byte_identical": true,
-        "certified_review_records": []
+        "byte_identical": true
       }
     ],
-    "limit": "Source inclusion only; affected behavior is qualified by the current exact-artifact regressions. Previous execution receipts apply only to their original artifact.",
-    "identical_boundaries": 74,
-    "changed_boundaries_with_certified_review": 9,
-    "review_evidence": "automations/upstream/current-review.json",
-    "previous_qualification": "https://github.com/acg-box/decodex/blob/4c9b2c5fce988f038569a7a23092c8b97443b53f/automations/upstream/qualification.json"
+    "limit": "Source boundary inclusion only, not executed qualification or proof by ancestry. Changed boundaries must retain their certified review references and concrete native checks."
   },
   "source_validation": {
     "review": "automations/upstream/current-review.json",
-    "commits_reviewed": 21,
-    "test_bodies_read": 63,
-    "upstream_tests_executed": 0,
-    "limit": "Relevant diffs, affected implementations and test bodies were read. No upstream test suite was run."
+    "commits_reviewed": 36,
+    "test_bodies_read": 59,
+    "upstream_tests_executed": [],
+    "prior_nine_review": "Already certified; included in candidate and preserved through the previous portable review reference.",
+    "limit": "File hashes establish source inclusion. They are not runtime qualification or semantic proof by ancestry."
   },
   "retained_consumers": {
     "manifest": "automations/upstream/retained-evidence.json#retained_native_consumers",
-    "reconstruction_native_selectors": 53,
-    "current_native_executed": 9,
-    "current_component_executed": 1,
-    "current_passed": 10,
-    "current_failed": 0,
+    "registered_count": 11,
+    "executed": 11,
+    "passed": 11,
+    "failed": 0,
     "unmatched_selectors": [],
+    "test_binary_sha256": "7284a012a14314eb78ec946bcd8868f75510d22ea0b05b20070d0922681add27",
+    "helper_selection": "Direct compiled libtest entrypoint with an explicit signed CLI path; native fixtures clear inherited environment and resolve packaged sibling helpers. No nextest helper substitution.",
     "executions": [
       {
-        "command": [
-          "cargo",
-          "+stable",
-          "nextest",
-          "run",
-          "--locked",
-          "-p",
-          "decodex-runtime",
-          "--lib",
-          "--all-features",
-          "--run-ignored",
-          "only",
-          "-E",
-          "test(=account_launch::agent_process::native_tests::compaction::unreported_usage::installed_unreported_reasoning_triggers_compaction_before_continuation) | test(=account_launch::agent_process::native_tests::compaction::installed_native_streams_auto_compaction_and_resumes_its_checkpoint) | test(=account_launch::agent_process::native_tests::reviewer::installed_native_guardian_preserves_large_action) | test(=account_launch::agent_process::native_tests::code_mode::installed_native_parallel_dynamic_tools_preserve_ids_and_result_order) | test(=account_launch::agent_process::native_tests::discovery::installed_native_mcp_capabilities_survive_tool_discovery_failure) | test(=account_launch::agent_process::native_tests::reviewer::store::live_model::child_model::installed_native_child_inherits_updated_step_model) | test(=account_launch::agent_process::native_tests::realtime::installed_native_realtime_history_survives_agent_and_cold_bridge) | test(=account_launch::agent_process::native_tests::cold_settings::recap_socket::fork::installed_provider_recovery_fork_preserves_context_and_restarts_on_current_provider)",
-          "--test-threads",
-          "1",
-          "--retries",
-          "0",
-          "--no-fail-fast"
+        "selector": "account_launch::agent_process::native_tests::archive::installed_native_archive_catalog_pages_every_timestamp_tie",
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_archive_tests.rs",
+        "required_proof": "Opaque native catalog cursors must enumerate timestamp ties without omissions or extra inference.",
+        "entrypoint": [
+          "<compiled-decodex-runtime-libtest>",
+          "account_launch::agent_process::native_tests::archive::installed_native_archive_catalog_pages_every_timestamp_tie",
+          "--exact",
+          "--ignored",
+          "--nocapture",
+          "--test-threads=1"
         ],
-        "source_commit": "67f0994b532b8740f14b5b738af7b7b2a915b1d6",
-        "binary_sha256": "58ad0dde61345c3af5f57a8881468c2ed64fff34fc984586049566f307d8706e",
-        "exit_code": 0,
-        "selected": [
-          "account_launch::agent_process::native_tests::compaction::unreported_usage::installed_unreported_reasoning_triggers_compaction_before_continuation",
+        "executed": 1,
+        "passed": 1,
+        "failed": 0,
+        "exit_code": 0
+      },
+      {
+        "selector": "account_launch::agent_process::native_tests::history_recovery::installed_native_fork_history_recovers_from_intact_ancestor_copy",
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_history_recovery_tests.rs",
+        "required_proof": "Cold ordinary native forks retain their visible inherited prefix; attached Side chats retain empty visible source history. Both recover model context from the same intact managed ancestor copy and infer only on explicit continuation.",
+        "entrypoint": [
+          "<compiled-decodex-runtime-libtest>",
+          "account_launch::agent_process::native_tests::history_recovery::installed_native_fork_history_recovers_from_intact_ancestor_copy",
+          "--exact",
+          "--ignored",
+          "--nocapture",
+          "--test-threads=1"
+        ],
+        "executed": 1,
+        "passed": 1,
+        "failed": 0,
+        "exit_code": 0
+      },
+      {
+        "selector": "account_launch::agent_process::native_tests::steer::installed_native_steer_receipt_confirms_live_and_cold_without_replay",
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_steer_tests.rs",
+        "required_proof": "Retained exact-turn client IDs and durable uncertain steering receipts across native finalization changes.",
+        "entrypoint": [
+          "<compiled-decodex-runtime-libtest>",
+          "account_launch::agent_process::native_tests::steer::installed_native_steer_receipt_confirms_live_and_cold_without_replay",
+          "--exact",
+          "--ignored",
+          "--nocapture",
+          "--test-threads=1"
+        ],
+        "executed": 1,
+        "passed": 1,
+        "failed": 0,
+        "exit_code": 0
+      },
+      {
+        "selector": "account_launch::agent_process::native_tests::sample::installed_native_sampling_preserves_parent_and_blocks_tools_without_replay",
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_sample_tests.rs",
+        "required_proof": "Inline prompt suggestions retain private native sampling without parent-history writes, input replay or tool execution.",
+        "entrypoint": [
+          "<compiled-decodex-runtime-libtest>",
+          "account_launch::agent_process::native_tests::sample::installed_native_sampling_preserves_parent_and_blocks_tools_without_replay",
+          "--exact",
+          "--ignored",
+          "--nocapture",
+          "--test-threads=1"
+        ],
+        "executed": 1,
+        "passed": 1,
+        "failed": 0,
+        "exit_code": 0
+      },
+      {
+        "selector": "account_launch::agent_process::native_tests::models::installed_model_selection_changes_next_inference_and_survives_restart",
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_model_tests.rs",
+        "required_proof": "Native current-provider model manager changes must retain current model selection and cold persistence.",
+        "entrypoint": [
+          "<compiled-decodex-runtime-libtest>",
+          "account_launch::agent_process::native_tests::models::installed_model_selection_changes_next_inference_and_survives_restart",
+          "--exact",
+          "--ignored",
+          "--nocapture",
+          "--test-threads=1"
+        ],
+        "executed": 1,
+        "passed": 1,
+        "failed": 0,
+        "exit_code": 0
+      },
+      {
+        "selector": "account_launch::agent_process::native_tests::cold_settings::recap_socket::fork::installed_provider_recovery_fork_preserves_context_and_restarts_on_current_provider",
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_fork_tests.rs",
+        "required_proof": "Current-main explicit provider recovery and Side chat forks must retain context and current creation defaults.",
+        "entrypoint": [
+          "<compiled-decodex-runtime-libtest>",
+          "account_launch::agent_process::native_tests::cold_settings::recap_socket::fork::installed_provider_recovery_fork_preserves_context_and_restarts_on_current_provider",
+          "--exact",
+          "--ignored",
+          "--nocapture",
+          "--test-threads=1"
+        ],
+        "executed": 1,
+        "passed": 1,
+        "failed": 0,
+        "exit_code": 0
+      },
+      {
+        "selector": "account_launch::agent_process::native_tests::compaction::installed_native_streams_auto_compaction_and_resumes_its_checkpoint",
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_compaction_tests.rs",
+        "required_proof": "Native transport and volatile World State changes must retain automatic compaction and checkpoint resume.",
+        "entrypoint": [
+          "<compiled-decodex-runtime-libtest>",
           "account_launch::agent_process::native_tests::compaction::installed_native_streams_auto_compaction_and_resumes_its_checkpoint",
+          "--exact",
+          "--ignored",
+          "--nocapture",
+          "--test-threads=1"
+        ],
+        "executed": 1,
+        "passed": 1,
+        "failed": 0,
+        "exit_code": 0
+      },
+      {
+        "selector": "account_launch::agent_process::native_tests::reviewer::installed_native_guardian_preserves_large_action",
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_reviewer_tests.rs",
+        "required_proof": "Changed Guardian preparation/shared patch interception must retain complete bounded native approval actions.",
+        "entrypoint": [
+          "<compiled-decodex-runtime-libtest>",
           "account_launch::agent_process::native_tests::reviewer::installed_native_guardian_preserves_large_action",
+          "--exact",
+          "--ignored",
+          "--nocapture",
+          "--test-threads=1"
+        ],
+        "executed": 1,
+        "passed": 1,
+        "failed": 0,
+        "exit_code": 0
+      },
+      {
+        "selector": "account_launch::agent_process::native_tests::code_mode::installed_native_parallel_dynamic_tools_preserve_ids_and_result_order",
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_code_mode_tests.rs",
+        "required_proof": "The newly built packaged Code Mode host must retain parallel tool IDs and ordered results.",
+        "entrypoint": [
+          "<compiled-decodex-runtime-libtest>",
           "account_launch::agent_process::native_tests::code_mode::installed_native_parallel_dynamic_tools_preserve_ids_and_result_order",
+          "--exact",
+          "--ignored",
+          "--nocapture",
+          "--test-threads=1"
+        ],
+        "executed": 1,
+        "passed": 1,
+        "failed": 0,
+        "exit_code": 0
+      },
+      {
+        "selector": "account_launch::agent_process::native_tests::discovery::installed_native_mcp_capabilities_survive_tool_discovery_failure",
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_discovery_tests.rs",
+        "required_proof": "Native MCP call attribution changes must retain generic tool discovery failure behavior; shared MCP remains excluded.",
+        "entrypoint": [
+          "<compiled-decodex-runtime-libtest>",
           "account_launch::agent_process::native_tests::discovery::installed_native_mcp_capabilities_survive_tool_discovery_failure",
-          "account_launch::agent_process::native_tests::reviewer::store::live_model::child_model::installed_native_child_inherits_updated_step_model",
-          "account_launch::agent_process::native_tests::realtime::installed_native_realtime_history_survives_agent_and_cold_bridge",
-          "account_launch::agent_process::native_tests::cold_settings::recap_socket::fork::installed_provider_recovery_fork_preserves_context_and_restarts_on_current_provider"
+          "--exact",
+          "--ignored",
+          "--nocapture",
+          "--test-threads=1"
         ],
-        "outcomes": {
-          "account_launch::agent_process::native_tests::code_mode::installed_native_parallel_dynamic_tools_preserve_ids_and_result_order": "PASS",
-          "account_launch::agent_process::native_tests::cold_settings::recap_socket::fork::installed_provider_recovery_fork_preserves_context_and_restarts_on_current_provider": "PASS",
-          "account_launch::agent_process::native_tests::compaction::installed_native_streams_auto_compaction_and_resumes_its_checkpoint": "PASS",
-          "account_launch::agent_process::native_tests::compaction::unreported_usage::installed_unreported_reasoning_triggers_compaction_before_continuation": "PASS",
-          "account_launch::agent_process::native_tests::discovery::installed_native_mcp_capabilities_survive_tool_discovery_failure": "PASS",
-          "account_launch::agent_process::native_tests::realtime::installed_native_realtime_history_survives_agent_and_cold_bridge": "PASS",
-          "account_launch::agent_process::native_tests::reviewer::installed_native_guardian_preserves_large_action": "PASS",
-          "account_launch::agent_process::native_tests::reviewer::store::live_model::child_model::installed_native_child_inherits_updated_step_model": "PASS"
-        },
-        "executed": 8,
-        "passed": 8,
-        "failed": 0,
-        "unmatched_selectors": [],
-        "id": "target-native",
-        "environment": {
-          "DECODEX_TEST_CODEX_BINARY": "<qualified-runtime>/CodexCLI.app/Contents/MacOS/codex",
-          "DECODEX_NATIVE_BINARY": "<qualified-runtime>/CodexCLI.app/Contents/MacOS/codex",
-          "HOME": "<isolated-system-temporary-home>"
-        }
-      },
-      {
-        "command": [
-          "cargo",
-          "+stable",
-          "nextest",
-          "run",
-          "--locked",
-          "-p",
-          "decodex-runtime",
-          "--lib",
-          "--all-features",
-          "--run-ignored",
-          "only",
-          "-E",
-          "test(=account_launch::agent_process::native_tests::cold_settings::installed_cold_runtime_settings_read_and_submit_without_replaying)",
-          "--test-threads",
-          "1",
-          "--retries",
-          "0",
-          "--no-fail-fast"
-        ],
-        "source_commit": "67f0994b532b8740f14b5b738af7b7b2a915b1d6",
-        "binary_sha256": "58ad0dde61345c3af5f57a8881468c2ed64fff34fc984586049566f307d8706e",
-        "exit_code": 0,
-        "selected": [
-          "account_launch::agent_process::native_tests::cold_settings::installed_cold_runtime_settings_read_and_submit_without_replaying"
-        ],
-        "outcomes": {
-          "account_launch::agent_process::native_tests::cold_settings::installed_cold_runtime_settings_read_and_submit_without_replaying": "PASS"
-        },
         "executed": 1,
         "passed": 1,
         "failed": 0,
-        "unmatched_selectors": [],
-        "id": "target-settings",
-        "environment": {
-          "DECODEX_TEST_CODEX_BINARY": "<qualified-runtime>/CodexCLI.app/Contents/MacOS/codex",
-          "DECODEX_NATIVE_BINARY": "<qualified-runtime>/CodexCLI.app/Contents/MacOS/codex",
-          "HOME": "<isolated-system-temporary-home>",
-          "DECODEX_TEST_ACCOUNT_HOME": "<same-isolated-home>",
-          "fixture_marker": ".decodex-cold-settings-fixture contains isolated-native-settings followed by newline"
-        }
+        "exit_code": 0
       },
       {
-        "command": [
-          "cargo",
-          "+stable",
-          "nextest",
-          "run",
-          "--locked",
-          "-p",
-          "decodex-components",
-          "--test",
-          "development",
-          "--run-ignored",
-          "only",
-          "-E",
-          "test(=fixed_commit_import_offline_repair_and_wrong_commit_rejection)",
-          "--test-threads",
-          "1",
-          "--retries",
-          "0",
-          "--no-fail-fast"
+        "selector": "account_launch::agent_process::native_tests::structured::installed_temporary_requests_isolate_environment_and_preserve_custom_permissions",
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_structured_tests.rs",
+        "required_proof": "Later merged automatic titles use isolated ephemeral structured requests. Preserve empty execution environments, inherited custom permissions, JSON schema output, no durable thread listing and packaged helper behavior.",
+        "entrypoint": [
+          "<compiled-decodex-runtime-libtest>",
+          "account_launch::agent_process::native_tests::structured::installed_temporary_requests_isolate_environment_and_preserve_custom_permissions",
+          "--exact",
+          "--ignored",
+          "--nocapture",
+          "--test-threads=1"
         ],
-        "source_commit": "67f0994b532b8740f14b5b738af7b7b2a915b1d6",
-        "binary_sha256": "58ad0dde61345c3af5f57a8881468c2ed64fff34fc984586049566f307d8706e",
-        "exit_code": 0,
-        "selected": [
-          "fixed_commit_import_offline_repair_and_wrong_commit_rejection"
-        ],
-        "outcomes": {
-          "fixed_commit_import_offline_repair_and_wrong_commit_rejection": "PASS"
-        },
         "executed": 1,
         "passed": 1,
         "failed": 0,
-        "unmatched_selectors": [],
-        "id": "target-component",
-        "environment": {
-          "DECODEX_TEST_CODEX_BINARY": "<qualified-runtime>/CodexCLI.app/Contents/MacOS/codex",
-          "DECODEX_NATIVE_BINARY": "<qualified-runtime>/CodexCLI.app/Contents/MacOS/codex",
-          "HOME": "<isolated-system-temporary-home>",
-          "DECODEX_TEST_DEVELOPMENT_RUNTIME": "<qualified-runtime>"
-        }
+        "exit_code": 0
       }
     ],
-    "limit": "This registry retains reconstruction selectors. Nine named native contracts executed against the current artifact. All other test results remain bound to their historical artifact and source; they were not rerun or counted as current passes."
+    "limit": "Only these named native cases are current. Other reconstruction selectors retain historical evidence.",
+    "build_command": [
+      "cargo",
+      "+stable",
+      "test",
+      "--locked",
+      "-p",
+      "decodex-runtime",
+      "--lib",
+      "--all-features",
+      "--no-run",
+      "--message-format",
+      "json"
+    ],
+    "registration_command": [
+      "<compiled-decodex-runtime-libtest>",
+      "--list"
+    ]
+  },
+  "before_after_regressions": {
+    "baseline_source": "67f0994b532b8740f14b5b738af7b7b2a915b1d6",
+    "baseline_schema_sha256": "41f4e1160b888dfedeab92306b68cec13b961f4df8f1883283a9e3b150baf59e",
+    "baseline_components": [
+      {
+        "path": "CodexCLI.app/Contents/MacOS/codex",
+        "sha256": "9f9dceaee8ae464a1a6f15f37c7061f2e379e62f0ec44f5683844f16cb95deae",
+        "expected_sha256": "58ad0dde61345c3af5f57a8881468c2ed64fff34fc984586049566f307d8706e",
+        "matches": false,
+        "bytes": 265589152,
+        "signature_valid": true
+      },
+      {
+        "path": "bin/codex-code-mode-host",
+        "sha256": "4c498d04fe9a461be0847f4abd310c67678760777fb02e69efa5a46c28b5edcd",
+        "expected_sha256": "7116687247a58d6ccd1655a334f59f44ed51fe0f80856f4f37b96dab4b5ac614",
+        "matches": false,
+        "bytes": 69965344,
+        "signature_valid": true
+      },
+      {
+        "path": "bin/codex-exec-server",
+        "sha256": "1e6b817fc41d6977d43690fa4b29a3d073250d03b0758f8056b3157d5a683794",
+        "expected_sha256": "6116a56c46a8afd4d536b3d14ac2ff7199563ae9f8a17d007d2a6737ad01bcaa",
+        "matches": false,
+        "bytes": 60087872,
+        "signature_valid": true
+      },
+      {
+        "path": "codex-path/rg",
+        "sha256": "9a0b56c0d00c246ce959c31a8ea3c2e4c4cdaf4df30c2bbe53fed9ee7d03b7c4",
+        "expected_sha256": "f5637789d6d0fdd941eca64e7453cc80c6b8af47b5ae2e261bdf6b066b627019",
+        "matches": false,
+        "bytes": 4009552,
+        "signature_valid": true
+      }
+    ],
+    "baseline_test_binary_sha256": "7284a012a14314eb78ec946bcd8868f75510d22ea0b05b20070d0922681add27",
+    "baseline_executed": 2,
+    "baseline_failed": 2,
+    "candidate_executed": 2,
+    "candidate_passed": 2,
+    "cases": [
+      {
+        "selector": "account_launch::agent_process::native_tests::archive::installed_native_archive_catalog_pages_every_timestamp_tie",
+        "before": "updated_at ascending returned only two of seven rows with identical timestamps.",
+        "after": "All seven entries enumerate exactly once for created/updated keys in both directions; no model work."
+      },
+      {
+        "selector": "account_launch::agent_process::native_tests::history_recovery::installed_native_fork_history_recovers_from_intact_ancestor_copy",
+        "before": "Cold resume rejects a paginated ancestor cutoff beyond the shortened preferred rollout.",
+        "after": "Ordinary and attached forks cold-resume from the same intact managed copy; ordinary visible prefix, attached empty visible history and exact model context survive without replay or preferred-file replacement."
+      }
+    ]
   },
   "component_cache_repair": {
     "source": "crates/decodex-components/tests/development.rs",
-    "test": "fixed_commit_import_offline_repair_and_wrong_commit_rejection",
+    "selector": "fixed_commit_import_offline_repair_and_wrong_commit_rejection",
+    "entrypoint": [
+      "<compiled-component-development-libtest>",
+      "fixed_commit_import_offline_repair_and_wrong_commit_rejection",
+      "--exact",
+      "--ignored",
+      "--nocapture",
+      "--test-threads=1"
+    ],
     "executed": 1,
     "passed": 1,
     "failed": 0,
     "unmatched_selectors": [],
-    "contract": "Import, corrupt and repair CLI, schema and all three helpers offline; reject a wrong source commit and preserve the prior cache."
+    "contract": "Import, detect and offline-repair CLI, schema and all three packaged helpers; reject the wrong source commit and preserve another cache.",
+    "build_command": [
+      "cargo",
+      "+stable",
+      "test",
+      "--locked",
+      "-p",
+      "decodex-components",
+      "--test",
+      "development",
+      "--no-run",
+      "--message-format",
+      "json"
+    ]
   },
-  "unreported_context_regression": {
-    "source": "crates/decodex-runtime/src/account_launch/agent_process_native_unreported_usage_tests.rs",
-    "selector": "account_launch::agent_process::native_tests::compaction::unreported_usage::installed_unreported_reasoning_triggers_compaction_before_continuation",
-    "before": {
-      "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
-      "binary_sha256": "7403fcc802a5bf9afc4b41e07fb99429db0c495976e6a4dd5ab233f0945fe759",
-      "executed": 1,
-      "passed": 0,
-      "failed": 1,
-      "unmatched_selectors": [],
-      "observed_compaction_triggers": [
-        0,
-        0,
-        0,
-        0
-      ],
-      "expected_compaction_triggers": [
-        0,
-        0,
-        0,
-        1,
-        0
-      ],
-      "limit": "The first incomplete-response scenario failed; later scenarios were not reached on the old artifact."
-    },
-    "after": {
-      "source_commit": "67f0994b532b8740f14b5b738af7b7b2a915b1d6",
-      "executed": 1,
-      "passed": 1,
-      "failed": 0,
-      "scenarios": [
-        "response.incomplete with usage",
-        "response.incomplete without usage",
-        "response.completed without usage"
-      ],
-      "compaction_triggers": [
-        0,
-        0,
-        0,
-        1,
-        0
-      ]
-    },
-    "boundary": "Use native context accounting and auto compaction. No local token estimate or compaction controller was added."
-  },
-  "fixture_sources": {
+  "fixture_source_sha256": {
     "crates/decodex-components/tests/development.rs": "fcb52ee9d2f333ed24c123a5cf681dda190652e4704ea0bb626f689389fbcead",
-    "crates/decodex-runtime/src/account_launch/agent_process_native_archive_tests.rs": "1951a539a369c8b709c2ca28c67d648ea81f390fc2f915e0d8b3edda8ca84c30",
-    "crates/decodex-runtime/src/account_launch/agent_process_native_capacity_tests.rs": "133a9d76582029e3f1857870f6bba1f8b62cc45f7047c814e82df88feb66df7d",
-    "crates/decodex-runtime/src/account_launch/agent_process_native_child_model_tests.rs": "f6e20a8e09dc9c4163d29bc89232ea3ef5cfc7300684eeae30fa036de8c8e6d6",
+    "crates/decodex-runtime/src/account_launch/agent_process_native_archive_tests.rs": "54320d43929e76076ff588dd9d341cc11036e1c430fe16f0accfbe6e9543b998",
     "crates/decodex-runtime/src/account_launch/agent_process_native_code_mode_tests.rs": "9ee4e9dd6b4867a2c57c4f775549f397352303f478a118d98d55841ba8afd539",
-    "crates/decodex-runtime/src/account_launch/agent_process_native_cold_settings_tests.rs": "32e20a741494e8696965bfd0c4e09304320faec5f916dd862c258cbcb6dc3e7d",
     "crates/decodex-runtime/src/account_launch/agent_process_native_compaction_tests.rs": "51f3685a98c8ebfc3c3d4a20b198a3dfb8c60782a193246a8dea66a4af690b10",
-    "crates/decodex-runtime/src/account_launch/agent_process_native_config_recovery_tests.rs": "cbe3b6a9adb0379fa928e95e054232a4b7299e5408e26b282d9b617842199d55",
-    "crates/decodex-runtime/src/account_launch/agent_process_native_detail_tests.rs": "babf991fd3ccb68129da322952fb14bc2deb405bfdb0f0828a4a24bda7e798e5",
     "crates/decodex-runtime/src/account_launch/agent_process_native_discovery_tests.rs": "15b4e78d98177e4501c8c66f6b6fbebcfca1fde2c07e7792a8e18373ef47d57c",
-    "crates/decodex-runtime/src/account_launch/agent_process_native_flex_tests.rs": "ec84ab99ccc092e75d640483c4bce7efbc77e5968d2fb4b81c8ad274d8af4b8c",
     "crates/decodex-runtime/src/account_launch/agent_process_native_fork_tests.rs": "506df593d904b45fa360604bd865aacefece4d5fec1bedc570181e4f0f775af9",
-    "crates/decodex-runtime/src/account_launch/agent_process_native_goal_tests.rs": "1452e604875a374cef96a3cdbf74c36584820743824b7d22e570c71ed9cd621e",
-    "crates/decodex-runtime/src/account_launch/agent_process_native_hook_settings_tests.rs": "3312a30bd4596fb634e4207cc6fb91adf696ce26ba9ae0cf5e935102084bafb0",
-    "crates/decodex-runtime/src/account_launch/agent_process_native_memory_tests.rs": "d0dcc4ab8fbacc3960a5f4a60a8c6763a79ea1bbd228d8fced2986272d4ef88f",
-    "crates/decodex-runtime/src/account_launch/agent_process_native_misalignment_tests.rs": "234090f9f26ff567d00d657ee228d49049bcab32ae1b271470bf726ab3882502",
-    "crates/decodex-runtime/src/account_launch/agent_process_native_model_access_tests.rs": "aea1db3a7282c4b40e5db9ee3dfe8e3ffcee0e0e3931d7c6bd5e1041f1765655",
-    "crates/decodex-runtime/src/account_launch/agent_process_native_permission_tests.rs": "bdc7b2bcbc94f5258c5390cbb2ec4d5839f1e90000d89db635dd4a743e2e9b60",
-    "crates/decodex-runtime/src/account_launch/agent_process_native_prediction_tests.rs": "83a94ea0b31c243ffbfe9337325a3b6e82c73f4a9957f0f6ef2b4246f10e103e",
-    "crates/decodex-runtime/src/account_launch/agent_process_native_project_sync_tests.rs": "45bcfcaa01689e2fdf5c48bc23b39c14c7833318d705fb7af01c9b7d6dca5342",
-    "crates/decodex-runtime/src/account_launch/agent_process_native_project_work_tests.rs": "f60105578ae60cad07ac41718f785f75d2b46dec013376cefb76ee82f4d7046c",
-    "crates/decodex-runtime/src/account_launch/agent_process_native_read_state_tests.rs": "9645f06893b70193c72e1b0ee2d9e4f464acc8cf8434e0ee92f89528f27b5d0e",
-    "crates/decodex-runtime/src/account_launch/agent_process_native_realtime_tests.rs": "d164163cbdfd2e280635000db69c55e3ad88b191a6737a8d4abfbc960cbfe6a2",
-    "crates/decodex-runtime/src/account_launch/agent_process_native_recap_service_tests.rs": "c2523dde9151f5a104b1dc572d138cdfab6f3758b84faf1bfe1f77e15776a549",
-    "crates/decodex-runtime/src/account_launch/agent_process_native_recap_socket_tests.rs": "5febeb2dc9610fa625f32dd11e8ce392d99891cb6e79214f48cd0b42ad31db02",
+    "crates/decodex-runtime/src/account_launch/agent_process_native_history_recovery_tests.rs": "e6652a7c8db916664315cb5687fb5724330f6f38075bcda67543c9b17a1ae72a",
+    "crates/decodex-runtime/src/account_launch/agent_process_native_model_tests.rs": "2ff55ec73f029f6516db1149e125e56e77eceea3e8b44b8ca1cd8c9c3bf38372",
     "crates/decodex-runtime/src/account_launch/agent_process_native_reviewer_tests.rs": "764c0537366afc659d27d76a8ccc1bc40cba058cb559d33ba470efce14ae93f4",
     "crates/decodex-runtime/src/account_launch/agent_process_native_sample_tests.rs": "fd9b303666903a80a7d45c8806c0d435dcdb48a3e6a6b313209e9d0672cac5e3",
-    "crates/decodex-runtime/src/account_launch/agent_process_native_skills_tests.rs": "ff0df22702edfa42a03c0eec1a1b563b116de52ff14204e5a557efed2be687cf",
+    "crates/decodex-runtime/src/account_launch/agent_process_native_steer_tests.rs": "3895e9f866335c15c27e92c563d367224e7b1887b4a85ad941efa92827663b77",
     "crates/decodex-runtime/src/account_launch/agent_process_native_structured_tests.rs": "fb5087ec2616bf9e897cc7c0b9603fbc057b315c3d01ea9fdd7b944b12794e07",
-    "crates/decodex-runtime/src/account_launch/agent_process_native_usage_tests.rs": "0f9c8f812b2ecb3460729d939958e8b277db666cb28bce10e95f948ea4f1261a",
-    "crates/decodex-runtime/src/account_launch/agent_process_voice_settings_start_tests.rs": "884fb948659167b63caaf4b6fba216dc0a592ae6f152574cb34b2d6bf4d1837c",
-    "crates/decodex-runtime/src/account_launch/agent_process_warning_tests.rs": "bcd9a1c15eb4da2073b7a6a7f3e8a9305b531e58322bba1ddcbfef6ea25187a0",
-    "crates/decodex-runtime/src/account_launch/process_native_control_tests.rs": "3fd1551916127da200465beaa52f29730c7a3a3ff1bfc5f276c53ac78f1a56a1",
-    "crates/decodex-runtime/src/agent/tests/capacity.rs": "1de3ca45c57477c7bd58b4d66b5c5cc863d97ebf796125f864dae30c013dce9c",
-    "crates/decodex-runtime/src/agent/tests/native_agent_wake.rs": "da4710d8af187859caaf64bc714b19a393a484c297294bdb0dc83c519a1ff4d3",
-    "crates/decodex-runtime/src/agent/tests/native_permissions.rs": "8f1ed3896490e13e4aa95b1939bbdfb82bbb8ef847f3aefce58ada7264232b2f",
-    "crates/decodex-runtime/src/agent/tests/native_subagent_live.rs": "3f6974ac86eeda8b9b1b225eae0fab3de258910aff25ab6e77dcccafe1a79eb8",
-    "crates/decodex-runtime/src/agent/tests/native_subagent_mcp.rs": "1caffa78fe704e7b5d76edc5d3704006c6009a9eed1ea4dbaa1faafa501d8343",
-    "crates/decodex-runtime/src/agent/tests/prompt_edit.rs": "f4adbf33e52f5328de551ba54f7b3f4a2f53f3b4db48799f1e5488fba4ead2b8",
-    "crates/decodex-runtime/src/agent/tests/task_history.rs": "5130946a91621488eedb32c5f1c037be2aa6e27425f39844766b72df0722ff05",
-    "crates/decodex-runtime/src/agent_context_settings_native_tests.rs": "7355c71bda61ac6fcd55e00c92be805979565b5abfafc63e8ef5db48290145e3",
-    "crates/decodex-runtime/tests/native_qualification/apps_recovery.py": "998764c0d4ff0c227602811d3424ee85df00231db3ef77c932afb5a979422597",
-    "crates/decodex-runtime/tests/native_qualification/async_compaction.py": "17ecced40f1c8c897f3739b6d8b75e6240276f625cd1e17272641a0906bf370b",
-    "crates/decodex-runtime/tests/native_qualification/command_hooks.py": "369a93ff63a36048bddf87ad60c04aa376f2907cf51b5115b13a07b88a63973a",
-    "crates/decodex-runtime/tests/native_qualification/config_policy.py": "567b69a1baf28975d77bca94cdc0cfc6b96c3bc49bb6ac56a73683e695695162",
-    "crates/decodex-runtime/tests/native_qualification/dotenv_startup.py": "f6a0a6294eff68dece725d15ebc189e23c322ab7166ce76eddc2a7e94f9b6b33",
-    "crates/decodex-runtime/tests/native_qualification/finished_sample.py": "791d223fab303f5576d94ceb80d9b8e4b392781065eb00672a1b4c41c5724596",
-    "crates/decodex-runtime/tests/native_qualification/incomplete_response.py": "40e1531728cfaf4acdbaa775723d8eaffe9845d0be148f3ba56d988056448c56",
-    "crates/decodex-runtime/tests/native_qualification/large_catalog.py": "a471440d6c494a5abd9f72346901fe14aeb8ee432f8e8fd3ef73373e174d645a",
-    "crates/decodex-runtime/tests/native_qualification/log_storage.py": "d9e381f28e75106fd3b5400cdcb399bf610b6888f1311af8f144b33fd86d58d1",
-    "crates/decodex-runtime/tests/native_qualification/managed_runtime.py": "e95b1bdb43545fe744e1f4f71226178bcd7c16a4bb0b3ed936a8907848a9753d",
-    "crates/decodex-runtime/tests/native_qualification/mcp_cancel.py": "ff2dce50665fb8610921915491907998c1bc0034475d63deedf031321f5e4fb1",
-    "crates/decodex-runtime/tests/native_qualification/model_errors.py": "cfd01bd9f8a1d9d4f9f14e410955f82fd0ff49163027b086e407b16a0b5f23f0",
-    "crates/decodex-runtime/tests/native_qualification/native_session.py": "ae24e58b6ed7404fce007e174fce23aa5ff49038b8b1e77818f59313fdc4aa1f",
-    "crates/decodex-runtime/tests/native_qualification/project_guardian.py": "2c9429ce26a700a4fd27145fa9022df4d6bc426ade5b8b512f329131afb2ad42",
-    "crates/decodex-runtime/tests/native_qualification/proxy_headers.py": "11ab168a092e53af78ba3a8cdb7950b8c50466d707daec710fc84587cb165576",
-    "crates/decodex-runtime/tests/native_qualification/response_identity.py": "8d078b642d80ad0fcfe35b4ae5d4c0c2e97144c022fabf3380520ea1766d3e82",
-    "crates/decodex-runtime/tests/native_qualification/sample_cancel.py": "a5bf24ea824bc504ad49fb28917e9f6469d285e9be5b46f10b2c25102fa87898",
-    "crates/decodex-runtime/tests/native_qualification/sample_service.py": "54940adfdcb5ea73da614248e4eed2e3ed24a2a47a7cbd4ccc08d3935e50311d",
-    "crates/decodex-runtime/tests/native_qualification/terminal_controls.py": "d8f2383b7c391a0d1d48df724ab5f7a7b8edb91e5369231c26965d62942c417c",
-    "crates/decodex-runtime/tests/native_qualification/thread_settings.py": "cf4bb4274aac52b69ebd3936204a2f1570753e2e38c2afc4fd9796deaa278049",
-    "crates/decodex-runtime/tests/native_qualification/usage.py": "e0eafb33d02116d3800c9912a09668795c36c56f711a94bdfc16398c94a0b9bf",
-    "database/src/agent_fork.rs": "8c3db3442ab83bd8b9182349ab200e70289444b48b90fc424d8aa90eaf2a095c",
-    "database/src/agent_fork/tests.rs": "1cdb7e8979866b0b27d406db6b1eb1b2263a653d112e31f565569c24329f9faf",
-    "scripts/macos/build_codex_source.mts": "0f7b2aff625be8681a0e67ba70526e044d96a59e7fb050350db5cd2dac057b01",
-    "scripts/macos/build_codex_source.test.mts": "ef9f82467f6b594ec71c610c52af333a158715d454f342b270f794b427dc14b2",
+    "crates/decodex-runtime/src/account_launch/agent_process_native_tests.rs": "d690b507403aafaaa9fc75ec8649c8cfb6addf82a5ac2df4836ce15fb22a99eb",
+    "scripts/macos/build_codex_source.mts": "3cae22e7c6a08c730aec4cfc4b202fbf2db10188e18d12ce4e3c56bbc43f6e68",
     "scripts/macos/prepare_codex.mts": "4d85b6503324c5e81366b10eeaa7f6e41e2c92a9864bb7d61bb90fe34afc4f4b",
-    "scripts/vnext/run_native_regression.py": "566ce4f9baaaa539ee13662b47eb96cfc7940f25c1b322c371c40f64bb0974c0",
-    "crates/decodex-codex/src/app_server_client/initialize.rs": "7f8a76346fa704e698570e19b5d4f7d5d35539bcecc441acf496e73160cbf327",
-    "crates/decodex-runtime/src/account_launch/agent_process_native_unreported_usage_tests.rs": "666c719f1af160434b50683bba48ccf3ff6c173c7d906970d28d5bc2a65f7a29",
-    "crates/decodex-runtime/src/account_launch/agent_process_native_runtime_submit_tests.rs": "562b204b8ee6bc6c60c055c4c5ec45c4734e65447a3dc7aab4e9c564a426b781"
-  },
-  "dependency_identity_delta": {
-    "removed": [],
-    "added": [],
-    "limit": "Resolved identity comparison, not a vulnerability audit."
-  },
-  "fixture_setup_corrections": {
-    "unreported_usage": {
-      "initial_failure": "The unencoded fixture contained fewer than 5000 estimated tokens. Both artifacts correctly stayed below the threshold. These attempts do not demonstrate a runtime regression.",
-      "repair": "Match the upstream fixture base64 envelope and 12000-byte reasoning payload; keep the same 5000 limit and expected compaction sequence.",
-      "preserved": [
-        "unreported-before-result.json",
-        "unreported-before-undersized-result.json",
-        "target-native-initial-result.json"
-      ],
-      "provider_mode": {
-        "initial": "The arbitrary Fixture provider selected native local compaction, while the assertion expected the retained OpenAI remote compaction contract.",
-        "repair": "Use the same OpenAI provider identity as the existing native compaction fixture. Keep the loopback endpoint and unchanged assertions.",
-        "preserved": [
-          "target-native-local-compaction-result.json",
-          "unreported-before-local-compaction-result.json"
-        ]
-      }
-    },
-    "cold_settings": {
-      "initial_failures": [
-        "Noncanonical HOME alias",
-        "Required isolated component cache not prepared"
-      ],
-      "repair": "Use canonical system-temporary HOME and the existing explicit prepare-codex command with separate preparation CODEX_HOME.",
-      "preserved": [
-        "target-settings-initial-result.json",
-        "target-settings-missing-cache-result.json"
-      ],
-      "working_directory": {
-        "cause": "The old fixture reused temporary HOME as the execution directory, outside the OS-account home authorized by SelectedWorkingDirectory.",
-        "repair": "Reuse recap_socket::fixture_working_directory for native history and ordinary runtime requests; keep account/cache files temporary. Production permission checks and existing assertions remain intact.",
-        "preserved": [
-          "target-settings-debug-1-result.json",
-          "target-settings-debug-2-result.json"
-        ]
-      }
-    }
+    "scripts/macos/version_codex_source.py": "60961200e31270b46574d5b83f5477b767cddaa66b8b7eea8c6cbc57b3ef269d"
   },
   "decodex_validation": {
-    "clippy": {
+    "affected_packages": [
+      "decodex-runtime",
+      "decodex-codex",
+      "decodex-components"
+    ],
+    "registered": 1349,
+    "executed": 1197,
+    "passed": 1197,
+    "skipped": 152,
+    "failed": 0,
+    "unmatched_selectors": [],
+    "command": [
+      "cargo",
+      "+stable",
+      "nextest",
+      "run",
+      "--locked",
+      "-p",
+      "decodex-runtime",
+      "-p",
+      "decodex-codex",
+      "-p",
+      "decodex-components",
+      "--all-features",
+      "--tests",
+      "--test-threads",
+      "4",
+      "--status-level",
+      "fail",
+      "--final-status-level",
+      "fail"
+    ],
+    "strict_runtime_clippy": "passed all targets/features with repository deny flags",
+    "source_build_tests": {
+      "entrypoint": [
+        "node",
+        "--experimental-strip-types",
+        "--test",
+        "scripts/macos/build_codex_source.test.mts"
+      ],
+      "executed": 3,
+      "passed": 3,
+      "failed": 0
+    },
+    "automation_checks": {
       "command": [
         "cargo",
         "+stable",
-        "clippy",
-        "--locked",
-        "--package",
-        "decodex-runtime",
-        "--all-features",
-        "--all-targets",
-        "--keep-going",
-        "--",
-        "--no-deps",
-        "-D",
-        "clippy::all",
-        "-D",
-        "clippy::too_many_lines",
-        "-D",
-        "clippy::unwrap_used",
-        "-D",
-        "clippy::use_self",
-        "-D",
-        "clippy::wildcard_imports",
-        "-D",
-        "missing-docs",
-        "-D",
-        "unused-crate-dependencies",
-        "-D",
-        "warnings"
+        "make",
+        "test-automations"
       ],
-      "exit_code": 0
+      "checkpoint_tests": 8,
+      "portfolio_tests": 7,
+      "passed": true,
+      "repo_only_evaluation": "pass"
     },
-    "format": {
-      "command": [
-        "cargo",
-        "+nightly",
-        "fmt",
-        "--all",
-        "--",
-        "--check"
-      ],
-      "exit_code": 0
-    },
-    "whitespace": {
-      "command": [
-        "git",
-        "diff",
-        "--check"
-      ],
-      "exit_code": 0
-    }
+    "nightly_format": "passed",
+    "whitespace": "passed"
   },
   "installed_application": {
-    "installed_by_this_run": false,
-    "launched_by_this_run": false,
-    "released_by_this_run": false,
-    "installed_binary_identity": "not inspected or changed",
-    "limit": "Build and isolated protocol fixtures do not establish installed-app acceptance."
+    "started": false,
+    "installed": false,
+    "released": false,
+    "limit": "Native CLI fixture execution is not desktop or installed-application acceptance."
   },
   "documentation_lifecycle": {
-    "method": "OpenWiki supported page-job lifecycle",
-    "state_source": "OpenWiki-managed metadata; only pages affected by this migration are selected."
+    "method": "Supported OpenWiki page-job lifecycle after freezing source and portable evidence.",
+    "state_source": "OpenWiki-managed metadata and native delivery receipt."
   },
-  "delivery_reference": "https://github.com/acg-box/decodex/commit/76d0172bfd9286c1f06889dad355a329a41356bc",
-  "delivery_status": "Qualified code commit. The native checkpoint and public PR record exact-head checks and merge readback.",
-  "consumer_limits": "No live accounts/providers, physical audio, remote production, other platforms, performance or installed desktop acceptance. Shared MCP and HumanCommand remain outside this qualification.",
-  "tests_read_current": [
-    {
-      "source": "crates/decodex-runtime/src/account_launch/agent_process_native_unreported_usage_tests.rs",
-      "symbol": "installed_unreported_reasoning_triggers_compaction_before_continuation",
-      "body_read": true,
-      "executed": true
-    },
-    {
-      "source": "crates/decodex-runtime/src/account_launch/agent_process_native_compaction_tests.rs",
-      "symbol": "installed_native_streams_auto_compaction_and_resumes_its_checkpoint",
-      "body_read": true,
-      "executed": true
-    },
-    {
-      "source": "crates/decodex-runtime/src/account_launch/agent_process_native_reviewer_tests.rs",
-      "symbol": "installed_native_guardian_preserves_large_action",
-      "body_read": true,
-      "executed": true
-    },
-    {
-      "source": "crates/decodex-runtime/src/account_launch/agent_process_native_code_mode_tests.rs",
-      "symbol": "installed_native_parallel_dynamic_tools_preserve_ids_and_result_order",
-      "body_read": true,
-      "executed": true
-    },
-    {
-      "source": "crates/decodex-runtime/src/account_launch/agent_process_native_discovery_tests.rs",
-      "symbol": "installed_native_mcp_capabilities_survive_tool_discovery_failure",
-      "body_read": true,
-      "executed": true
-    },
-    {
-      "source": "crates/decodex-runtime/src/account_launch/agent_process_native_child_model_tests.rs",
-      "symbol": "installed_native_child_inherits_updated_step_model",
-      "body_read": true,
-      "executed": true
-    },
-    {
-      "source": "crates/decodex-runtime/src/account_launch/agent_process_native_realtime_tests.rs",
-      "symbol": "installed_native_realtime_history_survives_agent_and_cold_bridge",
-      "body_read": true,
-      "executed": true
-    },
-    {
-      "source": "crates/decodex-runtime/src/account_launch/agent_process_native_fork_tests.rs",
-      "symbol": "installed_provider_recovery_fork_preserves_context_and_restarts_on_current_provider",
-      "body_read": true,
-      "executed": true
-    },
-    {
-      "source": "crates/decodex-runtime/src/account_launch/agent_process_native_cold_settings_tests.rs",
-      "symbol": "installed_cold_runtime_settings_read_and_submit_without_replaying",
-      "body_read": true,
-      "executed": true
-    },
-    {
-      "source": "crates/decodex-components/tests/development.rs",
-      "symbol": "fixed_commit_import_offline_repair_and_wrong_commit_rejection",
-      "body_read": true,
-      "executed": true
-    }
-  ]
+  "delivery_reference": "https://github.com/acg-box/decodex/commit/822d0373781cfdf2b956fe0e8d818f3e9bdf6e17",
+  "delivery_status": "Qualified code commit; live PR, CI and merge are observed separately in native receipts."
 }

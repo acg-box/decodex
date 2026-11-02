@@ -1,7 +1,7 @@
 {
   "version": 1,
   "scope": "Portable retained integration requirements. Native automation state owns the review cursor and pending work. This index does not attest missing historical test results.",
-  "source_baseline": "67f0994b532b8740f14b5b738af7b7b2a915b1d6",
+  "source_baseline": "ba0dfd38979033f514a28d9514215bad46957a18",
   "delivery": [
     "https://github.com/acg-box/decodex/pull/2451",
     "https://github.com/acg-box/decodex/pull/2452",
@@ -88,9 +88,15 @@
         },
         "uses_exact_native_artifact": true,
         "current_artifact_executed": true,
-        "source_commit": "67f0994b532b8740f14b5b738af7b7b2a915b1d6",
+        "historical_execution": {
+          "source_commit": "67f0994b532b8740f14b5b738af7b7b2a915b1d6",
+          "passed": true,
+          "evidence_kind": "fresh_execution",
+          "qualification": "https://github.com/acg-box/decodex/blob/490f4ec21f48d0d49f676fd9a86112ab7b67ae05/automations/upstream/qualification.json"
+        },
+        "source_commit": "ba0dfd38979033f514a28d9514215bad46957a18",
         "passed": true,
-        "evidence_kind": "fresh_execution"
+        "evidence_kind": "fresh_exact_artifact_execution"
       },
       {
         "test": "installed_fork_preserves_source_provider_after_default_changes",
@@ -170,9 +176,15 @@
         },
         "uses_exact_native_artifact": true,
         "current_artifact_executed": true,
-        "source_commit": "67f0994b532b8740f14b5b738af7b7b2a915b1d6",
+        "historical_execution": {
+          "source_commit": "67f0994b532b8740f14b5b738af7b7b2a915b1d6",
+          "passed": true,
+          "evidence_kind": "fresh_execution",
+          "qualification": "https://github.com/acg-box/decodex/blob/490f4ec21f48d0d49f676fd9a86112ab7b67ae05/automations/upstream/qualification.json"
+        },
+        "source_commit": "ba0dfd38979033f514a28d9514215bad46957a18",
         "passed": true,
-        "evidence_kind": "fresh_execution"
+        "evidence_kind": "fresh_exact_artifact_execution"
       },
       {
         "test": "installed_native_daybreak_preference_is_staged_without_selecting_access",
@@ -235,9 +247,15 @@
         },
         "uses_exact_native_artifact": true,
         "current_artifact_executed": true,
-        "source_commit": "67f0994b532b8740f14b5b738af7b7b2a915b1d6",
+        "historical_execution": {
+          "source_commit": "67f0994b532b8740f14b5b738af7b7b2a915b1d6",
+          "passed": true,
+          "evidence_kind": "fresh_execution",
+          "qualification": "https://github.com/acg-box/decodex/blob/490f4ec21f48d0d49f676fd9a86112ab7b67ae05/automations/upstream/qualification.json"
+        },
+        "source_commit": "ba0dfd38979033f514a28d9514215bad46957a18",
         "passed": true,
-        "evidence_kind": "fresh_execution"
+        "evidence_kind": "fresh_exact_artifact_execution"
       },
       {
         "test": "installed_native_configured_flex_survives_cold_resume",
@@ -537,10 +555,13 @@
           "test": "account_launch::agent_process::native_tests::realtime::installed_native_realtime_history_survives_agent_and_cold_bridge"
         },
         "uses_exact_native_artifact": true,
-        "current_artifact_executed": true,
-        "source_commit": "67f0994b532b8740f14b5b738af7b7b2a915b1d6",
-        "passed": true,
-        "evidence_kind": "fresh_execution"
+        "current_artifact_executed": false,
+        "historical_execution": {
+          "source_commit": "67f0994b532b8740f14b5b738af7b7b2a915b1d6",
+          "passed": true,
+          "evidence_kind": "fresh_execution",
+          "qualification": "https://github.com/acg-box/decodex/blob/490f4ec21f48d0d49f676fd9a86112ab7b67ae05/automations/upstream/qualification.json"
+        }
       },
       {
         "test": "installed_recap_uses_native_history_and_invalidates_after_new_input",
@@ -569,9 +590,15 @@
         },
         "uses_exact_native_artifact": true,
         "current_artifact_executed": true,
-        "source_commit": "67f0994b532b8740f14b5b738af7b7b2a915b1d6",
+        "historical_execution": {
+          "source_commit": "67f0994b532b8740f14b5b738af7b7b2a915b1d6",
+          "passed": true,
+          "evidence_kind": "fresh_execution",
+          "qualification": "https://github.com/acg-box/decodex/blob/490f4ec21f48d0d49f676fd9a86112ab7b67ae05/automations/upstream/qualification.json"
+        },
+        "source_commit": "ba0dfd38979033f514a28d9514215bad46957a18",
         "passed": true,
-        "evidence_kind": "fresh_execution"
+        "evidence_kind": "fresh_exact_artifact_execution"
       },
       {
         "test": "installed_native_child_inherits_updated_step_model",
@@ -582,10 +609,13 @@
           "test": "account_launch::agent_process::native_tests::reviewer::store::live_model::child_model::installed_native_child_inherits_updated_step_model"
         },
         "uses_exact_native_artifact": true,
-        "current_artifact_executed": true,
-        "source_commit": "67f0994b532b8740f14b5b738af7b7b2a915b1d6",
-        "passed": true,
-        "evidence_kind": "fresh_execution"
+        "current_artifact_executed": false,
+        "historical_execution": {
+          "source_commit": "67f0994b532b8740f14b5b738af7b7b2a915b1d6",
+          "passed": true,
+          "evidence_kind": "fresh_execution",
+          "qualification": "https://github.com/acg-box/decodex/blob/490f4ec21f48d0d49f676fd9a86112ab7b67ae05/automations/upstream/qualification.json"
+        }
       },
       {
         "test": "installed_native_spawn_description_follows_updated_step_model",
@@ -647,13 +677,16 @@
           "test": "account_launch::agent_process::native_tests::sample::installed_native_sampling_preserves_parent_and_blocks_tools_without_replay"
         },
         "uses_exact_native_artifact": true,
-        "current_artifact_executed": false,
+        "current_artifact_executed": true,
         "historical_execution": {
           "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
           "passed": true,
           "evidence_kind": "reused_identical_artifact_execution",
           "qualification": "https://github.com/acg-box/decodex/blob/4c9b2c5fce988f038569a7a23092c8b97443b53f/automations/upstream/qualification.json"
-        }
+        },
+        "source_commit": "ba0dfd38979033f514a28d9514215bad46957a18",
+        "passed": true,
+        "evidence_kind": "fresh_exact_artifact_execution"
       },
       {
         "test": "installed_skill_picker_inventory_and_exact_input_use_native_skill_owner",
@@ -681,13 +714,16 @@
           "test": "account_launch::agent_process::native_tests::structured::installed_temporary_requests_isolate_environment_and_preserve_custom_permissions"
         },
         "uses_exact_native_artifact": true,
-        "current_artifact_executed": false,
+        "current_artifact_executed": true,
         "historical_execution": {
           "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
           "passed": true,
           "evidence_kind": "reused_identical_artifact_execution",
           "qualification": "https://github.com/acg-box/decodex/blob/4c9b2c5fce988f038569a7a23092c8b97443b53f/automations/upstream/qualification.json"
-        }
+        },
+        "source_commit": "ba0dfd38979033f514a28d9514215bad46957a18",
+        "passed": true,
+        "evidence_kind": "fresh_exact_artifact_execution"
       },
       {
         "test": "installed_native_usage_restores_agent_baseline_after_cold_resume",
@@ -902,9 +938,15 @@
         "uses_exact_native_artifact": true,
         "qualification": "automations/upstream/qualification.json#candidate_qualification/provider_recovery",
         "current_artifact_executed": true,
-        "source_commit": "67f0994b532b8740f14b5b738af7b7b2a915b1d6",
+        "historical_execution": {
+          "source_commit": "67f0994b532b8740f14b5b738af7b7b2a915b1d6",
+          "passed": true,
+          "evidence_kind": "fresh_execution",
+          "qualification": "https://github.com/acg-box/decodex/blob/490f4ec21f48d0d49f676fd9a86112ab7b67ae05/automations/upstream/qualification.json"
+        },
+        "source_commit": "ba0dfd38979033f514a28d9514215bad46957a18",
         "passed": true,
-        "evidence_kind": "fresh_execution"
+        "evidence_kind": "fresh_exact_artifact_execution"
       },
       {
         "test": "installed_unreported_reasoning_triggers_compaction_before_continuation",
@@ -916,10 +958,13 @@
         },
         "uses_exact_native_artifact": true,
         "contract": "Account for retained reasoning after incomplete or usage-less responses and compact before continuation.",
-        "current_artifact_executed": true,
-        "source_commit": "67f0994b532b8740f14b5b738af7b7b2a915b1d6",
-        "passed": true,
-        "evidence_kind": "fresh_execution"
+        "current_artifact_executed": false,
+        "historical_execution": {
+          "source_commit": "67f0994b532b8740f14b5b738af7b7b2a915b1d6",
+          "passed": true,
+          "evidence_kind": "fresh_execution",
+          "qualification": "https://github.com/acg-box/decodex/blob/490f4ec21f48d0d49f676fd9a86112ab7b67ae05/automations/upstream/qualification.json"
+        }
       },
       {
         "test": "installed_cold_runtime_settings_read_and_submit_without_replaying",
@@ -931,38 +976,122 @@
         },
         "uses_exact_native_artifact": true,
         "contract": "Read saved model settings and continue after restart without replay, with separate temporary account state and an authorized working directory.",
+        "current_artifact_executed": false,
+        "historical_execution": {
+          "source_commit": "67f0994b532b8740f14b5b738af7b7b2a915b1d6",
+          "passed": true,
+          "evidence_kind": "fresh_execution",
+          "qualification": "https://github.com/acg-box/decodex/blob/490f4ec21f48d0d49f676fd9a86112ab7b67ae05/automations/upstream/qualification.json"
+        }
+      },
+      {
+        "test": "installed_native_archive_catalog_pages_every_timestamp_tie",
+        "package": "decodex-runtime",
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_archive_tests.rs",
+        "executed_identity": {
+          "binary_id": "decodex-runtime",
+          "test": "account_launch::agent_process::native_tests::archive::installed_native_archive_catalog_pages_every_timestamp_tie"
+        },
+        "uses_exact_native_artifact": true,
         "current_artifact_executed": true,
-        "source_commit": "67f0994b532b8740f14b5b738af7b7b2a915b1d6",
+        "source_commit": "ba0dfd38979033f514a28d9514215bad46957a18",
         "passed": true,
-        "evidence_kind": "fresh_execution"
+        "evidence_kind": "fresh_exact_artifact_execution"
+      },
+      {
+        "test": "installed_native_fork_history_recovers_from_intact_ancestor_copy",
+        "package": "decodex-runtime",
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_history_recovery_tests.rs",
+        "executed_identity": {
+          "binary_id": "decodex-runtime",
+          "test": "account_launch::agent_process::native_tests::history_recovery::installed_native_fork_history_recovers_from_intact_ancestor_copy"
+        },
+        "uses_exact_native_artifact": true,
+        "current_artifact_executed": true,
+        "source_commit": "ba0dfd38979033f514a28d9514215bad46957a18",
+        "passed": true,
+        "evidence_kind": "fresh_exact_artifact_execution"
+      },
+      {
+        "test": "installed_native_steer_receipt_confirms_live_and_cold_without_replay",
+        "package": "decodex-runtime",
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_steer_tests.rs",
+        "executed_identity": {
+          "binary_id": "decodex-runtime",
+          "test": "account_launch::agent_process::native_tests::steer::installed_native_steer_receipt_confirms_live_and_cold_without_replay"
+        },
+        "uses_exact_native_artifact": true,
+        "current_artifact_executed": true,
+        "source_commit": "ba0dfd38979033f514a28d9514215bad46957a18",
+        "passed": true,
+        "evidence_kind": "fresh_exact_artifact_execution"
+      },
+      {
+        "test": "installed_model_selection_changes_next_inference_and_survives_restart",
+        "package": "decodex-runtime",
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_model_tests.rs",
+        "executed_identity": {
+          "binary_id": "decodex-runtime",
+          "test": "account_launch::agent_process::native_tests::models::installed_model_selection_changes_next_inference_and_survives_restart"
+        },
+        "uses_exact_native_artifact": true,
+        "current_artifact_executed": true,
+        "source_commit": "ba0dfd38979033f514a28d9514215bad46957a18",
+        "passed": true,
+        "evidence_kind": "fresh_exact_artifact_execution"
       }
     ],
-    "exact_artifact_test_count": 53,
     "local_history_test_count": 2,
     "unmatched_selectors": [],
-    "command": [
-      "cargo",
-      "+stable",
-      "nextest",
-      "run",
-      "--locked",
-      "-p",
-      "decodex-runtime",
-      "--lib",
-      "--all-features",
-      "--run-ignored",
-      "all",
-      "-E",
-      "test(installed_active_goal_preserves_native_budget_and_elapsed_accounting) or test(installed_fork_preserves_source_provider_after_default_changes) or test(installed_hook_trust_enablement_and_modified_content_are_independent) or test(installed_model_not_found_does_not_schedule_capacity_retries) or test(installed_named_permission_selection_during_active_turn_survives_restart) or test(installed_native_archive_roundtrip_refreshes_without_restarting_either_process) or test(installed_native_child_inherits_updated_step_model) or test(installed_native_code_mode_yielded_cells_keep_their_outputs) or test(installed_native_configured_flex_survives_cold_resume) or test(installed_native_context_preferences_share_config_and_preserve_thresholds) or test(installed_native_continuation_uses_live_details_and_rejects_restart_authority) or test(installed_native_daybreak_preference_is_staged_without_selecting_access) or test(installed_native_discards_partial_compaction_output_after_restart) or test(installed_native_enterprise_mcp_requires_thread_and_rejects_project_downgrade) or test(installed_native_flex_survives_settings_and_cold_resume) or test(installed_native_goal_reads_preserve_native_state_after_restart) or test(installed_native_guardian_preserves_large_action) or test(installed_native_mcp_capabilities_survive_tool_discovery_failure) or test(installed_native_memory_view_selects_versions_without_model_calls_or_fallback) or test(installed_native_model_access_metadata_refreshes_after_cold_restart) or test(installed_native_parallel_dynamic_tools_preserve_ids_and_result_order) or test(installed_native_patch_pages_survive_cold_restart_without_replay) or test(installed_native_preserves_prompt_before_compaction_error_and_after_restart) or test(installed_native_qualified_defaults_preserve_multi_agent_selection) or test(installed_native_read_state_preserves_new_results_and_cold_marks) or test(installed_native_realtime_history_survives_agent_and_cold_bridge) or test(installed_native_sampling_preserves_parent_and_blocks_tools_without_replay) or test(installed_native_spawn_description_follows_updated_step_model) or test(installed_native_streams_auto_compaction_and_resumes_its_checkpoint) or test(installed_native_usage_restores_agent_baseline_after_cold_resume) or test(installed_native_voice_policy_read_does_not_use_user_feature_flags) or test(installed_permission_selection_publishes_and_survives_native_restart) or test(installed_prediction_fork_inherits_context_and_cleans_up_without_parent_replay) or test(installed_recap_uses_native_history_and_invalidates_after_new_input) or test(installed_skill_picker_inventory_and_exact_input_use_native_skill_owner) or test(installed_temporary_requests_isolate_environment_and_preserve_custom_permissions) or test(native_child_approval_round_trip) or test(native_child_completion_wakes_idle_root_once) or test(native_child_mcp_input_preserves_policy_and_exact_request) or test(native_legacy_continuation_preserves_history_and_permissions_after_restart) or test(native_project_global_review_and_private_records_cross_retained_bridge) or test(native_search_filters_foreign_work_and_preserves_cursor_and_exact_sources) or test(native_search_keeps_empty_filtered_pages_and_rejects_repeated_cursors) or test(native_v1_work_attribution_uses_the_native_executor)",
-      "--test-threads",
-      "2",
-      "--retries",
-      "0",
-      "--no-fail-fast",
-      "--status-level",
-      "all"
+    "required_environment": {
+      "DECODEX_TEST_CODEX_BINARY": "Explicit exact signed CLI; native fixtures clear their child environment and use isolated Codex homes."
+    },
+    "selector_reconciliation": {
+      "unmatched_historical_selector": "native_legacy_tools_migrate_once_and_retire_the_old_context",
+      "current_selector": "native_legacy_continuation_preserves_history_and_permissions_after_restart",
+      "reason": "Current source retires automatic native context replacement; retained legacy conversations continue original context. Source and current test body verified. Historical migration test remains a historical delivery claim only.",
+      "counted_as_executed": false
+    },
+    "limits": "Eleven named native contracts are current for this exact artifact. Historical reconstruction commands are not a daily gate. Other registered selectors retain only their original source/artifact evidence.",
+    "source_commit": "ba0dfd38979033f514a28d9514215bad46957a18",
+    "historical_execution": {
+      "qualification": "https://github.com/acg-box/decodex/blob/4c9b2c5fce988f038569a7a23092c8b97443b53f/automations/upstream/qualification.json",
+      "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "limit": "Prior 49 identical-artifact passes and the two provider follow-ups retain their original scope; none is counted as a new 67f0994b execution."
+    },
+    "selected_count": 11,
+    "retired_selectors": [
+      {
+        "selector": "account_launch::process::startup_config::tests::installed_native_startup_configuration_preserves_auth_config_and_locked_history",
+        "retirement_commit": "87d0244e90eb50760917ea87a5d6880332b72320",
+        "reason": "User excluded Codex startup diagnostics; current source and the stable contract record removal. Do not restore it.",
+        "historical_execution_preserved": true
+      }
     ],
-    "additional_commands": [
+    "current_executed_count": 11,
+    "historical_reconstruction_commands": [
+      [
+        "cargo",
+        "+stable",
+        "nextest",
+        "run",
+        "--locked",
+        "-p",
+        "decodex-runtime",
+        "--lib",
+        "--all-features",
+        "--run-ignored",
+        "all",
+        "-E",
+        "test(installed_active_goal_preserves_native_budget_and_elapsed_accounting) or test(installed_fork_preserves_source_provider_after_default_changes) or test(installed_hook_trust_enablement_and_modified_content_are_independent) or test(installed_model_not_found_does_not_schedule_capacity_retries) or test(installed_named_permission_selection_during_active_turn_survives_restart) or test(installed_native_archive_roundtrip_refreshes_without_restarting_either_process) or test(installed_native_child_inherits_updated_step_model) or test(installed_native_code_mode_yielded_cells_keep_their_outputs) or test(installed_native_configured_flex_survives_cold_resume) or test(installed_native_context_preferences_share_config_and_preserve_thresholds) or test(installed_native_continuation_uses_live_details_and_rejects_restart_authority) or test(installed_native_daybreak_preference_is_staged_without_selecting_access) or test(installed_native_discards_partial_compaction_output_after_restart) or test(installed_native_enterprise_mcp_requires_thread_and_rejects_project_downgrade) or test(installed_native_flex_survives_settings_and_cold_resume) or test(installed_native_goal_reads_preserve_native_state_after_restart) or test(installed_native_guardian_preserves_large_action) or test(installed_native_mcp_capabilities_survive_tool_discovery_failure) or test(installed_native_memory_view_selects_versions_without_model_calls_or_fallback) or test(installed_native_model_access_metadata_refreshes_after_cold_restart) or test(installed_native_parallel_dynamic_tools_preserve_ids_and_result_order) or test(installed_native_patch_pages_survive_cold_restart_without_replay) or test(installed_native_preserves_prompt_before_compaction_error_and_after_restart) or test(installed_native_qualified_defaults_preserve_multi_agent_selection) or test(installed_native_read_state_preserves_new_results_and_cold_marks) or test(installed_native_realtime_history_survives_agent_and_cold_bridge) or test(installed_native_sampling_preserves_parent_and_blocks_tools_without_replay) or test(installed_native_spawn_description_follows_updated_step_model) or test(installed_native_streams_auto_compaction_and_resumes_its_checkpoint) or test(installed_native_usage_restores_agent_baseline_after_cold_resume) or test(installed_native_voice_policy_read_does_not_use_user_feature_flags) or test(installed_permission_selection_publishes_and_survives_native_restart) or test(installed_prediction_fork_inherits_context_and_cleans_up_without_parent_replay) or test(installed_recap_uses_native_history_and_invalidates_after_new_input) or test(installed_skill_picker_inventory_and_exact_input_use_native_skill_owner) or test(installed_temporary_requests_isolate_environment_and_preserve_custom_permissions) or test(native_child_approval_round_trip) or test(native_child_completion_wakes_idle_root_once) or test(native_child_mcp_input_preserves_policy_and_exact_request) or test(native_legacy_continuation_preserves_history_and_permissions_after_restart) or test(native_project_global_review_and_private_records_cross_retained_bridge) or test(native_search_filters_foreign_work_and_preserves_cursor_and_exact_sources) or test(native_search_keeps_empty_filtered_pages_and_rejects_repeated_cursors) or test(native_v1_work_attribution_uses_the_native_executor)",
+        "--test-threads",
+        "2",
+        "--retries",
+        "0",
+        "--no-fail-fast",
+        "--status-level",
+        "all"
+      ],
       [
         "cargo",
         "+stable",
@@ -1000,9 +1129,7 @@
         "1",
         "-E",
         "test(=account_launch::agent_process::native_tests::cold_settings::recap_socket::fork::installed_fork_preserves_source_provider_after_default_changes) | test(=account_launch::agent_process::native_tests::cold_settings::recap_socket::fork::installed_provider_recovery_fork_preserves_context_and_restarts_on_current_provider)"
-      ]
-    ],
-    "managed_commands": [
+      ],
       [
         "python3",
         "scripts/vnext/run_native_regression.py",
@@ -1012,48 +1139,29 @@
         "test(installed_recap_public_socket_preserves_parent_and_exact_request_identity)"
       ]
     ],
-    "required_environment": {
+    "reconstruction_environment": {
       "DECODEX_CODEX_DEVELOPMENT_RUNTIME": "Exact prepared runtime root",
       "DECODEX_TEST_CODEX_BINARY": "Exact signed candidate CLI",
       "DECODEX_NATIVE_BINARY": "Same exact CLI as DECODEX_TEST_CODEX_BINARY; required by seven retained fixtures."
     },
-    "selector_reconciliation": {
-      "unmatched_historical_selector": "native_legacy_tools_migrate_once_and_retire_the_old_context",
-      "current_selector": "native_legacy_continuation_preserves_history_and_permissions_after_restart",
-      "reason": "Current source retires automatic native context replacement; retained legacy conversations continue original context. Source and current test body verified. Historical migration test remains a historical delivery claim only.",
-      "counted_as_executed": false
-    },
-    "limits": "This registry retains reconstruction selectors. Nine named native contracts executed against the current artifact. All other test results remain bound to their historical artifact and source; they were not rerun or counted as current passes.",
-    "source_commit": "67f0994b532b8740f14b5b738af7b7b2a915b1d6",
-    "historical_execution": {
-      "qualification": "https://github.com/acg-box/decodex/blob/4c9b2c5fce988f038569a7a23092c8b97443b53f/automations/upstream/qualification.json",
-      "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
-      "limit": "Prior 49 identical-artifact passes and the two provider follow-ups retain their original scope; none is counted as a new 67f0994b execution."
-    },
-    "selected_count": 9,
-    "retired_selectors": [
-      {
-        "selector": "account_launch::process::startup_config::tests::installed_native_startup_configuration_preserves_auth_config_and_locked_history",
-        "retirement_commit": "87d0244e90eb50760917ea87a5d6880332b72320",
-        "reason": "User excluded Codex startup diagnostics; current source and the stable contract record removal. Do not restore it.",
-        "historical_execution_preserved": true
-      }
-    ],
-    "current_executed_count": 9
+    "reconstruction_selector_count": 59,
+    "current_plan": "automations/upstream/qualification.json#retained_consumers"
   },
   "qualification": {
     "status": "qualified_fixed_development_artifact",
     "evidence": "automations/upstream/qualification.json",
-    "source_archive_sha256": "ae1def152189e98c782126c849bf5cc068e66138501d0832dfa15a2ae0898e02",
-    "schema_sha256": "41f4e1160b888dfedeab92306b68cec13b961f4df8f1883283a9e3b150baf59e",
-    "evidence_sha256": "62ef8102ea1a433678ab1c9819d83271f285de18d184bd43e36a68007d056018",
+    "source_archive_sha256": "1055ede18b64beb27dc8bf55c8271156b0da3e09d4abdf891bf2ec94f8ec1425",
+    "schema_sha256": "e14be56799f33bae587421c180dbdc4e333815612580fd9f67d114f5517c0e84",
+    "evidence_sha256": "0c08a1458a9bd81c0b2677475996113dedad6be7a59ca2b6902df9d5b1bdee9e",
     "limits": [
-      "Source review, tests, artifact qualification, merge and installed acceptance are separate.",
-      "Only macOS arm64 private stdio and named native consumers/helpers are qualified. Linux, Windows, remote production execution, live accounts/providers, physical audio and installation/release remain unmeasured.",
-      "No latency, throughput, memory, billing or cost benchmark.",
-      "Historical dependency findings retain their recorded sources and dates; no new security audit or ignored advisory.",
-      "Earlier certified ranges and missing historical 153-test manifest remain unchanged.",
-      "HumanCommand is user-deferred and unadvertised. Shared MCP, remote production execution and optional product experiments are outside this qualification."
+      "Source review, artifact qualification, local tests, PR delivery and installed acceptance are separate.",
+      "Only macOS arm64 private stdio, the named native consumers and packaged helpers are qualified with synthetic loopback fixtures. No desktop app startup, installation, live-account/provider acceptance, physical audio, release, tag or publication.",
+      "No broad upstream source suite was run. Official CI observations are partial and contain failures; causes remain unknown and no generic upstream pass is claimed.",
+      "The steering fixture verifies live/cold exact IDs and no replay. It does not force the internal final-flush barrier; the reviewed upstream deterministic test is source evidence only.",
+      "The new history fixture verifies ordinary and attached fork cold resume and continuation with an intact managed ancestor copy. It does not qualify every compressed/corrupt lineage variant tested in upstream source.",
+      "Other historical test results remain bound to their original source/artifact/configuration. Earlier certified ranges and unrecovered historical claims are preserved.",
+      "Shared MCP, remote production execution, Guardian V3, HumanCommand and deferred product experiments remain outside current qualification.",
+      "No latency, throughput, memory, billing, cost or new dependency-security benchmark/audit."
     ]
   },
   "retained_artifact_probes": {
@@ -1206,41 +1314,52 @@
     },
     "source_commit": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
     "historical_only": true,
-    "current_scope": "Original 33d306d4 probe receipts only. Current retained behavior is covered by named candidate native contracts; these probes were not rerun."
+    "current_scope": "Original 33d306d4 probe receipts only. Current retained behavior is covered by named candidate native contracts; these probes were not rerun.",
+    "current_artifact_executed": false,
+    "historical_qualification": "https://github.com/acg-box/decodex/blob/490f4ec21f48d0d49f676fd9a86112ab7b67ae05/automations/upstream/qualification.json",
+    "limit": "Historical standalone probes retain their original artifact/source limits. They were not rerun or counted as current qualification."
   },
   "source_review_evidence": "automations/upstream/current-review.json",
   "component_cache_repair": {
     "source": "crates/decodex-components/tests/development.rs",
-    "test": "fixed_commit_import_offline_repair_and_wrong_commit_rejection",
+    "selector": "fixed_commit_import_offline_repair_and_wrong_commit_rejection",
+    "entrypoint": [
+      "<compiled-component-development-libtest>",
+      "fixed_commit_import_offline_repair_and_wrong_commit_rejection",
+      "--exact",
+      "--ignored",
+      "--nocapture",
+      "--test-threads=1"
+    ],
     "executed": 1,
     "passed": 1,
     "failed": 0,
     "unmatched_selectors": [],
-    "contract": "Import, corrupt and repair CLI, schema and all three helpers offline; reject a wrong source commit and preserve the prior cache."
+    "contract": "Import, detect and offline-repair CLI, schema and all three packaged helpers; reject the wrong source commit and preserve another cache."
   },
   "source_review_summary": {
-    "range_start_exclusive": "67f0994b532b8740f14b5b738af7b7b2a915b1d6",
-    "range_end_inclusive": "4b4a5cf25aa5b064c866218b405c848745fd280f",
-    "fixed_target_observed_at": "2026-11-01T20:04:13.613181+00:00",
-    "screened": 9,
-    "completed_review": 9,
+    "range_start_exclusive": "4b4a5cf25aa5b064c866218b405c848745fd280f",
+    "range_end_inclusive": "ba0dfd38979033f514a28d9514215bad46957a18",
+    "fixed_target_observed_at": "2026-11-02T20:05:05.353513+00:00",
+    "screened": 36,
+    "completed_review": 36,
     "remaining": 0,
-    "test_or_fixture_bodies_read": 21,
+    "test_or_fixture_bodies_read": 59,
     "upstream_tests_executed": 0,
     "source_review_evidence": "automations/upstream/current-review.json",
-    "source_review_sha256": "4c21aff8f8be249349d2e03a5669a0af9cf88b36d3219f8326393a241d89b7b3",
+    "source_review_sha256": "c9329f54edcaadbccfe7068789b3cfa5d7d50482478954ec192240e68828ae96",
     "previous_review": {
-      "start_exclusive": "5be57bedd04d717cdde3a768ea7b71e97733736b",
-      "end_inclusive": "67f0994b532b8740f14b5b738af7b7b2a915b1d6",
-      "count": 21,
-      "evidence": "https://github.com/acg-box/decodex/blob/f7387fd2c86d085e554d865850d0e669d6f83e65/automations/upstream/current-review.json"
+      "start_exclusive": "67f0994b532b8740f14b5b738af7b7b2a915b1d6",
+      "end_inclusive": "4b4a5cf25aa5b064c866218b405c848745fd280f",
+      "count": 9,
+      "evidence": "https://github.com/acg-box/decodex/blob/490f4ec21f48d0d49f676fd9a86112ab7b67ae05/automations/upstream/current-review.json"
     },
-    "selected_runtime_source": "67f0994b532b8740f14b5b738af7b7b2a915b1d6",
-    "runtime_changed": false,
-    "limit": "Source review only. Preserve existing artifact qualification. No new upstream or exact-artifact tests, installed acceptance or generic CI success is claimed."
+    "selected_runtime_source": "ba0dfd38979033f514a28d9514215bad46957a18",
+    "runtime_changed": true,
+    "limit": "Only the fixed range is reviewed. Runtime, generic upstream CI, delivery and installed acceptance retain their distinct evidence limits."
   },
   "documentation_lifecycle": {
-    "method": "OpenWiki supported page-job lifecycle",
+    "method": "OpenWiki supported page-job lifecycle; current run finalization is recorded in generated metadata.",
     "selected_pages": [
       "openwiki/architecture/runtime-architecture.md",
       "openwiki/operations/codex-upstream-autopilot.md",
@@ -1252,20 +1371,20 @@
   },
   "current_delivery": {
     "status": "qualified_development_code_commit",
-    "code_commit": "76d0172bfd9286c1f06889dad355a329a41356bc",
-    "reference": "https://github.com/acg-box/decodex/commit/76d0172bfd9286c1f06889dad355a329a41356bc",
-    "state_source": "Public delivery and native checkpoint retain PR, exact-head CI and merge confirmation separately from qualification."
+    "code_commit": "822d0373781cfdf2b956fe0e8d818f3e9bdf6e17",
+    "reference": "https://github.com/acg-box/decodex/commit/822d0373781cfdf2b956fe0e8d818f3e9bdf6e17",
+    "state_source": "Native receipts own PR, final-head CI and merge observations."
   },
   "current_runtime_requalification": {
-    "selected_source": "67f0994b532b8740f14b5b738af7b7b2a915b1d6",
+    "selected_source": "ba0dfd38979033f514a28d9514215bad46957a18",
     "status": "qualified_fixed_development_artifact",
     "evidence": "automations/upstream/qualification.json",
-    "fresh_native_executed": 9,
+    "fresh_native_executed": 11,
     "fresh_component_executed": 1,
-    "passed": 10,
+    "passed": 12,
     "failed": 0,
     "unmatched_selectors": [],
-    "previous_qualification": "https://github.com/acg-box/decodex/blob/4c9b2c5fce988f038569a7a23092c8b97443b53f/automations/upstream/qualification.json",
+    "previous_qualification": "https://github.com/acg-box/decodex/blob/490f4ec21f48d0d49f676fd9a86112ab7b67ae05/automations/upstream/qualification.json",
     "deferred_capability": {
       "issue": "https://github.com/acg-box/decodex/issues/2585",
       "status": "user_deferred",
@@ -1274,7 +1393,7 @@
   },
   "retained_contracts": {
     "path": "automations/upstream/retained-contracts.json",
-    "sha256": "b7dc0456127348fc734fc70c1e4a07842ddbcc64cea677c320dc52c8b0de2ec9",
+    "sha256": "f42cae151b3c2c980a4c7b8448e08e4a1ae5a4d78f19067f158b1ce165c07ffa",
     "scope": "Retained requirements, selected product decisions and original feature qualification; stable across routine runtime rolls."
   },
   "workspace_dependencies": {
@@ -3195,13 +3314,13 @@
     ],
     "maintenance_workflow_delivery": "https://github.com/acg-box/decodex/pull/2573",
     "native_schedule": "Daily cadence; use the native definition for current status. Pause during manual catch-up; resume only with explicit user authorization.",
-    "scope": "The fixed 21-commit qualification remains bound to the selected development artifact. The later nine-commit source-only review is in current-review.json and changes no runtime. Provider recovery remains retained; HumanCommand and shared MCP keep their recorded gates. Native tools own schedule status.",
+    "scope": "The current fixed 36-commit source review and exact candidate qualification are recorded separately. The previous nine-commit source review is preserved at its exact public revision. Native tools own schedule status; source completion does not activate a paused definition. Provider recovery is retained, while HumanCommand, Guardian V3 and shared MCP keep their recorded gates.",
     "provider_resolution": "https://github.com/acg-box/decodex/issues/2575",
     "deferred_capability_issue": "https://github.com/acg-box/decodex/issues/2585"
   },
   "provider_recovery": {
     "contract": "automations/upstream/retained-contracts.json#retained_provider_recovery",
-    "qualification": "automations/upstream/qualification.json#candidate_qualification/provider_recovery",
+    "qualification": "automations/upstream/qualification.json#retained_consumers",
     "delivery": [
       "https://github.com/acg-box/decodex/commit/20be50137551a46a4ffde709ccfafbfe56ccc6b9"
     ],
