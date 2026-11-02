@@ -12,8 +12,8 @@ use decodex_protocol::{InitialExecutionDefaults, InitialModelCatalogResult, Serv
 
 impl AgentSurface {
 	pub(super) fn creation_defaults_need_refresh(&self, cx: &Context<Self>) -> bool {
-		if self.root_id().is_some()
-			|| self.composer_manager.is_some()
+		if (!self.is_new_conversation()
+			&& (self.root_id().is_some() || self.composer_manager.is_some()))
 			|| (self.creation_intent.model
 				&& self.creation_intent.reasoning
 				&& self.creation_intent.service_tier)
@@ -50,8 +50,8 @@ impl AgentSurface {
 	pub(super) fn apply_creation_defaults(&mut self, cx: &mut Context<Self>) {
 		if self.sending
 			|| self.uncertain
-			|| self.root_id().is_some()
-			|| self.composer_manager.is_some()
+			|| (!self.is_new_conversation()
+				&& (self.root_id().is_some() || self.composer_manager.is_some()))
 			|| self.current_model_catalog(cx).is_none()
 		{
 			return;

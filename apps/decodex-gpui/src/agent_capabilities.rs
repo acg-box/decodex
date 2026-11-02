@@ -15,6 +15,7 @@ pub(super) struct CatalogContext {
 	directory: String,
 	account: String,
 	has_root: bool,
+	creating: bool,
 	runtime_source: Option<decodex_protocol::EntityId>,
 }
 
@@ -47,6 +48,7 @@ impl AgentSurface {
 		Some(CatalogContext {
 			directory: self.cwd.read(cx).content().to_owned(),
 			account: self.account.read(cx).content().to_owned(),
+			creating: self.is_new_conversation(),
 			has_root: self
 				.snapshot
 				.as_ref()?
@@ -98,7 +100,7 @@ impl AgentSurface {
 		{
 			return;
 		}
-		let cold_request = if context.has_root {
+		let cold_request = if context.has_root && !context.creating {
 			None
 		} else {
 			let Ok(working_directory) =
