@@ -6,7 +6,7 @@ var setTimeout = function(callback, delay) { scheduled.push({callback, delay}); 
 const callbacks = {};
 const event = name => ({addListener: cb => { callbacks[name] = cb; }});
 const records = new Map([[1, {id: 1, url: "https://chatgpt.com/", windowId: 1}]]);
-const groupRecords = new Map([[5, {id: 5, title: "Decodex Research", windowId: 1}]]);
+const groupRecords = new Map([[5, {id: 5, title: "Decodex Pro Research", windowId: 1}]]);
 let nextGroup = 100, uninstalled = false;
 const storage = {};
 const frames = [];
@@ -37,7 +37,13 @@ var chrome = {
   windows: {update: async () => {}},
   debugger: {
     attach: async () => {},
-    sendCommand: async (_, method, params) => { commands++; if (params.expression === "pending") return new Promise(resolve => { pendingReply = resolve; }); return {method, params}; },
+    getTargets: async () => [...records.values()].map(tab => ({tabId: tab.id, url: tab.url || tab.actualUrl})),
+    sendCommand: async ({tabId}, method, params) => {
+      commands++;
+      if (method === "Page.navigate") records.get(tabId).url = params.url;
+      if (params.expression === "pending") return new Promise(resolve => { pendingReply = resolve; });
+      return {method, params};
+    },
     onEvent: event("event"), onDetach: event("detach")
   }
 };
@@ -50,6 +56,7 @@ async function runChecks() {
   await rejects(() => dispatch({method: "Target.attachToTarget", params: {targetId: "1"}}));
   assert((await dispatch({method: "Target.getTargets"})).targetInfos.length === 0, "Unrelated tab leaked");
   const {targetId} = await dispatch({method: "Target.createTarget", params: {url: "about:blank", background: true}});
+  assert(records.get(Number(targetId)).url === "about:blank", "ChatGPT loaded before editor isolation could be installed");
   const groupId = records.get(Number(targetId)).groupId;
   assert(groupId !== 5 && groupRecords.get(groupId).collapsed, "Research adopted a user group or did not stay in the background");
   const second = await dispatch({method: "Target.createTarget", params: {url: "about:blank", background: true}});
@@ -57,8 +64,19 @@ async function runChecks() {
   await dispatch({method: "Target.activateTarget", params: {targetId}});
   assert(!groupRecords.get(groupId).collapsed, "Opening research kept its group hidden");
   await dispatch({method: "Target.closeTarget", params: {targetId: second.targetId}});
+  const tab = records.get(Number(targetId));
+  tab.actualUrl = tab.url; delete tab.url;
   await dispatch({method: "Target.attachToTarget", params: {targetId}});
   const cdp = (method, params) => dispatch({method, params, sessionId: targetId});
+  tab.actualUrl = "https://example.com/";
+  await rejects(() => cdp("Runtime.evaluate", {expression: "1 + 1"}));
+  tab.actualUrl = "about:blank";
+  const script = {source: "/* isolated editor setup */"};
+  const initialCommands = commands;
+  await cdp("Page.addScriptToEvaluateOnNewDocument", script);
+  await cdp("Page.addScriptToEvaluateOnNewDocument", script);
+  assert(commands === initialCommands + 1, "Reconnect duplicated the pre-document script");
+  await cdp("Page.navigate", {url: "https://chatgpt.com/"});
   await cdp("Runtime.evaluate", {expression: "1 + 1"});
   const before = commands;
   for (const url of ["https://example.com/", "https://chatgpt.com.evil/", "https://chatgpt.com@evil/", "https://user:secret@chatgpt.com/", "file:///etc/passwd"]) {

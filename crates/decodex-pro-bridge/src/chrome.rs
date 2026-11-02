@@ -41,7 +41,7 @@ pub(crate) struct Chrome {
 impl Chrome {
 	pub async fn connect(root: &Path) -> Result<Self> {
 		let stream = UnixStream::connect(native_host::socket_path(root)).await
-			.map_err(|_| "Decodex Research is not connected. Enable its Chrome extension, then recover the saved request.")?;
+			.map_err(|_| "Decodex Pro Research is not connected. Enable its Chrome extension, then recover the saved request.")?;
 		let (socket, _) = tokio_tungstenite::client_async("ws://localhost/research", stream)
 			.await
 			.map_err(|e| e.to_string())?;
@@ -197,42 +197,62 @@ impl Chrome {
 		url: Option<&str>,
 		visible: bool,
 	) -> Result<()> {
-		self.bind_conversation_url(url.unwrap_or_default());
-
 		let targets = self.command("Target.getTargets", serde_json::json!({})).await?;
-		let existing = saved_target.and_then(|id| {
+		let mut existing = saved_target.and_then(|id| {
 			targets["targetInfos"]
 				.as_array()?
 				.iter()
 				.find(|target| target["targetId"] == id && target["type"] == "page")
+				.cloned()
 		});
-		let target = if let Some(target) = existing {
-			target["targetId"].as_str().ok_or("Chrome returned no target identity.")?.to_owned()
-		} else {
-			if url.is_none() {
-				return Err("The pending request tab is gone and no conversation URL was saved. The request was not resent.".into());
+		let mut destination = url.map(str::to_owned);
+
+		if let Some(target) = &existing {
+			let id = target["targetId"].as_str().ok_or("Chrome returned no target identity.")?;
+
+			self.attach(id).await?;
+
+			let scope = self
+				.evaluate("globalThis[Symbol.for('decodex.research.browser-state')]?.scope")
+				.await?;
+
+			if scope.as_str() != Some(id) {
+				// Do not reload or clear a pre-isolation page: it can hold the user's
+				// restored draft. Recover its exact conversation in a new owned tab.
+				if destination.is_none() {
+					destination =
+						target["url"].as_str().and_then(|url| page::conversation_url(url).ok());
+				}
+
+				existing = None;
+			}
+		}
+
+		if existing.is_none() {
+			if destination.is_none() {
+				return Err("The pending request has no isolated tab or saved conversation URL. The request was not resent.".into());
 			}
 
-			self.command(
-				"Target.createTarget",
-				serde_json::json!({"url":"about:blank","background":!visible}),
-			)
-			.await?["targetId"]
+			self.session = None;
+
+			let created = self
+				.command(
+					"Target.createTarget",
+					serde_json::json!({"url":"about:blank","background":!visible}),
+				)
+				.await?;
+			let id = created["targetId"]
 				.as_str()
 				.ok_or("Chrome returned no target identity.")?
-				.to_owned()
-		};
+				.to_owned();
 
-		self.target = Some(target.clone());
+			self.attach(&id).await?;
+		}
 
-		let attached = self
-			.command("Target.attachToTarget", serde_json::json!({"targetId":target,"flatten":true}))
-			.await?;
+		let target =
+			self.target.as_deref().ok_or("Chrome returned no target identity.")?.to_owned();
 
-		self.session = Some(
-			attached["sessionId"].as_str().ok_or("Chrome returned no session identity.")?.into(),
-		);
-
+		self.bind_conversation_url(destination.as_deref().unwrap_or_default());
 		self.responses.clear();
 		self.finished.clear();
 		self.identities.clear();
@@ -244,29 +264,55 @@ impl Chrome {
 
 		self.command("Page.enable", serde_json::json!({})).await?;
 		self.command("Runtime.enable", serde_json::json!({})).await?;
+
+		let script = format!(
+			"{}({});",
+			include_str!("../assets/browser-state.js"),
+			serde_json::to_string(&target).map_err(|e| e.to_string())?
+		);
+
+		self.command("Page.addScriptToEvaluateOnNewDocument", serde_json::json!({"source":script}))
+			.await?;
 		// Retain the entire submitted body for input identity, including long research
 		// material. Chrome's default post-data capture can omit a large input.
 		self.command("Network.enable", serde_json::json!({"maxPostDataSize":32*1_024*1_024}))
 			.await?;
 
 		if existing.is_none()
-			|| url.is_some_and(|url| existing.is_some_and(|target| target["url"] != url))
-		{
+			|| destination.as_ref().is_some_and(|url| {
+				existing.as_ref().is_some_and(|target| target["url"].as_str() != Some(url.as_str()))
+			}) {
 			self.command(
 				"Page.navigate",
-				serde_json::json!({"url":url.ok_or("Missing target URL.")?}),
+				serde_json::json!({"url":destination.ok_or("Missing target URL.")?}),
 			)
 			.await?;
 		}
 		if visible {
-			self.session = None;
+			let session = self.session.take();
 
 			self.command("Target.activateTarget", serde_json::json!({"targetId":target})).await?;
 
-			self.session = Some(attached["sessionId"].as_str().unwrap_or_default().into());
+			self.session = session;
 
 			self.command("Page.bringToFront", serde_json::json!({})).await?;
 		}
+
+		Ok(())
+	}
+
+	// Passive setup inspection must not replace a pre-isolation draft page.
+	pub(crate) async fn attach(&mut self, target: &str) -> Result<()> {
+		self.session = None;
+		self.target = Some(target.into());
+
+		let attached = self
+			.command("Target.attachToTarget", serde_json::json!({"targetId":target,"flatten":true}))
+			.await?;
+
+		self.session = Some(
+			attached["sessionId"].as_str().ok_or("Chrome returned no session identity.")?.into(),
+		);
 
 		Ok(())
 	}
@@ -332,6 +378,29 @@ impl Chrome {
 		}
 
 		Ok(())
+	}
+
+	pub async fn close_completed_tab(&mut self) -> Result<()> {
+		if !page::can_close(self).await? {
+			return Ok(());
+		}
+
+		// Stop the application before deleting its state. A queued settings write
+		// can otherwise recreate the record between deletion and tab closure.
+		// The inert document inherits ChatGPT's origin and needs no network request.
+		let _ = time::timeout(Duration::from_secs(2), async {
+			self.evaluate("location.replace('about:blank');true").await?;
+
+			loop {
+				if self.evaluate("location.href==='about:blank' && typeof globalThis[Symbol.for('decodex.research.browser-state')]?.release==='function'").await? == true {
+					return self.evaluate("globalThis[Symbol.for('decodex.research.browser-state')].release()").await.map(|_| ());
+				}
+
+				time::sleep(Duration::from_millis(50)).await;
+			}
+		}).await;
+
+		self.close_tab().await
 	}
 
 	pub async fn detach(&mut self) -> Result<()> {
@@ -521,6 +590,9 @@ mod tests {
 					"Target.getTargets" =>
 						serde_json::json!({"targetInfos":[{"targetId":"owned","type":"page","url":"https://chatgpt.com/projects"}]}),
 					"Target.attachToTarget" => serde_json::json!({"sessionId":"owned"}),
+					"Runtime.evaluate" => serde_json::json!({"result":{"value":"owned"}}),
+					"Page.addScriptToEvaluateOnNewDocument" =>
+						serde_json::json!({"identifier":"scope"}),
 					"Page.navigate" => {
 						assert_eq!(request["params"]["url"], "https://chatgpt.com/");
 
@@ -556,6 +628,180 @@ mod tests {
 		drop(browser);
 
 		assert_eq!(server.await.unwrap(), 1);
+	}
+
+	#[tokio::test]
+	async fn legacy_pages_are_preserved_and_recovered_only_from_a_known_destination() {
+		for (saved_url, requested, destination) in [
+			("https://chatgpt.com/", Some("https://chatgpt.com/"), Some("https://chatgpt.com/")),
+			("https://chatgpt.com/c/owned", None, Some("https://chatgpt.com/c/owned")),
+			("https://chatgpt.com/", None, None),
+		] {
+			let root = tempfile::tempdir().unwrap();
+			let listener =
+				tokio::net::UnixListener::bind(native_host::socket_path(root.path())).unwrap();
+			let server = tokio::spawn(async move {
+				let (stream, _) = listener.accept().await.unwrap();
+				let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
+				let mut registered = false;
+				let mut created = false;
+				let mut navigated = false;
+
+				while let Some(Ok(Message::Text(text))) = socket.next().await {
+					let request: Value = serde_json::from_str(&text).unwrap();
+					let result = match request["method"].as_str().unwrap() {
+						"Decodex.ping" =>
+							serde_json::json!({"protocol":1,"extensionId":crate::native_host::EXTENSION_ID}),
+						"Target.getTargets" =>
+							serde_json::json!({"targetInfos":[{"targetId":"legacy","type":"page","url":saved_url}]}),
+						"Target.attachToTarget" =>
+							serde_json::json!({"sessionId":request["params"]["targetId"]}),
+						"Runtime.evaluate" => serde_json::json!({"result":{}}),
+						"Target.createTarget" => {
+							assert!(destination.is_some());
+							assert_eq!(request["params"]["url"], "about:blank");
+
+							created = true;
+
+							serde_json::json!({"targetId":"isolated"})
+						},
+						"Page.addScriptToEvaluateOnNewDocument" => {
+							assert!(created);
+							assert_eq!(request["sessionId"], "isolated");
+							assert!(
+								request["params"]["source"]
+									.as_str()
+									.unwrap()
+									.contains("codex.browser.persistedAtomState")
+							);
+
+							registered = true;
+
+							serde_json::json!({"identifier":"scope"})
+						},
+						"Page.navigate" => {
+							assert!(
+								registered,
+								"The application loaded before its editor state was isolated"
+							);
+							assert_eq!(
+								request["sessionId"], "isolated",
+								"The legacy draft page was changed"
+							);
+							assert_eq!(request["params"]["url"].as_str(), destination);
+
+							navigated = true;
+
+							serde_json::json!({})
+						},
+						"Page.enable" | "Runtime.enable" | "Network.enable" =>
+							serde_json::json!({}),
+						other => panic!("Unexpected operation {other}"),
+					};
+
+					socket
+						.send(Message::Text(
+							serde_json::json!({"id":request["id"],"result":result})
+								.to_string()
+								.into(),
+						))
+						.await
+						.unwrap();
+				}
+
+				assert_eq!(created, destination.is_some());
+				assert_eq!(navigated, destination.is_some());
+			});
+			let mut browser = Chrome::connect(root.path()).await.unwrap();
+			let result = browser.open(Some("legacy"), requested, false).await;
+
+			if destination.is_some() {
+				result.unwrap();
+
+				assert_eq!(browser.target.as_deref(), Some("isolated"));
+			} else {
+				assert!(result.unwrap_err().contains("not resent"));
+			}
+
+			drop(browser);
+
+			server.await.unwrap();
+		}
+	}
+
+	#[tokio::test]
+	async fn completed_tabs_release_their_state_but_keep_new_unsent_content() {
+		for can_close in [true, false] {
+			let root = tempfile::tempdir().unwrap();
+			let listener =
+				tokio::net::UnixListener::bind(native_host::socket_path(root.path())).unwrap();
+			let server = tokio::spawn(async move {
+				let (stream, _) = listener.accept().await.unwrap();
+				let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
+				let mut released = false;
+				let mut closed = false;
+				let mut stopped = false;
+
+				while let Some(Ok(Message::Text(text))) = socket.next().await {
+					let request: Value = serde_json::from_str(&text).unwrap();
+					let result = match request["method"].as_str().unwrap() {
+						"Decodex.ping" =>
+							serde_json::json!({"protocol":1,"extensionId":crate::native_host::EXTENSION_ID}),
+						"Runtime.evaluate" => {
+							let expression = request["params"]["expression"].as_str().unwrap();
+
+							if expression.contains("location.replace") {
+								stopped = true;
+							}
+							if expression.contains("].release()") {
+								assert!(can_close);
+								assert!(stopped, "The application can still write its state");
+
+								released = true;
+							}
+
+							serde_json::json!({"result":{"value":can_close}})
+						},
+						"Target.closeTarget" => {
+							assert!(
+								released,
+								"Closing a completed tab left its isolated state behind"
+							);
+							assert_eq!(request["params"]["targetId"], "owned");
+
+							closed = true;
+
+							serde_json::json!({"success":true})
+						},
+						other => panic!("Unexpected operation {other}"),
+					};
+
+					socket
+						.send(Message::Text(
+							serde_json::json!({"id":request["id"],"result":result})
+								.to_string()
+								.into(),
+						))
+						.await
+						.unwrap();
+				}
+
+				assert_eq!(released, can_close);
+				assert_eq!(closed, can_close);
+			});
+			let mut browser = Chrome::connect(root.path()).await.unwrap();
+
+			browser.target = Some("owned".into());
+			browser.session = Some("owned".into());
+
+			browser.close_completed_tab().await.unwrap();
+
+			assert_eq!(browser.target.is_some(), !can_close);
+
+			drop(browser);
+
+			server.await.unwrap();
+		}
 	}
 
 	#[tokio::test]

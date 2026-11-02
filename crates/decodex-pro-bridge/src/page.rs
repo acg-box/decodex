@@ -321,6 +321,18 @@ pub(crate) async fn send(browser: &mut Chrome) -> Result<bool> {
 		.map(|sent| sent == true)
 }
 
+// A completed answer can share its tab with a newly typed, unsent question.
+// Keep that tab rather than discard the user's text or source attachment.
+pub(crate) async fn can_close(browser: &mut Chrome) -> Result<bool> {
+	Ok(browser.evaluate(&format!(r#"(()=>{{ {CONTROLS}
+        const form=editor?.closest('form');
+        return visible(editor)&&!!form&&!editor.textContent.trim()&&
+          !Array.from(form.querySelectorAll('input[type="file"]')).some(input=>input.files?.length)&&
+          !Array.from(form.querySelectorAll('button')).some(b=>visible(b)&&/^Remove /i.test(b.getAttribute('aria-label')??''))&&
+          !visible(document.querySelector('[data-testid="stop-button"],button[aria-label="Stop generating"]'));
+    }})()"#)).await? == true)
+}
+
 pub(crate) async fn observe(browser: &mut Chrome) -> Result<Observation> {
 	observe_request(browser, "").await
 }
@@ -395,17 +407,26 @@ fn apply_native_message(message: &mut Message, native: &NativeMessage) {
 /// hidden destinations, titles, images and HTML cannot disappear from verification.
 fn markdown_user_text(markdown: &str) -> Option<String> {
 	let mut text = String::new();
-	let mut paragraph = false;
+	let mut paragraph_end = None;
 	let mut link: Option<(String, usize)> = None;
 
-	for event in Parser::new(markdown) {
+	for (event, range) in Parser::new(markdown).into_offset_iter() {
 		match event {
 			Event::Start(Tag::Paragraph) => {
-				if paragraph {
-					text.push_str("\n\n");
-				}
+				if let Some(end) = paragraph_end {
+					// The provider retains blank lines in its Markdown source. The
+					// rendered DOM and a plain event walk both lose their exact count.
+					let gap = &markdown[end..range.start];
 
-				paragraph = true;
+					if !gap.bytes().all(|b| matches!(b, b'\r' | b'\n')) {
+						return None;
+					}
+
+					text.push_str(gap);
+				}
+			},
+			Event::End(TagEnd::Paragraph) => {
+				paragraph_end = Some(markdown[..range.end].trim_end_matches(['\r', '\n']).len());
 			},
 			Event::Start(Tag::Link { dest_url, title, .. }) => {
 				if link.is_some() || !title.is_empty() {
@@ -424,9 +445,7 @@ fn markdown_user_text(markdown: &str) -> Option<String> {
 			Event::Text(value) | Event::Code(value) => text.push_str(&value),
 			Event::SoftBreak | Event::HardBreak => text.push('\n'),
 			Event::Start(Tag::Emphasis | Tag::Strong | Tag::Strikethrough)
-			| Event::End(
-				TagEnd::Paragraph | TagEnd::Emphasis | TagEnd::Strong | TagEnd::Strikethrough,
-			) => {},
+			| Event::End(TagEnd::Emphasis | TagEnd::Strong | TagEnd::Strikethrough) => {},
 			_ => return None,
 		}
 	}

@@ -3,7 +3,7 @@
 const HOST = "box.acg.decodex.research";
 const LIMIT = 32 * 1024 * 1024;
 const METHODS = new Set([
-  "Page.enable", "Page.navigate", "Page.reload", "Page.bringToFront",
+  "Page.enable", "Page.navigate", "Page.reload", "Page.bringToFront", "Page.addScriptToEvaluateOnNewDocument",
   "Runtime.enable", "Runtime.evaluate", "Network.enable", "Network.getResponseBody",
   "Emulation.setFocusEmulationEnabled", "Input.insertText", "Input.dispatchKeyEvent",
   "Input.dispatchMouseEvent"
@@ -14,6 +14,7 @@ let nextFragment = 0;
 let reconnect;
 const attached = new Set();
 const owned = new Set();
+const pageScripts = new Map();
 const groups = new Map();
 // Chrome clears storage.session when an extension reloads. Retain ownership in
 // local storage, bound to the actual Chrome parent process's identity. A browser
@@ -24,7 +25,7 @@ const ready = new Promise(resolve => { resolveReady = resolve; });
 async function restoreSession(session) {
   if (browserSession === session) return;
   const saved = await chrome.storage.local.get(["browserSession", "researchTabs", "researchGroups"]);
-  owned.clear(); groups.clear(); attached.clear();
+  owned.clear(); groups.clear(); attached.clear(); pageScripts.clear();
   if (saved.browserSession === session) {
     for (const id of saved.researchTabs || []) owned.add(id);
     for (const [windowId, groupId] of saved.researchGroups || []) groups.set(windowId, groupId);
@@ -56,9 +57,10 @@ async function groupTab(tab) {
   if (groupId === undefined) {
     groupId = await chrome.tabs.group({tabIds: [tab.id]});
     groups.set(tab.windowId, groupId);
-    await chrome.tabGroups.update(groupId, {title: "Decodex Research", color: "blue", collapsed: !tab.active});
+    await chrome.tabGroups.update(groupId, {title: "Decodex Pro Research", color: "blue", collapsed: !tab.active});
   } else {
     await chrome.tabs.group({tabIds: [tab.id], groupId});
+    await chrome.tabGroups.update(groupId, {title: "Decodex Pro Research"});
   }
   await saveTabs();
 }
@@ -69,6 +71,12 @@ async function ownedTab(value) {
   if (!Number.isSafeInteger(id) || !owned.has(id)) throw Error("Not a Decodex research tab");
   const tab = await chrome.tabs.get(id);
   const url = tab.url || tab.pendingUrl;
+  // Chrome redacts blank URLs without broad tabs permission. Verify only this
+  // owned tab's actual target before attaching, including after a worker reload.
+  if (!url) {
+    const target = (await chrome.debugger.getTargets()).find(target => target.tabId === id);
+    if (target?.url === "about:blank") return tab;
+  }
   if (url !== "about:blank" && !chatUrl(url)) throw Error("Research tab left chatgpt.com; open it to sign in or reconnect");
   return tab;
 }
@@ -99,7 +107,7 @@ async function dispatch(request) {
     }
     case "Target.createTarget": {
       if (p.url !== "about:blank") throw Error("Research tabs must start empty");
-      const tab = await chrome.tabs.create({url: "https://chatgpt.com/", active: !p.background});
+      const tab = await chrome.tabs.create({url: "about:blank", active: !p.background});
       owned.add(tab.id);
       await saveTabs();
       await groupTab(tab);
@@ -124,6 +132,7 @@ async function dispatch(request) {
       const tab = await ownedTab(p.targetId);
       await chrome.tabs.remove(tab.id);
       owned.delete(tab.id);
+      pageScripts.delete(tab.id);
       attached.delete(tab.id);
       await saveTabs();
       return {success: true};
@@ -133,7 +142,14 @@ async function dispatch(request) {
       const tab = await ownedTab(request.sessionId);
       if (!attached.has(tab.id)) throw Error("Research debugger disconnected; recover the saved request");
       if (request.method === "Page.navigate" && !chatUrl(p.url)) throw Error("Research navigation is limited to chatgpt.com");
-      return chrome.debugger.sendCommand({tabId: tab.id}, request.method, p);
+      // The debugger connection outlives a Rust worker. Reconnects must not add
+      // another copy of the same pre-document script to every future navigation.
+      if (request.method === "Page.addScriptToEvaluateOnNewDocument" && pageScripts.get(tab.id)?.source === p.source) {
+        return pageScripts.get(tab.id).result;
+      }
+      const result = await chrome.debugger.sendCommand({tabId: tab.id}, request.method, p);
+      if (request.method === "Page.addScriptToEvaluateOnNewDocument") pageScripts.set(tab.id, {source: p.source, result});
+      return result;
     }
   }
 }
@@ -234,10 +250,11 @@ chrome.debugger.onEvent.addListener((source, method, params) => {
 });
 chrome.debugger.onDetach.addListener((source, reason) => {
   attached.delete(source.tabId);
+  pageScripts.delete(source.tabId);
   if (owned.has(source.tabId)) send({sessionId: String(source.tabId), method: "Decodex.detached", params: {reason}});
 });
 chrome.tabs.onRemoved.addListener(id => {
-  if (owned.delete(id)) { attached.delete(id); void saveTabs(); }
+  if (owned.delete(id)) { attached.delete(id); pageScripts.delete(id); void saveTabs(); }
 });
 chrome.runtime.onInstalled.addListener(connect);
 chrome.runtime.onStartup.addListener(connect);

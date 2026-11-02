@@ -31,3 +31,20 @@ guard context.objectForKeyedSubscript("testDone")?.toBool() == true else { fatal
 let failure = context.objectForKeyedSubscript("testError")?.toString() ?? ""
 guard failure.isEmpty else { fputs(failure + "\n", stderr); exit(1) }
 print("Extension scope, reconnect, framing and manifest identity passed")
+
+let page = JSContext()!
+var pageFailure = ""
+page.exceptionHandler = { _, error in pageFailure = error?.toString() ?? "Page adapter failed" }
+let adapter = try String(contentsOf: directory.appendingPathComponent("assets/browser-state.js"), encoding: .utf8)
+let fixture = try String(contentsOf: directory.appendingPathComponent("tests/browser_state_fixture.js"), encoding: .utf8)
+page.evaluateScript(fixture.replacingOccurrences(of: "SCRIPT", with: adapter))
+guard pageFailure.isEmpty else { fputs(pageFailure + "\n", stderr); exit(1) }
+let pageDeadline = Date().addingTimeInterval(5)
+while page.objectForKeyedSubscript("pageDone")?.toBool() != true && Date() < pageDeadline {
+    page.evaluateScript("void 0")
+    RunLoop.current.run(until: Date().addingTimeInterval(0.001))
+}
+guard page.objectForKeyedSubscript("pageDone")?.toBool() == true else { fatalError("Page cleanup check timed out") }
+let pageError = page.objectForKeyedSubscript("pageError")?.toString() ?? ""
+guard pageError.isEmpty else { fputs(pageError + "\n", stderr); exit(1) }
+print("Research editor isolation preserves original drafts and unrelated storage")

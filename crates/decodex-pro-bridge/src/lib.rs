@@ -4,6 +4,7 @@
 //! Send fencing and exact message receipts survive controller and host disconnects.
 //! Provider login and verification remain user actions; they are never bypassed.
 
+pub mod events;
 pub mod install;
 pub mod mcp;
 pub mod native_host;
@@ -214,7 +215,7 @@ impl ProBridge {
 		};
 		let Some(target) = browser.login_target(saved.as_deref()).await? else { return Ok(None) };
 
-		browser.open(Some(&target), None, false).await?;
+		browser.attach(&target).await?;
 
 		if saved.as_deref() != Some(&target) {
 			let _lease = store.lease()?;
@@ -261,7 +262,7 @@ impl ProBridge {
 				return Ok(());
 			}
 			if Instant::now() >= deadline {
-				return Err("Chrome did not remove its research extension. Remove Decodex Research in Chrome, then retry.".into());
+				return Err("Chrome did not remove its research extension. Remove Decodex Pro Research in Chrome, then retry.".into());
 			}
 
 			time::sleep(Duration::from_millis(100)).await;
@@ -313,12 +314,17 @@ impl ProBridge {
 
 	/// Submit or recover one exact request. The same ID cannot identify different input.
 	pub async fn ask(&self, request: Request) -> Result<Receipt> {
-		workflow::run(self.clone(), Some(request), None, None).await
+		workflow::run(self.clone(), Some(request), None, None, false).await
 	}
 
 	/// Recover a saved request without creating a new question or replaying an uncertain Send.
 	pub async fn resume(&self, id: &str) -> Result<Receipt> {
-		workflow::run(self.clone(), None, Some(id.into()), None).await
+		workflow::run(self.clone(), None, Some(id.into()), None, false).await
+	}
+
+	/// Collect an already submitted answer. Prepared requests are never sent, even after recovery.
+	pub async fn collect(&self, id: &str) -> Result<Receipt> {
+		workflow::run(self.clone(), None, Some(id.into()), None, true).await
 	}
 
 	/// Reconcile an uncertain first Send against an explicit candidate conversation.
@@ -327,7 +333,7 @@ impl ProBridge {
 	pub async fn resume_at(&self, id: &str, conversation_url: &str) -> Result<Receipt> {
 		let candidate = page::conversation_url(conversation_url)?;
 
-		workflow::run(self.clone(), None, Some(id.into()), Some(candidate)).await
+		workflow::run(self.clone(), None, Some(id.into()), Some(candidate), false).await
 	}
 
 	/// Stop this owner and its clones. Await active runs for cleanup.
