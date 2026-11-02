@@ -2,16 +2,10 @@
 #[path = "agent_sample_request.rs"] mod request;
 #[path = "agent_prompt_suggestions.rs"] mod suggestions;
 
-use gpui::{AnyElement, StatefulInteractiveElement as _};
 use tokio::sync::watch::{self, Sender};
 
-#[cfg(test)] use crate::shell::agent_surface::Entity;
-use crate::{
-	shell::agent_surface::{
-		AgentSnapshotDto, AgentSurface, Context, EntityId, InteractiveElement, IntoElement,
-		ParentElement, Styled, Task, WireText, markdown, mcp_forms, unique_command,
-	},
-	ui_theme,
+use crate::shell::agent_surface::{
+	AgentSnapshotDto, AgentSurface, Context, EntityId, Task, WireText, unique_command,
 };
 use decodex_protocol::{AgentSamplePhase, AgentSampleStatus};
 
@@ -89,22 +83,8 @@ impl AgentSurface {
 		self.sample.work = Some(work);
 		self.sample.thread = Some(thread);
 		self.sample.feedback = "Reconnect to generate a suggestion.".into();
-		self.request_sample(true, cx);
+		self.run_sample_request(cx);
 		cx.notify();
-	}
-
-	fn request_sample(&mut self, generate: bool, cx: &mut Context<Self>) {
-		if self.sample.busy() || !self.command_connection_ready() {
-			return;
-		}
-		let operation = if generate {
-			request::Operation::Generate(
-				WireText::new(NEXT_PROMPT).expect("bounded suggestion prompt"),
-			)
-		} else {
-			request::Operation::Read
-		};
-		self.run_sample_request(operation, cx);
 	}
 
 	fn suggested_prompt(&self) -> Option<&str> {
@@ -117,15 +97,17 @@ impl AgentSurface {
 		state.answer.as_ref()?.text.as_deref().filter(|text| !text.trim().is_empty())
 	}
 
-	pub(super) fn can_accept_prompt_suggestion(&self, cx: &Context<Self>) -> bool {
-		self.suggested_prompt().is_some()
-			&& self.can_open_sample()
+	pub(super) fn prompt_suggestion(&self, cx: &Context<Self>) -> Option<&str> {
+		let available = self.can_open_sample()
 			&& self.sample.work == self.selected
 			&& self
 				.composer_manager
 				.as_ref()
 				.is_none_or(|owner| Some(owner) == self.selected.as_ref())
 			&& self.draft_owner_available()
+			&& self.async_question_composer().is_none()
+			&& !self.voice_on_current_conversation()
+			&& self.dictation.is_none()
 			&& !self.sending
 			&& !self.uncertain
 			&& self.composer.read(cx).content().is_empty()
@@ -136,14 +118,13 @@ impl AgentSurface {
 						&& work.codex_thread_id == self.sample.thread
 						&& work.active_turn_id.is_none()
 				})
-			})
+			});
+
+		available.then(|| self.suggested_prompt()).flatten()
 	}
 
 	pub(super) fn accept_prompt_suggestion(&mut self, cx: &mut Context<Self>) {
-		if !self.can_accept_prompt_suggestion(cx) {
-			return;
-		}
-		let text = self.suggested_prompt().expect("current suggestion").to_owned();
+		let Some(text) = self.prompt_suggestion(cx).map(str::to_owned) else { return };
 		if self.composer.update(cx, |input, cx| input.append_recovered_text(&text, cx)) {
 			self.remember_draft_document(cx);
 			self.reset_sample();
@@ -151,19 +132,8 @@ impl AgentSurface {
 		}
 	}
 
-	fn cancel_sample(&mut self, cx: &mut Context<Self>) {
-		let Some(state) =
-			self.sample.state.as_ref().filter(|s| s.phase == AgentSamplePhase::Pending)
-		else {
-			return;
-		};
-		let Some(id) = state.request_id.clone() else { return };
-
-		self.run_sample_request(request::Operation::Cancel(id), cx);
-	}
-
-	fn run_sample_request(&mut self, operation: request::Operation, cx: &mut Context<Self>) {
-		if !self.command_connection_ready() {
+	fn run_sample_request(&mut self, cx: &mut Context<Self>) {
+		if self.sample.busy() || !self.command_connection_ready() {
 			return;
 		}
 
@@ -175,15 +145,9 @@ impl AgentSurface {
 		}
 
 		let (Ok(work), Ok(thread)) = (EntityId::new(work), WireText::new(thread)) else { return };
-		let feedback = match &operation {
-			request::Operation::Read => "Checking answer status…",
-			request::Operation::Generate(_) => "Generating suggestion…",
-			request::Operation::Cancel(_) => "Requesting cancellation…",
-		};
-
 		self.sample.epoch = self.sample.epoch.wrapping_add(1);
 		self.sample.state = None;
-		self.sample.feedback = feedback.into();
+		self.sample.feedback = "Generating suggestion…".into();
 
 		let epoch = self.sample.epoch;
 		let (closed, closure) = watch::channel(false);
@@ -197,8 +161,14 @@ impl AgentSurface {
 				if let Ok(runtime) =
 					tokio::runtime::Builder::new_current_thread().enable_all().build()
 				{
-					runtime
-						.block_on(request::run(profile, work, thread, operation, closure, updates));
+					runtime.block_on(request::run(
+						profile,
+						work,
+						thread,
+						WireText::new(NEXT_PROMPT).expect("bounded suggestion prompt"),
+						closure,
+						updates,
+					));
 				}
 			})
 			.is_err()
@@ -244,101 +214,6 @@ impl AgentSurface {
 		}));
 
 		cx.notify();
-	}
-
-	pub(super) fn sample_panel(&self, work: &str, cx: &mut Context<Self>) -> AnyElement {
-		if self.sample.work.as_deref() != Some(work) {
-			return gpui::div().into_any_element();
-		}
-		self.sample_content(cx)
-	}
-
-	fn displayed_sample(&self) -> Option<&AgentSampleStatus> {
-		self.sample.state.as_ref().filter(|state| {
-			state.prompt.as_ref().is_some_and(|prompt| prompt.as_str() == NEXT_PROMPT)
-		})
-	}
-
-	fn sample_content(&self, cx: &mut Context<Self>) -> AnyElement {
-		if self.sample.work.is_none() {
-			return gpui::div().into_any_element();
-		}
-		let mut panel = gpui::div().id("sample-panel").debug_selector(|| "sample-panel".into()).w_full().min_w_0().flex().flex_col().gap_2().p_3().rounded_lg().bg(ui_theme::rgba(0xffffff06))
-			.child("Suggested next message")
-			.child("Uses this conversation’s model and quota. Review the suggestion, then use it in an empty draft. Nothing is sent automatically.")
-			.child(self.sample.feedback.clone());
-		let displayed = self.displayed_sample();
-
-		if let Some(answer) = displayed.and_then(|state| state.answer.as_ref()) {
-			if let Some(text) = &answer.text {
-				panel = panel
-					.child(
-						gpui::div()
-							.id("sample-answer")
-							.debug_selector(|| "sample-answer".into())
-							.max_h(gpui::px(320.))
-							.overflow_y_scroll()
-							.child(markdown::render_process(text, "prompt-suggestion")),
-					)
-					.child(markdown::copy_button("sample-copy", "Copy suggestion", text.clone()));
-			}
-			if let (Some(input), Some(output)) = (answer.input_tokens, answer.output_tokens) {
-				panel = panel.child(format!("{input} input tokens · {output} output tokens"));
-			}
-		}
-		if self.can_accept_prompt_suggestion(cx) {
-			panel = panel.child("Press Tab in the message field to use this suggestion.");
-		} else if self.suggested_prompt().is_some() && !self.composer.read(cx).content().is_empty()
-		{
-			panel = panel.child("Clear the current draft to use this suggestion, or copy it.");
-		}
-
-		let mut controls = gpui::div().flex().items_center().flex_wrap().gap_2();
-		if !self.sample.busy() && self.command_connection_ready() {
-			controls = controls
-				.child(mcp_forms::mcp_button(
-					"sample-ask".into(),
-					"Generate suggestion".into(),
-					false,
-					cx,
-					|s, cx| s.request_sample(true, cx),
-				))
-				.child(mcp_forms::mcp_button(
-					"sample-refresh".into(),
-					"Refresh status".into(),
-					false,
-					cx,
-					|s, cx| s.request_sample(false, cx),
-				));
-		}
-		if self.command_connection_ready()
-			&& self
-				.sample
-				.state
-				.as_ref()
-				.is_some_and(|s| s.phase == AgentSamplePhase::Pending && s.request_id.is_some())
-		{
-			controls = controls.child(mcp_forms::mcp_button(
-				"sample-cancel".into(),
-				"Cancel suggestion".into(),
-				false,
-				cx,
-				|s, cx| s.cancel_sample(cx),
-			));
-		}
-
-		panel
-			.child(controls.child(mcp_forms::mcp_button(
-				"sample-close".into(),
-				"Close".into(),
-				false,
-				cx,
-				|s, cx| {
-					s.reset_sample();
-					cx.notify();
-				},
-			)))
-			.into_any_element()
 	}
 }
 

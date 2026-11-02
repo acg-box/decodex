@@ -183,6 +183,11 @@ impl ComposerInput {
 		self.marked_range.is_some()
 	}
 
+	#[cfg(test)]
+	pub(crate) fn placeholder(&self) -> &str {
+		&self.placeholder
+	}
+
 	pub(crate) fn content(&self) -> &str {
 		&self.content
 	}

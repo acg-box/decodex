@@ -116,7 +116,8 @@ fn live_activity_uses_only_the_current_thread_turn_and_running_action(cx: &mut T
 		s.work_board.briefs.get_mut(&row.key).unwrap().metrics.stats.as_mut().unwrap().generating =
 			true;
 
-		assert_eq!(s.live_work_activity(&row).unwrap().action, "Generating");
+		assert!(s.live_work_activity(&row).unwrap().action.is_empty());
+		assert_eq!(s.work_activity_summary(&row), ("Now".into(), "Generating".into()));
 
 		s.work_board.briefs.get_mut(&row.key).unwrap().preview.as_mut().unwrap().turn =
 			"previous".into();

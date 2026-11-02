@@ -2074,7 +2074,6 @@ impl AgentSurface {
 			.child(self.guardian_panel(work, cx))
 			.child(self.request_panel(snapshot, work, cx))
 			.child(self.history_panel(work, cx))
-			.child(self.sample_panel(&work.id, cx))
 	}
 
 	pub(super) fn prefetch_older_history(&mut self, cx: &mut Context<Self>) {

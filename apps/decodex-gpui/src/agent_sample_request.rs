@@ -13,12 +13,6 @@ use decodex_protocol::{
 
 pub(super) type Update = (Option<AgentSampleStatus>, String);
 
-pub(super) enum Operation {
-	Read,
-	Generate(WireText),
-	Cancel(WireText),
-}
-
 pub(super) const fn phase_message(phase: AgentSamplePhase) -> &'static str {
 	match phase {
 		AgentSamplePhase::Idle => "Ask for another perspective.",
@@ -41,7 +35,7 @@ pub(super) async fn run(
 	profile: ClientProfile,
 	work: EntityId,
 	thread: WireText,
-	operation: Operation,
+	prompt: WireText,
 	mut closed: Receiver<bool>,
 	updates: Sender<Option<Update>>,
 ) {
@@ -50,38 +44,13 @@ pub(super) async fn run(
 	}
 
 	let client = AgentClient::new(profile);
-	let (expected, action) = match operation {
-		Operation::Read => (None, None),
-		Operation::Generate(prompt) => {
-			let key = IdempotencyKey::new(super::unique_command())
-				.expect("bounded sample command identity");
+	let key =
+		IdempotencyKey::new(super::unique_command()).expect("bounded sample command identity");
+	let expected = WireText::new(key.as_str()).expect("bounded request identity");
+	let action =
+		AgentActionDto::GenerateSample { work_id: work.clone(), thread_id: thread.clone(), prompt };
 
-			(
-				Some(WireText::new(key.as_str()).expect("bounded request identity")),
-				Some((
-					AgentActionDto::GenerateSample {
-						work_id: work.clone(),
-						thread_id: thread.clone(),
-						prompt,
-					},
-					key,
-				)),
-			)
-		},
-		Operation::Cancel(request_id) => {
-			let key = IdempotencyKey::new(super::unique_command())
-				.expect("bounded cancellation command identity");
-
-			(
-				Some(request_id.clone()),
-				Some((AgentActionDto::CancelSample { work_id: work.clone(), request_id }, key)),
-			)
-		},
-	};
-
-	if let Some((action, key)) = action
-		&& let Ok(AgentCommandResponse::Rejected { error }) = client.execute(action, key).await
-	{
+	if let Ok(AgentCommandResponse::Rejected { error }) = client.execute(action, key).await {
 		let message = match error {
 			CommandError::ApplicationUnavailable { message } => message.as_str().to_owned(),
 			_ => "Request rejected. Refresh status before retrying.".into(),
@@ -105,7 +74,7 @@ pub(super) async fn run(
 		match result {
 			Ok(state)
 				if state.thread_id.as_ref().is_none_or(|id| id == &thread)
-					&& expected.as_ref().is_none_or(|id| state.request_id.as_ref() == Some(id)) =>
+					&& state.request_id.as_ref() == Some(&expected) =>
 			{
 				let active = matches!(
 					state.phase,

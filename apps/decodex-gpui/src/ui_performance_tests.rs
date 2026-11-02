@@ -120,8 +120,9 @@ fn work_capsule_grows_and_shrinks_with_content_instead_of_the_agent_count(cx: &m
 
 	let before = visual.debug_bounds("activity-work-island").unwrap();
 	let label = visual.debug_bounds("activity-live-rate").unwrap();
-	assert!(visual.debug_bounds("performance-live-status").is_some());
+	assert!(visual.debug_bounds("performance-live-status").is_none());
 	assert!(visual.debug_bounds("performance-live-rate").is_none());
+	assert!(visual.debug_bounds("performance-live-total").is_some());
 	let debug = visual.debug_bounds("performance-island").unwrap();
 	let fps = visual.debug_bounds("performance-fps").unwrap();
 
@@ -226,16 +227,28 @@ fn idle_capsule_shows_current_graph_usage_without_a_stale_rate(cx: &mut TestAppC
 	assert!(visual.debug_bounds("performance-live-rate").is_none());
 	assert!(visual.debug_bounds("performance-live-status").is_none());
 
-	island.update(visual, |s, cx| {
-		s.set_work(Some(Summary { samples: vec![Sample::default()], ..Default::default() }), cx);
-	});
-	visual.update(crate::ui_frame::draw_frame);
-	thread::sleep(Duration::from_millis(250));
-	visual.update(crate::ui_frame::draw_frame);
+	for (working, generating) in [(0, false), (1, false), (1, true)] {
+		island.update(visual, |s, cx| {
+			s.set_work(
+				Some(Summary {
+					working,
+					samples: vec![Sample {
+						stats: Some(AgentThreadMetrics { generating, ..Default::default() }),
+						..Default::default()
+					}],
+					..Default::default()
+				}),
+				cx,
+			);
+		});
+		visual.update(crate::ui_frame::draw_frame);
+		thread::sleep(Duration::from_millis(250));
+		visual.update(crate::ui_frame::draw_frame);
 
-	assert!(visual.debug_bounds("performance-live-status").is_some());
-	assert!(visual.debug_bounds("performance-live-total").is_none());
-	assert!(visual.debug_bounds("performance-live-rate").is_none());
+		assert!(visual.debug_bounds("performance-live-status").is_none());
+		assert_eq!(visual.debug_bounds("performance-live-total").is_some(), working == 0);
+		assert_eq!(visual.debug_bounds("performance-live-rate").is_some(), working > 0);
+	}
 
 	ui_performance::preference(Some(false));
 }
@@ -300,7 +313,7 @@ fn work_statistics_fit_with_debug_and_with_more_than_ninety_agents(cx: &mut Test
 		);
 		assert_eq!(pill.size.height, gpui::px(200.));
 		let total = visual.debug_bounds("activity-work-total").unwrap();
-		let rate = visual.debug_bounds("performance-work-status").unwrap();
+		let rate = visual.debug_bounds("performance-work-rate").unwrap();
 
 		assert!(rate.right() < total.left() && total.right() < pill.right());
 		let breakdown = visual.debug_bounds("activity-work-breakdown").unwrap();
