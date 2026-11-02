@@ -2,16 +2,16 @@
 
 use futures_util::{SinkExt as _, StreamExt as _};
 use gpui::{
-	AppContext as _, Focusable as _, InteractiveElement as _, ParentElement as _, Render,
-	TestAppContext, Window,
+	AppContext as _, Entity, Focusable as _, InteractiveElement as _, IntoElement,
+	ParentElement as _, Render, TestAppContext, Window,
 };
 use tokio::runtime::Builder;
 use tokio_tungstenite::tungstenite::Message;
 
 use crate::shell::agent_surface::{
 	sample::{
-		AgentSamplePhase, AgentSampleStatus, AgentSurface, Context, Entity, EntityId, IntoElement,
-		NEXT_PROMPT, WireText, request, request::Operation, watch,
+		AgentSamplePhase, AgentSampleStatus, AgentSurface, Context, EntityId, NEXT_PROMPT,
+		WireText, request, watch,
 	},
 	wire_test_support::{self, SERVER},
 };
@@ -21,21 +21,11 @@ use decodex_protocol::{
 	ServerMessage,
 };
 
-struct SamplePanel(Entity<AgentSurface>);
-impl Render for SamplePanel {
-	fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-		self.0.update(cx, |s, cx| s.sample_content(cx))
-	}
-}
-
 struct SuggestionPanel(Entity<AgentSurface>, usize);
 impl Render for SuggestionPanel {
 	fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
 		let body = self.0.update(cx, |s, cx| {
-			gpui::div()
-				.child(s.sample_panel(&s.selected.clone().unwrap(), cx))
-				.child(s.render_composer_capsule(false, window, cx))
-				.child(s.model.clone())
+			gpui::div().child(s.render_composer_capsule(false, window, cx)).child(s.model.clone())
 		});
 		body.on_action(cx.listener(|view, _: &crate::shell::FocusNext, window, cx| {
 			view.1 += 1;
@@ -243,15 +233,23 @@ fn tab_accepts_prompt_suggestion_as_an_undoable_unsent_draft(cx: &mut TestAppCon
 		SuggestionPanel(surface, 0)
 	});
 	let surface = view.read_with(visual, |view, _| view.0.clone());
-	visual.update(|window, cx| {
-		window.resize(gpui::size(gpui::px(650.), gpui::px(700.)));
-		window.draw(cx).clear(cx);
-	});
+	for width in [280., 650.] {
+		visual.update(|window, cx| {
+			window.resize(gpui::size(gpui::px(width), gpui::px(700.)));
+			window.draw(cx).clear(cx);
+		});
+		let hint =
+			visual.debug_bounds("composer-suggestion-hint").expect("Tab hint in the input bar");
+		let editor = visual.debug_bounds("composer-editor-area").unwrap();
+		assert!(hint.left() >= editor.left() && hint.right() <= editor.right());
+		assert!(hint.top() >= editor.top() && hint.bottom() <= editor.bottom());
+	}
 	surface.update(visual, |s, cx| {
 		assert!(s.composer.read(cx).content().is_empty());
+		assert_eq!(s.composer.read(cx).placeholder(), "Compare the two approaches.");
 		assert!(!s.sending);
 	});
-	assert!(visual.debug_bounds("sample-use-draft").is_none());
+	assert!(visual.debug_bounds("sample-panel").is_none());
 	visual.update(|window, cx| window.focus(&surface.read(cx).composer.focus_handle(cx), cx));
 	visual.simulate_keystrokes("tab");
 	surface.update(visual, |s, cx| {
@@ -259,6 +257,8 @@ fn tab_accepts_prompt_suggestion_as_an_undoable_unsent_draft(cx: &mut TestAppCon
 		assert!(s.sample.work.is_none());
 		assert!(!s.sending);
 	});
+	visual.update(crate::ui_frame::draw_current_frame);
+	assert!(visual.debug_bounds("composer-suggestion-hint").is_none());
 	assert_eq!(view.read_with(visual, |view, _| view.1), 0, "accept without moving focus");
 	visual.update(|window, cx| window.focus(&surface.read(cx).composer.focus_handle(cx), cx));
 	visual.simulate_keystrokes("cmd-z");
@@ -290,6 +290,8 @@ fn tab_preserves_normal_focus_navigation_without_a_current_empty_draft_suggestio
 		s.composer.update(cx, |input, cx| input.set_content("Keep typing", cx))
 	});
 	visual.update(|window, cx| window.focus(&surface.read(cx).composer.focus_handle(cx), cx));
+	visual.update(crate::ui_frame::draw_current_frame);
+	assert!(visual.debug_bounds("composer-suggestion-hint").is_none());
 	visual.simulate_keystrokes("tab");
 	assert_eq!(
 		surface.read_with(visual, |s, cx| s.composer.read(cx).content().to_owned()),
@@ -410,7 +412,7 @@ fn a_lost_sample_acknowledgement_is_read_back_without_another_model_command() {
 			profile,
 			EntityId::new("root").unwrap(),
 			WireText::new("parent").unwrap(),
-			Operation::Generate(WireText::new("Another approach?").unwrap()),
+			WireText::new("Another approach?").unwrap(),
 			closure,
 			updates,
 		)
@@ -431,140 +433,25 @@ fn a_lost_sample_acknowledgement_is_read_back_without_another_model_command() {
 }
 
 #[gpui::test]
-fn cancellation_controls_wait_for_native_completion_and_preserve_the_draft(
-	cx: &mut TestAppContext,
-) {
+fn unfinished_or_unavailable_suggestions_leave_the_input_bar_quiet(cx: &mut TestAppContext) {
 	let (view, visual) = cx.add_window_view(|_, cx| {
 		let surface = cx.new(AgentSurface::new);
-
-		surface.update(cx, |s, cx| {
-			s.visual_workspace_fixture(cx);
-
-			let work = s.selected.clone().unwrap();
-
-			s.sample.work = Some(work.clone());
-			s.sample.thread = Some("parent".into());
-
-			s.composer.update(cx, |input, cx| input.set_content("Keep this draft.", cx));
-
-			s.sample.state = Some(AgentSampleStatus {
-				work_id: EntityId::new(work).unwrap(),
-				thread_id: Some(WireText::new("parent").unwrap()),
-				request_id: Some(WireText::new("generation").unwrap()),
-				prompt: Some(WireText::new("Question").unwrap()),
-				phase: AgentSamplePhase::Pending,
-				answer: None,
-			});
-		});
-
-		SamplePanel(surface)
+		surface.update(cx, suggestion_fixture);
+		SuggestionPanel(surface, 0)
 	});
 	let surface = view.read_with(visual, |view, _| view.0.clone());
 
-	for phase in
-		[AgentSamplePhase::Pending, AgentSamplePhase::Cancelling, AgentSamplePhase::Cancelled]
-	{
+	for phase in [
+		AgentSamplePhase::Pending,
+		AgentSamplePhase::Cancelling,
+		AgentSamplePhase::Cancelled,
+		AgentSamplePhase::Failed,
+		AgentSamplePhase::Obsolete,
+	] {
 		surface.update(visual, |s, _| s.sample.state.as_mut().unwrap().phase = phase);
-
-		visual.update(|window, cx| {
-			window.resize(gpui::size(gpui::px(650.), gpui::px(700.)));
-			window.draw(cx).clear(cx);
-		});
-
-		assert_eq!(
-			visual.debug_bounds("sample-cancel").is_some(),
-			phase == AgentSamplePhase::Pending
-		);
-		assert!(visual.debug_bounds("sample-close").is_some());
-		assert_eq!(
-			surface.read_with(visual, |s, cx| s.composer.read(cx).content().to_owned()),
-			"Keep this draft."
-		);
+		visual.update(crate::ui_frame::draw_current_frame);
+		assert!(visual.debug_bounds("sample-panel").is_none());
+		assert!(visual.debug_bounds("composer-suggestion-hint").is_none());
+		assert!(surface.read_with(visual, |s, cx| s.composer.read(cx).content().is_empty()));
 	}
-
-	surface.update(visual, |s, _| s.reset_sample());
-
-	assert_eq!(
-		surface.read_with(visual, |s, cx| s.composer.read(cx).content().to_owned()),
-		"Keep this draft."
-	);
-}
-
-#[test]
-fn a_lost_cancellation_acknowledgement_reads_back_the_exact_sample_without_replay() {
-	let (_root, profile, server) = wire_test_support::fixture(|listener| async move {
-		let mut socket = wire_test_support::accept(&listener).await;
-		let Message::Text(text) = socket.next().await.unwrap().unwrap() else {
-			panic!("command frame")
-		};
-		let ClientMessage::Command(command) = serde_json::from_str::<ClientMessage>(&text).unwrap()
-		else {
-			panic!("cancel command")
-		};
-		let CommandPayload::Agent { action } = command.payload else { panic!("agent command") };
-		let AgentActionDto::CancelSample { work_id, request_id } = *action else {
-			panic!("cancellation only")
-		};
-
-		assert_eq!(request_id.as_str(), "original-generation");
-
-		socket.close(None).await.unwrap();
-
-		for phase in [AgentSamplePhase::Cancelling, AgentSamplePhase::Cancelled] {
-			let mut socket = wire_test_support::accept(&listener).await;
-			let Message::Text(text) = socket.next().await.unwrap().unwrap() else {
-				panic!("query frame")
-			};
-			let ClientMessage::Query(query) = serde_json::from_str::<ClientMessage>(&text).unwrap()
-			else {
-				panic!("never repeat a sample command")
-			};
-
-			assert!(matches!(query.payload, QueryPayload::GetAgentSample { .. }));
-
-			let state = AgentSampleStatus {
-				work_id: work_id.clone(),
-				thread_id: Some(WireText::new("parent").unwrap()),
-				request_id: Some(request_id.clone()),
-				prompt: Some(WireText::new("Question").unwrap()),
-				phase,
-				answer: None,
-			};
-			let result = ServerMessage::QueryResult(QueryResultEnvelope {
-				version: CURRENT_VERSION,
-				server_id: ServerId::new(SERVER).unwrap(),
-				query_id: query.query_id,
-				payload: QueryResultPayload::AgentSample(state),
-			});
-
-			socket
-				.send(Message::Text(serde_json::to_string(&result).unwrap().into()))
-				.await
-				.unwrap();
-			socket.close(None).await.unwrap();
-		}
-	});
-	let runtime = Builder::new_current_thread().enable_all().build().unwrap();
-
-	runtime.block_on(async {
-		let (_closed, closure) = watch::channel(false);
-		let (updates, results) = watch::channel(None);
-
-		request::run(
-			profile,
-			EntityId::new("root").unwrap(),
-			WireText::new("parent").unwrap(),
-			Operation::Cancel(WireText::new("original-generation").unwrap()),
-			closure,
-			updates,
-		)
-		.await;
-
-		assert_eq!(
-			results.borrow().as_ref().unwrap().0.as_ref().unwrap().phase,
-			AgentSamplePhase::Cancelled
-		);
-	});
-
-	server.join().unwrap();
 }

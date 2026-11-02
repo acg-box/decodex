@@ -416,7 +416,9 @@ impl AgentSurface {
 	}
 
 	fn update_message_placeholder(&self, cx: &mut Context<Self>) {
-		let placeholder = if self
+		let placeholder = if let Some(suggestion) = self.prompt_suggestion(cx) {
+			suggestion.to_owned()
+		} else if self
 			.visible_conversation_feedback()
 			.is_some_and(|feedback| matches!(feedback.tone, Tone::Error | Tone::Warning))
 		{
@@ -564,7 +566,7 @@ impl AgentSurface {
 			}))
 			.on_action(cx.listener(|s, _: &FocusNext, window, cx| {
 				if s.composer.focus_handle(cx).is_focused(window)
-					&& s.can_accept_prompt_suggestion(cx)
+					&& s.prompt_suggestion(cx).is_some()
 				{
 					s.accept_prompt_suggestion(cx);
 					cx.stop_propagation();
@@ -576,7 +578,42 @@ impl AgentSurface {
 				if let Some(waveform) = self.voice_controls(window, cx) {
 					editor.child(waveform)
 				} else {
-					editor.child(self.conversation_composer().clone())
+					editor.child(
+						gpui::div()
+							.w_full()
+							.min_w_0()
+							.flex()
+							.items_start()
+							.gap_2()
+							.child(
+								gpui::div()
+									.min_w_0()
+									.flex_1()
+									.child(self.conversation_composer().clone()),
+							)
+							.when(self.prompt_suggestion(cx).is_some(), |row| {
+								row.child(
+									gpui::div()
+										.debug_selector(|| "composer-suggestion-hint".into())
+										.flex_none()
+										.flex()
+										.items_center()
+										.gap_1()
+										.pt(gpui::px(4.))
+										.pr(gpui::px(8.))
+										.text_size(gpui::px(11.))
+										.text_color(ui_theme::rgb(TEXT_MUTED))
+										.child(
+											gpui::div()
+												.px_1()
+												.rounded_sm()
+												.bg(ui_theme::rgba(0xffffff0c))
+												.child("Tab"),
+										)
+										.child("to use"),
+								)
+							}),
+					)
 				}
 			})
 	}
@@ -1770,7 +1807,6 @@ mod tests {
 		let mut previous: Option<gpui::Bounds<gpui::Pixels>> = None;
 		for id in [
 			"composer-attachment-item",
-			"composer-task-sample-item",
 			"composer-task-recap-item",
 			"composer-audio-item",
 			"composer-delivery",
@@ -1788,6 +1824,7 @@ mod tests {
 		for removed in [
 			"composer-skill-item",
 			"composer-task-reference-item",
+			"composer-task-sample-item",
 			"composer-task-suggest-item",
 			"composer-agent-settings",
 		] {

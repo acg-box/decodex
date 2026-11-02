@@ -32,8 +32,6 @@ pub(super) struct Work {
 	label: String,
 	total: String,
 	working: bool,
-	live: bool,
-	estimated: bool,
 	rate: String,
 	rows: Arc<[Live]>,
 	columns: [f32; 2],
@@ -44,27 +42,7 @@ pub(super) struct Work {
 }
 impl Work {
 	fn idle_total(&self) -> bool {
-		!self.working && self.total != "—"
-	}
-
-	fn status(&self) -> Option<&'static str> {
-		activity_status(self.working, self.live, self.rate != "—")
-	}
-
-	fn unit(&self) -> &'static str {
-		if self.live || self.estimated || self.rate == "—" { "tok/s" } else { "avg tok/s" }
-	}
-}
-
-fn activity_status(working: bool, generating: bool, has_rate: bool) -> Option<&'static str> {
-	if !working {
-		Some("Idle")
-	} else if !generating {
-		Some("Working")
-	} else if !has_rate {
-		Some("Generating")
-	} else {
-		None
+		!self.working
 	}
 }
 
@@ -129,8 +107,7 @@ pub(super) enum Content {
 }
 impl Content {
 	pub(super) fn work(work: &Summary, window: &mut Window, cx: &mut App) -> Self {
-		let live = work.working > 0 && work.generating();
-		let rate = if live { work.display_rate_text() } else { "—".into() };
+		let rate = work.rate_text();
 		let total = work
 			.total_tokens()
 			.map_or_else(|| "—".into(), crate::shell::agent_surface::compact_tokens);
@@ -142,8 +119,6 @@ impl Content {
 			label: String::new(),
 			total,
 			working: work.working > 0,
-			live,
-			estimated: work.rate_estimated(),
 			rate,
 			rows: work.live.clone().into(),
 			columns: [0.; 2],
@@ -157,28 +132,23 @@ impl Content {
 			header_widths: [0.; 3],
 			sizing: Sizing { minimal: 0., compact: 0., expanded: 0. },
 		};
-		let activity = if let Some(status) = data.status() {
-			status.to_owned()
-		} else {
+		let activity = if data.working {
 			format!(
-				"{} {}. Estimated generation rate excludes tool and user waits.",
-				data.rate,
-				data.unit()
+				"Current total output: {} tok/s. Generation estimates exclude tool and user waits. ",
+				data.rate
 			)
+		} else {
+			String::new()
 		};
 
 		data.label = format!(
-			"{activity}. Current graph agents: {} cumulative tokens, including cached input. Adding or archiving agents changes this amount.",
+			"{activity}Current graph agents: {} cumulative tokens, including cached input. Adding or archiving agents changes this amount.",
 			data.total
 		);
 		let mut width = |id, text: &str, size, weight| measure(id, text, size, weight, window, cx);
-		let primary = if let Some(status) = data.status() {
-			width("activity-width-status", status, TEXT_SIZE, FontWeight::MEDIUM)
-		} else {
-			width("activity-width-rate", &data.rate, TEXT_SIZE, FontWeight::MEDIUM)
-				+ 4.
-				+ width("activity-width-rate-unit", data.unit(), TEXT_SIZE, FontWeight::NORMAL)
-		};
+		let primary = width("activity-width-rate", &data.rate, TEXT_SIZE, FontWeight::MEDIUM)
+			+ 4.
+			+ width("activity-width-rate-unit", "tok/s", TEXT_SIZE, FontWeight::NORMAL);
 		let minimal = if data.idle_total() {
 			width("activity-width-idle-total", &data.total, TEXT_SIZE, FontWeight::MEDIUM)
 				+ 3.
@@ -247,11 +217,7 @@ impl Content {
 	}
 
 	pub(super) fn debug(island: &PerformanceIsland, window: &mut Window, cx: &mut App) -> Self {
-		let fps = if island.metrics.draw_frames == 0 {
-			"—".into()
-		} else {
-			format!("{:.0}", island.metrics.fps)
-		};
+		let fps = format!("{:.0}", island.metrics.fps);
 		let mut data = Debug {
 			label: format!("Performance details: {fps} FPS · {}", island.gpu_label()),
 			fps,
@@ -545,14 +511,6 @@ fn work_header(data: &Work, fraction: f32) -> AnyElement {
 }
 
 fn work_primary(data: &Work, minimal: bool) -> AnyElement {
-	if let Some(status) = data.status() {
-		return number(if minimal { "live-status" } else { "work-status" }, status.into())
-			.when(!minimal && !data.working, |view| {
-				view.font_weight(FontWeight::NORMAL).text_color(ui_theme::rgb(TEXT_MUTED))
-			})
-			.into_any_element();
-	}
-
 	gpui::div()
 		.flex()
 		.items_baseline()
@@ -562,7 +520,7 @@ fn work_primary(data: &Work, minimal: bool) -> AnyElement {
 			number(if minimal { "live-rate" } else { "work-rate" }, data.rate.clone())
 				.text_color(ui_theme::rgb(TEXT)),
 		)
-		.child(gpui::div().text_color(ui_theme::rgb(TEXT_MUTED)).child(data.unit()))
+		.child(gpui::div().text_color(ui_theme::rgb(TEXT_MUTED)).child("tok/s"))
 		.into_any_element()
 }
 
@@ -611,12 +569,17 @@ fn live_row(row: &Live, columns: [f32; 2], window: &mut Window, cx: &mut App) ->
 	let changing = previous.is_some();
 	let key = row.key.clone();
 	let elapsed = ui_work_metrics::time_label(row.sample.active_time());
+	let label = if row.action.is_empty() {
+		format!("{}: turn elapsed {}.", row.agent, elapsed)
+	} else {
+		format!("{}: {}. Turn elapsed {}.", row.agent, row.action, elapsed)
+	};
 
 	gpui::div()
 		.id(SharedString::from(format!("activity-live-{}", row.key)))
 		.debug_selector(move || format!("activity-live-{key}"))
 		.role(Role::Group)
-		.aria_label(format!("{}: {}. Turn elapsed {}.", row.agent, row.action, elapsed))
+		.aria_label(label)
 		.w_full()
 		.h(gpui::px(22.))
 		.flex_none()
@@ -789,20 +752,54 @@ fn metric(id: &'static str, label: &'static str, value: String) -> Stateful<Div>
 
 #[cfg(test)]
 mod tests {
-	use super::{activity_status, tokens};
-
-	#[test]
-	fn activity_status_never_presents_an_old_rate_as_live() {
-		assert_eq!(activity_status(false, false, true), Some("Idle"));
-		assert_eq!(activity_status(true, false, true), Some("Working"));
-		assert_eq!(activity_status(true, true, false), Some("Generating"));
-		assert_eq!(activity_status(true, true, true), None);
-	}
+	use super::{Content, PerformanceIsland, tokens};
+	use crate::ui_performance::Metrics;
 
 	#[test]
 	fn token_values_include_a_unit_when_available() {
 		assert_eq!(tokens("2.6M"), "2.6M tok");
 		assert_eq!(tokens("0"), "0 tok");
 		assert_eq!(tokens("—"), "—");
+	}
+
+	struct FpsReadout(gpui::Entity<PerformanceIsland>, String);
+
+	impl gpui::Render for FpsReadout {
+		fn render(
+			&mut self,
+			window: &mut gpui::Window,
+			cx: &mut gpui::Context<Self>,
+		) -> impl gpui::IntoElement {
+			let content = self.0.update(cx, |island, cx| Content::debug(island, window, cx));
+			let Content::Debug(readout) = &content else { panic!("FPS readout") };
+
+			self.1 = readout.fps.clone();
+
+			content.header(0.)
+		}
+	}
+
+	#[gpui::test]
+	fn fps_readout_follows_the_current_sample_including_zero(cx: &mut gpui::TestAppContext) {
+		use gpui::AppContext as _;
+
+		let (view, visual) = cx.add_window_view(|_, cx| {
+			let island = cx.new(PerformanceIsland::new);
+
+			cx.observe(&island, |_, _, cx| cx.notify()).detach();
+
+			FpsReadout(island, String::new())
+		});
+		let island = view.read_with(visual, |view, _| view.0.clone());
+
+		for (fps, draw_frames, expected) in [(144., 72, "144"), (0., 0, "0")] {
+			island.update(visual, |island, cx| {
+				island.record(Metrics { fps, draw_frames, ..Default::default() });
+				cx.notify();
+			});
+			visual.update(crate::ui_frame::draw_current_frame);
+
+			assert_eq!(view.read_with(visual, |view, _| view.1.clone()), expected);
+		}
 	}
 }

@@ -104,6 +104,7 @@ impl PartialEq for Sample {
 pub(crate) struct Live {
 	pub key: String,
 	pub agent: String,
+	/// Current operation, or empty when only a general execution state is known.
 	pub action: String,
 	pub sample: Sample,
 }
@@ -143,88 +144,21 @@ impl Summary {
 		})
 	}
 
-	/// Combine the latest overlapping work period; never add unrelated historical speeds.
-	pub(crate) fn rate(&self) -> Option<(f64, bool)> {
-		let estimated = self.rate_estimated();
-		let intervals: Vec<_> = self
+	/// Sum the latest generation estimates for current streams; tool waits contribute zero.
+	pub(crate) fn rate_text(&self) -> String {
+		// Native output counts arrive after each response. A current stream can use
+		// its preceding measured generation interval, but idle agents contribute zero.
+		let rate = self
 			.samples
 			.iter()
-			.filter_map(|s| {
-				let rate = s.stats?.rate?;
+			.filter(|sample| sample.stats.is_some_and(|stats| stats.generating))
+			.try_fold(0., |sum, sample| {
+				let (value, _) = sample.rate()?;
 
-				if rate.estimated != estimated {
-					return None;
-				}
+				sample.rate_estimated().then_some(sum + value)
+			});
 
-				let (value, live) = s.rate()?;
-				let end = rate.completed_at_ms.unwrap_or_else(|| {
-					rate.started_at_ms
-						.saturating_add(rate.duration_ms)
-						.saturating_add(s.since_read())
-				});
-
-				Some((rate.started_at_ms, end, value, live))
-			})
-			.collect();
-		let latest = intervals.iter().max_by_key(|(_, end, _, _)| *end)?;
-		let mut start = latest.0;
-
-		loop {
-			let next = intervals
-				.iter()
-				.filter(|(begin, end, _, _)| *begin <= latest.1 && *end >= start)
-				.map(|(begin, ..)| *begin)
-				.min()
-				.unwrap_or(start);
-
-			if next == start {
-				break;
-			}
-
-			start = next;
-		}
-
-		let group =
-			intervals.iter().filter(|(begin, end, _, _)| *begin <= latest.1 && *end >= start);
-
-		Some(
-			group.fold((0., false), |(sum, active), (_, _, value, live)| {
-				(sum + value, active || *live)
-			}),
-		)
-	}
-
-	pub(crate) fn rate_estimated(&self) -> bool {
-		self.samples.iter().any(|sample| sample.rate_estimated())
-	}
-
-	pub(crate) fn rate_text(&self) -> String {
-		rate_label(self.rate().map(|(value, _)| value))
-	}
-
-	pub(crate) fn display_rate_text(&self) -> String {
-		if !self.generating() {
-			self.rate_text()
-		} else {
-			// Native output counts arrive after each response. While generating, estimate
-			// from each active agent's latest measured generation interval, including a
-			// preceding turn. Never divide its output by the current tool/wait clock.
-			let rate = self
-				.samples
-				.iter()
-				.filter(|s| s.stats.is_some_and(|v| v.generating))
-				.try_fold(0., |sum, sample| {
-					let (value, _) = sample.rate()?;
-
-					sample.rate_estimated().then_some(sum + value)
-				});
-
-			rate_label(rate)
-		}
-	}
-
-	pub(crate) fn generating(&self) -> bool {
-		self.samples.iter().any(|s| s.stats.is_some_and(|stats| stats.generating))
+		rate_label(rate)
 	}
 }
 
@@ -354,16 +288,14 @@ mod tests {
 
 		let summary = Summary { samples: vec![old, sample], working: 1, live: vec![] };
 
-		assert_eq!(summary.rate(), Some((100., true)));
-		assert!(summary.rate_estimated());
-		assert_eq!(summary.display_rate_text(), "100.0");
+		assert_eq!(summary.rate_text(), "100.0");
 
 		let mut next_turn = summary.clone();
 
 		next_turn.samples[1].stats.as_mut().unwrap().rate.as_mut().unwrap().active = false;
 
 		assert_eq!(
-			next_turn.display_rate_text(),
+			next_turn.rate_text(),
 			"100.0",
 			"a new stream uses its last measured interval until the next native counter arrives"
 		);
@@ -379,7 +311,7 @@ mod tests {
 		rate.estimated = true;
 
 		assert_eq!(
-			parallel.display_rate_text(),
+			parallel.rate_text(),
 			"200.0",
 			"current streams sum across separate prior response intervals"
 		);
@@ -387,7 +319,7 @@ mod tests {
 		parallel.samples[0].stats.as_mut().unwrap().rate = None;
 
 		assert_eq!(
-			parallel.display_rate_text(),
+			parallel.rate_text(),
 			"—",
 			"missing live measurements must not look like a complete total"
 		);
@@ -401,16 +333,16 @@ mod tests {
 			stats.rate.as_mut().unwrap().active = false;
 		}
 
-		assert_eq!(idle.display_rate_text(), "100.0");
-		assert_eq!(idle.rate_text(), "100.0", "idle retains the most recent measured throughput");
+		assert_eq!(idle.rate_text(), "0.0", "tool waits and idle agents add no live speed");
+		assert_eq!(idle.samples[1].rate_text(), "100.0", "agent history retains its measured rate");
 	}
 	#[test]
-	fn global_last_rate_uses_the_latest_overlapping_batch_and_scales_past_ninety_agents() {
-		let sample = |start, end, output| Sample {
+	fn global_live_rate_excludes_idle_agents_and_scales_past_ninety_agents() {
+		let sample = |generating, start, end, output| Sample {
 			stats: Some(AgentThreadMetrics {
 				completed_ms: Some(end - start),
 				active_ms: None,
-				generating: false,
+				generating,
 				rate: Some(AgentOutputRate {
 					estimated: true,
 					active: false,
@@ -424,18 +356,23 @@ mod tests {
 		};
 		let mut summary = Summary {
 			samples: vec![
-				sample(0, 1_000, 9_999),
-				sample(2_000, 5_000, 30),
-				sample(3_000, 4_000, 20),
+				sample(false, 0, 1_000, 9_999),
+				sample(true, 2_000, 5_000, 30),
+				sample(true, 3_000, 4_000, 20),
 			],
 			working: 0,
 			live: vec![],
 		};
 
-		assert_eq!(summary.rate(), Some((30., false)));
+		assert_eq!(summary.rate_text(), "30.0");
 
-		summary.samples.extend((0..100).map(|_| sample(10_000, 11_000, 10)));
+		for entry in &mut summary.samples {
+			entry.stats.as_mut().unwrap().generating = false;
+		}
+		assert_eq!(summary.rate_text(), "0.0");
 
-		assert_eq!(summary.rate(), Some((1_000., false)));
+		summary.samples.extend((0..100).map(|_| sample(true, 10_000, 11_000, 10)));
+
+		assert_eq!(summary.rate_text(), "1.0K");
 	}
 }

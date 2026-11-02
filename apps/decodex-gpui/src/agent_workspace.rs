@@ -1222,7 +1222,6 @@ impl AgentSurface {
 								.child(self.misalignment_panel(work, cx))
 								.child(self.guardian_panel(work, cx))
 								.child(self.request_panel(snapshot, work, cx))
-								.child(self.sample_panel(&work.id, cx))
 						})
 						.into_any_element()
 				} else {

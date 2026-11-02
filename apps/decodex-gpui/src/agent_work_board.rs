@@ -193,7 +193,7 @@ impl AgentSurface {
 		}
 
 		let action = if sample.stats?.generating {
-			"Generating".into()
+			String::new()
 		} else {
 			let current = self
 				.timeline
@@ -210,7 +210,7 @@ impl AgentSurface {
 				.or(brief.preview.as_ref())
 				.filter(|preview| turn.is_none_or(|turn| preview.turn == turn))
 				.and_then(|preview| preview.running.clone())
-				.unwrap_or_else(|| row.status.clone())
+				.unwrap_or_default()
 		};
 		let slot = self.snapshot.as_ref()?.agent_slots.get(&row.key)?;
 
@@ -386,7 +386,15 @@ impl AgentSurface {
 		if row.group == 1
 			&& let Some(live) = self.live_work_activity(row)
 		{
-			return ("Now".into(), live.action);
+			let action = if !live.action.is_empty() {
+				live.action
+			} else if live.sample.stats.is_some_and(|stats| stats.generating) {
+				"Generating".into()
+			} else {
+				row.status.clone()
+			};
+
+			return ("Now".into(), action);
 		}
 
 		if let Some(output) = self.work_output(row) {
