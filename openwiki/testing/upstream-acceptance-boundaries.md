@@ -58,6 +58,12 @@ sources:
     resource: repo://crates/decodex-account-login/src/system_proxy.rs
   - id: openwiki-source-02bd3cfc9d4db9d1d1d8fd59
     resource: repo://crates/decodex-codex/src/app_server_client/context_preferences_tests.rs
+  - id: openwiki-source-3a4ade0e41a5f18ea8eb1bf2
+    resource: repo://crates/decodex-codex/src/app_server_client/permissions_tests.rs
+  - id: openwiki-source-70cef05a60580eb56e0ed4e5
+    resource: repo://crates/decodex-codex/src/app_server_client/temporary_events.rs
+  - id: openwiki-source-3532fc064ea22bda5b58a8c3
+    resource: repo://crates/decodex-codex/src/app_server_client/temporary_structured_tests.rs
   - id: openwiki-source-787f8ad27b8519fbed2bd039
     resource: repo://crates/decodex-codex/src/app_server_client/thread_fork.rs
   - id: openwiki-source-0d4c68456f2e50c6fc7ad5eb
@@ -86,6 +92,8 @@ sources:
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_project_work_tests.rs
   - id: openwiki-source-21c0991a686dae637a3616cd
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_read_state_tests.rs
+  - id: openwiki-source-ddbcad5474bc4311e2556223
+    resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_recap_service_tests.rs
   - id: openwiki-source-68238f7343c9fc1bd11783f3
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_recap_socket_tests.rs
   - id: openwiki-source-3d7045bfa872a564d938d3e2
@@ -100,8 +108,12 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent_context_settings_native_tests.rs
   - id: openwiki-source-fe4da151d2112b589ec8679c
     resource: repo://crates/decodex-runtime/src/agent_context_settings_tests.rs
+  - id: openwiki-source-8a155c93f55f20176452e149
+    resource: repo://crates/decodex-runtime/src/agent_message_history/tests.rs
   - id: openwiki-source-5bc08ad67fcdb104dfcde7bf
     resource: repo://crates/decodex-runtime/src/agent_permissions.rs
+  - id: openwiki-source-d4177685e5464828d053fb42
+    resource: repo://crates/decodex-runtime/src/agent_titles/tests.rs
   - id: openwiki-source-dbc533dc306a3f520c4241e0
     resource: repo://crates/decodex-runtime/src/agent.rs
   - id: openwiki-source-a4a2658e06fa2cf48ff4589e
@@ -156,6 +168,8 @@ sources:
     resource: repo://crates/decodex-webrtc-build/tests/trust_roots.json
   - id: openwiki-source-a6440a3d3a3c3121fd4c553f
     resource: repo://database/src/agent_output.rs
+  - id: openwiki-source-3180274108b0da8720118132
+    resource: repo://database/src/agent_titles/tests.rs
   - id: openwiki-source-2b705b409434252a7417e708
     resource: repo://database/src/usage_evidence_tests.rs
   - id: openwiki-source-d09dfdea9b65815f3a76b46c
@@ -172,10 +186,10 @@ sources:
     resource: repo://scripts/macos/test_decodex_app_stage.sh
   - id: openwiki-source-e201f60894c32a914dac99ee
     resource: repo://scripts/vnext/run_native_regression.py
-generated: { by: "codex", at: "2026-11-02T04:34:00.067Z" }
+generated: { by: "codex", at: "2026-11-02T08:00:19.527Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-11-02T05:23:45.661Z
+    at: 2026-11-02T08:00:19.527Z
 ---
 
 # Upstream integration acceptance boundaries
@@ -295,6 +309,16 @@ The [Side chat question-entry receipt](../../automations/upstream/retained-evide
 The first live fork exposed a creation-default model regression. The repair passes the source's current native model, reasoning effort and service tier through the bounded fork bridge. The same live flow then passed. The receipt identifies the selected native executable and generated schema separately from the reviewed upstream main revision. Local protocol checks retain the target-provider defaults for explicit provider recovery.
 
 Affected tests, strict lint, formatting and checkpoint checks passed. The optional whole-workspace style audit still fails; the baseline comparison does not classify all current findings as inherited. This acceptance covers one model and one subscription account with an idle source. It does not qualify performance, other providers, an upstream test suite, installation, notarization or release. The preview reused compatible installed framework libraries and left the normal installed app unchanged.
+
+## Automatic conversation title qualification
+
+Title regressions cover bounded Unicode metadata, credential rejection, recent-message prompt bounds, duplicate completion coalescing and cancellation of older jobs. The shared message reader excludes raw tool and reasoning frames; title reads also exclude explicit commentary. Database checks retain the title through reopen, count completed user exchanges, reject foreign bindings, preserve Agent identity, and keep title observations out of transcript pages.
+
+GPUI checks keep Main fixed, share topics with the browser and sidebar, update Side chat labels after a new topic, and preserve Agent identity. The native adapter checks private event routing, overflow, cancellation, cleanup and manual-name invalidation before a guarded write. A private user-message frame must leave a foreground question guard live, while foreground events still reach the public stream. The opt-in native recap fixture exercises the shared structured path with both legacy and paginated history. It performs a guarded native rename, verifies that settings and the completed Recap remain current, then verifies that new user input invalidates the Recap. These tests do not judge title quality for every model or language.
+
+For fresh model-quality acceptance, use an isolated product and native home with a supported account. Complete one user exchange and inspect the generated native title. Complete four exchanges on the same topic and verify that a successful review keeps it. Complete four exchanges on a sustained new topic and verify that the next successful review changes it. Reopen the service and verify persistence, unchanged Agent identity, nine source turns and no unresolved title events. Keep real-provider results and artifact identities in the delivery receipt, separately from synthetic checks.
+
+Offscreen header captures can check Main, Side chat topics and narrow tab geometry. The existing fixture's storage warning and clipped full transcript do not qualify ordinary storage or complete responsive layout. A disabled-composer layout assertion must be reported separately if it also fails on the base revision. Neither a focused pass nor a baseline comparison certifies a clean full UI suite or an installed application.
 
 ## Side chat tab qualification
 

@@ -138,6 +138,7 @@ fn snapshot() -> AgentSnapshotDto {
 		portfolio: Box::new(portfolio),
 		archived_work_ids: Default::default(),
 		agent_slots: Default::default(),
+		conversation_titles: Default::default(),
 		context_references: vec![],
 		connection_initializing: false,
 		runtime_source: Some(EntityId::new("source").unwrap()),

@@ -57,6 +57,29 @@ impl AppServerClient {
 		}
 	}
 
+	/// Publish a title only while its originating native task settings remain current.
+	pub async fn name_thread_guarded(
+		&self,
+		thread: &str,
+		name: &str,
+		guard: super::HistoryGuard,
+	) -> Result<(), ClientError> {
+		let params = serde_json::json!({"threadId":thread,"name":name});
+		if !is_thread_name_selection(&params) {
+			return Err(ClientError::InvalidFrame);
+		}
+		let response = time::timeout(
+			Duration::from_secs(8),
+			self.request_with_history("thread/name/set", params, guard),
+		)
+		.await
+		.map_err(|_| ClientError::Io)??;
+		if response.as_object().is_none_or(|r| !r.is_empty()) {
+			return Err(ClientError::InvalidFrame);
+		}
+		Ok(())
+	}
+
 	/// Save a name on a newly created persistent native context without admitting a turn.
 	/// Native metadata persistence materializes its empty history for later resume.
 	pub async fn name_thread(&self, thread: &str, name: &str) -> Result<(), ClientError> {

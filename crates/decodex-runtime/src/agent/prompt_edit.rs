@@ -180,10 +180,28 @@ impl AgentCoordinator {
 			return Err(rejected());
 		}
 
-		self.store
-			.acknowledge_agent_fork(saved.attempt, thread.clone(), turns)
-			.await
-			.map_err(Into::into)
+		let target_work = saved.attempt.target_work.clone();
+		let generation = self.native_generation.as_ref().map(|g| g.as_str().to_owned());
+		let result =
+			self.store.acknowledge_agent_fork(saved.attempt, thread.clone(), turns).await?;
+		if result.as_ref().is_some_and(|receipt| receipt.state == "forked") {
+			let _ = self
+				.store
+				.observe_agent_title(
+					target_work,
+					thread.clone(),
+					generation,
+					decodex_database::AgentConversationTitle {
+						name: metadata["thread"]["name"].as_str().map(str::to_owned),
+						automatic: true,
+						generated: false,
+						reviewed_through: 0,
+					},
+					true,
+				)
+				.await;
+		}
+		Ok(result)
 	}
 
 	/// Read a non-waking review for exact visible input. The caller owns visible-selection and

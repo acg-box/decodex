@@ -24,6 +24,16 @@ pub(crate) struct Source {
 	pub client: AppServerClient,
 }
 
+pub(crate) fn same_owner(a: &Source, b: &Source) -> bool {
+	b.client.history_guard(b.client.history_revision()).is_some()
+		&& a.key.work == b.key.work
+		&& a.key.thread == b.key.thread
+		&& a.key.account == b.key.account
+		&& a.key.generation == b.key.generation
+		&& a.key.revision == b.key.revision
+		&& a.client.connection_identity() == b.client.connection_identity()
+}
+
 pub(crate) async fn read<F, Fut>(source: F) -> AgentUsageEstimateResult
 where
 	F: Fn() -> Fut,

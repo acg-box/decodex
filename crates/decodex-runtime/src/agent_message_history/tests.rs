@@ -1,11 +1,13 @@
 use tokio::io;
 #[cfg(test)] use tokio::io::{AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
 
-use crate::agent_recap::{
-	excerpts,
-	history::{self, AppServerClient, Exchange, Recent, Value},
-	prompt,
+use crate::agent_message_history::{
+	self as history, AppServerClient, Exchange, Recent, Value, excerpts,
 };
+
+fn render(exchanges: &[Exchange]) -> String {
+	excerpts::render_budget(exchanges, 24 * 1024)
+}
 
 #[test]
 fn latest_eight_answered_exchanges_and_pending_correction_exclude_tool_and_reasoning_text() {
@@ -34,44 +36,13 @@ fn latest_eight_answered_exchanges_and_pending_correction_exclude_tool_and_reaso
 	let result = history::finish(history::select(&messages), Some("latest".into()))
 		.expect("bounded history");
 
-	assert!(!excerpts::render(&result.exchanges).contains("question-1"));
-	assert!(excerpts::render(&result.exchanges).contains("question-2"));
+	assert!(!render(&result.exchanges).contains("question-1"));
+	assert!(render(&result.exchanges).contains("question-2"));
 	assert!(
-		excerpts::render(&result.exchanges)
+		render(&result.exchanges)
 			.contains("Pending user request: latest correction\n\nsteer detail")
 	);
-	assert!(!excerpts::render(&result.exchanges).contains("PRIVATE_"));
-}
-
-#[test]
-fn unicode_excerpt_keeps_answer_and_latest_correction_ends_within_full_prompt_budget() {
-	let exchange = |user: String, assistant: String| Exchange { user, assistant };
-	let exchanges = vec![
-		exchange("old".repeat(20_000), "old answer".into()),
-		exchange(
-			format!("START{}END", "中".repeat(30_000)),
-			format!("FIXED{}NOT INSTALLED", "汉".repeat(30_000)),
-		),
-		exchange(format!("LATEST{}CORRECTION", "字".repeat(20_000)), String::new()),
-	];
-	let history = excerpts::render(&exchanges);
-	let prompt = prompt::build(&history);
-
-	assert!(prompt.len() <= super::super::prompt::MAX_BYTES);
-
-	for value in [
-		"Earlier exchanges omitted",
-		"START",
-		"END",
-		"FIXED",
-		"NOT INSTALLED",
-		"LATEST",
-		"CORRECTION",
-	] {
-		assert!(prompt.contains(value), "missing {value}");
-	}
-
-	assert!(!prompt.contains("old answer"));
+	assert!(!render(&result.exchanges).contains("PRIVATE_"));
 }
 
 #[test]
@@ -97,7 +68,7 @@ fn voice_history_skips_internal_handoff_but_keeps_native_task_output_and_anchor(
 	recent.push(&serde_json::json!({"id":"native-output","status":"completed"}), &items).unwrap();
 
 	let history = recent.finish().unwrap();
-	let rendered = excerpts::render(&history.exchanges);
+	let rendered = render(&history.exchanges);
 
 	assert!(rendered.contains("The task was tested, not installed."));
 	assert!(rendered.contains("native-output"));
@@ -160,8 +131,8 @@ async fn native_turn_and_item_pages_are_joined_without_model_requests() {
 	let prepared = super::read(&client, "source", false).await.expect("complete native pages");
 
 	assert_eq!(prepared.latest_turn.as_deref(), Some("turn"));
-	assert!(excerpts::render(&prepared.exchanges).contains("Keep the current goal"));
-	assert!(excerpts::render(&prepared.exchanges).contains("Tested; not deployed"));
+	assert!(render(&prepared.exchanges).contains("Keep the current goal"));
+	assert!(render(&prepared.exchanges).contains("Tested; not deployed"));
 
 	server.await.expect("fixture");
 }

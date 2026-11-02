@@ -40,6 +40,7 @@ fn exposure_edits_preserve_inheritance_and_reset_on_source_change(cx: &mut TestA
 			portfolio: Default::default(),
 			archived_work_ids: Default::default(),
 			agent_slots: Default::default(),
+			conversation_titles: Default::default(),
 			context_references: vec![],
 			connection_initializing: false,
 			runtime_source: Some(EntityId::new("native-source").unwrap()),

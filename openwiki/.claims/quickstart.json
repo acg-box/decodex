@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:ff3386419ed4fb972cec7011aca9475c3e9465068d8593b34d26305b137aadd0",
+  "pageVersion": "sha256:4fe6aff9b7f0200d4b9e35ea1f9f8b4b245496c70bd6ad0bab5ab5156c196ecd",
   "claims": [
     {
       "id": "claim_b34298a8647a4e0b8653926b7568c5d4",
@@ -50,7 +50,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-protocol/src/lib.rs",
-          "version": "repo-file-v1:sha256:c1fb042773fbb607c6058a31fb7d17b8004f3a7e4c1c69ca7eafa377f8616faf"
+          "version": "repo-file-v1:sha256:4700d21e6c97f0dd0838dbdaf39a901b096d653233d34d1af75f4fcaca60b3cd"
         },
         {
           "resource": "repo://database/schema.sql",
@@ -136,7 +136,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_surface.rs",
-          "version": "repo-file-v1:sha256:f9f7c95fa09f05307e82c4d0d6ef01024cfc59392bddfb2c3363fe463bc3becf"
+          "version": "repo-file-v1:sha256:5ace3c0b0cc96aeb4c90ffcc5ac477da6aed15fafda1b87ed2035f122b2364eb"
         },
         {
           "resource": "repo://automations/upstream/retained-contracts.json#L4145-L4361",
@@ -204,7 +204,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_surface.rs",
-          "version": "repo-file-v1:sha256:f9f7c95fa09f05307e82c4d0d6ef01024cfc59392bddfb2c3363fe463bc3becf"
+          "version": "repo-file-v1:sha256:5ace3c0b0cc96aeb4c90ffcc5ac477da6aed15fafda1b87ed2035f122b2364eb"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_timeline_find.rs",
@@ -222,7 +222,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_usage_estimates.rs",
-          "version": "repo-file-v1:sha256:d736fe30fd04de6fd8a981609cf29c61a4ac3159571e0dc29f847197fa241b05"
+          "version": "repo-file-v1:sha256:1ed8669d168775d4fe1d4c307d4835598c859d07ea2bc5047905022b62a85e2b"
         },
         {
           "resource": "repo://automations/upstream/retained-contracts.json#L4994-L5057",
@@ -244,7 +244,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_work_browser.rs",
-          "version": "repo-file-v1:sha256:60091e8fc5974cd4b39f7110a3bfee7ddec18c125cb8d4ef67afaf25e0c7cf49"
+          "version": "repo-file-v1:sha256:5318bc9f0e5f4c8a43e7f1a21f00e44ce8ccc39a41dca50fc60c7cbd783795d0"
         }
       ]
     },
@@ -272,7 +272,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_conversation_tabs.rs",
-          "version": "repo-file-v1:sha256:5843c560fb0e3dfd9e27690528edb00c009bd0731821d59c4d00bb23a8ace402"
+          "version": "repo-file-v1:sha256:f6b181400a6d0b94fc959a329095723dfac7bde6734f858484e0f5671f409c36"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_prompt_fork.rs",
@@ -304,17 +304,25 @@
     },
     {
       "id": "claim_c73d520c34524f328cc9494dfd4379cd",
-      "statement": "Conversation tabs use Main for the source and numbered Side chat labels, independently of sidebar conversation names.",
+      "statement": "The source tab stays Main. Side chat tabs use confirmed conversation topics and fall back to numbered labels before a title is available. The service summarizes the first eligible completed user exchange and reviews after four more exchanges without renaming Agent identity.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_conversation_tabs.rs#L122-L143",
-          "version": "repo-lines-v1:sha256:7f6c08d68983c6ffaab7f50b6f203109e14262fec608eaf3a525c1f75d971fdf:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhiMWQwZDg1M2JhMjQ3YjI1MmM1OTkwYjViM2M0NzQ2OWMyZTVhNTE4YmMzN2Q3NmZhNGYzNGE4OGU3YjIzNDMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBlYWRmM2ZkYmE1NDNhZjY3YjY2MDMxNjk0OWIxODQ4MjU0MmI3OTNiNzU1NWM1NTcwYWQ0NTcyMWIzMjA3YzUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE5OTFiYmViOWNjNWRlYTM2ZTE4OWI2Y2QzYjA5ZGQwYWMxODM4YmRjY2M1ODg4NTI1MzUyMmI1YzViYzMwYjQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAwMjljY2MwNTQ2MDlkYWIzOGE4OTdmZDE4NzgzZjAwNjVkNjA1MzQxOTBjZWU1MGEwYjhmNzdhNmMxMzY5NzkifQ"
+          "resource": "repo://apps/decodex-gpui/src/agent_conversation_tabs.rs#L122-L147",
+          "version": "repo-lines-v1:sha256:116e534c44447fb5d049bafb926d6f2be41f6a5494f93ca7cecfd826afff19bf:eyJzZWxlY3RlZExpbmVDb3VudCI6MjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhiMWQwZDg1M2JhMjQ3YjI1MmM1OTkwYjViM2M0NzQ2OWMyZTVhNTE4YmMzN2Q3NmZhNGYzNGE4OGU3YjIzNDMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRkNjQ5OTI5MjJiZWE0MTI3NzkzODVlZDcxNzAwNTM0MTZmMDFkMzViODkwOTI5OTc4YTI2OGNlZTJjMzM2ZjIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE5OTFiYmViOWNjNWRlYTM2ZTE4OWI2Y2QzYjA5ZGQwYWMxODM4YmRjY2M1ODg4NTI1MzUyMmI1YzViYzMwYjQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjBkNTMyNzAxNWNkYzdlNmZjOGEwZjBlODM0YWQ1YzIzYjUyODQwNjNkZTM1OTlmNjZhMTdmYTc0YzM2N2EzZjMifQ"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent_titles/host.rs",
+          "version": "repo-file-v1:sha256:e9d0c2a4646d77c4b019f2e96e31569ea6e70673a6e83ce623ceabd61e2feccc"
+        },
+        {
+          "resource": "repo://database/src/agent_titles.rs",
+          "version": "repo-file-v1:sha256:26778d2e1b8fa80141e34b0a0cbdf3e34664a4b0e6fd75d10a05354869296fd8"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-11-02T05:23:45.661Z"
+    "at": "2026-11-02T08:00:19.527Z"
   }
 }

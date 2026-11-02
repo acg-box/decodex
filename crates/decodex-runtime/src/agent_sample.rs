@@ -6,7 +6,7 @@ use std::{
 
 use tokio::sync::oneshot::{self, Receiver, Sender};
 
-use crate::{agent_recap, agent_usage_estimate::Source};
+use crate::agent_usage_estimate::Source;
 use decodex_codex::app_server_client::{ClientError, HistoryGuard};
 use decodex_database::AgentVoiceHistoryRevision;
 use decodex_protocol::{
@@ -100,8 +100,9 @@ impl Samples {
 
 		if voice != Some(&record.voice)
 			|| !record.guard.is_live()
-			|| source.is_none_or(|source| !agent_recap::same_owner(&record.source, source))
-		{
+			|| source.is_none_or(|source| {
+				!crate::agent_usage_estimate::same_owner(&record.source, source)
+			}) {
 			status.phase = AgentSamplePhase::Obsolete;
 			status.answer = None;
 		}

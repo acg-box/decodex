@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:a3270f837c9e711c8bf0a39dc53c118d75edf4aeb8e63c10192dd8dfd4d8d357",
+  "pageVersion": "sha256:4b49aa3c22886a21098a0475e25c5b1a287278606d77d6041cec8cb7ed5f5d5f",
   "claims": [
     {
       "id": "claim_e8d1527490f540cdafcbe921403c8c3c",
@@ -46,7 +46,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-protocol/src/lib.rs#L287-L330",
-          "version": "repo-lines-v1:sha256:8f39b074c14ddc7b428c52911a9de100e4cb58e6c8428d1347df5cb0babc8a15:eyJzZWxlY3RlZExpbmVDb3VudCI6NDQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE2M2NhYzIyNmZhN2FjOTE1MGUwMTZlODZiODM2YTViMjg5Y2MxNjU4YzNmYTA3YjI1YTdhY2Q5NDMxNTY5YTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIzNTJlMTRhMTgxNzhiOWVkNzc1ODJhOTkzZjI0MWY3YWRhMDM5NzA2YWY2YmMxMzZjZjM1MjFmYmIyZTY3YTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVlNzAxMzc5NDEwYzhjZjM0ODQ3MWNkYTNmMzA0YjA2YzRmZWNjZjI4ZDM5YTZmYzliOWFjM2JhYTQ0YmVhZDUifQ"
+          "version": "repo-lines-v1:sha256:6985efa4ef8bac07a675b5e956dc21e9b109bbe7ba6ab537a55a041315eefc7f:eyJzZWxlY3RlZExpbmVDb3VudCI6NDQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE2M2NhYzIyNmZhN2FjOTE1MGUwMTZlODZiODM2YTViMjg5Y2MxNjU4YzNmYTA3YjI1YTdhY2Q5NDMxNTY5YTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIzNTJlMTRhMTgxNzhiOWVkNzc1ODJhOTkzZjI0MWY3YWRhMDM5NzA2YWY2YmMxMzZjZjM1MjFmYmIyZTY3YTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVlNzAxMzc5NDEwYzhjZjM0ODQ3MWNkYTNmMzA0YjA2YzRmZWNjZjI4ZDM5YTZmYzliOWFjM2JhYTQ0YmVhZDUifQ"
         },
         {
           "resource": "repo://scripts/macos/verify_decodex_bundle_contracts.py",
@@ -111,7 +111,7 @@
       "statement": "Ordinary input resumes its original native context and tool declarations without a context-upgrade journal; uncertain external effects require authoritative readback.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/agent.rs#L991-L997",
+          "resource": "repo://crates/decodex-runtime/src/agent.rs#L1002-L1008",
           "version": "repo-lines-v1:sha256:94776a0d435b96647d7166add2c7065508760db388a1d6b1ab244d43e5b1d2f8:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZWZkZDg0NjFjMDUwNzdiZTg5NzFhYmUxMWM5ODJhMjU0YWFlMTEyZTM3NzIwZDdhZmViNjBlMWU0ZDUzNDRmZiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZDQwOThiOWE1NmE3ZGNiZDEzOWQ5N2NiZTQzYmEyNjk4MWViNTc0MmMwNGZmZDY5MTc3ZGNjMGE5MzQyYTdkMyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMzNhM2E4NGU0NTc2MjMxMDU0MzhlYTg2MGM3MDk5NjA2YTEwYzVkOTM2YTM2ZDQ0Mjk1ZDMyZmE3N2Q3ZjdmNyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZWFmM2U5ZDA4NDM1MGQzYjExMzJmNzNmZGNkNTIzNjg3OWM1ZmQ5NWUyMTU4NWZjZmNiOGFiZjlkMmNjYzRiNCJ9"
         }
       ]
@@ -156,11 +156,11 @@
     },
     {
       "id": "claim_968638910f4c42cbbee88d97feb202cd",
-      "statement": "Current local protocol 4.4 exposes selected read-only views and retained attached branches and rejects any different major or minor version.",
+      "statement": "Current local protocol 4.5 exposes selected read-only views and retained attached branches and rejects any different major or minor version.",
       "evidence": [
         {
           "resource": "repo://crates/decodex-protocol/src/lib.rs",
-          "version": "repo-file-v1:sha256:c1fb042773fbb607c6058a31fb7d17b8004f3a7e4c1c69ca7eafa377f8616faf"
+          "version": "repo-file-v1:sha256:4700d21e6c97f0dd0838dbdaf39a901b096d653233d34d1af75f4fcaca60b3cd"
         }
       ]
     },
@@ -173,10 +173,32 @@
           "version": "repo-file-v1:sha256:8c3db3442ab83bd8b9182349ab200e70289444b48b90fc424d8aa90eaf2a095c"
         }
       ]
+    },
+    {
+      "id": "claim_5cf2580d08e7417a8a5fb30235e812c8",
+      "statement": "Conversation topics use resolved observations in the existing indexed inbox journal, with native-name provenance and successful review checkpoints. They do not wake work or enter transcript pages, and snapshots read topics with current bindings in one transaction without a new schema.",
+      "evidence": [
+        {
+          "resource": "repo://database/schema.sql#L1130-L1134",
+          "version": "repo-lines-v1:sha256:a66851a850d875d84fc5bcf74ec5449db152c02d3303bbbb556db6c629e611b1:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOTZmMTFkNmY1M2I2YTQ5MjczODBmYzQ1OTE2N2JmODljMDhlYzQ3Mjc5ZGQyYmZiNTA0NmUwZTY5NWI3OTExNSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNWQ0NGM2ZTVkODVkOGVkZjFlNTkzZmU2OTA1MmRmZTFiN2IwMDI1ZDc1ODIwM2UzOTYxZWQ5NjA1NDgwYWYyOCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNjdjZmMwZDQ1Mzc3YTg0Y2JhODEyY2JlYTg3YmIxNGZhOWYwMGMzZjhlZjk2YTViNzk0ODY2MWZkYWVhMWIwZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOTM5NmMwMTg2ODQ1ZTY5Yzk0YmZjY2VkYjRjY2VkOWY2MDYyMTEwZGYyMzk1ZWJlYzIxNzhhODJkYjgwZWQ3YSJ9"
+        },
+        {
+          "resource": "repo://database/src/agent.rs#L181-L241",
+          "version": "repo-lines-v1:sha256:96f899e6c8e686077c1609688e888c7493f458734be0fda88d23494325b98be6:eyJzZWxlY3RlZExpbmVDb3VudCI6NjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNmMjllODhhNTFjMTg4NGQ0MTcwZmMxYWU3Njc3NzJiYTVlNDBiMDViYTVjOGZlZDgwYjAzMmNiYTc2NDYxYzgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImMyNWQzYTYwOTM5YWViMjdmMDY1YWQ1NWViODEyMWM5MDlhY2MwN2JiMzk2NjNjMDhhZGZjZTE2MTVlNTBkNWQifQ"
+        },
+        {
+          "resource": "repo://database/src/agent.rs#L256-L293",
+          "version": "repo-lines-v1:sha256:88658b553b78765974884ccaafaa73d892cac9c660f1eec9813292a74b543bfb:eyJzZWxlY3RlZExpbmVDb3VudCI6MzgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNjMmE0MTM0YjZiZjI2MDA2ZTBkMmJlOGNlMDIwYzczZDM0YjdlZWQ0Y2YzYTg5ODlkNmNkMDRhZGJjODcxNmIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjBiMTA5MzgyMWQ2NWFhMjU3YTZjNjVhZDgyYmUxNjIxYmMyZGJhZDlhYzdkZWIwYmI3YWM4N2U2OGU1MTJiNTgifQ"
+        },
+        {
+          "resource": "repo://database/src/agent_titles.rs",
+          "version": "repo-file-v1:sha256:26778d2e1b8fa80141e34b0a0cbdf3e34664a4b0e6fd75d10a05354869296fd8"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-31T14:39:55.131Z"
+    "at": "2026-11-02T07:10:57.562Z"
   }
 }

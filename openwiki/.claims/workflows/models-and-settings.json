@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:749ccee4b285d161b5f08446cae25d312c582d8c4b19eb40fa4f7981729271e4",
+  "pageVersion": "sha256:0c13f27c10c0f32757842b063f9422bfe11f432b0e1fca7e56f516194e5d976a",
   "claims": [
     {
       "id": "claim_f0c37462522f4442acd94d53819ef75c",
@@ -221,8 +221,8 @@
           "version": "repo-lines-v1:sha256:f4b851127d577fcebde31500784313617e7b0796409a2b012a5e0705d1e82782:eyJzZWxlY3RlZExpbmVDb3VudCI6MjksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc1ZmM3ZDk2YTVkZTViNWM2Yzg3NjhiZDM2NTI4YTYwY2E1YTliNjE0OTI5MDgwOTEzZjVlMGQwNTgzMmY0ZjEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYzOGQ4NzM3YTVmMGY1ODRmZTE5MjlkNGViOTk4ZTkyMzU0YWVmNmQ1MWQxNmUxMTVjYWRmZjRmNmQwMzc5NDEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM3N2I2YjVjMzk5MTEzMjYyZTg0NDY4ZjJjN2E1YmMwMmU2NDQ4ZDVkOWYyOGM3Y2RlNTM0YjIwOGRiYTJiOTUifQ"
         },
         {
-          "resource": "repo://crates/decodex-runtime/src/agent.rs#L991-L1075",
-          "version": "repo-lines-v1:sha256:4e941ab731689a14e7503ec5327e666c98bccc345ffc5a3ac15e6e8ba148f17c:eyJzZWxlY3RlZExpbmVDb3VudCI6ODUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVmZGQ4NDYxYzA1MDc3YmU4OTcxYWJlMTFjOTgyYTI1NGFhZTExMmUzNzcyMGQ3YWZlYjYwZTFlNGQ1MzQ0ZmYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkxZTBhNDI1ZmI5NmZiNTliZmZmMDg5MmFkYjE5YTQ5NTlhYWQyNzM2MjU3NDhlNGNlYjY0NmU5ZWE4ZDhmY2MiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjMzYTNhODRlNDU3NjIzMTA1NDM4ZWE4NjBjNzA5OTYwNmExMGM1ZDkzNmEzNmQ0NDI5NWQzMmZhNzdkN2Y3ZjciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM2Yzk4YTFiYWZhYjhkMDU3MDhmMTNlZWQyOTZkYzBjNTNhMTEwOGIwZDhhYTc0MGFhNWY0OTg0ODcyYmYwODIifQ"
+          "resource": "repo://crates/decodex-runtime/src/agent.rs#L1002-L1101",
+          "version": "repo-lines-v1:sha256:027146eefbded2a7b989ef5cf0efc396beee46245f5534ccb4021c03fc9a3119:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAwLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJlZmRkODQ2MWMwNTA3N2JlODk3MWFiZTExYzk4MmEyNTRhYWUxMTJlMzc3MjBkN2FmZWI2MGUxZTRkNTM0NGZmIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI5MWUwYTQyNWZiOTZmYjU5YmZmZjA4OTJhZGIxOWE0OTU5YWFkMjczNjI1NzQ4ZTRjZWI2NDZlOWVhOGQ4ZmNjIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIzM2EzYTg0ZTQ1NzYyMzEwNTQzOGVhODYwYzcwOTk2MDZhMTBjNWQ5MzZhMzZkNDQyOTVkMzJmYTc3ZDdmN2Y3IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJjNmM5OGExYmFmYWI4ZDA1NzA4ZjEzZWVkMjk2ZGMwYzUzYTExMDhiMGQ4YWE3NDBhYTVmNDk4NDg3MmJmMDgyIn0"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent_initial_settings.rs",
@@ -284,7 +284,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_usage_estimates.rs",
-          "version": "repo-file-v1:sha256:d736fe30fd04de6fd8a981609cf29c61a4ac3159571e0dc29f847197fa241b05"
+          "version": "repo-file-v1:sha256:1ed8669d168775d4fe1d4c307d4835598c859d07ea2bc5047905022b62a85e2b"
         },
         {
           "resource": "repo://crates/decodex-app-client-ffi/src/conversation_estimates.rs",
@@ -327,6 +327,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-11-02T05:23:45.661Z"
+    "at": "2026-11-02T07:10:57.562Z"
   }
 }

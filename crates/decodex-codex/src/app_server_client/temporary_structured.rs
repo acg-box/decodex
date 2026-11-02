@@ -1,4 +1,4 @@
-//! Isolated native structured requests for task recaps. The runtime owns event routing.
+//! Isolated native structured requests with private native event routing.
 use std::{collections::BTreeSet, path::Path, time::Duration};
 
 use serde_json::Value;
@@ -59,6 +59,28 @@ impl TemporaryStructuredThread {
 	/// Cancel a late thread start before submitting inference.
 	pub async fn cancel(self) -> Result<(), ClientError> {
 		self.detach().await
+	}
+
+	/// Run an isolated request with connection-owned event routing and cleanup.
+	pub async fn run_isolated(
+		self,
+		prompt: String,
+		output_schema: Value,
+		effort: Option<String>,
+		cancellation: watch::Receiver<bool>,
+	) -> Result<String, ClientError> {
+		let routes = self.client.temporary_events.clone();
+		let id = self.id.clone();
+		let events = match routes.register(&id) {
+			Ok(events) => events,
+			Err(error) => {
+				let _ = self.cancel().await;
+				return Err(error);
+			},
+		};
+		let result = self.run(prompt, output_schema, effort, events, cancellation).await;
+		routes.remove(&id);
+		result
 	}
 
 	/// Collect only the selected temporary turn; interrupt failures and detach on exit.

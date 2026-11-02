@@ -137,6 +137,7 @@ fn automatic_driver_generates_once_after_progress_and_cancels_exact_request_on_f
 			portfolio: Default::default(),
 			archived_work_ids: Default::default(),
 			agent_slots: Default::default(),
+			conversation_titles: Default::default(),
 			context_references: vec![],
 			connection_initializing: false,
 			runtime_source: Some(EntityId::new("runtime").unwrap()),

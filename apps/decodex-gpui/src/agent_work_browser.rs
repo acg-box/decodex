@@ -664,7 +664,7 @@ impl AgentSurface {
 			}
 
 			let workspace = workspace_for(&item.id);
-			let title = self.work_label(item);
+			let title = self.conversation_label(item);
 
 			if !matches(&title, workspace) {
 				continue;

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:9691bf69463fa4a6b088a7538cdf15d56187ce5bfb79b90ced250fb33c0c030f",
+  "pageVersion": "sha256:ad1abda7356feab204dc42fd0c17cbc51152d50cfd2b524c85d8f774e4099485",
   "claims": [
     {
       "id": "claim_2dd4ad01dd984b80a22d9cb9c9bfd397",
@@ -84,7 +84,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/agent.rs",
-          "version": "repo-file-v1:sha256:23720f5a11d7b2b707cfe1ec8e757845d1f4f887c276dd699a9ca2b55c0f965b"
+          "version": "repo-file-v1:sha256:37f8225f4db0006b18b2a03f15e6fdb865745d46683d46f40d6d15787de1c6b1"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/result_messages.rs",
@@ -105,7 +105,7 @@
       "statement": "External context is sent as function_call_output through thread/inject_items; the lost-injection and lost-follow-up response test confirms that recovery retains an unknown outcome without replaying either request.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/agent.rs#L1437-L1452",
+          "resource": "repo://crates/decodex-runtime/src/agent.rs#L1463-L1478",
           "version": "repo-lines-v1:sha256:bc50eb129bc3ec0c12b2018556e2ce03d02e3860b29f914e175d959ada8bf996:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZkY2FkYmNhM2U5OWE2NjVlYzI1Yzk2ZTRhNzEwNTFkYjIzZjA4M2U5MDc1ZjJmNTljMDFlZTQwMTRiNjM2ZmEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRmNjIzYTM0ZTk2OWRmODg3NzNmYzc2MzVlMmMyODYyZGRiMzVjNTljODkxMDRkZTM1ZTEyYmIxNzc1YzZhZGYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY1NTA4YTBjYTIwNDQ5NzNjZDg1MDYyNDljZTFjMTlmZDlhMjdlMjM0YmEzYzA5MzIwYzFlMWNkYTkzN2I4NzMifQ"
         },
         {
@@ -229,7 +229,7 @@
       "statement": "The compatibility delegation regression distinguishes direct user input from tool-authority work_instruction outputs requesting retention, without selecting scheduled wakes or capacity retries.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/agent.rs#L1321-L1431",
+          "resource": "repo://crates/decodex-runtime/src/agent.rs#L1347-L1457",
           "version": "repo-lines-v1:sha256:34c154ed0b2a955952269ea2ba86b94de26fe029840005eeab4bd317d355ae33:eyJzZWxlY3RlZExpbmVDb3VudCI6MTExLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIyOGQxNzA3MzAyMTQ3ODBhMjkyOWE2YzI3YWJmOTBjMDhhMTQ5MGY1ZWM3MmFmZWU2MzUzYWQ1NzU3ZjlmYTcxIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJiMGZkMGFlODRiNmE3ODM5NWNmODYwOTg4ZWQzMWJjNDQ5ZTI1ZDNlYWU5YWE3NjhlYTA1ODVkY2Q4NzE4MjQ3IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIyMmYyZmY1ZmVlYzYwZjU4N2M4ZmFlNGU4N2Y4MDlhNjYxY2ZmZWQ2YjQ3YWFlNWY2ZDZhMjY1M2FhODk1MmVmIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIxNDNkNzMzM2UzYTVmMGUzMjQ1MGI0ZjY1YjI3NWEwMzhmMzI5MzU2MjY1YmI2YzRlYjZkZDkzZThhZGFjNTY0In0"
         },
         {
@@ -558,7 +558,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_portfolio_tests.rs",
-          "version": "repo-file-v1:sha256:82f0f0fdf0fd24a0cad38d4b17cb60bcb67b3f8d67f8c8699e71963e23243e64"
+          "version": "repo-file-v1:sha256:655bd42676ec545a6f2d2760ae885da55385f2126b50d8d9fcd95e789ed5dbd7"
         },
         {
           "resource": "repo://automations/upstream/retained-contracts.json#L2657-L4144",
@@ -834,7 +834,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/agent.rs",
-          "version": "repo-file-v1:sha256:23720f5a11d7b2b707cfe1ec8e757845d1f4f887c276dd699a9ca2b55c0f965b"
+          "version": "repo-file-v1:sha256:37f8225f4db0006b18b2a03f15e6fdb865745d46683d46f40d6d15787de1c6b1"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/global_guardian.rs",
@@ -964,7 +964,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_conversation_tab_tests.rs",
-          "version": "repo-file-v1:sha256:63a83edbf47937c54d604b845bc023e6c856ae7ccaf24389e330bee76ad8295e"
+          "version": "repo-file-v1:sha256:4cb209014e7798785b0a199faa30697a6f7f0e81f2942766834c840021404dc2"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_prompt_confirm_wire_tests.rs",
@@ -1105,10 +1105,60 @@
           "version": "repo-lines-v1:sha256:a4abc355d67dc272d86a350163aaa33cd4d51fc9a5ea246b8c17ec668ac2cc3b:eyJzZWxlY3RlZExpbmVDb3VudCI6NDEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU5ZmZmZjdmMzQ4NTE5NDY1ZWM4MmMyNGRkYmYzN2I4OWVlMmNjZmEwZDViZjJjMDhjMmY5NWNmZDE1OGQyZDAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY4YTY2NmIzNzE0NDgwZDFmMmVhNTAwNzZiMjRjNWQ1ZmEzYjc4MjdiNzY1NGYwN2E5Nzg5NzI2YTIzMTdiZjYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjBhNzkyNDQ2NmJhNzQ0MThmZmJjMTQ3ZjZhOWRiYjNmZjgxYzUwYWEwZTZmYWE5MDkzN2E3NzgyNTgwYTNiNjkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFmMThhNzJiOWYzN2Q2OGQ1YmI0MDU4MTNmOWI1YmM4NzljOTYxNzgzYmI2NDBhNmY3OGFlYTlkNTUwMDQ4NWQifQ"
         }
       ]
+    },
+    {
+      "id": "claim_3675647152384ead8a16076c080b487d",
+      "statement": "Title tests cover Unicode and privacy bounds, bounded recent-message prompts, exact-completion coalescing and stale-job cancellation; database tests cover restart persistence, exchange counting, foreign-binding refusal, transcript exclusion and unchanged Agent identity.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent_message_history/tests.rs",
+          "version": "repo-file-v1:sha256:2d623c9d450415c68b385112af54b4a05d4cd11b21a6be4401b684d74f4a6b74"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent_titles/tests.rs",
+          "version": "repo-file-v1:sha256:a2e5c323019b9480344e4f2a2967aedeccc007cb3889f6dd26a1aabd5c96aae6"
+        },
+        {
+          "resource": "repo://database/src/agent_titles/tests.rs",
+          "version": "repo-file-v1:sha256:2e66aa55bfbd1042b5cf94fdf02b7cbaa3072bbfd3bf05a7847dfd0b1ab41da2"
+        }
+      ]
+    },
+    {
+      "id": "claim_057ec5593bc54d3aace5e400da692d06",
+      "statement": "GPUI title tests keep Main fixed, share native topics with conversation labels, update Side chat labels and preserve Agent identity. Native adapter tests cover private routing, overflow, cleanup, a private user frame preserving a foreground question guard, and manual renames invalidating pending title writes while task settings remain live.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_conversation_tab_tests.rs#L193-L217",
+          "version": "repo-lines-v1:sha256:f6d66daf0f8e5721c11ea89d69225c98b4023aa1559d4474d753eab194030f29:eyJzZWxlY3RlZExpbmVDb3VudCI6MjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwMzg1ZGFkYzhlNjI3YmJmZDFlMGIyODZkMzUzNWU0OTRhMGI3N2Q4NWVjNTViYTkzMjkwNDRlN2Q4ZTY1NjIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjMwMTJhNDJhNmNmMTg3ZTMzNzAwNDBjMDk5ZjMyNjMxOTBhYWQyNWRlNzMwYzc5OGJlNDU4NDU0YzFiYmMwNWMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        },
+        {
+          "resource": "repo://crates/decodex-codex/src/app_server_client/permissions_tests.rs",
+          "version": "repo-file-v1:sha256:dc5dea8de0835b37feeeb40f029efc4f79147cf06fb4793596b45b2014dd42a0"
+        },
+        {
+          "resource": "repo://crates/decodex-codex/src/app_server_client/temporary_events.rs",
+          "version": "repo-file-v1:sha256:e2fb80d873e1c03193c7405ecd1136da444eae28acd379d25211f070ca4d705b"
+        },
+        {
+          "resource": "repo://crates/decodex-codex/src/app_server_client/temporary_structured_tests.rs#L302-L358",
+          "version": "repo-lines-v1:sha256:24b3a7ea7bb6669da3813f091f312faa66a840aab2d30ad076dddf351562eaa2:eyJzZWxlY3RlZExpbmVDb3VudCI6NTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQzMjUyODBiOTg3NzRjYzkxNjI0NGRjMmQxZGJhYWE3YzBiNTkwMDM0ZjNiMTQxNjgxOTIxNTgxMWRkMzY0OTciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjNjZGU1OGVlZGNiYmQwMDk0M2Y4MzljOGRmMTRhMjIzZTA0NmZlMDU3MGM2NDFkOGQ4ZTY3NTkyYzQ2ZDNiZTQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_95fe9986f89c440f833bc91e40dcbed5",
+      "statement": "The opt-in installed_recap_uses_native_history_and_invalidates_after_new_input fixture exercises isolated structured inference through both legacy and paginated native history without a production provider, verifies a guarded native rename preserves settings and Recap, then verifies new user input invalidates Recap.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_recap_service_tests.rs",
+          "version": "repo-file-v1:sha256:da77b964fb448ea5706561c440533467e980481a59922696c822eb74bb21d862"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-11-02T05:23:45.661Z"
+    "at": "2026-11-02T08:00:19.527Z"
   }
 }

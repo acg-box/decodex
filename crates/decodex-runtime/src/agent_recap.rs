@@ -1,6 +1,6 @@
-//! Service-owned recap requests and exact native event routing.
+//! Service-owned recap requests.
 mod excerpts;
-mod history;
+use crate::agent_message_history as history;
 mod prompt;
 mod response;
 mod voice;
@@ -11,9 +11,9 @@ use std::{
 };
 
 use serde_json::Value;
-use tokio::sync::{mpsc, watch};
+use tokio::sync::watch;
 
-use crate::agent_usage_estimate::Source;
+use crate::agent_usage_estimate::{Source, same_owner};
 use decodex_codex::app_server_client::{HistoryGuard, ServerEvent};
 use decodex_database::{AgentVoiceHistory, AgentVoiceHistoryRevision};
 use decodex_protocol::{
@@ -50,8 +50,6 @@ impl Recaps {
 			for record in state.requests.values_mut() {
 				cancel(record);
 			}
-
-			state.routes.clear();
 		}
 	}
 
@@ -145,8 +143,8 @@ impl Recaps {
 		result
 	}
 
-	pub(crate) fn route(&self, event: ServerEvent) -> Option<ServerEvent> {
-		let Ok(mut state) = self.0.lock() else { return Some(event) };
+	pub(crate) fn observe(&self, event: &ServerEvent) {
+		let Ok(mut state) = self.0.lock() else { return };
 		let new_input = matches!(&event,ServerEvent::Notification{method,params} if matches!(method.as_str(),"item/started"|"item/completed") && params["item"]["type"]=="userMessage");
 		let (method, thread) = match &event {
 			ServerEvent::Notification { method, params } =>
@@ -157,86 +155,42 @@ impl Recaps {
 					cancel(record);
 				}
 
-				state.routes.clear();
-
-				return Some(event);
+				return;
 			},
-			_ => return Some(event),
+			_ => return,
 		};
 
-		if let Some(thread) = thread {
-			if let Some(route) = state.routes.get(thread) {
-				let thread = thread.to_owned();
-
-				if route.try_send(event).is_err() {
-					state.routes.remove(&thread);
-				}
-
-				return None;
-			}
-
-			if new_input
-				|| event.has_voice_transcript()
-				|| matches!(
-					method,
-					"turn/started"
-						| "turn/completed"
-						| "thread/reverted"
-						| "thread/closed"
-						| "thread/archived"
-						| "thread/deleted"
-						| "thread/settings/updated"
-				) {
-				for record in state.requests.values_mut().filter(|r| r.source.key.thread == thread)
-				{
-					cancel(record);
-				}
+		let Some(thread) = thread else { return };
+		if new_input
+			|| event.has_voice_transcript()
+			|| matches!(
+				method,
+				"turn/started"
+					| "turn/completed"
+					| "thread/reverted"
+					| "thread/closed"
+					| "thread/archived"
+					| "thread/deleted"
+					| "thread/settings/updated"
+			) {
+			for record in state.requests.values_mut().filter(|r| r.source.key.thread == thread) {
+				cancel(record);
 			}
 		}
-
-		Some(event)
 	}
 
-	pub(crate) fn register(&self, thread: &str) -> Option<mpsc::Receiver<ServerEvent>> {
-		let mut state = self.0.lock().ok()?;
-
-		if state.routes.len() >= 32 || state.routes.contains_key(thread) {
-			return None;
-		}
-
-		let (send, receive) = mpsc::channel(64);
-
-		state.routes.insert(thread.into(), send);
-
-		Some(receive)
-	}
-
-	pub(crate) fn finish(
-		&self,
-		work: &str,
-		key: &str,
-		thread: Option<&str>,
-		result: Option<TaskRecap>,
-	) {
-		if let Ok(mut state) = self.0.lock() {
-			if let Some(thread) = thread {
-				state.routes.remove(thread);
-			}
-			if let Some(record) = state.requests.get_mut(work)
-				&& record.key == key
-			{
-				if *record.cancel.borrow() {
-					record.phase = TaskRecapPhase::Cancelled;
-					record.recap = None;
-				} else {
-					record.phase = if result.is_some() {
-						TaskRecapPhase::Ready
-					} else {
-						TaskRecapPhase::Failed
-					};
-					record.recap = result;
-				}
-			}
+	pub(crate) fn finish(&self, work: &str, key: &str, result: Option<TaskRecap>) {
+		let Ok(mut state) = self.0.lock() else { return };
+		let Some(record) = state.requests.get_mut(work).filter(|record| record.key == key) else {
+			return;
+		};
+		if *record.cancel.borrow() {
+			record.phase = TaskRecapPhase::Cancelled;
+			record.recap = None;
+		} else {
+			record.phase =
+				if result.is_some() { TaskRecapPhase::Ready } else { TaskRecapPhase::Failed };
+			record.recap = result;
 		}
 	}
 }
@@ -251,7 +205,6 @@ pub(crate) struct Prepared {
 #[derive(Default)]
 struct State {
 	requests: BTreeMap<String, Record>,
-	routes: BTreeMap<String, mpsc::Sender<ServerEvent>>,
 }
 
 struct Record {
@@ -262,16 +215,6 @@ struct Record {
 	cancel: watch::Sender<bool>,
 	phase: TaskRecapPhase,
 	recap: Option<TaskRecap>,
-}
-
-pub(crate) fn same_owner(a: &Source, b: &Source) -> bool {
-	b.client.history_guard(b.client.history_revision()).is_some()
-		&& a.key.work == b.key.work
-		&& a.key.thread == b.key.thread
-		&& a.key.account == b.key.account
-		&& a.key.generation == b.key.generation
-		&& a.key.revision == b.key.revision
-		&& a.client.connection_identity() == b.client.connection_identity()
 }
 
 pub(crate) fn parse(value: &str) -> Option<TaskRecap> {

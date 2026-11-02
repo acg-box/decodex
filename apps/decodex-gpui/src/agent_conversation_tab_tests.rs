@@ -188,3 +188,30 @@ fn narrow_tab_bar_reveals_the_selected_side_chat_and_keeps_add_visible(cx: &mut 
 	assert!(header.contains(&add.center()));
 	assert!(strip.right() <= add.left(), "the add action stays outside tab scrolling");
 }
+
+#[gpui::test]
+fn native_topics_label_side_tabs_and_sidebar_while_main_and_agent_identity_stay_stable(
+	cx: &mut TestAppContext,
+) {
+	let surface = cx.new(AgentSurface::new);
+	surface.update(cx, |s, cx| {
+		s.visual_side_chat_tabs("agent", cx);
+		let root = s.conversation_record("agent").unwrap().clone();
+		let side = s.conversation_record("side-one").unwrap().clone();
+		let original = s.work_label(&root);
+		let titles = &mut s.snapshot.as_mut().unwrap().conversation_titles;
+		titles.insert(root.codex_thread_id.clone().unwrap(), "Improve Sidechat".into());
+		titles.insert(side.codex_thread_id.clone().unwrap(), "Compare title strategies".into());
+		assert_eq!(
+			s.conversation_tabs().iter().map(|tab| tab.label.as_str()).collect::<Vec<_>>(),
+			["Main", "Compare title strategies", "Side chat 2"]
+		);
+		assert_eq!(s.conversation_label(&root), "Improve Sidechat");
+		assert_eq!(s.conversation_label(&side), "Compare title strategies");
+		assert_eq!(s.work_label(&root), original);
+		let titles = &mut s.snapshot.as_mut().unwrap().conversation_titles;
+		titles.insert(side.codex_thread_id.clone().unwrap(), "Summarize ongoing topics".into());
+		assert_eq!(s.conversation_tabs()[1].label, "Summarize ongoing topics");
+		assert_eq!(s.conversation_label(&side), "Summarize ongoing topics");
+	});
+}
