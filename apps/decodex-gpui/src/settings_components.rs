@@ -2,7 +2,7 @@
 use std::time::Duration;
 
 use gpui::{
-	AnyElement, Context, Div, KeyDownEvent,
+	AnyElement, Context, Div, KeyDownEvent, Role, SharedString,
 	prelude::{
 		FluentBuilder as _, InteractiveElement as _, IntoElement as _, ParentElement as _,
 		StatefulInteractiveElement as _, Styled as _,
@@ -14,8 +14,10 @@ use crate::{
 	component_research::{self, ResearchOperations},
 	component_runtime::{self, RuntimePreparation},
 	settings_surface::SettingsSurface,
+	shell::workspace_symbols::{self, Symbol},
 	ui_feedback::{self, Feedback},
-	ui_theme::{self, BLUE},
+	ui_motion::{self, SmoothControl as _},
+	ui_theme::{self, BLUE, HOVER_FILL, PRESSED_FILL, SETTINGS_HELP_SIZE, TEXT, TEXT_MUTED},
 };
 use decodex_components::{InstallProgress, PluginAction, RuntimeLock};
 
@@ -27,6 +29,7 @@ enum Action {
 }
 
 pub(super) struct Components {
+	details: [bool; 3],
 	preparation: RuntimePreparation,
 	shown: component_runtime::PreparationState,
 	optional: PluginOperations,
@@ -39,6 +42,7 @@ impl Components {
 		let shown = preparation.snapshot();
 
 		Self {
+			details: [false; 3],
 			preparation,
 			shown,
 			optional: PluginOperations::new(decodex_components::egm_component(), None),
@@ -173,12 +177,7 @@ impl SettingsSurface {
 		};
 		let mut component = gpui::div().w_full().flex().flex_col().child(
 			ui_theme::settings_row()
-				.child(ui_theme::settings_label(
-					"Codex",
-					format!(
-						"{version}\nRequired for conversations. Follows the runtime included with this Decodex build."
-					),
-				))
+				.child(ui_theme::settings_label("Codex", version))
 				.when_some(action, |row, (id, label)| {
 					row.child(self.component_button(id, label, Action::Prepare, cx))
 				}),
@@ -229,19 +228,88 @@ impl SettingsSurface {
 			},
 		}
 
-		component
+		component.child(self.component_details(
+			0,
+			"components-codex-details",
+			"Required for conversations. Follows the runtime included with this Decodex build.",
+			cx,
+		))
+	}
+
+	fn component_details(
+		&self,
+		index: usize,
+		id: &'static str,
+		text: &'static str,
+		cx: &mut Context<Self>,
+	) -> AnyElement {
+		let expanded = self.components.details[index];
+		let toggle = gpui::div()
+			.id(id)
+			.debug_selector(move || id.into())
+			.role(Role::Button)
+			.tab_index(0)
+			.aria_label("Component details")
+			.aria_expanded(expanded)
+			.flex()
+			.items_center()
+			.gap_1()
+			.py_1()
+			.px_1()
+			.rounded(gpui::px(4.))
+			.cursor_pointer()
+			.text_size(gpui::px(SETTINGS_HELP_SIZE))
+			.text_color(ui_theme::rgb(TEXT_MUTED))
+			.hover(|s| s.bg(ui_theme::rgba(HOVER_FILL)).text_color(ui_theme::rgb(TEXT)))
+			.active(|s| s.bg(ui_theme::rgba(PRESSED_FILL)))
+			.on_click(cx.listener(move |this, _, _, cx| {
+				this.components.details[index] = !this.components.details[index];
+
+				cx.notify();
+			}))
+			.on_key_down(cx.listener(move |this, event: &KeyDownEvent, _, cx| {
+				if !event.is_held && ["enter", "space"].contains(&event.keystroke.key.as_str()) {
+					this.components.details[index] = !this.components.details[index];
+
+					cx.notify();
+					cx.stop_propagation();
+				}
+			}))
+			.child(workspace_symbols::icon_sized(
+				if expanded { Symbol::ChevronDown } else { Symbol::Forward },
+				10.,
+			))
+			.child("Details")
+			.smooth();
+
+		gpui::div()
+			.w_full()
+			.flex()
+			.flex_col()
+			.items_start()
+			.child(toggle)
+			.child(ui_motion::disclosure(
+				SharedString::from(format!("{id}-body")),
+				expanded,
+				ui_theme::settings_description(text)
+					.py_1()
+					.debug_selector(move || format!("{id}-content")),
+			))
+			.into_any_element()
 	}
 
 	pub(super) fn components_content(&self, cx: &mut Context<Self>) -> AnyElement {
-		ui_theme::settings_group(
-			"This Mac",
-			vec![
+		gpui::div()
+			.w_full()
+			.flex()
+			.flex_col()
+			.gap_4()
+			.children([
 				self.component_settings(cx).into_any_element(),
 				self.egm_settings(cx).into_any_element(),
 				self.research_settings(cx).into_any_element(),
-			],
-		)
-		.into_any_element()
+			])
+			.into_any_element()
 	}
 
 	fn research_settings(&self, cx: &mut Context<Self>) -> Div {
@@ -256,7 +324,7 @@ impl SettingsSurface {
 					component_research::Action::Connect,
 				),
 				("components-update-research", "Update", component_research::Action::Update),
-				("components-remove-research", "Remove", component_research::Action::Remove),
+				("components-remove-research", "Uninstall", component_research::Action::Remove),
 			]
 		};
 		let mut controls = gpui::div().flex().items_center().gap_2();
@@ -320,7 +388,7 @@ impl SettingsSurface {
 				component_research::Action::EnableTools =>
 					Some(Feedback::loading("Enabling native research tools…")),
 				component_research::Action::Remove =>
-					Some(Feedback::loading("Removing component; keeping results…")),
+					Some(Feedback::loading("Uninstalling research; keeping results…")),
 				component_research::Action::Connect =>
 					Some(Feedback::loading("Opening ChatGPT setup…")),
 				_ => None,
@@ -336,11 +404,16 @@ impl SettingsSurface {
 				ui_theme::settings_row()
 					.child(ui_theme::settings_label(
 						"Pro Research · Experimental",
-						format!("{}\n{explanation}", state.status_text()),
+						state.status_text(),
 					))
 					.child(controls),
 			)
-			.when(state.installed.is_some(), |d| d.child(details))
+			.child(self.component_details(2, "components-research-details", explanation, cx))
+			.child(ui_motion::disclosure(
+				"components-research-setup",
+				self.components.details[2] && state.installed.is_some(),
+				details,
+			))
 			.child(
 				ui_feedback::notice("components-research-feedback", "research", feedback).inline(),
 			)
@@ -369,12 +442,15 @@ impl SettingsSurface {
 				Action::Plugin(action),
 				cx,
 			));
-			controls = controls.child(self.component_button(
-				"components-remove-egm",
-				if state.installed.is_some() { "Uninstall" } else { "Clean up" },
-				Action::Plugin(PluginAction::Remove),
-				cx,
-			));
+
+			if state.installed.is_some() {
+				controls = controls.child(self.component_button(
+					"components-remove-egm",
+					"Uninstall",
+					Action::Plugin(PluginAction::Remove),
+					cx,
+				));
+			}
 		}
 
 		let feedback =
@@ -390,8 +466,9 @@ impl SettingsSurface {
 			});
 
 		gpui::div().debug_selector(|| "components-egm".into()).w_full().flex().flex_col().child(ui_theme::settings_row()
-			.child(ui_theme::settings_label("Elephant–Goldfish (EGM)", format!("{status}\nGoogle's complete design and review plugin. Optional; uses your Codex subscription.\nStart a new conversation after installing or updating.")))
+			.child(ui_theme::settings_label("Elephant–Goldfish (EGM)", status))
 			.child(controls))
+			.child(self.component_details(1,"components-egm-details","Google's complete design and review plugin. Optional; uses your Codex subscription. Start a new conversation after installing or updating.",cx))
 			.child(ui_feedback::notice("components-egm-feedback", "egm", feedback).inline()
 				.when(state.busy == Some(PluginAction::Refresh), |notice| {
 					notice.loading_delay(Duration::from_millis(500))
@@ -413,93 +490,125 @@ fn progress_text(progress: &InstallProgress) -> String {
 
 #[cfg(test)]
 mod tests {
-	use decodex_components::{PluginAction, PluginInstallation};
+	use std::thread;
 
 	use crate::{
 		component_runtime,
+		desktop_settings::DesktopSettingsController,
 		settings_surface::components::{RuntimePreparation, SettingsSurface},
 	};
+	use decodex_components::{PluginAction, PluginInstallation};
 
 	#[gpui::test]
 	fn optional_component_controls_follow_native_readback_and_busy_state(
 		cx: &mut gpui::TestAppContext,
 	) {
 		let (settings, visual) = cx.add_window_view(|_, cx| {
-			let mut settings = SettingsSurface::new(
-				crate::desktop_settings::DesktopSettingsController::production(),
-				cx,
-			);
+			let mut settings = SettingsSurface::new(DesktopSettingsController::production(), cx);
 
 			settings.category = crate::settings_surface::SettingsCategory::Components;
+
 			settings
 		});
 
 		visual.update(crate::ui_frame::draw_current_frame);
+
 		assert!(visual.debug_bounds("components-refresh-egm").is_some());
 		assert!(
 			visual.debug_bounds("components-install-egm").is_none(),
 			"inspect before writing native configuration"
 		);
+
 		settings.update(visual, |settings, cx| {
 			settings.components.plugin.inspected = true;
+
 			cx.notify();
 		});
+
 		visual.update(crate::ui_frame::draw_current_frame);
+
 		assert!(visual.debug_bounds("components-install-egm").is_some());
-		assert!(visual.debug_bounds("components-remove-egm").is_some());
+		assert!(visual.debug_bounds("components-remove-egm").is_none());
+
 		settings.update(visual, |settings, cx| {
 			settings.components.plugin.installed =
 				Some(PluginInstallation { version: "0.1.0".into(), enabled: true });
+
 			cx.notify();
 		});
+
 		visual.update(crate::ui_frame::draw_current_frame);
+
 		assert!(visual.debug_bounds("components-remove-egm").is_some());
+
 		let install = visual.debug_bounds("components-install-egm").unwrap();
 		let remove = visual.debug_bounds("components-remove-egm").unwrap();
+
 		settings.update(visual, |settings, cx| {
 			settings.components.plugin.busy = Some(PluginAction::Refresh);
+
 			cx.notify();
 		});
+
 		visual.update(crate::ui_frame::draw_current_frame);
+
 		assert_eq!(visual.debug_bounds("components-install-egm").unwrap(), install);
 		assert_eq!(visual.debug_bounds("components-remove-egm").unwrap(), remove);
 		assert_eq!(
 			visual.debug_bounds("conversation-feedback-slot").unwrap().size.height,
 			gpui::px(0.)
 		);
-		std::thread::sleep(std::time::Duration::from_millis(350));
+
+		thread::sleep(std::time::Duration::from_millis(350));
+
 		visual.update(crate::ui_frame::draw_current_frame);
+
 		assert_eq!(
 			visual.debug_bounds("conversation-feedback-slot").unwrap().size.height,
 			gpui::px(0.),
 			"normal native checks must not flash a loading row"
 		);
+
 		settings.update(visual, |settings, cx| {
 			settings.components.plugin.busy = None;
+
 			cx.notify();
 		});
+
 		visual.update(crate::ui_frame::draw_current_frame);
+
 		assert!(
 			visual.debug_bounds("conversation-activity-status").is_none(),
 			"a quick read must not flash a loading row"
 		);
+
 		settings.update(visual, |settings, cx| {
 			settings.components.plugin.busy = Some(PluginAction::Update);
+
 			cx.notify();
 		});
+
 		visual.update(crate::ui_frame::draw_current_frame);
+
 		assert_eq!(visual.debug_bounds("components-install-egm").unwrap(), install);
 		assert_eq!(visual.debug_bounds("components-remove-egm").unwrap(), remove);
+
 		visual.simulate_click(install.center(), Default::default());
+
 		assert_eq!(
 			settings.read_with(visual, |s, _| s.components.optional.snapshot()),
 			Default::default(),
 			"busy controls must not dispatch a second operation"
 		);
-		std::thread::sleep(std::time::Duration::from_millis(300));
+
+		thread::sleep(std::time::Duration::from_millis(300));
+
 		visual.update(crate::ui_frame::draw_current_frame);
-		std::thread::sleep(std::time::Duration::from_millis(250));
+
+		thread::sleep(std::time::Duration::from_millis(250));
+
 		visual.update(crate::ui_frame::draw_current_frame);
+
 		assert!(
 			visual.debug_bounds("conversation-activity-status").is_some(),
 			"slow operations still show progress"
@@ -513,12 +622,39 @@ mod tests {
 	}
 
 	#[gpui::test]
+	fn component_details_start_compact_and_toggle_independently(cx: &mut gpui::TestAppContext) {
+		let (settings, visual) = cx.add_window_view(|_, cx| {
+			let mut s = SettingsSurface::new(DesktopSettingsController::production(), cx);
+
+			s.category = crate::settings_surface::SettingsCategory::Components;
+
+			s
+		});
+
+		visual.update(crate::ui_frame::draw_current_frame);
+
+		assert!(visual.debug_bounds("settings-group-This Mac").is_none());
+		assert_eq!(settings.read_with(visual, |s, _| s.components.details), [false; 3]);
+
+		let toggle = visual.debug_bounds("components-egm-details").unwrap();
+
+		visual.simulate_click(toggle.center(), Default::default());
+
+		assert_eq!(settings.read_with(visual, |s, _| s.components.details), [false, true, false]);
+
+		visual.update(crate::ui_frame::draw_current_frame);
+
+		let toggle = visual.debug_bounds("components-egm-details").unwrap();
+
+		visual.simulate_click(toggle.center(), Default::default());
+
+		assert_eq!(settings.read_with(visual, |s, _| s.components.details), [false; 3]);
+	}
+
+	#[gpui::test]
 	fn opening_settings_does_not_start_another_component_check(cx: &mut gpui::TestAppContext) {
 		let (settings, visual) = cx.add_window_view(|_, cx| {
-			SettingsSurface::new(
-				crate::desktop_settings::DesktopSettingsController::production(),
-				cx,
-			)
+			SettingsSurface::new(DesktopSettingsController::production(), cx)
 		});
 
 		settings.update(visual, |s, cx| {
@@ -541,10 +677,7 @@ mod tests {
 	#[gpui::test]
 	fn failed_components_offer_retry_and_share_startup_readback(cx: &mut gpui::TestAppContext) {
 		let (settings, visual) = cx.add_window_view(|_, cx| {
-			let mut settings = SettingsSurface::new(
-				crate::desktop_settings::DesktopSettingsController::production(),
-				cx,
-			);
+			let mut settings = SettingsSurface::new(DesktopSettingsController::production(), cx);
 
 			settings.category = crate::settings_surface::SettingsCategory::Components;
 
@@ -566,10 +699,8 @@ mod tests {
 
 		settings.update(visual, |settings, cx| {
 			settings.components.preparation.finish_fixture(Ok(()));
-
 			settings.poll_components(cx);
 		});
-
 		visual.update(crate::ui_frame::draw_current_frame);
 
 		assert!(visual.debug_bounds("components-retry-runtime").is_none());
