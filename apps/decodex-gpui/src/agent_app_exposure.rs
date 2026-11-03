@@ -318,7 +318,7 @@ impl AgentSurface {
 			.flex()
 			.flex_col()
 			.gap_2()
-			.child(format!("Tool visibility · {connector}"))
+			.child(format!("Tool visibility: {connector}"))
 			.child(self.app_exposure.feedback.clone());
 
 		panel.child(mcp_forms::mcp_button(

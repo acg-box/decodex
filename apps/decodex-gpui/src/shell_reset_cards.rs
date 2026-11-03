@@ -498,7 +498,7 @@ pub(super) fn row(
 		} else if pending {
 			"Using…".into()
 		} else if let Some(c) = armed {
-			format!("Confirm · {}s", 5_u64.saturating_sub(c.started.elapsed().as_secs()))
+			format!("Confirm ({}s)", 5_u64.saturating_sub(c.started.elapsed().as_secs()))
 		} else {
 			descriptor.expires_at_unix_seconds().map(date).unwrap_or_else(|| "No expiry".into())
 		};
@@ -515,7 +515,7 @@ pub(super) fn row(
 		let tip = if state.blocked {
 			state.message.clone()
 		} else {
-			format!("Reset card · {}. Click twice within five seconds to use it.", title)
+			format!("Reset card: {}. Click twice within five seconds to use it.", title)
 		};
 
 		strip = strip.child(

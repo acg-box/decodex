@@ -241,7 +241,7 @@ impl SettingsSurface {
 			));
 		if let Some(lock) = lock.as_ref() {
 			details = details.child(ui_theme::settings_description(format!(
-				"{} build · Upstream {}",
+				"{} build (upstream {})",
 				if lock.source.is_some() { "Development" } else { "Release" },
 				&lock.upstream_commit[..12],
 			)));

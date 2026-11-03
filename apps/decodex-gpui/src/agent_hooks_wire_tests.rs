@@ -52,7 +52,7 @@ fn available() -> AgentHookSettingsState {
 			current_hash: WireText::new("hash").unwrap(),
 			saved_enabled: Some(true),
 			saved_hash: None,
-			details: "UserPromptSubmit · echo fixture · /native/hooks.json".into(),
+			details: "UserPromptSubmit\nCommand: echo fixture\nSource: /native/hooks.json".into(),
 		}],
 		notices: vec![],
 		can_update: true,

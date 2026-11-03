@@ -622,7 +622,7 @@ impl RenderOnce for AgentRailStatus {
 			a: 1.,
 		};
 		let label = self.label.replace(['\n', '\r'], " ");
-		let initial = label.graphemes(true).next().unwrap_or("·").to_owned();
+		let initial = label.graphemes(true).next().unwrap_or("?").to_owned();
 		let rest = label.get(initial.len()..).unwrap_or("").to_owned();
 		let mut font = window.text_style().font();
 

@@ -86,7 +86,7 @@ struct ConversationEstimatesView: View {
 							}
 							.help(row.title)
 						}
-						Text(result.more_available ? "Latest 8 conversations · estimates may lag" : "Conversation estimates may lag")
+						Text(result.more_available ? "Latest 8 conversations (estimates may lag)" : "Conversation estimates may lag")
 							.font(PanelFont.tertiary)
 							.foregroundStyle(PanelPalette.secondaryText(colorScheme))
 					}

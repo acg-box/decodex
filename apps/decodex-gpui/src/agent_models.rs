@@ -286,7 +286,7 @@ impl AgentSurface {
 				..
 			}) => {
 				panel = panel.child(format!(
-					"{} · {} · effort {}",
+					"Model: {}; provider: {}; effort: {}",
 					model.as_str(),
 					model_provider.as_str(),
 					current_effort.as_ref().map_or("default", |e| e.as_str())
@@ -319,7 +319,7 @@ impl AgentSurface {
 			},
 			Some(AgentModelSelectionState::Pending { model, state, last_receipt, .. }) => {
 				panel = panel
-					.child(format!("{} · {}", model.as_str(), label(*state)))
+					.child(format!("{} ({})", model.as_str(), label(*state)))
 					.child("Refresh to check. The change will not be resent.");
 
 				if let Some(receipt) = last_receipt {
@@ -385,7 +385,7 @@ impl AgentSurface {
 
 				panel = panel.child(mcp_forms::mcp_button(
 					"task-model-preserve".into(),
-					"Use model · keep current effort".into(),
+					"Use model and keep current effort".into(),
 					false,
 					cx,
 					move |s, cx| {
@@ -405,7 +405,7 @@ impl AgentSurface {
 
 				panel = panel.child(mcp_forms::mcp_button(
 					format!("task-model-effort-{index}"),
-					format!("Use model · {} effort", effort.as_str()),
+					format!("Use model with {} effort", effort.as_str()),
 					false,
 					cx,
 					move |s, cx| {

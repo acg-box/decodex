@@ -316,7 +316,7 @@ impl AgentSurface {
 		{
 			if preference != effective {
 				panel = panel.child(format!(
-					"Saved: {} · Effective: {}",
+					"Saved: {}; effective: {}",
 					preference.as_ref().map_or("Server default", WireText::as_str),
 					effective.as_ref().map_or("Server default", WireText::as_str)
 				));

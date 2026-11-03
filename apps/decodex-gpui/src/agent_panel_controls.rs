@@ -60,7 +60,7 @@ impl AgentSurface {
 		let (id, label, expanded, icon) = match action {
 			Action::Find => (
 				"conversation-find-open",
-				"Find in conversation · Cmd-F",
+				"Find in conversation (Cmd-F)",
 				None,
 				workspace_symbols::icon(Symbol::ActivitySearch),
 			),
@@ -70,19 +70,19 @@ impl AgentSurface {
 						"chat-expand",
 						"chat-expansion",
 						self.workspace.chat_expanded,
-						"Expand conversation · Shift-Esc",
+						"Expand conversation (Shift-Esc)",
 					),
 					Panel::Dock => (
 						"graph-expand",
 						"dock-expansion",
 						self.workspace.graph_expanded,
-						"Expand Dock · Shift-Esc",
+						"Expand Dock (Shift-Esc)",
 					),
 				};
 
 				(
 					id,
-					if expanded { "Restore layout · Shift-Esc" } else { label },
+					if expanded { "Restore layout (Shift-Esc)" } else { label },
 					Some(expanded),
 					workspace_symbols::panel_expansion(key, expanded).into_any_element(),
 				)

@@ -350,7 +350,7 @@ impl Shell {
 		let label = if notices.is_empty() {
 			"Notifications".to_owned()
 		} else {
-			format!("Notifications · {}", notices.len())
+			format!("Notifications ({})", notices.len())
 		};
 		let open = self.status_open;
 

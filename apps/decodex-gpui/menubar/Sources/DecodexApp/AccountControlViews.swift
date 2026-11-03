@@ -53,7 +53,7 @@ struct AccountPrimaryActionsView: View {
 					activity: .route
 				),
 				help: presentation.isCurrent
-					? "Pinned account · click to use automatic routing"
+					? "Pinned account (click to use automatic routing)"
 					: "Route through this account"
 			) {
 				Task {

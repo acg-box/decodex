@@ -219,7 +219,7 @@ impl Content {
 	pub(super) fn debug(island: &PerformanceIsland, window: &mut Window, cx: &mut App) -> Self {
 		let fps = format!("{:.0}", island.metrics.fps);
 		let mut data = Debug {
-			label: format!("Performance details: {fps} FPS · {}", island.gpu_label()),
+			label: format!("Performance details: {fps} FPS, {}", island.gpu_label()),
 			fps,
 			gpu: island.host.gpu_percent.map_or_else(|| "—".into(), |v| format!("{v:.0}%")),
 			cpu: island.cpu_percent.map_or_else(|| "—".into(), |v| format!("{v:.0}%")),
