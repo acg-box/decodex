@@ -184,15 +184,17 @@ async fn qualify(home: &Path, rotation: bool) {
 	let address = listener.local_addr().expect("loopback address");
 	let requests = Arc::new(std::sync::atomic::AtomicUsize::new(0));
 	let metadata = Arc::new(std::sync::atomic::AtomicUsize::new(0));
-	let backend = tokio::spawn(cold_settings::serve(
+	let quota_fault = rotation.then(|| Arc::new(cold_settings::QuotaFault::default()));
+	let backend = tokio::spawn(cold_settings::serve_with_quota_fault(
 		listener,
 		requests.clone(),
 		metadata,
-		Some(if interactive {
+		(!rotation).then_some(if interactive {
 			"Isolated desktop acceptance. Reply briefly."
 		} else {
 			"Spoken fixture correction"
 		}),
+		quota_fault.clone(),
 	));
 
 	write_native_configuration(&native_home, address);
@@ -277,7 +279,14 @@ async fn qualify(home: &Path, rotation: bool) {
 			async {
 				if rotation {
 					account_rotation::check(
-						&client, &runtime, &store, &accounts, home, &account, &requests,
+						&client,
+						&runtime,
+						&store,
+						&accounts,
+						home,
+						&account,
+						&requests,
+						quota_fault.as_ref().unwrap(),
 					)
 					.await;
 				} else if interactive {

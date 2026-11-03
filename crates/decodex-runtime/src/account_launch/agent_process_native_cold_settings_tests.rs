@@ -443,6 +443,23 @@ async fn serve(
 	metadata: Arc<std::sync::atomic::AtomicUsize>,
 	expected_recap: Option<&str>,
 ) {
+	serve_with_quota_fault(listener, requests, metadata, expected_recap, None).await;
+}
+
+#[derive(Default)]
+struct QuotaFault {
+	pending: std::sync::atomic::AtomicBool,
+	started: tokio::sync::Notify,
+	release: tokio::sync::Notify,
+}
+
+async fn serve_with_quota_fault(
+	listener: tokio::net::TcpListener,
+	requests: Arc<std::sync::atomic::AtomicUsize>,
+	metadata: Arc<std::sync::atomic::AtomicUsize>,
+	expected_recap: Option<&str>,
+	fault: Option<Arc<QuotaFault>>,
+) {
 	let mut title_requests = 0;
 
 	while let Ok((socket, _)) = listener.accept().await {
@@ -504,6 +521,40 @@ async fn serve(
 			} else {
 				requests.fetch_add(1, Ordering::AcqRel)
 			};
+			if !title
+				&& let Some(fault) =
+					fault.as_ref().filter(|fault| fault.pending.swap(false, Ordering::AcqRel))
+			{
+				let frames = [
+					serde_json::json!({"type":"response.created","response":{"id":"quota-fault"}}),
+					serde_json::json!({"type":"response.output_item.done","item":{"type":"message","role":"assistant","id":"partial-quota-answer","content":[{"type":"output_text","text":"Partial result before quota exhaustion."}]}}),
+				];
+				let body = frames
+					.iter()
+					.map(|frame| {
+						format!("event: {}\ndata: {frame}\n\n", frame["type"].as_str().unwrap())
+					})
+					.collect::<String>();
+				socket
+					.get_mut()
+					.write_all(
+						format!(
+							"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nConnection: close\r\n\r\n{body}"
+						)
+						.as_bytes(),
+					)
+					.await
+					.unwrap();
+				fault.started.notify_one();
+				fault.release.notified().await;
+				let frame = serde_json::json!({"type":"response.failed","response":{"id":"quota-fault","error":{"code":"credit_balance_exhausted","message":"Synthetic account quota exhausted."}}});
+				socket
+					.get_mut()
+					.write_all(format!("event: response.failed\ndata: {frame}\n\n").as_bytes())
+					.await
+					.unwrap();
+				continue;
+			}
 			let held = if env::var_os("DECODEX_TEST_ACTIVE_SERVICE_SHUTDOWN").is_some() {
 				Some("active")
 			} else if env::var_os("DECODEX_TEST_NATIVE_SAMPLE").is_some()

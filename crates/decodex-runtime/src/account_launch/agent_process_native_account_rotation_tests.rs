@@ -68,6 +68,26 @@ fn input(text: &str) -> AgentActionDto {
 	}
 }
 
+async fn settled(client: &AgentClient) -> String {
+	loop {
+		if let AgentSnapshotResult::Available(snapshot) = client.query().await.unwrap()
+			&& let Some(work) = snapshot.work_items.iter().find(|work| work.id == "recap-root")
+			&& work.dispatch_state == AgentDispatchStateDto::Idle
+			&& !snapshot.pending_events.iter().any(|event| {
+				event.work_item_id == "recap-root"
+					&& event.event_kind == "user_message"
+					&& !event.delivery_claimed
+			})
+			&& let Some(thread) = &work.codex_thread_id
+		{
+			// Failed, already-delivered input remains readable in the inbox. It is not
+			// an unsent message and must not prevent observing a later idle turn.
+			return thread.clone();
+		}
+		time::sleep(Duration::from_millis(10)).await;
+	}
+}
+
 pub(super) async fn check(
 	client: &AgentClient,
 	runtime: &ConversationRuntime,
@@ -76,6 +96,7 @@ pub(super) async fn check(
 	home: &Path,
 	first: &AccountId,
 	requests: &std::sync::atomic::AtomicUsize,
+	fault: &cold_settings::QuotaFault,
 ) {
 	let second = cold_settings::enroll_numbered(store, accounts, home, 2).await;
 
@@ -111,24 +132,50 @@ pub(super) async fn check(
 		"speed and a less utilized account must not change the route"
 	);
 
+	fault.pending.store(true, Ordering::Release);
+	accepted(
+		client,
+		input("Exercise an interrupted response and preserve the partial result."),
+		"quota-failure",
+	)
+	.await;
+	fault.started.notified().await;
+	let failed =
+		store.get_agent_work_item("recap-root".into()).await.unwrap().active_turn_id.unwrap();
 	let count = requests.load(Ordering::Acquire);
-	let started = Instant::now();
 
 	observe(accounts, first, 100).await;
-	await_account(runtime, &second, &original.generation_id).await;
-
-	let handover_ms = started.elapsed().as_millis();
-
-	assert_eq!(settled(client).await, thread);
-	assert_eq!(requests.load(Ordering::Acquire), count, "handover cannot replay earlier input");
-
-	let started = Instant::now();
 	let action = input("Continue once after account handover.");
 
 	tokio::join!(
 		accepted(client, action.clone(), "handover-followup"),
 		accepted(client, action, "handover-followup"),
 	);
+	let queued = store.list_agent_wake_events("recap-root".into(), 100).await.unwrap();
+	assert_eq!(
+		queued
+			.iter()
+			.filter(|event| event.event_kind == "user_message" && event.delivered_turn_id.is_none())
+			.count(),
+		1,
+		"one queued message while the exhausted turn is still running"
+	);
+	assert_eq!(
+		runtime.agent_usage_source().await.unwrap().1,
+		*first,
+		"a running turn keeps its account"
+	);
+	assert_eq!(
+		requests.load(Ordering::Acquire),
+		count,
+		"do not send queued input to the exhausted account"
+	);
+
+	let started = Instant::now();
+	fault.release.notify_one();
+	await_account(runtime, &second, &original.generation_id).await;
+	let handover_ms = started.elapsed().as_millis();
+	let continued = Instant::now();
 	assert_eq!(settled(client).await, thread);
 	assert_eq!(
 		requests.load(Ordering::Acquire),
@@ -136,12 +183,25 @@ pub(super) async fn check(
 		"concurrent duplicate commands must infer once"
 	);
 
-	let followup_ms = started.elapsed().as_millis();
+	let followup_ms = continued.elapsed().as_millis();
 	let bound = store.read_agent_process_binding("recap-root").await.unwrap().unwrap();
 
 	assert_eq!(bound.account_id, second);
 
 	let native = runtime.agent_client().unwrap();
+	let failed_history = native.thread_read_turn(&thread, &failed).await.unwrap();
+	let failed_turn = failed_history["thread"]["turns"]
+		.as_array()
+		.unwrap()
+		.iter()
+		.find(|turn| turn["id"] == failed)
+		.unwrap();
+	assert_eq!(failed_turn["status"], "failed");
+	assert_eq!(failed_turn["error"]["codexErrorInfo"], "usageLimitExceeded");
+	assert!(
+		failed_turn["items"].as_array().unwrap().iter().any(|item| item["type"] == "agentMessage"
+			&& item["text"] == "Partial result before quota exhaustion.")
+	);
 	let turn = native.thread_latest_turn_id(&thread).await.unwrap().unwrap();
 	let items = native.thread_read_turn_items(&thread, &turn).await.unwrap();
 
@@ -183,6 +243,9 @@ pub(super) async fn check(
 		"disconnect_to_same_account_bound_ms":reconnect_ms,
 		"reconnected_followup_to_completion_ms":started.elapsed().as_millis(),
 		"sticky_account_with_ultrafast":true,
+		"quota_error":"usageLimitExceeded",
+		"partial_output_preserved":true,
+		"queued_during_exhaustion":true,
 		"same_native_thread":true,
 		"duplicate_messages_submitted":3,
 		"duplicate_inference_requests":0,
