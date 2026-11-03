@@ -2346,6 +2346,7 @@ mod tests {
 			s.composer_menu = Some("model");
 			s.effort = ConversationReasoningEffort::Ultra;
 			s.fast = true;
+			s.service_tier = Some(decodex_protocol::ServiceTier::from_fast(true));
 
 			s.select_composer_option("model", "custom-model", cx);
 
@@ -2361,7 +2362,10 @@ mod tests {
 			assert_eq!(s.composer_model_label(cx), "Renamed catalog label");
 			assert_eq!(s.composer_model_value(cx).as_deref(), Some("custom-model"));
 			assert_eq!(s.effort, ConversationReasoningEffort::Medium);
-			assert!(!s.fast);
+			assert!(s.fast, "model selection keeps the requested speed");
+			let speed = s.composer_speed(cx).unwrap();
+			assert_eq!(speed.requested.as_str(), "priority");
+			assert_eq!(speed.effective.as_str(), "default");
 			assert_eq!(s.model_efforts(cx).len(), 2);
 
 			s.select_composer_option("effort", "low", cx);
