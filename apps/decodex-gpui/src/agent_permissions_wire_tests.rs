@@ -241,34 +241,43 @@ fn dormant_permission_choice_is_local_and_carried_by_the_next_message(cx: &mut T
 		});
 		PermissionView { surface }
 	});
-	visual.update(crate::ui_frame::draw_current_frame);
-	let choice = visual.debug_bounds("permission-choice-1").unwrap().center();
-	visual.simulate_click(choice, Default::default());
-	visual.run_until_parked();
 	let surface = view.read_with(visual, |view, _| view.surface.clone());
-	surface.read_with(visual, |s, cx| {
-		assert!(matches!(s.permission_profiles.state, Some(AgentPermissionState::NotConnected)));
-		assert!(
-			s.permission_profiles.task.is_none(),
-			"choosing a preset must not connect or send a request"
-		);
-		assert_eq!(s.permission_label(), "Approve for me");
-		assert_eq!(s.composer.read(cx).content(), "Keep this draft");
-		let action = s.configured_send(
-			EntityId::new("root").unwrap(),
-			decodex_protocol::HistoryText::new("Continue").unwrap(),
-			vec![],
-		);
-		let AgentActionDto::SendConfigured { execution, .. } = action else {
-			panic!("configured send")
-		};
-		assert_eq!(execution.permission_mode, Some(PermissionMode::ApproveForMe));
-		assert!(
-			execution.model.is_none()
-				&& execution.reasoning_effort.is_none()
-				&& execution.selected_service_tier().is_none()
-		);
-	});
+	for (selector, expected) in [
+		("permission-choice-0", PermissionMode::ReadOnly),
+		("permission-choice-2", PermissionMode::ApproveForMe),
+	] {
+		visual.update(crate::ui_frame::draw_current_frame);
+		let choice = visual.debug_bounds(selector).unwrap().center();
+		visual.simulate_click(choice, Default::default());
+		visual.run_until_parked();
+		surface.read_with(visual, |s, cx| {
+			assert!(matches!(
+				s.permission_profiles.state,
+				Some(AgentPermissionState::NotConnected)
+			));
+			assert!(
+				s.permission_profiles.task.is_none(),
+				"choosing a preset must not connect or send a request"
+			);
+			assert_eq!(s.permission_label(), expected.label());
+			assert_eq!(s.composer.read(cx).content(), "Keep this draft");
+			let action = s.configured_send(
+				EntityId::new("root").unwrap(),
+				decodex_protocol::HistoryText::new("Continue").unwrap(),
+				vec![],
+			);
+			let AgentActionDto::SendConfigured { execution, .. } = action else {
+				panic!("configured send")
+			};
+			assert_eq!(execution.permission_mode, Some(expected));
+			assert!(
+				execution.model.is_none()
+					&& execution.reasoning_effort.is_none()
+					&& execution.selected_service_tier().is_none()
+			);
+		});
+	}
+
 	assert!(
 		surface.read_with(visual, |s, _| s
 			.draft_profiles

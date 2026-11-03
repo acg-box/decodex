@@ -54,6 +54,31 @@ pub(crate) fn set_default_speed(
 	Ok(())
 }
 
+pub(crate) fn permission_picker<T: 'static>(
+	selected: PermissionMode,
+	choose: fn(&mut T, PermissionMode, &mut Context<T>),
+	cx: &Context<T>,
+) -> crate::ui_motion::Segmented {
+	crate::ui_motion::Segmented::new(
+		"default-permissions",
+		"Default permissions",
+		PermissionMode::ALL.into_iter().enumerate().map(|(index, mode)| {
+			crate::ui_motion::Choice::new(
+				format!("default-permission-{index}"),
+				mode.label(),
+				format!("{}: {}", mode.label(), mode.description()),
+			)
+		}),
+		PermissionMode::ALL.iter().position(|mode| *mode == selected),
+		cx.listener(move |this, index: &usize, _, cx| {
+			let mode = PermissionMode::ALL[*index];
+			if mode != selected {
+				choose(this, mode, cx);
+			}
+		}),
+	)
+}
+
 pub(crate) fn permission_choices<T: 'static>(
 	selected: Option<PermissionMode>,
 	available: impl Fn(PermissionMode) -> bool,
