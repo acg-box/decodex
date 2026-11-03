@@ -16,6 +16,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/settings_components.rs
   - id: openwiki-source-e379b8a714d71f87371ae328
     resource: repo://crates/decodex-components/src/plugins.rs
+  - id: openwiki-source-9ecfe8c96199e765ca2b4e1b
+    resource: repo://crates/decodex-components/src/ragflow.rs
   - id: openwiki-source-eccf08613126ff810078b520
     resource: repo://crates/decodex-protocol/src/agent.rs
   - id: openwiki-source-a0063c7b07a1bc990ee9af6c
@@ -34,10 +36,10 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent/native_settings.rs
   - id: openwiki-source-3edc2f094826ee56ddec6b73
     resource: repo://crates/decodex-runtime/src/ragflow.rs
-generated: { by: "codex", at: "2026-11-03T16:31:59.854Z" }
+generated: { by: "codex", at: "2026-11-03T18:23:39.894Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-03T17:33:35.946Z
+    at: 2026-11-03T18:23:39.894Z
 ---
 
 # Native tools and connection ownership
@@ -56,7 +58,7 @@ The explicit [EGM Component](elephant-goldfish.md) is a narrow native-lifecycle 
 
 ## Native settings boundaries
 
-The implemented [Assistant lifecycle](../decisions/assistant-lifecycle.md) exposes an optional existing RAGFlow connection in Components. Its HTTP adapter uses explicit dataset, Memory, Assistant and user scopes. Knowledge retrieval and Memory are separate, and chat import needs its own direct-user opt-in. Selecting Memory waits for a safe fresh context with native memory generation, use and the memories feature disabled; cold resume retains this policy. Native compaction, history, unrelated Agents and shared defaults retain their owners. The account bridge admits only disabled thread/memoryMode/set writes, not general memory enablement or reset. Settings retain a service credential-variable name rather than a key value.
+The implemented [Assistant lifecycle](../decisions/assistant-lifecycle.md) exposes an optional existing RAGFlow connection in Components. Its HTTP adapter uses explicit dataset, Memory, Assistant and user scopes. Knowledge retrieval and Memory are separate, and chat import needs its own direct-user opt-in. Selecting Memory waits for a safe fresh context with native memory generation, use and the memories feature disabled; cold resume retains this policy. Native compaction, history, unrelated Agents and shared defaults retain their owners. The account bridge admits only disabled thread/memoryMode/set writes, not general memory enablement or reset. The component asks for a service address and API key, then creates or recovers a private Memory with existing server default models. It saves an origin-bound private component credential; settings retain only its reference. Legacy service-environment references remain supported. Chat import starts off and is enabled separately.
 
 | Surface | Responsibility | Boundary |
 | --- | --- | --- |

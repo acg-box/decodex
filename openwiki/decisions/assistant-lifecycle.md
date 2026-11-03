@@ -11,6 +11,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_workspace.rs
   - id: openwiki-source-f339a4d1910db63ca305c2df
     resource: repo://apps/decodex-gpui/src/assistant_settings.rs
+  - id: openwiki-source-9ecfe8c96199e765ca2b4e1b
+    resource: repo://crates/decodex-components/src/ragflow.rs
   - id: openwiki-source-62c1273bf1b2ac5041d1e920
     resource: repo://crates/decodex-core/src/assistant.rs
   - id: openwiki-source-8b27f0ff96b57583d8d59731
@@ -49,10 +51,10 @@ sources:
     resource: repo://database/src/assistant.rs
   - id: openwiki-source-28af4781ad8d9558410630da
     resource: repo://database/src/works.rs
-generated: { by: "codex", at: "2026-11-03T17:21:44.822Z" }
+generated: { by: "codex", at: "2026-11-03T18:23:39.894Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-03T17:33:35.946Z
+    at: 2026-11-03T18:23:39.894Z
 ---
 
 
@@ -61,9 +63,9 @@ verified:
 
 ## Status and purpose
 
-The Assistant lifecycle is implemented in the current source. A user selects an existing persistent Agent as the personal Assistant. It accepts continuing instructions, manages lightweight teams and delegated Agents, registers independent duties, connects to optional RAGFlow Memory and renews native context behind the same chat. It has no built-in project patrol or monitoring assignment. The user can work directly with any other Agent or Project Lead.
+The Assistant lifecycle is implemented in the current source. The sidebar opens a persistent personal Assistant and initializes it on first use. The user can also select an existing Agent in Work. It accepts continuing instructions, manages lightweight teams and delegated Agents, registers independent duties, connects to optional RAGFlow Memory and renews native context behind the same chat. It has no built-in project patrol or monitoring assignment. The user can work directly with any other Agent or Project Lead.
 
-Native Codex remains the executor. Decodex retains identity, relationships, Work and delivery records. The implementation adds no second executor, mandatory management hierarchy, parallel task ledger, memory framework or database migration. Local protocol is 4.6 and the current SQLite schema remains 60.
+Native Codex remains the executor. Decodex retains identity, relationships, Work and delivery records. The implementation adds no second executor, mandatory management hierarchy, parallel task ledger, memory framework or database migration. Local protocol is 4.7 and the current SQLite schema remains 60.
 
 ```mermaid
 flowchart LR
@@ -93,7 +95,7 @@ Team membership does not grant private-chat access, approval authority or a shar
 
 ## Select and configure the Assistant
 
-Select the existing Agent in Work. Open Assistant returns to that Agent's conversation. Settings > Components edits its continuing instructions and context interval, configures an existing RAGFlow connection, shows team responsibilities and cancels individual duties. The connection is optional and does not install or host RAGFlow.
+Open **Assistant** in the sidebar, or choose **Enable** for Assistant in Settings > Components. Setup saves an idle independent Agent and its role in one transaction. It does not manufacture a first user message or submit model work. Existing-Agent selection remains available in Work. Give continuing instructions and team or duty requests in chat; defaults handle context renewal. Components contains separate compact Assistant and RAGFlow rows with collapsed details, not a role-management form. The RAGFlow connection is optional and connects an existing service.
 
 The CLI uses the same typed service commands:
 
@@ -153,11 +155,13 @@ A creation with a missing reply is reconciled by its exact recorded native sourc
 
 The desktop recognizes a verified successor binding for the same Assistant and retains a usable editor, loaded rows and reading state. Saved draft ownership follows the recorded Assistant lineage, including after restart. Submitted commands and history references keep their exact native identities. It updates older-page cursors and uses cumulative logical positions with exact native source threads. The host joins bounded native pages across the recorded lineage; it does not copy the full transcript into a second history store. The wire decoder reads decimal source-position keys through the tagged JSON response, so a nonempty source map does not turn a valid page into a history failure.
 
-Retired-context rows are read-only. Native source IDs remain exact for detail, media, Results and references. Normal context renewal adds no confirmation or handoff report. A pending confirmation or external import problem remains visible in Assistant settings. Side chats keep their separate inherited-context semantics.
+Retired-context rows are read-only. Native source IDs remain exact for detail, media, Results and references. Normal context renewal adds no confirmation or handoff report. A pending context confirmation uses shared inline feedback in Work. External import status stays with the RAGFlow component. Side chats keep their separate inherited-context semantics.
 
 ## Optional RAGFlow knowledge and Memory
 
-The adapter targets the documented RAGFlow 1.0.0-rc3 HTTP APIs. Configure an HTTPS origin, or local HTTP for a local instance, an API-key environment-variable name, explicit user ID, dataset IDs and an optional dedicated Memory ID. The service reads the credential from its process environment and sends it only to that origin. The saved settings and model tools contain its variable name, not its value. Redirects are disabled.
+The adapter targets the documented RAGFlow 1.0.0-rc3 HTTP APIs. Choose Connect in the RAGFlow component and provide the service address and API key. Use an HTTPS origin or local HTTP. If Assistant is not enabled, the same flow initializes it before opening the connection editor. Setup reads the server default chat and embedding models, creates a private Memory under a stable name, or recovers that exact name after a missing creation reply. Missing default models leave setup incomplete with a direct next action. No chat content is sent during setup.
+
+The component derives the user namespace and saves the API key in an origin-bound private component file. The directory mode is 0700 and the key file mode is 0600. Saved settings and model tools contain only its credential reference. The service reads that reference for Memory requests; a legacy service-environment credential reference remains supported. Redirects are disabled. Components does not ask for raw user, dataset or Memory IDs. Explicit dataset retrieval settings remain available through the typed configuration command.
 
 Knowledge retrieval and Memory are independent. Empty dataset IDs disable knowledge retrieval; they never select every accessible dataset. Selecting knowledge alone leaves Codex memory policy unchanged. Memory retrieval uses exact Memory, stable Assistant and user scopes across native context changes.
 
@@ -171,7 +175,7 @@ See the [official HTTP API](https://ragflow.io/docs/v1.0.0-rc3/http_api_referenc
 
 ## Verification and limits
 
-Database fixtures cover team reuse, independent wakes and archive cancellation, exact delegated creation and authority, pending-input preservation, immutable context receipts and unknown/queued imports across restart. The loopback HTTP fixture checks exact retrieval scopes and rejects an HTTP-success response with a failing business code.
+Database fixtures cover team reuse, independent wakes and archive cancellation, exact delegated creation and authority, pending-input preservation, immutable context receipts and unknown/queued imports across restart. The loopback HTTP fixture checks exact retrieval scopes and rejects an HTTP-success response with a failing business code. Component fixtures cover default-model setup, recovery after a lost creation reply, origin-bound private credential files and missing-model failure without saving credentials. The idle setup fixture verifies role selection and retry without creating a first user event.
 
 The isolated native test `installed_assistant_renews_fresh_contexts_with_original_dialogue_and_isolated_memory` uses the selected Codex binary at upstream commit `ba0dfd38979033f514a28d9514215bad46957a18`. It checks three successive fresh contexts, original dialogue across their boundaries, no fork ancestry, one model request per user turn and absent native-memory injection. An unrelated control context retains native memory settings. Native schemas were generated from that selected binary; upstream main is not a substitute for installed capability.
 

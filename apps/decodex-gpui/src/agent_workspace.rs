@@ -550,6 +550,13 @@ impl AgentSurface {
 
 		panel = panel
 			.child(self.work_navigation(
+				"personal-assistant",
+				"Assistant",
+				workspace_symbols::Symbol::TeamMembers,
+				|s, cx| s.open_assistant(cx),
+				cx,
+			))
+			.child(self.work_navigation(
 				"new-conversation",
 				"New Agent",
 				workspace_symbols::Symbol::Plus,

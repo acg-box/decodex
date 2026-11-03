@@ -113,7 +113,11 @@ fn configure(
 	}
 	if let Some(r) = &s.ragflow {
 		bounded(&r.url, 2_048)?;
-		bounded(&r.api_key_env, 128)?;
+		if let Some(id) = &r.credential_id {
+			bounded(id, 128)?;
+		} else {
+			bounded(&r.api_key_env, 128)?;
+		}
 		bounded(&r.user_id, 512)?;
 		if r.dataset_ids.len() > 32
 			|| r.dataset_ids.iter().any(|id| bounded(id, 128).is_err())
@@ -578,6 +582,37 @@ mod tests {
 		store.create_agent_manager(item.clone()).await.unwrap();
 		item
 	}
+	#[tokio::test]
+	async fn assistant_setup_is_idle_atomic_and_safe_to_repeat() {
+		let dir = tempfile::tempdir().unwrap();
+		let store = SqliteStore::open_test(&dir.path().join("setup.sqlite3")).unwrap();
+		let mut item = agent(&store, "existing").await;
+		store.set_assistant(item.id.clone(), true).await.unwrap();
+		item.id = "new-assistant".into();
+		item.status = AgentWorkStatus::Wait;
+		let first = store.create_assistant(item.clone()).await.unwrap();
+		let repeated = store.create_assistant(item).await.unwrap();
+		assert_eq!(first, repeated);
+		assert!(repeated.codex_thread_id.is_none());
+		assert!(repeated.active_turn_id.is_none());
+		assert_eq!(repeated.dispatch_state, AgentDispatchState::Idle);
+		assert_eq!(store.list_agent_work_items().await.unwrap().len(), 2);
+		let agents = store.agents().await.unwrap();
+		assert_eq!(agents.iter().filter(|a| a.assistant).count(), 1);
+		assert_eq!(
+			store.assistant_state().await.unwrap().agent_id.as_deref(),
+			Some("new-assistant")
+		);
+		let events = store
+			.run(|c| {
+				c.query_row("SELECT count(*) FROM agent_inbox_events", [], |r| r.get::<_, i64>(0))
+					.map_err(|e| error::sqlite_error(e).into())
+			})
+			.await
+			.unwrap();
+		assert_eq!(events, 0, "setup must not manufacture a first user message");
+	}
+
 	async fn setup() -> (tempfile::TempDir, SqliteStore, i64) {
 		let dir = tempfile::tempdir().unwrap();
 		let store = SqliteStore::open_test(&dir.path().join("assistant.sqlite3")).unwrap();
@@ -842,6 +877,7 @@ mod tests {
 				ragflow: Some(RagflowConnection {
 					url: "https://ragflow.example.com".into(),
 					api_key_env: "DECODEX_FIXTURE_KEY".into(),
+					credential_id: None,
 					user_id: user.into(),
 					dataset_ids: vec![],
 					memory_id: Some("dedicated".into()),

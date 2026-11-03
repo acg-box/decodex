@@ -10,16 +10,13 @@ fn unavailable() -> AgentError {
 	AgentError::Rejected("RAGFlow is unavailable. Local work and history remain available; no native-memory fallback was enabled.".into())
 }
 pub(crate) fn validate(c: &RagflowConnection) -> Result<(), AgentError> {
-	let url = Url::parse(&c.url).map_err(|_| unavailable())?;
-	let local = matches!(url.host_str(), Some("localhost" | "127.0.0.1" | "[::1]"));
-	if !(url.scheme() == "https" || (url.scheme() == "http" && local))
-		|| !url.username().is_empty()
-		|| url.password().is_some()
-		|| url.query().is_some()
-		|| url.fragment().is_some()
-		|| url.path() != "/"
-		|| c.api_key_env.is_empty()
-		|| !c.api_key_env.bytes().all(|b| b.is_ascii_uppercase() || b.is_ascii_digit() || b == b'_')
+	decodex_components::ragflow::origin(&c.url).map_err(AgentError::Invalid)?;
+	if (c.credential_id.is_none()
+		&& (c.api_key_env.is_empty()
+			|| !c
+				.api_key_env
+				.bytes()
+				.all(|b| b.is_ascii_uppercase() || b.is_ascii_digit() || b == b'_')))
 		|| c.user_id.trim().is_empty()
 	{
 		return Err(AgentError::Invalid("Use an HTTPS RAGFlow origin (or local HTTP), a service credential-variable name and an explicit user ID".into()));
@@ -42,12 +39,18 @@ impl Ragflow {
 				.build()
 				.map_err(|_| unavailable())?,
 			base: Url::parse(&c.url).map_err(|_| unavailable())?,
-			key: env::var(&c.api_key_env).map_err(|_| {
-				AgentError::Rejected(
-					"The configured RAGFlow credential is missing from the service environment"
-						.into(),
-				)
-			})?,
+			key: if let Some(id) = &c.credential_id {
+				decodex_components::ComponentStore::for_user()
+					.and_then(|store| store.ragflow_key(id, &c.url))
+					.map_err(AgentError::Rejected)?
+			} else {
+				env::var(&c.api_key_env).map_err(|_| {
+					AgentError::Rejected(
+						"The configured RAGFlow credential is missing from the service environment"
+							.into(),
+					)
+				})?
+			},
 		})
 	}
 

@@ -44,6 +44,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_usage_estimates.rs
   - id: openwiki-source-3fa6d6c49e3542409542045b
     resource: repo://apps/decodex-gpui/src/agent_work_browser.rs
+  - id: openwiki-source-5d032c6be684964aa2c401fa
+    resource: repo://apps/decodex-gpui/src/agent_workspace.rs
   - id: openwiki-source-f339a4d1910db63ca305c2df
     resource: repo://apps/decodex-gpui/src/assistant_settings.rs
   - id: openwiki-source-a2f254020dd8eaabd6366c91
@@ -64,6 +66,8 @@ sources:
     resource: repo://automations/upstream/prompts/maintainer.md
   - id: openwiki-source-3127fd4c7b2aefcc9cea7961
     resource: repo://automations/upstream/retained-contracts.json
+  - id: openwiki-source-9ecfe8c96199e765ca2b4e1b
+    resource: repo://crates/decodex-components/src/ragflow.rs
   - id: openwiki-source-cc0439b23243c3697ba49199
     resource: repo://crates/decodex-protocol/src/lib.rs
   - id: openwiki-source-4a57fba4bea69171318c6323
@@ -90,10 +94,10 @@ sources:
     resource: repo://database/src/schema.rs
   - id: openwiki-source-3b57179b92b257bc3fff51a1
     resource: repo://scripts/macos/stage_decodex_app.sh
-generated: { by: "codex", at: "2026-11-03T16:31:59.854Z" }
+generated: { by: "codex", at: "2026-11-03T18:23:39.894Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-03T17:33:35.946Z
+    at: 2026-11-03T18:23:39.894Z
 ---
 
 # OpenWiki quickstart
@@ -104,7 +108,7 @@ Decodex is a local workspace above Codex app-server. The primary Agent can discu
 
 The [canonical contract](decisions/project-agent-work.md) is implemented: Project provides continuing context, each user-created Agent has one current native conversation, and Work records an outcome with one accountable Agent, current requirements and evidence. Assistant is optional. Project Lead is a responsibility of an existing Agent. The same Agent can handle several Works.
 
-The implemented [Assistant lifecycle](decisions/assistant-lifecycle.md) adds a continuing personal Agent. It creates and coordinates independent Agents and lightweight teams under user delegation, accepts independent duties, optionally uses RAGFlow Memory and renews native context behind the same chat. There is no built-in project patrol. Select an existing Assistant in Work; Settings > Components edits its mandate, renewal interval and optional RAGFlow scopes. Work, native execution and exact evidence keep their existing owners.
+The implemented [Assistant lifecycle](decisions/assistant-lifecycle.md) adds a continuing personal Agent. It creates and coordinates independent Agents and lightweight teams under user delegation, accepts independent duties, optionally uses RAGFlow Memory and renews native context behind the same chat. There is no built-in project patrol. Open **Assistant** in the sidebar, or enable it in **Settings > Components**. First use initializes an idle Agent without sending a message. Give it continuing instructions and team requests in chat. The separate RAGFlow component configures dedicated Memory from a service address and API key; chat import is a separate opt-in. Work, native execution and exact evidence keep their existing owners.
 
 Agents use native Subagents for bounded execution and scoped Collaboration Requests for independent peers. Native Codex owns execution, context, permissions and continuation. Decodex owns durable business relationships, evidence, coordination and presentation. The default Work tools do not create another executor, and no part of this contract requires Ultra.
 
@@ -154,7 +158,7 @@ When reviewing an earlier message, choose **Side chat** to create a persistent n
 
 | Task | Read first |
 | --- | --- |
-| Configure the Assistant, teams, external Memory or context renewal | [Assistant lifecycle design](decisions/assistant-lifecycle.md) |
+| Configure the Assistant, teams, external Memory or context renewal | [Assistant lifecycle](decisions/assistant-lifecycle.md) |
 | Change Project/Agent/Work contracts, recovery, global Guardian or canonical names | [Project, Agent and Work contract](decisions/project-agent-work.md) |
 | Understand service, clients and storage | [Runtime architecture](architecture/runtime-architecture.md) |
 | Trace native helper execution, peer Collaboration, question escalation or recovery | [Agent coordination](architecture/chief-coordination.md) |

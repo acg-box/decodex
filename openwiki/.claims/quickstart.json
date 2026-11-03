@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:e549ef2b34d413da81db08a7f5643e677dcb17e17633ef1a2aa864ec4f9df985",
+  "pageVersion": "sha256:ea94a87a31a23eee1bae148d5aa429ffa2301991660f0de6e84cc5919fb12d3e",
   "claims": [
     {
       "id": "claim_b34298a8647a4e0b8653926b7568c5d4",
@@ -50,7 +50,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-protocol/src/lib.rs",
-          "version": "repo-file-v1:sha256:b1b307f55b9cc8d55f87478e47399da4b9bd8e449ec89076f1d943a8bd098757"
+          "version": "repo-file-v1:sha256:e6c66e7ae6cf41b9c1d1a0eb228a235cadf54efa20b8da73d78f1470e09d6dbf"
         },
         {
           "resource": "repo://database/schema.sql",
@@ -118,7 +118,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_portfolio.rs",
-          "version": "repo-file-v1:sha256:413c6d88e7a0e5c3a7514d696f7d8a9b0f7984164599a7b072ca6832337a360a"
+          "version": "repo-file-v1:sha256:baa8ea600036ed4dff6d1bd9f8736a2d3f541aed6f345c511fe0bb79f4db3307"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/instructions.md",
@@ -130,7 +130,7 @@
         },
         {
           "resource": "repo://database/src/agent.rs",
-          "version": "repo-file-v1:sha256:d8f927bc04ecde1b14f278d68f7e89aeb53edca6f9c000b1d16f55f59a002c97"
+          "version": "repo-file-v1:sha256:626d7e727a18ac12155d7e53ca855cc916f63cc3951256c7357b957e296f2e63"
         }
       ]
     },
@@ -140,7 +140,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_surface.rs",
-          "version": "repo-file-v1:sha256:ecc0ad2696b0f62e057388c19bf739f4dd68ed2c0c72c2c4eb20187cf75c1ea5"
+          "version": "repo-file-v1:sha256:c6e7329e003d6113484baf11e9b1e9aec0fe620a81a3776cee2fe3763cb8f765"
         },
         {
           "resource": "repo://automations/upstream/retained-contracts.json#L4145-L4361",
@@ -180,7 +180,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:a212a9cc17fed70818fa5e99178898b5f3761a502fb3cb6828d72a37c55c4515"
+          "version": "repo-file-v1:sha256:e269a1314d29fdb605b6e45be4fa97b425115788adfd4415cb410fb82189a247"
         }
       ]
     },
@@ -208,7 +208,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_surface.rs",
-          "version": "repo-file-v1:sha256:ecc0ad2696b0f62e057388c19bf739f4dd68ed2c0c72c2c4eb20187cf75c1ea5"
+          "version": "repo-file-v1:sha256:c6e7329e003d6113484baf11e9b1e9aec0fe620a81a3776cee2fe3763cb8f765"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_timeline_find.rs",
@@ -330,15 +330,23 @@
     },
     {
       "id": "claim_2f51bf620dff4bb0afcf4b66110fb5a4",
-      "statement": "The personal Assistant manages delegated independent Agents, lightweight teams and independent duties, optional RAGFlow Memory and fresh native contexts behind one stable chat. Work selects the Assistant and Components configures its mandate, renewal interval and optional Memory scopes; no patrol is built in.",
+      "statement": "Assistant opens from the sidebar or is enabled in Components with idle first-use setup and no automatic message. It manages delegated Agents, teams, duties and fresh contexts; continuing instructions stay in chat. The separate RAGFlow component configures dedicated Memory from a service address and API key, with separate chat import and no built-in patrol.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_portfolio.rs",
-          "version": "repo-file-v1:sha256:413c6d88e7a0e5c3a7514d696f7d8a9b0f7984164599a7b072ca6832337a360a"
+          "version": "repo-file-v1:sha256:baa8ea600036ed4dff6d1bd9f8736a2d3f541aed6f345c511fe0bb79f4db3307"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
+          "version": "repo-file-v1:sha256:9bde145aa029ab54450e8e621e26d974d496e7fcc48aeaef21d397236f114802"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
-          "version": "repo-file-v1:sha256:a567b2373ebad8d8e66efb3e3fb8e7b3b0bb21ca2b25bcfa8290d2ecaa8db277"
+          "version": "repo-file-v1:sha256:80241d89899ab6c5a5b9fd570d7b32044c41efd52f4096b6449ea3fbe08ff3d3"
+        },
+        {
+          "resource": "repo://crates/decodex-components/src/ragflow.rs",
+          "version": "repo-file-v1:sha256:fd921fd1b745f250afc32c7a8f1ec6885c8b980ed6bbb7d8e2f260208d038e64"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/assistant.rs",
@@ -353,6 +361,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-03T17:33:35.946Z"
+    "at": "2026-11-03T18:23:39.894Z"
   }
 }

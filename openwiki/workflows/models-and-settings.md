@@ -60,6 +60,8 @@ sources:
     resource: repo://crates/decodex-codex/src/app_server_client/thread_model_selection.rs
   - id: openwiki-source-7a438b090d3a7042aebaf269
     resource: repo://crates/decodex-codex/src/conversation.rs
+  - id: openwiki-source-9ecfe8c96199e765ca2b4e1b
+    resource: repo://crates/decodex-components/src/ragflow.rs
   - id: openwiki-source-0d29990b5fd295fa89a495ad
     resource: repo://crates/decodex-protocol/src/model_catalog.rs
   - id: openwiki-source-e5be8be8499e6ccee0cf7ad0
@@ -100,10 +102,10 @@ sources:
     resource: repo://crates/decodex-runtime/tests/native_qualification/thread_settings.py
   - id: openwiki-source-8c78df4b382026886ac50894
     resource: repo://database/src/usage_evidence.rs
-generated: { by: "codex", at: "2026-11-03T16:31:59.854Z" }
+generated: { by: "codex", at: "2026-11-03T18:23:39.894Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-03T17:33:35.946Z
+    at: 2026-11-03T18:23:39.894Z
 ---
 
 # Model selection and settings ownership
@@ -190,7 +192,7 @@ The reviewed source, thread and Goal identity must still match before a write. L
 
 The search control shows the saved user preference separately from the effective project default. Supported native modes include disabled, cached, indexed and live, subject to current native requirements. Saving writes only `web_search` against the reviewed native file version, with no user-config reload. It does not restart, resume or fork an existing conversation to force the new default into its loaded settings.
 
-Memory availability comes from the native feature observation. A capability flag is not a separate Decodex memory database or a retention policy. The implemented [Assistant lifecycle](../decisions/assistant-lifecycle.md) adds optional RAGFlow retrieval and Memory through Settings > Components. Knowledge dataset IDs, Memory ID and chat import are separate selections; empty datasets disable retrieval. Selecting Memory reminds the user and waits for a safe fresh context with native generation, use and the memories feature disabled, plus disabled native memory mode. Cold resume preserves this policy. Native compaction, history, unrelated Agents and shared defaults retain their settings. The saved connection uses an environment-variable credential reference. A connection failure remains visible without native-memory fallback.
+Memory availability comes from the native feature observation. A capability flag is not a separate Decodex memory database or a retention policy. The implemented [Assistant lifecycle](../decisions/assistant-lifecycle.md) adds optional RAGFlow retrieval and Memory through Settings > Components. The RAGFlow component needs a service address and API key. It creates or recovers a dedicated Memory with server default models and derives its namespace. Chat import starts off and is enabled separately. Explicit knowledge dataset scopes remain available in typed Assistant configuration; empty datasets disable retrieval. Selecting Memory reminds the user and waits for a safe fresh context with native generation, use and the memories feature disabled, plus disabled native memory mode. Cold resume preserves this policy. Native compaction, history, unrelated Agents and shared defaults retain their settings. The saved connection uses a private component credential reference; legacy environment-variable references remain supported. A connection failure remains visible without native-memory fallback.
 
 ## Read a native memory summary
 

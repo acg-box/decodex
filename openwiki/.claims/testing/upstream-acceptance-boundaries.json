@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:37149ef1b016afd6a87047c7571e08d5e8b0df49df8dd286486b5c4697d4c170",
+  "pageVersion": "sha256:45446fe1a5b35ce8654e3044305b71541ad69996fa19e3447928d232b3ccce7c",
   "claims": [
     {
       "id": "claim_2dd4ad01dd984b80a22d9cb9c9bfd397",
@@ -1190,29 +1190,37 @@
     },
     {
       "id": "claim_199088d6ec9e4c77bd627bd1a3844b01",
-      "statement": "Assistant fixtures separately cover durable teams/wakes and delegation, context/import receipts, desktop continuity and selected-native fresh contexts with original dialogue and isolated memory. Loopback RAGFlow checks cover explicit scopes and business errors. They do not establish live RAGFlow, live-provider or installed-app acceptance.",
+      "statement": "Assistant fixtures cover idle initialization without a first user message, durable teams and wakes, context/import receipts, desktop continuity and selected-native fresh contexts. RAGFlow component fixtures cover default models, missing-model failure, lost creation replies and private origin-bound credentials; HTTP checks retain exact scopes and business errors. They do not establish live RAGFlow, live-provider or installed-app acceptance.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_timeline.rs",
           "version": "repo-file-v1:sha256:94ea70df047f8fb39acb1221999a5bbfc405b1041b6da8a11e0176474d71cc8d"
         },
         {
+          "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
+          "version": "repo-file-v1:sha256:80241d89899ab6c5a5b9fd570d7b32044c41efd52f4096b6449ea3fbe08ff3d3"
+        },
+        {
+          "resource": "repo://crates/decodex-components/src/ragflow.rs",
+          "version": "repo-file-v1:sha256:fd921fd1b745f250afc32c7a8f1ec6885c8b980ed6bbb7d8e2f260208d038e64"
+        },
+        {
           "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_context_tests.rs",
-          "version": "repo-file-v1:sha256:652a421cd80d91117531960c52dc4031b8c288f620a02f66d81c19e012dcaa59"
+          "version": "repo-file-v1:sha256:2025e729c695317d95c938b1c1b0b5b4e201dd6b2245d17bdf41a31cbc7fd356"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/ragflow.rs",
-          "version": "repo-file-v1:sha256:4224ee73758b86b3a314b01a0bd7c580467a094e00faccba349fa334dc5947fc"
+          "version": "repo-file-v1:sha256:126f808d04eae1024eba392373e9a1050b59875de74e33aea0a544af4434138d"
         },
         {
           "resource": "repo://database/src/assistant.rs",
-          "version": "repo-file-v1:sha256:ef184fabb6fb9c789f70b4d6e4b7970e4031c0b586778fd9acbe9eb095530433"
+          "version": "repo-file-v1:sha256:f96807ddb85427783694c17c7e9a93529d0d43d620ffda5eb7de5f7fe70e29d5"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-03T17:33:35.946Z"
+    "at": "2026-11-03T18:23:39.894Z"
   }
 }

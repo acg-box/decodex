@@ -38,6 +38,8 @@ sources:
     resource: repo://automations/upstream/retained-evidence.json
   - id: openwiki-source-2d990e4e2bc233a95b4894b9
     resource: repo://crates/decodex-components/src/pin.rs
+  - id: openwiki-source-9ecfe8c96199e765ca2b4e1b
+    resource: repo://crates/decodex-components/src/ragflow.rs
   - id: openwiki-source-95a7168e447de14b4b758f16
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_archive_tests.rs
   - id: openwiki-source-1a964823f348372d89aa1920
@@ -116,10 +118,10 @@ sources:
     resource: repo://scripts/macos/test_native_app.sh
   - id: openwiki-source-e201f60894c32a914dac99ee
     resource: repo://scripts/vnext/run_native_regression.py
-generated: { by: "codex", at: "2026-11-03T16:31:59.854Z" }
+generated: { by: "codex", at: "2026-11-03T18:23:39.894Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-03T17:33:35.946Z
+    at: 2026-11-03T18:23:39.894Z
 ---
 
 
@@ -162,16 +164,16 @@ The database gate uses an isolated owner-private root. It is not permission to r
 
 ## Assistant commands and checks
 
-Select an existing Agent with `decodex agent assistant-role --agent-id ID`. Use `--remove` to remove that role. `decodex agent assistant --agent-id ID --command-file /absolute/path/command.json --idempotency-key KEY` sends one typed command through the same service owner as the desktop. The command file contains an AssistantCommand, such as `{"operation":"refresh_context"}`. Do not put a RAGFlow API key in that file; Configure stores its service environment-variable name.
+Select an existing Agent with `decodex agent assistant-role --agent-id ID`. Use `--remove` to remove that role. `decodex agent assistant --agent-id ID --command-file /absolute/path/command.json --idempotency-key KEY` sends one typed command through the same service owner as the desktop. The command file contains an AssistantCommand, such as `{"operation":"refresh_context"}`. Do not put a RAGFlow API key in that file; Configure stores a component credential reference or a legacy service environment-variable name.
 
-Work opens the selected Assistant. Settings > Components edits its mandate, renewal interval and optional RAGFlow scopes. See [the lifecycle](../decisions/assistant-lifecycle.md) for supported operations, ownership and external-service limits.
+The sidebar opens Assistant and initializes it idle on first use. Settings > Components can enable Assistant and connect the separate RAGFlow component. The connection needs a service address and API key; setup derives its scopes and creates or recovers Memory with server default models. Continuing instructions, teams and duties stay in chat. Chat import is enabled separately. See [the lifecycle](../decisions/assistant-lifecycle.md) for supported operations, ownership and external-service limits.
 
 Use isolated test processes for the backend fixture suite:
 
 ```sh
-cargo +stable nextest run --locked -p decodex-database -p decodex-protocol -p decodex-runtime --lib
+cargo +stable nextest run --locked -p decodex-components -p decodex-database -p decodex-protocol -p decodex-runtime --lib
 cargo +stable test --locked -p decodex-cli --all-targets
-cargo +stable nextest run --locked -p decodex-gpui --bin decodex-gpui -E 'test(assistant_refresh_keeps) or test(native_timeline::media::)'
+cargo +stable nextest run --locked -p decodex-gpui --bin decodex-gpui -E 'test(assistant) or test(settings_components) or test(agent_drafts) or test(native_timeline::media::)'
 ```
 
 Set `DECODEX_TEST_CODEX_BINARY` to the selected pinned component executable for the opt-in native lifecycle test, then run:
@@ -180,7 +182,7 @@ Set `DECODEX_TEST_CODEX_BINARY` to the selected pinned component executable for 
 cargo +stable test --locked -p decodex-runtime --lib installed_assistant_renews_fresh_contexts -- --ignored --nocapture --test-threads=1
 ```
 
-The native test uses an isolated home and loopback provider. It checks three clean native contexts, original dialogue and memory isolation. The HTTP fixture checks scoped RAGFlow requests and business-error responses. Neither fixture qualifies a live RAGFlow deployment or installed desktop application.
+The native test uses an isolated home and loopback provider. It checks three clean native contexts, original dialogue and memory isolation. The HTTP fixtures check scoped RAGFlow requests, business-error responses, default-model setup, lost-creation-reply recovery and private origin-bound credentials. Neither fixture qualifies a live RAGFlow deployment or installed desktop application.
 
 ## Signed native WebRTC checks
 

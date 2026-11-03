@@ -1,18 +1,26 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:c08a636eaa8b15f2ee857997560f7ae811ac9c714d7b8816739c5c512d6243e3",
+  "pageVersion": "sha256:1337ddc5898b80c86a6dbd18a84844ce4c9a5052271a6b4a815f4e6c86f6da69",
   "claims": [
     {
       "id": "claim_2f9fecf97f644372afb5684929656aac",
-      "statement": "The selected Assistant is an existing persistent Agent with a stable identity, typed management tools, lightweight teams and independent wakes. Native Codex remains the executor; protocol is 4.6 and the current database schema remains 60.",
+      "statement": "The personal Assistant is a persistent Agent initialized idle from the sidebar or selected from existing Agents in Work. It has stable identity, typed tools, teams and independent wakes. Native Codex remains the executor; protocol is 4.7 and database schema remains 60.",
       "evidence": [
         {
+          "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
+          "version": "repo-file-v1:sha256:80241d89899ab6c5a5b9fd570d7b32044c41efd52f4096b6449ea3fbe08ff3d3"
+        },
+        {
+          "resource": "repo://crates/decodex-components/src/ragflow.rs",
+          "version": "repo-file-v1:sha256:fd921fd1b745f250afc32c7a8f1ec6885c8b980ed6bbb7d8e2f260208d038e64"
+        },
+        {
           "resource": "repo://crates/decodex-core/src/assistant.rs",
-          "version": "repo-file-v1:sha256:85892c0f9d5a733f00e9214c0d15897bad8ed37bd649e428739f1c2fe69b0c98"
+          "version": "repo-file-v1:sha256:e5e58ed7c1045b3639b1bf7553563a19964b79e68b0f905f443290379277b222"
         },
         {
           "resource": "repo://crates/decodex-protocol/src/lib.rs",
-          "version": "repo-file-v1:sha256:b1b307f55b9cc8d55f87478e47399da4b9bd8e449ec89076f1d943a8bd098757"
+          "version": "repo-file-v1:sha256:e6c66e7ae6cf41b9c1d1a0eb228a235cadf54efa20b8da73d78f1470e09d6dbf"
         },
         {
           "resource": "repo://database/schema.sql",
@@ -20,7 +28,7 @@
         },
         {
           "resource": "repo://database/src/assistant.rs",
-          "version": "repo-file-v1:sha256:ef184fabb6fb9c789f70b4d6e4b7970e4031c0b586778fd9acbe9eb095530433"
+          "version": "repo-file-v1:sha256:f96807ddb85427783694c17c7e9a93529d0d43d620ffda5eb7de5f7fe70e29d5"
         }
       ]
     },
@@ -38,7 +46,7 @@
         },
         {
           "resource": "repo://database/src/agent.rs",
-          "version": "repo-file-v1:sha256:d8f927bc04ecde1b14f278d68f7e89aeb53edca6f9c000b1d16f55f59a002c97"
+          "version": "repo-file-v1:sha256:626d7e727a18ac12155d7e53ca855cc916f63cc3951256c7357b957e296f2e63"
         },
         {
           "resource": "repo://database/src/works.rs",
@@ -60,7 +68,7 @@
         },
         {
           "resource": "repo://database/src/assistant.rs",
-          "version": "repo-file-v1:sha256:ef184fabb6fb9c789f70b4d6e4b7970e4031c0b586778fd9acbe9eb095530433"
+          "version": "repo-file-v1:sha256:f96807ddb85427783694c17c7e9a93529d0d43d620ffda5eb7de5f7fe70e29d5"
         }
       ]
     },
@@ -84,7 +92,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-core/src/assistant.rs",
-          "version": "repo-file-v1:sha256:85892c0f9d5a733f00e9214c0d15897bad8ed37bd649e428739f1c2fe69b0c98"
+          "version": "repo-file-v1:sha256:e5e58ed7c1045b3639b1bf7553563a19964b79e68b0f905f443290379277b222"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent.rs",
@@ -96,7 +104,7 @@
         },
         {
           "resource": "repo://database/src/assistant.rs",
-          "version": "repo-file-v1:sha256:ef184fabb6fb9c789f70b4d6e4b7970e4031c0b586778fd9acbe9eb095530433"
+          "version": "repo-file-v1:sha256:f96807ddb85427783694c17c7e9a93529d0d43d620ffda5eb7de5f7fe70e29d5"
         }
       ]
     },
@@ -110,7 +118,7 @@
         },
         {
           "resource": "repo://database/src/assistant.rs",
-          "version": "repo-file-v1:sha256:ef184fabb6fb9c789f70b4d6e4b7970e4031c0b586778fd9acbe9eb095530433"
+          "version": "repo-file-v1:sha256:f96807ddb85427783694c17c7e9a93529d0d43d620ffda5eb7de5f7fe70e29d5"
         }
       ]
     },
@@ -132,7 +140,7 @@
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent_host.rs",
-          "version": "repo-file-v1:sha256:d8a526106b9917db75fe6501fd61251869ac1e32051e171a525a00b5c2cd62f0"
+          "version": "repo-file-v1:sha256:cba833da0ef2d3b38e54e9430058577c2d09d53d05566b6a21f2ad61b4c9ca6e"
         },
         {
           "resource": "repo://database/src/agent/archive.rs",
@@ -142,23 +150,27 @@
     },
     {
       "id": "claim_d7c97e74e7fd4a17bbb30ad7532a9914",
-      "statement": "Settings > Components selects an existing RAGFlow origin, credential environment-variable reference, user scope, explicit datasets and optional Memory. Empty datasets disable knowledge retrieval. Memory and chat-wide import are separate direct-user settings.",
+      "statement": "Components connects RAGFlow from a service address and API key, creates or recovers a dedicated Memory with server default models and derives its user namespace. It saves an origin-bound component credential reference, retains legacy service-environment support, and leaves chat import off until directly enabled. Empty explicit dataset scopes disable knowledge retrieval.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
-          "version": "repo-file-v1:sha256:a567b2373ebad8d8e66efb3e3fb8e7b3b0bb21ca2b25bcfa8290d2ecaa8db277"
+          "version": "repo-file-v1:sha256:80241d89899ab6c5a5b9fd570d7b32044c41efd52f4096b6449ea3fbe08ff3d3"
+        },
+        {
+          "resource": "repo://crates/decodex-components/src/ragflow.rs",
+          "version": "repo-file-v1:sha256:fd921fd1b745f250afc32c7a8f1ec6885c8b980ed6bbb7d8e2f260208d038e64"
         },
         {
           "resource": "repo://crates/decodex-core/src/assistant.rs",
-          "version": "repo-file-v1:sha256:85892c0f9d5a733f00e9214c0d15897bad8ed37bd649e428739f1c2fe69b0c98"
+          "version": "repo-file-v1:sha256:e5e58ed7c1045b3639b1bf7553563a19964b79e68b0f905f443290379277b222"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/ragflow.rs",
-          "version": "repo-file-v1:sha256:4224ee73758b86b3a314b01a0bd7c580467a094e00faccba349fa334dc5947fc"
+          "version": "repo-file-v1:sha256:126f808d04eae1024eba392373e9a1050b59875de74e33aea0a544af4434138d"
         },
         {
           "resource": "repo://database/src/assistant.rs",
-          "version": "repo-file-v1:sha256:ef184fabb6fb9c789f70b4d6e4b7970e4031c0b586778fd9acbe9eb095530433"
+          "version": "repo-file-v1:sha256:f96807ddb85427783694c17c7e9a93529d0d43d620ffda5eb7de5f7fe70e29d5"
         }
       ]
     },
@@ -190,11 +202,11 @@
         },
         {
           "resource": "repo://crates/decodex-runtime/src/ragflow.rs",
-          "version": "repo-file-v1:sha256:4224ee73758b86b3a314b01a0bd7c580467a094e00faccba349fa334dc5947fc"
+          "version": "repo-file-v1:sha256:126f808d04eae1024eba392373e9a1050b59875de74e33aea0a544af4434138d"
         },
         {
           "resource": "repo://database/src/assistant.rs",
-          "version": "repo-file-v1:sha256:ef184fabb6fb9c789f70b4d6e4b7970e4031c0b586778fd9acbe9eb095530433"
+          "version": "repo-file-v1:sha256:f96807ddb85427783694c17c7e9a93529d0d43d620ffda5eb7de5f7fe70e29d5"
         }
       ]
     },
@@ -208,7 +220,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:360a1267c4fa1e9892ab1f0913dd2699a4c2b2a27b286d33f947f18399155daa"
+          "version": "repo-file-v1:sha256:9bde145aa029ab54450e8e621e26d974d496e7fcc48aeaef21d397236f114802"
         },
         {
           "resource": "repo://crates/decodex-protocol/src/agent_timeline.rs",
@@ -216,15 +228,15 @@
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_context_tests.rs",
-          "version": "repo-file-v1:sha256:652a421cd80d91117531960c52dc4031b8c288f620a02f66d81c19e012dcaa59"
+          "version": "repo-file-v1:sha256:2025e729c695317d95c938b1c1b0b5b4e201dd6b2245d17bdf41a31cbc7fd356"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/ragflow.rs",
-          "version": "repo-file-v1:sha256:4224ee73758b86b3a314b01a0bd7c580467a094e00faccba349fa334dc5947fc"
+          "version": "repo-file-v1:sha256:126f808d04eae1024eba392373e9a1050b59875de74e33aea0a544af4434138d"
         },
         {
           "resource": "repo://database/src/assistant.rs",
-          "version": "repo-file-v1:sha256:ef184fabb6fb9c789f70b4d6e4b7970e4031c0b586778fd9acbe9eb095530433"
+          "version": "repo-file-v1:sha256:f96807ddb85427783694c17c7e9a93529d0d43d620ffda5eb7de5f7fe70e29d5"
         }
       ]
     },
@@ -234,7 +246,7 @@
       "evidence": [
         {
           "resource": "repo://database/src/assistant.rs",
-          "version": "repo-file-v1:sha256:ef184fabb6fb9c789f70b4d6e4b7970e4031c0b586778fd9acbe9eb095530433"
+          "version": "repo-file-v1:sha256:f96807ddb85427783694c17c7e9a93529d0d43d620ffda5eb7de5f7fe70e29d5"
         }
       ]
     },
@@ -255,10 +267,24 @@
           "version": "repo-file-v1:sha256:05697a1cabc8e0bb52c90c8c2e733eec9700e2d8761fb9f9840c4a5f45a07a38"
         }
       ]
+    },
+    {
+      "id": "claim_939773e6ca4645c2815e77753b790b71",
+      "statement": "Component and idle-setup fixtures cover missing default models without saving credentials, exact-name recovery after a lost Memory creation reply, origin-bound credentials with private file modes, and Assistant initialization without a first user message.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-components/src/ragflow.rs",
+          "version": "repo-file-v1:sha256:fd921fd1b745f250afc32c7a8f1ec6885c8b980ed6bbb7d8e2f260208d038e64"
+        },
+        {
+          "resource": "repo://database/src/assistant.rs",
+          "version": "repo-file-v1:sha256:f96807ddb85427783694c17c7e9a93529d0d43d620ffda5eb7de5f7fe70e29d5"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-03T17:33:35.946Z"
+    "at": "2026-11-03T18:23:39.894Z"
   }
 }

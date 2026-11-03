@@ -116,10 +116,10 @@ sources:
     resource: repo://database/src/works/collaboration.rs
   - id: openwiki-source-c0eb738b42368debe7ef7545
     resource: repo://database/src/works/commands.rs
-generated: { by: "codex", at: "2026-11-03T16:38:47.085Z" }
+generated: { by: "codex", at: "2026-11-03T18:23:39.894Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-03T17:33:35.946Z
+    at: 2026-11-03T18:23:39.894Z
 ---
 
 # Project, Agent and Work coordination
@@ -130,7 +130,7 @@ The [accepted contract](../decisions/project-agent-work.md) defines the shared v
 
 ## Owners and flow
 
-The accepted [Assistant lifecycle design](../decisions/assistant-lifecycle.md) extends this model with delegated persistent-Agent management, optional RAGFlow Memory and fresh native contexts behind one Agent identity. The implementation reuses the existing Work, Collaboration and Inbox owners. Lightweight teams group existing Agents and responsibilities; membership grants no private-history access. Independent wakes retain their own due times. Select the Assistant in Work and configure its continuing instructions and optional RAGFlow connection in Settings > Components.
+The accepted [Assistant lifecycle design](../decisions/assistant-lifecycle.md) extends this model with delegated persistent-Agent management, optional RAGFlow Memory and fresh native contexts behind one Agent identity. The implementation reuses the existing Work, Collaboration and Inbox owners. Lightweight teams group existing Agents and responsibilities; membership grants no private-history access. Independent wakes retain their own due times. Open Assistant from the sidebar, or enable it in Settings > Components. First use creates an idle independent Agent and selects its role in one transaction. It does not submit a first message. Give it continuing instructions in chat. The separate RAGFlow component configures optional Memory.
 
 The desktop sends typed commands to the service. SQLite owns Project membership, Agent responsibilities, Work requirements, holds, Results, assessments and Collaboration Requests. Codex owns native threads, turns, Subagents, messages, waits, context, Goals, permissions and enforcement. Work commands persist business decisions; they do not spawn or message native helpers.
 

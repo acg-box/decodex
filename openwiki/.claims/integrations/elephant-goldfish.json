@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:4bbff78c90b80e8e39142a1fb9913aac3410f9457435ba1edf9e9b9abc46414b",
+  "pageVersion": "sha256:d98dc270369e106290f232749b2ac69865caf3910a7d0c055e06f1dffb417e99",
   "claims": [
     {
       "id": "claim_95da7355536d42fb9ba017dae9558113",
       "statement": "The optional EGM component selects the original Google repository as egm@egm and delegates installation, Git updates and removal to native Codex plugin commands rather than a local prompt or package implementation.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-components/src/lib.rs#L30-L39",
+          "resource": "repo://crates/decodex-components/src/lib.rs#L31-L40",
           "version": "repo-lines-v1:sha256:38ed59d3e314e5bfbdb3d8997881c966198b7b50aaa5bea7768ad00ab8b36fa5:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImExMjEyMjI0ZGYyZDIzZjYwOGI4ZjA5YjJhZGM3YjdiOWQwMGMxNjg5NjZmMGFkNzk2OWYxNGI4YjJiODQ4ZjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJjY2Q5NjRhZDI5ODU2MzQwMGM2MWYwOTA1MTVmMjI4ZWIwMDZiYTNhYTliNTcyZGU2NjE1OTY2Y2FmMzhlMTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE4MzliMWExOGNiNTA0ZWEzMThmZDhmMzIxYjNhYTdmZGJiYThjNjM3OTM1ZDQ2NTg2YWJiZDQ5OGMwNGFkNzIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImZjOGQ1MWFjOTYxZTZhNmRhNzJlOTVkYjkxNGE4N2E5ZTUzNTVkODgxYjgyMzc3ZGZkZGJlZTBhYjhmNTk5MDEifQ"
         },
         {
@@ -25,7 +25,7 @@
           "version": "repo-file-v1:sha256:190f6fe3576b323a91b91214c53527635dbf2b962830439a58ccaccf0c09fd18"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/settings_components.rs#L456-L537",
+          "resource": "repo://apps/decodex-gpui/src/settings_components.rs#L555-L636",
           "version": "repo-lines-v1:sha256:87b827f41bbbbbf6f34f8553df0c565e7785862fae9fb8620360fd43781acb88:eyJzZWxlY3RlZExpbmVDb3VudCI6ODIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg5YmM3NTExYjIyYjUzOGRmMTQyODMzNzUxZDRhMDM3NDFiYjI4MzkzYjQzZjE5ZjhkNjZkNDkxZGFmNTJkOWUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY5YTY3MmQyNjAyNjg2YmM4NjkzNmE0OTUyMmU4ZjdkZTYzMWIyOTIwNDIzNTliODMxODY1OTFkYTBkMDEzYzciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImI4MDU2Mjk0OGI0NDM0ZDEzZmMzYzExMTQ5NTU4MjJhNGViZTBkMjFhODE1MTI5YWZhYjk0MjZhOTYyNDFmZTQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFkNWE3YjRiOGJhNjAxOTg0NTlhZjg0NjA3OTgxM2Y0NGFkNzAxMmNkZTRiMDdlMzAwMWI4NjE4NGJhNmRkYzUifQ"
         }
       ]
@@ -123,6 +123,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-03T17:33:35.946Z"
+    "at": "2026-11-03T18:23:39.894Z"
   }
 }

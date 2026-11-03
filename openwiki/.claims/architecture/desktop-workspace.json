@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:0cd25cb1b0eb44eaab5c6a216bca39da5a2d380723357dba04fcf6d4665201ab",
+  "pageVersion": "sha256:3bc78708bc67a6788e19a08fa88e2d4b5b1636c64dd0d0f03d5d06f1425170d7",
   "claims": [
     {
       "id": "claim_41c9eba720934771bd6b671a7aeb8b6e",
@@ -20,7 +20,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:360a1267c4fa1e9892ab1f0913dd2699a4c2b2a27b286d33f947f18399155daa"
+          "version": "repo-file-v1:sha256:9bde145aa029ab54450e8e621e26d974d496e7fcc48aeaef21d397236f114802"
         }
       ]
     },
@@ -132,11 +132,11 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_portfolio.rs",
-          "version": "repo-file-v1:sha256:413c6d88e7a0e5c3a7514d696f7d8a9b0f7984164599a7b072ca6832337a360a"
+          "version": "repo-file-v1:sha256:baa8ea600036ed4dff6d1bd9f8736a2d3f541aed6f345c511fe0bb79f4db3307"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:360a1267c4fa1e9892ab1f0913dd2699a4c2b2a27b286d33f947f18399155daa"
+          "version": "repo-file-v1:sha256:9bde145aa029ab54450e8e621e26d974d496e7fcc48aeaef21d397236f114802"
         }
       ]
     },
@@ -146,7 +146,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_portfolio.rs",
-          "version": "repo-file-v1:sha256:413c6d88e7a0e5c3a7514d696f7d8a9b0f7984164599a7b072ca6832337a360a"
+          "version": "repo-file-v1:sha256:baa8ea600036ed4dff6d1bd9f8736a2d3f541aed6f345c511fe0bb79f4db3307"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/work_portfolio.rs",
@@ -164,7 +164,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_portfolio.rs",
-          "version": "repo-file-v1:sha256:413c6d88e7a0e5c3a7514d696f7d8a9b0f7984164599a7b072ca6832337a360a"
+          "version": "repo-file-v1:sha256:baa8ea600036ed4dff6d1bd9f8736a2d3f541aed6f345c511fe0bb79f4db3307"
         },
         {
           "resource": "repo://database/src/guardian_settings.rs",
@@ -185,7 +185,7 @@
           "version": "repo-lines-v1:sha256:bb605643030f764b7b56a78a63ffa2c97bd25355f36ec54175cf56a660562d00:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM2ZDM3NDI5MTRmZTFkODY2ZTY2NGE4NDMzM2FhZWI0Nzk1NDE2ZmZjNDc0NTczYjVhMDU2OWI1ZjEzODQ0ZDMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI3NjI0ZTFlZGM1Zjk5NjhjNjRhZTkwMTMwNDk5ZTI2ZTE3ZDRmYTMyMWRhYTAzYmQ4OGJkZTA0MmQyZTQ2YjgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjMwMTJhNDJhNmNmMTg3ZTMzNzAwNDBjMDk5ZjMyNjMxOTBhYWQyNWRlNzMwYzc5OGJlNDU4NDU0YzFiYmMwNWMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImJhMDg2OTgyMTQ5NzY5MTc1Y2FiYjA2NWU0OWQwODBiNDI0ZDkyZTg0YmIyMmNkYzQzYzc3MDUwNjIwZDdiY2MifQ"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L945-L996",
+          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L946-L997",
           "version": "repo-lines-v1:sha256:767972a08dac70d0d177bbfbadbb3b9ebf0a7b452dc8d3b6f16386e7c62277fe:eyJzZWxlY3RlZExpbmVDb3VudCI6NTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgzMDQwMDA0N2UzY2U2NjI0Yzk5MTgxNGY5MzRiNDgzNTQ4NWIxNDg0ODFjNTI3MGRlZjE3MjA3ZjE4YzQzNjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRjYzE1MDQ0YzQ1YzEwMmJjMWNlMTZmMmQwMWQwZjk0MjI3N2MzZDcwMTUyZTAyM2Y2OTAyM2IwY2E0YTA4MmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRjMmI1MGY2ZTAyZmY5MGU2ODBjNTE0YzE2Zjc0YzUwNmU4Y2RiZTUxZmVjYWUyMzY1NDhkZGRiOWY5ODFkZjEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNkMTVjYWViZTcyZDQxMjNkZDYzNTRjY2M4ZDZkOTBiYjk0ZjcwZDcwYTAyOTc3MzNkN2UxNDA0ZWI4ZmM4ZTYifQ"
         }
       ]
@@ -204,7 +204,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_portfolio.rs",
-          "version": "repo-file-v1:sha256:413c6d88e7a0e5c3a7514d696f7d8a9b0f7984164599a7b072ca6832337a360a"
+          "version": "repo-file-v1:sha256:baa8ea600036ed4dff6d1bd9f8736a2d3f541aed6f345c511fe0bb79f4db3307"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_usage_evidence.rs",
@@ -226,7 +226,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:360a1267c4fa1e9892ab1f0913dd2699a4c2b2a27b286d33f947f18399155daa"
+          "version": "repo-file-v1:sha256:9bde145aa029ab54450e8e621e26d974d496e7fcc48aeaef21d397236f114802"
         }
       ]
     },
@@ -288,7 +288,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:360a1267c4fa1e9892ab1f0913dd2699a4c2b2a27b286d33f947f18399155daa"
+          "version": "repo-file-v1:sha256:9bde145aa029ab54450e8e621e26d974d496e7fcc48aeaef21d397236f114802"
         }
       ]
     },
@@ -422,7 +422,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:360a1267c4fa1e9892ab1f0913dd2699a4c2b2a27b286d33f947f18399155daa"
+          "version": "repo-file-v1:sha256:9bde145aa029ab54450e8e621e26d974d496e7fcc48aeaef21d397236f114802"
         }
       ]
     },
@@ -486,39 +486,49 @@
     },
     {
       "id": "claim_6c70a225addb4571a4536403d49033b7",
-      "statement": "Work opens the selected Assistant and shows saved teams. Settings > Components configures its mandate, renewal interval and RAGFlow scopes, shows responsibilities and cancels individual duties; confirmed renewal preserves the conversation editor and history sources.",
+      "statement": "The sidebar opens or initializes an idle Assistant. Components has compact Assistant and RAGFlow rows with shared controls and collapsed details; RAGFlow setup configures a dedicated Memory from a service address and API key, with chat import initially off. Continuing duties and teams stay in chat and Work.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_portfolio.rs",
-          "version": "repo-file-v1:sha256:413c6d88e7a0e5c3a7514d696f7d8a9b0f7984164599a7b072ca6832337a360a"
-        },
-        {
-          "resource": "repo://apps/decodex-gpui/src/agent_timeline.rs",
-          "version": "repo-file-v1:sha256:94ea70df047f8fb39acb1221999a5bbfc405b1041b6da8a11e0176474d71cc8d"
+          "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
+          "version": "repo-file-v1:sha256:9bde145aa029ab54450e8e621e26d974d496e7fcc48aeaef21d397236f114802"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
-          "version": "repo-file-v1:sha256:a567b2373ebad8d8e66efb3e3fb8e7b3b0bb21ca2b25bcfa8290d2ecaa8db277"
+          "version": "repo-file-v1:sha256:80241d89899ab6c5a5b9fd570d7b32044c41efd52f4096b6449ea3fbe08ff3d3"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
+          "version": "repo-file-v1:sha256:e269a1314d29fdb605b6e45be4fa97b425115788adfd4415cb410fb82189a247"
         }
       ]
     },
     {
       "id": "claim_e5af0a37f35c4ca7af9c5d34430c21f2",
-      "statement": "Assistant settings edits are cleared when the profile, runtime source or selected role changes, without changing the chat draft. Invalid renewal counts and chat import without a Memory ID are rejected in the editor.",
+      "statement": "RAGFlow connection edits are cleared on profile, runtime or role changes while preserving the chat draft. The key field is masked and setup failures use shared inline feedback; raw Memory IDs, environment-variable names and Assistant mandate or renewal fields are absent from Components.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_surface.rs",
-          "version": "repo-file-v1:sha256:ecc0ad2696b0f62e057388c19bf739f4dd68ed2c0c72c2c4eb20187cf75c1ea5"
+          "version": "repo-file-v1:sha256:c6e7329e003d6113484baf11e9b1e9aec0fe620a81a3776cee2fe3763cb8f765"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
-          "version": "repo-file-v1:sha256:a567b2373ebad8d8e66efb3e3fb8e7b3b0bb21ca2b25bcfa8290d2ecaa8db277"
+          "version": "repo-file-v1:sha256:80241d89899ab6c5a5b9fd570d7b32044c41efd52f4096b6449ea3fbe08ff3d3"
+        }
+      ]
+    },
+    {
+      "id": "claim_b9a2db0e5eef4accaf17033bb5a64f5b",
+      "statement": "Pending Assistant context confirmation is presented through shared inline feedback in Work, outside the RAGFlow connection editor.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_portfolio.rs",
+          "version": "repo-file-v1:sha256:baa8ea600036ed4dff6d1bd9f8736a2d3f541aed6f345c511fe0bb79f4db3307"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-03T17:33:35.946Z"
+    "at": "2026-11-03T18:23:39.894Z"
   }
 }

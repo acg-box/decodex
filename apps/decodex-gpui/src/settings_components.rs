@@ -12,7 +12,7 @@ use crate::{
 	component_research::{self, ResearchOperations},
 	component_runtime::{self, RuntimePreparation},
 	settings_surface::SettingsSurface,
-	shell::workspace_symbols,
+	shell::{agent_surface::AssistantComponentAction, workspace_symbols},
 	ui_feedback::{self, Feedback},
 	ui_motion::{self, SmoothControl as _},
 	ui_theme::{self, BLUE, SETTINGS_LABEL_SIZE, TEXT, TEXT_MUTED},
@@ -24,10 +24,11 @@ enum Action {
 	Prepare,
 	Plugin(PluginAction),
 	Research(component_research::Action),
+	Assistant(AssistantComponentAction),
 }
 
 pub(super) struct Components {
-	details: [bool; 3],
+	details: [bool; 5],
 	preparation: RuntimePreparation,
 	shown: component_runtime::PreparationState,
 	optional: PluginOperations,
@@ -40,7 +41,7 @@ impl Components {
 		let shown = preparation.snapshot();
 
 		Self {
-			details: [false; 3],
+			details: [false; 5],
 			preparation,
 			shown,
 			optional: PluginOperations::new(decodex_components::egm_component(), None),
@@ -118,6 +119,14 @@ impl SettingsSurface {
 			Action::Prepare => self.components.prepare_runtime(),
 			Action::Plugin(action) => self.components.optional.start(action),
 			Action::Research(action) => self.components.research.start(action),
+			Action::Assistant(action) => {
+				if matches!(action, AssistantComponentAction::Connect) {
+					self.components.details[4] = true;
+				}
+				if let Some(agent) = &self.native_agent {
+					agent.update(cx, |s, cx| s.assistant_component_action(action, cx));
+				}
+			},
 		}
 
 		self.components.poll();
@@ -135,6 +144,10 @@ impl SettingsSurface {
 			Action::Prepare => true,
 			Action::Plugin(_) => self.components.plugin.busy.is_none(),
 			Action::Research(_) => self.components.research_shown.busy.is_none(),
+			Action::Assistant(_) => self
+				.native_agent
+				.as_ref()
+				.is_some_and(|s| !s.read(cx).assistant_component_state().busy),
 		};
 		let button = if enabled {
 			ui_theme::settings_button(id, label)
@@ -328,8 +341,94 @@ impl SettingsSurface {
 				self.component_settings(cx).into_any_element(),
 				self.egm_settings(cx).into_any_element(),
 				self.research_settings(cx).into_any_element(),
-				self.assistant_component(cx),
+				self.assistant_settings(cx),
+				self.ragflow_settings(cx),
 			])
+			.into_any_element()
+	}
+
+	fn assistant_settings(&self, cx: &mut Context<Self>) -> AnyElement {
+		let ready = self
+			.native_agent
+			.as_ref()
+			.is_some_and(|s| s.read(cx).assistant_component_state().assistant);
+		let mut row = ui_theme::settings_row().child(self.component_label(
+			3,
+			"components-assistant-details",
+			if ready { "Assistant (enabled)" } else { "Assistant" },
+			None,
+			cx,
+		));
+		if !ready {
+			row = row.child(self.component_button(
+				"components-assistant-enable",
+				"Enable",
+				Action::Assistant(AssistantComponentAction::Assistant),
+				cx,
+			));
+		}
+		gpui::div().child(row).child(self.component_body(3,"components-assistant-body",ui_theme::settings_description("Open Assistant from the sidebar to create Agents, arrange teams and delegate continuing work in chat."))).into_any_element()
+	}
+
+	fn ragflow_settings(&self, cx: &mut Context<Self>) -> AnyElement {
+		let state = self.native_agent.as_ref().map(|s| s.read(cx).assistant_component_state());
+		let connected = state.as_ref().is_some_and(|s| s.connected);
+		let editing = state.as_ref().is_some_and(|s| s.editing);
+		let mut row = ui_theme::settings_row().child(self.component_label(
+			4,
+			"components-ragflow-details",
+			if connected { "RAGFlow (connected)" } else { "RAGFlow" },
+			None,
+			cx,
+		));
+		if !editing {
+			row = row.child(self.component_button(
+				"components-ragflow-connect",
+				if connected { "Configure" } else { "Connect" },
+				Action::Assistant(AssistantComponentAction::Connect),
+				cx,
+			));
+			if connected {
+				row = row.child(self.component_button(
+					"components-ragflow-disconnect",
+					"Disconnect",
+					Action::Assistant(AssistantComponentAction::Disconnect),
+					cx,
+				));
+			}
+		}
+		let mut body = gpui::div().flex().flex_col().gap_2().child(self.assistant_component(cx));
+		let mut actions = gpui::div().flex().gap_2();
+		if editing {
+			actions = actions
+				.child(self.component_button(
+					"components-ragflow-save",
+					"Connect",
+					Action::Assistant(AssistantComponentAction::Save),
+					cx,
+				))
+				.child(self.component_button(
+					"components-ragflow-cancel",
+					"Cancel",
+					Action::Assistant(AssistantComponentAction::Cancel),
+					cx,
+				));
+		} else if connected {
+			actions = actions.child(self.component_button(
+				"components-ragflow-import",
+				if state.as_ref().is_some_and(|s| s.import) {
+					"Disable chat import"
+				} else {
+					"Enable chat import"
+				},
+				Action::Assistant(AssistantComponentAction::ToggleImport),
+				cx,
+			));
+		}
+		body = body.child(actions);
+		gpui::div()
+			.child(row)
+			.child(self.component_body(4, "components-ragflow-body", body))
 			.into_any_element()
 	}
 
@@ -705,7 +804,7 @@ mod tests {
 		visual.update(crate::ui_frame::draw_current_frame);
 
 		assert!(visual.debug_bounds("settings-group-This Mac").is_none());
-		assert_eq!(settings.read_with(visual, |s, _| s.components.details), [false; 3]);
+		assert_eq!(settings.read_with(visual, |s, _| s.components.details), [false; 5]);
 
 		let codex = visual.debug_bounds("components-codex").unwrap();
 		let egm = visual.debug_bounds("components-egm").unwrap();
@@ -725,7 +824,10 @@ mod tests {
 
 		visual.simulate_click(toggle.center(), Default::default());
 
-		assert_eq!(settings.read_with(visual, |s, _| s.components.details), [false, true, false]);
+		assert_eq!(
+			settings.read_with(visual, |s, _| s.components.details),
+			[false, true, false, false, false]
+		);
 
 		visual.update(crate::ui_frame::draw_current_frame);
 
@@ -733,7 +835,7 @@ mod tests {
 
 		visual.simulate_click(toggle.center(), Default::default());
 
-		assert_eq!(settings.read_with(visual, |s, _| s.components.details), [false; 3]);
+		assert_eq!(settings.read_with(visual, |s, _| s.components.details), [false; 5]);
 	}
 
 	#[gpui::test]

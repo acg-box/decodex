@@ -70,10 +70,10 @@ sources:
     resource: repo://database/src/works/collaboration.rs
   - id: openwiki-source-c0eb738b42368debe7ef7545
     resource: repo://database/src/works/commands.rs
-generated: { by: "codex", at: "2026-11-03T16:31:59.854Z" }
+generated: { by: "codex", at: "2026-11-03T18:23:39.894Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-03T17:33:35.946Z
+    at: 2026-11-03T18:23:39.894Z
 ---
 
 # Project, Agent and Work contract
@@ -272,7 +272,7 @@ This example illustrates the contract. The places, amounts and outcomes are assu
 
 ## Current implementation and persistence
 
-The current schema stores Project membership, persistent Agent responsibilities and separate Work directly. Protocol 4.6 accepts one exact revision. The service does not carry a second business-name API, historical migration chain or Program model. Native identities, inbox receipts and recorded history remain distinct from current Result qualification.
+The current schema stores Project membership, persistent Agent responsibilities and separate Work directly. Protocol 4.7 accepts one exact revision. The service does not carry a second business-name API, historical migration chain or Program model. Native identities, inbox receipts and recorded history remain distinct from current Result qualification.
 
 Immutable native child-input receipts preserve exact delivery identity. Several independently owned native conversations can share an admitted account process. Received assignment proof records plaintext or native task identity. These records neither grant another Agent's private history nor invent missing input.
 

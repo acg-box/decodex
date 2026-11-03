@@ -4,6 +4,7 @@ mod development;
 mod install;
 mod pin;
 mod plugins;
+pub mod ragflow;
 
 pub use self::{
 	development::prepare_source,

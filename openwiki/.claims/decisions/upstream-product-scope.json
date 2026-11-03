@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:dfb47839a2828c81032c7f340a0088be490b5aef39b93580c7444e4abdbee76e",
+  "pageVersion": "sha256:4079e352001b9706e744e297609fb2688b3fe11e4a131665d884dbf94fed51a0",
   "claims": [
     {
       "id": "claim_8d60aaceeea74d6189e3d7b0b3ed21fe",
@@ -186,11 +186,11 @@
     },
     {
       "id": "claim_52eb8e8acaa34810819bb23c97df6feb",
-      "statement": "Current product scope includes separate Project, Agent and Work records, scoped peer Collaboration and native helper execution in the current schema and protocol 4.6.",
+      "statement": "Current product scope includes separate Project, Agent and Work records, scoped peer Collaboration and native helper execution in the current schema and protocol 4.7.",
       "evidence": [
         {
           "resource": "repo://crates/decodex-protocol/src/lib.rs",
-          "version": "repo-file-v1:sha256:b1b307f55b9cc8d55f87478e47399da4b9bd8e449ec89076f1d943a8bd098757"
+          "version": "repo-file-v1:sha256:e6c66e7ae6cf41b9c1d1a0eb228a235cadf54efa20b8da73d78f1470e09d6dbf"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/work.rs",
@@ -258,7 +258,7 @@
     },
     {
       "id": "claim_242dce1d84bd41829bf2704462e76665",
-      "statement": "The product exposes read-only native memory summary, exact collaboration reply and contribution history, and retained native usage in existing desktop surfaces through protocol 4.6. Native execution and explicit Work assessment retain their owners; missing and shared attribution remain explicit.",
+      "statement": "The product exposes read-only native memory summary, exact collaboration reply and contribution history, and retained native usage in existing desktop surfaces through protocol 4.7. Native execution and explicit Work assessment retain their owners; missing and shared attribution remain explicit.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_collaboration_cases.rs",
@@ -278,7 +278,7 @@
         },
         {
           "resource": "repo://crates/decodex-protocol/src/lib.rs",
-          "version": "repo-file-v1:sha256:b1b307f55b9cc8d55f87478e47399da4b9bd8e449ec89076f1d943a8bd098757"
+          "version": "repo-file-v1:sha256:e6c66e7ae6cf41b9c1d1a0eb228a235cadf54efa20b8da73d78f1470e09d6dbf"
         }
       ]
     },
@@ -649,10 +649,24 @@
           "version": "repo-file-v1:sha256:d777a74e51bce36a14857ec912dd85b72546fefc2e4956d367cd5e1896a7f660"
         }
       ]
+    },
+    {
+      "id": "claim_2a1276085d8e4ad9a28ebf0b5a91e0da",
+      "statement": "Users can create persistent Agents directly, and the selected Assistant can create them under an exact delivered user delegation without a separate helper executor.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/assistant.rs",
+          "version": "repo-file-v1:sha256:1e098d12f81905f772a623bec68c6ac68b124e99c452b5fab9b63cf0928a4cc6"
+        },
+        {
+          "resource": "repo://database/src/agent.rs",
+          "version": "repo-file-v1:sha256:626d7e727a18ac12155d7e53ca855cc916f63cc3951256c7357b957e296f2e63"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-03T17:33:35.946Z"
+    "at": "2026-11-03T18:23:39.894Z"
   }
 }
