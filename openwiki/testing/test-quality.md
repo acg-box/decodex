@@ -33,6 +33,9 @@ sources:
   - id: openwiki-source-c8b1a2a9f2113ec43d4066da
     resource: repo://Makefile.toml
 generated: { by: "codex", at: "2026-10-28T08:28:06.287Z" }
+verified:
+  - by: openwiki/0.7.3
+    at: 2026-11-03T16:31:59.854Z
 ---
 
 # Test quality and coverage

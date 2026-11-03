@@ -12,8 +12,6 @@ sources:
     resource: repo://apps/decodex-gpui/menubar/Sources/DecodexTransport/DictationStream.swift
   - id: openwiki-source-7a380101e79db24d163b9af6
     resource: repo://apps/decodex-gpui/src/agent_dictation.rs
-  - id: openwiki-source-5da2f5dd568514f1f464d177
-    resource: repo://apps/decodex-gpui/src/agent_surface.rs
   - id: openwiki-source-32bb36aae256aa57e6e82bd0
     resource: repo://apps/decodex-gpui/src/agent_voice.rs
   - id: openwiki-source-5d032c6be684964aa2c401fa
@@ -62,7 +60,10 @@ sources:
     resource: repo://scripts/macos/run_native_voice_tests.py
   - id: openwiki-source-3b57179b92b257bc3fff51a1
     resource: repo://scripts/macos/stage_decodex_app.sh
-generated: { by: "codex", at: "2026-10-28T06:51:55.940Z" }
+generated: { by: "codex", at: "2026-11-03T15:39:55.651Z" }
+verified:
+  - by: openwiki/0.7.3
+    at: 2026-11-03T16:31:59.854Z
 ---
 
 # Subscription dictation and live voice
@@ -104,9 +105,10 @@ The native media ABI is version 4. The static libwebrtc archive needs the Object
 
 Default macOS acquisition uses the Decodex archive guard with the selected official
 WebRTC release. The guard checks the complete ZIP digest and strict header layout
-before it extracts or repairs the cache. The current release, source identities and
-artifact digests are in the `workspace_dependencies` section of the
-[qualification record](../../automations/upstream/qualification.json).
+before it extracts or repairs the cache. The selected release and archive digests
+are owned by `crates/decodex-webrtc-build/src/lib.rs`. Historical artifact and
+transport qualifications retain their original scope in the
+[contract catalog](../../automations/upstream/retained-contracts.json).
 
 The retained trust-anchor probe checks the distributed header and certificate DER
 bytes in the static library. It verifies that the retired AAA root is absent and
@@ -115,6 +117,8 @@ transport tests; it does not execute a TURN/TLS handshake or qualify a live
 provider. See the [archive procedure](../operations/commands-and-validation.md#qualify-native-dependency-artifacts).
 
 ## Call ownership while navigating
+
+The accepted [Assistant lifecycle design](../decisions/assistant-lifecycle.md) preserves this exact call owner. Automatic native-context renewal waits for a suitable call boundary; it must not change the call's native thread or stop capture merely to refresh text context.
 
 Browsing another conversation, the Work overview or a new conversation keeps the Live call attached to its original work and session. A background bar identifies that conversation and provides Return, Mute and End controls. Other conversations retain their own text editors and drafts; their text does not become input to the call.
 

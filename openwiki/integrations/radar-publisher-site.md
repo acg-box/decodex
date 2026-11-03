@@ -31,10 +31,10 @@ sources:
     resource: repo://site/package-lock.json
   - id: openwiki-source-cb47fe9c0d47072a7555387e
     resource: repo://site/package.json
-generated: { by: "codex", at: "2026-10-31T17:07:05.970Z" }
+generated: { by: "codex", at: "2026-11-03T15:54:13.719Z" }
 verified:
-  - by: openwiki/0.7.2
-    at: 2026-10-31T17:07:05.970Z
+  - by: openwiki/0.7.3
+    at: 2026-11-03T15:54:13.719Z
 ---
 
 > Current boundary rechecked: Radar and Publisher remain auxiliary CLIs in the Rust workspace. The retirement of built-in repository/PR orchestration does not remove these tools or grant them Chief product-state authority. Checked-in automation definitions are desired state, not proof that a host scheduler is running. See [Wiki maintenance](../operations/wiki-maintenance.md) for documentation freshness.
@@ -126,16 +126,17 @@ hidden reasoning.
 
 ## Static site contract
 
-The static site under `site/` is a public product surface. Route budget, homepage obligations, static boundary, and asset boundary are site-owned concerns. Site content should be source-backed and buildable without a live Decodex daemon.
+The static source under `site/` is retained. Website operation and daily content publication are retired from current maintenance scope. Source presence does not establish a live deployment. Route budget, homepage obligations, static boundary and asset boundary remain site-owned contracts for separately authorized changes. The build does not need a live Decodex service.
 
 Use `site/src/`, `site/package.json`, and site tests/build output as authority for current behavior. Keep product claims consistent with runtime capability and OpenWiki summaries.
 
 Use the managed Node version in `site/.nvmrc` and the npm version in
 `site/package.json`. The site selects the Astro 7.4 minor series and TypeScript 6.
 The selected official Astro checker supports TypeScript 5 or 6. Do not bypass its
-peer contract to select TypeScript 7. The current compatible graph and deferred
-candidates are in the `workspace_dependencies` section of the
-[qualification record](../../automations/upstream/qualification.json).
+peer contract to select TypeScript 7. The manifest and lockfile define the current
+graph. Historical dependency execution is retained in the `workspace_dependencies`
+receipt in the [evidence index](../../automations/upstream/retained-evidence.json).
+The current Codex runtime qualification has a narrower scope.
 
 Run `cargo +stable make audit-node`, `cargo +stable make build-node` and
 `cargo +stable make check-node` from the repository root. Acquisition disables

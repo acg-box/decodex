@@ -136,3 +136,44 @@ async fn native_turn_and_item_pages_are_joined_without_model_requests() {
 
 	server.await.expect("fixture");
 }
+
+#[tokio::test]
+async fn assistant_history_after_voice_keeps_public_exchange_without_internal_delegation() {
+	let (local, remote) = io::duplex(16_384);
+	let (read, write) = io::split(local);
+	let (client, _events) = AppServerClient::from_io(read, write);
+	let server = tokio::spawn(async move {
+		let (read, mut write) = io::split(remote);
+		let mut lines = BufReader::new(read).lines();
+		for (method, result) in [
+			("thread/read", serde_json::json!({"thread":{"id":"source","historyMode":"legacy"}})),
+			(
+				"thread/read",
+				serde_json::json!({"thread":{"id":"source","turns":[{"id":"voice-task","status":"completed","items":[
+					{"type":"userMessage","content":[{"type":"text","text":"Keep the current instructions"}]},
+					{"type":"userMessage","content":[{"type":"text","text":"<realtime_delegation><input>PRIVATE_INTERNAL_HANDOFF</input></realtime_delegation>"}]},
+					{"type":"agentMessage","phase":"commentary","text":"PRIVATE_INTERMEDIATE_TEXT"},
+					{"type":"agentMessage","phase":"final_answer","text":"Verified public result"}
+				]}]}}),
+			),
+		] {
+			let request: Value =
+				serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
+			assert_eq!(request["method"], method);
+			write
+				.write_all(
+					format!("{}\n", serde_json::json!({"id":request["id"],"result":result}))
+						.as_bytes(),
+				)
+				.await
+				.unwrap();
+		}
+	});
+	let prepared = history::read_for_assistant(&client, "source").await.unwrap();
+	let text = render(&prepared.exchanges);
+	assert!(text.contains("Keep the current instructions"));
+	assert!(text.contains("Verified public result"));
+	assert!(text.contains("voice-task"));
+	assert!(!text.contains("PRIVATE_"));
+	server.await.unwrap();
+}

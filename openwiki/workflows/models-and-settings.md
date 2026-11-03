@@ -24,6 +24,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_usage_estimates.rs
   - id: openwiki-source-0d053d4de2f668168f982629
     resource: repo://apps/decodex-gpui/src/agent_usage_evidence.rs
+  - id: openwiki-source-f339a4d1910db63ca305c2df
+    resource: repo://apps/decodex-gpui/src/assistant_settings.rs
   - id: openwiki-source-682f90c6d08ed3207257f1d5
     resource: repo://apps/decodex-gpui/src/conversations.rs
   - id: openwiki-source-a2f254020dd8eaabd6366c91
@@ -86,6 +88,10 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent_search_settings.rs
   - id: openwiki-source-dbc533dc306a3f520c4241e0
     resource: repo://crates/decodex-runtime/src/agent.rs
+  - id: openwiki-source-13f64682e8d77fd2c031de39
+    resource: repo://crates/decodex-runtime/src/agent/assistant.rs
+  - id: openwiki-source-1bebc823fa8b6426acb4d5e2
+    resource: repo://crates/decodex-runtime/src/agent/native_settings.rs
   - id: openwiki-source-a7b97dd347fbe2f630692d12
     resource: repo://crates/decodex-runtime/src/agent/tests/native_agent_wake.rs
   - id: openwiki-source-07c9cc033899826079f8efb5
@@ -94,7 +100,10 @@ sources:
     resource: repo://crates/decodex-runtime/tests/native_qualification/thread_settings.py
   - id: openwiki-source-8c78df4b382026886ac50894
     resource: repo://database/src/usage_evidence.rs
-generated: { by: "codex", at: "2026-11-02T04:34:00.067Z" }
+generated: { by: "codex", at: "2026-11-03T16:31:59.854Z" }
+verified:
+  - by: openwiki/0.7.3
+    at: 2026-11-03T16:49:54.130Z
 ---
 
 # Model selection and settings ownership
@@ -181,7 +190,7 @@ The reviewed source, thread and Goal identity must still match before a write. L
 
 The search control shows the saved user preference separately from the effective project default. Supported native modes include disabled, cached, indexed and live, subject to current native requirements. Saving writes only `web_search` against the reviewed native file version, with no user-config reload. It does not restart, resume or fork an existing conversation to force the new default into its loaded settings.
 
-Memory availability comes from the native feature observation. A capability flag is not a separate Decodex memory database or a retention policy. Periodic distillation and automatic thread cleanup require their own product decision.
+Memory availability comes from the native feature observation. A capability flag is not a separate Decodex memory database or a retention policy. The implemented [Assistant lifecycle](../decisions/assistant-lifecycle.md) adds optional RAGFlow retrieval and Memory through Settings > Components. Knowledge dataset IDs, Memory ID and chat import are separate selections; empty datasets disable retrieval. Selecting Memory reminds the user and waits for a safe fresh context with native generation, use and the memories feature disabled, plus disabled native memory mode. Cold resume preserves this policy. Native compaction, history, unrelated Agents and shared defaults retain their settings. The saved connection uses an environment-variable credential reference. A connection failure remains visible without native-memory fallback.
 
 ## Read a native memory summary
 

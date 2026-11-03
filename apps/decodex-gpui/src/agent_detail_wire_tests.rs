@@ -100,6 +100,7 @@ fn rendered_detail_continuation_reads_exact_cursor_without_accumulating_pages(
 			surface.update(cx, |s, cx| {
 				s.apply_result(Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
 					agents: Default::default(),
+					assistant: Default::default(),
 					guardian: Default::default(),
 					portfolio: Default::default(),
 					archived_work_ids: Default::default(),

@@ -1,6 +1,7 @@
 //! Durable coordination of independent Codex threads. The caller owns the process
 //! and continuously feeds its event stream to this service.
 
+mod assistant;
 pub(crate) mod image_generation;
 pub(crate) mod misalignment;
 pub(crate) mod native_subagents;
@@ -128,6 +129,7 @@ pub struct AgentCoordinator {
 	async_recovery_queued: bool,
 	handled_question_revision: u64,
 	completed_chats: Vec<(String, String, String)>,
+	memory_export: Option<tokio::task::JoinHandle<()>>,
 }
 impl AgentCoordinator {
 	/// Bind one provider connection to its durable store and explicit execution policy.
@@ -168,6 +170,7 @@ impl AgentCoordinator {
 		Ok(Self {
 			voice: None,
 			completed_chats: Vec::new(),
+			memory_export: None,
 			store,
 			handled_question_revision: client.question_revision(),
 			client,
@@ -516,6 +519,28 @@ impl AgentCoordinator {
 			params["cwd"] = serde_json::json!(directory);
 		}
 
+		if let Some(settings) = self.store.assistant_settings(item.id.clone()).await? {
+			let instructions = params["developerInstructions"].as_str().unwrap_or(INSTRUCTIONS);
+			params["developerInstructions"] = serde_json::json!(format!(
+				"{instructions}\n\nPersonal Assistant mandate (selected by the user):\n{}\nKeep stable Agent and Work identities across context renewal. Do not invent recurring duties. Use assistant_read for current teams and independent wakes.",
+				settings.mandate
+			));
+			if settings.ragflow.as_ref().is_some_and(|r| r.memory_id.is_some()) {
+				params["config"]["memories.generate_memories"] = serde_json::json!(false);
+				params["config"]["memories.use_memories"] = serde_json::json!(false);
+				params["config"]["features.memories"] = serde_json::json!(false);
+			}
+		}
+		// Persistent application delegation keeps honest source provenance.
+		if self
+			.store
+			.read_agent_work_events(item.id.clone(), 1)
+			.await?
+			.iter()
+			.any(|e| e.event_kind == "assistant_instruction")
+		{
+			params["threadSource"] = serde_json::json!("decodex_assistant");
+		}
 		Ok(params)
 	}
 
@@ -1076,6 +1101,27 @@ impl AgentCoordinator {
 		};
 		let bound =
 			self.store.acknowledge_agent_thread_creation(item.id.clone(), thread.clone()).await?;
+		if self
+			.store
+			.assistant_settings(item.id.clone())
+			.await?
+			.and_then(|s| s.ragflow)
+			.is_some_and(|r| r.memory_id.is_some())
+		{
+			self.store
+				.save_assistant_bootstrap(
+					item.id.clone(),
+					thread.clone(),
+					serde_json::json!({"externalMemory":true,"timelineOffset":0}),
+				)
+				.await?;
+			self.client
+				.request(
+					"thread/memoryMode/set",
+					serde_json::json!({"threadId":thread,"mode":"disabled"}),
+				)
+				.await?;
+		}
 
 		if !Self::hydrated_thread_matches(&response, &thread)
 			|| response["model"].as_str() != expected_model.as_deref()
@@ -1148,10 +1194,11 @@ impl AgentCoordinator {
 
 		// Question answers and edited input belong to an existing native thread.
 		// Do not create a new thread for these events.
-		let item = if exact_question_target || exact_prompt_target {
+		let item = if exact_question_target || exact_prompt_target || retry.is_some() {
 			item.clone()
 		} else {
-			self.ensure_thread(item).await?
+			let current = self.renew_assistant_context(item).await?;
+			self.ensure_thread(&current).await?
 		};
 		let thread = item
 			.codex_thread_id
@@ -1217,6 +1264,11 @@ impl AgentCoordinator {
 
 			if !external.is_empty() {
 				external_attempted = true;
+				if external.iter().any(|value| value["kind"] == "assistant_context_bootstrap") {
+					self.store
+						.mark_assistant_bootstrap_sent(item.id.clone(), thread.clone())
+						.await?;
+				}
 
 				self.inject_external_context(thread, "work_updates", &serde_json::json!(external))
 					.await?;
@@ -1382,6 +1434,7 @@ impl AgentCoordinator {
 
 		let mut external = Vec::new();
 		let mut has_user_input = false;
+		let mut delegated_instruction = false;
 		let mut question_answer = false;
 		let mut automated = false;
 
@@ -1425,6 +1478,7 @@ impl AgentCoordinator {
 				question_answer = true;
 				has_user_input = true;
 			} else {
+				delegated_instruction |= event.event_kind == "assistant_instruction";
 				automated |=
 					matches!(event.event_kind.as_str(), "automation_result" | "followup_due");
 
@@ -1451,7 +1505,7 @@ impl AgentCoordinator {
 		if !has_user_input && !direct_root_input {
 			let name = if retry {
 				"capacity_retry"
-			} else if events.is_empty() {
+			} else if events.is_empty() || delegated_instruction {
 				"work_instruction"
 			} else {
 				"work_wake"
@@ -1471,7 +1525,12 @@ impl AgentCoordinator {
 		let context = self.store.agent_work_portfolio(item.id.clone(), None).await?;
 
 		if !question_answer && (!context.works.is_empty() || !context.collaborations.is_empty()) {
-			external.push(serde_json::json!({"kind":"current_work_context","authority":"application evidence; original decision sources retain their authority","portfolio":context}));
+			external.push(serde_json::json!({"kind":"current_work_context","authority":"Application overview. Read work_read(workId) for current requirements, decisions and evidence before assignment or assessment.","works":context.works.iter().map(|w|serde_json::json!({"id":w.id,"title":w.title,"ownerAgentId":w.owner_agent_id,"requirementsId":w.requirements.id,"state":w.state,"userHold":w.user_hold})).collect::<Vec<_>>(),"awaitingAssessment":context.awaiting_assessment,"collaborations":context.collaborations.iter().map(|q|serde_json::json!({"id":q.id,"workId":q.work_id,"instructionId":q.instruction.id,"state":q.state})).collect::<Vec<_>>() }));
+		}
+		if !question_answer && let Some(bootstrap) = self.assistant_bootstrap(item).await? {
+			external.push(
+				serde_json::json!({"kind":"assistant_context_bootstrap","evidence":bootstrap}),
+			);
 		}
 
 		Ok((params, external))
@@ -2327,6 +2386,9 @@ impl AgentCoordinator {
 		if ["work_read", "work_manage"].contains(&name.as_str()) {
 			return self.work_tool(agent, &name, args).await;
 		}
+		if ["assistant_read", "assistant_manage", "assistant_memory"].contains(&name.as_str()) {
+			return self.assistant_tool(agent, &name, args).await;
+		}
 
 		self.validate_legacy_resolution_scope(agent, &name, args, &managers).await?;
 
@@ -2549,6 +2611,20 @@ impl AgentCoordinator {
 
 		if now < 0 {
 			return Err(AgentError::Invalid("invalid due-check time".into()));
+		}
+		self.store.enqueue_assistant_wakes(now).await?;
+		// Keep optional external I/O outside the conversation actor and serialize imports.
+		if self.memory_export.as_ref().is_none_or(|job| job.is_finished()) {
+			let store = self.store.clone();
+			let client = self.client.clone();
+			self.memory_export = Some(tokio::spawn(async move {
+				if crate::ragflow::export_next(&store, &client).await.is_err()
+					&& let Ok(state) = store.assistant_state().await
+					&& let Some(owner) = state.agent_id
+				{
+					let _=store.assistant_memory_health(owner,"Import unavailable. Check the connection and credential; unknown imports are not repeated.".into()).await;
+				}
+			}));
 		}
 
 		// Reuse the local recovery tick for a hint lost before publication. Read
@@ -2997,7 +3073,7 @@ fn parse_disposition(args: &Value) -> Result<(AgentDisposition, Option<i64>), Ag
 	Ok((disposition, next_check))
 }
 
-fn exact(value: &Value, pointer: &str) -> Result<String, AgentError> {
+pub(crate) fn exact(value: &Value, pointer: &str) -> Result<String, AgentError> {
 	value
 		.pointer(pointer)
 		.and_then(Value::as_str)
@@ -3099,6 +3175,7 @@ fn tools() -> Value {
 		)
 	});
 	specs.as_array_mut().expect("tool array").extend(work::tools());
+	specs.as_array_mut().expect("tool array").extend(assistant::tools());
 
 	specs
 }

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:9def1686b894033b0698930b0238529063aaaa3e245dfbc03f77d7a4b18e69cd",
+  "pageVersion": "sha256:a8fc3b687b2281be43a61d8c485be1fd8ae2608a3cfdf8988b730441309bb312",
   "claims": [
     {
       "id": "claim_b6c6b65984924f69970e7f0410d50903",
@@ -80,7 +80,7 @@
       "evidence": [
         {
           "resource": "repo://scripts/macos/build_codex_source.mts",
-          "version": "repo-file-v1:sha256:0f7b2aff625be8681a0e67ba70526e044d96a59e7fb050350db5cd2dac057b01"
+          "version": "repo-file-v1:sha256:3cae22e7c6a08c730aec4cfc4b202fbf2db10188e18d12ce4e3c56bbc43f6e68"
         }
       ]
     },
@@ -103,8 +103,8 @@
       "statement": "Compatibility continuation keeps application tool evidence separate from user input: work_instruction can request native retention while scheduled wakes, capacity retries and other external results remain unselected.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/agent.rs#L1321-L1431",
-          "version": "repo-lines-v1:sha256:34c154ed0b2a955952269ea2ba86b94de26fe029840005eeab4bd317d355ae33:eyJzZWxlY3RlZExpbmVDb3VudCI6MTExLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIyOGQxNzA3MzAyMTQ3ODBhMjkyOWE2YzI3YWJmOTBjMDhhMTQ5MGY1ZWM3MmFmZWU2MzUzYWQ1NzU3ZjlmYTcxIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJiMGZkMGFlODRiNmE3ODM5NWNmODYwOTg4ZWQzMWJjNDQ5ZTI1ZDNlYWU5YWE3NjhlYTA1ODVkY2Q4NzE4MjQ3IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIyMmYyZmY1ZmVlYzYwZjU4N2M4ZmFlNGU4N2Y4MDlhNjYxY2ZmZWQ2YjQ3YWFlNWY2ZDZhMjY1M2FhODk1MmVmIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIxNDNkNzMzM2UzYTVmMGUzMjQ1MGI0ZjY1YjI3NWEwMzhmMzI5MzU2MjY1YmI2YzRlYjZkZDkzZThhZGFjNTY0In0"
+          "resource": "repo://crates/decodex-runtime/src/agent.rs",
+          "version": "repo-file-v1:sha256:039d3118591ad102c58ed25f91d662c2132a7f461b46b9f0ecb276d2e6dd4dbf"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/tests/external_context.rs#L151-L197",
@@ -146,7 +146,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_context_settings.rs",
-          "version": "repo-file-v1:sha256:dbc62214cd0f163d6d9ec5e23d4b3ccb885a1a763958543244ae3288998c6670"
+          "version": "repo-file-v1:sha256:c4b7221ae38d9e8d9eca1447d15a351e790f4cbd656afaa130cb0e37e59209c7"
         },
         {
           "resource": "repo://crates/decodex-codex/src/app_server_client/context_preferences.rs",
@@ -302,7 +302,7 @@
         },
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:62ef8102ea1a433678ab1c9819d83271f285de18d184bd43e36a68007d056018"
+          "version": "repo-file-v1:sha256:0c08a1458a9bd81c0b2677475996113dedad6be7a59ca2b6902df9d5b1bdee9e"
         }
       ]
     },
@@ -316,11 +316,11 @@
         },
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:62ef8102ea1a433678ab1c9819d83271f285de18d184bd43e36a68007d056018"
+          "version": "repo-file-v1:sha256:0c08a1458a9bd81c0b2677475996113dedad6be7a59ca2b6902df9d5b1bdee9e"
         },
         {
           "resource": "repo://codex-runtime.lock.json",
-          "version": "repo-file-v1:sha256:8ff31eeb732dee59b1423d74a2c381e1c7828dc87b93e3fd98374e605b06bc2d"
+          "version": "repo-file-v1:sha256:05032a3c837d0f054ca33e88ef03f06357ff7a860d59bcb2f2606f7fcde486d7"
         }
       ]
     },
@@ -330,11 +330,11 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:62ef8102ea1a433678ab1c9819d83271f285de18d184bd43e36a68007d056018"
+          "version": "repo-file-v1:sha256:0c08a1458a9bd81c0b2677475996113dedad6be7a59ca2b6902df9d5b1bdee9e"
         },
         {
           "resource": "repo://scripts/macos/build_codex_source.mts",
-          "version": "repo-file-v1:sha256:0f7b2aff625be8681a0e67ba70526e044d96a59e7fb050350db5cd2dac057b01"
+          "version": "repo-file-v1:sha256:3cae22e7c6a08c730aec4cfc4b202fbf2db10188e18d12ce4e3c56bbc43f6e68"
         },
         {
           "resource": "repo://scripts/macos/prepare_codex.mts",
@@ -348,11 +348,11 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_cold_settings_tests.rs",
-          "version": "repo-file-v1:sha256:32e20a741494e8696965bfd0c4e09304320faec5f916dd862c258cbcb6dc3e7d"
+          "version": "repo-file-v1:sha256:956110d2846b66603eab68a23459aeaec706b12d59a940feb383831572e31312"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_recap_socket_tests.rs",
-          "version": "repo-file-v1:sha256:5febeb2dc9610fa625f32dd11e8ce392d99891cb6e79214f48cd0b42ad31db02"
+          "version": "repo-file-v1:sha256:90e696ae4768ba102700a923d4a847175c00cecae9df6f8f6eb627a043666e9f"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_runtime_submit_tests.rs",
@@ -362,7 +362,7 @@
     }
   ],
   "verification": {
-    "by": "openwiki/0.7.2",
-    "at": "2026-11-02T05:23:45.661Z"
+    "by": "openwiki/0.7.3",
+    "at": "2026-11-03T16:31:59.854Z"
   }
 }

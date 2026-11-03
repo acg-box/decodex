@@ -9,6 +9,9 @@ sources:
   - id: openwiki-source-ec5c9f32d2135154f4297a49
     resource: repo://crates/decodex-runtime/src/conversation.rs
 generated: { by: "codex", at: "2026-10-26T14:39:55.302Z" }
+verified:
+  - by: openwiki/0.7.3
+    at: 2026-11-03T16:31:59.854Z
 ---
 
 # Current execution boundary

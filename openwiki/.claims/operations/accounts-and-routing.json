@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:81ae3363081ba6da3fdb935e90d915c0df8cc10bcc7887540bba92b44ab0a671",
+  "pageVersion": "sha256:3b5ba96937d91433552e6c7fcfd3b7e2d5152673cebf22786c3b962fe8d4284f",
   "claims": [
     {
       "id": "claim_738021d152cc4128af3d3b4b217fe92c",
@@ -8,7 +8,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/account_service.rs",
-          "version": "repo-file-v1:sha256:7c56d46b9cada4c54af903505b3b88a0788d8b0b0cf5e844b2f2422fc4029b24"
+          "version": "repo-file-v1:sha256:baf8d4144ab11e6d9fc540b18c5388f958c7cc9e568ad362b6a1389d82d9dbdb"
         }
       ]
     },
@@ -73,11 +73,11 @@
       "statement": "Known imported PAT sources can be resolved from exact stored bindings without per-observation network hydration; unknown shared PAT sources require explicit import, and explicit refresh rechecks the same account and user identity.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/account_service.rs#L1729-L1755",
+          "resource": "repo://crates/decodex-runtime/src/account_service.rs#L1731-L1757",
           "version": "repo-lines-v1:sha256:10ded1ac09b245186144991d86ab06029f983f2129ee455e1d61e0c4863cdb37:eyJzZWxlY3RlZExpbmVDb3VudCI6MjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE4MWRlMTc4ZDFlZjc0NGYwNzQyOWVlZjMwOWQ0Y2Y4YzZkZmE2YjJhY2Q5NjFlNThkMDJiZWEzMDgzODk3OTYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI2Zjc0ZDk2ZGIwOWIzMGQ2MmIyMTRmYjQyMzQ4ZDg5ZDQzOGYxZjZjYTY5MDZhNGM4MTVkY2ZhMjQ5MzYxODIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjIyZjJmZjVmZWVjNjBmNTg3YzhmYWU0ZTg3ZjgwOWE2NjFjZmZlZDZiNDdhYWU1ZjZkNmEyNjUzYWE4OTUyZWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQ0ZjMxMGM0ZDdjMmUzNDI2NDNjMDZlNmEzMDZlZjE5MWIzZmM5YzU2ZWJiNjBhZDA0YjE2NTVkOWZjYzVlN2MifQ"
         },
         {
-          "resource": "repo://crates/decodex-runtime/src/account_service.rs#L322-L362",
+          "resource": "repo://crates/decodex-runtime/src/account_service.rs#L324-L364",
           "version": "repo-lines-v1:sha256:08a51de5d0559a9b9693dc6b4c8dbcaada49e9ca5b4d12fcc57332bd84edb6f9:eyJzZWxlY3RlZExpbmVDb3VudCI6NDEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY0NTIwNzYwNTdkNGM3MjdkN2VmZjc3YTZkYTU2MDNmNzNlYjJiYjg0NDJiY2Q0MGI1YjVhNmM3ZTZlYWU4NDYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQzYjZmYzQyNDNmYjRkZDZmODgyMTcwNmUxYWQ5MjAzZDNlYmY3OGQ2NmRmZTBmYTE5ZTNiZTg5NjRkZjBjYzAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI1ZmUwZTViNTY1NDAyYjJiODFkOTBjNDVkOTVkZjhlNWEzZmFjYTNlYjA3MzAxYjA4MTQ1ZGE4OTk0M2YzODMifQ"
         }
       ]
@@ -88,7 +88,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/ResetCardSectionView.swift",
-          "version": "repo-file-v1:sha256:4ba89d765d1154291bc1966024b19ba15b233b65afcd57cbdb8740aa54fb0a18"
+          "version": "repo-file-v1:sha256:be558314e6251d5fa9a9f5e2b637e9555f462f374299c8631eba6358e7b0743b"
         }
       ]
     },
@@ -101,7 +101,7 @@
           "version": "repo-file-v1:sha256:3fb82ce192e4dd279e3f057d3d70f61e152be4818cc336fffe3dd4e6e151a630"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/shell.rs#L4038-L4091",
+          "resource": "repo://apps/decodex-gpui/src/shell.rs#L4031-L4084",
           "version": "repo-lines-v1:sha256:d4a052f2056f39e9f01b99278a3c08cee38da49304d9fefea5aa0fc226c03c18:eyJzZWxlY3RlZExpbmVDb3VudCI6NTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc4MTNlOGEyNTVkZmUwZWI5NjNiOTFlZWI1NGZlZWVjMTNjOThmNzJjMmVkNzhmYzA3MTQ4YTUxMGU1Y2M0Y2MiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY4NzM0MTFmMDcyZDZiYjMxZGY4YjdiYWY5NWJlNTAxODFhODMxM2FkZjNhZTI0MGM5NjAxZmRlYWNhYjA0YjgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzMDcyM2RhMmVhNmUxNDlkNGI1MGY4ZGQwZDRmMTNmYTRmYTk0OGVhNGQ3MTY4Nzg3N2E1NzhiYTk0ODQwYjQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFhOTc4M2VlODY1Yjk3NDc5NGMwOGE1ODNhMzA0ZjYxMjc0ZWU1YTgxOThjOTdhYzNkY2RmZWYxNjFhNWI2ZDgifQ"
         }
       ]
@@ -112,7 +112,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/ResetCardSectionView.swift",
-          "version": "repo-file-v1:sha256:4ba89d765d1154291bc1966024b19ba15b233b65afcd57cbdb8740aa54fb0a18"
+          "version": "repo-file-v1:sha256:be558314e6251d5fa9a9f5e2b637e9555f462f374299c8631eba6358e7b0743b"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/account_feedback.rs",
@@ -120,7 +120,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/shell.rs",
-          "version": "repo-file-v1:sha256:3ceae666a54f5af43788eaccef58a7c9d5da17e21d5303bad0626f01303f0868"
+          "version": "repo-file-v1:sha256:d70184b25d6591de640f83c0daca78abaded3adcc33c7499e1ab67ba9b181451"
         }
       ]
     },
@@ -129,7 +129,7 @@
       "statement": "Sign out can supersede an exact rejected refresh after revision and credential checks; the original failure remains in the journal, while pending and ambiguous refreshes still block logout.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/account_service.rs#L3041-L3228",
+          "resource": "repo://crates/decodex-runtime/src/account_service.rs#L3043-L3230",
           "version": "repo-lines-v1:sha256:61e101c541dd6849fbe1e29b0e770ae4ca860ab09c2e31cbef3e0f958a8c0a39:eyJzZWxlY3RlZExpbmVDb3VudCI6MTg4LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI4ZTA4MGJmNGE3NDU0MTdlMDIxNWE2ZjFlZDJjNTM2ZGJiZmQ0OTg2ZTU0YWNkOTc3M2FiOTI4OTU1MDk1N2JmIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJlNTA0YjRiMjBiZjJmMjg4MGRjY2RlNGQzYTEwNmExMzRiYmEzOTExMDM5MGE3ZDQxMDA1MGM5ZWFkNWVmZmI1IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJhOWVmZjAyMDk3MDIwMDgzYmRhZDlkNzQ5NDZhNjk2ODQ1ZmY5ZTVlMTcwMGI1YzBhNWMyOTFjNTAyMTE2ZWNkIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJkODBhNjQzNWIzMTM5YmFkNWM3NDFmNGZiYWQ3OTIyMzQ5MDc2ZDE4M2U2NTM1ZWM2OTMxMGMyN2YwMzQ0ODgzIn0"
         },
         {
@@ -147,7 +147,7 @@
       "statement": "Account admission accepts only plus, pro, prolite, promax and team for OAuth and PAT credentials, with Team classified as a workspace plan and absent or unknown plans rejected.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/account_service.rs#L5466-L5475",
+          "resource": "repo://crates/decodex-runtime/src/account_service.rs#L5491-L5500",
           "version": "repo-lines-v1:sha256:7cf06081ad220cfd9613ab4a9d4b301980c06fb5a25a2846ae2e37373924fde8:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZmNjk5MTEzNTNhZjE0Y2FiOWFmMzljZjU2NDA5YzMyNDJlYzAyOTdjMTVmMmU3ZWQxMjAzMGM2M2M2M2EzZTYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjI1NTgxZDhlMGQzMjM1MGEzMDlmMjBlYjVhMzNmYzYyYzg3ZWZlNzRmM2UzMGRhMTQ0Yzg5YmYzMmExYWIyYTgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjlhZWIwNGRlNmM5Mjc4Y2ZkODg2ZTJkZjMyZjBlNDA3MGZlZmZlODE0MDM2NWFjODQ0YThjNDA5OTZjMjY3OGUifQ"
         },
         {
@@ -161,12 +161,8 @@
       "statement": "On macOS, quota reset and Reset Card expiry timestamps use Foundation localized date templates with the system hour-cycle preference and time zone; the underlying native timestamps and quota values are unchanged.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/ResetCardSectionView.swift#L635-L644",
-          "version": "repo-lines-v1:sha256:2ca7d318307da6cb69e87e863619fb8a69d35f8445963587808a5c622667210c:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQxODk2NDQ4OTFhNjI0YWY2NTY5MGRhYjhiNjU3Y2RiNzYyMDFiYjhlMzI5OWYwMWY2NmVjMjg4ZGM1ZGFiNmUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgxMTdjMTA5ZTlkYWYyMDNlODk3YjVkMDllZDE2NWIzMzlhZGJjMzdmZGJjNTAzYTU0MTEyZTQwNjhhZDYzYTAifQ"
-        },
-        {
-          "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/ResetCardSectionView.swift#L925-L938",
-          "version": "repo-lines-v1:sha256:49651742cecabae19390c8d5738f0560b2acadb27df8c03e1a476338aa8d91c6:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjdjNGQ2Zjg1M2I3MzRjNWNkYzUwODFkMmUzMjI4NDg0YmY5NzM4OGZjNDkzYzU3MmUzMjcxOWU4Y2RlNmI5MWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+          "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/ResetCardSectionView.swift#L946-L965",
+          "version": "repo-lines-v1:sha256:6f1748b8fe6379a27489667a86dc15032b63a817b2ac64031f2f63fc13f6cc39:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUyNDRkMjhkMDlhOTU5NDc3NTdiMzcxY2EzZjA3NzI3ZWJiZmUwMWUyNTY2NjA2ODI3NDhlZGIwYWE4YjNjM2EiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNlOGZhZGU0ZGE3ZjUwMzAwNTlmZDI4MDgxNjFiNjBlMzkxMTcwNmI5OTViODc2ZTdkNmQ3NTgyMDZlYjIwYzgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQzMTJiMGUzM2I0MWY3ZmQ4YTI2Y2Q5ZmU0MjRkMGI3YTViOTE0YTlmYzRlYmM3ZTE0MmNmNjk4ZGIyNGM4YTQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoyLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE5ZWZmY2Y1N2I5NWIxMTRjYWMyYTgwYTQyMzAzZjVmNWZiZThjNDE2ZDAzODg5NjMzNmQ5ZTg1N2JmNGEwODcifQ"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/quota_meter.rs#L139-L162",
@@ -180,11 +176,11 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/AccountControlViews.swift",
-          "version": "repo-file-v1:sha256:f3a399a69b8cef0bbe483b5fe562b444680dbb3ab480b262276c1a20522e3713"
+          "version": "repo-file-v1:sha256:27a28324e0133696ea519f24df12ba57c423286935c47f17d204b3a728ae217a"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/workspace_symbols.rs",
-          "version": "repo-file-v1:sha256:9a49de476abaa2be2d9169f34c69417e1108a655f37ea3f9f141844775534c31"
+          "version": "repo-file-v1:sha256:c3cec6e1b445549ef0e5f136d9c34d5578cb4235208dc688cfd0b6d529d5f705"
         },
         {
           "resource": "repo://scripts/macos/generate_workspace_symbols.swift",
@@ -194,7 +190,7 @@
     }
   ],
   "verification": {
-    "by": "openwiki/0.7.2",
-    "at": "2026-10-31T14:39:55.131Z"
+    "by": "openwiki/0.7.3",
+    "at": "2026-11-03T15:39:55.651Z"
   }
 }

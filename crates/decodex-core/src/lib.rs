@@ -1,5 +1,6 @@
 //! Domain, application, configuration, and owned local-storage foundations for Decodex vNext.
 
+pub mod assistant;
 pub mod guardian;
 pub mod work;
 

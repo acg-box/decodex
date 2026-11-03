@@ -5786,6 +5786,10 @@ async fn query_agent_snapshot(store: &ProductStore) -> decodex_protocol::AgentSn
 	};
 	let snapshot = AgentSnapshotDto {
 		agents: Box::new(agents),
+		assistant: match store.assistant_state().await {
+			Ok(state) => Box::new(state),
+			Err(_) => return decodex_protocol::AgentSnapshotResult::Unavailable,
+		},
 		guardian: Box::new(guardian),
 		portfolio: Box::new(portfolio),
 		archived_work_ids: Default::default(),

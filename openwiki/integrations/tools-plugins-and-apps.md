@@ -8,6 +8,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_hooks.rs
   - id: openwiki-source-01379a7fb49ab2d638863891
     resource: repo://apps/decodex-gpui/src/agent_skills.rs
+  - id: openwiki-source-f339a4d1910db63ca305c2df
+    resource: repo://apps/decodex-gpui/src/assistant_settings.rs
   - id: openwiki-source-59ed67d26d1c310707a365e5
     resource: repo://apps/decodex-gpui/src/component_plugins.rs
   - id: openwiki-source-0813b2e35e2133631c0aa4db
@@ -26,7 +28,16 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent_skill_roots.rs
   - id: openwiki-source-8b32cad13ab2428dd54bd986
     resource: repo://crates/decodex-runtime/src/agent_skills.rs
-generated: { by: "codex", at: "2026-10-28T08:28:06.287Z" }
+  - id: openwiki-source-13f64682e8d77fd2c031de39
+    resource: repo://crates/decodex-runtime/src/agent/assistant.rs
+  - id: openwiki-source-1bebc823fa8b6426acb4d5e2
+    resource: repo://crates/decodex-runtime/src/agent/native_settings.rs
+  - id: openwiki-source-3edc2f094826ee56ddec6b73
+    resource: repo://crates/decodex-runtime/src/ragflow.rs
+generated: { by: "codex", at: "2026-11-03T16:31:59.854Z" }
+verified:
+  - by: openwiki/0.7.3
+    at: 2026-11-03T16:49:54.130Z
 ---
 
 # Native tools and connection ownership
@@ -44,6 +55,8 @@ The desktop shows tool status and source ownership. Configure general plugins an
 The explicit [EGM Component](elephant-goldfish.md) is a narrow native-lifecycle adapter in Settings > Components. It installs, updates and removes the original plugin through the Codex CLI. It does not restore the retired Agent plugin-management API or add a second marketplace cache.
 
 ## Native settings boundaries
+
+The implemented [Assistant lifecycle](../decisions/assistant-lifecycle.md) exposes an optional existing RAGFlow connection in Components. Its HTTP adapter uses explicit dataset, Memory, Assistant and user scopes. Knowledge retrieval and Memory are separate, and chat import needs its own direct-user opt-in. Selecting Memory waits for a safe fresh context with native memory generation, use and the memories feature disabled; cold resume retains this policy. Native compaction, history, unrelated Agents and shared defaults retain their owners. The account bridge admits only disabled thread/memoryMode/set writes, not general memory enablement or reset. Settings retain a service credential-variable name rather than a key value.
 
 | Surface | Responsibility | Boundary |
 | --- | --- | --- |

@@ -93,6 +93,7 @@ fn reviewed_live_turn_is_invalidated_even_if_the_old_identity_returns(cx: &mut T
 	for change in ["thread", "turn", "idle", "removed", "source"] {
 		let original = AgentSnapshotDto {
 			agents: Default::default(),
+			assistant: Default::default(),
 			guardian: Default::default(),
 			portfolio: Default::default(),
 			archived_work_ids: Default::default(),
@@ -185,6 +186,7 @@ fn exercise_live_settings(cx: &mut TestAppContext) {
 		surface.update(cx, |s, _| {
 			s.apply_result(Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
 				agents: Default::default(),
+				assistant: Default::default(),
 				guardian: Default::default(),
 				portfolio: Default::default(),
 				archived_work_ids: Default::default(),
@@ -290,6 +292,7 @@ fn child_navigation_and_disconnect_cannot_edit_the_parent_reviewer(cx: &mut Test
 		surface.update(cx, |s, _| {
 			s.apply_result(Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
 				agents: Default::default(),
+				assistant: Default::default(),
 				guardian: Default::default(),
 				portfolio: Default::default(),
 				archived_work_ids: Default::default(),
@@ -341,6 +344,7 @@ fn child_navigation_and_disconnect_cannot_edit_the_parent_reviewer(cx: &mut Test
 fn running_snapshot() -> AgentSnapshotDto {
 	AgentSnapshotDto {
 		agents: Default::default(),
+		assistant: Default::default(),
 		guardian: Default::default(),
 		portfolio: Default::default(),
 		archived_work_ids: Default::default(),

@@ -22,6 +22,24 @@ use decodex_protocol::{
 /// Explicit Agent operations. Execution stays inside the service.
 #[derive(Clone, Debug, Eq, PartialEq, Subcommand)]
 pub enum AgentCommand {
+	/// Select or remove the personal Assistant responsibility.
+	AssistantRole {
+		#[arg(long)]
+		agent_id: String,
+		#[arg(long)]
+		remove: bool,
+		#[arg(long)]
+		idempotency_key: Option<String>,
+	},
+	/// Apply one typed Assistant command from a JSON file, including optional RAGFlow settings.
+	Assistant {
+		#[arg(long)]
+		agent_id: String,
+		#[arg(long)]
+		command_file: PathBuf,
+		#[arg(long)]
+		idempotency_key: Option<String>,
+	},
 	/// Discard an unused local draft; refuses conversations with a thread or history.
 	DiscardEmpty {
 		#[arg(long)]
@@ -257,6 +275,23 @@ fn prepare(command: AgentCommand) -> Result<(AgentActionDto, IdempotencyKey), &'
 	let identity =
 		|value: String| EntityId::new(value).map_err(|_| "invalid work or account identity");
 	let (action, key) = match command {
+		AgentCommand::AssistantRole { agent_id, remove, idempotency_key } => (
+			AgentActionDto::SetAssistant { agent_id: identity(agent_id)?, enabled: !remove },
+			idempotency_key,
+		),
+		AgentCommand::Assistant { agent_id, command_file, idempotency_key } => {
+			let bytes =
+				fs::read(command_file).map_err(|_| "Could not read Assistant command file")?;
+			if bytes.len() > 65_536 {
+				return Err("Assistant command exceeds 64 KiB");
+			}
+			let command =
+				serde_json::from_slice(&bytes).map_err(|_| "Invalid Assistant command JSON")?;
+			(
+				AgentActionDto::ManageAssistant { agent_id: identity(agent_id)?, command },
+				idempotency_key,
+			)
+		},
 		AgentCommand::DiscardEmpty { work_id, idempotency_key } =>
 			(AgentActionDto::DiscardEmptyWork { work_id: identity(work_id)? }, idempotency_key),
 		AgentCommand::CancelRetry { work_id, event_id, idempotency_key } => {

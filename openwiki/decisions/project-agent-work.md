@@ -18,6 +18,8 @@ sources:
     resource: repo://automations/upstream/retained-contracts.json
   - id: openwiki-source-f02ae41e2bd15dda85dc86b9
     resource: repo://codex-runtime.lock.json
+  - id: openwiki-source-62c1273bf1b2ac5041d1e920
+    resource: repo://crates/decodex-core/src/assistant.rs
   - id: openwiki-source-40db4dc21bafde1429326458
     resource: repo://crates/decodex-core/src/permissions.rs
   - id: openwiki-source-991553c8d747a54ecf5a9376
@@ -30,6 +32,8 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent_permissions.rs
   - id: openwiki-source-dbc533dc306a3f520c4241e0
     resource: repo://crates/decodex-runtime/src/agent.rs
+  - id: openwiki-source-13f64682e8d77fd2c031de39
+    resource: repo://crates/decodex-runtime/src/agent/assistant.rs
   - id: openwiki-source-a4a2658e06fa2cf48ff4589e
     resource: repo://crates/decodex-runtime/src/agent/global_guardian.rs
   - id: openwiki-source-a7886792ad3e47b8e1afb7fa
@@ -56,6 +60,8 @@ sources:
     resource: repo://database/src/agent_native_turns.rs
   - id: openwiki-source-fc5ad70343bb20c4e9d12540
     resource: repo://database/src/agent_process/attachments.rs
+  - id: openwiki-source-3f60f3a3aae45b3e3b355d3e
+    resource: repo://database/src/assistant.rs
   - id: openwiki-source-d1279ad243eb550afec4d0e6
     resource: repo://database/src/guardian_settings.rs
   - id: openwiki-source-28af4781ad8d9558410630da
@@ -64,7 +70,10 @@ sources:
     resource: repo://database/src/works/collaboration.rs
   - id: openwiki-source-c0eb738b42368debe7ef7545
     resource: repo://database/src/works/commands.rs
-generated: { by: "codex", at: "2026-11-02T07:10:57.562Z" }
+generated: { by: "codex", at: "2026-11-03T16:31:59.854Z" }
+verified:
+  - by: openwiki/0.7.3
+    at: 2026-11-03T16:49:54.130Z
 ---
 
 # Project, Agent and Work contract
@@ -100,6 +109,8 @@ Use one English vocabulary in the UI, code, database and documentation. Identifi
 Native Thread, Turn and Goal keep their distinct execution meanings and protocol names. Viewport identifiers do not define the business model. The current business schema and public protocol use Project, Agent and Work.
 
 ## Responsibilities and native ownership
+
+The implemented [Assistant lifecycle](assistant-lifecycle.md) supports delegated independent Agents, reusable teams, independent wakes, optional RAGFlow Memory and fresh native contexts behind one stable Agent. The selected Assistant cites an exact delivered user decision for creation; its initial instruction retains application provenance. Existing Work and scoped Collaboration retain assignment, Results and assessment ownership. The user can still create and use Agents directly.
 
 The core business objects are Project, Agent and Work. Materials, Results, decisions, delegation records and Collaboration Requests belong to those objects. Do not create a parallel role system or execution engine for them.
 
@@ -261,7 +272,7 @@ This example illustrates the contract. The places, amounts and outcomes are assu
 
 ## Current implementation and persistence
 
-The current schema stores Project membership, persistent Agent responsibilities and separate Work directly. Protocol 4.5 accepts one exact revision. The service does not carry a second business-name API, historical migration chain or Program model. Native identities, inbox receipts and recorded history remain distinct from current Result qualification.
+The current schema stores Project membership, persistent Agent responsibilities and separate Work directly. Protocol 4.6 accepts one exact revision. The service does not carry a second business-name API, historical migration chain or Program model. Native identities, inbox receipts and recorded history remain distinct from current Result qualification.
 
 Immutable native child-input receipts preserve exact delivery identity. Several independently owned native conversations can share an admitted account process. Received assignment proof records plaintext or native task identity. These records neither grant another Agent's private history nor invent missing input.
 
@@ -279,7 +290,7 @@ Immutable native child-input receipts preserve exact delivery identity. Several 
 
 The default tool revision advertises `work_read` and `work_manage`. Managed temporary-worker creation/continuation, subordinate-manager creation and old goal/dependency tools are retired from that surface and rejected if an old schema still advertises them. Existing automation and native recovery remain; no duplicate Work controller, native mailbox or permanent review department is introduced.
 
-Ordinary input retains its native context and tool set. A newer local tool revision does not replace the conversation. The current runtime has no context-upgrade journal. Unknown native effects require readback; previous native history alone grants no input authority.
+Ordinary input retains its native context and tool set. A newer local tool revision does not replace the conversation. The selected Assistant can renew at a safe input boundary through a fresh native thread. Exact creation receipts and the existing thread-revision relationship preserve its identity and history. Unknown native effects require readback; previous native history alone grants no input authority.
 
 A Project association is business scope. A native conversation still has one actual execution directory, Project and permission boundary. Work association does not switch them. Work Pause blocks new Decodex contributions and completion; already-running native actions, Goals and children require native control. These limits are visible in the UI.
 

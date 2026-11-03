@@ -23,8 +23,8 @@ sources:
     resource: repo://site/package.json
 generated: { by: "codex", at: "2026-10-31T17:07:05.970Z" }
 verified:
-  - by: openwiki/0.7.2
-    at: 2026-10-31T17:07:05.970Z
+  - by: openwiki/0.7.3
+    at: 2026-11-03T15:39:55.651Z
 ---
 
 > Current boundary rechecked: Radar and Publisher remain auxiliary CLIs in the Rust workspace. The retirement of built-in repository/PR orchestration does not remove these tools or grant them Chief product-state authority. Checked-in automation definitions are desired state, not proof that a host scheduler is running. See [Wiki maintenance](../operations/wiki-maintenance.md) for documentation freshness.

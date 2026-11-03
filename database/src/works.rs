@@ -475,7 +475,8 @@ fn authority(c: &Connection, agent: &str, source: &str, user: bool) -> Result<()
 		})?;
 	let valid=c.query_row("SELECT EXISTS(SELECT 1 FROM agent_inbox_events e JOIN agent_work_items a ON a.id=?1 WHERE e.id=?2 AND e.work_item_id=?1 AND e.event_kind IN('user_message','async_question_answer') AND e.delivered_turn_id IS NOT NULL AND e.delivered_turn_id<>'' AND (json_extract(e.payload,'$.source')='user' OR e.event_kind='async_question_answer'))",rusqlite::params![agent,event],|r|r.get::<_,bool>(0)).map_err(crate::error::sqlite_error)?;
 
-	if !valid {
+	let delegated=c.query_row("SELECT EXISTS(SELECT 1 FROM agent_inbox_events e JOIN agent_inbox_events u ON u.id=json_extract(e.payload,'$.authorityEventId') AND u.work_item_id=json_extract(e.payload,'$.delegatedBy') WHERE e.id=?2 AND e.work_item_id=?1 AND e.event_kind='assistant_instruction' AND json_extract(e.payload,'$.source')='assistant' AND e.delivered_turn_id IS NOT NULL AND e.delivered_turn_id<>'' AND u.event_kind IN('user_message','async_question_answer') AND u.delivered_turn_id IS NOT NULL AND u.delivered_turn_id<>'' AND (json_extract(u.payload,'$.source')='user' OR u.event_kind='async_question_answer'))",rusqlite::params![agent,event],|r|r.get::<_,bool>(0)).map_err(error::sqlite_error)?;
+	if !valid && !delegated {
 		return Err(invalid("requirements need a current delivered user decision"));
 	}
 

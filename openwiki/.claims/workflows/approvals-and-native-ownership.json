@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:942bc6d789b9434261d4ff3fb785e8118729cd79b3888e1da0cdd59658d7cf2f",
+  "pageVersion": "sha256:ec0b727ea18a282f6bca1f469ce87e5860254ebef78cd6633cc49f156f618f4a",
   "claims": [
     {
       "id": "claim_180212e57d1d44369eb0d24fc94defa4",
@@ -46,15 +46,15 @@
         },
         {
           "resource": "repo://crates/decodex-core/src/permissions.rs",
-          "version": "repo-file-v1:sha256:961269023446dc457c9b9b2c4bbbbdf3617a64bf3eb97289c89439a80a17a596"
+          "version": "repo-file-v1:sha256:1551a7b3b4b00e90e8e2c3d87f1a2320aaaa312087ccf229a76bc019141b184c"
         },
         {
           "resource": "repo://crates/decodex-protocol/src/agent.rs",
-          "version": "repo-file-v1:sha256:19d03444a8fd940d7be14779505e8bf565c11135d96ba2e7ab6cadf3ebf5bdc7"
+          "version": "repo-file-v1:sha256:48088d886088766b4c6f73c988c8c78811ef3ce5450bbf853077e7946f40b95f"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent.rs",
-          "version": "repo-file-v1:sha256:37f8225f4db0006b18b2a03f15e6fdb865745d46683d46f40d6d15787de1c6b1"
+          "version": "repo-file-v1:sha256:039d3118591ad102c58ed25f91d662c2132a7f461b46b9f0ecb276d2e6dd4dbf"
         }
       ]
     },
@@ -74,7 +74,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_portfolio.rs",
-          "version": "repo-file-v1:sha256:f7958a7151143ec4e0149912a9efb988b0262d8626137da558d3d88c14264230"
+          "version": "repo-file-v1:sha256:413c6d88e7a0e5c3a7514d696f7d8a9b0f7984164599a7b072ca6832337a360a"
         },
         {
           "resource": "repo://database/src/guardian_settings.rs",
@@ -92,17 +92,35 @@
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/native_settings.rs",
-          "version": "repo-file-v1:sha256:05c2b0ca84dbd894de8d8865455125e4b4cac47cfc76ab1421865b7c67613968"
+          "version": "repo-file-v1:sha256:036d2ad8834d187967440ba4a757cfdaff8929624684609b02d1364852f70cf4"
         },
         {
           "resource": "repo://database/src/guardian_settings.rs",
           "version": "repo-file-v1:sha256:9eed8d64b595ffb61974b5d32270defa026efffee2318badb061f41210622f6c"
         }
       ]
+    },
+    {
+      "id": "claim_a305dd370986449c80e8d50272695ea9",
+      "statement": "Assistant renewal waits for safe local/native idle ownership, pending requests, retries, voice, Goals and children. Exact question answers and edited canonical inputs keep their original thread; an unsupported anonymous permission policy defers renewal without changing it.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent.rs",
+          "version": "repo-file-v1:sha256:039d3118591ad102c58ed25f91d662c2132a7f461b46b9f0ecb276d2e6dd4dbf"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/assistant.rs",
+          "version": "repo-file-v1:sha256:1e098d12f81905f772a623bec68c6ac68b124e99c452b5fab9b63cf0928a4cc6"
+        },
+        {
+          "resource": "repo://database/src/assistant.rs",
+          "version": "repo-file-v1:sha256:ef184fabb6fb9c789f70b4d6e4b7970e4031c0b586778fd9acbe9eb095530433"
+        }
+      ]
     }
   ],
   "verification": {
-    "by": "openwiki/0.7.2",
-    "at": "2026-11-02T07:10:57.562Z"
+    "by": "openwiki/0.7.3",
+    "at": "2026-11-03T16:49:54.130Z"
   }
 }

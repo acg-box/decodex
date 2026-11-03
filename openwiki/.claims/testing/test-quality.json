@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:3b72d4fc207af125af014560371d849d0af454b03abf0f74e94195385ab8aadc",
+  "pageVersion": "sha256:924bb0a95b1bf6ba64b53051ad559774796e633c51f77bbb43efd97136f11685",
   "claims": [
     {
       "id": "claim_070657bf065541118dc7ae41cdeffc2c",
@@ -20,11 +20,11 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/bin/native_glass_probe.rs",
-          "version": "repo-file-v1:sha256:7f2d69d24f7763c0e2b2db22d17eff3d01c48cfed33cf75bd1572bd882fc6f88"
+          "version": "repo-file-v1:sha256:5c334c3fcc9e016209b3ae0c6a5233e01daf67857ab2ca80829333acce1f148a"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/bin/workbench_visual_capture.rs",
-          "version": "repo-file-v1:sha256:b315fc45fe5b90d462ca95e27d2f2f40167352d9e06bfaf6cf07e6f9a91c9f02"
+          "version": "repo-file-v1:sha256:a83082c5e1a450e76b8f46f462214f6eb5f098d8d9122fbde7d92a461ec9b870"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/bin/workbench_visual_capture/send.rs",
@@ -52,7 +52,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/account_service.rs",
-          "version": "repo-file-v1:sha256:7c56d46b9cada4c54af903505b3b88a0788d8b0b0cf5e844b2f2422fc4029b24"
+          "version": "repo-file-v1:sha256:baf8d4144ab11e6d9fc540b18c5388f958c7cc9e568ad362b6a1389d82d9dbdb"
         }
       ]
     },
@@ -116,7 +116,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_portfolio_tests.rs",
-          "version": "repo-file-v1:sha256:655bd42676ec545a6f2d2760ae885da55385f2126b50d8d9fcd95e789ed5dbd7"
+          "version": "repo-file-v1:sha256:9f9bd1e09122bf3b8e25c42825973e394bf7f138bd716bd2162ba5358d7e8f56"
         },
         {
           "resource": "repo://automations/upstream/retained-contracts.json#L2657-L4144",
@@ -144,7 +144,7 @@
     }
   ],
   "verification": {
-    "by": "openwiki/0.7.2",
-    "at": "2026-11-02T07:10:57.562Z"
+    "by": "openwiki/0.7.3",
+    "at": "2026-11-03T16:31:59.854Z"
   }
 }

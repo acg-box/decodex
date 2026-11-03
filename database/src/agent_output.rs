@@ -5,7 +5,7 @@ use rusqlite::{Connection, OptionalExtension as _, Transaction, TransactionBehav
 use serde_json::Value;
 use tokio::time;
 
-use crate::{DatabaseError, SqliteStore, StoreError, agent_process, error};
+use crate::{SqliteStore, StoreError, agent_process, error};
 
 pub struct AgentOutputUpdate {
 	pub thread_id: String,
@@ -283,12 +283,10 @@ impl SqliteStore {
 	pub async fn agent_previous_threads(&self, id: String) -> Result<Vec<String>, StoreError> {
 		self.run(move |connection| {
 			let mut statement = connection.prepare(
-				"SELECT old_thread_id FROM agent_thread_revisions WHERE work_id=?1 ORDER BY created_at_micros DESC LIMIT 129"
+				"SELECT old_thread_id FROM agent_thread_revisions WHERE work_id=?1 ORDER BY created_at_micros DESC,rowid DESC"
 			).map_err(error::sqlite_error)?;
 			let rows = statement.query_map([id], |row| row.get(0)).map_err(error::sqlite_error)?;
 			let threads: Vec<String> = rows.collect::<Result<_,_>>().map_err(error::sqlite_error)?;
-
-			if threads.len() > 128 { return Err(DatabaseError::Conflict.into()); }
 
 			Ok(threads)
 		}).await

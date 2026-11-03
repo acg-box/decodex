@@ -347,6 +347,17 @@ fn validate_config_write(params: &Value) -> Result<(), ClientError> {
 	}
 }
 
+fn disabled_memory_mode(params: &Value) -> Result<(), ClientError> {
+	if params.as_object().is_some_and(|p| p.len() == 2)
+		&& params["threadId"].as_str().is_some_and(|s| !s.is_empty() && s.len() <= 512)
+		&& params["mode"] == "disabled"
+	{
+		Ok(())
+	} else {
+		Err(ClientError::InvalidFrame)
+	}
+}
+
 fn validate_outbound_method(method: &Value, params: &Value) -> Result<(), ClientError> {
 	if let Some(result) = validate_inherited_request(method, params) {
 		return result;
@@ -365,6 +376,9 @@ fn validate_outbound_method(method: &Value, params: &Value) -> Result<(), Client
 		} else {
 			Err(ClientError::InvalidFrame)
 		};
+	}
+	if method == "thread/memoryMode/set" {
+		return disabled_memory_mode(params);
 	}
 	if method == "thread/goal/set" {
 		return if app_server_client::is_native_goal_update(params) {
@@ -444,6 +458,7 @@ fn validate_outbound_method(method: &Value, params: &Value) -> Result<(), Client
 				| "thread/read"
 				| "thread/memory/read"
 				| "thread/list"
+				| "thread/loaded/list"
 				| "thread/backgroundTerminals/list"
 				| "thread/backgroundTerminals/terminate"
 				| "thread/search"
@@ -1147,6 +1162,8 @@ mod tests {
 				.is_err()
 			);
 		}
+		assert!(agent_process::validate_outbound(&serde_json::json!({"id":45,"method":"thread/memoryMode/set","params":{"threadId":"assistant-context","mode":"disabled"}}),&mut requests).is_ok());
+		assert!(agent_process::validate_outbound(&serde_json::json!({"id":46,"method":"thread/memoryMode/set","params":{"threadId":"assistant-context","mode":"enabled"}}),&mut requests).is_err());
 
 		assert!(
 			agent_process::validate_outbound(

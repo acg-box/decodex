@@ -12,14 +12,18 @@ sources:
     resource: repo://apps/decodex-gpui/menubar/Sources/DecodexApp/DecodexNativeClient.swift
   - id: openwiki-source-90188458ff8e2e5499bd7ca8
     resource: repo://apps/decodex-gpui/menubar/Tests/DecodexAppTests/NativeJournalFixture.swift
-  - id: openwiki-source-77ad5024b567271a0f618fd7
-    resource: repo://apps/decodex-gpui/src/agent_list_branch.rs
   - id: openwiki-source-0eea3c2bab20e4a9d8e3d80a
     resource: repo://apps/decodex-gpui/src/agent_prompt_confirm_wire_tests.rs
   - id: openwiki-source-b2084dffd07b4229957a0f94
     resource: repo://apps/decodex-gpui/src/agent_prompt_edit.rs
+  - id: openwiki-source-691432bb61082c358b6f9c24
+    resource: repo://apps/decodex-gpui/src/agent_timeline.rs
+  - id: openwiki-source-f339a4d1910db63ca305c2df
+    resource: repo://apps/decodex-gpui/src/assistant_settings.rs
   - id: openwiki-source-ca95ba5564216bb4898c8392
     resource: repo://apps/decodex-gpui/src/native_voice_online_tests.rs
+  - id: openwiki-source-2f256c95c226c1326d164ad3
+    resource: repo://apps/decodex-gpui/src/ui_feedback.rs
   - id: openwiki-source-f7ecbc6c02d8c1b7873858d6
     resource: repo://automations/upstream/checkpoint.test.mts
   - id: openwiki-source-7dcbb082d2502f1ec4386c39
@@ -38,6 +42,8 @@ sources:
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_archive_tests.rs
   - id: openwiki-source-1a964823f348372d89aa1920
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_code_mode_tests.rs
+  - id: openwiki-source-a490ea3fbcddb9c007caf196
+    resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_context_tests.rs
   - id: openwiki-source-8fd14b27958d10f11e115032
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_desktop_acceptance.rs
   - id: openwiki-source-9145039d5c88ff2144ae6a60
@@ -56,6 +62,8 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent/tests/capacity.rs
   - id: openwiki-source-24139c353e393a9759b0267a
     resource: repo://crates/decodex-runtime/src/agent/tests/native_permissions.rs
+  - id: openwiki-source-3edc2f094826ee56ddec6b73
+    resource: repo://crates/decodex-runtime/src/ragflow.rs
   - id: openwiki-source-275dc903aab820a109a196b4
     resource: repo://crates/decodex-runtime/tests/fixtures/project_work_acceptance.json
   - id: openwiki-source-ba12412e93bca80301ac28a3
@@ -86,6 +94,8 @@ sources:
     resource: repo://crates/decodex-webrtc-build/tests/trust_roots.json
   - id: openwiki-source-6197a876b2effbe992b1e2ec
     resource: repo://database/src/agent.rs
+  - id: openwiki-source-3f60f3a3aae45b3e3b355d3e
+    resource: repo://database/src/assistant.rs
   - id: openwiki-source-c8b1a2a9f2113ec43d4066da
     resource: repo://Makefile.toml
   - id: openwiki-source-b7793decf9d7c9ba48e57e0f
@@ -106,9 +116,10 @@ sources:
     resource: repo://scripts/macos/test_native_app.sh
   - id: openwiki-source-e201f60894c32a914dac99ee
     resource: repo://scripts/vnext/run_native_regression.py
-  - id: openwiki-source-d45a647d565211cf9b5cb067
-    resource: repo://scripts/vstyle_audit.py
-generated: { by: "codex", at: "2026-10-31T16:06:25.983Z" }
+generated: { by: "codex", at: "2026-11-03T16:31:59.854Z" }
+verified:
+  - by: openwiki/0.7.3
+    at: 2026-11-03T16:49:54.130Z
 ---
 
 
@@ -148,6 +159,28 @@ python3 -m unittest tests/scripts/test_account_login_architecture.py
 ```
 
 The database gate uses an isolated owner-private root. It is not permission to reset the user's database. Ignored live-provider tests require their documented account and effect prerequisites; do not enable every ignored test as a routine check.
+
+## Assistant commands and checks
+
+Select an existing Agent with `decodex agent assistant-role --agent-id ID`. Use `--remove` to remove that role. `decodex agent assistant --agent-id ID --command-file /absolute/path/command.json --idempotency-key KEY` sends one typed command through the same service owner as the desktop. The command file contains an AssistantCommand, such as `{"operation":"refresh_context"}`. Do not put a RAGFlow API key in that file; Configure stores its service environment-variable name.
+
+Work opens the selected Assistant. Settings > Components edits its mandate, renewal interval and optional RAGFlow scopes. See [the lifecycle](../decisions/assistant-lifecycle.md) for supported operations, ownership and external-service limits.
+
+Use isolated test processes for the backend fixture suite:
+
+```sh
+cargo +stable nextest run --locked -p decodex-database -p decodex-protocol -p decodex-runtime --lib
+cargo +stable test --locked -p decodex-cli --all-targets
+cargo +stable nextest run --locked -p decodex-gpui --bin decodex-gpui -E 'test(assistant_refresh_keeps) or test(native_timeline::media::)'
+```
+
+Set `DECODEX_TEST_CODEX_BINARY` to the selected pinned component executable for the opt-in native lifecycle test, then run:
+
+```sh
+cargo +stable test --locked -p decodex-runtime --lib installed_assistant_renews_fresh_contexts -- --ignored --nocapture --test-threads=1
+```
+
+The native test uses an isolated home and loopback provider. It checks three clean native contexts, original dialogue and memory isolation. The HTTP fixture checks scoped RAGFlow requests and business-error responses. Neither fixture qualifies a live RAGFlow deployment or installed desktop application.
 
 ## Signed native WebRTC checks
 
@@ -193,9 +226,10 @@ python3 crates/decodex-webrtc-build/tests/qualify_trust_roots.py --archive "$DEC
 python3 crates/decodex-webrtc-build/tests/qualify_trust_roots.py --archive "$DECODEX_WEBRTC_X64_ARCHIVE" --sha256 c53d7d20277f7729956854f1268c372360f08732520136b559034eedae0980a2
 ```
 
-Use the hashes for the selected release in `pinned_digest` and the
-`workspace_dependencies` section of the [qualification record](../../automations/upstream/qualification.json)
-when that selection changes. The probe checks certificate DER bytes in the actual
+Use the hashes for the selected release in `crates/decodex-webrtc-build/src/lib.rs`
+when that selection changes. The retained dependency receipt is historical; the
+[current runtime qualification](../../automations/upstream/qualification.json)
+has a narrower CLI and helper scope. The probe checks certificate DER bytes in the actual
 static library and retains a positive control. Its optional baseline arguments
 verify a previous library against its recorded digest. Header and library checks
 do not execute TURN/TLS or qualify physical audio and providers. Run the signed
@@ -402,7 +436,7 @@ python3 scripts/vnext/run_native_regression.py \
 
 Use absolute paths for the three inputs. The runner verifies the supplied components in temporary storage and uses the existing native executable attestation. It starts a real Decodex window and service with synthetic account data, creates history under one provider, then selects another provider and exposes the native mismatch. The two provider names share a loopback backend for this UI rehearsal. The separate native fork regression uses two servers to check routing.
 
-Check the destination provider in the input-bar notice, then choose **Fork** once. It creates and opens the branch without a second confirmation or sending a message. Send only when ready to continue the branch. Quit the rehearsal window to end the fixture and remove its temporary profile. The runner does not install the app, select a runtime for the normal profile, or modify the automation schedule. Passing this fixture's setup is separate from a user's UI acceptance.
+Check the destination provider in the feedback band above the composer, then choose **Fork** once. It creates and opens the branch without a second confirmation or sending a message. Send only when ready to continue the branch. Quit the rehearsal window to end the fixture and remove its temporary profile. The runner does not install the app, select a runtime for the normal profile, or modify the automation schedule. Passing this fixture's setup is separate from a user's UI acceptance.
 
 ## Prepare Codex components
 

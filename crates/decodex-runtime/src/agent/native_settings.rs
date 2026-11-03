@@ -99,6 +99,16 @@ impl AgentCoordinator {
 			if summary { Self::resume_usage_params(thread) } else { Self::resume_params(thread) };
 
 		params["config"] = serde_json::json!({"features.guardian_recorded_items":details});
+		for item in self.store.list_agent_work_items().await? {
+			if item.codex_thread_id.as_deref() == Some(thread)
+				&& self.store.assistant_external_memory_context(item.id, thread.into()).await?
+			{
+				params["config"]["memories.generate_memories"] = serde_json::json!(false);
+				params["config"]["memories.use_memories"] = serde_json::json!(false);
+				params["config"]["features.memories"] = serde_json::json!(false);
+				break;
+			}
+		}
 
 		Ok(params)
 	}

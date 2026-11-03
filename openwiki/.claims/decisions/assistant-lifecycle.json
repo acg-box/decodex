@@ -1,0 +1,252 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:d317a8fa6880fc411d57a0ab09529108e1e50a659f1119bea4d189929e2a4c6c",
+  "claims": [
+    {
+      "id": "claim_2f9fecf97f644372afb5684929656aac",
+      "statement": "The selected Assistant is an existing persistent Agent with a stable identity, typed management tools, lightweight teams and independent wakes. Native Codex remains the executor; protocol is 4.6 and the current database schema remains 60.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-core/src/assistant.rs",
+          "version": "repo-file-v1:sha256:85892c0f9d5a733f00e9214c0d15897bad8ed37bd649e428739f1c2fe69b0c98"
+        },
+        {
+          "resource": "repo://crates/decodex-protocol/src/lib.rs",
+          "version": "repo-file-v1:sha256:b1b307f55b9cc8d55f87478e47399da4b9bd8e449ec89076f1d943a8bd098757"
+        },
+        {
+          "resource": "repo://database/schema.sql",
+          "version": "repo-file-v1:sha256:ad3410025cf2a32514b1d7c020ca972bdc4f253e8d2e9198f8aa1ed908e190a2"
+        },
+        {
+          "resource": "repo://database/src/assistant.rs",
+          "version": "repo-file-v1:sha256:ef184fabb6fb9c789f70b4d6e4b7970e4031c0b586778fd9acbe9eb095530433"
+        }
+      ]
+    },
+    {
+      "id": "claim_70f873112edb4443b3b4322f0669d37b",
+      "statement": "The selected Assistant can create an independent persistent Agent under an exact delivered user delegation. Initial instructions retain application provenance and linked user authority. Existing Work and scoped Collaboration own outcome assignment and assessment.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/assistant.rs",
+          "version": "repo-file-v1:sha256:1e098d12f81905f772a623bec68c6ac68b124e99c452b5fab9b63cf0928a4cc6"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/instructions.md",
+          "version": "repo-file-v1:sha256:a0571c64007c1d556e1b8f38911b2af4c93de48e5db8b0b4483b533cb6ac80cf"
+        },
+        {
+          "resource": "repo://database/src/agent.rs",
+          "version": "repo-file-v1:sha256:d8f927bc04ecde1b14f278d68f7e89aeb53edca6f9c000b1d16f55f59a002c97"
+        },
+        {
+          "resource": "repo://database/src/works.rs",
+          "version": "repo-file-v1:sha256:97d41568b6a6346d8505db5825634a727a160e0457658c02e50028e78a035c82"
+        }
+      ]
+    },
+    {
+      "id": "claim_3047478fa6864d82992390d1174ef456",
+      "statement": "The existing service tick delivers independent duties through the Inbox. Turn preparation injects a compact Work directory; fresh contexts receive current state and recent original exchanges across native contexts instead of recursive summaries.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent.rs",
+          "version": "repo-file-v1:sha256:039d3118591ad102c58ed25f91d662c2132a7f461b46b9f0ecb276d2e6dd4dbf"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/assistant.rs",
+          "version": "repo-file-v1:sha256:1e098d12f81905f772a623bec68c6ac68b124e99c452b5fab9b63cf0928a4cc6"
+        },
+        {
+          "resource": "repo://database/src/assistant.rs",
+          "version": "repo-file-v1:sha256:ef184fabb6fb9c789f70b4d6e4b7970e4031c0b586778fd9acbe9eb095530433"
+        }
+      ]
+    },
+    {
+      "id": "claim_e7347a881d65429283c0152d4fb75a2b",
+      "statement": "Native memory inspection reads an already-loaded thread without generation or policy changes; isolated native tests set memory generation and use independently in thread-start configuration.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_memory_tests.rs",
+          "version": "repo-file-v1:sha256:d0dcc4ab8fbacc3960a5f4a60a8c6763a79ea1bbd228d8fced2986272d4ef88f"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent_memory.rs",
+          "version": "repo-file-v1:sha256:f5f150802e8d25a9bd8b54b26fffdbb63c2e729c63521702a93c82c7a8102591"
+        }
+      ]
+    },
+    {
+      "id": "claim_bf59625128a54ac6b738d4c99db7483f",
+      "statement": "Renewal defaults to 24 completed turns and an 80 percent native-context pressure trigger when enabled. Safe boundaries retain native request, Goal, voice, retry and child ownership. Exact question answers and canonical edited inputs remain in their original native context.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-core/src/assistant.rs",
+          "version": "repo-file-v1:sha256:85892c0f9d5a733f00e9214c0d15897bad8ed37bd649e428739f1c2fe69b0c98"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent.rs",
+          "version": "repo-file-v1:sha256:039d3118591ad102c58ed25f91d662c2132a7f461b46b9f0ecb276d2e6dd4dbf"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/assistant.rs",
+          "version": "repo-file-v1:sha256:1e098d12f81905f772a623bec68c6ac68b124e99c452b5fab9b63cf0928a4cc6"
+        },
+        {
+          "resource": "repo://database/src/assistant.rs",
+          "version": "repo-file-v1:sha256:ef184fabb6fb9c789f70b4d6e4b7970e4031c0b586778fd9acbe9eb095530433"
+        }
+      ]
+    },
+    {
+      "id": "claim_258811d5f7204c2fb865e22394b0c33b",
+      "statement": "Renewal records intent before a clean native thread/start, saves the acknowledgment before dependent work, atomically changes the stable Agent binding and retains old history. Unknown creation uses exact loaded native source markers for reconciliation and is never blindly repeated.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/assistant.rs",
+          "version": "repo-file-v1:sha256:1e098d12f81905f772a623bec68c6ac68b124e99c452b5fab9b63cf0928a4cc6"
+        },
+        {
+          "resource": "repo://database/src/assistant.rs",
+          "version": "repo-file-v1:sha256:ef184fabb6fb9c789f70b4d6e4b7970e4031c0b586778fd9acbe9eb095530433"
+        }
+      ]
+    },
+    {
+      "id": "claim_4e5d202de093458592af93a1308d2c48",
+      "statement": "Confirmed Assistant successors retain desktop drafts, loaded history and reading state, rebase older cursors and retain exact native sources at logical positions. Retired rows are read-only. Context retirement does not run ordinary Agent archive cleanup.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_timeline.rs",
+          "version": "repo-file-v1:sha256:5f9429477f8cfae3300706f013b90060ad91e0e096fd19ac75076318afa3b471"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_timeline_render.rs",
+          "version": "repo-file-v1:sha256:cc65f6570bcde4b84c3bea6ed3244a81784533def6d828d7bbf8931cdd4ab987"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent_host.rs",
+          "version": "repo-file-v1:sha256:d8a526106b9917db75fe6501fd61251869ac1e32051e171a525a00b5c2cd62f0"
+        },
+        {
+          "resource": "repo://database/src/agent/archive.rs",
+          "version": "repo-file-v1:sha256:373fa2781a81d3f73f3517e41af224883b104873b8bfdb9ec9c0236f799a18bb"
+        }
+      ]
+    },
+    {
+      "id": "claim_d7c97e74e7fd4a17bbb30ad7532a9914",
+      "statement": "Settings > Components selects an existing RAGFlow origin, credential environment-variable reference, user scope, explicit datasets and optional Memory. Empty datasets disable knowledge retrieval. Memory and chat-wide import are separate direct-user settings.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
+          "version": "repo-file-v1:sha256:ed1a31b744b9869d7dfb60f4b640cff74a030593ff745e820c7b1462c3796a1a"
+        },
+        {
+          "resource": "repo://crates/decodex-core/src/assistant.rs",
+          "version": "repo-file-v1:sha256:85892c0f9d5a733f00e9214c0d15897bad8ed37bd649e428739f1c2fe69b0c98"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/ragflow.rs",
+          "version": "repo-file-v1:sha256:4224ee73758b86b3a314b01a0bd7c580467a094e00faccba349fa334dc5947fc"
+        },
+        {
+          "resource": "repo://database/src/assistant.rs",
+          "version": "repo-file-v1:sha256:ef184fabb6fb9c789f70b4d6e4b7970e4031c0b586778fd9acbe9eb095530433"
+        }
+      ]
+    },
+    {
+      "id": "claim_9b6953ca856c4c77819c231dc55cc3f2",
+      "statement": "External Memory contexts disable native memory generation, use and the memories feature, set native memory mode disabled and preserve that policy on cold resume. The retiring current thread gets disabled memory mode without deleting existing native memories or editing shared defaults and unrelated Agents.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent.rs",
+          "version": "repo-file-v1:sha256:039d3118591ad102c58ed25f91d662c2132a7f461b46b9f0ecb276d2e6dd4dbf"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/assistant.rs",
+          "version": "repo-file-v1:sha256:1e098d12f81905f772a623bec68c6ac68b124e99c452b5fab9b63cf0928a4cc6"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/native_settings.rs",
+          "version": "repo-file-v1:sha256:036d2ad8834d187967440ba4a757cfdaff8929624684609b02d1364852f70cf4"
+        }
+      ]
+    },
+    {
+      "id": "claim_b851c8bb73194b5b9651fc0520515301",
+      "statement": "RAGFlow requests enforce exact scopes, bounded time and size, and HTTP plus business-result checks. Completed public chat imports run one at a time outside the actor. Unknown effects are not automatically resent; queued extraction is not searchable completion.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent.rs",
+          "version": "repo-file-v1:sha256:039d3118591ad102c58ed25f91d662c2132a7f461b46b9f0ecb276d2e6dd4dbf"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/ragflow.rs",
+          "version": "repo-file-v1:sha256:4224ee73758b86b3a314b01a0bd7c580467a094e00faccba349fa334dc5947fc"
+        },
+        {
+          "resource": "repo://database/src/assistant.rs",
+          "version": "repo-file-v1:sha256:ef184fabb6fb9c789f70b4d6e4b7970e4031c0b586778fd9acbe9eb095530433"
+        }
+      ]
+    },
+    {
+      "id": "claim_067a3576680e4fcc954351d56759c1cf",
+      "statement": "Database, HTTP, desktop and selected-native fixtures cover restart-safe teams, wakes, delegation authority, context/import receipts, original dialogue, draft/history continuity and three fresh native contexts with isolated memory. These fixtures do not qualify a live RAGFlow instance or an installed desktop app.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_timeline.rs",
+          "version": "repo-file-v1:sha256:5f9429477f8cfae3300706f013b90060ad91e0e096fd19ac75076318afa3b471"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_context_tests.rs",
+          "version": "repo-file-v1:sha256:652a421cd80d91117531960c52dc4031b8c288f620a02f66d81c19e012dcaa59"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/ragflow.rs",
+          "version": "repo-file-v1:sha256:4224ee73758b86b3a314b01a0bd7c580467a094e00faccba349fa334dc5947fc"
+        },
+        {
+          "resource": "repo://database/src/assistant.rs",
+          "version": "repo-file-v1:sha256:ef184fabb6fb9c789f70b4d6e4b7970e4031c0b586778fd9acbe9eb095530433"
+        }
+      ]
+    },
+    {
+      "id": "claim_2e70e6bf921246f2ba1654aefc393eb5",
+      "statement": "A saved Assistant mandate requests safe context renewal even with periodic renewal disabled. Chat import starts a new opt-in boundary when the external instance, Memory or user scope changes, so earlier pending exchanges are not exported into a new user namespace.",
+      "evidence": [
+        {
+          "resource": "repo://database/src/assistant.rs",
+          "version": "repo-file-v1:sha256:ef184fabb6fb9c789f70b4d6e4b7970e4031c0b586778fd9acbe9eb095530433"
+        }
+      ]
+    },
+    {
+      "id": "claim_8870a69555b14abf85bc4ca296c58300",
+      "statement": "Assistant context history skips internal realtime delegation and intermediate commentary, retains public messages and native turn anchors, and preserves inherited native reasoning effort in fresh contexts.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/assistant.rs",
+          "version": "repo-file-v1:sha256:1e098d12f81905f772a623bec68c6ac68b124e99c452b5fab9b63cf0928a4cc6"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent_message_history.rs",
+          "version": "repo-file-v1:sha256:b536930760d4c1825c5600aa31e2dcf8a7a0c51ee83bc4fc84ff0c7b1b0906ae"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent_message_history/tests.rs",
+          "version": "repo-file-v1:sha256:05697a1cabc8e0bb52c90c8c2e733eec9700e2d8761fb9f9840c4a5f45a07a38"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.7.3",
+    "at": "2026-11-03T16:49:54.130Z"
+  }
+}

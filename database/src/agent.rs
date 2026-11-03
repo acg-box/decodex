@@ -192,7 +192,7 @@ impl SqliteStore {
 		self.run(move |connection| {
 			read_work(connection, &work_id)?;
 
-			connection.prepare("SELECT * FROM (SELECT * FROM agent_inbox_events WHERE work_item_id = ?1 AND event_kind NOT IN ('collaboration_delivery','reasoning_voice_handoff','turn_execution','native_task_settings','model_recovery','model_recovery_result','model_recovery_observation','model_selection_reconciled','token_usage','response_usage','live_reviewer_attempt','live_reviewer_result','native_task_permissions','permission_selection','permission_selection_result','permission_selection_observation','native_task_models','model_selection','model_selection_result','model_selection_observation','native_task_plugins','plugin_selection','plugin_selection_result','plugin_selection_observation','hook_setting_attempt','hook_setting_result','hook_setting_observation','app_setting_attempt','app_setting_result','app_setting_observation','prompt_edit_attempt','prompt_edit_observation','prompt_edit_release','conversation_title','research_requested') AND (?3 IS NULL OR id < ?3) ORDER BY id DESC LIMIT ?2) ORDER BY id")
+			connection.prepare("SELECT * FROM (SELECT * FROM agent_inbox_events WHERE work_item_id = ?1 AND event_kind NOT LIKE 'assistant_internal_%' AND event_kind NOT IN ('collaboration_delivery','reasoning_voice_handoff','turn_execution','native_task_settings','model_recovery','model_recovery_result','model_recovery_observation','model_selection_reconciled','token_usage','response_usage','live_reviewer_attempt','live_reviewer_result','native_task_permissions','permission_selection','permission_selection_result','permission_selection_observation','native_task_models','model_selection','model_selection_result','model_selection_observation','native_task_plugins','plugin_selection','plugin_selection_result','plugin_selection_observation','hook_setting_attempt','hook_setting_result','hook_setting_observation','app_setting_attempt','app_setting_result','app_setting_observation','prompt_edit_attempt','prompt_edit_observation','prompt_edit_release','conversation_title','research_requested') AND (?3 IS NULL OR id < ?3) ORDER BY id DESC LIMIT ?2) ORDER BY id")
 				.map_err(error::sqlite_error)?.query_map(rusqlite::params![work_id, limit, before], event_row)
 				.map_err(error::sqlite_error)?.collect::<Result<Vec<_>, _>>().map_err(|error| error::sqlite_error(error).into())
 		}).await
@@ -234,7 +234,7 @@ impl SqliteStore {
 
             read_work(&tx,&id)?;
 
-            let events=tx.prepare("SELECT * FROM (SELECT e.* FROM agent_inbox_events e WHERE work_item_id=?1 AND event_kind NOT IN ('collaboration_delivery','reasoning_voice_handoff','turn_execution','native_task_settings','model_recovery','model_recovery_result','model_recovery_observation','model_selection_reconciled','token_usage','response_usage','live_reviewer_attempt','live_reviewer_result','native_task_permissions','permission_selection','permission_selection_result','permission_selection_observation','native_task_models','model_selection','model_selection_result','model_selection_observation','native_task_plugins','plugin_selection','plugin_selection_result','plugin_selection_observation','hook_setting_attempt','hook_setting_result','hook_setting_observation','app_setting_attempt','app_setting_result','app_setting_observation','prompt_edit_attempt','prompt_edit_observation','prompt_edit_release','conversation_title') AND (event_kind<>'activity_started' OR NOT EXISTS(SELECT 1 FROM agent_inbox_events c WHERE c.source_event_id=json_array('activity',e.work_item_id,json_extract(e.payload,'$.turn_id'),json_extract(e.payload,'$.item_id'),'completed'))) AND (event_kind<>'plan_updated' OR NOT EXISTS(SELECT 1 FROM agent_inbox_events p WHERE p.work_item_id=e.work_item_id AND p.event_kind='plan_updated' AND p.delivered_turn_id=e.delivered_turn_id AND json_extract(p.payload,'$.threadId')=json_extract(e.payload,'$.threadId') AND p.id>e.id)) AND (event_kind<>'steer_pending' OR disposition IS NULL) AND NOT (e.event_kind='user_message' AND e.disposition='user_decision' AND e.delivered_turn_id IS NULL AND EXISTS(SELECT 1 FROM agent_inbox_events retry WHERE retry.source_event_id=json_array('user_message_retry',e.work_item_id,e.id))) AND (?3 IS NULL OR id<?3) ORDER BY id DESC LIMIT ?2) ORDER BY id").map_err(error::sqlite_error)?.query_map(rusqlite::params![id,limit,before],event_row).map_err(error::sqlite_error)?.collect::<Result<Vec<_>,_>>().map_err(error::sqlite_error)?;
+            let events=tx.prepare("SELECT * FROM (SELECT e.* FROM agent_inbox_events e WHERE work_item_id=?1 AND event_kind NOT LIKE 'assistant_internal_%' AND event_kind NOT IN ('collaboration_delivery','reasoning_voice_handoff','turn_execution','native_task_settings','model_recovery','model_recovery_result','model_recovery_observation','model_selection_reconciled','token_usage','response_usage','live_reviewer_attempt','live_reviewer_result','native_task_permissions','permission_selection','permission_selection_result','permission_selection_observation','native_task_models','model_selection','model_selection_result','model_selection_observation','native_task_plugins','plugin_selection','plugin_selection_result','plugin_selection_observation','hook_setting_attempt','hook_setting_result','hook_setting_observation','app_setting_attempt','app_setting_result','app_setting_observation','prompt_edit_attempt','prompt_edit_observation','prompt_edit_release','conversation_title') AND (event_kind<>'activity_started' OR NOT EXISTS(SELECT 1 FROM agent_inbox_events c WHERE c.source_event_id=json_array('activity',e.work_item_id,json_extract(e.payload,'$.turn_id'),json_extract(e.payload,'$.item_id'),'completed'))) AND (event_kind<>'plan_updated' OR NOT EXISTS(SELECT 1 FROM agent_inbox_events p WHERE p.work_item_id=e.work_item_id AND p.event_kind='plan_updated' AND p.delivered_turn_id=e.delivered_turn_id AND json_extract(p.payload,'$.threadId')=json_extract(e.payload,'$.threadId') AND p.id>e.id)) AND (event_kind<>'steer_pending' OR disposition IS NULL) AND NOT (e.event_kind='user_message' AND e.disposition='user_decision' AND e.delivered_turn_id IS NULL AND EXISTS(SELECT 1 FROM agent_inbox_events retry WHERE retry.source_event_id=json_array('user_message_retry',e.work_item_id,e.id))) AND (?3 IS NULL OR id<?3) ORDER BY id DESC LIMIT ?2) ORDER BY id").map_err(error::sqlite_error)?.query_map(rusqlite::params![id,limit,before],event_row).map_err(error::sqlite_error)?.collect::<Result<Vec<_>,_>>().map_err(error::sqlite_error)?;
             let live=if before.is_none() {agent_output::read_live(&tx,&id)?} else {vec![]};
 
             tx.commit().map_err(error::sqlite_error)?;
@@ -337,6 +337,23 @@ impl SqliteStore {
 		self.create_agent_work_record(item, true, workspace, Vec::new(), Some(input)).await
 	}
 
+	/// A delegated persistent Agent keeps application-origin input and its user decision.
+	pub async fn create_delegated_agent(
+		&self,
+		item: AgentWorkItem,
+		input: EnqueueAgentEvent,
+		workspace: Option<String>,
+	) -> Result<AgentWorkItem, StoreError> {
+		if item.parent_goal_id.is_some()
+			|| item.kind != AgentWorkKind::Goal
+			|| input.work_item_id != item.id
+			|| input.event_kind != "assistant_instruction"
+		{
+			return Err(StoreError::InvalidInput("invalid persistent Agent delegation"));
+		}
+		self.create_agent_work_record(item, true, workspace, Vec::new(), Some(input)).await
+	}
+
 	async fn create_agent_work_record(
 		&self,
 		item: AgentWorkItem,
@@ -376,6 +393,16 @@ impl SqliteStore {
 				}
 			}
 
+			if let Some(input)=initial_input.as_ref().filter(|e|e.event_kind=="assistant_instruction") {
+				let payload:Value=serde_json::from_str(&input.payload).map_err(|_|StoreError::InvalidInput("invalid delegation"))?;
+				let actor=payload["delegatedBy"].as_str().ok_or(StoreError::InvalidInput("missing delegation owner"))?;
+				crate::assistant::require_assistant(&transaction,actor)?;
+				crate::assistant::authority(&transaction,actor,payload["authorityEventId"].as_i64().ok_or(StoreError::InvalidInput("missing user authority"))?)?;
+				if let Some(previous)=transaction.query_row("SELECT payload FROM agent_inbox_events WHERE source_event_id=?1",[&input.source_event_id],|r|r.get::<_,String>(0)).optional().map_err(error::sqlite_error)? {
+					if previous!=input.payload {return Err(StoreError::IdempotencyConflict);}
+					return read_work(&transaction,&item.id);
+				}
+			}
 			if work_exists(&transaction, &item.id)? {
 				return Err(DatabaseError::AlreadyExists.into());
 			}
@@ -628,7 +655,7 @@ impl SqliteStore {
 					SELECT ?2 UNION SELECT child.id FROM agent_work_items child JOIN owned ON child.parent_goal_id = owned.id WHERE owned.id=?2 OR NOT EXISTS(SELECT 1 FROM agent_managers WHERE work_id=owned.id))
 					UPDATE agent_inbox_events SET delivery_work_item_id = ?2, delivered_turn_id = ''
 					WHERE id = ?1 AND work_item_id IN (SELECT id FROM owned) AND disposition IS NULL
-					AND (event_kind IN ('worker_turn_completed', 'automation_result', 'followup_due', 'user_message', 'collaboration_request', 'collaboration_result', 'research_completed', 'research_attention') OR (event_kind='async_question_answer' AND work_item_id=?2 AND delivered_turn_id IS NULL)) AND (work_item_id=?2 OR event_kind='worker_turn_completed' OR NOT EXISTS(SELECT 1 FROM agent_managers WHERE work_id=work_item_id)) AND (work_item_id<>?2 OR event_kind<>'worker_turn_completed')
+					AND (event_kind IN ('worker_turn_completed', 'automation_result', 'followup_due', 'assistant_instruction', 'user_message', 'collaboration_request', 'collaboration_result', 'research_completed', 'research_attention') OR (event_kind='async_question_answer' AND work_item_id=?2 AND delivered_turn_id IS NULL)) AND (work_item_id=?2 OR event_kind='worker_turn_completed' OR NOT EXISTS(SELECT 1 FROM agent_managers WHERE work_id=work_item_id)) AND (work_item_id<>?2 OR event_kind<>'worker_turn_completed')
 					AND (delivered_turn_id IS NULL OR (delivery_work_item_id = ?2 AND delivered_turn_id != ''))", rusqlite::params![event_id, id]).map_err(error::sqlite_error)?;
 
 				if changed != 1 { return Err(DatabaseError::Conflict.into()); }
@@ -761,7 +788,7 @@ impl SqliteStore {
 			collaboration::record_delivery(&transaction,&id,work.codex_thread_id.as_deref(),&turn_id)?;
 
 			transaction.execute("UPDATE agent_inbox_events SET delivered_turn_id = ?2 WHERE delivery_work_item_id = ?1 AND delivered_turn_id = '' AND disposition IS NULL", rusqlite::params![id, turn_id]).map_err(error::sqlite_error)?;
-			transaction.execute("UPDATE agent_inbox_events SET disposition='resolved',disposition_note='Instruction accepted by the provider; completion is tracked separately.',disposed_at_micros=max(created_at_micros,?3) WHERE delivery_work_item_id=?1 AND delivered_turn_id=?2 AND event_kind='work_instruction' AND disposition IS NULL",rusqlite::params![id,turn_id,crate::unix_micros()?]).map_err(error::sqlite_error)?;
+			transaction.execute("UPDATE agent_inbox_events SET disposition='resolved',disposition_note='Instruction accepted by the provider; completion is tracked separately.',disposed_at_micros=max(created_at_micros,?3) WHERE delivery_work_item_id=?1 AND delivered_turn_id=?2 AND event_kind IN('work_instruction','assistant_instruction') AND disposition IS NULL",rusqlite::params![id,turn_id,crate::unix_micros()?]).map_err(error::sqlite_error)?;
 			transaction.execute("UPDATE agent_capacity_retries SET state='submitted',retry_turn_id=?2 WHERE work_item_id=?1 AND state='claimed'",rusqlite::params![id,turn_id]).map_err(error::sqlite_error)?;
 
 			let work = read_work(&transaction, &id)?;
@@ -1331,7 +1358,7 @@ impl SqliteStore {
 		let limit = page_limit(limit)?;
 
 		self.run(move |connection| {
-			connection.prepare("SELECT * FROM agent_inbox_events WHERE disposition IS NULL AND delivered_turn_id IS NULL AND event_kind IN ('worker_turn_completed', 'automation_result', 'followup_due', 'user_message', 'collaboration_request', 'collaboration_result', 'research_completed', 'research_attention') ORDER BY id LIMIT ?1").map_err(error::sqlite_error)?.query_map([limit], event_row).map_err(error::sqlite_error)?.collect::<Result<Vec<_>, _>>().map_err(|error| error::sqlite_error(error).into())
+			connection.prepare("SELECT * FROM agent_inbox_events WHERE disposition IS NULL AND delivered_turn_id IS NULL AND event_kind IN ('worker_turn_completed', 'automation_result', 'followup_due', 'assistant_instruction', 'user_message', 'collaboration_request', 'collaboration_result', 'research_completed', 'research_attention') ORDER BY id LIMIT ?1").map_err(error::sqlite_error)?.query_map([limit], event_row).map_err(error::sqlite_error)?.collect::<Result<Vec<_>, _>>().map_err(|error| error::sqlite_error(error).into())
 		}).await
 	}
 
@@ -1348,7 +1375,7 @@ impl SqliteStore {
 			connection.prepare("WITH RECURSIVE owned(id) AS (
 				SELECT ?1 UNION SELECT child.id FROM agent_work_items child JOIN owned ON child.parent_goal_id = owned.id WHERE owned.id = ?1 OR NOT EXISTS(SELECT 1 FROM agent_managers WHERE work_id=owned.id))
 				SELECT * FROM agent_inbox_events WHERE work_item_id IN (SELECT id FROM owned)
-				AND disposition IS NULL AND event_kind IN ('worker_turn_completed', 'automation_result', 'followup_due', 'user_message', 'collaboration_request', 'collaboration_result', 'research_completed', 'research_attention')
+				AND disposition IS NULL AND event_kind IN ('worker_turn_completed', 'automation_result', 'followup_due', 'assistant_instruction', 'user_message', 'collaboration_request', 'collaboration_result', 'research_completed', 'research_attention')
                 AND (work_item_id <> ?1 OR event_kind <> 'worker_turn_completed') AND (work_item_id=?1 OR event_kind='worker_turn_completed' OR NOT EXISTS(SELECT 1 FROM agent_managers WHERE work_id=work_item_id))
 				AND NOT EXISTS(SELECT 1 FROM collaboration_instructions ci JOIN collaboration_requests cq ON cq.id=ci.request_id JOIN works cw ON cw.id=cq.work_id WHERE ci.event_id=agent_inbox_events.id AND (cw.state<>'open' OR cq.state='closed' OR cq.instruction_id<>ci.id OR cw.requirements_id<>ci.requirements_id))
 				AND (delivered_turn_id IS NULL OR (delivery_work_item_id = ?1 AND delivered_turn_id != ''))
@@ -1787,7 +1814,7 @@ fn event_row(row: &Row<'_>) -> rusqlite::Result<AgentInboxEvent> {
 	})
 }
 
-fn insert_event(
+pub(crate) fn insert_event(
 	transaction: &Transaction<'_>,
 	input: EnqueueAgentEvent,
 	observation: bool,

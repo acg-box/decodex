@@ -4,6 +4,7 @@
 #[path = "agent_tree.rs"] mod agent_tree;
 #[path = "agent_app_exposure.rs"] mod app_exposure;
 #[path = "agent_archive.rs"] mod archive;
+#[path = "assistant_settings.rs"] mod assistant_settings;
 #[path = "agent_async_questions.rs"] mod async_questions;
 #[path = "agent_attached_branches.rs"] mod attached_branches;
 #[path = "agent_capabilities.rs"] mod capabilities;
@@ -210,6 +211,7 @@ pub(crate) struct AgentSurface {
 	presentations: SurfacePresentations,
 	profile: Option<ClientProfile>,
 	snapshot: Option<AgentSnapshotDto>,
+	assistant_settings: assistant_settings::Panel,
 	state: LoadState,
 	status_before_refresh: Option<LoadState>,
 	selected: Option<String>,
@@ -490,6 +492,7 @@ impl AgentSurface {
 			restored_question_drafts: Vec::new(),
 			profile: None,
 			snapshot: None,
+			assistant_settings: Default::default(),
 			state: LoadState::Idle,
 			status_before_refresh: None,
 			selected: None,
@@ -1423,6 +1426,7 @@ impl AgentSurface {
 	}
 
 	fn reset_profile_panels(&mut self, cx: &mut Context<Self>) {
+		self.assistant_settings = Default::default();
 		self.workspace.archives = Default::default();
 		self.work_board.clear(cx);
 		self.clear_activity_detail();
@@ -1576,6 +1580,7 @@ impl AgentSurface {
 	}
 
 	fn disconnect_panels(&mut self) {
+		self.assistant_settings = Default::default();
 		self.interrupt_automatic_recap();
 		self.reset_native_agents();
 		self.guardian_disconnected();
@@ -1909,6 +1914,12 @@ impl AgentSurface {
 	}
 
 	fn invalidate_snapshot_panels(&mut self, snapshot: &AgentSnapshotDto) {
+		if self.snapshot.as_ref().is_some_and(|old| {
+			old.runtime_source != snapshot.runtime_source
+				|| old.assistant.agent_id != snapshot.assistant.agent_id
+		}) {
+			self.assistant_settings = Default::default();
+		}
 		self.invalidate_native_agents(snapshot);
 		self.invalidate_guardian(snapshot);
 		self.invalidate_resources(snapshot);
@@ -3596,6 +3607,7 @@ mod tests {
 			s.apply_refreshed_snapshot(
 				Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
 					agents: Default::default(),
+					assistant: Default::default(),
 					guardian: Default::default(),
 					portfolio: Default::default(),
 					archived_work_ids: Default::default(),
@@ -3686,6 +3698,7 @@ mod tests {
 		let input = surface.update(visual, |surface, cx| {
 			surface.apply_result(Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
 				agents: Default::default(),
+				assistant: Default::default(),
 				guardian: Default::default(),
 				portfolio: Default::default(),
 				archived_work_ids: Default::default(),
@@ -3905,6 +3918,7 @@ mod tests {
 		surface.update(visual, |surface, _| {
 			surface.apply_result(Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
 				agents: Default::default(),
+				assistant: Default::default(),
 				guardian: Default::default(),
 				portfolio: Default::default(),
 				archived_work_ids: Default::default(),
@@ -3982,6 +3996,7 @@ mod tests {
 		surface.update(visual, |surface, _| {
 			surface.apply_result(Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
 				agents: Default::default(),
+				assistant: Default::default(),
 				guardian: Default::default(),
 				portfolio: Default::default(),
 				archived_work_ids: Default::default(),
@@ -4126,6 +4141,7 @@ mod tests {
 
 			s.apply_result(Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
 				agents: Default::default(),
+				assistant: Default::default(),
 				guardian: Default::default(),
 				portfolio: Default::default(),
 				archived_work_ids: Default::default(),
@@ -4258,6 +4274,7 @@ mod tests {
 		surface.update(visual, |surface, _| {
 			surface.apply_result(Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
 				agents: Default::default(),
+				assistant: Default::default(),
 				guardian: Default::default(),
 				portfolio: Default::default(),
 				archived_work_ids: Default::default(),
@@ -4359,6 +4376,7 @@ mod tests {
 			));
 			s.snapshot = Some(AgentSnapshotDto {
 				agents: Default::default(),
+				assistant: Default::default(),
 				guardian: Default::default(),
 				portfolio: Default::default(),
 				archived_work_ids: Default::default(),

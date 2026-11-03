@@ -9,8 +9,8 @@ sources:
     resource: repo://crates/decodex-runtime/src/process_supervisor.rs
 generated: { by: "codex", at: "2026-09-28T02:19:36.307Z" }
 verified:
-  - by: openwiki/0.7.2
-    at: 2026-10-26T07:09:00.728Z
+  - by: openwiki/0.7.3
+    at: 2026-11-03T15:39:55.651Z
 ---
 
 

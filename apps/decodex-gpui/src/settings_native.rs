@@ -5,6 +5,17 @@ use super::SettingsSurface;
 use crate::shell::agent_surface::AgentSurface;
 
 impl SettingsSurface {
+	pub(super) fn assistant_component(&self, cx: &mut Context<Self>) -> AnyElement {
+		self.native_agent.as_ref().map_or_else(
+			|| {
+				gpui::div()
+					.child("Select a connected Agent to configure the optional RAGFlow component.")
+					.into_any_element()
+			},
+			|agent| agent.update(cx, |agent, cx| agent.assistant_settings_view(cx)),
+		)
+	}
+
 	pub(crate) fn bind_native_agent(
 		&mut self,
 		agent: Entity<AgentSurface>,

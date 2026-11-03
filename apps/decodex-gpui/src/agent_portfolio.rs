@@ -582,6 +582,25 @@ impl AgentSurface {
 				));
 			}
 		}
+		if let Some(agent) = current {
+			let id = agent.id.clone();
+			row = row
+				.child(mcp_forms::mcp_button(
+					"assistant-open".into(),
+					"Open Assistant".into(),
+					false,
+					cx,
+					move |s, cx| s.open_page(&id, cx),
+				))
+				.child(format!(
+					"Teams ({}), active duties ({})",
+					snapshot.assistant.teams.len(),
+					snapshot.assistant.wakes.iter().filter(|w| w.due_at_micros.is_some()).count()
+				));
+			for team in &snapshot.assistant.teams {
+				row = row.child(format!("{} ({} members)", team.name, team.members.len()));
+			}
+		}
 
 		row.into_any_element()
 	}

@@ -16,8 +16,8 @@ sources:
     resource: repo://database/src/schema.rs
 generated: { by: "codex", at: "2026-10-26T15:20:45.937Z" }
 verified:
-  - by: openwiki/0.7.2
-    at: 2026-10-27T06:15:00.380Z
+  - by: openwiki/0.7.3
+    at: 2026-11-03T15:39:55.651Z
 ---
 
 # Account lifecycle authority

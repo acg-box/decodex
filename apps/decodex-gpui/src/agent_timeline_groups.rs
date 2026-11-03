@@ -583,6 +583,7 @@ mod tests {
 				account: "account".into(),
 			};
 			let page = decodex_protocol::AgentTimelinePage {
+				source_threads: Default::default(),
 				thread_id: "thread".into(),
 				entries,
 				next_cursor: None,
@@ -690,6 +691,7 @@ mod tests {
 					account: "account".into()
 				},
 				decodex_protocol::AgentTimelinePage {
+					source_threads: Default::default(),
 					thread_id: "thread".into(),
 					entries: vec![
 						message(0, "userMessage", None),

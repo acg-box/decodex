@@ -402,6 +402,13 @@ pub struct AgentTaskReferenceDto {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "action", content = "data", rename_all = "snake_case", deny_unknown_fields)]
 pub enum AgentActionDto {
+	/// Manage the selected personal Agent, its teams and independent duties.
+	ManageAssistant {
+		/// Stable personal Agent identity.
+		agent_id: EntityId,
+		/// Explicit user command. External export is opt-in.
+		command: decodex_core::assistant::AssistantCommand,
+	},
 	/// Select or remove the optional personal-assistance responsibility.
 	SetAssistant {
 		/// Existing persistent Agent.
@@ -1047,6 +1054,9 @@ pub struct AgentContextReferenceDto {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentSnapshotDto {
+	/// Selected personal Agent's settings, teams, wakes and native context lineage.
+	#[serde(default)]
+	pub assistant: Box<decodex_core::assistant::AssistantState>,
 	/// User-created persistent collaborators. Native Subagents have separate execution ownership.
 	#[serde(default)]
 	pub agents: Box<Vec<Agent>>,
@@ -1389,6 +1399,7 @@ mod tests {
 		for value in [
 			AgentSnapshotResult::Available(AgentSnapshotDto {
 				agents: Default::default(),
+				assistant: Default::default(),
 				guardian: Default::default(),
 				portfolio: Default::default(),
 				archived_work_ids: Default::default(),
@@ -1417,6 +1428,7 @@ mod tests {
 		assert!(
 			AgentSnapshotDto {
 				agents: Default::default(),
+				assistant: Default::default(),
 				guardian: Default::default(),
 				portfolio: Default::default(),
 				archived_work_ids: Default::default(),

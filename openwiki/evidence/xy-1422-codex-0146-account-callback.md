@@ -10,8 +10,8 @@ sources:
     resource: repo://crates/decodex-runtime/src/account_launch/protocol.rs
 generated: { by: "codex", at: "2026-10-21T09:01:22.045Z" }
 verified:
-  - by: openwiki/0.7.2
-    at: 2026-11-02T04:34:00.067Z
+  - by: openwiki/0.7.3
+    at: 2026-11-03T16:31:59.854Z
 ---
 
 # Current scope

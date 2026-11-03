@@ -159,6 +159,7 @@ fn page(items: Vec<AgentTimelineContent>) -> AgentTimelineResult {
 		work_id: EntityId::new("website").expect("valid execution fixture"),
 		account_id: EntityId::new("account").expect("valid execution fixture"),
 		page: AgentTimelinePage {
+			source_threads: Default::default(),
 			thread_id: "thread".into(),
 			thread_token_total: None,
 			thread_token_breakdown: None,

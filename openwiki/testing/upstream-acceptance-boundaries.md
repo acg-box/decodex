@@ -26,6 +26,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_reconnect_queue_tests.rs
   - id: openwiki-source-ff9ae5d5274ad341f8658d86
     resource: repo://apps/decodex-gpui/src/agent_side_chat_question_tests.rs
+  - id: openwiki-source-691432bb61082c358b6f9c24
+    resource: repo://apps/decodex-gpui/src/agent_timeline.rs
   - id: openwiki-source-032278b78f4f6cac0e654ef0
     resource: repo://apps/decodex-gpui/src/native_audio_owner_tests.rs
   - id: openwiki-source-ca95ba5564216bb4898c8392
@@ -74,6 +76,8 @@ sources:
     resource: repo://crates/decodex-components/tests/official_release.rs
   - id: openwiki-source-aee901c2feaee74f17637372
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_compaction_tests.rs
+  - id: openwiki-source-a490ea3fbcddb9c007caf196
+    resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_context_tests.rs
   - id: openwiki-source-8fd14b27958d10f11e115032
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_desktop_acceptance.rs
   - id: openwiki-source-4a57fba4bea69171318c6323
@@ -140,6 +144,8 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent/work.rs
   - id: openwiki-source-ec5c9f32d2135154f4297a49
     resource: repo://crates/decodex-runtime/src/conversation.rs
+  - id: openwiki-source-3edc2f094826ee56ddec6b73
+    resource: repo://crates/decodex-runtime/src/ragflow.rs
   - id: openwiki-source-6085af9603cb7ac0ff3ef1cf
     resource: repo://crates/decodex-runtime/src/work_portfolio.rs
   - id: openwiki-source-275dc903aab820a109a196b4
@@ -170,6 +176,8 @@ sources:
     resource: repo://database/src/agent_output.rs
   - id: openwiki-source-3180274108b0da8720118132
     resource: repo://database/src/agent_titles/tests.rs
+  - id: openwiki-source-3f60f3a3aae45b3e3b355d3e
+    resource: repo://database/src/assistant.rs
   - id: openwiki-source-2b705b409434252a7417e708
     resource: repo://database/src/usage_evidence_tests.rs
   - id: openwiki-source-d09dfdea9b65815f3a76b46c
@@ -186,10 +194,15 @@ sources:
     resource: repo://scripts/macos/test_decodex_app_stage.sh
   - id: openwiki-source-e201f60894c32a914dac99ee
     resource: repo://scripts/vnext/run_native_regression.py
-generated: { by: "codex", at: "2026-11-02T08:00:19.527Z" }
+generated: { by: "codex", at: "2026-11-03T16:31:59.854Z" }
+verified:
+  - by: openwiki/0.7.3
+    at: 2026-11-03T16:49:54.130Z
 ---
 
 # Upstream integration acceptance boundaries
+
+The current qualification covers only its named CLI, helpers and affected consumers. All other execution counts and artifact identities below are historical receipts with their original limits. This documentation refresh does not rerun those checks.
 
 ## Separate evidence levels
 
@@ -240,7 +253,7 @@ Two proxy clients sharing one native app-server and one synthetic account home d
 
 ## TLS dependency qualification
 
-The locked HTTPS graph selects `rustls` 0.23.46, `rustls-webpki` 0.103.16 and `webpki-root-certs` 1.0.11. Account refresh and component downloads use `reqwest` clients. The selected dependencies include certificate-distrust updates. The `workspace_dependencies` section of the [current qualification](../../automations/upstream/qualification.json) identifies the selected source, artifact checks and executed regressions. The [original TLS record](../../automations/upstream/retained-contracts.json) retains its earlier package identities and limits.
+The locked HTTPS graph selects `rustls` 0.23.46, `rustls-webpki` 0.103.16 and `webpki-root-certs` 1.0.11. Account refresh and component downloads use `reqwest` clients. The selected dependencies include certificate-distrust updates. The historical `workspace_dependencies` receipt in the [retained evidence](../../automations/upstream/retained-evidence.json) identifies its source, artifact checks and executed regressions. The current runtime qualification has a narrower scope. The [original TLS record](../../automations/upstream/retained-contracts.json) retains its earlier package identities and limits.
 
 In the original macOS arm64 TLS batch, the baseline and candidate each passed a full workspace check and 36 account-login and component tests. The candidate passed 1,891 headless tests and strict lint for 11 packages. The official `rustls-webpki` source test `verify_cert::tests::distrusted_spki` executed once and passed with `ring` enabled. Earlier attempts with missing fixtures or no selected test remain separate from that pass. These checks do not qualify live HTTPS, other platforms, installation or release.
 
@@ -254,7 +267,7 @@ In the original guard qualification on macOS arm64, the default build retained t
 
 That original full Rust style audit reported the same 163 findings on its exact main snapshot and branch. The three new source files had no findings in their focused audit. Eleven selected upstream ZIP tests passed in the [previous delivery](https://github.com/acg-box/decodex/pull/2530); one intentionally demonstrates the earlier default behavior without strict header enforcement. The previous builder deleted its downloaded ZIP before its digest was observed. Its extracted files matched a separate verified archive, but that earlier result does not identify the deleted ZIP bytes. The [stable contract catalog](../../automations/upstream/retained-contracts.json) retains this original qualification and its limits.
 
-The current `workspace_dependencies` qualification separately records both selected
+The historical `workspace_dependencies` qualification separately records both selected
 official ZIPs, their headers and compiled trust-anchor probes, the linked arm64
 library, and the signed real WebRTC transport lane. The retained public certificate
 fixtures verify that the retired AAA root occurs in the qualified old library but
@@ -313,7 +326,7 @@ Title regressions cover bounded Unicode metadata, credential rejection, recent-m
 
 GPUI checks keep Main fixed, share topics with the browser and sidebar, update Side chat labels after a new topic, and preserve Agent identity. The native adapter checks private event routing, overflow, cancellation, cleanup and manual-name invalidation before a guarded write. A private user-message frame must leave a foreground question guard live, while foreground events still reach the public stream. The opt-in native recap fixture exercises the shared structured path with both legacy and paginated history. It performs a guarded native rename, verifies that settings and the completed Recap remain current, then verifies that new user input invalidates the Recap. These tests do not judge title quality for every model or language.
 
-For fresh model-quality acceptance, use an isolated product and native home with a supported account. Complete one user exchange and inspect the generated native title. Complete four exchanges on the same topic and verify that a successful review keeps it. Complete four exchanges on a sustained new topic and verify that the next successful review changes it. Reopen the service and verify persistence, unchanged Agent identity, nine source turns and no unresolved title events. Keep real-provider results and artifact identities in the delivery receipt, separately from synthetic checks.
+For fresh model-quality acceptance, use an isolated product and native home with a supported account. Complete one user exchange and inspect the generated native title. Complete seven exchanges on the same topic and verify that a successful review keeps it. Complete seven exchanges on a sustained new topic and verify that the next successful review changes it. Reopen the service and verify persistence, unchanged Agent identity, fifteen source turns and no unresolved title events. Keep real-provider results and artifact identities in the delivery receipt, separately from synthetic checks.
 
 Offscreen header captures can check Main, Side chat topics and narrow tab geometry. The existing fixture's storage warning and clipped full transcript do not qualify ordinary storage or complete responsive layout. A disabled-composer layout assertion must be reported separately if it also fails on the base revision. Neither a focused pass nor a baseline comparison certifies a clean full UI suite or an installed application.
 
@@ -331,7 +344,7 @@ This presentation reuses the retained attached-fork runtime qualification. No na
 
 The 25 test assertions passed. One pure layout-state case received a nextest process-cleanup marker in the combined run; its exact isolated repeat passed without the marker. The exit-delay cause remains unmeasured. Four affected Rust packages passed repository Clippy deny flags with all features and targets. Nightly format, 14 architecture/gate tests and the menu-bar Swift build passed.
 
-The selected native source remains `33d306d457a4632b22bebf214e0c25d91f90f6e8`. The CLI, Code Mode helper and `rg` byte digests still match the earlier qualification. The previously generated exact-artifact schema document passed its canonical digest check and contains the nullable model/effort metadata. This work made no runtime migration or provider request. An offscreen native workspace-loading capture shows the cloud mark. Installed interactions, physical display timing, native child-window focus and packaged SwiftUI rendering remain unmeasured. Find covers loaded retained text and explicit earlier pages; shortened output remains incomplete.
+At that qualification, the selected native source was `33d306d457a4632b22bebf214e0c25d91f90f6e8`. The CLI, Code Mode helper and `rg` byte digests still match the earlier qualification. The previously generated exact-artifact schema document passed its canonical digest check and contains the nullable model/effort metadata. This work made no runtime migration or provider request. An offscreen native workspace-loading capture shows the cloud mark. Installed interactions, physical display timing, native child-window focus and packaged SwiftUI rendering remain unmeasured. Find covers loaded retained text and explicit earlier pages; shortened output remains incomplete.
 
 The standalone Codex startup-configuration diagnostic capability and its dedicated helper are retired. Historical executions of that control remain evidence at their original source revision and create no current validation requirement. Decodex product/integration diagnostics and normal warning presentation remain supported. That retirement does not advance the source-review cursor or change the native schedule.
 
@@ -353,7 +366,7 @@ The `history_resource_cost` entry in the [portable evidence index](../../automat
 
 One Rust check runs the exact selected native artifact in a system-temporary private store with two synthetic Responses turns. It checks an exact same-turn history anchor, matching registered resource owners, archived filtering and an empty unmatched lookup. The lookup makes no additional model request. A reusable repository fixture preserves this proof after local logs are removed. Socket and GPUI checks separately cover opaque continuations, source changes, selected-child identity and collapsed output counts.
 
-The selected native source remains `33d306d457a4632b22bebf214e0c25d91f90f6e8`. CLI and helper digests were read back, and its experimental schema was generated again. This is no runtime migration or source cursor advance. The tests do not establish live provider billing, full account usage, cross-store discovery, historical upload search or packaged Menu Bar interaction. Installed-app acceptance stays separate. No application was installed or released, and automation stays paused.
+At that qualification, the selected native source was `33d306d457a4632b22bebf214e0c25d91f90f6e8`. CLI and helper digests were read back, and its experimental schema was generated again. This is no runtime migration or source cursor advance. The tests do not establish live provider billing, full account usage, cross-store discovery, historical upload search or packaged Menu Bar interaction. Installed-app acceptance stays separate. No application was installed or released, and automation stays paused.
 
 ## Native item navigation presentation repair
 
@@ -403,7 +416,7 @@ The signed stage test checks that the app contains the runtime requirement and S
 
 ## Source fixture scope
 
-The [portable qualification record](../../automations/upstream/qualification.json) identifies exact source tests, artifact and helper hashes, reusable probes and limits. The [stable contract catalog](../../automations/upstream/retained-contracts.json) identifies retained consumer requirements and original feature limits. The [current router](../../automations/upstream/retained-evidence.json) links the selected qualification. Native run receipts retain raw output; Git retains replaced compact records.
+The [current qualification record](../../automations/upstream/qualification.json) identifies the selected artifact, helper hashes, named consumer executions and limits. The [stable contract catalog](../../automations/upstream/retained-contracts.json) identifies retained consumer requirements and original feature limits. The [current router](../../automations/upstream/retained-evidence.json) links the selected qualification. Native run receipts retain raw output; Git retains replaced compact records.
 
 The original source cohort used `dev-small` helpers. Nextest can replace requested `CARGO_BIN_EXE_*` paths with source build outputs. Only the separate Decodex native cohort and standalone probes establish exact production CLI behavior. The direct signed Code Mode helper test bypasses Nextest path replacement. Git retains the original qualification and assertions; the current record links that history separately from its affected native checks. Older source fixtures that require private startup arguments retain their own launcher and build limits in Git history. Passing a source fixture does not establish behavior through a production API. Test supported production inputs against the exact selected CLI and helpers as a separate step.
 
@@ -455,7 +468,7 @@ python3 crates/decodex-runtime/tests/native_qualification/log_storage.py
 python3 crates/decodex-runtime/tests/native_qualification/dotenv_startup.py
 ```
 
-The [qualification record](../../automations/upstream/qualification.json) binds each probe to the exact CLI and packaged helpers. The [earlier storage before/after receipt](https://github.com/acg-box/decodex/blob/f6640838f0997493704ff87e46205b46a700eef2/automations/upstream/qualification.json) retains its original artifact scope; the current record contains the selected artifact's requalification. The checked-in probe implementations remain available after local build products are removed. A rebuilt artifact requires its own identity and qualification; these results do not establish installed-app or real-provider acceptance.
+The retained historical receipts bind executed probes to their exact CLI and packaged helpers. Consult the current qualification for later named executions. The [earlier storage before/after receipt](https://github.com/acg-box/decodex/blob/f6640838f0997493704ff87e46205b46a700eef2/automations/upstream/qualification.json) retains its original artifact scope; later artifact results must be read from their own named qualification. The checked-in probe implementations remain available after local build products are removed. A rebuilt artifact requires its own identity and qualification; these results do not establish installed-app or real-provider acceptance.
 
 ## Context defaults and selected retention
 
@@ -496,7 +509,7 @@ The native launch fixture checks admitted Code Mode launch arguments, child cont
 
 The [retained coordination evidence](../../automations/upstream/retained-contracts.json) links the bounded historical real-model evaluations for self-resolution, peer coordination, parent escalation, user decisions and persistent Agent completion. Those evaluations cover the legacy managed-worker contract for exact inbox receipts, separate child-goal resolution and an idle-only Busy refusal. In that legacy continuation path, Busy means the instruction was not sent or queued, so the caller waits for the same worker. The new default uses native Subagents; independent Collaboration Requests have their own durable busy queue and acceptance contract. Do not apply the legacy Busy refusal as the current peer-queue behavior. The historical evaluations used one model and effort with controlled scenarios and predefined user choices. Current synthetic child-approval and local library regressions are separate requalification; they do not repeat real-model judgment or establish every model, permission configuration, race or installed interaction.
 
-The [sampling qualification](../../automations/upstream/qualification.json) retains historical cancellation receipts for the former Ask separately panel. In that UI, closing the panel hid presentation, while Cancel answer targeted the exact native sampling request. The manual panel is removed; next-message suggestions retain native sampling and exact-request cancellation. A cancellation request, native acknowledgement and a result that wins a race are different outcomes. Preserve exact request ownership and uncertain-state readback. This is not cancellation of the parent conversation or a general scheduler. These receipts do not establish installed-app acceptance.
+The [retained evidence](../../automations/upstream/retained-evidence.json) preserves historical cancellation receipts for the former Ask separately panel. In that UI, closing the panel hid presentation, while Cancel answer targeted the exact native sampling request. The manual panel is removed; next-message suggestions retain native sampling and exact-request cancellation. A cancellation request, native acknowledgement and a result that wins a race are different outcomes. Preserve exact request ownership and uncertain-state readback. This is not cancellation of the parent conversation or a general scheduler. These receipts do not establish installed-app acceptance.
 
 These fixture definitions specify what can be checked. They do not claim a new execution result from this documentation refresh, installed-app acceptance, or release delivery.
 
@@ -622,3 +635,11 @@ Conversation permission changes apply through native thread settings. Defaults a
 Agent/Material scope precedes SQL page limits. Work/evidence views keep at most 100 records per category and expose additional retained data. Selected evidence uses digest-checked 8 KiB pages up to 32 MiB. Work association does not move the native conversation to another execution directory or create another sandbox. Pause does not roll back existing native actions.
 
 The synthetic cohorts do not establish installed-app, live-account, general model-quality, audible-quality or public release acceptance. The controlled real-provider acceptance above has only its stated scope. Native provenance and local guards do not prove semantic correctness. Keep these limits when reusing qualification after cache or run-directory cleanup.
+
+## Assistant lifecycle boundary
+
+The Assistant extension reuses the selected Codex runtime at upstream `ba0dfd38979033f514a28d9514215bad46957a18`. Its opt-in `installed_assistant_renews_fresh_contexts_with_original_dialogue_and_isolated_memory` fixture uses the actual selected binary with an isolated native home and loopback Responses provider. It verifies three successive clean contexts, recent original dialogue across context boundaries, no fork ancestry, one model request per user turn and no native Memory injection in successor contexts. An unrelated control retains native memory settings. This test does not qualify a live provider or long-duration conversation quality.
+
+SQLite tests cover independent team membership and wakes, archive cancellation, exact delegated creation and linked authority, pending input, immutable native-context receipts and queued/unknown external imports across reopen. The desktop transition test covers drafts, loaded history, reading state, old native source IDs and pagination cursor rebasing. RAGFlow's loopback HTTP fixture checks explicit Memory/Agent/user scopes and rejects nonzero business codes even with HTTP 200. A queued extraction response is not proof that the memory is searchable.
+
+These source and selected-native checks do not establish a real RAGFlow deployment, extraction quality, machine sleep behavior or installed desktop visual acceptance. See [Assistant lifecycle](../decisions/assistant-lifecycle.md) and [commands](../operations/commands-and-validation.md) for owners and repeatable checks. The earlier qualification records above retain their own artifacts and counts.

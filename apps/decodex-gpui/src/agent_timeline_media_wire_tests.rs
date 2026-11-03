@@ -55,6 +55,7 @@ fn prepare(
 			account: "account".into()
 		},
 		AgentTimelinePage {
+			source_threads: Default::default(),
 			thread_id: "native-thread".into(),
 			entries: vec![AgentTimelineEntry {
 				position: 1,

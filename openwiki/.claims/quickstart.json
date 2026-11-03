@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:4fe6aff9b7f0200d4b9e35ea1f9f8b4b245496c70bd6ad0bab5ab5156c196ecd",
+  "pageVersion": "sha256:5a8ee5ada1e4cacfef818685cc0a3510f2dfb1c3f96e7d13ac760b72542e5834",
   "claims": [
     {
       "id": "claim_b34298a8647a4e0b8653926b7568c5d4",
@@ -8,11 +8,11 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_collaboration.rs",
-          "version": "repo-file-v1:sha256:7db2485b1dfbc10208c3f2a310a6bc71ac497852f6cc84e631ec5ed2e8e520dc"
+          "version": "repo-file-v1:sha256:c4a1ac4648b8cd2c7cc24dd798fc68c10b8c39cb7cd50b13db4b3be72a276bff"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_collaboration_tests.rs",
-          "version": "repo-file-v1:sha256:8931248220c89584d386f2565372cabc82e5f574922526bf5ea158d2301d39dc"
+          "version": "repo-file-v1:sha256:55d639530d5c7091c0e50a93fe78b6209f144a294659bb194e477dee89629cd4"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_tree.rs",
@@ -26,7 +26,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/account_service.rs",
-          "version": "repo-file-v1:sha256:7c56d46b9cada4c54af903505b3b88a0788d8b0b0cf5e844b2f2422fc4029b24"
+          "version": "repo-file-v1:sha256:baf8d4144ab11e6d9fc540b18c5388f958c7cc9e568ad362b6a1389d82d9dbdb"
         }
       ]
     },
@@ -36,7 +36,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/account_service.rs",
-          "version": "repo-file-v1:sha256:7c56d46b9cada4c54af903505b3b88a0788d8b0b0cf5e844b2f2422fc4029b24"
+          "version": "repo-file-v1:sha256:baf8d4144ab11e6d9fc540b18c5388f958c7cc9e568ad362b6a1389d82d9dbdb"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/shared_auth_coordinator.rs",
@@ -50,7 +50,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-protocol/src/lib.rs",
-          "version": "repo-file-v1:sha256:4700d21e6c97f0dd0838dbdaf39a901b096d653233d34d1af75f4fcaca60b3cd"
+          "version": "repo-file-v1:sha256:b1b307f55b9cc8d55f87478e47399da4b9bd8e449ec89076f1d943a8bd098757"
         },
         {
           "resource": "repo://database/schema.sql",
@@ -103,8 +103,8 @@
       "statement": "Account admission accepts only native plus, pro, prolite, promax and team plans for OAuth and PAT credentials.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/account_service.rs#L5467-L5577",
-          "version": "repo-lines-v1:sha256:29e335940f8b7368c86807515d156b757198ad8a020b42bab05ae733447b5504:eyJzZWxlY3RlZExpbmVDb3VudCI6MTExLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJjMGM4NTk1ZWRjNDNlZjI5Mzc4NTI1NDVmMzUyMGRkMzQ4MjA0ZmVhNjdiOTQyZjE0ZDM2ZTcxM2UzNDUxZmQwIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJkZDNhMDJkMWRmNTQ5N2U1YzI2NmRlYzhkNDM0ZmI5NThhMDg2YWE5NjQzZjczODYyZTY1YTU5ZTc4NGVkOGU2IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI4YTZkNjQyY2IwZDE5NmQ4MWMxOTY2ZjRiOTQ3Y2U2ODQyODkyNGM5ZmZiMWIyOWY5MjUzM2U2MmM3OWZjZDliIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI4NjE1OTY2MmUwMDhhMDBkNmVkNDRkZDk0YWRhMzMyMWI0YzAxZTBkNjAxZDZiN2E3NDMxMzMxOWUyYjZjNzExIn0"
+          "resource": "repo://crates/decodex-runtime/src/account_service.rs",
+          "version": "repo-file-v1:sha256:baf8d4144ab11e6d9fc540b18c5388f958c7cc9e568ad362b6a1389d82d9dbdb"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_service/tests/plan_scope.rs",
@@ -114,19 +114,23 @@
     },
     {
       "id": "claim_a69792c61f7b45988a3b128dd70179cf",
-      "statement": "The current business contract separates Project, user-created Agent and Work, uses native Subagents and scoped peer Collaboration, and presents global Guardian independently from native permissions.",
+      "statement": "The current contract separates Project, persistent Agent and Work, uses native Subagents and scoped peer Collaboration, and presents global Guardian independently from native permissions. Agents can be created directly by the user or through selected Assistant delegation.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_portfolio.rs",
-          "version": "repo-file-v1:sha256:f7958a7151143ec4e0149912a9efb988b0262d8626137da558d3d88c14264230"
+          "version": "repo-file-v1:sha256:413c6d88e7a0e5c3a7514d696f7d8a9b0f7984164599a7b072ca6832337a360a"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/instructions.md",
-          "version": "repo-file-v1:sha256:ede8778c3941e42556a06ca592a2881d216f7d01aaadf9071febccd40bf5ec61"
+          "version": "repo-file-v1:sha256:a0571c64007c1d556e1b8f38911b2af4c93de48e5db8b0b4483b533cb6ac80cf"
         },
         {
           "resource": "repo://database/schema.sql",
           "version": "repo-file-v1:sha256:ad3410025cf2a32514b1d7c020ca972bdc4f253e8d2e9198f8aa1ed908e190a2"
+        },
+        {
+          "resource": "repo://database/src/agent.rs",
+          "version": "repo-file-v1:sha256:d8f927bc04ecde1b14f278d68f7e89aeb53edca6f9c000b1d16f55f59a002c97"
         }
       ]
     },
@@ -136,7 +140,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_surface.rs",
-          "version": "repo-file-v1:sha256:5ace3c0b0cc96aeb4c90ffcc5ac477da6aed15fafda1b87ed2035f122b2364eb"
+          "version": "repo-file-v1:sha256:dfe6013d1234c58f6c9257a2997af8a9c2e7b896ae2c730b8a0f82f05eaada06"
         },
         {
           "resource": "repo://automations/upstream/retained-contracts.json#L4145-L4361",
@@ -172,11 +176,11 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/session_settings.rs",
-          "version": "repo-file-v1:sha256:839774c9ea84c4c08526203d98e0bd82e7f2ed5d7e72e009a44e39e5145ece67"
+          "version": "repo-file-v1:sha256:ed78f991939c7bb49f2e72fefed45e4137ec1495293bd660223dae77ecf1d4af"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:7b9715be9b8616e8c2786b8e0fa1eed8d951f6d0fd66afdc9a6f2ad56f76bf77"
+          "version": "repo-file-v1:sha256:a212a9cc17fed70818fa5e99178898b5f3761a502fb3cb6828d72a37c55c4515"
         }
       ]
     },
@@ -186,15 +190,15 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_context_settings.rs",
-          "version": "repo-file-v1:sha256:dbc62214cd0f163d6d9ec5e23d4b3ccb885a1a763958543244ae3288998c6670"
+          "version": "repo-file-v1:sha256:c4b7221ae38d9e8d9eca1447d15a351e790f4cbd656afaa130cb0e37e59209c7"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_native.rs",
-          "version": "repo-file-v1:sha256:a0ebf3339bb6bd7695eefab2c6011fe5397d14ad57a8cb31e321b1aee76ee2d8"
+          "version": "repo-file-v1:sha256:212baf80d0310141fb384509d1af3e0c613bc883f2e17bc24762617bbbf594e1"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_surface.rs",
-          "version": "repo-file-v1:sha256:fc331a11fc4501aa52252008b619d6a6a86bf646320cebc519cff6a3b688d015"
+          "version": "repo-file-v1:sha256:28c77b959899a1c581ee5b854b11e54b35e0f67520c61f5405fbbd24c3b0b33a"
         }
       ]
     },
@@ -204,11 +208,11 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_surface.rs",
-          "version": "repo-file-v1:sha256:5ace3c0b0cc96aeb4c90ffcc5ac477da6aed15fafda1b87ed2035f122b2364eb"
+          "version": "repo-file-v1:sha256:dfe6013d1234c58f6c9257a2997af8a9c2e7b896ae2c730b8a0f82f05eaada06"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_timeline_find.rs",
-          "version": "repo-file-v1:sha256:d8bdf7785efff404d99fc7d978ef83b7fcf6720dd8285a45010d7a4d3659630e"
+          "version": "repo-file-v1:sha256:f8465fd2eb598df5524f0c5347821a87d17eefa66f57b553580efb8a4852399f"
         }
       ]
     },
@@ -218,11 +222,11 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/ConversationEstimatesView.swift",
-          "version": "repo-file-v1:sha256:8df4f4b14d3b134dbdad77a78de41beac274e44f980a0d237499db97c5309f35"
+          "version": "repo-file-v1:sha256:67b654d51aba65439f108fa72f1cf38c31a6529fd46714af7e4c2637c35d9b9e"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_usage_estimates.rs",
-          "version": "repo-file-v1:sha256:1ed8669d168775d4fe1d4c307d4835598c859d07ea2bc5047905022b62a85e2b"
+          "version": "repo-file-v1:sha256:395cf2707a1c1573b8205f7a20ab299a8d25b1251701925a5668d473fe322f24"
         },
         {
           "resource": "repo://automations/upstream/retained-contracts.json#L4994-L5057",
@@ -236,11 +240,11 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_list_branch.rs",
-          "version": "repo-file-v1:sha256:97e4ebce9584cd709dc480d5af61f9cf5b6d6b6199af0346d428b4c747526c3b"
+          "version": "repo-file-v1:sha256:272f2952df4391d9e70d7be5a3443cae1e0c76f96ba2bd849e13a20f14cb961d"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_prompt_edit.rs",
-          "version": "repo-file-v1:sha256:fa795f10ae94669b9aade482d2a5321fe2d654239d70cfe1b7b5d07a7cbd8d33"
+          "version": "repo-file-v1:sha256:68ed6a10df1d7ec6ea966a2eaae3a1c5ec70ee67320fa5ee107b4687f5f897f2"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_work_browser.rs",
@@ -280,31 +284,35 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_side_chat_question.rs",
-          "version": "repo-file-v1:sha256:21dd92ba8bac6aeeee34cc7d9428690e061e71d0cac915570179ecfb9af53ce7"
+          "version": "repo-file-v1:sha256:7d6e4eb2cfec93f282cf3962637e888e6730877cdd1dcad267beb200c971da4f"
         }
       ]
     },
     {
       "id": "claim_68b9325d18864fae8bb96b005ef5b2c2",
-      "statement": "An exact native provider mismatch offers direct current-provider Fork in the input bar without a second confirmation, preserving original history and draft and sending no input during creation.",
+      "statement": "An exact native provider mismatch offers direct current-provider Fork in the feedback band above the composer without a second confirmation, preserving original history and draft and sending no input during creation.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_list_branch.rs",
-          "version": "repo-file-v1:sha256:97e4ebce9584cd709dc480d5af61f9cf5b6d6b6199af0346d428b4c747526c3b"
+          "version": "repo-file-v1:sha256:272f2952df4391d9e70d7be5a3443cae1e0c76f96ba2bd849e13a20f14cb961d"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_prompt_confirm_wire_tests.rs",
-          "version": "repo-file-v1:sha256:55c6c83c6e489618f3e0e4b1db3d04163e18f10164986ea774cb5d7e25189ccd"
+          "version": "repo-file-v1:sha256:b9a868eeab3689af23aac1aec5cc3e1d9e073a2485e570bc1afde389106474c7"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_prompt_edit.rs",
-          "version": "repo-file-v1:sha256:fa795f10ae94669b9aade482d2a5321fe2d654239d70cfe1b7b5d07a7cbd8d33"
+          "version": "repo-file-v1:sha256:68ed6a10df1d7ec6ea966a2eaae3a1c5ec70ee67320fa5ee107b4687f5f897f2"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/ui_feedback.rs#L1-L23",
+          "version": "repo-lines-v1:sha256:e2fb70cf5351ccb211197589f6e3ac958e826ed82682b12257171433fe0b7274:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJiYTBmMTBiMGY1OGNkOTdlMmJiOTRmYzkwZTViZjdjZWRmMTNjMWY0MTgwNTY1NTg1Y2JhMTJmZGE5Zjc3YTciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjExYTZmOWQ5OTYwNGE2MmEwZjE1YTdjNmVlMmI5ODg5MGM3OWJhYzQ0ZTdjNmQxZDdmYmZjYWMyYzM1NDE5N2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImVkN2YzZjI3OWY3ZDc5MDAwNDNmYmY3NzhmZTUwYjc5YmQxNmNkNDczMTExNmM1YjU0OTBmYzZhY2RjNmRkZTMifQ"
         }
       ]
     },
     {
       "id": "claim_c73d520c34524f328cc9494dfd4379cd",
-      "statement": "The source tab stays Main. Side chat tabs use confirmed conversation topics and fall back to numbered labels before a title is available. The service summarizes the first eligible completed user exchange and reviews after four more exchanges without renaming Agent identity.",
+      "statement": "The source tab stays Main. Side chat tabs use confirmed conversation topics and fall back to numbered labels before a title is available. The service summarizes the first eligible completed user exchange and reviews after seven more exchanges without renaming Agent identity.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_conversation_tabs.rs#L122-L147",
@@ -312,17 +320,39 @@
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent_titles/host.rs",
-          "version": "repo-file-v1:sha256:e9d0c2a4646d77c4b019f2e96e31569ea6e70673a6e83ce623ceabd61e2feccc"
+          "version": "repo-file-v1:sha256:9be947d4fe9601c082dfd74860226395560b425884359bbe9afc915cfe18d2a4"
         },
         {
           "resource": "repo://database/src/agent_titles.rs",
-          "version": "repo-file-v1:sha256:26778d2e1b8fa80141e34b0a0cbdf3e34664a4b0e6fd75d10a05354869296fd8"
+          "version": "repo-file-v1:sha256:d777a74e51bce36a14857ec912dd85b72546fefc2e4956d367cd5e1896a7f660"
+        }
+      ]
+    },
+    {
+      "id": "claim_2f51bf620dff4bb0afcf4b66110fb5a4",
+      "statement": "The personal Assistant manages delegated independent Agents, lightweight teams and independent duties, optional RAGFlow Memory and fresh native contexts behind one stable chat. Work selects the Assistant and Components configures its mandate, renewal interval and optional Memory scopes; no patrol is built in.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_portfolio.rs",
+          "version": "repo-file-v1:sha256:413c6d88e7a0e5c3a7514d696f7d8a9b0f7984164599a7b072ca6832337a360a"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
+          "version": "repo-file-v1:sha256:ed1a31b744b9869d7dfb60f4b640cff74a030593ff745e820c7b1462c3796a1a"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/assistant.rs",
+          "version": "repo-file-v1:sha256:1e098d12f81905f772a623bec68c6ac68b124e99c452b5fab9b63cf0928a4cc6"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/instructions.md",
+          "version": "repo-file-v1:sha256:a0571c64007c1d556e1b8f38911b2af4c93de48e5db8b0b4483b533cb6ac80cf"
         }
       ]
     }
   ],
   "verification": {
-    "by": "openwiki/0.7.2",
-    "at": "2026-11-02T08:00:19.527Z"
+    "by": "openwiki/0.7.3",
+    "at": "2026-11-03T16:49:54.130Z"
   }
 }
