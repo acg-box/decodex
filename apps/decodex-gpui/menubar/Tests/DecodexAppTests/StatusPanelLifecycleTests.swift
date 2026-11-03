@@ -29,14 +29,19 @@ final class StatusPanelLifecycleTests: XCTestCase {
 	}
 
 	func testQuotaTrackKeepsItsWidthWhenPercentageDigitCountChanges() throws {
-		func filledWidth(used: UInt8) throws -> Int {
+		let dates: [Int64] = [1_793_700_000_000_000, 1_794_999_000_000_000]
+		let resetColumnWidth = ResetCardQuotaWindowView.resetColumnWidth(for: dates.map {
+			ResetCardQuotaWindow(durationMinutes: 300, observedAtUnixMicros: 1,
+				state: .current(usedPercent: 0, resetsAtUnixMicros: $0))
+		})
+		func filledWidth(used: UInt8, date: Int64) throws -> Int {
 			let quota = ResetCardQuotaWindow(
 				durationMinutes: 300,
 				observedAtUnixMicros: 1,
-				state: .current(usedPercent: used, resetsAtUnixMicros: 1_793_700_000_000_000)
+				state: .current(usedPercent: used, resetsAtUnixMicros: date)
 			)
 			let renderer = ImageRenderer(content:
-				ResetCardQuotaWindowView(title: "5h", window: quota)
+				ResetCardQuotaWindowView(title: "5h", window: quota, resetDateColumnWidth: resetColumnWidth)
 					.frame(width: 256)
 					.environment(\.colorScheme, .dark)
 					.tint(.blue)
@@ -57,8 +62,10 @@ final class StatusPanelLifecycleTests: XCTestCase {
 			}
 			return longest
 		}
-		let full = try filledWidth(used: 0)
-		let ninety = try filledWidth(used: 10)
+		let full = try filledWidth(used: 0, date: dates[0])
+		let ninety = try filledWidth(used: 10, date: dates[1])
+		XCTAssertEqual(full, try filledWidth(used: 0, date: dates[1]),
+			"Different reset dates must not change the shared quota track width.")
 		XCTAssertGreaterThan(full, 80)
 		XCTAssertEqual(Double(ninety), Double(full) * 0.9, accuracy: 1.5,
 			"90% must fill the same track as 100%; fewer digits must not make the track longer.")

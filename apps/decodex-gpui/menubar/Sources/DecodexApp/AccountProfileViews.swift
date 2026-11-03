@@ -194,38 +194,40 @@ private struct AccountProfileMetricsView: View {
 
 	var body: some View {
 		if metrics.isEmpty == false {
-			ViewThatFits(in: .horizontal) {
-				metricRow(metrics)
-				VStack(alignment: .leading, spacing: PanelSpacing.compact) {
-					metricRow(Array(metrics.prefix(2)))
-					if metrics.count > 2 {
-						metricRow(Array(metrics.dropFirst(2)))
+			Grid(horizontalSpacing: PanelSpacing.micro, verticalSpacing: PanelSpacing.compact) {
+				ForEach(Array(stride(from: 0, to: metrics.count, by: 2)), id: \.self) { index in
+					GridRow(alignment: .firstTextBaseline) {
+						label(metrics[index])
+						value(metrics[index])
+						if index + 1 < metrics.count {
+							Spacer(minLength: PanelSpacing.section)
+								.gridCellUnsizedAxes(.vertical)
+							label(metrics[index + 1])
+							value(metrics[index + 1])
+						}
 					}
 				}
 			}
 			.frame(maxWidth: .infinity, alignment: .leading)
+			.lineLimit(1)
 		}
 	}
 
-	private func metricRow(_ row: [AccountProfileMetric]) -> some View {
-		HStack(alignment: .firstTextBaseline, spacing: PanelSpacing.section) {
-			ForEach(row) { metric in
-				HStack(alignment: .firstTextBaseline, spacing: PanelSpacing.micro) {
-					Text(metric.label)
-						.font(PanelFont.usageLabel)
-						.foregroundStyle(PanelPalette.secondaryText(colorScheme))
-					Text(metric.value)
-						.font(PanelFont.usageValue)
-						.foregroundStyle(PanelPalette.primaryText(colorScheme).opacity(0.9))
-						.monospacedDigit()
-				}
-				.fixedSize()
-				if metric.id != row.last?.id {
-					Spacer(minLength: 0)
-				}
-			}
-		}
-		.lineLimit(1)
+	private func label(_ metric: AccountProfileMetric) -> some View {
+		Text(metric.label)
+			.font(PanelFont.usageLabel)
+			.foregroundStyle(PanelPalette.secondaryText(colorScheme))
+			.fixedSize()
+			.gridColumnAlignment(.leading)
+	}
+
+	private func value(_ metric: AccountProfileMetric) -> some View {
+		Text(metric.value)
+			.font(PanelFont.usageValue)
+			.foregroundStyle(PanelPalette.primaryText(colorScheme).opacity(0.9))
+			.monospacedDigit()
+			.fixedSize()
+			.gridColumnAlignment(.trailing)
 	}
 }
 

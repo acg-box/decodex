@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// Compact feedback stays beside its owner and never changes panel height.
@@ -36,6 +37,7 @@ struct ResetCardAccountRow: View {
 	let state: ResetCardAccountState
 	let store: ResetCardStore
 	let showsEmail: Bool
+	let quotaResetColumnWidth: CGFloat?
 	let detailsExpanded: Bool?
 	let isAccountCardHovered: Bool
 	let isReorderGestureEnabled: Bool
@@ -55,6 +57,7 @@ struct ResetCardAccountRow: View {
 		state: ResetCardAccountState,
 		store: ResetCardStore,
 		showsEmail: Bool = false,
+		quotaResetColumnWidth: CGFloat? = nil,
 		detailedAccountIDs: Binding<Set<String>> = .constant([]),
 		detailsExpanded: Bool? = nil,
 		isAccountCardHovered: Bool = false,
@@ -65,6 +68,7 @@ struct ResetCardAccountRow: View {
 		self.state = state
 		self.store = store
 		self.showsEmail = showsEmail
+		self.quotaResetColumnWidth = quotaResetColumnWidth
 		self.detailsExpanded = detailsExpanded
 		self.isAccountCardHovered = isAccountCardHovered
 		self.isReorderGestureEnabled = isReorderGestureEnabled
@@ -383,7 +387,8 @@ struct ResetCardAccountRow: View {
 				ResetCardQuotaWindowView(
 					title: "5h",
 					window: state.fiveHourQuota,
-					fill: store.quotaFill(for: state.account)
+					fill: store.quotaFill(for: state.account),
+					resetDateColumnWidth: quotaResetColumnWidth
 				)
 			}
 			if ResetCardQuotaPresentation(window: state.sevenDayQuota).isVisible
@@ -391,7 +396,8 @@ struct ResetCardAccountRow: View {
 				ResetCardQuotaWindowView(
 					title: "7d",
 					window: state.sevenDayQuota,
-					fill: store.quotaFill(for: state.account)
+					fill: store.quotaFill(for: state.account),
+					resetDateColumnWidth: quotaResetColumnWidth
 				)
 			}
 		}
@@ -802,6 +808,7 @@ struct ResetCardQuotaWindowView: View {
 	let title: String
 	let window: ResetCardQuotaWindow
 	var fill: ResetQuotaFill? = nil
+	var resetDateColumnWidth: CGFloat? = nil
 	@State private var isFilling = false
 	@Environment(\.accessibilityReduceMotion) private var reduceMotion
 	@Environment(\.colorScheme) private var colorScheme
@@ -891,6 +898,7 @@ struct ResetCardQuotaWindowView: View {
 					.monospacedDigit()
 					.lineLimit(1)
 					.fixedSize(horizontal: true, vertical: false)
+					.frame(width: resetDateColumnWidth, alignment: .trailing)
 			} else if let detailText = presentation.detailText {
 				Text(detailText)
 					.font(PanelFont.quotaText)
@@ -925,6 +933,15 @@ struct ResetCardQuotaWindowView: View {
 		}
 	}
 
+	static func resetColumnWidth(for windows: [ResetCardQuotaWindow]) -> CGFloat {
+		let formatter = resetDateFormatter()
+		let font = NSFont.monospacedDigitSystemFont(ofSize: PanelFont.quotaTextSize, weight: .regular)
+
+		return windows.compactMap(\.resetDate).map {
+			ceil((formatter.string(from: $0) as NSString).size(withAttributes: [.font: font]).width)
+		}.max() ?? 0
+	}
+
 	private static func compactDateTime(_ date: Date) -> String {
         localizedResetDateTime(date)
     }
@@ -935,9 +952,16 @@ private func localizedResetDateTime(
     locale: Locale = .autoupdatingCurrent,
     timeZone: TimeZone = .current
 ) -> String {
+    resetDateFormatter(locale: locale, timeZone: timeZone).string(from: date)
+}
+
+private func resetDateFormatter(
+    locale: Locale = .autoupdatingCurrent,
+    timeZone: TimeZone = .current
+) -> DateFormatter {
     let formatter = DateFormatter()
     formatter.locale = locale
     formatter.timeZone = timeZone
     formatter.setLocalizedDateFormatFromTemplate("MMMdjmm")
-    return formatter.string(from: date)
+    return formatter
 }

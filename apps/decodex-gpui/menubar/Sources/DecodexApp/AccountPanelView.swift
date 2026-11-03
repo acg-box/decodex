@@ -283,6 +283,9 @@ struct AccountPanelView: View {
 		if store.accounts.isEmpty {
 			emptyOrLoadingState
 		} else {
+			let resetColumnWidth = ResetCardQuotaWindowView.resetColumnWidth(
+				for: store.accounts.flatMap { [$0.fiveHourQuota, $0.sevenDayQuota] }
+			)
 			ScrollView(.vertical, showsIndicators: false) {
 				AccountRows(
 					rows: presentedAccountStates.map { state in
@@ -292,6 +295,7 @@ struct AccountPanelView: View {
 								ResetCardAccountRow(
 									state: state, store: store,
 									showsEmail: accountPrivacy == AccountPrivacy.visible,
+									quotaResetColumnWidth: resetColumnWidth,
 									detailedAccountIDs: $detailedAccountIDs,
 									detailsExpanded: detailedAccountIDs.contains(state.id),
 									isAccountCardHovered: hoveredAccountID == state.id,
@@ -316,7 +320,8 @@ struct AccountPanelView: View {
 								showsEmail: accountPrivacy == AccountPrivacy.visible,
 								hovered: hoveredAccountID == state.id,
 								canDrag: canDragAccount(state.id), dragging: isDraggedAccount(state.id),
-								colorScheme: colorScheme, material: panelCardMaterial
+								colorScheme: colorScheme, material: panelCardMaterial,
+								quotaResetColumnWidth: resetColumnWidth
 							)
 						)
 					},
