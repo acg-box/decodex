@@ -177,9 +177,9 @@ private struct AccountProfileMetric: Identifiable {
 	private static func streak(current: UInt32?, longest: UInt32?) -> String? {
 		switch (current, longest) {
 		case (.some(let current), .some(let longest)):
-			return "now \(current)d · best \(longest)d"
+			return "\(current)d · best \(longest)d"
 		case (.some(let current), nil):
-			return "now \(current)d"
+			return "\(current)d"
 		case (nil, .some(let longest)):
 			return "best \(longest)d"
 		case (nil, nil):
@@ -194,29 +194,38 @@ private struct AccountProfileMetricsView: View {
 
 	var body: some View {
 		if metrics.isEmpty == false {
-			LazyVGrid(
-				columns: [
-					GridItem(.flexible(), alignment: .leading),
-					GridItem(.flexible(), alignment: .leading),
-				],
-				alignment: .leading,
-				spacing: PanelSpacing.compact
-			) {
-				ForEach(metrics) { metric in
-					VStack(alignment: .leading, spacing: PanelSpacing.micro) {
-						Text(metric.label)
-							.font(PanelFont.usageLabel)
-							.foregroundStyle(PanelPalette.secondaryText(colorScheme))
-
-						Text(metric.value)
-							.font(PanelFont.usageValue)
-							.foregroundStyle(PanelPalette.primaryText(colorScheme).opacity(0.9))
-							.monospacedDigit()
+			ViewThatFits(in: .horizontal) {
+				metricRow(metrics)
+				VStack(alignment: .leading, spacing: PanelSpacing.compact) {
+					metricRow(Array(metrics.prefix(2)))
+					if metrics.count > 2 {
+						metricRow(Array(metrics.dropFirst(2)))
 					}
 				}
 			}
-			.lineLimit(1)
+			.frame(maxWidth: .infinity, alignment: .leading)
 		}
+	}
+
+	private func metricRow(_ row: [AccountProfileMetric]) -> some View {
+		HStack(alignment: .firstTextBaseline, spacing: PanelSpacing.section) {
+			ForEach(row) { metric in
+				HStack(alignment: .firstTextBaseline, spacing: PanelSpacing.micro) {
+					Text(metric.label)
+						.font(PanelFont.usageLabel)
+						.foregroundStyle(PanelPalette.secondaryText(colorScheme))
+					Text(metric.value)
+						.font(PanelFont.usageValue)
+						.foregroundStyle(PanelPalette.primaryText(colorScheme).opacity(0.9))
+						.monospacedDigit()
+				}
+				.fixedSize()
+				if metric.id != row.last?.id {
+					Spacer(minLength: 0)
+				}
+			}
+		}
+		.lineLimit(1)
 	}
 }
 
