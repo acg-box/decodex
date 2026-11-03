@@ -71,7 +71,7 @@ use crate::{
 	history_pager::{HistoryLoadState, HistoryPageSource, HistoryPager, HistorySnapshot},
 	settings_surface::{SettingsCategory, SettingsSurface},
 	ui_feedback::{self, Feedback, Tone},
-	ui_layout, ui_loading,
+	ui_layout,
 	ui_motion::{self, SmoothControl},
 	ui_theme::{
 		self, ACCENT, BLUE, CANVAS, CHROME_CONTROL_SIZE, COMPOSER_MATERIAL, CONTENT_MATERIAL,
@@ -3639,11 +3639,7 @@ fn accounts_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 						.when(count == 0 && snapshot.load == AccountsLoadState::Ready, |list| {
 							list.child(empty_accounts())
 						})
-						.child(ui_loading::content(
-							"account-rows",
-							count > 0,
-							gpui::div().flex().flex_col().gap_2().children(rows),
-						)),
+						.children(rows),
 				)
 				.child(
 					gpui::div().flex_none().child(

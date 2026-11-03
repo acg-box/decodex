@@ -268,6 +268,7 @@ impl SettingsSurface {
 			.min_w_0()
 			.flex()
 			.flex_col()
+			.min_h(gpui::px(36.5))
 			.gap(gpui::px(2.))
 			.rounded(gpui::px(4.))
 			.cursor_pointer()
@@ -330,7 +331,9 @@ impl SettingsSurface {
 
 	fn research_settings(&self, cx: &mut Context<Self>) -> Div {
 		let state = &self.components.research_shown;
-		let actions: Vec<_> = if state.installed.is_none() {
+		let actions: Vec<_> = if !state.inspected {
+			Vec::new()
+		} else if state.installed.is_none() {
 			vec![("components-install-research", "Install", component_research::Action::Install)]
 		} else {
 			vec![
@@ -552,6 +555,12 @@ mod tests {
 		visual.update(crate::ui_frame::draw_current_frame);
 
 		assert!(visual.debug_bounds("components-refresh-egm").is_some());
+		let cold_egm = visual.debug_bounds("components-egm").unwrap();
+		let cold_research = visual.debug_bounds("components-pro-research").unwrap();
+		assert!(
+			visual.debug_bounds("components-install-research").is_none(),
+			"an unchecked component is not an absent installation"
+		);
 		assert!(
 			visual.debug_bounds("components-install-egm").is_none(),
 			"inspect before writing native configuration"
@@ -559,6 +568,7 @@ mod tests {
 
 		settings.update(visual, |settings, cx| {
 			settings.components.plugin.inspected = true;
+			settings.components.research_shown.inspected = true;
 
 			cx.notify();
 		});
@@ -566,6 +576,7 @@ mod tests {
 		visual.update(crate::ui_frame::draw_current_frame);
 
 		assert!(visual.debug_bounds("components-install-egm").is_some());
+		assert!(visual.debug_bounds("components-install-research").is_some());
 		assert!(visual.debug_bounds("components-remove-egm").is_none());
 
 		settings.update(visual, |settings, cx| {
@@ -578,6 +589,16 @@ mod tests {
 		visual.update(crate::ui_frame::draw_current_frame);
 
 		assert!(visual.debug_bounds("components-remove-egm").is_some());
+		assert_eq!(
+			visual.debug_bounds("components-egm").unwrap(),
+			cold_egm,
+			"version readback must not shift the row"
+		);
+		assert_eq!(
+			visual.debug_bounds("components-pro-research").unwrap(),
+			cold_research,
+			"other rows must not move while component metadata loads"
+		);
 
 		let install = visual.debug_bounds("components-install-egm").unwrap();
 		let remove = visual.debug_bounds("components-remove-egm").unwrap();
