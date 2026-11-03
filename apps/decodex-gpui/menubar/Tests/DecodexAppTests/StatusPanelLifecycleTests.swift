@@ -28,6 +28,42 @@ final class StatusPanelLifecycleTests: XCTestCase {
 		XCTAssertGreaterThan(available.size.height, empty.size.height, "Healthy accounts must retain their usage rows")
 	}
 
+	func testQuotaTrackKeepsItsWidthWhenPercentageDigitCountChanges() throws {
+		func filledWidth(used: UInt8) throws -> Int {
+			let quota = ResetCardQuotaWindow(
+				durationMinutes: 300,
+				observedAtUnixMicros: 1,
+				state: .current(usedPercent: used, resetsAtUnixMicros: 1_793_700_000_000_000)
+			)
+			let renderer = ImageRenderer(content:
+				ResetCardQuotaWindowView(title: "5h", window: quota)
+					.frame(width: 256)
+					.environment(\.colorScheme, .dark)
+					.tint(.blue)
+			)
+			let bitmap = NSBitmapImageRep(cgImage: try XCTUnwrap(renderer.cgImage))
+			var longest = 0
+			var run = 0
+			for x in 0..<bitmap.pixelsWide {
+				let color = try XCTUnwrap(bitmap.colorAt(x: x, y: bitmap.pixelsHigh / 2)?.usingColorSpace(.deviceRGB))
+				if color.alphaComponent > 0.5,
+					color.blueComponent > color.redComponent + 0.2,
+					color.blueComponent > color.greenComponent + 0.05 {
+					run += 1
+					longest = max(longest, run)
+				} else {
+					run = 0
+				}
+			}
+			return longest
+		}
+		let full = try filledWidth(used: 0)
+		let ninety = try filledWidth(used: 10)
+		XCTAssertGreaterThan(full, 80)
+		XCTAssertEqual(Double(ninety), Double(full) * 0.9, accuracy: 1.5,
+			"90% must fill the same track as 100%; fewer digits must not make the track longer.")
+	}
+
 	func testAccountDisclosuresRemainIndependent() throws {
 		let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
 		defer { try? FileManager.default.removeItem(at: root) }

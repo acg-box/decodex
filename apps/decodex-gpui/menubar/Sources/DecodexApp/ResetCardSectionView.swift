@@ -860,11 +860,16 @@ struct ResetCardQuotaWindowView: View {
 			}
 
 			HStack(alignment: .firstTextBaseline, spacing: PanelSpacing.micro) {
-				Text(animated.map { "\(Int($0.rounded()))%" } ?? presentation.valueText)
+				Text("100%")
+					.hidden()
+					.accessibilityHidden(true)
+					.overlay(alignment: .trailing) {
+						Text(animated.map { "\(Int($0.rounded()))%" } ?? presentation.valueText)
+							.contentTransition(
+								.numericText(value: Double(remainingPercent))
+							)
+					}
 					.font(PanelFont.usageValue)
-					.contentTransition(
-						.numericText(value: Double(remainingPercent))
-					)
 
 				if let detailText = presentation.detailText,
 					presentation.resetDate != nil
