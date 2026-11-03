@@ -13,6 +13,7 @@ use crate::{
 	component_plugins::{self, PluginOperations},
 	component_research::{self, ResearchOperations},
 	component_runtime::{self, RuntimePreparation},
+	component_status::ComponentStatus,
 	settings_surface::SettingsSurface,
 	shell::workspace_symbols,
 	ui_feedback::{self, Feedback},
@@ -77,6 +78,7 @@ impl Components {
 		if matches!(
 			self.preparation.snapshot(),
 			component_runtime::PreparationState::Unchecked
+				| component_runtime::PreparationState::Installed
 				| component_runtime::PreparationState::Ready
 		) {
 			self.optional.inspect();
@@ -162,11 +164,6 @@ impl SettingsSurface {
 	fn component_settings(&self, cx: &mut Context<Self>) -> Div {
 		let lock = RuntimeLock::embedded().ok();
 		let version = lock.as_ref().map(|lock| lock.version.as_str());
-		let channel = match lock.as_ref() {
-			Some(lock) if lock.source.is_some() => "Development",
-			Some(_) => "Release",
-			None => "Version unavailable",
-		};
 		let action = match self.components.shown {
 			component_runtime::PreparationState::Preparing(_) => None,
 			component_runtime::PreparationState::Failed(_) =>
@@ -180,7 +177,7 @@ impl SettingsSurface {
 					"components-codex-details",
 					"Codex",
 					version,
-					channel,
+					self.components.shown.status(),
 					cx,
 				))
 				.when_some(action, |row, (id, label)| {
@@ -189,7 +186,8 @@ impl SettingsSurface {
 		);
 
 		match &self.components.shown {
-			component_runtime::PreparationState::Unchecked => {},
+			component_runtime::PreparationState::Unchecked
+			| component_runtime::PreparationState::Installed => {},
 			component_runtime::PreparationState::Ready => {
 				component = component.children(ui_feedback::inline_feedback(
 					"components-component-ready",
@@ -233,13 +231,18 @@ impl SettingsSurface {
 			},
 		}
 
-		component.child(self.component_body(
-			0,
-			"components-codex-body",
-			ui_theme::settings_description(
+		let mut details =
+			gpui::div().flex().flex_col().gap_2().child(ui_theme::settings_description(
 				"Required for conversations. Follows the runtime included with this Decodex build.",
-			),
-		))
+			));
+		if let Some(lock) = lock.as_ref() {
+			details = details.child(ui_theme::settings_description(format!(
+				"{} build · Upstream {}",
+				if lock.source.is_some() { "Development" } else { "Release" },
+				&lock.upstream_commit[..12],
+			)));
+		}
+		component.child(self.component_body(0, "components-codex-body", details))
 	}
 
 	fn component_label(
@@ -248,14 +251,14 @@ impl SettingsSurface {
 		id: &'static str,
 		title: &'static str,
 		version: Option<&str>,
-		status: impl Into<SharedString>,
+		status: ComponentStatus,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
 		let expanded = self.components.details[index];
-		let status = status.into();
+		let status = status.label();
 		let metadata = match version {
 			Some(version) => SharedString::from(format!("Version {version} · {status}")),
-			None => status,
+			None => SharedString::from(status),
 		};
 		gpui::div()
 			.id(id)
@@ -355,8 +358,20 @@ impl SettingsSurface {
 
 		let explanation = if state.installed.is_none() {
 			"Use your ChatGPT Pro subscription. Installs a local helper and Chrome extension files; no API key."
+		} else if let Some(connection) = state
+			.connection
+			.as_ref()
+			.filter(|connection| connection.state != decodex_pro_bridge::ConnectionState::Connected)
+		{
+			match connection.state {
+				decodex_pro_bridge::ConnectionState::SignInRequired =>
+					"Sign in to ChatGPT in the research tab, then connect again.",
+				decodex_pro_bridge::ConnectionState::VerificationRequired =>
+					"Complete ChatGPT security verification in the research tab, then connect again.",
+				_ => "Open the research tab to complete setup, then connect again.",
+			}
 		} else if state.connection.is_none() {
-			"In Chrome, enable Developer mode and choose Load unpacked, then select the extension folder. "
+			"Connect to Chrome. If the extension is not loaded, enable Developer mode, choose Load unpacked, and select the extension folder."
 		} else if !state.tools.as_ref().is_some_and(|p| p.enabled) {
 			"Chrome is connected. Enable native research tools for Agents. Installation sends no messages."
 		} else {
@@ -426,7 +441,7 @@ impl SettingsSurface {
 						"components-research-details",
 						"Decodex Pro Research",
 						state.installed.as_ref().map(|package| package.version.as_str()),
-						state.status_text(),
+						state.status(),
 						cx,
 					))
 					.child(controls),
@@ -452,7 +467,7 @@ impl SettingsSurface {
 
 	fn egm_settings(&self, cx: &mut Context<Self>) -> Div {
 		let state = &self.components.plugin;
-		let status = state.status_text();
+		let status = state.status();
 		let mut controls = gpui::div().flex().items_center().gap_2().child(self.component_button(
 			"components-refresh-egm",
 			"Refresh",

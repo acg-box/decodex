@@ -430,6 +430,7 @@ impl BundledDaemonSupervisor {
 				preparation.prepare();
 				None
 			} else {
+				preparation.observe_installed();
 				Some(BundledDaemonGuard::launch_macos(&daemon, None)?)
 			};
 

@@ -11,6 +11,8 @@ use std::{
 
 use tokio::runtime::Runtime;
 
+use crate::component_status::ComponentStatus;
+
 use decodex_components::{
 	ComponentStore, NativePlugins, PluginAction, PluginComponent, PluginInstallation,
 };
@@ -42,18 +44,25 @@ pub(crate) struct Snapshot {
 	pub error: Option<String>,
 }
 impl Snapshot {
-	pub fn status_text(&self) -> &'static str {
+	pub fn status(&self) -> ComponentStatus {
+		if self.busy.is_some_and(|action| action != Action::Inspect) {
+			return ComponentStatus::Working;
+		}
+		if self.error.is_some() {
+			return ComponentStatus::Error;
+		}
 		if self.installed.is_none() {
-			return "Not installed";
+			return if self.inspected {
+				ComponentStatus::NotInstalled
+			} else {
+				ComponentStatus::Checking
+			};
 		}
 
 		match self.connection.as_ref().map(|state| &state.state) {
-			Some(ConnectionState::Connected) => "Connected · Pro verification pending",
-			Some(ConnectionState::SignInRequired) => "Sign in to ChatGPT in the research tab",
-			Some(ConnectionState::VerificationRequired) =>
-				"Waiting for ChatGPT security verification",
-			Some(ConnectionState::AttentionRequired) => "Open the research tab to continue setup",
-			None => "Load the extension in Chrome",
+			Some(ConnectionState::Connected) => ComponentStatus::Connected,
+			Some(_) => ComponentStatus::NeedsSetup,
+			None => ComponentStatus::Disconnected,
 		}
 	}
 }
@@ -332,7 +341,7 @@ mod tests {
 			..Default::default()
 		};
 
-		assert_eq!(state.status_text(), "Connected · Pro verification pending");
+		assert_eq!(state.status(), crate::component_status::ComponentStatus::Connected);
 
 		let blocked = Snapshot {
 			installed: state.installed.clone(),
@@ -343,6 +352,8 @@ mod tests {
 			..Default::default()
 		};
 
-		assert_eq!(blocked.status_text(), "Waiting for ChatGPT security verification");
+		assert_eq!(blocked.status(), crate::component_status::ComponentStatus::NeedsSetup);
+		let disconnected = Snapshot { connection: None, ..state };
+		assert_eq!(disconnected.status(), crate::component_status::ComponentStatus::Disconnected);
 	}
 }

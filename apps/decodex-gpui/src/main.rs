@@ -16,6 +16,7 @@ mod client_lifecycle;
 mod component_plugins;
 mod component_research;
 mod component_runtime;
+mod component_status;
 mod composer_input;
 mod conversations;
 mod creation_defaults;
