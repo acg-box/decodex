@@ -1214,57 +1214,54 @@ impl AgentSurface {
 				}))
 				.child(gpui::div().flex_1().min_w_0().child(label))
 				.into_any_element(),
-			"model" => gpui::div()
-				.flex()
-				.items_center()
-				.gap(gpui::px(2.))
-				.whitespace_nowrap()
-				.text_color(crate::ui_theme::rgb(TEXT))
-				.when_some(
-					self.composer_speed(cx).filter(|speed| !speed.is_fallback()).and_then(
-						|speed| {
-							let tier = speed.effective;
-							crate::session_settings::speed_symbol(tier.as_str())
-								.map(|symbol| (tier, symbol))
-						},
-					),
-					|d, (tier, symbol)| {
-						d.child(
-							gpui::div()
-								.debug_selector(move || format!("model-speed-{}", tier.as_str()))
-								.text_color(crate::ui_theme::rgb(BLUE))
-								.child(workspace_symbols::icon(symbol)),
-						)
-					},
-				)
-				.child(gpui::div().max_w(gpui::px(180.)).text_ellipsis().child(label))
-				.when_some(self.composer_effort_value(cx), |row, effort| {
-					row.child(
-						gpui::div().ml(gpui::px(4.)).child(controls::effort_indicator(&effort)),
-					)
-				})
-				.when_some(
-					self.composer_speed(cx).filter(|speed| speed.is_fallback()),
-					|row, speed| {
-						row.child(
-							gpui::div()
-								.debug_selector(|| "model-speed-fallback".into())
-								.ml(gpui::px(4.))
-								.flex()
-								.items_center()
-								.gap(gpui::px(3.))
-								.text_color(ui_theme::rgb(WARNING))
-								.child(Tone::Warning.icon())
-								.child(
-									crate::session_settings::speed_label(speed.effective.as_str())
-										.to_owned(),
-								),
-						)
-					},
-				)
-				.into_any_element(),
+			"model" => self.composer_model_content(label, cx),
 			_ => gpui::div().child(label).into_any_element(),
 		}
+	}
+
+	fn composer_model_content(&self, label: String, cx: &Context<Self>) -> AnyElement {
+		gpui::div()
+			.flex()
+			.items_center()
+			.gap(gpui::px(2.))
+			.whitespace_nowrap()
+			.text_color(crate::ui_theme::rgb(TEXT))
+			.when_some(
+				self.composer_speed(cx).filter(|speed| !speed.is_fallback()).and_then(|speed| {
+					let tier = speed.effective;
+					crate::session_settings::speed_symbol(tier.as_str())
+						.map(|symbol| (tier, symbol))
+				}),
+				|d, (tier, symbol)| {
+					d.child(
+						gpui::div()
+							.debug_selector(move || format!("model-speed-{}", tier.as_str()))
+							.text_color(crate::ui_theme::rgb(BLUE))
+							.child(workspace_symbols::icon(symbol)),
+					)
+				},
+			)
+			.child(gpui::div().max_w(gpui::px(180.)).text_ellipsis().child(label))
+			.when_some(self.composer_effort_value(cx), |row, effort| {
+				row.child(gpui::div().ml(gpui::px(4.)).child(controls::effort_indicator(&effort)))
+			})
+			.when_some(self.composer_speed(cx).filter(|speed| speed.is_fallback()), |row, speed| {
+				row.child(
+					gpui::div()
+						.debug_selector(|| "model-speed-fallback".into())
+						.ml(gpui::px(4.))
+						.flex()
+						.items_center()
+						.gap(gpui::px(3.))
+						.text_color(ui_theme::rgb(WARNING))
+						.child(Tone::Warning.icon())
+						.child(
+							crate::session_settings::speed_label(speed.effective.as_str())
+								.to_owned(),
+						),
+				)
+			})
+			.into_any_element()
 	}
 
 	fn toggle_composer_menu(&mut self, name: &'static str, cx: &mut Context<Self>) {

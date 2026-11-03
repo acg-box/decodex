@@ -619,7 +619,7 @@ impl AgentSurface {
 				match result {
 					Ok((draft, turns)) =>
 						s.finish_prompt_review(previous.as_ref(), draft, turns, cx),
-					Err(message) => s.prompt_edit.feedback = message.into(),
+					Err(message) => s.prompt_edit.feedback = message,
 				}
 
 				cx.notify();

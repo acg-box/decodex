@@ -2347,26 +2347,7 @@ impl AgentSurface {
 				self.workspace.graph_scope = Some("agent".into());
 				self.workspace.sidebar_width = 280.0;
 			},
-			"markdown" => {
-				self.workspace.graph_visible = false;
-
-				if let Some((_, AgentHistoryResult::Available { entries, usage, .. })) =
-					&mut self.history
-				{
-					*usage = Some(decodex_protocol::AgentUsageDto {
-						input_tokens: 24_860,
-						output_tokens: 1_820,
-						context_tokens: 26_700,
-						context_window: Some(128_000),
-					});
-
-					entries.clear();
-
-					for (i,(kind,text)) in [("user","请整理检查结果，并说明下一步安排。"),("assistant","## 检查完成\n\n两位下属已提交报告，**现有会话保持可用**。\n\n- 登录流程：保留原会话\n- 启动流程：继续验证性能\n\n| 工作 | 结果 | 下一步 |\n|---|---|---|\n| 登录检查 | 已验收 | 合并检查结果 |\n| 启动检查 | 待验证 | 补充冷启动数据 |\n\n### 验证命令\n```rust\nlet status = review.result();\nassert!(status.is_verified());\n```\n\n查看 [源码](/Users/x/code/acg-box/decodex/apps/decodex-gpui/src/agent_surface.rs:1)，再确认 `review` 的结果。")].into_iter().enumerate() {
-                        entries.push(decodex_protocol::AgentHistoryEntryDto{native_source:None,receipt: None, turn_id: None, weather:Vec::new(), activity: None,usage: (kind == "assistant").then_some(decodex_protocol::AgentTurnUsageDto {details:None,input_tokens:24_860,output_tokens:1_820}),duration_ms: (kind == "assistant").then_some(18_400),id:i as i64+1,kind:kind.into(),text:text.into(),created_at_micros:1_789_480_440_000_000});
-                    }
-				}
-			},
+			"markdown" => self.visual_markdown_page(),
 			"mermaid" => self.visual_mermaid_page(cx),
 			#[cfg(feature = "visual-capture")]
 			"mermaid-scroll" => self.visual_mermaid_scroll_page(cx),
@@ -2378,6 +2359,25 @@ impl AgentSurface {
 		}
 
 		cx.notify();
+	}
+
+	fn visual_markdown_page(&mut self) {
+		self.workspace.graph_visible = false;
+
+		if let Some((_, AgentHistoryResult::Available { entries, usage, .. })) = &mut self.history {
+			*usage = Some(decodex_protocol::AgentUsageDto {
+				input_tokens: 24_860,
+				output_tokens: 1_820,
+				context_tokens: 26_700,
+				context_window: Some(128_000),
+			});
+
+			entries.clear();
+
+			for (i,(kind,text)) in [("user","请整理检查结果，并说明下一步安排。"),("assistant","## 检查完成\n\n两位下属已提交报告，**现有会话保持可用**。\n\n- 登录流程：保留原会话\n- 启动流程：继续验证性能\n\n| 工作 | 结果 | 下一步 |\n|---|---|---|\n| 登录检查 | 已验收 | 合并检查结果 |\n| 启动检查 | 待验证 | 补充冷启动数据 |\n\n### 验证命令\n```rust\nlet status = review.result();\nassert!(status.is_verified());\n```\n\n查看 [源码](/Users/x/code/acg-box/decodex/apps/decodex-gpui/src/agent_surface.rs:1)，再确认 `review` 的结果。")].into_iter().enumerate() {
+                        entries.push(decodex_protocol::AgentHistoryEntryDto{native_source:None,receipt: None, turn_id: None, weather:Vec::new(), activity: None,usage: (kind == "assistant").then_some(decodex_protocol::AgentTurnUsageDto {details:None,input_tokens:24_860,output_tokens:1_820}),duration_ms: (kind == "assistant").then_some(18_400),id:i as i64+1,kind:kind.into(),text:text.into(),created_at_micros:1_789_480_440_000_000});
+                    }
+		}
 	}
 
 	fn in_use_fixture_event() -> decodex_protocol::AgentPendingEventDto {
@@ -2469,7 +2469,9 @@ impl AgentSurface {
 			}
 			self.model.update(cx, |input, cx| input.set_content("gpt-6-astra", cx));
 			self.mark_model_intent(cx);
-			self.service_tier = Some(decodex_protocol::ServiceTier::new("ultrafast").unwrap());
+			self.service_tier = Some(
+				decodex_protocol::ServiceTier::new("ultrafast").expect("built-in Ultrafast tier"),
+			);
 			self.mark_tier_intent();
 		}
 
