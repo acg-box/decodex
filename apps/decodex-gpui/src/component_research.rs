@@ -15,7 +15,7 @@ use decodex_components::{
 	ComponentStore, NativePlugins, PluginAction, PluginComponent, PluginInstallation,
 };
 use decodex_pro_bridge::{
-	Config, Connection, ConnectionState, ProBridge,
+	Config, Connection, ProBridge,
 	install::{self, Installation},
 };
 
@@ -40,22 +40,6 @@ pub(crate) struct Snapshot {
 	pub tools: Option<PluginInstallation>,
 	pub busy: Option<Action>,
 	pub error: Option<String>,
-}
-impl Snapshot {
-	pub fn status_text(&self) -> &'static str {
-		if self.installed.is_none() {
-			return "Not installed";
-		}
-
-		match self.connection.as_ref().map(|state| &state.state) {
-			Some(ConnectionState::Connected) => "Connected · Pro verification pending",
-			Some(ConnectionState::SignInRequired) => "Sign in to ChatGPT in the research tab",
-			Some(ConnectionState::VerificationRequired) =>
-				"Waiting for ChatGPT security verification",
-			Some(ConnectionState::AttentionRequired) => "Open the research tab to continue setup",
-			None => "Load the extension in Chrome",
-		}
-	}
 }
 
 #[derive(Clone, Default)]
@@ -299,9 +283,7 @@ fn open(target: &str, chrome: bool) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-	use crate::component_research::{
-		Action, Connection, ConnectionState, Installation, ResearchOperations, Snapshot,
-	};
+	use crate::component_research::{Action, ResearchOperations};
 
 	#[test]
 	fn visiting_components_does_not_create_component_data() {
@@ -312,36 +294,5 @@ mod tests {
 		assert!(setup.apply(Action::Inspect).unwrap().installed.is_none());
 		assert!(setup.apply(Action::Disconnect).unwrap().installed.is_none());
 		assert!(!directory.exists());
-	}
-
-	#[test]
-	fn a_ready_page_does_not_claim_a_verified_pro_model() {
-		let state = Snapshot {
-			installed: Some(Installation {
-				extension_id: "fixture",
-				extension_directory: "/fixture".into(),
-				plugin_directory: "/fixture".into(),
-				marketplace_directory: "/fixture".into(),
-				registration: "/fixture".into(),
-			}),
-			connection: Some(Connection {
-				state: ConnectionState::Connected,
-				selected_model: Some("Pro".into()),
-			}),
-			..Default::default()
-		};
-
-		assert_eq!(state.status_text(), "Connected · Pro verification pending");
-
-		let blocked = Snapshot {
-			installed: state.installed.clone(),
-			connection: Some(Connection {
-				state: ConnectionState::VerificationRequired,
-				selected_model: None,
-			}),
-			..Default::default()
-		};
-
-		assert_eq!(blocked.status_text(), "Waiting for ChatGPT security verification");
 	}
 }

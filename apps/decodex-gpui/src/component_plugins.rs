@@ -15,20 +15,6 @@ pub(crate) struct Snapshot {
 	pub(crate) error: Option<String>,
 }
 
-impl Snapshot {
-	pub(crate) fn status_text(&self) -> String {
-		match &self.installed {
-			Some(plugin) => format!(
-				"Version {} · {} in Codex",
-				plugin.version,
-				if plugin.enabled { "Enabled" } else { "Disabled" }
-			),
-			None if self.inspected => "Not listed in Codex".into(),
-			_ => "Status not checked".into(),
-		}
-	}
-}
-
 pub(crate) struct PluginOperations {
 	state: Arc<Mutex<Snapshot>>,
 	component: PluginComponent,
@@ -248,7 +234,6 @@ esac
 				state.installed.as_ref().unwrap().enabled,
 				"native flag is not integrity evidence"
 			);
-			assert_eq!(state.status_text(), "Version 1.0.0 · Enabled in Codex");
 		}
 		let output = Command::new(executable)
 			.args(["plugin", "marketplace", "remove", "fixture", "--json"])
@@ -265,7 +250,6 @@ esac
 		let state = wait(&operations);
 
 		assert!(state.inspected && state.installed.is_none() && state.error.is_none());
-		assert_eq!(state.status_text(), "Not listed in Codex");
 		assert!(cache.exists());
 		for _ in 0..2 {
 			operations.start(PluginAction::Remove);

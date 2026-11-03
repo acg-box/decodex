@@ -19,7 +19,7 @@ pub enum PermissionMode {
 impl PermissionMode {
 	/// Menu order, independent of the native profile catalog.
 	pub const ALL: [Self; 4] =
-		[Self::AskForApproval, Self::ApproveForMe, Self::FullAccess, Self::ReadOnly];
+		[Self::ReadOnly, Self::AskForApproval, Self::ApproveForMe, Self::FullAccess];
 
 	/// Stable user-facing name.
 	pub const fn label(self) -> &'static str {

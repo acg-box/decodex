@@ -233,7 +233,7 @@ impl RenderOnce for DisclosureChevron {
 
 /// A single centered chevron rotates instead of exchanging font glyphs.
 #[derive(gpui::IntoElement)]
-pub(super) struct ProcessChevron {
+pub(crate) struct ProcessChevron {
 	id: ElementId,
 	expanded: bool,
 }
@@ -289,7 +289,7 @@ pub(super) fn disclosure_chevron(id: impl Into<ElementId>, expanded: bool) -> Di
 	DisclosureChevron { id: id.into(), expanded }
 }
 
-pub(super) fn process_chevron(id: impl Into<ElementId>, expanded: bool) -> ProcessChevron {
+pub(crate) fn process_chevron(id: impl Into<ElementId>, expanded: bool) -> ProcessChevron {
 	ProcessChevron { id: id.into(), expanded }
 }
 

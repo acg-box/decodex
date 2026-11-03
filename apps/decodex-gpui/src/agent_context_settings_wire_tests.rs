@@ -52,7 +52,7 @@ fn global_settings_mcp_switch_sends_only_its_reviewed_server(cx: &mut TestAppCon
 }
 
 fn run_setting(cx: &mut TestAppContext, feature: AgentContextFeature, selector: &'static str) {
-	let (_directory, profile, server) = fixture(feature);
+	let (_directory, profile, server) = fixture(feature.clone());
 	let (view, visual) = cx.add_window_view(|_, cx| {
 		let surface = cx.new(AgentSurface::new);
 
@@ -81,26 +81,118 @@ fn run_setting(cx: &mut TestAppContext, feature: AgentContextFeature, selector: 
 	});
 
 	assert!(visual.debug_bounds("automatic-prompt-suggestions").is_some());
-	let button = visual.debug_bounds("context-settings-refresh").unwrap();
-
-	visual.simulate_click(button.center(), Default::default());
+	assert!(visual.debug_bounds("context-settings-refresh").is_none());
+	let settings = view.read_with(visual, |v, _| v.1.clone());
+	settings.update(visual, |s, cx| s.refresh(cx));
+	surface.update(visual, |s, _| s.generation += 1);
 	visual.run_until_parked();
 	visual.update(crate::ui_frame::draw_current_frame);
+
+	for _ in 0..3 {
+		visual.update(crate::ui_frame::draw_current_frame);
+	}
+
+	assert!(visual.debug_bounds("context-override-async").is_none());
+	if context_settings::is_catalog(&feature) {
+		assert!(visual.debug_bounds(selector).is_none(), "server controls start collapsed");
+		let toggle = visual.debug_bounds("context-mcp-catalogs").unwrap();
+		visual.simulate_click(toggle.center(), Default::default());
+		settle_disclosure(visual);
+	}
 
 	let button = visual.debug_bounds(selector).unwrap();
 
 	visual.simulate_click(button.center(), Default::default());
-	visual.simulate_keystrokes("space");
 	visual.run_until_parked();
 
 	assert_eq!(server.join().unwrap().len(), 1);
+	visual.update(crate::ui_frame::draw_current_frame);
+	let override_selector = if context_settings::is_catalog(&feature) {
+		"context-override-mcp-docs.v2"
+	} else {
+		"context-override-async"
+	};
+	assert!(visual.debug_bounds(override_selector).is_some());
 
-	surface.read_with(visual,|s,_| {
-        assert!(s.context_settings.task.is_none());
-        assert!(s.context_settings.feedback.contains("unconfirmed"));
-        assert!(matches!(&s.context_settings.state,Some(AgentContextSettingsResult::Available {preferences,..}) if preferences[0].effective && preferences[0].preference == Some(false)));
+	surface.read_with(visual, |s, _| {
+		assert!(s.context_settings.task.is_none());
+		assert!(s.context_settings.feedback.contains("Could not confirm"));
+		assert!(
+			matches!(&s.context_settings.state, Some(AgentContextSettingsResult::Available {preferences, ..})
+			if preferences[0].effective && preferences[0].preference == Some(false))
+		);
+	});
+}
 
-    });
+fn settle_disclosure(visual: &mut gpui::VisualTestContext) {
+	visual.update(crate::ui_frame::draw_current_frame);
+	visual.update(crate::ui_frame::draw_current_frame);
+	std::thread::sleep(std::time::Duration::from_millis(250));
+	visual.update(crate::ui_frame::draw_current_frame);
+}
+
+#[gpui::test]
+fn native_defaults_disclosure_tracks_servers_without_dispatching(cx: &mut TestAppContext) {
+	let (view, visual) = cx.add_window_view(|_, cx| {
+		let surface = cx.new(AgentSurface::new);
+		surface.update(cx, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.visual_context_settings(false, cx);
+		});
+		let settings = cx.new(|cx| {
+			let mut settings = crate::settings_surface::SettingsSurface::new(
+				crate::desktop_settings::DesktopSettingsController::production(),
+				cx,
+			);
+			settings.category = crate::settings_surface::SettingsCategory::Agents;
+			settings.bind_native_agent(surface.clone(), cx);
+			settings.bind_agent(&surface, cx);
+			settings
+		});
+		ContextPanel(surface, settings)
+	});
+	let surface = view.read_with(visual, |v, _| v.0.clone());
+	visual.simulate_resize(gpui::size(context_settings::px(760.), context_settings::px(1600.)));
+	visual.update(crate::ui_frame::draw_current_frame);
+	assert!(visual.debug_bounds("context-choice-mcp-xcode").is_none());
+	assert!(visual.debug_bounds("context-override-async").is_none());
+	assert!(visual.debug_bounds("context-settings-refresh").is_none());
+	assert!(visual.debug_bounds("context-settings-retry").is_none());
+	let toggle = visual.debug_bounds("context-mcp-catalogs").unwrap();
+	visual.simulate_click(toggle.center(), Default::default());
+	settle_disclosure(visual);
+	assert!(visual.debug_bounds("context-choice-mcp-xcode").is_some());
+	assert!(visual.debug_bounds("context-choice-mcp-brave").is_some());
+	assert!(visual.debug_bounds("context-override-mcp-xcode").is_none());
+	assert!(visual.debug_bounds("context-override-mcp-brave").is_some());
+
+	surface.update(visual, |s, cx| {
+		let Some(AgentContextSettingsResult::Available { preferences, .. }) =
+			&mut s.context_settings.state
+		else {
+			panic!("settings fixture")
+		};
+		preferences.push(AgentContextPreference {
+			feature: AgentContextFeature::McpCatalogStartup {
+				server: WireText::new("new-server").unwrap(),
+			},
+			effective: false,
+			preference: None,
+		});
+		cx.notify();
+	});
+	settle_disclosure(visual);
+	assert!(visual.debug_bounds("context-choice-mcp-new-server").is_some());
+	let toggle = visual.debug_bounds("context-mcp-catalogs").unwrap();
+	visual.simulate_click(toggle.center(), Default::default());
+	settle_disclosure(visual);
+	assert!(visual.debug_bounds("context-choice-mcp-xcode").is_none());
+	surface.read_with(visual, |s, _| {
+		assert!(!s.context_settings.catalog_expanded);
+		assert!(s.context_settings.task.is_none(), "disclosure never starts a configuration request");
+		assert!(s.context_settings.feedback.is_empty());
+		assert!(matches!(&s.context_settings.state,Some(AgentContextSettingsResult::Available {preferences, ..}) if preferences.len() == 8));
+	});
 }
 
 async fn serve(listener: UnixListener, expected: AgentContextFeature) -> Vec<AgentActionDto> {

@@ -302,6 +302,15 @@ pub(crate) fn settings_row() -> Div {
 		.text_color(rgb(TEXT))
 }
 
+/// Rows own their vertical padding; lists must not add another item gap.
+pub(crate) fn settings_rows() -> Div {
+	gpui::div().w_full().min_w_0().flex().flex_col()
+}
+
+pub(crate) fn settings_sections() -> Div {
+	settings_rows().gap(gpui::px(SETTINGS_GROUP_GAP))
+}
+
 pub(crate) fn settings_section_title(title: &'static str) -> Stateful<Div> {
 	gpui::div()
 		.id(gpui::SharedString::from(format!("settings-group-{title}")))
@@ -358,13 +367,10 @@ pub(crate) fn settings_label(
 }
 
 pub(crate) fn settings_group(title: &'static str, rows: Vec<AnyElement>) -> Div {
-	gpui::div()
-		.w_full()
-		.flex()
-		.flex_col()
+	settings_rows()
 		.gap_2()
 		.child(settings_section_title(title))
-		.child(gpui::div().w_full().min_w_0().flex().flex_col().children(rows))
+		.child(settings_rows().children(rows))
 }
 
 pub(crate) fn settings_button(

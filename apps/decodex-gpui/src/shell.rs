@@ -71,16 +71,15 @@ use crate::{
 	history_pager::{HistoryLoadState, HistoryPageSource, HistoryPager, HistorySnapshot},
 	settings_surface::{SettingsCategory, SettingsSurface},
 	ui_feedback::{self, Feedback, Tone},
-	ui_layout, ui_loading,
+	ui_layout,
 	ui_motion::{self, SmoothControl},
 	ui_theme::{
 		self, ACCENT, BLUE, CANVAS, CHROME_CONTROL_SIZE, COMPOSER_MATERIAL, CONTENT_MATERIAL,
 		CONTROL_GROUP_HEIGHT, CONTROL_MARGIN, CONTROL_SELECTED_FILL, CONTROL_SELECTED_HOVER,
 		FONT_FAMILY, HEADING_SIZE, INFO, MOTION_PANEL, PRESSED_FILL, SELECTED_BORDER,
-		SELECTED_FILL, SELECTED_HOVER_FILL, SETTINGS_GROUP_GAP, SETTINGS_HELP_SIZE, SETTINGS_INSET,
-		SETTINGS_LABEL_SIZE, SETTINGS_TOP, SETTINGS_WIDTH, SETTINGS_WINDOW_MIN_WIDTH,
-		SHELL_MATERIAL, SURFACE_RAISED_MATERIAL, TEXT_FAINT, WORKSPACE_RADIUS, appearance,
-		window_material,
+		SELECTED_FILL, SETTINGS_GROUP_GAP, SETTINGS_HELP_SIZE, SETTINGS_INSET, SETTINGS_LABEL_SIZE,
+		SETTINGS_TOP, SETTINGS_WIDTH, SETTINGS_WINDOW_MIN_WIDTH, SHELL_MATERIAL,
+		SURFACE_RAISED_MATERIAL, TEXT_FAINT, WORKSPACE_RADIUS, appearance, window_material,
 	},
 };
 use account_feedback::AccountFeedback;
@@ -205,6 +204,8 @@ const WB_TEXT_FAINT: u32 = TEXT_FAINT;
 const WB_ACCENT: u32 = ACCENT;
 const WB_BLUE: u32 = BLUE;
 const WB_WARNING: u32 = crate::ui_theme::WARNING;
+const SETTINGS_NAV_ROW_HEIGHT: f32 = 30.;
+const SETTINGS_NAV_ROW_GAP: f32 = 3.;
 const SETTINGS_SECTIONS: [(Destination, Option<SettingsCategory>, &str); 7] = [
 	(Destination::Settings, Some(SettingsCategory::General), "General"),
 	(Destination::Settings, Some(SettingsCategory::Agents), "Agents"),
@@ -781,6 +782,13 @@ impl Shell {
 		shell.settings_selected = destination;
 
 		if destination == Destination::Settings {
+			#[cfg(feature = "visual-capture")]
+			if let Ok(mode) = std::env::var("DECODEX_VISUAL_NATIVE_DEFAULTS") {
+				shell.agent.update(cx, |surface, cx| {
+					surface.visual_workspace_fixture(cx);
+					surface.visual_context_settings(mode == "expanded", cx);
+				});
+			}
 			shell.settings.update(cx, |settings, _| {
 				settings.category =
 					match std::env::var("DECODEX_VISUAL_SETTINGS_CATEGORY").as_deref() {
@@ -3597,13 +3605,9 @@ fn accounts_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 		.flex()
 		.justify_center()
 		.child(
-			gpui::div()
-				.w_full()
+			ui_theme::settings_sections()
 				.max_w(gpui::px(SETTINGS_WIDTH))
 				.min_h_0()
-				.flex()
-				.flex_col()
-				.gap_4()
 				.child(account_pool_header(shell, cx))
 				.children(
 					account_operation_feedback(shell)
@@ -3642,11 +3646,7 @@ fn accounts_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 						.when(count == 0 && snapshot.load == AccountsLoadState::Ready, |list| {
 							list.child(empty_accounts())
 						})
-						.child(ui_loading::content(
-							"account-rows",
-							count > 0,
-							gpui::div().flex().flex_col().gap_2().children(rows),
-						)),
+						.children(rows),
 				)
 				.child(
 					gpui::div().flex_none().child(
@@ -5744,7 +5744,7 @@ fn destination_content(
 	shell: &Shell,
 	presentation: ConnectionPresentation,
 	refresh_focus: FocusHandle,
-	window: &Window,
+	window: &mut Window,
 	cx: &mut Context<Shell>,
 ) -> AnyElement {
 	let selected = shell.selected;
@@ -5801,9 +5801,11 @@ fn settings_navigation(
 	shell: &Shell,
 	standalone: bool,
 	selected: Destination,
+	window: &mut Window,
 	cx: &mut Context<Shell>,
 ) -> AnyElement {
-	let mut navigation = settings_navigation_surface();
+	let mut rows = Vec::with_capacity(SETTINGS_SECTIONS.len());
+	let mut selected_index = 0;
 
 	for (section_index, (destination, category, label)) in SETTINGS_SECTIONS.into_iter().enumerate()
 	{
@@ -5819,7 +5821,11 @@ fn settings_navigation(
 		let active = selected == destination
 			&& category.is_none_or(|category| shell.settings.read(cx).category == category);
 
-		navigation = navigation.child(
+		if active {
+			selected_index = section_index;
+		}
+
+		rows.push(
 			gpui::div()
 				.id(SharedString::from(format!("settings-section-{label}")))
 				.debug_selector(move || format!("settings-section-{label}"))
@@ -5841,24 +5847,15 @@ fn settings_navigation(
 				}))
 				.on_action(cx.listener(Shell::focus_next))
 				.on_action(cx.listener(Shell::focus_previous))
-				.h(gpui::px(30.0))
-				.when(destination == Destination::Accounts, |row| row.mt_2())
+				.h(gpui::px(SETTINGS_NAV_ROW_HEIGHT))
+				.flex_none()
 				.px_2()
 				.rounded(gpui::px(6.0))
 				.flex()
 				.items_center()
 				.cursor_pointer()
-				.when(active, |row| {
-					row.bg(ui_theme::rgba(SELECTED_FILL))
-						.text_color(ui_theme::rgb(crate::ui_theme::TEXT))
-				})
-				.hover(move |row| {
-					row.bg(ui_theme::rgba(if active {
-						SELECTED_HOVER_FILL
-					} else {
-						ui_theme::HOVER_FILL
-					}))
-				})
+				.hover(|row| row.bg(ui_theme::rgba(ui_theme::HOVER_FILL)))
+				.active(|row| row.bg(ui_theme::rgba(PRESSED_FILL)))
 				.on_click(cx.listener(move |s, _, _, cx| {
 					if let Some(category) = category {
 						s.settings.update(cx, |settings, cx| {
@@ -5873,11 +5870,35 @@ fn settings_navigation(
 				.gap(gpui::px(8.0))
 				.child(workspace_symbols::icon_sized(symbol, 13.))
 				.child(label)
-				.smooth(),
+				.smooth()
+				.into_any_element(),
 		);
 	}
 
-	navigation
+	let position =
+		ui_motion::value("settings-navigation-selection", selected_index as f32, window, cx);
+
+	settings_navigation_surface()
+		.child(
+			gpui::div()
+				.relative()
+				.flex_none()
+				.flex()
+				.flex_col()
+				.gap(gpui::px(SETTINGS_NAV_ROW_GAP))
+				.child(
+					gpui::div()
+						.debug_selector(|| "settings-navigation-selection".into())
+						.absolute()
+						.left_0()
+						.top(gpui::px(position * (SETTINGS_NAV_ROW_HEIGHT + SETTINGS_NAV_ROW_GAP)))
+						.w_full()
+						.h(gpui::px(SETTINGS_NAV_ROW_HEIGHT))
+						.rounded(gpui::px(6.))
+						.bg(ui_theme::rgba(SELECTED_FILL)),
+				)
+				.children(rows),
+		)
 		.child(gpui::div().flex_1())
 		.child(
 			gpui::div()
@@ -5927,11 +5948,11 @@ fn settings_workspace_content(
 	shell: &Shell,
 	standalone: bool,
 	refresh_focus: FocusHandle,
-	window: &Window,
+	window: &mut Window,
 	cx: &mut Context<Shell>,
 ) -> AnyElement {
 	let selected = if standalone { shell.settings_selected } else { shell.selected };
-	let navigation = settings_navigation(shell, standalone, selected, cx);
+	let navigation = settings_navigation(shell, standalone, selected, window, cx);
 	let panel = gpui::div()
 		.debug_selector(|| "settings-content-pane".into())
 		.flex_1()
@@ -8087,6 +8108,24 @@ mod tests {
 
 		settings.update(crate::ui_frame::draw_current_frame);
 
+		let rows = [
+			"settings-section-General",
+			"settings-section-Agents",
+			"settings-section-Appearance",
+			"settings-section-Components",
+			"settings-section-Updates",
+			"settings-section-Accounts",
+			"settings-section-Diagnostics",
+		]
+		.map(|selector| settings.debug_bounds(selector).unwrap());
+		let gap = rows[1].top() - rows[0].bottom();
+
+		for pair in rows.windows(2) {
+			assert_eq!(pair[1].top() - pair[0].bottom(), gap, "settings entries are peers");
+			assert_eq!(pair[0].size.height, pair[1].size.height);
+		}
+		assert_eq!(settings.debug_bounds("settings-navigation-selection").unwrap(), rows[0]);
+
 		for (index, (destination, category)) in [
 			(Destination::Settings, Some(crate::settings_surface::SettingsCategory::General)),
 			(Destination::Settings, Some(crate::settings_surface::SettingsCategory::Agents)),
@@ -8107,6 +8146,7 @@ mod tests {
 				);
 			});
 			settings.simulate_keystrokes("enter");
+			settings.update(crate::ui_frame::draw_frame);
 
 			shell.read_with(settings, |s, cx| {
 				assert_eq!(s.settings_selected, destination);
@@ -8121,6 +8161,20 @@ mod tests {
 
 		settings.simulate_keystrokes("shift-tab enter");
 		shell.read_with(settings, |s, _| assert_eq!(s.settings_selected, Destination::Accounts));
+		settings.update(crate::ui_frame::draw_frame);
+
+		let target = settings.debug_bounds("settings-section-Accounts").unwrap();
+		let moving = settings.debug_bounds("settings-navigation-selection").unwrap();
+
+		assert_eq!(moving.size, target.size, "selection motion must not resize the row");
+		if !crate::ui_motion::reduced() {
+			assert_ne!(moving.top(), target.top(), "selection must travel instead of jumping");
+			assert!(settings.update(|window, cx| window.simulate_next_frame(cx)) > 0);
+		}
+
+		std::thread::sleep(Duration::from_millis(220));
+		settings.update(crate::ui_frame::draw_frame);
+		assert_eq!(settings.debug_bounds("settings-navigation-selection").unwrap(), target);
 	}
 
 	#[gpui::test]

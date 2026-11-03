@@ -37,8 +37,8 @@ use crate::{
 	ui_preferences,
 	ui_scroll::SmoothScrollArea,
 	ui_theme::{
-		self, SETTINGS_CONTROL_HEIGHT, SETTINGS_GROUP_GAP, SETTINGS_INSET, SETTINGS_LABEL_SIZE,
-		SETTINGS_TOP, SETTINGS_WIDTH, TEXT,
+		self, SETTINGS_CONTROL_HEIGHT, SETTINGS_INSET, SETTINGS_LABEL_SIZE, SETTINGS_TOP,
+		SETTINGS_WIDTH, TEXT,
 	},
 };
 use power::PowerSettings;
@@ -94,7 +94,6 @@ pub(crate) struct SettingsSurface {
 	launch_at_login_detail: SharedString,
 	session_defaults: crate::session_settings::Defaults,
 	default_speed: Option<decodex_protocol::ServiceTier>,
-	session_menu: Option<&'static str>,
 	guardian: Option<Entity<crate::ui_frame::Presentation<AgentSurface>>>,
 }
 impl SettingsSurface {
@@ -409,30 +408,28 @@ impl SettingsSurface {
 	fn category_content(&self, cx: &mut Context<Self>) -> AnyElement {
 		match self.category {
 			SettingsCategory::General => self.general_content(cx),
-			SettingsCategory::Agents => gpui::div()
-				.flex()
-				.flex_col()
-				.gap(gpui::px(SETTINGS_GROUP_GAP))
+			SettingsCategory::Agents => ui_theme::settings_sections()
 				.child(ui_theme::settings_group(
 					"New conversations",
 					vec![self.agent_defaults_content(cx)],
 				))
+				.child(ui_theme::settings_group("Codex Native", vec![self.native_defaults(cx)]))
 				.child(ui_theme::settings_group(
-					"Conversation assistance",
+					"Decodex",
 					vec![
-						self.preference_control(
-							"automatic-prompt-suggestions",
-							"automatic-prompt-suggestions-knob",
-							"Automatic next-message suggestions",
-							"Suggest after each reply. Uses quota; never sends automatically.",
-							crate::ui_preferences::automatic_prompt_suggestions,
-							cx,
-						)
-						.into_any_element(),
+						ui_theme::settings_rows()
+							.child(self.preference_control(
+								"automatic-prompt-suggestions",
+								"automatic-prompt-suggestions-knob",
+								"Automatic next-message suggestions",
+								"Suggest after each reply. Uses quota; never sends automatically.",
+								crate::ui_preferences::automatic_prompt_suggestions,
+								cx,
+							))
+							.children(self.guardian.clone())
+							.into_any_element(),
 					],
 				))
-				.child(ui_theme::settings_group("Native defaults", vec![self.native_defaults(cx)]))
-				.children(self.guardian.clone())
 				.into_any_element(),
 			SettingsCategory::Appearance => self.appearance_content(cx),
 			SettingsCategory::Components => self.components_content(cx),
@@ -447,7 +444,6 @@ impl SettingsSurface {
 	) {
 		self.session_defaults.permissions = mode;
 		self.session_defaults.save();
-		self.session_menu = None;
 		cx.refresh_windows();
 	}
 
@@ -467,91 +463,46 @@ impl SettingsSurface {
 	}
 
 	fn agent_defaults_content(&self, cx: &mut Context<Self>) -> AnyElement {
-		let speed = self.default_speed.as_ref().map_or("Unavailable", |s| match s.as_str() {
-			"default" => "Standard",
-			"priority" => "Fast",
-			"ultrafast" => "Ultrafast",
-			_ => s.as_str(),
-		});
-		gpui::div()
-			.flex()
-			.flex_col()
-			.gap_3()
+		ui_theme::settings_rows()
 			.child(ui_theme::settings_description(
-				"Defaults apply only to new Agents. Existing chats and running work keep their settings.",
+				"For new Agents only. Subagents inherit their parent’s permissions.",
 			))
 			.child(
 				ui_theme::settings_row()
 					.child(ui_theme::settings_label(
 						"Default permissions",
-						"Subagents inherit the parent’s native permissions.",
+						self.session_defaults.permissions.description(),
 					))
-					.child(
-						ui_theme::settings_button(
-							"default-permissions",
-							self.session_defaults.permissions.label(),
-						)
-						.on_click(cx.listener(|s, _, _, cx| {
-							s.session_menu = if s.session_menu == Some("permissions") {
-								None
-							} else {
-								Some("permissions")
-							};
-							cx.notify();
-						})),
-					),
+					.child(crate::session_settings::permission_picker(
+						self.session_defaults.permissions,
+						Self::choose_default_permissions,
+						cx,
+					)),
 			)
-			.when(self.session_menu == Some("permissions"), |d| {
-				d.child(crate::session_settings::permission_choices(
-					Some(self.session_defaults.permissions),
-					|_| true,
-					Self::choose_default_permissions,
-					cx,
-				))
-			})
 			.child(
 				ui_theme::settings_row()
 					.child(ui_theme::settings_label(
 						"Default speed",
-						"Shared with Codex. Applies to new conversations; account and model availability still apply.",
+						"Shared with Codex. Account and model availability apply.",
 					))
-			.child(ui_theme::settings_button("default-speed", speed.to_owned()).on_click(
-						cx.listener(|s, _, _, cx| {
-							s.default_speed = crate::session_settings::default_speed().ok();
-							s.session_menu =
-								if s.session_menu == Some("speed") { None } else { Some("speed") };
-							cx.notify();
+					.child(crate::session_settings::speed_choices(
+						self.default_speed.as_ref(),
+						["priority", "ultrafast"].map(|id| {
+							(
+								decodex_protocol::ServiceTier::new(id)
+									.expect("built-in speed tier"),
+								crate::session_settings::speed_label(id).to_owned(),
+							)
 						}),
+						Self::choose_default_speed,
+						cx,
 					)),
 			)
-			.when(self.session_menu == Some("speed"), |d| {
-				d.child(
-					gpui::div()
-						.flex()
-						.items_center()
-						.gap_2()
-						.child(crate::session_settings::speed_choices(
-							self.default_speed.as_ref(),
-							["priority", "ultrafast"].map(|id| {
-								(
-									decodex_protocol::ServiceTier::new(id)
-										.expect("built-in speed tier"),
-									crate::session_settings::speed_label(id).to_owned(),
-								)
-							}),
-							Self::choose_default_speed,
-							cx,
-						))
-				)
-			})
 			.into_any_element()
 	}
 
 	fn general_content(&self, cx: &mut Context<Self>) -> AnyElement {
-		gpui::div()
-			.flex()
-			.flex_col()
-			.gap(gpui::px(SETTINGS_GROUP_GAP))
+		ui_theme::settings_sections()
 			.child(ui_theme::settings_group(
 				"Startup",
 				vec![
@@ -599,15 +550,10 @@ impl SettingsSurface {
 	}
 
 	fn appearance_content(&self, cx: &mut Context<Self>) -> AnyElement {
-		gpui::div()
-			.flex()
-			.flex_col()
-			.gap(gpui::px(SETTINGS_GROUP_GAP))
+		ui_theme::settings_sections()
 			.child(self.appearance_controls(cx))
 			.child(
-				gpui::div()
-					.flex()
-					.flex_col()
+				ui_theme::settings_rows()
 					.gap_2()
 					.child(ui_theme::settings_section_title("Color theme"))
 					.child(ui_theme::settings_description(self.theme_description()))
@@ -717,7 +663,6 @@ impl SettingsSurface {
 			launch_at_login_detail: launch_at_login_detail(launch_at_login).into(),
 			session_defaults: crate::session_settings::Defaults::load(),
 			default_speed: crate::session_settings::default_speed().ok(),
-			session_menu: None,
 			guardian: None,
 		};
 
@@ -786,6 +731,10 @@ impl SettingsSurface {
 	}
 
 	pub(crate) fn refresh(&mut self, cx: &mut Context<Self>) {
+		if self.category == SettingsCategory::Agents {
+			self.default_speed = crate::session_settings::default_speed().ok();
+			self.session_defaults = crate::session_settings::Defaults::load();
+		}
 		if self.category == SettingsCategory::Agents
 			&& let Some(agent) = &self.native_agent
 		{
@@ -794,7 +743,7 @@ impl SettingsSurface {
 
 		#[cfg(not(test))]
 		if self.category == SettingsCategory::Components {
-			self.components.inspect_optional();
+			self.components.refresh_optional();
 		}
 
 		if self.category == SettingsCategory::General {
@@ -1121,13 +1070,9 @@ impl Render for SettingsSurface {
 					.justify_center()
 					.items_start()
 					.child(
-						gpui::div()
-							.w_full()
+						ui_theme::settings_sections()
 							.max_w(gpui::px(SETTINGS_WIDTH))
 							.flex_none()
-							.flex()
-							.flex_col()
-							.gap(gpui::px(SETTINGS_GROUP_GAP))
 							.child(ui_theme::settings_title(self.category.title()))
 							.child(self.category_content(cx)),
 					)
@@ -1288,16 +1233,31 @@ mod tests {
 	}
 
 	#[gpui::test]
-	fn default_speed_drag_keeps_the_picker_open_until_release(cx: &mut TestAppContext) {
+	fn creation_default_choices_keep_rows_stable_during_click_and_drag(cx: &mut TestAppContext) {
 		let (settings, visual) = cx.add_window_view(|_, cx| {
 			let mut surface = SettingsSurface::new(DesktopSettingsController::production(), cx);
 			surface.category = SettingsCategory::Agents;
-			surface.session_menu = Some("speed");
 			surface.default_speed = Some(decodex_protocol::ServiceTier::standard());
 			surface
 		});
-		visual.simulate_resize(gpui::size(gpui::px(920.), gpui::px(900.)));
+		visual.simulate_resize(gpui::size(gpui::px(ui_theme::SETTINGS_WIDTH), gpui::px(900.)));
 		visual.update(crate::ui_frame::draw_current_frame);
+		let viewport = visual.debug_bounds("settings-scroll-viewport").unwrap();
+		let permissions = visual.debug_bounds("default-permissions").unwrap();
+		let speed = visual.debug_bounds("service-tier-picker").unwrap();
+		assert!(permissions.right() <= viewport.right());
+		assert!(speed.right() <= viewport.right());
+		let read_only = visual.debug_bounds("default-permission-0").unwrap();
+		let full = visual.debug_bounds("default-permission-3").unwrap();
+		assert!(read_only.right() <= full.left());
+		assert!(full.right() <= permissions.right(), "all permission choices fit the control");
+		visual.simulate_click(read_only.center(), Default::default());
+		assert_eq!(
+			settings.read_with(visual, |s, _| s.session_defaults.permissions),
+			decodex_protocol::PermissionMode::ReadOnly
+		);
+		visual.update(crate::ui_frame::draw_current_frame);
+		assert_eq!(visual.debug_bounds("service-tier-picker").unwrap(), speed);
 		let standard = visual.debug_bounds("tier-default").unwrap();
 		let fast = visual.debug_bounds("tier-priority").unwrap();
 		visual.simulate_mouse_down(standard.center(), gpui::MouseButton::Left, Default::default());
@@ -1307,7 +1267,7 @@ mod tests {
 			Default::default(),
 		);
 		visual.update(crate::ui_frame::draw_current_frame);
-		assert_eq!(settings.read_with(visual, |s, _| s.session_menu), Some("speed"));
+		assert_eq!(visual.debug_bounds("service-tier-picker").unwrap(), speed);
 		let ultrafast = visual.debug_bounds("tier-ultrafast").unwrap();
 		visual.simulate_mouse_move(
 			ultrafast.center(),
@@ -1316,9 +1276,10 @@ mod tests {
 		);
 		visual.simulate_mouse_up(ultrafast.center(), gpui::MouseButton::Left, Default::default());
 		settings.read_with(visual, |s, _| {
-			assert_eq!(s.session_menu, Some("speed"));
 			assert_eq!(s.default_speed.as_ref().unwrap().as_str(), "ultrafast");
 		});
+		visual.update(crate::ui_frame::draw_current_frame);
+		assert_eq!(visual.debug_bounds("default-permissions").unwrap(), permissions);
 	}
 
 	#[gpui::test]
@@ -1649,7 +1610,7 @@ mod tests {
 		});
 		visual.update(crate::ui_frame::draw_current_frame);
 		assert!(visual.debug_bounds("automatic-prompt-suggestions").is_some());
-		assert!(visual.debug_bounds("default-speed").is_some());
+		assert!(visual.debug_bounds("service-tier-picker").is_some());
 		assert!(visual.debug_bounds("prompt-suggestions").is_none());
 	}
 

@@ -1,6 +1,4 @@
 //! Optional components use their native lifecycle, separate from application updates.
-use std::time::Duration;
-
 use gpui::{
 	AnyElement, Context, Div, KeyDownEvent, Role, SharedString,
 	prelude::{
@@ -14,10 +12,10 @@ use crate::{
 	component_research::{self, ResearchOperations},
 	component_runtime::{self, RuntimePreparation},
 	settings_surface::SettingsSurface,
-	shell::workspace_symbols::{self, Symbol},
+	shell::workspace_symbols,
 	ui_feedback::{self, Feedback},
 	ui_motion::{self, SmoothControl as _},
-	ui_theme::{self, BLUE, HOVER_FILL, PRESSED_FILL, SETTINGS_HELP_SIZE, TEXT, TEXT_MUTED},
+	ui_theme::{self, BLUE, SETTINGS_LABEL_SIZE, TEXT, TEXT_MUTED},
 };
 use decodex_components::{InstallProgress, PluginAction, RuntimeLock};
 
@@ -71,7 +69,7 @@ impl Components {
 	}
 
 	#[cfg(not(test))]
-	pub(super) fn inspect_optional(&mut self) {
+	pub(super) fn refresh_optional(&mut self) {
 		self.research.inspect();
 
 		if matches!(
@@ -79,7 +77,12 @@ impl Components {
 			component_runtime::PreparationState::Unchecked
 				| component_runtime::PreparationState::Ready
 		) {
-			self.optional.inspect();
+			// Keep the last readback visible during the next entry check.
+			if self.optional.snapshot().inspected {
+				self.optional.start(PluginAction::Refresh);
+			} else {
+				self.optional.inspect();
+			}
 			self.poll();
 		}
 	}
@@ -102,7 +105,7 @@ impl SettingsSurface {
 				self.components.optional.invalidate();
 
 				if self.category == super::SettingsCategory::Components {
-					self.components.inspect_optional();
+					self.components.refresh_optional();
 				}
 			}
 
@@ -160,28 +163,32 @@ impl SettingsSurface {
 	}
 
 	fn component_settings(&self, cx: &mut Context<Self>) -> Div {
-		let version = RuntimeLock::embedded()
-			.map(|lock| {
-				if lock.source.is_some() {
-					format!("Development · {}", &lock.upstream_commit[..12])
-				} else {
-					lock.version
-				}
-			})
-			.unwrap_or_else(|_| "Version unavailable".into());
+		let lock = RuntimeLock::embedded().ok();
+		let version = lock.as_ref().map(|lock| lock.version.as_str());
 		let action = match self.components.shown {
 			component_runtime::PreparationState::Preparing(_) => None,
 			component_runtime::PreparationState::Failed(_) =>
 				Some(("components-retry-runtime", "Retry setup")),
 			_ => Some(("components-prepare-runtime", "Verify")),
 		};
-		let mut component = gpui::div().w_full().flex().flex_col().child(
-			ui_theme::settings_row()
-				.child(ui_theme::settings_label("Codex", version))
-				.when_some(action, |row, (id, label)| {
-					row.child(self.component_button(id, label, Action::Prepare, cx))
-				}),
-		);
+		let mut component = gpui::div()
+			.debug_selector(|| "components-codex".into())
+			.w_full()
+			.flex()
+			.flex_col()
+			.child(
+				ui_theme::settings_row()
+					.child(self.component_label(
+						0,
+						"components-codex-details",
+						"Codex",
+						version,
+						cx,
+					))
+					.when_some(action, |row, (id, label)| {
+						row.child(self.component_button(id, label, Action::Prepare, cx))
+					}),
+			);
 
 		match &self.components.shown {
 			component_runtime::PreparationState::Unchecked => {},
@@ -228,40 +235,51 @@ impl SettingsSurface {
 			},
 		}
 
-		component.child(self.component_details(
-			0,
-			"components-codex-details",
-			"Required for conversations. Follows the runtime included with this Decodex build.",
-			cx,
-		))
+		let mut details =
+			gpui::div().flex().flex_col().gap_2().child(ui_theme::settings_description(
+				"Required for conversations. Follows the runtime included with this Decodex build.",
+			));
+		if let Some(lock) = lock.as_ref() {
+			details = details.child(ui_theme::settings_description(format!(
+				"{} build · Upstream {}",
+				if lock.source.is_some() { "Development" } else { "Release" },
+				&lock.upstream_commit[..12],
+			)));
+		}
+		component.child(self.component_body(0, "components-codex-body", details))
 	}
 
-	fn component_details(
+	fn component_label(
 		&self,
 		index: usize,
 		id: &'static str,
-		text: &'static str,
+		title: &'static str,
+		version: Option<&str>,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
 		let expanded = self.components.details[index];
-		let toggle = gpui::div()
+		let metadata = version.map(|version| SharedString::from(format!("Version {version}")));
+		gpui::div()
 			.id(id)
 			.debug_selector(move || id.into())
 			.role(Role::Button)
 			.tab_index(0)
-			.aria_label("Component details")
+			.aria_label(title)
+			.when_some(metadata.clone(), |label, version| label.aria_description(version))
 			.aria_expanded(expanded)
+			.flex_1()
+			.min_w_0()
 			.flex()
-			.items_center()
-			.gap_1()
-			.py_1()
-			.px_1()
+			.flex_col()
+			.min_h(gpui::px(36.5))
+			.gap(gpui::px(2.))
 			.rounded(gpui::px(4.))
 			.cursor_pointer()
-			.text_size(gpui::px(SETTINGS_HELP_SIZE))
-			.text_color(ui_theme::rgb(TEXT_MUTED))
-			.hover(|s| s.bg(ui_theme::rgba(HOVER_FILL)).text_color(ui_theme::rgb(TEXT)))
-			.active(|s| s.bg(ui_theme::rgba(PRESSED_FILL)))
+			.text_size(gpui::px(SETTINGS_LABEL_SIZE))
+			.line_height(gpui::px(18.))
+			.text_color(ui_theme::rgb(TEXT))
+			.hover(|s| s.text_color(ui_theme::rgb(BLUE)))
+			.active(|s| s.opacity(0.75))
 			.on_click(cx.listener(move |this, _, _, cx| {
 				this.components.details[index] = !this.components.details[index];
 
@@ -275,35 +293,37 @@ impl SettingsSurface {
 					cx.stop_propagation();
 				}
 			}))
-			.child(workspace_symbols::icon_sized(
-				if expanded { Symbol::ChevronDown } else { Symbol::Forward },
-				10.,
+			.child(gpui::div().flex().items_center().gap_1().child(title).child(
+				gpui::div().text_color(ui_theme::rgb(TEXT_MUTED)).child(
+					workspace_symbols::process_chevron(
+						SharedString::from(format!("{id}-chevron")),
+						expanded,
+					),
+				),
 			))
-			.child("Details")
-			.smooth();
-
-		gpui::div()
-			.w_full()
-			.flex()
-			.flex_col()
-			.items_start()
-			.child(toggle)
-			.child(ui_motion::disclosure(
-				SharedString::from(format!("{id}-body")),
-				expanded,
-				ui_theme::settings_description(text)
-					.py_1()
-					.debug_selector(move || format!("{id}-content")),
-			))
+			.when_some(metadata, |label, version| {
+				label.child(ui_theme::settings_description(version))
+			})
+			.smooth()
 			.into_any_element()
 	}
 
+	fn component_body(
+		&self,
+		index: usize,
+		id: &'static str,
+		content: impl gpui::IntoElement,
+	) -> AnyElement {
+		ui_motion::disclosure(
+			id,
+			self.components.details[index],
+			gpui::div().w_full().pb(gpui::px(8.)).child(content),
+		)
+		.into_any_element()
+	}
+
 	pub(super) fn components_content(&self, cx: &mut Context<Self>) -> AnyElement {
-		gpui::div()
-			.w_full()
-			.flex()
-			.flex_col()
-			.gap_4()
+		ui_theme::settings_rows()
 			.children([
 				self.component_settings(cx).into_any_element(),
 				self.egm_settings(cx).into_any_element(),
@@ -314,7 +334,9 @@ impl SettingsSurface {
 
 	fn research_settings(&self, cx: &mut Context<Self>) -> Div {
 		let state = &self.components.research_shown;
-		let actions: Vec<_> = if state.installed.is_none() {
+		let actions: Vec<_> = if !state.inspected {
+			Vec::new()
+		} else if state.installed.is_none() {
 			vec![("components-install-research", "Install", component_research::Action::Install)]
 		} else {
 			vec![
@@ -336,8 +358,20 @@ impl SettingsSurface {
 
 		let explanation = if state.installed.is_none() {
 			"Use your ChatGPT Pro subscription. Installs a local helper and Chrome extension files; no API key."
+		} else if let Some(connection) = state
+			.connection
+			.as_ref()
+			.filter(|connection| connection.state != decodex_pro_bridge::ConnectionState::Connected)
+		{
+			match connection.state {
+				decodex_pro_bridge::ConnectionState::SignInRequired =>
+					"Sign in to ChatGPT in the research tab, then connect again.",
+				decodex_pro_bridge::ConnectionState::VerificationRequired =>
+					"Complete ChatGPT security verification in the research tab, then connect again.",
+				_ => "Open the research tab to complete setup, then connect again.",
+			}
 		} else if state.connection.is_none() {
-			"In Chrome, enable Developer mode and choose Load unpacked, then select the extension folder. "
+			"Connect to Chrome. If the extension is not loaded, enable Developer mode, choose Load unpacked, and select the extension folder."
 		} else if !state.tools.as_ref().is_some_and(|p| p.enabled) {
 			"Chrome is connected. Enable native research tools for Agents. Installation sends no messages."
 		} else {
@@ -402,18 +436,29 @@ impl SettingsSurface {
 			.flex_col()
 			.child(
 				ui_theme::settings_row()
-					.child(ui_theme::settings_label(
-						"Pro Research · Experimental",
-						state.status_text(),
+					.child(self.component_label(
+						2,
+						"components-research-details",
+						"Decodex Pro Research",
+						state.installed.as_ref().map(|package| package.version.as_str()),
+						cx,
 					))
 					.child(controls),
 			)
-			.child(self.component_details(2, "components-research-details", explanation, cx))
-			.child(ui_motion::disclosure(
-				"components-research-setup",
-				self.components.details[2] && state.installed.is_some(),
-				details,
-			))
+			.child(
+				self.component_body(
+					2,
+					"components-research-body",
+					gpui::div()
+						.flex()
+						.flex_col()
+						.gap_2()
+						.child(ui_theme::settings_description(format!(
+							"Experimental. {explanation}"
+						)))
+						.when(state.installed.is_some(), |body| body.child(details)),
+				),
+			)
 			.child(
 				ui_feedback::notice("components-research-feedback", "research", feedback).inline(),
 			)
@@ -421,13 +466,7 @@ impl SettingsSurface {
 
 	fn egm_settings(&self, cx: &mut Context<Self>) -> Div {
 		let state = &self.components.plugin;
-		let status = state.status_text();
-		let mut controls = gpui::div().flex().items_center().gap_2().child(self.component_button(
-			"components-refresh-egm",
-			"Refresh",
-			Action::Plugin(PluginAction::Refresh),
-			cx,
-		));
+		let mut controls = gpui::div().flex().items_center().gap_2();
 
 		if state.inspected {
 			let (label, action) = match &state.installed {
@@ -455,24 +494,30 @@ impl SettingsSurface {
 
 		let feedback =
 			state.error.as_ref().map(|error| Feedback::error(error.clone())).or_else(|| {
-				state.busy.map(|action| {
-					Feedback::loading(match action {
-						PluginAction::Refresh => "Reading native plugin state…",
+				state.busy.and_then(|action| {
+					Some(Feedback::loading(match action {
+						PluginAction::Refresh => return None,
 						PluginAction::Install => "Installing EGM…",
 						PluginAction::Update => "Updating EGM…",
 						PluginAction::Remove => "Uninstalling EGM…",
-					})
+					}))
 				})
 			});
+		let retry = (state.error.is_some() && state.busy.is_none()).then(|| {
+			self.component_button(
+				"components-retry-egm",
+				"Retry",
+				Action::Plugin(PluginAction::Refresh),
+				cx,
+			)
+		});
 
 		gpui::div().debug_selector(|| "components-egm".into()).w_full().flex().flex_col().child(ui_theme::settings_row()
-			.child(ui_theme::settings_label("Elephant–Goldfish (EGM)", status))
+			.child(self.component_label(1, "components-egm-details", "Elephant–Goldfish (EGM)", state.installed.as_ref().map(|plugin| plugin.version.as_str()), cx))
 			.child(controls))
-			.child(self.component_details(1,"components-egm-details","Google's complete design and review plugin. Optional; uses your Codex subscription. Start a new conversation after installing or updating.",cx))
+			.child(self.component_body(1,"components-egm-body",ui_theme::settings_description("Google's complete design and review plugin. Optional; uses your Codex subscription. Start a new conversation after installing or updating.")))
 			.child(ui_feedback::notice("components-egm-feedback", "egm", feedback).inline()
-				.when(state.busy == Some(PluginAction::Refresh), |notice| {
-					notice.loading_delay(Duration::from_millis(500))
-				}))
+				.action(retry))
 	}
 }
 
@@ -513,7 +558,14 @@ mod tests {
 
 		visual.update(crate::ui_frame::draw_current_frame);
 
-		assert!(visual.debug_bounds("components-refresh-egm").is_some());
+		assert!(visual.debug_bounds("components-refresh-egm").is_none());
+		assert!(visual.debug_bounds("components-retry-egm").is_none());
+		let cold_egm = visual.debug_bounds("components-egm").unwrap();
+		let cold_research = visual.debug_bounds("components-pro-research").unwrap();
+		assert!(
+			visual.debug_bounds("components-install-research").is_none(),
+			"an unchecked component is not an absent installation"
+		);
 		assert!(
 			visual.debug_bounds("components-install-egm").is_none(),
 			"inspect before writing native configuration"
@@ -521,6 +573,7 @@ mod tests {
 
 		settings.update(visual, |settings, cx| {
 			settings.components.plugin.inspected = true;
+			settings.components.research_shown.inspected = true;
 
 			cx.notify();
 		});
@@ -528,6 +581,7 @@ mod tests {
 		visual.update(crate::ui_frame::draw_current_frame);
 
 		assert!(visual.debug_bounds("components-install-egm").is_some());
+		assert!(visual.debug_bounds("components-install-research").is_some());
 		assert!(visual.debug_bounds("components-remove-egm").is_none());
 
 		settings.update(visual, |settings, cx| {
@@ -540,6 +594,16 @@ mod tests {
 		visual.update(crate::ui_frame::draw_current_frame);
 
 		assert!(visual.debug_bounds("components-remove-egm").is_some());
+		assert_eq!(
+			visual.debug_bounds("components-egm").unwrap(),
+			cold_egm,
+			"version readback must not shift the row"
+		);
+		assert_eq!(
+			visual.debug_bounds("components-pro-research").unwrap(),
+			cold_research,
+			"other rows must not move while component metadata loads"
+		);
 
 		let install = visual.debug_bounds("components-install-egm").unwrap();
 		let remove = visual.debug_bounds("components-remove-egm").unwrap();
@@ -559,7 +623,7 @@ mod tests {
 			gpui::px(0.)
 		);
 
-		thread::sleep(std::time::Duration::from_millis(350));
+		thread::sleep(std::time::Duration::from_millis(600));
 
 		visual.update(crate::ui_frame::draw_current_frame);
 
@@ -627,6 +691,7 @@ mod tests {
 			let mut s = SettingsSurface::new(DesktopSettingsController::production(), cx);
 
 			s.category = crate::settings_surface::SettingsCategory::Components;
+			s.components.plugin.inspected = true;
 
 			s
 		});
@@ -636,7 +701,21 @@ mod tests {
 		assert!(visual.debug_bounds("settings-group-This Mac").is_none());
 		assert_eq!(settings.read_with(visual, |s, _| s.components.details), [false; 3]);
 
+		let codex = visual.debug_bounds("components-codex").unwrap();
+		let egm = visual.debug_bounds("components-egm").unwrap();
+		let research = visual.debug_bounds("components-pro-research").unwrap();
+
+		assert_eq!(codex.bottom(), egm.top(), "padded setting rows must not add an item gap");
+		assert_eq!(egm.bottom(), research.top(), "all components use the same list spacing");
+
 		let toggle = visual.debug_bounds("components-egm-details").unwrap();
+		let action = visual.debug_bounds("components-install-egm").unwrap();
+
+		assert!(
+			toggle.top() <= action.center().y && toggle.bottom() >= action.center().y,
+			"the disclosure belongs in the component header, not a separate Details row"
+		);
+		assert!(toggle.right() < action.left(), "component actions stay outside the disclosure");
 
 		visual.simulate_click(toggle.center(), Default::default());
 

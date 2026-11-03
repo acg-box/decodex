@@ -22,6 +22,8 @@ use crate::{
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Installation {
+	/// Installed package version, read from its manifest.
+	pub version: String,
 	/// Stable extension identity used by Chrome's native-host allowlist.
 	pub extension_id: &'static str,
 	/// Load this folder with Chrome's ordinary extension installation UI.
@@ -36,15 +38,18 @@ pub struct Installation {
 
 /// Read the installed package without creating state, starting Chrome or enabling tools.
 pub fn inspect(root: &Path, registration_directory: &Path) -> Result<Option<Installation>> {
-	let installed = paths(root, registration_directory);
+	let registration = registration_directory.join(format!("{HOST_NAME}.json"));
 
-	if !installed.registration.exists() {
+	if !registration.exists() {
 		return Ok(None);
 	}
 
-	check_registration(&installed.registration, &root.join("native-host"))?;
+	check_registration(&registration, &root.join("native-host"))?;
+	let version = manifest_version(
+		&fs::read(root.join("plugin/.codex-plugin/plugin.json")).map_err(|e| e.to_string())?,
+	)?;
 
-	Ok(Some(installed))
+	Ok(Some(paths(root, registration_directory, version)))
 }
 
 /// Install into explicit directories. The executable must be the built component.
@@ -65,7 +70,8 @@ pub fn install(
 		return Err("The component executable must be a regular file.".into());
 	}
 
-	let installation = paths(root, registration_directory);
+	let version = manifest_version(include_bytes!("../extension/manifest.json"))?;
+	let installation = paths(root, registration_directory, version);
 
 	if installation.registration.exists() {
 		check_registration(&installation.registration, &root.join("native-host"))?;
@@ -104,7 +110,7 @@ pub fn install(
 	publish_directory(root, &extension_directory, &extension)?;
 
 	let plugin_directory = root.join("plugin");
-	let manifest = serde_json::to_vec_pretty(&serde_json::json!({"name":"decodex-research","version":"0.1.0","description":"Pro research through your existing ChatGPT browser session","skills":"./skills","mcpServers":"./.mcp.json"})).map_err(|e| e.to_string())?;
+	let manifest = serde_json::to_vec_pretty(&serde_json::json!({"name":"decodex-research","version":installation.version,"description":"Pro research through your existing ChatGPT browser session","skills":"./skills","mcpServers":"./.mcp.json"})).map_err(|e| e.to_string())?;
 	let mcp = serde_json::to_vec_pretty(&serde_json::json!({"mcpServers":{"decodex_research":{"command":managed,"args":["--state-dir",root,"mcp"],"startup_timeout_sec":10,"tool_timeout_sec":30}}})).map_err(|e| e.to_string())?;
 	let package = [
 		(".codex-plugin/plugin.json", manifest.as_slice()),
@@ -198,14 +204,24 @@ pub fn uninstall(root: &Path, registration_directory: &Path) -> Result<()> {
 	Ok(())
 }
 
-fn paths(root: &Path, registration_directory: &Path) -> Installation {
+fn paths(root: &Path, registration_directory: &Path, version: String) -> Installation {
 	Installation {
+		version,
 		extension_id: EXTENSION_ID,
 		extension_directory: root.join("extension"),
 		plugin_directory: root.join("plugin"),
 		marketplace_directory: root.into(),
 		registration: registration_directory.join(format!("{HOST_NAME}.json")),
 	}
+}
+
+fn manifest_version(bytes: &[u8]) -> Result<String> {
+	let manifest: Value = serde_json::from_slice(bytes).map_err(|e| e.to_string())?;
+	manifest["version"]
+		.as_str()
+		.filter(|version| !version.is_empty())
+		.map(str::to_owned)
+		.ok_or_else(|| "Component package version is missing.".into())
 }
 
 fn check_registration(path: &Path, launcher: &Path) -> Result<()> {
@@ -304,6 +320,18 @@ mod tests {
 			fs::read(&binary).unwrap()
 		);
 		assert_eq!(install::inspect(&root, &registrations).unwrap(), Some(first.clone()));
+		let manifest_path = first.plugin_directory.join(".codex-plugin/plugin.json");
+		let mut manifest: serde_json::Value =
+			serde_json::from_slice(&fs::read(&manifest_path).unwrap()).unwrap();
+
+		assert_eq!(manifest["version"], first.version);
+		manifest["version"] = "0.0.9".into();
+		fs::write(&manifest_path, serde_json::to_vec(&manifest).unwrap()).unwrap();
+		assert_eq!(
+			install::inspect(&root, &registrations).unwrap().unwrap().version,
+			"0.0.9",
+			"report the installed package version rather than the bundled version"
+		);
 
 		let script = fs::read_to_string(root.join("native-host")).unwrap();
 
