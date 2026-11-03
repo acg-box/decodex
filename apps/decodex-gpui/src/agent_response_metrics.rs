@@ -340,7 +340,7 @@ fn usage_rows(usage: &AgentTurnUsageDto) -> Vec<(&'static str, String)> {
 	let part = |value, total: Option<u64>| {
 		let value_label = tokens(value);
 		match total.filter(|total| *total > 0) {
-			Some(total) => format!("{value_label} · {:.0}%", value as f64 / total as f64 * 100.),
+			Some(total) => format!("{value_label} ({:.0}%)", value as f64 / total as f64 * 100.),
 			None => value_label,
 		}
 	};
@@ -436,7 +436,7 @@ fn details_panel(details: &MetricsDetails) -> Stateful<Div> {
 		})
 		.when(!details.activity.is_empty(), |panel| {
 			panel.child(
-				details_section("Activity · may overlap", &details.activity)
+				details_section("Activity (may overlap)", &details.activity)
 					.debug_selector(|| "observed-timing-details".into()),
 			)
 		})
@@ -501,8 +501,8 @@ mod tests {
 		assert_eq!(
 			usage_rows(&usage),
 			vec![
-				("Cached input", "80 tok · 80%".into()),
-				("Reasoning output", "10 tok · 25%".into()),
+				("Cached input", "80 tok (80%)".into()),
+				("Reasoning output", "10 tok (25%)".into()),
 			]
 		);
 		usage.input_tokens = 100;

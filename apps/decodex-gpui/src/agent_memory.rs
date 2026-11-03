@@ -88,7 +88,7 @@ impl AgentSurface {
 				match result {
 					Ok(Some(text)) => {
 						s.memory_summary.text = Some(text);
-						s.memory_summary.feedback = "Memory summary · Read-only".into();
+						s.memory_summary.feedback = "Memory summary (read-only)".into();
 					},
 					Ok(None) =>
 						s.memory_summary.feedback =

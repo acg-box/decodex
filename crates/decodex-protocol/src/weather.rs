@@ -55,7 +55,7 @@ impl WeatherForecast {
 	/// Render the complete saved forecast as readable Markdown.
 	pub fn markdown(&self) -> String {
 		let mut result = format!(
-			"## {}\n\n{}°C · {}\n\n| Time | Weather | °C |\n| --- | --- | --- |\n",
+			"## {}\n\n{}°C, {}\n\n| Time | Weather | °C |\n| --- | --- | --- |\n",
 			self.location, self.celsius, self.condition
 		);
 

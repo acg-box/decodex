@@ -467,7 +467,7 @@ impl AgentSurface {
 			})
 			.count();
 		let title = if denied > 0 {
-			format!("Action reviews · {denied} denied")
+			format!("Action reviews ({denied} denied)")
 		} else {
 			"Action reviews".into()
 		};
@@ -540,7 +540,7 @@ impl AgentSurface {
 			let position =
 				reader.and_then(|d| d.starts.iter().position(|start| start == offset)).unwrap_or(0);
 
-			panel = panel.child(format!("Action details · page {}", position + 1)).child(
+			panel = panel.child(format!("Action details (page {})", position + 1)).child(
 				gpui::div()
 					.id("guardian-detail-text")
 					.max_h(gpui::px(240.))
@@ -623,10 +623,10 @@ impl AgentSurface {
 			.gap_2()
 			.min_w_0()
 			.py_2()
-			.child(format!("{} · {state}", review.action_label));
+			.child(format!("{} ({state})", review.action_label));
 
 		if review.status == AgentGuardianStatus::InProgress && !review.current_process {
-			card = card.child(agent_surface::muted("Saved review · Current outcome unknown."));
+			card = card.child(agent_surface::muted("Saved review. Current outcome unknown."));
 		}
 
 		if let Some(risk) = &review.risk_level {

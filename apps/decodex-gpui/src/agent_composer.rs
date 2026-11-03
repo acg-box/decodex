@@ -192,7 +192,7 @@ impl AgentSurface {
 		(self.sending && self.workspace.opening_work.is_none() && self.running_turn().is_none())
 			|| (self.running_turn().is_none()
 				&& self.composer.read(cx).content().trim().is_empty()
-				&& (self.feedback.message == "Message saved · Waiting for agent…"
+				&& (self.feedback.message == "Message saved. Waiting for agent…"
 					|| self.snapshot.as_ref().is_some_and(|snapshot| {
 						snapshot.work_items.iter().any(|work| {
 							Some(&work.id) == self.selected.as_ref()
@@ -851,7 +851,7 @@ impl AgentSurface {
 									None => "Speed not reported",
 								};
 								format!(
-									"{} · {} · {permissions} · {speed}",
+									"{} ({}, {permissions}, {speed})",
 									model.as_deref().unwrap_or("Model unknown"),
 									reasoning_effort.as_deref().unwrap_or("Effort unknown")
 								)
@@ -876,7 +876,7 @@ impl AgentSurface {
 						self.composer_control(
 							"send",
 							"".into(),
-							"Send · Enter",
+							"Send (Enter)",
 							|s, cx| s.send_native_agent(cx),
 							cx,
 						)
@@ -910,7 +910,7 @@ impl AgentSurface {
 			.child(self.composer_control(
 				"model",
 				model,
-				"Model and reasoning · Applies to the next turn",
+				"Model and reasoning for the next turn",
 				|s, cx| s.toggle_composer_menu("model", cx),
 				cx,
 			))
@@ -936,20 +936,20 @@ impl AgentSurface {
 				"send",
 				"".into(),
 				if self.async_question_composer().is_some() {
-					"Send answer · Enter"
+					"Send answer (Enter)"
 				} else if self.interrupting.is_some() {
 					"Stopping response"
 				} else if self.awaiting_start(cx) {
 					"Starting response"
 				} else if self.stop_button(cx) {
-					"Stop response · Esc twice"
+					"Stop response (Esc twice)"
 				} else if self.composer.read(cx).content().trim().is_empty()
 					&& self.attachments.is_empty()
 					&& self.task_references.is_empty()
 				{
 					"Start voice chat"
 				} else {
-					"Send · Enter"
+					"Send (Enter)"
 				},
 				|s, window, cx| {
 					if s.async_question_composer().is_some() {
@@ -1128,9 +1128,9 @@ impl AgentSurface {
 				|| format!("Speed: {}", self.composer_speed_label(cx)),
 				|speed| speed.notice(),
 			);
-			format!("Model and reasoning · {label} · {detail}")
+			format!("Model and reasoning: {label}\n{detail}")
 		} else if id == "permissions" && label != "Permissions" {
-			format!("Permissions · {label}")
+			format!("Permissions: {label}")
 		} else {
 			tip.to_owned()
 		}
@@ -1239,8 +1239,9 @@ impl AgentSurface {
 				)
 				.child(gpui::div().max_w(gpui::px(180.)).text_ellipsis().child(label))
 				.when_some(self.composer_effort_value(cx), |row, effort| {
-					row.child(gpui::div().text_color(crate::ui_theme::rgb(TEXT_MUTED)).child("·"))
-						.child(controls::effort_indicator(&effort))
+					row.child(
+						gpui::div().ml(gpui::px(4.)).child(controls::effort_indicator(&effort)),
+					)
 				})
 				.when_some(
 					self.composer_speed(cx).filter(|speed| speed.is_fallback()),
@@ -2278,8 +2279,7 @@ mod tests {
 				},
 			);
 
-			s.feedback =
-				crate::ui_feedback::Feedback::neutral("Message saved · Waiting for agent…");
+			s.feedback = crate::ui_feedback::Feedback::neutral("Message saved. Waiting for agent…");
 
 			s.apply_result(Ok(AgentSnapshotResult::Available(s.snapshot.clone().unwrap())));
 
@@ -2472,8 +2472,7 @@ mod tests {
 			assert!(s.awaiting_start(cx));
 
 			s.sending = false;
-			s.feedback =
-				crate::ui_feedback::Feedback::neutral("Message saved · Waiting for agent…");
+			s.feedback = crate::ui_feedback::Feedback::neutral("Message saved. Waiting for agent…");
 
 			assert!(s.awaiting_start(cx));
 

@@ -88,9 +88,9 @@ impl AgentSurface {
 			.and_then(|brief| brief.preview.as_mut())
 		{
 			let actions = [
-				"Read · context-fixture.json",
+				"Read: context-fixture.json",
 				"Prepare the 256k input for the native continuity probe.",
-				"Run · Verify the complete answer after reconnecting the browser.",
+				"Run: Verify the complete answer after reconnecting the browser.",
 				"The complete answer survived the reconnect, including the final code block. The full evidence is attached to the conversation.",
 			];
 

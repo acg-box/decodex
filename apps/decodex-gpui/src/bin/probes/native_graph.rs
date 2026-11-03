@@ -149,7 +149,7 @@ impl Graph {
 			samples: Samples::default(),
 			results: vec![],
 		});
-		self.result = "Benchmark running · keep this window visible".into();
+		self.result = "Benchmark running. Keep this window visible".into();
 	}
 }
 
@@ -310,12 +310,12 @@ impl Graph {
 					.py(gpui::px(5. * zoom))
 					.text_size(gpui::px(11. * zoom))
 					.text_color(gpui::rgb(0xffffff))
-					.child(format!("Agent {} · GPUI text", i + 1))
+					.child(format!("Agent {} (GPUI text)", i + 1))
 					.child(
 						gpui::div()
 							.text_size(gpui::px(9. * zoom))
 							.text_color(gpui::rgb(0xcac4f4))
-							.child(format!("{}K tokens · {}s", (i + 1) * 7, i + 4)),
+							.child(format!("{}K tokens, {}s", (i + 1) * 7, i + 4)),
 					)
 					.child(
 						gpui::div()
@@ -393,13 +393,13 @@ impl Render for Graph {
 					.text_color(gpui::rgb(0xffffff))
 					.text_size(gpui::px(12.))
 					.child(format!(
-						"GPUI + native glass · {} nodes · {} · {:.0}%",
+						"GPUI + native glass: {} nodes, {}, {:.0}%",
 						count,
 						if self.glass { "Native" } else { "Plain" },
 						zoom * 100.
 					))
 					.child(gpui::div().text_size(gpui::px(10.)).child(if self.result.is_empty() {
-						"1–4: nodes · G: material · B: benchmark · F: reset · X: remove nodes · Synthetic data".into()
+						"1–4: nodes; G: material; B: benchmark; F: reset; X: remove nodes (synthetic data)".into()
 					} else {
 						self.result.clone()
 					})),

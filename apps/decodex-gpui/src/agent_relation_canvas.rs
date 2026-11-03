@@ -551,7 +551,7 @@ impl AgentSurface {
 				title: identity,
 				assignment,
 				status: if row.review {
-					format!("{} · Result unread", row.status)
+					format!("{} (result unread)", row.status)
 				} else {
 					row.status.clone()
 				},
@@ -1263,7 +1263,7 @@ impl AgentSurface {
 					detail: if blocked {
 						"Waiting for this prerequisite."
 					} else {
-						"Prerequisite resolved · Downstream execution unconfirmed."
+						"Prerequisite resolved. Downstream execution unconfirmed."
 					}
 					.into(),
 					source: None,
@@ -1309,7 +1309,7 @@ impl AgentSurface {
 				});
 			}
 
-			graph.edges.push(Edge { in_progress: false, id:format!("context:{}:{}:{}",reference.event_id,reference.recipient_work_id,reference.source_thread_id),from:key,to:reference.recipient_work_id.clone(),kind:Kind::Context,excerpt:None,color:Kind::Context.color(),label:if reference.delivery_turn_id.is_some(){"Shared context"}else{"Context queued"}.into(),detail:format!("Shared context\n\nSource thread: {}\nInput receipt: {}\nReceiving turn: {}\n\nRead status unknown · Content version not recorded.",reference.source_thread_id,reference.event_id,reference.delivery_turn_id.as_deref().unwrap_or("Not delivered")),link:None,source:Some((reference.source_work_id.clone(),reference.source_thread_id.clone())) });
+			graph.edges.push(Edge { in_progress: false, id:format!("context:{}:{}:{}",reference.event_id,reference.recipient_work_id,reference.source_thread_id),from:key,to:reference.recipient_work_id.clone(),kind:Kind::Context,excerpt:None,color:Kind::Context.color(),label:if reference.delivery_turn_id.is_some(){"Shared context"}else{"Context queued"}.into(),detail:format!("Shared context\n\nSource thread: {}\nInput receipt: {}\nReceiving turn: {}\n\nRead status unknown. Content version not recorded.",reference.source_thread_id,reference.event_id,reference.delivery_turn_id.as_deref().unwrap_or("Not delivered")),link:None,source:Some((reference.source_work_id.clone(),reference.source_thread_id.clone())) });
 		}
 	}
 
@@ -1442,7 +1442,7 @@ impl AgentSurface {
 				"spawnAgent" => "Started agent".into(),
 				"sendInput" | "sendMessage" | "followupTask" => "Sent input".into(),
 				"wait" => "Waited".into(),
-				_ => format!("{} · {}", tool, status),
+				_ => format!("{}: {}", tool, status),
 			},
 		}
 	}
@@ -2180,15 +2180,15 @@ impl AgentSurface {
 			.role(Role::Button)
 			.tab_index(0)
 			.aria_label(format!(
-				"{} · {} · {}",
+				"{}\nStatus: {}\n{}",
 				node.row
 					.as_ref()
-					.map(|row| format!("{} · {}", self.relation_agent_number(row), row.title))
+					.map(|row| format!("{}: {}", self.relation_agent_number(row), row.title))
 					.unwrap_or_else(|| node.title.clone()),
 				node.status,
 				preview
 					.as_ref()
-					.map(|(task, operation)| format!("{task} · {operation}"))
+					.map(|(task, operation)| format!("Task: {task}\nActivity: {operation}"))
 					.unwrap_or_default()
 			))
 			.absolute()

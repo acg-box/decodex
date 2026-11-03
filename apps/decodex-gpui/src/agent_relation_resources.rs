@@ -112,7 +112,7 @@ pub(super) fn place_resources(graph: &mut Graph) {
 		node.y = y;
 
 		if count > 1 {
-			node.status = format!("{} · {} agents", node.status, count);
+			node.status = format!("{} ({} agents)", node.status, count);
 		}
 
 		cursor = y + node.height() + 76.;

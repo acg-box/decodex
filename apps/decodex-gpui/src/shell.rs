@@ -3013,7 +3013,7 @@ fn topbar_controls(
 				.debug_selector(|| "open-settings".into())
 				.role(Role::Button)
 				.aria_label("Open settings")
-				.tooltip(|_, cx| cx.new(|_| ControlTooltip("Settings · Command-,")).into())
+				.tooltip(|_, cx| cx.new(|_| ControlTooltip("Settings (Command-,)")).into())
 				.key_context("Destination")
 				.track_focus(&shell.destination_focus[settings_index])
 				.on_action(cx.listener(Shell::focus_next))
@@ -3077,9 +3077,9 @@ fn agent_panel_control(shell: &Shell, index: usize, cx: &Context<Shell>) -> AnyE
 		shell.agent.read(cx).workspace_panels()[index]
 	};
 	let label = match (index, enabled) {
-		(0, _) => "Toggle sidebar · Command-E",
-		(1, true) => "Toggle Dock · Command-J",
-		(2, _) => "Toggle work activity · Command-B",
+		(0, _) => "Toggle sidebar (Command-E)",
+		(1, true) => "Toggle Dock (Command-J)",
+		(2, _) => "Toggle work activity (Command-B)",
 		(1, false) => "Dock unavailable",
 		_ => "Panel unavailable",
 	};
@@ -3979,9 +3979,9 @@ fn account_readiness_status(account: &AccountDto) -> &'static str {
 		.and_then(|operation| operation.recovery_code.as_ref())
 		.map(WireText::as_str)
 	{
-		Some("provider_refresh_rejected") => "Refresh rejected · Sign in again",
+		Some("provider_refresh_rejected") => "Refresh rejected. Sign in again",
 		Some("provider_refresh_ambiguous" | "provider_refresh_outcome_unknown") =>
-			"Refresh unconfirmed · Sign in again",
+			"Refresh unconfirmed. Sign in again",
 		Some("provider_access_rejected_after_refresh") => "Sign in again",
 		_ => account_readiness_label(account.lifecycle_readiness),
 	}
@@ -4526,7 +4526,7 @@ fn conversation_load_status(load: ConversationsLoadState) -> &'static str {
 		ConversationsLoadState::Loading => "Loading conversations…",
 		ConversationsLoadState::Ready =>
 			"Local conversations loaded. Open one for current Codex status.",
-		ConversationsLoadState::Offline => "Offline · Showing saved conversations.",
+		ConversationsLoadState::Offline => "Offline. Showing saved conversations.",
 		ConversationsLoadState::Unavailable => "Conversation status unavailable.",
 		ConversationsLoadState::Refused => "Conversation readback was refused.",
 	}
@@ -4536,11 +4536,11 @@ fn conversation_refresh_status(refresh: ConversationRefreshState) -> Option<Stri
 	match refresh {
 		ConversationRefreshState::Idle => None,
 		ConversationRefreshState::Refreshing { completed, total, archived, failed } =>
-			Some(format!("Syncing {completed}/{total} · {archived} archived · {failed} skipped")),
+			Some(format!("Syncing {completed}/{total}: {archived} archived, {failed} skipped")),
 		ConversationRefreshState::Complete { checked, archived, failed } =>
-			Some(format!("{checked} checked · {archived} archived · {failed} skipped")),
+			Some(format!("{checked} checked: {archived} archived, {failed} skipped")),
 		ConversationRefreshState::Stopped { checked, total, archived, failed } =>
-			Some(format!("Stopped {checked}/{total} · {archived} archived · {failed} skipped")),
+			Some(format!("Stopped at {checked}/{total}: {archived} archived, {failed} skipped")),
 	}
 }
 
@@ -4911,7 +4911,7 @@ fn activity_inspector_content(shell: &Shell) -> AnyElement {
 			let summary = match &item.payload {
 				HistoryPayloadDto::Inline { text } => text.as_str().to_owned(),
 				HistoryPayloadDto::Blob(reference) => {
-					format!("Stored content · {} bytes", reference.byte_length.get())
+					format!("Stored content ({} bytes)", reference.byte_length.get())
 				},
 			};
 
@@ -5534,7 +5534,7 @@ fn conversation_service_tiers(shell: &Shell, cx: &mut Context<Shell>) -> AnyElem
 					.child(if choice.description.is_empty() {
 						choice.name
 					} else {
-						format!("{} · {}", choice.name, choice.description)
+						format!("{}: {}", choice.name, choice.description)
 					})
 					.on_click(cx.listener(move |shell, _, _, cx| {
 						shell.conversations.select_service_tier(id.clone());
@@ -5696,7 +5696,7 @@ fn native_process_summary(value: Option<&NativeProcessDiagnostics>) -> String {
 			resident_memory_bytes,
 			physical_footprint_bytes,
 		}) => format!(
-			"PID {process_id} · Resident: {} · Physical footprint: {}",
+			"PID: {process_id}\nResident: {}\nPhysical footprint: {}",
 			memory(*resident_memory_bytes),
 			memory(*physical_footprint_bytes)
 		),
@@ -6109,7 +6109,7 @@ fn composer_send(can_send: bool, cx: &mut Context<Shell>) -> AnyElement {
 		.role(Role::Button)
 		.aria_label("Send message")
 		.when(!can_send, |element| {
-			element.aria_label("Send unavailable · Check conversation status")
+			element.aria_label("Send unavailable. Check conversation status")
 		})
 		.h(gpui::px(23.0))
 		.min_h(gpui::px(23.0))
@@ -6217,7 +6217,7 @@ fn composer_model_control(model_label: String, cx: &mut Context<Shell>) -> AnyEl
 		.id("conversation-model")
 		.role(Role::Button)
 		.aria_label(format!("Model {model_label}; select next model"))
-		.tooltip(|_, cx| cx.new(|_| ControlTooltip("Model · click to cycle")).into())
+		.tooltip(|_, cx| cx.new(|_| ControlTooltip("Model (click to cycle)")).into())
 		.h(gpui::px(23.0))
 		.px_2()
 		.flex()
@@ -6244,7 +6244,7 @@ fn composer_fast_control(fast_enabled: bool, cx: &mut Context<Shell>) -> AnyElem
 		.id("conversation-fast")
 		.role(Role::Button)
 		.aria_label(if fast_enabled { "Fast mode on" } else { "Fast mode off" })
-		.tooltip(|_, cx| cx.new(|_| ControlTooltip("Fast · priority service tier")).into())
+		.tooltip(|_, cx| cx.new(|_| ControlTooltip("Fast (priority service tier)")).into())
 		.h(gpui::px(23.0))
 		.px_2()
 		.flex()
@@ -6295,7 +6295,7 @@ fn composer_effort_control(effort_label: String, cx: &mut Context<Shell>) -> Any
 		.id("conversation-effort")
 		.role(Role::Button)
 		.aria_label(format!("Reasoning effort {effort_label}; select next effort"))
-		.tooltip(|_, cx| cx.new(|_| ControlTooltip("Reasoning effort · click to cycle")).into())
+		.tooltip(|_, cx| cx.new(|_| ControlTooltip("Reasoning effort (click to cycle)")).into())
 		.h(gpui::px(23.0))
 		.px_2()
 		.flex()
@@ -6327,7 +6327,7 @@ fn topbar_sessions_toggle(
 		.role(Role::Button)
 		.aria_label("Toggle conversation sidebar")
 		.aria_expanded(left_sidebar_visible)
-		.tooltip(|_, cx| cx.new(|_| ControlTooltip("Toggle sessions · Command-E")).into())
+		.tooltip(|_, cx| cx.new(|_| ControlTooltip("Toggle sessions (Command-E)")).into())
 		.h(gpui::px(27.0))
 		.px_3()
 		.flex()
@@ -6379,7 +6379,7 @@ fn topbar_inspector_toggle(
 		.role(Role::Button)
 		.aria_label("Toggle conversation context")
 		.aria_expanded(inspector_visible)
-		.tooltip(|_, cx| cx.new(|_| ControlTooltip("Toggle context · Command-B")).into())
+		.tooltip(|_, cx| cx.new(|_| ControlTooltip("Toggle context (Command-B)")).into())
 		.h(gpui::px(27.0))
 		.px_3()
 		.flex()
@@ -6613,7 +6613,7 @@ fn conversation_session_rows(shell: &Shell, cx: &mut Context<Shell>) -> Vec<AnyE
 						.font_family(FONT_FAMILY)
 						.text_size(gpui::px(11.0))
 						.text_color(ui_theme::rgb(WB_TEXT_FAINT))
-						.child(format!("{} · {short_id}", conversation_state_label(state))),
+						.child(format!("{} ({short_id})", conversation_state_label(state))),
 				)
 		})
 		.map(IntoElement::into_any_element)
@@ -7130,7 +7130,7 @@ mod tests {
 			shell::account_login_recovery_operation_id(&rejected),
 			Some(recovery_operation_id)
 		);
-		assert_eq!(shell::account_readiness_status(&rejected), "Refresh rejected · Sign in again");
+		assert_eq!(shell::account_readiness_status(&rejected), "Refresh rejected. Sign in again");
 
 		rejected.unsettled_operation.as_mut().expect("recovery operation").recovery_code = Some(
 			decodex_protocol::WireText::new("provider_access_rejected_after_refresh")
@@ -7609,7 +7609,7 @@ mod tests {
 			},
 		));
 
-		assert!(text.contains("PID 42"));
+		assert!(text.contains("PID: 42"));
 		assert!(text.contains("Resident: Not reported"));
 		assert!(text.contains("Physical footprint: 0.0 MiB"));
 		assert!(

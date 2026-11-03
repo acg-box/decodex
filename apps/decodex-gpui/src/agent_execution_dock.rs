@@ -148,7 +148,7 @@ impl AgentSurface {
 			body = body.child(if step.detail.is_empty() {
 				step.label.clone()
 			} else {
-				format!("{} · {}", step.label, step.detail)
+				format!("{}: {}", step.label, step.detail)
 			});
 		} else {
 			body = body.child(ui_feedback::execution_icon(
@@ -218,7 +218,7 @@ impl AgentSurface {
 					.child(if step.detail.is_empty() {
 						step.label.clone()
 					} else {
-						format!("{} · {}", step.label, step.detail)
+						format!("{}: {}", step.label, step.detail)
 					}),
 			)
 			.child(

@@ -75,7 +75,7 @@ pub(super) fn render(turns: &[Value]) -> Result<String, ClientError> {
 				Some("mcpToolCall" | "dynamicToolCall") => {
 					let name = item["tool"].as_str().unwrap_or("Tool");
 					let status = item["status"].as_str().unwrap_or("unknown");
-					let mut body = format!("{name} · {status}\n\n");
+					let mut body = format!("{name} ({status})\n\n");
 
 					if let Some(args) = item.get("arguments") {
 						body.push_str(&fenced(&args.to_string()));

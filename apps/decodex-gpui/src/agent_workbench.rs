@@ -311,7 +311,7 @@ impl AgentSurface {
 							.rounded_full()
 							.bg(ui_theme::rgb(WARNING)),
 					)
-					.child(format!("{number} · {identity}")),
+					.child(format!("{number}: {identity}")),
 			)
 			.child(note(entry.label.clone()).mt_1())
 			.child(

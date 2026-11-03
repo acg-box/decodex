@@ -271,14 +271,14 @@ fn integration_text(result: &AgentIntegrationsResult) -> String {
 				if let Some(error) = &server.tools_error {
 					lines.push(format!("Tool discovery failed: {error}"));
 				} else {
-					lines.push(format!("Tools: {} · Catalog may be cached", server.tool_count));
+					lines.push(format!("Tools: {} (catalog may be cached)", server.tool_count));
 				}
 				if let Some(plugin) = &server.plugin_id {
 					lines.push(format!("Plugin: {plugin}"));
 				}
 
 				lines.push(format!(
-					"Resources: {} · Templates: {}",
+					"Resources: {}; templates: {}",
 					server.resource_count, server.template_count
 				));
 			}
@@ -368,9 +368,9 @@ fn app_inventory_text(inventory: &AgentAppInventory) -> String {
 				let status = if !app.enabled {
 					"Disabled by effective configuration"
 				} else if app.callable {
-					"Enabled · Tools available"
+					"Enabled (tools available)"
 				} else {
-					"Enabled · No tools reported"
+					"Enabled (no tools reported)"
 				};
 
 				lines.push(format!("{name} ({}) — {status}", app.id));
@@ -412,7 +412,7 @@ mod tests {
 				servers: vec![decodex_protocol::AgentMcpStatusDto {
 					name: "test".into(),
 					plugin_id: None,
-					presentation: Some("Reference docs · 1.2".into()),
+					presentation: Some("Reference docs (version 1.2)".into()),
 					runtime_status: Some("authenticationRequired".into()),
 					auth_status: "notLoggedIn".into(),
 					tool_count: 0,
@@ -431,7 +431,7 @@ mod tests {
 			},
 		});
 
-		assert!(text.contains("Reference docs · 1.2"));
+		assert!(text.contains("Reference docs (version 1.2)"));
 		assert!(text.contains("Sign-in required"));
 		assert!(text.contains("Tool discovery failed"));
 		assert!(text.contains("Capabilities: tools, extensions/openai/settings"));
@@ -456,8 +456,8 @@ mod tests {
 		let text = integrations::app_inventory_text(&AgentAppInventory::Available { apps });
 
 		assert!(text.contains("disabled (disabled) — Disabled by effective configuration"));
-		assert!(text.contains("empty (empty) — Enabled · No tools reported"));
-		assert!(text.contains("ready (ready) — Enabled · Tools available"));
+		assert!(text.contains("empty (empty) — Enabled (no tools reported)"));
+		assert!(text.contains("ready (ready) — Enabled (tools available)"));
 
 		for state in [
 			AgentAppInventory::Unsupported,

@@ -89,13 +89,14 @@ impl Catalog {
 					.to_lowercase();
 				query.split_whitespace().all(|word| text.contains(word)).then(|| {
 					let (day, clock) = archive_timestamp(item.updated_at_micros);
-					let date = format!("{day} · {clock}");
+					let date = format!("{day} {clock}");
 					Row {
 						id: item.id.clone(),
 						title: item.title.clone(),
-						metadata: project
-							.as_ref()
-							.map_or_else(|| date.clone(), |name| format!("{name} · {date}")),
+						metadata: project.as_ref().map_or_else(
+							|| date.clone(),
+							|name| format!("Project: {name}\nArchived: {date}"),
+						),
 						project,
 						day,
 						clock,

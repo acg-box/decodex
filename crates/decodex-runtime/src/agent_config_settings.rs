@@ -27,17 +27,17 @@ pub(super) fn project(receipt: &decodex_database::AgentConfigReceipt) -> AgentCo
 		decodex_database::AgentConfigReceipt::Hook(r) => (
 			&r.state,
 			&r.attempt.owner,
-			format!("Hook {} · {}", r.attempt.hook, r.attempt.field),
+			format!("Hook {}: {}", r.attempt.hook, r.attempt.field),
 			None,
 		),
 		decodex_database::AgentConfigReceipt::App(r) => (
 			&r.state,
 			&r.attempt.owner,
 			if r.attempt.field == "omit_tools_from" {
-				format!("App {} · tool visibility", r.attempt.connector)
+				format!("App {}: tool visibility", r.attempt.connector)
 			} else {
 				format!(
-					"App {} · connection {} · {}",
+					"App {}: connection {}, field {}",
 					r.attempt.connector, r.attempt.link, r.attempt.field
 				)
 			},

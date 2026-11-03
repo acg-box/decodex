@@ -45,13 +45,13 @@ impl AgentSurface {
 		for entry in self.saved_delivery_entries(&work.id).values() {
 			let Some(label) = receipt_label(entry) else { continue };
 
-			if entry.kind != "unsent_input" && label != "Local input · Delivery not confirmed" {
+			if entry.kind != "unsent_input" && label != "Message delivery unconfirmed" {
 				continue;
 			}
 			if inputs::submission_pending(&work.dispatch_state, entry) {
 				continue;
 			}
-			if label == "Local input · Delivery not confirmed"
+			if label == "Message delivery unconfirmed"
 				&& (self.native_input_receipts_loaded(&work.id)
 					|| self.preview_covers_receipt(&work.id, entry.id, &entry.text))
 			{
@@ -124,7 +124,7 @@ impl AgentSurface {
 		for entry in saved.values() {
 			// Pending input is rendered once with its message, outside diagnostic records.
 			if entry.kind == "unsent_input"
-				|| receipt_label(entry) == Some("Local input · Delivery not confirmed")
+				|| receipt_label(entry) == Some("Message delivery unconfirmed")
 			{
 				continue;
 			}
@@ -197,7 +197,7 @@ impl AgentSurface {
 		work: &AgentWorkItemDto,
 		cx: &mut Context<Self>,
 	) -> Div {
-		if entry.kind == "unsent_input" || label == "Local input · Delivery not confirmed" {
+		if entry.kind == "unsent_input" || label == "Message delivery unconfirmed" {
 			let id = entry.id;
 
 			return gpui::div()
@@ -279,13 +279,13 @@ fn receipt_label(entry: &AgentHistoryEntryDto) -> Option<&'static str> {
 		return None;
 	}
 	if entry.kind == "partial_plan" {
-		return Some("Proposed plan · Unfinished");
+		return Some("Unfinished plan");
 	}
 	if entry.kind == "partial_answer" {
-		return Some("Assistant · Unfinished");
+		return Some("Unfinished response");
 	}
 	if entry.kind == "unsent_input" {
-		return Some("Local input · Not sent");
+		return Some("Not sent");
 	}
 	if entry.kind == "capacity_retry_pending" {
 		return Some("Automatic retry");
@@ -319,7 +319,7 @@ fn receipt_label(entry: &AgentHistoryEntryDto) -> Option<&'static str> {
 		&& receipt.delivered_turn_id.is_none()
 		&& !receipt.disposed
 	{
-		return Some("Local input · Delivery not confirmed");
+		return Some("Message delivery unconfirmed");
 	}
 	if entry.kind == "system" && receipt.event_kind != "context_compacted" {
 		return Some("Local execution record");
@@ -662,7 +662,7 @@ mod tests {
 			created_at_micros: 1,
 		};
 
-		assert_eq!(receipts::receipt_label(&entry), Some("Local input · Delivery not confirmed"));
+		assert_eq!(receipts::receipt_label(&entry), Some("Message delivery unconfirmed"));
 
 		entry.receipt.as_mut().unwrap().delivered_turn_id = Some("native-turn".into());
 
@@ -674,7 +674,7 @@ mod tests {
 
 		entry.kind = "unsent_input".into();
 
-		assert_eq!(receipts::receipt_label(&entry), Some("Local input · Not sent"));
+		assert_eq!(receipts::receipt_label(&entry), Some("Not sent"));
 
 		entry.kind = "capacity_retry_pending".into();
 

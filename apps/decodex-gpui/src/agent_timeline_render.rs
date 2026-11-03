@@ -1102,7 +1102,7 @@ pub(in crate::shell::agent_surface) fn activity_label(
 			"resumeAgent" => Some(format!("Resume {target}")),
 			"closeAgent" => Some(format!("Stop {target}")),
 			"subAgentActivity/interrupted" => Some(format!("Stopped {target}")),
-			"subAgentActivity/completed" => Some(format!("{target} · Turn complete")),
+			"subAgentActivity/completed" => Some(format!("{target} finished the turn")),
 			_ => None,
 		};
 
@@ -1119,7 +1119,7 @@ pub(in crate::shell::agent_surface) fn activity_label(
 			return activity.label.clone();
 		}
 
-		let tool = activity.detail.rsplit(" · ").next().unwrap_or(&activity.detail);
+		let tool = activity.detail.rsplit('/').next().unwrap_or(&activity.detail);
 
 		return match tool {
 			"agent_list_work" => "Checking tasks",
@@ -1169,7 +1169,7 @@ pub(super) fn attachment_caption(attachment: &AgentTimelineAttachment) -> String
 		_ => "Attachment",
 	};
 
-	if attachment.label == kind { kind.into() } else { format!("{kind} · {}", attachment.label) }
+	if attachment.label == kind { kind.into() } else { format!("{kind}: {}", attachment.label) }
 }
 
 fn output_key(work: &AgentWorkItemDto, turn: &str, item: &str) -> String {
@@ -1238,7 +1238,7 @@ mod tests {
 			prompt: String::new(),
 		};
 
-		assert_eq!(super::activity_label(&activity, Some(&call), &agents), "Mia · Turn complete");
+		assert_eq!(super::activity_label(&activity, Some(&call), &agents), "Mia finished the turn");
 
 		call.tool = "wait".into();
 
@@ -1250,9 +1250,13 @@ mod tests {
 
 		assert_eq!(super::activity_label(&activity, None, &[]), "Checking tasks");
 
-		activity.detail = "docs · search".into();
+		activity.detail = "decodex/agent_read_work".into();
 
-		assert_eq!(super::activity_label(&activity, None, &[]), "docs · search");
+		assert_eq!(super::activity_label(&activity, None, &[]), "Reading task history");
+
+		activity.detail = "docs/search".into();
+
+		assert_eq!(super::activity_label(&activity, None, &[]), "docs/search");
 
 		activity.label = "Sign-in required".into();
 

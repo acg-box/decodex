@@ -35,7 +35,7 @@ impl Conversation {
 		if self.failed {
 			"Voice conversation failed"
 		} else {
-			"Voice conversation · Awaiting transcript"
+			"Voice conversation (awaiting transcript)"
 		}
 	}
 }
@@ -421,7 +421,7 @@ mod tests {
 		let pending = conversations::groups(&[boundary("start", true)]);
 
 		assert!(!pending[0].hidden());
-		assert_eq!(pending[0].empty_status(), "Voice conversation · Awaiting transcript");
+		assert_eq!(pending[0].empty_status(), "Voice conversation (awaiting transcript)");
 
 		let mut failure = boundary("failure", false);
 

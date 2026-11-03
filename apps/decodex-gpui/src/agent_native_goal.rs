@@ -188,7 +188,7 @@ fn goal_text(result: &AgentNativeGoalResult) -> String {
 				.unwrap_or_else(|_| "unknown time".into());
 
 			format!(
-				"Goal · {status}\n{}{}\n{budget}\nTokens used: {}\nElapsed: {} seconds\nLast checked: {observed}",
+				"Goal ({status})\n{}{}\n{budget}\nTokens used: {}\nElapsed: {} seconds\nLast checked: {observed}",
 				goal.objective,
 				if goal.objective_truncated { "\nSome objective content was omitted." } else { "" },
 				goal.tokens_used,

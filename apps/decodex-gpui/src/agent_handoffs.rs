@@ -152,7 +152,7 @@ impl Handoffs {
 				items.push(Handoff {
 					work: work.id.clone(),
 					key: receipt(work),
-					label: "Running · Preview",
+					label: "Preview running work",
 					reason: "Open the conversation for live activity.",
 					result: false,
 					attention: false,
@@ -164,7 +164,7 @@ impl Handoffs {
 				items.push(Handoff {
 					work: work.id.clone(),
 					key: receipt(work),
-					label: "Completed · Review",
+					label: "Review completed work",
 					reason: "Recent result",
 					result: true,
 					attention: false,
@@ -264,7 +264,7 @@ mod tests {
 			let items = handoffs.dock_items(&snapshot);
 
 			assert_eq!(items.iter().filter(|h| h.work == "release").count(), 1);
-			assert_eq!(items[0].label, "Running · Preview");
+			assert_eq!(items[0].label, "Preview running work");
 			assert!(!items.iter().any(|h| h.work == "verify"));
 
 			for n in 0..5 {

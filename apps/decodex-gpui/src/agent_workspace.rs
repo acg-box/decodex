@@ -1958,7 +1958,7 @@ impl AgentSurface {
 					.px_2()
 					.text_size(gpui::px(11.0))
 					.text_color(crate::ui_theme::rgb(WARNING))
-					.child("Dependency cycle · Review relations"),
+					.child("Review dependency cycle"),
 			);
 		}
 
@@ -2158,7 +2158,7 @@ impl AgentSurface {
 		let state = dock::progress_state(self.snapshot.as_ref().expect("graph snapshot"), work);
 		let status = self.graph_node_caption(work);
 		let color = state.color;
-		let tip = format!("{} · {}\n{}", self.work_label(work), status, state.reason);
+		let tip = format!("{} ({})\n{}", self.work_label(work), status, state.reason);
 		let element = gpui::div()
 			.id(SharedString::from(format!("graph-node-{id}")))
 			.role(Role::Button)
@@ -2604,7 +2604,7 @@ impl AgentSurface {
 		let feedback = if reason.is_some() {
 			None
 		} else if waiting {
-			Some(Feedback::neutral("Waiting for connection · Nothing sent yet"))
+			Some(Feedback::neutral("Waiting for connection. Nothing sent yet"))
 		} else {
 			self.visible_conversation_feedback()
 		};
@@ -2700,17 +2700,17 @@ impl AgentSurface {
 		} else if pending.iter().any(|event| event.event_kind.ends_with("_needs_attention")) {
 			Some(Feedback::warning("This conversation needs attention."))
 		} else if matches!(self.displayed_load_state(), LoadState::Unavailable | LoadState::Stale) {
-			Some(Feedback::warning("Connection unavailable · Reconnecting…"))
+			Some(Feedback::warning("Connection unavailable. Reconnecting…"))
 		} else if compacting {
 			Some(Feedback::loading("Compacting context"))
 		} else if !self.feedback.is_empty()
-			&& self.feedback.message != "Message saved · Waiting for agent…"
+			&& self.feedback.message != "Message saved. Waiting for agent…"
 		{
 			Some(self.feedback.clone())
 		} else {
 			selected.and_then(|work| match work.dispatch_state {
 				AgentDispatchStateDto::Unknown =>
-					Some(Feedback::warning("Connection interrupted · Checking delivery…")),
+					Some(Feedback::warning("Connection interrupted. Checking delivery…")),
 				_ => None,
 			})
 		}
@@ -2811,7 +2811,7 @@ pub(super) fn clock_label(micros: i64) -> String {
 
 fn action_accessible_label(id: &str, label: &str) -> String {
 	if id.starts_with("attention-") {
-		format!("{label} pending decisions · open next")
+		format!("{label} pending decisions (open next)")
 	} else {
 		match id {
 			"new-project" => "New project",
@@ -2943,7 +2943,7 @@ fn action_icon(id: &str) -> Option<AnyElement> {
 }
 
 fn preview_tip(_: &mut Window, cx: &mut App) -> AnyView {
-	cx.new(|_| ControlTooltip("Preview · Double-click to keep open")).into()
+	cx.new(|_| ControlTooltip("Preview (double-click to keep open)")).into()
 }
 
 #[cfg(test)]
@@ -3796,9 +3796,11 @@ mod tests {
 
 		let composer = visual.debug_bounds("agent-composer").unwrap();
 		let notice = visual.debug_bounds("conversation-unavailable").unwrap();
+		let draft = visual.debug_bounds("composer-retained-draft").unwrap();
 
-		assert!(notice.bottom() <= composer.top(), "status stays above the input bar");
-		assert!(visual.debug_bounds("composer-retained-draft").is_some());
+		assert!(notice.top() >= composer.top(), "status belongs to the disabled composer");
+		assert!(notice.bottom() <= draft.top(), "status stays above the read-only draft");
+		assert!(draft.bottom() <= composer.bottom(), "the saved draft stays inside its owner");
 		assert!(visual.debug_bounds("composer-editor-area").is_none());
 		assert!(visual.debug_bounds("composer-action-row").is_none());
 		assert!(visual.debug_bounds("composer-menu-popover").is_none());

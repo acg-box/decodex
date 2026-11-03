@@ -253,7 +253,7 @@ impl AgentSurface {
 			.flex()
 			.flex_col()
 			.gap_2()
-			.child(format!("Request details · section {section}"))
+			.child(format!("Request details (section {section})"))
 			.child(
 				gpui::div()
 					.id("large-request-detail")

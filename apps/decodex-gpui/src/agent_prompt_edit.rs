@@ -830,7 +830,7 @@ impl AgentSurface {
 			return self
 				.workspace_action(
 					"prompt-recovery-notice".into(),
-					"Unfinished edit · Review".into(),
+					"Review unfinished edit".into(),
 					|s, cx| {
 						s.workspace.details_visible = true;
 						cx.notify();

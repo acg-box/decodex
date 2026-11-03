@@ -114,7 +114,7 @@ impl AgentSurface {
 			.filter(|call| call.model.is_some() || call.reasoning_effort.is_some())
 			.map(|call| {
 				gpui::div().text_color(crate::ui_theme::rgb(TEXT_MUTED)).child(format!(
-					"{} {} · {}",
+					"{} {}; effort: {}",
 					if call.tool.starts_with("subAgentActivity/") {
 						"Created with"
 					} else {
@@ -195,7 +195,7 @@ impl AgentSurface {
 							.child(SelectableText {
 								key: format!("detail-metadata-{key}"),
 								text: format!(
-									"{} · {}\nTurn {}\nCall {}",
+									"Type: {}\nStatus: {}\nTurn: {}\nCall: {}",
 									item.kind, item.status, item.turn_id, item.item_id
 								),
 								highlights: Vec::new(),

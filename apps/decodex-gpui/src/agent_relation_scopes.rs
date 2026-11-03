@@ -27,7 +27,7 @@ impl Scope {
 	pub(super) fn label(&self) -> String {
 		let count = self.members.len();
 
-		format!("Project: {} · {count} {}", self.title, if count == 1 { "agent" } else { "agents" })
+		format!("Project: {} ({count} {})", self.title, if count == 1 { "agent" } else { "agents" })
 	}
 
 	pub(super) fn caption_width(&self, text: &WindowTextSystem) -> f32 {

@@ -124,7 +124,7 @@ impl AgentSurface {
 				.count();
 
 			if running > 0 || waiting > 0 {
-				return format!("{running} working · {waiting} waiting");
+				return format!("{running} working, {waiting} waiting");
 			}
 			if !children.is_empty()
 				&& children.iter().all(|child| child.status == AgentWorkStatusDto::Resolved)
@@ -166,7 +166,7 @@ impl AgentSurface {
 
 		if !layout.edges.is_empty() {
 			return format!(
-				"{} · Arrows show what must finish first",
+				"{}. Arrows show what must finish first",
 				owner.map(|work| self.work_label(work)).unwrap_or_else(|| "Work".into())
 			);
 		}
@@ -175,12 +175,7 @@ impl AgentSurface {
 			let complete =
 				children.iter().filter(|w| w.status == AgentWorkStatusDto::Resolved).count();
 
-			format!(
-				"{} · {} tasks · {} completed",
-				self.work_label(owner),
-				children.len(),
-				complete
-			)
+			format!("{}: {} tasks, {} completed", self.work_label(owner), children.len(), complete)
 		} else {
 			"Select a task to see its activity or result.".into()
 		}
@@ -426,7 +421,7 @@ impl AgentSurface {
 
 			let activity = entry.activity.as_ref()?;
 
-			(activity.turn_id == turn).then(|| format!("{} · {}", activity.label, activity.status))
+			(activity.turn_id == turn).then(|| format!("{} ({})", activity.label, activity.status))
 		})
 	}
 
@@ -543,7 +538,7 @@ impl AgentSurface {
 				body.child(gpui::div().text_color(ui_theme::rgb(TEXT_MUTED)).child(if loading {
 					"Loading task activity…"
 				} else if running {
-					"Running · No activity yet."
+					"Running. No activity yet."
 				} else {
 					"No final response. Open the conversation to view its history."
 				}));
@@ -585,7 +580,7 @@ pub(super) fn progress_state(
 		("Running", "Open the conversation for live activity.".into(), INFO, 1)
 	} else if work.dispatch_state == crate::shell::agent_surface::AgentDispatchStateDto::Dispatching
 	{
-		("Starting", "Submitting · Execution unconfirmed.".into(), INFO, 1)
+		("Starting", "Submitting. Execution unconfirmed.".into(), INFO, 1)
 	} else if work.status == AgentWorkStatusDto::UserDecision {
 		("Needs you", "Open the conversation to respond.".into(), WARNING, 0)
 	} else if work.status == AgentWorkStatusDto::Resolved {
@@ -621,7 +616,7 @@ pub(super) fn progress_state(
 				AgentWorkStatusDto::Wait if work.next_check_at_micros.is_some() => (
 					"Scheduled check",
 					format!(
-						"Next check · {}",
+						"Next check: {}",
 						super::next_check_text(
 							work.next_check_at_micros.expect("scheduled wait has a check time")
 						)
@@ -635,7 +630,7 @@ pub(super) fn progress_state(
 					TEXT_MUTED,
 					2,
 				),
-				_ => ("Not running", "Open · No execution active.".into(), TEXT_MUTED, 2),
+				_ => ("Not running", "Open. No execution active.".into(), TEXT_MUTED, 2),
 			}
 		}
 	};
@@ -769,7 +764,7 @@ mod tests {
 
 			assert_eq!(
 				s.current_dock_activity(&work).as_deref(),
-				Some("Run launch benchmark · completed")
+				Some("Run launch benchmark (completed)")
 			);
 		});
 	}

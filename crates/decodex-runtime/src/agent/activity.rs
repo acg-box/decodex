@@ -43,7 +43,7 @@ pub(super) fn project(params: &Value, completed: bool) -> Option<AgentActivityDt
 			let tool = item["tool"].as_str().unwrap_or("Tool");
 			let server = item["server"].as_str().or(item["namespace"].as_str());
 
-			server.map_or_else(|| tool.to_owned(), |server| format!("{server} · {tool}"))
+			server.map_or_else(|| tool.to_owned(), |server| format!("{server}/{tool}"))
 		},
 		"commandExecution" => item["exitCode"].as_i64().map_or_else(String::new, |code| {
 			// Native 0e675021 uses -1 when no process exit status is available.
@@ -266,7 +266,7 @@ mod tests {
 
 			assert_eq!(activity.label, "Sign-in required");
 			assert_eq!(activity.status, "failed");
-			assert_eq!(activity.detail, "docs · search");
+			assert_eq!(activity.detail, "docs/search");
 			assert!(!serde_json::to_string(&activity).expect("json").contains("PRIVATE"));
 			assert_eq!(activity::project(&value, false).expect("started").label, "Using tool");
 		}
@@ -320,7 +320,7 @@ mod tests {
 		let value = serde_json::json!({"turnId":"turn", "item":{"id":"item", "type":"mcpToolCall", "server":"docs", "tool":"search", "arguments":{"secret":"DO_NOT_SHOW"}, "result":"DO_NOT_SHOW"}});
 		let activity = activity::project(&value, false).expect("activity");
 
-		assert_eq!(activity.detail, "docs · search");
+		assert_eq!(activity.detail, "docs/search");
 		assert!(!serde_json::to_string(&activity).expect("json").contains("DO_NOT_SHOW"));
 	}
 

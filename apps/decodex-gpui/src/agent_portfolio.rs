@@ -126,7 +126,7 @@ impl AgentSurface {
 			.flex_col()
 			.gap_2()
 			.child(label(format!(
-				"Requirements {} · {}",
+				"Requirements: {}\nSource: {}",
 				work.requirements.id, work.requirements.source
 			)))
 			.child(self.work_usage_panel(work, cx))
@@ -148,7 +148,7 @@ impl AgentSurface {
 
 		if let Some(reason) = &work.reason {
 			panel = panel.child(label(format!(
-				"{reason} · {}",
+				"{reason}\nResume: {}",
 				work.resume_condition.as_deref().unwrap_or("No resumption requested")
 			)));
 		}
@@ -160,7 +160,7 @@ impl AgentSurface {
 		for native in portfolio.native_contributions.iter().filter(|c| c.work_id == work.id) {
 			panel = panel
 				.child(label(format!(
-					"Subagent {} · {} · requirements {}",
+					"Subagent: {}\nThread: {}\nRequirements: {}",
 					native.id,
 					native
 						.child_thread_id
@@ -205,7 +205,7 @@ impl AgentSurface {
 				.child(label("Owner assessment"))
 				.child(readable(assessment.summary.clone()))
 				.child(label(format!(
-					"Requirements {} · Results {} · Limits: {}",
+					"Requirements: {}\nResults: {}\nLimits: {}",
 					assessment.requirements_id,
 					assessment.result_ids.join(", "),
 					assessment.limits
@@ -306,7 +306,7 @@ impl AgentSurface {
 			panel = panel.child(mcp_forms::mcp_button(
 				key.clone(),
 				format!(
-					"Review details · {} · {}",
+					"Review details (turn {}; review {})",
 					details.reviewer_turn_id,
 					details.review_id.as_deref().unwrap_or("Action association unavailable")
 				),
@@ -323,7 +323,7 @@ impl AgentSurface {
 			if self.workspace.contribution_detail.as_ref() == Some(&key) {
 				panel = panel
 					.child(label(format!(
-						"Reviewer thread {} · Turn {} · Item {} · Parent {}",
+						"Reviewer thread: {}\nTurn: {}\nItem: {}\nParent: {}",
 						details.reviewer_thread_id,
 						details.reviewer_turn_id,
 						details.item_id,
@@ -499,7 +499,7 @@ impl AgentSurface {
 			.flex_col()
 			.gap_1()
 			.child(label(format!(
-				"Result {} · Agent {} · requirements {}",
+				"Result: {}\nAgent: {}\nRequirements: {}",
 				result.id, result.agent_id, result.requirements_id
 			)))
 			.child(label(format!("Limits: {}", result.limits)));
@@ -507,7 +507,7 @@ impl AgentSurface {
 		match &result.source {
 			ResultSource::NativeItem { thread_id, turn_id, item_id } => {
 				detail = detail
-					.child(label(format!("Thread {thread_id} · Turn {turn_id} · Item {item_id}")));
+					.child(label(format!("Thread: {thread_id}\nTurn: {turn_id}\nItem: {item_id}")));
 
 				let agent = result.agent_id.clone();
 
@@ -526,7 +526,7 @@ impl AgentSurface {
 			ResultSource::Artifact { path, sha256 } => {
 				let path = path.clone();
 
-				detail = detail.child(label(format!("{path} · SHA-256 {sha256}"))).child(
+				detail = detail.child(label(format!("Path: {path}\nSHA-256: {sha256}"))).child(
 					mcp_forms::mcp_button(
 						format!("result-file-{}", result.id),
 						"Reveal Result file".into(),
@@ -651,12 +651,12 @@ impl AgentSurface {
 		group = group.child(mcp_forms::mcp_button(
 			format!("work-{}", work.id),
 			format!(
-				"{}  ·  {}  ·  {}{}",
+				"{}\nOwner: {}; status: {}{}",
 				work.title,
 				owner,
 				state(work),
 				if snapshot.portfolio.awaiting_assessment.contains(&work.id) {
-					" · Awaiting assessment"
+					"; awaiting assessment"
 				} else {
 					""
 				}
@@ -732,10 +732,10 @@ impl AgentSurface {
 			panel = panel.child(mcp_forms::mcp_button(
 				format!("material-{}-{}", work.id, material.id),
 				format!(
-					"{} · {}{}",
+					"{}\nReference: {}{}",
 					material.title,
 					reference,
-					material.sha256.as_ref().map(|d| format!(" · SHA-256 {d}")).unwrap_or_default()
+					material.sha256.as_ref().map(|d| format!("\nSHA-256: {d}")).unwrap_or_default()
 				),
 				false,
 				cx,
@@ -768,7 +768,7 @@ impl AgentSurface {
 			panel = panel.child(mcp_forms::mcp_button(
 				format!("collaboration-{id}"),
 				format!(
-					"{} · {:?}",
+					"{} ({:?})",
 					self.snapshot
 						.as_ref()
 						.and_then(|s| s.agents.iter().find(|a| a.id == request.recipient_agent_id))
@@ -788,7 +788,7 @@ impl AgentSurface {
 			if self.workspace.contribution_detail.as_ref() == Some(&request.id) {
 				panel = panel
 					.child(label(format!(
-						"Instruction {} · requirements {} · transport {}",
+						"Instruction: {}\nRequirements: {}\nDelivery: {}",
 						request.instruction.id,
 						request.instruction.requirements_id,
 						request
@@ -808,7 +808,7 @@ impl AgentSurface {
 						request.instruction.material_ids.join(", ")
 					)))
 					.child(label(format!(
-						"Assessment: {} · {}",
+						"Assessment: {}\nNote: {}",
 						request.outcome.as_deref().unwrap_or("Pending"),
 						request.note.as_deref().unwrap_or("No assessment")
 					)));

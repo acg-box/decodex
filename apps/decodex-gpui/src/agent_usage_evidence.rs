@@ -158,7 +158,7 @@ impl AgentSurface {
 
 			for row in sources {
 				preview = preview.child(format!(
-					"{} · thread {} · turn {}\nWork: {}{} · receipt {} · {} input / {} output · {} ms",
+					"Agent: {}; thread: {}; turn: {}\nWork: {}{}; receipt: {}\nInput: {} tok; output: {} tok; duration: {} ms",
 					row.agent_id,
 					row.thread_id,
 					row.turn_id,
@@ -213,7 +213,7 @@ fn totals_text(scope: &UsageEvidenceScope, t: &UsageEvidenceTotals) -> String {
 	let tokens = if t.token_turns == 0 {
 		"Tokens unknown".into()
 	} else {
-		format!("{} input · {} output tokens", t.input_tokens, t.output_tokens)
+		format!("{} input tokens, {} output tokens", t.input_tokens, t.output_tokens)
 	};
 	let duration = if t.duration_turns == 0 {
 		"Duration unknown".into()
@@ -221,14 +221,14 @@ fn totals_text(scope: &UsageEvidenceScope, t: &UsageEvidenceTotals) -> String {
 		format!("{} ms recorded turn duration", t.duration_ms)
 	};
 	let coverage = format!(
-		"{} retained turns · tokens on {} · duration on {}",
+		"Retained turns: {}; token coverage: {}; duration coverage: {}",
 		t.turns, t.token_turns, t.duration_turns
 	);
 	let shared = if matches!(scope, UsageEvidenceScope::Work { .. }) {
 		format!("{} known shared turns excluded from linked-turn totals", t.shared_turns)
 	} else {
 		format!(
-			"{} shared turns counted once · {} turns without Work attribution",
+			"{} shared turns counted once; {} turns without Work attribution",
 			t.shared_turns, t.unattributed_turns
 		)
 	};
