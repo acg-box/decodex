@@ -3,8 +3,12 @@ type: "Reference"
 title: "Assistant delegation, memory and context lifecycle"
 openwiki_generated: true
 sources:
+  - id: openwiki-source-48758ba7d154c82885281d2c
+    resource: repo://apps/decodex-gpui/src/agent_composer.rs
   - id: openwiki-source-9e6b2fcb5c2b3d17fcfda57b
     resource: repo://apps/decodex-gpui/src/agent_drafts.rs
+  - id: openwiki-source-bc52712de094b4e96e7db7d5
+    resource: repo://apps/decodex-gpui/src/agent_execution_intent.rs
   - id: openwiki-source-691432bb61082c358b6f9c24
     resource: repo://apps/decodex-gpui/src/agent_timeline.rs
   - id: openwiki-source-5d032c6be684964aa2c401fa
@@ -51,10 +55,10 @@ sources:
     resource: repo://database/src/assistant.rs
   - id: openwiki-source-28af4781ad8d9558410630da
     resource: repo://database/src/works.rs
-generated: { by: "codex", at: "2026-11-03T18:23:39.894Z" }
+generated: { by: "codex", at: "2026-11-03T18:51:02.344Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-03T18:23:39.894Z
+    at: 2026-11-03T18:51:02.344Z
 ---
 
 
@@ -96,6 +100,8 @@ Team membership does not grant private-chat access, approval authority or a shar
 ## Select and configure the Assistant
 
 Open **Assistant** in the sidebar, or choose **Enable** for Assistant in Settings > Components. Setup saves an idle independent Agent and its role in one transaction. It does not manufacture a first user message or submit model work. Existing-Agent selection remains available in Work. Give continuing instructions and team or duty requests in chat; defaults handle context renewal. Components contains separate compact Assistant and RAGFlow rows with collapsed details, not a role-management form. The RAGFlow connection is optional and connects an existing service.
+
+First setup seeds the existing per-Agent next-message choices from the displayed model and effort when available, the new-conversation permission default and the shared speed preference. The first actual message carries those choices through the configured-input path. Existing Agent settings and saved drafts remain independent.
 
 The CLI uses the same typed service commands:
 

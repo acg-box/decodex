@@ -45,11 +45,28 @@ impl AgentSurface {
 		if self.sending || self.uncertain {
 			return;
 		}
+		let first_setup = self.workspace.assistant_open.is_none();
 		let id = self
 			.workspace
 			.assistant_open
 			.get_or_insert_with(|| format!("assistant-{}", super::unique_command()))
 			.clone();
+		if first_setup {
+			let model = self
+				.composer_model_value(cx)
+				.and_then(|value| decodex_protocol::ConversationModel::new(value).ok());
+			let effort = self
+				.composer_effort_value(cx)
+				.and_then(|value| decodex_protocol::ConversationReasoningEffort::new(value).ok());
+			let permissions = crate::session_settings::Defaults::load().permissions;
+			let speed = crate::session_settings::default_speed().ok();
+			self.draft_profiles.execution.change(id.clone(), |choice| {
+				choice.model = model;
+				choice.reasoning_effort = effort;
+				choice.permission_mode = Some(permissions);
+				choice.service_tier = speed;
+			});
+		}
 		self.execute(
 			AgentActionDto::CreateAssistant {
 				agent_id: EntityId::new(id).expect("generated Agent identity"),
@@ -310,6 +327,54 @@ impl AgentSurface {
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[gpui::test]
+	fn first_assistant_message_uses_creation_choices_without_changing_the_previous_agent(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let surface = cx.new(AgentSurface::new);
+		surface.update(cx, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.composer_manager = Some("agent".into());
+			s.selected = Some("agent".into());
+			s.composer.update(cx, |i, cx| i.set_content("Keep the previous draft", cx));
+			s.draft_profiles.execution.change("agent".into(), |choice| {
+				choice.model =
+					Some(decodex_protocol::ConversationModel::new("gpt-6.1-sol").unwrap());
+				choice.reasoning_effort = Some(decodex_protocol::ConversationReasoningEffort::Max);
+				choice.permission_mode = Some(decodex_protocol::PermissionMode::FullAccess);
+			});
+			s.open_assistant(cx);
+			let id = s.workspace.assistant_open.clone().unwrap();
+			let action = s.configured_send(
+				EntityId::new(id).unwrap(),
+				decodex_protocol::HistoryText::new("First request").unwrap(),
+				Vec::new(),
+			);
+			let AgentActionDto::SendConfigured { execution, .. } = action else {
+				panic!("configured first input")
+			};
+			assert_eq!(execution.model.as_ref().map(|m| m.as_str()), Some("gpt-6.1-sol"));
+			assert_eq!(
+				execution.reasoning_effort,
+				Some(decodex_protocol::ConversationReasoningEffort::Max)
+			);
+			assert_eq!(
+				execution.permission_mode,
+				Some(crate::session_settings::Defaults::load().permissions)
+			);
+			assert_eq!(
+				execution.selected_service_tier(),
+				crate::session_settings::default_speed().ok()
+			);
+			assert_eq!(
+				s.draft_profiles.execution.choice("agent").permission_mode,
+				Some(decodex_protocol::PermissionMode::FullAccess)
+			);
+			assert_eq!(s.composer.read(cx).content(), "Keep the previous draft");
+		});
+	}
+
 	#[gpui::test]
 	fn memory_setup_edit_is_scoped_and_preserves_the_chat_draft(cx: &mut gpui::TestAppContext) {
 		let surface = cx.new(AgentSurface::new);

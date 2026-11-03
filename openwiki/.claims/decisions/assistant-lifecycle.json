@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:1337ddc5898b80c86a6dbd18a84844ce4c9a5052271a6b4a815f4e6c86f6da69",
+  "pageVersion": "sha256:0e1ff145ff0174503dc3a93e4e376cfcaf9cc5dc305a0a045362c22db9268554",
   "claims": [
     {
       "id": "claim_2f9fecf97f644372afb5684929656aac",
@@ -8,7 +8,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
-          "version": "repo-file-v1:sha256:80241d89899ab6c5a5b9fd570d7b32044c41efd52f4096b6449ea3fbe08ff3d3"
+          "version": "repo-file-v1:sha256:39a4ffccad9d1b0187e04351cce4d3b8fce9d2eed76d00037d8f3bc92a3b2372"
         },
         {
           "resource": "repo://crates/decodex-components/src/ragflow.rs",
@@ -154,7 +154,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
-          "version": "repo-file-v1:sha256:80241d89899ab6c5a5b9fd570d7b32044c41efd52f4096b6449ea3fbe08ff3d3"
+          "version": "repo-file-v1:sha256:39a4ffccad9d1b0187e04351cce4d3b8fce9d2eed76d00037d8f3bc92a3b2372"
         },
         {
           "resource": "repo://crates/decodex-components/src/ragflow.rs",
@@ -281,10 +281,28 @@
           "version": "repo-file-v1:sha256:f96807ddb85427783694c17c7e9a93529d0d43d620ffda5eb7de5f7fe70e29d5"
         }
       ]
+    },
+    {
+      "id": "claim_81d1dc8b253040f7ba3c4682bf606c36",
+      "statement": "First Assistant setup seeds the existing per-Agent next-message choices from the available displayed model and effort, the new-conversation permission default and the shared speed preference. The configured first send carries them without changing the previous Agent or its saved draft.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_composer.rs",
+          "version": "repo-file-v1:sha256:a8b2e438bc717f086f3c1b6673e83a034eb6c8be60848be5811f297161eedacd"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_execution_intent.rs",
+          "version": "repo-file-v1:sha256:7b07b34559ef4fd7fb9458b8d0214f3380436c7ad7367500a0e34b0531bc1889"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
+          "version": "repo-file-v1:sha256:39a4ffccad9d1b0187e04351cce4d3b8fce9d2eed76d00037d8f3bc92a3b2372"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-03T18:23:39.894Z"
+    "at": "2026-11-03T18:51:02.344Z"
   }
 }

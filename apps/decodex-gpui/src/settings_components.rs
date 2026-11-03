@@ -285,6 +285,7 @@ impl SettingsSurface {
 			.flex()
 			.flex_col()
 			.min_h(gpui::px(36.5))
+			.justify_center()
 			.gap(gpui::px(2.))
 			.rounded(gpui::px(4.))
 			.cursor_pointer()

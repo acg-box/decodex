@@ -113,7 +113,7 @@ sources:
 generated: { by: "codex", at: "2026-11-03T18:23:39.894Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-03T18:23:39.894Z
+    at: 2026-11-03T18:51:02.344Z
 ---
 
 # Desktop workspace and native glass
