@@ -18,16 +18,12 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_conversation_tab_tests.rs
   - id: openwiki-source-1bf529ea3f1649ac9a28334a
     resource: repo://apps/decodex-gpui/src/agent_conversation_tabs.rs
-  - id: openwiki-source-d701c906e7fcc9ab2d0917bc
-    resource: repo://apps/decodex-gpui/src/agent_inspection.rs
   - id: openwiki-source-85ab533d66ee904d83d8a21a
     resource: repo://apps/decodex-gpui/src/agent_item_context_tests.rs
   - id: openwiki-source-7aecb0d94903aac848b2cdfd
     resource: repo://apps/decodex-gpui/src/agent_item_context.rs
   - id: openwiki-source-0afccc244c69eb8da96d1fa9
     resource: repo://apps/decodex-gpui/src/agent_link_preview.rs
-  - id: openwiki-source-77ad5024b567271a0f618fd7
-    resource: repo://apps/decodex-gpui/src/agent_list_branch.rs
   - id: openwiki-source-9cda3120e5cf6c9c303ec1d9
     resource: repo://apps/decodex-gpui/src/agent_markdown_selection_tests.rs
   - id: openwiki-source-2ee1164d01a09b38a208f1ac
@@ -46,8 +42,6 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_mermaid.rs
   - id: openwiki-source-cdf91143ee7350a723ed596e
     resource: repo://apps/decodex-gpui/src/agent_mermaid/tests.rs
-  - id: openwiki-source-09a2c045309673f306153f39
-    resource: repo://apps/decodex-gpui/src/agent_model_settings_wire_tests.rs
   - id: openwiki-source-ae2ce5cda718ede63f50be9b
     resource: repo://apps/decodex-gpui/src/agent_native_composer.rs
   - id: openwiki-source-0eea3c2bab20e4a9d8e3d80a
@@ -96,6 +90,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/composer_text.rs
   - id: openwiki-source-fca3688e96d92c09b7ba015f
     resource: repo://apps/decodex-gpui/src/native_material_panel.rs
+  - id: openwiki-source-2f256c95c226c1326d164ad3
+    resource: repo://apps/decodex-gpui/src/ui_feedback.rs
   - id: openwiki-source-592957b8edd8a689f738c189
     resource: repo://apps/decodex-gpui/src/ui_frame.rs
   - id: openwiki-source-246a7882a46c2cac4571760d
@@ -126,6 +122,8 @@ sources:
     resource: repo://crates/decodex-codex/src/app_server_client/thread_fork.rs
   - id: openwiki-source-c01ab8da738707861c64c143
     resource: repo://crates/decodex-protocol/src/desktop_message_delivery.rs
+  - id: openwiki-source-c75093d19a3bc72db5836102
+    resource: repo://crates/decodex-runtime/src/agent_host.rs
   - id: openwiki-source-c6a513f4a72008998a474ca0
     resource: repo://crates/decodex-runtime/src/agent_titles.rs
   - id: openwiki-source-7111b71a47931c3e55d3ff6f
@@ -148,7 +146,10 @@ sources:
     resource: repo://database/src/agent_titles.rs
   - id: openwiki-source-6197a876b2effbe992b1e2ec
     resource: repo://database/src/agent.rs
-generated: { by: "codex", at: "2026-11-02T07:10:57.562Z" }
+generated: { by: "codex", at: "2026-11-03T16:31:59.854Z" }
+verified:
+  - by: openwiki/0.7.3
+    at: 2026-11-03T16:49:54.130Z
 ---
 
 
@@ -212,7 +213,7 @@ Close hides a tab and returns to its exact source conversation. It does not arch
 
 ## Automatic conversation topics
 
-The service summarizes the first completed user exchange into a short title in the user's language. It checks the title after four more completed user exchanges. A detail, progress update or brief tangent keeps the current title. A sustained change of focus can produce a new title. Generated titles have at most 36 characters.
+The service summarizes the first completed user exchange into a short title in the user's language. It checks the title after seven more completed user exchanges. A detail, progress update or brief tangent keeps the current title. A sustained change of focus can produce a new title. Generated titles have at most 36 characters.
 
 The same topic serves the sidebar, conversation browser and Side chat tab. Agent names and Work titles keep their existing owners. Native manual renames take priority. A failed or cancelled title review keeps the previous title and does not block input. See [automatic titles](../workflows/conversations-and-recovery.md#automatic-conversation-titles) for native ownership and recovery.
 
@@ -234,9 +235,9 @@ Submitted input has message delivery state separate from the current editor. A p
 
 An unsent input uses the normal right-aligned user bubble at the end of the transcript. Its full text wraps and scrolls with the conversation; it is not pinned above the input bar. One compact row below it aligns **Not sent** and, when available, **Resend**. Hover over the status to inspect the reason. There is no separate error panel, disclosure header, copy action or dismiss action. Archived conversations do not show retry accessories.
 
-Saved edit recovery and history refresh/source controls live in Details. Failed input remains an ordinary message in the transcript. Active editing and unresolved-operation notices use the chat flow. Fork progress and recovery for a disabled conversation stay inside that input bar. There is no permanent list of saved drafts. See [conversation recovery](../workflows/conversations-and-recovery.md) for edit and Fork ownership.
+Saved edit recovery and history refresh/source controls live in Details. Failed input remains an ordinary message in the transcript. Active editing and unresolved-operation notices use the chat flow. Fork progress and recovery for a disabled conversation use the feedback band above its composer. There is no permanent list of saved drafts. See [conversation recovery](../workflows/conversations-and-recovery.md) for edit and Fork ownership.
 
-After a native provider mismatch, a read-only notice inside the input bar identifies the original and current providers. **Fork** creates and opens the branch directly after the existing source preparation. There is no second confirmation or Cancel control. Progress and recovery use the same input bar. Creation sends no message and retains the original draft. Ordinary branches and Side chats keep their source provider.
+After a native provider mismatch, a read-only notice above the composer identifies the original and current providers. **Fork** creates and opens the branch directly after the existing source preparation. There is no second confirmation or Cancel control. Progress and recovery use the same feedback band. Creation sends no message and retains the original draft. Ordinary branches and Side chats keep their source provider.
 
 ## Prose links and formulas
 
@@ -285,6 +286,8 @@ Preparation runs in the background. An application cache keyed by source and sel
 Incomplete fences and failed compilation retain the literal source. Wide diagrams scroll without wrapping or changing image geometry. Copy Mermaid source preserves the original tags, quotes and line endings. The GPUI regression tests cover source copy, a narrow viewport, row culling and cache restoration. These tests are distinct from installed-app scrolling or frame-rate acceptance.
 
 ## Change and verify
+
+The [Assistant lifecycle](../decisions/assistant-lifecycle.md) keeps one chat across fresh native contexts. The desktop retains the unsent draft, loaded history and reading state during a confirmed successor binding. History pages carry stable logical positions and exact native source threads; older rows remain read-only. Pagination cursors follow the recorded context chain. Side chats remain separate branches with inherited context.
 
 Use the grouping tests for turn boundaries, explicit final answers and interleaved input. Use an actual desktop session for alignment, tool-detail expansion, floating-surface clipping, scrolling and reduced motion. Compilation and event tests do not establish visual smoothness.
 

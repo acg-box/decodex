@@ -13,8 +13,8 @@ sources:
     resource: repo://database/src/process_generations.rs
 generated: { by: "codex", at: "2026-09-28T02:19:36.307Z" }
 verified:
-  - by: openwiki/0.7.2
-    at: 2026-10-26T14:39:55.302Z
+  - by: openwiki/0.7.3
+    at: 2026-11-03T15:39:55.651Z
 ---
 
 

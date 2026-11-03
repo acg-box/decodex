@@ -328,6 +328,7 @@ impl SettingsSurface {
 				self.component_settings(cx).into_any_element(),
 				self.egm_settings(cx).into_any_element(),
 				self.research_settings(cx).into_any_element(),
+				self.assistant_component(cx),
 			])
 			.into_any_element()
 	}

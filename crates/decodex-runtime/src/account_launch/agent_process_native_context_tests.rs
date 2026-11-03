@@ -283,3 +283,123 @@ async fn checked_histories(
 
 	histories
 }
+
+#[tokio::test]
+#[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated Assistant lifecycle qualification"]
+async fn installed_assistant_renews_fresh_contexts_with_original_dialogue_and_isolated_memory() {
+	use decodex_core::assistant::{AssistantCommand, AssistantSettings, RagflowConnection};
+	let binary = env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit native binary");
+	let home = tempfile::tempdir().unwrap();
+	let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+	let address = listener.local_addr().unwrap();
+	let requests = Arc::new(AtomicUsize::new(0));
+	let bodies = Arc::new(Mutex::new(Vec::new()));
+	let backend = tokio::spawn(native_tests::serve_fixture(
+		listener,
+		requests.clone(),
+		None,
+		Some(bodies.clone()),
+		None,
+		|serial| serde_json::json!({"type":"message","role":"assistant","id":format!("assistant-answer-{serial}"),"content":[{"type":"output_text","text":"Recorded original user correction."}]}),
+	));
+	fs::write(home.path().join("config.toml"),format!("model=\"gpt-5.6-sol\"\nmodel_provider=\"fixture\"\ncli_auth_credentials_store=\"file\"\n[features]\nmemories=true\nenable_request_compression=false\n[memories]\ngenerate_memories=false\n[model_providers.fixture]\nname=\"Assistant fixture\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n")).unwrap();
+	fs::create_dir(home.path().join("memories_v2")).unwrap();
+	fs::write(
+		home.path().join("memories_v2/memory_summary.md"),
+		"v1\nNATIVE_MEMORY_FIXTURE_SENTINEL\n",
+	)
+	.unwrap();
+	let root = DecodexRoot::new(home.path().canonicalize().unwrap().join("state")).unwrap();
+	root.paths().ensure_layout().unwrap();
+	let store = SqliteStore::open(&root.paths()).unwrap();
+	let mut session = NativeSession::start(&binary, home.path());
+	let mut config =
+		AgentConfig::new("gpt-5.6-sol".into(), "medium".into(), home.path().display().to_string());
+	config.sandbox = "read-only".into();
+	config.approval_policy = serde_json::json!("never");
+	let mut agent = AgentCoordinator::new(store.clone(), session.client.clone(), config).unwrap();
+	let result = AssertUnwindSafe(time::timeout(Duration::from_secs(90), async {
+		agent
+			.start_agent("assistant", "Original user decision: inspect sources; do not publish.")
+			.await
+			.unwrap();
+		terminal(&mut agent, &mut session.events, &store).await;
+		let original =
+			store.get_agent_work_item("assistant".into()).await.unwrap().codex_thread_id.unwrap();
+		assert!(
+			session
+				.client
+				.memory_summary(&original)
+				.await
+				.unwrap()
+				.unwrap()
+				.contains("NATIVE_MEMORY_FIXTURE_SENTINEL")
+		);
+		store.set_assistant("assistant".into(), true).await.unwrap();
+		agent
+			.manage_assistant(
+				"assistant",
+				"settings",
+				AssistantCommand::Configure {
+					settings: AssistantSettings {
+						mandate: "Inspect sources; do not publish.".into(),
+						renew_after_turns: 1,
+						ragflow: Some(RagflowConnection {
+							url: "https://ragflow.invalid".into(),
+							api_key_env: "DECODEX_FIXTURE_UNUSED_KEY".into(),
+							user_id: "fixture-user".into(),
+							dataset_ids: vec![],
+							memory_id: Some("fixture-memory".into()),
+							ingest_chats: false,
+						}),
+					},
+				},
+				true,
+			)
+			.await
+			.unwrap();
+		let mut seen = std::collections::BTreeSet::from([original.clone()]);
+		for n in 0..3 {
+			agent
+				.enqueue_user_message(
+					"assistant",
+					&format!("correction-{n}"),
+					&format!("Original correction {n}: use blue and keep publication disabled."),
+				)
+				.await
+				.unwrap();
+			agent.wake_pending().await.unwrap();
+			terminal(&mut agent, &mut session.events, &store).await;
+			let current = store.get_agent_work_item("assistant".into()).await.unwrap();
+			let thread = current.codex_thread_id.unwrap();
+			assert!(seen.insert(thread.clone()), "each renewal starts a distinct native context");
+			assert_eq!(session.client.memory_summary(&thread).await.unwrap(), None);
+			let metadata =
+				session.client.thread_read(serde_json::json!({"threadId":thread})).await.unwrap();
+			assert!(metadata["thread"]["forkedFromId"].is_null());
+			assert!(metadata["thread"]["parentThreadId"].is_null());
+            let owned=bodies.lock().unwrap().iter().filter(|b|b["client_metadata"]["thread_id"].as_str().is_some_and(|id|seen.contains(id))).count();
+            assert_eq!(owned,n+2,"one model request per user turn; renewal makes no additional inference call");
+		}
+		assert_eq!(store.agent_previous_threads("assistant".into()).await.unwrap().len(), 3);
+        let captured=bodies.lock().unwrap().clone();
+        let observed=captured.iter().filter(|b|b["client_metadata"]["thread_id"].as_str().is_some_and(|id|seen.contains(id))).collect::<Vec<_>>();
+		assert!(observed[1].to_string().contains("Original user decision"));
+		assert!(observed[3].to_string().contains("Original correction 1"));
+        assert!(observed[3].to_string().contains("Original correction 0"));
+		for body in &observed[1..] {
+			assert!(!body.to_string().contains("NATIVE_MEMORY_FIXTURE_SENTINEL"));
+			assert!(body.to_string().contains("do not publish"));
+		}
+		let control=session.client.thread_start(serde_json::json!({"cwd":home.path(),"ephemeral":true,"approvalPolicy":"never","sandbox":"read-only","config":{"memories.generate_memories":false}})).await.unwrap();
+        assert!(session.client.memory_summary(control["thread"]["id"].as_str().unwrap()).await.unwrap().unwrap().contains("NATIVE_MEMORY_FIXTURE_SENTINEL"),"other contexts keep native memory settings");
+	}))
+	.catch_unwind()
+	.await;
+	drop(agent);
+	drop(session);
+	backend.abort();
+	result
+		.expect("Assistant native qualification panicked")
+		.expect("Assistant native qualification timed out");
+}

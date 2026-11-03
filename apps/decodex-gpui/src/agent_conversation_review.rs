@@ -131,6 +131,7 @@ impl AgentSurface {
 			self.timeline.native.replace(
 				binding,
 				AgentTimelinePage {
+					source_threads: Default::default(),
 					thread_id: "review-thread".into(),
 					entries: rows,
 					next_cursor: None,

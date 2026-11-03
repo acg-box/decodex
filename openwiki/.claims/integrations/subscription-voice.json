@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:14d649706abaae943110ef3dd0e8964d4ef3b60bfbda881b7d89de65a0bb45f3",
+  "pageVersion": "sha256:edd2b90211d2bc1ef109684fece0359983dcaec624b79e26628f509af02d5521",
   "claims": [
     {
       "id": "claim_93b99ffbc7b84692b730b24680f83bd2",
@@ -60,7 +60,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_voice.rs",
-          "version": "repo-file-v1:sha256:569ed4cffbb27373f430b09b457a9bd69f61db5d795a18bb9cba3a238a3a66c9"
+          "version": "repo-file-v1:sha256:2576d1cf187278dce231686c5e320c15ab455f8411d6d6683b3697709b686ccd"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/native_live_audio.rs",
@@ -92,7 +92,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_voice.rs",
-          "version": "repo-file-v1:sha256:569ed4cffbb27373f430b09b457a9bd69f61db5d795a18bb9cba3a238a3a66c9"
+          "version": "repo-file-v1:sha256:2576d1cf187278dce231686c5e320c15ab455f8411d6d6683b3697709b686ccd"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/native_audio_owner.rs",
@@ -170,7 +170,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_voice.rs",
-          "version": "repo-file-v1:sha256:569ed4cffbb27373f430b09b457a9bd69f61db5d795a18bb9cba3a238a3a66c9"
+          "version": "repo-file-v1:sha256:2576d1cf187278dce231686c5e320c15ab455f8411d6d6683b3697709b686ccd"
         },
         {
           "resource": "repo://scripts/macos/stage_decodex_app.sh",
@@ -212,7 +212,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_dictation.rs",
-          "version": "repo-file-v1:sha256:d73ad99819a111337ab88985cca1ad5c34910e8306263831da0c6b3d151d365f"
+          "version": "repo-file-v1:sha256:c77a452c518185a2927796081e17742e4e4dc2096abe28596dd5101073c076b6"
         }
       ]
     },
@@ -363,12 +363,12 @@
       "statement": "Navigation preserves the call's work and session, exposes background Return, Mute and End controls, and keeps other conversation drafts separate; ending the call or confirmed removal/archive of its owner retires local capture.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L1718-L1736",
-          "version": "repo-lines-v1:sha256:bd936f30a53511c67418d7e6d790beda20e0ab91361676cbf6de42b38b59372e:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE4NDA2NWNjOTFkNmQyZmM1ZjNlMTg4ODFkZDkwNGQxN2YxNGFlODk0YjAzMDJlZjk0OGE2YjMxNDgwODQ0M2MiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAwZWY3NThmYTc2M2I5ZmRmNjVjODIyNzhlN2VhYTRlMTQ5ODEyN2ZhZTgzNTllZWRjODExMmE0MzNkZWQ0NTciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjgxOWY1MDE3OTNiZjgzNjk5Njc5MzY0NzFhMDQ3NmM1NmE0MjFlYmVkZTQyNWNjYmNmNTgyMDBhNGUwZjJiNTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImJhODRiYzBhN2UwYjZiYWIwMjhlNzA1ODBkMTE3YTdhOTVhMDdkNTY4OTRlZmFjMzkzNjQ1MWE5ODcwNjRiNWIifQ"
+          "resource": "repo://apps/decodex-gpui/src/agent_voice.rs#L2485-L2596",
+          "version": "repo-lines-v1:sha256:8b26039f048a1adc852af223c27270237314ae6720658dedeafc38f1c9f37a9f:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEyLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJkM2Y1MjgxOGNiMGM0NjU3YmFiYzY3MDc0OGIzODYwMjdiYmI0YzZlMDg5ZjRlODk0N2Y5YmEyMGE2YTU4ZTRlIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIwMWJhNDcxOWM4MGI2ZmU5MTFiMDkxYTdjMDUxMjRiNjRlZWVjZTk2NGUwOWMwNThlZjhmOTgwNWRhY2E1NDZiIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJmMTI2OWJhMGQ1Mjg0MjM2OGNhMjIwMWI0NGYyMTNhOWMwNGJmOTkzNjFiODE4YzljMjM1MzhjZjM1MWQ2MjgxIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIyOTllNWVhMmM3NDgxYzM2NTA1MjUxYjQ2NWU3ODRlOWIzZmRmNDRlYzE0YzI3M2I1MTlmMzI3NjEyMmMxNDc4In0"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_voice.rs#L793-L865",
-          "version": "repo-lines-v1:sha256:4e6bf22b18dd8392c809fd9520af81190b4041b85b8325f35b7ea974d848bcb3:eyJzZWxlY3RlZExpbmVDb3VudCI6NzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlkYTgxMGEzZGU2ZWEwODJjYzMwN2ExMWUxZmZiOGFlNDc5ZWY2OWM2NTI0ZTRiY2VhOTdkMzgxNzYwN2U0NGUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRmNzEyMTI4NjkzM2U3NzgyYWQ4ZDIzYzI2YzM1MzAxNTg0ZDZmZmE1MjhlZDY3MzFmMmM4YjBmMTI0NGIyMjEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM3M2FjMDMxZjM0Y2RmZDllMWU0YzJjZjhiNmQyODEzOTkwMDVlZDI0OTlkYzhiNDQ3OWYyMmNjZTRiYjU4YjgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjYyMzI1ZDVlYTMyNzM3OTYyNjM1ZmI0YjdmYzA4ZGE5ZjYxNWM5NTkxZWEzMTQ2YmU0Njk3NDY2ZjQyMGE0MjMifQ"
+          "resource": "repo://apps/decodex-gpui/src/agent_voice.rs#L793-L889",
+          "version": "repo-lines-v1:sha256:8a05d0aa03c18ba0684cf254012623c130e129e20e95c42ee0f0b6cbb0b83a67:eyJzZWxlY3RlZExpbmVDb3VudCI6OTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlkYTgxMGEzZGU2ZWEwODJjYzMwN2ExMWUxZmZiOGFlNDc5ZWY2OWM2NTI0ZTRiY2VhOTdkMzgxNzYwN2U0NGUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM3M2FjMDMxZjM0Y2RmZDllMWU0YzJjZjhiNmQyODEzOTkwMDVlZDI0OTlkYzhiNDQ3OWYyMmNjZTRiYjU4YjgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhhODA3MTdhZjVkZDFiYWQ1ZTNlNjNkN2RiYjg4Yjc3ZGY4OTU4M2FiYjc1Y2ZjNDBmZjIwNDUyYmFmOThlNTcifQ"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs#L323-L333",
@@ -378,7 +378,7 @@
     }
   ],
   "verification": {
-    "by": "openwiki/0.7.2",
-    "at": "2026-11-02T02:42:46.593Z"
+    "by": "openwiki/0.7.3",
+    "at": "2026-11-03T16:31:59.854Z"
   }
 }

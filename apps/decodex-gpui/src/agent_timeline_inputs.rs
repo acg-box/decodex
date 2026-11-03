@@ -1224,6 +1224,7 @@ mod tests {
 				account: "account".into(),
 			},
 			AgentTimelinePage {
+				source_threads: Default::default(),
 				thread_id: "native-thread".into(),
 				entries: vec![
 					decodex_protocol::AgentTimelineEntry {
@@ -1407,6 +1408,7 @@ mod tests {
 			assert!(surface.timeline.native.replace(
 				Binding { work: id.clone(), thread: "thread".into(), account: "account".into() },
 				AgentTimelinePage {
+					source_threads: Default::default(),
 					thread_id: "thread".into(),
 					entries: vec![],
 					next_cursor: None,

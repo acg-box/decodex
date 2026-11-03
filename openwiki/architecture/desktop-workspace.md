@@ -42,8 +42,6 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_markdown.rs
   - id: openwiki-source-9c68c30b2ff24ddf9a764d74
     resource: repo://apps/decodex-gpui/src/agent_memory.rs
-  - id: openwiki-source-09a2c045309673f306153f39
-    resource: repo://apps/decodex-gpui/src/agent_model_settings_wire_tests.rs
   - id: openwiki-source-1e0b3343cd024646618a1f95
     resource: repo://apps/decodex-gpui/src/agent_native_agents.rs
   - id: openwiki-source-ae2ce5cda718ede63f50be9b
@@ -60,8 +58,6 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_prompt_confirm_wire_tests.rs
   - id: openwiki-source-b2084dffd07b4229957a0f94
     resource: repo://apps/decodex-gpui/src/agent_prompt_edit.rs
-  - id: openwiki-source-c222de0005be9c363ba17232
-    resource: repo://apps/decodex-gpui/src/agent_relation_canvas.rs
   - id: openwiki-source-eaafddc6420cb2e60f559a55
     resource: repo://apps/decodex-gpui/src/agent_relation_layout.rs
   - id: openwiki-source-a94720ef223006f5ecee5f55
@@ -72,6 +68,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_text_selection.rs
   - id: openwiki-source-d57edbe5de23ebee985fc88b
     resource: repo://apps/decodex-gpui/src/agent_timeline_inputs.rs
+  - id: openwiki-source-691432bb61082c358b6f9c24
+    resource: repo://apps/decodex-gpui/src/agent_timeline.rs
   - id: openwiki-source-51a4755f3c4ddd78511e5c8e
     resource: repo://apps/decodex-gpui/src/agent_tree.rs
   - id: openwiki-source-0d053d4de2f668168f982629
@@ -84,6 +82,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_workspace_size.rs
   - id: openwiki-source-5d032c6be684964aa2c401fa
     resource: repo://apps/decodex-gpui/src/agent_workspace.rs
+  - id: openwiki-source-f339a4d1910db63ca305c2df
+    resource: repo://apps/decodex-gpui/src/assistant_settings.rs
   - id: openwiki-source-fca3688e96d92c09b7ba015f
     resource: repo://apps/decodex-gpui/src/native_material_panel.rs
   - id: openwiki-source-a2f254020dd8eaabd6366c91
@@ -110,7 +110,10 @@ sources:
     resource: repo://database/src/works/commands.rs
   - id: openwiki-source-8fe6f1557e5d45d88b34bd0a
     resource: repo://scripts/macos/generate_workspace_symbols.swift
-generated: { by: "codex", at: "2026-11-02T07:10:57.562Z" }
+generated: { by: "codex", at: "2026-11-03T16:49:54.130Z" }
+verified:
+  - by: openwiki/0.7.3
+    at: 2026-11-03T16:49:54.130Z
 ---
 
 # Desktop workspace and native glass
@@ -125,7 +128,7 @@ Collaboration groups source-backed exchanges by participant pair and expands the
 
 Global shortcuts in `shell.rs` are Command-E for the left sidebar, Command-B for the inspector/agent side, and Command-J for the graph. Window controls stay in the global shell. Settings is a separate presentation with bounded scrolling and shared spacing tokens.
 
-The Graph groups Agents by recorded Project membership. A dashed rounded boundary separates that scope from solid relationship links. Selecting an Agent highlights its Project boundary. Tree, Radial and Grouped retain compact branches within a Project and clearance between Projects. Point overview retains boundaries while hiding small labels. These frames do not move an Agent to another Project or change ownership.
+The Graph groups Agents by recorded Project membership. A quiet bottom rail and a stable caption identify that scope. Selecting a Project or one of its Agents highlights the rail and adds upper-corner marks. Tree, Radial and Grouped keep clearance between Projects. Point overview omits small captions. These marks do not move an Agent to another Project or change ownership.
 
 Settings > Agents supplies permission and speed defaults for new independent conversations. The input-bar shield selects the current Agent's native permission mode; speed stays inside the model menu. Existing conversations retain their own settings, and native Subagents follow native inheritance rather than a Decodex broadcast.
 
@@ -191,7 +194,7 @@ The history rail follows the reading position. Expanding collaboration exchanges
 
 ## State and errors
 
-When sending is unavailable, the reason and recovery actions appear inside the disabled input bar. The current draft is retained and remains readable. There is no empty Message placeholder or duplicate status band above it. Parent-managed native chats offer Open parent; Retry is reserved for a failed native connection.
+Conversation errors and recovery actions share one band above the composer. A send restriction disables the editor and retains its draft. Errors and quoted passages do not occupy the composer toolbar. Archive status and Unarchive are the exception: they stay inside the disabled composer without another notice above it. Parent-managed native chats offer Open parent; Retry is reserved for a failed native connection.
 
 Archive is a normal read-only state. Archived and the short explanation Unarchive to send messages appear inside the disabled input bar, with Unarchive on the right. Read-only notices use a short state followed by one plain sentence about its effect or next action; the explanation wraps when necessary. Background archive-read failures preserve the last confirmed state. A restore failure replaces the ordinary explanation with its actual feedback.
 
@@ -201,7 +204,7 @@ A failed send stays beside its own message in the scrolling transcript, with Not
 
 GPUI uses the shared `ui_feedback` presentation for account problems and operation notices. Status rows use severity color with an icon and explicit wording. Account problems appear beside the affected account without requiring a popup. The native menu-bar feedback control keeps its compact icon and explanatory popover.
 
-Use three placement rules: put a disabled conversation's reason and recovery action inside its input bar; keep a field or operation failure beside its control; put app-wide events in the notification center. Use the shared status text and button styles. A whole-page startup failure uses the same status row when no workspace is available. Keep the native menu-bar counterpart compact.
+Place conversation errors and recovery in the band above the composer, field and operation failures beside their control, and app-wide events in the notification center. Keep archive status inside the disabled composer. Use the shared status text and button styles. A whole-page startup failure uses the same status row when no workspace is available. Keep the native menu-bar counterpart compact.
 
 The GPUI notification center orders errors before warnings and information when it selects the bell and badge color. Its status rows use the same feedback component. A notification can be dismissed or cleared from that presentation; this does not remove its underlying source condition. Native feedback popovers close without clearing their source. These are separate interactions.
 
@@ -213,11 +216,13 @@ Keep each label about one user need. Account warning popovers state what happene
 
 Use **Fork** for conversation actions in lists, locked conversations and provider recovery. Keep source boundaries, destination providers and no-send explanations beside the action; keep the button label short. Use **Side chat** for an attached conversation and **Side chats** for its list. Native protocol identifiers and Git branch terminology keep their existing names.
 
-Fork, Retry and Unarchive use the same bordered `settings_button` base, including height, padding, radius and interaction feedback. Status text wraps within the conversation rail; an inline title and its explanation flow as one text block. Clicking Fork in a disabled input bar starts creation after source preparation, with no second confirmation or Cancel control. Progress and recovery remain in that input bar. Creation sends no message.
+Fork, Retry and Unarchive use the same bordered `settings_button` base, including height, padding, radius and interaction feedback. Status text wraps within the conversation rail; an inline title and its explanation flow as one text block. Clicking Fork starts creation after source preparation, with no second confirmation or Cancel control. Conversation progress and recovery use the band above the composer. Creation sends no message.
 
 Reserve `arrow.triangle.branch` for Fork. Account routing uses `point.topleft.down.to.point.bottomright.curvepath` in both GPUI and Menu Bar, with the existing active color and disabled behavior. New local Agent records use `(Fork)` or `(Side chat)` as identity suffixes. Native conversation topics update separately. The source header stays **Main**. Side chat tabs use the current topic, with numbered names until a title is available.
 
 ## Verification
+
+The [Assistant lifecycle](../decisions/assistant-lifecycle.md) keeps a stable personal Agent and renews its native context behind the same conversation. Work provides an Open Assistant action and shows saved team counts. Settings > Components edits continuing instructions, the renewal interval and the optional existing RAGFlow connection, shows team responsibilities and cancels individual duties. External Memory and chat import are separate selections. The editor and reading state survive a confirmed context transition; older messages retain their native sources. Existing Side chats remain separate native branches.
 
 Use GPUI tests in `shell.rs`, `agent_workspace.rs`, `agent_activity.rs`, `agent_markdown.rs`, `agent_archive.rs` and `settings_surface.rs`. Real macOS acceptance must also check focus, typing, scrolling, panel transitions, and transparency in the signed app. A white or missing automation screenshot alone is not evidence that the user sees a blank window.
 
@@ -230,3 +235,5 @@ See [Conversation presentation and motion](conversation-presentation.md), [Agent
 ## Retained presentation and drafts
 
 The composer preserves current editable input. Submitted messages retain their own delivery state and exact retry payload; there is no recovered-copy manager. Rich Markdown retains math, Mermaid, weather and source-copy presentation without replacing native execution. The embedded MCP HTML viewer is retired. Ordinary tools and native form prompts remain available. See [conversations](../workflows/conversations-and-recovery.md), [tools](../integrations/tools-plugins-and-apps.md) and [acceptance boundaries](../testing/upstream-acceptance-boundaries.md).
+
+Assistant settings edits are bound to the current runtime source and selected Assistant role. Profile changes, disconnection or a replaced source/role clear the settings editor while preserving the ordinary chat draft. Invalid renewal counts and chat import without a Memory ID remain in the editor with an explicit error.

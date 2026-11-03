@@ -37,6 +37,7 @@ mod agent_titles;
 mod agent_turn_execution;
 mod agent_voice;
 mod agent_voice_history;
+mod assistant;
 mod command;
 mod continuations;
 mod conversation_routing;

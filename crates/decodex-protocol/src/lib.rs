@@ -4,6 +4,10 @@
 mod account_login;
 mod account_recovery;
 mod agent;
+pub use decodex_core::assistant::{
+	AgentTeam, AssistantCommand, AssistantSettings, AssistantState, AssistantWake,
+	RagflowConnection, TeamMember,
+};
 mod agent_app_exposure;
 mod agent_app_ui;
 mod agent_app_ui_call;
@@ -287,7 +291,7 @@ pub use work_portfolio::{MAX_WORK_DETAIL_BYTES, WORK_DETAIL_PAGE_BYTES, WorkDeta
 use serde::{Deserialize, Serialize};
 
 /// The only protocol generation and revision accepted by this build.
-pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 4, minor: 5 };
+pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 4, minor: 6 };
 
 /// A version of the Decodex application protocol.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Deserialize, Serialize)]

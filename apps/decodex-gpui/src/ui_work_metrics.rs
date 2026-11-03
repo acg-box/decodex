@@ -219,6 +219,7 @@ mod tests {
 		};
 		let mut summary = Summary::default();
 		let page = AgentTimelinePage {
+			source_threads: Default::default(),
 			thread_id: "thread-1".into(),
 			thread_token_total: Some(130),
 			thread_token_breakdown: Some(first),

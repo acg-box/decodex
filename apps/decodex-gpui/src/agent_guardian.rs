@@ -871,6 +871,7 @@ mod tests {
 	fn seed(s: &mut AgentSurface) {
 		s.apply_result(Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
 			agents: Default::default(),
+			assistant: Default::default(),
 			guardian: Default::default(),
 			portfolio: Default::default(),
 			archived_work_ids: Default::default(),

@@ -782,6 +782,13 @@ impl AgentHost {
 		let owner = self.store.get_agent_work_item(work.into()).await.ok()?;
 
 		if owner.codex_thread_id.as_deref() != Some(thread)
+			&& !self
+				.store
+				.agent_previous_threads(work.into())
+				.await
+				.ok()?
+				.iter()
+				.any(|id| id == thread)
 			&& native_subagents::request_owner(&self.store, &client, thread).await.ok()?.id
 				!= owner.id
 		{
@@ -807,14 +814,127 @@ impl AgentHost {
 		thread: &str,
 		cursor: Option<&str>,
 	) -> decodex_protocol::AgentTimelineResult {
-		let mut result =
-			timeline::read(Some(&self.store), || self.timeline_source(work, thread), cursor).await;
+		let mut result = self.assistant_timeline(work, thread, cursor).await;
 
 		if let decodex_protocol::AgentTimelineResult::Available { page, .. } = &mut result {
 			self.enrich_timeline_weather(page).await;
 		}
 
 		result
+	}
+
+	/// Read native pages across retired contexts without copying their history into a new model.
+	async fn assistant_timeline(
+		&self,
+		work: &str,
+		thread: &str,
+		cursor: Option<&str>,
+	) -> decodex_protocol::AgentTimelineResult {
+		use decodex_protocol::AgentTimelineResult;
+		if self
+			.store
+			.previous_agent_context(work.into(), thread.into())
+			.await
+			.ok()
+			.flatten()
+			.is_none()
+			&& !cursor.is_some_and(|c| c.starts_with("assistant:"))
+		{
+			return timeline::read(
+				Some(&self.store),
+				|| self.timeline_source(work, thread),
+				cursor,
+			)
+			.await;
+		}
+		let decode = || -> Option<(String, Option<String>)> {
+			let value: Value = serde_json::from_str(cursor?.strip_prefix("assistant:")?).ok()?;
+			(value[0] == thread).then(|| {
+				(value[1].as_str().unwrap_or("").to_owned(), value[2].as_str().map(str::to_owned))
+			})
+		};
+		let (mut native, mut native_cursor) = if cursor.is_some_and(|c| c.starts_with("assistant:"))
+		{
+			let Some((native, cursor)) = decode() else {
+				return AgentTimelineResult::Unavailable;
+			};
+			(native, cursor)
+		} else {
+			(thread.to_owned(), cursor.map(str::to_owned))
+		};
+		if native != thread
+			&& !self
+				.store
+				.agent_previous_threads(work.into())
+				.await
+				.is_ok_and(|ids| ids.contains(&native))
+		{
+			return AgentTimelineResult::Unavailable;
+		}
+		let mut combined: Option<decodex_protocol::AgentTimelinePage> = None;
+		loop {
+			let result = timeline::read(
+				Some(&self.store),
+				|| self.timeline_source(work, &native),
+				native_cursor.as_deref(),
+			)
+			.await;
+			let AgentTimelineResult::Available { work_id, account_id, mut page } = result else {
+				return result;
+			};
+			let metadata =
+				match self.store.assistant_context_metadata(work.into(), native.clone()).await {
+					Ok(m) => m,
+					Err(_) => return AgentTimelineResult::Unavailable,
+				};
+			let offset = metadata.and_then(|m| m["timelineOffset"].as_u64()).unwrap_or(0);
+			for entry in &mut page.entries {
+				let Some(position) = entry.position.checked_add(offset) else {
+					return AgentTimelineResult::Unavailable;
+				};
+				entry.position = position;
+				page.source_threads.insert(position, native.clone());
+			}
+			page.thread_id = thread.into();
+			let previous =
+				match self.store.previous_agent_context(work.into(), native.clone()).await {
+					Ok(p) => p,
+					Err(_) => return AgentTimelineResult::Unavailable,
+				};
+			let next = page
+				.next_cursor
+				.as_ref()
+				.map(|c| (native.clone(), Some(c.clone())))
+				.or_else(|| previous.map(|p| (p, None)));
+			page.next_cursor = next
+				.as_ref()
+				.map(|(n, c)| format!("assistant:{}", serde_json::json!([thread, n, c])));
+			if let Some(newer) = combined.as_mut() {
+				page.entries.append(&mut newer.entries);
+				page.weather.append(&mut newer.weather);
+				page.source_threads.append(&mut newer.source_threads);
+				page.safety_buffering_turn_id = newer.safety_buffering_turn_id.take();
+				page.thread_token_total = newer.thread_token_total;
+				page.thread_token_breakdown = newer.thread_token_breakdown;
+				page.thread_metrics = newer.thread_metrics.take();
+			}
+			// Preserve the existing bounded wire-page contract after joining contexts.
+			if serde_json::to_vec(&page).map_or(true, |bytes| bytes.len() > 60 * 1024) {
+				return AgentTimelineResult::CapacityExceeded;
+			}
+			let fill = page.entries.len() < 30
+				&& native_cursor.is_none()
+				&& next.as_ref().is_some_and(|(_, c)| c.is_none());
+			if !fill {
+				return AgentTimelineResult::Available { work_id, account_id, page };
+			}
+			let Some((n, c)) = next else {
+				return AgentTimelineResult::Available { work_id, account_id, page };
+			};
+			combined = Some(page);
+			native = n;
+			native_cursor = c;
+		}
 	}
 
 	async fn acknowledge_app_ui_call(
@@ -1751,11 +1871,39 @@ impl AgentHost {
 		active: &mut Option<(String, AgentCoordinator, mpsc::Receiver<ServerEvent>)>,
 	) -> Result<String, AgentHostError> {
 		match action {
+			AgentActionDto::ManageAssistant { agent_id, command } => {
+				if let Some((_, coordinator, _)) = active.as_mut() {
+					coordinator.manage_assistant(agent_id.as_str(),&key,command,true).await.map_err(|_|AgentHostError::Rejected("Assistant settings or command could not be saved. Refresh current state and check the selected scopes."))?;
+				} else {
+					self.store
+						.apply_assistant_command(agent_id.as_str().into(), key, command, true)
+						.await
+						.map_err(|_| {
+							AgentHostError::Rejected(
+								"Connect the Assistant before creating an Agent; check settings and selected scopes.",
+							)
+						})?;
+				}
+				Ok(agent_id.as_str().into())
+			},
 			AgentActionDto::SetAssistant { agent_id, enabled } => {
 				self.store
 					.set_assistant(agent_id.as_str().into(), enabled)
 					.await
 					.map_err(|_| AgentHostError::Rejected("Choose an existing Agent"))?;
+				if enabled {
+					self.store
+						.apply_assistant_command(
+							agent_id.as_str().into(),
+							key,
+							decodex_core::assistant::AssistantCommand::RefreshContext,
+							true,
+						)
+						.await
+						.map_err(|_| {
+							AgentHostError::Rejected("Could not prepare Assistant context")
+						})?;
+				}
 
 				Ok(agent_id.as_str().into())
 			},
@@ -1839,6 +1987,7 @@ impl AgentHost {
 
 		match action {
 			action @ (AgentActionDto::SetAssistant { .. }
+			| AgentActionDto::ManageAssistant { .. }
 			| AgentActionDto::SetProjectLead { .. }
 			| AgentActionDto::SetReviewDetails { .. }
 			| AgentActionDto::ManageWork { .. }) => self.handle_work_action(key, action, active).await,

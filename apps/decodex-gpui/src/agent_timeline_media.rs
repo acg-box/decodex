@@ -144,7 +144,14 @@ impl AgentSurface {
 			return;
 		};
 		let Some(binding) = self.timeline.native.binding.clone().filter(|binding| {
-			binding.work == request.work_id.as_str() && binding.thread == request.thread_id.as_str()
+			binding.work == request.work_id.as_str()
+				&& (binding.thread == request.thread_id.as_str()
+					|| self
+						.timeline
+						.native
+						.source_threads
+						.values()
+						.any(|thread| thread == request.thread_id.as_str()))
 		}) else {
 			return;
 		};
@@ -328,6 +335,7 @@ mod tests {
 				account: "same-account".into(),
 			};
 			let page = AgentTimelinePage {
+				source_threads: Default::default(),
 				thread_id: binding.thread.clone(),
 				entries: vec![],
 				next_cursor: None,
@@ -407,6 +415,7 @@ mod tests {
 				account: "first-account".into(),
 			};
 			let page = AgentTimelinePage {
+				source_threads: Default::default(),
 				thread_id: "native-thread".into(),
 				entries: vec![AgentTimelineEntry {
 					position: 1,
@@ -501,6 +510,7 @@ mod tests {
 				account: "account".into(),
 			};
 			let page = AgentTimelinePage {
+				source_threads: Default::default(),
 				thread_id: "native-thread".into(),
 				entries: vec![],
 				next_cursor: None,

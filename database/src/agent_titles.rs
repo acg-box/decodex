@@ -38,6 +38,14 @@ pub(crate) fn titles(connection: &Connection) -> Result<BTreeMap<String, String>
 }
 
 impl SqliteStore {
+	pub async fn agent_conversation_title(
+		&self,
+		work: String,
+		thread: String,
+	) -> Result<Option<AgentConversationTitle>, StoreError> {
+		self.run(move |c| latest(c, &work, &thread).map(|v| v.map(|(_, state)| state))).await
+	}
+
 	/// Read the review checkpoint and count completed user exchanges since that checkpoint.
 	pub async fn agent_title_review(
 		&self,

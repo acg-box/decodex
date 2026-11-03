@@ -1821,6 +1821,7 @@ mod tests {
 			assert!(timeline.replace(
 				Binding { work: id.clone(), thread: "thread".into(), account: "account".into() },
 				decodex_protocol::AgentTimelinePage {
+					source_threads: Default::default(),
 					thread_id: "thread".into(),
 					entries: vec![],
 					next_cursor: None,

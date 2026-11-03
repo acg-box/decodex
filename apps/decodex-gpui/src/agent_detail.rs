@@ -511,6 +511,7 @@ mod tests {
 	fn activity_detail_snapshot() -> AgentSnapshotDto {
 		AgentSnapshotDto {
 			agents: Default::default(),
+			assistant: Default::default(),
 			guardian: Default::default(),
 			portfolio: Default::default(),
 			archived_work_ids: Default::default(),

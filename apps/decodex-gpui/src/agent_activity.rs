@@ -1241,6 +1241,7 @@ mod tests {
 			assert!(s.timeline.native.replace(
 				binding.clone(),
 				AgentTimelinePage {
+					source_threads: Default::default(),
 					thread_id: "thread".into(),
 					entries: vec![
 						navigation_row(10, true),
@@ -1284,6 +1285,7 @@ mod tests {
 				&binding,
 				"older",
 				AgentTimelinePage {
+					source_threads: Default::default(),
 					thread_id: "thread".into(),
 					entries: vec![navigation_row(1, false)],
 					next_cursor: None,
@@ -1403,6 +1405,7 @@ mod tests {
 					account: "account".into(),
 				},
 				AgentTimelinePage {
+					source_threads: Default::default(),
 					thread_id: "native-thread".into(),
 					entries,
 					next_cursor: None,
@@ -1492,6 +1495,7 @@ phase: None,
 			assert!(s.timeline.native.replace(super::super::native_timeline::Binding {
 				work: "agent".into(), thread: "benchmark-thread".into(), account: "benchmark".into(),
 			}, decodex_protocol::AgentTimelinePage {
+				source_threads: Default::default(),
 				thread_id: "benchmark-thread".into(), entries, next_cursor: None,
 				weather: Default::default(), thread_token_total: None, thread_token_breakdown: None,
 		thread_metrics: None, safety_buffering_turn_id: None, active_realtime_session_at_page_start: None,

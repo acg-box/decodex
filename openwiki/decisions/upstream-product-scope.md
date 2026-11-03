@@ -136,12 +136,17 @@ sources:
     resource: repo://database/src/agent_process/attachments.rs
   - id: openwiki-source-82bb214209944301d2efacfb
     resource: repo://database/src/agent_titles.rs
-generated: { by: "codex", at: "2026-11-02T07:10:57.562Z" }
+generated: { by: "codex", at: "2026-11-03T16:38:47.085Z" }
+verified:
+  - by: openwiki/0.7.3
+    at: 2026-11-03T16:38:47.085Z
 ---
 
 # Product scope and native ownership
 
 Decodex supplies a local workspace, account policy, work relationships and readable evidence. Codex supplies native conversation and tool execution. Adopt native capabilities through the admitted protocol rather than building a parallel execution system.
+
+The user selected the [Assistant lifecycle extension](assistant-lifecycle.md) for implementation: authorized persistent-Agent teams, multiple durable wakes, optional RAGFlow Memory and invisible fresh-thread renewal. This is new authorized product scope. The lifecycle is implemented in the current source, with source and selected-native verification. It does not reopen unrelated deferred experiments or establish live RAGFlow or installed-app acceptance. The extension keeps the native execution and durable Work owners below.
 
 ## Implemented coordination and Guardian
 
@@ -153,7 +158,7 @@ The default coordination surface uses `work_read` and `work_manage`. Only users 
 
 Permission changes use the selected native conversation's supported profile and reviewer settings. Existing child captures and pending human approvals retain native ownership. Optional private details retain bounded assistant output and terminal metadata without raw reasoning. Exact action associations are unavailable in the selected runtime and remain explicit. This does not select the separate native Guardian V3 experiment.
 
-The current schema and protocol 4.5 store the business model directly. Native Projects provide catalog identity and directory context; Decodex retains Work and responsibility associations. A native Project entry does not prove synchronization with desktop saved Projects. Work association is not a new execution sandbox or automatic directory switch.
+The current schema and protocol 4.6 store the business model directly. Native Projects provide catalog identity and directory context; Decodex retains Work and responsibility associations. A native Project entry does not prove synchronization with desktop saved Projects. Work association is not a new execution sandbox or automatic directory switch.
 
 The retained-conversation repair reconciles unassigned native Project membership before input and preserves conflicts for inspection. The current schema retains actual native child-input receipts for Work attribution when native configuration permits nested V2 Code Mode. Recovery joins exact evidence without replay. V1 nesting remains supported; V2 keeps its direct-only default. These are repairs to retained integration contracts. Native Project identity and membership and Decodex Project presentation passed in the separate installed qualification. Official desktop saved-Project/sidebar presentation remains unobserved. See the [canonical contract](project-agent-work.md#qualification-and-evidence-limits).
 
@@ -167,7 +172,7 @@ The selected scope includes three views in the existing desktop:
 - **Collaboration history:** Retain exact local question replies, their delivery and receiving-turn outcome, plus independent contribution cycles and explicit owner assessments. A reply or returned contribution does not establish resolution or complete Work. Missing external reply bodies remain unknown.
 - **Actual usage:** Read known whole-turn token deltas and recorded duration for a persistent Agent or retained Work references. Shared Work references, missing counters and unobserved child usage remain explicit. Linked turns can contain other activity; recorded duration is not Work elapsed time and these values are not a bill.
 
-These views are available through local protocol 4.5 and the same source owners. Their reusable regression identities, exact-artifact checks and limits are in `selected_read_views` in the [stable retained contract catalog](../../automations/upstream/retained-contracts.json). Installed-app acceptance remains separate.
+These views are available through local protocol 4.6 and the same source owners. Their reusable regression identities, exact-artifact checks and limits are in `selected_read_views` in the [stable retained contract catalog](../../automations/upstream/retained-contracts.json). Installed-app acceptance remains separate.
 
 ## Current optional decisions
 
@@ -175,7 +180,7 @@ In the earlier six-item review, items 1–3 are delivered through the selected r
 
 The user selected multiple Side chats in the conversation header. The source and open Side chats share a horizontal tab strip. **+** prepares the selected conversation's latest completed turn and opens an attached fork without a second confirmation. Switching retains each draft and history position. Closing hides a tab without deleting the native branch; Agent preferences can reopen it. Creation sends no message.
 
-Conversation topics are automatic. The service summarizes the first completed user exchange and checks for a sustained topic change after four more exchanges. Side chat tabs use the topic; the source tab stays **Main** so it does not repeat the sidebar title. This policy reuses isolated native structured requests and native naming. It does not rename the Agent, add a title-generation turn to the source, or change the deferred general exploration of `thread/sample`. See [automatic titles](../workflows/conversations-and-recovery.md#automatic-conversation-titles).
+Conversation topics are automatic. The service summarizes the first completed user exchange and checks for a sustained topic change after seven more exchanges. Side chat tabs use the topic; the source tab stays **Main** so it does not repeat the sidebar title. This policy reuses isolated native structured requests and native naming. It does not rename the Agent, add a title-generation turn to the source, or change the deferred general exploration of `thread/sample`. See [automatic titles](../workflows/conversations-and-recovery.md#automatic-conversation-titles).
 
 The user replaced the manual **Ask separately** popover with **Ask in side chat**. Completed-response and text-selection actions create an attached Side chat and stage the referenced passage in its unsent draft. The source draft stays separate. The user sends through the normal composer and can continue asking questions. The manual sampler toolbar and menu entries are removed. See [conversation presentation](../architecture/conversation-presentation.md).
 

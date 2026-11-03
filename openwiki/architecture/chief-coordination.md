@@ -28,6 +28,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_timeline_receipts.rs
   - id: openwiki-source-0d053d4de2f668168f982629
     resource: repo://apps/decodex-gpui/src/agent_usage_evidence.rs
+  - id: openwiki-source-f339a4d1910db63ca305c2df
+    resource: repo://apps/decodex-gpui/src/assistant_settings.rs
   - id: openwiki-source-3127fd4c7b2aefcc9cea7961
     resource: repo://automations/upstream/retained-contracts.json
   - id: openwiki-source-d0b9aaf952250307abc4342e
@@ -56,6 +58,8 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent.rs
   - id: openwiki-source-052a4071b057633df77b1e21
     resource: repo://crates/decodex-runtime/src/agent/archive.rs
+  - id: openwiki-source-13f64682e8d77fd2c031de39
+    resource: repo://crates/decodex-runtime/src/agent/assistant.rs
   - id: openwiki-source-a5bf72500fe69a895fca0dac
     resource: repo://crates/decodex-runtime/src/agent/coordination.md
   - id: openwiki-source-a7886792ad3e47b8e1afb7fa
@@ -92,10 +96,14 @@ sources:
     resource: repo://database/src/agent_process.rs
   - id: openwiki-source-fc5ad70343bb20c4e9d12540
     resource: repo://database/src/agent_process/attachments.rs
+  - id: openwiki-source-6197a876b2effbe992b1e2ec
+    resource: repo://database/src/agent.rs
   - id: openwiki-source-dd880acfb699314e78cc9985
     resource: repo://database/src/agent/archive.rs
   - id: openwiki-source-7c1fe4a0f054521cb1d94e08
     resource: repo://database/src/agent/collaboration.rs
+  - id: openwiki-source-3f60f3a3aae45b3e3b355d3e
+    resource: repo://database/src/assistant.rs
   - id: openwiki-source-d1279ad243eb550afec4d0e6
     resource: repo://database/src/guardian_settings.rs
   - id: openwiki-source-2b705b409434252a7417e708
@@ -108,16 +116,21 @@ sources:
     resource: repo://database/src/works/collaboration.rs
   - id: openwiki-source-c0eb738b42368debe7ef7545
     resource: repo://database/src/works/commands.rs
-generated: { by: "codex", at: "2026-10-31T14:39:55.131Z" }
+generated: { by: "codex", at: "2026-11-03T16:38:47.085Z" }
+verified:
+  - by: openwiki/0.7.3
+    at: 2026-11-03T16:49:54.130Z
 ---
 
 # Project, Agent and Work coordination
 
 Project, Agent and Work are separate durable objects. An Agent has one current native conversation. Assistant and Project Lead are responsibilities of an existing Agent. The user can work directly with the Project Lead from discussion through delivery. One Agent can own Work in several Projects. There is no fixed L0/L1/L2 hierarchy or mandatory personal router.
 
-The [accepted contract](../decisions/project-agent-work.md) defines the shared vocabulary and minimum state rules. The default model tools are `work_read` and `work_manage`. Only the user creates persistent Agents. Native Codex supplies bounded Subagents; Decodex does not create a second temporary executor. The former managed-worker creation, continuation and goal tools are retired from the default tool surface and refused if an older conversation still advertises them. Durable conversation records preserve native history.
+The [accepted contract](../decisions/project-agent-work.md) defines the shared vocabulary and minimum state rules. The default model tools are `work_read` and `work_manage`. The user can create persistent Agents directly. A selected Assistant can also create independent persistent Agents under an exact delivered user delegation. Native Codex supplies bounded Subagents; Decodex does not create a second temporary executor. The former managed-worker creation, continuation and goal tools are retired from the default tool surface and refused if an older conversation still advertises them. Durable conversation records preserve native history.
 
 ## Owners and flow
+
+The accepted [Assistant lifecycle design](../decisions/assistant-lifecycle.md) extends this model with delegated persistent-Agent management, optional RAGFlow Memory and fresh native contexts behind one Agent identity. The implementation reuses the existing Work, Collaboration and Inbox owners. Lightweight teams group existing Agents and responsibilities; membership grants no private-history access. Independent wakes retain their own due times. Select the Assistant in Work and configure its continuing instructions and optional RAGFlow connection in Settings > Components.
 
 The desktop sends typed commands to the service. SQLite owns Project membership, Agent responsibilities, Work requirements, holds, Results, assessments and Collaboration Requests. Codex owns native threads, turns, Subagents, messages, waits, context, Goals, permissions and enforcement. Work commands persist business decisions; they do not spawn or message native helpers.
 
@@ -175,7 +188,7 @@ Work, instructions, inbox delivery, requirements, Results, assessments and comma
 
 Changes preserve earlier instructions and Results. An old Result cannot complete a newer requirements revision. A hold blocks new Decodex contributions and completion. It does not roll back or automatically stop an already-running native action, Goal or child. Native interruption remains native-owned.
 
-Ordinary input resumes the retained native conversation. A newer local tool revision does not create or replace a thread. Native history and the thread's recorded tool capabilities remain bound to that context. No context-upgrade journal is maintained.
+Ordinary input resumes the retained native conversation. A newer local tool revision alone does not replace it. The selected Assistant can renew at a safe input boundary through a fresh native thread. Its stable Agent, Work and Inbox remain unchanged; exact previous native contexts remain readable.
 
 Known external ownership rejects input before enqueueing it. A race can leave accepted but unsent input; that input remains a user-decision record and needs a fresh explicit send when ownership returns. One Agent's external writer does not block unrelated Agents. Prior-boot process death still requires positive kernel evidence; optional metadata failures do not close the shared transport.
 

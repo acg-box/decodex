@@ -339,6 +339,42 @@ impl AgentSurface {
 
 	pub(super) fn invalidate_native_timeline(&mut self, snapshot: &AgentSnapshotDto) {
 		if self.snapshot.as_ref().and_then(|old| old.runtime_source.as_ref())
+			== snapshot.runtime_source.as_ref()
+			&& let Some(binding) = self.timeline.native.binding.as_mut()
+			&& snapshot.assistant.agent_id.as_deref() == Some(&binding.work)
+			&& snapshot.assistant.previous_thread_ids.contains(&binding.thread)
+			&& let Some(new) = snapshot
+				.work_items
+				.iter()
+				.find(|w| w.id == binding.work)
+				.and_then(|w| w.codex_thread_id.as_ref())
+				.filter(|new| *new != &binding.thread)
+		{
+			for entry in &self.timeline.native.entries {
+				self.timeline
+					.native
+					.source_threads
+					.entry(entry.position)
+					.or_insert_with(|| binding.thread.clone());
+			}
+			if let Some(cursor) = self.timeline.native.older_cursor.take() {
+				let value = cursor
+					.strip_prefix("assistant:")
+					.and_then(|raw| serde_json::from_str::<serde_json::Value>(raw).ok())
+					.map(|mut value| {
+						value[0] = serde_json::json!(new);
+						value
+					})
+					.unwrap_or_else(|| serde_json::json!([new, binding.thread, cursor]));
+				self.timeline.native.older_cursor = Some(format!("assistant:{value}"));
+				self.timeline.native.seen_cursors.clear();
+			}
+			binding.thread = new.clone();
+			self.timeline.native.requested = Some((binding.work.clone(), new.clone()));
+			self.timeline.native.task = None;
+			self.timeline.native.epoch = self.timeline.native.epoch.wrapping_add(1);
+		}
+		if self.snapshot.as_ref().and_then(|old| old.runtime_source.as_ref())
 			!= snapshot.runtime_source.as_ref()
 		{
 			self.timeline.native.reset();
@@ -1192,6 +1228,7 @@ pub(super) struct Timeline {
 	pub entries: Vec<AgentTimelineEntry>,
 	pub safety_buffering_turn_id: Option<String>,
 	pub weather: std::collections::BTreeMap<String, Vec<WeatherForecast>>,
+	pub source_threads: std::collections::BTreeMap<u64, String>,
 	summary: Vec<AgentTimelineContent>,
 	summary_focus: RefCell<std::collections::BTreeMap<String, FocusHandle>>,
 	pub older_cursor: Option<String>,
@@ -1343,6 +1380,7 @@ impl Timeline {
 
 		self.entries.clear();
 		self.weather.clear();
+		self.source_threads.clear();
 
 		self.safety_buffering_turn_id = None;
 
@@ -1381,6 +1419,7 @@ impl Timeline {
 			self.safety_buffering_turn_id = page.safety_buffering_turn_id;
 
 			self.weather.extend(page.weather);
+			self.source_threads.extend(page.source_threads);
 			self.entries.splice(start.., page.entries);
 
 			return true;
@@ -1424,6 +1463,7 @@ impl Timeline {
 		self.binding = Some(binding);
 		self.safety_buffering_turn_id = page.safety_buffering_turn_id;
 		self.weather = page.weather;
+		self.source_threads = page.source_threads;
 		self.entries = page.entries;
 		self.older_cursor = page.next_cursor;
 		self.pagination = Pagination::Idle;
@@ -1476,6 +1516,7 @@ impl Timeline {
 		}
 
 		self.weather.extend(page.weather);
+		self.source_threads.extend(page.source_threads);
 		self.entries.splice(0..0, page.entries);
 
 		self.revision = self.revision.wrapping_add(1);
@@ -2027,6 +2068,7 @@ mod tests {
 		assert!(state.refresh(
 			binding,
 			AgentTimelinePage {
+				source_threads: Default::default(),
 				thread_id: "thread".into(),
 				entries: vec![AgentTimelineEntry { position: 77, content: item }],
 				next_cursor: Some("real-cursor".into()),
@@ -2205,6 +2247,68 @@ mod tests {
 	}
 
 	#[gpui::test]
+	fn assistant_refresh_keeps_draft_history_position_and_exact_native_origins(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let surface = cx.new(AgentSurface::new);
+		surface.update(cx, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			let work = s
+				.snapshot
+				.as_mut()
+				.unwrap()
+				.work_items
+				.iter_mut()
+				.find(|w| w.id == "agent")
+				.unwrap();
+			work.codex_thread_id = Some("old".into());
+			s.composer.update(cx, |input, cx| input.set_content("Keep my unsent correction", cx));
+			s.activate_native_timeline("agent", "old");
+			let mut original = page(vec![boundary(1, true)], None, None);
+			original.thread_id = "old".into();
+			original.next_cursor = Some("opaque-older".into());
+			s.timeline.native.replace(
+				Binding { work: "agent".into(), thread: "old".into(), account: "account".into() },
+				original,
+			);
+			s.timeline.follow_paused.insert("agent".into());
+			let mut next = s.snapshot.clone().unwrap();
+			next.assistant.agent_id = Some("agent".into());
+			next.assistant.previous_thread_ids = vec!["old".into()];
+			next.work_items.iter_mut().find(|w| w.id == "agent").unwrap().codex_thread_id =
+				Some("new".into());
+			s.invalidate_native_timeline(&next);
+			s.snapshot = Some(next);
+			s.activate_native_timeline("agent", "new");
+			assert_eq!(s.timeline.native.entries, vec![boundary(1, true)]);
+			assert_eq!(s.timeline.native.source_threads.get(&1).map(String::as_str), Some("old"));
+			let continued: serde_json::Value = serde_json::from_str(
+				s.timeline
+					.native
+					.older_cursor
+					.as_deref()
+					.unwrap()
+					.strip_prefix("assistant:")
+					.unwrap(),
+			)
+			.unwrap();
+			assert_eq!(continued, serde_json::json!(["new", "old", "opaque-older"]));
+			assert!(s.timeline.follow_paused.contains("agent"));
+			assert_eq!(s.composer.read(cx).content(), "Keep my unsent correction");
+			let mut latest = page(vec![boundary(1, true), boundary(2, true)], None, None);
+			latest.thread_id = "new".into();
+			latest.source_threads.insert(1, "old".into());
+			latest.source_threads.insert(2, "new".into());
+			assert!(s.timeline.native.refresh(
+				Binding { work: "agent".into(), thread: "new".into(), account: "account".into() },
+				latest
+			));
+			assert_eq!(s.timeline.native.entries.len(), 2);
+			assert_eq!(s.timeline.native.source_threads.get(&2).map(String::as_str), Some("new"));
+		});
+	}
+
+	#[gpui::test]
 	fn returning_to_an_open_conversation_keeps_verified_native_history(
 		cx: &mut gpui::TestAppContext,
 	) {
@@ -2301,6 +2405,7 @@ mod tests {
 		session: Option<&str>,
 	) -> AgentTimelinePage {
 		AgentTimelinePage {
+			source_threads: Default::default(),
 			thread_id: "thread".into(),
 			entries,
 			next_cursor: next.map(str::to_owned),

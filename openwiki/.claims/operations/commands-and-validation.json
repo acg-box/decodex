@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:9f336a444a780886e66ae292134a026b5bf2d01e2d840b653299c2c025d691b5",
+  "pageVersion": "sha256:cd9e29aa03b5dec94f75058285044f42c2355c2441a338e93968d920d24d07eb",
   "claims": [
     {
       "id": "claim_8fa9284d970947ab9981d4144ecb9648",
@@ -40,7 +40,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/DecodexNativeClient.swift",
-          "version": "repo-file-v1:sha256:4c1cf17baeba1b42c3e44bf8e40856a8a209c089c1ac9c49735d1d9b8a428335"
+          "version": "repo-file-v1:sha256:40c01a544570696b9b4da45e85a3a3e3a6a6106d8954df95cb58fa0de2e6aebf"
         },
         {
           "resource": "repo://apps/decodex-gpui/menubar/Tests/DecodexAppTests/NativeJournalFixture.swift",
@@ -89,16 +89,16 @@
       "statement": "The discard-empty Agent CLI command sends an exact local work identity through the service; its transaction refuses roots, native bindings, active or scheduled work, children, history, dependencies and saved prompt input, and treats an already absent ID as complete.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-cli/src/agent.rs#L22-L31",
-          "version": "repo-lines-v1:sha256:3c768499f08523e870b3caec2d3aac9f8573f9288ce10092f78a249f283810b1:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI4NGU2YmFjODRlYjdkMjQ0NTA4NWNiNGFhYTBhYjIyMjliMWQ3NTllNTVmYmI0YmI3YjRjNTkxOTkyYjc1OTgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZlNTAzMjQ5NjI1NjU2ODVhNTljMzk3NWUxYTU0MjRhODE3NWJhNDBmN2RmYTNhMDk2NTc5MTliMjFjZDkyNmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjkxYjRkMmIxMTA0NzMwMmU1MjQ0MTlhZmQ2ZDJhZTEyOTc1OTBhNzk1NTgwMmM0ZDQ0MmI2NjA4MzJmNTY2NDciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjMzNDhhOGIzYmU0YTMxZTJhY2QyYzcwNTk1YjY0ZTA0MWRhMzYyZjg1YTA4MjU1OGJjMDk5YWU0ZTIzMDM5NmMifQ"
+          "resource": "repo://apps/decodex-cli/src/agent.rs",
+          "version": "repo-file-v1:sha256:1e99b29c477563c5f861fb9a7e936df89206aaa2e8a7ddfe67425d219682acda"
         },
         {
-          "resource": "repo://crates/decodex-runtime/src/agent_host.rs#L1955-L1967",
-          "version": "repo-lines-v1:sha256:699cdaac0ea1c78a0673444325e57b9ee46f747626c944de3fc334e266daae82:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZhNTc3OTMwMDQ1ODZhODY2YjE4OGUxNzMzMzUyZmRiNzk5ZGJiYzMyN2RmMjFiYzVhNDQ4ZWE4ZGU2MzNkMDEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZjOWM2OTk5OGY4MjBlNDY5NzUxNTJiNjMzYjQzOTg1YzNiYzBmNzlmZTViYjlmZmUzMmU3MDIzZjk3Y2YzMjAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNjY2M3NTlhZjgyZjNkOTQ5NjFmZWE1ZTFjNDU0ZWQ5OGU5YTQ4YjVlNTlmOTk4YTgwODUxNjJhMmQ3YTAwNGUifQ"
+          "resource": "repo://crates/decodex-runtime/src/agent_host.rs",
+          "version": "repo-file-v1:sha256:d8a526106b9917db75fe6501fd61251869ac1e32051e171a525a00b5c2cd62f0"
         },
         {
-          "resource": "repo://database/src/agent.rs#L120-L145",
-          "version": "repo-lines-v1:sha256:ca8d6ade4a7c13e01ff7be0e40b5f3996a93634d8b4a39355ff39295e6cc82d2:eyJzZWxlY3RlZExpbmVDb3VudCI6MjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdkYmIyNzM2MWQ2MTE3MzhiNThhYmVhNTY3YTI2ZTU0OTFlZWQ0MDJlN2MyMzAyMzc0NTVkM2M0YjQ3NDU4YzciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijc2ZDVmMjQ0OGRkYjc0NGFiYTEzMjc2YTgxOGZjNWMzNWVkYTFmMjIwNzgyMmUwNWUyZTQ2YWZkYjRlZjNjNmEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk0YThmOTAzZTAxNzQ3NTU3ZWQxNDJiZjExNTA0MDZiYjgxYWY0NjRkMWZiMDFhOGY4OGZiMmVhYjUwODNkNTYifQ"
+          "resource": "repo://database/src/agent.rs",
+          "version": "repo-file-v1:sha256:d8f927bc04ecde1b14f278d68f7e89aeb53edca6f9c000b1d16f55f59a002c97"
         }
       ]
     },
@@ -108,7 +108,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_archive_tests.rs",
-          "version": "repo-file-v1:sha256:6e116750aa4f05a22271c6a27c84ba44d5e1b3530b06a078016bacdb699415cf"
+          "version": "repo-file-v1:sha256:708dd5cdda395749ccefedf70dc8e1f422d8474e9e21de8e2606f676a9a56285"
         }
       ]
     },
@@ -176,7 +176,11 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:62ef8102ea1a433678ab1c9819d83271f285de18d184bd43e36a68007d056018"
+          "version": "repo-file-v1:sha256:0c08a1458a9bd81c0b2677475996113dedad6be7a59ca2b6902df9d5b1bdee9e"
+        },
+        {
+          "resource": "repo://automations/upstream/retained-contracts.json",
+          "version": "repo-file-v1:sha256:f42cae151b3c2c980a4c7b8448e08e4a1ae5a4d78f19067f158b1ce165c07ffa"
         }
       ]
     },
@@ -317,7 +321,7 @@
       "statement": "The portable native fixture runner uses one short system-temporary HOME per invocation, preserves host tool locations, prepares the selected component under a separate native home and cleans the fixture afterward. Every Recap service mode uses the owned checkout under actual OS-account working-directory authority while product directory checks stay active.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_recap_socket_tests.rs#L126-L131",
+          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_recap_socket_tests.rs#L127-L132",
           "version": "repo-lines-v1:sha256:3187e2ee657cf262ccb7c4d1c1a4ce4b189a86483a4eefa560b2b5ef3b57f384:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNWUyNTg4MGVmOTJiOTA4MTcyNTdjNjhlZjhjNDU2ZjRlOTcyNmEyMmNkM2RmMmJkYzRmMGExYjc4MzA0OGFiYiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDFiYTQ3MTljODBiNmZlOTExYjA5MWE3YzA1MTI0YjY0ZWVlY2U5NjRlMDljMDU4ZWY4Zjk4MDVkYWNhNTQ2YiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOTNjOGM4N2U1Nzg0ZjdiYzZkNGE1MmQ1NDlhN2RmNDcwZjkyYTE0Y2JhN2Q3OTE1YjllYWNlYzkzZjY2NTE3MSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYzk1YWJkMWU3OTQ0NGY1MDc2ZTFmN2NhYzJmMzA0MmI5MDQxMWQxNjkwYmU3NjNkYTY2NjAxM2IyNmY4ZWRlYyJ9"
         },
         {
@@ -342,7 +346,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:62ef8102ea1a433678ab1c9819d83271f285de18d184bd43e36a68007d056018"
+          "version": "repo-file-v1:sha256:0c08a1458a9bd81c0b2677475996113dedad6be7a59ca2b6902df9d5b1bdee9e"
         },
         {
           "resource": "repo://crates/decodex-runtime/tests/native_qualification/command_hooks.py",
@@ -356,7 +360,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/agent/tests/capacity.rs",
-          "version": "repo-file-v1:sha256:1de3ca45c57477c7bd58b4d66b5c5cc863d97ebf796125f864dae30c013dce9c"
+          "version": "repo-file-v1:sha256:dbdfae5c0138582a1e80121bddb27785b579397a45540983d2177c1ac8838112"
         },
         {
           "resource": "repo://crates/decodex-runtime/tests/native_qualification/dotenv_startup.py",
@@ -438,15 +442,15 @@
     },
     {
       "id": "claim_7f534f8f92034f78ba677532dfe46a14",
-      "statement": "Workspace dependency qualification keeps source and artifact identities, executed tests, residual constraints and the existing full-style failure separate from selected Codex runtime and installed-app acceptance.",
+      "statement": "Historical workspace dependency qualification keeps source and artifact identities, executed tests, residual constraints and the original style failure separate from the current CLI qualification and installed-app acceptance.",
       "evidence": [
         {
-          "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:62ef8102ea1a433678ab1c9819d83271f285de18d184bd43e36a68007d056018"
+          "resource": "repo://automations/upstream/qualification.json#L63-L80",
+          "version": "repo-lines-v1:sha256:7e1a0cf5626f16b9ad3e6e7de27e78fe5cbc539943df384f15f51add187381f8:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI4ODI1YjJmOGM1NjA5OWYzYmM0OWI4NDU2ODdiY2RlNjcyNGQzNGJiNTk1MTBlOGY4ZTZlZTZiY2Y2MTU3N2EiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ2ZjhhNGJmZmVjYzE0MzQwMTRjOWQ5MDNkNDU3NzE3ZDQxY2EwM2U0Y2NhMWZlYmYwOGNmNWNjYjdmNmY4YWUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQwMDRhOWEyODAzYmJjNzAwN2RmZGMxZmQzNTJiMzBjMTViYjk1YzgzNDFmNmZkNTYyYzdhYTY2NmNiMDE5M2EiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijc1OGE0NTFhNWEwYTFiNjE5ZjcyMGU0MDEzNmViZTllMzQ0MTI5NWM0YTNmMTkxZjQzMmRhOGQ3ZDAwODY1YTgifQ"
         },
         {
-          "resource": "repo://scripts/vstyle_audit.py",
-          "version": "repo-file-v1:sha256:348cbc75935ac1f0c6e6c4220f34e26afb96ef7cc0456bc2f8d4eec62bbc4a1a"
+          "resource": "repo://automations/upstream/retained-evidence.json#L1399-L1500",
+          "version": "repo-lines-v1:sha256:0218b51dc38a86fe47c7eec9d1a54f8e88c56b48ef16f16088f6159309119d41:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAyLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJhMDkyYjBkZDQyMzg1OTQ5YTU3YWRhOTEzNTY1NWYwZmIwNGJkMGI2N2M2NzIzMmYzYTQxMmZiMDIyZTMzOWZlIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI3ZmQwYjdhMzk1YWU2NjUzMGYxMmVkNGVlMzJkYmE3NTg5NWI2NmEwNTJlMjU5ZTAwNDk0MzBlZmUwNmJmZWY2IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIzMzViZDgwMGVjYzMwYjllNWQxYWE0NjQ2YWY0OGY0ZWEwYmNiZjEwNzIwZGVlNTQ5NGFiZTFjMjUwYjllYjVjIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI1MmZlYjc1MDJmNzYyNjg5ZDI1NTc0MjY5YjAxODg4YWQ2ODVhMTFkYTJmZGIxMzZlODQzMTFmM2VkOWMyY2VkIn0"
         }
       ]
     },
@@ -480,7 +484,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:b442edad7f88b72bbde4875f1c0b1e3f1428f60bb2f58b4e6d7209fb21d4890a"
+          "version": "repo-file-v1:sha256:fe5321699e8b7c5c6d392cb82551c905679deb680e298850da34c8fc1ea62099"
         }
       ]
     },
@@ -494,7 +498,7 @@
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_recap_socket_tests.rs",
-          "version": "repo-file-v1:sha256:5febeb2dc9610fa625f32dd11e8ce392d99891cb6e79214f48cd0b42ad31db02"
+          "version": "repo-file-v1:sha256:90e696ae4768ba102700a923d4a847175c00cecae9df6f8f6eb627a043666e9f"
         },
         {
           "resource": "repo://scripts/vnext/run_native_regression.py",
@@ -508,35 +512,65 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_prompt_confirm_wire_tests.rs",
-          "version": "repo-file-v1:sha256:55c6c83c6e489618f3e0e4b1db3d04163e18f10164986ea774cb5d7e25189ccd"
+          "version": "repo-file-v1:sha256:b9a868eeab3689af23aac1aec5cc3e1d9e073a2485e570bc1afde389106474c7"
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:b442edad7f88b72bbde4875f1c0b1e3f1428f60bb2f58b4e6d7209fb21d4890a"
+          "version": "repo-file-v1:sha256:fe5321699e8b7c5c6d392cb82551c905679deb680e298850da34c8fc1ea62099"
         }
       ]
     },
     {
       "id": "claim_cf68acc1347849e1a8abb7bd76e02204",
-      "statement": "The provider rehearsal uses the named destination in the input-bar notice and one Fork click to create and open without sending. There is no second confirmation. The runner keeps a temporary profile and does not install the app or change the normal runtime selection or automation schedule.",
+      "statement": "The provider rehearsal uses the named destination in the feedback band above the composer and one Fork click to create and open without sending. It has no second confirmation, retains a temporary profile and does not install the app or change runtime selection or schedules.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_list_branch.rs",
-          "version": "repo-file-v1:sha256:97e4ebce9584cd709dc480d5af61f9cf5b6d6b6199af0346d428b4c747526c3b"
+          "resource": "repo://apps/decodex-gpui/src/agent_prompt_edit.rs",
+          "version": "repo-file-v1:sha256:68ed6a10df1d7ec6ea966a2eaae3a1c5ec70ee67320fa5ee107b4687f5f897f2"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_prompt_edit.rs",
-          "version": "repo-file-v1:sha256:fa795f10ae94669b9aade482d2a5321fe2d654239d70cfe1b7b5d07a7cbd8d33"
+          "resource": "repo://apps/decodex-gpui/src/ui_feedback.rs#L1-L23",
+          "version": "repo-lines-v1:sha256:e2fb70cf5351ccb211197589f6e3ac958e826ed82682b12257171433fe0b7274:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJiYTBmMTBiMGY1OGNkOTdlMmJiOTRmYzkwZTViZjdjZWRmMTNjMWY0MTgwNTY1NTg1Y2JhMTJmZGE5Zjc3YTciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjExYTZmOWQ5OTYwNGE2MmEwZjE1YTdjNmVlMmI5ODg5MGM3OWJhYzQ0ZTdjNmQxZDdmYmZjYWMyYzM1NDE5N2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImVkN2YzZjI3OWY3ZDc5MDAwNDNmYmY3NzhmZTUwYjc5YmQxNmNkNDczMTExNmM1YjU0OTBmYzZhY2RjNmRkZTMifQ"
         },
         {
           "resource": "repo://scripts/vnext/run_native_regression.py",
           "version": "repo-file-v1:sha256:566ce4f9baaaa539ee13662b47eb96cfc7940f25c1b322c371c40f64bb0974c0"
         }
       ]
+    },
+    {
+      "id": "claim_7fd02fa110b3434e8984dc8b256375b6",
+      "statement": "The CLI selects the Assistant role and sends typed AssistantCommand JSON files through the existing service, while Settings > Components exposes user configuration. Isolated database, HTTP, desktop and selected-native fixtures cover the lifecycle without proving live RAGFlow or installed-app acceptance.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-cli/src/agent.rs",
+          "version": "repo-file-v1:sha256:1e99b29c477563c5f861fb9a7e936df89206aaa2e8a7ddfe67425d219682acda"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_timeline.rs",
+          "version": "repo-file-v1:sha256:5f9429477f8cfae3300706f013b90060ad91e0e096fd19ac75076318afa3b471"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
+          "version": "repo-file-v1:sha256:ed1a31b744b9869d7dfb60f4b640cff74a030593ff745e820c7b1462c3796a1a"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_context_tests.rs",
+          "version": "repo-file-v1:sha256:652a421cd80d91117531960c52dc4031b8c288f620a02f66d81c19e012dcaa59"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/ragflow.rs",
+          "version": "repo-file-v1:sha256:4224ee73758b86b3a314b01a0bd7c580467a094e00faccba349fa334dc5947fc"
+        },
+        {
+          "resource": "repo://database/src/assistant.rs",
+          "version": "repo-file-v1:sha256:ef184fabb6fb9c789f70b4d6e4b7970e4031c0b586778fd9acbe9eb095530433"
+        }
+      ]
     }
   ],
   "verification": {
-    "by": "openwiki/0.7.2",
-    "at": "2026-11-02T07:10:57.562Z"
+    "by": "openwiki/0.7.3",
+    "at": "2026-11-03T16:49:54.130Z"
   }
 }

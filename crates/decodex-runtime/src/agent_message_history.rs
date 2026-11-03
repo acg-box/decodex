@@ -147,6 +147,16 @@ pub(crate) async fn read_for_title(
 		.map_err(|_| ClientError::Io)?
 }
 
+/// Read source-backed context handoff text, excluding internal voice delegation and commentary.
+pub(crate) async fn read_for_assistant(
+	client: &AppServerClient,
+	thread: &str,
+) -> Result<History, ClientError> {
+	time::timeout(Duration::from_secs(25), read_inner(client, thread, true, true))
+		.await
+		.map_err(|_| ClientError::Io)?
+}
+
 fn turn_id(turn: &Value) -> Result<&str, ClientError> {
 	turn["id"]
 		.as_str()

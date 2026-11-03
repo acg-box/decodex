@@ -202,6 +202,7 @@ fn project_fields(
 		})
 	};
 	let page = AgentTimelinePage {
+		source_threads: Default::default(),
 		thread_id: id(&Value::String(thread.into()))?,
 		entries: rows
 			.iter()

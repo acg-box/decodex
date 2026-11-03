@@ -133,6 +133,7 @@ fn automatic_driver_generates_once_after_progress_and_cancels_exact_request_on_f
 		s.selected = Some("work".into());
 		s.snapshot = Some(AgentSnapshotDto {
 			agents: Default::default(),
+			assistant: Default::default(),
 			guardian: Default::default(),
 			portfolio: Default::default(),
 			archived_work_ids: Default::default(),
@@ -265,6 +266,7 @@ async fn serve(listener: &tokio::net::UnixListener, changed_account: bool) {
 				})
 				.unwrap(),
 				page: AgentTimelinePage {
+					source_threads: Default::default(),
 					thread_id: "thread".into(),
 					entries,
 					next_cursor: (page_index == 0).then(|| "older".into()),

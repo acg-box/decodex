@@ -1,14 +1,14 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:bdc09bf2976e378936f3d7fb1e406acfe7d0cfe78f350825e7058245ece10b4d",
+  "pageVersion": "sha256:ef476106447478c8a99b6c381832ada59d2fd05e834a545baea143a06c2d469f",
   "claims": [
     {
       "id": "claim_ebacb67e562646d8af9fccd8e644cb32",
-      "statement": "Agent integration inventory is independently queried from native app-server and accepted only when the selected thread retains the same absolute working directory.",
+      "statement": "Agent integration inventory queries native MCP, plugin and App sources independently and publishes only while the exact thread retains the same absolute directory and live settings guard.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/agent_integrations.rs",
-          "version": "repo-file-v1:sha256:f4252d8843366ab4efc3b30b20ec5348c9dcdf30bc114bb343031915f1e41531"
+          "resource": "repo://crates/decodex-runtime/src/agent_integrations.rs#L86-L141",
+          "version": "repo-lines-v1:sha256:1432be17c76be34092bf6c64b11819f72095c4e9740742952c3c9644906ac920:eyJzZWxlY3RlZExpbmVDb3VudCI6NTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE1M2NjYzljYjRlODdkNzBmYTEzN2U0NGEzY2NjMWI3MmJmYjBiYmEyMGFiZGM0Nzc3M2IxZWM1Y2ZiYTIwMjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQzYTY1NmVmNmU1YWZkNGVmYmRlOTA5MDg2ZGFlYTE1ZWQ4ZTdiOGNmNmY0YzY4ODlkYzEzNjJhYzY4M2ZjODciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjVlYjA1Y2IzZGFlZDE3ZWVlNGU3MzVhNzc0NmM4YTI2YWFmOTViNmIwNTlmYWZmYmI2OTllY2ZhM2FmNGIyOTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNlMDYwYjMzMTFlYmI4ZWZiZjQ4OTlhOTQyZWRjYzVlN2YwZTEyZjNhOGJmMWM0NGM0OTZjMTE0N2Y0MTc3OTkifQ"
         }
       ]
     },
@@ -29,10 +29,42 @@
           "version": "repo-file-v1:sha256:01bebe4274c10a0d25c17ca9181cb005c26d18abaccde7e780505064f5189b3f"
         }
       ]
+    },
+    {
+      "id": "claim_00cfe7b65a564885a3b594b85ada03dc",
+      "statement": "The optional Pro research component retains request and send receipts; completion hints arrive over its private native-host connection, cannot submit questions and do not replace the saved result as authority.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-pro-bridge/src/events.rs#L1-L84",
+          "version": "repo-lines-v1:sha256:a62f35150d00ecaf04f44074a7c83f8f631f77a5caa6ebdb27119a81f7fb51c2:eyJzZWxlY3RlZExpbmVDb3VudCI6ODQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE4OWJmYTFhZGJjY2E0MmFjYTI1ZTE5OWNkODE5MjIwM2M2MzNiNjY1MTUxZjg1MjgyNDM3MzIzMjhlNWU5OWUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFkYzk2OTM2OGRlYzhlOGVjMmE4ZGUwMDgyZDhmY2U4ZTlmZDJkZWVlMjU1ZGNmZmNkNDA5MzJjNmZhNTVjOTciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgzN2NiMDVjNDU5YjA5Yzc2NTlhMjM5OTQzNzlmZTFhNDVjMGNlNjUyYmQxNDQwNDQ1MDM0ZTIxOGVmMWM0NDEifQ"
+        },
+        {
+          "resource": "repo://crates/decodex-pro-bridge/src/lib.rs#L1-L115",
+          "version": "repo-lines-v1:sha256:83506e30eaaad0c6ad1f32d089f98756494ae616964204556d9b38fba04e5bb8:eyJzZWxlY3RlZExpbmVDb3VudCI6MTE1LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIwZTdhNGFmODg1MDNhOGRiMDZlMzlhNDlhMDViOGIzN2ViYmI5ZDI5YjY5N2MxMDc3OThkMzliNTIwOTI0NmFlIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI5Yjc2MjAxZTA1YWJlZWQ2NTMxNDU1ZmNiOTVjNTM3M2E0MzBhMTAzMTI2ZjFlMzIzMDM1MmViM2Q1NjQxYmEzIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MCwicHJlY2VkaW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI5MTlkNzViYTVhMGY0ZDBlZjQ0YzJlNDc2ZGU0MjJhN2ZiZTBmMzBmZGY4ZGM0ODM4NTZhY2EzODI4ZWNkMmE5In0"
+        }
+      ]
+    },
+    {
+      "id": "claim_c6d23538cc5e48729cf819d8147a0361",
+      "statement": "Assistant duties use the existing Inbox and host tick. Optional RAGFlow knowledge and Memory use explicit scopes and direct-user configuration through their HTTP adapter; they do not register repository maintenance schedules or replace Pro receipts.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent.rs",
+          "version": "repo-file-v1:sha256:039d3118591ad102c58ed25f91d662c2132a7f461b46b9f0ecb276d2e6dd4dbf"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/ragflow.rs",
+          "version": "repo-file-v1:sha256:4224ee73758b86b3a314b01a0bd7c580467a094e00faccba349fa334dc5947fc"
+        },
+        {
+          "resource": "repo://database/src/assistant.rs",
+          "version": "repo-file-v1:sha256:ef184fabb6fb9c789f70b4d6e4b7970e4031c0b586778fd9acbe9eb095530433"
+        }
+      ]
     }
   ],
   "verification": {
-    "by": "openwiki/0.7.2",
-    "at": "2026-10-31T17:07:05.970Z"
+    "by": "openwiki/0.7.3",
+    "at": "2026-11-03T16:41:22.743Z"
   }
 }

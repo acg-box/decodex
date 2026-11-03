@@ -14,8 +14,8 @@ sources:
     resource: repo://crates/decodex-runtime/src/account_login.rs
 generated: { by: "codex", at: "2026-10-26T14:39:55.302Z" }
 verified:
-  - by: openwiki/0.7.2
-    at: 2026-11-02T07:10:57.562Z
+  - by: openwiki/0.7.3
+    at: 2026-11-03T16:31:59.854Z
 ---
 
 # Service-owned account login

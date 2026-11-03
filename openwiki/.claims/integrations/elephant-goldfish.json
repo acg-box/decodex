@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:55d28a5611420bee254934f076003a2fc815c7766ea7edc8a740c723d718e2bc",
+  "pageVersion": "sha256:be171067939a1c8bfe72ce4f35e41d8df8e7ff95cdb330bba139642647713066",
   "claims": [
     {
       "id": "claim_95da7355536d42fb9ba017dae9558113",
@@ -18,15 +18,15 @@
     },
     {
       "id": "claim_3ca9161484f24f26bb9c1976620ea4f0",
-      "statement": "Settings > Components manages local optional plugin actions in This Mac, reports native version and enabled configuration, and offers exact cleanup even when EGM is no longer listed, separately from required-runtime verification and Sparkle updates.",
+      "statement": "Settings > Components uses expandable local component rows, reports native EGM version and enablement, and offers Uninstall only for a listed plugin. Required-runtime verification and Sparkle app updates have separate owners.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/component_plugins.rs#L18-L29",
-          "version": "repo-lines-v1:sha256:cab1baff18df605fb2049a0acd7cabcc41cb92f91bacb7bc3603c4ddbf4248c5:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgxOTdiY2M5ZTFlY2Q2YzQwNDVjMTBjYmY4NTc1ZWVhNTBhYWVhYzUyYmY2MmM4MWY1MjdjYzcxODY0YmEzZDQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY0YTUyMmU2MTFmNGFiNGQ2ZWE3NGI0MGExZDg5MGFiMGVmNjc0ZmVjM2Q0ZmFiZmE4NTlmZWRiODVhMGEyYTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImMxNTliYmEzMTAxMGIyYjJhMzE4NDljZGRkZWU0YmQ3ZTE4NTAxN2E1M2RiMDMzNDU2NWQzYmEyMTQ0NTM5MjMifQ"
+          "resource": "repo://apps/decodex-gpui/src/component_plugins.rs",
+          "version": "repo-file-v1:sha256:190f6fe3576b323a91b91214c53527635dbf2b962830439a58ccaccf0c09fd18"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/settings_components.rs#L349-L400",
-          "version": "repo-lines-v1:sha256:fa10017acab35347add8d90c913ae546302b747cb4a156154800bfa517bc92ff:eyJzZWxlY3RlZExpbmVDb3VudCI6NTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg3NGE3OTg0NWQ1YTYyOGUxYjlkODE3OWU1NjM0YmMzN2Y0NjljNjkxNWRlMjM5MjNhYWIxZjgyNmY3ZmM3ZjgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjVhN2EwMGQ3MDVlMjg1YzhlMWIwNzIwNzZkNDNmNTM4NWRmNGYwYzk5YjBhODVmYzMzYzU2ZGJjZDRjNTdkMjciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImU0MWZiNjIyM2IyZDM1MDk1ZmM2ODY5ZTJmZTFjNWI5NDFhNzc4NWMyNWZkMjJiMGMzYTljMjg3ZWJmNDJkM2UifQ"
+          "resource": "repo://apps/decodex-gpui/src/settings_components.rs#L456-L537",
+          "version": "repo-lines-v1:sha256:87b827f41bbbbbf6f34f8553df0c565e7785862fae9fb8620360fd43781acb88:eyJzZWxlY3RlZExpbmVDb3VudCI6ODIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg5YmM3NTExYjIyYjUzOGRmMTQyODMzNzUxZDRhMDM3NDFiYjI4MzkzYjQzZjE5ZjhkNjZkNDkxZGFmNTJkOWUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY5YTY3MmQyNjAyNjg2YmM4NjkzNmE0OTUyMmU4ZjdkZTYzMWIyOTIwNDIzNTliODMxODY1OTFkYTBkMDEzYzciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImI4MDU2Mjk0OGI0NDM0ZDEzZmMzYzExMTQ5NTU4MjJhNGViZTBkMjFhODE1MTI5YWZhYjk0MjZhOTYyNDFmZTQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFkNWE3YjRiOGJhNjAxOTg0NTlhZjg0NjA3OTgxM2Y0NGFkNzAxMmNkZTRiMDdlMzAwMWI4NjE4NGJhNmRkYzUifQ"
         }
       ]
     },
@@ -35,7 +35,7 @@
       "statement": "PluginOperations coalesces actions while busy and retains action errors separately from installed state read back from native Codex, including after an action fails.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/component_plugins.rs#L47-L105",
+          "resource": "repo://apps/decodex-gpui/src/component_plugins.rs#L33-L91",
           "version": "repo-lines-v1:sha256:d68dd892362cacd5a06e823ad6451311ec88480273e8c0330a415e64f5a34df0:eyJzZWxlY3RlZExpbmVDb3VudCI6NTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUwNzcwZmNjYzcxY2RiOWZmYWI1Y2I2MmJkZmI0YTA4YjU4ODc3Yjk5NmUxOGY3OWEyM2QxZTJhMDdjMTllMGYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY0ZWZjNDk0MThkMjZkY2YxMjliMjJhNmFhMjExMDhjZWVjMzc2NzdhMzJkMDhlOWQ1ZmVlMzVkZGE2NmJiOWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU4OWNjZjNlODY4NjkzMGE5ZTUzOGQ5MTQ1Yjk3NTM5MmNiZGY1YTNhOGUxZWQ5OTlhNWRhY2Q5YjY1YThhZGEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImYyOTY0MDc5YzNjNWM4MTUyMGVmMzNhMmI5ZDJlMTVhMWI4NGQ3MjgwZGI4NTkwZGNkNjU3NDdlM2UwMTJhNDAifQ"
         }
       ]
@@ -79,16 +79,12 @@
       "statement": "New Lead guidance conditionally selects original EGM skills for useful independent design review, keeps simple tasks direct, and preserves fresh reviewer context and original human decisions without replacing existing conversation instructions.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/agent.rs#L635-L658",
-          "version": "repo-lines-v1:sha256:826834bf758b81ae18865205f8a94973ec4f59b24242e0edd299fb6f294e468e:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQwNGEyM2VkM2Q0ZjMzNjVjNWI3ZmJjYmFhN2Q5MzQ1YzY4ZTExZGU4NjVjMWU5MTI4YTUxYzQ5YmU5NzJlODYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjExMGYzYWI4ODk2ZTkzZDUwMjMzMDQ1NTA0ZjAwZGE5YWNjNjIxN2MyYjNiN2Y1NDZjZDAwYzBhMzg5OTk0ZmUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUxZjU2YmIyNmM0ZjE2NjU5YmYwYjI1NjFiYTA0MzEwMzU3N2RlNTI1N2JiZWJlNTRiMjljMDBkZjRlMDI1MmIifQ"
+          "resource": "repo://crates/decodex-runtime/src/agent.rs",
+          "version": "repo-file-v1:sha256:039d3118591ad102c58ed25f91d662c2132a7f461b46b9f0ecb276d2e6dd4dbf"
         },
         {
-          "resource": "repo://crates/decodex-runtime/src/agent.rs#L1001-L1009",
-          "version": "repo-lines-v1:sha256:fb1b26291086ee7b1da2bd688e8dd69028ac26f705931f83c49a8bcb0e0e80d8:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMDFiYTQ3MTljODBiNmZlOTExYjA5MWE3YzA1MTI0YjY0ZWVlY2U5NjRlMDljMDU4ZWY4Zjk4MDVkYWNhNTQ2YiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDFiYTQ3MTljODBiNmZlOTExYjA5MWE3YzA1MTI0YjY0ZWVlY2U5NjRlMDljMDU4ZWY4Zjk4MDVkYWNhNTQ2YiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNjk4ZTg4ZWYzNDIwNjJiZDNmMjM0NWVmNmM4M2UxMzc1NDg1YzViYmVjMjRlOTQ1MmQ4N2NhNmIzYWNlZTIzZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYTE5ODlhYzQzODRlZWEwN2EwM2QwMzA4NzBhOTdkZjcxNzQzYTUxMWMzNjU1ZDNmNDE4ODNhOTM3YWVjOWU0OSJ9"
-        },
-        {
-          "resource": "repo://crates/decodex-runtime/src/agent/instructions.md#L1-L7",
-          "version": "repo-lines-v1:sha256:e7917bc91ac91955d948921c8744de3534ddf6f192f708a252a27f75fb87adc1:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNmUyZDlmODkwNTVmNWUyZmQ2OWFmNzBiYjJjNmQ0ZGNkMDZhOWJiOTNiY2Y4MTE2ZjQ2YTQ1ZjBkNTAzMzk5MiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNTAxNjQzOTNmNjdmYmI5YjViYTkzOWJjZDljOTYyM2U3ZDJhMGJlNGE5ZWMwZmVkYWJlNWQ3M2M2ODRlYTA1ZSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjAsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOWFiNmFmMDE1ZGEwZjdjNGQ3ZDc5OGZiMDM0MWUzMzJiYzQ1ZWE1YmY3N2ZiMmM4ZTZjMjZjZTBlYTAxODEwZiJ9"
+          "resource": "repo://crates/decodex-runtime/src/agent/instructions.md",
+          "version": "repo-file-v1:sha256:a0571c64007c1d556e1b8f38911b2af4c93de48e5db8b0b4483b533cb6ac80cf"
         }
       ]
     },
@@ -98,11 +94,11 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_collaboration.rs",
-          "version": "repo-file-v1:sha256:7db2485b1dfbc10208c3f2a310a6bc71ac497852f6cc84e631ec5ed2e8e520dc"
+          "version": "repo-file-v1:sha256:c4a1ac4648b8cd2c7cc24dd798fc68c10b8c39cb7cd50b13db4b3be72a276bff"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_relation_header.rs",
-          "version": "repo-file-v1:sha256:f72bb9b4a0ea5305e3db38ca9aaece0c5205597eecdcbcbac12dd3f68211e3aa"
+          "version": "repo-file-v1:sha256:0a5f04327b36890647cdeb11d0cd68efd062c1557a025d2a1ac97b374f3a8379"
         }
       ]
     },
@@ -112,7 +108,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_collaboration_tests.rs",
-          "version": "repo-file-v1:sha256:8931248220c89584d386f2565372cabc82e5f574922526bf5ea158d2301d39dc"
+          "version": "repo-file-v1:sha256:55d639530d5c7091c0e50a93fe78b6209f144a294659bb194e477dee89629cd4"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_review.rs",
@@ -126,7 +122,7 @@
     }
   ],
   "verification": {
-    "by": "openwiki/0.7.2",
-    "at": "2026-11-02T07:10:57.562Z"
+    "by": "openwiki/0.7.3",
+    "at": "2026-11-03T16:31:59.854Z"
   }
 }

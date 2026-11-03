@@ -119,7 +119,7 @@ pub(crate) fn validate_references(
 
 		let current: bool = connection
 			.query_row(
-				"SELECT EXISTS(SELECT 1 FROM agent_work_items WHERE id=?1 AND codex_thread_id=?2)",
+				"SELECT EXISTS(SELECT 1 FROM agent_work_items WHERE id=?1 AND codex_thread_id=?2 UNION ALL SELECT 1 FROM agent_thread_revisions WHERE work_id=?1 AND old_thread_id=?2)",
 				rusqlite::params![target, thread],
 				|row| row.get(0),
 			)

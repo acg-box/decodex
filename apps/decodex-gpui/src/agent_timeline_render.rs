@@ -471,6 +471,12 @@ impl AgentSurface {
 		archived: bool,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
+		let mut origin = work.clone();
+		if let Some(thread) = self.timeline.native.source_threads.get(&entry.position) {
+			origin.codex_thread_id = Some(thread.clone());
+		}
+		let archived = archived || origin.codex_thread_id != work.codex_thread_id;
+		let work = &origin;
 		let row = gpui::div().w_full().min_w_0().flex().flex_col().gap_1();
 
 		let body = match &entry.content {
@@ -1404,6 +1410,7 @@ mod tests {
 					account: "account".into(),
 				},
 				AgentTimelinePage {
+					source_threads: Default::default(),
 					thread_id: "native-thread".into(),
 					entries: vec![],
 					next_cursor: None,
@@ -1615,6 +1622,7 @@ mod tests {
 				account: "account".into(),
 			},
 			AgentTimelinePage {
+				source_threads: Default::default(),
 				thread_id: "native-thread".into(),
 				entries: vec![entry],
 				next_cursor: None,
@@ -1789,6 +1797,7 @@ phase: None, app_ui: false,
 					account: "account".into()
 				},
 				AgentTimelinePage {
+					source_threads: Default::default(),
 					thread_id: "native-thread".into(),
 					entries: vec![],
 					next_cursor: None,
@@ -1921,6 +1930,7 @@ phase: None, app_ui: false,
 				account: "account".into()
 			},
 			AgentTimelinePage {
+				source_threads: Default::default(),
 				thread_id: "native-thread".into(),
 				entries,
 				next_cursor: None,
@@ -2157,6 +2167,7 @@ phase: None, app_ui: false,
 					account: "account".into()
 				},
 				AgentTimelinePage {
+					source_threads: Default::default(),
 					thread_id: "native-thread".into(),
 					entries: vec![],
 					next_cursor: None,

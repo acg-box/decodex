@@ -120,6 +120,7 @@ fn snapshot() -> AgentSnapshotDto {
 	};
 
 	AgentSnapshotDto {
+		assistant: Default::default(),
 		agents: Box::new(vec![
 			Agent {
 				id: "sage".into(),

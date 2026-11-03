@@ -16,6 +16,8 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent_permissions.rs
   - id: openwiki-source-dbc533dc306a3f520c4241e0
     resource: repo://crates/decodex-runtime/src/agent.rs
+  - id: openwiki-source-13f64682e8d77fd2c031de39
+    resource: repo://crates/decodex-runtime/src/agent/assistant.rs
   - id: openwiki-source-a4a2658e06fa2cf48ff4589e
     resource: repo://crates/decodex-runtime/src/agent/global_guardian.rs
   - id: openwiki-source-a7886792ad3e47b8e1afb7fa
@@ -26,13 +28,20 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent/native_subagents.rs
   - id: openwiki-source-51332b5dcd4b194b62fec905
     resource: repo://database/src/agent_guardian.rs
+  - id: openwiki-source-3f60f3a3aae45b3e3b355d3e
+    resource: repo://database/src/assistant.rs
   - id: openwiki-source-d1279ad243eb550afec4d0e6
     resource: repo://database/src/guardian_settings.rs
-generated: { by: "codex", at: "2026-10-28T08:28:06.287Z" }
+generated: { by: "codex", at: "2026-11-03T16:31:59.854Z" }
+verified:
+  - by: openwiki/0.7.3
+    at: 2026-11-03T16:49:54.130Z
 ---
 
 
 # Approvals and native request ownership
+
+The implemented [Assistant lifecycle](../decisions/assistant-lifecycle.md) preserves these owners during context renewal. The service checks local and native idle state, pending approvals/questions, claimed delivery, retries, live voice, native Goals and children before creating a successor. Exact question answers and canonical edited inputs remain with their existing native thread. An unsupported anonymous permission policy defers renewal rather than changing its execution permissions. A bootstrap or Memory entry cannot answer a human-owned request.
 
 ## Authority
 

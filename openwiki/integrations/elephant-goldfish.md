@@ -28,7 +28,10 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent/instructions.md
   - id: openwiki-source-f20a9fcd74237051ab396266
     resource: repo://crates/decodex-runtime/src/agent/review_activity.rs
-generated: { by: "codex", at: "2026-10-29T18:53:39.584Z" }
+generated: { by: "codex", at: "2026-11-03T15:54:13.719Z" }
+verified:
+  - by: openwiki/0.7.3
+    at: 2026-11-03T16:31:59.854Z
 ---
 
 # Elephant–Goldfish component
@@ -37,7 +40,7 @@ EGM is an optional [Google plugin](https://github.com/google/elephant-goldfish-m
 
 ## Install and use
 
-1. Open **Settings > Components**. The **This Mac** section manages local components, including when the selected service profile is remote.
+1. Open **Settings > Components**. The component rows manage this Mac's local runtime and optional integrations, including when the selected service profile is remote. Expand the EGM row to inspect its state and actions.
 2. Let Codex finish preparation if its required runtime is missing. Choose **Install** for **Elephant–Goldfish (EGM)** after its native state loads.
 3. Start a new conversation. Select an enabled EGM skill from the native skill inventory for the intended task. Use the discovered name and absolute path. Native names can include a plugin prefix, such as `egm:egm-review-loop`; do not invent a cache path.
 
@@ -65,11 +68,13 @@ Native pending questions and approvals retain their existing controls and owners
 | Install / Enable | Add the original Google marketplace and install or enable the whole `egm@egm` plugin. |
 | Update | Refresh its Git marketplace, then reinstall the plugin. A marketplace refresh alone does not update the installed payload. |
 | Uninstall | Remove the plugin. Remove its marketplace when no other plugin from that marketplace is installed. Preserve user work and reports. |
-| Clean up | When Codex no longer lists EGM, run the same exact native uninstall to remove files left after an external marketplace removal. Repeated cleanup is safe. |
+| Retry | Repeat the selected failed action after its cause is resolved. |
 
 Codex owns marketplace configuration, package materialization, the plugin cache and enabled state. `NativePlugins` is a narrow CLI adapter. `PluginOperations` runs an action outside the UI thread, coalesces repeated input while busy and reads native state after failure as well as success. An action error remains visible beside the observed state. Decodex adds no second installed-version database or plugin download cache.
 
 The displayed version and enabled flag report native configuration. They do not prove that all installed files are intact. A missing marketplace can leave cache and configuration behind; an empty catalog is not proof of cleanup. Removal therefore calls native uninstall even when the marketplace is absent, retaining unrelated plugins and user work.
+
+The desktop offers Uninstall only while Codex lists the plugin. It has no separate Clean up control for an absent entry. The native adapter's orphan-removal tests establish that lower-level contract, not an additional visible action.
 
 The Codex runtime has a separate required lifecycle. It follows the reviewed runtime requirement embedded in this app build. **Verify** checks or repairs that requirement; the active app offers no runtime uninstall. Sparkle application updates remain in **Settings > Updates**. See [runtime architecture](../architecture/runtime-architecture.md#components-and-app-updates).
 

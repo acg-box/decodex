@@ -301,6 +301,7 @@ mod tests {
 		}
 
 		let page = |entries, cursor| decodex_protocol::AgentTimelinePage {
+			source_threads: Default::default(),
 			thread_id: "thread".into(),
 			entries,
 			next_cursor: cursor,

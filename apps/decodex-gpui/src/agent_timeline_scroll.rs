@@ -823,6 +823,7 @@ mod tests {
 		assert!(s.timeline.native.replace(
 			binding.clone(),
 			AgentTimelinePage {
+				source_threads: Default::default(),
 				thread_id: "thread".into(),
 				entries: vec![row(10)],
 				next_cursor: None,
@@ -908,6 +909,7 @@ mod tests {
 					assert!(s.refresh_native_history(
 						binding.clone(),
 						AgentTimelinePage {
+							source_threads: Default::default(),
 							thread_id: "thread".into(),
 							entries: (100..105).map(row).collect(),
 							next_cursor: None,
@@ -965,6 +967,7 @@ mod tests {
 			assert!(s.timeline.native.replace(
 				Binding { work: work.clone(), thread: "thread".into(), account: "account".into() },
 				AgentTimelinePage {
+					source_threads: Default::default(),
 					thread_id: "thread".into(),
 					entries: (0..4).map(row).collect(),
 					next_cursor: Some("older".into()),
@@ -1317,6 +1320,7 @@ mod tests {
 		next_cursor: Option<&str>,
 	) -> AgentTimelinePage {
 		AgentTimelinePage {
+			source_threads: Default::default(),
 			thread_id: "thread".into(),
 			entries,
 			next_cursor: next_cursor.map(str::to_owned),

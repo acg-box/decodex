@@ -96,11 +96,15 @@ async fn pending_creation_input(
 	}
 
 	let events = store.list_agent_wake_events(root.id.clone(), 100).await.ok()?;
-	let input =
-		events.iter().find(|e| e.event_kind == "user_message" && e.delivered_turn_id.is_none())?;
+	let input = events.iter().find(|e| {
+		matches!(e.event_kind.as_str(), "user_message" | "assistant_instruction")
+			&& e.delivered_turn_id.is_none()
+	})?;
 	let payload: Value = serde_json::from_str(&input.payload).ok()?;
 
-	if payload["source"] != "user" {
+	if payload["source"] != "user"
+		&& !(input.event_kind == "assistant_instruction" && payload["source"] == "assistant")
+	{
 		return None;
 	}
 

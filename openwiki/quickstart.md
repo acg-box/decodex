@@ -44,6 +44,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_usage_estimates.rs
   - id: openwiki-source-3fa6d6c49e3542409542045b
     resource: repo://apps/decodex-gpui/src/agent_work_browser.rs
+  - id: openwiki-source-f339a4d1910db63ca305c2df
+    resource: repo://apps/decodex-gpui/src/assistant_settings.rs
   - id: openwiki-source-a2f254020dd8eaabd6366c91
     resource: repo://apps/decodex-gpui/src/session_settings.rs
   - id: openwiki-source-0813b2e35e2133631c0aa4db
@@ -52,6 +54,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/settings_native.rs
   - id: openwiki-source-a16804a567889414868e5d67
     resource: repo://apps/decodex-gpui/src/settings_surface.rs
+  - id: openwiki-source-2f256c95c226c1326d164ad3
+    resource: repo://apps/decodex-gpui/src/ui_feedback.rs
   - id: openwiki-source-f5d4f5acdb41fe7c4e985337
     resource: repo://automations/decodex/README.md
   - id: openwiki-source-14193a66abfb7d3230f476bf
@@ -70,6 +74,8 @@ sources:
     resource: repo://crates/decodex-runtime/src/account_service/tests/plan_scope.rs
   - id: openwiki-source-7111b71a47931c3e55d3ff6f
     resource: repo://crates/decodex-runtime/src/agent_titles/host.rs
+  - id: openwiki-source-13f64682e8d77fd2c031de39
+    resource: repo://crates/decodex-runtime/src/agent/assistant.rs
   - id: openwiki-source-acd129fd3a88516b785fc929
     resource: repo://crates/decodex-runtime/src/agent/instructions.md
   - id: openwiki-source-a67672a943dfe221574b2501
@@ -78,11 +84,16 @@ sources:
     resource: repo://database/schema.sql
   - id: openwiki-source-82bb214209944301d2efacfb
     resource: repo://database/src/agent_titles.rs
+  - id: openwiki-source-6197a876b2effbe992b1e2ec
+    resource: repo://database/src/agent.rs
   - id: openwiki-source-dc8958560b1230967470835f
     resource: repo://database/src/schema.rs
   - id: openwiki-source-3b57179b92b257bc3fff51a1
     resource: repo://scripts/macos/stage_decodex_app.sh
-generated: { by: "codex", at: "2026-11-02T07:10:57.562Z" }
+generated: { by: "codex", at: "2026-11-03T16:31:59.854Z" }
+verified:
+  - by: openwiki/0.7.3
+    at: 2026-11-03T16:49:54.130Z
 ---
 
 # OpenWiki quickstart
@@ -92,6 +103,8 @@ Decodex is a local workspace above Codex app-server. The primary Agent can discu
 ## Project, Agent and Work
 
 The [canonical contract](decisions/project-agent-work.md) is implemented: Project provides continuing context, each user-created Agent has one current native conversation, and Work records an outcome with one accountable Agent, current requirements and evidence. Assistant is optional. Project Lead is a responsibility of an existing Agent. The same Agent can handle several Works.
+
+The implemented [Assistant lifecycle](decisions/assistant-lifecycle.md) adds a continuing personal Agent. It creates and coordinates independent Agents and lightweight teams under user delegation, accepts independent duties, optionally uses RAGFlow Memory and renews native context behind the same chat. There is no built-in project patrol. Select an existing Assistant in Work; Settings > Components edits its mandate, renewal interval and optional RAGFlow scopes. Work, native execution and exact evidence keep their existing owners.
 
 Agents use native Subagents for bounded execution and scoped Collaboration Requests for independent peers. Native Codex owns execution, context, permissions and continuation. Decodex owns durable business relationships, evidence, coordination and presentation. The default Work tools do not create another executor, and no part of this contract requires Ultra.
 
@@ -113,7 +126,7 @@ The conversation browser and Work list have independent saved **status filters**
 
 ## Side chats
 
-The source tab stays **Main**. Side chat tabs use their conversation topics, with numbered labels only before a title is available. Topics are summarized automatically after the first eligible completed user exchange and reviewed after four more exchanges. The sidebar keeps the source title, and Agent identity stays separate. See [automatic titles](workflows/conversations-and-recovery.md#automatic-conversation-titles).
+The source tab stays **Main**. Side chat tabs use their conversation topics, with numbered labels only before a title is available. Topics are summarized automatically after the first eligible completed user exchange and reviewed after seven more exchanges. The sidebar keeps the source title, and Agent identity stays separate. See [automatic titles](workflows/conversations-and-recovery.md#automatic-conversation-titles).
 
 Use **+** in the conversation header to open a Side chat from the selected idle conversation's latest completed turn. Creation needs no second confirmation and sends no message. Each tab keeps its own draft and reading position. Closing a tab retains the native branch; reopen it from **Agent preferences → Side chats**.
 
@@ -131,7 +144,7 @@ Reported dollars appear beside **Context** in the composer; **Conversation estim
 
 Choose **Fork** on an existing locally managed conversation row to review its latest completed native turn. Confirm **Fork** to use the ordinary after-turn branch path. Source drafts stay preserved, and creation sends no input. Unavailable native history and unmanaged rows cannot provide this shortcut. See [the list workflow](workflows/conversations-and-recovery.md#branch-from-the-conversation-list) and [its qualification](testing/upstream-acceptance-boundaries.md#conversation-list-branch-qualification).
 
-If a conversation uses a different provider from the current configuration, **Fork** in the input bar creates and opens a branch on the current provider without a second confirmation. The original history and draft remain, and creation sends no input. See [provider recovery](workflows/conversations-and-recovery.md#continue-after-a-provider-change).
+If a conversation uses a different provider from the current configuration, **Fork** in the feedback band above the composer creates and opens a branch on the current provider without a second confirmation. The original history and draft remain, and creation sends no input. See [provider recovery](workflows/conversations-and-recovery.md#continue-after-a-provider-change).
 
 ## Persistent attached branches
 
@@ -141,6 +154,7 @@ When reviewing an earlier message, choose **Side chat** to create a persistent n
 
 | Task | Read first |
 | --- | --- |
+| Configure the Assistant, teams, external Memory or context renewal | [Assistant lifecycle design](decisions/assistant-lifecycle.md) |
 | Change Project/Agent/Work contracts, recovery, global Guardian or canonical names | [Project, Agent and Work contract](decisions/project-agent-work.md) |
 | Understand service, clients and storage | [Runtime architecture](architecture/runtime-architecture.md) |
 | Trace native helper execution, peer Collaboration, question escalation or recovery | [Agent coordination](architecture/chief-coordination.md) |

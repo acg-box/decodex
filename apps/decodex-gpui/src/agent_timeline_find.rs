@@ -527,6 +527,7 @@ mod tests {
 			thread_token_breakdown: None,
 			thread_metrics: None,
 			safety_buffering_turn_id: None,
+			source_threads: Default::default(),
 			thread_id: "thread".into(),
 			entries,
 			next_cursor: next.map(str::to_owned),

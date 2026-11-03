@@ -59,6 +59,7 @@ mod native_preparation;
 mod process_platform;
 mod process_supervisor;
 mod provider_attempt_service;
+mod ragflow;
 mod routing_orchestration;
 mod shared_auth_coordinator;
 mod startup_trace;

@@ -77,6 +77,7 @@ impl SqliteStore {
 					.collect::<Result<Vec<_>, _>>().map_err(error::sqlite_error)?;
 
 				for owner in owners {
+					crate::assistant::cancel_wakes_on_archive(&tx,&owner,&thread)?;
 					// NULL means no native dispatch was attempted; an empty turn ID is
 					// a claimed delivery whose outcome must still be reconciled.
 					tx.execute("DELETE FROM agent_inbox_events WHERE work_item_id=?1 AND event_kind='user_message' AND delivered_turn_id IS NULL AND (disposition IS NULL OR disposition='user_decision')", [&owner]).map_err(error::sqlite_error)?;

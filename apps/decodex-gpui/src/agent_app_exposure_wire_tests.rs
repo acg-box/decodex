@@ -88,6 +88,7 @@ fn app_exposure_click_sends_once_and_reads_after_lost_reply(cx: &mut TestAppCont
 fn snapshot() -> AgentSnapshotDto {
 	AgentSnapshotDto {
 		agents: Default::default(),
+		assistant: Default::default(),
 		guardian: Default::default(),
 		portfolio: Default::default(),
 		archived_work_ids: Default::default(),

@@ -8,6 +8,9 @@ use crate::{AgentActivityDto, AgentTurnUsageDto, EntityId, WeatherForecast};
 /// One exact native page, oldest entry first. The continuation reads older entries.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct AgentTimelinePage {
+	/// Exact native thread for entries at each logical position across Assistant contexts.
+	#[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+	pub source_threads: BTreeMap<u64, String>,
 	/// Latest observed native cumulative total for this exact thread, including live turns.
 	#[serde(default, skip_serializing_if = "Option::is_none")]
 	pub thread_token_total: Option<u64>,
@@ -100,7 +103,7 @@ pub struct AgentTurnTimingDto {
 /// A canonical position with its own typed identity; position alone is not unique.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct AgentTimelineEntry {
-	/// Native rollout position, never a local receipt timestamp.
+	/// Native rollout position plus a stable Assistant context offset, never a receipt timestamp.
 	pub position: u64,
 	/// Public content and exact native identities.
 	pub content: AgentTimelineContent,

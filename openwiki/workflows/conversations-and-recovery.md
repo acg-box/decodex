@@ -3,9 +3,6 @@ type: Reference
 title: "Conversation input, history and recovery"
 description: "Explicit native branches, same-thread edits, canonical drafts, complete export and uncertain result recovery."
 tags: ["decodex", "architecture"]
-verified:
-  - by: openwiki/0.7.3
-    at: 2026-11-03T06:59:35.618Z
 sources:
   - id: openwiki-source-6512b631b67649d924c16ba3
     resource: repo://apps/decodex-gpui/src/agent_archive.rs
@@ -33,8 +30,6 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_list_status_tests.rs
   - id: openwiki-source-02f8a02cdfa0616877cdad62
     resource: repo://apps/decodex-gpui/src/agent_list_status.rs
-  - id: openwiki-source-09a2c045309673f306153f39
-    resource: repo://apps/decodex-gpui/src/agent_model_settings_wire_tests.rs
   - id: openwiki-source-ae2ce5cda718ede63f50be9b
     resource: repo://apps/decodex-gpui/src/agent_native_composer.rs
   - id: openwiki-source-6a1c55b61be8ac251a493046
@@ -89,6 +84,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/settings_surface.rs
   - id: openwiki-source-1291f5243fa6c9cb52149bda
     resource: repo://apps/decodex-gpui/src/shell.rs
+  - id: openwiki-source-2f256c95c226c1326d164ad3
+    resource: repo://apps/decodex-gpui/src/ui_feedback.rs
   - id: openwiki-source-b1948e1beb6e361503aa2db1
     resource: repo://crates/decodex-codex/src/app_server_client.rs
   - id: openwiki-source-ecdf4586908bb6226955607a
@@ -139,6 +136,8 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent.rs
   - id: openwiki-source-052a4071b057633df77b1e21
     resource: repo://crates/decodex-runtime/src/agent/archive.rs
+  - id: openwiki-source-13f64682e8d77fd2c031de39
+    resource: repo://crates/decodex-runtime/src/agent/assistant.rs
   - id: openwiki-source-acd129fd3a88516b785fc929
     resource: repo://crates/decodex-runtime/src/agent/instructions.md
   - id: openwiki-source-2a0e86d8a9789b05a13deccc
@@ -161,9 +160,14 @@ sources:
     resource: repo://database/src/agent/archive.rs
   - id: openwiki-source-7cbe85f6b9884923ffd5cbfa
     resource: repo://database/src/agent/tests/input_retry.rs
+  - id: openwiki-source-3f60f3a3aae45b3e3b355d3e
+    resource: repo://database/src/assistant.rs
   - id: openwiki-source-28af4781ad8d9558410630da
     resource: repo://database/src/works.rs
-generated: { by: "codex", at: "2026-11-03T06:59:35.618Z" }
+generated: { by: "codex", at: "2026-11-03T16:38:47.085Z" }
+verified:
+  - by: openwiki/0.7.3
+    at: 2026-11-03T16:49:54.130Z
 ---
 
 # Conversation input, history and recovery
@@ -176,9 +180,11 @@ The Agent composer and the separate ordinary History workbench share recovery me
 
 ## Persistent Agent and Work context
 
+The implemented [Assistant lifecycle](../decisions/assistant-lifecycle.md) keeps a stable identity across fresh native contexts. It supports delegated independent Agents, teams, wakes and optional RAGFlow Memory. Renewal waits for a safe ordinary-input boundary, records exact native creation and activation receipts, then retains the current editor, loaded history and reading state. The native context chain remains readable with exact thread, turn and item sources. Unknown creation is reconciled without blind replay. Retiring the old context unsubscribes it and does not run Agent archive cleanup.
+
 Each user-created Agent has one current native conversation. It can own several Works and act as Project Lead without creating a permanent component manager. The Assistant is optional. Current Work requirements and authorized Materials are read before assignment, recovery and assessment; a compacted summary alone is not the authority. Different Work records do not create independent native directories or sandboxes within that conversation.
 
-The canonical tool revision uses Work business commands and native Subagents. Ordinary input retains the original native conversation and its immutable tool set. A new local tool revision does not replace that conversation. The runtime checks the capabilities of the bound native context before it uses versioned tools. Old parent identifiers do not grant another persistent Agent input or private-history authority.
+The canonical tool revision uses Work business commands and native Subagents. Ordinary input retains its native conversation and recorded tool set. The selected Assistant can instead use the safe fresh-context lifecycle described above. A new local tool revision does not replace that conversation. The runtime checks the capabilities of the bound native context before it uses versioned tools. Old parent identifiers do not grant another persistent Agent input or private-history authority.
 
 Work Results and command receipts are separate from the conversation's latest reply. Restored pending evidence remains awaiting the owner assessment. A requirement change rejects old completion; a pause stays effective after restart. Native continuation and exact terminal readback remain native-owned, with V1 native wait and qualified V2 idle wake limits in the [acceptance record](../testing/upstream-acceptance-boundaries.md).
 
@@ -216,11 +222,11 @@ Review the source, then choose **Fork**. This uses the existing **Fork** (after 
 
 ## Continue after a provider change
 
-If native Codex refuses to resume a conversation because its saved provider differs from the current provider, Decodex keeps its history readable and preserves the original draft. The notice inside the disabled input bar names both providers. Restore the original provider to continue that conversation, or choose **Fork** to use the current provider.
+If native Codex refuses to resume a conversation because its saved provider differs from the current provider, Decodex keeps its history readable and preserves the original draft. The feedback band above the disabled composer names both providers. Restore the original provider to continue that conversation, or choose **Fork** to use the current provider.
 
 Choose **Fork** once to create and open a branch on the named current provider. Decodex reads the latest completed native turn, checks the current source and native configuration, and persists the existing fork intent before dispatch. There is no second confirmation. If the source or configuration changed, creation stops. It does not change the original conversation, send input, or bypass native policy.
 
-Progress and recovery stay inside the input bar and use the shared notice and bordered button styles. An uncertain result checks the saved fork identity instead of creating another branch. The original draft remains saved.
+Progress and recovery use the same feedback band and bordered buttons. An uncertain result checks the saved fork identity instead of creating another branch. The original draft remains saved.
 
 The new branch receives the reviewed history prefix and the ordinary composer draft through the existing branch flow. The next explicit send shares that inherited context with the chosen provider. Unsent source messages are not retried automatically. Ordinary branching and Side chats retain their source provider; changing providers is this separate explicit choice.
 
@@ -329,7 +335,7 @@ The native name is authoritative. The service checks the originating source, cur
 
 Title observations use the existing resolved inbox journal. They do not wake an Agent or enter transcript pages. Current bindings and their title map share the atomic work snapshot. No new title table, timer, preference or startup migration is required.
 
-The implementation reference is the official [TUI title owner at selected source 67f0994b](https://github.com/openai/codex/blob/67f0994b532b8740f14b5b738af7b7b2a915b1d6/codex-rs/tui/src/app/thread_title.rs) and its isolated structured-request helper. That source supplies initial title generation; the seven-exchange topic review is Decodex policy. Schemas generated from the selected binary verify the native primitives. This does not imply a dedicated server title-generation API or use `thread/sample` for titles. See [qualification boundaries](../testing/upstream-acceptance-boundaries.md#automatic-conversation-title-qualification).
+The implementation reference is the official [TUI title owner at the original reviewed source 67f0994b](https://github.com/openai/codex/blob/67f0994b532b8740f14b5b738af7b7b2a915b1d6/codex-rs/tui/src/app/thread_title.rs) and its isolated structured-request helper. That source supplies initial title generation; the seven-exchange topic review is Decodex policy. Schemas generated from the selected binary verify the native primitives. This does not imply a dedicated server title-generation API or use `thread/sample` for titles. See [qualification boundaries](../testing/upstream-acceptance-boundaries.md#automatic-conversation-title-qualification).
 
 ## Recap and questions
 

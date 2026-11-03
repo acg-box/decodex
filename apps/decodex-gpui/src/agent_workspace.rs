@@ -2394,6 +2394,7 @@ impl AgentSurface {
 	fn empty_workspace_snapshot() -> AgentSnapshotDto {
 		AgentSnapshotDto {
 			agents: Default::default(),
+			assistant: Default::default(),
 			guardian: Default::default(),
 			portfolio: Default::default(),
 			archived_work_ids: Default::default(),
@@ -2510,6 +2511,7 @@ impl AgentSurface {
 
 		self.apply_result(Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
 			agents: Default::default(),
+			assistant: Default::default(),
 			guardian: Default::default(),
 			portfolio: Default::default(),
 			archived_work_ids: Default::default(),
