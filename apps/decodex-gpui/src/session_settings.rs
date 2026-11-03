@@ -83,10 +83,11 @@ pub(crate) fn speed_default_choices<T: 'static>(
 		.flex()
 		.flex_col()
 		.gap(gpui::px(1.));
+	// ChatGPT usage relative to Standard: https://learn.chatgpt.com/docs/pricing
 	for (id, description) in [
-		("default", "Regular speed and usage."),
-		("priority", "Faster replies; higher usage."),
-		("ultrafast", "Fastest replies; highest usage."),
+		("default", "1× included usage · 1× credits."),
+		("priority", "2.5× included usage · 2× credits."),
+		("ultrafast", "8× included usage · 6× credits."),
 	] {
 		let tier = ServiceTier::new(id).expect("built-in speed");
 		let key_tier = tier.clone();

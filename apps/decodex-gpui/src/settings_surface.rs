@@ -495,7 +495,7 @@ impl SettingsSurface {
 			))
 			.child(column(
 				"Default speed",
-				"Shared with Codex. Account and model limits apply.",
+				"Shared with Codex. ChatGPT usage relative to Standard for the same model; availability varies.",
 				crate::session_settings::speed_default_choices(
 					self.default_speed.as_ref(),
 					Self::choose_default_speed,
