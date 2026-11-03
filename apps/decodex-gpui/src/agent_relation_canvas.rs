@@ -234,11 +234,25 @@ impl Node {
 		[self.x + left, self.y + top, self.x + right, self.y + bottom]
 	}
 
-	/// Presentation bounds exclude the stable space kept for layout and zooming.
-	fn visible_bounds(&self) -> [f32; 4] {
+	/// Stable project membership includes the actor and identity, never its speech.
+	fn actor_bounds(&self) -> [f32; 4] {
 		let mut bounds = self.connection_bounds();
 
-		for [left, top, right, bottom] in [self.identity, self.speech].into_iter().flatten() {
+		if let Some([left, top, right, bottom]) = self.identity {
+			bounds[0] = bounds[0].min(self.x + left);
+			bounds[1] = bounds[1].min(self.y + top);
+			bounds[2] = bounds[2].max(self.x + right);
+			bounds[3] = bounds[3].max(self.y + bottom);
+		}
+
+		bounds
+	}
+
+	/// Camera framing also includes transient speech without changing project anchors.
+	fn visible_bounds(&self) -> [f32; 4] {
+		let mut bounds = self.actor_bounds();
+
+		if let Some([left, top, right, bottom]) = self.speech {
 			bounds[0] = bounds[0].min(self.x + left);
 			bounds[1] = bounds[1].min(self.y + top);
 			bounds[2] = bounds[2].max(self.x + right);
@@ -579,14 +593,23 @@ impl AgentSurface {
 		self.add_relation_resources(&rows, &included, &mut graph);
 		self.place_relation_nodes(&mut graph, layout, &text_system);
 
-		graph.paths = self
-			.work_board
-			.view
-			.routing
-			.borrow_mut()
-			.paths(&groups::routing_nodes(&graph, &text_system), &graph.connections());
-
 		graph.scope_bounds(&snapshot.projects);
+
+		let captions: Vec<_> = graph
+			.scopes
+			.iter()
+			.filter_map(|scope| {
+				scope
+					.caption_bounds(layout.zoom, &text_system)
+					.map(|bounds| (scope.id.clone(), bounds))
+			})
+			.collect();
+
+		graph.paths = self.work_board.view.routing.borrow_mut().paths(
+			&groups::routing_nodes(&graph, &text_system),
+			&graph.connections(),
+			&captions,
+		);
 
 		graph
 	}
@@ -1052,7 +1075,7 @@ impl AgentSurface {
 	) -> Stateful<Div> {
 		// Visible relationship labels keep their own hit targets above transparent node areas.
 		canvas = self.relation_label_layer(canvas, graph, lines, cx);
-		canvas = self.relation_scope_headers(canvas, graph, cx);
+		canvas = self.relation_scope_captions(canvas, graph, cx);
 
 		if let Some(map) = self.relation_minimap(graph, cx) {
 			canvas = canvas.child(map);
@@ -1620,8 +1643,8 @@ impl AgentSurface {
 			let label = scope.label();
 			let title_gap = labels
 				.iter()
-				.find(|(label_scope, _, _)| label_scope.id == scope.id)
-				.and_then(|(_, rect, _)| scope.title_gap(*rect, scale, pan));
+				.find(|(label_scope, _)| label_scope.id == scope.id)
+				.map(|(_, rect)| scope.title_gap(*rect, scale, pan));
 
 			canvas = canvas.child(
 				gpui::div()
@@ -4023,7 +4046,7 @@ mod fit_tests {
 				let child =
 					Node { key: "child".into(), x: position.0, y: position.1, ..parent.clone() };
 				let nodes = vec![parent.clone(), child];
-				let paths = routing::Cache::default().paths(&nodes, slice::from_ref(&edge));
+				let paths = routing::Cache::default().paths(&nodes, slice::from_ref(&edge), &[]);
 				let mut graph = Graph {
 					layout: card::Layout::new(1.),
 					scopes: vec![],
@@ -4073,7 +4096,7 @@ mod fit_tests {
 					graph.nodes.push(sibling);
 					graph.edges.push(branch);
 
-					graph.paths = routing::Cache::default().paths(&graph.nodes, &graph.edges);
+					graph.paths = routing::Cache::default().paths(&graph.nodes, &graph.edges, &[]);
 
 					let (lines, _) = visibility::Cache::default().sample(
 						&graph,
@@ -5258,14 +5281,6 @@ mod fit_tests {
 
 					let graph = s.relation_graph();
 
-					// Native point geometry follows animated content heights. Workspace
-					// frames and explicitly dragged positions retain the world lattice.
-					for scope in &graph.scopes {
-						for coordinate in scope.bounds {
-							assert_eq!(coordinate, relations::snap(coordinate));
-						}
-					}
-
 					assert_eq!(graph.nodes.len(), original.nodes.len());
 					assert_eq!(graph.edges.len(), original.edges.len());
 					assert_eq!(graph.scopes.len(), 2);
@@ -5281,10 +5296,13 @@ mod fit_tests {
 								.as_ref()
 								.is_some_and(|r| r.workspace.as_deref() == Some(scope.id.as_str()))
 						}) {
-							let [left, top, right, bottom] = node.visible_bounds();
+							// Project rails follow actors without snapping their bounds or
+							// reserving the temporary speech above them.
+							let [left, top, right, bottom] = node.actor_bounds();
 
 							assert!(left >= scope.bounds[0] && right <= scope.bounds[2]);
-							assert!(top >= scope.bounds[1] + 30. && bottom <= scope.bounds[3]);
+							assert!(top >= scope.bounds[1] + GRID - 0.001);
+							assert!(bottom + GRID <= scope.bounds[3] + 0.001);
 						}
 					}
 				}

@@ -74,12 +74,12 @@ impl AgentSurface {
 			let layout = Layout::new(zoom.min(max_zoom));
 			let graph = self.relation_graph_with_layout(now, layout.with_presence(1., false));
 			let Some([min_x, min_y, max_x, max_y]) = frame_bounds(&graph, target) else { return };
-			let header = if !graph.scopes.is_empty() && !matches!(target, Target::Team(_)) {
-				scopes::HEADER_HEIGHT
+			let caption = if !graph.scopes.is_empty() && !matches!(target, Target::Team(_)) {
+				scopes::CAPTION_HEIGHT / 2.
 			} else {
 				0.
 			};
-			let usable_height = (h - 2. * FRAME_INSET - header).max(1.);
+			let usable_height = (h - 2. * FRAME_INSET - caption).max(1.);
 			let width = (max_x - min_x).max(1.);
 			let height = (max_y - min_y).max(1.);
 			let fitted = ((w - 2. * FRAME_INSET) / width).min(usable_height / height);
@@ -94,7 +94,7 @@ impl AgentSurface {
 			self.work_board.view.zoom = Some(scale);
 			self.work_board.view.pan = (
 				(w - width * scale) / 2. - min_x * scale,
-				FRAME_INSET + header + (usable_height - height * scale) / 2. - min_y * scale,
+				FRAME_INSET + (usable_height - height * scale) / 2. - min_y * scale,
 			);
 
 			break;
@@ -159,7 +159,19 @@ impl AgentSurface {
 
 fn frame_bounds(graph: &Graph, target: Target<'_>) -> Option<[f32; 4]> {
 	if let Target::Project(project) = target {
-		graph.scopes.iter().find(|scope| scope.id == project).map(|scope| scope.bounds)
+		let scope = graph.scopes.iter().find(|scope| scope.id == project)?;
+		let mut bounds = scope.bounds;
+
+		for node in graph.nodes.iter().filter(|node| scope.members.contains(&node.key)) {
+			let [left, top, right, bottom] = node.visible_bounds();
+
+			bounds[0] = bounds[0].min(left);
+			bounds[1] = bounds[1].min(top);
+			bounds[2] = bounds[2].max(right);
+			bounds[3] = bounds[3].max(bottom);
+		}
+
+		Some(bounds)
 	} else if let Target::Team(key) = target {
 		let members = groups::descendants(graph, key);
 		let rect = graph
