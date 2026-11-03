@@ -3,14 +3,18 @@ type: "Reference"
 title: "Assistant delegation, memory and context lifecycle"
 openwiki_generated: true
 sources:
-  - id: openwiki-source-73d67d21d29d49e7272436e0
-    resource: repo://apps/decodex-gpui/src/agent_timeline_render.rs
+  - id: openwiki-source-9e6b2fcb5c2b3d17fcfda57b
+    resource: repo://apps/decodex-gpui/src/agent_drafts.rs
   - id: openwiki-source-691432bb61082c358b6f9c24
     resource: repo://apps/decodex-gpui/src/agent_timeline.rs
+  - id: openwiki-source-5d032c6be684964aa2c401fa
+    resource: repo://apps/decodex-gpui/src/agent_workspace.rs
   - id: openwiki-source-f339a4d1910db63ca305c2df
     resource: repo://apps/decodex-gpui/src/assistant_settings.rs
   - id: openwiki-source-62c1273bf1b2ac5041d1e920
     resource: repo://crates/decodex-core/src/assistant.rs
+  - id: openwiki-source-8b27f0ff96b57583d8d59731
+    resource: repo://crates/decodex-protocol/src/agent_timeline.rs
   - id: openwiki-source-cc0439b23243c3697ba49199
     resource: repo://crates/decodex-protocol/src/lib.rs
   - id: openwiki-source-a490ea3fbcddb9c007caf196
@@ -45,10 +49,10 @@ sources:
     resource: repo://database/src/assistant.rs
   - id: openwiki-source-28af4781ad8d9558410630da
     resource: repo://database/src/works.rs
-generated: { by: "codex", at: "2026-11-03T16:49:54.130Z" }
+generated: { by: "codex", at: "2026-11-03T17:21:44.822Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-03T16:49:54.130Z
+    at: 2026-11-03T17:33:35.946Z
 ---
 
 
@@ -147,7 +151,7 @@ A creation with a missing reply is reconciled by its exact recorded native sourc
 
 ## Desktop continuity
 
-The desktop recognizes a verified successor binding for the same Assistant and retains the editor, loaded rows and reading state. It updates older-page cursors and uses cumulative logical positions with exact native source threads. The host joins bounded native pages across the recorded lineage; it does not copy the full transcript into a second history store.
+The desktop recognizes a verified successor binding for the same Assistant and retains a usable editor, loaded rows and reading state. Saved draft ownership follows the recorded Assistant lineage, including after restart. Submitted commands and history references keep their exact native identities. It updates older-page cursors and uses cumulative logical positions with exact native source threads. The host joins bounded native pages across the recorded lineage; it does not copy the full transcript into a second history store. The wire decoder reads decimal source-position keys through the tagged JSON response, so a nonempty source map does not turn a valid page into a history failure.
 
 Retired-context rows are read-only. Native source IDs remain exact for detail, media, Results and references. Normal context renewal adds no confirmation or handoff report. A pending confirmation or external import problem remains visible in Assistant settings. Side chats keep their separate inherited-context semantics.
 
@@ -171,7 +175,7 @@ Database fixtures cover team reuse, independent wakes and archive cancellation, 
 
 The isolated native test `installed_assistant_renews_fresh_contexts_with_original_dialogue_and_isolated_memory` uses the selected Codex binary at upstream commit `ba0dfd38979033f514a28d9514215bad46957a18`. It checks three successive fresh contexts, original dialogue across their boundaries, no fork ancestry, one model request per user turn and absent native-memory injection. An unrelated control context retains native memory settings. Native schemas were generated from that selected binary; upstream main is not a substitute for installed capability.
 
-Desktop tests cover the retained draft, loaded history, reading state, old source threads and rebased pagination cursor. These are source/fixture results, not installed-app visual acceptance or a live RAGFlow server qualification. No real RAGFlow account or credential is required for these checks. Long-duration quality, external extraction quality and machine sleep behavior still need representative operational measurement.
+Desktop tests cover usable drafts across renewal and restart, loaded history, reading state, old source threads and rebased pagination cursors. The wire regression round-trips a nonempty native source map through the tagged timeline response. Locked-input tests keep the shared status centered and retain the draft internally without a second text block. These are source/fixture results, not installed-app visual acceptance or a live RAGFlow server qualification. No real RAGFlow account or credential is required for these checks. Long-duration quality, external extraction quality and machine sleep behavior still need representative operational measurement.
 
 See [commands and validation](../operations/commands-and-validation.md), [Project, Agent and Work](project-agent-work.md), [conversation recovery](../workflows/conversations-and-recovery.md) and [native integration limits](../testing/upstream-acceptance-boundaries.md).
 

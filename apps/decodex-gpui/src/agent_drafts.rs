@@ -22,8 +22,8 @@ use crate::{
 	ui_feedback::Feedback,
 };
 use decodex_protocol::{
-	AgentAttachmentDto, AgentTaskReferenceDto, AgentWorkKindDto, DesktopCreationSetup,
-	DesktopQuestionDraft,
+	AgentAttachmentDto, AgentSnapshotDto, AgentTaskReferenceDto, AgentWorkKindDto,
+	DesktopCreationSetup, DesktopQuestionDraft,
 };
 use storage::Storage;
 
@@ -72,6 +72,24 @@ struct Drafts {
 }
 
 impl AgentSurface {
+	pub(super) fn renew_assistant_draft_binding(&mut self, snapshot: &AgentSnapshotDto) {
+		let Some(owner) = &snapshot.assistant.agent_id else {
+			return;
+		};
+		if let Some(thread) = self.draft_profiles.threads.get_mut(owner)
+			&& snapshot.assistant.previous_thread_ids.contains(thread)
+			&& let Some(current) = snapshot
+				.work_items
+				.iter()
+				.find(|work| &work.id == owner)
+				.and_then(|work| work.codex_thread_id.as_ref())
+		{
+			// Only the editable draft follows an acknowledged Assistant continuation.
+			// Submitted commands and referenced history keep their exact native identities.
+			*thread = current.clone();
+		}
+	}
+
 	pub(super) fn draft_owner_available(&self) -> bool {
 		self.is_new_conversation()
 			|| self.composer_manager.as_ref().is_none_or(|owner| {
@@ -267,6 +285,96 @@ pub(super) mod tests {
 			assert_eq!(s.selected.as_ref(), Some(&saved));
 			assert_eq!(s.composer_manager.as_ref(), Some(&saved));
 			assert_eq!(s.composer.read(cx).content(), "Saved conversation draft");
+		});
+	}
+
+	#[gpui::test]
+	fn assistant_renewal_keeps_the_open_draft_editable(cx: &mut gpui::TestAppContext) {
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.selected = Some("agent".into());
+			s.apply_drafts(
+				super::Drafts {
+					manager: Some("agent".into()),
+					threads: [("agent".into(), "old".into())].into(),
+					text: "Keep my unsent correction".into(),
+					..Default::default()
+				},
+				cx,
+			);
+			let reference = decodex_protocol::AgentTaskReferenceDto {
+				work_id: EntityId::new("agent").unwrap(),
+				thread_id: WireText::new("old").unwrap(),
+				title: WireText::new("Original context").unwrap(),
+			};
+			s.task_references = vec![reference.clone()];
+			let mut next = s.snapshot.clone().unwrap();
+			next.work_items.iter_mut().find(|w| w.id == "agent").unwrap().codex_thread_id =
+				Some("new".into());
+			next.assistant.agent_id = Some("agent".into());
+			next.assistant.previous_thread_ids.clear();
+			s.apply_refreshed_snapshot(
+				Ok(decodex_protocol::AgentSnapshotResult::Available(next.clone())),
+				cx,
+			);
+			assert!(!s.draft_owner_available(), "an arbitrary replacement is not a continuation");
+			next.assistant.previous_thread_ids = vec!["old".into()];
+			next.assistant.agent_id = Some("other".into());
+			s.apply_result(Ok(decodex_protocol::AgentSnapshotResult::Available(next.clone())));
+			assert!(!s.draft_owner_available(), "another Assistant cannot adopt this draft");
+			next.assistant.agent_id = Some("agent".into());
+			s.apply_refreshed_snapshot(
+				Ok(decodex_protocol::AgentSnapshotResult::Available(next.clone())),
+				cx,
+			);
+			assert!(s.draft_owner_available());
+			assert!(s.composer_unavailable_reason().is_none());
+			assert_eq!(s.composer.read(cx).content(), "Keep my unsent correction");
+			assert_eq!(s.draft_profiles.threads["agent"], "new");
+			assert_eq!(s.task_references, vec![reference]);
+			assert!(matches!(
+				s.build_submission("Continue from this draft", cx).unwrap(),
+				decodex_protocol::AgentActionDto::Send { root_id, .. } if root_id.as_str() == "agent"
+			));
+			next.assistant.agent_id = None;
+			next.assistant.previous_thread_ids.clear();
+			s.apply_result(Ok(decodex_protocol::AgentSnapshotResult::Available(next)));
+			assert!(
+				s.draft_owner_available(),
+				"removing the role keeps the continued draft usable"
+			);
+		});
+	}
+
+	#[gpui::test]
+	fn restored_assistant_draft_follows_acknowledged_contexts_after_restart(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			let mut next = s.snapshot.take().unwrap();
+			s.apply_drafts(
+				super::Drafts {
+					manager: Some("agent".into()),
+					threads: [("agent".into(), "first".into())].into(),
+					text: "Saved before renewal".into(),
+					..Default::default()
+				},
+				cx,
+			);
+			next.assistant.agent_id = Some("agent".into());
+			next.assistant.previous_thread_ids = vec!["second".into(), "first".into()];
+			next.work_items.iter_mut().find(|w| w.id == "agent").unwrap().codex_thread_id =
+				Some("third".into());
+			s.apply_refreshed_snapshot(
+				Ok(decodex_protocol::AgentSnapshotResult::Available(next)),
+				cx,
+			);
+			assert!(s.draft_owner_available());
+			assert_eq!(s.draft_profiles.threads["agent"], "third");
+			assert_eq!(s.composer.read(cx).content(), "Saved before renewal");
 		});
 	}
 

@@ -8,6 +8,8 @@ sources:
     resource: repo://.config/nextest.toml
   - id: openwiki-source-30634b029f7a214a4cfa8636
     resource: repo://apps/decodex-gpui/Cargo.toml
+  - id: openwiki-source-9e6b2fcb5c2b3d17fcfda57b
+    resource: repo://apps/decodex-gpui/src/agent_drafts.rs
   - id: openwiki-source-1b7747f8ae67c32e5670817d
     resource: repo://apps/decodex-gpui/src/agent_portfolio_tests.rs
   - id: openwiki-source-81428eaea331210561f63f66
@@ -26,21 +28,25 @@ sources:
     resource: repo://automations/upstream/retained-contracts.json
   - id: openwiki-source-c740d34a4e6c4e581873e50e
     resource: repo://crates/decodex-account-login/src/lib.rs
+  - id: openwiki-source-8b27f0ff96b57583d8d59731
+    resource: repo://crates/decodex-protocol/src/agent_timeline.rs
   - id: openwiki-source-f4724776aade804ebf838e2e
     resource: repo://crates/decodex-runtime/src/account_service.rs
   - id: openwiki-source-24139c353e393a9759b0267a
     resource: repo://crates/decodex-runtime/src/agent/tests/native_permissions.rs
   - id: openwiki-source-c8b1a2a9f2113ec43d4066da
     resource: repo://Makefile.toml
-generated: { by: "codex", at: "2026-10-28T08:28:06.287Z" }
+generated: { by: "codex", at: "2026-11-03T17:21:44.822Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-03T16:31:59.854Z
+    at: 2026-11-03T17:33:35.946Z
 ---
 
 # Test quality and coverage
 
 Keep a test when it can detect a meaningful change in supported behavior. Exact wire values, persisted identities, permissions and duplicate-effect prevention are contracts. A copied color, helper name, source statement or current catalog length usually is not.
+
+Assistant renewal regressions check that a retained draft can still be edited and submitted after a verified successor or restart. Retaining its text alone does not prove that the input bar is usable. History tests round-trip nonempty native-source maps through the tagged wire response; a page-only fixture does not cover that decoder path.
 
 ## Choose the owner
 

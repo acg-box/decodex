@@ -1317,7 +1317,7 @@ mod tests {
 		});
 		visual.update(crate::ui_frame::draw_frame);
 
-		assert!(visual.debug_bounds("composer-retained-draft").is_some());
+		assert!(visual.debug_bounds("composer-retained-draft").is_none());
 
 		let action = visual.debug_bounds("native-open-parent").unwrap();
 

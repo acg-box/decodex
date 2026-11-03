@@ -119,7 +119,7 @@ sources:
 generated: { by: "codex", at: "2026-11-03T16:38:47.085Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-03T16:49:54.130Z
+    at: 2026-11-03T17:33:35.946Z
 ---
 
 # Project, Agent and Work coordination

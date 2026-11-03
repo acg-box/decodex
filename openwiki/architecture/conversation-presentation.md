@@ -18,6 +18,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_conversation_tab_tests.rs
   - id: openwiki-source-1bf529ea3f1649ac9a28334a
     resource: repo://apps/decodex-gpui/src/agent_conversation_tabs.rs
+  - id: openwiki-source-9e6b2fcb5c2b3d17fcfda57b
+    resource: repo://apps/decodex-gpui/src/agent_drafts.rs
   - id: openwiki-source-85ab533d66ee904d83d8a21a
     resource: repo://apps/decodex-gpui/src/agent_item_context_tests.rs
   - id: openwiki-source-7aecb0d94903aac848b2cdfd
@@ -146,10 +148,10 @@ sources:
     resource: repo://database/src/agent_titles.rs
   - id: openwiki-source-6197a876b2effbe992b1e2ec
     resource: repo://database/src/agent.rs
-generated: { by: "codex", at: "2026-11-03T16:31:59.854Z" }
+generated: { by: "codex", at: "2026-11-03T17:21:44.822Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-03T16:49:54.130Z
+    at: 2026-11-03T17:33:35.946Z
 ---
 
 
@@ -287,7 +289,7 @@ Incomplete fences and failed compilation retain the literal source. Wide diagram
 
 ## Change and verify
 
-The [Assistant lifecycle](../decisions/assistant-lifecycle.md) keeps one chat across fresh native contexts. The desktop retains the unsent draft, loaded history and reading state during a confirmed successor binding. History pages carry stable logical positions and exact native source threads; older rows remain read-only. Pagination cursors follow the recorded context chain. Side chats remain separate branches with inherited context.
+The [Assistant lifecycle](../decisions/assistant-lifecycle.md) keeps one chat across fresh native contexts. The desktop retains the editable unsent draft, loaded history and reading state during a confirmed successor binding. A draft follows only the same Assistant's recorded native lineage, including after restart. Submitted commands and history references keep their exact native identities. History pages carry stable logical positions and exact native source threads; older rows remain read-only. Pagination cursors follow the recorded context chain. Side chats remain separate branches with inherited context.
 
 Use the grouping tests for turn boundaries, explicit final answers and interleaved input. Use an actual desktop session for alignment, tool-detail expansion, floating-surface clipping, scrolling and reduced motion. Compilation and event tests do not establish visual smoothness.
 

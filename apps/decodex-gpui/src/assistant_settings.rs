@@ -1,5 +1,8 @@
 //! Personal Assistant settings share the existing service command path.
-use crate::shell::agent_surface::{AgentActionDto, AgentSurface, ComposerInput, EntityId};
+use crate::{
+	shell::agent_surface::{AgentActionDto, AgentSurface, ComposerInput, EntityId},
+	ui_feedback::{self, Feedback},
+};
 use decodex_protocol::{AssistantCommand, AssistantSettings, RagflowConnection};
 use gpui::{
 	AnyElement, AppContext as _, Context, Entity, IntoElement as _, ParentElement as _, Styled as _,
@@ -26,12 +29,20 @@ impl AgentSurface {
 		};
 		let mut panel=gpui::div().w_full().flex().flex_col().gap_2().child("Personal Assistant").child("Give it continuing responsibilities in chat. It can create persistent Agents, arrange teams and use scoped Work collaboration. The local service must be running for scheduled duties.");
 		if state.context_pending {
-			panel = panel.child(
-				"Context refresh is pending confirmation. You can continue in the current conversation.",
-			);
+			panel = panel.children(ui_feedback::inline_feedback(
+				"assistant-context-status",
+				"",
+				&Feedback::neutral(
+					"Context refresh is pending confirmation. You can continue in the current conversation.",
+				),
+			));
 		}
 		if let Some(status) = &state.memory_status {
-			panel = panel.child(status.clone());
+			panel = panel.children(ui_feedback::inline_feedback(
+				"assistant-memory-status",
+				"",
+				&Feedback::neutral(status),
+			));
 		}
 		if self.assistant_settings.owner.as_deref() == Some(&owner) {
 			for (key, label) in [
@@ -69,7 +80,11 @@ impl AgentSurface {
 				));
 		}
 		if !self.assistant_settings.error.is_empty() {
-			panel = panel.child(self.assistant_settings.error.clone());
+			panel = panel.children(ui_feedback::inline_feedback(
+				"assistant-settings-error",
+				"",
+				&Feedback::warning(&self.assistant_settings.error),
+			));
 		}
 		for team in &state.teams {
 			panel = panel.child(format!("{} ({} members)", team.name, team.members.len()));

@@ -26,6 +26,7 @@ use crate::{
 		StyledImage, Task, WireText, auth_recovery_entry, markdown,
 		voice::history::{self, Conversation, VoiceBlock},
 	},
+	ui_feedback::{self, Feedback},
 	ui_loading::{self, ContentArrival},
 	ui_motion,
 };
@@ -39,7 +40,7 @@ use motion::Arrivals;
 use scroll::{ROW_GAP, Viewport};
 
 const SUMMARY_NOTICE: &str =
-	"Up to 100 recent prompts and final replies. Intermediate activity is unavailable.";
+	"Up to 100 recent prompts and final replies are shown. Intermediate activity is unavailable.";
 
 impl AgentSurface {
 	fn is_revealed_history_item(&self, entry: &AgentTimelineEntry) -> bool {
@@ -500,11 +501,16 @@ impl AgentSurface {
 		});
 
 		if let Some(message) = notice {
-			panel = panel.child(
-				gpui::div()
-					.debug_selector(|| "native-history-notice".into())
-					.child(agent_surface::muted(message)),
-			);
+			let feedback = if self.timeline.native.unsupported || message == SUMMARY_NOTICE {
+				Feedback::neutral(message)
+			} else {
+				Feedback::warning(message)
+			};
+			panel = panel.children(ui_feedback::inline_feedback(
+				"native-history-notice",
+				"",
+				&feedback,
+			));
 		}
 
 		if self
@@ -1348,9 +1354,9 @@ impl Timeline {
 
 		self.retry_at = Some(now + Duration::from_secs(delay));
 		self.notice = Some(if self.unsupported {
-			"Codex history unsupported. Showing saved local records."
+			"This Codex version cannot show full history. Saved local records are shown."
 		} else {
-			"Codex history unavailable. Showing local records while retrying…"
+			"Full history is temporarily unavailable. Saved records are shown while Decodex retries."
 		});
 	}
 

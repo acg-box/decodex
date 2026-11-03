@@ -11,7 +11,7 @@ sources:
 generated: { by: "codex", at: "2026-09-29T13:52:19.644Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-03T15:39:55.651Z
+    at: 2026-11-03T17:33:35.946Z
 ---
 
 # Current scope
