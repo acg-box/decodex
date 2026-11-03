@@ -430,11 +430,12 @@ impl Graph {
 		for node in &self.nodes {
 			let Some(row) = &node.row else { continue };
 			let Some(project) = &row.workspace else { continue };
+			let [left, top, right, bottom] = node.visible_bounds();
 			let bounds = [
-				((node.x - GRID) / GRID).floor() * GRID,
-				((node.y - 2. * GRID) / GRID).floor() * GRID,
-				((node.x + node.width() + GRID) / GRID).ceil() * GRID,
-				((node.y + node.height() + GRID) / GRID).ceil() * GRID,
+				((left - GRID) / GRID).floor() * GRID,
+				((top - 2. * GRID) / GRID).floor() * GRID,
+				((right + GRID) / GRID).ceil() * GRID,
+				((bottom + GRID) / GRID).ceil() * GRID,
 			];
 
 			if let Some(scope) = self.scopes.iter_mut().find(|g| &g.id == project) {
@@ -574,6 +575,43 @@ mod tests {
 		s.composer.update(cx, |input, cx| input.set_content("Keep this draft", cx));
 
 		s
+	}
+
+	#[gpui::test]
+	fn project_border_excludes_empty_layout_space_and_follows_visible_speech(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let surface = cx.new(fixture);
+
+		surface.update(cx, |s, _| {
+			let mut graph = s.relation_graph();
+			let mut node = graph
+				.nodes
+				.iter()
+				.find(|node| node.row.as_ref().is_some_and(|row| row.workspace.is_some()))
+				.unwrap()
+				.clone();
+			node.x = 0.;
+			node.y = 0.;
+			node.size = (600., 600.);
+			node.attachment = Some([250., 10., 330., 90.]);
+			node.identity = Some([265., 93., 295., 106.]);
+			node.speech = None;
+			graph.nodes = vec![node];
+			graph.scopes.clear();
+			graph.scope_bounds(&[]);
+
+			assert_eq!(graph.scopes[0].bounds, [224., -32., 352., 128.]);
+			assert_eq!(graph.scopes[0].members.len(), 1);
+
+			graph.nodes[0].speech = Some([-30., -120., 550., 5.]);
+			graph.scopes.clear();
+			graph.scope_bounds(&[]);
+
+			assert_eq!(graph.scopes[0].bounds, [-48., -160., 576., 128.]);
+			assert_eq!((graph.nodes[0].x, graph.nodes[0].y), (0., 0.));
+			assert_eq!(graph.nodes[0].size, (600., 600.));
+		});
 	}
 
 	#[gpui::test]

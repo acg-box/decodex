@@ -234,6 +234,20 @@ impl Node {
 		[self.x + left, self.y + top, self.x + right, self.y + bottom]
 	}
 
+	/// Presentation bounds exclude the stable space kept for layout and zooming.
+	fn visible_bounds(&self) -> [f32; 4] {
+		let mut bounds = self.connection_bounds();
+
+		for [left, top, right, bottom] in [self.identity, self.speech].into_iter().flatten() {
+			bounds[0] = bounds[0].min(self.x + left);
+			bounds[1] = bounds[1].min(self.y + top);
+			bounds[2] = bounds[2].max(self.x + right);
+			bounds[3] = bounds[3].max(self.y + bottom);
+		}
+
+		bounds
+	}
+
 	fn connection_center(&self) -> (f32, f32) {
 		let [left, top, right, bottom] = self.connection_bounds();
 
@@ -5256,14 +5270,10 @@ mod fit_tests {
 								.as_ref()
 								.is_some_and(|r| r.workspace.as_deref() == Some(scope.id.as_str()))
 						}) {
-							assert!(
-								node.x >= scope.bounds[0]
-									&& node.x + node.width() <= scope.bounds[2]
-							);
-							assert!(
-								node.y >= scope.bounds[1] + 30.
-									&& node.y + node.height() <= scope.bounds[3]
-							);
+							let [left, top, right, bottom] = node.visible_bounds();
+
+							assert!(left >= scope.bounds[0] && right <= scope.bounds[2]);
+							assert!(top >= scope.bounds[1] + 30. && bottom <= scope.bounds[3]);
 						}
 					}
 				}
