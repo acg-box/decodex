@@ -1391,7 +1391,10 @@ impl AgentSurface {
 			.gap(gpui::px(2.))
 			.child(self.model_palette(cx))
 			.child(ui_theme::menu_separator())
-			.child(ui_theme::menu_section("Speed", self.service_tier_picker(cx)))
+			.child(ui_theme::menu_section(
+				"Speed",
+				gpui::div().w_full().flex().justify_center().child(self.service_tier_picker(cx)),
+			))
 			.when_some(
 				self.composer_speed(cx).filter(|speed| speed.is_fallback()),
 				|menu, speed| {
