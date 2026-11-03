@@ -1,18 +1,14 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:0e1ff145ff0174503dc3a93e4e376cfcaf9cc5dc305a0a045362c22db9268554",
+  "pageVersion": "sha256:32c1d799919799dc63ce7489a802cfaa690f1534b51c1cd1e0561dfd4b584a06",
   "claims": [
     {
       "id": "claim_2f9fecf97f644372afb5684929656aac",
-      "statement": "The personal Assistant is a persistent Agent initialized idle from the sidebar or selected from existing Agents in Work. It has stable identity, typed tools, teams and independent wakes. Native Codex remains the executor; protocol is 4.7 and database schema remains 60.",
+      "statement": "The built-in personal Assistant is available by default as a persistent Agent, initialized idle from the sidebar or selected from existing Agents in Work. It has stable identity, typed tools, teams and independent wakes. Native Codex remains the executor; protocol is 4.7 and database schema remains 60.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
-          "version": "repo-file-v1:sha256:39a4ffccad9d1b0187e04351cce4d3b8fce9d2eed76d00037d8f3bc92a3b2372"
-        },
-        {
-          "resource": "repo://crates/decodex-components/src/ragflow.rs",
-          "version": "repo-file-v1:sha256:fd921fd1b745f250afc32c7a8f1ec6885c8b980ed6bbb7d8e2f260208d038e64"
+          "version": "repo-file-v1:sha256:1a8160407ba442f58fd2e7da401f9ff00f61b831d7fa61a0739b648ceb521df9"
         },
         {
           "resource": "repo://crates/decodex-core/src/assistant.rs",
@@ -150,19 +146,19 @@
     },
     {
       "id": "claim_d7c97e74e7fd4a17bbb30ad7532a9914",
-      "statement": "Components connects RAGFlow from a service address and API key, creates or recovers a dedicated Memory with server default models and derives its user namespace. It saves an origin-bound component credential reference, retains legacy service-environment support, and leaves chat import off until directly enabled. Empty explicit dataset scopes disable knowledge retrieval.",
+      "statement": "RAGFlow Install prepares the managed nightly service, compatible Infinity and local models, then automatically configures a dedicated Memory and derived user namespace without a Connect action or credentials form. Settings retain an origin-bound component credential reference, legacy service-environment support remains, chat import starts off, and empty explicit dataset scopes disable knowledge retrieval.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
-          "version": "repo-file-v1:sha256:39a4ffccad9d1b0187e04351cce4d3b8fce9d2eed76d00037d8f3bc92a3b2372"
+          "version": "repo-file-v1:sha256:1a8160407ba442f58fd2e7da401f9ff00f61b831d7fa61a0739b648ceb521df9"
         },
         {
           "resource": "repo://crates/decodex-components/src/ragflow.rs",
-          "version": "repo-file-v1:sha256:fd921fd1b745f250afc32c7a8f1ec6885c8b980ed6bbb7d8e2f260208d038e64"
+          "version": "repo-file-v1:sha256:8fce3a9084a4e4d3fee315bcbe47c37420d78510999c4af785a94ab8918df1c9"
         },
         {
-          "resource": "repo://crates/decodex-core/src/assistant.rs",
-          "version": "repo-file-v1:sha256:e5e58ed7c1045b3639b1bf7553563a19964b79e68b0f905f443290379277b222"
+          "resource": "repo://crates/decodex-components/src/ragflow_service.rs",
+          "version": "repo-file-v1:sha256:a0a09c056efa2cb4b0dedff5df3a185ad8fc29d04f54bacd612c985dcb400d56"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/ragflow.rs",
@@ -270,11 +266,15 @@
     },
     {
       "id": "claim_939773e6ca4645c2815e77753b790b71",
-      "statement": "Component and idle-setup fixtures cover missing default models without saving credentials, exact-name recovery after a lost Memory creation reply, origin-bound credentials with private file modes, and Assistant initialization without a first user message.",
+      "statement": "HTTP Memory setup fixtures cover missing default models without publishing a Memory credential, exact-name recovery after a lost creation reply, and origin-bound credentials with private file modes. Idle-setup fixtures cover Assistant initialization without a first user message; managed-service fixtures cover loopback-only API exposure and project-scoped Uninstall without removing data volumes.",
       "evidence": [
         {
           "resource": "repo://crates/decodex-components/src/ragflow.rs",
-          "version": "repo-file-v1:sha256:fd921fd1b745f250afc32c7a8f1ec6885c8b980ed6bbb7d8e2f260208d038e64"
+          "version": "repo-file-v1:sha256:8fce3a9084a4e4d3fee315bcbe47c37420d78510999c4af785a94ab8918df1c9"
+        },
+        {
+          "resource": "repo://crates/decodex-components/src/ragflow_service.rs#L355-L413",
+          "version": "repo-lines-v1:sha256:78e96382883681bb50f300a9d913c47b6ebcda057b6a6df86b4d86e6cb00c334:eyJzZWxlY3RlZExpbmVDb3VudCI6NTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFlMGFmM2ZkNGE0YzNhMWQ0N2M3ZjQ3MGVkMGQ4NmQ5MGQ5ZGUyMTBhNWViMTQ1NWZiZDk0NDgyYTQ3NjViNzIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE1MjE2MDRiMzVmYzQwYWYwMGNiYTRlZWEyZmQ1ZTJjM2FmMTg2M2IzOTExODVkN2JmNGJiMDllNzJkMGM4YjMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
         },
         {
           "resource": "repo://database/src/assistant.rs",
@@ -296,13 +296,35 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
-          "version": "repo-file-v1:sha256:39a4ffccad9d1b0187e04351cce4d3b8fce9d2eed76d00037d8f3bc92a3b2372"
+          "version": "repo-file-v1:sha256:1a8160407ba442f58fd2e7da401f9ff00f61b831d7fa61a0739b648ceb521df9"
+        }
+      ]
+    },
+    {
+      "id": "claim_f56cab07daa2482e9ccad00da4b45cb3",
+      "statement": "RAGFlow uses the shared component lifecycle and installed-version presentation. Update retains data and the saved import choice; Uninstall clears the Assistant connection and stops only the owned Compose project while retaining volumes and private installation identity for reinstall.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs#L229-L307",
+          "version": "repo-lines-v1:sha256:c4dc86d9fe18d610c3973f2cc498e645f9b845cf8ae6310e2e06c8818da2db1c:eyJzZWxlY3RlZExpbmVDb3VudCI6NzksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZkOTI3Yjk3NDk2YjIzMzZlNDVkZWRlOWI5YjVlN2RlYmIyM2E0OWYxOGQ4NDg1NjFmOWQwNzU2ZjU2NjA2YmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjIyZjJmZjVmZWVjNjBmNTg3YzhmYWU0ZTg3ZjgwOWE2NjFjZmZlZDZiNDdhYWU1ZjZkNmEyNjUzYWE4OTUyZWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjIzMzU1MDVlMmQ0YTgwM2Q5YTU4MzA2ODc1MGQ5MDg5ZjljYjg0ZDhkMWYyZDE2YmU3YzY1YmVmOGNiYmFhNmIifQ"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/settings_components.rs#L178-L201",
+          "version": "repo-lines-v1:sha256:487e4e335f128557538b93ee6283731e8136d3f072459166b8e6620642854d19:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU3OTIzOThkNmFiZGFjODliOGJhODRkY2FmY2FiZjkxMGZmYTJjZDIxMTZkY2Q2ZGY2NWUzNjQ2MTlhNDcwOGQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM3M2FjMDMxZjM0Y2RmZDllMWU0YzJjZjhiNmQyODEzOTkwMDVlZDI0OTlkYzhiNDQ3OWYyMmNjZTRiYjU4YjgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVlNDUyNjZjYjQ0NTYyZDA4MjMxMDMwNTdjNmNhYTVhYzZmZTU4MjdlYjY3NTBmOTNkZjFiNjU3ZDdmOGJjN2IifQ"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/settings_components.rs#L375-L423",
+          "version": "repo-lines-v1:sha256:a2113e032c7fe27bcdb163c6fea49d1de8d5e618d458181fd87e2714b70d2509:eyJzZWxlY3RlZExpbmVDb3VudCI6NDksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgzMjBhMTUyMzc4YmI0N2E5Zjk0MTgxNzVmNTVhYjljM2VjMmZlZWJlNmQ3OGQ3MDA4YmNjMGU5NjExNTkyNDgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU1MTRkMjA4Njg4NGY4MTdiMmFjYTFlYTkwOTE3Yjg4YTkxMzhmNzlkMmE5MmYwYzIxNTlkNDE5ZWJhOGZlZWYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM3M2FjMDMxZjM0Y2RmZDllMWU0YzJjZjhiNmQyODEzOTkwMDVlZDI0OTlkYzhiNDQ3OWYyMmNjZTRiYjU4YjgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM5YzQyOWM5OWNmOWU2ZDMyZmZhMTVkNjBmZTZlOTE4M2QxYjI1MDhhNTI3MDk1MGQwZjgzNjVkNDQ0ZjNhZjQifQ"
+        },
+        {
+          "resource": "repo://crates/decodex-components/src/ragflow_service.rs#L70-L185",
+          "version": "repo-lines-v1:sha256:8d712c53ad5912ad87048c1de112d2082f546ef6840e0de6fbdedf4ac6a631ec:eyJzZWxlY3RlZExpbmVDb3VudCI6MTE2LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI5MTQwMDMxZmQxMDVlMjEwMTRlMjE4ZWQxYjhkZjFjYTkzNTdjMDkzMGZhMmU2MjUwYmM5MjA3MjYzNTZlNjcyIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJjYjI2MTYzZWVhZGYyZTI5N2ZiODllMWYwZWZiODQ2N2Q1Nzc5ZThmZjRjZWNhZTdhMmI0NjI5ZGVkMmVhMGM4IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIwY2IyMzVlMWQ3NzgwZGQxODQwMzNhNDc2YmE4NWY2MmU2NGE2MTEzZDdlMjEzYzY0N2UxODkwYmFjNzUzMmQ4IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJmMjk2NDA3OWMzYzVjODE1MjBlZjMzYTJiOWQyZTE1YTFiODRkNzI4MGRiODU5MGRjZDY1NzQ3ZTNlMDEyYTQwIn0"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-03T18:51:02.344Z"
+    "at": "2026-11-03T19:29:07.466Z"
   }
 }

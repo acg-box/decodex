@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:04ae70f9bf106869be4903ffaec88bbdee45abb41492db0076c88e0db3056631",
+  "pageVersion": "sha256:7f01c4e75fdb0c6ea6aa05ffc54d23e91d5e355a7e12669a1d5813fe2df8006c",
   "claims": [
     {
       "id": "claim_820ae47a5a5d49aab10b5f306ac24685",
@@ -337,10 +337,28 @@
           "version": "repo-file-v1:sha256:f96807ddb85427783694c17c7e9a93529d0d43d620ffda5eb7de5f7fe70e29d5"
         }
       ]
+    },
+    {
+      "id": "claim_4fb15b632f714352aaac592c5b29c19a",
+      "statement": "Assistant is built in and always available from the sidebar. First use creates an idle independent Agent and selects its role without sending input; direct Agent work does not require Assistant participation.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
+          "version": "repo-file-v1:sha256:9bde145aa029ab54450e8e621e26d974d496e7fcc48aeaef21d397236f114802"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
+          "version": "repo-file-v1:sha256:1a8160407ba442f58fd2e7da401f9ff00f61b831d7fa61a0739b648ceb521df9"
+        },
+        {
+          "resource": "repo://database/src/agent.rs",
+          "version": "repo-file-v1:sha256:626d7e727a18ac12155d7e53ca855cc916f63cc3951256c7357b957e296f2e63"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-03T18:23:39.894Z"
+    "at": "2026-11-03T19:40:29.403Z"
   }
 }

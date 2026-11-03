@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:bcfd4f576d4a87f84090f75be92570a3ee37400d55d13e19d9a7a7f8e1a71a38",
+  "pageVersion": "sha256:8473263e93f03160fdff17a5125e1436a4d0b00288f8ecd166a12423bdc1ea2a",
   "claims": [
     {
       "id": "claim_3881a280a4044cdca9e8599100f0a4f0",
@@ -140,7 +140,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_surface.rs",
-          "version": "repo-file-v1:sha256:c6e7329e003d6113484baf11e9b1e9aec0fe620a81a3776cee2fe3763cb8f765"
+          "version": "repo-file-v1:sha256:0d0d69a1114c1d69bbfc63e993353cc230d3bea1e11358fdf6164205cb8d6f47"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
@@ -414,7 +414,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_surface.rs",
-          "version": "repo-file-v1:sha256:c6e7329e003d6113484baf11e9b1e9aec0fe620a81a3776cee2fe3763cb8f765"
+          "version": "repo-file-v1:sha256:0d0d69a1114c1d69bbfc63e993353cc230d3bea1e11358fdf6164205cb8d6f47"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
@@ -729,10 +729,24 @@
           "version": "repo-file-v1:sha256:f96807ddb85427783694c17c7e9a93529d0d43d620ffda5eb7de5f7fe70e29d5"
         }
       ]
+    },
+    {
+      "id": "claim_a7fa3218065044a1899738a2326b7d37",
+      "statement": "The built-in Assistant is always available from the sidebar and initializes an idle independent Agent on first use without sending a message.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
+          "version": "repo-file-v1:sha256:9bde145aa029ab54450e8e621e26d974d496e7fcc48aeaef21d397236f114802"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs#L42-L81",
+          "version": "repo-lines-v1:sha256:dc3d1b6d419edb69bde030f020efb9b3ab066c207672c59d2dd4635a1c5048b8:eyJzZWxlY3RlZExpbmVDb3VudCI6NDAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZiYTBmMGRkOTVkNDViNzMxNTIxYWUwMGM0NTJjZTBkOGNjNzllZmEzMjBiZmU1ZDljYzhhMzhhZTExYTVhOWIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE1NzczMGE2NGE4MTgxMTEzNTEwMDZjNWMwYTZiZjMyM2M3ZDUyNjViMDBhZmU0MDBkOWYxNTI0ZmI0Y2ZhZmMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVlZjgzMzE5YjcxZDMyNGE3MmZkMjljZjQzMjgzNjg5ZWFlOWExOWQ4MmY3MWI0ZmY0ZWUzNTcyZTRiM2JjODIifQ"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-03T18:23:39.894Z"
+    "at": "2026-11-03T19:29:07.466Z"
   }
 }

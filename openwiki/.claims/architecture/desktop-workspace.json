@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:70606315fe01a05467c5948a6459d378211cbeba37275ffc364870b7fffe3bb0",
+  "pageVersion": "sha256:bc626a59b8405cac1882708f5a86a50d85459074234e04589ae2fe0d0abf6599",
   "claims": [
     {
       "id": "claim_41c9eba720934771bd6b671a7aeb8b6e",
@@ -486,7 +486,7 @@
     },
     {
       "id": "claim_6c70a225addb4571a4536403d49033b7",
-      "statement": "The sidebar opens or initializes an idle Assistant. Components has compact Assistant and RAGFlow rows with shared controls and collapsed details; RAGFlow setup configures a dedicated Memory from a service address and API key, with chat import initially off. Continuing duties and teams stay in chat and Work.",
+      "statement": "Assistant is built in and always available from the sidebar, with idle atomic initialization on first use and no optional Assistant component. RAGFlow shares the existing component controls, installed version readback and collapsed details; Install configures local nightly Memory automatically, with no Connect action or credentials form and with chat import initially off. Continuing duties and teams stay in chat and Work.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
@@ -494,25 +494,33 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
-          "version": "repo-file-v1:sha256:39a4ffccad9d1b0187e04351cce4d3b8fce9d2eed76d00037d8f3bc92a3b2372"
+          "version": "repo-file-v1:sha256:1a8160407ba442f58fd2e7da401f9ff00f61b831d7fa61a0739b648ceb521df9"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:fc499246c2b985a94f0c3ddd6d140f26f74eb095f87c6ba55eaf69605382b2f8"
+          "version": "repo-file-v1:sha256:9405083cc32db68f91a1c799596418ae1f552410790827b36d15b07d80499f55"
+        },
+        {
+          "resource": "repo://crates/decodex-components/src/ragflow_service.rs",
+          "version": "repo-file-v1:sha256:a0a09c056efa2cb4b0dedff5df3a185ad8fc29d04f54bacd612c985dcb400d56"
         }
       ]
     },
     {
       "id": "claim_e5af0a37f35c4ca7af9c5d34430c21f2",
-      "statement": "RAGFlow connection edits are cleared on profile, runtime or role changes while preserving the chat draft. The key field is masked and setup failures use shared inline feedback; raw Memory IDs, environment-variable names and Assistant mandate or renewal fields are absent from Components.",
+      "statement": "RAGFlow setup applies to the current local service profile and selected Assistant. Profile, runtime or role changes clear temporary setup presentation without replacing the chat draft; generated credentials and raw scope IDs are not Components fields, and operation feedback uses the shared inline presentation.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_surface.rs",
-          "version": "repo-file-v1:sha256:c6e7329e003d6113484baf11e9b1e9aec0fe620a81a3776cee2fe3763cb8f765"
+          "version": "repo-file-v1:sha256:0d0d69a1114c1d69bbfc63e993353cc230d3bea1e11358fdf6164205cb8d6f47"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
-          "version": "repo-file-v1:sha256:39a4ffccad9d1b0187e04351cce4d3b8fce9d2eed76d00037d8f3bc92a3b2372"
+          "version": "repo-file-v1:sha256:1a8160407ba442f58fd2e7da401f9ff00f61b831d7fa61a0739b648ceb521df9"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
+          "version": "repo-file-v1:sha256:9405083cc32db68f91a1c799596418ae1f552410790827b36d15b07d80499f55"
         }
       ]
     },
@@ -529,6 +537,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-03T18:51:02.344Z"
+    "at": "2026-11-03T19:29:07.466Z"
   }
 }

@@ -4,6 +4,10 @@ title: "Local database operations"
 description: "Current-only SQLite initialization, account routing and durable credential and branch records."
 tags: ["decodex", "architecture"]
 sources:
+  - id: openwiki-source-f339a4d1910db63ca305c2df
+    resource: repo://apps/decodex-gpui/src/assistant_settings.rs
+  - id: openwiki-source-69e9fd7efd8c3cd616184e27
+    resource: repo://crates/decodex-components/src/ragflow_service.rs
   - id: openwiki-source-9ecfe8c96199e765ca2b4e1b
     resource: repo://crates/decodex-components/src/ragflow.rs
   - id: openwiki-source-cc0439b23243c3697ba49199
@@ -40,10 +44,10 @@ sources:
     resource: repo://database/src/works/commands.rs
   - id: openwiki-source-960cb6b925f1fa45c737a735
     resource: repo://scripts/macos/verify_decodex_bundle_contracts.py
-generated: { by: "codex", at: "2026-11-03T18:23:39.894Z" }
+generated: { by: "codex", at: "2026-11-03T19:29:07.466Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-03T18:23:39.894Z
+    at: 2026-11-03T19:29:07.466Z
 ---
 
 # Local database operations
@@ -123,7 +127,9 @@ Native conversation topics use resolved `conversation_title` observations in the
 
 ## Assistant records
 
-First-use Assistant setup creates an idle Agent and selects its role in the existing record transaction. A repeated setup identity reuses that Agent. It does not add a user event or native binding. RAGFlow API keys remain in the private component store; Assistant settings contain a credential reference.
+The built-in Assistant is available by default. Its first use creates an idle Agent and selects its role in the existing record transaction. A repeated setup identity reuses that Agent. It does not add a user event or native binding. RAGFlow API keys remain in the private component store; Assistant settings contain a credential reference.
+
+The managed RAGFlow component keeps its private installation receipt, generated service account and origin-bound API credential under the per-user component store. The receipt records the owned Compose project, endpoint, actual version, image and Memory setup. RAGFlow owns its separate service database, Infinity data and local model volumes. Update reuses those volumes; Uninstall stops the owned project and clears the Assistant connection while retaining volumes and private identity for reinstall. These operations do not change the Decodex SQLite schema.
 
 Assistant configuration, team membership, independent wakes, context intent/acknowledgment/bootstrap receipts and external import receipts reuse the immutable `agent_inbox_events` journal. They use the `assistant_internal_*` event namespace and stay out of ordinary transcript pages. Public `assistant_message` and delegated `assistant_instruction` retain their separate meanings.
 

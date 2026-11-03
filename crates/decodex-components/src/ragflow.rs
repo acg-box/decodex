@@ -13,8 +13,11 @@ use sha2::{Digest as _, Sha256};
 
 use crate::{ComponentStore, Result};
 
+#[path = "ragflow_service.rs"] mod service;
+pub use service::{Action, Installation};
+
 /// A configured private Memory. It contains no API key.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Serialize, Eq, PartialEq)]
 pub struct MemorySetup {
 	/// Normalized service origin.
 	pub url: String,

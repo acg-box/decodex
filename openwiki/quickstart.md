@@ -66,8 +66,8 @@ sources:
     resource: repo://automations/upstream/prompts/maintainer.md
   - id: openwiki-source-3127fd4c7b2aefcc9cea7961
     resource: repo://automations/upstream/retained-contracts.json
-  - id: openwiki-source-9ecfe8c96199e765ca2b4e1b
-    resource: repo://crates/decodex-components/src/ragflow.rs
+  - id: openwiki-source-69e9fd7efd8c3cd616184e27
+    resource: repo://crates/decodex-components/src/ragflow_service.rs
   - id: openwiki-source-cc0439b23243c3697ba49199
     resource: repo://crates/decodex-protocol/src/lib.rs
   - id: openwiki-source-4a57fba4bea69171318c6323
@@ -94,10 +94,10 @@ sources:
     resource: repo://database/src/schema.rs
   - id: openwiki-source-3b57179b92b257bc3fff51a1
     resource: repo://scripts/macos/stage_decodex_app.sh
-generated: { by: "codex", at: "2026-11-03T18:23:39.894Z" }
+generated: { by: "codex", at: "2026-11-03T19:29:07.466Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-03T18:51:02.344Z
+    at: 2026-11-03T19:29:07.466Z
 ---
 
 # OpenWiki quickstart
@@ -106,9 +106,9 @@ Decodex is a local workspace above Codex app-server. The primary Agent can discu
 
 ## Project, Agent and Work
 
-The [canonical contract](decisions/project-agent-work.md) is implemented: Project provides continuing context, each user-created Agent has one current native conversation, and Work records an outcome with one accountable Agent, current requirements and evidence. Assistant is optional. Project Lead is a responsibility of an existing Agent. The same Agent can handle several Works.
+The [canonical contract](decisions/project-agent-work.md) is implemented: Project provides continuing context, each user-created Agent has one current native conversation, and Work records an outcome with one accountable Agent, current requirements and evidence. Assistant is built in and always available. Project Lead is a responsibility of an existing Agent. The same Agent can handle several Works.
 
-The implemented [Assistant lifecycle](decisions/assistant-lifecycle.md) adds a continuing personal Agent. It creates and coordinates independent Agents and lightweight teams under user delegation, accepts independent duties, optionally uses RAGFlow Memory and renews native context behind the same chat. There is no built-in project patrol. Open **Assistant** in the sidebar, or enable it in **Settings > Components**. First use initializes an idle Agent without sending a message. Give it continuing instructions and team requests in chat. The separate RAGFlow component configures dedicated Memory from a service address and API key; chat import is a separate opt-in. Work, native execution and exact evidence keep their existing owners.
+The implemented [Assistant lifecycle](decisions/assistant-lifecycle.md) adds a continuing personal Agent. It creates and coordinates independent Agents and lightweight teams under user delegation, accepts independent duties, optionally uses RAGFlow Memory and renews native context behind the same chat. There is no built-in project patrol. Open **Assistant** in the sidebar. First use initializes an idle Agent without sending a message. Give it continuing instructions and team requests in chat. In **Settings > Components**, select **Install** for optional RAGFlow Memory. Decodex prepares nightly with Infinity and local models, then configures the account and Memory automatically. Docker must be running. The shared component row shows the installed version and provides **Update** and **Uninstall**. Chat import is a separate opt-in. Work, native execution and exact evidence keep their existing owners.
 
 Agents use native Subagents for bounded execution and scoped Collaboration Requests for independent peers. Native Codex owns execution, context, permissions and continuation. Decodex owns durable business relationships, evidence, coordination and presentation. The default Work tools do not create another executor, and no part of this contract requires Ultra.
 

@@ -5,7 +5,7 @@
 #[path = "agent_app_exposure.rs"] mod app_exposure;
 #[path = "agent_archive.rs"] mod archive;
 #[path = "assistant_settings.rs"] mod assistant_settings;
-pub(crate) use assistant_settings::ComponentAction as AssistantComponentAction;
+pub(crate) use assistant_settings::ComponentAction as RagflowComponentAction;
 #[path = "agent_async_questions.rs"] mod async_questions;
 #[path = "agent_attached_branches.rs"] mod attached_branches;
 #[path = "agent_capabilities.rs"] mod capabilities;
@@ -2761,7 +2761,7 @@ struct WorkspaceView {
 	work_read_error: Option<String>,
 	assistant_picker: bool,
 	assistant_open: Option<String>,
-	assistant_connect: bool,
+	assistant_memory_action: Option<RagflowComponentAction>,
 	private_detail_text: Option<(String, String)>,
 	contribution_detail: Option<String>,
 	guardian_open: bool,
@@ -2821,7 +2821,7 @@ impl Default for WorkspaceView {
 			work_read_error: None,
 			assistant_picker: false,
 			assistant_open: None,
-			assistant_connect: false,
+			assistant_memory_action: None,
 			private_detail_text: None,
 			contribution_detail: None,
 			guardian_open: false,

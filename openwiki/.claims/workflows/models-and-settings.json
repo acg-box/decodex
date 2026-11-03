@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:f08475b12041d0291ab46019d0511236bfcfe225d44ae5099d7b3efc692d31c7",
+  "pageVersion": "sha256:4170e41c7f7973bf2df80a0240f3f1f5dacb1de2f8d19393598c8a8e922aa37f",
   "claims": [
     {
       "id": "claim_f0c37462522f4442acd94d53819ef75c",
@@ -240,7 +240,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_native.rs",
-          "version": "repo-file-v1:sha256:212baf80d0310141fb384509d1af3e0c613bc883f2e17bc24762617bbbf594e1"
+          "version": "repo-file-v1:sha256:88f913c6ebab08229e758bd6bbe03b4c96d1cef3f858bc1add8a5039e0a156b4"
         },
         {
           "resource": "repo://crates/decodex-codex/src/app_server_client/context_preferences.rs",
@@ -322,15 +322,23 @@
     },
     {
       "id": "claim_09df0d70257c4cd4995cda41a1da8169",
-      "statement": "Components configures dedicated RAGFlow Memory from a service address and API key and stores a private credential reference. Chat import is separate and initially off; typed knowledge scopes remain independent. Memory waits for a safe fresh context with native generation, use, the memories feature and memory mode disabled; cold resume preserves this without changing compaction, history, shared defaults or unrelated Agents.",
+      "statement": "Components installs managed RAGFlow nightly with compatible Infinity and local models, configures its private account, credential and dedicated Memory automatically, and shares actual installed version and Install, Update and Uninstall controls with other components. No Connect or manual credentials form exists. Chat import is separate and initially off; Update preserves it and saved data, and Uninstall clears the connection while retaining data. Typed knowledge scopes remain independent. Memory waits for a safe fresh context with native generation, use, the memories feature and memory mode disabled; cold resume preserves this without changing compaction, history, shared defaults or unrelated Agents.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
-          "version": "repo-file-v1:sha256:39a4ffccad9d1b0187e04351cce4d3b8fce9d2eed76d00037d8f3bc92a3b2372"
+          "version": "repo-file-v1:sha256:1a8160407ba442f58fd2e7da401f9ff00f61b831d7fa61a0739b648ceb521df9"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
+          "version": "repo-file-v1:sha256:9405083cc32db68f91a1c799596418ae1f552410790827b36d15b07d80499f55"
         },
         {
           "resource": "repo://crates/decodex-components/src/ragflow.rs",
-          "version": "repo-file-v1:sha256:fd921fd1b745f250afc32c7a8f1ec6885c8b980ed6bbb7d8e2f260208d038e64"
+          "version": "repo-file-v1:sha256:8fce3a9084a4e4d3fee315bcbe47c37420d78510999c4af785a94ab8918df1c9"
+        },
+        {
+          "resource": "repo://crates/decodex-components/src/ragflow_service.rs",
+          "version": "repo-file-v1:sha256:a0a09c056efa2cb4b0dedff5df3a185ad8fc29d04f54bacd612c985dcb400d56"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent.rs",
@@ -349,6 +357,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-03T18:51:02.344Z"
+    "at": "2026-11-03T19:29:07.466Z"
   }
 }

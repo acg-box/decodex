@@ -28,10 +28,10 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent/instructions.md
   - id: openwiki-source-f20a9fcd74237051ab396266
     resource: repo://crates/decodex-runtime/src/agent/review_activity.rs
-generated: { by: "codex", at: "2026-11-03T15:54:13.719Z" }
+generated: { by: "codex", at: "2026-11-03T19:29:07.466Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-03T18:23:39.894Z
+    at: 2026-11-03T19:29:07.466Z
 ---
 
 # Elephant–Goldfish component
@@ -40,7 +40,7 @@ EGM is an optional [Google plugin](https://github.com/google/elephant-goldfish-m
 
 ## Install and use
 
-1. Open **Settings > Components**. The component rows manage this Mac's local runtime and optional integrations, including when the selected service profile is remote. Expand the EGM row to inspect its state and actions.
+1. Open **Settings > Components**. EGM manages this Mac's native plugin, including when the selected service profile is remote. Expand the EGM row to inspect its state and actions.
 2. Let Codex finish preparation if its required runtime is missing. Choose **Install** for **Elephant–Goldfish (EGM)** after its native state loads.
 3. Start a new conversation. Select an enabled EGM skill from the native skill inventory for the intended task. Use the discovered name and absolute path. Native names can include a plugin prefix, such as `egm:egm-review-loop`; do not invent a cache path.
 
@@ -69,6 +69,8 @@ Native pending questions and approvals retain their existing controls and owners
 | Update | Refresh its Git marketplace, then reinstall the plugin. A marketplace refresh alone does not update the installed payload. |
 | Uninstall | Remove the plugin. Remove its marketplace when no other plugin from that marketplace is installed. Preserve user work and reports. |
 | Retry | Repeat the selected failed action after its cause is resolved. |
+
+The EGM row shares component version labels, lifecycle buttons, disclosure and inline feedback with Pro Research and RAGFlow. Native EGM state still selects Install, Enable or Update.
 
 Codex owns marketplace configuration, package materialization, the plugin cache and enabled state. `NativePlugins` is a narrow CLI adapter. `PluginOperations` runs an action outside the UI thread, coalesces repeated input while busy and reads native state after failure as well as success. An action error remains visible beside the observed state. Decodex adds no second installed-version database or plugin download cache.
 

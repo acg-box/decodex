@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:2d6643a792299530584708a35c05a42a1e0367bde1c6c152b0b883c867d706db",
+  "pageVersion": "sha256:b28deac48e30ed84d68740a69659129507724ab266ae7be41ab44b4cd96d3dd3",
   "claims": [
     {
       "id": "claim_43786e7afb4249548ed4fab09e0e4afa",
@@ -122,7 +122,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_surface.rs",
-          "version": "repo-file-v1:sha256:c6e7329e003d6113484baf11e9b1e9aec0fe620a81a3776cee2fe3763cb8f765"
+          "version": "repo-file-v1:sha256:0d0d69a1114c1d69bbfc63e993353cc230d3bea1e11358fdf6164205cb8d6f47"
         }
       ]
     },
@@ -524,7 +524,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
-          "version": "repo-file-v1:sha256:39a4ffccad9d1b0187e04351cce4d3b8fce9d2eed76d00037d8f3bc92a3b2372"
+          "version": "repo-file-v1:sha256:1a8160407ba442f58fd2e7da401f9ff00f61b831d7fa61a0739b648ceb521df9"
         },
         {
           "resource": "repo://database/src/assistant.rs",
@@ -534,11 +534,11 @@
     },
     {
       "id": "claim_658fa3aaa4d14807ad7eb749646926f9",
-      "statement": "The sidebar Assistant entry and Components Enable action create an idle independent Assistant and its role atomically through CreateAssistant, without manufacturing a first user message.",
+      "statement": "The built-in sidebar Assistant entry creates an idle independent Assistant and its role atomically on first use through CreateAssistant, without manufacturing a first user message.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
-          "version": "repo-file-v1:sha256:39a4ffccad9d1b0187e04351cce4d3b8fce9d2eed76d00037d8f3bc92a3b2372"
+          "version": "repo-file-v1:sha256:1a8160407ba442f58fd2e7da401f9ff00f61b831d7fa61a0739b648ceb521df9"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent_host.rs",
@@ -553,6 +553,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-03T18:51:02.344Z"
+    "at": "2026-11-03T19:29:07.466Z"
   }
 }

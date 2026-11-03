@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:d98dc270369e106290f232749b2ac69865caf3910a7d0c055e06f1dffb417e99",
+  "pageVersion": "sha256:a097e9896652aa2571129b1c77ad10abb8a50d17dbb8d9490d40dde1754a4e56",
   "claims": [
     {
       "id": "claim_95da7355536d42fb9ba017dae9558113",
@@ -18,15 +18,19 @@
     },
     {
       "id": "claim_3ca9161484f24f26bb9c1976620ea4f0",
-      "statement": "Settings > Components uses expandable local component rows, reports native EGM version and enablement, and offers Uninstall only for a listed plugin. Required-runtime verification and Sparkle app updates have separate owners.",
+      "statement": "Settings > Components shares version labels, lifecycle buttons, disclosure and inline feedback across optional components. EGM reports native version and enablement and offers Uninstall only for a listed plugin. Required-runtime verification and Sparkle app updates retain separate owners.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/component_plugins.rs",
           "version": "repo-file-v1:sha256:190f6fe3576b323a91b91214c53527635dbf2b962830439a58ccaccf0c09fd18"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/settings_components.rs#L555-L636",
-          "version": "repo-lines-v1:sha256:87b827f41bbbbbf6f34f8553df0c565e7785862fae9fb8620360fd43781acb88:eyJzZWxlY3RlZExpbmVDb3VudCI6ODIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg5YmM3NTExYjIyYjUzOGRmMTQyODMzNzUxZDRhMDM3NDFiYjI4MzkzYjQzZjE5ZjhkNjZkNDkxZGFmNTJkOWUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY5YTY3MmQyNjAyNjg2YmM4NjkzNmE0OTUyMmU4ZjdkZTYzMWIyOTIwNDIzNTliODMxODY1OTFkYTBkMDEzYzciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImI4MDU2Mjk0OGI0NDM0ZDEzZmMzYzExMTQ5NTU4MjJhNGViZTBkMjFhODE1MTI5YWZhYjk0MjZhOTYyNDFmZTQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFkNWE3YjRiOGJhNjAxOTg0NTlhZjg0NjA3OTgxM2Y0NGFkNzAxMmNkZTRiMDdlMzAwMWI4NjE4NGJhNmRkYzUifQ"
+          "resource": "repo://apps/decodex-gpui/src/settings_components.rs#L178-L201",
+          "version": "repo-lines-v1:sha256:487e4e335f128557538b93ee6283731e8136d3f072459166b8e6620642854d19:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU3OTIzOThkNmFiZGFjODliOGJhODRkY2FmY2FiZjkxMGZmYTJjZDIxMTZkY2Q2ZGY2NWUzNjQ2MTlhNDcwOGQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM3M2FjMDMxZjM0Y2RmZDllMWU0YzJjZjhiNmQyODEzOTkwMDVlZDI0OTlkYzhiNDQ3OWYyMmNjZTRiYjU4YjgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVlNDUyNjZjYjQ0NTYyZDA4MjMxMDMwNTdjNmNhYTVhYzZmZTU4MjdlYjY3NTBmOTNkZjFiNjU3ZDdmOGJjN2IifQ"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/settings_components.rs#L571-L626",
+          "version": "repo-lines-v1:sha256:af34c668a3d3fdac441dc15c104793362a0b1efb7c4a6b6c4ca9c0e252782d3d:eyJzZWxlY3RlZExpbmVDb3VudCI6NTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg3NGE3OTg0NWQ1YTYyOGUxYjlkODE3OWU1NjM0YmMzN2Y0NjljNjkxNWRlMjM5MjNhYWIxZjgyNmY3ZmM3ZjgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjIyZjJmZjVmZWVjNjBmNTg3YzhmYWU0ZTg3ZjgwOWE2NjFjZmZlZDZiNDdhYWU1ZjZkNmEyNjUzYWE4OTUyZWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdiYzk4ZDZiMGRjNDkyYzUwMTZkZjEwODA1YTNhNTRlYjljMTg0YTVhNjEzN2U3ZjRiZWNmYTBjMjIwNTUwZDAifQ"
         }
       ]
     },
@@ -123,6 +127,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-03T18:23:39.894Z"
+    "at": "2026-11-03T19:29:07.466Z"
   }
 }

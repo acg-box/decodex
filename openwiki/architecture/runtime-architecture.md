@@ -60,10 +60,14 @@ sources:
     resource: repo://crates/decodex-codex/src/app_server_client/temporary_structured.rs
   - id: openwiki-source-787f8ad27b8519fbed2bd039
     resource: repo://crates/decodex-codex/src/app_server_client/thread_fork.rs
+  - id: openwiki-source-5574fb6f352ba6cb3403ede9
+    resource: repo://crates/decodex-components/resources/ragflow-infinity.Dockerfile
   - id: openwiki-source-0d4c68456f2e50c6fc7ad5eb
     resource: repo://crates/decodex-components/src/install.rs
   - id: openwiki-source-2d990e4e2bc233a95b4894b9
     resource: repo://crates/decodex-components/src/pin.rs
+  - id: openwiki-source-69e9fd7efd8c3cd616184e27
+    resource: repo://crates/decodex-components/src/ragflow_service.rs
   - id: openwiki-source-9ecfe8c96199e765ca2b4e1b
     resource: repo://crates/decodex-components/src/ragflow.rs
   - id: openwiki-source-6230c010baca677fa60c32c1
@@ -156,10 +160,10 @@ sources:
     resource: repo://scripts/macos/stage_decodex_app.sh
   - id: openwiki-source-76081c1a47ca8cf32593de34
     resource: repo://scripts/macos/test_decodex_app_stage.sh
-generated: { by: "codex", at: "2026-11-03T18:31:42.563Z" }
+generated: { by: "codex", at: "2026-11-03T19:29:07.466Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-03T18:51:02.344Z
+    at: 2026-11-03T19:29:07.466Z
 ---
 
 # Runtime Architecture
@@ -179,6 +183,10 @@ flowchart LR
     FFI --> Service
     Service --> DB[(SQLite)]
     Service --> Codex[Codex app-server]
+    UI --> Components[ComponentStore]
+    Components --> Docker[Owned Docker Compose project]
+    Docker --> RAG[RAGFlow nightly and Infinity]
+    Service --> RAG
 ```
 
 ## Application and bundle
@@ -289,7 +297,13 @@ The per-server cached-catalog switch saves `mcp_servers.<quoted-server>.startup_
 
 `decodex-components` owns one per-user component store, package verification and cache repair. The GUI and service embed the same runtime requirement. App startup prepares that component before launching the owned service; preparation does not consume connection retry attempts. Settings > Components shows the selected component, progress, errors and Retry. Optional EGM installation, update and removal use the native Codex plugin lifecycle. Sparkle owns the separate Decodex application update flow in Settings > Updates.
 
-Assistant and RAGFlow use the same component row and disclosure styles. Assistant setup publishes an idle Agent and its role in one SQLite transaction. RAGFlow connects an existing service, reads its default chat and embedding models, and creates or recovers a private Memory by a stable name. It saves an origin-bound API key in a private component file and sends only the credential reference through Assistant settings. The service reads that reference for Memory calls. Chat import remains off until selected explicitly. This flow does not install a RAGFlow server or add a product credential database.
+Assistant is built in and always available from the sidebar. Its first use publishes an idle Agent and its role in one SQLite transaction. Components has no Assistant Enable control. The optional RAGFlow component shares lifecycle buttons, version metadata, collapsed details and inline feedback with the other components. It exposes Install, Update and Uninstall; configuration has no separate Connect action or credentials form.
+
+`decodex-components::ragflow` owns a per-user Docker Compose project. Docker must be running. The project contains RAGFlow nightly, compatible Infinity 0.7.4, MySQL, MinIO, Kvrocks, NATS and Ollama. Only the RAGFlow API is published, on loopback. The component prepares local Qwen3 1.7B and BGE-M3 models, creates a private account and API credential, and creates or recovers a dedicated Memory by its stable name. It reads the actual server version and owned service image identity. The private receipt retains the project, endpoint and setup state so a retry uses the same installation.
+
+On ARM64, the component packages the official Infinity 0.7.4 binary with an Ubuntu 24.04 runtime. The published ARM64 image has an older glibc than its binary requires. The small build context contains only the runtime Dockerfile; account and Compose credentials stay outside it. The x86-64 path uses the compatible official Infinity image directly. This does not install a host compiler or add a Decodex execution engine.
+
+The component saves an origin-bound API key in a private component file and sends only its reference through the existing Assistant Configure command. The service reads that reference for Memory calls. Chat import starts off; Update preserves the existing import choice and data. Uninstall stops only the owned project, clears its Assistant connection and retains volumes for reinstallation. A partial setup remains visible and can retry through Update. Native context refresh and the external-memory policy retain their existing service and Codex owners.
 
 Official Release inputs require an exact tag, canonical OpenAI asset URL, archive SHA-256, executable SHA-256 and generated schema fingerprint. The installer checks the archive before extraction, then verifies signatures, version and protocol evidence. Downloads have three bounded attempts. A verified replacement is published atomically; a failed repair preserves the previous directory, and other versions remain available.
 
