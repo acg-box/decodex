@@ -10,7 +10,6 @@ final class StatusPanelController: NSObject {
 	let panel: TransparentStatusPanel
 	private let hostingView: TransparentHostingView<StatusPanelRootView>
 	private let store: ResetCardStore
-	private let fastModeStore: FastModeStore
 	private var isPositioningPanel = false
 	private var isInvalidated = false
 	private var targetContentSize = CGSize.zero
@@ -18,9 +17,8 @@ final class StatusPanelController: NSObject {
 	private var outsideClickMonitor: Any?
 	private var localClickMonitor: Any?
 
-	init(store: ResetCardStore, fastModeStore: FastModeStore = FastModeStore()) {
+	init(store: ResetCardStore) {
 		self.store = store
-		self.fastModeStore = fastModeStore
 		statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
 		panel = TransparentStatusPanel(
 			contentRect: .zero,
@@ -29,7 +27,7 @@ final class StatusPanelController: NSObject {
 			defer: true
 		)
 		hostingView = TransparentHostingView(
-			rootView: StatusPanelRootView(store: store, fastModeStore: fastModeStore)
+			rootView: StatusPanelRootView(store: store)
 		)
 
 		super.init()
@@ -37,7 +35,7 @@ final class StatusPanelController: NSObject {
 		panel.onFrameChange = { [weak self] in
 			self?.positionPanel()
 		}
-		hostingView.rootView = StatusPanelRootView(store: store, fastModeStore: fastModeStore) { [weak self] size in
+		hostingView.rootView = StatusPanelRootView(store: store) { [weak self] size in
 			self?.updatePanelContentSize(size)
 		}
 		configureStatusItem()
@@ -83,9 +81,6 @@ final class StatusPanelController: NSObject {
 		observeOutsideClicks()
 		scheduleAnchorRetry()
 		store.ensureFresh()
-		Task { [fastModeStore] in
-			await fastModeStore.load()
-		}
 	}
 
 	private func orderPanelOut() {
@@ -359,24 +354,20 @@ final class TransparentStatusPanel: NSPanel {
 }
 
 private struct StatusPanelRootView: View {
-	let fastModeStore: FastModeStore
 	let store: ResetCardStore
 	let onContentSizeChange: (CGSize) -> Void
 
 	init(
 		store: ResetCardStore,
-		fastModeStore: FastModeStore,
 		onContentSizeChange: @escaping (CGSize) -> Void = { _ in }
 	) {
 		self.store = store
-		self.fastModeStore = fastModeStore
 		self.onContentSizeChange = onContentSizeChange
 	}
 
 	var body: some View {
 		AccountPanelView(
 			store: store,
-			fastModeStore: fastModeStore,
 			onContentSizeChange: onContentSizeChange
 		)
 		// Keep content at the top even when the proposed height is below its ideal size.

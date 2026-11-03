@@ -38,13 +38,11 @@ struct AccountPanelView: View {
 	@State private var accountReorderInteraction: AccountReorderInteraction?
 	@State private var hoveredAccountID: String?
 	@State private var detailedAccountIDs: Set<String> = []
-	@State private var fastMode: FastModeStore
 	@AppStorage("decodex.operator.accountPrivacy") private var accountPrivacy = AccountPrivacy.hidden
 	@AppStorage(PanelCardMaterial.storageKey) private var panelCardMaterialRawValue = PanelCardMaterial.thin.rawValue
 
 	init(
 		store: ResetCardStore,
-		fastModeStore: FastModeStore,
 		layoutVisibleFrameOverride: CGRect? = nil,
 		loadsExternalState: Bool = true,
 		onContentSizeChange: @escaping (CGSize) -> Void = { _ in }
@@ -53,7 +51,6 @@ struct AccountPanelView: View {
 		self.layoutVisibleFrameOverride = layoutVisibleFrameOverride
 		self.loadsExternalState = loadsExternalState
 		self.onContentSizeChange = onContentSizeChange
-		_fastMode = State(initialValue: fastModeStore)
 	}
 
 	var body: some View {
@@ -213,21 +210,6 @@ struct AccountPanelView: View {
 			)
 
 			PanelIconButtonView(
-				symbol: fastMode.isEnabled ? "bolt.fill" : "bolt",
-				tint: PanelPalette.fastModeAccent(colorScheme),
-				isActive: fastMode.isEnabled,
-				isDisabled: fastMode.isLoading,
-				isSubtle: true,
-				size: 24,
-				action: {
-					Task {
-						await fastMode.toggle()
-					}
-				},
-				help: fastMode.isEnabled ? "Turn fast mode off" : "Turn fast mode on"
-			)
-
-			PanelIconButtonView(
 				symbol: "plus",
 				tint: PanelPalette.actionBlue(colorScheme),
 				isActive: false,
@@ -270,7 +252,6 @@ struct AccountPanelView: View {
 	}
 
 	private var globalFeedback: String? {
-		if let error = fastMode.errorMessage { return error }
 		if let message = store.message, message.tone != .success,
 			message.accountID == nil || !store.accounts.contains(where: { $0.id == message.accountID }) {
 			return message.text
