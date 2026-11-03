@@ -24,7 +24,7 @@ const review = presets.map((preset, index) => {
   return `<g transform="translate(${x} ${y})">${renderSvg(preset,{id:`review-${preset.id}`,size:180})}<text x="90" y="145" fill="#bcb5cd" text-anchor="middle" font-family="sans-serif" font-size="12">${palettes[preset.palette].label}</text></g>`;
 }).join("");
 await writeFile(join(generated, "combinations.svg"), `<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600"><rect width="800" height="600" fill="#0b0a0f"/><text x="30" y="40" fill="#f1eff7" font-family="sans-serif" font-size="25">CLOUDLETS — MIX &amp; MATCH</text>${review}</svg>\n`);
-const cards = presets.map(preset => `<button class="preset" data-preset="${preset.id}" aria-pressed="false" aria-label="Load ${palettes[preset.palette].label}, ${props[preset.prop].label}">${renderSvg(preset,{id:`preset-${preset.id}`,size:240})}<strong>${palettes[preset.palette].label}</strong><span>${expressions[preset.expression].label} · ${accessories[preset.accessory].label} · ${props[preset.prop].label}</span></button>`).join("\n");
+const cards = presets.map(preset => `<button class="preset" data-preset="${preset.id}" aria-pressed="false" aria-label="Load ${palettes[preset.palette].label}, ${props[preset.prop].label}">${renderSvg(preset,{id:`preset-${preset.id}`,size:240})}<strong>${palettes[preset.palette].label}</strong><span>${expressions[preset.expression].label}, ${accessories[preset.accessory].label}, ${props[preset.prop].label}</span></button>`).join("\n");
 const source = (await readFile(join(root, "source", "cloudlets.mjs"), "utf8")).replace(/^export /gm, "");
 const motion = await readFile(join(root, "source", "motion.css"), "utf8");
 const template = await readFile(join(root, "source", "preview.html"), "utf8");

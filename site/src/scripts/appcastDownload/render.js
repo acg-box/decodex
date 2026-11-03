@@ -7,7 +7,7 @@ function appcastRenderPrimary(root, latest, appName) {
   primary.setAttribute("aria-label", `Download ${appName} ${latest.shortVersion}`);
   const dateLabel = appcastFormatDate(latest.pubDate);
   meta.textContent =
-    dateLabel.length > 0 ? `${latest.shortVersion} · ${dateLabel}` : latest.shortVersion;
+    dateLabel.length > 0 ? `${latest.shortVersion} (${dateLabel})` : latest.shortVersion;
 }
 
 function appcastRenderList(root, items, appName) {
