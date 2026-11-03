@@ -1472,7 +1472,18 @@ impl AgentSurface {
 					bounds[2] = bounds[0] + width;
 				}
 
-				node.attachment = Some(native.character_bounds(node.activity.height / LINE));
+				let mut attachment = native.character_bounds(node.activity.height / LINE);
+
+				if !native.overview() {
+					let width = metrics::hud_width(self.metrics_for(node), native, text_system)
+						/ native.zoom;
+					let center = (attachment[0] + attachment[2]) / 2.;
+
+					attachment[0] = attachment[0].min(center - width / 2.);
+					attachment[2] = attachment[2].max(center + width / 2.);
+				}
+
+				node.attachment = Some(attachment);
 			}
 
 			if let Some(&(x, y)) = self.work_board.view.positions.get(&node.key) {

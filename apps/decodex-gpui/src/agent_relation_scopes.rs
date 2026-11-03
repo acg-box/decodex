@@ -701,6 +701,52 @@ mod tests {
 	}
 
 	#[gpui::test]
+	fn project_border_keeps_padding_around_the_hud_at_readable_zoom(cx: &mut gpui::TestAppContext) {
+		let (surface, visual) = cx.add_window_view(|_, cx| fixture(cx));
+
+		visual.simulate_resize(gpui::size(gpui::px(1_600.), gpui::px(900.)));
+		for zoom in [0.46, 0.5, 0.75, 1.] {
+			surface.update(visual, |s, cx| {
+				s.snapshot.as_mut().unwrap().projects[0].agent_ids = vec!["release".into()];
+				s.work_board.view.zoom = Some(zoom);
+				let graph = s.relation_graph();
+				let scope = graph.scopes.iter().find(|scope| scope.id == "project").unwrap();
+
+				s.work_board.view.pan =
+					(80. - scope.bounds[0] * zoom, 80. - scope.bounds[1] * zoom);
+				cx.notify();
+			});
+			visual.update(crate::ui_frame::draw_frame);
+			let canvas = visual.debug_bounds("relations-canvas").unwrap();
+			let hud = visual.debug_bounds("relation-hud-release").unwrap();
+
+			surface.read_with(visual, |s, _| {
+				let graph = s.work_board.view.layers.graph.borrow();
+				let scope = graph
+					.as_ref()
+					.unwrap()
+					.scopes
+					.iter()
+					.find(|scope| scope.id == "project")
+					.unwrap();
+				let left =
+					f32::from(canvas.left()) + scope.bounds[0] * zoom + s.work_board.view.pan.0;
+				let right =
+					f32::from(canvas.left()) + scope.bounds[2] * zoom + s.work_board.view.pan.0;
+
+				assert!(
+					f32::from(hud.left()) - left >= GRID * zoom - 1.,
+					"left HUD padding at zoom {zoom}"
+				);
+				assert!(
+					right - f32::from(hud.right()) >= GRID * zoom - 1.,
+					"right HUD padding at zoom {zoom}"
+				);
+			});
+		}
+	}
+
+	#[gpui::test]
 	fn project_legend_stays_on_its_border_without_unassigned_headers(
 		cx: &mut gpui::TestAppContext,
 	) {
