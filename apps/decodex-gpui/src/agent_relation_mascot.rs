@@ -312,7 +312,7 @@ impl Avatar {
 	}
 
 	pub(super) fn element(self, layout: Layout) -> impl IntoElement {
-		let presence = if layout.overview() { layout.card_presence() } else { 1. };
+		let presence = if layout.overview() { layout.content_opacity() } else { 1. };
 
 		gpui::canvas(
 			move |bounds, window, _| {

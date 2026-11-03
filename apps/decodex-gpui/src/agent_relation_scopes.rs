@@ -1,7 +1,5 @@
-//! Workspace membership is visible on the canvas, without hiding cross-workspace edges.
-use gpui::{
-	AnyElement, ClickEvent, PathBuilder, TextRun, WindowTextSystem, prelude::FluentBuilder,
-};
+//! Project captions share a stable bottom rail with their actors, not transient speech.
+use gpui::{AnyElement, ClickEvent, PathBuilder, TextRun, WindowTextSystem};
 
 use crate::{
 	shell::agent_surface::work_board::relations::{
@@ -13,24 +11,10 @@ use crate::{
 };
 use decodex_protocol::ProjectDto;
 
-pub(super) const HEADER_HEIGHT: f32 = 24.;
+pub(super) const CAPTION_HEIGHT: f32 = 24.;
 const TITLE_SIZE: f32 = 12.;
-const COUNT_SIZE: f32 = 11.;
 const LABEL_PADDING: f32 = 6.;
-const LABEL_GAP: f32 = 8.;
 const TITLE_CLEARANCE: f32 = 4.;
-
-fn corner_radius(scale: f32) -> f32 {
-	(16. * scale).clamp(4., 16.)
-}
-
-/// Fit full dashes at both ends of a caption gap; closed outlines keep one full period.
-fn dash_pattern(length: f32, open: bool) -> [gpui::Pixels; 2] {
-	let dashes = (length / 9.).round().max(1.);
-	let spaces = dashes - f32::from(open);
-	let unit = length / (5. * dashes + 4. * spaces);
-	[gpui::px(5. * unit), gpui::px(4. * unit)]
-}
 
 pub(super) struct Scope {
 	pub id: String,
@@ -40,118 +24,92 @@ pub(super) struct Scope {
 }
 
 impl Scope {
-	fn count_label(&self) -> String {
+	pub(super) fn label(&self) -> String {
 		let count = self.members.len();
 
-		format!("{count} {}", if count == 1 { "agent" } else { "agents" })
+		format!("Project: {} · {count} {}", self.title, if count == 1 { "agent" } else { "agents" })
 	}
 
-	pub(super) fn label(&self) -> String {
-		format!("Project: {} · {}", self.title, self.count_label())
-	}
-
-	pub(super) fn header_width(&self, text: &WindowTextSystem, show_count: bool) -> f32 {
-		let measure = |value: String, size: f32, numeric: bool| {
-			let len = value.len();
-			let mut font = gpui::font(ui_theme::FONT_FAMILY);
-
-			if numeric {
-				font.features = card::number_features();
-			}
-
-			f32::from(
+	pub(super) fn caption_width(&self, text: &WindowTextSystem) -> f32 {
+		2. * LABEL_PADDING
+			+ f32::from(
 				text.shape_line(
-					value.into(),
-					gpui::px(size),
-					&[TextRun { len, font, ..Default::default() }],
+					self.title.clone().into(),
+					gpui::px(TITLE_SIZE),
+					&[TextRun {
+						len: self.title.len(),
+						font: gpui::font(ui_theme::FONT_FAMILY),
+						..Default::default()
+					}],
 					None,
 				)
 				.width,
 			)
 			.ceil()
-		};
-
-		2. * LABEL_PADDING
-			+ measure(self.title.clone(), TITLE_SIZE, false)
-			+ if show_count {
-				LABEL_GAP + measure(self.count_label(), COUNT_SIZE, true)
-			} else {
-				0.
-			}
 	}
 
-	/// Keep the whole title in its border. A small or clipped scope needs no legend.
-	pub(super) fn header_rect(
+	/// The caption has one anchor. Cropping and selection never move it along the rail.
+	pub(super) fn caption_rect(
 		&self,
 		scale: f32,
 		pan: (f32, f32),
-		viewport: (f32, f32),
 		width: f32,
 	) -> Option<card::Rect> {
-		let [left, top, right, bottom] = self.bounds;
-		let (left, top, right, bottom) = (
-			left * scale + pan.0,
-			top * scale + pan.1,
-			right * scale + pan.0,
-			bottom * scale + pan.1,
-		);
+		let [left, _, right, bottom] = self.bounds;
 
-		if right < 0. || left > viewport.0 || bottom < HEADER_HEIGHT || top > viewport.1 {
-			return None;
-		}
-
-		let (start, end) = self.header_range(scale, pan.0, viewport.0);
-
-		if end - start < width
-			|| top < HEADER_HEIGHT / 2. + 4.
-			|| top + HEADER_HEIGHT / 2. > viewport.1 - 4.
-		{
-			return None;
-		}
-
-		let preferred = left + corner_radius(scale) + 12.;
-		Some(card::Rect {
-			x: preferred.max(start).min(end - width),
-			y: top - HEADER_HEIGHT / 2.,
+		((right - left) * scale >= width + 2. * LABEL_PADDING).then_some(card::Rect {
+			x: left * scale + pan.0 + LABEL_PADDING,
+			y: bottom * scale + pan.1 - CAPTION_HEIGHT / 2.,
 			width,
-			height: HEADER_HEIGHT,
+			height: CAPTION_HEIGHT,
 		})
 	}
 
-	fn header_range(&self, scale: f32, pan: f32, viewport: f32) -> (f32, f32) {
-		let inset = corner_radius(scale) + 4.;
+	/// Routing uses the same caption in world coordinates, independent of viewport cropping.
+	pub(super) fn caption_bounds(
+		&self,
+		layout: card::Layout,
+		text: &WindowTextSystem,
+	) -> Option<[f32; 4]> {
+		if layout.points() {
+			return None;
+		}
+		let scale = layout.zoom;
+		let rect = self.caption_rect(scale, (0., 0.), self.caption_width(text))?;
+
+		Some([
+			rect.x / scale,
+			rect.y / scale,
+			(rect.x + rect.width) / scale,
+			(rect.y + rect.height) / scale,
+		])
+	}
+
+	pub(super) fn title_gap(&self, rect: card::Rect, scale: f32, pan: (f32, f32)) -> (f32, f32) {
+		let left = self.bounds[0] * scale + pan.0;
+
 		(
-			(self.bounds[0] * scale + pan + inset).max(4.),
-			(self.bounds[2] * scale + pan - inset).min(viewport - 4.),
+			rect.x + LABEL_PADDING - TITLE_CLEARANCE - left,
+			rect.x + rect.width - LABEL_PADDING + TITLE_CLEARANCE - left,
 		)
 	}
 
-	pub(super) fn title_gap(
-		&self,
-		rect: card::Rect,
-		scale: f32,
-		pan: (f32, f32),
-	) -> Option<(f32, f32)> {
-		let left = self.bounds[0] * scale + pan.0;
-		let top = self.bounds[1] * scale + pan.1;
-		((rect.y + HEADER_HEIGHT / 2. - top).abs() < 0.1).then_some((
-			rect.x + LABEL_PADDING - TITLE_CLEARANCE - left,
-			rect.x + rect.width - LABEL_PADDING + TITLE_CLEARANCE - left,
-		))
-	}
-
-	/// A quiet dashed boundary keeps membership visible without enclosing a card.
+	/// A short bottom rail stays quiet; selection adds only the two upper corners.
 	pub(super) fn outline(
 		&self,
 		scale: f32,
 		selected: bool,
 		title_gap: Option<(f32, f32)>,
+		presence: f32,
 	) -> AnyElement {
 		let id = format!("project-scope-{}", self.id);
 
 		gpui::canvas(
 			|_, _, _| (),
 			move |bounds, _, window, cx| {
+				if presence <= 0.001 {
+					return;
+				}
 				let active = ui_motion::value(id.clone(), u8::from(selected) as f32, window, cx);
 				let density = window.scale_factor();
 				let snap = |value: f32| (value * density).round() / density;
@@ -159,74 +117,58 @@ impl Scope {
 					gpui::px(snap(f32::from(bounds.left()))),
 					gpui::px(snap(f32::from(bounds.top()))),
 				);
-				let stroke = snap(1.5);
+				let stroke = snap(1.25);
 				let left = stroke / 2.;
 				let top = stroke / 2.;
 				let right = snap(f32::from(bounds.right())) - f32::from(origin.x) - stroke / 2.;
 				let bottom = snap(f32::from(bounds.bottom())) - f32::from(origin.y) - stroke / 2.;
-				let radius =
-					snap(corner_radius(scale)).min((right - left) / 2.).min((bottom - top) / 2.);
+				let cap = snap((12. * scale).clamp(6., 12.))
+					.min((bottom - top) / 2.)
+					.min((right - left) / 2.);
+				let radius = snap(2.).min(cap).min((right - left) / 2.);
 				let point = |x, y| origin + gpui::point(gpui::px(x), gpui::px(y));
-				let gap = title_gap.map(|(start, end)| {
-					(
-						snap(start).clamp(left + radius, right - radius),
-						snap(end).clamp(left + radius, right - radius),
-					)
-				});
-				let length = 2. * (right - left + bottom - top - 4. * radius)
-					+ std::f32::consts::TAU * radius
-					- gap.map_or(0., |(start, end)| end - start);
-				let pattern = dash_pattern(length, gap.is_some());
-				let dashed = || PathBuilder::stroke(gpui::px(stroke)).dash_array(&pattern);
-				let mut path = dashed();
-
-				// One continuous path avoids independent fragments beside the title.
-				path.move_to(point(gap.map_or(left + radius, |(_, end)| end), top));
-				path.line_to(point(right - radius, top));
 				let radii = gpui::point(gpui::px(radius), gpui::px(radius));
-				path.arc_to(radii, gpui::px(0.), false, true, point(right, top + radius));
-				path.line_to(point(right, bottom - radius));
-				path.arc_to(radii, gpui::px(0.), false, true, point(right - radius, bottom));
-				path.line_to(point(left + radius, bottom));
-				path.arc_to(radii, gpui::px(0.), false, true, point(left, bottom - radius));
-				path.line_to(point(left, top + radius));
-				path.arc_to(radii, gpui::px(0.), false, true, point(left + radius, top));
-				if let Some((start, _)) = gap {
-					path.line_to(point(start, top));
-				} else {
-					path.close();
-				}
+				let mut rail = PathBuilder::stroke(gpui::px(stroke));
 
-				if let Ok(path) = path.build() {
+				rail.move_to(point(left, bottom - cap));
+				rail.line_to(point(left, bottom - radius));
+				rail.arc_to(radii, gpui::px(0.), false, false, point(left + radius, bottom));
+				if let Some((start, end)) = title_gap {
+					rail.line_to(point(snap(start), bottom));
+					rail.move_to(point(snap(end), bottom));
+				}
+				rail.line_to(point(right - radius, bottom));
+				rail.arc_to(radii, gpui::px(0.), false, false, point(right, bottom - radius));
+				rail.line_to(point(right, bottom - cap));
+
+				if let Ok(path) = rail.build() {
 					window.paint_path(
-						path,
-						ui_theme::rgb(ui_theme::TEXT_MUTED).opacity(0.44 + active * 0.06),
+						path.clone(),
+						ui_theme::rgb(ui_theme::TEXT_MUTED).opacity(0.44 * presence),
 					);
-				}
-
-				// Selection belongs to the legend, not a second bright box around
-				// the whole team. The short continuation dissolves into the border.
-				if active > 0.001
-					&& let Some((_, end)) = gap
-				{
-					let mut accent = dashed();
-
-					accent.move_to(point(end, top));
-					accent.line_to(point((end + 48.).min(right - radius), top));
-					if let Ok(path) = accent.build() {
+					if active > 0.001 {
 						window.paint_path(
 							path,
-							gpui::linear_gradient(
-								90.,
-								gpui::linear_color_stop(
-									ui_theme::rgb(ui_theme::BLUE).opacity(active * 0.6),
-									0.,
-								),
-								gpui::linear_color_stop(
-									ui_theme::rgb(ui_theme::BLUE).opacity(0.),
-									1.,
-								),
-							),
+							ui_theme::rgb(ui_theme::BLUE).opacity(active * 0.45 * presence),
+						);
+					}
+				}
+
+				if active > 0.001 {
+					let mut corners = PathBuilder::stroke(gpui::px(stroke));
+
+					corners.move_to(point(left, top + cap));
+					corners.line_to(point(left, top + radius));
+					corners.arc_to(radii, gpui::px(0.), false, true, point(left + radius, top));
+					corners.line_to(point(left + cap, top));
+					corners.move_to(point(right - cap, top));
+					corners.line_to(point(right - radius, top));
+					corners.arc_to(radii, gpui::px(0.), false, true, point(right, top + radius));
+					corners.line_to(point(right, top + cap));
+					if let Ok(path) = corners.build() {
+						window.paint_path(
+							path,
+							ui_theme::rgb(ui_theme::BLUE).opacity(active * 0.5 * presence),
 						);
 					}
 				}
@@ -250,57 +192,43 @@ impl AgentSurface {
 				.is_some_and(|key| scope.members.contains(key))
 	}
 
-	/// Share final label positions with the border, including overlap adjustment.
 	pub(super) fn relation_scope_labels<'a>(
 		&self,
 		graph: &'a Graph,
-	) -> Vec<(&'a Scope, card::Rect, bool)> {
-		let text = WindowTextSystem::new(self.work_board.text_system.clone());
-		let mut placed = Vec::new();
-		let mut labels = Vec::new();
-
-		for scope in &graph.scopes {
-			let show_count = self.work_board.view.picked_project.as_ref() == Some(&scope.id);
-			let place = |show_count| {
-				let rect = scope.header_rect(
-					self.relation_scale(),
-					self.work_board.view.pan,
-					self.work_board.view.viewport,
-					scope.header_width(&text, show_count),
-				)?;
-				clear_header_routes(
-					rect,
-					scope,
-					graph,
-					self.relation_scale(),
-					self.work_board.view.pan,
-					self.work_board.view.viewport.0,
-					&placed,
-				)
-				.map(|rect| (rect, show_count))
-			};
-			let Some((rect, show_count)) =
-				place(show_count).or_else(|| if show_count { place(false) } else { None })
-			else {
-				continue;
-			};
-
-			placed.push(rect);
-			labels.push((scope, rect, show_count));
+	) -> Vec<(&'a Scope, card::Rect)> {
+		if graph.layout.points() {
+			return Vec::new();
 		}
+		let text = WindowTextSystem::new(self.work_board.text_system.clone());
+		let (width, height) = self.work_board.view.viewport;
 
-		labels
+		graph
+			.scopes
+			.iter()
+			.filter_map(|scope| {
+				let rect = scope.caption_rect(
+					self.relation_scale(),
+					self.work_board.view.pan,
+					scope.caption_width(&text),
+				)?;
+
+				(rect.x >= 4.
+					&& rect.y >= 4.
+					&& rect.x + rect.width <= width - 4.
+					&& rect.y + rect.height <= height - 4.)
+					.then_some((scope, rect))
+			})
+			.collect()
 	}
 
-	pub(super) fn relation_scope_headers(
+	pub(super) fn relation_scope_captions(
 		&self,
 		mut canvas: Stateful<Div>,
 		graph: &Graph,
 		cx: &mut Context<Self>,
 	) -> Stateful<Div> {
-		for (scope, rect, show_count) in self.relation_scope_labels(graph) {
+		for (scope, rect) in self.relation_scope_labels(graph) {
 			let heading = scope.title.clone();
-			let count = scope.count_label();
 			let project = scope.id.clone();
 			let selected = self.relation_scope_selected(scope);
 			let id = format!("project-title-{}", scope.id);
@@ -320,7 +248,6 @@ impl AgentSurface {
 				.px(gpui::px(LABEL_PADDING))
 				.flex()
 				.items_center()
-				.gap(gpui::px(LABEL_GAP))
 				.rounded(gpui::px(5.))
 				.whitespace_nowrap()
 				.font_family(ui_theme::FONT_FAMILY)
@@ -334,21 +261,7 @@ impl AgentSurface {
 				.occlude()
 				.hover(|style| style.text_color(ui_theme::rgb(ui_theme::BLUE)))
 				.focus_visible(|style| style.bg(ui_theme::rgb(ui_theme::BLUE).opacity(0.10)))
-				.child(gpui::div().flex_1().min_w_0().truncate().child(heading))
-				.when(show_count, |button| {
-					button.child(
-						gpui::div()
-							.debug_selector({
-								let id = scope.id.clone();
-								move || format!("project-count-{id}")
-							})
-							.flex_none()
-							.text_size(gpui::px(COUNT_SIZE))
-							.font_features(card::number_features())
-							.text_color(ui_theme::rgb(ui_theme::foreground::SECONDARY))
-							.child(count),
-					)
-				});
+				.child(heading);
 
 			canvas = canvas.child(
 				gpui::div()
@@ -357,6 +270,7 @@ impl AgentSurface {
 					.top(gpui::px(rect.y))
 					.w(gpui::px(rect.width))
 					.h(gpui::px(rect.height))
+					.opacity(graph.layout.card_presence().powi(2))
 					.child(
 						card::Interaction::keyboard_action(button, &action)
 							.on_click(move |event, window, cx| action(event, window, cx))
@@ -369,72 +283,17 @@ impl AgentSurface {
 	}
 }
 
-/// Slide a caption along its own group's top edge when a wire would cross the text.
-fn clear_header_routes(
-	rect: card::Rect,
-	scope: &Scope,
-	graph: &Graph,
-	zoom: f32,
-	pan: (f32, f32),
-	viewport_width: f32,
-	placed: &[card::Rect],
-) -> Option<card::Rect> {
-	let clear = |candidate: card::Rect| {
-		let bounds = [
-			(candidate.x - pan.0 - 4.) / zoom,
-			(candidate.y - pan.1 - 2.) / zoom,
-			(candidate.x + candidate.width - pan.0 + 4.) / zoom,
-			(candidate.y + candidate.height - pan.1 + 2.) / zoom,
-		];
-
-		placed.iter().all(|other| {
-			candidate.x + candidate.width + 4. <= other.x
-				|| other.x + other.width + 4. <= candidate.x
-				|| candidate.y + candidate.height + 4. <= other.y
-				|| other.y + other.height + 4. <= candidate.y
-		}) && graph.nodes.iter().all(|node| {
-			[
-				Some(node.attachment.unwrap_or([0., 0., node.width(), node.height()])),
-				node.identity,
-				node.speech,
-			]
-			.into_iter()
-			.flatten()
-			.all(|[left, top, right, bottom]| {
-				node.x + right <= bounds[0]
-					|| node.x + left >= bounds[2]
-					|| node.y + bottom <= bounds[1]
-					|| node.y + top >= bounds[3]
-			})
-		}) && graph
-			.paths
-			.values()
-			.all(|path| path.ink.iter().all(|curve| !curve.intersects_bounds(bounds)))
-	};
-
-	if clear(rect) {
-		return Some(rect);
-	}
-
-	let right = scope.header_range(zoom, pan.0, viewport_width).1 - rect.width;
-	let steps = ((right - rect.x) / 16.).floor().max(0.) as usize;
-
-	(1..=steps)
-		.map(|step| card::Rect { x: rect.x + step as f32 * 16., ..rect })
-		.chain((right > rect.x).then_some(card::Rect { x: right, ..rect }))
-		.find(|candidate| clear(*candidate))
-}
-
 impl Graph {
 	pub(super) fn scope_bounds(&mut self, projects: &[ProjectDto]) {
 		for node in &self.nodes {
 			let Some(row) = &node.row else { continue };
 			let Some(project) = &row.workspace else { continue };
+			let [left, top, right, bottom] = node.actor_bounds();
 			let bounds = [
-				((node.x - GRID) / GRID).floor() * GRID,
-				((node.y - 2. * GRID) / GRID).floor() * GRID,
-				((node.x + node.width() + GRID) / GRID).ceil() * GRID,
-				((node.y + node.height() + GRID) / GRID).ceil() * GRID,
+				left - GRID,
+				top - GRID,
+				right + GRID,
+				bottom + GRID + CAPTION_HEIGHT / (2. * self.layout.zoom),
 			];
 
 			if let Some(scope) = self.scopes.iter_mut().find(|g| &g.id == project) {
@@ -469,41 +328,30 @@ mod tests {
 	use crate::shell::agent_surface::work_board::{relations::layout, tests};
 
 	#[test]
-	fn titles_hide_when_small_or_clipped_instead_of_floating_outside_the_border() {
+	fn caption_anchor_uses_the_bottom_rail_and_follows_pan_without_sliding() {
 		let scope = Scope {
 			id: "project".into(),
 			title: "Project".into(),
 			members: BTreeSet::new(),
 			bounds: [0., 0., 600., 300.],
 		};
+		let rect = scope.caption_rect(1., (40., 80.), 100.).unwrap();
 
-		assert!(scope.header_rect(0.1, (40., 80.), (500., 400.), 100.).is_none());
-		assert!(scope.header_rect(1., (40., 80.), (120., 400.), 100.).is_none());
-		assert!(scope.header_rect(1., (40., 0.), (500., 400.), 100.).is_none());
-		let rect = scope.header_rect(1., (40., 80.), (500., 400.), 100.).unwrap();
-		assert_eq!(rect.y + HEADER_HEIGHT / 2., 80.);
-		let rect = scope.header_rect(0.4, (40., 80.), (500., 400.), 100.).unwrap();
-		assert_eq!(rect.y + HEADER_HEIGHT / 2., 80.);
-	}
+		assert_eq!((rect.x, rect.y + CAPTION_HEIGHT / 2.), (46., 380.));
+		let panned = scope.caption_rect(1., (-40., 50.), 100.).unwrap();
+		assert_eq!((panned.x - rect.x, panned.y - rect.y), (-80., -30.));
+		assert_eq!(panned.width, rect.width);
 
-	#[test]
-	fn narrow_border_uses_the_space_beside_its_corners_before_hiding_the_title() {
-		let scope = Scope {
-			id: "project".into(),
-			title: "work".into(),
-			members: BTreeSet::new(),
-			bounds: [0., 0., 600., 300.],
-		};
-		let rect = scope.header_rect(0.1, (40., 80.), (500., 400.), 42.).unwrap();
-		assert!(rect.x >= 48.);
-		assert!(rect.x + rect.width <= 92.);
-		let (start, end) = scope.title_gap(rect, 0.1, (40., 80.)).unwrap();
-		assert_eq!(end - start, 38., "only text and two 4 pt clearances interrupt the border");
-		assert!(scope.header_rect(0.1, (40., 80.), (500., 400.), 45.).is_none());
+		let narrow = scope.caption_rect(0.1, (40., 80.), 42.).unwrap();
+		assert_eq!(narrow.x, 46.);
+		let (start, end) = scope.title_gap(narrow, 0.1, (40., 80.));
+		assert_eq!(end - start, 38., "only text and its clearance interrupt the rail");
+		assert!(scope.caption_rect(0.1, (40., 80.), 48.).is_some());
+		assert!(scope.caption_rect(0.1, (40., 80.), 49.).is_none());
 	}
 
 	#[gpui::test]
-	fn caption_gap_follows_shaped_text_including_the_selected_count(cx: &mut gpui::TestAppContext) {
+	fn caption_gap_uses_shaped_text_and_keeps_a_readable_hit_height(cx: &mut gpui::TestAppContext) {
 		let surface = cx.new(fixture);
 		surface.read_with(cx, |s, _| {
 			let text = WindowTextSystem::new(s.work_board.text_system.clone());
@@ -514,45 +362,14 @@ mod tests {
 					members: BTreeSet::from(["one".into(), "two".into()]),
 					bounds: [0., 0., 2_000., 300.],
 				};
-				for show_count in [false, true] {
-					let width = scope.header_width(&text, show_count);
-					let rect = scope.header_rect(0.23, (40., 80.), (700., 400.), width).unwrap();
-					let (start, end) = scope.title_gap(rect, 0.23, (40., 80.)).unwrap();
-					assert_eq!(start + 40., rect.x + 2.);
-					assert_eq!(end + 40., rect.x + rect.width - 2.);
-					assert_eq!(
-						rect.height, HEADER_HEIGHT,
-						"title font and hit height do not shrink"
-					);
-				}
+				let width = scope.caption_width(&text);
+				let rect = scope.caption_rect(0.23, (40., 80.), width).unwrap();
+				let (start, end) = scope.title_gap(rect, 0.23, (40., 80.));
+				assert_eq!(start + 40., rect.x + 2.);
+				assert_eq!(end + 40., rect.x + rect.width - 2.);
+				assert_eq!(rect.height, CAPTION_HEIGHT);
 			}
 		});
-	}
-
-	#[test]
-	fn pinned_caption_moves_past_a_crossing_wire_without_changing_its_row() {
-		let curve =
-			super::super::routing::Route::curve((80., -40.), (80., -10.), (80., 10.), (80., 40.));
-		let graph = Graph {
-			layout: card::Layout::new(0.75),
-			scopes: vec![],
-			nodes: vec![],
-			edges: vec![],
-			paths: std::collections::BTreeMap::from([("wire".into(), std::rc::Rc::new(curve))]),
-		};
-		let scope = Scope {
-			id: "project".into(),
-			title: "Project".into(),
-			members: BTreeSet::new(),
-			bounds: [0., 0., 600., 300.],
-		};
-		let rect = card::Rect { x: 41., y: 11., width: 100., height: HEADER_HEIGHT };
-		let placed =
-			clear_header_routes(rect, &scope, &graph, 0.75, (17., 23.), 500., &[]).unwrap();
-
-		assert!(placed.x > 81. && placed.x + placed.width < 500.);
-		assert_eq!(placed.y, rect.y);
-		assert_eq!(placed.width, rect.width);
 	}
 
 	fn fixture(cx: &mut Context<AgentSurface>) -> AgentSurface {
@@ -577,34 +394,73 @@ mod tests {
 	}
 
 	#[gpui::test]
-	fn project_caption_uses_visible_ink_instead_of_empty_node_space(cx: &mut gpui::TestAppContext) {
+	fn project_rail_ignores_empty_layout_space_and_growing_or_disappearing_speech(
+		cx: &mut gpui::TestAppContext,
+	) {
 		let surface = cx.new(fixture);
+
 		surface.update(cx, |s, _| {
 			let mut graph = s.relation_graph();
-			let mut node = graph.nodes[0].clone();
+			let mut node = graph
+				.nodes
+				.iter()
+				.find(|node| node.row.as_ref().is_some_and(|row| row.workspace.is_some()))
+				.unwrap()
+				.clone();
 			node.x = 0.;
 			node.y = 0.;
-			node.size = (600., 300.);
-			node.attachment = Some([250., 100., 300., 140.]);
-			node.identity = None;
+			node.size = (600., 600.);
+			node.attachment = Some([250., 10., 330., 90.]);
+			node.identity = Some([265., 93., 295., 106.]);
 			node.speech = None;
 			graph.nodes = vec![node];
-			graph.paths.clear();
-			let scope = Scope {
-				id: "project".into(),
-				title: "Project".into(),
-				members: BTreeSet::new(),
-				bounds: [0., 0., 600., 300.],
-			};
-			let rect = card::Rect { x: 41., y: 11., width: 100., height: HEADER_HEIGHT };
-			assert_eq!(
-				clear_header_routes(rect, &scope, &graph, 0.4, (17., 23.), 500., &[]),
-				Some(rect)
-			);
-			graph.nodes[0].speech = Some([0., -40., 600., 60.]);
-			assert!(
-				clear_header_routes(rect, &scope, &graph, 0.4, (17., 23.), 500., &[]).is_none()
-			);
+			graph.scopes.clear();
+			graph.scope_bounds(&[]);
+
+			let stable = [234., -6., 346., 122. + CAPTION_HEIGHT / (2. * graph.layout.zoom)];
+			assert_eq!(graph.scopes[0].bounds, stable);
+			assert_eq!(graph.scopes[0].members.len(), 1);
+
+			graph.nodes[0].speech = Some([-30., -120., 550., 5.]);
+			graph.scopes.clear();
+			graph.scope_bounds(&[]);
+
+			assert_eq!(graph.scopes[0].bounds, stable);
+			graph.nodes[0].speech = None;
+			graph.scopes.clear();
+			graph.scope_bounds(&[]);
+			assert_eq!(graph.scopes[0].bounds, stable);
+			assert_eq!((graph.nodes[0].x, graph.nodes[0].y), (0., 0.));
+			assert_eq!(graph.nodes[0].size, (600., 600.));
+		});
+	}
+
+	#[gpui::test]
+	fn point_overview_keeps_topology_without_captions_or_hidden_label_obstacles(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let surface = cx.new(fixture);
+		surface.update(cx, |s, _| {
+			let text = WindowTextSystem::new(s.work_board.text_system.clone());
+			for mode in layout::Mode::ALL {
+				for presentation in [layout::Presentation::Links, layout::Presentation::Together] {
+					s.work_board.view.layout_mode = mode;
+					s.work_board.view.presentation = presentation;
+					for zoom in [0.05, 0.15, 0.25, 0.30] {
+						s.work_board.view.zoom = Some(zoom);
+						let graph = s.relation_graph();
+						assert!(graph.layout.points());
+						assert!(s.relation_scope_labels(&graph).is_empty());
+						assert!(
+							graph
+								.scopes
+								.iter()
+								.all(|scope| scope.caption_bounds(graph.layout, &text).is_none())
+						);
+						assert_eq!(s.relation_wire_presence(std::time::Instant::now()), 1.);
+					}
+				}
+			}
 		});
 	}
 
@@ -631,9 +487,9 @@ mod tests {
 					let [left, top, right, bottom] = scope.bounds;
 
 					assert!(left * zoom + x >= 15.9);
-					assert!(top * zoom + y >= HEADER_HEIGHT + 15.9);
+					assert!(top * zoom + y >= 15.9);
 					assert!(right * zoom + x <= 1_184.1);
-					assert!(bottom * zoom + y <= 684.1);
+					assert!(bottom * zoom + y + CAPTION_HEIGHT / 2. <= 684.1);
 					assert_eq!(s.work_board.view.picked_project.as_ref(), Some(&selection));
 					assert_eq!((s.selected.clone(), s.native_agents.selected.clone()), current);
 					assert_eq!(s.composer.read(cx).content(), "Keep this draft");
@@ -663,6 +519,52 @@ mod tests {
 	}
 
 	#[gpui::test]
+	fn project_border_keeps_padding_around_the_hud_at_readable_zoom(cx: &mut gpui::TestAppContext) {
+		let (surface, visual) = cx.add_window_view(|_, cx| fixture(cx));
+
+		visual.simulate_resize(gpui::size(gpui::px(1_600.), gpui::px(900.)));
+		for zoom in [0.46, 0.5, 0.75, 1.] {
+			surface.update(visual, |s, cx| {
+				s.snapshot.as_mut().unwrap().projects[0].agent_ids = vec!["release".into()];
+				s.work_board.view.zoom = Some(zoom);
+				let graph = s.relation_graph();
+				let scope = graph.scopes.iter().find(|scope| scope.id == "project").unwrap();
+
+				s.work_board.view.pan =
+					(80. - scope.bounds[0] * zoom, 80. - scope.bounds[1] * zoom);
+				cx.notify();
+			});
+			visual.update(crate::ui_frame::draw_frame);
+			let canvas = visual.debug_bounds("relations-canvas").unwrap();
+			let hud = visual.debug_bounds("relation-hud-release").unwrap();
+
+			surface.read_with(visual, |s, _| {
+				let graph = s.work_board.view.layers.graph.borrow();
+				let scope = graph
+					.as_ref()
+					.unwrap()
+					.scopes
+					.iter()
+					.find(|scope| scope.id == "project")
+					.unwrap();
+				let left =
+					f32::from(canvas.left()) + scope.bounds[0] * zoom + s.work_board.view.pan.0;
+				let right =
+					f32::from(canvas.left()) + scope.bounds[2] * zoom + s.work_board.view.pan.0;
+
+				assert!(
+					f32::from(hud.left()) - left >= GRID * zoom - 1.,
+					"left HUD padding at zoom {zoom}"
+				);
+				assert!(
+					right - f32::from(hud.right()) >= GRID * zoom - 1.,
+					"right HUD padding at zoom {zoom}"
+				);
+			});
+		}
+	}
+
+	#[gpui::test]
 	fn project_legend_stays_on_its_border_without_unassigned_headers(
 		cx: &mut gpui::TestAppContext,
 	) {
@@ -685,13 +587,33 @@ mod tests {
 			let graph = s.work_board.view.layers.graph.borrow();
 			let scope =
 				graph.as_ref().unwrap().scopes.iter().find(|scope| scope.id == "project").unwrap();
-			let border_y = f32::from(canvas.origin.y)
-				+ scope.bounds[1] * s.relation_scale()
+			let rail_y = f32::from(canvas.origin.y)
+				+ scope.bounds[3] * s.relation_scale()
 				+ s.work_board.view.pan.1;
 
 			assert!(
-				(f32::from(title.center().y) - border_y).abs() < 1.,
-				"the legend must straddle the border, not inherit a previous header's flow offset"
+				(f32::from(title.center().y) - rail_y).abs() < 1.,
+				"the caption stays on the bottom rail"
+			);
+		});
+		surface.update(visual, |s, _| {
+			let graph = s.relation_graph();
+			let (_, before) = s
+				.relation_scope_labels(&graph)
+				.into_iter()
+				.find(|(scope, _)| scope.id == "project")
+				.unwrap();
+			s.work_board.view.pan.0 += 32.;
+			let (_, moved) = s
+				.relation_scope_labels(&graph)
+				.into_iter()
+				.find(|(scope, _)| scope.id == "project")
+				.unwrap();
+			assert_eq!((moved.x - before.x, moved.y), (32., before.y));
+			s.work_board.view.viewport.0 = moved.x + moved.width - 2.;
+			assert!(
+				s.relation_scope_labels(&graph).iter().all(|(scope, _)| scope.id != "project"),
+				"a cropped caption hides at its anchor rather than sliding along the rail"
 			);
 		});
 	}
@@ -708,6 +630,13 @@ mod tests {
 			cx.notify();
 		});
 		visual.update(crate::ui_frame::draw_frame);
+		std::thread::sleep(crate::ui_theme::MOTION_PANEL + std::time::Duration::from_millis(40));
+		visual.update(crate::ui_frame::draw_frame);
+		surface.update(visual, |s, cx| {
+			s.fit_relations();
+			cx.notify();
+		});
+		visual.update(crate::ui_frame::draw_frame);
 		let current = surface
 			.read_with(visual, |s, _| (s.selected.clone(), s.native_agents.selected.clone()));
 		let title = visual.debug_bounds("project-title-project").unwrap();
@@ -717,7 +646,11 @@ mod tests {
 
 		visual.simulate_click(title.center(), Default::default());
 		visual.update(crate::ui_frame::draw_frame);
-		assert!(visual.debug_bounds("project-count-project").is_some());
+		assert!(visual.debug_bounds("project-count-project").is_none());
+		assert_eq!(
+			visual.debug_bounds("project-title-project").unwrap().size.width,
+			title.size.width
+		);
 		assert!(visual.debug_bounds("relation-team-release").is_none());
 
 		surface.read_with(visual, |s, cx| {
@@ -735,7 +668,7 @@ mod tests {
 			let graph = s.relation_graph();
 			let scope = graph.scopes.iter().find(|scope| scope.id == "project").unwrap();
 
-			s.work_board.view.pan = (60. - scope.bounds[0] * 0.1, 80. - scope.bounds[1] * 0.1);
+			s.work_board.view.pan = (60. - scope.bounds[0] * 0.1, 160. - scope.bounds[3] * 0.1);
 			cx.notify();
 		});
 		visual.update(crate::ui_frame::draw_frame);
@@ -748,7 +681,7 @@ mod tests {
 			s.work_board.view.zoom = Some(0.75);
 			let graph = s.relation_graph();
 			let scope = graph.scopes.iter().find(|scope| scope.id == "project").unwrap();
-			s.work_board.view.pan = (60. - scope.bounds[0] * 0.75, 80. - scope.bounds[1] * 0.75);
+			s.work_board.view.pan = (60. - scope.bounds[0] * 0.75, 240. - scope.bounds[3] * 0.75);
 			cx.notify();
 		});
 		visual.update(crate::ui_frame::draw_frame);

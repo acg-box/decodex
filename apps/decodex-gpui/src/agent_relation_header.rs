@@ -152,7 +152,9 @@ impl RenderOnce for Header {
 			ui_motion::request_frame(window, cx);
 		}
 
-		let metadata = layout.labels().then(|| self.metadata(layout, window, cx));
+		let metadata = layout
+			.labels()
+			.then(|| self.metadata(layout, window, cx).opacity(layout.card_presence()));
 		let h = self;
 		let (_, count) = content_rows(&h.task, &h.activity, layout, window.text_system());
 		let speech_height = h.activity.height * layout.activity_line() / LINE;

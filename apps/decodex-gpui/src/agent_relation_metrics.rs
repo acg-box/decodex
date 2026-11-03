@@ -1,7 +1,7 @@
 //! Per-agent usage, time, rate and the share of recorded conversation tokens.
 use gpui::{
 	App, Div, FontWeight, HighlightStyle, IntoElement, RenderOnce, Role, SharedString, StyledText,
-	TextRun, Window,
+	TextRun, Window, WindowTextSystem,
 	prelude::{InteractiveElement as _, ParentElement, StatefulInteractiveElement as _, Styled},
 };
 
@@ -189,8 +189,7 @@ fn render_hud(
 	let labels = labels(sample);
 	let values = values(sample);
 	let colors = [BLUE, AMBER, GREEN];
-	let widest = hud_label_width(&labels, layout, window);
-	let width = layout.pixel(layout.spacing(BAR_WIDTH).max(54.).max(widest.ceil() + 6.));
+	let width = hud_width(sample, layout, window.text_system());
 	let inset = layout.pixel(0.5).max(0.5);
 	let hud_selector = format!("relation-hud-{key}");
 	let mut block = gpui::div()
@@ -294,29 +293,27 @@ fn render_hud(
 	block
 }
 
-fn hud_label_width(labels: &[String; 3], layout: super::card::Layout, window: &Window) -> f32 {
-	let mut font = window.text_style().font();
-
-	font.family = FONT_FAMILY.into();
+pub(super) fn hud_width(sample: Sample, layout: card::Layout, text: &WindowTextSystem) -> f32 {
+	let mut font = gpui::font(FONT_FAMILY);
 	font.weight = FontWeight::NORMAL;
 	font.features = super::card::number_features();
 
-	labels
+	let widest = labels(sample)
 		.iter()
-		.map(|text| {
+		.map(|label| {
 			f32::from(
-				window
-					.text_system()
-					.shape_line(
-						text.clone().into(),
-						gpui::px(layout.metric_size()),
-						&[TextRun { len: text.len(), font: font.clone(), ..Default::default() }],
-						None,
-					)
-					.width,
+				text.shape_line(
+					label.clone().into(),
+					gpui::px(layout.metric_size()),
+					&[TextRun { len: label.len(), font: font.clone(), ..Default::default() }],
+					None,
+				)
+				.width,
 			)
 		})
-		.fold(0., f32::max)
+		.fold(0., f32::max);
+
+	layout.pixel(layout.spacing(BAR_WIDTH).max(54.).max(widest.ceil() + 6.))
 }
 
 #[cfg(test)]

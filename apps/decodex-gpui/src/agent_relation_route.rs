@@ -291,8 +291,13 @@ pub(super) struct Cache {
 	paths: Vec<Rc<Route>>,
 }
 impl Cache {
-	pub(super) fn paths(&mut self, nodes: &[Node], edges: &[Edge]) -> BTreeMap<String, Rc<Route>> {
-		let cards: Vec<_> = nodes
+	pub(super) fn paths(
+		&mut self,
+		nodes: &[Node],
+		edges: &[Edge],
+		captions: &[(String, [f32; 4])],
+	) -> BTreeMap<String, Rc<Route>> {
+		let mut cards: Vec<_> = nodes
 			.iter()
 			.flat_map(|n| {
 				let [left, top, right, bottom] = n.connection_bounds();
@@ -340,6 +345,13 @@ impl Cache {
 				cards
 			})
 			.collect();
+		// Fixed project captions are obstacles, not endpoints. Selection and pan do
+		// not change their world geometry or invalidate the route cache.
+		cards.extend(captions.iter().map(|(key, [left, top, right, bottom])| Card {
+			key: format!("project-caption:{key}"),
+			port_y: (top + bottom) / 2.,
+			bounds: [left - 4., top - 4., right + 4., bottom + 4.],
+		}));
 		let pairs: Vec<_> =
 			edges.iter().map(|e| (e.from.clone(), e.to.clone(), e.kind, e.color)).collect();
 
@@ -843,7 +855,7 @@ mod tests {
 		for (x, y) in [(400., 0.), (400., 180.), (400., -180.), (0., 320.)] {
 			let b = Node { key: "child".into(), x, y, ..a.clone() };
 			let nodes = vec![a.clone(), b];
-			let paths = Cache::default().paths(&nodes, &[edge("parent", "child")]);
+			let paths = Cache::default().paths(&nodes, &[edge("parent", "child")], &[]);
 			let path = &paths["parent-child"];
 
 			assert!(path.is_visible(), "an exposed character must remain connected");
@@ -885,7 +897,7 @@ mod tests {
 		a.size = (224., 112.);
 
 		let b = Node { key: "child".into(), x: 130., y: 120., ..a.clone() };
-		let paths = Cache::default().paths(&[a, b], &[edge("parent", "child")]);
+		let paths = Cache::default().paths(&[a, b], &[edge("parent", "child")], &[]);
 		let route = &paths["parent-child"];
 
 		assert_eq!(route.curves.len(), 1, "hidden text must not create a detour");
@@ -903,8 +915,11 @@ mod tests {
 
 		let up = Node { key: "up".into(), y: -320., ..parent.clone() };
 		let down = Node { key: "down".into(), y: 320., ..parent.clone() };
-		let paths = Cache::default()
-			.paths(&[parent, up, down], &[edge("parent", "up"), edge("parent", "down")]);
+		let paths = Cache::default().paths(
+			&[parent, up, down],
+			&[edge("parent", "up"), edge("parent", "down")],
+			&[],
+		);
 
 		for (id, direction) in [("parent-up", -1.), ("parent-down", 1.)] {
 			let path = &paths[id];
@@ -946,7 +961,8 @@ mod tests {
 				y: 100. / scale,
 				..a.clone()
 			};
-			let paths = Cache::default().paths(&[a.clone(), b.clone()], &[edge("parent", "child")]);
+			let paths =
+				Cache::default().paths(&[a.clone(), b.clone()], &[edge("parent", "child")], &[]);
 			let route = &paths["parent-child"];
 
 			assert_eq!(route.curves.len(), 1, "one continuous curve without small elbows");
@@ -1016,7 +1032,7 @@ mod tests {
 			node("c", 400., 280.),
 		];
 		let edges = vec![edge("main", "a"), edge("main", "b"), edge("main", "c")];
-		let paths = Cache::default().paths(&nodes, &edges);
+		let paths = Cache::default().paths(&nodes, &edges, &[]);
 
 		for (child, y) in [("a", 64.), ("b", 184.), ("c", 304.)] {
 			let route = &paths[&format!("main-{child}")];
@@ -1063,7 +1079,7 @@ mod tests {
 
 		let nodes = [parent, left, right];
 		let paths =
-			Cache::default().paths(&nodes, &[edge("parent", "left"), edge("parent", "right")]);
+			Cache::default().paths(&nodes, &[edge("parent", "left"), edge("parent", "right")], &[]);
 
 		for child in ["left", "right"] {
 			let path = &paths[&format!("parent-{child}")];
@@ -1107,7 +1123,7 @@ mod tests {
 			node("d", 900., 240.),
 		];
 		let edges: Vec<_> = ["a", "b", "c", "d"].iter().map(|child| edge("main", child)).collect();
-		let paths = Cache::default().paths(&nodes, &edges);
+		let paths = Cache::default().paths(&nodes, &edges, &[]);
 
 		for route in paths.values() {
 			assert_eq!(route.curves.len(), 1);
@@ -1153,7 +1169,7 @@ mod tests {
 			node("lower", 320., 120.),
 		];
 		let edges = vec![edge("main", "end"), edge("main", "lower")];
-		let paths = Cache::default().paths(&nodes, &edges);
+		let paths = Cache::default().paths(&nodes, &edges, &[]);
 
 		assert!(paths["main-end"].curves.len() > 1, "the intervening card requires a detour");
 
@@ -1187,7 +1203,7 @@ mod tests {
 	fn partially_covered_ports_use_an_exposed_side_instead_of_crossing_cards() {
 		let nodes =
 			vec![node("main", 0., 0.), node("middle", 320., 160.), node("child", 440., 180.)];
-		let paths = Cache::default().paths(&nodes, &[edge("main", "child")]);
+		let paths = Cache::default().paths(&nodes, &[edge("main", "child")], &[]);
 		let path = &paths["main-child"];
 
 		assert!(path.is_visible());
@@ -1214,11 +1230,11 @@ mod tests {
 			vec![node("main", 0., 0.), node("cover", 640., 0.), node("child", 640., 0.)];
 		let mut cache = Cache::default();
 
-		assert!(!cache.paths(&nodes, &edges)["main-child"].is_visible());
+		assert!(!cache.paths(&nodes, &edges, &[])["main-child"].is_visible());
 
 		nodes[2].y += 160.;
 
-		assert!(cache.paths(&nodes, &edges)["main-child"].is_visible());
+		assert!(cache.paths(&nodes, &edges, &[])["main-child"].is_visible());
 	}
 
 	#[test]
@@ -1226,20 +1242,37 @@ mod tests {
 		let mut nodes = vec![node("main", 0., 0.), node("child", 640., 0.)];
 		let edges = vec![edge("main", "child")];
 		let mut cache = Cache::default();
-		let first = cache.paths(&nodes, &edges);
+		let first = cache.paths(&nodes, &edges, &[]);
 
 		nodes[0].status = "Running".into();
 
-		let unchanged = cache.paths(&nodes, &edges);
+		let unchanged = cache.paths(&nodes, &edges, &[]);
 
 		assert!(Rc::ptr_eq(&first["main-child"], &unchanged["main-child"]));
 
 		nodes[1].y += 160.;
 
-		let moved = cache.paths(&nodes, &edges);
+		let moved = cache.paths(&nodes, &edges, &[]);
 
 		assert!(!Rc::ptr_eq(&first["main-child"], &moved["main-child"]));
 		assert_eq!(moved["main-child"].curves.last().expect("endpoint").end.1, 184.);
+	}
+
+	#[test]
+	fn fixed_project_captions_reroute_crossing_links_and_reuse_unchanged_geometry() {
+		let nodes = vec![node("main", 0., 0.), node("child", 640., 0.)];
+		let edges = vec![edge("main", "child")];
+		let captions = vec![(String::from("project"), [320., 8., 440., 40.])];
+		let mut cache = Cache::default();
+		let direct = cache.paths(&nodes, &edges, &[]);
+		let routed = cache.paths(&nodes, &edges, &captions);
+		let path = &routed["main-child"];
+
+		assert!(path.is_visible());
+		assert!(!Rc::ptr_eq(&direct["main-child"], path));
+		assert!(path.curves.iter().all(|curve| !curve.intersects_bounds(captions[0].1)));
+		let unchanged = cache.paths(&nodes, &edges, &captions);
+		assert!(Rc::ptr_eq(path, &unchanged["main-child"]));
 	}
 
 	#[test]
@@ -1308,17 +1341,17 @@ mod tests {
 		let nodes = vec![node("main", 0., 0.), node("child", 400., 0.)];
 		let mut edges = vec![edge("main", "child")];
 		let mut cache = Cache::default();
-		let first = cache.paths(&nodes, &edges);
+		let first = cache.paths(&nodes, &edges, &[]);
 
 		edges[0].color = 0x123456;
 
-		let colored = cache.paths(&nodes, &edges);
+		let colored = cache.paths(&nodes, &edges, &[]);
 
 		assert!(!Rc::ptr_eq(&first["main-child"], &colored["main-child"]));
 
 		edges[0].kind = Kind::Context;
 
-		let dashed = cache.paths(&nodes, &edges);
+		let dashed = cache.paths(&nodes, &edges, &[]);
 
 		assert!(!Rc::ptr_eq(&colored["main-child"], &dashed["main-child"]));
 		assert_eq!(dashed["main-child"].ink.len(), dashed["main-child"].curves.len());

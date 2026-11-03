@@ -234,6 +234,34 @@ impl Node {
 		[self.x + left, self.y + top, self.x + right, self.y + bottom]
 	}
 
+	/// Stable project membership includes the actor and identity, never its speech.
+	fn actor_bounds(&self) -> [f32; 4] {
+		let mut bounds = self.connection_bounds();
+
+		if let Some([left, top, right, bottom]) = self.identity {
+			bounds[0] = bounds[0].min(self.x + left);
+			bounds[1] = bounds[1].min(self.y + top);
+			bounds[2] = bounds[2].max(self.x + right);
+			bounds[3] = bounds[3].max(self.y + bottom);
+		}
+
+		bounds
+	}
+
+	/// Camera framing also includes transient speech without changing project anchors.
+	fn visible_bounds(&self) -> [f32; 4] {
+		let mut bounds = self.actor_bounds();
+
+		if let Some([left, top, right, bottom]) = self.speech {
+			bounds[0] = bounds[0].min(self.x + left);
+			bounds[1] = bounds[1].min(self.y + top);
+			bounds[2] = bounds[2].max(self.x + right);
+			bounds[3] = bounds[3].max(self.y + bottom);
+		}
+
+		bounds
+	}
+
 	fn connection_center(&self) -> (f32, f32) {
 		let [left, top, right, bottom] = self.connection_bounds();
 
@@ -565,14 +593,21 @@ impl AgentSurface {
 		self.add_relation_resources(&rows, &included, &mut graph);
 		self.place_relation_nodes(&mut graph, layout, &text_system);
 
-		graph.paths = self
-			.work_board
-			.view
-			.routing
-			.borrow_mut()
-			.paths(&groups::routing_nodes(&graph, &text_system), &graph.connections());
-
 		graph.scope_bounds(&snapshot.projects);
+
+		let captions: Vec<_> = graph
+			.scopes
+			.iter()
+			.filter_map(|scope| {
+				scope.caption_bounds(layout, &text_system).map(|bounds| (scope.id.clone(), bounds))
+			})
+			.collect();
+
+		graph.paths = self.work_board.view.routing.borrow_mut().paths(
+			&groups::routing_nodes(&graph, &text_system),
+			&graph.connections(),
+			&captions,
+		);
 
 		graph
 	}
@@ -794,10 +829,13 @@ impl AgentSurface {
 	}
 
 	fn relation_wire_presence(&self, now: std::time::Instant) -> f32 {
-		self.work_board.view.wires.as_ref().map_or(
+		let selected = self.work_board.view.wires.as_ref().map_or(
 			if self.work_board.view.presentation == layout::Presentation::Links { 1. } else { 0. },
 			|wires| wires.sample(now),
-		)
+		);
+
+		// Both presentations retain readable ownership in the distant point view.
+		selected.max(1. - self.relation_layout_at(now).card_presence())
 	}
 
 	fn animate_relation_change(&mut self, before: &Graph, old_pan: (f32, f32)) {
@@ -1038,7 +1076,7 @@ impl AgentSurface {
 	) -> Stateful<Div> {
 		// Visible relationship labels keep their own hit targets above transparent node areas.
 		canvas = self.relation_label_layer(canvas, graph, lines, cx);
-		canvas = self.relation_scope_headers(canvas, graph, cx);
+		canvas = self.relation_scope_captions(canvas, graph, cx);
 
 		if let Some(map) = self.relation_minimap(graph, cx) {
 			canvas = canvas.child(map);
@@ -1458,7 +1496,18 @@ impl AgentSurface {
 					bounds[2] = bounds[0] + width;
 				}
 
-				node.attachment = Some(native.character_bounds(node.activity.height / LINE));
+				let mut attachment = native.character_bounds(node.activity.height / LINE);
+
+				if !native.overview() {
+					let width = metrics::hud_width(self.metrics_for(node), native, text_system)
+						/ native.zoom;
+					let center = (attachment[0] + attachment[2]) / 2.;
+
+					attachment[0] = attachment[0].min(center - width / 2.);
+					attachment[2] = attachment[2].max(center + width / 2.);
+				}
+
+				node.attachment = Some(attachment);
 			}
 
 			if let Some(&(x, y)) = self.work_board.view.positions.get(&node.key) {
@@ -1595,8 +1644,8 @@ impl AgentSurface {
 			let label = scope.label();
 			let title_gap = labels
 				.iter()
-				.find(|(label_scope, _, _)| label_scope.id == scope.id)
-				.and_then(|(_, rect, _)| scope.title_gap(*rect, scale, pan));
+				.find(|(label_scope, _)| label_scope.id == scope.id)
+				.map(|(_, rect)| scope.title_gap(*rect, scale, pan));
 
 			canvas = canvas.child(
 				gpui::div()
@@ -1609,7 +1658,12 @@ impl AgentSurface {
 					.top(gpui::px(top * scale + pan.1))
 					.w(gpui::px((right - left) * scale))
 					.h(gpui::px((bottom - top) * scale))
-					.child(scope.outline(scale, selected, title_gap)),
+					.child(scope.outline(
+						scale,
+						selected,
+						title_gap,
+						graph.layout.card_presence().powi(2),
+					)),
 			);
 		}
 
@@ -2163,10 +2217,16 @@ impl AgentSurface {
 		interaction: &card::Interaction,
 	) -> AnyElement {
 		if node.row.is_some() && layout.overview() {
+			let point_selected = self.work_board.view.picked_agent.as_deref()
+				== Some(node.key.as_str())
+				|| (self.work_board.view.picked_agent.is_none()
+					&& self.work_board.view.picked_project.is_none()
+					&& self.relation_node_current(node));
+
 			card::overview(
 				&node.key,
 				node.color,
-				selected,
+				point_selected,
 				layout,
 				(!layout.points()).then(|| {
 					self.relation_node_content(
@@ -3527,18 +3587,18 @@ mod fit_tests {
 			for mode in layout::Mode::ALL {
 				s.work_board.view.layout_mode = mode;
 
-				let baseline = s.relation_graph_with_layout(now, card::Layout::new(0.25));
+				let baseline = s.relation_graph_with_layout(now, card::Layout::new(0.42));
 
 				for (zoom, presence) in [
 					(0.05, 0.),
-					(0.15, 0.),
-					(0.2, 0.),
-					(0.2, 0.2),
-					(0.2, 0.5),
-					(0.2, 0.8),
-					(0.2, 1.),
-					(0.24, 1.),
-					(0.2, 0.3),
+					(0.30, 0.),
+					(0.35, 0.),
+					(0.35, 0.2),
+					(0.35, 0.5),
+					(0.35, 0.8),
+					(0.35, 1.),
+					(0.40, 1.),
+					(0.35, 0.3),
 				] {
 					let graph = s.relation_graph_with_layout(
 						now,
@@ -3595,19 +3655,19 @@ mod fit_tests {
 
 			surface.update(cx, |s, _| {
 				s.work_board.view.layout_mode = mode;
-				s.work_board.view.zoom = Some(0.25);
+				s.work_board.view.zoom = Some(0.42);
 				s.work_board.view.pan = (40., 70.);
 
 				let main = s.selected.clone();
 				let center = (230., 180.);
 				let now = std::time::Instant::now();
 
-				s.zoom_relations_at(0.25, 0.15, Some(center), now);
+				s.zoom_relations_at(0.42, 0.25, Some(center), now);
 
 				let pan = s.work_board.view.pan;
 
-				assert!((pan.0 - (center.0 - (center.0 - 40.) * 0.15 / 0.25)).abs() < 0.01);
-				assert!((pan.1 - (center.1 - (center.1 - 70.) * 0.15 / 0.25)).abs() < 0.01);
+				assert!((pan.0 - (center.0 - (center.0 - 40.) * 0.25 / 0.42)).abs() < 0.01);
+				assert!((pan.1 - (center.1 - (center.1 - 70.) * 0.25 / 0.42)).abs() < 0.01);
 
 				let mut previous = 1.;
 
@@ -3626,7 +3686,7 @@ mod fit_tests {
 
 				let reverse = now + std::time::Duration::from_millis(80);
 
-				s.zoom_relations_at(0.15, 0.25, Some(center), reverse);
+				s.zoom_relations_at(0.25, 0.42, Some(center), reverse);
 
 				assert_eq!(s.relation_layout_at(reverse).card_presence(), previous);
 				assert!((s.work_board.view.pan.0 - 40.).abs() < 0.01);
@@ -3998,7 +4058,7 @@ mod fit_tests {
 				let child =
 					Node { key: "child".into(), x: position.0, y: position.1, ..parent.clone() };
 				let nodes = vec![parent.clone(), child];
-				let paths = routing::Cache::default().paths(&nodes, slice::from_ref(&edge));
+				let paths = routing::Cache::default().paths(&nodes, slice::from_ref(&edge), &[]);
 				let mut graph = Graph {
 					layout: card::Layout::new(1.),
 					scopes: vec![],
@@ -4048,7 +4108,7 @@ mod fit_tests {
 					graph.nodes.push(sibling);
 					graph.edges.push(branch);
 
-					graph.paths = routing::Cache::default().paths(&graph.nodes, &graph.edges);
+					graph.paths = routing::Cache::default().paths(&graph.nodes, &graph.edges, &[]);
 
 					let (lines, _) = visibility::Cache::default().sample(
 						&graph,
@@ -4997,7 +5057,11 @@ mod fit_tests {
 				{
 					let bounds = node.screen_rect(scale, s.work_board.view.pan);
 
-					assert!(bounds.x >= FRAME_INSET - 1. && bounds.y >= FRAME_INSET - 1.);
+					assert!(
+						bounds.x >= FRAME_INSET - 1. && bounds.y >= FRAME_INSET - 1.,
+						"viewport={viewport:?} zoom={scale} node={} bounds={bounds:?}",
+						node.key
+					);
 					assert!(bounds.x + bounds.width <= viewport.0 - FRAME_INSET + 1.);
 					assert!(bounds.y + bounds.height <= viewport.1 - FRAME_INSET + 1.);
 				}
@@ -5233,14 +5297,6 @@ mod fit_tests {
 
 					let graph = s.relation_graph();
 
-					// Native point geometry follows animated content heights. Workspace
-					// frames and explicitly dragged positions retain the world lattice.
-					for scope in &graph.scopes {
-						for coordinate in scope.bounds {
-							assert_eq!(coordinate, relations::snap(coordinate));
-						}
-					}
-
 					assert_eq!(graph.nodes.len(), original.nodes.len());
 					assert_eq!(graph.edges.len(), original.edges.len());
 					assert_eq!(graph.scopes.len(), 2);
@@ -5256,14 +5312,13 @@ mod fit_tests {
 								.as_ref()
 								.is_some_and(|r| r.workspace.as_deref() == Some(scope.id.as_str()))
 						}) {
-							assert!(
-								node.x >= scope.bounds[0]
-									&& node.x + node.width() <= scope.bounds[2]
-							);
-							assert!(
-								node.y >= scope.bounds[1] + 30.
-									&& node.y + node.height() <= scope.bounds[3]
-							);
+							// Project rails follow actors without snapping their bounds or
+							// reserving the temporary speech above them.
+							let [left, top, right, bottom] = node.actor_bounds();
+
+							assert!(left >= scope.bounds[0] && right <= scope.bounds[2]);
+							assert!(top >= scope.bounds[1] + GRID - 0.001);
+							assert!(bottom + GRID <= scope.bounds[3] + 0.001);
 						}
 					}
 				}
