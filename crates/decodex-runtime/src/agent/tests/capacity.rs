@@ -310,6 +310,12 @@ async fn terminal_quota_failure_preserves_accepted_input_without_replay_after_re
 
 	agent.enqueue_user_message("agent", "retry", "Try again now").await.unwrap();
 	agent.wake_pending().await.unwrap();
+	assert!(agent.quota_refresh_after().is_some());
+	assert!(!iter::from_fn(|| sent.try_recv().ok()).any(|frame| frame["method"] == "turn/start"));
+
+	agent.quota_refreshed();
+	agent.pause_dispatch(false);
+	agent.wake_pending().await.unwrap();
 
 	let starts: Vec<_> = iter::from_fn(|| sent.try_recv().ok())
 		.filter(|frame| frame["method"] == "turn/start")

@@ -5600,6 +5600,11 @@ fn require_supported_plan(bundle: &CredentialSecretBundle) -> Result<(), Account
 }
 
 pub(crate) fn account_quota_exhausted(account: &AccountRecord, now: i64) -> bool {
+	match ordinary_request_permission(account, now) {
+		Ok(Some(allowed)) => return !allowed,
+		Err(_) => return false,
+		Ok(None) => {},
+	}
 	[&account.five_hour_quota, &account.seven_day_quota].iter().any(|window| {
 		window
 			.current()
@@ -5607,10 +5612,32 @@ pub(crate) fn account_quota_exhausted(account: &AccountRecord, now: i64) -> bool
 	})
 }
 
-fn quota_selection_score(
+pub(crate) fn account_quota_observed_after(account: &AccountRecord, after: i64, now: i64) -> bool {
+	if ordinary_request_permission(account, now).is_err() {
+		return false;
+	}
+	if let Some(observation) = account.usage_observation
+		&& observation
+			.conditions
+			.ordinary_requests_allowed(observation.ordinary_usage_allowed)
+			.is_some()
+	{
+		return observation.observed_at_unix_micros > after;
+	}
+
+	[&account.five_hour_quota, &account.seven_day_quota].iter().all(|window| {
+		window.observed_at_unix_micros.is_some_and(|at| at > after && at <= now)
+			&& matches!(
+				window.disposition,
+				AccountQuotaDisposition::Current(_) | AccountQuotaDisposition::NotApplicable
+			)
+	})
+}
+
+fn ordinary_request_permission(
 	account: &AccountRecord,
 	now: i64,
-) -> Result<(u8, u8), AccountSelectionRecovery> {
+) -> Result<Option<bool>, AccountSelectionRecovery> {
 	let allowed = if let Some(observation) = account.usage_observation {
 		if observation.account_revision != account.revision
 			|| observation.observed_at_unix_micros <= 0
@@ -5625,6 +5652,15 @@ fn quota_selection_score(
 	} else {
 		None
 	};
+
+	Ok(allowed)
+}
+
+fn quota_selection_score(
+	account: &AccountRecord,
+	now: i64,
+) -> Result<(u8, u8), AccountSelectionRecovery> {
+	let allowed = ordinary_request_permission(account, now)?;
 
 	if allowed == Some(false) {
 		return Err(AccountSelectionRecovery::RefreshQuota);
@@ -6988,6 +7024,43 @@ mod tests {
 	}
 
 	#[test]
+	fn quota_failure_waits_for_new_valid_observations_before_dispatch_resumes() {
+		let mut account = projection_account(None);
+		account.five_hour_quota.observed_at_unix_micros = Some(950);
+		account.five_hour_quota.disposition = AccountQuotaDisposition::NotApplicable;
+		account.seven_day_quota.observed_at_unix_micros = Some(900);
+		account.seven_day_quota.disposition = AccountQuotaDisposition::Current(
+			AccountQuotaWindow::new(10_080, 100, i64::MAX).unwrap(),
+		);
+		assert!(!super::account_quota_observed_after(&account, 900, 1_000));
+
+		account.seven_day_quota.observed_at_unix_micros = Some(951);
+		assert!(super::account_quota_observed_after(&account, 900, 1_000));
+
+		account.seven_day_quota.disposition = AccountQuotaDisposition::Error(
+			decodex_core::AccountQuotaObservationError::ProviderUnavailable,
+		);
+		assert!(!super::account_quota_observed_after(&account, 900, 1_000));
+
+		let observation = AccountUsageObservation {
+			account_revision: account.revision,
+			observed_at_unix_micros: 952,
+			ordinary_usage_allowed: Some(false),
+			conditions: Default::default(),
+		};
+		account.usage_observation = Some(observation);
+		assert!(super::account_quota_observed_after(&account, 900, 1_000));
+		assert!(!super::account_quota_observed_after(&account, 952, 1_000));
+
+		account.usage_observation.as_mut().unwrap().account_revision += 1;
+		assert!(!super::account_quota_observed_after(&account, 900, 1_000));
+		account.usage_observation =
+			Some(AccountUsageObservation { ordinary_usage_allowed: Some(true), ..observation });
+		assert!(super::account_quota_observed_after(&account, 900, 1_000));
+		assert!(!super::account_quota_exhausted(&account, 1_000));
+	}
+
+	#[test]
 	fn ordinary_usage_permission_controls_routing_without_rewriting_utilization() {
 		let mut account = projection_account(None);
 
@@ -7017,6 +7090,10 @@ mod tests {
 			Some(AccountUsageObservation { ordinary_usage_allowed: Some(true), ..observation });
 
 		assert_eq!(super::quota_selection_score(&account, 1_000), Ok((100, 0)));
+		assert!(
+			!super::account_quota_exhausted(&account, 1_000),
+			"native permission must prevent repeated retirement of an account that remains usable"
+		);
 
 		account.usage_observation.as_mut().unwrap().ordinary_usage_allowed = None;
 
@@ -7066,9 +7143,11 @@ mod tests {
 		account.usage_observation = Some(observation);
 
 		assert_eq!(super::quota_selection_score(&account, 1_000), Ok((100, 100)));
+		assert!(!super::account_quota_exhausted(&account, 1_000));
 
 		observation.conditions.spend_control_reached = Some(true);
 		account.usage_observation = Some(observation);
+		assert!(super::account_quota_exhausted(&account, 1_000));
 
 		assert_eq!(
 			super::quota_selection_score(&account, 1_000),
