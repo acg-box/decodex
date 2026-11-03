@@ -833,14 +833,14 @@ impl AgentSurface {
 			&& !self.uncertain;
 		let row = ui_theme::settings_row()
 			.child(ui_theme::settings_label(
-				"Save review details",
+				"Save Guardian review details",
 				"Keep Guardian’s review explanations for later. Permissions stay unchanged.",
 			))
 			.child(
 				crate::settings_surface::settings_switch(
 					"guardian-review-details",
 					"guardian-review-details-knob",
-					"Save review details",
+					"Save Guardian review details",
 					enabled,
 					interactive,
 				)
@@ -857,7 +857,7 @@ impl AgentSurface {
 					);
 				})),
 			);
-		ui_theme::settings_group("Guardian", vec![row.into_any_element()]).into_any_element()
+		row.into_any_element()
 	}
 }
 

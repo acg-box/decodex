@@ -413,22 +413,23 @@ impl SettingsSurface {
 					"New conversations",
 					vec![self.agent_defaults_content(cx)],
 				))
+				.child(ui_theme::settings_group("Codex Native", vec![self.native_defaults(cx)]))
 				.child(ui_theme::settings_group(
-					"Conversation assistance",
+					"Decodex",
 					vec![
-						self.preference_control(
-							"automatic-prompt-suggestions",
-							"automatic-prompt-suggestions-knob",
-							"Automatic next-message suggestions",
-							"Suggest after each reply. Uses quota; never sends automatically.",
-							crate::ui_preferences::automatic_prompt_suggestions,
-							cx,
-						)
-						.into_any_element(),
+						ui_theme::settings_rows()
+							.child(self.preference_control(
+								"automatic-prompt-suggestions",
+								"automatic-prompt-suggestions-knob",
+								"Automatic next-message suggestions",
+								"Suggest after each reply. Uses quota; never sends automatically.",
+								crate::ui_preferences::automatic_prompt_suggestions,
+								cx,
+							))
+							.children(self.guardian.clone())
+							.into_any_element(),
 					],
 				))
-				.child(ui_theme::settings_group("Native defaults", vec![self.native_defaults(cx)]))
-				.children(self.guardian.clone())
 				.into_any_element(),
 			SettingsCategory::Appearance => self.appearance_content(cx),
 			SettingsCategory::Components => self.components_content(cx),

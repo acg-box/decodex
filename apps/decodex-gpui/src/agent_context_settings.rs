@@ -1,8 +1,8 @@
 //! Choose native context defaults without changing loaded conversations.
 #[cfg(test)] use gpui::px;
 use gpui::{
-	AnyElement,
-	prelude::{InteractiveElement as _, StatefulInteractiveElement as _},
+	AnyElement, Div, KeyDownEvent, Role,
+	prelude::{FluentBuilder as _, InteractiveElement as _, StatefulInteractiveElement as _},
 };
 use tokio::runtime::Builder;
 
@@ -16,6 +16,8 @@ use crate::{
 		Context, EntityId, IdempotencyKey, IntoElement, ParentElement, Styled, Task, mcp_forms,
 	},
 	ui_feedback::{self, Feedback},
+	ui_motion::{self, SmoothControl as _},
+	ui_theme,
 };
 use decodex_protocol::{
 	AgentContextFeature, AgentContextPreference, AgentContextSettingsResult, ClientFailure,
@@ -28,6 +30,7 @@ pub(super) struct Panel {
 	task: Option<Task<()>>,
 	epoch: u64,
 	feedback: Feedback,
+	catalog_expanded: bool,
 }
 
 impl AgentSurface {
@@ -199,41 +202,8 @@ impl AgentSurface {
 
 	fn context_settings_controls(&self, work: &str, cx: &mut Context<Self>) -> AnyElement {
 		let busy = self.context_settings.task.is_some();
-		let owner = work.to_owned();
-		let key_owner = owner.clone();
-		let refresh = if busy {
-			crate::ui_theme::settings_button_base("context-settings-refresh", "Refresh")
-				.cursor_default()
-				.opacity(0.5)
-		} else {
-			crate::ui_theme::settings_button("context-settings-refresh", "Refresh")
-		};
-		let mut panel = crate::ui_theme::settings_rows()
-			.child(
-				crate::ui_theme::settings_row()
-					.child(gpui::div().flex_1().child(crate::ui_theme::settings_description(
-						"Shared with Codex. Project settings can override these defaults.",
-					)))
-					.child(
-						refresh
-							.tab_index(if busy { -1 } else { 0 })
-							.on_click(cx.listener(move |s, _, _, cx| {
-								s.update_context_settings(&owner, None, cx);
-							}))
-							.on_key_down(cx.listener(
-								move |s, event: &gpui::KeyDownEvent, _, cx| {
-									if !event.is_held
-										&& ["enter", "space"]
-											.contains(&event.keystroke.key.as_str())
-									{
-										s.update_context_settings(&key_owner, None, cx);
-										cx.stop_propagation();
-									}
-								},
-							)),
-					),
-			)
-			.child(
+		let mut panel =
+			ui_theme::settings_rows().child(self.context_settings_header(work, cx)).child(
 				ui_feedback::notice(
 					"context-settings-feedback",
 					work.to_owned(),
@@ -247,54 +217,202 @@ impl AgentSurface {
 			&& let Some(AgentContextSettingsResult::Available { preferences, .. }) =
 				&self.context_settings.state
 		{
-			let mut rows = crate::ui_theme::settings_rows();
-
-			for preference in preferences {
-				let feature = preference.feature.clone();
-				let owner = work.to_owned();
-				let epoch = self.context_settings.epoch;
-				let key = feature_key(&feature);
-				let label = feature_label(&feature);
-				let detail = format!(
-					"{} Effective: {} · Saved: {}.",
-					feature_detail(&feature),
-					on_off(preference.effective),
-					preference.preference.map_or("Native default (off)", on_off)
-				);
-
-				rows = rows.child(
-					crate::ui_theme::settings_row()
-						.child(crate::ui_theme::settings_label(label.clone(), detail))
-						.child(
-							crate::settings_surface::settings_switch(
-								format!("context-choice-{key}"),
-								format!("context-knob-{key}"),
-								label,
-								preference.preference.unwrap_or(preference.effective),
-								!busy,
-							)
-							.on_change(cx.listener(
-								move |s, enabled: &bool, _, cx| {
-									if s.context_settings.epoch == epoch {
-										s.update_context_settings(
-											&owner,
-											Some((feature.clone(), *enabled)),
-											cx,
-										);
-									}
-								},
-							)),
-						),
-				);
+			let mut context =
+				ui_theme::settings_rows().child(native_subheading("Context (experimental)"));
+			for preference in preferences.iter().filter(|p| !is_catalog(&p.feature)) {
+				context = context.child(self.context_preference_row(work, preference, busy, cx));
 			}
-
-			panel = panel.child(rows).child(crate::ui_theme::settings_description(
-				"MCP servers use normal discovery when a cached catalog is unavailable.",
-			));
+			panel =
+				panel.child(context).child(self.mcp_catalog_settings(work, preferences, busy, cx));
 		}
 
 		panel.into_any_element()
 	}
+
+	fn context_settings_header(&self, work: &str, cx: &mut Context<Self>) -> Div {
+		let busy = self.context_settings.task.is_some();
+		let owner = work.to_owned();
+		let key_owner = owner.clone();
+		let refresh = if busy {
+			crate::ui_theme::settings_button_base("context-settings-refresh", "Refresh")
+				.cursor_default()
+				.opacity(0.5)
+		} else {
+			crate::ui_theme::settings_button("context-settings-refresh", "Refresh")
+		};
+		crate::ui_theme::settings_row()
+			.child(crate::ui_theme::settings_description(
+				"Shared with Codex for new conversations. Project or managed settings may override these defaults.",
+			).flex_1().min_w_0())
+			.child(refresh
+				.flex_none()
+				.tab_index(if busy { -1 } else { 0 })
+				.on_click(cx.listener(move |s, _, _, cx| {
+					s.update_context_settings(&owner, None, cx);
+				}))
+				.on_key_down(cx.listener(move |s, event: &KeyDownEvent, _, cx| {
+					if !event.is_held && ["enter", "space"].contains(&event.keystroke.key.as_str()) {
+						s.update_context_settings(&key_owner, None, cx);
+						cx.stop_propagation();
+					}
+				})))
+	}
+
+	fn context_preference_row(
+		&self,
+		work: &str,
+		preference: &AgentContextPreference,
+		busy: bool,
+		cx: &mut Context<Self>,
+	) -> Div {
+		let feature = preference.feature.clone();
+		let owner = work.to_owned();
+		let epoch = self.context_settings.epoch;
+		let key = feature_key(&feature);
+		let label = feature_label(&feature);
+		let notice_id = format!("context-override-{key}");
+		let information = ui_theme::settings_label(label.clone(), feature_detail(&feature))
+			.when_some(override_notice(preference), |label, notice| {
+				label.child(
+					ui_theme::settings_description(notice)
+						.debug_selector(move || notice_id.clone())
+						.text_color(ui_theme::rgb(ui_theme::WARNING)),
+				)
+			});
+
+		ui_theme::settings_row()
+			.when(is_catalog(&feature), |row| row.min_h(gpui::px(36.)).py(gpui::px(6.)))
+			.child(information)
+			.child(
+				crate::settings_surface::settings_switch(
+					format!("context-choice-{key}"),
+					format!("context-knob-{key}"),
+					label,
+					preference.preference.unwrap_or(preference.effective),
+					!busy,
+				)
+				.on_change(cx.listener(move |s, enabled: &bool, _, cx| {
+					if s.context_settings.epoch == epoch {
+						s.update_context_settings(&owner, Some((feature.clone(), *enabled)), cx);
+					}
+				})),
+			)
+	}
+
+	fn mcp_catalog_settings(
+		&self,
+		work: &str,
+		preferences: &[AgentContextPreference],
+		busy: bool,
+		cx: &mut Context<Self>,
+	) -> Div {
+		let catalogs: Vec<_> = preferences.iter().filter(|p| is_catalog(&p.feature)).collect();
+		if catalogs.is_empty() {
+			return gpui::div();
+		}
+		let count = catalogs.len();
+		let expanded = self.context_settings.catalog_expanded;
+		let toggle = ui_theme::settings_row()
+			.id("context-mcp-catalogs")
+			.debug_selector(|| "context-mcp-catalogs".into())
+			.role(Role::Button)
+			.aria_label("Tool catalog cache")
+			.aria_expanded(expanded)
+			.tab_index(0)
+			.cursor_pointer()
+			.rounded(gpui::px(4.))
+			.hover(|row| row.bg(ui_theme::rgba(ui_theme::HOVER_FILL)))
+			.on_click(cx.listener(|s, _, _, cx| s.toggle_catalog_settings(cx)))
+			.on_key_down(cx.listener(|s, event: &KeyDownEvent, _, cx| {
+				if !event.is_held && ["enter", "space"].contains(&event.keystroke.key.as_str()) {
+					s.toggle_catalog_settings(cx);
+					cx.stop_propagation();
+				}
+			}))
+			.child(ui_theme::settings_label("Tool catalog cache", ""))
+			.child(ui_theme::settings_description(format!(
+				"{count} {}",
+				if count == 1 { "server" } else { "servers" }
+			)))
+			.child(crate::shell::workspace_symbols::disclosure_chevron(
+				"context-mcp-chevron",
+				expanded,
+			))
+			.smooth();
+		let mut rows = ui_theme::settings_rows()
+			.child(ui_theme::settings_description(
+				"Use a valid cached tool list while servers connect. Tool calls still need a live connection.",
+			))
+			.pb(gpui::px(4.));
+		for preference in catalogs {
+			rows = rows.child(self.context_preference_row(work, preference, busy, cx));
+		}
+		ui_theme::settings_rows()
+			.pt(gpui::px(8.))
+			.child(native_subheading("MCP startup"))
+			.child(toggle)
+			.child(ui_motion::disclosure("context-mcp-body", expanded, rows))
+	}
+
+	fn toggle_catalog_settings(&mut self, cx: &mut Context<Self>) {
+		self.context_settings.catalog_expanded = !self.context_settings.catalog_expanded;
+		cx.notify();
+	}
+
+	#[cfg(any(test, feature = "visual-capture"))]
+	pub(crate) fn visual_context_settings(&mut self, expanded: bool, cx: &mut Context<Self>) {
+		let work = self.selected.clone().expect("selected fixture Agent");
+		let mut preferences: Vec<_> =
+			[AgentContextFeature::AsyncCompaction, AgentContextFeature::RetainClientToolOutputs]
+				.into_iter()
+				.map(|feature| AgentContextPreference {
+					feature,
+					effective: false,
+					preference: None,
+				})
+				.collect();
+		preferences.extend(
+			["xcode", "node_repl", "computer-use", "openwiki", "brave"].into_iter().map(|server| {
+				AgentContextPreference {
+					feature: AgentContextFeature::McpCatalogStartup {
+						server: decodex_protocol::WireText::new(server).expect("fixture server"),
+					},
+					effective: server == "brave",
+					preference: Some(false),
+				}
+			}),
+		);
+		self.context_settings = Panel {
+			work: Some(work.clone()),
+			state: Some(AgentContextSettingsResult::Available {
+				work_id: EntityId::new(work).expect("fixture Agent"),
+				review_token: decodex_protocol::WireText::new("visual-native-defaults")
+					.expect("fixture review"),
+				preferences,
+			}),
+			catalog_expanded: expanded,
+			..Panel::default()
+		};
+		cx.notify();
+	}
+}
+
+fn native_subheading(title: &'static str) -> impl IntoElement {
+	ui_theme::settings_section_title(title)
+		.aria_level(3)
+		.text_size(gpui::px(ui_theme::SETTINGS_LABEL_SIZE))
+		.pt(gpui::px(8.))
+		.pb(gpui::px(2.))
+}
+
+fn is_catalog(feature: &AgentContextFeature) -> bool {
+	matches!(feature, AgentContextFeature::McpCatalogStartup { .. })
+}
+
+fn override_notice(preference: &AgentContextPreference) -> Option<String> {
+	preference.preference.filter(|saved| *saved != preference.effective).map(|saved| {
+		format!("Uses {} here (saved: {})", on_off(preference.effective), on_off(saved))
+	})
 }
 
 fn feedback(
@@ -339,20 +457,17 @@ fn feature_key(feature: &AgentContextFeature) -> String {
 fn feature_label(feature: &AgentContextFeature) -> String {
 	match feature {
 		AgentContextFeature::AsyncCompaction => "Background compaction".into(),
-		AgentContextFeature::RetainClientToolOutputs =>
-			"Keep delegation instructions after compaction".into(),
-		AgentContextFeature::McpCatalogStartup { server } =>
-			format!("Cached MCP catalog: {}", server.as_str()),
+		AgentContextFeature::RetainClientToolOutputs => "Retain marked tool outputs".into(),
+		AgentContextFeature::McpCatalogStartup { server } => server.as_str().into(),
 	}
 }
 fn feature_detail(feature: &AgentContextFeature) -> &'static str {
 	match feature {
 		AgentContextFeature::AsyncCompaction =>
-			"Summarize before context fills. May use extra quota; availability depends on Codex.",
+			"Prepare a summary before context fills. May use extra quota.",
 		AgentContextFeature::RetainClientToolOutputs =>
-			"Retain Decodex delegation instructions after compaction, within Codex limits.",
-		AgentContextFeature::McpCatalogStartup { .. } =>
-			"Allow a valid cached tool catalog while this server connects.",
+			"Keep client-marked outputs after compaction, within Codex limits.",
+		AgentContextFeature::McpCatalogStartup { .. } => "",
 	}
 }
 

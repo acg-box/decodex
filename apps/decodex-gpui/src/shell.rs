@@ -782,6 +782,13 @@ impl Shell {
 		shell.settings_selected = destination;
 
 		if destination == Destination::Settings {
+			#[cfg(feature = "visual-capture")]
+			if let Ok(mode) = std::env::var("DECODEX_VISUAL_NATIVE_DEFAULTS") {
+				shell.agent.update(cx, |surface, cx| {
+					surface.visual_workspace_fixture(cx);
+					surface.visual_context_settings(mode == "expanded", cx);
+				});
+			}
 			shell.settings.update(cx, |settings, _| {
 				settings.category =
 					match std::env::var("DECODEX_VISUAL_SETTINGS_CATEGORY").as_deref() {
