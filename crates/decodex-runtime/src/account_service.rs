@@ -229,6 +229,7 @@ pub struct AccountService {
 	account_locks: std::sync::Mutex<HashMap<AccountId, Arc<tokio::sync::Mutex<()>>>>,
 	callback_ready: AtomicBool,
 	callback_profile_sha256: std::sync::Mutex<Option<String>>,
+	quota_changes: tokio::sync::watch::Sender<()>,
 }
 impl AccountService {
 	/// Assemble one coordinator from its three narrow infrastructure ports.
@@ -246,6 +247,7 @@ impl AccountService {
 			account_locks: std::sync::Mutex::new(HashMap::new()),
 			callback_ready: AtomicBool::new(false),
 			callback_profile_sha256: std::sync::Mutex::new(None),
+			quota_changes: tokio::sync::watch::channel(()).0,
 		}
 	}
 
@@ -3631,7 +3633,14 @@ impl AccountService {
 		fact: AccountQuotaWindow,
 		observed_at_unix_micros: i64,
 	) -> Result<(), AccountLifecycleError> {
-		Ok(self.store.observe_account_quota(account_id, fact, observed_at_unix_micros).await?)
+		self.store.observe_account_quota(account_id, fact, observed_at_unix_micros).await?;
+		self.quota_changes.send_replace(());
+
+		Ok(())
+	}
+
+	pub(crate) fn quota_changes(&self) -> tokio::sync::watch::Receiver<()> {
+		self.quota_changes.subscribe()
 	}
 
 	/// Persist one direct usage response with an atomic account revision fence.
@@ -3641,7 +3650,12 @@ impl AccountService {
 		observation: AccountUsageObservation,
 		windows: [Option<AccountQuotaWindowObservation>; 2],
 	) -> Result<bool, AccountLifecycleError> {
-		Ok(self.store.observe_account_usage(account_id, observation, windows).await?)
+		let accepted = self.store.observe_account_usage(account_id, observation, windows).await?;
+		if accepted {
+			self.quota_changes.send_replace(());
+		}
+
+		Ok(accepted)
 	}
 
 	/// Persist one bounded row-scoped quota observation error for both list and Reset Card reads.
@@ -3747,6 +3761,17 @@ impl AccountService {
 		preferred: Option<&AccountId>,
 		now: i64,
 	) -> Option<&'a AccountRecord> {
+		if accounts.iter().find(|account| Some(&account.account_id) == preferred).is_some_and(
+			|account| {
+				self.selection_candidate(account, now)
+					== Err(AccountSelectionRecovery::RefreshQuota)
+					&& !account_quota_exhausted(account, now)
+			},
+		) {
+			// An unavailable observation is not evidence that the retained account is spent.
+			return None;
+		}
+
 		accounts
 			.iter()
 			.filter_map(|account| {
@@ -5572,6 +5597,14 @@ fn require_supported_plan(bundle: &CredentialSecretBundle) -> Result<(), Account
 	account_plan_is_workspace(bundle.plan_type())
 		.map(|_| ())
 		.ok_or(AccountLifecycleError::UnsupportedPlan)
+}
+
+pub(crate) fn account_quota_exhausted(account: &AccountRecord, now: i64) -> bool {
+	[&account.five_hour_quota, &account.seven_day_quota].iter().any(|window| {
+		window
+			.current()
+			.is_some_and(|fact| fact.used_percent >= 100 && fact.resets_at_unix_micros > now)
+	})
 }
 
 fn quota_selection_score(
@@ -10174,6 +10207,11 @@ mod tests {
 				.account_id,
 			ids[0]
 		);
+		accounts[0].seven_day_quota.disposition = AccountQuotaDisposition::Unknown;
+		assert!(
+			service.agent_route_candidate(&accounts, &ids, Some(&ids[0]), 1_000).is_none(),
+			"refresh the retained account before moving an existing thread to another account"
+		);
 
 		accounts[0].seven_day_quota.disposition = AccountQuotaDisposition::Current(
 			AccountQuotaWindow::new(10_080, 100, 2_000_000).unwrap(),
@@ -10205,5 +10243,17 @@ mod tests {
 		accounts[1].seven_day_quota.disposition = AccountQuotaDisposition::Unknown;
 
 		assert!(service.agent_route_candidate(&accounts, &ids, Some(&ids[0]), 1_000).is_none());
+
+		let mut changes = service.quota_changes();
+		service
+			.observe_quota(&ids[0], AccountQuotaWindow::new(300, 100, 2_000_000).unwrap(), 1_000)
+			.await
+			.unwrap();
+		assert!(
+			changes.has_changed().unwrap(),
+			"publish the committed quota without waiting for a tick"
+		);
+		changes.borrow_and_update();
+		assert!(!changes.has_changed().unwrap());
 	}
 }

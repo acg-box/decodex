@@ -1031,6 +1031,7 @@ impl AgentHost {
 		let research_directory = research::directory();
 		let mut active = None;
 		let mut research_events = Events::new(research_directory.clone());
+		let mut quota_changes = self.runtime.account_quota_changes();
 		// The stop receiver must remain polled while attach, recovery, and RPCs await.
 		let drive = async {
 			active = self.restore().await;
@@ -1045,6 +1046,9 @@ impl AgentHost {
 
 			loop {
 				tokio::select! {
+					_ = quota_changes.changed() => {
+						self.rotate_exhausted(&mut active).await;
+					},
 					id = research_events.next() => {
 						self.research_update(research_directory.as_deref(), id.clone(), id.is_none(), &mut active).await;
 					},
@@ -1069,7 +1073,10 @@ impl AgentHost {
 						}
 					},
 					event = receive(&mut active) => {
+						let terminal = matches!(&event, Some(ServerEvent::Notification { method, .. }) if method == "turn/completed");
 						self.handle_native_event(event, &mut active, &mut recovery).await;
+						if terminal { self.rotate_exhausted(&mut active).await; }
+						recovery.restore_if_due(&mut active, tokio::time::Instant::now(), self.restore()).await;
 					},
 					_ = tick.tick() => {
 						self.dictation.expire().await;
@@ -1220,6 +1227,7 @@ impl AgentHost {
 
 				*active = None;
 				*recovery = RecoverySchedule::new();
+				recovery.next = tokio::time::Instant::now();
 			}
 		}
 	}
@@ -1289,12 +1297,15 @@ impl AgentHost {
 		let exhausted = self.runtime.agent_account_exhausted(root).await;
 
 		agent.pause_dispatch(exhausted);
+		if !exhausted {
+			return;
+		}
 
 		let Ok(work) = self.store.list_agent_work_items().await else {
 			return;
 		};
 
-		if work.iter().any(|item| item.dispatch_state != AgentDispatchState::Idle) || !exhausted {
+		if work.iter().any(|item| item.dispatch_state != AgentDispatchState::Idle) {
 			return;
 		}
 
