@@ -3769,7 +3769,7 @@ mod tests {
 	}
 
 	#[gpui::test]
-	fn unavailable_composer_keeps_a_read_only_draft_and_resumes_after_recovery(
+	fn unavailable_composer_keeps_its_draft_saved_and_resumes_after_recovery(
 		cx: &mut gpui::TestAppContext,
 	) {
 		cx.update(crate::composer_input::bind_keys);
@@ -3809,11 +3809,13 @@ mod tests {
 
 		let composer = visual.debug_bounds("agent-composer").unwrap();
 		let notice = visual.debug_bounds("conversation-unavailable").unwrap();
-		let draft = visual.debug_bounds("composer-retained-draft").unwrap();
-
 		assert!(notice.top() >= composer.top(), "status belongs to the disabled composer");
-		assert!(notice.bottom() <= draft.top(), "status stays above the read-only draft");
-		assert!(draft.bottom() <= composer.bottom(), "the saved draft stays inside its owner");
+		assert!(notice.bottom() <= composer.bottom());
+		assert!(
+			(notice.center().y - composer.center().y).abs() < gpui::px(1.),
+			"the shared status stays centered in the locked input bar"
+		);
+		assert!(visual.debug_bounds("composer-retained-draft").is_none());
 		assert!(visual.debug_bounds("composer-editor-area").is_none());
 		assert!(visual.debug_bounds("composer-action-row").is_none());
 		assert!(visual.debug_bounds("composer-menu-popover").is_none());

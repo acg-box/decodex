@@ -33,9 +33,7 @@ use crate::{
 			Context, ConversationReasoningEffort, ConversationWorkingDirectory, Entity, EntityId,
 			FluentBuilder, HistoryText, IdempotencyKey, InteractiveElement, IntoElement,
 			ParentElement, Render, Role, SharedString, SmoothControl, StatefulInteractiveElement,
-			Styled, SubmitComposer, Window, model_settings, prompts,
-			selectable_text::SelectableText,
-			ui_theme,
+			Styled, SubmitComposer, Window, model_settings, prompts, ui_theme,
 			ui_theme::{
 				BODY_SIZE, COMPOSER_MATERIAL, COMPOSER_MIN_HEIGHT, COMPOSER_RADIUS,
 				CONVERSATION_WIDTH, ERROR, INFO, LINE_STRONG, ON_PRIMARY, PRIMARY_FILL, WARNING,
@@ -643,7 +641,6 @@ impl AgentSurface {
 			});
 		}
 
-		let draft = input.read(cx).content().to_owned();
 		let archived = reason == ARCHIVED_MESSAGE;
 		let reviewing = self.blocked_fork_review_visible();
 		let notice = if reviewing {
@@ -653,12 +650,6 @@ impl AgentSurface {
 		} else {
 			Some(self.connection_notice(reason, cx))
 		};
-		let draft_key = format!(
-			"composer-saved-draft-{:?}-{}",
-			input.entity_id(),
-			self.selected.as_deref().unwrap_or("new")
-		);
-
 		capsule.justify_center().child(
 			gpui::div()
 				.id("composer-blocked")
@@ -670,20 +661,8 @@ impl AgentSurface {
 				.flex()
 				.flex_col()
 				.justify_center()
+				.text_center()
 				.children(notice)
-				.when(!archived && !draft.is_empty(), |d| {
-					d.child(
-						gpui::div()
-							.id("composer-retained-draft")
-							.debug_selector(|| "composer-retained-draft".into())
-							.w_full()
-							.max_h(gpui::px(120.))
-							.pb(gpui::px(4.))
-							.overflow_y_scroll()
-							.text_color(crate::ui_theme::rgb(TEXT_MUTED))
-							.child(SelectableText::plain(draft_key, draft)),
-					)
-				})
 				.when(!reviewing && self.locked_branch_source().is_some(), |d| {
 					d.child(self.workspace_button(
 						"locked-thread-branch".into(),

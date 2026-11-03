@@ -6,8 +6,6 @@ tags: [decodex, architecture, desktop, presentation]
 sources:
   - id: openwiki-source-98e7b23c4cc276d20fcb4649
     resource: repo://apps/decodex-gpui/menubar/Sources/DecodexApp/AccountControlViews.swift
-  - id: openwiki-source-5a86016f9b186e0f5551ac19
-    resource: repo://apps/decodex-gpui/menubar/Sources/DecodexApp/AccountPanelView.swift
   - id: openwiki-source-b469e348e65d4cdbb569fb27
     resource: repo://apps/decodex-gpui/menubar/Sources/DecodexApp/AccountRows.swift
   - id: openwiki-source-51c6a903a86b67bbf46fe288
@@ -110,10 +108,10 @@ sources:
     resource: repo://database/src/works/commands.rs
   - id: openwiki-source-8fe6f1557e5d45d88b34bd0a
     resource: repo://scripts/macos/generate_workspace_symbols.swift
-generated: { by: "codex", at: "2026-11-03T16:49:54.130Z" }
+generated: { by: "codex", at: "2026-11-03T17:21:44.822Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-03T16:49:54.130Z
+    at: 2026-11-03T17:21:44.822Z
 ---
 
 # Desktop workspace and native glass
@@ -194,7 +192,7 @@ The history rail follows the reading position. Expanding collaboration exchanges
 
 ## State and errors
 
-Conversation errors and recovery actions share one band above the composer. A send restriction disables the editor and retains its draft. Errors and quoted passages do not occupy the composer toolbar. Archive status and Unarchive are the exception: they stay inside the disabled composer without another notice above it. Parent-managed native chats offer Open parent; Retry is reserved for a failed native connection.
+Nonblocking conversation feedback and recovery actions share one band above the composer. A send restriction keeps the normal input bar, locks the editor and centers the shared status inside it. The draft stays saved internally and returns to the editor after recovery; it is not repeated below the error. Errors and quoted passages do not occupy the composer toolbar. Archive status and Unarchive also stay inside the disabled input bar without another notice above it. Parent-managed native chats offer Open parent; Retry is reserved for a failed native connection.
 
 Archive is a normal read-only state. Archived and the short explanation Unarchive to send messages appear inside the disabled input bar, with Unarchive on the right. Read-only notices use a short state followed by one plain sentence about its effect or next action; the explanation wraps when necessary. Background archive-read failures preserve the last confirmed state. A restore failure replaces the ordinary explanation with its actual feedback.
 
@@ -204,7 +202,7 @@ A failed send stays beside its own message in the scrolling transcript, with Not
 
 GPUI uses the shared `ui_feedback` presentation for account problems and operation notices. Status rows use severity color with an icon and explicit wording. Account problems appear beside the affected account without requiring a popup. The native menu-bar feedback control keeps its compact icon and explanatory popover.
 
-Place conversation errors and recovery in the band above the composer, field and operation failures beside their control, and app-wide events in the notification center. Keep archive status inside the disabled composer. Use the shared status text and button styles. A whole-page startup failure uses the same status row when no workspace is available. Keep the native menu-bar counterpart compact.
+Place nonblocking conversation feedback and recovery in the band above the composer, field and operation failures beside their control, and app-wide events in the notification center. Keep send restrictions and archive status inside the disabled composer. History retry and summary notices reuse the shared inline feedback component. Use the shared status text and button styles. A whole-page startup failure uses the same status row when no workspace is available. Keep the native menu-bar counterpart compact.
 
 The GPUI notification center orders errors before warnings and information when it selects the bell and badge color. Its status rows use the same feedback component. A notification can be dismissed or cleared from that presentation; this does not remove its underlying source condition. Native feedback popovers close without clearing their source. These are separate interactions.
 

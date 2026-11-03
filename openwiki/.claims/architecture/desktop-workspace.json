@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:18a49f82455992e97e45e4692611b6349f6d37bde98294aa8a1542e7fd294289",
+  "pageVersion": "sha256:e70f9ecb7ae1bdf5da0e9932768a052d8130e567b8f905634313a17608c07ed9",
   "claims": [
     {
       "id": "claim_41c9eba720934771bd6b671a7aeb8b6e",
@@ -20,7 +20,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:f61fc447f82d04fe7ac12172444d90082bd7314feb742e647cb27afc2d78ee2d"
+          "version": "repo-file-v1:sha256:360a1267c4fa1e9892ab1f0913dd2699a4c2b2a27b286d33f947f18399155daa"
         }
       ]
     },
@@ -107,7 +107,7 @@
           "version": "repo-lines-v1:sha256:c935271ee270339b80c6383aab5e8944fa8f60fd526dd01d3d0ca271dc71d62b:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE1NTE5YTllMTY3OWRlNWNmYmQ5NDg3ZGQ3YzQzZTdlMDVmNmI5NWUxYTgzYjdkZTA4OTc2MDlmY2Y5ZWUxZDciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijc2MWZjYzllOWZhMTY1NThjMWNmZTg5ZmNhNDExZTcwNzliMWMxMGNjODY1MGM4NTIxZWEyZWYzODI5OTc1OWIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImJmMDEwZGNhMDVkMDJiMDg1YmI5NDIyZTRhNTlkNTg1OGFiOWU2N2U2N2JjOTUxMTVjYjEyMjMwYTA3OWQ5YWQifQ"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/ui_feedback.rs#L459-L549",
+          "resource": "repo://apps/decodex-gpui/src/ui_feedback.rs#L460-L550",
           "version": "repo-lines-v1:sha256:823ce6a70b18e0b447f3a6444e3436843a94b963f1691faf6757ab579efec4ca:eyJzZWxlY3RlZExpbmVDb3VudCI6OTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU4ZmE1YjAwM2E3ODUzM2IxZTc1OTA4NzkxMGUxNmI5YjBjYjZkY2ZhYjIwMmFlNzcwMjk3YWY0OTM2ZTBiZTgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQ1NjI1ZTY0MDQwODkyZDhhYWYxMjRmYmU0M2UxY2NmYzBjMDMwM2EwMjU3NTJkODU4ZWIzZGRhZjJmMmIwMTgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhmNDA4ZDliMWFhY2ZhNjEzYmVmOTlhMWVkNzIzNzQ1OTBjNGU2NjdlM2NiNjc2MWQwOTRlYjM3M2UwMGYzYzAifQ"
         }
       ]
@@ -136,7 +136,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:f61fc447f82d04fe7ac12172444d90082bd7314feb742e647cb27afc2d78ee2d"
+          "version": "repo-file-v1:sha256:360a1267c4fa1e9892ab1f0913dd2699a4c2b2a27b286d33f947f18399155daa"
         }
       ]
     },
@@ -214,7 +214,7 @@
     },
     {
       "id": "claim_b156b2e1ef464a0e85614e94212da5bf",
-      "statement": "Archived and blocked conversations keep the normal composer container, disable sending and preserve the current draft. The reason and recovery action appear inside that input bar, without an empty Message placeholder or duplicate status band.",
+      "statement": "Archived and blocked conversations keep the normal locked input bar and center the shared status and recovery controls within it. The unsent draft stays saved internally and returns after recovery; the blocked bar does not repeat its text or show a duplicate status band.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_archive.rs",
@@ -222,15 +222,11 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_composer.rs",
-          "version": "repo-file-v1:sha256:b8d512d04f9df6802f6cce7c7c7d60c97aa1740c839ef6ea99304afbb775a9f7"
-        },
-        {
-          "resource": "repo://apps/decodex-gpui/src/agent_native_agents.rs",
-          "version": "repo-file-v1:sha256:59c8de24cbc2f980e8704e9e55b4a81bda1c6a122787a065aa8bebd8ea0f70d4"
+          "version": "repo-file-v1:sha256:a8b2e438bc717f086f3c1b6673e83a034eb6c8be60848be5811f297161eedacd"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:f61fc447f82d04fe7ac12172444d90082bd7314feb742e647cb27afc2d78ee2d"
+          "version": "repo-file-v1:sha256:360a1267c4fa1e9892ab1f0913dd2699a4c2b2a27b286d33f947f18399155daa"
         }
       ]
     },
@@ -284,7 +280,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_native_agents.rs",
-          "version": "repo-file-v1:sha256:59c8de24cbc2f980e8704e9e55b4a81bda1c6a122787a065aa8bebd8ea0f70d4"
+          "version": "repo-file-v1:sha256:2b8f4c255d9884be767694cebbd13915782dbe4ad7389027e8b273dddc684c9a"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_timeline_inputs.rs",
@@ -292,7 +288,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:f61fc447f82d04fe7ac12172444d90082bd7314feb742e647cb27afc2d78ee2d"
+          "version": "repo-file-v1:sha256:360a1267c4fa1e9892ab1f0913dd2699a4c2b2a27b286d33f947f18399155daa"
         }
       ]
     },
@@ -302,7 +298,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_composer.rs",
-          "version": "repo-file-v1:sha256:b8d512d04f9df6802f6cce7c7c7d60c97aa1740c839ef6ea99304afbb775a9f7"
+          "version": "repo-file-v1:sha256:a8b2e438bc717f086f3c1b6673e83a034eb6c8be60848be5811f297161eedacd"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_prompt_edit.rs",
@@ -352,7 +348,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_composer.rs",
-          "version": "repo-file-v1:sha256:b8d512d04f9df6802f6cce7c7c7d60c97aa1740c839ef6ea99304afbb775a9f7"
+          "version": "repo-file-v1:sha256:a8b2e438bc717f086f3c1b6673e83a034eb6c8be60848be5811f297161eedacd"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_native_menu.rs",
@@ -426,7 +422,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:f61fc447f82d04fe7ac12172444d90082bd7314feb742e647cb27afc2d78ee2d"
+          "version": "repo-file-v1:sha256:360a1267c4fa1e9892ab1f0913dd2699a4c2b2a27b286d33f947f18399155daa"
         }
       ]
     },
@@ -461,8 +457,8 @@
           "version": "repo-file-v1:sha256:68ed6a10df1d7ec6ea966a2eaae3a1c5ec70ee67320fa5ee107b4687f5f897f2"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/ui_feedback.rs#L1-L23",
-          "version": "repo-lines-v1:sha256:e2fb70cf5351ccb211197589f6e3ac958e826ed82682b12257171433fe0b7274:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJiYTBmMTBiMGY1OGNkOTdlMmJiOTRmYzkwZTViZjdjZWRmMTNjMWY0MTgwNTY1NTg1Y2JhMTJmZGE5Zjc3YTciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjExYTZmOWQ5OTYwNGE2MmEwZjE1YTdjNmVlMmI5ODg5MGM3OWJhYzQ0ZTdjNmQxZDdmYmZjYWMyYzM1NDE5N2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImVkN2YzZjI3OWY3ZDc5MDAwNDNmYmY3NzhmZTUwYjc5YmQxNmNkNDczMTExNmM1YjU0OTBmYzZhY2RjNmRkZTMifQ"
+          "resource": "repo://apps/decodex-gpui/src/ui_feedback.rs#L1-L24",
+          "version": "repo-lines-v1:sha256:78afbe61d78d0c3ec965dd6f5e95ff25273292749585a8a434e3c4bba2698f06:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJiYTBmMTBiMGY1OGNkOTdlMmJiOTRmYzkwZTViZjdjZWRmMTNjMWY0MTgwNTY1NTg1Y2JhMTJmZGE5Zjc3YTciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjExYTZmOWQ5OTYwNGE2MmEwZjE1YTdjNmVlMmI5ODg5MGM3OWJhYzQ0ZTdjNmQxZDdmYmZjYWMyYzM1NDE5N2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImVkN2YzZjI3OWY3ZDc5MDAwNDNmYmY3NzhmZTUwYjc5YmQxNmNkNDczMTExNmM1YjU0OTBmYzZhY2RjNmRkZTMifQ"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_theme.rs",
@@ -472,19 +468,19 @@
     },
     {
       "id": "claim_0452408448a14a9db6e30791b9bed632",
-      "statement": "Conversation errors and recovery actions share one band above the composer; archive status stays inside the disabled composer. Field and operation failures stay beside their controls, and app-wide events use the notification center. Whole-page startup failure reuses the shared status row; Menu Bar retains compact native feedback.",
+      "statement": "Nonblocking conversation feedback uses the band above the composer; send restrictions and archive status use the disabled composer. History retry and summary notices reuse shared inline feedback. Field and operation failures stay beside their controls, app-wide events use the notification center, whole-page startup failure uses the shared status row, and Menu Bar retains compact native feedback.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/AccountPanelView.swift",
-          "version": "repo-file-v1:sha256:84d70523c444350e673b21c63058704df7b5f1e89150923ae4ac0e8fd6c129f7"
+          "resource": "repo://apps/decodex-gpui/src/agent_composer.rs",
+          "version": "repo-file-v1:sha256:a8b2e438bc717f086f3c1b6673e83a034eb6c8be60848be5811f297161eedacd"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/shell_status.rs",
-          "version": "repo-file-v1:sha256:e272f87a26993aecacedaabb796b29dc8c467e93648bfda170a6e9c68b981196"
+          "resource": "repo://apps/decodex-gpui/src/agent_timeline.rs",
+          "version": "repo-file-v1:sha256:94ea70df047f8fb39acb1221999a5bbfc405b1041b6da8a11e0176474d71cc8d"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/ui_feedback.rs#L1-L23",
-          "version": "repo-lines-v1:sha256:e2fb70cf5351ccb211197589f6e3ac958e826ed82682b12257171433fe0b7274:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJiYTBmMTBiMGY1OGNkOTdlMmJiOTRmYzkwZTViZjdjZWRmMTNjMWY0MTgwNTY1NTg1Y2JhMTJmZGE5Zjc3YTciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjExYTZmOWQ5OTYwNGE2MmEwZjE1YTdjNmVlMmI5ODg5MGM3OWJhYzQ0ZTdjNmQxZDdmYmZjYWMyYzM1NDE5N2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImVkN2YzZjI3OWY3ZDc5MDAwNDNmYmY3NzhmZTUwYjc5YmQxNmNkNDczMTExNmM1YjU0OTBmYzZhY2RjNmRkZTMifQ"
+          "resource": "repo://apps/decodex-gpui/src/ui_feedback.rs",
+          "version": "repo-file-v1:sha256:87068003c148dc39e0d5410ff004a73c5e8dd8f94c73eb86c9b9adf7c21f1973"
         }
       ]
     },
@@ -498,7 +494,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_timeline.rs",
-          "version": "repo-file-v1:sha256:5f9429477f8cfae3300706f013b90060ad91e0e096fd19ac75076318afa3b471"
+          "version": "repo-file-v1:sha256:94ea70df047f8fb39acb1221999a5bbfc405b1041b6da8a11e0176474d71cc8d"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
@@ -512,7 +508,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_surface.rs",
-          "version": "repo-file-v1:sha256:dfe6013d1234c58f6c9257a2997af8a9c2e7b896ae2c730b8a0f82f05eaada06"
+          "version": "repo-file-v1:sha256:ecc0ad2696b0f62e057388c19bf739f4dd68ed2c0c72c2c4eb20187cf75c1ea5"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
@@ -523,6 +519,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-03T16:49:54.130Z"
+    "at": "2026-11-03T17:21:44.822Z"
   }
 }

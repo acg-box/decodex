@@ -18,6 +18,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_draft_merge.rs
   - id: openwiki-source-5eddd1d872eed61f8ba7e703
     resource: repo://apps/decodex-gpui/src/agent_draft_storage.rs
+  - id: openwiki-source-9e6b2fcb5c2b3d17fcfda57b
+    resource: repo://apps/decodex-gpui/src/agent_drafts.rs
   - id: openwiki-source-d701c906e7fcc9ab2d0917bc
     resource: repo://apps/decodex-gpui/src/agent_inspection.rs
   - id: openwiki-source-85ab533d66ee904d83d8a21a
@@ -164,10 +166,10 @@ sources:
     resource: repo://database/src/assistant.rs
   - id: openwiki-source-28af4781ad8d9558410630da
     resource: repo://database/src/works.rs
-generated: { by: "codex", at: "2026-11-03T16:38:47.085Z" }
+generated: { by: "codex", at: "2026-11-03T17:21:44.822Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-03T16:49:54.130Z
+    at: 2026-11-03T17:21:44.822Z
 ---
 
 # Conversation input, history and recovery
@@ -180,7 +182,7 @@ The Agent composer and the separate ordinary History workbench share recovery me
 
 ## Persistent Agent and Work context
 
-The implemented [Assistant lifecycle](../decisions/assistant-lifecycle.md) keeps a stable identity across fresh native contexts. It supports delegated independent Agents, teams, wakes and optional RAGFlow Memory. Renewal waits for a safe ordinary-input boundary, records exact native creation and activation receipts, then retains the current editor, loaded history and reading state. The native context chain remains readable with exact thread, turn and item sources. Unknown creation is reconciled without blind replay. Retiring the old context unsubscribes it and does not run Agent archive cleanup.
+The implemented [Assistant lifecycle](../decisions/assistant-lifecycle.md) keeps a stable identity across fresh native contexts. It supports delegated independent Agents, teams, wakes and optional RAGFlow Memory. Renewal waits for a safe ordinary-input boundary, records exact native creation and activation receipts, then retains the current editor, loaded history and reading state. The saved draft follows only that Assistant's acknowledged context chain and remains editable, including after restart. Submitted commands and history references retain their original identities. The native context chain remains readable with exact thread, turn and item sources. Unknown creation is reconciled without blind replay. Retiring the old context unsubscribes it and does not run Agent archive cleanup.
 
 Each user-created Agent has one current native conversation. It can own several Works and act as Project Lead without creating a permanent component manager. The Assistant is optional. Current Work requirements and authorized Materials are read before assignment, recovery and assessment; a compacted summary alone is not the authority. Different Work records do not create independent native directories or sandboxes within that conversation.
 

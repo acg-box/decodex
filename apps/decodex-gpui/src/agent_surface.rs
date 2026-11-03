@@ -1787,6 +1787,7 @@ impl AgentSurface {
 		match result {
 			Ok(AgentSnapshotResult::Available(snapshot)) => {
 				self.invalidate_snapshot_panels(&snapshot);
+				self.renew_assistant_draft_binding(&snapshot);
 
 				if self.snapshot.as_ref().is_some_and(|old| {
 					old.runtime_source != snapshot.runtime_source

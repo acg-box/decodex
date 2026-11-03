@@ -12,7 +12,8 @@
 //! - Centered empty states are reserved for a surface with no usable content. Modal alerts are
 //!   reserved for decisions that must precede an explicit action.
 //!
-//! Text and actions are left aligned within the owning content column. Conversation feedback
+//! Text and actions are left aligned within the owning content column. A locked composer centers
+//! its status and keeps the saved draft out of the error presentation. Conversation feedback
 //! uses the page surface without an enclosing card or shadow. Tone supplements an icon and
 //! explicit wording; it does not determine placement, focus or automatic dismissal. A blocking
 //! status remains until its cause is resolved, and never discards the user's saved draft.
@@ -422,7 +423,7 @@ pub(crate) fn notice(
 	}
 }
 
-/// Lock immediately, retain the read-only draft through exit, then restore its editor.
+/// Lock immediately, retain the saved draft through exit, then restore its editor.
 pub(crate) fn composer_block(
 	scope: impl Into<SharedString>,
 	reason: Option<&'static str>,

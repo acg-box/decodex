@@ -9,7 +9,11 @@ use crate::{AgentActivityDto, AgentTurnUsageDto, EntityId, WeatherForecast};
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct AgentTimelinePage {
 	/// Exact native thread for entries at each logical position across Assistant contexts.
-	#[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+	#[serde(
+		default,
+		deserialize_with = "deserialize_source_threads",
+		skip_serializing_if = "BTreeMap::is_empty"
+	)]
 	pub source_threads: BTreeMap<u64, String>,
 	/// Latest observed native cumulative total for this exact thread, including live turns.
 	#[serde(default, skip_serializing_if = "Option::is_none")]
@@ -35,6 +39,19 @@ pub struct AgentTimelinePage {
 	pub weather: BTreeMap<String, Vec<WeatherForecast>>,
 	/// Voice session active immediately before the first entry, if any.
 	pub active_realtime_session_at_page_start: Option<String>,
+}
+
+fn deserialize_source_threads<'de, D>(deserializer: D) -> Result<BTreeMap<u64, String>, D::Error>
+where
+	D: serde::Deserializer<'de>,
+{
+	// Tagged response enums buffer JSON object keys as strings before reading the page.
+	BTreeMap::<String, String>::deserialize(deserializer)?
+		.into_iter()
+		.map(|(position, thread)| {
+			position.parse().map(|position| (position, thread)).map_err(serde::de::Error::custom)
+		})
+		.collect()
 }
 
 /// Provider-reported cumulative categories. Cached input and reasoning are subsets.
@@ -323,4 +340,33 @@ pub enum AgentTimelineResult {
 	CapacityExceeded,
 	/// The read failed or the account/task binding changed.
 	Unavailable,
+}
+
+#[cfg(test)]
+mod tests {
+	use super::{AgentTimelinePage, AgentTimelineResult, EntityId};
+
+	#[test]
+	fn assistant_source_threads_survive_the_tagged_timeline_wire_result() {
+		let mut page: AgentTimelinePage = serde_json::from_value(serde_json::json!({
+			"thread_id": "current", "entries": [], "next_cursor": null,
+			"active_realtime_session_at_page_start": null
+		}))
+		.unwrap();
+		page.source_threads.insert(2, "previous".into());
+		page.source_threads.insert(24, "current".into());
+		let result = AgentTimelineResult::Available {
+			work_id: EntityId::new("assistant").unwrap(),
+			account_id: EntityId::new("account").unwrap(),
+			page,
+		};
+		let wire = serde_json::to_string(&result).unwrap();
+		let decoded: AgentTimelineResult = serde_json::from_str(&wire).unwrap();
+		assert_eq!(decoded, result);
+		assert_eq!(
+			serde_json::from_value::<AgentTimelineResult>(serde_json::to_value(&result).unwrap())
+				.unwrap(),
+			result
+		);
+	}
 }

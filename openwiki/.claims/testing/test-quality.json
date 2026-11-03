@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:924bb0a95b1bf6ba64b53051ad559774796e633c51f77bbb43efd97136f11685",
+  "pageVersion": "sha256:c8e0f979ce0c29f5dbea2fdfee99be8564756e44601dcd166f93dd60da23b0bc",
   "claims": [
     {
       "id": "claim_070657bf065541118dc7ae41cdeffc2c",
@@ -141,10 +141,24 @@
           "version": "repo-lines-v1:sha256:ba1f073685d6e0ad8446402cf4f9b6745f75f9714a3c354475310f70034da702:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYmJiNDg5YzIyMTM3OTY3NDhlYzRjNWI3ZGJlMWE1NTNiZWUxZTZmMTc0ZTNjZjU0MjA3NWU4OGI5MmZkMjRhMiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZTMzOWI3MDcxMzhlYTk2OGQ4YThiY2I4MWI0MGM3Y2M5NmMzYjM2YzAyMjYxZDhiNWRlNTQxOTc5YjgxNmQ1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNzU0ZTU4YjM0MDk1Mzg5ODJiMjY5YTc5NjcyZDliOTBmYmU2MTRjZjViZjcxNzkyZDVhYjViOWEzMjY2YzI0ZSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYWNkMTIzY2U5MjJjNzAzMDE3N2Q1MTdmZTk3MjViMmEzZTQ5OGFlNGZmNjNlOGExY2M4NjQ5MzZlNGMwN2Y4MyJ9"
         }
       ]
+    },
+    {
+      "id": "claim_b49ca3c26a534c8398d986d288db5072",
+      "statement": "Assistant renewal regressions require a usable draft editor and submission after continuation/restart, and round-trip nonempty native-source maps through the tagged timeline response. Text retention and page-only fixtures do not establish these contracts.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_drafts.rs",
+          "version": "repo-file-v1:sha256:8e98beeda6c0dc7e69ca6be315ee7ffb8229e05b982a1ff145b3eeb5d05f2265"
+        },
+        {
+          "resource": "repo://crates/decodex-protocol/src/agent_timeline.rs",
+          "version": "repo-file-v1:sha256:99f544ea58d89241ccc481e2318ab9b623d1682949e1f1b8f85cbf6a93dff316"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-03T16:31:59.854Z"
+    "at": "2026-11-03T17:21:44.822Z"
   }
 }

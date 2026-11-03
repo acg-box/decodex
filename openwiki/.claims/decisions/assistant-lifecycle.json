@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:d317a8fa6880fc411d57a0ab09529108e1e50a659f1119bea4d189929e2a4c6c",
+  "pageVersion": "sha256:ecf6c1ed31aad7455218b9364efc3cfc2943818a8ca94f34c209098f78cbce01",
   "claims": [
     {
       "id": "claim_2f9fecf97f644372afb5684929656aac",
@@ -116,15 +116,19 @@
     },
     {
       "id": "claim_4e5d202de093458592af93a1308d2c48",
-      "statement": "Confirmed Assistant successors retain desktop drafts, loaded history and reading state, rebase older cursors and retain exact native sources at logical positions. Retired rows are read-only. Context retirement does not run ordinary Agent archive cleanup.",
+      "statement": "Confirmed Assistant successors retain a usable draft editor, loaded history and reading state. Saved drafts follow only that Assistant's recorded lineage, including after restart; submitted commands and history references keep exact identities. Cursors and logical positions retain native sources, whose decimal position keys decode through tagged JSON replies. Retired rows stay read-only and context retirement does not run Agent archive cleanup.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_timeline.rs",
-          "version": "repo-file-v1:sha256:5f9429477f8cfae3300706f013b90060ad91e0e096fd19ac75076318afa3b471"
+          "resource": "repo://apps/decodex-gpui/src/agent_drafts.rs",
+          "version": "repo-file-v1:sha256:8e98beeda6c0dc7e69ca6be315ee7ffb8229e05b982a1ff145b3eeb5d05f2265"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_timeline_render.rs",
-          "version": "repo-file-v1:sha256:cc65f6570bcde4b84c3bea6ed3244a81784533def6d828d7bbf8931cdd4ab987"
+          "resource": "repo://apps/decodex-gpui/src/agent_timeline.rs",
+          "version": "repo-file-v1:sha256:94ea70df047f8fb39acb1221999a5bbfc405b1041b6da8a11e0176474d71cc8d"
+        },
+        {
+          "resource": "repo://crates/decodex-protocol/src/agent_timeline.rs",
+          "version": "repo-file-v1:sha256:99f544ea58d89241ccc481e2318ab9b623d1682949e1f1b8f85cbf6a93dff316"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent_host.rs",
@@ -196,11 +200,19 @@
     },
     {
       "id": "claim_067a3576680e4fcc954351d56759c1cf",
-      "statement": "Database, HTTP, desktop and selected-native fixtures cover restart-safe teams, wakes, delegation authority, context/import receipts, original dialogue, draft/history continuity and three fresh native contexts with isolated memory. These fixtures do not qualify a live RAGFlow instance or an installed desktop app.",
+      "statement": "Database, HTTP, desktop, wire and selected-native fixtures cover teams, wakes, delegation authority, context/import receipts, original dialogue, three fresh contexts with isolated memory, usable drafts across renewal/restart, nonempty source-map response decoding and the shared locked-input presentation. These fixtures do not qualify a live RAGFlow instance or an installed desktop app.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_timeline.rs",
-          "version": "repo-file-v1:sha256:5f9429477f8cfae3300706f013b90060ad91e0e096fd19ac75076318afa3b471"
+          "resource": "repo://apps/decodex-gpui/src/agent_drafts.rs",
+          "version": "repo-file-v1:sha256:8e98beeda6c0dc7e69ca6be315ee7ffb8229e05b982a1ff145b3eeb5d05f2265"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
+          "version": "repo-file-v1:sha256:360a1267c4fa1e9892ab1f0913dd2699a4c2b2a27b286d33f947f18399155daa"
+        },
+        {
+          "resource": "repo://crates/decodex-protocol/src/agent_timeline.rs",
+          "version": "repo-file-v1:sha256:99f544ea58d89241ccc481e2318ab9b623d1682949e1f1b8f85cbf6a93dff316"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_context_tests.rs",
@@ -247,6 +259,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-03T16:49:54.130Z"
+    "at": "2026-11-03T17:21:44.822Z"
   }
 }

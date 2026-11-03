@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:ed99190e557e25034bd7c6aaeafd0ae0ac1c502ceda4ec31cdc6e55a67c01a74",
+  "pageVersion": "sha256:97e1d2211602006640e28e6d64b6a308ce00c5b34c3ecf3edec964ce5740b391",
   "claims": [
     {
       "id": "claim_8d60aaceeea74d6189e3d7b0b3ed21fe",
@@ -556,7 +556,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_composer.rs",
-          "version": "repo-file-v1:sha256:b8d512d04f9df6802f6cce7c7c7d60c97aa1740c839ef6ea99304afbb775a9f7"
+          "version": "repo-file-v1:sha256:a8b2e438bc717f086f3c1b6673e83a034eb6c8be60848be5811f297161eedacd"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_side_chat_question.rs",
@@ -653,6 +653,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-03T16:38:47.085Z"
+    "at": "2026-11-03T17:21:44.822Z"
   }
 }
