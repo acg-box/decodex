@@ -1,6 +1,9 @@
 //! Choose native context defaults without changing loaded conversations.
-use gpui::AnyElement;
 #[cfg(test)] use gpui::px;
+use gpui::{
+	AnyElement,
+	prelude::{InteractiveElement as _, StatefulInteractiveElement as _},
+};
 use tokio::runtime::Builder;
 
 #[cfg(test)] use crate::shell::agent_surface::ClientProfile;
@@ -92,17 +95,17 @@ impl AgentSurface {
 			None
 		};
 
+		if self.context_settings.work.as_deref() != Some(work) {
+			self.context_settings.state = None;
+		}
 		self.context_settings.work = Some(work.into());
 		self.context_settings.epoch = self.context_settings.epoch.wrapping_add(1);
 
 		let epoch = self.context_settings.epoch;
-		let generation = self.generation;
-
-		self.context_settings.state = None;
 		self.context_settings.feedback = Feedback::loading(if change.is_some() {
 			"Saving context…"
 		} else {
-			"Reading context settings…"
+			"Reading native defaults…"
 		});
 
 		let key =
@@ -122,14 +125,16 @@ impl AgentSurface {
 		self.context_settings.task = Some(cx.spawn(async move |surface, cx| {
 			let result = future.await;
 			let _ = surface.update(cx, |s, cx| {
-				if s.generation != generation
-					|| s.context_settings.epoch != epoch
-					|| s.selected.as_deref() != Some(owner.as_str())
-				{
+				if s.context_settings.epoch != epoch {
 					return;
 				}
 
 				s.context_settings.task = None;
+				if s.selected.as_deref() != Some(owner.as_str()) {
+					s.context_settings.feedback.clear();
+					cx.notify();
+					return;
+				}
 
 				let (outcome, state) =
 					result.unwrap_or((None, AgentContextSettingsResult::Unavailable));
@@ -185,31 +190,58 @@ impl AgentSurface {
 	}
 
 	pub(crate) fn read_native_defaults(&mut self, cx: &mut Context<Self>) {
-		if let Some(work) = self.selected.clone() {
+		if let Some(work) = self.selected.clone()
+			&& self.context_settings.work.as_deref() != Some(work.as_str())
+		{
 			self.update_context_settings(&work, None, cx);
 		}
 	}
 
 	fn context_settings_controls(&self, work: &str, cx: &mut Context<Self>) -> AnyElement {
-		let mut panel = gpui::div().flex().flex_col().gap_2();
-
-		panel = panel
-			.child(crate::ui_theme::settings_description("Native defaults apply to new conversations. The selected Agent’s project and managed settings can override saved values. Experimental features depend on Codex support."))
-			.children(ui_feedback::inline_feedback("context-settings-feedback", "Context settings", &self.context_settings.feedback));
-
-		if self.context_settings.task.is_some() {
-			return panel.into_any_element();
-		}
-
+		let busy = self.context_settings.task.is_some();
 		let owner = work.to_owned();
-
-		panel = panel.child(mcp_forms::mcp_button(
-			"context-settings-refresh".into(),
-			"Read native settings".into(),
-			false,
-			cx,
-			move |s, cx| s.update_context_settings(&owner, None, cx),
-		));
+		let key_owner = owner.clone();
+		let refresh = if busy {
+			crate::ui_theme::settings_button_base("context-settings-refresh", "Refresh")
+				.cursor_default()
+				.opacity(0.5)
+		} else {
+			crate::ui_theme::settings_button("context-settings-refresh", "Refresh")
+		};
+		let mut panel = crate::ui_theme::settings_rows()
+			.child(
+				crate::ui_theme::settings_row()
+					.child(gpui::div().flex_1().child(crate::ui_theme::settings_description(
+						"Shared with Codex. Project settings can override these defaults.",
+					)))
+					.child(
+						refresh
+							.tab_index(if busy { -1 } else { 0 })
+							.on_click(cx.listener(move |s, _, _, cx| {
+								s.update_context_settings(&owner, None, cx);
+							}))
+							.on_key_down(cx.listener(
+								move |s, event: &gpui::KeyDownEvent, _, cx| {
+									if !event.is_held
+										&& ["enter", "space"]
+											.contains(&event.keystroke.key.as_str())
+									{
+										s.update_context_settings(&key_owner, None, cx);
+										cx.stop_propagation();
+									}
+								},
+							)),
+					),
+			)
+			.child(
+				ui_feedback::notice(
+					"context-settings-feedback",
+					work.to_owned(),
+					Some(self.context_settings.feedback.clone()),
+				)
+				.inline()
+				.loading_delay(std::time::Duration::from_millis(350)),
+			);
 
 		if self.context_settings.work.as_deref() == Some(work)
 			&& let Some(AgentContextSettingsResult::Available { preferences, .. }) =
@@ -239,7 +271,7 @@ impl AgentSurface {
 								format!("context-knob-{key}"),
 								label,
 								preference.preference.unwrap_or(preference.effective),
-								true,
+								!busy,
 							)
 							.on_change(cx.listener(
 								move |s, enabled: &bool, _, cx| {
@@ -256,7 +288,9 @@ impl AgentSurface {
 				);
 			}
 
-			panel = panel.child(rows).child(crate::ui_theme::settings_description("Cached MCP catalogs are configured per user-owned server. No valid cache means normal discovery waits; tool calls still need a live connection. Manage plugin and project-only servers in Codex."));
+			panel = panel.child(rows).child(crate::ui_theme::settings_description(
+				"MCP servers use normal discovery when a cached catalog is unavailable.",
+			));
 		}
 
 		panel.into_any_element()
@@ -288,7 +322,7 @@ fn feedback(
 	if matches!(state, AgentContextSettingsResult::Available { .. }) {
 		Feedback::default()
 	} else {
-		Feedback::warning("Context settings unavailable. Refresh to retry.")
+		Feedback::warning("Could not read native defaults. Try Refresh.")
 	}
 }
 

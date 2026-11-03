@@ -84,13 +84,17 @@ fn run_setting(cx: &mut TestAppContext, feature: AgentContextFeature, selector: 
 	let button = visual.debug_bounds("context-settings-refresh").unwrap();
 
 	visual.simulate_click(button.center(), Default::default());
+	surface.update(visual, |s, _| s.generation += 1);
 	visual.run_until_parked();
 	visual.update(crate::ui_frame::draw_current_frame);
+
+	for _ in 0..3 {
+		surface.update(visual, |s, cx| s.read_native_defaults(cx));
+	}
 
 	let button = visual.debug_bounds(selector).unwrap();
 
 	visual.simulate_click(button.center(), Default::default());
-	visual.simulate_keystrokes("space");
 	visual.run_until_parked();
 
 	assert_eq!(server.join().unwrap().len(), 1);
