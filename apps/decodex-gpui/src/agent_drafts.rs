@@ -373,6 +373,7 @@ pub(super) mod tests {
 				}),
 				epoch: s.command_epoch,
 				execution_intent: None,
+				speed_fallback: None,
 				draft: Some("seed".into()),
 				owner: Some("root".into()),
 				attachments: None,

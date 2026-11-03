@@ -881,6 +881,7 @@ impl Drafts {
 			key: pending.steer.as_ref().map(|steer| steer.submission_id.clone()),
 			steer: pending.steer,
 			epoch,
+			speed_fallback: None,
 			execution_intent: pending
 				.execution
 				.map(|(owner, revision)| (owner.as_str().into(), revision)),
@@ -1009,7 +1010,7 @@ mod tests {
 				s.creation_permission_mode(),
 				decodex_protocol::PermissionMode::ApproveForMe
 			);
-			assert_eq!(s.composer_speed_label(), "Fast");
+			assert_eq!(s.composer_speed_label(cx), "Fast");
 			assert_eq!(s.composer.read(cx).content(), "Unsent idea");
 			assert!(s.conversation_work().is_none());
 			assert!(s.submission.waiting.is_none());

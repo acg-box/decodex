@@ -202,9 +202,7 @@ pub(crate) fn speed_choices<T: 'static>(
 		choices,
 		selected,
 		cx.listener(move |this, index: &usize, _, cx| {
-			if selected != Some(*index) {
-				choose(this, tiers[*index].0.clone(), cx);
-			}
+			choose(this, tiers[*index].0.clone(), cx);
 		}),
 	)
 	.fixed_choice_width(64.)

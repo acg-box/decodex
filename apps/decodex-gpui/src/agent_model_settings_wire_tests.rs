@@ -340,7 +340,7 @@ fn main_and_other_chats_keep_their_models_across_navigation_and_turn_changes(
 			"reopening the draft must retain its chosen model"
 		);
 
-		s.draft_profiles.execution.accepted(Some(&captured));
+		s.draft_profiles.execution.accepted(Some(&captured), None);
 
 		assert!(s.draft_profiles.execution.choice(&captured.0).is_empty());
 

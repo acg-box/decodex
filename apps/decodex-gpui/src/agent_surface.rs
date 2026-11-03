@@ -65,6 +65,7 @@ mod native_menu;
 #[path = "agent_selectable_text.rs"] mod selectable_text;
 #[path = "agent_send_preview.rs"] mod send_preview;
 #[path = "agent_skills.rs"] mod skills;
+#[path = "agent_speed.rs"] mod speed;
 #[path = "agent_steer_receipts.rs"] mod steer_receipts;
 #[path = "agent_text_reveal.rs"] mod text_reveal;
 #[path = "agent_transcript.rs"] mod transcript;
@@ -703,7 +704,6 @@ impl AgentSurface {
 			let model = models[next].model.as_str().to_owned();
 
 			self.select_composer_option("model", &model, cx);
-			self.reconcile_model_options(cx);
 		} else {
 			self.load_capabilities(cx);
 		}
@@ -1065,7 +1065,7 @@ impl AgentSurface {
 
 	fn submit_command(
 		&mut self,
-		action: AgentActionDto,
+		mut action: AgentActionDto,
 		draft: Option<String>,
 		retry: Option<(IdempotencyKey, DesktopMessage)>,
 		cx: &mut Context<Self>,
@@ -1115,11 +1115,13 @@ impl AgentSurface {
 			return;
 		}
 
+		let (execution_intent, speed_fallback) = self.prepare_submission_speed(&mut action, cx);
 		let key = IdempotencyKey::new(unique_command()).expect("bounded command identity");
 		let pending = PendingCommand {
 			key: Some(key.clone()),
 			steer: self.steer_identity(&action, &key),
-			execution_intent: self.draft_profiles.execution.capture(&action),
+			execution_intent,
+			speed_fallback,
 			epoch: self.command_epoch,
 			attachments: draft.as_ref().map(|_| self.attachments.clone()),
 			references: draft.as_ref().map(|_| self.task_references.clone()),
@@ -1351,7 +1353,9 @@ impl AgentSurface {
 			self.clear_sent_task_references(sent, same_owner, pending.owner.as_deref());
 		}
 		if matches!(&result, Ok(AgentCommandResponse::Accepted { .. })) {
-			self.draft_profiles.execution.accepted(pending.execution_intent.as_ref());
+			self.draft_profiles
+				.execution
+				.accepted(pending.execution_intent.as_ref(), pending.speed_fallback);
 		}
 
 		self.apply_command_result(
@@ -2893,6 +2897,7 @@ struct PendingCommand {
 	steer: Option<decodex_protocol::AgentSteerIdentity>,
 	epoch: u64,
 	execution_intent: Option<(String, u64)>,
+	speed_fallback: Option<ServiceTier>,
 	draft: Option<String>,
 	owner: Option<String>,
 	attachments: Option<Vec<AgentAttachmentDto>>,
@@ -4157,6 +4162,7 @@ mod tests {
 				key: None,
 				steer: None,
 				execution_intent: None,
+				speed_fallback: None,
 				epoch: s.command_epoch,
 				draft: Some("same draft".into()),
 				owner: Some("root".into()),

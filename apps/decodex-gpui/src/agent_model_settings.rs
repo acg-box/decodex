@@ -197,8 +197,8 @@ impl AgentSurface {
 		}
 	}
 
-	pub(super) fn composer_speed_label(&self) -> String {
-		match self.composer_service_tier().as_ref().map(|s| s.as_str()) {
+	pub(super) fn composer_speed_label(&self, cx: &Context<Self>) -> String {
+		match self.composer_speed(cx).as_ref().map(|s| s.effective.as_str()) {
 			Some(value) => crate::session_settings::speed_label(value).into(),
 			None if self.is_new_conversation()
 				|| (self.composer_manager.is_none() && self.root_id().is_none()) =>
@@ -491,3 +491,7 @@ fn settings_text(state: &AgentModelSettingsResult) -> String {
 #[cfg(test)]
 #[path = "agent_model_settings_wire_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "agent_speed_tests.rs"]
+mod speed_tests;

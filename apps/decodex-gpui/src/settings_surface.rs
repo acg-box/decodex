@@ -452,6 +452,9 @@ impl SettingsSurface {
 		tier: decodex_protocol::ServiceTier,
 		cx: &mut Context<Self>,
 	) {
+		if self.default_speed.as_ref() == Some(&tier) {
+			return;
+		}
 		if let Err(error) = crate::session_settings::set_default_speed(&tier) {
 			self.preference_error = Some(format!("Could not save speed: {error}.").into());
 			cx.notify();

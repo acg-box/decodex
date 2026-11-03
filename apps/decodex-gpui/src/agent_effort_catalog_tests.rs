@@ -72,8 +72,6 @@ fn catalog_refresh_preserves_explicit_effort_until_user_selects_model(cx: &mut T
 
 		s.capabilities = Some(catalog(vec![ConversationReasoningEffort::Low]));
 
-		s.reconcile_model_options(cx);
-
 		assert_eq!(s.effort, ConversationReasoningEffort::High);
 		assert_eq!(
 			s.draft_profiles.execution.choice(&owner).reasoning_effort,
@@ -195,8 +193,6 @@ fn cold_creation_keeps_configured_effort_when_catalog_has_no_choices(cx: &mut Te
 		s.mark_tier_intent();
 
 		s.capabilities = Some(catalog(vec![]));
-
-		s.reconcile_model_options(cx);
 
 		assert!(s.model_efforts(cx).is_empty());
 
@@ -332,7 +328,6 @@ fn configured_defaults_reach_both_creation_fields_without_freezing_inherited_eff
 		assert_eq!(s.composer_effort_value(cx).as_deref(), None);
 		assert!(!s.creation_intent.model && !s.creation_intent.reasoning);
 
-		s.reconcile_model_options(cx);
 		s.submit(cx);
 	});
 
