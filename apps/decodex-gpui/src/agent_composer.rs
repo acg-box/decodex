@@ -2065,7 +2065,8 @@ mod tests {
 		surface.update(visual, |s, cx| s.toggle_composer_menu("model", cx));
 		visual.update(crate::ui_frame::draw_current_frame);
 		assert!(visual.debug_bounds("tier-default").is_some());
-		assert!(visual.debug_bounds("tier-priority").is_none(), "no unadvertised speed choices");
+		assert!(visual.debug_bounds("tier-priority").is_some());
+		assert!(visual.debug_bounds("tier-ultrafast").is_some());
 	}
 
 	#[gpui::test]
