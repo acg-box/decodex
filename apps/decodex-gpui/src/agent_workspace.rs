@@ -2257,7 +2257,9 @@ impl AgentSurface {
 
 			return;
 		}
-		if ["composer", "composer-menu", "composer-effort"].contains(&page) {
+		if ["composer", "composer-menu", "composer-effort", "speed-fallback", "speed-fallback-menu"]
+			.contains(&page)
+		{
 			self.visual_composer_page(page, cx);
 
 			return;
@@ -2444,8 +2446,25 @@ impl AgentSurface {
 			memory_enabled: None,
 		});
 		self.fast = true;
+		if matches!(page, "speed-fallback" | "speed-fallback-menu") {
+			if let Some(decodex_protocol::AgentCapabilitiesResult::Available { models, .. }) =
+				&mut self.capabilities
+			{
+				for model in models {
+					model.service_tiers.push(decodex_protocol::AgentServiceTierDto {
+						id: decodex_protocol::ServiceTier::from_fast(true),
+						name: "Fast".into(),
+						description: String::new(),
+					});
+				}
+			}
+			self.model.update(cx, |input, cx| input.set_content("gpt-6-astra", cx));
+			self.mark_model_intent(cx);
+			self.service_tier = Some(decodex_protocol::ServiceTier::new("ultrafast").unwrap());
+			self.mark_tier_intent();
+		}
 
-		if matches!(page, "composer-menu" | "composer-effort") {
+		if matches!(page, "composer-menu" | "composer-effort" | "speed-fallback-menu") {
 			self.composer_menu = Some("model");
 			self.composer_menu_content = Some("model");
 		}
