@@ -97,7 +97,7 @@ fn latest_completed_input(entries: &[AgentTimelineEntry]) -> Option<(&str, &str)
 		AgentTimelineContent::TurnBoundary { turn_id, completed: true, .. } => Some(turn_id),
 		_ => None,
 	})?;
-	entries.iter().rev().find_map(|entry| match &entry.content {
+	entries.iter().find_map(|entry| match &entry.content {
 		AgentTimelineContent::Item { turn_id, item_id, kind, .. }
 			if turn_id == turn && kind == "userMessage" =>
 			Some((turn_id.as_str(), item_id.as_str())),
@@ -163,6 +163,12 @@ mod tests {
 	fn list_branch_requires_the_completed_turns_own_input() {
 		assert_eq!(latest_completed_input(&[input("old", "one"), boundary("new", true)]), None);
 		assert_eq!(latest_completed_input(&[input("live", "one"), boundary("live", false)]), None);
+	}
+
+	#[test]
+	fn list_branch_uses_the_first_input_even_after_a_mid_turn_steer() {
+		let entries = vec![input("turn", "first"), input("turn", "steer"), boundary("turn", true)];
+		assert_eq!(latest_completed_input(&entries), Some(("turn", "first")));
 	}
 
 	#[gpui::test]

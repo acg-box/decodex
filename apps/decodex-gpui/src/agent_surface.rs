@@ -2341,7 +2341,9 @@ impl AgentSurface {
 			.flex_col()
 			.gap(gpui::px(MESSAGE_GAP))
 			.when(
-				self.prompt_editor_visible(&work.id) && !self.blocked_fork_review_visible(),
+				self.prompt_editor_visible(&work.id)
+					&& !self.blocked_fork_review_visible()
+					&& !self.side_chat_status_visible(),
 				|panel| panel.child(self.prompt_edit_panel(&work.id, cx)),
 			)
 			.children(self.native_timeline_panel(work, cx))

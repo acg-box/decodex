@@ -1426,6 +1426,7 @@ impl AgentSurface {
 						self.panel_controls(super::panel_controls::Panel::Conversation, cx),
 					)),
 			)
+			.children(self.side_chat_status(cx))
 			.children(self.item_context_navigation(cx))
 			.children(self.conversation_find_bar(cx))
 	}
@@ -2271,6 +2272,14 @@ impl AgentSurface {
 		}
 
 		match page {
+			"side-chat-error" => {
+				let root = std::env::var_os("DECODEX_VISUAL_PROMPT_ROOT")
+					.expect("isolated prompt fixture root");
+				let profile =
+					decodex_protocol::ClientProfile::load(std::path::Path::new(&root), None)
+						.expect("fixture profile");
+				self.visual_side_chat_failure(profile, cx);
+			},
 			"side-chat-tabs" => self.visual_side_chat_tabs("agent", cx),
 			"side-chat-titles" => {
 				self.visual_side_chat_tabs("agent", cx);
