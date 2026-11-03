@@ -2495,6 +2495,11 @@ impl AgentHost {
 			Ok(mut active) => {
 				let phase = Phase::new("recover_persisted");
 				let recovery = active.1.recover_persisted().await;
+				if active.1.quota_refresh_after().is_some()
+					&& let Some(observations) = &self.observations
+				{
+					observations.request_refresh();
+				}
 				let _ = self
 					.store
 					.record_agent_recovery(

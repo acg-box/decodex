@@ -326,6 +326,41 @@ async fn terminal_quota_failure_preserves_accepted_input_without_replay_after_re
 }
 
 #[tokio::test]
+async fn recovered_quota_failure_holds_new_input_until_usage_refresh() {
+	let turn = failed("opaque turn/1", "usageLimitExceeded");
+	let (mut agent, mut sent, _dir) = tests::fixture_with_history(
+		serde_json::json!({"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[turn]}}}),
+	)
+	.await;
+	AgentCoordinator::reserve_root(&agent.store, "agent", "original request").await.unwrap();
+	agent.enqueue_user_message("agent", "original", "original request").await.unwrap();
+	agent.wake_pending().await.unwrap();
+	agent
+		.enqueue_user_message("agent", "queued", "Continue when quota is available.")
+		.await
+		.unwrap();
+	while sent.try_recv().is_ok() {}
+
+	let mut recovered =
+		AgentCoordinator::new(agent.store.clone(), agent.client.clone(), agent.config.clone())
+			.unwrap();
+	drop(agent);
+	recovered.recover_persisted().await.unwrap();
+	recovered.wake_pending().await.unwrap();
+	assert!(recovered.quota_refresh_after().is_some());
+	assert!(!iter::from_fn(|| sent.try_recv().ok()).any(|frame| frame["method"] == "turn/start"));
+
+	recovered.quota_refreshed();
+	recovered.pause_dispatch(false);
+	recovered.wake_pending().await.unwrap();
+	let starts: Vec<_> = iter::from_fn(|| sent.try_recv().ok())
+		.filter(|frame| frame["method"] == "turn/start")
+		.collect();
+	assert_eq!(starts.len(), 1);
+	assert_eq!(starts[0]["params"]["input"][0]["text"], "Continue when quota is available.");
+}
+
+#[tokio::test]
 async fn lost_retry_submission_is_unknown_and_never_replayed() {
 	let turn = failed("opaque turn/1", "serverOverloaded");
 	let (mut agent, _sent, _dir) = tests::fixture_with_history(

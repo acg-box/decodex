@@ -4,6 +4,39 @@ use sha2::{Digest as _, Sha256};
 
 use crate::{SqliteStore, StoreError, agent, agent_process, error::sqlite_error};
 
+pub(crate) fn invalidate_quota_after_failure(
+	connection: &rusqlite::Connection,
+	work: &agent::AgentWorkItem,
+	payload: &serde_json::Value,
+) -> Result<(), StoreError> {
+	if payload["terminal"]["turn"]["status"] != "failed"
+		|| payload["terminal"]["turn"]["error"]["codexErrorInfo"] != "usageLimitExceeded"
+	{
+		return Ok(());
+	}
+	// The original native start binds this failure to its execution account. A
+	// recovered old turn must not invalidate the replacement account's quota.
+	let source = connection.query_row("SELECT g.account_id,g.account_revision
+	 FROM agent_inbox_events e JOIN process_generations g ON g.generation_id=json_extract(e.payload,'$.generationId')
+	 JOIN accounts a ON a.account_id=g.account_id AND a.revision=g.account_revision
+	 WHERE e.work_item_id=?1 AND e.event_kind='native_turn_started' AND json_valid(e.payload)
+	 AND json_extract(e.payload,'$.threadId')=?2 AND json_extract(e.payload,'$.turnId')=?3
+	 ORDER BY e.id LIMIT 1",
+	 rusqlite::params![work.id,work.codex_thread_id,work.active_turn_id],
+	 |row|Ok((row.get::<_,String>(0)?,row.get::<_,i64>(1)?)))
+	 .optional().map_err(sqlite_error)?;
+	if let Some((account, revision)) = source {
+		crate::account_usage::invalidate_usage(
+			connection,
+			&account,
+			revision,
+			crate::unix_micros()?,
+		)?;
+	}
+
+	Ok(())
+}
+
 impl SqliteStore {
 	/// Check the exact terminal receipt before fetching an already recovered native turn.
 	pub async fn agent_native_terminal_recorded(

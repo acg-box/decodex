@@ -287,6 +287,12 @@ impl AgentCoordinator {
 		if item.active_turn_id.as_ref() != Some(&turn) {
 			return Ok(());
 		}
+		if params["turn"]["status"] == "failed"
+			&& params["turn"]["error"]["codexErrorInfo"] == "usageLimitExceeded"
+		{
+			self.quota_failed_at = Some(now_micros()?);
+			self.dispatch_paused = true;
+		}
 
 		self.observe_misalignment(&thread, &turn, &params["turn"]["error"]).await?;
 
@@ -2127,14 +2133,6 @@ impl AgentCoordinator {
 		if item.active_turn_id.as_ref() != Some(&turn) {
 			return Ok(());
 		}
-		if !self.dispatch_paused
-			&& params["turn"]["status"] == "failed"
-			&& params["turn"]["error"]["codexErrorInfo"] == "usageLimitExceeded"
-		{
-			self.quota_failed_at = Some(now_micros()?);
-			self.dispatch_paused = true;
-		}
-
 		// Store the exact provider terminal payload before clearing active ownership.
 		let history = self.client.thread_read_turn(&thread, &turn).await;
 
