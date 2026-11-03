@@ -58,13 +58,26 @@ impl Intents {
 		(choice == execution && !choice.is_empty()).then(|| (root_id.as_str().into(), *revision))
 	}
 
-	pub(super) fn accepted(&mut self, captured: Option<&(String, u64)>) {
+	pub(super) fn accepted(
+		&mut self,
+		captured: Option<&(String, u64)>,
+		retain_tier: Option<ServiceTier>,
+	) {
 		if let Some((owner, revision)) = captured
 			&& self.choices.get(owner).is_some_and(|v| v.0 == *revision)
 		{
 			self.choices.remove(owner);
 
 			self.revision = self.revision.wrapping_add(1);
+			if let Some(tier) = retain_tier {
+				self.choices.insert(
+					owner.clone(),
+					(
+						self.revision,
+						AgentExecutionOverrides { service_tier: Some(tier), ..Default::default() },
+					),
+				);
+			}
 		}
 	}
 }
@@ -214,7 +227,7 @@ mod tests {
 			s.effort = ConversationReasoningEffort::Low;
 
 			s.mark_effort_intent(cx);
-			s.draft_profiles.execution.accepted(Some(&older));
+			s.draft_profiles.execution.accepted(Some(&older), None);
 
 			assert_eq!(
 				choice(action(s, "agent")).reasoning_effort,
@@ -223,7 +236,7 @@ mod tests {
 
 			let current = s.draft_profiles.execution.capture(&action(s, "agent")).unwrap();
 
-			s.draft_profiles.execution.accepted(Some(&current));
+			s.draft_profiles.execution.accepted(Some(&current), None);
 
 			assert!(choice(action(s, "agent")).is_empty());
 

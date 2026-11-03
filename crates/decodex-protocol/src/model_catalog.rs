@@ -75,6 +75,22 @@ pub struct InitialModelDefaults {
 }
 
 impl AgentModelDto {
+	/// Resolve a speed preference against this account's native model capabilities.
+	pub fn effective_service_tier(&self, requested: &ServiceTier) -> ServiceTier {
+		if matches!(requested.as_str(), "default" | "flex")
+			|| self.service_tiers.iter().any(|tier| tier.id == *requested)
+		{
+			return requested.clone();
+		}
+		if requested.as_str() == "ultrafast"
+			&& self.service_tiers.iter().any(|tier| tier.id.as_str() == "priority")
+		{
+			ServiceTier::from_fast(true)
+		} else {
+			ServiceTier::standard()
+		}
+	}
+
 	/// Choose the current native default only after the selected model's explicit retirement
 	/// deadline. Missing catalog entries and upgrade suggestions alone do not prove retirement.
 	pub fn retired_default<'a>(

@@ -443,30 +443,31 @@ async fn serve(
 	metadata: Arc<std::sync::atomic::AtomicUsize>,
 	expected_recap: Option<&str>,
 ) {
+	serve_with_quota_fault(listener, requests, metadata, expected_recap, None).await;
+}
+
+#[derive(Default)]
+struct QuotaFault {
+	pending: std::sync::atomic::AtomicBool,
+	expect_fast: std::sync::atomic::AtomicBool,
+	started: tokio::sync::Notify,
+	release: tokio::sync::Notify,
+}
+
+async fn serve_with_quota_fault(
+	listener: tokio::net::TcpListener,
+	requests: Arc<std::sync::atomic::AtomicUsize>,
+	metadata: Arc<std::sync::atomic::AtomicUsize>,
+	expected_recap: Option<&str>,
+	fault: Option<Arc<QuotaFault>>,
+) {
+	let mut title_requests = 0;
+
 	while let Ok((socket, _)) = listener.accept().await {
 		let mut socket = tokio::io::BufReader::new(socket);
-		let mut first = String::new();
-
-		if socket.read_line(&mut first).await.expect("loopback native backend") == 0 {
+		let Some((first, path, length)) = read_fixture_headers(&mut socket).await else {
 			continue;
-		}
-
-		let path = first.split_whitespace().nth(1).expect("loopback native backend").to_owned();
-		let mut length = 0;
-
-		loop {
-			let mut line = String::new();
-
-			assert!(socket.read_line(&mut line).await.expect("loopback native backend") > 0);
-
-			if line == "\r\n" {
-				break;
-			}
-
-			if let Some(value) = line.to_ascii_lowercase().strip_prefix("content-length:") {
-				length = value.trim().parse::<usize>().expect("loopback native backend");
-			}
-		}
+		};
 
 		let (status, content_type, body) = if first.starts_with("GET ")
 			|| (first.starts_with("POST ") && path == "/backend-api/wham/usage/thread_usage/query")
@@ -489,12 +490,36 @@ async fn serve(
 
 			assert_eq!(input["model"], "cold-native-model");
 			assert_eq!(input["reasoning"]["effort"], "provider-effort");
-			assert!(
-				input.get("service_tier").is_none(),
-				"cached priority must not override Standard"
-			);
-
-			let serial = requests.fetch_add(1, Ordering::AcqRel);
+			let title = input.pointer("/text/format/schema/properties/title").is_some();
+			// Background naming is a separate inference request, not a user-input replay.
+			let serial = if title {
+				title_requests += 1;
+				usize::MAX - title_requests
+			} else {
+				requests.fetch_add(1, Ordering::AcqRel)
+			};
+			if !title && let Some(fault) = &fault {
+				let expected = (serial > 0).then(|| {
+					if fault.expect_fast.load(Ordering::Acquire) { "priority" } else { "ultrafast" }
+				});
+				assert_eq!(
+					input["service_tier"].as_str(),
+					expected,
+					"actual provider tier must follow the admitted account"
+				);
+			} else {
+				assert!(
+					input.get("service_tier").is_none(),
+					"cached priority must not override Standard"
+				);
+			}
+			if !title
+				&& let Some(fault) =
+					fault.as_ref().filter(|fault| fault.pending.swap(false, Ordering::AcqRel))
+			{
+				write_quota_failure(&mut socket, fault).await;
+				continue;
+			}
 			let held = if env::var_os("DECODEX_TEST_ACTIVE_SERVICE_SHUTDOWN").is_some() {
 				Some("active")
 			} else if env::var_os("DECODEX_TEST_NATIVE_SAMPLE").is_some()
@@ -512,7 +537,9 @@ async fn serve(
 			}
 
 			let id = format!("cold-fixture-{serial}");
-			let answer = if input["text"]["format"]["type"] == "json_schema" {
+			let answer = if title {
+				r#"{"title":"Account handover"}"#
+			} else if input["text"]["format"]["type"] == "json_schema" {
 				if let Some(expected) = expected_recap {
 					assert!(
 						input.to_string().contains(expected),
@@ -563,6 +590,69 @@ async fn serve(
 
 		socket.get_mut().write_all(format!("HTTP/1.1 {status} Fixture\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",body.len()).as_bytes()).await.expect("loopback native backend");
 	}
+}
+
+async fn read_fixture_headers(
+	socket: &mut tokio::io::BufReader<TcpStream>,
+) -> Option<(String, String, usize)> {
+	let mut first = String::new();
+
+	if socket.read_line(&mut first).await.expect("loopback native backend") == 0 {
+		return None;
+	}
+
+	let path = first.split_whitespace().nth(1).expect("loopback native backend").to_owned();
+	let mut length = 0;
+
+	loop {
+		let mut line = String::new();
+
+		assert!(socket.read_line(&mut line).await.expect("loopback native backend") > 0);
+
+		if line == "\r\n" {
+			break;
+		}
+
+		if let Some(value) = line.to_ascii_lowercase().strip_prefix("content-length:") {
+			length = value.trim().parse::<usize>().expect("loopback native backend");
+		}
+	}
+
+	Some((first, path, length))
+}
+
+async fn write_quota_failure(socket: &mut tokio::io::BufReader<TcpStream>, fault: &QuotaFault) {
+	let frames = [
+		serde_json::json!({"type":"response.created","response":{"id":"quota-fault"}}),
+		serde_json::json!({"type":"response.output_item.done","item":{"type":"message","role":"assistant","id":"partial-quota-answer","content":[{"type":"output_text","text":"Partial result before quota exhaustion."}]}}),
+	];
+	let body = frames
+		.iter()
+		.map(|frame| {
+			format!(
+				"event: {}\ndata: {frame}\n\n",
+				frame["type"].as_str().expect("synthetic quota response")
+			)
+		})
+		.collect::<String>();
+	socket
+		.get_mut()
+		.write_all(
+			format!(
+				"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nConnection: close\r\n\r\n{body}"
+			)
+			.as_bytes(),
+		)
+		.await
+		.expect("synthetic quota response");
+	fault.started.notify_one();
+	fault.release.notified().await;
+	let frame = serde_json::json!({"type":"response.failed","response":{"id":"quota-fault","error":{"code":"credit_balance_exhausted","message":"Synthetic account quota exhausted."}}});
+	socket
+		.get_mut()
+		.write_all(format!("event: response.failed\ndata: {frame}\n\n").as_bytes())
+		.await
+		.expect("synthetic quota response");
 }
 
 async fn hold_fixture_response(socket: &mut tokio::io::BufReader<TcpStream>, witness: &str) {

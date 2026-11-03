@@ -88,6 +88,7 @@ impl AgentSurface {
 					key: Some(IdempotencyKey::new("review-preview").unwrap()),
 					steer: None,
 					execution_intent: None,
+					speed_fallback: None,
 					epoch: 0,
 					attachments: None,
 					references: None,

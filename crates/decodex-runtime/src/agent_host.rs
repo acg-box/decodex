@@ -1031,6 +1031,7 @@ impl AgentHost {
 		let research_directory = research::directory();
 		let mut active = None;
 		let mut research_events = Events::new(research_directory.clone());
+		let mut quota_changes = self.runtime.account_quota_changes();
 		// The stop receiver must remain polled while attach, recovery, and RPCs await.
 		let drive = async {
 			active = self.restore().await;
@@ -1045,6 +1046,15 @@ impl AgentHost {
 
 			loop {
 				tokio::select! {
+					_ = quota_changes.changed() => {
+						if active.is_none() {
+							// A newly available account ends quota backoff immediately.
+							recovery.next = tokio::time::Instant::now();
+							recovery.restore_if_due(&mut active, tokio::time::Instant::now(), self.restore()).await;
+						} else {
+							self.rotate_exhausted(&mut active).await;
+						}
+					},
 					id = research_events.next() => {
 						self.research_update(research_directory.as_deref(), id.clone(), id.is_none(), &mut active).await;
 					},
@@ -1069,7 +1079,10 @@ impl AgentHost {
 						}
 					},
 					event = receive(&mut active) => {
+						let terminal = matches!(&event, Some(ServerEvent::Notification { method, .. }) if method == "turn/completed");
 						self.handle_native_event(event, &mut active, &mut recovery).await;
+						if terminal { self.rotate_exhausted(&mut active).await; }
+						recovery.restore_if_due(&mut active, tokio::time::Instant::now(), self.restore()).await;
 					},
 					_ = tick.tick() => {
 						self.dictation.expire().await;
@@ -1147,6 +1160,7 @@ impl AgentHost {
 	) {
 		if let Some((root, agent, _)) = active.as_mut() {
 			agent.pause_dispatch(self.runtime.agent_account_exhausted(root).await);
+			let quota_refresh = agent.quota_refresh_after();
 
 			let closed = event.is_none() || matches!(&event, Some(ServerEvent::Closed(_)));
 
@@ -1209,6 +1223,11 @@ impl AgentHost {
 						.await;
 				}
 			}
+			if agent.quota_refresh_after() != quota_refresh
+				&& let Some(observations) = &self.observations
+			{
+				observations.request_refresh();
+			}
 
 			for (work, thread, turn) in agent.take_completed_chats() {
 				self.schedule_title(work, thread, turn);
@@ -1220,6 +1239,7 @@ impl AgentHost {
 
 				*active = None;
 				*recovery = RecoverySchedule::new();
+				recovery.next = tokio::time::Instant::now();
 			}
 		}
 	}
@@ -1287,14 +1307,31 @@ impl AgentHost {
 		}
 
 		let exhausted = self.runtime.agent_account_exhausted(root).await;
+		let mut refreshed = false;
+
+		if let Some(after) = agent.quota_refresh_after()
+			&& self.runtime.agent_quota_observed_after(root, after).await
+		{
+			agent.quota_refreshed();
+			refreshed = true;
+		}
 
 		agent.pause_dispatch(exhausted);
+		if !exhausted {
+			if refreshed {
+				self.record_delivery(root, agent.wake_pending().await).await;
+			}
+			return;
+		}
+		if agent.quota_refresh_after().is_some() {
+			return;
+		}
 
 		let Ok(work) = self.store.list_agent_work_items().await else {
 			return;
 		};
 
-		if work.iter().any(|item| item.dispatch_state != AgentDispatchState::Idle) || !exhausted {
+		if work.iter().any(|item| item.dispatch_state != AgentDispatchState::Idle) {
 			return;
 		}
 
@@ -2458,6 +2495,11 @@ impl AgentHost {
 			Ok(mut active) => {
 				let phase = Phase::new("recover_persisted");
 				let recovery = active.1.recover_persisted().await;
+				if active.1.quota_refresh_after().is_some()
+					&& let Some(observations) = &self.observations
+				{
+					observations.request_refresh();
+				}
 				let _ = self
 					.store
 					.record_agent_recovery(

@@ -452,6 +452,9 @@ impl SettingsSurface {
 		tier: decodex_protocol::ServiceTier,
 		cx: &mut Context<Self>,
 	) {
+		if self.default_speed.as_ref() == Some(&tier) {
+			return;
+		}
 		if let Err(error) = crate::session_settings::set_default_speed(&tier) {
 			self.preference_error = Some(format!("Could not save speed: {error}.").into());
 			cx.notify();
@@ -463,41 +466,43 @@ impl SettingsSurface {
 	}
 
 	fn agent_defaults_content(&self, cx: &mut Context<Self>) -> AnyElement {
-		ui_theme::settings_rows()
-			.child(ui_theme::settings_description(
-				"For new Agents only. Subagents inherit their parent’s permissions.",
+		let column = |title: &'static str, description: &'static str, choices: AnyElement| {
+			gpui::div()
+				.flex_1()
+				.min_w(gpui::px(300.))
+				.flex()
+				.flex_col()
+				.gap(gpui::px(8.))
+				.child(ui_theme::settings_label(title, description))
+				.child(choices)
+		};
+		gpui::div()
+			.w_full()
+			.min_w_0()
+			.flex()
+			.flex_wrap()
+			.items_start()
+			.gap(gpui::px(24.))
+			.child(column(
+				"Default permissions",
+				"Subagents inherit their parent’s permissions.",
+				crate::session_settings::permission_picker(
+					self.session_defaults.permissions,
+					Self::choose_default_permissions,
+					cx,
+				)
+				.into_any_element(),
 			))
-			.child(
-				ui_theme::settings_row()
-					.child(ui_theme::settings_label(
-						"Default permissions",
-						self.session_defaults.permissions.description(),
-					))
-					.child(crate::session_settings::permission_picker(
-						self.session_defaults.permissions,
-						Self::choose_default_permissions,
-						cx,
-					)),
-			)
-			.child(
-				ui_theme::settings_row()
-					.child(ui_theme::settings_label(
-						"Default speed",
-						"Shared with Codex. Account and model availability apply.",
-					))
-					.child(crate::session_settings::speed_choices(
-						self.default_speed.as_ref(),
-						["priority", "ultrafast"].map(|id| {
-							(
-								decodex_protocol::ServiceTier::new(id)
-									.expect("built-in speed tier"),
-								crate::session_settings::speed_label(id).to_owned(),
-							)
-						}),
-						Self::choose_default_speed,
-						cx,
-					)),
-			)
+			.child(column(
+				"Default speed",
+				"Shared with Codex. ChatGPT usage relative to Standard for the same model; availability varies.",
+				crate::session_settings::speed_default_choices(
+					self.default_speed.as_ref(),
+					Self::choose_default_speed,
+					cx,
+				)
+				.into_any_element(),
+			))
 			.into_any_element()
 	}
 
@@ -1233,7 +1238,7 @@ mod tests {
 	}
 
 	#[gpui::test]
-	fn creation_default_choices_keep_rows_stable_during_click_and_drag(cx: &mut TestAppContext) {
+	fn creation_defaults_explain_choices_without_moving_rows(cx: &mut TestAppContext) {
 		let (settings, visual) = cx.add_window_view(|_, cx| {
 			let mut surface = SettingsSurface::new(DesktopSettingsController::production(), cx);
 			surface.category = SettingsCategory::Agents;
@@ -1244,42 +1249,51 @@ mod tests {
 		visual.update(crate::ui_frame::draw_current_frame);
 		let viewport = visual.debug_bounds("settings-scroll-viewport").unwrap();
 		let permissions = visual.debug_bounds("default-permissions").unwrap();
-		let speed = visual.debug_bounds("service-tier-picker").unwrap();
+		let speed = visual.debug_bounds("default-speeds").unwrap();
 		assert!(permissions.right() <= viewport.right());
 		assert!(speed.right() <= viewport.right());
-		let read_only = visual.debug_bounds("default-permission-0").unwrap();
-		let full = visual.debug_bounds("default-permission-3").unwrap();
-		assert!(read_only.right() <= full.left());
-		assert!(full.right() <= permissions.right(), "all permission choices fit the control");
+		assert_eq!(
+			permissions.size.width, speed.size.width,
+			"explanatory lists share column widths"
+		);
+		assert!(permissions.right() < speed.left(), "wide settings compare defaults side by side");
+		let read_only = visual.debug_bounds("permission-choice-0").unwrap();
+		let full = visual.debug_bounds("permission-choice-3").unwrap();
+		assert!(read_only.bottom() < full.top(), "permissions run from least to most access");
+		for (row, description) in [
+			("permission-choice-0", "permission-description-0"),
+			("permission-choice-1", "permission-description-1"),
+			("permission-choice-2", "permission-description-2"),
+			("permission-choice-3", "permission-description-3"),
+		] {
+			let row = visual.debug_bounds(row).unwrap();
+			let description = visual.debug_bounds(description).unwrap();
+			assert!(description.size.height > gpui::px(0.));
+			assert!(permissions.contains(&description.center()));
+			assert!(row.contains(&description.center()), "the explanation belongs to its option");
+		}
 		visual.simulate_click(read_only.center(), Default::default());
 		assert_eq!(
 			settings.read_with(visual, |s, _| s.session_defaults.permissions),
 			decodex_protocol::PermissionMode::ReadOnly
 		);
 		visual.update(crate::ui_frame::draw_current_frame);
-		assert_eq!(visual.debug_bounds("service-tier-picker").unwrap(), speed);
-		let standard = visual.debug_bounds("tier-default").unwrap();
-		let fast = visual.debug_bounds("tier-priority").unwrap();
-		visual.simulate_mouse_down(standard.center(), gpui::MouseButton::Left, Default::default());
-		visual.simulate_mouse_move(
-			fast.center(),
-			Some(gpui::MouseButton::Left),
-			Default::default(),
-		);
-		visual.update(crate::ui_frame::draw_current_frame);
-		assert_eq!(visual.debug_bounds("service-tier-picker").unwrap(), speed);
-		let ultrafast = visual.debug_bounds("tier-ultrafast").unwrap();
-		visual.simulate_mouse_move(
-			ultrafast.center(),
-			Some(gpui::MouseButton::Left),
-			Default::default(),
-		);
-		visual.simulate_mouse_up(ultrafast.center(), gpui::MouseButton::Left, Default::default());
-		settings.read_with(visual, |s, _| {
-			assert_eq!(s.default_speed.as_ref().unwrap().as_str(), "ultrafast");
-		});
-		visual.update(crate::ui_frame::draw_current_frame);
-		assert_eq!(visual.debug_bounds("default-permissions").unwrap(), permissions);
+		assert_eq!(visual.debug_bounds("default-speeds").unwrap(), speed);
+		let standard = visual.debug_bounds("default-speed-default").unwrap();
+		let fast = visual.debug_bounds("default-speed-priority").unwrap();
+		let ultrafast = visual.debug_bounds("default-speed-ultrafast").unwrap();
+		assert!(standard.bottom() <= fast.top() && fast.bottom() <= ultrafast.top());
+		for (bounds, expected) in
+			[(fast, "priority"), (ultrafast, "ultrafast"), (standard, "default")]
+		{
+			visual.simulate_click(bounds.center(), Default::default());
+			settings.read_with(visual, |s, _| {
+				assert_eq!(s.default_speed.as_ref().unwrap().as_str(), expected)
+			});
+			visual.update(crate::ui_frame::draw_current_frame);
+			assert_eq!(visual.debug_bounds("default-permissions").unwrap(), permissions);
+			assert_eq!(visual.debug_bounds("default-speeds").unwrap(), speed);
+		}
 	}
 
 	#[gpui::test]
@@ -1610,7 +1624,7 @@ mod tests {
 		});
 		visual.update(crate::ui_frame::draw_current_frame);
 		assert!(visual.debug_bounds("automatic-prompt-suggestions").is_some());
-		assert!(visual.debug_bounds("service-tier-picker").is_some());
+		assert!(visual.debug_bounds("default-speeds").is_some());
 		assert!(visual.debug_bounds("prompt-suggestions").is_none());
 	}
 

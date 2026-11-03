@@ -1,4 +1,5 @@
 //! Real local socket, Agent host and installed Codex; only the model provider is synthetic.
+#[path = "agent_process_native_account_rotation_tests.rs"] mod account_rotation;
 #[path = "agent_process_native_active_shutdown_tests.rs"] mod active_shutdown;
 #[path = "agent_process_native_desktop_acceptance.rs"] mod desktop;
 #[path = "agent_process_native_fork_tests.rs"] mod fork;
@@ -151,7 +152,7 @@ async fn installed_recap_public_socket_preserves_parent_and_exact_request_identi
 		90
 	};
 
-	time::timeout(Duration::from_secs(seconds), qualify(&home))
+	time::timeout(Duration::from_secs(seconds), qualify(&home, false))
 		.await
 		.expect("bounded real service fixture");
 }
@@ -173,7 +174,7 @@ async fn observe_fixture_quota(accounts: &AccountService, account: &AccountId) {
 	}
 }
 
-async fn qualify(home: &Path) {
+async fn qualify(home: &Path, rotation: bool) {
 	let interactive = env::var_os("DECODEX_TEST_DESKTOP_APP").is_some();
 	let native_home = home.join(".codex");
 
@@ -183,15 +184,17 @@ async fn qualify(home: &Path) {
 	let address = listener.local_addr().expect("loopback address");
 	let requests = Arc::new(std::sync::atomic::AtomicUsize::new(0));
 	let metadata = Arc::new(std::sync::atomic::AtomicUsize::new(0));
-	let backend = tokio::spawn(cold_settings::serve(
+	let quota_fault = rotation.then(|| Arc::new(cold_settings::QuotaFault::default()));
+	let backend = tokio::spawn(cold_settings::serve_with_quota_fault(
 		listener,
 		requests.clone(),
 		metadata,
-		Some(if interactive {
+		(!rotation).then_some(if interactive {
 			"Isolated desktop acceptance. Reply briefly."
 		} else {
 			"Spoken fixture correction"
 		}),
+		quota_fault.clone(),
 	));
 
 	write_native_configuration(&native_home, address);
@@ -272,20 +275,27 @@ async fn qualify(home: &Path) {
 			.await
 			.expect("public local server"),
 		AssertUnwindSafe(time::timeout(
-			Duration::from_secs(interaction_seconds(interactive)),
+			Duration::from_secs(if rotation { 75 } else { interaction_seconds(interactive) }),
 			async {
-				if interactive {
+				if rotation {
+					account_rotation::Scenario {
+						client: &client,
+						runtime: &runtime,
+						store: &store,
+						accounts: &accounts,
+						home,
+						first: &account,
+						requests: &requests,
+						fault: quota_fault.as_ref().expect("account rotation fault"),
+					}
+					.check()
+					.await;
+				} else if interactive {
 					desktop::check(&client, &runtime, home, &account, &requests).await;
 				} else if env::var("DECODEX_TEST_MEDIA").as_deref() == Ok("1") {
 					media::check(&client, &runtime, home, &account, &requests).await;
 				} else {
 					check(&client, &runtime, &store, home, &account, &requests).await;
-				}
-				if env::var("DECODEX_TEST_ACCOUNT_ROTATION").as_deref() == Ok("1") {
-					qualify_account_rotation(
-						&client, &runtime, &store, &accounts, home, &account, &requests,
-					)
-					.await;
 				}
 			},
 		))
@@ -1095,101 +1105,6 @@ async fn qualify_canonical_prompt_send(
 		Some(accepted)
 	);
 	assert_eq!(requests.load(Ordering::Acquire), count + 1, "receipt readback must not replay");
-}
-
-async fn qualify_account_rotation(
-	client: &AgentClient,
-	runtime: &ConversationRuntime,
-	store: &SqliteStore,
-	accounts: &AccountService,
-	home: &Path,
-	first: &AccountId,
-	requests: &std::sync::atomic::AtomicUsize,
-) {
-	let thread = settled(client).await;
-	let original = store
-		.read_agent_process_binding("recap-root")
-		.await
-		.expect("native recap fixture")
-		.expect("native recap fixture");
-
-	assert_eq!(&original.account_id, first);
-
-	let second = cold_settings::enroll_numbered(store, accounts, home, 2).await;
-	let count = requests.load(Ordering::Acquire);
-	let observed =
-		SystemTime::now().duration_since(UNIX_EPOCH).expect("native recap fixture").as_micros()
-			as i64;
-
-	for (account, used) in [(&second, 0), (first, 100)] {
-		for minutes in [300, 10_080] {
-			accounts
-				.observe_quota(
-					account,
-					AccountQuotaWindow::new(minutes, used, observed + 3_600_000_000)
-						.expect("native recap fixture"),
-					observed,
-				)
-				.await
-				.expect("native recap fixture");
-		}
-	}
-
-	time::timeout(Duration::from_secs(20), async {
-		loop {
-			if runtime.agent_usage_source().await.is_some_and(|(generation, account, _, _)| {
-				account == second && generation != original.generation_id
-			}) {
-				break;
-			}
-
-			time::sleep(Duration::from_millis(25)).await;
-		}
-	})
-	.await
-	.expect("exhausted native account rotates after positive process death");
-
-	assert_eq!(settled(client).await, thread);
-	assert_eq!(requests.load(Ordering::Acquire), count, "rotation must not replay parent input");
-
-	accepted(
-		client,
-		AgentActionDto::Send {
-			root_id: EntityId::new("recap-root").expect("native recap fixture"),
-			text: HistoryText::new("Continue once after account rotation.")
-				.expect("native recap fixture"),
-		},
-		"after-account-rotation",
-	)
-	.await;
-
-	assert_eq!(settled(client).await, thread);
-	assert_eq!(requests.load(Ordering::Acquire), count + 1);
-
-	let binding = store
-		.read_agent_process_binding("recap-root")
-		.await
-		.expect("native recap fixture")
-		.expect("native recap fixture");
-
-	assert_eq!(binding.account_id, second);
-
-	let native = runtime.agent_client().expect("native recap fixture");
-	let turn = native
-		.thread_latest_turn_id(&thread)
-		.await
-		.expect("native recap fixture")
-		.expect("native recap fixture");
-	let items = native.thread_read_turn_items(&thread, &turn).await.expect("native recap fixture");
-
-	assert!(
-		items
-			.as_array()
-			.expect("native recap fixture")
-			.iter()
-			.any(|item| item["type"] == "userMessage"
-				&& item["content"][0]["text"] == "Continue once after account rotation.")
-	);
 }
 
 async fn qualify_summary_read(

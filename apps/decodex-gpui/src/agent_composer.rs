@@ -1001,7 +1001,7 @@ impl AgentSurface {
 		let disabled = send && self.composer_unavailable_reason().is_some();
 		let menu_active = self.composer_menu.is_some_and(|menu| composer_menu_trigger(menu) == id);
 		let target = cx.entity().downgrade();
-		let tooltip = self.composer_control_tip(id, &label, tip, disabled);
+		let tooltip = self.composer_control_tip(id, &label, tip, disabled, cx);
 
 		if matches!(
 			id,
@@ -1112,11 +1112,23 @@ impl AgentSurface {
 			.into_any_element()
 	}
 
-	fn composer_control_tip(&self, id: &str, label: &str, tip: &str, disabled: bool) -> String {
+	fn composer_control_tip(
+		&self,
+		id: &str,
+		label: &str,
+		tip: &str,
+		disabled: bool,
+		cx: &Context<Self>,
+	) -> String {
 		if disabled {
 			"Sending paused until the connection is restored".to_owned()
 		} else if id == "model" {
-			format!("Model and reasoning · {label} · Speed: {}", self.composer_speed_label())
+			let speed = self.composer_speed(cx);
+			let detail = speed.filter(|speed| speed.is_fallback()).map_or_else(
+				|| format!("Speed: {}", self.composer_speed_label(cx)),
+				|speed| speed.notice(),
+			);
+			format!("Model and reasoning · {label} · {detail}")
 		} else if id == "permissions" && label != "Permissions" {
 			format!("Permissions · {label}")
 		} else {
@@ -1209,10 +1221,13 @@ impl AgentSurface {
 				.whitespace_nowrap()
 				.text_color(crate::ui_theme::rgb(TEXT))
 				.when_some(
-					self.composer_service_tier().and_then(|tier| {
-						crate::session_settings::speed_symbol(tier.as_str())
-							.map(|symbol| (tier, symbol))
-					}),
+					self.composer_speed(cx).filter(|speed| !speed.is_fallback()).and_then(
+						|speed| {
+							let tier = speed.effective;
+							crate::session_settings::speed_symbol(tier.as_str())
+								.map(|symbol| (tier, symbol))
+						},
+					),
 					|d, (tier, symbol)| {
 						d.child(
 							gpui::div()
@@ -1227,6 +1242,25 @@ impl AgentSurface {
 					row.child(gpui::div().text_color(crate::ui_theme::rgb(TEXT_MUTED)).child("·"))
 						.child(controls::effort_indicator(&effort))
 				})
+				.when_some(
+					self.composer_speed(cx).filter(|speed| speed.is_fallback()),
+					|row, speed| {
+						row.child(
+							gpui::div()
+								.debug_selector(|| "model-speed-fallback".into())
+								.ml(gpui::px(4.))
+								.flex()
+								.items_center()
+								.gap(gpui::px(3.))
+								.text_color(ui_theme::rgb(WARNING))
+								.child(Tone::Warning.icon())
+								.child(
+									crate::session_settings::speed_label(speed.effective.as_str())
+										.to_owned(),
+								),
+						)
+					},
+				)
 				.into_any_element(),
 			_ => gpui::div().child(label).into_any_element(),
 		}
@@ -1357,7 +1391,29 @@ impl AgentSurface {
 			.gap(gpui::px(2.))
 			.child(self.model_palette(cx))
 			.child(ui_theme::menu_separator())
-			.child(ui_theme::menu_section("Speed", self.service_tier_picker(cx)))
+			.child(ui_theme::menu_section(
+				"Speed",
+				gpui::div().w_full().flex().justify_center().child(self.service_tier_picker(cx)),
+			))
+			.when_some(
+				self.composer_speed(cx).filter(|speed| speed.is_fallback()),
+				|menu, speed| {
+					menu.child(
+						gpui::div()
+							.debug_selector(|| "model-speed-fallback-note".into())
+							.flex()
+							.items_center()
+							.gap(gpui::px(6.))
+							.px(gpui::px(6.))
+							.py(gpui::px(3.))
+							.text_size(gpui::px(ui_theme::CONTROL_LABEL_SIZE))
+							.line_height(gpui::px(16.))
+							.text_color(ui_theme::rgb(WARNING))
+							.child(Tone::Warning.icon())
+							.child(gpui::div().flex_1().min_w_0().child(speed.notice())),
+					)
+				},
+			)
 			.child(ui_theme::menu_separator())
 			.child(ui_theme::menu_section("Reasoning", self.effort_scale(cx)))
 			.into_any_element()
@@ -1380,7 +1436,6 @@ impl AgentSurface {
 			self.model.update(cx, |input, cx| input.set_content(value, cx));
 			self.mark_model_intent(cx);
 			self.reconcile_selected_model_effort(cx);
-			self.reconcile_model_options(cx);
 		} else {
 			let Ok(effort) = ConversationReasoningEffort::new(value) else { return };
 
@@ -2013,7 +2068,8 @@ mod tests {
 		surface.update(visual, |s, cx| s.toggle_composer_menu("model", cx));
 		visual.update(crate::ui_frame::draw_current_frame);
 		assert!(visual.debug_bounds("tier-default").is_some());
-		assert!(visual.debug_bounds("tier-priority").is_none(), "no unadvertised speed choices");
+		assert!(visual.debug_bounds("tier-priority").is_some());
+		assert!(visual.debug_bounds("tier-ultrafast").is_some());
 	}
 
 	#[gpui::test]
@@ -2290,6 +2346,7 @@ mod tests {
 			s.composer_menu = Some("model");
 			s.effort = ConversationReasoningEffort::Ultra;
 			s.fast = true;
+			s.service_tier = Some(decodex_protocol::ServiceTier::from_fast(true));
 
 			s.select_composer_option("model", "custom-model", cx);
 
@@ -2305,7 +2362,10 @@ mod tests {
 			assert_eq!(s.composer_model_label(cx), "Renamed catalog label");
 			assert_eq!(s.composer_model_value(cx).as_deref(), Some("custom-model"));
 			assert_eq!(s.effort, ConversationReasoningEffort::Medium);
-			assert!(!s.fast);
+			assert!(s.fast, "model selection keeps the requested speed");
+			let speed = s.composer_speed(cx).unwrap();
+			assert_eq!(speed.requested.as_str(), "priority");
+			assert_eq!(speed.effective.as_str(), "default");
 			assert_eq!(s.model_efforts(cx).len(), 2);
 
 			s.select_composer_option("effort", "low", cx);

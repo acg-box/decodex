@@ -102,6 +102,14 @@ pub(crate) async fn feature_enabled(
 	name: &str,
 	thread: Option<&str>,
 ) -> Option<bool> {
+	features(client, thread).await?.get(name).copied()
+}
+
+async fn features(
+	client: &AppServerClient,
+	thread: Option<&str>,
+) -> Option<std::collections::BTreeMap<String, bool>> {
+	let mut features = std::collections::BTreeMap::new();
 	let mut cursor = Value::Null;
 	let mut seen = std::collections::HashSet::new();
 
@@ -114,16 +122,18 @@ pub(crate) async fn feature_enabled(
 			.await
 			.ok()?;
 
-		if let Some(feature) = page["data"]
-			.as_array()
-			.filter(|entries| entries.len() <= 100)?
-			.iter()
-			.find(|feature| feature["name"] == name)
-		{
-			return feature["enabled"].as_bool();
+		for feature in page["data"].as_array().filter(|entries| entries.len() <= 100)? {
+			if let (Some(name), Some(enabled)) =
+				(feature["name"].as_str(), feature["enabled"].as_bool())
+			{
+				features.insert(name.to_owned(), enabled);
+			}
 		}
 
 		cursor = page["nextCursor"].clone();
+		if cursor.is_null() {
+			return Some(features);
+		}
 
 		let next = cursor.as_str()?;
 
@@ -273,13 +283,32 @@ fn project_service_tiers(value: &Value) -> Option<Vec<AgentServiceTierDto>> {
 }
 
 async fn read_inner(client: &AppServerClient) -> AgentCapabilitiesResult {
-	let Some(catalog) = read_catalog(client).await else {
+	let Some((catalog, memory_enabled)) = read_available_catalog(client, None).await else {
 		return AgentCapabilitiesResult::Unavailable;
 	};
-	AgentCapabilitiesResult::Available {
-		models: catalog.models,
-		memory_enabled: memory_feature(client).await,
+	AgentCapabilitiesResult::Available { models: catalog.models, memory_enabled }
+}
+
+pub(crate) async fn read_available_catalog(
+	client: &AppServerClient,
+	thread: Option<&str>,
+) -> Option<(ModelCatalogPages, Option<bool>)> {
+	let mut catalog = read_catalog(client).await?;
+	let features = features(client, thread).await;
+	for model in &mut catalog.models {
+		model.service_tiers.retain(|tier| {
+			let feature = match tier.id.as_str() {
+				"priority" => "fast_mode",
+				"ultrafast" => "ultrafast_mode",
+				_ => return true,
+			};
+			features.as_ref().and_then(|features| features.get(feature)).copied() != Some(false)
+		});
+		model.supports_fast = model.service_tiers.iter().any(|tier| tier.id.as_str() == "priority");
 	}
+	let memory_enabled = features.and_then(|features| features.get("memories").copied());
+
+	Some((catalog, memory_enabled))
 }
 
 pub(crate) async fn read_catalog(client: &AppServerClient) -> Option<ModelCatalogPages> {
@@ -309,10 +338,6 @@ async fn read_catalog_inner(client: &AppServerClient) -> Option<ModelCatalogPage
 	}
 
 	None
-}
-
-async fn memory_feature(client: &AppServerClient) -> Option<bool> {
-	feature_enabled(client, "memories", None).await
 }
 
 #[cfg(test)]
@@ -624,7 +649,7 @@ mod tests {
 	}
 
 	#[tokio::test]
-	async fn reads_all_pages_without_a_turn_and_projects_only_memory_flag() {
+	async fn reads_all_pages_without_a_turn_and_projects_enabled_speed_tiers_and_memory() {
 		let (client_io, server_io) = io::duplex(65_536);
 		let (reader, writer) = io::split(client_io);
 		let (client, _events) = AppServerClient::from_io(reader, writer);
@@ -641,14 +666,14 @@ mod tests {
 				assert_eq!(request["method"], method);
 
 				let result = if index == 2 {
-					serde_json::json!({"data":[{"name":"memories","enabled":true}],"private":"DO_NOT_PROJECT"})
+					serde_json::json!({"data":[{"name":"memories","enabled":true},{"name":"fast_mode","enabled":true},{"name":"ultrafast_mode","enabled":false}],"private":"DO_NOT_PROJECT"})
 				} else {
 					assert_eq!(
 						request["params"]["cursor"],
 						if index == 0 { Value::Null } else { serde_json::json!("page2") }
 					);
 
-					serde_json::json!({"data":[{"model":format!("model-{index}"),"displayName":"Model","supportedReasoningEfforts":[{"reasoningEffort":"high"}],"defaultReasoningEffort":"high"}],"nextCursor":if index == 0 {serde_json::json!("page2")} else {Value::Null}})
+					serde_json::json!({"data":[{"model":format!("model-{index}"),"displayName":"Model","supportedReasoningEfforts":[{"reasoningEffort":"high"}],"defaultReasoningEffort":"high","serviceTiers":[{"id":"priority"},{"id":"ultrafast"}]}],"nextCursor":if index == 0 {serde_json::json!("page2")} else {Value::Null}})
 				};
 
 				writer
@@ -668,6 +693,10 @@ mod tests {
 			matches!(&result,AgentCapabilitiesResult::Available { models,memory_enabled:Some(true) } if models.len()==2)
 		);
 		assert!(!serde_json::to_string(&result).unwrap().contains("DO_NOT_PROJECT"));
+		let AgentCapabilitiesResult::Available { models, .. } = result else { unreachable!() };
+		assert!(models.iter().all(|model| model.supports_fast
+			&& model.service_tiers.len() == 1
+			&& model.service_tiers[0].id.as_str() == "priority"));
 	}
 
 	#[tokio::test]

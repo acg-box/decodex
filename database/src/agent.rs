@@ -835,6 +835,7 @@ impl SqliteStore {
             }
 
             let mut payload: Value = serde_json::from_str(&input.payload).unwrap_or_default();
+            crate::agent_native_turns::invalidate_quota_after_failure(&transaction, &work, &payload)?;
             let eligible = work.status == AgentWorkStatus::Open
                 && matches!(input.event_kind.as_str(), "agent_turn_completed" | "worker_turn_completed")
                 && payload.pointer("/terminal/turn/status").and_then(Value::as_str)==Some("failed")

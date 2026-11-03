@@ -477,6 +477,10 @@ impl ConversationRuntime {
 		Some((generation, binding.account_id, inspection.account.revision, client))
 	}
 
+	pub(crate) fn account_quota_changes(&self) -> tokio::sync::watch::Receiver<()> {
+		self.inner.accounts.quota_changes()
+	}
+
 	pub(crate) async fn agent_account_exhausted(&self, root: &str) -> bool {
 		let Ok(Some(binding)) = self.inner.store.read_agent_process_binding(root).await else {
 			return false;
@@ -488,14 +492,24 @@ impl ConversationRuntime {
 			return false;
 		};
 
-		[&inspection.account.five_hour_quota, &inspection.account.seven_day_quota].iter().any(
-			|window| {
-				window.current().is_some_and(|fact| {
-					fact.used_percent >= 100
-						&& i128::from(fact.resets_at_unix_micros) > now.as_micros() as i128
-				})
-			},
-		)
+		let Ok(now) = i64::try_from(now.as_micros()) else { return false };
+
+		crate::account_service::account_quota_exhausted(&inspection.account, now)
+	}
+
+	pub(crate) async fn agent_quota_observed_after(&self, root: &str, after: i64) -> bool {
+		let Ok(Some(binding)) = self.inner.store.read_agent_process_binding(root).await else {
+			return false;
+		};
+		let Ok(inspection) = self.inner.accounts.inspect(&binding.account_id).await else {
+			return false;
+		};
+		let Ok(now) = SystemTime::now().duration_since(UNIX_EPOCH) else {
+			return false;
+		};
+		let Ok(now) = i64::try_from(now.as_micros()) else { return false };
+
+		crate::account_service::account_quota_observed_after(&inspection.account, after, now)
 	}
 
 	async fn select_agent_account(
@@ -509,13 +523,8 @@ impl ConversationRuntime {
 				if failure.recovery == decodex_core::AccountSelectionRecovery::RefreshQuota
 					&& let Some(account) = failure.account_id.as_ref()
 					&& let Ok(inspection) = self.inner.accounts.inspect(account).await
-					&& [&inspection.account.five_hour_quota, &inspection.account.seven_day_quota]
-						.iter()
-						.any(|window| {
-							window.current().is_some_and(|fact| {
-								fact.used_percent >= 100 && fact.resets_at_unix_micros > now
-							})
-						}) {
+					&& crate::account_service::account_quota_exhausted(&inspection.account, now)
+				{
 					return Err(AgentLaunchError::QuotaDepleted);
 				}
 

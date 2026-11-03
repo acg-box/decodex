@@ -229,6 +229,7 @@ pub struct AccountService {
 	account_locks: std::sync::Mutex<HashMap<AccountId, Arc<tokio::sync::Mutex<()>>>>,
 	callback_ready: AtomicBool,
 	callback_profile_sha256: std::sync::Mutex<Option<String>>,
+	quota_changes: tokio::sync::watch::Sender<()>,
 }
 impl AccountService {
 	/// Assemble one coordinator from its three narrow infrastructure ports.
@@ -246,6 +247,7 @@ impl AccountService {
 			account_locks: std::sync::Mutex::new(HashMap::new()),
 			callback_ready: AtomicBool::new(false),
 			callback_profile_sha256: std::sync::Mutex::new(None),
+			quota_changes: tokio::sync::watch::channel(()).0,
 		}
 	}
 
@@ -3631,7 +3633,14 @@ impl AccountService {
 		fact: AccountQuotaWindow,
 		observed_at_unix_micros: i64,
 	) -> Result<(), AccountLifecycleError> {
-		Ok(self.store.observe_account_quota(account_id, fact, observed_at_unix_micros).await?)
+		self.store.observe_account_quota(account_id, fact, observed_at_unix_micros).await?;
+		self.quota_changes.send_replace(());
+
+		Ok(())
+	}
+
+	pub(crate) fn quota_changes(&self) -> tokio::sync::watch::Receiver<()> {
+		self.quota_changes.subscribe()
 	}
 
 	/// Persist one direct usage response with an atomic account revision fence.
@@ -3641,7 +3650,12 @@ impl AccountService {
 		observation: AccountUsageObservation,
 		windows: [Option<AccountQuotaWindowObservation>; 2],
 	) -> Result<bool, AccountLifecycleError> {
-		Ok(self.store.observe_account_usage(account_id, observation, windows).await?)
+		let accepted = self.store.observe_account_usage(account_id, observation, windows).await?;
+		if accepted {
+			self.quota_changes.send_replace(());
+		}
+
+		Ok(accepted)
 	}
 
 	/// Persist one bounded row-scoped quota observation error for both list and Reset Card reads.
@@ -3747,6 +3761,17 @@ impl AccountService {
 		preferred: Option<&AccountId>,
 		now: i64,
 	) -> Option<&'a AccountRecord> {
+		if accounts.iter().find(|account| Some(&account.account_id) == preferred).is_some_and(
+			|account| {
+				self.selection_candidate(account, now)
+					== Err(AccountSelectionRecovery::RefreshQuota)
+					&& !account_quota_exhausted(account, now)
+			},
+		) {
+			// An unavailable observation is not evidence that the retained account is spent.
+			return None;
+		}
+
 		accounts
 			.iter()
 			.filter_map(|account| {
@@ -5574,10 +5599,45 @@ fn require_supported_plan(bundle: &CredentialSecretBundle) -> Result<(), Account
 		.ok_or(AccountLifecycleError::UnsupportedPlan)
 }
 
-fn quota_selection_score(
+pub(crate) fn account_quota_exhausted(account: &AccountRecord, now: i64) -> bool {
+	match ordinary_request_permission(account, now) {
+		Ok(Some(allowed)) => return !allowed,
+		Err(_) => return false,
+		Ok(None) => {},
+	}
+	[&account.five_hour_quota, &account.seven_day_quota].iter().any(|window| {
+		window
+			.current()
+			.is_some_and(|fact| fact.used_percent >= 100 && fact.resets_at_unix_micros > now)
+	})
+}
+
+pub(crate) fn account_quota_observed_after(account: &AccountRecord, after: i64, now: i64) -> bool {
+	if ordinary_request_permission(account, now).is_err() {
+		return false;
+	}
+	if let Some(observation) = account.usage_observation
+		&& observation
+			.conditions
+			.ordinary_requests_allowed(observation.ordinary_usage_allowed)
+			.is_some()
+	{
+		return observation.observed_at_unix_micros > after;
+	}
+
+	[&account.five_hour_quota, &account.seven_day_quota].iter().all(|window| {
+		window.observed_at_unix_micros.is_some_and(|at| at > after && at <= now)
+			&& matches!(
+				window.disposition,
+				AccountQuotaDisposition::Current(_) | AccountQuotaDisposition::NotApplicable
+			)
+	})
+}
+
+fn ordinary_request_permission(
 	account: &AccountRecord,
 	now: i64,
-) -> Result<(u8, u8), AccountSelectionRecovery> {
+) -> Result<Option<bool>, AccountSelectionRecovery> {
 	let allowed = if let Some(observation) = account.usage_observation {
 		if observation.account_revision != account.revision
 			|| observation.observed_at_unix_micros <= 0
@@ -5592,6 +5652,15 @@ fn quota_selection_score(
 	} else {
 		None
 	};
+
+	Ok(allowed)
+}
+
+fn quota_selection_score(
+	account: &AccountRecord,
+	now: i64,
+) -> Result<(u8, u8), AccountSelectionRecovery> {
+	let allowed = ordinary_request_permission(account, now)?;
 
 	if allowed == Some(false) {
 		return Err(AccountSelectionRecovery::RefreshQuota);
@@ -6955,6 +7024,43 @@ mod tests {
 	}
 
 	#[test]
+	fn quota_failure_waits_for_new_valid_observations_before_dispatch_resumes() {
+		let mut account = projection_account(None);
+		account.five_hour_quota.observed_at_unix_micros = Some(950);
+		account.five_hour_quota.disposition = AccountQuotaDisposition::NotApplicable;
+		account.seven_day_quota.observed_at_unix_micros = Some(900);
+		account.seven_day_quota.disposition = AccountQuotaDisposition::Current(
+			AccountQuotaWindow::new(10_080, 100, i64::MAX).unwrap(),
+		);
+		assert!(!super::account_quota_observed_after(&account, 900, 1_000));
+
+		account.seven_day_quota.observed_at_unix_micros = Some(951);
+		assert!(super::account_quota_observed_after(&account, 900, 1_000));
+
+		account.seven_day_quota.disposition = AccountQuotaDisposition::Error(
+			decodex_core::AccountQuotaObservationError::ProviderUnavailable,
+		);
+		assert!(!super::account_quota_observed_after(&account, 900, 1_000));
+
+		let observation = AccountUsageObservation {
+			account_revision: account.revision,
+			observed_at_unix_micros: 952,
+			ordinary_usage_allowed: Some(false),
+			conditions: Default::default(),
+		};
+		account.usage_observation = Some(observation);
+		assert!(super::account_quota_observed_after(&account, 900, 1_000));
+		assert!(!super::account_quota_observed_after(&account, 952, 1_000));
+
+		account.usage_observation.as_mut().unwrap().account_revision += 1;
+		assert!(!super::account_quota_observed_after(&account, 900, 1_000));
+		account.usage_observation =
+			Some(AccountUsageObservation { ordinary_usage_allowed: Some(true), ..observation });
+		assert!(super::account_quota_observed_after(&account, 900, 1_000));
+		assert!(!super::account_quota_exhausted(&account, 1_000));
+	}
+
+	#[test]
 	fn ordinary_usage_permission_controls_routing_without_rewriting_utilization() {
 		let mut account = projection_account(None);
 
@@ -6984,6 +7090,10 @@ mod tests {
 			Some(AccountUsageObservation { ordinary_usage_allowed: Some(true), ..observation });
 
 		assert_eq!(super::quota_selection_score(&account, 1_000), Ok((100, 0)));
+		assert!(
+			!super::account_quota_exhausted(&account, 1_000),
+			"native permission must prevent repeated retirement of an account that remains usable"
+		);
 
 		account.usage_observation.as_mut().unwrap().ordinary_usage_allowed = None;
 
@@ -7033,9 +7143,11 @@ mod tests {
 		account.usage_observation = Some(observation);
 
 		assert_eq!(super::quota_selection_score(&account, 1_000), Ok((100, 100)));
+		assert!(!super::account_quota_exhausted(&account, 1_000));
 
 		observation.conditions.spend_control_reached = Some(true);
 		account.usage_observation = Some(observation);
+		assert!(super::account_quota_exhausted(&account, 1_000));
 
 		assert_eq!(
 			super::quota_selection_score(&account, 1_000),
@@ -10174,6 +10286,11 @@ mod tests {
 				.account_id,
 			ids[0]
 		);
+		accounts[0].seven_day_quota.disposition = AccountQuotaDisposition::Unknown;
+		assert!(
+			service.agent_route_candidate(&accounts, &ids, Some(&ids[0]), 1_000).is_none(),
+			"refresh the retained account before moving an existing thread to another account"
+		);
 
 		accounts[0].seven_day_quota.disposition = AccountQuotaDisposition::Current(
 			AccountQuotaWindow::new(10_080, 100, 2_000_000).unwrap(),
@@ -10205,5 +10322,17 @@ mod tests {
 		accounts[1].seven_day_quota.disposition = AccountQuotaDisposition::Unknown;
 
 		assert!(service.agent_route_candidate(&accounts, &ids, Some(&ids[0]), 1_000).is_none());
+
+		let mut changes = service.quota_changes();
+		service
+			.observe_quota(&ids[0], AccountQuotaWindow::new(300, 100, 2_000_000).unwrap(), 1_000)
+			.await
+			.unwrap();
+		assert!(
+			changes.has_changed().unwrap(),
+			"publish the committed quota without waiting for a tick"
+		);
+		changes.borrow_and_update();
+		assert!(!changes.has_changed().unwrap());
 	}
 }

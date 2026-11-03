@@ -123,6 +123,7 @@ pub struct AgentCoordinator {
 	pending_file_changes: PendingFileChanges,
 	native_generation: Option<ProcessGenerationId>,
 	dispatch_paused: bool,
+	quota_failed_at: Option<i64>,
 	research_directory: Option<PathBuf>,
 	async_recovery_queued: bool,
 	handled_question_revision: u64,
@@ -179,6 +180,7 @@ impl AgentCoordinator {
 			pending_file_changes: Default::default(),
 			native_generation: None,
 			dispatch_paused: false,
+			quota_failed_at: None,
 			research_directory: research::directory(),
 			async_recovery_queued: false,
 		})
@@ -284,6 +286,12 @@ impl AgentCoordinator {
 
 		if item.active_turn_id.as_ref() != Some(&turn) {
 			return Ok(());
+		}
+		if params["turn"]["status"] == "failed"
+			&& params["turn"]["error"]["codexErrorInfo"] == "usageLimitExceeded"
+		{
+			self.quota_failed_at = Some(now_micros()?);
+			self.dispatch_paused = true;
 		}
 
 		self.observe_misalignment(&thread, &turn, &params["turn"]["error"]).await?;
@@ -2125,7 +2133,6 @@ impl AgentCoordinator {
 		if item.active_turn_id.as_ref() != Some(&turn) {
 			return Ok(());
 		}
-
 		// Store the exact provider terminal payload before clearing active ownership.
 		let history = self.client.thread_read_turn(&thread, &turn).await;
 
@@ -2583,7 +2590,15 @@ impl AgentCoordinator {
 
 	/// Suspend new inbox dispatches while the host retires an exhausted account.
 	pub(crate) fn pause_dispatch(&mut self, paused: bool) {
-		self.dispatch_paused = paused;
+		self.dispatch_paused = paused || self.quota_failed_at.is_some();
+	}
+
+	pub(crate) fn quota_refresh_after(&self) -> Option<i64> {
+		self.quota_failed_at
+	}
+
+	pub(crate) fn quota_refreshed(&mut self) {
+		self.quota_failed_at = None;
 	}
 
 	/// Wake for external evidence; Agent completion itself is not a wake source.

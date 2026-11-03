@@ -143,6 +143,12 @@ fn main() -> Result<()> {
 
 		return Ok(());
 	}
+	if env::var_os("DECODEX_VISUAL_DRAFT_ROOT").is_none() {
+		return Err(Error::other(
+			"Set DECODEX_VISUAL_DRAFT_ROOT to an isolated root before visual capture.",
+		)
+		.into());
+	}
 
 	let (output, mut cx) = capture_context()?;
 	let destination = capture_destination();

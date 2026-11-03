@@ -75,6 +75,30 @@ pub(crate) fn read_usage_observation(
 	).optional().map_err(sqlite_error)?)
 }
 
+pub(crate) fn invalidate_usage(
+	connection: &Connection,
+	account: &str,
+	revision: i64,
+	now: i64,
+) -> Result<(), StoreError> {
+	connection.execute("INSERT INTO account_usage_observations(account_id,account_revision,observed_at_micros)
+	 VALUES (?1,?2,?3) ON CONFLICT(account_id) DO UPDATE SET account_revision=excluded.account_revision,
+	 observed_at_micros=excluded.observed_at_micros,ordinary_usage_allowed=NULL,has_credits=NULL,
+	 unlimited_credits=NULL,spend_control_reached=NULL,rate_limit_reached=NULL
+	 WHERE account_usage_observations.observed_at_micros<excluded.observed_at_micros",
+	 rusqlite::params![account,revision,now]).map_err(sqlite_error)?;
+	for duration in [300, 10_080] {
+		connection.execute("INSERT INTO account_quota_facts(account_id,duration_minutes,error_code,observed_at_micros)
+		 VALUES (?1,?2,'provider_unavailable',?3) ON CONFLICT(account_id,duration_minutes) DO UPDATE SET
+		 used_percent=NULL,resets_at_micros=NULL,error_code=excluded.error_code,
+		 observed_at_micros=excluded.observed_at_micros,not_applicable=0
+		 WHERE account_quota_facts.observed_at_micros<excluded.observed_at_micros",
+		 rusqlite::params![account,duration,now]).map_err(sqlite_error)?;
+	}
+
+	Ok(())
+}
+
 fn write_window(
 	connection: &Connection,
 	account_id: &AccountId,

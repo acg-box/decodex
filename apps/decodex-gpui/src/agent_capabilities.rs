@@ -21,12 +21,13 @@ pub(super) struct CatalogContext {
 
 impl AgentSurface {
 	pub(super) fn service_tier_picker(&self, cx: &Context<Self>) -> AnyElement {
-		let tiers = self
-			.selected_model(cx)
-			.into_iter()
-			.flat_map(|model| &model.service_tiers)
-			.map(|tier| (tier.id.clone(), tier.name.clone()));
-		let selected = self.composer_service_tier();
+		let tiers = ["priority", "ultrafast"].map(|id| {
+			(
+				ServiceTier::new(id).expect("built-in speed"),
+				crate::session_settings::speed_label(id).to_owned(),
+			)
+		});
+		let selected = self.composer_speed(cx).map(|speed| speed.requested);
 		crate::session_settings::speed_choices(
 			selected.as_ref(),
 			tiers,
@@ -37,6 +38,9 @@ impl AgentSurface {
 	}
 
 	fn choose_service_tier(&mut self, tier: ServiceTier, cx: &mut Context<Self>) {
+		if self.composer_service_tier().as_ref() == Some(&tier) {
+			return;
+		}
 		self.fast = tier.as_str() == "priority";
 		self.service_tier = Some(tier);
 		self.mark_tier_intent();
@@ -204,7 +208,6 @@ impl AgentSurface {
 		self.capabilities = result.map(|(capabilities, _)| capabilities);
 
 		self.apply_creation_defaults(cx);
-		self.reconcile_model_options(cx);
 		self.save_draft_document(cx);
 		cx.notify();
 	}
@@ -222,34 +225,6 @@ impl AgentSurface {
 
 	pub(super) fn model_efforts(&self, cx: &Context<Self>) -> Vec<ConversationReasoningEffort> {
 		self.selected_model(cx).map_or_else(Vec::new, |model| model.efforts.clone())
-	}
-
-	pub(super) fn reconcile_model_options(&mut self, cx: &mut Context<Self>) {
-		let intent = self
-			.composer_manager
-			.clone()
-			.or_else(|| self.root_id())
-			.map(|owner| self.draft_profiles.execution.choice(&owner));
-		let before_tier = self.service_tier.clone();
-
-		if let Some(model) = self.selected_model(cx).cloned() {
-			if !model.supports_fast {
-				self.fast = false;
-			}
-			if self.service_tier.as_ref().is_some_and(|selected| {
-				!matches!(selected.as_str(), "default" | "flex")
-					&& !model.service_tiers.iter().any(|tier| &tier.id == selected)
-			}) {
-				self.service_tier = Some(ServiceTier::standard());
-				self.fast = false;
-			}
-		}
-
-		if intent.as_ref().is_some_and(|choice| choice.selected_service_tier().is_some())
-			&& self.service_tier != before_tier
-		{
-			self.mark_tier_intent();
-		}
 	}
 
 	pub(super) fn reconcile_selected_model_effort(&mut self, cx: &mut Context<Self>) {
@@ -278,30 +253,17 @@ impl AgentSurface {
 		let effort = choice
 			.as_ref()
 			.map_or(self.creation_effort(), |choice| choice.reasoning_effort.clone());
-		let tier = choice.as_ref().map_or_else(
-			|| Some(self.service_tier.clone().unwrap_or_else(|| ServiceTier::from_fast(self.fast))),
-			|choice| choice.selected_service_tier(),
-		);
+		let tier = self.composer_service_tier();
 		let Some(model) = self.selected_model(cx) else {
 			return tier
 				.as_ref()
 				.is_some_and(|tier| !matches!(tier.as_str(), "default" | "flex"))
 				.then_some("Refresh models before selecting a service tier.");
 		};
-
-		if tier.as_ref().is_some_and(|selected| {
-			!matches!(selected.as_str(), "default" | "flex")
-				&& !model.service_tiers.iter().any(|tier| &tier.id == selected)
-		}) {
-			return Some("This service tier is unavailable for this model.");
-		}
 		if !model.efforts.is_empty()
 			&& effort.is_some_and(|effort| !model.efforts.contains(&effort))
 		{
 			return Some("This Decodex version does not support these reasoning levels.");
-		}
-		if tier.as_ref().is_some_and(|tier| tier.as_str() == "priority") && !model.supports_fast {
-			return Some("Fast mode is unavailable for this model.");
 		}
 		if !model.supports_images && self.attachments.iter().any(|file| file.image) {
 			return Some("This model cannot use images. Change models or remove the image.");
@@ -470,7 +432,7 @@ mod tests {
 	}
 
 	#[gpui::test]
-	fn speed_picker_follows_advertised_tiers_without_adopting_native_default(
+	fn speed_picker_keeps_three_choices_and_explains_unavailable_speed(
 		cx: &mut gpui::TestAppContext,
 	) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
@@ -505,8 +467,6 @@ mod tests {
 				}],
 			});
 
-			s.reconcile_model_options(cx);
-
 			assert_eq!(
 				s.service_tier, configured_tier,
 				"catalog default must not silently opt into a paid tier"
@@ -523,7 +483,7 @@ mod tests {
 
 		assert!(visual.debug_bounds("tier-inherited").is_none());
 		assert!(visual.debug_bounds("tier-default").is_some());
-		assert!(visual.debug_bounds("tier-ultrafast").is_none());
+		assert!(visual.debug_bounds("tier-ultrafast").is_some());
 		if surface.read_with(visual, |s, _| s.composer_service_tier().is_none()) {
 			assert!(visual.debug_bounds("service-tier-picker-thumb").is_none());
 		}
@@ -531,6 +491,39 @@ mod tests {
 		let bounds = visual.debug_bounds("tier-priority").expect("Fast tier visible");
 
 		visual.simulate_click(bounds.center(), gpui::Modifiers::default());
+		visual.update(crate::ui_frame::draw_current_frame);
+		let ultrafast = visual.debug_bounds("tier-ultrafast").unwrap();
+		visual.simulate_click(ultrafast.center(), Default::default());
+		visual.update(crate::ui_frame::draw_current_frame);
+		assert!(visual.debug_bounds("model-speed-fallback").is_some());
+		assert!(visual.debug_bounds("model-speed-fallback-note").is_some());
+		surface.update(visual, |s, cx| {
+			assert_eq!(s.composer_service_tier().unwrap().as_str(), "ultrafast");
+			assert_eq!(s.composer_speed_label(cx), "Fast");
+			assert!(s.composer_capability_error(cx).is_none());
+			s.composer_menu = None;
+			s.composer_menu_content = None;
+			cx.notify();
+		});
+		visual.update(crate::ui_frame::draw_current_frame);
+		assert!(
+			visual.debug_bounds("model-speed-fallback").is_some(),
+			"warning survives menu dismissal"
+		);
+		assert!(visual.debug_bounds("model-speed-fallback-note").is_none());
+		surface.update(visual, |s, cx| {
+			s.composer_menu = Some("model");
+			s.composer_menu_content = Some("model");
+			cx.notify();
+		});
+		visual.update(crate::ui_frame::draw_current_frame);
+		let fast = visual.debug_bounds("tier-priority").unwrap();
+		visual.simulate_click(fast.center(), Default::default());
+		visual.update(crate::ui_frame::draw_current_frame);
+		assert!(
+			visual.debug_bounds("model-speed-fallback").is_none(),
+			"explicit Fast acknowledges the fallback even though its segment was already selected"
+		);
 
 		surface.update(visual, |s, cx| {
 			assert_eq!(s.service_tier.as_ref().unwrap().as_str(), "priority");
@@ -575,7 +568,7 @@ mod tests {
 		assert!(visual.debug_bounds("model-speed-priority").is_none());
 		surface.update(visual, |s, cx| {
 			assert_eq!(s.composer_service_tier().unwrap().as_str(), "ultrafast");
-			assert_eq!(s.composer_speed_label(), "Ultrafast");
+			assert_eq!(s.composer_speed_label(cx), "Ultrafast");
 			assert!(!s.fast, "the exact tier takes precedence over the legacy Fast flag");
 			assert!(s.composer_capability_error(cx).is_none());
 
@@ -585,15 +578,15 @@ mod tests {
 				models[0].supports_fast = false;
 			}
 
-			s.reconcile_model_options(cx);
-
-			assert_eq!(s.service_tier.as_ref().unwrap().as_str(), "default");
+			assert_eq!(s.service_tier.as_ref().unwrap().as_str(), "ultrafast");
+			assert_eq!(s.composer_speed_label(cx), "Standard");
+			assert!(s.composer_capability_error(cx).is_none());
 
 			let owner = s.composer_manager.clone().or_else(|| s.root_id()).unwrap();
 
 			assert_eq!(
 				s.draft_profiles.execution.choice(&owner).selected_service_tier().unwrap().as_str(),
-				"default"
+				"ultrafast"
 			);
 		});
 	}
@@ -668,8 +661,6 @@ mod tests {
 				} else {
 					None
 				};
-
-				s.reconcile_model_options(cx);
 
 				assert_eq!(s.service_tier.as_ref().unwrap().as_str(), "flex");
 
