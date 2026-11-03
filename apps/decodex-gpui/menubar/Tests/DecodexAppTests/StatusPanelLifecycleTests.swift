@@ -28,6 +28,49 @@ final class StatusPanelLifecycleTests: XCTestCase {
 		XCTAssertGreaterThan(available.size.height, empty.size.height, "Healthy accounts must retain their usage rows")
 	}
 
+	func testQuotaTrackKeepsItsWidthWhenPercentageDigitCountChanges() throws {
+		let dates: [Int64] = [1_793_700_000_000_000, 1_794_999_000_000_000]
+		let resetColumnWidth = ResetCardQuotaWindowView.resetColumnWidth(for: dates.map {
+			ResetCardQuotaWindow(durationMinutes: 300, observedAtUnixMicros: 1,
+				state: .current(usedPercent: 0, resetsAtUnixMicros: $0))
+		})
+		func filledWidth(used: UInt8, date: Int64) throws -> Int {
+			let quota = ResetCardQuotaWindow(
+				durationMinutes: 300,
+				observedAtUnixMicros: 1,
+				state: .current(usedPercent: used, resetsAtUnixMicros: date)
+			)
+			let renderer = ImageRenderer(content:
+				ResetCardQuotaWindowView(title: "5h", window: quota, resetDateColumnWidth: resetColumnWidth)
+					.frame(width: 256)
+					.environment(\.colorScheme, .dark)
+					.tint(.blue)
+			)
+			let bitmap = NSBitmapImageRep(cgImage: try XCTUnwrap(renderer.cgImage))
+			var longest = 0
+			var run = 0
+			for x in 0..<bitmap.pixelsWide {
+				let color = try XCTUnwrap(bitmap.colorAt(x: x, y: bitmap.pixelsHigh / 2)?.usingColorSpace(.deviceRGB))
+				if color.alphaComponent > 0.5,
+					color.blueComponent > color.redComponent + 0.2,
+					color.blueComponent > color.greenComponent + 0.05 {
+					run += 1
+					longest = max(longest, run)
+				} else {
+					run = 0
+				}
+			}
+			return longest
+		}
+		let full = try filledWidth(used: 0, date: dates[0])
+		let ninety = try filledWidth(used: 10, date: dates[1])
+		XCTAssertEqual(full, try filledWidth(used: 0, date: dates[1]),
+			"Different reset dates must not change the shared quota track width.")
+		XCTAssertGreaterThan(full, 80)
+		XCTAssertEqual(Double(ninety), Double(full) * 0.9, accuracy: 1.5,
+			"90% must fill the same track as 100%; fewer digits must not make the track longer.")
+	}
+
 	func testAccountDisclosuresRemainIndependent() throws {
 		let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
 		defer { try? FileManager.default.removeItem(at: root) }
@@ -246,35 +289,6 @@ final class StatusPanelLifecycleTests: XCTestCase {
 		Thread.sleep(forTimeInterval: 0.08)
 	}
 
-	func testReopeningPanelRefreshesExternallyChangedFastMode() async throws {
-		let client = MutablePanelFastModeClient()
-		let fastMode = FastModeStore(client: client)
-		let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-		defer { try? FileManager.default.removeItem(at: root) }
-		let store = ResetCardStore(
-			client: EmptyWidgetClient(),
-			pendingStore: ResetCardPendingAttemptStore(nativeRequest: NativeJournalFixture.request, journalURL: root.appendingPathComponent("pending.json"))
-		)
-		let controller = StatusPanelController(store: store, fastModeStore: fastMode)
-		defer { controller.invalidate() }
-		controller.togglePanel()
-		for _ in 0..<100 {
-			if fastMode.isEnabled { break }
-			try await Task.sleep(for: .milliseconds(5))
-		}
-		XCTAssertTrue(fastMode.isEnabled)
-		controller.togglePanel()
-		await client.changeExternally(to: false)
-		controller.togglePanel()
-		for _ in 0..<100 {
-			if !fastMode.isEnabled { break }
-			try await Task.sleep(for: .milliseconds(5))
-		}
-		XCTAssertFalse(fastMode.isEnabled, "Reopening must refresh the global Fast setting.")
-		let writes = await client.writes
-		XCTAssertEqual(writes, 0, "Showing the panel must only read the setting.")
-	}
-
 	func testWidgetOpensWithoutActivationAndSurvivesFocusChanges() async throws {
 		let application = NSApplication.shared
 		let foregroundPID = NSWorkspace.shared.frontmostApplication?.processIdentifier
@@ -288,7 +302,7 @@ final class StatusPanelLifecycleTests: XCTestCase {
 			client: EmptyWidgetClient(),
 			pendingStore: ResetCardPendingAttemptStore(nativeRequest: NativeJournalFixture.request, journalURL: root.appendingPathComponent("pending.json"))
 		)
-		let controller = StatusPanelController(store: store, fastModeStore: FastModeStore(client: MutablePanelFastModeClient()))
+		let controller = StatusPanelController(store: store)
 		defer { controller.invalidate() }
 		controller.togglePanel()
 		try await Task.sleep(for: .milliseconds(100))
@@ -320,17 +334,4 @@ private actor EmptyWidgetClient: ResetCardClient {
 	func inventory(for _: ResetCardAccountRecord) async throws -> ResetCardInventory { throw ResetCardClientError.invalidResponse }
 	func use(_: ResetCardUseAttempt) async throws -> ResetCardOperationState { throw ResetCardClientError.invalidResponse }
 	func status(for _: ResetCardUseAttempt) async throws -> ResetCardOperationState { throw ResetCardClientError.invalidResponse }
-}
-
-private actor MutablePanelFastModeClient: FastModeClient {
-	private var enabled = true
-	private(set) var writes = 0
-
-	func status() async throws -> Bool { enabled }
-	func setEnabled(_ enabled: Bool) async throws -> Bool {
-		writes += 1
-		self.enabled = enabled
-		return enabled
-	}
-	func changeExternally(to enabled: Bool) { self.enabled = enabled }
 }

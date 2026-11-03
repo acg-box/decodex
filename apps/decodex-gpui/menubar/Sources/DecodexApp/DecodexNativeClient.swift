@@ -111,14 +111,6 @@ enum DecodexNativeFailure: String, Decodable, Sendable {
 	case internalFailure = "internal_failure"
 	case resetCardRejected = "reset_card_rejected"
 	case resetCardPossiblyDispatched = "reset_card_possibly_dispatched"
-	case homeUnavailable = "home_unavailable"
-	case unsafeConfigPath = "unsafe_config_path"
-	case configUnavailable = "config_unavailable"
-	case configTooLarge = "config_too_large"
-	case configInvalid = "config_invalid"
-	case featuresNotTable = "features_not_table"
-	case fastModeNotBoolean = "fast_mode_not_boolean"
-	case writeFailed = "write_failed"
 
 	var clientError: ResetCardClientError {
 		switch self {
@@ -135,9 +127,6 @@ enum DecodexNativeFailure: String, Decodable, Sendable {
 			return .commandRejected
 		case .applicationAcceptanceUnknown, .resetCardPossiblyDispatched:
 			return .usePotentiallyDispatched
-		case .homeUnavailable, .unsafeConfigPath, .configUnavailable, .configTooLarge,
-			.configInvalid, .featuresNotTable, .fastModeNotBoolean, .writeFailed:
-			return .commandRejected
 		case .configurationMissing, .configurationMalformed, .configurationVersion,
 			.profileMissing, .unsafeHostPath, .serverIdentityUnavailable,
 			.remoteMutationUnsupported, .localTransportDisabled, .remoteTransportDisabled,

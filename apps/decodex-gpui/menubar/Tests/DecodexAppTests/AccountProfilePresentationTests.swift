@@ -1,5 +1,7 @@
 @testable import DecodexApp
 import XCTest
+import AppKit
+import SwiftUI
 
 final class AccountProfilePresentationTests: XCTestCase {
 	func testAggregateSumsTokensAndDailyUsageButTakesLongestMetrics() {
@@ -109,6 +111,29 @@ final class AccountProfilePresentationTests: XCTestCase {
 				),
 			])
 		)
+	}
+
+	@MainActor
+	func testFullActivityMetricsFitTwoLinesAtMenuBarWidth() throws {
+		let profile = AccountProfileSnapshot(
+			lifetimeTokens: 312_000_000_000,
+			peakDailyTokens: 5_100_000_000,
+			longestTaskSeconds: 64_920,
+			currentStreakDays: 22,
+			longestStreakDays: 68,
+			dailyUsage: []
+		)
+		let aggregate = try XCTUnwrap(AccountProfileAggregate.make([profile]))
+		for view in [
+			AnyView(AccountProfileSummaryView(profile: profile)),
+			AnyView(AccountProfileOverviewView(aggregate: aggregate)),
+		] {
+			let host = NSHostingView(rootView: view.frame(width: AccountPanelLayout.panelWidth - 2 * PanelSpacing.cardHorizontal))
+			host.layoutSubtreeIfNeeded()
+			XCTAssertEqual(host.fittingSize.width, 256, accuracy: 1)
+			XCTAssertGreaterThan(host.fittingSize.height, 20)
+			XCTAssertLessThanOrEqual(host.fittingSize.height, 32, "Four metrics must use at most two text lines, without shrinking the fonts.")
+		}
 	}
 
 	func testCompactCountAndDurationFormatting() {

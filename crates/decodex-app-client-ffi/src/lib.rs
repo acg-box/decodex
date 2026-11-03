@@ -27,8 +27,8 @@ use tokio::runtime::{Builder, Runtime};
 use decodex_protocol::{
 	AccountClient, AccountCommandResponse, AccountLoginClient, AccountLoginInstallMode,
 	AccountLoginMethod, AccountLoginStart, AccountLoginState, AccountLoginStatus, ClientFailure,
-	ClientProfile, CodexConfigError, CommandPayload, EntityId, EntityRevision, IdempotencyKey,
-	ResetCardClient, ResetCardConsumeResponse, ResetCardDescriptorDto, ServerId,
+	ClientProfile, CommandPayload, EntityId, EntityRevision, IdempotencyKey, ResetCardClient,
+	ResetCardConsumeResponse, ResetCardDescriptorDto, ServerId,
 };
 
 const ABI_VERSION: u32 = 1;
@@ -182,13 +182,6 @@ enum Request {
 		schema: String,
 		session_id: String,
 	},
-	FastModeStatus {
-		schema: String,
-	},
-	SetFastMode {
-		schema: String,
-		enabled: bool,
-	},
 }
 impl Request {
 	fn operation(&self) -> &'static str {
@@ -212,8 +205,6 @@ impl Request {
 			Self::StartAccountReauthentication { .. } => "start_account_reauthentication",
 			Self::PollAccountReauthentication { .. } => "poll_account_reauthentication",
 			Self::CancelAccountReauthentication { .. } => "cancel_account_reauthentication",
-			Self::FastModeStatus { .. } => "fast_mode_status",
-			Self::SetFastMode { .. } => "set_fast_mode",
 		}
 	}
 
@@ -237,9 +228,7 @@ impl Request {
 			| Self::StartAccountEnrollment { schema, .. }
 			| Self::StartAccountReauthentication { schema, .. }
 			| Self::PollAccountReauthentication { schema, .. }
-			| Self::CancelAccountReauthentication { schema, .. }
-			| Self::FastModeStatus { schema }
-			| Self::SetFastMode { schema, .. } => schema,
+			| Self::CancelAccountReauthentication { schema, .. } => schema,
 		}
 	}
 }
@@ -262,7 +251,6 @@ enum BridgeFailure {
 enum ResponseFailure {
 	Client(ClientFailure),
 	Bridge(BridgeFailure),
-	FastMode(CodexConfigError),
 }
 
 #[derive(Serialize)]
@@ -291,17 +279,11 @@ struct FailureResponse {
 enum RequestFailure {
 	Client(ClientFailure),
 	Bridge(BridgeFailure),
-	FastMode(CodexConfigError),
 }
 impl From<ClientFailure> for RequestFailure {
 	fn from(failure: ClientFailure) -> Self {
 		Self::Client(failure)
 	}
-}
-
-#[derive(Serialize)]
-struct FastModeData {
-	enabled: bool,
 }
 
 struct AccountReauthenticationInput {
@@ -705,26 +687,7 @@ fn request(
 			operation,
 			ResponseFailure::Bridge(failure),
 		),
-		Err(RequestFailure::FastMode(failure)) => write_failure(
-			out_response_json,
-			out_response_len,
-			operation,
-			ResponseFailure::FastMode(failure),
-		),
 	}
-}
-
-fn fast_mode_status() -> Result<Value, RequestFailure> {
-	let enabled = decodex_protocol::global_fast_mode_enabled().map_err(RequestFailure::FastMode)?;
-
-	to_value(FastModeData { enabled })
-}
-
-fn set_fast_mode(enabled: bool) -> Result<Value, RequestFailure> {
-	let enabled = decodex_protocol::set_global_fast_mode_enabled(enabled)
-		.map_err(RequestFailure::FastMode)?;
-
-	to_value(FastModeData { enabled })
 }
 
 // The typed protocol client has already checked the exact target, revision and receipt.
@@ -960,8 +923,6 @@ async fn execute_request(
 			poll_account_reauthentication(&native_client, profile, session_id).await,
 		Request::CancelAccountReauthentication { session_id, .. } =>
 			cancel_account_reauthentication(&native_client, profile, session_id).await,
-		Request::FastModeStatus { .. } => fast_mode_status(),
-		Request::SetFastMode { enabled, .. } => set_fast_mode(enabled),
 	}
 }
 
@@ -1259,12 +1220,11 @@ mod tests {
 	use serde_json::Value;
 
 	use crate::{
-		AuthorityResponse, BridgeFailure, FailureResponse, FastModeData, RESPONSE_SCHEMA, Request,
-		RequestFailure, ResponseFailure, SuccessResponse,
+		BridgeFailure, FailureResponse, RESPONSE_SCHEMA, Request, RequestFailure, ResponseFailure,
 	};
 	use decodex_protocol::{
-		AccountLoginMethod, ClientFailure, CodexConfigError, CommandError, EntityId,
-		EntityRevision, ResetCardConsumeResponse, ResetCardDescriptorDto, ResetCardOperationResult,
+		AccountLoginMethod, ClientFailure, CommandError, EntityId, EntityRevision,
+		ResetCardConsumeResponse, ResetCardDescriptorDto, ResetCardOperationResult,
 	};
 
 	const ACCOUNT_ID: &str = "018f0f9e-7b6e-4a31-8f4c-1d2e3f405162";
@@ -1543,34 +1503,6 @@ mod tests {
 	}
 
 	#[test]
-	fn fast_mode_requests_and_success_authority_are_exact() {
-		let request = serde_json::from_str::<Request>(&format!(
-			r#"{{"schema":"{RESPONSE_SCHEMA}","operation":"set_fast_mode","enabled":true}}"#
-		))
-		.expect("Fast mode request must decode");
-
-		assert_eq!(request.operation(), "set_fast_mode");
-
-		let response = SuccessResponse {
-			schema: RESPONSE_SCHEMA,
-			outcome: "success",
-			operation: "set_fast_mode",
-			authority: AuthorityResponse {
-				profile_name: "local".into(),
-				server_id: ACCOUNT_ID.into(),
-			},
-			data: serde_json::to_value(FastModeData { enabled: true })
-				.expect("Fast mode data must serialize"),
-		};
-		let value = serde_json::to_value(response).expect("success response must serialize");
-
-		assert_eq!(value["authority"]["profile_name"], "local");
-		assert_eq!(value["authority"]["server_id"], ACCOUNT_ID);
-		assert_eq!(value["data"]["enabled"], true);
-		assert_eq!(value.as_object().expect("response must be an object").len(), 5);
-	}
-
-	#[test]
 	fn response_failure_is_one_closed_string() {
 		let response = FailureResponse {
 			schema: RESPONSE_SCHEMA,
@@ -1582,20 +1514,6 @@ mod tests {
 
 		assert_eq!(value["failure"], "protocol_timeout");
 		assert_eq!(value["outcome"], "failure");
-	}
-
-	#[test]
-	fn fast_mode_failure_is_one_closed_string() {
-		let response = FailureResponse {
-			schema: RESPONSE_SCHEMA,
-			outcome: "failure",
-			operation: "fast_mode_status",
-			failure: ResponseFailure::FastMode(CodexConfigError::ConfigInvalid),
-		};
-		let value = serde_json::to_value(response).expect("response must serialize");
-
-		assert_eq!(value["failure"], "config_invalid");
-		assert_eq!(value.as_object().expect("response must be an object").len(), 4);
 	}
 
 	#[test]

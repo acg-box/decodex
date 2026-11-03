@@ -3629,13 +3629,6 @@ fn accounts_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 				.children(account_login_progress(shell))
 				.child(
 					gpui::div()
-						.flex()
-						.items_center()
-						.justify_end()
-						.child(ui_theme::settings_description("Remaining quota")),
-				)
-				.child(
-					gpui::div()
 						.id("account-list")
 						.flex_initial()
 						.min_h_0()

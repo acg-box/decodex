@@ -88,7 +88,6 @@ final class AccountPanelPresentationTests: XCTestCase {
 			AccountControlError.client(.nativeClientUnavailable).errorDescription,
 			"Restart Decodex."
 		)
-		XCTAssertEqual(FastModeClientError.unavailable.errorDescription, "Restart Decodex.")
 	}
 
 	func testRouteCapabilityDoesNotDependOnConversationCallbackReadiness() {
@@ -606,7 +605,7 @@ final class AccountPanelPresentationTests: XCTestCase {
 		defer { try? FileManager.default.removeItem(at: directory) }
 		let store = ResetCardStore(client: FullAccountPanelClient(), pendingStore: ResetCardPendingAttemptStore(nativeRequest: NativeJournalFixture.request, journalURL: directory.appendingPathComponent("pending.json")), startupRetryDelays: [])
 		await store.refresh()
-		let controller = StatusPanelController(store: store, fastModeStore: FastModeStore(client: StaticFastModeClient()))
+		let controller = StatusPanelController(store: store)
 		defer { controller.invalidate() }
 		controller.togglePanel()
 		XCTAssertTrue(controller.panel.isKeyWindow, "Opening must make the first account click actionable")
@@ -794,7 +793,6 @@ final class AccountPanelPresentationTests: XCTestCase {
 		let hostingView = NSHostingView(
 			rootView: AccountPanelView(
 				store: store,
-				fastModeStore: FastModeStore(client: StaticFastModeClient()),
 				layoutVisibleFrameOverride: NSRect(
 					x: 0,
 					y: 0,
@@ -874,7 +872,6 @@ final class AccountPanelPresentationTests: XCTestCase {
 		let hostingView = NSHostingView(
 			rootView: AccountPanelView(
 				store: store,
-				fastModeStore: FastModeStore(client: StaticFastModeClient()),
 				layoutVisibleFrameOverride: NSRect(
 					x: 0,
 					y: 0,
@@ -967,16 +964,6 @@ private func descendants<T: NSView>(
 		matches.append(contentsOf: descendants(of: T.self, in: child))
 	}
 	return matches
-}
-
-private struct StaticFastModeClient: FastModeClient {
-	func status() async throws -> Bool {
-		false
-	}
-
-	func setEnabled(_ enabled: Bool) async throws -> Bool {
-		enabled
-	}
 }
 
 private func pendingAttempt(_ index: Int) throws -> ResetCardUseAttempt {

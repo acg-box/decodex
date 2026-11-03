@@ -20,7 +20,8 @@ enum PanelFont {
 	static let usageLabel = text(9.8, weight: .regular)
 	static let usageValue = text(10.4, weight: .medium)
 	static let resetCardAction = text(9.4, weight: .medium)
-	static let quotaText = text(10.4, weight: .regular)
+	static let quotaTextSize: CGFloat = 10.4
+	static let quotaText = text(quotaTextSize, weight: .regular)
 	static let tertiary = text(9.5, weight: .regular)
 
 	static let iconButton = text(11, weight: .medium)

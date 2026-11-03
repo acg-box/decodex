@@ -177,9 +177,9 @@ private struct AccountProfileMetric: Identifiable {
 	private static func streak(current: UInt32?, longest: UInt32?) -> String? {
 		switch (current, longest) {
 		case (.some(let current), .some(let longest)):
-			return "now \(current)d · best \(longest)d"
+			return "\(current)d · best \(longest)d"
 		case (.some(let current), nil):
-			return "now \(current)d"
+			return "\(current)d"
 		case (nil, .some(let longest)):
 			return "best \(longest)d"
 		case (nil, nil):
@@ -194,29 +194,40 @@ private struct AccountProfileMetricsView: View {
 
 	var body: some View {
 		if metrics.isEmpty == false {
-			LazyVGrid(
-				columns: [
-					GridItem(.flexible(), alignment: .leading),
-					GridItem(.flexible(), alignment: .leading),
-				],
-				alignment: .leading,
-				spacing: PanelSpacing.compact
-			) {
-				ForEach(metrics) { metric in
-					VStack(alignment: .leading, spacing: PanelSpacing.micro) {
-						Text(metric.label)
-							.font(PanelFont.usageLabel)
-							.foregroundStyle(PanelPalette.secondaryText(colorScheme))
-
-						Text(metric.value)
-							.font(PanelFont.usageValue)
-							.foregroundStyle(PanelPalette.primaryText(colorScheme).opacity(0.9))
-							.monospacedDigit()
+			Grid(horizontalSpacing: PanelSpacing.micro, verticalSpacing: PanelSpacing.compact) {
+				ForEach(Array(stride(from: 0, to: metrics.count, by: 2)), id: \.self) { index in
+					GridRow(alignment: .firstTextBaseline) {
+						label(metrics[index])
+						value(metrics[index])
+						if index + 1 < metrics.count {
+							Spacer(minLength: PanelSpacing.section)
+								.gridCellUnsizedAxes(.vertical)
+							label(metrics[index + 1])
+							value(metrics[index + 1])
+						}
 					}
 				}
 			}
+			.frame(maxWidth: .infinity, alignment: .leading)
 			.lineLimit(1)
 		}
+	}
+
+	private func label(_ metric: AccountProfileMetric) -> some View {
+		Text(metric.label)
+			.font(PanelFont.usageLabel)
+			.foregroundStyle(PanelPalette.secondaryText(colorScheme))
+			.fixedSize()
+			.gridColumnAlignment(.leading)
+	}
+
+	private func value(_ metric: AccountProfileMetric) -> some View {
+		Text(metric.value)
+			.font(PanelFont.usageValue)
+			.foregroundStyle(PanelPalette.primaryText(colorScheme).opacity(0.9))
+			.monospacedDigit()
+			.fixedSize()
+			.gridColumnAlignment(.trailing)
 	}
 }
 

@@ -20,6 +20,7 @@ struct AccountRowRenderState: Equatable {
 	let dragging: Bool
 	let colorScheme: ColorScheme
 	let material: PanelCardMaterial
+	let quotaResetColumnWidth: CGFloat
 }
 
 /// AppKit owns row placement; Core Animation moves and reveals the rendered rows.

@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct ConversationEstimateRow: Decodable, Identifiable, Equatable, Sendable {
@@ -28,6 +29,10 @@ struct ConversationEstimatesRead: Decodable, Equatable, Sendable {
 	let available: Bool
 	let rows: [ConversationEstimateRow]
 	let more_available: Bool
+
+	var pricedRows: [ConversationEstimateRow] {
+		available ? rows.filter { $0.amount != nil } : []
+	}
 }
 
 struct ConversationEstimatesView: View {
@@ -36,60 +41,80 @@ struct ConversationEstimatesView: View {
 	let showsEmail: Bool
 	@State private var opened = false
 	@State private var result: ConversationEstimatesRead?
-	@State private var loading = false
-	@State private var failed = false
 	@State private var revision = 0
+	@State private var resultAuthority: ResetCardAuthority?
+	@Environment(\.colorScheme) private var colorScheme
+	@Environment(\.accessibilityReduceMotion) private var reduceMotion
 	private let client = DecodexNativeClient()
 
 	var body: some View {
-		VStack(alignment: .leading, spacing: PanelSpacing.related) {
-			Button {
-				opened.toggle()
-				if opened && result == nil { revision += 1 }
-			} label: {
-				Label("Conversation estimates", systemImage: "dollarsign.circle")
-			}
-			.buttonStyle(.plain)
-			if opened {
-				if loading { BrandLoading() }
-				if let result, result.available {
-					ForEach(result.rows) { row in
-						if let amount = row.amount {
-							VStack(alignment: .leading, spacing: 2) {
-								HStack {
+		Group {
+			if resultAuthority == authority, let result, result.pricedRows.isEmpty == false {
+				VStack(alignment: .leading, spacing: PanelSpacing.related) {
+					Button {
+						withAnimation(reduceMotion ? nil : PanelMotion.controlState) {
+							opened.toggle()
+						}
+					} label: {
+						HStack(spacing: PanelSpacing.compact) {
+							Label("Conversation estimates", systemImage: "dollarsign.circle")
+							Spacer(minLength: 0)
+							Image(systemName: "chevron.right")
+								.rotationEffect(.degrees(opened ? 90 : 0))
+						}
+						.font(PanelFont.accountDetail)
+						.foregroundStyle(PanelPalette.secondaryText(colorScheme))
+						.contentShape(Rectangle())
+					}
+					.buttonStyle(.plain)
+					.accessibilityValue(opened ? "Expanded" : "Collapsed")
+					if opened {
+						ForEach(result.pricedRows) { row in
+							VStack(alignment: .leading, spacing: PanelSpacing.micro) {
+								HStack(alignment: .firstTextBaseline, spacing: PanelSpacing.related) {
 									Text(row.title).lineLimit(1)
-									Spacer()
-									Text(amount).monospacedDigit()
+									Spacer(minLength: 0)
+									Text(row.amount ?? "").monospacedDigit().fixedSize()
 								}
+								.font(PanelFont.usageValue)
+								.foregroundStyle(PanelPalette.primaryText(colorScheme))
 								if let id = row.account_id {
-									Text(accountLabel(id)).font(.caption).foregroundStyle(.secondary)
+									Text(accountLabel(id))
+										.font(PanelFont.tertiary)
+										.foregroundStyle(PanelPalette.secondaryText(colorScheme))
 								}
 							}
 							.help(row.title)
 						}
+						Text(result.more_available ? "Latest 8 conversations · estimates may lag" : "Conversation estimates may lag")
+							.font(PanelFont.tertiary)
+							.foregroundStyle(PanelPalette.secondaryText(colorScheme))
 					}
-					Text(result.rows.allSatisfy { $0.amount == nil } ? "No conversation costs reported." :
-						(result.more_available ? "Latest 8 conversations · not an account total" : "Reported conversations · not an account total"))
-						.font(.caption).foregroundStyle(.secondary)
-					Text("Provider estimates may lag activity.").font(.caption).foregroundStyle(.secondary)
-				} else if failed || result != nil {
-					Text("Estimates unavailable. Connect an Agent and refresh.").font(.caption)
 				}
-				Button("Refresh estimates") { revision += 1 }.disabled(loading)
 			}
 		}
+		.onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { notification in
+			if notification.object is TransparentStatusPanel { revision += 1 }
+		}
 		.task(id: "\(authority?.profileName ?? "")-\(authority?.serverID ?? "")-\(revision)") {
-			result = nil; failed = false
-			guard opened else { return }
-			loading = true
-			defer { loading = false }
+			guard revision > 0, let authority else {
+				result = nil
+				resultAuthority = nil
+				return
+			}
 			do {
-				let response = try await client.perform(DecodexNativeRequest(operation: "get_conversation_estimates"), authority: authority, as: ConversationEstimatesRead.self)
+				let response = try await client.perform(
+					DecodexNativeRequest(operation: "get_conversation_estimates"),
+					authority: authority,
+					as: ConversationEstimatesRead.self
+				)
 				guard !Task.isCancelled else { return }
 				result = response.data
+				resultAuthority = authority
 			} catch {
 				guard !Task.isCancelled else { return }
-				failed = true
+				result = nil
+				resultAuthority = nil
 			}
 		}
 	}
