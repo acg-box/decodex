@@ -105,11 +105,11 @@ impl AgentSurface {
 		self.context_settings.epoch = self.context_settings.epoch.wrapping_add(1);
 
 		let epoch = self.context_settings.epoch;
-		self.context_settings.feedback = Feedback::loading(if change.is_some() {
-			"Saving context…"
+		self.context_settings.feedback = if change.is_some() {
+			Feedback::loading("Saving context…")
 		} else {
-			"Reading native defaults…"
-		});
+			Feedback::default()
+		};
 
 		let key =
 			IdempotencyKey::new(agent_surface::unique_command()).expect("bounded command identity");
@@ -193,23 +193,39 @@ impl AgentSurface {
 	}
 
 	pub(crate) fn read_native_defaults(&mut self, cx: &mut Context<Self>) {
-		if let Some(work) = self.selected.clone()
-			&& self.context_settings.work.as_deref() != Some(work.as_str())
-		{
+		// Settings calls this on entry. Rendering never starts a read.
+		if let Some(work) = self.selected.clone() {
 			self.update_context_settings(&work, None, cx);
 		}
 	}
 
 	fn context_settings_controls(&self, work: &str, cx: &mut Context<Self>) -> AnyElement {
 		let busy = self.context_settings.task.is_some();
+		let retry = (!busy
+			&& matches!(
+				self.context_settings.feedback.tone,
+				ui_feedback::Tone::Warning | ui_feedback::Tone::Error
+			))
+		.then(|| {
+			let owner = work.to_owned();
+			self.workspace_button(
+				"context-settings-retry".into(),
+				"Retry".into(),
+				move |s, cx| s.update_context_settings(&owner, None, cx),
+				cx,
+			)
+		});
 		let mut panel =
-			ui_theme::settings_rows().child(self.context_settings_header(work, cx)).child(
+			ui_theme::settings_rows().child(ui_theme::settings_row().child(ui_theme::settings_description(
+				"Shared with Codex for new conversations. Project or managed settings may override these defaults.",
+			).flex_1().min_w_0())).child(
 				ui_feedback::notice(
 					"context-settings-feedback",
 					work.to_owned(),
 					Some(self.context_settings.feedback.clone()),
 				)
 				.inline()
+				.action(retry)
 				.loading_delay(std::time::Duration::from_millis(350)),
 			);
 
@@ -227,35 +243,6 @@ impl AgentSurface {
 		}
 
 		panel.into_any_element()
-	}
-
-	fn context_settings_header(&self, work: &str, cx: &mut Context<Self>) -> Div {
-		let busy = self.context_settings.task.is_some();
-		let owner = work.to_owned();
-		let key_owner = owner.clone();
-		let refresh = if busy {
-			crate::ui_theme::settings_button_base("context-settings-refresh", "Refresh")
-				.cursor_default()
-				.opacity(0.5)
-		} else {
-			crate::ui_theme::settings_button("context-settings-refresh", "Refresh")
-		};
-		crate::ui_theme::settings_row()
-			.child(crate::ui_theme::settings_description(
-				"Shared with Codex for new conversations. Project or managed settings may override these defaults.",
-			).flex_1().min_w_0())
-			.child(refresh
-				.flex_none()
-				.tab_index(if busy { -1 } else { 0 })
-				.on_click(cx.listener(move |s, _, _, cx| {
-					s.update_context_settings(&owner, None, cx);
-				}))
-				.on_key_down(cx.listener(move |s, event: &KeyDownEvent, _, cx| {
-					if !event.is_held && ["enter", "space"].contains(&event.keystroke.key.as_str()) {
-						s.update_context_settings(&key_owner, None, cx);
-						cx.stop_propagation();
-					}
-				})))
 	}
 
 	fn context_preference_row(
@@ -434,13 +421,13 @@ fn feedback(
 			};
 		}
 
-		return Feedback::warning("Save unconfirmed. Refresh before retrying.");
+		return Feedback::warning("Could not confirm the saved value.");
 	}
 
 	if matches!(state, AgentContextSettingsResult::Available { .. }) {
 		Feedback::default()
 	} else {
-		Feedback::warning("Could not read native defaults. Try Refresh.")
+		Feedback::warning("Could not read native defaults.")
 	}
 }
 

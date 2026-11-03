@@ -81,15 +81,15 @@ fn run_setting(cx: &mut TestAppContext, feature: AgentContextFeature, selector: 
 	});
 
 	assert!(visual.debug_bounds("automatic-prompt-suggestions").is_some());
-	let button = visual.debug_bounds("context-settings-refresh").unwrap();
-
-	visual.simulate_click(button.center(), Default::default());
+	assert!(visual.debug_bounds("context-settings-refresh").is_none());
+	let settings = view.read_with(visual, |v, _| v.1.clone());
+	settings.update(visual, |s, cx| s.refresh(cx));
 	surface.update(visual, |s, _| s.generation += 1);
 	visual.run_until_parked();
 	visual.update(crate::ui_frame::draw_current_frame);
 
 	for _ in 0..3 {
-		surface.update(visual, |s, cx| s.read_native_defaults(cx));
+		visual.update(crate::ui_frame::draw_current_frame);
 	}
 
 	assert!(visual.debug_bounds("context-override-async").is_none());
@@ -116,7 +116,7 @@ fn run_setting(cx: &mut TestAppContext, feature: AgentContextFeature, selector: 
 
 	surface.read_with(visual, |s, _| {
 		assert!(s.context_settings.task.is_none());
-		assert!(s.context_settings.feedback.contains("unconfirmed"));
+		assert!(s.context_settings.feedback.contains("Could not confirm"));
 		assert!(
 			matches!(&s.context_settings.state, Some(AgentContextSettingsResult::Available {preferences, ..})
 			if preferences[0].effective && preferences[0].preference == Some(false))
@@ -156,11 +156,8 @@ fn native_defaults_disclosure_tracks_servers_without_dispatching(cx: &mut TestAp
 	visual.update(crate::ui_frame::draw_current_frame);
 	assert!(visual.debug_bounds("context-choice-mcp-xcode").is_none());
 	assert!(visual.debug_bounds("context-override-async").is_none());
-	let refresh = visual.debug_bounds("context-settings-refresh").unwrap();
-	assert!(
-		refresh.right() < context_settings::px(760.),
-		"the shared note must wrap before Refresh: {refresh:?}"
-	);
+	assert!(visual.debug_bounds("context-settings-refresh").is_none());
+	assert!(visual.debug_bounds("context-settings-retry").is_none());
 	let toggle = visual.debug_bounds("context-mcp-catalogs").unwrap();
 	visual.simulate_click(toggle.center(), Default::default());
 	settle_disclosure(visual);
