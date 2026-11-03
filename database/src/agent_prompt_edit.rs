@@ -221,11 +221,16 @@ pub(crate) fn receipt(
 	.transpose()
 }
 
-fn owned(
+/// Explicit history reviews may select any exact thread on this process.
+/// Agent tools retain the narrower manager ownership boundary.
+pub(crate) fn owned(
 	c: &Connection,
 	a: &AgentPromptEditAttempt,
 	generation: Option<&str>,
 ) -> Result<bool, StoreError> {
+	if let Some(generation) = generation {
+		return agent_process::hosts_thread(c, &a.work, &a.thread, generation);
+	}
 	Ok(agent_process::owns_work(c, &a.work, generation)?
 		&& c.query_row(
 			"SELECT EXISTS(SELECT 1 FROM agent_work_items WHERE id=?1 AND codex_thread_id=?2)",

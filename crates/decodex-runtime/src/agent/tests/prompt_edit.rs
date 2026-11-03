@@ -171,6 +171,17 @@ fn fork_prefix(request: &Value, visible: &[Value]) -> Vec<Value> {
 
 #[tokio::test]
 async fn prompt_review_reconnects_a_saved_independent_source_without_sending_input() {
+	for parent in [None, Some("root")] {
+		review_saved_source(parent, false).await;
+	}
+}
+
+#[tokio::test]
+async fn side_chat_of_a_hosted_manager_preserves_the_source_and_recovers_without_another_fork() {
+	review_saved_source(Some("root"), true).await;
+}
+
+async fn review_saved_source(parent: Option<&str>, create_side_chat: bool) {
 	use crate::{agent::AgentConfig, agent_model_settings::tests::OwnedReviewer};
 	use decodex_database::AgentDispatchState;
 
@@ -180,6 +191,7 @@ async fn prompt_review_reconnects_a_saved_independent_source_without_sending_inp
 	let host = owner.store.get_agent_work_item("root".into()).await.unwrap();
 	let mut saved = host.clone();
 	saved.id = "saved".into();
+	saved.parent_goal_id = parent.map(str::to_owned);
 	saved.codex_thread_id = None;
 	saved.active_turn_id = None;
 	saved.dispatch_state = AgentDispatchState::Idle;
@@ -200,6 +212,7 @@ async fn prompt_review_reconnects_a_saved_independent_source_without_sending_inp
 	)
 	.unwrap();
 	agent.bind_native_generation(owner.key.generation.clone());
+	let source = owner.store.get_agent_work_item("saved".into()).await.unwrap();
 	for review in ["cold-review", "connected-review"] {
 		assert!(
 			agent
@@ -229,23 +242,71 @@ async fn prompt_review_reconnects_a_saved_independent_source_without_sending_inp
 			.unwrap()
 			.is_none()
 	);
+	assert_eq!(
+		owner
+			.store
+			.agent_thread_is_owned("saved".into(), "opaque thread/1".into(), generation.clone())
+			.await
+			.unwrap(),
+		parent.is_none(),
+		"an explicit review must not grant tools authority over another manager"
+	);
 	assert!(
 		owner
 			.store
-			.agent_thread_is_owned("saved".into(), "opaque thread/1".into(), generation)
+			.agent_thread_is_restorable("saved".into(), "opaque thread/1".into(), generation)
 			.await
 			.unwrap()
 	);
+	if create_side_chat {
+		assert_saved_side_chat_recovery(&mut agent).await;
+	}
+	assert_eq!(owner.store.get_agent_work_item("saved".into()).await.unwrap(), source);
 	assert_eq!(owner.store.get_agent_work_item("root".into()).await.unwrap(), host);
 	assert!(owner.store.list_pending_agent_events(100).await.unwrap().is_empty());
 	let requests = iter::from_fn(|| reads.try_recv().ok()).collect::<Vec<_>>();
-	assert_eq!(requests.iter().filter(|r| r["method"] == "thread/resume").count(), 1);
+	assert_eq!(
+		requests.iter().filter(|r| r["method"] == "thread/resume").count(),
+		usize::from(parent.is_none())
+	);
+	assert_eq!(
+		requests.iter().filter(|r| r["method"] == "thread/fork").count(),
+		usize::from(create_side_chat)
+	);
 	assert!(requests.iter().all(|r| {
-		["thread/read", "thread/resume", "thread/turns/list", "thread/items/list"]
-			.contains(&r["method"].as_str().unwrap())
+		[
+			"thread/read",
+			"thread/resume",
+			"thread/turns/list",
+			"thread/items/list",
+			"thread/fork",
+			"thread/list",
+		]
+		.contains(&r["method"].as_str().unwrap())
 	}));
 	server.abort();
 	let _ = server.await;
+}
+
+async fn assert_saved_side_chat_recovery(agent: &mut AgentCoordinator) {
+	let review = agent
+		.prepare_prompt_edit(
+			"saved",
+			"opaque thread/1",
+			"selected",
+			"selected-input",
+			"side-chat-review",
+		)
+		.await
+		.unwrap()
+		.unwrap();
+	let token = review.evidence().review_token.clone();
+	let receipt = agent
+		.fork_prompt_edit(review, "side-chat".into(), AgentForkBoundary::AttachedAfterTurn)
+		.await
+		.unwrap();
+	assert_eq!(receipt.state, "forked");
+	assert_eq!(agent.recover_prompt_fork("saved", &token).await.unwrap(), Some(receipt));
 }
 
 #[tokio::test]
