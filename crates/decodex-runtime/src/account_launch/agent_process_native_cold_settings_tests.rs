@@ -443,6 +443,8 @@ async fn serve(
 	metadata: Arc<std::sync::atomic::AtomicUsize>,
 	expected_recap: Option<&str>,
 ) {
+	let mut title_requests = 0;
+
 	while let Ok((socket, _)) = listener.accept().await {
 		let mut socket = tokio::io::BufReader::new(socket);
 		let mut first = String::new();
@@ -494,7 +496,14 @@ async fn serve(
 				"cached priority must not override Standard"
 			);
 
-			let serial = requests.fetch_add(1, Ordering::AcqRel);
+			let title = input.pointer("/text/format/schema/properties/title").is_some();
+			// Background naming is a separate inference request, not a user-input replay.
+			let serial = if title {
+				title_requests += 1;
+				usize::MAX - title_requests
+			} else {
+				requests.fetch_add(1, Ordering::AcqRel)
+			};
 			let held = if env::var_os("DECODEX_TEST_ACTIVE_SERVICE_SHUTDOWN").is_some() {
 				Some("active")
 			} else if env::var_os("DECODEX_TEST_NATIVE_SAMPLE").is_some()
@@ -512,7 +521,9 @@ async fn serve(
 			}
 
 			let id = format!("cold-fixture-{serial}");
-			let answer = if input["text"]["format"]["type"] == "json_schema" {
+			let answer = if title {
+				r#"{"title":"Account handover"}"#
+			} else if input["text"]["format"]["type"] == "json_schema" {
 				if let Some(expected) = expected_recap {
 					assert!(
 						input.to_string().contains(expected),
