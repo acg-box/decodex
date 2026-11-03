@@ -599,9 +599,7 @@ impl AgentSurface {
 			.scopes
 			.iter()
 			.filter_map(|scope| {
-				scope
-					.caption_bounds(layout.zoom, &text_system)
-					.map(|bounds| (scope.id.clone(), bounds))
+				scope.caption_bounds(layout, &text_system).map(|bounds| (scope.id.clone(), bounds))
 			})
 			.collect();
 
@@ -831,10 +829,13 @@ impl AgentSurface {
 	}
 
 	fn relation_wire_presence(&self, now: std::time::Instant) -> f32 {
-		self.work_board.view.wires.as_ref().map_or(
+		let selected = self.work_board.view.wires.as_ref().map_or(
 			if self.work_board.view.presentation == layout::Presentation::Links { 1. } else { 0. },
 			|wires| wires.sample(now),
-		)
+		);
+
+		// Both presentations retain readable ownership in the distant point view.
+		selected.max(1. - self.relation_layout_at(now).card_presence())
 	}
 
 	fn animate_relation_change(&mut self, before: &Graph, old_pan: (f32, f32)) {
@@ -1657,7 +1658,12 @@ impl AgentSurface {
 					.top(gpui::px(top * scale + pan.1))
 					.w(gpui::px((right - left) * scale))
 					.h(gpui::px((bottom - top) * scale))
-					.child(scope.outline(scale, selected, title_gap)),
+					.child(scope.outline(
+						scale,
+						selected,
+						title_gap,
+						graph.layout.card_presence().powi(2),
+					)),
 			);
 		}
 
@@ -2211,10 +2217,16 @@ impl AgentSurface {
 		interaction: &card::Interaction,
 	) -> AnyElement {
 		if node.row.is_some() && layout.overview() {
+			let point_selected = self.work_board.view.picked_agent.as_deref()
+				== Some(node.key.as_str())
+				|| (self.work_board.view.picked_agent.is_none()
+					&& self.work_board.view.picked_project.is_none()
+					&& self.relation_node_current(node));
+
 			card::overview(
 				&node.key,
 				node.color,
-				selected,
+				point_selected,
 				layout,
 				(!layout.points()).then(|| {
 					self.relation_node_content(
@@ -3575,18 +3587,18 @@ mod fit_tests {
 			for mode in layout::Mode::ALL {
 				s.work_board.view.layout_mode = mode;
 
-				let baseline = s.relation_graph_with_layout(now, card::Layout::new(0.25));
+				let baseline = s.relation_graph_with_layout(now, card::Layout::new(0.42));
 
 				for (zoom, presence) in [
 					(0.05, 0.),
-					(0.15, 0.),
-					(0.2, 0.),
-					(0.2, 0.2),
-					(0.2, 0.5),
-					(0.2, 0.8),
-					(0.2, 1.),
-					(0.24, 1.),
-					(0.2, 0.3),
+					(0.30, 0.),
+					(0.35, 0.),
+					(0.35, 0.2),
+					(0.35, 0.5),
+					(0.35, 0.8),
+					(0.35, 1.),
+					(0.40, 1.),
+					(0.35, 0.3),
 				] {
 					let graph = s.relation_graph_with_layout(
 						now,
@@ -3643,19 +3655,19 @@ mod fit_tests {
 
 			surface.update(cx, |s, _| {
 				s.work_board.view.layout_mode = mode;
-				s.work_board.view.zoom = Some(0.25);
+				s.work_board.view.zoom = Some(0.42);
 				s.work_board.view.pan = (40., 70.);
 
 				let main = s.selected.clone();
 				let center = (230., 180.);
 				let now = std::time::Instant::now();
 
-				s.zoom_relations_at(0.25, 0.15, Some(center), now);
+				s.zoom_relations_at(0.42, 0.25, Some(center), now);
 
 				let pan = s.work_board.view.pan;
 
-				assert!((pan.0 - (center.0 - (center.0 - 40.) * 0.15 / 0.25)).abs() < 0.01);
-				assert!((pan.1 - (center.1 - (center.1 - 70.) * 0.15 / 0.25)).abs() < 0.01);
+				assert!((pan.0 - (center.0 - (center.0 - 40.) * 0.25 / 0.42)).abs() < 0.01);
+				assert!((pan.1 - (center.1 - (center.1 - 70.) * 0.25 / 0.42)).abs() < 0.01);
 
 				let mut previous = 1.;
 
@@ -3674,7 +3686,7 @@ mod fit_tests {
 
 				let reverse = now + std::time::Duration::from_millis(80);
 
-				s.zoom_relations_at(0.15, 0.25, Some(center), reverse);
+				s.zoom_relations_at(0.25, 0.42, Some(center), reverse);
 
 				assert_eq!(s.relation_layout_at(reverse).card_presence(), previous);
 				assert!((s.work_board.view.pan.0 - 40.).abs() < 0.01);
@@ -5045,7 +5057,11 @@ mod fit_tests {
 				{
 					let bounds = node.screen_rect(scale, s.work_board.view.pan);
 
-					assert!(bounds.x >= FRAME_INSET - 1. && bounds.y >= FRAME_INSET - 1.);
+					assert!(
+						bounds.x >= FRAME_INSET - 1. && bounds.y >= FRAME_INSET - 1.,
+						"viewport={viewport:?} zoom={scale} node={} bounds={bounds:?}",
+						node.key
+					);
 					assert!(bounds.x + bounds.width <= viewport.0 - FRAME_INSET + 1.);
 					assert!(bounds.y + bounds.height <= viewport.1 - FRAME_INSET + 1.);
 				}

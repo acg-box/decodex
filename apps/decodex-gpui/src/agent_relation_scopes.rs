@@ -66,7 +66,15 @@ impl Scope {
 	}
 
 	/// Routing uses the same caption in world coordinates, independent of viewport cropping.
-	pub(super) fn caption_bounds(&self, scale: f32, text: &WindowTextSystem) -> Option<[f32; 4]> {
+	pub(super) fn caption_bounds(
+		&self,
+		layout: card::Layout,
+		text: &WindowTextSystem,
+	) -> Option<[f32; 4]> {
+		if layout.points() {
+			return None;
+		}
+		let scale = layout.zoom;
 		let rect = self.caption_rect(scale, (0., 0.), self.caption_width(text))?;
 
 		Some([
@@ -92,12 +100,16 @@ impl Scope {
 		scale: f32,
 		selected: bool,
 		title_gap: Option<(f32, f32)>,
+		presence: f32,
 	) -> AnyElement {
 		let id = format!("project-scope-{}", self.id);
 
 		gpui::canvas(
 			|_, _, _| (),
 			move |bounds, _, window, cx| {
+				if presence <= 0.001 {
+					return;
+				}
 				let active = ui_motion::value(id.clone(), u8::from(selected) as f32, window, cx);
 				let density = window.scale_factor();
 				let snap = |value: f32| (value * density).round() / density;
@@ -132,11 +144,13 @@ impl Scope {
 				if let Ok(path) = rail.build() {
 					window.paint_path(
 						path.clone(),
-						ui_theme::rgb(ui_theme::TEXT_MUTED).opacity(0.44),
+						ui_theme::rgb(ui_theme::TEXT_MUTED).opacity(0.44 * presence),
 					);
 					if active > 0.001 {
-						window
-							.paint_path(path, ui_theme::rgb(ui_theme::BLUE).opacity(active * 0.45));
+						window.paint_path(
+							path,
+							ui_theme::rgb(ui_theme::BLUE).opacity(active * 0.45 * presence),
+						);
 					}
 				}
 
@@ -152,8 +166,10 @@ impl Scope {
 					corners.arc_to(radii, gpui::px(0.), false, true, point(right, top + radius));
 					corners.line_to(point(right, top + cap));
 					if let Ok(path) = corners.build() {
-						window
-							.paint_path(path, ui_theme::rgb(ui_theme::BLUE).opacity(active * 0.5));
+						window.paint_path(
+							path,
+							ui_theme::rgb(ui_theme::BLUE).opacity(active * 0.5 * presence),
+						);
 					}
 				}
 			},
@@ -180,6 +196,9 @@ impl AgentSurface {
 		&self,
 		graph: &'a Graph,
 	) -> Vec<(&'a Scope, card::Rect)> {
+		if graph.layout.points() {
+			return Vec::new();
+		}
 		let text = WindowTextSystem::new(self.work_board.text_system.clone());
 		let (width, height) = self.work_board.view.viewport;
 
@@ -251,6 +270,7 @@ impl AgentSurface {
 					.top(gpui::px(rect.y))
 					.w(gpui::px(rect.width))
 					.h(gpui::px(rect.height))
+					.opacity(graph.layout.card_presence().powi(2))
 					.child(
 						card::Interaction::keyboard_action(button, &action)
 							.on_click(move |event, window, cx| action(event, window, cx))
@@ -412,6 +432,35 @@ mod tests {
 			assert_eq!(graph.scopes[0].bounds, stable);
 			assert_eq!((graph.nodes[0].x, graph.nodes[0].y), (0., 0.));
 			assert_eq!(graph.nodes[0].size, (600., 600.));
+		});
+	}
+
+	#[gpui::test]
+	fn point_overview_keeps_topology_without_captions_or_hidden_label_obstacles(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let surface = cx.new(fixture);
+		surface.update(cx, |s, _| {
+			let text = WindowTextSystem::new(s.work_board.text_system.clone());
+			for mode in layout::Mode::ALL {
+				for presentation in [layout::Presentation::Links, layout::Presentation::Together] {
+					s.work_board.view.layout_mode = mode;
+					s.work_board.view.presentation = presentation;
+					for zoom in [0.05, 0.15, 0.25, 0.30] {
+						s.work_board.view.zoom = Some(zoom);
+						let graph = s.relation_graph();
+						assert!(graph.layout.points());
+						assert!(s.relation_scope_labels(&graph).is_empty());
+						assert!(
+							graph
+								.scopes
+								.iter()
+								.all(|scope| scope.caption_bounds(graph.layout, &text).is_none())
+						);
+						assert_eq!(s.relation_wire_presence(std::time::Instant::now()), 1.);
+					}
+				}
+			}
 		});
 	}
 

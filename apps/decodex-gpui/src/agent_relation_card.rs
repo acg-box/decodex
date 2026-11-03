@@ -35,8 +35,8 @@ pub(super) const OVERVIEW_HEIGHT: f32 = 112.;
 
 const TEXT_SIZE: f32 = 10.5;
 const MIN_TEXT_SIZE: f32 = 10.;
-const POINT_ZOOM: f32 = 0.2;
-const MORPH_MARGIN: f32 = 0.04;
+const POINT_ZOOM: f32 = 0.30;
+pub(super) const AVATAR_ZOOM: f32 = 0.40;
 const SUMMARY_ZOOM: f32 = 0.45;
 const LABEL_ZOOM: f32 = 0.30;
 
@@ -51,7 +51,7 @@ pub(super) struct Layout {
 }
 impl Layout {
 	pub(super) fn new(zoom: f32) -> Self {
-		let t = ((zoom - POINT_ZOOM + MORPH_MARGIN) / (2. * MORPH_MARGIN)).clamp(0., 1.);
+		let t = ((zoom - POINT_ZOOM) / (AVATAR_ZOOM - POINT_ZOOM)).clamp(0., 1.);
 
 		Self {
 			width: WIDTH * zoom,
@@ -83,6 +83,11 @@ impl Layout {
 
 	pub(super) fn card_presence(self) -> f32 {
 		self.presence
+	}
+
+	pub(super) fn content_opacity(self) -> f32 {
+		// Match the retiring dot's weight; the midpoint must not look washed out.
+		(2. * self.presence).min(1.)
 	}
 
 	pub(super) fn on_display(mut self, scale: f32) -> Self {
@@ -213,7 +218,7 @@ impl Layout {
 	}
 
 	pub(super) fn identity_bounds(self, actions: f32, title_lines: usize) -> Option<[f32; 4]> {
-		self.labels().then(|| {
+		(self.labels() && !self.points()).then(|| {
 			let (left, top) = self.header_origin(actions);
 			let top = top
 				+ (self.spacing(PORTRAIT_HEIGHT)
@@ -498,7 +503,7 @@ pub(super) fn overview(
 					.absolute()
 					.left(gpui::px(-layout.spacing(inset.0)))
 					.top(gpui::px(-layout.spacing(inset.1)))
-					.opacity(presence)
+					.opacity(layout.content_opacity())
 					.child(body),
 			)
 		})

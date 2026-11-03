@@ -70,7 +70,7 @@ impl AgentSurface {
 
 		let now = Instant::now();
 
-		for zoom in [1., 0.6, 0.3, MIN_ZOOM] {
+		for zoom in [1., 0.6, card::AVATAR_ZOOM, MIN_ZOOM] {
 			let layout = Layout::new(zoom.min(max_zoom));
 			let graph = self.relation_graph_with_layout(now, layout.with_presence(1., false));
 			let Some([min_x, min_y, max_x, max_y]) = frame_bounds(&graph, target) else { return };
