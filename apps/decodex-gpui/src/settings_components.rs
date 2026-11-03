@@ -1,6 +1,4 @@
 //! Optional components use their native lifecycle, separate from application updates.
-use std::time::Duration;
-
 use gpui::{
 	AnyElement, Context, Div, KeyDownEvent, Role, SharedString,
 	prelude::{
@@ -71,7 +69,7 @@ impl Components {
 	}
 
 	#[cfg(not(test))]
-	pub(super) fn inspect_optional(&mut self) {
+	pub(super) fn refresh_optional(&mut self) {
 		self.research.inspect();
 
 		if matches!(
@@ -79,7 +77,12 @@ impl Components {
 			component_runtime::PreparationState::Unchecked
 				| component_runtime::PreparationState::Ready
 		) {
-			self.optional.inspect();
+			// Keep the last readback visible during the next entry check.
+			if self.optional.snapshot().inspected {
+				self.optional.start(PluginAction::Refresh);
+			} else {
+				self.optional.inspect();
+			}
 			self.poll();
 		}
 	}
@@ -102,7 +105,7 @@ impl SettingsSurface {
 				self.components.optional.invalidate();
 
 				if self.category == super::SettingsCategory::Components {
-					self.components.inspect_optional();
+					self.components.refresh_optional();
 				}
 			}
 
@@ -463,12 +466,7 @@ impl SettingsSurface {
 
 	fn egm_settings(&self, cx: &mut Context<Self>) -> Div {
 		let state = &self.components.plugin;
-		let mut controls = gpui::div().flex().items_center().gap_2().child(self.component_button(
-			"components-refresh-egm",
-			"Refresh",
-			Action::Plugin(PluginAction::Refresh),
-			cx,
-		));
+		let mut controls = gpui::div().flex().items_center().gap_2();
 
 		if state.inspected {
 			let (label, action) = match &state.installed {
@@ -496,24 +494,30 @@ impl SettingsSurface {
 
 		let feedback =
 			state.error.as_ref().map(|error| Feedback::error(error.clone())).or_else(|| {
-				state.busy.map(|action| {
-					Feedback::loading(match action {
-						PluginAction::Refresh => "Reading native plugin state…",
+				state.busy.and_then(|action| {
+					Some(Feedback::loading(match action {
+						PluginAction::Refresh => return None,
 						PluginAction::Install => "Installing EGM…",
 						PluginAction::Update => "Updating EGM…",
 						PluginAction::Remove => "Uninstalling EGM…",
-					})
+					}))
 				})
 			});
+		let retry = (state.error.is_some() && state.busy.is_none()).then(|| {
+			self.component_button(
+				"components-retry-egm",
+				"Retry",
+				Action::Plugin(PluginAction::Refresh),
+				cx,
+			)
+		});
 
 		gpui::div().debug_selector(|| "components-egm".into()).w_full().flex().flex_col().child(ui_theme::settings_row()
 			.child(self.component_label(1, "components-egm-details", "Elephant–Goldfish (EGM)", state.installed.as_ref().map(|plugin| plugin.version.as_str()), cx))
 			.child(controls))
 			.child(self.component_body(1,"components-egm-body",ui_theme::settings_description("Google's complete design and review plugin. Optional; uses your Codex subscription. Start a new conversation after installing or updating.")))
 			.child(ui_feedback::notice("components-egm-feedback", "egm", feedback).inline()
-				.when(state.busy == Some(PluginAction::Refresh), |notice| {
-					notice.loading_delay(Duration::from_millis(500))
-				}))
+				.action(retry))
 	}
 }
 
@@ -554,7 +558,8 @@ mod tests {
 
 		visual.update(crate::ui_frame::draw_current_frame);
 
-		assert!(visual.debug_bounds("components-refresh-egm").is_some());
+		assert!(visual.debug_bounds("components-refresh-egm").is_none());
+		assert!(visual.debug_bounds("components-retry-egm").is_none());
 		let cold_egm = visual.debug_bounds("components-egm").unwrap();
 		let cold_research = visual.debug_bounds("components-pro-research").unwrap();
 		assert!(
@@ -618,7 +623,7 @@ mod tests {
 			gpui::px(0.)
 		);
 
-		thread::sleep(std::time::Duration::from_millis(350));
+		thread::sleep(std::time::Duration::from_millis(600));
 
 		visual.update(crate::ui_frame::draw_current_frame);
 
@@ -686,6 +691,7 @@ mod tests {
 			let mut s = SettingsSurface::new(DesktopSettingsController::production(), cx);
 
 			s.category = crate::settings_surface::SettingsCategory::Components;
+			s.components.plugin.inspected = true;
 
 			s
 		});
@@ -703,7 +709,7 @@ mod tests {
 		assert_eq!(egm.bottom(), research.top(), "all components use the same list spacing");
 
 		let toggle = visual.debug_bounds("components-egm-details").unwrap();
-		let action = visual.debug_bounds("components-refresh-egm").unwrap();
+		let action = visual.debug_bounds("components-install-egm").unwrap();
 
 		assert!(
 			toggle.top() <= action.center().y && toggle.bottom() >= action.center().y,
