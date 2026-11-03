@@ -75,7 +75,7 @@ pub(crate) async fn enter(browser: &mut Chrome, root: &Path, project: &Project) 
 		}
 	}
 
-	let name = format!("Decodex · {}", saved.as_ref().map_or(&project.name, |b| &b.project.name));
+	let name = format!("Decodex: {}", saved.as_ref().map_or(&project.name, |b| &b.project.name));
 
 	open_projects(browser).await?;
 
