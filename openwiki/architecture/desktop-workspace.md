@@ -111,9 +111,6 @@ sources:
   - id: openwiki-source-8fe6f1557e5d45d88b34bd0a
     resource: repo://scripts/macos/generate_workspace_symbols.swift
 generated: { by: "codex", at: "2026-11-02T07:10:57.562Z" }
-verified:
-  - by: openwiki/0.7.2
-    at: 2026-11-02T07:10:57.562Z
 ---
 
 # Desktop workspace and native glass

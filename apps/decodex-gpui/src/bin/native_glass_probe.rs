@@ -484,7 +484,7 @@ mod probe {
 									input: cx.new(|cx| {
 										ComposerInput::message(
 											0,
-											"Type here · Enter records locally",
+											"Type here (Enter records locally)",
 											"Probe message",
 											cx,
 										)

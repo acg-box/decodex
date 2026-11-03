@@ -374,7 +374,7 @@ impl Panel {
 			.px(gpui::px(10.))
 			.bg(ui_theme::rgba(0x30303af0))
 			.text_size(gpui::px(11.5))
-			.child("New updates · Back to latest")
+			.child("New updates. Back to latest")
 			.on_click(cx.listener(|s, _, _, cx| s.latest(cx)))
 			.on_key_down(cx.listener(|s, e: &KeyDownEvent, _, cx| {
 				if !e.is_held && ["enter", "space"].contains(&e.keystroke.key.as_str()) {

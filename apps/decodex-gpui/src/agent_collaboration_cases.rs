@@ -50,7 +50,7 @@ pub(super) fn exchanges(
 					.unwrap_or_else(|| "No reply body recorded.".into()),
 			));
 
-			case.summary = "A target snapshot is available · reply linkage unknown".into();
+			case.summary = "A target snapshot is available; reply linkage unknown".into();
 
 			continue;
 		}
@@ -144,8 +144,8 @@ fn managed_state(case: &mut Exchange, record: &AgentExchangeDto, work: &Row, oth
 			case.title = "Continue the same worker".into();
 			case.request = Some(record.excerpt.clone());
 			case.summary = match record.target_dispatch_state {
-				Some(AgentDispatchStateDto::Idle) => "Worker idle · instruction still not sent",
-				_ => "Busy · instruction not sent or queued",
+				Some(AgentDispatchStateDto::Idle) => "Worker idle; instruction still not sent",
+				_ => "Busy. Instruction was not sent or queued.",
 			}
 			.into();
 
@@ -169,7 +169,7 @@ fn managed_state(case: &mut Exchange, record: &AgentExchangeDto, work: &Row, oth
 			}
 
 			if record.delivered_turn_id.is_some() {
-				case.summary = "Instruction delivered · result not yet linked".into();
+				case.summary = "Instruction delivered; result not yet linked".into();
 
 				case.steps
 					.push(("Delivered", "The provider acknowledged this instruction.".into()));
@@ -179,7 +179,7 @@ fn managed_state(case: &mut Exchange, record: &AgentExchangeDto, work: &Row, oth
 					case.state = "Delivered";
 					case.color = TEXT_MUTED;
 					case.earlier = true;
-					case.summary = "Earlier instruction · result linkage unavailable".into();
+					case.summary = "Earlier instruction; result linkage unavailable".into();
 				}
 			} else {
 				case.state = "Unconfirmed";
@@ -201,7 +201,7 @@ fn managed_result(case: &mut Exchange, record: &AgentExchangeDto) {
 	case.state = if completed { "To review" } else { "Check result" };
 	case.color = if completed { SUCCESS } else { WARNING };
 	case.summary = if completed {
-		"Result received · assessment not recorded"
+		"Result received; assessment not recorded"
 	} else {
 		"The worker did not report successful completion"
 	}
@@ -235,7 +235,7 @@ fn managed_result(case: &mut Exchange, record: &AgentExchangeDto) {
 		Some(AgentExchangeAssessment::FollowUp) => {
 			case.state = "Changes asked";
 			case.color = WARNING;
-			case.summary = "Follow-up requested · new result pending".into();
+			case.summary = "Follow-up requested; new result pending".into();
 		},
 		Some(AgentExchangeAssessment::Wait) => {
 			case.state = "Waiting";
@@ -316,7 +316,7 @@ fn managed(records: &[AgentExchangeDto], rows: &[Row]) -> Vec<Exchange> {
 			case.state = "Earlier";
 			case.color = TEXT_MUTED;
 			case.earlier = true;
-			case.summary = "Earlier conversation binding · source retained".into();
+			case.summary = "Earlier conversation binding; source retained".into();
 		}
 		if record.truncated {
 			case.steps.push((
@@ -370,7 +370,7 @@ fn append_questions(
 			steps.push(("Answer", answer.text.clone()));
 			steps.push((
 				"Reply source",
-				format!("Event {} · {}", answer.event_id, answer.source_event_id),
+				format!("Event: {}; source event: {}", answer.event_id, answer.source_event_id),
 			));
 			steps.push((
 				"Delivery",
@@ -407,13 +407,13 @@ fn append_questions(
 			to: None,
 			title: question.question.title.clone(),
 			summary: if question.pending {
-				"Native question · your response is needed"
+				"Native question; your response is needed"
 			} else if answered {
-				"Reply delivered · resolution is not inferred"
+				"Reply delivered; resolution is not inferred"
 			} else if question.answer.is_some() {
-				"Reply retained · delivery is unconfirmed"
+				"Reply retained; delivery is unconfirmed"
 			} else {
-				"No longer pending · original source retained"
+				"No longer pending; original source retained"
 			}
 			.into(),
 			state: if question.pending {
@@ -445,7 +445,7 @@ fn append_questions(
 
 fn peer_state(peer: &AgentPeerExchangeDto) -> (&'static str, &'static str, u32) {
 	if !peer.current {
-		("Earlier", "Earlier instruction · no current assessment borrowed", TEXT_MUTED)
+		("Earlier", "Earlier instruction; no current assessment borrowed", TEXT_MUTED)
 	} else if let Some(outcome) = &peer.outcome {
 		match outcome.as_str() {
 			"used" => ("Used", "The Work owner used this contribution", SUCCESS),
@@ -457,9 +457,9 @@ fn peer_state(peer: &AgentPeerExchangeDto) -> (&'static str, &'static str, u32) 
 	} else {
 		match peer.state.as_deref() {
 			Some("returned") =>
-				("To review", "Contribution returned · owner assessment pending", INFO),
-			Some("accepted") => ("Accepted", "Recipient accepted · result pending", SUCCESS),
-			_ => ("Requested", "Independent contribution · acceptance unconfirmed", WARNING),
+				("To review", "Contribution returned; owner assessment pending", INFO),
+			Some("accepted") => ("Accepted", "Recipient accepted; result pending", SUCCESS),
+			_ => ("Requested", "Independent contribution; acceptance unconfirmed", WARNING),
 		}
 	}
 }
@@ -487,7 +487,10 @@ fn peers(records: &[AgentExchangeDto], rows: &[Row]) -> Vec<Exchange> {
 		let (from, to) = (other.unwrap_or(owner).clone(), Some(owner.clone()));
 		let mut steps = vec![
 			("Work", peer.work_id.clone()),
-			("Request", format!("{} · instruction {}", peer.request_id, peer.instruction_id)),
+			(
+				"Request",
+				format!("Request: {}; instruction: {}", peer.request_id, peer.instruction_id),
+			),
 		];
 
 		if !instruction {
@@ -520,7 +523,7 @@ fn peers(records: &[AgentExchangeDto], rows: &[Row]) -> Vec<Exchange> {
 				id,
 				from,
 				to,
-				title: format!("Contribution · {}", peer.work_id),
+				title: format!("Contribution: {}", peer.work_id),
 				summary: summary.into(),
 				state,
 				color,
@@ -547,15 +550,14 @@ fn peers(records: &[AgentExchangeDto], rows: &[Row]) -> Vec<Exchange> {
 fn native_state(edge: &Edge) -> (&'static str, u32, &'static str) {
 	match edge.kind {
 		Kind::Dependency if edge.label == "Prerequisite met" =>
-			("Ready", TEXT_MUTED, "Prerequisite resolved · downstream execution not confirmed"),
+			("Ready", TEXT_MUTED, "Prerequisite resolved; downstream execution not confirmed"),
 		Kind::Dependency => ("Waiting", WARNING, "An explicit work dependency is outstanding"),
 		Kind::Wait if edge.in_progress => ("Waiting", WARNING, "Waiting for the named agent"),
-		Kind::Returned => ("Reported", INFO, "A native event was recorded · acceptance unknown"),
-		Kind::Context =>
-			("Shared", TEXT_MUTED, "Context made available · reading is not confirmed"),
+		Kind::Returned => ("Reported", INFO, "A native event was recorded; acceptance unknown"),
+		Kind::Context => ("Shared", TEXT_MUTED, "Context made available; reading is not confirmed"),
 		_ if edge.label.contains("failed") || edge.label.contains("interrupted") =>
 			("Unconfirmed", WARNING, "Check the source before continuing"),
 		_ if edge.in_progress => ("Working", INFO, "The native call is in progress"),
-		_ => ("Recorded", TEXT_MUTED, "Native route recorded · outcome not confirmed"),
+		_ => ("Recorded", TEXT_MUTED, "Native route recorded; outcome not confirmed"),
 	}
 }

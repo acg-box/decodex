@@ -183,15 +183,14 @@ fn run_confirmation_with_provider(
 	for _ in 0..300 {
 		visual.run_until_parked();
 		visual.executor().advance_clock(Duration::from_millis(50));
+		if finished.try_recv().is_ok() {
+			break;
+		}
 		if direct {
 			visual.update(|window, cx| {
 				window.draw(cx).clear(cx);
 			});
 			assert!(visual.debug_bounds("prompt-review-close").is_none());
-		}
-
-		if finished.try_recv().is_ok() {
-			break;
 		}
 
 		thread::sleep(Duration::from_millis(5));

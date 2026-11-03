@@ -17,6 +17,14 @@ When working in this repository, read the OpenWiki quickstart first, then follow
   user explicitly authorizes that change.
 - Build and test commands must not override this policy with a numbered toolchain.
 
+## UI copy
+
+- Use explicit labels for values and complete sentences for explanations.
+- Put counts, status qualifiers, and keyboard shortcuts in parentheses when they
+  qualify a label. Use separate rows for independent details when needed.
+- Do not use centered dots as decorative text separators. Preserve user and
+  upstream text, mathematical operators, and actual list markers.
+
 <!-- OPENWIKI:START -->
 
 ## OpenWiki

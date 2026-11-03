@@ -4540,17 +4540,17 @@ fn completed_agent_history(
 		if let Some(retry) = pending_retry.filter(|retry| retry.event_id == event_id) {
 			return (
 				"capacity_retry_pending",
-				format!("Model busy · retry {}/3 scheduled automatically.", retry.attempt),
+				format!("Model busy. Retry {}/3 scheduled automatically.", retry.attempt),
 			);
 		}
 
 		let notice = if value.pointer("/capacityRetry/cancelled") == Some(&serde_json::json!(true))
 		{
-			"Model busy · automatic retry cancelled."
+			"Model busy. Automatic retry cancelled."
 		} else if value.pointer("/capacityRetry/exhausted") == Some(&serde_json::json!(true)) {
 			"Model still busy after 3 retries. Try again later or choose another model."
 		} else {
-			"Model was busy · automatic retry requested."
+			"Model was busy. Automatic retry requested."
 		};
 
 		return ("execution_notice", notice.into());
@@ -6944,7 +6944,7 @@ mod tests {
 
 		assert_eq!(entries[0].kind, "capacity_retry_pending");
 		assert_eq!(entries[0].id, event.id);
-		assert_eq!(entries[0].text, "Model busy · retry 1/3 scheduled automatically.");
+		assert_eq!(entries[0].text, "Model busy. Retry 1/3 scheduled automatically.");
 		assert!(!entries[0].text.contains("Execution failed"));
 
 		let (kind, text) = super::completed_agent_history(
@@ -6956,7 +6956,7 @@ mod tests {
 		);
 
 		assert_eq!(kind, "execution_notice");
-		assert_eq!(text, "Model was busy · automatic retry requested.");
+		assert_eq!(text, "Model was busy. Automatic retry requested.");
 
 		store.cancel_agent_capacity_retry("chosen".into(), event.id).await.unwrap();
 

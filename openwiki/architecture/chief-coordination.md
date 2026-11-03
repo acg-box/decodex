@@ -109,9 +109,6 @@ sources:
   - id: openwiki-source-c0eb738b42368debe7ef7545
     resource: repo://database/src/works/commands.rs
 generated: { by: "codex", at: "2026-10-31T14:39:55.131Z" }
-verified:
-  - by: openwiki/0.7.2
-    at: 2026-11-02T07:10:57.562Z
 ---
 
 # Project, Agent and Work coordination

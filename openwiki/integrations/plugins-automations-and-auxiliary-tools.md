@@ -13,9 +13,6 @@ sources:
   - id: openwiki-source-e9d609e612bb7e44111ec4b1
     resource: repo://crates/decodex-runtime/src/agent_integrations.rs
 generated: { by: "codex", at: "2026-10-31T17:07:05.970Z" }
-verified:
-  - by: openwiki/0.7.2
-    at: 2026-10-31T17:07:05.970Z
 ---
 
 

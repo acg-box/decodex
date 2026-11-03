@@ -832,7 +832,7 @@ impl AgentSurface {
 				.py_2()
 				.child(self.composer_control(
 					"voice-return",
-					format!("Voice · {label}"),
+					format!("Voice: {label}"),
 					"Return to voice conversation",
 					|s, cx| {
 						if let Some(work) = s.voice_owner().map(str::to_owned) {
@@ -871,7 +871,7 @@ impl AgentSurface {
 					.w_full()
 					.min_w_0()
 					.text_color(crate::ui_theme::rgb(TEXT_MUTED))
-					.aria_label("Connecting voice · Microphone off")
+					.aria_label("Connecting voice (microphone off)")
 					.child(ui_loading::loading(""))
 					.into_any_element(),
 			);
@@ -1018,7 +1018,7 @@ impl AgentSurface {
 				.child(self.composer_control(
 					"voice-end",
 					if voice.connected { "End" } else { "Cancel" }.into(),
-					"End voice call · Work continues",
+					"End voice call and continue work",
 					|s, cx| {
 						let _ = s.retire_voice_media();
 

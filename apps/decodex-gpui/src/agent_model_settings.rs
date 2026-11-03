@@ -452,8 +452,8 @@ impl AgentSurface {
 /// Display native specialty only in choices; compact current-model controls keep their name.
 pub(super) fn model_choice_label(model: &AgentModelDto) -> String {
 	match model.specialty.as_deref() {
-		Some("cyber") => format!("{} · Cybersecurity", model.name),
-		Some(specialty) => format!("{} · {specialty}", model.name),
+		Some("cyber") => format!("{} (Cybersecurity)", model.name),
+		Some(specialty) => format!("{} ({specialty})", model.name),
 		None => model.name.clone(),
 	}
 }

@@ -95,9 +95,6 @@ sources:
   - id: openwiki-source-8c78df4b382026886ac50894
     resource: repo://database/src/usage_evidence.rs
 generated: { by: "codex", at: "2026-11-02T04:34:00.067Z" }
-verified:
-  - by: openwiki/0.7.2
-    at: 2026-11-02T07:10:57.562Z
 ---
 
 # Model selection and settings ownership

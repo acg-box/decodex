@@ -435,14 +435,14 @@ impl AgentSurface {
 					.child(self.composer_control(
 						"dictation-finish",
 						"".into(),
-						"Finish dictation · Keep text in the draft",
+						"Finish dictation and keep the draft",
 						|s, cx| s.finish_dictation(cx),
 						cx,
 					))
 					.child(self.composer_control(
 						"send",
 						"".into(),
-						"Finish dictation and send · Enter",
+						"Finish dictation and send (Enter)",
 						|s, cx| s.submit(cx),
 						cx,
 					))

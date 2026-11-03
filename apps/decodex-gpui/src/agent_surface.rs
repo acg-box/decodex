@@ -631,7 +631,7 @@ impl AgentSurface {
 							surface.timeline.latest_follow_work = Some(id.clone());
 						}
 
-						if surface.feedback.message == "Message saved · Waiting for agent…" {
+						if surface.feedback.message == "Message saved. Waiting for agent…" {
 							let previous = surface
 								.history
 								.as_ref()
@@ -1216,7 +1216,7 @@ impl AgentSurface {
 		if !self.command_connection_ready() || (followup && !self.waiting_followup_ready()) {
 			if followup && queued.runtime_source.is_some() {
 				self.submission.waiting = Some(queued);
-				self.feedback = Feedback::neutral("Waiting for connection · Nothing sent yet");
+				self.feedback = Feedback::neutral("Waiting for connection. Nothing sent yet");
 				cx.notify();
 				return;
 			}
@@ -1379,7 +1379,7 @@ impl AgentSurface {
 		match result {
 			Ok(AgentCommandResponse::Accepted { .. }) => {
 				surface.feedback = if draft.is_some() {
-					Feedback::neutral("Message saved · Waiting for agent…")
+					Feedback::neutral("Message saved. Waiting for agent…")
 				} else {
 					Feedback::default()
 				};
@@ -1806,7 +1806,7 @@ impl AgentSurface {
 				}) {
 					self.interrupting = None;
 				}
-				if self.feedback.message == "Message saved · Waiting for agent…"
+				if self.feedback.message == "Message saved. Waiting for agent…"
 					&& snapshot.work_items.iter().any(|work| {
 						Some(&work.id) == self.selected.as_ref()
 							&& (work.dispatch_state != AgentDispatchStateDto::Idle
@@ -1996,7 +1996,7 @@ impl AgentSurface {
 		}
 		if !self.sending
 			&& !self.feedback.is_empty()
-			&& self.feedback.message != "Message saved · Waiting for agent…"
+			&& self.feedback.message != "Message saved. Waiting for agent…"
 		{
 			return Some((
 				if self.uncertain { "Check delivery" } else { "Message status" },
@@ -2021,7 +2021,7 @@ impl AgentSurface {
 
 				return Some((
 					"Work needs attention",
-					format!("{} · {}.", pending.work_item_id, pending.event_kind.replace('_', " ")),
+					format!("{}: {}", pending.work_item_id, pending.event_kind.replace('_', " ")),
 					false,
 				));
 			},
@@ -2341,7 +2341,9 @@ impl AgentSurface {
 			.flex_col()
 			.gap(gpui::px(MESSAGE_GAP))
 			.when(
-				self.prompt_editor_visible(&work.id) && !self.blocked_fork_review_visible(),
+				self.prompt_editor_visible(&work.id)
+					&& !self.blocked_fork_review_visible()
+					&& !self.side_chat_status_visible(),
 				|panel| panel.child(self.prompt_edit_panel(&work.id, cx)),
 			)
 			.children(self.native_timeline_panel(work, cx))
@@ -2356,7 +2358,7 @@ impl AgentSurface {
 		let active = self.response_in_progress(work)
 			|| (self.native_agents.selected.is_none()
 				&& self.selected.as_ref() == Some(&work.id)
-				&& (self.sending || self.feedback.message == "Message saved · Waiting for agent…"));
+				&& (self.sending || self.feedback.message == "Message saved. Waiting for agent…"));
 
 		if self.native_agents.selected.is_none() && !self.native_history_active(work) {
 			panel = panel.children(self.send_previews(&work.id));
@@ -2609,7 +2611,7 @@ impl AgentSurface {
 			)
 			.child(self.workspace_action(
 				"agent-default-account".into(),
-				format!("Account · {account}"),
+				format!("Account: {account}"),
 				|s, cx| s.cycle_account(cx),
 				cx,
 			))
@@ -3072,7 +3074,7 @@ fn auth_recovery_entry(entry: &AgentHistoryEntryDto) -> Div {
 		.flex_col()
 		.gap_1()
 		.debug_selector(move || format!("auth-recovery-receipt-{id}"))
-		.child(muted("Provider sign-in · Recorded event"))
+		.child(muted("Recorded provider sign-in event"))
 		.child(entry.text.clone())
 }
 
@@ -3134,9 +3136,9 @@ fn history_entry_presented(
 			.w_full()
 			.py_2()
 			.child(muted(if entry.kind == "partial_plan" {
-				"Proposed plan · Unfinished"
+				"Unfinished plan"
 			} else {
-				"Assistant · Unfinished"
+				"Unfinished response"
 			}))
 			.child(markdown::render(&entry.text, &format!("partial-{}", entry.id)));
 	}
@@ -3667,7 +3669,8 @@ mod tests {
 
 			assert!((notice.center().x - canvas.center().x).abs() <= gpui::px(1.));
 			assert!((notice.center().y - canvas.center().y).abs() <= gpui::px(1.));
-			assert!((action.center().x - notice.center().x).abs() <= gpui::px(1.));
+			assert!(action.left() >= notice.left() && action.right() <= notice.right());
+			assert!((action.center().y - notice.center().y).abs() <= gpui::px(1.));
 			assert!(notice.left() >= canvas.left() && notice.right() <= canvas.right());
 			assert!(notice.size.width <= gpui::px(440.));
 		}
@@ -3884,8 +3887,7 @@ mod tests {
 				work.active_turn_id = None;
 			}
 
-			s.feedback =
-				crate::ui_feedback::Feedback::neutral("Message saved · Waiting for agent…");
+			s.feedback = crate::ui_feedback::Feedback::neutral("Message saved. Waiting for agent…");
 
 			s.apply_result(Ok(AgentSnapshotResult::Available(snapshot)));
 

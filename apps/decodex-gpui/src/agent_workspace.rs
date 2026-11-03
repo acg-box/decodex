@@ -1426,6 +1426,7 @@ impl AgentSurface {
 						self.panel_controls(super::panel_controls::Panel::Conversation, cx),
 					)),
 			)
+			.children(self.side_chat_status(cx))
 			.children(self.item_context_navigation(cx))
 			.children(self.conversation_find_bar(cx))
 	}
@@ -1958,7 +1959,7 @@ impl AgentSurface {
 					.px_2()
 					.text_size(gpui::px(11.0))
 					.text_color(crate::ui_theme::rgb(WARNING))
-					.child("Dependency cycle · Review relations"),
+					.child("Review dependency cycle"),
 			);
 		}
 
@@ -2158,7 +2159,7 @@ impl AgentSurface {
 		let state = dock::progress_state(self.snapshot.as_ref().expect("graph snapshot"), work);
 		let status = self.graph_node_caption(work);
 		let color = state.color;
-		let tip = format!("{} · {}\n{}", self.work_label(work), status, state.reason);
+		let tip = format!("{} ({})\n{}", self.work_label(work), status, state.reason);
 		let element = gpui::div()
 			.id(SharedString::from(format!("graph-node-{id}")))
 			.role(Role::Button)
@@ -2271,6 +2272,14 @@ impl AgentSurface {
 		}
 
 		match page {
+			"side-chat-error" => {
+				let root = std::env::var_os("DECODEX_VISUAL_PROMPT_ROOT")
+					.expect("isolated prompt fixture root");
+				let profile =
+					decodex_protocol::ClientProfile::load(std::path::Path::new(&root), None)
+						.expect("fixture profile");
+				self.visual_side_chat_failure(profile, cx);
+			},
 			"side-chat-tabs" => self.visual_side_chat_tabs("agent", cx),
 			"side-chat-titles" => {
 				self.visual_side_chat_tabs("agent", cx);
@@ -2338,26 +2347,7 @@ impl AgentSurface {
 				self.workspace.graph_scope = Some("agent".into());
 				self.workspace.sidebar_width = 280.0;
 			},
-			"markdown" => {
-				self.workspace.graph_visible = false;
-
-				if let Some((_, AgentHistoryResult::Available { entries, usage, .. })) =
-					&mut self.history
-				{
-					*usage = Some(decodex_protocol::AgentUsageDto {
-						input_tokens: 24_860,
-						output_tokens: 1_820,
-						context_tokens: 26_700,
-						context_window: Some(128_000),
-					});
-
-					entries.clear();
-
-					for (i,(kind,text)) in [("user","请整理检查结果，并说明下一步安排。"),("assistant","## 检查完成\n\n两位下属已提交报告，**现有会话保持可用**。\n\n- 登录流程：保留原会话\n- 启动流程：继续验证性能\n\n| 工作 | 结果 | 下一步 |\n|---|---|---|\n| 登录检查 | 已验收 | 合并检查结果 |\n| 启动检查 | 待验证 | 补充冷启动数据 |\n\n### 验证命令\n```rust\nlet status = review.result();\nassert!(status.is_verified());\n```\n\n查看 [源码](/Users/x/code/acg-box/decodex/apps/decodex-gpui/src/agent_surface.rs:1)，再确认 `review` 的结果。")].into_iter().enumerate() {
-                        entries.push(decodex_protocol::AgentHistoryEntryDto{native_source:None,receipt: None, turn_id: None, weather:Vec::new(), activity: None,usage: (kind == "assistant").then_some(decodex_protocol::AgentTurnUsageDto {details:None,input_tokens:24_860,output_tokens:1_820}),duration_ms: (kind == "assistant").then_some(18_400),id:i as i64+1,kind:kind.into(),text:text.into(),created_at_micros:1_789_480_440_000_000});
-                    }
-				}
-			},
+			"markdown" => self.visual_markdown_page(),
 			"mermaid" => self.visual_mermaid_page(cx),
 			#[cfg(feature = "visual-capture")]
 			"mermaid-scroll" => self.visual_mermaid_scroll_page(cx),
@@ -2369,6 +2359,25 @@ impl AgentSurface {
 		}
 
 		cx.notify();
+	}
+
+	fn visual_markdown_page(&mut self) {
+		self.workspace.graph_visible = false;
+
+		if let Some((_, AgentHistoryResult::Available { entries, usage, .. })) = &mut self.history {
+			*usage = Some(decodex_protocol::AgentUsageDto {
+				input_tokens: 24_860,
+				output_tokens: 1_820,
+				context_tokens: 26_700,
+				context_window: Some(128_000),
+			});
+
+			entries.clear();
+
+			for (i,(kind,text)) in [("user","请整理检查结果，并说明下一步安排。"),("assistant","## 检查完成\n\n两位下属已提交报告，**现有会话保持可用**。\n\n- 登录流程：保留原会话\n- 启动流程：继续验证性能\n\n| 工作 | 结果 | 下一步 |\n|---|---|---|\n| 登录检查 | 已验收 | 合并检查结果 |\n| 启动检查 | 待验证 | 补充冷启动数据 |\n\n### 验证命令\n```rust\nlet status = review.result();\nassert!(status.is_verified());\n```\n\n查看 [源码](/Users/x/code/acg-box/decodex/apps/decodex-gpui/src/agent_surface.rs:1)，再确认 `review` 的结果。")].into_iter().enumerate() {
+                        entries.push(decodex_protocol::AgentHistoryEntryDto{native_source:None,receipt: None, turn_id: None, weather:Vec::new(), activity: None,usage: (kind == "assistant").then_some(decodex_protocol::AgentTurnUsageDto {details:None,input_tokens:24_860,output_tokens:1_820}),duration_ms: (kind == "assistant").then_some(18_400),id:i as i64+1,kind:kind.into(),text:text.into(),created_at_micros:1_789_480_440_000_000});
+                    }
+		}
 	}
 
 	fn in_use_fixture_event() -> decodex_protocol::AgentPendingEventDto {
@@ -2460,7 +2469,9 @@ impl AgentSurface {
 			}
 			self.model.update(cx, |input, cx| input.set_content("gpt-6-astra", cx));
 			self.mark_model_intent(cx);
-			self.service_tier = Some(decodex_protocol::ServiceTier::new("ultrafast").unwrap());
+			self.service_tier = Some(
+				decodex_protocol::ServiceTier::new("ultrafast").expect("built-in Ultrafast tier"),
+			);
 			self.mark_tier_intent();
 		}
 
@@ -2604,7 +2615,7 @@ impl AgentSurface {
 		let feedback = if reason.is_some() {
 			None
 		} else if waiting {
-			Some(Feedback::neutral("Waiting for connection · Nothing sent yet"))
+			Some(Feedback::neutral("Waiting for connection. Nothing sent yet"))
 		} else {
 			self.visible_conversation_feedback()
 		};
@@ -2700,17 +2711,17 @@ impl AgentSurface {
 		} else if pending.iter().any(|event| event.event_kind.ends_with("_needs_attention")) {
 			Some(Feedback::warning("This conversation needs attention."))
 		} else if matches!(self.displayed_load_state(), LoadState::Unavailable | LoadState::Stale) {
-			Some(Feedback::warning("Connection unavailable · Reconnecting…"))
+			Some(Feedback::warning("Connection unavailable. Reconnecting…"))
 		} else if compacting {
 			Some(Feedback::loading("Compacting context"))
 		} else if !self.feedback.is_empty()
-			&& self.feedback.message != "Message saved · Waiting for agent…"
+			&& self.feedback.message != "Message saved. Waiting for agent…"
 		{
 			Some(self.feedback.clone())
 		} else {
 			selected.and_then(|work| match work.dispatch_state {
 				AgentDispatchStateDto::Unknown =>
-					Some(Feedback::warning("Connection interrupted · Checking delivery…")),
+					Some(Feedback::warning("Connection interrupted. Checking delivery…")),
 				_ => None,
 			})
 		}
@@ -2811,7 +2822,7 @@ pub(super) fn clock_label(micros: i64) -> String {
 
 fn action_accessible_label(id: &str, label: &str) -> String {
 	if id.starts_with("attention-") {
-		format!("{label} pending decisions · open next")
+		format!("{label} pending decisions (open next)")
 	} else {
 		match id {
 			"new-project" => "New project",
@@ -2943,7 +2954,7 @@ fn action_icon(id: &str) -> Option<AnyElement> {
 }
 
 fn preview_tip(_: &mut Window, cx: &mut App) -> AnyView {
-	cx.new(|_| ControlTooltip("Preview · Double-click to keep open")).into()
+	cx.new(|_| ControlTooltip("Preview (double-click to keep open)")).into()
 }
 
 #[cfg(test)]
@@ -3796,9 +3807,11 @@ mod tests {
 
 		let composer = visual.debug_bounds("agent-composer").unwrap();
 		let notice = visual.debug_bounds("conversation-unavailable").unwrap();
+		let draft = visual.debug_bounds("composer-retained-draft").unwrap();
 
-		assert!(notice.bottom() <= composer.top(), "status stays above the input bar");
-		assert!(visual.debug_bounds("composer-retained-draft").is_some());
+		assert!(notice.top() >= composer.top(), "status belongs to the disabled composer");
+		assert!(notice.bottom() <= draft.top(), "status stays above the read-only draft");
+		assert!(draft.bottom() <= composer.bottom(), "the saved draft stays inside its owner");
 		assert!(visual.debug_bounds("composer-editor-area").is_none());
 		assert!(visual.debug_bounds("composer-action-row").is_none());
 		assert!(visual.debug_bounds("composer-menu-popover").is_none());

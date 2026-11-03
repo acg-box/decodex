@@ -134,10 +134,10 @@ impl AgentSurface {
 							hit_bounds: Rc::new(Cell::new(None)),
 							question: voice.map_or_else(
 								|| preview(&entry.text),
-								|(_, text)| format!("Voice conversation · {}", preview(text)),
+								|(_, text)| format!("Voice conversation: {}", preview(text)),
 							),
 							time: format!(
-								"{} · {} UTC",
+								"{} {} UTC",
 								time::OffsetDateTime::from_unix_timestamp(
 									entry.created_at_micros / 1_000_000
 								)
@@ -283,7 +283,7 @@ impl AgentSurface {
 					if text.trim().is_empty() {
 						voice_headers[&index].empty_status().into()
 					} else {
-						format!("Voice conversation · {}", preview(text))
+						format!("Voice conversation: {}", preview(text))
 					}
 				} else {
 					preview(text)
@@ -658,7 +658,7 @@ impl AgentSurface {
 						.occlude()
 						.role(Role::Button)
 						.aria_label(if working {
-							"Working · Jump to latest message"
+							"Working. Jump to latest message"
 						} else {
 							"Jump to latest message"
 						})
@@ -1000,7 +1000,7 @@ fn dock_influence(index: usize, hover: Option<usize>) -> f32 {
 }
 
 fn preview(text: &str) -> String {
-	let voice = history::handoff(text).map(|text| format!("Voice conversation · {text}"));
+	let voice = history::handoff(text).map(|text| format!("Voice conversation: {text}"));
 	let text = markdown::plain_text(voice.as_deref().unwrap_or(text));
 	let mut chars = text.chars();
 	let mut text: String = chars.by_ref().take(180).collect();

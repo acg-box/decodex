@@ -333,7 +333,7 @@ impl AgentSurface {
 		let number = self.relation_agent_number(&entry.row);
 		let percent = if share < 0.01 { "<1%".into() } else { format!("{:.0}%", share * 100.) };
 		let description = format!(
-			"{number} · {}\n{} · {percent} of recorded {}",
+			"{number}: {}\n{} ({percent} of recorded {})",
 			self.relation_agent_name(&entry.row),
 			metric.value_label(entry.value),
 			if metric == Metric::Time { "agent time" } else { "tokens" }

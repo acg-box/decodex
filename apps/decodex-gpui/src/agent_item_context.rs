@@ -159,7 +159,7 @@ impl AgentSurface {
 				.flex()
 				.items_center()
 				.justify_between()
-				.child(crate::shell::agent_surface::muted("Conversation history · This turn"))
+				.child(crate::shell::agent_surface::muted("Conversation history (this turn)"))
 				.child(self.workspace_action(
 					"item-history-return".into(),
 					"Return to conversation".into(),

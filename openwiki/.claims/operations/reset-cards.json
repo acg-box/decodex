@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:60fbacf84cd0426b6bfebc8f9e940b8705cc5ebe3ec8e33d6aef78d7690416ca",
+  "pageVersion": "sha256:3190f1c61d01fb828f15b4428ea88638e171f6d0574019092ae532eb35997a60",
   "claims": [
     {
       "id": "claim_f04618e1bd8949938c67c23ed12ff25c",
@@ -44,7 +44,7 @@
         },
         {
           "resource": "repo://crates/decodex-app-client-ffi/src/lib.rs",
-          "version": "repo-file-v1:sha256:d6093ed2c51582c9916a8c1feb27c78e9fe9b770fcd17897f97ee3e77efa1ae5"
+          "version": "repo-file-v1:sha256:4db0fe0e78d998e081fedd70bd9d3d5a0fba8a7dc792ece037435dded779c9d8"
         },
         {
           "resource": "repo://crates/decodex-protocol/src/client.rs",
@@ -84,7 +84,7 @@
         },
         {
           "resource": "repo://crates/decodex-app-client-ffi/src/lib.rs",
-          "version": "repo-file-v1:sha256:d6093ed2c51582c9916a8c1feb27c78e9fe9b770fcd17897f97ee3e77efa1ae5"
+          "version": "repo-file-v1:sha256:4db0fe0e78d998e081fedd70bd9d3d5a0fba8a7dc792ece037435dded779c9d8"
         },
         {
           "resource": "repo://crates/decodex-app-client-ffi/src/reset_card_journal.rs",
@@ -98,15 +98,15 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/ResetCardSectionView.swift",
-          "version": "repo-file-v1:sha256:4ba89d765d1154291bc1966024b19ba15b233b65afcd57cbdb8740aa54fb0a18"
+          "version": "repo-file-v1:sha256:be558314e6251d5fa9a9f5e2b637e9555f462f374299c8631eba6358e7b0743b"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/shell.rs",
-          "version": "repo-file-v1:sha256:3ceae666a54f5af43788eaccef58a7c9d5da17e21d5303bad0626f01303f0868"
+          "version": "repo-file-v1:sha256:aeb42df0cb6a0e85db3ad342a0c5671af96f40b4117ffb1705fbb08fddb31311"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/shell_reset_cards.rs",
-          "version": "repo-file-v1:sha256:3f27f920f887567734574e0e3de79582ea451ff49bdc430513377a83f4f0ee8e"
+          "version": "repo-file-v1:sha256:7bce831543655807ee10a2246e0f13327dc866b794adbdbab70ca1d96a021123"
         }
       ]
     },
@@ -124,7 +124,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/shell_reset_cards.rs",
-          "version": "repo-file-v1:sha256:3f27f920f887567734574e0e3de79582ea451ff49bdc430513377a83f4f0ee8e"
+          "version": "repo-file-v1:sha256:7bce831543655807ee10a2246e0f13327dc866b794adbdbab70ca1d96a021123"
         }
       ]
     },
@@ -134,7 +134,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/ResetCardSectionView.swift",
-          "version": "repo-file-v1:sha256:4ba89d765d1154291bc1966024b19ba15b233b65afcd57cbdb8740aa54fb0a18"
+          "version": "repo-file-v1:sha256:be558314e6251d5fa9a9f5e2b637e9555f462f374299c8631eba6358e7b0743b"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/account_feedback.rs",
@@ -147,18 +147,18 @@
       "statement": "On macOS, Reset Card expiry and quota reset labels use Foundation's localized date template with the system locale, hour-cycle preference and time zone; this does not change native expiry instants.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/ResetCardSectionView.swift#L635-L644",
-          "version": "repo-lines-v1:sha256:2ca7d318307da6cb69e87e863619fb8a69d35f8445963587808a5c622667210c:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQxODk2NDQ4OTFhNjI0YWY2NTY5MGRhYjhiNjU3Y2RiNzYyMDFiYjhlMzI5OWYwMWY2NmVjMjg4ZGM1ZGFiNmUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgxMTdjMTA5ZTlkYWYyMDNlODk3YjVkMDllZDE2NWIzMzlhZGJjMzdmZGJjNTAzYTU0MTEyZTQwNjhhZDYzYTAifQ"
+          "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/ResetCardSectionView.swift#L643-L650",
+          "version": "repo-lines-v1:sha256:3df9e0be8525c3db2a44c20e51dd54972cb485fa8fe1f3eca91ba735ab052d58:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMDU3ZGMwYTdiMGIxY2Y3NGI2MTFkZDliN2U3N2U2YTM3MWMzMDEwZTg4YTY0MjZmODBiNjkxMTQ2ZTRmZTMxYSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDg5M2Y0MGUzNzgxZWI4OTZjODJkMDQ2YTA4MDY3YTExZTM1Y2RmMmYxZGZhZjI2ZmVhOTBiOGRiNjY3NjQxMyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYzRjYjg3ZmYxMTg3MGJiMzI0ZDI1ODJhNzU2ZTliNDM5MDBiODc3MWNmNjg5NTc3ODI5ZWQ2MDI1YTBkOWEzZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiODExN2MxMDllOWRhZjIwM2U4OTdiNWQwOWVkMTY1YjMzOWFkYmMzN2ZkYmM1MDNhNTQxMTJlNDA2OGFkNjNhMCJ9"
         },
         {
-          "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/ResetCardSectionView.swift#L920-L938",
-          "version": "repo-lines-v1:sha256:bbf933715b71b8a7b782d85ff38ee14b71ee636d6ce5e4335ba1f80d980b25c9:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY0ZWZjNDk0MThkMjZkY2YxMjliMjJhNmFhMjExMDhjZWVjMzc2NzdhMzJkMDhlOWQ1ZmVlMzVkZGE2NmJiOWQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJjMGJkNDA4YmQ5ZDIyZmE5MGI3ZDcxNjg4ODUzNjRmZDU3ZmMxNzc5ZGE5ZDkwZTJlNWEwMDM5M2NiYTVjMTgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+          "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/ResetCardSectionView.swift#L950-L966",
+          "version": "repo-lines-v1:sha256:cb1f41a4eafd92e1488cc3aa4cc65b31c50b35860c245625b2715a8b88e39cf9:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRkYTllZTRhNDMyMGNjMjUxMGJiMDZlOTRhZmQ4ZmNlZjdkNzRlMDBhZDk1Mzc3MzIyYWE3OGQzNGY4YzNiZmEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE1MjIzZDg1ZGViYjNkODNhMGFmOGM5M2IxM2FkYjNjZTFhODZiOGZjYzRkMmM2YmM0OGU3YzJkNmE4YTFhYjkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE5ZTc2MzU1Y2YxMTk5NDgwYzNmOTk4MzZiMTQ4NmM4NDFkODkxZmFhZDkwNGM2MDhlMDkzMDIyZDM3NTdhZWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEifQ"
         }
       ]
     }
   ],
   "verification": {
-    "by": "openwiki/0.7.2",
-    "at": "2026-10-31T13:17:02.524Z"
+    "by": "openwiki/0.7.3",
+    "at": "2026-11-03T06:59:35.618Z"
   }
 }

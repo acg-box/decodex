@@ -253,7 +253,7 @@ impl Shell {
 		let enabled = !(self.selected == Destination::Agent
 			&& self.agent.read(cx).workspace_connecting())
 			&& self.navigation_neighbor(forward, cx).is_some();
-		let label = if forward { "Forward · Command-]" } else { "Back · Command-[" };
+		let label = if forward { "Forward (Command-])" } else { "Back (Command-[)" };
 
 		gpui::div()
 			.id(if forward { "navigate-forward" } else { "navigate-back" })

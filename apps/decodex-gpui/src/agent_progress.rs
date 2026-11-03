@@ -148,9 +148,9 @@ impl AgentSurface {
 		let active = work.dispatch_state == AgentDispatchStateDto::Running;
 		let steps = format!("{} step{}", items.len(), if items.len() == 1 { "" } else { "s" });
 		let label = if let Some(item) = running.filter(|_| active) {
-			format!("{} · {steps}", activity_title(item))
+			format!("{} ({steps})", activity_title(item))
 		} else {
-			format!("Activity · {steps}")
+			format!("Activity ({steps})")
 		};
 		let status = if items.iter().any(|item| item.status == "failed") {
 			"failed"
@@ -277,7 +277,7 @@ impl AgentSurface {
 
 		for (index, (kind, label, detail, status)) in [
 			("commandExecution", "Reading files", "", "completed"),
-			("mcpToolCall", "Using tool", "docs · search", "completed"),
+			("mcpToolCall", "Using tool", "docs/search", "completed"),
 			("commandExecution", "Running command", "Exit code 0", "completed"),
 			("contextCompaction", "Compacting context", "", "running"),
 		]

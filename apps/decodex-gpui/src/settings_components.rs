@@ -241,7 +241,7 @@ impl SettingsSurface {
 			));
 		if let Some(lock) = lock.as_ref() {
 			details = details.child(ui_theme::settings_description(format!(
-				"{} build · Upstream {}",
+				"{} build (upstream {})",
 				if lock.source.is_some() { "Development" } else { "Release" },
 				&lock.upstream_commit[..12],
 			)));
@@ -356,27 +356,7 @@ impl SettingsSurface {
 				controls.child(self.component_button(id, label, Action::Research(action), cx));
 		}
 
-		let explanation = if state.installed.is_none() {
-			"Use your ChatGPT Pro subscription. Installs a local helper and Chrome extension files; no API key."
-		} else if let Some(connection) = state
-			.connection
-			.as_ref()
-			.filter(|connection| connection.state != decodex_pro_bridge::ConnectionState::Connected)
-		{
-			match connection.state {
-				decodex_pro_bridge::ConnectionState::SignInRequired =>
-					"Sign in to ChatGPT in the research tab, then connect again.",
-				decodex_pro_bridge::ConnectionState::VerificationRequired =>
-					"Complete ChatGPT security verification in the research tab, then connect again.",
-				_ => "Open the research tab to complete setup, then connect again.",
-			}
-		} else if state.connection.is_none() {
-			"Connect to Chrome. If the extension is not loaded, enable Developer mode, choose Load unpacked, and select the extension folder."
-		} else if !state.tools.as_ref().is_some_and(|p| p.enabled) {
-			"Chrome is connected. Enable native research tools for Agents. Installation sends no messages."
-		} else {
-			"Research tools are enabled. Conversations stay in their ChatGPT Project. Every answer verifies its actual Pro model."
-		};
+		let explanation = self.research_explanation();
 		let mut details = gpui::div().flex().items_center().gap_2();
 
 		if state.installed.is_some() {
@@ -462,6 +442,31 @@ impl SettingsSurface {
 			.child(
 				ui_feedback::notice("components-research-feedback", "research", feedback).inline(),
 			)
+	}
+
+	fn research_explanation(&self) -> &'static str {
+		let state = &self.components.research_shown;
+		if state.installed.is_none() {
+			"Use your ChatGPT Pro subscription. Installs a local helper and Chrome extension files; no API key."
+		} else if let Some(connection) = state
+			.connection
+			.as_ref()
+			.filter(|connection| connection.state != decodex_pro_bridge::ConnectionState::Connected)
+		{
+			match connection.state {
+				decodex_pro_bridge::ConnectionState::SignInRequired =>
+					"Sign in to ChatGPT in the research tab, then connect again.",
+				decodex_pro_bridge::ConnectionState::VerificationRequired =>
+					"Complete ChatGPT security verification in the research tab, then connect again.",
+				_ => "Open the research tab to complete setup, then connect again.",
+			}
+		} else if state.connection.is_none() {
+			"Connect to Chrome. If the extension is not loaded, enable Developer mode, choose Load unpacked, and select the extension folder."
+		} else if !state.tools.as_ref().is_some_and(|p| p.enabled) {
+			"Chrome is connected. Enable native research tools for Agents. Installation sends no messages."
+		} else {
+			"Research tools are enabled. Conversations stay in their ChatGPT Project. Every answer verifies its actual Pro model."
+		}
 	}
 
 	fn egm_settings(&self, cx: &mut Context<Self>) -> Div {

@@ -313,7 +313,7 @@ fn excerpt<'a>(
 }
 
 fn action_icon(text: &str) -> Symbol {
-	let kind = text.split_once(" · ").map_or(text, |(kind, _)| kind);
+	let kind = text.split_once(": ").map_or(text, |(kind, _)| kind);
 
 	match kind {
 		"Plan" => Symbol::ActivityGoal,
@@ -437,6 +437,8 @@ mod tests {
 
 			for source in [
 				"Read account_route.rs",
+				"Read: account_route.rs",
+				"Run: printf a · b",
 				"Custom tool · file:42",
 				"Inspect · a · b",
 				"Read · file:42",
@@ -446,6 +448,10 @@ mod tests {
 			] {
 				assert_eq!(information_rows::message_excerpt(source, layout, &system).text, source);
 			}
+			assert!(matches!(
+				information_rows::action_icon("Run: printf a · b"),
+				information_rows::Symbol::ActivityCommand
+			));
 		}
 	}
 

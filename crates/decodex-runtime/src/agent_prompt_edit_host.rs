@@ -301,7 +301,7 @@ impl AgentHost {
 		} else if let Some(prepared) = prepared {
 			if !self
 				.store
-				.agent_thread_is_owned(
+				.agent_thread_is_restorable(
 					work.as_str().into(),
 					thread.as_str().into(),
 					prepared.generation.clone(),

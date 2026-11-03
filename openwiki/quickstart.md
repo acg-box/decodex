@@ -83,9 +83,6 @@ sources:
   - id: openwiki-source-3b57179b92b257bc3fff51a1
     resource: repo://scripts/macos/stage_decodex_app.sh
 generated: { by: "codex", at: "2026-11-02T07:10:57.562Z" }
-verified:
-  - by: openwiki/0.7.2
-    at: 2026-11-02T08:00:19.527Z
 ---
 
 # OpenWiki quickstart

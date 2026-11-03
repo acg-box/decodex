@@ -431,6 +431,32 @@ mod tests {
 		});
 	}
 
+	fn fast_only_catalog() -> AgentCapabilitiesResult {
+		AgentCapabilitiesResult::Available {
+			memory_enabled: None,
+			models: vec![AgentModelDto {
+				model: decodex_protocol::ConversationModel::new("custom").expect("fixture model"),
+				name: "Custom".into(),
+				efforts: vec![ConversationReasoningEffort::High],
+				default_effort: Some(ConversationReasoningEffort::High),
+				supports_fast: true,
+				available_cyber_programs: None,
+				specialty: None,
+				supports_images: true,
+				availability: None,
+				upgrade: None,
+				service_tiers: vec![decodex_protocol::AgentServiceTierDto {
+					id: decodex_protocol::ServiceTier::from_fast(true),
+					name: "Priority".into(),
+					description: "Increased usage".into(),
+				}],
+				default_service_tier: Some(
+					decodex_protocol::ServiceTier::new("ultrafast").expect("fixture tier"),
+				),
+			}],
+		}
+	}
+
 	#[gpui::test]
 	fn speed_picker_keeps_three_choices_and_explains_unavailable_speed(
 		cx: &mut gpui::TestAppContext,
@@ -443,29 +469,7 @@ mod tests {
 			s.mark_model_intent(cx);
 
 			let configured_tier = s.service_tier.clone();
-			s.capabilities = Some(AgentCapabilitiesResult::Available {
-				memory_enabled: None,
-				models: vec![AgentModelDto {
-					model: decodex_protocol::ConversationModel::new("custom").unwrap(),
-					name: "Custom".into(),
-					efforts: vec![ConversationReasoningEffort::High],
-					default_effort: Some(ConversationReasoningEffort::High),
-					supports_fast: true,
-					available_cyber_programs: None,
-					specialty: None,
-					supports_images: true,
-					availability: None,
-					upgrade: None,
-					service_tiers: vec![decodex_protocol::AgentServiceTierDto {
-						id: decodex_protocol::ServiceTier::from_fast(true),
-						name: "Priority".into(),
-						description: "Increased usage".into(),
-					}],
-					default_service_tier: Some(
-						decodex_protocol::ServiceTier::new("ultrafast").unwrap(),
-					),
-				}],
-			});
+			s.capabilities = Some(fast_only_catalog());
 
 			assert_eq!(
 				s.service_tier, configured_tier,

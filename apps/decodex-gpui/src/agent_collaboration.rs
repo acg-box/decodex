@@ -372,9 +372,9 @@ impl AgentSurface {
 					(
 						"Scope",
 						if role.is_some() {
-							"Independent reviewer · original EGM instructions"
+							"Independent reviewer using original EGM instructions"
 						} else {
-							"Lead · original EGM workflow"
+							"Lead using the original EGM workflow"
 						}
 						.into(),
 					),
@@ -1099,7 +1099,7 @@ impl AgentSurface {
 			body = body.child(
 				self.collaboration_action(
 					"collaboration-earlier".into(),
-					format!("Earlier · {}", earlier.len()),
+					format!("Earlier ({})", earlier.len()),
 					|s, cx| {
 						s.work_board.collaboration.earlier = !s.work_board.collaboration.earlier;
 

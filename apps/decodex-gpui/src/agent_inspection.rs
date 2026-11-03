@@ -69,7 +69,7 @@ impl AgentSurface {
 			.child(self.inspection_relations(snapshot, work, cx))
 			.when_some(work.next_check_at_micros, |panel, due| {
 				panel.child(agent_surface::muted(format!(
-					"Next check · {}",
+					"Next check: {}",
 					agent_surface::next_check_text(due)
 				)))
 			})

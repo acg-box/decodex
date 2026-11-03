@@ -100,7 +100,7 @@ fn main() {
 				))),
 				window_background: WindowBackgroundAppearance::Blurred,
 				titlebar: Some(TitlebarOptions {
-					title: Some("Decodex · Weather preview".into()),
+					title: Some("Decodex Weather preview".into()),
 					..Default::default()
 				}),
 				..ui_frame::window_options()

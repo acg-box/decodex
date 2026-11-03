@@ -177,7 +177,7 @@ private struct AccountProfileMetric: Identifiable {
 	private static func streak(current: UInt32?, longest: UInt32?) -> String? {
 		switch (current, longest) {
 		case (.some(let current), .some(let longest)):
-			return "\(current)d · best \(longest)d"
+			return "\(current)d (best \(longest)d)"
 		case (.some(let current), nil):
 			return "\(current)d"
 		case (nil, .some(let longest)):

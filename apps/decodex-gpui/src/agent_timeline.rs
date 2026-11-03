@@ -107,7 +107,7 @@ impl AgentSurface {
 						item_id: format!("item-{position}"),
 						kind: "agentMessage".into(),
 						text: format!(
-							"## Review {} · {kind}\n\n中文与 English 混合内容，检查滚动时的文字、图形和布局稳定性。\n\n```{language}\n{source}\n%% Entry {position}\n```\n\nThis response keeps the original source available for copying.\n",
+							"## Review {} ({kind})\n\n中文与 English 混合内容，检查滚动时的文字、图形和布局稳定性。\n\n```{language}\n{source}\n%% Entry {position}\n```\n\nThis response keeps the original source available for copying.\n",
 							position + 1
 						),
 						phase: None,
@@ -489,7 +489,7 @@ impl AgentSurface {
 			}
 			if self.timeline.native.browsing_window {
 				panel = panel.child(agent_surface::muted(
-					"Earlier history window · Open Details to refresh.",
+					"Earlier history window. Open Details to refresh.",
 				));
 			}
 			if self.timeline.native.opening_session.is_some() {
@@ -878,8 +878,7 @@ impl AgentSurface {
 		entry: &AgentTimelineEntry,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
-		let title =
-			if group.failed { "Voice conversation · Failed" } else { "Voice conversation" };
+		let title = if group.failed { "Voice conversation (failed)" } else { "Voice conversation" };
 		let body = self.native_voice_history_content(
 			serde_json::json!([
 				work.id,

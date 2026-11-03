@@ -147,9 +147,6 @@ sources:
   - id: openwiki-source-76081c1a47ca8cf32593de34
     resource: repo://scripts/macos/test_decodex_app_stage.sh
 generated: { by: "codex", at: "2026-11-02T08:00:19.527Z" }
-verified:
-  - by: openwiki/0.7.2
-    at: 2026-11-02T08:00:19.527Z
 ---
 
 # Runtime Architecture

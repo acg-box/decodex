@@ -1120,7 +1120,7 @@ fn setting_notice(id: &'static str, feedback: Option<Feedback>) -> Option<AnyEle
 const fn launch_at_login_detail(state: LaunchAtLoginState) -> &'static str {
 	match state {
 		LaunchAtLoginState::NotRegistered => "Off",
-		LaunchAtLoginState::Enabled => "On · Opens in the background",
+		LaunchAtLoginState::Enabled => "On (opens in the background)",
 		LaunchAtLoginState::RequiresApproval => "Allow in System Settings > General > Login Items.",
 		LaunchAtLoginState::NotFound => "macOS could not find Decodex’s login item.",
 		LaunchAtLoginState::OperationFailed => "Login item status unavailable.",

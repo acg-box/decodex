@@ -477,7 +477,7 @@ struct ResetCardAccountRow: View {
 			Text(normalCardChipTitle(target))
 				.hidden()
 
-			Text("Confirm · \(ResetCardUseConfirmation.windowSeconds)s")
+			Text("Confirm (\(ResetCardUseConfirmation.windowSeconds)s)")
 				.hidden()
 
 			HStack(spacing: PanelSpacing.micro) {
@@ -515,7 +515,7 @@ struct ResetCardAccountRow: View {
 				confirmationSecondsRemaining > 0
 				? confirmationSecondsRemaining
 				: ResetCardUseConfirmation.windowSeconds
-			return "Confirm · \(seconds)s"
+			return "Confirm (\(seconds)s)"
 		}
 
 		return normalCardChipTitle(target)

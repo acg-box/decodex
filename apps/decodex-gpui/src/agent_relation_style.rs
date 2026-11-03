@@ -170,9 +170,9 @@ impl AgentSurface {
 			.text_color(ui_theme::rgb(TEXT_MUTED))
 			.child(links)
 			.child(lights)
-			.child("Bars: tokens · time · speed")
-			.child("Rulers: 2M tokens · 30 min · 100 tok/s")
-			.child("Display scales · No limits or completion implied")
+			.child("Bars: tokens, time, speed")
+			.child("Scales: tokens 2M, time 30 min, speed 100 tok/s")
+			.child("Display scales show neither limits nor completion")
 			.into_any_element()
 	}
 }

@@ -133,7 +133,7 @@ function paint() {
 function selectState(next) {
   state = next;
   document.querySelector("#trait-state").value = state;
-  document.querySelector("#motion-label").textContent = `${motionStates[state].label}${paused ? " · Paused" : " · Playing"}`;
+  document.querySelector("#motion-label").textContent = `${motionStates[state].label}${paused ? " (Paused)" : " (Playing)"}`;
   for (const svg of document.querySelectorAll("#hero svg,#sizes svg,#presets svg")) svg.dataset.state = state;
   for (const button of document.querySelectorAll("[data-motion-state]")) button.setAttribute("aria-pressed",String(button.dataset.motionState === state));
 }

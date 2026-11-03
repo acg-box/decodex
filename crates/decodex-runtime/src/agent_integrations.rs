@@ -233,7 +233,7 @@ fn server_presentation(info: &Value) -> Option<String> {
 		.filter(|s| !s.trim().is_empty())
 		.or_else(|| info["name"].as_str())?;
 	let version = info["version"].as_str()?;
-	let mut lines = vec![format!("{} · {}", text(name), text(version))];
+	let mut lines = vec![format!("{} (version {})", text(name), text(version))];
 
 	for field in ["description", "websiteUrl"] {
 		if let Some(value) = info[field].as_str().filter(|s| !s.trim().is_empty()) {
@@ -262,14 +262,14 @@ mod tests {
 
 		assert_eq!(
 			agent_integrations::server_presentation(&info).as_deref(),
-			Some("Reference docs · 1.2\nRead documentation\nhttps://example.invalid")
+			Some("Reference docs (version 1.2)\nRead documentation\nhttps://example.invalid")
 		);
 		assert_eq!(
 			agent_integrations::server_presentation(
 				&serde_json::json!({"name":"server-id","version":"1"})
 			)
 			.as_deref(),
-			Some("server-id · 1")
+			Some("server-id (version 1)")
 		);
 		assert!(agent_integrations::server_presentation(&Value::Null).is_none());
 		assert!(

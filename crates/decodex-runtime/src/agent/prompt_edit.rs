@@ -140,7 +140,7 @@ impl AgentCoordinator {
 
 		if !self
 			.store
-			.agent_thread_is_owned(
+			.agent_thread_is_restorable(
 				source_work.into(),
 				saved.attempt.source.thread.clone(),
 				generation,
@@ -220,7 +220,10 @@ impl AgentCoordinator {
 
 		let generation = self.native_generation.as_ref().map(|g| g.as_str().to_owned());
 
-		if !self.store.agent_thread_is_owned(work.into(), thread.into(), generation.clone()).await?
+		if !self
+			.store
+			.agent_thread_is_restorable(work.into(), thread.into(), generation.clone())
+			.await?
 		{
 			let source = self.store.get_agent_work_item(work.into()).await?;
 			let Some(current_generation) = generation.as_deref() else { return Ok(None) };
@@ -242,7 +245,7 @@ impl AgentCoordinator {
 			.map_err(|message| AgentError::Rejected(message.into()))?;
 			if !self
 				.store
-				.agent_thread_is_owned(work.into(), thread.into(), generation.clone())
+				.agent_thread_is_restorable(work.into(), thread.into(), generation.clone())
 				.await?
 			{
 				return Ok(None);
@@ -277,7 +280,10 @@ impl AgentCoordinator {
 			.collect();
 
 		if !candidate.guard.is_live()
-			|| !self.store.agent_thread_is_owned(work.into(), thread.into(), generation).await?
+			|| !self
+				.store
+				.agent_thread_is_restorable(work.into(), thread.into(), generation)
+				.await?
 		{
 			return Ok(None);
 		}
@@ -347,7 +353,10 @@ impl AgentCoordinator {
 	) -> Result<Option<AgentPromptEditReceipt>, AgentError> {
 		let generation = self.native_generation.as_ref().map(|g| g.as_str().to_owned());
 
-		if !self.store.agent_thread_is_owned(work.into(), thread.into(), generation.clone()).await?
+		if !self
+			.store
+			.agent_thread_is_restorable(work.into(), thread.into(), generation.clone())
+			.await?
 		{
 			return Err(rejected());
 		}

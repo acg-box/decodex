@@ -4,10 +4,16 @@
 #[path = "agent_prompt_handback.rs"] mod handback;
 #[path = "agent_list_branch.rs"] mod list_branch;
 #[path = "agent_prompt_remove.rs"] mod removal;
+#[cfg(test)]
+#[path = "agent_prompt_review_wire_tests.rs"]
+mod review_tests;
 #[path = "agent_prompt_send.rs"] mod sending;
 
 use crate::{shell::workspace_symbols, ui_feedback};
-use gpui::{AnyElement, AppContext as _, Div, InteractiveElement as _, Subscription};
+use gpui::{
+	AnyElement, AppContext as _, Div, InteractiveElement as _, Subscription,
+	prelude::FluentBuilder as _,
+};
 use tokio::sync::oneshot;
 
 use crate::shell::agent_surface::{
@@ -529,7 +535,7 @@ impl AgentSurface {
 					let runtime = tokio::runtime::Builder::new_current_thread()
 						.enable_all()
 						.build()
-						.map_err(|_| "Could not start prompt review")?;
+						.map_err(|_| "Could not read this conversation. Try again.")?;
 
 					runtime.block_on(async {
 						let client = AgentClient::new(profile);
@@ -545,22 +551,27 @@ impl AgentSurface {
 									.map_err(|_| "Invalid review identity")?,
 							)
 							.await
-							.map_err(|_| "Prompt review could not be confirmed")?;
+							.map_err(|_| "Could not read this conversation. Try again.")?;
 
-						if !matches!(response, AgentCommandResponse::Accepted { work_id: ref accepted } if accepted == &work_id) { return Err("Prompt review was not accepted"); }
+						match response {
+							AgentCommandResponse::Accepted { work_id: accepted }
+								if accepted == work_id => {},
+							AgentCommandResponse::Rejected { error } =>
+								return Err(super::command_rejection_message(&error)),
+							_ => return Err("Could not read this conversation. Try again.".into()),
+						}
 
 						let (status, content) = client
 							.prompt_edit(work_id, thread_id)
 							.await
 							.map_err(|_| "Original input could not be read")?;
-						let evidence =
-							status.evidence.ok_or("This message cannot be edited")?;
+						let evidence = status.evidence.ok_or("This message cannot be edited")?;
 
 						if status.phase != PromptEditPhase::Review
 							|| evidence.before_turn_id != turn_id
 							|| evidence.item_id != item_id
 						{
-							return Err("This message cannot be edited");
+							return Err("This message cannot be edited".into());
 						}
 
 						let input = PromptDraft::new(content.ok_or("Original input is missing")?)?;
@@ -577,7 +588,7 @@ impl AgentSurface {
 								handback_pending: false,
 								confirmation_key: None,
 								fork: None,
-			pending_send: None,
+								pending_send: None,
 								input,
 							},
 							evidence.removed_turns,
@@ -588,7 +599,7 @@ impl AgentSurface {
 			});
 
 		if started.is_err() {
-			self.prompt_edit.feedback = "Could not start prompt review".into();
+			self.prompt_edit.feedback = "Could not read this conversation. Try again.".into();
 
 			cx.notify();
 
@@ -596,7 +607,8 @@ impl AgentSurface {
 		}
 
 		self.prompt_edit.task = Some(cx.spawn(async move |surface, cx| {
-			let result = receive.await.unwrap_or(Err("Prompt review stopped"));
+			let result =
+				receive.await.unwrap_or(Err("Could not read this conversation. Try again.".into()));
 			let _ = surface.update(cx, |s, cx| {
 				if s.prompt_edit.key != key || !s.prompt_editor_source_current() {
 					return;
@@ -607,7 +619,7 @@ impl AgentSurface {
 				match result {
 					Ok((draft, turns)) =>
 						s.finish_prompt_review(previous.as_ref(), draft, turns, cx),
-					Err(message) => s.prompt_edit.feedback = message.into(),
+					Err(message) => s.prompt_edit.feedback = message,
 				}
 
 				cx.notify();
@@ -615,6 +627,21 @@ impl AgentSurface {
 		}));
 
 		cx.notify();
+	}
+
+	#[cfg(any(test, feature = "visual-capture"))]
+	pub(super) fn visual_side_chat_failure(
+		&mut self,
+		profile: ClientProfile,
+		cx: &mut Context<Self>,
+	) {
+		self.profile = Some(profile.clone());
+		self.visual_side_chat_tabs("agent", cx);
+		self.begin_prompt_review(&profile, "agent", "source-agent");
+		self.prompt_edit.branch_choice = Some(PromptForkBoundary::AttachedAfterTurn);
+		self.prompt_edit.fork_requested = true;
+		self.prompt_edit.feedback = "Codex unavailable. Check Diagnostics.".into();
+		self.composer.update(cx, |input, cx| input.set_content("Keep this unsent input.", cx));
 	}
 
 	fn finish_prompt_review(
@@ -811,8 +838,28 @@ impl AgentSurface {
 
 	pub(super) fn blocked_fork_review_visible(&self) -> bool {
 		self.prompt_edit.branch_choice.is_some()
+			&& !self.side_chat_status_visible()
 			&& self.prompt_editor_source_current()
 			&& self.composer_unavailable_reason().is_some()
+	}
+
+	pub(super) fn side_chat_status_visible(&self) -> bool {
+		self.prompt_edit.branch_choice == Some(PromptForkBoundary::AttachedAfterTurn)
+			&& self.prompt_edit.fork_requested
+			&& self.prompt_editor_source_current()
+	}
+
+	pub(super) fn side_chat_status(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+		self.side_chat_status_visible().then(|| {
+			gpui::div()
+				.debug_selector(|| "side-chat-status".into())
+				.flex_none()
+				.min_w_0()
+				.px(gpui::px(crate::ui_theme::CONVERSATION_INSET))
+				.py(gpui::px(6.))
+				.child(self.requested_fork_status(cx))
+				.into_any_element()
+		})
 	}
 
 	pub(super) fn prompt_editor_visible(&self, work: &str) -> bool {
@@ -830,7 +877,7 @@ impl AgentSurface {
 			return self
 				.workspace_action(
 					"prompt-recovery-notice".into(),
-					"Unfinished edit · Review".into(),
+					"Review unfinished edit".into(),
 					|s, cx| {
 						s.workspace.details_visible = true;
 						cx.notify();
@@ -886,12 +933,13 @@ impl AgentSurface {
 
 	fn requested_fork_status(&self, cx: &mut Context<Self>) -> AnyElement {
 		let busy = self.prompt_edit.task.is_some() || self.prompt_edit.list_branch_pending;
+		let side_chat =
+			self.prompt_edit.branch_choice == Some(PromptForkBoundary::AttachedAfterTurn);
 		let row = ui_feedback::status_row(
 			"prompt-fork-progress",
 			if busy { ui_feedback::Tone::Neutral } else { ui_feedback::Tone::Warning },
-			"",
-			if busy && self.prompt_edit.branch_choice == Some(PromptForkBoundary::AttachedAfterTurn)
-			{
+			if side_chat && !busy { "Could not open side chat" } else { "" },
+			if busy && side_chat {
 				"Opening side chat…"
 			} else if busy {
 				"Forking…"
@@ -907,6 +955,7 @@ impl AgentSurface {
 		if let Some(draft) = &self.prompt_edit.draft {
 			return row
 				.child(self.branch_confirmation_action(gpui::div().flex().flex_none(), draft, cx))
+				.when(side_chat, |row| row.child(self.prompt_close_action(cx)))
 				.into_any_element();
 		}
 		row.child(self.workspace_button(
@@ -924,6 +973,7 @@ impl AgentSurface {
 			},
 			cx,
 		))
+		.when(side_chat, |row| row.child(self.prompt_close_action(cx)))
 		.into_any_element()
 	}
 
@@ -936,6 +986,8 @@ impl AgentSurface {
 				|| draft.pending_send.is_some()
 		}) {
 			"Close"
+		} else if self.side_chat_status_visible() {
+			"Dismiss"
 		} else if self.prompt_edit.branch_choice.is_some() {
 			"Cancel"
 		} else {

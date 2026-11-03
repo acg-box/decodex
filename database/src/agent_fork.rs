@@ -6,7 +6,7 @@ use serde_json::Value;
 
 use crate::{
 	AgentDispatchState, AgentPromptEditAttempt, AgentWorkStatus, SqliteStore, StoreError, agent,
-	agent_process, agent_prompt_edit, error,
+	agent_prompt_edit, error,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
@@ -152,7 +152,7 @@ impl SqliteStore {
 			let a=&attempt.source;
 			let source = agent::read_work(&tx, &a.work)?;
 
-			if !agent_process::owns_work(&tx, &a.work, a.generation.as_deref())?
+			if !agent_prompt_edit::owned(&tx, a, a.generation.as_deref())?
 				|| source.codex_thread_id.as_deref() != Some(a.thread.as_str())
 				|| source.dispatch_state != AgentDispatchState::Idle
 				|| source.active_turn_id.is_some() || source.status == AgentWorkStatus::Resolved

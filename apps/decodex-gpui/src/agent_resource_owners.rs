@@ -82,9 +82,9 @@ impl AgentSurface {
 						})
 						.unwrap_or("Account not retained");
 					row = row.child(format!(
-						"{} · {account}{}",
+						"{} (account: {account}){}",
 						owner.title,
-						if owner.archived { " · Archived" } else { "" }
+						if owner.archived { " (archived)" } else { "" }
 					));
 					if let Some(work) = self.resource_owner_destination(owner) {
 						let target = work.to_owned();

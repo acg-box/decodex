@@ -3,6 +3,9 @@ type: Reference
 title: "Conversation input, history and recovery"
 description: "Explicit native branches, same-thread edits, canonical drafts, complete export and uncertain result recovery."
 tags: ["decodex", "architecture"]
+verified:
+  - by: openwiki/0.7.3
+    at: 2026-11-03T06:59:35.618Z
 sources:
   - id: openwiki-source-6512b631b67649d924c16ba3
     resource: repo://apps/decodex-gpui/src/agent_archive.rs
@@ -56,6 +59,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_reconnect_queue_tests.rs
   - id: openwiki-source-833f63423276cad9a26295cf
     resource: repo://apps/decodex-gpui/src/agent_resource_owners.rs
+  - id: openwiki-source-9db9edbd5ce47e3b722c8750
+    resource: repo://apps/decodex-gpui/src/agent_sample_request.rs
   - id: openwiki-source-912dbe8f46e7ec6026887bbe
     resource: repo://apps/decodex-gpui/src/agent_sample.rs
   - id: openwiki-source-ff9ae5d5274ad341f8658d86
@@ -84,8 +89,6 @@ sources:
     resource: repo://apps/decodex-gpui/src/settings_surface.rs
   - id: openwiki-source-1291f5243fa6c9cb52149bda
     resource: repo://apps/decodex-gpui/src/shell.rs
-  - id: openwiki-source-f580b10e16f1d25ebfea3bf8
-    resource: repo://automations/upstream/qualification.json
   - id: openwiki-source-b1948e1beb6e361503aa2db1
     resource: repo://crates/decodex-codex/src/app_server_client.rs
   - id: openwiki-source-ecdf4586908bb6226955607a
@@ -124,8 +127,6 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent_read_state.rs
   - id: openwiki-source-ac4b738d63d48fc19492febe
     resource: repo://crates/decodex-runtime/src/agent_resources.rs
-  - id: openwiki-source-72323573c4abb11c31ffbeec
-    resource: repo://crates/decodex-runtime/src/agent_sample.rs
   - id: openwiki-source-c6a513f4a72008998a474ca0
     resource: repo://crates/decodex-runtime/src/agent_titles.rs
   - id: openwiki-source-7111b71a47931c3e55d3ff6f
@@ -162,10 +163,7 @@ sources:
     resource: repo://database/src/agent/tests/input_retry.rs
   - id: openwiki-source-28af4781ad8d9558410630da
     resource: repo://database/src/works.rs
-generated: { by: "codex", at: "2026-11-02T08:00:19.527Z" }
-verified:
-  - by: openwiki/0.7.2
-    at: 2026-11-02T08:00:19.527Z
+generated: { by: "codex", at: "2026-11-03T06:59:35.618Z" }
 ---
 
 # Conversation input, history and recovery
@@ -196,7 +194,7 @@ Persist input before dispatch. A lost response can mean that an operation ran. C
 
 ### Reconnect a saved send
 
-A follow-up can lose its connection while the desktop saves the explicit Send operation. If dispatch has not started, the same live write-ahead slot waits for reconnection. The conversation shows **Waiting for connection · Nothing sent yet** and **Cancel send**. A fresh ready connection resumes the original command key, input, attachments and execution choices only for the same profile, runtime and conversation/thread. Pending requests and compaction keep the send paused. Later edits remain separate and are not cleared by the older input.
+A follow-up can lose its connection while the desktop saves the explicit Send operation. If dispatch has not started, the same live write-ahead slot waits for reconnection. The conversation shows **Waiting for connection. Nothing sent yet** and **Cancel send**. A fresh ready connection resumes the original command key, input, attachments and execution choices only for the same profile, runtime and conversation/thread. Pending requests and compaction keep the send paused. Later edits remain separate and are not cleared by the older input.
 
 A changed source or target refuses that intent and keeps the draft. Cancel send removes the pending preview and retains current input. An ordinary offline draft is not an accepted send. Application restart, an attempted or uncertain delivery, a steer, a new conversation or a native child input does not gain automatic replay authority from this slot. Use the existing receipt and status workflow for uncertain outcomes.
 
@@ -323,7 +321,7 @@ Expanded tool and file details can read the exact native history item. Unsupport
 
 Titles are automatic and require no extra action. After the first eligible completed user exchange, the service summarizes the goal in a short title in the user's language. A generated title has at most 36 characters. It describes the topic instead of copying the opening words. The sidebar, conversation browser and Side chat tabs read the same native topic; the source tab stays Main. Agent identity and Work titles do not change.
 
-After four more completed user exchanges, the service reviews the recent focus against the current title. Details, progress updates and brief tangents keep that title. A sustained change of focus can replace it. Opening saved history and snapshot refresh do not start inference. Existing conversations wait for an eligible completion; this is not a bulk history rename.
+After seven more completed user exchanges, the service reviews the recent focus against the current title. Details, progress updates and brief tangents keep that title. A sustained change of focus can replace it. Opening saved history and snapshot refresh do not start inference. Existing conversations wait for an eligible completion; this is not a bulk history rename.
 
 The service uses the current account and provider. It selects GPT-5.6-Luna at low effort only if that choice appears in the live OpenAI catalog; otherwise it uses the source model. The bounded prompt contains recent public user and final assistant messages, excluding native tool and reasoning frames. It runs through the isolated ephemeral structured adapter shared with Recap. Native connection-owned routes keep temporary events private, then interrupt or detach the exact temporary turn as required. Private inference does not invalidate foreground questions or reviews. Source history, draft and normal input remain separate.
 
@@ -331,13 +329,13 @@ The native name is authoritative. The service checks the originating source, cur
 
 Title observations use the existing resolved inbox journal. They do not wake an Agent or enter transcript pages. Current bindings and their title map share the atomic work snapshot. No new title table, timer, preference or startup migration is required.
 
-The implementation reference is the official [TUI title owner at selected source 67f0994b](https://github.com/openai/codex/blob/67f0994b532b8740f14b5b738af7b7b2a915b1d6/codex-rs/tui/src/app/thread_title.rs) and its isolated structured-request helper. That source supplies initial title generation; the four-exchange topic review is Decodex policy. Schemas generated from the selected binary verify the native primitives. This does not imply a dedicated server title-generation API or use `thread/sample` for titles. See [qualification boundaries](../testing/upstream-acceptance-boundaries.md#automatic-conversation-title-qualification).
+The implementation reference is the official [TUI title owner at selected source 67f0994b](https://github.com/openai/codex/blob/67f0994b532b8740f14b5b738af7b7b2a915b1d6/codex-rs/tui/src/app/thread_title.rs) and its isolated structured-request helper. That source supplies initial title generation; the seven-exchange topic review is Decodex policy. Schemas generated from the selected binary verify the native primitives. This does not imply a dedicated server title-generation API or use `thread/sample` for titles. See [qualification boundaries](../testing/upstream-acceptance-boundaries.md#automatic-conversation-title-qualification).
 
 ## Recap and questions
 
 Manual recap is available. Automatic recap is a separate preference and defaults off; it is unrelated to scheduled upstream maintenance. Recap generation uses the native task and exact publication identity. A foreground result does not qualify a long background eligibility timer.
 
-Recap requests an isolated temporary native thread with tools disabled. For absent or built-in permission profiles, it selects the native `:read-only` default explicitly, so a managed workspace default cannot override the read-only request. An explicit custom profile keeps its own restrictions. The adapter checks the returned profile or sandbox and the ephemeral-thread flag before it starts inference. The retained native qualification still observed a model-required `apply_patch` entry: it verified environment denial, not removal of every tool name from the model catalog.
+Recap requests an isolated temporary native thread with tools disabled. For absent or built-in permission profiles, it selects the native `:read-only` default explicitly, so a managed workspace default cannot override the read-only request. An explicit custom profile keeps its own restrictions. The adapter checks the returned profile or sandbox and the ephemeral-thread flag before it starts inference. A disabled tool environment does not assert removal of every model-required tool name from the catalog.
 
 Asynchronous questions keep explicit answers and Skip. The separately retained nonblocking timeout policy can produce an empty answer after its grace/countdown conditions; it is not a general permission to answer questions for the user.
 
@@ -361,13 +359,13 @@ The former manual **Ask separately** popover and composer entry are removed. Nat
 
 ## Next-message suggestions
 
-With **Settings > Agents > Conversation assistance > Automatic next-message suggestions** enabled, a newly completed answer in the selected independent root conversation can trigger one native suggestion request when the conversation is idle and no separate request is active. The preference defaults on. Turning it off prevents new automatic requests; turning it back on does not replay completions observed while it was off. It uses the conversation's model and quota. It does not run tools or send input to the parent conversation. The composer menu retains **Suggest next message…** for an explicit request.
+With **Settings > Agents > Conversation assistance > Automatic next-message suggestions** enabled, a newly completed answer in the selected independent root conversation can trigger one native suggestion request when the conversation is idle and no separate request is active. The preference defaults on. Turning it off prevents new automatic requests; turning it back on does not replay completions observed while it was off. It uses the conversation's model and quota. It does not run tools or send input to the parent conversation.
 
-Review the result in **Suggested next message**. Focus the same idle conversation's empty message field and press **Tab** to insert the current suggestion as one undoable edit. Send it separately after review. Other fields, Shift-Tab and a nonempty draft keep normal focus navigation. Text entered while the suggestion is generated stays in place. Copy the suggestion or clear the current draft before accepting it. A replaced thread or stale sample cannot supply a new draft.
+The current suggestion appears inline in the empty composer. Focus the same idle conversation's empty message field and press **Tab** to insert the current suggestion as one undoable edit. Send it separately after review. Other fields, Shift-Tab and a nonempty draft keep normal focus navigation. Text entered while the suggestion is generated stays in place. Clear the current draft before accepting a suggestion. A replaced thread or stale sample cannot supply a new draft.
 
 Existing history and snapshot refreshes observe the new completed answer. Opening saved history, repeated refreshes and failed turns do not trigger generation. Generation can finish while the user edits a draft; it does not replace that draft. Attachments, task references and active voice input also keep the current draft in place. A skipped trigger does not run later when the editor is cleared. Automatic generation does not move the scroll position.
 
-The suggestion panel uses native sampling. **Cancel suggestion** targets its original request; **Close** hides the panel. Closing does not cancel native generation. Late results and uncertain cancellation retain the original request identity; the parent conversation is not cancelled. Status refresh does not generate another suggestion. A native tool attempt can return no text, and an unsupported or unavailable sampler remains visible as a failure. There is no automatic fallback to a tool-enabled prediction fork or separate polling timer.
+Suggestions use the exact retained native sampling request. Changing the source discards the local suggestion state; it does not cancel the parent conversation or replay generation. A late result cannot supply a draft for a replaced source. An unavailable or failed sample supplies no suggestion. There is no automatic fallback to a tool-enabled prediction fork.
 
 The [retained contract and test identities](../../automations/upstream/retained-contracts.json) record the scoped interface and wire checks. Existing native sampling qualification is reused; these checks do not establish live-provider suggestion quality or installed-app acceptance.
 

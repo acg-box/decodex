@@ -27,9 +27,6 @@ sources:
   - id: openwiki-source-8b32cad13ab2428dd54bd986
     resource: repo://crates/decodex-runtime/src/agent_skills.rs
 generated: { by: "codex", at: "2026-10-28T08:28:06.287Z" }
-verified:
-  - by: openwiki/0.7.2
-    at: 2026-11-02T07:10:57.562Z
 ---
 
 # Native tools and connection ownership

@@ -293,7 +293,7 @@ fn recent(entries: &[AgentTimelineEntry], turn: &str) -> Vec<Operation> {
 				&& collaboration.is_none()
 				&& label != activity.detail
 			{
-				format!("{label} · {}", activity.detail)
+				format!("{label}: {}", activity.detail)
 			} else {
 				label
 			}
@@ -686,7 +686,7 @@ mod tests {
 			preview.recent.iter().map(|op| op.id.as_str()).collect::<Vec<_>>(),
 			["now:b", "now:c", "now:d", "now:e", "now:f"]
 		);
-		assert_eq!(preview.recent[2].text, "Command · Tests passed");
+		assert_eq!(preview.recent[2].text, "Command: Tests passed");
 		assert!(activity::latest(&entries, Some("next")).is_none());
 	}
 

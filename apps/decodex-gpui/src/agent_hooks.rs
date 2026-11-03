@@ -263,7 +263,7 @@ impl AgentSurface {
 
 				if let Some(edit) = last_edit {
 					panel = panel.child(format!(
-						"Last shared edit: {} · {} · task {} · account {}",
+						"Last shared edit: {}\nHook: {}; task: {}; account: {}",
 						edit.outcome,
 						edit.hook.as_str(),
 						edit.work_id.as_str(),
@@ -282,7 +282,7 @@ impl AgentSurface {
 				for (index, hook) in hooks.iter().enumerate() {
 					panel = panel
 						.child(format!(
-							"{} · {} · effective {}",
+							"Hook: {}; trust: {}; effective: {}",
 							hook.key.as_str(),
 							hook.trust_status,
 							if hook.enabled { "enabled" } else { "disabled" }

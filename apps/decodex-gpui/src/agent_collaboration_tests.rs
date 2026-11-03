@@ -463,7 +463,7 @@ fn managed_receipts_keep_busy_delivery_and_assessment_separate(cx: &mut TestAppC
 
 		assert_eq!(
 			cases.iter().find(|case| case.state == "Not sent").unwrap().summary,
-			"Busy · instruction not sent or queued"
+			"Busy. Instruction was not sent or queued."
 		);
 		assert_eq!(
 			cases.iter().find(|case| case.id == "managed:sage:11").unwrap().state,
