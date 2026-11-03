@@ -1,7 +1,10 @@
 //! Exercise account handover through the public socket and the installed Codex runtime.
 use super::{accepted, cold_settings, fixture_working_directory, qualify, start_recap_parent};
 use crate::{account_service::AccountService, conversation::ConversationRuntime};
-use decodex_core::{AccountId, AccountQuotaWindow, ProcessGenerationId};
+use decodex_core::{
+	AccountId, AccountQuotaDisposition, AccountQuotaWindow, AccountQuotaWindowObservation,
+	AccountUsageObservation, DecodexRoot, ProcessGenerationId,
+};
 use decodex_database::SqliteStore;
 use decodex_protocol::{
 	AgentActionDto, AgentClient, AgentDispatchStateDto, AgentExecutionOverrides,
@@ -39,17 +42,30 @@ async fn observe(accounts: &AccountService, account: &AccountId, used: u8) {
 		SystemTime::now().duration_since(UNIX_EPOCH).expect("account handover fixture").as_micros()
 			as i64;
 
-	for minutes in [300, 10_080] {
+	let revision =
+		accounts.inspect(account).await.expect("account handover fixture").account.revision;
+	assert!(
 		accounts
-			.observe_quota(
+			.observe_usage(
 				account,
-				AccountQuotaWindow::new(minutes, used, now + 3_600_000_000)
-					.expect("account handover fixture"),
-				now,
+				AccountUsageObservation {
+					account_revision: revision,
+					observed_at_unix_micros: now,
+					ordinary_usage_allowed: Some(used < 100),
+					conditions: Default::default(),
+				},
+				[300, 10_080].map(|minutes| Some(AccountQuotaWindowObservation {
+					duration_minutes: minutes,
+					observed_at_unix_micros: Some(now),
+					disposition: AccountQuotaDisposition::Current(
+						AccountQuotaWindow::new(minutes, used, now + 3_600_000_000)
+							.expect("account handover fixture")
+					),
+				}))
 			)
 			.await
-			.expect("account handover fixture");
-	}
+			.expect("account handover fixture")
+	);
 }
 
 async fn await_account(
@@ -143,7 +159,7 @@ impl Scenario<'_> {
 		let refill_ms = self.refill(&thread, &second, count).await;
 		let requests = self.requests;
 		let report = serde_json::json!({
-			"qualification_format":3,
+			"qualification_format":4,
 			"provider":"local_synthetic",
 			"native_runtime":"installed_codex",
 			"initial_start_to_completion_ms":initial_ms,
@@ -160,6 +176,7 @@ impl Scenario<'_> {
 			"native_speed_preference_preserved":true,
 			"quota_error":"usageLimitExceeded",
 			"quota_error_precedes_observation":true,
+			"disconnect_before_quota_refresh_preserves_queued_input":true,
 			"partial_output_preserved":true,
 			"queued_during_exhaustion":true,
 			"same_native_thread":true,
@@ -279,6 +296,7 @@ impl Scenario<'_> {
 		// not let either terminal handling or the next command send to the old account.
 		accepted(client, input("Continue once after account handover."), "handover-followup").await;
 		self.verify_queued(count).await;
+		self.disconnect_before_quota_refresh(count).await;
 		set_tiers(home, &["priority"]);
 		fault.expect_fast.store(true, Ordering::Release);
 		observe(accounts, first, 100).await;
@@ -302,6 +320,72 @@ impl Scenario<'_> {
 		assert_eq!(&bound.account_id, second);
 
 		(count, handover_ms, followup_ms, failed)
+	}
+
+	async fn disconnect_before_quota_refresh(&self, count: usize) {
+		let Self { runtime, store, home, first, requests, .. } = *self;
+		runtime.close_agent_connection("recap-root").await.expect("account handover fixture");
+		time::timeout(Duration::from_secs(3), async {
+			loop {
+				let events = store
+					.read_agent_work_events("recap-root".into(), 100)
+					.await
+					.expect("account handover fixture");
+				if requests.load(Ordering::Acquire) != count
+					|| events.iter().any(|event| {
+						event.event_kind == "reconnection_needs_attention"
+							&& event.disposition.is_none()
+					}) {
+					break;
+				}
+				time::sleep(Duration::from_millis(10)).await;
+			}
+		})
+		.await
+		.expect("bounded recovery with unverified quota");
+		assert!(
+			runtime.agent_usage_source().await.is_none(),
+			"do not readmit the exhausted account using its old positive quota"
+		);
+		assert_eq!(
+			requests.load(Ordering::Acquire),
+			count,
+			"a restart must not dispatch the queued message before quota refresh"
+		);
+		let reopened = SqliteStore::open(
+			&DecodexRoot::new(home.join("product")).expect("account handover fixture").paths(),
+		)
+		.expect("account handover fixture");
+		let (accounts, _) =
+			reopened.read_account_registry_snapshot(10).await.expect("account handover fixture");
+		let account = accounts
+			.iter()
+			.find(|account| account.account_id == *first)
+			.expect("account handover fixture");
+		assert!(
+			account
+				.usage_observation
+				.expect("invalidated quota permission")
+				.ordinary_usage_allowed
+				.is_none()
+		);
+		assert!(
+			account.five_hour_quota.current().is_none()
+				&& account.seven_day_quota.current().is_none()
+		);
+		let queued = store
+			.list_agent_wake_events("recap-root".into(), 100)
+			.await
+			.expect("account handover fixture");
+		assert_eq!(
+			queued
+				.iter()
+				.filter(
+					|event| event.event_kind == "user_message" && event.delivered_turn_id.is_none()
+				)
+				.count(),
+			1
+		);
 	}
 
 	async fn verify_queued(&self, count: usize) {
