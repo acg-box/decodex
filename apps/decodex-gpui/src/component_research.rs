@@ -318,6 +318,7 @@ mod tests {
 	fn a_ready_page_does_not_claim_a_verified_pro_model() {
 		let state = Snapshot {
 			installed: Some(Installation {
+				version: "0.1.0".into(),
 				extension_id: "fixture",
 				extension_directory: "/fixture".into(),
 				plugin_directory: "/fixture".into(),

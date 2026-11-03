@@ -160,15 +160,13 @@ impl SettingsSurface {
 	}
 
 	fn component_settings(&self, cx: &mut Context<Self>) -> Div {
-		let version = RuntimeLock::embedded()
-			.map(|lock| {
-				if lock.source.is_some() {
-					format!("Development · {}", &lock.upstream_commit[..12])
-				} else {
-					lock.version
-				}
-			})
-			.unwrap_or_else(|_| "Version unavailable".into());
+		let lock = RuntimeLock::embedded().ok();
+		let version = lock.as_ref().map(|lock| lock.version.as_str());
+		let channel = match lock.as_ref() {
+			Some(lock) if lock.source.is_some() => "Development",
+			Some(_) => "Release",
+			None => "Version unavailable",
+		};
 		let action = match self.components.shown {
 			component_runtime::PreparationState::Preparing(_) => None,
 			component_runtime::PreparationState::Failed(_) =>
@@ -177,7 +175,14 @@ impl SettingsSurface {
 		};
 		let mut component = gpui::div().w_full().flex().flex_col().child(
 			ui_theme::settings_row()
-				.child(self.component_label(0, "components-codex-details", "Codex", version, cx))
+				.child(self.component_label(
+					0,
+					"components-codex-details",
+					"Codex",
+					version,
+					channel,
+					cx,
+				))
 				.when_some(action, |row, (id, label)| {
 					row.child(self.component_button(id, label, Action::Prepare, cx))
 				}),
@@ -242,16 +247,23 @@ impl SettingsSurface {
 		index: usize,
 		id: &'static str,
 		title: &'static str,
+		version: Option<&str>,
 		status: impl Into<SharedString>,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
 		let expanded = self.components.details[index];
+		let status = status.into();
+		let metadata = match version {
+			Some(version) => SharedString::from(format!("Version {version} · {status}")),
+			None => status,
+		};
 		gpui::div()
 			.id(id)
 			.debug_selector(move || id.into())
 			.role(Role::Button)
 			.tab_index(0)
 			.aria_label(title)
+			.aria_description(metadata.clone())
 			.aria_expanded(expanded)
 			.flex_1()
 			.min_w_0()
@@ -286,7 +298,7 @@ impl SettingsSurface {
 					),
 				),
 			))
-			.child(ui_theme::settings_description(status))
+			.child(ui_theme::settings_description(metadata))
 			.smooth()
 			.into_any_element()
 	}
@@ -412,7 +424,8 @@ impl SettingsSurface {
 					.child(self.component_label(
 						2,
 						"components-research-details",
-						"Pro Research · Experimental",
+						"Decodex Pro Research",
+						state.installed.as_ref().map(|package| package.version.as_str()),
 						state.status_text(),
 						cx,
 					))
@@ -426,7 +439,9 @@ impl SettingsSurface {
 						.flex()
 						.flex_col()
 						.gap_2()
-						.child(ui_theme::settings_description(explanation))
+						.child(ui_theme::settings_description(format!(
+							"Experimental. {explanation}"
+						)))
 						.when(state.installed.is_some(), |body| body.child(details)),
 				),
 			)
@@ -482,7 +497,7 @@ impl SettingsSurface {
 			});
 
 		gpui::div().debug_selector(|| "components-egm".into()).w_full().flex().flex_col().child(ui_theme::settings_row()
-			.child(self.component_label(1, "components-egm-details", "Elephant–Goldfish (EGM)", status, cx))
+			.child(self.component_label(1, "components-egm-details", "Elephant–Goldfish (EGM)", state.installed.as_ref().map(|plugin| plugin.version.as_str()), status, cx))
 			.child(controls))
 			.child(self.component_body(1,"components-egm-body",ui_theme::settings_description("Google's complete design and review plugin. Optional; uses your Codex subscription. Start a new conversation after installing or updating.")))
 			.child(ui_feedback::notice("components-egm-feedback", "egm", feedback).inline()
