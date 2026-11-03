@@ -18,6 +18,14 @@ final class ConversationEstimatesTests: XCTestCase {
 		XCTAssertEqual(native.amount, "$0")
 	}
 
+	func testCostSectionRequiresReportedMoneyAndRetainsReportedZero() throws {
+		let unknown = ConversationEstimateRow(work_id: "unknown", title: "Unknown", account_id: nil, usd_micros: nil, native_usd_micros: nil, credits_micros: 46_000_000, observed_at_micros: 1)
+		let zero = ConversationEstimateRow(work_id: "zero", title: "Zero", account_id: nil, usd_micros: nil, native_usd_micros: 0, credits_micros: nil, observed_at_micros: 1)
+		XCTAssertTrue(ConversationEstimatesRead(available: true, rows: [unknown], more_available: false).pricedRows.isEmpty)
+		XCTAssertEqual(ConversationEstimatesRead(available: true, rows: [unknown, zero], more_available: false).pricedRows, [zero])
+		XCTAssertTrue(ConversationEstimatesRead(available: false, rows: [zero], more_available: false).pricedRows.isEmpty)
+	}
+
 	func testEstimateReadUsesTheExistingPinnedNativeAuthority() async throws {
 		let authority = ResetCardAuthority(profileName: "local", serverID: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
 		let recorder = NativeRequestRecorder()
