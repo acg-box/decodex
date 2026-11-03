@@ -81,7 +81,7 @@ fn speed_resolution_does_not_invent_availability_or_remove_explicit_standard_and
 }
 
 #[gpui::test]
-fn fallback_sends_fast_and_retains_only_speed_across_acceptance_and_cold_restore(
+fn fallback_retains_requested_speed_for_account_bound_dispatch_and_cold_restore(
 	cx: &mut gpui::TestAppContext,
 ) {
 	let surface = cx.new(AgentSurface::new);
@@ -93,8 +93,8 @@ fn fallback_sends_fast_and_retains_only_speed_across_acceptance_and_cold_restore
 		let AgentActionDto::SendConfigured { execution, .. } = action else { unreachable!() };
 		let mut native = serde_json::json!({});
 		execution.apply_to_native_turn(&mut native);
-		assert_eq!(native["serviceTier"], "priority");
-		assert_eq!(native["serviceTierForTurn"], "priority");
+		assert_eq!(native["serviceTier"], "ultrafast");
+		assert_eq!(native["serviceTierForTurn"], "ultrafast");
 		assert_eq!(native["model"], "speed-model");
 		s.draft_profiles.execution.accepted(captured.as_ref(), retained);
 		let saved = s.draft_profiles.execution.saved_choices();
@@ -114,7 +114,7 @@ fn fallback_sends_fast_and_retains_only_speed_across_acceptance_and_cold_restore
 		let mut next = followup(s);
 		s.prepare_submission_speed(&mut next, cx);
 		let AgentActionDto::SendConfigured { execution, .. } = next else { unreachable!() };
-		assert_eq!(execution.selected_service_tier().unwrap().as_str(), "priority");
+		assert_eq!(execution.selected_service_tier().unwrap().as_str(), "ultrafast");
 		assert!(execution.model.is_none() && execution.reasoning_effort.is_none());
 	});
 }
@@ -152,6 +152,51 @@ fn fallback_receipt_cannot_overwrite_new_choices_and_missing_catalog_does_not_in
 }
 
 #[gpui::test]
+fn account_catalog_changes_keep_native_preference_and_persistent_fallback(
+	cx: &mut gpui::TestAppContext,
+) {
+	let surface = cx.new(AgentSurface::new);
+	surface.update(cx, |s, cx| {
+		setup(s, cx);
+		if let Some(AgentModelSettingsResult::Available { service_tier, .. }) =
+			s.model_settings.observations.get_mut("agent")
+		{
+			*service_tier = Some(WireText::new("ultrafast").unwrap());
+		}
+		s.capabilities = Some(AgentCapabilitiesResult::Available {
+			models: vec![model(&["priority", "ultrafast"])],
+			memory_enabled: None,
+		});
+		let mut action = followup(s);
+		let (captured, retained) = s.prepare_submission_speed(&mut action, cx);
+		assert!(retained.is_none());
+		s.draft_profiles.execution.accepted(captured.as_ref(), retained);
+		assert_eq!(s.composer_speed_label(cx), "Ultrafast");
+
+		s.capabilities = Some(AgentCapabilitiesResult::Available {
+			models: vec![model(&["priority"])],
+			memory_enabled: None,
+		});
+		let speed = s.composer_speed(cx).unwrap();
+		assert_eq!(speed.requested.as_str(), "ultrafast");
+		assert_eq!(speed.effective.as_str(), "priority");
+		assert_eq!(speed.notice(), "Ultrafast unavailable. Using Fast.");
+		assert_eq!(s.composer_speed_label(cx), "Fast");
+
+		let mut next = followup(s);
+		let (captured, retained) = s.prepare_submission_speed(&mut next, cx);
+		s.draft_profiles.execution.accepted(captured.as_ref(), retained);
+		assert_eq!(s.composer_speed(cx).unwrap().notice(), speed.notice());
+		s.capabilities = Some(AgentCapabilitiesResult::Available {
+			models: vec![model(&["priority", "ultrafast"])],
+			memory_enabled: None,
+		});
+		assert!(!s.composer_speed(cx).unwrap().is_fallback());
+		assert_eq!(s.composer_speed_label(cx), "Ultrafast");
+	});
+}
+
+#[gpui::test]
 fn new_and_inherited_messages_use_fallback_without_changing_another_agent(
 	cx: &mut gpui::TestAppContext,
 ) {
@@ -169,7 +214,7 @@ fn new_and_inherited_messages_use_fallback_without_changing_another_agent(
 		};
 		let (captured, retained) = s.prepare_submission_speed(&mut action, cx);
 		let AgentActionDto::NewConversation { execution, .. } = action else { unreachable!() };
-		assert_eq!(execution.selected_service_tier().unwrap().as_str(), "priority");
+		assert_eq!(execution.selected_service_tier().unwrap().as_str(), "ultrafast");
 		s.draft_profiles.execution.accepted(captured.as_ref(), retained);
 		s.draft_profiles.execution = Default::default();
 		if let Some(AgentModelSettingsResult::Available { service_tier, .. }) =
@@ -182,7 +227,7 @@ fn new_and_inherited_messages_use_fallback_without_changing_another_agent(
 		assert!(captured.is_some());
 		assert_eq!(retained.unwrap().as_str(), "ultrafast");
 		let AgentActionDto::SendConfigured { execution, .. } = inherited else { unreachable!() };
-		assert_eq!(execution.selected_service_tier().unwrap().as_str(), "priority");
+		assert_eq!(execution.selected_service_tier().unwrap().as_str(), "ultrafast");
 		assert!(execution.model.is_none(), "an inherited speed must not pin an observed model");
 		let mut other = AgentActionDto::SendConfigured {
 			root_id: EntityId::new("another-agent").unwrap(),

@@ -46,6 +46,21 @@ impl AppServerClient {
 		if !valid(thread, 512) {
 			return Err(ClientError::InvalidFrame);
 		}
+		let guard =
+			self.with_thread_settings_guard(thread, guard).ok_or(ClientError::StaleHistory)?;
+		if let Some((settings, observed)) = self.configured_task_models(thread)
+			&& observed.is_live()
+			&& observed.settings_revision() == guard.settings_revision()
+		{
+			// Complete native settings publications include the configured tier even
+			// when thread/read omits it. Keep the same thread and revision authority.
+			return Ok(Some(NativeThreadModelSettings {
+				model_provider: Some(settings.model_provider),
+				model: Some(settings.model),
+				reasoning_effort: settings.effort,
+				service_tier: Some(settings.service_tier.unwrap_or_else(|| "default".into())),
+			}));
+		}
 
 		let response = time::timeout(
 			Duration::from_secs(8),
@@ -95,6 +110,8 @@ fn project(value: Value, expected: &str) -> Result<Option<NativeThreadModelSetti
 
 #[cfg(test)]
 mod tests {
+	use std::time::Duration;
+
 	use tokio::io::{self, AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
 
 	use crate::app_server_client::thread_model_settings::{self, AppServerClient, Value};
@@ -162,6 +179,38 @@ mod tests {
 				)
 				.is_err()
 			);
+		}
+	}
+
+	#[tokio::test]
+	async fn configured_speed_uses_the_exact_native_settings_publication_without_a_read_rpc() {
+		for tier in [None, Some("ultrafast")] {
+			let (local, mut remote) = io::duplex(4_096);
+			let (r, w) = io::split(local);
+			let (client, mut events) = AppServerClient::from_io(r, w);
+			let notice = serde_json::json!({"method":"thread/settings/updated","params":{"threadId":"t","threadSettings":{"model":"configured","modelProvider":"fixture","effort":"high","serviceTier":tier}}});
+			remote.write_all(format!("{notice}\n").as_bytes()).await.unwrap();
+			events.recv().await.unwrap();
+			let guard = client.thread_settings_guard("t").unwrap();
+			let settings = client.thread_model_settings("t", guard.clone()).await.unwrap().unwrap();
+			assert_eq!(settings.model.as_deref(), Some("configured"));
+			assert_eq!(settings.reasoning_effort.as_deref(), Some("high"));
+			assert_eq!(settings.service_tier.as_deref(), Some(tier.unwrap_or("default")));
+			let mut bytes = [0; 1];
+			use tokio::io::AsyncReadExt as _;
+			assert!(
+				tokio::time::timeout(Duration::from_millis(20), remote.read(&mut bytes))
+					.await
+					.is_err(),
+				"warm settings must not request metadata or resume the thread"
+			);
+			let changed = serde_json::json!({"method":"thread/settings/updated","params":{"threadId":"t","threadSettings":{"model":"configured","modelProvider":"fixture","effort":"low","serviceTier":tier}}});
+			remote.write_all(format!("{changed}\n").as_bytes()).await.unwrap();
+			events.recv().await.unwrap();
+			assert!(matches!(
+				client.thread_model_settings("t", guard).await,
+				Err(super::ClientError::StaleHistory)
+			));
 		}
 	}
 

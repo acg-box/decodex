@@ -8,7 +8,11 @@ impl AgentCoordinator {
 		params: &mut Value,
 		guard: HistoryGuard,
 	) -> Result<Option<AgentTurnExecution>, AgentError> {
-		if params.get("model").is_none() || params.get("effort").is_none() {
+		let mut inherited_tier = None;
+		if params.get("model").is_none()
+			|| params.get("effort").is_none()
+			|| params.get("serviceTierForTurn").is_none()
+		{
 			let thread = params["threadId"]
 				.as_str()
 				.ok_or_else(|| AgentError::Invalid("missing thread".into()))?;
@@ -16,6 +20,7 @@ impl AgentCoordinator {
 			else {
 				return Ok(None);
 			};
+			inherited_tier = settings.service_tier.clone();
 
 			// Bind inherited fields from the native task, never startup defaults.
 			// Preserve every deliberate field in a partial user selection.
@@ -29,6 +34,25 @@ impl AgentCoordinator {
 			{
 				params["effort"] = serde_json::json!(effort);
 			}
+		}
+		if let Some(tier) = params["serviceTierForTurn"]
+			.as_str()
+			.or_else(|| params["serviceTier"].as_str())
+			.or(inherited_tier.as_deref())
+			&& !matches!(tier, "default" | "flex")
+			&& let Some(thread) = params["threadId"].as_str()
+			&& let Some((catalog, _)) =
+				crate::agent_capabilities::read_available_catalog(&self.client, Some(thread)).await
+			&& let Some(model) = catalog
+				.models
+				.iter()
+				.find(|model| Some(model.model.as_str()) == params["model"].as_str())
+			&& let Ok(requested) = decodex_protocol::ServiceTier::new(tier)
+		{
+			// Native persists serviceTier as the preference and applies serviceTierForTurn
+			// only to this turn. Account routing never depends on either selection.
+			params["serviceTierForTurn"] =
+				serde_json::json!(model.effective_service_tier(&requested));
 		}
 		if !guard.is_live() {
 			return Err(ClientError::StaleHistory.into());

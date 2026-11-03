@@ -68,6 +68,20 @@ fn input(text: &str) -> AgentActionDto {
 	}
 }
 
+fn set_tiers(home: &Path, tiers: &[&str]) {
+	let path = home.join(".codex/models.json");
+	let mut catalog: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+	catalog["models"][0]["service_tiers"] = serde_json::json!(
+		tiers
+			.iter()
+			.map(
+				|id| serde_json::json!({"id":id,"name":id,"description":"Synthetic account capability"})
+			)
+			.collect::<Vec<_>>()
+	);
+	fs::write(path, serde_json::to_vec(&catalog).unwrap()).unwrap();
+}
+
 async fn settled(client: &AgentClient) -> String {
 	loop {
 		if let AgentSnapshotResult::Available(snapshot) = client.query().await.unwrap()
@@ -99,6 +113,14 @@ pub(super) async fn check(
 	fault: &cold_settings::QuotaFault,
 ) {
 	let second = cold_settings::enroll_numbered(store, accounts, home, 2).await;
+	set_tiers(home, &["priority", "ultrafast"]);
+	let config = home.join(".codex/config.toml");
+	let native = fs::read_to_string(&config).unwrap();
+	fs::write(
+		config,
+		native.replace("[features]", "[features]\nfast_mode=true\nultrafast_mode=true"),
+	)
+	.unwrap();
 
 	observe(accounts, first, 80).await;
 	observe(accounts, &second, 0).await;
@@ -144,6 +166,8 @@ pub(super) async fn check(
 		store.get_agent_work_item("recap-root".into()).await.unwrap().active_turn_id.unwrap();
 	let count = requests.load(Ordering::Acquire);
 
+	set_tiers(home, &["priority"]);
+	fault.expect_fast.store(true, Ordering::Release);
 	observe(accounts, first, 100).await;
 	let action = input("Continue once after account handover.");
 
@@ -189,6 +213,28 @@ pub(super) async fn check(
 	assert_eq!(bound.account_id, second);
 
 	let native = runtime.agent_client().unwrap();
+	let settings = native
+		.thread_model_settings(&thread, native.thread_settings_guard(&thread).unwrap())
+		.await
+		.unwrap()
+		.unwrap();
+	assert_eq!(
+		settings.service_tier.as_deref(),
+		Some("ultrafast"),
+		"per-turn fallback must preserve the conversation preference"
+	);
+	let decodex_protocol::AgentCapabilitiesResult::Available { models, .. } =
+		client.capabilities().await.unwrap()
+	else {
+		panic!("current account catalog")
+	};
+	let model = models.iter().find(|model| model.model.as_str() == "cold-native-model").unwrap();
+	assert_eq!(
+		model
+			.effective_service_tier(&decodex_protocol::ServiceTier::new("ultrafast").unwrap())
+			.as_str(),
+		"priority"
+	);
 	let failed_history = native.thread_read_turn(&thread, &failed).await.unwrap();
 	let failed_turn = failed_history["thread"]["turns"]
 		.as_array()
@@ -243,6 +289,9 @@ pub(super) async fn check(
 		"disconnect_to_same_account_bound_ms":reconnect_ms,
 		"reconnected_followup_to_completion_ms":started.elapsed().as_millis(),
 		"sticky_account_with_ultrafast":true,
+		"requested_speed":"ultrafast",
+		"effective_speed_after_handover":"priority",
+		"native_speed_preference_preserved":true,
 		"quota_error":"usageLimitExceeded",
 		"partial_output_preserved":true,
 		"queued_during_exhaustion":true,

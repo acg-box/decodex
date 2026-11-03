@@ -10,21 +10,8 @@ pub(super) struct Selection {
 
 impl Selection {
 	pub(super) fn resolve(requested: ServiceTier, model: Option<&AgentModelDto>) -> Self {
-		let effective = match model {
-			Some(model)
-				if !matches!(requested.as_str(), "default" | "flex")
-					&& !model.service_tiers.iter().any(|tier| tier.id == requested) =>
-			{
-				if requested.as_str() == "ultrafast"
-					&& model.service_tiers.iter().any(|tier| tier.id.as_str() == "priority")
-				{
-					ServiceTier::from_fast(true)
-				} else {
-					ServiceTier::standard()
-				}
-			},
-			_ => requested.clone(),
-		};
+		let effective = model
+			.map_or_else(|| requested.clone(), |model| model.effective_service_tier(&requested));
 		Self { requested, effective }
 	}
 
@@ -46,8 +33,8 @@ impl AgentSurface {
 		Some(Selection::resolve(self.composer_service_tier()?, self.selected_model(cx)))
 	}
 
-	/// Capture the user's choice before substituting the usable native tier. Keep only
-	/// the speed preference after acceptance so a fallback remains visible on later turns.
+	/// Keep the preference through acceptance. The admitted runtime resolves the per-turn
+	/// tier after account selection, without replacing the native conversation preference.
 	pub(super) fn prepare_submission_speed(
 		&mut self,
 		action: &mut AgentActionDto,
@@ -87,13 +74,6 @@ impl AgentSurface {
 		execution.service_tier = Some(selection.requested.clone());
 		execution.fast = None;
 		let captured = self.draft_profiles.execution.capture(action);
-		let execution = match action {
-			AgentActionDto::SendConfigured { execution, .. }
-			| AgentActionDto::NewConversation { execution, .. }
-			| AgentActionDto::StartConfigured { execution, .. } => execution,
-			_ => unreachable!(),
-		};
-		execution.service_tier = Some(selection.effective);
 		(captured, Some(selection.requested))
 	}
 }

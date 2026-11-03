@@ -27,7 +27,7 @@ impl AgentSurface {
 				crate::session_settings::speed_label(id).to_owned(),
 			)
 		});
-		let selected = self.composer_speed(cx).map(|speed| speed.effective);
+		let selected = self.composer_speed(cx).map(|speed| speed.requested);
 		crate::session_settings::speed_choices(
 			selected.as_ref(),
 			tiers,

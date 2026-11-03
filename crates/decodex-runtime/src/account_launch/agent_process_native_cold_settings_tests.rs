@@ -449,6 +449,7 @@ async fn serve(
 #[derive(Default)]
 struct QuotaFault {
 	pending: std::sync::atomic::AtomicBool,
+	expect_fast: std::sync::atomic::AtomicBool,
 	started: tokio::sync::Notify,
 	release: tokio::sync::Notify,
 }
@@ -508,11 +509,6 @@ async fn serve_with_quota_fault(
 
 			assert_eq!(input["model"], "cold-native-model");
 			assert_eq!(input["reasoning"]["effort"], "provider-effort");
-			assert!(
-				input.get("service_tier").is_none(),
-				"cached priority must not override Standard"
-			);
-
 			let title = input.pointer("/text/format/schema/properties/title").is_some();
 			// Background naming is a separate inference request, not a user-input replay.
 			let serial = if title {
@@ -521,6 +517,21 @@ async fn serve_with_quota_fault(
 			} else {
 				requests.fetch_add(1, Ordering::AcqRel)
 			};
+			if !title && let Some(fault) = &fault {
+				let expected = (serial > 0).then(|| {
+					if fault.expect_fast.load(Ordering::Acquire) { "priority" } else { "ultrafast" }
+				});
+				assert_eq!(
+					input["service_tier"].as_str(),
+					expected,
+					"actual provider tier must follow the admitted account"
+				);
+			} else {
+				assert!(
+					input.get("service_tier").is_none(),
+					"cached priority must not override Standard"
+				);
+			}
 			if !title
 				&& let Some(fault) =
 					fault.as_ref().filter(|fault| fault.pending.swap(false, Ordering::AcqRel))
