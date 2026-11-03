@@ -278,16 +278,17 @@ async fn qualify(home: &Path, rotation: bool) {
 			Duration::from_secs(if rotation { 75 } else { interaction_seconds(interactive) }),
 			async {
 				if rotation {
-					account_rotation::check(
-						&client,
-						&runtime,
-						&store,
-						&accounts,
+					account_rotation::Scenario {
+						client: &client,
+						runtime: &runtime,
+						store: &store,
+						accounts: &accounts,
 						home,
-						&account,
-						&requests,
-						quota_fault.as_ref().unwrap(),
-					)
+						first: &account,
+						requests: &requests,
+						fault: quota_fault.as_ref().expect("account rotation fault"),
+					}
+					.check()
 					.await;
 				} else if interactive {
 					desktop::check(&client, &runtime, home, &account, &requests).await;

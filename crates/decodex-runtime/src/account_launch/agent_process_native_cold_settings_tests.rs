@@ -465,28 +465,9 @@ async fn serve_with_quota_fault(
 
 	while let Ok((socket, _)) = listener.accept().await {
 		let mut socket = tokio::io::BufReader::new(socket);
-		let mut first = String::new();
-
-		if socket.read_line(&mut first).await.expect("loopback native backend") == 0 {
+		let Some((first, path, length)) = read_fixture_headers(&mut socket).await else {
 			continue;
-		}
-
-		let path = first.split_whitespace().nth(1).expect("loopback native backend").to_owned();
-		let mut length = 0;
-
-		loop {
-			let mut line = String::new();
-
-			assert!(socket.read_line(&mut line).await.expect("loopback native backend") > 0);
-
-			if line == "\r\n" {
-				break;
-			}
-
-			if let Some(value) = line.to_ascii_lowercase().strip_prefix("content-length:") {
-				length = value.trim().parse::<usize>().expect("loopback native backend");
-			}
-		}
+		};
 
 		let (status, content_type, body) = if first.starts_with("GET ")
 			|| (first.starts_with("POST ") && path == "/backend-api/wham/usage/thread_usage/query")
@@ -536,34 +517,7 @@ async fn serve_with_quota_fault(
 				&& let Some(fault) =
 					fault.as_ref().filter(|fault| fault.pending.swap(false, Ordering::AcqRel))
 			{
-				let frames = [
-					serde_json::json!({"type":"response.created","response":{"id":"quota-fault"}}),
-					serde_json::json!({"type":"response.output_item.done","item":{"type":"message","role":"assistant","id":"partial-quota-answer","content":[{"type":"output_text","text":"Partial result before quota exhaustion."}]}}),
-				];
-				let body = frames
-					.iter()
-					.map(|frame| {
-						format!("event: {}\ndata: {frame}\n\n", frame["type"].as_str().unwrap())
-					})
-					.collect::<String>();
-				socket
-					.get_mut()
-					.write_all(
-						format!(
-							"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nConnection: close\r\n\r\n{body}"
-						)
-						.as_bytes(),
-					)
-					.await
-					.unwrap();
-				fault.started.notify_one();
-				fault.release.notified().await;
-				let frame = serde_json::json!({"type":"response.failed","response":{"id":"quota-fault","error":{"code":"credit_balance_exhausted","message":"Synthetic account quota exhausted."}}});
-				socket
-					.get_mut()
-					.write_all(format!("event: response.failed\ndata: {frame}\n\n").as_bytes())
-					.await
-					.unwrap();
+				write_quota_failure(&mut socket, fault).await;
 				continue;
 			}
 			let held = if env::var_os("DECODEX_TEST_ACTIVE_SERVICE_SHUTDOWN").is_some() {
@@ -636,6 +590,69 @@ async fn serve_with_quota_fault(
 
 		socket.get_mut().write_all(format!("HTTP/1.1 {status} Fixture\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",body.len()).as_bytes()).await.expect("loopback native backend");
 	}
+}
+
+async fn read_fixture_headers(
+	socket: &mut tokio::io::BufReader<TcpStream>,
+) -> Option<(String, String, usize)> {
+	let mut first = String::new();
+
+	if socket.read_line(&mut first).await.expect("loopback native backend") == 0 {
+		return None;
+	}
+
+	let path = first.split_whitespace().nth(1).expect("loopback native backend").to_owned();
+	let mut length = 0;
+
+	loop {
+		let mut line = String::new();
+
+		assert!(socket.read_line(&mut line).await.expect("loopback native backend") > 0);
+
+		if line == "\r\n" {
+			break;
+		}
+
+		if let Some(value) = line.to_ascii_lowercase().strip_prefix("content-length:") {
+			length = value.trim().parse::<usize>().expect("loopback native backend");
+		}
+	}
+
+	Some((first, path, length))
+}
+
+async fn write_quota_failure(socket: &mut tokio::io::BufReader<TcpStream>, fault: &QuotaFault) {
+	let frames = [
+		serde_json::json!({"type":"response.created","response":{"id":"quota-fault"}}),
+		serde_json::json!({"type":"response.output_item.done","item":{"type":"message","role":"assistant","id":"partial-quota-answer","content":[{"type":"output_text","text":"Partial result before quota exhaustion."}]}}),
+	];
+	let body = frames
+		.iter()
+		.map(|frame| {
+			format!(
+				"event: {}\ndata: {frame}\n\n",
+				frame["type"].as_str().expect("synthetic quota response")
+			)
+		})
+		.collect::<String>();
+	socket
+		.get_mut()
+		.write_all(
+			format!(
+				"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nConnection: close\r\n\r\n{body}"
+			)
+			.as_bytes(),
+		)
+		.await
+		.expect("synthetic quota response");
+	fault.started.notify_one();
+	fault.release.notified().await;
+	let frame = serde_json::json!({"type":"response.failed","response":{"id":"quota-fault","error":{"code":"credit_balance_exhausted","message":"Synthetic account quota exhausted."}}});
+	socket
+		.get_mut()
+		.write_all(format!("event: response.failed\ndata: {frame}\n\n").as_bytes())
+		.await
+		.expect("synthetic quota response");
 }
 
 async fn hold_fixture_response(socket: &mut tokio::io::BufReader<TcpStream>, witness: &str) {
