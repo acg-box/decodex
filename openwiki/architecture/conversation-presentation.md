@@ -149,9 +149,6 @@ sources:
   - id: openwiki-source-6197a876b2effbe992b1e2ec
     resource: repo://database/src/agent.rs
 generated: { by: "codex", at: "2026-11-02T07:10:57.562Z" }
-verified:
-  - by: openwiki/0.7.2
-    at: 2026-11-02T08:00:19.527Z
 ---
 
 

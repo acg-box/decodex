@@ -109,9 +109,6 @@ sources:
   - id: openwiki-source-d45a647d565211cf9b5cb067
     resource: repo://scripts/vstyle_audit.py
 generated: { by: "codex", at: "2026-10-31T16:06:25.983Z" }
-verified:
-  - by: openwiki/0.7.2
-    at: 2026-11-02T07:10:57.562Z
 ---
 
 

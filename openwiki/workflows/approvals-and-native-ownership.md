@@ -29,9 +29,6 @@ sources:
   - id: openwiki-source-d1279ad243eb550afec4d0e6
     resource: repo://database/src/guardian_settings.rs
 generated: { by: "codex", at: "2026-10-28T08:28:06.287Z" }
-verified:
-  - by: openwiki/0.7.2
-    at: 2026-11-02T07:10:57.562Z
 ---
 
 

@@ -37,9 +37,6 @@ sources:
   - id: openwiki-source-960cb6b925f1fa45c737a735
     resource: repo://scripts/macos/verify_decodex_bundle_contracts.py
 generated: { by: "codex", at: "2026-11-02T07:10:57.562Z" }
-verified:
-  - by: openwiki/0.7.2
-    at: 2026-11-02T07:10:57.562Z
 ---
 
 # Local database operations

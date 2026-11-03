@@ -187,9 +187,6 @@ sources:
   - id: openwiki-source-e201f60894c32a914dac99ee
     resource: repo://scripts/vnext/run_native_regression.py
 generated: { by: "codex", at: "2026-11-02T08:00:19.527Z" }
-verified:
-  - by: openwiki/0.7.2
-    at: 2026-11-02T08:00:19.527Z
 ---
 
 # Upstream integration acceptance boundaries

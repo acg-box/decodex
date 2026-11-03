@@ -39,9 +39,6 @@ sources:
   - id: openwiki-source-8fe6f1557e5d45d88b34bd0a
     resource: repo://scripts/macos/generate_workspace_symbols.swift
 generated: { by: "codex", at: "2026-10-31T14:39:55.131Z" }
-verified:
-  - by: openwiki/0.7.2
-    at: 2026-10-31T14:39:55.131Z
 ---
 
 # Account routing and recovery
