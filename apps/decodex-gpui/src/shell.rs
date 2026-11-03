@@ -3597,13 +3597,9 @@ fn accounts_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 		.flex()
 		.justify_center()
 		.child(
-			gpui::div()
-				.w_full()
+			ui_theme::settings_sections()
 				.max_w(gpui::px(SETTINGS_WIDTH))
 				.min_h_0()
-				.flex()
-				.flex_col()
-				.gap_4()
 				.child(account_pool_header(shell, cx))
 				.children(
 					account_operation_feedback(shell)

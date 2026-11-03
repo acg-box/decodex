@@ -13,7 +13,6 @@ use crate::{
 	component_plugins::{self, PluginOperations},
 	component_research::{self, ResearchOperations},
 	component_runtime::{self, RuntimePreparation},
-	component_status::ComponentStatus,
 	settings_surface::SettingsSurface,
 	shell::workspace_symbols,
 	ui_feedback::{self, Feedback},
@@ -78,7 +77,6 @@ impl Components {
 		if matches!(
 			self.preparation.snapshot(),
 			component_runtime::PreparationState::Unchecked
-				| component_runtime::PreparationState::Installed
 				| component_runtime::PreparationState::Ready
 		) {
 			self.optional.inspect();
@@ -170,24 +168,27 @@ impl SettingsSurface {
 				Some(("components-retry-runtime", "Retry setup")),
 			_ => Some(("components-prepare-runtime", "Verify")),
 		};
-		let mut component = gpui::div().w_full().flex().flex_col().child(
-			ui_theme::settings_row()
-				.child(self.component_label(
-					0,
-					"components-codex-details",
-					"Codex",
-					version,
-					self.components.shown.status(),
-					cx,
-				))
-				.when_some(action, |row, (id, label)| {
-					row.child(self.component_button(id, label, Action::Prepare, cx))
-				}),
-		);
+		let mut component = gpui::div()
+			.debug_selector(|| "components-codex".into())
+			.w_full()
+			.flex()
+			.flex_col()
+			.child(
+				ui_theme::settings_row()
+					.child(self.component_label(
+						0,
+						"components-codex-details",
+						"Codex",
+						version,
+						cx,
+					))
+					.when_some(action, |row, (id, label)| {
+						row.child(self.component_button(id, label, Action::Prepare, cx))
+					}),
+			);
 
 		match &self.components.shown {
-			component_runtime::PreparationState::Unchecked
-			| component_runtime::PreparationState::Installed => {},
+			component_runtime::PreparationState::Unchecked => {},
 			component_runtime::PreparationState::Ready => {
 				component = component.children(ui_feedback::inline_feedback(
 					"components-component-ready",
@@ -251,22 +252,17 @@ impl SettingsSurface {
 		id: &'static str,
 		title: &'static str,
 		version: Option<&str>,
-		status: ComponentStatus,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
 		let expanded = self.components.details[index];
-		let status = status.label();
-		let metadata = match version {
-			Some(version) => SharedString::from(format!("Version {version} · {status}")),
-			None => SharedString::from(status),
-		};
+		let metadata = version.map(|version| SharedString::from(format!("Version {version}")));
 		gpui::div()
 			.id(id)
 			.debug_selector(move || id.into())
 			.role(Role::Button)
 			.tab_index(0)
 			.aria_label(title)
-			.aria_description(metadata.clone())
+			.when_some(metadata.clone(), |label, version| label.aria_description(version))
 			.aria_expanded(expanded)
 			.flex_1()
 			.min_w_0()
@@ -301,7 +297,9 @@ impl SettingsSurface {
 					),
 				),
 			))
-			.child(ui_theme::settings_description(metadata))
+			.when_some(metadata, |label, version| {
+				label.child(ui_theme::settings_description(version))
+			})
 			.smooth()
 			.into_any_element()
 	}
@@ -315,17 +313,13 @@ impl SettingsSurface {
 		ui_motion::disclosure(
 			id,
 			self.components.details[index],
-			gpui::div().w_full().pt_1().child(content),
+			gpui::div().w_full().pb(gpui::px(8.)).child(content),
 		)
 		.into_any_element()
 	}
 
 	pub(super) fn components_content(&self, cx: &mut Context<Self>) -> AnyElement {
-		gpui::div()
-			.w_full()
-			.flex()
-			.flex_col()
-			.gap_4()
+		ui_theme::settings_rows()
 			.children([
 				self.component_settings(cx).into_any_element(),
 				self.egm_settings(cx).into_any_element(),
@@ -441,7 +435,6 @@ impl SettingsSurface {
 						"components-research-details",
 						"Decodex Pro Research",
 						state.installed.as_ref().map(|package| package.version.as_str()),
-						state.status(),
 						cx,
 					))
 					.child(controls),
@@ -467,7 +460,6 @@ impl SettingsSurface {
 
 	fn egm_settings(&self, cx: &mut Context<Self>) -> Div {
 		let state = &self.components.plugin;
-		let status = state.status();
 		let mut controls = gpui::div().flex().items_center().gap_2().child(self.component_button(
 			"components-refresh-egm",
 			"Refresh",
@@ -512,7 +504,7 @@ impl SettingsSurface {
 			});
 
 		gpui::div().debug_selector(|| "components-egm".into()).w_full().flex().flex_col().child(ui_theme::settings_row()
-			.child(self.component_label(1, "components-egm-details", "Elephant–Goldfish (EGM)", state.installed.as_ref().map(|plugin| plugin.version.as_str()), status, cx))
+			.child(self.component_label(1, "components-egm-details", "Elephant–Goldfish (EGM)", state.installed.as_ref().map(|plugin| plugin.version.as_str()), cx))
 			.child(controls))
 			.child(self.component_body(1,"components-egm-body",ui_theme::settings_description("Google's complete design and review plugin. Optional; uses your Codex subscription. Start a new conversation after installing or updating.")))
 			.child(ui_feedback::notice("components-egm-feedback", "egm", feedback).inline()
@@ -681,6 +673,13 @@ mod tests {
 
 		assert!(visual.debug_bounds("settings-group-This Mac").is_none());
 		assert_eq!(settings.read_with(visual, |s, _| s.components.details), [false; 3]);
+
+		let codex = visual.debug_bounds("components-codex").unwrap();
+		let egm = visual.debug_bounds("components-egm").unwrap();
+		let research = visual.debug_bounds("components-pro-research").unwrap();
+
+		assert_eq!(codex.bottom(), egm.top(), "padded setting rows must not add an item gap");
+		assert_eq!(egm.bottom(), research.top(), "all components use the same list spacing");
 
 		let toggle = visual.debug_bounds("components-egm-details").unwrap();
 		let action = visual.debug_bounds("components-refresh-egm").unwrap();

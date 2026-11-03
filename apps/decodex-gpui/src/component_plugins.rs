@@ -7,31 +7,12 @@ use std::{
 
 use decodex_components::{NativePlugins, PluginAction, PluginComponent, PluginInstallation};
 
-use crate::component_status::ComponentStatus;
-
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub(crate) struct Snapshot {
 	pub(crate) inspected: bool,
 	pub(crate) installed: Option<PluginInstallation>,
 	pub(crate) busy: Option<PluginAction>,
 	pub(crate) error: Option<String>,
-}
-
-impl Snapshot {
-	pub(crate) fn status(&self) -> ComponentStatus {
-		if self.busy.is_some() {
-			return ComponentStatus::Working;
-		}
-		if self.error.is_some() {
-			return ComponentStatus::Error;
-		}
-		match &self.installed {
-			Some(plugin) if plugin.enabled => ComponentStatus::Enabled,
-			Some(_) => ComponentStatus::Disabled,
-			None if self.inspected => ComponentStatus::NotInstalled,
-			None => ComponentStatus::Checking,
-		}
-	}
 }
 
 pub(crate) struct PluginOperations {
@@ -253,7 +234,6 @@ esac
 				state.installed.as_ref().unwrap().enabled,
 				"native flag is not integrity evidence"
 			);
-			assert_eq!(state.status(), crate::component_status::ComponentStatus::Enabled);
 		}
 		let output = Command::new(executable)
 			.args(["plugin", "marketplace", "remove", "fixture", "--json"])
@@ -270,7 +250,6 @@ esac
 		let state = wait(&operations);
 
 		assert!(state.inspected && state.installed.is_none() && state.error.is_none());
-		assert_eq!(state.status(), crate::component_status::ComponentStatus::NotInstalled);
 		assert!(cache.exists());
 		for _ in 0..2 {
 			operations.start(PluginAction::Remove);

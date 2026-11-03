@@ -26,7 +26,6 @@ mod component_research;
 #[allow(dead_code)]
 #[path = "../component_runtime.rs"]
 mod component_runtime;
-#[path = "../component_status.rs"] mod component_status;
 #[allow(dead_code)]
 #[path = "../composer_input.rs"]
 mod composer_input;

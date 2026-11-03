@@ -37,8 +37,8 @@ use crate::{
 	ui_preferences,
 	ui_scroll::SmoothScrollArea,
 	ui_theme::{
-		self, SETTINGS_CONTROL_HEIGHT, SETTINGS_GROUP_GAP, SETTINGS_INSET, SETTINGS_LABEL_SIZE,
-		SETTINGS_TOP, SETTINGS_WIDTH, TEXT,
+		self, SETTINGS_CONTROL_HEIGHT, SETTINGS_INSET, SETTINGS_LABEL_SIZE, SETTINGS_TOP,
+		SETTINGS_WIDTH, TEXT,
 	},
 };
 use power::PowerSettings;
@@ -409,10 +409,7 @@ impl SettingsSurface {
 	fn category_content(&self, cx: &mut Context<Self>) -> AnyElement {
 		match self.category {
 			SettingsCategory::General => self.general_content(cx),
-			SettingsCategory::Agents => gpui::div()
-				.flex()
-				.flex_col()
-				.gap(gpui::px(SETTINGS_GROUP_GAP))
+			SettingsCategory::Agents => ui_theme::settings_sections()
 				.child(ui_theme::settings_group(
 					"New conversations",
 					vec![self.agent_defaults_content(cx)],
@@ -473,10 +470,7 @@ impl SettingsSurface {
 			"ultrafast" => "Ultrafast",
 			_ => s.as_str(),
 		});
-		gpui::div()
-			.flex()
-			.flex_col()
-			.gap_3()
+		ui_theme::settings_rows()
 			.child(ui_theme::settings_description(
 				"Defaults apply only to new Agents. Existing chats and running work keep their settings.",
 			))
@@ -548,10 +542,7 @@ impl SettingsSurface {
 	}
 
 	fn general_content(&self, cx: &mut Context<Self>) -> AnyElement {
-		gpui::div()
-			.flex()
-			.flex_col()
-			.gap(gpui::px(SETTINGS_GROUP_GAP))
+		ui_theme::settings_sections()
 			.child(ui_theme::settings_group(
 				"Startup",
 				vec![
@@ -599,15 +590,10 @@ impl SettingsSurface {
 	}
 
 	fn appearance_content(&self, cx: &mut Context<Self>) -> AnyElement {
-		gpui::div()
-			.flex()
-			.flex_col()
-			.gap(gpui::px(SETTINGS_GROUP_GAP))
+		ui_theme::settings_sections()
 			.child(self.appearance_controls(cx))
 			.child(
-				gpui::div()
-					.flex()
-					.flex_col()
+				ui_theme::settings_rows()
 					.gap_2()
 					.child(ui_theme::settings_section_title("Color theme"))
 					.child(ui_theme::settings_description(self.theme_description()))
@@ -1121,13 +1107,9 @@ impl Render for SettingsSurface {
 					.justify_center()
 					.items_start()
 					.child(
-						gpui::div()
-							.w_full()
+						ui_theme::settings_sections()
 							.max_w(gpui::px(SETTINGS_WIDTH))
 							.flex_none()
-							.flex()
-							.flex_col()
-							.gap(gpui::px(SETTINGS_GROUP_GAP))
 							.child(ui_theme::settings_title(self.category.title()))
 							.child(self.category_content(cx)),
 					)

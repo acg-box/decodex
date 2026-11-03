@@ -215,6 +215,8 @@ impl AgentSurface {
 			&& let Some(AgentContextSettingsResult::Available { preferences, .. }) =
 				&self.context_settings.state
 		{
+			let mut rows = crate::ui_theme::settings_rows();
+
 			for preference in preferences {
 				let feature = preference.feature.clone();
 				let owner = work.to_owned();
@@ -228,7 +230,7 @@ impl AgentSurface {
 					preference.preference.map_or("Native default (off)", on_off)
 				);
 
-				panel = panel.child(
+				rows = rows.child(
 					crate::ui_theme::settings_row()
 						.child(crate::ui_theme::settings_label(label.clone(), detail))
 						.child(
@@ -254,7 +256,7 @@ impl AgentSurface {
 				);
 			}
 
-			panel = panel.child(crate::ui_theme::settings_description("Cached MCP catalogs are configured per user-owned server. No valid cache means normal discovery waits; tool calls still need a live connection. Manage plugin and project-only servers in Codex."));
+			panel = panel.child(rows).child(crate::ui_theme::settings_description("Cached MCP catalogs are configured per user-owned server. No valid cache means normal discovery waits; tool calls still need a live connection. Manage plugin and project-only servers in Codex."));
 		}
 
 		panel.into_any_element()

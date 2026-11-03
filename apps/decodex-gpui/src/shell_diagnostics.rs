@@ -162,13 +162,9 @@ fn report_text(snapshot: &HealthSnapshot) -> Option<String> {
 fn summary_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 	let snapshot = &shell.health;
 	let presentation = shell::health_presentation(snapshot);
-	let mut content = gpui::div()
-		.w_full()
+	let mut content = ui_theme::settings_sections()
 		.max_w(gpui::px(SETTINGS_WIDTH))
 		.mx_auto()
-		.flex()
-		.flex_col()
-		.gap(gpui::px(SETTINGS_GROUP_GAP))
 		.text_size(gpui::px(SETTINGS_LABEL_SIZE))
 		.child(
 			ui_feedback::status_row(
@@ -265,13 +261,10 @@ fn details_toggle(shell: &Shell, cx: &Context<Shell>) -> AnyElement {
 }
 
 fn technical_details(snapshot: &HealthSnapshot) -> AnyElement {
-	gpui::div()
+	ui_theme::settings_sections()
 		.id("health-components")
 		.debug_selector(|| "health-components".into())
-		.flex()
-		.flex_col()
-		.pt_3()
-		.gap(gpui::px(SETTINGS_GROUP_GAP))
+		.pt_2()
 		.when(snapshot.load != HealthLoadState::Ready && snapshot.report.is_some(), |details| {
 			details
 				.child(ui_theme::settings_description("Previous report; results may have changed."))

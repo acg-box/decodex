@@ -8,28 +8,13 @@ use std::{
 use decodex_components::{ComponentStore, InstallProgress, RuntimeLock};
 use gpui::{App, Global};
 
-use crate::component_status::ComponentStatus;
-
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub(crate) enum PreparationState {
 	#[default]
 	Unchecked,
-	/// Cached files are present; native launch still owns full attestation.
-	Installed,
 	Preparing(InstallProgress),
 	Ready,
 	Failed(String),
-}
-
-impl PreparationState {
-	pub(crate) fn status(&self) -> ComponentStatus {
-		match self {
-			Self::Unchecked => ComponentStatus::Checking,
-			Self::Installed | Self::Ready => ComponentStatus::Installed,
-			Self::Preparing(_) => ComponentStatus::Working,
-			Self::Failed(_) => ComponentStatus::Error,
-		}
-	}
 }
 
 #[derive(Clone)]
@@ -49,14 +34,6 @@ impl Default for RuntimePreparation {
 }
 
 impl RuntimePreparation {
-	/// Reuse the launcher's cached-presence observation without repeating its checks.
-	pub(crate) fn observe_installed(&self) {
-		let mut state = self.state.lock().expect("runtime preparation");
-		if *state == PreparationState::Unchecked {
-			*state = PreparationState::Installed;
-		}
-	}
-
 	pub(crate) fn snapshot(&self) -> PreparationState {
 		self.state.lock().expect("runtime preparation").clone()
 	}
@@ -202,8 +179,6 @@ mod tests {
 	#[test]
 	fn preparation_starts_once_and_failed_work_can_be_retried() {
 		let preparation = RuntimePreparation::default();
-		preparation.observe_installed();
-		assert_eq!(preparation.snapshot(), PreparationState::Installed);
 		let count = Arc::new(AtomicUsize::new(0));
 		let (entered, started) = mpsc::channel();
 		let (release, waiting) = mpsc::channel();
@@ -217,8 +192,6 @@ mod tests {
 			Err("fixture download failed".into())
 		});
 		started.recv_timeout(Duration::from_secs(2)).expect("startup begins preparation");
-		preparation.observe_installed();
-		assert!(matches!(preparation.snapshot(), PreparationState::Preparing(_)));
 		preparation.start(|_| panic!("another click must not duplicate active preparation"));
 		release.send(()).expect("release preparation");
 		let deadline = std::time::Instant::now() + Duration::from_secs(2);

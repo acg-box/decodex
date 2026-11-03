@@ -11,13 +11,11 @@ use std::{
 
 use tokio::runtime::Runtime;
 
-use crate::component_status::ComponentStatus;
-
 use decodex_components::{
 	ComponentStore, NativePlugins, PluginAction, PluginComponent, PluginInstallation,
 };
 use decodex_pro_bridge::{
-	Config, Connection, ConnectionState, ProBridge,
+	Config, Connection, ProBridge,
 	install::{self, Installation},
 };
 
@@ -42,29 +40,6 @@ pub(crate) struct Snapshot {
 	pub tools: Option<PluginInstallation>,
 	pub busy: Option<Action>,
 	pub error: Option<String>,
-}
-impl Snapshot {
-	pub fn status(&self) -> ComponentStatus {
-		if self.busy.is_some_and(|action| action != Action::Inspect) {
-			return ComponentStatus::Working;
-		}
-		if self.error.is_some() {
-			return ComponentStatus::Error;
-		}
-		if self.installed.is_none() {
-			return if self.inspected {
-				ComponentStatus::NotInstalled
-			} else {
-				ComponentStatus::Checking
-			};
-		}
-
-		match self.connection.as_ref().map(|state| &state.state) {
-			Some(ConnectionState::Connected) => ComponentStatus::Connected,
-			Some(_) => ComponentStatus::NeedsSetup,
-			None => ComponentStatus::Disconnected,
-		}
-	}
 }
 
 #[derive(Clone, Default)]
@@ -308,9 +283,7 @@ fn open(target: &str, chrome: bool) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-	use crate::component_research::{
-		Action, Connection, ConnectionState, Installation, ResearchOperations, Snapshot,
-	};
+	use crate::component_research::{Action, ResearchOperations};
 
 	#[test]
 	fn visiting_components_does_not_create_component_data() {
@@ -321,39 +294,5 @@ mod tests {
 		assert!(setup.apply(Action::Inspect).unwrap().installed.is_none());
 		assert!(setup.apply(Action::Disconnect).unwrap().installed.is_none());
 		assert!(!directory.exists());
-	}
-
-	#[test]
-	fn a_ready_page_does_not_claim_a_verified_pro_model() {
-		let state = Snapshot {
-			installed: Some(Installation {
-				version: "0.1.0".into(),
-				extension_id: "fixture",
-				extension_directory: "/fixture".into(),
-				plugin_directory: "/fixture".into(),
-				marketplace_directory: "/fixture".into(),
-				registration: "/fixture".into(),
-			}),
-			connection: Some(Connection {
-				state: ConnectionState::Connected,
-				selected_model: Some("Pro".into()),
-			}),
-			..Default::default()
-		};
-
-		assert_eq!(state.status(), crate::component_status::ComponentStatus::Connected);
-
-		let blocked = Snapshot {
-			installed: state.installed.clone(),
-			connection: Some(Connection {
-				state: ConnectionState::VerificationRequired,
-				selected_model: None,
-			}),
-			..Default::default()
-		};
-
-		assert_eq!(blocked.status(), crate::component_status::ComponentStatus::NeedsSetup);
-		let disconnected = Snapshot { connection: None, ..state };
-		assert_eq!(disconnected.status(), crate::component_status::ComponentStatus::Disconnected);
 	}
 }
