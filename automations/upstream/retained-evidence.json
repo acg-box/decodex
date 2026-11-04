@@ -40,7 +40,7 @@
     "evidence": "automations/upstream/qualification.json",
     "source_archive_sha256": "57d6cbc9f8f430ec4444e876314de4c10c0497d12941d8f1fc71115c780204b9",
     "schema_sha256": "7b09165c7812e9f717631d8d397a640c8555e317215c363c4c1b46fa4a862bfe",
-    "evidence_sha256": "74190e32cc3119f7bf82f2f70f917b8e9f6150d6078a10adc2f6a564f46bb9cb",
+    "evidence_sha256": "bd4b9a8f9822de9132962b7ad22f06b2161feabb5ac8d545973b13e6e068ae73",
     "limits": [
       "Source review, source-test execution, exact-artifact qualification, PR delivery and installed acceptance are separate.",
       "Qualification covers macOS arm64 private stdio and named retained consumers with synthetic local providers and disposable homes. No desktop startup, installation, live-account/provider acceptance, physical audio, release, tag or publication.",
@@ -132,9 +132,9 @@
   },
   "validation": {
     "evidence": "automations/upstream/qualification.json#decodex_validation",
-    "registered": 1358,
-    "executed": 1204,
-    "passed": 1204,
+    "registered": 1364,
+    "executed": 1210,
+    "passed": 1210,
     "skipped": 154,
     "failed": 0,
     "gate": "Affected packages: decodex-runtime, decodex-codex and decodex-components, all features/tests. Strict Clippy all targets/features and changed-package nightly formatting also passed.",
@@ -163,7 +163,8 @@
   "current_delivery": {
     "source_commit_references": [
       "https://github.com/acg-box/decodex/commit/b19dd6e3bff2a9e13d7ca16b98daf822cb9a8621",
-      "https://github.com/acg-box/decodex/commit/a4634c873948a49573748b6c20c743fcf2302f1c"
+      "https://github.com/acg-box/decodex/commit/a4634c873948a49573748b6c20c743fcf2302f1c",
+      "https://github.com/acg-box/decodex/commit/6149b0a4604f1226b09a66d69e574362166128a2"
     ],
     "status": "Prepared for one focused PR; live CI and merge are native observations.",
     "installed_acceptance": "Not performed."

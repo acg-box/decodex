@@ -33,8 +33,8 @@
       "strict_signature_verified": true
     }
   ],
-  "decodex_source_revision": "b19dd6e3bff2a9e13d7ca16b98daf822cb9a8621",
-  "decodex_main_baseline": "6c61ec327fab0c3e5abe904b7a8751dc6bc4eac0",
+  "decodex_source_revision": "6149b0a4604f1226b09a66d69e574362166128a2",
+  "decodex_main_baseline": "8624c3d416d3d08f81776338bbbd29e79cfc5dc1",
   "runtime_pin_commit": "a4634c873948a49573748b6c20c743fcf2302f1c",
   "runtime_pin_sha256": "15af7e36a1473ff274b4a63ca36c4f7c03b72d853f6f3cfad9d32799e9b289ea",
   "qualified_scope": "Signed macOS arm64 CLI and three packaged helpers; 26 Decodex native regressions, one offline cache repair, six direct protocol fixtures and the affected package gate.",
@@ -90,7 +90,7 @@
     "baseline": "ba0dfd38979033f514a28d9514215bad46957a18",
     "candidate": "3e743d15787bd9091f674f0fbc27010f0cbcec62",
     "baseline_is_ancestor": true,
-    "decodex_main_baseline": "6c61ec327fab0c3e5abe904b7a8751dc6bc4eac0",
+    "decodex_main_baseline": "8624c3d416d3d08f81776338bbbd29e79cfc5dc1",
     "contract_catalog_sha256": "e4f1fef853138a1f3465e5ce20e0ab13d103a2fd82c02305c216b30442c32f61",
     "records": [
       {
@@ -864,7 +864,7 @@
     "passed": 26,
     "failed": 0,
     "unmatched_selectors": [],
-    "test_binary_sha256": "45e9299eb6ba11db15d5755c0895a743217b7a9d118e627f18970b3fa826accd",
+    "test_binary_sha256": "4dbfbbcb1fadfb9da312a46472de42de4b8ce07afe16f661bfe3a185c1e8fc39",
     "helper_selection": "Explicit signed CLI path; native package-relative helpers. Direct compiled tests avoid Nextest binary replacement. Artifact/helper hashes unchanged after execution.",
     "executions": [
       {
@@ -1414,7 +1414,7 @@
     "passed": 1,
     "failed": 0,
     "exit_code": 0,
-    "test_binary_sha256": "7297750e7c14c8fdab0aca3fafc8a15e934057cd130136d4b19f7cab7d466e71",
+    "test_binary_sha256": "7800095835705da25868441d304cb8e9d205c338125ef65e43d2482b37da350d",
     "contract": "Import, detect and offline-repair CLI, schema and three helpers; reject the wrong source commit and preserve another cache."
   },
   "fixture_source_sha256": {
@@ -1429,7 +1429,7 @@
     "crates/decodex-runtime/src/account_launch/agent_process_native_config_recovery_tests.rs": "cbe3b6a9adb0379fa928e95e054232a4b7299e5408e26b282d9b617842199d55",
     "crates/decodex-runtime/src/account_launch/agent_process_native_file_image_tests.rs": "3240e5051ff595c22585003d47394760313aca81e34d3ad909d1ee7fe9e053da",
     "crates/decodex-runtime/src/account_launch/agent_process_native_audio_tests.rs": "a0e17741f906073abbf6fa513fa9b38638e44f6e4366407a62f8fb59737a148a",
-    "crates/decodex-runtime/src/account_launch/agent_process_native_context_tests.rs": "652a421cd80d91117531960c52dc4031b8c288f620a02f66d81c19e012dcaa59",
+    "crates/decodex-runtime/src/account_launch/agent_process_native_context_tests.rs": "2025e729c695317d95c938b1c1b0b5b4e201dd6b2245d17bdf41a31cbc7fd356",
     "crates/decodex-runtime/src/account_launch/agent_process_native_code_mode_tests.rs": "9ee4e9dd6b4867a2c57c4f775549f397352303f478a118d98d55841ba8afd539",
     "crates/decodex-runtime/src/account_launch/agent_process_native_compaction_tests.rs": "51f3685a98c8ebfc3c3d4a20b198a3dfb8c60782a193246a8dea66a4af690b10",
     "crates/decodex-runtime/src/account_launch/agent_process_native_detail_tests.rs": "babf991fd3ccb68129da322952fb14bc2deb405bfdb0f0828a4a24bda7e798e5",
@@ -1456,9 +1456,9 @@
       "decodex-codex",
       "decodex-components"
     ],
-    "registered": 1358,
-    "executed": 1204,
-    "passed": 1204,
+    "registered": 1364,
+    "executed": 1210,
+    "passed": 1210,
     "skipped": 154,
     "failed": 0,
     "unmatched_selectors": [],
@@ -1500,7 +1500,8 @@
   "documentation_lifecycle": "Use the supported OpenWiki lifecycle; native receipts record current and inherited jobs without making runtime qualification a Wiki completion claim.",
   "delivery_reference": [
     "https://github.com/acg-box/decodex/commit/b19dd6e3bff2a9e13d7ca16b98daf822cb9a8621",
-    "https://github.com/acg-box/decodex/commit/a4634c873948a49573748b6c20c743fcf2302f1c"
+    "https://github.com/acg-box/decodex/commit/a4634c873948a49573748b6c20c743fcf2302f1c",
+    "https://github.com/acg-box/decodex/commit/6149b0a4604f1226b09a66d69e574362166128a2"
   ],
   "delivery_status": "Exact-head PR checks and merge observations stay in native receipts."
 }

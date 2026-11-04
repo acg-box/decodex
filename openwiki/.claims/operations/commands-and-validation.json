@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:3729f0663b93558537c6f751a6f221bf9e961710a7f83237de941a49b2f8f46e",
+  "pageVersion": "sha256:ebc5c7eb2be821d2bbe946abed5af4c5c0b2e896d674429693e2336222867ef6",
   "claims": [
     {
       "id": "claim_8fa9284d970947ab9981d4144ecb9648",
@@ -176,11 +176,11 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:0c08a1458a9bd81c0b2677475996113dedad6be7a59ca2b6902df9d5b1bdee9e"
+          "version": "repo-file-v1:sha256:bd4b9a8f9822de9132962b7ad22f06b2161feabb5ac8d545973b13e6e068ae73"
         },
         {
           "resource": "repo://automations/upstream/retained-contracts.json",
-          "version": "repo-file-v1:sha256:f42cae151b3c2c980a4c7b8448e08e4a1ae5a4d78f19067f158b1ce165c07ffa"
+          "version": "repo-file-v1:sha256:e4f1fef853138a1f3465e5ce20e0ab13d103a2fd82c02305c216b30442c32f61"
         }
       ]
     },
@@ -332,11 +332,15 @@
     },
     {
       "id": "claim_818d49eeb69443f3ba16f799bf858d7d",
-      "statement": "Attached-branch qualification records five passed exact-artifact native tests, 57 focused backend tests, six focused UI tests, 3006 complete-workspace passes with one LEAK and a clean composer repeat, 28 Python tests, five-package strict Clippy, formatting, schema59 and a clean 1076-file style audit. Overlapping cohorts, synthetic provider, source limits and no installed desktop acceptance remain explicit.",
+      "statement": "The stable attached-fork catalog preserves the original native, backend, UI, workspace and repository-check results with overlapping-cohort, synthetic-provider and cleanup limits. The retired startup-configuration diagnostic creates no current regression obligation. Current qualification separately identifies the selected CLI and affected executions.",
       "evidence": [
         {
-          "resource": "repo://automations/upstream/retained-contracts.json#L4407-L5312",
-          "version": "repo-lines-v1:sha256:ae183f90e4905423f27d6911194932271be5b86b6e196c6eaf7ea718f5646524:eyJzZWxlY3RlZExpbmVDb3VudCI6OTA2LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI4N2I1MzQ0Njg0YjAyNjhmZmI3NGQxODNkNDc4NTkyMjZkYWJmMDE0ZDllZjY3OGFmNDFiODhmMGNkZjk2YmY2IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0MTJjYTM0NWNjZjc1YmY5YzA4MDZiY2U2OTViZThkZTgwOGI3OTk4NDI1MWE3YTU0ZDIwMmNmNjEwMWRkNDUxIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJmMWFkN2VhMmE3ODgyZWExOTU4NTc1NmMwOWQ0ZDc2ZDA4YWU1NDdhYTg1N2VmMzZhMzYzNmFiZDE0ZTMwNWU4IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
+          "resource": "repo://automations/upstream/qualification.json",
+          "version": "repo-file-v1:sha256:bd4b9a8f9822de9132962b7ad22f06b2161feabb5ac8d545973b13e6e068ae73"
+        },
+        {
+          "resource": "repo://automations/upstream/retained-contracts.json#L4407-L4623",
+          "version": "repo-lines-v1:sha256:378e0a1b2227990aaf7a8b82d0d88988a91e11615225519cfb6351cb7e9ff0d3:eyJzZWxlY3RlZExpbmVDb3VudCI6MjE3LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI4N2I1MzQ0Njg0YjAyNjhmZmI3NGQxODNkNDc4NTkyMjZkYWJmMDE0ZDllZjY3OGFmNDFiODhmMGNkZjk2YmY2IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIwOTI1ZjVlNTZhYTUwNjQ0MTM5MTc5OTkyODUyMGNiZDkyZTkyNzRlZTUyYWMzZDMxN2JhZDc4MGQxM2E2ODU2IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJmMWFkN2VhMmE3ODgyZWExOTU4NTc1NmMwOWQ0ZDc2ZDA4YWU1NDdhYTg1N2VmMzZhMzYzNmFiZDE0ZTMwNWU4IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI3NmJiYjdiZThlYzUxMGNjMzAxNzI3MTExZjRlYWY1ZTAwNjA4ZmI0YjFlMzUzYzJmMGU2M2VmOWFmYzRhN2Y3In0"
         }
       ]
     },
@@ -346,7 +350,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:0c08a1458a9bd81c0b2677475996113dedad6be7a59ca2b6902df9d5b1bdee9e"
+          "version": "repo-file-v1:sha256:bd4b9a8f9822de9132962b7ad22f06b2161feabb5ac8d545973b13e6e068ae73"
         },
         {
           "resource": "repo://crates/decodex-runtime/tests/native_qualification/command_hooks.py",
@@ -442,15 +446,19 @@
     },
     {
       "id": "claim_7f534f8f92034f78ba677532dfe46a14",
-      "statement": "Historical workspace dependency qualification keeps source and artifact identities, executed tests, residual constraints and the original style failure separate from the current CLI qualification and installed-app acceptance.",
+      "statement": "Historical workspace dependency qualification keeps source and artifact identities, executed tests, residual constraints and the original style failure separate from current CLI qualification and installed-app acceptance.",
       "evidence": [
         {
-          "resource": "repo://automations/upstream/qualification.json#L63-L80",
-          "version": "repo-lines-v1:sha256:7e1a0cf5626f16b9ad3e6e7de27e78fe5cbc539943df384f15f51add187381f8:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI4ODI1YjJmOGM1NjA5OWYzYmM0OWI4NDU2ODdiY2RlNjcyNGQzNGJiNTk1MTBlOGY4ZTZlZTZiY2Y2MTU3N2EiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ2ZjhhNGJmZmVjYzE0MzQwMTRjOWQ5MDNkNDU3NzE3ZDQxY2EwM2U0Y2NhMWZlYmYwOGNmNWNjYjdmNmY4YWUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQwMDRhOWEyODAzYmJjNzAwN2RmZGMxZmQzNTJiMzBjMTViYjk1YzgzNDFmNmZkNTYyYzdhYTY2NmNiMDE5M2EiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijc1OGE0NTFhNWEwYTFiNjE5ZjcyMGU0MDEzNmViZTllMzQ0MTI5NWM0YTNmMTkxZjQzMmRhOGQ3ZDAwODY1YTgifQ"
+          "resource": "repo://automations/upstream/qualification.json",
+          "version": "repo-file-v1:sha256:bd4b9a8f9822de9132962b7ad22f06b2161feabb5ac8d545973b13e6e068ae73"
         },
         {
-          "resource": "repo://automations/upstream/retained-evidence.json#L1399-L1500",
-          "version": "repo-lines-v1:sha256:0218b51dc38a86fe47c7eec9d1a54f8e88c56b48ef16f16088f6159309119d41:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAyLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJhMDkyYjBkZDQyMzg1OTQ5YTU3YWRhOTEzNTY1NWYwZmIwNGJkMGI2N2M2NzIzMmYzYTQxMmZiMDIyZTMzOWZlIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI3ZmQwYjdhMzk1YWU2NjUzMGYxMmVkNGVlMzJkYmE3NTg5NWI2NmEwNTJlMjU5ZTAwNDk0MzBlZmUwNmJmZWY2IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIzMzViZDgwMGVjYzMwYjllNWQxYWE0NjQ2YWY0OGY0ZWEwYmNiZjEwNzIwZGVlNTQ5NGFiZTFjMjUwYjllYjVjIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI1MmZlYjc1MDJmNzYyNjg5ZDI1NTc0MjY5YjAxODg4YWQ2ODVhMTFkYTJmZGIxMzZlODQzMTFmM2VkOWMyY2VkIn0"
+          "resource": "repo://automations/upstream/retained-contracts.json#L2134-L2270",
+          "version": "repo-lines-v1:sha256:21aacde5bad9daba8e04763b50452696eb070f050766fa492f0f7af503e4ba0e:eyJzZWxlY3RlZExpbmVDb3VudCI6MTM3LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIwNzVmNzVmMzEzMzQ3MzYwZjVhMmVkNzQzY2QxNmZiMmI1ZDhmYmM2MTJhMDA0YWZlMDhjZTI3ZDEwN2JlNGQwIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIxZjBjZGI5NzJhN2JmYjdlZDI0NmY5ZmY2NzIzODVlNTVmNDk2OGZjMTEwNDNkYzViNjg0ZDUxZGZhMzFkYmNiIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIyOWU0YmUyODc3ZjMxOTBjNDMxNGEyYTRmYjFhNDkxNDg5ODIzNzNmNjZiMWMyM2I1ZjBjMjA3NGUzMzM0ZWY0IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI5ODdhNTAzNWRlNzI1NWQ5NDU5YWNlOGE4YTIxZTlkZDI4YWRiZmU2YjNkMjhiOWM2ZjdhN2RhODYxYmYzNDRlIn0"
+        },
+        {
+          "resource": "repo://automations/upstream/retained-contracts.json#L780-L922",
+          "version": "repo-lines-v1:sha256:c0c0b6454f7b2270bb91c8198954fcd3801b8285f9c4c4526f20684206c50807:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQzLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIzMTFlMWVkODBkMmEyNTQ2ZDA4OWE2NmIyNjQxNWQwYTJjNWU5Y2JiOTA4NjZmZWVmYTMyZDVjZmU5YzY1NzkwIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJiYzRlOTFjNWM2MmM3ZWNkYmMxYzdjMDhlMjdhMmZmYjk2MzRjZmJjNGM2OGYxZWFiMTRiZTY3YjJjN2QzY2M4IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJhMjcxNTQwMmFiZWEyYjg3NWVlM2Y5OTY1NjY3NGU0NDQ5MzIxMmFmOTYwMmNhN2M1MDcxZWM0NjQ5ZWQ0OTUwIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIxN2E3ZjQwNjI4YTNiMzVkYjdkMDNlYzhmZGE3NDU0YmJmZDc0NTdhZWRkMzlhNmEyZGRlNmYwYzA2Yjk2OTNmIn0"
         }
       ]
     },
@@ -480,11 +488,15 @@
     },
     {
       "id": "claim_b8b6d7700d024927aaf008e863ac291a",
-      "statement": "The current retained-consumer router excludes the explicitly retired startup-configuration diagnostic while preserving its historical execution evidence.",
+      "statement": "The current contract catalog excludes the explicitly retired startup-configuration diagnostic while preserving the original execution evidence and its limits.",
       "evidence": [
         {
-          "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:fe5321699e8b7c5c6d392cb82551c905679deb680e298850da34c8fc1ea62099"
+          "resource": "repo://automations/upstream/retained-contracts.json#L4620-L4623",
+          "version": "repo-lines-v1:sha256:b8db7f030ab01d46e83761de456e0a82df04b3d08f33b067e0bba92d43766dd7:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYTY3NmY0ZjFkNjk3MzkwODNkNmJjZmU5N2ZkYTNjZDIzMjY0M2Y5ZTdkNzQ3ZmExYmI0MjRhYmEzYzY5ZWMwZCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDkyNWY1ZTU2YWE1MDY0NDEzOTE3OTk5Mjg1MjBjYmQ5MmU5Mjc0ZWU1MmFjM2QzMTdiYWQ3ODBkMTNhNjg1NiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZjMzN2MzMjI4YTM1YTk3ZjBjNzA2MWVhYjYwYjc0ZWQzYmViMjA2ZjRjMGQyM2UzYzBiMzIwMTg4NmY0OThkOCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNzZiYmI3YmU4ZWM1MTBjYzMwMTcyNzExMWY0ZWFmNWUwMDYwOGZiNGIxZTM1M2MyZjBlNjNlZjlhZmM0YTdmNyJ9"
+        },
+        {
+          "resource": "repo://automations/upstream/retained-contracts.json#L4924-L4941",
+          "version": "repo-lines-v1:sha256:1d5fe36c1cef4c886199d10e54539b115b9f4bfb3f7d8f0dfd8863375a18459f:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI3OGZlNDQxMzQxNDdiNTEzYTdhZTM5M2RhNmU3MzQ1ZWFmZjI2ZWM0NGE0ZjMyODVmYzNkZmYwODhhYzE0ZGIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRkNWNkMmZiNGYzZGY4ODQ1MTUyNTViMzk1MjNmMmY4YjU0NzJiZWVhOWY1NjZmZmNhMjA0ZGI4MDI1NjEwNDEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjFkZWRmZDYwNDdiYTUwMDExN2UyMTczNDQ3NjdmMzRhYjljMWY5NjEzYjMxNWY0NjA4MTgzM2Q5ZWFkM2UxNzEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY4N2E5M2E5MDBlZDU1OTdiZTNiYTA3NDY1YTNkN2Q4ZjJmZWRhNDE5Yjc5M2EyMzFlZmY5ZWE0ZjMxYjIyOTUifQ"
         }
       ]
     },
@@ -508,15 +520,15 @@
     },
     {
       "id": "claim_a5db512fee634f17b11445d66fc661cf",
-      "statement": "The disabled-input and direct-Fork follow-up passes 18 focused GPUI tests, strict GPUI Clippy and nightly formatting. It covers wrapping, contained actions, direct provider-fork submission after source preparation, durable intent and retained recovery, plus related draft and connection states. Input-bar Fork has no second confirmation or Cancel control. This does not qualify a new native artifact.",
+      "statement": "Retained disabled-input and direct-Fork regressions cover layout, contained actions, source preparation, durable intent, recovery and related draft/connection states. Input-bar Fork has no second confirmation or Cancel control. The router links the original local qualification; it does not qualify a new native artifact.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_prompt_confirm_wire_tests.rs",
           "version": "repo-file-v1:sha256:b9a868eeab3689af23aac1aec5cc3e1d9e073a2485e570bc1afde389106474c7"
         },
         {
-          "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:fe5321699e8b7c5c6d392cb82551c905679deb680e298850da34c8fc1ea62099"
+          "resource": "repo://automations/upstream/retained-evidence.json#L173-L176",
+          "version": "repo-lines-v1:sha256:e6baea8098a2b0aaf327c2cc7a0cd08ad22aa8f104578844f1f849028b797331:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNDM4ZTlhZDU3ZWViNDg3ODM0NGVlYjg3NjNjNjc2ZjFlZjc1ZmQ1YWE0YjdhMGFjZDc0OTJmNDJhNTFmZGE1YSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjdlNTc4OGQ1ZDlkNzNkMjRhODFkYmMwYTVhNzRiZmE4MmM5YzNiM2FmOTllNTJhZjc5NmU5MGI0NjhhOGEzZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYzRhMjY2ZWFiOTMzOGE0MjFlZTliMWI4NmEyNjc5MzNhNDc4YjdiNWRhM2FmMzliMGIxN2QyY2Q4ZTZjYTZiNiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjEsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSJ9"
         }
       ]
     },
@@ -579,6 +591,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-04T09:42:14.115Z"
+    "at": "2026-11-04T10:24:44.262Z"
   }
 }
