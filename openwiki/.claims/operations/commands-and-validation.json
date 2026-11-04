@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:26c931dc72f764ce092190f8d0a02d017cc2330089ca3e27a2ca7491372e547b",
+  "pageVersion": "sha256:e1da12e96ba5b1b9312370a06edfe658d0833ab8d85006d3637f09a790684bc1",
   "claims": [
     {
       "id": "claim_8fa9284d970947ab9981d4144ecb9648",
@@ -176,7 +176,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:bd4b9a8f9822de9132962b7ad22f06b2161feabb5ac8d545973b13e6e068ae73"
+          "version": "repo-file-v1:sha256:72f744efdd6bfc63d2c0cc5fdf67a7e608a802a825c366876e3bf8939950a3e7"
         },
         {
           "resource": "repo://automations/upstream/retained-contracts.json",
@@ -336,7 +336,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:bd4b9a8f9822de9132962b7ad22f06b2161feabb5ac8d545973b13e6e068ae73"
+          "version": "repo-file-v1:sha256:72f744efdd6bfc63d2c0cc5fdf67a7e608a802a825c366876e3bf8939950a3e7"
         },
         {
           "resource": "repo://automations/upstream/retained-contracts.json#L4407-L4623",
@@ -350,7 +350,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:bd4b9a8f9822de9132962b7ad22f06b2161feabb5ac8d545973b13e6e068ae73"
+          "version": "repo-file-v1:sha256:72f744efdd6bfc63d2c0cc5fdf67a7e608a802a825c366876e3bf8939950a3e7"
         },
         {
           "resource": "repo://crates/decodex-runtime/tests/native_qualification/command_hooks.py",
@@ -450,7 +450,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:bd4b9a8f9822de9132962b7ad22f06b2161feabb5ac8d545973b13e6e068ae73"
+          "version": "repo-file-v1:sha256:72f744efdd6bfc63d2c0cc5fdf67a7e608a802a825c366876e3bf8939950a3e7"
         },
         {
           "resource": "repo://automations/upstream/retained-contracts.json#L2134-L2270",
@@ -527,8 +527,8 @@
           "version": "repo-file-v1:sha256:b9a868eeab3689af23aac1aec5cc3e1d9e073a2485e570bc1afde389106474c7"
         },
         {
-          "resource": "repo://automations/upstream/retained-evidence.json#L173-L176",
-          "version": "repo-lines-v1:sha256:e6baea8098a2b0aaf327c2cc7a0cd08ad22aa8f104578844f1f849028b797331:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNDM4ZTlhZDU3ZWViNDg3ODM0NGVlYjg3NjNjNjc2ZjFlZjc1ZmQ1YWE0YjdhMGFjZDc0OTJmNDJhNTFmZGE1YSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjdlNTc4OGQ1ZDlkNzNkMjRhODFkYmMwYTVhNzRiZmE4MmM5YzNiM2FmOTllNTJhZjc5NmU5MGI0NjhhOGEzZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYzRhMjY2ZWFiOTMzOGE0MjFlZTliMWI4NmEyNjc5MzNhNDc4YjdiNWRhM2FmMzliMGIxN2QyY2Q4ZTZjYTZiNiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjEsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSJ9"
+          "resource": "repo://automations/upstream/retained-evidence.json",
+          "version": "repo-file-v1:sha256:935432bc02a9cba8bfefd32acf2ba6b10e2f4a220e515ce4573b40e8e50c5944"
         }
       ]
     },
@@ -591,10 +591,24 @@
           "version": "repo-file-v1:sha256:f96807ddb85427783694c17c7e9a93529d0d43d620ffda5eb7de5f7fe70e29d5"
         }
       ]
+    },
+    {
+      "id": "claim_25c22d550dfd4d0590b4f643ca45438e",
+      "statement": "The completion-mail probe uses the exact qualified CLI and packaged helpers to check unsampled FINAL_ANSWER retention, ordering and ordinary-inference acknowledgement through repeated manual compaction and cold continuation in four legacy/paginated and local/remote combinations. It does not qualify ordinary agent-message retention or mid-turn preemption.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/tests/native_qualification/native_session.py#L1-L15",
+          "version": "repo-lines-v1:sha256:675e2c22586d897d68adffeca25dd272a44219a694dda4a8f01e7e769da9b48b:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE0NmVjOWI0OGNmZjQwNzk5NTYxZmNkNjU3ZjhhZjFhNjE4OWZkMTg1NzdiZDk0ZWRiMzc1ODQ5NGI1MTY5NmUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgwMDA1YzQwZDA1MDNmYjFjNzFiMWNmM2Y2YjVjZDU1NWQ4YmI1OGFiNGU0YjQzNWQ1ZWY3NmE5NjdiZGJhMmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU2ODAwYWM4MzZiZDZmZjQ0YTE5YTU0MjNhNjU4ODBjYTM1YmM4ZjM5ZTFmOTBhM2VmN2Q4NGY0YjNkYTJiMmQifQ"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/tests/native_qualification/pending_mail.py#L1-L157",
+          "version": "repo-lines-v1:sha256:8cee9678be86f7de9fa3f4165f721c687cad0a9ee21b7709fd6507c7c805cb7b:eyJzZWxlY3RlZExpbmVDb3VudCI6MTU3LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIxYjI5YjhlY2E4MGYzOTJmMmZmMWU5YTA2MmZkYmJhNjdkNDI0NzgzMDNiYTQ1MWY3YmNhMDM4ZTMxNDFlOTE1IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJhMmM3OWUzMjJjZWRjNjdhZDY1MjRjMWRiMzQ2MzhlOTg4ZTA5YzRiZWJkYzJlNzRjZTkyNjQwYWU0MDZlMDU3IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MCwicHJlY2VkaW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-04T15:37:04.419Z"
+    "at": "2026-11-04T20:52:38.845Z"
   }
 }

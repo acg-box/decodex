@@ -164,6 +164,8 @@ sources:
     resource: repo://crates/decodex-runtime/tests/native_qualification/log_storage.py
   - id: openwiki-source-88b81a215b1bac061dad80ec
     resource: repo://crates/decodex-runtime/tests/native_qualification/model_errors.py
+  - id: openwiki-source-6cd65761e9a87b1e53c53373
+    resource: repo://crates/decodex-runtime/tests/native_qualification/pending_mail.py
   - id: openwiki-source-8e6f29de9ed0d4825985ec62
     resource: repo://crates/decodex-runtime/tests/native_qualification/project_guardian.py
   - id: openwiki-source-c6bea677adcde563202b65b9
@@ -200,10 +202,10 @@ sources:
     resource: repo://scripts/macos/test_decodex_app_stage.sh
   - id: openwiki-source-e201f60894c32a914dac99ee
     resource: repo://scripts/vnext/run_native_regression.py
-generated: { by: "codex", at: "2026-11-04T10:24:44.262Z" }
+generated: { by: "codex", at: "2026-11-04T20:52:38.845Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-04T15:37:04.419Z
+    at: 2026-11-04T20:52:38.845Z
 ---
 
 # Upstream integration acceptance boundaries
@@ -233,7 +235,7 @@ Workflow-only maintenance uses the checkpoint and portfolio checks in `cargo +st
 
 Read the development lock, [current source review](../../automations/upstream/current-review.json) and [current qualification](../../automations/upstream/qualification.json) for the fixed target, exact CLI/helpers/schema, executed identities and limits. Keep source review, source-test execution, exact production-artifact tests, delivery and installed acceptance separate. Current run counts and hashes belong in those records, not repeated across Wiki pages.
 
-The provider-refusal follow-up resolves [the former compatibility blocker](https://github.com/acg-box/decodex/issues/2575) through the supported native fork. The original cohort remains historical evidence; it is not a freshly rerun matrix. The runtime lock selects the fixed reviewed target after fresh affected native consumer and component checks. Earlier cohort results remain historical and are not counted as passes on a newer artifact. The current source-review record covers every commit through its fixed target. HumanCommand support is [user-deferred](https://github.com/acg-box/decodex/issues/2585), unsupported and unadvertised. Three exact official worker-permission reload cases establish internal eviction proof. Those source tests are separate from signed production-artifact tests; no broad upstream suite is a daily gate.
+The provider-refusal follow-up resolves [the former compatibility blocker](https://github.com/acg-box/decodex/issues/2575) through the supported native fork. The original cohort remains historical evidence; it is not a freshly rerun matrix. The runtime lock selects the fixed reviewed target after fresh affected native consumer and component checks. Earlier cohort results remain historical and are not counted as passes on a newer artifact. The current source-review record covers every commit through its fixed target. HumanCommand support is [user-deferred](https://github.com/acg-box/decodex/issues/2585), unsupported and unadvertised. Earlier worker-permission reload source tests retain their original source and helper limits. Read the current qualification for actual executions. Source tests are separate from signed production-artifact tests; no broad upstream suite is a daily gate.
 
 The retired Codex startup-configuration diagnostic is absent from the current router. Its earlier execution remains historical proof. Valid named-permission defaults and an owned Recap working directory repair fixture admission without weakening existing behavior assertions. The exact-artifact development cache test also corrupts and repairs any advertised standalone executor.
 
@@ -310,7 +312,7 @@ A Work result or delivery identifies a linked native turn; it does not prove tha
 
 ## Separate-question popover qualification
 
-This section records the historical manual popover, which is now removed. The [portable separate-question record](../../automations/upstream/retained-evidence.json#quick_separate_questions) identifies source `b26ecc90d27116263afd8312ac1b8f54efe97699`, the retained UI contract, exact test names, commands and source/test-artifact digests.
+This section records the historical manual popover, which is now removed. The [original separate-question record](https://github.com/acg-box/decodex/blob/6c61ec327fab0c3e5abe904b7a8751dc6bc4eac0/automations/upstream/retained-evidence.json#quick_separate_questions) identifies source `b26ecc90d27116263afd8312ac1b8f54efe97699`, the retained UI contract, exact test names, commands and source/test-artifact digests.
 
 The focused cohort passed 28 tests: 17 sampling and suggestion checks plus 11 rich-text selection checks, with 1,176 skipped and no unmatched selector. It covers direct toolbar and response entry, selected excerpts, draft and reading-position preservation, Escape, stale-source rejection, Unicode excerpt bounds, separate suggestion results and one-request readback. These are GPUI TestPlatform and loopback-wire checks.
 
@@ -442,7 +444,7 @@ The same model-error probe checks `policy_capacity_unavailable` over HTTP 503 an
 
 These local tests use synthetic transport. For a runtime change to incomplete responses or final recording, also qualify the selected native runtime. Count provider requests and inspect the terminal status for ordinary sampling and compaction. Cover SSE and WebSocket responses, and keep interrupted-response and content-filter controls separate. Use the upstream regression test to check input that arrives while a turn records its final batch. Keep these results separate from installed-app acceptance.
 
-Keep reported spending and current context separate. The Agent stores cumulative token counters and derives turn usage from their differences. Context comes from the native last-request counters. Keep provider-reported spending separate from native context estimation. The native owner retains the last usable usage boundary and counts later retained reasoning for automatic compaction, including incomplete and usage-less responses. Missing or malformed usage must not become an estimated charge. The `installed_unreported_reasoning_triggers_compaction_before_continuation` regression in `agent_process_native_unreported_usage_tests.rs` checks incomplete responses with and without usage and a completed response without usage. It verifies compaction before continuation and the resulting native checkpoint. The old artifact failed the first scenario; the qualified target passes all three. Compare the previous component and the proposed component with the same fixture.
+Keep reported spending and current context separate. The Agent stores cumulative token counters and derives turn usage from their differences. Context comes from the native last-request counters. Keep provider-reported spending separate from native context estimation. The native owner retains the last usable usage boundary and counts later retained reasoning for automatic compaction, including incomplete and usage-less responses. Missing or malformed usage must not become an estimated charge. The `installed_unreported_reasoning_triggers_compaction_before_continuation` regression in `agent_process_native_unreported_usage_tests.rs` checks incomplete responses with and without usage and a completed response without usage. It verifies compaction before continuation and the resulting native checkpoint. In the original qualification, the old artifact failed the first scenario and the candidate passed all three. Compare the previous component and the proposed component with the same fixture when this consumer is affected.
 
 ## Failed compaction and cold resume
 
@@ -457,6 +459,12 @@ DECODEX_TEST_CODEX_BINARY="$QUALIFIED_CODEX_BINARY" cargo +stable nextest run \
 ```
 
 The fixture is ignored by default. It checks the named CLI with synthetic input and a system-temporary home. The separate compaction fixtures check successful checkpoint continuation and preservation of the incoming prompt after a failure. These checks do not establish all provider paths, installed-app acceptance or a release. Keep dated execution and artifact receipts in the native automation directory.
+
+### Pending native completion messages
+
+Native Codex preserves an unsampled worker `FINAL_ANSWER` message across bounded compaction and cold continuation. The summary precedes pending mail and later caller input. Compactor output does not acknowledge that mail; an ordinary inference request supplies the sampling boundary. Decodex reuses this native ownership and adds no mailbox or retention policy.
+
+The reusable `pending_mail.py` probe checks repeated manual compaction and cold continuation with legacy and paginated history, through local and remote compaction. It checks exact message identity, order, route and removal after ordinary inference has sampled the completion. Use the current qualification for artifact identities, before/after results and executed cases. This loopback fixture uses idle injected completion messages. It does not qualify ordinary agent-message retention, mid-turn preemption or live-provider behavior.
 
 ## Saved settings and diagnostic storage
 

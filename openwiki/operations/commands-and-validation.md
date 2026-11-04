@@ -82,6 +82,8 @@ sources:
     resource: repo://crates/decodex-runtime/tests/native_qualification/model_errors.py
   - id: openwiki-source-e7a53f398340c29957bd81d3
     resource: repo://crates/decodex-runtime/tests/native_qualification/native_session.py
+  - id: openwiki-source-6cd65761e9a87b1e53c53373
+    resource: repo://crates/decodex-runtime/tests/native_qualification/pending_mail.py
   - id: openwiki-source-8e6f29de9ed0d4825985ec62
     resource: repo://crates/decodex-runtime/tests/native_qualification/project_guardian.py
   - id: openwiki-source-2fee1dea7ba19d72acce7a3c
@@ -122,10 +124,10 @@ sources:
     resource: repo://scripts/macos/test_native_app.sh
   - id: openwiki-source-e201f60894c32a914dac99ee
     resource: repo://scripts/vnext/run_native_regression.py
-generated: { by: "codex", at: "2026-11-04T14:17:02.441Z" }
+generated: { by: "codex", at: "2026-11-04T20:52:38.845Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-04T15:37:04.419Z
+    at: 2026-11-04T20:52:38.845Z
 ---
 
 
@@ -296,12 +298,15 @@ python3 crates/decodex-runtime/tests/native_qualification/log_storage.py
 python3 crates/decodex-runtime/tests/native_qualification/model_errors.py
 python3 crates/decodex-runtime/tests/native_qualification/large_catalog.py
 python3 crates/decodex-runtime/tests/native_qualification/response_identity.py
+python3 crates/decodex-runtime/tests/native_qualification/pending_mail.py
 python3 crates/decodex-runtime/tests/native_qualification/project_guardian.py
 python3 crates/decodex-runtime/tests/native_qualification/command_hooks.py
 python3 crates/decodex-runtime/tests/native_qualification/dotenv_startup.py
 ```
 
 These probes use loopback providers, synthetic account data and system-temporary homes. They close their own child processes and servers. They do not establish installed-app or live-provider acceptance. Keep raw output in the native run directory; keep current requirements, fixture implementations, hashes and limits in the repository.
+
+The completion-mail probe checks four combinations: legacy and paginated history with local and remote compaction. An unsampled `FINAL_ANSWER` message must survive repeated manual compaction and cold continuation, after the summary and before later caller input. A later ordinary inference acknowledges it before another compaction. This probe does not qualify ordinary agent-message retention or mid-turn preemption. Use the current qualification for executed cases and artifact identity.
 
 The command hook probe checks the command directory in the `PreToolUse`, `PermissionRequest` and `PostToolUse` payloads. The hook process keeps the project directory, while each payload identifies the nested command directory. It checks one local command without a model retry; it does not qualify a remote executor.
 

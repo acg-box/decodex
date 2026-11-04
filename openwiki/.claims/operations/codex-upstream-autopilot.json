@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:b97623014efee40839426c0e7f8bfa0cbca590608d2f2e0b7258bcd72dcad22d",
+  "pageVersion": "sha256:cbea1319ee33b9971b127f88231f232bf6c4278d4616ec59aa7f7d6b1effc379",
   "claims": [
     {
       "id": "claim_b6c6b65984924f69970e7f0410d50903",
@@ -322,7 +322,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:bd4b9a8f9822de9132962b7ad22f06b2161feabb5ac8d545973b13e6e068ae73"
+          "version": "repo-file-v1:sha256:72f744efdd6bfc63d2c0cc5fdf67a7e608a802a825c366876e3bf8939950a3e7"
         },
         {
           "resource": "repo://scripts/macos/build_codex_source.mts",
@@ -351,10 +351,28 @@
           "version": "repo-file-v1:sha256:562b204b8ee6bc6c60c055c4c5ec45c4734e65447a3dc7aab4e9c564a426b781"
         }
       ]
+    },
+    {
+      "id": "claim_575d96df3d734f68bb2d5842fa0f2f8c",
+      "statement": "Exact native fixture execution uses each fixture's declared binary environment variable. The completion-mail fixture uses QUALIFIED_CODEX_BINARY and covers unsampled FINAL_ANSWER messages through repeated manual compaction and cold continuation in both history modes and compaction routes with loopback providers; it does not qualify live-provider behavior or mid-turn preemption.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/tests/native_agent_wake.rs#L180-L206",
+          "version": "repo-lines-v1:sha256:b890b58705876d9bfa58ad8fd6f23540cfed7e057fe111ac2cb36e691f5d6ec1:eyJzZWxlY3RlZExpbmVDb3VudCI6MjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk3YWMyZjQxMGZiZTE3OTRlNWM1MGJmZmQ0N2Y3YTJmNTBjNmNmZDA3ZWY5ZDY3NWVhMjRjMzkyY2U2YWY3OTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJkNDZhNTg1OTVkZGRhYzQxOTZmYzA3ZDAwN2M1YWI4Njc2ZDVkYTRlMzYzZWYzZjIxYzc4M2VhYjBmMWVkMDEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijc3NzJlOTI3NWNiNmEyNGZmYTg5NTJjY2E3N2U2YTRhNWEyYWRlNjNjZWQ0MzUxYzZiYzU4NjBhYWZlNTIyZDEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImFmOTU3YmFlMmQ1OTQ4MjQxZjZlNmY5ZjllMjJmYzQ5ZjBhYzQ0MzQyY2YzYmFlZmY5YTE3Zjk3ZTBhM2M1MWEifQ"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/tests/native_qualification/native_session.py",
+          "version": "repo-file-v1:sha256:ae24e58b6ed7404fce007e174fce23aa5ff49038b8b1e77818f59313fdc4aa1f"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/tests/native_qualification/pending_mail.py#L1-L157",
+          "version": "repo-lines-v1:sha256:8cee9678be86f7de9fa3f4165f721c687cad0a9ee21b7709fd6507c7c805cb7b:eyJzZWxlY3RlZExpbmVDb3VudCI6MTU3LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIxYjI5YjhlY2E4MGYzOTJmMmZmMWU5YTA2MmZkYmJhNjdkNDI0NzgzMDNiYTQ1MWY3YmNhMDM4ZTMxNDFlOTE1IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJhMmM3OWUzMjJjZWRjNjdhZDY1MjRjMWRiMzQ2MzhlOTg4ZTA5YzRiZWJkYzJlNzRjZTkyNjQwYWU0MDZlMDU3IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MCwicHJlY2VkaW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-04T15:37:04.419Z"
+    "at": "2026-11-04T20:52:38.845Z"
   }
 }

@@ -41,16 +41,22 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent.rs
   - id: openwiki-source-30c7edf894a639091ecbafc6
     resource: repo://crates/decodex-runtime/src/agent/tests/external_context.rs
+  - id: openwiki-source-a7b97dd347fbe2f630692d12
+    resource: repo://crates/decodex-runtime/src/agent/tests/native_agent_wake.rs
+  - id: openwiki-source-e7a53f398340c29957bd81d3
+    resource: repo://crates/decodex-runtime/tests/native_qualification/native_session.py
+  - id: openwiki-source-6cd65761e9a87b1e53c53373
+    resource: repo://crates/decodex-runtime/tests/native_qualification/pending_mail.py
   - id: openwiki-source-87eeaebc39a3d2229938f9d2
     resource: repo://scripts/macos/build_codex_source.mts
   - id: openwiki-source-58e225584250806d8658ea09
     resource: repo://scripts/macos/prepare_codex.mts
   - id: openwiki-source-3b57179b92b257bc3fff51a1
     resource: repo://scripts/macos/stage_decodex_app.sh
-generated: { by: "codex", at: "2026-11-04T15:37:04.419Z" }
+generated: { by: "codex", at: "2026-11-04T20:52:38.845Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-04T15:37:04.419Z
+    at: 2026-11-04T20:52:38.845Z
 ---
 
 
@@ -88,6 +94,8 @@ Upstream owns generic Codex correctness. Read the relevant upstream implementati
 Run a small upstream selection only for a concrete compatibility defect or specific missing proof for a retained fix. State the consumer and missing proof first. Do not inherit an earlier source-test cohort or select broad suites from changed paths or function-name patterns. An unresolved upstream fixture with no selected consumer remains a diagnostic limit; it does not create a Decodex repair item. Unread source or relevant test bodies still block the review cursor.
 
 Register exact selectors and check the executed count and unmatched selectors. Nextest can replace binary environment paths with its own build outputs. Use the existing direct compiled-test entrypoint or native fixture when the signed helpers must run. Use already-managed tools and the repository version files. Workflow-only changes do not need app, provider or upstream suites. After code settles, run the final affected gate once and retain its actual scope.
+
+Use the binary variable declared by each fixture. Some native tests require `DECODEX_NATIVE_BINARY`; other compiled tests use `DECODEX_TEST_CODEX_BINARY`. The completion-mail fixture uses `QUALIFIED_CODEX_BINARY` and the packaged helpers. It checks unsampled native `FINAL_ANSWER` messages through repeated manual compaction and cold continuation in both history modes and compaction routes. Its loopback-provider proof does not establish live-provider behavior or mid-turn preemption.
 
 For a source build, set `DECODEX_APP_SIGN_IDENTITY` to an existing valid local signing identity before `cargo +stable make prepare-codex`. Keep certificate identities out of repository evidence. Import an existing signed artifact with `DECODEX_CODEX_DEVELOPMENT_RUNTIME="<qualified-runtime>" cargo +stable make prepare-codex`. Native account and cache fixtures use a system-temporary HOME; working-directory authority still follows the OS account, so reuse the owned-checkout fixture for execution.
 

@@ -1,147 +1,102 @@
 {
-  "version": 1,
-  "scope": "Compact current evidence router. Stable requirements and original qualification limits belong to the contract catalog; routine review and actual artifact execution belong to the referenced evidence files.",
+  "version": 4,
+  "scope": "Compact evidence router for the retained consumer boundary. The native checkpoint owns live review/delivery state.",
   "retained_contracts": {
     "path": "automations/upstream/retained-contracts.json",
     "sha256": "e4f1fef853138a1f3465e5ce20e0ab13d103a2fd82c02305c216b30442c32f61"
   },
-  "source_baseline": "3e743d15787bd9091f674f0fbc27010f0cbcec62",
+  "source_baseline": "d78f68f8d1016b2ffba14a91ccd33ef7fa527971",
   "source_review_evidence": "automations/upstream/current-review.json",
-  "source_review_summary": {
-    "range_start_exclusive": "ba0dfd38979033f514a28d9514215bad46957a18",
-    "range_end_inclusive": "3e743d15787bd9091f674f0fbc27010f0cbcec62",
-    "fixed_target_observed_at": "2026-11-04T07:49:16.651364+00:00",
-    "screened": 111,
-    "completed_review": 111,
-    "remaining": 0,
-    "test_or_fixture_bodies_read": 106,
-    "upstream_tests_executed": 3,
-    "source_review_evidence": "automations/upstream/current-review.json",
-    "source_review_sha256": "d3c46b73dac4cfbdec7e81c35b6c68141409549bdd9099a34055c41bbb9503a9",
-    "previous_review": {
-      "start_exclusive": "4b4a5cf25aa5b064c866218b405c848745fd280f",
-      "end_inclusive": "ba0dfd38979033f514a28d9514215bad46957a18",
-      "count": 36,
-      "evidence": "https://github.com/acg-box/decodex/blob/6c61ec327fab0c3e5abe904b7a8751dc6bc4eac0/automations/upstream/current-review.json",
-      "earlier_certified_review": {
-        "start_exclusive": "67f0994b532b8740f14b5b738af7b7b2a915b1d6",
-        "end_inclusive": "4b4a5cf25aa5b064c866218b405c848745fd280f",
-        "count": 9,
-        "evidence": "https://github.com/acg-box/decodex/blob/490f4ec21f48d0d49f676fd9a86112ab7b67ae05/automations/upstream/current-review.json"
-      },
-      "limits": "Preserve the original certified range and original runtime/test coverage; this review does not rescan older history."
-    },
-    "selected_runtime_source": "3e743d15787bd9091f674f0fbc27010f0cbcec62",
-    "runtime_changed": true,
-    "limit": "Only this fixed target is reviewed. Runtime, delivery and installed acceptance remain separate."
-  },
-  "qualification": {
-    "status": "qualified_fixed_development_artifact",
-    "evidence": "automations/upstream/qualification.json",
-    "source_archive_sha256": "57d6cbc9f8f430ec4444e876314de4c10c0497d12941d8f1fc71115c780204b9",
-    "schema_sha256": "7b09165c7812e9f717631d8d397a640c8555e317215c363c4c1b46fa4a862bfe",
-    "evidence_sha256": "bd4b9a8f9822de9132962b7ad22f06b2161feabb5ac8d545973b13e6e068ae73",
-    "limits": [
-      "Source review, source-test execution, exact-artifact qualification, PR delivery and installed acceptance are separate.",
-      "Qualification covers macOS arm64 private stdio and named retained consumers with synthetic local providers and disposable homes. No desktop startup, installation, live-account/provider acceptance, physical audio, release, tag or publication.",
-      "Only the three exact official worker-permission reload source cases were executed. They supply internal eviction proof; Nextest source helper selection does not prove signed production-artifact execution.",
-      "The signed production CLI and helpers were exercised separately by direct compiled Decodex native tests and repository-owned protocol fixtures. No Nextest CARGO_BIN_EXE substitution is used for those executions.",
-      "Official target CI contains successful, failed, cancelled, skipped and incomplete jobs. Unresolved causes remain unknown; no generic upstream test pass is claimed.",
-      "Shared MCP enablement retains its official-fix and exact legacy-regression gate. Remote execution, Guardian V3, HumanCommand and deferred product experiments remain outside this qualification.",
-      "The steering fixture does not force the internal final-flush barrier. The attached-fork fixture uses an intact managed ancestor copy and does not prove every compressed/corrupt lineage variant.",
-      "Original feature-qualification and historical coverage limits remain in retained-contracts.json and their exact public revisions. No new performance, billing, cost or dependency-security audit."
-    ]
-  },
+  "source_review_summary": "The fixed review and its coverage limits are in current-review.json. Later upstream main is not certified.",
+  "qualification": "automations/upstream/qualification.json",
   "retained_native_consumers": {
-    "source_commit": "3e743d15787bd9091f674f0fbc27010f0cbcec62",
-    "selected_count": 26,
-    "current_executed_count": 26,
-    "unmatched_selectors": [],
-    "tests": "automations/upstream/qualification.json#retained_consumers.executions",
-    "entrypoint": "<compiled-decodex-runtime-libtest> --exact <registered selector> --ignored --nocapture --test-threads=1",
+    "source_commit": "d78f68f8d1016b2ffba14a91ccd33ef7fa527971",
+    "tests": [
+      "account_launch::process::context_preferences_native_tests::installed_native_context_preferences_share_config_and_preserve_thresholds",
+      "account_launch::process::native_control_tests::installed_native_qualified_defaults_preserve_multi_agent_selection",
+      "account_launch::agent_process::native_tests::compaction::installed_native_streams_auto_compaction_and_resumes_its_checkpoint",
+      "account_launch::agent_process::native_tests::compaction::installed_native_preserves_prompt_before_compaction_error_and_after_restart",
+      "account_launch::agent_process::native_tests::compaction::installed_native_discards_partial_compaction_output_after_restart",
+      "account_launch::agent_process::native_tests::compaction::code_metadata::installed_native_code_mode_metadata_reaches_compaction",
+      "account_launch::agent_process::native_tests::history_recovery::installed_native_fork_history_recovers_from_intact_ancestor_copy",
+      "account_launch::agent_process::native_tests::cold_settings::recap_socket::fork::installed_provider_recovery_fork_preserves_context_and_restarts_on_current_provider",
+      "account_launch::agent_process::native_tests::reviewer::store::live_model::child_model::installed_native_child_inherits_updated_step_model",
+      "account_launch::agent_process::native_tests::reviewer::store::warning_tests::installed_native_warning_crosses_bridge_owner_history_and_reopen",
+      "agent::tests::native_subagent_live::mcp::native_child_mcp_input_preserves_policy_and_exact_request",
+      "agent::tests::native_agent_wake::native_child_completion_wakes_idle_root_once",
+      "account_launch::agent_process::native_tests::reviewer::evidence::installed_guardian_retains_answer_after_compaction_and_restart",
+      "account_launch::agent_process::native_tests::reviewer::image_evidence::installed_guardian_preserves_native_image_profile_after_restart",
+      "account_launch::agent_process::native_tests::reviewer::installed_native_guardian_preserves_large_action",
+      "account_launch::agent_process::native_tests::permissions::installed_named_permission_selection_during_active_turn_survives_restart",
+      "account_launch::agent_process::native_tests::structured::installed_temporary_requests_isolate_environment_and_preserve_custom_permissions",
+      "account_launch::agent_process::native_tests::context::installed_native_tool_context_survives_restart_without_replay",
+      "account_launch::agent_process::native_tests::context::installed_assistant_renews_fresh_contexts_with_original_dialogue_and_isolated_memory",
+      "account_launch::agent_process::native_tests::code_mode::installed_native_parallel_dynamic_tools_preserve_ids_and_result_order"
+    ],
+    "entrypoint": "<compiled-decodex-runtime-libtest> <registered selector> --exact --ignored --nocapture --test-threads=1",
     "fixture_source_sha256": "automations/upstream/qualification.json#fixture_source_sha256",
     "required_environment": [
       "DECODEX_TEST_CODEX_BINARY=<exact signed CLI>",
+      "DECODEX_NATIVE_BINARY=<same CLI for the two agent fixtures>",
       "DECODEX_CODEX_DEVELOPMENT_RUNTIME=<exact package>",
       "HOME/CODEX_HOME=<owned temporary home>",
       "CARGO_HOME/RUSTUP_HOME=<existing host-managed locations>"
     ],
-    "limits": "Only the named current plan ran. Original feature qualifications remain in the contract catalog."
+    "limits": "Only the executions in qualification.json establish current named consumer proof."
   },
   "direct_protocol_regressions": {
-    "entrypoints": 6,
     "evidence": "automations/upstream/qualification.json#direct_protocol_regressions",
-    "commands": "python3 <exact repository script listed in evidence>"
+    "entrypoints": [
+      "crates/decodex-runtime/tests/native_qualification/pending_mail.py",
+      "crates/decodex-runtime/tests/native_qualification/mcp_cancel.py",
+      "crates/decodex-runtime/tests/native_qualification/response_identity.py",
+      "crates/decodex-runtime/tests/native_qualification/thread_settings.py"
+    ]
   },
   "component_cache_repair": {
     "evidence": "automations/upstream/qualification.json#component_cache_repair",
-    "selector": "fixed_commit_import_offline_repair_and_wrong_commit_rejection",
-    "source_commit": "3e743d15787bd9091f674f0fbc27010f0cbcec62",
-    "executed": 1,
-    "passed": 1,
-    "failed": 0
+    "selector": "fixed_commit_import_offline_repair_and_wrong_commit_rejection"
   },
   "upstream_source_proof": {
-    "registered": 3,
-    "executed": 3,
-    "passed": 3,
-    "failed": 0,
-    "exact_selectors": "automations/upstream/qualification.json#source_validation.upstream_tests_executed",
-    "entrypoint": "cargo +stable nextest run --locked --target aarch64-apple-darwin --cargo-profile release -p codex-core --test all -E <three exact selectors> --test-threads 1",
-    "consumer": "Retained native subagent permissions during sibling-triggered eviction/reload",
-    "missing_proof": "Public Decodex fixtures do not force the internal residency eviction; this official source scenario forces eviction and verifies retained permission profiles/grants/network policy.",
-    "limits": "Source-build internal proof only; Nextest can select source helper outputs. Exact signed production artifact is qualified separately by Decodex native fixtures."
+    "review": "automations/upstream/current-review.json",
+    "tests_read": "automations/upstream/qualification.json#source_validation",
+    "tests_executed": [],
+    "limits": "Read official implementation/test bodies and reuse official CI. No local upstream source suite."
   },
   "artifact": {
-    "source_commit": "3e743d15787bd9091f674f0fbc27010f0cbcec62",
-    "source_archive_sha256": "57d6cbc9f8f430ec4444e876314de4c10c0497d12941d8f1fc71115c780204b9",
+    "source_commit": "d78f68f8d1016b2ffba14a91ccd33ef7fa527971",
+    "source_archive_sha256": "d974c3048446fdadcdc5be8a8990f023bee7c7536d6d6b5616f3465d731cd3be",
     "schema_sha256": "7b09165c7812e9f717631d8d397a640c8555e317215c363c4c1b46fa4a862bfe",
     "components": [
       {
         "path": "CodexCLI.app/Contents/MacOS/codex",
-        "sha256": "411679c5c55709595ff5e3e40b0533dab5ca0bcf9d0eb62dbb8c2578ef6d95fd",
-        "bytes": 273005840,
+        "sha256": "3cecc036c99f20f445f89fe5664685f83e56b57b44ce62209d1de9a3e72995fa",
+        "bytes": 273798832,
         "strict_signature_verified": true
       },
       {
         "path": "bin/codex-code-mode-host",
-        "sha256": "7d49bfb520ac730586aa7215f1ccd7e8501df34ea8aa8b97b24f3d180cf28deb",
-        "bytes": 69981632,
+        "sha256": "8fb426e38a6f2e9da0c37d58c7c3aaf43a63bb2ca02272e835aaece3ca812431",
+        "bytes": 69964400,
         "strict_signature_verified": true
       },
       {
         "path": "bin/codex-exec-server",
-        "sha256": "19352ce592f086e4dc105e59611abdd9f37d48ce2c3451504b63d0c178029c32",
-        "bytes": 61054208,
+        "sha256": "b71a145d89cd09505069d9b3f70c4694e9e6139c1dc696247dfac2314bb603c5",
+        "bytes": 60826032,
         "strict_signature_verified": true
       },
       {
         "path": "codex-path/rg",
-        "sha256": "b3043d47aebc0f2a54ddf24a779a9ae4a310dbc67295cf67d10cbbf8a60c458f",
+        "sha256": "a28399b6504c0134739e24a72e69fadc16b8b7670cad6d7a739bff81f514b29f",
         "bytes": 4009552,
         "strict_signature_verified": true
       }
-    ],
-    "preparation_command": [
-      "cargo",
-      "+stable",
-      "make",
-      "prepare-codex"
-    ],
-    "preparation_evidence": "automations/upstream/qualification.json#development_preparation"
+    ]
   },
   "validation": {
     "evidence": "automations/upstream/qualification.json#decodex_validation",
-    "registered": 1364,
-    "executed": 1210,
-    "passed": 1210,
-    "skipped": 154,
-    "failed": 0,
-    "gate": "Affected packages: decodex-runtime, decodex-codex and decodex-components, all features/tests. Strict Clippy all targets/features and changed-package nightly formatting also passed.",
-    "automation_commands": [
-      "cargo +stable make test-automations",
-      "python3 automations/decodex/scripts/config/evaluate_automations.py --repo-only --json"
-    ]
+    "commands": "Use the exact registered entrypoints and fixture/source digests in qualification.json."
   },
   "retained_contract_routes": {
     "behavior": "automations/upstream/retained-contracts.json#retained_behavior_contracts",
@@ -157,21 +112,20 @@
   "current_runtime_requalification": {
     "status": "qualified_fixed_development_artifact",
     "evidence": "automations/upstream/qualification.json",
-    "selected_source": "3e743d15787bd9091f674f0fbc27010f0cbcec62",
-    "limits": "Development qualification only. Source review, delivery and installed acceptance remain separate."
+    "selected_source": "d78f68f8d1016b2ffba14a91ccd33ef7fa527971",
+    "limits": "Development qualification only; delivery and installed acceptance remain separate."
   },
   "current_delivery": {
     "source_commit_references": [
-      "https://github.com/acg-box/decodex/commit/b19dd6e3bff2a9e13d7ca16b98daf822cb9a8621",
-      "https://github.com/acg-box/decodex/commit/a4634c873948a49573748b6c20c743fcf2302f1c",
-      "https://github.com/acg-box/decodex/commit/6149b0a4604f1226b09a66d69e574362166128a2"
+      "https://github.com/acg-box/decodex/commit/880baa0afeefc88570df3d46d3776753d59e5f9d",
+      "https://github.com/acg-box/decodex/commit/a3065af205767d653722343ec77f20f6664e5fed"
     ],
-    "status": "Prepared for one focused PR; live CI and merge are native observations.",
+    "status": "Public implementation commits identify the code. Native receipts own the current PR, exact-head CI and merge observations.",
     "installed_acceptance": "Not performed."
   },
-  "documentation_lifecycle": "Use supported OpenWiki page jobs. Current and inherited job status, PR checks and merge observations remain native receipts.",
+  "documentation_lifecycle": "Use supported OpenWiki page jobs after these inputs are frozen. Native receipts own completion.",
   "historical_evidence": {
-    "reference": "https://github.com/acg-box/decodex/blob/6c61ec327fab0c3e5abe904b7a8751dc6bc4eac0/automations/upstream/retained-evidence.json",
-    "limits": "Git retains replaced evidence. Original claims keep their original source, artifact and coverage limits; this link is not current runtime proof."
+    "reference": "https://github.com/acg-box/decodex/blob/6b73ccb3348ec694c4a15d70b572ccdec20a871c/automations/upstream/retained-evidence.json",
+    "limits": "Git preserves replaced evidence and original coverage limits. Historical observations are not current runtime proof."
   }
 }

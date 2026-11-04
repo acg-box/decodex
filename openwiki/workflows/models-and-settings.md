@@ -112,10 +112,10 @@ sources:
     resource: repo://crates/decodex-runtime/tests/native_qualification/thread_settings.py
   - id: openwiki-source-8c78df4b382026886ac50894
     resource: repo://database/src/usage_evidence.rs
-generated: { by: "codex", at: "2026-11-04T17:53:53.004Z" }
+generated: { by: "codex", at: "2026-11-04T20:52:38.845Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-04T17:53:53.004Z
+    at: 2026-11-04T20:52:38.845Z
 ---
 
 # Model selection and settings ownership
@@ -243,7 +243,7 @@ Native Codex retains transport selection. The integration does not force shared 
 
 ## Explicit model catalogs
 
-The repository-owned `large_catalog.py` probe verifies that a configured catalog larger than 1 MiB reaches native `model/list`. The [current qualification](../../automations/upstream/qualification.json) identifies the exact artifact and executed probe; earlier executions keep their original limits. This is a compatibility contract for native configuration; it does not add a provider or account setup control. The existing account-plan boundary remains unchanged.
+The repository-owned `large_catalog.py` probe verifies that a configured catalog larger than 1 MiB reaches native `model/list`. The [current qualification](../../automations/upstream/qualification.json) identifies the selected artifact and names only the probes actually executed in that batch. Earlier catalog executions keep their original artifact limits in the [stable contract catalog](../../automations/upstream/retained-contracts.json). This is a compatibility contract for native configuration; it does not add a provider or account setup control. The existing account-plan boundary remains unchanged.
 
 ## Known native limits
 
