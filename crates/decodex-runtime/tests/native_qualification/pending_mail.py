@@ -18,7 +18,7 @@ def qualify(history_mode, remote):
         "id": "agent_pending-result",
         "author": "/root/worker",
         "recipient": "/root",
-        "content": [{"type": "input_text", "text": "Keep the worker's release blocker."}],
+        "content": [{"type": "input_text", "text": "Message Type: FINAL_ANSWER\nKeep the worker's release blocker."}],
     }
 
     class Handler(BaseHTTPRequestHandler):
