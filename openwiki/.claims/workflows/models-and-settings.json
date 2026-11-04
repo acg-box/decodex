@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:c8af195efe9f1b7f5d67002b3f5f78b23bf73237e8ef2b2407f2ea71b116ec0b",
+  "pageVersion": "sha256:2659b10819e1c22e2fa89be4cd6c714640b5c2727a768145ed130482d19ce409",
   "claims": [
     {
       "id": "claim_f0c37462522f4442acd94d53819ef75c",
@@ -242,7 +242,7 @@
     },
     {
       "id": "claim_ae80d6525a7c4e9f9fef8b9241c057d6",
-      "statement": "Settings > Agents > Conversation assistance controls automatic next-message suggestions. The preference defaults on; disabling consumes turn boundaries without starting automatic sampling, and re-enabling does not replay those completions. Tab acceptance remains an unsent undoable draft.",
+      "statement": "Settings > Agents > Decodex controls automatic next-message suggestions. The preference defaults on; disabling consumes turn boundaries without starting automatic sampling, and re-enabling does not replay those completions. Tab acceptance remains an unsent undoable draft.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_prompt_suggestions.rs",
@@ -254,7 +254,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_surface.rs",
-          "version": "repo-file-v1:sha256:28c77b959899a1c581ee5b854b11e54b35e0f67520c61f5405fbbd24c3b0b33a"
+          "version": "repo-file-v1:sha256:b5a7ae515d6f236dbed8f236323d672d5869808f6a6d31affdb264c80d455efc"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_preferences.rs",
@@ -318,11 +318,11 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
-          "version": "repo-file-v1:sha256:2d3b3b8873ece30ae1ed21c6db852df68fe8af0da00fcea059034229a9044e77"
+          "version": "repo-file-v1:sha256:01db4c55a40e3bf5a2c0dbf06fd52c0219149474c2dff835e91579c1d2335ccf"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:f892acca477da7550bf8de58c7a04ec12a849d85a473147f52c40236811b033d"
+          "version": "repo-file-v1:sha256:f131d60c8a48683c131d05c6a8962b6946b7662541319767fb4208c1b9fbf13c"
         },
         {
           "resource": "repo://crates/decodex-components/src/ragflow.rs",
@@ -345,10 +345,28 @@
           "version": "repo-file-v1:sha256:036d2ad8834d187967440ba4a757cfdaff8929624684609b02d1364852f70cf4"
         }
       ]
+    },
+    {
+      "id": "claim_beff917e46a74d619c3c54e7b46b2696",
+      "statement": "The RAGFlow model editor aligns labels and controls in shared rows, places Cancel and Save on the right, and keeps API and Codex memory guidance beside the form. Saved-key guidance is conditional on saved model settings, the redundant setup notice is hidden during editing, and Cancel discards unsaved values and clears the editor error.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
+          "version": "repo-file-v1:sha256:01db4c55a40e3bf5a2c0dbf06fd52c0219149474c2dff835e91579c1d2335ccf"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
+          "version": "repo-file-v1:sha256:f131d60c8a48683c131d05c6a8962b6946b7662541319767fb4208c1b9fbf13c"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/ui_theme.rs",
+          "version": "repo-file-v1:sha256:251fcc00e31eb7d3e81db831b7906f643b6e4e230cf89b804f64fe86113ca3c1"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-04T10:24:44.262Z"
+    "at": "2026-11-04T12:29:29.143Z"
   }
 }

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:a04089e4923ac8a016d5afd91a2d092f9181f320e0b4b00bad4e26bdd25d4ab5",
+  "pageVersion": "sha256:644bd8307eab9faca88b126007a10d5e53452f4e02685965d88d52a77d6a1a9e",
   "claims": [
     {
       "id": "claim_41c9eba720934771bd6b671a7aeb8b6e",
@@ -462,7 +462,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_theme.rs",
-          "version": "repo-file-v1:sha256:9f8e2bd5ff52626824426905f44f58479e17a51d5b28c3e4cbd424ee6e257d51"
+          "version": "repo-file-v1:sha256:251fcc00e31eb7d3e81db831b7906f643b6e4e230cf89b804f64fe86113ca3c1"
         }
       ]
     },
@@ -486,7 +486,7 @@
     },
     {
       "id": "claim_6c70a225addb4571a4536403d49033b7",
-      "statement": "Assistant is built in and always available from the sidebar, with idle atomic initialization on first use and no optional Assistant component. RAGFlow shares component controls, installed version readback, collapsed details and inline feedback. Component operations check the running Docker-compatible engine and Docker Compose before installation effects and report unavailable prerequisites without runtime installation, launch or installation guidance. Install prepares the service and automatically opens the existing model editor when no model settings are saved. Configure models reopens its Base URL, optional masked API key and custom extraction and embedding fields. Save models verifies the API before automatic Memory setup. Service connection is automatic and chat import starts off. Continuing duties and teams stay in chat and Work.",
+      "statement": "Assistant is built in and always available from the sidebar, with idle atomic initialization on first use and no optional Assistant component. RAGFlow shares component controls, installed version readback, collapsed details and inline feedback. Component operations check the running Docker-compatible engine and Docker Compose before installation effects and report unavailable prerequisites without runtime installation, launch or installation guidance. Install prepares the service and automatically opens the existing model editor when no model settings are saved. Configure models reopens its Base URL, optional masked API key and custom extraction and embedding fields. Save verifies the API before automatic Memory setup. Service connection is automatic and chat import starts off. Continuing duties and teams stay in chat and Work.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
@@ -494,11 +494,11 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
-          "version": "repo-file-v1:sha256:2d3b3b8873ece30ae1ed21c6db852df68fe8af0da00fcea059034229a9044e77"
+          "version": "repo-file-v1:sha256:01db4c55a40e3bf5a2c0dbf06fd52c0219149474c2dff835e91579c1d2335ccf"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:f892acca477da7550bf8de58c7a04ec12a849d85a473147f52c40236811b033d"
+          "version": "repo-file-v1:sha256:f131d60c8a48683c131d05c6a8962b6946b7662541319767fb4208c1b9fbf13c"
         },
         {
           "resource": "repo://crates/decodex-components/src/ragflow_service.rs",
@@ -516,11 +516,11 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
-          "version": "repo-file-v1:sha256:2d3b3b8873ece30ae1ed21c6db852df68fe8af0da00fcea059034229a9044e77"
+          "version": "repo-file-v1:sha256:01db4c55a40e3bf5a2c0dbf06fd52c0219149474c2dff835e91579c1d2335ccf"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:f892acca477da7550bf8de58c7a04ec12a849d85a473147f52c40236811b033d"
+          "version": "repo-file-v1:sha256:f131d60c8a48683c131d05c6a8962b6946b7662541319767fb4208c1b9fbf13c"
         }
       ]
     },
@@ -533,10 +533,42 @@
           "version": "repo-file-v1:sha256:baa8ea600036ed4dff6d1bd9f8736a2d3f541aed6f345c511fe0bb79f4db3307"
         }
       ]
+    },
+    {
+      "id": "claim_b21a1b1b1e32436d9ebd774cec94464d",
+      "statement": "Settings uses a narrow reading column for General, Components and Updates, with wider columns for Agents and Appearance. Shared rows use compact spacing, and General groups automatic recaps and sleep prevention under Background.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/settings_surface.rs",
+          "version": "repo-file-v1:sha256:b5a7ae515d6f236dbed8f236323d672d5869808f6a6d31affdb264c80d455efc"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/ui_theme.rs",
+          "version": "repo-file-v1:sha256:251fcc00e31eb7d3e81db831b7906f643b6e4e230cf89b804f64fe86113ca3c1"
+        }
+      ]
+    },
+    {
+      "id": "claim_f2fbc533f80e433d9022f6333a6e691c",
+      "statement": "The RAGFlow model editor uses aligned shared field rows and right-aligned Cancel and Save controls. It retains API and Codex memory guidance, shows saved-key help only for saved settings, hides the redundant setup notice during editing, and clears unsaved values and editor errors on Cancel.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
+          "version": "repo-file-v1:sha256:01db4c55a40e3bf5a2c0dbf06fd52c0219149474c2dff835e91579c1d2335ccf"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
+          "version": "repo-file-v1:sha256:f131d60c8a48683c131d05c6a8962b6946b7662541319767fb4208c1b9fbf13c"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/ui_theme.rs",
+          "version": "repo-file-v1:sha256:251fcc00e31eb7d3e81db831b7906f643b6e4e230cf89b804f64fe86113ca3c1"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-04T09:42:14.115Z"
+    "at": "2026-11-04T12:29:29.143Z"
   }
 }

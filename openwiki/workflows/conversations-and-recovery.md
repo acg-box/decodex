@@ -168,10 +168,10 @@ sources:
     resource: repo://database/src/assistant.rs
   - id: openwiki-source-28af4781ad8d9558410630da
     resource: repo://database/src/works.rs
-generated: { by: "codex", at: "2026-11-03T19:29:07.466Z" }
+generated: { by: "codex", at: "2026-11-04T12:29:29.143Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-03T19:29:07.466Z
+    at: 2026-11-04T12:29:29.143Z
 ---
 
 # Conversation input, history and recovery
@@ -369,7 +369,7 @@ The former manual **Ask separately** popover and composer entry are removed. Nat
 
 ## Next-message suggestions
 
-With **Settings > Agents > Conversation assistance > Automatic next-message suggestions** enabled, a newly completed answer in the selected independent root conversation can trigger one native suggestion request when the conversation is idle and no separate request is active. The preference defaults on. Turning it off prevents new automatic requests; turning it back on does not replay completions observed while it was off. It uses the conversation's model and quota. It does not run tools or send input to the parent conversation.
+With **Settings > Agents > Decodex > Automatic next-message suggestions** enabled, a newly completed answer in the selected independent root conversation can trigger one native suggestion request when the conversation is idle and no separate request is active. The preference defaults on. Turning it off prevents new automatic requests; turning it back on does not replay completions observed while it was off. It uses the conversation's model and quota. It does not run tools or send input to the parent conversation.
 
 The current suggestion appears inline in the empty composer. Focus the same idle conversation's empty message field and press **Tab** to insert the current suggestion as one undoable edit. Send it separately after review. Other fields, Shift-Tab and a nonempty draft keep normal focus navigation. Text entered while the suggestion is generated stays in place. Clear the current draft before accepting a suggestion. A replaced thread or stale sample cannot supply a new draft.
 
