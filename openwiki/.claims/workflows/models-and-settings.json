@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:f006dab49e6a14711788f0c7fb5069826a9dcee85ab4746858502a1d967d7542",
+  "pageVersion": "sha256:03915ffcd1b694b8bf8e711f84488927fd00339f2ac46c8c3f2dde2474a8b035",
   "claims": [
     {
       "id": "claim_f0c37462522f4442acd94d53819ef75c",
@@ -88,11 +88,15 @@
     },
     {
       "id": "claim_781e6a39d4954364aa46b3429385c7c9",
-      "statement": "The repository-owned large_catalog.py probe checks native model/list with an explicit catalog larger than 1 MiB. Current qualification records the selected artifact and execution; historical results retain their original limits. This adds no account or provider setup control.",
+      "statement": "The repository-owned large_catalog.py probe checks native model/list with an explicit catalog larger than 1 MiB. Current qualification identifies the selected artifact and names only probes actually executed in that batch. Earlier catalog executions retain their original artifact limits in the stable contract catalog. This adds no account or provider setup control.",
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:bd4b9a8f9822de9132962b7ad22f06b2161feabb5ac8d545973b13e6e068ae73"
+          "version": "repo-file-v1:sha256:72f744efdd6bfc63d2c0cc5fdf67a7e608a802a825c366876e3bf8939950a3e7"
+        },
+        {
+          "resource": "repo://automations/upstream/retained-contracts.json",
+          "version": "repo-file-v1:sha256:e4f1fef853138a1f3465e5ce20e0ab13d103a2fd82c02305c216b30442c32f61"
         },
         {
           "resource": "repo://crates/decodex-runtime/tests/native_qualification/large_catalog.py",
@@ -178,7 +182,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:bd4b9a8f9822de9132962b7ad22f06b2161feabb5ac8d545973b13e6e068ae73"
+          "version": "repo-file-v1:sha256:72f744efdd6bfc63d2c0cc5fdf67a7e608a802a825c366876e3bf8939950a3e7"
         },
         {
           "resource": "repo://automations/upstream/retained-contracts.json",
@@ -441,6 +445,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-04T17:53:53.004Z"
+    "at": "2026-11-04T20:52:38.845Z"
   }
 }

@@ -138,6 +138,8 @@ sources:
     resource: repo://crates/decodex-runtime/tests/native_qualification/large_catalog.py
   - id: openwiki-source-88b81a215b1bac061dad80ec
     resource: repo://crates/decodex-runtime/tests/native_qualification/model_errors.py
+  - id: openwiki-source-6cd65761e9a87b1e53c53373
+    resource: repo://crates/decodex-runtime/tests/native_qualification/pending_mail.py
   - id: openwiki-source-003f00974f49a9f106bbcbea
     resource: repo://database/schema.sql
   - id: openwiki-source-58c0167d31c3e40dc89591ab
@@ -164,10 +166,10 @@ sources:
     resource: repo://scripts/macos/stage_decodex_app.sh
   - id: openwiki-source-76081c1a47ca8cf32593de34
     resource: repo://scripts/macos/test_decodex_app_stage.sh
-generated: { by: "codex", at: "2026-11-04T17:53:53.004Z" }
+generated: { by: "codex", at: "2026-11-04T20:52:38.845Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-04T17:53:53.004Z
+    at: 2026-11-04T20:52:38.845Z
 ---
 
 # Runtime Architecture
@@ -206,6 +208,8 @@ The GUI installer links the user CLI to the bundled helper. The standalone servi
 Codex app-server owns provider threads and execution. Decodex adds durable work relationships and protocol projections. Agent shares a retained account-bound process across its related work; ordinary conversation sessions keep their own runtime/account bindings. Native child approvals resolve through verified ancestry. Account routing, subscription usage, Reset Card redemption, and weekly activation stay service-owned.
 
 Decodex resolves child requests through the verified native parent chain. The integration does not maintain a second child-admission lifecycle.
+
+Native worker completion messages (`FINAL_ANSWER`) that have not reached an ordinary inference request survive bounded compaction and cold continuation. The summary precedes pending mail and later caller input. Compactor output does not acknowledge delivery. Codex owns the sampling checkpoint and retention policy. The repository completion-mail fixture covers repeated manual compaction in both history modes and both compaction routes with loopback providers. Read the current qualification for executed cases and limits.
 
 Retired repository/GitHub effect orchestration does not return through a wiki update. Historical records remain readable; a historical operation shape is not live execution authority.
 

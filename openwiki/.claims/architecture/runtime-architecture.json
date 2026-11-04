@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:040b1054477112b403441e08e733fc4d7fcddfcebc060bad2eef1c6fbdd39722",
+  "pageVersion": "sha256:6a88e25fed07c41949c80f259d0f378cdf57a6ae42bf6526c437f1cdc85749ee",
   "claims": [
     {
       "id": "claim_613df7e7c10d49d28b26d6db94c525e5",
@@ -278,7 +278,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:bd4b9a8f9822de9132962b7ad22f06b2161feabb5ac8d545973b13e6e068ae73"
+          "version": "repo-file-v1:sha256:72f744efdd6bfc63d2c0cc5fdf67a7e608a802a825c366876e3bf8939950a3e7"
         },
         {
           "resource": "repo://crates/decodex-runtime/tests/native_qualification/large_catalog.py",
@@ -470,7 +470,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:bd4b9a8f9822de9132962b7ad22f06b2161feabb5ac8d545973b13e6e068ae73"
+          "version": "repo-file-v1:sha256:72f744efdd6bfc63d2c0cc5fdf67a7e608a802a825c366876e3bf8939950a3e7"
         }
       ]
     },
@@ -569,12 +569,12 @@
       "statement": "The development lock and current qualification identify the qualified fixed source and signed artifact. Historical probes retain their original limits. HumanCommand remains deferred and unadvertised; runtime selection does not install the app or resume the automation.",
       "evidence": [
         {
-          "resource": "repo://automations/upstream/qualification.json#L1-L110",
-          "version": "repo-lines-v1:sha256:d9be1d73cdb3a918eb05b503baf6520f5c19bb0ea88707ec1ff587de2dcf00cd:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEwLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJhNmZiMDhmZGExYWNiOTU3YjYxMTZiZDM3ODExYTFmZTQxYTAxNjExYzA2MzFlZGJmNzg2ZDY4ODlhMjdhNTVjIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0OTViOGM1YmY4NjM3NDM2NzFkZWYzZjYzMGViMjMyZDU5YTdhNjM0YTA3MGZjNDM2ZWVjMzdhODY3NGU2YzMwIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MCwicHJlY2VkaW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJkYjBmMjhjNzA5YjNkYjNlYWZmZmRlZmNmYmJmMDQyODgwZjQwMGRiOTg2MzI0NjAzYWQ5OTQ2Y2YwZjM4MjhkIn0"
+          "resource": "repo://automations/upstream/qualification.json",
+          "version": "repo-file-v1:sha256:72f744efdd6bfc63d2c0cc5fdf67a7e608a802a825c366876e3bf8939950a3e7"
         },
         {
-          "resource": "repo://automations/upstream/retained-contracts.json#L40-L57",
-          "version": "repo-lines-v1:sha256:60bee75dfa3c58f319bad379739751b6d27faa0fd480e1d2f2fa578eb964674c:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY4MTk3MTdkM2IzNGI0ZGE0ODI0OGIzNDQ4YzcxOTQ4YmMwMDJkMjIwYTIwNWMxZmVhNDA0MzBiNTk4NzM1NWIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVlZWFhMDA3YWQ0MzFhYmUyZGJmMzI4OGZkMzYwMTQ5ZDc2YjcyMTYyNWM0MzUwYzJjOTUzNDRkZmFjM2U5MmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImVlYmMzZGMwMWU0ZjE2ODhkOTUxMTAwNDI1MTNlNTBkY2U0YTM4YmU5ZWQ2ZjU2NTYyZmYzZTZhNjRhNDU3ZGIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjExYmU1M2Y2OWYxNWQ3MDg4YTFjZWRlYjdiYzUxMzRhZDYzZTY3ZDA1OWUwNWNjZDUyMjI2MGQ0ZjNlZDUxNDMifQ"
+          "resource": "repo://automations/upstream/retained-contracts.json#L40-L51",
+          "version": "repo-lines-v1:sha256:37febd440e9324208698ede2c535a062b3f34694876373f4137cdf8e25a5f754:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY4MTk3MTdkM2IzNGI0ZGE0ODI0OGIzNDQ4YzcxOTQ4YmMwMDJkMjIwYTIwNWMxZmVhNDA0MzBiNTk4NzM1NWIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImViMGYzZDQ3Mjc3MzRhMGY5ZWMzZDFhOWI5NWI4ZTM5MDM1ZTllNmU3N2EyZTE0NmRmNDVhODE2YzdkZjYyNGUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImVlYmMzZGMwMWU0ZjE2ODhkOTUxMTAwNDI1MTNlNTBkY2U0YTM4YmU5ZWQ2ZjU2NTYyZmYzZTZhNjRhNDU3ZGIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImYxMzZjOGQ2N2Y5NTJmZmYyMGRkYzFiMGU5MzdiYzllOGJmNzMzZDAyNjVhYTg4ZDliZDRhNDZhMWYyMjdhY2IifQ"
         }
       ]
     },
@@ -602,7 +602,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:bd4b9a8f9822de9132962b7ad22f06b2161feabb5ac8d545973b13e6e068ae73"
+          "version": "repo-file-v1:sha256:72f744efdd6bfc63d2c0cc5fdf67a7e608a802a825c366876e3bf8939950a3e7"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_unreported_usage_tests.rs",
@@ -767,10 +767,24 @@
           "version": "repo-file-v1:sha256:a271fcb3d1384a1ae94850ab1bde534e950e082fd8535f83bb0a5e5ce3fe3a83"
         }
       ]
+    },
+    {
+      "id": "claim_9673ba279f8546968e6f5e403cb5fb21",
+      "statement": "The retained native completion-mail boundary preserves unsampled FINAL_ANSWER messages through repeated bounded compaction and cold continuation, with summary before pending mail and later caller input. The repository fixture covers both history modes and compaction routes with loopback providers.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/tests/native_qualification/pending_mail.py#L146-L157",
+          "version": "repo-lines-v1:sha256:313b99bbda98c57cbfb0ef60c83084f6d88c82ccf8e8e94eb0c4fba7b0c1e050:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ4YTZkODMyYTQzM2Y4NzNlZTA5NjZiMDVlOTJlMGE2YzNkNzJlZjViYjEzNjNjZWJhZmYwNjEwNmMyMTdiNTMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEyYzc5ZTMyMmNlZGM2N2FkNjUyNGMxZGIzNDYzOGU5ODhlMDljNGJlYmRjMmU3NGNlOTI2NDBhZTQwNmUwNTciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjFhYWI0NzAzZTc2YjI0ZjI0NmY2NjkzYTViM2Q4NDI3YjFjZDQyMWQwYzBkYzk3OTQwOThjMTY1NWYzYWIxNGYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/tests/native_qualification/pending_mail.py#L66-L143",
+          "version": "repo-lines-v1:sha256:cc4edfd3d4800b13a753d7526c857f9b5c94f37b41f45f23aa85dd323f0d05f3:eyJzZWxlY3RlZExpbmVDb3VudCI6NzgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU1ZDFkMDRjNzE4MGJkYWRlMDE1MmEwNWI5MzA5M2UzMTMxZjgzMzExMWUyMDUzNWIwMDZmZDNhYzA2YTMyZmYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJmMmY2YzQyMjUzZDlmZTllNTRlYWE0ZTk0YzliZTgwYjU5NjE3ZGI1ZWE0MWI2NGVlNTY3MzkzMjk2YzExZDUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY1OWVlZjJiMzI3MGNkMWNkYWI4YzY0ZDMxZGFhZWJhZGFlNmM5NWJlNDhjYjlkYzk3OGU1ZjRiYjczYWY0MjUifQ"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-04T17:53:53.004Z"
+    "at": "2026-11-04T20:52:38.845Z"
   }
 }
