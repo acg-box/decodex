@@ -192,7 +192,7 @@ impl AgentSurface {
 	pub(crate) fn ragflow_settings_view(&self, _cx: &mut Context<Self>) -> AnyElement {
 		let mut body =
 			gpui::div().w_full().flex().flex_col().gap_2().child(ui_theme::settings_description(
-				"Install RAGFlow nightly with Infinity. Docker must be running.",
+				"RAGFlow nightly uses Infinity. A running Docker-compatible container environment is required.",
 			));
 		if !self.assistant_settings.fields.is_empty() {
 			for (key, label) in [
@@ -416,6 +416,13 @@ impl AgentSurface {
 								.is_some_and(|c| c.ingest_chats);
 						}
 						s.assistant_settings.installation = installation;
+						if s.assistant_settings
+							.installation
+							.as_ref()
+							.is_some_and(|i| i.installed && i.models.is_none())
+						{
+							s.edit_memory_models(cx);
+						}
 						if !s.sending && !s.uncertain {
 							s.configure_memory(connection, cx);
 						}

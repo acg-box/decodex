@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:0ac334a5155e488ccc4ac32702bc0ee46a62d2faedb2f7f244ce2f37bd6ee613",
+  "pageVersion": "sha256:a04089e4923ac8a016d5afd91a2d092f9181f320e0b4b00bad4e26bdd25d4ab5",
   "claims": [
     {
       "id": "claim_41c9eba720934771bd6b671a7aeb8b6e",
@@ -486,7 +486,7 @@
     },
     {
       "id": "claim_6c70a225addb4571a4536403d49033b7",
-      "statement": "Assistant is built in and always available from the sidebar, with idle atomic initialization on first use and no optional Assistant component. RAGFlow shares component controls, installed version readback, collapsed details and inline feedback. Install prepares the service; Configure models accepts a Base URL, optional masked API key and custom extraction and embedding names, and Save models verifies the API before automatic Memory setup. Service connection is automatic and chat import starts off. Continuing duties and teams stay in chat and Work.",
+      "statement": "Assistant is built in and always available from the sidebar, with idle atomic initialization on first use and no optional Assistant component. RAGFlow shares component controls, installed version readback, collapsed details and inline feedback. Component operations check the running Docker-compatible engine and Docker Compose before installation effects and report unavailable prerequisites without runtime installation, launch or installation guidance. Install prepares the service and automatically opens the existing model editor when no model settings are saved. Configure models reopens its Base URL, optional masked API key and custom extraction and embedding fields. Save models verifies the API before automatic Memory setup. Service connection is automatic and chat import starts off. Continuing duties and teams stay in chat and Work.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
@@ -494,7 +494,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
-          "version": "repo-file-v1:sha256:9aa7bc5e963342eab22f84889714297f701c27989b71f274af89e0a8f9238863"
+          "version": "repo-file-v1:sha256:2d3b3b8873ece30ae1ed21c6db852df68fe8af0da00fcea059034229a9044e77"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
@@ -502,7 +502,7 @@
         },
         {
           "resource": "repo://crates/decodex-components/src/ragflow_service.rs",
-          "version": "repo-file-v1:sha256:64a37d1398aa104d9ecaa0fd12e29c770fbc5a2c7db7b3d395e3f48487f0524f"
+          "version": "repo-file-v1:sha256:a271fcb3d1384a1ae94850ab1bde534e950e082fd8535f83bb0a5e5ce3fe3a83"
         }
       ]
     },
@@ -516,7 +516,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
-          "version": "repo-file-v1:sha256:9aa7bc5e963342eab22f84889714297f701c27989b71f274af89e0a8f9238863"
+          "version": "repo-file-v1:sha256:2d3b3b8873ece30ae1ed21c6db852df68fe8af0da00fcea059034229a9044e77"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
@@ -537,6 +537,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-04T08:04:10.801Z"
+    "at": "2026-11-04T09:42:14.115Z"
   }
 }

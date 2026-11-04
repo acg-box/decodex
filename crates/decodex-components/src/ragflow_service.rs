@@ -23,6 +23,9 @@ use crate::{ComponentStore, Result};
 
 const PROVIDER: &str = "OpenAI-API-Compatible";
 
+const CONTAINER_REQUIRED: &str =
+	"RAGFlow requires a running Docker-compatible container environment with Docker Compose.";
+
 /// One OpenAI-compatible endpoint for extraction and embeddings. Kept in private storage.
 #[derive(Clone, Default, Deserialize, Serialize, Eq, PartialEq)]
 pub struct Models {
@@ -148,7 +151,7 @@ impl ComponentStore {
 		.into_iter()
 		.map(PathBuf::from)
 		.find(|p| p.is_file())
-		.ok_or("Install and start Docker or OrbStack, then retry RAGFlow installation.")?;
+		.ok_or(CONTAINER_REQUIRED)?;
 		self.apply_ragflow_with(&docker, action, namespace, &mut progress)
 	}
 
@@ -163,6 +166,12 @@ impl ComponentStore {
 		let saved = read(&directory)?;
 		if action == Action::Uninstall && saved.is_none() {
 			return Ok(None);
+		}
+		progress("Checking the container environment…");
+		for args in [&["info", "--format", "{{.ServerVersion}}"][..], &["compose", "version"][..]] {
+			if !Command::new(docker).args(args).output().is_ok_and(|o| o.status.success()) {
+				return Err(CONTAINER_REQUIRED.into());
+			}
 		}
 		let mut config = if let Some(saved) = saved {
 			saved
@@ -209,11 +218,6 @@ impl ComponentStore {
 			return Ok(Some(config));
 		}
 		progress("Preparing RAGFlow…");
-		run_command(
-			Command::new(docker).args(["info", "--format", "{{.ServerVersion}}"]),
-			&config.password,
-		)
-		.map_err(|_| "Start Docker or OrbStack, then retry RAGFlow installation.")?;
 		fs::create_dir_all(&directory).map_err(|_| "Could not prepare RAGFlow storage.")?;
 		fs::set_permissions(&directory, fs::Permissions::from_mode(0o700))
 			.map_err(|_| "Could not protect RAGFlow storage.")?;
@@ -297,9 +301,7 @@ fn write(directory: &Path, config: &Installation) -> Result<()> {
 }
 
 fn run_command(command: &mut Command, password: &str) -> Result<String> {
-	let output = command
-		.output()
-		.map_err(|_| "Could not run Docker. Start Docker or OrbStack and retry.")?;
+	let output = command.output().map_err(|_| CONTAINER_REQUIRED)?;
 	if !output.status.success() {
 		let detail = String::from_utf8_lossy(&output.stderr).replace(password, "[private]");
 		let lines = detail.lines().filter(|s| !s.trim().is_empty()).collect::<Vec<_>>();
@@ -472,6 +474,32 @@ fn compose(config: &Installation) -> Value {
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[test]
+	fn unavailable_container_prerequisites_leave_installation_untouched() {
+		for fail_at in ["info", "compose"] {
+			let root = tempfile::tempdir().unwrap();
+			let store = ComponentStore::new(root.path().join("components"));
+			let docker = root.path().join("docker");
+			fs::write(
+				&docker,
+				format!(
+					"#!/bin/sh\nprintf '%s\\n' \"$*\" >> \"$0.args\"\nif [ \"$1\" = '{fail_at}' ]; then exit 1; fi\n"
+				),
+			)
+			.unwrap();
+			fs::set_permissions(&docker, fs::Permissions::from_mode(0o700)).unwrap();
+			let error = store
+				.apply_ragflow_with(&docker, Action::Install, "fixture", &mut |_| {})
+				.err()
+				.expect("unavailable prerequisite");
+			assert_eq!(error, CONTAINER_REQUIRED);
+			assert!(!root.path().join("components").exists());
+			let calls = fs::read_to_string(root.path().join("docker.args")).unwrap();
+			assert_eq!(calls.lines().count(), if fail_at == "info" { 1 } else { 2 });
+			assert!(!calls.contains("pull") && !calls.contains("up"));
+		}
+	}
 
 	#[test]
 	fn managed_stack_uses_ragflow_nightly_with_infinity_and_only_publishes_its_loopback_api() {
