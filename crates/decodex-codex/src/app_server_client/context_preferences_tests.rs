@@ -1,5 +1,51 @@
 use crate::app_server_client::context_preferences;
 
+#[tokio::test]
+async fn omitted_context_preferences_use_native_defaults_and_preserve_overrides() {
+	use serde_json::Value;
+	use tokio::io::{self, AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
+
+	for (configured, preference, default, expected) in [
+		(Value::Null, Value::Null, false, false),
+		(Value::Null, Value::Null, true, true),
+		(serde_json::json!(false), serde_json::json!(false), true, false),
+		(serde_json::json!(true), serde_json::json!(false), false, true),
+	] {
+		let (local, remote) = io::duplex(8_192);
+		let (read, write) = io::split(local);
+		let (client, _events) = crate::app_server_client::AppServerClient::from_io(read, write);
+		let expected_preference = preference.as_bool();
+		let server = tokio::spawn(async move {
+			let (read, mut write) = io::split(remote);
+			let mut lines = BufReader::new(read).lines();
+			while let Some(line) = lines.next_line().await.unwrap() {
+				let request: Value = serde_json::from_str(&line).unwrap();
+				let result = match request["method"].as_str().unwrap() {
+					"config/read" => serde_json::json!({
+						"config":{"features":{"async_compaction":false,"retain_client_tool_outputs":configured}},
+						"layers":[{"name":{"type":"user","file":"/home/config.toml"},"version":"v1",
+							"config":{"features":{"retain_client_tool_outputs":preference}}}]
+					}),
+					"experimentalFeature/list" => serde_json::json!({"data":[
+						{"name":"async_compaction","defaultEnabled":false,"enabled":false},
+						{"name":"retain_client_tool_outputs","defaultEnabled":default,"enabled":!default}
+					],"nextCursor":null}),
+					method => panic!("unexpected native action {method}"),
+				};
+				let response = serde_json::json!({"id":request["id"],"result":result});
+				if write.write_all(format!("{response}\n").as_bytes()).await.is_err() {
+					break;
+				}
+			}
+		});
+
+		let observed = client.context_settings("/project").await.unwrap();
+		assert_eq!(observed.effective, [false, expected]);
+		assert_eq!(observed.preference, [None, expected_preference]);
+		server.abort();
+	}
+}
+
 #[test]
 fn mcp_startup_projects_only_known_user_servers_and_never_credentials() {
 	let user = serde_json::json!({

@@ -4869,6 +4869,7 @@
     "invariants": [
       "Reuse the existing account/source-bound config read, review token, native version check and readback; do not add another configuration store.",
       "Show the saved user value separately from the effective project value. Opening Settings > Agents reads defaults through the last selected connected Agent.",
+      "When effective project configuration omits a context feature, use defaultEnabled from the native feature catalog. An enabled value from another working directory does not replace the requested project's configuration.",
       "Save defaults for new conversations without restarting loaded conversations.",
       "No global MCP catalog enablement, local cache policy or replacement tool transport. No valid native cache means normal discovery; tool execution still needs the current connection."
     ],
@@ -4907,7 +4908,12 @@
       "apps/decodex-gpui/src/agent_context_settings.rs#AgentSurface::context_settings_controls",
       "apps/decodex-gpui/src/agent_prompt_suggestions.rs#Automatic::observe",
       "crates/decodex-codex/src/app_server_client/context_preferences.rs#AppServerClient::write_mcp_startup_preference",
+      "crates/decodex-codex/src/app_server_client/context_preferences.rs#AppServerClient::context_settings",
       "crates/decodex-runtime/src/agent_context_settings.rs#write"
+    ],
+    "tests": [
+      "app_server_client::context_preferences::tests::omitted_context_preferences_use_native_defaults_and_preserve_overrides",
+      "account_launch::process::context_preferences_native_tests::installed_native_context_preferences_share_config_and_preserve_thresholds"
     ],
     "limits": [
       "The other original proposals remain subject to manual review. Deferred messaging/mailbox experiments and content export do not become selected settings.",

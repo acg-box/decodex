@@ -4,7 +4,7 @@ use std::{env, fs, process::Stdio};
 use tokio::process::Command;
 
 use crate::account_launch::process::native_control_tests;
-use decodex_codex::app_server_client::AppServerClient;
+use decodex_codex::app_server_client::{AppServerClient, CONTEXT_FEATURES};
 
 #[tokio::test]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated native configuration roundtrip"]
@@ -106,6 +106,25 @@ async fn installed_native_context_preferences_share_config_and_preserve_threshol
 				.is_err()
 		);
 		assert_eq!(client.context_settings(cwd).await.unwrap().effective, [true, false]);
+
+		// An omitted preference follows this exact artifact's default, including
+		// defaults that change when upstream stabilizes an existing feature.
+		fs::write(&file, "[features]\n").unwrap();
+		let catalog =
+			client.request("experimentalFeature/list", serde_json::json!({})).await.unwrap();
+		let defaults = CONTEXT_FEATURES.map(|key| {
+			catalog["data"]
+				.as_array()
+				.unwrap()
+				.iter()
+				.find(|feature| feature["name"] == key)
+				.unwrap()["defaultEnabled"]
+				.as_bool()
+				.unwrap()
+		});
+		let observed = client.context_settings(cwd).await.unwrap();
+		assert_eq!(observed.preference, [None, None]);
+		assert_eq!(observed.effective, defaults);
 
 		child.kill().await.unwrap();
 		child.wait().await.unwrap();
