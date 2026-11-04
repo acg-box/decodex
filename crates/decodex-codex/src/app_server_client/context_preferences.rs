@@ -80,9 +80,31 @@ impl AppServerClient {
 		let user_features = user["config"]["features"].clone();
 		let mut effective = [false; 2];
 		let mut preference = [None; 2];
+		let mut native_defaults = Value::Null;
 
 		for (index, key) in CONTEXT_FEATURES.iter().enumerate() {
-			effective[index] = enabled(&config["config"]["features"][key], index)?.unwrap_or(false);
+			effective[index] = match enabled(&config["config"]["features"][key], index)? {
+				Some(value) => value,
+				None => {
+					if native_defaults.is_null() {
+						native_defaults = time::timeout(
+							Duration::from_secs(15),
+							self.request("experimentalFeature/list", serde_json::json!({})),
+						)
+						.await
+						.map_err(|_| ClientError::Io)??;
+					}
+					// Catalog enablement can use another cwd. Only its native default fills
+					// an omitted value in the requested project's effective configuration.
+					native_defaults["data"]
+						.as_array()
+						.and_then(|features| {
+							features.iter().find(|feature| feature["name"] == *key)
+						})
+						.and_then(|feature| feature["defaultEnabled"].as_bool())
+						.ok_or(ClientError::InvalidFrame)?
+				},
+			};
 			preference[index] = enabled(&user_features[key], index)?;
 		}
 

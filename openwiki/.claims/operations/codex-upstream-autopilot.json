@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:e8acf8a5454a8f6596c3ccb147d8589be828d31a555b348ce1a79ad2b949c965",
+  "pageVersion": "sha256:19546113878d31ef0287d20be1c4f101e93cdf6e7ab5aaf79edd261810c409ba",
   "claims": [
     {
       "id": "claim_b6c6b65984924f69970e7f0410d50903",
@@ -142,15 +142,15 @@
     },
     {
       "id": "claim_fb662583cf1e43789bf83833ad049cf1",
-      "statement": "Context defaults in task preferences and manual config.toml edits share the native user configuration; versioned boolean writes preserve async threshold tables, expose project overrides and do not reload loaded conversations.",
+      "statement": "Context defaults and manual config edits share native user configuration. Omitted features use native defaultEnabled; explicit effective values win. Versioned boolean writes preserve async threshold tables, expose project overrides and do not restart loaded conversations.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_context_settings.rs",
           "version": "repo-file-v1:sha256:c4b7221ae38d9e8d9eca1447d15a351e790f4cbd656afaa130cb0e37e59209c7"
         },
         {
-          "resource": "repo://crates/decodex-codex/src/app_server_client/context_preferences.rs",
-          "version": "repo-file-v1:sha256:bfe56443590413065e0aca21a1a126ae939b0ca63923601b4da8192b47d1a5bb"
+          "resource": "repo://crates/decodex-codex/src/app_server_client/context_preferences.rs#L52-L118",
+          "version": "repo-lines-v1:sha256:0c5864ad4e6a7b0b8818af3560a66d27470125324d60b007891f20b95af6687b:eyJzZWxlY3RlZExpbmVDb3VudCI6NjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRjOWZjZjIxZWE5ZmFmYzBiZGU2OTk5YzBjNjU2NmU3Yjg0MzczNzI5ODk0ZWM2MTMyNTQ4NzUwZWYwNzNlMmEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNlZGM5YmQzOTdiOWU4NTM5ODQ0M2VlNzYxOGI4ZGJiN2U1ZDA2YmQ1NWRjMzhjZDY5MzQ3OTQ3NzI5NTA4MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRiNjMxZDlmNDJkMzkxOWQ5YTczZDhlZjM4ZmYyMmNjNTRiY2M4MWNlMDMwOGMyYzZiZmZhMjFhMjkzOGFlM2EiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgzY2IyOGRiMzlhNDNmZDM0NjM2YTkzZDYzMTNiNjE4OGU1MDU5ODFlOGRhZTc3YmI3OWU2ZTJjMjAyY2NiMzkifQ"
         }
       ]
     },
@@ -208,7 +208,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-contracts.json",
-          "version": "repo-file-v1:sha256:f42cae151b3c2c980a4c7b8448e08e4a1ae5a4d78f19067f158b1ce165c07ffa"
+          "version": "repo-file-v1:sha256:e4f1fef853138a1f3465e5ce20e0ab13d103a2fd82c02305c216b30442c32f61"
         }
       ]
     },
@@ -297,30 +297,22 @@
       "statement": "A candidate with an unresolved failure of a current retained contract stays unselected. Source review, artifact comparison and independent component or fixture delivery remain separate evidence.",
       "evidence": [
         {
-          "resource": "repo://automations/upstream/prompts/maintainer.md",
-          "version": "repo-file-v1:sha256:01bebe4274c10a0d25c17ca9181cb005c26d18abaccde7e780505064f5189b3f"
-        },
-        {
-          "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:0c08a1458a9bd81c0b2677475996113dedad6be7a59ca2b6902df9d5b1bdee9e"
+          "resource": "repo://automations/upstream/prompts/maintainer.md#L45-L53",
+          "version": "repo-lines-v1:sha256:43f672ef98e1383df6e85b438bdeec9992e855c85843e92268bd3b9f7a2136a3:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMzE4MWUyYjM5Njg2YjA2NGJlZmNiNzY5NzBjZTI4Y2NiNTA1MDY1NmMwYTc3MzU1NDE5ZGQ3N2ZmMDcyNTEzMiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMGE2OWEzNTQ0MWU4ZGQ2Y2I1OGFiMTU1NDU2ZWVmZjg4OGViOGRiMWE1MDFkZjBkN2QzZDkyZDhjMDZhZDQ0ZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYjEzZDVmYzRiOGI0NzFlYjI5ZDNlMWNmMzNiMWZhOGJlOTUyZTRiMTdjYWYyOGM3MWFlNzU1YzhkODVhYWUwMCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOTk3MDBiMmEzNThjMTRlYTYwYmE3MGNlMjFlYWIwODIyOTcxMGFlOGM2N2I1M2U3ZTUwNTJhN2Y3MTc5MDk4ZSJ9"
         }
       ]
     },
     {
       "id": "claim_f8b7e72801814c438d3346da5599617a",
-      "statement": "Each runtime update qualifies affected native consumers and components against the new artifact; earlier passes retain their original limits. The selected lock preserves provider recovery and HumanCommand stays user-deferred. Runtime qualification does not activate the schedule.",
+      "statement": "Each runtime update qualifies affected native consumers and components against the new artifact; earlier passes retain their original limits. HumanCommand stays user-deferred. Runtime qualification does not activate the schedule.",
       "evidence": [
         {
-          "resource": "repo://automations/upstream/prompts/maintainer.md",
-          "version": "repo-file-v1:sha256:01bebe4274c10a0d25c17ca9181cb005c26d18abaccde7e780505064f5189b3f"
+          "resource": "repo://automations/upstream/prompts/maintainer.md#L45-L53",
+          "version": "repo-lines-v1:sha256:43f672ef98e1383df6e85b438bdeec9992e855c85843e92268bd3b9f7a2136a3:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMzE4MWUyYjM5Njg2YjA2NGJlZmNiNzY5NzBjZTI4Y2NiNTA1MDY1NmMwYTc3MzU1NDE5ZGQ3N2ZmMDcyNTEzMiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMGE2OWEzNTQ0MWU4ZGQ2Y2I1OGFiMTU1NDU2ZWVmZjg4OGViOGRiMWE1MDFkZjBkN2QzZDkyZDhjMDZhZDQ0ZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYjEzZDVmYzRiOGI0NzFlYjI5ZDNlMWNmMzNiMWZhOGJlOTUyZTRiMTdjYWYyOGM3MWFlNzU1YzhkODVhYWUwMCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOTk3MDBiMmEzNThjMTRlYTYwYmE3MGNlMjFlYWIwODIyOTcxMGFlOGM2N2I1M2U3ZTUwNTJhN2Y3MTc5MDk4ZSJ9"
         },
         {
-          "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:0c08a1458a9bd81c0b2677475996113dedad6be7a59ca2b6902df9d5b1bdee9e"
-        },
-        {
-          "resource": "repo://codex-runtime.lock.json",
-          "version": "repo-file-v1:sha256:05032a3c837d0f054ca33e88ef03f06357ff7a860d59bcb2f2606f7fcde486d7"
+          "resource": "repo://automations/upstream/retained-contracts.json#L39-L57",
+          "version": "repo-lines-v1:sha256:d7e8ffd5f7403093d96f480c524666ae2ef71bc12d426018c92e07cb834cffb5:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY5Y2E4OTFiZmY3YWMxZjdjZWFhZTQwZWYwNTEwNjZiZTllZmU0N2I0ZTQyODFlODZjMzE5YmUyYzU1ZWJjZTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVlZWFhMDA3YWQ0MzFhYmUyZGJmMzI4OGZkMzYwMTQ5ZDc2YjcyMTYyNWM0MzUwYzJjOTUzNDRkZmFjM2U5MmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjVhMWMxMDM3YTNkY2JjNzkxNGNiNTBhYWNlZjQ2NTVjOGJmNzNmODJhMmI5MmNlMjkyMWY3OTg1YzZkOTVlYjgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjExYmU1M2Y2OWYxNWQ3MDg4YTFjZWRlYjdiYzUxMzRhZDYzZTY3ZDA1OWUwNWNjZDUyMjI2MGQ0ZjNlZDUxNDMifQ"
         }
       ]
     },
@@ -330,7 +322,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:0c08a1458a9bd81c0b2677475996113dedad6be7a59ca2b6902df9d5b1bdee9e"
+          "version": "repo-file-v1:sha256:bd4b9a8f9822de9132962b7ad22f06b2161feabb5ac8d545973b13e6e068ae73"
         },
         {
           "resource": "repo://scripts/macos/build_codex_source.mts",
@@ -363,6 +355,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-03T18:23:39.894Z"
+    "at": "2026-11-04T10:24:44.262Z"
   }
 }
