@@ -38,6 +38,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/settings_power.rs
   - id: openwiki-source-a16804a567889414868e5d67
     resource: repo://apps/decodex-gpui/src/settings_surface.rs
+  - id: openwiki-source-cfb92e5db8b3a39d51f6a057
+    resource: repo://apps/decodex-gpui/src/settings_updates.rs
   - id: openwiki-source-1291f5243fa6c9cb52149bda
     resource: repo://apps/decodex-gpui/src/shell.rs
   - id: openwiki-source-2f256c95c226c1326d164ad3
@@ -110,10 +112,10 @@ sources:
     resource: repo://crates/decodex-runtime/tests/native_qualification/thread_settings.py
   - id: openwiki-source-8c78df4b382026886ac50894
     resource: repo://database/src/usage_evidence.rs
-generated: { by: "codex", at: "2026-11-04T15:37:04.419Z" }
+generated: { by: "codex", at: "2026-11-04T17:53:53.004Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-04T17:08:56.474Z
+    at: 2026-11-04T17:53:53.004Z
 ---
 
 # Model selection and settings ownership
@@ -137,7 +139,7 @@ Codex owns the effective model catalog, task configuration, provider admission a
 
 ## Find the retained switches
 
-All Settings categories use the same 620-point content column and normal App typography. Ordinary preferences use flat sections; account records and diagnostic summaries retain quiet cards. Shared dividers separate rows and expanded details. Local notices, warnings and errors share one compact inset row with an icon and quiet tone fill. Text, icons and recovery buttons align vertically at the center. Recovery buttons stay with the affected message. If Codex setup fails, a short message directs you to the setup details. Expand Codex to inspect the original error, then use **Retry setup** after you resolve the cause.
+The six Settings sections use the same 620-point content column and normal App typography. General groups the app version and Check for updates under Updates; there is no separate Updates page. Sparkle retains the application update flow. Ordinary preferences use flat sections; account records and diagnostic summaries retain quiet cards. Shared dividers separate rows and expanded details. Local notices, warnings and errors share one compact inset row with an icon and quiet tone fill. Text, icons and recovery buttons align vertically at the center. Recovery buttons stay with the affected message. If Codex setup fails, a short message directs you to the setup details. Expand Codex to inspect the original error, then use **Retry setup** after you resolve the cause.
 
 In **Settings > Agents > New conversations**, **Permissions** shows the selected mode's meaning beside its control. Its menu displays all four explanations and the native Subagent inheritance rule directly. **Speed** uses the shared Standard, Fast and Ultrafast segmented control, with relative included usage and credits for the selected speed visible in its row. Codex uses this same speed default. These remain two compact setting rows with visible explanations.
 
@@ -150,6 +152,7 @@ Arrow keys cycle through permission options. Escape closes the menu and returns 
 | Cached MCP catalog, one switch per configured server | Settings > Agents > Context defaults |
 | Next-message suggestions | Settings > Agents > Assistance |
 | Automatic task recaps | Settings > General > Background |
+| App version and application updates | Settings > General > Updates |
 | Permissions and speed for new Agents | Settings > Agents |
 | Model, reasoning, search, voice and Goal for the selected Agent | Composer and Agent preferences |
 | Optional EGM component | Settings > Components |

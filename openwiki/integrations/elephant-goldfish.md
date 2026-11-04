@@ -16,6 +16,10 @@ sources:
     resource: repo://apps/decodex-gpui/src/component_plugins.rs
   - id: openwiki-source-0813b2e35e2133631c0aa4db
     resource: repo://apps/decodex-gpui/src/settings_components.rs
+  - id: openwiki-source-a16804a567889414868e5d67
+    resource: repo://apps/decodex-gpui/src/settings_surface.rs
+  - id: openwiki-source-cfb92e5db8b3a39d51f6a057
+    resource: repo://apps/decodex-gpui/src/settings_updates.rs
   - id: openwiki-source-fac913afc0144f630680095f
     resource: repo://crates/decodex-components/src/lib.rs
   - id: openwiki-source-e379b8a714d71f87371ae328
@@ -28,10 +32,10 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent/instructions.md
   - id: openwiki-source-f20a9fcd74237051ab396266
     resource: repo://crates/decodex-runtime/src/agent/review_activity.rs
-generated: { by: "codex", at: "2026-11-03T19:29:07.466Z" }
+generated: { by: "codex", at: "2026-11-04T17:57:39.895Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-03T19:29:07.466Z
+    at: 2026-11-04T17:57:39.895Z
 ---
 
 # Elephant–Goldfish component
@@ -78,7 +82,7 @@ The displayed version and enabled flag report native configuration. They do not 
 
 The desktop offers Uninstall only while Codex lists the plugin. It has no separate Clean up control for an absent entry. The native adapter's orphan-removal tests establish that lower-level contract, not an additional visible action.
 
-The Codex runtime has a separate required lifecycle. It follows the reviewed runtime requirement embedded in this app build. **Verify** checks or repairs that requirement; the active app offers no runtime uninstall. Sparkle application updates remain in **Settings > Updates**. See [runtime architecture](../architecture/runtime-architecture.md#components-and-app-updates).
+The Codex runtime has a separate required lifecycle. It follows the reviewed runtime requirement embedded in this app build. **Verify** checks or repairs that requirement; the active app offers no runtime uninstall. Sparkle application updates remain in **Settings > General > Updates**. See [runtime architecture](../architecture/runtime-architecture.md#components-and-app-updates).
 
 General plugin and connection setup remains native. The generic Agent app-server bridge still rejects plugin-management methods. The explicit Component controls use the native CLI and do not reopen that bridge.
 

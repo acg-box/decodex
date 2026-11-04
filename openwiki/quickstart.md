@@ -56,6 +56,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/settings_native.rs
   - id: openwiki-source-a16804a567889414868e5d67
     resource: repo://apps/decodex-gpui/src/settings_surface.rs
+  - id: openwiki-source-cfb92e5db8b3a39d51f6a057
+    resource: repo://apps/decodex-gpui/src/settings_updates.rs
   - id: openwiki-source-2f256c95c226c1326d164ad3
     resource: repo://apps/decodex-gpui/src/ui_feedback.rs
   - id: openwiki-source-f5d4f5acdb41fe7c4e985337
@@ -94,10 +96,10 @@ sources:
     resource: repo://database/src/schema.rs
   - id: openwiki-source-3b57179b92b257bc3fff51a1
     resource: repo://scripts/macos/stage_decodex_app.sh
-generated: { by: "codex", at: "2026-11-04T14:17:02.441Z" }
+generated: { by: "codex", at: "2026-11-04T17:53:53.004Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-04T15:37:04.419Z
+    at: 2026-11-04T17:53:53.004Z
 ---
 
 # OpenWiki quickstart
@@ -153,6 +155,8 @@ If a conversation uses a different provider from the current configuration, **Fo
 ## Persistent attached branches
 
 When reviewing an earlier message, choose **Side chat** to create a persistent native branch from its completed-turn prefix. The source history, draft and Goal remain unchanged. The child view starts empty while native inference retains the parent context. Creation requires paginated source history, sends no input and copies no native Goal. Reopen a verified branch through **Agent preferences > Side chats > Open**. See [conversation recovery](workflows/conversations-and-recovery.md#edit-or-branch-at-an-earlier-input) and the [exact-artifact qualification](testing/upstream-acceptance-boundaries.md#persistent-attached-branches).
+
+The app version and **Check for updates** are in **Settings > General > Updates**. Optional component updates remain in **Settings > Components**.
 
 ## Start by task
 

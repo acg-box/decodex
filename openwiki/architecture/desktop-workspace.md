@@ -96,8 +96,14 @@ sources:
     resource: repo://apps/decodex-gpui/src/settings_power.rs
   - id: openwiki-source-a16804a567889414868e5d67
     resource: repo://apps/decodex-gpui/src/settings_surface.rs
+  - id: openwiki-source-cfb92e5db8b3a39d51f6a057
+    resource: repo://apps/decodex-gpui/src/settings_updates.rs
+  - id: openwiki-source-2dfc8cb7dbdb75c07469c4c3
+    resource: repo://apps/decodex-gpui/src/shell_account_activity.rs
   - id: openwiki-source-5afd606185b0f01d8fc4f429
     resource: repo://apps/decodex-gpui/src/shell_diagnostics.rs
+  - id: openwiki-source-4b6e253ef76717138b4dd66e
+    resource: repo://apps/decodex-gpui/src/shell_reset_cards.rs
   - id: openwiki-source-2986b39185cca5c00a29ad1d
     resource: repo://apps/decodex-gpui/src/shell_status.rs
   - id: openwiki-source-1291f5243fa6c9cb52149bda
@@ -124,17 +130,17 @@ sources:
     resource: repo://database/src/works/commands.rs
   - id: openwiki-source-8fe6f1557e5d45d88b34bd0a
     resource: repo://scripts/macos/generate_workspace_symbols.swift
-generated: { by: "codex", at: "2026-11-04T17:08:56.474Z" }
+generated: { by: "codex", at: "2026-11-04T17:53:53.004Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-04T17:08:56.474Z
+    at: 2026-11-04T17:53:53.004Z
 ---
 
 # Desktop workspace and native glass
 
 ## Information hierarchy
 
-All Settings categories use the same 620-point content column and shared rows. New conversations uses two setting rows: Permissions shows the selected mode's meaning and opens the shared permission menu, and Speed reuses the existing segmented control with usage for the selected speed. General groups automatic recaps and sleep prevention under Background.
+The six Settings sections are General, Agents, Appearance, Components, Accounts and Diagnostics. They use the same 620-point content column and shared rows. General contains the app version and native Check for updates action; Updates has no separate navigation entry. New conversations uses two setting rows: Permissions shows the selected mode's meaning and opens the shared permission menu, and Speed reuses the existing segmented control with usage for the selected speed. General groups automatic recaps and sleep prevention under Background.
 
 Settings reuse the App's normal body and control typography. Concise descriptions remain visible. The permission menu shows all four explanations and the native inheritance rule directly. Native options use one flat list under Context defaults, with one shared-scope description. Assistance contains suggestion and Guardian controls. Shared form fields reserve 128 points for labels.
 
@@ -142,7 +148,7 @@ The permission picker keeps its open state and focus handles in the window. Its 
 
 Shared disclosures animate their open proportion. Content measurement does not restart the transition or issue a model notification. Already open details mount at full height, and settled parents follow nested content changes directly. Page arrival changes opacity without moving content or hit targets.
 
-Ordinary preferences use flat sections and one divided-row helper. Account records and diagnostic summaries retain quiet cards. Component names, available versions and lifecycle actions share one row in a divided list. Expanded component and MCP details share one divider treatment. Feedback stays with the operation that owns it.
+Ordinary preferences use flat sections and one divided-row helper. Account records and diagnostic summaries retain quiet cards. Each account has one surface for its header and expanded details. Identity and management actions sit above full-width quota rows. Not-applicable quota windows are omitted; unknown usage retains its row. Expanded activity uses two columns of labels and values, with current and best streak together, followed by the daily chart and a separate Reset cards area. Component names, available versions and lifecycle actions share one row in a divided list. Expanded component and MCP details share one divider treatment. Feedback stays with the operation that owns it.
 
 Visual references: [Zed Settings design](https://zed.dev/blog/settings-ui), [Raycast Settings](https://manual.raycast.com/settings) and [Linear preferences](https://linear.app/docs/account-preferences).
 
