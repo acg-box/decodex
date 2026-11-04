@@ -30,6 +30,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_collaboration.rs
   - id: openwiki-source-48758ba7d154c82885281d2c
     resource: repo://apps/decodex-gpui/src/agent_composer.rs
+  - id: openwiki-source-c76550e85b25876b339f9255
+    resource: repo://apps/decodex-gpui/src/agent_context_settings.rs
   - id: openwiki-source-d56ea7499f2ed784b1b6c970
     resource: repo://apps/decodex-gpui/src/agent_conversation_tab_tests.rs
   - id: openwiki-source-1bf529ea3f1649ac9a28334a
@@ -90,6 +92,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/session_settings.rs
   - id: openwiki-source-0813b2e35e2133631c0aa4db
     resource: repo://apps/decodex-gpui/src/settings_components.rs
+  - id: openwiki-source-de666753614ba03227181179
+    resource: repo://apps/decodex-gpui/src/settings_power.rs
   - id: openwiki-source-a16804a567889414868e5d67
     resource: repo://apps/decodex-gpui/src/settings_surface.rs
   - id: openwiki-source-5afd606185b0f01d8fc4f429
@@ -118,19 +122,19 @@ sources:
     resource: repo://database/src/works/commands.rs
   - id: openwiki-source-8fe6f1557e5d45d88b34bd0a
     resource: repo://scripts/macos/generate_workspace_symbols.swift
-generated: { by: "codex", at: "2026-11-04T13:19:34.006Z" }
+generated: { by: "codex", at: "2026-11-04T14:17:02.441Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-04T13:19:34.006Z
+    at: 2026-11-04T14:24:22.739Z
 ---
 
 # Desktop workspace and native glass
 
 ## Information hierarchy
 
-Settings uses a narrow reading column for General, Components and Updates. Agents and Appearance retain a wider comparison column. Shared rows use compact spacing. General groups automatic recaps and sleep prevention under Background.
+All Settings categories use the same content width and compact shared rows. Default permissions and speed use aligned comparison columns. General groups automatic recaps and sleep prevention under Background.
 
-Settings groups share a quiet panel with a fine border and dividers between rows. Components use one divided list. Account controls, account rows, quota settings and diagnostic summaries use the same panel helper. Component details have their own divider. Feedback stays inside the group that owns the operation.
+Settings groups share a quiet panel with a fine border. One row-list helper supplies dividers, including nested native defaults, cursor controls and diagnostic rows. Components use one divided list. Account controls, account rows, quota settings and diagnostic summaries use the same panel helper. Expanded component and MCP details share one divider treatment. Feedback stays inside the group that owns the operation.
 
 Codex setup failures show a short state and direct the user to the setup details. Expand Codex to read the original error. Retry setup uses the existing preparation owner.
 
@@ -216,7 +220,7 @@ A failed send stays beside its own message in the scrolling transcript, with Not
 
 ## Consistent status presentation
 
-GPUI uses the shared `ui_feedback` presentation for account problems and operation notices. Status rows use severity color with an icon and explicit wording. Account problems appear beside the affected account without requiring a popup. The native menu-bar feedback control keeps its compact icon and explanatory popover.
+GPUI uses the shared `ui_feedback` presentation for account problems and operation notices. Persistent and animated local feedback share a compact inset row, with a quiet tone fill, leading rule, icon and explicit wording. Titles and explanations flow together. Login-item and system-sleep recovery buttons stay in the affected feedback row. Account problems appear beside the affected account without requiring a popup. The native menu-bar feedback control keeps its compact icon and explanatory popover.
 
 Place nonblocking conversation feedback and recovery in the band above the composer, field and operation failures beside their control, and app-wide events in the notification center. Keep send restrictions and archive status inside the disabled composer. History retry and summary notices reuse the shared inline feedback component. Use the shared status text and button styles. A whole-page startup failure uses the same status row when no workspace is available. Keep the native menu-bar counterpart compact.
 
@@ -238,7 +242,7 @@ Reserve `arrow.triangle.branch` for Fork. Account routing uses `point.topleft.do
 
 The [Assistant lifecycle](../decisions/assistant-lifecycle.md) keeps a stable personal Agent and renews its native context behind the same conversation. Assistant is built in and always available from the sidebar. First use records an idle Agent and its role atomically without a generated user message. It has no Enable control or optional component row. Work retains its role selector, saved teams and shared pending-context feedback. Continuing instructions, teams and duties are managed in chat. The editor and reading state survive a confirmed context transition; older messages retain their native sources. Side chats remain separate native branches.
 
-RAGFlow is an optional component with Install, Update, Uninstall and actual installed version readback. It shares component lifecycle buttons, metadata, busy state and inline feedback with EGM and Pro Research. Component operations check the running Docker-compatible engine and Docker Compose before installation effects. Missing or unavailable prerequisites use the shared inline notice. The App does not install or launch a container runtime or provide an installation guide. Install prepares RAGFlow nightly, Infinity and the private service account. If no model settings are saved, successful installation opens the existing four-field editor automatically: Base URL, API key (optional), Extraction model and Embedding model. Configure models reopens this editor. Save verifies the configured OpenAI-compatible API and initializes dedicated Memory. The API key is masked while entered and is not copied into a later edit; an empty field keeps a saved key only at the same Base URL. Service connection and credentials remain automatic, with no Connect action. Chat import starts off and requires a separate explicit action.
+RAGFlow is an optional component with Install, Update, Uninstall and actual installed version readback. It shares component lifecycle buttons, metadata, busy state and inline feedback with EGM and Pro Research. Component operations check the running Docker-compatible engine and Docker Compose before installation effects. Missing or unavailable prerequisites use the shared inline notice. The App does not install or launch a container runtime or provide an installation guide. Install prepares RAGFlow nightly, Infinity and the private service account. If no model settings are saved, successful installation opens the existing four-field editor automatically: Base URL, API key (optional), Extraction model and Embedding model. Expanding installed RAGFlow opens this editor directly. Save verifies the configured OpenAI-compatible API and initializes dedicated Memory. The API key is masked while entered and is not copied into a later edit; an empty field keeps a saved key only at the same Base URL. Service connection and credentials remain automatic, with no Connect action. Chat import starts off and has a separate opt-in switch when Memory is ready.
 
 Use GPUI tests in `shell.rs`, `agent_workspace.rs`, `agent_activity.rs`, `agent_markdown.rs`, `agent_archive.rs` and `settings_surface.rs`. Real macOS acceptance must also check focus, typing, scrolling, panel transitions, and transparency in the signed app. A white or missing automation screenshot alone is not evidence that the user sees a blank window.
 
@@ -252,6 +256,6 @@ See [Conversation presentation and motion](conversation-presentation.md), [Agent
 
 The composer preserves current editable input. Submitted messages retain their own delivery state and exact retry payload; there is no recovered-copy manager. Rich Markdown retains math, Mermaid, weather and source-copy presentation without replacing native execution. The embedded MCP HTML viewer is retired. Ordinary tools and native form prompts remain available. See [conversations](../workflows/conversations-and-recovery.md), [tools](../integrations/tools-plugins-and-apps.md) and [acceptance boundaries](../testing/upstream-acceptance-boundaries.md).
 
-The model editor uses shared rows that align each label with its control. Cancel and Save align to the right. API guidance and the Codex memory reminder remain beside the form. Saved-key help appears when saved model settings exist. The redundant setup notice is hidden during editing. Cancel discards unsaved values and clears the editor error.
+The model editor uses shared rows that align each label with its control. Cancel and Save align to the right. API guidance and the Codex memory reminder remain beside the form. Saved-key help appears when saved model settings exist. The redundant setup notice is hidden during editing. Collapsing and reopening RAGFlow retains unsaved input. Cancel discards unsaved values, clears the editor error and collapses RAGFlow.
 
 RAGFlow setup uses the current local service profile and selected Assistant. Profile, runtime or role changes clear its temporary presentation state while preserving the ordinary chat draft. The component's generated credentials and raw scope IDs are not UI fields. Setup progress and failures use shared inline feedback beside the component. See [Runtime architecture](runtime-architecture.md) for process, storage and native-memory ownership.

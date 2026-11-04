@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:20fd2bcff5199807295f74a1a80fae539561bbf23a209668e36d57e68d7eb564",
+  "pageVersion": "sha256:66138b33e0c7b4d6f2f141269e538f46caf19678df28f6a8760097da1a470db5",
   "claims": [
     {
       "id": "claim_b34298a8647a4e0b8653926b7568c5d4",
@@ -180,17 +180,17 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:a066011ce1730979c27bf807047998c995c261d520199469c5dec5290741c438"
+          "version": "repo-file-v1:sha256:69fb781ce8d421a7d79466e22407a96fb3971a63e296c049025270909fdadde4"
         }
       ]
     },
     {
       "id": "claim_1d5d3fff2b3841d4a02aca831b013244",
-      "statement": "Settings > Agents exposes retained compaction and delegation-retention defaults, per-user-server MCP catalog readiness and an automatic next-message suggestion switch. Native controls reuse the selected connected Agent's source-bound configuration path.",
+      "statement": "Settings > Agents exposes retained compaction and marked client tool-output retention defaults, per-user-server MCP catalog readiness and an automatic next-message suggestion switch. Native controls reuse the selected connected Agent's source-bound configuration path.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_context_settings.rs",
-          "version": "repo-file-v1:sha256:c4b7221ae38d9e8d9eca1447d15a351e790f4cbd656afaa130cb0e37e59209c7"
+          "version": "repo-file-v1:sha256:56c320dbed397bdbfcd373420538e4616e68e8765897bb276ea4d59a2ea2387d"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_native.rs",
@@ -198,7 +198,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_surface.rs",
-          "version": "repo-file-v1:sha256:e9db7f0d9ee42b833258b13af8e4a44a7049edd63effb99dbd5807412adcd56b"
+          "version": "repo-file-v1:sha256:4c0bf609b18031f5ead5efb7ab6cb4ede1e010785ce340fc3a2f08805e56312e"
         }
       ]
     },
@@ -330,7 +330,7 @@
     },
     {
       "id": "claim_2f51bf620dff4bb0afcf4b66110fb5a4",
-      "statement": "Assistant is built in and always available from the sidebar, with idle first-use setup and no automatic message or Enable control. It manages delegated Agents, teams, duties and fresh contexts; continuing instructions stay in chat. The optional RAGFlow component installs nightly with Infinity and its private account and automatically opens the model form after successful installation without saved model settings. Configure models accepts an OpenAI-compatible Base URL, optional API key and custom extraction and embedding names, verifies them and initializes Memory automatically without installing model runtimes or weights. The shared component row reports installed version and provides Update and Uninstall. Component operations check a running Docker-compatible engine and Docker Compose and report unavailable prerequisites without runtime installation, launch or installation guidance. Chat import is a separate opt-in, and there is no built-in patrol.",
+      "statement": "Assistant is built in and always available from the sidebar, with idle first-use setup and no automatic message or Enable control. It manages delegated Agents, teams, duties and fresh contexts; continuing instructions stay in chat. The optional RAGFlow component installs nightly with Infinity and its private account and automatically opens the model form after successful installation without saved model settings. Expanding installed RAGFlow directly opens the model form for an OpenAI-compatible Base URL, optional API key and custom extraction and embedding names. Save verifies the selected models before initializing Memory automatically without installing model runtimes or weights. The shared component row reports installed version and provides Update and Uninstall. Component operations check a running Docker-compatible engine and Docker Compose and report unavailable prerequisites without runtime installation, launch or installation guidance. Chat import is a separate opt-in, and there is no built-in patrol.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_portfolio.rs",
@@ -342,11 +342,11 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
-          "version": "repo-file-v1:sha256:01db4c55a40e3bf5a2c0dbf06fd52c0219149474c2dff835e91579c1d2335ccf"
+          "version": "repo-file-v1:sha256:306abda36fba53f054680a4e6ca7c82646fbada139cc9c753c19dcb5508fad2b"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:a066011ce1730979c27bf807047998c995c261d520199469c5dec5290741c438"
+          "version": "repo-file-v1:sha256:69fb781ce8d421a7d79466e22407a96fb3971a63e296c049025270909fdadde4"
         },
         {
           "resource": "repo://crates/decodex-components/src/ragflow_service.rs",
@@ -365,6 +365,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-04T13:19:34.006Z"
+    "at": "2026-11-04T14:24:22.739Z"
   }
 }

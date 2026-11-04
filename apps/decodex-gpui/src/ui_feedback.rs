@@ -221,16 +221,25 @@ impl RenderOnce for Notice {
 			.h(gpui::px(height))
 			.overflow_hidden()
 			.when_some(feedback, |slot, feedback| {
-				let row = status_row(
-					"conversation-feedback-status",
-					feedback.tone,
-					"",
-					&feedback.message,
-					feedback.icon(),
-				)
+				let row = if inline {
+					inline_status_row(
+						"conversation-feedback-status",
+						feedback.tone,
+						"",
+						&feedback.message,
+						feedback.icon(),
+					)
+				} else {
+					status_row(
+						"conversation-feedback-status",
+						feedback.tone,
+						"",
+						&feedback.message,
+						feedback.icon(),
+					)
+				}
 				.debug_selector(|| "conversation-activity-status".into())
-				.children(self.action.filter(|_| current))
-				.when(inline, |row| row.min_h(gpui::px(0.)).items_start().py(gpui::px(6.)));
+				.children(self.action.filter(|_| current));
 				let row = if inline { gpui::div().w_full().child(row) } else { notice_rail(row) };
 
 				slot.child(
@@ -347,12 +356,12 @@ pub(crate) fn read_only_row(
 	state_row(id, Tone::Neutral, title, detail, icon, true)
 }
 
-/// Local feedback stays in its owning form or setting, without a second card or shadow.
+/// Local feedback uses one inset row, with the same treatment for persistent and animated notices.
 pub(crate) fn inline_feedback(
 	id: impl Into<SharedString>,
 	title: &str,
 	feedback: &Feedback,
-) -> Option<AnyElement> {
+) -> Option<Stateful<Div>> {
 	if feedback.is_empty() {
 		return None;
 	}
@@ -361,13 +370,27 @@ pub(crate) fn inline_feedback(
 	let selector = id.to_string();
 
 	Some(
-		status_row(id, feedback.tone, title, &feedback.message, feedback.tone.icon())
-			.debug_selector(move || selector.clone())
-			.min_h(gpui::px(0.))
-			.items_start()
-			.py(gpui::px(6.))
-			.into_any_element(),
+		inline_status_row(id, feedback.tone, title, &feedback.message, feedback.icon())
+			.debug_selector(move || selector.clone()),
 	)
+}
+
+fn inline_status_row(
+	id: impl Into<ElementId>,
+	tone: Tone,
+	title: &str,
+	detail: &str,
+	icon: impl IntoElement,
+) -> Stateful<Div> {
+	state_row(id, tone, title, detail, icon, true)
+		.min_h(gpui::px(0.))
+		.items_start()
+		.px(gpui::px(8.))
+		.py(gpui::px(6.))
+		.rounded(gpui::px(4.))
+		.bg(ui_theme::rgb(tone.color()).opacity(0.05))
+		.border_l(gpui::px(2.))
+		.border_color(ui_theme::rgb(tone.color()).opacity(0.4))
 }
 
 /// A compact execution state, shared by live history, saved history and Graph.
@@ -499,7 +522,7 @@ fn state_copy(title: &str, detail: &str, inline: bool) -> Div {
 		let text = match (title.is_empty(), detail.is_empty()) {
 			(true, _) => detail.to_owned(),
 			(_, true) => title.to_owned(),
-			_ => format!("{title} {detail}"),
+			_ => format!("{title}. {detail}"),
 		};
 		let emphasis = (!title.is_empty()).then(|| {
 			(

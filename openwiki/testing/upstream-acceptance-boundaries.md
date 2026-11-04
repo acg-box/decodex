@@ -203,7 +203,7 @@ sources:
 generated: { by: "codex", at: "2026-11-04T10:24:44.262Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-04T13:19:34.006Z
+    at: 2026-11-04T14:24:22.739Z
 ---
 
 # Upstream integration acceptance boundaries

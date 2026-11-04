@@ -11,7 +11,7 @@ use crate::{
 	component_plugins::{self, PluginOperations},
 	component_research::{self, ResearchOperations},
 	component_runtime::{self, RuntimePreparation},
-	settings_surface::SettingsSurface,
+	settings_surface::{SettingsSurface, switch},
 	shell::{agent_surface::RagflowComponentAction, workspace_symbols},
 	ui_feedback::{self, Feedback},
 	ui_motion::{self, SmoothControl as _},
@@ -120,8 +120,10 @@ impl SettingsSurface {
 			Action::Plugin(action) => self.components.optional.start(action),
 			Action::Research(action) => self.components.research.start(action),
 			Action::Ragflow(action) => {
-				if !matches!(action, RagflowComponentAction::ToggleImport) {
-					self.components.details[3] = true;
+				match action {
+					RagflowComponentAction::CancelModels => self.components.details[3] = false,
+					RagflowComponentAction::ToggleImport => {},
+					_ => self.components.details[3] = true,
 				}
 				if let Some(agent) = &self.native_agent {
 					agent.update(cx, |s, cx| s.ragflow_component_action(action, cx));
@@ -292,6 +294,19 @@ impl SettingsSurface {
 		component.child(self.component_body(0, "components-codex-body", details))
 	}
 
+	fn toggle_component_details(&mut self, index: usize, cx: &mut Context<Self>) {
+		self.components.details[index] = !self.components.details[index];
+		if index == 3
+			&& self.components.details[index]
+			&& self.native_agent.as_ref().is_some_and(|agent| {
+				let state = agent.read(cx).ragflow_component_state();
+				state.installed && !state.editing
+			}) {
+			self.component_action(Action::Ragflow(RagflowComponentAction::ConfigureModels), cx);
+		}
+		cx.notify();
+	}
+
 	fn component_label(
 		&self,
 		index: usize,
@@ -325,15 +340,11 @@ impl SettingsSurface {
 			.hover(|s| s.text_color(ui_theme::rgb(BLUE)))
 			.active(|s| s.opacity(0.75))
 			.on_click(cx.listener(move |this, _, _, cx| {
-				this.components.details[index] = !this.components.details[index];
-
-				cx.notify();
+				this.toggle_component_details(index, cx);
 			}))
 			.on_key_down(cx.listener(move |this, event: &KeyDownEvent, _, cx| {
 				if !event.is_held && ["enter", "space"].contains(&event.keystroke.key.as_str()) {
-					this.components.details[index] = !this.components.details[index];
-
-					cx.notify();
+					this.toggle_component_details(index, cx);
 					cx.stop_propagation();
 				}
 			}))
@@ -361,13 +372,7 @@ impl SettingsSurface {
 		ui_motion::disclosure(
 			id,
 			self.components.details[index],
-			gpui::div()
-				.w_full()
-				.border_t_1()
-				.border_color(ui_theme::rgba(ui_theme::PANEL_DIVIDER))
-				.pt(gpui::px(10.))
-				.pb(gpui::px(10.))
-				.child(content),
+			ui_theme::settings_detail(content),
 		)
 		.into_any_element()
 	}
@@ -405,9 +410,32 @@ impl SettingsSurface {
 			cx,
 		));
 		let mut body = gpui::div().flex().flex_col().gap_2().child(self.ragflow_component(cx));
-		let mut actions = gpui::div().flex().gap_2();
+		if let Some(state) = state.as_ref().filter(|s| s.memory_ready) {
+			body = body.child(
+				ui_theme::settings_row()
+					.child(ui_theme::settings_label(
+						"Import chats",
+						"Add completed chat turns to Assistant Memory.",
+					))
+					.child(
+						switch::settings_switch(
+							"components-ragflow-import",
+							"components-ragflow-import-knob",
+							"Import chats into Assistant Memory",
+							state.import,
+							!state.busy,
+						)
+						.on_change(cx.listener(|s, _, _, cx| {
+							s.component_action(
+								Action::Ragflow(RagflowComponentAction::ToggleImport),
+								cx,
+							);
+						})),
+					),
+			);
+		}
 		if state.as_ref().is_some_and(|s| s.editing) {
-			actions = actions.justify_end().pt_2();
+			let mut actions = gpui::div().flex().gap_2().justify_end().pt_2();
 			for (id, label, action) in [
 				(
 					"components-ragflow-models-cancel",
@@ -419,27 +447,8 @@ impl SettingsSurface {
 				actions =
 					actions.child(self.component_button(id, label, Action::Ragflow(action), cx));
 			}
-		} else if installed {
-			actions = actions.child(self.component_button(
-				"components-ragflow-models",
-				"Configure models",
-				Action::Ragflow(RagflowComponentAction::ConfigureModels),
-				cx,
-			));
+			body = body.child(actions);
 		}
-		if state.as_ref().is_some_and(|s| s.memory_ready && !s.editing) {
-			actions = actions.child(self.component_button(
-				"components-ragflow-import",
-				if state.as_ref().is_some_and(|s| s.import) {
-					"Disable chat import"
-				} else {
-					"Enable chat import"
-				},
-				Action::Ragflow(RagflowComponentAction::ToggleImport),
-				cx,
-			));
-		}
-		body = body.child(actions);
 		gpui::div()
 			.child(row)
 			.child(self.component_body(3, "components-ragflow-body", body))

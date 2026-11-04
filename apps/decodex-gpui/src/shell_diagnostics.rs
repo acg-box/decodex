@@ -278,16 +278,15 @@ fn technical_details(snapshot: &HealthSnapshot) -> AnyElement {
 					snapshot.report.as_ref(),
 				))
 		})
-		.child(
-			gpui::div()
-				.flex()
-				.flex_col()
-				.gap_2()
-				.child(ui_theme::settings_section_title("Agent process"))
-				.child(ui_theme::settings_description(shell::native_process_summary(
+		.child(ui_theme::settings_group(
+			"Agent process",
+			vec![
+				ui_theme::settings_description(shell::native_process_summary(
 					snapshot.report.as_ref().and_then(|report| report.native_process()),
-				))),
-		)
+				))
+				.into_any_element(),
+			],
+		))
 		.child(component_section(
 			"health-app-server-components",
 			"Codex capabilities",
@@ -368,23 +367,31 @@ fn component_section(
 	components: &[DoctorComponent],
 	report: Option<&DoctorReport>,
 ) -> AnyElement {
-	let rows = components.iter().copied().enumerate().map(|(index, component)| {
-		let status = report.and_then(|report| report.check(component)).map(|check| check.status);
-
-		component_row(index_offset + index, component, status)
-	});
+	let rows = components
+		.chunks(2)
+		.enumerate()
+		.map(|(row_index, components)| {
+			gpui::div()
+				.w_full()
+				.grid()
+				.grid_cols(2)
+				.gap_x(gpui::px(32.))
+				.children(components.iter().copied().enumerate().map(|(column, component)| {
+					let status =
+						report.and_then(|report| report.check(component)).map(|check| check.status);
+					component_row(index_offset + row_index * 2 + column, component, status)
+				}))
+				.into_any_element()
+		})
+		.collect();
 
 	ui_theme::settings_group(
 		title,
 		vec![
-			gpui::div()
+			ui_theme::settings_divided_rows(rows)
 				.id(("health-section-list", index_offset))
 				.role(Role::List)
 				.aria_label(title)
-				.grid()
-				.grid_cols(2)
-				.gap_x(gpui::px(32.))
-				.children(rows)
 				.into_any_element(),
 		],
 	)

@@ -448,6 +448,7 @@ pub(super) fn row(
 				Feedback::default()
 			},
 		)
+		.map(|notice| notice.into_any_element())
 	};
 	let Some(ResetCardInventoryResult::Available {
 		cards, details_complete, account_revision, ..

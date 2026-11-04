@@ -1,5 +1,5 @@
 //! Host-owned macOS sleep policy. Never stores a competing application preference.
-use gpui::{AnyElement, Styled as _, Task, prelude::FluentBuilder as _};
+use gpui::{AnyElement, Styled as _, Task};
 
 use crate::{
 	settings_surface::{Context, IntoElement, ParentElement, SettingsSurface, switch, ui_theme},
@@ -103,15 +103,20 @@ impl SettingsSurface {
 						)),
 					),
 			)
-			.children(super::setting_notice(
-				"power-settings-feedback",
-				self.power.error.as_ref().map(|message| Feedback::error(message.clone())),
-			))
-			.when(self.power.error.is_some(), |d| {
-				d.child(super::setting_action("power-settings-retry", "Retry", cx, |s, cx| {
-					s.power_request(None, cx)
-				}))
-			})
+			.children(
+				super::setting_notice(
+					"power-settings-feedback",
+					self.power.error.as_ref().map(|message| Feedback::error(message.clone())),
+				)
+				.map(|notice| {
+					notice.child(super::setting_action(
+						"power-settings-retry",
+						"Retry",
+						cx,
+						|s, cx| s.power_request(None, cx),
+					))
+				}),
+			)
 			.into_any_element()
 	}
 }

@@ -216,9 +216,9 @@ impl AgentSurface {
 			)
 		});
 		let mut panel =
-			ui_theme::settings_rows().child(ui_theme::settings_row().child(ui_theme::settings_description(
+			ui_theme::settings_rows().child(ui_theme::settings_description(
 				"Shared with Codex for new conversations. Project or managed settings may override these defaults.",
-			).flex_1().min_w_0())).child(
+			)).child(
 				ui_feedback::notice(
 					"context-settings-feedback",
 					work.to_owned(),
@@ -233,13 +233,28 @@ impl AgentSurface {
 			&& let Some(AgentContextSettingsResult::Available { preferences, .. }) =
 				&self.context_settings.state
 		{
-			let mut context =
-				ui_theme::settings_rows().child(native_subheading("Context (experimental)"));
-			for preference in preferences.iter().filter(|p| !is_catalog(&p.feature)) {
-				context = context.child(self.context_preference_row(work, preference, busy, cx));
+			let rows: Vec<_> = preferences
+				.iter()
+				.filter(|p| !is_catalog(&p.feature))
+				.map(|preference| {
+					self.context_preference_row(work, preference, busy, cx).into_any_element()
+				})
+				.collect();
+			let mut sections = Vec::new();
+			if !rows.is_empty() {
+				sections.push(
+					ui_theme::settings_rows()
+						.child(native_subheading("Context (experimental)"))
+						.child(ui_theme::settings_divided_rows(rows))
+						.into_any_element(),
+				);
 			}
-			panel =
-				panel.child(context).child(self.mcp_catalog_settings(work, preferences, busy, cx));
+			if preferences.iter().any(|p| is_catalog(&p.feature)) {
+				sections.push(
+					self.mcp_catalog_settings(work, preferences, busy, cx).into_any_element(),
+				);
+			}
+			panel = panel.child(ui_theme::settings_divided_rows(sections));
 		}
 
 		panel.into_any_element()
@@ -326,19 +341,27 @@ impl AgentSurface {
 				expanded,
 			))
 			.smooth();
-		let mut rows = ui_theme::settings_rows()
+		let rows = ui_theme::settings_rows()
 			.child(ui_theme::settings_description(
 				"Use a valid cached tool list while servers connect. Tool calls still need a live connection.",
 			))
-			.pb(gpui::px(4.));
-		for preference in catalogs {
-			rows = rows.child(self.context_preference_row(work, preference, busy, cx));
-		}
+			.child(ui_theme::settings_divided_rows(
+				catalogs
+					.into_iter()
+					.map(|preference| {
+						self.context_preference_row(work, preference, busy, cx).into_any_element()
+					})
+					.collect(),
+			));
 		ui_theme::settings_rows()
 			.pt(gpui::px(8.))
 			.child(native_subheading("MCP startup"))
 			.child(toggle)
-			.child(ui_motion::disclosure("context-mcp-body", expanded, rows))
+			.child(ui_motion::disclosure(
+				"context-mcp-body",
+				expanded,
+				ui_theme::settings_detail(rows),
+			))
 	}
 
 	fn toggle_catalog_settings(&mut self, cx: &mut Context<Self>) {
@@ -386,6 +409,7 @@ impl AgentSurface {
 
 fn native_subheading(title: &'static str) -> impl IntoElement {
 	ui_theme::settings_section_title(title)
+		.px(gpui::px(0.))
 		.aria_level(3)
 		.text_size(gpui::px(ui_theme::SETTINGS_LABEL_SIZE))
 		.pt(gpui::px(8.))

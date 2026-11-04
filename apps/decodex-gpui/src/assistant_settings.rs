@@ -108,7 +108,9 @@ impl AgentSurface {
 					"Memory setup is incomplete. Save the model settings to retry.",
 				))
 			} else if self.assistant_settings.fields.is_empty() {
-				Some(Feedback::neutral("Configure models to enable Assistant Memory."))
+				Some(Feedback::neutral(
+					"Expand RAGFlow to add model settings for Assistant Memory.",
+				))
 			} else {
 				None
 			}
@@ -146,14 +148,14 @@ impl AgentSurface {
 		action: ComponentAction,
 		cx: &mut Context<Self>,
 	) {
+		if matches!(action, ComponentAction::ConfigureModels) {
+			self.edit_memory_models(cx);
+			return;
+		}
 		if self.ragflow_component_state().busy {
 			return;
 		}
 		match action {
-			ComponentAction::ConfigureModels => {
-				self.edit_memory_models(cx);
-				return;
-			},
 			ComponentAction::CancelModels => {
 				self.assistant_settings.fields.clear();
 				self.assistant_settings.error.clear();
@@ -217,16 +219,18 @@ impl AgentSurface {
 		} else if let Some(models) =
 			self.assistant_settings.installation.as_ref().and_then(|i| i.models.as_ref())
 		{
-			for (label, value) in [
+			let rows = [
 				("Base URL", &models.base_url),
 				("Extraction model", &models.chat_model),
 				("Embedding model", &models.embedding_model),
-			] {
-				body = body.child(ui_theme::settings_field(
-					label,
-					ui_theme::settings_description(value.clone()),
-				));
-			}
+			]
+			.into_iter()
+			.map(|(label, value)| {
+				ui_theme::settings_field(label, ui_theme::settings_description(value.clone()))
+					.into_any_element()
+			})
+			.collect();
+			body = body.child(ui_theme::settings_divided_rows(rows));
 		} else if self.assistant_settings.installation.as_ref().is_none_or(|i| !i.installed) {
 			body = body.child(ui_theme::settings_description("RAGFlow nightly with Infinity stores Assistant memory. A running Docker-compatible container environment is required."));
 		}
@@ -500,7 +504,9 @@ mod tests {
     "project":"fixture","password":"private-fixture","installed":true
    })).unwrap());
    s.composer.update(cx,|i,cx|i.set_content("Keep the chat draft",cx));
-   s.edit_memory_models(cx);
+   s.sending = true;
+   s.ragflow_component_action(ComponentAction::ConfigureModels,cx);
+   s.sending = false;
    assert_eq!(s.assistant_settings.fields.len(),4);
    assert_eq!(s.assistant_settings.fields["url"].read(cx).content(),"http://localhost:1234/v1");
    assert_eq!(s.assistant_settings.fields["key"].read(cx).content(),"");

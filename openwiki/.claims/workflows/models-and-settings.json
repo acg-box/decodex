@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:e3a8d6aacf13dd881d22f8281cbce966864ee8ef81569336d8635b6be857ec18",
+  "pageVersion": "sha256:e95bc7f5034a001f32542c11baa273d8757462463911184fd9b1f0b877fae70a",
   "claims": [
     {
       "id": "claim_f0c37462522f4442acd94d53819ef75c",
@@ -228,7 +228,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_context_settings.rs",
-          "version": "repo-file-v1:sha256:c4b7221ae38d9e8d9eca1447d15a351e790f4cbd656afaa130cb0e37e59209c7"
+          "version": "repo-file-v1:sha256:56c320dbed397bdbfcd373420538e4616e68e8765897bb276ea4d59a2ea2387d"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_native.rs",
@@ -254,7 +254,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_surface.rs",
-          "version": "repo-file-v1:sha256:e9db7f0d9ee42b833258b13af8e4a44a7049edd63effb99dbd5807412adcd56b"
+          "version": "repo-file-v1:sha256:4c0bf609b18031f5ead5efb7ab6cb4ede1e010785ce340fc3a2f08805e56312e"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_preferences.rs",
@@ -314,15 +314,15 @@
     },
     {
       "id": "claim_09df0d70257c4cd4995cda41a1da8169",
-      "statement": "Components installs managed RAGFlow nightly with compatible Infinity and a private service account, sharing actual version and lifecycle controls. Component operations check the running Docker-compatible engine and Docker Compose before installation effects and use shared inline feedback for unavailable prerequisites without runtime installation, launch or installation guidance. Successful installation with no saved model settings opens the existing model form automatically. Configure models accepts one OpenAI-compatible Base URL, optional private API key and custom extraction and embedding names, verifies them and initializes Memory automatically. No model runtime or weights are installed. Saved keys stay blank in later edits and are retained only at the same URL; loopback addresses are translated for the container, and indexed Memory keeps its embedding model and endpoint. Chat import starts off; Update preserves models, import choice and data, and Uninstall clears the connection while retaining data. Typed knowledge scopes and the safe native-memory context policy keep their existing owners.",
+      "statement": "Components installs managed RAGFlow nightly with compatible Infinity and a private service account, sharing actual version and lifecycle controls. Component operations check the running Docker-compatible engine and Docker Compose before installation effects and use shared inline feedback for unavailable prerequisites without runtime installation, launch or installation guidance. Successful installation with no saved model settings opens the existing model form automatically. Expanding installed RAGFlow directly opens the model form for one OpenAI-compatible Base URL, optional private API key and custom extraction and embedding names. Save verifies the selected models before initializing Memory automatically. No model runtime or weights are installed. Saved keys stay blank in later edits and are retained only at the same URL; loopback addresses are translated for the container, and indexed Memory keeps its embedding model and endpoint. Chat import starts off with a separate switch when Memory is ready, including during model editing; Update preserves models, import choice and data, and Uninstall clears the connection while retaining data. Typed knowledge scopes and the safe native-memory context policy keep their existing owners.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
-          "version": "repo-file-v1:sha256:01db4c55a40e3bf5a2c0dbf06fd52c0219149474c2dff835e91579c1d2335ccf"
+          "version": "repo-file-v1:sha256:306abda36fba53f054680a4e6ca7c82646fbada139cc9c753c19dcb5508fad2b"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:a066011ce1730979c27bf807047998c995c261d520199469c5dec5290741c438"
+          "version": "repo-file-v1:sha256:69fb781ce8d421a7d79466e22407a96fb3971a63e296c049025270909fdadde4"
         },
         {
           "resource": "repo://crates/decodex-components/src/ragflow.rs",
@@ -348,43 +348,55 @@
     },
     {
       "id": "claim_beff917e46a74d619c3c54e7b46b2696",
-      "statement": "The RAGFlow model editor aligns labels and controls in shared rows, places Cancel and Save on the right, and keeps API and Codex memory guidance beside the form. Saved-key guidance is conditional on saved model settings, the redundant setup notice is hidden during editing, and Cancel discards unsaved values and clears the editor error.",
+      "statement": "The RAGFlow model editor aligns labels and controls in shared rows, places Cancel and Save on the right, and keeps API and Codex memory guidance beside the form. Saved-key guidance is conditional on saved model settings, the redundant setup notice is hidden during editing, collapsing and reopening preserves unsaved input, and Cancel discards unsaved values and clears the editor error before collapsing RAGFlow.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
-          "version": "repo-file-v1:sha256:01db4c55a40e3bf5a2c0dbf06fd52c0219149474c2dff835e91579c1d2335ccf"
+          "version": "repo-file-v1:sha256:306abda36fba53f054680a4e6ca7c82646fbada139cc9c753c19dcb5508fad2b"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:a066011ce1730979c27bf807047998c995c261d520199469c5dec5290741c438"
+          "version": "repo-file-v1:sha256:69fb781ce8d421a7d79466e22407a96fb3971a63e296c049025270909fdadde4"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_theme.rs",
-          "version": "repo-file-v1:sha256:a41e44695d8938fce28217943d3b93b3bd4100a5d9dfb96027ed95a86f67e121"
+          "version": "repo-file-v1:sha256:51f07ff531ad3ca2aaceb218b8b0764e813b09817d5c56af8cebc8fb03958ba9"
         }
       ]
     },
     {
       "id": "claim_1d1d68cccf054493b22ff3f7574f9e70",
-      "statement": "Settings groups related controls in bordered panels with row and detail dividers and scoped feedback. A collapsed Codex setup failure directs the user to its setup error; expanding Codex shows the full original error, while Retry setup uses the existing preparation action.",
+      "statement": "All Settings categories share one content width and bordered groups with reusable row and detail dividers. Local notices, warnings and errors share a compact inset row with an icon, quiet tone fill and leading rule, with recovery actions beside the affected message. A collapsed Codex setup failure directs the user to its setup error; expanding Codex shows the full original error, while Retry setup uses the existing preparation action.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:a066011ce1730979c27bf807047998c995c261d520199469c5dec5290741c438"
+          "version": "repo-file-v1:sha256:69fb781ce8d421a7d79466e22407a96fb3971a63e296c049025270909fdadde4"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/settings_power.rs",
+          "version": "repo-file-v1:sha256:a177102387851f3050b9cbca4c51b4e648f0156b7db7c4f27e8f299b832710cd"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_surface.rs",
-          "version": "repo-file-v1:sha256:e9db7f0d9ee42b833258b13af8e4a44a7049edd63effb99dbd5807412adcd56b"
+          "version": "repo-file-v1:sha256:4c0bf609b18031f5ead5efb7ab6cb4ede1e010785ce340fc3a2f08805e56312e"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/shell.rs",
+          "version": "repo-file-v1:sha256:9f48177ebce5d6ffdc6fe404fb1d3c9e63293aa743b9a1ccd0112052f54f5699"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/ui_feedback.rs#L359-L394",
+          "version": "repo-lines-v1:sha256:db9a97fca60493528cc43337abc99b68c882a9e65f72972f43f735cc05930910:eyJzZWxlY3RlZExpbmVDb3VudCI6MzYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg4ZGJhMWQzYWU1YTUzMTE4NmJhYWUzMTBhM2YwYTRhM2NkYWIyMmIxNjRjMWZjMDY5MzE3YzhiNThkOGQ4MTciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE1M2VjNGU0YjkwYzM4Yjc2NjQ4NDI3YmM5YWE2MjU2Y2NmNGM5YjI4OTEzMmE5ZTcyZTM4NjdmMjBjODMxMTciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjBkMjEyZTE5Njc1YjM0ZGYwMTYxMzcyNzViOTA5Y2RhMjQyOWM0OGVmMGNkM2RlZTgwMDZkYWQ0YzlhYzcyNmEifQ"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_theme.rs",
-          "version": "repo-file-v1:sha256:a41e44695d8938fce28217943d3b93b3bd4100a5d9dfb96027ed95a86f67e121"
+          "version": "repo-file-v1:sha256:51f07ff531ad3ca2aaceb218b8b0764e813b09817d5c56af8cebc8fb03958ba9"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-04T13:19:34.006Z"
+    "at": "2026-11-04T14:24:22.739Z"
   }
 }

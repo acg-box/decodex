@@ -83,7 +83,6 @@ pub(crate) const COMPOSER_TOP_GAP: f32 = 8.0;
 pub(crate) const COMPOSER_BOTTOM_GAP: f32 = 12.0;
 // Settings share shell typography and a bounded reading width.
 pub(crate) const SETTINGS_WIDTH: f32 = 740.0;
-pub(crate) const SETTINGS_READING_WIDTH: f32 = 600.0;
 // Leave room for navigation, page insets, five theme previews and their scrollbar.
 pub(crate) const SETTINGS_WINDOW_MIN_WIDTH: f32 = 920.0;
 pub(crate) const SETTINGS_INSET: f32 = 24.0;
@@ -318,6 +317,7 @@ pub(crate) fn settings_section_title(title: &'static str) -> Stateful<Div> {
 		.role(Role::Heading)
 		.aria_level(2)
 		.aria_label(title)
+		.px(gpui::px(12.))
 		.text_size(gpui::px(SETTINGS_SECTION_SIZE))
 		.line_height(gpui::px(18.0))
 		.font_weight(FontWeight::MEDIUM)
@@ -377,27 +377,36 @@ pub(crate) fn settings_label(
 }
 
 pub(crate) fn settings_group(title: &'static str, rows: Vec<AnyElement>) -> Div {
-	settings_rows()
-		.gap_2()
-		.child(gpui::div().px(gpui::px(12.)).child(settings_section_title(title)))
-		.child(settings_panel(rows))
+	settings_rows().gap_2().child(settings_section_title(title)).child(settings_panel(rows))
 }
 
 pub(crate) fn settings_panel(rows: Vec<AnyElement>) -> Div {
-	settings_rows()
+	settings_divided_rows(rows)
 		.rounded(gpui::px(10.))
 		.border_1()
 		.border_color(rgba(PANEL_DIVIDER))
 		.bg(rgba(FIELD_MATERIAL))
 		.px(gpui::px(12.))
 		.py(gpui::px(6.))
-		.children(rows.into_iter().enumerate().map(|(index, row)| {
-			gpui::div()
-				.w_full()
-				.min_w_0()
-				.when(index > 0, |row| row.border_t_1().border_color(rgba(PANEL_DIVIDER)))
-				.child(row)
-		}))
+}
+
+pub(crate) fn settings_divided_rows(rows: Vec<AnyElement>) -> Div {
+	settings_rows().children(rows.into_iter().enumerate().map(|(index, row)| {
+		gpui::div()
+			.w_full()
+			.min_w_0()
+			.when(index > 0, |row| row.border_t_1().border_color(rgba(PANEL_DIVIDER)))
+			.child(row)
+	}))
+}
+
+pub(crate) fn settings_detail(content: impl IntoElement) -> Div {
+	settings_rows()
+		.border_t_1()
+		.border_color(rgba(PANEL_DIVIDER))
+		.pt(gpui::px(10.))
+		.pb(gpui::px(10.))
+		.child(content)
 }
 
 pub(crate) fn settings_button(

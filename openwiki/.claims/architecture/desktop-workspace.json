@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:c047b84c9eb330a26b3ae405f1699629e4f92305852e5cb944facc8c5a8c1ff4",
+  "pageVersion": "sha256:0847995d17df3994cac2199550a3d2d46872358e63f10eb010cccbfb5a8be8b2",
   "claims": [
     {
       "id": "claim_41c9eba720934771bd6b671a7aeb8b6e",
@@ -100,15 +100,15 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/ResetCardSectionView.swift#L4-L34",
-          "version": "repo-lines-v1:sha256:6d314b3e221955217958b3b0573e80d22a70923e109070ce312de03c6659f4b2:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA1YmZiY2I2OWM3MTIxZmE4Y2UxOTI1ZjM1YzU0ZTc2ODkxNGZkYTY0NDI0YzdmODQxNzE4N2MxZGM4YmY3MzIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjoyLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM1OTY1ZmU4Zjg5ZDU0OWU2YTkxY2Y5YjIxMGRjNTcwOGEwZDg1OTE5MWI5OTQyNmY5YTBjMzBkYzVkNmU5ZmMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjMzMTY0MDE5MmNhNGFjNDM0NTdiZmYxMjU0MTYzYWY4ODQ2MTRjMDJiNmQ4NDZlZmY2NDY1ZjBkY2JmMWU0NjIifQ"
+          "version": "repo-lines-v1:sha256:6d314b3e221955217958b3b0573e80d22a70923e109070ce312de03c6659f4b2:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA1YmZiY2I2OWM3MTIxZmE4Y2UxOTI1ZjM1YzU0ZTc2ODkxNGZkYTY0NDI0YzdmODQxNzE4N2MxZGM4YmY3MzIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjdhYzUyYWU2YzU4ODgyNTkyMmNlMGI5ZTQ3NzU5Y2QxMDg5NTI1MzJiYmZmNGU1NDM0OWU1NjQyNDYyMmQxYzAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjMzMTY0MDE5MmNhNGFjNDM0NTdiZmYxMjU0MTYzYWY4ODQ2MTRjMDJiNmQ4NDZlZmY2NDY1ZjBkY2JmMWU0NjIifQ"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/shell_status.rs#L230-L245",
           "version": "repo-lines-v1:sha256:c935271ee270339b80c6383aab5e8944fa8f60fd526dd01d3d0ca271dc71d62b:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE1NTE5YTllMTY3OWRlNWNmYmQ5NDg3ZGQ3YzQzZTdlMDVmNmI5NWUxYTgzYjdkZTA4OTc2MDlmY2Y5ZWUxZDciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijc2MWZjYzllOWZhMTY1NThjMWNmZTg5ZmNhNDExZTcwNzliMWMxMGNjODY1MGM4NTIxZWEyZWYzODI5OTc1OWIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImJmMDEwZGNhMDVkMDJiMDg1YmI5NDIyZTRhNTlkNTg1OGFiOWU2N2U2N2JjOTUxMTVjYjEyMjMwYTA3OWQ5YWQifQ"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/ui_feedback.rs#L460-L550",
-          "version": "repo-lines-v1:sha256:823ce6a70b18e0b447f3a6444e3436843a94b963f1691faf6757ab579efec4ca:eyJzZWxlY3RlZExpbmVDb3VudCI6OTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU4ZmE1YjAwM2E3ODUzM2IxZTc1OTA4NzkxMGUxNmI5YjBjYjZkY2ZhYjIwMmFlNzcwMjk3YWY0OTM2ZTBiZTgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQ1NjI1ZTY0MDQwODkyZDhhYWYxMjRmYmU0M2UxY2NmYzBjMDMwM2EwMjU3NTJkODU4ZWIzZGRhZjJmMmIwMTgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhmNDA4ZDliMWFhY2ZhNjEzYmVmOTlhMWVkNzIzNzQ1OTBjNGU2NjdlM2NiNjc2MWQwOTRlYjM3M2UwMGYzYzAifQ"
+          "resource": "repo://apps/decodex-gpui/src/ui_feedback.rs#L483-L565",
+          "version": "repo-lines-v1:sha256:c10f29a7358859a32eacb5735caf28f3525f0b84fb520136f31af91cdaa10354:eyJzZWxlY3RlZExpbmVDb3VudCI6ODMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU4ZmE1YjAwM2E3ODUzM2IxZTc1OTA4NzkxMGUxNmI5YjBjYjZkY2ZhYjIwMmFlNzcwMjk3YWY0OTM2ZTBiZTgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc3YTliNWU5MDE5YzhkYjg3ODNlYzljM2ZlYmIwYTJjOTg2MmY2MWEwNWMzMDhmZTg5NWU0YTliZWQwM2VkYjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQ1NjI1ZTY0MDQwODkyZDhhYWYxMjRmYmU0M2UxY2NmYzBjMDMwM2EwMjU3NTJkODU4ZWIzZGRhZjJmMmIwMTgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE1MjE2MDRiMzVmYzQwYWYwMGNiYTRlZWEyZmQ1ZTJjM2FmMTg2M2IzOTExODVkN2JmNGJiMDllNzJkMGM4YjMifQ"
         }
       ]
     },
@@ -462,13 +462,13 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_theme.rs",
-          "version": "repo-file-v1:sha256:a41e44695d8938fce28217943d3b93b3bd4100a5d9dfb96027ed95a86f67e121"
+          "version": "repo-file-v1:sha256:51f07ff531ad3ca2aaceb218b8b0764e813b09817d5c56af8cebc8fb03958ba9"
         }
       ]
     },
     {
       "id": "claim_0452408448a14a9db6e30791b9bed632",
-      "statement": "Nonblocking conversation feedback uses the band above the composer; send restrictions and archive status use the disabled composer. History retry and summary notices reuse shared inline feedback. Field and operation failures stay beside their controls, app-wide events use the notification center, whole-page startup failure uses the shared status row, and Menu Bar retains compact native feedback.",
+      "statement": "Nonblocking conversation feedback uses the band above the composer; send restrictions and archive status use the disabled composer. History retry and summary notices reuse shared inline feedback. Persistent and animated local feedback share a compact inset row with a quiet tone fill, leading rule, icon and explicit wording. Field and operation failures stay beside their controls, login-item and sleep-setting recovery actions stay inside their feedback rows, app-wide events use the notification center, whole-page startup failure uses the shared status row, and Menu Bar retains compact native feedback.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_composer.rs",
@@ -479,14 +479,22 @@
           "version": "repo-file-v1:sha256:94ea70df047f8fb39acb1221999a5bbfc405b1041b6da8a11e0176474d71cc8d"
         },
         {
+          "resource": "repo://apps/decodex-gpui/src/settings_power.rs",
+          "version": "repo-file-v1:sha256:a177102387851f3050b9cbca4c51b4e648f0156b7db7c4f27e8f299b832710cd"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/settings_surface.rs",
+          "version": "repo-file-v1:sha256:4c0bf609b18031f5ead5efb7ab6cb4ede1e010785ce340fc3a2f08805e56312e"
+        },
+        {
           "resource": "repo://apps/decodex-gpui/src/ui_feedback.rs",
-          "version": "repo-file-v1:sha256:87068003c148dc39e0d5410ff004a73c5e8dd8f94c73eb86c9b9adf7c21f1973"
+          "version": "repo-file-v1:sha256:660441bfcafd259a54e9c09103d7f4fed47689b6bf28c4a5eedc6eb38f644bdd"
         }
       ]
     },
     {
       "id": "claim_6c70a225addb4571a4536403d49033b7",
-      "statement": "Assistant is built in and always available from the sidebar, with idle atomic initialization on first use and no optional Assistant component. RAGFlow shares component controls, installed version readback, collapsed details and inline feedback. Component operations check the running Docker-compatible engine and Docker Compose before installation effects and report unavailable prerequisites without runtime installation, launch or installation guidance. Install prepares the service and automatically opens the existing model editor when no model settings are saved. Configure models reopens its Base URL, optional masked API key and custom extraction and embedding fields. Save verifies the API before automatic Memory setup. Service connection is automatic and chat import starts off. Continuing duties and teams stay in chat and Work.",
+      "statement": "Assistant is built in and always available from the sidebar, with idle atomic initialization on first use and no optional Assistant component. RAGFlow shares component controls, installed version readback, collapsed details and inline feedback. Component operations check the running Docker-compatible engine and Docker Compose before installation effects and report unavailable prerequisites without runtime installation, launch or installation guidance. Install prepares the service and automatically opens the model editor when no model settings are saved. Expanding installed RAGFlow directly opens its Base URL, optional masked API key and custom extraction and embedding fields. Save verifies the API before automatic Memory setup. Service connection is automatic; chat import starts off and has an independent switch when Memory is ready. Continuing duties and teams stay in chat and Work.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
@@ -494,11 +502,11 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
-          "version": "repo-file-v1:sha256:01db4c55a40e3bf5a2c0dbf06fd52c0219149474c2dff835e91579c1d2335ccf"
+          "version": "repo-file-v1:sha256:306abda36fba53f054680a4e6ca7c82646fbada139cc9c753c19dcb5508fad2b"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:a066011ce1730979c27bf807047998c995c261d520199469c5dec5290741c438"
+          "version": "repo-file-v1:sha256:69fb781ce8d421a7d79466e22407a96fb3971a63e296c049025270909fdadde4"
         },
         {
           "resource": "repo://crates/decodex-components/src/ragflow_service.rs",
@@ -516,11 +524,11 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
-          "version": "repo-file-v1:sha256:01db4c55a40e3bf5a2c0dbf06fd52c0219149474c2dff835e91579c1d2335ccf"
+          "version": "repo-file-v1:sha256:306abda36fba53f054680a4e6ca7c82646fbada139cc9c753c19dcb5508fad2b"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:a066011ce1730979c27bf807047998c995c261d520199469c5dec5290741c438"
+          "version": "repo-file-v1:sha256:69fb781ce8d421a7d79466e22407a96fb3971a63e296c049025270909fdadde4"
         }
       ]
     },
@@ -536,47 +544,55 @@
     },
     {
       "id": "claim_b21a1b1b1e32436d9ebd774cec94464d",
-      "statement": "Settings uses a narrow reading column for General, Components and Updates, with wider columns for Agents and Appearance. Shared rows use compact spacing, and General groups automatic recaps and sleep prevention under Background.",
+      "statement": "All seven Settings categories use one shared content width and compact row spacing. Default permissions and speed use aligned comparison columns, and General groups automatic recaps and sleep prevention under Background.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/settings_surface.rs",
-          "version": "repo-file-v1:sha256:e9db7f0d9ee42b833258b13af8e4a44a7049edd63effb99dbd5807412adcd56b"
+          "version": "repo-file-v1:sha256:4c0bf609b18031f5ead5efb7ab6cb4ede1e010785ce340fc3a2f08805e56312e"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/shell.rs",
+          "version": "repo-file-v1:sha256:9f48177ebce5d6ffdc6fe404fb1d3c9e63293aa743b9a1ccd0112052f54f5699"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_theme.rs",
-          "version": "repo-file-v1:sha256:a41e44695d8938fce28217943d3b93b3bd4100a5d9dfb96027ed95a86f67e121"
+          "version": "repo-file-v1:sha256:51f07ff531ad3ca2aaceb218b8b0764e813b09817d5c56af8cebc8fb03958ba9"
         }
       ]
     },
     {
       "id": "claim_f2fbc533f80e433d9022f6333a6e691c",
-      "statement": "The RAGFlow model editor uses aligned shared field rows and right-aligned Cancel and Save controls. It retains API and Codex memory guidance, shows saved-key help only for saved settings, hides the redundant setup notice during editing, and clears unsaved values and editor errors on Cancel.",
+      "statement": "The RAGFlow model editor uses aligned shared field rows and right-aligned Cancel and Save controls. It retains API and Codex memory guidance, shows saved-key help only for saved settings and hides the redundant setup notice during editing. Collapsing and reopening retains unsaved input; Cancel clears unsaved values and editor errors and collapses RAGFlow.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
-          "version": "repo-file-v1:sha256:01db4c55a40e3bf5a2c0dbf06fd52c0219149474c2dff835e91579c1d2335ccf"
+          "version": "repo-file-v1:sha256:306abda36fba53f054680a4e6ca7c82646fbada139cc9c753c19dcb5508fad2b"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:a066011ce1730979c27bf807047998c995c261d520199469c5dec5290741c438"
+          "version": "repo-file-v1:sha256:69fb781ce8d421a7d79466e22407a96fb3971a63e296c049025270909fdadde4"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_theme.rs",
-          "version": "repo-file-v1:sha256:a41e44695d8938fce28217943d3b93b3bd4100a5d9dfb96027ed95a86f67e121"
+          "version": "repo-file-v1:sha256:51f07ff531ad3ca2aaceb218b8b0764e813b09817d5c56af8cebc8fb03958ba9"
         }
       ]
     },
     {
       "id": "claim_9d77516e24e94e4d9b5add8ac7f9c1dd",
-      "statement": "Settings groups reuse a shared panel with a fine border and row dividers. Components use one divided list; account controls, account rows, quota settings and diagnostic summaries reuse the panel helper. Expanded component content has a divider, and feedback stays with its operation.",
+      "statement": "Settings groups reuse a shared quiet bordered panel and one divided-row helper, including nested native defaults, cursor controls and diagnostic rows. Components use one divided list; account controls, account rows, quota settings and diagnostic summaries reuse the panel helper. Expanded component and MCP content share a detail divider, and feedback stays with its operation.",
       "evidence": [
         {
+          "resource": "repo://apps/decodex-gpui/src/agent_context_settings.rs",
+          "version": "repo-file-v1:sha256:56c320dbed397bdbfcd373420538e4616e68e8765897bb276ea4d59a2ea2387d"
+        },
+        {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:a066011ce1730979c27bf807047998c995c261d520199469c5dec5290741c438"
+          "version": "repo-file-v1:sha256:69fb781ce8d421a7d79466e22407a96fb3971a63e296c049025270909fdadde4"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_surface.rs",
-          "version": "repo-file-v1:sha256:e9db7f0d9ee42b833258b13af8e4a44a7049edd63effb99dbd5807412adcd56b"
+          "version": "repo-file-v1:sha256:4c0bf609b18031f5ead5efb7ab6cb4ede1e010785ce340fc3a2f08805e56312e"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/shell.rs",
@@ -584,11 +600,11 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/shell_diagnostics.rs",
-          "version": "repo-file-v1:sha256:e1a599911601a74152c35d12d44dc2e4d7b24be4a46913a1f263c6b49ab7cfe3"
+          "version": "repo-file-v1:sha256:c4e025d212a8b22d61ca1e0ed890bd54e930fc2759f309339db598af81151ef0"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_theme.rs",
-          "version": "repo-file-v1:sha256:a41e44695d8938fce28217943d3b93b3bd4100a5d9dfb96027ed95a86f67e121"
+          "version": "repo-file-v1:sha256:51f07ff531ad3ca2aaceb218b8b0764e813b09817d5c56af8cebc8fb03958ba9"
         }
       ]
     },
@@ -602,13 +618,13 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:a066011ce1730979c27bf807047998c995c261d520199469c5dec5290741c438"
+          "version": "repo-file-v1:sha256:69fb781ce8d421a7d79466e22407a96fb3971a63e296c049025270909fdadde4"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-04T13:19:34.006Z"
+    "at": "2026-11-04T14:24:22.739Z"
   }
 }
