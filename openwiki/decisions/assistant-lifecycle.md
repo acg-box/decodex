@@ -59,10 +59,10 @@ sources:
     resource: repo://database/src/assistant.rs
   - id: openwiki-source-28af4781ad8d9558410630da
     resource: repo://database/src/works.rs
-generated: { by: "codex", at: "2026-11-04T12:18:48.454Z" }
+generated: { by: "codex", at: "2026-11-04T09:42:14.115Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-04T12:18:48.454Z
+    at: 2026-11-04T09:42:14.115Z
 ---
 
 
@@ -171,11 +171,11 @@ Retired-context rows are read-only. Native source IDs remain exact for detail, m
 
 Choose Install for RAGFlow in Settings > Components. Decodex prepares the official nightly service and compatible Infinity 0.7.4. Docker must be running. A private per-user Compose project owns RAGFlow, Infinity, MySQL, MinIO, Kvrocks, NATS and their data volumes; only the RAGFlow API is published, on loopback. ARM64 uses the official Infinity binary and analyzer resources with the required Ubuntu 24.04 runtime. The component installs no model runtime or model weights.
 
-Component operations check that the Docker-compatible engine is running and Docker Compose is available before changing the installation. If either prerequisite is unavailable, the App shows the shared inline notice. It does not install or launch the container runtime or provide installation guidance. Installation creates the private service account. Successful installation with no saved model settings opens the existing model editor automatically. Configure models reopens its OpenAI-compatible Base URL, optional API key, extraction model name and embedding model name fields. All endpoints use this same configuration path. Save asks RAGFlow to verify the exact models, then saves its provider instance and defaults. Setup creates a dedicated Memory under a stable name, or recovers that name after a missing creation reply. It derives the user namespace and publishes the connection through the existing Assistant Configure command. It initializes the idle Assistant if needed. No user chat content is sent during setup. There is no separate Connect action or manual service-account configuration.
+Component operations check that the Docker-compatible engine is running and Docker Compose is available before changing the installation. If either prerequisite is unavailable, the App shows the shared inline notice. It does not install or launch the container runtime or provide installation guidance. Installation creates the private service account. Successful installation with no saved model settings opens the existing model editor automatically. Configure models reopens its OpenAI-compatible Base URL, optional API key, extraction model name and embedding model name fields. All endpoints use this same configuration path. Save models asks RAGFlow to verify the exact models, then saves its provider instance and defaults. Setup creates a dedicated Memory under a stable name, or recovers that name after a missing creation reply. It derives the user namespace and publishes the connection through the existing Assistant Configure command. It initializes the idle Assistant if needed. No user chat content is sent during setup. There is no separate Connect action or manual service-account configuration.
 
 Model keys remain private. The editor does not refill a saved API key; a blank field retains the old key only when the Base URL stays the same. A service that needs no key can use an empty value. Loopback URLs are translated to `host.docker.internal` when RAGFlow calls the host, while the UI retains the entered address. A Memory that contains messages keeps its embedding model and endpoint so its saved vector index remains valid. Failed verification keeps the previous saved configuration.
 
-RAGFlow shares the existing component lifecycle buttons, version metadata, disclosure, busy state and inline feedback. The version row uses actual server readback and identifies the nightly channel. Update retains model configuration, credentials, saved data and the chat-import choice. Uninstall stops only the owned project, clears its Assistant connection and retains volumes for reinstall. The private installation receipt preserves the project, account and model settings, so service setup can resume through Update. Model setup failures retry through Save.
+RAGFlow shares the existing component lifecycle buttons, version metadata, disclosure, busy state and inline feedback. The version row uses actual server readback and identifies the nightly channel. Update retains model configuration, credentials, saved data and the chat-import choice. Uninstall stops only the owned project, clears its Assistant connection and retains volumes for reinstall. The private installation receipt preserves the project, account and model settings, so service setup can resume through Update. Model setup failures retry through Save models.
 
 The component saves the generated API key in an origin-bound private component file. The service directory mode is 0700 and private files use mode 0600. Saved Assistant settings and model tools contain only a credential reference. The service reads that reference for Memory requests; typed configuration also retains legacy service-environment credential references. Redirects are disabled. Components does not ask for raw user, dataset or Memory IDs. Explicit dataset retrieval scopes remain available through the typed configuration command.
 

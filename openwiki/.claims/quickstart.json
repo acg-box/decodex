@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:d3ddb4c4dfdede78be3d4f5b8d13594d352dda86d288a0e50ce38eabc2bb7ced",
+  "pageVersion": "sha256:fe013b9c515b99f0544e9f86d10fa0b453978328d98bc871c20154f1afd6bdf7",
   "claims": [
     {
       "id": "claim_b34298a8647a4e0b8653926b7568c5d4",
@@ -157,8 +157,8 @@
           "version": "repo-file-v1:sha256:fd9c7dc64620953c2b968994a79ac8159ece13ae50cd0f9ab1f99fdbdfd9288c"
         },
         {
-          "resource": "repo://automations/upstream/retained-contracts.json#L4407-L5312",
-          "version": "repo-lines-v1:sha256:ae183f90e4905423f27d6911194932271be5b86b6e196c6eaf7ea718f5646524:eyJzZWxlY3RlZExpbmVDb3VudCI6OTA2LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI4N2I1MzQ0Njg0YjAyNjhmZmI3NGQxODNkNDc4NTkyMjZkYWJmMDE0ZDllZjY3OGFmNDFiODhmMGNkZjk2YmY2IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0MTJjYTM0NWNjZjc1YmY5YzA4MDZiY2U2OTViZThkZTgwOGI3OTk4NDI1MWE3YTU0ZDIwMmNmNjEwMWRkNDUxIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJmMWFkN2VhMmE3ODgyZWExOTU4NTc1NmMwOWQ0ZDc2ZDA4YWU1NDdhYTg1N2VmMzZhMzYzNmFiZDE0ZTMwNWU4IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
+          "resource": "repo://automations/upstream/retained-contracts.json#L4407-L5318",
+          "version": "repo-lines-v1:sha256:d2a50b4785195b4872a260ffc44edeec5d2bd90fcbe1b626ef237ccf04484520:eyJzZWxlY3RlZExpbmVDb3VudCI6OTEyLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI4N2I1MzQ0Njg0YjAyNjhmZmI3NGQxODNkNDc4NTkyMjZkYWJmMDE0ZDllZjY3OGFmNDFiODhmMGNkZjk2YmY2IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0MTJjYTM0NWNjZjc1YmY5YzA4MDZiY2U2OTViZThkZTgwOGI3OTk4NDI1MWE3YTU0ZDIwMmNmNjEwMWRkNDUxIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJmMWFkN2VhMmE3ODgyZWExOTU4NTc1NmMwOWQ0ZDc2ZDA4YWU1NDdhYTg1N2VmMzZhMzYzNmFiZDE0ZTMwNWU4IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_fork_tests.rs",
@@ -180,7 +180,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:f131d60c8a48683c131d05c6a8962b6946b7662541319767fb4208c1b9fbf13c"
+          "version": "repo-file-v1:sha256:f892acca477da7550bf8de58c7a04ec12a849d85a473147f52c40236811b033d"
         }
       ]
     },
@@ -198,7 +198,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_surface.rs",
-          "version": "repo-file-v1:sha256:b5a7ae515d6f236dbed8f236323d672d5869808f6a6d31affdb264c80d455efc"
+          "version": "repo-file-v1:sha256:28c77b959899a1c581ee5b854b11e54b35e0f67520c61f5405fbbd24c3b0b33a"
         }
       ]
     },
@@ -229,7 +229,7 @@
           "version": "repo-file-v1:sha256:395cf2707a1c1573b8205f7a20ab299a8d25b1251701925a5668d473fe322f24"
         },
         {
-          "resource": "repo://automations/upstream/retained-contracts.json#L4994-L5057",
+          "resource": "repo://automations/upstream/retained-contracts.json#L5000-L5063",
           "version": "repo-lines-v1:sha256:f9c137f55109f2dde38887d907200b2e3b9bc133f683e3751fdc9f7bdb7343f8:eyJzZWxlY3RlZExpbmVDb3VudCI6NjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEzZDU0ZTI4NjZmZTcyNWM3YjczZWFiNGNhOWZiM2I5M2RjMDFjMmJjOGY3N2Y2ODAwMDVhYWY5MDBjMjhmZjEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQyMGEzNzM1MWUwNzM1MDI1NDQwYjViN2M3MWNkOGRkNzgyYzA5YTVlMjQyYzYyYmI2YjU2YThmZTNmYjllOTIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImFkZDJjMTljZTlmYmM2OWYwN2YzOTlkM2M5ZTE4YjhhMDcwNWZkYTlmMjNjYzkwMDE2ZGY3YmUzMzRkNmEwMTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhlNjk4Y2UzZTJmYzE1ODJhNzdhZmRlN2YxZDlhMjQzNDAxYjE0NmM1YjFhYTMwNzY3OTZjZTU3MTQ4YTI5M2EifQ"
         }
       ]
@@ -342,11 +342,11 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
-          "version": "repo-file-v1:sha256:01db4c55a40e3bf5a2c0dbf06fd52c0219149474c2dff835e91579c1d2335ccf"
+          "version": "repo-file-v1:sha256:2d3b3b8873ece30ae1ed21c6db852df68fe8af0da00fcea059034229a9044e77"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:f131d60c8a48683c131d05c6a8962b6946b7662541319767fb4208c1b9fbf13c"
+          "version": "repo-file-v1:sha256:f892acca477da7550bf8de58c7a04ec12a849d85a473147f52c40236811b033d"
         },
         {
           "resource": "repo://crates/decodex-components/src/ragflow_service.rs",
@@ -365,6 +365,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-04T12:18:48.454Z"
+    "at": "2026-11-04T10:24:44.262Z"
   }
 }

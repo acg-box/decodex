@@ -88,8 +88,6 @@ sources:
     resource: repo://apps/decodex-gpui/src/session_settings.rs
   - id: openwiki-source-0813b2e35e2133631c0aa4db
     resource: repo://apps/decodex-gpui/src/settings_components.rs
-  - id: openwiki-source-a16804a567889414868e5d67
-    resource: repo://apps/decodex-gpui/src/settings_surface.rs
   - id: openwiki-source-2986b39185cca5c00a29ad1d
     resource: repo://apps/decodex-gpui/src/shell_status.rs
   - id: openwiki-source-1291f5243fa6c9cb52149bda
@@ -114,17 +112,15 @@ sources:
     resource: repo://database/src/works/commands.rs
   - id: openwiki-source-8fe6f1557e5d45d88b34bd0a
     resource: repo://scripts/macos/generate_workspace_symbols.swift
-generated: { by: "codex", at: "2026-11-04T12:18:48.454Z" }
+generated: { by: "codex", at: "2026-11-04T09:42:14.115Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-04T12:18:48.454Z
+    at: 2026-11-04T09:42:14.115Z
 ---
 
 # Desktop workspace and native glass
 
 ## Information hierarchy
-
-Settings uses a narrow reading column for General, Components and Updates. Agents and Appearance retain a wider comparison column. Shared rows use compact spacing. General groups automatic recaps and sleep prevention under Background.
 
 The Agent conversation is the primary workspace. The left sidebar selects the overview and projects. The right Collaboration panel keeps recorded exchanges and pending response requests visible across chats. The bottom Dock presents Agent relationships through its graph or list.
 
@@ -230,7 +226,7 @@ Reserve `arrow.triangle.branch` for Fork. Account routing uses `point.topleft.do
 
 The [Assistant lifecycle](../decisions/assistant-lifecycle.md) keeps a stable personal Agent and renews its native context behind the same conversation. Assistant is built in and always available from the sidebar. First use records an idle Agent and its role atomically without a generated user message. It has no Enable control or optional component row. Work retains its role selector, saved teams and shared pending-context feedback. Continuing instructions, teams and duties are managed in chat. The editor and reading state survive a confirmed context transition; older messages retain their native sources. Side chats remain separate native branches.
 
-RAGFlow is an optional component with Install, Update, Uninstall and actual installed version readback. It shares component lifecycle buttons, metadata, busy state and inline feedback with EGM and Pro Research. Component operations check the running Docker-compatible engine and Docker Compose before installation effects. Missing or unavailable prerequisites use the shared inline notice. The App does not install or launch a container runtime or provide an installation guide. Install prepares RAGFlow nightly, Infinity and the private service account. If no model settings are saved, successful installation opens the existing four-field editor automatically: Base URL, API key (optional), Extraction model and Embedding model. Configure models reopens this editor. Save verifies the configured OpenAI-compatible API and initializes dedicated Memory. The API key is masked while entered and is not copied into a later edit; an empty field keeps a saved key only at the same Base URL. Service connection and credentials remain automatic, with no Connect action. Chat import starts off and requires a separate explicit action.
+RAGFlow is an optional component with Install, Update, Uninstall and actual installed version readback. It shares component lifecycle buttons, metadata, busy state and inline feedback with EGM and Pro Research. Component operations check the running Docker-compatible engine and Docker Compose before installation effects. Missing or unavailable prerequisites use the shared inline notice. The App does not install or launch a container runtime or provide an installation guide. Install prepares RAGFlow nightly, Infinity and the private service account. If no model settings are saved, successful installation opens the existing four-field editor automatically: Base URL, API key, Extraction model and Embedding model. Configure models reopens this editor. Save models verifies the configured OpenAI-compatible API and initializes dedicated Memory. The API key is masked while entered and is not copied into a later edit; an empty field keeps a saved key only at the same Base URL. Service connection and credentials remain automatic, with no Connect action. Chat import starts off and requires a separate explicit action.
 
 Use GPUI tests in `shell.rs`, `agent_workspace.rs`, `agent_activity.rs`, `agent_markdown.rs`, `agent_archive.rs` and `settings_surface.rs`. Real macOS acceptance must also check focus, typing, scrolling, panel transitions, and transparency in the signed app. A white or missing automation screenshot alone is not evidence that the user sees a blank window.
 
@@ -243,7 +239,5 @@ See [Conversation presentation and motion](conversation-presentation.md), [Agent
 ## Retained presentation and drafts
 
 The composer preserves current editable input. Submitted messages retain their own delivery state and exact retry payload; there is no recovered-copy manager. Rich Markdown retains math, Mermaid, weather and source-copy presentation without replacing native execution. The embedded MCP HTML viewer is retired. Ordinary tools and native form prompts remain available. See [conversations](../workflows/conversations-and-recovery.md), [tools](../integrations/tools-plugins-and-apps.md) and [acceptance boundaries](../testing/upstream-acceptance-boundaries.md).
-
-The model editor uses shared rows that align each label with its control. Cancel and Save align to the right. API guidance and the Codex memory reminder remain beside the form. Saved-key help appears when saved model settings exist. The redundant setup notice is hidden during editing. Cancel discards unsaved values and clears the editor error.
 
 RAGFlow setup uses the current local service profile and selected Assistant. Profile, runtime or role changes clear its temporary presentation state while preserving the ordinary chat draft. The component's generated credentials and raw scope IDs are not UI fields. Setup progress and failures use shared inline feedback beside the component. See [Runtime architecture](runtime-architecture.md) for process, storage and native-memory ownership.

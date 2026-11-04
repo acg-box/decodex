@@ -16,8 +16,6 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_conversation_tabs.rs
   - id: openwiki-source-77ad5024b567271a0f618fd7
     resource: repo://apps/decodex-gpui/src/agent_list_branch.rs
-  - id: openwiki-source-89a6e0bcef9377afc01425eb
-    resource: repo://apps/decodex-gpui/src/agent_list_status_tests.rs
   - id: openwiki-source-02f8a02cdfa0616877cdad62
     resource: repo://apps/decodex-gpui/src/agent_list_status.rs
   - id: openwiki-source-9c68c30b2ff24ddf9a764d74
@@ -60,12 +58,8 @@ sources:
     resource: repo://automations/portfolio.toml
   - id: openwiki-source-7dcbb082d2502f1ec4386c39
     resource: repo://automations/upstream/prompts/maintainer.md
-  - id: openwiki-source-f580b10e16f1d25ebfea3bf8
-    resource: repo://automations/upstream/qualification.json
   - id: openwiki-source-3127fd4c7b2aefcc9cea7961
     resource: repo://automations/upstream/retained-contracts.json
-  - id: openwiki-source-7eedab1ccdf82ac9ccd3ab32
-    resource: repo://automations/upstream/retained-evidence.json
   - id: openwiki-source-02bd3cfc9d4db9d1d1d8fd59
     resource: repo://crates/decodex-codex/src/app_server_client/context_preferences_tests.rs
   - id: openwiki-source-2b08587e9b26e203156110c8
@@ -90,6 +84,8 @@ sources:
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_fork_tests.rs
   - id: openwiki-source-a0063c7b07a1bc990ee9af6c
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process.rs
+  - id: openwiki-source-f5d073da07bcb17ee416f3b5
+    resource: repo://crates/decodex-runtime/src/account_launch/process_native_control_tests.rs
   - id: openwiki-source-b2869e6da778a74cb6afc667
     resource: repo://crates/decodex-runtime/src/account_launch/process.rs
   - id: openwiki-source-f4724776aade804ebf838e2e
@@ -140,10 +136,10 @@ sources:
     resource: repo://database/src/agent_titles.rs
   - id: openwiki-source-6197a876b2effbe992b1e2ec
     resource: repo://database/src/agent.rs
-generated: { by: "codex", at: "2026-11-04T12:25:31.951Z" }
+generated: { by: "codex", at: "2026-11-04T10:24:44.262Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-04T12:25:31.951Z
+    at: 2026-11-04T10:24:44.262Z
 ---
 
 # Product scope and native ownership
@@ -221,7 +217,7 @@ Diagnostic-log upload (**original item 24**) is excluded at the user's request t
 
 ## Next-message suggestions and current choices
 
-The user selected **original item 26** with automatic generation, controlled by **Settings > Agents > Decodex**: a newly completed answer in the selected independent root conversation requests one suggestion when its composer is empty. Opening saved history, repeated refreshes and an existing draft do not trigger inference. The composer menu retains **Suggest next message…** for an explicit request. Press **Tab** in the focused empty message field to place the current suggestion in the composer as one undoable edit. Other fields, Shift-Tab and nonempty drafts keep normal focus navigation. Later edits are preserved, and acceptance does not send a message. The switch defaults on. Disabling prevents new automatic requests, and re-enabling does not replay answers completed while disabled. The feature uses the existing native sampler and conversation refresh; it adds no separate poller. See [the suggestion workflow](../workflows/conversations-and-recovery.md#next-message-suggestions) and `retained_prompt_suggestions` in the [retained contracts](../../automations/upstream/retained-contracts.json).
+The user selected **original item 26** with automatic generation, controlled by **Settings > Agents > Conversation assistance**: a newly completed answer in the selected independent root conversation requests one suggestion when its composer is empty. Opening saved history, repeated refreshes and an existing draft do not trigger inference. The composer menu retains **Suggest next message…** for an explicit request. Press **Tab** in the focused empty message field to place the current suggestion in the composer as one undoable edit. Other fields, Shift-Tab and nonempty drafts keep normal focus navigation. Later edits are preserved, and acceptance does not send a message. The switch defaults on. Disabling prevents new automatic requests, and re-enabling does not replay answers completed while disabled. The feature uses the existing native sampler and conversation refresh; it adds no separate poller. See [the suggestion workflow](../workflows/conversations-and-recovery.md#next-message-suggestions) and `retained_prompt_suggestions` in the [retained contracts](../../automations/upstream/retained-contracts.json).
 
 **Original items 19 and 69**, authenticated remote execution, remain deferred in [issue 1693](https://github.com/acg-box/decodex/issues/1693). **Item 21** retains Decodex account management: independent account observations and reset-credit requests use the existing account API client. This decision does not make those operations inherit native `application.network` policy.
 
@@ -260,7 +256,7 @@ The manual proposal records have current dispositions. Deferred research does no
 
 **Item 59 is delivered** in [PR 2559](https://github.com/acg-box/decodex/pull/2559). A locally managed conversation row offers **Fork**. The action opens that exact source, reads its latest completed native turn and reuses the existing explicit after-turn confirmation. Source and unrelated drafts survive navigation and cancellation. Creation sends no input. Native inventory rows without a local managed source gain no adoption path. The focused client checks do not establish installed-app or live-provider acceptance.
 
-**Item 74 is implemented** as independent status filters in the existing conversation browser and Project-grouped Work list. Each view saves its selection through the existing host-local presentation preference owner and offers **All statuses** to clear it. The filter reuses displayed status facts and combines with Project and search filters. Exact row opening, source drafts and Work details retain their existing owners. It adds no model grouping, command center, execution policy or native runtime change. Five focused GPUI tests and affected static checks passed; physical app restart, installed UI and live-provider acceptance remain separate. The [portable evidence](../../automations/upstream/retained-evidence.json) records the source and limits, and native maintenance state owns merge reconciliation.
+**Item 74 is implemented** as independent status filters in the existing conversation browser and Project-grouped Work list. Each view saves its selection through the existing host-local presentation preference owner and offers **All statuses** to clear it. The filter reuses displayed status facts and combines with Project and search filters. Exact row opening, source drafts and Work details retain their existing owners. It adds no model grouping, command center, execution policy or native runtime change. The [retained contract](../../automations/upstream/retained-contracts.json) records the source and original qualification limits. Physical app restart, installed UI and live-provider acceptance remain separate, and native maintenance state owns merge reconciliation.
 
 The following native options remain deferred research:
 
@@ -320,7 +316,7 @@ The client also exposes a bounded, explicitly invoked ephemeral prediction fork.
 
 Native launch policy requests full-fork prefix preservation, model-specific subagent context defaults and Agent message wakeups. The retained description-first argument is accepted as a removed native feature, so current tool ordering stays native-owned. The native configuration still selects Code Mode hosting transport.
 
-Background compaction and retention of delegation instructions are configurable native additions. Settings > Agents > Native defaults and Agent preferences > Context defaults read and write the same native configuration used by manual `config.toml` edits. Explicit off values remain valid; saving a default does not restart loaded conversations. The panel distinguishes a saved user value from a project override.
+Background compaction and retention of delegation instructions are configurable native additions. Settings > Agents > Native defaults and Agent preferences > Context defaults read and write the same native configuration used by manual `config.toml` edits. An omitted value follows the native feature default; explicit effective project configuration takes priority. Explicit off values remain valid, and saving a default does not restart loaded conversations. The panel distinguishes saved user and effective project values. This preserves the existing controls when native defaults change.
 
 The compatibility path requests retention only for `work_instruction` outputs. This covers initial delegation and explicit follow-up instructions while keeping application tool authority. Wakes, capacity retries and arbitrary external results remain unselected. Codex owns the retention decision and budget.
 

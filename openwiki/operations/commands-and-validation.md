@@ -120,10 +120,10 @@ sources:
     resource: repo://scripts/macos/test_native_app.sh
   - id: openwiki-source-e201f60894c32a914dac99ee
     resource: repo://scripts/vnext/run_native_regression.py
-generated: { by: "codex", at: "2026-11-04T12:18:48.454Z" }
+generated: { by: "codex", at: "2026-11-04T10:24:44.262Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-04T12:18:48.454Z
+    at: 2026-11-04T10:24:44.262Z
 ---
 
 
@@ -170,7 +170,7 @@ Select an existing Agent with `decodex agent assistant-role --agent-id ID`. Use 
 
 Assistant is built in and available from the sidebar by default. Its first use initializes an idle Agent; it has no Enable control in Components. Continuing instructions, teams and duties stay in chat. See [the lifecycle](../decisions/assistant-lifecycle.md) for supported operations and ownership.
 
-With Docker running, choose Install for RAGFlow in Settings > Components. The component prepares the nightly service, compatible Infinity and its private account, then reads the actual installed version. Configure models accepts one OpenAI-compatible Base URL, optional API key and exact extraction and embedding model names. Save verifies the models and initializes dedicated Memory automatically. It derives the scopes and internal service credential without a Connect step or service-account form. No model runtime or model weights are installed. Update reuses the model settings, data volumes and import choice. Uninstall stops the owned project, clears its Assistant connection and retains data for reinstall. RAGFlow owns migrations in its service database; the Decodex SQLite schema does not change. Chat import starts off and requires a separate explicit action.
+With Docker running, choose Install for RAGFlow in Settings > Components. The component prepares the nightly service, compatible Infinity and its private account, then reads the actual installed version. Configure models accepts one OpenAI-compatible Base URL, optional API key and exact extraction and embedding model names. Save models verifies the models and initializes dedicated Memory automatically. It derives the scopes and internal service credential without a Connect step or service-account form. No model runtime or model weights are installed. Update reuses the model settings, data volumes and import choice. Uninstall stops the owned project, clears its Assistant connection and retains data for reinstall. RAGFlow owns migrations in its service database; the Decodex SQLite schema does not change. Chat import starts off and requires a separate explicit action.
 
 Use isolated test processes for the backend fixture suite:
 
@@ -425,9 +425,9 @@ DECODEX_TEST_NATIVE_FORK=1 python3 scripts/vnext/run_native_regression.py \
   --filter 'test(installed_recap_public_socket_preserves_parent_and_exact_request_identity)'
 ```
 
-The `retained_attached_forks` record in the [stable contract catalog](../../automations/upstream/retained-contracts.json) lists the other four exact-artifact native tests and all reproducible commands. The final cohort passed five native tests, 57 focused backend tests and six focused UI tests with zero unmatched selectors. The complete workspace run passed 3006 tests with 1227 skipped and one passed-test LEAK; the affected composer test then passed in the clean focused cohort. These overlapping selections do not establish the cleanup cause.
+The `retained_attached_forks` record in the [stable contract catalog](../../automations/upstream/retained-contracts.json) preserves the original exact-artifact tests, reproducible commands and qualification limits. It separates native, backend, UI, workspace, lint, format, Python, database and style results. Those selections overlap. A passed-test LEAK and its clean focused repeat do not establish the cleanup cause. The retired startup-configuration diagnostic in that historical record is outside the current regression scope.
 
-Strict Clippy for five affected packages, nightly formatting, 28 Python checks, the schema59 database gate and the full 1076-file style audit passed. This style result is separate from the earlier read-only-view audit failure. The native provider is synthetic. These checks did not install or launch the desktop app, qualify real-provider behavior, migrate the runtime baseline, advance upstream review or change the schedule.
+The native provider is synthetic. The original checks did not install or launch the desktop app, qualify real-provider behavior, migrate the runtime baseline, advance upstream review or change the schedule. Use [current qualification](../../automations/upstream/qualification.json) for the selected artifact and the affected tests that actually ran.
 
 ## Rehearse provider recovery
 
@@ -524,4 +524,4 @@ A `LEAK` marker can accompany a passed test when its captured output remains ope
 
 For documentation consolidation, validate page Claims, retained subject coverage, relative links and source paths. Do not rebuild the desktop or launch provider fixtures solely for a Markdown move. Keep historical test counts attached to their original revision. System-temporary fixtures must be cleaned after use; HOME is not a test-output directory.
 
-The disabled-input and direct-Fork follow-up passed 18 focused GPUI checks, strict GPUI Clippy and nightly formatting. The checks cover 280- and 420-point wrapping, contained actions, direct provider-fork submission after source preparation, durable intent, retained recovery, parent-managed drafts, archive, failed startup and queued reconnect behavior. Input-bar Fork has no second confirmation or Cancel control. The earlier overflow reproduction remains historical evidence in PR 2583. Exact selectors, source hashes and limits are in `provider_recovery.layout_repair` in the [retained evidence index](../../automations/upstream/retained-evidence.json). These checks do not qualify a new native artifact.
+The disabled-input and direct-Fork regressions cover wrapping, contained actions, direct provider-fork submission after source preparation, durable intent, retained recovery, parent-managed drafts, archive, failed startup and queued reconnect behavior. Input-bar Fork has no second confirmation or Cancel control. The `historical_evidence` link in the [current router](../../automations/upstream/retained-evidence.json) preserves the original `provider_recovery.layout_repair` selectors, source hashes, results and limits. The earlier overflow reproduction remains historical evidence in PR 2583. Those local checks do not qualify a new native artifact.
