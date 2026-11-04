@@ -118,10 +118,10 @@ sources:
     resource: repo://database/src/works/commands.rs
   - id: openwiki-source-8fe6f1557e5d45d88b34bd0a
     resource: repo://scripts/macos/generate_workspace_symbols.swift
-generated: { by: "codex", at: "2026-11-04T13:03:28.956Z" }
+generated: { by: "codex", at: "2026-11-04T13:19:34.006Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-04T13:03:28.956Z
+    at: 2026-11-04T13:19:34.006Z
 ---
 
 # Desktop workspace and native glass
@@ -132,7 +132,7 @@ Settings uses a narrow reading column for General, Components and Updates. Agent
 
 Settings groups share a quiet panel with a fine border and dividers between rows. Components use one divided list. Account controls, account rows, quota settings and diagnostic summaries use the same panel helper. Component details have their own divider. Feedback stays inside the group that owns the operation.
 
-Codex setup failures show a short state and explain that conversations are unavailable. Expand Codex to read the original error. Retry setup uses the existing preparation owner.
+Codex setup failures show a short state and direct the user to the setup details. Expand Codex to read the original error. Retry setup uses the existing preparation owner.
 
 The Agent conversation is the primary workspace. The left sidebar selects the overview and projects. The right Collaboration panel keeps recorded exchanges and pending response requests visible across chats. The bottom Dock presents Agent relationships through its graph or list.
 

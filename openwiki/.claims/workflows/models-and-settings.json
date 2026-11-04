@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:5cd1301e46529413451e72e1885b1854c439e6f1a714c7df6aeb35926b32a57c",
+  "pageVersion": "sha256:e3a8d6aacf13dd881d22f8281cbce966864ee8ef81569336d8635b6be857ec18",
   "claims": [
     {
       "id": "claim_f0c37462522f4442acd94d53819ef75c",
@@ -322,7 +322,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:ff221859dfdd15d43e878da6e427cc20142f9fae9d024151ec92ab07078a70c2"
+          "version": "repo-file-v1:sha256:a066011ce1730979c27bf807047998c995c261d520199469c5dec5290741c438"
         },
         {
           "resource": "repo://crates/decodex-components/src/ragflow.rs",
@@ -356,7 +356,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:ff221859dfdd15d43e878da6e427cc20142f9fae9d024151ec92ab07078a70c2"
+          "version": "repo-file-v1:sha256:a066011ce1730979c27bf807047998c995c261d520199469c5dec5290741c438"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_theme.rs",
@@ -366,11 +366,11 @@
     },
     {
       "id": "claim_1d1d68cccf054493b22ff3f7574f9e70",
-      "statement": "Settings groups related controls in bordered panels with row and detail dividers and scoped feedback. A collapsed Codex setup failure states its effect on conversations; expanding Codex shows the full original error, while Retry setup uses the existing preparation action.",
+      "statement": "Settings groups related controls in bordered panels with row and detail dividers and scoped feedback. A collapsed Codex setup failure directs the user to its setup error; expanding Codex shows the full original error, while Retry setup uses the existing preparation action.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:ff221859dfdd15d43e878da6e427cc20142f9fae9d024151ec92ab07078a70c2"
+          "version": "repo-file-v1:sha256:a066011ce1730979c27bf807047998c995c261d520199469c5dec5290741c438"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_surface.rs",
@@ -385,6 +385,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-04T13:15:04.144Z"
+    "at": "2026-11-04T13:19:34.006Z"
   }
 }

@@ -241,7 +241,7 @@ impl SettingsSurface {
 				let detail = if self.components.details[0] {
 					error.as_str()
 				} else {
-					"Conversations are unavailable. Expand Codex for setup details."
+					"Expand Codex to review the setup error."
 				};
 				component = component.children(ui_feedback::inline_feedback(
 					"components-component-error",

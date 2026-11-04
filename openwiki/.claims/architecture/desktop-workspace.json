@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:fe44efd88b1063666d7771a9a4228192eed5b5a1a13c3cf83eb9f42520369f71",
+  "pageVersion": "sha256:c047b84c9eb330a26b3ae405f1699629e4f92305852e5cb944facc8c5a8c1ff4",
   "claims": [
     {
       "id": "claim_41c9eba720934771bd6b671a7aeb8b6e",
@@ -498,7 +498,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:ff221859dfdd15d43e878da6e427cc20142f9fae9d024151ec92ab07078a70c2"
+          "version": "repo-file-v1:sha256:a066011ce1730979c27bf807047998c995c261d520199469c5dec5290741c438"
         },
         {
           "resource": "repo://crates/decodex-components/src/ragflow_service.rs",
@@ -520,7 +520,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:ff221859dfdd15d43e878da6e427cc20142f9fae9d024151ec92ab07078a70c2"
+          "version": "repo-file-v1:sha256:a066011ce1730979c27bf807047998c995c261d520199469c5dec5290741c438"
         }
       ]
     },
@@ -558,7 +558,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:ff221859dfdd15d43e878da6e427cc20142f9fae9d024151ec92ab07078a70c2"
+          "version": "repo-file-v1:sha256:a066011ce1730979c27bf807047998c995c261d520199469c5dec5290741c438"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_theme.rs",
@@ -572,7 +572,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:ff221859dfdd15d43e878da6e427cc20142f9fae9d024151ec92ab07078a70c2"
+          "version": "repo-file-v1:sha256:a066011ce1730979c27bf807047998c995c261d520199469c5dec5290741c438"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_surface.rs",
@@ -594,7 +594,7 @@
     },
     {
       "id": "claim_b54f43884cd2465296bcd295ba2b8077",
-      "statement": "A collapsed Codex setup failure shows a concise state and its effect on conversations. Expanding Codex shows the original complete error; Retry setup retains the existing runtime preparation owner.",
+      "statement": "A collapsed Codex setup failure shows a concise state and directs the user to its setup error. Expanding Codex shows the original complete error; Retry setup retains the existing runtime preparation owner.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/component_runtime.rs",
@@ -602,13 +602,13 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:ff221859dfdd15d43e878da6e427cc20142f9fae9d024151ec92ab07078a70c2"
+          "version": "repo-file-v1:sha256:a066011ce1730979c27bf807047998c995c261d520199469c5dec5290741c438"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-04T13:03:28.956Z"
+    "at": "2026-11-04T13:19:34.006Z"
   }
 }

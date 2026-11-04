@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:e592a1d9ff87e3fdf42aa3c592a9f5b7e5611d59ca1112f681e309df7af1b664",
+  "pageVersion": "sha256:15e4082fb30ff9279c23cccfa719462a94d562af5b2d0f60fada71f90cdc1649",
   "claims": [
     {
       "id": "claim_2dd4ad01dd984b80a22d9cb9c9bfd397",
@@ -1194,7 +1194,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:ff221859dfdd15d43e878da6e427cc20142f9fae9d024151ec92ab07078a70c2"
+          "version": "repo-file-v1:sha256:a066011ce1730979c27bf807047998c995c261d520199469c5dec5290741c438"
         },
         {
           "resource": "repo://crates/decodex-components/src/ragflow.rs",
@@ -1235,6 +1235,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-04T13:03:28.956Z"
+    "at": "2026-11-04T13:19:34.006Z"
   }
 }

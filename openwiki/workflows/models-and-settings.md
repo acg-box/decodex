@@ -104,10 +104,10 @@ sources:
     resource: repo://crates/decodex-runtime/tests/native_qualification/thread_settings.py
   - id: openwiki-source-8c78df4b382026886ac50894
     resource: repo://database/src/usage_evidence.rs
-generated: { by: "codex", at: "2026-11-04T13:15:04.144Z" }
+generated: { by: "codex", at: "2026-11-04T13:19:34.006Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-04T13:15:04.144Z
+    at: 2026-11-04T13:19:34.006Z
 ---
 
 # Model selection and settings ownership
@@ -131,7 +131,7 @@ Codex owns the effective model catalog, task configuration, provider admission a
 
 ## Find the retained switches
 
-Settings groups related controls in bordered panels. Dividers separate rows and expanded component details. Error messages stay with the affected operation. If Codex setup fails, a short message states the effect on conversations. Expand Codex to inspect the original error, then use **Retry setup** after you resolve the cause.
+Settings groups related controls in bordered panels. Dividers separate rows and expanded component details. Error messages stay with the affected operation. If Codex setup fails, a short message directs you to the setup details. Expand Codex to inspect the original error, then use **Retry setup** after you resolve the cause.
 
 | Control | Location |
 | --- | --- |
