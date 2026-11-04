@@ -104,10 +104,10 @@ sources:
     resource: repo://crates/decodex-runtime/tests/native_qualification/thread_settings.py
   - id: openwiki-source-8c78df4b382026886ac50894
     resource: repo://database/src/usage_evidence.rs
-generated: { by: "codex", at: "2026-11-04T13:03:28.956Z" }
+generated: { by: "codex", at: "2026-11-04T13:15:04.144Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-04T13:03:28.956Z
+    at: 2026-11-04T13:15:04.144Z
 ---
 
 # Model selection and settings ownership
@@ -136,7 +136,7 @@ Settings groups related controls in bordered panels. Dividers separate rows and 
 | Control | Location |
 | --- | --- |
 | Background compaction | Settings > Agents > Codex Native |
-| Keep delegation instructions after compaction | Settings > Agents > Codex Native |
+| Retain marked tool outputs | Settings > Agents > Codex Native |
 | Cached MCP catalog, one switch per configured server | Settings > Agents > Codex Native |
 | Automatic next-message suggestions | Settings > Agents > Decodex |
 | Automatic task recaps | Settings > General > Background |
@@ -146,7 +146,7 @@ Settings groups related controls in bordered panels. Dividers separate rows and 
 
 Open Settings > Agents after selecting a connected Agent. The native section reads through that Agent's account and project. It uses the same controls and native configuration as Agent preferences > Context defaults. Saved user values and effective project values remain separate; project or managed policy can override a saved choice. Saving does not restart loaded conversations. Decodex keeps no second copy of these native preferences.
 
-For background compaction and delegation-instruction retention, an omitted effective value uses the matching native feature's `defaultEnabled` value. An explicit effective setting takes priority. The catalog's `enabled` value can reflect another working directory, so it is not the requested project's override. An absent saved user preference stays absent until an explicit edit.
+For background compaction and retention of marked tool outputs, an omitted effective value uses the matching native feature's `defaultEnabled` value. An explicit effective setting takes priority. The catalog's `enabled` value can reflect another working directory, so it is not the requested project's override. An absent saved user preference stays absent until an explicit edit.
 
 The cached-catalog switch writes only `startup_readiness` for an existing user-configured MCP server: on selects `catalog`, and off selects `connection`. Native Codex owns the cache and tool connection. A missing or invalid cache keeps normal discovery; a tool call still needs the live connection. Configure project-only and plugin servers in Codex.
 

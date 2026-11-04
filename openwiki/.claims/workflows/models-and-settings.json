@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:4ffdc60ddf71bfef9d94b35d47ac660116ac455b20b5038b32a18f07b4c29a15",
+  "pageVersion": "sha256:5cd1301e46529413451e72e1885b1854c439e6f1a714c7df6aeb35926b32a57c",
   "claims": [
     {
       "id": "claim_f0c37462522f4442acd94d53819ef75c",
@@ -224,7 +224,7 @@
     },
     {
       "id": "claim_2d5d27649dc84298a4608e6f33b6ec10",
-      "statement": "Existing account/source-bound context controls expose background compaction, delegation-instruction retention and each configured MCP server's cached catalog. Omitted context feature values use native defaultEnabled; explicit effective config wins. Saved user values remain separate from project overrides and catalog enablement in another cwd. Saving does not restart loaded conversations or create a second config store.",
+      "statement": "Existing account/source-bound context controls expose background compaction, retention of marked client tool outputs and each configured MCP server's cached catalog. Omitted context feature values use native defaultEnabled; explicit effective config wins. Saved user values remain separate from project overrides and catalog enablement in another cwd. Saving does not restart loaded conversations or create a second config store.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_context_settings.rs",
@@ -385,6 +385,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-04T13:03:28.956Z"
+    "at": "2026-11-04T13:15:04.144Z"
   }
 }
