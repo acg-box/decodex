@@ -41,7 +41,7 @@ sources:
 generated: { by: "codex", at: "2026-11-04T14:22:18.349Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-04T14:24:22.739Z
+    at: 2026-11-04T15:37:04.419Z
 ---
 
 # Native tools and connection ownership

@@ -110,10 +110,10 @@ sources:
     resource: repo://crates/decodex-runtime/tests/native_qualification/thread_settings.py
   - id: openwiki-source-8c78df4b382026886ac50894
     resource: repo://database/src/usage_evidence.rs
-generated: { by: "codex", at: "2026-11-04T14:17:02.441Z" }
+generated: { by: "codex", at: "2026-11-04T15:37:04.419Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-04T14:24:22.739Z
+    at: 2026-11-04T16:46:55.377Z
 ---
 
 # Model selection and settings ownership
@@ -137,14 +137,18 @@ Codex owns the effective model catalog, task configuration, provider admission a
 
 ## Find the retained switches
 
-All Settings categories use the same content width and bordered groups. Shared dividers separate rows and expanded details. Local notices, warnings and errors share one compact inset row with an icon, quiet tone fill and leading rule. Recovery buttons stay with the affected message. If Codex setup fails, a short message directs you to the setup details. Expand Codex to inspect the original error, then use **Retry setup** after you resolve the cause.
+All Settings categories use the same 620-point content column and normal App typography. Ordinary preferences use flat sections; account records and diagnostic summaries retain quiet cards. Shared dividers separate rows and expanded details. Local notices, warnings and errors share one compact inset row with an icon and quiet tone fill. Text, icons and recovery buttons align vertically at the center. Recovery buttons stay with the affected message. If Codex setup fails, a short message directs you to the setup details. Expand Codex to inspect the original error, then use **Retry setup** after you resolve the cause.
+
+In **Settings > Agents > New conversations**, **Permissions** shows the selected mode's meaning beside its control. Its menu displays all four explanations and the native Subagent inheritance rule directly. **Speed** uses the shared Standard, Fast and Ultrafast segmented control, with relative included usage and credits for the selected speed visible in its row. Codex uses this same speed default. These remain two compact setting rows with visible explanations.
+
+Arrow keys cycle through permission options. Escape closes the menu and returns focus to Permissions. Tab and Shift-Tab close the menu and continue navigation. Command-W closes Settings.
 
 | Control | Location |
 | --- | --- |
-| Background compaction | Settings > Agents > Codex Native |
-| Retain marked tool outputs | Settings > Agents > Codex Native |
-| Cached MCP catalog, one switch per configured server | Settings > Agents > Codex Native |
-| Automatic next-message suggestions | Settings > Agents > Decodex |
+| Background compaction | Settings > Agents > Context defaults |
+| Retain marked tool outputs | Settings > Agents > Context defaults |
+| Cached MCP catalog, one switch per configured server | Settings > Agents > Context defaults |
+| Next-message suggestions | Settings > Agents > Assistance |
 | Automatic task recaps | Settings > General > Background |
 | Permissions and speed for new Agents | Settings > Agents |
 | Model, reasoning, search, voice and Goal for the selected Agent | Composer and Agent preferences |

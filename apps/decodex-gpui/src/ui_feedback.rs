@@ -384,13 +384,10 @@ fn inline_status_row(
 ) -> Stateful<Div> {
 	state_row(id, tone, title, detail, icon, true)
 		.min_h(gpui::px(0.))
-		.items_start()
 		.px(gpui::px(8.))
 		.py(gpui::px(6.))
 		.rounded(gpui::px(4.))
 		.bg(ui_theme::rgb(tone.color()).opacity(0.05))
-		.border_l(gpui::px(2.))
-		.border_color(ui_theme::rgb(tone.color()).opacity(0.4))
 }
 
 /// A compact execution state, shared by live history, saved history and Graph.

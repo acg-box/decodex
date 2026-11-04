@@ -2384,6 +2384,7 @@ pub(crate) fn bind_keys(cx: &mut App) {
 		KeyBinding::new("cmd-w", CloseWindow, Some("SettingsWindow")),
 		KeyBinding::new("escape", CloseWindow, Some("SettingsWindow")),
 	]);
+	crate::session_settings::bind_keys(cx);
 	cx.bind_keys([
 		KeyBinding::new("cmd-shift-r", ReloadWorkspace, None),
 		KeyBinding::new("tab", FocusNext, None),
@@ -3625,7 +3626,7 @@ fn accounts_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 			ui_theme::settings_sections()
 				.max_w(gpui::px(SETTINGS_WIDTH))
 				.min_h_0()
-				.child(ui_theme::settings_panel(vec![header.into_any_element()]))
+				.child(header)
 				.child(
 					gpui::div()
 						.id("account-list")
@@ -3640,9 +3641,11 @@ fn accounts_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 						})
 						.children(rows),
 				)
-				.child(gpui::div().flex_none().child(ui_theme::settings_panel(vec![
-					shell.settings.update(cx, |settings, cx| settings.quota_control(cx)),
-				]))),
+				.child(
+					gpui::div().flex_none().child(
+						shell.settings.update(cx, |settings, cx| settings.quota_control(cx)),
+					),
+				),
 		)
 		.into_any_element()
 }
@@ -3992,7 +3995,7 @@ fn account_pool_row(
 	let AccountRowPresentation { index, .. } = presentation;
 	let summary = account_pool_summary(account, presentation.clone(), cx);
 
-	ui_theme::settings_panel(vec![summary])
+	ui_theme::settings_card(vec![summary])
 		.id(("account-row", index))
 		.px(gpui::px(14.0))
 		.py(gpui::px(6.0))
@@ -8243,6 +8246,37 @@ mod tests {
 			assert_ne!(s.settings_window.unwrap(), handle);
 			assert_eq!(s.selected, Destination::Agent);
 		});
+		shell.update(visual, |s, cx| {
+			s.settings.update(cx, |surface, cx| {
+				surface.category = super::SettingsCategory::Agents;
+				cx.notify();
+			});
+		});
+		let handle = shell.read_with(visual, |s, _| s.settings_window.unwrap());
+		let settings = &mut gpui::VisualTestContext::from_window(handle.into(), visual);
+		settings.update(crate::ui_frame::draw_current_frame);
+		let trigger = settings.debug_bounds("default-permissions").unwrap();
+		settings.simulate_click(trigger.center(), Default::default());
+		settings.update(crate::ui_frame::draw_frame);
+		assert!(settings.debug_bounds("permission-choice-0").is_some());
+		settings.simulate_keystrokes("down up up up up up down down down down");
+		settings.update(crate::ui_frame::draw_current_frame);
+		assert!(settings.debug_bounds("permission-choice-0").is_some());
+		settings.simulate_keystrokes("escape");
+		settings.update(crate::ui_frame::draw_current_frame);
+		assert!(settings.debug_bounds("permission-choice-0").is_none());
+		shell.read_with(visual, |s, _| assert_eq!(s.settings_window, Some(handle)));
+		for key in ["tab", "shift-tab"] {
+			settings.simulate_click(trigger.center(), Default::default());
+			settings.update(crate::ui_frame::draw_current_frame);
+			settings.simulate_keystrokes(key);
+			settings.update(crate::ui_frame::draw_current_frame);
+			assert!(settings.debug_bounds("permission-choice-0").is_none());
+		}
+		settings.simulate_click(trigger.center(), Default::default());
+		settings.update(crate::ui_frame::draw_current_frame);
+		settings.simulate_keystrokes("cmd-w");
+		shell.read_with(visual, |s, _| assert!(s.settings_window.is_none()));
 	}
 
 	#[gpui::test]

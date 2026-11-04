@@ -162,10 +162,10 @@ sources:
     resource: repo://scripts/macos/stage_decodex_app.sh
   - id: openwiki-source-76081c1a47ca8cf32593de34
     resource: repo://scripts/macos/test_decodex_app_stage.sh
-generated: { by: "codex", at: "2026-11-04T12:29:29.143Z" }
+generated: { by: "codex", at: "2026-11-04T15:37:04.419Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-04T14:24:22.739Z
+    at: 2026-11-04T15:37:04.419Z
 ---
 
 # Runtime Architecture
@@ -267,7 +267,7 @@ If immediate cleanup cannot finish, `ProcessGroupOwner` transfers the child, its
 
 ## Context defaults
 
-Settings > Agents > Native defaults and Agent preferences > Context defaults expose the same two context features and per-server MCP startup choices. The panel reads the saved user value and the effective project default through the current account-bound app-server. It writes one boolean with the native file path and version from that observation, then reads the result again. It does not store a second preference in SQLite or add a launch argument that forces either setting on.
+Settings > Agents > Context defaults and Agent preferences > Context defaults expose the same two context features and per-server MCP startup choices. The panel reads the saved user value and the effective project default through the current account-bound app-server. It writes one boolean with the native file path and version from that observation, then reads the result again. It does not store a second preference in SQLite or add a launch argument that forces either setting on.
 
 The same values can be edited in native `config.toml`:
 

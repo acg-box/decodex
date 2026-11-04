@@ -193,7 +193,7 @@ fn summary_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 		.max_w(gpui::px(SETTINGS_WIDTH))
 		.mx_auto()
 		.text_size(gpui::px(SETTINGS_LABEL_SIZE))
-		.child(ui_theme::settings_panel(vec![status.into_any_element()]));
+		.child(ui_theme::settings_card(vec![status.into_any_element()]));
 
 	if snapshot.load == HealthLoadState::Ready {
 		content = content.child(component_section(

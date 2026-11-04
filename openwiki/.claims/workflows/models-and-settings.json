@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:e95bc7f5034a001f32542c11baa273d8757462463911184fd9b1f0b877fae70a",
+  "pageVersion": "sha256:5c9613c9870cd077f7718bdc27e2f67a9f002907fa6fc43cc52772d20f6702ee",
   "claims": [
     {
       "id": "claim_f0c37462522f4442acd94d53819ef75c",
@@ -114,7 +114,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/session_settings.rs",
-          "version": "repo-file-v1:sha256:ed78f991939c7bb49f2e72fefed45e4137ec1495293bd660223dae77ecf1d4af"
+          "version": "repo-file-v1:sha256:c9e3b76bd3c15d77d017d831ba8c8a8928b6fdbf5f68a4875f8bf60492797291"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent_permissions.rs",
@@ -228,7 +228,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_context_settings.rs",
-          "version": "repo-file-v1:sha256:56c320dbed397bdbfcd373420538e4616e68e8765897bb276ea4d59a2ea2387d"
+          "version": "repo-file-v1:sha256:0bace420ab4a1ba360bf4a42878b65796ad0acbd7b9ec496de5d0a292780d4a3"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_native.rs",
@@ -242,7 +242,7 @@
     },
     {
       "id": "claim_ae80d6525a7c4e9f9fef8b9241c057d6",
-      "statement": "Settings > Agents > Decodex controls automatic next-message suggestions. The preference defaults on; disabling consumes turn boundaries without starting automatic sampling, and re-enabling does not replay those completions. Tab acceptance remains an unsent undoable draft.",
+      "statement": "Settings > Agents > Assistance controls automatic next-message suggestions. The preference defaults on; disabling consumes turn boundaries without starting automatic sampling, and re-enabling does not replay those completions. Tab acceptance remains an unsent undoable draft.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_prompt_suggestions.rs",
@@ -254,7 +254,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_surface.rs",
-          "version": "repo-file-v1:sha256:4c0bf609b18031f5ead5efb7ab6cb4ede1e010785ce340fc3a2f08805e56312e"
+          "version": "repo-file-v1:sha256:5e4a0b12129677b6ae08afc2aff6f49b6b5f82301b939c6623e5775e636f2eb9"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_preferences.rs",
@@ -322,7 +322,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:69fb781ce8d421a7d79466e22407a96fb3971a63e296c049025270909fdadde4"
+          "version": "repo-file-v1:sha256:c9724c7c054929cb0993035ecb0c3f025c5e90fabf1ad45131ff9be12ed170a8"
         },
         {
           "resource": "repo://crates/decodex-components/src/ragflow.rs",
@@ -356,21 +356,21 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:69fb781ce8d421a7d79466e22407a96fb3971a63e296c049025270909fdadde4"
+          "version": "repo-file-v1:sha256:c9724c7c054929cb0993035ecb0c3f025c5e90fabf1ad45131ff9be12ed170a8"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_theme.rs",
-          "version": "repo-file-v1:sha256:51f07ff531ad3ca2aaceb218b8b0764e813b09817d5c56af8cebc8fb03958ba9"
+          "version": "repo-file-v1:sha256:7eb31750d32b6ab2ff1f9c6ed841132ea5474677c5cafd876abad45e2a6daad4"
         }
       ]
     },
     {
       "id": "claim_1d1d68cccf054493b22ff3f7574f9e70",
-      "statement": "All Settings categories share one content width and bordered groups with reusable row and detail dividers. Local notices, warnings and errors share a compact inset row with an icon, quiet tone fill and leading rule, with recovery actions beside the affected message. A collapsed Codex setup failure directs the user to its setup error; expanding Codex shows the full original error, while Retry setup uses the existing preparation action.",
+      "statement": "All Settings categories share a 620-point content column and normal App typography. Ordinary preferences use flat groups, while account records and diagnostic summaries retain quiet cards. Reusable dividers separate rows and expanded details. Local notices, warnings and errors share a compact inset row with an icon and quiet tone fill; text, icons and recovery actions align vertically at the center. Recovery stays with the affected message. A collapsed Codex setup failure directs the user to its setup error; expanding Codex shows the original error, while Retry setup uses the existing preparation action.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:69fb781ce8d421a7d79466e22407a96fb3971a63e296c049025270909fdadde4"
+          "version": "repo-file-v1:sha256:c9724c7c054929cb0993035ecb0c3f025c5e90fabf1ad45131ff9be12ed170a8"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_power.rs",
@@ -378,25 +378,47 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_surface.rs",
-          "version": "repo-file-v1:sha256:4c0bf609b18031f5ead5efb7ab6cb4ede1e010785ce340fc3a2f08805e56312e"
+          "version": "repo-file-v1:sha256:5e4a0b12129677b6ae08afc2aff6f49b6b5f82301b939c6623e5775e636f2eb9"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/shell.rs",
-          "version": "repo-file-v1:sha256:9f48177ebce5d6ffdc6fe404fb1d3c9e63293aa743b9a1ccd0112052f54f5699"
+          "version": "repo-file-v1:sha256:6f29784d7bcb4b27a2f2526a469f7a0b517c4349a4f34a29064b25cbb3c5bdb2"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/ui_feedback.rs#L359-L394",
-          "version": "repo-lines-v1:sha256:db9a97fca60493528cc43337abc99b68c882a9e65f72972f43f735cc05930910:eyJzZWxlY3RlZExpbmVDb3VudCI6MzYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg4ZGJhMWQzYWU1YTUzMTE4NmJhYWUzMTBhM2YwYTRhM2NkYWIyMmIxNjRjMWZjMDY5MzE3YzhiNThkOGQ4MTciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE1M2VjNGU0YjkwYzM4Yjc2NjQ4NDI3YmM5YWE2MjU2Y2NmNGM5YjI4OTEzMmE5ZTcyZTM4NjdmMjBjODMxMTciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjBkMjEyZTE5Njc1YjM0ZGYwMTYxMzcyNzViOTA5Y2RhMjQyOWM0OGVmMGNkM2RlZTgwMDZkYWQ0YzlhYzcyNmEifQ"
+          "resource": "repo://apps/decodex-gpui/src/ui_feedback.rs",
+          "version": "repo-file-v1:sha256:aec08228a0e0f01f6c19e065e0317fa3236152ba87495dd176d08642716c1582"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_theme.rs",
-          "version": "repo-file-v1:sha256:51f07ff531ad3ca2aaceb218b8b0764e813b09817d5c56af8cebc8fb03958ba9"
+          "version": "repo-file-v1:sha256:7eb31750d32b6ab2ff1f9c6ed841132ea5474677c5cafd876abad45e2a6daad4"
+        }
+      ]
+    },
+    {
+      "id": "claim_b847fb937a144ac7b731f7d19fbb7c9a",
+      "statement": "Settings > Agents > New conversations uses two compact rows with visible explanations. Permissions shows the selected mode's meaning and opens a menu with all four descriptions and the native Subagent inheritance rule. Speed reuses the Standard, Fast and Ultrafast segmented control, with selected-speed usage and credit multipliers visible in its row. Arrow keys cycle within permission options, Escape restores trigger focus, Tab and Shift-Tab continue navigation after dismissing the menu, and Command-W closes Settings.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/session_settings.rs",
+          "version": "repo-file-v1:sha256:c9e3b76bd3c15d77d017d831ba8c8a8928b6fdbf5f68a4875f8bf60492797291"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/settings_surface.rs",
+          "version": "repo-file-v1:sha256:5e4a0b12129677b6ae08afc2aff6f49b6b5f82301b939c6623e5775e636f2eb9"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/shell.rs",
+          "version": "repo-file-v1:sha256:6f29784d7bcb4b27a2f2526a469f7a0b517c4349a4f34a29064b25cbb3c5bdb2"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/ui_theme.rs",
+          "version": "repo-file-v1:sha256:7eb31750d32b6ab2ff1f9c6ed841132ea5474677c5cafd876abad45e2a6daad4"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-04T14:24:22.739Z"
+    "at": "2026-11-04T16:46:55.377Z"
   }
 }

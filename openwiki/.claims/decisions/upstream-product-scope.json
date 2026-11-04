@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:c76822d78ed11b4b1e59b73b596e7ba07858e00ee8b3a996552b8bfa110e3a74",
+  "pageVersion": "sha256:ca5db6fe845f757062bfc6d385e46f1666a89e887536838335c64268232a8121",
   "claims": [
     {
       "id": "claim_8d60aaceeea74d6189e3d7b0b3ed21fe",
@@ -140,7 +140,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_context_settings.rs",
-          "version": "repo-file-v1:sha256:56c320dbed397bdbfcd373420538e4616e68e8765897bb276ea4d59a2ea2387d"
+          "version": "repo-file-v1:sha256:0bace420ab4a1ba360bf4a42878b65796ad0acbd7b9ec496de5d0a292780d4a3"
         },
         {
           "resource": "repo://crates/decodex-codex/src/app_server_client/context_preferences.rs",
@@ -372,7 +372,7 @@
     },
     {
       "id": "claim_c3dfe225c5fe4237868d3ca93830c019",
-      "statement": "When Automatic next-message suggestions is enabled in Settings > Agents, newly completed visible answers request one native suggestion for an empty root composer. Disabling consumes completion boundaries without requests; re-enabling does not replay them. Tab still accepts only a current suggestion in the focused empty message field as an undoable unsent draft, preserving ordinary navigation elsewhere.",
+      "statement": "When Next-message suggestions is enabled in Settings > Agents > Assistance, newly completed visible answers request one native suggestion for an empty root composer. Disabling consumes completion boundaries without requests; re-enabling does not replay them. Tab still accepts only a current suggestion in the focused empty message field as an undoable unsent draft, preserving ordinary navigation elsewhere.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_prompt_suggestions.rs",
@@ -384,7 +384,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_surface.rs",
-          "version": "repo-file-v1:sha256:4c0bf609b18031f5ead5efb7ab6cb4ede1e010785ce340fc3a2f08805e56312e"
+          "version": "repo-file-v1:sha256:5e4a0b12129677b6ae08afc2aff6f49b6b5f82301b939c6623e5775e636f2eb9"
         }
       ]
     },
@@ -400,8 +400,12 @@
     },
     {
       "id": "claim_a73d273e22374e34b2019949d1af4295",
-      "statement": "Original item 29 is selected as a native per-server catalog-readiness switch. Settings edits only an existing user-configured server's startup_readiness as catalog or connection; it adds no global enablement or cache implementation. The executed exact-artifact test qualifies configuration roundtrips and preserves server transport and context thresholds, without cache-performance or installed-app acceptance.",
+      "statement": "Original item 29 is selected as a native per-server catalog-readiness switch. Settings > Agents > Context defaults edits only an existing user-configured server's startup_readiness as catalog or connection; it adds no global enablement or cache implementation. The executed exact-artifact test qualifies configuration roundtrips and preserves server transport and context thresholds, without cache-performance or installed-app acceptance.",
       "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/settings_surface.rs",
+          "version": "repo-file-v1:sha256:5e4a0b12129677b6ae08afc2aff6f49b6b5f82301b939c6623e5775e636f2eb9"
+        },
         {
           "resource": "repo://automations/upstream/retained-contracts.json#L4850-L4922",
           "version": "repo-lines-v1:sha256:c71abad5ce6f9a3ceb19f4f62c9568b138cb42bc62815ac39b7baf69c767068b:eyJzZWxlY3RlZExpbmVDb3VudCI6NzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAwZjFlMGQyNDQ0M2YyZWU0ZGY0MjBhNGRlMWZlMmVmM2MxMjMyMDM0Y2RmZWEzNWMyMjA0ZDRkNDkzZmRjNGIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM2NTM2Yzc4YjAyOWM3MjBkYWQzMjEwMmU4M2M5OWMzMzBiOTM4MGVlNjA4ZWFmYjc1NmFkNDQzNDc4ZDQ4ZTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjIzNjZhNjEzYTcwNjFmZWU5NTY4Mzc4MzI2MTA3YzViMzg1ZjA0ZTVjMzJlZTU1M2FiZjI2MDM3YThiZjRiNmQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImFiM2Y3NDMzNzZlZTY0ZTE3OWE3YWJkYzViOWFjZmE0YzNjZDhhMjRiYzFiOGVhOTI2YzM4NjE4ZGJmZjc1ODkifQ"
@@ -432,7 +436,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/shell_diagnostics.rs",
-          "version": "repo-file-v1:sha256:c4e025d212a8b22d61ca1e0ed890bd54e930fc2759f309339db598af81151ef0"
+          "version": "repo-file-v1:sha256:7bf44c2c9576157175d68f5da903d5042d37701bc7ddf0cd877fb5d13d0d9551"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/shell_status.rs",
@@ -647,6 +651,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-04T14:17:02.441Z"
+    "at": "2026-11-04T15:37:04.419Z"
   }
 }

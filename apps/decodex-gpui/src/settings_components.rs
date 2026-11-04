@@ -328,16 +328,15 @@ impl SettingsSurface {
 			.flex_1()
 			.min_w_0()
 			.flex()
-			.flex_col()
-			.min_h(gpui::px(36.5))
-			.justify_center()
-			.gap(gpui::px(2.))
+			.items_center()
+			.min_h(gpui::px(24.))
+			.gap(gpui::px(12.))
 			.rounded(gpui::px(4.))
 			.cursor_pointer()
 			.text_size(gpui::px(SETTINGS_LABEL_SIZE))
 			.line_height(gpui::px(18.))
 			.text_color(ui_theme::rgb(TEXT))
-			.hover(|s| s.text_color(ui_theme::rgb(BLUE)))
+			.hover(|s| s.bg(ui_theme::rgba(ui_theme::HOVER_FILL)))
 			.active(|s| s.opacity(0.75))
 			.on_click(cx.listener(move |this, _, _, cx| {
 				this.toggle_component_details(index, cx);
@@ -348,7 +347,7 @@ impl SettingsSurface {
 					cx.stop_propagation();
 				}
 			}))
-			.child(gpui::div().flex().items_center().gap_1().child(title).child(
+			.child(gpui::div().flex_none().flex().items_center().gap_1().child(title).child(
 				gpui::div().text_color(ui_theme::rgb(TEXT_MUTED)).child(
 					workspace_symbols::process_chevron(
 						SharedString::from(format!("{id}-chevron")),
@@ -378,7 +377,7 @@ impl SettingsSurface {
 	}
 
 	pub(super) fn components_content(&self, cx: &mut Context<Self>) -> AnyElement {
-		ui_theme::settings_panel(vec![
+		ui_theme::settings_divided_rows(vec![
 			self.component_settings(cx).into_any_element(),
 			self.egm_settings(cx).into_any_element(),
 			self.research_settings(cx).into_any_element(),

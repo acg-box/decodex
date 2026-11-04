@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:63bd43eaa1788fe7f0c93856d3faae85793a25d03dbf07961bbea0ae13c3bf3f",
+  "pageVersion": "sha256:dd251a73862e565aa84d2917febc5bc07c9f37830808e0aed78490080e17777c",
   "claims": [
     {
       "id": "claim_613df7e7c10d49d28b26d6db94c525e5",
@@ -158,7 +158,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:69fb781ce8d421a7d79466e22407a96fb3971a63e296c049025270909fdadde4"
+          "version": "repo-file-v1:sha256:c9724c7c054929cb0993035ecb0c3f025c5e90fabf1ad45131ff9be12ed170a8"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_updates.rs",
@@ -476,7 +476,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_context_settings.rs",
-          "version": "repo-file-v1:sha256:56c320dbed397bdbfcd373420538e4616e68e8765897bb276ea4d59a2ea2387d"
+          "version": "repo-file-v1:sha256:0bace420ab4a1ba360bf4a42878b65796ad0acbd7b9ec496de5d0a292780d4a3"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_native.rs",
@@ -498,7 +498,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/shell_diagnostics.rs",
-          "version": "repo-file-v1:sha256:c4e025d212a8b22d61ca1e0ed890bd54e930fc2759f309339db598af81151ef0"
+          "version": "repo-file-v1:sha256:7bf44c2c9576157175d68f5da903d5042d37701bc7ddf0cd877fb5d13d0d9551"
         },
         {
           "resource": "repo://automations/upstream/retained-contracts.json",
@@ -767,6 +767,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-04T14:24:22.739Z"
+    "at": "2026-11-04T15:37:04.419Z"
   }
 }

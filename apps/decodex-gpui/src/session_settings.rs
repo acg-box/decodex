@@ -1,7 +1,9 @@
 //! Shared desktop creation defaults and session-setting choices.
+use std::rc::Rc;
+
 use decodex_protocol::{PermissionMode, ServiceTier};
 use gpui::{
-	Context, Div,
+	App, Context, Div, Entity, FocusHandle, KeyBinding, RenderOnce, Window,
 	prelude::{
 		FluentBuilder as _, InteractiveElement as _, ParentElement as _,
 		StatefulInteractiveElement as _, Styled as _,
@@ -9,7 +11,11 @@ use gpui::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::{shell::workspace_symbols, ui_motion::SmoothControl as _, ui_preferences, ui_theme};
+use crate::{
+	shell::workspace_symbols,
+	ui_motion::{self, SmoothControl as _},
+	ui_preferences, ui_theme,
+};
 
 const DEFAULTS_KEY: &str = "DecodexSessionDefaults";
 
@@ -54,75 +60,183 @@ pub(crate) fn set_default_speed(
 	Ok(())
 }
 
+gpui::actions!(decodex_settings, [DismissPermissionMenu]);
+const PERMISSION_MENU_CONTEXT: &str = "PermissionMenu";
+type PermissionChange = dyn Fn(PermissionMode, &mut Window, &mut App);
+
+pub(crate) fn bind_keys(cx: &mut App) {
+	cx.bind_keys([KeyBinding::new("escape", DismissPermissionMenu, Some(PERMISSION_MENU_CONTEXT))]);
+}
+
+#[derive(gpui::IntoElement)]
+pub(crate) struct PermissionPicker {
+	selected: PermissionMode,
+	choose: Rc<PermissionChange>,
+}
+struct PermissionPickerState {
+	open: bool,
+	trigger_focus: FocusHandle,
+	option_focus: [FocusHandle; 4],
+	anchor: Option<gpui::Bounds<gpui::Pixels>>,
+}
+
 pub(crate) fn permission_picker<T: 'static>(
 	selected: PermissionMode,
 	choose: fn(&mut T, PermissionMode, &mut Context<T>),
 	cx: &Context<T>,
-) -> gpui::Stateful<Div> {
-	gpui::div()
-		.id("default-permissions")
-		.debug_selector(|| "default-permissions".into())
-		.w_full()
-		.min_w_0()
-		.flex_none()
-		.child(permission_rows(Some(selected), |_| true, choose, true, cx))
+) -> PermissionPicker {
+	let change = cx.listener(move |this, mode: &PermissionMode, _, cx| choose(this, *mode, cx));
+	PermissionPicker {
+		selected,
+		choose: Rc::new(move |mode, window, cx| change(&mode, window, cx)),
+	}
 }
 
-/// Settings explain each speed; the composer keeps its compact segmented control.
-pub(crate) fn speed_default_choices<T: 'static>(
-	selected: Option<&ServiceTier>,
-	choose: fn(&mut T, ServiceTier, &mut Context<T>),
-	cx: &Context<T>,
-) -> gpui::Stateful<Div> {
-	let mut choices = gpui::div()
-		.id("default-speeds")
-		.debug_selector(|| "default-speeds".into())
-		.w_full()
-		.min_w_0()
-		.flex_none()
-		.flex()
-		.flex_col()
-		.gap(gpui::px(1.));
-	// ChatGPT usage relative to Standard: https://learn.chatgpt.com/docs/pricing
-	for (id, description) in [
-		("default", "Included usage: 1×; credits: 1×"),
-		("priority", "Included usage: 2.5×; credits: 2×"),
-		("ultrafast", "Included usage: 8×; credits: 6×"),
-	] {
-		let tier = ServiceTier::new(id).expect("built-in speed");
-		let key_tier = tier.clone();
-		let chosen = selected == Some(&tier);
-		choices = choices.child(
-			ui_theme::menu_row(format!("default-speed-{id}"), true)
-				.debug_selector(move || format!("default-speed-{id}"))
-				.aria_label(format!("{}: {description}", speed_label(id)))
-				.role(gpui::Role::RadioButton)
-				.aria_selected(chosen)
-				.px(gpui::px(8.))
-				.py(gpui::px(4.))
-				.flex()
-				.items_center()
-				.gap(gpui::px(8.))
-				.when(chosen, |row| row.bg(ui_theme::rgba(ui_theme::CONTROL_SELECTED_FILL)))
-				.child(ui_theme::settings_label(speed_label(id), description))
-				.child(workspace_symbols::menu_check(chosen))
-				.on_click(cx.listener(move |this, _, _, cx| {
-					if !chosen {
-						choose(this, tier.clone(), cx);
-					}
-				}))
-				.on_key_down(cx.listener(move |this, key: &gpui::KeyDownEvent, _, cx| {
-					if !key.is_held && ["enter", "space"].contains(&key.keystroke.key.as_str()) {
-						cx.stop_propagation();
-						if !chosen {
-							choose(this, key_tier.clone(), cx);
-						}
-					}
-				}))
-				.smooth(),
-		);
+impl RenderOnce for PermissionPicker {
+	fn render(self, window: &mut Window, cx: &mut App) -> impl gpui::IntoElement {
+		let state = window.use_keyed_state("default-permission-picker", cx, |_, cx| {
+			PermissionPickerState {
+				open: false,
+				trigger_focus: cx.focus_handle(),
+				option_focus: std::array::from_fn(|_| cx.focus_handle()),
+				anchor: None,
+			}
+		});
+		let (open, trigger_focus, option_focus) = {
+			let s = state.read(cx);
+			(s.open, s.trigger_focus.clone(), s.option_focus.clone())
+		};
+		let click = state.clone();
+		let key = state.clone();
+		let measured = state.clone();
+		let outside = state.clone();
+		let dismiss = state.clone();
+		let next = state.clone();
+		let previous = state.clone();
+		let navigation = state.clone();
+		let selected = state.clone();
+		let mode = self.selected;
+		let choose = self.choose;
+		let change: Rc<PermissionChange> = Rc::new(move |mode, window, cx| {
+			choose(mode, window, cx);
+			close_permission_picker(&selected, window, cx);
+		});
+		let trigger = ui_theme::settings_button("default-permissions", self.selected.label())
+			.aria_label(format!("Default permissions: {}", self.selected.label()))
+			.aria_expanded(open)
+			.track_focus(&trigger_focus)
+			.w(gpui::px(174.))
+			.h(gpui::px(ui_theme::CONTROL_GROUP_HEIGHT))
+			.justify_between()
+			.child(workspace_symbols::icon_sized(workspace_symbols::Symbol::ChevronDown, 10.))
+			.on_click(move |_, window, cx| toggle_permission_picker(&click, mode, window, cx))
+			.on_key_down(move |event: &gpui::KeyDownEvent, window, cx| {
+				if !event.is_held
+					&& ["enter", "space", "down"].contains(&event.keystroke.key.as_str())
+				{
+					toggle_permission_picker(&key, mode, window, cx);
+					cx.stop_propagation();
+				}
+			});
+		let menu = gpui::div()
+			.id("default-permissions-menu")
+			.role(gpui::Role::Menu)
+			.aria_label("Default permissions")
+			.key_context(PERMISSION_MENU_CONTEXT)
+			.tab_group()
+			.occlude()
+			.p(gpui::px(ui_theme::POPOVER_CONTENT_PADDING))
+			.on_action(move |_: &DismissPermissionMenu, window, cx| {
+				close_permission_picker(&dismiss, window, cx);
+				cx.stop_propagation();
+			})
+			.on_action(move |_: &crate::shell::FocusNext, window, cx| {
+				close_permission_picker(&next, window, cx);
+				window.focus_next(cx);
+				cx.stop_propagation();
+			})
+			.on_action(move |_: &crate::shell::FocusPrevious, window, cx| {
+				close_permission_picker(&previous, window, cx);
+				window.focus_prev(cx);
+				cx.stop_propagation();
+			})
+			.on_key_down(move |event: &gpui::KeyDownEvent, window, cx| {
+				let direction = match event.keystroke.key.as_str() {
+					"down" => 1,
+					"up" => -1,
+					_ => return,
+				};
+				let s = navigation.read(cx);
+				let index =
+					s.option_focus.iter().position(|focus| focus.is_focused(window)).unwrap_or(0);
+				let next =
+					(index as isize + direction).rem_euclid(s.option_focus.len() as isize) as usize;
+				let focus = s.option_focus[next].clone();
+				window.focus(&focus, cx);
+				cx.stop_propagation();
+			})
+			.on_mouse_down_out(move |event: &gpui::MouseDownEvent, _, cx| {
+				if !outside.read(cx).anchor.is_some_and(|bounds| bounds.contains(&event.position)) {
+					outside.update(cx, |s, cx| {
+						s.open = false;
+						cx.notify();
+					});
+				}
+			})
+			.child(permission_rows(Some(self.selected), |_| true, change, Some(&option_focus)))
+			.child(
+				ui_theme::settings_description("Subagents inherit their parent’s permissions.")
+					.px(gpui::px(8.))
+					.pt(gpui::px(8.)),
+			);
+		gpui::div()
+			.relative()
+			.flex_none()
+			.on_children_prepainted(move |children, _, cx| {
+				measured.update(cx, |s, _| s.anchor = children.first().copied())
+			})
+			.child(trigger)
+			.child(
+				gpui::deferred(
+					gpui::div()
+						.absolute()
+						.top(gpui::px(ui_theme::CONTROL_GROUP_HEIGHT))
+						// Align the painted surface, excluding the shared shadow gutter.
+						.right(gpui::px(-ui_theme::POPOVER_PADDING))
+						.w(gpui::px(330. + ui_theme::POPOVER_PADDING * 2.))
+						.child(ui_motion::popover("default-permissions-popover", open, menu)),
+				)
+				.priority(3),
+			)
 	}
-	choices
+}
+
+fn toggle_permission_picker(
+	state: &Entity<PermissionPickerState>,
+	selected: PermissionMode,
+	window: &mut Window,
+	cx: &mut App,
+) {
+	state.update(cx, |s, cx| {
+		s.open = !s.open;
+		let index = PermissionMode::ALL
+			.iter()
+			.position(|mode| *mode == selected)
+			.expect("built-in permission mode");
+		window.focus(if s.open { &s.option_focus[index] } else { &s.trigger_focus }, cx);
+		cx.notify();
+	});
+}
+fn close_permission_picker(
+	state: &Entity<PermissionPickerState>,
+	window: &mut Window,
+	cx: &mut App,
+) {
+	state.update(cx, |s, cx| {
+		s.open = false;
+		window.focus(&s.trigger_focus, cx);
+		cx.notify();
+	});
 }
 
 pub(crate) fn permission_choices<T: 'static>(
@@ -131,26 +245,37 @@ pub(crate) fn permission_choices<T: 'static>(
 	choose: fn(&mut T, PermissionMode, &mut Context<T>),
 	cx: &Context<T>,
 ) -> Div {
-	permission_rows(selected, available, choose, false, cx)
+	let change = cx.listener(move |this, mode: &PermissionMode, _, cx| choose(this, *mode, cx));
+	permission_rows(
+		selected,
+		available,
+		Rc::new(move |mode, window, cx| change(&mode, window, cx)),
+		None,
+	)
 }
 
-fn permission_rows<T: 'static>(
+fn permission_rows(
 	selected: Option<PermissionMode>,
 	available: impl Fn(PermissionMode) -> bool,
-	choose: fn(&mut T, PermissionMode, &mut Context<T>),
-	settings: bool,
-	cx: &Context<T>,
+	choose: Rc<PermissionChange>,
+	option_focus: Option<&[FocusHandle; 4]>,
 ) -> Div {
+	let settings = option_focus.is_some();
 	let mut menu = gpui::div().flex().flex_col().gap(gpui::px(1.));
 	for (index, mode) in PermissionMode::ALL.into_iter().enumerate() {
 		let enabled = available(mode);
 		let chosen = selected == Some(mode);
+		let click = choose.clone();
+		let key = choose.clone();
 		menu = menu.child(
 			ui_theme::menu_row(format!("permission-choice-{index}"), enabled)
 				.debug_selector(move || format!("permission-choice-{index}"))
 				.role(gpui::Role::Button)
 				.aria_label(format!("{}: {}", mode.label(), mode.description()))
 				.aria_selected(chosen)
+				.when_some(option_focus.map(|focus| &focus[index]), |row, focus| {
+					row.track_focus(focus)
+				})
 				.px(gpui::px(8.))
 				.py(gpui::px(4.))
 				.flex()
@@ -168,7 +293,7 @@ fn permission_rows<T: 'static>(
 						.min_w_0()
 						.flex()
 						.flex_col()
-						.when(settings, |d| d.gap(gpui::px(2.)))
+						.when(settings, |label| label.gap(gpui::px(2.)))
 						.child(
 							gpui::div()
 								.line_height(gpui::px(16.))
@@ -200,21 +325,21 @@ fn permission_rows<T: 'static>(
 						),
 				)
 				.child(workspace_symbols::menu_check(chosen))
-				.on_click(cx.listener(move |this, _, _, cx| {
-					if enabled && !chosen {
-						choose(this, mode, cx);
+				.on_click(move |_, window, cx| {
+					if enabled && (settings || !chosen) {
+						click(mode, window, cx);
 					}
-				}))
-				.on_key_down(cx.listener(move |this, key: &gpui::KeyDownEvent, _, cx| {
+				})
+				.on_key_down(move |event: &gpui::KeyDownEvent, window, cx| {
 					if enabled
-						&& !chosen
-						&& !key.is_held
-						&& ["enter", "space"].contains(&key.keystroke.key.as_str())
+						&& (settings || !chosen)
+						&& !event.is_held
+						&& ["enter", "space"].contains(&event.keystroke.key.as_str())
 					{
 						cx.stop_propagation();
-						choose(this, mode, cx);
+						key(mode, window, cx);
 					}
-				}))
+				})
 				.smooth()
 				.enabled(enabled),
 		);

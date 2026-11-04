@@ -413,13 +413,13 @@ impl SettingsSurface {
 					"New conversations",
 					vec![self.agent_defaults_content(cx)],
 				))
-				.child(ui_theme::settings_group("Codex Native", vec![self.native_defaults(cx)]))
-				.child(ui_theme::settings_group("Decodex", {
+				.child(ui_theme::settings_group("Context defaults", vec![self.native_defaults(cx)]))
+				.child(ui_theme::settings_group("Assistance", {
 					let mut rows = vec![
 						self.preference_control(
 							"automatic-prompt-suggestions",
 							"automatic-prompt-suggestions-knob",
-							"Automatic next-message suggestions",
+							"Next-message suggestions",
 							"Suggest after each reply. Uses quota; never sends automatically.",
 							crate::ui_preferences::automatic_prompt_suggestions,
 							cx,
@@ -441,8 +441,10 @@ impl SettingsSurface {
 		mode: decodex_protocol::PermissionMode,
 		cx: &mut Context<Self>,
 	) {
-		self.session_defaults.permissions = mode;
-		self.session_defaults.save();
+		if self.session_defaults.permissions != mode {
+			self.session_defaults.permissions = mode;
+			self.session_defaults.save();
+		}
 		cx.refresh_windows();
 	}
 
@@ -465,43 +467,44 @@ impl SettingsSurface {
 	}
 
 	fn agent_defaults_content(&self, cx: &mut Context<Self>) -> AnyElement {
-		gpui::div()
-			.w_full()
-			.min_w_0()
-			.relative()
-			.child(
-				gpui::div()
-					.absolute()
-					.top_0()
-					.bottom_0()
-					.left(gpui::relative(0.5))
-					.w(gpui::px(1.))
-					.bg(ui_theme::rgba(ui_theme::PANEL_DIVIDER)),
-			)
-			.child(
-				gpui::div()
-					.grid()
-					.grid_cols(2)
-					.gap_x(gpui::px(24.))
-					.gap_y(gpui::px(8.))
-					.child(ui_theme::settings_label(
-						"Default permissions",
-						"Subagents inherit their parent’s permissions.",
-					))
-					.child(ui_theme::settings_label(
-						"Default speed",
-						"Shared with Codex. ChatGPT usage relative to Standard for the same model; availability varies.",
-					))
-					.child(crate::session_settings::permission_picker(
-						self.session_defaults.permissions,
-						Self::choose_default_permissions,
+		// ChatGPT usage relative to Standard: https://learn.chatgpt.com/docs/pricing
+		let speed_detail = match self.default_speed.as_ref().map(|tier| tier.as_str()) {
+			Some("default") => "Shared with Codex (included usage: 1×; credits: 1×).",
+			Some("priority") => "Shared with Codex (included usage: 2.5×; credits: 2×).",
+			Some("ultrafast") => "Shared with Codex (included usage: 8×; credits: 6×).",
+			_ => "Shared with Codex.",
+		};
+		ui_theme::settings_divided_rows(vec![
+			ui_theme::settings_row()
+				.child(ui_theme::settings_label(
+					"Permissions",
+					self.session_defaults.permissions.description(),
+				))
+				.child(crate::session_settings::permission_picker(
+					self.session_defaults.permissions,
+					Self::choose_default_permissions,
+					cx,
+				))
+				.into_any_element(),
+			ui_theme::settings_row()
+				.child(ui_theme::settings_label("Speed", speed_detail))
+				.child(
+					crate::session_settings::speed_choices(
+						self.default_speed.as_ref(),
+						["priority", "ultrafast"].map(|id| {
+							(
+								decodex_protocol::ServiceTier::new(id).expect("built-in speed"),
+								crate::session_settings::speed_label(id).to_owned(),
+							)
+						}),
+						Self::choose_default_speed,
 						cx,
-					))
-					.child(crate::session_settings::speed_default_choices(
-						self.default_speed.as_ref(), Self::choose_default_speed, cx,
-					)),
-			)
-			.into_any_element()
+					)
+					.fixed_choice_width(56.),
+				)
+				.into_any_element(),
+		])
+		.into_any_element()
 	}
 
 	fn general_content(&self, cx: &mut Context<Self>) -> AnyElement {
@@ -554,7 +557,7 @@ impl SettingsSurface {
 
 	fn appearance_content(&self, cx: &mut Context<Self>) -> AnyElement {
 		ui_theme::settings_sections()
-			.child(ui_theme::settings_panel(vec![self.appearance_controls(cx).into_any_element()]))
+			.child(self.appearance_controls(cx))
 			.child(ui_theme::settings_group(
 				"Color theme",
 				vec![
@@ -1251,33 +1254,42 @@ mod tests {
 	}
 
 	#[gpui::test]
-	fn creation_defaults_explain_choices_without_moving_rows(cx: &mut TestAppContext) {
+	fn creation_defaults_use_compact_controls_without_moving_other_settings(
+		cx: &mut TestAppContext,
+	) {
 		let (settings, visual) = cx.add_window_view(|_, cx| {
 			let mut surface = SettingsSurface::new(DesktopSettingsController::production(), cx);
 			surface.category = SettingsCategory::Agents;
 			surface.default_speed = Some(decodex_protocol::ServiceTier::standard());
 			surface
 		});
+		visual.update(|_, cx| crate::session_settings::bind_keys(cx));
 		visual.simulate_resize(gpui::size(gpui::px(ui_theme::SETTINGS_WIDTH), gpui::px(900.)));
 		visual.update(crate::ui_frame::draw_current_frame);
-		let viewport = visual.debug_bounds("settings-scroll-viewport").unwrap();
 		let permissions = visual.debug_bounds("default-permissions").unwrap();
-		let speed = visual.debug_bounds("default-speeds").unwrap();
-		assert!(permissions.right() <= viewport.right());
-		assert!(speed.right() <= viewport.right());
-		assert_eq!(
-			permissions.size.width, speed.size.width,
-			"explanatory lists share column widths"
-		);
-		assert!(permissions.right() < speed.left(), "wide settings compare defaults side by side");
-		let read_only = visual.debug_bounds("permission-choice-0").unwrap();
-		let full = visual.debug_bounds("permission-choice-3").unwrap();
-		let standard = visual.debug_bounds("default-speed-default").unwrap();
+		let speed = visual.debug_bounds("service-tier-picker").unwrap();
+		assert_eq!(permissions.right(), speed.right(), "row controls share their trailing edge");
+		assert!(permissions.bottom() < speed.top(), "defaults use separate compact rows");
+		assert!(speed.bottom() - permissions.top() < gpui::px(100.));
 		assert!(
-			f32::from(read_only.top() - standard.top()).abs() <= 1.,
-			"both default lists start beneath aligned captions"
+			visual.debug_bounds("permission-choice-0").is_none(),
+			"permission explanations stay in the menu"
 		);
-		assert!(read_only.bottom() < full.top(), "permissions run from least to most access");
+
+		visual.simulate_click(permissions.center(), Default::default());
+		visual.update(crate::ui_frame::draw_current_frame);
+		visual.simulate_keystrokes("escape");
+		visual.update(crate::ui_frame::draw_current_frame);
+		assert!(
+			visual.debug_bounds("permission-choice-0").is_none(),
+			"Escape closes the permission menu"
+		);
+		visual.simulate_click(permissions.center(), Default::default());
+		visual.update(crate::ui_frame::draw_current_frame);
+		let read_only = visual.debug_bounds("permission-choice-0").unwrap();
+		let menu = visual.debug_bounds("popover-surface").unwrap();
+		assert_eq!(menu.right(), permissions.right(), "menu surface aligns with its trigger");
+		assert_eq!(menu.size.width, gpui::px(330.));
 		for (row, description) in [
 			("permission-choice-0", "permission-description-0"),
 			("permission-choice-1", "permission-description-1"),
@@ -1286,31 +1298,41 @@ mod tests {
 		] {
 			let row = visual.debug_bounds(row).unwrap();
 			let description = visual.debug_bounds(description).unwrap();
-			assert!(description.size.height > gpui::px(0.));
-			assert!(permissions.contains(&description.center()));
-			assert!(row.contains(&description.center()), "the explanation belongs to its option");
+			assert!(
+				row.contains(&description.center()),
+				"each permission explanation remains visible beside its option"
+			);
 		}
 		visual.simulate_click(read_only.center(), Default::default());
-		assert_eq!(
-			settings.read_with(visual, |s, _| s.session_defaults.permissions),
-			decodex_protocol::PermissionMode::ReadOnly
-		);
 		visual.update(crate::ui_frame::draw_current_frame);
-		assert_eq!(visual.debug_bounds("default-speeds").unwrap(), speed);
-		let standard = visual.debug_bounds("default-speed-default").unwrap();
-		let fast = visual.debug_bounds("default-speed-priority").unwrap();
-		let ultrafast = visual.debug_bounds("default-speed-ultrafast").unwrap();
-		assert!(standard.bottom() <= fast.top() && fast.bottom() <= ultrafast.top());
-		for (bounds, expected) in
-			[(fast, "priority"), (ultrafast, "ultrafast"), (standard, "default")]
-		{
-			visual.simulate_click(bounds.center(), Default::default());
+		settings.read_with(visual, |s, _| {
+			assert_eq!(s.session_defaults.permissions, decodex_protocol::PermissionMode::ReadOnly);
+		});
+		assert!(visual.debug_bounds("permission-choice-0").is_none());
+		assert_eq!(visual.debug_bounds("service-tier-picker").unwrap(), speed);
+		visual.simulate_click(permissions.center(), Default::default());
+		visual.update(crate::ui_frame::draw_current_frame);
+		let selected = visual.debug_bounds("permission-choice-0").unwrap();
+		visual.simulate_click(selected.center(), Default::default());
+		visual.update(crate::ui_frame::draw_current_frame);
+		assert!(
+			visual.debug_bounds("permission-choice-0").is_none(),
+			"choosing the current value closes the menu"
+		);
+
+		for (id, expected) in [
+			("tier-priority", "priority"),
+			("tier-ultrafast", "ultrafast"),
+			("tier-default", "default"),
+		] {
+			let choice = visual.debug_bounds(id).unwrap();
+			visual.simulate_click(choice.center(), Default::default());
 			settings.read_with(visual, |s, _| {
 				assert_eq!(s.default_speed.as_ref().unwrap().as_str(), expected)
 			});
 			visual.update(crate::ui_frame::draw_current_frame);
 			assert_eq!(visual.debug_bounds("default-permissions").unwrap(), permissions);
-			assert_eq!(visual.debug_bounds("default-speeds").unwrap(), speed);
+			assert_eq!(visual.debug_bounds("service-tier-picker").unwrap(), speed);
 		}
 	}
 
@@ -1642,7 +1664,7 @@ mod tests {
 		});
 		visual.update(crate::ui_frame::draw_current_frame);
 		assert!(visual.debug_bounds("automatic-prompt-suggestions").is_some());
-		assert!(visual.debug_bounds("default-speeds").is_some());
+		assert!(visual.debug_bounds("service-tier-picker").is_some());
 		assert!(visual.debug_bounds("prompt-suggestions").is_none());
 	}
 
@@ -2171,6 +2193,11 @@ mod tests {
 			let notice = visual.debug_bounds(notice).unwrap();
 			let action = visual.debug_bounds(action).unwrap();
 			assert!(notice.contains(&action.center()), "recovery belongs inside its feedback row");
+			assert_eq!(
+				notice.center().y,
+				action.center().y,
+				"recovery actions align with the message"
+			);
 		}
 
 		settings.read_with(visual, |s, _| {

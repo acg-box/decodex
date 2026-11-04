@@ -104,6 +104,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/shell.rs
   - id: openwiki-source-2f256c95c226c1326d164ad3
     resource: repo://apps/decodex-gpui/src/ui_feedback.rs
+  - id: openwiki-source-afbf2d30c0979a844373d8e5
+    resource: repo://apps/decodex-gpui/src/ui_motion.rs
   - id: openwiki-source-546812ff3637690f4a184b89
     resource: repo://apps/decodex-gpui/src/ui_preferences.rs
   - id: openwiki-source-570564020f98df7a4d6d0b61
@@ -122,19 +124,27 @@ sources:
     resource: repo://database/src/works/commands.rs
   - id: openwiki-source-8fe6f1557e5d45d88b34bd0a
     resource: repo://scripts/macos/generate_workspace_symbols.swift
-generated: { by: "codex", at: "2026-11-04T14:17:02.441Z" }
+generated: { by: "codex", at: "2026-11-04T15:37:04.419Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-04T14:24:22.739Z
+    at: 2026-11-04T16:46:55.377Z
 ---
 
 # Desktop workspace and native glass
 
 ## Information hierarchy
 
-All Settings categories use the same content width and compact shared rows. Default permissions and speed use aligned comparison columns. General groups automatic recaps and sleep prevention under Background.
+All Settings categories use the same 620-point content column and shared rows. New conversations uses two setting rows: Permissions shows the selected mode's meaning and opens the shared permission menu, and Speed reuses the existing segmented control with usage for the selected speed. General groups automatic recaps and sleep prevention under Background.
 
-Settings groups share a quiet panel with a fine border. One row-list helper supplies dividers, including nested native defaults, cursor controls and diagnostic rows. Components use one divided list. Account controls, account rows, quota settings and diagnostic summaries use the same panel helper. Expanded component and MCP details share one divider treatment. Feedback stays inside the group that owns the operation.
+Settings reuse the App's normal body and control typography. Concise descriptions remain visible. The permission menu shows all four explanations and the native inheritance rule directly. Native options use one flat list under Context defaults, with one shared-scope description. Assistance contains suggestion and Guardian controls. Shared form fields reserve 128 points for labels.
+
+The permission picker keeps its open state and focus handles in the window. Its visible trailing edge aligns with the trigger, excluding the outer shadow gutter. Arrow keys cycle within its options. Escape closes the menu and restores focus to its trigger. Tab and Shift-Tab dismiss the menu and continue keyboard navigation. Command-W closes Settings even while the menu is open. The picker reuses the existing permission rows; it does not own conversation permissions.
+
+Shared disclosures animate their open proportion. Content measurement does not restart the transition or issue a model notification. Already open details mount at full height, and settled parents follow nested content changes directly. Page arrival changes opacity without moving content or hit targets.
+
+Ordinary preferences use flat sections and one divided-row helper. Account records and diagnostic summaries retain quiet cards. Component names, available versions and lifecycle actions share one row in a divided list. Expanded component and MCP details share one divider treatment. Feedback stays with the operation that owns it.
+
+Visual references: [Zed Settings design](https://zed.dev/blog/settings-ui), [Raycast Settings](https://manual.raycast.com/settings) and [Linear preferences](https://linear.app/docs/account-preferences).
 
 Codex setup failures show a short state and direct the user to the setup details. Expand Codex to read the original error. Retry setup uses the existing preparation owner.
 
@@ -220,7 +230,7 @@ A failed send stays beside its own message in the scrolling transcript, with Not
 
 ## Consistent status presentation
 
-GPUI uses the shared `ui_feedback` presentation for account problems and operation notices. Persistent and animated local feedback share a compact inset row, with a quiet tone fill, leading rule, icon and explicit wording. Titles and explanations flow together. Login-item and system-sleep recovery buttons stay in the affected feedback row. Account problems appear beside the affected account without requiring a popup. The native menu-bar feedback control keeps its compact icon and explanatory popover.
+GPUI uses the shared `ui_feedback` presentation for account problems and operation notices. Persistent and animated local feedback share a compact inset row, with a quiet tone fill, icon and explicit wording. Text, icons and recovery actions align vertically at the center. Titles and explanations flow together. Login-item and system-sleep recovery buttons stay in the affected feedback row. Account problems appear beside the affected account without requiring a popup. The native menu-bar feedback control keeps its compact icon and explanatory popover.
 
 Place nonblocking conversation feedback and recovery in the band above the composer, field and operation failures beside their control, and app-wide events in the notification center. Keep send restrictions and archive status inside the disabled composer. History retry and summary notices reuse the shared inline feedback component. Use the shared status text and button styles. A whole-page startup failure uses the same status row when no workspace is available. Keep the native menu-bar counterpart compact.
 

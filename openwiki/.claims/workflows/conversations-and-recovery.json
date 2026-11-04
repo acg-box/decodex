@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:ad7b3909d72699ec773acedf1a69fe3e97e903da7bc5fa33f2cb9821ea48c3b4",
+  "pageVersion": "sha256:b35c4d1efbdd340ddf830d97d10b8c65d06e51297272fa0509b32f6e567fa386",
   "claims": [
     {
       "id": "claim_3881a280a4044cdca9e8599100f0a4f0",
@@ -384,7 +384,7 @@
     },
     {
       "id": "claim_00df095f06b942e592cfecad5e6f03ed",
-      "statement": "The enabled-by-default Automatic next-message suggestions switch gates requests after newly completed visible root answers. Disabling consumes boundaries without sampling and re-enabling does not replay them. Existing draft text is preserved; Tab accepts only a current suggestion from the focused empty field as an undoable unsent draft.",
+      "statement": "The enabled-by-default Next-message suggestions switch gates requests after newly completed visible root answers. Disabling consumes boundaries without sampling and re-enabling does not replay them. Existing draft text is preserved; Tab accepts only a current suggestion from the focused empty field as an undoable unsent draft.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_prompt_suggestions.rs",
@@ -396,7 +396,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_surface.rs",
-          "version": "repo-file-v1:sha256:4c0bf609b18031f5ead5efb7ab6cb4ede1e010785ce340fc3a2f08805e56312e"
+          "version": "repo-file-v1:sha256:5e4a0b12129677b6ae08afc2aff6f49b6b5f82301b939c6623e5775e636f2eb9"
         }
       ]
     },
@@ -440,7 +440,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/shell.rs",
-          "version": "repo-file-v1:sha256:9f48177ebce5d6ffdc6fe404fb1d3c9e63293aa743b9a1ccd0112052f54f5699"
+          "version": "repo-file-v1:sha256:6f29784d7bcb4b27a2f2526a469f7a0b517c4349a4f34a29064b25cbb3c5bdb2"
         }
       ]
     },
@@ -747,6 +747,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-04T14:17:02.441Z"
+    "at": "2026-11-04T16:46:55.377Z"
   }
 }

@@ -215,10 +215,9 @@ impl AgentSurface {
 				cx,
 			)
 		});
-		let mut panel =
-			ui_theme::settings_rows().child(ui_theme::settings_description(
-				"Shared with Codex for new conversations. Project or managed settings may override these defaults.",
-			)).child(
+		let mut panel = ui_theme::settings_rows()
+			.child(ui_theme::settings_description("Shared with Codex for new conversations."))
+			.child(
 				ui_feedback::notice(
 					"context-settings-feedback",
 					work.to_owned(),
@@ -233,28 +232,19 @@ impl AgentSurface {
 			&& let Some(AgentContextSettingsResult::Available { preferences, .. }) =
 				&self.context_settings.state
 		{
-			let rows: Vec<_> = preferences
+			let mut rows: Vec<_> = preferences
 				.iter()
 				.filter(|p| !is_catalog(&p.feature))
 				.map(|preference| {
 					self.context_preference_row(work, preference, busy, cx).into_any_element()
 				})
 				.collect();
-			let mut sections = Vec::new();
-			if !rows.is_empty() {
-				sections.push(
-					ui_theme::settings_rows()
-						.child(native_subheading("Context (experimental)"))
-						.child(ui_theme::settings_divided_rows(rows))
-						.into_any_element(),
-				);
-			}
 			if preferences.iter().any(|p| is_catalog(&p.feature)) {
-				sections.push(
+				rows.push(
 					self.mcp_catalog_settings(work, preferences, busy, cx).into_any_element(),
 				);
 			}
-			panel = panel.child(ui_theme::settings_divided_rows(sections));
+			panel = panel.child(ui_theme::settings_divided_rows(rows));
 		}
 
 		panel.into_any_element()
@@ -353,15 +343,11 @@ impl AgentSurface {
 					})
 					.collect(),
 			));
-		ui_theme::settings_rows()
-			.pt(gpui::px(8.))
-			.child(native_subheading("MCP startup"))
-			.child(toggle)
-			.child(ui_motion::disclosure(
-				"context-mcp-body",
-				expanded,
-				ui_theme::settings_detail(rows),
-			))
+		ui_theme::settings_rows().child(toggle).child(ui_motion::disclosure(
+			"context-mcp-body",
+			expanded,
+			ui_theme::settings_detail(rows),
+		))
 	}
 
 	fn toggle_catalog_settings(&mut self, cx: &mut Context<Self>) {
@@ -405,15 +391,6 @@ impl AgentSurface {
 		};
 		cx.notify();
 	}
-}
-
-fn native_subheading(title: &'static str) -> impl IntoElement {
-	ui_theme::settings_section_title(title)
-		.px(gpui::px(0.))
-		.aria_level(3)
-		.text_size(gpui::px(ui_theme::SETTINGS_LABEL_SIZE))
-		.pt(gpui::px(8.))
-		.pb(gpui::px(2.))
 }
 
 fn is_catalog(feature: &AgentContextFeature) -> bool {
@@ -475,9 +452,9 @@ fn feature_label(feature: &AgentContextFeature) -> String {
 fn feature_detail(feature: &AgentContextFeature) -> &'static str {
 	match feature {
 		AgentContextFeature::AsyncCompaction =>
-			"Prepare a summary before context fills. May use extra quota.",
+			"Experimental. Prepare a summary before context fills. May use extra quota.",
 		AgentContextFeature::RetainClientToolOutputs =>
-			"Keep client-marked outputs after compaction, within Codex limits.",
+			"Experimental. Keep client-marked outputs after compaction, within Codex limits.",
 		AgentContextFeature::McpCatalogStartup { .. } => "",
 	}
 }
