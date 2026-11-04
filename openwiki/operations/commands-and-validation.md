@@ -38,6 +38,10 @@ sources:
     resource: repo://automations/upstream/retained-evidence.json
   - id: openwiki-source-2d990e4e2bc233a95b4894b9
     resource: repo://crates/decodex-components/src/pin.rs
+  - id: openwiki-source-69e9fd7efd8c3cd616184e27
+    resource: repo://crates/decodex-components/src/ragflow_service.rs
+  - id: openwiki-source-9ecfe8c96199e765ca2b4e1b
+    resource: repo://crates/decodex-components/src/ragflow.rs
   - id: openwiki-source-95a7168e447de14b4b758f16
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_archive_tests.rs
   - id: openwiki-source-1a964823f348372d89aa1920
@@ -116,10 +120,10 @@ sources:
     resource: repo://scripts/macos/test_native_app.sh
   - id: openwiki-source-e201f60894c32a914dac99ee
     resource: repo://scripts/vnext/run_native_regression.py
-generated: { by: "codex", at: "2026-11-03T16:31:59.854Z" }
+generated: { by: "codex", at: "2026-11-04T08:04:10.801Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-03T17:33:35.946Z
+    at: 2026-11-04T08:04:10.801Z
 ---
 
 
@@ -134,7 +138,7 @@ Use the smallest check that proves the changed contract. Broaden testing for sha
 | `database/` | Current SQLite schema, transactions and restart fixtures |
 | `decodex-core` | Domain types, bounded identities, paths and pure policies |
 | `decodex-codex` | Native app-server transport and adapters |
-| `decodex-components` | Runtime requirements, verified acquisition and component cache repair |
+| `decodex-components` | Runtime requirements, verified acquisition, component cache repair and managed RAGFlow lifecycle |
 | `decodex-runtime` | Service application, account effects, conversations and Agent |
 | `decodex-protocol` | Exact typed local wire contract and clients |
 | `apps/decodex-cli` | Unified `decodex` commands and `serve` |
@@ -162,16 +166,18 @@ The database gate uses an isolated owner-private root. It is not permission to r
 
 ## Assistant commands and checks
 
-Select an existing Agent with `decodex agent assistant-role --agent-id ID`. Use `--remove` to remove that role. `decodex agent assistant --agent-id ID --command-file /absolute/path/command.json --idempotency-key KEY` sends one typed command through the same service owner as the desktop. The command file contains an AssistantCommand, such as `{"operation":"refresh_context"}`. Do not put a RAGFlow API key in that file; Configure stores its service environment-variable name.
+Select an existing Agent with `decodex agent assistant-role --agent-id ID`. Use `--remove` to remove that role. `decodex agent assistant --agent-id ID --command-file /absolute/path/command.json --idempotency-key KEY` sends one typed command through the same service owner as the desktop. The command file contains an AssistantCommand, such as `{"operation":"refresh_context"}`. Do not put a RAGFlow API key in that file; Configure stores a component credential reference or a legacy service environment-variable name.
 
-Work opens the selected Assistant. Settings > Components edits its mandate, renewal interval and optional RAGFlow scopes. See [the lifecycle](../decisions/assistant-lifecycle.md) for supported operations, ownership and external-service limits.
+Assistant is built in and available from the sidebar by default. Its first use initializes an idle Agent; it has no Enable control in Components. Continuing instructions, teams and duties stay in chat. See [the lifecycle](../decisions/assistant-lifecycle.md) for supported operations and ownership.
+
+With Docker running, choose Install for RAGFlow in Settings > Components. The component prepares the nightly service, compatible Infinity and its private account, then reads the actual installed version. Configure models accepts one OpenAI-compatible Base URL, optional API key and exact extraction and embedding model names. Save models verifies the models and initializes dedicated Memory automatically. It derives the scopes and internal service credential without a Connect step or service-account form. No model runtime or model weights are installed. Update reuses the model settings, data volumes and import choice. Uninstall stops the owned project, clears its Assistant connection and retains data for reinstall. RAGFlow owns migrations in its service database; the Decodex SQLite schema does not change. Chat import starts off and requires a separate explicit action.
 
 Use isolated test processes for the backend fixture suite:
 
 ```sh
-cargo +stable nextest run --locked -p decodex-database -p decodex-protocol -p decodex-runtime --lib
+cargo +stable nextest run --locked -p decodex-components -p decodex-database -p decodex-protocol -p decodex-runtime --lib
 cargo +stable test --locked -p decodex-cli --all-targets
-cargo +stable nextest run --locked -p decodex-gpui --bin decodex-gpui -E 'test(assistant_refresh_keeps) or test(native_timeline::media::)'
+cargo +stable nextest run --locked -p decodex-gpui --bin decodex-gpui -E 'test(assistant) or test(settings_surface::components) or test(agent_drafts) or test(native_timeline::media::)'
 ```
 
 Set `DECODEX_TEST_CODEX_BINARY` to the selected pinned component executable for the opt-in native lifecycle test, then run:
@@ -180,7 +186,7 @@ Set `DECODEX_TEST_CODEX_BINARY` to the selected pinned component executable for 
 cargo +stable test --locked -p decodex-runtime --lib installed_assistant_renews_fresh_contexts -- --ignored --nocapture --test-threads=1
 ```
 
-The native test uses an isolated home and loopback provider. It checks three clean native contexts, original dialogue and memory isolation. The HTTP fixture checks scoped RAGFlow requests and business-error responses. Neither fixture qualifies a live RAGFlow deployment or installed desktop application.
+The native test uses an isolated home and loopback provider. It checks three clean native contexts, original dialogue and memory isolation. The HTTP fixtures check scoped RAGFlow requests, business-error responses, default-model setup, lost-creation-reply recovery and private origin-bound credentials. Managed-service fixtures check loopback-only exposure, custom endpoint paths and names, loopback host translation and a project-scoped Uninstall without volume removal. The model editor fixture checks blank saved-key fields and draft preservation. These fixtures do not qualify a real Docker startup, live Memory extraction or installed desktop application. For actual acceptance, record the installed nightly version, configure a controlled compatible API and verify both model calls, use synthetic scoped data for a write/search check, reject invalid credentials without replacing the saved configuration, then verify Update, Uninstall and reinstall without removing unrelated services or retained memory. Keep credentials and raw service receipts outside Git.
 
 ## Signed native WebRTC checks
 

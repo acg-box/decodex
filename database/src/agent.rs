@@ -296,7 +296,7 @@ impl SqliteStore {
 		&self,
 		item: AgentWorkItem,
 	) -> Result<AgentWorkItem, StoreError> {
-		self.create_agent_work_record(item, false, None, Vec::new(), None).await
+		self.create_agent_work_record(item, false, None, Vec::new(), None, false).await
 	}
 
 	/// Publish new work and all its dispatch prerequisites in one transaction.
@@ -305,7 +305,7 @@ impl SqliteStore {
 		item: AgentWorkItem,
 		depends_on: Vec<String>,
 	) -> Result<AgentWorkItem, StoreError> {
-		self.create_agent_work_record(item, false, None, depends_on, None).await
+		self.create_agent_work_record(item, false, None, depends_on, None, false).await
 	}
 
 	/// Create an executable manager in its parent conversation workspace.
@@ -317,7 +317,20 @@ impl SqliteStore {
 			return Err(StoreError::InvalidInput("manager must be a goal"));
 		}
 
-		self.create_agent_work_record(item, true, None, Vec::new(), None).await
+		self.create_agent_work_record(item, true, None, Vec::new(), None, false).await
+	}
+
+	/// Publish an idle Assistant and its role together without submitting model work.
+	pub async fn create_assistant(&self, item: AgentWorkItem) -> Result<AgentWorkItem, StoreError> {
+		if item.parent_goal_id.is_some()
+			|| item.kind != AgentWorkKind::Goal
+			|| item.status != AgentWorkStatus::Wait
+		{
+			return Err(StoreError::InvalidInput(
+				"Assistant setup requires an idle independent Agent",
+			));
+		}
+		self.create_agent_work_record(item, true, None, Vec::new(), None, true).await
 	}
 
 	/// Publish a user conversation and its first message in one transaction.
@@ -334,7 +347,7 @@ impl SqliteStore {
 			return Err(StoreError::InvalidInput("conversation requires its first user message"));
 		}
 
-		self.create_agent_work_record(item, true, workspace, Vec::new(), Some(input)).await
+		self.create_agent_work_record(item, true, workspace, Vec::new(), Some(input), false).await
 	}
 
 	/// A delegated persistent Agent keeps application-origin input and its user decision.
@@ -351,7 +364,7 @@ impl SqliteStore {
 		{
 			return Err(StoreError::InvalidInput("invalid persistent Agent delegation"));
 		}
-		self.create_agent_work_record(item, true, workspace, Vec::new(), Some(input)).await
+		self.create_agent_work_record(item, true, workspace, Vec::new(), Some(input), false).await
 	}
 
 	async fn create_agent_work_record(
@@ -361,6 +374,7 @@ impl SqliteStore {
 		workspace: Option<String>,
 		depends_on: Vec<String>,
 		initial_input: Option<EnqueueAgentEvent>,
+		assistant: bool,
 	) -> Result<AgentWorkItem, StoreError> {
 		bounded(&item.id, 512)?;
 		bounded(&item.title, 1_024)?;
@@ -404,6 +418,9 @@ impl SqliteStore {
 				}
 			}
 			if work_exists(&transaction, &item.id)? {
+				if assistant && transaction.query_row("SELECT EXISTS(SELECT 1 FROM agents WHERE id=?1 AND assistant=1)", [&item.id], |r| r.get::<_,bool>(0)).map_err(error::sqlite_error)? {
+					return read_work(&transaction, &item.id);
+				}
 				return Err(DatabaseError::AlreadyExists.into());
 			}
 
@@ -440,7 +457,10 @@ impl SqliteStore {
 					.map_err(error::sqlite_error)?;
 
 			}
-			if manager || item.parent_goal_id.is_none() { transaction.execute("INSERT INTO agents(id) VALUES(?1)", [&item.id]).map_err(error::sqlite_error)?; }
+			if assistant {
+				transaction.execute("UPDATE agents SET assistant=0 WHERE assistant=1", []).map_err(error::sqlite_error)?;
+			}
+			if manager || item.parent_goal_id.is_none() { transaction.execute("INSERT INTO agents(id,assistant) VALUES(?1,?2)", rusqlite::params![item.id,assistant]).map_err(error::sqlite_error)?; }
 
             if let Some(workspace) = workspace {
                 transaction.execute("INSERT INTO project_agents(agent_id,project_id) VALUES(?1,?2)",rusqlite::params![item.id,workspace]).map_err(error::sqlite_error)?;

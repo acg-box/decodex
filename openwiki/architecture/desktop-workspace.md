@@ -86,6 +86,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/native_material_panel.rs
   - id: openwiki-source-a2f254020dd8eaabd6366c91
     resource: repo://apps/decodex-gpui/src/session_settings.rs
+  - id: openwiki-source-0813b2e35e2133631c0aa4db
+    resource: repo://apps/decodex-gpui/src/settings_components.rs
   - id: openwiki-source-2986b39185cca5c00a29ad1d
     resource: repo://apps/decodex-gpui/src/shell_status.rs
   - id: openwiki-source-1291f5243fa6c9cb52149bda
@@ -96,6 +98,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/ui_preferences.rs
   - id: openwiki-source-570564020f98df7a4d6d0b61
     resource: repo://apps/decodex-gpui/src/ui_theme.rs
+  - id: openwiki-source-69e9fd7efd8c3cd616184e27
+    resource: repo://crates/decodex-components/src/ragflow_service.rs
   - id: openwiki-source-c29d70b5569f29b7122f2f6b
     resource: repo://crates/decodex-runtime/src/native_agents.rs
   - id: openwiki-source-6085af9603cb7ac0ff3ef1cf
@@ -108,10 +112,10 @@ sources:
     resource: repo://database/src/works/commands.rs
   - id: openwiki-source-8fe6f1557e5d45d88b34bd0a
     resource: repo://scripts/macos/generate_workspace_symbols.swift
-generated: { by: "codex", at: "2026-11-03T17:21:44.822Z" }
+generated: { by: "codex", at: "2026-11-04T08:04:10.801Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-03T17:33:35.946Z
+    at: 2026-11-04T08:04:10.801Z
 ---
 
 # Desktop workspace and native glass
@@ -136,7 +140,7 @@ The conversation header groups each source with its open Side chats. Use **+** t
 
 ## Project Work and Guardian
 
-Work and Guardian are entries in the existing sidebar. Work groups outcomes by Project and can show the same accountable Agent on several rows. Assistant and Project Lead selectors choose existing Agents; they do not create role-specific conversations. The existing conversation, Collaboration panel and Dock remain available.
+Assistant, Work and Guardian are entries in the existing sidebar. The Assistant entry initializes an idle personal Agent when needed and opens its chat. Work groups outcomes by Project and can show the same accountable Agent on several rows. Assistant and Project Lead selectors choose existing Agents; they do not create role-specific conversations. The existing conversation, Collaboration panel and Dock remain available.
 
 Expand a Work to read its current requirements, authoritative source, completion criteria, hold reason and resumption condition. Materials open their authorized references. Results show their exact native item or artifact digest. Collaboration Requests show their recipient, issued requirements, scoped Materials, delivery, acceptance, return and assessment. Discuss with owner opens that Agent's conversation. Awaiting Assessment is a derived activity label, not another Work state.
 
@@ -220,7 +224,9 @@ Reserve `arrow.triangle.branch` for Fork. Account routing uses `point.topleft.do
 
 ## Verification
 
-The [Assistant lifecycle](../decisions/assistant-lifecycle.md) keeps a stable personal Agent and renews its native context behind the same conversation. Work provides an Open Assistant action and shows saved team counts. Settings > Components edits continuing instructions, the renewal interval and the optional existing RAGFlow connection, shows team responsibilities and cancels individual duties. External Memory and chat import are separate selections. The editor and reading state survive a confirmed context transition; older messages retain their native sources. Existing Side chats remain separate native branches.
+The [Assistant lifecycle](../decisions/assistant-lifecycle.md) keeps a stable personal Agent and renews its native context behind the same conversation. Assistant is built in and always available from the sidebar. First use records an idle Agent and its role atomically without a generated user message. It has no Enable control or optional component row. Work retains its role selector, saved teams and shared pending-context feedback. Continuing instructions, teams and duties are managed in chat. The editor and reading state survive a confirmed context transition; older messages retain their native sources. Side chats remain separate native branches.
+
+RAGFlow is an optional component with Install, Update, Uninstall and actual installed version readback. It shares component lifecycle buttons, metadata, busy state and inline feedback with EGM and Pro Research. Install prepares RAGFlow nightly, Infinity and the private service account. Docker must be running. Configure models opens four fields in the existing component details: Base URL, API key, Extraction model and Embedding model. Save models verifies the configured OpenAI-compatible API and initializes dedicated Memory. The API key is masked while entered and is not copied into a later edit; an empty field keeps a saved key only at the same Base URL. Service connection and credentials remain automatic, with no Connect action. Chat import starts off and requires a separate explicit action.
 
 Use GPUI tests in `shell.rs`, `agent_workspace.rs`, `agent_activity.rs`, `agent_markdown.rs`, `agent_archive.rs` and `settings_surface.rs`. Real macOS acceptance must also check focus, typing, scrolling, panel transitions, and transparency in the signed app. A white or missing automation screenshot alone is not evidence that the user sees a blank window.
 
@@ -234,4 +240,4 @@ See [Conversation presentation and motion](conversation-presentation.md), [Agent
 
 The composer preserves current editable input. Submitted messages retain their own delivery state and exact retry payload; there is no recovered-copy manager. Rich Markdown retains math, Mermaid, weather and source-copy presentation without replacing native execution. The embedded MCP HTML viewer is retired. Ordinary tools and native form prompts remain available. See [conversations](../workflows/conversations-and-recovery.md), [tools](../integrations/tools-plugins-and-apps.md) and [acceptance boundaries](../testing/upstream-acceptance-boundaries.md).
 
-Assistant settings edits are bound to the current runtime source and selected Assistant role. Profile changes, disconnection or a replaced source/role clear the settings editor while preserving the ordinary chat draft. Invalid renewal counts and chat import without a Memory ID remain in the editor with an explicit error.
+RAGFlow setup uses the current local service profile and selected Assistant. Profile, runtime or role changes clear its temporary presentation state while preserving the ordinary chat draft. The component's generated credentials and raw scope IDs are not UI fields. Setup progress and failures use shared inline feedback beside the component. See [Runtime architecture](runtime-architecture.md) for process, storage and native-memory ownership.

@@ -16,6 +16,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_timeline_scroll.rs
   - id: openwiki-source-691432bb61082c358b6f9c24
     resource: repo://apps/decodex-gpui/src/agent_timeline.rs
+  - id: openwiki-source-f339a4d1910db63ca305c2df
+    resource: repo://apps/decodex-gpui/src/assistant_settings.rs
   - id: openwiki-source-ae991159453be2ee0c611ac1
     resource: repo://apps/decodex-gpui/src/bundled_daemon.rs
   - id: openwiki-source-c1d5f763b821a11957a8c33b
@@ -58,10 +60,16 @@ sources:
     resource: repo://crates/decodex-codex/src/app_server_client/temporary_structured.rs
   - id: openwiki-source-787f8ad27b8519fbed2bd039
     resource: repo://crates/decodex-codex/src/app_server_client/thread_fork.rs
+  - id: openwiki-source-5574fb6f352ba6cb3403ede9
+    resource: repo://crates/decodex-components/resources/ragflow-infinity.Dockerfile
   - id: openwiki-source-0d4c68456f2e50c6fc7ad5eb
     resource: repo://crates/decodex-components/src/install.rs
   - id: openwiki-source-2d990e4e2bc233a95b4894b9
     resource: repo://crates/decodex-components/src/pin.rs
+  - id: openwiki-source-69e9fd7efd8c3cd616184e27
+    resource: repo://crates/decodex-components/src/ragflow_service.rs
+  - id: openwiki-source-9ecfe8c96199e765ca2b4e1b
+    resource: repo://crates/decodex-components/src/ragflow.rs
   - id: openwiki-source-6230c010baca677fa60c32c1
     resource: repo://crates/decodex-protocol/src/client.rs
   - id: openwiki-source-cc0439b23243c3697ba49199
@@ -122,6 +130,8 @@ sources:
     resource: repo://crates/decodex-runtime/src/application_collaboration.rs
   - id: openwiki-source-a09c082db4ad1473c4d1e557
     resource: repo://crates/decodex-runtime/src/application.rs
+  - id: openwiki-source-3edc2f094826ee56ddec6b73
+    resource: repo://crates/decodex-runtime/src/ragflow.rs
   - id: openwiki-source-6085af9603cb7ac0ff3ef1cf
     resource: repo://crates/decodex-runtime/src/work_portfolio.rs
   - id: openwiki-source-003f00974f49a9f106bbcbea
@@ -150,10 +160,10 @@ sources:
     resource: repo://scripts/macos/stage_decodex_app.sh
   - id: openwiki-source-76081c1a47ca8cf32593de34
     resource: repo://scripts/macos/test_decodex_app_stage.sh
-generated: { by: "codex", at: "2026-11-03T16:31:59.854Z" }
+generated: { by: "codex", at: "2026-11-04T08:04:10.801Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-03T17:33:35.946Z
+    at: 2026-11-04T08:04:10.801Z
 ---
 
 # Runtime Architecture
@@ -173,6 +183,10 @@ flowchart LR
     FFI --> Service
     Service --> DB[(SQLite)]
     Service --> Codex[Codex app-server]
+    UI --> Components[ComponentStore]
+    Components --> Docker[Owned Docker Compose project]
+    Docker --> RAG[RAGFlow nightly and Infinity]
+    Service --> RAG
 ```
 
 ## Application and bundle
@@ -227,7 +241,7 @@ Native `thread/name/set` owns the conversation name. The service rechecks the or
 
 Native name revisions have a separate guard. A manual rename invalidates an outstanding title write. An automatic title update does not invalidate task permissions, model settings or an existing Recap.
 
-SQLite keeps title provenance and the review checkpoint as resolved `conversation_title` observations in the existing indexed inbox journal. They do not wake an Agent or enter transcript pages. The work snapshot reads topics and current bindings in one transaction; local protocol 4.6 supplies the resulting thread-keyed map. No new schema or startup migration is required. Agent identity and Work titles remain separate. See [the title workflow](../workflows/conversations-and-recovery.md#automatic-conversation-titles).
+SQLite keeps title provenance and the review checkpoint as resolved `conversation_title` observations in the existing indexed inbox journal. They do not wake an Agent or enter transcript pages. The work snapshot reads topics and current bindings in one transaction; local protocol 4.7 supplies the resulting thread-keyed map. No new schema or startup migration is required. Agent identity and Work titles remain separate. See [the title workflow](../workflows/conversations-and-recovery.md#automatic-conversation-titles).
 
 ## Native history and resource lookup
 
@@ -283,6 +297,16 @@ The per-server cached-catalog switch saves `mcp_servers.<quoted-server>.startup_
 
 `decodex-components` owns one per-user component store, package verification and cache repair. The GUI and service embed the same runtime requirement. App startup prepares that component before launching the owned service; preparation does not consume connection retry attempts. Settings > Components shows the selected component, progress, errors and Retry. Optional EGM installation, update and removal use the native Codex plugin lifecycle. Sparkle owns the separate Decodex application update flow in Settings > Updates.
 
+Assistant is built in and always available from the sidebar. Its first use publishes an idle Agent and its role in one SQLite transaction. Components has no Assistant Enable control. The optional RAGFlow component shares lifecycle buttons, version metadata, collapsed details and inline feedback with the other components. It exposes Install, Update and Uninstall. Service connection is automatic; model settings use the component details.
+
+`decodex-components::ragflow` owns a per-user Docker Compose project. Docker must be running. The project contains RAGFlow nightly, compatible Infinity 0.7.4, MySQL, MinIO, Kvrocks and NATS. Only the RAGFlow API is published, on loopback. Install prepares the private account and reads the actual server version and owned image identity. The private receipt retains the project, endpoint and setup state so a retry uses the same installation.
+
+Model configuration uses one OpenAI-compatible Base URL, optional API key, extraction model name and embedding model name. The component asks RAGFlow to verify the exact models before saving the provider instance and defaults. It then creates or recovers a dedicated Memory by its stable name. The component does not install a model runtime, download models or create a model data volume. A loopback model URL is translated to `host.docker.internal` for the container; the saved and displayed URL stays as entered. Existing indexed Memory keeps its embedding model and endpoint, because a changed vector space would invalidate the saved index.
+
+On ARM64, the component packages the official Infinity 0.7.4 binary and analyzer resources with an Ubuntu 24.04 runtime. The published ARM64 image has an older glibc than its binary requires. The build context contains only the runtime Dockerfile; account and Compose credentials stay outside it. The x86-64 path uses the compatible official Infinity image directly. This does not install a host compiler or add a Decodex execution engine.
+
+Model credentials and installation state stay in the private component receipt. The separate origin-bound RAGFlow API credential is saved in a private component file; only its reference passes through the existing Assistant Configure command. The service reads that reference for Memory calls. Chat import starts off. Update preserves models, credentials, import choice and data. Uninstall stops only the owned project, clears its Assistant connection and retains volumes for reinstallation. A service failure can retry through Update; failed model verification keeps the previous saved configuration and is retried through Save models. Native context refresh and the external-memory policy retain their existing service and Codex owners.
+
 Official Release inputs require an exact tag, canonical OpenAI asset URL, archive SHA-256, executable SHA-256 and generated schema fingerprint. The installer checks the archive before extraction, then verifies signatures, version and protocol evidence. Downloads have three bounded attempts. A verified replacement is published atomically; a failed repair preserves the previous directory, and other versions remain available.
 
 Development keeps [the reviewed source requirement](../../codex-runtime.lock.json). `cargo make prepare-codex` explicitly builds or imports its qualified artifact. The source builder uses the common checked download path, stable Rust and the unchanged upstream Cargo lock. Its extractor refreshes source modification times while retaining the dependency build cache, so historical archive timestamps cannot select stale local objects. The app does not compile Codex.
@@ -305,7 +329,7 @@ Production staging selects a separate official Release requirement. Release pinn
 
 ## Protocol and safety
 
-Clients use same-UID local transport and exact protocol/artifact compatibility. Protocol 4.6 exposes current Project, Agent, Work, Guardian and attached-branch operations. An incompatible client fails explicitly; there is no parallel alias rollout. Publication-instance receipts remain enabled for this generation, including reconnect and idempotent command recovery. Credentials do not enter normal product projections. Revisions and stable command identities guard mutations. An unknown outcome requires authoritative readback, not blind retry.
+Clients use same-UID local transport and exact protocol/artifact compatibility. Protocol 4.7 exposes current Project, Agent, Work, Guardian and attached-branch operations. An incompatible client fails explicitly; there is no parallel alias rollout. Publication-instance receipts remain enabled for this generation, including reconnect and idempotent command recovery. Credentials do not enter normal product projections. Revisions and stable command identities guard mutations. An unknown outcome requires authoritative readback, not blind retry.
 
 Diagnostics covers Decodex product storage, local transport and integration failures. The standalone Codex startup-configuration check, its local query and its dedicated qualification helper are retired. Codex owns its app-server self-diagnostics. Ordinary error and warning presentation and user-requested conversation Markdown export remain supported. This retirement does not qualify an installed protocol 4.0 application against the current service.
 

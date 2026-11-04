@@ -600,6 +600,15 @@ impl AgentSurface {
 			for team in &snapshot.assistant.teams {
 				row = row.child(format!("{} ({} members)", team.name, team.members.len()));
 			}
+			if snapshot.assistant.context_pending {
+				row = row.children(crate::ui_feedback::inline_feedback(
+					"assistant-context-status",
+					"assistant",
+					&crate::ui_feedback::Feedback::neutral(
+						"Context refresh is pending confirmation. You can continue in the current conversation.",
+					),
+				));
+			}
 		}
 
 		row.into_any_element()

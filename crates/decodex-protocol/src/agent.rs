@@ -402,6 +402,11 @@ pub struct AgentTaskReferenceDto {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "action", content = "data", rename_all = "snake_case", deny_unknown_fields)]
 pub enum AgentActionDto {
+	/// Create an idle personal Assistant. Native execution starts with user input.
+	CreateAssistant {
+		/// Stable identity for this setup attempt and its retries.
+		agent_id: EntityId,
+	},
 	/// Manage the selected personal Agent, its teams and independent duties.
 	ManageAssistant {
 		/// Stable personal Agent identity.

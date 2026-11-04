@@ -38,6 +38,8 @@ sources:
     resource: repo://crates/decodex-codex/src/app_server_client/context_preferences.rs
   - id: openwiki-source-787f8ad27b8519fbed2bd039
     resource: repo://crates/decodex-codex/src/app_server_client/thread_fork.rs
+  - id: openwiki-source-69e9fd7efd8c3cd616184e27
+    resource: repo://crates/decodex-components/src/ragflow_service.rs
   - id: openwiki-source-991553c8d747a54ecf5a9376
     resource: repo://crates/decodex-core/src/work.rs
   - id: openwiki-source-0d29990b5fd295fa89a495ad
@@ -116,10 +118,10 @@ sources:
     resource: repo://database/src/works/collaboration.rs
   - id: openwiki-source-c0eb738b42368debe7ef7545
     resource: repo://database/src/works/commands.rs
-generated: { by: "codex", at: "2026-11-03T16:38:47.085Z" }
+generated: { by: "codex", at: "2026-11-04T08:04:10.801Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-03T17:33:35.946Z
+    at: 2026-11-04T08:04:10.801Z
 ---
 
 # Project, Agent and Work coordination
@@ -130,7 +132,7 @@ The [accepted contract](../decisions/project-agent-work.md) defines the shared v
 
 ## Owners and flow
 
-The accepted [Assistant lifecycle design](../decisions/assistant-lifecycle.md) extends this model with delegated persistent-Agent management, optional RAGFlow Memory and fresh native contexts behind one Agent identity. The implementation reuses the existing Work, Collaboration and Inbox owners. Lightweight teams group existing Agents and responsibilities; membership grants no private-history access. Independent wakes retain their own due times. Select the Assistant in Work and configure its continuing instructions and optional RAGFlow connection in Settings > Components.
+The accepted [Assistant lifecycle design](../decisions/assistant-lifecycle.md) extends this model with delegated persistent-Agent management, optional RAGFlow Memory and fresh native contexts behind one Agent identity. The implementation reuses the existing Work, Collaboration and Inbox owners. Lightweight teams group existing Agents and responsibilities; membership grants no private-history access. Independent wakes retain their own due times. Assistant is built in and always available from the sidebar. Its first use creates an idle independent Agent and selects its role in one transaction. It does not submit a first message. Give it continuing instructions in chat. The optional RAGFlow component uses Install, Update and Uninstall. Installation prepares the service and account. Configure models accepts an OpenAI-compatible Base URL, optional API key and custom extraction and embedding model names, then initializes Memory automatically. There is no separate Connect action.
 
 The desktop sends typed commands to the service. SQLite owns Project membership, Agent responsibilities, Work requirements, holds, Results, assessments and Collaboration Requests. Codex owns native threads, turns, Subagents, messages, waits, context, Goals, permissions and enforcement. Work commands persist business decisions; they do not spawn or message native helpers.
 

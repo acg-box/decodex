@@ -28,12 +28,16 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_side_chat_question_tests.rs
   - id: openwiki-source-691432bb61082c358b6f9c24
     resource: repo://apps/decodex-gpui/src/agent_timeline.rs
+  - id: openwiki-source-f339a4d1910db63ca305c2df
+    resource: repo://apps/decodex-gpui/src/assistant_settings.rs
   - id: openwiki-source-032278b78f4f6cac0e654ef0
     resource: repo://apps/decodex-gpui/src/native_audio_owner_tests.rs
   - id: openwiki-source-ca95ba5564216bb4898c8392
     resource: repo://apps/decodex-gpui/src/native_voice_online_tests.rs
   - id: openwiki-source-d1f06f7b22d0c2eec328d95f
     resource: repo://apps/decodex-gpui/src/native_voice_transport.rs
+  - id: openwiki-source-0813b2e35e2133631c0aa4db
+    resource: repo://apps/decodex-gpui/src/settings_components.rs
   - id: openwiki-source-546812ff3637690f4a184b89
     resource: repo://apps/decodex-gpui/src/ui_preferences.rs
   - id: openwiki-source-3122dd472ce3039751b99877
@@ -70,6 +74,10 @@ sources:
     resource: repo://crates/decodex-codex/src/app_server_client/thread_fork.rs
   - id: openwiki-source-0d4c68456f2e50c6fc7ad5eb
     resource: repo://crates/decodex-components/src/install.rs
+  - id: openwiki-source-69e9fd7efd8c3cd616184e27
+    resource: repo://crates/decodex-components/src/ragflow_service.rs
+  - id: openwiki-source-9ecfe8c96199e765ca2b4e1b
+    resource: repo://crates/decodex-components/src/ragflow.rs
   - id: openwiki-source-8bbd4ba0cf275fa1b4da9acf
     resource: repo://crates/decodex-components/tests/development.rs
   - id: openwiki-source-08dbb31668b58707418687d2
@@ -194,10 +202,10 @@ sources:
     resource: repo://scripts/macos/test_decodex_app_stage.sh
   - id: openwiki-source-e201f60894c32a914dac99ee
     resource: repo://scripts/vnext/run_native_regression.py
-generated: { by: "codex", at: "2026-11-03T16:31:59.854Z" }
+generated: { by: "codex", at: "2026-11-04T08:04:10.801Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-03T17:33:35.946Z
+    at: 2026-11-04T08:04:10.801Z
 ---
 
 # Upstream integration acceptance boundaries
@@ -640,6 +648,8 @@ The synthetic cohorts do not establish installed-app, live-account, general mode
 
 The Assistant extension reuses the selected Codex runtime at upstream `ba0dfd38979033f514a28d9514215bad46957a18`. Its opt-in `installed_assistant_renews_fresh_contexts_with_original_dialogue_and_isolated_memory` fixture uses the actual selected binary with an isolated native home and loopback Responses provider. It verifies three successive clean contexts, recent original dialogue across context boundaries, no fork ancestry, one model request per user turn and no native Memory injection in successor contexts. An unrelated control retains native memory settings. This test does not qualify a live provider or long-duration conversation quality.
 
-SQLite tests cover independent team membership and wakes, archive cancellation, exact delegated creation and linked authority, pending input, immutable native-context receipts and queued/unknown external imports across reopen. The desktop transition test covers drafts, loaded history, reading state, old native source IDs and pagination cursor rebasing. RAGFlow's loopback HTTP fixture checks explicit Memory/Agent/user scopes and rejects nonzero business codes even with HTTP 200. A queued extraction response is not proof that the memory is searchable.
+SQLite tests cover independent team membership and wakes, archive cancellation, exact delegated creation and linked authority, pending input, immutable native-context receipts and queued/unknown external imports across reopen. The desktop transition test covers drafts, loaded history, reading state, old native source IDs and pagination cursor rebasing. RAGFlow's loopback HTTP fixture checks explicit Memory/Agent/user scopes and rejects nonzero business codes even with HTTP 200. HTTP Memory setup fixtures cover default-model selection, recovery after a lost creation reply, origin-bound private credentials and missing-model failure without publishing a Memory credential. An idle Assistant setup fixture confirms atomic role selection and no fabricated first user message. The first-message fixture checks displayed model and effort, normal permission and speed defaults, and preservation of the previous Agent and draft. Shared component UI fixtures check installed readback, busy controls, disclosure and inline feedback. A queued extraction response is not proof that the memory is searchable.
+
+Managed-service fixtures check loopback-only API exposure, absence of a model runtime and model volume, custom endpoint paths and model names, loopback host translation, private installation receipts and an Uninstall command scoped to the owned project without volume removal. The model editor fixture checks blank saved-key fields, source invalidation and draft preservation. These checks use in-process and command fixtures, not real Docker images. Actual acceptance must separately verify the nightly version, native verification against a controlled compatible API, automatic Memory configuration, rejection of invalid credentials without replacing saved configuration, a synthetic scoped write/search, retained model settings and data across Update, Uninstall and reinstall, and the installed App controls.
 
 These source and selected-native checks do not establish a real RAGFlow deployment, extraction quality, machine sleep behavior or installed desktop visual acceptance. See [Assistant lifecycle](../decisions/assistant-lifecycle.md) and [commands](../operations/commands-and-validation.md) for owners and repeatable checks. The earlier qualification records above retain their own artifacts and counts.

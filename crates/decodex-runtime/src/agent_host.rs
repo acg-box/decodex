@@ -1994,7 +1994,8 @@ impl AgentHost {
 
 			action @ (AgentActionDto::GenerateSample { .. }
 			| AgentActionDto::CancelSample { .. }) => self.handle_sample(&key, action).await,
-			action @ (AgentActionDto::AddProject { .. }
+			action @ (AgentActionDto::CreateAssistant { .. }
+			| AgentActionDto::AddProject { .. }
 			| AgentActionDto::DiscardEmptyWork { .. }
 			| AgentActionDto::NewConversation { .. }) =>
 				self.handle_workspace_action(&key, action, active).await,
@@ -2169,6 +2170,21 @@ impl AgentHost {
 		active: &mut Option<(String, AgentCoordinator, mpsc::Receiver<ServerEvent>)>,
 	) -> Result<String, AgentHostError> {
 		match action {
+			AgentActionDto::CreateAssistant { agent_id } => {
+				let now = now();
+				self.store.create_assistant(decodex_database::AgentWorkItem {
+					id: agent_id.as_str().into(), parent_goal_id: None,
+					kind: decodex_database::AgentWorkKind::Goal, title: "Assistant".into(),
+					instructions: "Help the user manage their Agents and teams. Keep continuing responsibilities only when the user delegates them.".into(),
+					codex_thread_id: None, status: decodex_database::AgentWorkStatus::Wait,
+					dispatch_state: decodex_database::AgentDispatchState::Idle, active_turn_id: None,
+					next_check_at_micros: None, created_at_micros: now, updated_at_micros: now,
+				}).await.map_err(|_| "Assistant could not be set up")?;
+				if active.is_none() {
+					*active = self.restore().await;
+				}
+				Ok(agent_id.as_str().into())
+			},
 			AgentActionDto::DiscardEmptyWork { work_id } => {
 				self.store
 					.discard_empty_agent_work(work_id.as_str().into())

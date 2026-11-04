@@ -5,14 +5,10 @@ use super::SettingsSurface;
 use crate::shell::agent_surface::AgentSurface;
 
 impl SettingsSurface {
-	pub(super) fn assistant_component(&self, cx: &mut Context<Self>) -> AnyElement {
+	pub(super) fn ragflow_component(&self, cx: &mut Context<Self>) -> AnyElement {
 		self.native_agent.as_ref().map_or_else(
-			|| {
-				gpui::div()
-					.child("Select a connected Agent to configure the optional RAGFlow component.")
-					.into_any_element()
-			},
-			|agent| agent.update(cx, |agent, cx| agent.assistant_settings_view(cx)),
+			|| gpui::div().child("Open the workspace to manage this component.").into_any_element(),
+			|agent| agent.update(cx, |agent, cx| agent.ragflow_settings_view(cx)),
 		)
 	}
 

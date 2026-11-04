@@ -4,6 +4,12 @@ title: "Local database operations"
 description: "Current-only SQLite initialization, account routing and durable credential and branch records."
 tags: ["decodex", "architecture"]
 sources:
+  - id: openwiki-source-f339a4d1910db63ca305c2df
+    resource: repo://apps/decodex-gpui/src/assistant_settings.rs
+  - id: openwiki-source-69e9fd7efd8c3cd616184e27
+    resource: repo://crates/decodex-components/src/ragflow_service.rs
+  - id: openwiki-source-9ecfe8c96199e765ca2b4e1b
+    resource: repo://crates/decodex-components/src/ragflow.rs
   - id: openwiki-source-cc0439b23243c3697ba49199
     resource: repo://crates/decodex-protocol/src/lib.rs
   - id: openwiki-source-f4724776aade804ebf838e2e
@@ -38,10 +44,10 @@ sources:
     resource: repo://database/src/works/commands.rs
   - id: openwiki-source-960cb6b925f1fa45c737a735
     resource: repo://scripts/macos/verify_decodex_bundle_contracts.py
-generated: { by: "codex", at: "2026-11-03T16:31:59.854Z" }
+generated: { by: "codex", at: "2026-11-04T08:04:10.801Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-03T17:33:35.946Z
+    at: 2026-11-04T08:04:10.801Z
 ---
 
 # Local database operations
@@ -66,7 +72,7 @@ Ordinary input resumes its original native context and recorded tool declaration
 
 Global Guardian stores the Review Details opt-in and private review records. Conversation permission settings have a separate owner. Private records are deduplicated by reviewer thread, turn and item. Records are bounded to 64 KiB and the newest 128; small snapshot previews and exact selected reads stay separate. These records do not grant execution authority or complete Work.
 
-Local clients and service must agree on exact protocol 4.6. Publication-instance and command receipts preserve reconnect and idempotent recovery. Exact native bundle ABI checks remain a separate verification boundary. See [commands](commands-and-validation.md) and [the canonical contract](../decisions/project-agent-work.md).
+Local clients and service must agree on exact protocol 4.7. Publication-instance and command receipts preserve reconnect and idempotent recovery. Exact native bundle ABI checks remain a separate verification boundary. See [commands](commands-and-validation.md) and [the canonical contract](../decisions/project-agent-work.md).
 
 ## Authority and paths
 
@@ -120,6 +126,10 @@ Explicit conversation branches reuse durable inbox event records for their inten
 Native conversation topics use resolved `conversation_title` observations in the existing indexed inbox journal. The observation keeps the native name, automatic-name provenance and the last successful review checkpoint. It does not wake work or consume transcript pages. Work snapshots join these topics to current native bindings in the same transaction. Agent identity and business Work titles remain separate; the database schema stays at version 60. See [automatic titles](../workflows/conversations-and-recovery.md#automatic-conversation-titles).
 
 ## Assistant records
+
+The built-in Assistant is available by default. Its first use creates an idle Agent and selects its role in the existing record transaction. A repeated setup identity reuses that Agent. It does not add a user event or native binding. RAGFlow API keys remain in the private component store; Assistant settings contain a credential reference.
+
+The managed RAGFlow component keeps its private installation receipt, generated service account and origin-bound API credential under the per-user component store. The receipt records the owned Compose project, endpoint, actual version, image, Memory setup and model configuration, including its private API key. The service directory uses mode 0700 and private files use mode 0600. RAGFlow owns its separate service database, Infinity data, object storage and queue volumes. No model runtime or model data volume is installed. Update reuses the model settings and service data; Uninstall stops the owned project and clears the Assistant connection while retaining volumes and private identity for reinstall. These operations do not change the Decodex SQLite schema.
 
 Assistant configuration, team membership, independent wakes, context intent/acknowledgment/bootstrap receipts and external import receipts reuse the immutable `agent_inbox_events` journal. They use the `assistant_internal_*` event namespace and stay out of ordinary transcript pages. Public `assistant_message` and delegated `assistant_instruction` retain their separate meanings.
 

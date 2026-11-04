@@ -80,6 +80,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_work_browser.rs
   - id: openwiki-source-5d032c6be684964aa2c401fa
     resource: repo://apps/decodex-gpui/src/agent_workspace.rs
+  - id: openwiki-source-f339a4d1910db63ca305c2df
+    resource: repo://apps/decodex-gpui/src/assistant_settings.rs
   - id: openwiki-source-7a7e7b3407a8222085c2d27e
     resource: repo://apps/decodex-gpui/src/composer_input.rs
   - id: openwiki-source-a16804a567889414868e5d67
@@ -166,10 +168,10 @@ sources:
     resource: repo://database/src/assistant.rs
   - id: openwiki-source-28af4781ad8d9558410630da
     resource: repo://database/src/works.rs
-generated: { by: "codex", at: "2026-11-03T17:21:44.822Z" }
+generated: { by: "codex", at: "2026-11-03T19:29:07.466Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-03T17:33:35.946Z
+    at: 2026-11-03T19:29:07.466Z
 ---
 
 # Conversation input, history and recovery
@@ -182,9 +184,9 @@ The Agent composer and the separate ordinary History workbench share recovery me
 
 ## Persistent Agent and Work context
 
-The implemented [Assistant lifecycle](../decisions/assistant-lifecycle.md) keeps a stable identity across fresh native contexts. It supports delegated independent Agents, teams, wakes and optional RAGFlow Memory. Renewal waits for a safe ordinary-input boundary, records exact native creation and activation receipts, then retains the current editor, loaded history and reading state. The saved draft follows only that Assistant's acknowledged context chain and remains editable, including after restart. Submitted commands and history references retain their original identities. The native context chain remains readable with exact thread, turn and item sources. Unknown creation is reconciled without blind replay. Retiring the old context unsubscribes it and does not run Agent archive cleanup.
+The built-in [Assistant lifecycle](../decisions/assistant-lifecycle.md) keeps a stable identity across fresh native contexts. Assistant is always available from the sidebar; first use initializes an idle independent Agent without sending a message. It supports delegated independent Agents, teams, wakes and optional RAGFlow Memory. Renewal waits for a safe ordinary-input boundary, records exact native creation and activation receipts, then retains the current editor, loaded history and reading state. The saved draft follows only that Assistant's acknowledged context chain and remains editable, including after restart. Submitted commands and history references retain their original identities. The native context chain remains readable with exact thread, turn and item sources. Unknown creation is reconciled without blind replay. Retiring the old context unsubscribes it and does not run Agent archive cleanup.
 
-Each user-created Agent has one current native conversation. It can own several Works and act as Project Lead without creating a permanent component manager. The Assistant is optional. Current Work requirements and authorized Materials are read before assignment, recovery and assessment; a compacted summary alone is not the authority. Different Work records do not create independent native directories or sandboxes within that conversation.
+Each user-created Agent has one current native conversation. It can own several Works and act as Project Lead without creating a permanent component manager. Direct work with any Agent keeps that conversation's own input and context. Current Work requirements and authorized Materials are read before assignment, recovery and assessment; a compacted summary alone is not the authority. Different Work records do not create independent native directories or sandboxes within that conversation.
 
 The canonical tool revision uses Work business commands and native Subagents. Ordinary input retains its native conversation and recorded tool set. The selected Assistant can instead use the safe fresh-context lifecycle described above. A new local tool revision does not replace that conversation. The runtime checks the capabilities of the bound native context before it uses versioned tools. Old parent identifiers do not grant another persistent Agent input or private-history authority.
 

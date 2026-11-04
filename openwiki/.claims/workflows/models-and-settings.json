@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:46715dafb2aaa882da338c5624b59d1791b62d13cd599de4e1d9eab53bef43b6",
+  "pageVersion": "sha256:8a28c04ee988510ef74d950e14968db6c77cce55868f6218289b957cdb1eadcd",
   "claims": [
     {
       "id": "claim_f0c37462522f4442acd94d53819ef75c",
@@ -191,7 +191,7 @@
       "statement": "The Agent model catalog refreshes through native model/list every 60 seconds, with account, directory and process binding. Model and effort cycling have no fixed fallback list when the catalog is unavailable.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L1700-L1706",
+          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L1701-L1707",
           "version": "repo-lines-v1:sha256:ec57be10edb464df8b1247da2b96223a885c7911b9fef2da7839e011a926563c:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMzExMjRhOTBmYzk1YjFjMTIzMTZiYTliNTFiNzkxZDZkMGMzNTIyYTczYTA2ZDM5YjFhMTk3M2VkNmU0YzE1OSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiN2ZkOWJmZjc2MjQwMTQwNjA1ZTIzZmVlOGM4NzNkMTJjMzA0Y2JkMGU5MGEzYWFmOGJkOTk0N2VmOWQ0OWExNiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZDc3NzdmNDlkYTJlYjE2NzU4YjViMzE0OWFkOGFkZTlkMmI4MzBhZDQzMmQ2N2UzNDdkNmQ0YmQ5MGJhOWRhMyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNDU5ODRjN2QxZjljNTFkMDJhM2JkODBlNTkyZTlhMjkyODY3MTE0YzAzMjU5MGZhOGNlNjFjNGY2MjQyMTlmMyJ9"
         },
         {
@@ -240,7 +240,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_native.rs",
-          "version": "repo-file-v1:sha256:212baf80d0310141fb384509d1af3e0c613bc883f2e17bc24762617bbbf594e1"
+          "version": "repo-file-v1:sha256:88f913c6ebab08229e758bd6bbe03b4c96d1cef3f858bc1add8a5039e0a156b4"
         },
         {
           "resource": "repo://crates/decodex-codex/src/app_server_client/context_preferences.rs",
@@ -322,11 +322,23 @@
     },
     {
       "id": "claim_09df0d70257c4cd4995cda41a1da8169",
-      "statement": "Assistant RAGFlow retrieval, Memory and chat import have separate direct-user configuration in Components. External Memory waits for a safe fresh context with native memory generation, use and the memories feature disabled, plus disabled memory mode; cold resume preserves this without changing native compaction, history, shared defaults or unrelated Agents.",
+      "statement": "Components installs managed RAGFlow nightly with compatible Infinity and a private service account, sharing actual version and lifecycle controls. Configure models accepts one OpenAI-compatible Base URL, optional private API key and custom extraction and embedding names, verifies them and initializes Memory automatically. No model runtime or weights are installed. Saved keys stay blank in later edits and are retained only at the same URL; loopback addresses are translated for the container, and indexed Memory keeps its embedding model and endpoint. Chat import starts off; Update preserves models, import choice and data, and Uninstall clears the connection while retaining data. Typed knowledge scopes and the safe native-memory context policy keep their existing owners.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
-          "version": "repo-file-v1:sha256:a567b2373ebad8d8e66efb3e3fb8e7b3b0bb21ca2b25bcfa8290d2ecaa8db277"
+          "version": "repo-file-v1:sha256:9aa7bc5e963342eab22f84889714297f701c27989b71f274af89e0a8f9238863"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
+          "version": "repo-file-v1:sha256:f892acca477da7550bf8de58c7a04ec12a849d85a473147f52c40236811b033d"
+        },
+        {
+          "resource": "repo://crates/decodex-components/src/ragflow.rs",
+          "version": "repo-file-v1:sha256:fbeb33d1d721cd020eb3e404b47cf03a84cf6d3ca3a2da35af1c391c3b16d96c"
+        },
+        {
+          "resource": "repo://crates/decodex-components/src/ragflow_service.rs",
+          "version": "repo-file-v1:sha256:64a37d1398aa104d9ecaa0fd12e29c770fbc5a2c7db7b3d395e3f48487f0524f"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent.rs",
@@ -345,6 +357,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-03T17:33:35.946Z"
+    "at": "2026-11-04T08:04:10.801Z"
   }
 }

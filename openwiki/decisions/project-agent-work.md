@@ -10,6 +10,10 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_portfolio_tests.rs
   - id: openwiki-source-5da2f5dd568514f1f464d177
     resource: repo://apps/decodex-gpui/src/agent_surface.rs
+  - id: openwiki-source-5d032c6be684964aa2c401fa
+    resource: repo://apps/decodex-gpui/src/agent_workspace.rs
+  - id: openwiki-source-f339a4d1910db63ca305c2df
+    resource: repo://apps/decodex-gpui/src/assistant_settings.rs
   - id: openwiki-source-ca95ba5564216bb4898c8392
     resource: repo://apps/decodex-gpui/src/native_voice_online_tests.rs
   - id: openwiki-source-f580b10e16f1d25ebfea3bf8
@@ -60,6 +64,8 @@ sources:
     resource: repo://database/src/agent_native_turns.rs
   - id: openwiki-source-fc5ad70343bb20c4e9d12540
     resource: repo://database/src/agent_process/attachments.rs
+  - id: openwiki-source-6197a876b2effbe992b1e2ec
+    resource: repo://database/src/agent.rs
   - id: openwiki-source-3f60f3a3aae45b3e3b355d3e
     resource: repo://database/src/assistant.rs
   - id: openwiki-source-d1279ad243eb550afec4d0e6
@@ -70,10 +76,10 @@ sources:
     resource: repo://database/src/works/collaboration.rs
   - id: openwiki-source-c0eb738b42368debe7ef7545
     resource: repo://database/src/works/commands.rs
-generated: { by: "codex", at: "2026-11-03T16:31:59.854Z" }
+generated: { by: "codex", at: "2026-11-03T19:40:29.403Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-03T17:33:35.946Z
+    at: 2026-11-04T08:04:10.801Z
 ---
 
 # Project, Agent and Work contract
@@ -272,13 +278,13 @@ This example illustrates the contract. The places, amounts and outcomes are assu
 
 ## Current implementation and persistence
 
-The current schema stores Project membership, persistent Agent responsibilities and separate Work directly. Protocol 4.6 accepts one exact revision. The service does not carry a second business-name API, historical migration chain or Program model. Native identities, inbox receipts and recorded history remain distinct from current Result qualification.
+The current schema stores Project membership, persistent Agent responsibilities and separate Work directly. Protocol 4.7 accepts one exact revision. The service does not carry a second business-name API, historical migration chain or Program model. Native identities, inbox receipts and recorded history remain distinct from current Result qualification.
 
 Immutable native child-input receipts preserve exact delivery identity. Several independently owned native conversations can share an admitted account process. Received assignment proof records plaintext or native task identity. These records neither grant another Agent's private history nor invent missing input.
 
 | Area | Implemented behavior |
 | --- | --- |
-| Agent identity | User-created independent Agent, one current native conversation. Assistant is optional; Project Lead selects an existing Agent. A legacy parent identifier does not confer business authority. |
+| Agent identity | User-created independent Agent, one current native conversation. Assistant is built in and always available from the sidebar; first use creates an idle independent Agent without sending input. Project Lead selects an existing Agent. A legacy parent identifier does not confer business authority. |
 | Work | Current immutable requirements, one owner, explicit state and holds, scoped Materials, exact Results, reuse assessment and atomic completion checks. |
 | Collaboration | Stable request and instruction identities, durable busy queue, exact delivered-turn acceptance, targeted return, assessment, repair and scoped cancellation. |
 | Native execution | Intent before native call, exact direct-call attribution, verified child input or native task identity, native messages, waits and continuation. Saved identity can join native parent activity after restart. Ambiguous evidence stays Unknown without a duplicate spawn. |
