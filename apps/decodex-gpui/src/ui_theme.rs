@@ -83,6 +83,7 @@ pub(crate) const COMPOSER_TOP_GAP: f32 = 8.0;
 pub(crate) const COMPOSER_BOTTOM_GAP: f32 = 12.0;
 // Settings share shell typography and a bounded reading width.
 pub(crate) const SETTINGS_WIDTH: f32 = 740.0;
+pub(crate) const SETTINGS_READING_WIDTH: f32 = 600.0;
 // Leave room for navigation, page insets, five theme previews and their scrollbar.
 pub(crate) const SETTINGS_WINDOW_MIN_WIDTH: f32 = 920.0;
 pub(crate) const SETTINGS_INSET: f32 = 24.0;
@@ -292,8 +293,8 @@ pub(crate) fn settings_header_inset() -> Div {
 pub(crate) fn settings_row() -> Div {
 	gpui::div()
 		.w_full()
-		.min_h(gpui::px(48.0))
-		.py(gpui::px(8.0))
+		.min_h(gpui::px(44.0))
+		.py(gpui::px(6.0))
 		.flex()
 		.items_center()
 		.gap(gpui::px(16.0))
@@ -330,6 +331,15 @@ pub(crate) fn settings_description(text: impl Into<gpui::SharedString>) -> Div {
 		.line_height(gpui::px(16.5))
 		.text_color(rgb(TEXT_MUTED))
 		.child(text.into())
+}
+
+pub(crate) fn settings_field(label: &'static str, input: impl IntoElement) -> Div {
+	settings_row()
+		.min_h(gpui::px(36.0))
+		.py(gpui::px(4.0))
+		.gap(gpui::px(12.0))
+		.child(gpui::div().w(gpui::px(112.0)).flex_none().child(label))
+		.child(gpui::div().flex_1().min_w_0().child(input))
 }
 
 pub(crate) fn settings_title(title: &'static str) -> impl IntoElement {

@@ -397,17 +397,14 @@ impl SettingsSurface {
 		let mut body = gpui::div().flex().flex_col().gap_2().child(self.ragflow_component(cx));
 		let mut actions = gpui::div().flex().gap_2();
 		if state.as_ref().is_some_and(|s| s.editing) {
+			actions = actions.justify_end().pt_2();
 			for (id, label, action) in [
-				(
-					"components-ragflow-models-save",
-					"Save models",
-					RagflowComponentAction::SaveModels,
-				),
 				(
 					"components-ragflow-models-cancel",
 					"Cancel",
 					RagflowComponentAction::CancelModels,
 				),
+				("components-ragflow-models-save", "Save", RagflowComponentAction::SaveModels),
 			] {
 				actions =
 					actions.child(self.component_button(id, label, Action::Ragflow(action), cx));

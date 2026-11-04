@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:0b0a16da02214fea50826b575e6585ca00975358e0ec4a9e6ec763bf6f18db54",
+  "pageVersion": "sha256:46f643120f9b271d086d311c2eebd2162f4d4ba4a040dc8f11ff7d429e496931",
   "claims": [
     {
       "id": "claim_f0c37462522f4442acd94d53819ef75c",
@@ -250,7 +250,7 @@
     },
     {
       "id": "claim_ae80d6525a7c4e9f9fef8b9241c057d6",
-      "statement": "Settings > Agents > Conversation assistance controls automatic next-message suggestions. The preference defaults on; disabling consumes turn boundaries without starting automatic sampling, and re-enabling does not replay those completions. Tab acceptance remains an unsent undoable draft.",
+      "statement": "Settings > Agents > Decodex controls automatic next-message suggestions. The preference defaults on; disabling consumes turn boundaries without starting automatic sampling, and re-enabling does not replay those completions. Tab acceptance remains an unsent undoable draft.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_prompt_suggestions.rs",
@@ -262,7 +262,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_surface.rs",
-          "version": "repo-file-v1:sha256:28c77b959899a1c581ee5b854b11e54b35e0f67520c61f5405fbbd24c3b0b33a"
+          "version": "repo-file-v1:sha256:b5a7ae515d6f236dbed8f236323d672d5869808f6a6d31affdb264c80d455efc"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_preferences.rs",
@@ -322,15 +322,15 @@
     },
     {
       "id": "claim_09df0d70257c4cd4995cda41a1da8169",
-      "statement": "Components installs managed RAGFlow nightly with compatible Infinity and a private service account, sharing actual version and lifecycle controls. Component operations check the running Docker-compatible engine and Docker Compose before installation effects and use shared inline feedback for unavailable prerequisites without runtime installation, launch or installation guidance. Successful installation with no saved model settings opens the existing model form automatically. Configure models accepts one OpenAI-compatible Base URL, optional private API key and custom extraction and embedding names, verifies them and initializes Memory automatically. No model runtime or weights are installed. Saved keys stay blank in later edits and are retained only at the same URL; loopback addresses are translated for the container, and indexed Memory keeps its embedding model and endpoint. Chat import starts off; Update preserves models, import choice and data, and Uninstall clears the connection while retaining data. Typed knowledge scopes and the safe native-memory context policy keep their existing owners.",
+      "statement": "Components installs managed RAGFlow nightly with compatible Infinity and a private service account, sharing actual version and lifecycle controls. Component operations check the running Docker-compatible engine and Docker Compose before installation effects and use shared inline feedback for unavailable prerequisites without runtime installation, launch or installation guidance. Successful installation with no saved model settings opens the existing model form automatically. Configure models accepts one OpenAI-compatible Base URL, optional private API key and custom extraction and embedding names. Save verifies the models and initializes Memory automatically. No model runtime or weights are installed. Saved keys stay blank in later edits and are retained only at the same URL; loopback addresses are translated for the container, and indexed Memory keeps its embedding model and endpoint. Chat import starts off; Update preserves models, import choice and data, and Uninstall clears the connection while retaining data. Typed knowledge scopes and the safe native-memory context policy keep their existing owners.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
-          "version": "repo-file-v1:sha256:2d3b3b8873ece30ae1ed21c6db852df68fe8af0da00fcea059034229a9044e77"
+          "version": "repo-file-v1:sha256:01db4c55a40e3bf5a2c0dbf06fd52c0219149474c2dff835e91579c1d2335ccf"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:f892acca477da7550bf8de58c7a04ec12a849d85a473147f52c40236811b033d"
+          "version": "repo-file-v1:sha256:f131d60c8a48683c131d05c6a8962b6946b7662541319767fb4208c1b9fbf13c"
         },
         {
           "resource": "repo://crates/decodex-components/src/ragflow.rs",
@@ -353,10 +353,28 @@
           "version": "repo-file-v1:sha256:036d2ad8834d187967440ba4a757cfdaff8929624684609b02d1364852f70cf4"
         }
       ]
+    },
+    {
+      "id": "claim_7721557f28e74a2f9934ae6dee98ce74",
+      "statement": "RAGFlow uses compact shared rows to align each model field label and control and places Cancel and Save on the right. Contextual help keeps API guidance and the Codex memory reminder, adds saved-key guidance when saved model settings exist, and hides the redundant setup notice while editing. Cancel discards unsaved values and clears the editor error.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
+          "version": "repo-file-v1:sha256:01db4c55a40e3bf5a2c0dbf06fd52c0219149474c2dff835e91579c1d2335ccf"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
+          "version": "repo-file-v1:sha256:f131d60c8a48683c131d05c6a8962b6946b7662541319767fb4208c1b9fbf13c"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/ui_theme.rs",
+          "version": "repo-file-v1:sha256:251fcc00e31eb7d3e81db831b7906f643b6e4e230cf89b804f64fe86113ca3c1"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-04T09:42:14.115Z"
+    "at": "2026-11-04T12:18:48.454Z"
   }
 }

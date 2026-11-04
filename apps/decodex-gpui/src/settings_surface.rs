@@ -539,18 +539,18 @@ impl SettingsSurface {
 				],
 			))
 			.child(ui_theme::settings_group(
-				"Conversation assistance",
+				"Background",
 				vec![
 					ui_theme::settings_row()
 						.child(ui_theme::settings_label(
 							"Automatic task recaps",
-						"Recap the selected task’s new results after 30 quiet minutes with Decodex in the background. Uses model quota.",
+						"Recap the selected chat’s new results after 30 quiet minutes in the background. This uses model quota.",
 						))
 						.child(self.recap_toggle(cx))
 						.into_any_element(),
+					self.power_control(cx),
 				],
 			))
-			.child(ui_theme::settings_group("Power", vec![self.power_control(cx)]))
 			.into_any_element()
 	}
 
@@ -1052,6 +1052,10 @@ impl SettingsSurface {
 
 impl Render for SettingsSurface {
 	fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+		let width = match self.category {
+			SettingsCategory::Agents | SettingsCategory::Appearance => SETTINGS_WIDTH,
+			_ => ui_theme::SETTINGS_READING_WIDTH,
+		};
 		gpui::div()
 			.id("settings-surface")
 			.role(Role::Main)
@@ -1076,7 +1080,7 @@ impl Render for SettingsSurface {
 					.items_start()
 					.child(
 						ui_theme::settings_sections()
-							.max_w(gpui::px(SETTINGS_WIDTH))
+							.max_w(gpui::px(width))
 							.flex_none()
 							.child(ui_theme::settings_title(self.category.title()))
 							.child(self.category_content(cx)),

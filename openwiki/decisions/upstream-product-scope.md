@@ -140,10 +140,10 @@ sources:
     resource: repo://database/src/agent_titles.rs
   - id: openwiki-source-6197a876b2effbe992b1e2ec
     resource: repo://database/src/agent.rs
-generated: { by: "codex", at: "2026-11-03T18:23:39.894Z" }
+generated: { by: "codex", at: "2026-11-04T12:25:31.951Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-03T18:23:39.894Z
+    at: 2026-11-04T12:25:31.951Z
 ---
 
 # Product scope and native ownership
@@ -221,7 +221,7 @@ Diagnostic-log upload (**original item 24**) is excluded at the user's request t
 
 ## Next-message suggestions and current choices
 
-The user selected **original item 26** with automatic generation, controlled by **Settings > Agents > Conversation assistance**: a newly completed answer in the selected independent root conversation requests one suggestion when its composer is empty. Opening saved history, repeated refreshes and an existing draft do not trigger inference. The composer menu retains **Suggest next message…** for an explicit request. Press **Tab** in the focused empty message field to place the current suggestion in the composer as one undoable edit. Other fields, Shift-Tab and nonempty drafts keep normal focus navigation. Later edits are preserved, and acceptance does not send a message. The switch defaults on. Disabling prevents new automatic requests, and re-enabling does not replay answers completed while disabled. The feature uses the existing native sampler and conversation refresh; it adds no separate poller. See [the suggestion workflow](../workflows/conversations-and-recovery.md#next-message-suggestions) and `retained_prompt_suggestions` in the [retained contracts](../../automations/upstream/retained-contracts.json).
+The user selected **original item 26** with automatic generation, controlled by **Settings > Agents > Decodex**: a newly completed answer in the selected independent root conversation requests one suggestion when its composer is empty. Opening saved history, repeated refreshes and an existing draft do not trigger inference. The composer menu retains **Suggest next message…** for an explicit request. Press **Tab** in the focused empty message field to place the current suggestion in the composer as one undoable edit. Other fields, Shift-Tab and nonempty drafts keep normal focus navigation. Later edits are preserved, and acceptance does not send a message. The switch defaults on. Disabling prevents new automatic requests, and re-enabling does not replay answers completed while disabled. The feature uses the existing native sampler and conversation refresh; it adds no separate poller. See [the suggestion workflow](../workflows/conversations-and-recovery.md#next-message-suggestions) and `retained_prompt_suggestions` in the [retained contracts](../../automations/upstream/retained-contracts.json).
 
 **Original items 19 and 69**, authenticated remote execution, remain deferred in [issue 1693](https://github.com/acg-box/decodex/issues/1693). **Item 21** retains Decodex account management: independent account observations and reset-credit requests use the existing account API client. This decision does not make those operations inherit native `application.network` policy.
 

@@ -160,10 +160,10 @@ sources:
     resource: repo://scripts/macos/stage_decodex_app.sh
   - id: openwiki-source-76081c1a47ca8cf32593de34
     resource: repo://scripts/macos/test_decodex_app_stage.sh
-generated: { by: "codex", at: "2026-11-04T08:04:10.801Z" }
+generated: { by: "codex", at: "2026-11-04T12:18:48.454Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-04T09:42:14.115Z
+    at: 2026-11-04T12:18:48.454Z
 ---
 
 # Runtime Architecture
@@ -305,7 +305,7 @@ Model configuration uses one OpenAI-compatible Base URL, optional API key, extra
 
 On ARM64, the component packages the official Infinity 0.7.4 binary and analyzer resources with an Ubuntu 24.04 runtime. The published ARM64 image has an older glibc than its binary requires. The build context contains only the runtime Dockerfile; account and Compose credentials stay outside it. The x86-64 path uses the compatible official Infinity image directly. This does not install a host compiler or add a Decodex execution engine.
 
-Model credentials and installation state stay in the private component receipt. The separate origin-bound RAGFlow API credential is saved in a private component file; only its reference passes through the existing Assistant Configure command. The service reads that reference for Memory calls. Chat import starts off. Update preserves models, credentials, import choice and data. Uninstall stops only the owned project, clears its Assistant connection and retains volumes for reinstallation. A service failure can retry through Update; failed model verification keeps the previous saved configuration and is retried through Save models. Native context refresh and the external-memory policy retain their existing service and Codex owners.
+Model credentials and installation state stay in the private component receipt. The separate origin-bound RAGFlow API credential is saved in a private component file; only its reference passes through the existing Assistant Configure command. The service reads that reference for Memory calls. Chat import starts off. Update preserves models, credentials, import choice and data. Uninstall stops only the owned project, clears its Assistant connection and retains volumes for reinstallation. A service failure can retry through Update; failed model verification keeps the previous saved configuration and is retried through Save. Native context refresh and the external-memory policy retain their existing service and Codex owners.
 
 Official Release inputs require an exact tag, canonical OpenAI asset URL, archive SHA-256, executable SHA-256 and generated schema fingerprint. The installer checks the archive before extraction, then verifies signatures, version and protocol evidence. Downloads have three bounded attempts. A verified replacement is published atomically; a failed repair preserves the previous directory, and other versions remain available.
 
