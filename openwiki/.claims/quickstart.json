@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:fe013b9c515b99f0544e9f86d10fa0b453978328d98bc871c20154f1afd6bdf7",
+  "pageVersion": "sha256:d38281709781ec83a6dcd9a6b0365fc300d7aee0b0bb484ae8c9d2eb8e3f8dd6",
   "claims": [
     {
       "id": "claim_b34298a8647a4e0b8653926b7568c5d4",
@@ -176,21 +176,21 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/session_settings.rs",
-          "version": "repo-file-v1:sha256:ed78f991939c7bb49f2e72fefed45e4137ec1495293bd660223dae77ecf1d4af"
+          "version": "repo-file-v1:sha256:c9e3b76bd3c15d77d017d831ba8c8a8928b6fdbf5f68a4875f8bf60492797291"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:f892acca477da7550bf8de58c7a04ec12a849d85a473147f52c40236811b033d"
+          "version": "repo-file-v1:sha256:c9724c7c054929cb0993035ecb0c3f025c5e90fabf1ad45131ff9be12ed170a8"
         }
       ]
     },
     {
       "id": "claim_1d5d3fff2b3841d4a02aca831b013244",
-      "statement": "Settings > Agents exposes retained compaction and delegation-retention defaults, per-user-server MCP catalog readiness and an automatic next-message suggestion switch. Native controls reuse the selected connected Agent's source-bound configuration path.",
+      "statement": "Settings > Agents exposes retained compaction and marked client tool-output retention defaults, per-user-server MCP catalog readiness and an automatic next-message suggestion switch. Native controls reuse the selected connected Agent's source-bound configuration path.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_context_settings.rs",
-          "version": "repo-file-v1:sha256:c4b7221ae38d9e8d9eca1447d15a351e790f4cbd656afaa130cb0e37e59209c7"
+          "version": "repo-file-v1:sha256:0bace420ab4a1ba360bf4a42878b65796ad0acbd7b9ec496de5d0a292780d4a3"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_native.rs",
@@ -198,7 +198,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_surface.rs",
-          "version": "repo-file-v1:sha256:28c77b959899a1c581ee5b854b11e54b35e0f67520c61f5405fbbd24c3b0b33a"
+          "version": "repo-file-v1:sha256:42d0f087e9560d6c380030ceb8fb990a435f2ec3fb4d50ca7ca94590b95119f6"
         }
       ]
     },
@@ -330,7 +330,7 @@
     },
     {
       "id": "claim_2f51bf620dff4bb0afcf4b66110fb5a4",
-      "statement": "Assistant is built in and always available from the sidebar, with idle first-use setup and no automatic message or Enable control. It manages delegated Agents, teams, duties and fresh contexts; continuing instructions stay in chat. The optional RAGFlow component installs nightly with Infinity and its private account and automatically opens the model form after successful installation without saved model settings. Configure models accepts an OpenAI-compatible Base URL, optional API key and custom extraction and embedding names, verifies them and initializes Memory automatically without installing model runtimes or weights. The shared component row reports installed version and provides Update and Uninstall. Component operations check a running Docker-compatible engine and Docker Compose and report unavailable prerequisites without runtime installation, launch or installation guidance. Chat import is a separate opt-in, and there is no built-in patrol.",
+      "statement": "Assistant is built in and always available from the sidebar, with idle first-use setup and no automatic message or Enable control. It manages delegated Agents, teams, duties and fresh contexts; continuing instructions stay in chat. The optional RAGFlow component installs nightly with Infinity and its private account and automatically opens the model form after successful installation without saved model settings. Expanding installed RAGFlow directly opens the model form for an OpenAI-compatible Base URL, optional API key and custom extraction and embedding names. Save verifies the selected models before initializing Memory automatically without installing model runtimes or weights. The shared component row reports installed version and provides Update and Uninstall. Component operations check a running Docker-compatible engine and Docker Compose and report unavailable prerequisites without runtime installation, launch or installation guidance. Chat import is a separate opt-in, and there is no built-in patrol.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_portfolio.rs",
@@ -342,11 +342,11 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
-          "version": "repo-file-v1:sha256:2d3b3b8873ece30ae1ed21c6db852df68fe8af0da00fcea059034229a9044e77"
+          "version": "repo-file-v1:sha256:306abda36fba53f054680a4e6ca7c82646fbada139cc9c753c19dcb5508fad2b"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:f892acca477da7550bf8de58c7a04ec12a849d85a473147f52c40236811b033d"
+          "version": "repo-file-v1:sha256:c9724c7c054929cb0993035ecb0c3f025c5e90fabf1ad45131ff9be12ed170a8"
         },
         {
           "resource": "repo://crates/decodex-components/src/ragflow_service.rs",
@@ -361,10 +361,28 @@
           "version": "repo-file-v1:sha256:a0571c64007c1d556e1b8f38911b2af4c93de48e5db8b0b4483b533cb6ac80cf"
         }
       ]
+    },
+    {
+      "id": "claim_56fa72d3428d402f8860d93547330626",
+      "statement": "The app version and native Check for updates action are in Settings > General > Updates; optional component updates remain in Settings > Components.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
+          "version": "repo-file-v1:sha256:c9724c7c054929cb0993035ecb0c3f025c5e90fabf1ad45131ff9be12ed170a8"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/settings_surface.rs#L512-L554",
+          "version": "repo-lines-v1:sha256:d297636772291536693f252bcec945ca86cb4b8c74eb66b904e15ba76ec6f791:eyJzZWxlY3RlZExpbmVDb3VudCI6NDMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVlMWE4ZWI0MGQ5OWU0Y2I3Y2ZiZWY1M2VjODJmMTcxM2QxNmY4NzlmYzAwM2UyZjI1ZjY3YzZkYmVjM2E1M2EiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU4NTc0MGZkYjNlMzY0Yjc0YWEyMGY0YjJkMDdjNTNhOWU1M2UzNTVlN2Q1MWJlZGQ0ZDI3Njk0YWU4Mjk2ZWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE0NTkzODU1MTI3OGQzMmMzZDE2NjU1ZmJkODZhYWZlZTBlNWI5Y2U1MGUyYmEzZDI1ZDVhMjlkYzY5OTI1MWEifQ"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/settings_updates.rs",
+          "version": "repo-file-v1:sha256:bb648a0d9f0a8363809909cb2838996f3592caa86a33f5c7a9e8b8afd89b958f"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-04T10:24:44.262Z"
+    "at": "2026-11-04T17:53:53.004Z"
   }
 }

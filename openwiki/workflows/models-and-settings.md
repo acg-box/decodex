@@ -34,10 +34,20 @@ sources:
     resource: repo://apps/decodex-gpui/src/settings_components.rs
   - id: openwiki-source-37be5bb3dc64279420e57b31
     resource: repo://apps/decodex-gpui/src/settings_native.rs
+  - id: openwiki-source-de666753614ba03227181179
+    resource: repo://apps/decodex-gpui/src/settings_power.rs
   - id: openwiki-source-a16804a567889414868e5d67
     resource: repo://apps/decodex-gpui/src/settings_surface.rs
+  - id: openwiki-source-cfb92e5db8b3a39d51f6a057
+    resource: repo://apps/decodex-gpui/src/settings_updates.rs
+  - id: openwiki-source-1291f5243fa6c9cb52149bda
+    resource: repo://apps/decodex-gpui/src/shell.rs
+  - id: openwiki-source-2f256c95c226c1326d164ad3
+    resource: repo://apps/decodex-gpui/src/ui_feedback.rs
   - id: openwiki-source-546812ff3637690f4a184b89
     resource: repo://apps/decodex-gpui/src/ui_preferences.rs
+  - id: openwiki-source-570564020f98df7a4d6d0b61
+    resource: repo://apps/decodex-gpui/src/ui_theme.rs
   - id: openwiki-source-f580b10e16f1d25ebfea3bf8
     resource: repo://automations/upstream/qualification.json
   - id: openwiki-source-3127fd4c7b2aefcc9cea7961
@@ -102,10 +112,10 @@ sources:
     resource: repo://crates/decodex-runtime/tests/native_qualification/thread_settings.py
   - id: openwiki-source-8c78df4b382026886ac50894
     resource: repo://database/src/usage_evidence.rs
-generated: { by: "codex", at: "2026-11-04T10:24:44.262Z" }
+generated: { by: "codex", at: "2026-11-04T17:53:53.004Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-04T10:24:44.262Z
+    at: 2026-11-04T17:53:53.004Z
 ---
 
 # Model selection and settings ownership
@@ -129,20 +139,27 @@ Codex owns the effective model catalog, task configuration, provider admission a
 
 ## Find the retained switches
 
+The six Settings sections use the same 620-point content column and normal App typography. General groups the app version and Check for updates under Updates; there is no separate Updates page. Sparkle retains the application update flow. Ordinary preferences use flat sections; account records and diagnostic summaries retain quiet cards. Shared dividers separate rows and expanded details. Local notices, warnings and errors share one compact inset row with an icon and quiet tone fill. Text, icons and recovery buttons align vertically at the center. Recovery buttons stay with the affected message. If Codex setup fails, a short message directs you to the setup details. Expand Codex to inspect the original error, then use **Retry setup** after you resolve the cause.
+
+In **Settings > Agents > New conversations**, **Permissions** shows the selected mode's meaning beside its control. Its menu displays all four explanations and the native Subagent inheritance rule directly. **Speed** uses the shared Standard, Fast and Ultrafast segmented control, with relative included usage and credits for the selected speed visible in its row. Codex uses this same speed default. These remain two compact setting rows with visible explanations.
+
+Arrow keys cycle through permission options. Escape closes the menu and returns focus to Permissions. Tab and Shift-Tab close the menu and continue navigation. Command-W closes Settings.
+
 | Control | Location |
 | --- | --- |
-| Background compaction | Settings > Agents > Native defaults |
-| Keep delegation instructions after compaction | Settings > Agents > Native defaults |
-| Cached MCP catalog, one switch per configured server | Settings > Agents > Native defaults |
-| Automatic next-message suggestions | Settings > Agents > Conversation assistance |
-| Automatic task recaps | Settings > General |
+| Background compaction | Settings > Agents > Context defaults |
+| Retain marked tool outputs | Settings > Agents > Context defaults |
+| Cached MCP catalog, one switch per configured server | Settings > Agents > Context defaults |
+| Next-message suggestions | Settings > Agents > Assistance |
+| Automatic task recaps | Settings > General > Background |
+| App version and application updates | Settings > General > Updates |
 | Permissions and speed for new Agents | Settings > Agents |
 | Model, reasoning, search, voice and Goal for the selected Agent | Composer and Agent preferences |
 | Optional EGM component | Settings > Components |
 
 Open Settings > Agents after selecting a connected Agent. The native section reads through that Agent's account and project. It uses the same controls and native configuration as Agent preferences > Context defaults. Saved user values and effective project values remain separate; project or managed policy can override a saved choice. Saving does not restart loaded conversations. Decodex keeps no second copy of these native preferences.
 
-For background compaction and delegation-instruction retention, an omitted effective value uses the matching native feature's `defaultEnabled` value. An explicit effective setting takes priority. The catalog's `enabled` value can reflect another working directory, so it is not the requested project's override. An absent saved user preference stays absent until an explicit edit.
+For background compaction and retention of marked tool outputs, an omitted effective value uses the matching native feature's `defaultEnabled` value. An explicit effective setting takes priority. The catalog's `enabled` value can reflect another working directory, so it is not the requested project's override. An absent saved user preference stays absent until an explicit edit.
 
 The cached-catalog switch writes only `startup_readiness` for an existing user-configured MCP server: on selects `catalog`, and off selects `connection`. Native Codex owns the cache and tool connection. A missing or invalid cache keeps normal discovery; a tool call still needs the live connection. Configure project-only and plugin servers in Codex.
 
@@ -194,9 +211,11 @@ The reviewed source, thread and Goal identity must still match before a write. L
 
 The search control shows the saved user preference separately from the effective project default. Supported native modes include disabled, cached, indexed and live, subject to current native requirements. Saving writes only `web_search` against the reviewed native file version, with no user-config reload. It does not restart, resume or fork an existing conversation to force the new default into its loaded settings.
 
-Memory availability comes from the native feature observation. A capability flag is not a separate Decodex memory database or a retention policy. The implemented [Assistant lifecycle](../decisions/assistant-lifecycle.md) adds optional RAGFlow retrieval and Memory through Settings > Components. Select **Install** to prepare RAGFlow nightly and compatible Infinity in a private Docker Compose project. Component operations check the running Docker-compatible engine and Docker Compose before installation effects. Unavailable prerequisites produce a shared inline notice; the App does not install or launch a container runtime or provide an installation guide. Decodex configures the service account automatically. After successful installation, the model form opens automatically if no model settings are saved. Use **Configure models** to reopen it. Enter an OpenAI-compatible **Base URL**, optional **API key**, **Extraction model** and **Embedding model**. **Save models** verifies these exact models and initializes dedicated Memory automatically. No model runtime or model weights are installed. The component shares its version row and lifecycle controls with the other components. It reports the installed nightly version and offers **Update** and **Uninstall**. Service connection and its internal credential are automatic, with no Connect action. The model API key stays private and is left blank in a later edit; an empty field keeps the saved key only at the same Base URL. Loopback host names are translated for the container while the displayed URL stays unchanged. A Memory with messages retains its embedding model and endpoint to preserve the saved index.
+Memory availability comes from the native feature observation. A capability flag is not a separate Decodex memory database or a retention policy. The implemented [Assistant lifecycle](../decisions/assistant-lifecycle.md) adds optional RAGFlow retrieval and Memory through Settings > Components. Select **Install** to prepare RAGFlow nightly and compatible Infinity in a private Docker Compose project. Component operations check the running Docker-compatible engine and Docker Compose before installation effects. Unavailable prerequisites produce a shared inline notice; the App does not install or launch a container runtime or provide an installation guide. Decodex configures the service account automatically. After successful installation, the model form opens automatically if no model settings are saved. Expand **RAGFlow** to open the model form directly. Enter an OpenAI-compatible **Base URL**, **API key (optional)**, **Extraction model** and **Embedding model**. **Save** verifies these exact models and initializes dedicated Memory automatically. No model runtime or model weights are installed. The component shares its version row and lifecycle controls with the other components. It reports the installed nightly version and offers **Update** and **Uninstall**. Service connection and its internal credential are automatic, with no Connect action. The model API key stays private and is left blank in a later edit; an empty field keeps the saved key only at the same Base URL. Loopback host names are translated for the container while the displayed URL stays unchanged. A Memory with messages retains its embedding model and endpoint to preserve the saved index.
 
-Chat import starts off and is enabled separately. Update preserves this choice, the model configuration and saved data. Uninstall stops the owned service and clears its connection, while retaining data for reinstallation. Explicit knowledge dataset scopes remain available in typed Assistant configuration; empty datasets disable retrieval. The Memory explanation states that Codex memory is disabled for Assistant. Activation waits for a safe fresh context with native generation, use and the memories feature disabled, plus disabled native memory mode. Cold resume preserves this policy. Native compaction, history, unrelated Agents and shared defaults retain their settings. The saved connection uses a private component credential reference; legacy environment-variable references remain supported. A connection failure remains visible without native-memory fallback.
+The model editor aligns each label with its control. Cancel and Save are on the right. Contextual help keeps the API guidance and Codex memory reminder visible. Saved-key guidance appears when saved model settings exist. The redundant setup notice is hidden while editing. Collapsing and reopening RAGFlow keeps unsaved input. Cancel discards unsaved values, dismisses the editor error and collapses RAGFlow.
+
+Chat import starts off. Its separate switch is available when Memory is ready, including while the model form is open. Update preserves this choice, the model configuration and saved data. Uninstall stops the owned service and clears its connection, while retaining data for reinstallation. Explicit knowledge dataset scopes remain available in typed Assistant configuration; empty datasets disable retrieval. The Memory explanation states that Codex memory is disabled for Assistant. Activation waits for a safe fresh context with native generation, use and the memories feature disabled, plus disabled native memory mode. Cold resume preserves this policy. Native compaction, history, unrelated Agents and shared defaults retain their settings. The saved connection uses a private component credential reference; legacy environment-variable references remain supported. A connection failure remains visible without native-memory fallback.
 
 ## Read a native memory summary
 

@@ -45,9 +45,15 @@ impl SettingsSurface {
 				.flex()
 				.flex_col()
 				.child(
-					gpui::div().w_full().flex_none().flex().flex_wrap().gap(gpui::px(8.)).children(
-						ColorTheme::ALL.into_iter().map(|theme| self.theme_option(theme, cx)),
-					),
+					gpui::div()
+						.w_full()
+						.flex_none()
+						.grid()
+						.grid_cols(5)
+						.gap(gpui::px(8.))
+						.children(
+							ColorTheme::ALL.into_iter().map(|theme| self.theme_option(theme, cx)),
+						),
 				)
 				.smooth_scroll("color-theme-scroll-motion")
 				.with_scrollbar("color-theme-scrollbar", "Scroll color themes"),
@@ -66,7 +72,7 @@ impl SettingsSurface {
 			.aria_selected(selected)
 			.aria_toggled(if selected { Toggled::True } else { Toggled::False })
 			.tab_index(0)
-			.w(gpui::px(128.))
+			.w_full()
 			.flex_none()
 			.min_w_0()
 			.h(gpui::px(90.))

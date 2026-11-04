@@ -103,16 +103,17 @@ impl AgentSurface {
 			.as_ref()
 			.is_some_and(|i| i.installed && i.memory.is_none())
 		{
-			Some(
-				if self.assistant_settings.installation.as_ref().is_some_and(|i| i.models.is_some())
-				{
-					Feedback::warning(
-						"Memory setup is incomplete. Save the model settings to retry.",
-					)
-				} else {
-					Feedback::neutral("Configure models to enable Assistant Memory.")
-				},
-			)
+			if self.assistant_settings.installation.as_ref().is_some_and(|i| i.models.is_some()) {
+				Some(Feedback::warning(
+					"Memory setup is incomplete. Save the model settings to retry.",
+				))
+			} else if self.assistant_settings.fields.is_empty() {
+				Some(Feedback::neutral(
+					"Expand RAGFlow to add model settings for Assistant Memory.",
+				))
+			} else {
+				None
+			}
 		} else {
 			self.snapshot
 				.as_ref()
@@ -147,16 +148,17 @@ impl AgentSurface {
 		action: ComponentAction,
 		cx: &mut Context<Self>,
 	) {
+		if matches!(action, ComponentAction::ConfigureModels) {
+			self.edit_memory_models(cx);
+			return;
+		}
 		if self.ragflow_component_state().busy {
 			return;
 		}
 		match action {
-			ComponentAction::ConfigureModels => {
-				self.edit_memory_models(cx);
-				return;
-			},
 			ComponentAction::CancelModels => {
 				self.assistant_settings.fields.clear();
+				self.assistant_settings.error.clear();
 				cx.notify();
 				return;
 			},
@@ -190,34 +192,49 @@ impl AgentSurface {
 	}
 
 	pub(crate) fn ragflow_settings_view(&self, _cx: &mut Context<Self>) -> AnyElement {
-		let mut body =
-			gpui::div().w_full().flex().flex_col().gap_2().child(ui_theme::settings_description(
-				"RAGFlow nightly uses Infinity. A running Docker-compatible container environment is required.",
-			));
+		let mut body = ui_theme::settings_rows();
 		if !self.assistant_settings.fields.is_empty() {
 			for (key, label) in [
 				("url", "Base URL"),
-				("key", "API key"),
+				("key", "API key (optional)"),
 				("chat", "Extraction model"),
 				("embedding", "Embedding model"),
 			] {
 				if let Some(field) = self.assistant_settings.fields.get(key) {
-					body = body.child(ui_theme::settings_description(label)).child(field.clone());
+					body = body.child(ui_theme::settings_field(
+						label,
+						gpui::div().w_full().h(gpui::px(28.0)).child(field.clone()),
+					));
 				}
 			}
-			body = body.child(ui_theme::settings_description("Use an OpenAI-compatible API. Enter the exact model names. Leave the API key empty to keep a saved key for the same Base URL, or for a service that needs no key."));
+			body = body.child(ui_theme::settings_description("Use an OpenAI-compatible API."));
+			if self.assistant_settings.installation.as_ref().is_some_and(|i| i.models.is_some()) {
+				body = body.child(ui_theme::settings_description(
+					"Leave the key blank to keep it when the Base URL is unchanged.",
+				));
+			}
+			body = body.child(ui_theme::settings_description(
+				"Assistant Memory turns off Codex memory for this Assistant.",
+			));
 		} else if let Some(models) =
 			self.assistant_settings.installation.as_ref().and_then(|i| i.models.as_ref())
 		{
-			for (label, value) in [
+			let rows = [
 				("Base URL", &models.base_url),
 				("Extraction model", &models.chat_model),
 				("Embedding model", &models.embedding_model),
-			] {
-				body = body.child(ui_theme::settings_description(format!("{label}: {value}")));
-			}
+			]
+			.into_iter()
+			.map(|(label, value)| {
+				ui_theme::settings_field(label, ui_theme::settings_description(value.clone()))
+					.into_any_element()
+			})
+			.collect();
+			body = body.child(ui_theme::settings_divided_rows(rows));
+		} else if self.assistant_settings.installation.as_ref().is_none_or(|i| !i.installed) {
+			body = body.child(ui_theme::settings_description("RAGFlow nightly with Infinity stores Assistant memory. A running Docker-compatible container environment is required."));
 		}
-		body.child(ui_theme::settings_description("RAGFlow Memory disables Codex memory for Assistant at the next safe context refresh. Chat import starts off. Uninstall keeps saved memory for reinstallation.")).into_any_element()
+		body.into_any_element()
 	}
 
 	fn edit_memory_models(&mut self, cx: &mut Context<Self>) {
@@ -229,7 +246,7 @@ impl AgentSurface {
 			.unwrap_or_default();
 		for (key, value, label) in [
 			("url", models.base_url, "Base URL"),
-			("key", String::new(), "API key"),
+			("key", String::new(), "API key (optional)"),
 			("chat", models.chat_model, "Extraction model"),
 			("embedding", models.embedding_model, "Embedding model"),
 		] {
@@ -487,7 +504,9 @@ mod tests {
     "project":"fixture","password":"private-fixture","installed":true
    })).unwrap());
    s.composer.update(cx,|i,cx|i.set_content("Keep the chat draft",cx));
-   s.edit_memory_models(cx);
+   s.sending = true;
+   s.ragflow_component_action(ComponentAction::ConfigureModels,cx);
+   s.sending = false;
    assert_eq!(s.assistant_settings.fields.len(),4);
    assert_eq!(s.assistant_settings.fields["url"].read(cx).content(),"http://localhost:1234/v1");
    assert_eq!(s.assistant_settings.fields["key"].read(cx).content(),"");

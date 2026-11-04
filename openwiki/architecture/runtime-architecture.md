@@ -26,6 +26,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/settings_components.rs
   - id: openwiki-source-37be5bb3dc64279420e57b31
     resource: repo://apps/decodex-gpui/src/settings_native.rs
+  - id: openwiki-source-a16804a567889414868e5d67
+    resource: repo://apps/decodex-gpui/src/settings_surface.rs
   - id: openwiki-source-cfb92e5db8b3a39d51f6a057
     resource: repo://apps/decodex-gpui/src/settings_updates.rs
   - id: openwiki-source-5afd606185b0f01d8fc4f429
@@ -162,10 +164,10 @@ sources:
     resource: repo://scripts/macos/stage_decodex_app.sh
   - id: openwiki-source-76081c1a47ca8cf32593de34
     resource: repo://scripts/macos/test_decodex_app_stage.sh
-generated: { by: "codex", at: "2026-11-04T10:24:44.262Z" }
+generated: { by: "codex", at: "2026-11-04T17:53:53.004Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-04T10:24:44.262Z
+    at: 2026-11-04T17:53:53.004Z
 ---
 
 # Runtime Architecture
@@ -267,7 +269,7 @@ If immediate cleanup cannot finish, `ProcessGroupOwner` transfers the child, its
 
 ## Context defaults
 
-Settings > Agents > Native defaults and Agent preferences > Context defaults expose the same two context features and per-server MCP startup choices. The panel reads the saved user value and the effective project default through the current account-bound app-server. It writes one boolean with the native file path and version from that observation, then reads the result again. It does not store a second preference in SQLite or add a launch argument that forces either setting on.
+Settings > Agents > Context defaults and Agent preferences > Context defaults expose the same two context features and per-server MCP startup choices. The panel reads the saved user value and the effective project default through the current account-bound app-server. It writes one boolean with the native file path and version from that observation, then reads the result again. It does not store a second preference in SQLite or add a launch argument that forces either setting on.
 
 The same values can be edited in native `config.toml`:
 
@@ -297,7 +299,7 @@ The per-server cached-catalog switch saves `mcp_servers.<quoted-server>.startup_
 
 ## Components and app updates
 
-`decodex-components` owns one per-user component store, package verification and cache repair. The GUI and service embed the same runtime requirement. App startup prepares that component before launching the owned service; preparation does not consume connection retry attempts. Settings > Components shows the selected component, progress, errors and Retry. Optional EGM installation, update and removal use the native Codex plugin lifecycle. Sparkle owns the separate Decodex application update flow in Settings > Updates.
+`decodex-components` owns one per-user component store, package verification and cache repair. The GUI and service embed the same runtime requirement. App startup prepares that component before launching the owned service; preparation does not consume connection retry attempts. Settings > Components shows the selected component, progress, errors and Retry. Optional EGM installation, update and removal use the native Codex plugin lifecycle. Sparkle owns the Decodex application update flow. The app version and Check for updates action are in Settings > General; component updates remain in Components.
 
 Assistant is built in and always available from the sidebar. Its first use publishes an idle Agent and its role in one SQLite transaction. Components has no Assistant Enable control. The optional RAGFlow component shares lifecycle buttons, version metadata, collapsed details and inline feedback with the other components. It exposes Install, Update and Uninstall. Service connection is automatic; model settings use the component details.
 
@@ -307,7 +309,7 @@ Model configuration uses one OpenAI-compatible Base URL, optional API key, extra
 
 On ARM64, the component packages the official Infinity 0.7.4 binary and analyzer resources with an Ubuntu 24.04 runtime. The published ARM64 image has an older glibc than its binary requires. The build context contains only the runtime Dockerfile; account and Compose credentials stay outside it. The x86-64 path uses the compatible official Infinity image directly. This does not install a host compiler or add a Decodex execution engine.
 
-Model credentials and installation state stay in the private component receipt. The separate origin-bound RAGFlow API credential is saved in a private component file; only its reference passes through the existing Assistant Configure command. The service reads that reference for Memory calls. Chat import starts off. Update preserves models, credentials, import choice and data. Uninstall stops only the owned project, clears its Assistant connection and retains volumes for reinstallation. A service failure can retry through Update; failed model verification keeps the previous saved configuration and is retried through Save models. Native context refresh and the external-memory policy retain their existing service and Codex owners.
+Model credentials and installation state stay in the private component receipt. The separate origin-bound RAGFlow API credential is saved in a private component file; only its reference passes through the existing Assistant Configure command. The service reads that reference for Memory calls. Chat import starts off. Update preserves models, credentials, import choice and data. Uninstall stops only the owned project, clears its Assistant connection and retains volumes for reinstallation. A service failure can retry through Update; failed model verification keeps the previous saved configuration and is retried through Save. Native context refresh and the external-memory policy retain their existing service and Codex owners.
 
 Official Release inputs require an exact tag, canonical OpenAI asset URL, archive SHA-256, executable SHA-256 and generated schema fingerprint. The installer checks the archive before extraction, then verifies signatures, version and protocol evidence. Downloads have three bounded attempts. A verified replacement is published atomically; a failed repair preserves the previous directory, and other versions remain available.
 

@@ -11,7 +11,8 @@
 #[path = "settings_updates.rs"] mod updates;
 
 use gpui::{
-	AnyElement, ClickEvent, Context, Entity, KeyDownEvent, Render, Role, SharedString, Window,
+	AnyElement, ClickEvent, Context, Div, Entity, KeyDownEvent, Render, Role, SharedString,
+	Stateful, Window,
 	prelude::{
 		FluentBuilder, InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement,
 		Styled,
@@ -54,7 +55,6 @@ pub(crate) enum SettingsCategory {
 	Agents,
 	Appearance,
 	Components,
-	Updates,
 }
 impl SettingsCategory {
 	pub(crate) fn title(self) -> &'static str {
@@ -63,7 +63,6 @@ impl SettingsCategory {
 			Self::Agents => "Agents",
 			Self::Appearance => "Appearance",
 			Self::Components => "Components",
-			Self::Updates => "Updates",
 		}
 	}
 }
@@ -143,61 +142,65 @@ impl SettingsSurface {
 					.text_color(ui_theme::rgb(ui_theme::TEXT_MUTED))
 					.child("Initial panel sizes. Drag panel edges to resize while working."),
 			)
-			.children(
+			.child(ui_theme::settings_divided_rows(
 				[
 					(true, "Default sidebar width", current.sidebar),
 					(false, "Default Dock height", current.dock),
 				]
 				.into_iter()
 				.map(|(sidebar, title, value)| {
-					ui_theme::settings_row().child(ui_theme::settings_label(title, "")).child(
-						gpui::div()
-							.flex()
-							.items_center()
-							.gap_3()
-							.child(
-								gpui::div()
-									.w(gpui::px(54.))
-									.text_size(gpui::px(12.))
-									.text_color(ui_theme::rgb(ui_theme::TEXT_MUTED))
-									.child(format!("{value} px")),
-							)
-							.child(
-								ui_theme::settings_button_group(title)
-									.children([(-24_i32, "−"), (24, "+")].into_iter().map(
-										|(delta, label)| {
-											ui_theme::settings_button(
-												SharedString::from(format!(
-													"panel-default-{sidebar}-{delta}"
-												)),
-												label,
-											)
-											.w(gpui::px(SETTINGS_CONTROL_HEIGHT))
-											.aria_label(format!(
-												"{} {title}",
-												if delta < 0 { "Decrease" } else { "Increase" }
-											))
-											.on_click(cx.listener(move |s, _, _, cx| {
-												s.adjust_panel(sidebar, delta, cx)
-											}))
-											.on_key_down(cx.listener(
-												move |s, e: &KeyDownEvent, _, cx| {
-													if !e.is_held
-														&& ["enter", "space"]
-															.contains(&e.keystroke.key.as_str())
-													{
-														s.adjust_panel(sidebar, delta, cx);
-														cx.stop_propagation();
-													}
-												},
-											))
-										},
-									))
-									.role(Role::Group),
-							),
-					)
-				}),
-			)
+					ui_theme::settings_row()
+						.child(ui_theme::settings_label(title, ""))
+						.child(
+							gpui::div()
+								.flex()
+								.items_center()
+								.gap_3()
+								.child(
+									gpui::div()
+										.w(gpui::px(54.))
+										.text_size(gpui::px(12.))
+										.text_color(ui_theme::rgb(ui_theme::TEXT_MUTED))
+										.child(format!("{value} px")),
+								)
+								.child(
+									ui_theme::settings_button_group(title)
+										.children([(-24_i32, "−"), (24, "+")].into_iter().map(
+											|(delta, label)| {
+												ui_theme::settings_button(
+													SharedString::from(format!(
+														"panel-default-{sidebar}-{delta}"
+													)),
+													label,
+												)
+												.w(gpui::px(SETTINGS_CONTROL_HEIGHT))
+												.aria_label(format!(
+													"{} {title}",
+													if delta < 0 { "Decrease" } else { "Increase" }
+												))
+												.on_click(cx.listener(move |s, _, _, cx| {
+													s.adjust_panel(sidebar, delta, cx)
+												}))
+												.on_key_down(cx.listener(
+													move |s, e: &KeyDownEvent, _, cx| {
+														if !e.is_held
+															&& ["enter", "space"]
+																.contains(&e.keystroke.key.as_str())
+														{
+															s.adjust_panel(sidebar, delta, cx);
+															cx.stop_propagation();
+														}
+													},
+												))
+											},
+										))
+										.role(Role::Group),
+								),
+						)
+						.into_any_element()
+				})
+				.collect(),
+			))
 			.child(
 				ui_theme::settings_row().min_h(gpui::px(44.)).justify_end().child(
 					ui_theme::settings_button("reset-panel-sizes", "Reset sizes")
@@ -218,70 +221,65 @@ impl SettingsSurface {
 	fn cursor_controls(&self, cx: &mut Context<Self>) -> impl IntoElement {
 		let current = Preference::configured();
 
-		gpui::div()
-			.flex()
-			.flex_col()
-			.child(
-				ui_theme::settings_row()
-					.child(ui_theme::settings_label(
-						"Cursor style",
-						"The text insertion point in message inputs.",
-					))
-					.child(Segmented::new(
-						"settings-segments-Cursor style",
-						"Cursor style",
-						[
-							("Bar", Shape::Bar),
-							("Block", Shape::Block),
-							("Underline", Shape::Underline),
-						]
-						.map(|(label, _)| {
-							Choice::new(
-								format!("Cursor style-{label}"),
-								label,
-								format!("Cursor style: {label}"),
-							)
-						}),
-						[Shape::Bar, Shape::Block, Shape::Underline]
-							.iter()
-							.position(|shape| *shape == current.shape)
-							.unwrap_or(0),
-						cx.listener(move |_, index: &usize, _, cx| {
-							Preference {
-								shape: [Shape::Bar, Shape::Block, Shape::Underline][*index],
-								..current
-							}
-							.select(cx);
-						}),
-					)),
-			)
-			.children(
-				[
-					(
-						"cursor-blinking",
-						"Blinking cursor",
-						"Blink while you are not typing.",
-						current.blinking,
-						Preference { blinking: !current.blinking, ..current },
-					),
-					(
-						"cursor-animation",
-						"Animate cursor",
-						"Move smoothly between typed characters.",
-						current.animated,
-						Preference { animated: !current.animated, ..current },
-					),
-				]
-				.into_iter()
-				.map(|(id, label, description, enabled, value)| {
-					ui_theme::settings_row()
-						.child(ui_theme::settings_label(label, description))
-						.child(
-							switch::settings_switch(id, id, label, enabled, true)
-								.on_change(cx.listener(move |_, _, _, cx| value.select(cx))),
+		let shape = ui_theme::settings_row()
+			.child(ui_theme::settings_label(
+				"Cursor style",
+				"The text insertion point in message inputs.",
+			))
+			.child(Segmented::new(
+				"settings-segments-Cursor style",
+				"Cursor style",
+				[("Bar", Shape::Bar), ("Block", Shape::Block), ("Underline", Shape::Underline)]
+					.map(|(label, _)| {
+						Choice::new(
+							format!("Cursor style-{label}"),
+							label,
+							format!("Cursor style: {label}"),
 						)
+					}),
+				[Shape::Bar, Shape::Block, Shape::Underline]
+					.iter()
+					.position(|shape| *shape == current.shape)
+					.unwrap_or(0),
+				cx.listener(move |_, index: &usize, _, cx| {
+					Preference {
+						shape: [Shape::Bar, Shape::Block, Shape::Underline][*index],
+						..current
+					}
+					.select(cx);
 				}),
-			)
+			))
+			.into_any_element();
+		let mut rows = vec![shape];
+		rows.extend(
+			[
+				(
+					"cursor-blinking",
+					"Blinking cursor",
+					"Blink while you are not typing.",
+					current.blinking,
+					Preference { blinking: !current.blinking, ..current },
+				),
+				(
+					"cursor-animation",
+					"Animate cursor",
+					"Move smoothly between typed characters.",
+					current.animated,
+					Preference { animated: !current.animated, ..current },
+				),
+			]
+			.into_iter()
+			.map(|(id, label, description, enabled, value)| {
+				ui_theme::settings_row()
+					.child(ui_theme::settings_label(label, description))
+					.child(
+						switch::settings_switch(id, id, label, enabled, true)
+							.on_change(cx.listener(move |_, _, _, cx| value.select(cx))),
+					)
+					.into_any_element()
+			}),
+		);
+		ui_theme::settings_divided_rows(rows)
 	}
 
 	fn appearance_controls(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -413,27 +411,25 @@ impl SettingsSurface {
 					"New conversations",
 					vec![self.agent_defaults_content(cx)],
 				))
-				.child(ui_theme::settings_group("Codex Native", vec![self.native_defaults(cx)]))
-				.child(ui_theme::settings_group(
-					"Decodex",
-					vec![
-						ui_theme::settings_rows()
-							.child(self.preference_control(
-								"automatic-prompt-suggestions",
-								"automatic-prompt-suggestions-knob",
-								"Automatic next-message suggestions",
-								"Suggest after each reply. Uses quota; never sends automatically.",
-								crate::ui_preferences::automatic_prompt_suggestions,
-								cx,
-							))
-							.children(self.guardian.clone())
-							.into_any_element(),
-					],
-				))
+				.child(ui_theme::settings_group("Context defaults", vec![self.native_defaults(cx)]))
+				.child(ui_theme::settings_group("Assistance", {
+					let mut rows = vec![
+						self.preference_control(
+							"automatic-prompt-suggestions",
+							"automatic-prompt-suggestions-knob",
+							"Next-message suggestions",
+							"Suggest after each reply. Uses quota; never sends automatically.",
+							crate::ui_preferences::automatic_prompt_suggestions,
+							cx,
+						)
+						.into_any_element(),
+					];
+					rows.extend(self.guardian.clone().map(|guardian| guardian.into_any_element()));
+					rows
+				}))
 				.into_any_element(),
 			SettingsCategory::Appearance => self.appearance_content(cx),
 			SettingsCategory::Components => self.components_content(cx),
-			SettingsCategory::Updates => self.updates_content(cx),
 		}
 	}
 
@@ -442,8 +438,10 @@ impl SettingsSurface {
 		mode: decodex_protocol::PermissionMode,
 		cx: &mut Context<Self>,
 	) {
-		self.session_defaults.permissions = mode;
-		self.session_defaults.save();
+		if self.session_defaults.permissions != mode {
+			self.session_defaults.permissions = mode;
+			self.session_defaults.save();
+		}
 		cx.refresh_windows();
 	}
 
@@ -466,44 +464,44 @@ impl SettingsSurface {
 	}
 
 	fn agent_defaults_content(&self, cx: &mut Context<Self>) -> AnyElement {
-		let column = |title: &'static str, description: &'static str, choices: AnyElement| {
-			gpui::div()
-				.flex_1()
-				.min_w(gpui::px(300.))
-				.flex()
-				.flex_col()
-				.gap(gpui::px(8.))
-				.child(ui_theme::settings_label(title, description))
-				.child(choices)
+		// ChatGPT usage relative to Standard: https://learn.chatgpt.com/docs/pricing
+		let speed_detail = match self.default_speed.as_ref().map(|tier| tier.as_str()) {
+			Some("default") => "Shared with Codex (included usage: 1×; credits: 1×).",
+			Some("priority") => "Shared with Codex (included usage: 2.5×; credits: 2×).",
+			Some("ultrafast") => "Shared with Codex (included usage: 8×; credits: 6×).",
+			_ => "Shared with Codex.",
 		};
-		gpui::div()
-			.w_full()
-			.min_w_0()
-			.flex()
-			.flex_wrap()
-			.items_start()
-			.gap(gpui::px(24.))
-			.child(column(
-				"Default permissions",
-				"Subagents inherit their parent’s permissions.",
-				crate::session_settings::permission_picker(
+		ui_theme::settings_divided_rows(vec![
+			ui_theme::settings_row()
+				.child(ui_theme::settings_label(
+					"Permissions",
+					self.session_defaults.permissions.description(),
+				))
+				.child(crate::session_settings::permission_picker(
 					self.session_defaults.permissions,
 					Self::choose_default_permissions,
 					cx,
+				))
+				.into_any_element(),
+			ui_theme::settings_row()
+				.child(ui_theme::settings_label("Speed", speed_detail))
+				.child(
+					crate::session_settings::speed_choices(
+						self.default_speed.as_ref(),
+						["priority", "ultrafast"].map(|id| {
+							(
+								decodex_protocol::ServiceTier::new(id).expect("built-in speed"),
+								crate::session_settings::speed_label(id).to_owned(),
+							)
+						}),
+						Self::choose_default_speed,
+						cx,
+					)
+					.fixed_choice_width(56.),
 				)
 				.into_any_element(),
-			))
-			.child(column(
-				"Default speed",
-				"Shared with Codex. ChatGPT usage relative to Standard for the same model; availability varies.",
-				crate::session_settings::speed_default_choices(
-					self.default_speed.as_ref(),
-					Self::choose_default_speed,
-					cx,
-				)
-				.into_any_element(),
-			))
-			.into_any_element()
+		])
+		.into_any_element()
 	}
 
 	fn general_content(&self, cx: &mut Context<Self>) -> AnyElement {
@@ -539,31 +537,35 @@ impl SettingsSurface {
 				],
 			))
 			.child(ui_theme::settings_group(
-				"Conversation assistance",
+				"Background",
 				vec![
 					ui_theme::settings_row()
 						.child(ui_theme::settings_label(
 							"Automatic task recaps",
-						"Recap the selected task’s new results after 30 quiet minutes with Decodex in the background. Uses model quota.",
+							"Recap the selected chat after 30 quiet minutes. This uses model quota.",
 						))
 						.child(self.recap_toggle(cx))
 						.into_any_element(),
+					self.power_control(cx),
 				],
 			))
-			.child(ui_theme::settings_group("Power", vec![self.power_control(cx)]))
+			.child(self.app_updates(cx))
 			.into_any_element()
 	}
 
 	fn appearance_content(&self, cx: &mut Context<Self>) -> AnyElement {
 		ui_theme::settings_sections()
 			.child(self.appearance_controls(cx))
-			.child(
-				ui_theme::settings_rows()
-					.gap_2()
-					.child(ui_theme::settings_section_title("Color theme"))
-					.child(ui_theme::settings_description(self.theme_description()))
-					.child(self.theme_controls(cx)),
-			)
+			.child(ui_theme::settings_group(
+				"Color theme",
+				vec![
+					ui_theme::settings_rows()
+						.gap_2()
+						.child(ui_theme::settings_description(self.theme_description()))
+						.child(self.theme_controls(cx))
+						.into_any_element(),
+				],
+			))
 			.child(ui_theme::settings_group("Materials", {
 				let mut controls = Vec::new();
 				for (surface, scope) in [
@@ -992,8 +994,10 @@ impl SettingsSurface {
 			LaunchAtLoginState::NotRegistered | LaunchAtLoginState::Enabled
 		) || self.launch_at_login_detail.as_ref() != launch_at_login_detail(self.launch_at_login))
 		.then(|| match self.launch_at_login {
-			LaunchAtLoginState::RequiresApproval | LaunchAtLoginState::NotFound =>
+			LaunchAtLoginState::RequiresApproval =>
 				Feedback::info(self.launch_at_login_detail.to_string()),
+			LaunchAtLoginState::NotFound =>
+				Feedback::warning(self.launch_at_login_detail.to_string()),
 			_ => Feedback::error(self.launch_at_login_detail.to_string()),
 		})
 	}
@@ -1011,23 +1015,39 @@ impl SettingsSurface {
 					))
 					.child(self.launch_at_login_toggle(cx)),
 			)
-			.children(setting_notice("launch-at-login-feedback", self.launch_at_login_feedback()))
-			.when(self.launch_at_login == LaunchAtLoginState::RequiresApproval, |d| {
-				d.child(setting_action(
-					"launch-at-login-open-settings",
-					"Open Login Items",
-					cx,
-					Self::open_login_items,
-				))
-			})
-			.when(self.launch_at_login == LaunchAtLoginState::OperationFailed, |d| {
-				d.child(setting_action(
-					"launch-at-login-retry",
-					"Retry",
-					cx,
-					Self::retry_launch_at_login,
-				))
-			})
+			.children(
+				setting_notice("launch-at-login-feedback", self.launch_at_login_feedback()).map(
+					|notice| {
+						notice
+							.when(
+								matches!(
+									self.launch_at_login,
+									LaunchAtLoginState::RequiresApproval
+										| LaunchAtLoginState::NotFound
+								),
+								|notice| {
+									notice.child(setting_action(
+										"launch-at-login-open-settings",
+										"Open Login Items",
+										cx,
+										Self::open_login_items,
+									))
+								},
+							)
+							.when(
+								self.launch_at_login == LaunchAtLoginState::OperationFailed,
+								|notice| {
+									notice.child(setting_action(
+										"launch-at-login-retry",
+										"Retry",
+										cx,
+										Self::retry_launch_at_login,
+									))
+								},
+							)
+					},
+				),
+			)
 	}
 
 	fn menu_bar_card(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -1093,28 +1113,22 @@ fn setting_action(
 	cx: &Context<SettingsSurface>,
 	action: fn(&mut SettingsSurface, &mut Context<SettingsSurface>),
 ) -> AnyElement {
-	gpui::div()
-		.flex()
-		.pb_2()
-		.child(
-			ui_theme::settings_button(id, label)
-				.on_click(cx.listener(move |s, _, _, cx| action(s, cx)))
-				.on_key_down(cx.listener(move |s, event: &KeyDownEvent, _, cx| {
-					if !event.is_held && ["enter", "space"].contains(&event.keystroke.key.as_str())
-					{
-						action(s, cx);
+	ui_theme::settings_button(id, label)
+		.on_click(cx.listener(move |s, _, _, cx| action(s, cx)))
+		.on_key_down(cx.listener(move |s, event: &KeyDownEvent, _, cx| {
+			if !event.is_held && ["enter", "space"].contains(&event.keystroke.key.as_str()) {
+				action(s, cx);
 
-						cx.stop_propagation();
-					}
-				})),
-		)
+				cx.stop_propagation();
+			}
+		}))
 		.into_any_element()
 }
 
-fn setting_notice(id: &'static str, feedback: Option<Feedback>) -> Option<AnyElement> {
+fn setting_notice(id: &'static str, feedback: Option<Feedback>) -> Option<Stateful<Div>> {
 	feedback
 		.and_then(|feedback| ui_feedback::inline_feedback(id, "", &feedback))
-		.map(|notice| gpui::div().pb_2().child(notice).into_any_element())
+		.map(|notice| notice.mb_2())
 }
 
 const fn launch_at_login_detail(state: LaunchAtLoginState) -> &'static str {
@@ -1238,28 +1252,42 @@ mod tests {
 	}
 
 	#[gpui::test]
-	fn creation_defaults_explain_choices_without_moving_rows(cx: &mut TestAppContext) {
+	fn creation_defaults_use_compact_controls_without_moving_other_settings(
+		cx: &mut TestAppContext,
+	) {
 		let (settings, visual) = cx.add_window_view(|_, cx| {
 			let mut surface = SettingsSurface::new(DesktopSettingsController::production(), cx);
 			surface.category = SettingsCategory::Agents;
 			surface.default_speed = Some(decodex_protocol::ServiceTier::standard());
 			surface
 		});
+		visual.update(|_, cx| crate::session_settings::bind_keys(cx));
 		visual.simulate_resize(gpui::size(gpui::px(ui_theme::SETTINGS_WIDTH), gpui::px(900.)));
 		visual.update(crate::ui_frame::draw_current_frame);
-		let viewport = visual.debug_bounds("settings-scroll-viewport").unwrap();
 		let permissions = visual.debug_bounds("default-permissions").unwrap();
-		let speed = visual.debug_bounds("default-speeds").unwrap();
-		assert!(permissions.right() <= viewport.right());
-		assert!(speed.right() <= viewport.right());
-		assert_eq!(
-			permissions.size.width, speed.size.width,
-			"explanatory lists share column widths"
+		let speed = visual.debug_bounds("service-tier-picker").unwrap();
+		assert_eq!(permissions.right(), speed.right(), "row controls share their trailing edge");
+		assert!(permissions.bottom() < speed.top(), "defaults use separate compact rows");
+		assert!(speed.bottom() - permissions.top() < gpui::px(100.));
+		assert!(
+			visual.debug_bounds("permission-choice-0").is_none(),
+			"permission explanations stay in the menu"
 		);
-		assert!(permissions.right() < speed.left(), "wide settings compare defaults side by side");
+
+		visual.simulate_click(permissions.center(), Default::default());
+		visual.update(crate::ui_frame::draw_current_frame);
+		visual.simulate_keystrokes("escape");
+		visual.update(crate::ui_frame::draw_current_frame);
+		assert!(
+			visual.debug_bounds("permission-choice-0").is_none(),
+			"Escape closes the permission menu"
+		);
+		visual.simulate_click(permissions.center(), Default::default());
+		visual.update(crate::ui_frame::draw_current_frame);
 		let read_only = visual.debug_bounds("permission-choice-0").unwrap();
-		let full = visual.debug_bounds("permission-choice-3").unwrap();
-		assert!(read_only.bottom() < full.top(), "permissions run from least to most access");
+		let menu = visual.debug_bounds("popover-surface").unwrap();
+		assert_eq!(menu.right(), permissions.right(), "menu surface aligns with its trigger");
+		assert_eq!(menu.size.width, gpui::px(330.));
 		for (row, description) in [
 			("permission-choice-0", "permission-description-0"),
 			("permission-choice-1", "permission-description-1"),
@@ -1268,31 +1296,41 @@ mod tests {
 		] {
 			let row = visual.debug_bounds(row).unwrap();
 			let description = visual.debug_bounds(description).unwrap();
-			assert!(description.size.height > gpui::px(0.));
-			assert!(permissions.contains(&description.center()));
-			assert!(row.contains(&description.center()), "the explanation belongs to its option");
+			assert!(
+				row.contains(&description.center()),
+				"each permission explanation remains visible beside its option"
+			);
 		}
 		visual.simulate_click(read_only.center(), Default::default());
-		assert_eq!(
-			settings.read_with(visual, |s, _| s.session_defaults.permissions),
-			decodex_protocol::PermissionMode::ReadOnly
-		);
 		visual.update(crate::ui_frame::draw_current_frame);
-		assert_eq!(visual.debug_bounds("default-speeds").unwrap(), speed);
-		let standard = visual.debug_bounds("default-speed-default").unwrap();
-		let fast = visual.debug_bounds("default-speed-priority").unwrap();
-		let ultrafast = visual.debug_bounds("default-speed-ultrafast").unwrap();
-		assert!(standard.bottom() <= fast.top() && fast.bottom() <= ultrafast.top());
-		for (bounds, expected) in
-			[(fast, "priority"), (ultrafast, "ultrafast"), (standard, "default")]
-		{
-			visual.simulate_click(bounds.center(), Default::default());
+		settings.read_with(visual, |s, _| {
+			assert_eq!(s.session_defaults.permissions, decodex_protocol::PermissionMode::ReadOnly);
+		});
+		assert!(visual.debug_bounds("permission-choice-0").is_none());
+		assert_eq!(visual.debug_bounds("service-tier-picker").unwrap(), speed);
+		visual.simulate_click(permissions.center(), Default::default());
+		visual.update(crate::ui_frame::draw_current_frame);
+		let selected = visual.debug_bounds("permission-choice-0").unwrap();
+		visual.simulate_click(selected.center(), Default::default());
+		visual.update(crate::ui_frame::draw_current_frame);
+		assert!(
+			visual.debug_bounds("permission-choice-0").is_none(),
+			"choosing the current value closes the menu"
+		);
+
+		for (id, expected) in [
+			("tier-priority", "priority"),
+			("tier-ultrafast", "ultrafast"),
+			("tier-default", "default"),
+		] {
+			let choice = visual.debug_bounds(id).unwrap();
+			visual.simulate_click(choice.center(), Default::default());
 			settings.read_with(visual, |s, _| {
 				assert_eq!(s.default_speed.as_ref().unwrap().as_str(), expected)
 			});
 			visual.update(crate::ui_frame::draw_current_frame);
 			assert_eq!(visual.debug_bounds("default-permissions").unwrap(), permissions);
-			assert_eq!(visual.debug_bounds("default-speeds").unwrap(), speed);
+			assert_eq!(visual.debug_bounds("service-tier-picker").unwrap(), speed);
 		}
 	}
 
@@ -1624,7 +1662,7 @@ mod tests {
 		});
 		visual.update(crate::ui_frame::draw_current_frame);
 		assert!(visual.debug_bounds("automatic-prompt-suggestions").is_some());
-		assert!(visual.debug_bounds("default-speeds").is_some());
+		assert!(visual.debug_bounds("service-tier-picker").is_some());
 		assert!(visual.debug_bounds("prompt-suggestions").is_none());
 	}
 
@@ -2119,6 +2157,7 @@ mod tests {
 			window.resize(gpui::size(gpui::px(1_490.0), gpui::px(1_055.0)));
 			window.draw(cx).clear(cx);
 		});
+		assert!(visual.debug_bounds("updates-check").is_some(), "General owns the update action");
 	}
 
 	#[gpui::test]
@@ -2145,6 +2184,19 @@ mod tests {
 		for id in ["launch-at-login-feedback", "menubar-runtime-status", "power-settings-feedback"]
 		{
 			assert!(visual.debug_bounds(id).is_some(), "{id} must be visible at its setting");
+		}
+		for (notice, action) in [
+			("launch-at-login-feedback", "launch-at-login-retry"),
+			("power-settings-feedback", "power-settings-retry"),
+		] {
+			let notice = visual.debug_bounds(notice).unwrap();
+			let action = visual.debug_bounds(action).unwrap();
+			assert!(notice.contains(&action.center()), "recovery belongs inside its feedback row");
+			assert_eq!(
+				notice.center().y,
+				action.center().y,
+				"recovery actions align with the message"
+			);
 		}
 
 		settings.read_with(visual, |s, _| {

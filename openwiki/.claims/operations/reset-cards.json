@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:dbc45c6fc47e42da24d1c00dded1fb37410e5b5c0943e44dcea2dca00484ef40",
+  "pageVersion": "sha256:1b43cff34e050a0dfa634daa684d2f194bd21ae41f8626f11f374b72e3235e5e",
   "claims": [
     {
       "id": "claim_f04618e1bd8949938c67c23ed12ff25c",
@@ -94,19 +94,23 @@
     },
     {
       "id": "claim_887a779b065f4ad597cc13fac9138230",
-      "statement": "Reset Cards and saved activity share each account's independently expanded details, while separate drag handles and action handlers prevent reorder or card actions from toggling disclosure.",
+      "statement": "Reset Cards and saved activity share each account's independently expanded details. GPUI labels and divides the inventory area below the metrics and chart without another disclosure. Separate drag handles and action handlers prevent reorder or card actions from toggling disclosure.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/ResetCardSectionView.swift",
           "version": "repo-file-v1:sha256:be558314e6251d5fa9a9f5e2b637e9555f462f374299c8631eba6358e7b0743b"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/shell.rs",
-          "version": "repo-file-v1:sha256:d70184b25d6591de640f83c0daca78abaded3adcc33c7499e1ab67ba9b181451"
+          "resource": "repo://apps/decodex-gpui/src/shell.rs#L3438-L3548",
+          "version": "repo-lines-v1:sha256:f60f5236c3027bcbb5fff29cbbfe9e5ee335d35ee7102b03c2bcf109c0c94153:eyJzZWxlY3RlZExpbmVDb3VudCI6MTExLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJiMjYzOWE3MGJhOTFkOGY1NzQ3MzRmNjUxOTIwZTdiMGVlMGU1ZTI0OWU3NGFjNmQxY2ZmM2IwNDM1MDA2N2IzIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI2N2NkYTgyZGE2MDYyMzhlMDVlNjIzOTk1NjljNWVlMDM5OTM0MTk2NDhhZTVkNDNhMmJmOGNkNjM0N2Y4MjYzIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJkYzQ1MzRlYzJjZWRiODE5OTllZGJkZTlkMWVmYmM3OThhOTc3YWU3NjNmYWVmMWQ0ZjQ2YjJmMzRhNjgxYjgzIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlNGRhMDExYzVmYzhiN2M2NzQyOGJhZjMwMzY3NDc5ODY5MDg5YWMxYTljMDk4MzZkNWZjZjJkMGMyZWM4ZDE1In0"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/shell_reset_cards.rs",
-          "version": "repo-file-v1:sha256:7bce831543655807ee10a2246e0f13327dc866b794adbdbab70ca1d96a021123"
+          "resource": "repo://apps/decodex-gpui/src/shell_reset_cards.rs#L431-L577",
+          "version": "repo-lines-v1:sha256:d763f121b80005a5611757eda4eb39fa109393b76e610198fb061c90f0f7aace:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQ3LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJhNTRjZGE2NDJhMzcyMDQyYmZmNTJlZjMxZmUwZDU4N2Q2OWU2NGM5MzQ3YmZlMDRlYWU5OTlhMDUwMGI3MTBhIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJjMDcxYzFkOTFiNzQ2MjFiNjg4MTJiMDNiYWI0YzJjNTBiMWY5OWE5YzQzMWQyNWQ1OTdiODI0ZWE5ZTU0YTFlIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJmMjk2NDA3OWMzYzVjODE1MjBlZjMzYTJiOWQyZTE1YTFiODRkNzI4MGRiODU5MGRjZDY1NzQ3ZTNlMDEyYTQwIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI5OTM3MWZiYjRkMjkzMTU0Y2E2NjhkZmY2YjNmMjk5YzgyZmNjNWM1ODk3Njk3NTBkZTFhZjExZTY5ODUyZjQ0In0"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/shell_reset_cards.rs#L841-L921",
+          "version": "repo-lines-v1:sha256:6072e6d7eeb927c51f20968836ebea3c9dac3ed576d113476edf095f426f73c9:eyJzZWxlY3RlZExpbmVDb3VudCI6ODEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjEzNWRhMjJmYmYwYWExODQ4MDkxOTU4YTg5YmFhOTYzOWIxMWFkYjNhYTRiMDY3YTMzNmU1NjU2MzllNTRmZmUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU5ZjVlOWRkNjVlYzY4Mzk3N2MwN2MyNjQ1YTk5MjJiMTY2YTMxNWY5ZDVlMWQ1YmIxZDY5N2UzYTEwNzQ0OWMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjNkNmQ3ZTY4M2Y1Y2Q3ZWZhYTc2NjdkMDk3NmQ5NGZiMWMzNWFiZjhmY2E1ZTk3NWI5ZGEwMmFmNDE3ZTllZGMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjExMWFhNGViMjY1ZmVhNzI4NmI3Yjg1YmNjNWQ4NzJlMTcyZDJhMTY2YmFkNDA0NDZjYjVkMjIwMWViNTUyNTkifQ"
         }
       ]
     },
@@ -124,7 +128,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/shell_reset_cards.rs",
-          "version": "repo-file-v1:sha256:7bce831543655807ee10a2246e0f13327dc866b794adbdbab70ca1d96a021123"
+          "version": "repo-file-v1:sha256:8daa866f0a579f2f20273ef1868ff627a73f181161ec99102cb0a042d19c3dff"
         }
       ]
     },
@@ -159,6 +163,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-03T18:23:39.894Z"
+    "at": "2026-11-04T17:53:53.004Z"
   }
 }

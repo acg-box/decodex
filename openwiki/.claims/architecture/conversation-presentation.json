@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:582561d7772483e341cd48f9e31f46acfe949b18f255375da342bfa0ddf1d0bd",
+  "pageVersion": "sha256:aca24cfa7bace409b87b4c1349eef9b449a594ef4f053b30eba8fe2e49b9aa65",
   "claims": [
     {
       "id": "claim_36b9a49ffa87416e8add8befc7d10efe",
@@ -86,7 +86,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_theme.rs",
-          "version": "repo-file-v1:sha256:9f8e2bd5ff52626824426905f44f58479e17a51d5b28c3e4cbd424ee6e257d51"
+          "version": "repo-file-v1:sha256:7eb31750d32b6ab2ff1f9c6ed841132ea5474677c5cafd876abad45e2a6daad4"
         }
       ]
     },
@@ -162,11 +162,11 @@
     },
     {
       "id": "claim_6e906375c6484e4cb7e00fcc80f7277b",
-      "statement": "Task preferences exposes native Context defaults for background compaction and selected delegation-instruction retention, shows effective and saved user values, writes native configuration, applies changes to new conversations, and refreshes after an unconfirmed save without automatically retrying.",
+      "statement": "The Context defaults panel exposes native background compaction and marked client tool-output retention, shows effective and saved user values, writes native configuration, applies changes to new conversations, and refreshes after an unconfirmed save without automatically retrying.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_context_settings.rs",
-          "version": "repo-file-v1:sha256:c4b7221ae38d9e8d9eca1447d15a351e790f4cbd656afaa130cb0e37e59209c7"
+          "version": "repo-file-v1:sha256:0bace420ab4a1ba360bf4a42878b65796ad0acbd7b9ec496de5d0a292780d4a3"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_context_settings_wire_tests.rs",
@@ -673,6 +673,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-04T10:24:44.262Z"
+    "at": "2026-11-04T15:37:04.419Z"
   }
 }

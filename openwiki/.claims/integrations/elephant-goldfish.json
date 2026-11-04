@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:a097e9896652aa2571129b1c77ad10abb8a50d17dbb8d9490d40dde1754a4e56",
+  "pageVersion": "sha256:56735b04bad644e47e024b08ebdcbe639621d090ae89a76bacbf8a0c9eef112e",
   "claims": [
     {
       "id": "claim_95da7355536d42fb9ba017dae9558113",
@@ -18,7 +18,7 @@
     },
     {
       "id": "claim_3ca9161484f24f26bb9c1976620ea4f0",
-      "statement": "Settings > Components shares version labels, lifecycle buttons, disclosure and inline feedback across optional components. EGM reports native version and enablement and offers Uninstall only for a listed plugin. Required-runtime verification and Sparkle app updates retain separate owners.",
+      "statement": "Settings > Components shares version labels, lifecycle buttons, disclosure and inline feedback across optional components. EGM reports native version and enablement and offers Uninstall only for a listed plugin. Required-runtime verification retains its owner, while Sparkle application updates are available in Settings > General > Updates.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/component_plugins.rs",
@@ -26,11 +26,19 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs#L178-L201",
-          "version": "repo-lines-v1:sha256:487e4e335f128557538b93ee6283731e8136d3f072459166b8e6620642854d19:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU3OTIzOThkNmFiZGFjODliOGJhODRkY2FmY2FiZjkxMGZmYTJjZDIxMTZkY2Q2ZGY2NWUzNjQ2MTlhNDcwOGQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM3M2FjMDMxZjM0Y2RmZDllMWU0YzJjZjhiNmQyODEzOTkwMDVlZDI0OTlkYzhiNDQ3OWYyMmNjZTRiYjU4YjgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVlNDUyNjZjYjQ0NTYyZDA4MjMxMDMwNTdjNmNhYTVhYzZmZTU4MjdlYjY3NTBmOTNkZjFiNjU3ZDdmOGJjN2IifQ"
+          "version": "repo-lines-v1:sha256:5227aa7dd29db2e2c51f109db97982de6b972e73d3c609f4830fefec8b06fdc1:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY0ZWZjNDk0MThkMjZkY2YxMjliMjJhNmFhMjExMDhjZWVjMzc2NzdhMzJkMDhlOWQ1ZmVlMzVkZGE2NmJiOWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQzZjRlMTM5ZmYyNWRlNjRmZTM4ZjlmZGY1YmEzODAwNjkyOTg0MTRkMDc3NDk0NzE1ZGYxNmY1MDFiYzUzMDkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA1NzBiYzJhMzllYjQ5MDc2MTA5NWJkMjhjY2VjNWUxNTFkODIwYTg1MzVhNWI2NGM3OTllZTU4ODY2YTQ0ZDgifQ"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs#L571-L626",
-          "version": "repo-lines-v1:sha256:af34c668a3d3fdac441dc15c104793362a0b1efb7c4a6b6c4ca9c0e252782d3d:eyJzZWxlY3RlZExpbmVDb3VudCI6NTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg3NGE3OTg0NWQ1YTYyOGUxYjlkODE3OWU1NjM0YmMzN2Y0NjljNjkxNWRlMjM5MjNhYWIxZjgyNmY3ZmM3ZjgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjIyZjJmZjVmZWVjNjBmNTg3YzhmYWU0ZTg3ZjgwOWE2NjFjZmZlZDZiNDdhYWU1ZjZkNmEyNjUzYWE4OTUyZWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdiYzk4ZDZiMGRjNDkyYzUwMTZkZjEwODA1YTNhNTRlYjljMTg0YTVhNjEzN2U3ZjRiZWNmYTBjMjIwNTUwZDAifQ"
+          "version": "repo-lines-v1:sha256:369b0c6b5550b3ec5136c3e65620a38e2ba9e46c7d679226b3b563d470564e5a:eyJzZWxlY3RlZExpbmVDb3VudCI6NTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjljMDc0NzQzODljMjc2ZmY4M2MwYWEwYjc3NzU1MTk0MmU1NThiNDlmNjhlMjIyMGI3ZDRkNzM4MjljMmEwNDYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNiMTZmMGNhYTQzZWE5NTRjMWRmMTVhZDdkODQxMDI1YWM0NzFmNzViNjE3ZWU2NzAyY2QwNGIxOGU3Zjk5ODEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjYzNjc3YTFkYjcyYjNmNDI5OTcxYzI5ZDVmMjhkOGEzODBmMTllYmZlZDVmZGE5NzUzNjZiMmU4MzE1N2U4MDAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE0MzkzYmIyMDA5ZWVhZjgyY2NhZWE3NjM3ZjE1YTQyZDNhOWU5ZmViYzhlMmYxZTUyNzYzZjYyYjUyZGU1MjkifQ"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/settings_surface.rs#L512-L554",
+          "version": "repo-lines-v1:sha256:d297636772291536693f252bcec945ca86cb4b8c74eb66b904e15ba76ec6f791:eyJzZWxlY3RlZExpbmVDb3VudCI6NDMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVlMWE4ZWI0MGQ5OWU0Y2I3Y2ZiZWY1M2VjODJmMTcxM2QxNmY4NzlmYzAwM2UyZjI1ZjY3YzZkYmVjM2E1M2EiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU4NTc0MGZkYjNlMzY0Yjc0YWEyMGY0YjJkMDdjNTNhOWU1M2UzNTVlN2Q1MWJlZGQ0ZDI3Njk0YWU4Mjk2ZWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE0NTkzODU1MTI3OGQzMmMzZDE2NjU1ZmJkODZhYWZlZTBlNWI5Y2U1MGUyYmEzZDI1ZDVhMjlkYzY5OTI1MWEifQ"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/settings_updates.rs",
+          "version": "repo-file-v1:sha256:bb648a0d9f0a8363809909cb2838996f3592caa86a33f5c7a9e8b8afd89b958f"
         }
       ]
     },
@@ -127,6 +135,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-03T19:29:07.466Z"
+    "at": "2026-11-04T17:57:39.895Z"
   }
 }

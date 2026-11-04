@@ -228,23 +228,15 @@ pub(crate) struct Disclosure {
 impl RenderOnce for Disclosure {
 	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
 		let state = window.use_keyed_state(self.id, cx, |_, _| DisclosureState {
-			visible: false,
 			height: 0.0,
-			tween: Tween::new(0.0),
+			progress: Tween::new(if self.visible { 1.0 } else { 0.0 }),
 		});
 		let now = Instant::now();
 		let (height, moving) = state.update(cx, |s, _| {
-			if self.visible && s.visible && s.tween.to > 0. && !s.tween.moving(now) {
-				// Once open, let inner disclosures and new content own their size.
-				// Animating both parent and child would make the parent lag behind.
-				s.tween = Tween::new(s.height);
-			} else {
-				s.tween.target(if self.visible { s.height } else { 0.0 }, now);
-			}
-
-			s.visible = self.visible;
-
-			(s.tween.sample(now), s.tween.moving(now))
+			// Animate openness, not the measured height. Nested content can then
+			// change size without restarting an ancestor's transition every frame.
+			s.progress.target(if self.visible { 1.0 } else { 0.0 }, now);
+			(s.height * s.progress.sample(now), s.progress.moving(now))
 		});
 
 		if moving {
@@ -255,7 +247,7 @@ impl RenderOnce for Disclosure {
 			.w_full()
 			.h(gpui::px(height))
 			.when(!self.visible && height <= 0.1, |slot| slot.hidden())
-			.when(self.visible && !moving && height > 0.1, |slot| slot.h_auto())
+			.when(self.visible && !moving, |slot| slot.h_auto())
 			.flex_none()
 			.overflow_hidden()
 			.when(self.visible || height > 0.1, |slot| {
@@ -265,15 +257,9 @@ impl RenderOnce for Disclosure {
 						.flex_none()
 						.on_children_prepainted(move |bounds, _, cx| {
 							if let Some(bounds) = bounds.first() {
-								let measured = f32::from(bounds.size.height);
-
-								state.update(cx, |s, cx| {
-									if (s.height - measured).abs() > 0.5 {
-										s.height = measured;
-
-										cx.notify();
-									}
-								});
+								// Geometry belongs to the next animation frame; it
+								// must not trigger a second layout notification.
+								state.update(cx, |s, _| s.height = f32::from(bounds.size.height));
 							}
 						})
 						.child((self.child)(cx)),
@@ -314,7 +300,6 @@ impl RenderOnce for Arrival {
 			.relative()
 			.flex()
 			.flex_col()
-			.top(gpui::px(4.0 * (1.0 - progress)))
 			.opacity(0.85 + 0.15 * progress)
 			.child(self.child)
 	}
@@ -700,9 +685,8 @@ impl Feedback {
 }
 
 struct DisclosureState {
-	visible: bool,
 	height: f32,
-	tween: Tween,
+	progress: Tween,
 }
 
 impl SmoothControl for Stateful<Div> {
@@ -842,6 +826,87 @@ mod tests {
 	use std::time::{Duration, Instant};
 
 	use crate::ui_motion::Tween;
+
+	#[gpui::test]
+	fn open_disclosures_mount_at_full_height_and_follow_live_content(
+		cx: &mut gpui::TestAppContext,
+	) {
+		use gpui::{IntoElement, Render, prelude::*};
+		struct Section(f32);
+		impl Render for Section {
+			fn render(
+				&mut self,
+				_: &mut gpui::Window,
+				_: &mut gpui::Context<Self>,
+			) -> impl IntoElement {
+				gpui::div()
+					.w(gpui::px(300.))
+					.flex()
+					.flex_col()
+					.child(super::disclosure(
+						"outer",
+						true,
+						super::disclosure("inner", true, gpui::div().h(gpui::px(self.0))),
+					))
+					.child(
+						gpui::div().id("after").debug_selector(|| "after".into()).h(gpui::px(20.)),
+					)
+			}
+		}
+		let (section, visual) = cx.add_window_view(|_, _| Section(160.));
+		for height in [160., 240., 96., 0., 160.] {
+			section.update(visual, |s, cx| {
+				s.0 = height;
+				cx.notify();
+			});
+			visual.update(crate::ui_frame::draw_current_frame);
+			assert_eq!(
+				visual.debug_bounds("after").unwrap().top(),
+				gpui::px(height),
+				"mounting and nested size changes must not replay an expansion"
+			);
+			visual.update(|window, cx| {
+				assert_eq!(
+					window.simulate_next_frame(cx),
+					0,
+					"measuring settled content must not start a layout loop"
+				)
+			});
+		}
+	}
+
+	#[gpui::test]
+	fn page_arrival_keeps_content_in_its_final_position(cx: &mut gpui::TestAppContext) {
+		use gpui::{IntoElement, Render, prelude::*};
+		struct Page(bool);
+		impl Render for Page {
+			fn render(
+				&mut self,
+				_: &mut gpui::Window,
+				_: &mut gpui::Context<Self>,
+			) -> impl IntoElement {
+				super::arrival(
+					self.0.to_string(),
+					gpui::div().id("page").debug_selector(|| "page".into()).size_full(),
+				)
+			}
+		}
+		let (page, visual) = cx.add_window_view(|_, _| Page(false));
+		visual.update(crate::ui_frame::draw_current_frame);
+		let bounds = visual.debug_bounds("page").unwrap();
+		for route in [true, false, true] {
+			page.update(visual, |s, cx| {
+				s.0 = route;
+				cx.notify();
+			});
+			visual.update(crate::ui_frame::draw_current_frame);
+			assert_eq!(
+				visual.debug_bounds("page").unwrap(),
+				bounds,
+				"page transitions must not move content or its hit targets"
+			);
+		}
+	}
 
 	#[gpui::test]
 	fn popover_keeps_its_final_size_during_the_whole_surface_arrival(

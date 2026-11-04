@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:f79c0c07dd0af758876efcd0758088f4bfe7c35bc7a391108fbcae4ea160b821",
+  "pageVersion": "sha256:f651971b05d6ca0f3b54f5197700975c6feb4319f2fe9f0306f2d8e0485cee51",
   "claims": [
     {
       "id": "claim_2f9fecf97f644372afb5684929656aac",
@@ -8,7 +8,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
-          "version": "repo-file-v1:sha256:2d3b3b8873ece30ae1ed21c6db852df68fe8af0da00fcea059034229a9044e77"
+          "version": "repo-file-v1:sha256:306abda36fba53f054680a4e6ca7c82646fbada139cc9c753c19dcb5508fad2b"
         },
         {
           "resource": "repo://crates/decodex-core/src/assistant.rs",
@@ -146,11 +146,15 @@
     },
     {
       "id": "claim_d7c97e74e7fd4a17bbb30ad7532a9914",
-      "statement": "RAGFlow component operations check the running Docker-compatible engine and Docker Compose before installation effects. Unavailable prerequisites use shared inline feedback without runtime installation, launch or installation guidance. Install prepares managed nightly with compatible Infinity and its private service account and opens the existing model editor if no model settings are saved. Configure models accepts an OpenAI-compatible Base URL, optional private API key and custom extraction and embedding names; native verification precedes saving and dedicated Memory setup. No model runtime or model weights are installed. The editor leaves saved keys blank and keeps an old key only at the same Base URL; loopback URLs map to the Docker host internally. Indexed Memory retains its embedding model and endpoint. Service connection and derived scopes are automatic, chat import starts off, and empty dataset scopes disable knowledge retrieval.",
+      "statement": "RAGFlow component operations check the running Docker-compatible engine and Docker Compose before installation effects. Unavailable prerequisites use shared inline feedback without runtime installation, launch or installation guidance. Install prepares managed nightly with compatible Infinity and its private service account and opens the existing model editor if no model settings are saved. Expanding installed RAGFlow opens the editor directly for an OpenAI-compatible Base URL, optional private API key and custom extraction and embedding names; native verification precedes saving and dedicated Memory setup. No model runtime or model weights are installed. The editor leaves saved keys blank and keeps an old key only at the same Base URL; loopback URLs map to the Docker host internally. Indexed Memory retains its embedding model and endpoint. Service connection and derived scopes are automatic, chat import starts off with an independent switch when Memory is ready, and empty dataset scopes disable knowledge retrieval. Collapsing and reopening preserves unsaved input; Cancel discards it and editor errors and collapses the component.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
-          "version": "repo-file-v1:sha256:2d3b3b8873ece30ae1ed21c6db852df68fe8af0da00fcea059034229a9044e77"
+          "version": "repo-file-v1:sha256:306abda36fba53f054680a4e6ca7c82646fbada139cc9c753c19dcb5508fad2b"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
+          "version": "repo-file-v1:sha256:c9724c7c054929cb0993035ecb0c3f025c5e90fabf1ad45131ff9be12ed170a8"
         },
         {
           "resource": "repo://crates/decodex-components/src/ragflow.rs",
@@ -270,7 +274,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
-          "version": "repo-file-v1:sha256:2d3b3b8873ece30ae1ed21c6db852df68fe8af0da00fcea059034229a9044e77"
+          "version": "repo-file-v1:sha256:306abda36fba53f054680a4e6ca7c82646fbada139cc9c753c19dcb5508fad2b"
         },
         {
           "resource": "repo://crates/decodex-components/src/ragflow.rs",
@@ -300,7 +304,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
-          "version": "repo-file-v1:sha256:2d3b3b8873ece30ae1ed21c6db852df68fe8af0da00fcea059034229a9044e77"
+          "version": "repo-file-v1:sha256:306abda36fba53f054680a4e6ca7c82646fbada139cc9c753c19dcb5508fad2b"
         }
       ]
     },
@@ -310,11 +314,11 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
-          "version": "repo-file-v1:sha256:2d3b3b8873ece30ae1ed21c6db852df68fe8af0da00fcea059034229a9044e77"
+          "version": "repo-file-v1:sha256:306abda36fba53f054680a4e6ca7c82646fbada139cc9c753c19dcb5508fad2b"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:f892acca477da7550bf8de58c7a04ec12a849d85a473147f52c40236811b033d"
+          "version": "repo-file-v1:sha256:c9724c7c054929cb0993035ecb0c3f025c5e90fabf1ad45131ff9be12ed170a8"
         },
         {
           "resource": "repo://crates/decodex-components/src/ragflow_service.rs",
@@ -325,6 +329,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-04T09:42:14.115Z"
+    "at": "2026-11-04T15:37:04.419Z"
   }
 }

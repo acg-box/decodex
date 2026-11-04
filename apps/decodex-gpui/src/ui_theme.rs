@@ -81,15 +81,15 @@ pub(crate) const COMPOSER_RADIUS: f32 = 14.0;
 pub(crate) const COMPOSER_MIN_HEIGHT: f32 = 77.0;
 pub(crate) const COMPOSER_TOP_GAP: f32 = 8.0;
 pub(crate) const COMPOSER_BOTTOM_GAP: f32 = 12.0;
-// Settings share shell typography and a bounded reading width.
-pub(crate) const SETTINGS_WIDTH: f32 = 740.0;
+// Settings use readable form text and one bounded content width.
+pub(crate) const SETTINGS_WIDTH: f32 = 620.0;
 // Leave room for navigation, page insets, five theme previews and their scrollbar.
 pub(crate) const SETTINGS_WINDOW_MIN_WIDTH: f32 = 920.0;
 pub(crate) const SETTINGS_INSET: f32 = 24.0;
 pub(crate) const SETTINGS_TOP: f32 = 16.0;
-pub(crate) const SETTINGS_GROUP_GAP: f32 = 18.0;
-pub(crate) const SETTINGS_LABEL_SIZE: f32 = 12.5;
-pub(crate) const SETTINGS_HELP_SIZE: f32 = 11.5;
+pub(crate) const SETTINGS_GROUP_GAP: f32 = 16.0;
+pub(crate) const SETTINGS_LABEL_SIZE: f32 = BODY_SIZE;
+pub(crate) const SETTINGS_HELP_SIZE: f32 = CONTROL_LABEL_SIZE;
 pub(crate) const SETTINGS_SECTION_SIZE: f32 = 13.0;
 pub(crate) const SETTINGS_CONTROL_HEIGHT: f32 = 24.0;
 pub(crate) const SETTINGS_CONTROL_RADIUS: f32 = 5.0;
@@ -292,8 +292,8 @@ pub(crate) fn settings_header_inset() -> Div {
 pub(crate) fn settings_row() -> Div {
 	gpui::div()
 		.w_full()
-		.min_h(gpui::px(48.0))
-		.py(gpui::px(8.0))
+		.min_h(gpui::px(40.0))
+		.py(gpui::px(6.0))
 		.flex()
 		.items_center()
 		.gap(gpui::px(16.0))
@@ -320,7 +320,7 @@ pub(crate) fn settings_section_title(title: &'static str) -> Stateful<Div> {
 		.text_size(gpui::px(SETTINGS_SECTION_SIZE))
 		.line_height(gpui::px(18.0))
 		.font_weight(FontWeight::MEDIUM)
-		.text_color(rgb(TEXT))
+		.text_color(rgb(TEXT_MUTED))
 		.child(title)
 }
 
@@ -330,6 +330,15 @@ pub(crate) fn settings_description(text: impl Into<gpui::SharedString>) -> Div {
 		.line_height(gpui::px(16.5))
 		.text_color(rgb(TEXT_MUTED))
 		.child(text.into())
+}
+
+pub(crate) fn settings_field(label: &'static str, input: impl IntoElement) -> Div {
+	settings_row()
+		.min_h(gpui::px(36.0))
+		.py(gpui::px(4.0))
+		.gap(gpui::px(12.0))
+		.child(gpui::div().w(gpui::px(128.0)).flex_none().child(label))
+		.child(gpui::div().flex_1().min_w_0().child(input))
 }
 
 pub(crate) fn settings_title(title: &'static str) -> impl IntoElement {
@@ -350,7 +359,6 @@ pub(crate) fn settings_label(
 	description: impl Into<gpui::SharedString>,
 ) -> Div {
 	let description = description.into();
-
 	gpui::div()
 		.flex_1()
 		.min_w_0()
@@ -367,10 +375,37 @@ pub(crate) fn settings_label(
 }
 
 pub(crate) fn settings_group(title: &'static str, rows: Vec<AnyElement>) -> Div {
+	settings_rows().gap_1().child(settings_section_title(title)).child(settings_divided_rows(rows))
+}
+
+/// Cards identify account and health records; ordinary preferences use flat groups.
+pub(crate) fn settings_card(rows: Vec<AnyElement>) -> Div {
+	settings_divided_rows(rows)
+		.rounded(gpui::px(10.))
+		.border_1()
+		.border_color(rgba(PANEL_DIVIDER))
+		.bg(rgba(FIELD_MATERIAL))
+		.px(gpui::px(12.))
+		.py(gpui::px(6.))
+}
+
+pub(crate) fn settings_divided_rows(rows: Vec<AnyElement>) -> Div {
+	settings_rows().children(rows.into_iter().enumerate().map(|(index, row)| {
+		gpui::div()
+			.w_full()
+			.min_w_0()
+			.when(index > 0, |row| row.border_t_1().border_color(rgba(PANEL_DIVIDER)))
+			.child(row)
+	}))
+}
+
+pub(crate) fn settings_detail(content: impl IntoElement) -> Div {
 	settings_rows()
-		.gap_2()
-		.child(settings_section_title(title))
-		.child(settings_rows().children(rows))
+		.border_t_1()
+		.border_color(rgba(PANEL_DIVIDER))
+		.pt(gpui::px(10.))
+		.pb(gpui::px(10.))
+		.child(content)
 }
 
 pub(crate) fn settings_button(
@@ -404,10 +439,10 @@ pub(crate) fn settings_button_base(
 		.items_center()
 		.justify_center()
 		.rounded(gpui::px(SETTINGS_CONTROL_RADIUS))
-		.border_1()
-		.border_color(rgba(0xffffff16))
-		.bg(rgba(0xffffff06))
-		.text_size(gpui::px(11.5))
+		.border(gpui::px(0.5))
+		.border_color(rgba(PANEL_DIVIDER))
+		.bg(rgba(0xffffff04))
+		.text_size(gpui::px(CONTROL_LABEL_SIZE))
 		.line_height(gpui::px(16.0))
 		.text_color(rgb(TEXT))
 		.child(label)

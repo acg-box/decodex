@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:62cbc1f379587cffd15a58c13aa2c19e097a12736cc4c0f20ca830ae997d098c",
+  "pageVersion": "sha256:040b1054477112b403441e08e733fc4d7fcddfcebc060bad2eef1c6fbdd39722",
   "claims": [
     {
       "id": "claim_613df7e7c10d49d28b26d6db94c525e5",
@@ -146,7 +146,7 @@
     },
     {
       "id": "claim_73dcdb7a2e184168a61a8f862c83d99e",
-      "statement": "The app lifecycle prepares its pinned component before the owned local service connects without consuming connection retry attempts. Settings > Components exposes runtime preparation and native optional EGM lifecycle; Settings > Updates retains Sparkle application updates.",
+      "statement": "The app lifecycle prepares its pinned component before the owned local service connects without consuming connection retry attempts. Settings > Components exposes runtime preparation and native optional EGM lifecycle. Settings > General contains the app version and native Check for updates action, while Sparkle retains application update ownership.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/bundled_daemon.rs",
@@ -158,11 +158,15 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:f892acca477da7550bf8de58c7a04ec12a849d85a473147f52c40236811b033d"
+          "version": "repo-file-v1:sha256:c9724c7c054929cb0993035ecb0c3f025c5e90fabf1ad45131ff9be12ed170a8"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/settings_surface.rs#L512-L563",
+          "version": "repo-lines-v1:sha256:b4244272fa71237b440d21e886c4bee3518d0d80552833ecaa2e0b5d228b2134:eyJzZWxlY3RlZExpbmVDb3VudCI6NTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVlMWE4ZWI0MGQ5OWU0Y2I3Y2ZiZWY1M2VjODJmMTcxM2QxNmY4NzlmYzAwM2UyZjI1ZjY3YzZkYmVjM2E1M2EiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBhZjQ5MjdlMzZmMzQ3ZWUxZDA5MzFjMzFmZWIyY2FmYTIwZGQ4Y2IzMDUyZTQwMDNmMGMxZDNjYzM1MTRjZWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU4NTc0MGZkYjNlMzY0Yjc0YWEyMGY0YjJkMDdjNTNhOWU1M2UzNTVlN2Q1MWJlZGQ0ZDI3Njk0YWU4Mjk2ZWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFkYWUyNTNiNGEyYmIyMjJjMTU5NzVhN2E0ZWRlMmM0NmY3YjA3NTJjZmMwMzQ5YjlmMGM5MDI4NmRjMzZiNzQifQ"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_updates.rs",
-          "version": "repo-file-v1:sha256:36f1d723023f92b9e981084c184ad9eb1b086651c494f3abef3a66eb7c4be6a2"
+          "version": "repo-file-v1:sha256:bb648a0d9f0a8363809909cb2838996f3592caa86a33f5c7a9e8b8afd89b958f"
         }
       ]
     },
@@ -476,7 +480,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_context_settings.rs",
-          "version": "repo-file-v1:sha256:c4b7221ae38d9e8d9eca1447d15a351e790f4cbd656afaa130cb0e37e59209c7"
+          "version": "repo-file-v1:sha256:0bace420ab4a1ba360bf4a42878b65796ad0acbd7b9ec496de5d0a292780d4a3"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_native.rs",
@@ -498,7 +502,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/shell_diagnostics.rs",
-          "version": "repo-file-v1:sha256:15cca314f4f94ae675ce29b0ff2dc8fa6bfe90fb1bb77596eb0093d5a62c08da"
+          "version": "repo-file-v1:sha256:7bf44c2c9576157175d68f5da903d5042d37701bc7ddf0cd877fb5d13d0d9551"
         },
         {
           "resource": "repo://automations/upstream/retained-contracts.json",
@@ -706,7 +710,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
-          "version": "repo-file-v1:sha256:2d3b3b8873ece30ae1ed21c6db852df68fe8af0da00fcea059034229a9044e77"
+          "version": "repo-file-v1:sha256:306abda36fba53f054680a4e6ca7c82646fbada139cc9c753c19dcb5508fad2b"
         },
         {
           "resource": "repo://crates/decodex-components/src/ragflow.rs",
@@ -728,7 +732,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
-          "version": "repo-file-v1:sha256:2d3b3b8873ece30ae1ed21c6db852df68fe8af0da00fcea059034229a9044e77"
+          "version": "repo-file-v1:sha256:306abda36fba53f054680a4e6ca7c82646fbada139cc9c753c19dcb5508fad2b"
         },
         {
           "resource": "repo://crates/decodex-components/src/ragflow_service.rs",
@@ -756,7 +760,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
-          "version": "repo-file-v1:sha256:2d3b3b8873ece30ae1ed21c6db852df68fe8af0da00fcea059034229a9044e77"
+          "version": "repo-file-v1:sha256:306abda36fba53f054680a4e6ca7c82646fbada139cc9c753c19dcb5508fad2b"
         },
         {
           "resource": "repo://crates/decodex-components/src/ragflow_service.rs",
@@ -767,6 +771,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-04T10:24:44.262Z"
+    "at": "2026-11-04T17:53:53.004Z"
   }
 }

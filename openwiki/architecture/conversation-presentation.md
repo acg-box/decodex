@@ -148,10 +148,10 @@ sources:
     resource: repo://database/src/agent_titles.rs
   - id: openwiki-source-6197a876b2effbe992b1e2ec
     resource: repo://database/src/agent.rs
-generated: { by: "codex", at: "2026-11-03T17:21:44.822Z" }
+generated: { by: "codex", at: "2026-11-04T14:17:02.441Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-04T10:24:44.262Z
+    at: 2026-11-04T15:37:04.419Z
 ---
 
 
@@ -261,7 +261,7 @@ Task preferences shows the native read receipt for an eligible root conversation
 
 ## Context defaults
 
-Task preferences includes a Context defaults panel for background compaction and retention of delegation instructions. The panel reads the native effective project default and the saved user value. Its On and Off actions write the same native configuration file that manual config edits use. An override remains visible as a different effective project default.
+The Context defaults panel exposes background compaction and retention of marked client tool outputs. The panel reads the native effective project default and the saved user value. Its On and Off actions write the same native configuration file that manual config edits use. An override remains visible as a different effective project default.
 
 These defaults apply to new conversations. Saving them does not restart a loaded conversation or claim that an in-progress task has switched behavior. An unconfirmed save triggers a fresh read and requires another explicit choice before a new write. See [Runtime architecture](runtime-architecture.md#context-defaults) for the configuration keys and native limits.
 

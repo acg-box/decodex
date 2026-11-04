@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:a04089e4923ac8a016d5afd91a2d092f9181f320e0b4b00bad4e26bdd25d4ab5",
+  "pageVersion": "sha256:a1ebef6ce26d666b0c076833720c4c5d91886224a4d469131e88db6435997820",
   "claims": [
     {
       "id": "claim_41c9eba720934771bd6b671a7aeb8b6e",
@@ -100,15 +100,15 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/ResetCardSectionView.swift#L4-L34",
-          "version": "repo-lines-v1:sha256:6d314b3e221955217958b3b0573e80d22a70923e109070ce312de03c6659f4b2:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA1YmZiY2I2OWM3MTIxZmE4Y2UxOTI1ZjM1YzU0ZTc2ODkxNGZkYTY0NDI0YzdmODQxNzE4N2MxZGM4YmY3MzIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjoyLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM1OTY1ZmU4Zjg5ZDU0OWU2YTkxY2Y5YjIxMGRjNTcwOGEwZDg1OTE5MWI5OTQyNmY5YTBjMzBkYzVkNmU5ZmMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjMzMTY0MDE5MmNhNGFjNDM0NTdiZmYxMjU0MTYzYWY4ODQ2MTRjMDJiNmQ4NDZlZmY2NDY1ZjBkY2JmMWU0NjIifQ"
+          "version": "repo-lines-v1:sha256:6d314b3e221955217958b3b0573e80d22a70923e109070ce312de03c6659f4b2:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA1YmZiY2I2OWM3MTIxZmE4Y2UxOTI1ZjM1YzU0ZTc2ODkxNGZkYTY0NDI0YzdmODQxNzE4N2MxZGM4YmY3MzIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjdhYzUyYWU2YzU4ODgyNTkyMmNlMGI5ZTQ3NzU5Y2QxMDg5NTI1MzJiYmZmNGU1NDM0OWU1NjQyNDYyMmQxYzAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjMzMTY0MDE5MmNhNGFjNDM0NTdiZmYxMjU0MTYzYWY4ODQ2MTRjMDJiNmQ4NDZlZmY2NDY1ZjBkY2JmMWU0NjIifQ"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/shell_status.rs#L230-L245",
           "version": "repo-lines-v1:sha256:c935271ee270339b80c6383aab5e8944fa8f60fd526dd01d3d0ca271dc71d62b:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE1NTE5YTllMTY3OWRlNWNmYmQ5NDg3ZGQ3YzQzZTdlMDVmNmI5NWUxYTgzYjdkZTA4OTc2MDlmY2Y5ZWUxZDciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijc2MWZjYzllOWZhMTY1NThjMWNmZTg5ZmNhNDExZTcwNzliMWMxMGNjODY1MGM4NTIxZWEyZWYzODI5OTc1OWIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImJmMDEwZGNhMDVkMDJiMDg1YmI5NDIyZTRhNTlkNTg1OGFiOWU2N2U2N2JjOTUxMTVjYjEyMjMwYTA3OWQ5YWQifQ"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/ui_feedback.rs#L460-L550",
-          "version": "repo-lines-v1:sha256:823ce6a70b18e0b447f3a6444e3436843a94b963f1691faf6757ab579efec4ca:eyJzZWxlY3RlZExpbmVDb3VudCI6OTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU4ZmE1YjAwM2E3ODUzM2IxZTc1OTA4NzkxMGUxNmI5YjBjYjZkY2ZhYjIwMmFlNzcwMjk3YWY0OTM2ZTBiZTgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQ1NjI1ZTY0MDQwODkyZDhhYWYxMjRmYmU0M2UxY2NmYzBjMDMwM2EwMjU3NTJkODU4ZWIzZGRhZjJmMmIwMTgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhmNDA4ZDliMWFhY2ZhNjEzYmVmOTlhMWVkNzIzNzQ1OTBjNGU2NjdlM2NiNjc2MWQwOTRlYjM3M2UwMGYzYzAifQ"
+          "resource": "repo://apps/decodex-gpui/src/ui_feedback.rs#L480-L562",
+          "version": "repo-lines-v1:sha256:c10f29a7358859a32eacb5735caf28f3525f0b84fb520136f31af91cdaa10354:eyJzZWxlY3RlZExpbmVDb3VudCI6ODMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU4ZmE1YjAwM2E3ODUzM2IxZTc1OTA4NzkxMGUxNmI5YjBjYjZkY2ZhYjIwMmFlNzcwMjk3YWY0OTM2ZTBiZTgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc3YTliNWU5MDE5YzhkYjg3ODNlYzljM2ZlYmIwYTJjOTg2MmY2MWEwNWMzMDhmZTg5NWU0YTliZWQwM2VkYjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQ1NjI1ZTY0MDQwODkyZDhhYWYxMjRmYmU0M2UxY2NmYzBjMDMwM2EwMjU3NTJkODU4ZWIzZGRhZjJmMmIwMTgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE1MjE2MDRiMzVmYzQwYWYwMGNiYTRlZWEyZmQ1ZTJjM2FmMTg2M2IzOTExODVkN2JmNGJiMDllNzJkMGM4YjMifQ"
         }
       ]
     },
@@ -261,7 +261,7 @@
           "version": "repo-lines-v1:sha256:33aa93fddf03c4f5019d97d0c812d69b24d0a323bcf5e6c5e060523891bd9cde:eyJzZWxlY3RlZExpbmVDb3VudCI6ODUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY2OTFhYzcwZTMyYTUyZmU3MTAwODMzNjQ2MzgyMmVlZjg2NGZiMzgwZmEwYTkyNmU2NjI4NGJhZDRkMWRkODMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY4M2Q2ZmFjNTZhMmZhOTZmODFjMGJhZDI0YzcyYWI5ZjI2ZDE2Y2Y0YTM5YzRkYmQ0NTQwYWZjNzZmNGE2MzYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ2YjViMTQ1OGU2MWE3ZWM4NWRmZmU3YTk1MWI5NDZhNzkzNDc3NjgxM2I3MjA5ZjM4NGJkNWFlYzZmZTE3ZTgifQ"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/shell.rs#L1043-L1068",
+          "resource": "repo://apps/decodex-gpui/src/shell.rs#L1041-L1066",
           "version": "repo-lines-v1:sha256:4ca92366bb3b7f2d09870fbcaf0fd255f95413121526c0aeac4041cdef1fac75:eyJzZWxlY3RlZExpbmVDb3VudCI6MjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNlNzVjNmViMTkxMDI1ZjgyODU4NjU4MWRmYzgxNjUwMTkwMDQ5OTA4NzZiMGE3NjM4OGViNTRmMTZhNTA2ODgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjIxZWNmZWYyNzVmNmExNjg5N2U4Njg3N2YzNmQ0NjUyMWNhYTc3NTA5YzVkMWE4ZmJhNzFjZWI0MzZjNTU2NGIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUyNTJkOTNiNWU2ODU1NjZhNjRmZTQ5Y2Q0NTZhMjRlOTUwY2QxZGE3ZGYwMmEzZjFkZmVjMjBjNzgxYjFkY2QifQ"
         },
         {
@@ -269,7 +269,7 @@
           "version": "repo-lines-v1:sha256:78987857e8d671bbd2bd6b0d76271f7a891b8f4d2e63e18876623e65787b097d:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIxZjFmZDBjODhkZDdiOTY0NGVlY2U5ZGU0YmM2YjRiZDZhYjY1ZDJkNGZhNDQzNmIxZGVkMTA1OTA3ZjQyYzMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE2MDU2MWExYzJhNTBlNTExMTI4ZTg1ODhkMzM4Njk5Njc4N2ZkOGExNGM4MDdmNzhkZGE3MGU5ZTgxMThjYzQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhhNzg0ZjRlN2MyMmZjMTk4MzU0NWNlMTdhZjYyZGIxNDRjYmQ4MzM0YWEwYjZjODBmMzAwYWVjMmVkYjU3MWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjczZGIwNGQ5ZjNkNjY3YWI1ODE3Y2MxYjEzZWQzYjg0MDhkYTQ0ZGY5ZTQzMmZjMjBjMDdlYjJhMzBjMjJjZTgifQ"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/shell.rs#L2403-L2412",
+          "resource": "repo://apps/decodex-gpui/src/shell.rs#L2400-L2409",
           "version": "repo-lines-v1:sha256:4fdeb2bb7cd199dd68ff55a17cafc89f167e3e56dc6973d05a2c648ae93e07cb:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ0YmJjMDkwNDI4NGNlODEyY2Q2MDk2MDRkMDEyNDhlYjcyODM4MTA5YTk3NTA3YjU2NTIzZThjYTQ4NWFiNTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRmNTNlYjlhZTZhMmM4MjUwMWUxMGFmYjQzMDcxNDA1YTZkMzAzNWEyYWNlNjQxMTRhYjFmZjhjYTRlMTI5NWMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQyYmIxMTNlYjM0N2FlY2ZjNmE5MmJlZmM0MDE1ODk0MjAwYTI2OWQ5MGUwYmFlNWExNzYyODUwNmY3ZjEzNDQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImYzMjNmNDUyOTIxZjA1N2MxMjYxM2VmMDBhODU2NGQxMDQyZmRjOTZmNmRjZmRiYTY3MTc0OGNlMzc4NmYzMDkifQ"
         }
       ]
@@ -360,7 +360,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/session_settings.rs",
-          "version": "repo-file-v1:sha256:ed78f991939c7bb49f2e72fefed45e4137ec1495293bd660223dae77ecf1d4af"
+          "version": "repo-file-v1:sha256:c9e3b76bd3c15d77d017d831ba8c8a8928b6fdbf5f68a4875f8bf60492797291"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/native_agents.rs",
@@ -462,13 +462,13 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_theme.rs",
-          "version": "repo-file-v1:sha256:9f8e2bd5ff52626824426905f44f58479e17a51d5b28c3e4cbd424ee6e257d51"
+          "version": "repo-file-v1:sha256:7eb31750d32b6ab2ff1f9c6ed841132ea5474677c5cafd876abad45e2a6daad4"
         }
       ]
     },
     {
       "id": "claim_0452408448a14a9db6e30791b9bed632",
-      "statement": "Nonblocking conversation feedback uses the band above the composer; send restrictions and archive status use the disabled composer. History retry and summary notices reuse shared inline feedback. Field and operation failures stay beside their controls, app-wide events use the notification center, whole-page startup failure uses the shared status row, and Menu Bar retains compact native feedback.",
+      "statement": "Nonblocking conversation feedback uses the band above the composer; send restrictions and archive status use the disabled composer. History retry and summary notices reuse shared inline feedback. Persistent and animated local feedback share a compact inset row with a quiet tone fill, icon and explicit wording, with text, icons and recovery actions vertically centered. Field and operation failures stay beside their controls, login-item and sleep-setting recovery actions stay inside their feedback rows, app-wide events use the notification center, whole-page startup failure uses the shared status row, and Menu Bar retains compact native feedback.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_composer.rs",
@@ -479,14 +479,22 @@
           "version": "repo-file-v1:sha256:94ea70df047f8fb39acb1221999a5bbfc405b1041b6da8a11e0176474d71cc8d"
         },
         {
+          "resource": "repo://apps/decodex-gpui/src/settings_power.rs",
+          "version": "repo-file-v1:sha256:a177102387851f3050b9cbca4c51b4e648f0156b7db7c4f27e8f299b832710cd"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/settings_surface.rs",
+          "version": "repo-file-v1:sha256:42d0f087e9560d6c380030ceb8fb990a435f2ec3fb4d50ca7ca94590b95119f6"
+        },
+        {
           "resource": "repo://apps/decodex-gpui/src/ui_feedback.rs",
-          "version": "repo-file-v1:sha256:87068003c148dc39e0d5410ff004a73c5e8dd8f94c73eb86c9b9adf7c21f1973"
+          "version": "repo-file-v1:sha256:aec08228a0e0f01f6c19e065e0317fa3236152ba87495dd176d08642716c1582"
         }
       ]
     },
     {
       "id": "claim_6c70a225addb4571a4536403d49033b7",
-      "statement": "Assistant is built in and always available from the sidebar, with idle atomic initialization on first use and no optional Assistant component. RAGFlow shares component controls, installed version readback, collapsed details and inline feedback. Component operations check the running Docker-compatible engine and Docker Compose before installation effects and report unavailable prerequisites without runtime installation, launch or installation guidance. Install prepares the service and automatically opens the existing model editor when no model settings are saved. Configure models reopens its Base URL, optional masked API key and custom extraction and embedding fields. Save models verifies the API before automatic Memory setup. Service connection is automatic and chat import starts off. Continuing duties and teams stay in chat and Work.",
+      "statement": "Assistant is built in and always available from the sidebar, with idle atomic initialization on first use and no optional Assistant component. RAGFlow shares component controls, installed version readback, collapsed details and inline feedback. Component operations check the running Docker-compatible engine and Docker Compose before installation effects and report unavailable prerequisites without runtime installation, launch or installation guidance. Install prepares the service and automatically opens the model editor when no model settings are saved. Expanding installed RAGFlow directly opens its Base URL, optional masked API key and custom extraction and embedding fields. Save verifies the API before automatic Memory setup. Service connection is automatic; chat import starts off and has an independent switch when Memory is ready. Continuing duties and teams stay in chat and Work.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
@@ -494,11 +502,11 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
-          "version": "repo-file-v1:sha256:2d3b3b8873ece30ae1ed21c6db852df68fe8af0da00fcea059034229a9044e77"
+          "version": "repo-file-v1:sha256:306abda36fba53f054680a4e6ca7c82646fbada139cc9c753c19dcb5508fad2b"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:f892acca477da7550bf8de58c7a04ec12a849d85a473147f52c40236811b033d"
+          "version": "repo-file-v1:sha256:c9724c7c054929cb0993035ecb0c3f025c5e90fabf1ad45131ff9be12ed170a8"
         },
         {
           "resource": "repo://crates/decodex-components/src/ragflow_service.rs",
@@ -516,11 +524,11 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
-          "version": "repo-file-v1:sha256:2d3b3b8873ece30ae1ed21c6db852df68fe8af0da00fcea059034229a9044e77"
+          "version": "repo-file-v1:sha256:306abda36fba53f054680a4e6ca7c82646fbada139cc9c753c19dcb5508fad2b"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:f892acca477da7550bf8de58c7a04ec12a849d85a473147f52c40236811b033d"
+          "version": "repo-file-v1:sha256:c9724c7c054929cb0993035ecb0c3f025c5e90fabf1ad45131ff9be12ed170a8"
         }
       ]
     },
@@ -533,10 +541,144 @@
           "version": "repo-file-v1:sha256:baa8ea600036ed4dff6d1bd9f8736a2d3f541aed6f345c511fe0bb79f4db3307"
         }
       ]
+    },
+    {
+      "id": "claim_b21a1b1b1e32436d9ebd774cec94464d",
+      "statement": "The six Settings sections are General, Agents, Appearance, Components, Accounts and Diagnostics. They share a 620-point content column and normal App typography with visible descriptions. New conversations has two rows: Permissions shows its selected mode's meaning and all four explanations in the menu, while Speed uses the existing segmented control and selected-speed usage. Context defaults and Assistance retain their native settings owners. Shared form fields use a 128-point label column. General contains Background controls and the app version with the native update action; Updates has no separate navigation entry.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/session_settings.rs",
+          "version": "repo-file-v1:sha256:c9e3b76bd3c15d77d017d831ba8c8a8928b6fdbf5f68a4875f8bf60492797291"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/settings_surface.rs",
+          "version": "repo-file-v1:sha256:42d0f087e9560d6c380030ceb8fb990a435f2ec3fb4d50ca7ca94590b95119f6"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/settings_updates.rs",
+          "version": "repo-file-v1:sha256:bb648a0d9f0a8363809909cb2838996f3592caa86a33f5c7a9e8b8afd89b958f"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/shell.rs#L208-L218",
+          "version": "repo-lines-v1:sha256:29bee6618a0e23e816e645126eb377c923b2b38f284ca297d0deb1c6dd0adf99:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3NWUzZTg1YmI2YTk4Y2M2MDNjYjU2MWUyYTA1NWU0ZGUzNWM3ZTBmOTYzOTZkYzgxZGFkN2ZlY2I5Mjc2NDciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA1ZmNlZGY2YTBiM2NkNmQyZjNhOGNjODljNjk2OTliYmUyN2I4MWUzMDU2OTEwYWMxZWJjZGRiNDg0NmFjOWEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjViOTFkZDA3MjEwZDg5Mjg2MTg1YThlYjAzYTY5NjE4YjkyMzAwYzcwOTI4M2ZjMDU1ZTQzOGJhNjMwZGUzMGYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgyNjRhMzY1MTQ3NjVmNGU0MDk4NDgzZmU0ZDk4NWZkZmViNjI4ZDkyZjAyMTdjNmM0NzA1ZmMzZWM3OWJmZjIifQ"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/ui_theme.rs",
+          "version": "repo-file-v1:sha256:7eb31750d32b6ab2ff1f9c6ed841132ea5474677c5cafd876abad45e2a6daad4"
+        }
+      ]
+    },
+    {
+      "id": "claim_f2fbc533f80e433d9022f6333a6e691c",
+      "statement": "The RAGFlow model editor uses aligned shared field rows and right-aligned Cancel and Save controls. It retains API and Codex memory guidance, shows saved-key help only for saved settings and hides the redundant setup notice during editing. Collapsing and reopening retains unsaved input; Cancel clears unsaved values and editor errors and collapses RAGFlow.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
+          "version": "repo-file-v1:sha256:306abda36fba53f054680a4e6ca7c82646fbada139cc9c753c19dcb5508fad2b"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
+          "version": "repo-file-v1:sha256:c9724c7c054929cb0993035ecb0c3f025c5e90fabf1ad45131ff9be12ed170a8"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/ui_theme.rs",
+          "version": "repo-file-v1:sha256:7eb31750d32b6ab2ff1f9c6ed841132ea5474677c5cafd876abad45e2a6daad4"
+        }
+      ]
+    },
+    {
+      "id": "claim_9d77516e24e94e4d9b5add8ac7f9c1dd",
+      "statement": "Ordinary Settings preferences use flat sections and a shared divided-row helper. Account records and diagnostic summaries retain quiet cards. Component names, available versions and lifecycle actions share one row in a divided list. Expanded component and MCP content share a detail divider, and feedback stays with its operation.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_context_settings.rs",
+          "version": "repo-file-v1:sha256:0bace420ab4a1ba360bf4a42878b65796ad0acbd7b9ec496de5d0a292780d4a3"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
+          "version": "repo-file-v1:sha256:c9724c7c054929cb0993035ecb0c3f025c5e90fabf1ad45131ff9be12ed170a8"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/settings_surface.rs",
+          "version": "repo-file-v1:sha256:42d0f087e9560d6c380030ceb8fb990a435f2ec3fb4d50ca7ca94590b95119f6"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/shell.rs",
+          "version": "repo-file-v1:sha256:a3349bbc0ec2d998496a8ae2331b500708a33586f3273407f351fa5035c258c5"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/shell_diagnostics.rs",
+          "version": "repo-file-v1:sha256:7bf44c2c9576157175d68f5da903d5042d37701bc7ddf0cd877fb5d13d0d9551"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/ui_theme.rs",
+          "version": "repo-file-v1:sha256:7eb31750d32b6ab2ff1f9c6ed841132ea5474677c5cafd876abad45e2a6daad4"
+        }
+      ]
+    },
+    {
+      "id": "claim_b54f43884cd2465296bcd295ba2b8077",
+      "statement": "A collapsed Codex setup failure shows a concise state and directs the user to its setup error. Expanding Codex shows the original complete error; Retry setup retains the existing runtime preparation owner.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/component_runtime.rs",
+          "version": "repo-file-v1:sha256:27a2e86b191536c74520e16b902bcc7ccda1f1c13657f6ff860decef89e6c269"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
+          "version": "repo-file-v1:sha256:c9724c7c054929cb0993035ecb0c3f025c5e90fabf1ad45131ff9be12ed170a8"
+        }
+      ]
+    },
+    {
+      "id": "claim_c30997d5d2004af789491ec81d8d65f2",
+      "statement": "The Settings permission picker keeps transient state and option focus handles in the window and reuses the existing permission rows. Arrow keys cycle within the options. Escape dismisses the menu and restores trigger focus; repeated Escape leaves Settings open. Tab and Shift-Tab dismiss the menu and continue navigation. Command-W or the window close button closes Settings, including while the menu is open. The visible trailing edge aligns with the trigger, excluding the shared shadow gutter.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/session_settings.rs",
+          "version": "repo-file-v1:sha256:c9e3b76bd3c15d77d017d831ba8c8a8928b6fdbf5f68a4875f8bf60492797291"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/shell.rs",
+          "version": "repo-file-v1:sha256:a3349bbc0ec2d998496a8ae2331b500708a33586f3273407f351fa5035c258c5"
+        }
+      ]
+    },
+    {
+      "id": "claim_329790566c5a46f89f095cded8abf208",
+      "statement": "Shared disclosures animate an open proportion instead of retargeting measured height, mount initially open content at full height, and record content measurements without model notifications. Settled parents follow nested changes directly. Page arrival changes opacity without moving content or hit targets.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/ui_motion.rs",
+          "version": "repo-file-v1:sha256:95f47a7576342086c81f8e0af66eca2ba7dc2dfc3cb81d67662314e4f9f613c2"
+        }
+      ]
+    },
+    {
+      "id": "claim_f666e8e972964d56bb25020c8cf577a2",
+      "statement": "Each GPUI account uses one card surface for its header and expanded details. Identity and actions sit above full-width quota rows; not-applicable windows are omitted while unknown usage keeps its row. Expanded activity uses a two-column label/value grid with current and best streak together, followed by the daily chart and a separate Reset cards area.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/shell.rs#L3440-L3548",
+          "version": "repo-lines-v1:sha256:5d87a68a5785c57d858ce43b959e78321e6a7bbc9af940079888f2415c1754a4:eyJzZWxlY3RlZExpbmVDb3VudCI6MTA5LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJhNmJlMjZmNTlhODdhYTZmYmQzOGY0MWNjNjllOWFjZGRkYWM0NDY0ZjZjZjhiZjNlMDhmYWU5YTZjOWE5MjJiIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI2N2NkYTgyZGE2MDYyMzhlMDVlNjIzOTk1NjljNWVlMDM5OTM0MTk2NDhhZTVkNDNhMmJmOGNkNjM0N2Y4MjYzIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJlOTczYTE0MDZkMzE3OTYzNmU0ZDgwODAzOTExOGJlNWVhN2VjODZjMmQ4MDEyYmU3YWVhNTg0NDgzOTY0ODM5IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlNGRhMDExYzVmYzhiN2M2NzQyOGJhZjMwMzY3NDc5ODY5MDg5YWMxYTljMDk4MzZkNWZjZjJkMGMyZWM4ZDE1In0"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/shell.rs#L4025-L4148",
+          "version": "repo-lines-v1:sha256:bcef09bd0473ec5b4d8923a519c0bc9e169cdef1f2c1a26d7d8c47307d295b80:eyJzZWxlY3RlZExpbmVDb3VudCI6MTI0LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIwZjc1MWY4YzNlOTViZDI4OGY2OTIxYTQ2MmY4YjVlODJhZjI2NDA1YjExNjlkZjhhZTgyMjJjNDdkNzE1MzE0IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0MTJjYTM0NWNjZjc1YmY5YzA4MDZiY2U2OTViZThkZTgwOGI3OTk4NDI1MWE3YTU0ZDIwMmNmNjEwMWRkNDUxIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJkYzQ1MzRlYzJjZWRiODE5OTllZGJkZTlkMWVmYmM3OThhOTc3YWU3NjNmYWVmMWQ0ZjQ2YjJmMzRhNjgxYjgzIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJmNjIzMGZkMjZhMzhmNTI1MDgyMjI2MzFmMDExMTEzYWJhMDE3NTQwMTI4ZmZiZTBjYjA4OWIxOTdjZjhhZmFhIn0"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/shell_account_activity.rs#L66-L196",
+          "version": "repo-lines-v1:sha256:5bc74a5f83f9ac9230f7dd5bee95001e38e5d38cf9792ab984e6082b513dc190:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMxLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJlZTJiMjAwNTE1NWVlN2RlZmQ1YjJhMzRlZTQ4N2FkYmI5OGM3NjFmNTQwMTAwYWQwMzkyYzI2YjhkZjIzYzNmIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIyNWNmNWZjMjNmMmE2ZDIzYzNlYTUxZTcyZjVlODk2Yzc1NTVmYmFhMDVjZDViMWVhMTgyYmY5NjE4YThlODFiIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJkZWNjMjBiNDQ3YTc5MDVjMDdmYzU0ZDI5YTAxMzNhNmJiMTY0MDM4NmM0ZjRkMjA5NjVhNzNhNDZlMjQyODVhIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI2YmM1YWQ5M2NkYmUxMzFiNjRkMzU2MjAzYTJkNTU2NTAzNTlmNGVkZjBmZjBiMjFjNWQ1NWU1MDkxNjFlY2MzIn0"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/shell_reset_cards.rs#L478-L575",
+          "version": "repo-lines-v1:sha256:f20d7f3f0a4d34d473cb5140e37f5bbfedd24a92dc5be331b94479499e4710e1:eyJzZWxlY3RlZExpbmVDb3VudCI6OTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFlZGE3MjA0OWJjY2Y2YTkxMTRkN2U3MzU3YWNhZjAxOGM2NjA4MDdiYTQ4YTkzYmNiNjk4ZmI0NTgwNzA0ZGQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFkZGYwM2FjNjdhNTIxYzQxMzUzMDFkZjMzMGMxMjhhOTQ2YzI3ZjhjMzYzNGIwMTQ3OGEwZDYxZTFkZDk5ZTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImFhMWNlZTFlNWExYzU3ZWIyNWEyZjBmODE4Yjg4MzUzNzdlYThmZmYyYzQwZTFmZGM3ZmUxYjlmOTcxY2Q4ODUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQwM2U5NDg0OWZhNDVkMmEwM2UzNmY3YzI4ZjZhZTMyYWYyZjg2MmE1ZGNhYzlhOGU3NTEyNzc3ZTMwMWMzYjIifQ"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-04T09:42:14.115Z"
+    "at": "2026-11-04T17:53:53.004Z"
   }
 }

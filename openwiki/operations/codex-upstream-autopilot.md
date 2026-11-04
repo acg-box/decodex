@@ -47,10 +47,10 @@ sources:
     resource: repo://scripts/macos/prepare_codex.mts
   - id: openwiki-source-3b57179b92b257bc3fff51a1
     resource: repo://scripts/macos/stage_decodex_app.sh
-generated: { by: "codex", at: "2026-11-04T10:24:44.262Z" }
+generated: { by: "codex", at: "2026-11-04T15:37:04.419Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-04T10:24:44.262Z
+    at: 2026-11-04T15:37:04.419Z
 ---
 
 
@@ -160,7 +160,7 @@ Validate selected retention against the exact native artifact. Check compaction 
 
 ## Configure native context defaults
 
-Settings > Agents > Native defaults, Agent preferences > Context defaults and manual `config.toml` edits use the same native configuration. The two settings are `features.async_compaction` and `features.retain_client_tool_outputs`. An omitted effective value uses `defaultEnabled` from the native feature catalog. An explicit project value takes priority, and the catalog's `enabled` value does not replace another working directory's configuration. A configured preference does not bypass native runtime eligibility or capacity limits.
+Settings > Agents > Context defaults, Agent preferences > Context defaults and manual `config.toml` edits use the same native configuration. The two settings are `features.async_compaction` and `features.retain_client_tool_outputs`. An omitted effective value uses `defaultEnabled` from the native feature catalog. An explicit project value takes priority, and the catalog's `enabled` value does not replace another working directory's configuration. A configured preference does not bypass native runtime eligibility or capacity limits.
 
 The settings owner reads the user layer and effective project configuration, then writes one versioned boolean through native `config/batchWrite`. It preserves an existing async threshold table and distinguishes the saved user value from a higher-priority override. The write does not reload the configuration of loaded conversations; it changes defaults for new conversations. A lost reply requires readback, not automatic replay.
 

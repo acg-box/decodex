@@ -56,6 +56,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/settings_native.rs
   - id: openwiki-source-a16804a567889414868e5d67
     resource: repo://apps/decodex-gpui/src/settings_surface.rs
+  - id: openwiki-source-cfb92e5db8b3a39d51f6a057
+    resource: repo://apps/decodex-gpui/src/settings_updates.rs
   - id: openwiki-source-2f256c95c226c1326d164ad3
     resource: repo://apps/decodex-gpui/src/ui_feedback.rs
   - id: openwiki-source-f5d4f5acdb41fe7c4e985337
@@ -94,10 +96,10 @@ sources:
     resource: repo://database/src/schema.rs
   - id: openwiki-source-3b57179b92b257bc3fff51a1
     resource: repo://scripts/macos/stage_decodex_app.sh
-generated: { by: "codex", at: "2026-11-04T09:42:14.115Z" }
+generated: { by: "codex", at: "2026-11-04T17:53:53.004Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-04T10:24:44.262Z
+    at: 2026-11-04T17:53:53.004Z
 ---
 
 # OpenWiki quickstart
@@ -108,7 +110,7 @@ Decodex is a local workspace above Codex app-server. The primary Agent can discu
 
 The [canonical contract](decisions/project-agent-work.md) is implemented: Project provides continuing context, each user-created Agent has one current native conversation, and Work records an outcome with one accountable Agent, current requirements and evidence. Assistant is built in and always available. Project Lead is a responsibility of an existing Agent. The same Agent can handle several Works.
 
-The implemented [Assistant lifecycle](decisions/assistant-lifecycle.md) adds a continuing personal Agent. It creates and coordinates independent Agents and lightweight teams under user delegation, accepts independent duties, optionally uses RAGFlow Memory and renews native context behind the same chat. There is no built-in project patrol. Open **Assistant** in the sidebar. First use initializes an idle Agent without sending a message. Give it continuing instructions and team requests in chat. In **Settings > Components**, select **Install** for optional RAGFlow Memory. Decodex prepares nightly with Infinity and the private account. After successful installation with no saved model settings, the model form opens automatically. **Configure models** can reopen it. Enter an OpenAI-compatible Base URL, optional API key and custom extraction and embedding model names. Saving verifies the models and initializes Memory automatically; no model runtime or model weights are installed. Component operations check the running Docker-compatible engine and Docker Compose. Unavailable prerequisites use a shared inline notice; the App does not install or launch a container runtime or provide an installation guide. The shared component row shows the installed version and provides **Update** and **Uninstall**. Chat import is a separate opt-in. Work, native execution and exact evidence keep their existing owners.
+The implemented [Assistant lifecycle](decisions/assistant-lifecycle.md) adds a continuing personal Agent. It creates and coordinates independent Agents and lightweight teams under user delegation, accepts independent duties, optionally uses RAGFlow Memory and renews native context behind the same chat. There is no built-in project patrol. Open **Assistant** in the sidebar. First use initializes an idle Agent without sending a message. Give it continuing instructions and team requests in chat. In **Settings > Components**, select **Install** for optional RAGFlow Memory. Decodex prepares nightly with Infinity and the private account. After successful installation with no saved model settings, the model form opens automatically. Expand **RAGFlow** to open the model form directly. Enter an OpenAI-compatible Base URL, optional API key and custom extraction and embedding model names. Saving verifies the models and initializes Memory automatically; no model runtime or model weights are installed. Component operations check the running Docker-compatible engine and Docker Compose. Unavailable prerequisites use a shared inline notice; the App does not install or launch a container runtime or provide an installation guide. The shared component row shows the installed version and provides **Update** and **Uninstall**. Chat import is a separate opt-in. Work, native execution and exact evidence keep their existing owners.
 
 Agents use native Subagents for bounded execution and scoped Collaboration Requests for independent peers. Native Codex owns execution, context, permissions and continuation. Decodex owns durable business relationships, evidence, coordination and presentation. The default Work tools do not create another executor, and no part of this contract requires Ultra.
 
@@ -116,7 +118,7 @@ Work and Guardian fit the existing desktop. Expand Work to inspect Materials, Co
 
 The current SQLite schema preserves native input receipts, independent process ownership and exact assignment evidence. Conversations can start without an Assistant. Native Project reconciliation, assignment recovery and Guardian detail recovery keep native execution in Codex. See the [acceptance boundaries](testing/upstream-acceptance-boundaries.md) for historical source-built, installed-app and online voice qualifications. Those records do not qualify a later artifact.
 
-**Settings > Agents** groups background compaction, delegation-instruction retention, per-server cached MCP catalogs and automatic next-message suggestions. Native defaults use the selected connected Agent’s project and the same native configuration as Agent preferences. See [retained switches](workflows/models-and-settings.md#find-the-retained-switches) for their scope and other existing settings.
+**Settings > Agents** groups background compaction, retention of marked client tool outputs, per-server cached MCP catalogs and automatic next-message suggestions. Native defaults use the selected connected Agent’s project and the same native configuration as Agent preferences. See [retained switches](workflows/models-and-settings.md#find-the-retained-switches) for their scope and other existing settings.
 
 ## Memory, collaboration and usage views
 
@@ -153,6 +155,8 @@ If a conversation uses a different provider from the current configuration, **Fo
 ## Persistent attached branches
 
 When reviewing an earlier message, choose **Side chat** to create a persistent native branch from its completed-turn prefix. The source history, draft and Goal remain unchanged. The child view starts empty while native inference retains the parent context. Creation requires paginated source history, sends no input and copies no native Goal. Reopen a verified branch through **Agent preferences > Side chats > Open**. See [conversation recovery](workflows/conversations-and-recovery.md#edit-or-branch-at-an-earlier-input) and the [exact-artifact qualification](testing/upstream-acceptance-boundaries.md#persistent-attached-branches).
+
+The app version and **Check for updates** are in **Settings > General > Updates**. Optional component updates remain in **Settings > Components**.
 
 ## Start by task
 

@@ -448,6 +448,7 @@ pub(super) fn row(
 				Feedback::default()
 			},
 		)
+		.map(|notice| notice.into_any_element())
 	};
 	let Some(ResetCardInventoryResult::Available {
 		cards, details_complete, account_revision, ..
@@ -478,10 +479,20 @@ pub(super) fn row(
 		.flex()
 		.flex_wrap()
 		.items_center()
-		.gap_1()
-		.px(gpui::px(14.))
-		.pb(gpui::px(4.))
-		.child(workspace_symbols::icon(Symbol::ResetCards));
+		.gap_2()
+		.border_t_1()
+		.border_color(ui_theme::rgba(ui_theme::PANEL_DIVIDER))
+		.pt(gpui::px(10.))
+		.text_size(gpui::px(ui_theme::SETTINGS_HELP_SIZE))
+		.text_color(ui_theme::rgb(WB_TEXT_MUTED))
+		.child(
+			gpui::div()
+				.flex()
+				.items_center()
+				.gap_1()
+				.child(workspace_symbols::icon(Symbol::ResetCards))
+				.child("Reset cards"),
+		);
 
 	for (index, descriptor) in descriptors.into_iter().enumerate() {
 		let account_id = account.account_id.clone();
@@ -775,7 +786,7 @@ mod render_tests {
 	use decodex_protocol::AccountQuotaStateDto;
 
 	#[gpui::test]
-	fn quota_columns_remain_aligned_when_one_window_is_unavailable(cx: &mut TestAppContext) {
+	fn quota_rows_align_reset_values_and_hide_inapplicable_windows(cx: &mut TestAppContext) {
 		let (shell, visual) =
 			cx.add_window_view(|window, cx| Shell::new(window, cx, ConnectionView::Stopped));
 
@@ -797,7 +808,8 @@ mod render_tests {
 		let seven = visual.debug_bounds("quota-reset-7d").unwrap();
 
 		assert_eq!(five.size.width, seven.size.width);
-		assert_eq!(five.top(), seven.top());
+		assert_eq!(five.origin.x, seven.origin.x);
+		assert!(five.bottom() < seven.top());
 
 		for unavailable in [AccountQuotaStateDto::NotApplicable, AccountQuotaStateDto::Unknown] {
 			shell.update(visual, |shell, cx| {
@@ -808,15 +820,18 @@ mod render_tests {
 
 			visual.update(crate::ui_frame::draw_current_frame);
 
-			let next_five = visual.debug_bounds("quota-reset-5h").unwrap();
 			let next_seven = visual.debug_bounds("quota-reset-7d").unwrap();
 
-			// The page arrival can move both columns vertically between frames.
-			assert_eq!(next_five.origin.x, five.origin.x);
 			assert_eq!(next_seven.origin.x, seven.origin.x);
-			assert_eq!(next_five.size, five.size);
 			assert_eq!(next_seven.size, seven.size);
-			assert_eq!(next_five.top(), next_seven.top());
+			if unavailable == AccountQuotaStateDto::NotApplicable {
+				assert!(visual.debug_bounds("quota-reset-5h").is_none());
+				assert_eq!(next_seven.top(), five.top());
+			} else {
+				let next_five = visual.debug_bounds("quota-reset-5h").unwrap();
+				assert_eq!(next_five, five, "unknown usage retains its row and value alignment");
+				assert_eq!(next_seven, seven);
+			}
 		}
 	}
 
@@ -842,12 +857,10 @@ mod render_tests {
 		});
 
 		let first = visual.debug_bounds("account-card-0").unwrap();
-
-		assert!(
-			first.size.height <= gpui::px(38.),
-			"Healthy accounts must fit in one line: {:?}",
-			first.size
-		);
+		let identity = visual.debug_bounds("account-identity-0").unwrap();
+		let quota = visual.debug_bounds("account-quota-0").unwrap();
+		assert!(identity.bottom() < quota.top(), "identity and usage have separate rows");
+		assert!(first.bottom() > quota.bottom(), "the account surface contains its usage");
 
 		// Click the outside padding of the last row repeatedly, including after its height changes.
 		for expanded in [true, false, true, false] {

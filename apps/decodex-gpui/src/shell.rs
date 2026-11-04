@@ -85,6 +85,7 @@ use crate::{
 use account_feedback::AccountFeedback;
 use account_identity::Emails;
 use agent_surface::AgentSurface;
+#[cfg(any(test, feature = "visual-capture"))] use decodex_protocol::AccountQuotaWindowDto;
 #[cfg(any(test, feature = "visual-capture"))] use decodex_protocol::AccountRoutingControlDto;
 #[cfg(feature = "visual-capture")] use decodex_protocol::ConversationHistoryPage;
 #[cfg(any(test, feature = "visual-capture"))] use decodex_protocol::Cursor;
@@ -92,14 +93,13 @@ use decodex_protocol::{
 	AccountCommandRejectionDto, AccountDto, AccountLifecycleReadinessDto, AccountLoginInstallMode,
 	AccountLoginMethod, AccountLoginStart, AccountLoginState, AccountLoginStatus,
 	AccountObservedStateDto, AccountOperationKindDto, AccountOperationPhaseDto,
-	AccountProfileResult, AccountSelectionModeDto, AppServerCapability, ClientFailure,
-	ClientProfile, ConversationNativeSettings, ConversationRecoveryAction, ConversationState,
-	ConversationSummary, DesktopOrdinaryDraft, DoctorComponent, DoctorIssue, DoctorStatus,
-	EntityId, EntityRevision, HistoryItemDto, HistoryItemKindDto, HistoryItemStatusDto,
-	HistoryPayloadDto, HistoryTurnRole, IdempotencyKey, NativeProcessDiagnostics, WireText,
+	AccountProfileResult, AccountQuotaStateDto, AccountSelectionModeDto, AppServerCapability,
+	ClientFailure, ClientProfile, ConversationNativeSettings, ConversationRecoveryAction,
+	ConversationState, ConversationSummary, DesktopOrdinaryDraft, DoctorComponent, DoctorIssue,
+	DoctorStatus, EntityId, EntityRevision, HistoryItemDto, HistoryItemKindDto,
+	HistoryItemStatusDto, HistoryPayloadDto, HistoryTurnRole, IdempotencyKey,
+	NativeProcessDiagnostics, WireText,
 };
-#[cfg(any(test, feature = "visual-capture"))]
-use decodex_protocol::{AccountQuotaStateDto, AccountQuotaWindowDto};
 #[cfg(feature = "visual-capture")] use decodex_protocol::{ConversationTitle, ProviderThreadId};
 use diagnostics::Diagnostics;
 use quota_meter::ResetFill;
@@ -206,12 +206,11 @@ const WB_BLUE: u32 = BLUE;
 const WB_WARNING: u32 = crate::ui_theme::WARNING;
 const SETTINGS_NAV_ROW_HEIGHT: f32 = 30.;
 const SETTINGS_NAV_ROW_GAP: f32 = 3.;
-const SETTINGS_SECTIONS: [(Destination, Option<SettingsCategory>, &str); 7] = [
+const SETTINGS_SECTIONS: [(Destination, Option<SettingsCategory>, &str); 6] = [
 	(Destination::Settings, Some(SettingsCategory::General), "General"),
 	(Destination::Settings, Some(SettingsCategory::Agents), "Agents"),
 	(Destination::Settings, Some(SettingsCategory::Appearance), "Appearance"),
 	(Destination::Settings, Some(SettingsCategory::Components), "Components"),
-	(Destination::Settings, Some(SettingsCategory::Updates), "Updates"),
 	(Destination::Accounts, None, "Accounts"),
 	(Destination::Health, None, "Diagnostics"),
 ];
@@ -793,7 +792,6 @@ impl Shell {
 				settings.category =
 					match std::env::var("DECODEX_VISUAL_SETTINGS_CATEGORY").as_deref() {
 						Ok("appearance") => SettingsCategory::Appearance,
-						Ok("updates") => SettingsCategory::Updates,
 						Ok("agents") => SettingsCategory::Agents,
 						Ok("components") => SettingsCategory::Components,
 						_ => SettingsCategory::General,
@@ -2268,6 +2266,7 @@ struct AccountRowPresentation {
 	email: Option<String>,
 	reset_fill: Option<ResetFill>,
 	index: usize,
+	expanded: bool,
 	routing_revision: Option<EntityRevision>,
 	fixed: bool,
 	can_manage: bool,
@@ -2380,10 +2379,8 @@ pub(crate) fn bind_keys(cx: &mut App) {
 
 	composer_input::bind_keys(cx);
 
-	cx.bind_keys([
-		KeyBinding::new("cmd-w", CloseWindow, Some("SettingsWindow")),
-		KeyBinding::new("escape", CloseWindow, Some("SettingsWindow")),
-	]);
+	cx.bind_keys([KeyBinding::new("cmd-w", CloseWindow, Some("SettingsWindow"))]);
+	crate::session_settings::bind_keys(cx);
 	cx.bind_keys([
 		KeyBinding::new("cmd-shift-r", ReloadWorkspace, None),
 		KeyBinding::new("tab", FocusNext, None),
@@ -3473,6 +3470,7 @@ fn account_pool_rows(shell: &Shell, cx: &mut Context<Shell>) -> Vec<AnyElement> 
 					email: shell.account_emails.get(account),
 					controls_busy: snapshot.controls_busy(),
 					index,
+					expanded: shell.expanded_accounts.contains(&account.account_id),
 					routing_revision: snapshot.routing.as_ref().map(|routing| routing.revision),
 					fixed: fixed == Some(&account.account_id),
 					can_manage: snapshot.can_manage,
@@ -3487,17 +3485,18 @@ fn account_pool_rows(shell: &Shell, cx: &mut Context<Shell>) -> Vec<AnyElement> 
 			let profile_id = account.account_id.clone();
 			let target = account.account_id.clone();
 
-			gpui::div()
+			ui_theme::settings_card(vec![row])
 				.id(("account-card", index))
+				.flex_none()
 				.group(SharedString::from(format!("account-card-{index}")))
 				.debug_selector(move || format!("account-card-{index}"))
 				.w_full()
-				.rounded(gpui::px(8.))
-				.bg(ui_theme::rgba(if fixed == Some(&account.account_id) {
-					0xffffff0a
-				} else {
-					0xffffff04
-				}))
+				.px_0()
+				.py_0()
+				.overflow_hidden()
+				.when(fixed == Some(&account.account_id), |card| {
+					card.bg(ui_theme::rgba(0xffffff0a))
+				})
 				.cursor_pointer()
 				.hover(|style| style.bg(ui_theme::rgba(0xffffff0c)))
 				.on_click(cx.listener(move |shell, _, _, cx| {
@@ -3513,7 +3512,6 @@ fn account_pool_rows(shell: &Shell, cx: &mut Context<Shell>) -> Vec<AnyElement> 
 				})
 				.flex()
 				.flex_col()
-				.child(row)
 				.child(ui_motion::disclosure(
 					SharedString::from(format!(
 						"account-expansion-{}",
@@ -3522,9 +3520,13 @@ fn account_pool_rows(shell: &Shell, cx: &mut Context<Shell>) -> Vec<AnyElement> 
 					shell.expanded_accounts.contains(&account.account_id),
 					gpui::div()
 						.w_full()
+						.border_t_1()
+						.border_color(ui_theme::rgba(ui_theme::PANEL_DIVIDER))
+						.px(gpui::px(14.))
+						.py(gpui::px(12.))
 						.flex()
 						.flex_col()
-						.gap_1()
+						.gap(gpui::px(12.))
 						.child(account_activity::panel(shell, account))
 						.children(reset_cards::row(shell, account, cx)),
 				))
@@ -3595,6 +3597,23 @@ fn accounts_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 	let snapshot = &shell.accounts;
 	let rows = account_pool_rows(shell, cx);
 	let count = snapshot.accounts.len();
+	let header = ui_theme::settings_rows()
+		.child(account_pool_header(shell, cx))
+		.children(
+			account_operation_feedback(shell)
+				.filter(|_| {
+					shell.account_status_target.as_ref().is_none_or(|target| {
+						!snapshot.accounts.iter().any(|account| &account.account_id == target)
+					})
+				})
+				.and_then(|feedback| {
+					ui_feedback::inline_feedback("account-global-warning", "", &feedback)
+				}),
+		)
+		.children(account_list_feedback(snapshot).and_then(|feedback| {
+			ui_feedback::inline_feedback("account-list-feedback", "", &feedback)
+		}))
+		.children(account_login_progress(shell));
 
 	gpui::div()
 		.flex_1()
@@ -3608,25 +3627,7 @@ fn accounts_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 			ui_theme::settings_sections()
 				.max_w(gpui::px(SETTINGS_WIDTH))
 				.min_h_0()
-				.child(account_pool_header(shell, cx))
-				.children(
-					account_operation_feedback(shell)
-						.filter(|_| {
-							shell.account_status_target.as_ref().is_none_or(|target| {
-								!snapshot
-									.accounts
-									.iter()
-									.any(|account| &account.account_id == target)
-							})
-						})
-						.and_then(|feedback| {
-							ui_feedback::inline_feedback("account-global-warning", "", &feedback)
-						}),
-				)
-				.children(account_list_feedback(snapshot).and_then(|feedback| {
-					ui_feedback::inline_feedback("account-list-feedback", "", &feedback)
-				}))
-				.children(account_login_progress(shell))
+				.child(header)
 				.child(
 					gpui::div()
 						.id("account-list")
@@ -3996,11 +3997,10 @@ fn account_pool_row(
 	let summary = account_pool_summary(account, presentation.clone(), cx);
 
 	gpui::div()
-		.w_full()
-		.rounded(gpui::px(8.))
 		.id(("account-row", index))
+		.w_full()
 		.px(gpui::px(14.0))
-		.py(gpui::px(6.0))
+		.py(gpui::px(10.0))
 		.flex()
 		.flex_col()
 		.gap(gpui::px(6.0))
@@ -4033,46 +4033,21 @@ fn account_pool_summary(
 	let needs_login = account_needs_login(account);
 	let unsupported_plan =
 		account.lifecycle_readiness == AccountLifecycleReadinessDto::UnsupportedPlan;
-	let show_quota = !needs_login && !unsupported_plan;
+	let quota_windows = [("5h", account.five_hour_quota), ("7d", account.seven_day_quota)];
+	let show_quota = !needs_login
+		&& !unsupported_plan
+		&& quota_windows
+			.iter()
+			.any(|(_, quota)| quota.result != AccountQuotaStateDto::NotApplicable);
 	let pin_enabled = can_route && enabled && !fixed && !unsupported_plan;
 
-	gpui::div()
+	let header = gpui::div()
 		.id(("account-summary", index))
 		.flex()
 		.min_w_0()
 		.items_center()
 		.gap(gpui::px(2.0))
-		.child(account_row_identity(account, presentation.email.as_deref()))
-		.when(show_quota, |row| {
-			row.child(
-				gpui::div()
-					.debug_selector(move || format!("account-quota-{index}"))
-					.flex_1()
-					.min_w_0()
-					.flex()
-					.items_center()
-					.gap(gpui::px(8.0))
-					.child(quota_meter::meter(
-						"5h",
-						account.five_hour_quota,
-						presentation.reset_fill.clone(),
-					))
-					.child(
-						gpui::div()
-							.w(gpui::px(1.))
-							.h(gpui::px(14.))
-							.flex_none()
-							.mx(gpui::px(2.))
-							.bg(ui_theme::rgba(0xffffff26)),
-					)
-					.child(quota_meter::meter(
-						"7d",
-						account.seven_day_quota,
-						presentation.reset_fill.clone(),
-					)),
-			)
-		})
-		.when(!show_quota, |row| row.child(gpui::div().flex_1()))
+		.child(account_row_identity(account, &presentation, cx))
 		.when(presentation.can_manage, |row| {
 			row.child(account_reorder_handle(account, &presentation, cx))
 		})
@@ -4140,7 +4115,35 @@ fn account_pool_summary(
 				cx,
 			))
 		})
-		.child(account_management_actions(account, &presentation, cx))
+		.child(account_management_actions(account, &presentation, cx));
+
+	gpui::div()
+		.w_full()
+		.flex()
+		.flex_col()
+		.gap(gpui::px(6.))
+		.child(header)
+		.when(show_quota, |card| {
+			card.child(
+				gpui::div()
+					.debug_selector(move || format!("account-quota-{index}"))
+					.w_full()
+					.flex()
+					.flex_col()
+					.gap(gpui::px(4.))
+					.opacity(if enabled { 1. } else { 0.45 })
+					.children(
+						quota_windows
+							.into_iter()
+							.filter(|(_, quota)| {
+								quota.result != AccountQuotaStateDto::NotApplicable
+							})
+							.map(|(label, quota)| {
+								quota_meter::meter(label, quota, presentation.reset_fill.clone())
+							}),
+					),
+			)
+		})
 		.into_any_element()
 }
 
@@ -5807,7 +5810,6 @@ fn settings_navigation(
 			Some(SettingsCategory::Agents) => workspace_symbols::Symbol::Agents,
 			Some(SettingsCategory::Appearance) => workspace_symbols::Symbol::Eye,
 			Some(SettingsCategory::Components) => workspace_symbols::Symbol::Graph,
-			Some(SettingsCategory::Updates) => workspace_symbols::Symbol::ArrowDown,
 			None if destination == Destination::Accounts => workspace_symbols::Symbol::Agents,
 			None => workspace_symbols::Symbol::Waveform,
 		};
@@ -6464,19 +6466,42 @@ fn account_pool_header(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 		.into_any_element()
 }
 
-fn account_row_identity(account: &AccountDto, email: Option<&str>) -> AnyElement {
+fn account_row_identity(
+	account: &AccountDto,
+	presentation: &AccountRowPresentation,
+	cx: &mut Context<Shell>,
+) -> AnyElement {
 	let enabled = account.enabled;
+	let email = presentation.email.as_deref();
+	let click = account.account_id.clone();
+	let key = click.clone();
+	let index = presentation.index;
 
 	gpui::div()
 		.id(SharedString::from(format!("account-identity-{}", account.account_id.as_str())))
+		.debug_selector(move || format!("account-identity-{index}"))
+		.role(Role::Button)
+		.aria_label(format!("Activity for {}", account.alias.as_str()))
+		.aria_expanded(presentation.expanded)
+		.tab_stop(true)
 		.when_some(email.map(str::to_owned), |row, email| {
 			row.tooltip(move |_, cx| cx.new(|_| ControlTooltip(email.clone())).into())
 		})
-		.w(gpui::px(132.0))
-		.min_w(gpui::px(108.0))
+		.flex_1()
+		.min_w_0()
 		.flex()
 		.items_center()
 		.gap_2()
+		.on_click(cx.listener(move |s, _, _, cx| {
+			s.toggle_account_activity(click.clone(), cx);
+			cx.stop_propagation();
+		}))
+		.on_key_down(cx.listener(move |s, event: &KeyDownEvent, _, cx| {
+			if !event.is_held && ["enter", "space"].contains(&event.keystroke.key.as_str()) {
+				s.toggle_account_activity(key.clone(), cx);
+				cx.stop_propagation();
+			}
+		}))
 		.child(
 			gpui::div()
 				.min_w_0()
@@ -6514,6 +6539,10 @@ fn account_row_identity(account: &AccountDto, email: Option<&str>) -> AnyElement
 					},
 				),
 		)
+		.child(workspace_symbols::process_chevron(
+			SharedString::from(format!("account-details-chevron-{index}")),
+			presentation.expanded,
+		))
 		.into_any_element()
 }
 
@@ -7786,7 +7815,10 @@ mod tests {
 		);
 		settings.update(crate::ui_frame::draw_current_frame);
 
-		assert_eq!(scroll.offset().y, -scroll.max_offset().y);
+		assert!(
+			(scroll.offset().y + scroll.max_offset().y).abs() <= gpui::px(1.),
+			"the scrollbar reaches the bottom within layout pixel rounding"
+		);
 
 		let optional = settings.debug_bounds("health-optional-components").unwrap();
 
@@ -8106,7 +8138,6 @@ mod tests {
 			"settings-section-Agents",
 			"settings-section-Appearance",
 			"settings-section-Components",
-			"settings-section-Updates",
 			"settings-section-Accounts",
 			"settings-section-Diagnostics",
 		]
@@ -8124,7 +8155,6 @@ mod tests {
 			(Destination::Settings, Some(crate::settings_surface::SettingsCategory::Agents)),
 			(Destination::Settings, Some(crate::settings_surface::SettingsCategory::Appearance)),
 			(Destination::Settings, Some(crate::settings_surface::SettingsCategory::Components)),
-			(Destination::Settings, Some(crate::settings_surface::SettingsCategory::Updates)),
 			(Destination::Accounts, None),
 			(Destination::Health, None),
 		]
@@ -8246,6 +8276,40 @@ mod tests {
 			assert_ne!(s.settings_window.unwrap(), handle);
 			assert_eq!(s.selected, Destination::Agent);
 		});
+		shell.update(visual, |s, cx| {
+			s.settings.update(cx, |surface, cx| {
+				surface.category = super::SettingsCategory::Agents;
+				cx.notify();
+			});
+		});
+		let handle = shell.read_with(visual, |s, _| s.settings_window.unwrap());
+		let settings = &mut gpui::VisualTestContext::from_window(handle.into(), visual);
+		settings.update(crate::ui_frame::draw_current_frame);
+		let trigger = settings.debug_bounds("default-permissions").unwrap();
+		settings.simulate_click(trigger.center(), Default::default());
+		settings.update(crate::ui_frame::draw_frame);
+		assert!(settings.debug_bounds("permission-choice-0").is_some());
+		settings.simulate_keystrokes("down up up up up up down down down down");
+		settings.update(crate::ui_frame::draw_current_frame);
+		assert!(settings.debug_bounds("permission-choice-0").is_some());
+		settings.simulate_keystrokes("escape");
+		settings.update(crate::ui_frame::draw_current_frame);
+		assert!(settings.debug_bounds("permission-choice-0").is_none());
+		shell.read_with(visual, |s, _| assert_eq!(s.settings_window, Some(handle)));
+		settings.simulate_keystrokes("escape");
+		settings.update(crate::ui_frame::draw_current_frame);
+		shell.read_with(visual, |s, _| assert_eq!(s.settings_window, Some(handle)));
+		for key in ["tab", "shift-tab"] {
+			settings.simulate_click(trigger.center(), Default::default());
+			settings.update(crate::ui_frame::draw_current_frame);
+			settings.simulate_keystrokes(key);
+			settings.update(crate::ui_frame::draw_current_frame);
+			assert!(settings.debug_bounds("permission-choice-0").is_none());
+		}
+		settings.simulate_click(trigger.center(), Default::default());
+		settings.update(crate::ui_frame::draw_current_frame);
+		settings.simulate_keystrokes("cmd-w");
+		shell.read_with(visual, |s, _| assert!(s.settings_window.is_none()));
 	}
 
 	#[gpui::test]

@@ -11,7 +11,7 @@ use crate::{
 	component_plugins::{self, PluginOperations},
 	component_research::{self, ResearchOperations},
 	component_runtime::{self, RuntimePreparation},
-	settings_surface::SettingsSurface,
+	settings_surface::{SettingsSurface, switch},
 	shell::{agent_surface::RagflowComponentAction, workspace_symbols},
 	ui_feedback::{self, Feedback},
 	ui_motion::{self, SmoothControl as _},
@@ -120,8 +120,10 @@ impl SettingsSurface {
 			Action::Plugin(action) => self.components.optional.start(action),
 			Action::Research(action) => self.components.research.start(action),
 			Action::Ragflow(action) => {
-				if !matches!(action, RagflowComponentAction::ToggleImport) {
-					self.components.details[3] = true;
+				match action {
+					RagflowComponentAction::CancelModels => self.components.details[3] = false,
+					RagflowComponentAction::ToggleImport => {},
+					_ => self.components.details[3] = true,
 				}
 				if let Some(agent) = &self.native_agent {
 					agent.update(cx, |s, cx| s.ragflow_component_action(action, cx));
@@ -238,10 +240,15 @@ impl SettingsSurface {
 				));
 			},
 			component_runtime::PreparationState::Failed(error) => {
+				let detail = if self.components.details[0] {
+					error.as_str()
+				} else {
+					"Expand Codex to review the setup error."
+				};
 				component = component.children(ui_feedback::inline_feedback(
 					"components-component-error",
-					"Could not prepare Codex",
-					&Feedback::error(error.clone()),
+					"Setup failed",
+					&Feedback::error(detail),
 				));
 			},
 			component_runtime::PreparationState::Preparing(progress) => {
@@ -287,6 +294,19 @@ impl SettingsSurface {
 		component.child(self.component_body(0, "components-codex-body", details))
 	}
 
+	fn toggle_component_details(&mut self, index: usize, cx: &mut Context<Self>) {
+		self.components.details[index] = !self.components.details[index];
+		if index == 3
+			&& self.components.details[index]
+			&& self.native_agent.as_ref().is_some_and(|agent| {
+				let state = agent.read(cx).ragflow_component_state();
+				state.installed && !state.editing
+			}) {
+			self.component_action(Action::Ragflow(RagflowComponentAction::ConfigureModels), cx);
+		}
+		cx.notify();
+	}
+
 	fn component_label(
 		&self,
 		index: usize,
@@ -308,31 +328,26 @@ impl SettingsSurface {
 			.flex_1()
 			.min_w_0()
 			.flex()
-			.flex_col()
-			.min_h(gpui::px(36.5))
-			.justify_center()
-			.gap(gpui::px(2.))
+			.items_center()
+			.min_h(gpui::px(24.))
+			.gap(gpui::px(12.))
 			.rounded(gpui::px(4.))
 			.cursor_pointer()
 			.text_size(gpui::px(SETTINGS_LABEL_SIZE))
 			.line_height(gpui::px(18.))
 			.text_color(ui_theme::rgb(TEXT))
-			.hover(|s| s.text_color(ui_theme::rgb(BLUE)))
+			.hover(|s| s.bg(ui_theme::rgba(ui_theme::HOVER_FILL)))
 			.active(|s| s.opacity(0.75))
 			.on_click(cx.listener(move |this, _, _, cx| {
-				this.components.details[index] = !this.components.details[index];
-
-				cx.notify();
+				this.toggle_component_details(index, cx);
 			}))
 			.on_key_down(cx.listener(move |this, event: &KeyDownEvent, _, cx| {
 				if !event.is_held && ["enter", "space"].contains(&event.keystroke.key.as_str()) {
-					this.components.details[index] = !this.components.details[index];
-
-					cx.notify();
+					this.toggle_component_details(index, cx);
 					cx.stop_propagation();
 				}
 			}))
-			.child(gpui::div().flex().items_center().gap_1().child(title).child(
+			.child(gpui::div().flex_none().flex().items_center().gap_1().child(title).child(
 				gpui::div().text_color(ui_theme::rgb(TEXT_MUTED)).child(
 					workspace_symbols::process_chevron(
 						SharedString::from(format!("{id}-chevron")),
@@ -356,20 +371,19 @@ impl SettingsSurface {
 		ui_motion::disclosure(
 			id,
 			self.components.details[index],
-			gpui::div().w_full().pb(gpui::px(8.)).child(content),
+			ui_theme::settings_detail(content),
 		)
 		.into_any_element()
 	}
 
 	pub(super) fn components_content(&self, cx: &mut Context<Self>) -> AnyElement {
-		ui_theme::settings_rows()
-			.children([
-				self.component_settings(cx).into_any_element(),
-				self.egm_settings(cx).into_any_element(),
-				self.research_settings(cx).into_any_element(),
-				self.ragflow_settings(cx),
-			])
-			.into_any_element()
+		ui_theme::settings_divided_rows(vec![
+			self.component_settings(cx).into_any_element(),
+			self.egm_settings(cx).into_any_element(),
+			self.research_settings(cx).into_any_element(),
+			self.ragflow_settings(cx),
+		])
+		.into_any_element()
 	}
 
 	fn ragflow_settings(&self, cx: &mut Context<Self>) -> AnyElement {
@@ -395,44 +409,45 @@ impl SettingsSurface {
 			cx,
 		));
 		let mut body = gpui::div().flex().flex_col().gap_2().child(self.ragflow_component(cx));
-		let mut actions = gpui::div().flex().gap_2();
+		if let Some(state) = state.as_ref().filter(|s| s.memory_ready) {
+			body = body.child(
+				ui_theme::settings_row()
+					.child(ui_theme::settings_label(
+						"Import chats",
+						"Add completed chat turns to Assistant Memory.",
+					))
+					.child(
+						switch::settings_switch(
+							"components-ragflow-import",
+							"components-ragflow-import-knob",
+							"Import chats into Assistant Memory",
+							state.import,
+							!state.busy,
+						)
+						.on_change(cx.listener(|s, _, _, cx| {
+							s.component_action(
+								Action::Ragflow(RagflowComponentAction::ToggleImport),
+								cx,
+							);
+						})),
+					),
+			);
+		}
 		if state.as_ref().is_some_and(|s| s.editing) {
+			let mut actions = gpui::div().flex().gap_2().justify_end().pt_2();
 			for (id, label, action) in [
-				(
-					"components-ragflow-models-save",
-					"Save models",
-					RagflowComponentAction::SaveModels,
-				),
 				(
 					"components-ragflow-models-cancel",
 					"Cancel",
 					RagflowComponentAction::CancelModels,
 				),
+				("components-ragflow-models-save", "Save", RagflowComponentAction::SaveModels),
 			] {
 				actions =
 					actions.child(self.component_button(id, label, Action::Ragflow(action), cx));
 			}
-		} else if installed {
-			actions = actions.child(self.component_button(
-				"components-ragflow-models",
-				"Configure models",
-				Action::Ragflow(RagflowComponentAction::ConfigureModels),
-				cx,
-			));
+			body = body.child(actions);
 		}
-		if state.as_ref().is_some_and(|s| s.memory_ready && !s.editing) {
-			actions = actions.child(self.component_button(
-				"components-ragflow-import",
-				if state.as_ref().is_some_and(|s| s.import) {
-					"Disable chat import"
-				} else {
-					"Enable chat import"
-				},
-				Action::Ragflow(RagflowComponentAction::ToggleImport),
-				cx,
-			));
-		}
-		body = body.child(actions);
 		gpui::div()
 			.child(row)
 			.child(self.component_body(3, "components-ragflow-body", body))
@@ -821,8 +836,8 @@ mod tests {
 		let egm = visual.debug_bounds("components-egm").unwrap();
 		let research = visual.debug_bounds("components-pro-research").unwrap();
 
-		assert_eq!(codex.bottom(), egm.top(), "padded setting rows must not add an item gap");
-		assert_eq!(egm.bottom(), research.top(), "all components use the same list spacing");
+		assert_eq!(codex.bottom() + gpui::px(1.), egm.top(), "one divider separates rows");
+		assert_eq!(egm.bottom() + gpui::px(1.), research.top(), "list dividers stay uniform");
 
 		let toggle = visual.debug_bounds("components-egm-details").unwrap();
 		let action = visual.debug_bounds("components-install-egm").unwrap();
