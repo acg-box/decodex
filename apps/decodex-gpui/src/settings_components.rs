@@ -238,10 +238,15 @@ impl SettingsSurface {
 				));
 			},
 			component_runtime::PreparationState::Failed(error) => {
+				let detail = if self.components.details[0] {
+					error.as_str()
+				} else {
+					"Conversations are unavailable. Expand Codex for setup details."
+				};
 				component = component.children(ui_feedback::inline_feedback(
 					"components-component-error",
-					"Could not prepare Codex",
-					&Feedback::error(error.clone()),
+					"Setup failed",
+					&Feedback::error(detail),
 				));
 			},
 			component_runtime::PreparationState::Preparing(progress) => {
@@ -356,20 +361,25 @@ impl SettingsSurface {
 		ui_motion::disclosure(
 			id,
 			self.components.details[index],
-			gpui::div().w_full().pb(gpui::px(8.)).child(content),
+			gpui::div()
+				.w_full()
+				.border_t_1()
+				.border_color(ui_theme::rgba(ui_theme::PANEL_DIVIDER))
+				.pt(gpui::px(10.))
+				.pb(gpui::px(10.))
+				.child(content),
 		)
 		.into_any_element()
 	}
 
 	pub(super) fn components_content(&self, cx: &mut Context<Self>) -> AnyElement {
-		ui_theme::settings_rows()
-			.children([
-				self.component_settings(cx).into_any_element(),
-				self.egm_settings(cx).into_any_element(),
-				self.research_settings(cx).into_any_element(),
-				self.ragflow_settings(cx),
-			])
-			.into_any_element()
+		ui_theme::settings_panel(vec![
+			self.component_settings(cx).into_any_element(),
+			self.egm_settings(cx).into_any_element(),
+			self.research_settings(cx).into_any_element(),
+			self.ragflow_settings(cx),
+		])
+		.into_any_element()
 	}
 
 	fn ragflow_settings(&self, cx: &mut Context<Self>) -> AnyElement {
@@ -818,8 +828,8 @@ mod tests {
 		let egm = visual.debug_bounds("components-egm").unwrap();
 		let research = visual.debug_bounds("components-pro-research").unwrap();
 
-		assert_eq!(codex.bottom(), egm.top(), "padded setting rows must not add an item gap");
-		assert_eq!(egm.bottom(), research.top(), "all components use the same list spacing");
+		assert_eq!(codex.bottom() + gpui::px(1.), egm.top(), "one divider separates rows");
+		assert_eq!(egm.bottom() + gpui::px(1.), research.top(), "list dividers stay uniform");
 
 		let toggle = visual.debug_bounds("components-egm-details").unwrap();
 		let action = visual.debug_bounds("components-install-egm").unwrap();

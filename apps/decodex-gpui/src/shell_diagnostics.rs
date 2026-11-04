@@ -162,26 +162,22 @@ fn report_text(snapshot: &HealthSnapshot) -> Option<String> {
 fn summary_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 	let snapshot = &shell.health;
 	let presentation = shell::health_presentation(snapshot);
-	let mut content = ui_theme::settings_sections()
-		.max_w(gpui::px(SETTINGS_WIDTH))
-		.mx_auto()
-		.text_size(gpui::px(SETTINGS_LABEL_SIZE))
-		.child(
-			ui_feedback::status_row(
-				"health-query-status",
-				presentation.tone,
-				presentation.label,
-				presentation.detail,
-				presentation.tone.icon(),
-			)
-			.debug_selector(|| "health-query-status".into())
-			.min_h(gpui::px(32.)),
-		);
+	let mut status = ui_theme::settings_rows().child(
+		ui_feedback::status_row(
+			"health-query-status",
+			presentation.tone,
+			presentation.label,
+			presentation.detail,
+			presentation.tone.icon(),
+		)
+		.debug_selector(|| "health-query-status".into())
+		.min_h(gpui::px(32.)),
+	);
 
 	for (index, issue) in issues(snapshot).into_iter().enumerate() {
 		let (title, detail) = issue_description(issue);
 
-		content = content.child(
+		status = status.child(
 			gpui::div()
 				.id(("health-issue", index))
 				.debug_selector(move || format!("health-issue-{index}"))
@@ -192,6 +188,12 @@ fn summary_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 				)),
 		);
 	}
+
+	let mut content = ui_theme::settings_sections()
+		.max_w(gpui::px(SETTINGS_WIDTH))
+		.mx_auto()
+		.text_size(gpui::px(SETTINGS_LABEL_SIZE))
+		.child(ui_theme::settings_panel(vec![status.into_any_element()]));
 
 	if snapshot.load == HealthLoadState::Ready {
 		content = content.child(component_section(
@@ -372,14 +374,9 @@ fn component_section(
 		component_row(index_offset + index, component, status)
 	});
 
-	gpui::div()
-		.id(id)
-		.debug_selector(move || id.into())
-		.flex()
-		.flex_col()
-		.gap_2()
-		.child(ui_theme::settings_section_title(title))
-		.child(
+	ui_theme::settings_group(
+		title,
+		vec![
 			gpui::div()
 				.id(("health-section-list", index_offset))
 				.role(Role::List)
@@ -387,9 +384,13 @@ fn component_section(
 				.grid()
 				.grid_cols(2)
 				.gap_x(gpui::px(32.))
-				.children(rows),
-		)
-		.into_any_element()
+				.children(rows)
+				.into_any_element(),
+		],
+	)
+	.id(id)
+	.debug_selector(move || id.into())
+	.into_any_element()
 }
 
 fn control(

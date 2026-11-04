@@ -3595,6 +3595,23 @@ fn accounts_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 	let snapshot = &shell.accounts;
 	let rows = account_pool_rows(shell, cx);
 	let count = snapshot.accounts.len();
+	let header = ui_theme::settings_rows()
+		.child(account_pool_header(shell, cx))
+		.children(
+			account_operation_feedback(shell)
+				.filter(|_| {
+					shell.account_status_target.as_ref().is_none_or(|target| {
+						!snapshot.accounts.iter().any(|account| &account.account_id == target)
+					})
+				})
+				.and_then(|feedback| {
+					ui_feedback::inline_feedback("account-global-warning", "", &feedback)
+				}),
+		)
+		.children(account_list_feedback(snapshot).and_then(|feedback| {
+			ui_feedback::inline_feedback("account-list-feedback", "", &feedback)
+		}))
+		.children(account_login_progress(shell));
 
 	gpui::div()
 		.flex_1()
@@ -3608,25 +3625,7 @@ fn accounts_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 			ui_theme::settings_sections()
 				.max_w(gpui::px(SETTINGS_WIDTH))
 				.min_h_0()
-				.child(account_pool_header(shell, cx))
-				.children(
-					account_operation_feedback(shell)
-						.filter(|_| {
-							shell.account_status_target.as_ref().is_none_or(|target| {
-								!snapshot
-									.accounts
-									.iter()
-									.any(|account| &account.account_id == target)
-							})
-						})
-						.and_then(|feedback| {
-							ui_feedback::inline_feedback("account-global-warning", "", &feedback)
-						}),
-				)
-				.children(account_list_feedback(snapshot).and_then(|feedback| {
-					ui_feedback::inline_feedback("account-list-feedback", "", &feedback)
-				}))
-				.children(account_login_progress(shell))
+				.child(ui_theme::settings_panel(vec![header.into_any_element()]))
 				.child(
 					gpui::div()
 						.id("account-list")
@@ -3641,11 +3640,9 @@ fn accounts_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 						})
 						.children(rows),
 				)
-				.child(
-					gpui::div().flex_none().child(
-						shell.settings.update(cx, |settings, cx| settings.quota_control(cx)),
-					),
-				),
+				.child(gpui::div().flex_none().child(ui_theme::settings_panel(vec![
+					shell.settings.update(cx, |settings, cx| settings.quota_control(cx)),
+				]))),
 		)
 		.into_any_element()
 }
@@ -3995,9 +3992,7 @@ fn account_pool_row(
 	let AccountRowPresentation { index, .. } = presentation;
 	let summary = account_pool_summary(account, presentation.clone(), cx);
 
-	gpui::div()
-		.w_full()
-		.rounded(gpui::px(8.))
+	ui_theme::settings_panel(vec![summary])
 		.id(("account-row", index))
 		.px(gpui::px(14.0))
 		.py(gpui::px(6.0))
@@ -4005,7 +4000,6 @@ fn account_pool_row(
 		.flex_col()
 		.gap(gpui::px(6.0))
 		.relative()
-		.child(summary)
 		.children(presentation.feedback.as_ref().map(|(text, color)| AccountFeedback {
 			id: format!("account-feedback-{}", account.account_id.as_str()).into(),
 			selector: format!(
@@ -7786,7 +7780,10 @@ mod tests {
 		);
 		settings.update(crate::ui_frame::draw_current_frame);
 
-		assert_eq!(scroll.offset().y, -scroll.max_offset().y);
+		assert!(
+			(scroll.offset().y + scroll.max_offset().y).abs() <= gpui::px(1.),
+			"the scrollbar reaches the bottom within layout pixel rounding"
+		);
 
 		let optional = settings.debug_bounds("health-optional-components").unwrap();
 

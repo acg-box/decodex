@@ -544,7 +544,7 @@ impl SettingsSurface {
 					ui_theme::settings_row()
 						.child(ui_theme::settings_label(
 							"Automatic task recaps",
-						"Recap the selected chat’s new results after 30 quiet minutes in the background. This uses model quota.",
+							"Recap the selected chat after 30 quiet minutes. This uses model quota.",
 						))
 						.child(self.recap_toggle(cx))
 						.into_any_element(),
@@ -556,7 +556,7 @@ impl SettingsSurface {
 
 	fn appearance_content(&self, cx: &mut Context<Self>) -> AnyElement {
 		ui_theme::settings_sections()
-			.child(self.appearance_controls(cx))
+			.child(ui_theme::settings_panel(vec![self.appearance_controls(cx).into_any_element()]))
 			.child(
 				ui_theme::settings_rows()
 					.gap_2()

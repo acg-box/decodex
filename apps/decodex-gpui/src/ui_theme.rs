@@ -321,7 +321,7 @@ pub(crate) fn settings_section_title(title: &'static str) -> Stateful<Div> {
 		.text_size(gpui::px(SETTINGS_SECTION_SIZE))
 		.line_height(gpui::px(18.0))
 		.font_weight(FontWeight::MEDIUM)
-		.text_color(rgb(TEXT))
+		.text_color(rgb(TEXT_MUTED))
 		.child(title)
 }
 
@@ -379,8 +379,25 @@ pub(crate) fn settings_label(
 pub(crate) fn settings_group(title: &'static str, rows: Vec<AnyElement>) -> Div {
 	settings_rows()
 		.gap_2()
-		.child(settings_section_title(title))
-		.child(settings_rows().children(rows))
+		.child(gpui::div().px(gpui::px(12.)).child(settings_section_title(title)))
+		.child(settings_panel(rows))
+}
+
+pub(crate) fn settings_panel(rows: Vec<AnyElement>) -> Div {
+	settings_rows()
+		.rounded(gpui::px(10.))
+		.border_1()
+		.border_color(rgba(PANEL_DIVIDER))
+		.bg(rgba(FIELD_MATERIAL))
+		.px(gpui::px(12.))
+		.py(gpui::px(6.))
+		.children(rows.into_iter().enumerate().map(|(index, row)| {
+			gpui::div()
+				.w_full()
+				.min_w_0()
+				.when(index > 0, |row| row.border_t_1().border_color(rgba(PANEL_DIVIDER)))
+				.child(row)
+		}))
 }
 
 pub(crate) fn settings_button(

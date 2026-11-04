@@ -82,6 +82,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_workspace.rs
   - id: openwiki-source-f339a4d1910db63ca305c2df
     resource: repo://apps/decodex-gpui/src/assistant_settings.rs
+  - id: openwiki-source-e8596cc5aac62aa16bde932b
+    resource: repo://apps/decodex-gpui/src/component_runtime.rs
   - id: openwiki-source-fca3688e96d92c09b7ba015f
     resource: repo://apps/decodex-gpui/src/native_material_panel.rs
   - id: openwiki-source-a2f254020dd8eaabd6366c91
@@ -90,6 +92,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/settings_components.rs
   - id: openwiki-source-a16804a567889414868e5d67
     resource: repo://apps/decodex-gpui/src/settings_surface.rs
+  - id: openwiki-source-5afd606185b0f01d8fc4f429
+    resource: repo://apps/decodex-gpui/src/shell_diagnostics.rs
   - id: openwiki-source-2986b39185cca5c00a29ad1d
     resource: repo://apps/decodex-gpui/src/shell_status.rs
   - id: openwiki-source-1291f5243fa6c9cb52149bda
@@ -114,10 +118,10 @@ sources:
     resource: repo://database/src/works/commands.rs
   - id: openwiki-source-8fe6f1557e5d45d88b34bd0a
     resource: repo://scripts/macos/generate_workspace_symbols.swift
-generated: { by: "codex", at: "2026-11-04T12:29:29.143Z" }
+generated: { by: "codex", at: "2026-11-04T13:03:28.956Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-04T12:29:29.143Z
+    at: 2026-11-04T13:03:28.956Z
 ---
 
 # Desktop workspace and native glass
@@ -125,6 +129,10 @@ verified:
 ## Information hierarchy
 
 Settings uses a narrow reading column for General, Components and Updates. Agents and Appearance retain a wider comparison column. Shared rows use compact spacing. General groups automatic recaps and sleep prevention under Background.
+
+Settings groups share a quiet panel with a fine border and dividers between rows. Components use one divided list. Account controls, account rows, quota settings and diagnostic summaries use the same panel helper. Component details have their own divider. Feedback stays inside the group that owns the operation.
+
+Codex setup failures show a short state and explain that conversations are unavailable. Expand Codex to read the original error. Retry setup uses the existing preparation owner.
 
 The Agent conversation is the primary workspace. The left sidebar selects the overview and projects. The right Collaboration panel keeps recorded exchanges and pending response requests visible across chats. The bottom Dock presents Agent relationships through its graph or list.
 

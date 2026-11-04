@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:644bd8307eab9faca88b126007a10d5e53452f4e02685965d88d52a77d6a1a9e",
+  "pageVersion": "sha256:fe44efd88b1063666d7771a9a4228192eed5b5a1a13c3cf83eb9f42520369f71",
   "claims": [
     {
       "id": "claim_41c9eba720934771bd6b671a7aeb8b6e",
@@ -462,7 +462,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_theme.rs",
-          "version": "repo-file-v1:sha256:251fcc00e31eb7d3e81db831b7906f643b6e4e230cf89b804f64fe86113ca3c1"
+          "version": "repo-file-v1:sha256:a41e44695d8938fce28217943d3b93b3bd4100a5d9dfb96027ed95a86f67e121"
         }
       ]
     },
@@ -498,7 +498,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:f131d60c8a48683c131d05c6a8962b6946b7662541319767fb4208c1b9fbf13c"
+          "version": "repo-file-v1:sha256:ff221859dfdd15d43e878da6e427cc20142f9fae9d024151ec92ab07078a70c2"
         },
         {
           "resource": "repo://crates/decodex-components/src/ragflow_service.rs",
@@ -520,7 +520,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:f131d60c8a48683c131d05c6a8962b6946b7662541319767fb4208c1b9fbf13c"
+          "version": "repo-file-v1:sha256:ff221859dfdd15d43e878da6e427cc20142f9fae9d024151ec92ab07078a70c2"
         }
       ]
     },
@@ -540,11 +540,11 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/settings_surface.rs",
-          "version": "repo-file-v1:sha256:b5a7ae515d6f236dbed8f236323d672d5869808f6a6d31affdb264c80d455efc"
+          "version": "repo-file-v1:sha256:e9db7f0d9ee42b833258b13af8e4a44a7049edd63effb99dbd5807412adcd56b"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_theme.rs",
-          "version": "repo-file-v1:sha256:251fcc00e31eb7d3e81db831b7906f643b6e4e230cf89b804f64fe86113ca3c1"
+          "version": "repo-file-v1:sha256:a41e44695d8938fce28217943d3b93b3bd4100a5d9dfb96027ed95a86f67e121"
         }
       ]
     },
@@ -558,17 +558,57 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:f131d60c8a48683c131d05c6a8962b6946b7662541319767fb4208c1b9fbf13c"
+          "version": "repo-file-v1:sha256:ff221859dfdd15d43e878da6e427cc20142f9fae9d024151ec92ab07078a70c2"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_theme.rs",
-          "version": "repo-file-v1:sha256:251fcc00e31eb7d3e81db831b7906f643b6e4e230cf89b804f64fe86113ca3c1"
+          "version": "repo-file-v1:sha256:a41e44695d8938fce28217943d3b93b3bd4100a5d9dfb96027ed95a86f67e121"
+        }
+      ]
+    },
+    {
+      "id": "claim_9d77516e24e94e4d9b5add8ac7f9c1dd",
+      "statement": "Settings groups reuse a shared panel with a fine border and row dividers. Components use one divided list; account controls, account rows, quota settings and diagnostic summaries reuse the panel helper. Expanded component content has a divider, and feedback stays with its operation.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
+          "version": "repo-file-v1:sha256:ff221859dfdd15d43e878da6e427cc20142f9fae9d024151ec92ab07078a70c2"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/settings_surface.rs",
+          "version": "repo-file-v1:sha256:e9db7f0d9ee42b833258b13af8e4a44a7049edd63effb99dbd5807412adcd56b"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/shell.rs",
+          "version": "repo-file-v1:sha256:9f48177ebce5d6ffdc6fe404fb1d3c9e63293aa743b9a1ccd0112052f54f5699"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/shell_diagnostics.rs",
+          "version": "repo-file-v1:sha256:e1a599911601a74152c35d12d44dc2e4d7b24be4a46913a1f263c6b49ab7cfe3"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/ui_theme.rs",
+          "version": "repo-file-v1:sha256:a41e44695d8938fce28217943d3b93b3bd4100a5d9dfb96027ed95a86f67e121"
+        }
+      ]
+    },
+    {
+      "id": "claim_b54f43884cd2465296bcd295ba2b8077",
+      "statement": "A collapsed Codex setup failure shows a concise state and its effect on conversations. Expanding Codex shows the original complete error; Retry setup retains the existing runtime preparation owner.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/component_runtime.rs",
+          "version": "repo-file-v1:sha256:27a2e86b191536c74520e16b902bcc7ccda1f1c13657f6ff860decef89e6c269"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
+          "version": "repo-file-v1:sha256:ff221859dfdd15d43e878da6e427cc20142f9fae9d024151ec92ab07078a70c2"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-04T12:29:29.143Z"
+    "at": "2026-11-04T13:03:28.956Z"
   }
 }
