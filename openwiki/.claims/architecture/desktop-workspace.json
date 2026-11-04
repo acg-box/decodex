@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:616744f9cd0197261d0f6692f54d8256bfaec91b1e14d957cd2cd246b4ea1128",
+  "pageVersion": "sha256:a9dac02e0cd4a6e1a8f796bf1ba00df8b9b6a9f152066cf7c002978fd0c229b3",
   "claims": [
     {
       "id": "claim_41c9eba720934771bd6b671a7aeb8b6e",
@@ -269,7 +269,7 @@
           "version": "repo-lines-v1:sha256:78987857e8d671bbd2bd6b0d76271f7a891b8f4d2e63e18876623e65787b097d:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIxZjFmZDBjODhkZDdiOTY0NGVlY2U5ZGU0YmM2YjRiZDZhYjY1ZDJkNGZhNDQzNmIxZGVkMTA1OTA3ZjQyYzMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE2MDU2MWExYzJhNTBlNTExMTI4ZTg1ODhkMzM4Njk5Njc4N2ZkOGExNGM4MDdmNzhkZGE3MGU5ZTgxMThjYzQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhhNzg0ZjRlN2MyMmZjMTk4MzU0NWNlMTdhZjYyZGIxNDRjYmQ4MzM0YWEwYjZjODBmMzAwYWVjMmVkYjU3MWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjczZGIwNGQ5ZjNkNjY3YWI1ODE3Y2MxYjEzZWQzYjg0MDhkYTQ0ZGY5ZTQzMmZjMjBjMDdlYjJhMzBjMjJjZTgifQ"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/shell.rs#L2404-L2413",
+          "resource": "repo://apps/decodex-gpui/src/shell.rs#L2401-L2410",
           "version": "repo-lines-v1:sha256:4fdeb2bb7cd199dd68ff55a17cafc89f167e3e56dc6973d05a2c648ae93e07cb:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ0YmJjMDkwNDI4NGNlODEyY2Q2MDk2MDRkMDEyNDhlYjcyODM4MTA5YTk3NTA3YjU2NTIzZThjYTQ4NWFiNTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRmNTNlYjlhZTZhMmM4MjUwMWUxMGFmYjQzMDcxNDA1YTZkMzAzNWEyYWNlNjQxMTRhYjFmZjhjYTRlMTI5NWMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQyYmIxMTNlYjM0N2FlY2ZjNmE5MmJlZmM0MDE1ODk0MjAwYTI2OWQ5MGUwYmFlNWExNzYyODUwNmY3ZjEzNDQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImYzMjNmNDUyOTIxZjA1N2MxMjYxM2VmMDBhODU2NGQxMDQyZmRjOTZmNmRjZmRiYTY3MTc0OGNlMzc4NmYzMDkifQ"
         }
       ]
@@ -560,7 +560,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/shell.rs",
-          "version": "repo-file-v1:sha256:6f29784d7bcb4b27a2f2526a469f7a0b517c4349a4f34a29064b25cbb3c5bdb2"
+          "version": "repo-file-v1:sha256:7fb7b33aa8a2815d1ac2ae8a65a9fc1968d99bed58d81f666a3530618504f85e"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_theme.rs",
@@ -604,7 +604,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/shell.rs",
-          "version": "repo-file-v1:sha256:6f29784d7bcb4b27a2f2526a469f7a0b517c4349a4f34a29064b25cbb3c5bdb2"
+          "version": "repo-file-v1:sha256:7fb7b33aa8a2815d1ac2ae8a65a9fc1968d99bed58d81f666a3530618504f85e"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/shell_diagnostics.rs",
@@ -632,7 +632,7 @@
     },
     {
       "id": "claim_c30997d5d2004af789491ec81d8d65f2",
-      "statement": "The Settings permission picker keeps transient state and focus handles in the window and reuses the existing permission rows. Arrow keys cycle within its options. Escape dismisses the menu and restores trigger focus. Tab and Shift-Tab dismiss it and continue navigation. Command-W closes Settings while the menu is open. The visible trailing edge aligns with the trigger, excluding the shared shadow gutter.",
+      "statement": "The Settings permission picker keeps transient state and option focus handles in the window and reuses the existing permission rows. Arrow keys cycle within the options. Escape dismisses the menu and restores trigger focus; repeated Escape leaves Settings open. Tab and Shift-Tab dismiss the menu and continue navigation. Command-W or the window close button closes Settings, including while the menu is open. The visible trailing edge aligns with the trigger, excluding the shared shadow gutter.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/session_settings.rs",
@@ -640,7 +640,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/shell.rs",
-          "version": "repo-file-v1:sha256:6f29784d7bcb4b27a2f2526a469f7a0b517c4349a4f34a29064b25cbb3c5bdb2"
+          "version": "repo-file-v1:sha256:7fb7b33aa8a2815d1ac2ae8a65a9fc1968d99bed58d81f666a3530618504f85e"
         }
       ]
     },
@@ -657,6 +657,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-04T16:46:55.377Z"
+    "at": "2026-11-04T17:08:56.474Z"
   }
 }

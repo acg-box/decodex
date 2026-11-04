@@ -41,7 +41,7 @@ sources:
 generated: { by: "codex", at: "2026-10-31T14:39:55.131Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-04T16:46:55.377Z
+    at: 2026-11-04T17:08:56.474Z
 ---
 
 # Account routing and recovery

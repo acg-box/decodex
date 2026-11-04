@@ -124,10 +124,10 @@ sources:
     resource: repo://database/src/works/commands.rs
   - id: openwiki-source-8fe6f1557e5d45d88b34bd0a
     resource: repo://scripts/macos/generate_workspace_symbols.swift
-generated: { by: "codex", at: "2026-11-04T15:37:04.419Z" }
+generated: { by: "codex", at: "2026-11-04T17:08:56.474Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-04T16:46:55.377Z
+    at: 2026-11-04T17:08:56.474Z
 ---
 
 # Desktop workspace and native glass
@@ -138,7 +138,7 @@ All Settings categories use the same 620-point content column and shared rows. N
 
 Settings reuse the App's normal body and control typography. Concise descriptions remain visible. The permission menu shows all four explanations and the native inheritance rule directly. Native options use one flat list under Context defaults, with one shared-scope description. Assistance contains suggestion and Guardian controls. Shared form fields reserve 128 points for labels.
 
-The permission picker keeps its open state and focus handles in the window. Its visible trailing edge aligns with the trigger, excluding the outer shadow gutter. Arrow keys cycle within its options. Escape closes the menu and restores focus to its trigger. Tab and Shift-Tab dismiss the menu and continue keyboard navigation. Command-W closes Settings even while the menu is open. The picker reuses the existing permission rows; it does not own conversation permissions.
+The permission picker keeps its open state and focus handles in the window. Its visible trailing edge aligns with the trigger, excluding the outer shadow gutter. Arrow keys cycle within its options. Escape closes the menu and restores focus to its trigger. Tab and Shift-Tab dismiss the menu and continue keyboard navigation. Settings remains open after repeated Escape. Command-W or the window close button closes Settings, including while the menu is open. The picker reuses the existing permission rows; it does not own conversation permissions.
 
 Shared disclosures animate their open proportion. Content measurement does not restart the transition or issue a model notification. Already open details mount at full height, and settled parents follow nested content changes directly. Page arrival changes opacity without moving content or hit targets.
 

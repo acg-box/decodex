@@ -16,11 +16,11 @@
       "completedRunId": "2b55febb-fc46-4b6e-a3ce-b684d641e038"
     },
     "/openwiki/architecture/desktop-workspace.md": {
-      "pageVersion": "sha256:616744f9cd0197261d0f6692f54d8256bfaec91b1e14d957cd2cd246b4ea1128",
+      "pageVersion": "sha256:a9dac02e0cd4a6e1a8f796bf1ba00df8b9b6a9f152066cf7c002978fd0c229b3",
       "completedBy": "codex",
-      "completedRunId": "97d52e00-2163-4551-8dc2-eca3ea6975b8",
-      "gitHead": "4855e03ae3c1583de1ae7438904c80b94c73a364",
-      "sourceFingerprint": "sha256:0178733c26cd75f79c38400644dce4ac89d12be79bcc0c19d77c31d6c101e824"
+      "completedRunId": "f2629abe-0933-4162-afa7-875379ce57ff",
+      "gitHead": "46804ebda46909a79c4590d6f8daad940494893c",
+      "sourceFingerprint": "sha256:ba2d1de4b1ca8f98a856dbc24aa6bf8861f648ac83f3ad8521f6c7db4ea07ced"
     },
     "/openwiki/architecture/runtime-architecture.md": {
       "gitHead": "4855e03ae3c1583de1ae7438904c80b94c73a364",
@@ -114,11 +114,11 @@
       "completedRunId": "2b55febb-fc46-4b6e-a3ce-b684d641e038"
     },
     "/openwiki/operations/accounts-and-routing.md": {
-      "pageVersion": "sha256:87e000a3344cc1f548981bfbe8f3509c303eadffc54c4e5b0c7b076f8607f25e",
+      "pageVersion": "sha256:d7577f37b2f5b1696b4084a3b3b3a0acba127f0b252985fab2deeeb737f10dfa",
       "completedBy": "codex",
-      "completedRunId": "97d52e00-2163-4551-8dc2-eca3ea6975b8",
-      "gitHead": "4855e03ae3c1583de1ae7438904c80b94c73a364",
-      "sourceFingerprint": "sha256:0178733c26cd75f79c38400644dce4ac89d12be79bcc0c19d77c31d6c101e824"
+      "completedRunId": "f2629abe-0933-4162-afa7-875379ce57ff",
+      "gitHead": "46804ebda46909a79c4590d6f8daad940494893c",
+      "sourceFingerprint": "sha256:ba2d1de4b1ca8f98a856dbc24aa6bf8861f648ac83f3ad8521f6c7db4ea07ced"
     },
     "/openwiki/operations/codex-upstream-autopilot.md": {
       "gitHead": "4855e03ae3c1583de1ae7438904c80b94c73a364",
@@ -149,11 +149,11 @@
       "completedRunId": "957e1b8b-b0a1-456e-be0a-b196c4e1a085"
     },
     "/openwiki/operations/reset-cards.md": {
-      "pageVersion": "sha256:9e3bbeead97194623b8cbe949f1371c7e6624700a02073190967c9f2b8861b9d",
+      "pageVersion": "sha256:25b04ed7c1d0881e7010cc028ed0b6d00eecbf290b8d2f3c2629278112287fda",
       "completedBy": "codex",
-      "completedRunId": "97d52e00-2163-4551-8dc2-eca3ea6975b8",
-      "gitHead": "4855e03ae3c1583de1ae7438904c80b94c73a364",
-      "sourceFingerprint": "sha256:0178733c26cd75f79c38400644dce4ac89d12be79bcc0c19d77c31d6c101e824"
+      "completedRunId": "f2629abe-0933-4162-afa7-875379ce57ff",
+      "gitHead": "46804ebda46909a79c4590d6f8daad940494893c",
+      "sourceFingerprint": "sha256:ba2d1de4b1ca8f98a856dbc24aa6bf8861f648ac83f3ad8521f6c7db4ea07ced"
     },
     "/openwiki/operations/wiki-maintenance.md": {
       "gitHead": "6c61ec327fab0c3e5abe904b7a8751dc6bc4eac0",
@@ -226,18 +226,18 @@
       "completedRunId": "957e1b8b-b0a1-456e-be0a-b196c4e1a085"
     },
     "/openwiki/workflows/conversations-and-recovery.md": {
-      "pageVersion": "sha256:b35c4d1efbdd340ddf830d97d10b8c65d06e51297272fa0509b32f6e567fa386",
+      "pageVersion": "sha256:9f3a2f5ba551d31d724d478cbbf482c9ba097d83fbad9b6facaee850658ad062",
       "completedBy": "codex",
-      "completedRunId": "97d52e00-2163-4551-8dc2-eca3ea6975b8",
-      "gitHead": "4855e03ae3c1583de1ae7438904c80b94c73a364",
-      "sourceFingerprint": "sha256:0178733c26cd75f79c38400644dce4ac89d12be79bcc0c19d77c31d6c101e824"
+      "completedRunId": "f2629abe-0933-4162-afa7-875379ce57ff",
+      "gitHead": "46804ebda46909a79c4590d6f8daad940494893c",
+      "sourceFingerprint": "sha256:ba2d1de4b1ca8f98a856dbc24aa6bf8861f648ac83f3ad8521f6c7db4ea07ced"
     },
     "/openwiki/workflows/models-and-settings.md": {
-      "pageVersion": "sha256:5c9613c9870cd077f7718bdc27e2f67a9f002907fa6fc43cc52772d20f6702ee",
+      "pageVersion": "sha256:1149428a68be6e4ddc95f9b24dd614951792339bd9c0c15e073d975de56dfc24",
       "completedBy": "codex",
-      "completedRunId": "97d52e00-2163-4551-8dc2-eca3ea6975b8",
-      "gitHead": "4855e03ae3c1583de1ae7438904c80b94c73a364",
-      "sourceFingerprint": "sha256:0178733c26cd75f79c38400644dce4ac89d12be79bcc0c19d77c31d6c101e824"
+      "completedRunId": "f2629abe-0933-4162-afa7-875379ce57ff",
+      "gitHead": "46804ebda46909a79c4590d6f8daad940494893c",
+      "sourceFingerprint": "sha256:ba2d1de4b1ca8f98a856dbc24aa6bf8861f648ac83f3ad8521f6c7db4ea07ced"
     }
   }
 }

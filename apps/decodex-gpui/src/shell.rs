@@ -2380,10 +2380,7 @@ pub(crate) fn bind_keys(cx: &mut App) {
 
 	composer_input::bind_keys(cx);
 
-	cx.bind_keys([
-		KeyBinding::new("cmd-w", CloseWindow, Some("SettingsWindow")),
-		KeyBinding::new("escape", CloseWindow, Some("SettingsWindow")),
-	]);
+	cx.bind_keys([KeyBinding::new("cmd-w", CloseWindow, Some("SettingsWindow"))]);
 	crate::session_settings::bind_keys(cx);
 	cx.bind_keys([
 		KeyBinding::new("cmd-shift-r", ReloadWorkspace, None),
@@ -8265,6 +8262,9 @@ mod tests {
 		settings.simulate_keystrokes("escape");
 		settings.update(crate::ui_frame::draw_current_frame);
 		assert!(settings.debug_bounds("permission-choice-0").is_none());
+		shell.read_with(visual, |s, _| assert_eq!(s.settings_window, Some(handle)));
+		settings.simulate_keystrokes("escape");
+		settings.update(crate::ui_frame::draw_current_frame);
 		shell.read_with(visual, |s, _| assert_eq!(s.settings_window, Some(handle)));
 		for key in ["tab", "shift-tab"] {
 			settings.simulate_click(trigger.center(), Default::default());

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:b35c4d1efbdd340ddf830d97d10b8c65d06e51297272fa0509b32f6e567fa386",
+  "pageVersion": "sha256:9f3a2f5ba551d31d724d478cbbf482c9ba097d83fbad9b6facaee850658ad062",
   "claims": [
     {
       "id": "claim_3881a280a4044cdca9e8599100f0a4f0",
@@ -440,7 +440,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/shell.rs",
-          "version": "repo-file-v1:sha256:6f29784d7bcb4b27a2f2526a469f7a0b517c4349a4f34a29064b25cbb3c5bdb2"
+          "version": "repo-file-v1:sha256:7fb7b33aa8a2815d1ac2ae8a65a9fc1968d99bed58d81f666a3530618504f85e"
         }
       ]
     },
@@ -747,6 +747,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-04T16:46:55.377Z"
+    "at": "2026-11-04T17:08:56.474Z"
   }
 }
