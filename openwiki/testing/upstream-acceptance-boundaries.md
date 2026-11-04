@@ -202,10 +202,10 @@ sources:
     resource: repo://scripts/macos/test_decodex_app_stage.sh
   - id: openwiki-source-e201f60894c32a914dac99ee
     resource: repo://scripts/vnext/run_native_regression.py
-generated: { by: "codex", at: "2026-11-03T19:29:07.466Z" }
+generated: { by: "codex", at: "2026-11-04T08:04:10.801Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-03T19:29:07.466Z
+    at: 2026-11-04T08:04:10.801Z
 ---
 
 # Upstream integration acceptance boundaries
@@ -650,6 +650,6 @@ The Assistant extension reuses the selected Codex runtime at upstream `ba0dfd389
 
 SQLite tests cover independent team membership and wakes, archive cancellation, exact delegated creation and linked authority, pending input, immutable native-context receipts and queued/unknown external imports across reopen. The desktop transition test covers drafts, loaded history, reading state, old native source IDs and pagination cursor rebasing. RAGFlow's loopback HTTP fixture checks explicit Memory/Agent/user scopes and rejects nonzero business codes even with HTTP 200. HTTP Memory setup fixtures cover default-model selection, recovery after a lost creation reply, origin-bound private credentials and missing-model failure without publishing a Memory credential. An idle Assistant setup fixture confirms atomic role selection and no fabricated first user message. The first-message fixture checks displayed model and effort, normal permission and speed defaults, and preservation of the previous Agent and draft. Shared component UI fixtures check installed readback, busy controls, disclosure and inline feedback. A queued extraction response is not proof that the memory is searchable.
 
-Managed-service fixtures check loopback-only API exposure, private installation receipts and an Uninstall command scoped to the owned project without volume removal. They use a command fixture, not real Docker images. Actual acceptance must separately verify the nightly version, automatic Memory configuration, a synthetic scoped write/search, retained data across Update and Uninstall, and the installed App controls.
+Managed-service fixtures check loopback-only API exposure, absence of a model runtime and model volume, custom endpoint paths and model names, loopback host translation, private installation receipts and an Uninstall command scoped to the owned project without volume removal. The model editor fixture checks blank saved-key fields, source invalidation and draft preservation. These checks use in-process and command fixtures, not real Docker images. Actual acceptance must separately verify the nightly version, native verification against a controlled compatible API, automatic Memory configuration, rejection of invalid credentials without replacing saved configuration, a synthetic scoped write/search, retained model settings and data across Update, Uninstall and reinstall, and the installed App controls.
 
 These source and selected-native checks do not establish a real RAGFlow deployment, extraction quality, machine sleep behavior or installed desktop visual acceptance. See [Assistant lifecycle](../decisions/assistant-lifecycle.md) and [commands](../operations/commands-and-validation.md) for owners and repeatable checks. The earlier qualification records above retain their own artifacts and counts.

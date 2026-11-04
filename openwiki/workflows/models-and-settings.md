@@ -106,10 +106,10 @@ sources:
     resource: repo://crates/decodex-runtime/tests/native_qualification/thread_settings.py
   - id: openwiki-source-8c78df4b382026886ac50894
     resource: repo://database/src/usage_evidence.rs
-generated: { by: "codex", at: "2026-11-03T19:29:07.466Z" }
+generated: { by: "codex", at: "2026-11-04T08:04:10.801Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-03T19:29:07.466Z
+    at: 2026-11-04T08:04:10.801Z
 ---
 
 # Model selection and settings ownership
@@ -196,9 +196,9 @@ The reviewed source, thread and Goal identity must still match before a write. L
 
 The search control shows the saved user preference separately from the effective project default. Supported native modes include disabled, cached, indexed and live, subject to current native requirements. Saving writes only `web_search` against the reviewed native file version, with no user-config reload. It does not restart, resume or fork an existing conversation to force the new default into its loaded settings.
 
-Memory availability comes from the native feature observation. A capability flag is not a separate Decodex memory database or a retention policy. The implemented [Assistant lifecycle](../decisions/assistant-lifecycle.md) adds optional RAGFlow retrieval and Memory through Settings > Components. Select **Install** to prepare RAGFlow nightly, compatible Infinity and local models in a private Docker Compose project. Docker must be running. Decodex configures the local account, private credential and dedicated Memory automatically. The component shares its version row and lifecycle controls with the other components. It reports the installed nightly version and offers **Update** and **Uninstall**. No Connect action or manual credentials form is required.
+Memory availability comes from the native feature observation. A capability flag is not a separate Decodex memory database or a retention policy. The implemented [Assistant lifecycle](../decisions/assistant-lifecycle.md) adds optional RAGFlow retrieval and Memory through Settings > Components. Select **Install** to prepare RAGFlow nightly and compatible Infinity in a private Docker Compose project. Docker must be running. Decodex configures the service account automatically. Under **Configure models**, enter an OpenAI-compatible **Base URL**, optional **API key**, **Extraction model** and **Embedding model**. **Save models** verifies these exact models and initializes dedicated Memory automatically. No model runtime or model weights are installed. The component shares its version row and lifecycle controls with the other components. It reports the installed nightly version and offers **Update** and **Uninstall**. Service connection and its internal credential are automatic, with no Connect action. The model API key stays private and is left blank in a later edit; an empty field keeps the saved key only at the same Base URL. Loopback host names are translated for the container while the displayed URL stays unchanged. A Memory with messages retains its embedding model and endpoint to preserve the saved index.
 
-Chat import starts off and is enabled separately. Update preserves this choice and saved data. Uninstall stops the owned service and clears its connection, while retaining data for reinstallation. Explicit knowledge dataset scopes remain available in typed Assistant configuration; empty datasets disable retrieval. The Memory explanation states that Codex memory is disabled for Assistant. Activation waits for a safe fresh context with native generation, use and the memories feature disabled, plus disabled native memory mode. Cold resume preserves this policy. Native compaction, history, unrelated Agents and shared defaults retain their settings. The saved connection uses a private component credential reference; legacy environment-variable references remain supported. A connection failure remains visible without native-memory fallback.
+Chat import starts off and is enabled separately. Update preserves this choice, the model configuration and saved data. Uninstall stops the owned service and clears its connection, while retaining data for reinstallation. Explicit knowledge dataset scopes remain available in typed Assistant configuration; empty datasets disable retrieval. The Memory explanation states that Codex memory is disabled for Assistant. Activation waits for a safe fresh context with native generation, use and the memories feature disabled, plus disabled native memory mode. Cold resume preserves this policy. Native compaction, history, unrelated Agents and shared defaults retain their settings. The saved connection uses a private component credential reference; legacy environment-variable references remain supported. A connection failure remains visible without native-memory fallback.
 
 ## Read a native memory summary
 

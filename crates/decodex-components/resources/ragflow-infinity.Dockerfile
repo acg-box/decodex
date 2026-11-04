@@ -6,4 +6,5 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends curl libatomic1 \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=upstream /usr/bin/infinity /usr/bin/infinity
+COPY --from=upstream /usr/share/infinity/resource /usr/share/infinity/resource
 ENTRYPOINT ["/usr/bin/infinity"]

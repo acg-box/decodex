@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:54afac53f65975b013d4af374cdb537f7d1dcc623685782eaeceb53a7a7d487d",
+  "pageVersion": "sha256:f40f329b2b6074347a50c3878cd6b15304441f86a0e0d328f85c13cd36c29202",
   "claims": [
     {
       "id": "claim_2dd4ad01dd984b80a22d9cb9c9bfd397",
@@ -1190,7 +1190,7 @@
     },
     {
       "id": "claim_199088d6ec9e4c77bd627bd1a3844b01",
-      "statement": "Assistant fixtures cover idle initialization without a first user message, normal first-message choices with draft preservation, durable teams and wakes, context/import receipts, desktop continuity and selected-native fresh contexts. RAGFlow HTTP fixtures cover default models, missing-model failure, lost replies, private origin-bound credentials, exact scopes and business errors. Managed-service and shared-UI fixtures cover loopback exposure, project-scoped Uninstall without volume removal and shared lifecycle presentation; they do not establish real Docker bootstrap, live Memory extraction or installed-app acceptance.",
+      "statement": "Assistant fixtures cover idle initialization, first-message choices with draft preservation, durable teams and wakes, context/import receipts, desktop continuity and selected-native fresh contexts. RAGFlow HTTP fixtures cover default models, missing-model failure, lost replies, private origin-bound credentials, exact scopes and business errors. Managed-service and shared-UI fixtures cover API-only model configuration, custom endpoint paths and names, loopback translation, blank saved-key fields, source invalidation, private receipts, shared lifecycle presentation and project-scoped Uninstall without volume removal. These fixtures do not establish real Docker bootstrap, live Memory extraction, model quality or installed-App acceptance.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_timeline.rs",
@@ -1198,19 +1198,19 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
-          "version": "repo-file-v1:sha256:1a8160407ba442f58fd2e7da401f9ff00f61b831d7fa61a0739b648ceb521df9"
+          "version": "repo-file-v1:sha256:9aa7bc5e963342eab22f84889714297f701c27989b71f274af89e0a8f9238863"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:9405083cc32db68f91a1c799596418ae1f552410790827b36d15b07d80499f55"
+          "version": "repo-file-v1:sha256:f892acca477da7550bf8de58c7a04ec12a849d85a473147f52c40236811b033d"
         },
         {
           "resource": "repo://crates/decodex-components/src/ragflow.rs",
-          "version": "repo-file-v1:sha256:8fce3a9084a4e4d3fee315bcbe47c37420d78510999c4af785a94ab8918df1c9"
+          "version": "repo-file-v1:sha256:fbeb33d1d721cd020eb3e404b47cf03a84cf6d3ca3a2da35af1c391c3b16d96c"
         },
         {
-          "resource": "repo://crates/decodex-components/src/ragflow_service.rs#L355-L413",
-          "version": "repo-lines-v1:sha256:78e96382883681bb50f300a9d913c47b6ebcda057b6a6df86b4d86e6cb00c334:eyJzZWxlY3RlZExpbmVDb3VudCI6NTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFlMGFmM2ZkNGE0YzNhMWQ0N2M3ZjQ3MGVkMGQ4NmQ5MGQ5ZGUyMTBhNWViMTQ1NWZiZDk0NDgyYTQ3NjViNzIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE1MjE2MDRiMzVmYzQwYWYwMGNiYTRlZWEyZmQ1ZTJjM2FmMTg2M2IzOTExODVkN2JmNGJiMDllNzJkMGM4YjMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+          "resource": "repo://crates/decodex-components/src/ragflow_service.rs",
+          "version": "repo-file-v1:sha256:64a37d1398aa104d9ecaa0fd12e29c770fbc5a2c7db7b3d395e3f48487f0524f"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_context_tests.rs",
@@ -1229,6 +1229,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-03T19:29:07.466Z"
+    "at": "2026-11-04T08:04:10.801Z"
   }
 }

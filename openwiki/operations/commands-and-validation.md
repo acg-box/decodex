@@ -120,10 +120,10 @@ sources:
     resource: repo://scripts/macos/test_native_app.sh
   - id: openwiki-source-e201f60894c32a914dac99ee
     resource: repo://scripts/vnext/run_native_regression.py
-generated: { by: "codex", at: "2026-11-03T19:29:07.466Z" }
+generated: { by: "codex", at: "2026-11-04T08:04:10.801Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-03T19:29:07.466Z
+    at: 2026-11-04T08:04:10.801Z
 ---
 
 
@@ -170,7 +170,7 @@ Select an existing Agent with `decodex agent assistant-role --agent-id ID`. Use 
 
 Assistant is built in and available from the sidebar by default. Its first use initializes an idle Agent; it has no Enable control in Components. Continuing instructions, teams and duties stay in chat. See [the lifecycle](../decisions/assistant-lifecycle.md) for supported operations and ownership.
 
-With Docker running, choose Install for RAGFlow in Settings > Components. The component prepares the nightly service, compatible Infinity and local models, then creates the private account, credential and dedicated Memory automatically. It derives the scopes and reads the actual installed version. There is no Connect step or manual service/API-key form. Update reuses the data volumes and import choice. Uninstall stops the owned project, clears its Assistant connection and retains data for reinstall. RAGFlow owns migrations in its service database; the Decodex SQLite schema does not change. Chat import starts off and requires a separate explicit action.
+With Docker running, choose Install for RAGFlow in Settings > Components. The component prepares the nightly service, compatible Infinity and its private account, then reads the actual installed version. Configure models accepts one OpenAI-compatible Base URL, optional API key and exact extraction and embedding model names. Save models verifies the models and initializes dedicated Memory automatically. It derives the scopes and internal service credential without a Connect step or service-account form. No model runtime or model weights are installed. Update reuses the model settings, data volumes and import choice. Uninstall stops the owned project, clears its Assistant connection and retains data for reinstall. RAGFlow owns migrations in its service database; the Decodex SQLite schema does not change. Chat import starts off and requires a separate explicit action.
 
 Use isolated test processes for the backend fixture suite:
 
@@ -186,7 +186,7 @@ Set `DECODEX_TEST_CODEX_BINARY` to the selected pinned component executable for 
 cargo +stable test --locked -p decodex-runtime --lib installed_assistant_renews_fresh_contexts -- --ignored --nocapture --test-threads=1
 ```
 
-The native test uses an isolated home and loopback provider. It checks three clean native contexts, original dialogue and memory isolation. The HTTP fixtures check scoped RAGFlow requests, business-error responses, default-model setup, lost-creation-reply recovery and private origin-bound credentials. Managed-service fixtures check loopback-only exposure and a project-scoped Uninstall without volume removal. These fixtures do not qualify a real Docker startup, live Memory extraction or installed desktop application. For actual acceptance, record the installed nightly version, verify automatic Memory configuration, use synthetic scoped data for a write/search check, then verify Update and Uninstall without removing unrelated services or retained memory. Keep credentials and raw service receipts outside Git.
+The native test uses an isolated home and loopback provider. It checks three clean native contexts, original dialogue and memory isolation. The HTTP fixtures check scoped RAGFlow requests, business-error responses, default-model setup, lost-creation-reply recovery and private origin-bound credentials. Managed-service fixtures check loopback-only exposure, custom endpoint paths and names, loopback host translation and a project-scoped Uninstall without volume removal. The model editor fixture checks blank saved-key fields and draft preservation. These fixtures do not qualify a real Docker startup, live Memory extraction or installed desktop application. For actual acceptance, record the installed nightly version, configure a controlled compatible API and verify both model calls, use synthetic scoped data for a write/search check, reject invalid credentials without replacing the saved configuration, then verify Update, Uninstall and reinstall without removing unrelated services or retained memory. Keep credentials and raw service receipts outside Git.
 
 ## Signed native WebRTC checks
 

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:a21813f7ed1d5b011b3f28eaa46c0438afb4f8e24d77dc66ee7c02de600c666d",
+  "pageVersion": "sha256:c2b202f022e5c200866cc2b2333316cd71c898ca9a7b8c5e2e5b931f2f11c545",
   "claims": [
     {
       "id": "claim_613df7e7c10d49d28b26d6db94c525e5",
@@ -162,7 +162,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:9405083cc32db68f91a1c799596418ae1f552410790827b36d15b07d80499f55"
+          "version": "repo-file-v1:sha256:f892acca477da7550bf8de58c7a04ec12a849d85a473147f52c40236811b033d"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_updates.rs",
@@ -714,19 +714,19 @@
     },
     {
       "id": "claim_935311b12cf748b1a9220ee276ba9243",
-      "statement": "RAGFlow component Install prepares a managed nightly service and local chat and embedding models, creates or recovers a dedicated Memory, and saves an origin-bound private component credential. Assistant settings contain only its reference, and chat import starts disabled.",
+      "statement": "RAGFlow Install prepares the managed nightly service and private account. User model configuration accepts an OpenAI-compatible Base URL, optional API key and custom extraction and embedding names; native verification precedes saving, then dedicated Memory is created or recovered. No model runtime, download or data volume is installed. The origin-bound RAGFlow credential stays private; Assistant settings contain only its reference and chat import starts disabled.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
-          "version": "repo-file-v1:sha256:1a8160407ba442f58fd2e7da401f9ff00f61b831d7fa61a0739b648ceb521df9"
+          "version": "repo-file-v1:sha256:9aa7bc5e963342eab22f84889714297f701c27989b71f274af89e0a8f9238863"
         },
         {
           "resource": "repo://crates/decodex-components/src/ragflow.rs",
-          "version": "repo-file-v1:sha256:8fce3a9084a4e4d3fee315bcbe47c37420d78510999c4af785a94ab8918df1c9"
+          "version": "repo-file-v1:sha256:fbeb33d1d721cd020eb3e404b47cf03a84cf6d3ca3a2da35af1c391c3b16d96c"
         },
         {
-          "resource": "repo://crates/decodex-components/src/ragflow_service.rs#L70-L185",
-          "version": "repo-lines-v1:sha256:8d712c53ad5912ad87048c1de112d2082f546ef6840e0de6fbdedf4ac6a631ec:eyJzZWxlY3RlZExpbmVDb3VudCI6MTE2LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI5MTQwMDMxZmQxMDVlMjEwMTRlMjE4ZWQxYjhkZjFjYTkzNTdjMDkzMGZhMmU2MjUwYmM5MjA3MjYzNTZlNjcyIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJjYjI2MTYzZWVhZGYyZTI5N2ZiODllMWYwZWZiODQ2N2Q1Nzc5ZThmZjRjZWNhZTdhMmI0NjI5ZGVkMmVhMGM4IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIwY2IyMzVlMWQ3NzgwZGQxODQwMzNhNDc2YmE4NWY2MmU2NGE2MTEzZDdlMjEzYzY0N2UxODkwYmFjNzUzMmQ4IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJmMjk2NDA3OWMzYzVjODE1MjBlZjMzYTJiOWQyZTE1YTFiODRkNzI4MGRiODU5MGRjZDY1NzQ3ZTNlMDEyYTQwIn0"
+          "resource": "repo://crates/decodex-components/src/ragflow_service.rs",
+          "version": "repo-file-v1:sha256:64a37d1398aa104d9ecaa0fd12e29c770fbc5a2c7db7b3d395e3f48487f0524f"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/ragflow.rs",
@@ -736,35 +736,49 @@
     },
     {
       "id": "claim_9d288517973a46e4bc8bb4da6bbb6b81",
-      "statement": "RAGFlow lifecycle operations address one per-user Docker Compose project with a loopback-only API. Update records actual installed version and image readback while retaining data; Uninstall stops only that project, clears the Assistant connection and retains its data volumes for reinstall.",
+      "statement": "RAGFlow lifecycle operations address one per-user Docker Compose project with a loopback-only API. Update records actual installed version and image readback while retaining models, credentials, import choice and data. Uninstall stops only that project, clears the Assistant connection and retains data volumes for reinstall.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs#L162-L307",
-          "version": "repo-lines-v1:sha256:80817df1ae8e98795c31cbea852797ceef13512349285e6321eb8d88c86a4779:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQ2LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI0MGY3NTlmNmJhMGM1OWE4NGFmMGQ2MmUxYmYyMDg5NTY0Y2I0M2RiNTkzOWFkMWUyMGQyYTMxYWIyNDkyZjYwIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI2N2NkYTgyZGE2MDYyMzhlMDVlNjIzOTk1NjljNWVlMDM5OTM0MTk2NDhhZTVkNDNhMmJmOGNkNjM0N2Y4MjYzIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIxNDIwZjAwYWJiNjU0YWRjYTc4ZmIxMDE2NmU2ZWEzZmRjYTdmNTFjM2YyMWIxMGVjYmJmOTAyYjVjZGQ2Y2NkIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIyMzM1NTA1ZTJkNGE4MDNkOWE1ODMwNjg3NTBkOTA4OWY5Y2I4NGQ4ZDFmMmQxNmJlN2M2NWJlZjhjYmJhYTZiIn0"
+          "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
+          "version": "repo-file-v1:sha256:9aa7bc5e963342eab22f84889714297f701c27989b71f274af89e0a8f9238863"
         },
         {
           "resource": "repo://crates/decodex-components/src/ragflow_service.rs",
-          "version": "repo-file-v1:sha256:a0a09c056efa2cb4b0dedff5df3a185ad8fc29d04f54bacd612c985dcb400d56"
+          "version": "repo-file-v1:sha256:64a37d1398aa104d9ecaa0fd12e29c770fbc5a2c7db7b3d395e3f48487f0524f"
         }
       ]
     },
     {
       "id": "claim_a9aedad182ce4ca68b6b5686a8b38776",
-      "statement": "The ARM64 Infinity runtime uses the official compatible 0.7.4 binary on Ubuntu 24.04, built from a context that contains only its Dockerfile and excludes the component account and Compose credentials.",
+      "statement": "The ARM64 Infinity runtime uses the official compatible 0.7.4 binary and analyzer resources on Ubuntu 24.04, built from a context that contains only its Dockerfile and excludes the component account and Compose credentials.",
       "evidence": [
         {
           "resource": "repo://crates/decodex-components/resources/ragflow-infinity.Dockerfile",
-          "version": "repo-file-v1:sha256:7952c24126d53c5225353844a10cffff65271ac4f9afbc74a69b5e31aeb4148a"
+          "version": "repo-file-v1:sha256:e3c15fafff7632e36d89f769b971c7ae33f628a7a6ff6c3970d267d0c66a170a"
         },
         {
-          "resource": "repo://crates/decodex-components/src/ragflow_service.rs#L295-L370",
-          "version": "repo-lines-v1:sha256:ef38de31f760e8b721764b3c5e7cdd50ddf8330ee470ebd3cf1fcd6ea275779c:eyJzZWxlY3RlZExpbmVDb3VudCI6NzYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZkYjcxYjkyNmI4MGMxODE1NGNhM2UwZTAwN2RiMmU5ZGVkNTk1ZGRjNzQ1ZmU3NDQ0YzBkMmJmMDJiYjQyNzQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIzNTQwNzQwMjYzZWU4ODJlODY2ZTdmY2I5NzQ2YjM5NGExZjAzODcxYWVlMTcwZTRlZmUxOTg2ZjJjYzAwMTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUwNmZmZDUxMWRhYTYxY2E3MjM5ZjkxYThjZjM4Zjk0NmM4NmVhMTU4MTgwNmZhM2IwNTU0ZGFkOTQyZWEyMjgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI5NTQ1NjQwZjQ1ZWYzYjI0ZjFjOGFiMDgyYTZlZTNhNDM0MmQyMWQzM2IzZGNhMGRiNjI4YWJiMDUzOWZkODUifQ"
+          "resource": "repo://crates/decodex-components/src/ragflow_service.rs",
+          "version": "repo-file-v1:sha256:64a37d1398aa104d9ecaa0fd12e29c770fbc5a2c7db7b3d395e3f48487f0524f"
+        }
+      ]
+    },
+    {
+      "id": "claim_dacfb697b9cd4936afba8b77dffbfdb0",
+      "statement": "The model endpoint path is preserved and loopback host names are translated to host.docker.internal for the owned container while the displayed URL stays unchanged. A Memory with messages cannot silently change its embedding model or endpoint; model verification failures preserve the saved component configuration.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
+          "version": "repo-file-v1:sha256:9aa7bc5e963342eab22f84889714297f701c27989b71f274af89e0a8f9238863"
+        },
+        {
+          "resource": "repo://crates/decodex-components/src/ragflow_service.rs",
+          "version": "repo-file-v1:sha256:64a37d1398aa104d9ecaa0fd12e29c770fbc5a2c7db7b3d395e3f48487f0524f"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-03T19:29:07.466Z"
+    "at": "2026-11-04T08:04:10.801Z"
   }
 }

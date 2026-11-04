@@ -38,10 +38,10 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent/native_settings.rs
   - id: openwiki-source-3edc2f094826ee56ddec6b73
     resource: repo://crates/decodex-runtime/src/ragflow.rs
-generated: { by: "codex", at: "2026-11-03T19:29:07.466Z" }
+generated: { by: "codex", at: "2026-11-04T08:04:10.801Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-03T19:29:07.466Z
+    at: 2026-11-04T08:04:10.801Z
 ---
 
 # Native tools and connection ownership
@@ -60,7 +60,7 @@ The explicit [EGM Component](elephant-goldfish.md) is a narrow native-lifecycle 
 
 ## Native settings boundaries
 
-The built-in [Assistant lifecycle](../decisions/assistant-lifecycle.md) exposes RAGFlow as an optional managed service component. Install prepares RAGFlow nightly, compatible Infinity and local models, creates a private account and API credential, and configures dedicated Memory automatically. It requires a running Docker engine. The row shares version metadata, lifecycle buttons, disclosure and inline feedback with the other components. Update reads the actual installed version; Uninstall stops the owned project and keeps its data for reinstall. There is no Connect action or manual credentials form.
+The built-in [Assistant lifecycle](../decisions/assistant-lifecycle.md) exposes RAGFlow as an optional managed service component. Install prepares RAGFlow nightly, compatible Infinity and its private service account. Configure models accepts an OpenAI-compatible Base URL, optional API key and custom extraction and embedding model names. Native verification precedes saving and automatic dedicated Memory setup. The component installs no model runtime or weights. It requires a running Docker engine. The row shares version metadata, lifecycle buttons, disclosure and inline feedback with the other components. Update reads the actual installed version; Uninstall stops the owned project and keeps its data for reinstall. Service connection is automatic, with no Connect action or service-account form.
 
 The HTTP adapter uses explicit dataset, Memory, Assistant and user scopes. It saves an origin-bound private component credential; settings retain only its reference. Legacy service-environment references remain supported. Knowledge retrieval and Memory are separate. Chat import starts off and needs its own direct-user opt-in; Update preserves that choice.
 

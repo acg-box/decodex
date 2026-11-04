@@ -396,7 +396,31 @@ impl SettingsSurface {
 		));
 		let mut body = gpui::div().flex().flex_col().gap_2().child(self.ragflow_component(cx));
 		let mut actions = gpui::div().flex().gap_2();
-		if state.as_ref().is_some_and(|s| s.memory_ready) {
+		if state.as_ref().is_some_and(|s| s.editing) {
+			for (id, label, action) in [
+				(
+					"components-ragflow-models-save",
+					"Save models",
+					RagflowComponentAction::SaveModels,
+				),
+				(
+					"components-ragflow-models-cancel",
+					"Cancel",
+					RagflowComponentAction::CancelModels,
+				),
+			] {
+				actions =
+					actions.child(self.component_button(id, label, Action::Ragflow(action), cx));
+			}
+		} else if installed {
+			actions = actions.child(self.component_button(
+				"components-ragflow-models",
+				"Configure models",
+				Action::Ragflow(RagflowComponentAction::ConfigureModels),
+				cx,
+			));
+		}
+		if state.as_ref().is_some_and(|s| s.memory_ready && !s.editing) {
 			actions = actions.child(self.component_button(
 				"components-ragflow-import",
 				if state.as_ref().is_some_and(|s| s.import) {

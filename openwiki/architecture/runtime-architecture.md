@@ -160,10 +160,10 @@ sources:
     resource: repo://scripts/macos/stage_decodex_app.sh
   - id: openwiki-source-76081c1a47ca8cf32593de34
     resource: repo://scripts/macos/test_decodex_app_stage.sh
-generated: { by: "codex", at: "2026-11-03T19:29:07.466Z" }
+generated: { by: "codex", at: "2026-11-04T08:04:10.801Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-03T19:29:07.466Z
+    at: 2026-11-04T08:04:10.801Z
 ---
 
 # Runtime Architecture
@@ -297,13 +297,15 @@ The per-server cached-catalog switch saves `mcp_servers.<quoted-server>.startup_
 
 `decodex-components` owns one per-user component store, package verification and cache repair. The GUI and service embed the same runtime requirement. App startup prepares that component before launching the owned service; preparation does not consume connection retry attempts. Settings > Components shows the selected component, progress, errors and Retry. Optional EGM installation, update and removal use the native Codex plugin lifecycle. Sparkle owns the separate Decodex application update flow in Settings > Updates.
 
-Assistant is built in and always available from the sidebar. Its first use publishes an idle Agent and its role in one SQLite transaction. Components has no Assistant Enable control. The optional RAGFlow component shares lifecycle buttons, version metadata, collapsed details and inline feedback with the other components. It exposes Install, Update and Uninstall; configuration has no separate Connect action or credentials form.
+Assistant is built in and always available from the sidebar. Its first use publishes an idle Agent and its role in one SQLite transaction. Components has no Assistant Enable control. The optional RAGFlow component shares lifecycle buttons, version metadata, collapsed details and inline feedback with the other components. It exposes Install, Update and Uninstall. Service connection is automatic; model settings use the component details.
 
-`decodex-components::ragflow` owns a per-user Docker Compose project. Docker must be running. The project contains RAGFlow nightly, compatible Infinity 0.7.4, MySQL, MinIO, Kvrocks, NATS and Ollama. Only the RAGFlow API is published, on loopback. The component prepares local Qwen3 1.7B and BGE-M3 models, creates a private account and API credential, and creates or recovers a dedicated Memory by its stable name. It reads the actual server version and owned service image identity. The private receipt retains the project, endpoint and setup state so a retry uses the same installation.
+`decodex-components::ragflow` owns a per-user Docker Compose project. Docker must be running. The project contains RAGFlow nightly, compatible Infinity 0.7.4, MySQL, MinIO, Kvrocks and NATS. Only the RAGFlow API is published, on loopback. Install prepares the private account and reads the actual server version and owned image identity. The private receipt retains the project, endpoint and setup state so a retry uses the same installation.
 
-On ARM64, the component packages the official Infinity 0.7.4 binary with an Ubuntu 24.04 runtime. The published ARM64 image has an older glibc than its binary requires. The small build context contains only the runtime Dockerfile; account and Compose credentials stay outside it. The x86-64 path uses the compatible official Infinity image directly. This does not install a host compiler or add a Decodex execution engine.
+Model configuration uses one OpenAI-compatible Base URL, optional API key, extraction model name and embedding model name. The component asks RAGFlow to verify the exact models before saving the provider instance and defaults. It then creates or recovers a dedicated Memory by its stable name. The component does not install a model runtime, download models or create a model data volume. A loopback model URL is translated to `host.docker.internal` for the container; the saved and displayed URL stays as entered. Existing indexed Memory keeps its embedding model and endpoint, because a changed vector space would invalidate the saved index.
 
-The component saves an origin-bound API key in a private component file and sends only its reference through the existing Assistant Configure command. The service reads that reference for Memory calls. Chat import starts off; Update preserves the existing import choice and data. Uninstall stops only the owned project, clears its Assistant connection and retains volumes for reinstallation. A partial setup remains visible and can retry through Update. Native context refresh and the external-memory policy retain their existing service and Codex owners.
+On ARM64, the component packages the official Infinity 0.7.4 binary and analyzer resources with an Ubuntu 24.04 runtime. The published ARM64 image has an older glibc than its binary requires. The build context contains only the runtime Dockerfile; account and Compose credentials stay outside it. The x86-64 path uses the compatible official Infinity image directly. This does not install a host compiler or add a Decodex execution engine.
+
+Model credentials and installation state stay in the private component receipt. The separate origin-bound RAGFlow API credential is saved in a private component file; only its reference passes through the existing Assistant Configure command. The service reads that reference for Memory calls. Chat import starts off. Update preserves models, credentials, import choice and data. Uninstall stops only the owned project, clears its Assistant connection and retains volumes for reinstallation. A service failure can retry through Update; failed model verification keeps the previous saved configuration and is retried through Save models. Native context refresh and the external-memory policy retain their existing service and Codex owners.
 
 Official Release inputs require an exact tag, canonical OpenAI asset URL, archive SHA-256, executable SHA-256 and generated schema fingerprint. The installer checks the archive before extraction, then verifies signatures, version and protocol evidence. Downloads have three bounded attempts. A verified replacement is published atomically; a failed repair preserves the previous directory, and other versions remain available.
 

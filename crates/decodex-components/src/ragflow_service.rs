@@ -13,7 +13,7 @@ use std::{
 	time::{Duration, Instant},
 };
 
-use reqwest::{blocking::Client, redirect::Policy};
+use reqwest::{Url, blocking::Client, redirect::Policy};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::{Digest as _, Sha256};
@@ -21,8 +21,45 @@ use sha2::{Digest as _, Sha256};
 use super::{MemorySetup, response};
 use crate::{ComponentStore, Result};
 
-const CHAT: &str = "qwen3:1.7b";
-const EMBEDDING: &str = "bge-m3";
+const PROVIDER: &str = "OpenAI-API-Compatible";
+
+/// One OpenAI-compatible endpoint for extraction and embeddings. Kept in private storage.
+#[derive(Clone, Default, Deserialize, Serialize, Eq, PartialEq)]
+pub struct Models {
+	pub base_url: String,
+	pub api_key: String,
+	pub chat_model: String,
+	pub embedding_model: String,
+}
+
+impl Models {
+	pub fn validate(&self) -> Result<()> {
+		let url = Url::parse(self.base_url.trim()).map_err(|_| "Enter a valid model Base URL.")?;
+		if !matches!(url.scheme(), "http" | "https")
+			|| url.host_str().is_none()
+			|| !url.username().is_empty()
+			|| url.password().is_some()
+			|| url.query().is_some()
+			|| url.fragment().is_some()
+		{
+			return Err(
+				"Use an HTTP or HTTPS model Base URL without credentials or a query.".into()
+			);
+		}
+		if self.chat_model.trim().is_empty() || self.embedding_model.trim().is_empty() {
+			return Err("Enter the extraction and embedding model names.".into());
+		}
+		Ok(())
+	}
+
+	fn service_url(&self) -> String {
+		let mut url = Url::parse(self.base_url.trim()).expect("validated model URL");
+		if matches!(url.host_str(), Some("localhost" | "127.0.0.1" | "[::1]")) {
+			url.set_host(Some("host.docker.internal")).expect("Docker host name");
+		}
+		url.to_string().trim_end_matches('/').into()
+	}
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Action {
@@ -38,17 +75,65 @@ pub struct Installation {
 	pub version: String,
 	pub image: String,
 	pub memory: Option<MemorySetup>,
+	#[serde(default)]
+	pub models: Option<Models>,
 	project: String,
 	password: String,
 	pub installed: bool,
 }
 
 impl ComponentStore {
+	pub fn configure_ragflow_models(
+		&self,
+		models: Models,
+		namespace: &str,
+	) -> Result<Installation> {
+		models.validate()?;
+		let directory = self.root.join("ragflow/service");
+		let mut config = read(&directory)?
+			.filter(|i| i.installed)
+			.ok_or("Install RAGFlow before configuring its models.")?;
+		let client = service_client()?;
+		let token = account_token(&client, &config)?;
+		// Native Memory owns whether an existing embedding choice can change.
+		if let Some(memory) = &config.memory {
+			let messages = response(
+				client
+					.get(format!("{}/api/v1/memories/{}?page_size=1", config.url, memory.memory_id))
+					.header("Authorization", &token),
+			)?;
+			if messages["messages"]["total_count"]
+				.as_u64()
+				.ok_or("RAGFlow returned an invalid Memory message count.")?
+				> 0
+				&& config.models.as_ref().is_none_or(|old| {
+					old.embedding_model != models.embedding_model || old.base_url != models.base_url
+				}) {
+				return Err("This Memory already contains messages. Keep its embedding model and Base URL to preserve the saved index.".into());
+			}
+		}
+		configure_models(&client, &config, &token, &models)?;
+		let key = api_key(&client, &config.url, &token)?;
+		let memory = self.setup_ragflow(&config.url, &key, namespace)?;
+		response(
+			client
+				.put(format!("{}/api/v1/memories/{}", config.url, memory.memory_id))
+				.header("Authorization", &token)
+				.json(&json!({
+				 "llm_id":model_id(&models.chat_model),"embd_id":model_id(&models.embedding_model)
+				})),
+		)?;
+		config.memory = Some(memory);
+		config.models = Some(models);
+		write(&directory, &config)?;
+		Ok(config)
+	}
+
 	pub fn ragflow_installation(&self) -> Result<Option<Installation>> {
 		read(&self.root.join("ragflow/service"))
 	}
 
-	/// Install or update the owned stack and configure usable Memory in the same action.
+	/// Install or update the owned service and reuse its saved model configuration.
 	pub fn apply_ragflow(
 		&self,
 		action: Action,
@@ -104,6 +189,7 @@ impl ComponentStore {
 				image: String::new(),
 				version: "nightly".into(),
 				memory: None,
+				models: None,
 				installed: false,
 			}
 		};
@@ -135,17 +221,22 @@ impl ComponentStore {
 		// Keep the owned identity before effects so retries and Uninstall use the same stack.
 		config.installed = true;
 		write(&directory, &config)?;
-		progress("Downloading RAGFlow nightly and local models…");
+		progress("Downloading RAGFlow nightly…");
 		run(&["pull", "--ignore-buildable"])?;
 		progress("Starting RAGFlow and Infinity…");
-		run(&["up", "--detach", "--build", "--force-recreate", "--wait", "--wait-timeout", "600"])?;
+		run(&[
+			"up",
+			"--detach",
+			"--build",
+			"--force-recreate",
+			"--remove-orphans",
+			"--wait",
+			"--wait-timeout",
+			"600",
+		])?;
 
 		progress("Configuring Assistant Memory…");
-		let client = Client::builder()
-			.timeout(Duration::from_secs(10))
-			.redirect(Policy::none())
-			.build()
-			.map_err(|_| "Could not prepare the local RAGFlow connection.")?;
+		let client = service_client()?;
 		let deadline = Instant::now() + Duration::from_secs(600);
 		loop {
 			if client
@@ -171,17 +262,10 @@ impl ComponentStore {
 		config.version = format!("nightly ({reported_version})");
 		config.image = run(&["images", "--quiet", "ragflow"])?.trim().into();
 		write(&directory, &config)?;
-		let key = bootstrap(&client, &config)?;
-		for model in [CHAT, EMBEDDING] {
-			progress(&format!("Preparing {model}…"));
-			run(&["exec", "-T", "ollama", "ollama", "pull", model]).map_err(|_| {
-				format!(
-					"Could not download the local model {model}. Check Docker and the network, then retry Update."
-				)
-			})?;
+		account_token(&client, &config)?;
+		if let Some(models) = config.models.clone() {
+			return self.configure_ragflow_models(models, namespace).map(Some);
 		}
-		config.memory = Some(self.setup_ragflow(&config.url, &key, namespace)?);
-		write(&directory, &config)?;
 		Ok(Some(config))
 	}
 }
@@ -228,7 +312,15 @@ fn run_command(command: &mut Command, password: &str) -> Result<String> {
 	Ok(String::from_utf8_lossy(&output.stdout).into_owned())
 }
 
-fn bootstrap(client: &Client, config: &Installation) -> Result<String> {
+fn service_client() -> Result<Client> {
+	Client::builder()
+		.timeout(Duration::from_secs(30))
+		.redirect(Policy::none())
+		.build()
+		.map_err(|_| "Could not prepare the RAGFlow connection.".into())
+}
+
+fn account_token(client: &Client, config: &Installation) -> Result<String> {
 	let url = &config.url;
 	let email = format!("{}@decodex.local", config.project);
 	let login = || {
@@ -253,29 +345,56 @@ fn bootstrap(client: &Client, config: &Installation) -> Result<String> {
 			.ok_or("Could not initialize the local RAGFlow account. Retry Update.")?
 			.to_owned()
 	};
-	let auth = |r: reqwest::blocking::RequestBuilder| r.header("Authorization", &token);
+	Ok(token)
+}
+
+fn model_id(name: &str) -> String {
+	format!("{name}@decodex@{PROVIDER}")
+}
+
+fn configure_models(
+	client: &Client,
+	config: &Installation,
+	token: &str,
+	models: &Models,
+) -> Result<()> {
+	let url = &config.url;
+	let auth = |r: reqwest::blocking::RequestBuilder| r.header("Authorization", token);
 	response(
 		auth(client.put(format!("{url}/api/v1/providers")))
-			.json(&json!({"provider_name":"Ollama"})),
+			.json(&json!({"provider_name":PROVIDER})),
 	)?;
-	let instances = response(auth(client.get(format!("{url}/api/v1/providers/Ollama/instances"))))?;
-	if !instances
+	let instances =
+		response(auth(client.get(format!("{url}/api/v1/providers/{PROVIDER}/instances"))))?;
+	let exists = instances
 		.as_array()
 		.ok_or("Invalid RAGFlow model configuration.")?
 		.iter()
-		.any(|i| i["instance_name"] == "decodex")
-	{
-		response(auth(client.post(format!("{url}/api/v1/providers/Ollama/instances"))).json(
-			&json!({
-				"instance_name":"decodex","base_url":"http://ollama:11434","model_info":[
-					{"model_name":CHAT,"model_type":["chat"],"max_tokens":8192},
-					{"model_name":EMBEDDING,"model_type":["embedding"],"max_tokens":8192}
-				]
-			}),
-		))?;
+		.any(|i| i["instance_name"] == "decodex");
+	let path = format!("{url}/api/v1/providers/{PROVIDER}/instances");
+	let request = if exists { client.put(format!("{path}/decodex")) } else { client.post(path) };
+	let mut info = vec![json!({"model_name":models.chat_model,"model_type":["chat"]})];
+	if models.chat_model == models.embedding_model {
+		info[0]["model_type"] = json!(["chat", "embedding"]);
+	} else {
+		info.push(json!({"model_name":models.embedding_model,"model_type":["embedding"]}));
 	}
+	response(auth(client.post(format!("{url}/api/v1/providers/{PROVIDER}/connection"))).json(
+		&json!({"api_key":models.api_key,"base_url":models.service_url(),"model_info":info}),
+	))
+	.map_err(|_| "Could not verify the models. Check the Base URL, API key and model names.")?;
+	response(auth(request).json(&json!({"instance_name":"decodex","api_key":models.api_key,
+  "clear_api_key":models.api_key.is_empty(),"base_url":models.service_url(),"model_info":info})))?;
 	let defaults = response(auth(client.get(format!("{url}/api/v1/users/me/models"))))?;
-	response(auth(client.patch(format!("{url}/api/v1/users/me/models"))).json(&json!({"tenant_id":defaults["tenant_id"],"asr_id":defaults["asr_id"],"img2txt_id":defaults["img2txt_id"],"llm_id":format!("{CHAT}@decodex@Ollama"),"embd_id":format!("{EMBEDDING}@decodex@Ollama")})))?;
+	response(auth(client.patch(format!("{url}/api/v1/users/me/models"))).json(&json!({
+	 "tenant_id":defaults["tenant_id"],"asr_id":defaults["asr_id"],"img2txt_id":defaults["img2txt_id"],
+	 "llm_id":model_id(&models.chat_model),"embd_id":model_id(&models.embedding_model)
+	})))?;
+	Ok(())
+}
+
+fn api_key(client: &Client, url: &str, token: &str) -> Result<String> {
+	let auth = |r: reqwest::blocking::RequestBuilder| r.header("Authorization", token);
 	let keys = response(auth(client.get(format!("{url}/api/v1/system/tokens"))))?;
 	if let Some(key) =
 		keys.as_array().and_then(|keys| keys.first()).and_then(|key| key["token"].as_str())
@@ -336,9 +455,8 @@ fn compose(config: &Installation) -> Value {
 		"infinity":{"image":if cfg!(target_arch="aarch64"){"infiniflow/infinity:v0.7.4-arm64"}else{"infiniflow/infinity:v0.7.4-x64-v3"},"command":["-f","/infinity.toml"],"volumes":["infinity:/var/infinity","./infinity.toml:/infinity.toml:ro"],"healthcheck":health(json!(["CMD","curl","--fail","http://localhost:23820/admin/node/current"]))},
 		"minio":{"image":"pgsty/silo:RELEASE.2026-08-06T00-00-00Z","command":["server","/data"],"environment":{"MINIO_ROOT_USER":"decodex","MINIO_ROOT_PASSWORD":secret},"volumes":["minio:/data"],"healthcheck":health(json!(["CMD","curl","--fail","http://localhost:9000/minio/health/live"]))},
 		"kvrocks":{"image":"apache/kvrocks:2.16.0","user":"0:0","entrypoint":["kvrocks","-c","/etc/kvrocks/decodex.conf"],"volumes":["kvrocks:/var/lib/kvrocks","./kvrocks.conf:/etc/kvrocks/decodex.conf:ro"],"healthcheck":health(json!(["CMD","redis-cli","-a",secret,"ping"]))},
-		"nats":{"image":"nats:2.14.2","command":["-js","-sd","/data"],"volumes":["nats:/data"],"healthcheck":health(json!(["CMD","nats-server","--health-check"]))},
-		"ollama":{"image":"ollama/ollama:latest","volumes":["models:/root/.ollama"],"healthcheck":health(json!(["CMD","ollama","list"]))}
-	},"volumes":{"mysql":{},"infinity":{},"minio":{},"kvrocks":{},"nats":{},"models":{}}});
+		"nats":{"image":"nats:2.14.2","command":["-js","-sd","/data"],"volumes":["nats:/data"],"healthcheck":health(json!(["CMD","nats-server","--health-check"]))}
+	},"volumes":{"mysql":{},"infinity":{},"minio":{},"kvrocks":{},"nats":{}}});
 	for service in value["services"].as_object_mut().expect("service template").values_mut() {
 		service["restart"] = json!("unless-stopped");
 		service["logging"] =
@@ -364,9 +482,12 @@ mod tests {
 			image: String::new(),
 			version: "nightly".into(),
 			memory: None,
+			models: None,
 			installed: true,
 		};
 		let services = compose(&config);
+		assert_eq!(services["services"].as_object().unwrap().len(), 6);
+		assert!(services["volumes"].get("models").is_none());
 		assert_eq!(services["services"]["ragflow"]["image"], "infiniflow/ragflow:nightly");
 		assert_eq!(services["services"]["ragflow"]["environment"]["DOC_ENGINE"], "infinity");
 		for (name, service) in services["services"].as_object().unwrap() {
@@ -376,6 +497,38 @@ mod tests {
 				assert!(service.get("ports").is_none());
 			}
 		}
+	}
+
+	#[test]
+	fn model_endpoints_keep_custom_paths_and_names_and_route_loopback_to_the_host() {
+		for url in ["http://localhost:1234/v1", "http://127.0.0.1:1234/v1", "http://[::1]:1234/v1"]
+		{
+			let models = Models {
+				base_url: url.into(),
+				chat_model: "my/custom-model:preview".into(),
+				embedding_model: "embed-custom".into(),
+				..Default::default()
+			};
+			models.validate().unwrap();
+			assert_eq!(models.service_url(), "http://host.docker.internal:1234/v1");
+			assert_eq!(
+				model_id(&models.chat_model),
+				"my/custom-model:preview@decodex@OpenAI-API-Compatible"
+			);
+		}
+		let models = Models {
+			base_url: "https://models.example/api/v1".into(),
+			api_key: "fixture-secret".into(),
+			chat_model: "custom-chat".into(),
+			embedding_model: "custom-embedding".into(),
+		};
+		models.validate().unwrap();
+		assert_eq!(models.service_url(), models.base_url);
+		assert!(
+			Models { base_url: "https://user:password@models.example/v1".into(), ..models }
+				.validate()
+				.is_err()
+		);
 	}
 
 	#[test]
@@ -391,6 +544,7 @@ mod tests {
 			image: String::new(),
 			version: "nightly".into(),
 			memory: None,
+			models: None,
 			installed: true,
 		};
 		write(&directory, &config).unwrap();

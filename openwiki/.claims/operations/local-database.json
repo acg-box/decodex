@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:264ec528decdd32d881fd7685405649992ea95df477ce715dbc54db1707b5992",
+  "pageVersion": "sha256:fcac65302c6b57dc0748cb15d9e8b318992d2f324a8e14b2933a0a9b461300c8",
   "claims": [
     {
       "id": "claim_e8d1527490f540cdafcbe921403c8c3c",
@@ -216,7 +216,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-components/src/ragflow.rs",
-          "version": "repo-file-v1:sha256:8fce3a9084a4e4d3fee315bcbe47c37420d78510999c4af785a94ab8918df1c9"
+          "version": "repo-file-v1:sha256:fbeb33d1d721cd020eb3e404b47cf03a84cf6d3ca3a2da35af1c391c3b16d96c"
         },
         {
           "resource": "repo://database/src/agent.rs",
@@ -230,15 +230,15 @@
     },
     {
       "id": "claim_3ac3bf9844f94897908ecc5d6781d917",
-      "statement": "The managed RAGFlow service keeps its generated account, actual version, image and Memory installation receipt in private component files, with service data in its owned Docker volumes. Update reuses those volumes; Uninstall clears the Assistant connection and stops the owned project while retaining volumes and installation identity for reinstall, without changing the product SQLite schema.",
+      "statement": "The managed RAGFlow component keeps its generated account, actual version, image, Memory and user model settings including API key in private component files. The service directory is mode 0700 and private files are mode 0600. RAGFlow data uses owned Docker volumes, with no installed model runtime or model volume. Update reuses models and data; Uninstall clears the Assistant connection and stops only the owned project while retaining data and identity for reinstall. The Decodex SQLite schema does not change.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs#L162-L307",
-          "version": "repo-lines-v1:sha256:80817df1ae8e98795c31cbea852797ceef13512349285e6321eb8d88c86a4779:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQ2LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI0MGY3NTlmNmJhMGM1OWE4NGFmMGQ2MmUxYmYyMDg5NTY0Y2I0M2RiNTkzOWFkMWUyMGQyYTMxYWIyNDkyZjYwIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI2N2NkYTgyZGE2MDYyMzhlMDVlNjIzOTk1NjljNWVlMDM5OTM0MTk2NDhhZTVkNDNhMmJmOGNkNjM0N2Y4MjYzIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIxNDIwZjAwYWJiNjU0YWRjYTc4ZmIxMDE2NmU2ZWEzZmRjYTdmNTFjM2YyMWIxMGVjYmJmOTAyYjVjZGQ2Y2NkIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIyMzM1NTA1ZTJkNGE4MDNkOWE1ODMwNjg3NTBkOTA4OWY5Y2I4NGQ4ZDFmMmQxNmJlN2M2NWJlZjhjYmJhYTZiIn0"
+          "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
+          "version": "repo-file-v1:sha256:9aa7bc5e963342eab22f84889714297f701c27989b71f274af89e0a8f9238863"
         },
         {
           "resource": "repo://crates/decodex-components/src/ragflow_service.rs",
-          "version": "repo-file-v1:sha256:a0a09c056efa2cb4b0dedff5df3a185ad8fc29d04f54bacd612c985dcb400d56"
+          "version": "repo-file-v1:sha256:64a37d1398aa104d9ecaa0fd12e29c770fbc5a2c7db7b3d395e3f48487f0524f"
         },
         {
           "resource": "repo://database/schema.sql",
@@ -249,6 +249,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-03T19:29:07.466Z"
+    "at": "2026-11-04T08:04:10.801Z"
   }
 }

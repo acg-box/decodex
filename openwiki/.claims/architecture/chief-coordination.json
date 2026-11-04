@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:b28deac48e30ed84d68740a69659129507724ab266ae7be41ab44b4cd96d3dd3",
+  "pageVersion": "sha256:ad75578d13425715dc40f68aafb7f7ff9fe25ef87d161118f237c0073a467ed4",
   "claims": [
     {
       "id": "claim_43786e7afb4249548ed4fab09e0e4afa",
@@ -520,11 +520,15 @@
     },
     {
       "id": "claim_4e963680d80e479cba24b6b3602e8b6e",
-      "statement": "The Assistant groups existing independent Agents into lightweight teams and registers independent wakes in the existing Inbox journal. Work and scoped Collaboration retain outcome ownership; Settings > Components configures the optional RAGFlow connection.",
+      "statement": "The Assistant groups existing independent Agents into lightweight teams and registers independent wakes in the existing Inbox journal. Work and scoped Collaboration retain outcome ownership. Settings > Components installs optional RAGFlow and accepts an OpenAI-compatible Base URL, optional API key and custom extraction and embedding model names before automatic Memory setup.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
-          "version": "repo-file-v1:sha256:1a8160407ba442f58fd2e7da401f9ff00f61b831d7fa61a0739b648ceb521df9"
+          "version": "repo-file-v1:sha256:9aa7bc5e963342eab22f84889714297f701c27989b71f274af89e0a8f9238863"
+        },
+        {
+          "resource": "repo://crates/decodex-components/src/ragflow_service.rs",
+          "version": "repo-file-v1:sha256:64a37d1398aa104d9ecaa0fd12e29c770fbc5a2c7db7b3d395e3f48487f0524f"
         },
         {
           "resource": "repo://database/src/assistant.rs",
@@ -538,7 +542,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
-          "version": "repo-file-v1:sha256:1a8160407ba442f58fd2e7da401f9ff00f61b831d7fa61a0739b648ceb521df9"
+          "version": "repo-file-v1:sha256:9aa7bc5e963342eab22f84889714297f701c27989b71f274af89e0a8f9238863"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent_host.rs",
@@ -553,6 +557,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-03T19:29:07.466Z"
+    "at": "2026-11-04T08:04:10.801Z"
   }
 }

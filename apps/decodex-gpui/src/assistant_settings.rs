@@ -1,16 +1,22 @@
 //! Assistant is built in. RAGFlow uses the same install lifecycle as other components.
 use crate::{
-	shell::agent_surface::{AgentActionDto, AgentSurface, EntityId},
+	shell::agent_surface::{AgentActionDto, AgentSurface, ComposerInput, EntityId},
 	ui_feedback::Feedback,
 	ui_theme,
 };
 use decodex_components::{
 	ComponentStore,
-	ragflow::{Action, Installation},
+	ragflow::{Action, Installation, Models},
 };
 use decodex_protocol::{AssistantCommand, ProfileKind, RagflowConnection};
-use gpui::{AnyElement, Context, IntoElement as _, ParentElement as _, Styled as _, Task};
-use std::sync::{Arc, Mutex};
+use gpui::{
+	AnyElement, AppContext as _, Context, Entity, IntoElement as _, ParentElement as _,
+	Styled as _, Task,
+};
+use std::{
+	collections::BTreeMap,
+	sync::{Arc, Mutex},
+};
 
 #[derive(Clone, Copy)]
 pub(crate) enum ComponentAction {
@@ -18,18 +24,23 @@ pub(crate) enum ComponentAction {
 	Update,
 	Uninstall,
 	ToggleImport,
+	ConfigureModels,
+	SaveModels,
+	CancelModels,
 }
 pub(crate) struct ComponentState {
 	pub installed: bool,
 	pub version: Option<String>,
 	pub feedback: Option<Feedback>,
 	pub memory_ready: bool,
+	pub editing: bool,
 	pub import: bool,
 	pub busy: bool,
 }
 #[derive(Default)]
 pub(super) struct Panel {
 	setup: Option<Task<()>>,
+	fields: BTreeMap<&'static str, Entity<ComposerInput>>,
 	installation: Option<Installation>,
 	inspected: bool,
 	progress: Arc<Mutex<String>>,
@@ -92,7 +103,16 @@ impl AgentSurface {
 			.as_ref()
 			.is_some_and(|i| i.installed && i.memory.is_none())
 		{
-			Some(Feedback::warning("RAGFlow setup is incomplete. Choose Update to finish."))
+			Some(
+				if self.assistant_settings.installation.as_ref().is_some_and(|i| i.models.is_some())
+				{
+					Feedback::warning(
+						"Memory setup is incomplete. Save the model settings to retry.",
+					)
+				} else {
+					Feedback::neutral("Configure models to enable Assistant Memory.")
+				},
+			)
 		} else {
 			self.snapshot
 				.as_ref()
@@ -100,6 +120,7 @@ impl AgentSurface {
 				.map(Feedback::neutral)
 		};
 		ComponentState {
+			editing: !self.assistant_settings.fields.is_empty(),
 			feedback,
 			memory_ready: self
 				.snapshot
@@ -129,6 +150,22 @@ impl AgentSurface {
 		if self.ragflow_component_state().busy {
 			return;
 		}
+		match action {
+			ComponentAction::ConfigureModels => {
+				self.edit_memory_models(cx);
+				return;
+			},
+			ComponentAction::CancelModels => {
+				self.assistant_settings.fields.clear();
+				cx.notify();
+				return;
+			},
+			ComponentAction::SaveModels => {
+				self.save_memory_models(cx);
+				return;
+			},
+			_ => {},
+		}
 		if matches!(action, ComponentAction::ToggleImport) {
 			if let Some(mut connection) =
 				self.snapshot.as_ref().and_then(|s| s.assistant.settings.ragflow.clone())
@@ -153,10 +190,104 @@ impl AgentSurface {
 	}
 
 	pub(crate) fn ragflow_settings_view(&self, _cx: &mut Context<Self>) -> AnyElement {
-		gpui::div().flex().flex_col().gap_2()
-   .child(ui_theme::settings_description("Install RAGFlow nightly with Infinity and local models. Decodex configures Assistant Memory automatically. Docker must be running."))
-   .child(ui_theme::settings_description("Chat import starts off. RAGFlow Memory disables Codex memory for Assistant at the next safe context refresh. Uninstall stops the service and keeps saved memory for reinstallation."))
-   .into_any_element()
+		let mut body =
+			gpui::div().w_full().flex().flex_col().gap_2().child(ui_theme::settings_description(
+				"Install RAGFlow nightly with Infinity. Docker must be running.",
+			));
+		if !self.assistant_settings.fields.is_empty() {
+			for (key, label) in [
+				("url", "Base URL"),
+				("key", "API key"),
+				("chat", "Extraction model"),
+				("embedding", "Embedding model"),
+			] {
+				if let Some(field) = self.assistant_settings.fields.get(key) {
+					body = body.child(ui_theme::settings_description(label)).child(field.clone());
+				}
+			}
+			body = body.child(ui_theme::settings_description("Use an OpenAI-compatible API. Enter the exact model names. Leave the API key empty to keep a saved key for the same Base URL, or for a service that needs no key."));
+		} else if let Some(models) =
+			self.assistant_settings.installation.as_ref().and_then(|i| i.models.as_ref())
+		{
+			for (label, value) in [
+				("Base URL", &models.base_url),
+				("Extraction model", &models.chat_model),
+				("Embedding model", &models.embedding_model),
+			] {
+				body = body.child(ui_theme::settings_description(format!("{label}: {value}")));
+			}
+		}
+		body.child(ui_theme::settings_description("RAGFlow Memory disables Codex memory for Assistant at the next safe context refresh. Chat import starts off. Uninstall keeps saved memory for reinstallation.")).into_any_element()
+	}
+
+	fn edit_memory_models(&mut self, cx: &mut Context<Self>) {
+		let models = self
+			.assistant_settings
+			.installation
+			.as_ref()
+			.and_then(|i| i.models.clone())
+			.unwrap_or_default();
+		for (key, value, label) in [
+			("url", models.base_url, "Base URL"),
+			("key", String::new(), "API key"),
+			("chat", models.chat_model, "Extraction model"),
+			("embedding", models.embedding_model, "Embedding model"),
+		] {
+			let input = cx.new(|cx| ComposerInput::with_placeholder(40, "", label, cx));
+			input.update(cx, |i, cx| {
+				if key == "key" {
+					i.obscure();
+				}
+				i.set_content(&value, cx);
+			});
+			self.assistant_settings.fields.insert(key, input);
+		}
+		self.assistant_settings.error.clear();
+		cx.notify();
+	}
+
+	fn save_memory_models(&mut self, cx: &mut Context<Self>) {
+		let read = |key| {
+			self.assistant_settings
+				.fields
+				.get(key)
+				.map(|f| f.read(cx).content().trim().to_owned())
+				.unwrap_or_default()
+		};
+		let mut models = Models {
+			base_url: read("url"),
+			api_key: read("key"),
+			chat_model: read("chat"),
+			embedding_model: read("embedding"),
+		};
+		if models.api_key.is_empty()
+			&& let Some(saved) = self
+				.assistant_settings
+				.installation
+				.as_ref()
+				.and_then(|i| i.models.as_ref())
+				.filter(|m| m.base_url == models.base_url)
+		{
+			models.api_key.clone_from(&saved.api_key);
+		}
+		if let Err(error) = models.validate() {
+			self.assistant_settings.error = error;
+			cx.notify();
+			return;
+		}
+		let Some(profile) = self.profile.clone().filter(|p| p.kind() == ProfileKind::Local) else {
+			return;
+		};
+		let Some(owner) = self.assistant_id() else {
+			return;
+		};
+		let namespace = format!("{}:assistant", profile.expected_server_id().as_str());
+		*self.assistant_settings.progress.lock().expect("component progress") =
+			"Configuring Assistant Memory…".into();
+		let request = cx.background_executor().spawn(async move {
+			ComponentStore::for_user()?.configure_ragflow_models(models, &namespace).map(Some)
+		});
+		self.finish_memory_component(request, profile, owner, cx);
 	}
 
 	pub(super) fn continue_memory_setup(&mut self, cx: &mut Context<Self>) {
@@ -238,7 +369,10 @@ impl AgentSurface {
 			ComponentAction::Install => Action::Install,
 			ComponentAction::Update => Action::Update,
 			ComponentAction::Uninstall => Action::Uninstall,
-			ComponentAction::ToggleImport => return,
+			ComponentAction::ToggleImport
+			| ComponentAction::ConfigureModels
+			| ComponentAction::SaveModels
+			| ComponentAction::CancelModels => return,
 		};
 		let progress = self.assistant_settings.progress.clone();
 		*progress.lock().expect("component progress") = "Preparing RAGFlow…".into();
@@ -247,6 +381,16 @@ impl AgentSurface {
 				*progress.lock().expect("component progress") = message.into()
 			})
 		});
+		self.finish_memory_component(request, profile, owner, cx);
+	}
+
+	fn finish_memory_component(
+		&mut self,
+		request: Task<decodex_components::Result<Option<Installation>>>,
+		profile: decodex_protocol::ClientProfile,
+		owner: String,
+		cx: &mut Context<Self>,
+	) {
 		self.assistant_settings.error.clear();
 		self.assistant_settings.setup = Some(cx.spawn(async move |surface, cx| {
 			let result = request.await;
@@ -258,6 +402,7 @@ impl AgentSurface {
 				s.assistant_settings.setup = None;
 				match result {
 					Ok(installation) => {
+						s.assistant_settings.fields.clear();
 						let mut connection = installation
 							.as_ref()
 							.filter(|i| i.installed)
@@ -322,7 +467,32 @@ fn memory_connection(memory: decodex_components::ragflow::MemorySetup) -> Ragflo
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use gpui::AppContext as _;
+	#[gpui::test]
+	fn model_configuration_masks_saved_keys_and_preserves_the_chat_draft(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let surface = cx.new(AgentSurface::new);
+		surface.update(cx, |s,cx| {
+   s.visual_workspace_fixture(cx);
+   s.assistant_settings.installation = Some(serde_json::from_value(serde_json::json!({
+    "url":"http://127.0.0.1:9380","version":"nightly (fixture)","image":"fixture","memory":null,
+    "models":{"base_url":"http://localhost:1234/v1","api_key":"private-fixture","chat_model":"custom-chat","embedding_model":"custom-embedding"},
+    "project":"fixture","password":"private-fixture","installed":true
+   })).unwrap());
+   s.composer.update(cx,|i,cx|i.set_content("Keep the chat draft",cx));
+   s.edit_memory_models(cx);
+   assert_eq!(s.assistant_settings.fields.len(),4);
+   assert_eq!(s.assistant_settings.fields["url"].read(cx).content(),"http://localhost:1234/v1");
+   assert_eq!(s.assistant_settings.fields["key"].read(cx).content(),"");
+   assert_eq!(s.assistant_settings.fields["chat"].read(cx).content(),"custom-chat");
+   let mut next = s.snapshot.clone().unwrap();
+   next.runtime_source = Some(EntityId::new("another-process").unwrap());
+   s.invalidate_snapshot_panels(&next);
+   assert!(s.assistant_settings.fields.is_empty());
+   assert_eq!(s.composer.read(cx).content(),"Keep the chat draft");
+  });
+	}
+
 	#[gpui::test]
 	fn first_assistant_message_uses_creation_choices_without_changing_the_previous_agent(
 		cx: &mut gpui::TestAppContext,
