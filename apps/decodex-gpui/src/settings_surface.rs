@@ -55,7 +55,6 @@ pub(crate) enum SettingsCategory {
 	Agents,
 	Appearance,
 	Components,
-	Updates,
 }
 impl SettingsCategory {
 	pub(crate) fn title(self) -> &'static str {
@@ -64,7 +63,6 @@ impl SettingsCategory {
 			Self::Agents => "Agents",
 			Self::Appearance => "Appearance",
 			Self::Components => "Components",
-			Self::Updates => "Updates",
 		}
 	}
 }
@@ -432,7 +430,6 @@ impl SettingsSurface {
 				.into_any_element(),
 			SettingsCategory::Appearance => self.appearance_content(cx),
 			SettingsCategory::Components => self.components_content(cx),
-			SettingsCategory::Updates => self.updates_content(cx),
 		}
 	}
 
@@ -552,6 +549,7 @@ impl SettingsSurface {
 					self.power_control(cx),
 				],
 			))
+			.child(self.app_updates(cx))
 			.into_any_element()
 	}
 
@@ -2159,6 +2157,7 @@ mod tests {
 			window.resize(gpui::size(gpui::px(1_490.0), gpui::px(1_055.0)));
 			window.draw(cx).clear(cx);
 		});
+		assert!(visual.debug_bounds("updates-check").is_some(), "General owns the update action");
 	}
 
 	#[gpui::test]

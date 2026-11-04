@@ -77,15 +77,16 @@ impl RenderOnce for QuotaMeter {
 		let color = if observed.is_some() { quota_color(value) } else { WB_TEXT_FAINT };
 
 		gpui::div()
-			.flex_1()
+			.w_full()
 			.min_w_0()
 			.flex()
 			.items_center()
-			.gap(gpui::px(4.))
+			.gap(gpui::px(8.))
 			.font_family(FONT_FAMILY)
-			.text_size(gpui::px(10.))
-			.text_color(ui_theme::rgb(WB_TEXT_FAINT))
-			.child(gpui::div().w(gpui::px(15.)).flex_none().child(self.label))
+			.text_size(gpui::px(ui_theme::SETTINGS_HELP_SIZE))
+			.line_height(gpui::px(18.))
+			.text_color(ui_theme::rgb(ui_theme::TEXT_MUTED))
+			.child(gpui::div().w(gpui::px(18.)).flex_none().child(self.label))
 			.child(
 				gpui::div()
 					.h(gpui::px(3.))
@@ -104,7 +105,7 @@ impl RenderOnce for QuotaMeter {
 			)
 			.child(
 				gpui::div()
-					.w(gpui::px(28.))
+					.w(gpui::px(34.))
 					.flex_none()
 					.text_right()
 					.text_color(ui_theme::rgb(color))
@@ -112,7 +113,7 @@ impl RenderOnce for QuotaMeter {
 			)
 			.child(
 				gpui::div()
-					.w(gpui::px(80.))
+					.w(gpui::px(96.))
 					.flex_none()
 					.text_right()
 					.whitespace_nowrap()

@@ -1,4 +1,4 @@
-//! Application updates use Sparkle. Component operations have a separate destination.
+//! General settings expose the native Sparkle update action.
 
 use gpui::{
 	AnyElement, Context, KeyDownEvent,
@@ -30,9 +30,9 @@ impl SettingsSurface {
 		cx.notify();
 	}
 
-	pub(super) fn updates_content(&self, cx: &mut Context<Self>) -> AnyElement {
+	pub(super) fn app_updates(&self, cx: &mut Context<Self>) -> AnyElement {
 		ui_theme::settings_group(
-			"Application",
+			"Updates",
 			vec![
 				gpui::div()
 					.child(

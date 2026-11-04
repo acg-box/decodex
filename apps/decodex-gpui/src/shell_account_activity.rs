@@ -1,4 +1,4 @@
-//! Compact saved-activity metrics and daily usage, matching the menu-bar disclosure.
+//! Account activity uses the menu-bar label/value hierarchy within the Settings card.
 #[cfg(any(test, feature = "visual-capture"))] use std::time::Instant;
 
 use gpui::{
@@ -69,12 +69,11 @@ pub(super) fn panel(shell: &Shell, account: &AccountDto) -> AnyElement {
 			move || format!("account-activity-{}", account.as_str())
 		})
 		.w_full()
-		.px(gpui::px(14.))
-		.py(gpui::px(6.))
 		.flex()
 		.flex_col()
-		.gap(gpui::px(6.))
-		.text_size(gpui::px(11.))
+		.gap(gpui::px(12.))
+		.text_size(gpui::px(ui_theme::SETTINGS_HELP_SIZE))
+		.line_height(gpui::px(18.))
 		.text_color(ui_theme::rgb(WB_TEXT_MUTED));
 	let profile = match snapshot.and_then(|s| s.result.as_ref()) {
 		Some(
@@ -96,11 +95,33 @@ pub(super) fn panel(shell: &Shell, account: &AccountDto) -> AnyElement {
 	};
 
 	content = content.child(
-		gpui::div()
-			.flex()
-			.flex_wrap()
-			.gap_3()
-			.children(metrics(profile).into_iter().map(|fact| gpui::div().child(fact))),
+		gpui::div().w_full().grid().grid_cols(2).gap_x(gpui::px(32.)).gap_y(gpui::px(8.)).children(
+			metrics(profile).into_iter().enumerate().map(|(index, (label, value))| {
+				gpui::div()
+					.id(("account-activity-metric", index))
+					.debug_selector({
+						let account = account.clone();
+						move || format!("account-activity-metric-{}-{index}", account.as_str())
+					})
+					.role(gpui::Role::Label)
+					.aria_label(format!("{label}: {value}"))
+					.flex()
+					.min_w_0()
+					.items_center()
+					.justify_between()
+					.gap_3()
+					.whitespace_nowrap()
+					.child(label)
+					.child(
+						gpui::div()
+							.flex_none()
+							.text_size(gpui::px(ui_theme::SETTINGS_LABEL_SIZE))
+							.font_weight(gpui::FontWeight::MEDIUM)
+							.text_color(ui_theme::rgb(ui_theme::TEXT))
+							.child(value),
+					)
+			}),
+		),
 	);
 
 	if !profile.daily_usage.is_empty() {
@@ -110,7 +131,7 @@ pub(super) fn panel(shell: &Shell, account: &AccountDto) -> AnyElement {
 			gpui::div()
 				.id("account-activity-chart")
 				.debug_selector(|| "account-activity-chart".into())
-				.h(gpui::px(20.))
+				.h(gpui::px(24.))
 				.w_full()
 				.flex()
 				.items_end()
@@ -126,7 +147,7 @@ pub(super) fn panel(shell: &Shell, account: &AccountDto) -> AnyElement {
 						.h(gpui::px(if day.tokens == 0 {
 							1.
 						} else {
-							(20. * (day.tokens as f32 / peak as f32).sqrt()).max(2.)
+							(24. * (day.tokens as f32 / peak as f32).sqrt()).max(2.)
 						}))
 						.rounded(gpui::px(1.5))
 						.bg(ui_theme::rgb(if day.tokens == 0 { WB_TEXT_FAINT } else { WB_BLUE }))
@@ -138,20 +159,23 @@ pub(super) fn panel(shell: &Shell, account: &AccountDto) -> AnyElement {
 	content.into_any_element()
 }
 
-fn metrics(profile: &AccountProfileDto) -> Vec<String> {
+fn metrics(profile: &AccountProfileDto) -> Vec<(&'static str, String)> {
 	let mut metrics = Vec::new();
 
 	if let Some(value) = profile.lifetime_tokens {
-		metrics.push(format!("Total tokens {}", agent_surface::compact_tokens(value)));
+		metrics.push(("Total tokens", agent_surface::compact_tokens(value)));
 	}
 	if let Some(value) = profile.peak_daily_tokens {
-		metrics.push(format!("Peak daily tokens {}", agent_surface::compact_tokens(value)));
+		metrics.push(("Daily peak", agent_surface::compact_tokens(value)));
 	}
-	if let Some(days) = profile.current_streak_days {
-		metrics.push(format!("Current streak {days}d"));
-	}
-	if let Some(days) = profile.longest_streak_days {
-		metrics.push(format!("Longest streak {days}d"));
+	let streak = match (profile.current_streak_days, profile.longest_streak_days) {
+		(Some(current), Some(longest)) => Some(format!("{current}d (best {longest}d)")),
+		(Some(current), None) => Some(format!("{current}d")),
+		(None, Some(longest)) => Some(format!("Best {longest}d")),
+		(None, None) => None,
+	};
+	if let Some(value) = streak {
+		metrics.push(("Streak", value));
 	}
 	if let Some(seconds) = profile.longest_task_seconds {
 		let (hours, minutes, remainder) = (seconds / 3_600, (seconds % 3_600) / 60, seconds % 60);
@@ -163,7 +187,7 @@ fn metrics(profile: &AccountProfileDto) -> Vec<String> {
 			format!("{seconds}s")
 		};
 
-		metrics.push(format!("Longest task {value}"));
+		metrics.push(("Longest task", value));
 	}
 
 	metrics
@@ -194,10 +218,26 @@ mod tests {
 			cx.notify();
 		});
 
-		visual.update(|w, cx| {
-			w.resize(gpui::size(gpui::px(1_440.), gpui::px(1_000.)));
-			w.draw(cx).clear(cx);
-		});
+		for (width, height) in [(1_440., 1_000.), (920., 620.)] {
+			visual.update(|w, cx| {
+				w.resize(gpui::size(gpui::px(width), gpui::px(height)));
+				w.draw(cx).clear(cx);
+			});
+			let cells = [
+				"account-activity-metric-70000000-0000-4000-8000-000000000001-0",
+				"account-activity-metric-70000000-0000-4000-8000-000000000001-1",
+				"account-activity-metric-70000000-0000-4000-8000-000000000001-2",
+				"account-activity-metric-70000000-0000-4000-8000-000000000001-3",
+			]
+			.map(|selector| visual.debug_bounds(selector).unwrap());
+			assert_eq!(cells[0].top(), cells[1].top());
+			assert_eq!(cells[2].top(), cells[3].top());
+			assert!(cells[0].right() < cells[1].left(), "metric columns have reading space");
+			assert!(cells[0].bottom() < cells[2].top(), "metrics must not wrap into each other");
+			assert!(
+				cells[3].bottom() < visual.debug_bounds("account-activity-chart").unwrap().top()
+			);
+		}
 
 		assert!(visual.debug_bounds("account-activity-chart").is_some());
 
@@ -228,5 +268,12 @@ mod tests {
 			visual.debug_bounds("account-activity-chart").is_some(),
 			"current-revision activity can be shown again"
 		);
+		let identity = visual.debug_bounds("account-identity-0").unwrap();
+		visual.simulate_click(identity.center(), Default::default());
+		visual.update(crate::ui_frame::draw_frame);
+		shell.read_with(visual, |s, _| assert!(s.expanded_accounts.is_empty()));
+		visual.simulate_click(identity.center(), Default::default());
+		visual.update(crate::ui_frame::draw_frame);
+		assert!(visual.debug_bounds("account-activity-chart").is_some());
 	}
 }
