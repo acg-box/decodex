@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:932b55e10d5f14b0b325b7839cb4b158addef6d30981ac6d852736c09aa1dca5",
+  "pageVersion": "sha256:d627d2bfb88da4539407d3f7ff29ad1ec4906647cd9b7322d48d4a7a740ce700",
   "claims": [
     {
       "id": "claim_613df7e7c10d49d28b26d6db94c525e5",
@@ -53,12 +53,12 @@
       "statement": "The attested native launch requests subagent context defaults, Agent message wakeups and full-fork prefix preservation without enabling multi_agent_v2 itself or forcing gRPC hosting; code_mode_tool_description_first is accepted as a removed native feature.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/account_launch/process.rs#L133-L153",
-          "version": "repo-lines-v1:sha256:a6b2eef1867776015de103e94d4bd067aedc8577c70159c8c792ab426e27b791:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIwMmQyYzBkNmRjNWU3NGQ5MmZhMTRiOTFkYmVhMjY0MDkwYmViMzVmZGI5MTg4ZDliMzQxMTgxZGNlOWY0Y2UiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM2YjU1MTM4Y2EyM2U2ZGFkMjJiNjQ4ZjgyOWNlZGM4MWQyMDNiMTlmMTc2MzRkZjZiZTc2MGY1M2JlNGVmOWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNhNmU0ZjMxZGM3MTM2OTU2NmI1MWNjMWExOTVkNDUwY2RmODU3NWU2ZDdhNzYxYzU2NDJiYTMwMjVkYzM0NzMifQ"
+          "resource": "repo://automations/upstream/qualification.json",
+          "version": "repo-file-v1:sha256:0c08a1458a9bd81c0b2677475996113dedad6be7a59ca2b6902df9d5b1bdee9e"
         },
         {
-          "resource": "repo://crates/decodex-runtime/src/account_launch/process_native_control_tests.rs#L120-L172",
-          "version": "repo-lines-v1:sha256:1ed06d41fd1a7dfa79fa06ae7c95fcb0aa2161d90e906380c49bde001a36aae7:eyJzZWxlY3RlZExpbmVDb3VudCI6NTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUxOTQ4NGVlZGYzNjRmYjhjMTJmMWViOThmYmY2YTliNGY2NTBmNDI3ODc0YThkNzM1OTAxMGFhZGU0MzFiYzgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk2MWQyODk2OTlkMGMxY2RkNjQyNGYwZjlkMWU2ZTI3ZjdiYjZmN2RhZTQ5M2EwZmY1ZDk3NTI3MGY4ZDM2MjkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+          "resource": "repo://crates/decodex-runtime/src/account_launch/process.rs#L133-L153",
+          "version": "repo-lines-v1:sha256:a6b2eef1867776015de103e94d4bd067aedc8577c70159c8c792ab426e27b791:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIwMmQyYzBkNmRjNWU3NGQ5MmZhMTRiOTFkYmVhMjY0MDkwYmViMzVmZGI5MTg4ZDliMzQxMTgxZGNlOWY0Y2UiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM2YjU1MTM4Y2EyM2U2ZGFkMjJiNjQ4ZjgyOWNlZGM4MWQyMDNiMTlmMTc2MzRkZjZiZTc2MGY1M2JlNGVmOWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNhNmU0ZjMxZGM3MTM2OTU2NmI1MWNjMWExOTVkNDUwY2RmODU3NWU2ZDdhNzYxYzU2NDJiYTMwMjVkYzM0NzMifQ"
         }
       ]
     },
@@ -77,8 +77,12 @@
       "statement": "The source-runtime builder verifies an exact official upstream archive URL and digest, recreates its extracted source cache, builds with stable Rust and the locked upstream Cargo graph, stamps the selected commit, and rejects Cargo-lock or package-identity changes.",
       "evidence": [
         {
-          "resource": "repo://scripts/macos/build_codex_source.mts#L21-L102",
-          "version": "repo-lines-v1:sha256:3ef179b854083637a307c37576d176b75e6131f3d3e10800c3dce9ddb736ecf1:eyJzZWxlY3RlZExpbmVDb3VudCI6ODIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxZjI4MjU4NWY1ZWQ3OTNiN2ViOTk3NDEyZDhkNmZjNDU3Yzc4MDgxY2FhMmJhODcwMDEwYTI4YjYwOTA0ZjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJjM2M1NDIyYWNkZjg0MTYwODIxYzEzNzM1NmRiODVkZDM1YzFkNDU4NGExMTRhN2NlYmYzZWU1OGQ1OWE2MzEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+          "resource": "repo://codex-runtime.lock.json",
+          "version": "repo-file-v1:sha256:05032a3c837d0f054ca33e88ef03f06357ff7a860d59bcb2f2606f7fcde486d7"
+        },
+        {
+          "resource": "repo://scripts/macos/build_codex_source.mts",
+          "version": "repo-file-v1:sha256:3cae22e7c6a08c730aec4cfc4b202fbf2db10188e18d12ce4e3c56bbc43f6e68"
         }
       ]
     },
@@ -158,7 +162,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:a212a9cc17fed70818fa5e99178898b5f3761a502fb3cb6828d72a37c55c4515"
+          "version": "repo-file-v1:sha256:f892acca477da7550bf8de58c7a04ec12a849d85a473147f52c40236811b033d"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_updates.rs",
@@ -171,22 +175,34 @@
       "statement": "Decodex resolves native child requests through a verified native parent chain and does not own a second local child-admission lifecycle.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/agent/native_subagents.rs#L34-L88",
-          "version": "repo-lines-v1:sha256:6f3463eec41beeef699bff0f56b33297123704ead758ede3dd976afccc67610e:eyJzZWxlY3RlZExpbmVDb3VudCI6NTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk5MmU2ZTFiNzJhNzA1OTIwNTVmZGY4YTA1OGMwNWEyN2NlMjRjMjZiYjFiNjU5YTQ3NWJiNTNkYzQ5ZDAxOGEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjFjYmZlZGNlODI4NmQ2ZTljZDgwOTRkMDM1YTFmMjAyYTE4OTJmYzM2YzczM2NlN2NjNDk2MDc1MmQ3N2E3ZjciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+          "resource": "repo://codex-runtime.lock.json",
+          "version": "repo-file-v1:sha256:05032a3c837d0f054ca33e88ef03f06357ff7a860d59bcb2f2606f7fcde486d7"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/native_subagents.rs",
+          "version": "repo-file-v1:sha256:9e5e9c8cf88442215235adba888e636353fb70fb0526124dd839670fed18fcec"
         }
       ]
     },
     {
       "id": "claim_1d2539a4d5d84f4bbce4a83802b766bb",
-      "statement": "Context defaults keeps saved user values separate from effective project configuration. An omitted context feature uses defaultEnabled from the native feature catalog, while explicit effective configuration takes priority. Writes use native file-version compare-and-swap and readback without a startup force-enable argument or duplicate SQLite preference.",
+      "statement": "Context defaults reads the effective and native user-layer values for async_compaction and retain_client_tool_outputs, writes one boolean with native file-version compare-and-swap, reads it back, and adds no startup force-enable argument or duplicate SQLite preference.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-codex/src/app_server_client/context_preferences.rs#L50-L206",
-          "version": "repo-lines-v1:sha256:bb7e0c6258f64d6abd572f85aed684e3a770bf9c76e029643e6a30c5b8fb995c:eyJzZWxlY3RlZExpbmVDb3VudCI6MTU3LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI4ZTk2ZTViNDJlZTgwZjA2YjRiOTYxMzYwMWM0NTkzNDY5ZTQ5MWQ0OTZjZDQ1MjY4M2YyYWZmNjk1ZDgyZGM3IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJkMzBhODZmOGZmMTFhMDRlOWM0M2Y5YzBmMmE2NDA0MjFkYTZmZTE0ZjAyMDcyMzc1YjBkN2U5NzM3ZmRjOGZmIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJmMjk2NDA3OWMzYzVjODE1MjBlZjMzYTJiOWQyZTE1YTFiODRkNzI4MGRiODU5MGRjZDY1NzQ3ZTNlMDEyYTQwIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI5YjVlZDQxNmUzMjc3MWFiZjU4ZDI3YTRlMTQ1YmY3MDMxZWM2NTg3Y2Y1MjAwZTkxODMyNjc4ZWE5MWJkMzFhIn0"
+          "resource": "repo://apps/decodex-gpui/src/agent_context_settings.rs",
+          "version": "repo-file-v1:sha256:c4b7221ae38d9e8d9eca1447d15a351e790f4cbd656afaa130cb0e37e59209c7"
         },
         {
-          "resource": "repo://crates/decodex-runtime/src/agent_context_settings.rs#L34-L83",
-          "version": "repo-lines-v1:sha256:5a69fd0cbab0bfd066693026c901688bf042221584e6926b108cf266d63454d0:eyJzZWxlY3RlZExpbmVDb3VudCI6NTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQwNzEwZmZmZmY5OWY2N2U3MTQ0M2UxZTE0YTJjNWQxNzAwYmE3NjMzMmQ4ZjhiOTE4NmZjZmM4ZmQzNDk1Y2YiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImZhMmE1YWNlMzk0MjIxM2JhM2I4MGJiN2Q5ZDMxZWZmNzdkYzJlZGI0MTA5YWYyNTJjNmZjNDUxZDMxOTYwMGEifQ"
+          "resource": "repo://crates/decodex-codex/src/app_server_client/context_preferences.rs",
+          "version": "repo-file-v1:sha256:bfe56443590413065e0aca21a1a126ae939b0ca63923601b4da8192b47d1a5bb"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_launch/process.rs",
+          "version": "repo-file-v1:sha256:8af3878a8595f53659543a5bb0486a1e537663e4b4fb2107783eddde21d1cbcb"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent_context_settings.rs",
+          "version": "repo-file-v1:sha256:7ed45fc7f30a1f0d49257965446e7eb759317200015eca4456a0b38bc8896f91"
         }
       ]
     },
@@ -200,11 +216,11 @@
         },
         {
           "resource": "repo://crates/decodex-codex/src/app_server_client/context_preferences.rs",
-          "version": "repo-file-v1:sha256:adf961b9ee888ebcb4250e698727a95a4ce4b6fc5053edfa209719c48ba36fa0"
+          "version": "repo-file-v1:sha256:bfe56443590413065e0aca21a1a126ae939b0ca63923601b4da8192b47d1a5bb"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent_context_settings_native_tests.rs",
-          "version": "repo-file-v1:sha256:027013e0211827e0473e282c54e1a30d4502cc34a36ca076b7018d8bc964d6f9"
+          "version": "repo-file-v1:sha256:7355c71bda61ac6fcd55e00c92be805979565b5abfafc63e8ef5db48290145e3"
         }
       ]
     },
@@ -270,19 +286,15 @@
     },
     {
       "id": "claim_6bfb17e436074d049d25cc3621f2101e",
-      "statement": "Repository-owned model-error and large-catalog fixtures check terminal modelNotFound classification and explicit catalogs larger than 1 MiB with an exact CLI. Current qualification identifies the executed fixtures; historical executions keep their original artifact limits.",
+      "statement": "The prior 5be57bedd0 qualification covers terminal modelNotFound classification. Historical model-error and large-catalog probes retain their original artifact scope and were not rerun for the current migration.",
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:74190e32cc3119f7bf82f2f70f917b8e9f6150d6078a10adc2f6a564f46bb9cb"
+          "version": "repo-file-v1:sha256:0c08a1458a9bd81c0b2677475996113dedad6be7a59ca2b6902df9d5b1bdee9e"
         },
         {
-          "resource": "repo://crates/decodex-runtime/tests/native_qualification/large_catalog.py",
-          "version": "repo-file-v1:sha256:a471440d6c494a5abd9f72346901fe14aeb8ee432f8e8fd3ef73373e174d645a"
-        },
-        {
-          "resource": "repo://crates/decodex-runtime/tests/native_qualification/model_errors.py",
-          "version": "repo-file-v1:sha256:cfd01bd9f8a1d9d4f9f14e410955f82fd0ff49163027b086e407b16a0b5f23f0"
+          "resource": "repo://automations/upstream/retained-evidence.json",
+          "version": "repo-file-v1:sha256:fe5321699e8b7c5c6d392cb82551c905679deb680e298850da34c8fc1ea62099"
         }
       ]
     },
@@ -306,11 +318,11 @@
     },
     {
       "id": "claim_d253a751cef64b8e8fd316634981b84e",
-      "statement": "Protocol 4.6 accepts one exact major and minor revision and retains publication-instance receipts for reconnect and idempotent recovery.",
+      "statement": "Protocol 4.7 accepts one exact major and minor revision and retains publication-instance receipts for reconnect and idempotent recovery.",
       "evidence": [
         {
           "resource": "repo://crates/decodex-protocol/src/lib.rs",
-          "version": "repo-file-v1:sha256:b1b307f55b9cc8d55f87478e47399da4b9bd8e449ec89076f1d943a8bd098757"
+          "version": "repo-file-v1:sha256:e6c66e7ae6cf41b9c1d1a0eb228a235cadf54efa20b8da73d78f1470e09d6dbf"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/application.rs",
@@ -466,7 +478,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:74190e32cc3119f7bf82f2f70f917b8e9f6150d6078a10adc2f6a564f46bb9cb"
+          "version": "repo-file-v1:sha256:0c08a1458a9bd81c0b2677475996113dedad6be7a59ca2b6902df9d5b1bdee9e"
         }
       ]
     },
@@ -480,15 +492,15 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_native.rs",
-          "version": "repo-file-v1:sha256:212baf80d0310141fb384509d1af3e0c613bc883f2e17bc24762617bbbf594e1"
+          "version": "repo-file-v1:sha256:88f913c6ebab08229e758bd6bbe03b4c96d1cef3f858bc1add8a5039e0a156b4"
         },
         {
           "resource": "repo://crates/decodex-codex/src/app_server_client/context_preferences.rs",
-          "version": "repo-file-v1:sha256:adf961b9ee888ebcb4250e698727a95a4ce4b6fc5053edfa209719c48ba36fa0"
+          "version": "repo-file-v1:sha256:bfe56443590413065e0aca21a1a126ae939b0ca63923601b4da8192b47d1a5bb"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent_context_settings_native_tests.rs",
-          "version": "repo-file-v1:sha256:027013e0211827e0473e282c54e1a30d4502cc34a36ca076b7018d8bc964d6f9"
+          "version": "repo-file-v1:sha256:7355c71bda61ac6fcd55e00c92be805979565b5abfafc63e8ef5db48290145e3"
         }
       ]
     },
@@ -502,7 +514,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-contracts.json",
-          "version": "repo-file-v1:sha256:e4f1fef853138a1f3465e5ce20e0ab13d103a2fd82c02305c216b30442c32f61"
+          "version": "repo-file-v1:sha256:f42cae151b3c2c980a4c7b8448e08e4a1ae5a4d78f19067f158b1ce165c07ffa"
         },
         {
           "resource": "repo://crates/decodex-protocol/src/wire.rs",
@@ -562,15 +574,15 @@
     },
     {
       "id": "claim_c2c3fcb6cbf548539ff3fd6004769e9f",
-      "statement": "The development lock and current qualification identify the qualified fixed source and signed artifact. Historical probes retain their original limits. HumanCommand remains deferred and unadvertised; runtime selection does not install the app or resume the automation.",
+      "statement": "The development lock selects qualified ba0dfd389790 with its exact signed-artifact and named consumer evidence. Historical probes retain their original artifact limits. HumanCommand remains deferred and unadvertised; selection does not install the app or resume the automation.",
       "evidence": [
         {
-          "resource": "repo://automations/upstream/qualification.json#L1-L110",
-          "version": "repo-lines-v1:sha256:81d1088e276b49190581a75f54acf75cfda7cd52beb4f63a42b90457cb4fab2b:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEwLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJhNmZiMDhmZGExYWNiOTU3YjYxMTZiZDM3ODExYTFmZTQxYTAxNjExYzA2MzFlZGJmNzg2ZDY4ODlhMjdhNTVjIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0OTViOGM1YmY4NjM3NDM2NzFkZWYzZjYzMGViMjMyZDU5YTdhNjM0YTA3MGZjNDM2ZWVjMzdhODY3NGU2YzMwIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MCwicHJlY2VkaW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJkYjBmMjhjNzA5YjNkYjNlYWZmZmRlZmNmYmJmMDQyODgwZjQwMGRiOTg2MzI0NjAzYWQ5OTQ2Y2YwZjM4MjhkIn0"
+          "resource": "repo://automations/upstream/qualification.json#L1-L80",
+          "version": "repo-lines-v1:sha256:91c14e26a7a09a64c3a814b80f78d52f84891f016d22eaad4c8e38cd81d09e51:eyJzZWxlY3RlZExpbmVDb3VudCI6ODAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE2ZmIwOGZkYTFhY2I5NTdiNjExNmJkMzc4MTFhMWZlNDFhMDE2MTFjMDYzMWVkYmY3ODZkNjg4OWEyN2E1NWMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ2ZjhhNGJmZmVjYzE0MzQwMTRjOWQ5MDNkNDU3NzE3ZDQxY2EwM2U0Y2NhMWZlYmYwOGNmNWNjYjdmNmY4YWUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijc1OGE0NTFhNWEwYTFiNjE5ZjcyMGU0MDEzNmViZTllMzQ0MTI5NWM0YTNmMTkxZjQzMmRhOGQ3ZDAwODY1YTgifQ"
         },
         {
-          "resource": "repo://automations/upstream/retained-contracts.json#L40-L57",
-          "version": "repo-lines-v1:sha256:60bee75dfa3c58f319bad379739751b6d27faa0fd480e1d2f2fa578eb964674c:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY4MTk3MTdkM2IzNGI0ZGE0ODI0OGIzNDQ4YzcxOTQ4YmMwMDJkMjIwYTIwNWMxZmVhNDA0MzBiNTk4NzM1NWIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVlZWFhMDA3YWQ0MzFhYmUyZGJmMzI4OGZkMzYwMTQ5ZDc2YjcyMTYyNWM0MzUwYzJjOTUzNDRkZmFjM2U5MmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImVlYmMzZGMwMWU0ZjE2ODhkOTUxMTAwNDI1MTNlNTBkY2U0YTM4YmU5ZWQ2ZjU2NTYyZmYzZTZhNjRhNDU3ZGIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjExYmU1M2Y2OWYxNWQ3MDg4YTFjZWRlYjdiYzUxMzRhZDYzZTY3ZDA1OWUwNWNjZDUyMjI2MGQ0ZjNlZDUxNDMifQ"
+          "resource": "repo://codex-runtime.lock.json",
+          "version": "repo-file-v1:sha256:05032a3c837d0f054ca33e88ef03f06357ff7a860d59bcb2f2606f7fcde486d7"
         }
       ]
     },
@@ -598,7 +610,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:74190e32cc3119f7bf82f2f70f917b8e9f6150d6078a10adc2f6a564f46bb9cb"
+          "version": "repo-file-v1:sha256:0c08a1458a9bd81c0b2677475996113dedad6be7a59ca2b6902df9d5b1bdee9e"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_unreported_usage_tests.rs",
@@ -642,7 +654,7 @@
         },
         {
           "resource": "repo://database/src/agent.rs",
-          "version": "repo-file-v1:sha256:d8f927bc04ecde1b14f278d68f7e89aeb53edca6f9c000b1d16f55f59a002c97"
+          "version": "repo-file-v1:sha256:626d7e727a18ac12155d7e53ca855cc916f63cc3951256c7357b957e296f2e63"
         },
         {
           "resource": "repo://database/src/agent_titles.rs",
@@ -696,13 +708,77 @@
         },
         {
           "resource": "repo://database/src/assistant.rs",
-          "version": "repo-file-v1:sha256:ef184fabb6fb9c789f70b4d6e4b7970e4031c0b586778fd9acbe9eb095530433"
+          "version": "repo-file-v1:sha256:f96807ddb85427783694c17c7e9a93529d0d43d620ffda5eb7de5f7fe70e29d5"
+        }
+      ]
+    },
+    {
+      "id": "claim_935311b12cf748b1a9220ee276ba9243",
+      "statement": "RAGFlow Install prepares the managed nightly service and private account. User model configuration accepts an OpenAI-compatible Base URL, optional API key and custom extraction and embedding names; native verification precedes saving, then dedicated Memory is created or recovered. No model runtime, download or data volume is installed. The origin-bound RAGFlow credential stays private; Assistant settings contain only its reference and chat import starts disabled.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
+          "version": "repo-file-v1:sha256:2d3b3b8873ece30ae1ed21c6db852df68fe8af0da00fcea059034229a9044e77"
+        },
+        {
+          "resource": "repo://crates/decodex-components/src/ragflow.rs",
+          "version": "repo-file-v1:sha256:fbeb33d1d721cd020eb3e404b47cf03a84cf6d3ca3a2da35af1c391c3b16d96c"
+        },
+        {
+          "resource": "repo://crates/decodex-components/src/ragflow_service.rs",
+          "version": "repo-file-v1:sha256:a271fcb3d1384a1ae94850ab1bde534e950e082fd8535f83bb0a5e5ce3fe3a83"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/ragflow.rs",
+          "version": "repo-file-v1:sha256:126f808d04eae1024eba392373e9a1050b59875de74e33aea0a544af4434138d"
+        }
+      ]
+    },
+    {
+      "id": "claim_9d288517973a46e4bc8bb4da6bbb6b81",
+      "statement": "RAGFlow lifecycle operations address one per-user Docker Compose project with a loopback-only API. Update records actual installed version and image readback while retaining models, credentials, import choice and data. Uninstall stops only that project, clears the Assistant connection and retains data volumes for reinstall.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
+          "version": "repo-file-v1:sha256:2d3b3b8873ece30ae1ed21c6db852df68fe8af0da00fcea059034229a9044e77"
+        },
+        {
+          "resource": "repo://crates/decodex-components/src/ragflow_service.rs",
+          "version": "repo-file-v1:sha256:a271fcb3d1384a1ae94850ab1bde534e950e082fd8535f83bb0a5e5ce3fe3a83"
+        }
+      ]
+    },
+    {
+      "id": "claim_a9aedad182ce4ca68b6b5686a8b38776",
+      "statement": "The ARM64 Infinity runtime uses the official compatible 0.7.4 binary and analyzer resources on Ubuntu 24.04, built from a context that contains only its Dockerfile and excludes the component account and Compose credentials.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-components/resources/ragflow-infinity.Dockerfile",
+          "version": "repo-file-v1:sha256:e3c15fafff7632e36d89f769b971c7ae33f628a7a6ff6c3970d267d0c66a170a"
+        },
+        {
+          "resource": "repo://crates/decodex-components/src/ragflow_service.rs",
+          "version": "repo-file-v1:sha256:a271fcb3d1384a1ae94850ab1bde534e950e082fd8535f83bb0a5e5ce3fe3a83"
+        }
+      ]
+    },
+    {
+      "id": "claim_dacfb697b9cd4936afba8b77dffbfdb0",
+      "statement": "The model endpoint path is preserved and loopback host names are translated to host.docker.internal for the owned container while the displayed URL stays unchanged. A Memory with messages cannot silently change its embedding model or endpoint; model verification failures preserve the saved component configuration.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
+          "version": "repo-file-v1:sha256:2d3b3b8873ece30ae1ed21c6db852df68fe8af0da00fcea059034229a9044e77"
+        },
+        {
+          "resource": "repo://crates/decodex-components/src/ragflow_service.rs",
+          "version": "repo-file-v1:sha256:a271fcb3d1384a1ae94850ab1bde534e950e082fd8535f83bb0a5e5ce3fe3a83"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-04T09:41:04.531Z"
+    "at": "2026-11-04T09:42:14.115Z"
   }
 }

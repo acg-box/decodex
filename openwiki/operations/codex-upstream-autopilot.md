@@ -5,6 +5,8 @@ description: "Incremental upstream review against retained consumers, native own
 tags: ["decodex", "architecture"]
 openwiki_generated: true
 sources:
+  - id: openwiki-source-c76550e85b25876b339f9255
+    resource: repo://apps/decodex-gpui/src/agent_context_settings.rs
   - id: openwiki-source-f5d4f5acdb41fe7c4e985337
     resource: repo://automations/decodex/README.md
   - id: openwiki-source-14193a66abfb7d3230f476bf
@@ -21,6 +23,8 @@ sources:
     resource: repo://automations/upstream/README.md
   - id: openwiki-source-3127fd4c7b2aefcc9cea7961
     resource: repo://automations/upstream/retained-contracts.json
+  - id: openwiki-source-f02ae41e2bd15dda85dc86b9
+    resource: repo://codex-runtime.lock.json
   - id: openwiki-source-2b08587e9b26e203156110c8
     resource: repo://crates/decodex-codex/src/app_server_client/context_preferences.rs
   - id: openwiki-source-75f737a722500e44692521ca
@@ -35,8 +39,6 @@ sources:
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_recap_socket_tests.rs
   - id: openwiki-source-1e1e3397756e63672a9c1f2d
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_runtime_submit_tests.rs
-  - id: openwiki-source-f2860995fd89f9170b5406cb
-    resource: repo://crates/decodex-runtime/src/agent_context_settings.rs
   - id: openwiki-source-dbc533dc306a3f520c4241e0
     resource: repo://crates/decodex-runtime/src/agent.rs
   - id: openwiki-source-30c7edf894a639091ecbafc6
@@ -47,10 +49,10 @@ sources:
     resource: repo://scripts/macos/prepare_codex.mts
   - id: openwiki-source-3b57179b92b257bc3fff51a1
     resource: repo://scripts/macos/stage_decodex_app.sh
-generated: { by: "codex", at: "2026-11-04T09:41:04.531Z" }
+generated: { by: "codex", at: "2026-10-31T17:07:05.970Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-04T09:41:04.531Z
+    at: 2026-11-03T18:23:39.894Z
 ---
 
 
@@ -160,7 +162,7 @@ Validate selected retention against the exact native artifact. Check compaction 
 
 ## Configure native context defaults
 
-Settings > Agents > Native defaults, Agent preferences > Context defaults and manual `config.toml` edits use the same native configuration. The two settings are `features.async_compaction` and `features.retain_client_tool_outputs`. An omitted effective value uses `defaultEnabled` from the native feature catalog. An explicit project value takes priority, and the catalog's `enabled` value does not replace another working directory's configuration. A configured preference does not bypass native runtime eligibility or capacity limits.
+Settings > Agents > Native defaults, Agent preferences > Context defaults and manual `config.toml` edits use the same native configuration. The two settings are `features.async_compaction` and `features.retain_client_tool_outputs`. Both use the native off default when no enabled value is present. A configured preference does not bypass native runtime eligibility or capacity limits.
 
 The settings owner reads the user layer and effective project configuration, then writes one versioned boolean through native `config/batchWrite`. It preserves an existing async threshold table and distinguishes the saved user value from a higher-priority override. The write does not reload the configuration of loaded conversations; it changes defaults for new conversations. A lost reply requires readback, not automatic replay.
 

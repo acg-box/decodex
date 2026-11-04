@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:1d25cae3b1532432267cce06011b4dfb49b14cff9f1a8dfec6fce1aabc5f86b3",
+  "pageVersion": "sha256:d405f67bdd5af6df97ea2fd5698f290a6b90ac0ced4c806cc8a1492a9e25140a",
   "claims": [
     {
       "id": "claim_3f139c853db04d169600a9ee50a8d9b8",
@@ -52,7 +52,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/agent_host.rs",
-          "version": "repo-file-v1:sha256:d8a526106b9917db75fe6501fd61251869ac1e32051e171a525a00b5c2cd62f0"
+          "version": "repo-file-v1:sha256:cba833da0ef2d3b38e54e9430058577c2d09d53d05566b6a21f2ad61b4c9ca6e"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent_skill_roots.rs",
@@ -66,7 +66,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-protocol/src/agent.rs",
-          "version": "repo-file-v1:sha256:48088d886088766b4c6f73c988c8c78811ef3ce5450bbf853077e7946f40b95f"
+          "version": "repo-file-v1:sha256:03e675c6a3b8d439e02fb4adc5a962f185128fed401864f9860836d03450e719"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process.rs",
@@ -88,7 +88,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:a212a9cc17fed70818fa5e99178898b5f3761a502fb3cb6828d72a37c55c4515"
+          "version": "repo-file-v1:sha256:f892acca477da7550bf8de58c7a04ec12a849d85a473147f52c40236811b033d"
         },
         {
           "resource": "repo://crates/decodex-components/src/plugins.rs",
@@ -98,11 +98,19 @@
     },
     {
       "id": "claim_803ae7d869454ee682892785e0417a56",
-      "statement": "The optional Assistant RAGFlow HTTP adapter uses explicit scopes and separate knowledge, Memory and chat-import settings. External Memory disables native generation, use and the memories feature for fresh and resumed Assistant contexts; the bridge admits disabled memory-mode writes only. Settings store a credential environment-variable reference.",
+      "statement": "The optional RAGFlow component installs managed nightly with compatible Infinity and a private account, with no model runtime or weights. Configure models accepts an OpenAI-compatible Base URL, optional private API key and custom extraction and embedding names, verifies them natively and configures dedicated Memory automatically. Settings store an origin-bound service credential reference with legacy environment-reference support. Knowledge, Memory and explicit chat import remain separate. Memory disables native generation, use and the memories feature for fresh and resumed Assistant contexts; the bridge admits disabled memory-mode writes only.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
-          "version": "repo-file-v1:sha256:a567b2373ebad8d8e66efb3e3fb8e7b3b0bb21ca2b25bcfa8290d2ecaa8db277"
+          "version": "repo-file-v1:sha256:2d3b3b8873ece30ae1ed21c6db852df68fe8af0da00fcea059034229a9044e77"
+        },
+        {
+          "resource": "repo://crates/decodex-components/src/ragflow.rs",
+          "version": "repo-file-v1:sha256:fbeb33d1d721cd020eb3e404b47cf03a84cf6d3ca3a2da35af1c391c3b16d96c"
+        },
+        {
+          "resource": "repo://crates/decodex-components/src/ragflow_service.rs",
+          "version": "repo-file-v1:sha256:a271fcb3d1384a1ae94850ab1bde534e950e082fd8535f83bb0a5e5ce3fe3a83"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process.rs",
@@ -118,13 +126,13 @@
         },
         {
           "resource": "repo://crates/decodex-runtime/src/ragflow.rs",
-          "version": "repo-file-v1:sha256:4224ee73758b86b3a314b01a0bd7c580467a094e00faccba349fa334dc5947fc"
+          "version": "repo-file-v1:sha256:126f808d04eae1024eba392373e9a1050b59875de74e33aea0a544af4434138d"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-03T17:33:35.946Z"
+    "at": "2026-11-04T09:42:14.115Z"
   }
 }

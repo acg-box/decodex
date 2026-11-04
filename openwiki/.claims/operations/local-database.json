@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:f64c8ba8b75bd775fa55e892ff9ad683331f970d9cd02ffb6ef261c681f86016",
+  "pageVersion": "sha256:8f00407ce1550b17a5cf45b26f2d7039df091854a5f818c56777bd803c3a7a95",
   "claims": [
     {
       "id": "claim_e8d1527490f540cdafcbe921403c8c3c",
@@ -46,7 +46,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-protocol/src/lib.rs",
-          "version": "repo-file-v1:sha256:b1b307f55b9cc8d55f87478e47399da4b9bd8e449ec89076f1d943a8bd098757"
+          "version": "repo-file-v1:sha256:e6c66e7ae6cf41b9c1d1a0eb228a235cadf54efa20b8da73d78f1470e09d6dbf"
         },
         {
           "resource": "repo://scripts/macos/verify_decodex_bundle_contracts.py",
@@ -156,11 +156,11 @@
     },
     {
       "id": "claim_968638910f4c42cbbee88d97feb202cd",
-      "statement": "Current local protocol 4.6 exposes selected read-only views and retained attached branches and rejects any different major or minor version.",
+      "statement": "Current local protocol 4.7 exposes selected read-only views and retained attached branches and rejects any different major or minor version.",
       "evidence": [
         {
           "resource": "repo://crates/decodex-protocol/src/lib.rs",
-          "version": "repo-file-v1:sha256:b1b307f55b9cc8d55f87478e47399da4b9bd8e449ec89076f1d943a8bd098757"
+          "version": "repo-file-v1:sha256:e6c66e7ae6cf41b9c1d1a0eb228a235cadf54efa20b8da73d78f1470e09d6dbf"
         }
       ]
     },
@@ -184,7 +184,7 @@
         },
         {
           "resource": "repo://database/src/agent.rs",
-          "version": "repo-file-v1:sha256:d8f927bc04ecde1b14f278d68f7e89aeb53edca6f9c000b1d16f55f59a002c97"
+          "version": "repo-file-v1:sha256:626d7e727a18ac12155d7e53ca855cc916f63cc3951256c7357b957e296f2e63"
         },
         {
           "resource": "repo://database/src/agent_titles.rs",
@@ -202,17 +202,53 @@
         },
         {
           "resource": "repo://database/src/agent.rs",
-          "version": "repo-file-v1:sha256:d8f927bc04ecde1b14f278d68f7e89aeb53edca6f9c000b1d16f55f59a002c97"
+          "version": "repo-file-v1:sha256:626d7e727a18ac12155d7e53ca855cc916f63cc3951256c7357b957e296f2e63"
         },
         {
           "resource": "repo://database/src/assistant.rs",
-          "version": "repo-file-v1:sha256:ef184fabb6fb9c789f70b4d6e4b7970e4031c0b586778fd9acbe9eb095530433"
+          "version": "repo-file-v1:sha256:f96807ddb85427783694c17c7e9a93529d0d43d620ffda5eb7de5f7fe70e29d5"
+        }
+      ]
+    },
+    {
+      "id": "claim_bb22ef5d1103453f989ba244d09a0cd1",
+      "statement": "First-use Assistant initialization creates an idle Agent and selects its role atomically, reuses a repeated setup identity, and creates no first user event or native binding. RAGFlow keys remain in private component storage while Assistant settings contain a reference.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-components/src/ragflow.rs",
+          "version": "repo-file-v1:sha256:fbeb33d1d721cd020eb3e404b47cf03a84cf6d3ca3a2da35af1c391c3b16d96c"
+        },
+        {
+          "resource": "repo://database/src/agent.rs",
+          "version": "repo-file-v1:sha256:626d7e727a18ac12155d7e53ca855cc916f63cc3951256c7357b957e296f2e63"
+        },
+        {
+          "resource": "repo://database/src/assistant.rs",
+          "version": "repo-file-v1:sha256:f96807ddb85427783694c17c7e9a93529d0d43d620ffda5eb7de5f7fe70e29d5"
+        }
+      ]
+    },
+    {
+      "id": "claim_3ac3bf9844f94897908ecc5d6781d917",
+      "statement": "The managed RAGFlow component keeps its generated account, actual version, image, Memory and user model settings including API key in private component files. The service directory is mode 0700 and private files are mode 0600. RAGFlow data uses owned Docker volumes, with no installed model runtime or model volume. Update reuses models and data; Uninstall clears the Assistant connection and stops only the owned project while retaining data and identity for reinstall. The Decodex SQLite schema does not change.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
+          "version": "repo-file-v1:sha256:2d3b3b8873ece30ae1ed21c6db852df68fe8af0da00fcea059034229a9044e77"
+        },
+        {
+          "resource": "repo://crates/decodex-components/src/ragflow_service.rs",
+          "version": "repo-file-v1:sha256:a271fcb3d1384a1ae94850ab1bde534e950e082fd8535f83bb0a5e5ce3fe3a83"
+        },
+        {
+          "resource": "repo://database/schema.sql",
+          "version": "repo-file-v1:sha256:ad3410025cf2a32514b1d7c020ca972bdc4f253e8d2e9198f8aa1ed908e190a2"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-03T17:33:35.946Z"
+    "at": "2026-11-04T09:42:14.115Z"
   }
 }

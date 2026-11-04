@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:33dea6986419880b7941f12c5a44123d4e60b65e24f5c10761343e944bd67444",
+  "pageVersion": "sha256:0b0a16da02214fea50826b575e6585ca00975358e0ec4a9e6ec763bf6f18db54",
   "claims": [
     {
       "id": "claim_f0c37462522f4442acd94d53819ef75c",
@@ -56,7 +56,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-contracts.json",
-          "version": "repo-file-v1:sha256:e4f1fef853138a1f3465e5ce20e0ab13d103a2fd82c02305c216b30442c32f61"
+          "version": "repo-file-v1:sha256:f42cae151b3c2c980a4c7b8448e08e4a1ae5a4d78f19067f158b1ce165c07ffa"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/process.rs#L133-L153",
@@ -88,11 +88,11 @@
     },
     {
       "id": "claim_781e6a39d4954364aa46b3429385c7c9",
-      "statement": "The repository-owned large_catalog.py probe checks native model/list with an explicit catalog larger than 1 MiB. Current qualification records the selected artifact and execution; historical results retain their original limits. This adds no account or provider setup control.",
+      "statement": "The historical large_catalog.py probe verifies native model/list with an explicitly configured catalog larger than 1 MiB within its recorded artifact limits; it adds no account or provider setup control.",
       "evidence": [
         {
-          "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:74190e32cc3119f7bf82f2f70f917b8e9f6150d6078a10adc2f6a564f46bb9cb"
+          "resource": "repo://automations/upstream/retained-contracts.json",
+          "version": "repo-file-v1:sha256:f42cae151b3c2c980a4c7b8448e08e4a1ae5a4d78f19067f158b1ce165c07ffa"
         },
         {
           "resource": "repo://crates/decodex-runtime/tests/native_qualification/large_catalog.py",
@@ -178,11 +178,11 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:74190e32cc3119f7bf82f2f70f917b8e9f6150d6078a10adc2f6a564f46bb9cb"
+          "version": "repo-file-v1:sha256:0c08a1458a9bd81c0b2677475996113dedad6be7a59ca2b6902df9d5b1bdee9e"
         },
         {
           "resource": "repo://automations/upstream/retained-contracts.json",
-          "version": "repo-file-v1:sha256:e4f1fef853138a1f3465e5ce20e0ab13d103a2fd82c02305c216b30442c32f61"
+          "version": "repo-file-v1:sha256:f42cae151b3c2c980a4c7b8448e08e4a1ae5a4d78f19067f158b1ce165c07ffa"
         }
       ]
     },
@@ -191,7 +191,7 @@
       "statement": "The Agent model catalog refreshes through native model/list every 60 seconds, with account, directory and process binding. Model and effort cycling have no fixed fallback list when the catalog is unavailable.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L1700-L1706",
+          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L1701-L1707",
           "version": "repo-lines-v1:sha256:ec57be10edb464df8b1247da2b96223a885c7911b9fef2da7839e011a926563c:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMzExMjRhOTBmYzk1YjFjMTIzMTZiYTliNTFiNzkxZDZkMGMzNTIyYTczYTA2ZDM5YjFhMTk3M2VkNmU0YzE1OSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiN2ZkOWJmZjc2MjQwMTQwNjA1ZTIzZmVlOGM4NzNkMTJjMzA0Y2JkMGU5MGEzYWFmOGJkOTk0N2VmOWQ0OWExNiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZDc3NzdmNDlkYTJlYjE2NzU4YjViMzE0OWFkOGFkZTlkMmI4MzBhZDQzMmQ2N2UzNDdkNmQ0YmQ5MGJhOWRhMyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNDU5ODRjN2QxZjljNTFkMDJhM2JkODBlNTkyZTlhMjkyODY3MTE0YzAzMjU5MGZhOGNlNjFjNGY2MjQyMTlmMyJ9"
         },
         {
@@ -206,15 +206,23 @@
     },
     {
       "id": "claim_22c649d4fcdf471a899e2d9c03b35774",
-      "statement": "An explicit past native retirement deadline selects the same complete catalog's current default for new Agent settings, new Agents in a shared process and loaded idle recovery, preserving shared config and existing settings journal/readback. Missing entries, upgrade suggestions, network errors or quota responses alone do not trigger migration. Original regression groups and acceptance limits remain in the stable catalog.",
+      "statement": "An explicit past native retirement deadline selects the same catalog's current default for new Agent settings, new Agents in a shared process and loaded idle recovery, preserving shared configuration and using existing source checks, settings journal and readback. Missing entries, upgrade suggestions, network errors or quota responses alone do not trigger retirement migration. The 24-runtime and 18-desktop test cohort does not qualify a new native artifact or installed application.",
       "evidence": [
         {
-          "resource": "repo://automations/upstream/retained-contracts.json#L4704-L4784",
-          "version": "repo-lines-v1:sha256:8bc2982d2fc27cd565ab0beb2e4dac65554dce2bbb7037d37263b5fd3caa561c:eyJzZWxlY3RlZExpbmVDb3VudCI6ODEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJmZmU5Nzc4MWUzZmNmODc5MjI3OTc4ZjVmMjE5NzJmMzEyYzJjZGE4OTI3OWYxNjFkMjVhYzFhZTU5ODUxNmQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZiYmE2NWQwYjFlNDkzZDY1Y2Y1ZGFlZTM3ZjIxYzNkY2ViM2I0YmJkMjQyZWNjNWZmMWVjZjllZGI0OWI4OWUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZiMzNlNmEyZjdmZDEwZjE0NTgwMTJlOTYyYmM2YTRiZjllZDM1YWZlMjQzMmZmOGI5NjA4Zjc0NzFhOWEwMDQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijc2ZTVlN2EzMjdjZWE4NDVjZTE2YzdjZTdjODFjYmM0OTkzNzcxZjA2NTQwNTljOTMxMTEwOWRlYWQxYjBiZjEifQ"
+          "resource": "repo://automations/upstream/retained-evidence.json",
+          "version": "repo-file-v1:sha256:fe5321699e8b7c5c6d392cb82551c905679deb680e298850da34c8fc1ea62099"
         },
         {
           "resource": "repo://crates/decodex-protocol/src/model_catalog.rs#L94-L124",
           "version": "repo-lines-v1:sha256:d15a6982ee6b85497325b30040426441648a73e59d5060efee2f9d4ec2209215:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE1NjkyMzBkNDBhZjg0NWZmZDdmMzhiMjRkYzg1MjY1ZDVjM2I0ZjM0OGMxNzY3MzhjZmJjYTU2ZTBkMzE0NzkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJiNGVjNjQyNjhmY2VmNDUxYTM0NjJlYTQ3NGIyYjU2Zjc4ZGEwNWQ1MDNjMTgxODMwZGU5YThjYjliMDcxYTAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjIyZjJmZjVmZWVjNjBmNTg3YzhmYWU0ZTg3ZjgwOWE2NjFjZmZlZDZiNDdhYWU1ZjZkNmEyNjUzYWE4OTUyZWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjcxYzc2OWQ5Yzc1NzZkOWRiNTAwNzJhMzYyZmU2MmEyMzAyZjlmNGFmZjFhYTdhNjczMjIzZjRjM2U5NTM2OGUifQ"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent.rs",
+          "version": "repo-file-v1:sha256:039d3118591ad102c58ed25f91d662c2132a7f461b46b9f0ecb276d2e6dd4dbf"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent_initial_settings.rs",
+          "version": "repo-file-v1:sha256:78e82134194cce39ced701773c8e5e22c90c7742fc9b00a1262e9278d69b3d82"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent_model_recovery.rs",
@@ -224,7 +232,7 @@
     },
     {
       "id": "claim_2d5d27649dc84298a4608e6f33b6ec10",
-      "statement": "Existing account/source-bound context controls expose background compaction, delegation-instruction retention and each configured MCP server's cached catalog. Omitted context feature values use native defaultEnabled; explicit effective config wins. Saved user values remain separate from project overrides and catalog enablement in another cwd. Saving does not restart loaded conversations or create a second config store.",
+      "statement": "Settings > Agents exposes background compaction, delegation-instruction retention and a per-user-configured-server cached MCP catalog switch through the existing account/source-bound native configuration controls. Saved values and effective project values remain distinct, with no second configuration store or restart of loaded conversations.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_context_settings.rs",
@@ -232,11 +240,11 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_native.rs",
-          "version": "repo-file-v1:sha256:212baf80d0310141fb384509d1af3e0c613bc883f2e17bc24762617bbbf594e1"
+          "version": "repo-file-v1:sha256:88f913c6ebab08229e758bd6bbe03b4c96d1cef3f858bc1add8a5039e0a156b4"
         },
         {
-          "resource": "repo://crates/decodex-codex/src/app_server_client/context_preferences.rs#L52-L118",
-          "version": "repo-lines-v1:sha256:0c5864ad4e6a7b0b8818af3560a66d27470125324d60b007891f20b95af6687b:eyJzZWxlY3RlZExpbmVDb3VudCI6NjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRjOWZjZjIxZWE5ZmFmYzBiZGU2OTk5YzBjNjU2NmU3Yjg0MzczNzI5ODk0ZWM2MTMyNTQ4NzUwZWYwNzNlMmEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNlZGM5YmQzOTdiOWU4NTM5ODQ0M2VlNzYxOGI4ZGJiN2U1ZDA2YmQ1NWRjMzhjZDY5MzQ3OTQ3NzI5NTA4MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRiNjMxZDlmNDJkMzkxOWQ5YTczZDhlZjM4ZmYyMmNjNTRiY2M4MWNlMDMwOGMyYzZiZmZhMjFhMjkzOGFlM2EiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgzY2IyOGRiMzlhNDNmZDM0NjM2YTkzZDYzMTNiNjE4OGU1MDU5ODFlOGRhZTc3YmI3OWU2ZTJjMjAyY2NiMzkifQ"
+          "resource": "repo://crates/decodex-codex/src/app_server_client/context_preferences.rs",
+          "version": "repo-file-v1:sha256:bfe56443590413065e0aca21a1a126ae939b0ca63923601b4da8192b47d1a5bb"
         }
       ]
     },
@@ -314,11 +322,23 @@
     },
     {
       "id": "claim_09df0d70257c4cd4995cda41a1da8169",
-      "statement": "Assistant RAGFlow retrieval, Memory and chat import have separate direct-user configuration in Components. External Memory waits for a safe fresh context with native memory generation, use and the memories feature disabled, plus disabled memory mode; cold resume preserves this without changing native compaction, history, shared defaults or unrelated Agents.",
+      "statement": "Components installs managed RAGFlow nightly with compatible Infinity and a private service account, sharing actual version and lifecycle controls. Component operations check the running Docker-compatible engine and Docker Compose before installation effects and use shared inline feedback for unavailable prerequisites without runtime installation, launch or installation guidance. Successful installation with no saved model settings opens the existing model form automatically. Configure models accepts one OpenAI-compatible Base URL, optional private API key and custom extraction and embedding names, verifies them and initializes Memory automatically. No model runtime or weights are installed. Saved keys stay blank in later edits and are retained only at the same URL; loopback addresses are translated for the container, and indexed Memory keeps its embedding model and endpoint. Chat import starts off; Update preserves models, import choice and data, and Uninstall clears the connection while retaining data. Typed knowledge scopes and the safe native-memory context policy keep their existing owners.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
-          "version": "repo-file-v1:sha256:a567b2373ebad8d8e66efb3e3fb8e7b3b0bb21ca2b25bcfa8290d2ecaa8db277"
+          "version": "repo-file-v1:sha256:2d3b3b8873ece30ae1ed21c6db852df68fe8af0da00fcea059034229a9044e77"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
+          "version": "repo-file-v1:sha256:f892acca477da7550bf8de58c7a04ec12a849d85a473147f52c40236811b033d"
+        },
+        {
+          "resource": "repo://crates/decodex-components/src/ragflow.rs",
+          "version": "repo-file-v1:sha256:fbeb33d1d721cd020eb3e404b47cf03a84cf6d3ca3a2da35af1c391c3b16d96c"
+        },
+        {
+          "resource": "repo://crates/decodex-components/src/ragflow_service.rs",
+          "version": "repo-file-v1:sha256:a271fcb3d1384a1ae94850ab1bde534e950e082fd8535f83bb0a5e5ce3fe3a83"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent.rs",
@@ -337,6 +357,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-04T09:41:04.531Z"
+    "at": "2026-11-04T09:42:14.115Z"
   }
 }

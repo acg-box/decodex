@@ -347,6 +347,7 @@ async fn installed_assistant_renews_fresh_contexts_with_original_dialogue_and_is
 						ragflow: Some(RagflowConnection {
 							url: "https://ragflow.invalid".into(),
 							api_key_env: "DECODEX_FIXTURE_UNUSED_KEY".into(),
+							credential_id: None,
 							user_id: "fixture-user".into(),
 							dataset_ids: vec![],
 							memory_id: Some("fixture-memory".into()),

@@ -12,7 +12,7 @@ use crate::{
 	component_research::{self, ResearchOperations},
 	component_runtime::{self, RuntimePreparation},
 	settings_surface::SettingsSurface,
-	shell::workspace_symbols,
+	shell::{agent_surface::RagflowComponentAction, workspace_symbols},
 	ui_feedback::{self, Feedback},
 	ui_motion::{self, SmoothControl as _},
 	ui_theme::{self, BLUE, SETTINGS_LABEL_SIZE, TEXT, TEXT_MUTED},
@@ -24,10 +24,11 @@ enum Action {
 	Prepare,
 	Plugin(PluginAction),
 	Research(component_research::Action),
+	Ragflow(RagflowComponentAction),
 }
 
 pub(super) struct Components {
-	details: [bool; 3],
+	details: [bool; 4],
 	preparation: RuntimePreparation,
 	shown: component_runtime::PreparationState,
 	optional: PluginOperations,
@@ -40,7 +41,7 @@ impl Components {
 		let shown = preparation.snapshot();
 
 		Self {
-			details: [false; 3],
+			details: [false; 4],
 			preparation,
 			shown,
 			optional: PluginOperations::new(decodex_components::egm_component(), None),
@@ -118,6 +119,14 @@ impl SettingsSurface {
 			Action::Prepare => self.components.prepare_runtime(),
 			Action::Plugin(action) => self.components.optional.start(action),
 			Action::Research(action) => self.components.research.start(action),
+			Action::Ragflow(action) => {
+				if !matches!(action, RagflowComponentAction::ToggleImport) {
+					self.components.details[3] = true;
+				}
+				if let Some(agent) = &self.native_agent {
+					agent.update(cx, |s, cx| s.ragflow_component_action(action, cx));
+				}
+			},
 		}
 
 		self.components.poll();
@@ -135,6 +144,10 @@ impl SettingsSurface {
 			Action::Prepare => true,
 			Action::Plugin(_) => self.components.plugin.busy.is_none(),
 			Action::Research(_) => self.components.research_shown.busy.is_none(),
+			Action::Ragflow(_) => self
+				.native_agent
+				.as_ref()
+				.is_some_and(|s| !s.read(cx).ragflow_component_state().busy),
 		};
 		let button = if enabled {
 			ui_theme::settings_button(id, label)
@@ -160,6 +173,31 @@ impl SettingsSurface {
 				}
 			}))
 			.into_any_element()
+	}
+
+	fn component_lifecycle_buttons(
+		&self,
+		installed: Option<bool>,
+		actions: [(&'static str, Action); 3],
+		cx: &mut Context<Self>,
+	) -> Div {
+		let primary = usize::from(installed == Some(true));
+		let label = match installed {
+			None => "Install",
+			Some(false) => "Enable",
+			Some(true) => "Update",
+		};
+		let mut controls = gpui::div().flex().items_center().gap_2().child(self.component_button(
+			actions[primary].0,
+			label,
+			actions[primary].1,
+			cx,
+		));
+		if installed.is_some() {
+			controls =
+				controls.child(self.component_button(actions[2].0, "Uninstall", actions[2].1, cx));
+		}
+		controls
 	}
 
 	fn component_settings(&self, cx: &mut Context<Self>) -> Div {
@@ -272,6 +310,7 @@ impl SettingsSurface {
 			.flex()
 			.flex_col()
 			.min_h(gpui::px(36.5))
+			.justify_center()
 			.gap(gpui::px(2.))
 			.rounded(gpui::px(4.))
 			.cursor_pointer()
@@ -328,33 +367,116 @@ impl SettingsSurface {
 				self.component_settings(cx).into_any_element(),
 				self.egm_settings(cx).into_any_element(),
 				self.research_settings(cx).into_any_element(),
-				self.assistant_component(cx),
+				self.ragflow_settings(cx),
 			])
+			.into_any_element()
+	}
+
+	fn ragflow_settings(&self, cx: &mut Context<Self>) -> AnyElement {
+		let state = self.native_agent.as_ref().map(|s| s.read(cx).ragflow_component_state());
+		let installed = state.as_ref().is_some_and(|s| s.installed);
+		let mut row = ui_theme::settings_row().child(self.component_label(
+			3,
+			"components-ragflow-details",
+			"RAGFlow",
+			state.as_ref().and_then(|s| s.version.as_deref()),
+			cx,
+		));
+		row = row.child(self.component_lifecycle_buttons(
+			installed.then_some(true),
+			[
+				("components-ragflow-install", Action::Ragflow(RagflowComponentAction::Install)),
+				("components-ragflow-update", Action::Ragflow(RagflowComponentAction::Update)),
+				(
+					"components-ragflow-uninstall",
+					Action::Ragflow(RagflowComponentAction::Uninstall),
+				),
+			],
+			cx,
+		));
+		let mut body = gpui::div().flex().flex_col().gap_2().child(self.ragflow_component(cx));
+		let mut actions = gpui::div().flex().gap_2();
+		if state.as_ref().is_some_and(|s| s.editing) {
+			for (id, label, action) in [
+				(
+					"components-ragflow-models-save",
+					"Save models",
+					RagflowComponentAction::SaveModels,
+				),
+				(
+					"components-ragflow-models-cancel",
+					"Cancel",
+					RagflowComponentAction::CancelModels,
+				),
+			] {
+				actions =
+					actions.child(self.component_button(id, label, Action::Ragflow(action), cx));
+			}
+		} else if installed {
+			actions = actions.child(self.component_button(
+				"components-ragflow-models",
+				"Configure models",
+				Action::Ragflow(RagflowComponentAction::ConfigureModels),
+				cx,
+			));
+		}
+		if state.as_ref().is_some_and(|s| s.memory_ready && !s.editing) {
+			actions = actions.child(self.component_button(
+				"components-ragflow-import",
+				if state.as_ref().is_some_and(|s| s.import) {
+					"Disable chat import"
+				} else {
+					"Enable chat import"
+				},
+				Action::Ragflow(RagflowComponentAction::ToggleImport),
+				cx,
+			));
+		}
+		body = body.child(actions);
+		gpui::div()
+			.child(row)
+			.child(self.component_body(3, "components-ragflow-body", body))
+			.child(
+				ui_feedback::notice(
+					"components-ragflow-feedback",
+					"ragflow",
+					state.and_then(|s| s.feedback),
+				)
+				.inline(),
+			)
 			.into_any_element()
 	}
 
 	fn research_settings(&self, cx: &mut Context<Self>) -> Div {
 		let state = &self.components.research_shown;
-		let actions: Vec<_> = if !state.inspected {
-			Vec::new()
-		} else if state.installed.is_none() {
-			vec![("components-install-research", "Install", component_research::Action::Install)]
-		} else {
-			vec![
-				(
+		let mut controls = gpui::div().flex().items_center().gap_2();
+		if state.inspected {
+			if state.installed.is_some() {
+				controls = controls.child(self.component_button(
 					"components-connect-research",
 					if state.connection.is_some() { "Open ChatGPT" } else { "Connect" },
-					component_research::Action::Connect,
-				),
-				("components-update-research", "Update", component_research::Action::Update),
-				("components-remove-research", "Uninstall", component_research::Action::Remove),
-			]
-		};
-		let mut controls = gpui::div().flex().items_center().gap_2();
-
-		for (id, label, action) in actions {
-			controls =
-				controls.child(self.component_button(id, label, Action::Research(action), cx));
+					Action::Research(component_research::Action::Connect),
+					cx,
+				));
+			}
+			controls = controls.child(self.component_lifecycle_buttons(
+				state.installed.as_ref().map(|_| true),
+				[
+					(
+						"components-install-research",
+						Action::Research(component_research::Action::Install),
+					),
+					(
+						"components-update-research",
+						Action::Research(component_research::Action::Update),
+					),
+					(
+						"components-remove-research",
+						Action::Research(component_research::Action::Remove),
+					),
+				],
+				cx,
+			));
 		}
 
 		let explanation = self.research_explanation();
@@ -475,27 +597,15 @@ impl SettingsSurface {
 		let mut controls = gpui::div().flex().items_center().gap_2();
 
 		if state.inspected {
-			let (label, action) = match &state.installed {
-				None => ("Install", PluginAction::Install),
-				Some(plugin) if !plugin.enabled => ("Enable", PluginAction::Install),
-				Some(_) => ("Update", PluginAction::Update),
-			};
-
-			controls = controls.child(self.component_button(
-				"components-install-egm",
-				label,
-				Action::Plugin(action),
+			controls = self.component_lifecycle_buttons(
+				state.installed.as_ref().map(|p| p.enabled),
+				[
+					("components-install-egm", Action::Plugin(PluginAction::Install)),
+					("components-install-egm", Action::Plugin(PluginAction::Update)),
+					("components-remove-egm", Action::Plugin(PluginAction::Remove)),
+				],
 				cx,
-			));
-
-			if state.installed.is_some() {
-				controls = controls.child(self.component_button(
-					"components-remove-egm",
-					"Uninstall",
-					Action::Plugin(PluginAction::Remove),
-					cx,
-				));
-			}
+			);
 		}
 
 		let feedback =
@@ -705,7 +815,7 @@ mod tests {
 		visual.update(crate::ui_frame::draw_current_frame);
 
 		assert!(visual.debug_bounds("settings-group-This Mac").is_none());
-		assert_eq!(settings.read_with(visual, |s, _| s.components.details), [false; 3]);
+		assert_eq!(settings.read_with(visual, |s, _| s.components.details), [false; 4]);
 
 		let codex = visual.debug_bounds("components-codex").unwrap();
 		let egm = visual.debug_bounds("components-egm").unwrap();
@@ -725,7 +835,10 @@ mod tests {
 
 		visual.simulate_click(toggle.center(), Default::default());
 
-		assert_eq!(settings.read_with(visual, |s, _| s.components.details), [false, true, false]);
+		assert_eq!(
+			settings.read_with(visual, |s, _| s.components.details),
+			[false, true, false, false]
+		);
 
 		visual.update(crate::ui_frame::draw_current_frame);
 
@@ -733,7 +846,7 @@ mod tests {
 
 		visual.simulate_click(toggle.center(), Default::default());
 
-		assert_eq!(settings.read_with(visual, |s, _| s.components.details), [false; 3]);
+		assert_eq!(settings.read_with(visual, |s, _| s.components.details), [false; 4]);
 	}
 
 	#[gpui::test]

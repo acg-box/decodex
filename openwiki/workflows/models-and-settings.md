@@ -30,6 +30,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/conversations.rs
   - id: openwiki-source-a2f254020dd8eaabd6366c91
     resource: repo://apps/decodex-gpui/src/session_settings.rs
+  - id: openwiki-source-0813b2e35e2133631c0aa4db
+    resource: repo://apps/decodex-gpui/src/settings_components.rs
   - id: openwiki-source-37be5bb3dc64279420e57b31
     resource: repo://apps/decodex-gpui/src/settings_native.rs
   - id: openwiki-source-a16804a567889414868e5d67
@@ -40,6 +42,8 @@ sources:
     resource: repo://automations/upstream/qualification.json
   - id: openwiki-source-3127fd4c7b2aefcc9cea7961
     resource: repo://automations/upstream/retained-contracts.json
+  - id: openwiki-source-7eedab1ccdf82ac9ccd3ab32
+    resource: repo://automations/upstream/retained-evidence.json
   - id: openwiki-source-451b1382eb8cdcb9915ac78b
     resource: repo://crates/decodex-app-client-ffi/src/conversation_estimates.rs
   - id: openwiki-source-2b08587e9b26e203156110c8
@@ -58,6 +62,10 @@ sources:
     resource: repo://crates/decodex-codex/src/app_server_client/thread_model_selection.rs
   - id: openwiki-source-7a438b090d3a7042aebaf269
     resource: repo://crates/decodex-codex/src/conversation.rs
+  - id: openwiki-source-69e9fd7efd8c3cd616184e27
+    resource: repo://crates/decodex-components/src/ragflow_service.rs
+  - id: openwiki-source-9ecfe8c96199e765ca2b4e1b
+    resource: repo://crates/decodex-components/src/ragflow.rs
   - id: openwiki-source-0d29990b5fd295fa89a495ad
     resource: repo://crates/decodex-protocol/src/model_catalog.rs
   - id: openwiki-source-e5be8be8499e6ccee0cf7ad0
@@ -70,6 +78,8 @@ sources:
     resource: repo://crates/decodex-runtime/src/account_launch/process.rs
   - id: openwiki-source-ba9677fef0b3a23f71d07771
     resource: repo://crates/decodex-runtime/src/agent_capabilities.rs
+  - id: openwiki-source-1477615a268800361379ce21
+    resource: repo://crates/decodex-runtime/src/agent_initial_settings.rs
   - id: openwiki-source-dc51b38db429ec5fe466c5f2
     resource: repo://crates/decodex-runtime/src/agent_memory.rs
   - id: openwiki-source-81ce54e50da763fa2a1f8813
@@ -96,10 +106,10 @@ sources:
     resource: repo://crates/decodex-runtime/tests/native_qualification/thread_settings.py
   - id: openwiki-source-8c78df4b382026886ac50894
     resource: repo://database/src/usage_evidence.rs
-generated: { by: "codex", at: "2026-11-04T09:41:04.531Z" }
+generated: { by: "codex", at: "2026-11-04T09:42:14.115Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-04T09:41:04.531Z
+    at: 2026-11-04T09:42:14.115Z
 ---
 
 # Model selection and settings ownership
@@ -136,8 +146,6 @@ Codex owns the effective model catalog, task configuration, provider admission a
 
 Open Settings > Agents after selecting a connected Agent. The native section reads through that Agent's account and project. It uses the same controls and native configuration as Agent preferences > Context defaults. Saved user values and effective project values remain separate; project or managed policy can override a saved choice. Saving does not restart loaded conversations. Decodex keeps no second copy of these native preferences.
 
-For background compaction and delegation-instruction retention, an omitted effective value uses the matching native feature's `defaultEnabled` value. An explicit effective setting takes priority. The catalog's `enabled` value can reflect another working directory, so it is not the requested project's override. An absent saved user preference stays absent until an explicit edit.
-
 The cached-catalog switch writes only `startup_readiness` for an existing user-configured MCP server: on selects `catalog`, and off selects `connection`. Native Codex owns the cache and tool connection. A missing or invalid cache keeps normal discovery; a tool call still needs the live connection. Configure project-only and plugin servers in Codex.
 
 Automatic suggestions are enabled by default. Turning the switch off prevents future automatic requests. Turning it back on does not request suggestions for answers that completed while it was off. Tab acceptance still creates an undoable draft and never sends it. This setting does not turn on content export or the deferred messaging experiments.
@@ -166,7 +174,7 @@ When the same complete catalog gives the selected model a retirement deadline th
 
 Recovery uses the existing source-bound settings journal and publication readback. It preserves compatible effort and service-tier choices, does not change provider or permission ownership, and does not replay input. Active turns keep their current execution. A native session that cannot be loaded remains outside this retirement check.
 
-The `retained_model_retirement_defaults` record in the [stable contract catalog](../../automations/upstream/retained-contracts.json) preserves the behavior, regression groups and original qualification limits. The fixtures cover native-default selection, future or absent deadlines, missing defaults, source changes, draft preservation and no replay. Their original local qualification does not establish a real retired provider model or installed application.
+The [retained evidence](../../automations/upstream/retained-evidence.json) records 24 runtime and 18 desktop tests, with a failing-before and passing-after retirement case. The fixtures cover native-default selection, future or absent deadlines, missing defaults, source changes, draft preservation and no replay. They do not qualify a new native artifact, a real retired provider model or an installed application.
 
 ## Guardian and helper settings
 
@@ -188,7 +196,9 @@ The reviewed source, thread and Goal identity must still match before a write. L
 
 The search control shows the saved user preference separately from the effective project default. Supported native modes include disabled, cached, indexed and live, subject to current native requirements. Saving writes only `web_search` against the reviewed native file version, with no user-config reload. It does not restart, resume or fork an existing conversation to force the new default into its loaded settings.
 
-Memory availability comes from the native feature observation. A capability flag is not a separate Decodex memory database or a retention policy. The implemented [Assistant lifecycle](../decisions/assistant-lifecycle.md) adds optional RAGFlow retrieval and Memory through Settings > Components. Knowledge dataset IDs, Memory ID and chat import are separate selections; empty datasets disable retrieval. Selecting Memory reminds the user and waits for a safe fresh context with native generation, use and the memories feature disabled, plus disabled native memory mode. Cold resume preserves this policy. Native compaction, history, unrelated Agents and shared defaults retain their settings. The saved connection uses an environment-variable credential reference. A connection failure remains visible without native-memory fallback.
+Memory availability comes from the native feature observation. A capability flag is not a separate Decodex memory database or a retention policy. The implemented [Assistant lifecycle](../decisions/assistant-lifecycle.md) adds optional RAGFlow retrieval and Memory through Settings > Components. Select **Install** to prepare RAGFlow nightly and compatible Infinity in a private Docker Compose project. Component operations check the running Docker-compatible engine and Docker Compose before installation effects. Unavailable prerequisites produce a shared inline notice; the App does not install or launch a container runtime or provide an installation guide. Decodex configures the service account automatically. After successful installation, the model form opens automatically if no model settings are saved. Use **Configure models** to reopen it. Enter an OpenAI-compatible **Base URL**, optional **API key**, **Extraction model** and **Embedding model**. **Save models** verifies these exact models and initializes dedicated Memory automatically. No model runtime or model weights are installed. The component shares its version row and lifecycle controls with the other components. It reports the installed nightly version and offers **Update** and **Uninstall**. Service connection and its internal credential are automatic, with no Connect action. The model API key stays private and is left blank in a later edit; an empty field keeps the saved key only at the same Base URL. Loopback host names are translated for the container while the displayed URL stays unchanged. A Memory with messages retains its embedding model and endpoint to preserve the saved index.
+
+Chat import starts off and is enabled separately. Update preserves this choice, the model configuration and saved data. Uninstall stops the owned service and clears its connection, while retaining data for reinstallation. Explicit knowledge dataset scopes remain available in typed Assistant configuration; empty datasets disable retrieval. The Memory explanation states that Codex memory is disabled for Assistant. Activation waits for a safe fresh context with native generation, use and the memories feature disabled, plus disabled native memory mode. Cold resume preserves this policy. Native compaction, history, unrelated Agents and shared defaults retain their settings. The saved connection uses a private component credential reference; legacy environment-variable references remain supported. A connection failure remains visible without native-memory fallback.
 
 ## Read a native memory summary
 
@@ -216,7 +226,7 @@ Native Codex retains transport selection. The integration does not force shared 
 
 ## Explicit model catalogs
 
-The repository-owned `large_catalog.py` probe verifies that a configured catalog larger than 1 MiB reaches native `model/list`. The [current qualification](../../automations/upstream/qualification.json) identifies the exact artifact and executed probe; earlier executions keep their original limits. This is a compatibility contract for native configuration; it does not add a provider or account setup control. The existing account-plan boundary remains unchanged.
+The historical `large_catalog.py` probe verifies that a configured catalog larger than 1 MiB reaches native `model/list` within its recorded artifact limits. It was not rerun for the current migration. This is a compatibility contract for native configuration; it does not add a provider or account setup control. The existing account-plan boundary remains unchanged.
 
 ## Known native limits
 

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:6a4e8f602547db99a856045052345a4f84e0afe1c285c583c98004c7aca10c4b",
+  "pageVersion": "sha256:9c3527dd4af8fe1ccb4317ac0534e75f48c43ae6dc7c161d507115e788063d59",
   "claims": [
     {
       "id": "claim_43786e7afb4249548ed4fab09e0e4afa",
@@ -12,7 +12,7 @@
         },
         {
           "resource": "repo://database/src/agent.rs",
-          "version": "repo-file-v1:sha256:d8f927bc04ecde1b14f278d68f7e89aeb53edca6f9c000b1d16f55f59a002c97"
+          "version": "repo-file-v1:sha256:626d7e727a18ac12155d7e53ca855cc916f63cc3951256c7357b957e296f2e63"
         }
       ]
     },
@@ -26,7 +26,7 @@
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent_host.rs",
-          "version": "repo-file-v1:sha256:d8a526106b9917db75fe6501fd61251869ac1e32051e171a525a00b5c2cd62f0"
+          "version": "repo-file-v1:sha256:cba833da0ef2d3b38e54e9430058577c2d09d53d05566b6a21f2ad61b4c9ca6e"
         }
       ]
     },
@@ -104,7 +104,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/agent_host.rs",
-          "version": "repo-file-v1:sha256:d8a526106b9917db75fe6501fd61251869ac1e32051e171a525a00b5c2cd62f0"
+          "version": "repo-file-v1:sha256:cba833da0ef2d3b38e54e9430058577c2d09d53d05566b6a21f2ad61b4c9ca6e"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent_visibility.rs",
@@ -122,7 +122,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_surface.rs",
-          "version": "repo-file-v1:sha256:ecc0ad2696b0f62e057388c19bf739f4dd68ed2c0c72c2c4eb20187cf75c1ea5"
+          "version": "repo-file-v1:sha256:0d0d69a1114c1d69bbfc63e993353cc230d3bea1e11358fdf6164205cb8d6f47"
         }
       ]
     },
@@ -164,7 +164,7 @@
         },
         {
           "resource": "repo://crates/decodex-codex/src/app_server_client/context_preferences.rs",
-          "version": "repo-file-v1:sha256:adf961b9ee888ebcb4250e698727a95a4ce4b6fc5053edfa209719c48ba36fa0"
+          "version": "repo-file-v1:sha256:bfe56443590413065e0aca21a1a126ae939b0ca63923601b4da8192b47d1a5bb"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent.rs",
@@ -449,8 +449,8 @@
           "version": "repo-lines-v1:sha256:7703642a6ba26a5703364891a8e15bdd016548169e6b480087bfc575dfa31ff1:eyJzZWxlY3RlZExpbmVDb3VudCI6NTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdjZWViNTVmNjY5YmM2MjQxNzg5MDRmYjE3NTVkYTU4ZmUzMGMzMGEyZDI5NjYyOWUwOWI2MWJlYWMwNjc5NjAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJkOWUwZTRjMzBkZTZiNDYwNWJjYzIxYjZmZmI1YWQ3MDdkODAzZGY5ZmZmNTZkMDI3ZGQ2M2ZkNTUyNDg2MTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImU4MjVmODNhMDAyY2VkYzBkOTA1OTVjMzUwMTc2NjlkMWIwNmMxYjRmZjg1MGMzYTE3ZjExOTFjYjMxZWIxOGUifQ"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L1727-L1791",
-          "version": "repo-lines-v1:sha256:944005b7fd052ec75749967c1a763eb63f89e5600ae13bf47d99393acbb4ed72:eyJzZWxlY3RlZExpbmVDb3VudCI6NjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE4NDA2NWNjOTFkNmQyZmM1ZjNlMTg4ODFkZDkwNGQxN2YxNGFlODk0YjAzMDJlZjk0OGE2YjMxNDgwODQ0M2MiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjgxOWY1MDE3OTNiZjgzNjk5Njc5MzY0NzFhMDQ3NmM1NmE0MjFlYmVkZTQyNWNjYmNmNTgyMDBhNGUwZjJiNTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM4Mjg1MGE3OWVlMTYyNjQ4NmRjZGFlMzA4NGE0Mjc4ZTY1Yjc4YjVjMmNmNmM0YTliYjU1YmZkNmMzYTFjZmUifQ"
+          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L1728-L1800",
+          "version": "repo-lines-v1:sha256:76640d9993f25c72f315e4083c43d7bc07958f0d762121980bf4b917d99d917a:eyJzZWxlY3RlZExpbmVDb3VudCI6NzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE4NDA2NWNjOTFkNmQyZmM1ZjNlMTg4ODFkZDkwNGQxN2YxNGFlODk0YjAzMDJlZjk0OGE2YjMxNDgwODQ0M2MiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjgxOWY1MDE3OTNiZjgzNjk5Njc5MzY0NzFhMDQ3NmM1NmE0MjFlYmVkZTQyNWNjYmNmNTgyMDBhNGUwZjJiNTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM4Mjg1MGE3OWVlMTYyNjQ4NmRjZGFlMzA4NGE0Mjc4ZTY1Yjc4YjVjMmNmNmM0YTliYjU1YmZkNmMzYTFjZmUifQ"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_timeline_receipts.rs#L34-L47",
@@ -520,21 +520,43 @@
     },
     {
       "id": "claim_4e963680d80e479cba24b6b3602e8b6e",
-      "statement": "The Assistant groups existing independent Agents into lightweight teams and registers independent wakes in the existing Inbox journal. Work and scoped Collaboration retain outcome ownership; Settings > Components configures the optional RAGFlow connection.",
+      "statement": "The Assistant groups existing independent Agents into lightweight teams and registers independent wakes in the existing Inbox journal. Work and scoped Collaboration retain outcome ownership. Settings > Components installs optional RAGFlow and accepts an OpenAI-compatible Base URL, optional API key and custom extraction and embedding model names before automatic Memory setup.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
-          "version": "repo-file-v1:sha256:a567b2373ebad8d8e66efb3e3fb8e7b3b0bb21ca2b25bcfa8290d2ecaa8db277"
+          "version": "repo-file-v1:sha256:2d3b3b8873ece30ae1ed21c6db852df68fe8af0da00fcea059034229a9044e77"
+        },
+        {
+          "resource": "repo://crates/decodex-components/src/ragflow_service.rs",
+          "version": "repo-file-v1:sha256:a271fcb3d1384a1ae94850ab1bde534e950e082fd8535f83bb0a5e5ce3fe3a83"
         },
         {
           "resource": "repo://database/src/assistant.rs",
-          "version": "repo-file-v1:sha256:ef184fabb6fb9c789f70b4d6e4b7970e4031c0b586778fd9acbe9eb095530433"
+          "version": "repo-file-v1:sha256:f96807ddb85427783694c17c7e9a93529d0d43d620ffda5eb7de5f7fe70e29d5"
+        }
+      ]
+    },
+    {
+      "id": "claim_658fa3aaa4d14807ad7eb749646926f9",
+      "statement": "The built-in sidebar Assistant entry creates an idle independent Assistant and its role atomically on first use through CreateAssistant, without manufacturing a first user message.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
+          "version": "repo-file-v1:sha256:2d3b3b8873ece30ae1ed21c6db852df68fe8af0da00fcea059034229a9044e77"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent_host.rs",
+          "version": "repo-file-v1:sha256:cba833da0ef2d3b38e54e9430058577c2d09d53d05566b6a21f2ad61b4c9ca6e"
+        },
+        {
+          "resource": "repo://database/src/agent.rs",
+          "version": "repo-file-v1:sha256:626d7e727a18ac12155d7e53ca855cc916f63cc3951256c7357b957e296f2e63"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-04T09:41:04.531Z"
+    "at": "2026-11-04T09:42:14.115Z"
   }
 }

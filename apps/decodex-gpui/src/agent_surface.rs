@@ -5,6 +5,7 @@
 #[path = "agent_app_exposure.rs"] mod app_exposure;
 #[path = "agent_archive.rs"] mod archive;
 #[path = "assistant_settings.rs"] mod assistant_settings;
+pub(crate) use assistant_settings::ComponentAction as RagflowComponentAction;
 #[path = "agent_async_questions.rs"] mod async_questions;
 #[path = "agent_attached_branches.rs"] mod attached_branches;
 #[path = "agent_capabilities.rs"] mod capabilities;
@@ -1777,6 +1778,14 @@ impl AgentSurface {
 
 			self.remember_draft_document(cx);
 		}
+
+		if let Some(id) = self.workspace.assistant_open.clone().filter(|id| {
+			self.snapshot.as_ref().is_some_and(|s| s.work_items.iter().any(|w| &w.id == id))
+		}) {
+			self.workspace.assistant_open = None;
+			self.open_page(&id, cx);
+		}
+		self.continue_memory_setup(cx);
 	}
 
 	fn apply_result(&mut self, result: Result<AgentSnapshotResult, ()>) {
@@ -2751,6 +2760,8 @@ struct WorkspaceView {
 	work_evidence: Option<WorkPortfolio>,
 	work_read_error: Option<String>,
 	assistant_picker: bool,
+	assistant_open: Option<String>,
+	assistant_memory_action: Option<RagflowComponentAction>,
 	private_detail_text: Option<(String, String)>,
 	contribution_detail: Option<String>,
 	guardian_open: bool,
@@ -2809,6 +2820,8 @@ impl Default for WorkspaceView {
 			work_evidence: None,
 			work_read_error: None,
 			assistant_picker: false,
+			assistant_open: None,
+			assistant_memory_action: None,
 			private_detail_text: None,
 			contribution_detail: None,
 			guardian_open: false,

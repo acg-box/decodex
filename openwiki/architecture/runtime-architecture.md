@@ -16,6 +16,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_timeline_scroll.rs
   - id: openwiki-source-691432bb61082c358b6f9c24
     resource: repo://apps/decodex-gpui/src/agent_timeline.rs
+  - id: openwiki-source-f339a4d1910db63ca305c2df
+    resource: repo://apps/decodex-gpui/src/assistant_settings.rs
   - id: openwiki-source-ae991159453be2ee0c611ac1
     resource: repo://apps/decodex-gpui/src/bundled_daemon.rs
   - id: openwiki-source-c1d5f763b821a11957a8c33b
@@ -34,8 +36,12 @@ sources:
     resource: repo://automations/upstream/README.md
   - id: openwiki-source-3127fd4c7b2aefcc9cea7961
     resource: repo://automations/upstream/retained-contracts.json
+  - id: openwiki-source-7eedab1ccdf82ac9ccd3ab32
+    resource: repo://automations/upstream/retained-evidence.json
   - id: openwiki-source-651d1fb6c9e49916a916ab51
     resource: repo://Cargo.toml
+  - id: openwiki-source-f02ae41e2bd15dda85dc86b9
+    resource: repo://codex-runtime.lock.json
   - id: openwiki-source-b1948e1beb6e361503aa2db1
     resource: repo://crates/decodex-codex/src/app_server_client.rs
   - id: openwiki-source-d0b9aaf952250307abc4342e
@@ -54,10 +60,16 @@ sources:
     resource: repo://crates/decodex-codex/src/app_server_client/temporary_structured.rs
   - id: openwiki-source-787f8ad27b8519fbed2bd039
     resource: repo://crates/decodex-codex/src/app_server_client/thread_fork.rs
+  - id: openwiki-source-5574fb6f352ba6cb3403ede9
+    resource: repo://crates/decodex-components/resources/ragflow-infinity.Dockerfile
   - id: openwiki-source-0d4c68456f2e50c6fc7ad5eb
     resource: repo://crates/decodex-components/src/install.rs
   - id: openwiki-source-2d990e4e2bc233a95b4894b9
     resource: repo://crates/decodex-components/src/pin.rs
+  - id: openwiki-source-69e9fd7efd8c3cd616184e27
+    resource: repo://crates/decodex-components/src/ragflow_service.rs
+  - id: openwiki-source-9ecfe8c96199e765ca2b4e1b
+    resource: repo://crates/decodex-components/src/ragflow.rs
   - id: openwiki-source-6230c010baca677fa60c32c1
     resource: repo://crates/decodex-protocol/src/client.rs
   - id: openwiki-source-cc0439b23243c3697ba49199
@@ -70,8 +82,6 @@ sources:
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_recap_service_tests.rs
   - id: openwiki-source-3d7045bfa872a564d938d3e2
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_unreported_usage_tests.rs
-  - id: openwiki-source-f5d073da07bcb17ee416f3b5
-    resource: repo://crates/decodex-runtime/src/account_launch/process_native_control_tests.rs
   - id: openwiki-source-b2869e6da778a74cb6afc667
     resource: repo://crates/decodex-runtime/src/account_launch/process.rs
   - id: openwiki-source-4e8482c0f2dbe370858a1b11
@@ -120,12 +130,10 @@ sources:
     resource: repo://crates/decodex-runtime/src/application_collaboration.rs
   - id: openwiki-source-a09c082db4ad1473c4d1e557
     resource: repo://crates/decodex-runtime/src/application.rs
+  - id: openwiki-source-3edc2f094826ee56ddec6b73
+    resource: repo://crates/decodex-runtime/src/ragflow.rs
   - id: openwiki-source-6085af9603cb7ac0ff3ef1cf
     resource: repo://crates/decodex-runtime/src/work_portfolio.rs
-  - id: openwiki-source-07c9cc033899826079f8efb5
-    resource: repo://crates/decodex-runtime/tests/native_qualification/large_catalog.py
-  - id: openwiki-source-88b81a215b1bac061dad80ec
-    resource: repo://crates/decodex-runtime/tests/native_qualification/model_errors.py
   - id: openwiki-source-003f00974f49a9f106bbcbea
     resource: repo://database/schema.sql
   - id: openwiki-source-58c0167d31c3e40dc89591ab
@@ -152,10 +160,10 @@ sources:
     resource: repo://scripts/macos/stage_decodex_app.sh
   - id: openwiki-source-76081c1a47ca8cf32593de34
     resource: repo://scripts/macos/test_decodex_app_stage.sh
-generated: { by: "codex", at: "2026-11-04T09:41:04.531Z" }
+generated: { by: "codex", at: "2026-11-04T08:04:10.801Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-04T09:41:04.531Z
+    at: 2026-11-04T09:42:14.115Z
 ---
 
 # Runtime Architecture
@@ -175,6 +183,10 @@ flowchart LR
     FFI --> Service
     Service --> DB[(SQLite)]
     Service --> Codex[Codex app-server]
+    UI --> Components[ComponentStore]
+    Components --> Docker[Owned Docker Compose project]
+    Docker --> RAG[RAGFlow nightly and Infinity]
+    Service --> RAG
 ```
 
 ## Application and bundle
@@ -229,7 +241,7 @@ Native `thread/name/set` owns the conversation name. The service rechecks the or
 
 Native name revisions have a separate guard. A manual rename invalidates an outstanding title write. An automatic title update does not invalidate task permissions, model settings or an existing Recap.
 
-SQLite keeps title provenance and the review checkpoint as resolved `conversation_title` observations in the existing indexed inbox journal. They do not wake an Agent or enter transcript pages. The work snapshot reads topics and current bindings in one transaction; local protocol 4.6 supplies the resulting thread-keyed map. No new schema or startup migration is required. Agent identity and Work titles remain separate. See [the title workflow](../workflows/conversations-and-recovery.md#automatic-conversation-titles).
+SQLite keeps title provenance and the review checkpoint as resolved `conversation_title` observations in the existing indexed inbox journal. They do not wake an Agent or enter transcript pages. The work snapshot reads topics and current bindings in one transaction; local protocol 4.7 supplies the resulting thread-keyed map. No new schema or startup migration is required. Agent identity and Work titles remain separate. See [the title workflow](../workflows/conversations-and-recovery.md#automatic-conversation-titles).
 
 ## Native history and resource lookup
 
@@ -263,7 +275,7 @@ async_compaction = true
 retain_client_tool_outputs = true
 ```
 
-`false` explicitly disables a setting. When effective project configuration omits a feature, the adapter reads `defaultEnabled` from native `experimentalFeature/list`. It does not use the catalog's `enabled` value, which can refer to another working directory. Explicit project or managed configuration takes priority over that default and can override a saved user preference. The panel reports the saved and effective values separately. A changed file or source requires a fresh review; an unconfirmed save is not retried automatically.
+`false` explicitly disables a setting. An absent value keeps the native default, which is off for these two experimental features. Project or managed configuration can override a saved user preference. The panel reports both values when they differ. A changed file or source requires a fresh review; an unconfirmed save is not retried automatically.
 
 To set the native async threshold, replace its boolean with the table form:
 
@@ -285,9 +297,19 @@ The per-server cached-catalog switch saves `mcp_servers.<quoted-server>.startup_
 
 `decodex-components` owns one per-user component store, package verification and cache repair. The GUI and service embed the same runtime requirement. App startup prepares that component before launching the owned service; preparation does not consume connection retry attempts. Settings > Components shows the selected component, progress, errors and Retry. Optional EGM installation, update and removal use the native Codex plugin lifecycle. Sparkle owns the separate Decodex application update flow in Settings > Updates.
 
+Assistant is built in and always available from the sidebar. Its first use publishes an idle Agent and its role in one SQLite transaction. Components has no Assistant Enable control. The optional RAGFlow component shares lifecycle buttons, version metadata, collapsed details and inline feedback with the other components. It exposes Install, Update and Uninstall. Service connection is automatic; model settings use the component details.
+
+`decodex-components::ragflow` owns a per-user Docker Compose project. Docker must be running. The project contains RAGFlow nightly, compatible Infinity 0.7.4, MySQL, MinIO, Kvrocks and NATS. Only the RAGFlow API is published, on loopback. Install prepares the private account and reads the actual server version and owned image identity. The private receipt retains the project, endpoint and setup state so a retry uses the same installation.
+
+Model configuration uses one OpenAI-compatible Base URL, optional API key, extraction model name and embedding model name. The component asks RAGFlow to verify the exact models before saving the provider instance and defaults. It then creates or recovers a dedicated Memory by its stable name. The component does not install a model runtime, download models or create a model data volume. A loopback model URL is translated to `host.docker.internal` for the container; the saved and displayed URL stays as entered. Existing indexed Memory keeps its embedding model and endpoint, because a changed vector space would invalidate the saved index.
+
+On ARM64, the component packages the official Infinity 0.7.4 binary and analyzer resources with an Ubuntu 24.04 runtime. The published ARM64 image has an older glibc than its binary requires. The build context contains only the runtime Dockerfile; account and Compose credentials stay outside it. The x86-64 path uses the compatible official Infinity image directly. This does not install a host compiler or add a Decodex execution engine.
+
+Model credentials and installation state stay in the private component receipt. The separate origin-bound RAGFlow API credential is saved in a private component file; only its reference passes through the existing Assistant Configure command. The service reads that reference for Memory calls. Chat import starts off. Update preserves models, credentials, import choice and data. Uninstall stops only the owned project, clears its Assistant connection and retains volumes for reinstallation. A service failure can retry through Update; failed model verification keeps the previous saved configuration and is retried through Save models. Native context refresh and the external-memory policy retain their existing service and Codex owners.
+
 Official Release inputs require an exact tag, canonical OpenAI asset URL, archive SHA-256, executable SHA-256 and generated schema fingerprint. The installer checks the archive before extraction, then verifies signatures, version and protocol evidence. Downloads have three bounded attempts. A verified replacement is published atomically; a failed repair preserves the previous directory, and other versions remain available.
 
-Development keeps [the reviewed source requirement](../../codex-runtime.lock.json). `cargo +stable make prepare-codex` explicitly builds or imports its qualified artifact. The source builder uses the common checked download path, stable Rust and the unchanged upstream dependency graph. Its extractor refreshes source modification times while retaining the dependency build cache, so historical archive timestamps cannot select stale local objects. The app does not compile Codex.
+Development keeps [the reviewed source requirement](../../codex-runtime.lock.json). `cargo make prepare-codex` explicitly builds or imports its qualified artifact. The source builder uses the common checked download path, stable Rust and the unchanged upstream Cargo lock. Its extractor refreshes source modification times while retaining the dependency build cache, so historical archive timestamps cannot select stale local objects. The app does not compile Codex.
 
 Development artifacts use the same package verification and installation path. A local receipt binds archive and executable hashes to the fixed source commit and expected schema. CLI, Code Mode helper and any advertised standalone executor must contain the fixed development commit. The source builder signs the advertised executor with its upstream entitlements. The common component verifier requires the advertised helper and verifies its signature; legacy packages without that metadata retain their existing layout. A new artifact becomes selectable only after its installation verifies. Hashes and schema are integrity evidence; affected native regression tests still establish behavior.
 
@@ -295,11 +317,11 @@ The [portable qualification record](../../automations/upstream/qualification.jso
 
 Read the development lock and current qualification for the selected source, artifact and synthetic consumer limits. Keep the selected runtime, source-review cursor and installed binary as separate identities. A workflow or evidence update does not change those identities.
 
-The development lock and linked qualification identify the current qualified source and artifact. Provider recovery preserves the source conversation: ordinary forks keep its provider, and cold resume succeeds after that provider is restored. A user can explicitly create a separate native fork on the current provider. The service rechecks the observed refusal and current configuration before the existing fork write, retains the draft and uncertain-result receipt, and sends no input. Current qualification lists the affected native consumers and component cache checks for that artifact. Earlier executions retain their original source and artifact limits. Native context accounting includes retained reasoning after incomplete or usage-less responses before automatic compaction; Decodex uses the native result. HumanCommand remains user-deferred in [issue 2585](https://github.com/acg-box/decodex/issues/2585), unsupported and unadvertised. Runtime selection does not install the app or resume the automation.
+The development lock selects the qualified `ba0dfd389790` artifact. Provider recovery preserves the source conversation: ordinary forks keep its provider, and cold resume succeeds after that provider is restored. A user can explicitly create a separate native fork on the current provider. The service rechecks the observed refusal and current configuration before the existing fork write, retains the draft and uncertain-result receipt, and sends no input. Current qualification checks the affected native consumers and component cache against this exact artifact. Earlier executions retain their original source and artifact limits. Native context accounting includes retained reasoning after incomplete or usage-less responses before automatic compaction; Decodex uses the native result. HumanCommand remains user-deferred in [issue 2585](https://github.com/acg-box/decodex/issues/2585), unsupported and unadvertised. Runtime selection does not install the app or resume the automation.
 
 The separate `retained_project_agent_work.installed_acceptance` entry records the local installed development app, its executable identities and observed behavior. It includes the independent-Agent composer and input-routing repairs. It retains its own limits and does not extend the earlier synthetic native qualification. See [acceptance boundaries](../testing/upstream-acceptance-boundaries.md#project-agent-work-and-global-guardian).
 
-Reusable fixtures in `crates/decodex-runtime/tests/native_qualification/` check terminal `modelNotFound` classification through live, stored and cold history, and explicit model catalogs larger than 1 MiB. Read the current qualification for the fixtures executed against its exact CLI. Historical probe results keep their original artifact limits. These synthetic provider cases do not add an account type or a provider setup control.
+The previous `5be57bedd0` qualification retains terminal `modelNotFound` classification through live, stored and cold history without native retries or Decodex capacity retries. The earlier artifact probes separately checked that an explicitly configured model catalog larger than 1 MiB reaches native model discovery; those probes retain their original artifact limits. Reusable fixtures belong to `crates/decodex-runtime/tests/native_qualification/`; these synthetic provider cases do not add an account type or a provider setup control.
 
 Native `policyCapacityUnavailable` remains a distinct persisted error. It does not select Decodex overload retries. The local HTTP fixture permits native request retries; those are separate from a Decodex continuation. Native permission checkpoints retain acknowledged approval and reviewer settings through fork and cold resume despite stale turn context. Startup also skips a directory at `.env`. The reusable fixtures and source-inclusion records retain these bounded behavior requirements. Historical probe execution applies to its recorded artifact; current migration checks and historical results are listed separately in qualification.json.
 
@@ -307,7 +329,7 @@ Production staging selects a separate official Release requirement. Release pinn
 
 ## Protocol and safety
 
-Clients use same-UID local transport and exact protocol/artifact compatibility. Protocol 4.6 exposes current Project, Agent, Work, Guardian and attached-branch operations. An incompatible client fails explicitly; there is no parallel alias rollout. Publication-instance receipts remain enabled for this generation, including reconnect and idempotent command recovery. Credentials do not enter normal product projections. Revisions and stable command identities guard mutations. An unknown outcome requires authoritative readback, not blind retry.
+Clients use same-UID local transport and exact protocol/artifact compatibility. Protocol 4.7 exposes current Project, Agent, Work, Guardian and attached-branch operations. An incompatible client fails explicitly; there is no parallel alias rollout. Publication-instance receipts remain enabled for this generation, including reconnect and idempotent command recovery. Credentials do not enter normal product projections. Revisions and stable command identities guard mutations. An unknown outcome requires authoritative readback, not blind retry.
 
 Diagnostics covers Decodex product storage, local transport and integration failures. The standalone Codex startup-configuration check, its local query and its dedicated qualification helper are retired. Codex owns its app-server self-diagnostics. Ordinary error and warning presentation and user-requested conversation Markdown export remain supported. This retirement does not qualify an installed protocol 4.0 application against the current service.
 

@@ -16,6 +16,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_conversation_tabs.rs
   - id: openwiki-source-77ad5024b567271a0f618fd7
     resource: repo://apps/decodex-gpui/src/agent_list_branch.rs
+  - id: openwiki-source-89a6e0bcef9377afc01425eb
+    resource: repo://apps/decodex-gpui/src/agent_list_status_tests.rs
   - id: openwiki-source-02f8a02cdfa0616877cdad62
     resource: repo://apps/decodex-gpui/src/agent_list_status.rs
   - id: openwiki-source-9c68c30b2ff24ddf9a764d74
@@ -58,8 +60,12 @@ sources:
     resource: repo://automations/portfolio.toml
   - id: openwiki-source-7dcbb082d2502f1ec4386c39
     resource: repo://automations/upstream/prompts/maintainer.md
+  - id: openwiki-source-f580b10e16f1d25ebfea3bf8
+    resource: repo://automations/upstream/qualification.json
   - id: openwiki-source-3127fd4c7b2aefcc9cea7961
     resource: repo://automations/upstream/retained-contracts.json
+  - id: openwiki-source-7eedab1ccdf82ac9ccd3ab32
+    resource: repo://automations/upstream/retained-evidence.json
   - id: openwiki-source-02bd3cfc9d4db9d1d1d8fd59
     resource: repo://crates/decodex-codex/src/app_server_client/context_preferences_tests.rs
   - id: openwiki-source-2b08587e9b26e203156110c8
@@ -84,8 +90,6 @@ sources:
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_fork_tests.rs
   - id: openwiki-source-a0063c7b07a1bc990ee9af6c
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process.rs
-  - id: openwiki-source-f5d073da07bcb17ee416f3b5
-    resource: repo://crates/decodex-runtime/src/account_launch/process_native_control_tests.rs
   - id: openwiki-source-b2869e6da778a74cb6afc667
     resource: repo://crates/decodex-runtime/src/account_launch/process.rs
   - id: openwiki-source-f4724776aade804ebf838e2e
@@ -108,6 +112,8 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent_titles/host.rs
   - id: openwiki-source-dbc533dc306a3f520c4241e0
     resource: repo://crates/decodex-runtime/src/agent.rs
+  - id: openwiki-source-13f64682e8d77fd2c031de39
+    resource: repo://crates/decodex-runtime/src/agent/assistant.rs
   - id: openwiki-source-a4a2658e06fa2cf48ff4589e
     resource: repo://crates/decodex-runtime/src/agent/global_guardian.rs
   - id: openwiki-source-a7886792ad3e47b8e1afb7fa
@@ -132,10 +138,12 @@ sources:
     resource: repo://database/src/agent_process/attachments.rs
   - id: openwiki-source-82bb214209944301d2efacfb
     resource: repo://database/src/agent_titles.rs
-generated: { by: "codex", at: "2026-11-04T09:41:04.531Z" }
+  - id: openwiki-source-6197a876b2effbe992b1e2ec
+    resource: repo://database/src/agent.rs
+generated: { by: "codex", at: "2026-11-03T18:23:39.894Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-04T09:41:04.531Z
+    at: 2026-11-03T18:23:39.894Z
 ---
 
 # Product scope and native ownership
@@ -150,11 +158,11 @@ The [Project, Agent and Work contract](project-agent-work.md) is the accepted an
 
 Native permissions and private Review Details are selected product scope. Each conversation owns its permission mode; the global Guardian control only enables optional review records. Review Details are observation, not permission or Work acceptance. The retained contract catalog records an earlier installed scenario with two Projects, four Works, independent-Agent input and approval ownership, Pause/Resume, restart recovery and a Workspace/Full Access sequence. That historical qualification does not establish the current installed artifact or general model quality. Official Codex desktop Project presentation remains unobserved.
 
-The default coordination surface uses `work_read` and `work_manage`. Only users create persistent Agents. Native Subagents own temporary execution. Managed-worker/manager creation and old goal/dependency tools are retired from new conversations and refused in legacy schemas. Native history and recorded tool declarations stay bound to their original conversations.
+The default coordination surface uses `work_read` and `work_manage`. Users create persistent Agents directly. The selected Assistant can also create them under an exact delivered user delegation. Native Subagents own temporary execution. Managed-worker/manager creation and old goal/dependency tools are retired from new conversations and refused in legacy schemas. Native history and recorded tool declarations stay bound to their original conversations.
 
 Permission changes use the selected native conversation's supported profile and reviewer settings. Existing child captures and pending human approvals retain native ownership. Optional private details retain bounded assistant output and terminal metadata without raw reasoning. Exact action associations are unavailable in the selected runtime and remain explicit. This does not select the separate native Guardian V3 experiment.
 
-The current schema and protocol 4.6 store the business model directly. Native Projects provide catalog identity and directory context; Decodex retains Work and responsibility associations. A native Project entry does not prove synchronization with desktop saved Projects. Work association is not a new execution sandbox or automatic directory switch.
+The current schema and protocol 4.7 store the business model directly. Native Projects provide catalog identity and directory context; Decodex retains Work and responsibility associations. A native Project entry does not prove synchronization with desktop saved Projects. Work association is not a new execution sandbox or automatic directory switch.
 
 The retained-conversation repair reconciles unassigned native Project membership before input and preserves conflicts for inspection. The current schema retains actual native child-input receipts for Work attribution when native configuration permits nested V2 Code Mode. Recovery joins exact evidence without replay. V1 nesting remains supported; V2 keeps its direct-only default. These are repairs to retained integration contracts. Native Project identity and membership and Decodex Project presentation passed in the separate installed qualification. Official desktop saved-Project/sidebar presentation remains unobserved. See the [canonical contract](project-agent-work.md#qualification-and-evidence-limits).
 
@@ -168,7 +176,7 @@ The selected scope includes three views in the existing desktop:
 - **Collaboration history:** Retain exact local question replies, their delivery and receiving-turn outcome, plus independent contribution cycles and explicit owner assessments. A reply or returned contribution does not establish resolution or complete Work. Missing external reply bodies remain unknown.
 - **Actual usage:** Read known whole-turn token deltas and recorded duration for a persistent Agent or retained Work references. Shared Work references, missing counters and unobserved child usage remain explicit. Linked turns can contain other activity; recorded duration is not Work elapsed time and these values are not a bill.
 
-These views are available through local protocol 4.6 and the same source owners. Their reusable regression identities, exact-artifact checks and limits are in `selected_read_views` in the [stable retained contract catalog](../../automations/upstream/retained-contracts.json). Installed-app acceptance remains separate.
+These views are available through local protocol 4.7 and the same source owners. Their reusable regression identities, exact-artifact checks and limits are in `selected_read_views` in the [stable retained contract catalog](../../automations/upstream/retained-contracts.json). Installed-app acceptance remains separate.
 
 ## Current optional decisions
 
@@ -252,7 +260,7 @@ The manual proposal records have current dispositions. Deferred research does no
 
 **Item 59 is delivered** in [PR 2559](https://github.com/acg-box/decodex/pull/2559). A locally managed conversation row offers **Fork**. The action opens that exact source, reads its latest completed native turn and reuses the existing explicit after-turn confirmation. Source and unrelated drafts survive navigation and cancellation. Creation sends no input. Native inventory rows without a local managed source gain no adoption path. The focused client checks do not establish installed-app or live-provider acceptance.
 
-**Item 74 is implemented** as independent status filters in the existing conversation browser and Project-grouped Work list. Each view saves its selection through the existing host-local presentation preference owner and offers **All statuses** to clear it. The filter reuses displayed status facts and combines with Project and search filters. Exact row opening, source drafts and Work details retain their existing owners. It adds no model grouping, command center, execution policy or native runtime change. The [retained contract](../../automations/upstream/retained-contracts.json) records the source and original qualification limits. Physical app restart, installed UI and live-provider acceptance remain separate, and native maintenance state owns merge reconciliation.
+**Item 74 is implemented** as independent status filters in the existing conversation browser and Project-grouped Work list. Each view saves its selection through the existing host-local presentation preference owner and offers **All statuses** to clear it. The filter reuses displayed status facts and combines with Project and search filters. Exact row opening, source drafts and Work details retain their existing owners. It adds no model grouping, command center, execution policy or native runtime change. Five focused GPUI tests and affected static checks passed; physical app restart, installed UI and live-provider acceptance remain separate. The [portable evidence](../../automations/upstream/retained-evidence.json) records the source and limits, and native maintenance state owns merge reconciliation.
 
 The following native options remain deferred research:
 
@@ -312,7 +320,7 @@ The client also exposes a bounded, explicitly invoked ephemeral prediction fork.
 
 Native launch policy requests full-fork prefix preservation, model-specific subagent context defaults and Agent message wakeups. The retained description-first argument is accepted as a removed native feature, so current tool ordering stays native-owned. The native configuration still selects Code Mode hosting transport.
 
-Background compaction and retention of delegation instructions are configurable native additions. Settings > Agents > Native defaults and Agent preferences > Context defaults read and write the same native configuration used by manual `config.toml` edits. An omitted value follows the native feature default; explicit effective project configuration takes priority. Explicit off values remain valid, and saving a default does not restart loaded conversations. The panel distinguishes saved user and effective project values. This preserves the existing controls when native defaults change.
+Background compaction and retention of delegation instructions are configurable native additions. Settings > Agents > Native defaults and Agent preferences > Context defaults read and write the same native configuration used by manual `config.toml` edits. Explicit off values remain valid; saving a default does not restart loaded conversations. The panel distinguishes a saved user value from a project override.
 
 The compatibility path requests retention only for `work_instruction` outputs. This covers initial delegation and explicit follow-up instructions while keeping application tool authority. Wakes, capacity retries and arbitrary external results remain unselected. Codex owns the retention decision and budget.
 

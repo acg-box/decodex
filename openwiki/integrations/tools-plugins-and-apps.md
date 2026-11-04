@@ -16,6 +16,10 @@ sources:
     resource: repo://apps/decodex-gpui/src/settings_components.rs
   - id: openwiki-source-e379b8a714d71f87371ae328
     resource: repo://crates/decodex-components/src/plugins.rs
+  - id: openwiki-source-69e9fd7efd8c3cd616184e27
+    resource: repo://crates/decodex-components/src/ragflow_service.rs
+  - id: openwiki-source-9ecfe8c96199e765ca2b4e1b
+    resource: repo://crates/decodex-components/src/ragflow.rs
   - id: openwiki-source-eccf08613126ff810078b520
     resource: repo://crates/decodex-protocol/src/agent.rs
   - id: openwiki-source-a0063c7b07a1bc990ee9af6c
@@ -34,10 +38,10 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent/native_settings.rs
   - id: openwiki-source-3edc2f094826ee56ddec6b73
     resource: repo://crates/decodex-runtime/src/ragflow.rs
-generated: { by: "codex", at: "2026-11-03T16:31:59.854Z" }
+generated: { by: "codex", at: "2026-11-04T08:04:10.801Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-03T17:33:35.946Z
+    at: 2026-11-04T09:42:14.115Z
 ---
 
 # Native tools and connection ownership
@@ -56,7 +60,11 @@ The explicit [EGM Component](elephant-goldfish.md) is a narrow native-lifecycle 
 
 ## Native settings boundaries
 
-The implemented [Assistant lifecycle](../decisions/assistant-lifecycle.md) exposes an optional existing RAGFlow connection in Components. Its HTTP adapter uses explicit dataset, Memory, Assistant and user scopes. Knowledge retrieval and Memory are separate, and chat import needs its own direct-user opt-in. Selecting Memory waits for a safe fresh context with native memory generation, use and the memories feature disabled; cold resume retains this policy. Native compaction, history, unrelated Agents and shared defaults retain their owners. The account bridge admits only disabled thread/memoryMode/set writes, not general memory enablement or reset. Settings retain a service credential-variable name rather than a key value.
+The built-in [Assistant lifecycle](../decisions/assistant-lifecycle.md) exposes RAGFlow as an optional managed service component. Install prepares RAGFlow nightly, compatible Infinity and its private service account. Configure models accepts an OpenAI-compatible Base URL, optional API key and custom extraction and embedding model names. Native verification precedes saving and automatic dedicated Memory setup. The component installs no model runtime or weights. It requires a running Docker engine. The row shares version metadata, lifecycle buttons, disclosure and inline feedback with the other components. Update reads the actual installed version; Uninstall stops the owned project and keeps its data for reinstall. Service connection is automatic, with no Connect action or service-account form.
+
+The HTTP adapter uses explicit dataset, Memory, Assistant and user scopes. It saves an origin-bound private component credential; settings retain only its reference. Legacy service-environment references remain supported. Knowledge retrieval and Memory are separate. Chat import starts off and needs its own direct-user opt-in; Update preserves that choice.
+
+Selecting Memory waits for a safe fresh context with native memory generation, use and the memories feature disabled. Cold resume retains this policy. Native compaction, history, unrelated Agents and shared defaults retain their owners. The account bridge admits only disabled `thread/memoryMode/set` writes, not general memory enablement or reset. See [Runtime architecture](../architecture/runtime-architecture.md#components-and-app-updates) for service and storage ownership.
 
 | Surface | Responsibility | Boundary |
 | --- | --- | --- |
