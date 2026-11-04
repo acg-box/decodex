@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:fde10ec07355d77002dd00a5a6a38a96d944afa97115605f63b6dfc31299dd61",
+  "pageVersion": "sha256:1155c6ad1244a99ca47ac9d5dd428598e80740e20f12e3c94517b4c8be0537ce",
   "claims": [
     {
       "id": "claim_820ae47a5a5d49aab10b5f306ac24685",
@@ -298,7 +298,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:0c08a1458a9bd81c0b2677475996113dedad6be7a59ca2b6902df9d5b1bdee9e"
+          "version": "repo-file-v1:sha256:74190e32cc3119f7bf82f2f70f917b8e9f6150d6078a10adc2f6a564f46bb9cb"
         },
         {
           "resource": "repo://automations/upstream/retained-contracts.json#L2657-L4144",
@@ -306,7 +306,7 @@
         },
         {
           "resource": "repo://codex-runtime.lock.json",
-          "version": "repo-file-v1:sha256:05032a3c837d0f054ca33e88ef03f06357ff7a860d59bcb2f2606f7fcde486d7"
+          "version": "repo-file-v1:sha256:15af7e36a1473ff274b4a63ca36c4f7c03b72d853f6f3cfad9d32799e9b289ea"
         }
       ]
     },
@@ -341,6 +341,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-03T17:33:35.946Z"
+    "at": "2026-11-04T09:41:04.531Z"
   }
 }

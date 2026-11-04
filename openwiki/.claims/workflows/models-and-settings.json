@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:46715dafb2aaa882da338c5624b59d1791b62d13cd599de4e1d9eab53bef43b6",
+  "pageVersion": "sha256:33dea6986419880b7941f12c5a44123d4e60b65e24f5c10761343e944bd67444",
   "claims": [
     {
       "id": "claim_f0c37462522f4442acd94d53819ef75c",
@@ -56,7 +56,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-contracts.json",
-          "version": "repo-file-v1:sha256:f42cae151b3c2c980a4c7b8448e08e4a1ae5a4d78f19067f158b1ce165c07ffa"
+          "version": "repo-file-v1:sha256:e4f1fef853138a1f3465e5ce20e0ab13d103a2fd82c02305c216b30442c32f61"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/process.rs#L133-L153",
@@ -88,11 +88,11 @@
     },
     {
       "id": "claim_781e6a39d4954364aa46b3429385c7c9",
-      "statement": "The historical large_catalog.py probe verifies native model/list with an explicitly configured catalog larger than 1 MiB within its recorded artifact limits; it adds no account or provider setup control.",
+      "statement": "The repository-owned large_catalog.py probe checks native model/list with an explicit catalog larger than 1 MiB. Current qualification records the selected artifact and execution; historical results retain their original limits. This adds no account or provider setup control.",
       "evidence": [
         {
-          "resource": "repo://automations/upstream/retained-contracts.json",
-          "version": "repo-file-v1:sha256:f42cae151b3c2c980a4c7b8448e08e4a1ae5a4d78f19067f158b1ce165c07ffa"
+          "resource": "repo://automations/upstream/qualification.json",
+          "version": "repo-file-v1:sha256:74190e32cc3119f7bf82f2f70f917b8e9f6150d6078a10adc2f6a564f46bb9cb"
         },
         {
           "resource": "repo://crates/decodex-runtime/tests/native_qualification/large_catalog.py",
@@ -178,11 +178,11 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:0c08a1458a9bd81c0b2677475996113dedad6be7a59ca2b6902df9d5b1bdee9e"
+          "version": "repo-file-v1:sha256:74190e32cc3119f7bf82f2f70f917b8e9f6150d6078a10adc2f6a564f46bb9cb"
         },
         {
           "resource": "repo://automations/upstream/retained-contracts.json",
-          "version": "repo-file-v1:sha256:f42cae151b3c2c980a4c7b8448e08e4a1ae5a4d78f19067f158b1ce165c07ffa"
+          "version": "repo-file-v1:sha256:e4f1fef853138a1f3465e5ce20e0ab13d103a2fd82c02305c216b30442c32f61"
         }
       ]
     },
@@ -206,23 +206,15 @@
     },
     {
       "id": "claim_22c649d4fcdf471a899e2d9c03b35774",
-      "statement": "An explicit past native retirement deadline selects the same catalog's current default for new Agent settings, new Agents in a shared process and loaded idle recovery, preserving shared configuration and using existing source checks, settings journal and readback. Missing entries, upgrade suggestions, network errors or quota responses alone do not trigger retirement migration. The 24-runtime and 18-desktop test cohort does not qualify a new native artifact or installed application.",
+      "statement": "An explicit past native retirement deadline selects the same complete catalog's current default for new Agent settings, new Agents in a shared process and loaded idle recovery, preserving shared config and existing settings journal/readback. Missing entries, upgrade suggestions, network errors or quota responses alone do not trigger migration. Original regression groups and acceptance limits remain in the stable catalog.",
       "evidence": [
         {
-          "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:fe5321699e8b7c5c6d392cb82551c905679deb680e298850da34c8fc1ea62099"
+          "resource": "repo://automations/upstream/retained-contracts.json#L4704-L4784",
+          "version": "repo-lines-v1:sha256:8bc2982d2fc27cd565ab0beb2e4dac65554dce2bbb7037d37263b5fd3caa561c:eyJzZWxlY3RlZExpbmVDb3VudCI6ODEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJmZmU5Nzc4MWUzZmNmODc5MjI3OTc4ZjVmMjE5NzJmMzEyYzJjZGE4OTI3OWYxNjFkMjVhYzFhZTU5ODUxNmQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZiYmE2NWQwYjFlNDkzZDY1Y2Y1ZGFlZTM3ZjIxYzNkY2ViM2I0YmJkMjQyZWNjNWZmMWVjZjllZGI0OWI4OWUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZiMzNlNmEyZjdmZDEwZjE0NTgwMTJlOTYyYmM2YTRiZjllZDM1YWZlMjQzMmZmOGI5NjA4Zjc0NzFhOWEwMDQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijc2ZTVlN2EzMjdjZWE4NDVjZTE2YzdjZTdjODFjYmM0OTkzNzcxZjA2NTQwNTljOTMxMTEwOWRlYWQxYjBiZjEifQ"
         },
         {
           "resource": "repo://crates/decodex-protocol/src/model_catalog.rs#L94-L124",
           "version": "repo-lines-v1:sha256:d15a6982ee6b85497325b30040426441648a73e59d5060efee2f9d4ec2209215:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE1NjkyMzBkNDBhZjg0NWZmZDdmMzhiMjRkYzg1MjY1ZDVjM2I0ZjM0OGMxNzY3MzhjZmJjYTU2ZTBkMzE0NzkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJiNGVjNjQyNjhmY2VmNDUxYTM0NjJlYTQ3NGIyYjU2Zjc4ZGEwNWQ1MDNjMTgxODMwZGU5YThjYjliMDcxYTAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjIyZjJmZjVmZWVjNjBmNTg3YzhmYWU0ZTg3ZjgwOWE2NjFjZmZlZDZiNDdhYWU1ZjZkNmEyNjUzYWE4OTUyZWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjcxYzc2OWQ5Yzc1NzZkOWRiNTAwNzJhMzYyZmU2MmEyMzAyZjlmNGFmZjFhYTdhNjczMjIzZjRjM2U5NTM2OGUifQ"
-        },
-        {
-          "resource": "repo://crates/decodex-runtime/src/agent.rs",
-          "version": "repo-file-v1:sha256:039d3118591ad102c58ed25f91d662c2132a7f461b46b9f0ecb276d2e6dd4dbf"
-        },
-        {
-          "resource": "repo://crates/decodex-runtime/src/agent_initial_settings.rs",
-          "version": "repo-file-v1:sha256:78e82134194cce39ced701773c8e5e22c90c7742fc9b00a1262e9278d69b3d82"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent_model_recovery.rs",
@@ -232,7 +224,7 @@
     },
     {
       "id": "claim_2d5d27649dc84298a4608e6f33b6ec10",
-      "statement": "Settings > Agents exposes background compaction, delegation-instruction retention and a per-user-configured-server cached MCP catalog switch through the existing account/source-bound native configuration controls. Saved values and effective project values remain distinct, with no second configuration store or restart of loaded conversations.",
+      "statement": "Existing account/source-bound context controls expose background compaction, delegation-instruction retention and each configured MCP server's cached catalog. Omitted context feature values use native defaultEnabled; explicit effective config wins. Saved user values remain separate from project overrides and catalog enablement in another cwd. Saving does not restart loaded conversations or create a second config store.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_context_settings.rs",
@@ -243,8 +235,8 @@
           "version": "repo-file-v1:sha256:212baf80d0310141fb384509d1af3e0c613bc883f2e17bc24762617bbbf594e1"
         },
         {
-          "resource": "repo://crates/decodex-codex/src/app_server_client/context_preferences.rs",
-          "version": "repo-file-v1:sha256:bfe56443590413065e0aca21a1a126ae939b0ca63923601b4da8192b47d1a5bb"
+          "resource": "repo://crates/decodex-codex/src/app_server_client/context_preferences.rs#L52-L118",
+          "version": "repo-lines-v1:sha256:0c5864ad4e6a7b0b8818af3560a66d27470125324d60b007891f20b95af6687b:eyJzZWxlY3RlZExpbmVDb3VudCI6NjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRjOWZjZjIxZWE5ZmFmYzBiZGU2OTk5YzBjNjU2NmU3Yjg0MzczNzI5ODk0ZWM2MTMyNTQ4NzUwZWYwNzNlMmEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNlZGM5YmQzOTdiOWU4NTM5ODQ0M2VlNzYxOGI4ZGJiN2U1ZDA2YmQ1NWRjMzhjZDY5MzQ3OTQ3NzI5NTA4MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRiNjMxZDlmNDJkMzkxOWQ5YTczZDhlZjM4ZmYyMmNjNTRiY2M4MWNlMDMwOGMyYzZiZmZhMjFhMjkzOGFlM2EiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgzY2IyOGRiMzlhNDNmZDM0NjM2YTkzZDYzMTNiNjE4OGU1MDU5ODFlOGRhZTc3YmI3OWU2ZTJjMjAyY2NiMzkifQ"
         }
       ]
     },
@@ -345,6 +337,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-03T17:33:35.946Z"
+    "at": "2026-11-04T09:41:04.531Z"
   }
 }

@@ -40,8 +40,6 @@ sources:
     resource: repo://automations/upstream/qualification.json
   - id: openwiki-source-3127fd4c7b2aefcc9cea7961
     resource: repo://automations/upstream/retained-contracts.json
-  - id: openwiki-source-7eedab1ccdf82ac9ccd3ab32
-    resource: repo://automations/upstream/retained-evidence.json
   - id: openwiki-source-451b1382eb8cdcb9915ac78b
     resource: repo://crates/decodex-app-client-ffi/src/conversation_estimates.rs
   - id: openwiki-source-2b08587e9b26e203156110c8
@@ -72,8 +70,6 @@ sources:
     resource: repo://crates/decodex-runtime/src/account_launch/process.rs
   - id: openwiki-source-ba9677fef0b3a23f71d07771
     resource: repo://crates/decodex-runtime/src/agent_capabilities.rs
-  - id: openwiki-source-1477615a268800361379ce21
-    resource: repo://crates/decodex-runtime/src/agent_initial_settings.rs
   - id: openwiki-source-dc51b38db429ec5fe466c5f2
     resource: repo://crates/decodex-runtime/src/agent_memory.rs
   - id: openwiki-source-81ce54e50da763fa2a1f8813
@@ -100,10 +96,10 @@ sources:
     resource: repo://crates/decodex-runtime/tests/native_qualification/thread_settings.py
   - id: openwiki-source-8c78df4b382026886ac50894
     resource: repo://database/src/usage_evidence.rs
-generated: { by: "codex", at: "2026-11-03T16:31:59.854Z" }
+generated: { by: "codex", at: "2026-11-04T09:41:04.531Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-03T17:33:35.946Z
+    at: 2026-11-04T09:41:04.531Z
 ---
 
 # Model selection and settings ownership
@@ -140,6 +136,8 @@ Codex owns the effective model catalog, task configuration, provider admission a
 
 Open Settings > Agents after selecting a connected Agent. The native section reads through that Agent's account and project. It uses the same controls and native configuration as Agent preferences > Context defaults. Saved user values and effective project values remain separate; project or managed policy can override a saved choice. Saving does not restart loaded conversations. Decodex keeps no second copy of these native preferences.
 
+For background compaction and delegation-instruction retention, an omitted effective value uses the matching native feature's `defaultEnabled` value. An explicit effective setting takes priority. The catalog's `enabled` value can reflect another working directory, so it is not the requested project's override. An absent saved user preference stays absent until an explicit edit.
+
 The cached-catalog switch writes only `startup_readiness` for an existing user-configured MCP server: on selects `catalog`, and off selects `connection`. Native Codex owns the cache and tool connection. A missing or invalid cache keeps normal discovery; a tool call still needs the live connection. Configure project-only and plugin servers in Codex.
 
 Automatic suggestions are enabled by default. Turning the switch off prevents future automatic requests. Turning it back on does not request suggestions for answers that completed while it was off. Tab acceptance still creates an undoable draft and never sends it. This setting does not turn on content export or the deferred messaging experiments.
@@ -168,7 +166,7 @@ When the same complete catalog gives the selected model a retirement deadline th
 
 Recovery uses the existing source-bound settings journal and publication readback. It preserves compatible effort and service-tier choices, does not change provider or permission ownership, and does not replay input. Active turns keep their current execution. A native session that cannot be loaded remains outside this retirement check.
 
-The [retained evidence](../../automations/upstream/retained-evidence.json) records 24 runtime and 18 desktop tests, with a failing-before and passing-after retirement case. The fixtures cover native-default selection, future or absent deadlines, missing defaults, source changes, draft preservation and no replay. They do not qualify a new native artifact, a real retired provider model or an installed application.
+The `retained_model_retirement_defaults` record in the [stable contract catalog](../../automations/upstream/retained-contracts.json) preserves the behavior, regression groups and original qualification limits. The fixtures cover native-default selection, future or absent deadlines, missing defaults, source changes, draft preservation and no replay. Their original local qualification does not establish a real retired provider model or installed application.
 
 ## Guardian and helper settings
 
@@ -218,7 +216,7 @@ Native Codex retains transport selection. The integration does not force shared 
 
 ## Explicit model catalogs
 
-The historical `large_catalog.py` probe verifies that a configured catalog larger than 1 MiB reaches native `model/list` within its recorded artifact limits. It was not rerun for the current migration. This is a compatibility contract for native configuration; it does not add a provider or account setup control. The existing account-plan boundary remains unchanged.
+The repository-owned `large_catalog.py` probe verifies that a configured catalog larger than 1 MiB reaches native `model/list`. The [current qualification](../../automations/upstream/qualification.json) identifies the exact artifact and executed probe; earlier executions keep their original limits. This is a compatibility contract for native configuration; it does not add a provider or account setup control. The existing account-plan boundary remains unchanged.
 
 ## Known native limits
 

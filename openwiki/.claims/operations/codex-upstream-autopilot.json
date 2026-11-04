@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:ace20d88b5a01f83711c28cd68864694bd4d128c7e667cce9fba9992e77cc2b1",
+  "pageVersion": "sha256:6147fc16944a25a35101224192d315206d7ceb7a0c8f0e17da9df2ed93a9c1d6",
   "claims": [
     {
       "id": "claim_b6c6b65984924f69970e7f0410d50903",
@@ -142,15 +142,15 @@
     },
     {
       "id": "claim_fb662583cf1e43789bf83833ad049cf1",
-      "statement": "Context defaults in task preferences and manual config.toml edits share the native user configuration; versioned boolean writes preserve async threshold tables, expose project overrides and do not reload loaded conversations.",
+      "statement": "Context defaults and manual config.toml edits share native user configuration. Omitted effective context values use native defaultEnabled, explicit project configuration takes priority, and catalog enabled values do not replace another working directory's configuration. Versioned boolean writes preserve async threshold tables and do not reload loaded conversations.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_context_settings.rs",
-          "version": "repo-file-v1:sha256:c4b7221ae38d9e8d9eca1447d15a351e790f4cbd656afaa130cb0e37e59209c7"
+          "resource": "repo://crates/decodex-codex/src/app_server_client/context_preferences.rs#L50-L146",
+          "version": "repo-lines-v1:sha256:ad904bd762d8a4941c3981dfbd630b7c686cc5befb49d0cf25029f8d7bf8965e:eyJzZWxlY3RlZExpbmVDb3VudCI6OTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhlOTZlNWI0MmVlODBmMDZiNGI5NjEzNjAxYzQ1OTM0NjllNDkxZDQ5NmNkNDUyNjgzZjJhZmY2OTVkODJkYzciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYyOTY0MDc5YzNjNWM4MTUyMGVmMzNhMmI5ZDJlMTVhMWI4NGQ3MjgwZGI4NTkwZGNkNjU3NDdlM2UwMTJhNDAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImZjYmE3NzhjZDBiMWY4YTZlN2NlNGYxMGY0OWEyYTlkMjUxZTgzOTg5NzU2NDcxYTQzNGIxYmRhN2EwODcxMTAifQ"
         },
         {
-          "resource": "repo://crates/decodex-codex/src/app_server_client/context_preferences.rs",
-          "version": "repo-file-v1:sha256:bfe56443590413065e0aca21a1a126ae939b0ca63923601b4da8192b47d1a5bb"
+          "resource": "repo://crates/decodex-runtime/src/agent_context_settings.rs#L34-L83",
+          "version": "repo-lines-v1:sha256:5a69fd0cbab0bfd066693026c901688bf042221584e6926b108cf266d63454d0:eyJzZWxlY3RlZExpbmVDb3VudCI6NTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQwNzEwZmZmZmY5OWY2N2U3MTQ0M2UxZTE0YTJjNWQxNzAwYmE3NjMzMmQ4ZjhiOTE4NmZjZmM4ZmQzNDk1Y2YiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImZhMmE1YWNlMzk0MjIxM2JhM2I4MGJiN2Q5ZDMxZWZmNzdkYzJlZGI0MTA5YWYyNTJjNmZjNDUxZDMxOTYwMGEifQ"
         }
       ]
     },
@@ -208,7 +208,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-contracts.json",
-          "version": "repo-file-v1:sha256:f42cae151b3c2c980a4c7b8448e08e4a1ae5a4d78f19067f158b1ce165c07ffa"
+          "version": "repo-file-v1:sha256:e4f1fef853138a1f3465e5ce20e0ab13d103a2fd82c02305c216b30442c32f61"
         }
       ]
     },
@@ -297,12 +297,8 @@
       "statement": "A candidate with an unresolved failure of a current retained contract stays unselected. Source review, artifact comparison and independent component or fixture delivery remain separate evidence.",
       "evidence": [
         {
-          "resource": "repo://automations/upstream/prompts/maintainer.md",
-          "version": "repo-file-v1:sha256:01bebe4274c10a0d25c17ca9181cb005c26d18abaccde7e780505064f5189b3f"
-        },
-        {
-          "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:0c08a1458a9bd81c0b2677475996113dedad6be7a59ca2b6902df9d5b1bdee9e"
+          "resource": "repo://automations/upstream/prompts/maintainer.md#L45-L53",
+          "version": "repo-lines-v1:sha256:43f672ef98e1383df6e85b438bdeec9992e855c85843e92268bd3b9f7a2136a3:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMzE4MWUyYjM5Njg2YjA2NGJlZmNiNzY5NzBjZTI4Y2NiNTA1MDY1NmMwYTc3MzU1NDE5ZGQ3N2ZmMDcyNTEzMiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMGE2OWEzNTQ0MWU4ZGQ2Y2I1OGFiMTU1NDU2ZWVmZjg4OGViOGRiMWE1MDFkZjBkN2QzZDkyZDhjMDZhZDQ0ZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYjEzZDVmYzRiOGI0NzFlYjI5ZDNlMWNmMzNiMWZhOGJlOTUyZTRiMTdjYWYyOGM3MWFlNzU1YzhkODVhYWUwMCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOTk3MDBiMmEzNThjMTRlYTYwYmE3MGNlMjFlYWIwODIyOTcxMGFlOGM2N2I1M2U3ZTUwNTJhN2Y3MTc5MDk4ZSJ9"
         }
       ]
     },
@@ -311,16 +307,12 @@
       "statement": "Each runtime update qualifies affected native consumers and components against the new artifact; earlier passes retain their original limits. The selected lock preserves provider recovery and HumanCommand stays user-deferred. Runtime qualification does not activate the schedule.",
       "evidence": [
         {
-          "resource": "repo://automations/upstream/prompts/maintainer.md",
-          "version": "repo-file-v1:sha256:01bebe4274c10a0d25c17ca9181cb005c26d18abaccde7e780505064f5189b3f"
+          "resource": "repo://automations/upstream/prompts/maintainer.md#L45-L53",
+          "version": "repo-lines-v1:sha256:43f672ef98e1383df6e85b438bdeec9992e855c85843e92268bd3b9f7a2136a3:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMzE4MWUyYjM5Njg2YjA2NGJlZmNiNzY5NzBjZTI4Y2NiNTA1MDY1NmMwYTc3MzU1NDE5ZGQ3N2ZmMDcyNTEzMiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMGE2OWEzNTQ0MWU4ZGQ2Y2I1OGFiMTU1NDU2ZWVmZjg4OGViOGRiMWE1MDFkZjBkN2QzZDkyZDhjMDZhZDQ0ZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYjEzZDVmYzRiOGI0NzFlYjI5ZDNlMWNmMzNiMWZhOGJlOTUyZTRiMTdjYWYyOGM3MWFlNzU1YzhkODVhYWUwMCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOTk3MDBiMmEzNThjMTRlYTYwYmE3MGNlMjFlYWIwODIyOTcxMGFlOGM2N2I1M2U3ZTUwNTJhN2Y3MTc5MDk4ZSJ9"
         },
         {
-          "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:0c08a1458a9bd81c0b2677475996113dedad6be7a59ca2b6902df9d5b1bdee9e"
-        },
-        {
-          "resource": "repo://codex-runtime.lock.json",
-          "version": "repo-file-v1:sha256:05032a3c837d0f054ca33e88ef03f06357ff7a860d59bcb2f2606f7fcde486d7"
+          "resource": "repo://automations/upstream/retained-contracts.json#L39-L53",
+          "version": "repo-lines-v1:sha256:2a032d01b4c2431d99af460dbec45c7652de86e6c6a4e45f6c8ae06b0121e434:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY5Y2E4OTFiZmY3YWMxZjdjZWFhZTQwZWYwNTEwNjZiZTllZmU0N2I0ZTQyODFlODZjMzE5YmUyYzU1ZWJjZTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk2NGQ4YzA3MzQyOTg5MzEwMTU3NmQ4OGQ5OTEyN2U4OWQ2ODkxZDNiMTdlODlkZjAyZWM5YWU3MDcwNWQ4YmUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjVhMWMxMDM3YTNkY2JjNzkxNGNiNTBhYWNlZjQ2NTVjOGJmNzNmODJhMmI5MmNlMjkyMWY3OTg1YzZkOTVlYjgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVhOWIxNDQ4YzA0OWNkZjk3MWNlMjI5NzgzYzBkNGNjMGY4ZTUzNWNmMjU4OTQ3MDBkNDY2MWVhMGQzM2E3N2EifQ"
         }
       ]
     },
@@ -330,7 +322,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:0c08a1458a9bd81c0b2677475996113dedad6be7a59ca2b6902df9d5b1bdee9e"
+          "version": "repo-file-v1:sha256:74190e32cc3119f7bf82f2f70f917b8e9f6150d6078a10adc2f6a564f46bb9cb"
         },
         {
           "resource": "repo://scripts/macos/build_codex_source.mts",
@@ -363,6 +355,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-03T17:33:35.946Z"
+    "at": "2026-11-04T09:41:04.531Z"
   }
 }
