@@ -675,7 +675,7 @@ impl ComposerInput {
 				ui_theme::rgba(ui_theme::PANEL_DIVIDER)
 			})
 			.bg(if workbench { ui_theme::rgba(0x00000000) } else { ui_theme::rgba(FIELD_MATERIAL) })
-			.text_size(gpui::px(if workbench { BODY_SIZE } else { ui_theme::SETTINGS_HELP_SIZE }))
+			.text_size(gpui::px(BODY_SIZE))
 			.text_color(ui_theme::rgb(if workbench { 0xeeeaf0 } else { ui_theme::TEXT }))
 			.child(ComposerTextElement { input: entity })
 			.into_any_element()

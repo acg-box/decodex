@@ -10,8 +10,8 @@ use decodex_components::{
 };
 use decodex_protocol::{AssistantCommand, ProfileKind, RagflowConnection};
 use gpui::{
-	AnyElement, AppContext as _, Context, Entity, IntoElement as _, ParentElement as _,
-	Styled as _, Task,
+	AnyElement, AppContext as _, Context, Entity, InteractiveElement as _, IntoElement as _,
+	ParentElement as _, Styled as _, Task, prelude::FluentBuilder as _,
 };
 use std::{
 	collections::BTreeMap,
@@ -192,33 +192,55 @@ impl AgentSurface {
 	}
 
 	pub(crate) fn ragflow_settings_view(&self, _cx: &mut Context<Self>) -> AnyElement {
-		let mut body = ui_theme::settings_rows().max_w(gpui::px(500.));
+		let mut body = ui_theme::settings_rows().gap(gpui::px(16.));
 		if !self.assistant_settings.fields.is_empty() {
-			for (key, label) in [
-				("url", "Base URL"),
-				("key", "API key (optional)"),
-				("chat", "Extraction model"),
-				("embedding", "Embedding model"),
-			] {
-				if let Some(field) = self.assistant_settings.fields.get(key) {
-					body = body.child(ui_theme::settings_field(
-						label,
-						gpui::div()
-							.w_full()
-							.h(gpui::px(ui_theme::SETTINGS_CONTROL_HEIGHT))
-							.child(field.clone()),
-					));
-				}
-			}
-			body = body.child(ui_theme::settings_description("Use an OpenAI-compatible API."));
+			let fields = |items: [(&str, &'static str); 2]| {
+				gpui::div()
+					.w_full()
+					.grid()
+					.grid_cols(2)
+					.gap(gpui::px(12.))
+					.children(items.into_iter().filter_map(|(key, label)| {
+						self.assistant_settings.fields.get(key).map(|field| {
+							let selector = format!("ragflow-field-{key}");
+							ui_theme::settings_field(
+								label,
+								gpui::div()
+									.w_full()
+									.h(gpui::px(ui_theme::SETTINGS_CONTROL_HEIGHT))
+									.child(field.clone()),
+							)
+							.debug_selector(move || selector.clone())
+							.into_any_element()
+						})
+					}))
+					.into_any_element()
+			};
+			let mut connection = vec![
+				ui_theme::settings_description("Both models use this OpenAI-compatible API.")
+					.into_any_element(),
+				fields([("url", "Base URL"), ("key", "API key (optional)")]),
+			];
 			if self.assistant_settings.installation.as_ref().is_some_and(|i| i.models.is_some()) {
-				body = body.child(ui_theme::settings_description(
-					"Leave the key blank to keep it when the Base URL is unchanged.",
-				));
+				connection.push(
+					ui_theme::settings_description(
+						"Leave the key blank to keep it when the Base URL is unchanged.",
+					)
+					.into_any_element(),
+				);
 			}
-			body = body.child(ui_theme::settings_description(
-				"Assistant Memory turns off Codex memory for this Assistant.",
-			));
+			body = body.child(ui_theme::settings_detail_group("Model API", connection)).child(
+				ui_theme::settings_detail_group(
+					"Models",
+					vec![
+						ui_theme::settings_description(
+							"Extraction saves facts. Embedding makes memories searchable.",
+						)
+						.into_any_element(),
+						fields([("chat", "Extraction model"), ("embedding", "Embedding model")]),
+					],
+				),
+			);
 		} else if let Some(models) =
 			self.assistant_settings.installation.as_ref().and_then(|i| i.models.as_ref())
 		{
@@ -237,7 +259,28 @@ impl AgentSurface {
 		} else if self.assistant_settings.installation.as_ref().is_none_or(|i| !i.installed) {
 			body = body.child(ui_theme::settings_description("RAGFlow nightly with Infinity stores Assistant memory. A running Docker-compatible container environment is required."));
 		}
-		body.into_any_element()
+		body.when(
+			self.assistant_settings.installation.as_ref().is_some_and(|i| i.installed),
+			|body| {
+				body.child(ui_theme::settings_description(
+					"Enabling Assistant Memory turns off Codex memory for this Assistant.",
+				))
+			},
+		)
+		.into_any_element()
+	}
+
+	#[cfg(any(test, feature = "visual-capture"))]
+	pub(crate) fn visual_ragflow_settings(&mut self, cx: &mut Context<Self>) {
+		self.visual_workspace_fixture(cx);
+		self.assistant_settings.installation = Some(
+			serde_json::from_value(serde_json::json!({
+				"url":"http://127.0.0.1:9380", "version":"nightly (fixture)", "image":"fixture",
+				"memory":null, "models":null, "project":"fixture", "password":"fixture", "installed":true
+			}))
+			.expect("RAGFlow fixture"),
+		);
+		self.edit_memory_models(cx);
 	}
 
 	fn edit_memory_models(&mut self, cx: &mut Context<Self>) {
@@ -247,13 +290,13 @@ impl AgentSurface {
 			.as_ref()
 			.and_then(|i| i.models.clone())
 			.unwrap_or_default();
-		for (key, value, label) in [
-			("url", models.base_url, "Base URL"),
-			("key", String::new(), "API key (optional)"),
-			("chat", models.chat_model, "Extraction model"),
-			("embedding", models.embedding_model, "Embedding model"),
+		for (key, value, label, placeholder) in [
+			("url", models.base_url, "Base URL", "https://api.example.com/v1"),
+			("key", String::new(), "API key (optional)", ""),
+			("chat", models.chat_model, "Extraction model", "Model ID"),
+			("embedding", models.embedding_model, "Embedding model", "Model ID"),
 		] {
-			let input = cx.new(|cx| ComposerInput::with_placeholder(40, "", label, cx));
+			let input = cx.new(|cx| ComposerInput::with_placeholder(40, placeholder, label, cx));
 			input.update(cx, |i, cx| {
 				if key == "key" {
 					i.obscure();

@@ -1,6 +1,6 @@
 //! Optional components use their native lifecycle, separate from application updates.
 use gpui::{
-	AnyElement, Context, Div, KeyDownEvent, Role, SharedString,
+	AnyElement, Context, Div, FontWeight, KeyDownEvent, Role, SharedString,
 	prelude::{
 		FluentBuilder as _, InteractiveElement as _, IntoElement as _, ParentElement as _,
 		StatefulInteractiveElement as _, Styled as _,
@@ -152,7 +152,11 @@ impl SettingsSurface {
 				.is_some_and(|s| !s.read(cx).ragflow_component_state().busy),
 		};
 		let button = if enabled {
-			ui_theme::settings_button(id, label)
+			if matches!(action, Action::Ragflow(RagflowComponentAction::SaveModels)) {
+				ui_theme::settings_primary_button(id, label)
+			} else {
+				ui_theme::settings_button(id, label)
+			}
 		} else {
 			ui_theme::settings_button_base(id, label).cursor_default().opacity(0.5)
 		};
@@ -347,14 +351,21 @@ impl SettingsSurface {
 					cx.stop_propagation();
 				}
 			}))
-			.child(gpui::div().flex_none().flex().items_center().gap_1().child(title).child(
-				gpui::div().text_color(ui_theme::rgb(TEXT_MUTED)).child(
-					workspace_symbols::process_chevron(
-						SharedString::from(format!("{id}-chevron")),
-						expanded,
-					),
-				),
-			))
+			.child(
+				gpui::div()
+					.flex_none()
+					.flex()
+					.items_center()
+					.gap_1()
+					.font_weight(FontWeight::MEDIUM)
+					.child(title)
+					.child(gpui::div().text_color(ui_theme::rgb(TEXT_MUTED)).child(
+						workspace_symbols::process_chevron(
+							SharedString::from(format!("{id}-chevron")),
+							expanded,
+						),
+					)),
+			)
 			.when_some(metadata, |label, version| {
 				label.child(ui_theme::settings_description(version))
 			})
@@ -375,13 +386,18 @@ impl SettingsSurface {
 	}
 
 	pub(super) fn components_content(&self, cx: &mut Context<Self>) -> AnyElement {
-		ui_theme::settings_divided_rows(vec![
+		ui_theme::settings_panel(ui_theme::settings_divided_rows(vec![
 			self.component_settings(cx).into_any_element(),
 			self.egm_settings(cx).into_any_element(),
 			self.research_settings(cx).into_any_element(),
 			self.ragflow_settings(cx),
-		])
+		]))
 		.into_any_element()
+	}
+
+	#[cfg(any(test, feature = "visual-capture"))]
+	pub(crate) fn visual_ragflow_settings(&mut self) {
+		self.components.details[3] = true;
 	}
 
 	fn ragflow_settings(&self, cx: &mut Context<Self>) -> AnyElement {
@@ -406,13 +422,8 @@ impl SettingsSurface {
 			],
 			cx,
 		));
-		let mut body = gpui::div()
-			.max_w(gpui::px(500.))
-			.w_full()
-			.flex()
-			.flex_col()
-			.gap_2()
-			.child(self.ragflow_component(cx));
+		let mut body =
+			ui_theme::settings_rows().gap(gpui::px(12.)).child(self.ragflow_component(cx));
 		if let Some(state) = state.as_ref().filter(|s| s.memory_ready) {
 			body = body.child(
 				ui_theme::settings_row()
@@ -671,6 +682,7 @@ fn progress_text(progress: &InstallProgress) -> String {
 
 #[cfg(test)]
 mod tests {
+	use gpui::AppContext as _;
 	use std::thread;
 
 	use crate::{
@@ -679,6 +691,33 @@ mod tests {
 		settings_surface::components::{RuntimePreparation, SettingsSurface},
 	};
 	use decodex_components::{PluginAction, PluginInstallation};
+
+	#[gpui::test]
+	fn ragflow_groups_connection_and_models_with_aligned_actions(cx: &mut gpui::TestAppContext) {
+		let (_, visual) = cx.add_window_view(|_, cx| {
+			let agent = cx.new(crate::shell::agent_surface::AgentSurface::new);
+			agent.update(cx, |agent, cx| agent.visual_ragflow_settings(cx));
+			let mut settings = SettingsSurface::new(DesktopSettingsController::production(), cx);
+			settings.bind_native_agent(agent, cx);
+			settings.category = crate::settings_surface::SettingsCategory::Components;
+			settings.visual_ragflow_settings();
+			settings
+		});
+		visual.update(crate::ui_frame::draw_current_frame);
+		let url = visual.debug_bounds("ragflow-field-url").unwrap();
+		let key = visual.debug_bounds("ragflow-field-key").unwrap();
+		let extraction = visual.debug_bounds("ragflow-field-chat").unwrap();
+		let embedding = visual.debug_bounds("ragflow-field-embedding").unwrap();
+		assert_eq!(url.top(), key.top(), "connection fields form one row");
+		assert_eq!(extraction.top(), embedding.top(), "model fields form one row");
+		assert!(extraction.top() > url.bottom(), "model choices follow the connection");
+		assert_eq!(url.left(), extraction.left());
+		assert_eq!(key.right(), embedding.right());
+		assert!(url.right() < key.left(), "fields retain distinct hit targets");
+		let save = visual.debug_bounds("components-ragflow-models-save").unwrap();
+		assert_eq!(save.right(), embedding.right(), "Save belongs to the form's edge");
+		assert!(save.top() > embedding.bottom());
+	}
 
 	#[gpui::test]
 	fn optional_component_controls_follow_native_readback_and_busy_state(

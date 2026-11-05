@@ -319,8 +319,8 @@ pub(crate) fn settings_section_title(title: &'static str) -> Stateful<Div> {
 		.aria_label(title)
 		.text_size(gpui::px(SETTINGS_SECTION_SIZE))
 		.line_height(gpui::px(18.0))
-		.font_weight(FontWeight::MEDIUM)
-		.text_color(rgb(TEXT_MUTED))
+		.font_weight(FontWeight::SEMIBOLD)
+		.text_color(rgb(TEXT))
 		.child(title)
 }
 
@@ -333,15 +333,17 @@ pub(crate) fn settings_description(text: impl Into<gpui::SharedString>) -> Div {
 }
 
 pub(crate) fn settings_field(label: &'static str, input: impl IntoElement) -> Div {
-	settings_row()
-		.min_h(gpui::px(28.0))
-		.py(gpui::px(2.0))
-		.gap(gpui::px(12.0))
-		.text_size(gpui::px(SETTINGS_HELP_SIZE))
-		.line_height(gpui::px(16.5))
-		.text_color(rgb(TEXT_MUTED))
-		.child(gpui::div().w(gpui::px(128.0)).flex_none().child(label))
-		.child(gpui::div().flex_1().min_w_0().child(input))
+	settings_rows()
+		.gap(gpui::px(5.))
+		.child(
+			gpui::div()
+				.text_size(gpui::px(SETTINGS_HELP_SIZE))
+				.line_height(gpui::px(16.5))
+				.font_weight(FontWeight::MEDIUM)
+				.text_color(rgb(TEXT))
+				.child(label),
+		)
+		.child(input)
 }
 
 pub(crate) fn settings_title(title: &'static str) -> impl IntoElement {
@@ -378,29 +380,33 @@ pub(crate) fn settings_label(
 }
 
 pub(crate) fn settings_group(title: &'static str, rows: Vec<AnyElement>) -> Div {
-	settings_rows().gap_1().child(settings_section_title(title)).child(settings_divided_rows(rows))
+	settings_rows()
+		.gap(gpui::px(8.))
+		.child(settings_section_title(title).px(gpui::px(12.)))
+		.child(settings_panel(settings_divided_rows(rows)))
 }
 
 pub(crate) fn settings_detail_group(title: &'static str, rows: Vec<AnyElement>) -> Div {
 	settings_rows()
-		.gap_1()
+		.gap(gpui::px(8.))
 		.child(
 			settings_section_title(title)
-				.text_size(gpui::px(SETTINGS_HELP_SIZE))
-				.line_height(gpui::px(16.5)),
+				.text_size(gpui::px(SETTINGS_LABEL_SIZE))
+				.font_weight(FontWeight::MEDIUM)
+				.text_color(rgb(TEXT)),
 		)
-		.child(settings_divided_rows(rows))
+		.child(settings_rows().gap(gpui::px(6.)).children(rows))
 }
 
-/// Cards identify health records; preferences and accounts use flat groups.
-pub(crate) fn settings_card(rows: Vec<AnyElement>) -> Div {
-	settings_divided_rows(rows)
-		.rounded(gpui::px(10.))
-		.border_1()
+/// One quiet surface groups related controls without framing each row.
+pub(crate) fn settings_panel(content: impl IntoElement) -> Div {
+	settings_rows()
+		.rounded(gpui::px(8.))
+		.border(gpui::px(0.5))
 		.border_color(rgba(PANEL_DIVIDER))
 		.bg(rgba(FIELD_MATERIAL))
 		.px(gpui::px(12.))
-		.py(gpui::px(6.))
+		.child(content)
 }
 
 pub(crate) fn settings_divided_rows(rows: Vec<AnyElement>) -> Div {
@@ -417,13 +423,26 @@ pub(crate) fn settings_detail(content: impl IntoElement) -> Div {
 	settings_rows()
 		.border_t_1()
 		.border_color(rgba(PANEL_DIVIDER))
-		.px(gpui::px(16.))
-		.pt(gpui::px(8.))
-		.pb(gpui::px(10.))
-		.text_size(gpui::px(SETTINGS_HELP_SIZE))
-		.line_height(gpui::px(16.5))
-		.text_color(rgb(TEXT_MUTED))
+		.bg(rgba(0x0000000a))
+		.p(gpui::px(14.))
+		.text_size(gpui::px(SETTINGS_LABEL_SIZE))
+		.line_height(gpui::px(18.))
+		.text_color(rgb(TEXT))
 		.child(content)
+}
+
+pub(crate) fn settings_primary_button(
+	id: impl Into<gpui::SharedString>,
+	label: impl Into<gpui::SharedString>,
+) -> Stateful<Div> {
+	settings_button_base(id, label)
+		.cursor_pointer()
+		.bg(rgb(CONTROL_ACTIVE_FILL))
+		.border_color(rgba(0x00000000))
+		.text_color(rgb(ON_PRIMARY))
+		.hover(|s| s.bg(rgb(CONTROL_ACTIVE_FILL)).opacity(0.9))
+		.active(|s| s.bg(rgb(CONTROL_ACTIVE_FILL)).opacity(0.8))
+		.focus_visible(|s| s.border_color(rgb(ACCENT)))
 }
 
 pub(crate) fn settings_button(
