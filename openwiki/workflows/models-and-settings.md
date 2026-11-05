@@ -100,6 +100,8 @@ sources:
     resource: repo://crates/decodex-protocol/src/lib.rs
   - id: openwiki-source-0d29990b5fd295fa89a495ad
     resource: repo://crates/decodex-protocol/src/model_catalog.rs
+  - id: openwiki-source-4a57fba4bea69171318c6323
+    resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_fork_tests.rs
   - id: openwiki-source-e5be8be8499e6ccee0cf7ad0
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_memory_tests.rs
   - id: openwiki-source-a0063c7b07a1bc990ee9af6c
@@ -140,10 +142,10 @@ sources:
     resource: repo://database/schema.sql
   - id: openwiki-source-8c78df4b382026886ac50894
     resource: repo://database/src/usage_evidence.rs
-generated: { by: "codex", at: "2026-11-05T16:20:29.596Z" }
+generated: { by: "codex", at: "2026-11-05T21:05:15.623Z" }
 verified:
-  - by: openwiki/0.7.3
-    at: 2026-11-05T16:20:29.596Z
+  - by: openwiki/0.9.0
+    at: 2026-11-05T21:05:15.623Z
 ---
 
 # Model selection and settings ownership
@@ -241,7 +243,7 @@ The Goal panel reads and edits the Goal attached to the exact owned native threa
 
 The reviewed source, thread and Goal identity must still match before a write. Long objectives use a native objective attachment instead of silently truncating the submitted objective. Display truncation is marked separately. An uncertain save requires a fresh native read; it is not permission to repeat the mutation.
 
-**Side chat** keeps the source provider even when the configured default changes. It starts without a copied native Goal and leaves the source Goal unchanged. Creating or opening the branch sends no input. Continue it with a separate explicit message, or use its normal Goal controls after selecting that branch. The original branch qualification checks ordinary forks in both history modes, attached creation in paginated history and explicit native rejection of legacy attachment. It checks restart separately and does not certify the installed desktop. The current runtime qualification lists the exact recovery regression rerun on the selected artifact; earlier branch checks retain their original limits. When the configured provider differs, native admission can refuse cold resume. Restore the original provider to continue that conversation, or use the separate explicit current-provider branch flow. The current development lock selects the reviewed target after its affected native consumer and component checks. HumanCommand support is user-deferred in [issue 2585](https://github.com/acg-box/decodex/issues/2585), remains unsupported, and is not daily implementation debt. See [conversation branches](conversations-and-recovery.md#edit-or-branch-at-an-earlier-input).
+**Side chat** keeps the source provider even when the configured default changes. It starts without a copied native Goal and leaves the source Goal unchanged. Creating or opening the branch sends no input. Continue it with a separate explicit message, or use its normal Goal controls after selecting that branch. The original branch qualification checks ordinary forks in both history modes, attached creation in paginated history and explicit native rejection of legacy attachment. It checks restart separately and does not certify the installed desktop. The current runtime qualification lists the saved-provider and both-history-mode fork regressions executed on its exact artifact; earlier branch checks retain their original limits. Native cold resume and input keep the saved configured provider after the default changes. New conversations use the new default. The separate explicit current-provider recovery action still requires an actual structured native refusal. The current development lock selects the reviewed target after its affected native consumer and component checks. HumanCommand support is user-deferred in [issue 2585](https://github.com/acg-box/decodex/issues/2585), remains unsupported, and is not daily implementation debt. See [conversation branches](conversations-and-recovery.md#edit-or-branch-at-an-earlier-input).
 
 ## Search defaults and memory observation
 

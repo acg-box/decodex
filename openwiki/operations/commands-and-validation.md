@@ -56,6 +56,8 @@ sources:
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_desktop_acceptance.rs
   - id: openwiki-source-9145039d5c88ff2144ae6a60
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_discovery_tests.rs
+  - id: openwiki-source-4a57fba4bea69171318c6323
+    resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_fork_tests.rs
   - id: openwiki-source-053611cb863c8c6865cef2ca
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_hook_settings_tests.rs
   - id: openwiki-source-8deed3df92ee012fa13bfea8
@@ -126,10 +128,10 @@ sources:
     resource: repo://scripts/macos/test_native_app.sh
   - id: openwiki-source-e201f60894c32a914dac99ee
     resource: repo://scripts/vnext/run_native_regression.py
-generated: { by: "codex", at: "2026-11-05T14:56:49.835Z" }
+generated: { by: "codex", at: "2026-11-05T21:05:15.623Z" }
 verified:
-  - by: openwiki/0.7.3
-    at: 2026-11-05T16:20:29.596Z
+  - by: openwiki/0.9.0
+    at: 2026-11-05T21:05:15.623Z
 ---
 
 
@@ -449,7 +451,7 @@ python3 scripts/vnext/run_native_regression.py \
   --desktop "$BUILT_DECODEX_GPUI" --provider-recovery
 ```
 
-Use absolute paths for the three inputs. The runner verifies the supplied components in temporary storage and uses the existing native executable attestation. It starts a real Decodex window and service with synthetic account data, creates history under one provider, then selects another provider and exposes the native mismatch. The two provider names share a loopback backend for this UI rehearsal. The separate native fork regression uses two servers to check routing.
+Use absolute paths for the three inputs. This historical refusal rehearsal requires a CLI that emits a structured `modelProviderMismatch` after the configured default changes. The current native saved-provider behavior continues the existing conversation on its saved route, so a changed default does not produce that refusal. The runner verifies components in temporary storage and uses existing executable attestation before starting the isolated Decodex window and service with synthetic account data. The two provider names share a loopback backend. The current saved-provider and fork regressions use the exact CLI and separate loopback servers; read [current qualification](../../automations/upstream/qualification.json#saved_provider_admission) for their executed identities and limits.
 
 Check the destination provider in the feedback band above the composer, then choose **Fork** once. It creates and opens the branch without a second confirmation or sending a message. Send only when ready to continue the branch. Quit the rehearsal window to end the fixture and remove its temporary profile. The runner does not install the app, select a runtime for the normal profile, or modify the automation schedule. Passing this fixture's setup is separate from a user's UI acceptance.
 

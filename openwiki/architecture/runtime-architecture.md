@@ -80,6 +80,8 @@ sources:
     resource: repo://crates/decodex-protocol/src/wire.rs
   - id: openwiki-source-1f19769e3cb97a2389e92f82
     resource: repo://crates/decodex-runtime/src/account_launch.rs
+  - id: openwiki-source-4a57fba4bea69171318c6323
+    resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_fork_tests.rs
   - id: openwiki-source-ddbcad5474bc4311e2556223
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_recap_service_tests.rs
   - id: openwiki-source-3d7045bfa872a564d938d3e2
@@ -174,10 +176,10 @@ sources:
     resource: repo://scripts/macos/stage_decodex_app.sh
   - id: openwiki-source-76081c1a47ca8cf32593de34
     resource: repo://scripts/macos/test_decodex_app_stage.sh
-generated: { by: "codex", at: "2026-11-05T16:20:29.596Z" }
+generated: { by: "codex", at: "2026-11-05T21:05:15.623Z" }
 verified:
-  - by: openwiki/0.7.3
-    at: 2026-11-05T16:20:29.596Z
+  - by: openwiki/0.9.0
+    at: 2026-11-05T21:05:15.623Z
 ---
 
 # Runtime Architecture
@@ -333,7 +335,7 @@ The [portable qualification record](../../automations/upstream/qualification.jso
 
 Read the development lock and current qualification for the selected source, artifact and synthetic consumer limits. Keep the selected runtime, source-review cursor and installed binary as separate identities. A workflow or evidence update does not change those identities.
 
-The development lock and linked qualification identify the current qualified source and artifact. Provider recovery preserves the source conversation: ordinary forks keep its provider, and cold resume succeeds after that provider is restored. A user can explicitly create a separate native fork on the current provider. The service rechecks the observed refusal and current configuration before the existing fork write, retains the draft and uncertain-result receipt, and sends no input. Current qualification lists the affected native consumers and component cache checks for that artifact. Earlier executions retain their original source and artifact limits. Native context accounting includes retained reasoning after incomplete or usage-less responses before automatic compaction; Decodex uses the native result. HumanCommand remains user-deferred in [issue 2585](https://github.com/acg-box/decodex/issues/2585), unsupported and unadvertised. Runtime selection does not install the app or resume the automation.
+The development lock and linked qualification identify the current qualified source and artifact. Native cold resume and input retain the saved configured provider after the default provider changes. New conversations use the new default. Ordinary forks keep the saved source provider and exact selected prefix. If native Codex reports a structured `modelProviderMismatch`, the existing explicit recovery action rechecks that live refusal and the current configuration before a separate fork write. It retains the source draft and uncertain-result receipt and sends no input. Current qualification lists the affected native consumers and component cache checks for that artifact. Earlier executions retain their original source and artifact limits. A reusable exact-CLI fixture checks retained reasoning after incomplete or usage-less responses before automatic compaction. Its historical proof and the current executed checks keep separate limits. HumanCommand remains user-deferred in [issue 2585](https://github.com/acg-box/decodex/issues/2585), unsupported and unadvertised. Runtime selection does not install the app or resume the automation.
 
 The separate `retained_project_agent_work.installed_acceptance` entry records the local installed development app, its executable identities and observed behavior. It includes the independent-Agent composer and input-routing repairs. It retains its own limits and does not extend the earlier synthetic native qualification. See [acceptance boundaries](../testing/upstream-acceptance-boundaries.md#project-agent-work-and-global-guardian).
 

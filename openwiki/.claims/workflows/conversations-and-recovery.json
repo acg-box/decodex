@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:65db16a6834cdc162deb1d6dcfe1aced6e04fee23561da9e59dde36d7b2de309",
+  "pageVersion": "sha256:074e7c6dd1d4cbb3df800857ac5aef941bc3c1df5516380f3a69b480d99f2bb7",
   "claims": [
     {
       "id": "claim_3881a280a4044cdca9e8599100f0a4f0",
@@ -250,7 +250,7 @@
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_fork_tests.rs",
-          "version": "repo-file-v1:sha256:506df593d904b45fa360604bd865aacefece4d5fec1bedc570181e4f0f775af9"
+          "version": "repo-file-v1:sha256:9310cfa7d6be816dc759c347872655499ed0943b2a5bf977a1ff3d6941d43c0a"
         },
         {
           "resource": "repo://database/src/agent_fork.rs",
@@ -467,7 +467,7 @@
           "version": "repo-lines-v1:sha256:bad50a285bf9352a22db708738878afb8c18eda0643b3a50dd52923b3d8eafc9:eyJzZWxlY3RlZExpbmVDb3VudCI6MTE4LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI3OGI1NDg5MGYzYmU2ZGFjMTUwMmQ1MGNkMTI0YTU2MmFmYjUxNTVmZmEwYzVlZmU3MTY1MWMzN2ZkNDIyMWYwIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI2N2NkYTgyZGE2MDYyMzhlMDVlNjIzOTk1NjljNWVlMDM5OTM0MTk2NDhhZTVkNDNhMmJmOGNkNjM0N2Y4MjYzIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJhMWYwYWE0NjE3ZWU3OTE3MmIyZDQxNWU1OGRkYjEwZWQ0OGIxNzkxMTEwNmQ1MDA3OTNhNzliOWY2MGVmYjM2IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI3ZjRiZGU3NDExODgxYzU3ZjYwYTljYjIxYmFmNGI4NWJjODYxNDg4MGQwZmVmYTA3YmQ0NjVhOTkyNWVhNjExIn0"
         },
         {
-          "resource": "repo://crates/decodex-runtime/src/account_launch/process.rs#L270-L293",
+          "resource": "repo://crates/decodex-runtime/src/account_launch/process.rs#L266-L289",
           "version": "repo-lines-v1:sha256:3da64ffccfc5fc5b01cee6f7aa289bb34a541c246a4f22d9bb6b69ea1150fa5f:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ1MjZjZmQ2Yzk4NzljMjViM2RhN2QwMGI1NDhhNTlmZjEwZDk3NzcyYmY2YjViNjA5NDQwMDNmMTM4ZDhhZjQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQwYzYyMTRkNWU3N2ZiYzRjNTQwY2QwN2ZkYmU4Nzg2MDYzZDQ0NzkyNDA4ZDg2ZWFlMjUyMzEyZGIxZjE0NzAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImFkNWIxMjMwNWNhZTZmMTc0MDE5ODJlZGVjMzBkODE5OTVjZjkzNjlkNGQzYTMwY2JkZDRhM2VlNWZjMjhkY2IiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQzYTQxNDk1OTk2ZjdlZDYzZjAzNjMwYzQ2MjdkOTI3ODIyNzg0NTViY2RmYWNjNzhhNDFhNDRkYTQ3NjU0ZGYifQ"
         },
         {
@@ -753,10 +753,28 @@
           "version": "repo-file-v1:sha256:77df960b89e47821938a7b4994b9ca893289aab61f863bbb85b9c4ab844a857e"
         }
       ]
+    },
+    {
+      "id": "claim_25353309cd9f44db8b2da53cd0d4f30a",
+      "statement": "A changed default applies to new conversations; existing native conversations resume and continue on the saved configured provider. The existing Decodex provider-recovery flow requires an actual structured modelProviderMismatch on the live connection.",
+      "evidence": [
+        {
+          "resource": "repo://automations/upstream/retained-contracts.json#L5258-L5333",
+          "version": "repo-lines-v1:sha256:1e9f72f8706988bad5445c4b02f4df81075261fde38d0dbbb3f8ce2ea80102f1:eyJzZWxlY3RlZExpbmVDb3VudCI6NzYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIzNjFlZjE2ZjIzNjg0NmUyZTYyMTY4OWEyZjlkOTA2OGZlOGI3MGQxYjBjYTUwM2RhYzA4MWFiMjNhYzBmOGQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjIzNjFlYzdjMjVhYWExZmYyYWJmYTI5M2I4NmIyMzY2NjQ2OWE1ZjE0Y2YwOGJhOTJhMTExMGNiN2QxZDhiYjIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEifQ"
+        },
+        {
+          "resource": "repo://crates/decodex-codex/src/app_server_client/provider_recovery.rs#L20-L37",
+          "version": "repo-lines-v1:sha256:c6bff0d5d35b06b60602727e169f3bf55a637d42b95a38b3a3957838abd1ef51:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgwOWIyODIwZDE3NzFhNDQzZTA2YTgzOGEyMTU5NGUxMzJmYWI0ZmY4Zjk5NzNiYzEwMTBhZTZjM2RmYTRiMGEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk3Mzc4ZThjNWIyMjJhYWE1Njg1M2I1NmZiZGVjYjMyYzU1N2E2OTM5NGUwNTExNjQ1YjYzYmQ0OTRmMzdjN2UiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdhNGQ0YTQ0M2M2YmRiMDE5ZjYzY2RkOGJlMGJiNjg1MGI2ZmYxN2RkMDNlNGY5YjI3NjUyYzA1Y2FlZDhiNDgifQ"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_fork_tests.rs#L255-L393",
+          "version": "repo-lines-v1:sha256:3de62feb83080daf08844daa9e6aa2da28f9e38843e410aabf33949266ac85c3:eyJzZWxlY3RlZExpbmVDb3VudCI6MTM5LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI1MTk0ODRlZWRmMzY0ZmI4YzEyZjFlYjk4ZmJmNmE5YjRmNjUwZjQyNzg3NGE4ZDczNTkwMTBhYWRlNDMxYmM4IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI2NTBlMjNkNGJkYWEyNTJiZjc3OGE1MjNhMmNmOTJlZjliMDgxOTI5YmI1MzQyYzlhMTVlN2YwNWViYTc2ODI1IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJmMjk2NDA3OWMzYzVjODE1MjBlZjMzYTJiOWQyZTE1YTFiODRkNzI4MGRiODU5MGRjZDY1NzQ3ZTNlMDEyYTQwIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI5MWQ2MzMxNWEzN2UwNDE1ZWMyNTU4Y2Y1NDNkOWNhYzI4ZTA2MTdhMWM0NTU2YmJiNjlhODczYmJhMmE1OGUyIn0"
+        }
+      ]
     }
   ],
   "verification": {
-    "by": "openwiki/0.7.3",
-    "at": "2026-11-05T14:56:49.835Z"
+    "by": "openwiki/0.9.0",
+    "at": "2026-11-05T21:05:15.623Z"
   }
 }

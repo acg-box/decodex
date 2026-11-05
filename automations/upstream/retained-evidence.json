@@ -3,14 +3,14 @@
   "scope": "Compact evidence router for the retained consumer boundary. The native checkpoint owns live review/delivery state.",
   "retained_contracts": {
     "path": "automations/upstream/retained-contracts.json",
-    "sha256": "e4f1fef853138a1f3465e5ce20e0ab13d103a2fd82c02305c216b30442c32f61"
+    "sha256": "dfbcb5f07ff9ce54daccf7f270553c99481f7dcf6fe4129485b9f8b52caf7c9d"
   },
-  "source_baseline": "d78f68f8d1016b2ffba14a91ccd33ef7fa527971",
+  "source_baseline": "2e58636d16794a150e562cc34b63ca3035494e50",
   "source_review_evidence": "automations/upstream/current-review.json",
   "source_review_summary": "The fixed review and its coverage limits are in current-review.json. Later upstream main is not certified.",
   "qualification": "automations/upstream/qualification.json",
   "retained_native_consumers": {
-    "source_commit": "d78f68f8d1016b2ffba14a91ccd33ef7fa527971",
+    "source_commit": "2e58636d16794a150e562cc34b63ca3035494e50",
     "tests": [
       "account_launch::process::context_preferences_native_tests::installed_native_context_preferences_share_config_and_preserve_thresholds",
       "account_launch::process::native_control_tests::installed_native_qualified_defaults_preserve_multi_agent_selection",
@@ -19,7 +19,7 @@
       "account_launch::agent_process::native_tests::compaction::installed_native_discards_partial_compaction_output_after_restart",
       "account_launch::agent_process::native_tests::compaction::code_metadata::installed_native_code_mode_metadata_reaches_compaction",
       "account_launch::agent_process::native_tests::history_recovery::installed_native_fork_history_recovers_from_intact_ancestor_copy",
-      "account_launch::agent_process::native_tests::cold_settings::recap_socket::fork::installed_provider_recovery_fork_preserves_context_and_restarts_on_current_provider",
+      "account_launch::agent_process::native_tests::cold_settings::recap_socket::fork::installed_saved_provider_continuation_and_fork_survive_default_changes",
       "account_launch::agent_process::native_tests::reviewer::store::live_model::child_model::installed_native_child_inherits_updated_step_model",
       "account_launch::agent_process::native_tests::reviewer::store::warning_tests::installed_native_warning_crosses_bridge_owner_history_and_reopen",
       "agent::tests::native_subagent_live::mcp::native_child_mcp_input_preserves_policy_and_exact_request",
@@ -31,7 +31,10 @@
       "account_launch::agent_process::native_tests::structured::installed_temporary_requests_isolate_environment_and_preserve_custom_permissions",
       "account_launch::agent_process::native_tests::context::installed_native_tool_context_survives_restart_without_replay",
       "account_launch::agent_process::native_tests::context::installed_assistant_renews_fresh_contexts_with_original_dialogue_and_isolated_memory",
-      "account_launch::agent_process::native_tests::code_mode::installed_native_parallel_dynamic_tools_preserve_ids_and_result_order"
+      "account_launch::agent_process::native_tests::code_mode::installed_native_parallel_dynamic_tools_preserve_ids_and_result_order",
+      "account_launch::process::refresh_tests::native::installed_native_401_uses_production_refresh_reply_and_reauthenticates_after_restart",
+      "account_launch::process::refresh_tests::native::installed_native_401_refresh_refusal_fails_without_replaying_inference",
+      "account_launch::agent_process::native_tests::cold_settings::recap_socket::fork::installed_fork_preserves_source_provider_after_default_changes"
     ],
     "entrypoint": "<compiled-decodex-runtime-libtest> <registered selector> --exact --ignored --nocapture --test-threads=1",
     "fixture_source_sha256": "automations/upstream/qualification.json#fixture_source_sha256",
@@ -64,31 +67,31 @@
     "limits": "Read official implementation/test bodies and reuse official CI. No local upstream source suite."
   },
   "artifact": {
-    "source_commit": "d78f68f8d1016b2ffba14a91ccd33ef7fa527971",
-    "source_archive_sha256": "d974c3048446fdadcdc5be8a8990f023bee7c7536d6d6b5616f3465d731cd3be",
-    "schema_sha256": "7b09165c7812e9f717631d8d397a640c8555e317215c363c4c1b46fa4a862bfe",
+    "source_commit": "2e58636d16794a150e562cc34b63ca3035494e50",
+    "source_archive_sha256": "87449c3227ea39a902ebdb670e4dd55ee27359798712895f4fae66441725a080",
+    "schema_sha256": "915618b87227656043219e6a0439f050e47ed42952a87d79524c84d9c4c6c30e",
     "components": [
       {
         "path": "CodexCLI.app/Contents/MacOS/codex",
-        "sha256": "3cecc036c99f20f445f89fe5664685f83e56b57b44ce62209d1de9a3e72995fa",
-        "bytes": 273798832,
+        "sha256": "6ccbb839acaf5c11f5a1b3fbf8959f6421223badf183474c465f34a55f18161b",
+        "bytes": 269538016,
         "strict_signature_verified": true
       },
       {
         "path": "bin/codex-code-mode-host",
-        "sha256": "8fb426e38a6f2e9da0c37d58c7c3aaf43a63bb2ca02272e835aaece3ca812431",
-        "bytes": 69964400,
+        "sha256": "681dda151539d50f2e74f69543e354ef38142805de5438e89e05e76e82fbfc8e",
+        "bytes": 70166144,
         "strict_signature_verified": true
       },
       {
         "path": "bin/codex-exec-server",
-        "sha256": "b71a145d89cd09505069d9b3f70c4694e9e6139c1dc696247dfac2314bb603c5",
-        "bytes": 60826032,
+        "sha256": "5f481882b636cec2bed254c679350857b4f6206503ecd04d731ba67d34b3e9d9",
+        "bytes": 62233792,
         "strict_signature_verified": true
       },
       {
         "path": "codex-path/rg",
-        "sha256": "a28399b6504c0134739e24a72e69fadc16b8b7670cad6d7a739bff81f514b29f",
+        "sha256": "7d7e05702d05a7158d198fbcf3dc58496711e54f3f7d390dde7f4ea64c955ac1",
         "bytes": 4009552,
         "strict_signature_verified": true
       }
@@ -112,13 +115,12 @@
   "current_runtime_requalification": {
     "status": "qualified_fixed_development_artifact",
     "evidence": "automations/upstream/qualification.json",
-    "selected_source": "d78f68f8d1016b2ffba14a91ccd33ef7fa527971",
+    "selected_source": "2e58636d16794a150e562cc34b63ca3035494e50",
     "limits": "Development qualification only; delivery and installed acceptance remain separate."
   },
   "current_delivery": {
     "source_commit_references": [
-      "https://github.com/acg-box/decodex/commit/880baa0afeefc88570df3d46d3776753d59e5f9d",
-      "https://github.com/acg-box/decodex/commit/a3065af205767d653722343ec77f20f6664e5fed"
+      "https://github.com/acg-box/decodex/commit/49d4581b2f98d3631e3a2bba24aaa727d8480d7a"
     ],
     "status": "Public implementation commits identify the code. Native receipts own the current PR, exact-head CI and merge observations.",
     "installed_acceptance": "Not performed."

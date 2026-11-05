@@ -84,8 +84,6 @@ sources:
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_compaction_tests.rs
   - id: openwiki-source-a490ea3fbcddb9c007caf196
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_context_tests.rs
-  - id: openwiki-source-8fd14b27958d10f11e115032
-    resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_desktop_acceptance.rs
   - id: openwiki-source-4a57fba4bea69171318c6323
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_fork_tests.rs
   - id: openwiki-source-8d32d49a0bc31600300d9335
@@ -202,10 +200,10 @@ sources:
     resource: repo://scripts/macos/test_decodex_app_stage.sh
   - id: openwiki-source-e201f60894c32a914dac99ee
     resource: repo://scripts/vnext/run_native_regression.py
-generated: { by: "codex", at: "2026-11-05T15:16:31.053Z" }
+generated: { by: "codex", at: "2026-11-05T21:05:15.623Z" }
 verified:
-  - by: openwiki/0.7.3
-    at: 2026-11-05T16:20:29.596Z
+  - by: openwiki/0.9.0
+    at: 2026-11-05T21:05:15.623Z
 ---
 
 # Upstream integration acceptance boundaries
@@ -243,9 +241,9 @@ The default execution scope is affected Decodex consumers against the prepared a
 
 ## Provider recovery qualification
 
-The [original provider-recovery qualification](https://github.com/acg-box/decodex/blob/4c9b2c5fce988f038569a7a23092c8b97443b53f/automations/upstream/qualification.json) binds the focused local tests, exact candidate and baseline native tests, component signatures and regenerated schemas to the implementation commit. The current [qualification record](../../automations/upstream/qualification.json) identifies the later exact-artifact recovery check. Ordinary forks retain the source provider; cold resume follows native admission after that provider is restored. The new regression uses two loopback providers and verifies an explicit current-provider fork, preserved context after restart, unchanged source history and no inference until a separate send.
+The [original provider-recovery qualification](https://github.com/acg-box/decodex/blob/4c9b2c5fce988f038569a7a23092c8b97443b53f/automations/upstream/qualification.json) binds the focused local tests, exact candidate and baseline native tests, component signatures and regenerated schemas to the implementation commit. The current [qualification record](../../automations/upstream/qualification.json#saved_provider_admission) identifies the separately qualified saved-provider behavior. Native resume and input keep the saved configured provider after the default changes; new conversations use the new default. Two loopback providers verify routing, source history, the selected fork prefix and no inference during creation or resume. The existing explicit recovery action still requires an actual native `modelProviderMismatch`; its original destination-switch proof keeps its recorded artifact and limits.
 
-The UI and receipt tests cover source identity, configuration changes, cancellation, the durable destination choice and preservation of unsent input. The real public-socket fixture also prepares the mismatch before desktop launch. Its setup check substitutes `/usr/bin/true` for the desktop and is not UI acceptance. The [interactive rehearsal command](../operations/commands-and-validation.md#rehearse-provider-recovery) uses a real desktop window and an isolated temporary profile; its two provider names share one local backend. Neither fixture qualifies live accounts, provider policy migration, installed-app behavior or performance. The provider follow-up alone did not change the runtime pin; the later migration has its own qualification. Neither result authorizes installation, release or schedule activation.
+The UI and receipt tests cover source identity, configuration changes, cancellation, the durable destination choice and preservation of unsent input. The historical public-socket refusal rehearsal requires an artifact that emits that mismatch; the current saved-provider behavior does not produce it from a changed default. Its setup check substitutes `/usr/bin/true` for the desktop and is separate from UI acceptance. The [interactive rehearsal command](../operations/commands-and-validation.md#rehearse-provider-recovery) uses a real desktop window and an isolated temporary profile; its two provider names share one local backend. Neither fixture qualifies live accounts, provider policy migration, installed-app behavior or performance. The provider follow-up alone did not change the runtime pin; the later migration has its own qualification. Neither result authorizes installation, release or schedule activation.
 
 ## Observed turn timings
 
