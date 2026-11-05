@@ -84,7 +84,7 @@ impl RenderOnce for QuotaMeter {
 			.gap(gpui::px(8.))
 			.font_family(FONT_FAMILY)
 			.text_size(gpui::px(ui_theme::SETTINGS_HELP_SIZE))
-			.line_height(gpui::px(18.))
+			.line_height(gpui::px(14.))
 			.text_color(ui_theme::rgb(ui_theme::TEXT_MUTED))
 			.child(gpui::div().w(gpui::px(18.)).flex_none().child(self.label))
 			.child(
@@ -155,9 +155,25 @@ fn format_local_date_time(
 	}
 	// The skeleton's j asks Foundation to apply the user's 12/24-hour preference.
 	formatter.setLocalizedDateFormatFromTemplate(&NSString::from_str("MMMdjmm"));
-	let result = formatter
-		.stringFromDate(&NSDate::dateWithTimeIntervalSince1970(seconds as f64))
-		.to_string();
+	let date = NSDate::dateWithTimeIntervalSince1970(seconds as f64);
+	let format = formatter.dateFormat().to_string();
+	formatter.setDateFormat(Some(&NSString::from_str("d")));
+	let day = if formatter.stringFromDate(&date).to_string().chars().count() == 1 {
+		"\u{2007}d"
+	} else {
+		"d"
+	};
+	// Figure spaces match tabular digits. Preserve quoted locale text in the pattern.
+	let format = format
+		.split('\'')
+		.enumerate()
+		.map(|(index, part)| {
+			if index % 2 == 0 { part.replace("dd", "d").replace('d', day) } else { part.to_owned() }
+		})
+		.collect::<Vec<_>>()
+		.join("'");
+	formatter.setDateFormat(Some(&NSString::from_str(&format)));
+	let result = formatter.stringFromDate(&date).to_string();
 	(!result.is_empty()).then_some(result)
 }
 
@@ -307,5 +323,21 @@ mod hour_cycle_tests {
 		let twenty_four = format_local_date_time(1_704_121_440, &twenty_four, Some(&zone)).unwrap();
 		assert!(twelve.contains("3:04") && twelve.contains("PM"), "{twelve}");
 		assert!(twenty_four.contains("15:04") && !twenty_four.contains("PM"), "{twenty_four}");
+	}
+
+	#[test]
+	fn single_digit_days_use_a_digit_width_space_without_changing_locale_text() {
+		let zone = NSTimeZone::timeZoneForSecondsFromGMT(0);
+		for identifier in ["en_US@hours=h12", "en_GB@hours=h23", "pt_BR"] {
+			let locale = NSLocale::localeWithLocaleIdentifier(&NSString::from_str(identifier));
+			let single = format_local_date_time(1_793_804_640, &locale, Some(&zone)).unwrap();
+			let double = format_local_date_time(1_794_323_040, &locale, Some(&zone)).unwrap();
+			assert!(single.contains("\u{2007}4"), "{single}");
+			assert!(!double.contains('\u{2007}'), "{double}");
+			assert_eq!(single.chars().count(), double.chars().count(), "{single} / {double}");
+			if identifier == "pt_BR" {
+				assert!(single.contains(" de "), "quoted Portuguese date text must remain literal");
+			}
+		}
 	}
 }

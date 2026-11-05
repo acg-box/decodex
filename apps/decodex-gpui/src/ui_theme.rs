@@ -378,7 +378,7 @@ pub(crate) fn settings_group(title: &'static str, rows: Vec<AnyElement>) -> Div 
 	settings_rows().gap_1().child(settings_section_title(title)).child(settings_divided_rows(rows))
 }
 
-/// Cards identify account and health records; ordinary preferences use flat groups.
+/// Cards identify health records; preferences and accounts use flat groups.
 pub(crate) fn settings_card(rows: Vec<AnyElement>) -> Div {
 	settings_divided_rows(rows)
 		.rounded(gpui::px(10.))

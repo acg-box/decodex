@@ -130,10 +130,10 @@ sources:
     resource: repo://database/src/works/commands.rs
   - id: openwiki-source-8fe6f1557e5d45d88b34bd0a
     resource: repo://scripts/macos/generate_workspace_symbols.swift
-generated: { by: "codex", at: "2026-11-04T17:53:53.004Z" }
+generated: { by: "codex", at: "2026-11-05T03:01:40.807Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-04T17:53:53.004Z
+    at: 2026-11-05T03:20:39.701Z
 ---
 
 # Desktop workspace and native glass
@@ -146,9 +146,9 @@ Settings reuse the App's normal body and control typography. Concise description
 
 The permission picker keeps its open state and focus handles in the window. Its visible trailing edge aligns with the trigger, excluding the outer shadow gutter. Arrow keys cycle within its options. Escape closes the menu and restores focus to its trigger. Tab and Shift-Tab dismiss the menu and continue keyboard navigation. Settings remains open after repeated Escape. Command-W or the window close button closes Settings, including while the menu is open. The picker reuses the existing permission rows; it does not own conversation permissions.
 
-Shared disclosures animate their open proportion. Content measurement does not restart the transition or issue a model notification. Already open details mount at full height, and settled parents follow nested content changes directly. Page arrival changes opacity without moving content or hit targets.
+Shared disclosures animate their open proportion. Content measurement does not restart the transition or issue a model notification. Already open details mount at full height, and settled parents follow nested content changes directly. Page arrival changes opacity without moving content or hit targets. Settings navigation selects the destination immediately, without sliding the selection background through other rows. The standalone Settings tests compare the first content frame with subsequent frames.
 
-Ordinary preferences use flat sections and one divided-row helper. Account records and diagnostic summaries retain quiet cards. Each account has one surface for its header and expanded details. Identity and management actions sit above full-width quota rows. Not-applicable quota windows are omitted; unknown usage retains its row. Expanded activity uses two columns of labels and values, with current and best streak together, followed by the daily chart and a separate Reset cards area. Component names, available versions and lifecycle actions share one row in a divided list. Expanded component and MCP details share one divider treatment. Feedback stays with the operation that owns it.
+Ordinary preferences and Accounts use flat lists and one divided-row helper. Diagnostic summaries retain quiet cards. Each account summary places its identity, a fixed-width quota column and management actions on one compact row. One or two quota windows use the same summary height. Only the summary has the disclosure click target and hand cursor; expanded reading areas keep the ordinary cursor. Not-applicable quota windows are omitted; unknown usage retains its row. Expanded activity keeps two columns of labels and values, with current and best streak together, followed by the daily chart and a separate Reset cards area. Component names, available versions and lifecycle actions share one row in a divided list. Expanded component and MCP details share one divider treatment. Feedback stays with the operation that owns it.
 
 Visual references: [Zed Settings design](https://zed.dev/blog/settings-ui), [Raycast Settings](https://manual.raycast.com/settings) and [Linear preferences](https://linear.app/docs/account-preferences).
 

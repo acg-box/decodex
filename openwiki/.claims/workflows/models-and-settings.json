@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:03915ffcd1b694b8bf8e711f84488927fd00339f2ac46c8c3f2dde2474a8b035",
+  "pageVersion": "sha256:e272b02752e991fcfe01f31ff40d207491634b3090cdeb935084cbe14ce7b348",
   "claims": [
     {
       "id": "claim_f0c37462522f4442acd94d53819ef75c",
@@ -364,13 +364,13 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_theme.rs",
-          "version": "repo-file-v1:sha256:7eb31750d32b6ab2ff1f9c6ed841132ea5474677c5cafd876abad45e2a6daad4"
+          "version": "repo-file-v1:sha256:43c3e5d4d3de01b8392ce86fc3c0d524e27e02335b425d99d3708e1b1e0a1fbc"
         }
       ]
     },
     {
       "id": "claim_1d1d68cccf054493b22ff3f7574f9e70",
-      "statement": "All Settings categories share a 620-point content column and normal App typography. Ordinary preferences use flat groups, while account records and diagnostic summaries retain quiet cards. Reusable dividers separate rows and expanded details. Local notices, warnings and errors share a compact inset row with an icon and quiet tone fill; text, icons and recovery actions align vertically at the center. Recovery stays with the affected message. A collapsed Codex setup failure directs the user to its setup error; expanding Codex shows the original error, while Retry setup uses the existing preparation action.",
+      "statement": "All Settings categories share a 620-point content column and normal App typography. Ordinary preferences use flat groups. Accounts uses compact divided rows that align identity, short quota meters and actions, while diagnostic summaries retain quiet cards. Reusable dividers separate rows and expanded details. Local notices, warnings and errors share a compact inset row with an icon and quiet tone fill; text, icons and recovery actions align vertically at the center. Recovery stays with the affected message. A collapsed Codex setup failure directs the user to its setup error; expanding Codex shows the original error, while Retry setup uses the existing preparation action.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
@@ -386,7 +386,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/shell.rs",
-          "version": "repo-file-v1:sha256:a3349bbc0ec2d998496a8ae2331b500708a33586f3273407f351fa5035c258c5"
+          "version": "repo-file-v1:sha256:91d905f83bd69f0d9d8004613edaf1610d820b97883e50a4f34cb343db499ff9"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_feedback.rs",
@@ -394,7 +394,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_theme.rs",
-          "version": "repo-file-v1:sha256:7eb31750d32b6ab2ff1f9c6ed841132ea5474677c5cafd876abad45e2a6daad4"
+          "version": "repo-file-v1:sha256:43c3e5d4d3de01b8392ce86fc3c0d524e27e02335b425d99d3708e1b1e0a1fbc"
         }
       ]
     },
@@ -412,11 +412,11 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/shell.rs",
-          "version": "repo-file-v1:sha256:a3349bbc0ec2d998496a8ae2331b500708a33586f3273407f351fa5035c258c5"
+          "version": "repo-file-v1:sha256:91d905f83bd69f0d9d8004613edaf1610d820b97883e50a4f34cb343db499ff9"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_theme.rs",
-          "version": "repo-file-v1:sha256:7eb31750d32b6ab2ff1f9c6ed841132ea5474677c5cafd876abad45e2a6daad4"
+          "version": "repo-file-v1:sha256:43c3e5d4d3de01b8392ce86fc3c0d524e27e02335b425d99d3708e1b1e0a1fbc"
         }
       ]
     },
@@ -445,6 +445,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-04T20:52:38.845Z"
+    "at": "2026-11-05T03:20:39.701Z"
   }
 }

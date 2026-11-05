@@ -934,11 +934,10 @@ struct ResetCardQuotaWindowView: View {
 	}
 
 	static func resetColumnWidth(for windows: [ResetCardQuotaWindow]) -> CGFloat {
-		let formatter = resetDateFormatter()
 		let font = NSFont.monospacedDigitSystemFont(ofSize: PanelFont.quotaTextSize, weight: .regular)
 
 		return windows.compactMap(\.resetDate).map {
-			ceil((formatter.string(from: $0) as NSString).size(withAttributes: [.font: font]).width)
+			ceil((localizedResetDateTime($0) as NSString).size(withAttributes: [.font: font]).width)
 		}.max() ?? 0
 	}
 
@@ -952,16 +951,16 @@ private func localizedResetDateTime(
     locale: Locale = .autoupdatingCurrent,
     timeZone: TimeZone = .current
 ) -> String {
-    resetDateFormatter(locale: locale, timeZone: timeZone).string(from: date)
-}
-
-private func resetDateFormatter(
-    locale: Locale = .autoupdatingCurrent,
-    timeZone: TimeZone = .current
-) -> DateFormatter {
     let formatter = DateFormatter()
     formatter.locale = locale
     formatter.timeZone = timeZone
     formatter.setLocalizedDateFormatFromTemplate("MMMdjmm")
-    return formatter
+    let format: String = formatter.dateFormat
+    formatter.dateFormat = "d"
+    let day = formatter.string(from: date).count == 1 ? "\u{2007}d" : "d"
+    // Figure spaces match tabular digits. Preserve quoted locale text in the pattern.
+    formatter.dateFormat = format.components(separatedBy: "'").enumerated().map { index, part in
+        index.isMultiple(of: 2) ? part.replacingOccurrences(of: "dd", with: "d").replacingOccurrences(of: "d", with: day) : part
+    }.joined(separator: "'")
+    return formatter.string(from: date)
 }

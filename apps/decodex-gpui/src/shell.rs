@@ -3482,26 +3482,15 @@ fn account_pool_rows(shell: &Shell, cx: &mut Context<Shell>) -> Vec<AnyElement> 
 				},
 				cx,
 			);
-			let profile_id = account.account_id.clone();
 			let target = account.account_id.clone();
 
-			ui_theme::settings_card(vec![row])
+			gpui::div()
 				.id(("account-card", index))
 				.flex_none()
 				.group(SharedString::from(format!("account-card-{index}")))
 				.debug_selector(move || format!("account-card-{index}"))
 				.w_full()
-				.px_0()
-				.py_0()
 				.overflow_hidden()
-				.when(fixed == Some(&account.account_id), |card| {
-					card.bg(ui_theme::rgba(0xffffff0a))
-				})
-				.cursor_pointer()
-				.hover(|style| style.bg(ui_theme::rgba(0xffffff0c)))
-				.on_click(cx.listener(move |shell, _, _, cx| {
-					shell.toggle_account_activity(profile_id.clone(), cx);
-				}))
 				.when(snapshot.can_manage, |row| {
 					row.drag_over::<AccountDrag>(|style, _, _, _| {
 						style.bg(ui_theme::rgba(0x8baaf72a))
@@ -3512,6 +3501,7 @@ fn account_pool_rows(shell: &Shell, cx: &mut Context<Shell>) -> Vec<AnyElement> 
 				})
 				.flex()
 				.flex_col()
+				.child(row)
 				.child(ui_motion::disclosure(
 					SharedString::from(format!(
 						"account-expansion-{}",
@@ -3522,11 +3512,11 @@ fn account_pool_rows(shell: &Shell, cx: &mut Context<Shell>) -> Vec<AnyElement> 
 						.w_full()
 						.border_t_1()
 						.border_color(ui_theme::rgba(ui_theme::PANEL_DIVIDER))
-						.px(gpui::px(14.))
-						.py(gpui::px(12.))
+						.px(gpui::px(12.))
+						.py(gpui::px(8.))
 						.flex()
 						.flex_col()
-						.gap(gpui::px(12.))
+						.gap(gpui::px(8.))
 						.child(account_activity::panel(shell, account))
 						.children(reset_cards::row(shell, account, cx)),
 				))
@@ -3631,16 +3621,16 @@ fn accounts_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 				.child(
 					gpui::div()
 						.id("account-list")
+						.debug_selector(|| "account-list".into())
 						.flex_initial()
 						.min_h_0()
 						.overflow_y_scroll()
 						.flex()
 						.flex_col()
-						.gap_2()
 						.when(count == 0 && snapshot.load == AccountsLoadState::Ready, |list| {
 							list.child(empty_accounts())
 						})
-						.children(rows),
+						.child(ui_theme::settings_divided_rows(rows).flex_none()),
 				)
 				.child(
 					gpui::div().flex_none().child(
@@ -3995,16 +3985,22 @@ fn account_pool_row(
 ) -> AnyElement {
 	let AccountRowPresentation { index, .. } = presentation;
 	let summary = account_pool_summary(account, presentation.clone(), cx);
+	let activity_id = account.account_id.clone();
 
 	gpui::div()
 		.id(("account-row", index))
 		.w_full()
-		.px(gpui::px(14.0))
-		.py(gpui::px(10.0))
+		.px(gpui::px(12.0))
+		.py(gpui::px(6.0))
 		.flex()
 		.flex_col()
 		.gap(gpui::px(6.0))
 		.relative()
+		.cursor_pointer()
+		.on_click(cx.listener(move |shell, _, _, cx| {
+			shell.toggle_account_activity(activity_id.clone(), cx);
+		}))
+		.hover(|row| row.bg(ui_theme::rgba(ui_theme::HOVER_FILL)))
 		.child(summary)
 		.children(presentation.feedback.as_ref().map(|(text, color)| AccountFeedback {
 			id: format!("account-feedback-{}", account.account_id.as_str()).into(),
@@ -4041,13 +4037,36 @@ fn account_pool_summary(
 			.any(|(_, quota)| quota.result != AccountQuotaStateDto::NotApplicable);
 	let pin_enabled = can_route && enabled && !fixed && !unsupported_plan;
 
-	let header = gpui::div()
+	gpui::div()
 		.id(("account-summary", index))
+		.min_h(gpui::px(32.))
 		.flex()
 		.min_w_0()
 		.items_center()
-		.gap(gpui::px(2.0))
+		.gap(gpui::px(8.0))
 		.child(account_row_identity(account, &presentation, cx))
+		.when(show_quota, |row| {
+			row.child(
+				gpui::div()
+					.debug_selector(move || format!("account-quota-{index}"))
+					.w(gpui::px(280.))
+					.flex_none()
+					.flex()
+					.flex_col()
+					.gap(gpui::px(2.))
+					.opacity(if enabled { 1. } else { 0.45 })
+					.children(
+						quota_windows
+							.into_iter()
+							.filter(|(_, quota)| {
+								quota.result != AccountQuotaStateDto::NotApplicable
+							})
+							.map(|(label, quota)| {
+								quota_meter::meter(label, quota, presentation.reset_fill.clone())
+							}),
+					),
+			)
+		})
 		.when(presentation.can_manage, |row| {
 			row.child(account_reorder_handle(account, &presentation, cx))
 		})
@@ -4115,35 +4134,7 @@ fn account_pool_summary(
 				cx,
 			))
 		})
-		.child(account_management_actions(account, &presentation, cx));
-
-	gpui::div()
-		.w_full()
-		.flex()
-		.flex_col()
-		.gap(gpui::px(6.))
-		.child(header)
-		.when(show_quota, |card| {
-			card.child(
-				gpui::div()
-					.debug_selector(move || format!("account-quota-{index}"))
-					.w_full()
-					.flex()
-					.flex_col()
-					.gap(gpui::px(4.))
-					.opacity(if enabled { 1. } else { 0.45 })
-					.children(
-						quota_windows
-							.into_iter()
-							.filter(|(_, quota)| {
-								quota.result != AccountQuotaStateDto::NotApplicable
-							})
-							.map(|(label, quota)| {
-								quota_meter::meter(label, quota, presentation.reset_fill.clone())
-							}),
-					),
-			)
-		})
+		.child(account_management_actions(account, &presentation, cx))
 		.into_any_element()
 }
 
@@ -5797,7 +5788,6 @@ fn settings_navigation(
 	shell: &Shell,
 	standalone: bool,
 	selected: Destination,
-	window: &mut Window,
 	cx: &mut Context<Shell>,
 ) -> AnyElement {
 	let mut rows = Vec::with_capacity(SETTINGS_SECTIONS.len());
@@ -5870,9 +5860,6 @@ fn settings_navigation(
 		);
 	}
 
-	let position =
-		ui_motion::value("settings-navigation-selection", selected_index as f32, window, cx);
-
 	settings_navigation_surface()
 		.child(
 			gpui::div()
@@ -5886,7 +5873,10 @@ fn settings_navigation(
 						.debug_selector(|| "settings-navigation-selection".into())
 						.absolute()
 						.left_0()
-						.top(gpui::px(position * (SETTINGS_NAV_ROW_HEIGHT + SETTINGS_NAV_ROW_GAP)))
+						.top(gpui::px(
+							selected_index as f32
+								* (SETTINGS_NAV_ROW_HEIGHT + SETTINGS_NAV_ROW_GAP),
+						))
 						.w_full()
 						.h(gpui::px(SETTINGS_NAV_ROW_HEIGHT))
 						.rounded(gpui::px(6.))
@@ -5947,7 +5937,7 @@ fn settings_workspace_content(
 	cx: &mut Context<Shell>,
 ) -> AnyElement {
 	let selected = if standalone { shell.settings_selected } else { shell.selected };
-	let navigation = settings_navigation(shell, standalone, selected, window, cx);
+	let navigation = settings_navigation(shell, standalone, selected, cx);
 	let panel = gpui::div()
 		.debug_selector(|| "settings-content-pane".into())
 		.flex_1()
@@ -8187,17 +8177,53 @@ mod tests {
 		settings.update(crate::ui_frame::draw_frame);
 
 		let target = settings.debug_bounds("settings-section-Accounts").unwrap();
-		let moving = settings.debug_bounds("settings-navigation-selection").unwrap();
+		assert_eq!(
+			settings.debug_bounds("settings-navigation-selection").unwrap(),
+			target,
+			"Settings selection must be in place on the first frame"
+		);
+	}
 
-		assert_eq!(moving.size, target.size, "selection motion must not resize the row");
-		if !crate::ui_motion::reduced() {
-			assert_ne!(moving.top(), target.top(), "selection must travel instead of jumping");
-			assert!(settings.update(|window, cx| window.simulate_next_frame(cx)) > 0);
+	#[gpui::test]
+	fn settings_pages_keep_their_first_frame_geometry(cx: &mut TestAppContext) {
+		let (shell, visual) = open_shell(cx);
+		shell.update(visual, |shell, _| shell.visual_accounts_and_health());
+		visual.simulate_keystrokes("cmd-,");
+		let handle = shell.read_with(visual, |s, _| s.settings_window.unwrap());
+		let settings = &mut gpui::VisualTestContext::from_window(handle.into(), visual);
+
+		for (destination, category, selector) in [
+			(Destination::Settings, Some(super::SettingsCategory::Agents), "default-permissions"),
+			(
+				Destination::Settings,
+				Some(super::SettingsCategory::Appearance),
+				"color-theme-picker",
+			),
+			(
+				Destination::Settings,
+				Some(super::SettingsCategory::Components),
+				"components-codex-details",
+			),
+			(Destination::Accounts, None, "account-card-0"),
+			(Destination::Health, None, "health-details-toggle"),
+		] {
+			shell.update(settings, |s, cx| {
+				if let Some(category) = category {
+					s.settings.update(cx, |surface, cx| {
+						surface.category = category;
+						cx.notify();
+					});
+				}
+				s.settings_selected = destination;
+				cx.notify();
+			});
+			settings.update(crate::ui_frame::draw_current_frame);
+			let first = settings.debug_bounds(selector).expect(selector);
+			for _ in 0..3 {
+				settings.update(crate::ui_frame::draw_frame);
+				assert_eq!(settings.debug_bounds(selector).unwrap(), first, "{selector}");
+			}
 		}
-
-		std::thread::sleep(Duration::from_millis(220));
-		settings.update(crate::ui_frame::draw_frame);
-		assert_eq!(settings.debug_bounds("settings-navigation-selection").unwrap(), target);
 	}
 
 	#[gpui::test]

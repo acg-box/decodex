@@ -20,6 +20,8 @@ sources:
     resource: repo://apps/decodex-gpui/menubar/Tests/DecodexAppTests/ResetCardStoreRecoveryTests.swift
   - id: openwiki-source-fecafeb22abda7dad3877372
     resource: repo://apps/decodex-gpui/src/account_feedback.rs
+  - id: openwiki-source-9d711254570d577c97c88bbf
+    resource: repo://apps/decodex-gpui/src/quota_meter.rs
   - id: openwiki-source-4b6e253ef76717138b4dd66e
     resource: repo://apps/decodex-gpui/src/shell_reset_cards.rs
   - id: openwiki-source-1291f5243fa6c9cb52149bda
@@ -36,10 +38,10 @@ sources:
     resource: repo://database/src/reset_cards.rs
   - id: openwiki-source-e0e48fb115095577a43dbc91
     resource: repo://scripts/macos/test_native_app.sh
-generated: { by: "codex", at: "2026-11-04T17:53:53.004Z" }
+generated: { by: "codex", at: "2026-11-05T03:01:40.807Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-04T17:53:53.004Z
+    at: 2026-11-05T03:20:39.701Z
 ---
 
 > Current scope: Reset Card redemption is available in Accounts and the explicit CLI, with durable account-scoped recovery. The embedded schema owns the redemption ledger and separate weekly activation records. The source/release comparison below is a version-bound implementation receipt, not a statement of the currently installed Codex version. Quota refill animation displays confirmed results; it does not redeem a card. See [Weekly activation](quota-activation.md).
@@ -51,9 +53,9 @@ Managed Repository or GitHub effect layers.
 
 ## Find and use a card
 
-In Accounts or the native menu, click the account body to open its details. The activity graph and Reset Cards share this disclosure. GPUI places the Reset cards inventory in a labelled area below the metrics and chart, with one divider and no extra disclosure. Multiple accounts can stay open at the same time. A separate drag handle changes account order; account actions and card clicks do not toggle the disclosure.
+In Accounts or the native menu, click the account summary to open its details. The activity graph and Reset Cards share this disclosure. In GPUI, expanded reading areas keep the normal cursor and do not toggle the disclosure. GPUI places the Reset cards inventory in a labelled area below the metrics and chart, with one divider and no extra disclosure. Multiple accounts can stay open at the same time. A separate drag handle changes account order; account actions and card clicks do not toggle the disclosure.
 
-Each card shows its expiry. On macOS, expiry and quota-reset labels use the system locale, hour-cycle preference and time zone; the native expiry instant is unchanged. Click the selected card once to arm `Confirm (5s)`, then click the same card again within five seconds to use it. Confirmation expires without dispatch. The UI checks the exact account, revision, descriptor and current eligibility again before use. A confirmed result can animate the quota fill; the animation itself has no redemption authority.
+Each card shows its expiry. On macOS, expiry and quota-reset labels use the system locale, hour-cycle preference and time zone. Single-digit calendar days use a digit-width space so dates keep their columns; the native expiry instant is unchanged. Click the selected card once to arm `Confirm (5s)`, then click the same card again within five seconds to use it. Confirmation expires without dispatch. The UI checks the exact account, revision, descriptor and current eligibility again before use. A confirmed result can animate the quota fill; the animation itself has no redemption authority.
 
 There is no separate Reset Cards expand button or manual refresh button in the compact account details. Inventory and operation-state reads remain service-backed. The CLI offers `reset-card list`, `use`, and `status`; `use` requires an explicit account revision, descriptor, and request key.
 
