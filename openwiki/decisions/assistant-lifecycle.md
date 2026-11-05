@@ -59,10 +59,10 @@ sources:
     resource: repo://database/src/assistant.rs
   - id: openwiki-source-28af4781ad8d9558410630da
     resource: repo://database/src/works.rs
-generated: { by: "codex", at: "2026-11-05T14:56:49.835Z" }
+generated: { by: "codex", at: "2026-11-05T15:49:25.923Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-05T14:56:49.835Z
+    at: 2026-11-05T15:49:25.923Z
 ---
 
 
@@ -175,7 +175,7 @@ Component operations check that the Docker-compatible engine is running and Dock
 
 Model keys remain private. The editor does not refill a saved API key; a blank field retains only that model's key when its own Base URL stays the same. A service that needs no key can use an empty value. Loopback URLs are translated to `host.docker.internal` when RAGFlow calls the host, while the UI retains the entered address. A Memory that contains messages keeps its embedding model and endpoint so its saved vector index remains valid. Failed verification keeps the previous saved configuration.
 
-RAGFlow shares the existing component lifecycle buttons, version metadata, disclosure, busy state and inline feedback. The version row retains the complete server-reported value. Release channel identifies Nightly separately. The receipt and UI use the original server version directly. Update retains model configuration, credentials, saved data and the chat-import choice. Uninstall stops only the owned project, clears its Assistant connection and retains volumes for reinstall. The private installation receipt preserves the project, account and model settings, so service setup can resume through Update. Model setup failures retry through Save. The chat-import switch remains independent of model editing and is available when Memory is ready.
+RAGFlow shares the existing component lifecycle buttons, version metadata, disclosure, busy state and inline feedback. The version row retains the complete server-reported value. The receipt and UI use the original server version directly. Update retains model configuration, credentials, saved data and the chat-import choice. Uninstall stops only the owned project, clears its Assistant connection and retains volumes for reinstall. The private installation receipt preserves the project, account and model settings, so service setup can resume through Update. Model setup failures retry through Save. The chat-import switch remains independent of model editing and is available when Memory is ready.
 
 The component saves the generated API key in an origin-bound private component file. The service directory mode is 0700 and private files use mode 0600. Saved Assistant settings and model tools contain only a credential reference. The service requires that origin-bound component credential reference for Memory requests. Redirects are disabled. Components does not ask for raw user, dataset or Memory IDs. Explicit dataset retrieval scopes remain available through the typed configuration command.
 

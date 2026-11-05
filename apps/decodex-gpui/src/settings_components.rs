@@ -294,7 +294,7 @@ impl SettingsSurface {
 		}
 
 		let details = gpui::div().flex().flex_col().gap_2().child(ui_theme::settings_description(
-			"Runs conversations. Its version follows this Decodex build.",
+			"Verify checks the installed Codex files and protocol. Update Decodex to change the required Codex version.",
 		));
 		component.child(self.component_body(0, "components-codex-body", details))
 	}
@@ -543,26 +543,6 @@ impl SettingsSurface {
 		}
 		gpui::div()
 			.child(row)
-			.children(state.as_ref().map(|state| {
-				let summary = if !state.installed {
-					"Install RAGFlow to add long-term memory to Assistant."
-				} else if state.running == Some(false) {
-					"Service unavailable. Start its container environment, then reopen Components to check again."
-				} else if state.memory_ready {
-					"Service installed. Assistant memory is configured."
-				} else {
-					"Service installed. Assistant memory needs setup."
-				};
-				ui_theme::settings_description(summary)
-					.id("components-ragflow-status")
-					.debug_selector(|| "components-ragflow-status".into())
-					.role(Role::Status)
-					.aria_label(summary)
-					.when(state.installed, |status| {
-						status.font_weight(FontWeight::MEDIUM).text_color(ui_theme::rgb(TEXT))
-					})
-					.pb(gpui::px(8.))
-			}))
 			.child(self.component_body(3, "components-ragflow-body", body))
 			.child(
 				ui_feedback::notice(
@@ -759,7 +739,7 @@ impl SettingsSurface {
 		gpui::div().debug_selector(|| "components-egm".into()).w_full().flex().flex_col().child(ui_theme::settings_row()
 			.child(self.component_label(1, "components-egm-details", "Elephant–Goldfish (EGM)", state.installed.as_ref().map(|plugin| plugin.version.as_str()), cx))
 			.child(controls))
-			.child(self.component_body(1,"components-egm-body",ui_theme::settings_description("Adds design and review workflows. Uses your Codex subscription. Start a new conversation after installation or update.")))
+			.child(self.component_body(1,"components-egm-body",ui_theme::settings_description("Ask an Agent to use EGM to draft or review a design. Start a new conversation after installation or update.")))
 			.child(ui_feedback::notice("components-egm-feedback", "egm", feedback).inline()
 				.action(retry))
 	}
