@@ -1,19 +1,19 @@
 {
   "version": 2,
   "status": "qualified_fixed_development_artifact",
-  "source_commit": "d78f68f8d1016b2ffba14a91ccd33ef7fa527971",
-  "development_version": "0.166.0+decodex.d78f68f8d101",
-  "source_archive_sha256": "d974c3048446fdadcdc5be8a8990f023bee7c7536d6d6b5616f3465d731cd3be",
-  "cargo_lock_sha256": "b65466df3ba5400151b58caf0f4b7e7cc42b580f70a5d1bef62ee2a60ec282bf",
-  "schema_sha256": "7b09165c7812e9f717631d8d397a640c8555e317215c363c4c1b46fa4a862bfe",
+  "source_commit": "2e58636d16794a150e562cc34b63ca3035494e50",
+  "development_version": "0.166.0+decodex.2e58636d1679",
+  "source_archive_sha256": "87449c3227ea39a902ebdb670e4dd55ee27359798712895f4fae66441725a080",
+  "cargo_lock_sha256": "bac932127b97e7f71766ae40f56d58133bf88d4bcbd6bc1ad2359a85471d3b4c",
+  "schema_sha256": "915618b87227656043219e6a0439f050e47ed42952a87d79524c84d9c4c6c30e",
   "schema_identity": {
     "file_count": 474,
-    "fingerprint": "7b09165c7812e9f717631d8d397a640c8555e317215c363c4c1b46fa4a862bfe",
+    "fingerprint": "915618b87227656043219e6a0439f050e47ed42952a87d79524c84d9c4c6c30e",
     "file_digests": {
-      "ClientRequest.json": "5300733d026bd3307c14e0bd52471fd100a928f47d8c23db4be63f63091208bc",
+      "ClientRequest.json": "8211a039a7e8c41a899f2428df565e346780028c5389bc0fd34477f2eb1fee91",
       "ServerRequest.json": "e0ea4e3d53092e699637271b9eed4d2a177db64fca6440091204ea6538c4099e",
       "ServerNotification.json": "c0a794121651d9b672d30313d143713ca8d664cf601f35790cdf355393ceca57",
-      "codex_app_server_protocol.v2.schemas.json": "8ffd5f81ee35ffaf66d22e124d277615f47d2c00dfc345d541041dbc8e86a4e6",
+      "codex_app_server_protocol.v2.schemas.json": "d4c308add872ee36fb07760d152afef1bef96a9f8d86ff374f4278706278c0c8",
       "v2/LoginAccountParams.json": "7b41b6881d98b4ec6872d73d7981f5ab61e5960e4296510728d08d4abbfaebf2",
       "ChatgptAuthTokensRefreshParams.json": "74d490082dab616ac01c94d388c9a836304c96092db37290cfdd10a46b0f3ef9",
       "ChatgptAuthTokensRefreshResponse.json": "ff76f5cc58bff40216f9d5f3c5be921268059f6d66d6c034970cddf0e08f0ced",
@@ -27,55 +27,56 @@
   "components": [
     {
       "path": "CodexCLI.app/Contents/MacOS/codex",
-      "sha256": "3cecc036c99f20f445f89fe5664685f83e56b57b44ce62209d1de9a3e72995fa",
-      "bytes": 273798832,
+      "sha256": "6ccbb839acaf5c11f5a1b3fbf8959f6421223badf183474c465f34a55f18161b",
+      "bytes": 269538016,
       "strict_signature_verified": true
     },
     {
       "path": "bin/codex-code-mode-host",
-      "sha256": "8fb426e38a6f2e9da0c37d58c7c3aaf43a63bb2ca02272e835aaece3ca812431",
-      "bytes": 69964400,
+      "sha256": "681dda151539d50f2e74f69543e354ef38142805de5438e89e05e76e82fbfc8e",
+      "bytes": 70166144,
       "strict_signature_verified": true
     },
     {
       "path": "bin/codex-exec-server",
-      "sha256": "b71a145d89cd09505069d9b3f70c4694e9e6139c1dc696247dfac2314bb603c5",
-      "bytes": 60826032,
+      "sha256": "5f481882b636cec2bed254c679350857b4f6206503ecd04d731ba67d34b3e9d9",
+      "bytes": 62233792,
       "strict_signature_verified": true
     },
     {
       "path": "codex-path/rg",
-      "sha256": "a28399b6504c0134739e24a72e69fadc16b8b7670cad6d7a739bff81f514b29f",
+      "sha256": "7d7e05702d05a7158d198fbcf3dc58496711e54f3f7d390dde7f4ea64c955ac1",
       "bytes": 4009552,
       "strict_signature_verified": true
     }
   ],
-  "decodex_source_revision": "a3065af205767d653722343ec77f20f6664e5fed",
-  "decodex_main_baseline": "f65b419d7c1e8454e12ac4c8cd5e1878ebea2b0f",
-  "runtime_pin_commit": "880baa0afeefc88570df3d46d3776753d59e5f9d",
-  "runtime_pin_sha256": "b1ca743d176a4fa99cf97922e86e5ec0bfe8da934cd74f1a819e316896c27d11",
-  "qualified_scope": "Signed macOS arm64 CLI and three packaged helpers; 20 direct compiled Decodex native cases, one offline component-repair case and four protocol entrypoints, including four before/after completion-mail cases.",
+  "decodex_source_revision": "49d4581b2f98d3631e3a2bba24aaa727d8480d7a",
+  "decodex_main_baseline": "2861ed9c3137222fdee527750aadd893b643e5e8",
+  "runtime_pin_commit": "49d4581b2f98d3631e3a2bba24aaa727d8480d7a",
+  "runtime_pin_sha256": "1d67cc33f1a91a206e961996e13dd887750361a7e661994fe89c9c9fe50c98f6",
+  "qualified_scope": "Signed macOS arm64 CLI and three packaged helpers; 23 direct compiled native cases, two local provider-authority cases, one offline component-repair case and four protocol entrypoints.",
   "limits": [
     "Qualification covers only the named macOS arm64 private-stdio consumers with loopback providers and disposable homes.",
     "No desktop startup, installation, live-provider/account acceptance, physical audio, performance, live billing, release, tag or publication.",
-    "The completion-mail fixture covers FINAL_ANSWER messages, repeated manual compaction and cold continuation. Ordinary native agent messages retain their native policy; mid-turn preemption is source-reviewed only.",
+    "Saved conversations continue on their configured saved provider after a changed default. This is native admission; Decodex adds no automatic routing policy. The conditional legacy recovery action still requires an actual native modelProviderMismatch.",
+    "The original explicit-recovery proof retains its original artifact and limits. The new artifact does not emit a default-mismatch refusal, so this run qualifies saved-provider continuation and unchanged refusal-only local authority rather than claiming a new native refusal flow.",
     "Direct compiled libtests and explicit CLI paths avoid Nextest CARGO_BIN_EXE substitution. Native sessions clear inherited environments and resolve signed helpers from the exact package.",
-    "No upstream source tests ran locally. Official CI observations and read test bodies remain distinct; unresolved generic CI failures do not count as passes or create Decodex repair work.",
+    "No upstream source tests ran locally. Official CI results and read test bodies remain distinct. Unresolved generic CI failures do not count as passes or create Decodex repair work.",
     "Shared MCP enablement still requires the official fix and its existing four exact-artifact sharing regressions. Deferred controls and workflows remain unselected.",
-    "Previous qualification retains its original artifact, selectors and limits. No missing historical test manifest is reconstructed or treated as current proof."
+    "Previous qualification retains its original artifact, selectors and limits. Missing historical proof is not reconstructed or treated as current execution."
   ],
   "historical_scope": {
-    "previous_selected_source": "3e743d15787bd9091f674f0fbc27010f0cbcec62",
-    "previous_qualification": "https://github.com/acg-box/decodex/blob/6b73ccb3348ec694c4a15d70b572ccdec20a871c/automations/upstream/qualification.json",
+    "previous_selected_source": "d78f68f8d1016b2ffba14a91ccd33ef7fa527971",
+    "previous_qualification": "https://github.com/acg-box/decodex/blob/2861ed9c3137222fdee527750aadd893b643e5e8/automations/upstream/qualification.json",
     "contract_catalog": "automations/upstream/retained-contracts.json",
-    "retained_contracts_sha256": "e4f1fef853138a1f3465e5ce20e0ab13d103a2fd82c02305c216b30442c32f61",
-    "limits": "Original feature and historical coverage limits remain unchanged."
+    "retained_contracts_sha256": "dfbcb5f07ff9ce54daccf7f270553c99481f7dcf6fe4129485b9f8b52caf7c9d",
+    "limits": "Original feature qualification limits remain in the contract catalog and Git. The saved-provider admission change has an explicit current contract and separate execution receipt."
   },
   "source_integrity": {
-    "source_commit": "d78f68f8d1016b2ffba14a91ccd33ef7fa527971",
-    "source_archive_sha256": "d974c3048446fdadcdc5be8a8990f023bee7c7536d6d6b5616f3465d731cd3be",
-    "archive_entries_bound_to_official_git_blobs": 9980,
-    "build_source_entries_checked": 9980,
+    "source_commit": "2e58636d16794a150e562cc34b63ca3035494e50",
+    "source_archive_sha256": "87449c3227ea39a902ebdb670e4dd55ee27359798712895f4fae66441725a080",
+    "archive_entries_bound_to_official_git_blobs": 10037,
+    "build_source_entries_checked": 10037,
     "allowed_preparation": [
       "Cargo.toml workspace version",
       "Cargo.lock workspace package versions only"
@@ -87,202 +88,622 @@
     "variant": "codex",
     "target": "aarch64-apple-darwin",
     "layout_version": 1,
-    "source_commit": "d78f68f8d1016b2ffba14a91ccd33ef7fa527971",
+    "source_commit": "2e58636d16794a150e562cc34b63ca3035494e50",
     "strict_signature_verified_components": 4,
-    "artifact_helper_hashes_unchanged_after_tests": true
+    "artifact_helper_hashes_unchanged_after_tests": true,
+    "helper_provenance": {
+      "native_helpers": "Built with the CLI from the bound official source tree by scripts/codex_package/cargo.py.",
+      "ripgrep_manifest": "scripts/codex_package/rg",
+      "ripgrep_archive_sha256": "3750b2e93f37e0c692657da574d7019a101c0084da05a790c83fd335bad973e4",
+      "ripgrep_verifier": "scripts/codex_package/dotslash.py::verify_archive verifies exact size and SHA-256 before extraction."
+    }
   },
   "development_preparation": {
     "command": "cargo +stable make prepare-codex",
     "import_command": "DECODEX_CODEX_DEVELOPMENT_RUNTIME=<exact signed candidate package> cargo +stable make prepare-codex",
     "toolchain_channel": "stable",
     "node_version_file": "site/.nvmrc",
-    "signing": "Use the existing configured identity and unchanged official entitlements. Signing uses the host Keychain; import and runtime test homes are disposable."
+    "signing": "Use the existing configured identity and unchanged official entitlements. Only codesign uses the host Keychain environment; import and runtime test homes are disposable."
   },
   "retained_source_inclusion": {
-    "previous_selected_source": "3e743d15787bd9091f674f0fbc27010f0cbcec62",
-    "candidate_source": "d78f68f8d1016b2ffba14a91ccd33ef7fa527971",
+    "previous_selected_source": "d78f68f8d1016b2ffba14a91ccd33ef7fa527971",
+    "candidate_source": "2e58636d16794a150e562cc34b63ca3035494e50",
     "previous_source_is_ancestor": true,
     "review": "automations/upstream/current-review.json",
-    "decodex_baseline": "f65b419d7c1e8454e12ac4c8cd5e1878ebea2b0f",
+    "decodex_baseline": "2861ed9c3137222fdee527750aadd893b643e5e8",
     "limits": "Ancestry proves inclusion only. Source review and the actual named artifact executions supply the retained-consumer proof."
   },
   "source_validation": {
     "upstream_tests_read": [
       {
-        "source": "codex-rs/cloud-client/src/client_tests.rs",
-        "symbol": "prewarm_uses_managed_defaults_and_preserves_resolved_settings",
-        "revision": "d78f68f8d1016b2ffba14a91ccd33ef7fa527971",
+        "source": "codex-rs/core/tests/suite/guardian_environments_tests.rs",
+        "symbol": "guardian_reviews_target_environment_and_reuses_prefix",
+        "revision": "9fcaeb733522adf09b4e1c594bc90f344374a926",
         "body_read": true
       },
       {
-        "source": "codex-rs/core/src/state/auto_compact_window.rs",
-        "symbol": "tracks_prefill_and_window_boundaries",
-        "revision": "d78f68f8d1016b2ffba14a91ccd33ef7fa527971",
+        "source": "codex-rs/login/src/auth/auth_tests.rs",
+        "symbol": "external_auth_keeps_its_identity_through_a_transient_reload_failure",
+        "revision": "08bbbbdff3e477da0516cc2452483b977a8541e2",
         "body_read": true
       },
       {
-        "source": "codex-rs/core/tests/suite/agent_control_tests.rs",
-        "symbol": "fresh_hosted_child_persists_inherited_session_id",
-        "revision": "d78f68f8d1016b2ffba14a91ccd33ef7fa527971",
+        "source": "codex-rs/login/src/auth/auth_tests.rs",
+        "symbol": "workspace_policy_change_rejects_pending_transient_auth_fallback",
+        "revision": "08bbbbdff3e477da0516cc2452483b977a8541e2",
         "body_read": true
       },
       {
-        "source": "codex-rs/guardian-context/src/allocation_tests.rs",
-        "symbol": "groups_select_recent_whole_entries_and_redistribute_packing_gaps",
-        "revision": "d78f68f8d1016b2ffba14a91ccd33ef7fa527971",
+        "source": "codex-rs/login/src/auth/auth_tests.rs",
+        "symbol": "external_auth_does_not_reuse_disallowed_credentials_after_a_transient_failure",
+        "revision": "08bbbbdff3e477da0516cc2452483b977a8541e2",
         "body_read": true
       },
       {
-        "source": "codex-rs/guardian-context/src/history_tests.rs",
-        "symbol": "elastic_storage_keeps_full_entries_past_the_fixed_count_bound_and_on_replay",
-        "revision": "d78f68f8d1016b2ffba14a91ccd33ef7fa527971",
+        "source": "codex-rs/app-server-client/src/cloud_backend/connection_tests.rs",
+        "symbol": "failed_replacement_keeps_old_thread_until_new_attachment_succeeds",
+        "revision": "5112ce6edeb95f2296a5ffec47dbab4764e65853",
         "body_read": true
       },
       {
-        "source": "codex-rs/guardian-context/src/history_tests.rs",
-        "symbol": "elastic_byte_overflow_evicts_whole_non_user_entries_to_the_low_watermark",
-        "revision": "d78f68f8d1016b2ffba14a91ccd33ef7fa527971",
+        "source": "codex-rs/app-server-client/src/cloud_backend/connection_tests.rs",
+        "symbol": "attachment_status_follows_its_server_notifications",
+        "revision": "5112ce6edeb95f2296a5ffec47dbab4764e65853",
         "body_read": true
       },
       {
-        "source": "codex-rs/guardian-context/src/retained_instructions_tests.rs",
-        "symbol": "transcript_original_requires_complete_source_proof_and_survives_budgeting",
-        "revision": "d78f68f8d1016b2ffba14a91ccd33ef7fa527971",
+        "source": "codex-rs/model-provider/src/shared_state_tests.rs",
+        "symbol": "models_cache_is_reused_only_for_matching_gateway_configuration",
+        "revision": "464239de0acc873363b34dc49491ab05de96fe0f",
         "body_read": true
       },
       {
-        "source": "codex-rs/core/tests/suite/scenarios_injected_agent_mail.rs",
-        "symbol": "injected_agent_message_interrupting_sampling_survives_mid_turn_compaction",
-        "revision": "d78f68f8d1016b2ffba14a91ccd33ef7fa527971",
-        "body_read": true
-      },
-      {
-        "source": "codex-rs/core/tests/suite/scenarios_compaction_tests.rs",
-        "symbol": "remote_slash_compact_preserves_context_across_windows",
-        "revision": "d78f68f8d1016b2ffba14a91ccd33ef7fa527971",
-        "body_read": true
-      },
-      {
-        "source": "codex-rs/core/src/config/config_tests.rs",
-        "symbol": "sync_elastic_budget_is_opt_in_and_validated",
-        "revision": "d78f68f8d1016b2ffba14a91ccd33ef7fa527971",
-        "body_read": true
-      },
-      {
-        "source": "codex-rs/core/src/agents_md_tests.rs",
-        "symbol": "full_primary_environment_budget_skips_later_files_and_environments",
-        "revision": "d78f68f8d1016b2ffba14a91ccd33ef7fa527971",
-        "body_read": true
-      },
-      {
-        "source": "codex-rs/cli/tests/daemon_startup.rs",
-        "symbol": "discovered_managed_daemon_can_restart_with_auto_start_disabled",
-        "revision": "d78f68f8d1016b2ffba14a91ccd33ef7fa527971",
-        "body_read": true
-      },
-      {
-        "source": "codex-rs/core/src/session/input_queue.rs",
-        "symbol": "user_input_extension_data_round_trips_without_changing_legacy_input",
-        "revision": "d78f68f8d1016b2ffba14a91ccd33ef7fa527971",
-        "body_read": true
-      },
-      {
-        "source": "codex-rs/tui/src/app/tests.rs",
-        "symbol": "handle_start_side_seeds_navigation_before_thread_started",
-        "revision": "d78f68f8d1016b2ffba14a91ccd33ef7fa527971",
-        "body_read": true
-      },
-      {
-        "source": "codex-rs/thread-store/src/local/thread_history_materialization_tests.rs",
-        "symbol": "prepared_fork_reserves_source_until_child_reference_is_durable",
-        "revision": "d78f68f8d1016b2ffba14a91ccd33ef7fa527971",
-        "body_read": true
-      },
-      {
-        "source": "codex-rs/tui/src/app/tests.rs",
-        "symbol": "handle_start_side_seeds_navigation_before_thread_started",
-        "revision": "d78f68f8d1016b2ffba14a91ccd33ef7fa527971",
-        "body_read": true
-      },
-      {
-        "source": "codex-rs/core/tests/suite/scenarios_agent_message_board.rs",
-        "symbol": "codex_instances_share_board_with_fixed_access",
-        "revision": "d78f68f8d1016b2ffba14a91ccd33ef7fa527971",
-        "body_read": true
-      },
-      {
-        "source": "codex-rs/core/src/mcp_tool_call_tests.rs",
-        "symbol": "writes_mode_requires_approval_for_non_read_only_tools",
-        "revision": "d78f68f8d1016b2ffba14a91ccd33ef7fa527971",
-        "body_read": true
-      },
-      {
-        "source": "codex-rs/core/src/mcp_tool_call_tests.rs",
-        "symbol": "writes_mode_does_not_require_approval_for_read_only_tools",
-        "revision": "d78f68f8d1016b2ffba14a91ccd33ef7fa527971",
-        "body_read": true
-      },
-      {
-        "source": "codex-rs/core/src/mcp_tool_call_tests.rs",
-        "symbol": "prompting_modes_do_not_allow_persistent_remember",
-        "revision": "d78f68f8d1016b2ffba14a91ccd33ef7fa527971",
+        "source": "codex-rs/model-provider/src/shared_state_tests.rs",
+        "symbol": "gateway_login_required_invalidates_the_last_successful_catalog",
+        "revision": "464239de0acc873363b34dc49491ab05de96fe0f",
         "body_read": true
       },
       {
         "source": "codex-rs/core/tests/suite/model_runtime_selectors.rs",
         "symbol": "migrating_only_the_project_agent_setting_preserves_v1_tools",
-        "revision": "d78f68f8d1016b2ffba14a91ccd33ef7fa527971",
+        "revision": "b260ee5e8333faefd74d8be78d722cd6a4d4b33d",
         "body_read": true
       },
       {
-        "source": "codex-rs/core/src/config/config_tests.rs",
-        "symbol": "legacy_multi_agent_opt_out_survives_a_session_override",
-        "revision": "d78f68f8d1016b2ffba14a91ccd33ef7fa527971",
+        "source": "codex-rs/app-server/tests/suite/v2/thread_read.rs",
+        "symbol": "thread_items_read_validates_ids_before_history_access",
+        "revision": "dc1cc0a0e8b726d5e5fda1ad25398b741adc53c4",
         "body_read": true
       },
       {
-        "source": "codex-rs/config/src/loader/tests.rs",
-        "symbol": "multi_agent_warns_for_explicit_user_and_project_settings",
-        "revision": "d78f68f8d1016b2ffba14a91ccd33ef7fa527971",
+        "source": "codex-rs/login/src/auth/auth_tests.rs",
+        "symbol": "workspace_policy_change_rejects_pending_transient_auth_fallback",
+        "revision": "6744e5eb79ec23b96cdfacf713b348a74f410702",
         "body_read": true
       },
       {
-        "source": "codex-rs/core/tests/suite/turn_input_submission.rs",
-        "symbol": "host_prompt_cache_ttl_applies_only_to_the_started_turn",
-        "revision": "d78f68f8d1016b2ffba14a91ccd33ef7fa527971",
+        "source": "codex-rs/app-server/tests/suite/v2/thread_resume.rs",
+        "symbol": "thread_resume_returns_provider_error_even_with_provider_override",
+        "revision": "e115d5f90d56d32785b9b01d4c376d7abf94ea7d",
         "body_read": true
       },
       {
-        "source": "codex-rs/core/src/tools/handlers/multi_agents_tests.rs",
-        "symbol": "child_agents_inherit_thread_routing_when_parent_overrides_it_for_one_turn",
-        "revision": "d78f68f8d1016b2ffba14a91ccd33ef7fa527971",
+        "source": "codex-rs/app-server/tests/suite/v2/thread_resume.rs",
+        "symbol": "thread_resume_recovers_after_provider_configuration_is_restored",
+        "revision": "e115d5f90d56d32785b9b01d4c376d7abf94ea7d",
         "body_read": true
       },
       {
-        "source": "codex-rs/core/tests/suite/mcp_tool_exposure.rs",
-        "symbol": "code_mode_refreshes_direct_tool_routing_between_turns",
-        "revision": "d78f68f8d1016b2ffba14a91ccd33ef7fa527971",
+        "source": "codex-rs/app-server/tests/suite/v2/model_provider_enforcement_tests.rs",
+        "symbol": "malformed_system_defaults_do_not_block_existing_thread_turn",
+        "revision": "e115d5f90d56d32785b9b01d4c376d7abf94ea7d",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/memories/write/src/phase2_sandbox_tests.rs",
+        "symbol": "consolidation_uses_canonical_parent_enforcement",
+        "revision": "ad5e6e57a1e0a45120c87c3eaa62c77dd53097fd",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/memories/write/src/phase2_workspace_roots_tests.rs",
+        "symbol": "consolidation_rebinds_workspace_roots_to_memory_root",
+        "revision": "ad5e6e57a1e0a45120c87c3eaa62c77dd53097fd",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/app-server/tests/suite/v2/mcp_resource/caller_metadata.rs",
+        "symbol": "stdio_resource_receives_caller_metadata",
+        "revision": "aa1399cbcd1a7f5e87714a9ce0d7b2c04af2a0e2",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/tui/src/app/tests/startup_defaults_tests.rs",
+        "symbol": "fresh_startup_uses_server_defaults_with_explicit_and_managed_precedence",
+        "revision": "4b94e6cf260edfecac0c21844e12736a06c3e601",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/tui/src/app/tests/startup_defaults_tests.rs",
+        "symbol": "startup_failure_shuts_down_every_initial_backend",
+        "revision": "4b94e6cf260edfecac0c21844e12736a06c3e601",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/cloud-client/src/discovery_tests.rs",
+        "symbol": "discovery_preserves_pagination_and_order_on_each_request",
+        "revision": "763faa6ee4b67d4234a6d71afa9d4e98ed9f91f0",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/cloud-client/src/discovery_tests.rs",
+        "symbol": "discovery_preserves_native_snapshots_and_read_state",
+        "revision": "763faa6ee4b67d4234a6d71afa9d4e98ed9f91f0",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/cloud-client/src/discovery_tests.rs",
+        "symbol": "discovery_rejects_missing_data_invalid_snapshot_and_empty_revision",
+        "revision": "763faa6ee4b67d4234a6d71afa9d4e98ed9f91f0",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/tui/src/app/pending_interactive_replay.rs",
+        "symbol": "thread_event_snapshot_keeps_pending_request_user_input",
+        "revision": "08511817f31e335df9ed79fab1b2124feafa9ce5",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/tui/src/app/pending_interactive_replay.rs",
+        "symbol": "thread_event_snapshot_drops_resolved_request_user_input_after_user_answer",
+        "revision": "08511817f31e335df9ed79fab1b2124feafa9ce5",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/tui/src/ui_tree_tests.rs",
+        "symbol": "elements_round_trip_and_require_explicit_row_spacing",
+        "revision": "47172f064fc0a9249f08701dfa9caff4f892fd80",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/tui/src/ui_tree_tests.rs",
+        "symbol": "rejects_invalid_gaps_and_elements",
+        "revision": "47172f064fc0a9249f08701dfa9caff4f892fd80",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/tui/src/ui_tree_tests.rs",
+        "symbol": "deserialization_checks_limits_across_the_whole_tree",
+        "revision": "47172f064fc0a9249f08701dfa9caff4f892fd80",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/secrets/src/local_cache_tests.rs",
+        "symbol": "saves_cache_committed_contents_and_preserve_them_after_a_failed_commit",
+        "revision": "a5ed46ca37462abf53faf3fd875e2c427d8507e2",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/app-server-client/src/cloud_backend/events_tests.rs",
+        "symbol": "text_receipt_preserves_submission_identity",
+        "revision": "b2a47c5cddd5fb953504fac305bfba9b509d69e2",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/app-server-client/src/cloud_backend/events_tests.rs",
+        "symbol": "completed_reply_preserves_the_full_text_questions_and_timestamp",
+        "revision": "b2a47c5cddd5fb953504fac305bfba9b509d69e2",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/tui/src/tui/link_pointer_tests.rs",
+        "symbol": "hover_transitions_are_deduplicated_and_restore_after_leaving_a_link",
+        "revision": "e8e3197e84c650eea674321da2a434ee8851da28",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/tui/src/tui/link_pointer_tests.rs",
+        "symbol": "capture_release_restores_pointer_even_after_moving_off_link",
+        "revision": "e8e3197e84c650eea674321da2a434ee8851da28",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/sandboxing/src/manager_tests.rs",
+        "symbol": "unsandboxed_transform_preserves_foreign_cwd_and_unrestricted_file_system_policy",
+        "revision": "9a7213ca37c6aa19127100027f041599d2d28eb9",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/sandboxing/src/manager_tests.rs",
+        "symbol": "transform_additional_permissions_preserves_denied_entries",
+        "revision": "9a7213ca37c6aa19127100027f041599d2d28eb9",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/core/tests/suite/host_turn_admission.rs",
+        "symbol": "suspending_root_during_roster_read_preserves_the_recoverable_prompt",
+        "revision": "f3074e35c079bd8a5e89b0301b5e735d0e618235",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/core/tests/suite/host_turn_admission.rs",
+        "symbol": "suspend_and_check_recoverable_prompt",
+        "revision": "f3074e35c079bd8a5e89b0301b5e735d0e618235",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/core/tests/suite/scenarios_budget_context.rs",
+        "symbol": "host_budget_context_refreshes_after_remote_compaction",
+        "revision": "f3074e35c079bd8a5e89b0301b5e735d0e618235",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/execpolicy/tests/basic.rs",
+        "symbol": "canonical_matching_prefix_matches_each_token",
+        "revision": "de6e72addd67d35e6bf83b7acac406116bf598a6",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/execpolicy/tests/basic.rs",
+        "symbol": "canonical_host_executable_resolution_uses_only_relevant_declarations",
+        "revision": "de6e72addd67d35e6bf83b7acac406116bf598a6",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/execpolicy/tests/basic.rs",
+        "symbol": "inherited_absolute_amendments_preserve_managed_basename_restrictions",
+        "revision": "de6e72addd67d35e6bf83b7acac406116bf598a6",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/utils/model-facing-id/tests/generator.rs",
+        "symbol": "exhausts_three_digit_ids_before_opening_the_six_digit_pool",
+        "revision": "b386e2d9e3d18969f8b48c8401416ded6bcbf3f2",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/utils/model-facing-id/tests/generator.rs",
+        "symbol": "serialized_snapshots_resume_the_sequence",
+        "revision": "b386e2d9e3d18969f8b48c8401416ded6bcbf3f2",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/utils/model-facing-id/tests/generator.rs",
+        "symbol": "v1_known_outputs_at_every_pool_boundary",
+        "revision": "b386e2d9e3d18969f8b48c8401416ded6bcbf3f2",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/utils/model-facing-id/tests/generator.rs",
+        "symbol": "wraps_after_the_last_u64_ordinal",
+        "revision": "b386e2d9e3d18969f8b48c8401416ded6bcbf3f2",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/utils/model-facing-id/tests/generator.rs",
+        "symbol": "rejects_unsupported_snapshot_versions",
+        "revision": "b386e2d9e3d18969f8b48c8401416ded6bcbf3f2",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/utils/model-facing-id/tests/generator.rs",
+        "symbol": "rejects_empty_salts_on_restore",
+        "revision": "b386e2d9e3d18969f8b48c8401416ded6bcbf3f2",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/tui/src/app/provider_tests.rs",
+        "symbol": "loading_survives_initial_attachment_and_refreshes_under_an_overlay",
+        "revision": "f1b942164824353df84302293507874ea44e912c",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/tui/src/app/provider_tests.rs",
+        "symbol": "provider_views_show_reported_endpoints_and_ids_outside_the_catalog",
+        "revision": "f1b942164824353df84302293507874ea44e912c",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/tui/src/app/provider_tests.rs",
+        "symbol": "list_opened_before_first_attachment_shows_the_attached_provider",
+        "revision": "f1b942164824353df84302293507874ea44e912c",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/exec-server/src/relay_noise_tests.rs",
+        "symbol": "malformed_handshakes_preserve_active_streams_and_admission_recovers",
+        "revision": "c90354172c5c49535b122443e9a8ed52c2233b80",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/core-plugins/src/remote_runtime_auth_tests.rs",
+        "symbol": "plugin_runtime_auth_shares_registration_and_strips_cross_origin_auth",
+        "revision": "5c0b1ac71f2f04016abdfcf43bee7e0c96867f0e",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/core-plugins/src/remote_runtime_auth_tests.rs",
+        "symbol": "custom_plugin_backend_keeps_legacy_auth_with_runtime_enabled",
+        "revision": "5c0b1ac71f2f04016abdfcf43bee7e0c96867f0e",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/core-plugins/src/remote_runtime_auth_tests.rs",
+        "symbol": "unsupported_openai_plugin_backend_fails_before_registration",
+        "revision": "5c0b1ac71f2f04016abdfcf43bee7e0c96867f0e",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/core-plugins/src/remote_bundle_runtime_auth_tests.rs",
+        "symbol": "runtime_bundle_download_follows_redirect_without_actor_auth",
+        "revision": "5c0b1ac71f2f04016abdfcf43bee7e0c96867f0e",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/codex-api/src/files.rs",
+        "symbol": "upload_openai_file_returns_canonical_uri",
+        "revision": "5c0b1ac71f2f04016abdfcf43bee7e0c96867f0e",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/exec-server-cli/src/config_tests.rs",
+        "symbol": "stdin_chatgpt_account_must_match_the_token_claim",
+        "revision": "529d965d80a36f7b5d9d9ab218d88daf41106748",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/app-server/src/turn_cost_worker_runtime_auth_tests.rs",
+        "symbol": "turn_costs_register_with_requested_organization",
+        "revision": "388aee4b26226778701a7fa749354c44f74b4394",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/analytics/src/client_runtime_auth_tests.rs",
+        "symbol": "custom_analytics_destination_does_not_initialize_runtime_auth",
+        "revision": "388aee4b26226778701a7fa749354c44f74b4394",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/tui/src/pets/image_protocol.rs",
+        "symbol": "kitty_png_transmission_encodes_inline_data",
+        "revision": "f732dce4470e2e06952426c6878e286ad427ec7b",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/tui/src/tui/owned_screen_tests.rs",
+        "symbol": "owned_screen_lifecycle_child",
+        "revision": "695961ee88a2c84c0919814a4345b94a2d10f3ca",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/code-mode-host/tests/capacity.rs",
+        "symbol": "stdio_shared_sessions_complete_thousands_of_callbacks",
+        "revision": "56032e9732aa9776b7f54075ed9333921596cde9",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/code-mode-host/tests/capacity.rs",
+        "symbol": "assert_shared_capacity",
+        "revision": "56032e9732aa9776b7f54075ed9333921596cde9",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/tui/src/keymap.rs",
+        "symbol": "pane_binding_only_shadows_side_toggle_in_workspace_sessions",
+        "revision": "ed8eac40832e6a79f30eaeb3c521912f231d43eb",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/core/src/session/async_compaction_tests.rs",
+        "symbol": "root_only_controls_child_eligibility",
+        "revision": "edd0d898204eba8397181deae8e4a238d1f7df27",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/app-server/tests/suite/v2/thread_read.rs",
+        "symbol": "thread_items_list_defers_successful_command_output",
+        "revision": "e7f32cf1928a35a9232a633a51c2a03b5a7e2c72",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/sandboxing/src/seatbelt_tests.rs",
+        "symbol": "create_seatbelt_args_routes_network_through_proxy_ports",
+        "revision": "c0100ad4ecd2251c2b48b68534db08afac78c606",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/sandboxing/src/seatbelt_tests.rs",
+        "symbol": "dynamic_network_policy_preserves_restricted_policy_when_proxy_config_without_ports",
+        "revision": "c0100ad4ecd2251c2b48b68534db08afac78c606",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/core/tests/suite/scenarios_command_sessions_tests.rs",
+        "symbol": "command_sessions_world_state_tracks_retained_processes",
+        "revision": "d4902cedbf508411f6f8bf049cc5919b4edc24f6",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/config/src/guardian_tests.rs",
+        "symbol": "legacy_scope_applies_only_to_models_without_catalog_policy",
+        "revision": "86ac0916597244a2e67a197822a5483924660ff1",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/app-server/tests/suite/v2/guardian_v2.rs",
+        "symbol": "synchronous_cua_call_consumes_the_initial_call_allowance",
+        "revision": "86ac0916597244a2e67a197822a5483924660ff1",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/core/tests/suite/scenarios_guardian_reconsideration.rs",
+        "symbol": "guardian_denial_reconsideration",
+        "revision": "1e9e8bdb008549fc558ef886791c185c6d3c0814",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/ext/guardian-v3/tests/evidence.rs",
+        "symbol": "captures_originals_without_generated_context_or_later_appends",
+        "revision": "5141f97cec21450bd57f4740c5eeab4a81168600",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/thread-store/src/local/original_history_tests.rs",
+        "symbol": "reads_complete_fixed_suffix_and_rejects_truncated_source",
+        "revision": "ac03f42e1a0aac41dd7a918b5a204c8476d0389d",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/ext/guardian-v3/tests/evidence.rs",
+        "symbol": "captures_originals_without_generated_context_or_later_appends",
+        "revision": "ac03f42e1a0aac41dd7a918b5a204c8476d0389d",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/ext/guardian-v3/tests/housekeeping.rs",
+        "symbol": "routes_captured_originals_and_updates_descriptions",
+        "revision": "481cb038c25d1c2dabcdfffcbdb6d9cb1ab73f8e",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/utils/sandbox-summary/src/sandbox_summary.rs",
+        "symbol": "summarizes_read_only_with_enabled_network",
+        "revision": "49f0c6022596c361fe676a5c4738fb2be34e3a93",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/utils/sandbox-summary/src/sandbox_summary.rs",
+        "symbol": "workspace_write_summary_still_includes_network_access",
+        "revision": "49f0c6022596c361fe676a5c4738fb2be34e3a93",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/core/tests/suite/code_mode.rs",
+        "symbol": "mcp_code_mode_exclusion_does_not_change_direct_mode_tool_exposure",
+        "revision": "55b1c642f5d1dae161f07564e052ad3d266188d1",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/app-server-client/src/cloud_backend/request_tests.rs",
+        "symbol": "ordinary_multi_backend_resume_queries_cloud_interactive_threads_on_every_page",
+        "revision": "ee80baa38e3919061e0e0ad022aba1d9fbfc5dbc",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/app-server-client/src/cloud_backend/request_tests.rs",
+        "symbol": "unsupported_filters_do_not_return_unrelated_cloud_rows",
+        "revision": "ee80baa38e3919061e0e0ad022aba1d9fbfc5dbc",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/app-server-client/src/cloud_backend/request_tests.rs",
+        "symbol": "user_input_uses_stable_id_and_the_existing_cloud_configuration",
+        "revision": "ee80baa38e3919061e0e0ad022aba1d9fbfc5dbc",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/app-server-client/src/cloud_backend/request_tests.rs",
+        "symbol": "duplicate_and_queued_admissions_never_invent_a_running_turn",
+        "revision": "ee80baa38e3919061e0e0ad022aba1d9fbfc5dbc",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/tui/src/app/tests/buffered_replay.rs",
+        "symbol": "voice_handoff_replay_keeps_public_reasoning_and_hides_private_reasoning",
+        "revision": "44252e3f5de6349b9f2b034ce7d7815b7df9c382",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/tui/src/app/tests/streaming_interleave_e2e.rs",
+        "symbol": "command_start_before_message_completion_does_not_duplicate_preamble",
+        "revision": "054128c9d9324bf48cd1d280bad9a0f4488595e1",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/file-search/src/lib_tests.rs",
+        "symbol": "matching_filenames_survive_the_path_result_limit",
+        "revision": "0327a3ec34fd8fe9454eb57151a3798f127a53bf",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/linux-sandbox/src/bwrap_tests.rs",
+        "symbol": "unreadable_glob_traversal_errors_fail_closed",
+        "revision": "2a32e7c9632e648c26fa51cca928293e42ca6465",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/linux-sandbox/src/bwrap_tests.rs",
+        "symbol": "unreadable_globs_follow_symlink_roots",
+        "revision": "2a32e7c9632e648c26fa51cca928293e42ca6465",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/tui/src/app/provider_tests.rs",
+        "symbol": "space_saves_once_retries_and_preserves_the_current_chat",
+        "revision": "b2a8e68c74203fe33afbc05e5bdc4f93160c00bd",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/core/tests/suite/agent_control_tests.rs",
+        "symbol": "hosted_child_reports_terminal_turn_outcomes",
+        "revision": "f69c660a83b5279653085390b9be9aad7e6fd2d1",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/core/tests/suite/agent_control_tests.rs",
+        "symbol": "shutdown_waits_for_host_outcome_handoff",
+        "revision": "f69c660a83b5279653085390b9be9aad7e6fd2d1",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/rmcp-client/src/local_stdio_io/windows_tests.rs",
+        "symbol": "child_can_read_output_pipe_mode",
+        "revision": "119a547a31342b0c64fb15d2f6782f303bc3a5b7",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/rmcp-client/src/stdio_server_launcher.rs",
+        "symbol": "idle_local_mcp_pipe_reads_leave_blocking_io_available",
+        "revision": "119a547a31342b0c64fb15d2f6782f303bc3a5b7",
         "body_read": true
       }
     ],
+    "upstream_test_body_references": 92,
     "upstream_tests_executed": [],
-    "official_ci_reference": "https://github.com/openai/codex/commit/d78f68f8d1016b2ffba14a91ccd33ef7fa527971/checks",
-    "limits": "Reuse official source/CI evidence for generic behavior. No broad or inherited upstream suite ran."
+    "official_ci": {
+      "commit": "2e58636d16794a150e562cc34b63ca3035494e50",
+      "observed_at": "2026-11-05T21:00:27.980814+00:00",
+      "check_runs": 185,
+      "conclusions": {
+        "failure": 42,
+        "success": 80,
+        "skipped": 39,
+        "cancelled": 22,
+        "in_progress": 2
+      },
+      "all_rows_match_target": true,
+      "scope": "Reuse each official check result as reported. Failed, cancelled and unfinished checks are not passes. No aggregate generic CI acceptance is claimed.",
+      "unresolved_failure_cause": "unknown",
+      "consumer_decision": "Exact selected macOS artifact regressions determine retained compatibility. Unconsumed generic failures are diagnostic limits."
+    },
+    "official_checks_reference": "https://github.com/openai/codex/commit/2e58636d16794a150e562cc34b63ca3035494e50/checks",
+    "limits": "Each commit record binds the relevant diff, implementation, test bodies and current consumer or exclusion. Titles, paths, schema and ancestry do not substitute for source review."
   },
   "retained_consumers": {
-    "registered_count": 20,
-    "executed": 20,
-    "passed": 20,
+    "entrypoint": "crates/decodex-runtime/src/lib.rs",
+    "features": [
+      "process-acceptance-fixture"
+    ],
+    "compiled_entrypoint_sha256": "65e5ea0a2c51d6062760ea068dada36c3a4fd32b4f991a9a11a4f64b80da9e7a",
+    "registered_count": 23,
+    "executed": 23,
+    "passed": 23,
     "failed": 0,
     "unmatched_selectors": [],
-    "test_binary_sha256": "15df1a5e8044f70819779d9646c8d46544ebc9c4ca41f39872621058109cb9c1",
-    "helper_selection": "Exact signed CLI; package-relative signed Code Mode, exec-server and rg helpers. Direct libtest entrypoint; no Nextest binary replacement.",
-    "executions": [
+    "cases": [
       {
         "selector": "account_launch::process::context_preferences_native_tests::installed_native_context_preferences_share_config_and_preserve_thresholds",
-        "source": "crates/decodex-runtime/src/agent_context_settings_native_tests.rs",
-        "required_proof": "Native omitted defaults and explicit overrides must keep the retained context panel contract.",
-        "entrypoint": [
+        "command": [
           "<compiled-decodex-runtime-libtest>",
           "account_launch::process::context_preferences_native_tests::installed_native_context_preferences_share_config_and_preserve_thresholds",
           "--exact",
@@ -293,13 +714,12 @@
         "executed": 1,
         "passed": 1,
         "failed": 0,
-        "exit_code": 0
+        "exit_code": 0,
+        "required_proof": "Preserve native omitted defaults and explicit context overrides."
       },
       {
         "selector": "account_launch::process::native_control_tests::installed_native_qualified_defaults_preserve_multi_agent_selection",
-        "source": "crates/decodex-runtime/src/account_launch/process_native_control_tests.rs",
-        "required_proof": "Commits 17/19 retain native launch and user selection.",
-        "entrypoint": [
+        "command": [
           "<compiled-decodex-runtime-libtest>",
           "account_launch::process::native_control_tests::installed_native_qualified_defaults_preserve_multi_agent_selection",
           "--exact",
@@ -310,13 +730,12 @@
         "executed": 1,
         "passed": 1,
         "failed": 0,
-        "exit_code": 0
+        "exit_code": 0,
+        "required_proof": "Preserve current main launch flags and user multi-agent selection."
       },
       {
         "selector": "account_launch::agent_process::native_tests::compaction::installed_native_streams_auto_compaction_and_resumes_its_checkpoint",
-        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_compaction_tests.rs",
-        "required_proof": "Commits 2/6 change native context-window and sampling state.",
-        "entrypoint": [
+        "command": [
           "<compiled-decodex-runtime-libtest>",
           "account_launch::agent_process::native_tests::compaction::installed_native_streams_auto_compaction_and_resumes_its_checkpoint",
           "--exact",
@@ -327,13 +746,12 @@
         "executed": 1,
         "passed": 1,
         "failed": 0,
-        "exit_code": 0
+        "exit_code": 0,
+        "required_proof": "Preserve native auto-compaction checkpoints during sampling state changes."
       },
       {
         "selector": "account_launch::agent_process::native_tests::compaction::installed_native_preserves_prompt_before_compaction_error_and_after_restart",
-        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_compaction_tests.rs",
-        "required_proof": "Retain the merged incoming-prompt failure/restart fix during migration.",
-        "entrypoint": [
+        "command": [
           "<compiled-decodex-runtime-libtest>",
           "account_launch::agent_process::native_tests::compaction::installed_native_preserves_prompt_before_compaction_error_and_after_restart",
           "--exact",
@@ -344,13 +762,12 @@
         "executed": 1,
         "passed": 1,
         "failed": 0,
-        "exit_code": 0
+        "exit_code": 0,
+        "required_proof": "Retain accepted prompts before compaction failure and after cold restart."
       },
       {
         "selector": "account_launch::agent_process::native_tests::compaction::installed_native_discards_partial_compaction_output_after_restart",
-        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_compaction_tests.rs",
-        "required_proof": "Retain the merged partial-checkpoint rollback contract.",
-        "entrypoint": [
+        "command": [
           "<compiled-decodex-runtime-libtest>",
           "account_launch::agent_process::native_tests::compaction::installed_native_discards_partial_compaction_output_after_restart",
           "--exact",
@@ -361,13 +778,12 @@
         "executed": 1,
         "passed": 1,
         "failed": 0,
-        "exit_code": 0
+        "exit_code": 0,
+        "required_proof": "Retain rollback of partial failed compaction output."
       },
       {
         "selector": "account_launch::agent_process::native_tests::compaction::code_metadata::installed_native_code_mode_metadata_reaches_compaction",
-        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_code_compaction_tests.rs",
-        "required_proof": "Commits 6/21 must preserve exact Code Mode helper observations across compaction.",
-        "entrypoint": [
+        "command": [
           "<compiled-decodex-runtime-libtest>",
           "account_launch::agent_process::native_tests::compaction::code_metadata::installed_native_code_mode_metadata_reaches_compaction",
           "--exact",
@@ -378,13 +794,12 @@
         "executed": 1,
         "passed": 1,
         "failed": 0,
-        "exit_code": 0
+        "exit_code": 0,
+        "required_proof": "Exercise the exact Code Mode helper and preserve metadata through compaction."
       },
       {
         "selector": "account_launch::agent_process::native_tests::history_recovery::installed_native_fork_history_recovers_from_intact_ancestor_copy",
-        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_history_recovery_tests.rs",
-        "required_proof": "Commit 13 retains native shared-history fork references and recovery.",
-        "entrypoint": [
+        "command": [
           "<compiled-decodex-runtime-libtest>",
           "account_launch::agent_process::native_tests::history_recovery::installed_native_fork_history_recovers_from_intact_ancestor_copy",
           "--exact",
@@ -395,15 +810,14 @@
         "executed": 1,
         "passed": 1,
         "failed": 0,
-        "exit_code": 0
+        "exit_code": 0,
+        "required_proof": "Preserve source-bound native ancestor history recovery."
       },
       {
-        "selector": "account_launch::agent_process::native_tests::cold_settings::recap_socket::fork::installed_provider_recovery_fork_preserves_context_and_restarts_on_current_provider",
-        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_fork_tests.rs",
-        "required_proof": "Retain the merged explicit provider-recovery fork contract.",
-        "entrypoint": [
+        "selector": "account_launch::agent_process::native_tests::cold_settings::recap_socket::fork::installed_saved_provider_continuation_and_fork_survive_default_changes",
+        "command": [
           "<compiled-decodex-runtime-libtest>",
-          "account_launch::agent_process::native_tests::cold_settings::recap_socket::fork::installed_provider_recovery_fork_preserves_context_and_restarts_on_current_provider",
+          "account_launch::agent_process::native_tests::cold_settings::recap_socket::fork::installed_saved_provider_continuation_and_fork_survive_default_changes",
           "--exact",
           "--ignored",
           "--nocapture",
@@ -412,13 +826,12 @@
         "executed": 1,
         "passed": 1,
         "failed": 0,
-        "exit_code": 0
+        "exit_code": 0,
+        "required_proof": "Verify saved-provider cold continuation, refusal-only recovery authority and source-preserving ordinary fork under the changed default."
       },
       {
         "selector": "account_launch::agent_process::native_tests::reviewer::store::live_model::child_model::installed_native_child_inherits_updated_step_model",
-        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_child_model_tests.rs",
-        "required_proof": "Commits 17/21 must preserve captured native child configuration.",
-        "entrypoint": [
+        "command": [
           "<compiled-decodex-runtime-libtest>",
           "account_launch::agent_process::native_tests::reviewer::store::live_model::child_model::installed_native_child_inherits_updated_step_model",
           "--exact",
@@ -429,13 +842,12 @@
         "executed": 1,
         "passed": 1,
         "failed": 0,
-        "exit_code": 0
+        "exit_code": 0,
+        "required_proof": "Preserve captured child settings after Guardian turn-config changes."
       },
       {
         "selector": "account_launch::agent_process::native_tests::reviewer::store::warning_tests::installed_native_warning_crosses_bridge_owner_history_and_reopen",
-        "source": "crates/decodex-runtime/src/account_launch/agent_process_warning_tests.rs",
-        "required_proof": "Commit 8 emits instruction warnings through this retained transport/owner.",
-        "entrypoint": [
+        "command": [
           "<compiled-decodex-runtime-libtest>",
           "account_launch::agent_process::native_tests::reviewer::store::warning_tests::installed_native_warning_crosses_bridge_owner_history_and_reopen",
           "--exact",
@@ -446,13 +858,12 @@
         "executed": 1,
         "passed": 1,
         "failed": 0,
-        "exit_code": 0
+        "exit_code": 0,
+        "required_proof": "Preserve current native warning transport and owner/reopen behavior."
       },
       {
         "selector": "agent::tests::native_subagent_live::mcp::native_child_mcp_input_preserves_policy_and_exact_request",
-        "source": "crates/decodex-runtime/src/agent/tests/native_subagent_mcp.rs",
-        "required_proof": "Commit 16 refactors the retained MCP argument/approval boundary.",
-        "entrypoint": [
+        "command": [
           "<compiled-decodex-runtime-libtest>",
           "agent::tests::native_subagent_live::mcp::native_child_mcp_input_preserves_policy_and_exact_request",
           "--exact",
@@ -463,13 +874,12 @@
         "executed": 1,
         "passed": 1,
         "failed": 0,
-        "exit_code": 0
+        "exit_code": 0,
+        "required_proof": "Retain exact native child MCP request and permission policy."
       },
       {
         "selector": "agent::tests::native_agent_wake::native_child_completion_wakes_idle_root_once",
-        "source": "crates/decodex-runtime/src/agent/tests/native_agent_wake.rs",
-        "required_proof": "Commit 6 changes native agent-mail sampling and draining.",
-        "entrypoint": [
+        "command": [
           "<compiled-decodex-runtime-libtest>",
           "agent::tests::native_agent_wake::native_child_completion_wakes_idle_root_once",
           "--exact",
@@ -480,13 +890,12 @@
         "executed": 1,
         "passed": 1,
         "failed": 0,
-        "exit_code": 0
+        "exit_code": 0,
+        "required_proof": "Retain native child completion, one root wake and outcome routing."
       },
       {
         "selector": "account_launch::agent_process::native_tests::reviewer::evidence::installed_guardian_retains_answer_after_compaction_and_restart",
-        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_guardian_evidence_tests.rs",
-        "required_proof": "Commits 4/6/7 change native history storage and compaction metadata.",
-        "entrypoint": [
+        "command": [
           "<compiled-decodex-runtime-libtest>",
           "account_launch::agent_process::native_tests::reviewer::evidence::installed_guardian_retains_answer_after_compaction_and_restart",
           "--exact",
@@ -497,13 +906,12 @@
         "executed": 1,
         "passed": 1,
         "failed": 0,
-        "exit_code": 0
+        "exit_code": 0,
+        "required_proof": "Retain original Guardian answers across compaction and restart."
       },
       {
         "selector": "account_launch::agent_process::native_tests::reviewer::image_evidence::installed_guardian_preserves_native_image_profile_after_restart",
-        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_guardian_image_tests.rs",
-        "required_proof": "Retain whole native image evidence under the unchanged fixed Guardian default.",
-        "entrypoint": [
+        "command": [
           "<compiled-decodex-runtime-libtest>",
           "account_launch::agent_process::native_tests::reviewer::image_evidence::installed_guardian_preserves_native_image_profile_after_restart",
           "--exact",
@@ -514,13 +922,12 @@
         "executed": 1,
         "passed": 1,
         "failed": 0,
-        "exit_code": 0
+        "exit_code": 0,
+        "required_proof": "Retain whole native image evidence and Guardian profile on restart."
       },
       {
         "selector": "account_launch::agent_process::native_tests::reviewer::installed_native_guardian_preserves_large_action",
-        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_reviewer_tests.rs",
-        "required_proof": "Retain complete native Guardian action projection through the selected CLI.",
-        "entrypoint": [
+        "command": [
           "<compiled-decodex-runtime-libtest>",
           "account_launch::agent_process::native_tests::reviewer::installed_native_guardian_preserves_large_action",
           "--exact",
@@ -531,13 +938,12 @@
         "executed": 1,
         "passed": 1,
         "failed": 0,
-        "exit_code": 0
+        "exit_code": 0,
+        "required_proof": "Retain the complete large Guardian action projection."
       },
       {
         "selector": "account_launch::agent_process::native_tests::permissions::installed_named_permission_selection_during_active_turn_survives_restart",
-        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_permission_tests.rs",
-        "required_proof": "Retain native named permission/grant updates; commit 3 only changes source fixture portability.",
-        "entrypoint": [
+        "command": [
           "<compiled-decodex-runtime-libtest>",
           "account_launch::agent_process::native_tests::permissions::installed_named_permission_selection_during_active_turn_survives_restart",
           "--exact",
@@ -548,13 +954,12 @@
         "executed": 1,
         "passed": 1,
         "failed": 0,
-        "exit_code": 0
+        "exit_code": 0,
+        "required_proof": "Retain active-turn native named permissions and grants."
       },
       {
         "selector": "account_launch::agent_process::native_tests::structured::installed_temporary_requests_isolate_environment_and_preserve_custom_permissions",
-        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_structured_tests.rs",
-        "required_proof": "Commits 17/19 preserve session-only disabled agents and temporary request isolation.",
-        "entrypoint": [
+        "command": [
           "<compiled-decodex-runtime-libtest>",
           "account_launch::agent_process::native_tests::structured::installed_temporary_requests_isolate_environment_and_preserve_custom_permissions",
           "--exact",
@@ -565,13 +970,12 @@
         "executed": 1,
         "passed": 1,
         "failed": 0,
-        "exit_code": 0
+        "exit_code": 0,
+        "required_proof": "Preserve temporary request environment, custom permissions and disabled agent selection."
       },
       {
         "selector": "account_launch::agent_process::native_tests::context::installed_native_tool_context_survives_restart_without_replay",
-        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_context_tests.rs",
-        "required_proof": "Retain application context and no-replay guarantees under new sampling metadata.",
-        "entrypoint": [
+        "command": [
           "<compiled-decodex-runtime-libtest>",
           "account_launch::agent_process::native_tests::context::installed_native_tool_context_survives_restart_without_replay",
           "--exact",
@@ -582,13 +986,12 @@
         "executed": 1,
         "passed": 1,
         "failed": 0,
-        "exit_code": 0
+        "exit_code": 0,
+        "required_proof": "Retain application tool context and no inference replay on restart."
       },
       {
         "selector": "account_launch::agent_process::native_tests::context::installed_assistant_renews_fresh_contexts_with_original_dialogue_and_isolated_memory",
-        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_context_tests.rs",
-        "required_proof": "Retain the later merged Assistant context-renewal contract from current main.",
-        "entrypoint": [
+        "command": [
           "<compiled-decodex-runtime-libtest>",
           "account_launch::agent_process::native_tests::context::installed_assistant_renews_fresh_contexts_with_original_dialogue_and_isolated_memory",
           "--exact",
@@ -599,13 +1002,12 @@
         "executed": 1,
         "passed": 1,
         "failed": 0,
-        "exit_code": 0
+        "exit_code": 0,
+        "required_proof": "Retain Assistant dialogue and memory isolation across fresh contexts."
       },
       {
         "selector": "account_launch::agent_process::native_tests::code_mode::installed_native_parallel_dynamic_tools_preserve_ids_and_result_order",
-        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_code_mode_tests.rs",
-        "required_proof": "Commits 6/16/21 must retain native tool identities and packaged Code Mode hosting.",
-        "entrypoint": [
+        "command": [
           "<compiled-decodex-runtime-libtest>",
           "account_launch::agent_process::native_tests::code_mode::installed_native_parallel_dynamic_tools_preserve_ids_and_result_order",
           "--exact",
@@ -616,163 +1018,319 @@
         "executed": 1,
         "passed": 1,
         "failed": 0,
-        "exit_code": 0
+        "exit_code": 0,
+        "required_proof": "Exercise exact signed Code Mode helper and native parallel tool/result identities."
+      },
+      {
+        "selector": "account_launch::process::refresh_tests::native::installed_native_401_uses_production_refresh_reply_and_reauthenticates_after_restart",
+        "command": [
+          "<compiled-decodex-runtime-libtest>",
+          "account_launch::process::refresh_tests::native::installed_native_401_uses_production_refresh_reply_and_reauthenticates_after_restart",
+          "--exact",
+          "--ignored",
+          "--nocapture",
+          "--test-threads=1"
+        ],
+        "executed": 1,
+        "passed": 1,
+        "failed": 0,
+        "exit_code": 0,
+        "required_proof": "Reviewed auth changes must preserve the existing production external-token refresh callback and cold reauthentication without persisted credentials."
+      },
+      {
+        "selector": "account_launch::process::refresh_tests::native::installed_native_401_refresh_refusal_fails_without_replaying_inference",
+        "command": [
+          "<compiled-decodex-runtime-libtest>",
+          "account_launch::process::refresh_tests::native::installed_native_401_refresh_refusal_fails_without_replaying_inference",
+          "--exact",
+          "--ignored",
+          "--nocapture",
+          "--test-threads=1"
+        ],
+        "executed": 1,
+        "passed": 1,
+        "failed": 0,
+        "exit_code": 0,
+        "required_proof": "Reviewed transient/auth routing changes must preserve callback refusal and one inference request rather than replay."
+      },
+      {
+        "selector": "account_launch::agent_process::native_tests::cold_settings::recap_socket::fork::installed_fork_preserves_source_provider_after_default_changes",
+        "command": [
+          "<compiled-decodex-runtime-libtest>",
+          "account_launch::agent_process::native_tests::cold_settings::recap_socket::fork::installed_fork_preserves_source_provider_after_default_changes",
+          "--exact",
+          "--ignored",
+          "--nocapture",
+          "--test-threads=1"
+        ],
+        "executed": 1,
+        "passed": 1,
+        "failed": 0,
+        "exit_code": 0,
+        "required_proof": "The retained ordinary/attached fork contract must preserve provider, Goal, lineage, no-inference creation and restart in both legacy and paginated history modes after the saved-provider admission change."
       }
     ]
   },
-  "direct_protocol_regressions": {
-    "registered_entrypoints": 4,
-    "executed_entrypoints": 4,
-    "passed_entrypoints": 4,
-    "failed": 0,
-    "executions": [
-      {
-        "source": "crates/decodex-runtime/tests/native_qualification/pending_mail.py",
-        "command": [
-          "python3",
-          "crates/decodex-runtime/tests/native_qualification/pending_mail.py"
-        ],
-        "exit_code": 0,
-        "result": "passed",
-        "scope": "Four native completion-mail cases: legacy/paginated history and local/remote-v2 compaction, repeated compaction, cold continuation, exact identity/order and acknowledgement."
-      },
-      {
-        "source": "crates/decodex-runtime/tests/native_qualification/mcp_cancel.py",
-        "command": [
-          "python3",
-          "crates/decodex-runtime/tests/native_qualification/mcp_cancel.py"
-        ],
-        "exit_code": 0,
-        "result": "passed",
-        "scope": "Existing exact-CLI loopback protocol fixture."
-      },
-      {
-        "source": "crates/decodex-runtime/tests/native_qualification/response_identity.py",
-        "command": [
-          "python3",
-          "crates/decodex-runtime/tests/native_qualification/response_identity.py"
-        ],
-        "exit_code": 0,
-        "result": "passed",
-        "scope": "Existing exact-CLI loopback protocol fixture."
-      },
-      {
-        "source": "crates/decodex-runtime/tests/native_qualification/thread_settings.py",
-        "command": [
-          "python3",
-          "crates/decodex-runtime/tests/native_qualification/thread_settings.py"
-        ],
-        "exit_code": 0,
-        "result": "passed",
-        "scope": "Existing exact-CLI loopback protocol fixture."
-      }
-    ]
-  },
-  "before_after_regressions": {
-    "pending_completion_mail": {
-      "before": {
-        "source": "3e743d15787bd9091f674f0fbc27010f0cbcec62",
-        "cli_sha256": "411679c5c55709595ff5e3e40b0533dab5ca0bcf9d0eb62dbb8c2578ef6d95fd",
-        "executed_cases": 4,
-        "passed": 0,
-        "failed": 4
-      },
-      "after": {
-        "source": "d78f68f8d1016b2ffba14a91ccd33ef7fa527971",
-        "cli_sha256": "3cecc036c99f20f445f89fe5664685f83e56b57b44ce62209d1de9a3e72995fa",
-        "executed_cases": 4,
-        "passed": 4,
+  "direct_protocol_regressions": [
+    {
+      "source": "crates/decodex-runtime/tests/native_qualification/pending_mail.py",
+      "command": [
+        "python3",
+        "crates/decodex-runtime/tests/native_qualification/pending_mail.py"
+      ],
+      "exit_code": 0,
+      "reports": [
+        {
+          "report": "pending-mail-native.json",
+          "case_count": 4,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "source": "crates/decodex-runtime/tests/native_qualification/mcp_cancel.py",
+      "command": [
+        "python3",
+        "crates/decodex-runtime/tests/native_qualification/mcp_cancel.py"
+      ],
+      "exit_code": 0,
+      "reports": [
+        {
+          "report": "mcp-cancel-native.json",
+          "case_count": 2,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "source": "crates/decodex-runtime/tests/native_qualification/response_identity.py",
+      "command": [
+        "python3",
+        "crates/decodex-runtime/tests/native_qualification/response_identity.py"
+      ],
+      "exit_code": 0,
+      "reports": [
+        {
+          "report": "response-identity-native.json",
+          "case_count": 1,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "source": "crates/decodex-runtime/tests/native_qualification/thread_settings.py",
+      "command": [
+        "python3",
+        "crates/decodex-runtime/tests/native_qualification/thread_settings.py"
+      ],
+      "exit_code": 0,
+      "reports": [
+        {
+          "report": "thread-settings-native.json",
+          "case_count": 5,
+          "passed": true
+        }
+      ]
+    }
+  ],
+  "before_after_regressions": [
+    {
+      "contract": "Native saved-provider continuation after a changed default",
+      "previous_artifact_source": "d78f68f8d1016b2ffba14a91ccd33ef7fa527971",
+      "previous_fixture": {
+        "selector": "account_launch::agent_process::native_tests::cold_settings::recap_socket::fork::installed_provider_recovery_fork_preserves_context_and_restarts_on_current_provider",
+        "executed": 1,
+        "passed": 1,
         "failed": 0
       },
-      "limits": "Loopback provider. Idle injected mail and repeated manual compaction; no mid-turn preemption or real-provider acceptance."
+      "candidate_original_fixture": {
+        "artifact_source": "2e58636d16794a150e562cc34b63ca3035494e50",
+        "selector": "account_launch::agent_process::native_tests::cold_settings::recap_socket::fork::installed_provider_recovery_fork_preserves_context_and_restarts_on_current_provider",
+        "fixture_source_sha256": "506df593d904b45fa360604bd865aacefece4d5fec1bedc570181e4f0f775af9",
+        "executed": 1,
+        "passed": 0,
+        "failed": 1,
+        "result": "Reproduced the obsolete refusal assertion. This failed diagnostic is not a passed qualification."
+      },
+      "candidate_repaired_fixture": {
+        "selector": "account_launch::agent_process::native_tests::cold_settings::recap_socket::fork::installed_saved_provider_continuation_and_fork_survive_default_changes",
+        "command": [
+          "<compiled-decodex-runtime-libtest>",
+          "account_launch::agent_process::native_tests::cold_settings::recap_socket::fork::installed_saved_provider_continuation_and_fork_survive_default_changes",
+          "--exact",
+          "--ignored",
+          "--nocapture",
+          "--test-threads=1"
+        ],
+        "executed": 1,
+        "passed": 1,
+        "failed": 0,
+        "exit_code": 0,
+        "required_proof": "Verify saved-provider cold continuation, refusal-only recovery authority and source-preserving ordinary fork under the changed default."
+      }
     }
+  ],
+  "saved_provider_admission": {
+    "native_contract": "Resume and input retain the saved configured provider. New conversations use the current default. Native managed requirements and explicit provider-change refusal remain enforced by upstream.",
+    "native_tests": [
+      {
+        "selector": "account_launch::agent_process::native_tests::cold_settings::recap_socket::fork::installed_saved_provider_continuation_and_fork_survive_default_changes",
+        "command": [
+          "<compiled-decodex-runtime-libtest>",
+          "account_launch::agent_process::native_tests::cold_settings::recap_socket::fork::installed_saved_provider_continuation_and_fork_survive_default_changes",
+          "--exact",
+          "--ignored",
+          "--nocapture",
+          "--test-threads=1"
+        ],
+        "executed": 1,
+        "passed": 1,
+        "failed": 0,
+        "exit_code": 0,
+        "required_proof": "Verify saved-provider cold continuation, refusal-only recovery authority and source-preserving ordinary fork under the changed default."
+      },
+      {
+        "selector": "account_launch::agent_process::native_tests::cold_settings::recap_socket::fork::installed_fork_preserves_source_provider_after_default_changes",
+        "command": [
+          "<compiled-decodex-runtime-libtest>",
+          "account_launch::agent_process::native_tests::cold_settings::recap_socket::fork::installed_fork_preserves_source_provider_after_default_changes",
+          "--exact",
+          "--ignored",
+          "--nocapture",
+          "--test-threads=1"
+        ],
+        "executed": 1,
+        "passed": 1,
+        "failed": 0,
+        "exit_code": 0,
+        "required_proof": "The retained ordinary/attached fork contract must preserve provider, Goal, lineage, no-inference creation and restart in both legacy and paginated history modes after the saved-provider admission change."
+      }
+    ],
+    "local_authority": {
+      "registered_count": 2,
+      "executed": 2,
+      "passed": 2,
+      "failed": 0,
+      "unmatched_selectors": [],
+      "cases": [
+        {
+          "selector": "app_server_client::provider_recovery::tests::provider_recovery_requires_exact_native_refusal_and_clears_after_resume",
+          "command": [
+            "<compiled-decodex-codex-libtest>",
+            "app_server_client::provider_recovery::tests::provider_recovery_requires_exact_native_refusal_and_clears_after_resume",
+            "--exact",
+            "--nocapture",
+            "--test-threads=1"
+          ],
+          "executed": 1,
+          "passed": 1,
+          "failed": 0,
+          "exit_code": 0
+        },
+        {
+          "selector": "app_server_client::thread_fork::tests::provider_fork_rechecks_current_config_and_never_sends_input",
+          "command": [
+            "<compiled-decodex-codex-libtest>",
+            "app_server_client::thread_fork::tests::provider_fork_rechecks_current_config_and_never_sends_input",
+            "--exact",
+            "--nocapture",
+            "--test-threads=1"
+          ],
+          "executed": 1,
+          "passed": 1,
+          "failed": 0,
+          "exit_code": 0
+        }
+      ],
+      "limits": "Repository wire fixtures establish the retained refusal-only recovery and config recheck/no-input guards. They do not establish that the new CLI emits modelProviderMismatch."
+    },
+    "historical_recovery": "automations/upstream/retained-contracts.json#retained_provider_recovery"
   },
   "component_cache_repair": {
-    "selector": "fixed_commit_import_offline_repair_and_wrong_commit_rejection",
-    "source": "crates/decodex-components/tests/development.rs",
-    "entrypoint": [
-      "<compiled-component-development-libtest>",
-      "fixed_commit_import_offline_repair_and_wrong_commit_rejection",
-      "--exact",
-      "--ignored",
-      "--nocapture",
-      "--test-threads=1"
-    ],
-    "executed": 1,
-    "passed": 1,
-    "failed": 0,
-    "exit_code": 0,
-    "test_binary_sha256": "6aa992596a6b4cb76a91d6eb0d7c8449fc2cad3a7e11848726e8dbe7ec5937c4",
-    "contract": "Import and verify the exact package, repair CLI/schema/three helpers offline, reject wrong source and preserve another cache."
+    "entrypoint": "crates/decodex-components/tests/development.rs",
+    "compiled_entrypoint_sha256": "7735e3267f08fd77feff2325dbe10612987637ef4c85c461269482d9013ba38b",
+    "registered_count": 1,
+    "unmatched_selectors": [],
+    "case": {
+      "selector": "fixed_commit_import_offline_repair_and_wrong_commit_rejection",
+      "command": [
+        "<compiled-decodex-components-development-test>",
+        "fixed_commit_import_offline_repair_and_wrong_commit_rejection",
+        "--exact",
+        "--ignored",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "executed": 1,
+      "passed": 1,
+      "failed": 0,
+      "exit_code": 0
+    }
   },
   "fixture_source_sha256": {
+    "crates/decodex-codex/src/app_server_client/provider_recovery.rs": "bcacad447daf80f5b63a28d7120013947f7e336c574820449e5bb3c263ce2ff3",
+    "crates/decodex-codex/src/app_server_client/thread_fork.rs": "b51f00fd7955dcb28d49659f58b7afbf18098335b44d0a7850035c0b76d8ff85",
     "crates/decodex-components/tests/development.rs": "fcb52ee9d2f333ed24c123a5cf681dda190652e4704ea0bb626f689389fbcead",
     "crates/decodex-runtime/src/account_launch/agent_process_native_child_model_tests.rs": "f6e20a8e09dc9c4163d29bc89232ea3ef5cfc7300684eeae30fa036de8c8e6d6",
     "crates/decodex-runtime/src/account_launch/agent_process_native_code_compaction_tests.rs": "1bf2f316df1e33036f2f1e02dd512b01d6272a338f2185e02b0049b902a8e6d8",
     "crates/decodex-runtime/src/account_launch/agent_process_native_code_mode_tests.rs": "9ee4e9dd6b4867a2c57c4f775549f397352303f478a118d98d55841ba8afd539",
     "crates/decodex-runtime/src/account_launch/agent_process_native_compaction_tests.rs": "51f3685a98c8ebfc3c3d4a20b198a3dfb8c60782a193246a8dea66a4af690b10",
-    "crates/decodex-runtime/src/account_launch/agent_process_native_context_tests.rs": "2025e729c695317d95c938b1c1b0b5b4e201dd6b2245d17bdf41a31cbc7fd356",
-    "crates/decodex-runtime/src/account_launch/agent_process_native_fork_tests.rs": "506df593d904b45fa360604bd865aacefece4d5fec1bedc570181e4f0f775af9",
+    "crates/decodex-runtime/src/account_launch/agent_process_native_context_tests.rs": "c7c3deb6eed1c8579a4f7c554167c1df941b25b0d0146ad9329f4e2de91e8be2",
+    "crates/decodex-runtime/src/account_launch/agent_process_native_fork_tests.rs": "9310cfa7d6be816dc759c347872655499ed0943b2a5bf977a1ff3d6941d43c0a",
     "crates/decodex-runtime/src/account_launch/agent_process_native_guardian_evidence_tests.rs": "81b238444dbc248a22dd6ade2f7eed0d5a415c0bfbf98225d3a0f538562e136a",
     "crates/decodex-runtime/src/account_launch/agent_process_native_guardian_image_tests.rs": "096f5d64d5b4a6c214e1625545ad924da831bdf07ea23c86c3a6b5274750c4ac",
     "crates/decodex-runtime/src/account_launch/agent_process_native_history_recovery_tests.rs": "e6652a7c8db916664315cb5687fb5724330f6f38075bcda67543c9b17a1ae72a",
     "crates/decodex-runtime/src/account_launch/agent_process_native_permission_tests.rs": "bdc7b2bcbc94f5258c5390cbb2ec4d5839f1e90000d89db635dd4a743e2e9b60",
+    "crates/decodex-runtime/src/account_launch/agent_process_native_recap_socket_tests.rs": "4ef196654ce096dca1fd06e826b6085f1cc981972f505497e773b753ebc55caa",
     "crates/decodex-runtime/src/account_launch/agent_process_native_reviewer_store.rs": "2362610c40ada2d8a86fa334f92410f55c54636714194b10b3e01f4061712651",
     "crates/decodex-runtime/src/account_launch/agent_process_native_reviewer_tests.rs": "764c0537366afc659d27d76a8ccc1bc40cba058cb559d33ba470efce14ae93f4",
     "crates/decodex-runtime/src/account_launch/agent_process_native_structured_tests.rs": "fb5087ec2616bf9e897cc7c0b9603fbc057b315c3d01ea9fdd7b944b12794e07",
     "crates/decodex-runtime/src/account_launch/agent_process_native_tests.rs": "d690b507403aafaaa9fc75ec8649c8cfb6addf82a5ac2df4836ce15fb22a99eb",
     "crates/decodex-runtime/src/account_launch/agent_process_warning_tests.rs": "bcd9a1c15eb4da2073b7a6a7f3e8a9305b531e58322bba1ddcbfef6ea25187a0",
-    "crates/decodex-runtime/src/account_launch/process_native_control_tests.rs": "3fd1551916127da200465beaa52f29730c7a3a3ff1bfc5f276c53ac78f1a56a1",
+    "crates/decodex-runtime/src/account_launch/process.rs": "bc1e6230e991b4a960795b24d19c3b75f35829de7c77350b7a3ff2b4546ff512",
+    "crates/decodex-runtime/src/account_launch/process_native_control_tests.rs": "62a7b8ce0fd31aac25ac1223577293d76d31a9b8741724b38e53141a2d179ec9",
+    "crates/decodex-runtime/src/account_launch/process_refresh_native_tests.rs": "e9e9957ef78d259f0b98ba11886789fa7eaee4936faad5fc73563e3a9af30931",
+    "crates/decodex-runtime/src/account_launch/process_refresh_tests.rs": "35cf4aeede9f65e58240c12b9653a6859f30bbda68470dcb5931f379a0815643",
     "crates/decodex-runtime/src/agent/tests/native_agent_wake.rs": "da4710d8af187859caaf64bc714b19a393a484c297294bdb0dc83c519a1ff4d3",
     "crates/decodex-runtime/src/agent/tests/native_subagent_mcp.rs": "1caffa78fe704e7b5d76edc5d3704006c6009a9eed1ea4dbaa1faafa501d8343",
     "crates/decodex-runtime/src/agent/tests/native_subagent_mcp_server.py": "0f5a92e7ffc4f828db4843764164c7aa5b9b2b56db1fe1452baeaf538c3519f6",
     "crates/decodex-runtime/src/agent_context_settings_native_tests.rs": "027013e0211827e0473e282c54e1a30d4502cc34a36ca076b7018d8bc964d6f9",
-    "crates/decodex-runtime/tests/native_qualification/apps_recovery.py": "998764c0d4ff0c227602811d3424ee85df00231db3ef77c932afb5a979422597",
-    "crates/decodex-runtime/tests/native_qualification/async_compaction.py": "17ecced40f1c8c897f3739b6d8b75e6240276f625cd1e17272641a0906bf370b",
-    "crates/decodex-runtime/tests/native_qualification/command_hooks.py": "369a93ff63a36048bddf87ad60c04aa376f2907cf51b5115b13a07b88a63973a",
-    "crates/decodex-runtime/tests/native_qualification/config_policy.py": "567b69a1baf28975d77bca94cdc0cfc6b96c3bc49bb6ac56a73683e695695162",
-    "crates/decodex-runtime/tests/native_qualification/dotenv_startup.py": "f6a0a6294eff68dece725d15ebc189e23c322ab7166ce76eddc2a7e94f9b6b33",
     "crates/decodex-runtime/tests/native_qualification/finished_sample.py": "791d223fab303f5576d94ceb80d9b8e4b392781065eb00672a1b4c41c5724596",
-    "crates/decodex-runtime/tests/native_qualification/incomplete_response.py": "40e1531728cfaf4acdbaa775723d8eaffe9845d0be148f3ba56d988056448c56",
-    "crates/decodex-runtime/tests/native_qualification/large_catalog.py": "a471440d6c494a5abd9f72346901fe14aeb8ee432f8e8fd3ef73373e174d645a",
-    "crates/decodex-runtime/tests/native_qualification/log_storage.py": "d9e381f28e75106fd3b5400cdcb399bf610b6888f1311af8f144b33fd86d58d1",
-    "crates/decodex-runtime/tests/native_qualification/managed_runtime.py": "e95b1bdb43545fe744e1f4f71226178bcd7c16a4bb0b3ed936a8907848a9753d",
     "crates/decodex-runtime/tests/native_qualification/mcp_cancel.py": "ff2dce50665fb8610921915491907998c1bc0034475d63deedf031321f5e4fb1",
-    "crates/decodex-runtime/tests/native_qualification/model_errors.py": "cfd01bd9f8a1d9d4f9f14e410955f82fd0ff49163027b086e407b16a0b5f23f0",
     "crates/decodex-runtime/tests/native_qualification/native_session.py": "ae24e58b6ed7404fce007e174fce23aa5ff49038b8b1e77818f59313fdc4aa1f",
     "crates/decodex-runtime/tests/native_qualification/pending_mail.py": "8cee9678be86f7de9fa3f4165f721c687cad0a9ee21b7709fd6507c7c805cb7b",
-    "crates/decodex-runtime/tests/native_qualification/project_guardian.py": "2c9429ce26a700a4fd27145fa9022df4d6bc426ade5b8b512f329131afb2ad42",
-    "crates/decodex-runtime/tests/native_qualification/proxy_headers.py": "11ab168a092e53af78ba3a8cdb7950b8c50466d707daec710fc84587cb165576",
     "crates/decodex-runtime/tests/native_qualification/response_identity.py": "8d078b642d80ad0fcfe35b4ae5d4c0c2e97144c022fabf3380520ea1766d3e82",
-    "crates/decodex-runtime/tests/native_qualification/sample_cancel.py": "a5bf24ea824bc504ad49fb28917e9f6469d285e9be5b46f10b2c25102fa87898",
-    "crates/decodex-runtime/tests/native_qualification/sample_service.py": "54940adfdcb5ea73da614248e4eed2e3ed24a2a47a7cbd4ccc08d3935e50311d",
-    "crates/decodex-runtime/tests/native_qualification/terminal_controls.py": "d8f2383b7c391a0d1d48df724ab5f7a7b8edb91e5369231c26965d62942c417c",
     "crates/decodex-runtime/tests/native_qualification/thread_settings.py": "cf4bb4274aac52b69ebd3936204a2f1570753e2e38c2afc4fd9796deaa278049",
-    "crates/decodex-runtime/tests/native_qualification/usage.py": "e0eafb33d02116d3800c9912a09668795c36c56f711a94bdfc16398c94a0b9bf"
+    "scripts/macos/build_codex_source.mts": "44225ba7067b143f2613cc02f0482c7875982919edf4af3720fb273db1d4459c",
+    "scripts/macos/prepare_codex.mts": "4d85b6503324c5e81366b10eeaa7f6e41e2c92a9864bb7d61bb90fe34afc4f4b",
+    "scripts/macos/version_codex_source.py": "60961200e31270b46574d5b83f5477b767cddaa66b8b7eea8c6cbc57b3ef269d"
   },
   "decodex_validation": {
-    "native_cases": 20,
+    "native_cases": 23,
+    "local_provider_authority_cases": 2,
     "component_cases": 1,
     "protocol_entrypoints": 4,
     "checkpoint_tests": 8,
     "portfolio_tests": 7,
     "repository_automation_evaluation": "passed",
+    "rust_format": "cargo +nightly fmt --all -- --check passed",
     "whitespace": "git diff --check passed",
     "commands": [
       "cargo +stable test --locked -p decodex-runtime --lib --all-features --no-run --message-format=json",
       "cargo +stable test --locked -p decodex-components --test development --no-run --message-format=json",
+      "cargo +stable test --locked -p decodex-codex --lib --no-run --message-format=json",
       "<compiled test binary> <registered selector> --exact --ignored --nocapture --test-threads=1",
       "python3 <exact protocol fixture listed above>",
       "cargo +stable make test-automations",
-      "python3 automations/decodex/scripts/config/evaluate_automations.py --repo-only --json"
+      "python3 automations/decodex/scripts/config/evaluate_automations.py --repo-only --json",
+      "cargo +nightly fmt --all -- --check"
     ],
-    "limits": "No Rust production source changed. No broad app/provider/source suite was required. Passing executions were reused only where the source, fixture, artifact/helpers, entrypoint, toolchain and feature inputs stayed identical."
+    "limits": "No Rust production source changed. No broad app/provider/upstream source suite was required. Each execution uses the recorded source, exact artifact/helpers, entrypoint, toolchain and feature inputs."
   },
-  "installed_application": "Not installed or started by this batch.",
-  "documentation_lifecycle": "Use the supported OpenWiki lifecycle after source and portable evidence are frozen. Native receipts own lifecycle completion.",
+  "installed_application": "Not started or installed. No installed acceptance was performed.",
+  "documentation_lifecycle": "Use supported OpenWiki page jobs after these inputs are frozen. Native receipts own completion.",
   "delivery_reference": [
-    "https://github.com/acg-box/decodex/commit/880baa0afeefc88570df3d46d3776753d59e5f9d",
-    "https://github.com/acg-box/decodex/commit/a3065af205767d653722343ec77f20f6664e5fed"
+    "https://github.com/acg-box/decodex/commit/49d4581b2f98d3631e3a2bba24aaa727d8480d7a"
   ],
   "delivery_status": "Public implementation commits identify the code. Native receipts own the current PR, exact-head CI and merge observations."
 }

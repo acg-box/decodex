@@ -136,10 +136,10 @@ sources:
     resource: repo://database/src/agent_titles.rs
   - id: openwiki-source-6197a876b2effbe992b1e2ec
     resource: repo://database/src/agent.rs
-generated: { by: "codex", at: "2026-11-05T15:16:31.053Z" }
+generated: { by: "codex", at: "2026-11-05T21:05:15.623Z" }
 verified:
-  - by: openwiki/0.7.3
-    at: 2026-11-05T15:16:31.053Z
+  - by: openwiki/0.9.0
+    at: 2026-11-05T21:05:15.623Z
 ---
 
 # Product scope and native ownership
@@ -288,7 +288,7 @@ Items 45 and 48 also retain native ownership. These decisions select no replacem
 
 ## Current integration boundary
 
-The user approved explicit recovery when native Codex reports that a saved conversation and current configuration use different providers. Clicking **Fork** in the input bar creates and opens the branch without a second confirmation or Cancel control. Decodex retains the existing completed-turn source preparation and durable fork receipt. Creation keeps the original conversation and draft and sends no message. The next explicit send shares inherited context with that provider. Ordinary branches and Side chats still retain their source provider. This decision adds no automatic service switch or native policy bypass. See [provider recovery](../workflows/conversations-and-recovery.md#continue-after-a-provider-change) and the [retained contract](../../automations/upstream/retained-contracts.json).
+Native Codex resumes and continues an existing conversation on its saved configured provider after the default changes; new conversations use the new default. The existing user-approved recovery action requires an actual structured `modelProviderMismatch` on the live native connection. Clicking **Fork** in the input bar creates and opens the branch without a second confirmation or Cancel control. Decodex retains the existing completed-turn source preparation and durable fork receipt. Creation keeps the original conversation and draft and sends no message. The next explicit send shares inherited context with that provider. Ordinary branches and Side chats still retain their source provider. This decision adds no automatic service switch or native policy bypass. See [provider recovery](../workflows/conversations-and-recovery.md#continue-after-a-provider-change) and the [retained contract](../../automations/upstream/retained-contracts.json).
 
 | Area | Decodex responsibility |
 | --- | --- |

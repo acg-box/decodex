@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:c32a28a68c7999179e520d636041d1102c71085ae0a096819dd8d6a5ff158e3d",
+  "pageVersion": "sha256:76533b762742b585804738854d12acdf50a4e8c355ec2c5df941fe64e3594c58",
   "claims": [
     {
       "id": "claim_f0c37462522f4442acd94d53819ef75c",
@@ -88,11 +88,11 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:72f744efdd6bfc63d2c0cc5fdf67a7e608a802a825c366876e3bf8939950a3e7"
+          "version": "repo-file-v1:sha256:b6dc45148e7a8290a54aa5a47ef2e339959fb52ab6e5bb2a5a8b106a28e57b56"
         },
         {
           "resource": "repo://automations/upstream/retained-contracts.json",
-          "version": "repo-file-v1:sha256:e4f1fef853138a1f3465e5ce20e0ab13d103a2fd82c02305c216b30442c32f61"
+          "version": "repo-file-v1:sha256:dfbcb5f07ff9ce54daccf7f270553c99481f7dcf6fe4129485b9f8b52caf7c9d"
         },
         {
           "resource": "repo://crates/decodex-runtime/tests/native_qualification/large_catalog.py",
@@ -174,15 +174,23 @@
     },
     {
       "id": "claim_9815b02e2bec42e2972b00e7894ad1f4",
-      "statement": "Side chats preserve source provider and Goal ownership without sending. Original branch tests retain their historical artifact limits; current qualification separately checks the explicit current-provider recovery fork. HumanCommand remains user-deferred and unsupported.",
+      "statement": "Side chats preserve source provider and Goal ownership without sending. Current qualification checks saved-provider continuation and ordinary and attached forks on the selected artifact; original explicit recovery and branch proof keep their historical limits. HumanCommand remains user-deferred and unsupported.",
       "evidence": [
         {
-          "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:72f744efdd6bfc63d2c0cc5fdf67a7e608a802a825c366876e3bf8939950a3e7"
+          "resource": "repo://automations/upstream/qualification.json#L55-L74",
+          "version": "repo-lines-v1:sha256:4d44e3bccc9e3b57ee4d22155d83b4f07f0685f17f4e7ee591b4f0a464c8af22:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNiNTE4Y2ZmMWExZjA5ZjAxMTJkMzlmMjYxYThiMGNmMTVhZDk1MDQyOWVjNDNjOGE4YTcxNDBkNjRhNWZiMDgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRkNWNkMmZiNGYzZGY4ODQ1MTUyNTViMzk1MjNmMmY4YjU0NzJiZWVhOWY1NjZmZmNhMjA0ZGI4MDI1NjEwNDEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM1M2U2NzlmYTY5MTA0MDU4YTA1MGI1MGI2YTc0YjFmY2ViMTAyN2JiMTZlZTZmNDUwOTc1MzUyYTIxZTdjOTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijc2Mjc2ZWIyZWI2ZDYyZjUwOTU0ZmRmODM4ODA5NjY5ODExYjRiNzhjZDFmNTMzMDk3YWUxNjE5OGNjZGIwZmEifQ"
         },
         {
-          "resource": "repo://automations/upstream/retained-contracts.json",
-          "version": "repo-file-v1:sha256:e4f1fef853138a1f3465e5ce20e0ab13d103a2fd82c02305c216b30442c32f61"
+          "resource": "repo://automations/upstream/retained-contracts.json#L4407-L4421",
+          "version": "repo-lines-v1:sha256:38646cec951d2418520e17483b5e52bac495fe113df805bf6ca1f3829d6b7439:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg3YjUzNDQ2ODRiMDI2OGZmYjc0ZDE4M2Q0Nzg1OTIyNmRhYmYwMTRkOWVmNjc4YWY0MWI4OGYwY2RmOTZiZjYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZlOGQ5MmRhZDI4NjAwMzdhMTI1OGYyNDc4ODc5MzExNzJjOWJkYjkxYTE3YTJhODdkMzhiYjg0NDk1ZTI1ZGUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYxYWQ3ZWEyYTc4ODJlYTE5NTg1NzU2YzA5ZDRkNzZkMDhhZTU0N2FhODU3ZWYzNmEzNjM2YWJkMTRlMzA1ZTgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM2OTcxMjFjZWM4MzFmZWI0ZDNkMzExM2JiYzFiMWFkNjczZWI2YjY4ZmQ3ODYzOTM3ODAwYmEzMzIyZTQwMmEifQ"
+        },
+        {
+          "resource": "repo://automations/upstream/retained-contracts.json#L5316-L5333",
+          "version": "repo-lines-v1:sha256:ad5a77d3d5dd9cc1f108fc8aa2c9354f4855cac37d0cc5d4bda41e7970c6f359:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFmODE4ZTAyYjBlNmQwYmRjMDlkNDI3OTljMzIwZTAyNzY5ODQyMTEwNGMxMWE1Njk3ZjZjNjMxMzcxMWRhNzQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU3OTdjZDg3NDA4MzljNjM2ZGM5NDhlOGQ2YTNkMGNjNDIzNDM3YjZkM2E0MWVmMWRiMDRiYjkxNzQ0MWY1ZDQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEifQ"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_fork_tests.rs#L407-L519",
+          "version": "repo-lines-v1:sha256:de286f4bb375a1f45dc2a29eefbe3bb612b026f57ff23859e5d8f9689ff0a073:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEzLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIwOGI3OGEwNTdjNDUyZmIzOTI0MTY2MzVmMWEzMDYyMTZiOWNmYzVjYjBkYjI2OTQ0NzE1OTFhNDYyNjUxZTI2IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIwMWJhNDcxOWM4MGI2ZmU5MTFiMDkxYTdjMDUxMjRiNjRlZWVjZTk2NGUwOWMwNThlZjhmOTgwNWRhY2E1NDZiIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJmMDJhZjRkMTJkN2NkMmFiODhlYTZmZGM5MjM2NmVlNGNkNmY1MzQ1NjE0ZjI2YTc2Nzk1MGYzM2I1MzlhZGUzIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIzOTEzMWVmZTA4ODEwZmNlYWQzZGEyYmQ4OWNhYmEyYzA5N2IyNzAyNjg3MThjNWQ3ZDhiOGY3YjZiOTAzMzMwIn0"
         }
       ]
     },
@@ -544,7 +552,7 @@
     }
   ],
   "verification": {
-    "by": "openwiki/0.7.3",
-    "at": "2026-11-05T16:20:29.596Z"
+    "by": "openwiki/0.9.0",
+    "at": "2026-11-05T21:05:15.623Z"
   }
 }

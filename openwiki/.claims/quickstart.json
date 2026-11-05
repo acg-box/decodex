@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:6f6f2a6c1a8da79c52c95701e9df1d95bd63b53792b84ffd600c73f447714d3d",
+  "pageVersion": "sha256:33d153ae194cc08a666d620ca5bd0cfda3ae51a43cfb8289227ab1dfac1686a7",
   "claims": [
     {
       "id": "claim_b34298a8647a4e0b8653926b7568c5d4",
@@ -161,12 +161,12 @@
           "version": "repo-file-v1:sha256:fd9c7dc64620953c2b968994a79ac8159ece13ae50cd0f9ab1f99fdbdfd9288c"
         },
         {
-          "resource": "repo://automations/upstream/retained-contracts.json#L4407-L5318",
-          "version": "repo-lines-v1:sha256:d2a50b4785195b4872a260ffc44edeec5d2bd90fcbe1b626ef237ccf04484520:eyJzZWxlY3RlZExpbmVDb3VudCI6OTEyLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI4N2I1MzQ0Njg0YjAyNjhmZmI3NGQxODNkNDc4NTkyMjZkYWJmMDE0ZDllZjY3OGFmNDFiODhmMGNkZjk2YmY2IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0MTJjYTM0NWNjZjc1YmY5YzA4MDZiY2U2OTViZThkZTgwOGI3OTk4NDI1MWE3YTU0ZDIwMmNmNjEwMWRkNDUxIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJmMWFkN2VhMmE3ODgyZWExOTU4NTc1NmMwOWQ0ZDc2ZDA4YWU1NDdhYTg1N2VmMzZhMzYzNmFiZDE0ZTMwNWU4IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
+          "resource": "repo://automations/upstream/retained-contracts.json#L4407-L5334",
+          "version": "repo-lines-v1:sha256:2f100e70b086f33fd4d996459157354c317fea49cc78c553d0efeb76131aafdd:eyJzZWxlY3RlZExpbmVDb3VudCI6OTI4LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI4N2I1MzQ0Njg0YjAyNjhmZmI3NGQxODNkNDc4NTkyMjZkYWJmMDE0ZDllZjY3OGFmNDFiODhmMGNkZjk2YmY2IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0MTJjYTM0NWNjZjc1YmY5YzA4MDZiY2U2OTViZThkZTgwOGI3OTk4NDI1MWE3YTU0ZDIwMmNmNjEwMWRkNDUxIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJmMWFkN2VhMmE3ODgyZWExOTU4NTc1NmMwOWQ0ZDc2ZDA4YWU1NDdhYTg1N2VmMzZhMzYzNmFiZDE0ZTMwNWU4IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_fork_tests.rs",
-          "version": "repo-file-v1:sha256:506df593d904b45fa360604bd865aacefece4d5fec1bedc570181e4f0f775af9"
+          "version": "repo-file-v1:sha256:9310cfa7d6be816dc759c347872655499ed0943b2a5bf977a1ff3d6941d43c0a"
         }
       ]
     },
@@ -383,10 +383,24 @@
           "version": "repo-file-v1:sha256:bb648a0d9f0a8363809909cb2838996f3592caa86a33f5c7a9e8b8afd89b958f"
         }
       ]
+    },
+    {
+      "id": "claim_089716a36bee4fa8b1ecac8c4a3b4e12",
+      "statement": "A changed default applies to new conversations; native Codex keeps an existing conversation on its saved configured provider.",
+      "evidence": [
+        {
+          "resource": "repo://automations/upstream/retained-contracts.json#L5318-L5324",
+          "version": "repo-lines-v1:sha256:d6707233919c6a49dd5606cd95c36e5becf7d633cd3de3750d3eba0737be433c:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNTJjOGZjYjY5Y2Y2NTlkYTE4NDUwYjc0MzNiZDhkMWIwYzQ2MzkwM2U3YTY0OGFmOTE5MDA3ZmRjNDQzNzM3MyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiODk0MTkxMTk3OTlhNTA0NWY5Zjk5OTFjZjFmOTEwYTQ4ZmNiY2U0NTgyZGUwMTc2YzgzMmE2NGFiYzdmZjM2YSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNzgwMTFkNWU1ZTY3Njg4MDIxNGY4ZThiYTBlYTFiZjY2YmViNjYxZTA0ZGMyYWU3ZmYxYmE4ZDlkYmRjNGI4OSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZjRjN2E2YTZmZjI1NTkwMWE0MzM4NjQyOGU4ODk3NjRmNjE4ODE0MWI3NGJlOGIwZTdiZTkxOTAxYWJjOGNmZSJ9"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_fork_tests.rs#L255-L393",
+          "version": "repo-lines-v1:sha256:3de62feb83080daf08844daa9e6aa2da28f9e38843e410aabf33949266ac85c3:eyJzZWxlY3RlZExpbmVDb3VudCI6MTM5LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI1MTk0ODRlZWRmMzY0ZmI4YzEyZjFlYjk4ZmJmNmE5YjRmNjUwZjQyNzg3NGE4ZDczNTkwMTBhYWRlNDMxYmM4IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI2NTBlMjNkNGJkYWEyNTJiZjc3OGE1MjNhMmNmOTJlZjliMDgxOTI5YmI1MzQyYzlhMTVlN2YwNWViYTc2ODI1IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJmMjk2NDA3OWMzYzVjODE1MjBlZjMzYTJiOWQyZTE1YTFiODRkNzI4MGRiODU5MGRjZDY1NzQ3ZTNlMDEyYTQwIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI5MWQ2MzMxNWEzN2UwNDE1ZWMyNTU4Y2Y1NDNkOWNhYzI4ZTA2MTdhMWM0NTU2YmJiNjlhODczYmJhMmE1OGUyIn0"
+        }
+      ]
     }
   ],
   "verification": {
-    "by": "openwiki/0.7.3",
-    "at": "2026-11-05T16:20:29.596Z"
+    "by": "openwiki/0.9.0",
+    "at": "2026-11-05T21:05:15.623Z"
   }
 }

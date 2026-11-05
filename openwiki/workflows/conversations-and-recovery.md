@@ -90,6 +90,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/shell.rs
   - id: openwiki-source-2f256c95c226c1326d164ad3
     resource: repo://apps/decodex-gpui/src/ui_feedback.rs
+  - id: openwiki-source-3127fd4c7b2aefcc9cea7961
+    resource: repo://automations/upstream/retained-contracts.json
   - id: openwiki-source-b1948e1beb6e361503aa2db1
     resource: repo://crates/decodex-codex/src/app_server_client.rs
   - id: openwiki-source-ecdf4586908bb6226955607a
@@ -98,6 +100,8 @@ sources:
     resource: repo://crates/decodex-codex/src/app_server_client/item_context.rs
   - id: openwiki-source-830a575f82404942511da59b
     resource: repo://crates/decodex-codex/src/app_server_client/prediction.rs
+  - id: openwiki-source-05eed4188305f36a07538b31
+    resource: repo://crates/decodex-codex/src/app_server_client/provider_recovery.rs
   - id: openwiki-source-f13eb50e9ef32ef30a001558
     resource: repo://crates/decodex-codex/src/app_server_client/server_requests.rs
   - id: openwiki-source-70cef05a60580eb56e0ed4e5
@@ -168,10 +172,10 @@ sources:
     resource: repo://database/src/assistant.rs
   - id: openwiki-source-28af4781ad8d9558410630da
     resource: repo://database/src/works.rs
-generated: { by: "codex", at: "2026-11-05T14:56:49.835Z" }
+generated: { by: "codex", at: "2026-11-05T21:05:15.623Z" }
 verified:
-  - by: openwiki/0.7.3
-    at: 2026-11-05T14:56:49.835Z
+  - by: openwiki/0.9.0
+    at: 2026-11-05T21:05:15.623Z
 ---
 
 # Conversation input, history and recovery
@@ -226,7 +230,9 @@ Review the source, then choose **Fork**. This uses the existing **Fork** (after 
 
 ## Continue after a provider change
 
-If native Codex refuses to resume a conversation because its saved provider differs from the current provider, Decodex keeps its history readable and preserves the original draft. The feedback band above the disabled composer names both providers. Restore the original provider to continue that conversation, or choose **Fork** to use the current provider.
+Changing the default provider applies to new conversations. Native Codex resumes and continues an existing conversation on its saved provider while that provider remains configured and native policy permits it. Ordinary branches and Side chats keep the saved source provider. Decodex uses this native admission result.
+
+The existing recovery flow requires an actual structured `modelProviderMismatch` on the live native connection. In that case, Decodex keeps history readable and preserves the original draft. The feedback band above the disabled composer names both providers and offers **Fork** for the named current provider.
 
 Choose **Fork** once to create and open a branch on the named current provider. Decodex reads the latest completed native turn, checks the current source and native configuration, and persists the existing fork intent before dispatch. There is no second confirmation. If the source or configuration changed, creation stops. It does not change the original conversation, send input, or bypass native policy.
 
@@ -234,7 +240,7 @@ Progress and recovery use the same feedback band and bordered buttons. An uncert
 
 The new branch receives the reviewed history prefix and the ordinary composer draft through the existing branch flow. The next explicit send shares that inherited context with the chosen provider. Unsent source messages are not retried automatically. Ordinary branching and Side chats retain their source provider; changing providers is this separate explicit choice.
 
-The [qualification record](../testing/upstream-acceptance-boundaries.md#provider-recovery-qualification) distinguishes the exact native tests from a user's experience. Use the [isolated rehearsal](../operations/commands-and-validation.md#rehearse-provider-recovery) to try the real desktop flow without using account data or changing the normal runtime selection.
+The [qualification record](../testing/upstream-acceptance-boundaries.md#provider-recovery-qualification) distinguishes the exact native tests from a user's experience. The [historical refusal rehearsal](../operations/commands-and-validation.md#rehearse-provider-recovery) uses an isolated desktop profile and requires an artifact that emits that refusal; the current saved-provider regressions have separate exact-CLI evidence.
 
 ## Filter existing lists by status
 

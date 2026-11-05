@@ -98,10 +98,10 @@ sources:
     resource: repo://database/src/schema.rs
   - id: openwiki-source-3b57179b92b257bc3fff51a1
     resource: repo://scripts/macos/stage_decodex_app.sh
-generated: { by: "codex", at: "2026-11-05T14:56:49.835Z" }
+generated: { by: "codex", at: "2026-11-05T21:05:15.623Z" }
 verified:
-  - by: openwiki/0.7.3
-    at: 2026-11-05T16:20:29.596Z
+  - by: openwiki/0.9.0
+    at: 2026-11-05T21:05:15.623Z
 ---
 
 # OpenWiki quickstart
@@ -152,7 +152,7 @@ Reported dollars appear beside **Context** in the composer; **Conversation estim
 
 Choose **Fork** on an existing locally managed conversation row to review its latest completed native turn. Confirm **Fork** to use the ordinary after-turn branch path. Source drafts stay preserved, and creation sends no input. Unavailable native history and unmanaged rows cannot provide this shortcut. See [the list workflow](workflows/conversations-and-recovery.md#branch-from-the-conversation-list) and [its qualification](testing/upstream-acceptance-boundaries.md#conversation-list-branch-qualification).
 
-If a conversation uses a different provider from the current configuration, **Fork** in the feedback band above the composer creates and opens a branch on the current provider without a second confirmation. The original history and draft remain, and creation sends no input. See [provider recovery](workflows/conversations-and-recovery.md#continue-after-a-provider-change).
+Changing the default provider applies to new conversations; existing conversations continue on their saved configured provider through native Codex. If native Codex reports a structured provider mismatch, the existing **Fork** action in the feedback band creates a separate branch on the named current provider without a second confirmation. It preserves the original history and draft and sends no input. See [provider recovery](workflows/conversations-and-recovery.md#continue-after-a-provider-change).
 
 ## Persistent attached branches
 

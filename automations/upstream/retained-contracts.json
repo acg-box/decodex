@@ -5300,7 +5300,7 @@
       "native_entrypoint": "crates/decodex-runtime/src/lib.rs",
       "native_tests": [
         "account_launch::agent_process::native_tests::cold_settings::recap_socket::fork::installed_fork_preserves_source_provider_after_default_changes",
-        "account_launch::agent_process::native_tests::cold_settings::recap_socket::fork::installed_provider_recovery_fork_preserves_context_and_restarts_on_current_provider"
+        "account_launch::agent_process::native_tests::cold_settings::recap_socket::fork::installed_saved_provider_continuation_and_fork_survive_default_changes"
       ],
       "local_entrypoints": [
         "crates/decodex-codex/src/lib.rs",
@@ -5308,11 +5308,27 @@
         "database/src/lib.rs",
         "apps/decodex-gpui/src/main.rs"
       ],
-      "evidence": "automations/upstream/qualification.json#candidate_qualification/provider_recovery"
+      "evidence": "automations/upstream/qualification.json#saved_provider_admission"
     },
     "delivery": [
       "https://github.com/acg-box/decodex/commit/20be50137551a46a4ffde709ccfafbfe56ccc6b9"
     ],
-    "limits": "Verified against the frozen 5be57bedd0 development artifact with loopback providers; the selected 33d306d4 runtime and installed application are unchanged."
+    "limits": "Current named artifact executions are in qualification.json. The original explicit-recovery proof keeps its original artifact and limits. Current native saved-provider continuation does not emit a default-mismatch refusal, so it does not expose the conditional recovery action. Installed desktop acceptance is separate.",
+    "original_qualification_limits": "Verified against the frozen 5be57bedd0 development artifact with loopback providers; the selected 33d306d4 runtime and installed application are unchanged.",
+    "native_saved_provider_admission": {
+      "upstream_commit": "e115d5f90d56d32785b9b01d4c376d7abf94ea7d",
+      "contract": [
+        "Native cold resume resolves the saved provider from configuration. Loaded input retains that provider, subject to current native managed requirements. A changed default applies to new conversations.",
+        "Decodex observes native admission and does not manufacture a modelProviderMismatch from a changed default. The existing recovery action still requires the exact native refusal on the live source connection.",
+        "Ordinary branches retain the saved source provider and exact selected prefix. Creating or resuming them sends no input. A later explicit send uses the saved provider and leaves the source history unchanged."
+      ],
+      "native_regression": "account_launch::agent_process::native_tests::cold_settings::recap_socket::fork::installed_saved_provider_continuation_and_fork_survive_default_changes",
+      "local_authority_regressions": [
+        "app_server_client::provider_recovery::tests::provider_recovery_requires_exact_native_refusal_and_clears_after_resume",
+        "app_server_client::thread_fork::tests::provider_fork_rechecks_current_config_and_never_sends_input"
+      ],
+      "historical_explicit_recovery_selector": "account_launch::agent_process::native_tests::cold_settings::recap_socket::fork::installed_provider_recovery_fork_preserves_context_and_restarts_on_current_provider",
+      "evidence": "automations/upstream/current-review.json#records; automations/upstream/qualification.json#saved_provider_admission"
+    }
   }
 }

@@ -78,8 +78,8 @@ sources:
     resource: repo://database/src/works/commands.rs
 generated: { by: "codex", at: "2026-11-05T15:16:31.053Z" }
 verified:
-  - by: openwiki/0.7.3
-    at: 2026-11-05T15:46:21.386Z
+  - by: openwiki/0.9.0
+    at: 2026-11-05T21:05:15.623Z
 ---
 
 # Project, Agent and Work contract
