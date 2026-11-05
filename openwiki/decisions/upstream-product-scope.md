@@ -136,10 +136,10 @@ sources:
     resource: repo://database/src/agent_titles.rs
   - id: openwiki-source-6197a876b2effbe992b1e2ec
     resource: repo://database/src/agent.rs
-generated: { by: "codex", at: "2026-11-04T15:37:04.419Z" }
+generated: { by: "codex", at: "2026-11-05T15:16:31.053Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-05T13:44:11.168Z
+    at: 2026-11-05T15:16:31.053Z
 ---
 
 # Product scope and native ownership
@@ -154,11 +154,11 @@ The [Project, Agent and Work contract](project-agent-work.md) is the accepted an
 
 Native permissions and private Review Details are selected product scope. Each conversation owns its permission mode; the global Guardian control only enables optional review records. Review Details are observation, not permission or Work acceptance. The retained contract catalog records an earlier installed scenario with two Projects, four Works, independent-Agent input and approval ownership, Pause/Resume, restart recovery and a Workspace/Full Access sequence. That historical qualification does not establish the current installed artifact or general model quality. Official Codex desktop Project presentation remains unobserved.
 
-The default coordination surface uses `work_read` and `work_manage`. Users create persistent Agents directly. The selected Assistant can also create them under an exact delivered user delegation. Native Subagents own temporary execution. Managed-worker/manager creation and old goal/dependency tools are retired from new conversations and refused in legacy schemas. Native history and recorded tool declarations stay bound to their original conversations.
+The default coordination surface uses `work_read` and `work_manage`. Users create persistent Agents directly. The selected Assistant can also create them under an exact delivered user delegation. Native Subagents own temporary execution. Managed-worker/manager creation and old goal/dependency tools are absent from tool descriptors and dispatch. Unsupported names receive the ordinary unknown-tool refusal. Native history and recorded tool declarations stay bound to their original conversations.
 
 Permission changes use the selected native conversation's supported profile and reviewer settings. Existing child captures and pending human approvals retain native ownership. Optional private details retain bounded assistant output and terminal metadata without raw reasoning. Exact action associations are unavailable in the selected runtime and remain explicit. This does not select the separate native Guardian V3 experiment.
 
-The current schema and protocol 4.7 store the business model directly. Native Projects provide catalog identity and directory context; Decodex retains Work and responsibility associations. A native Project entry does not prove synchronization with desktop saved Projects. Work association is not a new execution sandbox or automatic directory switch.
+The current schema and protocol 4.8 store the business model directly. Native Projects provide catalog identity and directory context; Decodex retains Work and responsibility associations. A native Project entry does not prove synchronization with desktop saved Projects. Work association is not a new execution sandbox or automatic directory switch.
 
 The retained-conversation repair reconciles unassigned native Project membership before input and preserves conflicts for inspection. The current schema retains actual native child-input receipts for Work attribution when native configuration permits nested V2 Code Mode. Recovery joins exact evidence without replay. V1 nesting remains supported; V2 keeps its direct-only default. These are repairs to retained integration contracts. Native Project identity and membership and Decodex Project presentation passed in the separate installed qualification. Official desktop saved-Project/sidebar presentation remains unobserved. See the [canonical contract](project-agent-work.md#qualification-and-evidence-limits).
 
@@ -172,7 +172,7 @@ The selected scope includes three views in the existing desktop:
 - **Collaboration history:** Retain exact local question replies, their delivery and receiving-turn outcome, plus independent contribution cycles and explicit owner assessments. A reply or returned contribution does not establish resolution or complete Work. Missing external reply bodies remain unknown.
 - **Actual usage:** Read known whole-turn token deltas and recorded duration for a persistent Agent or retained Work references. Shared Work references, missing counters and unobserved child usage remain explicit. Linked turns can contain other activity; recorded duration is not Work elapsed time and these values are not a bill.
 
-These views are available through local protocol 4.7 and the same source owners. Their reusable regression identities, exact-artifact checks and limits are in `selected_read_views` in the [stable retained contract catalog](../../automations/upstream/retained-contracts.json). Installed-app acceptance remains separate.
+These views are available through local protocol 4.8 and the same source owners. Their reusable regression identities, exact-artifact checks and limits are in `selected_read_views` in the [stable retained contract catalog](../../automations/upstream/retained-contracts.json). Installed-app acceptance remains separate.
 
 ## Current optional decisions
 
@@ -308,17 +308,17 @@ The desktop does not need a duplicate plugin marketplace, plugin publishing work
 
 ## Retained native additions
 
-Tool and file-change details use exact native thread, turn and item identities. Only an explicit unsupported-method response permits the older history-read fallback. This detail path does not replace bulk transcript paging.
+Tool and file-change details use exact native thread, turn and item identities. The detail path uses the current native item-read API and preserves an unavailable result when that request fails. This detail path does not replace bulk transcript paging.
 
 Eligible root conversations expose native read receipts in task preferences. Read and unread marks require the reviewed native revision and local source identity. Reading does not acknowledge a result, and these receipts do not replace Dock handoff or attention state.
 
 The client also exposes a bounded, explicitly invoked ephemeral prediction fork. It inherits the loaded parent's context, tools and permissions. It is not a tool-free recap or an automatic background job. Its caller must own authorization and event routing. Next-message suggestions use the separate native sampling path described above; the isolated recap path remains separate.
 
-Native launch policy requests full-fork prefix preservation, model-specific subagent context defaults and Agent message wakeups. The retained description-first argument is accepted as a removed native feature, so current tool ordering stays native-owned. The native configuration still selects Code Mode hosting transport.
+Native launch policy requests full-fork prefix preservation, model-specific subagent context defaults and Agent message wakeups. Tool ordering stays native-owned; the removed description-first feature is not requested. The native configuration still selects Code Mode hosting transport.
 
 Background compaction and retention of marked client tool outputs are configurable native additions. Settings > Agents > Context defaults Native and Agent preferences > Context defaults read and write the same native configuration used by manual `config.toml` edits. An omitted value follows the native feature default; explicit effective project configuration takes priority. Explicit off values remain valid, and saving a default does not restart loaded conversations. The panel distinguishes saved user and effective project values. This preserves the existing controls when native defaults change.
 
-The compatibility path requests retention only for `work_instruction` outputs. This covers initial delegation and explicit follow-up instructions while keeping application tool authority. Wakes, capacity retries and arbitrary external results remain unselected. Codex owns the retention decision and budget.
+Recorded instruction delivery requests retention only for `work_instruction` outputs. This covers initial delegation and explicit follow-up instructions while keeping application tool authority. Wakes, capacity retries and arbitrary external results remain unselected. Codex owns the retention decision and budget.
 
 The context panel does not expose a switch to hide native collaboration tools, and launch policy does not force that native option. Replacing the model's native collaboration surface remains a separate product decision. Persistent Decodex work records and native subagent execution keep their current owners.
 

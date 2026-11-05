@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:cf986372149d7f0d8e9affc70b62a1cccab211f52f4b108982919f6a9edcc1b9",
+  "pageVersion": "sha256:f0c77b349915a0092c0ab56ff1ef1552faaa7a99115e39922cb63ea4457b3101",
   "claims": [
     {
       "id": "claim_b6c6b65984924f69970e7f0410d50903",
@@ -76,11 +76,11 @@
     },
     {
       "id": "claim_67d1ef78b6ef43aab12447f1516d0b58",
-      "statement": "Source runtime qualification uses an exact official archive and digest, refreshes extracted source timestamps to prevent stale local Cargo artifact reuse, builds with stable Rust and locked dependencies, checks the stamped commit and package identity, and signs and verifies the app and packaged helpers.",
+      "statement": "Source runtime qualification uses an exact official archive and digest, refreshes extracted source timestamps to prevent stale Cargo artifact reuse, builds with stable Rust and locked dependencies, checks the stamped commit and package identity including required bin/codex-exec-server, and signs and verifies the app and packaged helpers.",
       "evidence": [
         {
           "resource": "repo://scripts/macos/build_codex_source.mts",
-          "version": "repo-file-v1:sha256:3cae22e7c6a08c730aec4cfc4b202fbf2db10188e18d12ce4e3c56bbc43f6e68"
+          "version": "repo-file-v1:sha256:44225ba7067b143f2613cc02f0482c7875982919edf4af3720fb273db1d4459c"
         }
       ]
     },
@@ -94,21 +94,21 @@
         },
         {
           "resource": "repo://crates/decodex-components/src/install.rs",
-          "version": "repo-file-v1:sha256:73841b5c44fbaa7872b8e98b4345c2e60320f59e1d0a0bd20ab5e2fc50b15839"
+          "version": "repo-file-v1:sha256:5367ac8b56e396acfa21bbd0d18959bd2d3add92f8522b0502e4c93c0741522b"
         }
       ]
     },
     {
       "id": "claim_676596febf0d4591b34531158269edea",
-      "statement": "Compatibility continuation keeps application tool evidence separate from user input: work_instruction can request native retention while scheduled wakes, capacity retries and other external results remain unselected.",
+      "statement": "Recorded application instructions keep tool evidence separate from user input: work_instruction can request native retention while scheduled wakes, capacity retries and other external results remain unselected.",
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/agent.rs",
-          "version": "repo-file-v1:sha256:039d3118591ad102c58ed25f91d662c2132a7f461b46b9f0ecb276d2e6dd4dbf"
+          "version": "repo-file-v1:sha256:723981fe7564aa4725c719a427a9f60fe6f58e805c83c79d374d6759d979fc7a"
         },
         {
-          "resource": "repo://crates/decodex-runtime/src/agent/tests/external_context.rs#L151-L197",
-          "version": "repo-lines-v1:sha256:0652d893d61f12ffa3971d885f6c527ced1c25fcd7286fc9d9be2c8df6a1cc35:eyJzZWxlY3RlZExpbmVDb3VudCI6NDcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjliYTY4YzAwZTEzZWM2MWI2YTU2NzQ4Mzc5N2IyNTMzZTZkZTRlNDM0OTIwYTEzZDNjYmEzMzIxMTJmYzE1M2YiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjFmY2Q1NTQ2NmEyMjc2MzJmM2EwY2RlOWM3OGI0NDFhMDhiNTg3NWRjYzZjYmI4YWYwZjEwNmYzMmY1MzI3NzgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI1YmIxYWY1MjFiZWNkNTVkNzA1NmE4YTlhMGRkMWViY2RhMWZjNzlmZjIzZjc0NTc3NmY0OTk1ODMzNTI5MjMifQ"
+          "resource": "repo://crates/decodex-runtime/src/agent/tests/external_context.rs",
+          "version": "repo-file-v1:sha256:8df134bfceb6a56e86e3760859326597662657d0c9c599910a7794bfe6aacb81"
         }
       ]
     },
@@ -326,7 +326,7 @@
         },
         {
           "resource": "repo://scripts/macos/build_codex_source.mts",
-          "version": "repo-file-v1:sha256:3cae22e7c6a08c730aec4cfc4b202fbf2db10188e18d12ce4e3c56bbc43f6e68"
+          "version": "repo-file-v1:sha256:44225ba7067b143f2613cc02f0482c7875982919edf4af3720fb273db1d4459c"
         },
         {
           "resource": "repo://scripts/macos/prepare_codex.mts",
@@ -340,15 +340,15 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_cold_settings_tests.rs",
-          "version": "repo-file-v1:sha256:956110d2846b66603eab68a23459aeaec706b12d59a940feb383831572e31312"
+          "version": "repo-file-v1:sha256:30275f79a8604adccd6e355c350282fe1981e621bd44d430f139a168eb022389"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_recap_socket_tests.rs",
-          "version": "repo-file-v1:sha256:90e696ae4768ba102700a923d4a847175c00cecae9df6f8f6eb627a043666e9f"
+          "version": "repo-file-v1:sha256:4ef196654ce096dca1fd06e826b6085f1cc981972f505497e773b753ebc55caa"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_runtime_submit_tests.rs",
-          "version": "repo-file-v1:sha256:562b204b8ee6bc6c60c055c4c5ec45c4734e65447a3dc7aab4e9c564a426b781"
+          "version": "repo-file-v1:sha256:dc5e1fdf28c3ac6b53c6097389ecb676d2c3cc7eebe58864660190acf841a9cb"
         }
       ]
     },
@@ -373,6 +373,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-05T05:20:04.159Z"
+    "at": "2026-11-05T15:16:31.053Z"
   }
 }

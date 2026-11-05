@@ -251,7 +251,7 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 	let saved =
 		reopened.read_conversation_request(&initial.conversation_id).await.unwrap().unwrap();
 
-	assert_eq!(saved.service_tier.unwrap().as_str(), "ultrafast");
+	assert_eq!(saved.service_tier.as_str(), "ultrafast");
 
 	reopened.revalidate().await.expect("revalidate reopened SQLite");
 
@@ -296,8 +296,7 @@ async fn create_restart_conversation(
 				working_directory: temporary.path().display().to_string(),
 				model: "gpt-5.6-sol".to_owned(),
 				reasoning_effort: Some("high".to_owned()),
-				fast: false,
-				service_tier: Some(ServiceTier::new("ultrafast").expect("service tier")),
+				service_tier: ServiceTier::new("ultrafast").expect("service tier"),
 			},
 		)
 		.await
@@ -1022,8 +1021,7 @@ async fn verify_changed_default_after_restart(
 				working_directory: temporary.path().display().to_string(),
 				model: "gpt-5.6-sol".to_owned(),
 				reasoning_effort: Some("high".to_owned()),
-				fast: false,
-				service_tier: None,
+				service_tier: decodex_core::ServiceTier::standard(),
 			},
 		)
 		.await
@@ -1317,8 +1315,7 @@ async fn original_reasoning_choice_survives_reopen_and_idempotent_creation() {
 			working_directory: "/tmp".into(),
 			model: "native-model".into(),
 			reasoning_effort: effort.map(str::to_owned),
-			fast: false,
-			service_tier: Some(ServiceTier::new("flex").unwrap()),
+			service_tier: ServiceTier::new("flex").unwrap(),
 		};
 		let created = store.create_conversation(&command, &record).await.unwrap();
 		let original = store.read_conversation_request(&id).await.unwrap().unwrap();
@@ -1372,8 +1369,7 @@ async fn creation_receipt_readback_is_exact_and_survives_reopen() {
 		working_directory: "/tmp".into(),
 		model: "native-model".into(),
 		reasoning_effort: None,
-		fast: false,
-		service_tier: None,
+		service_tier: decodex_core::ServiceTier::standard(),
 	};
 	let created = store.create_conversation(&command, &record).await.unwrap();
 
@@ -1430,8 +1426,7 @@ async fn initial_model_source_survives_reopen_and_rejects_changed_replays() {
 		working_directory: "/tmp".into(),
 		model: "native-model".into(),
 		reasoning_effort: None,
-		fast: false,
-		service_tier: None,
+		service_tier: decodex_core::ServiceTier::standard(),
 		initial_model_source: Some(source.clone()),
 	};
 	let created = store.create_conversation(&command, &record).await.unwrap();
@@ -1446,7 +1441,7 @@ async fn initial_model_source_survives_reopen_and_rejects_changed_replays() {
 	assert_eq!(request.message, record.message);
 	assert_eq!(request.working_directory, record.working_directory);
 	assert_eq!(request.reasoning_effort, None);
-	assert_eq!(request.service_tier, None);
+	assert_eq!(request.service_tier.as_str(), "default");
 	assert_eq!(reopened.create_conversation(&command, &record).await.unwrap(), created);
 
 	for replacement in [
@@ -1490,8 +1485,7 @@ async fn seed_model_review(store: &SqliteStore) -> CreateConversationRecord {
 		working_directory: "/tmp/original-source".to_owned(),
 		model: "gpt-5.6-sol".to_owned(),
 		reasoning_effort: Some("high".to_owned()),
-		fast: false,
-		service_tier: None,
+		service_tier: decodex_core::ServiceTier::standard(),
 		initial_model_source: Some(InitialModelSource { account_id, account_revision: 9 }),
 	};
 
@@ -1556,8 +1550,9 @@ async fn model_review_is_explicit_revision_fenced_and_idempotent_after_reopen() 
 			expected_revision: 2,
 			model: "gpt-6-astra".to_owned(),
 			reasoning_effort: effort.map(str::to_owned),
-			fast: false,
-			service_tier: tier.map(|tier| ServiceTier::new(tier).expect("tier")),
+			service_tier: tier
+				.map(|tier| ServiceTier::new(tier).expect("tier"))
+				.unwrap_or_else(ServiceTier::standard),
 			source: InitialModelSource {
 				account_id: AccountId::new(ACCOUNT_ID).expect("account"),
 				account_revision: 1,
@@ -1684,8 +1679,7 @@ async fn initial_model_source_survives_reopen_and_rejects_changed_routing() {
 			working_directory: temporary.path().display().to_string(),
 			model: "gpt-6-astra".to_owned(),
 			reasoning_effort: Some("low".to_owned()),
-			fast: false,
-			service_tier: None,
+			service_tier: decodex_core::ServiceTier::standard(),
 			initial_model_source: Some(source.clone()),
 		};
 
@@ -1800,8 +1794,7 @@ async fn routing_successor_retains_initial_model_source_after_reopen() {
 				working_directory: temporary.path().display().to_string(),
 				model: "gpt-6-astra".to_owned(),
 				reasoning_effort: Some("low".to_owned()),
-				fast: false,
-				service_tier: None,
+				service_tier: decodex_core::ServiceTier::standard(),
 				initial_model_source: Some(source.clone()),
 			},
 		)
@@ -1878,8 +1871,7 @@ async fn advertised_reasoning_efforts_survive_create_review_and_reopen() {
 			expected_revision: 1,
 			model: original.model,
 			reasoning_effort: Some(effort.to_owned()),
-			fast: false,
-			service_tier: Some(ServiceTier::from_fast(false)),
+			service_tier: ServiceTier::standard(),
 			source: InitialModelSource {
 				account_id: AccountId::new(ACCOUNT_ID).expect("account"),
 				account_revision: 1,

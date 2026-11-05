@@ -1329,7 +1329,7 @@ mod tests {
 			content: decodex_protocol::AgentTimelineContent::Item {
 				collaboration: None,
 				phase: None,
-				app_ui: false,
+
 				turn_id: "turn".into(),
 				item_id: format!("item-{position}"),
 				kind: if user { "userMessage" } else { "agentMessage" }.into(),
@@ -1372,7 +1372,7 @@ mod tests {
 					content: decodex_protocol::AgentTimelineContent::Item {
 						collaboration: None,
 						phase: None,
-						app_ui: false,
+
 						turn_id: "turn".into(),
 						item_id: "same-id".into(),
 						kind: "agentInput".into(),
@@ -1484,7 +1484,7 @@ mod tests {
 					duration_ms: Some(3_200), usage: None, timing: None, usage_summary: None, error: None,
 				} } else { decodex_protocol::AgentTimelineContent::Item { collaboration: None,
 phase: None,
-					app_ui: false,
+
 					turn_id: format!("turn-{}", i / 3), item_id: format!("message-{i}"),
 					kind: if i % 3 == 0 { "userMessage" } else { "agentMessage" }.into(),
 					text: format!("## Message {i}\n\n{}", "Review **the result** and `src/main.rs`.\n\n- Keep history readable.\n- Preserve the scroll position.\n\n".repeat(4)),

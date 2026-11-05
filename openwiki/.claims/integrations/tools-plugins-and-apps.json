@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:28fe54e15662374e32f23d67fb1116b26d4455706f957429eda07f0222d409ed",
+  "pageVersion": "sha256:476ec279c276ecb4f313dabb89fbceef43481d7c32893b015b04cc611c2fff89",
   "claims": [
     {
       "id": "claim_3f139c853db04d169600a9ee50a8d9b8",
@@ -66,7 +66,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-protocol/src/agent.rs",
-          "version": "repo-file-v1:sha256:03e675c6a3b8d439e02fb4adc5a962f185128fed401864f9860836d03450e719"
+          "version": "repo-file-v1:sha256:83277ce09c0b10380fa407b310d2178290b511064470a93b26faa944d548099e"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process.rs",
@@ -98,11 +98,11 @@
     },
     {
       "id": "claim_803ae7d869454ee682892785e0417a56",
-      "statement": "The optional RAGFlow component installs managed nightly with compatible Infinity and a private account, with no model runtime or weights. Expanding installed RAGFlow directly opens the model form, which accepts independent extraction and embedding model IDs, OpenAI-compatible Base URLs and optional private API keys. Save verifies both choices before updating their separate provider instances and configuring dedicated Memory automatically. Settings store an origin-bound service credential reference with legacy environment-reference support. Knowledge, Memory and explicit chat import remain separate. Memory disables native generation, use and the memories feature for fresh and resumed Assistant contexts; the bridge admits disabled memory-mode writes only.",
+      "statement": "The optional RAGFlow component installs managed nightly with compatible Infinity and a private account, with no model runtime or weights. Expanding installed RAGFlow directly opens the model form, which accepts independent extraction and embedding model IDs, OpenAI-compatible Base URLs and optional private API keys. Save verifies both choices before updating their separate provider instances and configuring dedicated Memory automatically. Settings store an origin-bound service credential reference. Knowledge, Memory and explicit chat import remain separate. Memory disables native generation, use and the memories feature for fresh and resumed Assistant contexts; the bridge admits disabled memory-mode writes only.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
-          "version": "repo-file-v1:sha256:d4064b1403c8b8f2d3a027cb5e70bf8e20ad5834569913add8fc9f612a7dffbb"
+          "version": "repo-file-v1:sha256:e128547b432701ef571dbde04fccbc328333dfa7a3b11df58c000e5a3cbed3dc"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
@@ -130,13 +130,13 @@
         },
         {
           "resource": "repo://crates/decodex-runtime/src/ragflow.rs",
-          "version": "repo-file-v1:sha256:126f808d04eae1024eba392373e9a1050b59875de74e33aea0a544af4434138d"
+          "version": "repo-file-v1:sha256:6671e0d10094fbca56a40c13fbbe476edabd6b027b7104a087ef2388f35456c9"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-05T13:48:42.186Z"
+    "at": "2026-11-05T14:56:49.835Z"
   }
 }

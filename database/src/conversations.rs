@@ -48,8 +48,7 @@ pub struct CreateConversationRecord {
 	pub working_directory: String,
 	pub model: String,
 	pub reasoning_effort: Option<String>,
-	pub fast: bool,
-	pub service_tier: Option<ServiceTier>,
+	pub service_tier: ServiceTier,
 	/// Account observation that supplied the initial model choices, if available.
 	pub initial_model_source: Option<InitialModelSource>,
 }
@@ -61,8 +60,7 @@ pub struct ConversationRequest {
 	pub working_directory: String,
 	pub model: String,
 	pub reasoning_effort: Option<String>,
-	pub fast: bool,
-	pub service_tier: Option<ServiceTier>,
+	pub service_tier: ServiceTier,
 	/// Account observation that supplied the initial model choices, if available.
 	pub initial_model_source: Option<InitialModelSource>,
 }
@@ -567,9 +565,9 @@ impl SqliteStore {
 				.execute(
 					"INSERT INTO quick_task_requests (
 				   conversation_id, operation_key, correlation_id, initial_turn_id,
-					 message, working_directory, model, reasoning_effort, fast, created_at_micros, service_tier,
+					 message, working_directory, model, reasoning_effort, created_at_micros, service_tier,
                      model_source_account_id, model_source_account_revision
-				 ) VALUES (?1, ?2, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+				 ) VALUES (?1, ?2, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
 					rusqlite::params![
 						create.conversation_id.as_str(),
 						command.key,
@@ -578,9 +576,8 @@ impl SqliteStore {
 						create.working_directory,
 						create.model,
 						create.reasoning_effort,
-						create.fast,
 						now,
-						create.service_tier.as_ref().map(|tier| tier.as_str()),
+						create.service_tier.as_str(),
                         create.initial_model_source.as_ref().map(|source| source.account_id.as_str()),
                         create.initial_model_source.as_ref().map(|source| source.account_revision),
 					],
@@ -619,20 +616,19 @@ impl SqliteStore {
 		self.run(move |connection| {
 			connection
 				.query_row(
-					"SELECT q.message, q.working_directory, q.model, q.reasoning_effort, q.fast, q.service_tier, q.model_source_account_id, q.model_source_account_revision
+					"SELECT q.message, q.working_directory, q.model, q.reasoning_effort, q.service_tier, q.model_source_account_id, q.model_source_account_revision
 				 FROM quick_task_requests AS q
 				 JOIN conversations AS c USING (conversation_id)
 				 WHERE q.conversation_id = ?1 AND c.state = 'active'",
 					rusqlite::params![conversation_id.as_str()],
 					|row| {
 						Ok(ConversationRequest {
-                            initial_model_source: initial_model_source::from_row(row, 6)?,
+                            initial_model_source: initial_model_source::from_row(row, 5)?,
 							message: row.get(0)?,
 							working_directory: row.get(1)?,
 							model: row.get(2)?,
 							reasoning_effort: row.get(3)?,
-							fast: row.get(4)?,
-							service_tier: row.get::<_, Option<String>>(5)?.map(ServiceTier::new).transpose().map_err(|error| Error::FromSqlConversionFailure(5, Type::Text, Box::new(error)))?,
+							service_tier: ServiceTier::new(row.get::<_, String>(4)?).map_err(|error| Error::FromSqlConversionFailure(4, Type::Text, Box::new(error)))?,
 						})
 					},
 				)
@@ -1410,7 +1406,7 @@ impl SqliteStore {
 
 			let source = transaction.query_row(
 				"SELECT c.title, q.message, q.working_directory, q.model, q.reasoning_effort,
-				        q.fast, d.routing_decision_id,
+				        d.routing_decision_id,
 				        d.decision_kind, c.revision, q.service_tier
 				 FROM conversations AS c
 				 JOIN quick_task_requests AS q USING (conversation_id)
@@ -1420,11 +1416,11 @@ impl SqliteStore {
 				rusqlite::params![request.source_conversation_id.as_str()],
 				|row| Ok((
 					row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?,
-					row.get::<_, String>(3)?, row.get::<_, Option<String>>(4)?, row.get::<_, bool>(5)?,
-					row.get::<_, String>(6)?, row.get::<_, String>(7)?, row.get::<_, i64>(8)?, row.get::<_, Option<String>>(9)?,
+					row.get::<_, String>(3)?, row.get::<_, Option<String>>(4)?,
+					row.get::<_, String>(5)?, row.get::<_, String>(6)?, row.get::<_, i64>(7)?, row.get::<_, String>(8)?,
 				)),
 			).optional().map_err(account_lifecycle::sql_error)?;
-			let Some((title, message, working_directory, model, reasoning_effort, fast, routing_decision_id, decision_kind, revision, service_tier)) = source else {
+			let Some((title, message, working_directory, model, reasoning_effort, routing_decision_id, decision_kind, revision, service_tier)) = source else {
 				return Ok(ConversationRoutingSuccessorOutcome::Rejected {
 					code: "source_authority_unavailable".to_owned(), replayed: false,
 				});
@@ -1453,9 +1449,9 @@ impl SqliteStore {
 			transaction.execute(
 				"INSERT INTO quick_task_requests (
 				 conversation_id, operation_key, correlation_id, causation_id, initial_turn_id,
-				 message, working_directory, model, reasoning_effort, fast, created_at_micros, service_tier
-				 ) VALUES (?1, ?2, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
-				rusqlite::params![successor_id, key, request.source_conversation_id.as_str(), initial_turn_id, message, working_directory, model, reasoning_effort, fast, now, service_tier],
+				 message, working_directory, model, reasoning_effort, created_at_micros, service_tier
+				 ) VALUES (?1, ?2, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+				rusqlite::params![successor_id, key, request.source_conversation_id.as_str(), initial_turn_id, message, working_directory, model, reasoning_effort, now, service_tier],
 			).map_err(account_lifecycle::sql_error)?;
 			transaction.execute(
 				"UPDATE quick_task_requests SET
@@ -3765,8 +3761,7 @@ mod archive_tests {
 					working_directory: "/tmp".to_owned(),
 					model: "gpt-5.6-sol".to_owned(),
 					reasoning_effort: Some("high".to_owned()),
-					fast: true,
-					service_tier: None,
+					service_tier: decodex_core::ServiceTier::priority(),
 				},
 			)
 			.await
@@ -4048,8 +4043,7 @@ mod archive_tests {
 					working_directory: "/tmp".to_owned(),
 					model: "gpt-5.6-sol".to_owned(),
 					reasoning_effort: Some("high".to_owned()),
-					fast: true,
-					service_tier: None,
+					service_tier: decodex_core::ServiceTier::priority(),
 				},
 			)
 			.await

@@ -83,8 +83,7 @@ mod tests {
 			execution: decodex_protocol::ConversationExecutionSettings {
 				model: decodex_protocol::ConversationModel::new("native-model").unwrap(),
 				reasoning_effort: None,
-				fast: false,
-				service_tier: None,
+				service_tier: decodex_core::ServiceTier::standard(),
 			},
 		};
 
@@ -118,8 +117,7 @@ mod tests {
 					working_directory: command.working_directory.clone(),
 					model: command.execution.model.clone(),
 					reasoning_effort: None,
-					fast: false,
-					service_tier: None,
+					service_tier: decodex_core::ServiceTier::standard(),
 				},
 			)
 			.await

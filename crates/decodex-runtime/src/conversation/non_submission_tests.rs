@@ -81,7 +81,6 @@ fn session() -> crate::conversation::LocalSession {
 		),
 		model: "gpt-5.6-sol".into(),
 		reasoning_effort: Some("high".into()),
-		fast: false,
 		service_tier: ServiceTier::new("default").expect("fixture tier"),
 		working_directory: "/fixture".into(),
 		instructions: "Follow the request.".into(),

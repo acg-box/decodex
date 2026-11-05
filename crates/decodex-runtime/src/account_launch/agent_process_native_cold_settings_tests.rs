@@ -85,7 +85,7 @@ fn seed(root: &DecodexRoot, account: &AccountId, thread: &str, directory: &Path)
 		death_evidence_id='51000000-0000-4000-8000-000000000001',revision=4,updated_at_micros=2;",
 		)
 		.expect("settled conversation history fixture");
-	connection.execute("INSERT INTO quick_task_requests(conversation_id,operation_key,correlation_id,initial_turn_id,message,working_directory,model,reasoning_effort,fast,created_at_micros,service_tier) VALUES (?1,'original-key','original-key','45000000-0000-4000-8000-000000000000','Original input',?2,'old-requested-model','low',0,1,'flex')", rusqlite::params!["44000000-0000-4000-8000-000000000001", directory.to_str().expect("settled conversation history fixture")]).expect("settled conversation history fixture");
+	connection.execute("INSERT INTO quick_task_requests(conversation_id,operation_key,correlation_id,initial_turn_id,message,working_directory,model,reasoning_effort,created_at_micros,service_tier) VALUES (?1,'original-key','original-key','45000000-0000-4000-8000-000000000000','Original input',?2,'old-requested-model','low',1,'flex')", rusqlite::params!["44000000-0000-4000-8000-000000000001", directory.to_str().expect("settled conversation history fixture")]).expect("settled conversation history fixture");
 }
 
 fn counter_output(input: &Value) -> Value {

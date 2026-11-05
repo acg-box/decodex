@@ -35,7 +35,6 @@ pub struct AgentTimelinePage {
 	/// Opaque cursor for the next older page, bound to this thread.
 	pub next_cursor: Option<String>,
 	/// Weather cards keyed by the exact native turn.
-	#[serde(default)]
 	pub weather: BTreeMap<String, Vec<WeatherForecast>>,
 	/// Voice session active immediately before the first entry, if any.
 	pub active_realtime_session_at_page_start: Option<String>,
@@ -75,7 +74,6 @@ pub struct AgentThreadMetrics {
 	/// Elapsed duration of the current native turn at this read, if running.
 	pub active_ms: Option<u64>,
 	/// A native model item is streaming. Tool and user waits do not count as generation.
-	#[serde(default)]
 	pub generating: bool,
 	/// Latest locally observed generation rate, or a labelled historical turn average.
 	pub rate: Option<AgentOutputRate>,
@@ -85,11 +83,9 @@ pub struct AgentThreadMetrics {
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct AgentOutputRate {
 	/// True for local generation timing. False for a whole-turn average, including tools.
-	#[serde(default)]
 	pub estimated: bool,
 	/// The measurement belongs to the current turn while a model item is streaming.
 	/// Last measurements stay visible during tool and user waits.
-	#[serde(default)]
 	pub active: bool,
 	/// Native output tokens used for this measurement.
 	pub output_tokens: u64,
@@ -198,11 +194,9 @@ pub struct AgentCollaborationResultDto {
 #[serde(deny_unknown_fields)]
 pub struct AgentCollaborationDto {
 	/// Native model metadata: resolved creation settings for subAgentActivity,
-	/// requested settings for legacy collaboration calls. Absent in older records.
-	#[serde(default)]
+	/// requested settings for native collaboration calls. Unreported values stay unknown.
 	pub model: Option<String>,
 	/// Native effort with the same provenance as model. Never inferred from the parent.
-	#[serde(default)]
 	pub reasoning_effort: Option<String>,
 	/// Target states returned by the native call.
 	pub results: Vec<AgentCollaborationResultDto>,
@@ -241,9 +235,6 @@ pub enum AgentTimelineContent {
 		truncated: bool,
 		/// Existing public activity projection, if applicable.
 		activity: Option<AgentActivityDto>,
-		/// Native tool metadata declares an interactive App UI resource.
-		#[serde(default)]
-		app_ui: bool,
 		/// Non-text content descriptors in original source order.
 		attachments: Vec<AgentTimelineAttachment>,
 	},
@@ -349,7 +340,7 @@ mod tests {
 	#[test]
 	fn assistant_source_threads_survive_the_tagged_timeline_wire_result() {
 		let mut page: AgentTimelinePage = serde_json::from_value(serde_json::json!({
-			"thread_id": "current", "entries": [], "next_cursor": null,
+			"thread_id": "current", "entries": [], "next_cursor": null, "weather": {},
 			"active_realtime_session_at_page_start": null
 		}))
 		.unwrap();

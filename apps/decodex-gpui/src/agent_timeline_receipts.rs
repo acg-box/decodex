@@ -726,7 +726,7 @@ mod tests {
 				content: AgentTimelineContent::Item {
 					collaboration: None,
 					phase: None,
-					app_ui: false,
+
 					turn_id: turn.into(),
 					item_id: id.into(),
 					kind: "plan".into(),

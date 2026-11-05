@@ -118,7 +118,7 @@ impl DesktopSettingsController {
 		let mut state = self.lock();
 		let settings = state.settings.ok_or(DesktopSettingsInputError::NotLoaded)?;
 
-		state.queue_command(settings.show_in_menu_bar, enabled, settings.revision)?;
+		state.queue_command(enabled, settings.revision)?;
 
 		drop(state);
 
@@ -396,16 +396,10 @@ impl DesktopSettingsController {
 		match result.outcome {
 			CommandOutcome::Succeeded => {
 				if let (
-					CommandPayload::SetDesktopSettings {
-						show_in_menu_bar,
-						auto_activate_quota,
-						auto_recap,
-					},
+					CommandPayload::SetDesktopSettings { auto_activate_quota },
 					Some(ResultPayload::DesktopSettingsChanged { settings }),
 				) = (&in_flight.envelope.payload, result.payload.as_ref())
-					&& settings.show_in_menu_bar == *show_in_menu_bar
-					&& auto_activate_quota.is_none_or(|value| value == settings.auto_activate_quota)
-					&& auto_recap.is_none_or(|value| value == settings.auto_recap)
+					&& settings.auto_activate_quota == *auto_activate_quota
 					&& settings.is_valid()
 					&& result.entity_revision == Some(settings.revision)
 				{
@@ -557,7 +551,6 @@ impl State {
 
 	fn queue_command(
 		&mut self,
-		show_in_menu_bar: bool,
 		auto_activate_quota: bool,
 		expected_revision: EntityRevision,
 	) -> Result<(), DesktopSettingsInputError> {
@@ -586,11 +579,7 @@ impl State {
 			expected_revision: Some(expected_revision),
 			correlation_id: identity.correlation_id,
 			causation_id: None::<CausationId>,
-			payload: CommandPayload::SetDesktopSettings {
-				show_in_menu_bar,
-				auto_activate_quota: Some(auto_activate_quota),
-				auto_recap: None,
-			},
+			payload: CommandPayload::SetDesktopSettings { auto_activate_quota },
 		});
 		self.command = DesktopSettingsCommandState::Sending;
 
@@ -703,9 +692,8 @@ mod tests {
 					query_id: query.query_id,
 					payload: QueryResultPayload::DesktopSettings(DesktopSettingsResult::Available(
 						DesktopSettingsDto {
-							show_in_menu_bar: true,
 							auto_activate_quota: false,
-							auto_recap: false,
+
 							revision: EntityRevision(3)
 						}
 					),),
@@ -718,7 +706,7 @@ mod tests {
 
 		assert_eq!(snapshot.load, DesktopSettingsLoadState::Ready);
 		assert!(snapshot.can_toggle);
-		assert!(snapshot.settings.expect("settings are available").show_in_menu_bar);
+		assert!(!snapshot.settings.expect("settings are available").auto_activate_quota);
 	}
 
 	#[tokio::test]
@@ -735,9 +723,8 @@ mod tests {
 				panic!("connection must query settings")
 			};
 			let newer = DesktopSettingsDto {
-				show_in_menu_bar: false,
 				auto_activate_quota: false,
-				auto_recap: true,
+
 				revision: EntityRevision(event_revision),
 			};
 
@@ -768,9 +755,8 @@ mod tests {
 					query_id: query.query_id,
 					payload: QueryResultPayload::DesktopSettings(DesktopSettingsResult::Available(
 						DesktopSettingsDto {
-							show_in_menu_bar: true,
 							auto_activate_quota: true,
-							auto_recap: false,
+
 							revision: EntityRevision(query_revision),
 						},
 					)),
@@ -815,9 +801,8 @@ mod tests {
 					query_id: query.query_id,
 					payload: QueryResultPayload::DesktopSettings(DesktopSettingsResult::Available(
 						DesktopSettingsDto {
-							show_in_menu_bar: true,
 							auto_activate_quota: !enabled,
-							auto_recap: true,
+
 							revision: EntityRevision(8),
 						},
 					)),
@@ -847,12 +832,8 @@ mod tests {
 				DesktopSettingsRouteOutcome::Fresh
 			);
 
-			let settings = DesktopSettingsDto {
-				show_in_menu_bar: true,
-				auto_activate_quota: enabled,
-				auto_recap: true,
-				revision: EntityRevision(9),
-			};
+			let settings =
+				DesktopSettingsDto { auto_activate_quota: enabled, revision: EntityRevision(9) };
 
 			assert_eq!(
 				controller.route_command_result(
@@ -875,8 +856,7 @@ mod tests {
 			let snapshot = controller.snapshot();
 
 			assert_eq!(snapshot.command, DesktopSettingsCommandState::Accepted);
-			assert!(snapshot.settings.expect("settings remain available").auto_recap);
-			assert!(snapshot.settings.expect("settings remain available").show_in_menu_bar);
+
 			assert_eq!(
 				snapshot.settings.expect("settings remain available").auto_activate_quota,
 				enabled

@@ -122,7 +122,6 @@ pub struct WorkResult {
 	/// Exact contributor instruction, absent for a self-produced Result.
 	pub instruction_id: Option<String>,
 	/// Exact native Subagent contribution, absent for self-produced or peer Results.
-	#[serde(default)]
 	pub native_contribution_id: Option<String>,
 	/// Persistent Agent accountable for the contribution.
 	pub agent_id: String,
@@ -257,7 +256,6 @@ pub struct NativeWorkDelivery {
 	/// Exact inbound native message, independent of a later parent activity.
 	pub message_id: String,
 	/// How the native receiving message was associated with its prepared assignment.
-	#[serde(default)]
 	pub assignment_proof: NativeAssignmentProof,
 }
 
@@ -285,13 +283,10 @@ impl NativeAssignmentProof {
 #[serde(deny_unknown_fields)]
 pub struct WorkPortfolio {
 	/// Open Works with current returned evidence that still needs an owner assessment.
-	#[serde(default)]
 	pub awaiting_assessment: Vec<String>,
 	/// This view contains Work headers only. Read the selected Work before using its evidence.
-	#[serde(default)]
 	pub summary_only: bool,
 	/// Saved native execution attribution; unbound intent requires exact history reconciliation.
-	#[serde(default)]
 	pub native_contributions: Vec<NativeContribution>,
 	/// Selected current outcomes.
 	pub works: Vec<Work>,

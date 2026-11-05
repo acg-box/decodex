@@ -8,12 +8,9 @@ enum ResetCardServiceError: String, Decodable, Equatable, Sendable {
 	case accountNotFound = "account_not_found"
 	case accountStateRejected = "account_state_rejected"
 	case vaultUnavailable = "vault_unavailable"
-	case schemaUnsupported = "schema_unsupported"
 	case providerUnavailable = "provider_unavailable"
 	case inventoryIncomplete = "inventory_incomplete"
 	case inventoryChanged = "inventory_changed"
-	case requestTimedOut = "request_timed_out"
-	case resourceExhausted = "resource_exhausted"
 	case productStateUnavailable = "product_state_unavailable"
 	case effectAmbiguous = "effect_ambiguous"
 
@@ -27,18 +24,12 @@ enum ResetCardServiceError: String, Decodable, Equatable, Sendable {
 			return "Account cannot use a reset card now."
 		case .vaultUnavailable:
 			return "Credential store unavailable."
-		case .schemaUnsupported:
-			return "Saved reset result incompatible with this provider version."
 		case .providerUnavailable:
 			return "Reset provider unavailable."
 		case .inventoryIncomplete:
 			return "Reset card list incomplete."
 		case .inventoryChanged:
 			return "Reset cards changed. Refresh and select again."
-		case .requestTimedOut:
-			return "Reset provider timed out."
-		case .resourceExhausted:
-			return "Reset service busy. Try later."
 		case .productStateUnavailable:
 			return "The reset status is unavailable."
 		case .effectAmbiguous:

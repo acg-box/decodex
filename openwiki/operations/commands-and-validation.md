@@ -44,6 +44,8 @@ sources:
     resource: repo://crates/decodex-components/src/ragflow_service.rs
   - id: openwiki-source-9ecfe8c96199e765ca2b4e1b
     resource: repo://crates/decodex-components/src/ragflow.rs
+  - id: openwiki-source-62c1273bf1b2ac5041d1e920
+    resource: repo://crates/decodex-core/src/assistant.rs
   - id: openwiki-source-95a7168e447de14b4b758f16
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_archive_tests.rs
   - id: openwiki-source-1a964823f348372d89aa1920
@@ -124,10 +126,10 @@ sources:
     resource: repo://scripts/macos/test_native_app.sh
   - id: openwiki-source-e201f60894c32a914dac99ee
     resource: repo://scripts/vnext/run_native_regression.py
-generated: { by: "codex", at: "2026-11-05T13:44:11.168Z" }
+generated: { by: "codex", at: "2026-11-05T14:56:49.835Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-05T13:48:42.186Z
+    at: 2026-11-05T14:56:49.835Z
 ---
 
 
@@ -170,7 +172,7 @@ The database gate uses an isolated owner-private root. It is not permission to r
 
 ## Assistant commands and checks
 
-Select an existing Agent with `decodex agent assistant-role --agent-id ID`. Use `--remove` to remove that role. `decodex agent assistant --agent-id ID --command-file /absolute/path/command.json --idempotency-key KEY` sends one typed command through the same service owner as the desktop. The command file contains an AssistantCommand, such as `{"operation":"refresh_context"}`. Do not put a RAGFlow API key in that file; Configure stores a component credential reference or a legacy service environment-variable name.
+Select an existing Agent with `decodex agent assistant-role --agent-id ID`. Use `--remove` to remove that role. `decodex agent assistant --agent-id ID --command-file /absolute/path/command.json --idempotency-key KEY` sends one typed command through the same service owner as the desktop. The command file contains an AssistantCommand, such as `{"operation":"refresh_context"}`. Do not put a RAGFlow API key in that file; Configure stores a private component credential reference bound to the RAGFlow origin.
 
 Assistant is built in and available from the sidebar by default. Its first use initializes an idle Agent; it has no Enable control in Components. Continuing instructions, teams and duties stay in chat. See [the lifecycle](../decisions/assistant-lifecycle.md) for supported operations and ownership.
 

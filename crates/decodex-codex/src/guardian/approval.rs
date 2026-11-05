@@ -137,14 +137,8 @@ enum SpecialPath {
 	Minimal,
 	Tmpdir,
 	SlashTmp,
-	#[serde(alias = "current_working_directory")]
-	ProjectRoots {
-		subpath: Option<String>,
-	},
-	Unknown {
-		path: String,
-		subpath: Option<String>,
-	},
+	ProjectRoots { subpath: Option<String> },
+	Unknown { path: String, subpath: Option<String> },
 }
 
 #[derive(Deserialize)]
@@ -156,19 +150,7 @@ struct Permissions {
 impl Permissions {
 	fn into_core(self) -> Option<Value> {
 		let filesystem = self.file_system.map(|fs| {
-			// Public entries is authoritative, even when empty. Never merge the
-			// legacy read/write mirrors into the explicit permission entry list.
-			let entries = fs.entries.unwrap_or_else(|| {
-				fs.read
-					.into_iter()
-					.flatten()
-					.map(|path| Entry { path: PermissionPath::Path { path }, access: Access::Read })
-					.chain(fs.write.into_iter().flatten().map(|path| Entry {
-						path: PermissionPath::Path { path },
-						access: Access::Write,
-					}))
-					.collect()
-			});
+			let entries = fs.entries;
 			let mut output = Vec::with_capacity(entries.len());
 
 			for entry in entries {
@@ -203,9 +185,11 @@ struct Network {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct FileSystem {
-	read: Option<Vec<String>>,
-	write: Option<Vec<String>>,
-	entries: Option<Vec<Entry>>,
+	#[serde(rename = "read")]
+	_read: Option<Vec<String>>,
+	#[serde(rename = "write")]
+	_write: Option<Vec<String>>,
+	entries: Vec<Entry>,
 	glob_scan_max_depth: Option<NonZeroUsize>,
 }
 
@@ -378,7 +362,7 @@ mod tests {
 				serde_json::json!({"type":"mcp_tool_call","server":"server","tool_name":"toolName","connector_id":"connector","connector_name":null,"tool_title":"Title"}),
 			),
 			(
-				serde_json::json!({"type":"requestPermissions","reason":"toolName","permissions":{"network":{"enabled":true},"fileSystem":{"read":["/tmp/a"],"write":["/tmp/b"]}}}),
+				serde_json::json!({"type":"requestPermissions","reason":"toolName","permissions":{"network":{"enabled":true},"fileSystem":{"read":["/tmp/a"],"write":["/tmp/b"],"entries":[{"path":{"type":"path","path":"/tmp/a"},"access":"read"},{"path":{"type":"path","path":"/tmp/b"},"access":"write"}]}}}),
 				serde_json::json!({"type":"request_permissions","reason":"toolName","permissions":{"network":{"enabled":true},"file_system":{"entries":[{"path":{"type":"path","path":"/tmp/a"},"access":"read"},{"path":{"type":"path","path":"/tmp/b"},"access":"write"}],"glob_scan_max_depth":null}}}),
 			),
 		];

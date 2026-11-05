@@ -235,7 +235,7 @@ mod tests {
 					text: "hello".into(),
 					phase: None,
 					truncated: false,
-					app_ui: false,
+
 					activity: None,
 					attachments: vec![],
 				},
@@ -370,7 +370,7 @@ mod tests {
 					text: "hello".into(),
 					phase: None,
 					truncated: false,
-					app_ui: false,
+
 					activity: None,
 					attachments: vec![],
 				},

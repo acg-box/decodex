@@ -1289,7 +1289,7 @@ mod tests {
 					text: "Original".into(),
 					truncated: false,
 					activity: None,
-					app_ui: false,
+
 					attachments: vec![],
 					collaboration: None,
 				},

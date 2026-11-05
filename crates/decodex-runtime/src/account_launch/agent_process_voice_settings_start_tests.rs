@@ -93,7 +93,7 @@ async fn voice_start_applies_effective_voice_and_rejects_failed_reads_before_rec
 					"thread/resume" if occupied =>
 						serde_json::json!({"error":{"code":-32_600,"message":format!("thread {thread} already has an active writer")}}),
 					"thread/read" | "thread/resume" =>
-						serde_json::json!({"result":{"thread":{"id":thread,"cwd":"/tmp","turns":[]}}}),
+						serde_json::json!({"result":{"thread":{"id":thread,"cwd":"/tmp","historyMode":"legacy","turns":[]}}}),
 					"config/read" if config_fails =>
 						serde_json::json!({"error":{"code":-32_603,"message":"unavailable"}}),
 					"config/read" =>

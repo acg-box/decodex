@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:3b6da6b88efaee706942cd5e8c5dad8e7376dada5dbec644cf18b161134f253a",
+  "pageVersion": "sha256:1b4df46d73a4450688adc8e0126ae11457b83f0542f6f2b5a5885498e92e6976",
   "claims": [
     {
       "id": "claim_8d60aaceeea74d6189e3d7b0b3ed21fe",
@@ -46,7 +46,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_prompt_edit.rs",
-          "version": "repo-file-v1:sha256:68ed6a10df1d7ec6ea966a2eaae3a1c5ec70ee67320fa5ee107b4687f5f897f2"
+          "version": "repo-file-v1:sha256:65b389ed800dd6cb92748dfbf694a8f5a06af86e8ea8ca16b120b2120ab54102"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_prompt_fork.rs",
@@ -70,11 +70,11 @@
     },
     {
       "id": "claim_864f8bcb454448fda60ef7425280ce96",
-      "statement": "Exact tool and file-change details use native item lookup with an older-history fallback only for an explicit unsupported method.",
+      "statement": "Exact tool and file-change details use the current native item-read API without an older-server history fallback.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-codex/src/app_server_client/history_item.rs#L1-L82",
-          "version": "repo-lines-v1:sha256:5f44e7af04f8ccaf0cb7cb311e76ce3f29b98159dbad6d0157ff263756285a6f:eyJzZWxlY3RlZExpbmVDb3VudCI6ODIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ2MWMwY2Q1MDZiNDRjMGQ2NjliYWY2NDVjNGZkYjM3ODhhMjE3MDhkYjdhZTRjYWE3NTMwY2Q0MTQzZmZhYWYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZmOWZiMWI3ZjdlNGEyNTliNDBkMmYyM2EyNDRhZGIzZjFjNGVlYjBjOTJlMzAyNDJiYThkZDMzNjQwMTUzMTciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFmNDlkYTYwNDU2NmY3NDJlNTAzNjJhMzJhNjU1YzI3N2Q4ZmUxY2U1OGI3YWQ3OTliOWJlNzU1YmY3NzRmZDUifQ"
+          "resource": "repo://crates/decodex-codex/src/app_server_client/history_item.rs",
+          "version": "repo-file-v1:sha256:e448cc7a3f3ada4c1b75a63e7c5b9d9ca6e88a22e26e10a7ce1e93386c96392e"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent_detail.rs",
@@ -122,11 +122,11 @@
     },
     {
       "id": "claim_6f8c8a882cfc49fcbe2ad7d42a33ef9d",
-      "statement": "The compatibility path requests retention only for work_instruction outputs; wakes, capacity retries and injected evidence remain unselected and retain application authority.",
+      "statement": "Recorded instruction delivery requests retention only for work_instruction outputs; wakes, capacity retries and injected evidence remain unselected and retain application authority.",
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/agent.rs",
-          "version": "repo-file-v1:sha256:039d3118591ad102c58ed25f91d662c2132a7f461b46b9f0ecb276d2e6dd4dbf"
+          "version": "repo-file-v1:sha256:723981fe7564aa4725c719a427a9f60fe6f58e805c83c79d374d6759d979fc7a"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/tests/external_context.rs",
@@ -152,7 +152,7 @@
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/process.rs",
-          "version": "repo-file-v1:sha256:8af3878a8595f53659543a5bb0486a1e537663e4b4fb2107783eddde21d1cbcb"
+          "version": "repo-file-v1:sha256:bc1e6230e991b4a960795b24d19c3b75f35829de7c77350b7a3ff2b4546ff512"
         }
       ]
     },
@@ -168,33 +168,33 @@
     },
     {
       "id": "claim_ac79a5891011490b80da38fbd08a7e92",
-      "statement": "The fixed native launch requests subagent context defaults, Agent message wakeups and fork-prefix preservation while leaving Code Mode transport native-owned; its retained description-first option is accepted as a removed native feature.",
+      "statement": "The fixed native launch requests subagent context defaults, Agent message wakeups and fork-prefix preservation while leaving Code Mode transport and tool ordering native-owned; it omits the removed description-first option.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/account_launch/process.rs#L133-L153",
-          "version": "repo-lines-v1:sha256:a6b2eef1867776015de103e94d4bd067aedc8577c70159c8c792ab426e27b791:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIwMmQyYzBkNmRjNWU3NGQ5MmZhMTRiOTFkYmVhMjY0MDkwYmViMzVmZGI5MTg4ZDliMzQxMTgxZGNlOWY0Y2UiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM2YjU1MTM4Y2EyM2U2ZGFkMjJiNjQ4ZjgyOWNlZGM4MWQyMDNiMTlmMTc2MzRkZjZiZTc2MGY1M2JlNGVmOWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNhNmU0ZjMxZGM3MTM2OTU2NmI1MWNjMWExOTVkNDUwY2RmODU3NWU2ZDdhNzYxYzU2NDJiYTMwMjVkYzM0NzMifQ"
+          "resource": "repo://crates/decodex-runtime/src/account_launch/process.rs",
+          "version": "repo-file-v1:sha256:bc1e6230e991b4a960795b24d19c3b75f35829de7c77350b7a3ff2b4546ff512"
         },
         {
-          "resource": "repo://crates/decodex-runtime/src/account_launch/process_native_control_tests.rs#L120-L172",
-          "version": "repo-lines-v1:sha256:1ed06d41fd1a7dfa79fa06ae7c95fcb0aa2161d90e906380c49bde001a36aae7:eyJzZWxlY3RlZExpbmVDb3VudCI6NTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUxOTQ4NGVlZGYzNjRmYjhjMTJmMWViOThmYmY2YTliNGY2NTBmNDI3ODc0YThkNzM1OTAxMGFhZGU0MzFiYzgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk2MWQyODk2OTlkMGMxY2RkNjQyNGYwZjlkMWU2ZTI3ZjdiYjZmN2RhZTQ5M2EwZmY1ZDk3NTI3MGY4ZDM2MjkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+          "resource": "repo://crates/decodex-runtime/src/account_launch/process_native_control_tests.rs",
+          "version": "repo-file-v1:sha256:62a7b8ce0fd31aac25ac1223577293d76d31a9b8741724b38e53141a2d179ec9"
         }
       ]
     },
     {
       "id": "claim_52eb8e8acaa34810819bb23c97df6feb",
-      "statement": "Current product scope includes separate Project, Agent and Work records, scoped peer Collaboration and native helper execution in the current schema and protocol 4.7.",
+      "statement": "Current product scope includes separate Project, Agent and Work records, scoped peer Collaboration and native helper execution in the current schema and protocol 4.8.",
       "evidence": [
         {
           "resource": "repo://crates/decodex-protocol/src/lib.rs",
-          "version": "repo-file-v1:sha256:e6c66e7ae6cf41b9c1d1a0eb228a235cadf54efa20b8da73d78f1470e09d6dbf"
+          "version": "repo-file-v1:sha256:1e18181fa19c12267b4178c541e788aa5bea6de951fba6016bed0e6175e063a5"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/work.rs",
-          "version": "repo-file-v1:sha256:e85c1662d66a6149590e709bc2a46d548f03fe1bb23a422b4250c938cff48668"
+          "version": "repo-file-v1:sha256:6285aee5a98d7dbc6671786356df58a2ebca5ea546efa8d9fb01dcb283c2cfa9"
         },
         {
           "resource": "repo://database/schema.sql",
-          "version": "repo-file-v1:sha256:ad3410025cf2a32514b1d7c020ca972bdc4f253e8d2e9198f8aa1ed908e190a2"
+          "version": "repo-file-v1:sha256:28c90d266d603c1c224b7a50d33ab7edef68af48208ae665b01c2f59a23a253a"
         }
       ]
     },
@@ -254,7 +254,7 @@
     },
     {
       "id": "claim_242dce1d84bd41829bf2704462e76665",
-      "statement": "The product exposes read-only native memory summary, exact collaboration reply and contribution history, and retained native usage in existing desktop surfaces through protocol 4.7. Native execution and explicit Work assessment retain their owners; missing and shared attribution remain explicit.",
+      "statement": "The product exposes read-only native memory summary, exact collaboration reply and contribution history, and retained native usage in existing desktop surfaces through protocol 4.8. Native execution and explicit Work assessment retain their owners; missing and shared attribution remain explicit.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_collaboration_cases.rs",
@@ -274,7 +274,7 @@
         },
         {
           "resource": "repo://crates/decodex-protocol/src/lib.rs",
-          "version": "repo-file-v1:sha256:e6c66e7ae6cf41b9c1d1a0eb228a235cadf54efa20b8da73d78f1470e09d6dbf"
+          "version": "repo-file-v1:sha256:1e18181fa19c12267b4178c541e788aa5bea6de951fba6016bed0e6175e063a5"
         }
       ]
     },
@@ -330,7 +330,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/conversations.rs",
-          "version": "repo-file-v1:sha256:0e4c6da959822e5b58b0b5c32e570184592d45496ce7ddc527c6ee001bd91db8"
+          "version": "repo-file-v1:sha256:2d41bccda9a43f337353dfc21ef0b0aa2104c7b67b41e1a29587a0a8093d83ac"
         },
         {
           "resource": "repo://automations/upstream/retained-contracts.json",
@@ -380,11 +380,11 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_sample_tests.rs",
-          "version": "repo-file-v1:sha256:d4eaa547e55d6061f854ee9ac7cb0866799522a4db44eebb483b11900fee8505"
+          "version": "repo-file-v1:sha256:08fd12d47eeca90e729b571d7c27a8a98d01a6e80a30de87cd8a559032765a40"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_surface.rs",
-          "version": "repo-file-v1:sha256:84095680a3dc1ea4cf0761c4caebd5be831b225e801ee7ec955d018421afa4d5"
+          "version": "repo-file-v1:sha256:a6993a42f4fa83ebb7a3a60540df72192e9ae0b3ac1478bc7ac7314d05f72c27"
         }
       ]
     },
@@ -404,7 +404,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/settings_surface.rs",
-          "version": "repo-file-v1:sha256:84095680a3dc1ea4cf0761c4caebd5be831b225e801ee7ec955d018421afa4d5"
+          "version": "repo-file-v1:sha256:a6993a42f4fa83ebb7a3a60540df72192e9ae0b3ac1478bc7ac7314d05f72c27"
         },
         {
           "resource": "repo://automations/upstream/retained-contracts.json#L4850-L4922",
@@ -464,11 +464,11 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_list_branch.rs",
-          "version": "repo-file-v1:sha256:272f2952df4391d9e70d7be5a3443cae1e0c76f96ba2bd849e13a20f14cb961d"
+          "version": "repo-file-v1:sha256:0ec5da197a25269aa38fff2d89cd4b5f7cc786e3f318c55d5d827f84bff62b00"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_work_browser.rs",
-          "version": "repo-file-v1:sha256:5318bc9f0e5f4c8a43e7f1a21f00e44ce8ccc39a41dca50fc60c7cbd783795d0"
+          "version": "repo-file-v1:sha256:d1ec80c8574e02ed5c7c80fc70dad830e571d8a219378b768c0014f51ada9e0d"
         },
         {
           "resource": "repo://automations/upstream/retained-contracts.json",
@@ -544,7 +544,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_composer.rs",
-          "version": "repo-file-v1:sha256:a8b2e438bc717f086f3c1b6673e83a034eb6c8be60848be5811f297161eedacd"
+          "version": "repo-file-v1:sha256:1bb82012c4bdc094f6d19cfc8c454e782db032efcbe67d50ef1bddbbdef5fe68"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_side_chat_question.rs",
@@ -552,7 +552,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_timeline_render.rs",
-          "version": "repo-file-v1:sha256:cc65f6570bcde4b84c3bea6ed3244a81784533def6d828d7bbf8931cdd4ab987"
+          "version": "repo-file-v1:sha256:077978d8e3d1e4f7f3611470c62426996673e1e6c190402700c7296a707924b5"
         }
       ]
     },
@@ -562,7 +562,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_prompt_edit.rs",
-          "version": "repo-file-v1:sha256:68ed6a10df1d7ec6ea966a2eaae3a1c5ec70ee67320fa5ee107b4687f5f897f2"
+          "version": "repo-file-v1:sha256:65b389ed800dd6cb92748dfbf694a8f5a06af86e8ea8ca16b120b2120ab54102"
         },
         {
           "resource": "repo://automations/upstream/retained-contracts.json",
@@ -644,13 +644,13 @@
         },
         {
           "resource": "repo://database/src/agent.rs",
-          "version": "repo-file-v1:sha256:626d7e727a18ac12155d7e53ca855cc916f63cc3951256c7357b957e296f2e63"
+          "version": "repo-file-v1:sha256:30cc4283fbade29ef1b2285803a5d573acc28040d5cb0dda84c7c38a139152a2"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-05T13:44:11.168Z"
+    "at": "2026-11-05T15:16:31.053Z"
   }
 }

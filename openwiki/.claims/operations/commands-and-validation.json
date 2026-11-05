@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:5d60b609f53a18086ca7692b06e4fa5d6929c77357d139e5206c157eef7619d2",
+  "pageVersion": "sha256:bef8baa47a3542f83c40840ea8493061858a071859b3c1492a9d9419a543f672",
   "claims": [
     {
       "id": "claim_8fa9284d970947ab9981d4144ecb9648",
@@ -98,7 +98,7 @@
         },
         {
           "resource": "repo://database/src/agent.rs",
-          "version": "repo-file-v1:sha256:626d7e727a18ac12155d7e53ca855cc916f63cc3951256c7357b957e296f2e63"
+          "version": "repo-file-v1:sha256:30cc4283fbade29ef1b2285803a5d573acc28040d5cb0dda84c7c38a139152a2"
         }
       ]
     },
@@ -364,7 +364,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/agent/tests/capacity.rs",
-          "version": "repo-file-v1:sha256:dbdfae5c0138582a1e80121bddb27785b579397a45540983d2177c1ac8838112"
+          "version": "repo-file-v1:sha256:27480ae36639e328b5661ad170674d4dbe9d1252ec4f713066fca6583f72a2f9"
         },
         {
           "resource": "repo://crates/decodex-runtime/tests/native_qualification/dotenv_startup.py",
@@ -510,7 +510,7 @@
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_recap_socket_tests.rs",
-          "version": "repo-file-v1:sha256:90e696ae4768ba102700a923d4a847175c00cecae9df6f8f6eb627a043666e9f"
+          "version": "repo-file-v1:sha256:4ef196654ce096dca1fd06e826b6085f1cc981972f505497e773b753ebc55caa"
         },
         {
           "resource": "repo://scripts/vnext/run_native_regression.py",
@@ -538,7 +538,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_prompt_edit.rs",
-          "version": "repo-file-v1:sha256:68ed6a10df1d7ec6ea966a2eaae3a1c5ec70ee67320fa5ee107b4687f5f897f2"
+          "version": "repo-file-v1:sha256:65b389ed800dd6cb92748dfbf694a8f5a06af86e8ea8ca16b120b2120ab54102"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_feedback.rs#L1-L24",
@@ -560,11 +560,11 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_timeline.rs",
-          "version": "repo-file-v1:sha256:94ea70df047f8fb39acb1221999a5bbfc405b1041b6da8a11e0176474d71cc8d"
+          "version": "repo-file-v1:sha256:4dfc9fbe77eb58506fdaee120671b2d23d541abbbe301a102fafaa083adeb527"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
-          "version": "repo-file-v1:sha256:d4064b1403c8b8f2d3a027cb5e70bf8e20ad5834569913add8fc9f612a7dffbb"
+          "version": "repo-file-v1:sha256:e128547b432701ef571dbde04fccbc328333dfa7a3b11df58c000e5a3cbed3dc"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
@@ -580,15 +580,15 @@
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_context_tests.rs",
-          "version": "repo-file-v1:sha256:2025e729c695317d95c938b1c1b0b5b4e201dd6b2245d17bdf41a31cbc7fd356"
+          "version": "repo-file-v1:sha256:c7c3deb6eed1c8579a4f7c554167c1df941b25b0d0146ad9329f4e2de91e8be2"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/ragflow.rs",
-          "version": "repo-file-v1:sha256:126f808d04eae1024eba392373e9a1050b59875de74e33aea0a544af4434138d"
+          "version": "repo-file-v1:sha256:6671e0d10094fbca56a40c13fbbe476edabd6b027b7104a087ef2388f35456c9"
         },
         {
           "resource": "repo://database/src/assistant.rs",
-          "version": "repo-file-v1:sha256:f96807ddb85427783694c17c7e9a93529d0d43d620ffda5eb7de5f7fe70e29d5"
+          "version": "repo-file-v1:sha256:3f0e073fdfa3a57e60afecd9c80d421d913224f041fd7df91aa629adabe0d8d0"
         }
       ]
     },
@@ -605,10 +605,24 @@
           "version": "repo-lines-v1:sha256:8cee9678be86f7de9fa3f4165f721c687cad0a9ee21b7709fd6507c7c805cb7b:eyJzZWxlY3RlZExpbmVDb3VudCI6MTU3LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIxYjI5YjhlY2E4MGYzOTJmMmZmMWU5YTA2MmZkYmJhNjdkNDI0NzgzMDNiYTQ1MWY3YmNhMDM4ZTMxNDFlOTE1IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJhMmM3OWUzMjJjZWRjNjdhZDY1MjRjMWRiMzQ2MzhlOTg4ZTA5YzRiZWJkYzJlNzRjZTkyNjQwYWU0MDZlMDU3IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MCwicHJlY2VkaW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
         }
       ]
+    },
+    {
+      "id": "claim_a6065ce5b7594168bb7d062d08966459",
+      "statement": "Assistant configuration stores only a private component credential reference bound to the RAGFlow origin; it does not select credentials through a service environment variable.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-core/src/assistant.rs",
+          "version": "repo-file-v1:sha256:d4139890fb093ad9084c8dc038faf57e00adbf27f71930dd1bfeec52feaa0d25"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/ragflow.rs",
+          "version": "repo-file-v1:sha256:6671e0d10094fbca56a40c13fbbe476edabd6b027b7104a087ef2388f35456c9"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-05T13:48:42.186Z"
+    "at": "2026-11-05T14:56:49.835Z"
   }
 }

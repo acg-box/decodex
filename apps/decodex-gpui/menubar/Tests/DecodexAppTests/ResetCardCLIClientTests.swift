@@ -320,14 +320,14 @@ final class ResetCardNativeClientTests: XCTestCase {
 		XCTAssertEqual(inventory.sevenDayQuota.usedPercent, 90)
 	}
 
-	func testNativeInventoryMapsTheDaemonDeadlineToATypedRetryableServiceError() async {
+	func testNativeInventoryMapsProviderFailureToATypedRetryableError() async {
 		let accountID = accountID
 		let authority = authority
 		let client = DecodexNativeClient { _, _ in
 			nativeSuccess(
 				operation: "get_reset_cards",
 				authority: authority,
-				data: #"{"outcome":"unavailable","data":{"error":"request_timed_out"}}"#
+				data: #"{"outcome":"unavailable","data":{"error":"provider_unavailable"}}"#
 			)
 		}
 
@@ -335,11 +335,11 @@ final class ResetCardNativeClientTests: XCTestCase {
 			_ = try await client.inventory(
 				for: nativeAccount(authority: authority, accountID: accountID, revision: 7)
 			)
-			XCTFail("Expected a typed deadline failure")
+			XCTFail("Expected a typed provider failure")
 		} catch {
 			XCTAssertEqual(
 				error as? ResetCardClientError,
-				.service(.requestTimedOut)
+				.service(.providerUnavailable)
 			)
 		}
 	}

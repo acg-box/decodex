@@ -140,7 +140,7 @@ async fn rejected_unknown_and_stale_steering_never_grant_access() {
 }
 
 #[tokio::test]
-async fn invalid_reference_input_is_atomic_and_legacy_text_does_not_grant() {
+async fn invalid_reference_input_is_atomic_and_plain_input_does_not_grant() {
 	let directory = tempfile::tempdir().unwrap();
 	let store = SqliteStore::open_test(&directory.path().join("references.sqlite3")).unwrap();
 
@@ -185,7 +185,7 @@ async fn invalid_reference_input_is_atomic_and_legacy_text_does_not_grant() {
 			source_event_id: "legacy".into(),
 			work_item_id: "recipient".into(),
 			event_kind: "user_message".into(),
-			payload: "Legacy text".into(),
+			payload: serde_json::json!({"text":"Legacy text"}).to_string(),
 		})
 		.await
 		.unwrap();

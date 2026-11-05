@@ -25,10 +25,8 @@ pub struct ReviewInitialModelSettings {
 	pub model: String,
 	/// Reviewed native reasoning effort.
 	pub reasoning_effort: Option<String>,
-	/// Legacy compatibility setting; the explicit service tier remains authoritative.
-	pub fast: bool,
 	/// Reviewed service tier.
-	pub service_tier: Option<ServiceTier>,
+	pub service_tier: ServiceTier,
 	/// Fresh account observation that supplied these choices.
 	pub source: InitialModelSource,
 }
@@ -67,8 +65,8 @@ impl SqliteStore {
                 .map_err(account_lifecycle::sql_error)?;
             let identity = conversations::digest(&[
                 request.conversation_id.as_str(), &request.expected_revision.to_string(),
-                &request.model, request.reasoning_effort.as_deref().unwrap_or(""), &request.fast.to_string(),
-                request.service_tier.as_ref().map_or("", ServiceTier::as_str), request.source.account_id.as_str(),
+                &request.model, request.reasoning_effort.as_deref().unwrap_or(""),
+                request.service_tier.as_str(), request.source.account_id.as_str(),
                 &request.source.account_revision.to_string(),
             ]);
 
@@ -100,11 +98,11 @@ impl SqliteStore {
             let now = crate::unix_micros().map_err(StoreError::from)?;
 
             transaction.execute(
-                "UPDATE quick_task_requests SET model = ?2, reasoning_effort = ?3, fast = ?4,
-                   service_tier = ?5, model_source_account_id = ?6, model_source_account_revision = ?7,
+                "UPDATE quick_task_requests SET model = ?2, reasoning_effort = ?3,
+                   service_tier = ?4, model_source_account_id = ?5, model_source_account_revision = ?6,
                    model_source_review_required = 0 WHERE conversation_id = ?1",
                 rusqlite::params![request.conversation_id.as_str(), request.model, request.reasoning_effort,
-                    request.fast, request.service_tier.as_ref().map(ServiceTier::as_str), request.source.account_id.as_str(),
+                    request.service_tier.as_str(), request.source.account_id.as_str(),
                     request.source.account_revision],
             ).map_err(account_lifecycle::sql_error)?;
             transaction.execute(

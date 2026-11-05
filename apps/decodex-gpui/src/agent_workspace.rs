@@ -2462,14 +2462,13 @@ impl AgentSurface {
 				.collect(),
 			memory_enabled: None,
 		});
-		self.fast = true;
 		if matches!(page, "speed-fallback" | "speed-fallback-menu") {
 			if let Some(decodex_protocol::AgentCapabilitiesResult::Available { models, .. }) =
 				&mut self.capabilities
 			{
 				for model in models {
 					model.service_tiers.push(decodex_protocol::AgentServiceTierDto {
-						id: decodex_protocol::ServiceTier::from_fast(true),
+						id: decodex_protocol::ServiceTier::priority(),
 						name: "Fast".into(),
 						description: String::new(),
 					});
@@ -2491,6 +2490,7 @@ impl AgentSurface {
 
 	/// Explicit capture fixture. Never installed by the normal application path.
 	pub(crate) fn visual_workspace_fixture(&mut self, cx: &mut Context<Self>) {
+		self.service_tier = Some(decodex_protocol::ServiceTier::priority());
 		self.work_board.graph = true;
 
 		self.handoffs.fixture();

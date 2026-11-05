@@ -594,11 +594,10 @@ CREATE TABLE conversations (
 ) STRICT;
 
 CREATE TABLE desktop_settings (
-	singleton        INTEGER PRIMARY KEY CHECK (singleton = 1),
-	show_in_menu_bar INTEGER NOT NULL CHECK (show_in_menu_bar IN (0, 1)),
-	revision         INTEGER NOT NULL CHECK (revision > 0)
-, auto_activate_quota INTEGER NOT NULL DEFAULT 1
-  CHECK (auto_activate_quota IN (0, 1)), auto_recap INTEGER NOT NULL DEFAULT 0 CHECK (auto_recap IN (0, 1))) STRICT;
+ singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+ auto_activate_quota INTEGER NOT NULL CHECK (auto_activate_quota IN (0, 1)),
+ revision INTEGER NOT NULL CHECK (revision > 0)
+) STRICT;
 
 CREATE TABLE guardian_review_details (
  id INTEGER PRIMARY KEY,
@@ -864,13 +863,12 @@ CREATE TABLE "quick_task_requests" (
   message TEXT NOT NULL CHECK (length(CAST(message AS BLOB)) BETWEEN 1 AND 1048576),
   working_directory TEXT NOT NULL CHECK (length(CAST(working_directory AS BLOB)) BETWEEN 1 AND 4096),
   created_at_micros INTEGER NOT NULL CHECK (created_at_micros > 0),
-  model TEXT NOT NULL DEFAULT 'gpt-5.6-sol' CHECK (length(CAST(model AS BLOB)) BETWEEN 1 AND 128),
+  model TEXT NOT NULL CHECK (length(CAST(model AS BLOB)) BETWEEN 1 AND 128),
   reasoning_effort TEXT CHECK (reasoning_effort IS NULL OR length(CAST(reasoning_effort AS BLOB)) BETWEEN 1 AND 128),
-  fast INTEGER NOT NULL DEFAULT 0 CHECK (fast IN (0, 1)),
-  service_tier TEXT CHECK (service_tier IS NULL OR (
+  service_tier TEXT NOT NULL CHECK (
     length(CAST(service_tier AS BLOB)) BETWEEN 1 AND 64
     AND service_tier NOT GLOB '*[^a-zA-Z0-9_.-]*'
-  ))
+  )
 , model_source_account_id TEXT, model_source_account_revision INTEGER
 CHECK (
   (model_source_account_id IS NULL AND model_source_account_revision IS NULL)
@@ -1356,7 +1354,7 @@ END;
 
 INSERT INTO "account_routing_control" VALUES(1,'balanced',NULL,1,1);
 
-INSERT INTO "desktop_settings" VALUES(1,1,1,1,0);
+INSERT INTO "desktop_settings" VALUES(1,1,1);
 
 INSERT INTO "guardian_settings" VALUES(1,'user',0,1);
 

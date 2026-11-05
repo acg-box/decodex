@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:d7e8707cb6745cb904a366c035be9b38e05e50e6fa2057d0b6ed799c33eef4cf",
+  "pageVersion": "sha256:1ce00b01182bbc7c409a904dcc6b4efe9e7dd77135b47c93092a1006fed2042d",
   "claims": [
     {
       "id": "claim_f04618e1bd8949938c67c23ed12ff25c",
@@ -36,11 +36,11 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/ResetCardCLIClient.swift",
-          "version": "repo-file-v1:sha256:f902770d8d23b12a4a15ca0a786abefa976edabb7e48c9b22da694127b5aef0c"
+          "version": "repo-file-v1:sha256:af2446eef9913d72edf944e64f8c148bb1de5ae6d1d0522ea854feffda3a7431"
         },
         {
           "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/ResetCardStore.swift",
-          "version": "repo-file-v1:sha256:27d56628e3299dc0e705e6fe421d9591d051fe77e8df96afb5db7adf2f0b7469"
+          "version": "repo-file-v1:sha256:425be4e14c586ca104c21c9001196ddbd87bc4efa27c02e89fe113833e69b474"
         },
         {
           "resource": "repo://crates/decodex-app-client-ffi/src/lib.rs",
@@ -101,11 +101,11 @@
           "version": "repo-file-v1:sha256:06b04c6aa57620532e40364a5fcdc3cbd0fbad94539813e9bab880da59a63d83"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/shell.rs#L3490-L3528",
+          "resource": "repo://apps/decodex-gpui/src/shell.rs#L3494-L3532",
           "version": "repo-lines-v1:sha256:1ed363bcddd4580aff2acd8f5b0482fd05a585ca0de7a08668c811a674628369:eyJzZWxlY3RlZExpbmVDb3VudCI6MzksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJiNTRjODM3OGFmM2MxNjMwNTU3NjFhMGY2ZDE2ZjBlM2RkMzgyZmE2NzUwZTg1MWYzZjVlZWRmMGFhYzIwNjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjExYTY5MDYzZmFmOWU3ZmFjY2I1MGY0ZDM1ZThmMzI4OTA2NGNkMWUxYmI3ZGNkM2VhYjJhZWE1NmY2MWE5YmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM2OTY1NmQ0NTQ1ZjAzZWQ3NmU1ODRmMDM1NmJkYjU5YTA4ZTBlNjdmNmM2NTBlODdhYjAzYWVkZjU4ZDZiODYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImRhOWE2MDFiYjFlNzhiY2MyNTM1ZmFkOTZkYWEwMGEyNWEyZTczNjcyN2YxYTQzOTIxYmVkNGJjOTZiNzUzY2MifQ"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/shell.rs#L3987-L4025",
+          "resource": "repo://apps/decodex-gpui/src/shell.rs#L3991-L4029",
           "version": "repo-lines-v1:sha256:4b377bf4d107610733a4115e214d3b1bc127af20f11e2f0f2aca84cd23b58185:eyJzZWxlY3RlZExpbmVDb3VudCI6MzksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFlNTU4NDFhZTI2YWYxNDMwYTdjNTMwMDcxOGQyNTkxOTE2ZDBiM2E1ODY0ZGFmNTU5Mjg4ZTIxY2MzZTFkMzMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYyOTY0MDc5YzNjNWM4MTUyMGVmMzNhMmI5ZDJlMTVhMWI4NGQ3MjgwZGI4NTkwZGNkNjU3NDdlM2UwMTJhNDAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA4NTcxMGVlMzE1MDI0MTE1NzIzNzM2ZDMyNWNlNGEwNjIwNTM3MWM1ZWVlNWE2Y2JiNzVlZjZmNjJhYzUxZjYifQ"
         },
         {
@@ -124,7 +124,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/ResetCardStore.swift",
-          "version": "repo-file-v1:sha256:27d56628e3299dc0e705e6fe421d9591d051fe77e8df96afb5db7adf2f0b7469"
+          "version": "repo-file-v1:sha256:425be4e14c586ca104c21c9001196ddbd87bc4efa27c02e89fe113833e69b474"
         },
         {
           "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/ResetCardUse.swift",
@@ -171,6 +171,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-05T05:20:04.159Z"
+    "at": "2026-11-05T14:56:49.835Z"
   }
 }

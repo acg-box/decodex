@@ -449,7 +449,7 @@ mod tests {
 				text: String::new(),
 				phase: None,
 				truncated: false,
-				app_ui: false,
+
 				attachments: vec![],
 				activity: Some(AgentActivityDto {
 					retained_output_lines: None,

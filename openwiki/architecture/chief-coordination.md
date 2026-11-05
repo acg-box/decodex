@@ -118,17 +118,17 @@ sources:
     resource: repo://database/src/works/collaboration.rs
   - id: openwiki-source-c0eb738b42368debe7ef7545
     resource: repo://database/src/works/commands.rs
-generated: { by: "codex", at: "2026-11-05T13:44:11.168Z" }
+generated: { by: "codex", at: "2026-11-05T14:56:49.835Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-05T13:48:42.186Z
+    at: 2026-11-05T14:56:49.835Z
 ---
 
 # Project, Agent and Work coordination
 
 Project, Agent and Work are separate durable objects. An Agent has one current native conversation. Assistant and Project Lead are responsibilities of an existing Agent. The user can work directly with the Project Lead from discussion through delivery. One Agent can own Work in several Projects. There is no fixed L0/L1/L2 hierarchy or mandatory personal router.
 
-The [accepted contract](../decisions/project-agent-work.md) defines the shared vocabulary and minimum state rules. The default model tools are `work_read` and `work_manage`. The user can create persistent Agents directly. A selected Assistant can also create independent persistent Agents under an exact delivered user delegation. Native Codex supplies bounded Subagents; Decodex does not create a second temporary executor. The former managed-worker creation, continuation and goal tools are retired from the default tool surface and refused if an older conversation still advertises them. Durable conversation records preserve native history.
+The [accepted contract](../decisions/project-agent-work.md) defines the shared vocabulary and minimum state rules. The default model tools are `work_read` and `work_manage`. The user can create persistent Agents directly. A selected Assistant can also create independent persistent Agents under an exact delivered user delegation. Native Codex supplies bounded Subagents; Decodex does not create a second temporary executor. The former managed-worker creation, continuation, dependency and goal tools have no descriptors or dispatch handlers. They use the ordinary unknown-tool refusal. Durable conversation records preserve native history.
 
 ## Owners and flow
 
@@ -200,7 +200,7 @@ The existing inbox owns Decodex user input, async answers and peer application e
 
 Native user queues remain native-owned. They do not carry all local dependency, account, application-evidence and delivery semantics. A future queue cutover would need explicit reconciliation of uncertain admission before any pending input moves. No such cutover is part of this implementation.
 
-The native context preference panel still edits `features.retain_client_tool_outputs`. Compatibility delegation records can request bounded retention for `work_instruction`; wake and retry evidence does not request it. Native retention does not replace durable Work records or their owner.
+The native context preference panel still edits `features.retain_client_tool_outputs`. Recorded application instructions can request bounded retention for `work_instruction`; wake and retry evidence does not request it. Native retention does not replace durable Work records or their owner.
 
 ## Archive synchronization
 

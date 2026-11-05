@@ -36,8 +36,7 @@ fn original() -> CommandEnvelope {
 			execution: ConversationExecutionSettings {
 				model: ConversationModel::new("native-model").unwrap(),
 				reasoning_effort: None,
-				fast: false,
-				service_tier: None,
+				service_tier: decodex_core::ServiceTier::standard(),
 			},
 		},
 	}
@@ -71,8 +70,7 @@ async fn persist_original(root: &DecodexRoot, original: &CommandEnvelope, scope:
 				working_directory: command.working_directory,
 				model: command.execution.model,
 				reasoning_effort: None,
-				fast: false,
-				service_tier: None,
+				service_tier: decodex_core::ServiceTier::standard(),
 			},
 		)
 		.await

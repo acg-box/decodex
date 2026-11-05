@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:4251ee5719ad7f6c12677b8d6f1b986a767aace48070feda18e9a680348dd299",
+  "pageVersion": "sha256:b6cf14b7ca0ddcb84054257da126e206cdc2265419944458f919f9948d8011b5",
   "claims": [
     {
       "id": "claim_180212e57d1d44369eb0d24fc94defa4",
@@ -46,15 +46,15 @@
         },
         {
           "resource": "repo://crates/decodex-core/src/permissions.rs",
-          "version": "repo-file-v1:sha256:1551a7b3b4b00e90e8e2c3d87f1a2320aaaa312087ccf229a76bc019141b184c"
+          "version": "repo-file-v1:sha256:c44f69b80facbe809af9d4c150dd3dcc1adedae237a080a0ed2f2f5163b6dfa5"
         },
         {
           "resource": "repo://crates/decodex-protocol/src/agent.rs",
-          "version": "repo-file-v1:sha256:03e675c6a3b8d439e02fb4adc5a962f185128fed401864f9860836d03450e719"
+          "version": "repo-file-v1:sha256:83277ce09c0b10380fa407b310d2178290b511064470a93b26faa944d548099e"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent.rs",
-          "version": "repo-file-v1:sha256:039d3118591ad102c58ed25f91d662c2132a7f461b46b9f0ecb276d2e6dd4dbf"
+          "version": "repo-file-v1:sha256:723981fe7564aa4725c719a427a9f60fe6f58e805c83c79d374d6759d979fc7a"
         }
       ]
     },
@@ -106,7 +106,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/agent.rs",
-          "version": "repo-file-v1:sha256:039d3118591ad102c58ed25f91d662c2132a7f461b46b9f0ecb276d2e6dd4dbf"
+          "version": "repo-file-v1:sha256:723981fe7564aa4725c719a427a9f60fe6f58e805c83c79d374d6759d979fc7a"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/assistant.rs",
@@ -114,13 +114,13 @@
         },
         {
           "resource": "repo://database/src/assistant.rs",
-          "version": "repo-file-v1:sha256:f96807ddb85427783694c17c7e9a93529d0d43d620ffda5eb7de5f7fe70e29d5"
+          "version": "repo-file-v1:sha256:3f0e073fdfa3a57e60afecd9c80d421d913224f041fd7df91aa629adabe0d8d0"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-05T12:44:44.258Z"
+    "at": "2026-11-05T14:56:49.835Z"
   }
 }

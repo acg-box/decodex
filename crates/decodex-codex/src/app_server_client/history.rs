@@ -168,7 +168,7 @@ impl AppServerClient {
 		let history = self.read_history_metadata(thread).await?;
 
 		match history.pointer("/thread/historyMode").and_then(Value::as_str) {
-			None | Some("legacy") => {
+			Some("legacy") => {
 				let turns = history
 					.pointer("/thread/turns")
 					.and_then(Value::as_array)
@@ -259,7 +259,7 @@ impl AppServerClient {
 
 		let mode = history.pointer("/thread/historyMode");
 
-		if mode.is_none() || mode == Some(&serde_json::json!("legacy")) {
+		if mode == Some(&serde_json::json!("legacy")) {
 			history = self
 				.thread_read(serde_json::json!({"threadId":thread,"includeTurns":true}))
 				.await?;
@@ -274,7 +274,7 @@ impl AppServerClient {
 		let mut history = self.read_history_metadata(thread).await?;
 		let mode = history.pointer("/thread/historyMode");
 
-		if mode.is_none() || mode == Some(&serde_json::json!("legacy")) {
+		if mode == Some(&serde_json::json!("legacy")) {
 			return Ok(history);
 		}
 		if mode != Some(&serde_json::json!("paginated")) {
@@ -742,8 +742,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn legacy_read_preserves_history_and_checks_thread_identity() {
-		let history =
-			serde_json::json!({"thread":{"id":"thread/opaque","turns":[{"id":"target"}]}});
+		let history = serde_json::json!({"thread":{"id":"thread/opaque","historyMode":"legacy","turns":[{"id":"target"}]}});
 		let (result, requests) =
 			read(vec![("thread/read", history.clone()), ("thread/read", history.clone())]).await;
 
@@ -815,7 +814,7 @@ mod tests {
 
 		assert_eq!(result.unwrap(), serde_json::json!([{"id":"one"},{"id":"two"}]));
 
-		let legacy = serde_json::json!({"thread":{"id":"thread/opaque","turns":[{"id":"baseline"},{"id":"new"}]}});
+		let legacy = serde_json::json!({"thread":{"id":"thread/opaque","historyMode":"legacy","turns":[{"id":"baseline"},{"id":"new"}]}});
 		let (result, _) = run(
 			vec![("thread/read", legacy.clone()), ("thread/read", legacy)],
 			Some(Some("baseline")),

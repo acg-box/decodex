@@ -425,26 +425,22 @@ pub struct EntityRevision(pub u64);
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct DesktopSettingsDto {
-	/// Whether the sole Decodex application exposes its in-process menu-bar item.
-	pub show_in_menu_bar: bool,
 	/// Automatically activate fresh weekly quota windows.
 	pub auto_activate_quota: bool,
-	/// Permit optional automatic desktop task recaps.
-	pub auto_recap: bool,
 	/// Positive optimistic revision of this singleton projection.
 	pub revision: EntityRevision,
 }
 impl DesktopSettingsDto {
 	/// Construct one valid positive-revision desktop settings projection.
 	pub const fn new(
-		show_in_menu_bar: bool,
+		auto_activate_quota: bool,
 		revision: EntityRevision,
 	) -> Result<Self, &'static str> {
 		if revision.0 == 0 {
 			return Err("desktop settings revision must be positive");
 		}
 
-		Ok(Self { show_in_menu_bar, auto_activate_quota: true, auto_recap: false, revision })
+		Ok(Self { auto_activate_quota, revision })
 	}
 
 	/// Validate an untrusted decoded desktop settings projection.
@@ -1184,19 +1180,12 @@ pub enum ResetCardError {
 	AccountStateRejected,
 	/// The daemon credential vault could not provide an account credential.
 	VaultUnavailable,
-	/// Compatibility result retained for decoding older durable/public records. The current
-	/// direct provider API path never emits an executable or app-server version requirement.
-	SchemaUnsupported,
 	/// The upstream provider could not establish current state.
 	ProviderUnavailable,
 	/// The provider inventory was incomplete or ambiguous.
 	InventoryIncomplete,
 	/// The selected public descriptor no longer identifies the same available card.
 	InventoryChanged,
-	/// The daemon's bounded provider observation deadline elapsed.
-	RequestTimedOut,
-	/// A bounded local resource limit was reached.
-	ResourceExhausted,
 	/// Authoritative product state was unavailable.
 	ProductStateUnavailable,
 	/// The external effect may have happened and requires authoritative reconciliation.
@@ -2651,16 +2640,10 @@ pub enum CommandPayload {
 		/// Bounded operation and selected execution configuration.
 		action: Box<AgentActionDto>,
 	},
-	/// Replace the persistent menu-bar preference for the sole Decodex application.
+	/// Set the persistent quota activation preference.
 	SetDesktopSettings {
-		/// Whether Decodex.app shows its same-process status item.
-		show_in_menu_bar: bool,
-		/// Omission preserves the current activation preference.
-		#[serde(skip_serializing_if = "Option::is_none")]
-		auto_activate_quota: Option<bool>,
-		/// Omission preserves the automatic recap preference.
-		#[serde(skip_serializing_if = "Option::is_none")]
-		auto_recap: Option<bool>,
+		/// Automatically activate fresh weekly quota windows.
+		auto_activate_quota: bool,
 	},
 	/// Create one ordinary conversation and submit its first turn.
 	CreateConversation {
@@ -2672,7 +2655,7 @@ pub enum CommandPayload {
 		working_directory: ConversationWorkingDirectory,
 		/// Explicit execution settings for this user send.
 		execution: ConversationExecutionSettings,
-		/// Source of the reviewed model settings; absent for legacy clients.
+		/// Optional source of reviewed model settings.
 		#[serde(skip_serializing_if = "Option::is_none")]
 		initial_model_source: Option<Box<InitialModelSource>>,
 	},
@@ -2712,9 +2695,8 @@ pub enum CommandPayload {
 		working_directory: ConversationWorkingDirectory,
 		/// Explicit execution settings for this user send.
 		execution: ConversationExecutionSettings,
-		/// Explicit field choices. Absent preserves the legacy all-explicit command.
-		#[serde(skip_serializing_if = "Option::is_none")]
-		overrides: Option<ConversationExecutionOverrides>,
+		/// Explicit field choices for this turn.
+		overrides: ConversationExecutionOverrides,
 	},
 	/// Reconcile one selected Decodex task with its exact Codex archive state.
 	RefreshConversation {
@@ -4726,7 +4708,7 @@ mod tests {
 				execution: crate::ConversationExecutionSettings::new(
 					crate::ConversationModel::new("gpt-6-astra").expect("model"),
 					crate::ConversationReasoningEffort::Low,
-					false,
+					decodex_core::ServiceTier::standard(),
 				),
 				initial_model_source: None,
 			},
@@ -4776,7 +4758,7 @@ mod tests {
 			execution: crate::ConversationExecutionSettings::new(
 				crate::ConversationModel::new("gpt-5.6-sol").expect("bounded model"),
 				crate::ConversationReasoningEffort::High,
-				false,
+				decodex_core::ServiceTier::standard(),
 			),
 		};
 		let current = serde_json::to_value(&create).unwrap();
@@ -4800,7 +4782,7 @@ mod tests {
 					"execution": {
 						"model": "gpt-5.6-sol",
 						"reasoning_effort": "high",
-						"fast": false,
+						"service_tier":"default",
 					},
 				},
 			}),
@@ -5242,36 +5224,6 @@ mod tests {
 	}
 
 	#[test]
-	fn desktop_recap_preference_is_explicit_and_omission_preserves_it() {
-		let legacy = serde_json::to_value(CommandPayload::SetDesktopSettings {
-			show_in_menu_bar: true,
-			auto_activate_quota: None,
-			auto_recap: None,
-		})
-		.unwrap();
-
-		assert!(!legacy.to_string().contains("auto_recap"));
-
-		let decoded: CommandPayload = serde_json::from_value(legacy).unwrap();
-
-		assert!(matches!(decoded, CommandPayload::SetDesktopSettings { auto_recap: None, .. }));
-
-		for enabled in [false, true] {
-			let command = CommandPayload::SetDesktopSettings {
-				show_in_menu_bar: true,
-				auto_activate_quota: None,
-				auto_recap: Some(enabled),
-			};
-			let decoded: CommandPayload =
-				serde_json::from_value(serde_json::to_value(command).unwrap()).unwrap();
-
-			assert!(
-				matches!(decoded, CommandPayload::SetDesktopSettings { auto_recap: Some(value), .. } if value == enabled)
-			);
-		}
-	}
-
-	#[test]
 	fn hello_wire_shape_is_a_stable_json_golden() {
 		let message = ClientMessage::Hello(ClientHello {
 			version: CURRENT_VERSION,
@@ -5509,12 +5461,13 @@ mod tests {
 
 		assert!(serde_json::from_value::<ResetCardInventoryResult>(contradictory_empty).is_err());
 
-		let timed_out =
-			ResetCardInventoryResult::Unavailable { error: super::ResetCardError::RequestTimedOut };
+		let timed_out = ResetCardInventoryResult::Unavailable {
+			error: super::ResetCardError::ProviderUnavailable,
+		};
 		let encoded_timeout = serde_json::to_value(&timed_out).unwrap();
 
 		assert_eq!(encoded_timeout["outcome"], "unavailable");
-		assert_eq!(encoded_timeout["data"]["error"], "request_timed_out");
+		assert_eq!(encoded_timeout["data"]["error"], "provider_unavailable");
 		assert_eq!(
 			serde_json::from_value::<ResetCardInventoryResult>(encoded_timeout).unwrap(),
 			timed_out,
@@ -5840,7 +5793,7 @@ mod tests {
 					execution: crate::ConversationExecutionSettings::new(
 						crate::ConversationModel::new("gpt-6-astra").expect("model"),
 						crate::ConversationReasoningEffort::Low,
-						false,
+						decodex_core::ServiceTier::standard(),
 					),
 					source: crate::InitialModelSource {
 						account_id: EntityId::new("11234567-89ab-4def-8123-456789abcdef")

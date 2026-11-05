@@ -437,7 +437,7 @@ struct DeviceCodeRequest<'a> {
 #[derive(Deserialize, Zeroize, ZeroizeOnDrop)]
 struct DeviceCodeResponse {
 	device_auth_id: String,
-	#[serde(alias = "user_code", alias = "usercode")]
+	#[serde(alias = "usercode")]
 	user_code: String,
 	#[serde(default, deserialize_with = "deserialize_interval")]
 	interval: u64,

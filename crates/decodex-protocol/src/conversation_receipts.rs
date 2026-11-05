@@ -92,8 +92,7 @@ mod tests {
 			execution: ConversationExecutionSettings {
 				model: ConversationModel::new("native-model").unwrap(),
 				reasoning_effort: None,
-				fast: false,
-				service_tier: None,
+				service_tier: decodex_core::ServiceTier::standard(),
 			},
 		};
 		let query = ClientMessage::Query(QueryEnvelope {

@@ -23,10 +23,8 @@ use crate::{
 #[serde(deny_unknown_fields)]
 pub struct DesktopDraftDocument {
 	/// Input entered before any service profile was selected. Never a work-owned draft.
-	#[serde(default)]
 	pub unbound: DesktopComposerDraft,
 	/// Ordinary input by exact directory before a service is selected. No service authority.
-	#[serde(default)]
 	pub unbound_ordinary: BTreeMap<String, DesktopOrdinaryDraft>,
 	/// Local storage schema version, independent of the service wire version.
 	pub version: u32,
@@ -59,7 +57,7 @@ impl DesktopDraftDocument {
 	}
 
 	fn validate(&self) -> Result<(), &'static str> {
-		if self.version != 11 {
+		if self.version != 12 {
 			return Err("Draft snapshot version is unsupported");
 		}
 		if self.profiles.len() > 64 {
@@ -90,7 +88,7 @@ impl DesktopDraftDocument {
 impl Default for DesktopDraftDocument {
 	fn default() -> Self {
 		Self {
-			version: 11,
+			version: 12,
 			profiles: BTreeMap::new(),
 			unbound: Default::default(),
 			unbound_ordinary: Default::default(),
@@ -118,10 +116,8 @@ pub struct DesktopProfileDraft {
 	#[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
 	pub prompt_edits: BTreeMap<String, DesktopPromptEditDraft>,
 	/// Ordinary editors by exact directory within this service profile.
-	#[serde(default)]
 	pub ordinary: BTreeMap<String, DesktopOrdinaryDraft>,
 	/// Original command IDs whose delivery is not yet confirmed. Never replay these.
-	#[serde(default)]
 	pub unconfirmed_commands: Vec<IdempotencyKey>,
 	/// Currently displayed primary editor.
 	pub composer: DesktopComposerDraft,
@@ -334,12 +330,10 @@ pub struct DesktopCreationIntent {
 #[serde(deny_unknown_fields)]
 pub struct DesktopCreationSetup {
 	/// Re-read defaults before sending a restored draft that used a native observation.
-	#[serde(default)]
 	pub defaults_applied: bool,
-	/// Absent in older drafts, whose saved values remain explicit.
-	pub intent: Option<DesktopCreationIntent>,
+	/// Fields explicitly chosen while creating this conversation.
+	pub intent: DesktopCreationIntent,
 	/// Use native reasoning and retain the explicit value only as an editable alternative.
-	#[serde(default)]
 	pub inherit_effort: bool,
 	/// Exact model editor text, including incomplete edits.
 	pub model: String,
@@ -349,12 +343,9 @@ pub struct DesktopCreationSetup {
 	pub account: String,
 	/// Displayed reasoning selection.
 	pub reasoning_effort: ConversationReasoningEffort,
-	/// Displayed legacy fast-mode selection.
-	pub fast: bool,
 	/// Displayed service tier, without inferring consent from discovery.
 	pub service_tier: Option<ServiceTier>,
 	/// Displayed sandbox choice; runtime policy still controls admission.
-	#[serde(alias = "sandbox")]
 	pub permission_mode: PermissionMode,
 }
 
@@ -487,7 +478,7 @@ mod tests {
 		});
 
 		DesktopDraftDocument {
-			version: 11,
+			version: 12,
 			profiles: BTreeMap::from([("a".repeat(64), profile)]),
 			unbound: Default::default(),
 			unbound_ordinary: Default::default(),
@@ -498,13 +489,12 @@ mod tests {
 	fn creation_setup_round_trips_and_older_documents_are_rejected() {
 		let setup = DesktopCreationSetup {
 			defaults_applied: false,
-			intent: None,
+			intent: crate::DesktopCreationIntent::default(),
 			inherit_effort: false,
 			model: "unfinished model ".into(),
 			working_directory: "relative edit/".into(),
 			account: "unfinished account".into(),
 			reasoning_effort: crate::ConversationReasoningEffort::High,
-			fast: false,
 			service_tier: Some(crate::ServiceTier::new("flex").unwrap()),
 			permission_mode: crate::PermissionMode::ReadOnly,
 		};
@@ -560,7 +550,7 @@ mod tests {
 	fn draft_document_rejects_changed_contract_and_ambiguous_ownership() {
 		let mut original = document();
 
-		original.version = 12;
+		original.version = 13;
 
 		assert!(original.encode().is_err());
 

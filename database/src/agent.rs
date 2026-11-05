@@ -3107,7 +3107,7 @@ mod tests {
 					source_event_id: format!("user:{index}"),
 					work_item_id: "agent".into(),
 					event_kind: "user_message".into(),
-					payload: "user input".into(),
+					payload: serde_json::json!({"text":"user input"}).to_string(),
 				})
 				.await
 				.unwrap();
@@ -3126,7 +3126,7 @@ mod tests {
 						source_event_id: "newer-user".into(),
 						work_item_id: "agent".into(),
 						event_kind: "user_message".into(),
-						payload: "newer input".into(),
+						payload: serde_json::json!({"text":"newer input"}).to_string(),
 					})
 					.await
 					.unwrap();
@@ -3192,7 +3192,7 @@ mod tests {
 				source_event_id: "user-command:1".into(),
 				work_item_id: "first".into(),
 				event_kind: "user_message".into(),
-				payload: "Hello Agent".into(),
+				payload: serde_json::json!({"text":"Hello Agent"}).to_string(),
 			})
 			.await
 			.unwrap();

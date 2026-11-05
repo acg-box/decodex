@@ -83,10 +83,7 @@ impl AgentSurface {
 			InitialExecutionDefaults {
 				model: ConversationModel::new(self.model.read(cx).content()).ok(),
 				reasoning_effort: self.creation_effort(),
-				service_tier: self
-					.service_tier
-					.clone()
-					.or_else(|| Some(ServiceTier::from_fast(self.fast))),
+				service_tier: self.service_tier.clone().or_else(|| Some(ServiceTier::standard())),
 			},
 			models,
 		);
@@ -107,7 +104,6 @@ impl AgentSurface {
 		}
 
 		self.service_tier = selected.service_tier;
-		self.fast = self.service_tier.as_ref().is_some_and(|tier| tier.as_str() == "priority");
 		self.creation_setup_present = true;
 	}
 }
@@ -236,34 +232,17 @@ mod tests {
 		restored.update(cx, |s, cx| {
 			s.restore_creation_setup(Some(&saved), cx);
 
-			assert_eq!(s.creation_intent, saved.intent.unwrap());
+			assert_eq!(s.creation_intent, saved.intent);
 			assert!(s.creation_defaults.is_none(), "re-read source after restart");
 			assert!(s.creation_defaults_need_refresh(cx));
 		});
 	}
 
 	#[gpui::test]
-	fn legacy_setup_stays_explicit_and_missing_default_model_cannot_send(
-		cx: &mut gpui::TestAppContext,
-	) {
+	fn missing_default_model_cannot_send(cx: &mut gpui::TestAppContext) {
 		let surface = cx.new(AgentSurface::new);
-
 		surface.update(cx, |s, cx| {
 			s.cwd.update(cx, |input, cx| input.set_content("/tmp", cx));
-
-			let setup = s.creation_setup(cx).unwrap();
-			let mut old = serde_json::to_value(setup).unwrap();
-
-			old.as_object_mut().unwrap().remove("intent");
-			old.as_object_mut().unwrap().remove("defaults_applied");
-			s.restore_creation_setup(Some(&serde_json::from_value(old).unwrap()), cx);
-
-			assert!(
-				s.creation_intent.model
-					&& s.creation_intent.reasoning
-					&& s.creation_intent.service_tier
-			);
-			assert!(!s.creation_defaults_need_refresh(cx));
 
 			s.creation_intent = Default::default();
 			s.capabilities = Some(decodex_protocol::AgentCapabilitiesResult::Available {

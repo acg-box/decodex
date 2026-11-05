@@ -17,7 +17,7 @@ import tomllib
 
 ROOT = Path(__file__).resolve().parents[2]
 SCHEMA_PATH = ROOT / "database/schema.sql"
-SCHEMA_VERSION = 60
+SCHEMA_VERSION = 61
 
 DATABASE_RELATIVE_PATH = Path("server/decodex.sqlite3")
 APPLICATION_ID = 0x4443_5831
@@ -209,7 +209,7 @@ def inspect_database(path: Path) -> dict[str, object]:
         raise GateFailure("SQLite integrity or journal configuration differs")
     if task_profile is None or task_profile[0] != 2 or not task_profile[1]:
         raise GateFailure("Task RoleProfile does not satisfy the executable contract")
-    for column in ("model", "reasoning_effort", "fast"):
+    for column in ("model", "reasoning_effort", "service_tier"):
         if column not in conversation_request_columns:
             raise GateFailure("Conversation execution settings are missing")
     if tables != REQUIRED_TABLES:
@@ -222,7 +222,7 @@ def inspect_database(path: Path) -> dict[str, object]:
         "table_count": len(tables),
         "conversation_execution_columns": sorted(
             column
-            for column in ("model", "reasoning_effort", "fast")
+            for column in ("model", "reasoning_effort", "service_tier")
             if column in conversation_request_columns
         ),
     }

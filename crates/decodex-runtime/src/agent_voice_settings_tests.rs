@@ -66,7 +66,7 @@ fn fixture_with_policy(
 						"config":{"realtime":{"voice":if saved {"juniper"} else {"cove"}}}
 					}]}}),
 				"thread/realtime/listVoices" =>
-					serde_json::json!({"result":{"voices":{"v1":["juniper","maple","cove"],"defaultV1":"cove"}}}),
+					serde_json::json!({"result":{"voices":{"v1":["juniper","maple","cove"],"v3":["juniper","maple","cove"],"defaultV1":"cove"}}}),
 				"config/batchWrite" => {
 					assert_eq!(request["params"]["expectedVersion"], version);
 					assert_eq!(request["params"]["reloadUserConfig"], false);

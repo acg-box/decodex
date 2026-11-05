@@ -341,16 +341,9 @@ impl AgentSurface {
 	) -> Option<f32> {
 		let can_window = match &entry.content {
 			AgentTimelineContent::Item {
-				turn_id,
-				item_id,
-				attachments,
-				app_ui,
-				text,
-				activity,
-				..
+				turn_id, item_id, attachments, text, activity, ..
 			} if attachments.is_empty()
 				&& (activity.is_none() || self.activity_detail.value.is_none())
-				&& !app_ui
 				&& !text.contains("![")
 				&& work.active_turn_id.as_deref() != Some(turn_id)
 				&& !self.timeline.native.weather.contains_key(turn_id)
@@ -579,7 +572,6 @@ turn_id: turn, kind, .. } if turn == turn_id && kind == "agentMessage")
 		cx: &mut Context<Self>,
 	) -> AnyElement {
 		let AgentTimelineContent::Item {
-			app_ui,
 			text,
 			kind,
 			truncated,
@@ -694,7 +686,7 @@ turn_id: turn, kind, .. } if turn == turn_id && kind == "agentMessage")
 			}
 			return body.into_any_element();
 		}
-		if activity.is_some() && !*app_ui && attachments.is_empty() {
+		if activity.is_some() && attachments.is_empty() {
 			return self.native_activity_content(work, content, identity, cx);
 		}
 
@@ -1662,7 +1654,7 @@ mod tests {
 			content: AgentTimelineContent::Item {
 				collaboration: None,
 				phase: None,
-				app_ui: false,
+
 				turn_id: "plan-turn".into(),
 				item_id: "plan-item".into(),
 				kind: "plan".into(),
@@ -1679,7 +1671,7 @@ mod tests {
 			AgentTimelineEntry {
 				position: 0,
 				content: AgentTimelineContent::Item { collaboration: None,
-phase: None, app_ui: false,
+phase: None,
 					turn_id: "turn".into(),
 					item_id: "input".into(),
 					kind: "userMessage".into(),
@@ -1697,7 +1689,7 @@ phase: None, app_ui: false,
 			AgentTimelineEntry {
 				position: 1,
 				content: AgentTimelineContent::Item { collaboration: None,
-phase: None, app_ui: false,
+phase: None,
 					turn_id: "turn".into(),
 					item_id: "message".into(),
 					kind: "agentMessage".into(),
@@ -1897,7 +1889,7 @@ phase: None, app_ui: false,
 			content: AgentTimelineContent::Item {
 				collaboration: None,
 				phase: None,
-				app_ui: false,
+
 				turn_id: "summary-turn".into(),
 				item_id: "summary-item".into(),
 				kind: "reasoning".into(),

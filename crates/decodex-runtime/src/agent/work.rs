@@ -7,9 +7,7 @@ use std::{
 
 use sha2::{Digest as _, Sha256};
 
-use crate::agent::{
-	self, AgentCoordinator, AgentError, AgentWorkItem, AgentWorkKind, Value, native_subagents,
-};
+use crate::agent::{self, AgentCoordinator, AgentError, AgentWorkItem, Value, native_subagents};
 use decodex_core::work::{ResultSource, WorkCommand, WorkResult};
 
 impl AgentCoordinator {
@@ -171,10 +169,6 @@ impl AgentCoordinator {
 				if thread_id != &root
 					&& !self.store.agent_previous_threads(agent.into()).await?.contains(thread_id)
 				{
-					if self.verified_legacy_result(agent, result, thread_id, turn_id).await? {
-						return self.verify_native_result_item(thread_id, turn_id, item_id).await;
-					}
-
 					let id = result.native_contribution_id.as_ref().ok_or_else(|| {
 						AgentError::Rejected(
 							"Native Subagent Results require a bound Work contribution".into(),
@@ -400,43 +394,6 @@ impl AgentCoordinator {
 
 		Ok(())
 	}
-
-	async fn verified_legacy_result(
-		&self,
-		actor: &str,
-		result: &WorkResult,
-		thread: &str,
-		turn: &str,
-	) -> Result<bool, AgentError> {
-		let portfolio =
-			self.store.agent_work_portfolio(actor.into(), Some(result.work_id.clone())).await?;
-		let Some(work) = portfolio.works.first() else { return Ok(false) };
-		let Some(event) = work
-			.requirements
-			.source
-			.strip_prefix("legacy-instruction:")
-			.and_then(|s| s.parse::<i64>().ok())
-		else {
-			return Ok(false);
-		};
-
-		if result.requirements_id != work.requirements.id
-			|| result.native_contribution_id.is_some()
-			|| result.instruction_id.is_some()
-		{
-			return Ok(false);
-		}
-
-		let instruction = self.store.get_agent_inbox_event(event).await?;
-		let legacy = self.store.get_agent_work_item(work.id.clone()).await?;
-		let all = self.store.list_agent_work_items().await?;
-		let managers = self.store.agent_manager_ids().await?;
-
-		Ok(legacy.kind == AgentWorkKind::Task
-			&& legacy.codex_thread_id.as_deref() == Some(thread)
-			&& instruction.delivered_turn_id.as_deref() == Some(turn)
-			&& super::belongs_to(&legacy, actor, &all, &managers))
-	}
 }
 
 impl AgentCoordinator {
@@ -599,10 +556,6 @@ pub(super) fn tools() -> Vec<Value> {
 		serde_json::json!({"type":"function","name":"work_read","description":"Read your current Works, their requirements, Materials, Results and Collaboration Requests, plus the exact current delivered inbox. Before assigning, recovering or assessing, read this current context. Other Agents expose only the bounded contribution and explicitly shared Materials, never their private conversation.","inputSchema":{"type":"object","properties":{"workId":{"type":"string"},"nativeContributionId":{"type":"string"},"cursor":{"type":"string"}},"additionalProperties":false}}),
 		serde_json::json!({"type":"function","name":"work_manage","description":"Manage Work and independent Agent Collaboration. Stable commandId deduplicates exact retries. Use the documented WorkCommand operation with current expected requirements. Create/revise cite source event:<id> from a current delivered user decision. Native Subagents remain native; Work creates no executor. A Result needs exact native item or a file digest; Complete needs related current evidence and handled required requests. Ask Me approval remains human-owned.","inputSchema":{"type":"object","properties":{"commandId":{"type":"string"},"command":{"type":"object"}},"required":["commandId","command"],"additionalProperties":false}}),
 	]
-}
-
-pub(super) fn retired_tool(name: &str) -> Option<AgentError> {
-	["agent_create_work","agent_create_manager","agent_create_goal"].contains(&name).then(||AgentError::Rejected("Use native spawn_agent for bounded execution. Persistent Agents are created only by the user. Work is an outcome, not an executor.".into()))
 }
 
 /// Match the actual native user input, never a quotation in an assistant answer.

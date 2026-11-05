@@ -171,7 +171,7 @@ fn inherited_ordinary_choices_survive_storage_and_rendered_send(cx: &mut TestApp
 
 	let original =
 		tests::take_ready_command(&conversations, &server).expect("saved rendered submission");
-	let CommandPayload::SubmitConversationTurn { execution, overrides: Some(intent), .. } =
+	let CommandPayload::SubmitConversationTurn { execution, overrides: intent, .. } =
 		&original.payload
 	else {
 		panic!("ordinary intent")

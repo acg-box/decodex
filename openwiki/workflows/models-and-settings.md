@@ -32,6 +32,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/composer_input.rs
   - id: openwiki-source-682f90c6d08ed3207257f1d5
     resource: repo://apps/decodex-gpui/src/conversations.rs
+  - id: openwiki-source-ade4d2e52af67f3b8534ec9f
+    resource: repo://apps/decodex-gpui/src/desktop_settings.rs
   - id: openwiki-source-a2f254020dd8eaabd6366c91
     resource: repo://apps/decodex-gpui/src/session_settings.rs
   - id: openwiki-source-0813b2e35e2133631c0aa4db
@@ -84,6 +86,14 @@ sources:
     resource: repo://crates/decodex-components/src/ragflow_service.rs
   - id: openwiki-source-9ecfe8c96199e765ca2b4e1b
     resource: repo://crates/decodex-components/src/ragflow.rs
+  - id: openwiki-source-62c1273bf1b2ac5041d1e920
+    resource: repo://crates/decodex-core/src/assistant.rs
+  - id: openwiki-source-2b219778c5ca3b655ff1bb83
+    resource: repo://crates/decodex-core/src/service_tier.rs
+  - id: openwiki-source-caeefdea0805519b59a469aa
+    resource: repo://crates/decodex-protocol/src/desktop_drafts.rs
+  - id: openwiki-source-cc0439b23243c3697ba49199
+    resource: repo://crates/decodex-protocol/src/lib.rs
   - id: openwiki-source-0d29990b5fd295fa89a495ad
     resource: repo://crates/decodex-protocol/src/model_catalog.rs
   - id: openwiki-source-e5be8be8499e6ccee0cf7ad0
@@ -116,23 +126,27 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent/native_settings.rs
   - id: openwiki-source-a7b97dd347fbe2f630692d12
     resource: repo://crates/decodex-runtime/src/agent/tests/native_agent_wake.rs
+  - id: openwiki-source-3edc2f094826ee56ddec6b73
+    resource: repo://crates/decodex-runtime/src/ragflow.rs
   - id: openwiki-source-07c9cc033899826079f8efb5
     resource: repo://crates/decodex-runtime/tests/native_qualification/large_catalog.py
   - id: openwiki-source-b30d382781a313611ecd221f
     resource: repo://crates/decodex-runtime/tests/native_qualification/thread_settings.py
+  - id: openwiki-source-003f00974f49a9f106bbcbea
+    resource: repo://database/schema.sql
   - id: openwiki-source-8c78df4b382026886ac50894
     resource: repo://database/src/usage_evidence.rs
-generated: { by: "codex", at: "2026-11-05T13:44:11.168Z" }
+generated: { by: "codex", at: "2026-11-05T15:16:31.053Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-05T13:48:42.186Z
+    at: 2026-11-05T15:16:31.053Z
 ---
 
 # Model selection and settings ownership
 
 ## One native settings owner
 
-Codex owns the effective model catalog, task configuration, provider admission and execution settings. Decodex reads and presents these values through a retained connection. Catalog, directory, account, process and task identity belong to the observation. An absent value can mean unknown or inherited; it must not silently become an explicit override.
+Codex owns the effective model catalog, task configuration, provider admission and execution settings. Decodex reads and presents these values through a retained connection. Catalog, directory, account, process and task identity belong to the observation. An absent native value can mean unknown or inherited; it must not silently become an explicit override. Current local execution settings carry one exact `service_tier`, with no duplicate `fast` flag. A new-conversation draft includes explicit creation intent; every submitted ordinary turn includes its overrides object.
 
 ## Retained choices
 
@@ -176,6 +190,8 @@ For background compaction and retention of marked tool outputs, an omitted effec
 The cached-catalog switch writes only `startup_readiness` for an existing user-configured MCP server: on selects `catalog`, and off selects `connection`. Native Codex owns the cache and tool connection. A missing or invalid cache keeps normal discovery; a tool call still needs the live connection. Configure project-only and plugin servers in Codex.
 
 Tool catalog cache opens and closes with the shared 200 ms Settings disclosure animation. Current content is measured before sibling layout and clipped during motion. Agent preferences uses the same panel. Expansion, collapse and server-list refresh do not save configuration.
+
+Menu-bar visibility and automatic task recaps are App-local preferences. The service owns quota activation settings. No service snapshot imports a second copy of menu-bar or recap state.
 
 Automatic suggestions are enabled by default. Turning the switch off prevents future automatic requests. Turning it back on does not request suggestions for answers that completed while it was off. Tab acceptance still creates an undoable draft and never sends it. This setting does not turn on content export or the deferred messaging experiments.
 
@@ -229,7 +245,7 @@ Memory availability comes from the native feature observation. A capability flag
 
 The RAGFlow row distinguishes installed service from configured Assistant Memory even when collapsed. The direct editor fills its detail region without an additional heading layer. Extraction and embedding each have one row containing the model ID, Base URL and optional API key. Labels sit above 24-point inputs in normal control text. Empty required fields disable submission. Complete input receives the existing URL and model validation when you submit, so an invalid address gets a useful error. Input changes refresh the form and clear the old editor error. API, model-role, Codex memory and initial chat-import guidance remain visible. Cancel and the primary Save action align to the right edge. Saved-key guidance appears only for saved settings. Collapse retains unsaved input. Cancel discards it, clears errors and collapses RAGFlow.
 
-Chat import starts off. Its separate switch is available when Memory is ready, including while the model form is open. Update preserves this choice, the model configuration and saved data. Uninstall stops the owned service and clears its connection, while retaining data for reinstallation. Explicit knowledge dataset scopes remain available in typed Assistant configuration; empty datasets disable retrieval. The Memory explanation states that Codex memory is disabled for Assistant. Activation waits for a safe fresh context with native generation, use and the memories feature disabled, plus disabled native memory mode. Cold resume preserves this policy. Native compaction, history, unrelated Agents and shared defaults retain their settings. The saved connection uses a private component credential reference; legacy environment-variable references remain supported. A connection failure remains visible without native-memory fallback.
+Chat import starts off. Its separate switch is available when Memory is ready, including while the model form is open. Update preserves this choice, the model configuration and saved data. Uninstall stops the owned service and clears its connection, while retaining data for reinstallation. Explicit knowledge dataset scopes remain available in typed Assistant configuration; empty datasets disable retrieval. The Memory explanation states that Codex memory is disabled for Assistant. Activation waits for a safe fresh context with native generation, use and the memories feature disabled, plus disabled native memory mode. Cold resume preserves this policy. Native compaction, history, unrelated Agents and shared defaults retain their settings. The saved connection uses only a private component credential reference bound to the RAGFlow origin. A connection failure remains visible without native-memory fallback.
 
 ## Read a native memory summary
 
@@ -251,7 +267,7 @@ Native estimates can lag activity. A missing USD value is not zero; reported zer
 
 ## Native launch defaults
 
-The attested app-server launch requests native child context limits and Agent message wakeups. Its retained description-first argument is accepted as a removed native feature; current ordering is native-owned. It also enables fork-prefix preservation through the dotted `features.multi_agent_v2.preserve_fork_prefix` option, which preserves the user's existing multi-agent enablement. These are runtime launch defaults, not new desktop switches. Description ordering does not itself enable Code Mode.
+The attested app-server launch requests native child context limits and Agent message wakeups. Tool ordering is native-owned; the removed description-first feature is not requested. It also enables fork-prefix preservation through the dotted `features.multi_agent_v2.preserve_fork_prefix` option, which preserves the user's existing multi-agent enablement. These are runtime launch defaults, not new desktop switches.
 
 Native Codex retains transport selection. The integration does not force shared gRPC hosting or a global tool-output retention setting. Fork-prefix preservation and child context limits have bounded compatibility evidence; they do not establish provider cache savings, latency improvements or better model answers. Follow [acceptance boundaries](../testing/upstream-acceptance-boundaries.md) when evaluating those effects.
 

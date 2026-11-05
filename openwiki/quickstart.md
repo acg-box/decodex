@@ -70,6 +70,8 @@ sources:
     resource: repo://automations/upstream/retained-contracts.json
   - id: openwiki-source-69e9fd7efd8c3cd616184e27
     resource: repo://crates/decodex-components/src/ragflow_service.rs
+  - id: openwiki-source-caeefdea0805519b59a469aa
+    resource: repo://crates/decodex-protocol/src/desktop_drafts.rs
   - id: openwiki-source-cc0439b23243c3697ba49199
     resource: repo://crates/decodex-protocol/src/lib.rs
   - id: openwiki-source-4a57fba4bea69171318c6323
@@ -96,10 +98,10 @@ sources:
     resource: repo://database/src/schema.rs
   - id: openwiki-source-3b57179b92b257bc3fff51a1
     resource: repo://scripts/macos/stage_decodex_app.sh
-generated: { by: "codex", at: "2026-11-05T13:44:11.168Z" }
+generated: { by: "codex", at: "2026-11-05T14:56:49.835Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-05T13:48:42.186Z
+    at: 2026-11-05T14:56:49.835Z
 ---
 
 # OpenWiki quickstart
@@ -184,7 +186,7 @@ The app version and **Check for updates** are in **Settings > General > Updates*
 ## Current boundaries
 
 - `decodex serve` is the service and SQLite product-state owner. GPUI and CLI use typed local clients. The bundled helper is `decodex`, not `decodexd`.
-- The protocol crate’s `CURRENT_VERSION`, `database/schema.sql` and `database/src/schema.rs` define the exact current local format. New stores start with that schema; startup does not run a historical migration chain.
+- The current local formats are protocol 4.8, SQLite schema 61 and desktop draft format 12. New stores start with the exact current schema; startup does not run a historical migration chain. Retained-data conversion is an explicit operator task outside the application.
 - The Agent graph presents work relationships; the right Collaboration panel keeps recorded exchanges and pending response requests visible across chats. Expanding an exchange preserves the active chat and draft. Historical Factory diagrams do not define the current desktop.
 - Account admission accepts native `plus`, `pro`, `prolite`, `promax` and `team` plans. OAuth and PAT use the same plan scope; native identity, quota and entitlement remain authoritative. See [Accounts](operations/accounts-and-routing.md).
 - Account Route is synchronous and service-owned. Shared-auth liveness, exact source identity and readback govern completion. Same-account refresh adopts a valid non-older native winner instead of restoring a losing token.

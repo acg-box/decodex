@@ -190,8 +190,6 @@ mod tests {
 
 				assert_eq!(settings.model.as_deref(), Some("configured-model"));
 				assert_eq!(settings.reasoning_effort, None);
-			} else if mode == "exact-settings-missing" {
-				assert!(result.unwrap().is_none());
 			} else {
 				assert!(result.is_err());
 			}

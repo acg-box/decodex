@@ -3748,10 +3748,10 @@ private extension ResetCardServiceError {
 	var isRetryableReadFailure: Bool {
 		switch self {
 		case .accountNotFound, .accountStateRejected, .vaultUnavailable, .providerUnavailable,
-			.inventoryIncomplete, .inventoryChanged, .requestTimedOut, .resourceExhausted,
+			.inventoryIncomplete, .inventoryChanged,
 			.productStateUnavailable, .effectAmbiguous:
 			return true
-		case .invalidRequest, .schemaUnsupported:
+		case .invalidRequest:
 			return false
 		}
 	}

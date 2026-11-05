@@ -68,11 +68,9 @@ impl AgentSurface {
 		{
 			self.draft_profiles.execution.change(owner, |choice| {
 				choice.service_tier = Some(selection.requested.clone());
-				choice.fast = None;
 			});
 		}
 		execution.service_tier = Some(selection.requested.clone());
-		execution.fast = None;
 		let captured = self.draft_profiles.execution.capture(action);
 		(captured, Some(selection.requested))
 	}

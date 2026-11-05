@@ -62,7 +62,7 @@ fn prepare(
 				content: AgentTimelineContent::Item {
 					collaboration: None,
 					phase: None,
-					app_ui: false,
+
 					turn_id: "turn".into(),
 					item_id: "image".into(),
 					kind: "userMessage".into(),

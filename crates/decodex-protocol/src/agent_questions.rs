@@ -27,7 +27,7 @@ pub struct AgentAsyncQuestionDto {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AgentAsyncQuestionReply {
-	/// Exact question ID, or a legacy source message ID.
+	/// Exact question ID.
 	pub question_item_id: String,
 	/// Human-readable question, not its identity.
 	pub question: String,
@@ -130,15 +130,8 @@ pub fn agent_async_question_reply(
 }
 
 /// Interpret only a complete native reply envelope. Plain text and embedded
-/// examples must not dismiss a question. Older desktop single-object replies work.
+/// examples must not dismiss a question.
 pub fn parse_agent_async_question_replies(text: &str) -> Option<Vec<AgentAsyncQuestionReply>> {
-	#[derive(Deserialize)]
-	#[serde(untagged)]
-	enum Replies {
-		Many(Vec<AgentAsyncQuestionReply>),
-		One(AgentAsyncQuestionReply),
-	}
-
 	if text.len() > MAX_HISTORY_INLINE_BYTES {
 		return None;
 	}
@@ -150,10 +143,7 @@ pub fn parse_agent_async_question_replies(text: &str) -> Option<Vec<AgentAsyncQu
 		text
 	};
 	let json = text.strip_prefix(OPEN)?.strip_suffix(CLOSE)?;
-	let replies = match serde_json::from_str::<Replies>(json).ok()? {
-		Replies::Many(replies) => replies,
-		Replies::One(reply) => vec![reply],
-	};
+	let replies: Vec<AgentAsyncQuestionReply> = serde_json::from_str(json).ok()?;
 
 	(!replies.is_empty()).then_some(replies)
 }
@@ -254,19 +244,18 @@ mod tests {
 	}
 	#[test]
 	fn only_complete_envelopes_and_standard_ide_prefix_resolve() {
-		let legacy = r#"<send_user_message_question_reply>{"questionItemId":"message","question":"Which?","answer":"B"}</send_user_message_question_reply>"#;
+		let reply = r#"<send_user_message_question_reply>[{"questionItemId":"message","question":"Which?","answer":"B"}]</send_user_message_question_reply>"#;
 
 		assert_eq!(
-			agent_questions::parse_agent_async_question_replies(legacy).unwrap()[0]
-				.question_item_id,
+			agent_questions::parse_agent_async_question_replies(reply).unwrap()[0].question_item_id,
 			"message"
 		);
 		assert!(
-			agent_questions::parse_agent_async_question_replies(&format!("Example: {legacy}"))
+			agent_questions::parse_agent_async_question_replies(&format!("Example: {reply}"))
 				.is_none()
 		);
 		assert!(
-			agent_questions::parse_agent_async_question_replies(&format!("{legacy} suffix"))
+			agent_questions::parse_agent_async_question_replies(&format!("{reply} suffix"))
 				.is_none()
 		);
 		assert!(
@@ -276,8 +265,7 @@ mod tests {
 			.is_none()
 		);
 
-		let ide =
-			format!("# Context from my IDE setup:\nfiles\n## My request for Codex:\n{legacy}");
+		let ide = format!("# Context from my IDE setup:\nfiles\n## My request for Codex:\n{reply}");
 
 		assert!(agent_questions::parse_agent_async_question_replies(&ide).is_some());
 	}

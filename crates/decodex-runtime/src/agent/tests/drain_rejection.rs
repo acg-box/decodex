@@ -73,7 +73,6 @@ async fn drain_wire_refusal_distinguishes_direct_input_from_injected_updates() {
 #[tokio::test]
 async fn native_rejection_preserves_input_and_never_replays_ambiguous_effects() {
 	for (managed, message, data) in [
-		(false, "Server is draining; retry after reconnecting", None),
 		(false, "New shutdown wording", Some(serde_json::json!({"reason":"serverShuttingDown"}))),
 		(
 			true,

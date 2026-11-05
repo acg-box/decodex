@@ -6,7 +6,7 @@ use rusqlite::{Connection, OptionalExtension as _, TransactionBehavior};
 use crate::{DatabaseError, error::sqlite_error};
 
 pub(crate) const APPLICATION_ID: i64 = 0x4443_5831;
-pub(crate) const CURRENT_SCHEMA_VERSION: i64 = 60;
+pub(crate) const CURRENT_SCHEMA_VERSION: i64 = 61;
 
 const SCHEMA: &str = include_str!("../schema.sql");
 

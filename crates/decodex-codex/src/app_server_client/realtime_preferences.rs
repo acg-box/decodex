@@ -14,7 +14,7 @@ pub struct NativeVoiceSettings {
 	cwd: String,
 	file: String,
 	version: String,
-	/// Native V3 catalog, or the V1 catalog advertised by an older server.
+	/// Native V3 voice catalog.
 	pub voices: Vec<String>,
 	/// Effective project voice, or an unknown voice supplied by a newer server.
 	pub effective: Option<String>,
@@ -124,13 +124,7 @@ impl AppServerClient {
 		&self,
 	) -> Result<(Vec<String>, String), ClientError> {
 		let value = self.request("thread/realtime/listVoices", serde_json::json!({})).await?;
-		let catalog = match &value["voices"]["v3"] {
-			Value::Null => value["voices"]["v1"].as_array(),
-			Value::Array(voices) if voices.is_empty() => value["voices"]["v1"].as_array(),
-			Value::Array(voices) => Some(voices),
-			_ => None,
-		}
-		.ok_or(ClientError::InvalidFrame)?;
+		let catalog = value["voices"]["v3"].as_array().ok_or(ClientError::InvalidFrame)?;
 
 		if catalog.is_empty() || catalog.len() > 64 {
 			return Err(ClientError::InvalidFrame);

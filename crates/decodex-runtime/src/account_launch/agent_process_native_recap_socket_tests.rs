@@ -511,7 +511,7 @@ async fn qualify_prompt_selection(
 
 async fn qualify_desktop_recap(
 	client: &AgentClient,
-	store: &SqliteStore,
+	_store: &SqliteStore,
 	home: &Path,
 	work: &EntityId,
 ) -> usize {
@@ -521,14 +521,6 @@ async fn qualify_desktop_recap(
 
 	assert!(std::path::Path::new(&binary).is_absolute());
 
-	let settings = store.read_desktop_settings().await.expect("fixture preferences");
-
-	assert!(!settings.auto_recap, "fixture starts with automatic recaps disabled");
-
-	let enabled = store
-		.set_desktop_settings(settings.revision, settings.show_in_menu_bar, None, Some(true))
-		.await
-		.expect("enable only disposable fixture preference");
 	let screenshot = home.join("automatic-recap.png");
 	let log = home.join("automatic-recap-capture.log");
 	let stdout = File::create(&log).expect("capture diagnostics");
@@ -579,13 +571,6 @@ async fn qualify_desktop_recap(
 	}
 
 	assert!(screenshot.is_file());
-
-	let disabled = store
-		.set_desktop_settings(enabled.revision, settings.show_in_menu_bar, None, Some(false))
-		.await
-		.expect("restore fixture opt-out");
-
-	assert!(!disabled.auto_recap);
 
 	1
 }

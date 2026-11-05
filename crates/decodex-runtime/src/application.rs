@@ -850,12 +850,7 @@ impl ServiceApplication {
 		&self,
 		command: &CommandEnvelope,
 	) -> Result<ApplicationPublication, CommandError> {
-		let CommandPayload::SetDesktopSettings {
-			show_in_menu_bar,
-			auto_activate_quota,
-			auto_recap,
-		} = &command.payload
-		else {
+		let CommandPayload::SetDesktopSettings { auto_activate_quota } = &command.payload else {
 			return Err(application_unavailable("desktop settings command is invalid"));
 		};
 		let expected = command.expected_revision.ok_or_else(|| {
@@ -867,12 +862,7 @@ impl ServiceApplication {
 			return Err(application_unavailable("desktop settings store is unavailable"));
 		};
 		let settings = store
-			.set_desktop_settings(
-				expected_revision,
-				*show_in_menu_bar,
-				*auto_activate_quota,
-				*auto_recap,
-			)
+			.set_desktop_settings(expected_revision, *auto_activate_quota)
 			.await
 			.map_err(desktop_settings_command_error)?;
 
@@ -1785,7 +1775,6 @@ impl ServiceApplication {
 						.reasoning_effort
 						.as_ref()
 						.map(|effort| effort.as_str().to_owned()),
-					fast: execution.fast,
 					service_tier: execution.service_tier.clone(),
 					source: decodex_database::InitialModelSource {
 						account_id: AccountId::new(source.account_id.as_str())
@@ -2445,7 +2434,6 @@ impl ServiceApplication {
 				.map(ConversationReasoningEffort::new)
 				.transpose()
 				.ok()?,
-			fast: saved.fast,
 			service_tier: saved.service_tier.clone(),
 		};
 		let working_directory =
@@ -3521,7 +3509,6 @@ fn runtime_execution_settings(
 			.reasoning_effort
 			.as_ref()
 			.map(|effort| effort.as_str().to_owned()),
-		fast: settings.fast,
 		service_tier: settings.effective_service_tier(),
 	}
 }
@@ -4444,10 +4431,6 @@ fn agent_assistant_history(
 	has_more: &mut bool,
 ) -> (&'static str, String) {
 	let messages = value.pointer("/threadReadback/assistantMessages");
-	let parsed = messages
-		.and_then(serde_json::Value::as_str)
-		.and_then(|text| serde_json::from_str::<serde_json::Value>(text).ok());
-	let messages = parsed.as_ref().or(messages);
 	let text = messages
 		.and_then(serde_json::Value::as_array)
 		.map(|items| {
@@ -4516,10 +4499,6 @@ fn completed_agent_history(
 	completed_message_ids: &mut Vec<(String, String)>,
 ) -> (&'static str, String) {
 	let messages = value.pointer("/threadReadback/assistantMessages");
-	let parsed = messages
-		.and_then(serde_json::Value::as_str)
-		.and_then(|text| serde_json::from_str::<serde_json::Value>(text).ok());
-	let messages = parsed.as_ref().or(messages);
 	let turn =
 		value.pointer("/threadReadback/turnId").and_then(serde_json::Value::as_str).unwrap_or("");
 
@@ -5048,12 +5027,7 @@ fn query_agent_live(partial: Vec<AgentLiveOutput>) -> Vec<decodex_protocol::Agen
 
 fn desktop_settings_dto(settings: DesktopSettings) -> Result<DesktopSettingsDto, ()> {
 	let revision = u64::try_from(settings.revision).map(EntityRevision).map_err(|_| ())?;
-	let mut dto = DesktopSettingsDto::new(settings.show_in_menu_bar, revision).map_err(|_| ())?;
-
-	dto.auto_activate_quota = settings.auto_activate_quota;
-	dto.auto_recap = settings.auto_recap;
-
-	Ok(dto)
+	DesktopSettingsDto::new(settings.auto_activate_quota, revision).map_err(|_| ())
 }
 
 fn desktop_settings_command_error(error: StoreError) -> CommandError {
@@ -5104,13 +5078,9 @@ const fn reset_error_message(error: ResetCardServiceError) -> &'static str {
 		ResetCardServiceError::AccountChanged
 		| ResetCardServiceError::ExpectedRevisionMismatch { .. } => "reset-card account revision changed",
 		ResetCardServiceError::VaultUnavailable => "reset-card credential vault is unavailable",
-		ResetCardServiceError::SchemaUnsupported =>
-			"stored reset-card result is incompatible with the current provider API",
 		ResetCardServiceError::ProviderUnavailable => "reset-card provider is unavailable",
 		ResetCardServiceError::InventoryIncomplete => "reset-card inventory is incomplete",
 		ResetCardServiceError::InventoryChanged => "selected reset card changed",
-		ResetCardServiceError::RequestTimedOut => "reset-card provider observation timed out",
-		ResetCardServiceError::ResourceExhausted => "reset-card process capacity is exhausted",
 		ResetCardServiceError::ProductStateUnavailable => "reset-card product state is unavailable",
 		ResetCardServiceError::IdempotencyConflict => "reset-card idempotency key conflicts",
 		ResetCardServiceError::AcceptanceUnknown =>
@@ -5127,12 +5097,9 @@ const fn protocol_reset_error(error: ResetCardServiceError) -> ResetCardError {
 		ResetCardServiceError::AccountStateRejected => ResetCardError::AccountStateRejected,
 		ResetCardServiceError::AccountChanged => ResetCardError::InventoryChanged,
 		ResetCardServiceError::VaultUnavailable => ResetCardError::VaultUnavailable,
-		ResetCardServiceError::SchemaUnsupported => ResetCardError::SchemaUnsupported,
 		ResetCardServiceError::ProviderUnavailable => ResetCardError::ProviderUnavailable,
 		ResetCardServiceError::InventoryIncomplete => ResetCardError::InventoryIncomplete,
 		ResetCardServiceError::InventoryChanged => ResetCardError::InventoryChanged,
-		ResetCardServiceError::RequestTimedOut => ResetCardError::RequestTimedOut,
-		ResetCardServiceError::ResourceExhausted => ResetCardError::ResourceExhausted,
 		ResetCardServiceError::ProductStateUnavailable => ResetCardError::ProductStateUnavailable,
 		ResetCardServiceError::AcceptanceUnknown => ResetCardError::ProductStateUnavailable,
 	}
@@ -5171,12 +5138,8 @@ const fn protocol_outcome(outcome: ResetCardConsumeOutcome) -> ResetCardOutcome 
 const fn failure_reset_error(failure: ResetCardFailureCode) -> ResetCardError {
 	match failure {
 		ResetCardFailureCode::AccountChanged => ResetCardError::InventoryChanged,
-		ResetCardFailureCode::VaultUnavailable => ResetCardError::VaultUnavailable,
-		ResetCardFailureCode::SchemaUnsupported => ResetCardError::SchemaUnsupported,
-		ResetCardFailureCode::InventoryIncomplete => ResetCardError::InventoryIncomplete,
 		ResetCardFailureCode::InventoryChanged => ResetCardError::InventoryChanged,
 		ResetCardFailureCode::ProviderUnavailable => ResetCardError::ProviderUnavailable,
-		ResetCardFailureCode::ResourceExhausted => ResetCardError::ResourceExhausted,
 	}
 }
 
@@ -6582,14 +6545,6 @@ mod tests {
 	}
 
 	#[test]
-	fn inventory_deadline_projects_as_a_typed_query_error() {
-		assert_eq!(
-			application::protocol_reset_error(ResetCardServiceError::RequestTimedOut),
-			ResetCardError::RequestTimedOut,
-		);
-	}
-
-	#[test]
 	fn only_persisted_terminal_failure_projects_as_failed_before_effect() {
 		assert_eq!(
 			application::operation_query_result(Ok(ResetCardOperationStatus::FailedBeforeEffect(
@@ -7384,7 +7339,7 @@ mod tests {
 	}
 
 	#[tokio::test]
-	async fn agent_history_reads_structured_and_legacy_assistant_results() {
+	async fn agent_history_reads_structured_assistant_results() {
 		let directory = tempfile::tempdir().unwrap();
 		let root = DecodexRoot::new(directory.path().canonicalize().unwrap()).unwrap();
 		let store = SqliteStore::open(&root.paths()).unwrap();
@@ -7393,7 +7348,7 @@ mod tests {
 		agent_query_work(&store, "chosen").await;
 
 		for (index, messages, truncated) in [
-			(0, serde_json::json!([{ "text": "legacy result" }]).to_string().into(), false),
+			(0, serde_json::json!([{ "text": "Saved result" }]), false),
 			(1, serde_json::json!([{ "text": "界🙂\"\\\n".repeat(4_000) }]), true),
 		] {
 			store.enqueue_agent_event(decodex_database::EnqueueAgentEvent {
@@ -7411,7 +7366,7 @@ mod tests {
 
 		assert!(has_more);
 		assert_eq!(entries.len(), 2);
-		assert_eq!(entries[0].text, "legacy result");
+		assert_eq!(entries[0].text, "Saved result");
 		assert!(
 			entries[1].text.starts_with("[Assistant output truncated in saved history.]\n\n界🙂")
 		);
