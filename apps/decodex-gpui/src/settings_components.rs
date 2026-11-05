@@ -142,14 +142,29 @@ impl SettingsSurface {
 		action: Action,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
+		let mut disabled_reason = "Operation in progress";
 		let enabled = match action {
 			Action::Prepare => true,
 			Action::Plugin(_) => self.components.plugin.busy.is_none(),
 			Action::Research(_) => self.components.research_shown.busy.is_none(),
-			Action::Ragflow(_) => self
-				.native_agent
-				.as_ref()
-				.is_some_and(|s| !s.read(cx).ragflow_component_state().busy),
+			Action::Ragflow(action) => {
+				if self.native_agent.is_none() {
+					disabled_reason = "Open the workspace to manage this component.";
+				}
+				self.native_agent.as_ref().is_some_and(|s| {
+					let agent = s.read(cx);
+					if agent.ragflow_component_state().busy {
+						return false;
+					}
+					if matches!(action, RagflowComponentAction::SaveModels)
+						&& !agent.can_submit_memory_models(cx)
+					{
+						disabled_reason = "Enter a Base URL and both model IDs.";
+						return false;
+					}
+					true
+				})
+			},
 		};
 		let button = if enabled {
 			if matches!(action, Action::Ragflow(RagflowComponentAction::SaveModels)) {
@@ -163,7 +178,7 @@ impl SettingsSurface {
 
 		button
 			.tab_index(if enabled { 0 } else { -1 })
-			.when(!enabled, |button| button.aria_description("Operation in progress"))
+			.when(!enabled, |button| button.aria_description(disabled_reason))
 			.on_click(cx.listener(move |this, _, _, cx| {
 				if enabled {
 					this.component_action(action, cx);
@@ -457,7 +472,15 @@ impl SettingsSurface {
 					"Cancel",
 					RagflowComponentAction::CancelModels,
 				),
-				("components-ragflow-models-save", "Save", RagflowComponentAction::SaveModels),
+				(
+					"components-ragflow-models-save",
+					if state.as_ref().is_some_and(|s| s.memory_ready) {
+						"Verify and save"
+					} else {
+						"Verify and enable"
+					},
+					RagflowComponentAction::SaveModels,
+				),
 			] {
 				actions =
 					actions.child(self.component_button(id, label, Action::Ragflow(action), cx));
@@ -466,6 +489,24 @@ impl SettingsSurface {
 		}
 		gpui::div()
 			.child(row)
+			.children(state.as_ref().map(|state| {
+				let summary = if !state.installed {
+					"Install RAGFlow to add long-term memory to Assistant."
+				} else if state.memory_ready {
+					"Service installed. Assistant memory is configured."
+				} else {
+					"Service installed. Assistant memory needs setup."
+				};
+				ui_theme::settings_description(summary)
+					.id("components-ragflow-status")
+					.debug_selector(|| "components-ragflow-status".into())
+					.role(Role::Status)
+					.aria_label(summary)
+					.when(state.installed, |status| {
+						status.font_weight(FontWeight::MEDIUM).text_color(ui_theme::rgb(TEXT))
+					})
+					.pb(gpui::px(8.))
+			}))
 			.child(self.component_body(3, "components-ragflow-body", body))
 			.child(
 				ui_feedback::notice(

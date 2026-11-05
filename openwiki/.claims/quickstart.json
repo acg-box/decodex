@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:253e1b0e39585296689b74e9d40c62163ce24e28420ea4bd55dc346490f3eec6",
+  "pageVersion": "sha256:33263e85dc3decc8b588cf6132d669e9a88cdb779d22aa58dbd470eadd6903c0",
   "claims": [
     {
       "id": "claim_b34298a8647a4e0b8653926b7568c5d4",
@@ -180,7 +180,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:b9ec790a366ae5f7181d83aace685cf943cc31f3a84d3e9e301ff4fe98c00352"
+          "version": "repo-file-v1:sha256:5c2c3a7ef8ddde1e5398824a9c9511b03b45c2ea0746dc99224c999f2ba87a31"
         }
       ]
     },
@@ -198,7 +198,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_surface.rs",
-          "version": "repo-file-v1:sha256:fc5a5f31ba8c35966a536dd1332fdd942d8badcb9a841e7baa5147c4db08819c"
+          "version": "repo-file-v1:sha256:3c02c70a1d7f51bb7824d3d9be8c028cf2a97120253c6903b245f45e0b36c2f3"
         }
       ]
     },
@@ -330,7 +330,7 @@
     },
     {
       "id": "claim_2f51bf620dff4bb0afcf4b66110fb5a4",
-      "statement": "Assistant is built in and always available from the sidebar, with idle first-use setup and no automatic message or Enable control. It manages delegated Agents, teams, duties and fresh contexts; continuing instructions stay in chat. The optional RAGFlow component installs nightly with Infinity and its private account and automatically opens the model form after successful installation without saved model settings. Expanding installed RAGFlow directly opens the model form for an OpenAI-compatible Base URL, optional API key and custom extraction and embedding names. Save verifies the selected models before initializing Memory automatically without installing model runtimes or weights. The shared component row reports installed version and provides Update and Uninstall. Component operations check a running Docker-compatible engine and Docker Compose and report unavailable prerequisites without runtime installation, launch or installation guidance. Chat import is a separate opt-in, and there is no built-in patrol.",
+      "statement": "Assistant is built in and always available from the sidebar, with idle first-use setup and no automatic message or Enable control. It manages delegated Agents, teams, duties and fresh contexts; continuing instructions stay in chat. The optional RAGFlow component installs nightly with Infinity and its private account and automatically opens the model form after successful installation without saved model settings. Expanding installed RAGFlow directly opens the model form for an OpenAI-compatible Base URL, optional API key and custom extraction and embedding names. Verify and enable verifies the selected models before initializing Memory automatically without installing model runtimes or weights. Configured Memory uses Verify and save. The shared component row reports installed version and provides Update and Uninstall. Component operations check a running Docker-compatible engine and Docker Compose and report unavailable prerequisites without runtime installation, launch or installation guidance. Chat import is a separate opt-in, and there is no built-in patrol.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_portfolio.rs",
@@ -342,11 +342,11 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
-          "version": "repo-file-v1:sha256:f85396d5f363861e61dc33905478eef8040c79f1fa64272fc412cf1f9cbb0056"
+          "version": "repo-file-v1:sha256:a48c96edf9028245f67bc743d0b270b240da46a818d783a0c1af41d246bb633e"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:b9ec790a366ae5f7181d83aace685cf943cc31f3a84d3e9e301ff4fe98c00352"
+          "version": "repo-file-v1:sha256:5c2c3a7ef8ddde1e5398824a9c9511b03b45c2ea0746dc99224c999f2ba87a31"
         },
         {
           "resource": "repo://crates/decodex-components/src/ragflow_service.rs",
@@ -368,11 +368,11 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:b9ec790a366ae5f7181d83aace685cf943cc31f3a84d3e9e301ff4fe98c00352"
+          "version": "repo-file-v1:sha256:5c2c3a7ef8ddde1e5398824a9c9511b03b45c2ea0746dc99224c999f2ba87a31"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/settings_surface.rs#L512-L554",
-          "version": "repo-lines-v1:sha256:d297636772291536693f252bcec945ca86cb4b8c74eb66b904e15ba76ec6f791:eyJzZWxlY3RlZExpbmVDb3VudCI6NDMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVlMWE4ZWI0MGQ5OWU0Y2I3Y2ZiZWY1M2VjODJmMTcxM2QxNmY4NzlmYzAwM2UyZjI1ZjY3YzZkYmVjM2E1M2EiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU4NTc0MGZkYjNlMzY0Yjc0YWEyMGY0YjJkMDdjNTNhOWU1M2UzNTVlN2Q1MWJlZGQ0ZDI3Njk0YWU4Mjk2ZWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE0NTkzODU1MTI3OGQzMmMzZDE2NjU1ZmJkODZhYWZlZTBlNWI5Y2U1MGUyYmEzZDI1ZDVhMjlkYzY5OTI1MWEifQ"
+          "resource": "repo://apps/decodex-gpui/src/settings_surface.rs#L497-L557",
+          "version": "repo-lines-v1:sha256:1d64f0e0728945f50a9ecb06de95815037fc53bd576e959d831906009518dde2:eyJzZWxlY3RlZExpbmVDb3VudCI6NjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUwMjQ4NWFkZWFiYTkyMmFkMWMzYmEzZGU0MWY1YmE2NmZiMTZhMjZiN2ViZTVhNjhkOGJiNDVlZmU0NDU4OTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU1MTRkMjA4Njg4NGY4MTdiMmFjYTFlYTkwOTE3Yjg4YTkxMzhmNzlkMmE5MmYwYzIxNTlkNDE5ZWJhOGZlZWYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjliMTE0Y2MyYjhkODYxMjk3ZmY2MGUwN2Q0NjQ2NjcwZmVjMGQ1ZjU5YWY4NDFjMTM3MmQ1NDFiOWVhYzk2YzYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjcwZTgzMGUzNTQ5NjMxODViMzg3MGRhY2Q0NWExMzhkZWJhOGZlYzMyMmZjODBlZjFhOTZjMWNjNWVkZTYxMjcifQ"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_updates.rs",
@@ -383,6 +383,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-05T08:37:07.266Z"
+    "at": "2026-11-05T11:57:35.741Z"
   }
 }

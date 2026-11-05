@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:10c2899818bb19fc4bfb6f30a1df7a508416c8e2daad7f9515e070cf10b52883",
+  "pageVersion": "sha256:e7074549680424990f0f1ef77065b7c045bbffbd34113592fca834ee76d49b69",
   "claims": [
     {
       "id": "claim_2f9fecf97f644372afb5684929656aac",
@@ -8,7 +8,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
-          "version": "repo-file-v1:sha256:f85396d5f363861e61dc33905478eef8040c79f1fa64272fc412cf1f9cbb0056"
+          "version": "repo-file-v1:sha256:a48c96edf9028245f67bc743d0b270b240da46a818d783a0c1af41d246bb633e"
         },
         {
           "resource": "repo://crates/decodex-core/src/assistant.rs",
@@ -146,15 +146,15 @@
     },
     {
       "id": "claim_d7c97e74e7fd4a17bbb30ad7532a9914",
-      "statement": "RAGFlow component operations check the running Docker-compatible engine and Docker Compose before installation effects. Unavailable prerequisites use shared inline feedback without runtime installation, launch or installation guidance. Install prepares managed nightly with compatible Infinity and its private service account and opens the existing model editor if no model settings are saved. Expanding installed RAGFlow opens the editor directly for an OpenAI-compatible Base URL, optional private API key and custom extraction and embedding names; native verification precedes saving and dedicated Memory setup. No model runtime or model weights are installed. The editor leaves saved keys blank and keeps an old key only at the same Base URL; loopback URLs map to the Docker host internally. Indexed Memory retains its embedding model and endpoint. Service connection and derived scopes are automatic, chat import starts off with an independent switch when Memory is ready, and empty dataset scopes disable knowledge retrieval. Collapsing and reopening preserves unsaved input; Cancel discards it and editor errors and collapses the component.",
+      "statement": "RAGFlow component operations check the running Docker-compatible engine and Docker Compose before installation effects. Unavailable prerequisites use shared inline feedback without runtime installation, launch or installation guidance. Install prepares managed nightly with compatible Infinity and its private service account and opens the existing model editor if no model settings are saved. The row distinguishes installed service from configured Memory. Empty required fields block submission, edits refresh the form and clear its old error, and complete input gets validation on explicit submission. Verify and enable is the initial setup action; configured Memory uses Verify and save. Expanding installed RAGFlow opens the editor directly for an OpenAI-compatible Base URL, optional private API key and custom extraction and embedding names; native verification precedes saving and dedicated Memory setup. No model runtime or model weights are installed. The editor leaves saved keys blank and keeps an old key only at the same Base URL; loopback URLs map to the Docker host internally. Indexed Memory retains its embedding model and endpoint. Service connection and derived scopes are automatic, chat import starts off with an independent switch when Memory is ready, and empty dataset scopes disable knowledge retrieval. Collapsing and reopening preserves unsaved input; Cancel discards it and editor errors and collapses the component.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
-          "version": "repo-file-v1:sha256:f85396d5f363861e61dc33905478eef8040c79f1fa64272fc412cf1f9cbb0056"
+          "version": "repo-file-v1:sha256:a48c96edf9028245f67bc743d0b270b240da46a818d783a0c1af41d246bb633e"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:b9ec790a366ae5f7181d83aace685cf943cc31f3a84d3e9e301ff4fe98c00352"
+          "version": "repo-file-v1:sha256:5c2c3a7ef8ddde1e5398824a9c9511b03b45c2ea0746dc99224c999f2ba87a31"
         },
         {
           "resource": "repo://crates/decodex-components/src/ragflow.rs",
@@ -270,11 +270,11 @@
     },
     {
       "id": "claim_939773e6ca4645c2815e77753b790b71",
-      "statement": "HTTP Memory setup fixtures cover missing default models without publishing a Memory credential, exact-name recovery after a lost creation reply, and origin-bound credentials with private file modes. Idle setup has no first user event. Managed-service fixtures cover unavailable container prerequisites without storage changes, image pulls or service startup, loopback-only exposure, absence of model installation, custom endpoint paths and names, loopback translation and project-scoped Uninstall without volume removal. The model editor fixture checks blank saved-key fields, source invalidation and draft preservation.",
+      "statement": "HTTP Memory setup fixtures cover missing default models without publishing a Memory credential, exact-name recovery after a lost creation reply, and origin-bound credentials with private file modes. Idle setup has no first user event. Managed-service fixtures cover unavailable container prerequisites without storage changes, image pulls or service startup, loopback-only exposure, absence of model installation, custom endpoint paths and names, loopback translation and project-scoped Uninstall without volume removal. The model editor fixtures check blank saved-key fields, same-endpoint key retention, source invalidation, draft preservation, empty-submit blocking, explicit URL validation and input-driven form updates.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
-          "version": "repo-file-v1:sha256:f85396d5f363861e61dc33905478eef8040c79f1fa64272fc412cf1f9cbb0056"
+          "version": "repo-file-v1:sha256:a48c96edf9028245f67bc743d0b270b240da46a818d783a0c1af41d246bb633e"
         },
         {
           "resource": "repo://crates/decodex-components/src/ragflow.rs",
@@ -304,7 +304,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
-          "version": "repo-file-v1:sha256:f85396d5f363861e61dc33905478eef8040c79f1fa64272fc412cf1f9cbb0056"
+          "version": "repo-file-v1:sha256:a48c96edf9028245f67bc743d0b270b240da46a818d783a0c1af41d246bb633e"
         }
       ]
     },
@@ -314,11 +314,11 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
-          "version": "repo-file-v1:sha256:f85396d5f363861e61dc33905478eef8040c79f1fa64272fc412cf1f9cbb0056"
+          "version": "repo-file-v1:sha256:a48c96edf9028245f67bc743d0b270b240da46a818d783a0c1af41d246bb633e"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:b9ec790a366ae5f7181d83aace685cf943cc31f3a84d3e9e301ff4fe98c00352"
+          "version": "repo-file-v1:sha256:5c2c3a7ef8ddde1e5398824a9c9511b03b45c2ea0746dc99224c999f2ba87a31"
         },
         {
           "resource": "repo://crates/decodex-components/src/ragflow_service.rs",
@@ -329,6 +329,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-05T08:37:07.266Z"
+    "at": "2026-11-05T11:57:35.741Z"
   }
 }

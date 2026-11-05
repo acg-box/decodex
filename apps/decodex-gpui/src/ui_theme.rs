@@ -374,6 +374,7 @@ pub(crate) fn settings_label(
 			gpui::div()
 				.text_size(gpui::px(SETTINGS_LABEL_SIZE))
 				.line_height(gpui::px(18.0))
+				.font_weight(FontWeight::MEDIUM)
 				.child(title.into()),
 		)
 		.when(!description.is_empty(), |label| label.child(settings_description(description)))

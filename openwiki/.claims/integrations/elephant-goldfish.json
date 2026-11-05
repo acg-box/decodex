@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:b4b823e23584f3455fa0b9d4a7568ce2b64a5341d3f17b9c8217d26c6acc4179",
+  "pageVersion": "sha256:d351121bf2949e880a4945ddcd711b1cc719d0207c743477d59ebb203a80b886",
   "claims": [
     {
       "id": "claim_95da7355536d42fb9ba017dae9558113",
@@ -25,16 +25,12 @@
           "version": "repo-file-v1:sha256:190f6fe3576b323a91b91214c53527635dbf2b962830439a58ccaccf0c09fd18"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/settings_components.rs#L178-L201",
-          "version": "repo-lines-v1:sha256:5227aa7dd29db2e2c51f109db97982de6b972e73d3c609f4830fefec8b06fdc1:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY0ZWZjNDk0MThkMjZkY2YxMjliMjJhNmFhMjExMDhjZWVjMzc2NzdhMzJkMDhlOWQ1ZmVlMzVkZGE2NmJiOWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQzZjRlMTM5ZmYyNWRlNjRmZTM4ZjlmZGY1YmEzODAwNjkyOTg0MTRkMDc3NDk0NzE1ZGYxNmY1MDFiYzUzMDkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA1NzBiYzJhMzllYjQ5MDc2MTA5NWJkMjhjY2VjNWUxNTFkODIwYTg1MzVhNWI2NGM3OTllZTU4ODY2YTQ0ZDgifQ"
+          "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
+          "version": "repo-file-v1:sha256:5c2c3a7ef8ddde1e5398824a9c9511b03b45c2ea0746dc99224c999f2ba87a31"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/settings_components.rs#L569-L624",
-          "version": "repo-lines-v1:sha256:369b0c6b5550b3ec5136c3e65620a38e2ba9e46c7d679226b3b563d470564e5a:eyJzZWxlY3RlZExpbmVDb3VudCI6NTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjljMDc0NzQzODljMjc2ZmY4M2MwYWEwYjc3NzU1MTk0MmU1NThiNDlmNjhlMjIyMGI3ZDRkNzM4MjljMmEwNDYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNiMTZmMGNhYTQzZWE5NTRjMWRmMTVhZDdkODQxMDI1YWM0NzFmNzViNjE3ZWU2NzAyY2QwNGIxOGU3Zjk5ODEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjYzNjc3YTFkYjcyYjNmNDI5OTcxYzI5ZDVmMjhkOGEzODBmMTllYmZlZDVmZGE5NzUzNjZiMmU4MzE1N2U4MDAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE0MzkzYmIyMDA5ZWVhZjgyY2NhZWE3NjM3ZjE1YTQyZDNhOWU5ZmViYzhlMmYxZTUyNzYzZjYyYjUyZGU1MjkifQ"
-        },
-        {
-          "resource": "repo://apps/decodex-gpui/src/settings_surface.rs#L512-L554",
-          "version": "repo-lines-v1:sha256:d297636772291536693f252bcec945ca86cb4b8c74eb66b904e15ba76ec6f791:eyJzZWxlY3RlZExpbmVDb3VudCI6NDMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVlMWE4ZWI0MGQ5OWU0Y2I3Y2ZiZWY1M2VjODJmMTcxM2QxNmY4NzlmYzAwM2UyZjI1ZjY3YzZkYmVjM2E1M2EiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU4NTc0MGZkYjNlMzY0Yjc0YWEyMGY0YjJkMDdjNTNhOWU1M2UzNTVlN2Q1MWJlZGQ0ZDI3Njk0YWU4Mjk2ZWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE0NTkzODU1MTI3OGQzMmMzZDE2NjU1ZmJkODZhYWZlZTBlNWI5Y2U1MGUyYmEzZDI1ZDVhMjlkYzY5OTI1MWEifQ"
+          "resource": "repo://apps/decodex-gpui/src/settings_surface.rs#L497-L557",
+          "version": "repo-lines-v1:sha256:1d64f0e0728945f50a9ecb06de95815037fc53bd576e959d831906009518dde2:eyJzZWxlY3RlZExpbmVDb3VudCI6NjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUwMjQ4NWFkZWFiYTkyMmFkMWMzYmEzZGU0MWY1YmE2NmZiMTZhMjZiN2ViZTVhNjhkOGJiNDVlZmU0NDU4OTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU1MTRkMjA4Njg4NGY4MTdiMmFjYTFlYTkwOTE3Yjg4YTkxMzhmNzlkMmE5MmYwYzIxNTlkNDE5ZWJhOGZlZWYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjliMTE0Y2MyYjhkODYxMjk3ZmY2MGUwN2Q0NjQ2NjcwZmVjMGQ1ZjU5YWY4NDFjMTM3MmQ1NDFiOWVhYzk2YzYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjcwZTgzMGUzNTQ5NjMxODViMzg3MGRhY2Q0NWExMzhkZWJhOGZlYzMyMmZjODBlZjFhOTZjMWNjNWVkZTYxMjcifQ"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_updates.rs",
@@ -135,6 +131,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-05T05:20:04.159Z"
+    "at": "2026-11-05T11:57:35.741Z"
   }
 }

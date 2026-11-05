@@ -288,7 +288,11 @@ impl SettingsSurface {
 		ui_theme::settings_row()
 			.child(ui_theme::settings_label(
 				"Color scheme",
-				"System follows your Mac’s light or dark appearance.",
+				if selected == Appearance::System {
+					"Follows your Mac’s appearance."
+				} else {
+					""
+				},
 			))
 			.child(Segmented::new(
 				"settings-segments-Appearance",
@@ -519,8 +523,8 @@ impl SettingsSurface {
 					self.preference_control(
 						"notification-count-preference",
 						"notification-count-knob",
-						"Notification count",
-						"Show the number of notifications on the bell.",
+						"Show notification count",
+						"",
 						crate::shell::notification_count_preference,
 						cx,
 					)
@@ -528,8 +532,8 @@ impl SettingsSurface {
 					self.preference_control(
 						"question-notice-preference",
 						"question-notice-knob",
-						"Agent questions",
-						"Show notices for new questions in the selected conversation.",
+						"Show Agent question notices",
+						"Only for the selected conversation.",
 						crate::shell::question_notice_preference,
 						cx,
 					)
@@ -1010,10 +1014,7 @@ impl SettingsSurface {
 			.flex_col()
 			.child(
 				ui_theme::settings_row()
-					.child(ui_theme::settings_label(
-						"Launch at login",
-						"Start quietly when you sign in to your Mac.",
-					))
+					.child(ui_theme::settings_label("Launch at login", ""))
 					.child(self.launch_at_login_toggle(cx)),
 			)
 			.children(
@@ -1058,10 +1059,7 @@ impl SettingsSurface {
 			.flex_col()
 			.child(
 				ui_theme::settings_row()
-					.child(ui_theme::settings_label(
-						"Show in menu bar",
-						"Quick access to accounts and usage.",
-					))
+					.child(ui_theme::settings_label("Show in menu bar", ""))
 					.child(self.menu_bar_toggle(cx)),
 			)
 			.children(setting_notice(
@@ -1217,7 +1215,7 @@ mod tests {
 
 		if distance > gpui::px(0.) {
 			visual.simulate_event(gpui::ScrollEvent {
-				// Scroll the page gutter, outside the theme gallery's own scroll area.
+				// The Settings page owns scrolling, including the theme gallery.
 				position: gpui::point(viewport.left() + gpui::px(8.), viewport.center().y),
 				delta: gpui::ScrollDelta::Pixels(gpui::point(gpui::px(0.), -distance)),
 				..Default::default()
@@ -1231,25 +1229,7 @@ mod tests {
 	}
 
 	fn scroll_to_theme(visual: &mut gpui::VisualTestContext, selector: &'static str) {
-		let viewport = visual.debug_bounds("color-theme-picker").expect("theme viewport");
-
-		assert_eq!(viewport.size.height, gpui::px(192.));
-
-		let target = visual.debug_bounds(selector).expect("theme option");
-		let distance = if target.top() < viewport.top() {
-			target.top() - viewport.top() - gpui::px(4.)
-		} else {
-			(target.bottom() - viewport.bottom() + gpui::px(4.)).max(gpui::px(0.))
-		};
-
-		visual.simulate_event(gpui::ScrollEvent {
-			position: viewport.center(),
-			delta: gpui::ScrollDelta::Pixels(gpui::point(gpui::px(0.), -distance)),
-			..Default::default()
-		});
-		visual.update(crate::ui_frame::draw_current_frame);
-
-		assert!(viewport.contains(&visual.debug_bounds(selector).unwrap().center()));
+		scroll_to_control(visual, selector);
 	}
 
 	#[gpui::test]
@@ -1429,7 +1409,9 @@ mod tests {
 	}
 
 	#[gpui::test]
-	fn theme_gallery_scrolls_then_hands_boundary_wheel_events_to_the_page(cx: &mut TestAppContext) {
+	fn theme_gallery_shares_page_scrolling_and_keeps_all_options_in_layout(
+		cx: &mut TestAppContext,
+	) {
 		let (_, visual) = cx.add_window_view(|_, cx| {
 			let mut surface = SettingsSurface::new(DesktopSettingsController::production(), cx);
 
@@ -1456,25 +1438,21 @@ mod tests {
 			window.draw(cx).clear(cx);
 		});
 
-		let before = visual.debug_bounds("color-theme-picker").expect("theme viewport");
+		let before = visual.debug_bounds("color-theme-picker").expect("theme gallery");
 		let last = visual.debug_bounds("color-theme-tokyo-night").expect("last theme");
-		let to_end = last.bottom() - before.bottom() + before.size.height;
-		let wheel = gpui::ScrollEvent {
+		assert!(before.contains(&last.center()), "all themes use normal page layout");
+		visual.simulate_event(gpui::ScrollEvent {
 			position: before.center(),
-			delta: gpui::ScrollDelta::Pixels(gpui::point(gpui::px(0.), -to_end)),
+			delta: gpui::ScrollDelta::Pixels(gpui::point(gpui::px(0.), gpui::px(-80.))),
 			..Default::default()
-		};
-
-		visual.simulate_event(wheel.clone());
+		});
 		visual.update(crate::ui_frame::draw_current_frame);
-
-		assert_eq!(visual.debug_bounds("color-theme-picker").unwrap(), before);
-		assert!(before.contains(&visual.debug_bounds("color-theme-tokyo-night").unwrap().center()));
-
-		visual.simulate_event(wheel);
+		thread::sleep(std::time::Duration::from_millis(300));
 		visual.update(crate::ui_frame::draw_current_frame);
-
-		assert!(visual.debug_bounds("color-theme-picker").unwrap().top() < before.top());
+		assert!(
+			visual.debug_bounds("color-theme-picker").unwrap().top() < before.top(),
+			"scrolling over a theme must scroll the page immediately"
+		);
 	}
 
 	#[gpui::test]

@@ -124,10 +124,10 @@ sources:
     resource: repo://scripts/macos/test_native_app.sh
   - id: openwiki-source-e201f60894c32a914dac99ee
     resource: repo://scripts/vnext/run_native_regression.py
-generated: { by: "codex", at: "2026-11-04T20:52:38.845Z" }
+generated: { by: "codex", at: "2026-11-05T11:57:35.741Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-05T08:37:07.266Z
+    at: 2026-11-05T11:57:35.741Z
 ---
 
 
@@ -174,7 +174,7 @@ Select an existing Agent with `decodex agent assistant-role --agent-id ID`. Use 
 
 Assistant is built in and available from the sidebar by default. Its first use initializes an idle Agent; it has no Enable control in Components. Continuing instructions, teams and duties stay in chat. See [the lifecycle](../decisions/assistant-lifecycle.md) for supported operations and ownership.
 
-With Docker running, choose Install for RAGFlow in Settings > Components. The component prepares the nightly service, compatible Infinity and its private account, then reads the actual installed version. Expand installed RAGFlow to edit one OpenAI-compatible Base URL, optional API key and exact extraction and embedding model names. Save verifies the models and initializes dedicated Memory automatically. It derives the scopes and internal service credential without a Connect step or service-account form. No model runtime or model weights are installed. Update reuses the model settings, data volumes and import choice. Uninstall stops the owned project, clears its Assistant connection and retains data for reinstall. RAGFlow owns migrations in its service database; the Decodex SQLite schema does not change. Chat import starts off and requires a separate explicit action.
+With Docker running, choose Install for RAGFlow in Settings > Components. The component prepares the nightly service, compatible Infinity and its private account, then reads the actual installed version. Expand installed RAGFlow to edit one OpenAI-compatible Base URL, optional API key and exact extraction and embedding model names. Verify and enable verifies the models and initializes dedicated Memory automatically. Configured Memory uses Verify and save. It derives the scopes and internal service credential without a Connect step or service-account form. No model runtime or model weights are installed. Update reuses the model settings, data volumes and import choice. Uninstall stops the owned project, clears its Assistant connection and retains data for reinstall. RAGFlow owns migrations in its service database; the Decodex SQLite schema does not change. Chat import starts off and requires a separate explicit action.
 
 Use isolated test processes for the backend fixture suite:
 

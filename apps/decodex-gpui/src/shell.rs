@@ -3681,30 +3681,30 @@ fn empty_accounts() -> impl IntoElement {
 		)
 }
 
-fn account_mode_button(
-	label: &'static str,
-	selected: bool,
-	can_manage: bool,
-	cx: &mut Context<Shell>,
-) -> AnyElement {
-	gpui::div()
-		.id("accounts-balanced")
-		.role(Role::Button)
-		.aria_toggled(if selected { Toggled::True } else { Toggled::False })
-		.tab_index(if can_manage { 0 } else { -1 })
-		.aria_label("Use balanced routing for new conversations")
-		.tooltip(|_, cx| {
-			cx.new(|_| ControlTooltip("Choose accounts automatically for new conversations."))
-				.into()
+fn account_mode_button(selected: bool, can_manage: bool, cx: &mut Context<Shell>) -> AnyElement {
+	let label = if selected { "Routing: Automatic" } else { "Use automatic routing" };
+	ui_theme::settings_button_base("accounts-balanced", label)
+		.debug_selector(|| "accounts-balanced".into())
+		.role(if selected { Role::Status } else { Role::Button })
+		.tab_index(if can_manage && !selected { 0 } else { -1 })
+		.aria_label(if selected {
+			"New conversations use automatic account routing"
+		} else {
+			"Use automatic routing for new conversations"
 		})
-		.h(gpui::px(28.0))
-		.px_3()
-		.flex()
-		.items_center()
-		.rounded(gpui::px(7.0))
-		.bg(if selected { ui_theme::rgba(0x60a5fa16) } else { ui_theme::rgba(0x00000000) })
-		.text_size(gpui::px(11.0))
-		.text_color(if selected { ui_theme::rgb(WB_TEXT) } else { ui_theme::rgb(WB_TEXT_MUTED) })
+		.aria_description("Select an account’s route action to use a fixed account.")
+		.tooltip(move |_, cx| {
+			cx.new(move |_| {
+				ControlTooltip(if selected {
+					"Select an account’s route action to use a fixed account."
+				} else {
+					"Choose accounts automatically for new conversations."
+				})
+			})
+			.into()
+		})
+		.cursor_default()
+		.when(selected, |status| status.border_color(gpui::transparent_black()))
 		.when(can_manage && !selected, |button| {
 			button
 				.cursor_pointer()
@@ -3723,7 +3723,6 @@ fn account_mode_button(
 					}
 				}))
 		})
-		.child(label)
 		.smooth()
 		.into_any_element()
 }
@@ -3744,16 +3743,20 @@ fn account_login_controls(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement 
 		.items_center()
 		.gap_2();
 
-	for (id, label, method) in [
-		("account-login-browser", "Add account", AccountLoginMethod::BrowserRedirect),
-		("account-login-device", "Device code", AccountLoginMethod::DeviceCode),
-	] {
-		actions =
-			actions.child(account_login_button(id, label, can_start).when(can_start, |button| {
-				button.on_click(cx.listener(move |shell, _, _, cx| {
-					shell.start_account_enrollment(method, cx);
-				}))
-			}));
+	if !busy {
+		for (id, label, method) in [
+			("account-login-browser", "Add account", AccountLoginMethod::BrowserRedirect),
+			("account-login-device", "Device code", AccountLoginMethod::DeviceCode),
+		] {
+			actions = actions.child(account_login_button(id, label, can_start).when(
+				can_start,
+				|button| {
+					button.on_click(cx.listener(move |shell, _, _, cx| {
+						shell.start_account_enrollment(method, cx);
+					}))
+				},
+			));
+		}
 	}
 
 	if busy
@@ -6440,7 +6443,7 @@ fn account_pool_header(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 				.flex()
 				.items_center()
 				.gap_2()
-				.child(account_mode_button("Balanced", balanced, shell.accounts.can_manage, cx))
+				.child(account_mode_button(balanced, shell.accounts.can_manage, cx))
 				.child(
 					account_icon_action(
 						"account-email-visibility",
@@ -7045,6 +7048,8 @@ mod tests {
 			let toolbar = visual.debug_bounds("account-toolbar").unwrap();
 			let routing = visual.debug_bounds("account-routing-controls").unwrap();
 			let actions = visual.debug_bounds("account-login-controls").unwrap();
+			assert!(visual.debug_bounds("account-login-browser").is_none());
+			assert!(visual.debug_bounds("account-login-device").is_none());
 			assert!(
 				actions.left() >= routing.right(),
 				"login and routing actions must not overlap"
@@ -8271,7 +8276,7 @@ mod tests {
 
 		assert_eq!(first.top(), fifth.top(), "five previews must fit beside settings navigation");
 		assert!(first.left() >= gallery.left());
-		assert!(fifth.right() < gallery.right(), "leave room for the gallery scrollbar");
+		assert!(fifth.right() <= gallery.right(), "previews stay within the page column");
 		assert!(sixth.top() >= first.bottom(), "keep five previews per row");
 	}
 

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:b2ddb108dff88f97261c34b0fdc5c21dd93d114ec8daef0de99e98ca8cd55759",
+  "pageVersion": "sha256:3e60958b2560996108050972fd1120b2d9ca01171fb3a87ea2968000b89ff069",
   "claims": [
     {
       "id": "claim_3881a280a4044cdca9e8599100f0a4f0",
@@ -396,7 +396,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_surface.rs",
-          "version": "repo-file-v1:sha256:fc5a5f31ba8c35966a536dd1332fdd942d8badcb9a841e7baa5147c4db08819c"
+          "version": "repo-file-v1:sha256:3c02c70a1d7f51bb7824d3d9be8c028cf2a97120253c6903b245f45e0b36c2f3"
         }
       ]
     },
@@ -440,7 +440,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/shell.rs",
-          "version": "repo-file-v1:sha256:a599d2137a29246946168832b0f56f8a4e59d891473963f5a54b5dc02f79b31c"
+          "version": "repo-file-v1:sha256:cb7b99f1c42122610dec6c761db2ed6297e19b3003033cf64b2b2e8376e5c44e"
         }
       ]
     },
@@ -739,7 +739,7 @@
           "version": "repo-file-v1:sha256:9bde145aa029ab54450e8e621e26d974d496e7fcc48aeaef21d397236f114802"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs#L53-L92",
+          "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs#L54-L93",
           "version": "repo-lines-v1:sha256:dc3d1b6d419edb69bde030f020efb9b3ab066c207672c59d2dd4635a1c5048b8:eyJzZWxlY3RlZExpbmVDb3VudCI6NDAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZiYTBmMGRkOTVkNDViNzMxNTIxYWUwMGM0NTJjZTBkOGNjNzllZmEzMjBiZmU1ZDljYzhhMzhhZTExYTVhOWIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE1NzczMGE2NGE4MTgxMTEzNTEwMDZjNWMwYTZiZjMyM2M3ZDUyNjViMDBhZmU0MDBkOWYxNTI0ZmI0Y2ZhZmMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVlZjgzMzE5YjcxZDMyNGE3MmZkMjljZjQzMjgzNjg5ZWFlOWExOWQ4MmY3MWI0ZmY0ZWUzNTcyZTRiM2JjODIifQ"
         }
       ]
@@ -747,6 +747,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-05T08:37:07.266Z"
+    "at": "2026-11-05T12:06:42.474Z"
   }
 }
