@@ -482,7 +482,7 @@ pub(super) fn row(
 		.gap_2()
 		.border_t_1()
 		.border_color(ui_theme::rgba(ui_theme::PANEL_DIVIDER))
-		.pt(gpui::px(10.))
+		.pt(gpui::px(6.))
 		.text_size(gpui::px(ui_theme::SETTINGS_HELP_SIZE))
 		.text_color(ui_theme::rgb(WB_TEXT_MUTED))
 		.child(
@@ -826,7 +826,7 @@ mod render_tests {
 			assert_eq!(next_seven.size, seven.size);
 			if unavailable == AccountQuotaStateDto::NotApplicable {
 				assert!(visual.debug_bounds("quota-reset-5h").is_none());
-				assert_eq!(next_seven.top(), five.top());
+				assert_eq!(next_seven.center().y, (five.center().y + seven.center().y) / 2.);
 			} else {
 				let next_five = visual.debug_bounds("quota-reset-5h").unwrap();
 				assert_eq!(next_five, five, "unknown usage retains its row and value alignment");
@@ -859,7 +859,7 @@ mod render_tests {
 		let first = visual.debug_bounds("account-card-0").unwrap();
 		let identity = visual.debug_bounds("account-identity-0").unwrap();
 		let quota = visual.debug_bounds("account-quota-0").unwrap();
-		assert!(identity.bottom() < quota.top(), "identity and usage have separate rows");
+		assert!(identity.right() < quota.left(), "identity and usage have separate columns");
 		assert!(first.bottom() > quota.bottom(), "the account surface contains its usage");
 
 		// Click the outside padding of the last row repeatedly, including after its height changes.

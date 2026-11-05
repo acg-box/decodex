@@ -71,9 +71,9 @@ pub(super) fn panel(shell: &Shell, account: &AccountDto) -> AnyElement {
 		.w_full()
 		.flex()
 		.flex_col()
-		.gap(gpui::px(12.))
+		.gap(gpui::px(8.))
 		.text_size(gpui::px(ui_theme::SETTINGS_HELP_SIZE))
-		.line_height(gpui::px(18.))
+		.line_height(gpui::px(16.))
 		.text_color(ui_theme::rgb(WB_TEXT_MUTED));
 	let profile = match snapshot.and_then(|s| s.result.as_ref()) {
 		Some(
@@ -95,7 +95,7 @@ pub(super) fn panel(shell: &Shell, account: &AccountDto) -> AnyElement {
 	};
 
 	content = content.child(
-		gpui::div().w_full().grid().grid_cols(2).gap_x(gpui::px(32.)).gap_y(gpui::px(8.)).children(
+		gpui::div().w_full().grid().grid_cols(2).gap_x(gpui::px(32.)).gap_y(gpui::px(4.)).children(
 			metrics(profile).into_iter().enumerate().map(|(index, (label, value))| {
 				gpui::div()
 					.id(("account-activity-metric", index))
@@ -131,7 +131,7 @@ pub(super) fn panel(shell: &Shell, account: &AccountDto) -> AnyElement {
 			gpui::div()
 				.id("account-activity-chart")
 				.debug_selector(|| "account-activity-chart".into())
-				.h(gpui::px(24.))
+				.h(gpui::px(18.))
 				.w_full()
 				.flex()
 				.items_end()
@@ -147,7 +147,7 @@ pub(super) fn panel(shell: &Shell, account: &AccountDto) -> AnyElement {
 						.h(gpui::px(if day.tokens == 0 {
 							1.
 						} else {
-							(24. * (day.tokens as f32 / peak as f32).sqrt()).max(2.)
+							(18. * (day.tokens as f32 / peak as f32).sqrt()).max(2.)
 						}))
 						.rounded(gpui::px(1.5))
 						.bg(ui_theme::rgb(if day.tokens == 0 { WB_TEXT_FAINT } else { WB_BLUE }))

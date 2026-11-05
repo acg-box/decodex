@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:aca24cfa7bace409b87b4c1349eef9b449a594ef4f053b30eba8fe2e49b9aa65",
+  "pageVersion": "sha256:27ef3f80976942a4fe19b633babe11c057c7a4897b9e3ae6aa06daea0f4edcda",
   "claims": [
     {
       "id": "claim_36b9a49ffa87416e8add8befc7d10efe",
@@ -41,7 +41,7 @@
           "version": "repo-lines-v1:sha256:d4a810b24b6fee6011830d9fdf5a5684f48b46546ca9e1f58947ca4fb9b91cbf:eyJzZWxlY3RlZExpbmVDb3VudCI6MzYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgyZGUzNjgwMWQyNDRhNzJjYWZhMTRlZmU5MzE1YmYxMzMxMjFkNmIzYmQ2ZDYwZDQ1Mzg5ZDhlNjY5OTE3ZWYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImVmZGJiMjk5ZDBiNDhjODk4YTljZmI1ZThlYTU3OGUwZDIxNjY1MmVmMjU0NjQxMWJlNGFhNGU2OTY4MDI0OTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE1MjE2MDRiMzVmYzQwYWYwMGNiYTRlZWEyZmQ1ZTJjM2FmMTg2M2IzOTExODVkN2JmNGJiMDllNzJkMGM4YjMifQ"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/ui_motion.rs#L457-L502",
+          "resource": "repo://apps/decodex-gpui/src/ui_motion.rs#L442-L487",
           "version": "repo-lines-v1:sha256:c75d74413f2889d9b2bb52e15371a13b7ccd798cf77bc50f31395f124f851196:eyJzZWxlY3RlZExpbmVDb3VudCI6NDYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdmN2E2MjI3ZmZkMTRkNGZjODdlYjBlZGU1MDNjYWQ3NGEyMDY5NzY0MzcxZWE1YjExNWJkODRhZDY3MDNkNTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU1MTRkMjA4Njg4NGY4MTdiMmFjYTFlYTkwOTE3Yjg4YTkxMzhmNzlkMmE5MmYwYzIxNTlkNDE5ZWJhOGZlZWYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYyOTY0MDc5YzNjNWM4MTUyMGVmMzNhMmI5ZDJlMTVhMWI4NGQ3MjgwZGI4NTkwZGNkNjU3NDdlM2UwMTJhNDAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImYyOTY0MDc5YzNjNWM4MTUyMGVmMzNhMmI5ZDJlMTVhMWI4NGQ3MjgwZGI4NTkwZGNkNjU3NDdlM2UwMTJhNDAifQ"
         },
         {
@@ -86,7 +86,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_theme.rs",
-          "version": "repo-file-v1:sha256:7eb31750d32b6ab2ff1f9c6ed841132ea5474677c5cafd876abad45e2a6daad4"
+          "version": "repo-file-v1:sha256:43c3e5d4d3de01b8392ce86fc3c0d524e27e02335b425d99d3708e1b1e0a1fbc"
         }
       ]
     },
@@ -673,6 +673,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-04T15:37:04.419Z"
+    "at": "2026-11-05T02:31:21.516Z"
   }
 }

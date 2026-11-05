@@ -112,10 +112,10 @@ sources:
     resource: repo://crates/decodex-runtime/tests/native_qualification/thread_settings.py
   - id: openwiki-source-8c78df4b382026886ac50894
     resource: repo://database/src/usage_evidence.rs
-generated: { by: "codex", at: "2026-11-04T20:52:38.845Z" }
+generated: { by: "codex", at: "2026-11-05T02:31:21.516Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-04T20:52:38.845Z
+    at: 2026-11-05T02:31:21.516Z
 ---
 
 # Model selection and settings ownership
@@ -139,7 +139,7 @@ Codex owns the effective model catalog, task configuration, provider admission a
 
 ## Find the retained switches
 
-The six Settings sections use the same 620-point content column and normal App typography. General groups the app version and Check for updates under Updates; there is no separate Updates page. Sparkle retains the application update flow. Ordinary preferences use flat sections; account records and diagnostic summaries retain quiet cards. Shared dividers separate rows and expanded details. Local notices, warnings and errors share one compact inset row with an icon and quiet tone fill. Text, icons and recovery buttons align vertically at the center. Recovery buttons stay with the affected message. If Codex setup fails, a short message directs you to the setup details. Expand Codex to inspect the original error, then use **Retry setup** after you resolve the cause.
+The six Settings sections use the same 620-point content column and normal App typography. General groups the app version and Check for updates under Updates; there is no separate Updates page. Sparkle retains the application update flow. Ordinary preferences use flat sections. Accounts uses compact divided rows that align identity, short quota meters and actions; diagnostic summaries retain quiet cards. Shared dividers separate rows and expanded details. Local notices, warnings and errors share one compact inset row with an icon and quiet tone fill. Text, icons and recovery buttons align vertically at the center. Recovery buttons stay with the affected message. If Codex setup fails, a short message directs you to the setup details. Expand Codex to inspect the original error, then use **Retry setup** after you resolve the cause.
 
 In **Settings > Agents > New conversations**, **Permissions** shows the selected mode's meaning beside its control. Its menu displays all four explanations and the native Subagent inheritance rule directly. **Speed** uses the shared Standard, Fast and Ultrafast segmented control, with relative included usage and credits for the selected speed visible in its row. Codex uses this same speed default. These remain two compact setting rows with visible explanations.
 

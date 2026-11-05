@@ -84,7 +84,7 @@ impl RenderOnce for QuotaMeter {
 			.gap(gpui::px(8.))
 			.font_family(FONT_FAMILY)
 			.text_size(gpui::px(ui_theme::SETTINGS_HELP_SIZE))
-			.line_height(gpui::px(18.))
+			.line_height(gpui::px(14.))
 			.text_color(ui_theme::rgb(ui_theme::TEXT_MUTED))
 			.child(gpui::div().w(gpui::px(18.)).flex_none().child(self.label))
 			.child(
