@@ -134,10 +134,10 @@ sources:
     resource: repo://database/src/works/commands.rs
   - id: openwiki-source-8fe6f1557e5d45d88b34bd0a
     resource: repo://scripts/macos/generate_workspace_symbols.swift
-generated: { by: "codex", at: "2026-11-05T05:20:04.159Z" }
+generated: { by: "codex", at: "2026-11-05T05:34:06.722Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-05T05:26:43.341Z
+    at: 2026-11-05T05:34:06.722Z
 ---
 
 # Desktop workspace and native glass
@@ -152,7 +152,7 @@ The permission picker keeps its open state and focus handles in the window. Its 
 
 Settings navigation uses its final layout in the first frame. User-triggered details in Accounts, Components, Diagnostics and Tool catalog cache use the shared 200 ms disclosure animation. The catalog panel uses the same presentation in Agent preferences. Settings destinations bypass the page-arrival fade, and the standalone Settings window configures its material before activation. Button, switch and chevron feedback remain independent of page geometry. Regression tests check stable first entry, intermediate expansion and collapse frames, interruption, clipping, live content changes and the absence of idle frame requests.
 
-Settings and conversation disclosures animate their open proportion. The first opening frame resolves the available width at zero height. During motion, the component measures current content at that width before laying out siblings and clips both prepaint and paint to the revealed bounds. It does not reuse a previous frame's content height. Already open details mount at full height. Settled content uses normal layout, so nested size changes do not replay expansion. Completed collapse removes the element from layout, including parent gaps. Measurements do not notify the model. Motion uses the GPUI clock, can reverse from the displayed position and respects reduced motion. Arrival on other workspace destinations changes opacity without moving content or hit targets.
+Settings and conversation disclosures animate their open proportion. The first opening frame resolves the available width at zero height. During motion, the component measures current content at that width before laying out siblings and clips both prepaint and paint to the revealed bounds. The same flow box includes child margins during measurement and settled layout. It does not reuse a previous frame's content height. Already open details mount at full height. Settled content uses normal layout, so nested size changes do not replay expansion. Completed collapse removes the element from layout, including parent gaps. Measurements do not notify the model. Motion uses the GPUI clock, can reverse from the displayed position and respects reduced motion. Arrival on other workspace destinations changes opacity without moving content or hit targets.
 
 Ordinary preferences and Accounts use flat lists and one divided-row helper. Diagnostic summaries retain quiet cards. Each account summary places its identity, a fixed-width quota column and management actions on one compact row. One or two quota windows use the same summary height. Only the summary has the disclosure click target and hand cursor; expanded reading areas keep the ordinary cursor. Not-applicable quota windows are omitted; unknown usage retains its row. Expanded activity keeps two columns of labels and values, with current and best streak together, followed by the daily chart and a separate Reset cards area. Metric labels and values share the quota text size and muted color; values use tabular figures without extra size or weight. The daily chart uses a subdued accent. Component names, available versions and lifecycle actions share one row in a divided list. Expanded component and MCP details share one divider treatment. Feedback stays with the operation that owns it.
 

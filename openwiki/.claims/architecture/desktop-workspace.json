@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:f48dc8a48ada08bd4de8a662d15ba70be02a02124a5124a3dacd2217ad5fc8ad",
+  "pageVersion": "sha256:4331f8f3321bbed198bdf5810ff13d50c04b39f1907a729e9f279ef96e340887",
   "claims": [
     {
       "id": "claim_41c9eba720934771bd6b671a7aeb8b6e",
@@ -646,7 +646,7 @@
     },
     {
       "id": "claim_329790566c5a46f89f095cded8abf208",
-      "statement": "Settings destinations bypass page-arrival fading. Accounts, Components, Diagnostics and Tool catalog cache share the interruptible 200 ms disclosure animation with conversations; Agent preferences uses the same catalog panel. The opening frame resolves width at zero height. Moving details measure current content before sibling layout and clip prepaint and paint to revealed bounds without a previous-frame height cache or model notifications. Initially open and settled details use normal full-height layout. Completed collapse removes parent gaps. The GPUI clock drives motion, reversal preserves the current position, and reduced motion applies the target directly. Arrival on other destinations changes opacity without moving hit targets.",
+      "statement": "Settings destinations bypass page-arrival fading. Accounts, Components, Diagnostics and Tool catalog cache share the interruptible 200 ms disclosure animation with conversations; Agent preferences uses the same catalog panel. The opening frame resolves width at zero height. Moving details measure current content before sibling layout and clip prepaint and paint to revealed bounds without a previous-frame height cache or model notifications. The same flow box includes child margins in measured and settled layout. Initially open and settled details use normal full-height layout. Completed collapse removes parent gaps. The GPUI clock drives motion, reversal preserves the current position, and reduced motion applies the target directly. Arrival on other destinations changes opacity without moving hit targets.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_context_settings.rs#L294-L352",
@@ -665,8 +665,8 @@
           "version": "repo-lines-v1:sha256:1b4b072ca9ebd5ab63e56a7f7bb505f7b894044071a24928a2ac729a12f641fb:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ4MDIzODA0NzlmYjAwNDQxNGE2MzIwZGUxNTA0YzZhNzI4NDA4NTQ5NjE3ODQwZjE5YTRkNDZkYmEwZGZiYmMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZhNDk1NjIyOTA2ODk2ODllNWE4ZTNiYjZmZWJkMGE4YWIzZDFkNmM4ZTUxZThmZGIxMDU1NTczNTdhODViNzIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJhNzRiMWNiNjM0NTljYWQxN2Y0Njg2MjJjOTE5YTRhM2NhZWJhZDI5OTU2NmI2OWJlYTJjN2FiOTEzMTQ5MGUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA0NTU5MjI4Zjg1MWE0YWUwZGUzYzQ3MTQ3ZTI5NmNmMzYxOGM2NDVlZTBiNmI4NWFkMGMyZTc0Y2IzMjdhZDMifQ"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/ui_disclosure.rs#L18-L181",
-          "version": "repo-lines-v1:sha256:e9e19bb1751827d82965de4d39b2219f99f8f717f54c7e9320e9c15a937212eb:eyJzZWxlY3RlZExpbmVDb3VudCI6MTY0LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI5M2EwY2ZlMGUwNzk5MjcwZTNjMWVlMjA4YTY2N2FiYjFmMTRkNjE4ZmM0NmYzYTU4ZmMzNDE5Y2Q3ZTBlYTczIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0MTJjYTM0NWNjZjc1YmY5YzA4MDZiY2U2OTViZThkZTgwOGI3OTk4NDI1MWE3YTU0ZDIwMmNmNjEwMWRkNDUxIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJmZTkxYmRjYTI4NzRlMGI0Y2JiN2JlZDhhNmYwNWIzMzlkMTJiNDRhNGI0YWQ1MjM5M2MyYjFkODViMTNiMzMyIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI3YmM5OGQ2YjBkYzQ5MmM1MDE2ZGYxMDgwNWEzYTU0ZWI5YzE4NGE1YTYxMzdlN2Y0YmVjZmEwYzIyMDU1MGQwIn0"
+          "resource": "repo://apps/decodex-gpui/src/ui_disclosure.rs#L19-L192",
+          "version": "repo-lines-v1:sha256:900b76d1248f000421f9b6b9c31e1dc78c4314a84ff883779d4f7a2dd2f72807:eyJzZWxlY3RlZExpbmVDb3VudCI6MTc0LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI5M2EwY2ZlMGUwNzk5MjcwZTNjMWVlMjA4YTY2N2FiYjFmMTRkNjE4ZmM0NmYzYTU4ZmMzNDE5Y2Q3ZTBlYTczIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0MTJjYTM0NWNjZjc1YmY5YzA4MDZiY2U2OTViZThkZTgwOGI3OTk4NDI1MWE3YTU0ZDIwMmNmNjEwMWRkNDUxIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJmZTkxYmRjYTI4NzRlMGI0Y2JiN2JlZDhhNmYwNWIzMzlkMTJiNDRhNGI0YWQ1MjM5M2MyYjFkODViMTNiMzMyIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI3YmM5OGQ2YjBkYzQ5MmM1MDE2ZGYxMDgwNWEzYTU0ZWI5YzE4NGE1YTYxMzdlN2Y0YmVjZmEwYzIyMDU1MGQwIn0"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_motion.rs#L448-L512",
@@ -730,7 +730,7 @@
     },
     {
       "id": "claim_cb36de3ebb634ab5a5afc840e851baab",
-      "statement": "The standalone Settings window configures its material before activation. Regression tests check stable first-entry geometry, intermediate expansion and collapse, repeated toggles, interruption, clipping, live content changes and no idle frame requests.",
+      "statement": "The standalone Settings window configures its material before activation. Regression tests check stable first-entry geometry, intermediate expansion and collapse, repeated toggles, interruption, clipping, live content changes, child margins and no idle frame requests.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_context_settings_wire_tests.rs#L129-L215",
@@ -753,14 +753,14 @@
           "version": "repo-lines-v1:sha256:63ab29578f550ca0fae62e6c5ae299968ed51314daa1cb19a41c8789d516bd02:eyJzZWxlY3RlZExpbmVDb3VudCI6NjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRhNDMwOWVmNjVkMDZhNGQ2ZGE0ZGVlMThjNjc0NjBlOGY0MjRmOWZjODQwZTAyODgzN2ZlOGEwOWYwZTM5N2UiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY5MjMwYTQyYzU2MTgzYmM2YzFkODcxYjZiZWE3YzRiNDYxYzZlMTFhZWI2ZmE1YjBkZThlNDg3MDFhM2EyNjgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg1MDc2YzMxNDVhNTg1Y2E3MzllOGZlYmIwNWQxNzA5YzI0YTQ0M2NjZjkxZTQ0NDE3MzFhYzVmZTM3NDljNTkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdlYWE5MDg0YWYwYjU4YWExZmMwMDU1ZjNiODZlN2JiNTFmOWEyZTdiNWZmNGQwY2U4ZTMzODQxZGM0M2ZlMTYifQ"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/ui_disclosure.rs#L224-L293",
-          "version": "repo-lines-v1:sha256:972e6a90266f374d61b21fb9720ddd0d09a6988f2a4a2b093fea5bc13f2fcc47:eyJzZWxlY3RlZExpbmVDb3VudCI6NzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRhNDMwOWVmNjVkMDZhNGQ2ZGE0ZGVlMThjNjc0NjBlOGY0MjRmOWZjODQwZTAyODgzN2ZlOGEwOWYwZTM5N2UiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjIyZjJmZjVmZWVjNjBmNTg3YzhmYWU0ZTg3ZjgwOWE2NjFjZmZlZDZiNDdhYWU1ZjZkNmEyNjUzYWE4OTUyZWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEifQ"
+          "resource": "repo://apps/decodex-gpui/src/ui_disclosure.rs#L236-L305",
+          "version": "repo-lines-v1:sha256:82186b9f8c941819d43288805790e52a0a79639bcd5c75556a84c24572f8da91:eyJzZWxlY3RlZExpbmVDb3VudCI6NzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRhNDMwOWVmNjVkMDZhNGQ2ZGE0ZGVlMThjNjc0NjBlOGY0MjRmOWZjODQwZTAyODgzN2ZlOGEwOWYwZTM5N2UiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjIyZjJmZjVmZWVjNjBmNTg3YzhmYWU0ZTg3ZjgwOWE2NjFjZmZlZDZiNDdhYWU1ZjZkNmEyNjUzYWE4OTUyZWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEifQ"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-05T05:26:43.341Z"
+    "at": "2026-11-05T05:34:06.722Z"
   }
 }

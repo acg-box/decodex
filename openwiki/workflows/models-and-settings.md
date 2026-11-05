@@ -119,7 +119,7 @@ sources:
 generated: { by: "codex", at: "2026-11-05T05:20:04.159Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-05T05:26:43.341Z
+    at: 2026-11-05T05:34:06.722Z
 ---
 
 # Model selection and settings ownership

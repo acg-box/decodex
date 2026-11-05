@@ -3,7 +3,8 @@ use std::{cell::Cell, panic::Location, rc::Rc};
 
 use gpui::{
 	AnyElement, App, Bounds, ContentMask, Element, ElementId, GlobalElementId, InspectorElementId,
-	IntoElement, LayoutId, Pixels, RenderOnce, Window, prelude::ParentElement as _,
+	IntoElement, LayoutId, Pixels, RenderOnce, Window,
+	prelude::{ParentElement as _, Styled as _},
 };
 
 use super::{Tween, request_frame};
@@ -33,7 +34,17 @@ impl RenderOnce for Disclosure {
 			width,
 			progress,
 			collapsed: !self.visible && !moving,
-			child: (self.visible || moving).then(|| (self.child)(cx)),
+			child: (self.visible || moving).then(|| {
+				// One flow box includes child margins in both measured and settled layout.
+				gpui::div()
+					.w_full()
+					.min_w_0()
+					.flex_none()
+					.flex()
+					.flex_col()
+					.child((self.child)(cx))
+					.into_any_element()
+			}),
 		}
 	}
 }
@@ -177,7 +188,7 @@ pub(crate) fn settings_disclosure(
 	expanded: bool,
 	content: impl FnOnce() -> AnyElement,
 ) -> Disclosure {
-	disclosure(id, expanded, crate::ui_theme::settings_rows().child(content()))
+	disclosure(id, expanded, content())
 }
 
 #[cfg(test)]
@@ -207,6 +218,7 @@ mod tests {
 						.id("body")
 						.debug_selector(|| "body".into())
 						.w_full()
+						.mt(gpui::px(8.))
 						.h(gpui::px(height))
 						.child(
 							gpui::canvas(
@@ -246,7 +258,7 @@ mod tests {
 		visual.executor().advance_clock(Duration::from_millis(50));
 		visual.update(crate::ui_frame::draw_frame);
 		let opening = visual.debug_bounds("after").unwrap().top();
-		assert!((opening - gpui::px(92.5)).abs() <= gpui::px(1.));
+		assert!((opening - gpui::px(97.125)).abs() <= gpui::px(1.));
 		assert_eq!(visual.debug_bounds("body").unwrap().size.height, gpui::px(160.));
 		assert_eq!(mask.get().bottom(), opening, "content is clipped above its next sibling");
 		section.update(visual, |s, cx| {
@@ -255,7 +267,7 @@ mod tests {
 		});
 		visual.update(crate::ui_frame::draw_current_frame);
 		let resized = visual.debug_bounds("after").unwrap().top();
-		assert!((resized - gpui::px(138.75)).abs() <= gpui::px(1.));
+		assert!((resized - gpui::px(143.375)).abs() <= gpui::px(1.));
 		assert_eq!(mask.get().bottom(), resized, "new content height applies in this frame");
 		section.update(visual, |s, cx| {
 			s.visible = false;
@@ -275,7 +287,7 @@ mod tests {
 		assert_eq!(visual.debug_bounds("after").unwrap().top(), closing);
 		visual.executor().advance_clock(Duration::from_millis(200));
 		visual.update(crate::ui_frame::draw_frame);
-		assert_eq!(visual.debug_bounds("after").unwrap().top(), gpui::px(240.));
+		assert_eq!(visual.debug_bounds("after").unwrap().top(), gpui::px(248.));
 		visual.update(|window, cx| assert_eq!(window.simulate_next_frame(cx), 0));
 		section.update(visual, |s, cx| {
 			s.visible = false;

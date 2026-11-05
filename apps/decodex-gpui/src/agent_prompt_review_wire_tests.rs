@@ -35,16 +35,21 @@ fn side_chat_rejection_keeps_the_reason_at_the_tabs_and_can_be_dismissed(cx: &mu
 		tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap().block_on(async {
 			tokio::time::timeout(Duration::from_secs(5), async {
 				let listener = tokio::net::UnixListener::from_std(listener).unwrap();
-				let mut socket = tokio_tungstenite::accept_async(listener.accept().await.unwrap().0).await.unwrap();
-				let _ = socket.next().await;
-				for message in [
-					ServerMessage::Welcome(ServerWelcome { version: CURRENT_VERSION, server_id: server_id.clone(), instance_id: None, cursor: Cursor(0), reconnect: ReconnectMode::Snapshot }),
-					ServerMessage::Snapshot(SnapshotEnvelope { version: CURRENT_VERSION, server_id: server_id.clone(), cursor: Cursor(0), items: vec![] }),
-				] {
-					socket.send(Message::Text(serde_json::to_string(&message).unwrap().into())).await.unwrap();
-				}
-				let Message::Text(text) = socket.next().await.unwrap().unwrap() else { panic!("request") };
-				let ClientMessage::Command(command) = serde_json::from_str(&text).unwrap() else { panic!("command") };
+				// Viewport reads can connect before preparation. Close those one-shot reads.
+				let (mut socket, command) = loop {
+					let mut socket = tokio_tungstenite::accept_async(listener.accept().await.unwrap().0).await.unwrap();
+					let _ = socket.next().await;
+					for message in [
+						ServerMessage::Welcome(ServerWelcome { version: CURRENT_VERSION, server_id: server_id.clone(), instance_id: None, cursor: Cursor(0), reconnect: ReconnectMode::Snapshot }),
+						ServerMessage::Snapshot(SnapshotEnvelope { version: CURRENT_VERSION, server_id: server_id.clone(), cursor: Cursor(0), items: vec![] }),
+					] {
+						socket.send(Message::Text(serde_json::to_string(&message).unwrap().into())).await.unwrap();
+					}
+					let Message::Text(text) = socket.next().await.unwrap().unwrap() else { panic!("request") };
+					if let ClientMessage::Command(command) = serde_json::from_str(&text).unwrap() {
+						break (socket, command);
+					}
+				};
 				assert!(matches!(command.payload, CommandPayload::Agent { action } if matches!(*action, AgentActionDto::PreparePromptEdit { .. })));
 				for message in [
 					ServerMessage::CommandReceipt(CommandReceipt { version: CURRENT_VERSION, server_id: server_id.clone(), client_command_id: command.client_command_id.clone(), idempotency_key: command.idempotency_key.clone(), disposition: ReceiptDisposition::Refused, original_client_command_id: command.client_command_id.clone() }),
