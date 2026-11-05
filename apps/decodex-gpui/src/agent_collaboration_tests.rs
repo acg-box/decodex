@@ -263,7 +263,7 @@ fn exchange_disclosure_animates_in_both_directions_without_changing_the_draft(
 	visual.update(crate::ui_frame::draw_frame);
 	visual.update(crate::ui_frame::draw_frame);
 
-	thread::sleep(Duration::from_millis(240));
+	visual.executor().advance_clock(Duration::from_millis(240));
 
 	visual.update(crate::ui_frame::draw_frame);
 
@@ -286,12 +286,12 @@ fn exchange_disclosure_animates_in_both_directions_without_changing_the_draft(
 		opening.push(height(visual));
 	}
 
-	thread::sleep(Duration::from_millis(55));
+	visual.executor().advance_clock(Duration::from_millis(55));
 
 	visual.update(crate::ui_frame::draw_frame);
 	opening.push(height(visual));
 
-	thread::sleep(Duration::from_millis(240));
+	visual.executor().advance_clock(Duration::from_millis(240));
 
 	visual.update(crate::ui_frame::draw_frame);
 
@@ -315,7 +315,7 @@ fn exchange_disclosure_animates_in_both_directions_without_changing_the_draft(
 
 	let first_closing = height(visual);
 
-	thread::sleep(Duration::from_millis(55));
+	visual.executor().advance_clock(Duration::from_millis(55));
 
 	visual.update(crate::ui_frame::draw_frame);
 
@@ -326,7 +326,7 @@ fn exchange_disclosure_animates_in_both_directions_without_changing_the_draft(
 		"closing must interpolate: {closing:?}"
 	);
 
-	thread::sleep(Duration::from_millis(240));
+	visual.executor().advance_clock(Duration::from_millis(240));
 
 	visual.update(crate::ui_frame::draw_frame);
 
@@ -396,7 +396,7 @@ fn source_reference_fits_one_line_and_copies_its_exact_value(cx: &mut TestAppCon
 	// Hit-test the presented disclosure, independently of asynchronous image loads.
 	visual.update(crate::ui_frame::draw_frame);
 
-	thread::sleep(Duration::from_millis(240));
+	visual.executor().advance_clock(Duration::from_millis(240));
 
 	visual.update(crate::ui_frame::draw_frame);
 

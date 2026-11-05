@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:56735b04bad644e47e024b08ebdcbe639621d090ae89a76bacbf8a0c9eef112e",
+  "pageVersion": "sha256:b4b823e23584f3455fa0b9d4a7568ce2b64a5341d3f17b9c8217d26c6acc4179",
   "claims": [
     {
       "id": "claim_95da7355536d42fb9ba017dae9558113",
@@ -29,7 +29,7 @@
           "version": "repo-lines-v1:sha256:5227aa7dd29db2e2c51f109db97982de6b972e73d3c609f4830fefec8b06fdc1:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY0ZWZjNDk0MThkMjZkY2YxMjliMjJhNmFhMjExMDhjZWVjMzc2NzdhMzJkMDhlOWQ1ZmVlMzVkZGE2NmJiOWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQzZjRlMTM5ZmYyNWRlNjRmZTM4ZjlmZGY1YmEzODAwNjkyOTg0MTRkMDc3NDk0NzE1ZGYxNmY1MDFiYzUzMDkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA1NzBiYzJhMzllYjQ5MDc2MTA5NWJkMjhjY2VjNWUxNTFkODIwYTg1MzVhNWI2NGM3OTllZTU4ODY2YTQ0ZDgifQ"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/settings_components.rs#L571-L626",
+          "resource": "repo://apps/decodex-gpui/src/settings_components.rs#L569-L624",
           "version": "repo-lines-v1:sha256:369b0c6b5550b3ec5136c3e65620a38e2ba9e46c7d679226b3b563d470564e5a:eyJzZWxlY3RlZExpbmVDb3VudCI6NTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjljMDc0NzQzODljMjc2ZmY4M2MwYWEwYjc3NzU1MTk0MmU1NThiNDlmNjhlMjIyMGI3ZDRkNzM4MjljMmEwNDYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNiMTZmMGNhYTQzZWE5NTRjMWRmMTVhZDdkODQxMDI1YWM0NzFmNzViNjE3ZWU2NzAyY2QwNGIxOGU3Zjk5ODEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjYzNjc3YTFkYjcyYjNmNDI5OTcxYzI5ZDVmMjhkOGEzODBmMTllYmZlZDVmZGE5NzUzNjZiMmU4MzE1N2U4MDAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE0MzkzYmIyMDA5ZWVhZjgyY2NhZWE3NjM3ZjE1YTQyZDNhOWU5ZmViYzhlMmYxZTUyNzYzZjYyYjUyZGU1MjkifQ"
         },
         {
@@ -120,7 +120,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_collaboration_tests.rs",
-          "version": "repo-file-v1:sha256:55d639530d5c7091c0e50a93fe78b6209f144a294659bb194e477dee89629cd4"
+          "version": "repo-file-v1:sha256:98ca45406d3940b2fad3da602f99ad4850e6ac407ee219eed65e1e7fe51fe99f"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_review.rs",
@@ -135,6 +135,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-04T17:57:39.895Z"
+    "at": "2026-11-05T05:20:04.159Z"
   }
 }

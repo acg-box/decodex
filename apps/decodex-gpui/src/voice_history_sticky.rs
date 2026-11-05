@@ -337,16 +337,18 @@ mod tests {
 		}
 	}
 	fn draw(visual: &mut VisualTestContext) {
-		visual.update(crate::ui_frame::draw_current_frame);
+		visual.update(crate::ui_frame::draw_frame);
 	}
 	fn settle(visual: &mut VisualTestContext) {
 		draw(visual);
 
 		thread::sleep(std::time::Duration::from_millis(250));
+		visual.executor().advance_clock(std::time::Duration::from_millis(250));
 
 		draw(visual);
 
 		thread::sleep(std::time::Duration::from_millis(250));
+		visual.executor().advance_clock(std::time::Duration::from_millis(250));
 
 		draw(visual);
 	}
@@ -474,6 +476,7 @@ mod tests {
 		);
 
 		thread::sleep(std::time::Duration::from_millis(140));
+		visual.executor().advance_clock(std::time::Duration::from_millis(140));
 
 		draw(visual);
 

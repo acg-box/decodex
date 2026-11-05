@@ -207,7 +207,7 @@ fn summary_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 
 	content
 		.child(gpui::div().flex().flex_col().child(details_toggle(shell, cx)).child(
-			ui_theme::settings_disclosure(
+			crate::ui_motion::settings_disclosure(
 				"health-details-motion",
 				shell.diagnostics.expanded,
 				|| technical_details(snapshot),

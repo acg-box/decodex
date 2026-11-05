@@ -98,6 +98,8 @@ fn run_setting(cx: &mut TestAppContext, feature: AgentContextFeature, selector: 
 		let toggle = visual.debug_bounds("context-mcp-catalogs").unwrap();
 		visual.simulate_click(toggle.center(), Default::default());
 		visual.update(crate::ui_frame::draw_current_frame);
+		visual.executor().advance_clock(std::time::Duration::from_millis(200));
+		visual.update(crate::ui_frame::draw_frame);
 	}
 
 	let button = visual.debug_bounds(selector).unwrap();
@@ -155,13 +157,20 @@ fn native_defaults_disclosure_tracks_servers_without_dispatching(cx: &mut TestAp
 	let toggle = visual.debug_bounds("context-mcp-catalogs").unwrap();
 	visual.simulate_click(toggle.center(), Default::default());
 	visual.update(crate::ui_frame::draw_current_frame);
+	assert_eq!(visual.debug_bounds("automatic-prompt-suggestions").unwrap(), collapsed);
+	visual.executor().advance_clock(std::time::Duration::from_millis(50));
+	visual.update(crate::ui_frame::draw_frame);
+	let opening = visual.debug_bounds("automatic-prompt-suggestions").unwrap();
+	visual.executor().advance_clock(std::time::Duration::from_millis(150));
+	visual.update(crate::ui_frame::draw_frame);
 	assert!(visual.debug_bounds("context-choice-mcp-xcode").is_some());
 	assert!(visual.debug_bounds("context-choice-mcp-brave").is_some());
 	let expanded = visual.debug_bounds("automatic-prompt-suggestions").unwrap();
 	assert!(
 		visual.debug_bounds("context-choice-mcp-brave").unwrap().bottom() < expanded.top(),
-		"the last server must be above Assistance in the first expanded frame"
+		"the last server must be above Assistance after expansion"
 	);
+	assert!(opening.top() > collapsed.top() && opening.top() < expanded.top());
 	for _ in 0..3 {
 		visual.update(crate::ui_frame::draw_frame);
 		assert_eq!(visual.debug_bounds("automatic-prompt-suggestions").unwrap(), expanded);
@@ -189,6 +198,12 @@ fn native_defaults_disclosure_tracks_servers_without_dispatching(cx: &mut TestAp
 	let toggle = visual.debug_bounds("context-mcp-catalogs").unwrap();
 	visual.simulate_click(toggle.center(), Default::default());
 	visual.update(crate::ui_frame::draw_current_frame);
+	assert!(
+		visual.debug_bounds("context-choice-mcp-xcode").is_some(),
+		"closing retains the content until the animation finishes"
+	);
+	visual.executor().advance_clock(std::time::Duration::from_millis(200));
+	visual.update(crate::ui_frame::draw_frame);
 	assert!(visual.debug_bounds("context-choice-mcp-xcode").is_none());
 	assert_eq!(visual.debug_bounds("automatic-prompt-suggestions").unwrap(), collapsed);
 	surface.read_with(visual, |s, _| {

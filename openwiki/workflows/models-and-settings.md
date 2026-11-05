@@ -44,6 +44,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/settings_updates.rs
   - id: openwiki-source-1291f5243fa6c9cb52149bda
     resource: repo://apps/decodex-gpui/src/shell.rs
+  - id: openwiki-source-fe671b38d0336d4630edcd46
+    resource: repo://apps/decodex-gpui/src/ui_disclosure.rs
   - id: openwiki-source-2f256c95c226c1326d164ad3
     resource: repo://apps/decodex-gpui/src/ui_feedback.rs
   - id: openwiki-source-546812ff3637690f4a184b89
@@ -114,10 +116,10 @@ sources:
     resource: repo://crates/decodex-runtime/tests/native_qualification/thread_settings.py
   - id: openwiki-source-8c78df4b382026886ac50894
     resource: repo://database/src/usage_evidence.rs
-generated: { by: "codex", at: "2026-11-05T04:14:56.077Z" }
+generated: { by: "codex", at: "2026-11-05T05:20:04.159Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-05T04:14:56.077Z
+    at: 2026-11-05T05:26:43.341Z
 ---
 
 # Model selection and settings ownership
@@ -165,7 +167,7 @@ For background compaction and retention of marked tool outputs, an omitted effec
 
 The cached-catalog switch writes only `startup_readiness` for an existing user-configured MCP server: on selects `catalog`, and off selects `connection`. Native Codex owns the cache and tool connection. A missing or invalid cache keeps normal discovery; a tool call still needs the live connection. Configure project-only and plugin servers in Codex.
 
-Tool catalog cache opens and closes at its final height immediately through the shared Settings disclosure. Agent preferences uses the same panel. Expansion, collapse and server-list refresh do not save configuration.
+Tool catalog cache opens and closes with the shared 200 ms Settings disclosure animation. Current content is measured before sibling layout and clipped during motion. Agent preferences uses the same panel. Expansion, collapse and server-list refresh do not save configuration.
 
 Automatic suggestions are enabled by default. Turning the switch off prevents future automatic requests. Turning it back on does not request suggestions for answers that completed while it was off. Tab acceptance still creates an undoable draft and never sends it. This setting does not turn on content export or the deferred messaging experiments.
 

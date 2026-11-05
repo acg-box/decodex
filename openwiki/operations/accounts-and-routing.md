@@ -18,8 +18,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/shell_reset_cards.rs
   - id: openwiki-source-1291f5243fa6c9cb52149bda
     resource: repo://apps/decodex-gpui/src/shell.rs
-  - id: openwiki-source-570564020f98df7a4d6d0b61
-    resource: repo://apps/decodex-gpui/src/ui_theme.rs
+  - id: openwiki-source-fe671b38d0336d4630edcd46
+    resource: repo://apps/decodex-gpui/src/ui_disclosure.rs
   - id: openwiki-source-35beef376e748f87821e9639
     resource: repo://apps/decodex-gpui/src/workspace_symbols.rs
   - id: openwiki-source-b52eea0658a5f27f944ae338
@@ -44,10 +44,10 @@ sources:
     resource: repo://database/src/quota_activation.rs
   - id: openwiki-source-8fe6f1557e5d45d88b34bd0a
     resource: repo://scripts/macos/generate_workspace_symbols.swift
-generated: { by: "codex", at: "2026-11-05T04:03:25.459Z" }
+generated: { by: "codex", at: "2026-11-05T05:20:04.159Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-05T04:03:25.459Z
+    at: 2026-11-05T05:26:43.341Z
 ---
 
 # Account routing and recovery
@@ -86,7 +86,7 @@ Account recovery notices and explicit recovery actions remain supported. A missi
 
 Swift and GPUI use the same interaction model. Normal accounts retain route, power and logout actions. An account that requires a new login shows a red warning with sign-in and logout controls; it does not reserve usage-bar space or require the user to sign in before logging out. Separate drag handles distinguish reordering from a click. Clicking the account summary toggles its details; action buttons keep their own behavior. In GPUI, the hand cursor belongs to that summary. Expanded metrics and the chart use the normal cursor, and clicking them does not collapse the account.
 
-Each account has independent expanded state. Opening one account does not close another. Details contain the saved activity metrics, usage graph and Reset Cards. GPUI applies the final detail height immediately on expansion and collapse through the shared Settings disclosure. It does not animate a height measured in a previous frame. Do not add a second Reset Cards disclosure or duplicate logout control. The GPUI account hover covers the row. Native menu focus and synchronized expansion belong to the [desktop presentation boundary](../architecture/desktop-workspace.md).
+Each account has independent expanded state. Opening one account does not close another. Details contain the saved activity metrics, usage graph and Reset Cards. GPUI uses the shared 200 ms disclosure animation for expansion and collapse. Each moving frame measures current content before placing the next account and clips the visible area. It does not reuse a previous frame's content height. Already open details use their full height on first entry. Do not add a second Reset Cards disclosure or duplicate logout control. The GPUI account hover covers the row. Native menu focus and synchronized expansion belong to the [desktop presentation boundary](../architecture/desktop-workspace.md).
 
 GPUI uses a compact divided list. Each summary aligns identity, short `5h` and `7d` quota meters and management actions on one row. The quota column has a fixed width, and one or two windows keep the same summary height. Labels, percentages and local reset timestamps retain stable columns. A not-applicable window has no row, matching Menu Bar. Unknown usage retains its row with a placeholder; it does not become a fake zero-percent value. Both clients show the local reset date and time and pad single-digit calendar days with a digit-width space. On macOS, Foundation supplies the system hour-cycle preference, locale and time zone for quota reset and Reset Card expiry labels. Quoted locale words stay literal. This changes presentation only; it does not change the native reset instant or quota evidence.
 

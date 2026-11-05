@@ -1,5 +1,6 @@
 //! Interruptible motion shared by native controls and workspace panels.
 
+#[path = "ui_disclosure.rs"] mod disclosure;
 #[cfg(all(target_os = "macos", not(test)))]
 #[path = "ui_native_popover.rs"]
 mod native_popover;
@@ -11,6 +12,7 @@ pub(crate) use crate::ui_frame::{
 	animations_active, application_active, observe_activation, reduced, request_frame,
 	window_options,
 };
+pub(crate) use disclosure::{disclosure, disclosure_lazy, settings_disclosure};
 pub(crate) use overflow_label::OverflowLabel;
 pub(crate) use segmented::{Choice, Segmented};
 pub(crate) use text_reveal::TextReveal;
@@ -216,55 +218,6 @@ impl RenderOnce for Control {
 				})
 			})
 			.into_any_element()
-	}
-}
-
-#[derive(IntoElement)]
-pub(crate) struct Disclosure {
-	id: ElementId,
-	visible: bool,
-	child: Box<dyn FnOnce(&mut App) -> AnyElement>,
-}
-impl RenderOnce for Disclosure {
-	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-		let state = window.use_keyed_state(self.id, cx, |_, _| DisclosureState {
-			height: 0.0,
-			progress: Tween::new(if self.visible { 1.0 } else { 0.0 }),
-		});
-		let now = Instant::now();
-		let (height, moving) = state.update(cx, |s, _| {
-			// Animate openness, not the measured height. Nested content can then
-			// change size without restarting an ancestor's transition every frame.
-			s.progress.target(if self.visible { 1.0 } else { 0.0 }, now);
-			(s.height * s.progress.sample(now), s.progress.moving(now))
-		});
-
-		if moving {
-			request_frame(window, cx);
-		}
-
-		gpui::div()
-			.w_full()
-			.h(gpui::px(height))
-			.when(!self.visible && height <= 0.1, |slot| slot.hidden())
-			.when(self.visible && !moving, |slot| slot.h_auto())
-			.flex_none()
-			.overflow_hidden()
-			.when(self.visible || height > 0.1, |slot| {
-				slot.child(
-					gpui::div()
-						.w_full()
-						.flex_none()
-						.on_children_prepainted(move |bounds, _, cx| {
-							if let Some(bounds) = bounds.first() {
-								// Geometry belongs to the next animation frame; it
-								// must not trigger a second layout notification.
-								state.update(cx, |s, _| s.height = f32::from(bounds.size.height));
-							}
-						})
-						.child((self.child)(cx)),
-				)
-			})
 	}
 }
 
@@ -684,11 +637,6 @@ impl Feedback {
 	}
 }
 
-struct DisclosureState {
-	height: f32,
-	progress: Tween,
-}
-
 impl SmoothControl for Stateful<Div> {
 	fn smooth(self) -> Control {
 		Control { div: self, enabled: true }
@@ -763,25 +711,6 @@ pub(crate) fn direct_value(
 	}
 
 	value
-}
-
-pub(crate) fn disclosure(
-	id: impl Into<ElementId>,
-	visible: bool,
-	child: impl IntoElement,
-) -> Disclosure {
-	let child = child.into_any_element();
-
-	disclosure_lazy(id, visible, move |_| child)
-}
-
-/// Do not construct Markdown and tool details for fully collapsed processes.
-pub(crate) fn disclosure_lazy(
-	id: impl Into<ElementId>,
-	visible: bool,
-	child: impl FnOnce(&mut App) -> AnyElement + 'static,
-) -> Disclosure {
-	Disclosure { id: id.into(), visible, child: Box::new(child) }
 }
 
 pub(crate) fn arrival(route: String, child: impl IntoElement) -> Arrival {

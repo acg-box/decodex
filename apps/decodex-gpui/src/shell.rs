@@ -3505,7 +3505,7 @@ fn account_pool_rows(shell: &Shell, cx: &mut Context<Shell>) -> Vec<AnyElement> 
 				.flex()
 				.flex_col()
 				.child(row)
-				.child(ui_theme::settings_disclosure(
+				.child(crate::ui_motion::settings_disclosure(
 					SharedString::from(format!(
 						"account-expansion-{}",
 						account.account_id.as_str()
@@ -7780,6 +7780,8 @@ mod tests {
 
 		settings.simulate_click(toggle.center(), Default::default());
 		settings.update(crate::ui_frame::draw_current_frame);
+		settings.executor().advance_clock(std::time::Duration::from_millis(200));
+		settings.update(crate::ui_frame::draw_frame);
 
 		assert!(shell.read_with(settings, |s, _| s.diagnostics.expanded));
 		assert_eq!(scroll.bounds(), viewport, "details must not enlarge the viewport");
@@ -7837,6 +7839,8 @@ mod tests {
 
 		settings.simulate_click(toggle.center(), Default::default());
 		settings.update(crate::ui_frame::draw_current_frame);
+		settings.executor().advance_clock(std::time::Duration::from_millis(200));
+		settings.update(crate::ui_frame::draw_frame);
 
 		assert!(settings.debug_bounds("health-components").is_none());
 		assert_eq!(scroll.offset().y, gpui::px(0.));
@@ -7854,6 +7858,8 @@ mod tests {
 
 		settings.simulate_click(toggle.center(), Default::default());
 		settings.update(crate::ui_frame::draw_current_frame);
+		settings.executor().advance_clock(std::time::Duration::from_millis(200));
+		settings.update(crate::ui_frame::draw_frame);
 
 		assert!(settings.debug_bounds("health-previous-core-components").is_some());
 
@@ -8097,7 +8103,7 @@ mod tests {
 		let (shell, visual) = open_shell(cx);
 
 		for (index, expected) in
-			[(0, Destination::Settings), (5, Destination::Accounts), (6, Destination::Health)]
+			[(0, Destination::Settings), (4, Destination::Accounts), (5, Destination::Health)]
 		{
 			let focused = shell.read_with(visual, |shell, _| shell.settings_focus[index].clone());
 
