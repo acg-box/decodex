@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:5194ed8fb5de6948dcce86ea0c91a885756782bff44f683cf49f9b01538cf59f",
+  "pageVersion": "sha256:dd1c868f36e86a5d7ac78cec38d04319223a15738f570d66a562a6b349eb6320",
   "claims": [
     {
       "id": "claim_b34298a8647a4e0b8653926b7568c5d4",
@@ -180,7 +180,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:033d250fde651762b849fd053e9ce50625d992e7c534dabcafc43ae3f776ea5f"
+          "version": "repo-file-v1:sha256:384502c03198c05c4024812dc758410fed7c75aeb8033ac41ae1a7829412e577"
         }
       ]
     },
@@ -342,11 +342,11 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
-          "version": "repo-file-v1:sha256:306abda36fba53f054680a4e6ca7c82646fbada139cc9c753c19dcb5508fad2b"
+          "version": "repo-file-v1:sha256:3ee485b7d024df9132508601fbd47588cae74b29cbc31774b14394a3bd12337a"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:033d250fde651762b849fd053e9ce50625d992e7c534dabcafc43ae3f776ea5f"
+          "version": "repo-file-v1:sha256:384502c03198c05c4024812dc758410fed7c75aeb8033ac41ae1a7829412e577"
         },
         {
           "resource": "repo://crates/decodex-components/src/ragflow_service.rs",
@@ -368,7 +368,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:033d250fde651762b849fd053e9ce50625d992e7c534dabcafc43ae3f776ea5f"
+          "version": "repo-file-v1:sha256:384502c03198c05c4024812dc758410fed7c75aeb8033ac41ae1a7829412e577"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_surface.rs#L512-L554",
@@ -383,6 +383,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-05T05:20:04.159Z"
+    "at": "2026-11-05T05:54:36.940Z"
   }
 }

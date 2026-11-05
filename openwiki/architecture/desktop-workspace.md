@@ -88,6 +88,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/assistant_settings.rs
   - id: openwiki-source-e8596cc5aac62aa16bde932b
     resource: repo://apps/decodex-gpui/src/component_runtime.rs
+  - id: openwiki-source-7a7e7b3407a8222085c2d27e
+    resource: repo://apps/decodex-gpui/src/composer_input.rs
   - id: openwiki-source-fca3688e96d92c09b7ba015f
     resource: repo://apps/decodex-gpui/src/native_material_panel.rs
   - id: openwiki-source-a2f254020dd8eaabd6366c91
@@ -134,10 +136,10 @@ sources:
     resource: repo://database/src/works/commands.rs
   - id: openwiki-source-8fe6f1557e5d45d88b34bd0a
     resource: repo://scripts/macos/generate_workspace_symbols.swift
-generated: { by: "codex", at: "2026-11-05T05:34:06.722Z" }
+generated: { by: "codex", at: "2026-11-05T05:54:36.940Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-05T05:34:06.722Z
+    at: 2026-11-05T05:54:36.940Z
 ---
 
 # Desktop workspace and native glass
@@ -154,7 +156,7 @@ Settings navigation uses its final layout in the first frame. User-triggered det
 
 Settings and conversation disclosures animate their open proportion. The first opening frame resolves the available width at zero height. During motion, the component measures current content at that width before laying out siblings and clips both prepaint and paint to the revealed bounds. The same flow box includes child margins during measurement and settled layout. It does not reuse a previous frame's content height. Already open details mount at full height. Settled content uses normal layout, so nested size changes do not replay expansion. Completed collapse removes the element from layout, including parent gaps. Measurements do not notify the model. Motion uses the GPUI clock, can reverse from the displayed position and respects reduced motion. Arrival on other workspace destinations changes opacity without moving content or hit targets.
 
-Ordinary preferences and Accounts use flat lists and one divided-row helper. Diagnostic summaries retain quiet cards. Each account summary places its identity, a fixed-width quota column and management actions on one compact row. One or two quota windows use the same summary height. Only the summary has the disclosure click target and hand cursor; expanded reading areas keep the ordinary cursor. Not-applicable quota windows are omitted; unknown usage retains its row. Expanded activity keeps two columns of labels and values, with current and best streak together, followed by the daily chart and a separate Reset cards area. Metric labels and values share the quota text size and muted color; values use tabular figures without extra size or weight. The daily chart uses a subdued accent. Component names, available versions and lifecycle actions share one row in a divided list. Expanded component and MCP details share one divider treatment. Feedback stays with the operation that owns it.
+Ordinary preferences and Accounts use flat lists and one divided-row helper. Diagnostic summaries retain quiet cards. Each account summary places its identity, a fixed-width quota column and management actions on one compact row. One or two quota windows use the same summary height. Only the summary has the disclosure click target and hand cursor; expanded reading areas keep the ordinary cursor. Not-applicable quota windows are omitted; unknown usage retains its row. Expanded activity keeps two columns of labels and values, with current and best streak together, followed by the daily chart and a separate Reset cards area. Metric labels and values share the quota text size and muted color; values use tabular figures without extra size or weight. The daily chart uses a subdued accent. Component names, available versions and lifecycle actions share one row in a divided list. Expanded component, MCP and Diagnostics details share a top divider, a 16-point horizontal inset and secondary typography. Diagnostics uses compact headings and status rows within that region. Feedback stays with the operation that owns it.
 
 Visual references: [Zed Settings design](https://zed.dev/blog/settings-ui), [Raycast Settings](https://manual.raycast.com/settings) and [Linear preferences](https://linear.app/docs/account-preferences).
 
@@ -278,6 +280,6 @@ See [Conversation presentation and motion](conversation-presentation.md), [Agent
 
 The composer preserves current editable input. Submitted messages retain their own delivery state and exact retry payload; there is no recovered-copy manager. Rich Markdown retains math, Mermaid, weather and source-copy presentation without replacing native execution. The embedded MCP HTML viewer is retired. Ordinary tools and native form prompts remain available. See [conversations](../workflows/conversations-and-recovery.md), [tools](../integrations/tools-plugins-and-apps.md) and [acceptance boundaries](../testing/upstream-acceptance-boundaries.md).
 
-The model editor uses shared rows that align each label with its control. Cancel and Save align to the right. API guidance and the Codex memory reminder remain beside the form. Saved-key help appears when saved model settings exist. The redundant setup notice is hidden during editing. Collapsing and reopening RAGFlow retains unsaved input. Cancel discards unsaved values, clears the editor error and collapses RAGFlow.
+The model editor stays inside the component's inset detail region, with a maximum width of 500 points. Shared rows align each label with a 24-point input, using the secondary control typography. Cancel and Save align to the right edge of the form. API guidance and the Codex memory reminder remain beside the form. Saved-key help appears when saved model settings exist. The redundant setup notice is hidden during editing. Collapsing and reopening RAGFlow retains unsaved input. Cancel discards unsaved values, clears the editor error and collapses RAGFlow.
 
 RAGFlow setup uses the current local service profile and selected Assistant. Profile, runtime or role changes clear its temporary presentation state while preserving the ordinary chat draft. The component's generated credentials and raw scope IDs are not UI fields. Setup progress and failures use shared inline feedback beside the component. See [Runtime architecture](runtime-architecture.md) for process, storage and native-memory ownership.

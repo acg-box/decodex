@@ -28,6 +28,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_usage_evidence.rs
   - id: openwiki-source-f339a4d1910db63ca305c2df
     resource: repo://apps/decodex-gpui/src/assistant_settings.rs
+  - id: openwiki-source-7a7e7b3407a8222085c2d27e
+    resource: repo://apps/decodex-gpui/src/composer_input.rs
   - id: openwiki-source-682f90c6d08ed3207257f1d5
     resource: repo://apps/decodex-gpui/src/conversations.rs
   - id: openwiki-source-a2f254020dd8eaabd6366c91
@@ -42,6 +44,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/settings_surface.rs
   - id: openwiki-source-cfb92e5db8b3a39d51f6a057
     resource: repo://apps/decodex-gpui/src/settings_updates.rs
+  - id: openwiki-source-5afd606185b0f01d8fc4f429
+    resource: repo://apps/decodex-gpui/src/shell_diagnostics.rs
   - id: openwiki-source-1291f5243fa6c9cb52149bda
     resource: repo://apps/decodex-gpui/src/shell.rs
   - id: openwiki-source-fe671b38d0336d4630edcd46
@@ -116,10 +120,10 @@ sources:
     resource: repo://crates/decodex-runtime/tests/native_qualification/thread_settings.py
   - id: openwiki-source-8c78df4b382026886ac50894
     resource: repo://database/src/usage_evidence.rs
-generated: { by: "codex", at: "2026-11-05T05:20:04.159Z" }
+generated: { by: "codex", at: "2026-11-05T05:54:36.940Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-05T05:34:06.722Z
+    at: 2026-11-05T05:54:36.940Z
 ---
 
 # Model selection and settings ownership
@@ -143,7 +147,7 @@ Codex owns the effective model catalog, task configuration, provider admission a
 
 ## Find the retained switches
 
-The six Settings sections use the same 620-point content column and normal App typography. General groups the app version and Check for updates under Updates; there is no separate Updates page. Sparkle retains the application update flow. Ordinary preferences use flat sections. Accounts uses compact divided rows that align identity, short quota meters and actions; diagnostic summaries retain quiet cards. Shared dividers separate rows and expanded details. Local notices, warnings and errors share one compact inset row with an icon and quiet tone fill. Text, icons and recovery buttons align vertically at the center. Recovery buttons stay with the affected message. If Codex setup fails, a short message directs you to the setup details. Expand Codex to inspect the original error, then use **Retry setup** after you resolve the cause.
+The six Settings sections use the same 620-point content column and normal App typography. General groups the app version and Check for updates under Updates; there is no separate Updates page. Sparkle retains the application update flow. Ordinary preferences use flat sections. Accounts uses compact divided rows that align identity, short quota meters and actions; diagnostic summaries retain quiet cards. Shared dividers separate rows and expanded details. Component, MCP and Diagnostics details use the same inset region and secondary typography. Diagnostics keeps its headings and status rows compact within that region. Local notices, warnings and errors share one compact inset row with an icon and quiet tone fill. Text, icons and recovery buttons align vertically at the center. Recovery buttons stay with the affected message. If Codex setup fails, a short message directs you to the setup details. Expand Codex to inspect the original error, then use **Retry setup** after you resolve the cause.
 
 In **Settings > Agents > New conversations**, **Permissions** shows the selected mode's meaning beside its control. Its menu displays all four explanations and the native Subagent inheritance rule directly. **Speed** uses the shared Standard, Fast and Ultrafast segmented control, with relative included usage and credits for the selected speed visible in its row. Codex uses this same speed default. These remain two compact setting rows with visible explanations.
 
@@ -219,7 +223,7 @@ The search control shows the saved user preference separately from the effective
 
 Memory availability comes from the native feature observation. A capability flag is not a separate Decodex memory database or a retention policy. The implemented [Assistant lifecycle](../decisions/assistant-lifecycle.md) adds optional RAGFlow retrieval and Memory through Settings > Components. Select **Install** to prepare RAGFlow nightly and compatible Infinity in a private Docker Compose project. Component operations check the running Docker-compatible engine and Docker Compose before installation effects. Unavailable prerequisites produce a shared inline notice; the App does not install or launch a container runtime or provide an installation guide. Decodex configures the service account automatically. After successful installation, the model form opens automatically if no model settings are saved. Expand **RAGFlow** to open the model form directly. Enter an OpenAI-compatible **Base URL**, **API key (optional)**, **Extraction model** and **Embedding model**. **Save** verifies these exact models and initializes dedicated Memory automatically. No model runtime or model weights are installed. The component shares its version row and lifecycle controls with the other components. It reports the installed nightly version and offers **Update** and **Uninstall**. Service connection and its internal credential are automatic, with no Connect action. The model API key stays private and is left blank in a later edit; an empty field keeps the saved key only at the same Base URL. Loopback host names are translated for the container while the displayed URL stays unchanged. A Memory with messages retains its embedding model and endpoint to preserve the saved index.
 
-The model editor aligns each label with its control. Cancel and Save are on the right. Contextual help keeps the API guidance and Codex memory reminder visible. Saved-key guidance appears when saved model settings exist. The redundant setup notice is hidden while editing. Collapsing and reopening RAGFlow keeps unsaved input. Cancel discards unsaved values, dismisses the editor error and collapses RAGFlow.
+The model editor stays inside RAGFlow's detail region and uses at most 500 points of width. Shared rows align each label with a 24-point input in secondary control typography. Cancel and Save align to the right edge of the form. Contextual help keeps the API guidance and Codex memory reminder visible. Saved-key guidance appears when saved model settings exist. The redundant setup notice is hidden while editing. Collapsing and reopening RAGFlow keeps unsaved input. Cancel discards unsaved values, dismisses the editor error and collapses RAGFlow.
 
 Chat import starts off. Its separate switch is available when Memory is ready, including while the model form is open. Update preserves this choice, the model configuration and saved data. Uninstall stops the owned service and clears its connection, while retaining data for reinstallation. Explicit knowledge dataset scopes remain available in typed Assistant configuration; empty datasets disable retrieval. The Memory explanation states that Codex memory is disabled for Assistant. Activation waits for a safe fresh context with native generation, use and the memories feature disabled, plus disabled native memory mode. Cold resume preserves this policy. Native compaction, history, unrelated Agents and shared defaults retain their settings. The saved connection uses a private component credential reference; legacy environment-variable references remain supported. A connection failure remains visible without native-memory fallback.
 

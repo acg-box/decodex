@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:a8991be1b2645fe9e60d0d5ddaa04c83048fa87efeab4aaa0583d145202975c4",
+  "pageVersion": "sha256:8d60632cc34289c6f4b25f827188439391a9590d5383b94697df825a2e438032",
   "claims": [
     {
       "id": "claim_f0c37462522f4442acd94d53819ef75c",
@@ -322,11 +322,11 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
-          "version": "repo-file-v1:sha256:306abda36fba53f054680a4e6ca7c82646fbada139cc9c753c19dcb5508fad2b"
+          "version": "repo-file-v1:sha256:3ee485b7d024df9132508601fbd47588cae74b29cbc31774b14394a3bd12337a"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:033d250fde651762b849fd053e9ce50625d992e7c534dabcafc43ae3f776ea5f"
+          "version": "repo-file-v1:sha256:384502c03198c05c4024812dc758410fed7c75aeb8033ac41ae1a7829412e577"
         },
         {
           "resource": "repo://crates/decodex-components/src/ragflow.rs",
@@ -352,29 +352,33 @@
     },
     {
       "id": "claim_beff917e46a74d619c3c54e7b46b2696",
-      "statement": "The RAGFlow model editor aligns labels and controls in shared rows, places Cancel and Save on the right, and keeps API and Codex memory guidance beside the form. Saved-key guidance is conditional on saved model settings, the redundant setup notice is hidden during editing, collapsing and reopening preserves unsaved input, and Cancel discards unsaved values and clears the editor error before collapsing RAGFlow.",
+      "statement": "The RAGFlow model editor uses at most 500 points within the component detail region. Shared rows align labels with 24-point inputs in secondary control typography; Cancel and Save align with the form's right edge. API and Codex memory guidance stay beside the form. Saved-key guidance is conditional on saved model settings, the redundant setup notice is hidden during editing, collapsing and reopening preserves unsaved input, and Cancel discards unsaved values and clears the editor error before collapsing RAGFlow.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
-          "version": "repo-file-v1:sha256:306abda36fba53f054680a4e6ca7c82646fbada139cc9c753c19dcb5508fad2b"
+          "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs#L194-L246",
+          "version": "repo-lines-v1:sha256:e8a42c6bdd62dd3804b51e8590084ef9291ebc5e4a68f5517979d8442764debd:eyJzZWxlY3RlZExpbmVDb3VudCI6NTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIzMTg4MGI2YTJkZTc4N2EzNWU5MjBiZWUyMTk5ZjNhYTY1OTBhMDJhMzdkODY0YWVmODQyNjI2NDZlYWM2NGYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBkYzQ2YjBhMmQxMmU0OTBjMGY3NTdiN2FlYmY0NzQxNTA0ZThmMzY0MTVjN2VjYjJlNTBmODQyNmQ5ZjU0YWIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjIyZjJmZjVmZWVjNjBmNTg3YzhmYWU0ZTg3ZjgwOWE2NjFjZmZlZDZiNDdhYWU1ZjZkNmEyNjUzYWE4OTUyZWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImMyYmIxM2VkOGFjOWVjMWU0YjQ1MmI5MzJjMzQ2ZDVhNGIxNmNlNWE3ZDVlZGU5YmRhOTEyNmE5MjNjOTZhYmIifQ"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:033d250fde651762b849fd053e9ce50625d992e7c534dabcafc43ae3f776ea5f"
+          "resource": "repo://apps/decodex-gpui/src/composer_input.rs#L655-L688",
+          "version": "repo-lines-v1:sha256:91b95a343de2e4f6a8abe4b703cd564acd2d62610a27268b8024af26bf197618:eyJzZWxlY3RlZExpbmVDb3VudCI6MzQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEyYWU1MjBjYWQ5MDAyODRkMDRiNTU2MWZlZTIyYzg4ZjNiYTc4YTk3YjUyMmZmYjgzNjVhMGZlOGFiMTAxMjIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ4YTM0MWM4OGY1Nzc0YzI1ODliYWZiY2ZkMzFhZDNhYjE3MTBlYWE3N2UwMTNmNTVmMjY2NzM0ZTU0ODJjY2MiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjlkY2Q2MTdhZTdkNDg2OTQxOTU3NTYyMWUyM2IyNTliYWNjZDAxOTc5YTBhNzIxZjBlZDc5ZWMzMTA0MDk2NTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZmZjRmN2MyMDdmZDAzOTgyNDczNjg2MjU2YWMxYWZhYjEyYjA1MzllOWQyNDNhMmVjMGM2YWUyYTI3MzViNDkifQ"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/ui_theme.rs",
-          "version": "repo-file-v1:sha256:43c3e5d4d3de01b8392ce86fc3c0d524e27e02335b425d99d3708e1b1e0a1fbc"
+          "resource": "repo://apps/decodex-gpui/src/settings_components.rs#L405-L475",
+          "version": "repo-lines-v1:sha256:fb42ddc0809e442b6a8544eea5e5c234446b60721b8e101d77802756197babb7:eyJzZWxlY3RlZExpbmVDb3VudCI6NzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM2MmI1Y2Y3ZjFmZjdhMGYwN2EyMWE5NzgxZWFjNmQ5Yzc5NDJiYTE5NzRkMDdhZGEwMjk4NjE2YTBhZGEwMzYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjcxYzhjZDU1ZjE2MjIyMjY0N2Q4NTk0ZjcyYmU2Njg4ZTliZjRkN2M1Y2MzMTgxM2RkZWIyZDM0ZWMwYmQ4NjQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg0ZjlmZmJjMTNmZjNiZDFiZjA2YWM2N2RhMjhiYzRhNmJhNzdjMTcxMWVkNTdhNDg4YmIwMGMwOGM5MjdlNTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjEzZDViNjkyMDgyYzk3YzkzZTU0ODA0YTY4MTg4NjE4NzBjMDE2MDJkMzg1NTRjNDRiMWQ4Nzc2ZGJmYTkxZTgifQ"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/ui_theme.rs#L335-L348",
+          "version": "repo-lines-v1:sha256:52521b2dfeb22e836f7fde90c2ff80aa96932d39f41cbf2b495ceebf52f7c34e:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdkYTQ2MjIzYzJjNGI0OTJlMmVkZDgzYzY0YzA4MDNlMTE3ZTllOWZkNDlkZWE2NWYxYTEyYjUyODI1MTRmMzgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY1YjY2ZmE0YzlhNTA4Zjc0ZGM4ZDc0OWE2YjJmZjhmZDEyYzliYTZmZjVkNmE1ZjQxMzMzNTBjZDQ4MDljMWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg3YmJhMWNkYzM2ZDgzYjcyNmE0ZjdiNmIzMTFlNWE1NDFmZDQ0YTdiYjFmYTA0NGIyZmJiNTZhZWQzODkzZjgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM1MDRhZjljNTJmOTFjMDk2YjZiNjIwMWYzNDg4ZDYwZjcwNGY2ZjdhZTJiNzVjMWMxMTg1OGM1YTQzNmMzZTQifQ"
         }
       ]
     },
     {
       "id": "claim_1d1d68cccf054493b22ff3f7574f9e70",
-      "statement": "All Settings categories share a 620-point content column and normal App typography. Ordinary preferences use flat groups. Accounts uses compact divided rows that align identity, short quota meters and actions, while diagnostic summaries retain quiet cards. Reusable dividers separate rows and expanded details. Local notices, warnings and errors share a compact inset row with an icon and quiet tone fill; text, icons and recovery actions align vertically at the center. Recovery stays with the affected message. A collapsed Codex setup failure directs the user to its setup error; expanding Codex shows the original error, while Retry setup uses the existing preparation action.",
+      "statement": "All Settings categories share a 620-point content column and normal App typography. Ordinary preferences use flat groups. Accounts uses compact divided rows that align identity, short quota meters and actions, while diagnostic summaries retain quiet cards. Reusable dividers separate rows and expanded details. Component, MCP and Diagnostics details share an inset region with secondary typography; Diagnostics uses compact headings and status rows. Local notices, warnings and errors share a compact inset row with an icon and quiet tone fill; text, icons and recovery actions align vertically at the center. Recovery stays with the affected message. A collapsed Codex setup failure directs the user to its setup error; expanding Codex shows the original error, while Retry setup uses the existing preparation action.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:033d250fde651762b849fd053e9ce50625d992e7c534dabcafc43ae3f776ea5f"
+          "version": "repo-file-v1:sha256:384502c03198c05c4024812dc758410fed7c75aeb8033ac41ae1a7829412e577"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_power.rs",
@@ -389,12 +393,16 @@
           "version": "repo-file-v1:sha256:9f872ed36787367f8ee1ec5cd2f5464577163a484c87f930aa11f064c017ad9a"
         },
         {
+          "resource": "repo://apps/decodex-gpui/src/shell_diagnostics.rs#L262-L409",
+          "version": "repo-lines-v1:sha256:2cc9bef721ade115529fe07a0dc7b46abc9884298785b7b50f65481f06bdfc68:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQ4LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI0MTJjYTM0NWNjZjc1YmY5YzA4MDZiY2U2OTViZThkZTgwOGI3OTk4NDI1MWE3YTU0ZDIwMmNmNjEwMWRkNDUxIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI5MjVlMTIwMWI5MTE0YTViOTZhNTI1NzA3NGY5ZmMwNjJkNmNlMzg2NmJkZTkwMTFlMDdlNzNkMDFmNDdmMWM3IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJhMTZkMmVkZDJjOGIzZWUxYzU1M2Y5MzdjOWY5MWEzMjdmOTQ4ZWMzNTIzNWQ4MTU5MTQyNzFhYThkODE0Nzg1IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJmMWQ1NGJlNGU4NDEyYWZmZThlZjBjNzRmY2NmZDNhMWQ2ZTIzZWM4MzkwZDk2MmI5ZmY4YzExYWEzYmJlZGU2In0"
+        },
+        {
           "resource": "repo://apps/decodex-gpui/src/ui_feedback.rs",
           "version": "repo-file-v1:sha256:aec08228a0e0f01f6c19e065e0317fa3236152ba87495dd176d08642716c1582"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/ui_theme.rs",
-          "version": "repo-file-v1:sha256:43c3e5d4d3de01b8392ce86fc3c0d524e27e02335b425d99d3708e1b1e0a1fbc"
+          "resource": "repo://apps/decodex-gpui/src/ui_theme.rs#L300-L428",
+          "version": "repo-lines-v1:sha256:a66ba7477d91f9786ab3395718f173fb4fe3d2fd71290435351201b77d8778b1:eyJzZWxlY3RlZExpbmVDb3VudCI6MTI5LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI4YzM0OTVjNGI3YWEwYTNlYWM5OWU2NzNiODY4ZWE4ZTEyZDFhMmRiMjMxOTRkYzcwNGZiMmM0NjA4ZDRmMTUxIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIwMWJhNDcxOWM4MGI2ZmU5MTFiMDkxYTdjMDUxMjRiNjRlZWVjZTk2NGUwOWMwNThlZjhmOTgwNWRhY2E1NDZiIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI1ZmY3NDdlZDdhZWUwMjEzMTZiYmE0Zjg2Y2U0NzFjMGMzOWExMDdkOGE4OTI2MDk3YmI1ZjhmZGUyZjMzNzhlIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI3MTY0MjAzYzA5OGE3NTk3MmYxZmI3YzE1ZmNhMjYyMmY1MWUwNjU0YTk3NWEzNTE5YjZjMWI4YjAwYTc4ZWU3In0"
         }
       ]
     },
@@ -416,7 +424,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_theme.rs",
-          "version": "repo-file-v1:sha256:43c3e5d4d3de01b8392ce86fc3c0d524e27e02335b425d99d3708e1b1e0a1fbc"
+          "version": "repo-file-v1:sha256:c056fdcf127b01c2311deae0c64b868794a2d13762940e760d598cb8d405c3f1"
         }
       ]
     },
@@ -463,6 +471,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-05T05:34:06.722Z"
+    "at": "2026-11-05T05:54:36.940Z"
   }
 }

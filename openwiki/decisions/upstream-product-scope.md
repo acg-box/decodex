@@ -139,7 +139,7 @@ sources:
 generated: { by: "codex", at: "2026-11-04T15:37:04.419Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-05T05:20:04.159Z
+    at: 2026-11-05T05:54:36.940Z
 ---
 
 # Product scope and native ownership

@@ -192,7 +192,7 @@ impl AgentSurface {
 	}
 
 	pub(crate) fn ragflow_settings_view(&self, _cx: &mut Context<Self>) -> AnyElement {
-		let mut body = ui_theme::settings_rows();
+		let mut body = ui_theme::settings_rows().max_w(gpui::px(500.));
 		if !self.assistant_settings.fields.is_empty() {
 			for (key, label) in [
 				("url", "Base URL"),
@@ -203,7 +203,10 @@ impl AgentSurface {
 				if let Some(field) = self.assistant_settings.fields.get(key) {
 					body = body.child(ui_theme::settings_field(
 						label,
-						gpui::div().w_full().h(gpui::px(28.0)).child(field.clone()),
+						gpui::div()
+							.w_full()
+							.h(gpui::px(ui_theme::SETTINGS_CONTROL_HEIGHT))
+							.child(field.clone()),
 					));
 				}
 			}

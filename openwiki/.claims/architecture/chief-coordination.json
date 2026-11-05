@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:420d7d646bc34804b0debcb09444b216dafc981f18042465613883bbaf4d5dcd",
+  "pageVersion": "sha256:620a7d3a06678e8f01055c7bb01682e5f7a73b39a11a39bcc914bf3cee68ca11",
   "claims": [
     {
       "id": "claim_43786e7afb4249548ed4fab09e0e4afa",
@@ -524,7 +524,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
-          "version": "repo-file-v1:sha256:306abda36fba53f054680a4e6ca7c82646fbada139cc9c753c19dcb5508fad2b"
+          "version": "repo-file-v1:sha256:3ee485b7d024df9132508601fbd47588cae74b29cbc31774b14394a3bd12337a"
         },
         {
           "resource": "repo://crates/decodex-components/src/ragflow_service.rs",
@@ -542,7 +542,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
-          "version": "repo-file-v1:sha256:306abda36fba53f054680a4e6ca7c82646fbada139cc9c753c19dcb5508fad2b"
+          "version": "repo-file-v1:sha256:3ee485b7d024df9132508601fbd47588cae74b29cbc31774b14394a3bd12337a"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent_host.rs",
@@ -557,6 +557,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-05T05:20:04.159Z"
+    "at": "2026-11-05T05:54:36.940Z"
   }
 }

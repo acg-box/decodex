@@ -406,10 +406,17 @@ impl SettingsSurface {
 			],
 			cx,
 		));
-		let mut body = gpui::div().flex().flex_col().gap_2().child(self.ragflow_component(cx));
+		let mut body = gpui::div()
+			.max_w(gpui::px(500.))
+			.w_full()
+			.flex()
+			.flex_col()
+			.gap_2()
+			.child(self.ragflow_component(cx));
 		if let Some(state) = state.as_ref().filter(|s| s.memory_ready) {
 			body = body.child(
 				ui_theme::settings_row()
+					.min_h(gpui::px(32.))
 					.child(ui_theme::settings_label(
 						"Import chats",
 						"Add completed chat turns to Assistant Memory.",
@@ -432,7 +439,7 @@ impl SettingsSurface {
 			);
 		}
 		if state.as_ref().is_some_and(|s| s.editing) {
-			let mut actions = gpui::div().flex().gap_2().justify_end().pt_2();
+			let mut actions = gpui::div().w_full().flex().gap_2().justify_end().pt_1();
 			for (id, label, action) in [
 				(
 					"components-ragflow-models-cancel",

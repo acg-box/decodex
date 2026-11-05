@@ -202,6 +202,7 @@ fn summary_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 			0,
 			&HEALTH_CORE_COMPONENTS,
 			snapshot.report.as_ref(),
+			false,
 		));
 	}
 
@@ -261,10 +262,10 @@ fn details_toggle(shell: &Shell, cx: &Context<Shell>) -> AnyElement {
 }
 
 fn technical_details(snapshot: &HealthSnapshot) -> AnyElement {
-	ui_theme::settings_sections()
+	let details = ui_theme::settings_rows()
+		.gap(gpui::px(10.))
 		.id("health-components")
 		.debug_selector(|| "health-components".into())
-		.pt_2()
 		.when(snapshot.load != HealthLoadState::Ready && snapshot.report.is_some(), |details| {
 			details
 				.child(ui_theme::settings_description("Previous report; results may have changed."))
@@ -274,9 +275,10 @@ fn technical_details(snapshot: &HealthSnapshot) -> AnyElement {
 					0,
 					&HEALTH_CORE_COMPONENTS,
 					snapshot.report.as_ref(),
+					true,
 				))
 		})
-		.child(ui_theme::settings_group(
+		.child(ui_theme::settings_detail_group(
 			"Agent process",
 			vec![
 				ui_theme::settings_description(shell::native_process_summary(
@@ -291,6 +293,7 @@ fn technical_details(snapshot: &HealthSnapshot) -> AnyElement {
 			HEALTH_CORE_COMPONENTS.len(),
 			&HEALTH_APP_SERVER_COMPONENTS,
 			snapshot.report.as_ref(),
+			true,
 		))
 		.child(component_section(
 			"health-optional-components",
@@ -298,14 +301,17 @@ fn technical_details(snapshot: &HealthSnapshot) -> AnyElement {
 			HEALTH_CORE_COMPONENTS.len() + HEALTH_APP_SERVER_COMPONENTS.len(),
 			&HEALTH_OPTIONAL_COMPONENTS,
 			snapshot.report.as_ref(),
+			true,
 		))
-		.into_any_element()
+		.into_any_element();
+	ui_theme::settings_detail(details).into_any_element()
 }
 
 fn component_row(
 	index: usize,
 	component: DoctorComponent,
 	status: Option<DoctorStatus>,
+	compact: bool,
 ) -> AnyElement {
 	let label = shell::component_label(component);
 	let presentation = shell::component_presentation(status);
@@ -316,14 +322,18 @@ fn component_row(
 		.role(Role::ListItem)
 		.aria_label(format!("{label}: {}", presentation.label))
 		.min_w_0()
-		.min_h(gpui::px(28.))
-		.py_1()
+		.min_h(gpui::px(if compact { 24. } else { 28. }))
+		.py(gpui::px(if compact { 2. } else { 4. }))
 		.flex()
 		.items_center()
 		.justify_between()
 		.gap_3()
-		.text_size(gpui::px(SETTINGS_LABEL_SIZE))
-		.text_color(ui_theme::rgb(TEXT))
+		.text_size(gpui::px(if compact {
+			ui_theme::SETTINGS_HELP_SIZE
+		} else {
+			SETTINGS_LABEL_SIZE
+		}))
+		.text_color(ui_theme::rgb(if compact { ui_theme::TEXT_MUTED } else { TEXT }))
 		.child(
 			gpui::div()
 				.min_w_0()
@@ -364,6 +374,7 @@ fn component_section(
 	index_offset: usize,
 	components: &[DoctorComponent],
 	report: Option<&DoctorReport>,
+	compact: bool,
 ) -> AnyElement {
 	let rows = components
 		.chunks(2)
@@ -377,13 +388,14 @@ fn component_section(
 				.children(components.iter().copied().enumerate().map(|(column, component)| {
 					let status =
 						report.and_then(|report| report.check(component)).map(|check| check.status);
-					component_row(index_offset + row_index * 2 + column, component, status)
+					component_row(index_offset + row_index * 2 + column, component, status, compact)
 				}))
 				.into_any_element()
 		})
 		.collect();
 
-	ui_theme::settings_group(
+	let group = if compact { ui_theme::settings_detail_group } else { ui_theme::settings_group };
+	group(
 		title,
 		vec![
 			ui_theme::settings_divided_rows(rows)
