@@ -14,7 +14,7 @@ use crate::{
 	settings_surface::{SettingsSurface, switch},
 	shell::{agent_surface::RagflowComponentAction, workspace_symbols},
 	ui_feedback::{self, Feedback},
-	ui_motion::{self, SmoothControl as _},
+	ui_motion::SmoothControl as _,
 	ui_theme::{self, BLUE, SETTINGS_LABEL_SIZE, TEXT, TEXT_MUTED},
 };
 use decodex_components::{InstallProgress, PluginAction, RuntimeLock};
@@ -368,11 +368,9 @@ impl SettingsSurface {
 		id: &'static str,
 		content: impl gpui::IntoElement,
 	) -> AnyElement {
-		ui_motion::disclosure(
-			id,
-			self.components.details[index],
-			ui_theme::settings_detail(content),
-		)
+		ui_theme::settings_disclosure(id, self.components.details[index], || {
+			ui_theme::settings_detail(content).into_any_element()
+		})
 		.into_any_element()
 	}
 
@@ -857,11 +855,24 @@ mod tests {
 
 		visual.update(crate::ui_frame::draw_current_frame);
 
+		let expanded = visual.debug_bounds("components-egm").unwrap();
+		assert!(
+			expanded.size.height > egm.size.height + gpui::px(24.),
+			"component details must take their full height in the first frame"
+		);
+		for _ in 0..3 {
+			visual.update(crate::ui_frame::draw_frame);
+			assert_eq!(visual.debug_bounds("components-egm").unwrap(), expanded);
+		}
+
 		let toggle = visual.debug_bounds("components-egm-details").unwrap();
 
 		visual.simulate_click(toggle.center(), Default::default());
 
 		assert_eq!(settings.read_with(visual, |s, _| s.components.details), [false; 4]);
+		visual.update(crate::ui_frame::draw_current_frame);
+		assert_eq!(visual.debug_bounds("components-egm").unwrap(), egm);
+		assert_eq!(visual.debug_bounds("components-pro-research").unwrap(), research);
 	}
 
 	#[gpui::test]

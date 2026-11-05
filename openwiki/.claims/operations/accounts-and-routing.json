@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:162bf9605bfa21487581097f8f2fcb2ae32290b0f8c68cf0088cc96dcf47cb61",
+  "pageVersion": "sha256:31969701be540bed44b9a03d720542041f46c26669b0400bf304371ec0a3eed5",
   "claims": [
     {
       "id": "claim_738021d152cc4128af3d3b4b217fe92c",
@@ -101,11 +101,11 @@
           "version": "repo-lines-v1:sha256:621da1a08a012c9ad4b1b6150e283b92befea2598f310521e4ff1590a35e9fe6:eyJzZWxlY3RlZExpbmVDb3VudCI6ODEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIwNGQ0OTJkZGQ4M2UwMGQwOWQ3MGI4NjRiMGU3NTM0NzdkY2NiMWJhZDIxNDNmYTYzZTNmZjk2NWYyYWMyNmEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM4N2I1MWQxZDYzMzM4YTFlOGY4N2NiNTQwNzNkMTFmMzI4NWVkNjIyM2M1MjVlNWQ0MTU2NWZjMThkZWU4MzAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImNkYmZiNTcxMGMwMzhiNDdkNDBjMWM0MWU5ZDAzMjk4NDU3NzA0YjQzYTA1Y2FkZjZhOGZlNGYwYzc1YTI2ZDYifQ"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/shell.rs#L3586-L3649",
+          "resource": "repo://apps/decodex-gpui/src/shell.rs#L3592-L3655",
           "version": "repo-lines-v1:sha256:a7aff1659f5da0bf0e85d7e2f40e4085d7235077b8e141fb5cc1118184bac8b5:eyJzZWxlY3RlZExpbmVDb3VudCI6NjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg3NTgzYmMwY2MwMWZhODIyYTkzYmU4ODRmMzdmYmY4MDliMDliOTEwODA1YmRmNzYwOGEyZTQ4ZGQyMjQwYjQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ5NWRkNWU4NDc3OWRlMjZhMjQ3ZTcxMTQyMDZkMTM5YjU3ZGJhMjYxYTBkYjFlODEzOGQ3M2VmYjhiMDI3MzkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjkzYzhjODdlNTc4NGY3YmM2ZDRhNTJkNTQ5YTdkZjQ3MGY5MmExNGNiYTdkNzkxNWI5ZWFjZWM5M2Y2NjUxNzEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA2MGU0NmU2MjI0MWQxOTViOTM4NDQ2MGJhODJlMzNhODI5NTBjMTVmMTQ1NDEzOTllYzhlYjdkZTY4YWEyN2QifQ"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/shell.rs#L4020-L4138",
+          "resource": "repo://apps/decodex-gpui/src/shell.rs#L4026-L4144",
           "version": "repo-lines-v1:sha256:8905c7ac9994a15fa7f34da1eb0f6ed66e8bc5002cfb961b6340f5406cf6f137:eyJzZWxlY3RlZExpbmVDb3VudCI6MTE5LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIwMWJhNDcxOWM4MGI2ZmU5MTFiMDkxYTdjMDUxMjRiNjRlZWVjZTk2NGUwOWMwNThlZjhmOTgwNWRhY2E1NDZiIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJkZDY2MTEyMjY3YzQ1NDVkMjE1YmRjMzU1YTRlMjNhZTI3NGI1MDYzZGVmMjg3NWNhNTY4ODA2MjBmY2IwZTdkIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIxZjlhOThmNmVhYzRjMzEzMzllM2E1OWUxMDgzYjBmZTI3ZmE0YmNiYjI1OWVhZTgzNDU4NjIyZTFiNmI4NGU1IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIwZWNjZDBhYTJiNmZmZDUzYTczM2Q5YzA4MjNkZDllZDg3N2MxYThkZDFmNTVkYmIxNDE1MWYyMzUyZmFkZDRmIn0"
         },
         {
@@ -128,7 +128,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/shell.rs",
-          "version": "repo-file-v1:sha256:91d905f83bd69f0d9d8004613edaf1610d820b97883e50a4f34cb343db499ff9"
+          "version": "repo-file-v1:sha256:037aade4e4b7722fe65dc9240f6c880fef362650a67179ce23fba77a69b7893b"
         }
       ]
     },
@@ -198,19 +198,23 @@
     },
     {
       "id": "claim_80a2ffd256284ec6a2511dc109936812",
-      "statement": "Expanded GPUI account activity uses a two-column label/value grid for available total tokens, daily peak, streak and longest task. Streak combines current and best values. The daily chart and divided Reset cards area follow the metrics. Missing metrics stay absent, and the activity snapshot must match the current account revision.",
+      "statement": "Expanded GPUI account activity uses a two-column label/value grid for available total tokens, daily peak, streak and longest task. Streak combines current and best values. Labels and values share the quota text size and muted color, with tabular figures and no extra value size or weight. The subdued daily chart and divided Reset cards area follow the metrics. Missing metrics stay absent, and the activity snapshot must match the current account revision. GPUI applies final detail height immediately on expansion and collapse through the shared Settings disclosure.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/shell.rs#L3501-L3525",
-          "version": "repo-lines-v1:sha256:16a6bb4426e09c2db6aa1c3316a96ea0fe7c1c22c98c3c6c804424316e860e81:eyJzZWxlY3RlZExpbmVDb3VudCI6MjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQyMGVjNWVjMmNkMmY5YzgwZTU3ODlmNWY2OTE2ODI3YzFlOGEyZGVmY2IwMjI0ZTEwYzM1MDAxOTY1ZjA5NzAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMzZDBmNjk3Y2NlNjViYTY5MGIwZDI1ZDc5MTdjMWRhYTM5NDVlZTFmZWUwZWNiYjJlNjYwNGRhNjYwNjVlNDciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA2ZWZlYTRlOTMyMWVlZDQzODQzMjE1NTRhMGU1ZTg2NjFkZjQ2YjJhMWNjYTg5ZjcxYWRmOTExODFiNDY1YzMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA0MGJlMzg5ZDAyOWQ5NjVjMGQ1NTRlOTJlZDM0OTg0YmNiZGE2MTA3NGYxMWQxZDU3YmY3M2FlMjZlZWU0MTEifQ"
+          "resource": "repo://apps/decodex-gpui/src/shell.rs#L3505-L3528",
+          "version": "repo-lines-v1:sha256:a9c223daddde9167096874b2e062a7d2a39e243b633dcbd991c265b5ea8d4dd6:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY3NTVhNmRmOTVlMzUwNTM1YzM5MzlhZTQ4NGVjZDg4ZTcyMzg1OWQxOTAwZWEwZTMyZThkMTMxMWY5YjEzYWIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjExYTY5MDYzZmFmOWU3ZmFjY2I1MGY0ZDM1ZThmMzI4OTA2NGNkMWUxYmI3ZGNkM2VhYjJhZWE1NmY2MWE5YmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE5ZGE2MjA0MzFmMTU4ZjlkMTRiMjc4YjE1MTRlYWIwNTk1NzYyZDdhYTE1N2Q1NGQ1NGVkZmU4NjE1ZTRiMDEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImRhOWE2MDFiYjFlNzhiY2MyNTM1ZmFkOTZkYWEwMGEyNWEyZTczNjcyN2YxYTQzOTIxYmVkNGJjOTZiNzUzY2MifQ"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/shell_account_activity.rs#L57-L196",
-          "version": "repo-lines-v1:sha256:a1cc821c978d4075b85c1caf49a640026a447c346c7cbbc19f9fac2bbc061505:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQwLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIxOGUwMmU0NGMxZDZmZjNkZGFmZDE5NmY3ZDExMGZhZWQ2MTUwMTQwNGI2MzA0OWUxMWY4OGZjZjgxMzlkNGMxIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIyNWNmNWZjMjNmMmE2ZDIzYzNlYTUxZTcyZjVlODk2Yzc1NTVmYmFhMDVjZDViMWVhMTgyYmY5NjE4YThlODFiIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJmMjk2NDA3OWMzYzVjODE1MjBlZjMzYTJiOWQyZTE1YTFiODRkNzI4MGRiODU5MGRjZDY1NzQ3ZTNlMDEyYTQwIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI2YmM1YWQ5M2NkYmUxMzFiNjRkMzU2MjAzYTJkNTU2NTAzNTlmNGVkZjBmZjBiMjFjNWQ1NWU1MDkxNjFlY2MzIn0"
+          "resource": "repo://apps/decodex-gpui/src/shell_account_activity.rs#L65-L196",
+          "version": "repo-lines-v1:sha256:c9c72d40c2a5a87220520af4229aa00057ba9f038b424b45ba42c5dc81af22c3:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMyLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI2ZTVhMTE0OTE1NjM3NzgyMjBkYWFiNWNlOTNhMWIzYzdkYTgwZDE0N2YyZGEwYTNmYWMyZDBhYjdhYTAyZTIwIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIxZTBhZjNmZDRhNGMzYTFkNDdjN2Y0NzBlZDBkODZkOTBkOWRlMjEwYTVlYjE0NTVmYmQ5NDQ4MmE0NzY1YjcyIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJjNmQ5ZjkyZjc2ODk0ODkxNjViYTEzZmJmMmI4NGEyYjM0ZTRkMzVkMGEyY2UyYzFjMDFlNDJlOGNhYjRjZDcyIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJiNjI5ODZjMWM0OTUwMmZlZTk0MzRlYmU0MzIyY2FkODA3MmQ4N2ZhYmJlZjIyNmFlYWMwYTIyOGQ5OWVjNTk4In0"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/shell_reset_cards.rs#L478-L576",
           "version": "repo-lines-v1:sha256:0b96e6d7f9cf13e55c54472ca70d9add3365ebd14423a9ee9860976f3c41c8e3:eyJzZWxlY3RlZExpbmVDb3VudCI6OTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFlZGE3MjA0OWJjY2Y2YTkxMTRkN2U3MzU3YWNhZjAxOGM2NjA4MDdiYTQ4YTkzYmNiNjk4ZmI0NTgwNzA0ZGQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImExMzIzNWJiMWFkYTg5N2IwNTI3NjY4YjNmYjQxNmFiYTAyMzc1NTdiODRhZjE5NTBkZTM0ZjJhZDEyOGRkYjAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImFhMWNlZTFlNWExYzU3ZWIyNWEyZjBmODE4Yjg4MzUzNzdlYThmZmYyYzQwZTFmZGM3ZmUxYjlmOTcxY2Q4ODUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImRjN2Q0NDJlODFlMDdlYjAxMDBiNTYxYzdiYzE5OTMyYWQ4MjRiMDE2MjFjMDNjNWZiZWU5ZGQ4OWM4Y2JkNmEifQ"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/ui_theme.rs#L411-L423",
+          "version": "repo-lines-v1:sha256:8d5080f9107ec62247e5878613486921a426a2bb1a8a1cace12466650bcdf77b:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJlYTJhODkwN2JjNzlhNGU0NjU1ZDQyZTNmMzUwZjRkNTQzNWQ4NWNkMGY4YjM0MmMxZTc2Mzc4MzQ2MWQ5MWQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijc5NGMwZjI1MTA4MGM3YjljYzA3ODk4ZThhZGI1NjQwMjQ5MzhmZGMyYTE2ZjBiZDUwMTU3N2YzMGVmZWI1NDAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjcxNjQyMDNjMDk4YTc1OTcyZjFmYjdjMTVmY2EyNjIyZjUxZTA2NTRhOTc1YTM1MTliNmMxYjhiMDBhNzhlZTcifQ"
         }
       ]
     },
@@ -219,11 +223,11 @@
       "statement": "The GPUI account summary owns its disclosure click target and hand cursor. Expanded metrics and the chart keep the normal cursor, and clicking this reading area does not collapse its account.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/shell.rs#L3438-L3534",
-          "version": "repo-lines-v1:sha256:b2c6b962e84334ffbc800a14768ad9fc0756a3b94e58fb50b7e661cf417825d6:eyJzZWxlY3RlZExpbmVDb3VudCI6OTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIyNjM5YTcwYmE5MWQ4ZjU3NDczNGY2NTE5MjBlN2IwZWUwZTVlMjQ5ZTc0YWM2ZDFjZmYzYjA0MzUwMDY3YjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZhMmEzYjc2ZTEyY2UxNTM3OWQwNWYyODY5ZGM0ODMyZGU3NTg5MDUzYjQ5YmZmMjM3ZTQyNWM3MjM3ODAxNTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRjNDUzNGVjMmNlZGI4MTk5OWVkYmRlOWQxZWZiYzc5OGE5NzdhZTc2M2ZhZWYxZDRmNDZiMmYzNGE2ODFiODMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU5YjU1YjdkODg3Y2IwMjVjMjFlMjliMzVmMWYxNmIwZGE5YjgzZWYwODZmMzIxYmE1MTdlZTdmNDQ1MWE0YWUifQ"
+          "resource": "repo://apps/decodex-gpui/src/shell.rs#L3441-L3532",
+          "version": "repo-lines-v1:sha256:e5ea7ca93b708571ba158918ef27d85b28bfd407b064eed948cc8dc50af34293:eyJzZWxlY3RlZExpbmVDb3VudCI6OTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIyNjM5YTcwYmE5MWQ4ZjU3NDczNGY2NTE5MjBlN2IwZWUwZTVlMjQ5ZTc0YWM2ZDFjZmYzYjA0MzUwMDY3YjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRjNDUzNGVjMmNlZGI4MTk5OWVkYmRlOWQxZWZiYzc5OGE5NzdhZTc2M2ZhZWYxZDRmNDZiMmYzNGE2ODFiODMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijg5YTRlOTY3NmY5ZTEyMDdhNzMyNmUyZTk5MTljOGJhM2RkZWJmYzQ3MTUyNWZjNmJiNmMzZDg4NTRmNTJlOTYifQ"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/shell.rs#L3981-L4019",
+          "resource": "repo://apps/decodex-gpui/src/shell.rs#L3987-L4025",
           "version": "repo-lines-v1:sha256:4b377bf4d107610733a4115e214d3b1bc127af20f11e2f0f2aca84cd23b58185:eyJzZWxlY3RlZExpbmVDb3VudCI6MzksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFlNTU4NDFhZTI2YWYxNDMwYTdjNTMwMDcxOGQyNTkxOTE2ZDBiM2E1ODY0ZGFmNTU5Mjg4ZTIxY2MzZTFkMzMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYyOTY0MDc5YzNjNWM4MTUyMGVmMzNhMmI5ZDJlMTVhMWI4NGQ3MjgwZGI4NTkwZGNkNjU3NDdlM2UwMTJhNDAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA4NTcxMGVlMzE1MDI0MTE1NzIzNzM2ZDMyNWNlNGEwNjIwNTM3MWM1ZWVlNWE2Y2JiNzVlZjZmNjJhYzUxZjYifQ"
         },
         {
@@ -235,6 +239,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-05T03:20:39.701Z"
+    "at": "2026-11-05T04:03:25.459Z"
   }
 }

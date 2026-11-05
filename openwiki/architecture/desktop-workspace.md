@@ -30,6 +30,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_collaboration.rs
   - id: openwiki-source-48758ba7d154c82885281d2c
     resource: repo://apps/decodex-gpui/src/agent_composer.rs
+  - id: openwiki-source-0a61b25348131fe1bb6e1d12
+    resource: repo://apps/decodex-gpui/src/agent_context_settings_wire_tests.rs
   - id: openwiki-source-c76550e85b25876b339f9255
     resource: repo://apps/decodex-gpui/src/agent_context_settings.rs
   - id: openwiki-source-d56ea7499f2ed784b1b6c970
@@ -130,10 +132,10 @@ sources:
     resource: repo://database/src/works/commands.rs
   - id: openwiki-source-8fe6f1557e5d45d88b34bd0a
     resource: repo://scripts/macos/generate_workspace_symbols.swift
-generated: { by: "codex", at: "2026-11-05T03:01:40.807Z" }
+generated: { by: "codex", at: "2026-11-05T04:14:56.077Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-05T03:20:39.701Z
+    at: 2026-11-05T04:14:56.077Z
 ---
 
 # Desktop workspace and native glass
@@ -146,9 +148,11 @@ Settings reuse the App's normal body and control typography. Concise description
 
 The permission picker keeps its open state and focus handles in the window. Its visible trailing edge aligns with the trigger, excluding the outer shadow gutter. Arrow keys cycle within its options. Escape closes the menu and restores focus to its trigger. Tab and Shift-Tab dismiss the menu and continue keyboard navigation. Settings remains open after repeated Escape. Command-W or the window close button closes Settings, including while the menu is open. The picker reuses the existing permission rows; it does not own conversation permissions.
 
-Shared disclosures animate their open proportion. Content measurement does not restart the transition or issue a model notification. Already open details mount at full height, and settled parents follow nested content changes directly. Page arrival changes opacity without moving content or hit targets. Settings navigation selects the destination immediately, without sliding the selection background through other rows. The standalone Settings tests compare the first content frame with subsequent frames.
+Settings navigation and details use their final layout in the first frame. Accounts, Components, Diagnostics and the native Tool catalog cache panel share an immediate disclosure that mounts only open content. They do not use the measured-height conversation animation. The catalog panel uses this same presentation in Agent preferences. Settings destinations bypass the page-arrival fade, and the standalone Settings window configures its material before activation. Button, switch and chevron feedback remain independent of page geometry. Tests check first-entry bounds, full expansion, immediate collapse and repeated toggles without a settling delay.
 
-Ordinary preferences and Accounts use flat lists and one divided-row helper. Diagnostic summaries retain quiet cards. Each account summary places its identity, a fixed-width quota column and management actions on one compact row. One or two quota windows use the same summary height. Only the summary has the disclosure click target and hand cursor; expanded reading areas keep the ordinary cursor. Not-applicable quota windows are omitted; unknown usage retains its row. Expanded activity keeps two columns of labels and values, with current and best streak together, followed by the daily chart and a separate Reset cards area. Component names, available versions and lifecycle actions share one row in a divided list. Expanded component and MCP details share one divider treatment. Feedback stays with the operation that owns it.
+Conversation disclosures retain their open-proportion animation. Already open details mount at full height, measurements do not notify the model, and settled parents follow nested content changes directly. Arrival on other workspace destinations changes opacity without moving content or hit targets.
+
+Ordinary preferences and Accounts use flat lists and one divided-row helper. Diagnostic summaries retain quiet cards. Each account summary places its identity, a fixed-width quota column and management actions on one compact row. One or two quota windows use the same summary height. Only the summary has the disclosure click target and hand cursor; expanded reading areas keep the ordinary cursor. Not-applicable quota windows are omitted; unknown usage retains its row. Expanded activity keeps two columns of labels and values, with current and best streak together, followed by the daily chart and a separate Reset cards area. Metric labels and values share the quota text size and muted color; values use tabular figures without extra size or weight. The daily chart uses a subdued accent. Component names, available versions and lifecycle actions share one row in a divided list. Expanded component and MCP details share one divider treatment. Feedback stays with the operation that owns it.
 
 Visual references: [Zed Settings design](https://zed.dev/blog/settings-ui), [Raycast Settings](https://manual.raycast.com/settings) and [Linear preferences](https://linear.app/docs/account-preferences).
 

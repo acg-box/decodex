@@ -8,6 +8,8 @@ sources:
     resource: repo://apps/decodex-gpui/menubar/Sources/DecodexApp/ConversationEstimatesView.swift
   - id: openwiki-source-b243cfb8ae3053f8047fdab0
     resource: repo://apps/decodex-gpui/src/agent_capabilities.rs
+  - id: openwiki-source-0a61b25348131fe1bb6e1d12
+    resource: repo://apps/decodex-gpui/src/agent_context_settings_wire_tests.rs
   - id: openwiki-source-c76550e85b25876b339f9255
     resource: repo://apps/decodex-gpui/src/agent_context_settings.rs
   - id: openwiki-source-9c68c30b2ff24ddf9a764d74
@@ -112,10 +114,10 @@ sources:
     resource: repo://crates/decodex-runtime/tests/native_qualification/thread_settings.py
   - id: openwiki-source-8c78df4b382026886ac50894
     resource: repo://database/src/usage_evidence.rs
-generated: { by: "codex", at: "2026-11-05T02:31:21.516Z" }
+generated: { by: "codex", at: "2026-11-05T04:14:56.077Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-05T03:20:39.701Z
+    at: 2026-11-05T04:14:56.077Z
 ---
 
 # Model selection and settings ownership
@@ -162,6 +164,8 @@ Open Settings > Agents after selecting a connected Agent. The native section rea
 For background compaction and retention of marked tool outputs, an omitted effective value uses the matching native feature's `defaultEnabled` value. An explicit effective setting takes priority. The catalog's `enabled` value can reflect another working directory, so it is not the requested project's override. An absent saved user preference stays absent until an explicit edit.
 
 The cached-catalog switch writes only `startup_readiness` for an existing user-configured MCP server: on selects `catalog`, and off selects `connection`. Native Codex owns the cache and tool connection. A missing or invalid cache keeps normal discovery; a tool call still needs the live connection. Configure project-only and plugin servers in Codex.
+
+Tool catalog cache opens and closes at its final height immediately through the shared Settings disclosure. Agent preferences uses the same panel. Expansion, collapse and server-list refresh do not save configuration.
 
 Automatic suggestions are enabled by default. Turning the switch off prevents future automatic requests. Turning it back on does not request suggestions for answers that completed while it was off. Tab acceptance still creates an undoable draft and never sends it. This setting does not turn on content export or the deferred messaging experiments.
 

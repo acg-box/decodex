@@ -97,7 +97,7 @@ fn run_setting(cx: &mut TestAppContext, feature: AgentContextFeature, selector: 
 		assert!(visual.debug_bounds(selector).is_none(), "server controls start collapsed");
 		let toggle = visual.debug_bounds("context-mcp-catalogs").unwrap();
 		visual.simulate_click(toggle.center(), Default::default());
-		settle_disclosure(visual);
+		visual.update(crate::ui_frame::draw_current_frame);
 	}
 
 	let button = visual.debug_bounds(selector).unwrap();
@@ -122,13 +122,6 @@ fn run_setting(cx: &mut TestAppContext, feature: AgentContextFeature, selector: 
 			if preferences[0].effective && preferences[0].preference == Some(false))
 		);
 	});
-}
-
-fn settle_disclosure(visual: &mut gpui::VisualTestContext) {
-	visual.update(crate::ui_frame::draw_current_frame);
-	visual.update(crate::ui_frame::draw_current_frame);
-	std::thread::sleep(std::time::Duration::from_millis(250));
-	visual.update(crate::ui_frame::draw_current_frame);
 }
 
 #[gpui::test]
@@ -158,11 +151,21 @@ fn native_defaults_disclosure_tracks_servers_without_dispatching(cx: &mut TestAp
 	assert!(visual.debug_bounds("context-override-async").is_none());
 	assert!(visual.debug_bounds("context-settings-refresh").is_none());
 	assert!(visual.debug_bounds("context-settings-retry").is_none());
+	let collapsed = visual.debug_bounds("automatic-prompt-suggestions").unwrap();
 	let toggle = visual.debug_bounds("context-mcp-catalogs").unwrap();
 	visual.simulate_click(toggle.center(), Default::default());
-	settle_disclosure(visual);
+	visual.update(crate::ui_frame::draw_current_frame);
 	assert!(visual.debug_bounds("context-choice-mcp-xcode").is_some());
 	assert!(visual.debug_bounds("context-choice-mcp-brave").is_some());
+	let expanded = visual.debug_bounds("automatic-prompt-suggestions").unwrap();
+	assert!(
+		visual.debug_bounds("context-choice-mcp-brave").unwrap().bottom() < expanded.top(),
+		"the last server must be above Assistance in the first expanded frame"
+	);
+	for _ in 0..3 {
+		visual.update(crate::ui_frame::draw_frame);
+		assert_eq!(visual.debug_bounds("automatic-prompt-suggestions").unwrap(), expanded);
+	}
 	assert!(visual.debug_bounds("context-override-mcp-xcode").is_none());
 	assert!(visual.debug_bounds("context-override-mcp-brave").is_some());
 
@@ -181,12 +184,13 @@ fn native_defaults_disclosure_tracks_servers_without_dispatching(cx: &mut TestAp
 		});
 		cx.notify();
 	});
-	settle_disclosure(visual);
+	visual.update(crate::ui_frame::draw_current_frame);
 	assert!(visual.debug_bounds("context-choice-mcp-new-server").is_some());
 	let toggle = visual.debug_bounds("context-mcp-catalogs").unwrap();
 	visual.simulate_click(toggle.center(), Default::default());
-	settle_disclosure(visual);
+	visual.update(crate::ui_frame::draw_current_frame);
 	assert!(visual.debug_bounds("context-choice-mcp-xcode").is_none());
+	assert_eq!(visual.debug_bounds("automatic-prompt-suggestions").unwrap(), collapsed);
 	surface.read_with(visual, |s, _| {
 		assert!(!s.context_settings.catalog_expanded);
 		assert!(s.context_settings.task.is_none(), "disclosure never starts a configuration request");
