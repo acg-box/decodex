@@ -353,7 +353,18 @@ pub(crate) fn read_only_row(
 	detail: &str,
 	icon: impl IntoElement,
 ) -> Stateful<Div> {
-	state_row(id, Tone::Neutral, title, detail, icon, true)
+	status_line(id, Tone::Neutral, title, detail, icon)
+}
+
+/// A compact status keeps its explanation in the same text flow.
+pub(crate) fn status_line(
+	id: impl Into<ElementId>,
+	tone: Tone,
+	title: &str,
+	detail: &str,
+	icon: impl IntoElement,
+) -> Stateful<Div> {
+	state_row(id, tone, title, detail, icon, true)
 }
 
 /// Local feedback uses one inset row, with the same treatment for persistent and animated notices.
@@ -382,7 +393,7 @@ fn inline_status_row(
 	detail: &str,
 	icon: impl IntoElement,
 ) -> Stateful<Div> {
-	state_row(id, tone, title, detail, icon, true)
+	status_line(id, tone, title, detail, icon)
 		.min_h(gpui::px(0.))
 		.px(gpui::px(8.))
 		.py(gpui::px(6.))

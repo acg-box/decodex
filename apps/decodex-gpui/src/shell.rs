@@ -7777,6 +7777,10 @@ mod tests {
 		assert!(settings.debug_bounds("health-accounts").is_none());
 		assert!(viewport.contains(&settings.debug_bounds("health-summary-core").unwrap().center()));
 		assert!(
+			settings.debug_bounds("health-query-status").unwrap().size.height <= gpui::px(32.),
+			"diagnostic status must remain a compact text line"
+		);
+		assert!(
 			settings.debug_bounds("health-core-components").is_none(),
 			"individual checks belong in details"
 		);
