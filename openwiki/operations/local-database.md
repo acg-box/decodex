@@ -44,10 +44,10 @@ sources:
     resource: repo://database/src/works/commands.rs
   - id: openwiki-source-960cb6b925f1fa45c737a735
     resource: repo://scripts/macos/verify_decodex_bundle_contracts.py
-generated: { by: "codex", at: "2026-11-04T08:04:10.801Z" }
+generated: { by: "codex", at: "2026-11-05T13:44:11.168Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-05T13:08:31.093Z
+    at: 2026-11-05T13:48:42.186Z
 ---
 
 # Local database operations
@@ -129,7 +129,7 @@ Native conversation topics use resolved `conversation_title` observations in the
 
 The built-in Assistant is available by default. Its first use creates an idle Agent and selects its role in the existing record transaction. A repeated setup identity reuses that Agent. It does not add a user event or native binding. RAGFlow API keys remain in the private component store; Assistant settings contain a credential reference.
 
-The managed RAGFlow component keeps its private installation receipt, generated service account and origin-bound API credential under the per-user component store. The receipt records the owned Compose project, endpoint, actual version, image, Memory setup and model configuration, including its private API key. The service directory uses mode 0700 and private files use mode 0600. RAGFlow owns its separate service database, Infinity data, object storage and queue volumes. No model runtime or model data volume is installed. Update reuses the model settings and service data; Uninstall stops the owned project and clears the Assistant connection while retaining volumes and private identity for reinstall. These operations do not change the Decodex SQLite schema.
+The managed RAGFlow component keeps its private installation receipt, generated service account and origin-bound API credential under the per-user component store. The receipt records the owned Compose project, endpoint, actual version, image, Memory setup and model configuration. Each model stores its own Base URL, model ID and private API key. The receipt uses only the current configuration format. The service directory uses mode 0700 and private files use mode 0600. RAGFlow owns its separate service database, Infinity data, object storage and queue volumes. No model runtime or model data volume is installed. Update reuses the model settings and service data; Uninstall stops the owned project and clears the Assistant connection while retaining volumes and private identity for reinstall. These operations do not change the Decodex SQLite schema.
 
 Assistant configuration, team membership, independent wakes, context intent/acknowledgment/bootstrap receipts and external import receipts reuse the immutable `agent_inbox_events` journal. They use the `assistant_internal_*` event namespace and stay out of ordinary transcript pages. Public `assistant_message` and delegated `assistant_instruction` retain their separate meanings.
 

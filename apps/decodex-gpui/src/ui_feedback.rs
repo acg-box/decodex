@@ -27,9 +27,9 @@ use std::{
 };
 
 use gpui::{
-	self, AnyElement, App, Div, ElementId, FontWeight, InteractiveElement as _, IntoElement,
-	ParentElement as _, RenderOnce, Role, SharedString, Stateful, StatefulInteractiveElement as _,
-	Styled as _, Window, prelude::FluentBuilder as _,
+	self, AnyElement, App, AppContext as _, Div, ElementId, FontWeight, InteractiveElement as _,
+	IntoElement, ParentElement as _, RenderOnce, Role, SharedString, Stateful,
+	StatefulInteractiveElement as _, Styled as _, Window, prelude::FluentBuilder as _,
 };
 
 use crate::{
@@ -399,6 +399,33 @@ fn inline_status_row(
 		.py(gpui::px(6.))
 		.rounded(gpui::px(4.))
 		.bg(ui_theme::rgb(tone.color()).opacity(0.05))
+}
+
+/// A status light with the same meaning in its tooltip and accessibility label.
+pub(crate) fn status_indicator(
+	id: impl Into<SharedString>,
+	label: &'static str,
+	tone: Tone,
+) -> Stateful<Div> {
+	gpui::div()
+		.id(id.into())
+		.role(Role::Status)
+		.aria_label(label)
+		.w(gpui::px(10.))
+		.h(gpui::px(18.))
+		.flex_none()
+		.flex()
+		.items_center()
+		.justify_center()
+		.child(gpui::div().size(gpui::px(6.)).rounded_full().bg(ui_theme::rgb(tone.color())))
+		.tooltip(move |_, cx| cx.new(|_| IndicatorTip(label)).into())
+}
+
+struct IndicatorTip(&'static str);
+impl gpui::Render for IndicatorTip {
+	fn render(&mut self, _: &mut Window, _: &mut gpui::Context<Self>) -> impl IntoElement {
+		ui_motion::tooltip_surface(gpui::div()).child(self.0)
+	}
 }
 
 /// A compact execution state, shared by live history, saved history and Graph.

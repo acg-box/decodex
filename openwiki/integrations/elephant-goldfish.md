@@ -32,10 +32,10 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent/instructions.md
   - id: openwiki-source-f20a9fcd74237051ab396266
     resource: repo://crates/decodex-runtime/src/agent/review_activity.rs
-generated: { by: "codex", at: "2026-11-04T17:57:39.895Z" }
+generated: { by: "codex", at: "2026-11-05T13:44:11.168Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-05T13:08:31.093Z
+    at: 2026-11-05T13:44:11.168Z
 ---
 
 # Elephant–Goldfish component
@@ -74,7 +74,7 @@ Native pending questions and approvals retain their existing controls and owners
 | Uninstall | Remove the plugin. Remove its marketplace when no other plugin from that marketplace is installed. Preserve user work and reports. |
 | Retry | Repeat the selected failed action after its cause is resolved. |
 
-The EGM row shares component version labels, lifecycle buttons, disclosure and inline feedback with Pro Research and RAGFlow. Native EGM state still selects Install, Enable or Update.
+The EGM row shares component version labels, status lights, lifecycle buttons, disclosure and inline feedback with Pro Research and RAGFlow. Native EGM state selects Install, Enable or Update. Its light is green when enabled, amber when disabled, gray before inspection or when absent, blue during an operation, and red after a failed check. Passive refresh retains the previous light.
 
 Codex owns marketplace configuration, package materialization, the plugin cache and enabled state. `NativePlugins` is a narrow CLI adapter. `PluginOperations` runs an action outside the UI thread, coalesces repeated input while busy and reads native state after failure as well as success. An action error remains visible beside the observed state. Decodex adds no second installed-version database or plugin download cache.
 

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:b6c83453fc50a41ec73011538c715f15dcaf22e617ffee74a3be97183968a03f",
+  "pageVersion": "sha256:59a0aa2c354a20b074e923cbc00ba429768ae2108dc1097d6a13422e0edcd510",
   "claims": [
     {
       "id": "claim_f0c37462522f4442acd94d53819ef75c",
@@ -258,7 +258,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_surface.rs",
-          "version": "repo-file-v1:sha256:5e25b2a0760ad06e15fd6eead3afba6bb88a7b59d89c03402914bdc747416fd2"
+          "version": "repo-file-v1:sha256:84095680a3dc1ea4cf0761c4caebd5be831b225e801ee7ec955d018421afa4d5"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_preferences.rs",
@@ -318,23 +318,23 @@
     },
     {
       "id": "claim_09df0d70257c4cd4995cda41a1da8169",
-      "statement": "Components installs managed RAGFlow nightly with compatible Infinity and a private service account, sharing actual version and lifecycle controls. Component operations check the running Docker-compatible engine and Docker Compose before installation effects and use shared inline feedback for unavailable prerequisites without runtime installation, launch or installation guidance. Successful installation with no saved model settings opens the existing model form automatically. Expanding installed RAGFlow directly opens the model form for one OpenAI-compatible Base URL, optional private API key and custom extraction and embedding names. Verify and enable verifies the selected models before initializing Memory automatically. Configured Memory uses Verify and save. No model runtime or weights are installed. Saved keys stay blank in later edits and are retained only at the same URL; loopback addresses are translated for the container, and indexed Memory keeps its embedding model and endpoint. Chat import starts off with a separate switch when Memory is ready, including during model editing; Update preserves models, import choice and data, and Uninstall clears the connection while retaining data. Typed knowledge scopes and the safe native-memory context policy keep their existing owners.",
+      "statement": "Components installs managed RAGFlow nightly with compatible Infinity and a private service account, sharing actual version and lifecycle controls. Component operations check the running Docker-compatible engine and Docker Compose before installation effects and use shared inline feedback for unavailable prerequisites without runtime installation, launch or installation guidance. Successful installation with no saved model settings opens the existing model form automatically. Expanding installed RAGFlow directly opens the model form for independent extraction and embedding model IDs, OpenAI-compatible Base URLs and optional private API keys. Save verifies both choices before updating separate provider instances and initializing Memory automatically. No model runtime or weights are installed. Saved keys stay blank in later edits and are retained only for that model at its unchanged URL; loopback addresses are translated for the container, and indexed Memory keeps its embedding model and endpoint. Chat import starts off with a separate switch when Memory is ready, including during model editing; Update preserves models, import choice and data, and Uninstall clears the connection while retaining data. Typed knowledge scopes and the safe native-memory context policy keep their existing owners.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
-          "version": "repo-file-v1:sha256:549d76ce2e383aa604b482e7d7397c1071be7907ab470579290f0bc2cb1e18e6"
+          "version": "repo-file-v1:sha256:d4064b1403c8b8f2d3a027cb5e70bf8e20ad5834569913add8fc9f612a7dffbb"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:5ec567802e78632bfad37ec15f7455cc712b7bef232776b365cd86ddf345e895"
+          "version": "repo-file-v1:sha256:c72582507d7ebdd412e69eb17fce461631dc3dff8302fac98d075d51ca082831"
         },
         {
           "resource": "repo://crates/decodex-components/src/ragflow.rs",
-          "version": "repo-file-v1:sha256:fbeb33d1d721cd020eb3e404b47cf03a84cf6d3ca3a2da35af1c391c3b16d96c"
+          "version": "repo-file-v1:sha256:17e835261d1318d0c7ba78f1c859da78cb71d746027c6a63a28232aa18e06beb"
         },
         {
           "resource": "repo://crates/decodex-components/src/ragflow_service.rs",
-          "version": "repo-file-v1:sha256:9952a8ff04e1e412fbbd9b1d94181990396ac3e0503e9ab985e5240d67e205bb"
+          "version": "repo-file-v1:sha256:71304894dce0ee326cbea7d12bbdddc94eb2c9f29e6072202170b9abf12e802a"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent.rs",
@@ -352,11 +352,11 @@
     },
     {
       "id": "claim_beff917e46a74d619c3c54e7b46b2696",
-      "statement": "The RAGFlow row distinguishes service installation from configured Assistant Memory even when collapsed. Its direct editor pairs Base URL with optional API key and extraction with embedding IDs in two rows, without an additional heading layer. Labels sit above 24-point inputs in normal control text. Empty required fields disable submission; complete input gets the existing validation on explicit submission. Input changes refresh the form and clear its old error. Guidance covers API compatibility, model roles, the Codex memory effect and initial chat-import choice. Cancel and the primary Verify and enable or Verify and save action align right. Saved-key guidance remains conditional, collapse retains input, and Cancel clears input and errors before collapse.",
+      "statement": "The RAGFlow row distinguishes service installation from configured Assistant Memory even when collapsed. Its direct editor has one row each for extraction and embedding, containing model ID, Base URL and optional API key, without an additional heading layer. Labels sit above 24-point inputs in normal control text. Empty required fields disable submission; complete input gets the existing validation on explicit submission. Input changes refresh the form and clear its old error. Guidance covers API compatibility, model roles, the Codex memory effect and initial chat-import choice. Cancel and the primary Save action align right. Saved-key guidance remains conditional, collapse retains input, and Cancel clears input and errors before collapse.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
-          "version": "repo-file-v1:sha256:549d76ce2e383aa604b482e7d7397c1071be7907ab470579290f0bc2cb1e18e6"
+          "version": "repo-file-v1:sha256:d4064b1403c8b8f2d3a027cb5e70bf8e20ad5834569913add8fc9f612a7dffbb"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/composer_input.rs",
@@ -364,7 +364,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:5ec567802e78632bfad37ec15f7455cc712b7bef232776b365cd86ddf345e895"
+          "version": "repo-file-v1:sha256:c72582507d7ebdd412e69eb17fce461631dc3dff8302fac98d075d51ca082831"
         }
       ]
     },
@@ -374,7 +374,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:5ec567802e78632bfad37ec15f7455cc712b7bef232776b365cd86ddf345e895"
+          "version": "repo-file-v1:sha256:c72582507d7ebdd412e69eb17fce461631dc3dff8302fac98d075d51ca082831"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_power.rs",
@@ -382,7 +382,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_surface.rs",
-          "version": "repo-file-v1:sha256:5e25b2a0760ad06e15fd6eead3afba6bb88a7b59d89c03402914bdc747416fd2"
+          "version": "repo-file-v1:sha256:84095680a3dc1ea4cf0761c4caebd5be831b225e801ee7ec955d018421afa4d5"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/shell.rs",
@@ -394,7 +394,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_feedback.rs",
-          "version": "repo-file-v1:sha256:53ae7760c87c11838c28a01d5519af3ecf6f51748e9c0266778ac2adb715b8e2"
+          "version": "repo-file-v1:sha256:effd5403885f5c9714167b13c9b49e4327562e54449efc708443bba1373c0857"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_theme.rs",
@@ -412,7 +412,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_surface.rs",
-          "version": "repo-file-v1:sha256:5e25b2a0760ad06e15fd6eead3afba6bb88a7b59d89c03402914bdc747416fd2"
+          "version": "repo-file-v1:sha256:84095680a3dc1ea4cf0761c4caebd5be831b225e801ee7ec955d018421afa4d5"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/shell.rs",
@@ -481,6 +481,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-05T13:08:31.093Z"
+    "at": "2026-11-05T13:48:42.186Z"
   }
 }

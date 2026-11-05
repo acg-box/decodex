@@ -79,7 +79,7 @@ sources:
 generated: { by: "codex", at: "2026-11-03T19:40:29.403Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-05T13:08:31.093Z
+    at: 2026-11-05T13:44:11.168Z
 ---
 
 # Project, Agent and Work contract

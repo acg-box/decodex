@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:65e70c6235d00d6160a7b336b1c7ae52da6d79eb5bc57611faeeb0a0d0b68a6f",
+  "pageVersion": "sha256:f438df453702f2b987f11a874fe0314adb9a2386e57da921b93fe652ac3a7acd",
   "claims": [
     {
       "id": "claim_95da7355536d42fb9ba017dae9558113",
@@ -18,7 +18,7 @@
     },
     {
       "id": "claim_3ca9161484f24f26bb9c1976620ea4f0",
-      "statement": "Settings > Components shares version labels, lifecycle buttons, disclosure and inline feedback across optional components. EGM reports native version and enablement and offers Uninstall only for a listed plugin. Required-runtime verification retains its owner, while Sparkle application updates are available in Settings > General > Updates.",
+      "statement": "Settings > Components shares version labels, status lights, lifecycle buttons, disclosure and inline feedback across optional components. EGM reports native version and enablement and offers Uninstall only for a listed plugin. Required-runtime verification retains its owner, while Sparkle application updates are available in Settings > General > Updates. EGM's light uses native enablement, inspection, operation and failure state; passive refresh retains its previous light.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/component_plugins.rs",
@@ -26,7 +26,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:5ec567802e78632bfad37ec15f7455cc712b7bef232776b365cd86ddf345e895"
+          "version": "repo-file-v1:sha256:c72582507d7ebdd412e69eb17fce461631dc3dff8302fac98d075d51ca082831"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_surface.rs#L494-L554",
@@ -131,6 +131,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-05T13:08:31.093Z"
+    "at": "2026-11-05T13:44:11.168Z"
   }
 }

@@ -753,6 +753,9 @@ impl SettingsSurface {
 		#[cfg(not(test))]
 		if self.category == SettingsCategory::Components {
 			self.components.refresh_optional();
+			if let Some(agent) = &self.native_agent {
+				agent.update(cx, |agent, cx| agent.refresh_ragflow_status(cx));
+			}
 		}
 
 		if self.category == SettingsCategory::General {

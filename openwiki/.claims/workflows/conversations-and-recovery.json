@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:54c82a6045c27a4bb6010fbed804e3a5e45081588350aec1919e883b95b073e0",
+  "pageVersion": "sha256:b27057e67aa25ad07ad39899bb3326e217fe22309a730bb8c2ee61cf5976a2c6",
   "claims": [
     {
       "id": "claim_3881a280a4044cdca9e8599100f0a4f0",
@@ -396,7 +396,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_surface.rs",
-          "version": "repo-file-v1:sha256:5e25b2a0760ad06e15fd6eead3afba6bb88a7b59d89c03402914bdc747416fd2"
+          "version": "repo-file-v1:sha256:84095680a3dc1ea4cf0761c4caebd5be831b225e801ee7ec955d018421afa4d5"
         }
       ]
     },
@@ -739,7 +739,7 @@
           "version": "repo-file-v1:sha256:9bde145aa029ab54450e8e621e26d974d496e7fcc48aeaef21d397236f114802"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs#L54-L93",
+          "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs#L59-L98",
           "version": "repo-lines-v1:sha256:dc3d1b6d419edb69bde030f020efb9b3ab066c207672c59d2dd4635a1c5048b8:eyJzZWxlY3RlZExpbmVDb3VudCI6NDAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZiYTBmMGRkOTVkNDViNzMxNTIxYWUwMGM0NTJjZTBkOGNjNzllZmEzMjBiZmU1ZDljYzhhMzhhZTExYTVhOWIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE1NzczMGE2NGE4MTgxMTEzNTEwMDZjNWMwYTZiZjMyM2M3ZDUyNjViMDBhZmU0MDBkOWYxNTI0ZmI0Y2ZhZmMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVlZjgzMzE5YjcxZDMyNGE3MmZkMjljZjQzMjgzNjg5ZWFlOWExOWQ4MmY3MWI0ZmY0ZWUzNTcyZTRiM2JjODIifQ"
         }
       ]
@@ -747,6 +747,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-05T12:44:44.258Z"
+    "at": "2026-11-05T13:44:11.168Z"
   }
 }

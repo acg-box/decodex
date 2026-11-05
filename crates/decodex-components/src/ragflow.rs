@@ -14,7 +14,7 @@ use sha2::{Digest as _, Sha256};
 use crate::{ComponentStore, Result};
 
 #[path = "ragflow_service.rs"] mod service;
-pub use service::{Action, Installation, Models};
+pub use service::{Action, Installation, ModelEndpoint, Models};
 
 /// A configured private Memory. It contains no API key.
 #[derive(Clone, Debug, Deserialize, Serialize, Eq, PartialEq)]
@@ -183,7 +183,7 @@ mod tests {
 	use super::*;
 	use std::{net::TcpListener, thread};
 
-	fn server(
+	pub(super) fn server(
 		count: usize,
 		mut reply: impl FnMut(usize, &str, Value) -> Option<Value> + Send + 'static,
 	) -> (String, thread::JoinHandle<()>) {
@@ -222,13 +222,19 @@ mod tests {
 						}
 					}
 				};
-				assert!(header.to_ascii_lowercase().contains("authorization: bearer fixture-key"));
+				if !header.starts_with("POST /api/v1/auth/login ")
+					&& !header.starts_with("GET /api/v1/system/version ")
+				{
+					assert!(
+						header.to_ascii_lowercase().contains("authorization: bearer fixture-key")
+					);
+				}
 				if let Some(data) = reply(index, &header, body) {
 					let body = json!({"code":0,"data":data}).to_string();
 					stream
 						.write_all(
 							format!(
-								"HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+								"HTTP/1.1 200 OK\r\nAuthorization: Bearer fixture-key\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
 								body.len()
 							)
 							.as_bytes(),
