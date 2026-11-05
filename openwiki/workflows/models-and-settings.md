@@ -28,6 +28,10 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_usage_evidence.rs
   - id: openwiki-source-f339a4d1910db63ca305c2df
     resource: repo://apps/decodex-gpui/src/assistant_settings.rs
+  - id: openwiki-source-ae991159453be2ee0c611ac1
+    resource: repo://apps/decodex-gpui/src/bundled_daemon.rs
+  - id: openwiki-source-e8596cc5aac62aa16bde932b
+    resource: repo://apps/decodex-gpui/src/component_runtime.rs
   - id: openwiki-source-7a7e7b3407a8222085c2d27e
     resource: repo://apps/decodex-gpui/src/composer_input.rs
   - id: openwiki-source-682f90c6d08ed3207257f1d5
@@ -136,10 +140,10 @@ sources:
     resource: repo://database/schema.sql
   - id: openwiki-source-8c78df4b382026886ac50894
     resource: repo://database/src/usage_evidence.rs
-generated: { by: "codex", at: "2026-11-05T15:46:21.386Z" }
+generated: { by: "codex", at: "2026-11-05T16:20:29.596Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-05T15:46:21.386Z
+    at: 2026-11-05T16:20:29.596Z
 ---
 
 # Model selection and settings ownership
@@ -163,9 +167,9 @@ Codex owns the effective model catalog, task configuration, provider admission a
 
 ## Find the retained switches
 
-The six Settings sections use the same 620-point content column and normal App typography. General groups the app version and Check for updates under Updates; there is no separate Updates page. Sparkle retains the application update flow. Related preferences share a quiet bordered panel under a distinct section heading. Names, values and supporting explanations have separate text roles. Accounts keeps one compact divided list in the same surface, with aligned identity, short quota meters and actions. Add account and model verification use the shared primary button. Component rows retain complete reported versions, including original prefixes, punctuation, build information and commit suffixes. Help text explains a choice, scope, cost, data effect, compatibility limit or recovery action. Self-explanatory controls avoid duplicate captions. Component, MCP and Diagnostics details use one inset region with distinct headings, normal control text and secondary guidance. Diagnostics uses one normal-size status flow and three group summaries, then exposes all checks in Technical details. An unchecked Codex status does not repeat the visible Run checks action in a second caption. Connection changes and recovery information remain explicit. Uniform groups share a status at the heading; mixed results keep each item's status and explanation. Local notices, warnings and errors share one compact inset row with an icon and quiet tone fill. Text, icons and recovery buttons align vertically at the center. Recovery buttons stay with the affected message. If Codex setup fails, a short message directs you to the setup details. Expand Codex to inspect the original error, then use **Retry setup** after you resolve the cause.
+The six Settings sections use the same 620-point content column and normal App typography. General groups the app version and Check for updates under Updates; there is no separate Updates page. Sparkle retains the application update flow. Related preferences share a quiet bordered panel under a distinct section heading. Names, values and supporting explanations have separate text roles. Accounts keeps one compact divided list in the same surface, with aligned identity, short quota meters and actions. Add account and model verification use the shared primary button. Component rows retain complete reported versions, including original prefixes, punctuation, build information and commit suffixes. Help text explains a choice, scope, cost, data effect, compatibility limit or recovery action. Self-explanatory controls avoid duplicate captions. Component, MCP and Diagnostics details use one inset region with distinct headings, normal control text and secondary guidance. Diagnostics uses one normal-size status flow and three group summaries, then exposes all checks in Technical details. An unchecked Codex status does not repeat the visible Run checks action in a second caption. Connection changes and recovery information remain explicit. Uniform groups share a status at the heading; mixed results keep each item's status and explanation. Local notices, warnings and errors share one compact inset row with an icon and quiet tone fill. Text, icons and recovery buttons align vertically at the center. Recovery buttons stay with the affected message. If Codex setup fails, a short message directs you to the setup details. Expand Codex to inspect the original error, then use **Retry** after you resolve the cause.
 
-Expanded Codex help explains what Verify checks and that its required version changes with Decodex. EGM help tells the user to ask an Agent to draft or review a design and to start a new conversation after installation or update.
+Codex prepares automatically in the background at local App startup and shares that status with Components. There is no permanent Verify button. **Retry** appears after a setup failure and disappears after recovery. Expanded Codex help explains automatic preparation and version updates through Decodex. EGM help tells the user to ask an Agent to draft or review a design and to start a new conversation after installation or update.
 
 In **Settings > Agents > New conversations**, **Permissions** shows the selected mode's meaning beside its control. Its menu displays all four explanations and the native Subagent inheritance rule directly. **Speed** uses the shared Standard, Fast and Ultrafast segmented control, with relative included usage and credits for the selected speed visible in its row. Codex uses this same speed default. These remain two compact setting rows with visible explanations.
 

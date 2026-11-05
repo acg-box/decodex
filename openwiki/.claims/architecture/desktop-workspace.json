@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:3c26b0dc43de7e08d469b52b15e642966542af623750a2c9bd1b7edc7545d2f6",
+  "pageVersion": "sha256:3e688418f5b5ace9ee9e664e26516aa19f5c056aad36f086f8e87822eaddb66b",
   "claims": [
     {
       "id": "claim_41c9eba720934771bd6b671a7aeb8b6e",
@@ -502,7 +502,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:088e7ad5d3724fe24fb9ee523fd468ce83c27560487de145ae08f49ec83df530"
+          "version": "repo-file-v1:sha256:d22add383676146076f2bea688936358ef17cde2a4aa359ae67eeccdbbc2ec55"
         },
         {
           "resource": "repo://crates/decodex-components/src/ragflow_service.rs",
@@ -524,7 +524,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:088e7ad5d3724fe24fb9ee523fd468ce83c27560487de145ae08f49ec83df530"
+          "version": "repo-file-v1:sha256:d22add383676146076f2bea688936358ef17cde2a4aa359ae67eeccdbbc2ec55"
         }
       ]
     },
@@ -570,7 +570,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:088e7ad5d3724fe24fb9ee523fd468ce83c27560487de145ae08f49ec83df530"
+          "version": "repo-file-v1:sha256:d22add383676146076f2bea688936358ef17cde2a4aa359ae67eeccdbbc2ec55"
         },
         {
           "resource": "repo://crates/decodex-components/src/ragflow_service.rs",
@@ -584,7 +584,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:088e7ad5d3724fe24fb9ee523fd468ce83c27560487de145ae08f49ec83df530"
+          "version": "repo-file-v1:sha256:d22add383676146076f2bea688936358ef17cde2a4aa359ae67eeccdbbc2ec55"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_surface.rs",
@@ -602,15 +602,19 @@
     },
     {
       "id": "claim_b54f43884cd2465296bcd295ba2b8077",
-      "statement": "A collapsed Codex setup failure shows a concise state and directs the user to its setup error. Expanding Codex shows the original complete error; Retry setup retains the existing runtime preparation owner.",
+      "statement": "Local bundled startup prepares Codex in the background through the shared runtime preparation owner. Components has no permanent Verify control. A setup failure preserves the complete error in expanded details and exposes Retry through the same owner; recovery removes Retry.",
       "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/bundled_daemon.rs",
+          "version": "repo-file-v1:sha256:dd1a317d49e93ba387cb76ec16c5c80c991c97a11b82b417f674cf68c827e5d6"
+        },
         {
           "resource": "repo://apps/decodex-gpui/src/component_runtime.rs",
           "version": "repo-file-v1:sha256:27a2e86b191536c74520e16b902bcc7ccda1f1c13657f6ff860decef89e6c269"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:088e7ad5d3724fe24fb9ee523fd468ce83c27560487de145ae08f49ec83df530"
+          "version": "repo-file-v1:sha256:d22add383676146076f2bea688936358ef17cde2a4aa359ae67eeccdbbc2ec55"
         }
       ]
     },
@@ -638,7 +642,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:088e7ad5d3724fe24fb9ee523fd468ce83c27560487de145ae08f49ec83df530"
+          "version": "repo-file-v1:sha256:d22add383676146076f2bea688936358ef17cde2a4aa359ae67eeccdbbc2ec55"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/shell.rs",
@@ -721,7 +725,7 @@
           "version": "repo-lines-v1:sha256:b1ed0f93e07b7968bda180dc11e57bb216a38eb9f2b1923cd698af143b3e1fcd:eyJzZWxlY3RlZExpbmVDb3VudCI6ODcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImYxOTRlOWZiNmU2NzA3Mjc3NTkyNTE1NzAxNmI0NzViNmFiM2QxMzU0NTU5MjJmODgwNGMyNjUwMDU3NzU1ZGMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZmNDE3MmIyODhjZWExMWEzOWIxZDJlMTcyOTc0NDRhNTQ0MDBlOTRkYmIzYmFlODQxMDI2ZWRiYTc0MTJiNTgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM2NmMyNTZhMThkNzFkY2NlYzhhNDNjYzY2MzIzNTgwYTQ3YWU2MjcyNTI5ZDIxYTVkMDc2ZDhhMjE4NTk2ODMifQ"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/settings_components.rs#L1003-L1074",
+          "resource": "repo://apps/decodex-gpui/src/settings_components.rs#L1009-L1080",
           "version": "repo-lines-v1:sha256:d096f930ad319a3b18666bb72e5d2fc0bbd3fef2bae71dda89885c8c49b8c364:eyJzZWxlY3RlZExpbmVDb3VudCI6NzIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRhNDMwOWVmNjVkMDZhNGQ2ZGE0ZGVlMThjNjc0NjBlOGY0MjRmOWZjODQwZTAyODgzN2ZlOGEwOWYwZTM5N2UiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjdjNDM1NDQzMjUyMzA2MTVhOGYyMDZiZGRjNmQ3ZmE5NmU1ODllZGYzMGJjZWJmZTQ0NzQ5ZmM3N2UwZjEzZjIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZhODY4ZWQzZjAzOWZlMGNmMWFiMTgxMzExNWYyOWJkNTlhZWUzY2Q0NmEzOTJiZmZkOGExNDY1YWE4ZGZhYzMifQ"
         },
         {
@@ -776,7 +780,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:088e7ad5d3724fe24fb9ee523fd468ce83c27560487de145ae08f49ec83df530"
+          "version": "repo-file-v1:sha256:d22add383676146076f2bea688936358ef17cde2a4aa359ae67eeccdbbc2ec55"
         },
         {
           "resource": "repo://crates/decodex-components/src/ragflow_service.rs",
@@ -794,7 +798,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:088e7ad5d3724fe24fb9ee523fd468ce83c27560487de145ae08f49ec83df530"
+          "version": "repo-file-v1:sha256:d22add383676146076f2bea688936358ef17cde2a4aa359ae67eeccdbbc2ec55"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_surface.rs",
@@ -809,6 +813,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-05T15:46:21.386Z"
+    "at": "2026-11-05T16:20:29.596Z"
   }
 }

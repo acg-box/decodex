@@ -26,7 +26,7 @@ mod tests {
 
 	#[test]
 	#[ignore = "run through scripts/test_gpui_bundled_daemon_supervision.sh with a freshly built decodex"]
-	fn process_missing_runtime_waits_for_setup_and_retry_before_launching_the_owned_service() {
+	fn process_runtime_preparation_waits_for_retry_before_launching_the_owned_service() {
 		let fixture = ProcessFixture::new();
 		let preparation =
 			RuntimePreparation::fixture(PreparationState::Preparing(InstallProgress::Waiting));
@@ -198,33 +198,6 @@ max_entry_bytes = 65536
 			bundled_daemon::bundled_daemon_path(Path::new("/tmp/decodex-gpui")),
 			Err(BundledDaemonFailure::NotBundled),
 		);
-	}
-
-	#[test]
-	fn runtime_presence_probe_does_not_execute_the_unverified_component() {
-		let temporary = TempDir::new().expect("component presence fixture");
-		let root = temporary.path();
-		let runtime = decodex_components::InstalledRuntime {
-			root: root.into(),
-			executable: root.join("codex"),
-			schemas: root.join("schemas"),
-		};
-
-		assert!(!bundled_daemon::runtime_files_are_present(&runtime));
-
-		let marker = root.join("executed");
-
-		fs::write(&runtime.executable, format!("#!/bin/sh\ntouch '{}'\n", marker.display()))
-			.expect("unverified executable");
-		fs::set_permissions(&runtime.executable, fs::Permissions::from_mode(0o700))
-			.expect("fixture permissions");
-
-		assert!(!bundled_daemon::runtime_files_are_present(&runtime));
-
-		fs::create_dir(&runtime.schemas).expect("schema directory");
-
-		assert!(bundled_daemon::runtime_files_are_present(&runtime));
-		assert!(!marker.exists(), "presence is advisory and must never run Codex");
 	}
 
 	#[test]
@@ -425,19 +398,18 @@ impl BundledDaemonSupervisor {
 			let executable =
 				std::env::current_exe().map_err(|_| BundledDaemonFailure::NotBundled)?;
 			let daemon = bundled_daemon_path(&executable)?;
-			let preparing_runtime = !required_runtime_is_present();
-			let guard = if preparing_runtime {
-				preparation.prepare();
-				None
-			} else {
-				Some(BundledDaemonGuard::launch_macos(&daemon, None)?)
-			};
+
+			preparation.prepare();
 
 			Ok(Some(Arc::new(Self {
 				preparation,
 				daemon,
 				environment: None,
-				state: Mutex::new(SupervisorState { guard, restarts: 0, preparing_runtime }),
+				state: Mutex::new(SupervisorState {
+					guard: None,
+					restarts: 0,
+					preparing_runtime: true,
+				}),
 			})))
 		}
 
@@ -685,20 +657,6 @@ pub(crate) fn retain(supervisor: Arc<BundledDaemonSupervisor>, cx: &mut App) {
 	let owner = cx.new(|cx| BundledDaemonOwner::new(supervisor, cx));
 
 	cx.set_global(BundledDaemonGlobal { _owner: owner });
-}
-
-#[cfg(target_os = "macos")]
-fn required_runtime_is_present() -> bool {
-	decodex_components::RuntimeLock::embedded()
-		.and_then(|lock| decodex_components::ComponentStore::for_user()?.paths(&lock))
-		.is_ok_and(|runtime| runtime_files_are_present(&runtime))
-}
-
-#[cfg(target_os = "macos")]
-fn runtime_files_are_present(runtime: &decodex_components::InstalledRuntime) -> bool {
-	// This only schedules the bundled service. Its native launch preflight owns full
-	// component attestation; do not hash or execute Codex on the GUI thread as well.
-	runtime.executable.is_file() && runtime.schemas.is_dir()
 }
 
 #[cfg(target_os = "macos")]

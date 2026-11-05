@@ -12,12 +12,12 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_relation_header.rs
   - id: openwiki-source-02d96e83c5e4b010bd8b2fe7
     resource: repo://apps/decodex-gpui/src/agent_review.rs
+  - id: openwiki-source-ae991159453be2ee0c611ac1
+    resource: repo://apps/decodex-gpui/src/bundled_daemon.rs
   - id: openwiki-source-59ed67d26d1c310707a365e5
     resource: repo://apps/decodex-gpui/src/component_plugins.rs
   - id: openwiki-source-0813b2e35e2133631c0aa4db
     resource: repo://apps/decodex-gpui/src/settings_components.rs
-  - id: openwiki-source-a16804a567889414868e5d67
-    resource: repo://apps/decodex-gpui/src/settings_surface.rs
   - id: openwiki-source-cfb92e5db8b3a39d51f6a057
     resource: repo://apps/decodex-gpui/src/settings_updates.rs
   - id: openwiki-source-fac913afc0144f630680095f
@@ -32,10 +32,10 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent/instructions.md
   - id: openwiki-source-f20a9fcd74237051ab396266
     resource: repo://crates/decodex-runtime/src/agent/review_activity.rs
-generated: { by: "codex", at: "2026-11-05T14:56:49.835Z" }
+generated: { by: "codex", at: "2026-11-05T16:20:29.596Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-05T15:46:21.386Z
+    at: 2026-11-05T16:20:29.596Z
 ---
 
 # Elephant–Goldfish component
@@ -45,7 +45,7 @@ EGM is an optional [Google plugin](https://github.com/google/elephant-goldfish-m
 ## Install and use
 
 1. Open **Settings > Components**. EGM manages this Mac's native plugin, including when the selected service profile is remote. Expand the EGM row to inspect its state and actions.
-2. Let Codex finish preparation if its required runtime is missing. Choose **Install** for **Elephant–Goldfish (EGM)** after its native state loads.
+2. Let Codex finish its automatic startup preparation. Choose **Install** for **Elephant–Goldfish (EGM)** after its native state loads.
 3. Start a new conversation. Select an enabled EGM skill from the native skill inventory for the intended task. Use the discovered name and absolute path. Native names can include a plugin prefix, such as `egm:egm-review-loop`; do not invent a cache path.
 
 Use the original brainstorm, drafting, review or resolution skill that fits the task. The plugin's [Codex integration guide](https://github.com/google/elephant-goldfish-model/blob/main/docs/codex.md) defines resource lookup, fresh reviewers and human decision gates. Installing a component does not start a review, assign a Project Lead, create an Aide role or schedule recurring work. Existing conversation context remains under native Codex ownership. Start a new conversation after installation or update to load the current plugin.
@@ -82,7 +82,7 @@ The displayed version and enabled flag report native configuration. They do not 
 
 The desktop offers Uninstall only while Codex lists the plugin. It has no separate Clean up control for an absent entry. The native adapter's orphan-removal tests establish that lower-level contract, not an additional visible action.
 
-The Codex runtime has a separate required lifecycle. It follows the reviewed runtime requirement embedded in this app build. **Verify** checks or repairs that requirement; the active app offers no runtime uninstall. Sparkle application updates remain in **Settings > General > Updates**. See [runtime architecture](../architecture/runtime-architecture.md#components-and-app-updates).
+The Codex runtime has a separate required lifecycle. It follows the reviewed runtime requirement embedded in this app build and prepares automatically in the background at local App startup. **Retry** appears only after setup fails. The active app offers no runtime uninstall. Sparkle application updates remain in **Settings > General > Updates**. See [runtime architecture](../architecture/runtime-architecture.md#components-and-app-updates).
 
 General plugin and connection setup remains native. The generic Agent app-server bridge still rejects plugin-management methods. The explicit Component controls use the native CLI and do not reopen that bridge.
 
