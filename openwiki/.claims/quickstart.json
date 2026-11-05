@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:9b433623758a8aa843576f1a711f3596d98c5680abced306b7d71d0a12fd851e",
+  "pageVersion": "sha256:c2b4d4f4133292ecd7847be4d3dd7c1bf4e75bbaa823999bc13ba2fb0e88d1ed",
   "claims": [
     {
       "id": "claim_b34298a8647a4e0b8653926b7568c5d4",
@@ -180,7 +180,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:f59b8e07107d3d3d6a9002413bb5fbd83a33efc2f3f96bffefbd6e098bd39430"
+          "version": "repo-file-v1:sha256:5ec567802e78632bfad37ec15f7455cc712b7bef232776b365cd86ddf345e895"
         }
       ]
     },
@@ -342,15 +342,15 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
-          "version": "repo-file-v1:sha256:a48c96edf9028245f67bc743d0b270b240da46a818d783a0c1af41d246bb633e"
+          "version": "repo-file-v1:sha256:549d76ce2e383aa604b482e7d7397c1071be7907ab470579290f0bc2cb1e18e6"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:f59b8e07107d3d3d6a9002413bb5fbd83a33efc2f3f96bffefbd6e098bd39430"
+          "version": "repo-file-v1:sha256:5ec567802e78632bfad37ec15f7455cc712b7bef232776b365cd86ddf345e895"
         },
         {
           "resource": "repo://crates/decodex-components/src/ragflow_service.rs",
-          "version": "repo-file-v1:sha256:a271fcb3d1384a1ae94850ab1bde534e950e082fd8535f83bb0a5e5ce3fe3a83"
+          "version": "repo-file-v1:sha256:9952a8ff04e1e412fbbd9b1d94181990396ac3e0503e9ab985e5240d67e205bb"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/assistant.rs",
@@ -368,7 +368,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:f59b8e07107d3d3d6a9002413bb5fbd83a33efc2f3f96bffefbd6e098bd39430"
+          "version": "repo-file-v1:sha256:5ec567802e78632bfad37ec15f7455cc712b7bef232776b365cd86ddf345e895"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_surface.rs#L494-L554",
@@ -383,6 +383,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-05T12:44:44.258Z"
+    "at": "2026-11-05T13:08:31.093Z"
   }
 }

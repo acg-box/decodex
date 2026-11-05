@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:e33f4b74784429a100b022bf7bac6f1d9eabb98e9ae6bffd19aa5a427a9b138c",
+  "pageVersion": "sha256:b6c83453fc50a41ec73011538c715f15dcaf22e617ffee74a3be97183968a03f",
   "claims": [
     {
       "id": "claim_f0c37462522f4442acd94d53819ef75c",
@@ -322,11 +322,11 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
-          "version": "repo-file-v1:sha256:a48c96edf9028245f67bc743d0b270b240da46a818d783a0c1af41d246bb633e"
+          "version": "repo-file-v1:sha256:549d76ce2e383aa604b482e7d7397c1071be7907ab470579290f0bc2cb1e18e6"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:f59b8e07107d3d3d6a9002413bb5fbd83a33efc2f3f96bffefbd6e098bd39430"
+          "version": "repo-file-v1:sha256:5ec567802e78632bfad37ec15f7455cc712b7bef232776b365cd86ddf345e895"
         },
         {
           "resource": "repo://crates/decodex-components/src/ragflow.rs",
@@ -334,7 +334,7 @@
         },
         {
           "resource": "repo://crates/decodex-components/src/ragflow_service.rs",
-          "version": "repo-file-v1:sha256:a271fcb3d1384a1ae94850ab1bde534e950e082fd8535f83bb0a5e5ce3fe3a83"
+          "version": "repo-file-v1:sha256:9952a8ff04e1e412fbbd9b1d94181990396ac3e0503e9ab985e5240d67e205bb"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent.rs",
@@ -355,30 +355,26 @@
       "statement": "The RAGFlow row distinguishes service installation from configured Assistant Memory even when collapsed. Its direct editor pairs Base URL with optional API key and extraction with embedding IDs in two rows, without an additional heading layer. Labels sit above 24-point inputs in normal control text. Empty required fields disable submission; complete input gets the existing validation on explicit submission. Input changes refresh the form and clear its old error. Guidance covers API compatibility, model roles, the Codex memory effect and initial chat-import choice. Cancel and the primary Verify and enable or Verify and save action align right. Saved-key guidance remains conditional, collapse retains input, and Cancel clears input and errors before collapse.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs#L191-L374",
-          "version": "repo-lines-v1:sha256:5013c6bf8b3ca1ed174c4f36dcf26a36e19cbb488ac267c4189460f43866e232:eyJzZWxlY3RlZExpbmVDb3VudCI6MTg0LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJiMzE4ODBiNmEyZGU3ODdhMzVlOTIwYmVlMjE5OWYzYWE2NTkwYTAyYTM3ZDg2NGFlZjg0MjYyNjQ2ZWFjNjRmIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI4MjljYzVlNzdmMTYxODFiYTlmOTRkZTdjYmFjM2UyNDA5NjRiZWE4MmI5NjlkMzI4OGQ5ZWFiNTFlMGY4MmJhIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIyMmYyZmY1ZmVlYzYwZjU4N2M4ZmFlNGU4N2Y4MDlhNjYxY2ZmZWQ2YjQ3YWFlNWY2ZDZhMjY1M2FhODk1MmVmIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJjMWM4NzUxMTVhODQxZmJkNWU4NzE1YzhhYzkxYzViODE2YjBjMDNlNjRjMzI3N2M5OGFjOTJlMzUxOWVhOWUwIn0"
+          "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
+          "version": "repo-file-v1:sha256:549d76ce2e383aa604b482e7d7397c1071be7907ab470579290f0bc2cb1e18e6"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/composer_input.rs#L655-L688",
-          "version": "repo-lines-v1:sha256:143e96ccfd61a4f6d30fc63bec74bd934003241cdfedb12d91044ed2587444e5:eyJzZWxlY3RlZExpbmVDb3VudCI6MzQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEyYWU1MjBjYWQ5MDAyODRkMDRiNTU2MWZlZTIyYzg4ZjNiYTc4YTk3YjUyMmZmYjgzNjVhMGZlOGFiMTAxMjIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ4YTM0MWM4OGY1Nzc0YzI1ODliYWZiY2ZkMzFhZDNhYjE3MTBlYWE3N2UwMTNmNTVmMjY2NzM0ZTU0ODJjY2MiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjlkY2Q2MTdhZTdkNDg2OTQxOTU3NTYyMWUyM2IyNTliYWNjZDAxOTc5YTBhNzIxZjBlZDc5ZWMzMTA0MDk2NTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZmZjRmN2MyMDdmZDAzOTgyNDczNjg2MjU2YWMxYWZhYjEyYjA1MzllOWQyNDNhMmVjMGM2YWUyYTI3MzViNDkifQ"
+          "resource": "repo://apps/decodex-gpui/src/composer_input.rs",
+          "version": "repo-file-v1:sha256:51012784fcf6528a12d1ac1c1089195d0da09e8fa06554dca10e0aa6596682aa"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/settings_components.rs#L138-L197",
-          "version": "repo-lines-v1:sha256:3788e7f57c5b0075a339d78cf861efbf94a8dd93d3af1ced89d4682fc88c3a3f:eyJzZWxlY3RlZExpbmVDb3VudCI6NjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4NmM3Nzc0N2EyZjc0Yjc4YzVjNWRlMmEzZGIxNTE4NjIwMDUyZDJhZTJmMzc0MjcyMGZkZjU4Mjg2MjM1NjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU0ZTE5NWVmZmQ0OTgyNmFjMDcyNDY0MDU3MjBlZTljYWNhMGE0MjdkYjFlOTYzZDNmNzY1NGM0ZTI3ZTY5MDciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjcxMjk2YzQyY2M4NzEzZThlZTUwNDA1YmM0Nzk2ZjcwMDdlOTE4MWY2ZTFlYjNjOTMyNGM3N2RhYWJiNGM0MDIifQ"
-        },
-        {
-          "resource": "repo://apps/decodex-gpui/src/settings_components.rs#L431-L538",
-          "version": "repo-lines-v1:sha256:85b0ba91c48d6334033e840fa0949499039cefbf72cb7ce274e35e6078d48b62:eyJzZWxlY3RlZExpbmVDb3VudCI6MTA4LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI4MzIwYTE1MjM3OGJiNDdhOWY5NDE4MTc1ZjU1YWI5YzNlYzJmZWViZTZkNzhkNzAwOGJjYzBlOTYxMTU5MjQ4IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI2N2NkYTgyZGE2MDYyMzhlMDVlNjIzOTk1NjljNWVlMDM5OTM0MTk2NDhhZTVkNDNhMmJmOGNkNjM0N2Y4MjYzIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIyYzEzNGIxYTNiMjRjNmUxYzg5MTA3MThlMmIyMjNkZGU0MDRjYTBjNDNkMzY5NmIzNmU4NDFlNzEzYmY2NGM5IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJiZGRiM2YyMTc3ZDNiODZiZDQyYmJlNDFkOGQwZDVhM2VmZjM1NmQyYmIwOGRmODZhYzQ1ODA3NzVlNGQxNWM4In0"
+          "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
+          "version": "repo-file-v1:sha256:5ec567802e78632bfad37ec15f7455cc712b7bef232776b365cd86ddf345e895"
         }
       ]
     },
     {
       "id": "claim_1d1d68cccf054493b22ff3f7574f9e70",
-      "statement": "All Settings categories share a 620-point content column and normal App typography. Related preferences share a quiet bordered panel with distinct section, name, value and explanation text roles. Accounts retains one compact divided list surface; Add account and model verification use shared primary buttons. Setting names use medium weight; help explains a choice, scope, cost, data effect, compatibility limit or recovery action, while self-explanatory controls avoid duplicate captions. Component versions share a release-number format with an optional parenthesized channel, and expanded Installed build preserves the complete original value. Component, MCP and Diagnostics details share an inset region with distinct headings, normal control text and secondary guidance. Diagnostics uses one normal-size overall status flow with explicit unprobed Codex state, connection changes and recovery information, without captions that repeat Run checks and summarizes three check groups before exposing all individual checks in Technical details; uniform groups share heading status and mixed groups retain individual status and explanations. Local feedback retains its compact inset icon, quiet tone fill, centered alignment and adjacent recovery. A collapsed Codex setup failure directs the user to its original setup error; Retry setup keeps the existing preparation action.",
+      "statement": "All Settings categories share a 620-point content column and normal App typography. Related preferences share a quiet bordered panel with distinct section, name, value and explanation text roles. Accounts retains one compact divided list surface; Add account and model verification use shared primary buttons. Setting names use medium weight; help explains a choice, scope, cost, data effect, compatibility limit or recovery action, while self-explanatory controls avoid duplicate captions. Component rows retain complete reported versions, including original prefixes, punctuation, build information and commit suffixes. RAGFlow shows its managed Nightly release channel separately. Component, MCP and Diagnostics details share an inset region with distinct headings, normal control text and secondary guidance. Diagnostics uses one normal-size overall status flow with explicit unprobed Codex state, connection changes and recovery information, without captions that repeat Run checks and summarizes three check groups before exposing all individual checks in Technical details; uniform groups share heading status and mixed groups retain individual status and explanations. Local feedback retains its compact inset icon, quiet tone fill, centered alignment and adjacent recovery. A collapsed Codex setup failure directs the user to its original setup error; Retry setup keeps the existing preparation action.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:f59b8e07107d3d3d6a9002413bb5fbd83a33efc2f3f96bffefbd6e098bd39430"
+          "version": "repo-file-v1:sha256:5ec567802e78632bfad37ec15f7455cc712b7bef232776b365cd86ddf345e895"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_power.rs",
@@ -485,6 +481,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-05T12:44:44.258Z"
+    "at": "2026-11-05T13:08:31.093Z"
   }
 }

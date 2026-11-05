@@ -302,7 +302,7 @@ impl SettingsSurface {
 		let details = gpui::div().flex().flex_col().gap_2().child(ui_theme::settings_description(
 			"Runs conversations. Its version follows this Decodex build.",
 		));
-		component.child(self.component_body(0, "components-codex-body", version, details))
+		component.child(self.component_body(0, "components-codex-body", details))
 	}
 
 	fn toggle_component_details(&mut self, index: usize, cx: &mut Context<Self>) {
@@ -327,7 +327,7 @@ impl SettingsSurface {
 		cx: &mut Context<Self>,
 	) -> AnyElement {
 		let expanded = self.components.details[index];
-		let metadata = version.map(|version| SharedString::from(component_version_label(version)));
+		let metadata = version.map(|version| SharedString::from(format!("Version {version}")));
 		gpui::div()
 			.id(id)
 			.debug_selector(move || id.into())
@@ -384,31 +384,10 @@ impl SettingsSurface {
 		&self,
 		index: usize,
 		id: &'static str,
-		version: Option<&str>,
 		content: impl gpui::IntoElement,
 	) -> AnyElement {
 		crate::ui_motion::settings_disclosure(id, self.components.details[index], || {
-			let details = ui_theme::settings_rows()
-				.gap_3()
-				.children(
-					version
-						.filter(|version| {
-							component_version_label(version) != format!("Version {version}")
-						})
-						.map(|version| {
-							gpui::div()
-								.w_full()
-								.min_w_0()
-								.flex()
-								.items_center()
-								.justify_between()
-								.gap_3()
-								.child(ui_theme::settings_label("Installed build", ""))
-								.child(gpui::div().min_w_0().child(version.to_owned()))
-						}),
-				)
-				.child(content);
-			ui_theme::settings_detail(details).into_any_element()
+			ui_theme::settings_detail(content).into_any_element()
 		})
 		.into_any_element()
 	}
@@ -520,12 +499,7 @@ impl SettingsSurface {
 					})
 					.pb(gpui::px(8.))
 			}))
-			.child(self.component_body(
-				3,
-				"components-ragflow-body",
-				state.as_ref().and_then(|s| s.version.as_deref()),
-				body,
-			))
+			.child(self.component_body(3, "components-ragflow-body", body))
 			.child(
 				ui_feedback::notice(
 					"components-ragflow-feedback",
@@ -642,7 +616,6 @@ impl SettingsSurface {
 				self.component_body(
 					2,
 					"components-research-body",
-					state.installed.as_ref().map(|package| package.version.as_str()),
 					gpui::div()
 						.flex()
 						.flex_col()
@@ -722,34 +695,10 @@ impl SettingsSurface {
 		gpui::div().debug_selector(|| "components-egm".into()).w_full().flex().flex_col().child(ui_theme::settings_row()
 			.child(self.component_label(1, "components-egm-details", "Elephant–Goldfish (EGM)", state.installed.as_ref().map(|plugin| plugin.version.as_str()), cx))
 			.child(controls))
-			.child(self.component_body(1,"components-egm-body",state.installed.as_ref().map(|plugin| plugin.version.as_str()),ui_theme::settings_description("Adds design and review workflows. Uses your Codex subscription. Start a new conversation after installation or update.")))
+			.child(self.component_body(1,"components-egm-body",ui_theme::settings_description("Adds design and review workflows. Uses your Codex subscription. Start a new conversation after installation or update.")))
 			.child(ui_feedback::notice("components-egm-feedback", "egm", feedback).inline()
 				.action(retry))
 	}
-}
-
-fn component_version_label(raw: &str) -> String {
-	let (version, channel) = raw
-		.strip_prefix("nightly (")
-		.and_then(|version| version.strip_suffix(')'))
-		.map_or((raw, ""), |version| (version, " (nightly)"));
-	let version = version
-		.strip_prefix('v')
-		.filter(|version| version.starts_with(|c: char| c.is_ascii_digit()))
-		.unwrap_or(version);
-	let version = version.split_once('+').map_or(version, |(version, _)| version);
-	let version = version
-		.rsplit_once("-g")
-		.and_then(|(prefix, commit)| {
-			let (release, count) = prefix.rsplit_once('-')?;
-			(!commit.is_empty()
-				&& commit.bytes().all(|c| c.is_ascii_hexdigit())
-				&& !count.is_empty()
-				&& count.bytes().all(|c| c.is_ascii_digit()))
-			.then_some(release)
-		})
-		.unwrap_or(version);
-	format!("Version {version}{channel}")
 }
 
 fn progress_text(progress: &InstallProgress) -> String {
@@ -775,18 +724,6 @@ mod tests {
 		settings_surface::components::{RuntimePreparation, SettingsSurface},
 	};
 	use decodex_components::{PluginAction, PluginInstallation};
-
-	#[test]
-	fn version_labels_share_a_release_and_channel_format() {
-		for (raw, label) in [
-			("0.1.0", "Version 0.1.0"),
-			("0.166.0+decodex.d78f68f8d101", "Version 0.166.0"),
-			("nightly (v1.0.0-rc3-51-g543f57ea9)", "Version 1.0.0-rc3 (nightly)"),
-			("custom-build", "Version custom-build"),
-		] {
-			assert_eq!(super::component_version_label(raw), label);
-		}
-	}
 
 	#[gpui::test]
 	fn ragflow_groups_connection_and_models_with_aligned_actions(cx: &mut gpui::TestAppContext) {

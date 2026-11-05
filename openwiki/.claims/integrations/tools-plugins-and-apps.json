@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:2864b99f84141cd8fac7a2cf1d8a2ab3561ccb23a2d0c5572bcaeb12ca46e6d3",
+  "pageVersion": "sha256:c2fc8155299edf71f44e9eacfc7652426abf0ca1e01f67f34ee60bfe72663d0c",
   "claims": [
     {
       "id": "claim_3f139c853db04d169600a9ee50a8d9b8",
@@ -88,7 +88,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:f59b8e07107d3d3d6a9002413bb5fbd83a33efc2f3f96bffefbd6e098bd39430"
+          "version": "repo-file-v1:sha256:5ec567802e78632bfad37ec15f7455cc712b7bef232776b365cd86ddf345e895"
         },
         {
           "resource": "repo://crates/decodex-components/src/plugins.rs",
@@ -102,11 +102,11 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
-          "version": "repo-file-v1:sha256:a48c96edf9028245f67bc743d0b270b240da46a818d783a0c1af41d246bb633e"
+          "version": "repo-file-v1:sha256:549d76ce2e383aa604b482e7d7397c1071be7907ab470579290f0bc2cb1e18e6"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:f59b8e07107d3d3d6a9002413bb5fbd83a33efc2f3f96bffefbd6e098bd39430"
+          "version": "repo-file-v1:sha256:5ec567802e78632bfad37ec15f7455cc712b7bef232776b365cd86ddf345e895"
         },
         {
           "resource": "repo://crates/decodex-components/src/ragflow.rs",
@@ -114,7 +114,7 @@
         },
         {
           "resource": "repo://crates/decodex-components/src/ragflow_service.rs",
-          "version": "repo-file-v1:sha256:a271fcb3d1384a1ae94850ab1bde534e950e082fd8535f83bb0a5e5ce3fe3a83"
+          "version": "repo-file-v1:sha256:9952a8ff04e1e412fbbd9b1d94181990396ac3e0503e9ab985e5240d67e205bb"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process.rs",
@@ -137,6 +137,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-05T12:44:44.258Z"
+    "at": "2026-11-05T13:08:31.093Z"
   }
 }

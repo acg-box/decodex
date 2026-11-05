@@ -169,7 +169,7 @@ sources:
 generated: { by: "codex", at: "2026-11-05T12:06:42.474Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-05T12:44:44.258Z
+    at: 2026-11-05T13:08:31.093Z
 ---
 
 # Runtime Architecture

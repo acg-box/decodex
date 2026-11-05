@@ -29,13 +29,18 @@ const CONTAINER_REQUIRED: &str =
 /// One OpenAI-compatible endpoint for extraction and embeddings. Kept in private storage.
 #[derive(Clone, Default, Deserialize, Serialize, Eq, PartialEq)]
 pub struct Models {
+	/// Base URL of the shared OpenAI-compatible model API.
 	pub base_url: String,
+	/// Optional private API key for this endpoint.
 	pub api_key: String,
+	/// Model name used to extract facts from messages.
 	pub chat_model: String,
+	/// Model name used to embed saved memories.
 	pub embedding_model: String,
 }
 
 impl Models {
+	/// Check the endpoint and required model names.
 	pub fn validate(&self) -> Result<()> {
 		let url = Url::parse(self.base_url.trim()).map_err(|_| "Enter a valid model Base URL.")?;
 		if !matches!(url.scheme(), "http" | "https")
@@ -64,28 +69,39 @@ impl Models {
 	}
 }
 
+/// An operation on the owned RAGFlow stack.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Action {
+	/// Prepare the managed stack.
 	Install,
+	/// Update the stack and retain its saved data.
 	Update,
+	/// Stop the stack and retain its data volumes.
 	Uninstall,
 }
 
 /// Private local receipt. Credentials never enter service settings or model tools.
 #[derive(Clone, Deserialize, Serialize)]
 pub struct Installation {
+	/// Loopback endpoint of the owned RAGFlow API.
 	pub url: String,
+	/// Version readback; older receipts can include a channel wrapper.
 	pub version: String,
+	/// Identity of the owned RAGFlow image.
 	pub image: String,
+	/// Dedicated Memory setup, when configuration is complete.
 	pub memory: Option<MemorySetup>,
+	/// Saved private model configuration, when supplied.
 	#[serde(default)]
 	pub models: Option<Models>,
 	project: String,
 	password: String,
+	/// Whether the owned stack is installed.
 	pub installed: bool,
 }
 
 impl ComponentStore {
+	/// Verify and save models, then create or recover the scoped Memory.
 	pub fn configure_ragflow_models(
 		&self,
 		models: Models,
@@ -132,6 +148,7 @@ impl ComponentStore {
 		Ok(config)
 	}
 
+	/// Read the private receipt for the owned service.
 	pub fn ragflow_installation(&self) -> Result<Option<Installation>> {
 		read(&self.root.join("ragflow/service"))
 	}
@@ -263,7 +280,7 @@ impl ComponentStore {
 			.filter(|s| !s.is_empty())
 			.ok_or("RAGFlow did not report its installed version.")?
 			.to_owned();
-		config.version = format!("nightly ({reported_version})");
+		config.version = reported_version;
 		config.image = run(&["images", "--quiet", "ragflow"])?.trim().into();
 		write(&directory, &config)?;
 		account_token(&client, &config)?;

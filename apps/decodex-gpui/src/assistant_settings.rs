@@ -125,12 +125,16 @@ impl AgentSurface {
 				.as_ref()
 				.is_some_and(|s| s.assistant.settings.ragflow.is_some()),
 			installed: self.assistant_settings.installation.as_ref().is_some_and(|i| i.installed),
-			version: self
-				.assistant_settings
-				.installation
-				.as_ref()
-				.filter(|i| i.installed)
-				.map(|i| i.version.clone()),
+			version: self.assistant_settings.installation.as_ref().filter(|i| i.installed).map(
+				|i| {
+					// Older receipts wrap the server version in Decodex's channel label.
+					i.version
+						.strip_prefix("nightly (")
+						.and_then(|version| version.strip_suffix(')'))
+						.unwrap_or(&i.version)
+						.to_owned()
+				},
+			),
 			import: self
 				.snapshot
 				.as_ref()
@@ -190,6 +194,18 @@ impl AgentSurface {
 
 	pub(crate) fn ragflow_settings_view(&self, _cx: &mut Context<Self>) -> AnyElement {
 		let mut body = ui_theme::settings_rows().gap(gpui::px(12.));
+		if self.assistant_settings.installation.as_ref().is_some_and(|i| i.installed) {
+			body = body.child(
+				gpui::div()
+					.w_full()
+					.flex()
+					.items_center()
+					.justify_between()
+					.gap_3()
+					.child(ui_theme::settings_label("Release channel", ""))
+					.child("Nightly"),
+			);
+		}
 		if !self.assistant_settings.fields.is_empty() {
 			let fields = |items: [(&str, &'static str); 2]| {
 				gpui::div()
@@ -549,6 +565,23 @@ fn memory_connection(memory: decodex_components::ragflow::MemorySetup) -> Ragflo
 #[cfg(test)]
 mod tests {
 	use super::*;
+	#[gpui::test]
+	fn ragflow_preserves_the_complete_reported_version(cx: &mut gpui::TestAppContext) {
+		let agent = cx.new(AgentSurface::new);
+		agent.update(cx, |s, cx| {
+			s.visual_ragflow_settings(cx);
+			for (stored, reported) in [
+				("nightly (v1.0.0-rc3-51-g543f57ea9)", "v1.0.0-rc3-51-g543f57ea9"),
+				("v1.0.0-rc3-51-g543f57ea9", "v1.0.0-rc3-51-g543f57ea9"),
+				("1.0.0+vendor.build", "1.0.0+vendor.build"),
+			] {
+				s.assistant_settings.installation.as_mut().unwrap().version = stored.into();
+				assert_eq!(s.ragflow_component_state().version.as_deref(), Some(reported));
+				assert_eq!(s.assistant_settings.installation.as_ref().unwrap().version, stored);
+			}
+		});
+	}
+
 	#[gpui::test]
 	fn model_editor_blocks_empty_submit_and_updates_after_field_changes(
 		cx: &mut gpui::TestAppContext,
