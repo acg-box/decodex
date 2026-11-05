@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:31969701be540bed44b9a03d720542041f46c26669b0400bf304371ec0a3eed5",
+  "pageVersion": "sha256:b202061e8ab96190e31ce73a84a843f607166ab0dd0f5ddffbc8a96c0fad5d29",
   "claims": [
     {
       "id": "claim_738021d152cc4128af3d3b4b217fe92c",
@@ -128,7 +128,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/shell.rs",
-          "version": "repo-file-v1:sha256:037aade4e4b7722fe65dc9240f6c880fef362650a67179ce23fba77a69b7893b"
+          "version": "repo-file-v1:sha256:9f872ed36787367f8ee1ec5cd2f5464577163a484c87f930aa11f064c017ad9a"
         }
       ]
     },
@@ -198,11 +198,11 @@
     },
     {
       "id": "claim_80a2ffd256284ec6a2511dc109936812",
-      "statement": "Expanded GPUI account activity uses a two-column label/value grid for available total tokens, daily peak, streak and longest task. Streak combines current and best values. Labels and values share the quota text size and muted color, with tabular figures and no extra value size or weight. The subdued daily chart and divided Reset cards area follow the metrics. Missing metrics stay absent, and the activity snapshot must match the current account revision. GPUI applies final detail height immediately on expansion and collapse through the shared Settings disclosure.",
+      "statement": "Expanded GPUI account activity uses a two-column label/value grid for available total tokens, daily peak, streak and longest task. Streak combines current and best values. Labels and values share the quota text size and muted color, with tabular figures and no extra value size or weight. The subdued daily chart and divided Reset cards area follow the metrics. Missing metrics stay absent, and the activity snapshot must match the current account revision. GPUI uses the shared interruptible 200 ms disclosure animation, measures current content before placing siblings and clips each moving frame. Already open details mount at full height.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/shell.rs#L3505-L3528",
-          "version": "repo-lines-v1:sha256:a9c223daddde9167096874b2e062a7d2a39e243b633dcbd991c265b5ea8d4dd6:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY3NTVhNmRmOTVlMzUwNTM1YzM5MzlhZTQ4NGVjZDg4ZTcyMzg1OWQxOTAwZWEwZTMyZThkMTMxMWY5YjEzYWIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjExYTY5MDYzZmFmOWU3ZmFjY2I1MGY0ZDM1ZThmMzI4OTA2NGNkMWUxYmI3ZGNkM2VhYjJhZWE1NmY2MWE5YmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE5ZGE2MjA0MzFmMTU4ZjlkMTRiMjc4YjE1MTRlYWIwNTk1NzYyZDdhYTE1N2Q1NGQ1NGVkZmU4NjE1ZTRiMDEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImRhOWE2MDFiYjFlNzhiY2MyNTM1ZmFkOTZkYWEwMGEyNWEyZTczNjcyN2YxYTQzOTIxYmVkNGJjOTZiNzUzY2MifQ"
+          "version": "repo-lines-v1:sha256:aab494461824e39fede09a74131d3665ae2971f68e6f6787cd46e21fe0799783:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY3NTVhNmRmOTVlMzUwNTM1YzM5MzlhZTQ4NGVjZDg4ZTcyMzg1OWQxOTAwZWEwZTMyZThkMTMxMWY5YjEzYWIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjExYTY5MDYzZmFmOWU3ZmFjY2I1MGY0ZDM1ZThmMzI4OTA2NGNkMWUxYmI3ZGNkM2VhYjJhZWE1NmY2MWE5YmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE5ZGE2MjA0MzFmMTU4ZjlkMTRiMjc4YjE1MTRlYWIwNTk1NzYyZDdhYTE1N2Q1NGQ1NGVkZmU4NjE1ZTRiMDEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImRhOWE2MDFiYjFlNzhiY2MyNTM1ZmFkOTZkYWEwMGEyNWEyZTczNjcyN2YxYTQzOTIxYmVkNGJjOTZiNzUzY2MifQ"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/shell_account_activity.rs#L65-L196",
@@ -213,8 +213,8 @@
           "version": "repo-lines-v1:sha256:0b96e6d7f9cf13e55c54472ca70d9add3365ebd14423a9ee9860976f3c41c8e3:eyJzZWxlY3RlZExpbmVDb3VudCI6OTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFlZGE3MjA0OWJjY2Y2YTkxMTRkN2U3MzU3YWNhZjAxOGM2NjA4MDdiYTQ4YTkzYmNiNjk4ZmI0NTgwNzA0ZGQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImExMzIzNWJiMWFkYTg5N2IwNTI3NjY4YjNmYjQxNmFiYTAyMzc1NTdiODRhZjE5NTBkZTM0ZjJhZDEyOGRkYjAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImFhMWNlZTFlNWExYzU3ZWIyNWEyZjBmODE4Yjg4MzUzNzdlYThmZmYyYzQwZTFmZGM3ZmUxYjlmOTcxY2Q4ODUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImRjN2Q0NDJlODFlMDdlYjAxMDBiNTYxYzdiYzE5OTMyYWQ4MjRiMDE2MjFjMDNjNWZiZWU5ZGQ4OWM4Y2JkNmEifQ"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/ui_theme.rs#L411-L423",
-          "version": "repo-lines-v1:sha256:8d5080f9107ec62247e5878613486921a426a2bb1a8a1cace12466650bcdf77b:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJlYTJhODkwN2JjNzlhNGU0NjU1ZDQyZTNmMzUwZjRkNTQzNWQ4NWNkMGY4YjM0MmMxZTc2Mzc4MzQ2MWQ5MWQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijc5NGMwZjI1MTA4MGM3YjljYzA3ODk4ZThhZGI1NjQwMjQ5MzhmZGMyYTE2ZjBiZDUwMTU3N2YzMGVmZWI1NDAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjcxNjQyMDNjMDk4YTc1OTcyZjFmYjdjMTVmY2EyNjIyZjUxZTA2NTRhOTc1YTM1MTliNmMxYjhiMDBhNzhlZTcifQ"
+          "resource": "repo://apps/decodex-gpui/src/ui_disclosure.rs#L19-L192",
+          "version": "repo-lines-v1:sha256:900b76d1248f000421f9b6b9c31e1dc78c4314a84ff883779d4f7a2dd2f72807:eyJzZWxlY3RlZExpbmVDb3VudCI6MTc0LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI5M2EwY2ZlMGUwNzk5MjcwZTNjMWVlMjA4YTY2N2FiYjFmMTRkNjE4ZmM0NmYzYTU4ZmMzNDE5Y2Q3ZTBlYTczIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0MTJjYTM0NWNjZjc1YmY5YzA4MDZiY2U2OTViZThkZTgwOGI3OTk4NDI1MWE3YTU0ZDIwMmNmNjEwMWRkNDUxIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJmZTkxYmRjYTI4NzRlMGI0Y2JiN2JlZDhhNmYwNWIzMzlkMTJiNDRhNGI0YWQ1MjM5M2MyYjFkODViMTNiMzMyIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI3YmM5OGQ2YjBkYzQ5MmM1MDE2ZGYxMDgwNWEzYTU0ZWI5YzE4NGE1YTYxMzdlN2Y0YmVjZmEwYzIyMDU1MGQwIn0"
         }
       ]
     },
@@ -223,8 +223,8 @@
       "statement": "The GPUI account summary owns its disclosure click target and hand cursor. Expanded metrics and the chart keep the normal cursor, and clicking this reading area does not collapse its account.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/shell.rs#L3441-L3532",
-          "version": "repo-lines-v1:sha256:e5ea7ca93b708571ba158918ef27d85b28bfd407b064eed948cc8dc50af34293:eyJzZWxlY3RlZExpbmVDb3VudCI6OTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIyNjM5YTcwYmE5MWQ4ZjU3NDczNGY2NTE5MjBlN2IwZWUwZTVlMjQ5ZTc0YWM2ZDFjZmYzYjA0MzUwMDY3YjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRjNDUzNGVjMmNlZGI4MTk5OWVkYmRlOWQxZWZiYzc5OGE5NzdhZTc2M2ZhZWYxZDRmNDZiMmYzNGE2ODFiODMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijg5YTRlOTY3NmY5ZTEyMDdhNzMyNmUyZTk5MTljOGJhM2RkZWJmYzQ3MTUyNWZjNmJiNmMzZDg4NTRmNTJlOTYifQ"
+          "resource": "repo://apps/decodex-gpui/src/shell.rs#L3490-L3528",
+          "version": "repo-lines-v1:sha256:1ed363bcddd4580aff2acd8f5b0482fd05a585ca0de7a08668c811a674628369:eyJzZWxlY3RlZExpbmVDb3VudCI6MzksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJiNTRjODM3OGFmM2MxNjMwNTU3NjFhMGY2ZDE2ZjBlM2RkMzgyZmE2NzUwZTg1MWYzZjVlZWRmMGFhYzIwNjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjExYTY5MDYzZmFmOWU3ZmFjY2I1MGY0ZDM1ZThmMzI4OTA2NGNkMWUxYmI3ZGNkM2VhYjJhZWE1NmY2MWE5YmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM2OTY1NmQ0NTQ1ZjAzZWQ3NmU1ODRmMDM1NmJkYjU5YTA4ZTBlNjdmNmM2NTBlODdhYjAzYWVkZjU4ZDZiODYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImRhOWE2MDFiYjFlNzhiY2MyNTM1ZmFkOTZkYWEwMGEyNWEyZTczNjcyN2YxYTQzOTIxYmVkNGJjOTZiNzUzY2MifQ"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/shell.rs#L3987-L4025",
@@ -232,13 +232,13 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/shell_reset_cards.rs#L974-L998",
-          "version": "repo-lines-v1:sha256:12ca2d3e97a438cba366d328209c677c60bf1a9729bc487a4adfa3d0c4ec0b6f:eyJzZWxlY3RlZExpbmVDb3VudCI6MjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYyYjZkM2ZkMWRlM2RhNjBiNWEwYWYwYTIxODhhZjEyZmRiODA4Yjg3MmJiYzEyZmE1ODZjMWRmMzBmNGQyZDciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY1ZTBiMGM0ZDRmNjQwZGNjODBhZTdlNzA0ODBjY2I1YTU1NTkzNGY4Mjk0ODBhMzE0OTM2NGNlZWNkOTI2YzYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU0ZTEwZGM2MjQyNjgxYWQzMzIwMmQ4NDE1Njg2ZTc2ZThjZGE2YTMzOTBiOTlhZmQxNzdmYjFkMjEzZDJlYjUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM0YWYzMzM2Njg3YjFmODg4ZDQ3YzA1NWJiZmQ5ZDRlNDRjNjQ5MmIyYTMxOWUyNDQ2ZTE3ZGE0NzQ1OTFlZjQifQ"
+          "version": "repo-lines-v1:sha256:12ca2d3e97a438cba366d328209c677c60bf1a9729bc487a4adfa3d0c4ec0b6f:eyJzZWxlY3RlZExpbmVDb3VudCI6MjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYyYjZkM2ZkMWRlM2RhNjBiNWEwYWYwYTIxODhhZjEyZmRiODA4Yjg3MmJiYzEyZmE1ODZjMWRmMzBmNGQyZDciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY1ZTBiMGM0ZDRmNjQwZGNjODBhZTdlNzA0ODBjY2I1YTU1NTkzNGY4Mjk0ODBhMzE0OTM2NGNlZWNkOTI2YzYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIwZjJiMTcyNTg4YjBlZDQ4YTE1ZGUxZGQwYmJhYjFjYWIwYzVlOTFlYjQxOTdhZWU2ZmJhYTI0N2YxYThjY2YiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM0YWYzMzM2Njg3YjFmODg4ZDQ3YzA1NWJiZmQ5ZDRlNDRjNjQ5MmIyYTMxOWUyNDQ2ZTE3ZGE0NzQ1OTFlZjQifQ"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-05T04:03:25.459Z"
+    "at": "2026-11-05T05:34:06.722Z"
   }
 }

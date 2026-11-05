@@ -331,7 +331,7 @@ impl AgentSurface {
 				expanded,
 			))
 			.smooth();
-		ui_theme::settings_rows().child(toggle).child(ui_theme::settings_disclosure(
+		ui_theme::settings_rows().child(toggle).child(crate::ui_motion::settings_disclosure(
 			"context-mcp-body",
 			expanded,
 			|| {

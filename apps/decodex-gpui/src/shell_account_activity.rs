@@ -202,7 +202,9 @@ mod tests {
 	};
 
 	#[gpui::test]
-	fn account_details_apply_the_final_layout_on_the_first_frame(cx: &mut TestAppContext) {
+	fn account_details_animate_without_moving_the_identity_or_overlapping_siblings(
+		cx: &mut TestAppContext,
+	) {
 		let (shell, visual) =
 			cx.add_window_view(|window, cx| Shell::new(window, cx, ConnectionView::Stopped));
 		shell.update(visual, |s, cx| s.open_settings_window(Destination::Accounts, cx));
@@ -219,6 +221,12 @@ mod tests {
 		for _ in 0..3 {
 			settings.simulate_click(identity.center(), Default::default());
 			settings.update(crate::ui_frame::draw_current_frame);
+			assert_eq!(settings.debug_bounds("account-card-1").unwrap(), collapsed);
+			settings.executor().advance_clock(std::time::Duration::from_millis(50));
+			settings.update(crate::ui_frame::draw_frame);
+			let opening = settings.debug_bounds("account-card-1").unwrap();
+			settings.executor().advance_clock(std::time::Duration::from_millis(150));
+			settings.update(crate::ui_frame::draw_frame);
 			let expanded = settings.debug_bounds("account-card-1").unwrap();
 			let activity = settings
 				.debug_bounds("account-activity-70000000-0000-4000-8000-000000000001")
@@ -227,13 +235,21 @@ mod tests {
 				expanded.top() > activity.bottom(),
 				"details must not overlap the next account"
 			);
-			assert!(expanded.top() > collapsed.top());
+			assert!(opening.top() > collapsed.top() && opening.top() < expanded.top());
+			assert_eq!(settings.debug_bounds("account-identity-0").unwrap(), identity);
 			for _ in 0..3 {
 				settings.update(crate::ui_frame::draw_frame);
 				assert_eq!(settings.debug_bounds("account-card-1").unwrap(), expanded);
 			}
 			settings.simulate_click(identity.center(), Default::default());
 			settings.update(crate::ui_frame::draw_current_frame);
+			assert_eq!(settings.debug_bounds("account-card-1").unwrap(), expanded);
+			settings.executor().advance_clock(std::time::Duration::from_millis(50));
+			settings.update(crate::ui_frame::draw_frame);
+			let closing = settings.debug_bounds("account-card-1").unwrap();
+			assert!(closing.top() > collapsed.top() && closing.top() < expanded.top());
+			settings.executor().advance_clock(std::time::Duration::from_millis(150));
+			settings.update(crate::ui_frame::draw_frame);
 			assert_eq!(settings.debug_bounds("account-card-1").unwrap(), collapsed);
 			assert!(
 				settings

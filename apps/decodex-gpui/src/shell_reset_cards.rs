@@ -967,9 +967,9 @@ mod render_tests {
 			window.draw(cx).clear(cx);
 		});
 
-		thread::sleep(Duration::from_millis(250));
+		visual.executor().advance_clock(Duration::from_millis(250));
 
-		visual.update(crate::ui_frame::draw_current_frame);
+		visual.update(crate::ui_frame::draw_frame);
 
 		for selector in [
 			"account-activity-70000000-0000-4000-8000-000000000001",
@@ -1004,11 +1004,11 @@ mod render_tests {
 			);
 		});
 		shell.update(visual, |s, cx| s.toggle_account_activity(first.clone(), cx));
-		visual.update(crate::ui_frame::draw_current_frame);
+		visual.update(crate::ui_frame::draw_frame);
 
-		thread::sleep(Duration::from_millis(250));
+		visual.executor().advance_clock(Duration::from_millis(250));
 
-		visual.update(crate::ui_frame::draw_current_frame);
+		visual.update(crate::ui_frame::draw_frame);
 
 		assert!(visual.debug_bounds("reset-card-70000000-0000-4000-8000-000000000001-0").is_none());
 		assert!(visual.debug_bounds("reset-card-70000000-0000-4000-8000-000000000002-0").is_some());
@@ -1020,7 +1020,7 @@ mod render_tests {
 			cx.notify();
 		});
 
-		visual.update(crate::ui_frame::draw_current_frame);
+		visual.update(crate::ui_frame::draw_frame);
 
 		let blocked =
 			visual.debug_bounds("reset-card-70000000-0000-4000-8000-000000000002-0").unwrap();

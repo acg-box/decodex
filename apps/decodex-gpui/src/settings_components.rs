@@ -368,7 +368,7 @@ impl SettingsSurface {
 		id: &'static str,
 		content: impl gpui::IntoElement,
 	) -> AnyElement {
-		ui_theme::settings_disclosure(id, self.components.details[index], || {
+		crate::ui_motion::settings_disclosure(id, self.components.details[index], || {
 			ui_theme::settings_detail(content).into_any_element()
 		})
 		.into_any_element()
@@ -406,10 +406,17 @@ impl SettingsSurface {
 			],
 			cx,
 		));
-		let mut body = gpui::div().flex().flex_col().gap_2().child(self.ragflow_component(cx));
+		let mut body = gpui::div()
+			.max_w(gpui::px(500.))
+			.w_full()
+			.flex()
+			.flex_col()
+			.gap_2()
+			.child(self.ragflow_component(cx));
 		if let Some(state) = state.as_ref().filter(|s| s.memory_ready) {
 			body = body.child(
 				ui_theme::settings_row()
+					.min_h(gpui::px(32.))
 					.child(ui_theme::settings_label(
 						"Import chats",
 						"Add completed chat turns to Assistant Memory.",
@@ -432,7 +439,7 @@ impl SettingsSurface {
 			);
 		}
 		if state.as_ref().is_some_and(|s| s.editing) {
-			let mut actions = gpui::div().flex().gap_2().justify_end().pt_2();
+			let mut actions = gpui::div().w_full().flex().gap_2().justify_end().pt_1();
 			for (id, label, action) in [
 				(
 					"components-ragflow-models-cancel",
@@ -854,11 +861,19 @@ mod tests {
 		);
 
 		visual.update(crate::ui_frame::draw_current_frame);
-
+		assert_eq!(visual.debug_bounds("components-egm").unwrap(), egm);
+		visual.executor().advance_clock(std::time::Duration::from_millis(50));
+		visual.update(crate::ui_frame::draw_frame);
+		let opening = visual.debug_bounds("components-egm").unwrap();
+		visual.executor().advance_clock(std::time::Duration::from_millis(150));
+		visual.update(crate::ui_frame::draw_frame);
 		let expanded = visual.debug_bounds("components-egm").unwrap();
 		assert!(
 			expanded.size.height > egm.size.height + gpui::px(24.),
-			"component details must take their full height in the first frame"
+			"component details retain their full natural height"
+		);
+		assert!(
+			opening.size.height > egm.size.height && opening.size.height < expanded.size.height
 		);
 		for _ in 0..3 {
 			visual.update(crate::ui_frame::draw_frame);
@@ -871,6 +886,9 @@ mod tests {
 
 		assert_eq!(settings.read_with(visual, |s, _| s.components.details), [false; 4]);
 		visual.update(crate::ui_frame::draw_current_frame);
+		assert_eq!(visual.debug_bounds("components-egm").unwrap(), expanded);
+		visual.executor().advance_clock(std::time::Duration::from_millis(200));
+		visual.update(crate::ui_frame::draw_frame);
 		assert_eq!(visual.debug_bounds("components-egm").unwrap(), egm);
 		assert_eq!(visual.debug_bounds("components-pro-research").unwrap(), research);
 	}

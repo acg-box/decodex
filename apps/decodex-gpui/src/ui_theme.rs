@@ -334,9 +334,12 @@ pub(crate) fn settings_description(text: impl Into<gpui::SharedString>) -> Div {
 
 pub(crate) fn settings_field(label: &'static str, input: impl IntoElement) -> Div {
 	settings_row()
-		.min_h(gpui::px(36.0))
-		.py(gpui::px(4.0))
+		.min_h(gpui::px(28.0))
+		.py(gpui::px(2.0))
 		.gap(gpui::px(12.0))
+		.text_size(gpui::px(SETTINGS_HELP_SIZE))
+		.line_height(gpui::px(16.5))
+		.text_color(rgb(TEXT_MUTED))
 		.child(gpui::div().w(gpui::px(128.0)).flex_none().child(label))
 		.child(gpui::div().flex_1().min_w_0().child(input))
 }
@@ -378,6 +381,17 @@ pub(crate) fn settings_group(title: &'static str, rows: Vec<AnyElement>) -> Div 
 	settings_rows().gap_1().child(settings_section_title(title)).child(settings_divided_rows(rows))
 }
 
+pub(crate) fn settings_detail_group(title: &'static str, rows: Vec<AnyElement>) -> Div {
+	settings_rows()
+		.gap_1()
+		.child(
+			settings_section_title(title)
+				.text_size(gpui::px(SETTINGS_HELP_SIZE))
+				.line_height(gpui::px(16.5)),
+		)
+		.child(settings_divided_rows(rows))
+}
+
 /// Cards identify health records; preferences and accounts use flat groups.
 pub(crate) fn settings_card(rows: Vec<AnyElement>) -> Div {
 	settings_divided_rows(rows)
@@ -403,22 +417,13 @@ pub(crate) fn settings_detail(content: impl IntoElement) -> Div {
 	settings_rows()
 		.border_t_1()
 		.border_color(rgba(PANEL_DIVIDER))
-		.pt(gpui::px(10.))
+		.px(gpui::px(16.))
+		.pt(gpui::px(8.))
 		.pb(gpui::px(10.))
+		.text_size(gpui::px(SETTINGS_HELP_SIZE))
+		.line_height(gpui::px(16.5))
+		.text_color(rgb(TEXT_MUTED))
 		.child(content)
-}
-
-/// Settings commit their final layout in one frame, including asynchronously loaded details.
-pub(crate) fn settings_disclosure(
-	id: impl Into<gpui::ElementId>,
-	expanded: bool,
-	content: impl FnOnce() -> AnyElement,
-) -> Stateful<Div> {
-	settings_rows()
-		.id(id)
-		.flex_none()
-		.when(!expanded, |slot| slot.hidden())
-		.when(expanded, |slot| slot.child(content()))
 }
 
 pub(crate) fn settings_button(

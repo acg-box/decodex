@@ -566,7 +566,7 @@ mod tests {
 		});
 		visual.update(crate::ui_frame::draw_frame);
 
-		thread::sleep(std::time::Duration::from_millis(240));
+		visual.executor().advance_clock(std::time::Duration::from_millis(240));
 
 		visual.update(crate::ui_frame::draw_frame);
 
@@ -603,7 +603,7 @@ mod tests {
 
 		visual.update(crate::ui_frame::draw_frame);
 
-		thread::sleep(std::time::Duration::from_millis(300));
+		visual.executor().advance_clock(std::time::Duration::from_millis(300));
 
 		visual.update(crate::ui_frame::draw_frame);
 
@@ -650,7 +650,7 @@ mod tests {
 		visual.update(crate::ui_frame::draw_frame);
 
 		for _ in 0..20 {
-			thread::sleep(std::time::Duration::from_millis(16));
+			visual.executor().advance_clock(std::time::Duration::from_millis(16));
 
 			visual.update(crate::ui_frame::draw_frame);
 		}
@@ -712,7 +712,7 @@ mod tests {
 
 			visual.update(crate::ui_frame::draw_frame);
 
-			thread::sleep(std::time::Duration::from_millis(240));
+			visual.executor().advance_clock(std::time::Duration::from_millis(240));
 
 			visual.update(crate::ui_frame::draw_frame);
 
@@ -753,7 +753,7 @@ mod tests {
 
 			visual.update(crate::ui_frame::draw_frame);
 
-			thread::sleep(std::time::Duration::from_millis(300));
+			visual.executor().advance_clock(std::time::Duration::from_millis(300));
 
 			visual.update(crate::ui_frame::draw_frame);
 

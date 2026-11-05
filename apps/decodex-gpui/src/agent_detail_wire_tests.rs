@@ -1,8 +1,5 @@
 //! Rendered detail continuation through the public same-UID query contract.
-use std::{
-	thread::{self, JoinHandle},
-	time::Duration,
-};
+use std::{thread::JoinHandle, time::Duration};
 
 use futures_util::{SinkExt as _, StreamExt as _};
 #[cfg(test)] use gpui::AppContext as _;
@@ -128,10 +125,10 @@ fn rendered_detail_continuation_reads_exact_cursor_without_accumulating_pages(
 			w.resize(gpui::size(gpui::px(800.), gpui::px(600.)));
 			w.draw(cx).clear(cx);
 		});
-		// Disclosure uses wall-clock animation: measure, begin expansion, then settle.
+		// Advance the same GPUI clock that drives disclosure presentation.
 		visual.update(crate::ui_frame::draw_current_frame);
 
-		thread::sleep(Duration::from_millis(250));
+		visual.executor().advance_clock(Duration::from_millis(250));
 
 		visual.update(crate::ui_frame::draw_current_frame);
 
