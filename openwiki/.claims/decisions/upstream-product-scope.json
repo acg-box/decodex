@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:1aa2f191ee865928626f8466431c1c4b24a53aa619307ede44695e40a80032c7",
+  "pageVersion": "sha256:3b6da6b88efaee706942cd5e8c5dad8e7376dada5dbec644cf18b161134f253a",
   "claims": [
     {
       "id": "claim_8d60aaceeea74d6189e3d7b0b3ed21fe",
@@ -384,7 +384,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_surface.rs",
-          "version": "repo-file-v1:sha256:3c02c70a1d7f51bb7824d3d9be8c028cf2a97120253c6903b245f45e0b36c2f3"
+          "version": "repo-file-v1:sha256:84095680a3dc1ea4cf0761c4caebd5be831b225e801ee7ec955d018421afa4d5"
         }
       ]
     },
@@ -404,7 +404,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/settings_surface.rs",
-          "version": "repo-file-v1:sha256:3c02c70a1d7f51bb7824d3d9be8c028cf2a97120253c6903b245f45e0b36c2f3"
+          "version": "repo-file-v1:sha256:84095680a3dc1ea4cf0761c4caebd5be831b225e801ee7ec955d018421afa4d5"
         },
         {
           "resource": "repo://automations/upstream/retained-contracts.json#L4850-L4922",
@@ -436,7 +436,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/shell_diagnostics.rs",
-          "version": "repo-file-v1:sha256:10e82bb4c1c353df56983afab07a31c749310b5742d9664faaaf6203f8be3b86"
+          "version": "repo-file-v1:sha256:37e4be14f1ea5c3f16498a2933b34f2baf4a48ad175c9ba0de12cba21971fa90"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/shell_status.rs",
@@ -651,6 +651,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-05T11:57:35.741Z"
+    "at": "2026-11-05T13:44:11.168Z"
   }
 }

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:dd1c49e881a8ec8c5f3f0b4437cbe66bd3518b729b7eda249f14cffec3eb3ebd",
+  "pageVersion": "sha256:2cdd380da304af962227781e5fb22911b769e83e0f6667fce72e163f3228938b",
   "claims": [
     {
       "id": "claim_613df7e7c10d49d28b26d6db94c525e5",
@@ -158,10 +158,10 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:5c2c3a7ef8ddde1e5398824a9c9511b03b45c2ea0746dc99224c999f2ba87a31"
+          "version": "repo-file-v1:sha256:c72582507d7ebdd412e69eb17fce461631dc3dff8302fac98d075d51ca082831"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/settings_surface.rs#L516-L568",
+          "resource": "repo://apps/decodex-gpui/src/settings_surface.rs#L513-L565",
           "version": "repo-lines-v1:sha256:5306e73a473d01043506dbeb8fdc14ceaf3a901ef4a2782ea86fafcd64c4e23b:eyJzZWxlY3RlZExpbmVDb3VudCI6NTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVlMWE4ZWI0MGQ5OWU0Y2I3Y2ZiZWY1M2VjODJmMTcxM2QxNmY4NzlmYzAwM2UyZjI1ZjY3YzZkYmVjM2E1M2EiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBhZjQ5MjdlMzZmMzQ3ZWUxZDA5MzFjMzFmZWIyY2FmYTIwZGQ4Y2IzMDUyZTQwMDNmMGMxZDNjYzM1MTRjZWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU4NTc0MGZkYjNlMzY0Yjc0YWEyMGY0YjJkMDdjNTNhOWU1M2UzNTVlN2Q1MWJlZGQ0ZDI3Njk0YWU4Mjk2ZWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFkYWUyNTNiNGEyYmIyMjJjMTU5NzVhN2E0ZWRlMmM0NmY3YjA3NTJjZmMwMzQ5YjlmMGM5MDI4NmRjMzZiNzQifQ"
         },
         {
@@ -502,7 +502,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/shell_diagnostics.rs",
-          "version": "repo-file-v1:sha256:10e82bb4c1c353df56983afab07a31c749310b5742d9664faaaf6203f8be3b86"
+          "version": "repo-file-v1:sha256:37e4be14f1ea5c3f16498a2933b34f2baf4a48ad175c9ba0de12cba21971fa90"
         },
         {
           "resource": "repo://automations/upstream/retained-contracts.json",
@@ -706,19 +706,19 @@
     },
     {
       "id": "claim_935311b12cf748b1a9220ee276ba9243",
-      "statement": "RAGFlow Install prepares the managed nightly service and private account. User model configuration accepts an OpenAI-compatible Base URL, optional API key and custom extraction and embedding names; native verification precedes saving, then dedicated Memory is created or recovered. No model runtime, download or data volume is installed. The origin-bound RAGFlow credential stays private; Assistant settings contain only its reference and chat import starts disabled.",
+      "statement": "RAGFlow Install prepares the managed nightly service and private account. Extraction and embedding have independent OpenAI-compatible Base URLs, optional API keys and custom model IDs. Save verifies both choices before updating their separate provider instances and defaults, then creates or recovers dedicated Memory. The embedding instance keeps its existing identity. No model runtime or weights are installed; credentials remain private and chat import starts off.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
-          "version": "repo-file-v1:sha256:a48c96edf9028245f67bc743d0b270b240da46a818d783a0c1af41d246bb633e"
+          "version": "repo-file-v1:sha256:d4064b1403c8b8f2d3a027cb5e70bf8e20ad5834569913add8fc9f612a7dffbb"
         },
         {
           "resource": "repo://crates/decodex-components/src/ragflow.rs",
-          "version": "repo-file-v1:sha256:fbeb33d1d721cd020eb3e404b47cf03a84cf6d3ca3a2da35af1c391c3b16d96c"
+          "version": "repo-file-v1:sha256:17e835261d1318d0c7ba78f1c859da78cb71d746027c6a63a28232aa18e06beb"
         },
         {
           "resource": "repo://crates/decodex-components/src/ragflow_service.rs",
-          "version": "repo-file-v1:sha256:a271fcb3d1384a1ae94850ab1bde534e950e082fd8535f83bb0a5e5ce3fe3a83"
+          "version": "repo-file-v1:sha256:71304894dce0ee326cbea7d12bbdddc94eb2c9f29e6072202170b9abf12e802a"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/ragflow.rs",
@@ -732,11 +732,11 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
-          "version": "repo-file-v1:sha256:a48c96edf9028245f67bc743d0b270b240da46a818d783a0c1af41d246bb633e"
+          "version": "repo-file-v1:sha256:d4064b1403c8b8f2d3a027cb5e70bf8e20ad5834569913add8fc9f612a7dffbb"
         },
         {
           "resource": "repo://crates/decodex-components/src/ragflow_service.rs",
-          "version": "repo-file-v1:sha256:a271fcb3d1384a1ae94850ab1bde534e950e082fd8535f83bb0a5e5ce3fe3a83"
+          "version": "repo-file-v1:sha256:71304894dce0ee326cbea7d12bbdddc94eb2c9f29e6072202170b9abf12e802a"
         }
       ]
     },
@@ -750,7 +750,7 @@
         },
         {
           "resource": "repo://crates/decodex-components/src/ragflow_service.rs",
-          "version": "repo-file-v1:sha256:a271fcb3d1384a1ae94850ab1bde534e950e082fd8535f83bb0a5e5ce3fe3a83"
+          "version": "repo-file-v1:sha256:71304894dce0ee326cbea7d12bbdddc94eb2c9f29e6072202170b9abf12e802a"
         }
       ]
     },
@@ -760,11 +760,11 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
-          "version": "repo-file-v1:sha256:a48c96edf9028245f67bc743d0b270b240da46a818d783a0c1af41d246bb633e"
+          "version": "repo-file-v1:sha256:d4064b1403c8b8f2d3a027cb5e70bf8e20ad5834569913add8fc9f612a7dffbb"
         },
         {
           "resource": "repo://crates/decodex-components/src/ragflow_service.rs",
-          "version": "repo-file-v1:sha256:a271fcb3d1384a1ae94850ab1bde534e950e082fd8535f83bb0a5e5ce3fe3a83"
+          "version": "repo-file-v1:sha256:71304894dce0ee326cbea7d12bbdddc94eb2c9f29e6072202170b9abf12e802a"
         }
       ]
     },
@@ -785,6 +785,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-05T12:06:42.474Z"
+    "at": "2026-11-05T13:48:42.186Z"
   }
 }

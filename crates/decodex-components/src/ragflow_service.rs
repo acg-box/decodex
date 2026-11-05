@@ -26,18 +26,38 @@ const PROVIDER: &str = "OpenAI-API-Compatible";
 const CONTAINER_REQUIRED: &str =
 	"RAGFlow requires a running Docker-compatible container environment with Docker Compose.";
 
-/// One OpenAI-compatible endpoint for extraction and embeddings. Kept in private storage.
+/// Independent extraction and embedding APIs. Kept in private storage.
 #[derive(Clone, Default, Deserialize, Serialize, Eq, PartialEq)]
 pub struct Models {
+	/// Model API used to extract facts from messages.
+	pub extraction: ModelEndpoint,
+	/// Model API used to embed saved memories.
+	pub embedding: ModelEndpoint,
+}
+
+/// One OpenAI-compatible model API and its optional private credential.
+#[derive(Clone, Default, Deserialize, Serialize, Eq, PartialEq)]
+pub struct ModelEndpoint {
+	/// Base URL of this model API.
 	pub base_url: String,
+	/// Optional private API key for this endpoint.
 	pub api_key: String,
-	pub chat_model: String,
-	pub embedding_model: String,
+	/// Provider's model identifier, retained verbatim.
+	pub model: String,
 }
 
 impl Models {
+	/// Check both endpoints and their required model names.
 	pub fn validate(&self) -> Result<()> {
-		let url = Url::parse(self.base_url.trim()).map_err(|_| "Enter a valid model Base URL.")?;
+		self.extraction.validate("extraction")?;
+		self.embedding.validate("embedding")
+	}
+}
+
+impl ModelEndpoint {
+	fn validate(&self, role: &str) -> Result<()> {
+		let url = Url::parse(self.base_url.trim())
+			.map_err(|_| format!("Enter a valid {role} model Base URL."))?;
 		if !matches!(url.scheme(), "http" | "https")
 			|| url.host_str().is_none()
 			|| !url.username().is_empty()
@@ -45,12 +65,12 @@ impl Models {
 			|| url.query().is_some()
 			|| url.fragment().is_some()
 		{
-			return Err(
-				"Use an HTTP or HTTPS model Base URL without credentials or a query.".into()
-			);
+			return Err(format!(
+				"Use an HTTP or HTTPS {role} model Base URL without credentials or a query."
+			));
 		}
-		if self.chat_model.trim().is_empty() || self.embedding_model.trim().is_empty() {
-			return Err("Enter the extraction and embedding model names.".into());
+		if self.model.trim().is_empty() {
+			return Err(format!("Enter the {role} model name."));
 		}
 		Ok(())
 	}
@@ -64,28 +84,53 @@ impl Models {
 	}
 }
 
+/// An operation on the owned RAGFlow stack.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Action {
+	/// Prepare the managed stack.
 	Install,
+	/// Update the stack and retain its saved data.
 	Update,
+	/// Stop the stack and retain its data volumes.
 	Uninstall,
 }
 
 /// Private local receipt. Credentials never enter service settings or model tools.
 #[derive(Clone, Deserialize, Serialize)]
 pub struct Installation {
+	/// Loopback endpoint of the owned RAGFlow API.
 	pub url: String,
+	/// Version reported by the installed service.
 	pub version: String,
+	/// Identity of the owned RAGFlow image.
 	pub image: String,
+	/// Dedicated Memory setup, when configuration is complete.
 	pub memory: Option<MemorySetup>,
+	/// Saved private model configuration, when supplied.
 	#[serde(default)]
 	pub models: Option<Models>,
 	project: String,
 	password: String,
+	/// Whether the owned stack is installed.
 	pub installed: bool,
 }
 
+impl Installation {
+	/// Check the installed service's public API without sending credentials or model work.
+	pub fn is_running(&self) -> bool {
+		self.installed
+			&& Client::builder()
+				.timeout(Duration::from_secs(3))
+				.redirect(Policy::none())
+				.build()
+				.is_ok_and(|client| {
+					response(client.get(format!("{}/api/v1/system/version", self.url))).is_ok()
+				})
+	}
+}
+
 impl ComponentStore {
+	/// Verify and save models, then create or recover the scoped Memory.
 	pub fn configure_ragflow_models(
 		&self,
 		models: Models,
@@ -110,7 +155,8 @@ impl ComponentStore {
 				.ok_or("RAGFlow returned an invalid Memory message count.")?
 				> 0
 				&& config.models.as_ref().is_none_or(|old| {
-					old.embedding_model != models.embedding_model || old.base_url != models.base_url
+					old.embedding.model != models.embedding.model
+						|| old.embedding.base_url != models.embedding.base_url
 				}) {
 				return Err("This Memory already contains messages. Keep its embedding model and Base URL to preserve the saved index.".into());
 			}
@@ -123,7 +169,8 @@ impl ComponentStore {
 				.put(format!("{}/api/v1/memories/{}", config.url, memory.memory_id))
 				.header("Authorization", &token)
 				.json(&json!({
-				 "llm_id":model_id(&models.chat_model),"embd_id":model_id(&models.embedding_model)
+				 "llm_id":model_id(&models.extraction.model, "decodex-extraction"),
+				 "embd_id":model_id(&models.embedding.model, "decodex-embedding")
 				})),
 		)?;
 		config.memory = Some(memory);
@@ -132,6 +179,7 @@ impl ComponentStore {
 		Ok(config)
 	}
 
+	/// Read the private receipt for the owned service.
 	pub fn ragflow_installation(&self) -> Result<Option<Installation>> {
 		read(&self.root.join("ragflow/service"))
 	}
@@ -263,7 +311,7 @@ impl ComponentStore {
 			.filter(|s| !s.is_empty())
 			.ok_or("RAGFlow did not report its installed version.")?
 			.to_owned();
-		config.version = format!("nightly ({reported_version})");
+		config.version = reported_version;
 		config.image = run(&["images", "--quiet", "ragflow"])?.trim().into();
 		write(&directory, &config)?;
 		account_token(&client, &config)?;
@@ -350,8 +398,8 @@ fn account_token(client: &Client, config: &Installation) -> Result<String> {
 	Ok(token)
 }
 
-fn model_id(name: &str) -> String {
-	format!("{name}@decodex@{PROVIDER}")
+fn model_id(name: &str, instance: &str) -> String {
+	format!("{name}@{instance}@{PROVIDER}")
 }
 
 fn configure_models(
@@ -368,29 +416,40 @@ fn configure_models(
 	)?;
 	let instances =
 		response(auth(client.get(format!("{url}/api/v1/providers/{PROVIDER}/instances"))))?;
-	let exists = instances
-		.as_array()
-		.ok_or("Invalid RAGFlow model configuration.")?
-		.iter()
-		.any(|i| i["instance_name"] == "decodex");
-	let path = format!("{url}/api/v1/providers/{PROVIDER}/instances");
-	let request = if exists { client.put(format!("{path}/decodex")) } else { client.post(path) };
-	let mut info = vec![json!({"model_name":models.chat_model,"model_type":["chat"]})];
-	if models.chat_model == models.embedding_model {
-		info[0]["model_type"] = json!(["chat", "embedding"]);
-	} else {
-		info.push(json!({"model_name":models.embedding_model,"model_type":["embedding"]}));
+	let instances = instances.as_array().ok_or("Invalid RAGFlow model configuration.")?;
+	// Each model owns its endpoint and credential under a stable role name.
+	let endpoints = [
+		("decodex-extraction", "chat", "extraction", &models.extraction),
+		("decodex-embedding", "embedding", "embedding", &models.embedding),
+	];
+	// Verify both choices before changing either saved provider instance.
+	for (_, kind, role, model) in endpoints {
+		response(
+			auth(client.post(format!("{url}/api/v1/providers/{PROVIDER}/connection")))
+				.json(&json!({"api_key":model.api_key,"base_url":model.service_url(),
+			 "model_info":[{"model_name":model.model,"model_type":[kind]}]})),
+		)
+		.map_err(|_| {
+			format!(
+				"Could not verify the {role} model. Check its Base URL, API key and model name."
+			)
+		})?;
 	}
-	response(auth(client.post(format!("{url}/api/v1/providers/{PROVIDER}/connection"))).json(
-		&json!({"api_key":models.api_key,"base_url":models.service_url(),"model_info":info}),
-	))
-	.map_err(|_| "Could not verify the models. Check the Base URL, API key and model names.")?;
-	response(auth(request).json(&json!({"instance_name":"decodex","api_key":models.api_key,
-  "clear_api_key":models.api_key.is_empty(),"base_url":models.service_url(),"model_info":info})))?;
+	for (instance, kind, _, model) in endpoints {
+		let exists = instances.iter().any(|i| i["instance_name"] == instance);
+		let path = format!("{url}/api/v1/providers/{PROVIDER}/instances");
+		let request =
+			if exists { client.put(format!("{path}/{instance}")) } else { client.post(path) };
+		response(auth(request).json(&json!({
+		 "instance_name":instance,"api_key":model.api_key,"clear_api_key":model.api_key.is_empty(),
+		 "base_url":model.service_url(),"model_info":[{"model_name":model.model,"model_type":[kind]}]
+		})))?;
+	}
 	let defaults = response(auth(client.get(format!("{url}/api/v1/users/me/models"))))?;
 	response(auth(client.patch(format!("{url}/api/v1/users/me/models"))).json(&json!({
 	 "tenant_id":defaults["tenant_id"],"asr_id":defaults["asr_id"],"img2txt_id":defaults["img2txt_id"],
-	 "llm_id":model_id(&models.chat_model),"embd_id":model_id(&models.embedding_model)
+	 "llm_id":model_id(&models.extraction.model, "decodex-extraction"),
+	 "embd_id":model_id(&models.embedding.model, "decodex-embedding")
 	})))?;
 	Ok(())
 }
@@ -531,32 +590,214 @@ mod tests {
 	fn model_endpoints_keep_custom_paths_and_names_and_route_loopback_to_the_host() {
 		for url in ["http://localhost:1234/v1", "http://127.0.0.1:1234/v1", "http://[::1]:1234/v1"]
 		{
-			let models = Models {
+			let model = ModelEndpoint {
 				base_url: url.into(),
-				chat_model: "my/custom-model:preview".into(),
-				embedding_model: "embed-custom".into(),
+				model: "my/custom-model:preview".into(),
 				..Default::default()
 			};
-			models.validate().unwrap();
-			assert_eq!(models.service_url(), "http://host.docker.internal:1234/v1");
+			model.validate("extraction").unwrap();
+			assert_eq!(model.service_url(), "http://host.docker.internal:1234/v1");
 			assert_eq!(
-				model_id(&models.chat_model),
-				"my/custom-model:preview@decodex@OpenAI-API-Compatible"
+				model_id(&model.model, "decodex-extraction"),
+				"my/custom-model:preview@decodex-extraction@OpenAI-API-Compatible"
 			);
 		}
-		let models = Models {
+		let model = ModelEndpoint {
 			base_url: "https://models.example/api/v1".into(),
 			api_key: "fixture-secret".into(),
-			chat_model: "custom-chat".into(),
-			embedding_model: "custom-embedding".into(),
+			model: "custom-model".into(),
 		};
-		models.validate().unwrap();
-		assert_eq!(models.service_url(), models.base_url);
+		assert_eq!(model.service_url(), model.base_url);
 		assert!(
-			Models { base_url: "https://user:password@models.example/v1".into(), ..models }
-				.validate()
+			ModelEndpoint { base_url: "https://user:password@models.example/v1".into(), ..model }
+				.validate("embedding")
 				.is_err()
 		);
+	}
+
+	fn model_fixture(url: String) -> Installation {
+		Installation {
+			url: url.clone(),
+			project: "decodex-fixture".into(),
+			password: "fixture-password".into(),
+			version: "fixture".into(),
+			image: "fixture".into(),
+			installed: true,
+			memory: Some(MemorySetup {
+				url,
+				credential_id: "fixture".into(),
+				user_id: "fixture".into(),
+				memory_id: "memory".into(),
+			}),
+			models: Some(Models {
+				extraction: ModelEndpoint {
+					base_url: "https://old.example/v1".into(),
+					api_key: "old-key".into(),
+					model: "old-chat".into(),
+				},
+				embedding: ModelEndpoint {
+					base_url: "https://embedding.example/v1".into(),
+					api_key: "embedding-key".into(),
+					model: "same-name@q8".into(),
+				},
+			}),
+		}
+	}
+
+	fn model_reply(index: usize, header: &str, body: Value, fail_embedding: bool) -> Option<Value> {
+		match index {
+			0 => {
+				assert!(header.starts_with("POST /api/v1/auth/login "));
+			},
+			1 => {
+				assert!(header.starts_with("GET /api/v1/memories/memory?"));
+				return Some(json!({"messages":{"total_count":1}}));
+			},
+			2 => {
+				assert!(header.starts_with("PUT /api/v1/providers "));
+			},
+			3 => return Some(json!([{"instance_name":"decodex-embedding"}])),
+			4..=7 => {
+				let extraction = index == 4 || index == 6;
+				assert_eq!(
+					body["base_url"],
+					if extraction {
+						"https://extraction.example/v1"
+					} else {
+						"https://embedding.example/v1"
+					}
+				);
+				assert_eq!(
+					body["api_key"],
+					if extraction { "extraction-key" } else { "embedding-key" }
+				);
+				assert_eq!(
+					body["model_info"],
+					json!([{"model_name":"same-name@q8", "model_type":[if extraction {"chat"} else {"embedding"}]}])
+				);
+				if index <= 5 {
+					assert!(
+						header.starts_with(
+							"POST /api/v1/providers/OpenAI-API-Compatible/connection "
+						)
+					);
+					if index == 5 && fail_embedding {
+						return None;
+					}
+				} else {
+					assert_eq!(
+						body["instance_name"],
+						if extraction { "decodex-extraction" } else { "decodex-embedding" }
+					);
+					assert!(header.starts_with(if extraction {
+						"POST /api/v1/providers/OpenAI-API-Compatible/instances "
+					} else {
+						"PUT /api/v1/providers/OpenAI-API-Compatible/instances/decodex-embedding "
+					}));
+				}
+			},
+			8 => return Some(json!({"tenant_id":"tenant","asr_id":"asr","img2txt_id":"vision"})),
+			9 | 12 => {
+				assert_eq!(body["llm_id"], "same-name@q8@decodex-extraction@OpenAI-API-Compatible");
+				assert_eq!(body["embd_id"], "same-name@q8@decodex-embedding@OpenAI-API-Compatible");
+				if index == 9 {
+					assert_eq!(body["asr_id"], "asr");
+					assert_eq!(body["img2txt_id"], "vision");
+				}
+			},
+			10 => return Some(json!([{"token":"fixture-key"}])),
+			11 => {
+				let path = header.lines().next().unwrap().split_whitespace().nth(1).unwrap();
+				let query = Url::parse(&format!("http://fixture{path}")).unwrap();
+				let name =
+					query.query_pairs().find(|(key, _)| key == "keywords").unwrap().1.into_owned();
+				return Some(json!({"memory_list":[{"name":name,"id":"memory"}]}));
+			},
+			_ => unreachable!(),
+		}
+		Some(Value::Null)
+	}
+
+	#[test]
+	fn independent_models_use_separate_credentials_and_preserve_the_indexed_embedding_identity() {
+		for fail_embedding in [false, true] {
+			let count = if fail_embedding { 6 } else { 13 };
+			let (url, worker) = super::super::tests::server(count, move |index, header, body| {
+				model_reply(index, header, body, fail_embedding)
+			});
+			let root = tempfile::tempdir().unwrap();
+			let store = ComponentStore::new(root.path().into());
+			let directory = root.path().join("ragflow/service");
+			fs::create_dir_all(&directory).unwrap();
+			let config = model_fixture(url);
+			write(&directory, &config).unwrap();
+			let before = fs::read(directory.join("installation.json")).unwrap();
+			let mut models = config.models.unwrap();
+			models.extraction = ModelEndpoint {
+				base_url: "https://extraction.example/v1".into(),
+				api_key: "extraction-key".into(),
+				model: "same-name@q8".into(),
+			};
+			let result = store.configure_ragflow_models(models.clone(), "service:assistant");
+			if fail_embedding {
+				assert_eq!(
+					result.err().unwrap(),
+					"Could not verify the embedding model. Check its Base URL, API key and model name."
+				);
+				assert_eq!(fs::read(directory.join("installation.json")).unwrap(), before);
+			} else {
+				assert!(result.unwrap().models.unwrap() == models);
+				assert!(store.ragflow_installation().unwrap().unwrap().models.unwrap() == models);
+			}
+			worker.join().unwrap();
+		}
+	}
+
+	#[test]
+	fn service_light_checks_the_public_api_without_credentials() {
+		let (url, worker) = super::super::tests::server(1, |_, header, _| {
+			assert!(header.starts_with("GET /api/v1/system/version "));
+			assert!(!header.to_ascii_lowercase().contains("authorization:"));
+			Some(json!({"version":"fixture"}))
+		});
+		let config = model_fixture(url);
+		assert!(config.is_running());
+		worker.join().unwrap();
+		assert!(
+			!config.is_running(),
+			"an installed receipt alone does not mean the service is running"
+		);
+	}
+
+	#[test]
+	fn changing_an_indexed_embedding_endpoint_or_model_is_rejected_before_provider_changes() {
+		for change_url in [false, true] {
+			let (url, worker) = super::super::tests::server(2, |index, _, _| {
+				Some(if index == 0 { Value::Null } else { json!({"messages":{"total_count":1}}) })
+			});
+			let root = tempfile::tempdir().unwrap();
+			let store = ComponentStore::new(root.path().into());
+			let directory = root.path().join("ragflow/service");
+			fs::create_dir_all(&directory).unwrap();
+			let config = model_fixture(url);
+			write(&directory, &config).unwrap();
+			let before = fs::read(directory.join("installation.json")).unwrap();
+			let mut models = config.models.unwrap();
+			if change_url {
+				models.embedding.base_url = "https://different.example/v1".into();
+			} else {
+				models.embedding.model = "different-model".into();
+			}
+			assert!(
+				store
+					.configure_ragflow_models(models, "service:assistant")
+					.err()
+					.unwrap()
+					.contains("preserve the saved index")
+			);
+			assert_eq!(fs::read(directory.join("installation.json")).unwrap(), before);
+			worker.join().unwrap();
+		}
 	}
 
 	#[test]

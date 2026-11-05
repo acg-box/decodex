@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:53c88875763a5af1da9cf3929c323e13535b124c20b92c5a7f25d4e9417c0eed",
+  "pageVersion": "sha256:4251ee5719ad7f6c12677b8d6f1b986a767aace48070feda18e9a680348dd299",
   "claims": [
     {
       "id": "claim_180212e57d1d44369eb0d24fc94defa4",
@@ -74,7 +74,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_portfolio.rs",
-          "version": "repo-file-v1:sha256:baa8ea600036ed4dff6d1bd9f8736a2d3f541aed6f345c511fe0bb79f4db3307"
+          "version": "repo-file-v1:sha256:447ad2bfabdca499ca76ebc31e5e8e55fac9f372c11483bddb9bbbc9a81ea915"
         },
         {
           "resource": "repo://database/src/guardian_settings.rs",
@@ -121,6 +121,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-03T18:23:39.894Z"
+    "at": "2026-11-05T12:44:44.258Z"
   }
 }

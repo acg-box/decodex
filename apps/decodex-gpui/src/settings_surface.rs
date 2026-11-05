@@ -222,10 +222,7 @@ impl SettingsSurface {
 		let current = Preference::configured();
 
 		let shape = ui_theme::settings_row()
-			.child(ui_theme::settings_label(
-				"Cursor style",
-				"The text insertion point in message inputs.",
-			))
+			.child(ui_theme::settings_label("Cursor style", ""))
 			.child(Segmented::new(
 				"settings-segments-Cursor style",
 				"Cursor style",
@@ -256,14 +253,14 @@ impl SettingsSurface {
 				(
 					"cursor-blinking",
 					"Blinking cursor",
-					"Blink while you are not typing.",
+					"",
 					current.blinking,
 					Preference { blinking: !current.blinking, ..current },
 				),
 				(
 					"cursor-animation",
-					"Animate cursor",
-					"Move smoothly between typed characters.",
+					"Smooth cursor movement",
+					"",
 					current.animated,
 					Preference { animated: !current.animated, ..current },
 				),
@@ -319,8 +316,8 @@ impl SettingsSurface {
 		};
 		let description = match surface {
 			Surface::Window => "Thin uses a flat tint; Liquid Glass uses macOS glass.",
-			Surface::InputBar => "Set the message input material separately from the window.",
-			Surface::Popover => "Menus, hover previews and activity capsules.",
+			Surface::InputBar => "",
+			Surface::Popover => "Applies to menus, hover previews and activity capsules.",
 		};
 
 		ui_theme::settings_row()
@@ -616,8 +613,8 @@ impl SettingsSurface {
 					self.preference_control(
 						"debug-mode",
 						"debug-mode-knob",
-						"Debug overlay",
-						"Show frame rate and GPU usage in the top bar.",
+						"Show frame rate and GPU usage",
+						"",
 						crate::ui_performance::preference,
 						cx,
 					)
@@ -756,6 +753,9 @@ impl SettingsSurface {
 		#[cfg(not(test))]
 		if self.category == SettingsCategory::Components {
 			self.components.refresh_optional();
+			if let Some(agent) = &self.native_agent {
+				agent.update(cx, |agent, cx| agent.refresh_ragflow_status(cx));
+			}
 		}
 
 		if self.category == SettingsCategory::General {

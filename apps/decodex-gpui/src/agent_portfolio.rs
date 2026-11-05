@@ -862,7 +862,7 @@ impl AgentSurface {
 		let row = ui_theme::settings_row()
 			.child(ui_theme::settings_label(
 				"Save Guardian review details",
-				"Keep Guardian’s review explanations for later. Permissions stay unchanged.",
+				"Permissions stay unchanged.",
 			))
 			.child(
 				crate::settings_surface::settings_switch(

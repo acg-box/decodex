@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:a7243f6f4944f3c1b52661db3b50bad5e49d52f4ad88d17f2b1eec0d974497d4",
+  "pageVersion": "sha256:59a0aa2c354a20b074e923cbc00ba429768ae2108dc1097d6a13422e0edcd510",
   "claims": [
     {
       "id": "claim_f0c37462522f4442acd94d53819ef75c",
@@ -258,7 +258,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_surface.rs",
-          "version": "repo-file-v1:sha256:3c02c70a1d7f51bb7824d3d9be8c028cf2a97120253c6903b245f45e0b36c2f3"
+          "version": "repo-file-v1:sha256:84095680a3dc1ea4cf0761c4caebd5be831b225e801ee7ec955d018421afa4d5"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_preferences.rs",
@@ -318,23 +318,23 @@
     },
     {
       "id": "claim_09df0d70257c4cd4995cda41a1da8169",
-      "statement": "Components installs managed RAGFlow nightly with compatible Infinity and a private service account, sharing actual version and lifecycle controls. Component operations check the running Docker-compatible engine and Docker Compose before installation effects and use shared inline feedback for unavailable prerequisites without runtime installation, launch or installation guidance. Successful installation with no saved model settings opens the existing model form automatically. Expanding installed RAGFlow directly opens the model form for one OpenAI-compatible Base URL, optional private API key and custom extraction and embedding names. Verify and enable verifies the selected models before initializing Memory automatically. Configured Memory uses Verify and save. No model runtime or weights are installed. Saved keys stay blank in later edits and are retained only at the same URL; loopback addresses are translated for the container, and indexed Memory keeps its embedding model and endpoint. Chat import starts off with a separate switch when Memory is ready, including during model editing; Update preserves models, import choice and data, and Uninstall clears the connection while retaining data. Typed knowledge scopes and the safe native-memory context policy keep their existing owners.",
+      "statement": "Components installs managed RAGFlow nightly with compatible Infinity and a private service account, sharing actual version and lifecycle controls. Component operations check the running Docker-compatible engine and Docker Compose before installation effects and use shared inline feedback for unavailable prerequisites without runtime installation, launch or installation guidance. Successful installation with no saved model settings opens the existing model form automatically. Expanding installed RAGFlow directly opens the model form for independent extraction and embedding model IDs, OpenAI-compatible Base URLs and optional private API keys. Save verifies both choices before updating separate provider instances and initializing Memory automatically. No model runtime or weights are installed. Saved keys stay blank in later edits and are retained only for that model at its unchanged URL; loopback addresses are translated for the container, and indexed Memory keeps its embedding model and endpoint. Chat import starts off with a separate switch when Memory is ready, including during model editing; Update preserves models, import choice and data, and Uninstall clears the connection while retaining data. Typed knowledge scopes and the safe native-memory context policy keep their existing owners.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
-          "version": "repo-file-v1:sha256:a48c96edf9028245f67bc743d0b270b240da46a818d783a0c1af41d246bb633e"
+          "version": "repo-file-v1:sha256:d4064b1403c8b8f2d3a027cb5e70bf8e20ad5834569913add8fc9f612a7dffbb"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:5c2c3a7ef8ddde1e5398824a9c9511b03b45c2ea0746dc99224c999f2ba87a31"
+          "version": "repo-file-v1:sha256:c72582507d7ebdd412e69eb17fce461631dc3dff8302fac98d075d51ca082831"
         },
         {
           "resource": "repo://crates/decodex-components/src/ragflow.rs",
-          "version": "repo-file-v1:sha256:fbeb33d1d721cd020eb3e404b47cf03a84cf6d3ca3a2da35af1c391c3b16d96c"
+          "version": "repo-file-v1:sha256:17e835261d1318d0c7ba78f1c859da78cb71d746027c6a63a28232aa18e06beb"
         },
         {
           "resource": "repo://crates/decodex-components/src/ragflow_service.rs",
-          "version": "repo-file-v1:sha256:a271fcb3d1384a1ae94850ab1bde534e950e082fd8535f83bb0a5e5ce3fe3a83"
+          "version": "repo-file-v1:sha256:71304894dce0ee326cbea7d12bbdddc94eb2c9f29e6072202170b9abf12e802a"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent.rs",
@@ -352,33 +352,29 @@
     },
     {
       "id": "claim_beff917e46a74d619c3c54e7b46b2696",
-      "statement": "The RAGFlow row distinguishes service installation from configured Assistant Memory even when collapsed. Its direct editor pairs Base URL with optional API key and extraction with embedding IDs in two rows, without an additional heading layer. Labels sit above 24-point inputs in normal control text. Empty required fields disable submission; complete input gets the existing validation on explicit submission. Input changes refresh the form and clear its old error. Guidance covers API compatibility, model roles, the Codex memory effect and initial chat-import choice. Cancel and the primary Verify and enable or Verify and save action align right. Saved-key guidance remains conditional, collapse retains input, and Cancel clears input and errors before collapse.",
+      "statement": "The RAGFlow row distinguishes service installation from configured Assistant Memory even when collapsed. Its direct editor has one row each for extraction and embedding, containing model ID, Base URL and optional API key, without an additional heading layer. Labels sit above 24-point inputs in normal control text. Empty required fields disable submission; complete input gets the existing validation on explicit submission. Input changes refresh the form and clear its old error. Guidance covers API compatibility, model roles, the Codex memory effect and initial chat-import choice. Cancel and the primary Save action align right. Saved-key guidance remains conditional, collapse retains input, and Cancel clears input and errors before collapse.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs#L191-L374",
-          "version": "repo-lines-v1:sha256:5013c6bf8b3ca1ed174c4f36dcf26a36e19cbb488ac267c4189460f43866e232:eyJzZWxlY3RlZExpbmVDb3VudCI6MTg0LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJiMzE4ODBiNmEyZGU3ODdhMzVlOTIwYmVlMjE5OWYzYWE2NTkwYTAyYTM3ZDg2NGFlZjg0MjYyNjQ2ZWFjNjRmIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI4MjljYzVlNzdmMTYxODFiYTlmOTRkZTdjYmFjM2UyNDA5NjRiZWE4MmI5NjlkMzI4OGQ5ZWFiNTFlMGY4MmJhIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIyMmYyZmY1ZmVlYzYwZjU4N2M4ZmFlNGU4N2Y4MDlhNjYxY2ZmZWQ2YjQ3YWFlNWY2ZDZhMjY1M2FhODk1MmVmIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJjMWM4NzUxMTVhODQxZmJkNWU4NzE1YzhhYzkxYzViODE2YjBjMDNlNjRjMzI3N2M5OGFjOTJlMzUxOWVhOWUwIn0"
+          "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
+          "version": "repo-file-v1:sha256:d4064b1403c8b8f2d3a027cb5e70bf8e20ad5834569913add8fc9f612a7dffbb"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/composer_input.rs#L655-L688",
-          "version": "repo-lines-v1:sha256:143e96ccfd61a4f6d30fc63bec74bd934003241cdfedb12d91044ed2587444e5:eyJzZWxlY3RlZExpbmVDb3VudCI6MzQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEyYWU1MjBjYWQ5MDAyODRkMDRiNTU2MWZlZTIyYzg4ZjNiYTc4YTk3YjUyMmZmYjgzNjVhMGZlOGFiMTAxMjIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ4YTM0MWM4OGY1Nzc0YzI1ODliYWZiY2ZkMzFhZDNhYjE3MTBlYWE3N2UwMTNmNTVmMjY2NzM0ZTU0ODJjY2MiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjlkY2Q2MTdhZTdkNDg2OTQxOTU3NTYyMWUyM2IyNTliYWNjZDAxOTc5YTBhNzIxZjBlZDc5ZWMzMTA0MDk2NTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZmZjRmN2MyMDdmZDAzOTgyNDczNjg2MjU2YWMxYWZhYjEyYjA1MzllOWQyNDNhMmVjMGM2YWUyYTI3MzViNDkifQ"
+          "resource": "repo://apps/decodex-gpui/src/composer_input.rs",
+          "version": "repo-file-v1:sha256:51012784fcf6528a12d1ac1c1089195d0da09e8fa06554dca10e0aa6596682aa"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/settings_components.rs#L138-L197",
-          "version": "repo-lines-v1:sha256:3788e7f57c5b0075a339d78cf861efbf94a8dd93d3af1ced89d4682fc88c3a3f:eyJzZWxlY3RlZExpbmVDb3VudCI6NjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4NmM3Nzc0N2EyZjc0Yjc4YzVjNWRlMmEzZGIxNTE4NjIwMDUyZDJhZTJmMzc0MjcyMGZkZjU4Mjg2MjM1NjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU0ZTE5NWVmZmQ0OTgyNmFjMDcyNDY0MDU3MjBlZTljYWNhMGE0MjdkYjFlOTYzZDNmNzY1NGM0ZTI3ZTY5MDciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjcxMjk2YzQyY2M4NzEzZThlZTUwNDA1YmM0Nzk2ZjcwMDdlOTE4MWY2ZTFlYjNjOTMyNGM3N2RhYWJiNGM0MDIifQ"
-        },
-        {
-          "resource": "repo://apps/decodex-gpui/src/settings_components.rs#L418-L520",
-          "version": "repo-lines-v1:sha256:ba87e1c1146a186a662a968fbc2071eb93b1f8c54f89fec0fa6691bf50fa8ab1:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAzLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI4MzIwYTE1MjM3OGJiNDdhOWY5NDE4MTc1ZjU1YWI5YzNlYzJmZWViZTZkNzhkNzAwOGJjYzBlOTYxMTU5MjQ4IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI2N2NkYTgyZGE2MDYyMzhlMDVlNjIzOTk1NjljNWVlMDM5OTM0MTk2NDhhZTVkNDNhMmJmOGNkNjM0N2Y4MjYzIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIyYzEzNGIxYTNiMjRjNmUxYzg5MTA3MThlMmIyMjNkZGU0MDRjYTBjNDNkMzY5NmIzNmU4NDFlNzEzYmY2NGM5IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJiZGRiM2YyMTc3ZDNiODZiZDQyYmJlNDFkOGQwZDVhM2VmZjM1NmQyYmIwOGRmODZhYzQ1ODA3NzVlNGQxNWM4In0"
+          "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
+          "version": "repo-file-v1:sha256:c72582507d7ebdd412e69eb17fce461631dc3dff8302fac98d075d51ca082831"
         }
       ]
     },
     {
       "id": "claim_1d1d68cccf054493b22ff3f7574f9e70",
-      "statement": "All Settings categories share a 620-point content column and normal App typography. Related preferences share a quiet bordered panel with distinct section, name, value and explanation text roles. Accounts retains one compact divided list surface; Add account and model verification use shared primary buttons. Setting names use medium weight; permission, cost, scope and data-effect guidance is retained while simple controls avoid duplicate explanations. Component, MCP and Diagnostics details share an inset region with distinct headings, normal control text and secondary guidance. Diagnostics has a plain overall status with guidance for unprobed Codex capabilities and summarizes three check groups before exposing all individual checks in Technical details; uniform groups share heading status and mixed groups retain individual status and explanations. Local feedback retains its compact inset icon, quiet tone fill, centered alignment and adjacent recovery. A collapsed Codex setup failure directs the user to its original setup error; Retry setup keeps the existing preparation action.",
+      "statement": "All Settings categories share a 620-point content column and normal App typography. Related preferences share a quiet bordered panel with distinct section, name, value and explanation text roles. Accounts retains one compact divided list surface; Add account and model verification use shared primary buttons. Setting names use medium weight; help explains a choice, scope, cost, data effect, compatibility limit or recovery action, while self-explanatory controls avoid duplicate captions. Component rows retain complete reported versions, including original prefixes, punctuation, build information and commit suffixes. RAGFlow shows its managed Nightly release channel separately. Component, MCP and Diagnostics details share an inset region with distinct headings, normal control text and secondary guidance. Diagnostics uses one normal-size overall status flow with explicit unprobed Codex state, connection changes and recovery information, without captions that repeat Run checks and summarizes three check groups before exposing all individual checks in Technical details; uniform groups share heading status and mixed groups retain individual status and explanations. Local feedback retains its compact inset icon, quiet tone fill, centered alignment and adjacent recovery. A collapsed Codex setup failure directs the user to its original setup error; Retry setup keeps the existing preparation action.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:5c2c3a7ef8ddde1e5398824a9c9511b03b45c2ea0746dc99224c999f2ba87a31"
+          "version": "repo-file-v1:sha256:c72582507d7ebdd412e69eb17fce461631dc3dff8302fac98d075d51ca082831"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_power.rs",
@@ -386,27 +382,23 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_surface.rs",
-          "version": "repo-file-v1:sha256:3c02c70a1d7f51bb7824d3d9be8c028cf2a97120253c6903b245f45e0b36c2f3"
+          "version": "repo-file-v1:sha256:84095680a3dc1ea4cf0761c4caebd5be831b225e801ee7ec955d018421afa4d5"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/shell.rs#L3597-L3658",
-          "version": "repo-lines-v1:sha256:fe598bff3f42ad2b14f91b829b6f80bdfbf49b0ad8fdbddce5fc7c8972dd1521:eyJzZWxlY3RlZExpbmVDb3VudCI6NjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZmYTIyNzUxZTVhMzRkMmY1ZjAzODcxZTEyNDkxOGFhNmYzMWNiYzJlZjlhNzA3M2QzYTMzYzVkZTc3Y2UyMTAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZiYmZhODE5MzBmZjQ0ODQyNzYzMzM0NWUwZDljOWJmODhmMzBiOTZlMGIxZmE4OTU4YWU5Njc4ZjAxZDJlZDMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE5NDM2ZDZjNWM4MjBlOWEwZWFlODQzZWI3M2Q2YmRkNGE0NmM5Zjc3NTlkN2E3NTA2NGM0NzVmMzIxMDNhNWYifQ"
+          "resource": "repo://apps/decodex-gpui/src/shell.rs",
+          "version": "repo-file-v1:sha256:da2d129b87e576adf83e5c2157b24f2f16d740b66c16c15a16c8efe6c0e9442c"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/shell.rs#L3861-L3874",
-          "version": "repo-lines-v1:sha256:e1d84a19a7eb3fffa2b0a93c7497b3ea292d02bb079e9ec75b01a654fe0113d9:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNjM2EyMDc3NGQ1YzJiYjRjNzkwYzE4ODkwYTljNDk0Y2NiNTEwZmM4ZThjMDllYzc0NTE5YmMxNjRmYzc4NGIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM4OTg1NTA4NGExNjhmZTZlM2QzMDczODg3ODVlZDlkZDM1OTYzOWNhM2ExMzQyMzRhMjcxOGNhZjBiZDBjYTUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE4NGZjNzJiZTE4NzdiMzZiMzUzOTVhNjcyODk1OTQzNTQ3ZjU4ZjNiN2E5Mjk3ZDJkMzlhZGMxZTRlNmMxNWIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhhZTA5NzhlYWRmMmE1MmU0MTBhMGMyNjI3ZDRjOTljODgwMjUxZWRiNjUyNTE1MDZjZTgzMmU5YzlkODExZDQifQ"
-        },
-        {
-          "resource": "repo://apps/decodex-gpui/src/shell_diagnostics.rs#L164-L532",
-          "version": "repo-lines-v1:sha256:44b1b6bb412b3b35f10abd6a784bede1613d00ed4f65eebeb7267620bed76ab0:eyJzZWxlY3RlZExpbmVDb3VudCI6MzY5LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIwMGZhMGY5NmQ5M2FiM2YzNTI0ZTA4OTQ5ZjlkYWNiYzYwN2NjMTgxNzhmYjJlYmFiMWI2ODA1MWRkYTI2ZjFkIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI1YzUzMDcyZWVjY2FiOGExNDg1MGI0ZTY3OGMzZDI5ZTUyYTg5NGUyYjU0MDFjZTBkOTQzMTZhOTk1Mzk4Y2ZjIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI0NTY2ZThiNWM2YjRiY2FmYzVhM2RiY2Q0MWU5NThiYTVmYWU2NDUwYzQyNjZlZTc0ODE3NzA0YzgyODAyYzliIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI4MjMyNGM4OGVlYmNkYzBkNmVhYzVmYTYwNTNjOWRkNDAzMGUzYTQ4OWZlZTIzMzc0NDhjNDFmYTgzZmU1ZTkxIn0"
+          "resource": "repo://apps/decodex-gpui/src/shell_diagnostics.rs",
+          "version": "repo-file-v1:sha256:37e4be14f1ea5c3f16498a2933b34f2baf4a48ad175c9ba0de12cba21971fa90"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_feedback.rs",
-          "version": "repo-file-v1:sha256:aec08228a0e0f01f6c19e065e0317fa3236152ba87495dd176d08642716c1582"
+          "version": "repo-file-v1:sha256:effd5403885f5c9714167b13c9b49e4327562e54449efc708443bba1373c0857"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/ui_theme.rs#L359-L447",
-          "version": "repo-lines-v1:sha256:3cf7c3c7f8c1097d80fe067594e68b7660420bd4a37728a0a842e43e26de7596:eyJzZWxlY3RlZExpbmVDb3VudCI6ODksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjcwOGQ2NTAyOTVlYzZhNjA3MzVjZjFhMWYzMDhiMGZkNjExMWJjOWMxZmVjOTA2YWI0M2RkZDg3MTE1Nzc4ODMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjVhNGViOWIxOGIzMzk1MGFmOGRlYzE1NDYyMzE5M2Q2MWEwNGEyZjBiNDRiZjI1Y2RhYTg0Y2I2MGZmZGVlNWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImNiZjhiMjc4M2NlMGRmNjkyMDMyZjkwNDQzZGZlY2E4MmU2Y2JjNWRhZDBkMmY3YWRhNTQzMGE4NTdhZGFlNmEifQ"
+          "resource": "repo://apps/decodex-gpui/src/ui_theme.rs",
+          "version": "repo-file-v1:sha256:f0af45cd829f36271b31df7e5b139b57b42cf718bf1a941066e663ae1f8271f9"
         }
       ]
     },
@@ -420,11 +412,11 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_surface.rs",
-          "version": "repo-file-v1:sha256:3c02c70a1d7f51bb7824d3d9be8c028cf2a97120253c6903b245f45e0b36c2f3"
+          "version": "repo-file-v1:sha256:84095680a3dc1ea4cf0761c4caebd5be831b225e801ee7ec955d018421afa4d5"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/shell.rs",
-          "version": "repo-file-v1:sha256:cb7b99f1c42122610dec6c761db2ed6297e19b3003033cf64b2b2e8376e5c44e"
+          "version": "repo-file-v1:sha256:da2d129b87e576adf83e5c2157b24f2f16d740b66c16c15a16c8efe6c0e9442c"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_theme.rs",
@@ -437,7 +429,7 @@
       "statement": "The app version and Check for updates action are in Settings > General > Updates. There is no separate Updates page, and Sparkle retains application update ownership; component lifecycle actions remain in Components.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/settings_surface.rs#L497-L557",
+          "resource": "repo://apps/decodex-gpui/src/settings_surface.rs#L494-L554",
           "version": "repo-lines-v1:sha256:1d64f0e0728945f50a9ecb06de95815037fc53bd576e959d831906009518dde2:eyJzZWxlY3RlZExpbmVDb3VudCI6NjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUwMjQ4NWFkZWFiYTkyMmFkMWMzYmEzZGU0MWY1YmE2NmZiMTZhMjZiN2ViZTVhNjhkOGJiNDVlZmU0NDU4OTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU1MTRkMjA4Njg4NGY4MTdiMmFjYTFlYTkwOTE3Yjg4YTkxMzhmNzlkMmE5MmYwYzIxNTlkNDE5ZWJhOGZlZWYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjliMTE0Y2MyYjhkODYxMjk3ZmY2MGUwN2Q0NjQ2NjcwZmVjMGQ1ZjU5YWY4NDFjMTM3MmQ1NDFiOWVhYzk2YzYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjcwZTgzMGUzNTQ5NjMxODViMzg3MGRhY2Q0NWExMzhkZWJhOGZlYzMyMmZjODBlZjFhOTZjMWNjNWVkZTYxMjcifQ"
         },
         {
@@ -477,7 +469,7 @@
       "statement": "Appearance shows all theme previews in the Settings page's single scroll area. Names wrap rather than truncate, and Color scheme help is shown when System is selected.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/settings_surface.rs#L285-L313",
+          "resource": "repo://apps/decodex-gpui/src/settings_surface.rs#L282-L310",
           "version": "repo-lines-v1:sha256:7b206cc90a5779b42d5c50c0d93c6fd03c17a7be906f6cfa57293bfee912cddd:eyJzZWxlY3RlZExpbmVDb3VudCI6MjksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE0YTVlNDY3MTgwOTgyZGZlYjRlM2UxNmUzNWY5NDNjMGY0NjZiMTNkZmQ0MWMwMTc0ZTI1YmJkNzk1NmE3OTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ1NWZhYjA3OTBiNjhhYTQxNGVmMTM5NDRkODI0OTIxNzgwYTQyOGQ2YzMzNjBiODdiMzVmYzNmMDA3ZDA4ODMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjllZGQxZmVkM2ViZTgyMTQ4MmRhODY5MTYxYWY3YzUxOTBiZmM4MjAzNzNmZGFiZGZlMTBlZDVmOWQyNTA4ZTQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZkNDM3N2VhYzFlMjRjOWY5MjQ3ZGI0NDhmZWQ4NGY5ZGM3NDY2ZWZhNzJlODhkN2QxOWMxODgzNzY5YzJhZDIifQ"
         },
         {
@@ -489,6 +481,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-05T12:06:42.474Z"
+    "at": "2026-11-05T13:48:42.186Z"
   }
 }

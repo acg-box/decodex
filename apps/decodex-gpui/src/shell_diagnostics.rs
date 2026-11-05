@@ -162,7 +162,12 @@ fn report_text(snapshot: &HealthSnapshot) -> Option<String> {
 }
 
 fn summary_presentation(snapshot: &HealthSnapshot) -> shell::HealthPresentation {
-	let presentation = shell::health_presentation(snapshot);
+	let mut presentation = shell::health_presentation(snapshot);
+	presentation.detail = match snapshot.load {
+		HealthLoadState::Offline => presentation.detail,
+		HealthLoadState::Stale => "Connection changed.",
+		_ => "",
+	};
 	if snapshot.load == HealthLoadState::Ready
 		&& presentation.tone == Tone::Success
 		&& snapshot.report.as_ref().is_some_and(|report| {
@@ -175,7 +180,7 @@ fn summary_presentation(snapshot: &HealthSnapshot) -> shell::HealthPresentation 
 		}) {
 		return shell::HealthPresentation {
 			label: "Some Codex checks have not run",
-			detail: "Run checks to verify the remaining capabilities.",
+			detail: "",
 			tone: Tone::Neutral,
 		};
 	}
@@ -186,7 +191,7 @@ fn summary_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 	let snapshot = &shell.health;
 	let presentation = summary_presentation(snapshot);
 	let mut status = ui_theme::settings_rows().child(
-		ui_feedback::status_row(
+		ui_feedback::status_line(
 			"health-query-status",
 			presentation.tone,
 			presentation.label,
@@ -194,7 +199,9 @@ fn summary_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 			presentation.tone.icon(),
 		)
 		.debug_selector(|| "health-query-status".into())
-		.min_h(gpui::px(48.)),
+		.text_size(gpui::px(SETTINGS_LABEL_SIZE))
+		.line_height(gpui::px(18.))
+		.min_h(gpui::px(32.)),
 	);
 
 	for (index, issue) in issues(snapshot).into_iter().enumerate() {
@@ -583,8 +590,12 @@ mod tests {
 		};
 		assert_eq!(summary_presentation(&snapshot).label, "Some Codex checks have not run");
 		assert_eq!(summary_presentation(&snapshot).tone, Tone::Neutral);
+		assert!(summary_presentation(&snapshot).detail.is_empty());
 		snapshot.load = HealthLoadState::Stale;
 		assert_eq!(summary_presentation(&snapshot).label, "Report needs an update");
+		assert_eq!(summary_presentation(&snapshot).detail, "Connection changed.");
+		snapshot.load = HealthLoadState::Offline;
+		assert_eq!(summary_presentation(&snapshot).detail, "Restart Decodex, then check again.");
 		snapshot.load = HealthLoadState::Ready;
 		snapshot.report = Some(report(DoctorStatus::Unavailable(DoctorIssue::Authentication)));
 		assert_eq!(summary_presentation(&snapshot).tone, Tone::Warning);

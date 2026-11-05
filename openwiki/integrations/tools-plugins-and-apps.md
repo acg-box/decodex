@@ -38,10 +38,10 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent/native_settings.rs
   - id: openwiki-source-3edc2f094826ee56ddec6b73
     resource: repo://crates/decodex-runtime/src/ragflow.rs
-generated: { by: "codex", at: "2026-11-05T11:57:35.741Z" }
+generated: { by: "codex", at: "2026-11-05T13:44:11.168Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-05T11:57:35.741Z
+    at: 2026-11-05T13:48:42.186Z
 ---
 
 # Native tools and connection ownership
@@ -60,7 +60,7 @@ The explicit [EGM Component](elephant-goldfish.md) is a narrow native-lifecycle 
 
 ## Native settings boundaries
 
-The built-in [Assistant lifecycle](../decisions/assistant-lifecycle.md) exposes RAGFlow as an optional managed service component. Install prepares RAGFlow nightly, compatible Infinity and its private service account. Expanding installed RAGFlow directly opens the model form for an OpenAI-compatible Base URL, optional API key and custom extraction and embedding model names. Verify and enable requests native verification before saving and automatic dedicated Memory setup. Configured Memory uses Verify and save. The component installs no model runtime or weights. It requires a running Docker engine. The row shares version metadata, lifecycle buttons, disclosure and inline feedback with the other components. Update reads the actual installed version; Uninstall stops the owned project and keeps its data for reinstall. Service connection is automatic, with no Connect action or service-account form.
+The built-in [Assistant lifecycle](../decisions/assistant-lifecycle.md) exposes RAGFlow as an optional managed service component. Install prepares RAGFlow nightly, compatible Infinity and its private service account. Expanding installed RAGFlow directly opens one row per model with an independent OpenAI-compatible Base URL, optional API key and custom model ID. Save verifies both choices before saving and automatic dedicated Memory setup. The component installs no model runtime or weights. It requires a running Docker engine. The row shares version metadata, lifecycle buttons, disclosure and inline feedback with the other components. Update reads the actual installed version; Uninstall stops the owned project and keeps its data for reinstall. Service connection is automatic, with no Connect action or service-account form.
 
 The HTTP adapter uses explicit dataset, Memory, Assistant and user scopes. It saves an origin-bound private component credential; settings retain only its reference. Legacy service-environment references remain supported. Knowledge retrieval and Memory are separate. Chat import starts off and needs its own direct-user opt-in; Update preserves that choice.
 

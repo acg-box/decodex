@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:7a63eb7df6c43e3d13bebe1c7400160bbb7c39b5005d1250b605dcf9e395ee91",
+  "pageVersion": "sha256:ba801f6b53ceaaeba542f0659a86ce23d8fa279bafa59eea7637a260e92ed008",
   "claims": [
     {
       "id": "claim_2dd4ad01dd984b80a22d9cb9c9bfd397",
@@ -1182,7 +1182,7 @@
     },
     {
       "id": "claim_199088d6ec9e4c77bd627bd1a3844b01",
-      "statement": "Assistant fixtures cover idle initialization, first-message choices with draft preservation, durable teams and wakes, context/import receipts, desktop continuity and selected-native fresh contexts. RAGFlow HTTP fixtures cover default models, missing-model failure, lost replies, private origin-bound credentials, exact scopes and business errors. Managed-service and shared-UI fixtures cover unavailable container prerequisites without storage changes or service effects, API-only model configuration, custom endpoint paths and names, loopback translation, blank saved-key fields, required-field submission gating, input-driven updates, explicit URL validation, source invalidation, private receipts, shared lifecycle presentation and project-scoped Uninstall without volume removal. These fixtures do not establish real Docker bootstrap, live Memory extraction, model quality or installed-App acceptance.",
+      "statement": "Assistant fixtures cover idle initialization, first-message choices with draft preservation, durable teams and wakes, context/import receipts, desktop continuity and selected-native fresh contexts. RAGFlow HTTP fixtures cover default models, missing-model failure, lost replies, private origin-bound credentials, exact scopes and business errors. Managed-service and shared-UI fixtures cover unavailable container prerequisites without storage changes or service effects, API-only model configuration, independent model URLs and keys even for matching model IDs, both verifications before provider updates, indexed embedding restrictions and retained instance identity, credential-free public service health reads, availability status lights, custom endpoint paths and names, loopback translation, blank saved-key fields and per-model key retention, required-field submission gating, input-driven updates, explicit URL validation, source invalidation, private receipts, shared lifecycle presentation and project-scoped Uninstall without volume removal. These fixtures do not establish real Docker bootstrap, live Memory extraction, model quality or installed-App acceptance.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_timeline.rs",
@@ -1190,19 +1190,19 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
-          "version": "repo-file-v1:sha256:a48c96edf9028245f67bc743d0b270b240da46a818d783a0c1af41d246bb633e"
+          "version": "repo-file-v1:sha256:d4064b1403c8b8f2d3a027cb5e70bf8e20ad5834569913add8fc9f612a7dffbb"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:5c2c3a7ef8ddde1e5398824a9c9511b03b45c2ea0746dc99224c999f2ba87a31"
+          "version": "repo-file-v1:sha256:c72582507d7ebdd412e69eb17fce461631dc3dff8302fac98d075d51ca082831"
         },
         {
           "resource": "repo://crates/decodex-components/src/ragflow.rs",
-          "version": "repo-file-v1:sha256:fbeb33d1d721cd020eb3e404b47cf03a84cf6d3ca3a2da35af1c391c3b16d96c"
+          "version": "repo-file-v1:sha256:17e835261d1318d0c7ba78f1c859da78cb71d746027c6a63a28232aa18e06beb"
         },
         {
           "resource": "repo://crates/decodex-components/src/ragflow_service.rs",
-          "version": "repo-file-v1:sha256:a271fcb3d1384a1ae94850ab1bde534e950e082fd8535f83bb0a5e5ce3fe3a83"
+          "version": "repo-file-v1:sha256:71304894dce0ee326cbea7d12bbdddc94eb2c9f29e6072202170b9abf12e802a"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_context_tests.rs",
@@ -1249,6 +1249,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-05T11:57:35.741Z"
+    "at": "2026-11-05T13:48:42.186Z"
   }
 }

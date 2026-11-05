@@ -13,7 +13,7 @@ use crate::{
 	component_runtime::{self, RuntimePreparation},
 	settings_surface::{SettingsSurface, switch},
 	shell::{agent_surface::RagflowComponentAction, workspace_symbols},
-	ui_feedback::{self, Feedback},
+	ui_feedback::{self, Feedback, Tone},
 	ui_motion::SmoothControl as _,
 	ui_theme::{self, BLUE, SETTINGS_LABEL_SIZE, TEXT, TEXT_MUTED},
 };
@@ -159,7 +159,7 @@ impl SettingsSurface {
 					if matches!(action, RagflowComponentAction::SaveModels)
 						&& !agent.can_submit_memory_models(cx)
 					{
-						disabled_reason = "Enter a Base URL and both model IDs.";
+						disabled_reason = "Enter a Base URL and model ID for each model.";
 						return false;
 					}
 					true
@@ -251,13 +251,7 @@ impl SettingsSurface {
 
 		match &self.components.shown {
 			component_runtime::PreparationState::Unchecked => {},
-			component_runtime::PreparationState::Ready => {
-				component = component.children(ui_feedback::inline_feedback(
-					"components-component-ready",
-					"",
-					&Feedback::success("Ready"),
-				));
-			},
+			component_runtime::PreparationState::Ready => {},
 			component_runtime::PreparationState::Failed(error) => {
 				let detail = if self.components.details[0] {
 					error.as_str()
@@ -299,17 +293,9 @@ impl SettingsSurface {
 			},
 		}
 
-		let mut details =
-			gpui::div().flex().flex_col().gap_2().child(ui_theme::settings_description(
-				"Required for conversations. Follows the runtime included with this Decodex build.",
-			));
-		if let Some(lock) = lock.as_ref() {
-			details = details.child(ui_theme::settings_description(format!(
-				"{} build (upstream {})",
-				if lock.source.is_some() { "Development" } else { "Release" },
-				&lock.upstream_commit[..12],
-			)));
-		}
+		let details = gpui::div().flex().flex_col().gap_2().child(ui_theme::settings_description(
+			"Runs conversations. Its version follows this Decodex build.",
+		));
 		component.child(self.component_body(0, "components-codex-body", details))
 	}
 
@@ -336,13 +322,17 @@ impl SettingsSurface {
 	) -> AnyElement {
 		let expanded = self.components.details[index];
 		let metadata = version.map(|version| SharedString::from(format!("Version {version}")));
+		let (tone, status) = self.component_status(index, cx);
 		gpui::div()
 			.id(id)
 			.debug_selector(move || id.into())
 			.role(Role::Button)
 			.tab_index(0)
 			.aria_label(title)
-			.when_some(metadata.clone(), |label, version| label.aria_description(version))
+			.aria_description(match &metadata {
+				Some(version) => format!("{status}. {version}"),
+				None => status.to_owned(),
+			})
 			.aria_expanded(expanded)
 			.flex_1()
 			.min_w_0()
@@ -373,6 +363,7 @@ impl SettingsSurface {
 					.items_center()
 					.gap_1()
 					.font_weight(FontWeight::MEDIUM)
+					.child(ui_feedback::status_indicator(format!("{id}-status"), status, tone))
 					.child(title)
 					.child(gpui::div().text_color(ui_theme::rgb(TEXT_MUTED)).child(
 						workspace_symbols::process_chevron(
@@ -386,6 +377,77 @@ impl SettingsSurface {
 			})
 			.smooth()
 			.into_any_element()
+	}
+
+	fn component_status(&self, index: usize, cx: &gpui::App) -> (Tone, &'static str) {
+		match index {
+			0 => match self.components.shown {
+				component_runtime::PreparationState::Unchecked => (Tone::Neutral, "Not checked"),
+				component_runtime::PreparationState::Preparing(_) => (Tone::Info, "Preparing"),
+				component_runtime::PreparationState::Ready => (Tone::Success, "Ready"),
+				component_runtime::PreparationState::Failed(_) => (Tone::Error, "Setup failed"),
+			},
+			1 => {
+				let state = &self.components.plugin;
+				if state.busy.is_some_and(|a| a != PluginAction::Refresh) {
+					(Tone::Info, "Operation in progress")
+				} else if state.error.is_some() {
+					(Tone::Error, "Check failed")
+				} else if !state.inspected {
+					(Tone::Neutral, "Not checked")
+				} else {
+					match &state.installed {
+						Some(plugin) if plugin.enabled => (Tone::Success, "Enabled"),
+						Some(_) => (Tone::Warning, "Disabled"),
+						None => (Tone::Neutral, "Not installed"),
+					}
+				}
+			},
+			2 => {
+				let state = &self.components.research_shown;
+				if state.busy.is_some() {
+					(Tone::Info, "Operation in progress")
+				} else if state.error.is_some() {
+					(Tone::Error, "Check failed")
+				} else if !state.inspected {
+					(Tone::Neutral, "Not checked")
+				} else if state.installed.is_none() {
+					(Tone::Neutral, "Not installed")
+				} else if state.tools.as_ref().is_some_and(|p| p.enabled)
+					&& state
+						.connection
+						.as_ref()
+						.is_some_and(|c| c.state == decodex_pro_bridge::ConnectionState::Connected)
+				{
+					(Tone::Success, "Connected and tools enabled")
+				} else {
+					(Tone::Warning, "Setup required")
+				}
+			},
+			_ => {
+				let Some(agent) = &self.native_agent else {
+					return (Tone::Neutral, "Open the workspace to check this component");
+				};
+				let state = agent.read(cx).ragflow_component_state();
+				if state.working {
+					(Tone::Info, "Operation in progress")
+				} else if state.feedback.is_some_and(|f| f.tone == Tone::Error) {
+					(Tone::Error, "Operation failed")
+				} else if !state.inspected {
+					(Tone::Neutral, "Not checked")
+				} else if !state.installed {
+					(Tone::Neutral, "Not installed")
+				} else if state.running == Some(false) {
+					(Tone::Error, "Service unavailable")
+				} else if !state.memory_ready {
+					(Tone::Warning, "Memory setup required")
+				} else if state.running == Some(true) {
+					(Tone::Success, "Service running and Memory configured")
+				} else {
+					(Tone::Neutral, "Service not checked")
+				}
+			},
+		}
 	}
 
 	fn component_body(
@@ -472,15 +534,7 @@ impl SettingsSurface {
 					"Cancel",
 					RagflowComponentAction::CancelModels,
 				),
-				(
-					"components-ragflow-models-save",
-					if state.as_ref().is_some_and(|s| s.memory_ready) {
-						"Verify and save"
-					} else {
-						"Verify and enable"
-					},
-					RagflowComponentAction::SaveModels,
-				),
+				("components-ragflow-models-save", "Save", RagflowComponentAction::SaveModels),
 			] {
 				actions =
 					actions.child(self.component_button(id, label, Action::Ragflow(action), cx));
@@ -492,6 +546,8 @@ impl SettingsSurface {
 			.children(state.as_ref().map(|state| {
 				let summary = if !state.installed {
 					"Install RAGFlow to add long-term memory to Assistant."
+				} else if state.running == Some(false) {
+					"Service unavailable. Start its container environment, then reopen Components to check again."
 				} else if state.memory_ready {
 					"Service installed. Assistant memory is configured."
 				} else {
@@ -703,7 +759,7 @@ impl SettingsSurface {
 		gpui::div().debug_selector(|| "components-egm".into()).w_full().flex().flex_col().child(ui_theme::settings_row()
 			.child(self.component_label(1, "components-egm-details", "Elephant–Goldfish (EGM)", state.installed.as_ref().map(|plugin| plugin.version.as_str()), cx))
 			.child(controls))
-			.child(self.component_body(1,"components-egm-body",ui_theme::settings_description("Google's complete design and review plugin. Optional; uses your Codex subscription. Start a new conversation after installing or updating.")))
+			.child(self.component_body(1,"components-egm-body",ui_theme::settings_description("Adds design and review workflows. Uses your Codex subscription. Start a new conversation after installation or update.")))
 			.child(ui_feedback::notice("components-egm-feedback", "egm", feedback).inline()
 				.action(retry))
 	}
@@ -745,19 +801,82 @@ mod tests {
 			settings
 		});
 		visual.update(crate::ui_frame::draw_current_frame);
-		let url = visual.debug_bounds("ragflow-field-url").unwrap();
-		let key = visual.debug_bounds("ragflow-field-key").unwrap();
 		let extraction = visual.debug_bounds("ragflow-field-chat").unwrap();
 		let embedding = visual.debug_bounds("ragflow-field-embedding").unwrap();
-		assert_eq!(url.top(), key.top(), "connection fields form one row");
-		assert_eq!(extraction.top(), embedding.top(), "model fields form one row");
-		assert!(extraction.top() > url.bottom(), "model choices follow the connection");
-		assert_eq!(url.left(), extraction.left());
-		assert_eq!(key.right(), embedding.right());
-		assert!(url.right() < key.left(), "fields retain distinct hit targets");
+		for [model, url, key] in [
+			["ragflow-field-chat", "ragflow-field-chat_url", "ragflow-field-chat_key"],
+			[
+				"ragflow-field-embedding",
+				"ragflow-field-embedding_url",
+				"ragflow-field-embedding_key",
+			],
+		] {
+			let model = visual.debug_bounds(model).unwrap();
+			let url = visual.debug_bounds(url).unwrap();
+			let key = visual.debug_bounds(key).unwrap();
+			assert_eq!(model.top(), url.top());
+			assert_eq!(url.top(), key.top());
+			assert!(model.right() < url.left() && url.right() < key.left());
+			assert_eq!(model.left(), extraction.left());
+		}
+		assert!(embedding.top() > extraction.bottom());
 		let save = visual.debug_bounds("components-ragflow-models-save").unwrap();
-		assert_eq!(save.right(), embedding.right(), "Save belongs to the form's edge");
+		assert_eq!(
+			save.right(),
+			visual.debug_bounds("ragflow-field-embedding_key").unwrap().right()
+		);
 		assert!(save.top() > embedding.bottom());
+	}
+
+	#[gpui::test]
+	fn component_lights_distinguish_availability_from_installation(cx: &mut gpui::TestAppContext) {
+		cx.new(|cx| {
+			let mut settings = SettingsSurface::new(DesktopSettingsController::production(), cx);
+			assert_eq!(settings.component_status(1, cx), (super::Tone::Neutral, "Not checked"));
+			settings.components.plugin.inspected = true;
+			assert_eq!(settings.component_status(1, cx), (super::Tone::Neutral, "Not installed"));
+			settings.components.plugin.installed =
+				Some(PluginInstallation { version: "fixture".into(), enabled: false });
+			assert_eq!(settings.component_status(1, cx), (super::Tone::Warning, "Disabled"));
+			settings.components.plugin.installed.as_mut().unwrap().enabled = true;
+			assert_eq!(settings.component_status(1, cx), (super::Tone::Success, "Enabled"));
+			settings.components.plugin.busy = Some(PluginAction::Refresh);
+			assert_eq!(
+				settings.component_status(1, cx),
+				(super::Tone::Success, "Enabled"),
+				"background reads do not flash the light"
+			);
+			settings.components.plugin.busy = Some(PluginAction::Update);
+			assert_eq!(
+				settings.component_status(1, cx),
+				(super::Tone::Info, "Operation in progress")
+			);
+			settings.components.plugin.busy = None;
+			settings.components.plugin.error = Some("fixture".into());
+			assert_eq!(settings.component_status(1, cx), (super::Tone::Error, "Check failed"));
+			settings.components.research_shown.inspected = true;
+			settings.components.research_shown.installed =
+				Some(decodex_pro_bridge::install::Installation {
+					version: "fixture".into(),
+					extension_id: "fixture",
+					extension_directory: Default::default(),
+					plugin_directory: Default::default(),
+					marketplace_directory: Default::default(),
+					registration: Default::default(),
+				});
+			assert_eq!(settings.component_status(2, cx), (super::Tone::Warning, "Setup required"));
+			settings.components.research_shown.connection = Some(decodex_pro_bridge::Connection {
+				state: decodex_pro_bridge::ConnectionState::Connected,
+				selected_model: None,
+			});
+			settings.components.research_shown.tools =
+				Some(PluginInstallation { version: "fixture".into(), enabled: true });
+			assert_eq!(
+				settings.component_status(2, cx),
+				(super::Tone::Success, "Connected and tools enabled")
+			);
+			settings
+		});
 	}
 
 	#[gpui::test]
