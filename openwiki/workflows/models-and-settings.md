@@ -115,7 +115,7 @@ sources:
 generated: { by: "codex", at: "2026-11-05T02:31:21.516Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-05T02:31:21.516Z
+    at: 2026-11-05T03:20:39.701Z
 ---
 
 # Model selection and settings ownership

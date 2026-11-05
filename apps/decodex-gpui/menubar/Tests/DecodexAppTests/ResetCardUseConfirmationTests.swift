@@ -1,7 +1,25 @@
 @testable import DecodexApp
+import AppKit
 import XCTest
 
 final class ResetCardUseConfirmationTests: XCTestCase {
+    func testSingleDigitDaysMatchTwoDigitDateWidths() {
+        let utc = TimeZone(secondsFromGMT: 0)!
+        let font = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .regular)
+        for identifier in ["en_US@hours=h12", "en_GB@hours=h23", "pt_BR"] {
+            let locale = Locale(identifier: identifier)
+            let single = ResetCardAccountRow.cardExpiryText(1_793_804_640, timeZone: utc, locale: locale)
+            let double = ResetCardAccountRow.cardExpiryText(1_794_323_040, timeZone: utc, locale: locale)
+            XCTAssertTrue(single.contains("\u{2007}4"), single)
+            XCTAssertFalse(double.contains("\u{2007}"), double)
+            XCTAssertEqual((single as NSString).size(withAttributes: [.font: font]).width,
+                (double as NSString).size(withAttributes: [.font: font]).width, accuracy: 0.01)
+            if identifier == "pt_BR" {
+                XCTAssertTrue(single.contains(" de "), "Quoted Portuguese date text must remain literal")
+            }
+        }
+    }
+
     func testCardExpiryRespectsHourCycleAndTimeZone() {
         let date: Int64 = 1_704_121_440
         let utc = TimeZone(secondsFromGMT: 0)!

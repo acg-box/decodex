@@ -901,6 +901,50 @@ mod render_tests {
 	}
 
 	#[gpui::test]
+	fn short_settings_window_can_scroll_expanded_accounts_to_the_last_card(
+		cx: &mut TestAppContext,
+	) {
+		let (shell, visual) =
+			cx.add_window_view(|window, cx| Shell::new(window, cx, ConnectionView::Stopped));
+		shell.update(visual, |s, cx| {
+			s.open_settings_window(Destination::Accounts, cx);
+		});
+		let handle = shell.read_with(visual, |s, _| s.settings_window.unwrap());
+		let settings = &mut gpui::VisualTestContext::from_window(handle.into(), visual);
+		shell.update(settings, |s, cx| {
+			s.visual_accounts_and_health();
+			for account in s.accounts.accounts.iter().take(2) {
+				s.expanded_accounts.insert(account.account_id.clone());
+			}
+			cx.notify();
+		});
+		settings.simulate_resize(gpui::size(gpui::px(920.), gpui::px(480.)));
+		settings.update(|window, cx| {
+			assert_eq!(window.viewport_size().height, gpui::px(480.));
+			crate::ui_frame::draw_current_frame(window, cx);
+		});
+		let viewport = settings.debug_bounds("account-list").unwrap();
+		let last_card = "reset-card-70000000-0000-4000-8000-000000000002-0";
+		let before = settings.debug_bounds(last_card).unwrap();
+		assert!(
+			before.bottom() > viewport.bottom(),
+			"The fixture must overflow its viewport: viewport={viewport:?}, card={before:?}"
+		);
+		settings.simulate_event(gpui::ScrollEvent {
+			position: viewport.center(),
+			delta: gpui::ScrollDelta::Pixels(gpui::point(gpui::px(0.), gpui::px(-1000.))),
+			..Default::default()
+		});
+		settings.update(crate::ui_frame::draw_frame);
+		let after = settings.debug_bounds(last_card).unwrap();
+		assert!(
+			after.top() < before.top(),
+			"Expanded accounts must scroll: viewport={viewport:?}, before={before:?}, after={after:?}"
+		);
+		assert!(after.bottom() <= viewport.bottom(), "The last Reset card must remain reachable");
+	}
+
+	#[gpui::test]
 	fn multiple_account_disclosures_keep_cards_and_activity_independent(cx: &mut TestAppContext) {
 		let (shell, visual) =
 			cx.add_window_view(|window, cx| Shell::new(window, cx, ConnectionView::Stopped));
@@ -935,6 +979,17 @@ mod render_tests {
 		] {
 			assert!(visual.debug_bounds(selector).is_some(), "{selector}");
 		}
+
+		let activity =
+			visual.debug_bounds("account-activity-70000000-0000-4000-8000-000000000001").unwrap();
+		visual.simulate_click(activity.center(), Modifiers::default());
+		shell.read_with(visual, |s, _| {
+			assert!(
+				s.expanded_accounts.contains(&first),
+				"Reading activity must not collapse its account"
+			);
+			assert!(s.expanded_accounts.contains(&second));
+		});
 
 		let chip =
 			visual.debug_bounds("reset-card-70000000-0000-4000-8000-000000000001-0").unwrap();

@@ -3482,7 +3482,6 @@ fn account_pool_rows(shell: &Shell, cx: &mut Context<Shell>) -> Vec<AnyElement> 
 				},
 				cx,
 			);
-			let profile_id = account.account_id.clone();
 			let target = account.account_id.clone();
 
 			gpui::div()
@@ -3492,10 +3491,6 @@ fn account_pool_rows(shell: &Shell, cx: &mut Context<Shell>) -> Vec<AnyElement> 
 				.debug_selector(move || format!("account-card-{index}"))
 				.w_full()
 				.overflow_hidden()
-				.cursor_pointer()
-				.on_click(cx.listener(move |shell, _, _, cx| {
-					shell.toggle_account_activity(profile_id.clone(), cx);
-				}))
 				.when(snapshot.can_manage, |row| {
 					row.drag_over::<AccountDrag>(|style, _, _, _| {
 						style.bg(ui_theme::rgba(0x8baaf72a))
@@ -3626,6 +3621,7 @@ fn accounts_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 				.child(
 					gpui::div()
 						.id("account-list")
+						.debug_selector(|| "account-list".into())
 						.flex_initial()
 						.min_h_0()
 						.overflow_y_scroll()
@@ -3989,6 +3985,7 @@ fn account_pool_row(
 ) -> AnyElement {
 	let AccountRowPresentation { index, .. } = presentation;
 	let summary = account_pool_summary(account, presentation.clone(), cx);
+	let activity_id = account.account_id.clone();
 
 	gpui::div()
 		.id(("account-row", index))
@@ -3999,6 +3996,10 @@ fn account_pool_row(
 		.flex_col()
 		.gap(gpui::px(6.0))
 		.relative()
+		.cursor_pointer()
+		.on_click(cx.listener(move |shell, _, _, cx| {
+			shell.toggle_account_activity(activity_id.clone(), cx);
+		}))
 		.hover(|row| row.bg(ui_theme::rgba(ui_theme::HOVER_FILL)))
 		.child(summary)
 		.children(presentation.feedback.as_ref().map(|(text, color)| AccountFeedback {
