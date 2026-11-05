@@ -42,8 +42,8 @@ fn review_capture(completed: bool) -> crate::shell::agent_surface::work_board::r
 	serde_json::from_value(json!({
 		"thread":"lead-thread","agents":[{"thread_id":"reviewer-thread","parent_thread_id":"lead-thread","title":"Reviewer","task":"Check the implementation design","status":if completed {"idle"} else {"active"}}],
 		"pages":[
-			{"thread_id":"lead-thread","entries":[item("lead-turn","prepare","commandExecution","",json!({"kind":"prepare"}))],"next_cursor":null},
-			{"thread_id":"reviewer-thread","entries":[item("review-turn","persona","commandExecution","",json!({"kind":"reviewer","role":"implementation_readiness"})),item("review-turn","report","agentMessage",if completed {"Read the original instructions.\n\nOne blocker: completion does not establish acceptance."} else {"Checking the current design."},json!(null)),boundary(completed)],"next_cursor":null}
+			{"thread_id":"lead-thread","entries":[item("lead-turn","prepare","commandExecution","",json!({"kind":"prepare"}))],"next_cursor":null,"weather":{}},
+			{"thread_id":"reviewer-thread","entries":[item("review-turn","persona","commandExecution","",json!({"kind":"reviewer","role":"implementation_readiness"})),item("review-turn","report","agentMessage",if completed {"Read the original instructions.\n\nOne blocker: completion does not establish acceptance."} else {"Checking the current design."},json!(null)),boundary(completed)],"next_cursor":null,"weather":{}}
 		]
 	})).expect("review fixture")
 }

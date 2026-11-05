@@ -71,7 +71,7 @@ fn message(turn: &str, id: &str) -> decodex_protocol::AgentTimelineContent {
 		text: format!("Message {id}"),
 		truncated: false,
 		phase: None,
-		app_ui: false,
+
 		activity: None,
 		attachments: vec![],
 		collaboration: None,
@@ -348,7 +348,7 @@ fn known_message_actions_stay_out_of_the_transcript(cx: &mut gpui::TestAppContex
 					text: "A retained message".into(),
 					truncated: false,
 					phase: None,
-					app_ui: false,
+
 					activity: None,
 					attachments: vec![],
 					collaboration: None,

@@ -439,7 +439,7 @@ async fn installed_native_ordinary_resume_preserves_saved_settings() {
 			"Stale client instructions.",
 		)
 		.unwrap()
-		.with_fast(true)
+		.with_service_tier(decodex_core::ServiceTier::priority())
 		.inherit_native_settings();
 		let wire = serde_json::to_value(&request).unwrap();
 

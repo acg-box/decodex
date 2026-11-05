@@ -157,7 +157,7 @@ fn item(position: u64, turn: &str, id: &str, kind: &str, text: &str) -> AgentTim
 			text: text.into(),
 			phase: None,
 			truncated: false,
-			app_ui: false,
+
 			attachments: vec![],
 			activity: None,
 			collaboration: None,

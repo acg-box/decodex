@@ -4,22 +4,20 @@ use decodex_core::assistant::RagflowConnection;
 use decodex_database::SqliteStore;
 use reqwest::{Client, Method, Url, redirect::Policy};
 use serde_json::{Value, json};
-use std::{env, time::Duration};
+use std::time::Duration;
 
 fn unavailable() -> AgentError {
 	AgentError::Rejected("RAGFlow is unavailable. Local work and history remain available; no native-memory fallback was enabled.".into())
 }
 pub(crate) fn validate(c: &RagflowConnection) -> Result<(), AgentError> {
 	decodex_components::ragflow::origin(&c.url).map_err(AgentError::Invalid)?;
-	if (c.credential_id.is_none()
-		&& (c.api_key_env.is_empty()
-			|| !c
-				.api_key_env
-				.bytes()
-				.all(|b| b.is_ascii_uppercase() || b.is_ascii_digit() || b == b'_')))
+	if c.credential_id.len() != 64
+		|| !c.credential_id.bytes().all(|b| b.is_ascii_hexdigit())
 		|| c.user_id.trim().is_empty()
 	{
-		return Err(AgentError::Invalid("Use an HTTPS RAGFlow origin (or local HTTP), a service credential-variable name and an explicit user ID".into()));
+		return Err(AgentError::Invalid(
+			"Use a RAGFlow component credential and an explicit user ID".into(),
+		));
 	}
 	Ok(())
 }
@@ -39,18 +37,9 @@ impl Ragflow {
 				.build()
 				.map_err(|_| unavailable())?,
 			base: Url::parse(&c.url).map_err(|_| unavailable())?,
-			key: if let Some(id) = &c.credential_id {
-				decodex_components::ComponentStore::for_user()
-					.and_then(|store| store.ragflow_key(id, &c.url))
-					.map_err(AgentError::Rejected)?
-			} else {
-				env::var(&c.api_key_env).map_err(|_| {
-					AgentError::Rejected(
-						"The configured RAGFlow credential is missing from the service environment"
-							.into(),
-					)
-				})?
-			},
+			key: decodex_components::ComponentStore::for_user()
+				.and_then(|store| store.ragflow_key(&c.credential_id, &c.url))
+				.map_err(AgentError::Rejected)?,
 		})
 	}
 

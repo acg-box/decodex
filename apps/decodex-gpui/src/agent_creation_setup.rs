@@ -1,6 +1,6 @@
 //! Preserve pre-creation input independently of existing task execution overrides.
 use crate::shell::agent_surface::{AgentSurface, Context, ConversationReasoningEffort};
-use decodex_protocol::{DesktopCreationIntent, DesktopCreationSetup};
+use decodex_protocol::DesktopCreationSetup;
 
 pub(super) const DEFAULT_MODEL: &str = "gpt-6-astra";
 
@@ -12,13 +12,12 @@ impl AgentSurface {
 
 		let setup = DesktopCreationSetup {
 			defaults_applied: self.creation_defaults_applied,
-			intent: Some(self.creation_intent.clone()),
+			intent: self.creation_intent.clone(),
 			inherit_effort: self.creation_inherit_effort,
 			model: self.model.read(cx).content().into(),
 			working_directory: self.cwd.read(cx).content().into(),
 			account: self.account.read(cx).content().into(),
 			reasoning_effort: self.effort.clone(),
-			fast: self.fast,
 			service_tier: self.service_tier.clone(),
 			permission_mode: self.permission_mode,
 		};
@@ -26,7 +25,6 @@ impl AgentSurface {
 		let mut baseline = empty_setup();
 		if !self.creation_intent.service_tier {
 			// A displayed shared default is not a saved user override.
-			baseline.fast = setup.fast;
 			baseline.service_tier.clone_from(&setup.service_tier);
 		}
 		(self.creation_setup_present || setup != baseline).then_some(setup)
@@ -41,7 +39,6 @@ impl AgentSurface {
 
 		let mut empty = empty_setup();
 		empty.service_tier = crate::session_settings::default_speed().ok();
-		empty.fast = empty.service_tier.as_ref().is_some_and(|tier| tier.as_str() == "priority");
 		let setup = setup.unwrap_or(&empty);
 
 		self.model.update(cx, |input, cx| input.set_content(&setup.model, cx));
@@ -50,14 +47,9 @@ impl AgentSurface {
 
 		self.effort = setup.reasoning_effort.clone();
 		self.creation_inherit_effort = setup.inherit_effort;
-		self.creation_intent = setup.intent.clone().unwrap_or(DesktopCreationIntent {
-			model: true,
-			reasoning: true,
-			service_tier: true,
-		});
+		self.creation_intent = setup.intent.clone();
 		self.creation_defaults = None;
 		self.creation_defaults_applied = setup.defaults_applied;
-		self.fast = setup.fast;
 		self.service_tier = setup.service_tier.clone();
 		self.permission_mode = setup.permission_mode;
 		// Discovery from a different setup must never be treated as current after restoration.
@@ -77,16 +69,15 @@ fn empty_setup() -> DesktopCreationSetup {
 	let defaults = crate::session_settings::Defaults::load();
 	DesktopCreationSetup {
 		defaults_applied: false,
-		intent: Some(decodex_protocol::DesktopCreationIntent {
+		intent: decodex_protocol::DesktopCreationIntent {
 			service_tier: false,
 			..Default::default()
-		}),
+		},
 		inherit_effort: false,
 		model: DEFAULT_MODEL.into(),
 		working_directory: String::new(),
 		account: String::new(),
 		reasoning_effort: ConversationReasoningEffort::High,
-		fast: false,
 		service_tier: None,
 		permission_mode: defaults.permissions,
 	}

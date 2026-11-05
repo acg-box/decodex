@@ -61,7 +61,7 @@ async fn installed_capacity_retry_retains_selected_model_after_process_and_store
 		.await
 		.expect("reserve root");
 
-	store.enqueue_agent_event(EnqueueAgentEvent {source_event_id:"capacity-user-input".into(),work_item_id:"agent".into(),event_kind:"user_message".into(),payload:serde_json::json!({"text":"capacity-fixture-input","options":{"execution":{"model":"gpt-5.6-terra","reasoning_effort":"medium","fast":false},"attachments":[]}}).to_string()}).await.expect("selected input");
+	store.enqueue_agent_event(EnqueueAgentEvent {source_event_id:"capacity-user-input".into(),work_item_id:"agent".into(),event_kind:"user_message".into(),payload:serde_json::json!({"text":"capacity-fixture-input","options":{"execution":{"model":"gpt-5.6-terra","reasoning_effort":"medium","service_tier":"default"},"attachments":[]}}).to_string()}).await.expect("selected input");
 
 	time::timeout(Duration::from_secs(30), async {
 		agent.wake_pending().await.expect("selected turn");

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:f4ce327cb231c209795cefbe464c33adec54d8c065ccba93d98c855745b42586",
+  "pageVersion": "sha256:f30b09c3d1cc7ba88ec825a3de47ac0b8b28fddf5d63b66d60117ca4d188a309",
   "claims": [
     {
       "id": "claim_93b99ffbc7b84692b730b24680f83bd2",
@@ -60,7 +60,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_voice.rs",
-          "version": "repo-file-v1:sha256:2576d1cf187278dce231686c5e320c15ab455f8411d6d6683b3697709b686ccd"
+          "version": "repo-file-v1:sha256:fc6723ffdb4fab1b6e1c23ce9a41be5b60ed1f6bd0cc7053926117c546262d4c"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/native_live_audio.rs",
@@ -92,7 +92,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_voice.rs",
-          "version": "repo-file-v1:sha256:2576d1cf187278dce231686c5e320c15ab455f8411d6d6683b3697709b686ccd"
+          "version": "repo-file-v1:sha256:fc6723ffdb4fab1b6e1c23ce9a41be5b60ed1f6bd0cc7053926117c546262d4c"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/native_audio_owner.rs",
@@ -170,7 +170,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_voice.rs",
-          "version": "repo-file-v1:sha256:2576d1cf187278dce231686c5e320c15ab455f8411d6d6683b3697709b686ccd"
+          "version": "repo-file-v1:sha256:fc6723ffdb4fab1b6e1c23ce9a41be5b60ed1f6bd0cc7053926117c546262d4c"
         },
         {
           "resource": "repo://scripts/macos/stage_decodex_app.sh",
@@ -218,11 +218,11 @@
     },
     {
       "id": "claim_e25079cbb5dc40dab2c2b03d2ec7f61d",
-      "statement": "The voice picker prefers a nonempty native V3 catalog, falls back to V1 only for missing, null or empty V3, rejects malformed V3, and checks the shared defaultV1 against the selected catalog instead of a fixed local whitelist.",
+      "statement": "The voice picker requires a nonempty native V3 catalog and checks the shared defaultV1 against that catalog. Missing, empty or malformed V3 data is an error; there is no fixed local voice whitelist.",
       "evidence": [
         {
           "resource": "repo://crates/decodex-codex/src/app_server_client/realtime_preferences.rs",
-          "version": "repo-file-v1:sha256:b47dda6ebedaa7ad291a42422a8beb960d07acc43e953f9ffeb2ad571c3ee061"
+          "version": "repo-file-v1:sha256:88f2a137fd6a1e2df0b686632874eefc7a720f99f5021bfec26ee0d748d8a91c"
         }
       ]
     },
@@ -379,6 +379,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-03T18:23:39.894Z"
+    "at": "2026-11-05T14:56:49.835Z"
   }
 }

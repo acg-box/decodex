@@ -127,8 +127,7 @@ async fn conversation_projection_keeps_one_snapshot_across_concurrent_commit() {
 					working_directory: "/tmp".into(),
 					model: "fixture-model".into(),
 					reasoning_effort: None,
-					fast: false,
-					service_tier: None,
+					service_tier: decodex_core::ServiceTier::standard(),
 					initial_model_source: None,
 				},
 			)

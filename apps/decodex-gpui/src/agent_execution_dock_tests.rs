@@ -125,7 +125,7 @@ fn message(turn: &str, kind: &str, text: &str) -> AgentTimelineContent {
 		text: text.into(),
 		truncated: false,
 		activity: None,
-		app_ui: false,
+
 		attachments: vec![],
 	}
 }

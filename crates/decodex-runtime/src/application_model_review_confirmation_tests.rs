@@ -57,7 +57,7 @@ pub(super) async fn qualify(
 			execution: ConversationExecutionSettings::new(
 				ConversationModel::new("gpt-5.6-sol").expect("model"),
 				ConversationReasoningEffort::High,
-				false,
+				decodex_core::ServiceTier::standard(),
 			),
 			source: InitialModelSource { account_id, account_revision },
 		},

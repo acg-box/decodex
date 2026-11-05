@@ -59,10 +59,10 @@ sources:
     resource: repo://database/src/assistant.rs
   - id: openwiki-source-28af4781ad8d9558410630da
     resource: repo://database/src/works.rs
-generated: { by: "codex", at: "2026-11-05T13:44:11.168Z" }
+generated: { by: "codex", at: "2026-11-05T14:56:49.835Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-05T13:48:42.186Z
+    at: 2026-11-05T14:56:49.835Z
 ---
 
 
@@ -73,7 +73,7 @@ verified:
 
 The Assistant lifecycle is implemented in the current source. Assistant is built in and available by default. The sidebar opens its persistent personal Agent and initializes it on first use. The user can also select an existing Agent in Work. It accepts continuing instructions, manages lightweight teams and delegated Agents, registers independent duties, connects to optional RAGFlow Memory and renews native context behind the same chat. It has no built-in project patrol or monitoring assignment. The user can work directly with any other Agent or Project Lead.
 
-Native Codex remains the executor. Decodex retains identity, relationships, Work and delivery records. The implementation adds no second executor, mandatory management hierarchy, parallel task ledger, memory framework or database migration. Local protocol is 4.7 and the current SQLite schema remains 60.
+Native Codex remains the executor. Decodex retains identity, relationships, Work and delivery records. The implementation adds no second executor, mandatory management hierarchy, parallel task ledger, memory framework or database migration. Local protocol is 4.8 and the current SQLite schema is 61. The application accepts one current state format; it has no automatic upgrade chain.
 
 ```mermaid
 flowchart LR
@@ -177,7 +177,7 @@ Model keys remain private. The editor does not refill a saved API key; a blank f
 
 RAGFlow shares the existing component lifecycle buttons, version metadata, disclosure, busy state and inline feedback. The version row retains the complete server-reported value. Release channel identifies Nightly separately. The receipt and UI use the original server version directly. Update retains model configuration, credentials, saved data and the chat-import choice. Uninstall stops only the owned project, clears its Assistant connection and retains volumes for reinstall. The private installation receipt preserves the project, account and model settings, so service setup can resume through Update. Model setup failures retry through Save. The chat-import switch remains independent of model editing and is available when Memory is ready.
 
-The component saves the generated API key in an origin-bound private component file. The service directory mode is 0700 and private files use mode 0600. Saved Assistant settings and model tools contain only a credential reference. The service reads that reference for Memory requests; typed configuration also retains legacy service-environment credential references. Redirects are disabled. Components does not ask for raw user, dataset or Memory IDs. Explicit dataset retrieval scopes remain available through the typed configuration command.
+The component saves the generated API key in an origin-bound private component file. The service directory mode is 0700 and private files use mode 0600. Saved Assistant settings and model tools contain only a credential reference. The service requires that origin-bound component credential reference for Memory requests. Redirects are disabled. Components does not ask for raw user, dataset or Memory IDs. Explicit dataset retrieval scopes remain available through the typed configuration command.
 
 Knowledge retrieval and Memory are independent. Empty dataset IDs disable knowledge retrieval; they never select every accessible dataset. Selecting knowledge alone leaves Codex memory policy unchanged. Memory retrieval uses exact Memory, stable Assistant and user scopes across native context changes.
 

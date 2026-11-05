@@ -309,10 +309,8 @@ mod tests {
 
 		assert_eq!(&restored, original);
 
-		let decodex_protocol::CommandPayload::SubmitConversationTurn {
-			overrides: Some(intent),
-			..
-		} = restored.payload
+		let decodex_protocol::CommandPayload::SubmitConversationTurn { overrides: intent, .. } =
+			restored.payload
 		else {
 			panic!("turn intent")
 		};

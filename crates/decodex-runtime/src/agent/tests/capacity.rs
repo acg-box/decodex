@@ -728,7 +728,7 @@ async fn selected_turn_model_survives_restart_and_capacity_retry_without_startup
 
 	agent.store.enqueue_agent_event(EnqueueAgentEvent {
 		source_event_id:"selected-input".into(),work_item_id:"agent".into(),event_kind:"user_message".into(),
-		payload:serde_json::json!({"text":"request","options":{"execution":{"model":"user-selected","reasoning_effort":"medium","fast":false},"attachments":[]}}).to_string(),
+		payload:serde_json::json!({"text":"request","options":{"execution":{"model":"user-selected","reasoning_effort":"medium","service_tier":"default"},"attachments":[]}}).to_string(),
 	}).await.unwrap();
 	agent.wake_pending().await.unwrap();
 	agent

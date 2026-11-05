@@ -86,7 +86,7 @@ fn completed_answer(turn: &str, status: &str) -> Vec<AgentTimelineEntry> {
 				kind: "agentMessage".into(),
 				text: "The answer is ready.".into(),
 				phase: Some("final_answer".into()),
-				app_ui: false,
+
 				truncated: false,
 				activity: None,
 				attachments: vec![],

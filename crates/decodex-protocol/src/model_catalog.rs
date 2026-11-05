@@ -85,7 +85,7 @@ impl AgentModelDto {
 		if requested.as_str() == "ultrafast"
 			&& self.service_tiers.iter().any(|tier| tier.id.as_str() == "priority")
 		{
-			ServiceTier::from_fast(true)
+			ServiceTier::priority()
 		} else {
 			ServiceTier::standard()
 		}

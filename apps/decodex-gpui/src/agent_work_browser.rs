@@ -96,7 +96,6 @@ impl AgentSurface {
 		if let Some(defaults) = defaults {
 			self.workspace.new_conversation_permissions = Some(defaults.permissions);
 			self.service_tier = crate::session_settings::default_speed().ok();
-			self.fast = self.service_tier.as_ref().is_some_and(|tier| tier.as_str() == "priority");
 		}
 
 		self.restore_manager_composer(&id, cx);

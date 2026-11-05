@@ -308,31 +308,27 @@ pub struct ConversationExecutionSettings {
 	pub model: ConversationModel,
 	/// Explicit effort for this send; absent or null inherits the native thread setting.
 	pub reasoning_effort: Option<ConversationReasoningEffort>,
-	/// `true` maps to Codex's request-scoped `priority` service tier.
-	pub fast: bool,
-	/// Explicit tier chosen from native capabilities. Absent in older saved messages.
-	#[serde(skip_serializing_if = "Option::is_none")]
-	pub service_tier: Option<decodex_core::ServiceTier>,
+	/// Exact tier chosen for this send.
+	pub service_tier: decodex_core::ServiceTier,
 }
 impl ConversationExecutionSettings {
 	/// Construct the explicit execution settings.
 	pub fn new(
 		model: ConversationModel,
 		reasoning_effort: ConversationReasoningEffort,
-		fast: bool,
+		service_tier: decodex_core::ServiceTier,
 	) -> Self {
-		Self { model, reasoning_effort: Some(reasoning_effort), fast, service_tier: None }
+		Self { model, reasoning_effort: Some(reasoning_effort), service_tier }
 	}
 
-	/// Resolve legacy Fast messages without losing a newer explicit tier.
+	/// Read the exact selected tier.
 	pub fn effective_service_tier(&self) -> decodex_core::ServiceTier {
-		self.service_tier.clone().unwrap_or_else(|| decodex_core::ServiceTier::from_fast(self.fast))
+		self.service_tier.clone()
 	}
 
-	/// Select an exact tier; keep the legacy Fast flag consistent for old display consumers.
+	/// Select an exact tier.
 	pub fn with_service_tier(mut self, tier: decodex_core::ServiceTier) -> Self {
-		self.fast = tier.as_str() == "priority";
-		self.service_tier = Some(tier);
+		self.service_tier = tier;
 
 		self
 	}
@@ -859,7 +855,7 @@ pub enum ConversationModelSettingsResult {
 	Unavailable,
 }
 
-/// Fields explicitly selected for one later turn. Omitted command intent preserves legacy behavior.
+/// Fields explicitly selected for one later turn.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ConversationExecutionOverrides {
@@ -972,7 +968,7 @@ mod inherited_execution_tests {
 			Some(serde_json::json!("none")),
 			Some(serde_json::json!("provider-effort")),
 		] {
-			let mut wire = serde_json::json!({"model":"model","fast":false});
+			let mut wire = serde_json::json!({"model":"model","service_tier":"default"});
 
 			if let Some(effort) = effort.clone() {
 				wire["reasoning_effort"] = effort;
@@ -992,29 +988,15 @@ mod override_wire_tests {
 	use crate::CommandPayload;
 
 	#[test]
-	fn legacy_turn_bytes_and_new_override_intent_roundtrip_separately() {
-		let legacy = serde_json::json!({"name":"submit_conversation_turn","arguments":{
+	fn explicit_override_intent_roundtrips() {
+		let wire = serde_json::json!({"name":"submit_conversation_turn","arguments":{
 			"conversation_id":"44000000-0000-4000-8000-000000000001",
 			"turn_id":"45000000-0000-4000-8000-000000000001",
 			"message":"Continue","working_directory":"/tmp",
-			"execution":{"model":"saved-model","reasoning_effort":"high","fast":false}
+			"execution":{"model":"saved-model","reasoning_effort":"high","service_tier":"default"},
+			"overrides":{"model":false,"reasoning":true,"service_tier":false}
 		}});
-		let payload: CommandPayload = serde_json::from_value(legacy.clone()).expect("legacy turn");
-
-		assert!(matches!(payload, CommandPayload::SubmitConversationTurn { overrides: None, .. }));
-		assert_eq!(serde_json::to_value(payload).expect("legacy wire"), legacy);
-
-		let mut modern = legacy.clone();
-
-		modern["arguments"]["overrides"] =
-			serde_json::json!({"model":false,"reasoning":true,"service_tier":false});
-
-		let payload: CommandPayload = serde_json::from_value(modern.clone()).expect("modern turn");
-
-		assert_eq!(serde_json::to_value(payload).expect("modern wire"), modern);
-		assert_ne!(
-			serde_json::to_vec(&legacy).expect("legacy identity"),
-			serde_json::to_vec(&modern).expect("modern identity")
-		);
+		let payload: CommandPayload = serde_json::from_value(wire.clone()).unwrap();
+		assert_eq!(serde_json::to_value(payload).unwrap(), wire);
 	}
 }

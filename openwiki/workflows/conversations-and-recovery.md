@@ -106,6 +106,8 @@ sources:
     resource: repo://crates/decodex-codex/src/app_server_client/temporary_structured.rs
   - id: openwiki-source-787f8ad27b8519fbed2bd039
     resource: repo://crates/decodex-codex/src/app_server_client/thread_fork.rs
+  - id: openwiki-source-67a8dd518ed404cf3556afd6
+    resource: repo://crates/decodex-protocol/src/agent_questions.rs
   - id: openwiki-source-caeefdea0805519b59a469aa
     resource: repo://crates/decodex-protocol/src/desktop_drafts.rs
   - id: openwiki-source-c01ab8da738707861c64c143
@@ -162,16 +164,14 @@ sources:
     resource: repo://database/src/agent_titles.rs
   - id: openwiki-source-dd880acfb699314e78cc9985
     resource: repo://database/src/agent/archive.rs
-  - id: openwiki-source-7cbe85f6b9884923ffd5cbfa
-    resource: repo://database/src/agent/tests/input_retry.rs
   - id: openwiki-source-3f60f3a3aae45b3e3b355d3e
     resource: repo://database/src/assistant.rs
   - id: openwiki-source-28af4781ad8d9558410630da
     resource: repo://database/src/works.rs
-generated: { by: "codex", at: "2026-11-04T15:37:04.419Z" }
+generated: { by: "codex", at: "2026-11-05T14:56:49.835Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-05T13:44:11.168Z
+    at: 2026-11-05T14:56:49.835Z
 ---
 
 # Conversation input, history and recovery
@@ -194,7 +194,7 @@ Work Results and command receipts are separate from the conversation's latest re
 
 ## Drafts and uncertain outcomes
 
-`agent_draft_storage` and `ClientDraftStore` keep the current editable input under its original conversation owner. A shared-store conflict merges current edits and unresolved delivery records. It does not create alternative whole-editor copies or a separate recovery manager. The current draft format is version 11.
+`agent_draft_storage` and `ClientDraftStore` keep the current editable input under its original conversation owner. A shared-store conflict merges current edits and unresolved delivery records. It does not create alternative whole-editor copies or a separate recovery manager. The current draft format is version 12. Creation intent is explicit, and execution settings store one exact service tier.
 
 An exact local message has its own delivery state. A positively unsent message shows **Not sent** and **Resend** below its normal user bubble. Resend preserves the original input and its attachments; it does not replace text that the user entered later. Repeated retries refer to one successor event. An **Unconfirmed** message offers **Check status**: an unknown outcome is not safe to resend. Queue acceptance remains separate from native execution.
 
@@ -325,7 +325,7 @@ Native history also keeps one nonempty item identity when a provider assistant m
 
 Task preferences shows the native read state for the current root conversation and explicit read/unread actions. Refresh does not acknowledge a result. A mark is bound to the reviewed source and native receipt revision; source drift, an unavailable receipt or a stale revision requires a fresh read rather than an automatic retry. Native child conversations and the Dock's local status are separate.
 
-Expanded tool and file details can read the exact native history item. Unsupported item-read methods fall back to the existing full-thread path; unrelated errors do not. This does not replace complete transcript export or add a bulk media loader.
+Expanded tool and file details read the exact native history item through the current `thread/items/read` API. An unavailable read remains an error. This does not replace complete transcript export or add a bulk media loader.
 
 ## Automatic conversation titles
 
@@ -347,7 +347,7 @@ Manual recap is available. Automatic recap is a separate preference and defaults
 
 Recap requests an isolated temporary native thread with tools disabled. For absent or built-in permission profiles, it selects the native `:read-only` default explicitly, so a managed workspace default cannot override the read-only request. An explicit custom profile keeps its own restrictions. The adapter checks the returned profile or sandbox and the ephemeral-thread flag before it starts inference. A disabled tool environment does not assert removal of every model-required tool name from the catalog.
 
-Asynchronous questions keep explicit answers and Skip. The separately retained nonblocking timeout policy can produce an empty answer after its grace/countdown conditions; it is not a general permission to answer questions for the user.
+Asynchronous questions keep explicit answers and Skip. Replies use the current array format and exact question IDs; a whole-message item ID is not an answer identity. The separately retained nonblocking timeout policy can produce an empty answer after its grace/countdown conditions; it is not a general permission to answer questions for the user.
 
 An exact native `completed`, `interrupted` or `failed` turn receipt retires that turn's pending question cards. For questions first received live, the desktop returns nonblank unsent custom answers to the ordinary composer in question order. Existing composer text stays first. In the active composer, the append is one undoable edit. For an inactive conversation, the text is saved with its own draft. Nothing is sent automatically.
 

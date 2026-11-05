@@ -244,6 +244,7 @@ if mode == "crash":
 account_reads = 0
 exact_thread_id = "thread:XY-1317/non-uuid_Case-Sensitive._~:@+$,;=[]{}()!%&'*? #"
 exact_thread = {
+    "historyMode": "legacy",
     "id": exact_thread_id,
     "archived": False,
     "parentThreadId": None,

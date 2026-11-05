@@ -308,7 +308,7 @@ async fn child_usage_is_live_durable_and_keeps_exact_thread_ownership() {
 	}
 
 	let mut page: AgentTimelinePage = serde_json::from_value(serde_json::json!({
-		"thread_id":"child","entries":[],"next_cursor":null,"active_realtime_session_at_page_start":null
+		"thread_id":"child","entries":[],"next_cursor":null,"weather":{},"active_realtime_session_at_page_start":null
 	}))
 	.unwrap();
 

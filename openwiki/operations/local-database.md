@@ -6,10 +6,14 @@ tags: ["decodex", "architecture"]
 sources:
   - id: openwiki-source-f339a4d1910db63ca305c2df
     resource: repo://apps/decodex-gpui/src/assistant_settings.rs
+  - id: openwiki-source-546812ff3637690f4a184b89
+    resource: repo://apps/decodex-gpui/src/ui_preferences.rs
   - id: openwiki-source-69e9fd7efd8c3cd616184e27
     resource: repo://crates/decodex-components/src/ragflow_service.rs
   - id: openwiki-source-9ecfe8c96199e765ca2b4e1b
     resource: repo://crates/decodex-components/src/ragflow.rs
+  - id: openwiki-source-caeefdea0805519b59a469aa
+    resource: repo://crates/decodex-protocol/src/desktop_drafts.rs
   - id: openwiki-source-cc0439b23243c3697ba49199
     resource: repo://crates/decodex-protocol/src/lib.rs
   - id: openwiki-source-f4724776aade804ebf838e2e
@@ -44,17 +48,17 @@ sources:
     resource: repo://database/src/works/commands.rs
   - id: openwiki-source-960cb6b925f1fa45c737a735
     resource: repo://scripts/macos/verify_decodex_bundle_contracts.py
-generated: { by: "codex", at: "2026-11-05T13:44:11.168Z" }
+generated: { by: "codex", at: "2026-11-05T14:56:49.835Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-05T13:48:42.186Z
+    at: 2026-11-05T14:56:49.835Z
 ---
 
 # Local database operations
 
 ## Current schema and ownership
 
-`database/schema.sql` defines the current product schema, version 60. `database/src/schema.rs` initializes empty databases directly and verifies existing databases against that exact application ID, version and structure. There is no migration ledger or historical account-transfer tool. An older database is refused without resetting its contents.
+`database/schema.sql` defines the current product schema, version 61. `database/src/schema.rs` initializes empty databases directly and verifies existing databases against that exact application ID, version and structure. There is no migration ledger or historical account-transfer tool. An older database is refused without resetting its contents.
 
 Project membership, persistent Agent responsibilities, Work, requirements, Materials, Results, Collaboration Requests, Guardian settings and execution receipts are current records in that schema. Native history and current editable input retain separate owners. Program and Domain Pack storage is retired.
 
@@ -72,7 +76,7 @@ Ordinary input resumes its original native context and recorded tool declaration
 
 Global Guardian stores the Review Details opt-in and private review records. Conversation permission settings have a separate owner. Private records are deduplicated by reviewer thread, turn and item. Records are bounded to 64 KiB and the newest 128; small snapshot previews and exact selected reads stay separate. These records do not grant execution authority or complete Work.
 
-Local clients and service must agree on exact protocol 4.7. Publication-instance and command receipts preserve reconnect and idempotent recovery. Exact native bundle ABI checks remain a separate verification boundary. See [commands](commands-and-validation.md) and [the canonical contract](../decisions/project-agent-work.md).
+Local clients and service must agree on exact protocol 4.8. Publication-instance and command receipts preserve reconnect and idempotent recovery. Exact native bundle ABI checks remain a separate verification boundary. See [commands](commands-and-validation.md) and [the canonical contract](../decisions/project-agent-work.md).
 
 ## Authority and paths
 
@@ -115,7 +119,7 @@ The database gate and unit tests use isolated fixtures. The staging test checks 
 
 ## Current format boundary
 
-The embedded schema defines one current layout. The application has no ordered upgrade path and does not import obsolete account vaults. Current OAuth, PAT, native process and receipt formats remain supported according to their distinct owners.
+The embedded schema defines one current layout. Conversation requests store one required `service_tier`; they do not store a second `fast` flag. The service stores quota activation preferences. The App owns menu-bar visibility and automatic recap preferences in its local preference store. Desktop drafts use format 12 with explicit creation intent and one service tier. The application has no ordered upgrade path and does not import obsolete account vaults. Current OAuth, PAT, native process and receipt formats remain supported according to their distinct owners.
 
 ## Credential and branch records
 
@@ -123,7 +127,7 @@ OAuth credentials use their current version-1 payload and fingerprint representa
 
 Explicit conversation branches reuse durable inbox event records for their intent, native acknowledgement and expected visible history. Ordinary branches expose their reviewed source prefix. Attached children expose only their own turns, so creation is acknowledged against an empty child view while the saved source IDs retain the reviewed boundary. Native inference keeps the parent context. Each target has its own work and native thread identity. Side chats retain the exact source Agent as parent and keep its Project, role and tool revision. The read-only list selects the newest 100 saved attached receipts for that exact source; it adds no schema migration. Before-input branches reuse the existing canonical prompt-edit draft and upload records. Unknown creation does not authorize a second request. See [conversation recovery](../workflows/conversations-and-recovery.md).
 
-Native conversation topics use resolved `conversation_title` observations in the existing indexed inbox journal. The observation keeps the native name, automatic-name provenance and the last successful review checkpoint. It does not wake work or consume transcript pages. Work snapshots join these topics to current native bindings in the same transaction. Agent identity and business Work titles remain separate; the database schema stays at version 60. See [automatic titles](../workflows/conversations-and-recovery.md#automatic-conversation-titles).
+Native conversation topics use resolved `conversation_title` observations in the existing indexed inbox journal. The observation keeps the native name, automatic-name provenance and the last successful review checkpoint. It does not wake work or consume transcript pages. Work snapshots join these topics to current native bindings in the same transaction. Agent identity and business Work titles remain separate; the database schema stays at version 61. See [automatic titles](../workflows/conversations-and-recovery.md#automatic-conversation-titles).
 
 ## Assistant records
 
@@ -135,4 +139,4 @@ Assistant configuration, team membership, independent wakes, context intent/ackn
 
 A context transition changes the existing Agent binding and appends the existing `agent_thread_revisions` relationship in one immediate transaction. It preserves queued input, Work and independent duties. Exact native creation and import receipts remain authoritative after a missing reply; semantic Memory is not the delivery ledger. Explicit native Agent archive cancels future duties, while retirement of an old Assistant context does not call archive cleanup.
 
-The current schema remains 60. No migration chain, duplicate history store or RAGFlow database tables are added. See [Assistant lifecycle](../decisions/assistant-lifecycle.md).
+The current schema is 61. No migration chain, duplicate history store or RAGFlow database tables are added. See [Assistant lifecycle](../decisions/assistant-lifecycle.md).

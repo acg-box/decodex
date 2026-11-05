@@ -62,7 +62,7 @@ impl SupervisedProcess {
 		timeout: Duration,
 	) -> Result<LossyThreadHistory, ExactReconciliationError> {
 		match thread.history_mode.as_deref() {
-			None | Some("legacy") => {
+			Some("legacy") => {
 				let result = self
 					.request_rpc::<_, ThreadReadResponse>(
 						"thread/read",

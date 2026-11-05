@@ -71,7 +71,6 @@ pub enum AgentVoiceRequest {
 		/// Private local WebRTC offer.
 		offer: VoiceSdp,
 		/// Immutable options captured before this call starts.
-		#[serde(default)]
 		options: AgentVoiceOptions,
 	},
 	/// Read selected reply text through an existing call. Send once; do not replay on timeout.

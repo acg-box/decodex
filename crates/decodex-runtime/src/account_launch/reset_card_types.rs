@@ -26,12 +26,8 @@ pub(crate) enum ResetCardOperationStatus {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum ResetCardFailureCode {
 	AccountChanged,
-	VaultUnavailable,
-	SchemaUnsupported,
-	InventoryIncomplete,
 	InventoryChanged,
 	ProviderUnavailable,
-	ResourceExhausted,
 }
 
 /// Public reset-card observation plus the exact account revision observed around provider work.
@@ -78,21 +74,11 @@ pub(crate) enum ResetCardServiceError {
 	AccountNotFound,
 	AccountStateRejected,
 	AccountChanged,
-	ExpectedRevisionMismatch {
-		actual: i64,
-	},
+	ExpectedRevisionMismatch { actual: i64 },
 	VaultUnavailable,
-	/// Retained for decoding older durable/public results; the direct API path never emits it.
-	SchemaUnsupported,
 	ProviderUnavailable,
 	InventoryIncomplete,
 	InventoryChanged,
-	/// Retained for decoding older durable/public results; the direct API path uses bounded API
-	/// provider failures instead.
-	RequestTimedOut,
-	/// Retained for decoding older durable/public results; direct API work is bounded by HTTP
-	/// request limits and does not use process capacity admission.
-	ResourceExhausted,
 	ProductStateUnavailable,
 	IdempotencyConflict,
 	AcceptanceUnknown,

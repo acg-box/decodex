@@ -150,14 +150,13 @@ async fn qualify_defaults(selection: &str) {
 	);
 	let drain = tokio::spawn(async move { while events.recv().await.is_some() {} });
 
-	client.initialize(serde_json::json!({"clientInfo":{"name":"decodex_description_order_fixture","version":"0.1"},"capabilities":{"experimentalApi":true}})).await.expect("initialize");
+	client.initialize(serde_json::json!({"clientInfo":{"name":"decodex_defaults_fixture","version":"0.1"},"capabilities":{"experimentalApi":true}})).await.expect("initialize");
 
 	let config = client
 		.request("config/read", serde_json::json!({"includeLayers":false}))
 		.await
 		.expect("native config");
 
-	assert_eq!(config["config"]["features"]["code_mode_tool_description_first"], true);
 	assert_eq!(config["config"]["features"]["subagent_default_context_limits"], true);
 	assert_eq!(config["config"]["features"]["wake_on_agent_messages"], true);
 	assert_eq!(config["config"]["features"]["multi_agent_v2"]["preserve_fork_prefix"], true);

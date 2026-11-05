@@ -65,7 +65,8 @@ export async function buildSource(root: string, lock: SourceLock, runtime: strin
   if (await digest(lockPath) !== cargoLockDigest) throw new Error('The source build changed the upstream Cargo lock.');
   const metadata = JSON.parse(readFileSync(join(packageDir, 'codex-package.json'), 'utf8'));
   if (metadata.version !== lock.version || metadata.target !== 'aarch64-apple-darwin'
-      || metadata.variant !== 'codex' || metadata.layoutVersion !== 1) {
+      || metadata.variant !== 'codex' || metadata.layoutVersion !== 1
+      || metadata.execServer !== 'bin/codex-exec-server') {
     throw new Error('Built Codex package identity mismatch.');
   }
   rmSync(runtime, { recursive: true, force: true });
@@ -91,7 +92,7 @@ export async function buildSource(root: string, lock: SourceLock, runtime: strin
   const signing = join(source, '.github/scripts/macos-signing');
   for (const [path, id, entitlements] of [
     [join(runtime, 'bin/codex-code-mode-host'), 'box.acg.decodex.codex-code-mode-host', join(signing, 'codex-code-mode-host.entitlements.plist')],
-    ...(metadata.execServer ? [[join(runtime, metadata.execServer), 'box.acg.decodex.codex-exec-server', join(signing, 'codex-exec-server.entitlements.plist')]] : []),
+    [join(runtime, 'bin/codex-exec-server'), 'box.acg.decodex.codex-exec-server', join(signing, 'codex-exec-server.entitlements.plist')],
     [join(runtime, 'codex-path/rg'), 'box.acg.decodex.rg', ''],
     [app, 'box.acg.decodex.codex-runtime', join(signing, 'codex.entitlements.plist')],
   ]) {

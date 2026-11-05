@@ -330,8 +330,7 @@ pub(crate) fn ordinary(row: &Value) -> Option<AgentTimelineContent> {
 	Some(AgentTimelineContent::Item {
 		collaboration: collaboration(item),
 		phase: item["phase"].as_str().map(str::to_owned),
-		// Retain the wire field for older clients without advertising the retired viewer.
-		app_ui: false,
+
 		turn_id,
 		item_id: id(&item["id"])?,
 		kind: if delegated_input { "agentInput".into() } else { kind },
@@ -1010,26 +1009,6 @@ mod tests {
 					matches!(result, AgentTimelineResult::Available {page,..} if page.entries.len()==7 && page.next_cursor.as_deref()==Some("older"))
 				);
 			}
-		}
-	}
-}
-#[cfg(test)]
-mod app_ui_projection_tests {
-	use crate::agent::timeline::{self, AgentTimelineContent};
-
-	#[test]
-	fn retired_app_metadata_keeps_the_tool_result_without_a_viewer() {
-		for (kind, metadata, expected) in [
-			("mcpToolCall", serde_json::json!({"resourceUri":"ui://fixture/view"}), false),
-			("mcpToolCall", serde_json::json!(null), false),
-			("mcpToolCall", serde_json::json!({"resourceUri":"https://example.com"}), false),
-			("agentMessage", serde_json::json!({"resourceUri":"ui://fixture/view"}), false),
-		] {
-			let row = serde_json::json!({"turnId":"turn","item":{"id":"call","type":kind,"text":"Fixture","mcpAppUi":metadata}});
-
-			assert!(
-				matches!(timeline::ordinary(&row).unwrap(),AgentTimelineContent::Item{app_ui,..} if app_ui==expected)
-			);
 		}
 	}
 }

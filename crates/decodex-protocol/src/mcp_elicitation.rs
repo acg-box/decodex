@@ -32,22 +32,18 @@ pub struct McpFormField {
 }
 
 /// Validate the request mode before interpreting its form schema.
-/// Only standard MCP retains the legacy null-schema confirmation convention.
+/// All form modes require their advertised object schema.
 pub fn mcp_request_fields(request: &Value) -> Result<Vec<McpFormField>, String> {
 	let schema = request.get("requestedSchema").ok_or("Missing form schema")?;
 
 	match request["mode"].as_str() {
-		Some("form") => mcp_form_fields(schema),
-		Some("openai/form" | "openaiForm") if !schema.is_null() => mcp_form_fields(schema),
+		Some("form" | "openai/form" | "openaiForm") => mcp_form_fields(schema),
 		_ => Err("This form schema is not supported.".into()),
 	}
 }
 
 /// Project the standard primitive schema shared by MCP and supported OpenAI forms.
 pub fn mcp_form_fields(schema: &Value) -> Result<Vec<McpFormField>, String> {
-	if schema.is_null() {
-		return Ok(Vec::new());
-	}
 	if schema.to_string().len() > MAX_HISTORY_INLINE_BYTES || schema["type"] != "object" {
 		return Err("This form schema is not supported.".into());
 	}
@@ -395,7 +391,7 @@ mod tests {
 				mcp_elicitation::mcp_request_fields(&serde_json::json!({"mode":mode})).is_err()
 			);
 		}
-		for mode in ["openai/form", "openaiForm"] {
+		for mode in ["form", "openai/form", "openaiForm"] {
 			for schema in [
 				Value::Null,
 				serde_json::json!(true),
@@ -430,8 +426,7 @@ mod tests {
 			mcp_elicitation::mcp_request_fields(
 				&serde_json::json!({"mode":"form","requestedSchema":null})
 			)
-			.unwrap()
-			.is_empty()
+			.is_err()
 		);
 	}
 
@@ -465,7 +460,7 @@ mod tests {
 
 	#[test]
 	fn response_permissions_are_limited_to_advertised_scope() {
-		let request = serde_json::json!({"mode":"form","requestedSchema":null,"_meta":{"persist":["session"]}});
+		let request = serde_json::json!({"mode":"form","requestedSchema":{"type":"object","properties":{}},"_meta":{"persist":["session"]}});
 
 		assert!(
 			mcp_elicitation::validate_mcp_response(

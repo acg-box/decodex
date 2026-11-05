@@ -66,7 +66,6 @@ pub(super) async fn qualify(runtime: &ConversationRuntime, store: &SqliteStore, 
 			execution: crate::conversation::ConversationExecutionSettings {
 				model: "cold-native-model".into(),
 				reasoning_effort: Some("provider-effort".into()),
-				fast: false,
 				service_tier: ServiceTier::standard(),
 			},
 		})
@@ -136,10 +135,9 @@ pub(super) async fn submit_inherited(
 				reasoning_effort: Some(
 					ConversationReasoningEffort::new("deliberately-stale-effort").expect("effort"),
 				),
-				fast: true,
-				service_tier: Some(ServiceTier::from_fast(true)),
+				service_tier: ServiceTier::priority(),
 			},
-			overrides: Some(Default::default()),
+			overrides: Default::default(),
 		},
 	};
 	let restored: CommandEnvelope =

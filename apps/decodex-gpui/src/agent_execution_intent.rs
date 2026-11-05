@@ -93,15 +93,14 @@ impl AgentSurface {
 		let Some(owner) = self.composer_manager.clone().or_else(|| self.root_id()) else { return };
 		let Ok(model) = ConversationModel::new(self.model.read(cx).content()) else { return };
 		let effort = self.effort.clone();
-		let tier = self.service_tier.clone().unwrap_or_else(|| ServiceTier::from_fast(self.fast));
+		let tier = self.service_tier.clone().unwrap_or_else(ServiceTier::standard);
 
 		self.draft_profiles.execution.change(owner, |choice| {
 			choice.model = Some(model);
 			choice.reasoning_effort = Some(effort);
 
-			if choice.service_tier.is_some() || choice.fast.is_some() {
+			if choice.service_tier.is_some() {
 				choice.service_tier = Some(tier);
-				choice.fast = None;
 			}
 		});
 	}
@@ -128,11 +127,10 @@ impl AgentSurface {
 		}
 
 		let Some(owner) = self.composer_manager.clone().or_else(|| self.root_id()) else { return };
-		let tier = self.service_tier.clone().unwrap_or_else(|| ServiceTier::from_fast(self.fast));
+		let tier = self.service_tier.clone().unwrap_or_else(ServiceTier::standard);
 
 		self.draft_profiles.execution.change(owner, |choice| {
 			choice.service_tier = Some(tier);
-			choice.fast = None;
 		});
 	}
 }
@@ -174,7 +172,6 @@ mod tests {
 			s.model.update(cx, |input, cx| input.set_content("stale-display-model", cx));
 
 			s.effort = ConversationReasoningEffort::Ultra;
-			s.fast = true;
 
 			assert!(choice(action(s, "agent")).is_empty());
 

@@ -473,7 +473,7 @@ fn conversation_fixture_command(
 			execution: ConversationExecutionSettings::new(
 				ConversationModel::new("fixture-model").expect("conversation observer fixture"),
 				ConversationReasoningEffort::Low,
-				false,
+				decodex_core::ServiceTier::standard(),
 			),
 			initial_model_source: None,
 		}

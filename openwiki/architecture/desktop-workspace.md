@@ -136,10 +136,10 @@ sources:
     resource: repo://database/src/works/commands.rs
   - id: openwiki-source-8fe6f1557e5d45d88b34bd0a
     resource: repo://scripts/macos/generate_workspace_symbols.swift
-generated: { by: "codex", at: "2026-11-05T13:44:11.168Z" }
+generated: { by: "codex", at: "2026-11-05T14:56:49.835Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-05T13:48:42.186Z
+    at: 2026-11-05T14:56:49.835Z
 ---
 
 # Desktop workspace and native glass
@@ -288,4 +288,4 @@ The RAGFlow row distinguishes service installation from Assistant Memory configu
 
 RAGFlow setup uses the current local service profile and selected Assistant. Profile, runtime or role changes clear its temporary presentation state while preserving the ordinary chat draft. The component's generated credentials and raw scope IDs are not UI fields. Setup progress and failures use shared inline feedback beside the component. See [Runtime architecture](runtime-architecture.md) for process, storage and native-memory ownership.
 
-Component status lights use the existing component owners. Green means Codex is ready, EGM is enabled, or Research is connected with its tools enabled. RAGFlow requires both a responding service API and configured Memory for green. Amber marks disabled or incomplete setup, blue marks operations, red marks failures or an unavailable service, and gray marks unchecked or absent components. Tooltips and accessibility labels state the meaning. RAGFlow checks its public version API in the background on initial inspection and Components entry, with a three-second limit; passive reads retain the previous light without adding loading rows.
+Component status lights use the existing component owners and the theme’s semantic success, warning, information, error and muted tones. Ready means Codex is ready, EGM is enabled, or Research is connected with its tools enabled. RAGFlow requires both a responding service API and configured Memory for Ready. Warning marks disabled or incomplete setup, information marks operations, error marks failures or an unavailable service, and muted marks unchecked or absent components. Tooltips and accessibility labels state the meaning. RAGFlow checks its public version API in the background on initial inspection and Components entry, with a three-second limit; passive reads retain the previous light without adding loading rows.

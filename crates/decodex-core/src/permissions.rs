@@ -6,7 +6,6 @@ use serde::{Deserialize, Serialize};
 #[serde(rename_all = "snake_case")]
 pub enum PermissionMode {
 	#[default]
-	#[serde(alias = "workspace_write")]
 	/// Work within the workspace and ask before escalation.
 	AskForApproval,
 	/// Work within the workspace and route escalation to native review.

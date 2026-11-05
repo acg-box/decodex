@@ -506,7 +506,7 @@ connection_initializing: false,
                 pending_events:vec![AgentPendingEventDto { id:7, source_event_id:"approval".into(), work_item_id:"root".into(),event_kind:"user_input_pending".into(),created_at_micros:1,delivery_claimed:false }]
             })));
 
-            let request=AgentRequestResult::Available {event_id:7,work_id:"root".into(),method:"mcpServer/elicitation/request".into(),request_json:decodex_protocol::AgentRequestText::new(serde_json::json!({"mode":"form","serverName":"codex_apps","message":"Allow this tool?","requestedSchema":null,"_meta":{"persist":["session"],"connector_id":"calendar","link_id":"work"}}).to_string()).unwrap()};
+            let request=AgentRequestResult::Available {event_id:7,work_id:"root".into(),method:"mcpServer/elicitation/request".into(),request_json:decodex_protocol::AgentRequestText::new(serde_json::json!({"mode":"form","serverName":"codex_apps","message":"Allow this tool?","requestedSchema":{"type":"object","properties":{}},"_meta":{"persist":["session"],"connector_id":"calendar","link_id":"work"}}).to_string()).unwrap()};
 
             s.prepare_mcp_inputs(&request,cx);
 

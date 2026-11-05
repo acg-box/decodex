@@ -60,10 +60,10 @@ sources:
     resource: repo://scripts/macos/run_native_voice_tests.py
   - id: openwiki-source-3b57179b92b257bc3fff51a1
     resource: repo://scripts/macos/stage_decodex_app.sh
-generated: { by: "codex", at: "2026-11-03T15:39:55.651Z" }
+generated: { by: "codex", at: "2026-11-05T14:56:49.835Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-03T18:23:39.894Z
+    at: 2026-11-05T14:56:49.835Z
 ---
 
 # Subscription dictation and live voice
@@ -196,7 +196,7 @@ This is a bounded synthetic sample. Separate playback through the current virtua
 
 ## Retained voice preferences and limitations
 
-The voice preference picker uses the nonempty native V3 catalog. It falls back to V1 only when V3 is missing, null or empty; a malformed V3 value is an error. The native `defaultV1` field supplies the shared default and must belong to the selected catalog. There is no local fixed voice whitelist.
+The voice preference picker uses the nonempty native V3 catalog. Missing, null, empty or malformed V3 data is an error. The native `defaultV1` field supplies the shared default and must belong to the selected catalog. There is no local fixed voice whitelist.
 
 The picker reads effective project settings, then writes one reviewed `realtime.voice` preference with native version checking. It affects the next call and does not restart active audio. Project settings can override the saved preference. At each call start, the coordinator reads the effective voice for the exact native thread and passes it to the v3 real-time request. The request retains startup context, requests transcript-tail flush at session end, and sets `backendReasoningStatus: true`. Codex can relay completed public reasoning summaries as quiet V3 context. Decodex does not copy private reasoning or force a summary when none is available. Optional model and start/end instructions stay bound to that call.
 

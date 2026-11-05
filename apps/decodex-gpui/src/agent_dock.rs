@@ -864,7 +864,7 @@ mod tests {
 			text: text.into(),
 			truncated: false,
 			activity: None,
-			app_ui: false,
+
 			attachments: vec![],
 		};
 		let items = vec![

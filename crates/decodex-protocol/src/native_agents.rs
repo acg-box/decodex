@@ -11,15 +11,12 @@ pub struct NativeAgentDto {
 	/// Bounded display title.
 	pub title: String,
 	/// Bounded first native input, used to identify the delegated work.
-	#[serde(default)]
 	pub task: String,
 	/// Provider-reported thread state.
 	pub status: String,
 	/// Native current configuration when loaded, otherwise its latest saved model.
-	#[serde(default)]
 	pub model: Option<String>,
 	/// Native configured or latest saved effort; this is not per-turn telemetry.
-	#[serde(default)]
 	pub reasoning_effort: Option<String>,
 }
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
@@ -38,10 +35,8 @@ pub enum NativeAgentsResult {
 		/// Exact inspected thread.
 		thread_id: String,
 		/// Native configured or latest saved model; never inherited locally.
-		#[serde(default)]
 		model: Option<String>,
 		/// Native configured or latest saved effort; absent stays unknown.
-		#[serde(default)]
 		reasoning_effort: Option<String>,
 		/// Native capability. None means the stored thread has not exposed its capability.
 		can_input: Option<bool>,

@@ -162,7 +162,7 @@ final class ResetCardStoreStartupRetryTests: XCTestCase {
 		let fixture = try makePendingFixture()
 		defer { fixture.remove() }
 		let client = ScriptedResetCardClient(
-			accountSteps: [.failure(.service(.schemaUnsupported))],
+			accountSteps: [.failure(.service(.invalidRequest))],
 			accountFallback: .value([Self.account]),
 			inventoryFallback: .value(try Self.inventory)
 		)
@@ -188,7 +188,7 @@ final class ResetCardStoreStartupRetryTests: XCTestCase {
 			store.message,
 			ResetCardStoreMessage(
 				tone: .error,
-				text: "Saved reset result incompatible with this provider version."
+				text: "The reset-card request was invalid."
 			)
 		)
 	}
@@ -823,7 +823,7 @@ final class ResetCardStoreStartupRetryTests: XCTestCase {
 			cards: [],
 			fiveHourQuota: .unknown(durationMinutes: 300),
 			sevenDayQuota: .unknown(durationMinutes: 10_080),
-			observationError: .resourceExhausted
+			observationError: .providerUnavailable
 		)
 		let client = ScriptedResetCardClient(
 			accountSteps: [],
@@ -848,7 +848,7 @@ final class ResetCardStoreStartupRetryTests: XCTestCase {
 		let completion = await store.use(attempt)
 		XCTAssertEqual(completion, ResetCardUseCompletion(resolved: true))
 		try await waitUntil {
-			store.accounts.first?.error == .service(.resourceExhausted)
+			store.accounts.first?.error == .service(.providerUnavailable)
 		}
 
 		let updating = try XCTUnwrap(store.accounts.first)

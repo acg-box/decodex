@@ -410,14 +410,13 @@ fn download_with(
 	Ok(())
 }
 
-fn packaged_executor(root: &Path) -> Result<Option<PathBuf>> {
+fn packaged_executor(root: &Path) -> Result<PathBuf> {
 	let metadata: serde_json::Value = serde_json::from_slice(
 		&fs::read(root.join("codex-package.json")).map_err(|e| e.to_string())?,
 	)
 	.map_err(|e| e.to_string())?;
 
 	match metadata.get("execServer") {
-		None => Ok(None),
 		Some(value) if value.as_str() == Some("bin/codex-exec-server") => {
 			let path = root.join("bin/codex-exec-server");
 
@@ -425,9 +424,9 @@ fn packaged_executor(root: &Path) -> Result<Option<PathBuf>> {
 				return Err("The Codex package is missing its advertised executor.".into());
 			}
 
-			Ok(Some(path))
+			Ok(path)
 		},
-		Some(_) => Err("The Codex package advertises an unsupported executor path.".into()),
+		_ => Err("The Codex package requires bin/codex-exec-server.".into()),
 	}
 }
 
@@ -443,11 +442,8 @@ fn verify_signed_package(lock: &RuntimeLock, root: &Path) -> Result<()> {
 		return Err("The native Codex executable does not match its pin.".into());
 	}
 
-	let mut signed_paths = vec!["CodexCLI.app", "bin/codex-code-mode-host", "codex-path/rg"];
-
-	if executor.is_some() {
-		signed_paths.push("bin/codex-exec-server");
-	}
+	let mut signed_paths =
+		vec!["CodexCLI.app", "bin/codex-code-mode-host", "bin/codex-exec-server", "codex-path/rg"];
 
 	if root.join("codex-resources/zsh/bin/zsh").exists() {
 		signed_paths.push("codex-resources/zsh/bin/zsh");
@@ -481,7 +477,7 @@ fn verify_signed_package(lock: &RuntimeLock, root: &Path) -> Result<()> {
 
 		let code_mode_host = root.join("bin/codex-code-mode-host");
 
-		for binary in [&native, &code_mode_host].into_iter().chain(executor.iter()) {
+		for binary in [&native, &code_mode_host, &executor] {
 			let bytes = fs::read(binary).map_err(|e| e.to_string())?;
 
 			if !bytes.windows(commit.len()).any(|part| part[0] == commit[0] && part == commit) {
@@ -523,13 +519,13 @@ mod tests {
 	};
 
 	#[test]
-	fn executor_metadata_preserves_legacy_packages_and_requires_advertised_helpers() {
+	fn executor_metadata_requires_the_current_helper() {
 		let temporary = tempfile::tempdir().expect("package");
 		let root = temporary.path();
 		let metadata = root.join("codex-package.json");
 
 		fs::write(&metadata, r#"{"layoutVersion":1}"#).expect("legacy metadata");
-		assert_eq!(install::packaged_executor(root).expect("legacy package"), None);
+		assert!(install::packaged_executor(root).is_err());
 
 		fs::write(&metadata, r#"{"execServer":"bin/codex-exec-server"}"#)
 			.expect("executor metadata");
@@ -539,7 +535,7 @@ mod tests {
 		let executor = root.join("bin/codex-exec-server");
 
 		fs::write(&executor, "executor").expect("helper");
-		assert_eq!(install::packaged_executor(root).expect("new package"), Some(executor));
+		assert_eq!(install::packaged_executor(root).expect("new package"), executor);
 
 		for value in [serde_json::json!("../executor"), serde_json::Value::Null] {
 			fs::write(
@@ -548,7 +544,7 @@ mod tests {
 			)
 			.expect("invalid metadata");
 			assert!(
-				install::packaged_executor(root).expect_err("invalid path").contains("unsupported")
+				install::packaged_executor(root).expect_err("invalid path").contains("requires")
 			);
 		}
 	}

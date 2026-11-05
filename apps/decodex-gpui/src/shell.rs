@@ -559,7 +559,7 @@ impl Shell {
 				decodex_protocol::ConversationModel::new("gpt-5.6-sol")
 					.expect("visual model identifier is valid"),
 				decodex_protocol::ConversationReasoningEffort::High,
-				false,
+				decodex_protocol::ServiceTier::standard(),
 			),
 		};
 
@@ -5343,7 +5343,7 @@ fn conversation_composer(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 		})
 		.unwrap_or("Not reported")
 		.to_uppercase();
-	let fast_enabled = shell.quick.execution.fast;
+	let fast_enabled = shell.quick.execution.service_tier.as_str() == "priority";
 	let send = composer_send(can_send, cx);
 	let interrupt = composer_interrupt(can_interrupt, cx);
 	let recover = composer_recover(can_recover, recovery_label, cx);
@@ -7240,7 +7240,7 @@ mod tests {
 				decodex_protocol::ConversationModel::new("gpt-5.6-sol")
 					.expect("test model is valid"),
 				decodex_protocol::ConversationReasoningEffort::High,
-				false,
+				decodex_protocol::ServiceTier::standard(),
 			),
 		}
 	}

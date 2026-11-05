@@ -618,8 +618,7 @@ impl AgentSurface {
 fn memory_connection(memory: decodex_components::ragflow::MemorySetup) -> RagflowConnection {
 	RagflowConnection {
 		url: memory.url,
-		api_key_env: String::new(),
-		credential_id: Some(memory.credential_id),
+		credential_id: memory.credential_id,
 		user_id: memory.user_id,
 		dataset_ids: Vec::new(),
 		memory_id: Some(memory.memory_id),

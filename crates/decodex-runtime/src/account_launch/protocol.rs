@@ -7,7 +7,7 @@ use std::{
 	ops::Deref,
 };
 
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use zeroize::{Zeroize as _, Zeroizing};
 
@@ -20,21 +20,10 @@ impl From<&ProtocolThread> for ThreadSummary {
 	fn from(value: &ProtocolThread) -> Self {
 		Self {
 			id: ThreadId::from_protocol(value.id.as_str()),
-			// `thread/list` without an archived filter returns current threads. Newer Codex
-			// app-server versions no longer repeat that query fact on each Thread object.
-			archived: value.archived.unwrap_or(false),
+			// This list request selects active threads.
+			archived: false,
 			parent_thread_id: value.parent_thread_id.as_deref().map(ThreadId::from_protocol),
 		}
-	}
-}
-
-impl TryFrom<&ProtocolThread> for ExactThreadFacts {
-	type Error = &'static str;
-
-	fn try_from(value: &ProtocolThread) -> Result<Self, Self::Error> {
-		let archived = value.archived.ok_or("Codex thread archived state is missing")?;
-
-		exact_thread_facts(value, archived)
 	}
 }
 
@@ -179,10 +168,6 @@ pub struct ProtocolAccount {
 pub struct ProtocolThread {
 	pub history_mode: Option<SensitiveString>,
 	pub id: SensitiveString,
-	/// Legacy app-server versions repeated the list filter on every Thread. Current versions do
-	/// not.
-	#[serde(default)]
-	pub archived: Option<bool>,
 	pub parent_thread_id: Option<SensitiveString>,
 	pub created_at: Option<i64>,
 	pub name: Option<SensitiveString>,
@@ -238,22 +223,12 @@ impl Debug for JsonRpcError {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct JsonRpcResponse<T> {
-	/// Legacy JSON-RPC version marker. Codex app-server JSONL responses omit this field, while
-	/// older compatible peers can still send the standard marker.
-	#[serde(default, deserialize_with = "deserialize_present_jsonrpc_version")]
-	pub jsonrpc: Option<SensitiveString>,
 	pub id: u64,
 	pub result: Option<T>,
 	pub error: Option<JsonRpcError>,
 }
-impl<T> JsonRpcResponse<T> {
-	/// Accept the native Codex JSONL envelope and the legacy standard JSON-RPC marker only.
-	pub fn has_compatible_version(&self) -> bool {
-		self.jsonrpc.as_ref().is_none_or(|version| version.as_str() == "2.0")
-	}
-}
-
 #[derive(Clone, Copy, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum ProtocolTurnStatus {
@@ -303,15 +278,6 @@ pub(crate) fn sensitive_string_drops() -> usize {
 	sensitive_string_test_counter::count()
 }
 
-fn deserialize_present_jsonrpc_version<'de, D>(
-	deserializer: D,
-) -> Result<Option<SensitiveString>, D::Error>
-where
-	D: Deserializer<'de>,
-{
-	SensitiveString::deserialize(deserializer).map(Some)
-}
-
 #[cfg(test)]
 mod sensitive_string_test_counter {
 	use std::cell::Cell;
@@ -338,7 +304,7 @@ mod tests {
 		AccountReadResponse, ExactThreadReadParams, InitializeResponse, JsonRpcResponse,
 		ThreadArchiveParams, ThreadListResponse, ThreadReadResponse,
 	};
-	use decodex_codex::{BuildId, ExactThreadFacts, ExactThreadId};
+	use decodex_codex::{BuildId, ExactThreadId};
 
 	#[test]
 	fn build_identity_is_opaque_and_never_exports_credential_shaped_output() {
@@ -390,7 +356,7 @@ mod tests {
 			br#"{"thread":{"id":"thread:private-id","archived":false,"parentThreadId":null,"createdAt":1784073600,"name":"Decodex private title","cwd":"/tmp/private-repository","threadSource":"decodex.private"}}"#,
 		)
 		.unwrap();
-		let facts = ExactThreadFacts::try_from(&response.thread).unwrap();
+		let facts = super::exact_thread_facts(&response.thread, false).unwrap();
 
 		drop(response);
 
@@ -408,8 +374,6 @@ mod tests {
 			br#"{"thread":{"id":"thread:current-shape","parentThreadId":null,"createdAt":1784073600,"preview":"Decodex current shape","cwd":"/tmp/private-repository","threadSource":null}}"#,
 		)
 		.unwrap();
-
-		assert_eq!(response.thread.archived, None);
 
 		let facts = super::exact_thread_facts(&response.thread, true).unwrap();
 
@@ -442,7 +406,7 @@ mod tests {
 	#[test]
 	fn completed_nested_thread_fields_zeroize_on_late_element_and_cursor_failures() {
 		for json in [
-			br#"{"data":[{"id":"first\u002did","archived":false,"parentThreadId":"parent\u002did"},{"id":"second\u002did","archived":{}}],"nextCursor":null}"#.as_slice(),
+			br#"{"data":[{"id":"first\u002did","archived":false,"parentThreadId":"parent\u002did"},{"id":"second\u002did","cwd":{}}],"nextCursor":null}"#.as_slice(),
 			br#"{"data":[{"id":"first\u002did","archived":false,"parentThreadId":"parent\u002did"}],"nextCursor":{}}"#.as_slice(),
 		] {
 			super::reset_sensitive_string_drops();
@@ -456,61 +420,10 @@ mod tests {
 	fn completed_thread_read_fields_zeroize_when_json_rpc_tail_fails() {
 		super::reset_sensitive_string_drops();
 
-		let json = br#"{"jsonrpc":"2.0","id":7,"result":{"thread":{"id":"thread\u002did","archived":false,"parentThreadId":"parent\u002did"}},"error":"wrong"}"#;
+		let json = br#"{"id":7,"result":{"thread":{"id":"thread\u002did","parentThreadId":"parent\u002did"}},"error":"wrong"}"#;
 
 		assert!(serde_json::from_slice::<JsonRpcResponse<ThreadReadResponse>>(json).is_err());
-		assert_eq!(super::sensitive_string_drops(), 3);
-	}
-
-	#[test]
-	fn app_server_response_accepts_bare_or_legacy_v2_envelopes_and_rejects_other_markers() {
-		for json in [
-			br#"{"id":7,"result":{}}"#.as_slice(),
-			br#"{"jsonrpc":"2.0","id":7,"result":{}}"#.as_slice(),
-		] {
-			let response =
-				serde_json::from_slice::<JsonRpcResponse<serde_json::Value>>(json).unwrap();
-
-			assert!(response.has_compatible_version());
-		}
-
-		let wrong = serde_json::from_slice::<JsonRpcResponse<serde_json::Value>>(
-			br#"{"jsonrpc":"1.0","id":7,"result":{}}"#,
-		)
-		.unwrap();
-
-		assert!(!wrong.has_compatible_version());
-
-		for json in [
-			br#"{"jsonrpc":null,"id":7,"result":{}}"#.as_slice(),
-			br#"{"jsonrpc":2,"id":7,"result":{}}"#.as_slice(),
-			br#"{"jsonrpc":{},"id":7,"result":{}}"#.as_slice(),
-		] {
-			assert!(serde_json::from_slice::<JsonRpcResponse<serde_json::Value>>(json).is_err());
-		}
-	}
-
-	#[test]
-	fn legacy_json_rpc_marker_is_zeroized_without_changing_bare_envelope_counts() {
-		super::reset_sensitive_string_drops();
-
-		let bare = serde_json::from_slice::<JsonRpcResponse<serde_json::Value>>(
-			br#"{"id":7,"result":{}}"#,
-		)
-		.unwrap();
-
-		drop(bare);
-
-		assert_eq!(super::sensitive_string_drops(), 0);
-
-		let legacy = serde_json::from_slice::<JsonRpcResponse<serde_json::Value>>(
-			br#"{"jsonrpc":"2.0","id":7,"result":{}}"#,
-		)
-		.unwrap();
-
-		drop(legacy);
-
-		assert_eq!(super::sensitive_string_drops(), 1);
+		assert_eq!(super::sensitive_string_drops(), 2);
 	}
 
 	#[test]

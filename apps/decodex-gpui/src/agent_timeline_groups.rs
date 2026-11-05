@@ -135,7 +135,7 @@ pub(super) fn hidden_items(entries: &[AgentTimelineEntry]) -> BTreeSet<usize> {
 				kind,
 				text,
 				truncated: false,
-				app_ui: false,
+
 				attachments,
 				..
 			} if matches!(kind.as_str(), "reasoning" | "agentMessage")
@@ -202,13 +202,7 @@ pub(super) fn groups(entries: &[AgentTimelineEntry], expanded: &BTreeSet<String>
 			}
 
 			if let AgentTimelineContent::Item {
-				turn_id,
-				kind,
-				phase,
-				app_ui: false,
-				attachments,
-				activity,
-				..
+				turn_id, kind, phase, attachments, activity, ..
 			} = &entries[index].content
 				&& finished.contains(turn_id.as_str())
 				&& attachments.is_empty()
@@ -269,7 +263,7 @@ mod tests {
 				text: "Public content".into(),
 				truncated: false,
 				activity: None,
-				app_ui: false,
+
 				attachments: vec![],
 			},
 		}
@@ -388,7 +382,7 @@ mod tests {
 		assert!(groups::groups(&entries, &BTreeSet::new()).is_empty());
 	}
 	#[test]
-	fn unknown_phases_and_interactive_content_remain_visible() {
+	fn unknown_phases_remain_visible() {
 		let mut entries = vec![
 			message(0, "agentMessage", None),
 			message(1, "reasoning", None),
@@ -401,12 +395,6 @@ mod tests {
 		entries[2] = message(2, "agentMessage", Some("final_answer"));
 
 		assert_eq!(groups::groups(&entries, &BTreeSet::new())[0].indices, vec![1]);
-
-		if let AgentTimelineContent::Item { app_ui, .. } = &mut entries[1].content {
-			*app_ui = true;
-		}
-
-		assert!(groups::groups(&entries, &BTreeSet::new()).is_empty());
 	}
 	#[test]
 	fn a_new_user_input_does_not_absorb_the_previous_unanswered_input() {

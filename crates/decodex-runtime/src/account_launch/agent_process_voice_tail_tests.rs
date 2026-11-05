@@ -192,7 +192,7 @@ async fn serve_voice_transcript_fixture(remote: DuplexStream, sent: UnboundedSen
 		let request: Value = serde_json::from_str(&line).expect("voice transcript fixture");
 		let result = match request["method"].as_str().expect("voice transcript fixture") {
 			"thread/resume" | "thread/read" =>
-				serde_json::json!({"thread":{"id":"voice-thread","cwd":"/tmp","turns":[]}}),
+				serde_json::json!({"thread":{"id":"voice-thread","cwd":"/tmp","historyMode":"legacy","turns":[]}}),
 			"configRequirements/read" => serde_json::json!({"requirements":null}),
 			"config/read" => serde_json::json!({"config":{"realtime":{"voice":"juniper"}}}),
 			"thread/realtime/listVoices" =>

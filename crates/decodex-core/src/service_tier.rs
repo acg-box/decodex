@@ -27,9 +27,9 @@ impl ServiceTier {
 		Self("default".into())
 	}
 
-	/// Preserve the meaning of older Fast controls and durable messages.
-	pub fn from_fast(fast: bool) -> Self {
-		Self(if fast { "priority" } else { "default" }.into())
+	/// Explicit Fast speed.
+	pub fn priority() -> Self {
+		Self("priority".into())
 	}
 
 	/// Exact native service-tier request value.
@@ -37,7 +37,7 @@ impl ServiceTier {
 		&self.0
 	}
 
-	/// The legacy thread setting uses null to clear a previous explicit tier.
+	/// Native thread configuration uses null for the standard tier.
 	pub fn thread_value(&self) -> Option<&str> {
 		(self.as_str() != "default").then_some(self.as_str())
 	}

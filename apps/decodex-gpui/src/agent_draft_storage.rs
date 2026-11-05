@@ -988,7 +988,7 @@ mod tests {
 				Some(decodex_protocol::PermissionMode::ApproveForMe);
 			let draft_id = s.selected.clone().unwrap();
 			s.draft_profiles.execution.change(draft_id, |choice| {
-				choice.service_tier = Some(decodex_protocol::ServiceTier::from_fast(true));
+				choice.service_tier = Some(decodex_protocol::ServiceTier::priority());
 			});
 
 			s.composer.update(cx, |input, cx| input.set_content("Unsent idea", cx));
@@ -1951,8 +1951,7 @@ mod ordinary_owner_tests {
 				execution: decodex_protocol::ConversationExecutionSettings {
 					model: decodex_protocol::ConversationModel::new("native-model").unwrap(),
 					reasoning_effort: None,
-					fast: false,
-					service_tier: None,
+					service_tier: decodex_protocol::ServiceTier::standard(),
 				},
 				creation_intent: Default::default(),
 			},

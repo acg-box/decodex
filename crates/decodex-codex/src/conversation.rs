@@ -814,11 +814,6 @@ impl ConversationThreadStartRequest {
 		})
 	}
 
-	/// Select request-scoped Codex Fast mode without changing global configuration.
-	pub fn with_fast(self, fast: bool) -> Self {
-		self.with_service_tier(decodex_core::ServiceTier::from_fast(fast))
-	}
-
 	/// Send the exact caller-selected tier without reducing it to a Fast flag.
 	pub fn with_service_tier(mut self, tier: decodex_core::ServiceTier) -> Self {
 		self.service_tier = Some(tier);
@@ -988,11 +983,6 @@ impl ConversationThreadResumeRequest {
 		self.service_tier = None;
 
 		self
-	}
-
-	/// Select request-scoped Codex Fast mode without changing global configuration.
-	pub fn with_fast(self, fast: bool) -> Self {
-		self.with_service_tier(decodex_core::ServiceTier::from_fast(fast))
 	}
 
 	/// Send the exact caller-selected tier without reducing it to a Fast flag.
@@ -1185,11 +1175,6 @@ impl ConversationTurnStartRequest {
 		self.turn_trigger = Some("user");
 
 		self
-	}
-
-	/// Select request-scoped Codex Fast mode without changing global configuration.
-	pub fn with_fast(self, fast: bool) -> Self {
-		self.with_service_tier(decodex_core::ServiceTier::from_fast(fast))
 	}
 
 	/// Send the exact caller-selected tier without reducing it to a Fast flag.
@@ -2280,7 +2265,9 @@ mod tests {
 
 	#[test]
 	fn inherited_resume_omits_old_configuration_and_accepts_current_model_without_retargeting() {
-		let request = resume_request().with_fast(true).inherit_native_settings();
+		let request = resume_request()
+			.with_service_tier(decodex_core::ServiceTier::priority())
+			.inherit_native_settings();
 
 		assert_eq!(
 			serde_json::to_value(&request).unwrap(),
@@ -2344,10 +2331,14 @@ mod tests {
 
 	#[test]
 	fn fast_mode_is_explicitly_request_scoped_for_thread_start_and_resume() {
-		let start = serde_json::to_value(start_request().with_fast(true))
-			.expect("fast thread start request must serialize");
-		let resume = serde_json::to_value(resume_request().with_fast(true))
-			.expect("fast thread resume request must serialize");
+		let start = serde_json::to_value(
+			start_request().with_service_tier(decodex_core::ServiceTier::priority()),
+		)
+		.expect("fast thread start request must serialize");
+		let resume = serde_json::to_value(
+			resume_request().with_service_tier(decodex_core::ServiceTier::priority()),
+		)
+		.expect("fast thread resume request must serialize");
 
 		assert_eq!(start.get("serviceTier"), Some(&serde_json::json!("priority")));
 		assert_eq!(resume.get("serviceTier"), Some(&serde_json::json!("priority")));
@@ -2376,7 +2367,9 @@ mod tests {
 			assert_eq!(encoded["serviceTier"], id);
 			assert_eq!(encoded["serviceTierForTurn"], id);
 
-			let standard = serde_json::to_value(turn.with_fast(false)).unwrap();
+			let standard =
+				serde_json::to_value(turn.with_service_tier(decodex_core::ServiceTier::standard()))
+					.unwrap();
 
 			assert!(standard["serviceTier"].is_null());
 			assert_eq!(
@@ -2405,7 +2398,7 @@ mod tests {
 		.with_user_trigger()
 		.with_client_user_message_id("50000000-0000-4000-8000-000000000001")
 		.expect("client user-message identity is valid")
-		.with_fast(true);
+		.with_service_tier(decodex_core::ServiceTier::priority());
 		let encoded = serde_json::to_value(turn).expect("turn request must serialize");
 
 		assert_eq!(encoded.get("turnTrigger"), Some(&serde_json::json!("user")));

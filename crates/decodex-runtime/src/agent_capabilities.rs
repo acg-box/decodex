@@ -273,7 +273,7 @@ fn project_service_tiers(value: &Value) -> Option<Vec<AgentServiceTierDto>> {
 			.is_some_and(|tiers| tiers.iter().any(|tier| tier == "fast" || tier == "priority"))
 	{
 		service_tiers.push(AgentServiceTierDto {
-			id: ServiceTier::from_fast(true),
+			id: ServiceTier::priority(),
 			name: "Fast".into(),
 			description: String::new(),
 		});

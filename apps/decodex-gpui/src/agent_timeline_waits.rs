@@ -208,7 +208,7 @@ fn wait(entry: &AgentTimelineEntry) -> Option<&str> {
 			kind,
 			text,
 			truncated: false,
-			app_ui: false,
+
 			attachments,
 			collaboration: None,
 			activity,
@@ -250,7 +250,7 @@ mod tests {
 				phase: None,
 				text: String::new(),
 				truncated: false,
-				app_ui: false,
+
 				attachments: vec![],
 				collaboration: None,
 				activity: Some(AgentActivityDto {

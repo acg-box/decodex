@@ -134,18 +134,14 @@ pub const MAX_PROCESS_QUARANTINE: usize = 64;
 // Native defaults qualified against the locked runtime. Keep transport selection
 // native-owned; shared gRPC Code Mode hosting has no measured local benefit yet.
 // The dotted feature option preserves the user's multi_agent_v2 enable/disable value.
-pub(crate) const APP_SERVER_ARGS: [&str; 12] = [
+pub(crate) const APP_SERVER_ARGS: [&str; 10] = [
 	"app-server",
 	"--stdio",
 	// The live Responses endpoint rejects this pin's content_item_metadata field.
 	"--disable",
 	"content_item_kinds",
 	"--enable",
-	"code_mode_tool_description_first",
-	"--enable",
 	"subagent_default_context_limits",
-	// Native config ignores unknown optional features on an older preserved runtime.
-	// The --enable spelling rejects them before the app-server can initialize.
 	"-c",
 	"features.wake_on_agent_messages=true",
 	"-c",
@@ -2088,9 +2084,6 @@ impl SupervisedProcess {
 		if response.id != request_id {
 			return Err(RpcError::Supervision(SupervisionError::InvalidProtocol));
 		}
-		if !response.has_compatible_version() {
-			return Err(RpcError::Supervision(SupervisionError::InvalidProtocol));
-		}
 
 		match (response.result, response.error) {
 			(Some(result), None) => Ok(RpcSuccess {
@@ -2250,7 +2243,7 @@ impl SupervisedProcess {
 				let response: JsonRpcResponse<serde_json::Value> =
 					serde_json::from_slice(&line).map_err(|_| invalid_response())?;
 
-				if response.id != request_id_u64 || !response.has_compatible_version() {
+				if response.id != request_id_u64 {
 					return Err(invalid_response());
 				}
 
@@ -2553,13 +2546,7 @@ impl SupervisedProcess {
 		let threads = response
 			.data
 			.iter()
-			.map(|thread| {
-				if thread.archived.is_some_and(|reported| reported != archived) {
-					return Err("Codex thread archived state contradicts its list filter");
-				}
-
-				protocol::exact_thread_facts(thread, archived)
-			})
+			.map(|thread| protocol::exact_thread_facts(thread, archived))
 			.collect::<Result<Vec<_>, _>>()
 			.map_err(|_| ExactReconciliationError::InvalidResult)?;
 
@@ -2610,11 +2597,8 @@ impl SupervisedProcess {
 				timeout,
 			)
 			.map_err(ExactReconciliationError::from_rpc)?;
-		let archived = match response.thread.archived {
-			Some(archived) => archived,
-			None =>
-				self.resolve_exact_thread_archived_state(&response.thread, thread_id, timeout)?,
-		};
+		let archived =
+			self.resolve_exact_thread_archived_state(&response.thread, thread_id, timeout)?;
 		let facts = protocol::exact_thread_facts(&response.thread, archived)
 			.map_err(|_| ExactReconciliationError::InvalidResult)?;
 
@@ -2694,10 +2678,7 @@ impl SupervisedProcess {
 			let matched =
 				response.data.iter().any(|candidate| candidate.id.as_str() == thread_id.as_str());
 
-			if response.data.len() > MAX_EXACT_THREAD_LIST_RESULTS
-				|| response.data.iter().any(|candidate| {
-					candidate.archived.is_some_and(|reported| reported != archived)
-				}) {
+			if response.data.len() > MAX_EXACT_THREAD_LIST_RESULTS {
 				return Err(ExactReconciliationError::InvalidResult);
 			}
 			if matched {
@@ -6534,8 +6515,6 @@ pub(crate) mod tests {
 				"--disable",
 				"content_item_kinds",
 				"--enable",
-				"code_mode_tool_description_first",
-				"--enable",
 				"subagent_default_context_limits",
 				"-c",
 				"features.wake_on_agent_messages=true",
@@ -6662,7 +6641,7 @@ pub(crate) mod tests {
 		)
 		.run(&mut CapabilityCache::default());
 
-		assert!(result.is_ok(), "legacy JSON-RPC response failed");
+		assert!(result.is_err(), "only current native response envelopes are accepted");
 
 		for mode in ["wrong-jsonrpc", "null-jsonrpc"] {
 			let temp = TempDir::new().unwrap();
@@ -8888,7 +8867,6 @@ pub(crate) mod tests {
 	#[test]
 	fn ordinary_refusal_requires_exact_response_identity_code_and_message() {
 		for (prefix, expected) in [
-			("turn-reject-draining", super::ConversationRejectionReason::ServerDraining),
 			("turn-reject-structured", super::ConversationRejectionReason::ServerDraining),
 			(
 				"turn-reject-managed-provider",

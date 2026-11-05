@@ -113,10 +113,8 @@ pub(crate) fn validate_queued_input(
 	work: &str,
 	payload: &str,
 ) -> Result<(), StoreError> {
-	// Legacy plain-text events contain no canonical input reference.
-	let Ok(payload) = serde_json::from_str::<Value>(payload) else {
-		return Ok(());
-	};
+	let payload = serde_json::from_str::<Value>(payload)
+		.map_err(|_| StoreError::InvalidInput("invalid queued input payload"))?;
 	let Some(reference) = payload.pointer("/options/canonicalInput") else {
 		return Ok(());
 	};

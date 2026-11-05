@@ -72,7 +72,7 @@ mod tests {
 	}
 
 	#[test]
-	fn legacy_and_each_field_choice_apply_across_resume_turn_and_fallback() {
+	fn initial_settings_and_explicit_choices_apply_across_resume_turn_and_fallback() {
 		let choices = iter::once(None).chain((0..8).map(|bits| {
 			Some(ConversationExecutionOverrides {
 				model: bits & 1 != 0,

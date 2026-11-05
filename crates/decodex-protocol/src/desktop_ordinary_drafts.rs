@@ -136,8 +136,7 @@ mod tests {
 		let execution = ConversationExecutionSettings {
 			model: ConversationModel::new("provider-model").unwrap(),
 			reasoning_effort: None,
-			fast: false,
-			service_tier: Some(crate::ServiceTier::new("flex").unwrap()),
+			service_tier: crate::ServiceTier::new("flex").unwrap(),
 		};
 		let working_directory = ConversationWorkingDirectory::new("/tmp/work").unwrap();
 
@@ -267,11 +266,7 @@ mod tests {
 		let profile = value.profiles.get_mut(&"a".repeat(64)).unwrap();
 
 		profile.ordinary.get_mut("/tmp/work").unwrap().unconfirmed[0].payload =
-			CommandPayload::SetDesktopSettings {
-				show_in_menu_bar: true,
-				auto_activate_quota: None,
-				auto_recap: None,
-			};
+			CommandPayload::SetDesktopSettings { auto_activate_quota: true };
 
 		assert!(value.encode().is_err());
 

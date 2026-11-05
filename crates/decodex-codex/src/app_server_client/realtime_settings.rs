@@ -8,7 +8,7 @@ use crate::app_server_client::{AppServerClient, ClientError};
 
 impl AppServerClient {
 	/// Read the active thread's effective voice. Never uses a previous call's preference.
-	/// Older servers and unknown voice names retain native start behavior.
+	/// Unknown voice names retain native start behavior.
 	pub async fn realtime_voice_for_thread(
 		&self,
 		thread: &str,
@@ -24,20 +24,9 @@ impl AppServerClient {
 				.as_str()
 				.filter(|cwd| Path::new(cwd).is_absolute())
 				.ok_or(ClientError::InvalidFrame)?;
-			let config = match self
+			let config = self
 				.request("config/read", serde_json::json!({"cwd":cwd,"includeLayers":true}))
-				.await
-			{
-				Ok(value) => value,
-				Err(ClientError::Remote(error))
-					if error.code == -32_601
-						|| (error.code == -32_600
-							&& error.message.contains("config/read")
-							&& (error.message.contains("unknown variant")
-								|| error.message.contains("unknown method"))) =>
-					return Ok(None),
-				Err(error) => return Err(error),
-			};
+				.await?;
 
 			if !config["config"].is_object() {
 				return Err(ClientError::InvalidFrame);
@@ -74,7 +63,7 @@ mod tests {
 		for (config, catalog, expected) in [
 			(
 				serde_json::json!({"result":{"config":{}}}),
-				serde_json::json!({"result":{"voices":{"v1":["cove"],"v3":[],"defaultV1":"cove"}}}),
+				serde_json::json!({"result":{"voices":{"v1":["cove"],"v3":["cove"],"defaultV1":"cove"}}}),
 				Ok(Some("cove")),
 			),
 			(
@@ -94,12 +83,12 @@ mod tests {
 			),
 			(
 				serde_json::json!({"result":{"config":{"realtime":{"voice":"juniper"}}}}),
-				serde_json::json!({"result":{"voices":{"v1":["juniper"],"defaultV1":"juniper"}}}),
+				serde_json::json!({"result":{"voices":{"v1":["juniper"],"v3":["juniper"],"defaultV1":"juniper"}}}),
 				Ok(Some("juniper")),
 			),
 			(
 				serde_json::json!({"result":{"config":{}}}),
-				serde_json::json!({"result":{"voices":{"v1":["maple"],"defaultV1":"maple"}}}),
+				serde_json::json!({"result":{"voices":{"v1":["maple"],"v3":["maple"],"defaultV1":"maple"}}}),
 				Ok(Some("maple")),
 			),
 			(
@@ -114,23 +103,23 @@ mod tests {
 			),
 			(
 				serde_json::json!({"result":{"config":{}}}),
-				serde_json::json!({"result":{"voices":{"v1":["juniper"],"defaultV1":"maple"}}}),
+				serde_json::json!({"result":{"voices":{"v1":["juniper"],"v3":["juniper"],"defaultV1":"maple"}}}),
 				Err(()),
 			),
 			(
 				serde_json::json!({"result":{"config":{"realtime":{"voice":"future_voice"}}}}),
-				serde_json::json!({"result":{"voices":{"v1":["cove"],"defaultV1":"cove"}}}),
+				serde_json::json!({"result":{"voices":{"v1":["cove"],"v3":["cove"],"defaultV1":"cove"}}}),
 				Ok(None),
 			),
 			(
 				serde_json::json!({"error":{"code":-32_601,"message":"missing"}}),
 				serde_json::json!({}),
-				Ok(None),
+				Err(()),
 			),
 			(
 				serde_json::json!({"error":{"code":-32_600,"message":"config/read unknown variant"}}),
 				serde_json::json!({}),
-				Ok(None),
+				Err(()),
 			),
 			(
 				serde_json::json!({"error":{"code":-32_600,"message":"invalid configuration"}}),

@@ -113,11 +113,7 @@ fn configure(
 	}
 	if let Some(r) = &s.ragflow {
 		bounded(&r.url, 2_048)?;
-		if let Some(id) = &r.credential_id {
-			bounded(id, 128)?;
-		} else {
-			bounded(&r.api_key_env, 128)?;
-		}
+		bounded(&r.credential_id, 128)?;
 		bounded(&r.user_id, 512)?;
 		if r.dataset_ids.len() > 32
 			|| r.dataset_ids.iter().any(|id| bounded(id, 128).is_err())
@@ -876,8 +872,7 @@ mod tests {
 				renew_after_turns: 0,
 				ragflow: Some(RagflowConnection {
 					url: "https://ragflow.example.com".into(),
-					api_key_env: "DECODEX_FIXTURE_KEY".into(),
-					credential_id: None,
+					credential_id: "a".repeat(64),
 					user_id: user.into(),
 					dataset_ids: vec![],
 					memory_id: Some("dedicated".into()),

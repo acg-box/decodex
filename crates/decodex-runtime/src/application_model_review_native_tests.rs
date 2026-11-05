@@ -356,8 +356,7 @@ async fn seed_review(
 				working_directory: saved.display().to_string(),
 				model: "gpt-6-astra".into(),
 				reasoning_effort: Some("low".into()),
-				fast: false,
-				service_tier: None,
+				service_tier: decodex_core::ServiceTier::standard(),
 				initial_model_source: Some(InitialModelSource {
 					account_id: account.clone(),
 					account_revision: revision + 1,

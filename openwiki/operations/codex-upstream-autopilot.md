@@ -53,10 +53,10 @@ sources:
     resource: repo://scripts/macos/prepare_codex.mts
   - id: openwiki-source-3b57179b92b257bc3fff51a1
     resource: repo://scripts/macos/stage_decodex_app.sh
-generated: { by: "codex", at: "2026-11-04T20:52:38.845Z" }
+generated: { by: "codex", at: "2026-11-05T15:16:31.053Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-05T05:20:04.159Z
+    at: 2026-11-05T15:16:31.053Z
 ---
 
 
@@ -135,7 +135,7 @@ Use this same entrypoint for pending work, runtime and delivery observations. It
 The runtime lock can select an exact official source archive. Use the explicit development preparation command and shared component store described in [Runtime architecture](../architecture/runtime-architecture.md); retain the repository's stable Rust build channel.
 
 1. Verify the selected commit, official archive URL and SHA-256 digest. The builder recreates its extracted source with current file modification times, invokes the upstream package builder with locked Cargo dependencies, stamps the selected commit, and checks package identity and the unchanged Cargo lock. Refreshing the source timestamps prevents reuse of stale local Cargo artifacts.
-2. Qualify the packaged executable, Code Mode helper, `rg` and any advertised standalone executor. The builder signs and verifies these components. The shared component store requires the advertised executor path and checks development executable/helper commits, CLI version, signatures and generated experimental app-server schemas against the local adapter and pinned fingerprint. It records archive and executable hashes with the fixed source requirement. The selection changes only after the prepared component verifies. App startup and packaging never compile Codex.
+2. Qualify the packaged executable, Code Mode helper, `rg` and the required standalone executor. The builder requires `bin/codex-exec-server` and signs and verifies these components. The shared component store requires that same executor path and checks development executable/helper commits, CLI version, signatures and generated experimental app-server schemas against the local adapter and pinned fingerprint. It records archive and executable hashes with the fixed source requirement. The selection changes only after the prepared component verifies. App startup and packaging never compile Codex.
 3. Exercise the affected native behavior and current local consumer before delivering a lock update. A matching schema establishes protocol structure. It does not establish saved-permission behavior, compaction, transport lifecycle or desktop acceptance. Keep source review, artifact qualification, merge, installed identity and live acceptance as separate evidence. If a retained contract fails on the candidate and passes on the selected artifact, keep the runtime lock unchanged. Save the exact failure, original-artifact comparison and supported next action; deliver independent component or fixture repairs separately. A completed source-review prefix does not deliver native fixes in an unselected artifact.
 
 Read the development lock and linked current qualification for the selected source, component identities, executed identities and limits. Do not copy each daily target or cohort count into this procedure. A source test can select its own helpers; that result does not establish execution of the signed production artifact.

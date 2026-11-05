@@ -112,7 +112,7 @@ impl AgentSurface {
 							position + 1
 						),
 						phase: None,
-						app_ui: false,
+
 						truncated: false,
 						activity: None,
 						attachments: vec![],
@@ -1907,7 +1907,7 @@ mod tests {
 				kind: kind.into(),
 				text: text.into(),
 				phase: None,
-				app_ui: false,
+
 				truncated: false,
 				activity: None,
 				attachments: vec![],
@@ -2010,7 +2010,7 @@ mod tests {
 					kind: "agentMessage".into(),
 					text: "Recovered **reply**".into(),
 					truncated: false,
-					app_ui: false,
+
 					activity: None,
 					attachments: vec![],
 				}],
@@ -2054,7 +2054,7 @@ mod tests {
 			kind: "agentMessage".into(),
 			text: "Recovered".into(),
 			truncated: false,
-			app_ui: false,
+
 			activity: None,
 			attachments: vec![],
 		};
@@ -2111,7 +2111,7 @@ mod tests {
 				kind: "agentMessage".into(),
 				text: "A quiet reading plan".into(),
 				phase: None,
-				app_ui: false,
+
 				truncated: false,
 				activity: None,
 				attachments: vec![],

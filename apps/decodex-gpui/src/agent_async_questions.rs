@@ -1346,7 +1346,7 @@ mod tests {
 					truncated: false,
 					collaboration: None,
 					activity: None,
-					app_ui: false,
+
 					attachments: vec![],
 				},
 			});

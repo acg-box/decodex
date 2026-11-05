@@ -133,7 +133,6 @@ const MAX_PASSWD_BUFFER_BYTES: usize = 1_024 * 1_024;
 pub(crate) struct ConversationExecutionSettings {
 	pub model: String,
 	pub reasoning_effort: Option<String>,
-	pub fast: bool,
 	pub service_tier: decodex_core::ServiceTier,
 }
 
@@ -198,7 +197,7 @@ pub(crate) struct SubmitConversationTurn {
 	pub message: String,
 	pub working_directory: String,
 	pub execution: ConversationExecutionSettings,
-	pub overrides: Option<ConversationExecutionOverrides>,
+	pub overrides: ConversationExecutionOverrides,
 }
 
 /// Explicit selected-thread reconciliation request.
@@ -791,10 +790,7 @@ impl ConversationRuntime {
 			execution: ConversationExecutionSettings {
 				model: request.model,
 				reasoning_effort: request.reasoning_effort,
-				fast: request.fast,
-				service_tier: request
-					.service_tier
-					.unwrap_or_else(|| decodex_core::ServiceTier::from_fast(request.fast)),
+				service_tier: request.service_tier,
 			},
 		};
 		let _ = self
@@ -836,10 +832,7 @@ impl ConversationRuntime {
 				execution: ConversationExecutionSettings {
 					model: request.model,
 					reasoning_effort: request.reasoning_effort,
-					fast: request.fast,
-					service_tier: request
-						.service_tier
-						.unwrap_or_else(|| decodex_core::ServiceTier::from_fast(request.fast)),
+					service_tier: request.service_tier,
 				},
 			},
 			command.expected_conversation_revision,
@@ -893,8 +886,7 @@ impl ConversationRuntime {
 					working_directory: command.working_directory.clone(),
 					model: command.execution.model.clone(),
 					reasoning_effort: command.execution.reasoning_effort.clone(),
-					fast: command.execution.fast,
-					service_tier: Some(command.execution.service_tier.clone()),
+					service_tier: command.execution.service_tier.clone(),
 				},
 			)
 			.await
@@ -1773,7 +1765,6 @@ impl ConversationRuntime {
 			process,
 			model: command.execution.model.clone(),
 			reasoning_effort: command.execution.reasoning_effort.clone(),
-			fast: command.execution.fast,
 			service_tier: command.execution.service_tier.clone(),
 			working_directory,
 			instructions: session.profile_snapshot.instructions,
@@ -2110,7 +2101,7 @@ impl ConversationRuntime {
 		.map(|request| {
 			execution_overrides::apply_start_overrides(
 				request.with_service_tier(command.execution.service_tier.clone()),
-				command.overrides,
+				Some(command.overrides),
 			)
 		}) {
 			Ok(request) => request,
@@ -2398,7 +2389,7 @@ impl ConversationRuntime {
 			selected_account_id,
 		} = context;
 		let local = LocalSession {
-			execution_overrides: command.overrides,
+			execution_overrides: Some(command.overrides),
 			operation_key: command.operation_key.clone(),
 			correlation_id: command.correlation_id.clone(),
 			causation_id: command.causation_id.clone(),
@@ -2412,7 +2403,6 @@ impl ConversationRuntime {
 			process,
 			model: command.execution.model.clone(),
 			reasoning_effort: command.execution.reasoning_effort.clone(),
-			fast: command.execution.fast,
 			service_tier: command.execution.service_tier.clone(),
 			working_directory,
 			instructions: runtime_session.profile_snapshot.instructions,
@@ -2748,12 +2738,11 @@ impl ConversationRuntime {
 			},
 		};
 
-		session.execution_overrides = command.overrides;
+		session.execution_overrides = Some(command.overrides);
 
 		session.model.clone_from(&command.execution.model);
 		session.reasoning_effort.clone_from(&command.execution.reasoning_effort);
 
-		session.fast = command.execution.fast;
 		session.service_tier = command.execution.service_tier.clone();
 
 		let admitted = match self.admit_later_turn(&command, session).await {
@@ -5617,7 +5606,7 @@ impl ConversationRuntime {
 			},
 		};
 		let session = LocalSession {
-			execution_overrides: command.overrides,
+			execution_overrides: Some(command.overrides),
 			operation_key: command.operation_key.clone(),
 			correlation_id: command.correlation_id.clone(),
 			causation_id: command.causation_id.clone(),
@@ -5631,7 +5620,6 @@ impl ConversationRuntime {
 			process,
 			model: command.execution.model.clone(),
 			reasoning_effort: command.execution.reasoning_effort.clone(),
-			fast: command.execution.fast,
 			service_tier: command.execution.service_tier.clone(),
 			working_directory,
 			instructions: readback.instructions,
@@ -6419,7 +6407,6 @@ struct LocalSession {
 	process: FencedProcess,
 	model: String,
 	reasoning_effort: Option<String>,
-	fast: bool,
 	service_tier: decodex_core::ServiceTier,
 	working_directory: String,
 	instructions: String,
@@ -7681,7 +7668,6 @@ mod tests {
 			execution: super::ConversationExecutionSettings {
 				model: "native-model".into(),
 				reasoning_effort: None,
-				fast: false,
 				service_tier: decodex_core::ServiceTier::new("default").unwrap(),
 			},
 		};
@@ -7711,8 +7697,7 @@ mod tests {
 					working_directory: command.working_directory.clone(),
 					model: command.execution.model.clone(),
 					reasoning_effort: None,
-					fast: false,
-					service_tier: Some(command.execution.service_tier.clone()),
+					service_tier: command.execution.service_tier.clone(),
 				},
 			)
 			.await

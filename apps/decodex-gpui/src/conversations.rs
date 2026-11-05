@@ -247,8 +247,11 @@ impl Conversations {
 
 		state.prepare_execution_choice();
 
-		state.execution.fast = !state.execution.fast;
-		state.execution.service_tier = None;
+		state.execution.service_tier = if state.execution.service_tier.as_str() == "priority" {
+			decodex_protocol::ServiceTier::standard()
+		} else {
+			decodex_protocol::ServiceTier::priority()
+		};
 		state.creation_intent.service_tier = true;
 	}
 
@@ -531,11 +534,7 @@ impl Conversations {
 			{
 				return Err(ConversationInputError::NotReady);
 			}
-			if state
-				.execution
-				.service_tier
-				.as_ref()
-				.is_some_and(|tier| !matches!(tier.as_str(), "default" | "flex"))
+			if !matches!(state.execution.service_tier.as_str(), "default" | "flex")
 				&& state.current_catalog().is_none()
 			{
 				return Err(ConversationInputError::NotReady);
@@ -588,11 +587,7 @@ impl Conversations {
 
 		let execution = {
 			if state.creation_intent.service_tier
-				&& state
-					.execution
-					.service_tier
-					.as_ref()
-					.is_some_and(|tier| !matches!(tier.as_str(), "default" | "flex"))
+				&& !matches!(state.execution.service_tier.as_str(), "default" | "flex")
 				&& state.current_catalog().is_none()
 			{
 				return Err(ConversationInputError::NotReady);
@@ -600,11 +595,11 @@ impl Conversations {
 
 			state.execution.clone()
 		};
-		let overrides = Some(ConversationExecutionOverrides {
+		let overrides = ConversationExecutionOverrides {
 			model: state.creation_intent.model,
 			reasoning: state.creation_intent.reasoning,
 			service_tier: state.creation_intent.service_tier,
-		});
+		};
 
 		drop(state);
 
@@ -1570,8 +1565,9 @@ impl State {
 		self.execution = ConversationExecutionSettings {
 			model,
 			reasoning_effort: resolved.reasoning_effort,
-			fast: resolved.service_tier.as_ref().is_some_and(|tier| tier.as_str() == "priority"),
-			service_tier: resolved.service_tier,
+			service_tier: resolved
+				.service_tier
+				.unwrap_or_else(decodex_protocol::ServiceTier::standard),
 		};
 		self.initial_defaults_ready = true;
 	}
@@ -1601,8 +1597,7 @@ impl State {
 		self.catalog_epoch = self.catalog_epoch.wrapping_add(1);
 
 		if self.selected.is_none() && !self.creation_intent.service_tier {
-			self.execution.service_tier = None;
-			self.execution.fast = false;
+			self.execution.service_tier = decodex_protocol::ServiceTier::standard();
 		}
 	}
 
@@ -1665,7 +1660,7 @@ impl State {
 			execution: ConversationExecutionSettings::new(
 				ConversationModel::new("gpt-5.6-sol").expect("default model is valid"),
 				ConversationReasoningEffort::High,
-				false,
+				decodex_protocol::ServiceTier::standard(),
 			),
 		}
 	}
@@ -3065,7 +3060,7 @@ pub(crate) mod tests {
 					default_effort: Some(ConversationReasoningEffort::High),
 					supports_fast: true,
 					service_tiers: vec![decodex_protocol::AgentServiceTierDto {
-						id: decodex_protocol::ServiceTier::from_fast(true),
+						id: decodex_protocol::ServiceTier::priority(),
 						name: "Fast".into(),
 						description: String::new(),
 					}],
@@ -4216,7 +4211,7 @@ pub(crate) mod tests {
 						configured: decodex_protocol::InitialExecutionDefaults {
 							model: Some(selection.model),
 							reasoning_effort: selection.reasoning_effort,
-							service_tier: selection.service_tier,
+							service_tier: Some(selection.service_tier),
 						},
 						managed: Default::default(),
 						catalog_model: None,
@@ -4902,7 +4897,7 @@ pub(crate) mod tests {
 
 		assert_eq!(selected.model.as_str(), "gpt-5.6-terra");
 		assert_eq!(selected.reasoning_effort, Some(ConversationReasoningEffort::XHigh));
-		assert!(selected.fast);
+		assert_eq!(selected.service_tier.as_str(), "priority");
 		assert!(conversations.submit("Use the selected execution settings.").is_ok());
 
 		let command = conversations
@@ -5744,7 +5739,7 @@ pub(crate) mod tests {
 			let execution = ConversationExecutionSettings::new(
 				models[0].model.clone(),
 				ConversationReasoningEffort::High,
-				false,
+				decodex_protocol::ServiceTier::standard(),
 			);
 			let source = decodex_protocol::InitialModelSource {
 				account_id: EntityId::new("11234567-89ab-4def-8123-456789abcdef").expect("account"),

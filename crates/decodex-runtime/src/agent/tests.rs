@@ -113,7 +113,7 @@ impl FixtureFaults {
 					&& request["params"]["toolOutput"]["name"] == "capacity_retry")
 				|| (self.injected && history["_turn_draining_after_injection"] == true))
 		{
-			writer.write_all(format!("{}\n",serde_json::json!({"id":request["id"],"error":{"code":-32_600,"message":history["_refusal_message"].as_str().unwrap_or("Server is draining; retry after reconnecting")}})).as_bytes()).await.unwrap();
+			writer.write_all(format!("{}\n",serde_json::json!({"id":request["id"],"error":{"code":-32_600,"message":history["_refusal_message"].as_str().unwrap_or("Server is draining; retry after reconnecting"),"data":if history["_refusal_message"].as_str().is_none_or(|s| s=="Server is draining; retry after reconnecting") {serde_json::json!({"reason":"serverShuttingDown"})} else {Value::Null}}})).as_bytes()).await.unwrap();
 
 			return Some(true);
 		}
@@ -309,6 +309,10 @@ fn fixture_thread_read(
 	let mut result = history.get(id).cloned().unwrap_or_else(
 		|| serde_json::json!({"thread":{"id":id,"turns":[],"status":{"type":"idle"}}}),
 	);
+
+	if result["thread"].get("historyMode").is_none() {
+		result["thread"]["historyMode"] = serde_json::json!("legacy");
+	}
 
 	for field in ["model", "reasoningEffort", "modelProvider", "projectId"] {
 		if result["thread"].get(field).is_none() {
@@ -1828,57 +1832,6 @@ async fn complete(coordinator: &mut AgentCoordinator, id: &str) {
 }
 
 #[tokio::test]
-async fn goal_completion_requires_explicit_judgment_and_related_evidence() {
-	let (mut coordinator, _sent, _directory) = fixture().await;
-
-	coordinator.start_agent("agent", "Coordinate").await.unwrap();
-	coordinator.create_goal("agent", "goal", "Outcome").await.unwrap();
-	coordinator.create_goal("agent", "other", "Different outcome").await.unwrap();
-	coordinator.create_worker("goal", "worker", "Inspect").await.unwrap();
-
-	complete(&mut coordinator, "agent").await;
-	complete(&mut coordinator, "worker").await;
-
-	let agent = coordinator.store.get_agent_work_item("agent".into()).await.unwrap();
-	let event = coordinator
-		.store
-		.list_agent_events_for_turn(agent.active_turn_id.clone().unwrap(), 100)
-		.await
-		.unwrap()
-		.into_iter()
-		.find(|event| event.work_item_id == "worker")
-		.unwrap();
-
-	coordinator.tool(&agent,&serde_json::json!({"tool":"agent_disposition","arguments":{"id":"worker","status":"resolved","eventIds":[event.id],"summary":"Result accepted"}})).await.unwrap();
-
-	assert_eq!(
-		coordinator.store.get_agent_work_item("goal".into()).await.unwrap().status,
-		AgentWorkStatus::Open
-	);
-
-	let command = |id| serde_json::json!({"tool":"agent_resolve_goal","arguments":{"id":id,"evidenceEventId":event.id,"summary":"The accepted evidence satisfies this goal"}});
-
-	assert!(coordinator.tool(&agent, &command("other")).await.is_err());
-
-	coordinator.tool(&agent, &command("goal")).await.unwrap();
-
-	assert_eq!(
-		coordinator.store.get_agent_work_item("goal".into()).await.unwrap().status,
-		AgentWorkStatus::Resolved
-	);
-	assert!(
-		coordinator
-			.store
-			.read_agent_work_events("goal".into(), 10)
-			.await
-			.unwrap()
-			.iter()
-			.any(|entry| entry.event_kind == "goal_resolved")
-	);
-	assert!(coordinator.tool(&agent, &command("goal")).await.is_err());
-}
-
-#[tokio::test]
 async fn explicit_user_reply_resolves_worker_decision_without_rewriting_old_evidence() {
 	let (mut coordinator, _sent, _directory) = fixture().await;
 
@@ -2749,7 +2702,7 @@ async fn configured_message_dispatches_native_images_skills_and_exact_turn_setti
 	coordinator.store.enqueue_agent_event(EnqueueAgentEvent {
         source_event_id:"configured-message".into(),work_item_id:"agent".into(),event_kind:"user_message".into(),
         payload:serde_json::json!({"text":"Inspect these files", "options":{
-            "execution":{"model":"different-model","reasoning_effort":"high","fast":true},
+            "execution":{"model":"different-model","reasoning_effort":"high","service_tier":"priority"},
             "attachments":[{"path":"/tmp/example.png","image":true},{"path":"/tmp/example.rs","image":false},{"path":"/tmp/skills (exact)/SKILL.md","image":false,"skill_name":"selected-skill"}]}}).to_string(),
     }).await.unwrap();
 	coordinator.wake_pending().await.unwrap();
@@ -2779,12 +2732,12 @@ async fn configured_message_dispatches_native_images_skills_and_exact_turn_setti
 
 	let mut params = serde_json::json!({"input":[],"serviceTier":"priority"});
 
-	agent::apply_message_options(&mut params,&serde_json::json!({"options":{"execution":{"model":"selected-model","reasoning_effort":"medium","fast":false},"attachments":[]}}).to_string()).unwrap();
+	agent::apply_message_options(&mut params,&serde_json::json!({"options":{"execution":{"model":"selected-model","reasoning_effort":"medium","service_tier":"default"},"attachments":[]}}).to_string()).unwrap();
 
 	assert!(params["serviceTier"].is_null());
 	assert_eq!(params["serviceTierForTurn"], "default");
 
-	let tiered = serde_json::json!({"options":{"execution":{"model":"chosen","reasoning_effort":"high","fast":false,"service_tier":"ultrafast"},"attachments":[]}});
+	let tiered = serde_json::json!({"options":{"execution":{"model":"chosen","reasoning_effort":"high","service_tier":"ultrafast"},"attachments":[]}});
 
 	agent::apply_message_options(&mut params, &tiered.to_string()).unwrap();
 
@@ -3075,9 +3028,12 @@ async fn async_question_answers_survive_replay_and_reopening_without_waking_work
 
 	assert_eq!(reopened.read_agent_async_questions("agent".into()).await.unwrap().len(), 1);
 
-	// Older desktop replies identify the source message and resolve all its questions.
+	// Only exact question identities resolve current cards.
 	reopened
-		.resolve_agent_async_questions("opaque thread/1".into(), vec!["questions".into()])
+		.resolve_agent_async_questions(
+			"opaque thread/1".into(),
+			vec![decodex_protocol::agent_async_question_id("questions", 1)],
+		)
 		.await
 		.unwrap();
 	coordinator

@@ -304,7 +304,7 @@ mod tests {
 				text: "A single live answer.".into(),
 				truncated: false,
 				phase: None,
-				app_ui: false,
+
 				activity: None,
 				attachments: vec![],
 				collaboration: None,

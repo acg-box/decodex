@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:9af748e21aea17564fbf5842eed9248a04a72c32ae5f773d573eec71db209168",
+  "pageVersion": "sha256:e51809a1b68f3c066cd621399ac37f753bd25dec90828db29d0e4a07bf7193fc",
   "claims": [
     {
       "id": "claim_738021d152cc4128af3d3b4b217fe92c",
@@ -22,7 +22,7 @@
         },
         {
           "resource": "repo://database/src/quota_activation.rs",
-          "version": "repo-file-v1:sha256:b802aec4dec9f6a0f70965eedb5cd98b2b176a32eaba512d6359ac3a69479029"
+          "version": "repo-file-v1:sha256:f1e46a35e71776e50977c4c6f5fd73fe93adafc4effca77973857e88b5da64b3"
         }
       ]
     },
@@ -132,7 +132,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/shell.rs",
-          "version": "repo-file-v1:sha256:da2d129b87e576adf83e5c2157b24f2f16d740b66c16c15a16c8efe6c0e9442c"
+          "version": "repo-file-v1:sha256:ae72373d7beb3ad4781af4a9125ea9c2bac0d45bb8f6450e4024031a69f2b647"
         }
       ]
     },
@@ -271,6 +271,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-05T12:44:44.258Z"
+    "at": "2026-11-05T14:56:49.835Z"
   }
 }

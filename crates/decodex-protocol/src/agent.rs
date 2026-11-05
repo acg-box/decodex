@@ -161,7 +161,6 @@ pub struct AgentHistoryEntryDto {
 	/// Native turn identity that binds the entry to its saved source.
 	pub turn_id: Option<String>,
 	/// Saved weather results associated with this entry.
-	#[serde(default)]
 	pub weather: Vec<WeatherForecast>,
 	/// Local receipt facts, independent of native conversation ordering.
 	pub receipt: Option<AgentHistoryReceiptDto>,
@@ -229,7 +228,6 @@ pub enum AgentLiveMessageKind {
 #[serde(deny_unknown_fields)]
 pub struct AgentLiveMessageDto {
 	/// Exact public native item category.
-	#[serde(default)]
 	pub kind: AgentLiveMessageKind,
 	/// Provider turn identity.
 	pub turn_id: String,
@@ -297,7 +295,6 @@ pub enum AgentHistoryResult {
 		/// paging.
 		questions: Vec<AgentAsyncQuestionDto>,
 		/// Live questions whose exact native turn ended. Recover local draft text only.
-		#[serde(default)]
 		expired_question_ids: Vec<String>,
 		/// Additional questions exist beyond this bounded page.
 		questions_truncated: bool,
@@ -368,7 +365,6 @@ pub struct AgentStartDto {
 	/// Optional explicit account; otherwise the service selects it.
 	pub account_id: Option<EntityId>,
 	/// Runtime sandbox selected by the user.
-	#[serde(alias = "sandbox")]
 	pub permission_mode: crate::PermissionMode,
 }
 
@@ -467,7 +463,6 @@ pub enum AgentActionDto {
 		/// Model settings captured at send time.
 		execution: AgentExecutionOverrides,
 		/// Explicit creation choice. Omission preserves already queued input.
-		#[serde(default)]
 		permission_mode: Option<crate::PermissionMode>,
 		/// Attached context.
 		attachments: Vec<AgentAttachmentDto>,
@@ -792,7 +787,6 @@ pub enum AgentActionDto {
 		/// User-selected files, bounded by the service.
 		attachments: Vec<AgentAttachmentDto>,
 		/// Tasks explicitly selected as readable evidence.
-		#[serde(default)]
 		task_references: Vec<AgentTaskReferenceDto>,
 	},
 	/// Continue the same Agent with settings and attachments captured at send time.
@@ -802,12 +796,10 @@ pub enum AgentActionDto {
 		/// User-authored message.
 		text: HistoryText,
 		/// Explicit next-message changes; omitted fields inherit native task settings.
-		#[serde(default)]
 		execution: AgentExecutionOverrides,
 		/// User-selected files, bounded by the service.
 		attachments: Vec<AgentAttachmentDto>,
 		/// Tasks explicitly selected as readable evidence.
-		#[serde(default)]
 		task_references: Vec<AgentTaskReferenceDto>,
 	},
 	/// Supplement one exact running turn through native Codex steering.
@@ -821,7 +813,6 @@ pub enum AgentActionDto {
 		/// Files captured at send time.
 		attachments: Vec<AgentAttachmentDto>,
 		/// Tasks explicitly selected as readable evidence.
-		#[serde(default)]
 		task_references: Vec<AgentTaskReferenceDto>,
 	},
 	/// Acknowledge the exact findings displayed by the client and request continuation.
@@ -1024,10 +1015,8 @@ pub struct AgentPendingEventDto {
 #[serde(deny_unknown_fields)]
 pub struct ProjectDto {
 	/// Qualified native catalog identity; absent before source registration.
-	#[serde(default)]
 	pub native_project_id: Option<String>,
 	/// Existing accountable Project Lead; no new Agent or conversation is created.
-	#[serde(default)]
 	pub lead_agent_id: Option<String>,
 	/// Stable workspace identity.
 	pub id: String,
@@ -1060,31 +1049,23 @@ pub struct AgentContextReferenceDto {
 #[serde(deny_unknown_fields)]
 pub struct AgentSnapshotDto {
 	/// Selected personal Agent's settings, teams, wakes and native context lineage.
-	#[serde(default)]
 	pub assistant: Box<decodex_core::assistant::AssistantState>,
 	/// User-created persistent collaborators. Native Subagents have separate execution ownership.
-	#[serde(default)]
 	pub agents: Box<Vec<Agent>>,
 	/// Global desired review preference and actual source readback.
-	#[serde(default)]
 	pub guardian: Box<GuardianState>,
 	/// Business outcomes and exact contribution evidence, separate from native conversations.
-	#[serde(default)]
 	pub portfolio: Box<WorkPortfolio>,
 	/// Confirmed native archives included in an explicit archive catalog.
 	#[serde(default, skip_serializing_if = "std::collections::BTreeSet::is_empty")]
 	pub archived_work_ids: BTreeSet<String>,
 	/// Runtime-owned reusable display slots. Never use these numbers for message routing.
-	#[serde(default)]
 	pub agent_slots: Box<BTreeMap<String, u32>>,
 	/// Confirmed native conversation topics keyed by thread ID; separate from Agent identity.
-	#[serde(default)]
 	pub conversation_titles: Box<BTreeMap<String, String>>,
 	/// Explicit selected context references, not inferred from prose.
-	#[serde(default)]
 	pub context_references: Vec<AgentContextReferenceDto>,
 	/// The service is still checking its persisted connection after startup.
-	#[serde(default)]
 	pub connection_initializing: bool,
 	/// Opaque native source identity; absent until the initial archive view is confirmed.
 	/// A present source permits reads during recovery, not command execution.

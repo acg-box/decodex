@@ -18,17 +18,14 @@ impl Default for AssistantSettings {
 	}
 }
 
-/// Explicit scopes and a component or service-environment credential reference.
+/// Explicit scopes and a private component credential reference.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct RagflowConnection {
 	/// Origin of an existing instance, for example https://ragflow.example.com.
 	pub url: String,
-	/// Legacy service environment variable. Empty when a component credential is selected.
-	pub api_key_env: String,
 	/// Private component credential, never included in the settings or conversation.
-	#[serde(default, skip_serializing_if = "Option::is_none")]
-	pub credential_id: Option<String>,
+	pub credential_id: String,
 	/// Exact user namespace. Required by the API-key Memory API.
 	pub user_id: String,
 	/// Explicit datasets. An empty list disables knowledge retrieval.

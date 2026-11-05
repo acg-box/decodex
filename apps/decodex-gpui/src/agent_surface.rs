@@ -221,7 +221,6 @@ pub(crate) struct AgentSurface {
 	generation: u64,
 	refresh_failures: u8,
 	composer: Entity<ComposerInput>,
-	fast: bool,
 	service_tier: Option<ServiceTier>,
 	steer: bool,
 	effort_focus: FocusHandle,
@@ -363,7 +362,6 @@ impl AgentSurface {
 		let defaults = crate::session_settings::Defaults::load();
 		surface.permission_mode = defaults.permissions;
 		let speed = crate::session_settings::default_speed().ok();
-		surface.fast = speed.as_ref().is_some_and(|tier| tier.as_str() == "priority");
 		surface.creation_intent.service_tier = false;
 		surface.service_tier = speed;
 		surface
@@ -420,7 +418,6 @@ impl AgentSurface {
 			capabilities_checked: None,
 			capability_task: None,
 			capability_generation: 0,
-			fast: false,
 			service_tier: None,
 			steer: true,
 			effort_focus: cx.focus_handle(),
@@ -1000,7 +997,6 @@ impl AgentSurface {
 				let execution = AgentExecutionOverrides {
 					model: Some(model),
 					reasoning_effort: self.creation_effort(),
-					fast: Some(self.fast),
 					service_tier: self.service_tier.clone(),
 					permission_mode: None,
 				};
@@ -1440,7 +1436,6 @@ impl AgentSurface {
 		self.reset_capabilities();
 
 		if self.composer_manager.is_some() {
-			self.fast = false;
 			self.service_tier = None;
 		}
 

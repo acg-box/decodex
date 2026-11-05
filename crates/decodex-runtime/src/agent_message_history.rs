@@ -231,7 +231,7 @@ async fn read_inner(
 	let mut recent = Recent { voice, final_only, ..Default::default() };
 
 	match metadata["thread"]["historyMode"].as_str() {
-		None | Some("legacy") => {
+		Some("legacy") => {
 			let history = client
 				.thread_read(serde_json::json!({"threadId":thread,"includeTurns":true}))
 				.await?;

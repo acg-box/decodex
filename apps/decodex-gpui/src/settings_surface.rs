@@ -84,8 +84,8 @@ pub(crate) struct SettingsSurface {
 	snapshot: DesktopSettingsSnapshot,
 	runtime: MenuBarRuntimeState,
 	detail: SharedString,
-	menu_bar_choice: Option<bool>,
-	recap_choice: Option<bool>,
+	menu_bar_choice: bool,
+	recap_choice: bool,
 	preference_error: Option<SharedString>,
 	controller: DesktopSettingsController,
 	menu_bar: NativeMenuBarHost,
@@ -638,19 +638,10 @@ impl SettingsSurface {
 impl SettingsSurface {
 	pub(crate) fn new(controller: DesktopSettingsController, cx: &mut Context<Self>) -> Self {
 		let snapshot = controller.snapshot();
-		let menu_bar_choice = ui_preferences::string(MENU_BAR_PREFERENCE, None).and_then(|value| {
-			match value.as_str() {
-				"shown" => Some(true),
-				"hidden" => Some(false),
-				_ => None,
-			}
-		});
+		let menu_bar_choice =
+			ui_preferences::string(MENU_BAR_PREFERENCE, None).as_deref() != Some("hidden");
 		let recap_choice =
-			ui_preferences::string(RECAP_PREFERENCE, None).and_then(|value| match value.as_str() {
-				"enabled" => Some(true),
-				"disabled" => Some(false),
-				_ => None,
-			});
+			ui_preferences::string(RECAP_PREFERENCE, None).as_deref() == Some("enabled");
 		let mut menu_bar = NativeMenuBarHost::new();
 		let launch_at_login =
 			menu_bar.launch_at_login_state().unwrap_or(LaunchAtLoginState::OperationFailed);
@@ -675,7 +666,7 @@ impl SettingsSurface {
 			guardian: None,
 		};
 
-		surface.apply_snapshot(snapshot);
+		surface.apply_menu_bar(menu_bar_choice);
 		// Read the real system policy before Settings opens, never from a render pass.
 		#[cfg(not(test))]
 		surface.refresh_power(cx);
@@ -734,7 +725,6 @@ impl SettingsSurface {
 				self.preference_error = None;
 			}
 
-			self.apply_snapshot(snapshot);
 			cx.notify();
 		}
 	}
@@ -767,31 +757,14 @@ impl SettingsSurface {
 		cx.notify();
 	}
 
-	fn apply_snapshot(&mut self, snapshot: DesktopSettingsSnapshot) {
-		// Import the old service preference once. An explicit local choice always wins,
-		// including a click made while the first service read is still pending.
-		if snapshot.load == DesktopSettingsLoadState::Ready
-			&& let Some(settings) = snapshot.settings
-		{
-			if self.menu_bar_choice.is_none() {
-				self.save_menu_bar_choice(settings.show_in_menu_bar);
-			}
-			if self.recap_choice.is_none() {
-				self.save_recap_choice(settings.auto_recap);
-			}
-		}
-
-		self.apply_menu_bar(self.menu_bar_choice.unwrap_or(true));
-	}
-
 	fn save_menu_bar_choice(&mut self, enabled: bool) {
 		ui_preferences::string(MENU_BAR_PREFERENCE, Some(if enabled { "shown" } else { "hidden" }));
 
-		self.menu_bar_choice = Some(enabled);
+		self.menu_bar_choice = enabled;
 	}
 
 	pub(crate) fn automatic_recaps_enabled(&self) -> bool {
-		self.recap_choice.unwrap_or(false)
+		self.recap_choice
 	}
 
 	fn save_recap_choice(&mut self, enabled: bool) {
@@ -800,7 +773,7 @@ impl SettingsSurface {
 			Some(if enabled { "enabled" } else { "disabled" }),
 		);
 
-		self.recap_choice = Some(enabled);
+		self.recap_choice = enabled;
 	}
 
 	fn apply_menu_bar(&mut self, enabled: bool) {
@@ -874,7 +847,7 @@ impl SettingsSurface {
 			"menubar-surface-toggle",
 			"settings-knob",
 			"Show Decodex in the menu bar",
-			self.menu_bar_choice.unwrap_or(true),
+			self.menu_bar_choice,
 			true,
 		)
 		.on_change(cx.listener(|s, enabled: &bool, _, cx| {
@@ -1705,63 +1678,10 @@ mod tests {
 				let settings = surface.read(cx);
 
 				assert!(settings.controller.snapshot().settings.is_none());
-				assert_eq!(settings.recap_choice, Some(expected));
+				assert_eq!(settings.recap_choice, expected);
 				assert_eq!(settings.automatic_recaps_enabled(), expected);
 			});
 		}
-
-		// A delayed service response cannot re-enable recaps after an explicit opt-out.
-		surface.update(visual, |settings, _| {
-			let mut snapshot = settings.snapshot;
-
-			snapshot.load = DesktopSettingsLoadState::Ready;
-
-			let mut legacy = decodex_protocol::DesktopSettingsDto::new(
-				true,
-				decodex_protocol::EntityRevision(1),
-			)
-			.expect("legacy settings");
-
-			legacy.auto_recap = true;
-			snapshot.settings = Some(legacy);
-
-			settings.apply_snapshot(snapshot);
-
-			assert_eq!(settings.recap_choice, Some(false));
-			assert!(!settings.automatic_recaps_enabled());
-		});
-	}
-
-	#[gpui::test]
-	fn existing_recap_choice_is_imported_once(cx: &mut TestAppContext) {
-		let (surface, visual) = cx.add_window_view(|_, cx| {
-			SettingsSurface::new(DesktopSettingsController::production(), cx)
-		});
-
-		surface.update(visual, |settings, _| {
-			let mut snapshot = settings.snapshot;
-
-			snapshot.load = DesktopSettingsLoadState::Ready;
-
-			let mut legacy = decodex_protocol::DesktopSettingsDto::new(
-				true,
-				decodex_protocol::EntityRevision(1),
-			)
-			.expect("legacy settings");
-
-			legacy.auto_recap = true;
-			snapshot.settings = Some(legacy);
-
-			settings.apply_snapshot(snapshot);
-
-			assert!(settings.automatic_recaps_enabled());
-
-			snapshot.settings.as_mut().expect("settings").auto_recap = false;
-
-			settings.apply_snapshot(snapshot);
-
-			assert!(settings.automatic_recaps_enabled());
-		});
 	}
 
 	#[gpui::test]
@@ -1781,7 +1701,7 @@ mod tests {
 				let settings = surface.read(cx);
 
 				assert!(settings.controller.snapshot().settings.is_none());
-				assert_eq!(settings.menu_bar_choice, Some(expected));
+				assert_eq!(settings.menu_bar_choice, expected);
 				assert_eq!(
 					settings.runtime,
 					if expected {
@@ -1792,57 +1712,6 @@ mod tests {
 				);
 			});
 		}
-
-		// A late read from an older client must not undo the user's local choice.
-		surface.update(visual, |settings, _| {
-			let mut snapshot = settings.snapshot;
-
-			snapshot.load = DesktopSettingsLoadState::Ready;
-			snapshot.settings = Some(
-				decodex_protocol::DesktopSettingsDto::new(
-					false,
-					decodex_protocol::EntityRevision(1),
-				)
-				.expect("legacy preference"),
-			);
-
-			settings.apply_snapshot(snapshot);
-
-			assert_eq!(settings.menu_bar_choice, Some(true));
-			assert_eq!(settings.runtime, MenuBarRuntimeState::Visible);
-		});
-	}
-
-	#[gpui::test]
-	fn existing_menu_bar_opt_out_is_imported_once(cx: &mut TestAppContext) {
-		let (surface, visual) = cx.add_window_view(|_, cx| {
-			SettingsSurface::new(DesktopSettingsController::production(), cx)
-		});
-
-		surface.update(visual, |settings, _| {
-			let mut snapshot = settings.snapshot;
-
-			snapshot.load = DesktopSettingsLoadState::Ready;
-			snapshot.settings = Some(
-				decodex_protocol::DesktopSettingsDto::new(
-					false,
-					decodex_protocol::EntityRevision(1),
-				)
-				.expect("legacy opt-out"),
-			);
-
-			settings.apply_snapshot(snapshot);
-
-			assert_eq!(settings.menu_bar_choice, Some(false));
-			assert_eq!(settings.runtime, MenuBarRuntimeState::Hidden);
-
-			snapshot.settings.as_mut().expect("settings").show_in_menu_bar = true;
-
-			settings.apply_snapshot(snapshot);
-
-			assert_eq!(settings.menu_bar_choice, Some(false));
-			assert_eq!(settings.runtime, MenuBarRuntimeState::Hidden);
-		});
 	}
 
 	#[gpui::test]

@@ -9,7 +9,7 @@ async fn enqueue(store: &SqliteStore, source: &str, owner: &str, kind: &str) -> 
 			source_event_id: source.into(),
 			work_item_id: owner.into(),
 			event_kind: kind.into(),
-			payload: "saved evidence".into(),
+			payload: serde_json::json!({"text":"saved evidence"}).to_string(),
 		})
 		.await
 		.unwrap()

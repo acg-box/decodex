@@ -105,9 +105,7 @@ fn fallback_retains_requested_speed_for_account_bound_dispatch_and_cold_restore(
 		let remaining = s.draft_profiles.execution.choice("agent");
 		assert_eq!(remaining.selected_service_tier().unwrap().as_str(), "ultrafast");
 		assert!(
-			remaining.model.is_none()
-				&& remaining.reasoning_effort.is_none()
-				&& remaining.fast.is_none(),
+			remaining.model.is_none() && remaining.reasoning_effort.is_none(),
 			"do not replay unrelated overrides on later turns"
 		);
 		assert_eq!(s.composer_speed_label(cx), "Fast");

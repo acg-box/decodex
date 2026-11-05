@@ -41,7 +41,6 @@ impl AgentSurface {
 		if self.composer_service_tier().as_ref() == Some(&tier) {
 			return;
 		}
-		self.fast = tier.as_str() == "priority";
 		self.service_tier = Some(tier);
 		self.mark_tier_intent();
 		self.save_draft_document(cx);
@@ -446,7 +445,7 @@ mod tests {
 				availability: None,
 				upgrade: None,
 				service_tiers: vec![decodex_protocol::AgentServiceTierDto {
-					id: decodex_protocol::ServiceTier::from_fast(true),
+					id: decodex_protocol::ServiceTier::priority(),
 					name: "Priority".into(),
 					description: "Increased usage".into(),
 				}],
@@ -573,7 +572,7 @@ mod tests {
 		surface.update(visual, |s, cx| {
 			assert_eq!(s.composer_service_tier().unwrap().as_str(), "ultrafast");
 			assert_eq!(s.composer_speed_label(cx), "Ultrafast");
-			assert!(!s.fast, "the exact tier takes precedence over the legacy Fast flag");
+			assert_eq!(s.service_tier.as_ref().unwrap().as_str(), "ultrafast");
 			assert!(s.composer_capability_error(cx).is_none());
 
 			if let Some(AgentCapabilitiesResult::Available { models, .. }) = &mut s.capabilities {
@@ -638,7 +637,6 @@ mod tests {
 
 				s.mark_effort_intent(cx);
 
-				s.fast = false;
 				s.service_tier = Some(decodex_protocol::ServiceTier::new("flex").unwrap());
 
 				s.mark_tier_intent();

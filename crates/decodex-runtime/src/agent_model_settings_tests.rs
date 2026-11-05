@@ -280,7 +280,7 @@ async fn model_settings_discard_changed_sources_and_preserve_null_metadata() {
 				AgentModelSettingsResult::Available { model: None, reasoning_effort: None, .. }
 			)),
 			"missing" =>
-				assert_eq!(result, decodex_protocol::AgentModelSettingsResult::NotReported),
+				assert_eq!(result, decodex_protocol::AgentModelSettingsResult::Unavailable),
 			_ => assert_eq!(
 				result,
 				decodex_protocol::AgentModelSettingsResult::Unavailable,

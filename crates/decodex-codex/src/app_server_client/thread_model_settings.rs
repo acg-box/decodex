@@ -21,7 +21,7 @@ pub struct NativeThreadModelSettings {
 	pub service_tier: Option<String>,
 }
 impl NativeThreadModelSettings {
-	/// Project one exact thread/read response. Missing fields mean unsupported metadata.
+	/// Project one exact thread/read response. Missing fields are invalid native metadata.
 	/// Callers must independently verify process and account ownership of the read.
 	pub fn from_read_response(
 		value: Value,
@@ -36,8 +36,8 @@ impl NativeThreadModelSettings {
 }
 
 impl AppServerClient {
-	/// Read one exact thread without activation. Missing fields indicate an older server.
-	/// The caller must verify account/process ownership before and after this read.
+	/// Read one exact thread without activation. The current native response must contain model
+	/// metadata. The caller must verify account/process ownership before and after this read.
 	pub async fn thread_model_settings(
 		&self,
 		thread: &str,
@@ -88,7 +88,7 @@ fn project(value: Value, expected: &str) -> Result<Option<NativeThreadModelSetti
 		return Err(ClientError::InvalidFrame);
 	}
 	if thread.get("model").is_none() || thread.get("reasoningEffort").is_none() {
-		return Ok(None);
+		return Err(ClientError::InvalidFrame);
 	}
 
 	let mut settings: NativeThreadModelSettings =
@@ -136,9 +136,7 @@ mod tests {
 		}
 
 		assert!(
-			thread_model_settings::project(serde_json::json!({"thread":{"id":"t"}}), "t")
-				.unwrap()
-				.is_none()
+			thread_model_settings::project(serde_json::json!({"thread":{"id":"t"}}), "t").is_err()
 		);
 
 		for thread in [

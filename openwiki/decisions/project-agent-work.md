@@ -76,10 +76,10 @@ sources:
     resource: repo://database/src/works/collaboration.rs
   - id: openwiki-source-c0eb738b42368debe7ef7545
     resource: repo://database/src/works/commands.rs
-generated: { by: "codex", at: "2026-11-03T19:40:29.403Z" }
+generated: { by: "codex", at: "2026-11-05T15:16:31.053Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-05T13:44:11.168Z
+    at: 2026-11-05T15:16:31.053Z
 ---
 
 # Project, Agent and Work contract
@@ -278,7 +278,7 @@ This example illustrates the contract. The places, amounts and outcomes are assu
 
 ## Current implementation and persistence
 
-The current schema stores Project membership, persistent Agent responsibilities and separate Work directly. Protocol 4.7 accepts one exact revision. The service does not carry a second business-name API, historical migration chain or Program model. Native identities, inbox receipts and recorded history remain distinct from current Result qualification.
+The current schema stores Project membership, persistent Agent responsibilities and separate Work directly. Protocol 4.8 accepts one exact revision. The service does not carry a second business-name API, historical migration chain or Program model. Native identities, inbox receipts and recorded history remain distinct from current Result qualification.
 
 Immutable native child-input receipts preserve exact delivery identity. Several independently owned native conversations can share an admitted account process. Received assignment proof records plaintext or native task identity. These records neither grant another Agent's private history nor invent missing input.
 
@@ -292,9 +292,9 @@ Immutable native child-input receipts preserve exact delivery identity. Several 
 | Guardian | Per-conversation native permission modes and global optional review records. No global override changes every Agent's permissions. |
 | Review Details | Explicit global opt-in; verified private reviewer/parent identity; native assistant output and terminal metadata only. No raw reasoning frames, parent-history pollution, action replay or guessed action association. |
 | Presentation | Existing desktop Work and Guardian entries, Project grouping, existing-Agent responsibility selectors, clickable Materials, Results and Collaboration evidence. |
-| Compatibility | Retained real old execution, archive, forks, input, automation and evidence consumers. New default helper creation uses native tools. |
+| Native recovery | Preserve current execution, archive, forks, input, automation and evidence owners. Helper creation uses native tools. |
 
-The default tool revision advertises `work_read` and `work_manage`. Managed temporary-worker creation/continuation, subordinate-manager creation and old goal/dependency tools are retired from that surface and rejected if an old schema still advertises them. Existing automation and native recovery remain; no duplicate Work controller, native mailbox or permanent review department is introduced.
+The default tool revision advertises `work_read` and `work_manage`. Managed temporary-worker creation/continuation, subordinate-manager creation and old goal/dependency tools are absent from both tool descriptors and dispatch. Such a call receives the ordinary unknown-tool refusal. Existing automation and native recovery remain; no duplicate Work controller, native mailbox or permanent review department is introduced.
 
 Ordinary input retains its native context and tool set. A newer local tool revision does not replace the conversation. The selected Assistant can renew at a safe input boundary through a fresh native thread. Exact creation receipts and the existing thread-revision relationship preserve its identity and history. Unknown native effects require readback; previous native history alone grants no input authority.
 

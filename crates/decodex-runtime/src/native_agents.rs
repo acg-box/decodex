@@ -336,7 +336,7 @@ mod tests {
 }
 #[cfg(test)]
 mod observation_tests {
-	use crate::native_agents::{self, NativeAgentDto, Value};
+	use crate::native_agents::{self, Value};
 	#[test]
 	fn active_waiting_flags_are_not_running() {
 		for flag in ["waitingOnApproval", "waitingOnUserInput"] {
@@ -377,12 +377,5 @@ mod observation_tests {
 		item["parentThreadId"] = Value::String("other".into());
 
 		assert!(native_agents::observation(&item).is_none());
-	}
-	#[test]
-	fn older_native_observations_without_task_remain_readable() {
-		let agent: NativeAgentDto = serde_json::from_value(serde_json::json!({"thread_id":"child","parent_thread_id":"parent","title":"Agent","status":"idle"})).unwrap();
-
-		assert!(agent.task.is_empty());
-		assert!(agent.model.is_none() && agent.reasoning_effort.is_none());
 	}
 }

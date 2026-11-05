@@ -7,7 +7,6 @@ use crate::{
 };
 
 /// Only settings deliberately changed for this message. An empty value inherits all settings.
-/// Full legacy execution objects remain valid and retain their original meaning.
 #[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentExecutionOverrides {
@@ -17,10 +16,7 @@ pub struct AgentExecutionOverrides {
 	/// A newly selected reasoning effort, if changed.
 	#[serde(skip_serializing_if = "Option::is_none")]
 	pub reasoning_effort: Option<ConversationReasoningEffort>,
-	/// Legacy explicit Fast selection. Omitted means inherit; false means standard.
-	#[serde(skip_serializing_if = "Option::is_none")]
-	pub fast: Option<bool>,
-	/// Explicit service tier, including standard. This takes precedence over legacy Fast.
+	/// Explicit service tier, including standard. Omission inherits the native setting.
 	#[serde(skip_serializing_if = "Option::is_none")]
 	pub service_tier: Option<ServiceTier>,
 	/// An explicit permission preset for the next user message.
@@ -52,14 +48,13 @@ impl AgentExecutionOverrides {
 	pub fn is_empty(&self) -> bool {
 		self.model.is_none()
 			&& self.reasoning_effort.is_none()
-			&& self.fast.is_none()
 			&& self.service_tier.is_none()
 			&& self.permission_mode.is_none()
 	}
 
 	/// A deliberate tier change, absent when the message inherits the current task tier.
 	pub fn selected_service_tier(&self) -> Option<ServiceTier> {
-		self.service_tier.clone().or_else(|| self.fast.map(ServiceTier::from_fast))
+		self.service_tier.clone()
 	}
 }
 
@@ -68,8 +63,7 @@ impl From<ConversationExecutionSettings> for AgentExecutionOverrides {
 		Self {
 			model: Some(value.model),
 			reasoning_effort: value.reasoning_effort,
-			fast: Some(value.fast),
-			service_tier: value.service_tier,
+			service_tier: Some(value.service_tier),
 			permission_mode: None,
 		}
 	}
@@ -105,7 +99,7 @@ mod tests {
 		}
 	}
 	#[test]
-	fn partial_changes_and_legacy_full_selections_have_distinct_inheritance() {
+	fn partial_changes_keep_native_inheritance() {
 		let inherited: AgentExecutionOverrides =
 			serde_json::from_value(serde_json::json!({})).unwrap();
 
@@ -117,14 +111,6 @@ mod tests {
 			serde_json::from_value(serde_json::json!({"reasoning_effort":"high"})).unwrap();
 
 		assert!(effort.model.is_none() && effort.selected_service_tier().is_none());
-
-		let legacy: AgentExecutionOverrides = serde_json::from_value(
-			serde_json::json!({"model":"chosen","reasoning_effort":"medium","fast":false,"service_tier":null}),
-		)
-		.unwrap();
-
-		assert_eq!(legacy.model.unwrap().as_str(), "chosen");
-		assert_eq!(legacy.fast, Some(false));
 
 		let standard: AgentExecutionOverrides =
 			serde_json::from_value(serde_json::json!({"service_tier":"default"})).unwrap();
@@ -169,9 +155,9 @@ mod creation_tests {
 	use crate::AgentActionDto;
 
 	#[test]
-	fn creation_keeps_legacy_effort_and_nullable_inheritance_distinct() {
+	fn creation_keeps_explicit_effort_and_native_inheritance_distinct() {
 		for effort in [serde_json::json!("none"), serde_json::json!("high"), Value::Null] {
-			let wire = serde_json::json!({"action":"start_configured","data":{"start":{"root_id":"root","prompt":"hello","model":"model","effort":effort,"cwd":"/tmp","account_id":null,"permission_mode":"read_only"},"execution":{"model":"model","reasoning_effort":effort,"fast":false},"attachments":[]}});
+			let wire = serde_json::json!({"action":"start_configured","data":{"start":{"root_id":"root","prompt":"hello","model":"model","effort":effort,"cwd":"/tmp","account_id":null,"permission_mode":"read_only"},"execution":{"model":"model","reasoning_effort":effort,"service_tier":"default"},"attachments":[],"task_references":[]}});
 			let action: AgentActionDto = serde_json::from_value(wire).unwrap();
 			let AgentActionDto::StartConfigured { start, execution, .. } = action else {
 				panic!("start")

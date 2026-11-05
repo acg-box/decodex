@@ -139,7 +139,7 @@ mod tests {
 				text: "Original input".into(),
 				truncated: false,
 				activity: None,
-				app_ui: false,
+
 				attachments: vec![],
 				collaboration: None,
 			},
