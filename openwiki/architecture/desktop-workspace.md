@@ -30,6 +30,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_collaboration.rs
   - id: openwiki-source-48758ba7d154c82885281d2c
     resource: repo://apps/decodex-gpui/src/agent_composer.rs
+  - id: openwiki-source-0a61b25348131fe1bb6e1d12
+    resource: repo://apps/decodex-gpui/src/agent_context_settings_wire_tests.rs
   - id: openwiki-source-c76550e85b25876b339f9255
     resource: repo://apps/decodex-gpui/src/agent_context_settings.rs
   - id: openwiki-source-d56ea7499f2ed784b1b6c970
@@ -130,10 +132,10 @@ sources:
     resource: repo://database/src/works/commands.rs
   - id: openwiki-source-8fe6f1557e5d45d88b34bd0a
     resource: repo://scripts/macos/generate_workspace_symbols.swift
-generated: { by: "codex", at: "2026-11-05T04:03:25.459Z" }
+generated: { by: "codex", at: "2026-11-05T04:14:56.077Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-05T04:03:25.459Z
+    at: 2026-11-05T04:14:56.077Z
 ---
 
 # Desktop workspace and native glass
@@ -146,7 +148,7 @@ Settings reuse the App's normal body and control typography. Concise description
 
 The permission picker keeps its open state and focus handles in the window. Its visible trailing edge aligns with the trigger, excluding the outer shadow gutter. Arrow keys cycle within its options. Escape closes the menu and restores focus to its trigger. Tab and Shift-Tab dismiss the menu and continue keyboard navigation. Settings remains open after repeated Escape. Command-W or the window close button closes Settings, including while the menu is open. The picker reuses the existing permission rows; it does not own conversation permissions.
 
-Settings navigation and details use their final layout in the first frame. Accounts, Components and Diagnostics share an immediate disclosure that constructs content only while open. They do not use the measured-height conversation animation. Settings destinations bypass the page-arrival fade, and the standalone Settings window configures its material before activation. Button, switch and chevron feedback remain independent of page geometry. The standalone tests check first-entry bounds, full expansion, immediate collapse and repeated toggles without a settling delay.
+Settings navigation and details use their final layout in the first frame. Accounts, Components, Diagnostics and the native Tool catalog cache panel share an immediate disclosure that mounts only open content. They do not use the measured-height conversation animation. The catalog panel uses this same presentation in Agent preferences. Settings destinations bypass the page-arrival fade, and the standalone Settings window configures its material before activation. Button, switch and chevron feedback remain independent of page geometry. Tests check first-entry bounds, full expansion, immediate collapse and repeated toggles without a settling delay.
 
 Conversation disclosures retain their open-proportion animation. Already open details mount at full height, measurements do not notify the model, and settled parents follow nested content changes directly. Arrival on other workspace destinations changes opacity without moving content or hit targets.
 

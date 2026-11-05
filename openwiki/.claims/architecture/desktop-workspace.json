@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:b3a0de8086191c2d25ac85278b83d247f129a6e25ac7edb78e9ffb5200a450d4",
+  "pageVersion": "sha256:181354696a6c4423a2b53b97db7de25b542e20545c88e350321c635b618aff7e",
   "claims": [
     {
       "id": "claim_41c9eba720934771bd6b671a7aeb8b6e",
@@ -592,7 +592,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_context_settings.rs",
-          "version": "repo-file-v1:sha256:0bace420ab4a1ba360bf4a42878b65796ad0acbd7b9ec496de5d0a292780d4a3"
+          "version": "repo-file-v1:sha256:1b9e9a210607be071c20eae4c650a9c9f34a35380a44113fa1e1d8c402190096"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
@@ -646,8 +646,12 @@
     },
     {
       "id": "claim_329790566c5a46f89f095cded8abf208",
-      "statement": "Settings destinations bypass page-arrival fading. Accounts, Components and Diagnostics use an immediate shared disclosure that constructs only open content and applies final layout in the first frame. Conversation disclosures retain their open-proportion animation, full-height initial mounting and measurement without model notifications; arrival on other workspace destinations changes opacity without moving content or hit targets.",
+      "statement": "Settings destinations bypass page-arrival fading. Accounts, Components, Diagnostics and the native Tool catalog cache panel use an immediate shared disclosure that mounts only open content and applies final layout in the first frame. The catalog panel uses this same presentation in Agent preferences. Conversation disclosures retain their open-proportion animation, full-height initial mounting and measurement without model notifications; arrival on other workspace destinations changes opacity without moving content or hit targets.",
       "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_context_settings.rs#L294-L352",
+          "version": "repo-lines-v1:sha256:09d171c58445a00c6569376b823935ee366969cee52229439a9cf320b70a2749:eyJzZWxlY3RlZExpbmVDb3VudCI6NTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYwODYyYWNlY2QwMTcyMjAwNzFiMWZjMDYyNTJjNmE1MTA5YWZkYzE2YjJjZGI2YTFhZDkyYWM1OGJhMjQ0Y2EiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ2YjU1YWU5YmM2N2NmODVlOGI0NzNjZWNlYzAxYzY3N2U3YmNhODExMGI2MGVlMWMwMmVjOTQ3ZmE1MGU2MWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjVhN2EwMGQ3MDVlMjg1YzhlMWIwNzIwNzZkNDNmNTM4NWRmNGYwYzk5YjBhODVmYzMzYzU2ZGJjZDRjNTdkMjciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImNjYjczNGUxNTA5NWUxMGJjZTA2ZTJhMjFkYjI5NjhkNzNiOGU2ODI5NzhjODM2MTJmNzY2ZjI2MDVkZGRmZjcifQ"
+        },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs#L365-L377",
           "version": "repo-lines-v1:sha256:ac193e5dd75568cb786410f2986a172319868fcbcee45bef64b1458582e86090:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNlNTc1MWVmOGZjZGMyYTcwZjI0Njc4ZDM3YjFjM2Y0YjI1NDBjMWQ5N2MzOWI4MjQ3ZTRlODljYzY1NTE4OGYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc1OTIyZDA0OWRmYmI5YTgwM2FjZDJmOTVkY2YxZWNlY2EwZGI2NTI3ZDJkYjEyYzAzMDJhYWQ2MWM5MmEwNTUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM3M2FjMDMxZjM0Y2RmZDllMWU0YzJjZjhiNmQyODEzOTkwMDVlZDI0OTlkYzhiNDQ3OWYyMmNjZTRiYjU4YjgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFmZWRiNzU3ZWZlMGY5MGQ1YzkzY2M1YTVlOTZlMjJkYzI2MWIxNGJiNjIwMjAxNjFmYTBkYjdmNjI2NTkwY2MifQ"
@@ -729,6 +733,10 @@
       "statement": "The standalone Settings window configures its material before activation. Regression tests check first-entry bounds, full first-frame expansion, immediate collapse and repeated toggles without a settling delay.",
       "evidence": [
         {
+          "resource": "repo://apps/decodex-gpui/src/agent_context_settings_wire_tests.rs#L124-L206",
+          "version": "repo-lines-v1:sha256:2d553b83e09e158a9bcb50469536adbb23e87238891421fd60d6c9beee62f50a:eyJzZWxlY3RlZExpbmVDb3VudCI6ODMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBhNzM0OTJkODk0NmIxZDBmOWQ5YzA0YjcwNGE5MjBmMjRmODllZjdjN2Y3MzExYTg1OTlkMTBjN2Y2MzU4ZDAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJkZTQ2MDUxYWY4OWFlMzJiMDNhNjg4OTIyMDY0ZDJiYzQ2ZjkwOGMxNzgzNjk1NDhiY2VmYTIwZjM2MmJjYmEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjcyNDAxY2RjMTM4MmViNWNlMDQzZjFmZTVhNmVmODJmYTkwNDAwMjZhZTk0NjAxYjQzMmFjZDliZjcxNDVlMDUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgwOTFlMGZhOTc1ODFlODBjODI3YWQxYzU0MTMyODA3ZTQ2MTU4NzUzZDMxYTc0NWFhNWI2MDVjMGVjYzc0ODQifQ"
+        },
+        {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs#L819-L883",
           "version": "repo-lines-v1:sha256:68ecf454f1c6d26e569b556fa1590fc2a737e3e0c41e0ea07751505022d1fffb:eyJzZWxlY3RlZExpbmVDb3VudCI6NjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRhMGZhYzFmN2I1N2QwMzUxYjQ3YTAxNDhiNGMwYmJiYTY1ZTVkMDRkYjQ2ZGY1ZjBlOGYxYmVkNzlkZjA4ZGYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY4NDQwOWM4MWNiNzg0ZTNhOWI4YjY0ZTJmNWQzMGUzNjUwMWExMGRmMjFhMGU4ZGM0ZWJlMDQ1OGZiNjVmNzAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUyMTE4MjZhMzZmYjEzYjNiZTA2M2M4MjMyZGQ3ZTAyM2U5ZDZmZjcxZTM0MzFiZmU1MWRhODM2ZDI5YzBkMjIifQ"
         },
@@ -753,6 +761,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-05T04:03:25.459Z"
+    "at": "2026-11-05T04:14:56.077Z"
   }
 }

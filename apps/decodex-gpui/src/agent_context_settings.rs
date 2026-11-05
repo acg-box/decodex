@@ -16,7 +16,7 @@ use crate::{
 		Context, EntityId, IdempotencyKey, IntoElement, ParentElement, Styled, Task, mcp_forms,
 	},
 	ui_feedback::{self, Feedback},
-	ui_motion::{self, SmoothControl as _},
+	ui_motion::SmoothControl as _,
 	ui_theme,
 };
 use decodex_protocol::{
@@ -331,22 +331,24 @@ impl AgentSurface {
 				expanded,
 			))
 			.smooth();
-		let rows = ui_theme::settings_rows()
-			.child(ui_theme::settings_description(
-				"Use a valid cached tool list while servers connect. Tool calls still need a live connection.",
-			))
-			.child(ui_theme::settings_divided_rows(
-				catalogs
-					.into_iter()
-					.map(|preference| {
-						self.context_preference_row(work, preference, busy, cx).into_any_element()
-					})
-					.collect(),
-			));
-		ui_theme::settings_rows().child(toggle).child(ui_motion::disclosure(
+		ui_theme::settings_rows().child(toggle).child(ui_theme::settings_disclosure(
 			"context-mcp-body",
 			expanded,
-			ui_theme::settings_detail(rows),
+			|| {
+				let rows = ui_theme::settings_rows()
+					.child(ui_theme::settings_description(
+						"Use a valid cached tool list while servers connect. Tool calls still need a live connection.",
+					))
+					.child(ui_theme::settings_divided_rows(
+						catalogs
+							.into_iter()
+							.map(|preference| {
+								self.context_preference_row(work, preference, busy, cx).into_any_element()
+							})
+							.collect(),
+					));
+				ui_theme::settings_detail(rows).into_any_element()
+			},
 		))
 	}
 
