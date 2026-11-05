@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:aa953f489072037aaa55d10ea5ffa1e79c968d868cdf169fc84729cfd2ff1509",
+  "pageVersion": "sha256:dd1c49e881a8ec8c5f3f0b4437cbe66bd3518b729b7eda249f14cffec3eb3ebd",
   "claims": [
     {
       "id": "claim_613df7e7c10d49d28b26d6db94c525e5",
@@ -158,11 +158,11 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:b9ec790a366ae5f7181d83aace685cf943cc31f3a84d3e9e301ff4fe98c00352"
+          "version": "repo-file-v1:sha256:5c2c3a7ef8ddde1e5398824a9c9511b03b45c2ea0746dc99224c999f2ba87a31"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/settings_surface.rs#L512-L564",
-          "version": "repo-lines-v1:sha256:2890bde8ebaf7b5e7af32364c8abdee80669e1b4327599164095e79d0dbdbd1f:eyJzZWxlY3RlZExpbmVDb3VudCI6NTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVlMWE4ZWI0MGQ5OWU0Y2I3Y2ZiZWY1M2VjODJmMTcxM2QxNmY4NzlmYzAwM2UyZjI1ZjY3YzZkYmVjM2E1M2EiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBhZjQ5MjdlMzZmMzQ3ZWUxZDA5MzFjMzFmZWIyY2FmYTIwZGQ4Y2IzMDUyZTQwMDNmMGMxZDNjYzM1MTRjZWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU4NTc0MGZkYjNlMzY0Yjc0YWEyMGY0YjJkMDdjNTNhOWU1M2UzNTVlN2Q1MWJlZGQ0ZDI3Njk0YWU4Mjk2ZWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFkYWUyNTNiNGEyYmIyMjJjMTU5NzVhN2E0ZWRlMmM0NmY3YjA3NTJjZmMwMzQ5YjlmMGM5MDI4NmRjMzZiNzQifQ"
+          "resource": "repo://apps/decodex-gpui/src/settings_surface.rs#L516-L568",
+          "version": "repo-lines-v1:sha256:5306e73a473d01043506dbeb8fdc14ceaf3a901ef4a2782ea86fafcd64c4e23b:eyJzZWxlY3RlZExpbmVDb3VudCI6NTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVlMWE4ZWI0MGQ5OWU0Y2I3Y2ZiZWY1M2VjODJmMTcxM2QxNmY4NzlmYzAwM2UyZjI1ZjY3YzZkYmVjM2E1M2EiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBhZjQ5MjdlMzZmMzQ3ZWUxZDA5MzFjMzFmZWIyY2FmYTIwZGQ4Y2IzMDUyZTQwMDNmMGMxZDNjYzM1MTRjZWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU4NTc0MGZkYjNlMzY0Yjc0YWEyMGY0YjJkMDdjNTNhOWU1M2UzNTVlN2Q1MWJlZGQ0ZDI3Njk0YWU4Mjk2ZWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFkYWUyNTNiNGEyYmIyMjJjMTU5NzVhN2E0ZWRlMmM0NmY3YjA3NTJjZmMwMzQ5YjlmMGM5MDI4NmRjMzZiNzQifQ"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_updates.rs",
@@ -502,7 +502,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/shell_diagnostics.rs",
-          "version": "repo-file-v1:sha256:f3fd402197a57f01647198dca7b5ac75c72eb8adc35838af8524d5a87d71db64"
+          "version": "repo-file-v1:sha256:10e82bb4c1c353df56983afab07a31c749310b5742d9664faaaf6203f8be3b86"
         },
         {
           "resource": "repo://automations/upstream/retained-contracts.json",
@@ -710,7 +710,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
-          "version": "repo-file-v1:sha256:f85396d5f363861e61dc33905478eef8040c79f1fa64272fc412cf1f9cbb0056"
+          "version": "repo-file-v1:sha256:a48c96edf9028245f67bc743d0b270b240da46a818d783a0c1af41d246bb633e"
         },
         {
           "resource": "repo://crates/decodex-components/src/ragflow.rs",
@@ -732,7 +732,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
-          "version": "repo-file-v1:sha256:f85396d5f363861e61dc33905478eef8040c79f1fa64272fc412cf1f9cbb0056"
+          "version": "repo-file-v1:sha256:a48c96edf9028245f67bc743d0b270b240da46a818d783a0c1af41d246bb633e"
         },
         {
           "resource": "repo://crates/decodex-components/src/ragflow_service.rs",
@@ -760,7 +760,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
-          "version": "repo-file-v1:sha256:f85396d5f363861e61dc33905478eef8040c79f1fa64272fc412cf1f9cbb0056"
+          "version": "repo-file-v1:sha256:a48c96edf9028245f67bc743d0b270b240da46a818d783a0c1af41d246bb633e"
         },
         {
           "resource": "repo://crates/decodex-components/src/ragflow_service.rs",
@@ -785,6 +785,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-05T08:37:07.266Z"
+    "at": "2026-11-05T12:06:42.474Z"
   }
 }

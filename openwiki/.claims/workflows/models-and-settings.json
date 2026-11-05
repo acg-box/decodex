@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:8ccfaa4e67c638da4d7b128ebf9d1a48e18999172c8cd3b4982e41545846606e",
+  "pageVersion": "sha256:a7243f6f4944f3c1b52661db3b50bad5e49d52f4ad88d17f2b1eec0d974497d4",
   "claims": [
     {
       "id": "claim_f0c37462522f4442acd94d53819ef75c",
@@ -258,7 +258,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_surface.rs",
-          "version": "repo-file-v1:sha256:fc5a5f31ba8c35966a536dd1332fdd942d8badcb9a841e7baa5147c4db08819c"
+          "version": "repo-file-v1:sha256:3c02c70a1d7f51bb7824d3d9be8c028cf2a97120253c6903b245f45e0b36c2f3"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_preferences.rs",
@@ -318,15 +318,15 @@
     },
     {
       "id": "claim_09df0d70257c4cd4995cda41a1da8169",
-      "statement": "Components installs managed RAGFlow nightly with compatible Infinity and a private service account, sharing actual version and lifecycle controls. Component operations check the running Docker-compatible engine and Docker Compose before installation effects and use shared inline feedback for unavailable prerequisites without runtime installation, launch or installation guidance. Successful installation with no saved model settings opens the existing model form automatically. Expanding installed RAGFlow directly opens the model form for one OpenAI-compatible Base URL, optional private API key and custom extraction and embedding names. Save verifies the selected models before initializing Memory automatically. No model runtime or weights are installed. Saved keys stay blank in later edits and are retained only at the same URL; loopback addresses are translated for the container, and indexed Memory keeps its embedding model and endpoint. Chat import starts off with a separate switch when Memory is ready, including during model editing; Update preserves models, import choice and data, and Uninstall clears the connection while retaining data. Typed knowledge scopes and the safe native-memory context policy keep their existing owners.",
+      "statement": "Components installs managed RAGFlow nightly with compatible Infinity and a private service account, sharing actual version and lifecycle controls. Component operations check the running Docker-compatible engine and Docker Compose before installation effects and use shared inline feedback for unavailable prerequisites without runtime installation, launch or installation guidance. Successful installation with no saved model settings opens the existing model form automatically. Expanding installed RAGFlow directly opens the model form for one OpenAI-compatible Base URL, optional private API key and custom extraction and embedding names. Verify and enable verifies the selected models before initializing Memory automatically. Configured Memory uses Verify and save. No model runtime or weights are installed. Saved keys stay blank in later edits and are retained only at the same URL; loopback addresses are translated for the container, and indexed Memory keeps its embedding model and endpoint. Chat import starts off with a separate switch when Memory is ready, including during model editing; Update preserves models, import choice and data, and Uninstall clears the connection while retaining data. Typed knowledge scopes and the safe native-memory context policy keep their existing owners.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
-          "version": "repo-file-v1:sha256:f85396d5f363861e61dc33905478eef8040c79f1fa64272fc412cf1f9cbb0056"
+          "version": "repo-file-v1:sha256:a48c96edf9028245f67bc743d0b270b240da46a818d783a0c1af41d246bb633e"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:b9ec790a366ae5f7181d83aace685cf943cc31f3a84d3e9e301ff4fe98c00352"
+          "version": "repo-file-v1:sha256:5c2c3a7ef8ddde1e5398824a9c9511b03b45c2ea0746dc99224c999f2ba87a31"
         },
         {
           "resource": "repo://crates/decodex-components/src/ragflow.rs",
@@ -352,33 +352,33 @@
     },
     {
       "id": "claim_beff917e46a74d619c3c54e7b46b2696",
-      "statement": "The RAGFlow model editor fills the component detail region. Model API pairs Base URL with API key, and Models pairs Extraction model with Embedding model. Labels sit above 24-point inputs in normal control typography, with local guidance for each group. Cancel and the primary Save action align to the form's right edge. API and Codex memory guidance remain visible. Saved-key guidance is conditional on saved settings, the redundant setup notice is hidden during editing, collapsing and reopening preserves unsaved input, and Cancel discards input and the editor error before collapsing RAGFlow.",
+      "statement": "The RAGFlow row distinguishes service installation from configured Assistant Memory even when collapsed. Its direct editor pairs Base URL with optional API key and extraction with embedding IDs in two rows, without an additional heading layer. Labels sit above 24-point inputs in normal control text. Empty required fields disable submission; complete input gets the existing validation on explicit submission. Input changes refresh the form and clear its old error. Guidance covers API compatibility, model roles, the Codex memory effect and initial chat-import choice. Cancel and the primary Verify and enable or Verify and save action align right. Saved-key guidance remains conditional, collapse retains input, and Cancel clears input and errors before collapse.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs#L194-L316",
-          "version": "repo-lines-v1:sha256:85c567b63cef1329d7800a5ba26883c7e07e90308bf52178c32e7e1f86a8e87d:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIzLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJiMzE4ODBiNmEyZGU3ODdhMzVlOTIwYmVlMjE5OWYzYWE2NTkwYTAyYTM3ZDg2NGFlZjg0MjYyNjQ2ZWFjNjRmIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJlM2Y0YmQ2YWM3OTI5ODAzY2QwMjU0N2IwN2QzODcxN2Q4N2MyZmIwNzk5NWE5YjRhYzA2OTI3NDc5MjA2Yjk5IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIyMmYyZmY1ZmVlYzYwZjU4N2M4ZmFlNGU4N2Y4MDlhNjYxY2ZmZWQ2YjQ3YWFlNWY2ZDZhMjY1M2FhODk1MmVmIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI5NzE2OWYxODA5YjFjMzc2M2NjMzRiNDY0ZGE1Yjc1MTQyN2UxMWNlYTM1NmQ1MjgwMmQwY2VmZTVlOWEzNDBlIn0"
+          "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs#L191-L374",
+          "version": "repo-lines-v1:sha256:5013c6bf8b3ca1ed174c4f36dcf26a36e19cbb488ac267c4189460f43866e232:eyJzZWxlY3RlZExpbmVDb3VudCI6MTg0LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJiMzE4ODBiNmEyZGU3ODdhMzVlOTIwYmVlMjE5OWYzYWE2NTkwYTAyYTM3ZDg2NGFlZjg0MjYyNjQ2ZWFjNjRmIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI4MjljYzVlNzdmMTYxODFiYTlmOTRkZTdjYmFjM2UyNDA5NjRiZWE4MmI5NjlkMzI4OGQ5ZWFiNTFlMGY4MmJhIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIyMmYyZmY1ZmVlYzYwZjU4N2M4ZmFlNGU4N2Y4MDlhNjYxY2ZmZWQ2YjQ3YWFlNWY2ZDZhMjY1M2FhODk1MmVmIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJjMWM4NzUxMTVhODQxZmJkNWU4NzE1YzhhYzkxYzViODE2YjBjMDNlNjRjMzI3N2M5OGFjOTJlMzUxOWVhOWUwIn0"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/composer_input.rs#L655-L688",
           "version": "repo-lines-v1:sha256:143e96ccfd61a4f6d30fc63bec74bd934003241cdfedb12d91044ed2587444e5:eyJzZWxlY3RlZExpbmVDb3VudCI6MzQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEyYWU1MjBjYWQ5MDAyODRkMDRiNTU2MWZlZTIyYzg4ZjNiYTc4YTk3YjUyMmZmYjgzNjVhMGZlOGFiMTAxMjIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ4YTM0MWM4OGY1Nzc0YzI1ODliYWZiY2ZkMzFhZDNhYjE3MTBlYWE3N2UwMTNmNTVmMjY2NzM0ZTU0ODJjY2MiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjlkY2Q2MTdhZTdkNDg2OTQxOTU3NTYyMWUyM2IyNTliYWNjZDAxOTc5YTBhNzIxZjBlZDc5ZWMzMTA0MDk2NTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZmZjRmN2MyMDdmZDAzOTgyNDczNjg2MjU2YWMxYWZhYjEyYjA1MzllOWQyNDNhMmVjMGM2YWUyYTI3MzViNDkifQ"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/settings_components.rs#L403-L495",
-          "version": "repo-lines-v1:sha256:c29b5f390e3058bd9f8023e96c1a04314de5a0456799a826f3a461b0ee710e1e:eyJzZWxlY3RlZExpbmVDb3VudCI6OTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgzMjBhMTUyMzc4YmI0N2E5Zjk0MTgxNzVmNTVhYjljM2VjMmZlZWJlNmQ3OGQ3MDA4YmNjMGU5NjExNTkyNDgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI4MjczM2NhNzg4OGU2ODVjYTE5MWRhZjM1NTcxOTdiODFkYzczYjA3ZDM2NDMyOTgyY2JiYjIyYTVjMjI3ZTgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjJjMTM0YjFhM2IyNGM2ZTFjODkxMDcxOGUyYjIyM2RkZTQwNGNhMGM0M2QzNjk2YjM2ZTg0MWU3MTNiZjY0YzkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjMwMzVlODA3NDc2MWE5YjNjYmY1NjNkNjdkYjE3ZTUzMWYxYTJlZTExMjYzZjMxNGVhNDZmN2Q5ZDFlMjdkYTIifQ"
+          "resource": "repo://apps/decodex-gpui/src/settings_components.rs#L138-L197",
+          "version": "repo-lines-v1:sha256:3788e7f57c5b0075a339d78cf861efbf94a8dd93d3af1ced89d4682fc88c3a3f:eyJzZWxlY3RlZExpbmVDb3VudCI6NjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4NmM3Nzc0N2EyZjc0Yjc4YzVjNWRlMmEzZGIxNTE4NjIwMDUyZDJhZTJmMzc0MjcyMGZkZjU4Mjg2MjM1NjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU0ZTE5NWVmZmQ0OTgyNmFjMDcyNDY0MDU3MjBlZTljYWNhMGE0MjdkYjFlOTYzZDNmNzY1NGM0ZTI3ZTY5MDciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjcxMjk2YzQyY2M4NzEzZThlZTUwNDA1YmM0Nzk2ZjcwMDdlOTE4MWY2ZTFlYjNjOTMyNGM3N2RhYWJiNGM0MDIifQ"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/ui_theme.rs#L288-L446",
-          "version": "repo-lines-v1:sha256:1780ad6bdb41b5bec24ce5cedbe95d34c326ff9e1b626706fc9c7bd2923c2dd1:eyJzZWxlY3RlZExpbmVDb3VudCI6MTU5LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI1YjYyMGE4NTMzOTJlOTc4Yjk1YzZiZjU4YzBiMjYwZDZhYTViOWI4NDFmOTdmYmMyZmI1YjEwNTBiYjk1ZGM2IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0MTJjYTM0NWNjZjc1YmY5YzA4MDZiY2U2OTViZThkZTgwOGI3OTk4NDI1MWE3YTU0ZDIwMmNmNjEwMWRkNDUxIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJkN2Y0YmQ3ODc0NzczZjBhZmIyMThiZDBhOGNlOThlZGNhZWM4YjdjNDFiMjYwMGU2YWY5NDQwODk3ODQ0ZWFlIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJjYmY4YjI3ODNjZTBkZjY5MjAzMmY5MDQ0M2RmZWNhODJlNmNiYzVkYWQwZDJmN2FkYTU0MzBhODU3YWRhZTZhIn0"
+          "resource": "repo://apps/decodex-gpui/src/settings_components.rs#L418-L520",
+          "version": "repo-lines-v1:sha256:ba87e1c1146a186a662a968fbc2071eb93b1f8c54f89fec0fa6691bf50fa8ab1:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAzLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI4MzIwYTE1MjM3OGJiNDdhOWY5NDE4MTc1ZjU1YWI5YzNlYzJmZWViZTZkNzhkNzAwOGJjYzBlOTYxMTU5MjQ4IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI2N2NkYTgyZGE2MDYyMzhlMDVlNjIzOTk1NjljNWVlMDM5OTM0MTk2NDhhZTVkNDNhMmJmOGNkNjM0N2Y4MjYzIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIyYzEzNGIxYTNiMjRjNmUxYzg5MTA3MThlMmIyMjNkZGU0MDRjYTBjNDNkMzY5NmIzNmU4NDFlNzEzYmY2NGM5IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJiZGRiM2YyMTc3ZDNiODZiZDQyYmJlNDFkOGQwZDVhM2VmZjM1NmQyYmIwOGRmODZhYzQ1ODA3NzVlNGQxNWM4In0"
         }
       ]
     },
     {
       "id": "claim_1d1d68cccf054493b22ff3f7574f9e70",
-      "statement": "All Settings categories share a 620-point content column and normal App typography. Related preferences share a quiet bordered panel with distinct section, name, value and explanation text roles. Accounts retains one compact divided list surface; Add account and form Save use shared primary buttons. Component, MCP and Diagnostics details share an inset region with distinct headings, normal control text and secondary guidance. Diagnostics summarizes three check groups before exposing all individual checks in Technical details; uniform groups share heading status and mixed groups retain individual status and explanations. Local feedback retains its compact inset icon, quiet tone fill, centered alignment and adjacent recovery. A collapsed Codex setup failure directs the user to its original setup error; Retry setup keeps the existing preparation action.",
+      "statement": "All Settings categories share a 620-point content column and normal App typography. Related preferences share a quiet bordered panel with distinct section, name, value and explanation text roles. Accounts retains one compact divided list surface; Add account and model verification use shared primary buttons. Setting names use medium weight; permission, cost, scope and data-effect guidance is retained while simple controls avoid duplicate explanations. Component, MCP and Diagnostics details share an inset region with distinct headings, normal control text and secondary guidance. Diagnostics has a plain overall status with guidance for unprobed Codex capabilities and summarizes three check groups before exposing all individual checks in Technical details; uniform groups share heading status and mixed groups retain individual status and explanations. Local feedback retains its compact inset icon, quiet tone fill, centered alignment and adjacent recovery. A collapsed Codex setup failure directs the user to its original setup error; Retry setup keeps the existing preparation action.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:b9ec790a366ae5f7181d83aace685cf943cc31f3a84d3e9e301ff4fe98c00352"
+          "version": "repo-file-v1:sha256:5c2c3a7ef8ddde1e5398824a9c9511b03b45c2ea0746dc99224c999f2ba87a31"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_power.rs",
@@ -386,27 +386,27 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_surface.rs",
-          "version": "repo-file-v1:sha256:fc5a5f31ba8c35966a536dd1332fdd942d8badcb9a841e7baa5147c4db08819c"
+          "version": "repo-file-v1:sha256:3c02c70a1d7f51bb7824d3d9be8c028cf2a97120253c6903b245f45e0b36c2f3"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/shell.rs#L3597-L3658",
           "version": "repo-lines-v1:sha256:fe598bff3f42ad2b14f91b829b6f80bdfbf49b0ad8fdbddce5fc7c8972dd1521:eyJzZWxlY3RlZExpbmVDb3VudCI6NjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZmYTIyNzUxZTVhMzRkMmY1ZjAzODcxZTEyNDkxOGFhNmYzMWNiYzJlZjlhNzA3M2QzYTMzYzVkZTc3Y2UyMTAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZiYmZhODE5MzBmZjQ0ODQyNzYzMzM0NWUwZDljOWJmODhmMzBiOTZlMGIxZmE4OTU4YWU5Njc4ZjAxZDJlZDMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE5NDM2ZDZjNWM4MjBlOWEwZWFlODQzZWI3M2Q2YmRkNGE0NmM5Zjc3NTlkN2E3NTA2NGM0NzVmMzIxMDNhNWYifQ"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/shell.rs#L3851-L3864",
-          "version": "repo-lines-v1:sha256:175c152e05ac5cd834b7a8d4e650ff1a2ac9b9d34b13e847b13124b227a29741:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc5OGNiMmIxZGMyMjQ3ZmE1ODliOGRiOTZhNGE0YzgyMjMwOTBmMDA1OGM0NTcxYTA5MDI1NWFhYTk3Y2U3OGUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM4Njc5YTI0MzhiZDRhNzczNWI0Y2JhNzMyNjY2ZDhjODNmNTc3OGJjNDQ2YTMzMGFhMDhkMmEzYWYxYTJjYzAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRjNDUzNGVjMmNlZGI4MTk5OWVkYmRlOWQxZWZiYzc5OGE5NzdhZTc2M2ZhZWYxZDRmNDZiMmYzNGE2ODFiODMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjcxNzA2YWUxMTZkNWY2NThlZjEyZDM2MWQyYzdiMjkzOWVlYTI4NDYzNmNjZmVmNzc0Mzg2OTc0NTA1ODI5NDAifQ"
+          "resource": "repo://apps/decodex-gpui/src/shell.rs#L3861-L3874",
+          "version": "repo-lines-v1:sha256:e1d84a19a7eb3fffa2b0a93c7497b3ea292d02bb079e9ec75b01a654fe0113d9:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNjM2EyMDc3NGQ1YzJiYjRjNzkwYzE4ODkwYTljNDk0Y2NiNTEwZmM4ZThjMDllYzc0NTE5YmMxNjRmYzc4NGIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM4OTg1NTA4NGExNjhmZTZlM2QzMDczODg3ODVlZDlkZDM1OTYzOWNhM2ExMzQyMzRhMjcxOGNhZjBiZDBjYTUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE4NGZjNzJiZTE4NzdiMzZiMzUzOTVhNjcyODk1OTQzNTQ3ZjU4ZjNiN2E5Mjk3ZDJkMzlhZGMxZTRlNmMxNWIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhhZTA5NzhlYWRmMmE1MmU0MTBhMGMyNjI3ZDRjOTljODgwMjUxZWRiNjUyNTE1MDZjZTgzMmU5YzlkODExZDQifQ"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/shell_diagnostics.rs#L164-L509",
-          "version": "repo-lines-v1:sha256:bd767c556f867eb93edf32479b5f99f1968a4350c5e121eab0d548091dc919d7:eyJzZWxlY3RlZExpbmVDb3VudCI6MzQ2LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI4NTI0YmUyY2JjMWM4MDQ3YzFiNTQwYzNjMWU2Nzg4Njg1YmVlYWI0NmVlOGIwODI4Yjc1ODM1Mjg1OWNiNDg3IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0MTJjYTM0NWNjZjc1YmY5YzA4MDZiY2U2OTViZThkZTgwOGI3OTk4NDI1MWE3YTU0ZDIwMmNmNjEwMWRkNDUxIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI0NTY2ZThiNWM2YjRiY2FmYzVhM2RiY2Q0MWU5NThiYTVmYWU2NDUwYzQyNjZlZTc0ODE3NzA0YzgyODAyYzliIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJiMTFjYzViYWYxOGVmMWE1ZDZmZGQxMzRjYzQyY2E3NGRiOTEyYmQyZjI3NTU3YzliYmU1NDE3ZDVlMTBmZTY1In0"
+          "resource": "repo://apps/decodex-gpui/src/shell_diagnostics.rs#L164-L532",
+          "version": "repo-lines-v1:sha256:44b1b6bb412b3b35f10abd6a784bede1613d00ed4f65eebeb7267620bed76ab0:eyJzZWxlY3RlZExpbmVDb3VudCI6MzY5LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIwMGZhMGY5NmQ5M2FiM2YzNTI0ZTA4OTQ5ZjlkYWNiYzYwN2NjMTgxNzhmYjJlYmFiMWI2ODA1MWRkYTI2ZjFkIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI1YzUzMDcyZWVjY2FiOGExNDg1MGI0ZTY3OGMzZDI5ZTUyYTg5NGUyYjU0MDFjZTBkOTQzMTZhOTk1Mzk4Y2ZjIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI0NTY2ZThiNWM2YjRiY2FmYzVhM2RiY2Q0MWU5NThiYTVmYWU2NDUwYzQyNjZlZTc0ODE3NzA0YzgyODAyYzliIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI4MjMyNGM4OGVlYmNkYzBkNmVhYzVmYTYwNTNjOWRkNDAzMGUzYTQ4OWZlZTIzMzc0NDhjNDFmYTgzZmU1ZTkxIn0"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_feedback.rs",
           "version": "repo-file-v1:sha256:aec08228a0e0f01f6c19e065e0317fa3236152ba87495dd176d08642716c1582"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/ui_theme.rs#L288-L446",
-          "version": "repo-lines-v1:sha256:1780ad6bdb41b5bec24ce5cedbe95d34c326ff9e1b626706fc9c7bd2923c2dd1:eyJzZWxlY3RlZExpbmVDb3VudCI6MTU5LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI1YjYyMGE4NTMzOTJlOTc4Yjk1YzZiZjU4YzBiMjYwZDZhYTViOWI4NDFmOTdmYmMyZmI1YjEwNTBiYjk1ZGM2IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0MTJjYTM0NWNjZjc1YmY5YzA4MDZiY2U2OTViZThkZTgwOGI3OTk4NDI1MWE3YTU0ZDIwMmNmNjEwMWRkNDUxIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJkN2Y0YmQ3ODc0NzczZjBhZmIyMThiZDBhOGNlOThlZGNhZWM4YjdjNDFiMjYwMGU2YWY5NDQwODk3ODQ0ZWFlIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJjYmY4YjI3ODNjZTBkZjY5MjAzMmY5MDQ0M2RmZWNhODJlNmNiYzVkYWQwZDJmN2FkYTU0MzBhODU3YWRhZTZhIn0"
+          "resource": "repo://apps/decodex-gpui/src/ui_theme.rs#L359-L447",
+          "version": "repo-lines-v1:sha256:3cf7c3c7f8c1097d80fe067594e68b7660420bd4a37728a0a842e43e26de7596:eyJzZWxlY3RlZExpbmVDb3VudCI6ODksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjcwOGQ2NTAyOTVlYzZhNjA3MzVjZjFhMWYzMDhiMGZkNjExMWJjOWMxZmVjOTA2YWI0M2RkZDg3MTE1Nzc4ODMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjVhNGViOWIxOGIzMzk1MGFmOGRlYzE1NDYyMzE5M2Q2MWEwNGEyZjBiNDRiZjI1Y2RhYTg0Y2I2MGZmZGVlNWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImNiZjhiMjc4M2NlMGRmNjkyMDMyZjkwNDQzZGZlY2E4MmU2Y2JjNWRhZDBkMmY3YWRhNTQzMGE4NTdhZGFlNmEifQ"
         }
       ]
     },
@@ -420,15 +420,15 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_surface.rs",
-          "version": "repo-file-v1:sha256:fc5a5f31ba8c35966a536dd1332fdd942d8badcb9a841e7baa5147c4db08819c"
+          "version": "repo-file-v1:sha256:3c02c70a1d7f51bb7824d3d9be8c028cf2a97120253c6903b245f45e0b36c2f3"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/shell.rs",
-          "version": "repo-file-v1:sha256:a599d2137a29246946168832b0f56f8a4e59d891473963f5a54b5dc02f79b31c"
+          "version": "repo-file-v1:sha256:cb7b99f1c42122610dec6c761db2ed6297e19b3003033cf64b2b2e8376e5c44e"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_theme.rs",
-          "version": "repo-file-v1:sha256:688cb1ddb66d4bc387d64853bda6d542eeaa02d1c92f264a9120661586986d6e"
+          "version": "repo-file-v1:sha256:f0af45cd829f36271b31df7e5b139b57b42cf718bf1a941066e663ae1f8271f9"
         }
       ]
     },
@@ -437,12 +437,12 @@
       "statement": "The app version and Check for updates action are in Settings > General > Updates. There is no separate Updates page, and Sparkle retains application update ownership; component lifecycle actions remain in Components.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/settings_surface.rs#L51-L67",
-          "version": "repo-lines-v1:sha256:181da1e04e26b95783825d89d0bac4bb46fab3a15ae354cf56b4e9f62e5b1453:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY5NGM2ZTgwZjQyMDNlNDMyMjk3MWU2MDI0OGYwN2M5OThiNGM2OGQxN2U2YTVhMGJkYjM1OTNhM2ViODVkOTAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRhNzRjMTE5ZWQwYjk0MzEzMTkwNGVmODZlMTJhNGUxNzEyNGM2MTM4OTI5NjNlYjE3NjE0NzM2MmU3MTE3N2YiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijc0OGMwNDQzZDNjYzZjMjJhZGMyMjM1NzViMWNmYjVmYzUyMmVmOGNmNTI2MzMxYTMyZGQyNzg5M2RhYTBiMDAifQ"
+          "resource": "repo://apps/decodex-gpui/src/settings_surface.rs#L497-L557",
+          "version": "repo-lines-v1:sha256:1d64f0e0728945f50a9ecb06de95815037fc53bd576e959d831906009518dde2:eyJzZWxlY3RlZExpbmVDb3VudCI6NjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUwMjQ4NWFkZWFiYTkyMmFkMWMzYmEzZGU0MWY1YmE2NmZiMTZhMjZiN2ViZTVhNjhkOGJiNDVlZmU0NDU4OTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU1MTRkMjA4Njg4NGY4MTdiMmFjYTFlYTkwOTE3Yjg4YTkxMzhmNzlkMmE5MmYwYzIxNTlkNDE5ZWJhOGZlZWYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjliMTE0Y2MyYjhkODYxMjk3ZmY2MGUwN2Q0NjQ2NjcwZmVjMGQ1ZjU5YWY4NDFjMTM3MmQ1NDFiOWVhYzk2YzYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjcwZTgzMGUzNTQ5NjMxODViMzg3MGRhY2Q0NWExMzhkZWJhOGZlYzMyMmZjODBlZjFhOTZjMWNjNWVkZTYxMjcifQ"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/settings_surface.rs#L512-L554",
-          "version": "repo-lines-v1:sha256:d297636772291536693f252bcec945ca86cb4b8c74eb66b904e15ba76ec6f791:eyJzZWxlY3RlZExpbmVDb3VudCI6NDMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVlMWE4ZWI0MGQ5OWU0Y2I3Y2ZiZWY1M2VjODJmMTcxM2QxNmY4NzlmYzAwM2UyZjI1ZjY3YzZkYmVjM2E1M2EiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU4NTc0MGZkYjNlMzY0Yjc0YWEyMGY0YjJkMDdjNTNhOWU1M2UzNTVlN2Q1MWJlZGQ0ZDI3Njk0YWU4Mjk2ZWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE0NTkzODU1MTI3OGQzMmMzZDE2NjU1ZmJkODZhYWZlZTBlNWI5Y2U1MGUyYmEzZDI1ZDVhMjlkYzY5OTI1MWEifQ"
+          "resource": "repo://apps/decodex-gpui/src/settings_surface.rs#L51-L67",
+          "version": "repo-lines-v1:sha256:181da1e04e26b95783825d89d0bac4bb46fab3a15ae354cf56b4e9f62e5b1453:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY5NGM2ZTgwZjQyMDNlNDMyMjk3MWU2MDI0OGYwN2M5OThiNGM2OGQxN2U2YTVhMGJkYjM1OTNhM2ViODVkOTAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRhNzRjMTE5ZWQwYjk0MzEzMTkwNGVmODZlMTJhNGUxNzEyNGM2MTM4OTI5NjNlYjE3NjE0NzM2MmU3MTE3N2YiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijc0OGMwNDQzZDNjYzZjMjJhZGMyMjM1NzViMWNmYjVmYzUyMmVmOGNmNTI2MzMxYTMyZGQyNzg5M2RhYTBiMDAifQ"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_updates.rs",
@@ -471,10 +471,24 @@
           "version": "repo-lines-v1:sha256:900b76d1248f000421f9b6b9c31e1dc78c4314a84ff883779d4f7a2dd2f72807:eyJzZWxlY3RlZExpbmVDb3VudCI6MTc0LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI5M2EwY2ZlMGUwNzk5MjcwZTNjMWVlMjA4YTY2N2FiYjFmMTRkNjE4ZmM0NmYzYTU4ZmMzNDE5Y2Q3ZTBlYTczIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0MTJjYTM0NWNjZjc1YmY5YzA4MDZiY2U2OTViZThkZTgwOGI3OTk4NDI1MWE3YTU0ZDIwMmNmNjEwMWRkNDUxIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJmZTkxYmRjYTI4NzRlMGI0Y2JiN2JlZDhhNmYwNWIzMzlkMTJiNDRhNGI0YWQ1MjM5M2MyYjFkODViMTNiMzMyIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI3YmM5OGQ2YjBkYzQ5MmM1MDE2ZGYxMDgwNWEzYTU0ZWI5YzE4NGE1YTYxMzdlN2Y0YmVjZmEwYzIyMDU1MGQwIn0"
         }
       ]
+    },
+    {
+      "id": "claim_12919432d94d45d791db808c1fad56cc",
+      "statement": "Appearance shows all theme previews in the Settings page's single scroll area. Names wrap rather than truncate, and Color scheme help is shown when System is selected.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/settings_surface.rs#L285-L313",
+          "version": "repo-lines-v1:sha256:7b206cc90a5779b42d5c50c0d93c6fd03c17a7be906f6cfa57293bfee912cddd:eyJzZWxlY3RlZExpbmVDb3VudCI6MjksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE0YTVlNDY3MTgwOTgyZGZlYjRlM2UxNmUzNWY5NDNjMGY0NjZiMTNkZmQ0MWMwMTc0ZTI1YmJkNzk1NmE3OTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ1NWZhYjA3OTBiNjhhYTQxNGVmMTM5NDRkODI0OTIxNzgwYTQyOGQ2YzMzNjBiODdiMzVmYzNmMDA3ZDA4ODMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjllZGQxZmVkM2ViZTgyMTQ4MmRhODY5MTYxYWY3YzUxOTBiZmM4MjAzNzNmZGFiZGZlMTBlZDVmOWQyNTA4ZTQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZkNDM3N2VhYzFlMjRjOWY5MjQ3ZGI0NDhmZWQ4NGY5ZGM3NDY2ZWZhNzJlODhkN2QxOWMxODgzNzY5YzJhZDIifQ"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/settings_themes.rs#L34-L137",
+          "version": "repo-lines-v1:sha256:5af650227a5dbffd9ab6fc686cfa3a8e497264874060670af3a54d9383d382bf:eyJzZWxlY3RlZExpbmVDb3VudCI6MTA0LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJjNTVjZmIzZDkwZGRjNjQ3Y2Y0MWI1ZTFmMzdlYWE5NWRmZTE1ODljYjM4MDI0MjZkMDllOTJlNjg5NDk2MjhkIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJhZTFiNTRkNWI5YTIxMzcxOWI3MzJjYmU4ZmQ1YTJhOTI1MTQ0ZjcxZWNmM2Y0M2JkMDY1NGNlNTllN2Q1YTgzIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIyMmYyZmY1ZmVlYzYwZjU4N2M4ZmFlNGU4N2Y4MDlhNjYxY2ZmZWQ2YjQ3YWFlNWY2ZDZhMjY1M2FhODk1MmVmIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIwMThjOWFjZmUxMmNjMjVhYTRhYThiOTExMGE5ZDk4NmQ3ZTY3ZmE0MmMxMDYwNzMwZWYwN2NmM2E4Njk5ODgyIn0"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-05T08:37:07.266Z"
+    "at": "2026-11-05T12:06:42.474Z"
   }
 }

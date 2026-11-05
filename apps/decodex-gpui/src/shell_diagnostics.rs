@@ -161,9 +161,30 @@ fn report_text(snapshot: &HealthSnapshot) -> Option<String> {
 	Some(format!("Decodex diagnostics\nReport state: {:?}\n{report}", snapshot.load))
 }
 
+fn summary_presentation(snapshot: &HealthSnapshot) -> shell::HealthPresentation {
+	let presentation = shell::health_presentation(snapshot);
+	if snapshot.load == HealthLoadState::Ready
+		&& presentation.tone == Tone::Success
+		&& snapshot.report.as_ref().is_some_and(|report| {
+			HEALTH_APP_SERVER_COMPONENTS.iter().any(|component| {
+				matches!(
+					report.check(*component).map(|check| check.status),
+					None | Some(DoctorStatus::Unknown(DoctorIssue::NotProbed))
+				)
+			})
+		}) {
+		return shell::HealthPresentation {
+			label: "Some Codex checks have not run",
+			detail: "Run checks to verify the remaining capabilities.",
+			tone: Tone::Neutral,
+		};
+	}
+	presentation
+}
+
 fn summary_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 	let snapshot = &shell.health;
-	let presentation = shell::health_presentation(snapshot);
+	let presentation = summary_presentation(snapshot);
 	let mut status = ui_theme::settings_rows().child(
 		ui_feedback::status_row(
 			"health-query-status",
@@ -173,7 +194,7 @@ fn summary_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 			presentation.tone.icon(),
 		)
 		.debug_selector(|| "health-query-status".into())
-		.min_h(gpui::px(32.)),
+		.min_h(gpui::px(48.)),
 	);
 
 	for (index, issue) in issues(snapshot).into_iter().enumerate() {
@@ -197,7 +218,7 @@ fn summary_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 		.max_w(gpui::px(SETTINGS_WIDTH))
 		.mx_auto()
 		.text_size(gpui::px(SETTINGS_LABEL_SIZE))
-		.child(ui_theme::settings_panel(status).py(gpui::px(6.)));
+		.child(status.px(gpui::px(12.)));
 
 	let content = content.child(ui_theme::settings_group(
 		"Checks",
@@ -536,6 +557,40 @@ fn control(
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[test]
+	fn unchecked_codex_guidance_does_not_override_errors_or_stale_results() {
+		let report = |native_status| {
+			DoctorReport::new(
+				decodex_protocol::ServerId::new("check-guidance").unwrap(),
+				decodex_protocol::CURRENT_VERSION,
+				HEALTH_CORE_COMPONENTS
+					.into_iter()
+					.map(|component| {
+						decodex_protocol::DoctorCheck::new(component, DoctorStatus::Ready)
+					})
+					.chain(HEALTH_APP_SERVER_COMPONENTS.into_iter().map(|component| {
+						decodex_protocol::DoctorCheck::new(component, native_status)
+					}))
+					.collect(),
+			)
+			.unwrap()
+		};
+		let mut snapshot = HealthSnapshot {
+			load: HealthLoadState::Ready,
+			report: Some(report(DoctorStatus::Unknown(DoctorIssue::NotProbed))),
+			can_refresh: true,
+		};
+		assert_eq!(summary_presentation(&snapshot).label, "Some Codex checks have not run");
+		assert_eq!(summary_presentation(&snapshot).tone, Tone::Neutral);
+		snapshot.load = HealthLoadState::Stale;
+		assert_eq!(summary_presentation(&snapshot).label, "Report needs an update");
+		snapshot.load = HealthLoadState::Ready;
+		snapshot.report = Some(report(DoctorStatus::Unavailable(DoctorIssue::Authentication)));
+		assert_eq!(summary_presentation(&snapshot).tone, Tone::Warning);
+		snapshot.report = Some(report(DoctorStatus::Ready));
+		assert_eq!(summary_presentation(&snapshot).tone, Tone::Success);
+	}
 
 	#[test]
 	fn grouped_checks_preserve_unknown_and_mixed_results() {

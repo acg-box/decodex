@@ -100,6 +100,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/settings_power.rs
   - id: openwiki-source-a16804a567889414868e5d67
     resource: repo://apps/decodex-gpui/src/settings_surface.rs
+  - id: openwiki-source-175eb5a6c5aac2391d3a3716
+    resource: repo://apps/decodex-gpui/src/settings_themes.rs
   - id: openwiki-source-cfb92e5db8b3a39d51f6a057
     resource: repo://apps/decodex-gpui/src/settings_updates.rs
   - id: openwiki-source-2dfc8cb7dbdb75c07469c4c3
@@ -136,10 +138,10 @@ sources:
     resource: repo://database/src/works/commands.rs
   - id: openwiki-source-8fe6f1557e5d45d88b34bd0a
     resource: repo://scripts/macos/generate_workspace_symbols.swift
-generated: { by: "codex", at: "2026-11-05T08:37:07.266Z" }
+generated: { by: "codex", at: "2026-11-05T11:57:35.741Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-05T08:37:07.266Z
+    at: 2026-11-05T12:06:42.474Z
 ---
 
 # Desktop workspace and native glass
@@ -148,7 +150,7 @@ verified:
 
 The six Settings sections are General, Agents, Appearance, Components, Accounts and Diagnostics. They use the same 620-point content column and shared rows. General contains the app version and native Check for updates action; Updates has no separate navigation entry. New conversations uses two setting rows: Permissions shows the selected mode's meaning and opens the shared permission menu, and Speed reuses the existing segmented control with usage for the selected speed. General groups automatic recaps and sleep prevention under Background.
 
-Settings reuse the App's normal body and control typography. Section titles, setting names, values and explanations have distinct visual roles. Related controls share one quiet surface; rows do not each acquire a separate card. Necessary descriptions remain visible. The permission menu shows all four explanations and the native inheritance rule directly. Native options use one flat list under Context defaults, with one shared-scope description. Assistance contains suggestion and Guardian controls. Model fields place each label above its input. Primary Save and Add account actions use the shared filled button.
+Settings reuse the App's normal body and control typography. Section titles, setting names, values and explanations have distinct visual roles. Related controls share one quiet surface; rows do not each acquire a separate card. Necessary descriptions remain visible. The permission menu shows all four explanations and the native inheritance rule directly. Native options use one flat list under Context defaults, with one shared-scope description. Assistance contains suggestion and Guardian controls. Model fields place each label above its input. Model verification and Add account actions use the shared filled button. Permission, cost, scope and data-effect explanations remain visible; simple preferences do not repeat their labels in a second sentence.
 
 The permission picker keeps its open state and focus handles in the window. Its visible trailing edge aligns with the trigger, excluding the outer shadow gutter. Arrow keys cycle within its options. Escape closes the menu and restores focus to its trigger. Tab and Shift-Tab dismiss the menu and continue keyboard navigation. Settings remains open after repeated Escape. Command-W or the window close button closes Settings, including while the menu is open. The picker reuses the existing permission rows; it does not own conversation permissions.
 
@@ -158,7 +160,9 @@ Settings and conversation disclosures animate their open proportion. The first o
 
 Ordinary preferences use shared group surfaces and one divided-row helper. Accounts uses one surface for its compact list. Each account summary places its identity, a fixed-width quota column and management actions on one compact row. One or two quota windows use the same summary height. Only the summary has the disclosure click target and hand cursor; expanded reading areas keep the ordinary cursor. Not-applicable quota windows are omitted; unknown usage retains its row. Expanded activity keeps two columns of labels and values, with current and best streak together, followed by the daily chart and a separate Reset cards area. Metric labels and values share the quota text size and muted color; values use tabular figures without extra size or weight. The daily chart uses a subdued accent. Component names, available versions and lifecycle actions share one row in a divided list. Expanded component, MCP and Diagnostics content uses an inset detail surface with distinct headings, values and guidance. Feedback stays with the operation that owns it.
 
-Diagnostics first shows the overall state and three group summaries. Technical details retains every individual result and cached-report warning. A uniform group shows its state once beside the heading; mixed groups keep per-item states. Missing and unchecked results remain explicit. Current summaries do not use stale reports. Native process values use aligned columns with explicit missing-value labels.
+Diagnostics first shows a plain status line and three group summaries. When local services are ready but Codex checks have not run, the status explains that Run checks can verify the remaining capabilities. Technical details retains every individual result and cached-report warning. A uniform group shows its state once beside the heading; mixed groups keep per-item states. Missing and unchecked results remain explicit. Current summaries do not use stale reports. Native process values use aligned columns with explicit missing-value labels.
+
+Appearance lays out all theme previews in the page's one scroll area. Theme names can wrap, and the gallery does not capture a separate inner scroll. Color scheme help appears when System is selected.
 
 Visual references: [Zed Settings design](https://zed.dev/blog/settings-ui), [Raycast Settings](https://manual.raycast.com/settings) and [Linear preferences](https://linear.app/docs/account-preferences).
 
@@ -282,6 +286,6 @@ See [Conversation presentation and motion](conversation-presentation.md), [Agent
 
 The composer preserves current editable input. Submitted messages retain their own delivery state and exact retry payload; there is no recovered-copy manager. Rich Markdown retains math, Mermaid, weather and source-copy presentation without replacing native execution. The embedded MCP HTML viewer is retired. Ordinary tools and native form prompts remain available. See [conversations](../workflows/conversations-and-recovery.md), [tools](../integrations/tools-plugins-and-apps.md) and [acceptance boundaries](../testing/upstream-acceptance-boundaries.md).
 
-The model editor fills the component's detail region. Model API groups the Base URL and optional API key in one row. Models groups extraction and embedding choices in a second row. Labels sit above 24-point inputs; values use normal control text. Guidance explains the compatible API and each model's role. Cancel and the primary Save action align with the form's right edge. API guidance and the Codex memory reminder remain beside the form. Saved-key help appears when saved model settings exist. The redundant setup notice is hidden during editing. Collapsing and reopening RAGFlow retains unsaved input. Cancel discards unsaved values, clears the editor error and collapses RAGFlow.
+The RAGFlow row distinguishes service installation from Assistant Memory configuration even when collapsed. Expanding installed RAGFlow opens the editor directly. The editor fills its detail region without another section-heading layer. Base URL and optional API key share one row; extraction and embedding model IDs share a second row. Labels sit above 24-point inputs and values use normal control text. API, model-role, Codex memory and initial chat-import guidance remain visible. Verify and enable is the first setup action; configured Memory uses Verify and save. Empty required fields disable submission. Complete input receives the existing URL and model validation on explicit submission, so an invalid address gets a useful error. Editing refreshes the form and clears the old editor error. Saved-key help remains conditional, and an old key is retained only at the same Base URL. Collapse retains unsaved input. Cancel discards it, clears the error and collapses RAGFlow.
 
 RAGFlow setup uses the current local service profile and selected Assistant. Profile, runtime or role changes clear its temporary presentation state while preserving the ordinary chat draft. The component's generated credentials and raw scope IDs are not UI fields. Setup progress and failures use shared inline feedback beside the component. See [Runtime architecture](runtime-architecture.md) for process, storage and native-memory ownership.

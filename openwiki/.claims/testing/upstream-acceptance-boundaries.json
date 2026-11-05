@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:fb818697da3cbfb32c3b5f3b606a4f41c0229e4ed1396ee7fea6d53db7efe754",
+  "pageVersion": "sha256:7a63eb7df6c43e3d13bebe1c7400160bbb7c39b5005d1250b605dcf9e395ee91",
   "claims": [
     {
       "id": "claim_2dd4ad01dd984b80a22d9cb9c9bfd397",
@@ -1182,7 +1182,7 @@
     },
     {
       "id": "claim_199088d6ec9e4c77bd627bd1a3844b01",
-      "statement": "Assistant fixtures cover idle initialization, first-message choices with draft preservation, durable teams and wakes, context/import receipts, desktop continuity and selected-native fresh contexts. RAGFlow HTTP fixtures cover default models, missing-model failure, lost replies, private origin-bound credentials, exact scopes and business errors. Managed-service and shared-UI fixtures cover unavailable container prerequisites without storage changes or service effects, API-only model configuration, custom endpoint paths and names, loopback translation, blank saved-key fields, source invalidation, private receipts, shared lifecycle presentation and project-scoped Uninstall without volume removal. These fixtures do not establish real Docker bootstrap, live Memory extraction, model quality or installed-App acceptance.",
+      "statement": "Assistant fixtures cover idle initialization, first-message choices with draft preservation, durable teams and wakes, context/import receipts, desktop continuity and selected-native fresh contexts. RAGFlow HTTP fixtures cover default models, missing-model failure, lost replies, private origin-bound credentials, exact scopes and business errors. Managed-service and shared-UI fixtures cover unavailable container prerequisites without storage changes or service effects, API-only model configuration, custom endpoint paths and names, loopback translation, blank saved-key fields, required-field submission gating, input-driven updates, explicit URL validation, source invalidation, private receipts, shared lifecycle presentation and project-scoped Uninstall without volume removal. These fixtures do not establish real Docker bootstrap, live Memory extraction, model quality or installed-App acceptance.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_timeline.rs",
@@ -1190,11 +1190,11 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
-          "version": "repo-file-v1:sha256:f85396d5f363861e61dc33905478eef8040c79f1fa64272fc412cf1f9cbb0056"
+          "version": "repo-file-v1:sha256:a48c96edf9028245f67bc743d0b270b240da46a818d783a0c1af41d246bb633e"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:b9ec790a366ae5f7181d83aace685cf943cc31f3a84d3e9e301ff4fe98c00352"
+          "version": "repo-file-v1:sha256:5c2c3a7ef8ddde1e5398824a9c9511b03b45c2ea0746dc99224c999f2ba87a31"
         },
         {
           "resource": "repo://crates/decodex-components/src/ragflow.rs",
@@ -1249,6 +1249,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-05T08:37:07.266Z"
+    "at": "2026-11-05T11:57:35.741Z"
   }
 }

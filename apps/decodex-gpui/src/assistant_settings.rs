@@ -1,5 +1,6 @@
 //! Assistant is built in. RAGFlow uses the same install lifecycle as other components.
 use crate::{
+	composer_input::ComposerEvent,
 	shell::agent_surface::{AgentActionDto, AgentSurface, ComposerInput, EntityId},
 	ui_feedback::Feedback,
 	ui_theme,
@@ -105,11 +106,7 @@ impl AgentSurface {
 		{
 			if self.assistant_settings.installation.as_ref().is_some_and(|i| i.models.is_some()) {
 				Some(Feedback::warning(
-					"Memory setup is incomplete. Save the model settings to retry.",
-				))
-			} else if self.assistant_settings.fields.is_empty() {
-				Some(Feedback::neutral(
-					"Expand RAGFlow to add model settings for Assistant Memory.",
+					"Memory setup did not finish. Verify the model settings to retry.",
 				))
 			} else {
 				None
@@ -192,7 +189,7 @@ impl AgentSurface {
 	}
 
 	pub(crate) fn ragflow_settings_view(&self, _cx: &mut Context<Self>) -> AnyElement {
-		let mut body = ui_theme::settings_rows().gap(gpui::px(16.));
+		let mut body = ui_theme::settings_rows().gap(gpui::px(12.));
 		if !self.assistant_settings.fields.is_empty() {
 			let fields = |items: [(&str, &'static str); 2]| {
 				gpui::div()
@@ -216,31 +213,21 @@ impl AgentSurface {
 					}))
 					.into_any_element()
 			};
-			let mut connection = vec![
-				ui_theme::settings_description("Both models use this OpenAI-compatible API.")
-					.into_any_element(),
-				fields([("url", "Base URL"), ("key", "API key (optional)")]),
-			];
+			body = body
+				.child(ui_theme::settings_description(
+					"Both models use the same OpenAI-compatible API.",
+				))
+				.child(fields([("url", "Base URL"), ("key", "API key (optional)")]));
 			if self.assistant_settings.installation.as_ref().is_some_and(|i| i.models.is_some()) {
-				connection.push(
-					ui_theme::settings_description(
-						"Leave the key blank to keep it when the Base URL is unchanged.",
-					)
-					.into_any_element(),
-				);
+				body = body.child(ui_theme::settings_description(
+					"Leave the key blank to keep it when the Base URL is unchanged.",
+				));
 			}
-			body = body.child(ui_theme::settings_detail_group("Model API", connection)).child(
-				ui_theme::settings_detail_group(
-					"Models",
-					vec![
-						ui_theme::settings_description(
-							"Extraction saves facts. Embedding makes memories searchable.",
-						)
-						.into_any_element(),
-						fields([("chat", "Extraction model"), ("embedding", "Embedding model")]),
-					],
-				),
-			);
+			body = body
+				.child(fields([("chat", "Extraction model"), ("embedding", "Embedding model")]))
+				.child(ui_theme::settings_description(
+					"Extraction saves facts. Embedding makes memories searchable.",
+				));
 		} else if let Some(models) =
 			self.assistant_settings.installation.as_ref().and_then(|i| i.models.as_ref())
 		{
@@ -263,7 +250,11 @@ impl AgentSurface {
 			self.assistant_settings.installation.as_ref().is_some_and(|i| i.installed),
 			|body| {
 				body.child(ui_theme::settings_description(
-					"Enabling Assistant Memory turns off Codex memory for this Assistant.",
+					if self.ragflow_component_state().memory_ready {
+						"Enabling Assistant Memory turns off Codex memory for this Assistant."
+					} else {
+						"Enabling Assistant Memory turns off Codex memory for this Assistant. Chat import starts off and can be enabled after setup."
+					},
 				))
 			},
 		)
@@ -303,13 +294,29 @@ impl AgentSurface {
 				}
 				i.set_content(&value, cx);
 			});
+			cx.subscribe(&input, |surface, _, event: &ComposerEvent, cx| {
+				if matches!(event, ComposerEvent::Changed) {
+					surface.assistant_settings.error.clear();
+					cx.notify();
+				}
+			})
+			.detach();
 			self.assistant_settings.fields.insert(key, input);
 		}
 		self.assistant_settings.error.clear();
 		cx.notify();
 	}
 
-	fn save_memory_models(&mut self, cx: &mut Context<Self>) {
+	pub(crate) fn can_submit_memory_models(&self, cx: &gpui::App) -> bool {
+		["url", "chat", "embedding"].into_iter().all(|key| {
+			self.assistant_settings
+				.fields
+				.get(key)
+				.is_some_and(|field| !field.read(cx).content().trim().is_empty())
+		})
+	}
+
+	fn memory_models(&self, cx: &gpui::App) -> Models {
 		let read = |key| {
 			self.assistant_settings
 				.fields
@@ -333,6 +340,11 @@ impl AgentSurface {
 		{
 			models.api_key.clone_from(&saved.api_key);
 		}
+		models
+	}
+
+	fn save_memory_models(&mut self, cx: &mut Context<Self>) {
+		let models = self.memory_models(cx);
 		if let Err(error) = models.validate() {
 			self.assistant_settings.error = error;
 			cx.notify();
@@ -538,6 +550,66 @@ fn memory_connection(memory: decodex_components::ragflow::MemorySetup) -> Ragflo
 mod tests {
 	use super::*;
 	#[gpui::test]
+	fn model_editor_blocks_empty_submit_and_updates_after_field_changes(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let agent = cx.new(AgentSurface::new);
+		agent.update(cx, |s, cx| s.visual_ragflow_settings(cx));
+		let (_, visual) = cx.add_window_view(|_, cx| {
+			let mut settings = crate::settings_surface::SettingsSurface::new(
+				crate::desktop_settings::DesktopSettingsController::production(),
+				cx,
+			);
+			settings.bind_native_agent(agent.clone(), cx);
+			settings.category = crate::settings_surface::SettingsCategory::Components;
+			settings.visual_ragflow_settings();
+			settings
+		});
+		visual.update(crate::ui_frame::draw_current_frame);
+		let save = visual.debug_bounds("components-ragflow-models-save").unwrap();
+		visual.simulate_click(save.center(), Default::default());
+		agent.read_with(visual, |s, cx| {
+			assert!(!s.can_submit_memory_models(cx));
+			assert!(s.assistant_settings.error.is_empty(), "empty submit must not dispatch");
+		});
+		let changed = std::rc::Rc::new(std::cell::Cell::new(0));
+		let _observation = visual.update(|_, cx| {
+			let changed = changed.clone();
+			cx.observe(&agent, move |_, _| changed.set(changed.get() + 1))
+		});
+		let fields = agent.read_with(visual, |s, _| s.assistant_settings.fields.clone());
+		for (key, value) in [
+			("url", "https://models.example.test/v1"),
+			("chat", "custom-extraction"),
+			("embedding", "custom-embedding"),
+		] {
+			fields[key].update(visual, |i, cx| i.set_content(value, cx));
+		}
+		visual.update(crate::ui_frame::draw_current_frame);
+		assert!(changed.get() > 0, "field changes must refresh the owning form");
+		assert!(agent.read_with(visual, |s, cx| s.can_submit_memory_models(cx)));
+		fields["url"].update(visual, |i, cx| i.set_content("invalid-url", cx));
+		visual.update(crate::ui_frame::draw_current_frame);
+		let save = visual.debug_bounds("components-ragflow-models-save").unwrap();
+		visual.simulate_click(save.center(), Default::default());
+		agent.read_with(visual, |s, _| {
+			assert_eq!(s.assistant_settings.error, "Enter a valid model Base URL.");
+		});
+		fields["url"].update(visual, |i, cx| i.set_content("https://models.example.test/v1", cx));
+		fields["embedding"].update(visual, |i, cx| i.set_content("", cx));
+		visual.update(crate::ui_frame::draw_current_frame);
+		let save = visual.debug_bounds("components-ragflow-models-save").unwrap();
+		visual.simulate_click(save.center(), Default::default());
+		agent.read_with(visual, |s, cx| {
+			assert!(!s.can_submit_memory_models(cx));
+			assert!(
+				s.assistant_settings.error.is_empty(),
+				"clearing a required field disables submit"
+			);
+		});
+	}
+
+	#[gpui::test]
 	fn model_configuration_masks_saved_keys_and_preserves_the_chat_draft(
 		cx: &mut gpui::TestAppContext,
 	) {
@@ -557,6 +629,9 @@ mod tests {
    assert_eq!(s.assistant_settings.fields["url"].read(cx).content(),"http://localhost:1234/v1");
    assert_eq!(s.assistant_settings.fields["key"].read(cx).content(),"");
    assert_eq!(s.assistant_settings.fields["chat"].read(cx).content(),"custom-chat");
+   assert_eq!(s.memory_models(cx).api_key,"private-fixture");
+   s.assistant_settings.fields["url"].clone().update(cx,|i,cx| i.set_content("https://different.example.test/v1",cx));
+   assert!(s.memory_models(cx).api_key.is_empty(),"a different endpoint cannot inherit the saved key");
    let mut next = s.snapshot.clone().unwrap();
    next.runtime_source = Some(EntityId::new("another-process").unwrap());
    s.invalidate_snapshot_panels(&next);

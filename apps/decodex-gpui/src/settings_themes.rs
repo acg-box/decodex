@@ -1,4 +1,4 @@
-//! Inline theme previews retain comparison space without growing the settings page.
+//! Theme previews share the Settings page's single scroll area.
 use gpui::{
 	Bounds, Context, Corners, Div, FontWeight, IntoElement, KeyDownEvent, Role, SharedString,
 	Stateful,
@@ -11,7 +11,6 @@ use gpui::{
 
 use crate::{
 	settings_surface::SettingsSurface,
-	ui_scroll::SmoothScrollArea,
 	ui_theme::{
 		self, ACCENT, CANVAS, COMPOSER_MATERIAL, CONTENT_MATERIAL, ColorScheme, ColorTheme,
 		HOVER_FILL, MESSAGE_MATERIAL, PRESSED_FILL, PRIMARY_FILL, SELECTED_BORDER, SELECTED_FILL,
@@ -33,31 +32,16 @@ impl SettingsSurface {
 	}
 
 	pub(super) fn theme_controls(&self, cx: &mut Context<Self>) -> impl IntoElement {
-		gpui::div().w_full().h(gpui::px(192.)).child(
-			gpui::div()
-				.id("color-theme-picker")
-				.debug_selector(|| "color-theme-picker".into())
-				.role(Role::RadioGroup)
-				.aria_label("Color theme")
-				.size_full()
-				.overflow_y_scroll()
-				.pr(gpui::px(14.))
-				.flex()
-				.flex_col()
-				.child(
-					gpui::div()
-						.w_full()
-						.flex_none()
-						.grid()
-						.grid_cols(5)
-						.gap(gpui::px(8.))
-						.children(
-							ColorTheme::ALL.into_iter().map(|theme| self.theme_option(theme, cx)),
-						),
-				)
-				.smooth_scroll("color-theme-scroll-motion")
-				.with_scrollbar("color-theme-scrollbar", "Scroll color themes"),
-		)
+		gpui::div()
+			.id("color-theme-picker")
+			.debug_selector(|| "color-theme-picker".into())
+			.role(Role::RadioGroup)
+			.aria_label("Color theme")
+			.w_full()
+			.grid()
+			.grid_cols(5)
+			.gap(gpui::px(8.))
+			.children(ColorTheme::ALL.into_iter().map(|theme| self.theme_option(theme, cx)))
 	}
 
 	fn theme_option(&self, theme: ColorTheme, cx: &mut Context<Self>) -> Stateful<Div> {
@@ -75,7 +59,7 @@ impl SettingsSurface {
 			.w_full()
 			.flex_none()
 			.min_w_0()
-			.h(gpui::px(90.))
+			.h(gpui::px(76.))
 			.p(gpui::px(2.))
 			.flex()
 			.flex_col()
@@ -84,7 +68,7 @@ impl SettingsSurface {
 			.border_1()
 			.border_color(gpui::transparent_black())
 			.text_size(gpui::px(11.5))
-			.line_height(gpui::px(17.))
+			.line_height(gpui::px(15.))
 			.text_color(ui_theme::rgb(TEXT))
 			.cursor_pointer()
 			.hover(|row| row.bg(ui_theme::rgba(HOVER_FILL)))
@@ -94,7 +78,7 @@ impl SettingsSurface {
 				gpui::div()
 					.relative()
 					.w_full()
-					.h(gpui::px(62.))
+					.h(gpui::px(36.))
 					.flex_none()
 					.rounded(gpui::px(6.))
 					.overflow_hidden()
@@ -122,7 +106,6 @@ impl SettingsSurface {
 					.min_w_0()
 					.px(gpui::px(3.))
 					.font_weight(FontWeight::MEDIUM)
-					.truncate()
 					.child(theme.name()),
 			)
 			.on_click(cx.listener(move |_, _, _, cx| theme.select(cx)))
