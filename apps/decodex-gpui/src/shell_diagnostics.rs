@@ -3,8 +3,8 @@
 use std::rc::Rc;
 
 use gpui::{
-	AnyElement, ClipboardItem, Context, Div, FocusHandle, IntoElement as _, KeyDownEvent, Role,
-	ScrollHandle, Stateful, Window,
+	AnyElement, ClipboardItem, Context, Div, FocusHandle, FontWeight, IntoElement as _,
+	KeyDownEvent, Role, ScrollHandle, Stateful, Window,
 	prelude::{
 		FluentBuilder as _, InteractiveElement as _, ParentElement as _,
 		StatefulInteractiveElement as _, Styled as _,
@@ -24,7 +24,9 @@ use crate::{
 		TEXT,
 	},
 };
-use decodex_protocol::{DoctorComponent, DoctorIssue, DoctorReport, DoctorStatus};
+use decodex_protocol::{
+	DoctorComponent, DoctorIssue, DoctorReport, DoctorStatus, NativeProcessDiagnostics,
+};
 
 #[derive(Default)]
 pub(super) struct Diagnostics {
@@ -133,7 +135,7 @@ fn issue_description(issue: DoctorIssue) -> (&'static str, &'static str) {
 			"Restart and check again. Copy the report if the problem continues.",
 		),
 		DoctorIssue::ConfigurationVersion | DoctorIssue::ProtocolVersionMismatch =>
-			("App components do not match", "Open Updates, then restart Decodex."),
+			("App components do not match", "Check for updates in General, then restart Decodex."),
 		DoctorIssue::DatabaseNotConfigured
 		| DoctorIssue::DatabaseMalformedConfig
 		| DoctorIssue::DatabaseUnreachable
@@ -189,29 +191,46 @@ fn summary_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 		);
 	}
 
-	let mut content = ui_theme::settings_sections()
+	let current_report =
+		snapshot.report.as_ref().filter(|_| snapshot.load == HealthLoadState::Ready);
+	let content = ui_theme::settings_sections()
 		.max_w(gpui::px(SETTINGS_WIDTH))
 		.mx_auto()
 		.text_size(gpui::px(SETTINGS_LABEL_SIZE))
-		.child(ui_theme::settings_card(vec![status.into_any_element()]));
+		.child(ui_theme::settings_panel(status).py(gpui::px(6.)));
 
-	if snapshot.load == HealthLoadState::Ready {
-		content = content.child(component_section(
-			"health-core-components",
-			"Local services",
-			0,
-			&HEALTH_CORE_COMPONENTS,
-			snapshot.report.as_ref(),
-			false,
-		));
-	}
+	let content = content.child(ui_theme::settings_group(
+		"Checks",
+		vec![
+			component_summary(
+				"health-summary-core",
+				"Local services",
+				&HEALTH_CORE_COMPONENTS,
+				current_report,
+			),
+			component_summary(
+				"health-summary-codex",
+				"Codex capabilities",
+				&HEALTH_APP_SERVER_COMPONENTS,
+				current_report,
+			),
+			component_summary(
+				"health-summary-optional",
+				"Optional features",
+				&HEALTH_OPTIONAL_COMPONENTS,
+				current_report,
+			),
+		],
+	));
 
 	content
-		.child(gpui::div().flex().flex_col().child(details_toggle(shell, cx)).child(
-			crate::ui_motion::settings_disclosure(
-				"health-details-motion",
-				shell.diagnostics.expanded,
-				|| technical_details(snapshot),
+		.child(ui_theme::settings_panel(
+			gpui::div().flex().flex_col().child(details_toggle(shell, cx)).child(
+				crate::ui_motion::settings_disclosure(
+					"health-details-motion",
+					shell.diagnostics.expanded,
+					|| technical_details(snapshot),
+				),
 			),
 		))
 		.into_any_element()
@@ -236,6 +255,7 @@ fn details_toggle(shell: &Shell, cx: &Context<Shell>) -> AnyElement {
 		.gap_2()
 		.cursor_pointer()
 		.text_size(gpui::px(SETTINGS_LABEL_SIZE))
+		.font_weight(FontWeight::MEDIUM)
 		.text_color(ui_theme::rgb(TEXT))
 		.hover(|el| el.bg(ui_theme::rgba(HOVER_FILL)))
 		.focus_visible(|el| el.bg(ui_theme::rgba(HOVER_FILL)))
@@ -261,31 +281,61 @@ fn details_toggle(shell: &Shell, cx: &Context<Shell>) -> AnyElement {
 		.into_any_element()
 }
 
+fn common_presentation(
+	components: &[DoctorComponent],
+	report: Option<&DoctorReport>,
+) -> Option<shell::HealthPresentation> {
+	let status =
+		|component| report.and_then(|report| report.check(component)).map(|check| check.status);
+	let first = status(*components.first()?);
+	components
+		.iter()
+		.all(|component| status(*component) == first)
+		.then(|| shell::component_presentation(first))
+}
+
+fn component_summary(
+	id: &'static str,
+	title: &'static str,
+	components: &[DoctorComponent],
+	report: Option<&DoctorReport>,
+) -> AnyElement {
+	let common = common_presentation(components, report);
+	ui_theme::settings_row()
+		.debug_selector(move || id.into())
+		.child(ui_theme::settings_label(title, ""))
+		.child(ui_theme::settings_description(common.map_or_else(
+			|| "Mixed results".to_owned(),
+			|presentation| format!("{} ({})", presentation.label, components.len()),
+		)))
+		.into_any_element()
+}
+
 fn technical_details(snapshot: &HealthSnapshot) -> AnyElement {
 	let details = ui_theme::settings_rows()
-		.gap(gpui::px(10.))
+		.gap(gpui::px(16.))
 		.id("health-components")
 		.debug_selector(|| "health-components".into())
 		.when(snapshot.load != HealthLoadState::Ready && snapshot.report.is_some(), |details| {
-			details
-				.child(ui_theme::settings_description("Previous report; results may have changed."))
-				.child(component_section(
-					"health-previous-core-components",
-					"Local services",
-					0,
-					&HEALTH_CORE_COMPONENTS,
-					snapshot.report.as_ref(),
-					true,
-				))
+			details.child(
+				ui_theme::settings_description("Previous report; results may have changed.")
+					.debug_selector(|| "health-previous-report".into()),
+			)
+		})
+		.when(snapshot.report.is_some(), |details| {
+			details.child(component_section(
+				"health-core-components",
+				"Local services",
+				0,
+				&HEALTH_CORE_COMPONENTS,
+				snapshot.report.as_ref(),
+			))
 		})
 		.child(ui_theme::settings_detail_group(
 			"Agent process",
-			vec![
-				ui_theme::settings_description(shell::native_process_summary(
-					snapshot.report.as_ref().and_then(|report| report.native_process()),
-				))
-				.into_any_element(),
-			],
+			vec![native_process_details(
+				snapshot.report.as_ref().and_then(|report| report.native_process()),
+			)],
 		))
 		.child(component_section(
 			"health-app-server-components",
@@ -293,7 +343,6 @@ fn technical_details(snapshot: &HealthSnapshot) -> AnyElement {
 			HEALTH_CORE_COMPONENTS.len(),
 			&HEALTH_APP_SERVER_COMPONENTS,
 			snapshot.report.as_ref(),
-			true,
 		))
 		.child(component_section(
 			"health-optional-components",
@@ -301,17 +350,48 @@ fn technical_details(snapshot: &HealthSnapshot) -> AnyElement {
 			HEALTH_CORE_COMPONENTS.len() + HEALTH_APP_SERVER_COMPONENTS.len(),
 			&HEALTH_OPTIONAL_COMPONENTS,
 			snapshot.report.as_ref(),
-			true,
 		))
 		.into_any_element();
 	ui_theme::settings_detail(details).into_any_element()
+}
+
+fn native_process_details(value: Option<&NativeProcessDiagnostics>) -> AnyElement {
+	let Some(NativeProcessDiagnostics::Available {
+		process_id,
+		resident_memory_bytes,
+		physical_footprint_bytes,
+	}) = value
+	else {
+		return ui_theme::settings_description(shell::native_process_summary(value))
+			.into_any_element();
+	};
+	gpui::div()
+		.w_full()
+		.grid()
+		.grid_cols(3)
+		.gap_3()
+		.children(
+			[
+				("Process ID", process_id.to_string()),
+				("Resident memory", shell::native_memory_summary(*resident_memory_bytes)),
+				("Physical footprint", shell::native_memory_summary(*physical_footprint_bytes)),
+			]
+			.into_iter()
+			.map(|(label, value)| {
+				ui_theme::settings_rows()
+					.gap_1()
+					.child(ui_theme::settings_description(label))
+					.child(gpui::div().text_color(ui_theme::rgb(TEXT)).child(value))
+			}),
+		)
+		.into_any_element()
 }
 
 fn component_row(
 	index: usize,
 	component: DoctorComponent,
 	status: Option<DoctorStatus>,
-	compact: bool,
+	show_status: bool,
 ) -> AnyElement {
 	let label = shell::component_label(component);
 	let presentation = shell::component_presentation(status);
@@ -322,18 +402,14 @@ fn component_row(
 		.role(Role::ListItem)
 		.aria_label(format!("{label}: {}", presentation.label))
 		.min_w_0()
-		.min_h(gpui::px(if compact { 24. } else { 28. }))
-		.py(gpui::px(if compact { 2. } else { 4. }))
+		.min_h(gpui::px(24.))
+		.py(gpui::px(3.))
 		.flex()
 		.items_center()
 		.justify_between()
 		.gap_3()
-		.text_size(gpui::px(if compact {
-			ui_theme::SETTINGS_HELP_SIZE
-		} else {
-			SETTINGS_LABEL_SIZE
-		}))
-		.text_color(ui_theme::rgb(if compact { ui_theme::TEXT_MUTED } else { TEXT }))
+		.text_size(gpui::px(SETTINGS_LABEL_SIZE))
+		.text_color(ui_theme::rgb(TEXT))
 		.child(
 			gpui::div()
 				.min_w_0()
@@ -345,26 +421,28 @@ fn component_row(
 					name.child(ui_theme::settings_description(presentation.detail))
 				}),
 		)
-		.child(
-			gpui::div()
-				.flex_none()
-				.flex()
-				.items_center()
-				.gap(gpui::px(6.))
-				.text_color(ui_theme::rgb(if presentation.tone == Tone::Neutral {
-					ui_theme::TEXT_MUTED
-				} else {
-					TEXT
-				}))
-				.child(
-					gpui::div()
-						.size(gpui::px(5.))
-						.flex_none()
-						.rounded_full()
-						.bg(ui_theme::rgb(presentation.tone.color())),
-				)
-				.child(presentation.label),
-		)
+		.when(show_status, |row| {
+			row.child(
+				gpui::div()
+					.flex_none()
+					.flex()
+					.items_center()
+					.gap(gpui::px(6.))
+					.text_color(ui_theme::rgb(if presentation.tone == Tone::Neutral {
+						ui_theme::TEXT_MUTED
+					} else {
+						TEXT
+					}))
+					.child(
+						gpui::div()
+							.size(gpui::px(5.))
+							.flex_none()
+							.rounded_full()
+							.bg(ui_theme::rgb(presentation.tone.color())),
+					)
+					.child(presentation.label),
+			)
+		})
 		.into_any_element()
 }
 
@@ -374,9 +452,9 @@ fn component_section(
 	index_offset: usize,
 	components: &[DoctorComponent],
 	report: Option<&DoctorReport>,
-	compact: bool,
 ) -> AnyElement {
-	let rows = components
+	let common = common_presentation(components, report);
+	let rows: Vec<_> = components
 		.chunks(2)
 		.enumerate()
 		.map(|(row_index, components)| {
@@ -388,26 +466,46 @@ fn component_section(
 				.children(components.iter().copied().enumerate().map(|(column, component)| {
 					let status =
 						report.and_then(|report| report.check(component)).map(|check| check.status);
-					component_row(index_offset + row_index * 2 + column, component, status, compact)
+					component_row(
+						index_offset + row_index * 2 + column,
+						component,
+						status,
+						common.is_none(),
+					)
 				}))
 				.into_any_element()
 		})
 		.collect();
 
-	let group = if compact { ui_theme::settings_detail_group } else { ui_theme::settings_group };
-	group(
-		title,
-		vec![
-			ui_theme::settings_divided_rows(rows)
+	ui_theme::settings_rows()
+		.child(
+			gpui::div()
+				.flex()
+				.items_center()
+				.justify_between()
+				.child(
+					ui_theme::settings_section_title(title)
+						.text_size(gpui::px(SETTINGS_LABEL_SIZE)),
+				)
+				.when_some(common, |header, presentation| {
+					header.child(ui_theme::settings_description(format!(
+						"{} ({})",
+						presentation.label,
+						components.len()
+					)))
+				}),
+		)
+		.child(
+			ui_theme::settings_rows()
+				.children(rows)
 				.id(("health-section-list", index_offset))
 				.role(Role::List)
 				.aria_label(title)
 				.into_any_element(),
-		],
-	)
-	.id(id)
-	.debug_selector(move || id.into())
-	.into_any_element()
+		)
+		.id(id)
+		.debug_selector(move || id.into())
+		.into_any_element()
 }
 
 fn control(
@@ -433,4 +531,45 @@ fn control(
 				cx.stop_propagation();
 			}
 		}))
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn grouped_checks_preserve_unknown_and_mixed_results() {
+		let report = |statuses: Vec<DoctorStatus>| {
+			DoctorReport::new(
+				decodex_protocol::ServerId::new("grouped-checks").unwrap(),
+				decodex_protocol::CURRENT_VERSION,
+				HEALTH_CORE_COMPONENTS
+					.into_iter()
+					.zip(statuses)
+					.map(|(component, status)| {
+						decodex_protocol::DoctorCheck::new(component, status)
+					})
+					.collect(),
+			)
+			.unwrap()
+		};
+		let ready = report(vec![DoctorStatus::Ready; HEALTH_CORE_COMPONENTS.len()]);
+		assert_eq!(
+			common_presentation(&HEALTH_CORE_COMPONENTS, Some(&ready)).unwrap().label,
+			"Ready"
+		);
+		let unchecked = report(vec![
+			DoctorStatus::Unknown(DoctorIssue::NotProbed);
+			HEALTH_CORE_COMPONENTS.len()
+		]);
+		assert_eq!(
+			common_presentation(&HEALTH_CORE_COMPONENTS, Some(&unchecked)).unwrap().label,
+			"Not checked"
+		);
+		let partial = report(vec![DoctorStatus::Ready]);
+		assert!(common_presentation(&HEALTH_CORE_COMPONENTS, Some(&partial)).is_none());
+		let mut mixed = vec![DoctorStatus::Ready; HEALTH_CORE_COMPONENTS.len()];
+		mixed[0] = DoctorStatus::Unavailable(DoctorIssue::Authentication);
+		assert!(common_presentation(&HEALTH_CORE_COMPONENTS, Some(&report(mixed))).is_none());
+	}
 }

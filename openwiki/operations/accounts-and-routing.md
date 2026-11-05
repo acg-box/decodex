@@ -44,10 +44,10 @@ sources:
     resource: repo://database/src/quota_activation.rs
   - id: openwiki-source-8fe6f1557e5d45d88b34bd0a
     resource: repo://scripts/macos/generate_workspace_symbols.swift
-generated: { by: "codex", at: "2026-11-05T05:20:04.159Z" }
+generated: { by: "codex", at: "2026-11-05T08:37:07.266Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-05T05:34:06.722Z
+    at: 2026-11-05T08:37:07.266Z
 ---
 
 # Account routing and recovery
@@ -88,7 +88,7 @@ Swift and GPUI use the same interaction model. Normal accounts retain route, pow
 
 Each account has independent expanded state. Opening one account does not close another. Details contain the saved activity metrics, usage graph and Reset Cards. GPUI uses the shared 200 ms disclosure animation for expansion and collapse. Each moving frame measures current content before placing the next account and clips the visible area. It does not reuse a previous frame's content height. Already open details use their full height on first entry. Do not add a second Reset Cards disclosure or duplicate logout control. The GPUI account hover covers the row. Native menu focus and synchronized expansion belong to the [desktop presentation boundary](../architecture/desktop-workspace.md).
 
-GPUI uses a compact divided list. Each summary aligns identity, short `5h` and `7d` quota meters and management actions on one row. The quota column has a fixed width, and one or two windows keep the same summary height. Labels, percentages and local reset timestamps retain stable columns. A not-applicable window has no row, matching Menu Bar. Unknown usage retains its row with a placeholder; it does not become a fake zero-percent value. Both clients show the local reset date and time and pad single-digit calendar days with a digit-width space. On macOS, Foundation supplies the system hour-cycle preference, locale and time zone for quota reset and Reset Card expiry labels. Quoted locale words stay literal. This changes presentation only; it does not change the native reset instant or quota evidence.
+GPUI places the compact divided list in one shared Settings panel. The header uses a primary Add account action. Each summary aligns identity, short `5h` and `7d` quota meters and management actions on one row. The quota column has a fixed width, and one or two windows keep the same summary height. Labels, percentages and local reset timestamps retain stable columns. A not-applicable window has no row, matching Menu Bar. Unknown usage retains its row with a placeholder; it does not become a fake zero-percent value. Both clients show the local reset date and time and pad single-digit calendar days with a digit-width space. On macOS, Foundation supplies the system hour-cycle preference, locale and time zone for quota reset and Reset Card expiry labels. Quoted locale words stay literal. This changes presentation only; it does not change the native reset instant or quota evidence.
 
 The route action uses a curved connection between two endpoints in Settings and Menu Bar. Its existing active color and disabled behavior remain. The branching-arrow icon is reserved for conversation Fork actions.
 

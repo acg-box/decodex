@@ -555,11 +555,12 @@ impl SettingsSurface {
 
 	fn appearance_content(&self, cx: &mut Context<Self>) -> AnyElement {
 		ui_theme::settings_sections()
-			.child(self.appearance_controls(cx))
+			.child(ui_theme::settings_panel(self.appearance_controls(cx)))
 			.child(ui_theme::settings_group(
 				"Color theme",
 				vec![
 					ui_theme::settings_rows()
+						.py(gpui::px(8.))
 						.gap_2()
 						.child(ui_theme::settings_description(self.theme_description()))
 						.child(self.theme_controls(cx))

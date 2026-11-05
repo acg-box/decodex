@@ -797,6 +797,10 @@ impl Shell {
 						_ => SettingsCategory::General,
 					};
 			});
+			if std::env::var_os("DECODEX_VISUAL_RAGFLOW").is_some() {
+				shell.agent.update(cx, |surface, cx| surface.visual_ragflow_settings(cx));
+				shell.settings.update(cx, |settings, _| settings.visual_ragflow_settings());
+			}
 		}
 		if destination == Destination::Accounts
 			&& std::env::var_os("DECODEX_VISUAL_ACCOUNTS_EXPANDED").is_some()
@@ -3636,12 +3640,17 @@ fn accounts_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 						.when(count == 0 && snapshot.load == AccountsLoadState::Ready, |list| {
 							list.child(empty_accounts())
 						})
-						.child(ui_theme::settings_divided_rows(rows).flex_none()),
+						.child(
+							ui_theme::settings_panel(ui_theme::settings_divided_rows(rows))
+								.px_0()
+								.flex_none(),
+						),
 				)
 				.child(
-					gpui::div().flex_none().child(
+					ui_theme::settings_panel(
 						shell.settings.update(cx, |settings, cx| settings.quota_control(cx)),
-					),
+					)
+					.flex_none(),
 				),
 		)
 		.into_any_element()
@@ -3840,22 +3849,14 @@ fn account_login_prompt(code: String, url: String) -> AnyElement {
 }
 
 fn account_login_button(id: &'static str, label: &'static str, enabled: bool) -> Stateful<Div> {
-	ui_theme::settings_button_base(id, label)
-		.tab_index(if enabled { 0 } else { -1 })
-		.focus_visible(|s| s.border_color(ui_theme::rgb(BLUE)))
-		.text_color(ui_theme::rgb(if enabled { crate::ui_theme::TEXT_MUTED } else { TEXT_FAINT }))
-		.opacity(if enabled { 1.0 } else { 0.55 })
-		.when(!enabled, |button| button.cursor_default())
-		.when(enabled, |button| {
-			button
-				.cursor_pointer()
-				.hover(|element| {
-					element
-						.bg(ui_theme::rgba(crate::ui_theme::HOVER_FILL))
-						.text_color(ui_theme::rgb(WB_TEXT))
-				})
-				.active(|element| element.bg(ui_theme::rgba(PRESSED_FILL)))
-		})
+	let button = if !enabled {
+		ui_theme::settings_button_base(id, label).cursor_default().opacity(0.55)
+	} else if id == "account-login-browser" {
+		ui_theme::settings_primary_button(id, label)
+	} else {
+		ui_theme::settings_button(id, label)
+	};
+	button.tab_index(if enabled { 0 } else { -1 })
 }
 
 fn account_login_status_label(status: &AccountLoginStatus) -> String {
@@ -5677,13 +5678,6 @@ fn conversations_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 }
 
 fn native_process_summary(value: Option<&NativeProcessDiagnostics>) -> String {
-	let memory = |value: Option<u64>| {
-		value.map_or_else(
-			|| "Not reported".into(),
-			|bytes| format!("{:.1} MiB", bytes as f64 / 1_048_576.),
-		)
-	};
-
 	match value {
 		None => "No native process sample yet.".into(),
 		Some(NativeProcessDiagnostics::Inactive) => "No agent running.".into(),
@@ -5697,10 +5691,17 @@ fn native_process_summary(value: Option<&NativeProcessDiagnostics>) -> String {
 			physical_footprint_bytes,
 		}) => format!(
 			"PID: {process_id}\nResident: {}\nPhysical footprint: {}",
-			memory(*resident_memory_bytes),
-			memory(*physical_footprint_bytes)
+			native_memory_summary(*resident_memory_bytes),
+			native_memory_summary(*physical_footprint_bytes)
 		),
 	}
+}
+
+fn native_memory_summary(value: Option<u64>) -> String {
+	value.map_or_else(
+		|| "Not reported".into(),
+		|bytes| format!("{:.1} MiB", bytes as f64 / 1_048_576.),
+	)
 }
 
 fn connection_status(presentation: ConnectionPresentation) -> AnyElement {
@@ -7769,8 +7770,10 @@ mod tests {
 		assert!(viewport.size.height > gpui::px(200.) && viewport.bottom() <= gpui::px(480.));
 		assert!(settings.debug_bounds("health-components").is_none());
 		assert!(settings.debug_bounds("health-accounts").is_none());
+		assert!(viewport.contains(&settings.debug_bounds("health-summary-core").unwrap().center()));
 		assert!(
-			viewport.contains(&settings.debug_bounds("health-core-components").unwrap().center())
+			settings.debug_bounds("health-core-components").is_none(),
+			"individual checks belong in details"
 		);
 		assert_eq!(scroll.max_offset().y, gpui::px(0.));
 
@@ -7846,6 +7849,7 @@ mod tests {
 		assert_eq!(scroll.offset().y, gpui::px(0.));
 
 		// Retained results stay available without appearing to verify a new connection.
+		let summary = settings.debug_bounds("health-summary-core").unwrap();
 		shell.update(settings, |s, cx| {
 			s.health.load = HealthLoadState::Stale;
 			cx.notify();
@@ -7853,6 +7857,11 @@ mod tests {
 		settings.update(crate::ui_frame::draw_current_frame);
 
 		assert!(settings.debug_bounds("health-core-components").is_none());
+		assert_eq!(
+			settings.debug_bounds("health-summary-core").unwrap().size,
+			summary.size,
+			"a stale report updates the summary without removing its rows"
+		);
 
 		let toggle = settings.debug_bounds("health-details-toggle").unwrap();
 
@@ -7861,7 +7870,8 @@ mod tests {
 		settings.executor().advance_clock(std::time::Duration::from_millis(200));
 		settings.update(crate::ui_frame::draw_frame);
 
-		assert!(settings.debug_bounds("health-previous-core-components").is_some());
+		assert!(settings.debug_bounds("health-core-components").is_some());
+		assert!(settings.debug_bounds("health-previous-report").is_some());
 
 		let accounts = settings.debug_bounds("settings-section-Accounts").unwrap();
 
