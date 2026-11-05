@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:c5dfb450ba31ac8823b4ce5047d4127948f62a6d589d7c847681e093fb508bed",
+  "pageVersion": "sha256:a8dabb9276e232d3d91d91525f2168e6746a791dc05a3e6584eb40c43b69433b",
   "claims": [
     {
       "id": "claim_95da7355536d42fb9ba017dae9558113",
@@ -18,19 +18,19 @@
     },
     {
       "id": "claim_3ca9161484f24f26bb9c1976620ea4f0",
-      "statement": "Settings > Components shares version labels, status lights, lifecycle buttons, disclosure and inline feedback across optional components. EGM reports native version and enablement and offers Uninstall only for a listed plugin. Required-runtime verification retains its owner, while Sparkle application updates are available in Settings > General > Updates. EGM's light uses native enablement, inspection, operation and failure state; passive refresh retains its previous light.",
+      "statement": "Settings > Components shares version labels, status lights, lifecycle buttons, disclosure and inline feedback across optional components. EGM reports native version and enablement and offers Uninstall only for a listed plugin. The required Codex runtime prepares automatically at local bundled startup and offers Retry only after failure. Sparkle application updates remain in General. EGM's light uses native enablement, inspection, operation and failure state; passive refresh retains its previous light.",
       "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/bundled_daemon.rs",
+          "version": "repo-file-v1:sha256:dd1a317d49e93ba387cb76ec16c5c80c991c97a11b82b417f674cf68c827e5d6"
+        },
         {
           "resource": "repo://apps/decodex-gpui/src/component_plugins.rs",
           "version": "repo-file-v1:sha256:190f6fe3576b323a91b91214c53527635dbf2b962830439a58ccaccf0c09fd18"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:088e7ad5d3724fe24fb9ee523fd468ce83c27560487de145ae08f49ec83df530"
-        },
-        {
-          "resource": "repo://apps/decodex-gpui/src/settings_surface.rs#L494-L554",
-          "version": "repo-lines-v1:sha256:1d64f0e0728945f50a9ecb06de95815037fc53bd576e959d831906009518dde2:eyJzZWxlY3RlZExpbmVDb3VudCI6NjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUwMjQ4NWFkZWFiYTkyMmFkMWMzYmEzZGU0MWY1YmE2NmZiMTZhMjZiN2ViZTVhNjhkOGJiNDVlZmU0NDU4OTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU1MTRkMjA4Njg4NGY4MTdiMmFjYTFlYTkwOTE3Yjg4YTkxMzhmNzlkMmE5MmYwYzIxNTlkNDE5ZWJhOGZlZWYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjliMTE0Y2MyYjhkODYxMjk3ZmY2MGUwN2Q0NjQ2NjcwZmVjMGQ1ZjU5YWY4NDFjMTM3MmQ1NDFiOWVhYzk2YzYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjcwZTgzMGUzNTQ5NjMxODViMzg3MGRhY2Q0NWExMzhkZWJhOGZlYzMyMmZjODBlZjFhOTZjMWNjNWVkZTYxMjcifQ"
+          "version": "repo-file-v1:sha256:d22add383676146076f2bea688936358ef17cde2a4aa359ae67eeccdbbc2ec55"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_updates.rs",
@@ -131,6 +131,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-05T15:46:21.386Z"
+    "at": "2026-11-05T16:20:29.596Z"
   }
 }

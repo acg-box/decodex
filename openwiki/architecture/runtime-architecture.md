@@ -22,6 +22,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/bundled_daemon.rs
   - id: openwiki-source-c1d5f763b821a11957a8c33b
     resource: repo://apps/decodex-gpui/src/client_lifecycle.rs
+  - id: openwiki-source-e8596cc5aac62aa16bde932b
+    resource: repo://apps/decodex-gpui/src/component_runtime.rs
   - id: openwiki-source-0813b2e35e2133631c0aa4db
     resource: repo://apps/decodex-gpui/src/settings_components.rs
   - id: openwiki-source-37be5bb3dc64279420e57b31
@@ -172,10 +174,10 @@ sources:
     resource: repo://scripts/macos/stage_decodex_app.sh
   - id: openwiki-source-76081c1a47ca8cf32593de34
     resource: repo://scripts/macos/test_decodex_app_stage.sh
-generated: { by: "codex", at: "2026-11-05T15:16:31.053Z" }
+generated: { by: "codex", at: "2026-11-05T16:20:29.596Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-05T15:46:21.386Z
+    at: 2026-11-05T16:20:29.596Z
 ---
 
 # Runtime Architecture
@@ -309,7 +311,7 @@ The per-server cached-catalog switch saves `mcp_servers.<quoted-server>.startup_
 
 ## Components and app updates
 
-`decodex-components` owns one per-user component store, package verification and cache repair. The GUI and service embed the same runtime requirement. App startup prepares that component before launching the owned service; preparation does not consume connection retry attempts. Settings > Components shows the selected component, progress, errors and Retry. Optional EGM installation, update and removal use the native Codex plugin lifecycle. Sparkle owns the Decodex application update flow. The app version and Check for updates action are in Settings > General; component updates remain in Components.
+`decodex-components` owns one per-user component store, package verification and cache repair. The GUI and service embed the same runtime requirement. Every local bundled App startup prepares that component on the existing background worker, including when its files are already present. The owned service waits for successful preparation; this wait does not consume connection retry attempts. Settings > Components reads the same preparation state and shows progress and errors. **Retry** appears only after failure; there is no permanent Verify control. Optional EGM installation, update and removal use the native Codex plugin lifecycle. Sparkle owns the Decodex application update flow. The app version and Check for updates action are in Settings > General; component updates remain in Components.
 
 Assistant is built in and always available from the sidebar. Its first use publishes an idle Agent and its role in one SQLite transaction. Components has no Assistant Enable control. The optional RAGFlow component shares lifecycle buttons, version metadata, collapsed details and inline feedback with the other components. It exposes Install, Update and Uninstall. Service connection is automatic; model settings use the component details.
 

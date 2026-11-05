@@ -86,6 +86,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_workspace.rs
   - id: openwiki-source-f339a4d1910db63ca305c2df
     resource: repo://apps/decodex-gpui/src/assistant_settings.rs
+  - id: openwiki-source-ae991159453be2ee0c611ac1
+    resource: repo://apps/decodex-gpui/src/bundled_daemon.rs
   - id: openwiki-source-e8596cc5aac62aa16bde932b
     resource: repo://apps/decodex-gpui/src/component_runtime.rs
   - id: openwiki-source-fca3688e96d92c09b7ba015f
@@ -136,10 +138,10 @@ sources:
     resource: repo://database/src/works/commands.rs
   - id: openwiki-source-8fe6f1557e5d45d88b34bd0a
     resource: repo://scripts/macos/generate_workspace_symbols.swift
-generated: { by: "codex", at: "2026-11-05T15:46:21.386Z" }
+generated: { by: "codex", at: "2026-11-05T16:20:29.596Z" }
 verified:
   - by: openwiki/0.7.3
-    at: 2026-11-05T15:46:21.386Z
+    at: 2026-11-05T16:20:29.596Z
 ---
 
 # Desktop workspace and native glass
@@ -164,7 +166,7 @@ Appearance lays out all theme previews in the page's one scroll area. Theme name
 
 Visual references: [Zed Settings design](https://zed.dev/blog/settings-ui), [Raycast Settings](https://manual.raycast.com/settings) and [Linear preferences](https://linear.app/docs/account-preferences).
 
-Codex setup failures show a short state and direct the user to the setup details. Expand Codex to read the original error. Retry setup uses the existing preparation owner.
+Codex prepares automatically in the background at local App startup. Components shows the resulting status without a permanent Verify button. Setup failures show a short state and direct the user to the original error in the expanded details. **Retry** uses the same preparation owner and disappears after recovery.
 
 The Agent conversation is the primary workspace. The left sidebar selects the overview and projects. The right Collaboration panel keeps recorded exchanges and pending response requests visible across chats. The bottom Dock presents Agent relationships through its graph or list.
 

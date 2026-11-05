@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:f161e7fa4d6e5e05d457c8c9556ea43ab5688a3eb0442f5ae810ae42d3512832",
+  "pageVersion": "sha256:d5a7b11e8b5587151d4fe6e61bc2c8d58aa67243b630972c723f17fa5c9b58d8",
   "claims": [
     {
       "id": "claim_613df7e7c10d49d28b26d6db94c525e5",
@@ -25,7 +25,7 @@
       "statement": "GPUI supervises its bundled service through a parent-lifetime channel, while typed clients reject incompatible protocol versions instead of opening product storage directly.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/bundled_daemon.rs#L558-L602",
+          "resource": "repo://apps/decodex-gpui/src/bundled_daemon.rs#L530-L574",
           "version": "repo-lines-v1:sha256:6da85f00185c9515c44a81b9a4a2a228c450e0fa72b919f8069a6b847df66aea:eyJzZWxlY3RlZExpbmVDb3VudCI6NDUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMzNWFmYjgzNTA3MWUxYTc2YmFlNDlmYTBiZWVmYjYwN2RjNGFjNGQxNjUzMmI2YjU5YmYzZTM5YjljNWE2Y2QiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjBlYjcyMzQ2NzYxODM3YzczODA0YmM4YWQ5NjRkMmI4OGU0Zjc3NGRmNWZmZjc2YzM2MjRlYTM5YjliYmM2YzQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdmYzYyNGFlOWNkZDNkNjMxYWRhZDcxYzgxMGEyMjNiNjMyZTk0MGQ3NTgxODIyZGVkYzBiYzQ4Y2EyMjVjYTAifQ"
         },
         {
@@ -146,23 +146,23 @@
     },
     {
       "id": "claim_73dcdb7a2e184168a61a8f862c83d99e",
-      "statement": "The app lifecycle prepares its pinned component before the owned local service connects without consuming connection retry attempts. Settings > Components exposes runtime preparation and native optional EGM lifecycle. Settings > General contains the app version and native Check for updates action, while Sparkle retains application update ownership.",
+      "statement": "Every local bundled App startup uses the existing background preparation worker for its pinned Codex component, including an existing installation. The owned service waits for Ready without consuming connection retries. Settings reads the shared state and offers Retry only after failure. Optional EGM uses the native plugin lifecycle; General contains the app version and Sparkle Check for updates action.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/bundled_daemon.rs",
-          "version": "repo-file-v1:sha256:08cd6b6b515669290b813c2ba6735d6acbe3de664cd0086288af66325f51584d"
+          "version": "repo-file-v1:sha256:dd1a317d49e93ba387cb76ec16c5c80c991c97a11b82b417f674cf68c827e5d6"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/client_lifecycle.rs",
           "version": "repo-file-v1:sha256:47b45da6e12e696e8050e758423ce5ca0aa1aca5b88ad22c8945796991813a1e"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:088e7ad5d3724fe24fb9ee523fd468ce83c27560487de145ae08f49ec83df530"
+          "resource": "repo://apps/decodex-gpui/src/component_runtime.rs",
+          "version": "repo-file-v1:sha256:27a2e86b191536c74520e16b902bcc7ccda1f1c13657f6ff860decef89e6c269"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/settings_surface.rs#L513-L565",
-          "version": "repo-lines-v1:sha256:5306e73a473d01043506dbeb8fdc14ceaf3a901ef4a2782ea86fafcd64c4e23b:eyJzZWxlY3RlZExpbmVDb3VudCI6NTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVlMWE4ZWI0MGQ5OWU0Y2I3Y2ZiZWY1M2VjODJmMTcxM2QxNmY4NzlmYzAwM2UyZjI1ZjY3YzZkYmVjM2E1M2EiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBhZjQ5MjdlMzZmMzQ3ZWUxZDA5MzFjMzFmZWIyY2FmYTIwZGQ4Y2IzMDUyZTQwMDNmMGMxZDNjYzM1MTRjZWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU4NTc0MGZkYjNlMzY0Yjc0YWEyMGY0YjJkMDdjNTNhOWU1M2UzNTVlN2Q1MWJlZGQ0ZDI3Njk0YWU4Mjk2ZWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFkYWUyNTNiNGEyYmIyMjJjMTU5NzVhN2E0ZWRlMmM0NmY3YjA3NTJjZmMwMzQ5YjlmMGM5MDI4NmRjMzZiNzQifQ"
+          "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
+          "version": "repo-file-v1:sha256:d22add383676146076f2bea688936358ef17cde2a4aa359ae67eeccdbbc2ec55"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_updates.rs",
@@ -817,6 +817,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-05T15:46:21.386Z"
+    "at": "2026-11-05T16:20:29.596Z"
   }
 }

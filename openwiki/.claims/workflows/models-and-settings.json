@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:302a731f3f572981350ccff8503666305ee91512bc627d5589a0e98ca42b4bcc",
+  "pageVersion": "sha256:c32a28a68c7999179e520d636041d1102c71085ae0a096819dd8d6a5ff158e3d",
   "claims": [
     {
       "id": "claim_f0c37462522f4442acd94d53819ef75c",
@@ -322,7 +322,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:088e7ad5d3724fe24fb9ee523fd468ce83c27560487de145ae08f49ec83df530"
+          "version": "repo-file-v1:sha256:d22add383676146076f2bea688936358ef17cde2a4aa359ae67eeccdbbc2ec55"
         },
         {
           "resource": "repo://crates/decodex-components/src/ragflow.rs",
@@ -360,17 +360,17 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:088e7ad5d3724fe24fb9ee523fd468ce83c27560487de145ae08f49ec83df530"
+          "version": "repo-file-v1:sha256:d22add383676146076f2bea688936358ef17cde2a4aa359ae67eeccdbbc2ec55"
         }
       ]
     },
     {
       "id": "claim_1d1d68cccf054493b22ff3f7574f9e70",
-      "statement": "All Settings categories share a 620-point content column and normal App typography. Related preferences share a quiet bordered panel with distinct section, name, value and explanation text roles. Accounts retains one compact divided list surface; Add account and model verification use shared primary buttons. Setting names use medium weight; help explains a choice, scope, cost, data effect, compatibility limit or recovery action, while self-explanatory controls avoid duplicate captions. Component rows retain complete reported versions, including original prefixes, punctuation, build information and commit suffixes. Component, MCP and Diagnostics details share an inset region with distinct headings, normal control text and secondary guidance. Diagnostics uses one normal-size overall status flow with explicit unprobed Codex state, connection changes and recovery information, without captions that repeat Run checks and summarizes three check groups before exposing all individual checks in Technical details; uniform groups share heading status and mixed groups retain individual status and explanations. Local feedback retains its compact inset icon, quiet tone fill, centered alignment and adjacent recovery. A collapsed Codex setup failure directs the user to its original setup error; Retry setup keeps the existing preparation action.",
+      "statement": "All Settings categories share a 620-point content column and normal App typography. Related preferences share a quiet bordered panel with distinct section, name, value and explanation text roles. Accounts retains one compact divided list surface; Add account and model verification use shared primary buttons. Setting names use medium weight; help explains a choice, scope, cost, data effect, compatibility limit or recovery action, while self-explanatory controls avoid duplicate captions. Component rows retain complete reported versions, including original prefixes, punctuation, build information and commit suffixes. Component, MCP and Diagnostics details share an inset region with distinct headings, normal control text and secondary guidance. Diagnostics uses one normal-size overall status flow with explicit unprobed Codex state, connection changes and recovery information, without captions that repeat Run checks and summarizes three check groups before exposing all individual checks in Technical details; uniform groups share heading status and mixed groups retain individual status and explanations. Local feedback retains its compact inset icon, quiet tone fill, centered alignment and adjacent recovery. A collapsed Codex setup failure directs the user to its original setup error; Retry keeps the existing preparation action.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:088e7ad5d3724fe24fb9ee523fd468ce83c27560487de145ae08f49ec83df530"
+          "version": "repo-file-v1:sha256:d22add383676146076f2bea688936358ef17cde2a4aa359ae67eeccdbbc2ec55"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_power.rs",
@@ -526,17 +526,25 @@
     },
     {
       "id": "claim_fce725dba41e46a784a8fe09aa9ccf14",
-      "statement": "Expanded Codex help explains Verify and required-version updates through Decodex. EGM help explains using it in an Agent chat to draft or review a design and loading installation or updates in a new conversation.",
+      "statement": "Codex prepares automatically in the background at local bundled App startup. Components shares that state, has no permanent Verify control and offers Retry only after setup fails. Its expanded help explains startup preparation and version updates through Decodex. EGM help explains using it in an Agent chat to draft or review a design and starting a new conversation after installation or update.",
       "evidence": [
         {
+          "resource": "repo://apps/decodex-gpui/src/bundled_daemon.rs",
+          "version": "repo-file-v1:sha256:dd1a317d49e93ba387cb76ec16c5c80c991c97a11b82b417f674cf68c827e5d6"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/component_runtime.rs",
+          "version": "repo-file-v1:sha256:27a2e86b191536c74520e16b902bcc7ccda1f1c13657f6ff860decef89e6c269"
+        },
+        {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:088e7ad5d3724fe24fb9ee523fd468ce83c27560487de145ae08f49ec83df530"
+          "version": "repo-file-v1:sha256:d22add383676146076f2bea688936358ef17cde2a4aa359ae67eeccdbbc2ec55"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-05T15:46:21.386Z"
+    "at": "2026-11-05T16:20:29.596Z"
   }
 }

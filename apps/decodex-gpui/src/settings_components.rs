@@ -224,12 +224,6 @@ impl SettingsSurface {
 	fn component_settings(&self, cx: &mut Context<Self>) -> Div {
 		let lock = RuntimeLock::embedded().ok();
 		let version = lock.as_ref().map(|lock| lock.version.as_str());
-		let action = match self.components.shown {
-			component_runtime::PreparationState::Preparing(_) => None,
-			component_runtime::PreparationState::Failed(_) =>
-				Some(("components-retry-runtime", "Retry setup")),
-			_ => Some(("components-prepare-runtime", "Verify")),
-		};
 		let mut component = gpui::div()
 			.debug_selector(|| "components-codex".into())
 			.w_full()
@@ -244,9 +238,20 @@ impl SettingsSurface {
 						version,
 						cx,
 					))
-					.when_some(action, |row, (id, label)| {
-						row.child(self.component_button(id, label, Action::Prepare, cx))
-					}),
+					.when(
+						matches!(
+							self.components.shown,
+							component_runtime::PreparationState::Failed(_)
+						),
+						|row| {
+							row.child(self.component_button(
+								"components-retry-runtime",
+								"Retry",
+								Action::Prepare,
+								cx,
+							))
+						},
+					),
 			);
 
 		match &self.components.shown {
@@ -294,7 +299,7 @@ impl SettingsSurface {
 		}
 
 		let details = gpui::div().flex().flex_col().gap_2().child(ui_theme::settings_description(
-			"Verify checks the installed Codex files and protocol. Update Decodex to change the required Codex version.",
+			"Codex is prepared at startup and updates with Decodex.",
 		));
 		component.child(self.component_body(0, "components-codex-body", details))
 	}
@@ -766,8 +771,9 @@ mod tests {
 		component_runtime,
 		desktop_settings::DesktopSettingsController,
 		settings_surface::components::{RuntimePreparation, SettingsSurface},
+		ui_feedback::Tone,
 	};
-	use decodex_components::{PluginAction, PluginInstallation};
+	use decodex_components::{InstallProgress, PluginAction, PluginInstallation};
 
 	#[gpui::test]
 	fn ragflow_groups_connection_and_models_with_aligned_actions(cx: &mut gpui::TestAppContext) {
@@ -1091,7 +1097,8 @@ mod tests {
 
 		visual.update(crate::ui_frame::draw_current_frame);
 
-		assert!(visual.debug_bounds("components-prepare-runtime").is_some());
+		assert!(visual.debug_bounds("components-prepare-runtime").is_none());
+		assert!(visual.debug_bounds("components-retry-runtime").is_none());
 		assert!(visual.debug_bounds("components-component-status").is_none());
 	}
 
@@ -1107,8 +1114,18 @@ mod tests {
 
 		settings.update(visual, |settings, cx| {
 			settings.components.preparation = RuntimePreparation::fixture(
-				component_runtime::PreparationState::Failed("Download failed".into()),
+				component_runtime::PreparationState::Preparing(InstallProgress::Waiting),
 			);
+
+			settings.poll_components(cx);
+		});
+		visual.update(crate::ui_frame::draw_current_frame);
+
+		assert!(visual.debug_bounds("components-retry-runtime").is_none());
+		assert!(visual.debug_bounds("components-component-status").is_some());
+
+		settings.update(visual, |settings, cx| {
+			settings.components.preparation.finish_fixture(Err("Download failed".into()));
 
 			settings.poll_components(cx);
 		});
@@ -1117,14 +1134,17 @@ mod tests {
 
 		assert!(visual.debug_bounds("components-prepare-runtime").is_none());
 		assert!(visual.debug_bounds("components-retry-runtime").is_some());
+		assert!(visual.debug_bounds("components-component-error").is_some());
 
 		settings.update(visual, |settings, cx| {
 			settings.components.preparation.finish_fixture(Ok(()));
 			settings.poll_components(cx);
+			assert_eq!(settings.component_status(0, cx), (Tone::Success, "Ready"));
 		});
 		visual.update(crate::ui_frame::draw_current_frame);
 
 		assert!(visual.debug_bounds("components-retry-runtime").is_none());
-		assert!(visual.debug_bounds("components-prepare-runtime").is_some());
+		assert!(visual.debug_bounds("components-prepare-runtime").is_none());
+		assert!(visual.debug_bounds("components-component-error").is_none());
 	}
 }
