@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:a26cd885f452fea0fb4c10da5d4d6f31764ee0f97b2d3cc0066e51be8041f2b5",
+  "pageVersion": "sha256:74063f2609c8df5feb94a905cb7d6b2358b304bd8ac7ab5320dc08fd4273d144",
   "claims": [
     {
       "id": "claim_2f9fecf97f644372afb5684929656aac",
@@ -8,7 +8,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
-          "version": "repo-file-v1:sha256:e128547b432701ef571dbde04fccbc328333dfa7a3b11df58c000e5a3cbed3dc"
+          "version": "repo-file-v1:sha256:80c21982eb72daa16e41cfa4faeb91a0877d3c2961d7282d65e090f097280188"
         },
         {
           "resource": "repo://crates/decodex-core/src/assistant.rs",
@@ -150,11 +150,11 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
-          "version": "repo-file-v1:sha256:e128547b432701ef571dbde04fccbc328333dfa7a3b11df58c000e5a3cbed3dc"
+          "version": "repo-file-v1:sha256:80c21982eb72daa16e41cfa4faeb91a0877d3c2961d7282d65e090f097280188"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:c72582507d7ebdd412e69eb17fce461631dc3dff8302fac98d075d51ca082831"
+          "version": "repo-file-v1:sha256:088e7ad5d3724fe24fb9ee523fd468ce83c27560487de145ae08f49ec83df530"
         },
         {
           "resource": "repo://crates/decodex-components/src/ragflow.rs",
@@ -274,7 +274,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
-          "version": "repo-file-v1:sha256:e128547b432701ef571dbde04fccbc328333dfa7a3b11df58c000e5a3cbed3dc"
+          "version": "repo-file-v1:sha256:80c21982eb72daa16e41cfa4faeb91a0877d3c2961d7282d65e090f097280188"
         },
         {
           "resource": "repo://crates/decodex-components/src/ragflow.rs",
@@ -304,21 +304,21 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
-          "version": "repo-file-v1:sha256:e128547b432701ef571dbde04fccbc328333dfa7a3b11df58c000e5a3cbed3dc"
+          "version": "repo-file-v1:sha256:80c21982eb72daa16e41cfa4faeb91a0877d3c2961d7282d65e090f097280188"
         }
       ]
     },
     {
       "id": "claim_f56cab07daa2482e9ccad00da4b45cb3",
-      "statement": "RAGFlow uses shared component lifecycle controls and displays its complete server-reported version. Nightly is a separate release-channel detail. Receipts and the UI retain the original server version directly. Update retains models, credentials, data and the saved import choice; Uninstall clears the Assistant connection and stops only the owned Compose project while retaining volumes and private installation identity for reinstall.",
+      "statement": "RAGFlow uses shared component lifecycle controls and displays its complete server-reported version. Receipts and the UI retain the original server version directly. Update retains models, credentials, data and the saved import choice; Uninstall clears the Assistant connection and stops only the owned Compose project while retaining volumes and private installation identity for reinstall.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
-          "version": "repo-file-v1:sha256:e128547b432701ef571dbde04fccbc328333dfa7a3b11df58c000e5a3cbed3dc"
+          "version": "repo-file-v1:sha256:80c21982eb72daa16e41cfa4faeb91a0877d3c2961d7282d65e090f097280188"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:c72582507d7ebdd412e69eb17fce461631dc3dff8302fac98d075d51ca082831"
+          "version": "repo-file-v1:sha256:088e7ad5d3724fe24fb9ee523fd468ce83c27560487de145ae08f49ec83df530"
         },
         {
           "resource": "repo://crates/decodex-components/src/ragflow_service.rs",
@@ -343,6 +343,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.3",
-    "at": "2026-11-05T14:56:49.835Z"
+    "at": "2026-11-05T15:49:25.923Z"
   }
 }

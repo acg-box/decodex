@@ -198,17 +198,10 @@ impl AgentSurface {
 
 	pub(crate) fn ragflow_settings_view(&self, _cx: &mut Context<Self>) -> AnyElement {
 		let mut body = ui_theme::settings_rows().gap(gpui::px(12.));
-		if self.assistant_settings.installation.as_ref().is_some_and(|i| i.installed) {
-			body = body.child(
-				gpui::div()
-					.w_full()
-					.flex()
-					.items_center()
-					.justify_between()
-					.gap_3()
-					.child(ui_theme::settings_label("Release channel", ""))
-					.child("Nightly"),
-			);
+		if self.assistant_settings.running == Some(false) {
+			body = body.child(ui_theme::settings_description(
+				"Start the container environment, then reopen Components to check again.",
+			));
 		}
 		if !self.assistant_settings.fields.is_empty() {
 			let fields = |items: [(&str, &'static str); 3]| {
