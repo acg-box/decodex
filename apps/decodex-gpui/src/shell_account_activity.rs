@@ -115,9 +115,7 @@ pub(super) fn panel(shell: &Shell, account: &AccountDto) -> AnyElement {
 					.child(
 						gpui::div()
 							.flex_none()
-							.text_size(gpui::px(ui_theme::SETTINGS_LABEL_SIZE))
-							.font_weight(gpui::FontWeight::MEDIUM)
-							.text_color(ui_theme::rgb(ui_theme::TEXT))
+							.font_features(ui_theme::tabular_figures())
 							.child(value),
 					)
 			}),
@@ -150,7 +148,8 @@ pub(super) fn panel(shell: &Shell, account: &AccountDto) -> AnyElement {
 							(18. * (day.tokens as f32 / peak as f32).sqrt()).max(2.)
 						}))
 						.rounded(gpui::px(1.5))
-						.bg(ui_theme::rgb(if day.tokens == 0 { WB_TEXT_FAINT } else { WB_BLUE }))
+						.bg(ui_theme::rgb(if day.tokens == 0 { WB_TEXT_FAINT } else { WB_BLUE })
+							.opacity(0.65))
 						.tooltip(move |_, cx| cx.new(|_| ControlTooltip(tip.clone())).into())
 				})),
 		);
@@ -201,6 +200,48 @@ mod tests {
 		client_lifecycle::ConnectionView,
 		shell::{Destination, Shell},
 	};
+
+	#[gpui::test]
+	fn account_details_apply_the_final_layout_on_the_first_frame(cx: &mut TestAppContext) {
+		let (shell, visual) =
+			cx.add_window_view(|window, cx| Shell::new(window, cx, ConnectionView::Stopped));
+		shell.update(visual, |s, cx| s.open_settings_window(Destination::Accounts, cx));
+		let handle = shell.read_with(visual, |s, _| s.settings_window.unwrap());
+		let settings = &mut gpui::VisualTestContext::from_window(handle.into(), visual);
+		shell.update(settings, |s, cx| {
+			s.visual_accounts_and_health();
+			cx.notify();
+		});
+		settings.update(crate::ui_frame::draw_current_frame);
+		let collapsed = settings.debug_bounds("account-card-1").unwrap();
+		let identity = settings.debug_bounds("account-identity-0").unwrap();
+
+		for _ in 0..3 {
+			settings.simulate_click(identity.center(), Default::default());
+			settings.update(crate::ui_frame::draw_current_frame);
+			let expanded = settings.debug_bounds("account-card-1").unwrap();
+			let activity = settings
+				.debug_bounds("account-activity-70000000-0000-4000-8000-000000000001")
+				.unwrap();
+			assert!(
+				expanded.top() > activity.bottom(),
+				"details must not overlap the next account"
+			);
+			assert!(expanded.top() > collapsed.top());
+			for _ in 0..3 {
+				settings.update(crate::ui_frame::draw_frame);
+				assert_eq!(settings.debug_bounds("account-card-1").unwrap(), expanded);
+			}
+			settings.simulate_click(identity.center(), Default::default());
+			settings.update(crate::ui_frame::draw_current_frame);
+			assert_eq!(settings.debug_bounds("account-card-1").unwrap(), collapsed);
+			assert!(
+				settings
+					.debug_bounds("account-activity-70000000-0000-4000-8000-000000000001")
+					.is_none()
+			);
+		}
+	}
 
 	#[gpui::test]
 	fn activity_chart_waits_for_the_current_account_revision(cx: &mut TestAppContext) {

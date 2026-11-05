@@ -2040,12 +2040,15 @@ impl Render for Shell {
 		self.prepare_native_status(window, cx);
 
 		let status = self.render_status_center(&presentation, cx);
-		let route = format!("{:?}", self.selected);
 		let content =
 			destination_content(self, presentation, self.refresh_focus.clone(), window, cx);
+		let content = match self.selected {
+			Destination::Settings | Destination::Accounts | Destination::Health => content,
+			_ => ui_motion::arrival(format!("{:?}", self.selected), content).into_any_element(),
+		};
 
 		root.relative()
-			.child(ui_layout::panel(ui_motion::arrival(route, content)))
+			.child(ui_layout::panel(content))
 			.child(controls)
 			.child(gpui::deferred(status).priority(3))
 		// Keep global notifications above deferred composer menus throughout dismissal.
@@ -3502,23 +3505,26 @@ fn account_pool_rows(shell: &Shell, cx: &mut Context<Shell>) -> Vec<AnyElement> 
 				.flex()
 				.flex_col()
 				.child(row)
-				.child(ui_motion::disclosure(
+				.child(ui_theme::settings_disclosure(
 					SharedString::from(format!(
 						"account-expansion-{}",
 						account.account_id.as_str()
 					)),
 					shell.expanded_accounts.contains(&account.account_id),
-					gpui::div()
-						.w_full()
-						.border_t_1()
-						.border_color(ui_theme::rgba(ui_theme::PANEL_DIVIDER))
-						.px(gpui::px(12.))
-						.py(gpui::px(8.))
-						.flex()
-						.flex_col()
-						.gap(gpui::px(8.))
-						.child(account_activity::panel(shell, account))
-						.children(reset_cards::row(shell, account, cx)),
+					|| {
+						gpui::div()
+							.w_full()
+							.border_t_1()
+							.border_color(ui_theme::rgba(ui_theme::PANEL_DIVIDER))
+							.px(gpui::px(12.))
+							.py(gpui::px(8.))
+							.flex()
+							.flex_col()
+							.gap(gpui::px(8.))
+							.child(account_activity::panel(shell, account))
+							.children(reset_cards::row(shell, account, cx))
+							.into_any_element()
+					},
 				))
 				.into_any_element()
 		})
@@ -6038,7 +6044,8 @@ fn open_settings_window(owner: Entity<Shell>, cx: &mut App) {
 					appearance::observe(window, cx);
 
 					{
-						window.on_next_frame(|window, _| window_material::configure(window));
+						// Install the backdrop before showing the first Settings frame.
+						window_material::configure(window);
 						cx.observe_window_appearance(window, |_, window, _| {
 							window_material::configure(window)
 						})
@@ -7752,13 +7759,6 @@ mod tests {
 
 		let handle = shell.read_with(visual, |s, _| s.settings_window.unwrap());
 		let settings = &mut VisualTestContext::from_window(handle.into(), visual);
-		let settle = |settings: &mut VisualTestContext| {
-			// A disclosure measures its content before its height transition starts.
-			settings.update(crate::ui_frame::draw_current_frame);
-			settings.update(crate::ui_frame::draw_current_frame);
-			std::thread::sleep(ui_theme::MOTION_PANEL + Duration::from_millis(24));
-			settings.update(crate::ui_frame::draw_current_frame);
-		};
 
 		settings.simulate_resize(gpui::size(gpui::px(860.), gpui::px(480.)));
 		settings.update(crate::ui_frame::draw_current_frame);
@@ -7779,7 +7779,7 @@ mod tests {
 		assert!(viewport.contains(&toggle.center()));
 
 		settings.simulate_click(toggle.center(), Default::default());
-		settle(settings);
+		settings.update(crate::ui_frame::draw_current_frame);
 
 		assert!(shell.read_with(settings, |s, _| s.diagnostics.expanded));
 		assert_eq!(scroll.bounds(), viewport, "details must not enlarge the viewport");
@@ -7836,7 +7836,7 @@ mod tests {
 		let toggle = settings.debug_bounds("health-details-toggle").unwrap();
 
 		settings.simulate_click(toggle.center(), Default::default());
-		settle(settings);
+		settings.update(crate::ui_frame::draw_current_frame);
 
 		assert!(settings.debug_bounds("health-components").is_none());
 		assert_eq!(scroll.offset().y, gpui::px(0.));
@@ -7853,7 +7853,7 @@ mod tests {
 		let toggle = settings.debug_bounds("health-details-toggle").unwrap();
 
 		settings.simulate_click(toggle.center(), Default::default());
-		settle(settings);
+		settings.update(crate::ui_frame::draw_current_frame);
 
 		assert!(settings.debug_bounds("health-previous-core-components").is_some());
 

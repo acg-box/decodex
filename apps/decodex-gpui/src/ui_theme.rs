@@ -408,6 +408,19 @@ pub(crate) fn settings_detail(content: impl IntoElement) -> Div {
 		.child(content)
 }
 
+/// Settings commit their final layout in one frame, including asynchronously loaded details.
+pub(crate) fn settings_disclosure(
+	id: impl Into<gpui::ElementId>,
+	expanded: bool,
+	content: impl FnOnce() -> AnyElement,
+) -> Stateful<Div> {
+	settings_rows()
+		.id(id)
+		.flex_none()
+		.when(!expanded, |slot| slot.hidden())
+		.when(expanded, |slot| slot.child(content()))
+}
+
 pub(crate) fn settings_button(
 	id: impl Into<gpui::SharedString>,
 	label: impl Into<gpui::SharedString>,

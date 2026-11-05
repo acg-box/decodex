@@ -17,7 +17,7 @@ use crate::{
 		HealthLoadState, HealthSnapshot, Shell, workspace_symbols, workspace_symbols::Symbol,
 	},
 	ui_feedback::{self, Feedback, Tone},
-	ui_motion::{self, SmoothControl as _},
+	ui_motion::SmoothControl as _,
 	ui_scroll::Scrollbar,
 	ui_theme::{
 		self, HOVER_FILL, SETTINGS_GROUP_GAP, SETTINGS_INSET, SETTINGS_LABEL_SIZE, SETTINGS_WIDTH,
@@ -205,14 +205,12 @@ fn summary_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 		));
 	}
 
-	let snapshot = snapshot.clone();
-
 	content
 		.child(gpui::div().flex().flex_col().child(details_toggle(shell, cx)).child(
-			ui_motion::disclosure_lazy(
+			ui_theme::settings_disclosure(
 				"health-details-motion",
 				shell.diagnostics.expanded,
-				move |_| technical_details(&snapshot),
+				|| technical_details(snapshot),
 			),
 		))
 		.into_any_element()
