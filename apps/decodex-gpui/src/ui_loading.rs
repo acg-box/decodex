@@ -15,6 +15,7 @@ use gpui::{
 };
 
 use crate::{
+	ui_cloudlet::{Indicator, State},
 	ui_motion,
 	ui_theme::{self, TEXT_MUTED},
 };
@@ -23,10 +24,18 @@ const HISTORY_FEEDBACK_DELAY: Duration = Duration::from_millis(250);
 const HISTORY_FEEDBACK_FADE: f32 = 0.12;
 const HISTORY_HANDOFF: f32 = 0.16;
 
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum Presentation {
+	Inline,
+	Conversation,
+	Workspace,
+	Pagination,
+}
+
 #[derive(IntoElement)]
 pub(crate) struct Loading {
 	label: &'static str,
-	icon_only: bool,
+	presentation: Presentation,
 }
 impl RenderOnce for Loading {
 	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
@@ -42,7 +51,7 @@ impl RenderOnce for Loading {
 			ui_motion::request_frame(window, cx);
 		}
 
-		indicator(self.label, self.icon_only, elapsed, reduced).opacity(if reduced {
+		indicator(self.label, self.presentation, elapsed, reduced).opacity(if reduced {
 			1.
 		} else {
 			((elapsed - 0.12) / 0.12).clamp(0., 1.)
@@ -60,24 +69,12 @@ impl RenderOnce for ConversationLoading {
 		// The history shape is unknown until read. Do not invent bubbles or text lengths.
 		gpui::div()
 			.id(SharedString::from(format!("conversation-loading-surface-{}", self.label)))
-			.role(Role::Status)
-			.aria_label(self.label)
-			.debug_selector(move || format!("loading-feedback-{}", self.label))
 			.w_full()
 			.min_h(gpui::px(260.))
 			.flex()
 			.items_center()
 			.justify_center()
-			.child(
-				gpui::div()
-					.flex()
-					.items_center()
-					.gap(gpui::px(8.))
-					.text_size(gpui::px(12.))
-					.text_color(ui_theme::rgb(TEXT_MUTED))
-					.child(loading(""))
-					.child(self.label),
-			)
+			.child(Loading { label: self.label, presentation: Presentation::Conversation })
 	}
 }
 
@@ -101,7 +98,10 @@ impl RenderOnce for PaginationLoading {
 		}
 
 		gpui::div().when(opacity > 0., |row| {
-			row.child(indicator("Loading earlier history", true, elapsed, reduced).opacity(opacity))
+			row.child(
+				indicator("Loading earlier history", Presentation::Pagination, elapsed, reduced)
+					.opacity(opacity),
+			)
 		})
 	}
 }
@@ -248,7 +248,7 @@ impl RenderOnce for Content {
 							.opacity(feedback.feedback)
 							.child(indicator(
 								"Loading conversation",
-								false,
+								Presentation::Conversation,
 								feedback.elapsed,
 								reduced,
 							)),
@@ -403,7 +403,7 @@ struct HistoryFrame {
 }
 
 pub(crate) fn loading(label: &'static str) -> Loading {
-	Loading { label, icon_only: false }
+	Loading { label, presentation: Presentation::Inline }
 }
 
 pub(crate) fn pagination(active: bool) -> PaginationLoading {
@@ -416,7 +416,7 @@ pub(crate) fn conversation(label: &'static str) -> ConversationLoading {
 
 /// Quiet full-workspace feedback; the status remains available to assistive technology.
 pub(crate) fn workspace() -> Loading {
-	Loading { label: "Opening workspace", icon_only: true }
+	Loading { label: "Opening workspace", presentation: Presentation::Workspace }
 }
 
 pub(crate) fn content(
@@ -444,23 +444,38 @@ pub(crate) fn history(
 	}
 }
 
-fn indicator(label: &'static str, icon_only: bool, elapsed: f32, reduced: bool) -> Stateful<Div> {
-	let edge = if icon_only { 28. } else { 20. };
+fn indicator(
+	label: &'static str,
+	presentation: Presentation,
+	elapsed: f32,
+	reduced: bool,
+) -> Stateful<Div> {
+	let edge = match presentation {
+		Presentation::Workspace => 48.,
+		Presentation::Conversation => 32.,
+		_ => 16.,
+	};
 
 	gpui::div()
 		.id(SharedString::from(format!("loading-row-{label}")))
 		.role(Role::Status)
 		.aria_label(if label.is_empty() { "Loading" } else { label })
 		.debug_selector(move || format!("loading-feedback-{label}"))
-		.h(gpui::px(24.))
+		.min_h(gpui::px(24.))
 		.flex_none()
 		.flex()
+		.when(presentation == Presentation::Workspace, |row| row.flex_col())
 		.items_center()
 		.gap(gpui::px(8.))
 		.text_size(gpui::px(11.))
 		.text_color(ui_theme::rgb(TEXT_MUTED))
-		.child(crate::ui_working::emblem(elapsed, reduced, edge))
-		.when(!icon_only && !label.is_empty(), |row| {
+		.child(if matches!(presentation, Presentation::Workspace | Presentation::Conversation) {
+			Indicator { action: State::Opening, pose: State::Opening, elapsed, edge, reduced }
+				.into_any_element()
+		} else {
+			crate::ui_working::emblem(elapsed, reduced, edge).into_any_element()
+		})
+		.when(presentation != Presentation::Pagination && !label.is_empty(), |row| {
 			row.child(crate::ui_working::status_text(label, elapsed, reduced))
 		})
 }

@@ -168,7 +168,11 @@ impl RenderOnce for Header {
 			.w(gpui::px(portrait_width))
 			.h(gpui::px(layout.spacing(PORTRAIT_HEIGHT)))
 			.child(selection)
-			.child(h.avatar.element(layout));
+			.child(h.avatar.element(
+				portrait_width,
+				layout.spacing(PORTRAIT_HEIGHT),
+				if layout.overview() { layout.content_opacity() } else { 1. },
+			));
 		let portrait = gpui::div()
 			.id(SharedString::from(format!("relation-portrait-target-{}", h.key)))
 			.flex_none()

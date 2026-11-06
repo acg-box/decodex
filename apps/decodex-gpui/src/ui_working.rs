@@ -1,6 +1,5 @@
 //! A stationary work signal whose space closes with its opacity after work ends.
 use std::{
-	f32::consts::PI,
 	sync::{Arc, LazyLock},
 	time::Instant,
 };
@@ -15,33 +14,47 @@ use gpui::{
 };
 
 use crate::{
+	ui_cloudlet::{Indicator, State},
 	ui_motion,
 	ui_theme::{self, TEXT_MUTED},
 };
 
-// Keep the approved logo silhouette, including its lightning and cursor cutouts.
-static CLOUD: LazyLock<Arc<Image>> = LazyLock::new(|| {
-	let svg = include_str!("../../../assets/app-icon/liquid-glass/01-mercury-cloud/AppIcon.icon/Assets/shape-0.svg")
-        .replace("<g transform", r##"<defs><linearGradient id="glass" x1="0" y1="0" x2="0.7" y2="1"><stop stop-color="#edf4f6"/><stop offset=".42" stop-color="#c6dde6"/><stop offset=".72" stop-color="#91b8ca"/><stop offset="1" stop-color="#d8e9ed"/></linearGradient></defs><g transform"##)
-        .replace(r#"fill="white""#, r##"fill="url(#glass)" stroke="#d2f2ff" stroke-opacity=".45" stroke-width="6""##);
-	Arc::new(Image::from_bytes(ImageFormat::Svg, svg.into_bytes()))
+// Approved small-size artwork omits the logo cutouts that merge at 16 px.
+static CLOUD: LazyLock<[Arc<Image>; 2]> = LazyLock::new(|| {
+	[
+		include_bytes!("../../../assets/loading/cloud-light.svg").as_slice(),
+		include_bytes!("../../../assets/loading/cloud-dark.svg").as_slice(),
+	]
+	.map(|svg| Arc::new(Image::from_bytes(ImageFormat::Svg, svg.to_vec())))
 });
 
 #[derive(IntoElement)]
 pub(crate) struct Working {
 	pub key: String,
 	pub turn: Option<String>,
+	pub activity: State,
+	pub completed_turn: Option<String>,
 }
 impl RenderOnce for Working {
 	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
 		let now = Instant::now();
 		let state =
 			window.use_keyed_state(SharedString::from(self.key), cx, |_, _| Motion::new(now));
-		let active = self.turn.is_some();
-		let (opacity, moving, elapsed) = state.update(cx, |s, _| s.sample(active, now));
 		let reduced = ui_motion::reduced();
+		let frame = state.update(cx, |s, _| {
+			s.frame(
+				self.turn.as_deref(),
+				self.activity,
+				self.completed_turn.as_deref(),
+				now,
+				reduced,
+			)
+		});
+		let (opacity, moving, elapsed) = (frame.opacity, frame.moving, frame.elapsed);
+		let label =
+			if frame.pose == State::Still { frame.action.label() } else { frame.pose.label() };
 
-		if moving || (active && !reduced) {
+		if moving || (self.turn.is_some() && !reduced) {
 			ui_motion::request_frame(window, cx);
 		}
 
@@ -60,7 +73,7 @@ impl RenderOnce for Working {
 						.top(gpui::px(4.))
 						.left_0()
 						.role(Role::Status)
-						.aria_label("Working")
+						.aria_label(label)
 						.flex()
 						.items_center()
 						.gap(gpui::px(8.))
@@ -69,8 +82,14 @@ impl RenderOnce for Working {
 						.text_size(gpui::px(12.))
 						.line_height(gpui::px(18.))
 						.text_color(ui_theme::rgb(TEXT_MUTED))
-						.child(emblem(elapsed, reduced, 24.))
-						.child(status_text("Working", elapsed, reduced)),
+						.child(Indicator {
+							action: frame.action,
+							pose: frame.pose,
+							elapsed,
+							edge: 24.,
+							reduced,
+						})
+						.child(status_text(label, elapsed, reduced)),
 				)
 			})
 	}
@@ -79,19 +98,25 @@ impl RenderOnce for Working {
 /// Share the approved Decodex mark across work, first-load and pagination feedback.
 pub(crate) fn emblem(elapsed: f32, reduced: bool, edge: f32) -> gpui::Div {
 	let scale = edge / 24.;
+	let light = ui_theme::ColorScheme::current().is_light();
 	gpui::div()
 		.relative()
 		.w(gpui::px(edge * 4. / 3.))
 		.h(gpui::px(edge))
 		.flex_none()
 		.child(
-			gpui::img(CLOUD.clone()).absolute().top_0().left_0().size(gpui::px(edge)).opacity(0.9),
+			gpui::img(CLOUD[usize::from(!light)].clone())
+				.absolute()
+				.top_0()
+				.left_0()
+				.size(gpui::px(edge))
+				.opacity(0.9),
 		)
 		.child(
 			gpui::canvas(
 				|_, _, _| (),
 				move |bounds, _, window, _| {
-					for index in 0..10 {
+					for index in 0..if reduced { 0 } else { 5 } {
 						let (x, y, size, alpha) =
 							particle(if reduced { 1.4 } else { elapsed }, index);
 						let bounds = Bounds::new(
@@ -104,11 +129,13 @@ pub(crate) fn emblem(elapsed: f32, reduced: bool, edge: f32) -> gpui::Div {
 							gpui::linear_gradient(
 								155.,
 								gpui::linear_color_stop(
-									ui_theme::rgba(0xe8f3f8ff).opacity(alpha),
+									ui_theme::rgba(if light { 0x7395aaff } else { 0xe8f3f8ff })
+										.opacity(alpha),
 									0.,
 								),
 								gpui::linear_color_stop(
-									ui_theme::rgba(0x9ec8d9ff).opacity(alpha * 0.7),
+									ui_theme::rgba(if light { 0x52758bff } else { 0x9ec8d9ff })
+										.opacity(alpha * 0.7),
 									1.,
 								),
 							),
@@ -182,7 +209,13 @@ impl RenderOnce for Welcome {
 			.items_center()
 			.justify_center()
 			.opacity(progress)
-			.child(emblem(elapsed.min(0.8), reduced, 48.))
+			.child(Indicator {
+				action: State::Idle,
+				pose: State::Idle,
+				elapsed: elapsed.min(0.8),
+				edge: 48.,
+				reduced,
+			})
 	}
 }
 
@@ -190,10 +223,68 @@ struct Motion {
 	active: bool,
 	started: Instant,
 	opacity: ui_motion::Tween,
+	turn: Option<String>,
+	action: State,
+	finished: Option<Instant>,
+}
+struct Frame {
+	opacity: f32,
+	moving: bool,
+	elapsed: f32,
+	action: State,
+	pose: State,
 }
 impl Motion {
 	fn new(now: Instant) -> Self {
-		Self { active: false, started: now, opacity: ui_motion::Tween::new(0.) }
+		Self {
+			active: false,
+			started: now,
+			opacity: ui_motion::Tween::new(0.),
+			turn: None,
+			action: State::Working,
+			finished: None,
+		}
+	}
+
+	fn frame(
+		&mut self,
+		turn: Option<&str>,
+		action: State,
+		completed: Option<&str>,
+		now: Instant,
+		reduced: bool,
+	) -> Frame {
+		if let Some(turn) = turn {
+			if self.turn.as_deref() != Some(turn) || self.action != action {
+				self.started = now;
+			}
+			if self.turn.as_deref() != Some(turn) {
+				self.turn = Some(turn.into());
+			}
+			self.action = action;
+			self.finished = None;
+		} else if let Some(previous) = self.turn.take() {
+			self.finished = (!reduced && completed == Some(previous.as_str())).then_some(now);
+			if self.finished.is_some() {
+				self.started = now;
+			}
+		}
+		let celebrating =
+			self.finished.is_some_and(|at| now.duration_since(at).as_secs_f32() < 2.2);
+		let (opacity, moving, elapsed) = self.sample(turn.is_some() || celebrating, now);
+		Frame {
+			opacity,
+			moving: moving || celebrating,
+			elapsed,
+			action: self.action,
+			pose: if self.finished.is_some() {
+				State::Done
+			} else if turn.is_none() {
+				State::Still
+			} else {
+				self.action
+			},
+		}
 	}
 
 	fn sample(&mut self, active: bool, now: Instant) -> (f32, bool, f32) {
@@ -221,14 +312,13 @@ fn smooth(value: f32) -> f32 {
 
 // Staggered births hide recycling at zero alpha. Every particle only travels outwards.
 fn particle(time: f32, index: usize) -> (f32, f32, f32, f32) {
-	let p = (time / 2.8 + index as f32 / 10.).rem_euclid(1.);
-	let lane = (index % 4) as f32;
-	let seed = ((index * 7) % 11) as f32 / 10.;
-	let x = 11.3 + lane * 1.77 + p * (7. + seed * 3.);
-	let y = 6.2 + lane * 1.77 - p * (5. + seed * 3.) + (p * PI).sin() * 0.7 * (seed - 0.5);
-	let alpha = smooth(p / 0.12) * (1. - smooth((p - 0.55) / 0.45)) * (0.6 + seed * 0.35);
+	let p = (time / 2.8 + index as f32 / 5.).rem_euclid(1.);
+	let lane = (index % 3) as f32;
+	let x = 11.364_375 + lane * 1.77 + p * 7.;
+	let y = 6.2475 + lane * 1.77 - p * 4.5;
+	let alpha = smooth(p / 0.14) * (1. - smooth((p - 0.38) / 0.62)) * 0.85;
 
-	(x, y, 1.5, alpha)
+	(x, y, 1.77, alpha)
 }
 
 // paint_quad snaps to device pixels. Paths retain subpixel travel and antialiased edges.
@@ -257,9 +347,67 @@ mod tests {
 	use crate::ui_working::{Instant, IntoElement, Motion, Window, Working};
 
 	struct Signal(bool);
+
+	#[test]
+	fn only_the_exact_successful_turn_celebrates_once_and_keeps_its_prop() {
+		let now = Instant::now();
+		let mut motion = Motion::new(now);
+		motion.frame(Some("current"), super::State::Writing, None, now, false);
+		let done = now + Duration::from_secs(1);
+		let frame = motion.frame(None, super::State::Working, Some("current"), done, false);
+		assert_eq!(frame.pose, super::State::Done);
+		assert_eq!(frame.action, super::State::Writing);
+		motion.frame(
+			None,
+			super::State::Working,
+			Some("current"),
+			done + Duration::from_millis(2_200),
+			false,
+		);
+		let settled = motion.frame(
+			None,
+			super::State::Working,
+			Some("current"),
+			done + Duration::from_millis(2_500),
+			false,
+		);
+		assert_eq!(settled.opacity, 0.);
+		assert!(!settled.moving);
+		let next = motion.frame(
+			Some("next"),
+			super::State::Reading,
+			Some("current"),
+			done + Duration::from_secs(3),
+			false,
+		);
+		assert_eq!(next.pose, super::State::Reading);
+	}
+
+	#[test]
+	fn interruption_or_an_old_completion_does_not_play_a_success_pose() {
+		let now = Instant::now();
+		for completed in [None, Some("old")] {
+			let mut motion = Motion::new(now);
+			motion.frame(Some("current"), super::State::Writing, None, now, false);
+			let frame = motion.frame(
+				None,
+				super::State::Working,
+				completed,
+				now + Duration::from_secs(1),
+				false,
+			);
+			assert_eq!(frame.pose, super::State::Still);
+			assert!(motion.finished.is_none());
+		}
+	}
 	impl gpui::Render for Signal {
 		fn render(&mut self, _: &mut Window, _: &mut gpui::Context<Self>) -> impl IntoElement {
-			Working { key: "test-work".into(), turn: self.0.then(|| "turn".into()) }
+			Working {
+				key: "test-work".into(),
+				turn: self.0.then(|| "turn".into()),
+				activity: super::State::Working,
+				completed_turn: None,
+			}
 		}
 	}
 

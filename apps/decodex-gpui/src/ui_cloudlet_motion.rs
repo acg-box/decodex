@@ -3,21 +3,46 @@ use std::f32::consts::{PI, TAU};
 
 type Steps = &'static [(f32, f32)];
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) enum State {
+pub(crate) enum State {
 	Idle,
 	Hopping,
 	Working,
 	Waiting,
 	Done,
 	Attention,
+	Opening,
+	Thinking,
+	Reading,
+	Writing,
+	Inspecting,
+	Handoff,
+	Still,
 }
 impl State {
+	pub(crate) fn label(self) -> &'static str {
+		match self {
+			Self::Idle => "Ready",
+			Self::Opening | Self::Hopping => "Loading",
+			Self::Working => "Working",
+			Self::Thinking => "Thinking",
+			Self::Reading => "Reading",
+			Self::Writing => "Writing",
+			Self::Inspecting => "Checking",
+			Self::Waiting => "Waiting on work",
+			Self::Attention => "Needs you",
+			Self::Handoff => "Handing off",
+			Self::Done => "Done",
+			Self::Still => "Stopped",
+		}
+	}
+
 	pub(super) fn for_status(status: &str) -> Self {
 		match status {
 			"Running" => Self::Working,
 			"Waiting" | "Waiting on work" | "Queued" | "Starting" | "Busy" | "Paused" =>
 				Self::Waiting,
-			"Needs you" | "Approval" | "Input needed" | "Error" | "Failed" => Self::Attention,
+			"Needs you" | "Approval" | "Input needed" => Self::Attention,
+			"Error" | "Failed" | "Stopped" | "Cancelled" => Self::Still,
 			_ => Self::Idle,
 		}
 	}
@@ -28,6 +53,9 @@ impl State {
 			blink: (2.05..2.20).contains(&blink) || (2.33..2.42).contains(&blink),
 			..Default::default()
 		};
+		if self.action_pose(seconds, held_right, &mut pose) {
+			return pose;
+		}
 		let Some((period, actor, hands)) = self.cycle(seconds, held_right, &mut pose) else {
 			return pose;
 		};
@@ -76,6 +104,47 @@ impl State {
 		pose
 	}
 
+	fn action_pose(self, seconds: f32, held_right: bool, pose: &mut Pose) -> bool {
+		match self {
+			Self::Opening => {
+				let t = seconds * TAU / 3.8;
+				pose.cloud[1] = -0.325 * (1. - t.cos());
+				pose.left[1] = pose.cloud[1] - 0.275 * (1. - t.cos());
+				pose.right[1] = pose.cloud[1] - 0.275 * (1. + t.cos());
+			},
+			Self::Thinking => {
+				let t = ((seconds + 1.6) / 4.8).rem_euclid(1.);
+				let lift =
+					linear(t, &[(0., 0.), (0.12, 0.), (0.28, 1.), (0.72, 1.), (0.9, 0.), (1., 0.)]);
+				pose.right = [-lift, -3. * lift];
+				pose.eyes = [lift, -lift];
+			},
+			Self::Reading => {
+				pose.left = [0.5, -2.];
+				pose.cloud[1] = 0.275 * (1. - (seconds * TAU / 4.4).cos());
+				pose.eyes = [-1., -0.5];
+			},
+			Self::Writing => {
+				let t = (seconds / 0.9).rem_euclid(1.);
+				pose.right = [
+					linear(t, &[(0., 0.5), (0.25, 1.25), (0.5, 0.5), (0.75, 1.), (1., 0.5)]),
+					linear(t, &[(0., 0.), (0.25, -0.5), (0.5, -0.75), (0.75, 0.25), (1., 0.)]),
+				];
+				pose.eyes = [1., 0.];
+			},
+			Self::Inspecting => {
+				let t = ((seconds + 1.) / 3.2).rem_euclid(1.);
+				let sweep = linear(t, &[(0., 0.), (0.3, 1.), (0.7, 1.), (1., 0.)]);
+				pose.left = [sweep, -1. - sweep];
+				pose.eyes = [-1., -0.5];
+			},
+			Self::Handoff => *pose = Self::Working.pose(seconds, held_right),
+			Self::Still => pose.blink = false,
+			_ => return false,
+		}
+		true
+	}
+
 	fn cycle(self, seconds: f32, held_right: bool, pose: &mut Pose) -> Option<(f32, Steps, Steps)> {
 		Some(match self {
 			Self::Hopping => (
@@ -104,13 +173,13 @@ impl State {
 			),
 			Self::Attention => (2.4, &[(0., 0.), (0.14, -1.), (0.56, 0.)], &[]),
 			Self::Working => {
-				let cloud_t = ((seconds + if held_right { 0.21 } else { 0. }) / 0.92).fract();
+				let cloud_t = ((seconds + if held_right { 0.35 } else { 0. }) / 1.4).fract();
 
 				pose.cloud[1] =
-					step(cloud_t, &[(0., 0.), (0.18, -0.8), (0.36, 0.), (0.68, -0.5), (0.86, 0.)]);
+					step(cloud_t, &[(0., 0.), (0.18, -1.), (0.32, 0.), (0.68, -1.), (0.82, 0.)]);
 
 				for (right, hand) in [(false, &mut pose.left), (true, &mut pose.right)] {
-					let t = ((seconds + if right { 0.24 } else { 0. }) / 0.48).fract();
+					let t = ((seconds + if right { 0.35 } else { 0. }) / 0.7).fract();
 
 					hand[0] =
 						if (0.42..0.86).contains(&t) { if right { 1. } else { -1. } } else { 0. };
@@ -119,7 +188,7 @@ impl State {
 						&[
 							(0., 0.),
 							(0.24, -1.),
-							(0.42, if right == held_right { -2. } else { -3. }),
+							(0.42, if right == held_right { -1. } else { -2. }),
 							(0.64, -1.),
 							(0.86, 0.),
 						],
@@ -152,6 +221,7 @@ impl State {
 
 				return None;
 			},
+			_ => return None,
 		})
 	}
 }
@@ -159,21 +229,33 @@ impl State {
 #[derive(Default)]
 pub(super) struct Pose {
 	pub cloud: [f32; 2],
+	pub eyes: [f32; 2],
 	pub blink: bool,
 	pub left: [f32; 2],
 	pub right: [f32; 2],
 }
 impl Pose {
 	pub(super) fn particle(&self, state: State, seconds: f32, index: usize) -> Particle {
-		let moving = matches!(state, State::Working | State::Hopping | State::Done);
+		let moving =
+			!matches!(state, State::Idle | State::Waiting | State::Attention | State::Still);
 
 		if !moving {
 			return Particle { offset: [0., 0.], size: 1., opacity: 0.65 };
 		}
 
-		let period = if state == State::Done { 2.2 } else { 2.8 };
+		let period = match state {
+			State::Done => 2.2,
+			State::Opening | State::Inspecting => 3.2,
+			State::Reading => 3.4,
+			State::Thinking => 4.2,
+			_ => 2.8,
+		};
 		let t = (seconds / period + index as f32 / 4.).fract();
-		let drift = step(t, &[(0., 0.), (0.25, 1.), (0.4, 2.), (0.55, 3.), (0.7, 4.), (0.85, 5.)]);
+		let drift = if matches!(state, State::Working | State::Hopping | State::Done) {
+			step(t, &[(0., 0.), (0.25, 1.), (0.4, 2.), (0.55, 3.), (0.7, 4.), (0.85, 5.)])
+		} else {
+			linear(t, &[(0., 0.), (0.1, 0.), (0.85, 5.), (1., 5.)])
+		};
 
 		Particle {
 			offset: [
@@ -214,7 +296,7 @@ fn linear(t: f32, keys: &[(f32, f32)]) -> f32 {
 
 #[cfg(test)]
 mod tests {
-	use crate::shell::agent_surface::work_board::relations::mascot::motion::State;
+	use super::State;
 
 	#[test]
 	fn attention_keeps_the_held_hand_with_the_body_and_waves_the_free_hand() {
@@ -237,6 +319,13 @@ mod tests {
 			State::Waiting,
 			State::Done,
 			State::Attention,
+			State::Opening,
+			State::Thinking,
+			State::Reading,
+			State::Writing,
+			State::Inspecting,
+			State::Handoff,
+			State::Still,
 		] {
 			for frame in 0..280 {
 				let seconds = frame as f32 / 50.;

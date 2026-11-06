@@ -1,23 +1,23 @@
-//! Native Cloudlets geometry from the approved catalog, colored by the active theme.
-#[path = "agent_relation_mascot_motion.rs"] mod motion;
+//! Shared Cloudlets artwork and motion for Agent portraits and loading feedback.
+#[path = "ui_cloudlet_motion.rs"] mod motion;
 
 use std::{
 	cell::{Cell, RefCell},
 	collections::BTreeMap,
+	f32::consts::TAU,
 	rc::Rc,
 	sync::{Arc, LazyLock},
 	time::{Duration, Instant},
 };
 
-use gpui::{App, ContentMask, IntoElement, Pixels, Styled as _, Window};
+use gpui::{
+	App, ContentMask, IntoElement, PathBuilder, Pixels, RenderOnce, SharedString, Styled as _,
+	Window,
+};
 use serde::Deserialize;
 
-use crate::{
-	shell::agent_surface::work_board::relations::card::{Layout, PORTRAIT_HEIGHT, PORTRAIT_WIDTH},
-	ui_motion,
-	ui_theme::ColorScheme,
-};
-use motion::State;
+use crate::{ui_motion, ui_theme::ColorScheme};
+pub(crate) use motion::State;
 
 const IDLE_INTERVAL: Duration = Duration::from_millis(50);
 const ACTION_INTERVAL: Duration = Duration::from_millis(16);
@@ -29,6 +29,109 @@ static CATALOG: LazyLock<Catalog> = LazyLock::new(|| {
 	)))
 	.expect("checked-in Cloudlets catalog")
 });
+
+/// A fixed-time view of the shared artwork. Its caller owns the animation clock.
+#[derive(IntoElement)]
+pub(crate) struct Indicator {
+	pub action: State,
+	pub pose: State,
+	pub elapsed: f32,
+	pub edge: f32,
+	pub reduced: bool,
+}
+impl RenderOnce for Indicator {
+	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+		let theme = ColorScheme::current();
+		let cached = window.use_keyed_state(
+			SharedString::from(format!("cloudlet-art-{:?}", self.action)),
+			cx,
+			|_, _| IndicatorArt::new(self.action, theme),
+		);
+		let (main, receiver) = cached.update(cx, |art, _| {
+			if art.theme != theme {
+				*art = IndicatorArt::new(self.action, theme);
+			}
+			(art.main.clone(), art.receiver.clone())
+		});
+		let width = self.edge * if receiver.is_some() { 3.6 } else { 1.25 };
+
+		gpui::canvas(
+			|_, _, _| (),
+			move |bounds, _, window, _| {
+				let now = Instant::now();
+				let reduced = self.reduced;
+				let actor_size = gpui::size(gpui::px(self.edge * 1.25), gpui::px(self.edge));
+				let mut pixels = Vec::new();
+				let figure = |drawing, state| Figure {
+					drawing,
+					opacity: Rc::new(Cell::new(1.)),
+					state,
+					seconds: self.elapsed,
+					at: now,
+					settles: (state == State::Done).then_some(State::Still),
+					phase: 0.,
+				};
+
+				figure(main, self.pose).pixels(
+					gpui::Bounds::new(bounds.origin, actor_size),
+					now,
+					window.scale_factor(),
+					1.,
+					reduced,
+					&mut pixels,
+				);
+				if let Some(receiver) = receiver {
+					let right = bounds.origin
+						+ gpui::point(gpui::px(width - self.edge * 1.25), gpui::px(0.));
+					figure(receiver, State::Waiting).pixels(
+						gpui::Bounds::new(right, actor_size),
+						now,
+						window.scale_factor(),
+						1.,
+						reduced,
+						&mut pixels,
+					);
+					if !reduced {
+						let phase = (self.elapsed / 2.4).rem_euclid(1.);
+						let opacity = (phase / 0.15).min(1.) * ((1. - phase) / 0.15).min(1.);
+						window.paint_quad(gpui::fill(
+							gpui::Bounds::new(
+								bounds.origin
+									+ gpui::point(
+										gpui::px(self.edge * (1.17 + phase * 1.3)),
+										gpui::px(self.edge * 0.55),
+									),
+								gpui::size(gpui::px(self.edge / 8.), gpui::px(self.edge / 8.)),
+							),
+							gpui::rgb(theme.loading_mascot_colors(false).light).opacity(opacity),
+						));
+					}
+				}
+				for pixel in pixels {
+					pixel.paint(window);
+				}
+			},
+		)
+		.w(gpui::px(width))
+		.h(gpui::px(self.edge))
+	}
+}
+
+struct IndicatorArt {
+	theme: ColorScheme,
+	main: Arc<Drawing>,
+	receiver: Option<Arc<Drawing>>,
+}
+impl IndicatorArt {
+	fn new(action: State, theme: ColorScheme) -> Self {
+		Self {
+			theme,
+			main: Arc::new(Drawing::activity(action, theme, false)),
+			receiver: (action == State::Handoff)
+				.then(|| Arc::new(Drawing::activity(State::Waiting, theme, true))),
+		}
+	}
+}
 
 /// Poll poses without drawing identical pixels. Other motion keeps display cadence.
 #[derive(Clone, Default)]
@@ -102,13 +205,13 @@ impl Clock {
 
 /// Layout publishes visible actor slots; only this sibling layer advances their poses.
 #[derive(Clone, Default)]
-pub(super) struct Scene {
+pub(crate) struct Scene {
 	placements: Rc<RefCell<Vec<Placement>>>,
 	painted: Rc<RefCell<Painted>>,
 	clock: Clock,
 }
 impl Scene {
-	pub(super) fn clear(&self) {
+	pub(crate) fn clear(&self) {
 		self.clock.cancel();
 		self.placements.borrow_mut().clear();
 		self.painted.borrow_mut().pixels.clear();
@@ -145,7 +248,7 @@ impl Scene {
 		pixels
 	}
 
-	pub(super) fn element(&self) -> impl IntoElement {
+	pub(crate) fn element(&self) -> impl IntoElement {
 		let scene = self.clone();
 
 		gpui::canvas(
@@ -166,10 +269,7 @@ impl Scene {
 				// inserting every artwork rectangle into GPUI's overlap tree.
 				window.paint_layer(mask.bounds, |window| {
 					for pixel in &pixels {
-						window.paint_quad(gpui::fill(
-							pixel.bounds,
-							gpui::rgb(pixel.color).opacity(pixel.opacity),
-						));
+						pixel.paint(window);
 					}
 				});
 
@@ -177,7 +277,14 @@ impl Scene {
 
 				scene.painted.replace(Painted { pixels, density, mask });
 
-				if visible && !reduced {
+				if visible
+					&& !reduced
+					&& scene
+						.placements
+						.borrow()
+						.iter()
+						.any(|p| p.figure.sample(Instant::now(), false).0 != State::Still)
+				{
 					// Keep the existing idle artwork cadence. Active poses can advance
 					// at display speed, independently of scrolling and camera motion.
 					let interval = if scene.placements.borrow().iter().any(|placement| {
@@ -215,7 +322,7 @@ impl Scene {
 }
 
 /// One actor per stable agent identity; repeated reads do not restart its motion.
-pub(super) struct Actor {
+pub(crate) struct Actor {
 	seed: String,
 	theme: ColorScheme,
 	drawing: Arc<Drawing>,
@@ -227,7 +334,7 @@ pub(super) struct Actor {
 	phase: f32,
 }
 impl Actor {
-	pub(super) fn new(seed: &str, status: &str, now: Instant, scene: Scene) -> Self {
+	pub(crate) fn new(seed: &str, status: &str, now: Instant, scene: Scene) -> Self {
 		let theme = ColorScheme::current();
 
 		Self {
@@ -243,11 +350,11 @@ impl Actor {
 		}
 	}
 
-	pub(super) fn opacity(&self) -> Rc<Cell<f32>> {
+	pub(crate) fn opacity(&self) -> Rc<Cell<f32>> {
 		self.opacity.clone()
 	}
 
-	pub(super) fn frame(&mut self, status: &str, now: Instant) -> Avatar {
+	pub(crate) fn frame(&mut self, status: &str, now: Instant) -> Avatar {
 		let theme = ColorScheme::current();
 
 		if theme != self.theme {
@@ -297,13 +404,13 @@ impl Actor {
 	}
 }
 
-pub(super) struct Avatar {
+pub(crate) struct Avatar {
 	scene: Scene,
 	figure: Figure,
 }
 impl Avatar {
 	/// Travel is a presentation pose; it never changes the native work state.
-	pub(super) fn travelling(mut self, seconds: f32) -> Self {
+	pub(crate) fn travelling(mut self, seconds: f32) -> Self {
 		self.figure.state = State::Hopping;
 		self.figure.seconds = seconds;
 		self.figure.settles = None;
@@ -311,9 +418,7 @@ impl Avatar {
 		self
 	}
 
-	pub(super) fn element(self, layout: Layout) -> impl IntoElement {
-		let presence = if layout.overview() { layout.content_opacity() } else { 1. };
-
+	pub(crate) fn element(self, width: f32, height: f32, presence: f32) -> impl IntoElement {
 		gpui::canvas(
 			move |bounds, window, _| {
 				let mask = window.content_mask();
@@ -329,8 +434,8 @@ impl Avatar {
 			},
 			|_, _, _, _| {},
 		)
-		.w(gpui::px(layout.spacing(PORTRAIT_WIDTH)))
-		.h(gpui::px(layout.spacing(PORTRAIT_HEIGHT)))
+		.w(gpui::px(width))
+		.h(gpui::px(height))
 	}
 }
 
@@ -346,6 +451,39 @@ struct PaintedPixel {
 	bounds: gpui::Bounds<Pixels>,
 	color: u32,
 	opacity: f32,
+	angle: f32,
+}
+impl PaintedPixel {
+	fn paint(&self, window: &mut Window) {
+		let color = gpui::rgb(self.color).opacity(self.opacity);
+		if self.angle == 0. {
+			window.paint_quad(gpui::fill(self.bounds, color));
+			return;
+		}
+		let center = self.bounds.center();
+		let rotate = |point: gpui::Point<Pixels>| {
+			let x = f32::from(point.x - center.x);
+			let y = f32::from(point.y - center.y);
+			center
+				+ gpui::point(
+					gpui::px(x * self.angle.cos() - y * self.angle.sin()),
+					gpui::px(x * self.angle.sin() + y * self.angle.cos()),
+				)
+		};
+		let mut path = PathBuilder::fill();
+		path.add_polygon(
+			&[
+				rotate(self.bounds.origin),
+				rotate(gpui::point(self.bounds.right(), self.bounds.top())),
+				rotate(gpui::point(self.bounds.right(), self.bounds.bottom())),
+				rotate(gpui::point(self.bounds.left(), self.bounds.bottom())),
+			],
+			true,
+		);
+		if let Ok(path) = path.build() {
+			window.paint_path(path, color);
+		}
+	}
 }
 
 struct Placement {
@@ -406,6 +544,7 @@ impl Traits {
 struct Pixel {
 	rect: [f32; 4],
 	color: u32,
+	angle: f32,
 }
 
 struct Drawing {
@@ -418,17 +557,59 @@ struct Drawing {
 }
 impl Drawing {
 	fn new(seed: &str, theme: ColorScheme) -> Self {
-		let traits = Traits::for_seed(seed);
+		Self::from_traits(Traits::for_seed(seed), theme, false)
+	}
+
+	fn activity(action: State, theme: ColorScheme, receiver: bool) -> Self {
+		let (prop, held_right) = match action {
+			State::Reading => ("blue-book", false),
+			State::Writing => ("pencil", true),
+			State::Inspecting => ("magnifier", false),
+			State::Waiting if !receiver => ("hourglass", true),
+			_ => ("none", true),
+		};
+		Self::from_traits(
+			Traits {
+				palette: if receiver { "periwinkle" } else { "ice" }.into(),
+				expression: "square".into(),
+				accessory: "none".into(),
+				prop: prop.into(),
+				held_right,
+			},
+			theme,
+			true,
+		)
+	}
+
+	fn from_traits(traits: Traits, theme: ColorScheme, optical: bool) -> Self {
 		let body = &CATALOG.bodies["original"];
-		let palette = theme.mascot_colors(&traits.palette);
+		let palette = if optical {
+			theme.loading_mascot_colors(traits.palette == "periwinkle")
+		} else {
+			theme.mascot_colors(&traits.palette)
+		};
 		let color = |fill: &str| match fill {
 			"base" => palette.base,
 			"shade" => palette.shade,
 			"light" => palette.light,
 			"ink" => palette.ink,
-			_ => palette.accessory(
-				u32::from_str_radix(fill.trim_start_matches('#'), 16).expect("catalog color"),
-			),
+			_ => {
+				let authored =
+					u32::from_str_radix(fill.trim_start_matches('#'), 16).expect("catalog color");
+				let color = if optical && theme.is_light() {
+					match authored {
+						0xedbb4c | 0xedb947 => 0x9c6c1f,
+						0xed88a5 => 0xaf5575,
+						0xd6deec => 0x657c8a,
+						0xf0d1a2 => 0x9c6e38,
+						0xfff1cc if traits.prop == "hourglass" => 0x697f92,
+						_ => authored,
+					}
+				} else {
+					authored
+				};
+				palette.accessory(color)
+			},
 		};
 		let pixels = |part: &Part, origin: [f32; 2]| -> Vec<Pixel> {
 			part.rects
@@ -436,6 +617,7 @@ impl Drawing {
 				.map(|(x, y, w, h, fill)| Pixel {
 					rect: [origin[0] + x, origin[1] + y, *w, *h],
 					color: color(fill),
+					angle: 0.,
 				})
 				.collect()
 		};
@@ -446,6 +628,7 @@ impl Drawing {
 			.map(|(row, [x, width])| Pixel {
 				rect: [*x, (body.first_row + row) as f32, *width, 1.],
 				color: color("base"),
+				angle: 0.,
 			})
 			.collect();
 
@@ -463,6 +646,7 @@ impl Drawing {
 						cloud.push(Pixel {
 							rect: [left, top, right - left, bottom - top],
 							color: color(fill),
+							angle: 0.,
 						});
 					}
 				}
@@ -477,28 +661,64 @@ impl Drawing {
 			body.anchors[accessory.anchor.as_deref().unwrap_or("accessory")],
 		));
 
-		let hand = |side: &str, held: bool| {
-			let origin = body.anchors[side];
-			let mut result = pixels(&CATALOG.hand_styles["floating"], origin);
-
-			if held {
-				result.extend(pixels(&CATALOG.props[&traits.prop], [origin[0], origin[1] - 1.]));
-			}
-
-			result
-		};
-
 		Self {
 			cloud,
 			eyes,
-			left: hand("leftHand", !traits.held_right),
-			right: hand("rightHand", traits.held_right),
+			left: Self::hand(body, &traits, "leftHand", !traits.held_right, optical, &pixels),
+			right: Self::hand(body, &traits, "rightHand", traits.held_right, optical, &pixels),
 			particles: body
 				.particles
 				.iter()
-				.map(|rect| Pixel { rect: *rect, color: color("light") })
+				.map(|rect| Pixel {
+					rect: *rect,
+					color: color(if optical && theme.is_light() { "shade" } else { "light" }),
+					angle: 0.,
+				})
 				.collect(),
 			held_right: traits.held_right,
+		}
+	}
+
+	fn hand(
+		body: &Body,
+		traits: &Traits,
+		side: &str,
+		held: bool,
+		optical: bool,
+		pixels: &impl Fn(&Part, [f32; 2]) -> Vec<Pixel>,
+	) -> Vec<Pixel> {
+		let origin = body.anchors[side];
+		let mut hand = pixels(&CATALOG.hand_styles["floating"], origin);
+		if !held {
+			return hand;
+		}
+		let pencil = optical && traits.prop == "pencil";
+		let scale =
+			if optical && matches!(traits.prop.as_str(), "pencil" | "blue-book" | "magnifier") {
+				1.15
+			} else {
+				1.
+			};
+		let angle = if pencil { TAU / 30. } else { 0. };
+		let mut prop = pixels(&CATALOG.props[&traits.prop], [0., 0.]);
+		for pixel in &mut prop {
+			let [x, y, w, h] = pixel.rect;
+			let (cx, cy) = ((x + w / 2.) * scale, (y + h / 2.) * scale);
+			pixel.rect = [
+				origin[0] + cx * angle.cos() - cy * angle.sin() - w * scale / 2.,
+				origin[1] + if pencil { -0.5 } else { -1. } + cx * angle.sin() + cy * angle.cos()
+					- h * scale / 2.,
+				w * scale,
+				h * scale,
+			];
+			pixel.angle = angle;
+		}
+		if pencil {
+			prop.extend(hand);
+			prop
+		} else {
+			hand.extend(prop);
+			hand
 		}
 	}
 }
@@ -557,10 +777,11 @@ impl Figure {
 				snap(f32::from(bounds.left())) + snap(offset[0] * scale),
 				snap(f32::from(bounds.top())) + snap(offset[1] * scale),
 			];
-			let left = origin[0] + snap((x + w * (1. - size) / 2.) * scale);
-			let top = origin[1] + snap((y + h * (1. - size) / 2.) * scale);
-			let right = origin[0] + snap((x + w * (1. + size) / 2.) * scale);
-			let bottom = origin[1] + snap((y + h * (1. + size) / 2.) * scale);
+			let edge = |value| if pixel.angle == 0. { snap(value) } else { value };
+			let left = origin[0] + edge((x + w * (1. - size) / 2.) * scale);
+			let top = origin[1] + edge((y + h * (1. - size) / 2.) * scale);
+			let right = origin[0] + edge((x + w * (1. + size) / 2.) * scale);
+			let bottom = origin[1] + edge((y + h * (1. + size) / 2.) * scale);
 
 			pixels.push(PaintedPixel {
 				bounds: gpui::Bounds::new(
@@ -569,6 +790,7 @@ impl Figure {
 				),
 				color: pixel.color,
 				opacity: opacity * alpha,
+				angle: pixel.angle,
 			});
 		};
 
@@ -586,13 +808,19 @@ impl Figure {
 				paint(pixel, offset, 1., 1.);
 			}
 		}
+		let eye_offset = [pose.cloud[0] + pose.eyes[0], pose.cloud[1] + pose.eyes[1]];
 		for eye in &self.drawing.eyes {
 			if pose.blink {
 				let [x, _, w, _] = eye.rect;
 
-				paint(&Pixel { rect: [x, 17.3, w, 0.45], color: eye.color }, pose.cloud, 1., 1.);
+				paint(
+					&Pixel { rect: [x, 17.3, w, 0.45], color: eye.color, angle: 0. },
+					eye_offset,
+					1.,
+					1.,
+				);
 			} else {
-				paint(eye, pose.cloud, 1., 1.);
+				paint(eye, eye_offset, 1., 1.);
 			}
 		}
 	}
@@ -615,15 +843,76 @@ mod tests {
 	use std::time::Duration;
 
 	use crate::{
-		shell::agent_surface::work_board::relations::mascot::{
-			self, Actor, Arc, CATALOG, Cell, Clock, ColorScheme, Drawing, IDLE_INTERVAL, Instant,
-			IntoElement, Rc, Scene, State, Traits, Window,
+		ui_cloudlet::{
+			self as mascot, Actor, Arc, CATALOG, Cell, Clock, ColorScheme, Drawing, IDLE_INTERVAL,
+			Instant, IntoElement, Rc, Scene, State, Traits, Window,
 		},
 		ui_theme::{
 			ColorTheme,
 			appearance::{self, Theme},
 		},
 	};
+
+	#[test]
+	fn held_props_stay_outside_the_body_at_both_loading_sizes() {
+		let now = Instant::now();
+		for action in [State::Reading, State::Writing, State::Inspecting] {
+			let drawing = Arc::new(Drawing::activity(action, ColorScheme::current(), false));
+			for edge in [24., 32.] {
+				let bounds = gpui::Bounds::new(
+					gpui::point(gpui::px(0.), gpui::px(0.)),
+					gpui::size(gpui::px(edge * 1.25), gpui::px(edge)),
+				);
+				let figure = super::Figure {
+					drawing: drawing.clone(),
+					opacity: Rc::new(Cell::new(1.)),
+					state: action,
+					seconds: 0.,
+					at: now,
+					settles: None,
+					phase: 0.,
+				};
+				for frame in 0..240 {
+					let mut pixels = Vec::new();
+					figure.pixels(
+						bounds,
+						now + Duration::from_millis(frame * 20),
+						2.,
+						1.,
+						false,
+						&mut pixels,
+					);
+					let cloud_start = drawing.particles.len();
+					let cloud = &pixels[cloud_start..cloud_start + drawing.cloud.len()];
+					let hand_start = cloud_start
+						+ drawing.cloud.len()
+						+ if drawing.held_right { drawing.left.len() } else { 0 };
+					let prop = if drawing.held_right {
+						"pencil"
+					} else if action == State::Reading {
+						"blue-book"
+					} else {
+						"magnifier"
+					};
+					let prop_start = hand_start
+						+ if drawing.held_right {
+							0
+						} else {
+							CATALOG.hand_styles["floating"].rects.len()
+						};
+					let held = &pixels[prop_start..prop_start + CATALOG.props[prop].rects.len()];
+					for pixel in held {
+						assert!(
+							cloud
+								.iter()
+								.all(|body| pixel.bounds.intersect(&body.bounds).is_empty()),
+							"{action:?} prop intersects body at {edge} pt, frame {frame}"
+						);
+					}
+				}
+			}
+		}
+	}
 
 	struct AnimationFixture {
 		clock: Clock,

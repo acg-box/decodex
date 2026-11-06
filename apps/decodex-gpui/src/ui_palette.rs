@@ -45,6 +45,10 @@ pub(crate) struct ColorScheme {
 	colors: ColorTheme,
 }
 impl ColorScheme {
+	pub(crate) fn is_light(self) -> bool {
+		self.appearance == Theme::Light
+	}
+
 	pub(crate) const fn new(appearance: Theme, colors: ColorTheme) -> Self {
 		Self { appearance, colors }
 	}
@@ -60,6 +64,17 @@ impl ColorScheme {
 	/// The palette actually displayed, which can differ from the saved dark preset.
 	pub(crate) fn color_theme(self) -> ColorTheme {
 		self.colors
+	}
+
+	/// Loading companions retain their approved brand palette in both appearances.
+	pub(crate) fn loading_mascot_colors(self, receiver: bool) -> MascotColors {
+		let [base, light, shade, ink] = match (self.is_light(), receiver) {
+			(true, false) => [0x79b0cf, 0xc1dfef, 0x4386af, 0x172332],
+			(false, false) => [0x9bdbfa, 0xe0f6ff, 0x4caee6, 0x172332],
+			(true, true) => [0x8b95d6, 0xd8def8, 0x636fad, 0x171c31],
+			(false, true) => [0xaeb5fc, 0xe0e3ff, 0x7f88e7, 0x171c31],
+		};
+		MascotColors { base, light, shade, ink }
 	}
 
 	pub(crate) fn mascot_colors(self, family: &str) -> MascotColors {

@@ -416,6 +416,94 @@ impl AgentSurface {
 		) && !self.current_turn_completed(work)
 	}
 
+	/// Present observed current-turn activity; saved process items do not imply live work.
+	pub(super) fn working_presentation(
+		&self,
+		work: &AgentWorkItemDto,
+	) -> (crate::ui_cloudlet::State, Option<String>) {
+		use crate::ui_cloudlet::State;
+		let native = self.native_history_active(work);
+		let completed = native
+			.then(|| {
+				self.timeline.native.entries.iter().rev().find_map(|entry| {
+					if let AgentTimelineContent::TurnBoundary {
+						turn_id,
+						completed: true,
+						status,
+						..
+					} = &entry.content
+					{
+						Some((turn_id, status.as_deref()))
+					} else {
+						None
+					}
+				})
+			})
+			.flatten()
+			.and_then(|(turn, status)| (status == Some("completed")).then(|| turn.clone()));
+		if matches!(&self.request, Some(decodex_protocol::AgentRequestResult::Available { work_id, .. }) if work_id == &work.id)
+		{
+			return (State::Attention, completed);
+		}
+		let Some(turn) = work.active_turn_id.as_deref() else {
+			return (State::Working, completed);
+		};
+		if native
+			&& let Some(action) = self.timeline.native.entries.iter().rev().find_map(|entry| {
+				let AgentTimelineContent::Item {
+					turn_id,
+					activity: Some(activity),
+					collaboration,
+					..
+				} = &entry.content
+				else {
+					return None;
+				};
+				if turn_id != turn || !matches!(activity.status.as_str(), "running" | "inProgress")
+				{
+					return None;
+				}
+				Some(match collaboration.as_ref().map(|call| call.tool.as_str()) {
+					Some("wait") => State::Waiting,
+					Some(
+						"sendInput" | "subAgentActivity/interacted" | "spawnAgent" | "resumeAgent",
+					) => State::Handoff,
+					_ => match activity.kind.as_str() {
+						"fileChange" => State::Writing,
+						"webSearch" => State::Reading,
+						"imageView" => State::Inspecting,
+						"mcpToolCall" | "dynamicToolCall"
+							if activity.read_only_hint == Some(true) =>
+							State::Reading,
+						_ => State::Working,
+					},
+				})
+			}) {
+			return (action, completed);
+		}
+		let saved = self
+			.history
+			.as_ref()
+			.filter(|(owner, _)| owner == &work.id)
+			.and_then(|(_, history)| {
+				if let AgentHistoryResult::Available { live, .. } = history {
+					Some(live.as_slice())
+				} else {
+					None
+				}
+			})
+			.unwrap_or_default();
+		let action = self.streamed_output(work).unwrap_or(saved).iter().rev().find(|message| {
+			message.turn_id == turn && (!native || !self.timeline.native.entries.iter().any(|entry| {
+				matches!(&entry.content, AgentTimelineContent::Item { turn_id, item_id, .. } if turn_id == turn && item_id == &message.item_id)
+			}))
+		}).map(|message| match message.kind {
+			decodex_protocol::AgentLiveMessageKind::ReasoningSummary | decodex_protocol::AgentLiveMessageKind::Plan => State::Thinking,
+			decodex_protocol::AgentLiveMessageKind::AgentMessage => State::Writing,
+		}).unwrap_or(State::Working);
+		(action, completed)
+	}
+
 	pub(super) fn native_history_loading(&self, work: &AgentWorkItemDto) -> bool {
 		if self.timeline.native.show_saved
 			|| self.native_history_active(work)
@@ -1606,6 +1694,37 @@ mod tests {
 		AgentTimelineResult, CURRENT_VERSION, ClientMessage, QueryPayload, QueryResultEnvelope,
 		QueryResultPayload, ServerId, ServerMessage,
 	};
+
+	#[gpui::test]
+	fn loading_activity_ignores_completed_items_old_turns_and_other_conversations(
+		cx: &mut gpui::TestAppContext,
+	) {
+		use crate::ui_cloudlet::State;
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.request = None;
+			let mut work = s.snapshot.as_ref().expect("fixture").work_items[0].clone();
+			work.codex_thread_id = Some("current-thread".into());
+			work.active_turn_id = Some("current-turn".into());
+			s.timeline.native.binding = Some(Binding { work: work.id.clone(), thread: "current-thread".into(), account: "account".into() });
+			for (turn, status, kind, expected) in [
+				("old-turn", "running", "webSearch", State::Working),
+				("current-turn", "completed", "webSearch", State::Working),
+				("current-turn", "running", "webSearch", State::Reading),
+				("current-turn", "running", "fileChange", State::Writing),
+				("current-turn", "running", "imageView", State::Inspecting),
+			] {
+				let activity = serde_json::from_value(serde_json::json!({"turn_id":turn,"item_id":"activity","kind":kind,"status":status,"label":"Activity","detail":""})).expect("activity fixture");
+				s.timeline.native.entries = vec![AgentTimelineEntry { position: 1, content: AgentTimelineContent::Item {
+					turn_id: turn.into(), item_id: "activity".into(), kind: kind.into(), phase: None, text: String::new(), truncated: false, activity: Some(activity), collaboration: None, attachments: vec![],
+				} }];
+				assert_eq!(s.working_presentation(&work).0, expected);
+			}
+			s.timeline.native.binding.as_mut().expect("binding").thread = "other-thread".into();
+			assert_eq!(s.working_presentation(&work).0, State::Working);
+		});
+	}
 
 	#[gpui::test]
 	fn confirmed_native_history_is_readable_while_execution_recovery_is_pending(

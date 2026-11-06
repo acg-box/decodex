@@ -10,6 +10,7 @@ mod account_profile;
 #[allow(dead_code)]
 #[path = "../accounts.rs"]
 mod accounts;
+#[path = "workbench_visual_capture/loading.rs"] mod capture_loading;
 #[path = "workbench_visual_capture/send.rs"] mod capture_send;
 #[allow(dead_code)]
 #[path = "../client_cache.rs"]
@@ -65,6 +66,7 @@ mod settings_surface;
 #[allow(dead_code)]
 #[path = "../shell.rs"]
 mod shell;
+#[path = "../ui_cloudlet.rs"] mod ui_cloudlet;
 #[path = "../ui_feedback.rs"] mod ui_feedback;
 #[path = "../ui_frame.rs"] mod ui_frame;
 #[path = "../ui_layout.rs"] mod ui_layout;
@@ -175,8 +177,10 @@ fn main() -> Result<()> {
 		})
 		.transpose()?;
 	let window: AnyWindowHandle = if env::var("DECODEX_VISUAL_COMPONENT").as_deref()
-		== Ok("collaboration")
+		== Ok("loading")
 	{
+		capture_loading::open(&mut cx)?
+	} else if env::var("DECODEX_VISUAL_COMPONENT").as_deref() == Ok("collaboration") {
 		capture_collaboration(&mut cx)?
 	} else if integrations {
 		cx.open_offscreen_window(gpui::size(gpui::px(1_180.0), gpui::px(1_400.0)), |_, cx| {

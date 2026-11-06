@@ -9,7 +9,6 @@
 #[path = "agent_relation_hover.rs"] mod hover;
 #[path = "agent_relation_layers.rs"] mod layers;
 #[path = "agent_relation_layout.rs"] mod layout;
-#[path = "agent_relation_mascot.rs"] mod mascot;
 #[path = "agent_relation_minimap.rs"] mod minimap;
 #[path = "agent_relation_picker.rs"] mod picker;
 #[path = "agent_relation_resources.rs"] mod resources;
@@ -50,6 +49,7 @@ use crate::{
 		workspace_symbols,
 		workspace_symbols::Symbol,
 	},
+	ui_cloudlet as mascot,
 	ui_motion::{self, SmoothControl},
 	ui_theme::{self, COMPOSER_MATERIAL, FONT_FAMILY, INFO, LINE_STRONG, TEXT},
 };
