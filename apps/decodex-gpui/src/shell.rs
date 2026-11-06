@@ -4386,7 +4386,6 @@ fn account_row_action(
 		.id((id, index))
 		.role(Role::Button)
 		.aria_label(aria_label)
-		.tab_index(if enabled { 0 } else { -1 })
 		.h(gpui::px(23.0))
 		.px_2()
 		.flex()
