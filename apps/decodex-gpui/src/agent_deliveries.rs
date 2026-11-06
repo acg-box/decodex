@@ -329,7 +329,7 @@ impl Panel {
 						if self.filter.range.after.is_some() || self.filter.range.before.is_some() {
 							"No conversations in this period"
 						} else {
-							"Your conversations appear here"
+							"No conversations to show."
 						}
 					} else {
 						"Loading conversations…"

@@ -8,7 +8,7 @@ pub(super) use collaboration::State as Collaboration;
 
 use gpui::{
 	AnyElement, Div, IntoElement, SharedString,
-	prelude::{ParentElement, Styled},
+	prelude::{FluentBuilder as _, ParentElement, Styled},
 };
 
 use crate::shell::agent_surface::{
@@ -314,13 +314,15 @@ impl AgentSurface {
 					.child(format!("{number}: {identity}")),
 			)
 			.child(note(entry.label.clone()).mt_1())
-			.child(
-				note(entry.reason.clone())
-					.text_size(gpui::px(11.))
-					.line_height(gpui::px(16.))
-					.mt_1()
-					.mb_1(),
-			)
+			.when(!entry.reason.is_empty(), |card| {
+				card.child(
+					note(entry.reason.clone())
+						.text_size(gpui::px(11.))
+						.line_height(gpui::px(16.))
+						.mt_1()
+						.mb_1(),
+				)
+			})
 			.child(
 				self.workspace_action(
 					action_key,

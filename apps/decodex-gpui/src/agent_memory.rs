@@ -88,7 +88,7 @@ impl AgentSurface {
 				match result {
 					Ok(Some(text)) => {
 						s.memory_summary.text = Some(text);
-						s.memory_summary.feedback = "Memory summary (read-only)".into();
+						s.memory_summary.feedback.clear();
 					},
 					Ok(None) =>
 						s.memory_summary.feedback =
@@ -112,7 +112,7 @@ impl AgentSurface {
 		let opened = self.memory_summary.owner.as_ref().is_some_and(|(id, _)| id == work);
 		let mut panel = gpui::div().flex().flex_col().gap_2().child(mcp_forms::mcp_button(
 			"memory-summary-toggle".into(),
-			"Memory summary".into(),
+			"Memory summary (read-only)".into(),
 			opened,
 			cx,
 			move |s, cx| {
@@ -129,7 +129,9 @@ impl AgentSurface {
 			return panel.into_any_element();
 		}
 
-		panel = panel.child(self.memory_summary.feedback.clone());
+		if !self.memory_summary.feedback.is_empty() {
+			panel = panel.child(self.memory_summary.feedback.clone());
+		}
 
 		if let Some(text) = &self.memory_summary.text {
 			let content = text.clone();
@@ -144,7 +146,7 @@ impl AgentSurface {
 				)
 				.child(mcp_forms::mcp_button(
 					"memory-summary-copy".into(),
-					"Copy summary".into(),
+					"Copy".into(),
 					false,
 					cx,
 					move |_, cx| cx.write_to_clipboard(ClipboardItem::new_string(content.clone())),
@@ -156,7 +158,7 @@ impl AgentSurface {
 
 			panel = panel.child(mcp_forms::mcp_button(
 				"memory-summary-refresh".into(),
-				"Refresh summary".into(),
+				"Refresh".into(),
 				false,
 				cx,
 				move |s, cx| s.load_memory_summary(&owner, cx),

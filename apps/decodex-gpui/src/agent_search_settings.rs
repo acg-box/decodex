@@ -170,7 +170,7 @@ impl AgentSurface {
 			)
 			.children(ui_feedback::inline_feedback(
 				"search-settings-feedback",
-				"Search settings",
+				"",
 				&self.search_settings.feedback,
 			));
 
@@ -182,7 +182,7 @@ impl AgentSurface {
 
 		panel = panel.child(mcp_forms::mcp_button(
 			"search-settings-refresh".into(),
-			"Refresh search settings".into(),
+			"Refresh".into(),
 			false,
 			cx,
 			move |s, cx| s.update_search_settings(&owner, None, cx),
@@ -247,7 +247,7 @@ fn feedback(
 			AgentSearchSettingsResult::Available { effective, preference, .. },
 		) if preference.as_ref() == Some(mode) =>
 			if effective.as_ref() == Some(mode) {
-				Feedback::success("Saved for new conversations.")
+				Feedback::success("Saved.")
 			} else {
 				Feedback::info("Saved. Project settings select a different search mode.")
 			},

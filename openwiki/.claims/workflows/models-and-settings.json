@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:76533b762742b585804738854d12acdf50a4e8c355ec2c5df941fe64e3594c58",
+  "pageVersion": "sha256:37d70944c8fd7eee8076c8eaa24f6fb672dc37e12a7fc94a52241885fb21e416",
   "claims": [
     {
       "id": "claim_f0c37462522f4442acd94d53819ef75c",
@@ -110,11 +110,11 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_permissions.rs",
-          "version": "repo-file-v1:sha256:9be815a8a8a738c81edaeff7a7002ef809624ce248ef99c177bb035b7d993769"
+          "version": "repo-file-v1:sha256:c82c88c0329fdfd6b67ec456de5925f27f125c5dfa929bd61d560ef276ae1b4e"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/session_settings.rs",
-          "version": "repo-file-v1:sha256:c9e3b76bd3c15d77d017d831ba8c8a8928b6fdbf5f68a4875f8bf60492797291"
+          "version": "repo-file-v1:sha256:0dbe254a2d431e3494ee06a2b65339b22881cd1d2b7153c845502e89d5629ed3"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent_permissions.rs",
@@ -142,7 +142,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_memory.rs",
-          "version": "repo-file-v1:sha256:79d087a6d13c3659d6fb84ec08a86ecf0f47127d1d262bd36a7dfcddf4affb9a"
+          "version": "repo-file-v1:sha256:6aeb5d1a807da5088b574d4f555da8aca688774aab8669fede7bc81503b9655a"
         },
         {
           "resource": "repo://crates/decodex-codex/src/app_server_client/memory.rs",
@@ -236,7 +236,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_context_settings.rs",
-          "version": "repo-file-v1:sha256:d66056d801e843822d9444c9c3432dc2526c524f3dced6befd3d32941c6a538b"
+          "version": "repo-file-v1:sha256:c857f947f5d4a7be8367ad08e5ba7839057b27d58ac3c9c1d85de571d8d8d5ab"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_native.rs",
@@ -262,7 +262,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_surface.rs",
-          "version": "repo-file-v1:sha256:a6993a42f4fa83ebb7a3a60540df72192e9ae0b3ac1478bc7ac7314d05f72c27"
+          "version": "repo-file-v1:sha256:c95911cf8db5baa1a2a3c56a524d8f63ebd9cf3748fabd3e8d72f0a2e21282af"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_preferences.rs",
@@ -322,27 +322,27 @@
     },
     {
       "id": "claim_09df0d70257c4cd4995cda41a1da8169",
-      "statement": "Components installs managed RAGFlow nightly with compatible Infinity and a private service account, sharing actual version and lifecycle controls. Component operations check the running Docker-compatible engine and Docker Compose before installation effects and use shared inline feedback for unavailable prerequisites without runtime installation, launch or installation guidance. Successful installation with no saved model settings opens the existing model form automatically. Expanding installed RAGFlow directly opens the model form for independent extraction and embedding model IDs, OpenAI-compatible Base URLs and optional private API keys. Save verifies both choices before updating separate provider instances and initializing Memory automatically. No model runtime or weights are installed. Saved keys stay blank in later edits and are retained only for that model at its unchanged URL; loopback addresses are translated for the container, and indexed Memory keeps its embedding model and endpoint. Chat import starts off with a separate switch when Memory is ready, including during model editing; Update preserves models, import choice and data, and Uninstall clears the connection while retaining data. Typed knowledge scopes and the safe native-memory context policy keep their existing owners.",
+      "statement": "Components installs managed RAGFlow nightly with compatible Infinity and a private service account, sharing actual version and lifecycle controls. Operations check a running Docker-compatible engine and Docker Compose without installing or launching a container runtime. Successful installation without saved models opens setup. The saved summary offers Edit; the editor uses one shared OpenAI-compatible Base URL and optional private API key with extraction and embedding model IDs. Save verifies both choices, updates their provider instances and initializes Memory. A blank key retains the saved extraction connection key only while the shared URL is unchanged; indexed Memory retains its embedding model and endpoint. Chat import starts off and remains separate. Update preserves models, import choice and data; Uninstall clears the connection while retaining data. Typed knowledge scopes and native-memory context policy retain their existing owners.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
-          "version": "repo-file-v1:sha256:80c21982eb72daa16e41cfa4faeb91a0877d3c2961d7282d65e090f097280188"
+          "version": "repo-file-v1:sha256:af3372dfe92b54bdc19d109e1188e3aeeb74a1d70b2b74a213332c512b513d06"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:d22add383676146076f2bea688936358ef17cde2a4aa359ae67eeccdbbc2ec55"
+          "version": "repo-file-v1:sha256:d70ec68a253c9a83b92946d602e61c5094327772c119ae84254c1721183d6df4"
         },
         {
           "resource": "repo://crates/decodex-components/src/ragflow.rs",
-          "version": "repo-file-v1:sha256:17e835261d1318d0c7ba78f1c859da78cb71d746027c6a63a28232aa18e06beb"
+          "version": "repo-file-v1:sha256:cdeb415f7327808194dad8b81832d740be560cdb991a54705c740dacaa67f050"
         },
         {
           "resource": "repo://crates/decodex-components/src/ragflow_service.rs",
-          "version": "repo-file-v1:sha256:71304894dce0ee326cbea7d12bbdddc94eb2c9f29e6072202170b9abf12e802a"
+          "version": "repo-file-v1:sha256:73b08678945947cc367153b9257d8c8e8a3e32d51e6fc67fdb5b9073831ff8d3"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent.rs",
-          "version": "repo-file-v1:sha256:723981fe7564aa4725c719a427a9f60fe6f58e805c83c79d374d6759d979fc7a"
+          "version": "repo-file-v1:sha256:0db1daf807cd75cf915bf9be58389ac6ab98adcbd3bb2f89910ac32f38ff14e3"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/assistant.rs",
@@ -356,11 +356,11 @@
     },
     {
       "id": "claim_beff917e46a74d619c3c54e7b46b2696",
-      "statement": "The RAGFlow status light distinguishes service installation from configured Assistant Memory even when collapsed, without a repeated caption. Container recovery guidance stays inside its expanded details, and the editor has no separate release-channel row. Its direct editor has one row each for extraction and embedding, containing model ID, Base URL and optional API key, without an additional heading layer. Labels sit above 24-point inputs in normal control text. Empty required fields disable submission; complete input gets the existing validation on explicit submission. Input changes refresh the form and clear its old error. Guidance covers API compatibility, model roles, the Codex memory effect and initial chat-import choice. Cancel and the primary Save action align right. Saved-key guidance remains conditional, collapse retains input, and Cancel clears input and errors before collapse.",
+      "statement": "The RAGFlow status light distinguishes service installation from configured Memory without a repeated caption. Recovery guidance stays inside expanded details. A saved Models summary aligns the shared URL, model IDs and key status and keeps Edit available. The four-field editor places shared connection fields above extraction and embedding model IDs with labels above 24-point inputs. Empty required fields disable Save; explicit submission validates complete input. Editing clears the old editor error. Collapse retains unsaved input; Cancel discards the draft and errors and returns to the saved summary while RAGFlow stays expanded. API compatibility, model roles, native-memory effects and chat-import guidance remain visible.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
-          "version": "repo-file-v1:sha256:80c21982eb72daa16e41cfa4faeb91a0877d3c2961d7282d65e090f097280188"
+          "version": "repo-file-v1:sha256:af3372dfe92b54bdc19d109e1188e3aeeb74a1d70b2b74a213332c512b513d06"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/composer_input.rs",
@@ -368,17 +368,17 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:d22add383676146076f2bea688936358ef17cde2a4aa359ae67eeccdbbc2ec55"
+          "version": "repo-file-v1:sha256:d70ec68a253c9a83b92946d602e61c5094327772c119ae84254c1721183d6df4"
         }
       ]
     },
     {
       "id": "claim_1d1d68cccf054493b22ff3f7574f9e70",
-      "statement": "All Settings categories share a 620-point content column and normal App typography. Related preferences share a quiet bordered panel with distinct section, name, value and explanation text roles. Accounts retains one compact divided list surface; Add account and model verification use shared primary buttons. Setting names use medium weight; help explains a choice, scope, cost, data effect, compatibility limit or recovery action, while self-explanatory controls avoid duplicate captions. Component rows retain complete reported versions, including original prefixes, punctuation, build information and commit suffixes. Component, MCP and Diagnostics details share an inset region with distinct headings, normal control text and secondary guidance. Diagnostics uses one normal-size overall status flow with explicit unprobed Codex state, connection changes and recovery information, without captions that repeat Run checks and summarizes three check groups before exposing all individual checks in Technical details; uniform groups share heading status and mixed groups retain individual status and explanations. Local feedback retains its compact inset icon, quiet tone fill, centered alignment and adjacent recovery. A collapsed Codex setup failure directs the user to its original setup error; Retry keeps the existing preparation action.",
+      "statement": "All Settings categories share a 620-point content column and normal App typography. Related preferences share a quiet bordered panel with distinct section, name, value and explanation roles. Ordinary setting names use normal weight; section titles use medium weight and muted text. Accounts keeps one compact divided list surface; Add account and model verification use shared primary buttons. Help explains a choice, scope, cost, data effect, compatibility limit or recovery action. Component rows retain full reported versions. Component, MCP and Diagnostics details use a shared inset region. Diagnostics shows one overall status and three group summaries, with all individual checks in Technical details; uniform groups share a heading status and mixed groups retain item states. Local feedback keeps its compact inset icon, tone fill, centered alignment and adjacent recovery. Codex setup failures retain their original details and use Install or Reinstall through the existing preparation owner.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:d22add383676146076f2bea688936358ef17cde2a4aa359ae67eeccdbbc2ec55"
+          "version": "repo-file-v1:sha256:d70ec68a253c9a83b92946d602e61c5094327772c119ae84254c1721183d6df4"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_power.rs",
@@ -386,11 +386,11 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_surface.rs",
-          "version": "repo-file-v1:sha256:a6993a42f4fa83ebb7a3a60540df72192e9ae0b3ac1478bc7ac7314d05f72c27"
+          "version": "repo-file-v1:sha256:c95911cf8db5baa1a2a3c56a524d8f63ebd9cf3748fabd3e8d72f0a2e21282af"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/shell.rs",
-          "version": "repo-file-v1:sha256:ae72373d7beb3ad4781af4a9125ea9c2bac0d45bb8f6450e4024031a69f2b647"
+          "version": "repo-file-v1:sha256:f926ad24637bba7ae97120d234b462b3bee7642ab49c1f0c1c70884b62e73e55"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/shell_diagnostics.rs",
@@ -402,7 +402,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_theme.rs",
-          "version": "repo-file-v1:sha256:f0af45cd829f36271b31df7e5b139b57b42cf718bf1a941066e663ae1f8271f9"
+          "version": "repo-file-v1:sha256:d3d514f37a2b4ffaa0a99c27df53bdeebec79eb174c18369f08f62f77484140a"
         }
       ]
     },
@@ -412,19 +412,19 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/session_settings.rs",
-          "version": "repo-file-v1:sha256:c9e3b76bd3c15d77d017d831ba8c8a8928b6fdbf5f68a4875f8bf60492797291"
+          "version": "repo-file-v1:sha256:0dbe254a2d431e3494ee06a2b65339b22881cd1d2b7153c845502e89d5629ed3"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_surface.rs",
-          "version": "repo-file-v1:sha256:a6993a42f4fa83ebb7a3a60540df72192e9ae0b3ac1478bc7ac7314d05f72c27"
+          "version": "repo-file-v1:sha256:c95911cf8db5baa1a2a3c56a524d8f63ebd9cf3748fabd3e8d72f0a2e21282af"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/shell.rs",
-          "version": "repo-file-v1:sha256:ae72373d7beb3ad4781af4a9125ea9c2bac0d45bb8f6450e4024031a69f2b647"
+          "version": "repo-file-v1:sha256:f926ad24637bba7ae97120d234b462b3bee7642ab49c1f0c1c70884b62e73e55"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_theme.rs",
-          "version": "repo-file-v1:sha256:f0af45cd829f36271b31df7e5b139b57b42cf718bf1a941066e663ae1f8271f9"
+          "version": "repo-file-v1:sha256:d3d514f37a2b4ffaa0a99c27df53bdeebec79eb174c18369f08f62f77484140a"
         }
       ]
     },
@@ -433,7 +433,7 @@
       "statement": "The app version and Check for updates action are in Settings > General > Updates. There is no separate Updates page, and Sparkle retains application update ownership; component lifecycle actions remain in Components.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/settings_surface.rs#L494-L554",
+          "resource": "repo://apps/decodex-gpui/src/settings_surface.rs#L500-L560",
           "version": "repo-lines-v1:sha256:1d64f0e0728945f50a9ecb06de95815037fc53bd576e959d831906009518dde2:eyJzZWxlY3RlZExpbmVDb3VudCI6NjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUwMjQ4NWFkZWFiYTkyMmFkMWMzYmEzZGU0MWY1YmE2NmZiMTZhMjZiN2ViZTVhNjhkOGJiNDVlZmU0NDU4OTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU1MTRkMjA4Njg4NGY4MTdiMmFjYTFlYTkwOTE3Yjg4YTkxMzhmNzlkMmE5MmYwYzIxNTlkNDE5ZWJhOGZlZWYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjliMTE0Y2MyYjhkODYxMjk3ZmY2MGUwN2Q0NjQ2NjcwZmVjMGQ1ZjU5YWY4NDFjMTM3MmQ1NDFiOWVhYzk2YzYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjcwZTgzMGUzNTQ5NjMxODViMzg3MGRhY2Q0NWExMzhkZWJhOGZlYzMyMmZjODBlZjFhOTZjMWNjNWVkZTYxMjcifQ"
         },
         {
@@ -445,7 +445,7 @@
           "version": "repo-file-v1:sha256:bb648a0d9f0a8363809909cb2838996f3592caa86a33f5c7a9e8b8afd89b958f"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/shell.rs#L208-L218",
+          "resource": "repo://apps/decodex-gpui/src/shell.rs#L209-L219",
           "version": "repo-lines-v1:sha256:29bee6618a0e23e816e645126eb377c923b2b38f284ca297d0deb1c6dd0adf99:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3NWUzZTg1YmI2YTk4Y2M2MDNjYjU2MWUyYTA1NWU0ZGUzNWM3ZTBmOTYzOTZkYzgxZGFkN2ZlY2I5Mjc2NDciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA1ZmNlZGY2YTBiM2NkNmQyZjNhOGNjODljNjk2OTliYmUyN2I4MWUzMDU2OTEwYWMxZWJjZGRiNDg0NmFjOWEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjViOTFkZDA3MjEwZDg5Mjg2MTg1YThlYjAzYTY5NjE4YjkyMzAwYzcwOTI4M2ZjMDU1ZTQzOGJhNjMwZGUzMGYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgyNjRhMzY1MTQ3NjVmNGU0MDk4NDgzZmU0ZDk4NWZkZmViNjI4ZDkyZjAyMTdjNmM0NzA1ZmMzZWM3OWJmZjIifQ"
         }
       ]
@@ -528,31 +528,31 @@
         },
         {
           "resource": "repo://crates/decodex-runtime/src/ragflow.rs",
-          "version": "repo-file-v1:sha256:6671e0d10094fbca56a40c13fbbe476edabd6b027b7104a087ef2388f35456c9"
+          "version": "repo-file-v1:sha256:10711955e1abe0c725d1ad155fd5befd5699604ec5756d5286b3129e5b0cb14f"
         }
       ]
     },
     {
       "id": "claim_fce725dba41e46a784a8fe09aa9ccf14",
-      "statement": "Codex prepares automatically in the background at local bundled App startup. Components shares that state, has no permanent Verify control and offers Retry only after setup fails. Its expanded help explains startup preparation and version updates through Decodex. EGM help explains using it in an Agent chat to draft or review a design and starting a new conversation after installation or update.",
+      "statement": "Codex prepares automatically in the background at local bundled App startup. Components shares that state without a permanent Verify control or generic Retry action. An interrupted first download returns to Install, and an installed private runtime offers Reinstall through the existing preparation flow. Expanded help explains startup preparation and version updates through Decodex. EGM help explains using it in an Agent chat to draft or review a design and starting a new conversation after installation or update.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/bundled_daemon.rs",
-          "version": "repo-file-v1:sha256:dd1a317d49e93ba387cb76ec16c5c80c991c97a11b82b417f674cf68c827e5d6"
+          "version": "repo-file-v1:sha256:b13c5cc75f2fdd79a83d1dadeece1e6b07fb205e151a4cad30366acd6f5f7879"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/component_runtime.rs",
-          "version": "repo-file-v1:sha256:27a2e86b191536c74520e16b902bcc7ccda1f1c13657f6ff860decef89e6c269"
+          "version": "repo-file-v1:sha256:7fbc161acf94c8a65f9f0af0e308d076acff5f06fcba50208781d9f80de64051"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:d22add383676146076f2bea688936358ef17cde2a4aa359ae67eeccdbbc2ec55"
+          "version": "repo-file-v1:sha256:d70ec68a253c9a83b92946d602e61c5094327772c119ae84254c1721183d6df4"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.9.0",
-    "at": "2026-11-05T21:05:15.623Z"
+    "at": "2026-11-06T12:32:00.964Z"
   }
 }

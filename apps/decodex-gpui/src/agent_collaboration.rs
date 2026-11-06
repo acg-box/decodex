@@ -684,16 +684,18 @@ impl AgentSurface {
 				route.child(if case.question.is_some() { "You" } else { "Unknown" })
 			}
 		};
-		route = route.child(gpui::div().flex_1()).child(
-			gpui::div()
-				.flex_none()
-				.text_color(ui_theme::rgb(if matches!(case.state, "Reported" | "Recorded") {
-					SECONDARY
-				} else {
-					case.color
-				}))
-				.child(case.state),
-		);
+		route = route.when(case.title != case.state, |route| {
+			route.child(gpui::div().flex_1()).child(
+				gpui::div()
+					.flex_none()
+					.text_color(ui_theme::rgb(if matches!(case.state, "Reported" | "Recorded") {
+						SECONDARY
+					} else {
+						case.color
+					}))
+					.child(case.state),
+			)
+		});
 
 		route
 	}

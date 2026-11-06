@@ -257,7 +257,7 @@ impl AgentSurface {
 
 			panel = panel.child(mcp_forms::mcp_button(
 				"app-exposure-save".into(),
-				"Save settings".into(),
+				"Save".into(),
 				false,
 				cx,
 				move |s, cx| s.update_app_exposure(&owner, &app, true, cx),

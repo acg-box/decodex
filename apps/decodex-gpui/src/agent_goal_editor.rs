@@ -79,25 +79,25 @@ impl AgentSurface {
 				.child(editor.budget.clone())
 				.child(self.workspace_action(
 					"goal-import".into(),
-					"Import objective text…".into(),
+					"Import text…".into(),
 					|s, cx| s.import_goal_objective(cx),
 					cx,
 				))
 				.child(self.workspace_action(
 					"goal-save".into(),
-					if editor.new_goal { "Create paused goal" } else { "Save goal changes" }.into(),
+					if editor.new_goal { "Create paused goal" } else { "Save" }.into(),
 					|s, cx| s.save_goal_editor(false, cx),
 					cx,
 				))
 				.child(self.workspace_action(
 					"goal-start".into(),
-					"Save and start goal".into(),
+					"Save and start".into(),
 					|s, cx| s.save_goal_editor(true, cx),
 					cx,
 				))
 				.child(self.workspace_action(
 					"goal-cancel-edit".into(),
-					"Cancel edit".into(),
+					"Cancel".into(),
 					|s, cx| {
 						s.native_goal.editor = None;
 
@@ -108,7 +108,7 @@ impl AgentSurface {
 		} else {
 			panel = panel.child(self.workspace_action(
 				"goal-edit".into(),
-				if goal.is_some() { "Edit goal" } else { "Create goal" }.into(),
+				if goal.is_some() { "Edit" } else { "Create" }.into(),
 				|s, cx| s.begin_goal_edit(cx),
 				cx,
 			));
