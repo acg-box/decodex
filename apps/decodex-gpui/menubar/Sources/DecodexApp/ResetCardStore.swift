@@ -456,6 +456,10 @@ final class ResetCardStore {
 		isRefreshing && hasLoaded == false
 	}
 
+	var accountListUnavailable: Bool {
+		hasLoaded == false || accountReadFailureMessage != nil
+	}
+
 	var canPerformDirectAccountControl: Bool {
 		isRefreshing == false || refreshSkeletonIsPublished
 	}

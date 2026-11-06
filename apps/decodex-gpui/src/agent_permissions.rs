@@ -486,8 +486,7 @@ fn permission_feedback(
 				}
 			) =>
 			Feedback::default(),
-		Some(Ok(AgentCommandResponse::Accepted { .. })) =>
-			Feedback::info("Selection queued. Check current permissions below."),
+		Some(Ok(AgentCommandResponse::Accepted { .. })) => Feedback::info("Selection queued."),
 		Some(Ok(AgentCommandResponse::Rejected { .. })) =>
 			Feedback::error("Permissions were not changed. Try again."),
 		Some(_) => Feedback::warning("Selection unconfirmed. No automatic retry."),

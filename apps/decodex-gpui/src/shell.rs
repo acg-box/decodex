@@ -3681,13 +3681,6 @@ fn empty_accounts() -> impl IntoElement {
 		.text_color(ui_theme::rgb(WB_TEXT_MUTED))
 		.debug_selector(|| "accounts-empty".into())
 		.child("No accounts added")
-		.child(
-			gpui::div()
-				.font_family(FONT_FAMILY)
-				.text_size(gpui::px(11.0))
-				.text_color(ui_theme::rgb(WB_TEXT_FAINT))
-				.child("Add your first account above."),
-		)
 }
 
 fn account_mode_button(selected: bool, can_manage: bool, cx: &mut Context<Shell>) -> AnyElement {

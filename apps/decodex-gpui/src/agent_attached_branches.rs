@@ -136,14 +136,12 @@ impl AgentSurface {
 			return panel.into_any_element();
 		}
 
-		panel = panel.child(
-			"Choose ‘Side chat’ when reviewing an earlier message. Open a side chat here to continue it.",
-		);
+		panel = panel.child("Choose ‘Side chat’ when reviewing an earlier message.");
 
 		match &self.workspace.attached.result {
 			Some(AttachedBranchesResult::Available { branches, truncated }) => {
 				if branches.is_empty() {
-					panel = panel.child("No side chats are recorded for this conversation.");
+					panel = panel.child("No recorded side chats.");
 				}
 
 				for branch in branches {

@@ -185,13 +185,12 @@ impl AgentSurface {
 
 				s.hook_settings.reviewed = !saving;
 				s.hook_settings.feedback = match outcome {
-					Some(Ok(AgentCommandResponse::Accepted { .. })) =>
-						"Change accepted. Current hook settings appear below.",
+					Some(Ok(AgentCommandResponse::Accepted { .. })) => "Change accepted.",
 					Some(Ok(AgentCommandResponse::Rejected { .. })) =>
 						"Change rejected. Refresh before retrying.",
 					Some(_) => "Change unconfirmed. No automatic retry.",
 					None if saving => "Change unconfirmed. Refresh before retrying.",
-					None => "Shared by conversations using this config.",
+					None => "",
 				}
 				.into();
 				s.hook_settings.state = Some(match state {
@@ -237,7 +236,7 @@ impl AgentSurface {
 		let mut panel = gpui::div().flex().flex_col().gap_2().child("Shared hooks").child(
 			mcp_forms::mcp_button(
 				"hook-settings-read".into(),
-				"Refresh hooks".into(),
+				"Refresh".into(),
 				false,
 				cx,
 				move |s, cx| s.update_hook_settings(owner.clone(), None, cx),
@@ -248,7 +247,9 @@ impl AgentSurface {
 			return panel.into_any_element();
 		}
 
-		panel = panel.child(self.hook_settings.feedback.clone());
+		if !self.hook_settings.feedback.is_empty() {
+			panel = panel.child(self.hook_settings.feedback.clone());
+		}
 
 		match &self.hook_settings.state {
 			Some(AgentHookSettingsState::Available {

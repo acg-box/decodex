@@ -3,6 +3,9 @@ type: Reference
 title: "Desktop workspace and native glass"
 description: "Workspace ownership, native menu focus, compositor motion, and consistent status presentation."
 tags: [decodex, architecture, desktop, presentation]
+verified:
+  - by: openwiki/0.9.0
+    at: 2026-11-06T12:32:00.964Z
 sources:
   - id: openwiki-source-98e7b23c4cc276d20fcb4649
     resource: repo://apps/decodex-gpui/menubar/Sources/DecodexApp/AccountControlViews.swift
@@ -138,10 +141,7 @@ sources:
     resource: repo://database/src/works/commands.rs
   - id: openwiki-source-8fe6f1557e5d45d88b34bd0a
     resource: repo://scripts/macos/generate_workspace_symbols.swift
-generated: { by: "codex", at: "2026-11-06T10:49:46.541Z" }
-verified:
-  - by: openwiki/0.9.0
-    at: 2026-11-06T10:49:46.541Z
+generated: { by: "codex", at: "2026-11-06T12:32:00.964Z" }
 ---
 
 # Desktop workspace and native glass
@@ -206,7 +206,7 @@ Managed conversation labels come from the existing status projection, native chi
 
 ## Read-only evidence views
 
-Agent preferences includes **Memory summary** for the current native root conversation. It reads the selected native summary without starting or resuming a conversation. Refresh and Copy summary are explicit actions. Empty native memory can mean disabled, missing, unreadable or blank memory. A source or binding change removes the old view. The desktop does not edit, regenerate or interpret the summary as instructions.
+Agent preferences includes **Memory summary (read-only)** for the current native root conversation. It reads the selected native summary without starting or resuming a conversation. **Refresh** and **Copy** are explicit actions. Empty native memory can mean disabled, missing, unreadable or blank memory. A source or binding change removes the old view. The desktop does not edit, regenerate or interpret the summary as instructions.
 
 **Actual usage** is available in Agent preferences and expanded Work details. The panel shows known whole-turn tokens, recorded duration, coverage counts and bounded exact source examples. Unknown counters stay unknown. Work uses saved turn references across retained requirements; linked turns can contain other activity, and known shared turns are excluded from linked-turn totals. Recorded durations can overlap. Copy usage evidence exports this observed view after an explicit action.
 

@@ -135,7 +135,7 @@ impl AgentSurface {
 
 		if active && let Some(next) = &self.voice_settings.next {
 			panel = panel
-				.child("Applies to new calls. Blank fields use defaults.")
+				.child("Blank fields use defaults.")
 				.child("Realtime model")
 				.child(next.model.clone())
 				.child("Instructions when voice starts")
@@ -292,7 +292,7 @@ impl AgentSurface {
 		panel = panel.child("Applies to your next voice conversation.").children(
 			ui_feedback::inline_feedback(
 				"voice-settings-feedback",
-				"Voice settings",
+				"",
 				&self.voice_settings.feedback,
 			),
 		);
@@ -305,7 +305,7 @@ impl AgentSurface {
 
 		panel = panel.child(mcp_forms::mcp_button(
 			"voice-settings-refresh".into(),
-			"Refresh voices".into(),
+			"Refresh".into(),
 			false,
 			cx,
 			move |s, cx| s.update_voice_settings(&owner, None, cx),
@@ -360,7 +360,7 @@ fn feedback(
 			AgentVoiceSettingsResult::Available { effective, preference, .. },
 		) if preference.as_ref() == Some(voice) =>
 			if effective.as_ref() == Some(voice) {
-				Feedback::success("Saved for your next voice conversation.")
+				Feedback::success("Saved.")
 			} else {
 				Feedback::info("Saved. Project settings select a different voice.")
 			},

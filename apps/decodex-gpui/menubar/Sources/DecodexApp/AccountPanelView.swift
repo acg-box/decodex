@@ -539,23 +539,25 @@ struct AccountPanelView: View {
 			if store.isInitialLoading {
 				BrandLoading()
 			} else {
-				Image(systemName: store.hasLoaded ? "person.2.slash" : "bolt.horizontal.circle")
+				Image(systemName: store.accountListUnavailable ? "bolt.horizontal.circle" : "person.2.slash")
 					.font(PanelFont.emptyIcon)
 					.foregroundStyle(PanelPalette.secondaryText(colorScheme))
 			}
 
 			VStack(alignment: .leading, spacing: PanelSpacing.micro) {
-				Text(store.isInitialLoading ? "Loading accounts" : "No accounts")
+				Text(
+					store.isInitialLoading
+						? "Loading accounts"
+						: (store.accountListUnavailable ? "Accounts unavailable" : "No accounts")
+				)
 					.font(PanelFont.emptyTitle)
 					.foregroundStyle(PanelPalette.primaryText(colorScheme))
-					Text(
-						store.hasLoaded
-							? "Add an account."
-							: "Account list incomplete. Refresh to retry."
-				)
-				.font(PanelFont.emptyBody)
-				.foregroundStyle(PanelPalette.secondaryText(colorScheme))
-				.fixedSize(horizontal: false, vertical: true)
+				if !store.isInitialLoading && store.accountListUnavailable {
+					Text("Refresh to retry.")
+						.font(PanelFont.emptyBody)
+						.foregroundStyle(PanelPalette.secondaryText(colorScheme))
+						.fixedSize(horizontal: false, vertical: true)
+				}
 			}
 		}
 		.frame(maxWidth: .infinity, alignment: .leading)

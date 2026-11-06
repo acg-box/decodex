@@ -107,7 +107,7 @@ impl Handoffs {
 		} else if work.status == AgentWorkStatusDto::UserDecision
 			&& work.dispatch_state == AgentDispatchStateDto::Idle
 		{
-			(receipt(work), "Decision needed", "Review the requested decision.", false)
+			(receipt(work), "Decision needed", "", false)
 		} else if direct_work(snapshot, work)
 			&& work.dispatch_state == AgentDispatchStateDto::Unknown
 		{

@@ -418,7 +418,7 @@ fn feedback(
 			&& saved == enabled
 		{
 			return if effective == enabled {
-				Feedback::success("Saved for new conversations.")
+				Feedback::success("Saved.")
 			} else {
 				Feedback::info("Saved. Overridden by project or managed settings.")
 			};

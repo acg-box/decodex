@@ -4,6 +4,29 @@ import XCTest
 
 @MainActor
 final class ResetCardStoreStartupRetryTests: XCTestCase {
+	func testFailedEmptyAccountReadStaysUnavailableUntilSuccessfulRefresh() async throws {
+		let fixture = try makePendingFixture()
+		defer { fixture.remove() }
+		let client = ScriptedResetCardClient(
+			accountSteps: [.failure(.transportDisconnected), .value([])],
+			accountFallback: .value([]),
+			inventoryFallback: .value(try Self.inventory)
+		)
+		let store = ResetCardStore(client: client, pendingStore: fixture.store, startupRetryDelays: [])
+
+		await store.refresh()
+		XCTAssertTrue(store.hasLoaded)
+		XCTAssertTrue(store.accounts.isEmpty)
+		XCTAssertTrue(store.accountListUnavailable)
+		store.dismissMessage()
+		XCTAssertTrue(store.accountListUnavailable, "Dismissing feedback does not confirm an empty account list.")
+
+		await store.refresh()
+		XCTAssertTrue(store.accounts.isEmpty)
+		XCTAssertFalse(store.accountListUnavailable)
+		XCTAssertNil(store.message)
+	}
+
 	func testBackgroundRecoveryClearsAccountReadTimeout() async throws {
 		let fixture = try makePendingFixture()
 		defer { fixture.remove() }

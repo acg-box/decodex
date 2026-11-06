@@ -346,7 +346,13 @@ impl SettingsSurface {
 		ui_theme::settings_row()
 			.child(ui_theme::settings_label(
 				scope.label(),
-				"Regular softens the background; Clear shows more through.",
+				if scope == GlassScope::Window
+					|| Surface::Window.material() != Material::LiquidGlass
+				{
+					"Regular softens the background; Clear shows more through."
+				} else {
+					""
+				},
 			))
 			.child(Segmented::new(
 				format!("settings-segments-{}", scope.label()),

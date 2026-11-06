@@ -235,7 +235,7 @@ impl AgentSurface {
 		if self.recap.busy() {
 			panel = panel.child(mcp_forms::mcp_button(
 				"recap-cancel".into(),
-				"Cancel recap".into(),
+				"Cancel".into(),
 				false,
 				cx,
 				|s, cx| {
@@ -252,10 +252,9 @@ impl AgentSurface {
 		} else {
 			let mut actions = gpui::div().flex().gap_2();
 
-			for (id, label, generate) in [
-				("recap-refresh", "Refresh recap", false),
-				("recap-generate", "Generate recap", true),
-			] {
+			for (id, label, generate) in
+				[("recap-refresh", "Refresh", false), ("recap-generate", "Generate", true)]
+			{
 				if generate && self.recap.state.is_none() {
 					continue;
 				}
@@ -282,6 +281,7 @@ impl AgentSurface {
 impl AgentSurface {
 	pub(super) fn visual_recap(&mut self) {
 		let Some(work) = self.selected.clone() else { return };
+		self.workspace.details_visible = true;
 
 		if let Some(item) =
 			self.snapshot.as_mut().and_then(|s| s.work_items.iter_mut().find(|w| w.id == work))

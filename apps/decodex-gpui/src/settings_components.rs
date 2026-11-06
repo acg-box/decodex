@@ -587,7 +587,7 @@ impl SettingsSurface {
 					.min_h(gpui::px(32.))
 					.child(ui_theme::settings_label(
 						"Import chats",
-						"Add completed chat turns to Assistant Memory.",
+						"Only completed turns are imported.",
 					))
 					.child(
 						switch::settings_switch(
@@ -669,9 +669,9 @@ impl SettingsSurface {
 			.child(ui_theme::settings_label(
 				if confirming { "Reset this Memory?" } else { "Reset Memory" },
 				if confirming {
-					"Remove this Assistant’s RAGFlow Memory and start with an empty one. This cannot be undone. Chat history and model settings stay available. Chat import turns off."
+					"This deletes the saved Memory and cannot be undone. Chat history and model settings stay available. Chat import turns off."
 				} else {
-					"Start with an empty Memory. Keeps chat history and model settings."
+					"Chat history and model settings stay available."
 				},
 			))
 			.child(actions)

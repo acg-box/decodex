@@ -227,11 +227,10 @@ impl AgentSurface {
 
 		self.task_models.reviewed = !saving;
 		self.task_models.feedback = match outcome {
-			Some(Ok(AgentCommandResponse::Accepted { .. })) =>
-				"Change submitted. Current settings appear below.",
+			Some(Ok(AgentCommandResponse::Accepted { .. })) => "Change submitted.",
 			Some(Ok(AgentCommandResponse::Rejected { .. })) =>
 				"Change rejected. Refresh before retrying.",
-			Some(_) => "Change unconfirmed. Current settings appear below.",
+			Some(_) => "Change unconfirmed.",
 			None if saving => "Change unconfirmed. Refresh before retrying.",
 			None => "Changes apply to subsequent turns.",
 		}
@@ -262,7 +261,7 @@ impl AgentSurface {
 		let mut panel =
 			gpui::div().flex().flex_col().gap_2().child("Model").child(mcp_forms::mcp_button(
 				"task-models-read".into(),
-				"Change model".into(),
+				"Change".into(),
 				false,
 				cx,
 				move |s, cx| s.update_task_models(owner.clone(), None, cx),
