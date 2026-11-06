@@ -2375,6 +2375,7 @@ impl AgentSurface {
 			|| (self.native_agents.selected.is_none()
 				&& self.selected.as_ref() == Some(&work.id)
 				&& (self.sending || self.feedback.message == "Message saved. Waiting for agent…"));
+		let (activity, completed_turn) = self.working_presentation(work);
 
 		if self.native_agents.selected.is_none() && !self.native_history_active(work) {
 			panel = panel.children(self.send_previews(&work.id));
@@ -2390,6 +2391,8 @@ impl AgentSurface {
 			.pb(gpui::px(MESSAGE_GAP - COMPOSER_TOP_GAP))
 			.child(panel)
 			.child(Working {
+				activity,
+				completed_turn,
 				key: format!(
 					"working-{}-{}",
 					work.id,
@@ -2397,8 +2400,9 @@ impl AgentSurface {
 				),
 				turn: (active
 					&& (self.native_agents.selected.is_some()
-						|| self.composer_unavailable_reason().is_none()))
-				.then(|| work.active_turn_id.clone().unwrap_or_else(|| work.id.clone())),
+						|| self.composer_unavailable_reason().is_none()
+						|| activity == crate::ui_cloudlet::State::Attention))
+					.then(|| work.active_turn_id.clone().unwrap_or_else(|| work.id.clone())),
 			});
 
 		if active

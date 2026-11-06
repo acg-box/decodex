@@ -31,6 +31,7 @@ mod panel_preferences;
 mod session_settings;
 mod settings_surface;
 mod shell;
+mod ui_cloudlet;
 mod ui_feedback;
 mod ui_frame;
 mod ui_layout;
