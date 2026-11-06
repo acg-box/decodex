@@ -7,7 +7,7 @@ use crate::{
 };
 use decodex_components::{
 	ComponentStore,
-	ragflow::{Action, Installation, ModelEndpoint, Models},
+	ragflow::{Action, Installation, MemorySetup, ModelEndpoint, Models},
 };
 use decodex_protocol::{AssistantCommand, ProfileKind, RagflowConnection};
 use gpui::{
@@ -19,7 +19,7 @@ use std::{
 	sync::{Arc, Mutex},
 };
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Eq, PartialEq)]
 pub(crate) enum ComponentAction {
 	Install,
 	Update,
@@ -28,6 +28,9 @@ pub(crate) enum ComponentAction {
 	ConfigureModels,
 	SaveModels,
 	CancelModels,
+	RequestReset,
+	CancelReset,
+	ResetMemory,
 }
 pub(crate) struct ComponentState {
 	pub inspected: bool,
@@ -37,6 +40,8 @@ pub(crate) struct ComponentState {
 	pub version: Option<String>,
 	pub feedback: Option<Feedback>,
 	pub memory_ready: bool,
+	pub has_models: bool,
+	pub reset_confirming: bool,
 	pub editing: bool,
 	pub import: bool,
 	pub busy: bool,
@@ -51,6 +56,8 @@ pub(super) struct Panel {
 	inspected: bool,
 	progress: Arc<Mutex<String>>,
 	error: String,
+	completion: Option<String>,
+	reset_target: Option<MemorySetup>,
 }
 
 impl AgentSurface {
@@ -99,10 +106,20 @@ impl AgentSurface {
 
 	pub(crate) fn ragflow_component_state(&self) -> ComponentState {
 		let progress = self.assistant_settings.progress.lock().expect("component progress").clone();
+		let memory = self.assistant_settings.installation.as_ref().and_then(|i| i.memory.as_ref());
+		let connection = self.snapshot.as_ref().and_then(|s| s.assistant.settings.ragflow.as_ref());
+		let memory_ready = memory.zip(connection).is_some_and(|(memory, connection)| {
+			connection.url == memory.url
+				&& connection.credential_id == memory.credential_id
+				&& connection.user_id == memory.user_id
+				&& connection.memory_id.as_deref() == Some(memory.memory_id.as_str())
+		});
 		let feedback = if !self.assistant_settings.error.is_empty() {
 			Some(Feedback::error(self.assistant_settings.error.clone()))
 		} else if self.assistant_settings.setup.is_some() && !progress.is_empty() {
 			Some(Feedback::loading(progress))
+		} else if let Some(message) = &self.assistant_settings.completion {
+			Some(Feedback::success(message.clone()))
 		} else if self
 			.assistant_settings
 			.installation
@@ -128,10 +145,19 @@ impl AgentSurface {
 			working: self.assistant_settings.setup.is_some(),
 			editing: !self.assistant_settings.fields.is_empty(),
 			feedback,
-			memory_ready: self
-				.snapshot
+			memory_ready,
+			has_models: self
+				.assistant_settings
+				.installation
 				.as_ref()
-				.is_some_and(|s| s.assistant.settings.ragflow.is_some()),
+				.is_some_and(|i| i.models.is_some()),
+			reset_confirming: memory_ready
+				&& self
+					.assistant_settings
+					.reset_target
+					.as_ref()
+					.zip(memory)
+					.is_some_and(|(a, b)| a == b),
 			installed: self.assistant_settings.installation.as_ref().is_some_and(|i| i.installed),
 			version: self
 				.assistant_settings
@@ -171,6 +197,28 @@ impl AgentSurface {
 				self.save_memory_models(cx);
 				return;
 			},
+			ComponentAction::RequestReset => {
+				if self.ragflow_component_state().memory_ready
+					&& self.assistant_settings.fields.is_empty()
+				{
+					self.assistant_settings.reset_target = self
+						.assistant_settings
+						.installation
+						.as_ref()
+						.and_then(|i| i.memory.clone());
+				}
+				cx.notify();
+				return;
+			},
+			ComponentAction::CancelReset => {
+				self.assistant_settings.reset_target = None;
+				cx.notify();
+				return;
+			},
+			ComponentAction::ResetMemory => {
+				self.reset_memory(cx);
+				return;
+			},
 			_ => {},
 		}
 		if matches!(action, ComponentAction::ToggleImport) {
@@ -204,11 +252,11 @@ impl AgentSurface {
 			));
 		}
 		if !self.assistant_settings.fields.is_empty() {
-			let fields = |items: [(&str, &'static str); 3]| {
+			let fields = |items: [(&str, &'static str); 2]| {
 				gpui::div()
 					.w_full()
 					.grid()
-					.grid_cols(3)
+					.grid_cols(2)
 					.gap(gpui::px(12.))
 					.children(items.into_iter().filter_map(|(key, label)| {
 						self.assistant_settings.fields.get(key).map(|field| {
@@ -228,21 +276,13 @@ impl AgentSurface {
 			};
 			body = body
 				.child(ui_theme::settings_description(
-					"Use OpenAI-compatible APIs. Each model can use its own endpoint and key.",
+					"Both models use the same OpenAI-compatible API connection.",
 				))
-				.child(fields([
-					("chat", "Extraction model"),
-					("chat_url", "Base URL"),
-					("chat_key", "API key (optional)"),
-				]))
-				.child(fields([
-					("embedding", "Embedding model"),
-					("embedding_url", "Base URL"),
-					("embedding_key", "API key (optional)"),
-				]));
+				.child(fields([("url", "Base URL"), ("key", "API key (optional)")]))
+				.child(fields([("chat", "Extraction model"), ("embedding", "Embedding model")]));
 			if self.assistant_settings.installation.as_ref().is_some_and(|i| i.models.is_some()) {
 				body = body.child(ui_theme::settings_description(
-					"Leave a key blank to keep it when that model's Base URL is unchanged.",
+					"Leave a key blank to keep it while its Base URL is unchanged.",
 				));
 			}
 			body = body.child(ui_theme::settings_description(
@@ -251,20 +291,44 @@ impl AgentSurface {
 		} else if let Some(models) =
 			self.assistant_settings.installation.as_ref().and_then(|i| i.models.as_ref())
 		{
-			let rows =
-				[("Extraction model", &models.extraction), ("Embedding model", &models.embedding)]
-					.into_iter()
-					.map(|(label, value)| {
-						ui_theme::settings_field(
-							label,
-							gpui::div()
-								.child(value.model.clone())
-								.child(ui_theme::settings_description(value.base_url.clone())),
-						)
-						.into_any_element()
-					})
-					.collect();
-			body = body.child(ui_theme::settings_divided_rows(rows));
+			body = body.child(
+				ui_theme::settings_rows()
+					.debug_selector(|| "ragflow-models-summary".into())
+					.children(
+						[
+							("Base URL", models.extraction.base_url.as_str()),
+							("Extraction model", models.extraction.model.as_str()),
+							("Embedding model", models.embedding.model.as_str()),
+							(
+								"API key",
+								if models.extraction.api_key.is_empty() {
+									"Not set"
+								} else {
+									"Saved"
+								},
+							),
+						]
+						.into_iter()
+						.map(|(label, value)| {
+							ui_theme::settings_row()
+								.min_h(gpui::px(26.))
+								.py(gpui::px(3.))
+								.child(
+									ui_theme::settings_description(label)
+										.w(gpui::px(120.))
+										.flex_none(),
+								)
+								.child(
+									gpui::div()
+										.flex_1()
+										.min_w_0()
+										.text_ellipsis()
+										.font_weight(gpui::FontWeight::NORMAL)
+										.child(value.to_owned()),
+								)
+						}),
+					),
+			);
 		} else if self.assistant_settings.installation.as_ref().is_none_or(|i| !i.installed) {
 			body = body.child(ui_theme::settings_description("RAGFlow nightly with Infinity stores Assistant memory. A running Docker-compatible container environment is required."));
 		}
@@ -298,7 +362,36 @@ impl AgentSurface {
 		self.edit_memory_models(cx);
 	}
 
+	#[cfg(any(test, feature = "visual-capture"))]
+	pub(crate) fn visual_ragflow_saved(&mut self, cx: &mut Context<Self>) {
+		self.visual_ragflow_settings(cx);
+		let memory = MemorySetup {
+			url: "http://127.0.0.1:9380/".into(),
+			credential_id: "a".repeat(64),
+			user_id: "decodex-fixture".into(),
+			memory_id: "memory-fixture".into(),
+		};
+		let endpoint = ModelEndpoint {
+			base_url: "http://127.0.0.1:4000/v1".into(),
+			api_key: "private-fixture".into(),
+			model: "gpt-6.1-terra".into(),
+		};
+		let installed =
+			self.assistant_settings.installation.as_mut().expect("fixture installation");
+		installed.version = "v1.0.0-rc3-51-g543f57ea9".into();
+		installed.models = Some(Models {
+			extraction: endpoint.clone(),
+			embedding: ModelEndpoint { model: "Qwen3-Embedding-8B".into(), ..endpoint },
+		});
+		installed.memory = Some(memory.clone());
+		self.snapshot.as_mut().expect("fixture state").assistant.settings.ragflow =
+			Some(memory_connection(memory));
+		self.assistant_settings.fields.clear();
+	}
+
 	fn edit_memory_models(&mut self, cx: &mut Context<Self>) {
+		self.assistant_settings.reset_target = None;
+		self.assistant_settings.completion = None;
 		let models = self
 			.assistant_settings
 			.installation
@@ -307,21 +400,9 @@ impl AgentSurface {
 			.unwrap_or_default();
 		for (key, value, label, placeholder) in [
 			("chat", models.extraction.model, "Extraction model", "Model ID"),
-			(
-				"chat_url",
-				models.extraction.base_url,
-				"Extraction Base URL",
-				"https://api.example.com/v1",
-			),
-			("chat_key", String::new(), "Extraction API key (optional)", ""),
+			("url", models.extraction.base_url, "Base URL", "https://api.example.com/v1"),
+			("key", String::new(), "API key (optional)", ""),
 			("embedding", models.embedding.model, "Embedding model", "Model ID"),
-			(
-				"embedding_url",
-				models.embedding.base_url,
-				"Embedding Base URL",
-				"https://api.example.com/v1",
-			),
-			("embedding_key", String::new(), "Embedding API key (optional)", ""),
 		] {
 			let input = cx.new(|cx| ComposerInput::with_placeholder(40, placeholder, label, cx));
 			input.update(cx, |i, cx| {
@@ -344,7 +425,7 @@ impl AgentSurface {
 	}
 
 	pub(crate) fn can_submit_memory_models(&self, cx: &gpui::App) -> bool {
-		["chat", "chat_url", "embedding", "embedding_url"].into_iter().all(|key| {
+		["chat", "url", "embedding"].into_iter().all(|key| {
 			self.assistant_settings
 				.fields
 				.get(key)
@@ -360,26 +441,21 @@ impl AgentSurface {
 				.map(|f| f.read(cx).content().trim().to_owned())
 				.unwrap_or_default()
 		};
-		let saved = self.assistant_settings.installation.as_ref().and_then(|i| i.models.as_ref());
-		let endpoint = |model, url, key, saved: Option<&ModelEndpoint>| {
-			let mut endpoint =
-				ModelEndpoint { model: read(model), base_url: read(url), api_key: read(key) };
-			if endpoint.api_key.is_empty()
-				&& let Some(saved) = saved.filter(|m| m.base_url == endpoint.base_url)
-			{
-				endpoint.api_key.clone_from(&saved.api_key);
-			}
-			endpoint
-		};
-		Models {
-			extraction: endpoint("chat", "chat_url", "chat_key", saved.map(|m| &m.extraction)),
-			embedding: endpoint(
-				"embedding",
-				"embedding_url",
-				"embedding_key",
-				saved.map(|m| &m.embedding),
-			),
+		let mut extraction =
+			ModelEndpoint { model: read("chat"), base_url: read("url"), api_key: read("key") };
+		if extraction.api_key.is_empty()
+			&& let Some(saved) = self
+				.assistant_settings
+				.installation
+				.as_ref()
+				.and_then(|i| i.models.as_ref())
+				.map(|m| &m.extraction)
+				.filter(|saved| saved.base_url == extraction.base_url)
+		{
+			extraction.api_key.clone_from(&saved.api_key);
 		}
+		let embedding = ModelEndpoint { model: read("embedding"), ..extraction.clone() };
+		Models { extraction, embedding }
 	}
 
 	#[cfg(not(test))]
@@ -428,7 +504,36 @@ impl AgentSurface {
 		let request = cx.background_executor().spawn(async move {
 			ComponentStore::for_user()?.configure_ragflow_models(models, &namespace).map(Some)
 		});
-		self.finish_memory_component(request, profile, owner, cx);
+		self.finish_memory_component(request, profile, owner, ComponentAction::SaveModels, cx);
+	}
+
+	fn reset_memory(&mut self, cx: &mut Context<Self>) {
+		let Some(target) = self.assistant_settings.reset_target.take() else {
+			return;
+		};
+		if !self.ragflow_component_state().memory_ready
+			|| self.assistant_settings.installation.as_ref().and_then(|i| i.memory.as_ref())
+				!= Some(&target)
+		{
+			self.assistant_settings.error =
+				"The selected Memory changed. Review its settings before resetting it.".into();
+			cx.notify();
+			return;
+		}
+		let Some(profile) = self.profile.clone().filter(|p| p.kind() == ProfileKind::Local) else {
+			return;
+		};
+		let Some(owner) = self.assistant_id() else {
+			return;
+		};
+		let namespace = format!("{}:assistant", profile.expected_server_id().as_str());
+		*self.assistant_settings.progress.lock().expect("component progress") =
+			"Resetting Assistant Memory…".into();
+		let request = cx.background_executor().spawn(async move {
+			ComponentStore::for_user()?.reset_ragflow_memory(&target, &namespace).map(Some)
+		});
+
+		self.finish_memory_component(request, profile, owner, ComponentAction::ResetMemory, cx);
 	}
 
 	pub(super) fn continue_memory_setup(&mut self, cx: &mut Context<Self>) {
@@ -519,7 +624,10 @@ impl AgentSurface {
 			ComponentAction::ToggleImport
 			| ComponentAction::ConfigureModels
 			| ComponentAction::SaveModels
-			| ComponentAction::CancelModels => return,
+			| ComponentAction::CancelModels
+			| ComponentAction::RequestReset
+			| ComponentAction::CancelReset
+			| ComponentAction::ResetMemory => return,
 		};
 		let progress = self.assistant_settings.progress.clone();
 		*progress.lock().expect("component progress") = "Preparing RAGFlow…".into();
@@ -528,7 +636,7 @@ impl AgentSurface {
 				*progress.lock().expect("component progress") = message.into()
 			})
 		});
-		self.finish_memory_component(request, profile, owner, cx);
+		self.finish_memory_component(request, profile, owner, action, cx);
 	}
 
 	fn finish_memory_component(
@@ -536,9 +644,11 @@ impl AgentSurface {
 		request: Task<decodex_components::Result<Option<Installation>>>,
 		profile: decodex_protocol::ClientProfile,
 		owner: String,
+		action: ComponentAction,
 		cx: &mut Context<Self>,
 	) {
 		self.assistant_settings.error.clear();
+		self.assistant_settings.completion = None;
 		self.assistant_settings.status_check = None;
 		self.assistant_settings.setup = Some(cx.spawn(async move |surface, cx| {
 			let result = request.await;
@@ -556,12 +666,22 @@ impl AgentSurface {
 							.filter(|i| i.installed)
 							.and_then(|i| i.memory.clone())
 							.map(memory_connection);
-						if let Some(connection) = connection.as_mut() {
-							connection.ingest_chats = s
+						if let Some(connection) = connection.as_mut()
+							&& let Some(previous) = s
 								.snapshot
 								.as_ref()
 								.and_then(|s| s.assistant.settings.ragflow.as_ref())
-								.is_some_and(|c| c.ingest_chats);
+								.filter(|previous| {
+									previous.url == connection.url
+										&& previous.credential_id == connection.credential_id
+								}) {
+							connection.dataset_ids.clone_from(&previous.dataset_ids);
+							connection.ingest_chats =
+								action != ComponentAction::ResetMemory && previous.ingest_chats;
+						}
+						if action == ComponentAction::ResetMemory {
+							s.assistant_settings.completion =
+								Some("Memory reset. Chat import is off.".into());
 						}
 						s.assistant_settings.running = installation.as_ref().map(|i| i.installed);
 						s.assistant_settings.installation = installation;
@@ -668,8 +788,7 @@ mod tests {
 		});
 		let fields = agent.read_with(visual, |s, _| s.assistant_settings.fields.clone());
 		for (key, value) in [
-			("chat_url", "https://chat.example.test/v1"),
-			("embedding_url", "https://embedding.example.test/v1"),
+			("url", "https://chat.example.test/v1"),
 			("chat", "custom-extraction"),
 			("embedding", "custom-embedding"),
 		] {
@@ -678,15 +797,14 @@ mod tests {
 		visual.update(crate::ui_frame::draw_current_frame);
 		assert!(changed.get() > 0, "field changes must refresh the owning form");
 		assert!(agent.read_with(visual, |s, cx| s.can_submit_memory_models(cx)));
-		fields["chat_url"].update(visual, |i, cx| i.set_content("invalid-url", cx));
+		fields["url"].update(visual, |i, cx| i.set_content("invalid-url", cx));
 		visual.update(crate::ui_frame::draw_current_frame);
 		let save = visual.debug_bounds("components-ragflow-models-save").unwrap();
 		visual.simulate_click(save.center(), Default::default());
 		agent.read_with(visual, |s, _| {
 			assert_eq!(s.assistant_settings.error, "Enter a valid extraction model Base URL.");
 		});
-		fields["chat_url"]
-			.update(visual, |i, cx| i.set_content("https://models.example.test/v1", cx));
+		fields["url"].update(visual, |i, cx| i.set_content("https://models.example.test/v1", cx));
 		fields["embedding"].update(visual, |i, cx| i.set_content("", cx));
 		visual.update(crate::ui_frame::draw_current_frame);
 		let save = visual.debug_bounds("components-ragflow-models-save").unwrap();
@@ -705,39 +823,127 @@ mod tests {
 		cx: &mut gpui::TestAppContext,
 	) {
 		let surface = cx.new(AgentSurface::new);
-		surface.update(cx, |s,cx| {
-   s.visual_workspace_fixture(cx);
-   s.assistant_settings.installation = Some(serde_json::from_value(serde_json::json!({
-    "url":"http://127.0.0.1:9380","version":"fixture","image":"fixture","memory":null,
-    "models":{"extraction":{"base_url":"http://localhost:1234/v1","api_key":"private-fixture","model":"custom-chat"},"embedding":{"base_url":"http://localhost:1234/v1","api_key":"private-fixture","model":"custom-embedding"}},
-    "project":"fixture","password":"private-fixture","installed":true
-   })).unwrap());
-   s.composer.update(cx,|i,cx|i.set_content("Keep the chat draft",cx));
-   s.sending = true;
-   s.ragflow_component_action(ComponentAction::ConfigureModels,cx);
-   s.sending = false;
-   assert_eq!(s.assistant_settings.fields.len(),6);
-   assert_eq!(s.assistant_settings.fields["chat_url"].read(cx).content(),"http://localhost:1234/v1");
-   assert_eq!(s.assistant_settings.fields["chat_key"].read(cx).content(),"");
-   assert_eq!(s.assistant_settings.fields["chat"].read(cx).content(),"custom-chat");
-   assert_eq!(s.memory_models(cx).extraction.api_key,"private-fixture");
-   assert_eq!(s.memory_models(cx).embedding.api_key,"private-fixture");
-   assert_eq!(s.assistant_settings.fields["embedding_key"].read(cx).content(),"");
-   s.assistant_settings.fields["chat_url"].clone().update(cx,|i,cx| i.set_content("https://chat.example.test/v1",cx));
-   assert!(s.memory_models(cx).extraction.api_key.is_empty(),"a different extraction endpoint cannot inherit its saved key");
-   assert_eq!(s.memory_models(cx).embedding.api_key,"private-fixture","the embedding credential stays on its own endpoint");
-   s.assistant_settings.fields["chat_key"].clone().update(cx,|i,cx| i.set_content("extraction-fixture",cx));
-   s.assistant_settings.fields["embedding_url"].clone().update(cx,|i,cx| i.set_content("https://embedding.example.test/v1",cx));
-   assert_eq!(s.memory_models(cx).extraction.api_key,"extraction-fixture");
-   assert!(s.memory_models(cx).embedding.api_key.is_empty(),"the extraction credential cannot cross to the embedding endpoint");
-   s.assistant_settings.fields["embedding_key"].clone().update(cx,|i,cx| i.set_content("embedding-fixture",cx));
-   assert_eq!(s.memory_models(cx).embedding.api_key,"embedding-fixture");
-   let mut next = s.snapshot.clone().unwrap();
-   next.runtime_source = Some(EntityId::new("another-process").unwrap());
-   s.invalidate_snapshot_panels(&next);
-   assert!(s.assistant_settings.fields.is_empty());
-   assert_eq!(s.composer.read(cx).content(),"Keep the chat draft");
-  });
+		surface.update(cx, |s, cx| {
+			s.visual_ragflow_settings(cx);
+			s.assistant_settings.installation.as_mut().unwrap().models = Some(Models {
+				extraction: ModelEndpoint {
+					base_url: "http://localhost:1234/v1".into(),
+					api_key: "private-fixture".into(),
+					model: "custom-chat".into(),
+				},
+				embedding: ModelEndpoint {
+					base_url: "http://localhost:1234/v1".into(),
+					api_key: "private-fixture".into(),
+					model: "custom-embedding".into(),
+				},
+			});
+			s.composer.update(cx, |i, cx| i.set_content("Keep the chat draft", cx));
+			s.sending = true;
+			s.ragflow_component_action(ComponentAction::ConfigureModels, cx);
+			s.sending = false;
+			let fields = s.assistant_settings.fields.clone();
+			assert_eq!(fields.len(), 4);
+			assert_eq!(fields["url"].read(cx).content(), "http://localhost:1234/v1");
+			assert!(fields["key"].read(cx).content().is_empty());
+			assert_eq!(fields["chat"].read(cx).content(), "custom-chat");
+			assert_eq!(fields["embedding"].read(cx).content(), "custom-embedding");
+			assert_eq!(s.memory_models(cx).extraction.api_key, "private-fixture");
+			assert_eq!(s.memory_models(cx).embedding.api_key, "private-fixture");
+			fields["url"].update(cx, |i, cx| i.set_content("https://models.example.test/v1", cx));
+			assert!(s.memory_models(cx).extraction.api_key.is_empty());
+			assert!(
+				s.memory_models(cx).embedding.api_key.is_empty(),
+				"a different shared endpoint cannot inherit the saved key"
+			);
+			fields["key"].update(cx, |i, cx| i.set_content("shared-fixture", cx));
+			let models = s.memory_models(cx);
+			assert_eq!(models.extraction.base_url, "https://models.example.test/v1");
+			assert_eq!(models.extraction.base_url, models.embedding.base_url);
+			assert_eq!(models.extraction.api_key, "shared-fixture");
+			assert_eq!(models.extraction.api_key, models.embedding.api_key);
+			let mut next = s.snapshot.clone().unwrap();
+			next.runtime_source = Some(EntityId::new("another-process").unwrap());
+			s.invalidate_snapshot_panels(&next);
+			assert!(s.assistant_settings.fields.is_empty());
+			assert_eq!(s.composer.read(cx).content(), "Keep the chat draft");
+		});
+	}
+
+	#[gpui::test]
+	fn existing_model_settings_use_one_connection_when_edited(cx: &mut gpui::TestAppContext) {
+		let surface = cx.new(AgentSurface::new);
+		surface.update(cx, |s, cx| {
+			s.visual_ragflow_settings(cx);
+			for embedding_url in
+				["https://models.example.test/v1", "https://embedding.example.test/v1"]
+			{
+				let saved = Models {
+					extraction: ModelEndpoint {
+						base_url: "https://models.example.test/v1".into(),
+						api_key: "shared-fixture".into(),
+						model: "chat-model".into(),
+					},
+					embedding: ModelEndpoint {
+						base_url: embedding_url.into(),
+						api_key: "old-embedding-fixture".into(),
+						model: "embedding-model".into(),
+					},
+				};
+				s.assistant_settings.installation.as_mut().unwrap().models = Some(saved.clone());
+				s.edit_memory_models(cx);
+				assert_eq!(s.assistant_settings.fields.len(), 4);
+				let models = s.memory_models(cx);
+				assert_eq!(models.extraction.base_url, models.embedding.base_url);
+				assert_eq!(models.extraction.api_key, models.embedding.api_key);
+				assert_eq!(models.embedding.api_key, "shared-fixture");
+				assert_eq!(models.extraction.model, saved.extraction.model);
+				assert_eq!(models.embedding.model, saved.embedding.model);
+				assert!(
+					s.assistant_settings.installation.as_ref().unwrap().models.as_ref()
+						== Some(&saved),
+					"opening the editor must not change saved settings"
+				);
+			}
+		});
+	}
+
+	#[gpui::test]
+	fn reset_confirmation_is_bound_to_the_memory_that_was_reviewed(cx: &mut gpui::TestAppContext) {
+		let agent = cx.new(AgentSurface::new);
+		agent.update(cx, |s, cx| {
+			s.visual_ragflow_saved(cx);
+			let before = s.snapshot.as_ref().unwrap().assistant.settings.clone();
+			s.ragflow_component_action(ComponentAction::RequestReset, cx);
+			assert!(s.ragflow_component_state().reset_confirming);
+			assert_eq!(s.snapshot.as_ref().unwrap().assistant.settings, before);
+			s.assistant_settings
+				.installation
+				.as_mut()
+				.unwrap()
+				.memory
+				.as_mut()
+				.unwrap()
+				.memory_id = "replacement-memory".into();
+			s.snapshot.as_mut().unwrap().assistant.settings.ragflow.as_mut().unwrap().memory_id =
+				Some("replacement-memory".into());
+			s.ragflow_component_action(ComponentAction::ResetMemory, cx);
+			assert!(
+				s.assistant_settings.setup.is_none(),
+				"a stale confirmation must not start a reset"
+			);
+			assert!(s.assistant_settings.error.contains("Memory changed"));
+			assert_eq!(
+				s.assistant_settings
+					.installation
+					.as_ref()
+					.unwrap()
+					.memory
+					.as_ref()
+					.unwrap()
+					.memory_id,
+				"replacement-memory"
+			);
+		});
 	}
 
 	#[gpui::test]

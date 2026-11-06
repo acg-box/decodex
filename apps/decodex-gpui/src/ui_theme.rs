@@ -319,8 +319,8 @@ pub(crate) fn settings_section_title(title: &'static str) -> Stateful<Div> {
 		.aria_label(title)
 		.text_size(gpui::px(SETTINGS_SECTION_SIZE))
 		.line_height(gpui::px(18.0))
-		.font_weight(FontWeight::SEMIBOLD)
-		.text_color(rgb(TEXT))
+		.font_weight(FontWeight::MEDIUM)
+		.text_color(rgb(TEXT_MUTED))
 		.child(title)
 }
 
@@ -339,7 +339,6 @@ pub(crate) fn settings_field(label: &'static str, input: impl IntoElement) -> Di
 			gpui::div()
 				.text_size(gpui::px(SETTINGS_HELP_SIZE))
 				.line_height(gpui::px(16.5))
-				.font_weight(FontWeight::MEDIUM)
 				.text_color(rgb(TEXT))
 				.child(label),
 		)
@@ -374,7 +373,6 @@ pub(crate) fn settings_label(
 			gpui::div()
 				.text_size(gpui::px(SETTINGS_LABEL_SIZE))
 				.line_height(gpui::px(18.0))
-				.font_weight(FontWeight::MEDIUM)
 				.child(title.into()),
 		)
 		.when(!description.is_empty(), |label| label.child(settings_description(description)))

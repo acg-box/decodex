@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:33d153ae194cc08a666d620ca5bd0cfda3ae51a43cfb8289227ab1dfac1686a7",
+  "pageVersion": "sha256:b38ccdcebef14d9f67b1f37720f3ee6c05db3c4932bde3a088616d954bd73a97",
   "claims": [
     {
       "id": "claim_b34298a8647a4e0b8653926b7568c5d4",
@@ -144,7 +144,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_surface.rs",
-          "version": "repo-file-v1:sha256:8a0aa4f10a39b1b4a48aac0ae1e2e247bf2954c04a925456dcd733f19a9dfece"
+          "version": "repo-file-v1:sha256:2d05c7930f9695e34b55a9db9f71d4031b66c8fccc34cb8f4a54054787b91df7"
         },
         {
           "resource": "repo://automations/upstream/retained-contracts.json#L4145-L4361",
@@ -180,11 +180,11 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/session_settings.rs",
-          "version": "repo-file-v1:sha256:c9e3b76bd3c15d77d017d831ba8c8a8928b6fdbf5f68a4875f8bf60492797291"
+          "version": "repo-file-v1:sha256:0dbe254a2d431e3494ee06a2b65339b22881cd1d2b7153c845502e89d5629ed3"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:d22add383676146076f2bea688936358ef17cde2a4aa359ae67eeccdbbc2ec55"
+          "version": "repo-file-v1:sha256:63ebe0cf2853eb06f54e80cc69499467df56be01c34d7a7b0b77b70c638fbb7f"
         }
       ]
     },
@@ -212,7 +212,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_surface.rs",
-          "version": "repo-file-v1:sha256:8a0aa4f10a39b1b4a48aac0ae1e2e247bf2954c04a925456dcd733f19a9dfece"
+          "version": "repo-file-v1:sha256:2d05c7930f9695e34b55a9db9f71d4031b66c8fccc34cb8f4a54054787b91df7"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_timeline_find.rs",
@@ -334,31 +334,19 @@
     },
     {
       "id": "claim_2f51bf620dff4bb0afcf4b66110fb5a4",
-      "statement": "Assistant is built in and always available from the sidebar, with idle first-use setup and no automatic message or Enable control. It manages delegated Agents, teams, duties and fresh contexts; continuing instructions stay in chat. The optional RAGFlow component installs nightly with Infinity and its private account and automatically opens the model form after successful installation without saved model settings. Expanding installed RAGFlow directly opens the model form for independent extraction and embedding model IDs, OpenAI-compatible Base URLs and optional API keys. Save verifies both choices before initializing Memory automatically without installing model runtimes or weights. The shared component row reports installed version and provides Update and Uninstall. Component operations check a running Docker-compatible engine and Docker Compose and report unavailable prerequisites without runtime installation, launch or installation guidance. Chat import is a separate opt-in, and there is no built-in patrol.",
+      "statement": "Assistant is built in, initializes idle from the sidebar without a message, and accepts continuing delegated work without a built-in patrol. Optional RAGFlow setup requires a running Docker-compatible engine and Compose and installs the managed service and Infinity without a container runtime or model weights. Four model fields share one Base URL and optional API key with extraction and embedding IDs. Save verifies both models and initializes Memory without chat content; saved Edit remains available. Chat import is a separate opt-in. Confirmed Reset Memory creates an empty managed Memory and turns import off while retaining history and model settings. Update and Uninstall remain component actions.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_portfolio.rs",
-          "version": "repo-file-v1:sha256:447ad2bfabdca499ca76ebc31e5e8e55fac9f372c11483bddb9bbbc9a81ea915"
-        },
-        {
-          "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:d0b1eac5feffa79c50ab7dab41894fec4769898225194fff05ac768269e5f883"
-        },
-        {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
-          "version": "repo-file-v1:sha256:80c21982eb72daa16e41cfa4faeb91a0877d3c2961d7282d65e090f097280188"
+          "version": "repo-file-v1:sha256:af3372dfe92b54bdc19d109e1188e3aeeb74a1d70b2b74a213332c512b513d06"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:d22add383676146076f2bea688936358ef17cde2a4aa359ae67eeccdbbc2ec55"
+          "version": "repo-file-v1:sha256:63ebe0cf2853eb06f54e80cc69499467df56be01c34d7a7b0b77b70c638fbb7f"
         },
         {
           "resource": "repo://crates/decodex-components/src/ragflow_service.rs",
-          "version": "repo-file-v1:sha256:71304894dce0ee326cbea7d12bbdddc94eb2c9f29e6072202170b9abf12e802a"
-        },
-        {
-          "resource": "repo://crates/decodex-runtime/src/agent/assistant.rs",
-          "version": "repo-file-v1:sha256:1e098d12f81905f772a623bec68c6ac68b124e99c452b5fab9b63cf0928a4cc6"
+          "version": "repo-file-v1:sha256:73b08678945947cc367153b9257d8c8e8a3e32d51e6fc67fdb5b9073831ff8d3"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/instructions.md",
@@ -372,7 +360,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:d22add383676146076f2bea688936358ef17cde2a4aa359ae67eeccdbbc2ec55"
+          "version": "repo-file-v1:sha256:63ebe0cf2853eb06f54e80cc69499467df56be01c34d7a7b0b77b70c638fbb7f"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_surface.rs#L494-L554",
@@ -401,6 +389,6 @@
   ],
   "verification": {
     "by": "openwiki/0.9.0",
-    "at": "2026-11-05T21:05:15.623Z"
+    "at": "2026-11-06T10:49:46.541Z"
   }
 }

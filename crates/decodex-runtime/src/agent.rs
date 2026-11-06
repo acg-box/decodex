@@ -2444,11 +2444,13 @@ impl AgentCoordinator {
 			let store = self.store.clone();
 			let client = self.client.clone();
 			self.memory_export = Some(tokio::spawn(async move {
+				let source = store.assistant_state().await.ok();
 				if crate::ragflow::export_next(&store, &client).await.is_err()
-					&& let Ok(state) = store.assistant_state().await
+					&& let Some(state) = source
 					&& let Some(owner) = state.agent_id
+					&& let Some(connection) = state.settings.ragflow
 				{
-					let _=store.assistant_memory_health(owner,"Import unavailable. Check the connection and credential; unknown imports are not repeated.".into()).await;
+					let _=store.assistant_memory_health(owner,connection,"Import unavailable. Check the connection and credential; unknown imports are not repeated.".into()).await;
 				}
 			}));
 		}
