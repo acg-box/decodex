@@ -71,6 +71,16 @@ impl ComponentStore {
 	/// Create or recover a dedicated Memory using the service's configured default models.
 	/// No chat content is sent. The caller must separately enable any chat import.
 	pub fn setup_ragflow(&self, url: &str, key: &str, namespace: &str) -> Result<MemorySetup> {
+		self.setup_ragflow_models(url, key, namespace, None)
+	}
+
+	fn setup_ragflow_models(
+		&self,
+		url: &str,
+		key: &str,
+		namespace: &str,
+		selected_models: Option<(&str, &str)>,
+	) -> Result<MemorySetup> {
 		let base = origin(url)?;
 		if key.trim().is_empty() {
 			return Err("Enter the RAGFlow API key.".into());
@@ -98,14 +108,18 @@ impl ComponentStore {
 				.ok_or("RAGFlow returned an invalid Memory.")?
 				.to_owned()
 		} else {
-			let models = response(
-				client
-					.get(
-						base.join("api/v1/users/me/models")
-							.map_err(|_| "Invalid service address.")?,
-					)
-					.bearer_auth(key),
-			)?;
+			let models = if let Some((embedding, extraction)) = selected_models {
+				json!({"embd_id":embedding,"llm_id":extraction})
+			} else {
+				response(
+					client
+						.get(
+							base.join("api/v1/users/me/models")
+								.map_err(|_| "Invalid service address.")?,
+						)
+						.bearer_auth(key),
+				)?
+			};
 			let embedding = models["embd_id"].as_str().filter(|s| !s.trim().is_empty());
 			let chat = models["llm_id"].as_str().filter(|s| !s.trim().is_empty());
 			let (Some(embedding), Some(chat)) = (embedding, chat) else {
@@ -151,8 +165,16 @@ impl ComponentStore {
 }
 
 fn response(request: reqwest::blocking::RequestBuilder) -> Result<Value> {
+	optional_response(request)?
+		.ok_or_else(|| "The selected RAGFlow resource no longer exists.".into())
+}
+
+fn optional_response(request: reqwest::blocking::RequestBuilder) -> Result<Option<Value>> {
 	let reply =
 		request.send().map_err(|_| "Could not reach RAGFlow. Check its service address.")?;
+	if reply.status() == reqwest::StatusCode::NOT_FOUND {
+		return Ok(None);
+	}
 	if !reply.status().is_success() {
 		return Err(format!(
 			"RAGFlow connection failed (HTTP {}). Check the service and API key.",
@@ -169,13 +191,16 @@ fn response(request: reqwest::blocking::RequestBuilder) -> Result<Value> {
 	}
 	let reply: Value =
 		serde_json::from_slice(&bytes).map_err(|_| "RAGFlow returned an invalid response.")?;
+	if reply["code"] == 404 {
+		return Ok(None);
+	}
 	if reply["code"] != 0 {
 		return Err(
 			"RAGFlow rejected the request. Check the API key, Memory support and default models."
 				.into(),
 		);
 	}
-	Ok(reply["data"].clone())
+	Ok(Some(reply["data"].clone()))
 }
 
 #[cfg(test)]
@@ -293,6 +318,31 @@ mod tests {
 				& 0o777,
 			0o600
 		);
+		worker.join().unwrap();
+	}
+
+	#[test]
+	fn only_reset_accepts_an_already_missing_resource() {
+		let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+		let address = format!("http://{}", listener.local_addr().unwrap());
+		let worker = thread::spawn(move || {
+			for status in ["200 OK", "404 Not Found", "200 OK"] {
+				let (mut stream, _) = listener.accept().unwrap();
+				let mut bytes = [0; 1_024];
+				assert!(stream.read(&mut bytes).unwrap() > 0);
+				let body = r#"{"code":404,"data":null,"message":"Memory not found"}"#;
+				write!(
+					stream,
+					"HTTP/1.1 {status}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+					body.len()
+				)
+				.unwrap();
+			}
+		});
+		let client = Client::builder().no_proxy().build().unwrap();
+		assert!(optional_response(client.delete(&address)).unwrap().is_none());
+		assert!(optional_response(client.delete(&address)).unwrap().is_none());
+		assert!(response(client.get(&address)).is_err());
 		worker.join().unwrap();
 	}
 

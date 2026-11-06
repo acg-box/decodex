@@ -798,8 +798,20 @@ impl Shell {
 						_ => SettingsCategory::General,
 					};
 			});
-			if std::env::var_os("DECODEX_VISUAL_RAGFLOW").is_some() {
-				shell.agent.update(cx, |surface, cx| surface.visual_ragflow_settings(cx));
+			if let Ok(state) = std::env::var("DECODEX_VISUAL_RAGFLOW") {
+				shell.agent.update(cx, |surface, cx| {
+					if ["saved", "confirm"].contains(&state.as_str()) {
+						surface.visual_ragflow_saved(cx);
+					} else {
+						surface.visual_ragflow_settings(cx);
+					}
+					if state == "confirm" {
+						surface.ragflow_component_action(
+							agent_surface::RagflowComponentAction::RequestReset,
+							cx,
+						);
+					}
+				});
 				shell.settings.update(cx, |settings, _| settings.visual_ragflow_settings());
 			}
 			if std::env::var_os("DECODEX_VISUAL_MANAGED_COMPONENTS").is_some() {

@@ -313,10 +313,8 @@ pub(crate) async fn export_next(
 		return Ok(());
 	}
 	api.request(Method::POST,"api/v1/messages",&[],Some(json!({"memory_id":[memory],"agent_id":owner,"session_id":thread,"user_id":c.user_id,"user_input":input.join("\n\n"),"agent_response":output.join("\n\n")}))).await?;
-	store.acknowledge_assistant_memory(owner, key, "queued".into()).await?;
-	if let Some(owner) = store.assistant_state().await?.agent_id {
-		store.assistant_memory_health(owner,"Import queued for asynchronous extraction; searchable completion is not yet confirmed.".into()).await?;
-	}
+	store.acknowledge_assistant_memory(owner.clone(), key, "queued".into()).await?;
+	store.assistant_memory_health(owner, c, "Import queued for asynchronous extraction; searchable completion is not yet confirmed.".into()).await?;
 	Ok(())
 }
 

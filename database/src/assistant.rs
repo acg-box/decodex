@@ -124,6 +124,17 @@ fn configure(
 		}
 	}
 	let before = settings(tx, owner)?;
+	if before.ragflow.as_ref().map(|r| (&r.url, &r.memory_id, &r.user_id))
+		!= s.ragflow.as_ref().map(|r| (&r.url, &r.memory_id, &r.user_id))
+	{
+		record(
+			tx,
+			owner,
+			&format!("{receipt}:memory-health"),
+			"assistant_internal_memory_health",
+			json!({"id":"health","value":null}),
+		)?;
+	}
 	let export = s.ragflow.as_ref().filter(|r| r.ingest_chats);
 	if export.is_some()
 		&& before
@@ -548,9 +559,28 @@ impl SqliteStore {
 	pub async fn assistant_memory_health(
 		&self,
 		owner: String,
+		source: decodex_core::assistant::RagflowConnection,
 		status: String,
 	) -> Result<(), StoreError> {
-		self.run(move|c|{let tx=c.transaction().map_err(error::sqlite_error)?;if current(&tx,&owner,"assistant_internal_memory_health","health")?.is_some_and(|v|v["value"]==status){return Ok(());}let previous:i64=tx.query_row("SELECT coalesce(max(id),0) FROM agent_inbox_events WHERE work_item_id=?1 AND event_kind='assistant_internal_memory_health'",[&owner],|r|r.get(0)).map_err(error::sqlite_error)?;record(&tx,&owner,&json!(["assistant_internal_memory_health",owner,previous]).to_string(),"assistant_internal_memory_health",json!({"id":"health","value":status}))?;tx.commit().map_err(error::sqlite_error)?;Ok(())}).await
+		self.run(move |c| {
+			let tx = c.transaction().map_err(error::sqlite_error)?;
+			if settings(&tx, &owner)?.ragflow.as_ref() != Some(&source) {
+				return Ok(());
+			}
+			if current(&tx, &owner, "assistant_internal_memory_health", "health")?
+				.is_some_and(|v| v["value"] == status)
+			{
+				return Ok(());
+			}
+			let previous: i64 = tx.query_row(
+				"SELECT coalesce(max(id),0) FROM agent_inbox_events WHERE work_item_id=?1 AND event_kind='assistant_internal_memory_health'",
+				[&owner], |r| r.get(0),
+			).map_err(error::sqlite_error)?;
+			record(&tx, &owner, &json!(["assistant_internal_memory_health",owner,previous]).to_string(), "assistant_internal_memory_health", json!({"id":"health","value":status}))?;
+			tx.commit().map_err(error::sqlite_error)?;
+
+			Ok(())
+		}).await
 	}
 }
 
@@ -914,6 +944,67 @@ mod tests {
 				.is_none(),
 			"changing the external user namespace must not export earlier pending chat history into that new scope"
 		);
+	}
+
+	#[tokio::test]
+	async fn reset_memory_clears_old_health_and_ignores_a_late_import_result() {
+		let (_dir, store, _) = setup().await;
+		let connection = decodex_core::assistant::RagflowConnection {
+			url: "https://ragflow.example.test/".into(),
+			credential_id: "a".repeat(64),
+			user_id: "user".into(),
+			dataset_ids: vec!["retained-knowledge".into()],
+			memory_id: Some("old-memory".into()),
+			ingest_chats: true,
+		};
+		let mut settings =
+			AssistantSettings { ragflow: Some(connection.clone()), ..Default::default() };
+		store
+			.apply_assistant_command(
+				"assistant".into(),
+				"before-reset".into(),
+				AssistantCommand::Configure { settings: settings.clone() },
+				true,
+			)
+			.await
+			.unwrap();
+		store
+			.assistant_memory_health(
+				"assistant".into(),
+				connection.clone(),
+				"Old import failed".into(),
+			)
+			.await
+			.unwrap();
+		assert_eq!(
+			store.assistant_state().await.unwrap().memory_status.as_deref(),
+			Some("Old import failed")
+		);
+
+		let reset = settings.ragflow.as_mut().unwrap();
+		reset.memory_id = Some("new-memory".into());
+		reset.ingest_chats = false;
+		store
+			.apply_assistant_command(
+				"assistant".into(),
+				"after-reset".into(),
+				AssistantCommand::Configure { settings: settings.clone() },
+				true,
+			)
+			.await
+			.unwrap();
+		assert!(store.assistant_state().await.unwrap().memory_status.is_none());
+		store
+			.assistant_memory_health(
+				"assistant".into(),
+				connection,
+				"Late old import result".into(),
+			)
+			.await
+			.unwrap();
+		let observed = store.assistant_state().await.unwrap();
+		assert!(observed.memory_status.is_none());
+		assert_eq!(observed.settings, settings);
 	}
 
 	#[tokio::test]

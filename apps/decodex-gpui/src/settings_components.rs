@@ -1,6 +1,6 @@
 //! Optional components use their native lifecycle, separate from application updates.
 use gpui::{
-	AnyElement, Context, Div, FontWeight, KeyDownEvent, Role, SharedString,
+	AnyElement, Context, Div, KeyDownEvent, Role, SharedString,
 	prelude::{
 		FluentBuilder as _, InteractiveElement as _, IntoElement as _, ParentElement as _,
 		StatefulInteractiveElement as _, Styled as _,
@@ -121,8 +121,9 @@ impl SettingsSurface {
 			Action::Research(action) => self.components.research.start(action),
 			Action::Ragflow(action) => {
 				match action {
-					RagflowComponentAction::CancelModels => self.components.details[3] = false,
-					RagflowComponentAction::ToggleImport => {},
+					RagflowComponentAction::CancelModels
+					| RagflowComponentAction::CancelReset
+					| RagflowComponentAction::ToggleImport => {},
 					_ => self.components.details[3] = true,
 				}
 				if let Some(agent) = &self.native_agent {
@@ -160,7 +161,15 @@ impl SettingsSurface {
 					if matches!(action, RagflowComponentAction::SaveModels)
 						&& !agent.can_submit_memory_models(cx)
 					{
-						disabled_reason = "Enter a Base URL and model ID for each model.";
+						disabled_reason = "Enter the Base URL and both model IDs.";
+						return false;
+					}
+					if matches!(
+						action,
+						RagflowComponentAction::RequestReset | RagflowComponentAction::ResetMemory
+					) && !agent.ragflow_component_state().memory_ready
+					{
+						disabled_reason = "Configure this Assistant's Memory before resetting it.";
 						return false;
 					}
 					true
@@ -188,6 +197,9 @@ impl SettingsSurface {
 				Action::Plugin(PluginAction::Remove)
 					| Action::Research(component_research::Action::Remove)
 					| Action::Ragflow(RagflowComponentAction::Uninstall)
+					| Action::Ragflow(
+						RagflowComponentAction::RequestReset | RagflowComponentAction::ResetMemory
+					)
 			) {
 				ui_theme::settings_destructive_button(id, label)
 			} else {
@@ -335,14 +347,6 @@ impl SettingsSurface {
 
 	fn toggle_component_details(&mut self, index: usize, cx: &mut Context<Self>) {
 		self.components.details[index] = !self.components.details[index];
-		if index == 3
-			&& self.components.details[index]
-			&& self.native_agent.as_ref().is_some_and(|agent| {
-				let state = agent.read(cx).ragflow_component_state();
-				state.installed && !state.editing
-			}) {
-			self.component_action(Action::Ragflow(RagflowComponentAction::ConfigureModels), cx);
-		}
 		cx.notify();
 	}
 
@@ -396,7 +400,6 @@ impl SettingsSurface {
 					.flex()
 					.items_center()
 					.gap_1()
-					.font_weight(FontWeight::MEDIUM)
 					.child(ui_feedback::status_indicator(format!("{id}-status"), status, tone))
 					.child(title)
 					.child(gpui::div().text_color(ui_theme::rgb(TEXT_MUTED)).child(
@@ -560,8 +563,24 @@ impl SettingsSurface {
 			None,
 			cx,
 		));
-		let mut body =
-			ui_theme::settings_rows().gap(gpui::px(12.)).child(self.ragflow_component(cx));
+		let mut body = ui_theme::settings_rows().gap(gpui::px(12.));
+		if let Some(state) = state.as_ref().filter(|s| s.installed) {
+			body = body.child(
+				ui_theme::settings_row()
+					.min_h(gpui::px(28.))
+					.py_0()
+					.child(gpui::div().flex_1().child(ui_theme::settings_section_title("Models")))
+					.when(!state.editing, |row| {
+						row.child(self.component_button(
+							"components-ragflow-models-edit",
+							if state.has_models { "Edit" } else { "Set up models" },
+							Action::Ragflow(RagflowComponentAction::ConfigureModels),
+							cx,
+						))
+					}),
+			);
+		}
+		body = body.child(self.ragflow_component(cx));
 		if let Some(state) = state.as_ref().filter(|s| s.memory_ready) {
 			body = body.child(
 				ui_theme::settings_row()
@@ -586,21 +605,12 @@ impl SettingsSurface {
 						})),
 					),
 			);
+			if !state.editing {
+				body = body.child(self.ragflow_reset_controls(state.reset_confirming, cx));
+			}
 		}
 		if state.as_ref().is_some_and(|s| s.editing) {
-			let mut actions = gpui::div().w_full().flex().gap_2().justify_end().pt_1();
-			for (id, label, action) in [
-				(
-					"components-ragflow-models-cancel",
-					"Cancel",
-					RagflowComponentAction::CancelModels,
-				),
-				("components-ragflow-models-save", "Save", RagflowComponentAction::SaveModels),
-			] {
-				actions =
-					actions.child(self.component_button(id, label, Action::Ragflow(action), cx));
-			}
-			body = body.child(actions);
+			body = body.child(self.ragflow_model_actions(cx));
 		}
 		gpui::div()
 			.child(row)
@@ -614,6 +624,57 @@ impl SettingsSurface {
 				.inline(),
 			)
 			.into_any_element()
+	}
+
+	fn ragflow_model_actions(&self, cx: &mut Context<Self>) -> Div {
+		let mut actions = gpui::div().w_full().flex().gap_2().justify_end().pt_1();
+		for (id, label, action) in [
+			("components-ragflow-models-cancel", "Cancel", RagflowComponentAction::CancelModels),
+			("components-ragflow-models-save", "Save", RagflowComponentAction::SaveModels),
+		] {
+			actions = actions.child(self.component_button(id, label, Action::Ragflow(action), cx));
+		}
+
+		actions
+	}
+
+	fn ragflow_reset_controls(&self, confirming: bool, cx: &mut Context<Self>) -> Div {
+		let mut actions = gpui::div().flex().items_center().gap_2();
+		if confirming {
+			actions = actions
+				.child(self.component_button(
+					"components-ragflow-reset-cancel",
+					"Cancel",
+					Action::Ragflow(RagflowComponentAction::CancelReset),
+					cx,
+				))
+				.child(self.component_button(
+					"components-ragflow-reset-confirm",
+					"Reset Memory",
+					Action::Ragflow(RagflowComponentAction::ResetMemory),
+					cx,
+				));
+		} else {
+			actions = actions.child(self.component_button(
+				"components-ragflow-reset-request",
+				"Reset Memory…",
+				Action::Ragflow(RagflowComponentAction::RequestReset),
+				cx,
+			));
+		}
+
+		ui_theme::settings_row()
+			.border_t_1()
+			.border_color(ui_theme::rgba(ui_theme::PANEL_DIVIDER))
+			.child(ui_theme::settings_label(
+				if confirming { "Reset this Memory?" } else { "Reset Memory" },
+				if confirming {
+					"Remove this Assistant’s RAGFlow Memory and start with an empty one. This cannot be undone. Chat history and model settings stay available. Chat import turns off."
+				} else {
+					"Start with an empty Memory. Keeps chat history and model settings."
+				},
+			))
+			.child(actions)
 	}
 
 	fn research_controls(&self, cx: &mut Context<Self>) -> Div {
@@ -865,29 +926,64 @@ mod tests {
 		visual.update(crate::ui_frame::draw_current_frame);
 		let extraction = visual.debug_bounds("ragflow-field-chat").unwrap();
 		let embedding = visual.debug_bounds("ragflow-field-embedding").unwrap();
-		for [model, url, key] in [
-			["ragflow-field-chat", "ragflow-field-chat_url", "ragflow-field-chat_key"],
-			[
-				"ragflow-field-embedding",
-				"ragflow-field-embedding_url",
-				"ragflow-field-embedding_key",
-			],
-		] {
-			let model = visual.debug_bounds(model).unwrap();
-			let url = visual.debug_bounds(url).unwrap();
-			let key = visual.debug_bounds(key).unwrap();
-			assert_eq!(model.top(), url.top());
-			assert_eq!(url.top(), key.top());
-			assert!(model.right() < url.left() && url.right() < key.left());
-			assert_eq!(model.left(), extraction.left());
-		}
-		assert!(embedding.top() > extraction.bottom());
+		let url = visual.debug_bounds("ragflow-field-url").unwrap();
+		let key = visual.debug_bounds("ragflow-field-key").unwrap();
+		assert_eq!(url.top(), key.top());
+		assert_eq!(extraction.top(), embedding.top());
+		assert_eq!(extraction.left(), url.left());
+		assert_eq!(embedding.right(), key.right());
+		assert!(url.right() < key.left() && extraction.right() < embedding.left());
+		assert!(extraction.top() > url.bottom());
+		assert!(visual.debug_bounds("ragflow-field-embedding_url").is_none());
+		assert!(visual.debug_bounds("ragflow-field-embedding_key").is_none());
 		let save = visual.debug_bounds("components-ragflow-models-save").unwrap();
-		assert_eq!(
-			save.right(),
-			visual.debug_bounds("ragflow-field-embedding_key").unwrap().right()
-		);
+		assert_eq!(save.right(), embedding.right());
 		assert!(save.top() > embedding.bottom());
+	}
+
+	#[gpui::test]
+	fn saved_ragflow_models_remain_editable_after_cancel_and_reopening(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let agent = cx.new(crate::shell::agent_surface::AgentSurface::new);
+		agent.update(cx, |agent, cx| agent.visual_ragflow_saved(cx));
+		let (settings, visual) = cx.add_window_view(|_, cx| {
+			let mut settings = SettingsSurface::new(DesktopSettingsController::production(), cx);
+			settings.bind_native_agent(agent.clone(), cx);
+			settings.category = crate::settings_surface::SettingsCategory::Components;
+			settings.visual_ragflow_settings();
+			settings
+		});
+		visual.update(crate::ui_frame::draw_current_frame);
+		assert!(visual.debug_bounds("ragflow-models-summary").is_some());
+		let edit = visual.debug_bounds("components-ragflow-models-edit").unwrap();
+		visual.simulate_click(edit.center(), Default::default());
+		visual.update(crate::ui_frame::draw_current_frame);
+		assert!(visual.debug_bounds("ragflow-field-url").is_some());
+		assert!(visual.debug_bounds("ragflow-field-embedding_key").is_none());
+		let cancel = visual.debug_bounds("components-ragflow-models-cancel").unwrap();
+		visual.simulate_click(cancel.center(), Default::default());
+		visual.update(crate::ui_frame::draw_current_frame);
+		assert!(visual.debug_bounds("ragflow-models-summary").is_some());
+		assert!(visual.debug_bounds("components-ragflow-models-edit").is_some());
+
+		settings.update(visual, |s, cx| {
+			s.toggle_component_details(3, cx);
+			s.toggle_component_details(3, cx);
+		});
+		visual.update(crate::ui_frame::draw_current_frame);
+		assert!(visual.debug_bounds("ragflow-models-summary").is_some());
+		assert!(!agent.read_with(visual, |s, _| s.ragflow_component_state().editing));
+		let reset = visual.debug_bounds("components-ragflow-reset-request").unwrap();
+		visual.simulate_click(reset.center(), Default::default());
+		visual.update(crate::ui_frame::draw_current_frame);
+		assert!(visual.debug_bounds("components-ragflow-reset-confirm").is_some());
+		assert!(agent.read_with(visual, |s, _| s.ragflow_component_state().reset_confirming));
+		let cancel = visual.debug_bounds("components-ragflow-reset-cancel").unwrap();
+		visual.simulate_click(cancel.center(), Default::default());
+		visual.update(crate::ui_frame::draw_current_frame);
+		assert!(visual.debug_bounds("components-ragflow-reset-request").is_some());
+		assert!(!agent.read_with(visual, |s, _| s.ragflow_component_state().reset_confirming));
 	}
 
 	#[gpui::test]

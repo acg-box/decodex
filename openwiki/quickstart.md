@@ -44,8 +44,6 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_usage_estimates.rs
   - id: openwiki-source-3fa6d6c49e3542409542045b
     resource: repo://apps/decodex-gpui/src/agent_work_browser.rs
-  - id: openwiki-source-5d032c6be684964aa2c401fa
-    resource: repo://apps/decodex-gpui/src/agent_workspace.rs
   - id: openwiki-source-f339a4d1910db63ca305c2df
     resource: repo://apps/decodex-gpui/src/assistant_settings.rs
   - id: openwiki-source-a2f254020dd8eaabd6366c91
@@ -82,8 +80,6 @@ sources:
     resource: repo://crates/decodex-runtime/src/account_service/tests/plan_scope.rs
   - id: openwiki-source-7111b71a47931c3e55d3ff6f
     resource: repo://crates/decodex-runtime/src/agent_titles/host.rs
-  - id: openwiki-source-13f64682e8d77fd2c031de39
-    resource: repo://crates/decodex-runtime/src/agent/assistant.rs
   - id: openwiki-source-acd129fd3a88516b785fc929
     resource: repo://crates/decodex-runtime/src/agent/instructions.md
   - id: openwiki-source-a67672a943dfe221574b2501
@@ -98,10 +94,10 @@ sources:
     resource: repo://database/src/schema.rs
   - id: openwiki-source-3b57179b92b257bc3fff51a1
     resource: repo://scripts/macos/stage_decodex_app.sh
-generated: { by: "codex", at: "2026-11-05T21:05:15.623Z" }
+generated: { by: "codex", at: "2026-11-06T10:49:46.541Z" }
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-05T21:05:15.623Z
+    at: 2026-11-06T10:49:46.541Z
 ---
 
 # OpenWiki quickstart
@@ -112,7 +108,7 @@ Decodex is a local workspace above Codex app-server. The primary Agent can discu
 
 The [canonical contract](decisions/project-agent-work.md) is implemented: Project provides continuing context, each user-created Agent has one current native conversation, and Work records an outcome with one accountable Agent, current requirements and evidence. Assistant is built in and always available. Project Lead is a responsibility of an existing Agent. The same Agent can handle several Works.
 
-The implemented [Assistant lifecycle](decisions/assistant-lifecycle.md) adds a continuing personal Agent. It creates and coordinates independent Agents and lightweight teams under user delegation, accepts independent duties, optionally uses RAGFlow Memory and renews native context behind the same chat. There is no built-in project patrol. Open **Assistant** in the sidebar. First use initializes an idle Agent without sending a message. Give it continuing instructions and team requests in chat. In **Settings > Components**, select **Install** for optional RAGFlow Memory. Decodex prepares nightly with Infinity and the private account. After successful installation with no saved model settings, the model form opens automatically. Expand **RAGFlow** to open the model form directly. Enter a model ID, OpenAI-compatible Base URL and optional API key for each model. Extraction and embedding can use different endpoints and keys. Choose **Save** to verify both choices and initialize Memory automatically. No model runtime or model weights are installed. Component operations check the running Docker-compatible engine and Docker Compose. Unavailable prerequisites use a shared inline notice; the App does not install or launch a container runtime or provide an installation guide. The shared component row shows the installed version and provides **Update** and **Uninstall**. Chat import is a separate opt-in. Work, native execution and exact evidence keep their existing owners.
+The implemented [Assistant lifecycle](decisions/assistant-lifecycle.md) provides a continuing personal Agent for delegated work, teams, duties and optional Memory. It has no built-in project patrol. Open Assistant in the sidebar; first use initializes an idle Agent without sending a message. Give continuing instructions in chat. For optional Memory, use Settings > Components > RAGFlow. Install prepares the managed service and Infinity with a private account and requires a running Docker-compatible engine and Compose. The App does not install that runtime or model weights. Set up models uses four fields: a shared OpenAI-compatible Base URL and optional API key, an extraction model ID and an embedding model ID. Save verifies both models and initializes Memory without sending chat content. The saved summary keeps Edit available. Chat import is a separate opt-in. Reset Memory requires confirmation, starts with an empty managed Memory and turns import off while retaining chat history and model settings. See the lifecycle page for reset limits and recovery. Update and Uninstall remain component actions.
 
 Agents use native Subagents for bounded execution and scoped Collaboration Requests for independent peers. Native Codex owns execution, context, permissions and continuation. Decodex owns durable business relationships, evidence, coordination and presentation. The default Work tools do not create another executor, and no part of this contract requires Ultra.
 

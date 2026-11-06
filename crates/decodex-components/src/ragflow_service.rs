@@ -18,7 +18,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::{Digest as _, Sha256};
 
-use super::{MemorySetup, response};
+use super::{MemorySetup, optional_response, origin, response};
 use crate::{ComponentStore, Result};
 
 const PROVIDER: &str = "OpenAI-API-Compatible";
@@ -130,6 +130,62 @@ impl Installation {
 }
 
 impl ComponentStore {
+	/// Reset only the selected managed Memory. Retain models, credentials and service volumes.
+	/// A failed initialization leaves the cleared receipt ready for explicit model setup.
+	pub fn reset_ragflow_memory(
+		&self,
+		expected: &MemorySetup,
+		namespace: &str,
+	) -> Result<Installation> {
+		let directory = self.root.join("ragflow/service");
+		let mut config = read(&directory)?
+			.filter(|i| i.installed)
+			.ok_or("Install RAGFlow before resetting Memory.")?;
+		if config.memory.as_ref() != Some(expected)
+			|| origin(&config.url)? != origin(&expected.url)?
+		{
+			return Err(
+				"The selected Memory changed. Review its settings before resetting it.".into()
+			);
+		}
+		let base = origin(&expected.url)?;
+		let digest = Sha256::digest(format!("{base}\n{namespace}"))
+			.iter()
+			.map(|byte| format!("{byte:02x}"))
+			.collect::<String>();
+		if expected.credential_id != digest || expected.user_id != format!("decodex-{digest}") {
+			return Err("This Memory belongs to a different Decodex workspace.".into());
+		}
+		let models =
+			config.models.as_ref().ok_or("Save the model settings before resetting Memory.")?;
+		let embedding = model_id(&models.embedding.model, "decodex-embedding");
+		let extraction = model_id(&models.extraction.model, "decodex-extraction");
+		let key = self.ragflow_key(&expected.credential_id, &expected.url)?;
+		let client = service_client()?;
+		let mut target = base.join("api/v1/memories/").map_err(|_| "Invalid Memory address.")?;
+		target
+			.path_segments_mut()
+			.map_err(|_| "Invalid Memory address.")?
+			.pop_if_empty()
+			.push(&expected.memory_id);
+		// Reconcile a lost delete reply only for the exact Memory the user confirmed.
+		optional_response(client.delete(target).bearer_auth(&key))?;
+		config.memory = None;
+		write(&directory, &config)?;
+		let memory = self
+			.setup_ragflow_models(
+				&config.url,
+				&key,
+				namespace,
+				Some((&embedding, &extraction)),
+			)
+			.map_err(|_| "Memory was cleared, but setup did not finish. Edit and save the model settings to initialize Memory.".to_owned())?;
+		config.memory = Some(memory);
+		write(&directory, &config)?;
+
+		Ok(config)
+	}
+
 	/// Verify and save models, then create or recover the scoped Memory.
 	pub fn configure_ragflow_models(
 		&self,
@@ -796,6 +852,88 @@ mod tests {
 					.contains("preserve the saved index")
 			);
 			assert_eq!(fs::read(directory.join("installation.json")).unwrap(), before);
+			worker.join().unwrap();
+		}
+	}
+
+	#[test]
+	fn reset_memory_removes_only_the_confirmed_memory_and_keeps_the_model_connection() {
+		for fail_create in [false, true] {
+			let (url, worker) = super::super::tests::server(6, move |index, header, body| {
+				Some(match index {
+					0 | 4 => {
+						assert!(header.starts_with("GET /api/v1/memories?"));
+						json!({"memory_list":[{"id":"unrelated","name":"Another Memory"}]})
+					},
+					1 => json!({"embd_id":"default-embedding","llm_id":"default-chat"}),
+					2 => json!({"id":"old-memory"}),
+					3 => {
+						assert!(header.starts_with("DELETE /api/v1/memories/old-memory "));
+						Value::Null
+					},
+					5 => {
+						assert!(header.starts_with("POST /api/v1/memories "));
+						assert_eq!(
+							body["embd_id"],
+							"same-name@q8@decodex-embedding@OpenAI-API-Compatible"
+						);
+						assert_eq!(
+							body["llm_id"],
+							"old-chat@decodex-extraction@OpenAI-API-Compatible"
+						);
+						assert_eq!(body["memory_type"], json!(["raw", "semantic"]));
+						if fail_create {
+							return None;
+						}
+						json!({"id":"new-memory"})
+					},
+					_ => unreachable!(),
+				})
+			});
+			let root = tempfile::tempdir().unwrap();
+			let store = ComponentStore::new(root.path().into());
+			let memory = store.setup_ragflow(&url, "fixture-key", "service:assistant").unwrap();
+			let mut config = model_fixture(url);
+			config.memory = Some(memory.clone());
+			let directory = root.path().join("ragflow/service");
+			fs::create_dir_all(&directory).unwrap();
+			write(&directory, &config).unwrap();
+			fs::write(root.path().join("chat-history"), "Retain the original conversation")
+				.unwrap();
+			let before = fs::read(directory.join("installation.json")).unwrap();
+			assert!(store.reset_ragflow_memory(&memory, "other:assistant").is_err());
+			assert_eq!(fs::read(directory.join("installation.json")).unwrap(), before);
+
+			let result = store.reset_ragflow_memory(&memory, "service:assistant");
+			let saved = store.ragflow_installation().unwrap().unwrap();
+			if fail_create {
+				assert!(
+					result.err().unwrap().contains("Memory was cleared, but setup did not finish")
+				);
+				assert!(
+					saved.memory.is_none(),
+					"failed setup must not retain a deleted Memory identity"
+				);
+			} else {
+				assert_eq!(result.unwrap().memory.unwrap().memory_id, "new-memory");
+				assert_eq!(saved.memory.as_ref().unwrap().memory_id, "new-memory");
+			}
+			assert!(saved.models == config.models);
+			assert_eq!(saved.password, config.password);
+			assert_eq!(saved.project, config.project);
+			assert_eq!(
+				store.ragflow_key(&memory.credential_id, &memory.url).unwrap(),
+				"fixture-key"
+			);
+			assert_eq!(
+				fs::read_to_string(root.path().join("chat-history")).unwrap(),
+				"Retain the original conversation"
+			);
+			assert_eq!(
+				fs::metadata(directory.join("installation.json")).unwrap().permissions().mode()
+					& 0o777,
+				0o600
+			);
 			worker.join().unwrap();
 		}
 	}
