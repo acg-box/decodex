@@ -122,6 +122,9 @@ impl RenderOnce for PermissionPicker {
 			close_permission_picker(&selected, window, cx);
 		});
 		let trigger = ui_theme::settings_button("default-permissions", self.selected.label())
+			.when(self.selected == PermissionMode::FullAccess, |button| {
+				button.text_color(ui_theme::rgb(ui_theme::WARNING))
+			})
 			.aria_label(format!("Default permissions: {}", self.selected.label()))
 			.aria_expanded(open)
 			.track_focus(&trigger_focus)

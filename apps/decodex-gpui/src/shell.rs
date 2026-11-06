@@ -75,11 +75,12 @@ use crate::{
 	ui_motion::{self, SmoothControl},
 	ui_theme::{
 		self, ACCENT, BLUE, CANVAS, CHROME_CONTROL_SIZE, COMPOSER_MATERIAL, CONTENT_MATERIAL,
-		CONTROL_GROUP_HEIGHT, CONTROL_MARGIN, CONTROL_SELECTED_FILL, CONTROL_SELECTED_HOVER,
-		FONT_FAMILY, HEADING_SIZE, INFO, MOTION_PANEL, PRESSED_FILL, SELECTED_BORDER,
-		SELECTED_FILL, SETTINGS_GROUP_GAP, SETTINGS_HELP_SIZE, SETTINGS_INSET, SETTINGS_LABEL_SIZE,
-		SETTINGS_TOP, SETTINGS_WIDTH, SETTINGS_WINDOW_MIN_WIDTH, SHELL_MATERIAL,
-		SURFACE_RAISED_MATERIAL, TEXT_FAINT, WORKSPACE_RADIUS, appearance, window_material,
+		CONTROL_ACTIVE_FILL, CONTROL_GROUP_HEIGHT, CONTROL_MARGIN, CONTROL_SELECTED_FILL,
+		CONTROL_SELECTED_HOVER, FONT_FAMILY, HEADING_SIZE, INFO, MOTION_PANEL, PRESSED_FILL,
+		SELECTED_BORDER, SELECTED_FILL, SETTINGS_GROUP_GAP, SETTINGS_HELP_SIZE, SETTINGS_INSET,
+		SETTINGS_LABEL_SIZE, SETTINGS_TOP, SETTINGS_WIDTH, SETTINGS_WINDOW_MIN_WIDTH,
+		SHELL_MATERIAL, SURFACE_RAISED_MATERIAL, TEXT_FAINT, WORKSPACE_RADIUS, appearance,
+		window_material,
 	},
 };
 use account_feedback::AccountFeedback;
@@ -800,6 +801,9 @@ impl Shell {
 			if std::env::var_os("DECODEX_VISUAL_RAGFLOW").is_some() {
 				shell.agent.update(cx, |surface, cx| surface.visual_ragflow_settings(cx));
 				shell.settings.update(cx, |settings, _| settings.visual_ragflow_settings());
+			}
+			if std::env::var_os("DECODEX_VISUAL_MANAGED_COMPONENTS").is_some() {
+				shell.settings.update(cx, |settings, _| settings.visual_managed_components());
 			}
 		}
 		if destination == Destination::Accounts
@@ -2656,7 +2660,7 @@ fn connection_presentation(view: ConnectionView) -> ConnectionPresentation {
 		ConnectionView::PreparingComponents { failed } => ConnectionPresentation {
 			label: if failed { "Codex setup failed" } else { "Preparing Codex" },
 			detail: if failed {
-				"Open Settings > Components to retry setup."
+				"Open Settings > Components to review the installation."
 			} else {
 				"Installing the required runtime."
 			}
@@ -3318,7 +3322,13 @@ fn refresh_control(
 	window: &Window,
 	cx: &mut Context<Shell>,
 ) -> AnyElement {
-	ui_theme::settings_button_base("health-refresh", "Run checks")
+	let button = if can_refresh {
+		ui_theme::settings_primary_button("health-refresh", "Run checks")
+	} else {
+		ui_theme::settings_button_base("health-refresh", "Run checks").opacity(0.5)
+	};
+
+	button
 		.aria_label("Run diagnostic checks")
 		.tooltip(|_, cx| cx.new(|_| RefreshTooltip).into())
 		.tab_index(if can_refresh { 0 } else { -1 })
@@ -3326,12 +3336,6 @@ fn refresh_control(
 			ui_theme::rgb(WB_BLUE)
 		} else {
 			ui_theme::rgba(0xffffff16)
-		})
-		.bg(if can_refresh { ui_theme::rgba(0xffffff08) } else { ui_theme::rgba(0xffffff03) })
-		.text_color(if can_refresh {
-			ui_theme::rgb(WB_TEXT_MUTED)
-		} else {
-			ui_theme::rgb(WB_TEXT_FAINT)
 		})
 		.when(can_refresh, |element| {
 			element
@@ -3342,13 +3346,6 @@ fn refresh_control(
 				.on_action(cx.listener(Shell::refresh_health))
 				.on_click(cx.listener(|shell, _, _, cx| shell.request_health_refresh(cx)))
 				.cursor_pointer()
-				.hover(|element| {
-					element
-						.bg(ui_theme::rgba(crate::ui_theme::HOVER_FILL))
-						.text_color(ui_theme::rgb(WB_TEXT))
-				})
-				.active(|element| element.bg(ui_theme::rgba(PRESSED_FILL)))
-				.focus_visible(|element| element.border_color(ui_theme::rgb(WB_BLUE)))
 		})
 		.smooth()
 		.into_any_element()
@@ -4162,6 +4159,7 @@ fn account_reorder_handle(
 		"Drag to reorder accounts",
 		workspace_symbols::Symbol::AccountReorder,
 		true,
+		Tone::Neutral,
 	)
 	.opacity(0.)
 	.group_hover(SharedString::from(format!("account-card-{}", presentation.index)), |style| {
@@ -4208,6 +4206,7 @@ fn account_power_control(
 			workspace_symbols::Symbol::PowerOff
 		},
 		interactive,
+		Tone::Neutral,
 	)
 	.when(busy, |button| button.opacity(1.0))
 	.role(Role::Switch)
@@ -4246,6 +4245,9 @@ fn account_management_actions(
 	let logout_account_id = account.account_id.clone();
 	let login_account_revision = account.account_revision;
 	let login_recovery_operation_id = account_login_recovery_operation_id(account);
+	let keyboard_login_id = login_account_id.clone();
+	let keyboard_logout_id = logout_account_id.clone();
+	let keyboard_recovery_operation_id = login_recovery_operation_id.clone();
 
 	gpui::div()
 		.flex()
@@ -4265,20 +4267,38 @@ fn account_management_actions(
 							"Sign in again",
 							workspace_symbols::Symbol::AccountSignIn,
 							presentation.login_available,
+							Tone::Neutral,
 						)
 						.when(!presentation.login_available, |button| {
 							button.on_click(|_, _, cx| cx.stop_propagation())
 						})
 						.when(presentation.login_available, |button| {
-							button.on_click(cx.listener(move |shell, _, _, cx| {
-								cx.stop_propagation();
-								shell.start_account_reauthentication(
-									login_account_id.clone(),
-									login_account_revision,
-									login_recovery_operation_id.clone(),
-									cx,
-								);
-							}))
+							button
+								.on_click(cx.listener(move |shell, _, _, cx| {
+									cx.stop_propagation();
+									shell.start_account_reauthentication(
+										login_account_id.clone(),
+										login_account_revision,
+										login_recovery_operation_id.clone(),
+										cx,
+									);
+								}))
+								.on_key_down(cx.listener(
+									move |shell, event: &KeyDownEvent, _, cx| {
+										if !event.is_held
+											&& ["enter", "space"]
+												.contains(&event.keystroke.key.as_str())
+										{
+											cx.stop_propagation();
+											shell.start_account_reauthentication(
+												keyboard_login_id.clone(),
+												login_account_revision,
+												keyboard_recovery_operation_id.clone(),
+												cx,
+											);
+										}
+									},
+								))
 						}),
 					)
 				})
@@ -4297,16 +4317,29 @@ fn account_management_actions(
 							workspace_symbols::Symbol::AccountLogout
 						},
 						presentation.can_manage,
+						Tone::Error,
 					)
+					.when(presentation.logout_pending, |button| {
+						button.bg(ui_theme::rgb(ui_theme::ERROR).opacity(0.12))
+					})
 					.when(presentation.controls_busy, |button| button.opacity(1.0))
 					.when(!presentation.can_manage, |button| {
 						button.on_click(|_, _, cx| cx.stop_propagation())
 					})
 					.when(presentation.can_manage, |button| {
-						button.on_click(cx.listener(move |shell, _, _, cx| {
-							cx.stop_propagation();
-							shell.logout_account(&logout_account_id, cx);
-						}))
+						button
+							.on_click(cx.listener(move |shell, _, _, cx| {
+								cx.stop_propagation();
+								shell.logout_account(&logout_account_id, cx);
+							}))
+							.on_key_down(cx.listener(move |shell, event: &KeyDownEvent, _, cx| {
+								if !event.is_held
+									&& ["enter", "space"].contains(&event.keystroke.key.as_str())
+								{
+									cx.stop_propagation();
+									shell.logout_account(&keyboard_logout_id, cx);
+								}
+							}))
 					}),
 				),
 		)
@@ -4319,13 +4352,14 @@ fn account_icon_action(
 	label: &'static str,
 	symbol: workspace_symbols::Symbol,
 	enabled: bool,
+	tone: Tone,
 ) -> Stateful<Div> {
-	account_row_action(id, index, label, "", enabled)
+	account_row_action(id, index, label, "", enabled, tone)
 		.debug_selector(move || format!("{id}-{index}"))
 		.w(gpui::px(24.))
 		.h(gpui::px(24.))
 		.px_0()
-		.tab_index(0)
+		.tab_index(if enabled { 0 } else { -1 })
 		.tooltip(move |_, cx| {
 			cx.new(|_| StatusTooltip { text: label.into(), color: ui_theme::TEXT }).into()
 		})
@@ -4338,7 +4372,19 @@ fn account_row_action(
 	aria_label: &'static str,
 	label: &'static str,
 	enabled: bool,
+	tone: Tone,
 ) -> Stateful<Div> {
+	let emphasized = matches!(tone, Tone::Error | Tone::Warning);
+	let ink = if emphasized { tone.color() } else { WB_TEXT_MUTED };
+	let hover_ink = if emphasized { tone.color() } else { WB_TEXT };
+	let hover_fill = if emphasized {
+		ui_theme::rgb(ink).opacity(0.12)
+	} else {
+		ui_theme::rgba(crate::ui_theme::HOVER_FILL)
+	};
+	let focus_fill =
+		ui_theme::rgb(if emphasized { ink } else { CONTROL_ACTIVE_FILL }).opacity(0.15);
+
 	gpui::div()
 		.id((id, index))
 		.role(Role::Button)
@@ -4351,17 +4397,16 @@ fn account_row_action(
 		.rounded(gpui::px(6.0))
 		.font_family(FONT_FAMILY)
 		.text_size(gpui::px(11.0))
-		.text_color(ui_theme::rgb(if enabled { WB_TEXT_MUTED } else { WB_TEXT_FAINT }))
+		.text_color(ui_theme::rgb(ink))
 		.opacity(if enabled { 1.0 } else { 0.5 })
 		.when(enabled, |button| {
 			button
 				.cursor_pointer()
-				.hover(|element| {
-					element
-						.bg(ui_theme::rgba(crate::ui_theme::HOVER_FILL))
-						.text_color(ui_theme::rgb(WB_TEXT))
-				})
+				.hover(move |element| element.bg(hover_fill).text_color(ui_theme::rgb(hover_ink)))
 				.active(|element| element.opacity(0.9))
+				.focus_visible(move |element| {
+					element.bg(focus_fill).text_color(ui_theme::rgb(hover_ink))
+				})
 		})
 		.child(label)
 }
@@ -6459,6 +6504,7 @@ fn account_pool_header(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 							workspace_symbols::Symbol::EyeSlash
 						},
 						true,
+						Tone::Neutral,
 					)
 					.on_click(cx.listener(|shell, _, _, cx| shell.toggle_account_emails(cx))),
 				),

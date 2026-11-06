@@ -143,6 +143,25 @@ impl ComponentStore {
 		lock: &RuntimeLock,
 		progress: impl FnMut(InstallProgress),
 	) -> Result<InstalledRuntime> {
+		self.install(lock, false, progress)
+	}
+
+	/// Replace this exact managed runtime after the user requests reinstallation.
+	/// Validate the replacement before publishing it; retain other versions and user data.
+	pub fn reinstall(
+		&self,
+		lock: &RuntimeLock,
+		progress: impl FnMut(InstallProgress),
+	) -> Result<InstalledRuntime> {
+		self.install(lock, true, progress)
+	}
+
+	fn install(
+		&self,
+		lock: &RuntimeLock,
+		replace: bool,
+		progress: impl FnMut(InstallProgress),
+	) -> Result<InstalledRuntime> {
 		lock.validate()?;
 
 		if !cfg!(target_os = "macos") {
@@ -151,12 +170,13 @@ impl ComponentStore {
 
 		let lock = self.resolve(lock)?.ok_or(PREPARE_REQUIRED)?;
 
-		self.ensure_resolved(&lock, progress)
+		self.install_resolved(&lock, replace, progress)
 	}
 
-	pub(crate) fn ensure_resolved(
+	pub(crate) fn install_resolved(
 		&self,
 		lock: &RuntimeLock,
+		replace: bool,
 		mut progress: impl FnMut(InstallProgress),
 	) -> Result<InstalledRuntime> {
 		let paths = self.resolved_paths(lock)?;
@@ -176,7 +196,7 @@ impl ComponentStore {
 
 		lease.lock().map_err(|e| e.to_string())?;
 
-		if let Ok(Some(installed)) = self.installed_resolved(lock) {
+		if !replace && let Some(installed) = self.installed_resolved(lock)? {
 			progress(InstallProgress::Ready);
 
 			return Ok(installed);
@@ -269,13 +289,13 @@ pub(crate) fn download(
 		.https_only(true)
 		.connect_timeout(Duration::from_secs(20))
 		// Blocking responses apply this timeout to each streamed read. A stalled
-		// connection must return control to Retry without limiting the whole download.
+		// connection must return control to the user without limiting the whole download.
 		.timeout(Duration::from_secs(30))
 		.user_agent("Decodex component installer")
 		.build()
 		.map_err(|e| e.to_string())?;
 
-	download_retry(&client, url, sha256, output, progress)
+	download_once(&client, url, sha256, output, progress)
 }
 
 pub(crate) fn package_evidence(root: &Path) -> Result<(String, String)> {
@@ -342,29 +362,20 @@ fn publish_package(package: &Path, destination: &Path, replaced: &Path) -> Resul
 	Ok(())
 }
 
-fn download_retry(
+fn download_once(
 	client: &reqwest::blocking::Client,
 	url: &str,
 	sha256: &str,
 	output: &Path,
 	progress: &mut impl FnMut(InstallProgress),
 ) -> Result<()> {
-	let mut last = String::new();
+	let result = download_with(client, url, sha256, output, progress);
 
-	for attempt in 0..3 {
-		match download_with(client, url, sha256, output, progress) {
-			Ok(()) => return Ok(()),
-			Err(error) => last = error,
-		}
-
+	if result.is_err() {
 		let _ = fs::remove_file(output);
-
-		if attempt < 2 {
-			thread::sleep(Duration::from_millis(250 * (attempt + 1)));
-		}
 	}
 
-	Err(format!("Codex download failed after 3 attempts: {last}"))
+	result
 }
 
 fn download_with(
@@ -621,7 +632,7 @@ mod tests {
 	}
 
 	#[test]
-	fn interrupted_download_is_discarded_and_retry_reads_a_complete_new_response() {
+	fn interrupted_download_is_discarded_until_the_next_explicit_attempt() {
 		let temporary = tempfile::tempdir().expect("store");
 		let body = "verified package";
 		let expected = install::hash_text(Sha256::digest(body.as_bytes()).as_slice());
@@ -639,8 +650,11 @@ mod tests {
 			.expect("client");
 		let output = temporary.path().join("package");
 
-		install::download_retry(&client, &url, &expected, &output, &mut |_| {})
-			.expect("automatic retry succeeds");
+		assert!(install::download_once(&client, &url, &expected, &output, &mut |_| {}).is_err());
+		assert!(!output.exists(), "discard the interrupted download before returning control");
+
+		install::download_once(&client, &url, &expected, &output, &mut |_| {})
+			.expect("a new explicit attempt succeeds");
 
 		assert_eq!(fs::read_to_string(output).expect("complete download"), body);
 
@@ -648,18 +662,18 @@ mod tests {
 	}
 
 	#[test]
-	fn exhausted_retries_leave_no_partial_archive() {
+	fn failed_download_returns_after_one_request_and_leaves_no_partial_archive() {
 		let temporary = tempfile::tempdir().expect("store");
 		let response =
 			"HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
-		let (url, worker) = serve(vec![response.into(), response.into(), response.into()]);
+		let (url, worker) = serve(vec![response.into()]);
 		let client = reqwest::blocking::Client::builder().no_proxy().build().expect("client");
 		let output = temporary.path().join("package");
 
 		assert!(
-			install::download_retry(&client, &url, &"a".repeat(64), &output, &mut |_| {})
+			install::download_once(&client, &url, &"a".repeat(64), &output, &mut |_| {})
 				.expect_err("unavailable")
-				.contains("3 attempts")
+				.contains("503")
 		);
 		assert!(!output.exists());
 

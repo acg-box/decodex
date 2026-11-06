@@ -26,6 +26,7 @@ pub(crate) enum Action {
 	Disconnect,
 	Install,
 	Update,
+	Reinstall,
 	EnableTools,
 	Remove,
 	OpenExtension,
@@ -140,7 +141,9 @@ impl ResearchOperations {
 		};
 		let mut shown = self.snapshot();
 
-		shown.installed = install::inspect(&directory, &registration)?;
+		if action != Action::Reinstall {
+			shown.installed = install::inspect(&directory, &registration)?;
+		}
 
 		let component = PluginComponent {
 			name: "decodex-research".into(),
@@ -149,15 +152,23 @@ impl ResearchOperations {
 		};
 
 		match action {
-			Action::Install | Action::Update => {
+			Action::Install | Action::Update | Action::Reinstall => {
 				shown.installed =
 					Some(install::install(&directory, &registration, &bundled_helper()?)?);
 
 				if shown.tools.is_some() {
-					shown.tools =
-						NativePlugins::for_user()?.apply(&component, PluginAction::Update)?;
+					shown.tools = NativePlugins::for_user()?.apply(
+						&component,
+						if action == Action::Reinstall {
+							PluginAction::Reinstall
+						} else {
+							PluginAction::Update
+						},
+					)?;
 				}
-				if action == Action::Update && directory.join("extension.sock").exists() {
+				if matches!(action, Action::Update | Action::Reinstall)
+					&& directory.join("extension.sock").exists()
+				{
 					let bridge = ProBridge::new(Config::default(), &directory)?;
 
 					research_runtime()?.block_on(bridge.reload_extension())?;

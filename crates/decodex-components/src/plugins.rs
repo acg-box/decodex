@@ -44,6 +44,8 @@ pub enum PluginAction {
 	Install,
 	/// Refresh the marketplace and replace the installed plugin from that source.
 	Update,
+	/// Reinstall the selected plugin through Codex without upgrading its marketplace.
+	Reinstall,
 	/// Remove the plugin and its dedicated marketplace, preserving user artifacts.
 	Remove,
 }
@@ -105,6 +107,13 @@ impl NativePlugins {
 
 				self.run(&["add", &selector, "--json"])?;
 			},
+			PluginAction::Reinstall => {
+				if marketplace.is_none() {
+					self.run(&["marketplace", "add", &component.source, "--json"])?;
+				}
+
+				self.run(&["add", &selector, "--json"])?;
+			},
 			PluginAction::Remove => {
 				let remove_marketplace = marketplace.is_some()
 					&& !self
@@ -129,7 +138,7 @@ impl NativePlugins {
 			.map(|plugin| plugin.installation);
 
 		match action {
-			PluginAction::Install | PluginAction::Update
+			PluginAction::Install | PluginAction::Update | PluginAction::Reinstall
 				if !installation.as_ref().is_some_and(|plugin| plugin.enabled) =>
 				Err("Codex did not enable the component. Refresh to inspect its state.".into()),
 			PluginAction::Remove if installation.is_some() =>
@@ -310,6 +319,12 @@ mod tests {
 			fs::read_to_string(&installed).expect("installed whole plugin"),
 			fs::read_to_string(&skill).expect("source skill")
 		);
+
+		fs::write(&installed, "damaged private plugin").expect("damage fixture");
+
+		assert_eq!(native.apply(&component, PluginAction::Reinstall), Ok(enabled.clone()));
+		assert_eq!(fs::read_to_string(&installed).unwrap(), fs::read_to_string(&skill).unwrap());
+
 		fs::write(
 			&skill,
 			"---\nname: fixture\ndescription: Native lifecycle fixture\n---\nSecond body\n",

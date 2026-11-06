@@ -113,10 +113,10 @@ impl RenderOnce for QuotaMeter {
 			)
 			.child(
 				gpui::div()
-					.w(gpui::px(96.))
+					.w(gpui::px(132.))
 					.flex_none()
 					.text_right()
-					.whitespace_nowrap()
+					.text_ellipsis()
 					.debug_selector(move || format!("quota-reset-{}", self.label))
 					.font_features(FontFeatures(Arc::new(vec![("tnum".into(), 1)])))
 					.child(match self.quota.result {
