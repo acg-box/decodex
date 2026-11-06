@@ -650,14 +650,14 @@ impl SettingsSurface {
 				))
 				.child(self.component_button(
 					"components-ragflow-reset-confirm",
-					"Reset Memory",
+					"Reset",
 					Action::Ragflow(RagflowComponentAction::ResetMemory),
 					cx,
 				));
 		} else {
 			actions = actions.child(self.component_button(
 				"components-ragflow-reset-request",
-				"Reset Memory…",
+				"Reset",
 				Action::Ragflow(RagflowComponentAction::RequestReset),
 				cx,
 			));
