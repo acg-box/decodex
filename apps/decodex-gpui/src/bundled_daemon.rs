@@ -426,7 +426,7 @@ impl BundledDaemonSupervisor {
 
 		#[cfg(target_os = "macos")]
 		if state.preparing_runtime {
-			if self.preparation.snapshot() != PreparationState::Ready {
+			if self.preparation.snapshot().state != PreparationState::Ready {
 				return true;
 			}
 
@@ -513,7 +513,7 @@ impl BundledDaemonSupervisor {
 
 impl AppOwnedDaemonRecovery for BundledDaemonSupervisor {
 	fn component_preparation_failed(&self) -> bool {
-		matches!(self.preparation.snapshot(), PreparationState::Failed(_))
+		matches!(self.preparation.snapshot().state, PreparationState::Failed(_))
 	}
 
 	fn preparing_components(&self) -> bool {

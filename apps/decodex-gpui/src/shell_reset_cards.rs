@@ -530,25 +530,32 @@ pub(super) fn row(
 		};
 
 		strip = strip.child(
-			shell::account_row_action("reset-card", index, "Use reset card", "", enabled)
-				.border_1()
-				.border_color(ui_theme::rgba(0xffffff26))
-				.id(SharedString::from(format!("reset-card-{}-{index}", account_id.as_str())))
-				.debug_selector({
-					let id = account_id.clone();
+			shell::account_row_action(
+				"reset-card",
+				index,
+				"Use reset card",
+				"",
+				enabled,
+				ui_feedback::Tone::Warning,
+			)
+			.border_1()
+			.border_color(ui_theme::rgba(0xffffff26))
+			.id(SharedString::from(format!("reset-card-{}-{index}", account_id.as_str())))
+			.debug_selector({
+				let id = account_id.clone();
 
-					move || format!("reset-card-{}-{index}", id.as_str())
-				})
-				.text_color(ui_theme::rgb(if armed.is_some() { WB_WARNING } else { WB_TEXT_MUTED }))
-				.tooltip(move |_, cx| cx.new(|_| ControlTooltip(tip.clone())).into())
-				.child(title)
-				.on_click(cx.listener(move |shell, _, _, cx| {
-					cx.stop_propagation();
+				move || format!("reset-card-{}-{index}", id.as_str())
+			})
+			.bg(ui_theme::rgb(WB_WARNING).opacity(if armed.is_some() { 0.12 } else { 0. }))
+			.tooltip(move |_, cx| cx.new(|_| ControlTooltip(tip.clone())).into())
+			.child(title)
+			.on_click(cx.listener(move |shell, _, _, cx| {
+				cx.stop_propagation();
 
-					if enabled {
-						shell.tap_reset_card(account_id.clone(), descriptor, revision, cx);
-					}
-				})),
+				if enabled {
+					shell.tap_reset_card(account_id.clone(), descriptor, revision, cx);
+				}
+			})),
 		);
 	}
 

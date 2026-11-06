@@ -17,9 +17,21 @@ pub(crate) enum PreparationState {
 	Failed(String),
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum Action {
+	Install,
+	Reinstall,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub(crate) struct Snapshot {
+	pub(crate) state: PreparationState,
+	pub(crate) action: Option<Action>,
+}
+
 #[derive(Clone)]
 pub(crate) struct RuntimePreparation {
-	state: Arc<Mutex<PreparationState>>,
+	state: Arc<Mutex<Snapshot>>,
 	requirement: Result<(ComponentStore, RuntimeLock), String>,
 }
 
@@ -34,66 +46,115 @@ impl Default for RuntimePreparation {
 }
 
 impl RuntimePreparation {
-	pub(crate) fn snapshot(&self) -> PreparationState {
+	pub(crate) fn snapshot(&self) -> Snapshot {
 		self.state.lock().expect("runtime preparation").clone()
 	}
 
 	pub(crate) fn prepare(&self) {
+		self.run(Action::Install);
+	}
+
+	pub(crate) fn reinstall(&self) {
+		self.run(Action::Reinstall);
+	}
+
+	fn run(&self, action: Action) {
 		let requirement = self.requirement.clone();
+		let shared = self.state.clone();
 
-		self.start(move |progress| {
-			let (store, lock) = requirement?;
-
-			store.ensure(&lock, progress).map(|_| ())
+		self.start(action, move |progress| {
+			let prepared = requirement.and_then(|(store, lock)| {
+				let paths = store.paths(&lock)?;
+				Ok((store, lock, paths))
+			});
+			let (store, lock, paths) = match prepared {
+				Ok(prepared) => prepared,
+				Err(error) => {
+					shared.lock().expect("runtime preparation").action = None;
+					return Err(error);
+				},
+			};
+			shared.lock().expect("runtime preparation").action =
+				Some(if action == Action::Reinstall || paths.root.symlink_metadata().is_ok() {
+					Action::Reinstall
+				} else {
+					Action::Install
+				});
+			match action {
+				Action::Install => store.ensure(&lock, progress),
+				Action::Reinstall => store.reinstall(&lock, progress),
+			}
+			.map(|_| ())
 		});
 	}
 
 	fn start(
 		&self,
+		action: Action,
 		prepare: impl FnOnce(&mut dyn FnMut(InstallProgress)) -> Result<(), String> + Send + 'static,
 	) {
 		let mut state = self.state.lock().expect("runtime preparation");
 
-		if matches!(*state, PreparationState::Preparing(_)) {
+		if matches!(state.state, PreparationState::Preparing(_)) {
 			return;
 		}
 
-		*state = PreparationState::Preparing(InstallProgress::Waiting);
+		state.state = PreparationState::Preparing(InstallProgress::Waiting);
+		state.action = Some(action);
 		drop(state);
 
 		let shared = Arc::clone(&self.state);
 		let spawned =
 			thread::Builder::new().name("decodex-runtime-setup".into()).spawn(move || {
 				let result = prepare(&mut |progress| {
-					*shared.lock().expect("runtime preparation") =
+					shared.lock().expect("runtime preparation").state =
 						PreparationState::Preparing(progress);
 				});
 
-				*shared.lock().expect("runtime preparation") = match result {
-					Ok(()) => PreparationState::Ready,
+				let mut state = shared.lock().expect("runtime preparation");
+				state.state = match result {
+					Ok(()) => {
+						state.action = Some(Action::Reinstall);
+						PreparationState::Ready
+					},
 					Err(error) => PreparationState::Failed(error),
 				};
 			});
 
 		if let Err(error) = spawned {
-			*self.state.lock().expect("runtime preparation") =
+			self.state.lock().expect("runtime preparation").state =
 				PreparationState::Failed(error.to_string());
 		}
 	}
 
-	#[cfg(test)]
+	#[cfg(any(test, feature = "visual-capture"))]
 	pub(crate) fn fixture(state: PreparationState) -> Self {
-		let value = Self::default();
+		let value = Self {
+			state: Arc::default(),
+			requirement: Err("No runtime is available in this UI fixture.".into()),
+		};
 
-		*value.state.lock().expect("fixture preparation") = state;
+		*value.state.lock().expect("fixture preparation") = Snapshot {
+			action: match state {
+				PreparationState::Ready => Some(Action::Reinstall),
+				PreparationState::Preparing(_) | PreparationState::Failed(_) =>
+					Some(Action::Install),
+				PreparationState::Unchecked => None,
+			},
+			state,
+		};
 
 		value
 	}
 
 	#[cfg(test)]
 	pub(crate) fn finish_fixture(&self, result: Result<(), String>) {
-		*self.state.lock().expect("fixture preparation") = match result {
-			Ok(()) => PreparationState::Ready,
+		let mut state = self.state.lock().expect("fixture preparation");
+		state.state = match result {
+			Ok(()) => {
+				state.action = Some(Action::Reinstall);
+				PreparationState::Ready
+			},
 			Err(error) => PreparationState::Failed(error),
 		};
 	}
@@ -121,7 +182,7 @@ mod tests {
 		time::Duration,
 	};
 
-	use super::{PreparationState, RuntimePreparation};
+	use super::{Action, PreparationState, RuntimePreparation};
 	use decodex_components::{ComponentStore, RuntimeLock};
 
 	#[test]
@@ -163,7 +224,7 @@ mod tests {
 		let deadline = std::time::Instant::now() + Duration::from_secs(120);
 
 		loop {
-			match preparation.snapshot() {
+			match preparation.snapshot().state {
 				PreparationState::Ready => break,
 				PreparationState::Failed(error) => panic!("first install failed: {error}"),
 				_ => {
@@ -174,6 +235,27 @@ mod tests {
 		}
 
 		assert!(store.installed(&lock).expect("verified installation").is_some());
+		let installed = store.paths(&lock).expect("installed paths");
+		let marker = installed.root.join("previous-installation");
+		let user_file = temporary.path().join("saved-conversation");
+		std::fs::write(&marker, "old package").expect("installation marker");
+		std::fs::write(&user_file, "keep").expect("user data");
+		store.reinstall(&lock, |_| {}).expect("explicit reinstall of a healthy runtime");
+		assert!(!marker.exists(), "Reinstall must replace the package even when it is valid");
+		std::fs::write(&installed.executable, "damaged").expect("damaged private runtime");
+		assert!(store.ensure(&lock, |_| {}).is_err(), "startup must not silently repair a runtime");
+		assert_eq!(std::fs::read(&installed.executable).unwrap(), b"damaged");
+		store.reinstall(&lock, |_| {}).expect("explicit repair");
+		assert!(store.installed(&lock).expect("repaired installation").is_some());
+		std::fs::write(directory.join(format!("{digest}.tar.gz")), "incomplete").unwrap();
+		assert!(store.reinstall(&lock, |_| {}).is_err());
+		assert!(
+			store
+				.installed(&lock)
+				.expect("failed replacement preserves the installation")
+				.is_some()
+		);
+		assert_eq!(std::fs::read_to_string(user_file).unwrap(), "keep");
 	}
 
 	#[test]
@@ -184,7 +266,7 @@ mod tests {
 		let (release, waiting) = mpsc::channel();
 		let calls = Arc::clone(&count);
 
-		preparation.start(move |_| {
+		preparation.start(Action::Install, move |_| {
 			calls.fetch_add(1, Ordering::SeqCst);
 			entered.send(()).expect("started");
 			waiting.recv().expect("released");
@@ -192,28 +274,32 @@ mod tests {
 			Err("fixture download failed".into())
 		});
 		started.recv_timeout(Duration::from_secs(2)).expect("startup begins preparation");
-		preparation.start(|_| panic!("another click must not duplicate active preparation"));
+		preparation.start(Action::Reinstall, |_| {
+			panic!("another click must not duplicate active preparation")
+		});
 		release.send(()).expect("release preparation");
 		let deadline = std::time::Instant::now() + Duration::from_secs(2);
 
-		while !matches!(preparation.snapshot(), PreparationState::Failed(_)) {
+		while !matches!(preparation.snapshot().state, PreparationState::Failed(_)) {
 			assert!(std::time::Instant::now() < deadline);
 			std::thread::yield_now();
 		}
 
 		assert_eq!(count.load(Ordering::SeqCst), 1);
+		assert_eq!(preparation.snapshot().action, Some(Action::Install));
 		let (done, completed) = mpsc::channel();
 
-		preparation.start(move |_| {
+		preparation.start(Action::Install, move |_| {
 			done.send(()).expect("retry");
 			Ok(())
 		});
 		completed.recv_timeout(Duration::from_secs(2)).expect("retry starts");
 		let deadline = std::time::Instant::now() + Duration::from_secs(2);
 
-		while preparation.snapshot() != PreparationState::Ready {
+		while preparation.snapshot().state != PreparationState::Ready {
 			assert!(std::time::Instant::now() < deadline);
 			std::thread::yield_now();
 		}
+		assert_eq!(preparation.snapshot().action, Some(Action::Reinstall));
 	}
 }

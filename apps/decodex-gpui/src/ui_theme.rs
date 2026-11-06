@@ -457,6 +457,21 @@ pub(crate) fn settings_button(
 		.focus_visible(|s| s.border_color(rgb(ACCENT)))
 }
 
+pub(crate) fn settings_destructive_button(
+	id: impl Into<gpui::SharedString>,
+	label: impl Into<gpui::SharedString>,
+) -> Stateful<Div> {
+	let danger = rgb(ERROR);
+	settings_button_base(id, label)
+		.cursor_pointer()
+		.text_color(danger)
+		.border_color(danger.opacity(0.35))
+		.bg(danger.opacity(0.06))
+		.hover(move |s| s.bg(danger.opacity(0.12)).border_color(danger.opacity(0.55)))
+		.active(move |s| s.bg(danger.opacity(0.2)))
+		.focus_visible(move |s| s.border_color(danger))
+}
+
 pub(crate) fn settings_button_base(
 	id: impl Into<gpui::SharedString>,
 	label: impl Into<gpui::SharedString>,

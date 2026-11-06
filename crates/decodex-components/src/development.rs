@@ -99,7 +99,7 @@ impl ComponentStore {
 
 		// Publish the selection only after the immutable installation is ready.
 		// A failed import leaves the previous qualified artifact selectable.
-		self.ensure_resolved(&resolved, progress)?;
+		self.install_resolved(&resolved, true, progress)?;
 
 		write_lock(&directory.join("artifact.json"), &resolved)?;
 
