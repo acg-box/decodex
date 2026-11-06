@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:29933de5077281f9f0e2d0347d60b05a5915247a766dff24e70ef87a2863d2b4",
+  "pageVersion": "sha256:96330c9ef78058f12d439fddca99593e301f96624f658b09c75bbb17098a9355",
   "claims": [
     {
       "id": "claim_b6c6b65984924f69970e7f0410d50903",
@@ -90,11 +90,11 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-components/src/development.rs",
-          "version": "repo-file-v1:sha256:4d479ec6a04f1ee03b94098ff8eae450dddb7b6daecba576a74b154c6fcf55fc"
+          "version": "repo-file-v1:sha256:2bb20180d6ee37fc3a34131dae1b7e2ebcaf7efb21d942617163ea9518cdc0c2"
         },
         {
           "resource": "repo://crates/decodex-components/src/install.rs",
-          "version": "repo-file-v1:sha256:5367ac8b56e396acfa21bbd0d18959bd2d3add92f8522b0502e4c93c0741522b"
+          "version": "repo-file-v1:sha256:f2cb558a03a1eda5295a58c570a6084053c3de74278f7f5d983c95042fd060f5"
         }
       ]
     },
@@ -104,7 +104,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/agent.rs",
-          "version": "repo-file-v1:sha256:723981fe7564aa4725c719a427a9f60fe6f58e805c83c79d374d6759d979fc7a"
+          "version": "repo-file-v1:sha256:0db1daf807cd75cf915bf9be58389ac6ab98adcbd3bb2f89910ac32f38ff14e3"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/tests/external_context.rs",
@@ -146,7 +146,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_context_settings.rs",
-          "version": "repo-file-v1:sha256:d66056d801e843822d9444c9c3432dc2526c524f3dced6befd3d32941c6a538b"
+          "version": "repo-file-v1:sha256:c857f947f5d4a7be8367ad08e5ba7839057b27d58ac3c9c1d85de571d8d8d5ab"
         },
         {
           "resource": "repo://crates/decodex-codex/src/app_server_client/context_preferences.rs#L52-L118",
@@ -322,7 +322,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:b6dc45148e7a8290a54aa5a47ef2e339959fb52ab6e5bb2a5a8b106a28e57b56"
+          "version": "repo-file-v1:sha256:12b5136278343e3957944e3a42961ab6b2785e5fdc70d61e75d9af4831828797"
         },
         {
           "resource": "repo://scripts/macos/build_codex_source.mts",
@@ -373,6 +373,6 @@
   ],
   "verification": {
     "by": "openwiki/0.9.0",
-    "at": "2026-11-05T21:05:15.623Z"
+    "at": "2026-11-06T20:42:09.050Z"
   }
 }

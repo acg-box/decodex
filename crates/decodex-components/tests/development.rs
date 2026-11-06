@@ -12,7 +12,7 @@ use decodex_components::{ComponentStore, RuntimeLock};
 
 #[test]
 #[ignore = "requires a qualified macOS runtime in DECODEX_TEST_DEVELOPMENT_RUNTIME"]
-fn fixed_commit_import_offline_repair_and_wrong_commit_rejection() {
+fn fixed_commit_import_explicit_reinstall_and_wrong_commit_rejection() {
 	let artifact =
 		PathBuf::from(env::var_os("DECODEX_TEST_DEVELOPMENT_RUNTIME").expect("qualified runtime"));
 	let temporary = tempfile::tempdir().expect("isolated store");
@@ -35,13 +35,17 @@ fn fixed_commit_import_offline_repair_and_wrong_commit_rejection() {
 	fs::write(&installed.executable, "damaged binary").expect("damage cache");
 
 	assert!(store.installed(&lock).is_err());
+	assert!(store.ensure(&lock, |_| {}).is_err());
+	assert_eq!(fs::read(&installed.executable).expect("unchanged cache"), b"damaged binary");
 
-	store.ensure(&lock, |_| {}).expect("repair from verified local archive");
+	store.reinstall(&lock, |_| {}).expect("explicit repair from verified local archive");
 
 	fs::write(installed.schemas.join("ClientRequest.json"), "damaged schema")
 		.expect("damage schema");
 
-	store.ensure(&lock, |_| {}).expect("repair schema from exact artifact");
+	assert!(store.ensure(&lock, |_| {}).is_err());
+
+	store.reinstall(&lock, |_| {}).expect("explicit schema repair from exact artifact");
 
 	let mut helpers = vec!["bin/codex-code-mode-host", "codex-path/rg"];
 	let metadata: serde_json::Value = serde_json::from_slice(
@@ -60,8 +64,9 @@ fn fixed_commit_import_offline_repair_and_wrong_commit_rejection() {
 		fs::write(&helper, "damaged helper").expect("damage isolated helper");
 
 		assert!(store.installed(&lock).is_err(), "reject damaged {relative}");
+		assert!(store.ensure(&lock, |_| {}).is_err(), "require explicit repair of {relative}");
 
-		store.ensure(&lock, |_| {}).expect("repair helper from exact artifact");
+		store.reinstall(&lock, |_| {}).expect("explicit helper repair from exact artifact");
 
 		assert_eq!(fs::read(&helper).expect("repaired helper"), expected);
 	}
