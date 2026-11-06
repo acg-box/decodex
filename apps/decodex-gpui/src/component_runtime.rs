@@ -65,21 +65,25 @@ impl RuntimePreparation {
 		self.start(action, move |progress| {
 			let prepared = requirement.and_then(|(store, lock)| {
 				let paths = store.paths(&lock)?;
+
 				Ok((store, lock, paths))
 			});
 			let (store, lock, paths) = match prepared {
 				Ok(prepared) => prepared,
 				Err(error) => {
 					shared.lock().expect("runtime preparation").action = None;
+
 					return Err(error);
 				},
 			};
+
 			shared.lock().expect("runtime preparation").action =
 				Some(if action == Action::Reinstall || paths.root.symlink_metadata().is_ok() {
 					Action::Reinstall
 				} else {
 					Action::Install
 				});
+
 			match action {
 				Action::Install => store.ensure(&lock, progress),
 				Action::Reinstall => store.reinstall(&lock, progress),
@@ -101,6 +105,7 @@ impl RuntimePreparation {
 
 		state.state = PreparationState::Preparing(InstallProgress::Waiting);
 		state.action = Some(action);
+
 		drop(state);
 
 		let shared = Arc::clone(&self.state);
@@ -110,11 +115,12 @@ impl RuntimePreparation {
 					shared.lock().expect("runtime preparation").state =
 						PreparationState::Preparing(progress);
 				});
-
 				let mut state = shared.lock().expect("runtime preparation");
+
 				state.state = match result {
 					Ok(()) => {
 						state.action = Some(Action::Reinstall);
+
 						PreparationState::Ready
 					},
 					Err(error) => PreparationState::Failed(error),
@@ -150,9 +156,11 @@ impl RuntimePreparation {
 	#[cfg(test)]
 	pub(crate) fn finish_fixture(&self, result: Result<(), String>) {
 		let mut state = self.state.lock().expect("fixture preparation");
+
 		state.state = match result {
 			Ok(()) => {
 				state.action = Some(Action::Reinstall);
+
 				PreparationState::Ready
 			},
 			Err(error) => PreparationState::Failed(error),
@@ -174,11 +182,13 @@ pub(crate) fn shared(cx: &mut App) -> RuntimePreparation {
 #[cfg(test)]
 mod tests {
 	use std::{
+		fs,
 		sync::{
 			Arc,
 			atomic::{AtomicUsize, Ordering},
 			mpsc,
 		},
+		thread,
 		time::Duration,
 	};
 
@@ -204,12 +214,11 @@ mod tests {
 			.join(platform)
 			.join(&lock.upstream_commit);
 
-		std::fs::create_dir_all(&directory).expect("private artifact cache");
-		std::fs::copy(artifact.join("artifact.json"), directory.join("artifact.json"))
-			.expect("receipt");
+		fs::create_dir_all(&directory).expect("private artifact cache");
+		fs::copy(artifact.join("artifact.json"), directory.join("artifact.json")).expect("receipt");
 		let digest = &resolved.targets[platform].sha256;
 
-		std::fs::copy(
+		fs::copy(
 			artifact.join(format!("{digest}.tar.gz")),
 			directory.join(format!("{digest}.tar.gz")),
 		)
@@ -235,19 +244,29 @@ mod tests {
 		}
 
 		assert!(store.installed(&lock).expect("verified installation").is_some());
+
 		let installed = store.paths(&lock).expect("installed paths");
 		let marker = installed.root.join("previous-installation");
 		let user_file = temporary.path().join("saved-conversation");
-		std::fs::write(&marker, "old package").expect("installation marker");
-		std::fs::write(&user_file, "keep").expect("user data");
+
+		fs::write(&marker, "old package").expect("installation marker");
+		fs::write(&user_file, "keep").expect("user data");
+
 		store.reinstall(&lock, |_| {}).expect("explicit reinstall of a healthy runtime");
+
 		assert!(!marker.exists(), "Reinstall must replace the package even when it is valid");
-		std::fs::write(&installed.executable, "damaged").expect("damaged private runtime");
+
+		fs::write(&installed.executable, "damaged").expect("damaged private runtime");
+
 		assert!(store.ensure(&lock, |_| {}).is_err(), "startup must not silently repair a runtime");
-		assert_eq!(std::fs::read(&installed.executable).unwrap(), b"damaged");
+		assert_eq!(fs::read(&installed.executable).unwrap(), b"damaged");
+
 		store.reinstall(&lock, |_| {}).expect("explicit repair");
+
 		assert!(store.installed(&lock).expect("repaired installation").is_some());
-		std::fs::write(directory.join(format!("{digest}.tar.gz")), "incomplete").unwrap();
+
+		fs::write(directory.join(format!("{digest}.tar.gz")), "incomplete").unwrap();
+
 		assert!(store.reinstall(&lock, |_| {}).is_err());
 		assert!(
 			store
@@ -255,7 +274,7 @@ mod tests {
 				.expect("failed replacement preserves the installation")
 				.is_some()
 		);
-		assert_eq!(std::fs::read_to_string(user_file).unwrap(), "keep");
+		assert_eq!(fs::read_to_string(user_file).unwrap(), "keep");
 	}
 
 	#[test]
@@ -278,19 +297,23 @@ mod tests {
 			panic!("another click must not duplicate active preparation")
 		});
 		release.send(()).expect("release preparation");
+
 		let deadline = std::time::Instant::now() + Duration::from_secs(2);
 
 		while !matches!(preparation.snapshot().state, PreparationState::Failed(_)) {
 			assert!(std::time::Instant::now() < deadline);
-			std::thread::yield_now();
+
+			thread::yield_now();
 		}
 
 		assert_eq!(count.load(Ordering::SeqCst), 1);
 		assert_eq!(preparation.snapshot().action, Some(Action::Install));
+
 		let (done, completed) = mpsc::channel();
 
 		preparation.start(Action::Install, move |_| {
 			done.send(()).expect("retry");
+
 			Ok(())
 		});
 		completed.recv_timeout(Duration::from_secs(2)).expect("retry starts");
@@ -298,8 +321,10 @@ mod tests {
 
 		while preparation.snapshot().state != PreparationState::Ready {
 			assert!(std::time::Instant::now() < deadline);
-			std::thread::yield_now();
+
+			thread::yield_now();
 		}
+
 		assert_eq!(preparation.snapshot().action, Some(Action::Reinstall));
 	}
 }

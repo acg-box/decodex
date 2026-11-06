@@ -370,9 +370,11 @@ fn download_once(
 	progress: &mut impl FnMut(InstallProgress),
 ) -> Result<()> {
 	let result = download_with(client, url, sha256, output, progress);
+
 	if result.is_err() {
 		let _ = fs::remove_file(output);
 	}
+
 	result
 }
 
@@ -650,6 +652,7 @@ mod tests {
 
 		assert!(install::download_once(&client, &url, &expected, &output, &mut |_| {}).is_err());
 		assert!(!output.exists(), "discard the interrupted download before returning control");
+
 		install::download_once(&client, &url, &expected, &output, &mut |_| {})
 			.expect("a new explicit attempt succeeds");
 

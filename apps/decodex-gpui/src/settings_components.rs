@@ -10,7 +10,7 @@ use gpui::{
 use crate::{
 	component_plugins::{self, PluginOperations},
 	component_research::{self, ResearchOperations},
-	component_runtime::{self, RuntimePreparation},
+	component_runtime::{self, PreparationState, RuntimePreparation},
 	settings_surface::{SettingsSurface, switch},
 	shell::{agent_surface::RagflowComponentAction, workspace_symbols},
 	ui_feedback::{self, Feedback, Tone},
@@ -76,8 +76,7 @@ impl Components {
 
 		if matches!(
 			self.preparation.snapshot().state,
-			component_runtime::PreparationState::Unchecked
-				| component_runtime::PreparationState::Ready
+			PreparationState::Unchecked | PreparationState::Ready
 		) {
 			// Keep the last readback visible during the next entry check.
 			if self.optional.snapshot().inspected {
@@ -98,16 +97,11 @@ impl SettingsSurface {
 		}
 
 		#[cfg(not(test))]
-		let preparing = matches!(
-			self.components.shown.state,
-			component_runtime::PreparationState::Preparing(_)
-		);
+		let preparing = matches!(self.components.shown.state, PreparationState::Preparing(_));
 
 		if self.components.poll() {
 			#[cfg(not(test))]
-			if preparing
-				&& self.components.shown.state == component_runtime::PreparationState::Ready
-			{
+			if preparing && self.components.shown.state == PreparationState::Ready {
 				self.components.optional.invalidate();
 
 				if self.category == super::SettingsCategory::Components {
@@ -150,10 +144,8 @@ impl SettingsSurface {
 	) -> AnyElement {
 		let mut disabled_reason = "Operation in progress";
 		let enabled = match action {
-			Action::Prepare | Action::ReinstallRuntime => !matches!(
-				self.components.shown.state,
-				component_runtime::PreparationState::Preparing(_)
-			),
+			Action::Prepare | Action::ReinstallRuntime =>
+				!matches!(self.components.shown.state, PreparationState::Preparing(_)),
 			Action::Plugin(_) => self.components.plugin.busy.is_none(),
 			Action::Research(_) => self.components.research_shown.busy.is_none(),
 			Action::Ragflow(action) => {
@@ -244,10 +236,12 @@ impl SettingsSurface {
 			actions[primary].1,
 			cx,
 		));
+
 		if installed.is_some() {
 			if let Some((id, action)) = reinstall {
 				controls = controls.child(self.component_button(id, "Reinstall", action, cx));
 			}
+
 			controls =
 				controls.child(self.component_button(actions[2].0, "Uninstall", actions[2].1, cx));
 		}
@@ -281,14 +275,15 @@ impl SettingsSurface {
 								Action::ReinstallRuntime,
 							),
 						};
+
 						row.child(self.component_button(id, label, action, cx))
 					}),
 			);
 
 		match &self.components.shown.state {
-			component_runtime::PreparationState::Unchecked => {},
-			component_runtime::PreparationState::Ready => {},
-			component_runtime::PreparationState::Failed(error) => {
+			PreparationState::Unchecked => {},
+			PreparationState::Ready => {},
+			PreparationState::Failed(error) => {
 				let detail = if self.components.details[0] {
 					error.as_str()
 				} else if self.components.shown.action.is_none() {
@@ -296,13 +291,14 @@ impl SettingsSurface {
 				} else {
 					"The operation did not complete. Expand Codex for details."
 				};
+
 				component = component.children(ui_feedback::inline_feedback(
 					"components-component-error",
 					"Setup failed",
 					&Feedback::error(detail),
 				));
 			},
-			component_runtime::PreparationState::Preparing(progress) => {
+			PreparationState::Preparing(progress) => {
 				component = component.children(ui_feedback::inline_feedback(
 					"components-component-status",
 					"Preparing Codex",
@@ -420,10 +416,10 @@ impl SettingsSurface {
 	fn component_status(&self, index: usize, cx: &gpui::App) -> (Tone, &'static str) {
 		match index {
 			0 => match self.components.shown.state {
-				component_runtime::PreparationState::Unchecked => (Tone::Neutral, "Not checked"),
-				component_runtime::PreparationState::Preparing(_) => (Tone::Info, "Preparing"),
-				component_runtime::PreparationState::Ready => (Tone::Success, "Ready"),
-				component_runtime::PreparationState::Failed(_) => (Tone::Error, "Setup failed"),
+				PreparationState::Unchecked => (Tone::Neutral, "Not checked"),
+				PreparationState::Preparing(_) => (Tone::Info, "Preparing"),
+				PreparationState::Ready => (Tone::Success, "Ready"),
+				PreparationState::Failed(_) => (Tone::Error, "Setup failed"),
 			},
 			1 => {
 				let state = &self.components.plugin;
@@ -512,8 +508,7 @@ impl SettingsSurface {
 
 	#[cfg(any(test, feature = "visual-capture"))]
 	pub(crate) fn visual_managed_components(&mut self) {
-		self.components.preparation =
-			RuntimePreparation::fixture(component_runtime::PreparationState::Ready);
+		self.components.preparation = RuntimePreparation::fixture(PreparationState::Ready);
 		self.components.shown = self.components.preparation.snapshot();
 		self.components.plugin = component_plugins::Snapshot {
 			inspected: true,
@@ -624,6 +619,7 @@ impl SettingsSurface {
 	fn research_controls(&self, cx: &mut Context<Self>) -> Div {
 		let state = &self.components.research_shown;
 		let mut controls = gpui::div().flex().items_center().gap_2();
+
 		if state.inspected && state.installed.is_none() && state.error.is_some() {
 			controls = controls.child(self.component_button(
 				"components-reinstall-research",
@@ -670,7 +666,6 @@ impl SettingsSurface {
 	fn research_settings(&self, cx: &mut Context<Self>) -> Div {
 		let state = &self.components.research_shown;
 		let controls = self.research_controls(cx);
-
 		let explanation = self.research_explanation();
 		let mut details = gpui::div().flex().items_center().gap_2();
 
@@ -822,6 +817,7 @@ impl SettingsSurface {
 					}))
 				})
 			});
+
 		gpui::div().debug_selector(|| "components-egm".into()).w_full().flex().flex_col().child(ui_theme::settings_row()
 			.child(self.component_label(1, "components-egm-details", "Elephant–Goldfish (EGM)", state.installed.as_ref().map(|plugin| plugin.version.as_str()), cx))
 			.child(controls))
@@ -848,7 +844,7 @@ mod tests {
 	use std::thread;
 
 	use crate::{
-		component_runtime,
+		component_runtime::PreparationState,
 		desktop_settings::DesktopSettingsController,
 		settings_surface::components::{RuntimePreparation, SettingsSurface},
 		ui_feedback::Tone,
@@ -961,6 +957,7 @@ mod tests {
 
 		assert!(visual.debug_bounds("components-refresh-egm").is_some());
 		assert!(visual.debug_bounds("components-retry-egm").is_none());
+
 		let cold_egm = visual.debug_bounds("components-egm").unwrap();
 		let cold_research = visual.debug_bounds("components-pro-research").unwrap();
 		assert!(
@@ -1170,10 +1167,7 @@ mod tests {
 
 			s.refresh(cx);
 
-			assert_eq!(
-				s.components.preparation.snapshot().state,
-				component_runtime::PreparationState::Unchecked
-			);
+			assert_eq!(s.components.preparation.snapshot().state, PreparationState::Unchecked);
 		});
 
 		visual.update(crate::ui_frame::draw_current_frame);
@@ -1196,9 +1190,8 @@ mod tests {
 		});
 
 		settings.update(visual, |settings, cx| {
-			settings.components.preparation = RuntimePreparation::fixture(
-				component_runtime::PreparationState::Preparing(InstallProgress::Waiting),
-			);
+			settings.components.preparation =
+				RuntimePreparation::fixture(PreparationState::Preparing(InstallProgress::Waiting));
 
 			settings.poll_components(cx);
 		});
@@ -1237,30 +1230,41 @@ mod tests {
 	) {
 		let (settings, visual) = cx.add_window_view(|_, cx| {
 			let mut settings = SettingsSurface::new(DesktopSettingsController::production(), cx);
+
 			settings.category = crate::settings_surface::SettingsCategory::Components;
-			settings.components.preparation =
-				RuntimePreparation::fixture(component_runtime::PreparationState::Ready);
+			settings.components.preparation = RuntimePreparation::fixture(PreparationState::Ready);
+
 			settings.poll_components(cx);
+
 			settings
 		});
+
 		visual.update(crate::ui_frame::draw_current_frame);
+
 		assert!(visual.debug_bounds("components-reinstall-runtime").is_some());
 		assert!(visual.debug_bounds("components-retry-runtime").is_none());
+
 		settings.update(visual, |s, cx| {
 			s.components.preparation.finish_fixture(Err("Installation did not complete.".into()));
 			s.poll_components(cx);
 		});
 		visual.update(crate::ui_frame::draw_current_frame);
+
 		assert!(visual.debug_bounds("components-reinstall-runtime").is_some());
+
 		settings.update(visual, |s, cx| {
-			s.components.shown.state =
-				component_runtime::PreparationState::Preparing(InstallProgress::Waiting);
+			s.components.shown.state = PreparationState::Preparing(InstallProgress::Waiting);
+
 			cx.notify();
 		});
+
 		visual.update(crate::ui_frame::draw_current_frame);
+
 		let before = settings.read_with(visual, |s, _| s.components.preparation.snapshot());
 		let button = visual.debug_bounds("components-reinstall-runtime").unwrap();
+
 		visual.simulate_click(button.center(), Default::default());
+
 		assert_eq!(
 			settings.read_with(visual, |s, _| s.components.preparation.snapshot()),
 			before,

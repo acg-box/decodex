@@ -75,11 +75,12 @@ use crate::{
 	ui_motion::{self, SmoothControl},
 	ui_theme::{
 		self, ACCENT, BLUE, CANVAS, CHROME_CONTROL_SIZE, COMPOSER_MATERIAL, CONTENT_MATERIAL,
-		CONTROL_GROUP_HEIGHT, CONTROL_MARGIN, CONTROL_SELECTED_FILL, CONTROL_SELECTED_HOVER,
-		FONT_FAMILY, HEADING_SIZE, INFO, MOTION_PANEL, PRESSED_FILL, SELECTED_BORDER,
-		SELECTED_FILL, SETTINGS_GROUP_GAP, SETTINGS_HELP_SIZE, SETTINGS_INSET, SETTINGS_LABEL_SIZE,
-		SETTINGS_TOP, SETTINGS_WIDTH, SETTINGS_WINDOW_MIN_WIDTH, SHELL_MATERIAL,
-		SURFACE_RAISED_MATERIAL, TEXT_FAINT, WORKSPACE_RADIUS, appearance, window_material,
+		CONTROL_ACTIVE_FILL, CONTROL_GROUP_HEIGHT, CONTROL_MARGIN, CONTROL_SELECTED_FILL,
+		CONTROL_SELECTED_HOVER, FONT_FAMILY, HEADING_SIZE, INFO, MOTION_PANEL, PRESSED_FILL,
+		SELECTED_BORDER, SELECTED_FILL, SETTINGS_GROUP_GAP, SETTINGS_HELP_SIZE, SETTINGS_INSET,
+		SETTINGS_LABEL_SIZE, SETTINGS_TOP, SETTINGS_WIDTH, SETTINGS_WINDOW_MIN_WIDTH,
+		SHELL_MATERIAL, SURFACE_RAISED_MATERIAL, TEXT_FAINT, WORKSPACE_RADIUS, appearance,
+		window_material,
 	},
 };
 use account_feedback::AccountFeedback;
@@ -3326,6 +3327,7 @@ fn refresh_control(
 	} else {
 		ui_theme::settings_button_base("health-refresh", "Run checks").opacity(0.5)
 	};
+
 	button
 		.aria_label("Run diagnostic checks")
 		.tooltip(|_, cx| cx.new(|_| RefreshTooltip).into())
@@ -4157,7 +4159,7 @@ fn account_reorder_handle(
 		"Drag to reorder accounts",
 		workspace_symbols::Symbol::AccountReorder,
 		true,
-		ui_feedback::Tone::Neutral,
+		Tone::Neutral,
 	)
 	.opacity(0.)
 	.group_hover(SharedString::from(format!("account-card-{}", presentation.index)), |style| {
@@ -4204,7 +4206,7 @@ fn account_power_control(
 			workspace_symbols::Symbol::PowerOff
 		},
 		interactive,
-		ui_feedback::Tone::Neutral,
+		Tone::Neutral,
 	)
 	.when(busy, |button| button.opacity(1.0))
 	.role(Role::Switch)
@@ -4265,7 +4267,7 @@ fn account_management_actions(
 							"Sign in again",
 							workspace_symbols::Symbol::AccountSignIn,
 							presentation.login_available,
-							ui_feedback::Tone::Neutral,
+							Tone::Neutral,
 						)
 						.when(!presentation.login_available, |button| {
 							button.on_click(|_, _, cx| cx.stop_propagation())
@@ -4315,7 +4317,7 @@ fn account_management_actions(
 							workspace_symbols::Symbol::AccountLogout
 						},
 						presentation.can_manage,
-						ui_feedback::Tone::Error,
+						Tone::Error,
 					)
 					.when(presentation.logout_pending, |button| {
 						button.bg(ui_theme::rgb(ui_theme::ERROR).opacity(0.12))
@@ -4350,7 +4352,7 @@ fn account_icon_action(
 	label: &'static str,
 	symbol: workspace_symbols::Symbol,
 	enabled: bool,
-	tone: ui_feedback::Tone,
+	tone: Tone,
 ) -> Stateful<Div> {
 	account_row_action(id, index, label, "", enabled, tone)
 		.debug_selector(move || format!("{id}-{index}"))
@@ -4370,9 +4372,9 @@ fn account_row_action(
 	aria_label: &'static str,
 	label: &'static str,
 	enabled: bool,
-	tone: ui_feedback::Tone,
+	tone: Tone,
 ) -> Stateful<Div> {
-	let emphasized = matches!(tone, ui_feedback::Tone::Error | ui_feedback::Tone::Warning);
+	let emphasized = matches!(tone, Tone::Error | Tone::Warning);
 	let ink = if emphasized { tone.color() } else { WB_TEXT_MUTED };
 	let hover_ink = if emphasized { tone.color() } else { WB_TEXT };
 	let hover_fill = if emphasized {
@@ -4381,7 +4383,8 @@ fn account_row_action(
 		ui_theme::rgba(crate::ui_theme::HOVER_FILL)
 	};
 	let focus_fill =
-		ui_theme::rgb(if emphasized { ink } else { ui_theme::CONTROL_ACTIVE_FILL }).opacity(0.15);
+		ui_theme::rgb(if emphasized { ink } else { CONTROL_ACTIVE_FILL }).opacity(0.15);
+
 	gpui::div()
 		.id((id, index))
 		.role(Role::Button)
@@ -6501,7 +6504,7 @@ fn account_pool_header(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 							workspace_symbols::Symbol::EyeSlash
 						},
 						true,
-						ui_feedback::Tone::Neutral,
+						Tone::Neutral,
 					)
 					.on_click(cx.listener(|shell, _, _, cx| shell.toggle_account_emails(cx))),
 				),

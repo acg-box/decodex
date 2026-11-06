@@ -111,6 +111,7 @@ impl NativePlugins {
 				if marketplace.is_none() {
 					self.run(&["marketplace", "add", &component.source, "--json"])?;
 				}
+
 				self.run(&["add", &selector, "--json"])?;
 			},
 			PluginAction::Remove => {
@@ -318,9 +319,12 @@ mod tests {
 			fs::read_to_string(&installed).expect("installed whole plugin"),
 			fs::read_to_string(&skill).expect("source skill")
 		);
+
 		fs::write(&installed, "damaged private plugin").expect("damage fixture");
+
 		assert_eq!(native.apply(&component, PluginAction::Reinstall), Ok(enabled.clone()));
 		assert_eq!(fs::read_to_string(&installed).unwrap(), fs::read_to_string(&skill).unwrap());
+
 		fs::write(
 			&skill,
 			"---\nname: fixture\ndescription: Native lifecycle fixture\n---\nSecond body\n",

@@ -462,6 +462,7 @@ pub(crate) fn settings_destructive_button(
 	label: impl Into<gpui::SharedString>,
 ) -> Stateful<Div> {
 	let danger = rgb(ERROR);
+
 	settings_button_base(id, label)
 		.cursor_pointer()
 		.text_color(danger)

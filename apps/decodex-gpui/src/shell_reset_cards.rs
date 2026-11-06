@@ -23,7 +23,7 @@ use crate::{
 		quota_meter::{self, ResetFill},
 		workspace_symbols::{self, Symbol},
 	},
-	ui_feedback::{self, Feedback},
+	ui_feedback::{self, Feedback, Tone},
 	ui_theme,
 };
 #[cfg(any(test, feature = "visual-capture"))] use decodex_protocol::ResetCardObservationDto;
@@ -536,7 +536,7 @@ pub(super) fn row(
 				"Use reset card",
 				"",
 				enabled,
-				ui_feedback::Tone::Warning,
+				Tone::Warning,
 			)
 			.border_1()
 			.border_color(ui_theme::rgba(0xffffff26))
