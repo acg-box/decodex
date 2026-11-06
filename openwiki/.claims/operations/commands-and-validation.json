@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:1947bc33b6787ab84a3a6bfbf7f3bcc1c2ffe9fd1f9a0dcb26187ed1a08ac41a",
+  "pageVersion": "sha256:3a4216537e7324dcd2f64c2a9daea0d65eacbee6bb487690e83ab1d0a9863a9d",
   "claims": [
     {
       "id": "claim_8fa9284d970947ab9981d4144ecb9648",
@@ -176,7 +176,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:b6dc45148e7a8290a54aa5a47ef2e339959fb52ab6e5bb2a5a8b106a28e57b56"
+          "version": "repo-file-v1:sha256:12b5136278343e3957944e3a42961ab6b2785e5fdc70d61e75d9af4831828797"
         },
         {
           "resource": "repo://automations/upstream/retained-contracts.json",
@@ -336,7 +336,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:b6dc45148e7a8290a54aa5a47ef2e339959fb52ab6e5bb2a5a8b106a28e57b56"
+          "version": "repo-file-v1:sha256:12b5136278343e3957944e3a42961ab6b2785e5fdc70d61e75d9af4831828797"
         },
         {
           "resource": "repo://automations/upstream/retained-contracts.json#L4407-L4623",
@@ -350,7 +350,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:b6dc45148e7a8290a54aa5a47ef2e339959fb52ab6e5bb2a5a8b106a28e57b56"
+          "version": "repo-file-v1:sha256:12b5136278343e3957944e3a42961ab6b2785e5fdc70d61e75d9af4831828797"
         },
         {
           "resource": "repo://crates/decodex-runtime/tests/native_qualification/command_hooks.py",
@@ -450,7 +450,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:b6dc45148e7a8290a54aa5a47ef2e339959fb52ab6e5bb2a5a8b106a28e57b56"
+          "version": "repo-file-v1:sha256:12b5136278343e3957944e3a42961ab6b2785e5fdc70d61e75d9af4831828797"
         },
         {
           "resource": "repo://automations/upstream/retained-contracts.json#L2134-L2270",
@@ -528,7 +528,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:909d6e655a4393b5c616b4fbfcd2dc9c82659f01fdc663623114782ab81bb50e"
+          "version": "repo-file-v1:sha256:7d6cc53f76338fd829d8d2f70f30322d9f949924f209ed4eadf2dd027582bbfe"
         }
       ]
     },
@@ -552,7 +552,7 @@
     },
     {
       "id": "claim_7fd02fa110b3434e8984dc8b256375b6",
-      "statement": "The CLI selects the Assistant role and sends typed commands through the existing service. The sidebar initializes Assistant idle. Components installs managed RAGFlow nightly and Infinity with a private account and actual version readback; Expanding installed RAGFlow directly opens the model editor with independent OpenAI-compatible Base URLs, optional API keys and custom model IDs for extraction and embedding. Save verifies both choices before initializing Memory. No model runtime or weights are installed. Service connection is automatic and chat import remains separate. Source fixtures and real Docker, controlled-API, synthetic Memory and installed-App acceptance have distinct evidence boundaries.",
+      "statement": "The CLI selects the Assistant role and sends typed commands through the existing service. The sidebar initializes Assistant idle. Components installs managed RAGFlow nightly and Infinity with a private account and actual version readback; Expanded RAGFlow details offer Set up models or Edit to open the model editor with independent OpenAI-compatible Base URLs, optional API keys and custom model IDs for extraction and embedding. Save verifies both choices before initializing Memory. No model runtime or weights are installed. Service connection is automatic and chat import remains separate. Source fixtures and real Docker, controlled-API, synthetic Memory and installed-App acceptance have distinct evidence boundaries.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-cli/src/agent.rs",
@@ -560,23 +560,23 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_timeline.rs",
-          "version": "repo-file-v1:sha256:4dfc9fbe77eb58506fdaee120671b2d23d541abbbe301a102fafaa083adeb527"
+          "version": "repo-file-v1:sha256:d5ed79f9a6793a86c2ebe7d688d6b294b44e3e324ad2c0a181ef8d28e27a4f03"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
-          "version": "repo-file-v1:sha256:80c21982eb72daa16e41cfa4faeb91a0877d3c2961d7282d65e090f097280188"
+          "version": "repo-file-v1:sha256:af3372dfe92b54bdc19d109e1188e3aeeb74a1d70b2b74a213332c512b513d06"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:d22add383676146076f2bea688936358ef17cde2a4aa359ae67eeccdbbc2ec55"
+          "version": "repo-file-v1:sha256:d70ec68a253c9a83b92946d602e61c5094327772c119ae84254c1721183d6df4"
         },
         {
           "resource": "repo://crates/decodex-components/src/ragflow.rs",
-          "version": "repo-file-v1:sha256:17e835261d1318d0c7ba78f1c859da78cb71d746027c6a63a28232aa18e06beb"
+          "version": "repo-file-v1:sha256:cdeb415f7327808194dad8b81832d740be560cdb991a54705c740dacaa67f050"
         },
         {
           "resource": "repo://crates/decodex-components/src/ragflow_service.rs",
-          "version": "repo-file-v1:sha256:71304894dce0ee326cbea7d12bbdddc94eb2c9f29e6072202170b9abf12e802a"
+          "version": "repo-file-v1:sha256:73b08678945947cc367153b9257d8c8e8a3e32d51e6fc67fdb5b9073831ff8d3"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_context_tests.rs",
@@ -584,11 +584,11 @@
         },
         {
           "resource": "repo://crates/decodex-runtime/src/ragflow.rs",
-          "version": "repo-file-v1:sha256:6671e0d10094fbca56a40c13fbbe476edabd6b027b7104a087ef2388f35456c9"
+          "version": "repo-file-v1:sha256:10711955e1abe0c725d1ad155fd5befd5699604ec5756d5286b3129e5b0cb14f"
         },
         {
           "resource": "repo://database/src/assistant.rs",
-          "version": "repo-file-v1:sha256:3f0e073fdfa3a57e60afecd9c80d421d913224f041fd7df91aa629adabe0d8d0"
+          "version": "repo-file-v1:sha256:95f6f780bcbd2c95cc35b1ac1f54b52dcdf7066c683181681839fa22c5fa1ae3"
         }
       ]
     },
@@ -616,7 +616,7 @@
         },
         {
           "resource": "repo://crates/decodex-runtime/src/ragflow.rs",
-          "version": "repo-file-v1:sha256:6671e0d10094fbca56a40c13fbbe476edabd6b027b7104a087ef2388f35456c9"
+          "version": "repo-file-v1:sha256:10711955e1abe0c725d1ad155fd5befd5699604ec5756d5286b3129e5b0cb14f"
         }
       ]
     },
@@ -637,10 +637,20 @@
           "version": "repo-lines-v1:sha256:24c324ac9ba4df60ed6b07ab0c91ee9c5eeca423304dd0f7e693715a865a2f7d:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRiNzExMzZhODhmYTY2ZGEzZDlhZGE5YTZkNTQ2NGI5MDMxZjAyMmY3MDk0ODAzOGNjNTZlZWMxZmQzZWVkOTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlhNzM1NTQ5ODk5ZDVjMDIwM2UyZGFhM2Q0MTA0ZTQ5ZmQwNTllNGQyMGJjNTNkNzYyOGMxMzQxNTYxZDhhNTkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhjNzI4YjhhMDNkOTkxMmViZDYzNTFiNDg2YThiNmI3OTJkNDgwZTNlZDZkNWQ5YjYyOGUwNDhjMWE0Y2QyYjUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjUyYzc0ZjA2NzMxZTM3ZWU0MGNmODVhYmRjNGY2YzRkYWY5MDY3NmRhOWQ3MWI1ZTE4Y2I5OWE4YjIwZmY0NDAifQ"
         }
       ]
+    },
+    {
+      "id": "claim_e07b5d01a8af45e68975edcc1f823e29",
+      "statement": "The opt-in development component fixture requires an explicit qualified runtime, rejects damaged CLI, schema and helper files through ordinary ensure, and restores the verified package offline through explicit reinstall while preserving other versions and failed-import selection.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-components/tests/development.rs",
+          "version": "repo-file-v1:sha256:0ccbd7b95fb091a8b686f9bb51851a94effa6c3fb66b8d838eb49284723156b5"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.9.0",
-    "at": "2026-11-05T21:05:15.623Z"
+    "at": "2026-11-06T20:42:09.050Z"
   }
 }
