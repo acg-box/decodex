@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:e041d8a04e5636f5c1a6090c8e360e8f822dafb369dc6f96b82d3c6d0d08fe64",
+  "pageVersion": "sha256:d072e4b9319170ca5f9350fa031b51bb5d64163ae73f8dd1006cfd677783be0a",
   "claims": [
     {
       "id": "claim_b70a9c3fa68642d29871a42ed05c1114",
@@ -12,7 +12,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_theme.rs",
-          "version": "repo-file-v1:sha256:a5f1df9125386b738319a7b4559a829600da5756686f000aea4469d021e54558"
+          "version": "repo-file-v1:sha256:5d2f420550329cca08f129a815d86e00f28116e16ec807cb74b8043ff36daba2"
         }
       ]
     },
@@ -64,7 +64,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_surface.rs",
-          "version": "repo-file-v1:sha256:c8ca14e75c0d72ec5a12f56c0c6721e083ec46ff14ff5de1fdeebcf699ab649c"
+          "version": "repo-file-v1:sha256:4a566de14a6fcd63f56dca5b0c1f474e1a4a8b0c5296d2dc6b1673ec06dc064b"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_timeline.rs",
@@ -72,7 +72,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_theme.rs",
-          "version": "repo-file-v1:sha256:a5f1df9125386b738319a7b4559a829600da5756686f000aea4469d021e54558"
+          "version": "repo-file-v1:sha256:5d2f420550329cca08f129a815d86e00f28116e16ec807cb74b8043ff36daba2"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_working.rs",
@@ -124,15 +124,11 @@
     },
     {
       "id": "claim_c5814dd9e5a34b1da729cfb6fea734f6",
-      "statement": "New Agent and an unstarted Assistant with confirmed empty history share a centered 20-point start heading above the composer; only New Agent includes the project chooser.",
+      "statement": "A confirmed-empty personal Assistant topic shows the centered 20-point heading What’s next? and the same-Assistant explanation; a new project Agent shows What would you like to do? and its project chooser.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs#L1175-L1187",
-          "version": "repo-lines-v1:sha256:a02e5bfcb5244073eb64a475ec2c7213db21eef08596911cb6e8de49ce3541d4:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjEzN2ZlMzViNjkxNDJkOWE0MTQ2ZDRmMmQyZmRhZTA3YzdjYTExNjkwYzA4YzUzZDdjZGYxZjhhZTBiN2IxYmUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY0ZWZjNDk0MThkMjZkY2YxMjliMjJhNmFhMjExMDhjZWVjMzc2NzdhMzJkMDhlOWQ1ZmVlMzVkZGE2NmJiOWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRmN2FjN2ZiYjc1MDM1ZTk4MDQ4MWI4NjkwN2U1ZGM2OTY0MzE0MmZjMjJlMGU2OTQ2NDY2YTQ1NDg1MDdmMWMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZkMzcxYWNkNDI5MTQxY2M0ODM0YjZmMDMxMWY3MjkyNTU5YzY5MGY5M2ZhMTcwNDMyOWRmNDA2MTJkMmRhMGIifQ"
-        },
-        {
-          "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs#L1301-L1349",
-          "version": "repo-lines-v1:sha256:d49d0a3cf0464f16690c13f3df52976f57cbef855add0554366d9b9f1bd7151e:eyJzZWxlY3RlZExpbmVDb3VudCI6NDksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMxZTM3NzQ4M2Q2Y2NjMjU2YmE0NDgyMTZhZGFhM2Q4ZjJhYjg5NzYyYTkxNTljNzQ0NjQyYjE2YmU5MDQ3ZTciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU1MTRkMjA4Njg4NGY4MTdiMmFjYTFlYTkwOTE3Yjg4YTkxMzhmNzlkMmE5MmYwYzIxNTlkNDE5ZWJhOGZlZWYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM3M2FjMDMxZjM0Y2RmZDllMWU0YzJjZjhiNmQyODEzOTkwMDVlZDI0OTlkYzhiNDQ3OWYyMmNjZTRiYjU4YjgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAxZTYyYTgwZDg4NTE3YzFmZmVlZDQzNzIwYmJkOTczYTY1MDY5YWIwZjU5NGI3NmNjNmIyMjVmNzZmYjEyYWUifQ"
+          "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs#L1232-L1286",
+          "version": "repo-lines-v1:sha256:df764d6cee9707f318d700e0f4ce7f57a0c3d2565fd240f8abff8e2f4bd43467:eyJzZWxlY3RlZExpbmVDb3VudCI6NTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQwMTFhNDBjNjM5MGI1YzE1OTI2YWQzODZiZGUxYjk3ZGVmNDU3MDk5MzU5YTFlMGE0ZDcwNWVlYTMyOTllYTgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg5YmM3NTExYjIyYjUzOGRmMTQyODMzNzUxZDRhMDM3NDFiYjI4MzkzYjQzZjE5ZjhkNjZkNDkxZGFmNTJkOWUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU3YjI1ZDY3OTg3MjkzNDY2NzU3YTk0ZTUzYjI0MzJlM2IyNWUxNzE1YmY2YjU2YjBkYzVjMzQzMTcyNTljOWQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjEyZmU2MWNiYTEyYmYyNDViMDI5YTgwYWIzOTRjMzY5MzI4NmQ1NDIyMTIzODA1ZjMyODQ4MTAxMWJmN2I5ZDAifQ"
         }
       ]
     },
@@ -141,16 +137,8 @@
       "statement": "The shared empty-conversation start heading yields to saved history, sending previews, retained failed or unconfirmed input, active work, questions, and misalignment; missing or unavailable history retains its existing loading or retry presentation.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L2226-L2343",
-          "version": "repo-lines-v1:sha256:5097a4d8a04b9c20b4f1d028e8b173065610af2b2a62cd9f8d5688603d105206:eyJzZWxlY3RlZExpbmVDb3VudCI6MTE4LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIyOGVmOTAxNmVmYmJkZWQ0N2UyZmZlZjQ5MmIxNzg4NWU3YWFlZmM5NDcxMjJjODdjYzJmZjE0ZTVmMjAxMjU5IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIxODdjM2FlMTRkMjRlYzA4YmFhNmViYjJjMjZjYTlhYTM1ZjRiNGYyM2JiMjBkNDkyNmZhYzdiMWU2N2ZhMjRhIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI1YmU0NTdiM2QxMzA0YjM1ZDExYjg4ZTA1MGI5Nzk2ZTk1MzhhZmViZmM1ZGM1MDFlMmZmOTI0YWEzMmUyOTUwIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJjNzdkMDk3MGFmZjNlZTk2NmZiZDljZDczYzMyNTUwZDQ5ODA3ZGY4OWQwZjlmNThhMzkyMDQxMDViNjM4ZjViIn0"
-        },
-        {
-          "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs#L1301-L1316",
-          "version": "repo-lines-v1:sha256:1c73bc5a4d8c9496950966b43ca5b9b69e139ca560e1dd7eda98c2fb3d481b44:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMxZTM3NzQ4M2Q2Y2NjMjU2YmE0NDgyMTZhZGFhM2Q4ZjJhYjg5NzYyYTkxNTljNzQ0NjQyYjE2YmU5MDQ3ZTciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM3M2FjMDMxZjM0Y2RmZDllMWU0YzJjZjhiNmQyODEzOTkwMDVlZDI0OTlkYzhiNDQ3OWYyMmNjZTRiYjU4YjgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA0NzFkZjg5YWE3M2M0NzVlN2Y1NTRmMzljMmNjNmFiMDRmODMyODQ5MTgzNTE3OGU5NjA2MjI3OGI0NTBjYzYifQ"
-        },
-        {
-          "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs#L3057-L3159",
-          "version": "repo-lines-v1:sha256:d3a2a50cdb4896ee9c8a15e8100df6aa1687524aa037ebbbd14d2a5fefb0d91b:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAzLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI0YTQzMDllZjY1ZDA2YTRkNmRhNGRlZTE4YzY3NDYwZThmNDI0ZjlmYzg0MGUwMjg4MzdmZThhMDlmMGUzOTdlIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI2N2NkYTgyZGE2MDYyMzhlMDVlNjIzOTk1NjljNWVlMDM5OTM0MTk2NDhhZTVkNDNhMmJmOGNkNjM0N2Y4MjYzIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIyMmYyZmY1ZmVlYzYwZjU4N2M4ZmFlNGU4N2Y4MDlhNjYxY2ZmZWQ2YjQ3YWFlNWY2ZDZhMjY1M2FhODk1MmVmIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJjYzlmNmMxNjNmYjBlOTViN2Q0NTY3MTllZTY0Zjk1MDJlMzU3MmRkOWRjNzUxM2Y2ZDQ0MzBkZTZlYzA2OTFiIn0"
+          "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs#L1215-L1230",
+          "version": "repo-lines-v1:sha256:a491c01b74bcf031be9574bead12b7ded1669bb91c3c321bd66be10528c1b34f:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMxZTM3NzQ4M2Q2Y2NjMjU2YmE0NDgyMTZhZGFhM2Q4ZjJhYjg5NzYyYTkxNTljNzQ0NjQyYjE2YmU5MDQ3ZTciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM3M2FjMDMxZjM0Y2RmZDllMWU0YzJjZjhiNmQyODEzOTkwMDVlZDI0OTlkYzhiNDQ3OWYyMmNjZTRiYjU4YjgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA0NzFkZjg5YWE3M2M0NzVlN2Y1NTRmMzljMmNjNmFiMDRmODMyODQ5MTgzNTE3OGU5NjA2MjI3OGI0NTBjYzYifQ"
         }
       ]
     },
@@ -159,11 +147,11 @@
       "statement": "A missing selected working directory is presented as an unavailable working folder with a restoration instruction; generic connection admission failures use Reconnecting to Codex while account readiness failures keep their specific Accounts guidance.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs#L1041-L1064",
+          "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs#L954-L977",
           "version": "repo-lines-v1:sha256:033b9206eb735cfd59cdfbfddf849d873fe802d9522574e466f5cdfb8a7b8406:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVmMTIyODE3NTliODRjYTQ4NDA3NGVjOTg1YWU4NGU1YmEyMWEzYTdkZDBiMDQ4NDY5ZmIwOGZlZTIxZDcxZWMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ5ZDg2NWJhNDFmYjk1NzA4MDc2ZmJiY2I3OGU4ODJmM2Q0ZTg4NDhmMTExOTRkNDExYjhkZjRmZmYwMjQzNWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImVhYWUzMzJiMWYzZjdkMDg5NzI4OGZmZGQzNGUxY2JmMWYzMGQzMWU4MTNiNjU0MjFhYzQ0MDZhYTEzMjA5ZWQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQxOGM2YThiMThiZmU1ZDFhMDlhNWJiZjZhOGI2MmM0MDk1ZDk0YzcyNzViOTdkYjlmZGY3NjYyZDExZTViZTMifQ"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs#L879-L893",
+          "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs#L792-L806",
           "version": "repo-lines-v1:sha256:f9f0454d4aadc9e3093c6460d7afaf2be65386f61788f1840f12f75fd0c4f7ce:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg5MDE0NDkwN2M1NmRkZTllYTE4NmVhMmVlOTllM2NmNWRiNWY0MzMzN2QyMzcwZjFlY2MyNGYzM2ZiN2M5MGIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFhNGUzNjRmNmJlNzMxNWQ5NGNlYTJjN2E1ZjM0NzMwNzBiOGQzOWQyNTI1NmQxMGM0ZWE2ZDQwYzc0YjM4YTUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY1Mzk2MWEyMDZjNGJkMGFhZWZiNmVmNTVhMTRkYmQxOTBiNzc3ZWNjZGU0N2E4MWMyNTRmZDQzMmY5OTM4MWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjYxZTNhYTVkNTY5YTE5M2UyNTUwYTA4MWFjZDk5NjM4ZWJkOWUxMWQzNmZiMDVkZmRkZDU3MzIwNGE3YWNkZDUifQ"
         }
       ]
@@ -181,10 +169,38 @@
           "version": "repo-lines-v1:sha256:77c5b5237e3a4654bc44b8f180b84ee99cd5f20f0cf9aebbefb340bcfa3e28d5:eyJzZWxlY3RlZExpbmVDb3VudCI6ODYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUxOTQ4NGVlZGYzNjRmYjhjMTJmMWViOThmYmY2YTliNGY2NTBmNDI3ODc0YThkNzM1OTAxMGFhZGU0MzFiYzgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjI1YmIxYWY1MjFiZWNkNTVkNzA1NmE4YTlhMGRkMWViY2RhMWZjNzlmZjIzZjc0NTc3NmY0OTk1ODMzNTI5MjMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjIyZjFmZGI3ODVkZmYxNThjZGFlNmVjMDU2OTZlMTMzNzY0MTY2YzE0Y2M3MWE4OTE3ZTEwODU0MjNjMGVmYTQifQ"
         }
       ]
+    },
+    {
+      "id": "claim_950fe0da9c7e4d23897100962ea9f0f0",
+      "statement": "Navigation uses 12-point titles, 10.5-point supporting text, 8-point row corners and 18-point section gaps; section headings retain a non-wrapping 24-point height.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_navigation_sidebar.rs#L365-L377",
+          "version": "repo-lines-v1:sha256:1401b2433068e1fa67819796c14b9beafeec5b6cfa23041450fced9481159520:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc1NDMwMTJiNzE4ZDYyNjJjZGZlNDBlMTZhODJkMWUxYzE3ZDFmYTljOWU0OTNhNmI5ZjhhYjIxMTc5NzZhM2MiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYyOTY0MDc5YzNjNWM4MTUyMGVmMzNhMmI5ZDJlMTVhMWI4NGQ3MjgwZGI4NTkwZGNkNjU3NDdlM2UwMTJhNDAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM1ODVjOGU2ZmU4ODJlNDJkZDFmOWFlNTQzMWI4MzA3NTNkNDcwMjZkYTFlMzhjNWE5NmNhNDhmOTcyNWY0NDIifQ"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/ui_theme.rs#L100-L104",
+          "version": "repo-lines-v1:sha256:a3b1d46512be782ee76655cc070610f07d203f61de366a8d399712bfda846c4e:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOGEzMTliNGM4ODVhNjVhNTFiYWJjODkxYTBlNmQ4NDc2NWY5YzhjMDA1ZDZiYmRkMDlhMjIxZDdiYzllNzdjNSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDUzYjk2OGU1YWM2ZDMyOGFhZmZjMDBiZDczMGUwZWMwYTFmNzhjYWQxMGQ0YjgyOTQ3YTVjMjdjZjE5YjRjZSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOGYzZWE4ZDcyY2UyZGNmNzdjOGUxMWM4MTZiYTQ2NjU2ZDYzYThmZGRiOTY0NjgyODBkNjg5MWM3MjU0NmE0NCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZDVlMWUwNWRlMzVlMjNmM2RhZDZjMDBmOWVkMjI2NmQ2ODM5Y2VjNmFiNmQ3NWRhMDQyNTUyZTY4ZWRiZjFkMiJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_e1e4c92122a84c3eb470f51d9e7df8e1",
+      "statement": "Human attention is derived from pending native requests, unanswered native questions and explicit user-decision state rather than displayed labels; ordinary returned agent work is separate.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_collaboration.rs",
+          "version": "repo-file-v1:sha256:cffc79e0236936710c17188b71d370021eef06932d10184389bee809bf8a80c5"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_workbench.rs#L223-L289",
+          "version": "repo-lines-v1:sha256:ad0258b2f2de21e2dbad8d3eca9250c930d1eed1123e0c7bc61cee8e20a235b7:eyJzZWxlY3RlZExpbmVDb3VudCI6NjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY3NjljMGNiYmIyYWViNWEzNDJiNTYwYzIxYmU1YzZmMWUyNGJkNzUzNDJmMmY2OGM1MmMzNTFkNzE1NWU5ZDciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU2ODA2ZjE1NWM1YWMxYWUyNzIyY2EwNmYyYWM5Y2FkY2I4ODFiOTEyM2NiNjI0YTNjMTA0NzViNDQ0OWRjMmUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg2YzBjYmJjMWYxNWIwYjkzYWUyZWJlMzVmNDBjZjRiZDNkNmQxNzgxZGNiZmQ3ZTQyYzNjMjdiMmVjMTdjZmUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgyZmVmNDVmODE1YmEwZDdhOGFiNThiNTQ2OTg1MzZlNGE2ZTBiMTM3YWFkODAzOWJmMGVkMjYzMTAxZThkMDAifQ"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.9.0",
-    "at": "2026-11-07T06:35:26.732Z"
+    "at": "2026-11-07T07:31:20.360Z"
   }
 }

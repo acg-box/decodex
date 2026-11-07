@@ -5,7 +5,7 @@ description: "Workspace ownership, native menu focus, compositor motion, and con
 tags: [decodex, architecture, desktop, presentation]
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-06T14:22:47.581Z
+    at: 2026-11-07T07:31:20.360Z
 sources:
   - id: openwiki-source-98e7b23c4cc276d20fcb4649
     resource: repo://apps/decodex-gpui/menubar/Sources/DecodexApp/AccountControlViews.swift
@@ -53,6 +53,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_native_composer.rs
   - id: openwiki-source-e59b6fade5576eca54cd30f7
     resource: repo://apps/decodex-gpui/src/agent_native_menu.rs
+  - id: openwiki-source-541c96314da57ad5afa1835e
+    resource: repo://apps/decodex-gpui/src/agent_navigation_sidebar.rs
   - id: openwiki-source-c6ac7d6b2fdeb458faab2c3a
     resource: repo://apps/decodex-gpui/src/agent_permissions.rs
   - id: openwiki-source-1b7747f8ae67c32e5670817d
@@ -143,12 +145,18 @@ sources:
     resource: repo://database/src/works/commands.rs
   - id: openwiki-source-8fe6f1557e5d45d88b34bd0a
     resource: repo://scripts/macos/generate_workspace_symbols.swift
-generated: { by: "codex", at: "2026-11-06T14:22:47.581Z" }
+generated: { by: "codex", at: "2026-11-07T07:31:20.360Z" }
 ---
 
 # Desktop workspace and native glass
 
 ## Information hierarchy
+
+The workspace has three responsibilities. The left sidebar opens personal Assistant topics, persistent Work and secondary project chats. The center retains the selected conversation and its composer. The right Collaboration panel shows source-backed requests and exchanges across chats. A selected Work does not limit global pending requests to that Work.
+
+**My Assistant** opens the canonical personal conversation. **New conversation** creates another personal topic with a fresh context and the same Assistant Memory and configuration. It does not create a project Agent. Each topic keeps its own draft, and the conversation header shows its current topic name. **Discuss new work** starts another personal topic. The Work section shows up to eight active outcome headers and provides **View all work** and **Find project chats**. The footer provides **Archived conversations**, **New project Agent** and **Settings**. The archive label describes its actual scope; it is not a general history browser.
+
+Collaboration shows **Needs you** before **Between agents**. Pending native requests, unanswered questions and explicit user decisions need a response; a returned result still needs its original assessment and is not automatically accepted. Opening an exchange's details keeps the active conversation and draft. Explicit **Open request**, **Open question** and **Open review** actions lead to the owning conversation, where its native response controls retain authority. The toolbar keeps the pending count when the right panel is closed. The Graph remains available through its existing control and shortcut, but starts closed.
 
 The six Settings sections are General, Agents, Appearance, Components, Accounts and Diagnostics. They use the same 620-point content column and shared rows. General contains the app version and native Check for updates action; Updates has no separate navigation entry. New conversations uses two setting rows: Permissions shows the selected mode's meaning and opens the shared permission menu, and Speed reuses the existing segmented control with usage for the selected speed. General groups automatic recaps and sleep prevention under Background.
 
@@ -186,9 +194,9 @@ Shift-Esc toggles Graph or conversation fullscreen according to the active pane.
 
 The conversation header groups each source with its open Side chats. Use **+** to create and open a native attached branch from the selected conversation after source preparation. Creation needs no second confirmation and sends no message. Switching tabs preserves each conversation's draft and reading position; closing a tab retains the native branch. See [Side chat tabs](conversation-presentation.md#side-chat-tabs).
 
-## Project Work and Guardian
+## Project Work and review details
 
-Assistant, Work and Guardian are entries in the existing sidebar. The Assistant entry initializes an idle personal Agent when needed and opens its chat. Work groups outcomes by Project and can show the same accountable Agent on several rows. Assistant and Project Lead selectors choose existing Agents; they do not create role-specific conversations. The existing conversation, Collaboration panel and Dock remain available.
+Work groups outcomes by Project and can show the same accountable Agent on several rows. Assistant and Project Lead selectors choose existing Agents; they do not create role-specific conversations. Selected Work evidence stays with the existing Work owner. The conversation, global Collaboration panel and Graph remain available. Guardian observation settings and per-conversation evidence retain their existing owners; Guardian is not a permanent section in the new sidebar.
 
 Expand a Work to read its current requirements, authoritative source, completion criteria, hold reason and resumption condition. Materials open their authorized references. Results show their exact native item or artifact digest. Collaboration Requests show their recipient, issued requirements, scoped Materials, delivery, acceptance, return and assessment. Discuss with owner opens that Agent's conversation. Awaiting Assessment is a derived activity label, not another Work state.
 
@@ -196,7 +204,7 @@ The overview carries headers; selected Work evidence loads separately. Reads are
 
 Pause Work prevents new Decodex contributions and completion. It cannot roll back already-running actions and does not replace native interruption. Work association with a Project does not change the native conversation's working directory or execution permission.
 
-Guardian shows review records across Agents and Projects. Its global **Save review details** switch controls optional bounded observation, not conversation permissions. The selected runtime does not provide exact action Review IDs for private reviewer records, so the UI displays Action association unavailable. It does not infer a link to the latest action. Turning details off stops new records; it does not approve requests or erase retained history.
+Guardian retains review records for Agents and Projects. Its global **Save review details** switch controls optional bounded observation, not conversation permissions. The selected runtime does not provide exact action Review IDs for private reviewer records, so the UI displays Action association unavailable. It does not infer a link to the latest action. Turning details off stops new records; it does not approve requests or erase retained history.
 
 Only native assistant output and item-free terminal metadata enter retained private records. Raw reasoning frames are excluded. The store retains at most 128 records of 64 KiB each; the snapshot previews the newest 32 and loads the exact selected record on demand. This is not a complete reviewer transcript or proof of a live approval decision.
 
