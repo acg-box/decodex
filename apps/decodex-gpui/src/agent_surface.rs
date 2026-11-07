@@ -48,6 +48,7 @@ mod native_composer;
 mod native_menu;
 #[path = "agent_timeline.rs"] mod native_timeline;
 #[path = "agent_navigation.rs"] mod navigation;
+#[path = "agent_navigation_sidebar.rs"] mod navigation_sidebar;
 #[path = "agent_output_stream.rs"] mod output_stream;
 #[path = "agent_panel_controls.rs"] mod panel_controls;
 #[path = "agent_permissions.rs"] mod permissions;
@@ -2803,7 +2804,7 @@ impl Default for WorkspaceView {
 			pages: vec![],
 			preview_page: None,
 			closing_pages: Default::default(),
-			graph_visible: true,
+			graph_visible: false,
 			graph_expanded: false,
 			chat_expanded: false,
 			dock_completed: true,

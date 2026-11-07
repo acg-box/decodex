@@ -403,6 +403,13 @@ pub enum AgentActionDto {
 		/// Stable identity for this setup attempt and its retries.
 		agent_id: EntityId,
 	},
+	/// Start a fresh personal topic without submitting a model turn.
+	CreateAssistantTopic {
+		/// Canonical personal Assistant identity.
+		assistant_id: EntityId,
+		/// New independent conversation identity.
+		topic_id: EntityId,
+	},
 	/// Manage the selected personal Agent, its teams and independent duties.
 	ManageAssistant {
 		/// Stable personal Agent identity.

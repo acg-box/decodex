@@ -746,6 +746,8 @@ impl AgentSurface {
 			let row = row.clone();
 			let label = if case.question.as_ref().is_some_and(|question| question.pending) {
 				"Open question".into()
+			} else if case.state == "Decision" {
+				"Open review".into()
 			} else if case.source == "EGM activity" {
 				if case.to.is_some() { "Open report" } else { "Open Lead" }.into()
 			} else {
@@ -970,6 +972,13 @@ impl AgentSurface {
 			.bg(ui_theme::rgba(FIELD_MATERIAL))
 			.hover(|row| row.bg(ui_theme::rgba(HOVER_FILL)))
 			.when(related, |row| row.bg(ui_theme::rgba(HOVER_FILL)))
+			.when(needs_user(case), |card| {
+				card.rounded(gpui::px(ui_theme::NAVIGATION_ROW_RADIUS))
+					.px_2()
+					.bg(ui_theme::rgba(FIELD_MATERIAL))
+					.border_1()
+					.border_color(ui_theme::rgb(ui_theme::WARNING).opacity(0.25))
+			})
 			.child(self.collaboration_exchange_header(case, cx))
 			.child(ui_motion::disclosure(
 				SharedString::from(format!("collaboration-context-reveal-{}", case.id)),
@@ -977,6 +986,28 @@ impl AgentSurface {
 				context,
 			))
 			.into_any_element()
+	}
+
+	fn collaboration_entry_visible(&self, entry: &super::Entry, cases: &[Exchange]) -> bool {
+		!entry.result
+			&& (entry.request.is_some() || self.review_phase(&entry.row).is_none())
+			&& (entry.request.is_some()
+				|| !cases.iter().any(|case| {
+					case.question.as_ref().is_some_and(|question| {
+						question.pending && question.work_id == entry.row.work
+					})
+				}))
+	}
+
+	pub(crate) fn collaboration_attention_count(&self) -> usize {
+		let cases = self.collaboration_cases(&self.relation_graph(), &self.factory_rows());
+		self.workbench_entries()
+			.iter()
+			.filter(|entry| {
+				self.collaboration_entry_visible(entry, &cases) && entry_needs_user(entry)
+			})
+			.count()
+			+ cases.iter().filter(|case| needs_user(case)).count()
 	}
 
 	pub(in super::super::super) fn render_agent_workbench(
@@ -997,20 +1028,36 @@ impl AgentSurface {
 			.line_height(gpui::px(17.))
 			.text_color(ui_theme::rgb(SECONDARY));
 
-		for entry in entries.iter().filter(|entry| {
-			!entry.result
-				&& (entry.request.is_some() || self.review_phase(&entry.row).is_none())
-				&& (entry.request.is_some()
-					|| !cases.iter().any(|case| {
-						case.question.as_ref().is_some_and(|question| {
-							question.pending && question.work_id == entry.row.work
-						})
-					}))
-		}) {
+		let visible: Vec<_> = entries
+			.iter()
+			.filter(|entry| self.collaboration_entry_visible(entry, &cases))
+			.collect();
+		let count = visible.iter().filter(|entry| entry_needs_user(entry)).count()
+			+ cases.iter().filter(|case| needs_user(case)).count();
+		body = body.child(collaboration_section_heading(
+			if count > 0 { format!("Needs you ({count})") } else { "Needs you".into() },
+			count > 0,
+		));
+		for entry in visible.iter().filter(|entry| entry_needs_user(entry)) {
+			body = body.child(self.workbench_entry(entry, cx));
+		}
+		for case in cases.iter().filter(|case| needs_user(case)) {
+			body = body.child(self.collaboration_exchange(case, cx));
+		}
+		if count == 0 {
+			body = body.child(super::note("Nothing needs your attention."));
+		}
+		body = body.child(
+			collaboration_section_heading("Between agents".into(), false)
+				.mt(gpui::px(ui_theme::NAVIGATION_SECTION_GAP)),
+		);
+		for entry in visible.iter().filter(|entry| !entry_needs_user(entry)) {
 			body = body.child(self.workbench_entry(entry, cx));
 		}
 		for case in cases.iter().filter(|case| {
-			!case.earlier || self.work_board.collaboration_expanded.as_ref() == Some(&case.id)
+			!needs_user(case)
+				&& (!case.earlier
+					|| self.work_board.collaboration_expanded.as_ref() == Some(&case.id))
 		}) {
 			body = body.child(self.collaboration_exchange(case, cx));
 		}
@@ -1064,19 +1111,7 @@ impl AgentSurface {
 			.min_w_0()
 			.overflow_y_scroll()
 			.p(gpui::px(8.))
-			.child(
-				gpui::div()
-					.id("workbench-heading")
-					.role(Role::Heading)
-					.aria_level(2)
-					.aria_label("Across chats")
-					.px(gpui::px(4.))
-					.pt(gpui::px(3.))
-					.pb(gpui::px(9.))
-					.text_size(gpui::px(11.5))
-					.font_weight(FontWeight::MEDIUM)
-					.child("Across chats"),
-			)
+			.child(collaboration_heading())
 			.child(body)
 			.smooth_scroll("workbench-scroll")
 			.into_any_element()
@@ -1151,3 +1186,49 @@ fn review_excerpt(text: &str) -> String {
 #[cfg(test)]
 #[path = "agent_collaboration_tests.rs"]
 mod tests;
+
+fn needs_user(case: &Exchange) -> bool {
+	!case.earlier
+		&& (case.question.as_ref().is_some_and(|question| question.pending)
+			|| case.state == "Decision")
+}
+
+fn entry_needs_user(entry: &super::Entry) -> bool {
+	entry.request.is_some() || ["Decision needed", "Answer needed"].contains(&entry.label.as_str())
+}
+
+fn collaboration_section_heading(label: String, attention: bool) -> Div {
+	gpui::div()
+		.text_size(gpui::px(ui_theme::NAVIGATION_TITLE_SIZE))
+		.font_weight(FontWeight::MEDIUM)
+		.text_color(ui_theme::rgb(if attention { ui_theme::WARNING } else { PRIMARY }))
+		.child(label)
+}
+
+fn collaboration_heading() -> impl IntoElement {
+	gpui::div()
+		.id("workbench-heading")
+		.flex()
+		.flex_col()
+		.gap(gpui::px(3.))
+		.role(Role::Heading)
+		.aria_level(2)
+		.aria_label("Collaboration across chats")
+		.px(gpui::px(4.))
+		.pt(gpui::px(3.))
+		.pb(gpui::px(9.))
+		.text_size(gpui::px(11.5))
+		.font_weight(FontWeight::MEDIUM)
+		.child(
+			gpui::div()
+				.text_size(gpui::px(13.))
+				.text_color(ui_theme::rgb(PRIMARY))
+				.child("Collaboration"),
+		)
+		.child(
+			gpui::div()
+				.text_size(gpui::px(10.5))
+				.text_color(ui_theme::rgb(SECONDARY))
+				.child("Across chats"),
+		)
+}

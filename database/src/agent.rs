@@ -25,6 +25,12 @@ use crate::{
 	projects,
 };
 
+enum CreationRole {
+	Agent,
+	Assistant,
+	Topic(String),
+}
+
 /// Recovery checks have separate lifecycles; model refresh does not block chat input.
 #[derive(Clone, Copy)]
 pub enum AgentRecoveryKind {
@@ -125,14 +131,16 @@ impl SqliteStore {
 			let tx = connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(error::sqlite_error)?;
 			let Some(work) = tx.query_row("SELECT * FROM agent_work_items WHERE id=?1", [&id], work_row).optional().map_err(error::sqlite_error)? else { return Ok(()); };
 
-			if work.parent_goal_id.is_none() || work.codex_thread_id.is_some() || work.dispatch_state != AgentDispatchState::Idle || work.active_turn_id.is_some() || work.next_check_at_micros.is_some() {
+			let personal_topic = crate::assistant::topic_owner(&tx, &id)?.is_some_and(|owner| owner != id);
+			if (work.parent_goal_id.is_none() && !personal_topic) || work.codex_thread_id.is_some() || work.dispatch_state != AgentDispatchState::Idle || work.active_turn_id.is_some() || work.next_check_at_micros.is_some() {
 				return Err(StoreError::InvalidInput("only an unused local draft can be discarded"));
 			}
 
-			let referenced: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM agent_work_items WHERE parent_goal_id=?1 UNION ALL SELECT 1 FROM agent_inbox_events WHERE work_item_id=?1 UNION ALL SELECT 1 FROM agent_dependencies WHERE work_item_id=?1 OR depends_on_id=?1 UNION ALL SELECT 1 FROM agent_thread_revisions WHERE work_id=?1 UNION ALL SELECT 1 FROM agent_prompt_inputs WHERE work_item_id=?1 UNION ALL SELECT 1 FROM agent_prompt_input_chunks WHERE work_item_id=?1)", [&id], |row| row.get(0)).map_err(error::sqlite_error)?;
+			let referenced: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM agent_work_items WHERE parent_goal_id=?1 UNION ALL SELECT 1 FROM agent_inbox_events WHERE work_item_id=?1 AND event_kind NOT IN('assistant_internal_topic','assistant_internal_export_boundary','assistant_internal_refresh','assistant_internal_memory_health') UNION ALL SELECT 1 FROM agent_dependencies WHERE work_item_id=?1 OR depends_on_id=?1 UNION ALL SELECT 1 FROM agent_thread_revisions WHERE work_id=?1 UNION ALL SELECT 1 FROM agent_prompt_inputs WHERE work_item_id=?1 UNION ALL SELECT 1 FROM agent_prompt_input_chunks WHERE work_item_id=?1)", [&id], |row| row.get(0)).map_err(error::sqlite_error)?;
 
 			if referenced { return Err(StoreError::InvalidInput("the local draft contains work or references")); }
 
+			tx.execute("DELETE FROM agent_inbox_events WHERE work_item_id=?1", [&id]).map_err(error::sqlite_error)?;
 			tx.execute("DELETE FROM agent_root_settings WHERE root_id=?1", [&id]).map_err(error::sqlite_error)?;
 			tx.execute("DELETE FROM agent_tool_versions WHERE work_id=?1", [&id]).map_err(error::sqlite_error)?;
 			tx.execute("DELETE FROM agents WHERE id=?1", [&id]).map_err(error::sqlite_error)?;
@@ -297,7 +305,8 @@ impl SqliteStore {
 		&self,
 		item: AgentWorkItem,
 	) -> Result<AgentWorkItem, StoreError> {
-		self.create_agent_work_record(item, false, None, Vec::new(), None, false).await
+		self.create_agent_work_record(item, false, None, Vec::new(), None, CreationRole::Agent)
+			.await
 	}
 
 	/// Publish new work and all its dispatch prerequisites in one transaction.
@@ -306,7 +315,8 @@ impl SqliteStore {
 		item: AgentWorkItem,
 		depends_on: Vec<String>,
 	) -> Result<AgentWorkItem, StoreError> {
-		self.create_agent_work_record(item, false, None, depends_on, None, false).await
+		self.create_agent_work_record(item, false, None, depends_on, None, CreationRole::Agent)
+			.await
 	}
 
 	/// Create an executable manager in its parent conversation workspace.
@@ -318,7 +328,7 @@ impl SqliteStore {
 			return Err(StoreError::InvalidInput("manager must be a goal"));
 		}
 
-		self.create_agent_work_record(item, true, None, Vec::new(), None, false).await
+		self.create_agent_work_record(item, true, None, Vec::new(), None, CreationRole::Agent).await
 	}
 
 	/// Publish an idle Assistant and its role together without submitting model work.
@@ -331,7 +341,34 @@ impl SqliteStore {
 				"Assistant setup requires an idle independent Agent",
 			));
 		}
-		self.create_agent_work_record(item, true, None, Vec::new(), None, true).await
+		self.create_agent_work_record(item, true, None, Vec::new(), None, CreationRole::Assistant)
+			.await
+	}
+
+	/// Publish a fresh personal topic without starting native execution.
+	pub async fn create_assistant_topic(
+		&self,
+		item: AgentWorkItem,
+		owner: String,
+	) -> Result<AgentWorkItem, StoreError> {
+		if item.id == owner
+			|| item.parent_goal_id.is_some()
+			|| item.kind != AgentWorkKind::Goal
+			|| item.status != AgentWorkStatus::Wait
+		{
+			return Err(StoreError::InvalidInput(
+				"Assistant topic requires an idle independent conversation",
+			));
+		}
+		self.create_agent_work_record(
+			item,
+			true,
+			None,
+			Vec::new(),
+			None,
+			CreationRole::Topic(owner),
+		)
+		.await
 	}
 
 	/// Publish a user conversation and its first message in one transaction.
@@ -348,7 +385,15 @@ impl SqliteStore {
 			return Err(StoreError::InvalidInput("conversation requires its first user message"));
 		}
 
-		self.create_agent_work_record(item, true, workspace, Vec::new(), Some(input), false).await
+		self.create_agent_work_record(
+			item,
+			true,
+			workspace,
+			Vec::new(),
+			Some(input),
+			CreationRole::Agent,
+		)
+		.await
 	}
 
 	/// A delegated persistent Agent keeps application-origin input and its user decision.
@@ -365,7 +410,15 @@ impl SqliteStore {
 		{
 			return Err(StoreError::InvalidInput("invalid persistent Agent delegation"));
 		}
-		self.create_agent_work_record(item, true, workspace, Vec::new(), Some(input), false).await
+		self.create_agent_work_record(
+			item,
+			true,
+			workspace,
+			Vec::new(),
+			Some(input),
+			CreationRole::Agent,
+		)
+		.await
 	}
 
 	async fn create_agent_work_record(
@@ -375,8 +428,9 @@ impl SqliteStore {
 		workspace: Option<String>,
 		depends_on: Vec<String>,
 		initial_input: Option<EnqueueAgentEvent>,
-		assistant: bool,
+		role: CreationRole,
 	) -> Result<AgentWorkItem, StoreError> {
+		let assistant = matches!(role, CreationRole::Assistant);
 		bounded(&item.id, 512)?;
 		bounded(&item.title, 1_024)?;
 		bounded(&item.instructions, 65_536)?;
@@ -419,6 +473,10 @@ impl SqliteStore {
 				}
 			}
 			if work_exists(&transaction, &item.id)? {
+				if let CreationRole::Topic(owner) = &role
+					&& crate::assistant::topic_owner(&transaction, &item.id)?.as_ref() == Some(owner) {
+					return read_work(&transaction, &item.id);
+				}
 				if assistant && transaction.query_row("SELECT EXISTS(SELECT 1 FROM agents WHERE id=?1 AND assistant=1)", [&item.id], |r| r.get::<_,bool>(0)).map_err(error::sqlite_error)? {
 					return read_work(&transaction, &item.id);
 				}
@@ -462,6 +520,9 @@ impl SqliteStore {
 				transaction.execute("UPDATE agents SET assistant=0 WHERE assistant=1", []).map_err(error::sqlite_error)?;
 			}
 			if manager || item.parent_goal_id.is_none() { transaction.execute("INSERT INTO agents(id,assistant) VALUES(?1,?2)", rusqlite::params![item.id,assistant]).map_err(error::sqlite_error)?; }
+			if let CreationRole::Topic(owner) = &role {
+				crate::assistant::register_topic(&transaction, &item.id, owner)?;
+			}
 
             if let Some(workspace) = workspace {
                 transaction.execute("INSERT INTO project_agents(agent_id,project_id) VALUES(?1,?2)",rusqlite::params![item.id,workspace]).map_err(error::sqlite_error)?;

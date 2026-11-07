@@ -1,8 +1,10 @@
 //! Assistant records reuse the indexed Inbox journal. Native actions have separate receipts.
+#[path = "assistant_topics.rs"] mod topics;
 use decodex_core::assistant::{AssistantCommand, AssistantSettings, AssistantState, AssistantWake};
 use rusqlite::{Connection, OptionalExtension as _, Transaction, TransactionBehavior};
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
+pub(crate) use topics::{owner as topic_owner, register as register_topic};
 
 use crate::{DatabaseError, EnqueueAgentEvent, SqliteStore, StoreError, agent, error};
 
@@ -56,14 +58,7 @@ fn record(
 	Ok(())
 }
 pub(crate) fn require_assistant(c: &Connection, owner: &str) -> Result<(), StoreError> {
-	if !c
-		.query_row(
-			"SELECT EXISTS(SELECT 1 FROM agents WHERE id=?1 AND assistant=1)",
-			[owner],
-			|r| r.get::<_, bool>(0),
-		)
-		.map_err(error::sqlite_error)?
-	{
+	if topics::owner(c, owner)?.is_none() {
 		return Err(invalid());
 	}
 	Ok(())
@@ -95,7 +90,8 @@ pub(crate) fn authority(c: &Connection, owner: &str, event: i64) -> Result<(), S
 	Ok(())
 }
 pub(crate) fn settings(c: &Connection, owner: &str) -> Result<AssistantSettings, StoreError> {
-	current(c, owner, "assistant_internal_settings", "settings")?
+	let owner = topics::owner(c, owner)?.unwrap_or_else(|| owner.into());
+	current(c, &owner, "assistant_internal_settings", "settings")?
 		.map(|v| serde_json::from_value(v["value"].clone()).map_err(|_| invalid()))
 		.transpose()
 		.map(|s| s.unwrap_or_default())
@@ -124,33 +120,35 @@ fn configure(
 		}
 	}
 	let before = settings(tx, owner)?;
-	if before.ragflow.as_ref().map(|r| (&r.url, &r.memory_id, &r.user_id))
-		!= s.ragflow.as_ref().map(|r| (&r.url, &r.memory_id, &r.user_id))
-	{
-		record(
-			tx,
-			owner,
-			&format!("{receipt}:memory-health"),
-			"assistant_internal_memory_health",
-			json!({"id":"health","value":null}),
-		)?;
-	}
-	let export = s.ragflow.as_ref().filter(|r| r.ingest_chats);
-	if export.is_some()
-		&& before
-			.ragflow
-			.as_ref()
-			.filter(|r| r.ingest_chats)
-			.map(|r| (&r.url, &r.memory_id, &r.user_id))
-			!= export.map(|r| (&r.url, &r.memory_id, &r.user_id))
-	{
-		record(
-			tx,
-			owner,
-			&format!("{receipt}:export"),
-			"assistant_internal_export_boundary",
-			json!({"enabled":true}),
-		)?;
+	for topic in std::iter::once(owner.to_owned()).chain(topics::ids(tx, owner)?) {
+		if before.ragflow.as_ref().map(|r| (&r.url, &r.memory_id, &r.user_id))
+			!= s.ragflow.as_ref().map(|r| (&r.url, &r.memory_id, &r.user_id))
+		{
+			record(
+				tx,
+				&topic,
+				&format!("{receipt}:memory-health:{topic}"),
+				"assistant_internal_memory_health",
+				json!({"id":"health","value":null}),
+			)?;
+		}
+		let export = s.ragflow.as_ref().filter(|r| r.ingest_chats);
+		if export.is_some()
+			&& before
+				.ragflow
+				.as_ref()
+				.filter(|r| r.ingest_chats)
+				.map(|r| (&r.url, &r.memory_id, &r.user_id))
+				!= export.map(|r| (&r.url, &r.memory_id, &r.user_id))
+		{
+			record(
+				tx,
+				&topic,
+				&format!("{receipt}:export:{topic}"),
+				"assistant_internal_export_boundary",
+				json!({"enabled":true}),
+			)?;
+		}
 	}
 	Ok(())
 }
@@ -174,7 +172,7 @@ impl SqliteStore {
 			let previous=c.prepare("SELECT old_thread_id FROM agent_thread_revisions WHERE work_id=?1 ORDER BY created_at_micros DESC,rowid DESC").map_err(error::sqlite_error)?.query_map([&owner],|r|r.get(0)).map_err(error::sqlite_error)?.collect::<Result<_,_>>().map_err(error::sqlite_error)?;
 			let pending=c.query_row("SELECT EXISTS(SELECT 1 FROM agent_inbox_events e JOIN agent_work_items w ON w.id=e.work_item_id WHERE w.id=?1 AND e.source_event_id=json_array('assistant_internal_context',w.id,w.codex_thread_id))",[&owner],|r|r.get(0)).map_err(error::sqlite_error)?;
 			let memory_status=current(c,&owner,"assistant_internal_memory_health","health")?.and_then(|v|v["value"].as_str().map(str::to_owned));
-			Ok(AssistantState {settings:settings(c,&owner)?,teams:records(c,&owner,"assistant_internal_team")?,wakes:records(c,&owner,"assistant_internal_wake")?,previous_thread_ids:previous,context_pending:pending,memory_status,agent_id:Some(owner)})
+			Ok(AssistantState {topic_ids:topics::ids(c,&owner)?,settings:settings(c,&owner)?,teams:records(c,&owner,"assistant_internal_team")?,wakes:records(c,&owner,"assistant_internal_wake")?,previous_thread_ids:previous,context_pending:pending,memory_status,agent_id:Some(owner)})
 		}).await
 	}
 
@@ -205,6 +203,11 @@ impl SqliteStore {
 				.transaction_with_behavior(TransactionBehavior::Immediate)
 				.map_err(error::sqlite_error)?;
 			require_assistant(&tx, &owner)?;
+			let state_owner = if matches!(command, AssistantCommand::RefreshContext) {
+				owner.clone()
+			} else {
+				topics::owner(&tx, &owner)?.ok_or_else(invalid)?
+			};
 			let receipt = json!(["assistant_internal_command", owner, key]).to_string();
 			let encoded = json!({"id":key,"command":command});
 			let prior = tx
@@ -224,7 +227,7 @@ impl SqliteStore {
 			}
 			let (kind, id, value) = match &command {
 				AssistantCommand::Configure { settings: s } => {
-					configure(&tx, &owner, &receipt, s, user)?;
+					configure(&tx, &state_owner, &receipt, s, user)?;
 					("assistant_internal_settings", "settings".to_owned(), json!(s))
 				},
 				AssistantCommand::SetMandate { text, authority_event_id } => {
@@ -297,15 +300,15 @@ impl SqliteStore {
 				&command,
 				AssistantCommand::Configure { .. } | AssistantCommand::SetMandate { .. }
 			) {
-				record(
-					&tx,
-					&owner,
-					&format!("{receipt}:refresh"),
-					"assistant_internal_refresh",
-					json!({"id":"refresh","value":true}),
-				)?;
+				topics::refresh(&tx, &state_owner, &receipt)?;
 			}
-			record(&tx, &owner, &format!("{receipt}:state"), kind, json!({"id":id,"value":value}))?;
+			record(
+				&tx,
+				&state_owner,
+				&format!("{receipt}:state"),
+				kind,
+				json!({"id":id,"value":value}),
+			)?;
 			record(&tx, &owner, &receipt, "assistant_internal_command", encoded)?;
 			tx.commit().map_err(error::sqlite_error)?;
 			Ok(())

@@ -658,6 +658,9 @@ impl AgentSurface {
 		};
 
 		for item in work {
+			if self.is_assistant_conversation(&item.id) {
+				continue;
+			}
 			if let Some(thread) = &item.codex_thread_id {
 				seen.insert(thread.clone());
 			}

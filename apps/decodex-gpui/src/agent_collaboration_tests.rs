@@ -30,6 +30,60 @@ impl Render for WireView {
 	}
 }
 
+#[gpui::test]
+fn attention_counts_only_live_user_requests_and_survives_panel_collapse(cx: &mut TestAppContext) {
+	let surface = cx.new(AgentSurface::new);
+	surface.update(cx, |s, cx| {
+		s.visual_workspace_fixture(cx);
+		s.visual_workbench_page("workbench", cx);
+		for work in &mut s.snapshot.as_mut().unwrap().work_items {
+			work.status = decodex_protocol::AgentWorkStatusDto::Open;
+		}
+		s.snapshot.as_mut().unwrap().pending_events.clear();
+		for brief in s.work_board.briefs.values_mut() {
+			brief.question = None;
+		}
+		s.work_board.collaboration = Default::default();
+		assert_eq!(
+			s.collaboration_attention_count(),
+			0,
+			"returned results and dependencies belong to Agents"
+		);
+		s.snapshot.as_mut().unwrap().pending_events.push(decodex_protocol::AgentPendingEventDto {
+			id: 999,
+			source_event_id: "permission-999".into(),
+			work_item_id: "agent".into(),
+			event_kind: "permission_pending".into(),
+			created_at_micros: 1,
+			delivery_claimed: false,
+		});
+		assert_eq!(s.collaboration_attention_count(), 1);
+		s.work_board.collaboration.questions.push(AgentExchangeQuestionDto {
+			work_id: "sage".into(),
+			thread_id: "ref-sage".into(),
+			turn_id: "turn".into(),
+			item_id: "item".into(),
+			question: AgentAsyncQuestionDto {
+				id: "question".into(),
+				title: "Which criteria?".into(),
+				options: vec![],
+				arrived_live: false,
+			},
+			pending: true,
+			answer: None,
+		});
+		assert_eq!(s.collaboration_attention_count(), 2);
+		s.toggle_agent_tree(cx);
+		assert_eq!(
+			s.collaboration_attention_count(),
+			2,
+			"collapsing the panel does not hide pending work"
+		);
+		s.work_board.collaboration.questions[0].pending = false;
+		assert_eq!(s.collaboration_attention_count(), 1);
+	});
+}
+
 fn review_capture(completed: bool) -> crate::shell::agent_surface::work_board::review::Capture {
 	use serde_json::json;
 	let item = |turn: &str, id: &str, kind: &str, text: &str, review| {
@@ -732,6 +786,7 @@ fn answered_question_retains_reply_sources_without_claiming_resolution(cx: &mut 
 		let case = cases.iter().find(|c| c.id.starts_with("question:")).unwrap();
 
 		assert_eq!(case.state, "Answered");
+		assert!(!super::needs_user(case));
 		assert!(case.steps.iter().any(|(label, text)| *label == "Answer" && text == "Use Maple"));
 		assert!(
 			case.steps

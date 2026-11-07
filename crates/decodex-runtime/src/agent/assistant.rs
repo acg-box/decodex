@@ -39,9 +39,12 @@ impl AgentCoordinator {
 			return Ok(None);
 		}
 		let query: String = query.chars().take(2_048).collect();
+		let Some(memory_owner) = self.store.assistant_owner(item.id.clone()).await? else {
+			return Ok(None);
+		};
 		let recall = tokio::time::timeout(
 			std::time::Duration::from_secs(5),
-			crate::ragflow::recall(&item.id, &connection, &query),
+			crate::ragflow::recall(&memory_owner, &connection, &query),
 		)
 		.await;
 		let evidence = match recall {

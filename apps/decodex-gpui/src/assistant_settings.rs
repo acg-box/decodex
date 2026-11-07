@@ -100,8 +100,38 @@ impl AgentSurface {
 		);
 	}
 
-	fn assistant_id(&self) -> Option<String> {
+	pub(super) fn assistant_id(&self) -> Option<String> {
 		self.snapshot.as_ref()?.agents.iter().find(|a| a.assistant).map(|a| a.id.clone())
+	}
+
+	pub(super) fn is_assistant_conversation(&self, id: &str) -> bool {
+		self.snapshot.as_ref().is_some_and(|s| {
+			s.assistant.agent_id.as_deref() == Some(id)
+				|| s.assistant.topic_ids.iter().any(|topic| topic == id)
+		})
+	}
+
+	pub(super) fn new_assistant_conversation(&mut self, cx: &mut Context<Self>) {
+		let Some(assistant) = self.assistant_id() else {
+			self.open_assistant(cx);
+			return;
+		};
+		if self.sending || self.uncertain {
+			return;
+		}
+		let id = self
+			.workspace
+			.assistant_open
+			.get_or_insert_with(|| format!("assistant-topic-{}", super::unique_command()))
+			.clone();
+		self.execute(
+			AgentActionDto::CreateAssistantTopic {
+				assistant_id: EntityId::new(assistant).expect("saved Assistant identity"),
+				topic_id: EntityId::new(id).expect("generated topic identity"),
+			},
+			None,
+			cx,
+		);
 	}
 
 	pub(crate) fn ragflow_component_state(&self) -> ComponentState {

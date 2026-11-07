@@ -3091,6 +3091,8 @@ fn topbar_controls(
 }
 
 fn agent_panel_control(shell: &Shell, index: usize, cx: &Context<Shell>) -> AnyElement {
+	let attention =
+		if index == 2 { shell.agent.read(cx).collaboration_attention_count() } else { 0 };
 	let (active, enabled) = if index == 0 && shell.selected != Destination::Agent {
 		(shell.left_sidebar_visible, true)
 	} else {
@@ -3099,7 +3101,7 @@ fn agent_panel_control(shell: &Shell, index: usize, cx: &Context<Shell>) -> AnyE
 	let label = match (index, enabled) {
 		(0, _) => "Toggle sidebar (Command-E)",
 		(1, true) => "Toggle Dock (Command-J)",
-		(2, _) => "Toggle work activity (Command-B)",
+		(2, _) => "Toggle collaboration (Command-B)",
 		(1, false) => "Dock unavailable",
 		_ => "Panel unavailable",
 	};
@@ -3113,6 +3115,9 @@ fn agent_panel_control(shell: &Shell, index: usize, cx: &Context<Shell>) -> AnyE
 		.aria_expanded(active)
 		.tooltip(move |_, cx| cx.new(|_| ControlTooltip(label)).into())
 		.size(gpui::px(CHROME_CONTROL_SIZE))
+		.when(index == 2, |control| {
+			control.w(gpui::px(if attention > 0 { 142. } else { 120. })).px_2().gap(gpui::px(5.))
+		})
 		.rounded(gpui::px(5.0))
 		.flex()
 		.items_center()
@@ -3166,6 +3171,13 @@ fn agent_panel_control(shell: &Shell, index: usize, cx: &Context<Shell>) -> AnyE
 				.opacity(if active { 1. } else { 0.55 })
 				.child(AgentSurface::panel_glyph(index)),
 		)
+		.when(index == 2, |control| {
+			control.child(gpui::div().text_size(gpui::px(11.)).child(if attention > 0 {
+				format!("Collaboration ({attention})")
+			} else {
+				"Collaboration".into()
+			}))
+		})
 		.smooth()
 		.enabled(enabled)
 		.into_any_element()

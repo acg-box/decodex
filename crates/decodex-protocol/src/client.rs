@@ -3863,6 +3863,7 @@ impl<T> CompletedOneShot<T> {
 
 fn agent_action_work_id(action: &AgentActionDto) -> &EntityId {
 	match action {
+		AgentActionDto::CreateAssistantTopic { topic_id, .. } => topic_id,
 		AgentActionDto::CreateAssistant { agent_id }
 		| AgentActionDto::ManageAssistant { agent_id, .. } => agent_id,
 		AgentActionDto::ManageWork { agent_id, .. } => agent_id,

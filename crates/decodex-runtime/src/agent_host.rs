@@ -1998,6 +1998,7 @@ impl AgentHost {
 			action @ (AgentActionDto::GenerateSample { .. }
 			| AgentActionDto::CancelSample { .. }) => self.handle_sample(&key, action).await,
 			action @ (AgentActionDto::CreateAssistant { .. }
+			| AgentActionDto::CreateAssistantTopic { .. }
 			| AgentActionDto::AddProject { .. }
 			| AgentActionDto::DiscardEmptyWork { .. }
 			| AgentActionDto::NewConversation { .. }) =>
@@ -2187,6 +2188,21 @@ impl AgentHost {
 					*active = self.restore().await;
 				}
 				Ok(agent_id.as_str().into())
+			},
+			AgentActionDto::CreateAssistantTopic { assistant_id, topic_id } => {
+				let now = now();
+				self.store.create_assistant_topic(decodex_database::AgentWorkItem {
+					id: topic_id.as_str().into(), parent_goal_id: None,
+					kind: decodex_database::AgentWorkKind::Goal, title: "New conversation".into(),
+					instructions: "Help the user as their personal Assistant. This conversation is a fresh topic; use shared personal Memory for relevant continuity.".into(),
+					codex_thread_id: None, status: decodex_database::AgentWorkStatus::Wait,
+					dispatch_state: decodex_database::AgentDispatchState::Idle, active_turn_id: None,
+					next_check_at_micros: None, created_at_micros: now, updated_at_micros: now,
+				}, assistant_id.as_str().into()).await.map_err(|_| "Assistant conversation could not be created")?;
+				if active.is_none() {
+					*active = self.restore().await;
+				}
+				Ok(topic_id.as_str().into())
 			},
 			AgentActionDto::DiscardEmptyWork { work_id } => {
 				self.store

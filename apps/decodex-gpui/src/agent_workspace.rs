@@ -535,90 +535,7 @@ impl AgentSurface {
 	}
 
 	pub(super) fn workspace_sidebar(&self, cx: &mut Context<Self>) -> AnyElement {
-		let mut panel = gpui::div()
-			.id("agent-sidebar")
-			.w_full()
-			.min_w_0()
-			.relative()
-			.h_full()
-			.flex()
-			.flex_col()
-			.px(gpui::px(6.))
-			.pb(gpui::px(CONTROL_MARGIN))
-			.pt(gpui::px(WORKSPACE_GUTTER))
-			.gap_1();
-
-		panel = panel
-			.child(self.work_navigation(
-				"personal-assistant",
-				"Assistant",
-				workspace_symbols::Symbol::TeamMembers,
-				|s, cx| s.open_assistant(cx),
-				cx,
-			))
-			.child(self.work_navigation(
-				"new-conversation",
-				"New Agent",
-				workspace_symbols::Symbol::Plus,
-				|s, cx| s.new_work_conversation(cx),
-				cx,
-			))
-			.child(self.workspace_tabs(cx))
-			.child(gpui::div().flex_1())
-			.child(self.work_navigation(
-				"project-work",
-				"Work",
-				workspace_symbols::Symbol::AllWork,
-				|s, cx| {
-					s.cancel_dictation(cx);
-
-					s.workspace.portfolio_mode = true;
-					s.workspace.guardian_open = false;
-					s.workspace.browsing = true;
-					s.workspace.archives.open = false;
-
-					cx.notify();
-				},
-				cx,
-			))
-			.child(self.work_navigation(
-				"global-guardian",
-				"Guardian",
-				workspace_symbols::Symbol::Shield,
-				|s, cx| {
-					s.workspace.guardian_open = true;
-					s.workspace.browsing = true;
-					s.workspace.archives.open = false;
-
-					cx.notify();
-				},
-				cx,
-			))
-			.child(self.work_navigation(
-				"all-work",
-				"Agents",
-				workspace_symbols::Symbol::TeamMembers,
-				|s, cx| {
-					s.cancel_dictation(cx);
-
-					s.workspace.portfolio_mode = false;
-					s.workspace.guardian_open = false;
-					s.workspace.browsing = true;
-					s.workspace.archives.open = false;
-
-					cx.notify();
-				},
-				cx,
-			))
-			.child(self.work_navigation(
-				"archive-browser",
-				"Archive",
-				workspace_symbols::Symbol::Archive,
-				|s, cx| s.open_archive_catalog(cx),
-				cx,
-			));
-
-		panel.into_any_element()
+		self.render_navigation_sidebar(cx)
 	}
 
 	pub(super) fn conversation_pages(&self) -> Vec<(String, String, bool)> {
@@ -684,12 +601,7 @@ impl AgentSurface {
 	pub(super) fn workspace_tabs(&self, cx: &mut Context<Self>) -> AnyElement {
 		let mut list = Self::conversation_tab_list();
 
-		for (id, label, closable) in self.conversation_pages() {
-			if self.snapshot.as_ref().is_some_and(|snapshot| {
-				self.workspace.attached.family_root(&id, snapshot).is_some_and(|root| root != id)
-			}) {
-				continue;
-			}
+		for (id, label, closable) in self.project_conversation_pages() {
 			let active = !self.workspace.browsing
 				&& (self.conversation_page().as_ref() == Some(&id)
 					|| (!closable && self.selected.is_none()));
@@ -731,12 +643,12 @@ impl AgentSurface {
 						s.workspace.preview_page = None;
 					}
 
-					s.open_page(&row_select, cx);
+					s.open_navigation_conversation(&row_select, cx);
 				}))
 				.on_key_down(cx.listener(move |s, event: &KeyDownEvent, _, cx| {
 					if !event.is_held && ["enter", "space"].contains(&event.keystroke.key.as_str())
 					{
-						s.open_page(&keyboard_select, cx);
+						s.open_navigation_conversation(&keyboard_select, cx);
 						cx.stop_propagation();
 					}
 				}))
@@ -1134,6 +1046,7 @@ impl AgentSurface {
 
 	pub(super) fn selected_is_agent(&self) -> bool {
 		self.is_new_conversation()
+			|| self.selected.as_deref().is_some_and(|id| self.is_assistant_conversation(id))
 			|| self.selected.is_none()
 			|| self.selected == self.root_id()
 			|| self.snapshot.as_ref().is_some_and(|snapshot| {
@@ -1320,6 +1233,9 @@ impl AgentSurface {
 		choose_workspace: bool,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
+		let personal =
+			self.selected.as_deref().is_some_and(|id| self.is_assistant_conversation(id));
+		let heading = if personal { "What’s next?" } else { "What would you like to do?" };
 		gpui::div()
 			.debug_selector(|| "conversation-start".into())
 			.flex_1()
@@ -1335,10 +1251,18 @@ impl AgentSurface {
 					.id("conversation-start-heading")
 					.debug_selector(|| "conversation-start-heading".into())
 					.role(Role::Heading)
-					.aria_label("What would you like to do?")
+					.aria_label(heading)
 					.text_size(gpui::px(20.))
-					.child("What would you like to do?"),
+					.child(heading),
 			)
+			.when(personal, |prompt| {
+				prompt.child(
+					gpui::div()
+						.text_size(gpui::px(12.))
+						.text_color(ui_theme::rgb(TEXT_MUTED))
+						.child("A new topic, with the same Assistant."),
+				)
+			})
 			.when(choose_workspace, |prompt| {
 				prompt.child(
 					gpui::div()
@@ -1471,7 +1395,33 @@ impl AgentSurface {
 					.justify_between()
 					.text_size(gpui::px(CAPTION_SIZE))
 					.text_color(crate::ui_theme::rgb(TEXT_MUTED))
-					.child(self.conversation_tab_bar(cx))
+					.child(
+						gpui::div()
+							.flex_1()
+							.min_w_0()
+							.flex()
+							.items_center()
+							.gap_2()
+							.child(
+								gpui::div()
+									.flex_none()
+									.text_color(ui_theme::rgb(TEXT_MUTED))
+									.text_size(gpui::px(11.))
+									.child(
+										if self
+											.selected
+											.as_deref()
+											.is_some_and(|id| self.is_assistant_conversation(id))
+										{
+											"My Assistant"
+										} else {
+											"Project Agent"
+										},
+									),
+							)
+							.child(self.conversation_tab_bar(cx))
+							.children(self.navigation_work_context()),
+					)
 					.child(gpui::div().flex().items_center().gap_2().child(
 						self.panel_controls(super::panel_controls::Panel::Conversation, cx),
 					)),
@@ -2345,6 +2295,7 @@ impl AgentSurface {
 			},
 			"workbench" | "workbench-agent" | "workbench-history" | "workbench-split" =>
 				self.visual_workbench_page(page, cx),
+			"assistant-workspace" => self.visual_personal_navigation(cx),
 			"factory" | "relations" | "relations-resource" => {
 				self.work_board.graph = false;
 				self.workspace.graph_expanded = true;
@@ -2533,6 +2484,7 @@ impl AgentSurface {
 
 	/// Explicit capture fixture. Never installed by the normal application path.
 	pub(crate) fn visual_workspace_fixture(&mut self, cx: &mut Context<Self>) {
+		self.workspace.graph_visible = true;
 		self.service_tier = Some(decodex_protocol::ServiceTier::priority());
 		self.work_board.graph = true;
 
@@ -3825,6 +3777,7 @@ mod tests {
 
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
+			s.workspace.graph_visible = false;
 
 			s.state = LoadState::Loading;
 
