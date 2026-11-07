@@ -127,7 +127,10 @@ impl AgentSurface {
 			.flex_col()
 			.gap_1();
 		if self.workspace.navigation.confirm_delete {
-			let explanation = if self.is_assistant_conversation(id) {
+			let draft = work.codex_thread_id.is_none();
+			let explanation = if draft {
+				"Discard this unsent draft? No native conversation has started."
+			} else if self.is_assistant_conversation(id) {
 				"Conversation history will be removed. Learned Memory stays."
 			} else {
 				"Conversation history will be permanently removed."
@@ -137,7 +140,7 @@ impl AgentSurface {
 			menu = menu.child(self.navigation_menu_action(
 				id,
 				"delete",
-				"Delete permanently",
+				if draft { "Discard draft" } else { "Delete permanently" },
 				Symbol::Trash,
 				cx,
 			));
