@@ -123,7 +123,17 @@ impl AgentSurface {
 		let Some(selected) = self.conversation_page() else { return Vec::new() };
 		let Some(snapshot) = &self.snapshot else { return Vec::new() };
 		let root = self.workspace.attached.family_root(&selected, snapshot).unwrap_or(&selected);
-		let mut tabs = vec![Tab { id: root.into(), label: "Main".into(), closable: false }];
+		let label = if self.is_assistant_conversation(root) {
+			snapshot
+				.work_items
+				.iter()
+				.find(|work| work.id == root)
+				.map(|work| self.assistant_conversation_label(work))
+				.unwrap_or_else(|| "Conversation".into())
+		} else {
+			"Main".into()
+		};
+		let mut tabs = vec![Tab { id: root.into(), label, closable: false }];
 		if self.workspace.attached.family_root(&selected, snapshot).is_none() {
 			return tabs;
 		}

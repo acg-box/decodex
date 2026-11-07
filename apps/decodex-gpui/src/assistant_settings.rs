@@ -100,8 +100,86 @@ impl AgentSurface {
 		);
 	}
 
-	fn assistant_id(&self) -> Option<String> {
-		self.snapshot.as_ref()?.agents.iter().find(|a| a.assistant).map(|a| a.id.clone())
+	pub(super) fn assistant_id(&self) -> Option<String> {
+		self.snapshot.as_ref()?.assistant.agent_id.clone()
+	}
+
+	pub(super) fn is_assistant_conversation(&self, id: &str) -> bool {
+		self.snapshot.as_ref().is_some_and(|s| {
+			s.assistant.agent_id.as_deref() == Some(id)
+				|| s.assistant.topic_ids.iter().any(|topic| topic == id)
+				|| s.assistant.retired_topic_ids.iter().any(|topic| topic == id)
+		})
+	}
+
+	pub(super) fn assistant_conversation_label(
+		&self,
+		work: &decodex_protocol::AgentWorkItemDto,
+	) -> String {
+		let untitled = self.snapshot.as_ref().is_some_and(|snapshot| {
+			snapshot.assistant.agent_id.as_ref() == Some(&work.id)
+				&& work.title == "Assistant"
+				&& work
+					.codex_thread_id
+					.as_ref()
+					.is_none_or(|thread| !snapshot.conversation_titles.contains_key(thread))
+		});
+		if work.codex_thread_id.is_none() && (untitled || work.title == "New conversation") {
+			"New topic".into()
+		} else if untitled {
+			"General".into()
+		} else {
+			self.conversation_label(work)
+		}
+	}
+
+	pub(super) fn new_assistant_conversation(&mut self, cx: &mut Context<Self>) {
+		let Some(assistant) = self.assistant_id() else {
+			self.open_assistant(cx);
+			return;
+		};
+		if self.sending || self.uncertain {
+			return;
+		}
+		if let Some(id) = self.unstarted_assistant_topic() {
+			self.open_navigation_conversation(&id, cx);
+			return;
+		}
+		let id = self
+			.workspace
+			.assistant_open
+			.get_or_insert_with(|| format!("assistant-topic-{}", super::unique_command()))
+			.clone();
+		self.execute(
+			AgentActionDto::CreateAssistantTopic {
+				assistant_id: EntityId::new(assistant).expect("saved Assistant identity"),
+				topic_id: EntityId::new(id).expect("generated topic identity"),
+			},
+			None,
+			cx,
+		);
+	}
+
+	fn unstarted_assistant_topic(&self) -> Option<String> {
+		let snapshot = self.snapshot.as_ref()?;
+		self.selected
+			.iter()
+			.chain(snapshot.assistant.topic_ids.iter())
+			.chain(snapshot.assistant.agent_id.iter())
+			.find(|id| {
+				self.is_assistant_conversation(id)
+					&& self.send_previews(id).is_empty()
+					&& !snapshot.archived_work_ids.contains(*id)
+					&& !snapshot.pending_events.iter().any(|event| &event.work_item_id == *id)
+					&& snapshot.work_items.iter().any(|work| {
+						&work.id == *id
+							&& work.codex_thread_id.is_none()
+							&& work.active_turn_id.is_none()
+							&& work.dispatch_state == decodex_protocol::AgentDispatchStateDto::Idle
+							&& work.status == decodex_protocol::AgentWorkStatusDto::Wait
+					})
+			})
+			.cloned()
 	}
 
 	pub(crate) fn ragflow_component_state(&self) -> ComponentState {

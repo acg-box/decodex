@@ -204,7 +204,7 @@ impl SqliteStore {
 	pub async fn persistent_agents(&self) -> Result<Vec<(String, String)>, StoreError> {
 		self.run(|c| {
 			c.prepare(
-				"SELECT a.id,w.title FROM agents a JOIN agent_work_items w ON w.id=a.id ORDER BY a.id",
+				"SELECT a.id,w.title FROM agents a JOIN agent_work_items w ON w.id=a.id WHERE NOT EXISTS(SELECT 1 FROM agent_inbox_events t WHERE t.work_item_id=a.id AND t.event_kind='assistant_internal_topic') ORDER BY a.id",
 			)
 			.map_err(crate::error::sqlite_error)?
 			.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
@@ -227,7 +227,7 @@ impl SqliteStore {
 
 impl SqliteStore {
 	pub async fn agents(&self) -> Result<Vec<decodex_core::work::Agent>, StoreError> {
-		self.run(|c|c.prepare("SELECT a.id,w.title,w.codex_thread_id,a.assistant FROM agents a JOIN agent_work_items w ON w.id=a.id ORDER BY a.id").map_err(crate::error::sqlite_error)?.query_map([],|r|Ok(decodex_core::work::Agent{id:r.get(0)?,name:r.get(1)?,native_thread_id:r.get(2)?,assistant:r.get(3)?})).map_err(crate::error::sqlite_error)?.collect::<Result<_,_>>().map_err(|e|error::sqlite_error(e).into())).await
+		self.run(|c|c.prepare("SELECT a.id,w.title,w.codex_thread_id,a.assistant FROM agents a JOIN agent_work_items w ON w.id=a.id WHERE NOT EXISTS(SELECT 1 FROM agent_inbox_events t WHERE t.work_item_id=a.id AND t.event_kind='assistant_internal_topic') ORDER BY a.id").map_err(crate::error::sqlite_error)?.query_map([],|r|Ok(decodex_core::work::Agent{id:r.get(0)?,name:r.get(1)?,native_thread_id:r.get(2)?,assistant:r.get(3)?})).map_err(crate::error::sqlite_error)?.collect::<Result<_,_>>().map_err(|e|error::sqlite_error(e).into())).await
 	}
 
 	pub async fn set_assistant(&self, agent: String, enabled: bool) -> Result<(), StoreError> {
@@ -235,6 +235,9 @@ impl SqliteStore {
 			let tx = c.transaction().map_err(crate::error::sqlite_error)?;
 
 			if enabled {
+				if tx.query_row("SELECT EXISTS(SELECT 1 FROM agent_inbox_events WHERE work_item_id=?1 AND event_kind='assistant_internal_topic')",[&agent],|r|r.get::<_,bool>(0)).map_err(error::sqlite_error)? {
+					return Err(invalid("personal topics are not independent Agent identities"));
+				}
 				tx.execute("UPDATE agents SET assistant=0 WHERE assistant=1", [])
 					.map_err(crate::error::sqlite_error)?;
 			}

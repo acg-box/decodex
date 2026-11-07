@@ -3091,6 +3091,8 @@ fn topbar_controls(
 }
 
 fn agent_panel_control(shell: &Shell, index: usize, cx: &Context<Shell>) -> AnyElement {
+	let attention =
+		if index == 2 { shell.agent.read(cx).collaboration_attention_count() } else { 0 };
 	let (active, enabled) = if index == 0 && shell.selected != Destination::Agent {
 		(shell.left_sidebar_visible, true)
 	} else {
@@ -3099,7 +3101,7 @@ fn agent_panel_control(shell: &Shell, index: usize, cx: &Context<Shell>) -> AnyE
 	let label = match (index, enabled) {
 		(0, _) => "Toggle sidebar (Command-E)",
 		(1, true) => "Toggle Dock (Command-J)",
-		(2, _) => "Toggle work activity (Command-B)",
+		(2, _) => "Toggle collaboration (Command-B)",
 		(1, false) => "Dock unavailable",
 		_ => "Panel unavailable",
 	};
@@ -3166,6 +3168,25 @@ fn agent_panel_control(shell: &Shell, index: usize, cx: &Context<Shell>) -> AnyE
 				.opacity(if active { 1. } else { 0.55 })
 				.child(AgentSurface::panel_glyph(index)),
 		)
+		.when(index == 2 && attention > 0, |control| {
+			control.child(
+				gpui::div()
+					.absolute()
+					.top(gpui::px(1.))
+					.right(gpui::px(1.))
+					.min_w(gpui::px(10.))
+					.h(gpui::px(10.))
+					.px(gpui::px(2.))
+					.rounded(gpui::px(5.))
+					.flex()
+					.items_center()
+					.justify_center()
+					.text_size(gpui::px(8.))
+					.bg(ui_theme::rgb(ui_theme::WARNING))
+					.text_color(ui_theme::rgb(ui_theme::CANVAS))
+					.child(if attention > 9 { "9+".into() } else { attention.to_string() }),
+			)
+		})
 		.smooth()
 		.enabled(enabled)
 		.into_any_element()

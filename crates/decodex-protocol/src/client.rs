@@ -3863,6 +3863,7 @@ impl<T> CompletedOneShot<T> {
 
 fn agent_action_work_id(action: &AgentActionDto) -> &EntityId {
 	match action {
+		AgentActionDto::CreateAssistantTopic { topic_id, .. } => topic_id,
 		AgentActionDto::CreateAssistant { agent_id }
 		| AgentActionDto::ManageAssistant { agent_id, .. } => agent_id,
 		AgentActionDto::ManageWork { agent_id, .. } => agent_id,
@@ -3905,6 +3906,8 @@ fn agent_action_work_id(action: &AgentActionDto) -> &EntityId {
 		| AgentActionDto::RetryInput { work_id, .. }
 		| AgentActionDto::NativeAgentInput { work_id, .. }
 		| AgentActionDto::PrepareNativeAgent { work_id, .. }
+		| AgentActionDto::ArchiveConversation { work_id, .. }
+		| AgentActionDto::DeleteConversation { work_id, .. }
 		| AgentActionDto::Interrupt { work_id, .. }
 		| AgentActionDto::Respond { work_id, .. }
 		| AgentActionDto::RespondWithRequestedDecision { work_id, .. }

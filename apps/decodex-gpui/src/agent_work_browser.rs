@@ -38,8 +38,14 @@ struct WorkRow {
 
 impl AgentSurface {
 	pub(super) fn new_work_search(cx: &mut Context<Self>) -> Entity<ComposerInput> {
-		let input =
-			cx.new(|cx| ComposerInput::with_placeholder(46, "Search work…", "Search all work", cx));
+		let input = cx.new(|cx| {
+			ComposerInput::with_placeholder(
+				46,
+				"Search…",
+				"Search topics, Work and project Agents",
+				cx,
+			)
+		});
 
 		cx.observe(&input, |_, _, cx| cx.notify()).detach();
 
@@ -579,6 +585,7 @@ impl AgentSurface {
 		let action = Rc::new(action);
 		let keyboard = action.clone();
 		let active = self.workspace.browsing
+			&& (id != "project-work" || self.workspace.work_detail.is_none())
 			&& id
 				== if self.workspace.archives.open {
 					"archive-browser"
@@ -658,6 +665,9 @@ impl AgentSurface {
 		};
 
 		for item in work {
+			if self.is_assistant_conversation(&item.id) {
+				continue;
+			}
 			if let Some(thread) = &item.codex_thread_id {
 				seen.insert(thread.clone());
 			}
