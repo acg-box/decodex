@@ -38,7 +38,7 @@ impl AgentSurface {
 		}
 
 		self.work_board.graph = false;
-		self.workspace.graph_expanded = page != "workbench-split";
+		self.workspace.graph_expanded = !matches!(page, "workbench-split" | "assistant-workspace");
 		self.workspace.agent_tree_visible = true;
 		self.workspace.agent_panel_width = 320.;
 
@@ -46,13 +46,13 @@ impl AgentSurface {
 		self.visual_relation_evidence();
 		self.visual_workbench_metrics();
 
-		if page == "workbench" {
+		if matches!(page, "workbench" | "assistant-workspace") {
 			self.visual_collaboration_fixture(cx);
 		}
 		if matches!(page, "workbench-agent" | "workbench-split") {
 			self.select_workbench_agent("release", cx);
 		}
-		if page == "workbench-history" {
+		if matches!(page, "workbench-history" | "assistant-workspace") {
 			self.work_board.collaboration_expanded = None;
 		}
 

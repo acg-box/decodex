@@ -391,11 +391,10 @@ impl AgentSurface {
 	pub(super) fn visual_personal_navigation(&mut self, cx: &mut Context<Self>) {
 		use decodex_protocol::work::{Agent, Work, WorkRequirements};
 		let history = self.history.clone();
-		self.visual_workbench_page("workbench", cx);
+		self.visual_workbench_page("assistant-workspace", cx);
 		self.history = history;
 		self.timeline.native.reset();
 		self.workspace.sidebar_visible = true;
-		self.work_board.collaboration_expanded = None;
 		self.workspace.graph_visible = false;
 		self.workspace.graph_expanded = false;
 		self.workspace.agent_panel_width = 320.;
