@@ -686,29 +686,6 @@ impl AgentSurface {
 		cx.notify();
 	}
 
-	#[cfg(test)]
-	fn cycle_model(&mut self, cx: &mut Context<Self>) {
-		if let Some(decodex_protocol::AgentCapabilitiesResult::Available { models, .. }) =
-			self.current_model_catalog(cx)
-		{
-			if models.is_empty() {
-				return;
-			}
-
-			let next = models
-				.iter()
-				.position(|model| model.model.as_str() == self.model.read(cx).content())
-				.map_or(0, |index| (index + 1) % models.len());
-			let model = models[next].model.as_str().to_owned();
-
-			self.select_composer_option("model", &model, cx);
-		} else {
-			self.load_capabilities(cx);
-		}
-
-		cx.notify();
-	}
-
 	fn cycle_account(&mut self, cx: &mut Context<Self>) {
 		let current = self.account.read(cx).content();
 		let next = if current.is_empty() {
@@ -3712,7 +3689,8 @@ mod tests {
 				dependencies: vec![],
 				pending_events: vec![],
 			})));
-			surface.cycle_model(cx);
+			surface.model.update(cx, |input, cx| input.set_content("fixture-model", cx));
+			surface.cwd.update(cx, |input, cx| input.set_content("/Users/tester", cx));
 			surface.seed_context(
 				Some(ConversationWorkingDirectory::new("/Users/tester").unwrap()),
 				vec![],

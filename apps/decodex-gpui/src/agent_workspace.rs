@@ -1307,7 +1307,7 @@ impl AgentSurface {
 			&& matches!(
 				self.history.as_ref(),
 				Some((id, AgentHistoryResult::Available {
-					entries, live, questions, misalignment, has_more: false, ..
+					entries, live, questions, misalignment, has_more: false, next_before: None, ..
 				})) if id == &work.id && entries.is_empty() && live.is_empty()
 					&& questions.is_empty() && misalignment.is_none()
 			)
@@ -3768,7 +3768,7 @@ mod tests {
 				},
 			);
 
-			assert!(s.composer_unavailable_reason().unwrap().contains("Retrying"));
+			assert_eq!(s.composer_unavailable_reason(), Some("Reconnecting to Codex…"));
 
 			s.submit(cx);
 

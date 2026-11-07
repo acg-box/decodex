@@ -279,11 +279,7 @@ async fn installed_saved_provider_continuation_and_fork_survive_default_changes(
 	let started = session.client.thread_start(serde_json::json!({"cwd":home.path(),"historyMode":"paginated","approvalPolicy":"never","sandbox":"read-only"})).await.unwrap();
 	let source = started["thread"]["id"].as_str().unwrap().to_owned();
 	let turn = session.client.request("turn/start",serde_json::json!({"threadId":source,"input":[{"type":"text","text":"Remember the original context: orchid."}]})).await.unwrap()["turn"]["id"].as_str().unwrap().to_owned();
-	time::timeout(Duration::from_secs(30), async {
-		while let Some(event) = session.events.recv().await {
-			if matches!(event, ServerEvent::Notification {ref method,ref params} if method=="turn/completed" && params["threadId"]==source) {break;}
-		}
-	}).await.unwrap();
+	wait_provider_turn(&mut session, &source).await;
 	drop(session);
 	fs::write(
 		home.path().join("config.toml"),
@@ -316,11 +312,7 @@ async fn installed_saved_provider_continuation_and_fork_survive_default_changes(
 	assert_eq!(counts[1].load(Ordering::Acquire), 0);
 
 	session.client.turn_start(serde_json::json!({"threadId":source,"input":[{"type":"text","text":"Continue the original conversation on its saved provider."}]})).await.unwrap();
-	time::timeout(Duration::from_secs(30), async {
-		while let Some(event) = session.events.recv().await {
-			if matches!(event, ServerEvent::Notification {ref method,ref params} if method=="turn/completed" && params["threadId"]==source) {break;}
-		}
-	}).await.unwrap();
+	wait_provider_turn(&mut session, &source).await;
 	assert_eq!(counts[0].load(Ordering::Acquire), 2);
 	assert_eq!(
 		counts[1].load(Ordering::Acquire),
@@ -357,11 +349,7 @@ async fn installed_saved_provider_continuation_and_fork_survive_default_changes(
 		.unwrap();
 	assert_eq!(resumed["modelProvider"], "original");
 	restarted.client.request("turn/start",serde_json::json!({"threadId":target,"input":[{"type":"text","text":"Continue the branch on its saved provider."}]})).await.unwrap();
-	time::timeout(Duration::from_secs(30),async {
-		while let Some(event)=restarted.events.recv().await {
-			if matches!(event,ServerEvent::Notification {ref method,ref params} if method=="turn/completed" && params["threadId"]==target) {break;}
-		}
-	}).await.unwrap();
+	wait_provider_turn(&mut restarted, &target).await;
 	assert_eq!(counts[0].load(Ordering::Acquire), 3);
 	assert_eq!(counts[1].load(Ordering::Acquire), 0);
 	let input = inputs[0].lock().unwrap().last().unwrap()["input"].to_string();
@@ -393,6 +381,18 @@ async fn installed_saved_provider_continuation_and_fork_survive_default_changes(
 	for backend in backends {
 		backend.abort();
 	}
+}
+
+async fn wait_provider_turn(session: &mut NativeSession, thread: &str) {
+	time::timeout(Duration::from_secs(30), async {
+		while let Some(event) = session.events.recv().await {
+			if matches!(event, ServerEvent::Notification {ref method,ref params} if method=="turn/completed" && params["threadId"]==thread) {
+				break;
+			}
+		}
+	})
+	.await
+	.unwrap();
 }
 
 async fn qualify_native_fork(binary: &OsStr, history_mode: &str) {

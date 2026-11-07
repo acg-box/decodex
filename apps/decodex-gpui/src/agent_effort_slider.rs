@@ -288,6 +288,7 @@ mod tests {
 
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
+			s.model.update(cx, |input, cx| input.set_content("fixture-model", cx));
 			s.mark_model_intent(cx);
 
 			s.capabilities = Some(AgentCapabilitiesResult::Available {
@@ -396,6 +397,7 @@ mod tests {
 
 		surface.update(cx, |s, cx| {
 			s.visual_workspace_fixture(cx);
+			s.model.update(cx, |input, cx| input.set_content("fixture-model", cx));
 			s.mark_model_intent(cx);
 
 			let custom = ConversationReasoningEffort::new("provider-defined-effort").unwrap();
