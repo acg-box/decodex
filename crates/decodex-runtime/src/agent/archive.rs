@@ -7,6 +7,54 @@ use crate::agent::{AgentCoordinator, AgentError, ClientError};
 use decodex_codex::app_server_client::ThreadArchiveState;
 
 impl AgentCoordinator {
+	/// Delete through native archive and the existing durable deletion plan.
+	pub async fn delete_conversation(
+		&mut self,
+		work: &str,
+		thread: &str,
+	) -> Result<(), AgentError> {
+		if !self.store.agent_thread_is_deleted(work.into(), thread.into()).await?
+			&& self.store.agent_thread_deletion_plan(work.into(), thread.into()).await?.is_none()
+		{
+			self.archive_conversation(work, thread).await?;
+		}
+		self.delete_archived_thread(work, thread).await
+	}
+
+	/// Archive only the exact idle conversation selected by the user.
+	pub async fn archive_conversation(
+		&mut self,
+		work: &str,
+		thread: &str,
+	) -> Result<(), AgentError> {
+		let item = self.store.get_agent_work_item(work.into()).await?;
+		if item.codex_thread_id.as_deref() != Some(thread)
+			|| item.active_turn_id.is_some()
+			|| item.dispatch_state != super::AgentDispatchState::Idle
+		{
+			return Err(AgentError::Rejected(
+				"The conversation changed or is still running.".into(),
+			));
+		}
+		match self.client.thread_archive_state(thread).await? {
+			ThreadArchiveState::Archived => {},
+			ThreadArchiveState::Active => {
+				let _ = time::timeout(
+					Duration::from_secs(8),
+					self.client.request("thread/archive", serde_json::json!({"threadId":thread})),
+				)
+				.await;
+				if self.client.thread_archive_state(thread).await? != ThreadArchiveState::Archived {
+					return Err(AgentError::UnknownDispatch);
+				}
+			},
+			_ => return Err(AgentError::Rejected("The conversation is unavailable.".into())),
+		}
+		self.store.retire_archived_agent_threads(vec![thread.into()]).await?;
+		self.loaded_threads.remove(thread);
+		Ok(())
+	}
+
 	/// Delete an exact archived binding and retain receipts for uncertain native replies.
 	pub async fn delete_archived_thread(
 		&mut self,

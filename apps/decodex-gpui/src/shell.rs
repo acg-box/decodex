@@ -157,6 +157,7 @@ gpui::actions!(
 		NavigateBack,
 		NavigateForward,
 		FindConversation,
+		OpenGlobalCommands,
 		SelectPreviousConversation,
 		SelectNextConversation,
 		ActivateConversationRow,
@@ -2012,6 +2013,7 @@ impl Render for Shell {
 			.on_action(cx.listener(Self::toggle_graph))
 			.on_action(cx.listener(Self::toggle_content_fullscreen))
 			.on_action(cx.listener(|s, _: &DismissStatus, _, cx| {
+				s.agent.update(cx, |agent, cx| agent.dismiss_navigation_confirmation(cx));
 				if s.status_open {
 					s.status_open = false;
 
@@ -2381,6 +2383,18 @@ enum InspectorTab {
 
 /// Bind the shell's complete keyboard path once at application startup.
 pub(crate) fn bind_keys(cx: &mut App) {
+	cx.on_action(|_: &OpenGlobalCommands, cx| {
+		cx.defer(|cx| {
+			if let Some(main) = cx.windows().into_iter().find_map(|w| w.downcast::<Shell>()) {
+				let _ = main.update(cx, |shell, window, cx| {
+					shell.select_destination(Destination::Agent, cx);
+					shell.agent.update(cx, |agent, cx| agent.open_global_commands(window, cx));
+					window.activate_window();
+				});
+			}
+		});
+	});
+
 	cx.on_action(|command: &ConversationCommand, cx| {
 		let command = *command;
 		cx.defer(move |cx| {
@@ -2428,6 +2442,7 @@ pub(crate) fn bind_keys(cx: &mut App) {
 		KeyBinding::new("shift-escape", ToggleContentFullscreen, None),
 		KeyBinding::new("cmd-[", NavigateBack, None),
 		KeyBinding::new("cmd-f", FindConversation, None),
+		KeyBinding::new("cmd-k", OpenGlobalCommands, None),
 		KeyBinding::new("cmd-]", NavigateForward, None),
 		KeyBinding::new("enter", ActivateDestination, Some("Destination")),
 		KeyBinding::new("space", ActivateDestination, Some("Destination")),
@@ -3091,6 +3106,8 @@ fn topbar_controls(
 }
 
 fn agent_panel_control(shell: &Shell, index: usize, cx: &Context<Shell>) -> AnyElement {
+	let attention =
+		if index == 2 { shell.agent.read(cx).collaboration_attention_count() } else { 0 };
 	let (active, enabled) = if index == 0 && shell.selected != Destination::Agent {
 		(shell.left_sidebar_visible, true)
 	} else {
@@ -3099,7 +3116,7 @@ fn agent_panel_control(shell: &Shell, index: usize, cx: &Context<Shell>) -> AnyE
 	let label = match (index, enabled) {
 		(0, _) => "Toggle sidebar (Command-E)",
 		(1, true) => "Toggle Dock (Command-J)",
-		(2, _) => "Toggle work activity (Command-B)",
+		(2, _) => "Toggle collaboration (Command-B)",
 		(1, false) => "Dock unavailable",
 		_ => "Panel unavailable",
 	};
@@ -3166,6 +3183,25 @@ fn agent_panel_control(shell: &Shell, index: usize, cx: &Context<Shell>) -> AnyE
 				.opacity(if active { 1. } else { 0.55 })
 				.child(AgentSurface::panel_glyph(index)),
 		)
+		.when(index == 2 && attention > 0, |control| {
+			control.child(
+				gpui::div()
+					.absolute()
+					.top(gpui::px(1.))
+					.right(gpui::px(1.))
+					.min_w(gpui::px(10.))
+					.h(gpui::px(10.))
+					.px(gpui::px(2.))
+					.rounded(gpui::px(5.))
+					.flex()
+					.items_center()
+					.justify_center()
+					.text_size(gpui::px(8.))
+					.bg(ui_theme::rgb(ui_theme::WARNING))
+					.text_color(ui_theme::rgb(ui_theme::CANVAS))
+					.child(if attention > 9 { "9+".into() } else { attention.to_string() }),
+			)
+		})
 		.smooth()
 		.enabled(enabled)
 		.into_any_element()

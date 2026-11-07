@@ -1,6 +1,6 @@
 //! Content bounds and direct manipulation for the Agent workspace.
 
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use gpui::{
 	AnyElement, ClickEvent, Div, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent,
@@ -197,7 +197,7 @@ impl AgentSurface {
 
 		let width = f32::from(window.viewport_size().width);
 
-		if (self.workspace.sidebar_visible || self.workspace.sidebar_peek) && width > 1_000. {
+		if self.workspace.sidebar_visible && width > 1_000. {
 			sidebar_width(self.workspace.sidebar_width, width)
 		} else {
 			CONVERSATION_TAB_SIZE + 2. * SIDEBAR_INSET
@@ -258,33 +258,6 @@ impl AgentSurface {
 		(available.0, height.min(available.1))
 	}
 
-	pub(super) fn sidebar_hover(&mut self, hovered: bool, cx: &mut Context<Self>) {
-		if self.workspace.graph_expanded || self.workspace.chat_expanded {
-			return;
-		}
-
-		self.workspace.sidebar_leave = None;
-
-		if self.workspace.sidebar_visible {
-			return;
-		}
-		if hovered {
-			self.workspace.sidebar_peek = true;
-
-			cx.notify();
-		} else {
-			self.workspace.sidebar_leave = Some(cx.spawn(async |surface, cx| {
-				cx.background_executor().timer(Duration::from_millis(220)).await;
-
-				let _ = surface.update(cx, |s, cx| {
-					s.workspace.sidebar_peek = false;
-
-					cx.notify();
-				});
-			}));
-		}
-	}
-
 	pub(super) fn sidebar_slot(
 		&self,
 		_wide: bool,
@@ -307,7 +280,6 @@ impl AgentSurface {
 			.id("left-panel-slot")
 			.opacity(self.workspace.arrival.progress(0.))
 			.debug_selector(|| "left-panel-slot".into())
-			.on_hover(cx.listener(|s, hovered: &bool, _, cx| s.sidebar_hover(*hovered, cx)))
 			.flex_none()
 			.w(gpui::px(width))
 			.mr(gpui::px(width.min(WORKSPACE_GUTTER)))
@@ -876,78 +848,22 @@ mod tests {
 	}
 
 	#[gpui::test]
-	fn sidebar_hover_uses_pinned_layout_and_reentry_cancels_close(cx: &mut gpui::TestAppContext) {
+	fn sidebar_hover_keeps_the_initial_rail_and_transcript_fixed(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
-
-		visual.simulate_resize(gpui::size(gpui::px(1_400.), gpui::px(900.)));
-		// GPUI can dispatch an initial hover when it creates the window.
-		// Start this fixture outside the rail with its transient peek closed.
-		visual.simulate_mouse_move(
-			gpui::point(gpui::px(1_000.), gpui::px(800.)),
-			None,
-			Default::default(),
-		);
-
+		visual.simulate_resize(gpui::size(gpui::px(1400.), gpui::px(900.)));
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
-
 			s.workspace.sidebar_visible = false;
-			s.workspace.sidebar_peek = false;
-
 			cx.notify();
 		});
-
 		visual.update(crate::ui_frame::draw_current_frame);
-
-		thread::sleep(std::time::Duration::from_millis(250));
-
-		visual.update(crate::ui_frame::draw_current_frame);
-
 		let collapsed = visual.debug_bounds("workspace-transcript").unwrap();
-		let mark = "conversation-mark-agent";
-		let collapsed_mark = visual.debug_bounds(mark).unwrap();
-		let row = visual.debug_bounds("page-agent").unwrap();
-
-		assert_eq!(row.size.width, row.size.height, "collapsed conversation targets are square");
-
-		surface.update(visual, |s, cx| s.sidebar_hover(true, cx));
+		let rail = visual.debug_bounds("left-panel-slot").unwrap();
+		assert_eq!(f32::from(rail.size.width), 40.);
+		visual.simulate_mouse_move(rail.center(), None, Default::default());
 		visual.update(crate::ui_frame::draw_current_frame);
-
-		thread::sleep(std::time::Duration::from_millis(250));
-
-		visual.update(crate::ui_frame::draw_current_frame);
-
-		let expanded = visual.debug_bounds("workspace-transcript").unwrap();
-
-		assert!(expanded.origin.x > collapsed.origin.x);
-		assert_eq!(visual.debug_bounds(mark).unwrap(), collapsed_mark);
-
-		surface.update(visual, |s, cx| {
-			s.workspace.sidebar_visible = true;
-			s.workspace.sidebar_peek = false;
-
-			cx.notify();
-		});
-
-		visual.update(crate::ui_frame::draw_current_frame);
-
-		assert_eq!(visual.debug_bounds("workspace-transcript").unwrap(), expanded);
-
-		surface.update(visual, |s, _| s.workspace.sidebar_visible = false);
-
-		surface.update(visual, |s, cx| {
-			s.sidebar_hover(false, cx);
-			s.sidebar_hover(true, cx);
-		});
-		visual.run_until_parked();
-		visual.executor().advance_clock(std::time::Duration::from_millis(250));
-		visual.run_until_parked();
-		surface.read_with(visual, |s, _| assert!(s.workspace.sidebar_peek));
-		surface.update(visual, |s, cx| s.sidebar_hover(false, cx));
-		visual.run_until_parked();
-		visual.executor().advance_clock(std::time::Duration::from_millis(250));
-		visual.run_until_parked();
-		surface.read_with(visual, |s, _| assert!(!s.workspace.sidebar_peek));
+		assert_eq!(visual.debug_bounds("workspace-transcript").unwrap(), collapsed);
+		surface.read_with(visual, |s, _| assert!(!s.workspace.sidebar_visible));
 	}
 
 	#[gpui::test]

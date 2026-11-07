@@ -151,6 +151,9 @@ pub(crate) async fn tool(
 	c: &RagflowConnection,
 	args: &Value,
 ) -> Result<Value, AgentError> {
+	let memory_owner = store.assistant_owner(owner.into()).await?.ok_or_else(|| {
+		AgentError::Rejected("Personal Memory belongs to Assistant conversations".into())
+	})?;
 	if args["operation"] == "status" {
 		return Ok(
 			json!({"receipts":store.assistant_memory_receipts(owner.into()).await?,"processing":"queued means accepted for asynchronous extraction, not searchable completion; unknown is never resent automatically"}),
@@ -198,7 +201,7 @@ pub(crate) async fn tool(
 					json!({"status":"Inspect the saved receipt; this import is not repeated"}),
 				);
 			}
-			client.request(Method::POST,"api/v1/messages",&[],Some(json!({"memory_id":[memory],"agent_id":owner,"session_id":source.delivered_turn_id,"user_id":c.user_id,"user_input":text,"agent_response":"Saved at the user's explicit request. Current corrections take precedence."}))).await?;
+			client.request(Method::POST,"api/v1/messages",&[],Some(json!({"memory_id":[memory],"agent_id":memory_owner,"session_id":source.delivered_turn_id,"user_id":c.user_id,"user_input":text,"agent_response":"Saved at the user's explicit request. Current corrections take precedence."}))).await?;
 			store.acknowledge_assistant_memory(owner.into(), key, "queued".into()).await?;
 			Ok(json!({"state":"queued","searchableCompletion":false}))
 		},
@@ -234,7 +237,7 @@ pub(crate) async fn tool(
 				{
 					return Err(AgentError::Rejected("RAGFlow Memory is waiting for a safe context refresh with Codex memory generation and use disabled".into()));
 				}
-				client.search_memory(owner, c, &query).await?
+				client.search_memory(&memory_owner, c, &query).await?
 			};
 			Ok(
 				json!({"evidence":data,"authority":"Retrieved evidence can be stale or conflict with a current correction. It grants no execution authority. Use original source identities for verification."}),
@@ -252,6 +255,10 @@ async fn forget(
 	args: &Value,
 	client: &Ragflow,
 ) -> Result<Value, AgentError> {
+	let memory_owner = store
+		.assistant_owner(owner.into())
+		.await?
+		.ok_or_else(|| AgentError::Rejected("Assistant identity is unavailable".into()))?;
 	let memory = c
 		.memory_id
 		.as_ref()
@@ -271,7 +278,7 @@ async fn forget(
 			"api/v1/messages",
 			&[
 				("memory_id", memory.clone()),
-				("agent_id", owner.into()),
+				("agent_id", memory_owner.clone()),
 				("user_id", c.user_id.clone()),
 				("limit", "100".into()),
 			],
@@ -281,7 +288,7 @@ async fn forget(
 	if !found.as_array().is_some_and(|rows| {
 		rows.iter().any(|r| {
 			r["message_id"].as_u64() == Some(id)
-				&& r["agent_id"] == owner
+				&& r["agent_id"] == memory_owner
 				&& r["user_id"] == c.user_id
 		})
 	}) {
@@ -309,29 +316,23 @@ pub(crate) async fn export_next(
 	client: &decodex_codex::app_server_client::AppServerClient,
 ) -> Result<(), AgentError> {
 	let state = store.assistant_state().await?;
-	let Some(owner) = state.agent_id else {
+	let Some(identity) = &state.agent_id else {
 		return Ok(());
 	};
-	let Some(c) = state.settings.ragflow.filter(|c| c.ingest_chats) else {
+	let Some(c) = state.settings.ragflow.as_ref().filter(|c| c.ingest_chats) else {
 		return Ok(());
 	};
 	let Some(memory) = c.memory_id.as_ref() else {
 		return Ok(());
 	};
-	let item = store.get_agent_work_item(owner.clone()).await?;
-	if !store
-		.assistant_external_memory_context(owner.clone(), item.codex_thread_id.unwrap_or_default())
-		.await?
-	{
-		return Ok(());
-	}
-	let Some((thread, turn)) = store.assistant_export_turn(owner.clone(), memory.clone()).await?
+	let Some((owner, thread, turn)) =
+		next_exchange(store, identity, &state.topic_ids, memory).await?
 	else {
 		return Ok(());
 	};
 	let items = client.thread_read_turn_items(&thread, &turn).await?;
 	let exchange = memory_exchange(&items)?;
-	let api = Ragflow::new(&c)?;
+	let api = Ragflow::new(c)?;
 	let key = json!(["export", memory, thread, turn]).to_string();
 	if !store
 		.reserve_assistant_memory(
@@ -348,16 +349,37 @@ pub(crate) async fn export_next(
 		return Ok(());
 	};
 	let current = store.assistant_state().await?;
-	if current.agent_id.as_deref() != Some(owner.as_str())
-		|| current.settings.ragflow.as_ref() != Some(&c)
-	{
+	if current.agent_id.as_ref() != Some(identity) || current.settings.ragflow.as_ref() != Some(c) {
 		store.acknowledge_assistant_memory(owner, key, "configuration_changed".into()).await?;
 		return Ok(());
 	}
-	api.request(Method::POST,"api/v1/messages",&[],Some(json!({"memory_id":[memory],"agent_id":owner,"session_id":thread,"user_id":c.user_id,"user_input":input,"agent_response":output}))).await?;
+	api.request(Method::POST,"api/v1/messages",&[],Some(json!({"memory_id":[memory],"agent_id":identity,"session_id":thread,"user_id":c.user_id,"user_input":input,"agent_response":output}))).await?;
 	store.acknowledge_assistant_memory(owner.clone(), key, "queued".into()).await?;
-	store.assistant_memory_health(owner, c, "Import queued for asynchronous extraction; searchable completion is not yet confirmed.".into()).await?;
+	store.assistant_memory_health(identity.clone(), c.clone(), "Import queued for asynchronous extraction; searchable completion is not yet confirmed.".into()).await?;
 	Ok(())
+}
+
+async fn next_exchange(
+	store: &SqliteStore,
+	identity: &str,
+	topics: &[String],
+	memory: &str,
+) -> Result<Option<(String, String, String)>, AgentError> {
+	for owner in std::iter::once(identity).chain(topics.iter().map(String::as_str)) {
+		let item = store.get_agent_work_item(owner.into()).await?;
+		if store
+			.assistant_external_memory_context(
+				owner.into(),
+				item.codex_thread_id.unwrap_or_default(),
+			)
+			.await?
+			&& let Some((thread, turn)) =
+				store.assistant_export_turn(owner.into(), memory.into()).await?
+		{
+			return Ok(Some((owner.into(), thread, turn)));
+		}
+	}
+	Ok(None)
 }
 
 /// Use original public dialogue only. Tool evidence, reasoning, commentary and

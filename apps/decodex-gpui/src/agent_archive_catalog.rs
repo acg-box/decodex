@@ -1255,6 +1255,84 @@ fn archive_timestamp(micros: i64) -> (String, String) {
 	)
 }
 
+impl AgentSurface {
+	pub(in crate::shell::agent_surface) fn load_navigation_archives(
+		&mut self,
+		cx: &mut Context<Self>,
+	) {
+		self.load_archive_catalog(cx);
+	}
+
+	pub(in crate::shell::agent_surface) fn navigation_archived_items(
+		&self,
+	) -> Vec<super::super::navigation_sidebar::model::Item> {
+		self.workspace
+			.archives
+			.data
+			.iter()
+			.flat_map(|data| {
+				data.work_items.iter().filter(|w| data.archived_work_ids.contains(&w.id)).map(|w| {
+					let project = data.projects.iter().find(|p| p.agent_ids.contains(&w.id));
+					let assistant = data.assistant.agent_id.as_ref() == Some(&w.id)
+						|| data.assistant.topic_ids.contains(&w.id)
+						|| data.assistant.retired_topic_ids.contains(&w.id);
+					super::super::navigation_sidebar::model::Item {
+						id: w.id.clone(),
+						title: self.conversation_label(w),
+						owner: if assistant {
+							"Assistant".into()
+						} else {
+							project.map_or_else(|| "No project".into(), |p| p.name.clone())
+						},
+						project: project.map(|p| p.id.clone()),
+						updated: w.updated_at_micros,
+						draft: false,
+						assistant,
+						archived: true,
+						state: "Archived".into(),
+					}
+				})
+			})
+			.collect()
+	}
+
+	pub(in crate::shell::agent_surface) fn navigation_archive_status(&self) -> Option<String> {
+		if self.workspace.archives.read.is_some() {
+			Some("Loading archived conversations…".into())
+		} else if let Some(message) = &self.workspace.archives.feedback {
+			Some(message.clone())
+		} else if self.navigation_archived_items().is_empty() {
+			Some("No archived conversations.".into())
+		} else {
+			None
+		}
+	}
+
+	pub(in crate::shell::agent_surface) fn restore_navigation_archive(
+		&mut self,
+		id: &str,
+		cx: &mut Context<Self>,
+	) {
+		self.unarchive_catalog_item(id, cx);
+	}
+
+	pub(in crate::shell::agent_surface) fn delete_navigation_archive(
+		&mut self,
+		id: &str,
+		cx: &mut Context<Self>,
+	) {
+		self.delete_archive_item(id, cx);
+	}
+
+	pub(in crate::shell::agent_surface) fn navigation_timestamp(micros: i64) -> String {
+		if micros <= 0 {
+			return "—".into();
+		}
+		let (day, clock) = archive_timestamp(micros);
+		format!("{day} {clock}")
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;

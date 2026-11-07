@@ -135,6 +135,7 @@ impl AgentSurface {
 		work: &str,
 		cx: &mut Context<Self>,
 	) {
+		self.forget_navigation_conversation(work);
 		self.remember_draft_document(cx);
 		for profile in self.draft_profiles.storage.document.profiles.values_mut() {
 			profile.forget_conversation(work);

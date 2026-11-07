@@ -474,17 +474,17 @@ async fn installed_assistant_renews_fresh_contexts_with_original_dialogue_and_is
 		assert!(!observed[0].to_string().contains("assistant_memory"), "ordinary Agents do not expose personal Assistant tools");
 		for body in &observed[1..] {
 			assert!(body.to_string().contains("assistant_memory"), "selected Assistant contexts retain their personal memory instructions");
+			assert!(!body.to_string().contains("NATIVE_MEMORY_FIXTURE_SENTINEL"));
+			assert!(body.to_string().contains("do not publish"));
 		}
 		assert!(observed[1].to_string().contains("Personal memory could not be recalled"), "automatic recall is supplied as untrusted native context even when the optional service is unavailable");
 		assert!(observed[1].to_string().contains("Original user decision"));
 		assert!(observed[3].to_string().contains("Original correction 1"));
         assert!(observed[3].to_string().contains("Original correction 0"));
-		for body in &observed[1..] {
-			assert!(!body.to_string().contains("NATIVE_MEMORY_FIXTURE_SENTINEL"));
-			assert!(body.to_string().contains("do not publish"));
-		}
+
 		let control=session.client.thread_start(serde_json::json!({"cwd":home.path(),"ephemeral":true,"approvalPolicy":"never","sandbox":"read-only","config":{"memories.generate_memories":false}})).await.unwrap();
         assert!(session.client.memory_summary(control["thread"]["id"].as_str().unwrap()).await.unwrap().unwrap().contains("NATIVE_MEMORY_FIXTURE_SENTINEL"),"other contexts keep native memory settings");
+		qualify_personal_topics(&mut agent, &mut session, &store, &bodies).await;
 	}))
 	.catch_unwind()
 	.await;
@@ -494,4 +494,80 @@ async fn installed_assistant_renews_fresh_contexts_with_original_dialogue_and_is
 	result
 		.expect("Assistant native qualification panicked")
 		.expect("Assistant native qualification timed out");
+}
+
+async fn qualify_personal_topics(
+	agent: &mut AgentCoordinator,
+	session: &mut NativeSession,
+	store: &SqliteStore,
+	bodies: &Mutex<Vec<Value>>,
+) {
+	use decodex_database::{AgentWorkItem, AgentWorkKind, AgentWorkStatus};
+	let mut threads = std::collections::BTreeSet::new();
+	for (id, personal) in
+		[("personal-topic-a", true), ("personal-topic-b", true), ("project-control", false)]
+	{
+		let item = AgentWorkItem {
+			id: id.into(),
+			parent_goal_id: None,
+			kind: AgentWorkKind::Goal,
+			title: id.into(),
+			instructions: "Help with the fixture request".into(),
+			codex_thread_id: None,
+			status: AgentWorkStatus::Wait,
+			dispatch_state: AgentDispatchState::Idle,
+			active_turn_id: None,
+			next_check_at_micros: None,
+			created_at_micros: 1,
+			updated_at_micros: 1,
+		};
+		if personal {
+			store
+				.create_assistant_topic(item, "assistant".into())
+				.await
+				.expect("create personal topic");
+		} else {
+			store.create_agent_manager(item).await.expect("create independent project Agent");
+		}
+		agent
+			.enqueue_user_message(id, id, &format!("Fresh topic input for {id}."))
+			.await
+			.expect("submit topic input");
+		agent.wake_pending().await.expect("admit the existing conversation");
+		terminal(agent, &mut session.events, store).await;
+		let thread = store
+			.get_agent_work_item(id.into())
+			.await
+			.expect("topic binding")
+			.codex_thread_id
+			.expect("native thread");
+		assert!(threads.insert(thread.clone()), "each topic has an independent native context");
+		let metadata = session
+			.client
+			.thread_read(serde_json::json!({"threadId":thread}))
+			.await
+			.expect("topic metadata");
+		assert!(metadata["thread"]["forkedFromId"].is_null());
+		let captured = bodies.lock().expect("captured model requests").clone();
+		let requests: Vec<_> = captured
+			.iter()
+			.filter(|body| body["client_metadata"]["thread_id"].as_str() == Some(&thread))
+			.collect();
+		assert_eq!(requests.len(), 1, "topic creation must not make an extra inference call");
+		let body = requests[0].to_string();
+		assert_eq!(
+			body.contains("assistant_memory"),
+			personal,
+			"only personal topics receive Assistant tools"
+		);
+		assert!(
+			!body.contains("Original correction 0"),
+			"fresh topics must not copy previous dialogue"
+		);
+		if personal {
+			assert!(body.contains("do not publish"), "all topics share the Assistant mandate");
+			assert!(!body.contains("NATIVE_MEMORY_FIXTURE_SENTINEL"));
+			assert_eq!(session.client.memory_summary(&thread).await.expect("memory mode"), None);
+		}
+	}
 }

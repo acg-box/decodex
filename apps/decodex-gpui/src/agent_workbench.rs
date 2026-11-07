@@ -22,6 +22,7 @@ struct Entry {
 	reason: String,
 	result: bool,
 	request: Option<i64>,
+	needs_user: bool,
 }
 
 impl AgentSurface {
@@ -38,7 +39,7 @@ impl AgentSurface {
 		}
 
 		self.work_board.graph = false;
-		self.workspace.graph_expanded = page != "workbench-split";
+		self.workspace.graph_expanded = !matches!(page, "workbench-split" | "assistant-workspace");
 		self.workspace.agent_tree_visible = true;
 		self.workspace.agent_panel_width = 320.;
 
@@ -46,13 +47,13 @@ impl AgentSurface {
 		self.visual_relation_evidence();
 		self.visual_workbench_metrics();
 
-		if page == "workbench" {
+		if matches!(page, "workbench" | "assistant-workspace") {
 			self.visual_collaboration_fixture(cx);
 		}
 		if matches!(page, "workbench-agent" | "workbench-split") {
 			self.select_workbench_agent("release", cx);
 		}
-		if page == "workbench-history" {
+		if matches!(page, "workbench-history" | "assistant-workspace") {
 			self.work_board.collaboration_expanded = None;
 		}
 
@@ -229,6 +230,7 @@ impl AgentSurface {
 					reason: "Respond in the conversation.".into(),
 					result: false,
 					request: Some(event.id),
+					needs_user: true,
 				})
 			})
 			.collect()
@@ -250,6 +252,14 @@ impl AgentSurface {
 					reason: item.reason.into(),
 					result: item.result,
 					request: None,
+					needs_user: self.snapshot.as_ref().is_some_and(|snapshot| {
+						snapshot.work_items.iter().any(|work| {
+							work.id == item.work
+								&& work.status == decodex_protocol::AgentWorkStatusDto::UserDecision
+								&& work.dispatch_state
+									== decodex_protocol::AgentDispatchStateDto::Idle
+						})
+					}),
 				});
 			}
 		}
@@ -263,6 +273,7 @@ impl AgentSurface {
 					entry.label = "Answer needed".into();
 					entry.reason = question.into();
 					entry.result = false;
+					entry.needs_user = true;
 
 					continue;
 				}
@@ -273,6 +284,7 @@ impl AgentSurface {
 					reason: question.into(),
 					result: false,
 					request: None,
+					needs_user: true,
 				});
 			}
 		}
@@ -297,6 +309,9 @@ impl AgentSurface {
 			.p(gpui::px(10.))
 			.rounded(gpui::px(12.))
 			.bg(ui_theme::rgba(FIELD_MATERIAL))
+			.when(entry.needs_user, |card| {
+				card.border_1().border_color(ui_theme::rgb(WARNING).opacity(0.25))
+			})
 			.child(
 				gpui::div()
 					.flex()
@@ -330,8 +345,12 @@ impl AgentSurface {
 						"Review result"
 					} else if entry.row.native {
 						"Open conversation"
+					} else if entry.request.is_some() {
+						"Open request"
+					} else if entry.needs_user {
+						"Open review"
 					} else {
-						"Review request"
+						"Open conversation"
 					}
 					.into(),
 					move |s, cx| {

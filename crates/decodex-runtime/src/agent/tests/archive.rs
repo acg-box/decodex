@@ -6,6 +6,40 @@ use crate::agent::tests::{
 use decodex_codex::app_server_client::RpcError;
 use decodex_core::DecodexRoot;
 
+#[tokio::test]
+async fn sidebar_lifecycle_archives_exact_idle_sources_before_durable_deletion() {
+	let (mut agent, mut sent, _directory) =
+		tests::fixture_with_history(serde_json::json!({})).await;
+	agent.start_agent("agent", "Initial").await.unwrap();
+	while sent.try_recv().is_ok() {}
+	assert!(agent.archive_conversation("agent", "opaque thread/1").await.is_err());
+	assert!(sent.try_recv().is_err(), "a running turn must not be archived");
+	agent.handle_event(ServerEvent::Notification{method:"turn/completed".into(),params:serde_json::json!({"threadId":"opaque thread/1","turn":{"id":"opaque turn/1","status":"completed","items":[]}})}).await.unwrap();
+	while sent.try_recv().is_ok() {}
+	assert!(agent.delete_conversation("agent", "foreign").await.is_err());
+	assert!(sent.try_recv().is_err(), "foreign bindings must not reach native mutation");
+	agent.archive_conversation("agent", "opaque thread/1").await.unwrap();
+	agent.archive_conversation("agent", "opaque thread/1").await.unwrap();
+	let requests = std::iter::from_fn(|| sent.try_recv().ok()).collect::<Vec<_>>();
+	assert_eq!(requests.iter().filter(|r| r["method"] == "thread/archive").count(), 1);
+	assert_eq!(
+		agent.store.get_agent_work_item("agent".into()).await.unwrap().codex_thread_id.as_deref(),
+		Some("opaque thread/1")
+	);
+	agent.delete_conversation("agent", "opaque thread/1").await.unwrap();
+	agent.delete_conversation("agent", "opaque thread/1").await.unwrap();
+	let requests = std::iter::from_fn(|| sent.try_recv().ok()).collect::<Vec<_>>();
+	assert_eq!(requests.iter().filter(|r| r["method"] == "thread/delete").count(), 1);
+	assert!(!requests.iter().any(|r| r["method"] == "turn/start"));
+	assert!(
+		agent
+			.store
+			.agent_thread_is_deleted("agent".into(), "opaque thread/1".into())
+			.await
+			.unwrap()
+	);
+}
+
 #[test]
 fn archived_resume_diagnostic_is_bound_to_the_exact_thread_and_never_authorizes_restore() {
 	let error = || {

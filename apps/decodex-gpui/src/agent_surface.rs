@@ -48,6 +48,7 @@ mod native_composer;
 mod native_menu;
 #[path = "agent_timeline.rs"] mod native_timeline;
 #[path = "agent_navigation.rs"] mod navigation;
+#[path = "agent_navigation_sidebar.rs"] mod navigation_sidebar;
 #[path = "agent_output_stream.rs"] mod output_stream;
 #[path = "agent_panel_controls.rs"] mod panel_controls;
 #[path = "agent_permissions.rs"] mod permissions;
@@ -1397,6 +1398,7 @@ impl AgentSurface {
 	}
 
 	fn reset_profile_panels(&mut self, cx: &mut Context<Self>) {
+		self.workspace.navigation = Default::default();
 		self.assistant_settings = Default::default();
 		self.workspace.archives = Default::default();
 		self.work_board.clear(cx);
@@ -2623,8 +2625,13 @@ impl AgentSurface {
 }
 
 impl Render for AgentSurface {
-	fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-		self.presentations.workspace.clone()
+	fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+		self.start_navigation_clock(cx);
+		gpui::div()
+			.relative()
+			.size_full()
+			.child(self.presentations.workspace.clone())
+			.child(self.render_global_commands(window, cx))
 	}
 }
 
@@ -2668,10 +2675,10 @@ impl SurfacePresentations {
 			crate::ui_frame::Presentation::new(&owner, AgentSurface::render_transcript_view, cx);
 		let sidebar_presentation = crate::ui_frame::Presentation::new(
 			&owner,
-			|s, _, cx| {
+			|s, window, cx| {
 				frame_trace::surface_render("sidebar");
 
-				s.workspace_sidebar(cx)
+				s.workspace_sidebar(window, cx)
 			},
 			cx,
 		);
@@ -2716,6 +2723,7 @@ impl SurfacePresentations {
 }
 
 struct WorkspaceView {
+	navigation: navigation_sidebar::State,
 	attached: attached_branches::Panel,
 	archives: archive::Catalog,
 	portfolio_mode: bool,
@@ -2760,8 +2768,6 @@ struct WorkspaceView {
 	graph_drag: Option<Point<Pixels>>,
 	agent_tree_visible: bool,
 	sidebar_visible: bool,
-	sidebar_peek: bool,
-	sidebar_leave: Option<Task<()>>,
 	sidebar_width: f32,
 	sidebar_motion: RefCell<Option<Tween>>,
 	agent_panel_width: f32,
@@ -2776,6 +2782,7 @@ impl Default for WorkspaceView {
 	fn default() -> Self {
 		Self {
 			attached: Default::default(),
+			navigation: Default::default(),
 			archives: Default::default(),
 			arrival: Default::default(),
 			portfolio_mode: false,
@@ -2803,7 +2810,7 @@ impl Default for WorkspaceView {
 			pages: vec![],
 			preview_page: None,
 			closing_pages: Default::default(),
-			graph_visible: true,
+			graph_visible: false,
 			graph_expanded: false,
 			chat_expanded: false,
 			dock_completed: true,
@@ -2819,8 +2826,6 @@ impl Default for WorkspaceView {
 			graph_drag: None,
 			agent_tree_visible: true,
 			sidebar_visible: true,
-			sidebar_peek: false,
-			sidebar_leave: None,
 			sidebar_width: PanelDefaults::configured().sidebar.into(),
 			sidebar_motion: Default::default(),
 			agent_panel_width: PanelDefaults::configured().sidebar.into(),

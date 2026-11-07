@@ -340,7 +340,10 @@ async fn installed_native_delete_cleans_local_history_and_context_lineage() {
 		),
 	)
 	.unwrap();
-	coordinator.delete_archived_thread("deleted", &current).await.unwrap();
+	// Sidebar deletion starts from an active conversation and must preserve
+	// the existing complete native/local deletion plan.
+	actor.client.thread_unarchive(&current).await.unwrap();
+	coordinator.delete_conversation("deleted", &current).await.unwrap();
 	assert!(store.get_agent_work_item("deleted".into()).await.is_err());
 	assert_eq!(store.get_agent_work_item("kept".into()).await.unwrap().title, "kept");
 	assert!(store.agent_thread_is_deleted("deleted".into(), current.clone()).await.unwrap());

@@ -13,7 +13,7 @@ pub(crate) use crate::ui_frame::{
 	window_options,
 };
 pub(crate) use disclosure::{disclosure, disclosure_lazy, settings_disclosure};
-pub(crate) use overflow_label::OverflowLabel;
+pub(crate) use overflow_label::{HoverOverflowLabel, OverflowLabel};
 pub(crate) use segmented::{Choice, Segmented};
 pub(crate) use text_reveal::TextReveal;
 
@@ -541,6 +541,7 @@ impl Tween {
 #[derive(IntoElement)]
 pub(crate) struct AgentRailStatus {
 	pub compact: bool,
+	pub scroll: bool,
 	pub id: String,
 	pub state: String,
 	pub label: String,
@@ -634,13 +635,11 @@ impl RenderOnce for AgentRailStatus {
 					.text_color(ink)
 					.child(initial),
 			)
-			.child(
-				gpui::div()
-					.flex_1()
-					.min_w_0()
-					.overflow_hidden()
-					.child(OverflowLabel { id: title_id.into(), text: rest.into() }),
-			)
+			.child(gpui::div().flex_1().min_w_0().overflow_hidden().child(HoverOverflowLabel {
+				id: title_id.into(),
+				text: rest.into(),
+				active: self.scroll,
+			}))
 	}
 }
 

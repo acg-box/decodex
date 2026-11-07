@@ -17,10 +17,7 @@ use crate::{
 		workspace_symbols::{self, Symbol},
 	},
 	ui_motion::{self, SmoothControl as _},
-	ui_theme::{
-		self, BODY_SIZE, CONTROL_SIZE, CONVERSATION_TAB_GAP, CONVERSATION_TAB_SIZE, ERROR,
-		HOVER_FILL, SELECTED_FILL, SELECTED_HOVER_FILL, TEXT, TEXT_MUTED,
-	},
+	ui_theme::{self, BODY_SIZE, CONTROL_SIZE, ERROR, HOVER_FILL, TEXT_MUTED},
 };
 use decodex_protocol::{
 	AgentClient, AgentCommandResponse, ConversationModel, ConversationReasoningEffort, EntityId,
@@ -38,8 +35,14 @@ struct WorkRow {
 
 impl AgentSurface {
 	pub(super) fn new_work_search(cx: &mut Context<Self>) -> Entity<ComposerInput> {
-		let input =
-			cx.new(|cx| ComposerInput::with_placeholder(46, "Search work…", "Search all work", cx));
+		let input = cx.new(|cx| {
+			ComposerInput::with_placeholder(
+				46,
+				"Search…",
+				"Search topics, Work and project Agents",
+				cx,
+			)
+		});
 
 		cx.observe(&input, |_, _, cx| cx.notify()).detach();
 
@@ -118,7 +121,16 @@ impl AgentSurface {
 		cx.notify();
 	}
 
-	fn add_workspace_folder(&mut self, cx: &mut Context<Self>) {
+	pub(super) fn add_workspace_folder(&mut self, cx: &mut Context<Self>) {
+		self.prompt_workspace_folder(true, cx);
+	}
+
+	pub(super) fn add_navigation_project(&mut self, cx: &mut Context<Self>) {
+		self.navigation_project_feedback(None, cx);
+		self.prompt_workspace_folder(false, cx);
+	}
+
+	fn prompt_workspace_folder(&mut self, select_for_draft: bool, cx: &mut Context<Self>) {
 		let Some(profile) = self.profile.clone() else { return };
 
 		self.workspace.folder_error = None;
@@ -169,19 +181,30 @@ impl AgentSurface {
 					Ok(AgentCommandResponse::Accepted { work_id }) => {
 						let id = work_id.as_str().to_owned();
 
-						if s.is_new_conversation() {
+						if select_for_draft && s.is_new_conversation() {
 							s.workspace.new_conversation_workspace = Some(id.clone());
 
 							s.save_draft_document(cx);
 						}
 
-						s.workspace.workspace_filter = Some(id);
+						if select_for_draft {
+							s.workspace.workspace_filter = Some(id);
+						} else {
+							s.reveal_navigation_project(&id, cx);
+						}
 
 						s.refresh(cx);
 					},
 					_ => {
-						s.workspace.folder_error =
-							Some("Folder unavailable. Check its location and retry.".into());
+						if select_for_draft {
+							s.workspace.folder_error =
+								Some("Folder unavailable. Check its location and retry.".into());
+						} else {
+							s.navigation_project_feedback(
+								Some("Folder unavailable. Check its location and retry.".into()),
+								cx,
+							);
+						}
 
 						cx.notify();
 					},
@@ -568,75 +591,6 @@ impl AgentSurface {
 		}
 	}
 
-	pub(super) fn work_navigation(
-		&self,
-		id: &'static str,
-		label: &'static str,
-		symbol: Symbol,
-		action: impl Fn(&mut Self, &mut Context<Self>) + 'static,
-		cx: &mut Context<Self>,
-	) -> AnyElement {
-		let action = Rc::new(action);
-		let keyboard = action.clone();
-		let active = self.workspace.browsing
-			&& id
-				== if self.workspace.archives.open {
-					"archive-browser"
-				} else if self.workspace.guardian_open {
-					"global-guardian"
-				} else if self.workspace.portfolio_mode {
-					"project-work"
-				} else {
-					"all-work"
-				};
-
-		gpui::div()
-			.id(id)
-			.debug_selector(move || id.into())
-			.role(Role::Button)
-			.aria_label(label)
-			.aria_selected(active)
-			.tab_index(0)
-			.h(gpui::px(CONVERSATION_TAB_SIZE))
-			.mb(gpui::px(CONVERSATION_TAB_GAP))
-			.w_full()
-			.flex_none()
-			.overflow_hidden()
-			.flex()
-			.items_center()
-			.gap(gpui::px(6.))
-			.rounded(gpui::px(7.))
-			.cursor_pointer()
-			.bg(ui_theme::rgba(if active { SELECTED_FILL } else { 0xffffff00 }))
-			.text_color(ui_theme::rgb(if active { TEXT } else { TEXT_MUTED }))
-			.hover(move |s| {
-				s.bg(ui_theme::rgba(if active { SELECTED_HOVER_FILL } else { HOVER_FILL }))
-			})
-			.active(|s| s.bg(ui_theme::rgba(ui_theme::PRESSED_FILL)))
-			.focus_visible(|s| s.bg(ui_theme::rgba(HOVER_FILL)))
-			.child(
-				gpui::div()
-					.w(gpui::px(CONVERSATION_TAB_SIZE))
-					.h_full()
-					.flex_none()
-					.flex()
-					.items_center()
-					.justify_center()
-					.child(workspace_symbols::icon_sized(symbol, 15.)),
-			)
-			.child(gpui::div().min_w(gpui::px(120.)).whitespace_nowrap().child(label))
-			.on_click(cx.listener(move |s, _, _, cx| action(s, cx)))
-			.on_key_down(cx.listener(move |s, e: &KeyDownEvent, _, cx| {
-				if !e.is_held && ["enter", "space"].contains(&e.keystroke.key.as_str()) {
-					keyboard(s, cx);
-
-					cx.stop_propagation();
-				}
-			}))
-			.smooth()
-			.into_any_element()
-	}
-
 	fn browsable_work(&self, query: &str, selected_workspace: Option<&str>) -> Vec<WorkRow> {
 		let Some(snapshot) = &self.snapshot else {
 			return Vec::new();
@@ -658,6 +612,9 @@ impl AgentSurface {
 		};
 
 		for item in work {
+			if self.is_assistant_conversation(&item.id) {
+				continue;
+			}
 			if let Some(thread) = &item.codex_thread_id {
 				seen.insert(thread.clone());
 			}

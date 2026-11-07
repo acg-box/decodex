@@ -381,12 +381,7 @@ mod tests {
 				agent.visual_workspace_fixture(cx);
 			});
 		});
-		let visits = [
-			("project-work", AgentLocation::Work { project: None, detail: None }),
-			("global-guardian", AgentLocation::Guardian),
-			("all-work", AgentLocation::Agents { project: None }),
-			("archive-browser", AgentLocation::Archive),
-		];
+		let visits = [("archive-browser", AgentLocation::Archive)];
 
 		for (button, location) in &visits {
 			visual.update(crate::ui_frame::draw_current_frame);
@@ -399,10 +394,13 @@ mod tests {
 		}
 		let count = shell.read_with(visual, |s, _| s.navigation.entries.len());
 
-		assert_eq!(count, 5);
+		assert_eq!(count, 2);
 
-		for location in
-			visits[..3].iter().rev().map(|(_, location)| location).chain([&AgentLocation::Root])
+		for location in visits[..visits.len() - 1]
+			.iter()
+			.rev()
+			.map(|(_, location)| location)
+			.chain([&AgentLocation::Root])
 		{
 			visual.update(crate::ui_frame::draw_current_frame);
 			let back = visual.debug_bounds("navigate-back").unwrap();
@@ -513,7 +511,7 @@ mod tests {
 			});
 		}
 		visual.update(crate::ui_frame::draw_current_frame);
-		let pointer = visual.debug_bounds("project-work").unwrap().center();
+		let pointer = visual.debug_bounds("archive-browser").unwrap().center();
 
 		for _ in 0..3 {
 			for (direction, expected) in [

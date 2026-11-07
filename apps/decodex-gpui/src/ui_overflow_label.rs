@@ -16,7 +16,25 @@ pub(crate) struct OverflowLabel {
 }
 impl RenderOnce for OverflowLabel {
 	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-		let line = OverflowLine::new(self.id.clone(), self.text, window.text_style(), window, cx);
+		HoverOverflowLabel { id: self.id, text: self.text, active: true }.render(window, cx)
+	}
+}
+#[derive(IntoElement)]
+pub(crate) struct HoverOverflowLabel {
+	pub id: ElementId,
+	pub text: SharedString,
+	pub active: bool,
+}
+impl RenderOnce for HoverOverflowLabel {
+	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+		let line = OverflowLine::new_active(
+			self.id.clone(),
+			self.text,
+			window.text_style(),
+			self.active,
+			window,
+			cx,
+		);
 
 		gpui::div()
 			.id(self.id)
@@ -44,14 +62,21 @@ impl RenderOnce for OverflowLabel {
 pub(crate) struct OverflowLine {
 	line: ShapedLine,
 	pub height: Pixels,
-	start: Entity<(Instant, bool)>,
+	start: Entity<Motion>,
 	reduced: bool,
 }
+struct Motion {
+	started: Instant,
+	active: bool,
+	offset: f32,
+	returning: ui_motion::Tween,
+}
 impl OverflowLine {
-	pub(crate) fn new(
+	pub(crate) fn new_active(
 		id: ElementId,
 		text: SharedString,
 		style: TextStyle,
+		enabled: bool,
 		window: &mut Window,
 		cx: &mut App,
 	) -> Self {
@@ -70,15 +95,21 @@ impl OverflowLine {
 			&[run],
 			None,
 		);
-		let active = !ui_motion::reduced();
-		let start = window.use_keyed_state(id, cx, |_, _| (Instant::now(), active));
+		let active = enabled && !ui_motion::reduced();
+		let start = window.use_keyed_state(id, cx, |_, _| Motion {
+			started: Instant::now(),
+			active,
+			offset: 0.,
+			returning: ui_motion::Tween::new(0.),
+		});
 
 		start.update(cx, |state, _| {
-			if !active || state.1 != active {
-				state.0 = Instant::now();
+			if state.active != active {
+				state.started = Instant::now();
+				state.returning = ui_motion::Tween::new(state.offset);
+				state.returning.target(0., Instant::now());
+				state.active = active;
 			}
-
-			state.1 = active;
 		});
 
 		Self {
@@ -101,13 +132,24 @@ impl OverflowLine {
 		}
 
 		let distance = (f32::from(self.line.width) - f32::from(visible.size.width)).max(0.);
-		let x = if !self.reduced && distance > 1. {
-			ui_motion::request_frame(window, cx);
-
-			offset(self.start.read(cx).0.elapsed().as_secs_f32(), distance)
-		} else {
+		let state = self.start.read(cx);
+		let active = state.active;
+		let elapsed = state.started.elapsed().as_secs_f32();
+		let returning = state.returning.sample(Instant::now());
+		let moving = state.returning.moving(Instant::now());
+		let x = if self.reduced {
 			0.
+		} else if active && distance > 1. {
+			ui_motion::request_frame(window, cx);
+			offset(elapsed, distance)
+		} else {
+			let value = returning;
+			if moving {
+				ui_motion::request_frame(window, cx);
+			}
+			value
 		};
+		self.start.update(cx, |state, _| state.offset = x);
 
 		window.with_content_mask(Some(ContentMask { bounds: visible }), |window| {
 			window.paint_layer(visible, |window| {
