@@ -3,8 +3,12 @@ type: "Reference"
 title: "Assistant delegation, memory and context lifecycle"
 openwiki_generated: true
 sources:
+  - id: openwiki-source-586227b5591e5f24cdfe6427
+    resource: repo://apps/decodex-cli/src/agent.rs
   - id: openwiki-source-48758ba7d154c82885281d2c
     resource: repo://apps/decodex-gpui/src/agent_composer.rs
+  - id: openwiki-source-5eddd1d872eed61f8ba7e703
+    resource: repo://apps/decodex-gpui/src/agent_draft_storage.rs
   - id: openwiki-source-9e6b2fcb5c2b3d17fcfda57b
     resource: repo://apps/decodex-gpui/src/agent_drafts.rs
   - id: openwiki-source-bc52712de094b4e96e7db7d5
@@ -27,26 +31,38 @@ sources:
     resource: repo://crates/decodex-protocol/src/agent_timeline.rs
   - id: openwiki-source-cc0439b23243c3697ba49199
     resource: repo://crates/decodex-protocol/src/lib.rs
+  - id: openwiki-source-eac747e105c1c8d9e7e3c811
+    resource: repo://crates/decodex-runtime/examples/clear_development_data.rs
   - id: openwiki-source-a490ea3fbcddb9c007caf196
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_context_tests.rs
   - id: openwiki-source-e5be8be8499e6ccee0cf7ad0
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_memory_tests.rs
   - id: openwiki-source-c75093d19a3bc72db5836102
     resource: repo://crates/decodex-runtime/src/agent_host.rs
+  - id: openwiki-source-1477615a268800361379ce21
+    resource: repo://crates/decodex-runtime/src/agent_initial_settings.rs
   - id: openwiki-source-dc51b38db429ec5fe466c5f2
     resource: repo://crates/decodex-runtime/src/agent_memory.rs
   - id: openwiki-source-c3df87a54ef9d43795de5124
     resource: repo://crates/decodex-runtime/src/agent_message_history.rs
   - id: openwiki-source-8a155c93f55f20176452e149
     resource: repo://crates/decodex-runtime/src/agent_message_history/tests.rs
+  - id: openwiki-source-f4bc7020783c49a911b7fb29
+    resource: repo://crates/decodex-runtime/src/agent_visibility.rs
   - id: openwiki-source-dbc533dc306a3f520c4241e0
     resource: repo://crates/decodex-runtime/src/agent.rs
+  - id: openwiki-source-052a4071b057633df77b1e21
+    resource: repo://crates/decodex-runtime/src/agent/archive.rs
+  - id: openwiki-source-52701e4e84498f74a9fae647
+    resource: repo://crates/decodex-runtime/src/agent/assistant_instructions.md
   - id: openwiki-source-13f64682e8d77fd2c031de39
     resource: repo://crates/decodex-runtime/src/agent/assistant.rs
   - id: openwiki-source-acd129fd3a88516b785fc929
     resource: repo://crates/decodex-runtime/src/agent/instructions.md
   - id: openwiki-source-1bebc823fa8b6426acb4d5e2
     resource: repo://crates/decodex-runtime/src/agent/native_settings.rs
+  - id: openwiki-source-a09c082db4ad1473c4d1e557
+    resource: repo://crates/decodex-runtime/src/application.rs
   - id: openwiki-source-3edc2f094826ee56ddec6b73
     resource: repo://crates/decodex-runtime/src/ragflow.rs
   - id: openwiki-source-003f00974f49a9f106bbcbea
@@ -55,14 +71,18 @@ sources:
     resource: repo://database/src/agent.rs
   - id: openwiki-source-dd880acfb699314e78cc9985
     resource: repo://database/src/agent/archive.rs
+  - id: openwiki-source-86596187dc9df4e756031ef3
+    resource: repo://database/src/agent/deletion.rs
   - id: openwiki-source-3f60f3a3aae45b3e3b355d3e
     resource: repo://database/src/assistant.rs
+  - id: openwiki-source-7c3b932da49e58b50b150e50
+    resource: repo://database/src/development_reset.rs
   - id: openwiki-source-28af4781ad8d9558410630da
     resource: repo://database/src/works.rs
-generated: { by: "codex", at: "2026-11-06T10:49:46.541Z" }
+generated: { by: "codex", at: "2026-11-06T17:37:20.544Z" }
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-06T10:49:46.541Z
+    at: 2026-11-06T17:37:20.544Z
 ---
 
 
@@ -114,7 +134,7 @@ decodex agent assistant-role --agent-id personal
 decodex agent assistant --agent-id personal --command-file /absolute/path/command.json --idempotency-key exact-command-key
 ```
 
-Agent tools are `assistant_read`, `assistant_manage` and `assistant_memory`. The selected Assistant can use them; a native helper or another persistent Agent cannot acquire this authority from inherited instructions.
+Assistant tools are `assistant_read`, `assistant_manage` and `assistant_memory`. New native contexts receive these declarations and Assistant-specific instructions only for the selected Assistant. Ordinary project Agents keep the common Work and coordination surfaces. Back-end checks reject calls by any other Agent. Existing native contexts retain their original declarations; this update does not replace project conversations or discard history.
 
 ## Delegate Agents and teams
 
@@ -167,6 +187,14 @@ The desktop recognizes a verified successor binding for the same Assistant and r
 
 Retired-context rows are read-only. Native source IDs remain exact for detail, media, Results and references. Normal context renewal adds no confirmation or handoff report. A pending context confirmation uses shared inline feedback in Work. External import status stays with the RAGFlow component. Side chats keep their separate inherited-context semantics.
 
+## Delete an Assistant conversation
+
+Archive preserves conversation history and cancels its unsent interactions. Delete removes the current native conversation and its recorded earlier contexts, then purges local conversation text and desktop drafts. Partial native deletion remains visible in Archive until a retry completes.
+
+The personal Assistant identity, saved configuration and learned RAGFlow Memory survive conversation deletion. The same Assistant returns to an empty idle conversation with no native binding. The next user input can start a fresh context. This operation neither clears Memory nor reimports the deleted conversation. Use the separate scoped Memory controls to remove learned content.
+
+Deletion does not change the renewal policy above. Continuous Assistant identity and Memory do not require one permanent native thread.
+
 ## Optional RAGFlow knowledge and Memory
 
 Choose Install for RAGFlow in Settings > Components. Decodex prepares the official nightly service and compatible Infinity 0.7.4. Docker must be running. A private per-user Compose project owns RAGFlow, Infinity, MySQL, MinIO, Kvrocks, NATS and their data volumes; only the RAGFlow API is published, on loopback. ARM64 uses the official Infinity binary and analyzer resources with the required Ubuntu 24.04 runtime. The component installs no model runtime or model weights.
@@ -175,13 +203,21 @@ Component operations check that the Docker-compatible engine is running and Dock
 
 Model keys remain private. The saved summary shows key status only, and the editor does not refill the key. A blank key retains the saved extraction connection key only while the shared Base URL stays unchanged. Both model choices use that connection. A service that needs no key can use an empty value. Loopback URLs become host.docker.internal when RAGFlow calls the host, while the UI retains the entered address. A Memory with messages keeps its embedding model and endpoint so its index remains valid. Failed verification retains the previous saved configuration.
 
-RAGFlow shares the existing component lifecycle buttons, version metadata, disclosure, busy state and inline feedback. The version row retains the complete server-reported value. The receipt and UI use the original server version directly. Update retains model configuration, credentials, saved data and the chat-import choice. Uninstall stops only the owned project, clears its Assistant connection and retains volumes for reinstall. The private installation receipt preserves the project, account and model settings, so service setup can resume through Update. Model setup failures retry through Save. The chat-import switch remains independent of model editing and is available when Memory is ready.
+RAGFlow shares the existing component lifecycle buttons, version metadata, disclosure, busy state and inline feedback. The version row retains the complete server-reported value. The receipt and UI use the original server version directly. Update retains model configuration, credentials, saved data and the automatic-learning choice. Uninstall stops only the owned project, clears its Assistant connection and retains volumes for reinstall. The private installation receipt preserves the project, account and model settings, so service setup can resume through Update. Model setup failures retry through Save. The Automatic learning switch remains independent of model editing and is available when Memory is ready. New Memory connections enable learning; Update preserves an existing saved choice, including an opt-out.
 
-Reset Memory is available for the configured managed Memory. It first displays an inline confirmation bound to the exact selected Memory. Confirming checks the private installation receipt, service origin, credential reference and local Assistant namespace, removes only that Memory through the native API, and initializes an empty replacement with the saved extraction and embedding choices. It keeps chat history, model settings, credentials, explicit knowledge datasets and service volumes. Successful reset turns chat import off, so it does not immediately refill the new Memory. It does not replay old conversations or change unrelated Memories.
+Reset Memory is available for the configured managed Memory. It first displays an inline confirmation bound to the exact selected Memory. Confirming checks the private installation receipt, service origin, credential reference and local Assistant namespace, removes only that Memory through the native API, and initializes an empty replacement with the saved extraction and embedding choices. It keeps chat history, model settings, credentials, explicit knowledge datasets and service volumes. Successful reset preserves the current automatic-learning choice and starts a new export boundary. It does not replay old conversations or change unrelated Memories.
 
 After the delete succeeds, the component removes the old Memory identity from its private receipt before creating the replacement. A failed creation leaves models and credentials available; Edit and Save initializes Memory again. A later explicit reset can reconcile a missing response to the exact confirmed delete. Other missing-resource responses remain errors. The UI binds confirmation to the reviewed Memory and rejects a changed target.
 
 Reset is a logical Memory replacement, not in-place reindexing or a physical storage-erasure guarantee. It uses the supported Memory API reviewed at [RAGFlow commit 543f57ea9716118356ab8c00674cc05c727ab235](https://github.com/infiniflow/ragflow/blob/543f57ea9716118356ab8c00674cc05c727ab235/internal/service/memory.go). The App does not modify Infinity or database storage directly.
+
+### Development cutover
+
+When a development workspace can discard all previous content, use the offline `clear_development_data` example described in [commands and validation](../operations/commands-and-validation.md). Its plan combines registered native contexts with session metadata that identifies Decodex as the originator. After Decodex stops, it reads each target before deletion, uses native `thread/delete`, resets the managed Memory and clears local conversation, Work, team, duty and execution state. Account credentials, account policy, model defaults and project folder configuration stay in place. Client drafts, blobs, cache, old database backups and logs are removed. This operation submits no native inference turn.
+
+Initialize an empty built-in Assistant with `decodex agent assistant-init --agent-id assistant`. Apply the new managed Memory through the existing typed Configure command with automatic learning enabled. Initialization sends no first user message. An unused Assistant remains visible without a native context or archive lookup. Startup skips it until it has saved execution settings or a pending first input; it does not report a configuration error or block a new project conversation. New project conversations use the current project tool set, and the new Assistant uses its dedicated tool set. This cutover discards old native contexts and their saved tool declarations instead of continuing them. It is an explicit development operation, not an automatic data migration.
+
+### Memory scope and learning
 
 The component saves the generated API key in an origin-bound private component file. The service directory mode is 0700 and private files use mode 0600. Saved Assistant settings and model tools contain only a credential reference. The service requires that origin-bound component credential reference for Memory requests. Redirects are disabled. Components does not ask for raw user, dataset or Memory IDs. Explicit dataset retrieval scopes remain available through the typed configuration command.
 
@@ -189,9 +225,15 @@ Knowledge retrieval and Memory are independent. Empty dataset IDs disable knowle
 
 Selecting a Memory shows a reminder and waits for a safe fresh context. New Assistant contexts disable native `memories.generate_memories`, `memories.use_memories` and `features.memories`, and set native memory mode to disabled. Cold resume retains the same policy. The retiring current context also gets disabled memory mode. The change does not edit shared process defaults, unrelated Agents, native compaction or native history, and it does not delete previously generated native memories. The existing native Memory summary view remains an explicit read-only inspection.
 
-Chat import is a separate direct-user opt-in. It starts after the saved opt-in boundary and exports completed original user/final-assistant text, not raw reasoning or tool traces. Changing the external instance, Memory or user scope starts a new export boundary. One bounded background job exports at most one eligible exchange per host tick. The original native history remains available outside RAGFlow's derived memory capacity and forgetting policy. Changing the Memory clears the old import-health notice. A late result from an earlier connection cannot attach its notice to the new configuration.
+New managed Memories use Raw and Semantic types with an Assistant-specific extraction prompt. Semantic extraction includes explicit, durable collaboration preferences, reporting requirements, operating constraints and relevant long-term background. It excludes unrelated general knowledge, Assistant suggestions, acknowledgments, quoted instructions, search questions, temporary acceptance-test markers, credentials, transient task status and claims that an action completed. Content keeps the user's meaning and language, with at most five items in the native Semantic JSON schema. Recovering an existing Memory preserves its saved extraction prompt; setup does not overwrite a custom prompt.
 
-`assistant_memory search` retrieves evidence from Memory or selected knowledge. `remember` saves the exact delivered user request without enabling all-chat import. `forget` requires an exact message ID, user decision and verified Assistant/user scope. Stable operation receipts prevent automatic resends after unknown effects. RAGFlow's queued response means asynchronous extraction was accepted; it does not prove searchable completion. Timeouts, transport failures and nonzero business codes remain visible and do not enable native-memory fallback.
+Selecting a new Memory enables automatic learning from completed original user/final-Assistant dialogue. The user can stop future learning with Automatic learning. Existing saved opt-outs survive updates. Learning starts after the saved configuration boundary and does not import older history, reasoning, commentary or tool traces. Exchanges with recognized credentials are skipped. Turns with an explicit remember or forget receipt are excluded to prevent duplicate learning or relearning forgotten content. The worker rechecks that its Assistant and connection are still current before writing. Changing the external instance, Memory or user scope starts a new export boundary. One bounded background job exports at most one eligible exchange per host tick. Export selection matches saved receipt fields for the Memory, native thread and turn. A reserved exchange, including an unknown write, is not selected again and does not block later completed exchanges after restart. The original native history remains available outside RAGFlow's derived memory capacity and forgetting policy. Changing the Memory clears the old import-health notice. A late result from an earlier connection cannot attach its notice to the new configuration.
+
+Before a normal Assistant turn, bounded automatic recall searches the current text within the exact Memory, Assistant and user scope. Queries contain at most 2,048 characters. A five-second timeout bounds the optional read. Up to five results, with at most 1,200 content characters each and original message/session identifiers, enter native untrusted `additionalContext`. Empty results add no memory context. A failed read reports unavailability without blocking the turn or enabling a second memory backend. Native question answers and capacity retries keep their original input paths. This lookup calls no extraction or answer-generation model.
+
+`assistant_memory search` remains available for a follow-up search of Memory or explicitly selected knowledge. `remember` saves the exact delivered user request without enabling all-chat import. `forget` requires an exact message ID, user decision and verified Assistant/user scope. Stable operation receipts prevent automatic resends after unknown effects. RAGFlow's queued response means asynchronous extraction was accepted; it does not prove searchable completion. Timeouts, transport failures and nonzero business codes remain visible and do not enable native-memory fallback.
+
+Managed setup currently creates Raw and Semantic Memory. Episodic and Procedural extraction, personal-document ingestion, Wiki compilation and graph retrieval are not enabled by this change. Personal memory belongs to the selected Assistant and user; it is not automatically passed to project Agents.
 
 See the [official HTTP API](https://ragflow.io/docs/v1.0.0-rc3/http_api_reference) for retrieval, Memory messages and asynchronous import semantics.
 
@@ -201,7 +243,7 @@ Database fixtures cover team reuse, independent wakes and archive cancellation, 
 
 Reset fixtures cover exact-target deletion, namespace rejection, retained credentials and model choices, failed replacement without a stale Memory ID, and missing-resource handling. Desktop interaction fixtures cover Edit after Save, Cancel to the saved summary, disclosure without implicit editing, reset confirmation and cancellation, and rejection of a changed confirmation target. Database fixtures clear stale health and reject a late import result from the previous Memory. These fixtures do not clear a live user Memory.
 
-The isolated native test `installed_assistant_renews_fresh_contexts_with_original_dialogue_and_isolated_memory` uses the selected Codex binary at upstream commit `ba0dfd38979033f514a28d9514215bad46957a18`. It checks three successive fresh contexts, original dialogue across their boundaries, no fork ancestry, one model request per user turn and absent native-memory injection. An unrelated control context retains native memory settings. Native schemas were generated from that selected binary; upstream main is not a substitute for installed capability.
+The isolated native test `installed_assistant_renews_fresh_contexts_with_original_dialogue_and_isolated_memory` uses the explicit `DECODEX_TEST_CODEX_BINARY`. The current selected runtime is pinned to upstream commit `2e58636d16794a150e562cc34b63ca3035494e50`. It checks three successive fresh contexts, original dialogue across their boundaries, no fork ancestry, one model request per user turn, Assistant-specific context and absent native-memory injection. It also checks that unavailable automatic recall reaches the model as bounded untrusted context. An unrelated control context retains native memory settings. Native schemas were generated from that selected binary; upstream main is not a substitute for installed capability.
 
 Desktop tests cover usable drafts across renewal and restart, loaded history, reading state, old source threads and rebased pagination cursors. The wire regression round-trips a nonempty native source map through the tagged timeline response. Locked-input tests keep the shared status centered and retain the draft internally without a second text block. These are source/fixture results, not installed-app visual acceptance or a live RAGFlow server qualification. No real RAGFlow account or credential is required for these checks. Long-duration quality, external extraction quality and machine sleep behavior still need representative operational measurement.
 

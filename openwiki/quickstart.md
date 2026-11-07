@@ -58,6 +58,10 @@ sources:
     resource: repo://apps/decodex-gpui/src/settings_updates.rs
   - id: openwiki-source-2f256c95c226c1326d164ad3
     resource: repo://apps/decodex-gpui/src/ui_feedback.rs
+  - id: openwiki-source-ccd97a4d4ef8dfe9b724e7ce
+    resource: repo://apps/decodex-gpui/src/ui_live_activity.rs
+  - id: openwiki-source-570564020f98df7a4d6d0b61
+    resource: repo://apps/decodex-gpui/src/ui_theme.rs
   - id: openwiki-source-f5d4f5acdb41fe7c4e985337
     resource: repo://automations/decodex/README.md
   - id: openwiki-source-14193a66abfb7d3230f476bf
@@ -80,6 +84,12 @@ sources:
     resource: repo://crates/decodex-runtime/src/account_service/tests/plan_scope.rs
   - id: openwiki-source-7111b71a47931c3e55d3ff6f
     resource: repo://crates/decodex-runtime/src/agent_titles/host.rs
+  - id: openwiki-source-dbc533dc306a3f520c4241e0
+    resource: repo://crates/decodex-runtime/src/agent.rs
+  - id: openwiki-source-52701e4e84498f74a9fae647
+    resource: repo://crates/decodex-runtime/src/agent/assistant_instructions.md
+  - id: openwiki-source-13f64682e8d77fd2c031de39
+    resource: repo://crates/decodex-runtime/src/agent/assistant.rs
   - id: openwiki-source-acd129fd3a88516b785fc929
     resource: repo://crates/decodex-runtime/src/agent/instructions.md
   - id: openwiki-source-a67672a943dfe221574b2501
@@ -90,14 +100,16 @@ sources:
     resource: repo://database/src/agent_titles.rs
   - id: openwiki-source-6197a876b2effbe992b1e2ec
     resource: repo://database/src/agent.rs
+  - id: openwiki-source-3f60f3a3aae45b3e3b355d3e
+    resource: repo://database/src/assistant.rs
   - id: openwiki-source-dc8958560b1230967470835f
     resource: repo://database/src/schema.rs
   - id: openwiki-source-3b57179b92b257bc3fff51a1
     resource: repo://scripts/macos/stage_decodex_app.sh
-generated: { by: "codex", at: "2026-11-06T10:49:46.541Z" }
+generated: { by: "codex", at: "2026-11-06T18:53:07.733Z" }
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-06T10:49:46.541Z
+    at: 2026-11-06T18:53:07.733Z
 ---
 
 # OpenWiki quickstart
@@ -108,7 +120,7 @@ Decodex is a local workspace above Codex app-server. The primary Agent can discu
 
 The [canonical contract](decisions/project-agent-work.md) is implemented: Project provides continuing context, each user-created Agent has one current native conversation, and Work records an outcome with one accountable Agent, current requirements and evidence. Assistant is built in and always available. Project Lead is a responsibility of an existing Agent. The same Agent can handle several Works.
 
-The implemented [Assistant lifecycle](decisions/assistant-lifecycle.md) provides a continuing personal Agent for delegated work, teams, duties and optional Memory. It has no built-in project patrol. Open Assistant in the sidebar; first use initializes an idle Agent without sending a message. Give continuing instructions in chat. For optional Memory, use Settings > Components > RAGFlow. Install prepares the managed service and Infinity with a private account and requires a running Docker-compatible engine and Compose. The App does not install that runtime or model weights. Set up models uses four fields: a shared OpenAI-compatible Base URL and optional API key, an extraction model ID and an embedding model ID. Save verifies both models and initializes Memory without sending chat content. The saved summary keeps Edit available. Chat import is a separate opt-in. Reset Memory requires confirmation, starts with an empty managed Memory and turns import off while retaining chat history and model settings. See the lifecycle page for reset limits and recovery. Update and Uninstall remain component actions.
+The implemented [Assistant lifecycle](decisions/assistant-lifecycle.md) provides a continuing personal Agent for delegated work, teams, duties and optional Memory. It has no built-in project patrol. Open Assistant in the sidebar; first use initializes an idle Agent without sending a message. Give continuing instructions in chat. For optional Memory, use Settings > Components > RAGFlow. Install prepares the managed service and Infinity with a private account and requires a running Docker-compatible engine and Compose. The App does not install that runtime or model weights. Set up models uses four fields: a shared OpenAI-compatible Base URL and optional API key, an extraction model ID and an embedding model ID. Save verifies both models and initializes Memory without sending chat content. The saved summary keeps Edit available. New Memory connections enable automatic learning from completed Assistant conversations; existing connections keep the saved choice. Before ordinary input, the selected Assistant recalls bounded personal-memory evidence automatically. Project Agents receive neither the personal-memory tools nor this context. Reset Memory requires confirmation, starts with an empty managed Memory and preserves the learning choice, chat history and model settings. Older conversations do not refill the reset Memory. See the lifecycle page for reset limits and recovery. Update and Uninstall remain component actions.
 
 Agents use native Subagents for bounded execution and scoped Collaboration Requests for independent peers. Native Codex owns execution, context, permissions and continuation. Decodex owns durable business relationships, evidence, coordination and presentation. The default Work tools do not create another executor, and no part of this contract requires Ultra.
 
@@ -164,6 +176,7 @@ The app version and **Check for updates** are in **Settings > General > Updates*
 | Change Project/Agent/Work contracts, recovery, global Guardian or canonical names | [Project, Agent and Work contract](decisions/project-agent-work.md) |
 | Understand service, clients and storage | [Runtime architecture](architecture/runtime-architecture.md) |
 | Trace native helper execution, peer Collaboration, question escalation or recovery | [Agent coordination](architecture/chief-coordination.md) |
+| Reuse activity-island geometry, motion, colors or reading spacing | [Interface geometry and motion](architecture/design-language.md) |
 | Change conversation layout, loading or motion | [Conversation presentation](architecture/conversation-presentation.md), [Desktop workspace](architecture/desktop-workspace.md) |
 | Change input, branches, drafts, read state, export or recap | [Conversations and recovery](workflows/conversations-and-recovery.md) |
 | Change model, effort, Goal, search or native launch defaults | [Models and settings](workflows/models-and-settings.md) |

@@ -25,6 +25,16 @@ When working in this repository, read the OpenWiki quickstart first, then follow
 - Do not use centered dots as decorative text separators. Preserve user and
   upstream text, mathematical operators, and actual list markers.
 
+## UI design language
+
+- Follow [Interface geometry and motion](openwiki/architecture/design-language.md)
+  for desktop layout, spacing, type, color, and motion.
+- Every activity island must use the shared sizing, allocation, transition, and
+  material-surface components. Keep feature content separate from geometry.
+- Change the shared contract and its focused checks when a new requirement
+  needs another variant. Do not add a feature-specific island animation or size
+  system.
+
 <!-- OPENWIKI:START -->
 
 ## OpenWiki

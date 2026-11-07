@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:37d70944c8fd7eee8076c8eaa24f6fb672dc37e12a7fc94a52241885fb21e416",
+  "pageVersion": "sha256:39016a0d2fdbf77ea5614f614b831a7b462be1a1384c3a6db31e763949b3f43d",
   "claims": [
     {
       "id": "claim_f0c37462522f4442acd94d53819ef75c",
@@ -106,7 +106,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_capabilities.rs",
-          "version": "repo-file-v1:sha256:f3877270325d0ea4c1c6266b63a6083042e741eabb4a5c61126fe9faf7fccd99"
+          "version": "repo-file-v1:sha256:8cfa89ccb1a25b21956095ef83ede4fc8b5efc156df06948df0ec5d32895883d"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_permissions.rs",
@@ -199,7 +199,7 @@
       "statement": "The Agent model catalog refreshes through native model/list every 60 seconds, with account, directory and process binding. Model and effort cycling have no fixed fallback list when the catalog is unavailable.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L1696-L1702",
+          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L1693-L1699",
           "version": "repo-lines-v1:sha256:ec57be10edb464df8b1247da2b96223a885c7911b9fef2da7839e011a926563c:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMzExMjRhOTBmYzk1YjFjMTIzMTZiYTliNTFiNzkxZDZkMGMzNTIyYTczYTA2ZDM5YjFhMTk3M2VkNmU0YzE1OSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiN2ZkOWJmZjc2MjQwMTQwNjA1ZTIzZmVlOGM4NzNkMTJjMzA0Y2JkMGU5MGEzYWFmOGJkOTk0N2VmOWQ0OWExNiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZDc3NzdmNDlkYTJlYjE2NzU4YjViMzE0OWFkOGFkZTlkMmI4MzBhZDQzMmQ2N2UzNDdkNmQ0YmQ5MGJhOWRhMyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNDU5ODRjN2QxZjljNTFkMDJhM2JkODBlNTkyZTlhMjkyODY3MTE0YzAzMjU5MGZhOGNlNjFjNGY2MjQyMTlmMyJ9"
         },
         {
@@ -236,7 +236,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_context_settings.rs",
-          "version": "repo-file-v1:sha256:c857f947f5d4a7be8367ad08e5ba7839057b27d58ac3c9c1d85de571d8d8d5ab"
+          "version": "repo-file-v1:sha256:9bcac9515779c29a6bce7e255fe21bd9af66b85578dd6be98d0b3eedab123cdf"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_native.rs",
@@ -250,23 +250,19 @@
     },
     {
       "id": "claim_ae80d6525a7c4e9f9fef8b9241c057d6",
-      "statement": "Settings > Agents > Assistance controls automatic next-message suggestions. The preference defaults on; disabling consumes turn boundaries without starting automatic sampling, and re-enabling does not replay those completions. Tab acceptance remains an unsent undoable draft.",
+      "statement": "The enabled-by-default automatic suggestion preference can restore a suggestion for the latest completed answer after restart, reopen or re-enabling. It preserves draft content and uses Tab only for an undoable unsent edit.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_prompt_suggestions.rs",
-          "version": "repo-file-v1:sha256:09c3742917387465e58596e912fa8ce406259518806cad8149e0df13ab9f1b57"
+          "version": "repo-file-v1:sha256:2efb94057b8e1e6567cdc5b5e86a5376028126f2f12c5df711669c2bbf9774f8"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_sample_tests.rs",
-          "version": "repo-file-v1:sha256:08fd12d47eeca90e729b571d7c27a8a98d01a6e80a30de87cd8a559032765a40"
+          "version": "repo-file-v1:sha256:fd4552a9afbd579ce7950ee14cb168f82b8960383b3e6e62a05b33a7b03c5f5e"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_surface.rs",
           "version": "repo-file-v1:sha256:c95911cf8db5baa1a2a3c56a524d8f63ebd9cf3748fabd3e8d72f0a2e21282af"
-        },
-        {
-          "resource": "repo://apps/decodex-gpui/src/ui_preferences.rs",
-          "version": "repo-file-v1:sha256:540a21db111b48ddc5db30848f8c5885593558d1ffd11d7524545b86e6ea933b"
         }
       ]
     },
@@ -322,19 +318,19 @@
     },
     {
       "id": "claim_09df0d70257c4cd4995cda41a1da8169",
-      "statement": "Components installs managed RAGFlow nightly with compatible Infinity and a private service account, sharing actual version and lifecycle controls. Operations check a running Docker-compatible engine and Docker Compose without installing or launching a container runtime. Successful installation without saved models opens setup. The saved summary offers Edit; the editor uses one shared OpenAI-compatible Base URL and optional private API key with extraction and embedding model IDs. Save verifies both choices, updates their provider instances and initializes Memory. A blank key retains the saved extraction connection key only while the shared URL is unchanged; indexed Memory retains its embedding model and endpoint. Chat import starts off and remains separate. Update preserves models, import choice and data; Uninstall clears the connection while retaining data. Typed knowledge scopes and native-memory context policy retain their existing owners.",
+      "statement": "Components installs managed RAGFlow nightly with compatible Infinity and a private service account, sharing actual version and lifecycle controls. Operations check a running Docker-compatible engine and Docker Compose without installing or launching a container runtime. Successful installation without saved models opens setup. The saved summary offers Edit; the editor uses one shared OpenAI-compatible Base URL and optional private API key with extraction and embedding model IDs. Save verifies both choices, updates their provider instances and initializes Memory. A blank key retains the saved extraction connection key only while the shared URL is unchanged; indexed Memory retains its embedding model and endpoint. New connections enable Automatic learning; existing connections keep the saved choice. Update preserves models, the learning choice and data. Reset preserves the learning choice and starts a fresh export boundary. Uninstall clears the connection while retaining data. Typed knowledge scopes and native-memory context policy retain their existing owners.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
-          "version": "repo-file-v1:sha256:af3372dfe92b54bdc19d109e1188e3aeeb74a1d70b2b74a213332c512b513d06"
+          "version": "repo-file-v1:sha256:a500aeabff659dfde69b68b1b68e9e8a1b2397e2da1b482d69d657b23e2553d5"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:d70ec68a253c9a83b92946d602e61c5094327772c119ae84254c1721183d6df4"
+          "version": "repo-file-v1:sha256:4cdbd7e914d88b0a42528c33396b7329d8cd21de69679604628b8b1d41aeb935"
         },
         {
           "resource": "repo://crates/decodex-components/src/ragflow.rs",
-          "version": "repo-file-v1:sha256:cdeb415f7327808194dad8b81832d740be560cdb991a54705c740dacaa67f050"
+          "version": "repo-file-v1:sha256:eeeb8cfce35fa85da809e0064b80d80a0f3a6ca4c189482e48e70801b22bb051"
         },
         {
           "resource": "repo://crates/decodex-components/src/ragflow_service.rs",
@@ -342,11 +338,11 @@
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent.rs",
-          "version": "repo-file-v1:sha256:0db1daf807cd75cf915bf9be58389ac6ab98adcbd3bb2f89910ac32f38ff14e3"
+          "version": "repo-file-v1:sha256:d37d9b7a977702387b59368d454584564ca7c122c78804d310fa640940d87ec6"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/assistant.rs",
-          "version": "repo-file-v1:sha256:1e098d12f81905f772a623bec68c6ac68b124e99c452b5fab9b63cf0928a4cc6"
+          "version": "repo-file-v1:sha256:bf44f3d59cdb33602d9436cacf3b0d0200d83cf7153d46ea4782c35153235b59"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/native_settings.rs",
@@ -360,7 +356,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
-          "version": "repo-file-v1:sha256:af3372dfe92b54bdc19d109e1188e3aeeb74a1d70b2b74a213332c512b513d06"
+          "version": "repo-file-v1:sha256:a500aeabff659dfde69b68b1b68e9e8a1b2397e2da1b482d69d657b23e2553d5"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/composer_input.rs",
@@ -368,17 +364,17 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:d70ec68a253c9a83b92946d602e61c5094327772c119ae84254c1721183d6df4"
+          "version": "repo-file-v1:sha256:4cdbd7e914d88b0a42528c33396b7329d8cd21de69679604628b8b1d41aeb935"
         }
       ]
     },
     {
       "id": "claim_1d1d68cccf054493b22ff3f7574f9e70",
-      "statement": "All Settings categories share a 620-point content column and normal App typography. Related preferences share a quiet bordered panel with distinct section, name, value and explanation roles. Ordinary setting names use normal weight; section titles use medium weight and muted text. Accounts keeps one compact divided list surface; Add account and model verification use shared primary buttons. Help explains a choice, scope, cost, data effect, compatibility limit or recovery action. Component rows retain full reported versions. Component, MCP and Diagnostics details use a shared inset region. Diagnostics shows one overall status and three group summaries, with all individual checks in Technical details; uniform groups share a heading status and mixed groups retain item states. Local feedback keeps its compact inset icon, tone fill, centered alignment and adjacent recovery. Codex setup failures retain their original details and use Install or Reinstall through the existing preparation owner.",
+      "statement": "All Settings categories share a 620-point content column and compact Settings typography. Related preferences share a quiet bordered panel with distinct section, name, value and explanation roles. Ordinary setting names use normal weight; section titles use medium weight and muted text. Accounts keeps one compact divided list surface; Add account and model verification use shared primary buttons. Help explains a choice, scope, cost, data effect, compatibility limit or recovery action. Component rows retain full reported versions. Component, MCP and Diagnostics details use a shared inset region. Diagnostics shows one overall status and three group summaries, with all individual checks in Technical details; uniform groups share a heading status and mixed groups retain item states. Local feedback keeps its compact inset icon, tone fill, centered alignment and adjacent recovery. Codex setup failures retain their original details and use Install or Reinstall through the existing preparation owner.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:d70ec68a253c9a83b92946d602e61c5094327772c119ae84254c1721183d6df4"
+          "version": "repo-file-v1:sha256:4cdbd7e914d88b0a42528c33396b7329d8cd21de69679604628b8b1d41aeb935"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_power.rs",
@@ -390,7 +386,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/shell.rs",
-          "version": "repo-file-v1:sha256:f926ad24637bba7ae97120d234b462b3bee7642ab49c1f0c1c70884b62e73e55"
+          "version": "repo-file-v1:sha256:ec355e93da1bae49fb909572b2537fea290052e3b26458c5a342a7b4071eedec"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/shell_diagnostics.rs",
@@ -398,11 +394,11 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_feedback.rs",
-          "version": "repo-file-v1:sha256:effd5403885f5c9714167b13c9b49e4327562e54449efc708443bba1373c0857"
+          "version": "repo-file-v1:sha256:530dce0ba4d3afcde3ee0c0a790224ea642bd69765265d5953809733d4be1698"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_theme.rs",
-          "version": "repo-file-v1:sha256:d3d514f37a2b4ffaa0a99c27df53bdeebec79eb174c18369f08f62f77484140a"
+          "version": "repo-file-v1:sha256:a5f1df9125386b738319a7b4559a829600da5756686f000aea4469d021e54558"
         }
       ]
     },
@@ -420,11 +416,11 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/shell.rs",
-          "version": "repo-file-v1:sha256:f926ad24637bba7ae97120d234b462b3bee7642ab49c1f0c1c70884b62e73e55"
+          "version": "repo-file-v1:sha256:ec355e93da1bae49fb909572b2537fea290052e3b26458c5a342a7b4071eedec"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_theme.rs",
-          "version": "repo-file-v1:sha256:d3d514f37a2b4ffaa0a99c27df53bdeebec79eb174c18369f08f62f77484140a"
+          "version": "repo-file-v1:sha256:a5f1df9125386b738319a7b4559a829600da5756686f000aea4469d021e54558"
         }
       ]
     },
@@ -455,7 +451,7 @@
       "statement": "Tool catalog cache uses the shared interruptible 200 ms Settings disclosure animation in both Settings and Agent preferences. Moving details measure current content before sibling layout and clip it to revealed bounds. Expansion, collapse and server-list refresh do not save configuration.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_context_settings.rs#L294-L357",
+          "resource": "repo://apps/decodex-gpui/src/agent_context_settings.rs#L309-L372",
           "version": "repo-lines-v1:sha256:7c71f23e7902bbd18711b8c195d2863b365f413b379bd1224eaf3f6411f63333:eyJzZWxlY3RlZExpbmVDb3VudCI6NjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYwODYyYWNlY2QwMTcyMjAwNzFiMWZjMDYyNTJjNmE1MTA5YWZkYzE2YjJjZGI2YTFhZDkyYWM1OGJhMjQ0Y2EiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNjNDIzOTM1NTE4NmIwZTAxNWFkYTZhNDM5NDIyNjgxZjdkZjE1ZjQ5OThiZmE2NDdiMTQzYzRlZjI3YmRhZTYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjVhN2EwMGQ3MDVlMjg1YzhlMWIwNzIwNzZkNDNmNTM4NWRmNGYwYzk5YjBhODVmYzMzYzU2ZGJjZDRjNTdkMjciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjMyM2MwYjI5OWRhOGRmOWQzMDUxYzExMGMyNDhjNzdkMzRiNjI5MDY1ZWI2NmQwNjhkZWY2NmZjMmUzZGFjNDcifQ"
         },
         {
@@ -492,7 +488,7 @@
         },
         {
           "resource": "repo://crates/decodex-protocol/src/desktop_drafts.rs",
-          "version": "repo-file-v1:sha256:51ae24f699647c5f378e77c65f7f31d77694640c74f087cd493ab969f362b005"
+          "version": "repo-file-v1:sha256:0a2a6359ddd916cb04dba1b965888f1531d0c22155a1f97fd9f281c6a507207e"
         },
         {
           "resource": "repo://crates/decodex-protocol/src/lib.rs",
@@ -528,7 +524,7 @@
         },
         {
           "resource": "repo://crates/decodex-runtime/src/ragflow.rs",
-          "version": "repo-file-v1:sha256:10711955e1abe0c725d1ad155fd5befd5699604ec5756d5286b3129e5b0cb14f"
+          "version": "repo-file-v1:sha256:f1696fd9782abb6f7332ed7d29b22f9a39d7129fb7d4836721ac8d7fc259165a"
         }
       ]
     },
@@ -546,13 +542,127 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:d70ec68a253c9a83b92946d602e61c5094327772c119ae84254c1721183d6df4"
+          "version": "repo-file-v1:sha256:4cdbd7e914d88b0a42528c33396b7329d8cd21de69679604628b8b1d41aeb935"
+        }
+      ]
+    },
+    {
+      "id": "claim_c6bb7b47666147129aac88535725857d",
+      "statement": "Automatic learning exports only the original user input and final Assistant replies from completed Assistant exchanges and excludes tool output, reasoning, commentary and exchanges with recognized credentials. Bounded scoped automatic recall precedes ordinary Assistant input; project Agents have neither these tools nor automatic personal-memory context.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent.rs",
+          "version": "repo-file-v1:sha256:d37d9b7a977702387b59368d454584564ca7c122c78804d310fa640940d87ec6"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/assistant.rs",
+          "version": "repo-file-v1:sha256:bf44f3d59cdb33602d9436cacf3b0d0200d83cf7153d46ea4782c35153235b59"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/ragflow.rs",
+          "version": "repo-file-v1:sha256:f1696fd9782abb6f7332ed7d29b22f9a39d7129fb7d4836721ac8d7fc259165a"
+        }
+      ]
+    },
+    {
+      "id": "claim_a45077f6a96a49f4ad9e92211bccc220",
+      "statement": "Settings uses 11.5-point labels and values, 10.5-point help, 12-point section headings and 16-point titles; expanded account metrics distinguish muted keys from primary-color values.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/shell_account_activity.rs",
+          "version": "repo-file-v1:sha256:aab2b0de857be9a9eb275c2d0913055ae1ccb5d35732e8cf66a60ab081296d2f"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/ui_theme.rs",
+          "version": "repo-file-v1:sha256:a5f1df9125386b738319a7b4559a829600da5756686f000aea4469d021e54558"
+        }
+      ]
+    },
+    {
+      "id": "claim_562201959e7843038249f2383b8f7ef7",
+      "statement": "An idle Assistant without a native thread uses initial model discovery; the model starts empty and explicitly unavailable catalogs display an em dash. Ultrafast uses the supplied double-bolt silhouette with the current Decodex theme accent color.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_capabilities.rs",
+          "version": "repo-file-v1:sha256:8cfa89ccb1a25b21956095ef83ede4fc8b5efc156df06948df0ec5d32895883d"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_composer.rs",
+          "version": "repo-file-v1:sha256:aca07a015dd0a8276d8f33214b086e118be0e0b9458f4355a0634824ddf580db"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_creation_setup.rs",
+          "version": "repo-file-v1:sha256:250dd929cc1d07b7b68ce0351b7b1bb61646c154360baf73e5b7f51eb15ae523"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_model_settings.rs",
+          "version": "repo-file-v1:sha256:793b39d583ed8a04edad18a69d18013e5b6475c410d9b7cc90a1e7d9627e13f3"
+        },
+        {
+          "resource": "repo://scripts/macos/generate_workspace_symbols.swift",
+          "version": "repo-file-v1:sha256:1c453039736cfd47e6670368e097d2b92266ac31abf183be8a8aa92751de85e8"
+        }
+      ]
+    },
+    {
+      "id": "claim_c119b5c15a494aa682f439088c60a0a3",
+      "statement": "Account settings separates the explained New conversations selection row from list controls and a text Show emails action; unbound conversations show a quiet Context defaults connection explanation instead of a failed native read.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_context_settings.rs",
+          "version": "repo-file-v1:sha256:9bcac9515779c29a6bce7e255fe21bd9af66b85578dd6be98d0b3eedab123cdf"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/shell.rs",
+          "version": "repo-file-v1:sha256:ec355e93da1bae49fb909572b2537fea290052e3b26458c5a342a7b4071eedec"
+        }
+      ]
+    },
+    {
+      "id": "claim_65ce5cbae2a44934a98fbe8243e61c5e",
+      "statement": "Native model popovers stay transparent until final geometry and their drawable are ready, including when content height changes.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_native_menu.rs",
+          "version": "repo-file-v1:sha256:20d6e711f2ab03cbdd0e8fdf6403cdd9aa28dd537a71987f2d68478c92bd38b3"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/native_material_panel.rs",
+          "version": "repo-file-v1:sha256:8d766c6ee9510577a1d512b22af69d52fb5d15810a78875b63cca31a184792aa"
+        }
+      ]
+    },
+    {
+      "id": "claim_11c6ae291d8e48b4af6d39ae66569855",
+      "statement": "For an automatic suggestion after restart, the service can load an exact dormant native source with thread/resume before sampling and rechecks ownership afterward; it will not load an unloaded active native goal or submit parent input.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent_sample_host.rs",
+          "version": "repo-file-v1:sha256:92c6c2fdbe84a676e8a9975e633dc67cfa508871c987f2d33ed38b0257b4e0cd"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent_sample_loading_tests.rs",
+          "version": "repo-file-v1:sha256:f9b3ce1b645bc4b6af3b0a06ee1510c502903f18ef394ddcf0b765d782403c02"
+        }
+      ]
+    },
+    {
+      "id": "claim_6616b090272c4d59995d5d422030eb09",
+      "statement": "The native source requirement records upstream commit 2e58636d16794a150e562cc34b63ca3035494e50, and automatic desktop suggestions require a successful completed answer and an empty editor.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_prompt_suggestions.rs",
+          "version": "repo-file-v1:sha256:2efb94057b8e1e6567cdc5b5e86a5376028126f2f12c5df711669c2bbf9774f8"
+        },
+        {
+          "resource": "repo://codex-runtime.lock.json",
+          "version": "repo-file-v1:sha256:1d67cc33f1a91a206e961996e13dd887750361a7e661994fe89c9c9fe50c98f6"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.9.0",
-    "at": "2026-11-06T12:32:00.964Z"
+    "at": "2026-11-06T18:53:07.733Z"
   }
 }

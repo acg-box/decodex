@@ -339,7 +339,7 @@ impl AgentSurface {
 					if self.ragflow_component_state().memory_ready {
 						"Enabling Assistant Memory turns off Codex memory for this Assistant."
 					} else {
-						"Enabling Assistant Memory turns off Codex memory for this Assistant. Chat import starts off and can be enabled after setup."
+						"Assistant Memory automatically learns from completed Assistant conversations and recalls relevant personal memories. Codex memory is disabled only for this Assistant."
 					},
 				))
 			},
@@ -676,12 +676,12 @@ impl AgentSurface {
 										&& previous.credential_id == connection.credential_id
 								}) {
 							connection.dataset_ids.clone_from(&previous.dataset_ids);
-							connection.ingest_chats =
-								action != ComponentAction::ResetMemory && previous.ingest_chats;
+							connection.ingest_chats = previous.ingest_chats;
 						}
 						if action == ComponentAction::ResetMemory {
-							s.assistant_settings.completion =
-								Some("Memory reset. Chat import is off.".into());
+							s.assistant_settings.completion = Some(
+								"Memory reset. Automatic memory keeps its current setting.".into(),
+							);
 						}
 						s.assistant_settings.running = installation.as_ref().map(|i| i.installed);
 						s.assistant_settings.installation = installation;
@@ -735,7 +735,7 @@ fn memory_connection(memory: decodex_components::ragflow::MemorySetup) -> Ragflo
 		user_id: memory.user_id,
 		dataset_ids: Vec::new(),
 		memory_id: Some(memory.memory_id),
-		ingest_chats: false,
+		ingest_chats: true,
 	}
 }
 

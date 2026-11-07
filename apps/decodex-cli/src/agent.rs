@@ -22,6 +22,13 @@ use decodex_protocol::{
 /// Explicit Agent operations. Execution stays inside the service.
 #[derive(Clone, Debug, Eq, PartialEq, Subcommand)]
 pub enum AgentCommand {
+	/// Initialize the built-in Assistant without sending a message or starting a model turn.
+	AssistantInit {
+		#[arg(long)]
+		agent_id: String,
+		#[arg(long)]
+		idempotency_key: Option<String>,
+	},
 	/// Select or remove the personal Assistant responsibility.
 	AssistantRole {
 		#[arg(long)]
@@ -275,6 +282,8 @@ fn prepare(command: AgentCommand) -> Result<(AgentActionDto, IdempotencyKey), &'
 	let identity =
 		|value: String| EntityId::new(value).map_err(|_| "invalid work or account identity");
 	let (action, key) = match command {
+		AgentCommand::AssistantInit { agent_id, idempotency_key } =>
+			(AgentActionDto::CreateAssistant { agent_id: identity(agent_id)? }, idempotency_key),
 		AgentCommand::AssistantRole { agent_id, remove, idempotency_key } => (
 			AgentActionDto::SetAssistant { agent_id: identity(agent_id)?, enabled: !remove },
 			idempotency_key,
@@ -547,6 +556,17 @@ mod tests {
 	use clap::Parser as _;
 
 	use crate::{Cli, Command, OutputFormat};
+
+	#[test]
+	fn assistant_init_creates_an_idle_identity_without_input() {
+		let cli =
+			Cli::try_parse_from(["decodex", "agent", "assistant-init", "--agent-id", "assistant"])
+				.unwrap();
+		let Command::Agent(command) = cli.command else { panic!("Agent command") };
+		assert!(
+			matches!(super::prepare(command).unwrap().0, decodex_protocol::AgentActionDto::CreateAssistant {agent_id} if agent_id.as_str()=="assistant")
+		);
+	}
 
 	#[test]
 	fn cancel_retry_command_binds_exact_work_and_event() {

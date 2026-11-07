@@ -551,7 +551,7 @@ impl ServiceApplication {
 				// Report failure instead of presenting the archive gate as endless startup.
 				if !agent.connection_initializing()
 					&& agent.guardian_generation().is_none()
-					&& !snapshot.work_items.is_empty()
+					&& snapshot.work_items.iter().any(|work| work.codex_thread_id.is_some())
 				{
 					return QueryResultPayload::AgentSnapshot(
 						decodex_protocol::AgentSnapshotResult::Unavailable,
@@ -559,6 +559,15 @@ impl ServiceApplication {
 				}
 
 				agent.project_work(snapshot, archived).await;
+				if archived && let ProductStore::Available(store) = &self.store {
+					match store.pending_agent_deletions().await {
+						Ok(pending) => snapshot.archived_work_ids.extend(pending),
+						Err(_) =>
+							return QueryResultPayload::AgentSnapshot(
+								decodex_protocol::AgentSnapshotResult::Unavailable,
+							),
+					}
+				}
 			}
 
 			let after = match &self.agent {

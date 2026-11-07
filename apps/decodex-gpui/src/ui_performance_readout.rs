@@ -85,6 +85,7 @@ pub(super) struct Debug {
 	draw: String,
 	columns: [f32; 2],
 	header_label_width: f32,
+	header_value_width: f32,
 	sizing: Sizing,
 }
 
@@ -159,12 +160,11 @@ impl Content {
 		};
 		let total_label =
 			width("activity-width-total-label", "Total", TEXT_SIZE, FontWeight::NORMAL);
-		let total_value = width(
-			"activity-width-total-value",
-			&tokens(&data.total),
-			TEXT_SIZE,
-			FontWeight::MEDIUM,
-		);
+		let total_value = if data.idle_total() {
+			minimal - 22.
+		} else {
+			width("activity-width-total-value", &tokens(&data.total), TEXT_SIZE, FontWeight::MEDIUM)
+		};
 		data.header_widths = [primary, total_label + 4., total_value];
 		let compact = primary + 16. + total_label + 4. + total_value + FRAME;
 		let longest = |get: fn(&Live) -> String| {
@@ -207,11 +207,7 @@ impl Content {
 		data.breakdown_columns = breakdown_columns(&data, &mut width);
 		let breakdown_width = data.breakdown_columns.iter().sum::<f32>() + COLUMN_GAP + FRAME;
 
-		data.sizing = Sizing {
-			minimal,
-			compact: compact.max(minimal),
-			expanded: details.max(compact).max(minimal).max(breakdown_width),
-		};
+		data.sizing = Sizing::content(minimal, compact, details.max(breakdown_width));
 
 		Self::Work(data)
 	}
@@ -228,6 +224,7 @@ impl Content {
 			draw: ui_performance::timing(island.metrics.draw_ms, island.metrics.draw_frames),
 			columns: [0.; 2],
 			header_label_width: 0.,
+			header_value_width: 0.,
 			sizing: Sizing { minimal: 0., compact: 0., expanded: 0. },
 		};
 		let mut width = |id, text: &str, size, weight| measure(id, text, size, weight, window, cx);
@@ -236,6 +233,7 @@ impl Content {
 			+ 3.
 			+ width("activity-width-fps-small", "FPS", TEXT_SIZE, FontWeight::NORMAL)
 			+ 22.;
+		data.header_value_width = minimal - 22.;
 		data.header_label_width =
 			width("activity-width-fps-label", "Frame rate", TEXT_SIZE, FontWeight::NORMAL);
 		let compact = data.header_label_width
@@ -274,11 +272,7 @@ impl Content {
 		// The sparkline gets enough space to show its measured history.
 		let details = data.columns[0] + data.columns[1].max(96.) + COLUMN_GAP + FRAME;
 
-		data.sizing = Sizing {
-			minimal,
-			compact: compact.max(minimal),
-			expanded: details.max(compact).max(minimal),
-		};
+		data.sizing = Sizing::content(minimal, compact, details);
 
 		Self::Debug(data)
 	}
@@ -319,10 +313,10 @@ impl Content {
 		self.height() > CAPSULE_HEIGHT
 	}
 
-	pub(super) fn header(&self, fraction: f32) -> AnyElement {
+	pub(super) fn header(&self, fraction: f32, width: f32) -> AnyElement {
 		match self {
-			Self::Work(v) => work_header(v, fraction),
-			Self::Debug(v) => debug_header(v, fraction),
+			Self::Work(v) => work_header(v, fraction, width),
+			Self::Debug(v) => debug_header(v, fraction, width),
 		}
 	}
 
@@ -422,52 +416,57 @@ fn measurement(id: &'static str, value: String) -> Div {
 		})
 }
 
-// Keep each value in one element while labels claim space. Crossfading two
-// complete headers paints the same digits twice at different positions.
-fn header_space(grow: f32) -> Div {
-	gpui::div().w_0().min_w_0().flex_grow(grow)
-}
-
-fn header_reveal(content: impl IntoElement, width: f32, fraction: f32) -> Div {
-	// Reserve the full label width before showing text, so no word is cut mid-morph.
+// Values have one identity and one geometric path; labels fade in fixed slots.
+fn header_slot(x: f32, width: f32, opacity: f32, content: impl IntoElement) -> Div {
 	gpui::div()
-		.w(gpui::px(width * (fraction * 2.).min(1.)))
+		.absolute()
+		.left(gpui::px(x + width / 2.))
+		.top(gpui::px((CAPSULE_HEIGHT - 18.) / 2.))
+		.w(gpui::px(0.))
 		.h(gpui::px(16.))
-		.flex_none()
-		.overflow_hidden()
-		.opacity((fraction * 2. - 1.).max(0.))
-		.child(gpui::div().w(gpui::px(width)).whitespace_nowrap().child(content))
-}
-
-fn debug_header(data: &Debug, fraction: f32) -> AnyElement {
-	gpui::div()
-		.size_full()
-		.px(gpui::px(INSET))
 		.flex()
 		.items_center()
-		.child(header_space(1. - fraction))
-		.child(header_reveal(
+		.justify_center()
+		.opacity(opacity)
+		.child(gpui::div().flex_none().child(content))
+}
+
+fn separated_opacity(fraction: f32, gap: f32, minimum: f32) -> f32 {
+	// Reveal a whole field only after it fits beside the value that stays visible.
+	fraction * ((gap - minimum) / 2.).clamp(0., 1.)
+}
+
+fn debug_header(data: &Debug, fraction: f32, width: f32) -> AnyElement {
+	let value = data.header_value_width;
+	let x = (width - value) / 2. * (1. - fraction) + (width - INSET - value) * fraction;
+	let label_opacity = separated_opacity(fraction, x - INSET - data.header_label_width, 4.);
+	gpui::div()
+		.relative()
+		.size_full()
+		.child(header_slot(
+			INSET,
+			data.header_label_width,
+			label_opacity,
 			gpui::div()
 				.debug_selector(|| "performance-fps-label".into())
-				.w(gpui::px(data.header_label_width))
 				.text_color(ui_theme::rgb(TEXT_MUTED))
 				.child("Frame rate"),
-			data.header_label_width + 4.,
-			fraction,
 		))
-		.child(measurement("fps", format!("{} FPS", data.fps)))
-		.child(header_space(1.))
+		.child(header_slot(x, value, 1., measurement("fps", format!("{} FPS", data.fps))))
 		.into_any_element()
 }
 
-fn work_header(data: &Work, fraction: f32) -> AnyElement {
-	let [primary_width, total_label_width, total_value_width] = data.header_widths;
-	let total_label = gpui::div().text_color(ui_theme::rgb(TEXT_MUTED)).child("Total");
+fn work_header(data: &Work, fraction: f32, width: f32) -> AnyElement {
+	let [primary, label, value] = data.header_widths;
+	let total_x = width - INSET - value;
 	let total_value = if data.idle_total() {
 		gpui::div()
 			.debug_selector(|| "activity-live-rate".into())
+			.w(gpui::px(value))
+			.flex_none()
 			.flex()
 			.items_baseline()
+			.justify_center()
 			.gap(gpui::px(3.))
 			.child(number("live-total", data.total.clone()))
 			.child(
@@ -479,42 +478,60 @@ fn work_header(data: &Work, fraction: f32) -> AnyElement {
 	} else {
 		measurement("activity-total-value", tokens(&data.total))
 	};
-	let total = gpui::div()
-		.debug_selector(|| "activity-work-total".into())
-		.flex_none()
-		.flex()
-		.items_baseline()
-		.child(header_reveal(total_label, total_label_width, fraction))
-		.child(total_value);
-	let header = gpui::div().size_full().px(gpui::px(INSET)).flex().items_center();
-
-	if data.idle_total() {
-		header
-			.child(header_reveal(work_primary(data, false), primary_width, fraction))
-			.child(header_space(1.))
-			.child(total)
-			.child(header_space(1. - fraction))
-			.into_any_element()
+	let total_position = if data.idle_total() {
+		(width - value) / 2. * (1. - fraction) + total_x * fraction
 	} else {
-		header
-			.child(header_space(1. - fraction))
-			.child(
-				gpui::div()
-					.debug_selector(|| "activity-live-rate".into())
-					.flex_none()
-					.child(work_primary(data, fraction < 0.999)),
+		total_x
+	};
+	let primary_position = if data.idle_total() {
+		INSET
+	} else {
+		(width - primary) / 2. * (1. - fraction) + INSET * fraction
+	};
+	let secondary_opacity = separated_opacity(
+		fraction,
+		total_position - label - primary_position - primary,
+		COLUMN_GAP,
+	);
+	let primary_view = gpui::div()
+		.debug_selector(|| "activity-live-rate".into())
+		.w(gpui::px(primary))
+		.flex_none()
+		.child(work_primary(data, !data.idle_total() && fraction < 0.999));
+	gpui::div()
+		.relative()
+		.size_full()
+		.children((!data.idle_total() || fraction > 0.).then(|| {
+			header_slot(
+				primary_position,
+				primary,
+				if data.idle_total() { secondary_opacity } else { 1. },
+				primary_view,
 			)
-			.child(header_space(1.))
-			.child(header_reveal(total, total_label_width + total_value_width, fraction))
-			.into_any_element()
-	}
+		}))
+		.child(header_slot(
+			total_position - label,
+			label,
+			secondary_opacity,
+			gpui::div().text_color(ui_theme::rgb(TEXT_MUTED)).child("Total"),
+		))
+		.child(header_slot(
+			total_position,
+			value,
+			if data.idle_total() { 1. } else { secondary_opacity },
+			gpui::div()
+				.flex_none()
+				.debug_selector(|| "activity-work-total".into())
+				.child(total_value),
+		))
+		.into_any_element()
 }
 
 fn work_primary(data: &Work, minimal: bool) -> AnyElement {
 	gpui::div()
 		.flex()
 		.items_baseline()
-		.gap(gpui::px(if minimal { 3. } else { 4. }))
+		.gap(gpui::px(4.))
 		.whitespace_nowrap()
 		.child(
 			number(if minimal { "live-rate" } else { "work-rate" }, data.rate.clone())
@@ -775,7 +792,7 @@ mod tests {
 
 			self.1 = readout.fps.clone();
 
-			content.header(0.)
+			content.header(0., content.sizing().minimal)
 		}
 	}
 

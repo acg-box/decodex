@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:1947bc33b6787ab84a3a6bfbf7f3bcc1c2ffe9fd1f9a0dcb26187ed1a08ac41a",
+  "pageVersion": "sha256:fb899d17c7db38e3de622809e168bbdda5080c6a80ff447ef39526269e3c80b4",
   "claims": [
     {
       "id": "claim_8fa9284d970947ab9981d4144ecb9648",
@@ -90,7 +90,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-cli/src/agent.rs",
-          "version": "repo-file-v1:sha256:1e99b29c477563c5f861fb9a7e936df89206aaa2e8a7ddfe67425d219682acda"
+          "version": "repo-file-v1:sha256:ea2ed16b15059802fefe42d65aa00378a0302eddeb3cbe0e4338fa7b039e05e3"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent_host.rs",
@@ -552,43 +552,27 @@
     },
     {
       "id": "claim_7fd02fa110b3434e8984dc8b256375b6",
-      "statement": "The CLI selects the Assistant role and sends typed commands through the existing service. The sidebar initializes Assistant idle. Components installs managed RAGFlow nightly and Infinity with a private account and actual version readback; Expanding installed RAGFlow directly opens the model editor with independent OpenAI-compatible Base URLs, optional API keys and custom model IDs for extraction and embedding. Save verifies both choices before initializing Memory. No model runtime or weights are installed. Service connection is automatic and chat import remains separate. Source fixtures and real Docker, controlled-API, synthetic Memory and installed-App acceptance have distinct evidence boundaries.",
+      "statement": "The CLI initializes an idle Assistant without a message, selects the Assistant role and sends typed commands through the existing service. Components manages RAGFlow nightly and Infinity without model weights. A saved Models summary offers Edit; its four fields share one OpenAI-compatible Base URL and optional API key across extraction and embedding model IDs. Save verifies both choices before Memory initialization. New Memory connections enable automatic learning; saved choices survive updates. Fixtures and installed deployment evidence have distinct boundaries.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-cli/src/agent.rs",
-          "version": "repo-file-v1:sha256:1e99b29c477563c5f861fb9a7e936df89206aaa2e8a7ddfe67425d219682acda"
-        },
-        {
-          "resource": "repo://apps/decodex-gpui/src/agent_timeline.rs",
-          "version": "repo-file-v1:sha256:4dfc9fbe77eb58506fdaee120671b2d23d541abbbe301a102fafaa083adeb527"
+          "version": "repo-file-v1:sha256:ea2ed16b15059802fefe42d65aa00378a0302eddeb3cbe0e4338fa7b039e05e3"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
-          "version": "repo-file-v1:sha256:80c21982eb72daa16e41cfa4faeb91a0877d3c2961d7282d65e090f097280188"
+          "version": "repo-file-v1:sha256:a500aeabff659dfde69b68b1b68e9e8a1b2397e2da1b482d69d657b23e2553d5"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:d22add383676146076f2bea688936358ef17cde2a4aa359ae67eeccdbbc2ec55"
+          "version": "repo-file-v1:sha256:4cdbd7e914d88b0a42528c33396b7329d8cd21de69679604628b8b1d41aeb935"
         },
         {
           "resource": "repo://crates/decodex-components/src/ragflow.rs",
-          "version": "repo-file-v1:sha256:17e835261d1318d0c7ba78f1c859da78cb71d746027c6a63a28232aa18e06beb"
+          "version": "repo-file-v1:sha256:eeeb8cfce35fa85da809e0064b80d80a0f3a6ca4c189482e48e70801b22bb051"
         },
         {
           "resource": "repo://crates/decodex-components/src/ragflow_service.rs",
-          "version": "repo-file-v1:sha256:71304894dce0ee326cbea7d12bbdddc94eb2c9f29e6072202170b9abf12e802a"
-        },
-        {
-          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_context_tests.rs",
-          "version": "repo-file-v1:sha256:c7c3deb6eed1c8579a4f7c554167c1df941b25b0d0146ad9329f4e2de91e8be2"
-        },
-        {
-          "resource": "repo://crates/decodex-runtime/src/ragflow.rs",
-          "version": "repo-file-v1:sha256:6671e0d10094fbca56a40c13fbbe476edabd6b027b7104a087ef2388f35456c9"
-        },
-        {
-          "resource": "repo://database/src/assistant.rs",
-          "version": "repo-file-v1:sha256:3f0e073fdfa3a57e60afecd9c80d421d913224f041fd7df91aa629adabe0d8d0"
+          "version": "repo-file-v1:sha256:73b08678945947cc367153b9257d8c8e8a3e32d51e6fc67fdb5b9073831ff8d3"
         }
       ]
     },
@@ -616,7 +600,7 @@
         },
         {
           "resource": "repo://crates/decodex-runtime/src/ragflow.rs",
-          "version": "repo-file-v1:sha256:6671e0d10094fbca56a40c13fbbe476edabd6b027b7104a087ef2388f35456c9"
+          "version": "repo-file-v1:sha256:f1696fd9782abb6f7332ed7d29b22f9a39d7129fb7d4836721ac8d7fc259165a"
         }
       ]
     },
@@ -637,10 +621,24 @@
           "version": "repo-lines-v1:sha256:24c324ac9ba4df60ed6b07ab0c91ee9c5eeca423304dd0f7e693715a865a2f7d:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRiNzExMzZhODhmYTY2ZGEzZDlhZGE5YTZkNTQ2NGI5MDMxZjAyMmY3MDk0ODAzOGNjNTZlZWMxZmQzZWVkOTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlhNzM1NTQ5ODk5ZDVjMDIwM2UyZGFhM2Q0MTA0ZTQ5ZmQwNTllNGQyMGJjNTNkNzYyOGMxMzQxNTYxZDhhNTkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhjNzI4YjhhMDNkOTkxMmViZDYzNTFiNDg2YThiNmI3OTJkNDgwZTNlZDZkNWQ5YjYyOGUwNDhjMWE0Y2QyYjUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjUyYzc0ZjA2NzMxZTM3ZWU0MGNmODVhYmRjNGY2YzRkYWY5MDY3NmRhOWQ3MWI1ZTE4Y2I5OWE4YjIwZmY0NDAifQ"
         }
       ]
+    },
+    {
+      "id": "claim_96d08cbe2d654880abad691a1bc67b26",
+      "statement": "The explicit development reset has plan and apply modes, rejects a running local service, reads before native deletion with a 60-second offline request bound, stops on unrecognized errors, resets managed Memory and clears local conversation and execution data through the database owner. It preserves account and model configuration, project folders and quota-reset receipts, removes drafts, blobs, cache, backups and logs, and submits no native inference turn.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/examples/clear_development_data.rs",
+          "version": "repo-file-v1:sha256:47707f6b9d8c0beca778d76db40293e2189f3dec39c435f2ae8278b7c75484d0"
+        },
+        {
+          "resource": "repo://database/src/development_reset.rs",
+          "version": "repo-file-v1:sha256:6486fbc639cd607613dd39f57a9106ab1c482367942c444ecb0878352c2717c1"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.9.0",
-    "at": "2026-11-05T21:05:15.623Z"
+    "at": "2026-11-06T16:50:31.712Z"
   }
 }

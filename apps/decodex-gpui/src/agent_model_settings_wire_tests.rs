@@ -319,7 +319,8 @@ fn main_and_other_chats_keep_their_models_across_navigation_and_turn_changes(
 
 		s.new_work_conversation(cx);
 
-		assert_eq!(s.composer_model_label(cx), "main-model");
+		assert_eq!(s.composer_model_label(cx), "—");
+		assert_eq!(s.composer_model_value(cx).as_deref(), Some("main-model"));
 		assert_eq!(s.composer_effort_value(cx).as_deref(), Some("high"));
 
 		let action = s.build_submission("Start this conversation", cx).unwrap();
@@ -337,9 +338,10 @@ fn main_and_other_chats_keep_their_models_across_navigation_and_turn_changes(
 
 		assert_eq!(
 			s.composer_model_label(cx),
-			"main-model",
-			"reopening the draft must retain its chosen model"
+			"—",
+			"an unverified catalog does not supply a display model"
 		);
+		assert_eq!(s.composer_model_value(cx).as_deref(), Some("main-model"));
 
 		s.draft_profiles.execution.accepted(Some(&captured), None);
 
@@ -423,7 +425,7 @@ fn failed_refresh_keeps_the_same_threads_last_native_model(cx: &mut TestAppConte
 
 		s.model_settings.observe("root".into(), AgentModelSettingsResult::Unavailable);
 
-		assert_eq!(s.composer_model_label(cx), "Model unavailable");
+		assert_eq!(s.composer_model_label(cx), "—");
 	});
 }
 
@@ -436,9 +438,9 @@ fn new_conversation_model_does_not_depend_on_a_cold_existing_root(cx: &mut TestA
 		s.model_settings.observe("root".into(), AgentModelSettingsResult::Unavailable);
 		s.new_work_conversation(cx);
 		assert_eq!(s.composer_model_value(cx).as_deref(), Some("gpt-6.1-sol"));
-		assert_eq!(s.composer_model_label(cx), "gpt-6.1-sol");
+		assert_eq!(s.composer_model_label(cx), "—");
 		s.open_page("root", cx);
-		assert_eq!(s.composer_model_label(cx), "Model unavailable");
+		assert_eq!(s.composer_model_label(cx), "—");
 		s.new_work_conversation(cx);
 		assert_eq!(s.composer_model_value(cx).as_deref(), Some("gpt-6.1-sol"));
 	});
@@ -505,7 +507,7 @@ fn model_default_reasoning_has_the_same_value_in_new_and_existing_chats(cx: &mut
 		s.model_settings.observations.insert("root".into(), AgentModelSettingsResult::Unavailable);
 
 		assert_eq!(s.composer_model_value(cx), None);
-		assert_eq!(s.composer_model_label(cx), "Model unavailable");
+		assert_eq!(s.composer_model_label(cx), "—");
 		assert_eq!(s.composer_effort_value(cx), None, "never reuse an unrelated editor value");
 	});
 }
@@ -516,6 +518,14 @@ fn observed_settings_do_not_replace_newer_manual_intent(cx: &mut TestAppContext)
 
 	surface.update(cx, |s, cx| {
 		s.visual_workspace_fixture(cx);
+		s.snapshot
+			.as_mut()
+			.unwrap()
+			.work_items
+			.iter_mut()
+			.find(|w| w.id == "agent")
+			.unwrap()
+			.codex_thread_id = Some("native-thread".into());
 
 		let version = s.draft_profiles.execution.revision();
 		let input_at_read = s.model.read(cx).content().to_owned();
@@ -620,6 +630,14 @@ fn inspecting_a_worker_does_not_replace_the_composers_model_observation(cx: &mut
 
 	surface.update(cx, |s, cx| {
 		s.visual_workspace_fixture(cx);
+		s.snapshot
+			.as_mut()
+			.unwrap()
+			.work_items
+			.iter_mut()
+			.find(|w| w.id == "agent")
+			.unwrap()
+			.codex_thread_id = Some("native-thread".into());
 
 		s.composer_manager = Some("agent".into());
 		s.selected = Some("worker".into());

@@ -4,6 +4,8 @@ title: "Local database operations"
 description: "Current-only SQLite initialization, account routing and durable credential and branch records."
 tags: ["decodex", "architecture"]
 sources:
+  - id: openwiki-source-5eddd1d872eed61f8ba7e703
+    resource: repo://apps/decodex-gpui/src/agent_draft_storage.rs
   - id: openwiki-source-f339a4d1910db63ca305c2df
     resource: repo://apps/decodex-gpui/src/assistant_settings.rs
   - id: openwiki-source-546812ff3637690f4a184b89
@@ -16,6 +18,8 @@ sources:
     resource: repo://crates/decodex-protocol/src/desktop_drafts.rs
   - id: openwiki-source-cc0439b23243c3697ba49199
     resource: repo://crates/decodex-protocol/src/lib.rs
+  - id: openwiki-source-eac747e105c1c8d9e7e3c811
+    resource: repo://crates/decodex-runtime/examples/clear_development_data.rs
   - id: openwiki-source-f4724776aade804ebf838e2e
     resource: repo://crates/decodex-runtime/src/account_service.rs
   - id: openwiki-source-dbc533dc306a3f520c4241e0
@@ -36,8 +40,12 @@ sources:
     resource: repo://database/src/agent_titles.rs
   - id: openwiki-source-6197a876b2effbe992b1e2ec
     resource: repo://database/src/agent.rs
+  - id: openwiki-source-86596187dc9df4e756031ef3
+    resource: repo://database/src/agent/deletion.rs
   - id: openwiki-source-3f60f3a3aae45b3e3b355d3e
     resource: repo://database/src/assistant.rs
+  - id: openwiki-source-7c3b932da49e58b50b150e50
+    resource: repo://database/src/development_reset.rs
   - id: openwiki-source-d1279ad243eb550afec4d0e6
     resource: repo://database/src/guardian_settings.rs
   - id: openwiki-source-dc8958560b1230967470835f
@@ -48,10 +56,10 @@ sources:
     resource: repo://database/src/works/commands.rs
   - id: openwiki-source-960cb6b925f1fa45c737a735
     resource: repo://scripts/macos/verify_decodex_bundle_contracts.py
-generated: { by: "codex", at: "2026-11-05T14:56:49.835Z" }
+generated: { by: "codex", at: "2026-11-06T17:37:20.544Z" }
 verified:
-  - by: openwiki/0.7.3
-    at: 2026-11-05T15:46:21.386Z
+  - by: openwiki/0.9.0
+    at: 2026-11-06T17:37:20.544Z
 ---
 
 # Local database operations
@@ -140,3 +148,19 @@ Assistant configuration, team membership, independent wakes, context intent/ackn
 A context transition changes the existing Agent binding and appends the existing `agent_thread_revisions` relationship in one immediate transaction. It preserves queued input, Work and independent duties. Exact native creation and import receipts remain authoritative after a missing reply; semantic Memory is not the delivery ledger. Explicit native Agent archive cancels future duties, while retirement of an old Assistant context does not call archive cleanup.
 
 The current schema is 61. No migration chain, duplicate history store or RAGFlow database tables are added. See [Assistant lifecycle](../decisions/assistant-lifecycle.md).
+
+## Delete one conversation
+
+Conversation deletion and archive have different data semantics. Archive retains history. After all recorded native contexts of a deleted conversation are absent, `agent/deletion.rs` removes its local inbox content, partial outputs, usage, requests, context revisions and other conversation state in one transaction. The owner enables SQLite `secure_delete` and checkpoints the WAL. The desktop clears the conversation's saved drafts and cached history.
+
+The database keeps content-free native deletion receipts so a repeated command remains idempotent. Independently owned Work, Results and collaboration references remain valid. When such a record still requires an Agent identity or instruction receipt, only an anonymous identity or empty receipt remains; the deleted conversation title, instructions and message body are removed.
+
+The selected Assistant retains its stable identity and saved Memory connection. Deleting its conversation clears the native binding and restores the saved settings with a fresh export boundary. Learned external Memory remains available and old chat content is not reimported. A partial native deletion retains the pending plan and stays visible in Archive for retry.
+
+## Clear a development workspace
+
+The explicit `clear_development_data` maintenance example owns the offline cutover. It uses native Codex APIs to delete exact registered and Decodex-origin contexts, then resets the managed RAGFlow Memory. The database owner clears conversation, Work, collaboration, Assistant duties, history and execution tables in one transaction. Deferred foreign-key checks allow linked records to be removed together. Project lead and member bindings are cleared. Account credentials and operations, account policy, quota-reset receipts, global model defaults and project folder configuration remain.
+
+The operation rejects an active Agent turn. The caller must stop the local service before Apply; the example checks the service socket. After commit, the owner checkpoints and compacts the database and verifies the current schema and foreign keys. The example removes client drafts, blobs, cache, old database backups and logs. It does not retain old chat content or replay earlier inputs. This is a development data reset, not a schema upgrade.
+
+Use [the plan and Apply commands](commands-and-validation.md#explicit-development-reset). The database regression checks that old Agent data disappears while account identity, model configuration and project folders remain, with cleared project responsibility bindings.

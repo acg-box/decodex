@@ -94,24 +94,18 @@ impl AgentSurface {
 	}
 
 	pub(super) fn composer_model_label(&self, cx: &Context<Self>) -> String {
+		let catalog = self.current_model_catalog(cx);
+		if matches!(catalog, Some(AgentCapabilitiesResult::Unavailable))
+			|| (self.uses_initial_model_defaults()
+				&& !matches!(catalog, Some(AgentCapabilitiesResult::Available { .. })))
+			|| (catalog.is_none() && self.capability_task.is_some())
+		{
+			return "—".into();
+		}
 		let Some(model) = self.composer_model_value(cx) else {
-			let owner = self.composer_manager.clone().or_else(|| self.root_id());
-
-			return if owner
-				.as_ref()
-				.is_some_and(|owner| self.model_settings.observations.contains_key(owner))
-			{
-				"Model unavailable"
-			} else {
-				"Loading model…"
-			}
-			.into();
+			return "—".into();
 		};
 
-		let catalog = self.current_model_catalog(cx);
-		if catalog.is_none() && self.capability_task.is_some() {
-			return "Loading model…".into();
-		}
 		if let Some(AgentCapabilitiesResult::Available { models, .. }) = catalog
 			&& let Some(entry) = models.iter().find(|entry| entry.model.as_str() == model)
 		{
@@ -123,7 +117,7 @@ impl AgentSurface {
 
 	fn composer_model_settings(&self, cx: &Context<Self>) -> (Option<String>, Option<String>) {
 		let (model, effort) = if let Some(owner) =
-			self.selected.as_deref().filter(|_| self.is_new_conversation())
+			self.selected.as_deref().filter(|_| self.uses_initial_model_defaults())
 		{
 			let choice = self.draft_profiles.execution.choice(owner);
 			(
@@ -208,7 +202,7 @@ impl AgentSurface {
 	}
 
 	pub(super) fn composer_model_value(&self, cx: &Context<Self>) -> Option<String> {
-		self.composer_model_settings(cx).0
+		self.composer_model_settings(cx).0.filter(|model| !model.trim().is_empty())
 	}
 
 	pub(super) fn composer_effort_value(&self, cx: &Context<Self>) -> Option<String> {

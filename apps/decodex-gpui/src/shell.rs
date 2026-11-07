@@ -3684,23 +3684,23 @@ fn empty_accounts() -> impl IntoElement {
 }
 
 fn account_mode_button(selected: bool, can_manage: bool, cx: &mut Context<Shell>) -> AnyElement {
-	let label = if selected { "Routing: Automatic" } else { "Use automatic routing" };
+	let label = if selected { "Automatic" } else { "Choose automatically" };
 	ui_theme::settings_button_base("accounts-balanced", label)
 		.debug_selector(|| "accounts-balanced".into())
 		.role(if selected { Role::Status } else { Role::Button })
 		.tab_index(if can_manage && !selected { 0 } else { -1 })
 		.aria_label(if selected {
-			"New conversations use automatic account routing"
+			"New conversations choose an available account automatically"
 		} else {
-			"Use automatic routing for new conversations"
+			"Choose an available account automatically for new conversations"
 		})
-		.aria_description("Select an account’s route action to use a fixed account.")
+		.aria_description("Select an account below to use it for new conversations.")
 		.tooltip(move |_, cx| {
 			cx.new(move |_| {
 				ControlTooltip(if selected {
-					"Select an account’s route action to use a fixed account."
+					"Select an account below to use it for new conversations."
 				} else {
-					"Choose accounts automatically for new conversations."
+					"Choose an available account for each new conversation."
 				})
 			})
 			.into()
@@ -5982,7 +5982,7 @@ fn settings_navigation_surface() -> Div {
 				.px_2()
 				.pt(gpui::px(SETTINGS_TOP))
 				.pb(gpui::px(SETTINGS_GROUP_GAP))
-				.text_size(gpui::px(15.0))
+				.text_size(gpui::px(14.0))
 				.line_height(gpui::px(20.0))
 				.font_weight(FontWeight::SEMIBOLD)
 				.child("Settings"),
@@ -6477,44 +6477,57 @@ fn account_pool_header(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 		.as_ref()
 		.is_some_and(|routing| routing.mode == AccountSelectionModeDto::Balanced);
 	let emails_visible = shell.account_emails.visible;
+	let account_name = shell
+		.accounts
+		.routing
+		.as_ref()
+		.and_then(|routing| {
+			let AccountSelectionModeDto::Fixed(id) = &routing.mode else { return None };
+			shell.accounts.accounts.iter().find(|account| &account.account_id == id)
+		})
+		.map(|account| account.alias.as_str());
+	let description = if balanced {
+		"Choose an available account automatically for each new conversation.".to_owned()
+	} else if let Some(name) = account_name {
+		format!("Use {name} for new conversations. Select another account below to change it.")
+	} else {
+		"Choose an account below, or let Decodex select an available account.".to_owned()
+	};
 
 	gpui::div()
 		.id("account-toolbar")
 		.debug_selector(|| "account-toolbar".into())
 		.flex_none()
-		.min_h(gpui::px(28.))
 		.flex()
-		.items_center()
-		.justify_between()
-		.gap_3()
+		.flex_col()
+		.gap(gpui::px(16.))
+		.child(ui_theme::settings_panel(
+			ui_theme::settings_row()
+				.debug_selector(|| "account-routing-controls".into())
+				.child(ui_theme::settings_label("New conversations", description))
+				.child(account_mode_button(balanced, shell.accounts.can_manage, cx)),
+		))
 		.child(
 			gpui::div()
-				.debug_selector(|| "account-routing-controls".into())
 				.flex()
 				.items_center()
-				.gap_2()
-				.child(account_mode_button(balanced, shell.accounts.can_manage, cx))
+				.justify_between()
+				.gap_3()
 				.child(
-					account_icon_action(
+					ui_theme::settings_button_base(
 						"account-email-visibility",
-						0,
-						if emails_visible {
-							"Hide email addresses"
-						} else {
-							"Show email addresses"
-						},
-						if emails_visible {
-							workspace_symbols::Symbol::Eye
-						} else {
-							workspace_symbols::Symbol::EyeSlash
-						},
-						true,
-						Tone::Neutral,
+						if emails_visible { "Hide emails" } else { "Show emails" },
 					)
+					.debug_selector(|| "account-email-visibility".into())
+					.aria_label(if emails_visible {
+						"Hide email addresses"
+					} else {
+						"Show email addresses"
+					})
 					.on_click(cx.listener(|shell, _, _, cx| shell.toggle_account_emails(cx))),
-				),
+				)
+				.child(account_login_controls(shell, cx)),
 		)
-		.child(account_login_controls(shell, cx))
 		.into_any_element()
 }
 
@@ -7102,8 +7115,8 @@ mod tests {
 			assert!(visual.debug_bounds("account-login-browser").is_none());
 			assert!(visual.debug_bounds("account-login-device").is_none());
 			assert!(
-				actions.left() >= routing.right(),
-				"login and routing actions must not overlap"
+				actions.top() >= routing.bottom(),
+				"login actions stay below the account selection setting"
 			);
 			assert!(
 				actions.right() <= toolbar.right(),

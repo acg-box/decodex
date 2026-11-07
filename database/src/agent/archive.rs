@@ -4,56 +4,6 @@ use rusqlite::TransactionBehavior;
 use crate::{SqliteStore, StoreError, agent::capacity, error};
 
 impl SqliteStore {
-	/// Record explicit delete intent so a lost native reply can be reconciled safely.
-	pub async fn request_agent_thread_deletion(
-		&self,
-		work: String,
-		thread: String,
-	) -> Result<(), StoreError> {
-		self.run(move |c| {
-			let now = crate::unix_micros()?;
-			let changed = c.execute("INSERT OR IGNORE INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) SELECT json_array('thread_delete_requested',id,?2),id,'thread_delete_requested',json_object('threadId',?2),?3,'resolved','Explicit native deletion requested.',?3 FROM agent_work_items WHERE id=?1 AND codex_thread_id=?2", rusqlite::params![work,thread,now]).map_err(error::sqlite_error)?;
-			if changed == 0 && !c.query_row("SELECT EXISTS(SELECT 1 FROM agent_work_items WHERE id=?1 AND codex_thread_id=?2)",rusqlite::params![work,thread],|row|row.get::<_,bool>(0)).map_err(error::sqlite_error)? {
-				return Err(StoreError::InvalidInput("conversation binding changed"));
-			}
-			Ok(())
-		}).await
-	}
-
-	pub async fn agent_thread_delete_requested(
-		&self,
-		work: String,
-		thread: String,
-	) -> Result<bool, StoreError> {
-		self.run(move |c| c.query_row("SELECT EXISTS(SELECT 1 FROM agent_inbox_events WHERE source_event_id=json_array('thread_delete_requested',?1,?2))",rusqlite::params![work,thread],|row|row.get(0)).map_err(|e|error::sqlite_error(e).into())).await
-	}
-
-	pub async fn agent_thread_is_deleted(
-		&self,
-		work: String,
-		thread: String,
-	) -> Result<bool, StoreError> {
-		self.run(move |c|c.query_row("SELECT EXISTS(SELECT 1 FROM agent_inbox_events WHERE source_event_id=json_array('thread_deleted',?1,?2))",rusqlite::params![work,thread],|row|row.get(0)).map_err(|e|error::sqlite_error(e).into())).await
-	}
-
-	/// Retain an exact deletion fact; Work evidence is independent of chat history.
-	pub async fn confirm_agent_thread_deletion(&self, thread: String) -> Result<(), StoreError> {
-		self.retire_archived_agent_threads(vec![thread.clone()]).await?;
-		self.run(move |c| {
-			let now = crate::unix_micros()?;
-			c.execute("INSERT OR IGNORE INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) SELECT json_array('thread_deleted',id,?1),id,'thread_deleted',json_object('threadId',?1),?2,'resolved','Native conversation permanently deleted.',?2 FROM agent_work_items WHERE codex_thread_id=?1",rusqlite::params![thread,now]).map_err(error::sqlite_error)?;
-			Ok(())
-		}).await
-	}
-
-	pub async fn deleted_agent_thread_ids(
-		&self,
-	) -> Result<std::collections::HashSet<String>, StoreError> {
-		self.run(|c| {
-			c.prepare("SELECT DISTINCT w.codex_thread_id FROM agent_work_items w WHERE w.codex_thread_id IS NOT NULL AND EXISTS(SELECT 1 FROM agent_inbox_events e WHERE e.source_event_id=json_array('thread_deleted',w.id,w.codex_thread_id))").map_err(error::sqlite_error)?.query_map([],|row|row.get(0)).map_err(error::sqlite_error)?.collect::<Result<_,_>>().map_err(|e|error::sqlite_error(e).into())
-		}).await
-	}
-
 	/// End local input and attention lifecycles for confirmed archived native threads.
 	/// Sent history, in-flight delivery receipts and Project/Work records remain intact.
 	pub async fn retire_archived_agent_threads(
@@ -157,7 +107,7 @@ mod tests {
 		assert_eq!(store.read_agent_async_questions("active".into()).await.unwrap().len(), 1);
 	}
 	#[tokio::test]
-	async fn deletion_receipts_survive_reopen_without_hiding_rebound_or_unrelated_work() {
+	async fn deletion_removes_content_and_survives_reopen_without_hiding_unrelated_work() {
 		let root = tempfile::tempdir().unwrap();
 		let path = root.path().join("delete.sqlite3");
 		let store = SqliteStore::open_test(&path).unwrap();
@@ -188,25 +138,25 @@ mod tests {
 					c.query_row("SELECT count(*) FROM agent_inbox_events", [], |r| r
 						.get::<_, i64>(0))
 						.map_err(error::sqlite_error)?,
-					2
+					0
 				);
 				assert_eq!(
 					c.query_row(
-						"SELECT instructions FROM agent_work_items WHERE id='removed'",
+						"SELECT count(*) FROM agent_work_items WHERE id='removed'",
 						[],
-						|r| r.get::<_, String>(0)
+						|r| r.get::<_, i64>(0)
 					)
 					.map_err(error::sqlite_error)?,
-					"Keep work evidence"
+					0
 				);
 				c.execute(
-					"UPDATE agent_work_items SET codex_thread_id='replacement' WHERE id='removed'",
+					"INSERT INTO agent_work_items(id,kind,title,instructions,codex_thread_id,dispatch_state,status,created_at_micros,updated_at_micros) VALUES('removed','goal','New conversation','New instructions','replacement','idle','open',1,1)",
 					[],
 				)
 				.map_err(error::sqlite_error)?;
 				Ok(())
 			})
 			.unwrap();
-		assert!(store.deleted_agent_thread_ids().await.unwrap().is_empty());
+		assert!(!store.deleted_agent_thread_ids().await.unwrap().contains("replacement"));
 	}
 }

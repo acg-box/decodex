@@ -62,22 +62,23 @@ impl RenderOnce for Working {
 			.id("work-status-slot")
 			.debug_selector(|| "work-status-slot".into())
 			.relative()
-			.h(gpui::px(32. * opacity))
+			.h(gpui::px((ui_theme::MESSAGE_GAP + ui_theme::WORK_INDICATOR_SIZE) * opacity))
 			.flex_none()
 			.overflow_hidden()
 			.when(opacity > 0., |slot| {
 				slot.child(
 					gpui::div()
 						.id("pixel-work-status")
+						.debug_selector(|| "pixel-work-status".into())
 						.absolute()
-						.top(gpui::px(4.))
+						.top(gpui::px(ui_theme::MESSAGE_GAP))
 						.left_0()
 						.role(Role::Status)
 						.aria_label(label)
 						.flex()
 						.items_center()
 						.gap(gpui::px(8.))
-						.h(gpui::px(24.))
+						.h(gpui::px(ui_theme::WORK_INDICATOR_SIZE))
 						.opacity(opacity)
 						.text_size(gpui::px(12.))
 						.line_height(gpui::px(18.))
@@ -86,7 +87,7 @@ impl RenderOnce for Working {
 							action: frame.action,
 							pose: frame.pose,
 							elapsed,
-							edge: 24.,
+							edge: ui_theme::WORK_INDICATOR_SIZE,
 							reduced,
 						})
 						.child(status_text(label, elapsed, reduced)),
@@ -441,7 +442,7 @@ mod tests {
 	fn finished_work_releases_its_slot(cx: &mut gpui::TestAppContext) {
 		let (signal, visual) = cx.add_window_view(|_, _| Signal(false));
 
-		for (active, height) in [(false, 0.), (true, 32.), (false, 0.)] {
+		for (active, height) in [(false, 0.), (true, 44.), (false, 0.)] {
 			signal.update(visual, |s, cx| {
 				s.0 = active;
 

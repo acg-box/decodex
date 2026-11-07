@@ -135,6 +135,65 @@ pub struct DesktopProfileDraft {
 	pub pending: Option<DesktopPendingDraft>,
 }
 impl DesktopProfileDraft {
+	/// Erase one deleted conversation's drafts without changing other conversations.
+	pub fn forget_conversation(&mut self, work: &str) {
+		let mut removed: BTreeSet<_> = self
+			.messages
+			.iter()
+			.filter(|(_, message)| {
+				message.owner.as_ref().is_some_and(|owner| owner.as_str() == work)
+			})
+			.map(|(id, _)| id.clone())
+			.collect();
+		for draft in self.prompt_edits.values().filter(|draft| draft.work_id.as_str() == work) {
+			removed.extend(draft.confirmation_key.iter().cloned());
+			removed.extend(draft.pending_send.iter().map(|pending| pending.command_key.clone()));
+		}
+		let removed_pending = self
+			.pending
+			.as_ref()
+			.and_then(|pending| pending.owner.as_ref())
+			.is_some_and(|owner| owner.as_str() == work);
+		self.messages.retain(|id, _| !removed.contains(id));
+		self.unconfirmed_commands.retain(|id| !removed.contains(id));
+		self.prompt_edits.retain(|_, draft| draft.work_id.as_str() != work);
+		self.parked.remove(work);
+		self.execution.remove(work);
+		self.questions.retain(|draft| draft.work_id.as_str() != work);
+		if self.composer.work_id.as_ref().is_some_and(|owner| owner.as_str() == work) {
+			self.composer = Default::default();
+		}
+		for composer in std::iter::once(&mut self.composer).chain(self.parked.values_mut()) {
+			composer.references.retain(|reference| reference.work_id.as_str() != work);
+		}
+		if self
+			.pending
+			.as_ref()
+			.and_then(|pending| pending.owner.as_ref())
+			.is_some_and(|owner| owner.as_str() == work)
+		{
+			self.pending = None;
+		}
+		if self.new_conversation.as_ref().is_some_and(|owner| owner.as_str() == work) {
+			self.new_conversation = None;
+			self.new_conversation_workspace = None;
+			self.new_conversation_permissions = None;
+		}
+		if removed_pending || !removed.is_empty() {
+			self.uncertain = self.pending.is_some()
+				|| !self.unconfirmed_commands.is_empty()
+				|| self
+					.messages
+					.values()
+					.any(|message| message.state != DesktopMessageState::Failed)
+				|| self
+					.prompt_edits
+					.values()
+					.any(|draft| draft.handback_pending || draft.pending_send.is_some())
+				|| self.ordinary.values().any(|draft| !draft.unconfirmed.is_empty());
+		}
+	}
+
 	/// Whether any retained command still needs delivery reconciliation.
 	pub fn has_unconfirmed_delivery(&self) -> bool {
 		self.uncertain
@@ -410,6 +469,31 @@ pub(super) fn validate_text(text: &str) -> Result<(), &'static str> {
 
 #[cfg(test)]
 mod tests {
+	#[test]
+	fn deleted_conversation_drafts_do_not_return_after_storage_roundtrip() {
+		let mut document = super::DesktopDraftDocument::default();
+		let scope = "a".repeat(64);
+		let profile = document.profiles.entry(scope.clone()).or_default();
+		profile.composer = super::DesktopComposerDraft {
+			work_id: Some(crate::EntityId::new("deleted").unwrap()),
+			text: "Deleted draft body".into(),
+			..Default::default()
+		};
+		profile.parked.insert(
+			"kept".into(),
+			super::DesktopComposerDraft {
+				work_id: Some(crate::EntityId::new("kept").unwrap()),
+				text: "Keep this draft".into(),
+				..Default::default()
+			},
+		);
+		profile.forget_conversation("deleted");
+		let encoded = document.encode().unwrap();
+		let restored = super::DesktopDraftDocument::decode(&encoded).unwrap();
+		assert!(restored.profiles[&scope].composer.text.is_empty());
+		assert_eq!(restored.profiles[&scope].parked["kept"].text, "Keep this draft");
+		assert!(!String::from_utf8(encoded).unwrap().contains("Deleted draft body"));
+	}
 	use std::collections::BTreeMap;
 
 	use crate::{

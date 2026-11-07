@@ -23,8 +23,8 @@ use std::{
 };
 
 use gpui::{
-	AnyElement, App, Div, Element, ElementId, FontWeight, IntoElement, MouseButton, RenderOnce,
-	Rgba, Role, SharedString, Stateful, TextRun, Window,
+	AnyElement, App, Bounds, Div, Element, ElementId, FontWeight, IntoElement, MouseButton, Pixels,
+	RenderOnce, Rgba, Role, SharedString, Stateful, TextRun, Window,
 	prelude::{
 		FluentBuilder as _, InteractiveElement as _, ParentElement as _,
 		StatefulInteractiveElement as _, Styled,
@@ -279,11 +279,18 @@ type PopoverContent = dyn Fn(&mut Window, &mut App) -> AnyElement;
 pub(crate) struct MaterialSurface {
 	id: ElementId,
 	radius: f64,
+	clip: Option<Bounds<Pixels>>,
 	content: std::rc::Rc<PopoverContent>,
 	dismiss: std::rc::Rc<dyn Fn(&mut App)>,
 	escape: std::rc::Rc<dyn Fn(&mut App)>,
 }
 impl MaterialSurface {
+	/// Morph a material inside a stable drawable without rescaling its contents.
+	pub(crate) fn clip(mut self, bounds: Bounds<Pixels>) -> Self {
+		self.clip = Some(bounds);
+		self
+	}
+
 	/// Persistent controls can keep outside clicks while allowing an explicit Escape action.
 	pub(crate) fn on_escape(mut self, escape: impl Fn(&mut App) + 'static) -> Self {
 		self.escape = std::rc::Rc::new(escape);
@@ -296,7 +303,7 @@ impl RenderOnce for MaterialSurface {
 		if native_popover::available() {
 			return native_popover::render_surface(
 				self.id,
-				self.radius,
+				MaterialGeometry { radius: self.radius, clip: self.clip },
 				self.content,
 				self.dismiss,
 				self.escape,
@@ -305,10 +312,22 @@ impl RenderOnce for MaterialSurface {
 			);
 		}
 		let _ = (&self.id, &self.dismiss, &self.escape);
-		gpui::div()
-			.size_full()
+		let backdrop = gpui::div()
+			.absolute()
 			.rounded(gpui::px(self.radius as f32))
-			.bg(ui_theme::popover_surface())
+			.bg(ui_theme::popover_surface());
+		let backdrop = match self.clip {
+			Some(bounds) => backdrop
+				.left(bounds.origin.x)
+				.top(bounds.origin.y)
+				.w(bounds.size.width)
+				.h(bounds.size.height),
+			None => backdrop.inset_0(),
+		};
+		gpui::div()
+			.relative()
+			.size_full()
+			.child(backdrop)
 			.child((self.content)(window, cx))
 			.into_any_element()
 	}
@@ -324,10 +343,18 @@ pub(crate) fn material_surface(
 	MaterialSurface {
 		id: id.into(),
 		radius,
+		clip: None,
 		content: std::rc::Rc::new(content),
 		escape: dismiss.clone(),
 		dismiss,
 	}
+}
+
+#[derive(Clone, Copy)]
+#[cfg(all(target_os = "macos", not(test)))]
+pub(crate) struct MaterialGeometry {
+	pub radius: f64,
+	pub clip: Option<Bounds<Pixels>>,
 }
 
 pub(crate) fn hide_material_surface(id: impl Into<ElementId>, window: &Window, cx: &mut App) {

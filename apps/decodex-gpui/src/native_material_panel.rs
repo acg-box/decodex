@@ -1,6 +1,6 @@
 //! Native material views and foreground-owning GPUI child windows.
 //! GPUI owns UI state and navigation; AppKit composes surfaces and relays side buttons.
-use std::{cell::Cell, env, ptr, time::Instant};
+use std::{cell::Cell, env, ptr, rc::Rc, time::Instant};
 
 use block2::RcBlock;
 use gpui::{AnyWindowHandle, Bounds, Pixels, Window, WindowBackgroundAppearance};
@@ -10,7 +10,7 @@ use objc2::{
 	runtime::{AnyClass, AnyObject, ClassBuilder, Sel},
 };
 use objc2_app_kit::{
-	NSEventMask, NSEventType, NSResponder, NSView, NSWindow, NSWindowCollectionBehavior,
+	NSColor, NSEventMask, NSEventType, NSResponder, NSView, NSWindow, NSWindowCollectionBehavior,
 };
 use objc2_core_foundation::CGAffineTransform;
 use objc2_foundation::{NSArray, NSPoint, NSRect, NSSize, NSString};
@@ -54,6 +54,8 @@ pub(crate) struct MaterialPanel {
 	opacity: Cell<f32>,
 	window_observer: Retained<AnyObject>,
 	side_buttons: Retained<AnyObject>,
+	hit_region: Rc<Cell<Option<NSRect>>>,
+	clip_mask: Option<Retained<AnyObject>>,
 }
 impl MaterialPanel {
 	pub(crate) fn install_input_bar(
@@ -167,7 +169,8 @@ impl MaterialPanel {
 			let _: () = objc2::msg_send![&*native, setAlphaValue: 0.0_f64];
 			let _: () = objc2::msg_send![&*parent, addChildWindow: &*native, ordered: 1_isize];
 			let window_observer = observe_panel_window(&native)?;
-			let side_buttons = route_side_buttons(&native, &gpu)?;
+			let hit_region = Rc::new(Cell::new(None));
+			let side_buttons = route_side_buttons(&native, &gpu, hit_region.clone())?;
 
 			ATTACHED_WINDOWS.with(|windows| {
 				windows.borrow_mut().insert(
@@ -197,6 +200,8 @@ impl MaterialPanel {
 				opacity: Cell::new(0.),
 				window_observer,
 				side_buttons,
+				hit_region,
+				clip_mask: None,
 			})
 		}
 	}
@@ -218,7 +223,7 @@ impl MaterialPanel {
 		let Some(replacement) = create_surface(material, self.radius) else { return };
 		let Some(content) = self.native.contentView() else { return };
 
-		replacement.setFrame(content.bounds());
+		replacement.setFrame(self.material_view.frame());
 		replacement.setAlphaValue(self.material_view.alphaValue());
 
 		let had_focus = self.native.firstResponder().is_some_and(|first| {
@@ -228,12 +233,18 @@ impl MaterialPanel {
 			)
 		});
 
-		unsafe {
-			let _: () = objc2::msg_send![&*self.material_view, setContentView: None::<&NSView>];
-			let _: () = objc2::msg_send![&*replacement, setContentView: &*self.host];
+		if self.clip_mask.is_none() {
+			unsafe {
+				let _: () = objc2::msg_send![&*self.material_view, setContentView: None::<&NSView>];
+				let _: () = objc2::msg_send![&*replacement, setContentView: &*self.host];
+			}
 		}
 
 		content.addSubview(&replacement);
+		if self.clip_mask.is_some() {
+			self.host.removeFromSuperview();
+			content.addSubview(&self.host);
+		}
 		self.material_view.removeFromSuperview();
 
 		self.material_view = replacement;
@@ -296,6 +307,64 @@ impl MaterialPanel {
 		self.native.makeFirstResponder(Some(&self.foreground));
 	}
 
+	/// Keep the Metal drawable fixed while the material's visible contour changes.
+	pub(crate) fn clip_content(&mut self, bounds: Bounds<Pixels>) {
+		let Some(content) = self.native.contentView() else { return };
+		if self.clip_mask.is_none() {
+			// Glass resizes its content holder to its contour. Keep the GPUI view
+			// at the window origin and clip a sibling foreground instead: moving
+			// Metal outside that holder can leave it blank and break hit testing.
+			unsafe {
+				let _: () = objc2::msg_send![&*self.material_view, setContentView: None::<&NSView>];
+				content.addSubview(&self.host);
+				self.host.setFrame(content.bounds());
+				self.host.setWantsLayer(true);
+				self.foreground.setFrameOrigin(NSPoint::new(0., 0.));
+				let mask: Retained<AnyObject> =
+					objc2::msg_send![AnyClass::get(c"CALayer").expect("QuartzCore"), layer];
+				let color = NSColor::whiteColor().CGColor();
+				let _: () = objc2::msg_send![&*mask, setBackgroundColor: &*color];
+				let layer: Retained<AnyObject> = objc2::msg_send![&*self.host, layer];
+				let _: () = objc2::msg_send![&*layer, setMask: &*mask];
+				self.clip_mask = Some(mask);
+			}
+		}
+		let frame = NSRect::new(
+			NSPoint::new(
+				f64::from(f32::from(bounds.origin.x)),
+				content.bounds().size.height - f64::from(f32::from(bounds.bottom())),
+			),
+			NSSize::new(
+				f64::from(f32::from(bounds.size.width)),
+				f64::from(f32::from(bounds.size.height)),
+			),
+		);
+		if self.material_view.frame() != frame {
+			self.material_view.setFrame(frame);
+			self.shadow_dirty = true;
+		}
+		if let Some(mask) = &self.clip_mask {
+			unsafe {
+				let transaction = AnyClass::get(c"CATransaction").expect("QuartzCore");
+				let _: () = objc2::msg_send![transaction, begin];
+				let _: () = objc2::msg_send![transaction, setDisableActions: true];
+				let _: () = objc2::msg_send![&**mask, setFrame: frame];
+				let _: () = objc2::msg_send![&**mask, setCornerRadius: self.radius];
+				let _: () = objc2::msg_send![transaction, commit];
+			}
+		}
+		let window_frame = self.native.frame();
+		let region = NSRect::new(
+			NSPoint::new(
+				window_frame.origin.x + frame.origin.x,
+				window_frame.origin.y + frame.origin.y,
+			),
+			frame.size,
+		);
+		self.hit_region.set(Some(region));
+		update_hit_region(&self.native, region);
+	}
+
 	pub(crate) fn set_title(&self, title: &str) {
 		self.native.setTitle(&NSString::from_str(title));
 	}
@@ -312,8 +381,19 @@ impl MaterialPanel {
 		}
 	}
 
-	/// Order the native window before asking GPUI for a frame. AppKit stops the
-	/// display link of hidden windows; only the content stays transparent here.
+	/// Conceal material and shadow while the visible window prepares its drawable.
+	pub(crate) fn conceal_content(&mut self) {
+		self.material_view.setAlphaValue(0.);
+		self.host.setAlphaValue(0.);
+		self.presented = false;
+		if self.surface == Surface::Popover {
+			unsafe {
+				let _: () = objc2::msg_send![&*self.native, setHasShadow: false];
+			}
+		}
+	}
+
+	/// Order the window for layout without showing its unfinished content.
 	pub(crate) fn prepare_open(&mut self) {
 		if !self.visible || !self.native.isVisible() {
 			unsafe {
@@ -325,9 +405,8 @@ impl MaterialPanel {
 					}
 				}
 			}
-			self.material_view.setAlphaValue(0.);
-			self.material_view.setFrameOrigin(NSPoint::new(0., 0.));
-			self.presented = false;
+			self.conceal_content();
+			// AppKit must keep the window drawable; conceal its content and shadow.
 			self.set_opacity(1.);
 		}
 		self.set_visible(true);
@@ -341,9 +420,16 @@ impl MaterialPanel {
 			return;
 		}
 		self.prepare_open();
+		self.set_opacity(1.);
 		if !self.presented {
 			self.presented = true;
 			self.material_view.setAlphaValue(1.);
+			self.host.setAlphaValue(1.);
+			if self.surface == Surface::Popover {
+				unsafe {
+					let _: () = objc2::msg_send![&*self.native, setHasShadow: true];
+				}
+			}
 			self.refresh_shadow();
 			if crate::ui_frame::reduced() {
 				return;
@@ -440,13 +526,18 @@ impl Drop for MaterialPanel {
 }
 
 fn route_side_buttons(
-	window: &NSWindow,
+	window: &Retained<NSWindow>,
 	foreground: &Retained<NSView>,
+	hit_region: Rc<Cell<Option<NSRect>>>,
 ) -> Option<Retained<AnyObject>> {
 	let number = window.windowNumber();
+	let window = window.clone();
 	let foreground = foreground.clone();
 	let handler = RcBlock::new(move |event: *mut AnyObject| -> *mut AnyObject {
 		unsafe {
+			if let Some(region) = hit_region.get() {
+				update_hit_region(&window, region);
+			}
 			let target: isize = objc2::msg_send![event, windowNumber];
 			let button: isize = objc2::msg_send![event, buttonNumber];
 			if target != number || ![3, 4].contains(&button) {
@@ -466,9 +557,21 @@ fn route_side_buttons(
 	unsafe {
 		Some(objc2::msg_send![
 			AnyClass::get(c"NSEvent")?,
-			addLocalMonitorForEventsMatchingMask: (NSEventMask::OtherMouseDown | NSEventMask::OtherMouseUp),
+			addLocalMonitorForEventsMatchingMask: (NSEventMask::OtherMouseDown | NSEventMask::OtherMouseUp | NSEventMask::MouseMoved | NSEventMask::LeftMouseDown),
 			handler: &*handler
 		])
+	}
+}
+
+fn update_hit_region(window: &NSWindow, region: NSRect) {
+	unsafe {
+		let cursor: NSPoint =
+			objc2::msg_send![AnyClass::get(c"NSEvent").expect("AppKit"), mouseLocation];
+		let inside = cursor.x >= region.origin.x
+			&& cursor.x < region.origin.x + region.size.width
+			&& cursor.y >= region.origin.y
+			&& cursor.y < region.origin.y + region.size.height;
+		window.setIgnoresMouseEvents(!inside);
 	}
 }
 

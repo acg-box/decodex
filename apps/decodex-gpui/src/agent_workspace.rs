@@ -880,7 +880,11 @@ impl AgentSurface {
 				"thread_in_use_needs_attention" if event.work_item_id == *selected =>
 					THREAD_LOCKED_MESSAGE,
 				"thread_in_use_needs_attention" => continue,
-				"reconnection_needs_attention" => "Connection lost. Retrying…",
+				"reconnection_needs_attention" => match self.connection_failure_detail() {
+					Some("Agent process requires recovery: SelectWorkingDirectory") =>
+						"Working folder is unavailable. Restore it to continue.",
+					_ => "Reconnecting to Codex…",
+				},
 				"configuration_needs_attention" => "Agent configuration unavailable.",
 				"recovery_needs_attention" | "wake_failed" => "Could not resume this conversation.",
 				_ => continue,
@@ -1176,7 +1180,10 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) -> AnyElement {
 		if self.is_new_conversation() {
-			return self.new_conversation_prompt(cx);
+			return self.conversation_start_prompt(true, cx);
+		}
+		if is_agent && selected.is_some_and(|work| self.conversation_start_visible(work, cx)) {
+			return self.conversation_start_prompt(false, cx);
 		}
 
 		let scroll = self
@@ -1291,8 +1298,30 @@ impl AgentSurface {
 			.into_any_element()
 	}
 
-	fn new_conversation_prompt(&self, cx: &mut Context<Self>) -> AnyElement {
+	fn conversation_start_visible(&self, work: &AgentWorkItemDto, cx: &mut Context<Self>) -> bool {
+		work.codex_thread_id.is_none()
+			&& !self.selected_is_archived()
+			&& !self.response_in_progress(work)
+			&& !self.sending
+			&& !self.uncertain
+			&& matches!(
+				self.history.as_ref(),
+				Some((id, AgentHistoryResult::Available {
+					entries, live, questions, misalignment, has_more: false, ..
+				})) if id == &work.id && entries.is_empty() && live.is_empty()
+					&& questions.is_empty() && misalignment.is_none()
+			)
+			&& self.send_previews(&work.id).is_empty()
+			&& self.local_message_cards(cx).is_empty()
+	}
+
+	fn conversation_start_prompt(
+		&self,
+		choose_workspace: bool,
+		cx: &mut Context<Self>,
+	) -> AnyElement {
 		gpui::div()
+			.debug_selector(|| "conversation-start".into())
 			.flex_1()
 			.h_full()
 			.flex()
@@ -1301,8 +1330,22 @@ impl AgentSurface {
 			.justify_center()
 			.pb(gpui::px(self.workspace_composer_clearance()))
 			.gap_2()
-			.child(gpui::div().text_size(gpui::px(20.)).child("What would you like to do?"))
-			.child(self.workspace_choices(true, cx))
+			.child(
+				gpui::div()
+					.id("conversation-start-heading")
+					.debug_selector(|| "conversation-start-heading".into())
+					.role(Role::Heading)
+					.aria_label("What would you like to do?")
+					.text_size(gpui::px(20.))
+					.child("What would you like to do?"),
+			)
+			.when(choose_workspace, |prompt| {
+				prompt.child(
+					gpui::div()
+						.debug_selector(|| "conversation-start-project".into())
+						.child(self.workspace_choices(true, cx)),
+				)
+			})
 			.into_any_element()
 	}
 
@@ -3012,6 +3055,110 @@ mod tests {
 	}
 
 	#[gpui::test]
+	fn conversation_start_yields_to_messages_and_keeps_project_choice_in_new_agent(
+		cx: &mut gpui::TestAppContext,
+	) {
+		use super::super::PendingCommand;
+		use decodex_protocol::{
+			AgentActionDto, DesktopMessage, DesktopMessageState, EntityId, HistoryText,
+			IdempotencyKey,
+		};
+
+		let (_root, profile, _) = super::super::drafts::tests::profiles();
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+
+		visual.simulate_resize(gpui::size(gpui::px(1_400.), gpui::px(1_000.)));
+
+		let input = surface.update(visual, |s, cx| {
+			s.bind_profile(Some(profile), cx);
+			s.visual_workspace_fixture(cx);
+
+			let Some((_, AgentHistoryResult::Available { entries, .. })) = &mut s.history else {
+				panic!("fixture history");
+			};
+			let input = entries[0].clone();
+
+			entries.clear();
+			cx.notify();
+			input
+		});
+		visual.update(ui_frame::draw_current_frame);
+
+		assert!(visual.debug_bounds("conversation-start-heading").is_some());
+		assert!(visual.debug_bounds("conversation-start-project").is_none());
+
+		surface.update(visual, |s, cx| {
+			s.capture_send_preview(&PendingCommand {
+				key: Some(IdempotencyKey::new("first-input").unwrap()),
+				steer: None,
+				execution_intent: None,
+				speed_fallback: None,
+				epoch: 0,
+				attachments: None,
+				references: None,
+				owner: Some("agent".into()),
+				draft: Some(input.text.clone()),
+			});
+			cx.notify();
+		});
+		visual.update(ui_frame::draw_current_frame);
+
+		assert!(visual.debug_bounds("conversation-start-heading").is_none());
+		assert!(visual.debug_bounds("sending-message-preview").is_some());
+
+		surface.update(visual, |s, cx| {
+			if let Some((_, AgentHistoryResult::Available { entries, .. })) = &mut s.history {
+				entries.push(input.clone());
+			}
+			cx.notify();
+		});
+		visual.update(ui_frame::draw_current_frame);
+
+		assert!(visual.debug_bounds("conversation-start-heading").is_none());
+		assert!(visual.debug_bounds("sending-message-preview").is_none());
+
+		for state in [DesktopMessageState::Failed, DesktopMessageState::Unconfirmed] {
+			surface.update(visual, |s, cx| {
+				if let Some((_, AgentHistoryResult::Available { entries, .. })) = &mut s.history {
+					entries.clear();
+				}
+				s.stage_message(
+					&IdempotencyKey::new("retained-input").unwrap(),
+					DesktopMessage {
+						action: AgentActionDto::Send {
+							root_id: EntityId::new("agent").unwrap(),
+							text: HistoryText::new(&input.text).unwrap(),
+						},
+						owner: Some(EntityId::new("agent").unwrap()),
+						thread_id: None,
+						text: input.text.clone(),
+						state,
+						error: None,
+					},
+					None,
+					cx,
+				)
+				.unwrap();
+				cx.notify();
+			});
+			visual.update(ui_frame::draw_current_frame);
+
+			assert!(visual.debug_bounds("conversation-start-heading").is_none());
+			assert!(visual.debug_bounds("local-message-retained-input-status").is_some());
+		}
+
+		surface.update(visual, |s, cx| {
+			s.workspace.new_conversation = Some("new-agent".into());
+			s.selected = s.workspace.new_conversation.clone();
+			cx.notify();
+		});
+		visual.update(ui_frame::draw_current_frame);
+
+		assert!(visual.debug_bounds("conversation-start-heading").is_some());
+		assert!(visual.debug_bounds("conversation-start-project").is_some());
+	}
+
+	#[gpui::test]
 	fn forwarded_fullscreen_actions_reach_shell_with_detached_parent_focus(
 		cx: &mut gpui::TestAppContext,
 	) {
@@ -3352,12 +3499,24 @@ mod tests {
 			entries.push(entry);
 
 			assert!(s.connection_failure_detail().unwrap().contains("ProcessUnavailable"));
+			assert_eq!(s.composer_unavailable_reason(), Some("Reconnecting to Codex…"));
 
 			s.snapshot.as_mut().unwrap().pending_events[0].id = 100;
 
 			assert!(s.connection_failure_detail().is_none(), "never reuse an obsolete error");
 
 			s.snapshot.as_mut().unwrap().pending_events[0].id = 99;
+
+			let Some((_, AgentHistoryResult::Available { entries, .. })) = &mut s.history else {
+				unreachable!()
+			};
+
+			entries.last_mut().unwrap().text =
+				"Agent process requires recovery: SelectWorkingDirectory".into();
+			assert_eq!(
+				s.composer_unavailable_reason(),
+				Some("Working folder is unavailable. Restore it to continue.")
+			);
 
 			let Some((_, AgentHistoryResult::Available { entries, .. })) = &mut s.history else {
 				unreachable!()

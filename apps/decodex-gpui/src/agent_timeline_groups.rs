@@ -633,6 +633,13 @@ mod tests {
 		assert!(visual.debug_bounds("turn-process-finishing").is_none());
 		assert!(visual.debug_bounds("native-reasoning-summary").is_none());
 		assert!(visual.debug_bounds("native-promotion-content").is_some());
+		let process = visual.debug_bounds("turn-process-toggle").unwrap();
+		let answer = visual.debug_bounds("native-promotion-content").unwrap();
+		let gap = answer.top() - process.bottom();
+		assert!(
+			(gap - gpui::px(crate::ui_theme::PROCESS_CONTENT_GAP)).abs() <= gpui::px(1.),
+			"steps must stay attached to their answer, got {gap:?}"
+		);
 
 		visual.update(crate::ui_frame::draw_frame);
 

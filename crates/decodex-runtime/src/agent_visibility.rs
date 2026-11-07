@@ -43,8 +43,9 @@ impl ArchiveVisibility {
 			self.project(snapshot);
 			return;
 		}
-		snapshot.connection_initializing |=
-			self.generation.is_none() || self.initial_pending.is_some();
+		snapshot.connection_initializing |= (self.generation.is_none()
+			&& snapshot.work_items.iter().any(|work| work.codex_thread_id.is_some()))
+			|| self.initial_pending.is_some();
 		snapshot.archived_work_ids = snapshot
 			.work_items
 			.iter()
@@ -57,8 +58,9 @@ impl ArchiveVisibility {
 
 	pub fn project(&self, snapshot: &mut AgentSnapshotDto) {
 		// Finishing a request does not prove that the first archive view is complete.
-		snapshot.connection_initializing |=
-			self.generation.is_none() || self.initial_pending.is_some();
+		snapshot.connection_initializing |= (self.generation.is_none()
+			&& snapshot.work_items.iter().any(|work| work.codex_thread_id.is_some()))
+			|| self.initial_pending.is_some();
 
 		retain_active(snapshot, &self.archived);
 	}
@@ -269,6 +271,24 @@ mod tests {
 				depends_on_id: "old".into(),
 			}],
 			pending_events: vec![],
+		}
+	}
+
+	#[test]
+	fn idle_assistant_is_visible_before_its_first_native_context() {
+		let cache = ArchiveVisibility::default();
+		let mut fresh = snapshot();
+		fresh.work_items = vec![work("assistant", None)];
+		fresh.work_items[0].codex_thread_id = None;
+		fresh.work_items[0].status = AgentWorkStatusDto::Wait;
+		fresh.projects.clear();
+		fresh.dependencies.clear();
+		for archived in [false, true] {
+			let mut visible = fresh.clone();
+			cache.project_view(&mut visible, archived);
+			assert!(!visible.connection_initializing);
+			assert_eq!(visible.work_items, fresh.work_items);
+			assert!(visible.archived_work_ids.is_empty());
 		}
 	}
 

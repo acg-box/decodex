@@ -56,6 +56,9 @@ pub(crate) const CONVERSATION_TAB_SIZE: f32 = 28.0;
 pub(crate) const CONVERSATION_TAB_GAP: f32 = 2.0;
 pub(crate) const SIDEBAR_INSET: f32 = 6.0;
 pub(crate) const MESSAGE_GAP: f32 = 20.0;
+/// Execution steps and their answer form one reading group.
+pub(crate) const PROCESS_CONTENT_GAP: f32 = 6.;
+pub(crate) const WORK_INDICATOR_SIZE: f32 = 24.;
 pub(crate) const USER_MESSAGE_INSET: f32 = 12.0;
 pub(crate) const USER_MESSAGE_ACTION_SIZE: f32 = 24.0;
 pub(crate) const METADATA_GAP: f32 = 4.0;
@@ -88,9 +91,9 @@ pub(crate) const SETTINGS_WINDOW_MIN_WIDTH: f32 = 920.0;
 pub(crate) const SETTINGS_INSET: f32 = 24.0;
 pub(crate) const SETTINGS_TOP: f32 = 16.0;
 pub(crate) const SETTINGS_GROUP_GAP: f32 = 16.0;
-pub(crate) const SETTINGS_LABEL_SIZE: f32 = BODY_SIZE;
-pub(crate) const SETTINGS_HELP_SIZE: f32 = CONTROL_LABEL_SIZE;
-pub(crate) const SETTINGS_SECTION_SIZE: f32 = 13.0;
+pub(crate) const SETTINGS_LABEL_SIZE: f32 = 11.5;
+pub(crate) const SETTINGS_HELP_SIZE: f32 = 10.5;
+pub(crate) const SETTINGS_SECTION_SIZE: f32 = 12.0;
 pub(crate) const SETTINGS_CONTROL_HEIGHT: f32 = 24.0;
 pub(crate) const SETTINGS_CONTROL_RADIUS: f32 = 5.0;
 pub(crate) const PANEL_DIVIDER: u32 = 0xffffff10;
@@ -351,8 +354,8 @@ pub(crate) fn settings_title(title: &'static str) -> impl IntoElement {
 		.role(Role::Heading)
 		.aria_level(1)
 		.aria_label(title)
-		.text_size(gpui::px(18.0))
-		.line_height(gpui::px(24.0))
+		.text_size(gpui::px(16.0))
+		.line_height(gpui::px(22.0))
 		.font_weight(FontWeight::SEMIBOLD)
 		.text_color(rgb(TEXT))
 		.child(title)

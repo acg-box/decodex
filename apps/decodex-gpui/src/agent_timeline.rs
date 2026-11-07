@@ -78,7 +78,6 @@ impl AgentSurface {
 		};
 		let (position, kind, id) = key(entry);
 		let key = (position, kind, id.to_owned());
-		self.timeline.native.show_saved = false;
 		self.timeline.native.viewport.find(key);
 		true
 	}
@@ -229,9 +228,7 @@ impl AgentSurface {
 			return false;
 		}
 
-		if let Some(binding) =
-			self.timeline.native.binding.as_ref().filter(|_| !self.timeline.native.show_saved)
-		{
+		if let Some(binding) = self.timeline.native.binding.as_ref() {
 			return self.selected.as_ref() == Some(&binding.work)
 				&& self.history_viewport_underfilled(&binding.work)
 				&& self.timeline.native.older_cursor.is_some()
@@ -249,9 +246,13 @@ impl AgentSurface {
 		if self.item_context_window_active() {
 			return true;
 		}
-		let Some(binding) = self.timeline.native.binding.clone().filter(|binding| {
-			!self.timeline.native.show_saved && self.selected.as_ref() == Some(&binding.work)
-		}) else {
+		let Some(binding) = self
+			.timeline
+			.native
+			.binding
+			.clone()
+			.filter(|binding| self.selected.as_ref() == Some(&binding.work))
+		else {
 			return false;
 		};
 		let underfilled = self.history_viewport_underfilled(&binding.work)
@@ -391,10 +392,9 @@ impl AgentSurface {
 	}
 
 	pub(super) fn native_history_active(&self, work: &AgentWorkItemDto) -> bool {
-		!self.timeline.native.show_saved
-			&& self.timeline.native.binding.as_ref().is_some_and(|binding| {
-				binding.work == work.id && Some(&binding.thread) == work.codex_thread_id.as_ref()
-			})
+		self.timeline.native.binding.as_ref().is_some_and(|binding| {
+			binding.work == work.id && Some(&binding.thread) == work.codex_thread_id.as_ref()
+		})
 	}
 
 	/// Native turn completion can arrive before the next work-state snapshot.
@@ -505,8 +505,7 @@ impl AgentSurface {
 	}
 
 	pub(super) fn native_history_loading(&self, work: &AgentWorkItemDto) -> bool {
-		if self.timeline.native.show_saved
-			|| self.native_history_active(work)
+		if self.native_history_active(work)
 			|| self.timeline.native.failures > 0
 			|| work.codex_thread_id.is_none()
 		{
@@ -529,7 +528,7 @@ impl AgentSurface {
 	) -> AnyElement {
 		let owner = work.id.clone();
 		let thread = work.codex_thread_id.clone();
-		let mut controls = gpui::div().flex().flex_col().gap_2().child(
+		let controls = gpui::div().flex().flex_col().gap_2().child(
 			gpui::div().debug_selector(|| "native-latest-action".into()).child(
 				self.workspace_action(
 					"native-timeline-refresh".into(),
@@ -543,34 +542,6 @@ impl AgentSurface {
 				),
 			),
 		);
-
-		if self.native_agents.selected.is_none()
-			&& self.timeline.native.binding.as_ref().is_some_and(|b| {
-				b.work == work.id && Some(&b.thread) == work.codex_thread_id.as_ref()
-			}) {
-			controls = controls.child(
-				gpui::div().debug_selector(|| "native-history-source-toggle".into()).child(
-					self.workspace_action(
-						"native-history-source".into(),
-						if self.timeline.native.show_saved {
-							"Show conversation"
-						} else {
-							"Show saved local records"
-						}
-						.into(),
-						|s, cx| {
-							s.cancel_native_scroll_anchor();
-
-							s.timeline.native.show_saved = !s.timeline.native.show_saved;
-							s.timeline.navigation = None;
-
-							cx.notify();
-						},
-						cx,
-					),
-				),
-			);
-		}
 
 		controls.into_any_element()
 	}
@@ -608,15 +579,6 @@ impl AgentSurface {
 			.as_ref()
 			.is_some_and(|b| b.work == work.id && Some(&b.thread) == work.codex_thread_id.as_ref())
 		{
-			if self.timeline.native.show_saved {
-				return Some(
-					panel
-						.child(agent_surface::muted(
-							"Saved local records may include earlier thread bindings and delivery receipts.",
-						))
-						.into_any_element(),
-				);
-			}
 			if self.timeline.native.browsing_window {
 				panel = panel.child(agent_surface::muted(
 					"Earlier history window. Open Details to refresh.",
@@ -659,9 +621,12 @@ impl AgentSurface {
 		if self.item_context_window_active() {
 			return None;
 		}
-		let binding = self.timeline.native.binding.as_ref().filter(|binding| {
-			!self.timeline.native.show_saved && self.selected.as_ref() == Some(&binding.work)
-		})?;
+		let binding = self
+			.timeline
+			.native
+			.binding
+			.as_ref()
+			.filter(|binding| self.selected.as_ref() == Some(&binding.work))?;
 		let feedback = if self.timeline.native.pagination == Pagination::Failed {
 			let binding = binding.clone();
 
@@ -698,6 +663,13 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) -> Div {
 		let header = self.turn_process_header(work, group, entry, cx);
+		// The timeline supplies MESSAGE_GAP between rows. A process header and
+		// its following answer are one group, including during fold animation.
+		let trailing = if group.final_index > group.first_index {
+			crate::ui_theme::PROCESS_CONTENT_GAP - ROW_GAP
+		} else {
+			0.
+		};
 
 		if let Some(motion) = self.timeline.native.completions.get(group)
 			&& !group
@@ -713,7 +685,7 @@ impl AgentSurface {
 				.collect();
 			let body = self.process_history_content(work, &indices, entry, false, cx);
 
-			return gpui::div().w_full().child(Closing {
+			return gpui::div().w_full().mb(gpui::px(trailing)).child(Closing {
 				motion,
 				position: entry.position,
 				header,
@@ -726,8 +698,12 @@ impl AgentSurface {
 		let anchor = entry.clone();
 		let source_work = work.clone();
 
-		gpui::div().w_full().debug_selector(|| "turn-process-block".into()).child(header).child(
-			ui_motion::disclosure_lazy(
+		gpui::div()
+			.w_full()
+			.mb(gpui::px(trailing))
+			.debug_selector(|| "turn-process-block".into())
+			.child(header)
+			.child(ui_motion::disclosure_lazy(
 				SharedString::from(format!(
 					"turn-process-body-{}-{}-{}",
 					work.id,
@@ -740,8 +716,7 @@ impl AgentSurface {
 						s.process_history_content(&source_work, &indices, &anchor, true, cx)
 					})
 				},
-			),
-		)
+			))
 	}
 
 	fn process_history_content(
@@ -1038,8 +1013,6 @@ impl AgentSurface {
 
 		self.timeline.native.recovered();
 
-		self.timeline.native.show_saved = false;
-
 		self.timeline.native.viewport.request_latest();
 		self.timeline.follow_paused.remove(work);
 
@@ -1335,7 +1308,6 @@ pub(super) struct Timeline {
 	failures: u32,
 	unsupported: bool,
 	browsing_window: bool,
-	show_saved: bool,
 	expanded_turns: BTreeSet<String>,
 	viewport: Viewport,
 	arrivals: Arrivals,
@@ -1844,7 +1816,7 @@ mod tests {
 		assert!(visual.debug_bounds("loading-feedback-Loading conversation").is_some());
 		assert!(visual.debug_bounds("loading-feedback-Opening workspace").is_none());
 
-		// A failed native read still permits the saved-history fallback.
+		// A failed native read never reveals a second local transcript.
 		surface.update(visual, |s, cx| {
 			s.timeline.native.task = None;
 
@@ -1854,9 +1826,9 @@ mod tests {
 		visual.update(crate::ui_frame::draw_current_frame);
 
 		assert!(visual.debug_bounds("loading-feedback-Loading conversation").is_none());
-		assert!(visual.debug_bounds("saved-local-history").is_some());
+		assert!(visual.debug_bounds("saved-local-history").is_none());
 
-		// Retrying a failed read must retain the fallback, too.
+		// Retrying also keeps the canonical source instead of a local transcript.
 		surface.update(visual, |s, cx| {
 			s.timeline.native.failed(None, std::time::Instant::now());
 
@@ -1868,7 +1840,7 @@ mod tests {
 		visual.update(crate::ui_frame::draw_current_frame);
 
 		assert!(visual.debug_bounds("loading-feedback-Loading conversation").is_none());
-		assert!(visual.debug_bounds("saved-local-history").is_some());
+		assert!(visual.debug_bounds("saved-local-history").is_none());
 	}
 
 	#[gpui::test]

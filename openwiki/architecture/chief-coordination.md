@@ -42,6 +42,8 @@ sources:
     resource: repo://crates/decodex-components/src/ragflow_service.rs
   - id: openwiki-source-991553c8d747a54ecf5a9376
     resource: repo://crates/decodex-core/src/work.rs
+  - id: openwiki-source-caeefdea0805519b59a469aa
+    resource: repo://crates/decodex-protocol/src/desktop_drafts.rs
   - id: openwiki-source-0d29990b5fd295fa89a495ad
     resource: repo://crates/decodex-protocol/src/model_catalog.rs
   - id: openwiki-source-4a57fba4bea69171318c6323
@@ -60,6 +62,8 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent.rs
   - id: openwiki-source-052a4071b057633df77b1e21
     resource: repo://crates/decodex-runtime/src/agent/archive.rs
+  - id: openwiki-source-52701e4e84498f74a9fae647
+    resource: repo://crates/decodex-runtime/src/agent/assistant_instructions.md
   - id: openwiki-source-13f64682e8d77fd2c031de39
     resource: repo://crates/decodex-runtime/src/agent/assistant.rs
   - id: openwiki-source-a5bf72500fe69a895fca0dac
@@ -88,6 +92,8 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent/work.rs
   - id: openwiki-source-3c62f617dc1d15daed2c93e4
     resource: repo://crates/decodex-runtime/src/application_collaboration.rs
+  - id: openwiki-source-a09c082db4ad1473c4d1e557
+    resource: repo://crates/decodex-runtime/src/application.rs
   - id: openwiki-source-c29d70b5569f29b7122f2f6b
     resource: repo://crates/decodex-runtime/src/native_agents.rs
   - id: openwiki-source-58c0167d31c3e40dc89591ab
@@ -104,6 +110,8 @@ sources:
     resource: repo://database/src/agent/archive.rs
   - id: openwiki-source-7c1fe4a0f054521cb1d94e08
     resource: repo://database/src/agent/collaboration.rs
+  - id: openwiki-source-86596187dc9df4e756031ef3
+    resource: repo://database/src/agent/deletion.rs
   - id: openwiki-source-3f60f3a3aae45b3e3b355d3e
     resource: repo://database/src/assistant.rs
   - id: openwiki-source-d1279ad243eb550afec4d0e6
@@ -118,10 +126,10 @@ sources:
     resource: repo://database/src/works/collaboration.rs
   - id: openwiki-source-c0eb738b42368debe7ef7545
     resource: repo://database/src/works/commands.rs
-generated: { by: "codex", at: "2026-11-05T14:56:49.835Z" }
+generated: { by: "codex", at: "2026-11-06T17:37:20.544Z" }
 verified:
-  - by: openwiki/0.7.3
-    at: 2026-11-05T15:46:21.386Z
+  - by: openwiki/0.9.0
+    at: 2026-11-06T17:37:20.544Z
 ---
 
 # Project, Agent and Work coordination
@@ -132,7 +140,11 @@ The [accepted contract](../decisions/project-agent-work.md) defines the shared v
 
 ## Owners and flow
 
-The accepted [Assistant lifecycle design](../decisions/assistant-lifecycle.md) extends this model with delegated persistent-Agent management, optional RAGFlow Memory and fresh native contexts behind one Agent identity. The implementation reuses the existing Work, Collaboration and Inbox owners. Lightweight teams group existing Agents and responsibilities; membership grants no private-history access. Independent wakes retain their own due times. Assistant is built in and always available from the sidebar. Its first use creates an idle independent Agent and selects its role in one transaction. It does not submit a first message. Give it continuing instructions in chat. The optional RAGFlow component uses Install, Update and Uninstall. Installation prepares the service and account. The model form accepts a model ID, OpenAI-compatible Base URL and optional API key for each of extraction and embedding. Save verifies both APIs and initializes Memory automatically. There is no separate Connect action.
+The accepted [Assistant lifecycle design](../decisions/assistant-lifecycle.md) extends this model with delegated persistent-Agent management, optional RAGFlow Memory and fresh native contexts behind one Agent identity. The implementation reuses the existing Work, Collaboration and Inbox owners. Lightweight teams group existing Agents and responsibilities; membership grants no private-history access. Independent wakes retain their own due times. Assistant is built in and always available from the sidebar. Its first use creates an idle independent Agent and selects its role in one transaction. It does not submit a first message. Give it continuing instructions in chat. The optional RAGFlow component uses Install, Update and Uninstall. Installation prepares the service and account. The model form accepts one shared OpenAI-compatible Base URL and optional API key, plus separate extraction and embedding model IDs. Save verifies both APIs and initializes Memory automatically. There is no separate Connect action.
+
+Only the selected personal Assistant receives `assistant_read`, `assistant_manage`, `assistant_memory` and the Assistant-specific instructions when a native context is created. Ordinary project Agents retain the common Work tools and coordination instructions. Back-end checks also reject Assistant-tool calls from other Agents. Existing native conversations retain their original declarations; a local tool revision does not replace a conversation or discard its history.
+
+New Assistant Memory connections learn from completed public dialogue automatically. Bounded recall supplies relevant personal evidence to the Assistant through native untrusted `additionalContext`. Project Agents receive neither this memory context nor its connection. See the [Assistant lifecycle](../decisions/assistant-lifecycle.md#optional-ragflow-knowledge-and-memory) for extraction, scope and failure behavior.
 
 The desktop sends typed commands to the service. SQLite owns Project membership, Agent responsibilities, Work requirements, holds, Results, assessments and Collaboration Requests. Codex owns native threads, turns, Subagents, messages, waits, context, Goals, permissions and enforcement. Work commands persist business decisions; they do not spawn or message native helpers.
 
@@ -217,6 +229,14 @@ A confirmed archive also ends local pending interactions. The service discards u
 Native child lists explicitly include all providers and exclude archived threads. Only a complete valid list replaces the previous list. When a child leaves that list, the desktop saves its draft and closes its affected tabs. Removal of one local owner clears only that owner's child state. Other open conversations keep their connection, input and view state.
 
 An unused local draft has no native archive state. Use the explicit service-owned cleanup command in [Commands and validation](../operations/commands-and-validation.md#discard-an-unused-local-draft). The service rejects cleanup when the target contains real work or references.
+
+## Permanent conversation deletion
+
+Deletion starts from an archived conversation. The service freezes the exact current native thread and its earlier Assistant contexts before it sends native delete requests. It deletes every recorded context, confirms native absence after uncertain replies, then purges local conversation content. A partial failure remains in the Archive list for retry. A repeated request uses the same frozen identities; it does not delete an unrelated conversation.
+
+The local purge removes inbox text, partial outputs, usage, context revisions, pending questions and other conversation state. Only content-free completion receipts remain. Independent Work and its Results retain their own ownership; a referenced Agent identity can remain as an anonymous resolved record. The desktop removes the deleted conversation's drafts and cached transcript.
+
+Deleting the selected Assistant conversation preserves its stable identity, configuration and learned RAGFlow Memory. It clears the native binding and returns the Assistant to an empty idle conversation. Archive continues to retain history and does not have deletion semantics.
 
 ## Native child requests and approvals
 

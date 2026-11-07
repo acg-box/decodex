@@ -159,12 +159,6 @@ impl Notice {
 		self
 	}
 
-	pub(crate) fn loading_delay(mut self, delay: Duration) -> Self {
-		self.loading_delay = delay;
-
-		self
-	}
-
 	pub(crate) fn inline(mut self) -> Self {
 		self.inline = true;
 

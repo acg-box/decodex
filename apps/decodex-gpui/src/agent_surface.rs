@@ -117,7 +117,6 @@ use crate::{
 use activity::{HistoryKey, HistoryMark, HistoryNavigation, WheelScroll};
 use async_questions::{Editor, Submission};
 use capabilities::CatalogContext;
-use creation_setup::DEFAULT_MODEL;
 use decodex_protocol::{
 	AgentActionDto, AgentAttachmentDto, AgentClient, AgentCommandResponse, AgentDispatchStateDto,
 	AgentExecutionOverrides, AgentHistoryEntryDto, AgentHistoryResult, AgentIntegrationsResult,
@@ -505,8 +504,6 @@ impl AgentSurface {
 
 		let model =
 			cx.new(|cx| ComposerInput::with_placeholder(31, "Select model", "Agent model", cx));
-
-		model.update(cx, |input, cx| input.set_content(DEFAULT_MODEL, cx));
 
 		let cwd = cx.new(|cx| {
 			ComposerInput::with_placeholder(
@@ -2246,19 +2243,13 @@ impl AgentSurface {
 
 		let panel = self.saved_history_panel(work, cx);
 
-		if self.native_history_active(work) {
+		if work.codex_thread_id.is_some() {
 			return self.history_activity(
-				panel.child(self.native_receipts_panel(work, false, cx)),
+				panel.child(self.native_receipts_panel(work, cx)),
 				work,
 				cx,
 			);
 		}
-		// Local records use a different grouping and must not flash before the
-		// native transcript arrives. They remain available after a failed read.
-		if self.native_history_loading(work) {
-			return panel;
-		}
-
 		let mut panel = panel.debug_selector(|| "saved-local-history".into());
 
 		match self.history.as_ref().filter(|(id, _)| id == &work.id).map(|(_, history)| history) {
@@ -2323,10 +2314,6 @@ impl AgentSurface {
 					panel = panel.child(body.when(message.truncated, |row| {
 						row.child(muted("Preview shortened. Waiting for saved result."))
 					}));
-				}
-
-				if entries.is_empty() && live.is_empty() {
-					panel = panel.child(muted("Waiting for the first message…"));
 				}
 			},
 			Some(AgentHistoryResult::Unavailable) =>
@@ -3775,7 +3762,7 @@ mod tests {
 			);
 
 			assert_eq!(surface.cwd.read(cx).content(), "/Users/chosen");
-			assert_eq!(surface.model.read(cx).content(), "gpt-6-astra");
+			assert_eq!(surface.model.read(cx).content(), "");
 
 			surface.cycle_account(cx);
 

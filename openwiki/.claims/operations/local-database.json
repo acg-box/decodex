@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:38f12d8a532e8a0e31265373c40f46d40116c17852d3de0dd5cbffa7189cce8a",
+  "pageVersion": "sha256:4852b0d33cf38651bf6531203ad7c43f2c3e765ef1d333ff8e1083e6f86fc687",
   "claims": [
     {
       "id": "claim_e8d1527490f540cdafcbe921403c8c3c",
@@ -111,7 +111,7 @@
       "statement": "Ordinary input resumes its original native context and tool declarations without a context-upgrade journal; uncertain external effects require authoritative readback.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/agent.rs#L1040-L1046",
+          "resource": "repo://crates/decodex-runtime/src/agent.rs#L1045-L1051",
           "version": "repo-lines-v1:sha256:94776a0d435b96647d7166add2c7065508760db388a1d6b1ab244d43e5b1d2f8:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZWZkZDg0NjFjMDUwNzdiZTg5NzFhYmUxMWM5ODJhMjU0YWFlMTEyZTM3NzIwZDdhZmViNjBlMWU0ZDUzNDRmZiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZDQwOThiOWE1NmE3ZGNiZDEzOWQ5N2NiZTQzYmEyNjk4MWViNTc0MmMwNGZmZDY5MTc3ZGNjMGE5MzQyYTdkMyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMzNhM2E4NGU0NTc2MjMxMDU0MzhlYTg2MGM3MDk5NjA2YTEwYzVkOTM2YTM2ZDQ0Mjk1ZDMyZmE3N2Q3ZjdmNyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZWFmM2U5ZDA4NDM1MGQzYjExMzJmNzNmZGNkNTIzNjg3OWM1ZmQ5NWUyMTU4NWZjZmNiOGFiZjlkMmNjYzRiNCJ9"
         }
       ]
@@ -184,7 +184,7 @@
         },
         {
           "resource": "repo://database/src/agent.rs",
-          "version": "repo-file-v1:sha256:30cc4283fbade29ef1b2285803a5d573acc28040d5cb0dda84c7c38a139152a2"
+          "version": "repo-file-v1:sha256:0e06aded02d8ea112848c47bfea7658f01f4dbce335fc3b72510aee62e6f0129"
         },
         {
           "resource": "repo://database/src/agent_titles.rs",
@@ -202,11 +202,11 @@
         },
         {
           "resource": "repo://database/src/agent.rs",
-          "version": "repo-file-v1:sha256:30cc4283fbade29ef1b2285803a5d573acc28040d5cb0dda84c7c38a139152a2"
+          "version": "repo-file-v1:sha256:0e06aded02d8ea112848c47bfea7658f01f4dbce335fc3b72510aee62e6f0129"
         },
         {
           "resource": "repo://database/src/assistant.rs",
-          "version": "repo-file-v1:sha256:3f0e073fdfa3a57e60afecd9c80d421d913224f041fd7df91aa629adabe0d8d0"
+          "version": "repo-file-v1:sha256:e89c7b4b71ecea701febe79bb627152ec7043004b80a4de1ed021fc215c8c9c0"
         }
       ]
     },
@@ -216,15 +216,15 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-components/src/ragflow.rs",
-          "version": "repo-file-v1:sha256:17e835261d1318d0c7ba78f1c859da78cb71d746027c6a63a28232aa18e06beb"
+          "version": "repo-file-v1:sha256:eeeb8cfce35fa85da809e0064b80d80a0f3a6ca4c189482e48e70801b22bb051"
         },
         {
           "resource": "repo://database/src/agent.rs",
-          "version": "repo-file-v1:sha256:30cc4283fbade29ef1b2285803a5d573acc28040d5cb0dda84c7c38a139152a2"
+          "version": "repo-file-v1:sha256:0e06aded02d8ea112848c47bfea7658f01f4dbce335fc3b72510aee62e6f0129"
         },
         {
           "resource": "repo://database/src/assistant.rs",
-          "version": "repo-file-v1:sha256:3f0e073fdfa3a57e60afecd9c80d421d913224f041fd7df91aa629adabe0d8d0"
+          "version": "repo-file-v1:sha256:e89c7b4b71ecea701febe79bb627152ec7043004b80a4de1ed021fc215c8c9c0"
         }
       ]
     },
@@ -234,11 +234,11 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
-          "version": "repo-file-v1:sha256:80c21982eb72daa16e41cfa4faeb91a0877d3c2961d7282d65e090f097280188"
+          "version": "repo-file-v1:sha256:a500aeabff659dfde69b68b1b68e9e8a1b2397e2da1b482d69d657b23e2553d5"
         },
         {
           "resource": "repo://crates/decodex-components/src/ragflow_service.rs",
-          "version": "repo-file-v1:sha256:71304894dce0ee326cbea7d12bbdddc94eb2c9f29e6072202170b9abf12e802a"
+          "version": "repo-file-v1:sha256:73b08678945947cc367153b9257d8c8e8a3e32d51e6fc67fdb5b9073831ff8d3"
         },
         {
           "resource": "repo://database/schema.sql",
@@ -256,17 +256,63 @@
         },
         {
           "resource": "repo://crates/decodex-protocol/src/desktop_drafts.rs",
-          "version": "repo-file-v1:sha256:51ae24f699647c5f378e77c65f7f31d77694640c74f087cd493ab969f362b005"
+          "version": "repo-file-v1:sha256:0a2a6359ddd916cb04dba1b965888f1531d0c22155a1f97fd9f281c6a507207e"
         },
         {
           "resource": "repo://database/schema.sql",
           "version": "repo-file-v1:sha256:28c90d266d603c1c224b7a50d33ab7edef68af48208ae665b01c2f59a23a253a"
         }
       ]
+    },
+    {
+      "id": "claim_f41b7529def34a6fa9b483888398e28f",
+      "statement": "The offline development reset uses native deletion and managed Memory reset before a database-owned transaction clears chat, Work, collaboration, duties, history and execution state. Deferred foreign-key checking permits linked records to be removed together. Project responsibility bindings are cleared while account credentials and operations, account policy, quota-reset receipts, global model defaults and project configuration remain. It rejects an active Agent turn, compacts and verifies the database, and removes drafts, blobs, cache, old database backups and logs.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/examples/clear_development_data.rs",
+          "version": "repo-file-v1:sha256:47707f6b9d8c0beca778d76db40293e2189f3dec39c435f2ae8278b7c75484d0"
+        },
+        {
+          "resource": "repo://database/src/development_reset.rs",
+          "version": "repo-file-v1:sha256:6486fbc639cd607613dd39f57a9106ab1c482367942c444ecb0878352c2717c1"
+        }
+      ]
+    },
+    {
+      "id": "claim_50fafb3423a5453989082fefe90c365b",
+      "statement": "After confirmed deletion of all owned native contexts, the database purges conversation-local content with SQLite secure_delete and a WAL checkpoint; the desktop removes saved drafts and history caches, while content-free deletion receipts preserve idempotence.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_draft_storage.rs",
+          "version": "repo-file-v1:sha256:4412f8b56de7d88163a0bc68902bdc5915be5348d5a856fb3e965f7febef9c06"
+        },
+        {
+          "resource": "repo://crates/decodex-protocol/src/desktop_drafts.rs",
+          "version": "repo-file-v1:sha256:0a2a6359ddd916cb04dba1b965888f1531d0c22155a1f97fd9f281c6a507207e"
+        },
+        {
+          "resource": "repo://database/src/agent/deletion.rs",
+          "version": "repo-file-v1:sha256:93e41675e6b5d5b475e8989eec252918565526ec64d4862d56f156557b521529"
+        }
+      ]
+    },
+    {
+      "id": "claim_78b59aa8504e4c1fa19bf2dc50a133ea",
+      "statement": "Conversation deletion preserves independent Work and Results through anonymous identity or empty referenced receipts, and preserves the selected Assistant identity, settings and external Memory with a new export boundary.",
+      "evidence": [
+        {
+          "resource": "repo://database/src/agent/deletion.rs",
+          "version": "repo-file-v1:sha256:93e41675e6b5d5b475e8989eec252918565526ec64d4862d56f156557b521529"
+        },
+        {
+          "resource": "repo://database/src/assistant.rs",
+          "version": "repo-file-v1:sha256:e89c7b4b71ecea701febe79bb627152ec7043004b80a4de1ed021fc215c8c9c0"
+        }
+      ]
     }
   ],
   "verification": {
-    "by": "openwiki/0.7.3",
-    "at": "2026-11-05T15:46:21.386Z"
+    "by": "openwiki/0.9.0",
+    "at": "2026-11-06T17:37:20.544Z"
   }
 }

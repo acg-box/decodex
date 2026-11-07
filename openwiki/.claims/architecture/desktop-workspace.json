@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:ab8e70901cc54fa557b416c3e740fe77812eace452afd606c345560faa9136db",
+  "pageVersion": "sha256:3c7fc280c2dc61b60eb3cb528aa3a1bb1d8e421bf324a092d08f6a1c00c11ee6",
   "claims": [
     {
       "id": "claim_41c9eba720934771bd6b671a7aeb8b6e",
@@ -494,15 +494,15 @@
     },
     {
       "id": "claim_6c70a225addb4571a4536403d49033b7",
-      "statement": "Assistant remains built in and always available. RAGFlow shares lifecycle controls, full version readback, details and inline feedback with other components. Install checks Docker and Compose, prepares the service and opens setup when no models are saved. The editor uses one shared OpenAI-compatible Base URL and optional masked API key with extraction and embedding model IDs. Save verifies both choices and initializes Memory. Chat import starts off and remains separate.",
+      "statement": "Assistant remains built in and always available. RAGFlow shares lifecycle controls, full version readback, details and inline feedback with other components. Install checks Docker and Compose and opens setup when no models are saved. The editor uses one shared OpenAI-compatible Base URL and optional masked API key with separate model IDs. Save verifies both models and initializes Memory. New connections enable automatic learning; existing saved choices survive updates.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs#L245-L335",
-          "version": "repo-lines-v1:sha256:e7192323af0ea270eaa4b708e180fa8efbd675afe9642598b6496c1b91b5e3e4:eyJzZWxlY3RlZExpbmVDb3VudCI6OTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUxMGM1YzQwNDdiMWIxZjg1ZmVhMTcxZWUzYzUxMWE3ZWNkNTU0N2VlMzU3MjgyN2ZlMmYyNDkyZWE5MWNkOGQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjNmMWJkOTUyYTljNWUyYTI2ZGQ5ZjA0MTA2MzQyNzBjOTIzYWNjNjA0ZTg5MmYwMzMyNmQxNWU1ODY1ZmUwMjIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjJlMmY4Mzk0YTI1YmM4YmFiNTMxNDhhMDQyOGNiYThiNDMzYWVhOTUwOTEzMDdkMmYyNzYzMzVkOTNjMjYwZWUifQ"
+          "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs#L661-L739",
+          "version": "repo-lines-v1:sha256:fc4054ac201269c69f9634b064b29c4463dff0ceae57b4ef2ebdb4427f5f9f44:eyJzZWxlY3RlZExpbmVDb3VudCI6NzksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVlY2Q2MjAyNGUxNmFkYTI5YjJlNzdhZjA5YWMwOWU4NGRkN2Y4ZTIyOGFiMzRjZmU2M2RkNjkzNTI0MTU2ODAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjEzOWY1NDNlOTUzNTQ0NDc2MjU1ZDY3Y2UwMDQwM2IwNGU3ZDIwN2Y3NDdhNDU4OWUzOWUyNDNlYzcxZTllMDEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE1MjE2MDRiMzVmYzQwYWYwMGNiYTRlZWEyZmQ1ZTJjM2FmMTg2M2IzOTExODVkN2JmNGJiMDllNzJkMGM4YjMifQ"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs#L544-L626",
-          "version": "repo-lines-v1:sha256:f8b3c5ad1e98a9675efed9ba46a020d7c27bfacc55e218b9f35a36f2f9ab12f6:eyJzZWxlY3RlZExpbmVDb3VudCI6ODMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdhYzcxMGVhYTcwM2M3NzJiMjJmMGJmZTYyODMwMDFiMWJiNjM0Y2M4NGNkNmY4MmVlYzNmZmZkY2Y3NDMzY2QiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU1MTRkMjA4Njg4NGY4MTdiMmFjYTFlYTkwOTE3Yjg4YTkxMzhmNzlkMmE5MmYwYzIxNTlkNDE5ZWJhOGZlZWYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk2YWQyNDhhYTZkODA5ZmUyMDZhMTI4ZDkwY2ViOGMxMWJiM2QwMGM2Y2UwZTVmZjI0MDU5MzRiODQ5NTMyNTEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUxOWQ2MTNhOTNiY2JjZTcwNTQwMWE4MDMxMzQwOWJiMjNiMWU3YjUzMjVjMGY4NDQ3YWExNjQ1MTFhODFkYmMifQ"
+          "version": "repo-lines-v1:sha256:535c4040c2a27b4e14b6caa7da913e5f4beeb14562b0cef27eb6e012cb3a8fb6:eyJzZWxlY3RlZExpbmVDb3VudCI6ODMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdhYzcxMGVhYTcwM2M3NzJiMjJmMGJmZTYyODMwMDFiMWJiNjM0Y2M4NGNkNmY4MmVlYzNmZmZkY2Y3NDMzY2QiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU1MTRkMjA4Njg4NGY4MTdiMmFjYTFlYTkwOTE3Yjg4YTkxMzhmNzlkMmE5MmYwYzIxNTlkNDE5ZWJhOGZlZWYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk2YWQyNDhhYTZkODA5ZmUyMDZhMTI4ZDkwY2ViOGMxMWJiM2QwMGM2Y2UwZTVmZjI0MDU5MzRiODQ5NTMyNTEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUxOWQ2MTNhOTNiY2JjZTcwNTQwMWE4MDMxMzQwOWJiMjNiMWU3YjUzMjVjMGY4NDQ3YWExNjQ1MTFhODFkYmMifQ"
         },
         {
           "resource": "repo://crates/decodex-components/src/ragflow_service.rs#L195-L236",
@@ -520,11 +520,11 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
-          "version": "repo-file-v1:sha256:af3372dfe92b54bdc19d109e1188e3aeeb74a1d70b2b74a213332c512b513d06"
+          "version": "repo-file-v1:sha256:a500aeabff659dfde69b68b1b68e9e8a1b2397e2da1b482d69d657b23e2553d5"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:d70ec68a253c9a83b92946d602e61c5094327772c119ae84254c1721183d6df4"
+          "version": "repo-file-v1:sha256:4cdbd7e914d88b0a42528c33396b7329d8cd21de69679604628b8b1d41aeb935"
         }
       ]
     },
@@ -638,7 +638,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:d70ec68a253c9a83b92946d602e61c5094327772c119ae84254c1721183d6df4"
+          "version": "repo-file-v1:sha256:4cdbd7e914d88b0a42528c33396b7329d8cd21de69679604628b8b1d41aeb935"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/shell.rs",
@@ -772,11 +772,11 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
-          "version": "repo-file-v1:sha256:af3372dfe92b54bdc19d109e1188e3aeeb74a1d70b2b74a213332c512b513d06"
+          "version": "repo-file-v1:sha256:a500aeabff659dfde69b68b1b68e9e8a1b2397e2da1b482d69d657b23e2553d5"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:d70ec68a253c9a83b92946d602e61c5094327772c119ae84254c1721183d6df4"
+          "version": "repo-file-v1:sha256:4cdbd7e914d88b0a42528c33396b7329d8cd21de69679604628b8b1d41aeb935"
         },
         {
           "resource": "repo://crates/decodex-components/src/ragflow_service.rs",
@@ -790,11 +790,11 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
-          "version": "repo-file-v1:sha256:af3372dfe92b54bdc19d109e1188e3aeeb74a1d70b2b74a213332c512b513d06"
+          "version": "repo-file-v1:sha256:a500aeabff659dfde69b68b1b68e9e8a1b2397e2da1b482d69d657b23e2553d5"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:d70ec68a253c9a83b92946d602e61c5094327772c119ae84254c1721183d6df4"
+          "version": "repo-file-v1:sha256:4cdbd7e914d88b0a42528c33396b7329d8cd21de69679604628b8b1d41aeb935"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_surface.rs",
@@ -808,7 +808,7 @@
     },
     {
       "id": "claim_59de64f8ce7c4b3f8864a19f27406bfb",
-      "statement": "Reset Memory requires inline confirmation bound to the exact reviewed managed Memory. It uses the native RAGFlow API to remove that Memory and create an empty replacement with saved models, preserves unrelated data and turns chat import off after success. A failed replacement leaves the private receipt without the deleted Memory identity and uses Edit and Save for recovery. It does not provide in-place reindexing, physical-erasure guarantees or automatic history replay.",
+      "statement": "Reset Memory requires inline confirmation bound to the exact reviewed managed Memory. It uses the native RAGFlow API to remove that Memory and create an empty replacement with saved models, preserves unrelated data and the current automatic-learning choice, and does not replay old conversations. A failed replacement leaves the private receipt without the deleted Memory identity and uses Edit and Save for recovery. Reset is not in-place reindexing or a physical-erasure guarantee.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs#L510-L536",
@@ -816,21 +816,25 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs#L661-L695",
-          "version": "repo-lines-v1:sha256:3f0f7b5330b130e3dcad652d1d371d2ddd2307784179985f30f8cd9b86f86361:eyJzZWxlY3RlZExpbmVDb3VudCI6MzUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVlY2Q2MjAyNGUxNmFkYTI5YjJlNzdhZjA5YWMwOWU4NGRkN2Y4ZTIyOGFiMzRjZmU2M2RkNjkzNTI0MTU2ODAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ4ZDI2MTlkNTg2NGU4NGRjNmJlZDEwMmI4YTc5MTAzODg4NDY0OGQwYzE5Y2NkMTk2NmFiZDdmOWE5YjdiNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjEzOWY1NDNlOTUzNTQ0NDc2MjU1ZDY3Y2UwMDQwM2IwNGU3ZDIwN2Y3NDdhNDU4OWUzOWUyNDNlYzcxZTllMDEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdlMzcyMzk0MzA3MjNhYjYxZjk4MzdhN2NlNjYxYzUwMGFjOWNlYmViNWJjNTgzYTc5MjIxOTkzZjQ2NGYzMmUifQ"
+          "version": "repo-lines-v1:sha256:8515d5999249c3b9123c6ad9a95c285a3d622d61ec7667d63c2df16868d6ca38:eyJzZWxlY3RlZExpbmVDb3VudCI6MzUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVlY2Q2MjAyNGUxNmFkYTI5YjJlNzdhZjA5YWMwOWU4NGRkN2Y4ZTIyOGFiMzRjZmU2M2RkNjkzNTI0MTU2ODAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ4ZDI2MTlkNTg2NGU4NGRjNmJlZDEwMmI4YTc5MTAzODg4NDY0OGQwYzE5Y2NkMTk2NmFiZDdmOWE5YjdiNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjEzOWY1NDNlOTUzNTQ0NDc2MjU1ZDY3Y2UwMDQwM2IwNGU3ZDIwN2Y3NDdhNDU4OWUzOWUyNDNlYzcxZTllMDEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdlMzcyMzk0MzA3MjNhYjYxZjk4MzdhN2NlNjYxYzUwMGFjOWNlYmViNWJjNTgzYTc5MjIxOTkzZjQ2NGYzMmUifQ"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs#L642-L678",
-          "version": "repo-lines-v1:sha256:4abe2ac4702d1939fa4c1ffe204d80cc2e5bddd77e2e9ec6115306e898228625:eyJzZWxlY3RlZExpbmVDb3VudCI6MzcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE5M2NhNThlYTcyYTkwOWVkOTFlZDk5OTg3ZmVmNzEwNmVhNTc3OWI1ZTk0YzE3ZjNhODJkM2FlNzczNTc2YmUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE5ZmRmY2ZkZDQ4ZDIyY2NjNjMzNjcxY2MwYWFmZDJjMGE4NGQ4NjA4ZTBkYjkzYjM2OGJhNTg3ODc2Y2U0OTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU0MGQwNzY2NjAxOGQwYzg4MGZmNzJkY2QyZTViMzc3OTA1Mjc2NGJmN2Y1MmJkZmFjNWUzMjJlYWEzMmIxMzMifQ"
+          "version": "repo-lines-v1:sha256:6a32d010b0c3f9c79116f1bf5d693f561fcf226da03dc2543766e70c3f0e8c43:eyJzZWxlY3RlZExpbmVDb3VudCI6MzcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE5M2NhNThlYTcyYTkwOWVkOTFlZDk5OTg3ZmVmNzEwNmVhNTc3OWI1ZTk0YzE3ZjNhODJkM2FlNzczNTc2YmUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE5ZmRmY2ZkZDQ4ZDIyY2NjNjMzNjcxY2MwYWFmZDJjMGE4NGQ4NjA4ZTBkYjkzYjM2OGJhNTg3ODc2Y2U0OTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU0MGQwNzY2NjAxOGQwYzg4MGZmNzJkY2QyZTViMzc3OTA1Mjc2NGJmN2Y1MmJkZmFjNWUzMjJlYWEzMmIxMzMifQ"
         },
         {
           "resource": "repo://crates/decodex-components/src/ragflow_service.rs#L139-L194",
           "version": "repo-lines-v1:sha256:c145e2fa191a222f5294d521d3082c4f142cd5440aca2285ff698372dd109b8f:eyJzZWxlY3RlZExpbmVDb3VudCI6NTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJhNzg2ODUzMDM3NzBlODcwMDQ4MWM3ZDUwOWIyMmU2YjBkYzE4NjM3MjQ5MGJlYzNkYTRlOWFjYjMwZjE3MmEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJhNzg2ODUzMDM3NzBlODcwMDQ4MWM3ZDUwOWIyMmU2YjBkYzE4NjM3MjQ5MGJlYzNkYTRlOWFjYjMwZjE3MmEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImFmYTZmYWYzYjhiNDE3YWM3NWU4NTRjMWEyMGQxNWNjYzg1MTBiMDNhMTNmZmNkNzEyMDQyY2IzNjRhYzMxZTYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZhNTAyN2YxYTM5ZmQ1ODNhMDA3MjAyMzgyYjUxMzI5ZWFkMWQ1OTkyZDllNTRmNGNiMWMzZTRhZjBiNDRjOWQifQ"
+        },
+        {
+          "resource": "repo://database/src/assistant.rs#L138-L155",
+          "version": "repo-lines-v1:sha256:16f97d8943263a4a30bdd45b9e276ea932abec992bb4eeb9f72ae31ea5d8579b:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE3NWM1ZmE5ZGNkZDQxNDc2MmNmZGZiNjMwZmQxYTA5OGU1NDFjMzA5MDIxYTM3MWQ0ZTY3ZWRlNTlkNmJiOTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJmMTIyNGQzOTRmMDEzNjNjYzA1YmIyN2YwMTRmNmVkZTE3Y2NiZDNiMGZiMDdmNWVmY2M3YWUwMDFjNWU0Y2IiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRkNTM5MWQzZDc5YzlhNWE2ODU4ZDE0NjM5ZWNkMGY2NjQyMDcxODI2ODNkNzFlNGNmNTRjMzAwNmQwNTAwNDYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijg3MTUxZjI2Y2Y2Yzc0N2MzOGQ5NGMxZjk5MjM5Njk3ZTRhYWNjOGEwZjAzOWViMDAwM2U0MDY5ZjQyZjZlMjUifQ"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.9.0",
-    "at": "2026-11-06T12:32:00.964Z"
+    "at": "2026-11-06T14:22:47.581Z"
   }
 }

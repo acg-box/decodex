@@ -8,7 +8,7 @@ use gpui::{
 	prelude::{FluentBuilder as _, InteractiveElement as _, ParentElement as _, Styled as _},
 };
 
-use super::{Popover, PopoverContent};
+use super::{MaterialGeometry, Popover, PopoverContent};
 use crate::{
 	ui_frame,
 	ui_theme::{
@@ -43,7 +43,7 @@ struct Content {
 	above: bool,
 	preview: bool,
 	attached: bool,
-	radius: f64,
+	geometry: MaterialGeometry,
 	focus: Option<FocusHandle>,
 }
 
@@ -80,12 +80,15 @@ impl Panel {
 		let y =
 			f32::from(y).clamp(8., (f32::from(content.viewport.height - self.height) - 8.).max(8.));
 		if let Some(surface) = &mut self.surface {
-			surface.set_radius(content.radius);
+			surface.set_radius(content.geometry.radius);
 			if surface.place(Bounds::new(
 				gpui::point(gpui::px(x), gpui::px(y)),
 				gpui::size(content.width, self.height),
 			)) {
 				window.bounds_changed(cx);
+			}
+			if let Some(clip) = content.geometry.clip {
+				surface.clip_content(clip);
 			}
 		}
 	}
@@ -192,7 +195,10 @@ pub(super) fn render(mut popover: Popover, window: &mut Window, cx: &mut App) ->
 				above: popover.above,
 				preview: popover.preview,
 				attached: false,
-				radius: f64::from(ui_theme::POPOVER_RADIUS),
+				geometry: MaterialGeometry {
+					radius: f64::from(ui_theme::POPOVER_RADIUS),
+					clip: None,
+				},
 				focus: popover.focus,
 			};
 			cx.defer(move |cx| present(parent, request, cx));
@@ -267,7 +273,7 @@ fn present(parent: AnyWindowHandle, request: Content, cx: &mut App) {
 
 pub(super) fn render_surface(
 	id: ElementId,
-	radius: f64,
+	geometry: MaterialGeometry,
 	content: Rc<PopoverContent>,
 	dismiss: Rc<dyn Fn(&mut App)>,
 	escape: Rc<dyn Fn(&mut App)>,
@@ -292,7 +298,7 @@ pub(super) fn render_surface(
 				above: false,
 				preview: true,
 				attached: true,
-				radius,
+				geometry,
 				focus: None,
 			};
 			cx.defer(move |cx| present(parent, request, cx));

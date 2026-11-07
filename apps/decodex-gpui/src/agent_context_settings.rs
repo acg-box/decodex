@@ -182,6 +182,14 @@ impl AgentSurface {
 	}
 
 	pub(crate) fn native_defaults_settings(&self, cx: &mut Context<Self>) -> AnyElement {
+		if self.conversation_work().is_some_and(|work| work.codex_thread_id.is_none()) {
+			return ui_theme::settings_row()
+				.child(ui_theme::settings_label(
+					"No connected conversation",
+					"Start a conversation to view and edit these defaults.",
+				))
+				.into_any_element();
+		}
 		let Some(work) = self.selected.as_deref().filter(|_| self.native_agents.selected.is_none())
 		else {
 			return gpui::div()
@@ -194,6 +202,9 @@ impl AgentSurface {
 
 	pub(crate) fn read_native_defaults(&mut self, cx: &mut Context<Self>) {
 		// Settings calls this on entry. Rendering never starts a read.
+		if self.conversation_work().is_some_and(|work| work.codex_thread_id.is_none()) {
+			return;
+		}
 		if let Some(work) = self.selected.clone() {
 			self.update_context_settings(&work, None, cx);
 		}
@@ -216,17 +227,21 @@ impl AgentSurface {
 			)
 		});
 		let mut panel = ui_theme::settings_rows()
-			.child(ui_theme::settings_description("Shared with Codex for new conversations."))
-			.child(
-				ui_feedback::notice(
-					"context-settings-feedback",
-					work.to_owned(),
-					Some(self.context_settings.feedback.clone()),
-				)
-				.inline()
-				.action(retry)
-				.loading_delay(std::time::Duration::from_millis(350)),
+			.child(ui_theme::settings_description(
+				"These defaults apply to new Codex conversations. Existing conversations keep their current settings.",
+			));
+		if let Some(retry) = retry {
+			panel = panel.child(
+				ui_theme::settings_row()
+					.child(ui_theme::settings_label(
+						"Preferences unavailable",
+						&self.context_settings.feedback.message,
+					))
+					.child(retry),
 			);
+		} else if busy {
+			panel = panel.child(ui_theme::settings_description("Loading preferences…"));
+		}
 
 		if self.context_settings.work.as_deref() == Some(work)
 			&& let Some(AgentContextSettingsResult::Available { preferences, .. }) =
@@ -360,6 +375,11 @@ impl AgentSurface {
 	#[cfg(any(test, feature = "visual-capture"))]
 	pub(crate) fn visual_context_settings(&mut self, expanded: bool, cx: &mut Context<Self>) {
 		let work = self.selected.clone().expect("selected fixture Agent");
+		if let Some(owner) =
+			self.snapshot.as_mut().and_then(|s| s.work_items.iter_mut().find(|w| w.id == work))
+		{
+			owner.codex_thread_id = Some("context-fixture".into());
+		}
 		let mut preferences: Vec<_> =
 			[AgentContextFeature::AsyncCompaction, AgentContextFeature::RetainClientToolOutputs]
 				.into_iter()

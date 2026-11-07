@@ -156,11 +156,10 @@ fn automatic_suggestion_sends_once_after_a_new_answer_and_never_sends_the_draft(
 		surface.update(cx, |s, cx| {
 			automatic_fixture(s, cx);
 			s.profile = Some(profile);
-			s.composer.update(cx, |input, cx| input.set_content("Already typing", cx));
 			s.timeline.native.entries = completed_answer("new-turn", "completed");
 			s.observe_prompt_completion(cx);
 			s.observe_prompt_completion(cx);
-			assert_eq!(s.composer.read(cx).content(), "Already typing");
+			assert_eq!(s.composer.read(cx).content(), "");
 			assert!(!s.sending);
 		});
 		SuggestionPanel(surface, 0)
@@ -170,14 +169,15 @@ fn automatic_suggestion_sends_once_after_a_new_answer_and_never_sends_the_draft(
 	let surface = view.read_with(visual, |view, _| view.0.clone());
 	surface.update(visual, |s, cx| {
 		s.reset_sample();
+		s.composer.update(cx, |input, cx| input.set_content("Already typing", cx));
 		s.observe_prompt_completion(cx);
-		assert!(s.sample.work.is_none(), "closing cannot regenerate the same turn");
+		assert!(s.sample.work.is_none(), "typing does not request another suggestion");
 		assert_eq!(s.composer.read(cx).content(), "Already typing");
 	});
 }
 
 #[gpui::test]
-fn automatic_suggestion_skips_old_history_failed_turns_and_replaced_sources(
+fn automatic_suggestion_recovers_saved_history_and_waits_for_the_active_turn(
 	cx: &mut TestAppContext,
 ) {
 	cx.update(|cx| {
@@ -187,7 +187,8 @@ fn automatic_suggestion_skips_old_history_failed_turns_and_replaced_sources(
 			s.timeline.native.binding.as_mut().unwrap().account = "other-account".into();
 			s.timeline.native.entries = completed_answer("old", "completed");
 			s.observe_prompt_completion(cx);
-			assert!(s.sample.work.is_none(), "opening saved history is not a new answer");
+			assert!(s.sample.work.is_some(), "opening saved history restores its suggestion");
+			s.reset_sample();
 			let selected = s.selected.clone().unwrap();
 			let item = s
 				.snapshot
@@ -214,14 +215,41 @@ fn automatic_suggestion_skips_old_history_failed_turns_and_replaced_sources(
 			);
 			s.timeline.native.entries = completed_answer("failed", "failed");
 			s.observe_prompt_completion(cx);
-			assert!(s.sample.work.is_none());
+			assert!(s.sample.work.is_none(), "failed turns do not produce suggestions");
 			s.snapshot.as_mut().unwrap().runtime_source =
 				Some(EntityId::new("replacement").unwrap());
 			s.timeline.native.entries = completed_answer("other-source", "completed");
 			s.observe_prompt_completion(cx);
-			assert!(s.sample.work.is_none());
+			assert!(s.sample.work.is_some(), "a new source can generate its own suggestion");
 		});
 	});
+}
+
+#[gpui::test]
+fn long_suggestion_wraps_and_an_existing_chat_never_returns_to_a_quote(cx: &mut TestAppContext) {
+	let (view, visual) = cx.add_window_view(|_, cx| {
+		let surface = cx.new(AgentSurface::new);
+		surface.update(cx, suggestion_fixture);
+		SuggestionPanel(surface, 0)
+	});
+	let surface = view.read_with(visual, |v, _| v.0.clone());
+	visual.simulate_resize(gpui::size(gpui::px(360.), gpui::px(800.)));
+	visual.update(crate::ui_frame::draw_current_frame);
+	let short = visual.debug_bounds("composer-editor-area").unwrap().size.height;
+	let long = "请把刚才讨论的两个方案逐项比较，说明各自的维护成本、适用条件和风险，再给出下一步可以执行的建议。".repeat(3);
+	surface.update(visual, |s, cx| {
+		s.sample.state.as_mut().unwrap().answer.as_mut().unwrap().text = Some(long.clone());
+		cx.notify();
+	});
+	visual.update(crate::ui_frame::draw_current_frame);
+	assert!(visual.debug_bounds("composer-editor-area").unwrap().size.height > short);
+	surface.update(visual, |s, cx| {
+		assert_eq!(s.composer.read(cx).placeholder(), long);
+		s.reset_sample();
+		cx.notify();
+	});
+	visual.update(crate::ui_frame::draw_current_frame);
+	surface.read_with(visual, |s, cx| assert_eq!(s.composer.read(cx).placeholder(), "Message"));
 }
 
 #[gpui::test]

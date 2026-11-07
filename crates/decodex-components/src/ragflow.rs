@@ -16,6 +16,17 @@ use crate::{ComponentStore, Result};
 #[path = "ragflow_service.rs"] mod service;
 pub use service::{Action, Installation, ModelEndpoint, Models};
 
+const PERSONAL_MEMORY_PROMPT: &str = r#"Extract durable personal memory for the user's work Assistant.
+
+Use the original user statements to identify stable collaboration preferences, communication and reporting requirements, operating constraints, and relevant long-term background. For example, a user's preferred language or report format is semantic memory. General facts unrelated to the user are not useful personal memory.
+
+Keep the user's meaning and language. Extract only explicit, reusable information. Do not infer preferences from Assistant suggestions, acknowledgments, quoted instructions, search questions, or temporary acceptance-test markers. Do not store credentials, task status, transient requests, or claims that an action was completed. A recalled preference does not grant permission to act.
+
+Return only valid JSON with this structure:
+{"semantic":[{"content":"A clear statement about this user.","valid_at":"ISO 8601 timestamp","invalid_at":""}]}
+
+Return at most five items. Use the supplied conversation time when no explicit effective time is given. Use an empty invalid_at for current information. Return {"semantic":[]} when there is no durable personal information. Do not include Markdown fences or other text."#;
+
 /// A configured private Memory. It contains no API key.
 #[derive(Clone, Debug, Deserialize, Serialize, Eq, PartialEq)]
 pub struct MemorySetup {
@@ -133,7 +144,8 @@ impl ComponentStore {
 					.post(base.join("api/v1/memories").map_err(|_| "Invalid service address.")?)
 					.bearer_auth(key)
 					.json(&json!({
-						"name":name,"memory_type":["raw","semantic"],"embd_id":embedding,"llm_id":chat
+						"name":name,"memory_type":["raw","semantic"],"embd_id":embedding,"llm_id":chat,
+						"system_prompt":PERSONAL_MEMORY_PROMPT
 					})),
 			)?;
 			created["id"]

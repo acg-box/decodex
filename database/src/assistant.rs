@@ -94,7 +94,7 @@ pub(crate) fn authority(c: &Connection, owner: &str, event: i64) -> Result<(), S
 	}
 	Ok(())
 }
-fn settings(c: &Connection, owner: &str) -> Result<AssistantSettings, StoreError> {
+pub(crate) fn settings(c: &Connection, owner: &str) -> Result<AssistantSettings, StoreError> {
 	current(c, owner, "assistant_internal_settings", "settings")?
 		.map(|v| serde_json::from_value(v["value"].clone()).map_err(|_| invalid()))
 		.transpose()
@@ -153,6 +153,17 @@ fn configure(
 		)?;
 	}
 	Ok(())
+}
+
+pub(crate) fn restore_configuration_after_deletion(
+	tx: &Transaction<'_>,
+	owner: &str,
+	thread: &str,
+	saved: &AssistantSettings,
+) -> Result<(), StoreError> {
+	let key = json!(["assistant_deleted_configuration", owner, thread]).to_string();
+	configure(tx, owner, &key, saved, true)?;
+	record(tx, owner, &key, "assistant_internal_settings", json!({"id":"settings","value":saved}))
 }
 
 impl SqliteStore {
@@ -520,7 +531,8 @@ impl SqliteStore {
 		owner: String,
 		memory: String,
 	) -> Result<Option<(String, String)>, StoreError> {
-		self.run(move|c| c.query_row("SELECT json_extract(e.payload,'$.terminal.threadId'),json_extract(e.payload,'$.terminal.turn.id') FROM agent_inbox_events e WHERE work_item_id=?1 AND event_kind='agent_turn_completed' AND json_extract(payload,'$.terminal.turn.status')='completed' AND id>coalesce((SELECT max(id) FROM agent_inbox_events WHERE work_item_id=?1 AND event_kind='assistant_internal_export_boundary'),9223372036854775807) AND NOT EXISTS(SELECT 1 FROM agent_inbox_events m WHERE m.source_event_id=json_array('assistant_internal_memory',?1,json_array('export',?2,json_extract(e.payload,'$.terminal.threadId'),json_extract(e.payload,'$.terminal.turn.id')))) ORDER BY id LIMIT 1",rusqlite::params![owner,memory],|r|Ok((r.get(0)?,r.get(1)?))).optional().map_err(|e|error::sqlite_error(e).into())).await
+		// Match receipt fields: the operation key is a serialized JSON string, not a nested array.
+		self.run(move|c| c.query_row("SELECT json_extract(e.payload,'$.terminal.threadId'),json_extract(e.payload,'$.terminal.turn.id') FROM agent_inbox_events e WHERE work_item_id=?1 AND event_kind='agent_turn_completed' AND json_extract(payload,'$.terminal.turn.status')='completed' AND id>coalesce((SELECT max(id) FROM agent_inbox_events WHERE work_item_id=?1 AND event_kind='assistant_internal_export_boundary'),9223372036854775807) AND NOT EXISTS(SELECT 1 FROM agent_inbox_events m WHERE m.work_item_id=?1 AND m.event_kind='assistant_internal_memory' AND json_extract(m.payload,'$.request.operation')='export' AND json_extract(m.payload,'$.request.memoryId')=?2 AND json_extract(m.payload,'$.request.threadId')=json_extract(e.payload,'$.terminal.threadId') AND json_extract(m.payload,'$.request.turnId')=json_extract(e.payload,'$.terminal.turn.id')) AND NOT EXISTS(SELECT 1 FROM agent_inbox_events m JOIN agent_inbox_events a ON a.id=json_extract(m.payload,'$.request.authorityEventId') WHERE m.work_item_id=?1 AND m.event_kind='assistant_internal_memory' AND json_extract(m.payload,'$.request.memoryId')=?2 AND json_extract(m.payload,'$.request.operation') IN('remember','forget') AND a.delivered_turn_id=json_extract(e.payload,'$.terminal.turn.id')) ORDER BY id LIMIT 1",rusqlite::params![owner,memory],|r|Ok((r.get(0)?,r.get(1)?))).optional().map_err(|e|error::sqlite_error(e).into())).await
 	}
 
 	pub async fn assistant_verify_authority(
@@ -944,6 +956,131 @@ mod tests {
 				.is_none(),
 			"changing the external user namespace must not export earlier pending chat history into that new scope"
 		);
+	}
+
+	#[tokio::test]
+	async fn automatic_export_advances_past_reserved_turns_after_restart() {
+		for acknowledgment in [None, Some("queued")] {
+			let (dir, store, _) = setup().await;
+			store
+				.apply_assistant_command(
+					"assistant".into(),
+					"automatic".into(),
+					AssistantCommand::Configure {
+						settings: AssistantSettings {
+							ragflow: Some(decodex_core::assistant::RagflowConnection {
+								url: "https://ragflow.example.test/".into(),
+								credential_id: "a".repeat(64),
+								user_id: "user".into(),
+								dataset_ids: vec![],
+								memory_id: Some("personal".into()),
+								ingest_chats: true,
+							}),
+							..Default::default()
+						},
+					},
+					true,
+				)
+				.await
+				.unwrap();
+			for turn in ["first", "second"] {
+				store.enqueue_agent_event(EnqueueAgentEvent {
+					source_event_id:format!("completed-{turn}"),work_item_id:"assistant".into(),event_kind:"agent_turn_completed".into(),
+					payload:json!({"terminal":{"threadId":"native","turn":{"id":turn,"status":"completed"}}}).to_string()
+				}).await.unwrap();
+			}
+			for turn in ["first", "second"] {
+				let reopened =
+					SqliteStore::open_test(&dir.path().join("assistant.sqlite3")).unwrap();
+				assert_eq!(
+					reopened
+						.assistant_export_turn("assistant".into(), "personal".into())
+						.await
+						.unwrap(),
+					Some(("native".into(), turn.into()))
+				);
+				let key = json!(["export", "personal", "native", turn]).to_string();
+				assert!(
+					reopened
+						.reserve_assistant_memory(
+							"assistant".into(),
+							key.clone(),
+							json!({
+								"operation":"export","memoryId":"personal","threadId":"native","turnId":turn
+							})
+						)
+						.await
+						.unwrap()
+				);
+				if let Some(state) = acknowledgment {
+					reopened
+						.acknowledge_assistant_memory("assistant".into(), key, state.into())
+						.await
+						.unwrap();
+				}
+			}
+			assert!(
+				store
+					.assistant_export_turn("assistant".into(), "personal".into())
+					.await
+					.unwrap()
+					.is_none()
+			);
+		}
+	}
+
+	#[tokio::test]
+	async fn automatic_memory_does_not_relearn_a_forget_turn_or_duplicate_explicit_remember() {
+		for operation in ["remember", "forget"] {
+			let (_dir, store, event) = setup().await;
+			store
+				.apply_assistant_command(
+					"assistant".into(),
+					"automatic".into(),
+					AssistantCommand::Configure {
+						settings: AssistantSettings {
+							ragflow: Some(decodex_core::assistant::RagflowConnection {
+								url: "https://ragflow.example.test/".into(),
+								credential_id: "a".repeat(64),
+								user_id: "user".into(),
+								dataset_ids: vec![],
+								memory_id: Some("personal".into()),
+								ingest_chats: true,
+							}),
+							..Default::default()
+						},
+					},
+					true,
+				)
+				.await
+				.unwrap();
+			store.enqueue_agent_event(EnqueueAgentEvent {
+				source_event_id:"completed-personal-dialogue".into(),work_item_id:"assistant".into(),event_kind:"agent_turn_completed".into(),
+				payload:json!({"terminal":{"threadId":"old","turn":{"id":"decision-turn","status":"completed"}}}).to_string()
+			}).await.unwrap();
+			assert!(
+				store
+					.assistant_export_turn("assistant".into(), "personal".into())
+					.await
+					.unwrap()
+					.is_some()
+			);
+			store
+				.reserve_assistant_memory(
+					"assistant".into(),
+					operation.into(),
+					json!({"operation":operation,"memoryId":"personal","authorityEventId":event}),
+				)
+				.await
+				.unwrap();
+			assert!(
+				store
+					.assistant_export_turn("assistant".into(), "personal".into())
+					.await
+					.unwrap()
+					.is_none()
+			);
+		}
 	}
 
 	#[tokio::test]

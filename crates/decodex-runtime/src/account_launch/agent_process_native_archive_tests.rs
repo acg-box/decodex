@@ -271,7 +271,7 @@ async fn installed_native_archive_catalog_pages_every_timestamp_tie() {
 
 #[tokio::test]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated native permanent deletion"]
-async fn installed_native_delete_removes_only_the_selected_archive_and_survives_reopen() {
+async fn installed_native_delete_cleans_local_history_and_context_lineage() {
 	let binary = env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit native binary");
 	let home = tempfile::tempdir().unwrap();
 	let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -281,7 +281,7 @@ async fn installed_native_delete_removes_only_the_selected_archive_and_survives_
 	fs::write(home.path().join("config.toml"),format!("model=\"gpt-5.6-sol\"\nmodel_provider=\"fixture\"\n[model_providers.fixture]\nname=\"Delete fixture\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n")).unwrap();
 	let mut actor = NativeSession::start(&binary, home.path());
 	let mut ids = Vec::new();
-	for _ in 0..2 {
+	for _ in 0..3 {
 		let response=actor.client.thread_start(serde_json::json!({"cwd":home.path(),"historyMode":"paginated","approvalPolicy":"never","sandbox":"read-only"})).await.unwrap();
 		let id = response["thread"]["id"].as_str().unwrap().to_owned();
 		actor
@@ -294,17 +294,61 @@ async fn installed_native_delete_removes_only_the_selected_archive_and_survives_
 		wait_for_completion(&mut actor, &id).await;
 		ids.push(id);
 	}
-	actor.client.request("thread/archive", serde_json::json!({"threadId":ids[0]})).await.unwrap();
-	if let Err(error) = actor.client.thread_delete(&ids[0]).await {
-		match error {
-			decodex_codex::app_server_client::ClientError::Remote(error) =>
-				panic!("native deletion {}: {}", error.code, error.message),
-			other => panic!("native deletion: {other:?}"),
-		}
+	let current = ids[2].clone();
+	actor.client.request("thread/archive", serde_json::json!({"threadId":current})).await.unwrap();
+	let root = decodex_core::DecodexRoot::new(home.path().canonicalize().unwrap().join("product"))
+		.unwrap();
+	root.paths().ensure_layout().unwrap();
+	let store = decodex_database::SqliteStore::open(&root.paths()).unwrap();
+	for (name, thread) in [("deleted", &current), ("kept", &ids[1])] {
+		store
+			.create_agent_work_item(decodex_database::AgentWorkItem {
+				id: name.into(),
+				parent_goal_id: None,
+				kind: decodex_database::AgentWorkKind::Goal,
+				title: name.into(),
+				instructions: "Local private conversation".into(),
+				codex_thread_id: None,
+				status: decodex_database::AgentWorkStatus::Open,
+				dispatch_state: decodex_database::AgentDispatchState::Idle,
+				active_turn_id: None,
+				next_check_at_micros: None,
+				created_at_micros: 1,
+				updated_at_micros: 1,
+			})
+			.await
+			.unwrap();
+		store.bind_agent_thread(name.into(), thread.clone()).await.unwrap();
 	}
+	Connection::open(store.path()).unwrap().execute("INSERT INTO agent_thread_revisions(work_id,old_thread_id,new_thread_id,created_at_micros) VALUES('deleted',?1,?2,1)",rusqlite::params![ids[0],current]).unwrap();
+	store
+		.enqueue_agent_event(decodex_database::EnqueueAgentEvent {
+			source_event_id: "private-input".into(),
+			work_item_id: "deleted".into(),
+			event_kind: "user_message".into(),
+			payload: serde_json::json!({"text":"Private local copy"}).to_string(),
+		})
+		.await
+		.unwrap();
+	let mut coordinator = crate::AgentCoordinator::new(
+		store.clone(),
+		actor.client.clone(),
+		crate::AgentConfig::new(
+			"gpt-5.6-sol".into(),
+			"high".into(),
+			home.path().display().to_string(),
+		),
+	)
+	.unwrap();
+	coordinator.delete_archived_thread("deleted", &current).await.unwrap();
+	assert!(store.get_agent_work_item("deleted".into()).await.is_err());
+	assert_eq!(store.get_agent_work_item("kept".into()).await.unwrap().title, "kept");
+	assert!(store.agent_thread_is_deleted("deleted".into(), current.clone()).await.unwrap());
+	drop(coordinator);
 	drop(actor);
 	let observer = NativeSession::start(&binary, home.path());
 	assert!(observer.client.archived_thread_absent(&ids[0]).await.unwrap());
+	assert!(observer.client.archived_thread_absent(&current).await.unwrap());
 	assert_eq!(
 		observer.client.thread_archive_state(&ids[1]).await.unwrap(),
 		decodex_codex::app_server_client::ThreadArchiveState::Active
@@ -317,7 +361,7 @@ async fn installed_native_delete_removes_only_the_selected_archive_and_survives_
 	assert!(!kept["thread"]["turns"].as_array().unwrap().is_empty());
 	assert_eq!(
 		requests.load(std::sync::atomic::Ordering::Acquire),
-		2,
+		3,
 		"archive and deletion must not start another turn"
 	);
 	backend.abort();

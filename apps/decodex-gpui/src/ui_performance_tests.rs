@@ -22,6 +22,37 @@ impl Render for CenteredIsland {
 }
 
 #[gpui::test]
+fn island_canvas_stays_fixed_while_its_visible_contour_morphs(cx: &mut TestAppContext) {
+	ui_performance::preference(Some(false));
+	let (root, visual) = cx.add_window_view(|_, cx| {
+		CenteredIsland(cx.new(|cx| {
+			let mut island = PerformanceIsland::new(cx);
+			island.work = Some(Summary {
+				samples: vec![Sample { tokens: Some(2_000), ..Default::default() }],
+				..Default::default()
+			});
+			island
+		}))
+	});
+	visual.update(crate::ui_frame::draw_frame);
+	let initial = visual.debug_bounds("activity-canvas-Work").unwrap();
+	let closed = visual.debug_bounds("activity-work-island").unwrap();
+	root.read_with(visual, |root, _| root.0.clone()).update(visual, |island, cx| {
+		island.expansion = Expansion::Clicked;
+		cx.notify();
+	});
+	visual.update(crate::ui_frame::draw_frame);
+	thread::sleep(Duration::from_millis(110));
+	visual.update(crate::ui_frame::draw_frame);
+	let moving = visual.debug_bounds("activity-work-island").unwrap();
+	assert!(moving.size.width > closed.size.width && moving.size.height > closed.size.height);
+	assert_eq!(visual.debug_bounds("activity-canvas-Work").unwrap(), initial);
+	thread::sleep(Duration::from_millis(150));
+	visual.update(crate::ui_frame::draw_frame);
+	assert_eq!(visual.debug_bounds("activity-canvas-Work").unwrap(), initial);
+}
+
+#[gpui::test]
 fn expanding_either_capsule_keeps_the_other_in_place(cx: &mut TestAppContext) {
 	ui_performance::preference(Some(true));
 
@@ -126,7 +157,10 @@ fn work_capsule_grows_and_shrinks_with_content_instead_of_the_agent_count(cx: &m
 	let debug = visual.debug_bounds("performance-island").unwrap();
 	let fps = visual.debug_bounds("performance-fps").unwrap();
 
-	assert!((label.center().x - before.center().x).abs() < gpui::px(0.5));
+	assert!(
+		(label.center().x - before.center().x).abs() < gpui::px(0.5),
+		"label {label:?}, island {before:?}"
+	);
 	assert!(
 		(label.center().y - before.center().y).abs() < gpui::px(0.5),
 		"work label {label:?} is not centered in {before:?}"
@@ -552,7 +586,7 @@ fn expanded_details_and_chart_fit_inside_the_compact_capsule(cx: &mut TestAppCon
 		assert!(unit.left() >= capsule.left() && unit.right() <= capsule.right());
 	}
 	assert_eq!(capsule.size.height, gpui::px(140.));
-	assert!(capsule.size.width < gpui::px(280.), "content should not fill an arbitrary wide grid");
+	assert_eq!(capsule.size.width, gpui::px(crate::ui_live_activity::EXPANDED_WIDTH));
 	assert!(visual.debug_bounds("performance-island-note").is_none());
 
 	ui_performance::preference(Some(false));
@@ -605,9 +639,9 @@ fn metric_columns_fit_their_content_and_adapt_together_for_wider_values(cx: &mut
 
 	let after = visual.debug_bounds("performance-island").unwrap();
 
-	assert!(
-		after.size.width > before.size.width,
-		"wider data should grow its content footprint: {before:?} -> {after:?}"
+	assert_eq!(
+		after.size.width, before.size.width,
+		"value updates stay within their reserved size tier"
 	);
 
 	for id in ids {
