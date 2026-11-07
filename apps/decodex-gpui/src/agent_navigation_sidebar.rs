@@ -390,7 +390,12 @@ fn section_label(title: &'static str) -> Div {
 impl AgentSurface {
 	pub(super) fn visual_personal_navigation(&mut self, cx: &mut Context<Self>) {
 		use decodex_protocol::work::{Agent, Work, WorkRequirements};
+		let history = self.history.clone();
 		self.visual_workbench_page("workbench", cx);
+		self.history = history;
+		self.timeline.native.reset();
+		self.workspace.sidebar_visible = true;
+		self.work_board.collaboration_expanded = None;
 		self.workspace.graph_visible = false;
 		self.workspace.graph_expanded = false;
 		self.workspace.agent_panel_width = 320.;
@@ -406,7 +411,11 @@ impl AgentSurface {
 		});
 		let personal =
 			snapshot.work_items.iter_mut().find(|w| w.id == "agent").expect("visual Assistant");
-		personal.title = "Assistant".into();
+		personal.title = "Release priorities".into();
+		personal.codex_thread_id = None;
+		personal.active_turn_id = None;
+		personal.dispatch_state = decodex_protocol::AgentDispatchStateDto::Idle;
+		personal.status = decodex_protocol::AgentWorkStatusDto::Wait;
 		let seed = personal.clone();
 		for (id, title) in
 			[("topic-research", "Research workflow"), ("topic-preferences", "Working preferences")]
@@ -437,6 +446,18 @@ impl AgentSurface {
 			});
 		}
 		snapshot.portfolio.awaiting_assessment.push("launch".into());
+		for (id, owner, kind) in
+			[(1001, "mira", "user_input_pending"), (1002, "sage", "permission_pending")]
+		{
+			snapshot.pending_events.push(decodex_protocol::AgentPendingEventDto {
+				id,
+				source_event_id: format!("visual-request-{id}"),
+				work_item_id: owner.into(),
+				event_kind: kind.into(),
+				created_at_micros: 1,
+				delivery_claimed: false,
+			});
+		}
 		cx.notify();
 	}
 }
