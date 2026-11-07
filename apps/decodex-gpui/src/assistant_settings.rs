@@ -112,6 +112,21 @@ impl AgentSurface {
 		})
 	}
 
+	pub(super) fn assistant_conversation_label(
+		&self,
+		work: &decodex_protocol::AgentWorkItemDto,
+	) -> String {
+		let untitled = self.snapshot.as_ref().is_some_and(|snapshot| {
+			snapshot.assistant.agent_id.as_ref() == Some(&work.id)
+				&& work.title == "Assistant"
+				&& work
+					.codex_thread_id
+					.as_ref()
+					.is_none_or(|thread| !snapshot.conversation_titles.contains_key(thread))
+		});
+		if untitled { "General".into() } else { self.conversation_label(work) }
+	}
+
 	pub(super) fn new_assistant_conversation(&mut self, cx: &mut Context<Self>) {
 		let Some(assistant) = self.assistant_id() else {
 			self.open_assistant(cx);

@@ -1003,9 +1003,7 @@ impl AgentSurface {
 		let cases = self.collaboration_cases(&self.relation_graph(), &self.factory_rows());
 		self.workbench_entries()
 			.iter()
-			.filter(|entry| {
-				self.collaboration_entry_visible(entry, &cases) && entry_needs_user(entry)
-			})
+			.filter(|entry| self.collaboration_entry_visible(entry, &cases) && entry.needs_user)
 			.count()
 			+ cases.iter().filter(|case| needs_user(case)).count()
 	}
@@ -1032,13 +1030,13 @@ impl AgentSurface {
 			.iter()
 			.filter(|entry| self.collaboration_entry_visible(entry, &cases))
 			.collect();
-		let count = visible.iter().filter(|entry| entry_needs_user(entry)).count()
+		let count = visible.iter().filter(|entry| entry.needs_user).count()
 			+ cases.iter().filter(|case| needs_user(case)).count();
 		body = body.child(collaboration_section_heading(
 			if count > 0 { format!("Needs you ({count})") } else { "Needs you".into() },
 			count > 0,
 		));
-		for entry in visible.iter().filter(|entry| entry_needs_user(entry)) {
+		for entry in visible.iter().filter(|entry| entry.needs_user) {
 			body = body.child(self.workbench_entry(entry, cx));
 		}
 		for case in cases.iter().filter(|case| needs_user(case)) {
@@ -1051,7 +1049,7 @@ impl AgentSurface {
 			collaboration_section_heading("Between agents".into(), false)
 				.mt(gpui::px(ui_theme::NAVIGATION_SECTION_GAP)),
 		);
-		for entry in visible.iter().filter(|entry| !entry_needs_user(entry)) {
+		for entry in visible.iter().filter(|entry| !entry.needs_user) {
 			body = body.child(self.workbench_entry(entry, cx));
 		}
 		for case in cases.iter().filter(|case| {
@@ -1191,10 +1189,6 @@ fn needs_user(case: &Exchange) -> bool {
 	!case.earlier
 		&& (case.question.as_ref().is_some_and(|question| question.pending)
 			|| case.state == "Decision")
-}
-
-fn entry_needs_user(entry: &super::Entry) -> bool {
-	entry.request.is_some() || ["Decision needed", "Answer needed"].contains(&entry.label.as_str())
 }
 
 fn collaboration_section_heading(label: String, attention: bool) -> Div {

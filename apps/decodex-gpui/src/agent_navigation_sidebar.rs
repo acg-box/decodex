@@ -172,17 +172,7 @@ impl AgentSurface {
 					continue;
 				}
 				let Some(work) = snapshot.work_items.iter().find(|w| &w.id == id) else { continue };
-				let title = if snapshot.assistant.agent_id.as_ref() == Some(id)
-					&& work.title == "Assistant"
-					&& work
-						.codex_thread_id
-						.as_ref()
-						.is_none_or(|thread| !snapshot.conversation_titles.contains_key(thread))
-				{
-					"General".into()
-				} else {
-					self.conversation_label(work)
-				};
+				let title = self.assistant_conversation_label(work);
 				let target = id.clone();
 				group = group.child(self.navigation_row(
 					NavigationRow {
