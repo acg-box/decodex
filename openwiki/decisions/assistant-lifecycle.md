@@ -5,6 +5,8 @@ openwiki_generated: true
 sources:
   - id: openwiki-source-586227b5591e5f24cdfe6427
     resource: repo://apps/decodex-cli/src/agent.rs
+  - id: openwiki-source-36b7f34eeb55f2eec55e903d
+    resource: repo://apps/decodex-gpui/src/agent_command_palette.rs
   - id: openwiki-source-48758ba7d154c82885281d2c
     resource: repo://apps/decodex-gpui/src/agent_composer.rs
   - id: openwiki-source-5eddd1d872eed61f8ba7e703
@@ -87,10 +89,10 @@ sources:
     resource: repo://database/src/development_reset.rs
   - id: openwiki-source-28af4781ad8d9558410630da
     resource: repo://database/src/works.rs
-generated: { by: "codex", at: "2026-11-07T09:37:03.382Z" }
+generated: { by: "codex", at: "2026-11-07T20:36:56.030Z" }
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-07T09:37:03.382Z
+    at: 2026-11-07T20:36:56.030Z
 ---
 
 
@@ -132,7 +134,7 @@ Team membership does not grant private-chat access, approval authority or a shar
 
 ## Select and configure the Assistant
 
-Expand **My Assistant** in the sidebar and use its **New Assistant topic** creation control. The personal Assistant is always available and has no Enable control or optional component row. First use saves an idle personal Agent and its role in one transaction. It does not manufacture a first user message or submit model work. Give continuing instructions and team or duty requests in chat; defaults handle context renewal. RAGFlow is the optional component in Settings > Components.
+Use the hover plus beside **Assistant** in the sidebar, or choose **New Assistant topic** from **Search and commands (Command-K)**. The personal Assistant is always available and has no Enable control or optional component row. First use saves an idle personal Agent and its role in one transaction. It does not manufacture a first user message or submit model work. Give continuing instructions and team or duty requests in chat; defaults handle context renewal. RAGFlow is the optional component in Settings > Components.
 
 First setup seeds the existing per-Agent next-message choices from the displayed model and effort when available, the new-conversation permission default and the shared speed preference. The first actual message carries those choices through the configured-input path. Existing Agent settings and saved drafts remain independent.
 
@@ -147,9 +149,9 @@ Assistant tools are `assistant_read`, `assistant_manage` and `assistant_memory`.
 
 ## Independent personal topics
 
-**New Assistant topic** first reopens an unstarted personal draft, preserving its input. Repeated clicks do not add empty topics. If no eligible draft exists, the control creates an idle topic through the existing action described below. A local topic record is not a native conversation. Unstarted topic rows are labelled **Draft**. The empty canonical Assistant identity has no conversation row until it has input or a native binding.
+**New Assistant topic** first reopens an unstarted personal draft, preserving its input. Repeated clicks do not add empty topics. If no eligible draft exists, the control creates an idle topic through the existing action described below. A local topic record is not a native conversation. Unstarted topics use their ordinary topic label without a Draft suffix. An empty canonical identity stays hidden from conversation lists unless it is currently selected, has retained input or has a native binding.
 
-**New conversation** creates a local idle topic through `CreateAssistantTopic`. Creation records membership with the topic in one database transaction. It sends no message and makes no model request. The first submitted input starts a fresh native conversation through normal admission. It does not fork another topic or copy its dialogue.
+Creating another topic uses `CreateAssistantTopic` to record a local idle topic. Creation records membership with the topic in one database transaction. It sends no message and makes no model request. The first submitted input starts a fresh native conversation through normal admission. It does not fork another topic or copy its dialogue.
 
 One canonical Assistant owns the mandate, configuration, teams, wakes and RAGFlow agent scope. Each topic resolves that owner through explicit recorded membership. Prefixes, titles and project membership do not establish this role. Personal topic aliases are excluded from the public Agent catalog and cannot be promoted into independent Assistants or used as team members. Project Agents therefore receive neither personal tool declarations nor automatic personal recall.
 
@@ -212,7 +214,7 @@ Retired-context rows are read-only. Native source IDs remain exact for detail, m
 
 Archive preserves conversation history and cancels its unsent interactions. Delete removes the current native conversation and its recorded earlier contexts, then purges local conversation text and desktop drafts. Partial native deletion remains visible in Archive until a retry completes.
 
-Conversation row menus expose native archive and confirmed permanent deletion. Archive requires the exact current idle binding and verifies the native archived state before local retirement. Active-conversation deletion archives that source first, then uses the existing durable deletion plan. A retry with a recorded deletion plan resumes that plan instead of repeating native creation or model work. An unused local topic uses the existing discard operation. Clearing the unstarted canonical draft keeps its personal identity and configuration.
+Conversation rows expose fixed trailing archive and delete symbols. The first delete click arms the same symbol with a red nudge; the second confirms. Escape or an outside click cancels. Archive requires the exact current idle binding and verifies the native archived state before local retirement. Active-conversation deletion archives that source first, then uses the existing durable deletion plan. A retry with a recorded deletion plan resumes that plan instead of repeating native creation or model work. An unused local topic uses the existing discard operation. Clearing the unstarted canonical draft keeps its personal identity and configuration.
 
 The personal Assistant identity, saved configuration and learned RAGFlow Memory survive conversation deletion. Deleting the canonical conversation returns it to an empty idle conversation with no native binding. Deleting a separate topic removes its active membership. If independent Work still references that topic's owner identity, retain only the content-free canonical membership marked retired. It remains absent from active topic and public Agent lists; its old title, instructions and chat content are purged. Work references keep their original identity. An unused empty topic can be discarded completely.
 

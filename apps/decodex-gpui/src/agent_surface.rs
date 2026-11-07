@@ -2625,8 +2625,13 @@ impl AgentSurface {
 }
 
 impl Render for AgentSurface {
-	fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-		self.presentations.workspace.clone()
+	fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+		self.start_navigation_clock(cx);
+		gpui::div()
+			.relative()
+			.size_full()
+			.child(self.presentations.workspace.clone())
+			.child(self.render_global_commands(window, cx))
 	}
 }
 
@@ -2670,10 +2675,10 @@ impl SurfacePresentations {
 			crate::ui_frame::Presentation::new(&owner, AgentSurface::render_transcript_view, cx);
 		let sidebar_presentation = crate::ui_frame::Presentation::new(
 			&owner,
-			|s, _, cx| {
+			|s, window, cx| {
 				frame_trace::surface_render("sidebar");
 
-				s.workspace_sidebar(cx)
+				s.workspace_sidebar(window, cx)
 			},
 			cx,
 		);
@@ -2763,8 +2768,6 @@ struct WorkspaceView {
 	graph_drag: Option<Point<Pixels>>,
 	agent_tree_visible: bool,
 	sidebar_visible: bool,
-	sidebar_peek: bool,
-	sidebar_leave: Option<Task<()>>,
 	sidebar_width: f32,
 	sidebar_motion: RefCell<Option<Tween>>,
 	agent_panel_width: f32,
@@ -2823,8 +2826,6 @@ impl Default for WorkspaceView {
 			graph_drag: None,
 			agent_tree_visible: true,
 			sidebar_visible: true,
-			sidebar_peek: false,
-			sidebar_leave: None,
 			sidebar_width: PanelDefaults::configured().sidebar.into(),
 			sidebar_motion: Default::default(),
 			agent_panel_width: PanelDefaults::configured().sidebar.into(),

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:c9d64c6ba477508975b5b9d1cf1f5620326e03e84e09ecd3740e204f9563b5f0",
+  "pageVersion": "sha256:3d746da924cf0ed8e10aac5c2aaaca5bac3858757a6a7c2de84b5c803db4fe28",
   "claims": [
     {
       "id": "claim_2f9fecf97f644372afb5684929656aac",
@@ -208,7 +208,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_navigation_sidebar_tests.rs",
-          "version": "repo-file-v1:sha256:91256f2fcef25ed9900635aa28c3c3fefdde680e87171d676e5568f70c4bcff7"
+          "version": "repo-file-v1:sha256:14f06cc73b94928f6b8e841a0b2620b2ccdbd3e63f2745f161bcc7bc9ab256af"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_context_tests.rs",
@@ -486,7 +486,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_draft_storage.rs",
-          "version": "repo-file-v1:sha256:4412f8b56de7d88163a0bc68902bdc5915be5348d5a856fb3e965f7febef9c06"
+          "version": "repo-file-v1:sha256:508e28d2c28c0e7e38f83161cbfc6808b4f637b7393898d4ae39ab37b0256c68"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/archive.rs",
@@ -576,19 +576,27 @@
     },
     {
       "id": "claim_67a229c0b0a148e98f26d16e295ec6a1",
-      "statement": "The Assistant topic creation control reuses an eligible unstarted personal draft and preserves its input instead of creating repeated empty topics. Unstarted topic rows are Drafts; the empty canonical identity is not presented as a conversation until it has input or a native binding.",
+      "statement": "The Assistant hover-plus and global New Assistant topic command reuse an eligible unstarted personal draft and preserve its input instead of creating repeated empty topics. Unstarted topics use an ordinary label without a Draft suffix; an empty canonical identity appears only when selected, retaining input or bound to a native thread.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_navigation_sidebar.rs",
-          "version": "repo-file-v1:sha256:7c3657363d2b9e7836f16550bcc63fb282c12b584534fc361edc8d77f24fd030"
+          "resource": "repo://apps/decodex-gpui/src/agent_command_palette.rs#L100-L120",
+          "version": "repo-lines-v1:sha256:d2a5ceea57063ce60f94a99cc480b9460e238928bb3bac4231dbad1570bc4c16:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFjZTA0YjQ3M2MxNGRkMWIzM2YxMDU5ZTNiZDM5N2NlOWExN2U0YjUzNWM4MDVkNjQwZmQ0OGFhZjZlODhkYmMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgxYmFlMDQ3MGE4NzViMTdjODQ1OGIzZDkwZTQyZWQ3ODJkNDU2YWY0OWY2OWVjOTFhYTk0NzhjY2RjZWZlYjYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjkyNDdkYzc4ODg2Y2Q3YTQ2NWNmZTUyOWMwZWMwNGIxZGQyMzQ0MzNiMzJlNWYxMTBlOTgwY2FjNWVhODdmNDIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijc2YTE2YjRmY2FhYTkwNTIwMjQwYjg5YmU1ZGMwNWY3YzY2ZjUyYWI2M2EyMzQxYmUwZWU3NGJkY2E1Y2Q0YTYifQ"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_navigation_sidebar_tests.rs",
-          "version": "repo-file-v1:sha256:91256f2fcef25ed9900635aa28c3c3fefdde680e87171d676e5568f70c4bcff7"
+          "resource": "repo://apps/decodex-gpui/src/agent_navigation_sidebar.rs#L139-L218",
+          "version": "repo-lines-v1:sha256:76eb269f60855009531fad30f1eb0c6ec6cca9fd37c05a4ea5abe1f6462cabc3:eyJzZWxlY3RlZExpbmVDb3VudCI6ODAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg3NTUxMjllOWJkMTc0N2M5NzhmNDc4YjFlZGZlNzFhNTFlOThlNDgwMzk3MjgzNzhmZjFiYTk3ODc5YjgzZjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjIxODIyYTE1M2EwYzAxYTE3Mjg2YjYwMjJmMGU2M2FlNzE5ZGVmMDZlYWFiM2IxY2ZkZDc3NDI4YzYxOWJhZmEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQwMTZjM2Y1NGZiYWY2NWYwODBmYzMxOWE2NDEwYWE4ZDc1NzcyY2I2OTllMDM3M2RkZjk2NTI4MWU1MTcxMTMifQ"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
-          "version": "repo-file-v1:sha256:d1c66447645124cb4d80afd0a7571364b79c5760f25947480159629e2e6457d2"
+          "resource": "repo://apps/decodex-gpui/src/agent_navigation_sidebar.rs#L505-L619",
+          "version": "repo-lines-v1:sha256:8c444e1049891a2d3201502ad9649e646b89796da19bdeb6762bb6ac0ebfae89:eyJzZWxlY3RlZExpbmVDb3VudCI6MTE1LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJjYjAwZjg0YzZhMjJhODhkYjA3MmM0NGM5ODc2MmQ0NGIzODI3NTU2MDU0MDRlMjY2NWQ3MDNhNjk4NjY1NTIxIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIxZGQ4ZGY4YjUwNDg0YzhiYjk1NTAyN2MzYzNjNjEwNDc2MTA3MTUzNTMzY2NkNzAyNzBhMDNiNGY4YjM4MDFlIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJjNzNhYzAzMWYzNGNkZmQ5ZTFlNGMyY2Y4YjZkMjgxMzk5MDA1ZWQyNDk5ZGM4YjQ0NzlmMjJjY2U0YmI1OGI4IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI5MzgwMmQ3MmUwODFhMzk0YTYwNjNkMmI1YzQ3NDEzODBjODg4ZTRjZDExY2FjNDMxODNkMTU1YTA5ZDFiNWFlIn0"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_navigation_sidebar_tests.rs#L1-L26",
+          "version": "repo-lines-v1:sha256:032ce135017cc94de36746f47c07261a3283d34423083f072c0ea8c2d1e7bff0:eyJzZWxlY3RlZExpbmVDb3VudCI6MjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMzY2IyNjdlZjUzNWQxNzdkMjI5OGE4NjQzNzliYjNkNzhhMWQ2NjU2NjI3MWE4ZGI5ZmFhNmNkMjFhMzE3M2MiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImVjMTYzZWUxNzc0YzI1NmRjOWIzYmFhMWJiZjg0Y2Y4NzE2YTk2ZWIzYjcwZGQ1N2YyMTMxZDZkY2Y3YmE1ZWEifQ"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs#L100-L186",
+          "version": "repo-lines-v1:sha256:aa4afc29a9c9c400443d567e7b2a04aca6537807b6ba9734ca8c0a27e2356943:eyJzZWxlY3RlZExpbmVDb3VudCI6ODcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY5N2M1MDBjOTRlOTc2Yzk4MjNiMDU3NDcwNGVlOWRiNDc2Y2VkNGRmYzdiMDJkNjdlMzY2ZjNlZWE2NmE2ZTUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFkODY1YzMxOTg5ODYzNzIwN2U0MDEyYjEzZmQxMTYxNDUzMjg3ZDkzMDQ0ZjBkNzA2NzEwZjM3MWVhNGVlMjgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjgwN2UzMWJmOGE5YTgzNjA2YmY5OGJiMTdjMjJmMDA5NWQ0YjdiMzQzYzIyZmRiMDZjM2Y2MGQzMDViYTI1N2YiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY0ZmZmZmNiODc1NTI3M2JiMGQyMDg2ZWZhYTJlOGYwZTg5ZTI1ZWVkZTVmMjYwOWQ0MzE5ODRlNDU5YWU5MjQifQ"
         }
       ]
     },
@@ -598,7 +606,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_navigation_actions.rs",
-          "version": "repo-file-v1:sha256:ea5348f25315f965f1d0d36e466b34f8f2a686485fe417babaad812a12b11913"
+          "version": "repo-file-v1:sha256:627937b0529bf472b29072e2b857d935ffbf893c11224def7f81998a80010101"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_archive_tests.rs",
@@ -617,6 +625,6 @@
   ],
   "verification": {
     "by": "openwiki/0.9.0",
-    "at": "2026-11-07T09:37:03.382Z"
+    "at": "2026-11-07T20:36:56.030Z"
   }
 }

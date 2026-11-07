@@ -98,8 +98,6 @@ impl AgentSurface {
 		}
 
 		self.workspace.sidebar_visible = !self.workspace.sidebar_visible;
-		self.workspace.sidebar_peek = false;
-		self.workspace.sidebar_leave = None;
 
 		cx.notify();
 	}
@@ -542,8 +540,12 @@ impl AgentSurface {
 			.into_any_element()
 	}
 
-	pub(super) fn workspace_sidebar(&self, cx: &mut Context<Self>) -> AnyElement {
-		self.render_navigation_sidebar(cx)
+	pub(super) fn workspace_sidebar(
+		&self,
+		window: &mut Window,
+		cx: &mut Context<Self>,
+	) -> AnyElement {
+		self.render_navigation_sidebar(window, cx)
 	}
 
 	pub(super) fn conversation_pages(&self) -> Vec<(String, String, bool)> {

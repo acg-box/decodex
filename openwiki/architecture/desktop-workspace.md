@@ -5,7 +5,7 @@ description: "Workspace ownership, native menu focus, compositor motion, and con
 tags: [decodex, architecture, desktop, presentation]
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-07T09:37:03.382Z
+    at: 2026-11-07T20:32:11.462Z
 sources:
   - id: openwiki-source-98e7b23c4cc276d20fcb4649
     resource: repo://apps/decodex-gpui/menubar/Sources/DecodexApp/AccountControlViews.swift
@@ -19,6 +19,8 @@ sources:
     resource: repo://apps/decodex-gpui/menubar/Tests/DecodexAppTests/StatusPanelLifecycleTests.swift
   - id: openwiki-source-fecafeb22abda7dad3877372
     resource: repo://apps/decodex-gpui/src/account_feedback.rs
+  - id: openwiki-source-7ae74e50dfed52e1206b6e48
+    resource: repo://apps/decodex-gpui/src/agent_archive_catalog.rs
   - id: openwiki-source-6512b631b67649d924c16ba3
     resource: repo://apps/decodex-gpui/src/agent_archive.rs
   - id: openwiki-source-bf03f317e64cfefd11f6ea83
@@ -31,6 +33,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_collaboration_tests.rs
   - id: openwiki-source-2a6989c7fa25b9681df71f95
     resource: repo://apps/decodex-gpui/src/agent_collaboration.rs
+  - id: openwiki-source-36b7f34eeb55f2eec55e903d
+    resource: repo://apps/decodex-gpui/src/agent_command_palette.rs
   - id: openwiki-source-48758ba7d154c82885281d2c
     resource: repo://apps/decodex-gpui/src/agent_composer.rs
   - id: openwiki-source-0a61b25348131fe1bb6e1d12
@@ -55,6 +59,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_native_menu.rs
   - id: openwiki-source-3664c9b8790465805ef686fd
     resource: repo://apps/decodex-gpui/src/agent_navigation_actions.rs
+  - id: openwiki-source-e0f9712ab121145d154e8324
+    resource: repo://apps/decodex-gpui/src/agent_navigation_model.rs
   - id: openwiki-source-c2592b96974e70b72f93f72b
     resource: repo://apps/decodex-gpui/src/agent_navigation_sidebar_tests.rs
   - id: openwiki-source-541c96314da57ad5afa1835e
@@ -153,20 +159,24 @@ sources:
     resource: repo://database/src/works/commands.rs
   - id: openwiki-source-8fe6f1557e5d45d88b34bd0a
     resource: repo://scripts/macos/generate_workspace_symbols.swift
-generated: { by: "codex", at: "2026-11-07T09:37:03.382Z" }
+generated: { by: "codex", at: "2026-11-07T20:32:11.462Z" }
 ---
 
 # Desktop workspace and native glass
 
 ## Information hierarchy
 
-The workspace has three responsibilities. The left sidebar has collapsible **My Assistant**, **Work** and **Project Agents** groups with one shared search field. The center retains the selected conversation and its composer. The right Collaboration panel shows source-backed requests and exchanges across chats. A selected Work does not limit global pending requests to that Work.
+The workspace has three responsibilities. The left sidebar locates conversations and projects. The center keeps the selected conversation and its composer. The right Collaboration panel shows source-backed requests and exchanges across chats. A selected Work does not limit global pending requests to that Work.
 
-The creation control in **My Assistant** is labelled **New Assistant topic**. It reuses an existing unstarted personal draft before creating another topic. All personal topics use the same Assistant Memory and configuration; they keep separate drafts and actual conversation names. The creation control in **Project Agents** is labelled **New project Agent** and uses the existing project conversation setup. These controls do not create interchangeable roles.
+The left sidebar contains **Pin**, **Recent**, **Assistant** and **Projects**. Pin contains locally pinned conversation references. Recent contains every available unpinned conversation, without an additional item-count cutoff. Assistant collects personal topics. Projects lists registered native project directories and their independent Agent conversations. Attached Side chats remain with their source tabs. Pin has a four-row viewport; Recent and Assistant have seven-row viewports. All returned entries remain scrollable. These viewports do not enlarge the service snapshot: Work summaries retain their existing 100-record bound.
 
-Work headers stay in the sidebar, including completed outcomes. They are not limited to eight active rows and have no **View all work** page entry or **Discuss new work** shortcut. Project Agents includes existing independent Agents, including those without an open tab. Search matches personal topic names, Work titles and project names, and project Agent names and scopes; matching rows appear even in collapsed groups. The existing snapshot header bound remains 100 Work records. The footer provides **Archived conversations** and **Settings**.
+Click anywhere on a section header to expand or collapse it. Its secondary hover or keyboard-focus menu selects Last updated, Alphabetical or Always scroll titles. These preferences and pins are local UI state. The **Assistant** hover plus creates a **New Assistant topic** and reopens an existing unstarted personal draft before creating another. Personal topics share Assistant Memory and configuration, while retaining separate messages and drafts. The **Projects** hover plus opens the native folder chooser and existing AddProject path. It registers and reveals the project without rebinding the current draft. Each project's hover plus opens its own **New Agent** draft; repeated clicks and cross-project switches reuse the profile-scoped saved draft identity.
 
-Each conversation row reveals an actions menu on hover or keyboard focus. A native conversation has **Archive conversation** and **Delete conversation** actions. An unstarted local topic has **Discard draft**. Delete and discard require confirmation. Archive uses native Codex storage and retains history. Delete uses the exact native source, the existing complete deletion plan and local draft cleanup; learned personal Memory remains. Clearing the empty canonical Assistant draft retains its identity and configuration.
+**Search and commands (Command-K)** stays at the top in both expanded and compact layouts. It opens one global window for topics, projects, archived conversations, commands and Work. Arrow keys select visible results and Return opens the selected destination without submitting the chat composer. Choosing a result reveals its section or project and keeps the appropriate draft. New topic, New project, New project Agent, Archived conversations and Settings remain available from this window. Work search opens its existing owner conversation with the existing scoped evidence. There is no separate left-side Work hub or redundant inline search field.
+
+Conversation rows expose fixed trailing Pin, Archive and Delete symbols on hover or keyboard focus. Update time uses a short relative value at the far right; hover provides the owner and complete local date and time. The compact rail retains section symbols and conversation initials without time or action space. A first Delete click turns the same symbol red and applies a nudge; a second click confirms. Escape or an outside click cancels. Archive uses native Codex storage and retains history. Delete uses the exact native source, the complete existing deletion plan and local draft cleanup; learned personal Memory remains. Deleting an empty canonical Assistant draft clears its input while retaining its identity and configuration. A client-only project draft has no lifecycle symbols before the service records it.
+
+The fixed **Archived** footer has a quiet divider. It opens the archive list inside the left sidebar, preserving the center conversation and draft. Its rows use existing native restore and delete operations. Return to the normal groups with its back control. Settings remains available through Command-K and the native Settings shortcut.
 
 Collaboration shows **Needs you** before **Between agents**. Pending native requests, unanswered questions and explicit user decisions need a response; a returned result still needs its original assessment and is not automatically accepted. Opening an exchange's details keeps the active conversation and draft. Explicit **Open request**, **Open question** and **Open review** actions lead to the owning conversation, where its native response controls retain authority. Its fixed-size toolbar icon keeps a pending-count badge when the right panel is closed, with its name in the tooltip. The Graph remains available through its existing control and shortcut, but starts closed.
 
@@ -208,7 +218,7 @@ The conversation header groups each source with its open Side chats. Use **+** t
 
 ## Project Work and review details
 
-Work groups outcomes by Project and can show the same accountable Agent on several rows. Assistant and Project Lead selectors choose existing Agents; they do not create role-specific conversations. Selected Work evidence stays with the existing Work owner. The conversation, global Collaboration panel and Graph remain available. Guardian observation settings and per-conversation evidence retain their existing owners; Guardian is not a permanent section in the new sidebar.
+Work remains available through global command search and its existing detail views. It groups outcomes by Project and can show the same accountable Agent on several rows. Assistant and Project Lead selectors choose existing Agents; they do not create role-specific conversations. Selected Work evidence stays with the existing Work owner. The conversation, global Collaboration panel and Graph remain available. Guardian observation settings and per-conversation evidence retain their existing owners; Guardian is not a permanent section in the new sidebar.
 
 Expand a Work to read its current requirements, authoritative source, completion criteria, hold reason and resumption condition. Materials open their authorized references. Results show their exact native item or artifact digest. Collaboration Requests show their recipient, issued requirements, scoped Materials, delivery, acceptance, return and assessment. Discuss with owner opens that Agent's conversation. Awaiting Assessment is a derived activity label, not another Work state.
 
@@ -288,7 +298,7 @@ Use **Fork** for conversation actions in lists, locked conversations and provide
 
 Fork, Retry and Unarchive use the same bordered `settings_button` base, including height, padding, radius and interaction feedback. Status text wraps within the conversation rail; an inline title and its explanation flow as one text block. Clicking Fork starts creation after source preparation, with no second confirmation or Cancel control. Conversation progress and recovery use the band above the composer. Creation sends no message.
 
-Reserve `arrow.triangle.branch` for Fork. Account routing uses `point.topleft.down.to.point.bottomright.curvepath` in both GPUI and Menu Bar, with the existing active color and disabled behavior. New local Agent records use `(Fork)` or `(Side chat)` as identity suffixes. Native conversation topics update separately. The source header stays **Main**. Side chat tabs use the current topic, with numbered names until a title is available.
+Reserve `arrow.triangle.branch` for Fork. Account routing uses `point.topleft.down.to.point.bottomright.curvepath` in both GPUI and Menu Bar, with the existing active color and disabled behavior. New local Agent records use `(Fork)` or `(Side chat)` as identity suffixes. Native conversation topics update separately. A project source header stays **Main**; a personal source header uses its current topic. Side chat tabs use the current topic, with numbered names until a title is available.
 
 ## Verification
 
@@ -296,7 +306,7 @@ The [Assistant lifecycle](../decisions/assistant-lifecycle.md) keeps a stable pe
 
 RAGFlow is an optional component with Install, Update, Uninstall and complete installed version readback. It shares lifecycle buttons, busy state and inline feedback with the other components. Install checks the running Docker-compatible engine and Compose, then prepares RAGFlow, Infinity and the private account. Missing prerequisites use the shared notice; the App does not install or launch a container runtime. Successful installation opens model setup when no models are saved. Expand RAGFlow and select Set up models or Edit to enter one Base URL, an optional API key, an extraction model ID and an embedding model ID. Both models use that shared OpenAI-compatible connection. Save verifies the choices and initializes dedicated Memory without sending chat content. New Memory connections enable automatic learning from completed Assistant dialogue. The Automatic learning switch can stop future learning; existing saved choices remain unchanged on update.
 
-Use GPUI tests in `shell.rs`, `agent_workspace.rs`, `agent_activity.rs`, `agent_markdown.rs`, `agent_archive.rs` and `settings_surface.rs`. Real macOS acceptance must also check focus, typing, scrolling, panel transitions, and transparency in the signed app. A white or missing automation screenshot alone is not evidence that the user sees a blank window.
+Navigation fixtures cover pinning without changing the active draft, personal and project draft reuse, two-click delete cancellation, fixed 28-point spacing, complete available topic rendering, a stable 40-point rail and command selection without chat submission. Use GPUI tests in `agent_navigation_sidebar_tests.rs`, `agent_command_palette.rs`, `shell.rs`, `agent_workspace.rs`, `agent_activity.rs`, `agent_markdown.rs`, `agent_archive.rs` and `settings_surface.rs`. Real macOS acceptance must also check focus, typing, scrolling, panel transitions, and transparency in the signed app. A white or missing automation screenshot alone is not evidence that the user sees a blank window.
 
 The Work portfolio fixtures check Project grouping, scoped evidence, source-bound detail loading, global reviewer controls and explicit limits. The collaboration fixtures check cross-chat visibility, expansion without draft changes, participant location and the distinction between recorded messages, tool completion and context references. These checks do not replace signed-app interaction acceptance.
 

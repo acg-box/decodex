@@ -16,18 +16,18 @@
       "completedRunId": "db84648f-510e-42b5-adf3-fab89d57867d"
     },
     "/openwiki/architecture/design-language.md": {
-      "pageVersion": "sha256:20ddcdd2a99123a9ff066e3de14758e926515afc9494fd1a957b0d2090ab4103",
+      "gitHead": "5b4638cce20ad91c401426bc60ff07df4effaaa2",
+      "sourceFingerprint": "sha256:e0b261540b20d3114ba6a78173fe65a6992bf9509215b67539289ac3d2762dfb",
+      "pageVersion": "sha256:136f7122d4f68eb459b7dbf99ccff87616c005f1077fff293a70269935797881",
       "completedBy": "codex",
-      "completedRunId": "f3e09b5c-3189-4853-a0cf-27277e13c3ac",
-      "gitHead": "19cae4684276e508d2f32cd28afaa39b6f1c222a",
-      "sourceFingerprint": "sha256:7397e898b915683ec0b839b0906bc6f8c27c23ff1489aaff9a36a240a48a7973"
+      "completedRunId": "18a04cbe-ba96-44c0-8ce4-53f32b9499a2"
     },
     "/openwiki/architecture/desktop-workspace.md": {
-      "pageVersion": "sha256:26907243acc94af6070218f35634dc21a4fc71b96f7cbed0eab90958d02a051f",
+      "gitHead": "5b4638cce20ad91c401426bc60ff07df4effaaa2",
+      "sourceFingerprint": "sha256:e0b261540b20d3114ba6a78173fe65a6992bf9509215b67539289ac3d2762dfb",
+      "pageVersion": "sha256:93804fa40f3930e3038b7bca762125393dd18bb2f8784f0143c401301a50134a",
       "completedBy": "codex",
-      "completedRunId": "f3e09b5c-3189-4853-a0cf-27277e13c3ac",
-      "gitHead": "19cae4684276e508d2f32cd28afaa39b6f1c222a",
-      "sourceFingerprint": "sha256:7397e898b915683ec0b839b0906bc6f8c27c23ff1489aaff9a36a240a48a7973"
+      "completedRunId": "18a04cbe-ba96-44c0-8ce4-53f32b9499a2"
     },
     "/openwiki/architecture/runtime-architecture.md": {
       "gitHead": "83b4405c032c031198d2ed361e6888b471b09ed0",
@@ -37,11 +37,11 @@
       "completedRunId": "b0aba96c-7a76-4c1b-bbdc-69c4e7b26498"
     },
     "/openwiki/decisions/assistant-lifecycle.md": {
-      "pageVersion": "sha256:c9d64c6ba477508975b5b9d1cf1f5620326e03e84e09ecd3740e204f9563b5f0",
+      "pageVersion": "sha256:3d746da924cf0ed8e10aac5c2aaaca5bac3858757a6a7c2de84b5c803db4fe28",
       "completedBy": "codex",
-      "completedRunId": "f3e09b5c-3189-4853-a0cf-27277e13c3ac",
-      "gitHead": "19cae4684276e508d2f32cd28afaa39b6f1c222a",
-      "sourceFingerprint": "sha256:7397e898b915683ec0b839b0906bc6f8c27c23ff1489aaff9a36a240a48a7973"
+      "completedRunId": "a1d6f08a-9e57-4237-9c7a-5fc4427a8769",
+      "gitHead": "5b4638cce20ad91c401426bc60ff07df4effaaa2",
+      "sourceFingerprint": "sha256:e0b261540b20d3114ba6a78173fe65a6992bf9509215b67539289ac3d2762dfb"
     },
     "/openwiki/decisions/project-agent-work.md": {
       "gitHead": "49d4581b2f98d3631e3a2bba24aaa727d8480d7a",

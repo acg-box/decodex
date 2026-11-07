@@ -12,9 +12,9 @@ use gpui::{
 use crate::{
 	shell::{
 		ActivateAgent, ActivateHealth, ActivateSettings, DismissStatus, FindConversation,
-		FocusNext, FocusPrevious, GrowPanel, GrowPanels, NavigateBack, NavigateForward, ResetPanel,
-		ResetPanels, ShrinkPanel, ShrinkPanels, ToggleContentFullscreen, ToggleGraph,
-		ToggleInspector, ToggleSidebar,
+		FocusNext, FocusPrevious, GrowPanel, GrowPanels, NavigateBack, NavigateForward,
+		OpenGlobalCommands, ResetPanel, ResetPanels, ShrinkPanel, ShrinkPanels,
+		ToggleContentFullscreen, ToggleGraph, ToggleInspector, ToggleSidebar,
 		agent_surface::{AgentSurface, composer, voice::Media, workspace::ARCHIVED_MESSAGE},
 		forward_shell_action as forward,
 	},
@@ -156,6 +156,7 @@ impl Render for ComposerPanel {
 			.on_action(move |action: &NavigateBack, _, cx| forward(parent, action, cx))
 			.on_action(move |action: &NavigateForward, _, cx| forward(parent, action, cx))
 			.on_action(move |action: &FindConversation, _, cx| forward(parent, action, cx))
+			.on_action(move |action: &OpenGlobalCommands, _, cx| forward(parent, action, cx))
 			.child(capsule)
 	}
 }

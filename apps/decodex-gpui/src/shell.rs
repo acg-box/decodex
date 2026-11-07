@@ -157,6 +157,7 @@ gpui::actions!(
 		NavigateBack,
 		NavigateForward,
 		FindConversation,
+		OpenGlobalCommands,
 		SelectPreviousConversation,
 		SelectNextConversation,
 		ActivateConversationRow,
@@ -2012,6 +2013,7 @@ impl Render for Shell {
 			.on_action(cx.listener(Self::toggle_graph))
 			.on_action(cx.listener(Self::toggle_content_fullscreen))
 			.on_action(cx.listener(|s, _: &DismissStatus, _, cx| {
+				s.agent.update(cx, |agent, cx| agent.dismiss_navigation_confirmation(cx));
 				if s.status_open {
 					s.status_open = false;
 
@@ -2381,6 +2383,18 @@ enum InspectorTab {
 
 /// Bind the shell's complete keyboard path once at application startup.
 pub(crate) fn bind_keys(cx: &mut App) {
+	cx.on_action(|_: &OpenGlobalCommands, cx| {
+		cx.defer(|cx| {
+			if let Some(main) = cx.windows().into_iter().find_map(|w| w.downcast::<Shell>()) {
+				let _ = main.update(cx, |shell, window, cx| {
+					shell.select_destination(Destination::Agent, cx);
+					shell.agent.update(cx, |agent, cx| agent.open_global_commands(window, cx));
+					window.activate_window();
+				});
+			}
+		});
+	});
+
 	cx.on_action(|command: &ConversationCommand, cx| {
 		let command = *command;
 		cx.defer(move |cx| {
@@ -2428,6 +2442,7 @@ pub(crate) fn bind_keys(cx: &mut App) {
 		KeyBinding::new("shift-escape", ToggleContentFullscreen, None),
 		KeyBinding::new("cmd-[", NavigateBack, None),
 		KeyBinding::new("cmd-f", FindConversation, None),
+		KeyBinding::new("cmd-k", OpenGlobalCommands, None),
 		KeyBinding::new("cmd-]", NavigateForward, None),
 		KeyBinding::new("enter", ActivateDestination, Some("Destination")),
 		KeyBinding::new("space", ActivateDestination, Some("Destination")),

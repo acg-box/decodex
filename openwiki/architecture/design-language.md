@@ -5,7 +5,7 @@ description: Reusable layout, activity-island motion, reading spacing and theme 
 tags: [desktop, design, motion, layout]
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-07T09:37:03.382Z
+    at: 2026-11-07T20:32:11.462Z
 sources:
   - id: openwiki-source-8037e2358a2c4f9b2c722a11
     resource: repo://AGENTS.md
@@ -27,6 +27,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_timeline.rs
   - id: openwiki-source-c0e58bc836ac05c982449723
     resource: repo://apps/decodex-gpui/src/agent_workbench.rs
+  - id: openwiki-source-e269da8230b6d51390181459
+    resource: repo://apps/decodex-gpui/src/agent_workspace_size.rs
   - id: openwiki-source-5d032c6be684964aa2c401fa
     resource: repo://apps/decodex-gpui/src/agent_workspace.rs
   - id: openwiki-source-686aae4ae35c7f99c92e3d9b
@@ -41,6 +43,10 @@ sources:
     resource: repo://apps/decodex-gpui/src/shell.rs
   - id: openwiki-source-ccd97a4d4ef8dfe9b724e7ce
     resource: repo://apps/decodex-gpui/src/ui_live_activity.rs
+  - id: openwiki-source-afbf2d30c0979a844373d8e5
+    resource: repo://apps/decodex-gpui/src/ui_motion.rs
+  - id: openwiki-source-9e7fc8b7290695ff7afa8373
+    resource: repo://apps/decodex-gpui/src/ui_overflow_label.rs
   - id: openwiki-source-8f7f43de2b98b69bb43506d7
     resource: repo://apps/decodex-gpui/src/ui_performance_readout.rs
   - id: openwiki-source-6d7ff71d731da7268890d765
@@ -53,7 +59,7 @@ sources:
     resource: repo://codex-runtime.lock.json
   - id: openwiki-source-a490ea3fbcddb9c007caf196
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_context_tests.rs
-generated: { by: "codex", at: "2026-11-07T09:37:03.382Z" }
+generated: { by: "codex", at: "2026-11-07T20:32:11.462Z" }
 ---
 
 # Interface geometry and motion
@@ -103,22 +109,31 @@ The start heading gives way to saved messages, a sending preview, or a retained 
 
 ## Navigation and attention
 
-Use the shared navigation tokens for personal topics, Work and project Agents.
+Use one compact row rhythm for the left navigation. Pin, Recent, Assistant and Projects have distinct outline symbols. Keep their labels in title case. Do not add total counts.
 
 | Property | Value |
 | --- | --- |
-| Main row text | 12 points. |
-| Supporting text | 10.5 points. |
-| Row corner radius | 8 points. |
-| Separation between sections | 18 points. |
-| Section heading height | 28 points, without wrapping. |
-| Conversation row and icon target | 28 points, with a stable icon position during rail expansion. |
+| Utility, section, project and conversation row | 28 points. |
+| Conversation text | 12.5 points, with a fixed first grapheme. |
+| Project title | 12 points, medium weight, normal foreground. |
+| Section label | 11 points, medium weight, muted foreground. |
+| Relative update time | 10 points, at the far right. |
+| Row corner radius | 5 points. |
+| Gap between adjacent rows and section headings | 0 points. |
+| Divider slot below commands and above Archived | 12 points, with a quiet fading line. |
+| Collapsed rail | 40 points, including two 6-point insets. |
+| Leading symbol target | 28 points, with a 14-point outline symbol. |
+| Hover action target | 24 points; creation and disclosure symbols use a matching 12-point scale. |
 
-Keep section headings at a fixed height when the left rail changes width. Each group has its own collapse control; the Assistant and Project Agents groups have separately labelled creation controls. Search stays in the sidebar and reveals matching rows in collapsed groups. A selected Work and its conversation must not both appear selected in the rail. Conversation headers show the actual personal topic name.
+The whole section header toggles its content. Sorting remains a secondary hover or keyboard-focus control. Put the creation plus immediately before the disclosure chevron in Assistant, Projects and each project. Both controls retain their hit targets when hidden. An expanded project uses a quiet surface, a short accent mark and an end rule inside its final child row. Its conversation rows have no extra indent or folder symbols.
+
+Keep Search and commands in the same leading slot when the sidebar contracts. It opens the global command window, also available with Command-K. The compact rail retains each section symbol and conversation initial. Pointer hover does not expand the rail. Relative times and trailing actions do not add width or height to the compact rail.
+
+Long titles retain their full text. Hover or keyboard focus starts overflow motion; leaving returns the text smoothly. Each section can enable Always scroll titles. Use shared disclosure, chevron, popover, control-opacity and confirmation-nudge motion. Respect reduced motion and do not animate the complete transcript for a sidebar hover.
+
+Pin, Archive and Delete appear at the fixed far-right edge of a conversation row. The relative time fades while those actions appear. Do not put an opaque backing or gradient seam beneath them. The first Delete click turns the same symbol red and applies the shared nudge. The second click on that symbol confirms deletion. Escape or an outside click cancels. Deletion keeps learned Assistant Memory. Archived rows reuse the native restore and delete paths.
 
 Use restrained warm emphasis for requests that need the user. Derive this state from a pending native request, an unanswered native question, or an explicit user decision. Do not classify attention from a displayed label. Returned agent work and ordinary collaboration remain distinct from requests for a user decision. Window controls use fixed-size icons, with names in tooltips and accessibility labels. Collaboration retains a small pending-count badge when its panel is closed; it adds no visible toolbar label.
-
-Conversation rows reveal an actions button on hover or keyboard focus. Each row owns an exact conversation menu identity and uses the shared popover presentation. Archive, delete and discard actions stay in that menu. Permanent deletion requires an explicit confirmation and states that learned Assistant Memory remains.
 
 ## Recovery feedback
 
