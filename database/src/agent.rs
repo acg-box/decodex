@@ -4,6 +4,7 @@ mod archive;
 mod capacity;
 mod collaboration;
 mod delegation;
+mod deletion;
 mod steer;
 
 pub use self::{

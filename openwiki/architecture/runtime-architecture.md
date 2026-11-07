@@ -70,8 +70,6 @@ sources:
     resource: repo://crates/decodex-components/src/ragflow_service.rs
   - id: openwiki-source-9ecfe8c96199e765ca2b4e1b
     resource: repo://crates/decodex-components/src/ragflow.rs
-  - id: openwiki-source-8bbd4ba0cf275fa1b4da9acf
-    resource: repo://crates/decodex-components/tests/development.rs
   - id: openwiki-source-6230c010baca677fa60c32c1
     resource: repo://crates/decodex-protocol/src/client.rs
   - id: openwiki-source-caeefdea0805519b59a469aa
@@ -110,6 +108,8 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent_resources.rs
   - id: openwiki-source-7111b71a47931c3e55d3ff6f
     resource: repo://crates/decodex-runtime/src/agent_titles/host.rs
+  - id: openwiki-source-f4bc7020783c49a911b7fb29
+    resource: repo://crates/decodex-runtime/src/agent_visibility.rs
   - id: openwiki-source-dbc533dc306a3f520c4241e0
     resource: repo://crates/decodex-runtime/src/agent.rs
   - id: openwiki-source-13f64682e8d77fd2c031de39
@@ -178,10 +178,10 @@ sources:
     resource: repo://scripts/macos/stage_decodex_app.sh
   - id: openwiki-source-76081c1a47ca8cf32593de34
     resource: repo://scripts/macos/test_decodex_app_stage.sh
-generated: { by: "codex", at: "2026-11-06T20:42:09.050Z" }
+generated: { by: "codex", at: "2026-11-07T06:35:26.732Z" }
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-06T20:42:09.050Z
+    at: 2026-11-07T06:35:26.732Z
 ---
 
 # Runtime Architecture
@@ -232,6 +232,8 @@ The accepted [Assistant lifecycle design](../decisions/assistant-lifecycle.md) k
 Project and Work are durable business records. A persistent Agent owns one current native conversation and can own several Works. Assistant and Project Lead select responsibilities of existing Agents. `work_read` and `work_manage` expose scoped evidence and atomic decisions. They do not create an execution engine. Native helpers use native spawn, messages, waits and continuation; independent Agents exchange scoped Collaboration Requests through the existing inbox.
 
 The first actual user input can initialize an independent Agent without an Assistant. Native thread metadata is materialized before Project reconciliation. Every independent conversation must attach to the exact process that created or resumed its native thread; a shared account process does not make one Agent the parent of another.
+
+An idle Assistant can exist before its first native context. Startup skips roots with no saved execution settings, native context or pending first user input. This avoids a configuration error for an unused Assistant and lets a later project conversation initialize from its own first input. Draft-only snapshots do not require a native archive observation. Retained native contexts still require a valid restore and archive view before the service presents them as active.
 
 The overview contains Work headers. `work_portfolio` serves selected evidence in digest-checked 8 KiB pages with a 32 MiB ceiling. SQL applies Agent and granted Material scope before the per-category record limit. Guardian observes optional native review records without overriding conversation permissions or business assessment. Private records exclude raw reasoning and preserve explicit missing action associations.
 
@@ -321,11 +323,17 @@ Assistant is built in and always available from the sidebar. Its first use publi
 
 `decodex-components::ragflow` owns a per-user Docker Compose project. Docker must be running. The project contains RAGFlow nightly, compatible Infinity 0.7.4, MySQL, MinIO, Kvrocks and NATS. Only the RAGFlow API is published, on loopback. Install prepares the private account and reads the actual server version and owned image identity. The private receipt retains the project, endpoint and setup state so a retry uses the same installation.
 
-Extraction and embedding each have their own OpenAI-compatible Base URL, optional API key and model ID. Save asks RAGFlow to verify both choices before updating either provider instance and the defaults. Extraction uses its own instance; embedding retains the existing instance identity so saved indexes remain valid. It then creates or recovers a dedicated Memory by its stable name. The component does not install a model runtime, download models or create a model data volume. A loopback model URL is translated to `host.docker.internal` for the container; the saved and displayed URL stays as entered. Existing indexed Memory keeps its embedding model and endpoint, because a changed vector space would invalidate the saved index.
+Extraction and embedding use one shared OpenAI-compatible Base URL and optional API key, with separate model IDs. Save asks RAGFlow to verify both choices before updating either provider instance and the defaults. Extraction uses its own instance; embedding retains the existing instance identity so saved indexes remain valid. It then creates or recovers a dedicated Memory by its stable name. The component does not install a model runtime, download models or create a model data volume. A loopback model URL is translated to `host.docker.internal` for the container; the saved and displayed URL stays as entered. Existing indexed Memory keeps its embedding model and endpoint, because a changed vector space would invalidate the saved index.
 
 On ARM64, the component packages the official Infinity 0.7.4 binary and analyzer resources with an Ubuntu 24.04 runtime. The published ARM64 image has an older glibc than its binary requires. The build context contains only the runtime Dockerfile; account and Compose credentials stay outside it. The x86-64 path uses the compatible official Infinity image directly. This does not install a host compiler or add a Decodex execution engine.
 
-Model credentials and installation state stay in the private component receipt. The separate origin-bound RAGFlow API credential is saved in a private component file; only its reference passes through the existing Assistant Configure command. The service reads that reference for Memory calls. Chat import starts off. Update preserves models, credentials, import choice and data. Uninstall stops only the owned project, clears its Assistant connection and retains volumes for reinstallation. A service failure can retry through Update; failed model verification keeps the previous saved configuration and is retried through Save. Native context refresh and the external-memory policy retain their existing service and Codex owners.
+Model credentials and installation state stay in the private component receipt. The separate origin-bound RAGFlow API credential is saved in a private component file; only its reference passes through the existing Assistant Configure command. The service reads that reference for Memory calls. New Memory connections enable automatic learning from completed Assistant dialogue. Updates preserve models, credentials, the saved learning choice and data. Uninstall stops only the owned project, clears its Assistant connection and retains volumes for reinstallation. A service failure can retry through Update; failed model verification keeps the previous saved configuration and is retried through Save. Native context refresh and the external-memory policy retain their existing service and Codex owners.
+
+Automatic learning uses the existing single background worker and native completed-turn reader. It imports original user text and final Assistant replies after the saved configuration boundary. It excludes tool output, reasoning, commentary, and exchanges that contain recognized credentials. Export selection matches the Memory, native thread and turn in saved receipt fields. Reserved exchanges, including writes with an unknown result, are skipped without replay, so later completed exchanges continue after restart. A turn with an explicit remember or forget receipt is not imported again. The worker checks that its Assistant and connection are still current before writing.
+
+Before a normal Assistant turn, the runtime searches only its configured Memory, Assistant and user scope. The query contains at most 2,048 characters from the current text input. A five-second timeout bounds this optional read. Up to five results, each with at most 1,200 content characters and original source identifiers, enter native untrusted `additionalContext`. This step calls no extraction or answer-generation model. Empty results add no memory context; a failure supplies a bounded unavailable status without blocking the turn or enabling native-memory fallback. Native question answers and capacity retries keep their existing input paths.
+
+Only the selected Assistant receives Assistant tool declarations and instructions in new native contexts. Existing ordinary contexts retain their original native declarations, while the back end still refuses their Assistant-tool calls. Project Agents do not receive the personal-memory connection or recalled content.
 
 Official Release inputs require an exact tag, canonical OpenAI asset URL, archive SHA-256, executable SHA-256 and generated schema fingerprint. The installer checks the archive before extraction, then verifies signatures, version and protocol evidence. A failed download removes its partial archive and returns after one request. The user can start another attempt. Explicit reinstallation verifies the replacement before publishing it atomically; a failed replacement preserves the previous directory, and other versions remain available.
 

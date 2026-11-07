@@ -44,6 +44,7 @@ mod conversation_routing;
 mod conversations;
 mod credentials;
 mod desktop_settings;
+mod development_reset;
 mod error;
 mod guardian_settings;
 mod process_generations;

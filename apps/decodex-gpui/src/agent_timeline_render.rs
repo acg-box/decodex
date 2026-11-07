@@ -2077,20 +2077,7 @@ phase: None,
 
 		visual.update(crate::ui_frame::draw_current_frame);
 
-		let toggle = visual.debug_bounds("native-history-source-toggle").unwrap();
-
-		visual.simulate_click(toggle.center(), Default::default());
-		visual.update(crate::ui_frame::draw_current_frame);
-
-		assert!(visual.debug_bounds("saved-local-history").is_some());
-
-		surface.read_with(visual, |s, _| assert!(s.timeline.native.show_saved));
-
-		let toggle = visual.debug_bounds("native-history-source-toggle").unwrap();
-
-		visual.simulate_click(toggle.center(), Default::default());
-		visual.update(crate::ui_frame::draw_current_frame);
-
+		assert!(visual.debug_bounds("native-history-source-toggle").is_none());
 		assert!(visual.debug_bounds("saved-local-history").is_none());
 
 		surface.update(visual, |s, cx| {

@@ -156,7 +156,13 @@ impl Render for ComposerMenu {
 		let width = self.placement.map_or(248., |placement| placement.width);
 		crate::ui_layout::intrinsic(gpui::px(width), content, move |size, window, cx| {
 			let _ = menu.update(cx, |panel, cx| {
-				panel.height = f32::from(size.height).max(48.);
+				let height = f32::from(size.height).max(48.);
+				if (panel.height - height).abs() > 0.5
+					&& let Some(surface) = &mut panel.surface
+				{
+					surface.conceal_content();
+				}
+				panel.height = height;
 				panel.place(window, cx);
 				if open && let Some(surface) = &mut panel.surface {
 					surface.refresh_material();

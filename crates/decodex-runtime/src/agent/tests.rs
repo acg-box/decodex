@@ -842,6 +842,139 @@ async fn fixture() -> (AgentCoordinator, UnboundedReceiver<Value>, TempDir) {
 }
 
 #[tokio::test]
+async fn personal_assistant_tools_and_instructions_are_not_given_to_project_agents() {
+	let (mut agent, mut sent, _directory) = fixture().await;
+	agent.start_agent("project", "Inspect the project").await.unwrap();
+	complete(&mut agent, "project").await;
+	let project = agent.store.get_agent_work_item("project".into()).await.unwrap();
+	let ordinary = agent.work_thread_params(&project).await.unwrap();
+	assert!(
+		ordinary["dynamicTools"]
+			.as_array()
+			.unwrap()
+			.iter()
+			.all(|tool| !tool["name"].as_str().unwrap().starts_with("assistant_"))
+	);
+	assert!(!ordinary["developerInstructions"].as_str().unwrap().contains("RAGFlow"));
+	assert!(!ordinary["developerInstructions"].as_str().unwrap().contains("assistant_memory"));
+	agent.store.set_assistant("project".into(), true).await.unwrap();
+	let personal = agent.work_thread_params(&project).await.unwrap();
+	assert!(
+		personal["dynamicTools"]
+			.as_array()
+			.unwrap()
+			.iter()
+			.any(|tool| tool["name"] == "assistant_memory")
+	);
+	assert!(personal["developerInstructions"].as_str().unwrap().contains("RAGFlow"));
+	while sent.try_recv().is_ok() {}
+	AgentCoordinator::create_conversation(
+		&agent.store,
+		"other-project",
+		EnqueueAgentEvent {
+			source_event_id: "other-project-initial".into(),
+			work_item_id: "other-project".into(),
+			event_kind: "user_message".into(),
+			payload: serde_json::json!({"source":"user","text":"Inspect another project"})
+				.to_string(),
+		},
+		None,
+	)
+	.await
+	.unwrap();
+	agent.wake_pending().await.unwrap();
+	let request =
+		iter::from_fn(|| sent.try_recv().ok()).find(|r| r["method"] == "thread/start").unwrap();
+	assert!(
+		request["params"]["dynamicTools"]
+			.as_array()
+			.unwrap()
+			.iter()
+			.all(|tool| !tool["name"].as_str().unwrap().starts_with("assistant_"))
+	);
+	assert!(!request["params"]["developerInstructions"].as_str().unwrap().contains("RAGFlow"));
+	let other = agent.store.get_agent_work_item("other-project".into()).await.unwrap();
+	assert!(
+		agent
+			.assistant_tool(&other, "assistant_memory", &serde_json::json!({"operation":"status"}))
+			.await
+			.is_err()
+	);
+}
+
+#[tokio::test]
+async fn automatic_personal_recall_is_scoped_and_does_not_block_on_unavailable_memory() {
+	use decodex_core::assistant::{AssistantCommand, AssistantSettings, RagflowConnection};
+	let (mut agent, _sent, _directory) = fixture().await;
+	agent.start_agent("personal", "Start").await.unwrap();
+	complete(&mut agent, "personal").await;
+	agent.store.set_assistant("personal".into(), true).await.unwrap();
+	agent
+		.store
+		.apply_assistant_command(
+			"personal".into(),
+			"memory".into(),
+			AssistantCommand::Configure {
+				settings: AssistantSettings {
+					ragflow: Some(RagflowConnection {
+						url: "https://ragflow.invalid/".into(),
+						credential_id: "0".repeat(64),
+						user_id: "personal-user".into(),
+						dataset_ids: vec![],
+						memory_id: Some("personal-memory".into()),
+						ingest_chats: true,
+					}),
+					..Default::default()
+				},
+			},
+			true,
+		)
+		.await
+		.unwrap();
+	let item = agent.store.get_agent_work_item("personal".into()).await.unwrap();
+	agent
+		.store
+		.save_assistant_bootstrap(
+			item.id.clone(),
+			item.codex_thread_id.clone().unwrap(),
+			serde_json::json!({"externalMemory":true}),
+		)
+		.await
+		.unwrap();
+	let (params, _) =
+		agent.dispatch_input(&item, "How do I prefer work updates?", &[], false).await.unwrap();
+	let memory = &params["additionalContext"]["decodex_personal_memory"];
+	assert_eq!(memory["kind"], "untrusted");
+	let evidence: Value = serde_json::from_str(memory["value"].as_str().unwrap()).unwrap();
+	assert_eq!(evidence["evidence"]["status"], "unavailable");
+	assert_eq!(params["input"][0]["text"], "How do I prefer work updates?");
+	assert_eq!(params["turnTrigger"], "user");
+	let (retry, _) = agent.dispatch_input(&item, "Retry the turn", &[], true).await.unwrap();
+	assert!(retry["additionalContext"].get("decodex_personal_memory").is_none());
+	let (sensitive, _) =
+		agent.dispatch_input(&item, "Use sk-proj-0123456789abcdef", &[], false).await.unwrap();
+	assert!(sensitive["additionalContext"].get("decodex_personal_memory").is_none());
+	AgentCoordinator::create_conversation(
+		&agent.store,
+		"project",
+		EnqueueAgentEvent {
+			source_event_id: "project-initial".into(),
+			work_item_id: "project".into(),
+			event_kind: "user_message".into(),
+			payload: serde_json::json!({"source":"user","text":"Start project work"}).to_string(),
+		},
+		None,
+	)
+	.await
+	.unwrap();
+	agent.wake_pending().await.unwrap();
+	let project = agent.store.get_agent_work_item("project".into()).await.unwrap();
+	let (params, _) =
+		agent.dispatch_input(&project, "How do I prefer work updates?", &[], false).await.unwrap();
+	assert!(params["additionalContext"].get("decodex_personal_memory").is_none());
+}
+
+#[tokio::test]
 async fn shared_process_agent_creation_uses_current_default_after_retirement() {
 	for inherited in [false, true] {
 		let make_model = |name: &str| serde_json::json!({"model":name,"displayName":name,"supportedReasoningEfforts":[{"reasoningEffort":"high"}],"defaultReasoningEffort":"high"});

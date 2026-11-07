@@ -10,6 +10,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_async_questions.rs
   - id: openwiki-source-bf03f317e64cfefd11f6ea83
     resource: repo://apps/decodex-gpui/src/agent_attached_branches.rs
+  - id: openwiki-source-48758ba7d154c82885281d2c
+    resource: repo://apps/decodex-gpui/src/agent_composer.rs
   - id: openwiki-source-d56ea7499f2ed784b1b6c970
     resource: repo://apps/decodex-gpui/src/agent_conversation_tab_tests.rs
   - id: openwiki-source-1bf529ea3f1649ac9a28334a
@@ -58,6 +60,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_resource_owners.rs
   - id: openwiki-source-9db9edbd5ce47e3b722c8750
     resource: repo://apps/decodex-gpui/src/agent_sample_request.rs
+  - id: openwiki-source-296a92a9cefecb19f0fc1f95
+    resource: repo://apps/decodex-gpui/src/agent_sample_tests.rs
   - id: openwiki-source-912dbe8f46e7ec6026887bbe
     resource: repo://apps/decodex-gpui/src/agent_sample.rs
   - id: openwiki-source-ff9ae5d5274ad341f8658d86
@@ -84,8 +88,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/assistant_settings.rs
   - id: openwiki-source-7a7e7b3407a8222085c2d27e
     resource: repo://apps/decodex-gpui/src/composer_input.rs
-  - id: openwiki-source-a16804a567889414868e5d67
-    resource: repo://apps/decodex-gpui/src/settings_surface.rs
+  - id: openwiki-source-7b89f5bc6ecd604ca4e97dc2
+    resource: repo://apps/decodex-gpui/src/composer_text.rs
   - id: openwiki-source-1291f5243fa6c9cb52149bda
     resource: repo://apps/decodex-gpui/src/shell.rs
   - id: openwiki-source-2f256c95c226c1326d164ad3
@@ -168,14 +172,16 @@ sources:
     resource: repo://database/src/agent_titles.rs
   - id: openwiki-source-dd880acfb699314e78cc9985
     resource: repo://database/src/agent/archive.rs
+  - id: openwiki-source-86596187dc9df4e756031ef3
+    resource: repo://database/src/agent/deletion.rs
   - id: openwiki-source-3f60f3a3aae45b3e3b355d3e
     resource: repo://database/src/assistant.rs
   - id: openwiki-source-28af4781ad8d9558410630da
     resource: repo://database/src/works.rs
-generated: { by: "codex", at: "2026-11-05T21:05:15.623Z" }
+generated: { by: "codex", at: "2026-11-06T18:11:51.612Z" }
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-05T21:05:15.623Z
+    at: 2026-11-06T18:11:51.612Z
 ---
 
 # Conversation input, history and recovery
@@ -221,6 +227,12 @@ When a refreshed active snapshot removes the selected conversation or its compos
 Archiving ends local pending interactions: never-dispatched input and failed-message retry records are discarded, old questions and request notices are retired, and pending automatic retries and scheduled checks are cancelled. Sent history, claimed delivery receipts, Work and Results remain. The current editor stays under its original owner.
 
 After Codex restores the original thread, a positive active-list observation restores its original relationships through the normal background refresh. An application restart is not required. Opening that conversation restores its saved editor under the original work and thread IDs. Native child tabs follow the same complete-list rule and retain their own editor when removed from the active view. Restoration does not replay discarded input or an uncertain command.
+
+## Delete an archived conversation
+
+Delete removes the selected native conversation and every earlier context recorded for that same Assistant. The service confirms native absence before it purges local message copies, partial output and related conversation state. The desktop clears that conversation's saved drafts and cached history. A failed partial deletion remains visible in Archive for retry with the same native identities.
+
+Deleting the Assistant chat keeps its stable identity, configuration and learned personal Memory. It returns to an empty idle conversation. Independently owned Work and Results remain available. Archive itself preserves history; restoring an archive does not resend the input that archive cancelled.
 
 ## Branch from the conversation list
 
@@ -287,9 +299,11 @@ Cancel edit removes the exact saved draft when no confirmation, native receipt, 
 
 An accepted edited-input send removes its matching draft without creating a recovered archive copy. A completed after-turn branch removes the finished source edit operation; a before-input branch keeps the canonical draft on its new destination until the user sends it. Explicit Fork is the way to preserve the original conversation while continuing elsewhere.
 
-Unfinished edit entries, Refresh conversation and Show saved local records live in Details. The normal timeline shows the active editor or one unresolved-edit notice rather than a list of saved drafts. The current editor and unresolved edit operations retain their own identities; there is no saved-copy list.
+Unfinished edit entries and Refresh conversation live in Details. The normal timeline shows the active editor or one unresolved-edit notice rather than a list of saved drafts. The current editor and unresolved edit operations retain their own identities; there is no saved-copy list.
 
 ## History and rendering
+
+Native conversation history is the single transcript view. A failed native read keeps its explicit unavailable state; it does not reveal a separate local execution transcript. Pending unsent input and unfinished output can still show their current operational status.
 
 Current native timeline readers preserve complete selected items through paging. Large approvals, long tool output, unfinished answers, native image references and public reasoning must not become fabricated complete text. Optional math, Mermaid, weather and rich previews keep source access and literal fallback. A historical opaque media reference does not prove the underlying media is currently available.
 
@@ -375,13 +389,13 @@ The former manual **Ask separately** popover and composer entry are removed. Nat
 
 ## Next-message suggestions
 
-With **Settings > Agents > Assistance > Next-message suggestions** enabled, a newly completed answer in the selected independent root conversation can trigger one native suggestion request when the conversation is idle and no separate request is active. The preference defaults on. Turning it off prevents new automatic requests; turning it back on does not replay completions observed while it was off. It uses the conversation's model and quota. It does not run tools or send input to the parent conversation.
+With **Settings > Agents > Assistance > Next-message suggestions** enabled, the latest completed answer in the selected independent root conversation can trigger one native suggestion request when the conversation and composer are idle and no suggestion request exists. This also applies after the App restarts, the conversation reopens or its local suggestion state is cleared. The preference defaults on. Turning it off prevents new automatic requests; turning it back on can suggest a follow-up for the current answer. It uses the conversation's model and quota. It does not run tools or send input to the parent conversation.
 
-The current suggestion appears inline in the empty composer. Focus the same idle conversation's empty message field and press **Tab** to insert the current suggestion as one undoable edit. Send it separately after review. Other fields, Shift-Tab and a nonempty draft keep normal focus navigation. Text entered while the suggestion is generated stays in place. Clear the current draft before accepting a suggestion. A replaced thread or stale sample cannot supply a new draft.
+The current suggestion appears inline in the empty composer and wraps with the same width and line-height rules as normal input. Only a new conversation shows a quote; an existing conversation without a suggestion shows the ordinary message placeholder. Focus the same idle conversation's empty message field and press **Tab** to insert the current suggestion as one undoable edit. Send it separately after review. Other fields, Shift-Tab and a nonempty draft keep normal focus navigation. Text entered while the suggestion is generated stays in place. Clear the current draft before accepting a suggestion. A replaced thread or stale sample cannot supply a new draft.
 
 Existing history and snapshot refreshes observe the new completed answer. Opening saved history, repeated refreshes and failed turns do not trigger generation. Generation can finish while the user edits a draft; it does not replace that draft. Attachments, task references and active voice input also keep the current draft in place. A skipped trigger does not run later when the editor is cleared. Automatic generation does not move the scroll position.
 
-Suggestions use the exact retained native sampling request. Changing the source discards the local suggestion state; it does not cancel the parent conversation or replay generation. A late result cannot supply a draft for a replaced source. An unavailable or failed sample supplies no suggestion. There is no automatic fallback to a tool-enabled prediction fork.
+Suggestions use the exact retained native sampling request. Changing the source discards the local suggestion state and permits a new request for the selected source. It does not cancel the parent conversation or resend an uncertain command. A late result cannot supply a draft for a replaced source. An unavailable or failed sample supplies no suggestion. There is no automatic fallback to a tool-enabled prediction fork.
 
 The [retained contract and test identities](../../automations/upstream/retained-contracts.json) record the scoped interface and wire checks. Existing native sampling qualification is reused; these checks do not establish live-provider suggestion quality or installed-app acceptance.
 

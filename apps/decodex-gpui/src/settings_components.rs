@@ -586,14 +586,14 @@ impl SettingsSurface {
 				ui_theme::settings_row()
 					.min_h(gpui::px(32.))
 					.child(ui_theme::settings_label(
-						"Import chats",
-						"Only completed turns are imported.",
+						"Automatic learning",
+						"Completed Assistant conversations build your personal memory automatically.",
 					))
 					.child(
 						switch::settings_switch(
 							"components-ragflow-import",
 							"components-ragflow-import-knob",
-							"Import chats into Assistant Memory",
+							"Learn from Assistant conversations",
 							state.import,
 							!state.busy,
 						)
@@ -669,7 +669,7 @@ impl SettingsSurface {
 			.child(ui_theme::settings_label(
 				if confirming { "Reset this Memory?" } else { "Reset Memory" },
 				if confirming {
-					"This deletes the saved Memory and cannot be undone. Chat history and model settings stay available. Chat import turns off."
+					"This deletes the saved Memory and cannot be undone. Chat history and model settings stay available. Automatic memory keeps its current setting."
 				} else {
 					"Chat history and model settings stay available."
 				},

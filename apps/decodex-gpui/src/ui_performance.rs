@@ -20,7 +20,7 @@ use gpui::{
 
 use crate::{
 	shell::Titlebar,
-	ui_live_activity::{self, Allocation, CAPSULE_HEIGHT, Presentation},
+	ui_live_activity::{self, Allocation, CAPSULE_HEIGHT, Extent, ISLAND_GAP, Morph, Presentation},
 	ui_motion, ui_preferences,
 	ui_theme::{self, TEXT},
 	ui_work_metrics::Summary,
@@ -51,13 +51,6 @@ enum Activity {
 	Debug,
 }
 impl Activity {
-	fn header_key(self) -> &'static str {
-		match self {
-			Self::Work => "activity-work-header",
-			Self::Debug => "activity-debug-header",
-		}
-	}
-
 	fn ids(self) -> (&'static str, &'static str, &'static str, &'static str, &'static str) {
 		match self {
 			Self::Work => (
@@ -81,12 +74,13 @@ impl Activity {
 #[derive(Clone, Copy)]
 struct PillFrame {
 	activity: Activity,
-	allocation: Allocation,
 	width: f32,
 	height: f32,
 	expanded: bool,
 	fraction: f32,
 	details_opacity: f32,
+	canvas: Extent,
+	clip_x: f32,
 }
 
 pub(crate) struct PerformanceIsland {
@@ -103,6 +97,7 @@ pub(crate) struct PerformanceIsland {
 	history: chart::History,
 	work: Option<Summary>,
 	available_width: Option<f32>,
+	morphs: [Morph; 2],
 }
 impl PerformanceIsland {
 	#[cfg(feature = "visual-capture")]
@@ -129,6 +124,7 @@ impl PerformanceIsland {
 			history: chart::History::new(),
 			work: None,
 			available_width: None,
+			morphs: Default::default(),
 		}
 	}
 
@@ -332,29 +328,33 @@ impl PerformanceIsland {
 		&self,
 		activity: Activity,
 		allocation: Allocation,
-		width: f32,
+		placement: (Extent, bool),
 		content: &Rc<readout::Content>,
-		window: &mut Window,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
-		let (control, surface, _, _, height_key) = activity.ids();
+		let (control, surface, _, _, _) = activity.ids();
 		let expanded = content.expandable()
 			&& self.expanded(activity)
 			&& allocation.presentation == Presentation::Expanded;
 		let open_height = content.height();
-		let height = ui_motion::value(
-			height_key,
-			if expanded { open_height } else { CAPSULE_HEIGHT },
-			window,
-			cx,
-		);
+		let (Extent { width, height }, paired) = placement;
 		let fraction =
 			((height - CAPSULE_HEIGHT) / (open_height - CAPSULE_HEIGHT).max(1.)).clamp(0., 1.);
-		let details_opacity = ((fraction - 0.65) / 0.35)
-			.clamp(0., 1.)
-			.min(((width - (content.sizing().expanded - 24.)) / 24.).clamp(0., 1.));
-		let frame =
-			PillFrame { activity, allocation, width, height, expanded, fraction, details_opacity };
+		let details_opacity = ((fraction - 0.55) / 0.45).clamp(0., 1.);
+		let canvas =
+			Extent { width: content.sizing().expanded.max(width), height: open_height.max(height) };
+		let clip_x = (canvas.width - width)
+			* if paired { if activity == Activity::Work { 1. } else { 0. } } else { 0.5 };
+		let frame = PillFrame {
+			activity,
+			width,
+			height,
+			expanded,
+			fraction,
+			details_opacity,
+			canvas,
+			clip_x,
+		};
 		let owner = cx.entity().downgrade();
 		let dismiss = owner.clone();
 		let content = content.clone();
@@ -365,34 +365,53 @@ impl PerformanceIsland {
 			.h(gpui::px(CAPSULE_HEIGHT))
 			.flex_none()
 			.child(
-				gpui::deferred(gpui::div().relative().w_full().h(gpui::px(height)).child(
-					ui_motion::material_surface(
-						surface,
-						f64::from(14. + fraction * 6.),
-						move |window, cx| {
-							owner
-								.update(cx, |island, cx| {
-									island.pill_surface(frame, &content, window, cx)
-								})
-								.unwrap_or_else(|_| gpui::div().into_any_element())
-						},
-						move |cx| {
-							let _ = dismiss.update(cx, |island, cx| {
-								if island
-									.pending_hover
-									.as_ref()
-									.is_some_and(|(pending, _)| *pending == activity)
-								{
-									island.pending_hover = None;
-								}
-								if island.activity == activity && island.expansion.is_open() {
-									island.close();
-									cx.notify();
-								}
-							});
-						},
-					),
-				))
+				gpui::deferred(
+					gpui::div()
+						.absolute()
+						.left(gpui::px(-clip_x))
+						.top_0()
+						.debug_selector(move || format!("activity-canvas-{activity:?}"))
+						.w(gpui::px(canvas.width))
+						.h(gpui::px(canvas.height))
+						.child(
+							ui_motion::material_surface(
+								surface,
+								f64::from(
+									CAPSULE_HEIGHT / 2.
+										+ fraction
+											* (ui_live_activity::EXPANDED_RADIUS
+												- CAPSULE_HEIGHT / 2.),
+								),
+								move |window, cx| {
+									owner
+										.update(cx, |island, cx| {
+											island.pill_surface(frame, &content, window, cx)
+										})
+										.unwrap_or_else(|_| gpui::div().into_any_element())
+								},
+								move |cx| {
+									let _ = dismiss.update(cx, |island, cx| {
+										if island
+											.pending_hover
+											.as_ref()
+											.is_some_and(|(pending, _)| *pending == activity)
+										{
+											island.pending_hover = None;
+										}
+										if island.activity == activity && island.expansion.is_open()
+										{
+											island.close();
+											cx.notify();
+										}
+									});
+								},
+							)
+							.clip(gpui::Bounds::new(
+								gpui::point(gpui::px(clip_x), gpui::px(0.)),
+								gpui::size(gpui::px(width), gpui::px(height)),
+							)),
+						),
+				)
 				.with_priority(2),
 			)
 			.when_some(self.titlebar.as_ref(), |d, titlebar| d.child(titlebar.control()))
@@ -406,24 +425,42 @@ impl PerformanceIsland {
 		window: &mut Window,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
-		let PillFrame { activity, allocation, width, height, expanded, fraction, details_opacity } =
-			frame;
+		let PillFrame {
+			activity,
+			width,
+			height,
+			expanded,
+			fraction,
+			details_opacity,
+			canvas,
+			clip_x,
+		} = frame;
 		let (_, surface, toggle, _, _) = activity.ids();
 		let expandable = content.expandable();
-		let header = Self::pill_header(activity, allocation, content, width, window, cx);
+		let header = content.header(
+			((width - content.sizing().minimal)
+				/ (content.sizing().compact - content.sizing().minimal).max(1.))
+			.clamp(0., 1.),
+			width - 2.,
+		);
 		let body =
 			(expandable && details_opacity > 0.001).then(|| content.details(self, window, cx));
-		gpui::div()
+		let surface = gpui::div()
 			.id(surface)
 			.debug_selector(move || surface.into())
-			.relative()
-			.w_full()
+			.absolute()
+			.left(gpui::px(clip_x))
+			.top_0()
+			.w(gpui::px(width))
 			.h(gpui::px(height))
 			.flex()
 			.flex_col()
 			.items_center()
 			.overflow_hidden()
-			.rounded(gpui::px(14. + fraction * 6.))
+			.rounded(gpui::px(
+				CAPSULE_HEIGHT / 2.
+					+ fraction * (ui_live_activity::EXPANDED_RADIUS - CAPSULE_HEIGHT / 2.),
+			))
 			.border_1()
 			.border_color(ui_theme::rgb(TEXT).opacity(0.1))
 			.text_size(gpui::px(TEXT_SIZE))
@@ -487,30 +524,18 @@ impl PerformanceIsland {
 					.child(header),
 			)
 			.when_some(body, |d, body| {
-				d.child(gpui::div().w_full().opacity(details_opacity).child(body))
+				d.child(
+					gpui::div()
+						.relative()
+						.left(gpui::px(-clip_x))
+						.w(gpui::px(canvas.width - 2.))
+						.flex_none()
+						.opacity(details_opacity)
+						.child(body),
+				)
 			})
-			.into_any_element()
-	}
-
-	fn pill_header(
-		activity: Activity,
-		allocation: Allocation,
-		content: &readout::Content,
-		width: f32,
-		window: &mut Window,
-		cx: &mut Context<Self>,
-	) -> AnyElement {
-		let header_key = activity.header_key();
-		let header_progress = ui_motion::value(
-			header_key,
-			if allocation.presentation == Presentation::Minimal { 0. } else { 1. },
-			window,
-			cx,
-		);
-
-		content.header(
-			header_progress.min(((width - (content.sizing().compact - 24.)) / 24.).clamp(0., 1.)),
-		)
+			.into_any_element();
+		gpui::div().relative().w_full().h(gpui::px(canvas.height)).child(surface).into_any_element()
 	}
 }
 
@@ -535,9 +560,6 @@ impl Render for PerformanceIsland {
 			ui_motion::hide_material_surface(Activity::Work.ids().1, window, cx);
 		}
 
-		if work.is_none() {
-			ui_motion::value("activity-work-width", 0., window, cx);
-		}
 		if !debug && work.is_none() {
 			return gpui::div().into_any_element();
 		}
@@ -563,22 +585,41 @@ impl Render for PerformanceIsland {
 		let sizes: Vec<_> = activities.iter().map(|(_, content)| content.sizing()).collect();
 		let available =
 			self.available_width.unwrap_or(f32::from(window.viewport_size().width) / 2.);
-		let resting = ui_live_activity::arrange(available, 6., &sizes, None);
-		let allocations = ui_live_activity::arrange(available, 6., &sizes, selected);
-		let widths: Vec<_> = activities
+		let resting = ui_live_activity::arrange(available, ISLAND_GAP, &sizes, None);
+		let allocations = ui_live_activity::arrange(available, ISLAND_GAP, &sizes, selected);
+		let now = Instant::now();
+		let extents: Vec<_> = activities
 			.iter()
 			.zip(&allocations)
-			.map(|((activity, _), allocation)| {
-				ui_motion::value(activity.ids().3, allocation.width, window, cx)
+			.map(|((activity, content), allocation)| {
+				let open =
+					self.expanded(*activity) && allocation.presentation == Presentation::Expanded;
+				let (extent, moving) = self.morphs[usize::from(*activity == Activity::Debug)]
+					.sample(
+						Extent {
+							width: allocation.width,
+							height: if open { content.height() } else { CAPSULE_HEIGHT },
+						},
+						now,
+						ui_motion::reduced(),
+					);
+				if moving {
+					ui_motion::request_frame(window, cx);
+				}
+				let scale = window.scale_factor();
+				Extent {
+					width: (extent.width * scale).round() / scale,
+					height: (extent.height * scale).round() / scale,
+				}
 			})
 			.collect();
 		let paired = activities.len() == 2;
-		let mut islands = gpui::div().relative().flex().items_start().gap(gpui::px(6.));
+		let mut islands = gpui::div().relative().flex().items_start().gap(gpui::px(ISLAND_GAP));
 
-		for (index, (((activity, content), allocation), width)) in
-			activities.iter().zip(allocations).zip(widths).enumerate()
+		for (index, (((activity, content), allocation), extent)) in
+			activities.iter().zip(allocations).zip(extents).enumerate()
 		{
-			let pill = self.pill(*activity, allocation, width, content, window, cx);
+			let pill = self.pill(*activity, allocation, (extent, paired), content, cx);
 			islands = islands.child(if paired {
 				// Fixed resting slots keep the inner edges stable through pixel rounding.
 				gpui::div()
@@ -592,7 +633,7 @@ impl Render for PerformanceIsland {
 							.top_0()
 							.when(index == 0, |d| d.right_0())
 							.when(index != 0, |d| d.left_0())
-							.w(gpui::px(width))
+							.w(gpui::px(extent.width))
 							.child(pill),
 					)
 					.into_any_element()

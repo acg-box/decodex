@@ -73,6 +73,93 @@ fn assert_external_delivery(bodies: &[Value]) {
 }
 
 #[tokio::test]
+#[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated native stream recovery"]
+async fn installed_native_stream_disconnect_recovers_the_same_turn_without_resending() {
+	let binary = env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit native binary");
+	let home = tempfile::tempdir().unwrap();
+	let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+	let address = listener.local_addr().unwrap();
+	let requests = Arc::new(AtomicUsize::new(0));
+	let bodies = Arc::new(Mutex::new(Vec::new()));
+	let backend = tokio::spawn(native_tests::serve_fixture_frames(
+		listener,
+		requests.clone(),
+		None,
+		Some(bodies.clone()),
+		|serial| {
+			let mut frames = vec![
+				serde_json::json!({"type":"response.created","response":{"id":format!("reconnect-{serial}")}}),
+			];
+			// Close the first SSE response before its terminal event.
+			if serial > 0 {
+				frames.extend([
+					serde_json::json!({"type":"response.output_item.done","item":{"type":"message","role":"assistant","id":"recovered-answer","content":[{"type":"output_text","text":"Connection recovered."}]}}),
+					serde_json::json!({"type":"response.completed","response":{"id":format!("reconnect-{serial}"),"usage":{"input_tokens":100,"output_tokens":3,"total_tokens":103}}}),
+				]);
+			}
+			frames
+		},
+	));
+	fs::write(home.path().join("config.toml"), format!("model=\"gpt-5.6-sol\"\nmodel_provider=\"fixture\"\ncli_auth_credentials_store=\"file\"\n[features]\nenable_request_compression=false\n[model_providers.fixture]\nname=\"Local stream recovery\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\nstream_max_retries=2\nrequest_max_retries=0\n")).unwrap();
+	let root = DecodexRoot::new(home.path().canonicalize().unwrap().join("state")).unwrap();
+
+	root.paths().ensure_layout().unwrap();
+
+	let store = SqliteStore::open(&root.paths()).unwrap();
+	let mut session = NativeSession::start(&binary, home.path());
+	let config =
+		AgentConfig::new("gpt-5.6-sol".into(), "low".into(), home.path().display().to_string());
+	let mut agent = AgentCoordinator::new(store.clone(), session.client.clone(), config).unwrap();
+	let result = AssertUnwindSafe(time::timeout(Duration::from_secs(45), async {
+		agent.start_agent("agent", "Reply once after the local connection recovers.").await.unwrap();
+		let started = store.get_agent_work_item("agent".into()).await.unwrap();
+		let mut retries = 0;
+
+		assert!(started.codex_thread_id.is_some() && started.active_turn_id.is_some());
+
+		loop {
+			let event = session.events.recv().await.expect("native recovery event");
+			let retry = matches!(&event, ServerEvent::Notification { method, params } if method == "error" && params["willRetry"] == true);
+			let done = matches!(&event, ServerEvent::Notification { method, .. } if method == "turn/completed");
+
+			agent.handle_event(event).await.unwrap();
+
+			if retry {
+				retries += 1;
+				let pending = store.get_agent_work_item("agent".into()).await.unwrap();
+
+				assert_eq!(pending.dispatch_state, AgentDispatchState::Running);
+				assert_eq!(pending.active_turn_id, started.active_turn_id);
+			}
+			if done { break; }
+		}
+		let completed = store.get_agent_work_item("agent".into()).await.unwrap();
+
+		assert_eq!(retries, 1);
+		assert_eq!(completed.codex_thread_id, started.codex_thread_id);
+		assert_eq!(completed.dispatch_state, AgentDispatchState::Idle);
+		assert!(completed.active_turn_id.is_none());
+		assert!(!store.list_agent_wake_events("agent".into(), 100).await.unwrap().iter().any(|event| event.event_kind == "reconnection_needs_attention"));
+
+		agent.wake_pending().await.unwrap();
+
+		assert_eq!(requests.load(Ordering::Acquire), 2);
+		let bodies = bodies.lock().unwrap();
+		let metadata: Vec<Value> = bodies.iter().map(|body| serde_json::from_str(body["client_metadata"]["x-codex-turn-metadata"].as_str().unwrap()).unwrap()).collect();
+
+		assert_eq!(metadata[0]["thread_id"].as_str(), started.codex_thread_id.as_deref());
+		assert_eq!(metadata[0]["turn_id"].as_str(), started.active_turn_id.as_deref());
+		assert_eq!(metadata[0]["thread_id"], metadata[1]["thread_id"]);
+		assert_eq!(metadata[0]["turn_id"], metadata[1]["turn_id"]);
+	})).catch_unwind().await;
+
+	drop(agent);
+	drop(session);
+	backend.abort();
+	result.expect("native stream recovery panicked").expect("native stream recovery timed out");
+}
+
+#[tokio::test]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated native context qualification"]
 async fn installed_native_tool_context_survives_restart_without_replay() {
 	let binary = env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit native binary");
@@ -384,6 +471,11 @@ async fn installed_assistant_renews_fresh_contexts_with_original_dialogue_and_is
 		assert_eq!(store.agent_previous_threads("assistant".into()).await.unwrap().len(), 3);
         let captured=bodies.lock().unwrap().clone();
         let observed=captured.iter().filter(|b|b["client_metadata"]["thread_id"].as_str().is_some_and(|id|seen.contains(id))).collect::<Vec<_>>();
+		assert!(!observed[0].to_string().contains("assistant_memory"), "ordinary Agents do not expose personal Assistant tools");
+		for body in &observed[1..] {
+			assert!(body.to_string().contains("assistant_memory"), "selected Assistant contexts retain their personal memory instructions");
+		}
+		assert!(observed[1].to_string().contains("Personal memory could not be recalled"), "automatic recall is supplied as untrusted native context even when the optional service is unavailable");
 		assert!(observed[1].to_string().contains("Original user decision"));
 		assert!(observed[3].to_string().contains("Original correction 1"));
         assert!(observed[3].to_string().contains("Original correction 0"));

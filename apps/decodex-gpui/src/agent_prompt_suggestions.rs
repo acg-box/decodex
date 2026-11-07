@@ -1,4 +1,4 @@
-//! One suggestion for a newly completed visible turn, using existing history refreshes.
+//! Restore a suggestion for the latest completed visible turn on history refresh.
 use super::{AgentSurface, Context, EntityId};
 use crate::shell::agent_surface::native_timeline::Binding;
 use decodex_protocol::AgentTimelineContent;
@@ -23,9 +23,7 @@ impl Automatic {
 		{
 			return false;
 		}
-		let completed = self.owner.as_ref() == Some(&owner)
-			&& turn.as_ref().is_some_and(|(_, complete)| *complete)
-			&& self.turn != turn;
+		let completed = turn.as_ref().is_some_and(|(_, complete)| *complete);
 		self.owner = Some(owner);
 		self.turn = turn;
 		completed && enabled
@@ -72,6 +70,8 @@ impl AgentSurface {
 			&& self.sample.work.is_none()
 			&& self.composer_manager.as_ref().is_none_or(|owner| owner == &work.id)
 			&& self.draft_owner_available()
+			&& self.composer.read(cx).content().is_empty()
+			&& !self.composer.read(cx).is_composing()
 			&& !self.sending
 			&& !self.uncertain
 			&& self.voice.is_none()
@@ -87,18 +87,18 @@ mod tests {
 	use super::{Automatic, Binding};
 
 	#[test]
-	fn disabling_suggestions_consumes_turn_boundaries_without_replaying_them_on_enable() {
+	fn current_answer_is_eligible_on_reopen_or_enable_but_not_while_running() {
 		let owner = (
 			None,
 			Binding { work: "work".into(), thread: "thread".into(), account: "account".into() },
 		);
 		let mut automatic = Automatic::default();
-		assert!(!automatic.observe(owner.clone(), Some(("old".into(), true)), true));
+		assert!(automatic.observe(owner.clone(), Some(("old".into(), true)), true));
 		assert!(!automatic.observe(owner.clone(), Some(("new".into(), false)), false));
 		assert!(!automatic.observe(owner.clone(), Some(("new".into(), true)), false));
-		assert!(!automatic.observe(owner.clone(), Some(("new".into(), true)), true));
+		assert!(automatic.observe(owner.clone(), Some(("new".into(), true)), true));
 		assert!(!automatic.observe(owner.clone(), Some(("next".into(), false)), true));
 		assert!(automatic.observe(owner.clone(), Some(("next".into(), true)), true));
-		assert!(!automatic.observe(owner, Some(("next".into(), true)), true));
+		assert!(automatic.observe(owner, Some(("next".into(), true)), true));
 	}
 }

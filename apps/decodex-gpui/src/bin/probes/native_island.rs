@@ -40,7 +40,14 @@ pub(super) fn run() {
 	gpui_platform::application().run(|cx| {
 		Appearance::Dark.apply(cx);
 
-		frame_trace::start_for(cx, Duration::from_secs(14));
+		frame_trace::start_for(
+			cx,
+			Duration::from_secs(if env::var_os("DECODEX_VISUAL_ISLAND_INTERACTIVE").is_some() {
+				60
+			} else {
+				14
+			}),
+		);
 
 		let bounds = Bounds::centered(None, gpui::size(gpui::px(960.), gpui::px(500.)), cx);
 		let root = cx
@@ -80,6 +87,9 @@ pub(super) fn run() {
 		})
 		.expect("read fixture display");
 		cx.activate(true);
+		if env::var_os("DECODEX_VISUAL_ISLAND_INTERACTIVE").is_some() {
+			return;
+		}
 
 		cx.spawn(async move |cx| {
 			cx.background_executor().timer(Duration::from_secs(1)).await;
@@ -102,10 +112,12 @@ pub(super) fn run() {
 						"island-closing"
 					});
 				});
-				cx.background_executor().timer(Duration::from_millis(600)).await;
+				// Reverse four openings before the shared 240 ms transition ends.
+				let delay = if step % 6 == 0 { 100 } else { 600 };
+				cx.background_executor().timer(Duration::from_millis(delay)).await;
 			}
 
-			cx.background_executor().timer(Duration::from_millis(1_500)).await;
+			cx.background_executor().timer(Duration::from_millis(3_500)).await;
 			cx.update(|cx| cx.quit());
 		})
 		.detach();
@@ -122,6 +134,12 @@ fn verify_viewports(cx: &mut gpui::App) {
 				assert_eq!(
 					rendering["gpui_viewport"], rendering["view_bounds"],
 					"native foreground bounds must match the GPUI viewport"
+				);
+				let foreground = &rendering["foreground_ancestry"][0];
+				assert_eq!(
+					(foreground["frame"][0].as_f64(), foreground["frame"][1].as_f64()),
+					(Some(0.), Some(0.)),
+					"the foreground must stay at the window origin while its mask changes"
 				);
 			})
 			.expect("inspect isolated native window");

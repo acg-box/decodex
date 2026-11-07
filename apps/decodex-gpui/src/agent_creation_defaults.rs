@@ -2,7 +2,7 @@
 
 #[cfg(test)]
 use crate::shell::agent_surface::{
-	ConversationReasoningEffort, ConversationWorkingDirectory, EntityId, creation_setup,
+	ConversationReasoningEffort, ConversationWorkingDirectory, EntityId,
 };
 use crate::{
 	creation_defaults,
@@ -11,6 +11,16 @@ use crate::{
 use decodex_protocol::{InitialExecutionDefaults, InitialModelCatalogResult, ServiceTier};
 
 impl AgentSurface {
+	pub(super) fn uses_initial_model_defaults(&self) -> bool {
+		self.is_new_conversation()
+			|| self
+				.composer_manager
+				.as_deref()
+				.or(self.selected.as_deref())
+				.and_then(|owner| self.conversation_record(owner))
+				.is_none_or(|work| work.codex_thread_id.is_none())
+	}
+
 	pub(super) fn creation_defaults_need_refresh(&self, cx: &Context<Self>) -> bool {
 		if (!self.is_new_conversation()
 			&& (self.root_id().is_some() || self.composer_manager.is_some()))
@@ -50,7 +60,7 @@ impl AgentSurface {
 	pub(super) fn apply_creation_defaults(&mut self, cx: &mut Context<Self>) {
 		if self.sending
 			|| self.uncertain
-			|| (!self.is_new_conversation()
+			|| (!self.uses_initial_model_defaults()
 				&& (self.root_id().is_some() || self.composer_manager.is_some()))
 			|| self.current_model_catalog(cx).is_none()
 		{
@@ -116,7 +126,7 @@ mod tests {
 		creation_defaults,
 		shell::agent_surface::creation_defaults::{
 			AgentSurface, ConversationModel, ConversationReasoningEffort,
-			ConversationWorkingDirectory, EntityId, InitialExecutionDefaults, creation_setup,
+			ConversationWorkingDirectory, EntityId, InitialExecutionDefaults,
 		},
 	};
 	use decodex_protocol::{
@@ -353,13 +363,13 @@ mod tests {
 			s.cwd.update(cx, |input, cx| input.set_content("/other", cx));
 			s.apply_creation_defaults(cx);
 
-			assert_eq!(s.model.read(cx).content(), creation_setup::DEFAULT_MODEL);
+			assert_eq!(s.model.read(cx).content(), "");
 
 			s.cwd.update(cx, |input, cx| input.set_content("/tmp", cx));
 			s.account.update(cx, |input, cx| input.set_content("different", cx));
 			s.apply_creation_defaults(cx);
 
-			assert_eq!(s.model.read(cx).content(), creation_setup::DEFAULT_MODEL);
+			assert_eq!(s.model.read(cx).content(), "");
 
 			s.account.update(cx, |input, cx| input.set_content("account", cx));
 
@@ -367,7 +377,7 @@ mod tests {
 
 			s.apply_creation_defaults(cx);
 
-			assert_eq!(s.model.read(cx).content(), creation_setup::DEFAULT_MODEL);
+			assert_eq!(s.model.read(cx).content(), "");
 		});
 	}
 }

@@ -766,6 +766,11 @@ mod tests {
 
 		surface.update(cx, |s, cx| {
 			s.visual_workspace_fixture(cx);
+			s.model.update(cx, |input, cx| input.set_content("fixture-model", cx));
+			s.service_tier = None;
+			s.mark_model_intent(cx);
+			s.mark_effort_intent(cx);
+			s.mark_tier_intent();
 
 			s.profile = None; // Prove ordinary send admission without issuing a network request.
 

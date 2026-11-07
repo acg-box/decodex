@@ -1,0 +1,190 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:e041d8a04e5636f5c1a6090c8e360e8f822dafb369dc6f96b82d3c6d0d08fe64",
+  "claims": [
+    {
+      "id": "claim_b70a9c3fa68642d29871a42ed05c1114",
+      "statement": "Activity islands share a 28-point collapsed height, minimum 72-point content width on an 8-point grid, at least 208-point compact width on a 16-point grid, and at least 288-point expanded width on a 32-point grid.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/ui_live_activity.rs",
+          "version": "repo-file-v1:sha256:9a5381bc51e707ae26c09f3e941fb9034eca946b75101b7170b38941b92c2438"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/ui_theme.rs",
+          "version": "repo-file-v1:sha256:a5f1df9125386b738319a7b4559a829600da5756686f000aea4469d021e54558"
+        }
+      ]
+    },
+    {
+      "id": "claim_fd9374d500b9477884004b185fd33827",
+      "statement": "Activity-island width and height use one 240 ms cubic ease-out transition, preserving the visible size on reversal and applying target geometry directly for reduced motion.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/ui_live_activity.rs",
+          "version": "repo-file-v1:sha256:9a5381bc51e707ae26c09f3e941fb9034eca946b75101b7170b38941b92c2438"
+        }
+      ]
+    },
+    {
+      "id": "claim_af2b7044ca88480d956d000c1d86548e",
+      "statement": "Work and Debug preserve resting inner edges while one expands outward; a single activity is centered, and available space selects expanded, compact or minimum presentation.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/ui_live_activity.rs",
+          "version": "repo-file-v1:sha256:9a5381bc51e707ae26c09f3e941fb9034eca946b75101b7170b38941b92c2438"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/ui_performance.rs",
+          "version": "repo-file-v1:sha256:2f05ff04a47402fa71cdd0add2dec3814523692c23ad3187e3b8aac1da96298d"
+        }
+      ]
+    },
+    {
+      "id": "claim_8df44e86fc814a8ead5ed7f8c3e62899",
+      "statement": "Activity content keeps a fixed drawable at the native window origin with a sibling rounded mask; details retain their full-width layout, and secondary header fields appear only after they fit beside the persistent main value.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/native_material_panel.rs#L311-L366",
+          "version": "repo-lines-v1:sha256:6fe7355ae46bef9cb90962fabc15428457225eacf092696b7d65b69be5b75a7d:eyJzZWxlY3RlZExpbmVDb3VudCI6NTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVjOGQ1MmNiZWRlZDgwM2U4Y2U2M2VkZmI5NDUwZGJiMDYzNDIxNDRiODM4YWRiY2NhNzYzNGE1MjhmOWVjNWUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYzNWIwODA1YzczNzdlNjAyNDg0ZmJjZjNlZmY1YjQwN2RiNTIzYTU3MTRlNThhNjc5NGQ4ZjRjNTRjYzQ4ZWMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjYwNDI5YjRkODBmNzQzMGJhYWEwMDViMGU1YTgyZTNjNDllNWNkYzJiMTQ3OTMzZGZiYTNhNjI2ZWJkMzRhNzQifQ"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/ui_performance.rs#L430-L539",
+          "version": "repo-lines-v1:sha256:67207066bf577d0cc362bf8a55fe29b843f72b97ccb937bf8410b435c9685f2d:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEwLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI5ODZjMzEzYjVmZWQyNzU4YmUwNzRhMzhmYzViMzUwNjY3NjMyYjY5MWI2YzA2NWMwZWQ5ZDhiYjIwNTI4ODAyIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI2N2NkYTgyZGE2MDYyMzhlMDVlNjIzOTk1NjljNWVlMDM5OTM0MTk2NDhhZTVkNDNhMmJmOGNkNjM0N2Y4MjYzIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI0ODVhMGEwYjMxOGZiOThkOTAxZDBkOTE2YjYwNGNiMDVjMDUwYjc0YzQwMjhkZjY5YzI0YzAxYWNlZmE0MDY4IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJiZTQ4ZDg5ZTg5YjAzNjg0YmU3NGE3ZDg4M2NhMTYzOGFiYTg4MzY0NGVmNDE5MzkxNWMyZDIxYmE0MGFjMmFkIn0"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/ui_performance_readout.rs#L434-L529",
+          "version": "repo-lines-v1:sha256:809482d23fe25dd3994ae3acff20ea4ffc50cab5d60469d87b1a6dd48806142d:eyJzZWxlY3RlZExpbmVDb3VudCI6OTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkwZDA3YjY2MThmODJjZDExMWZmMjMyNWIzYTdlZGNkZWM1NGYzMjcwYmEyYmY5ODQ0MmVmZjE5ZjE1MGE5NWUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU1OGVhY2I1MTU1MjY5YzhhMzUwNGRjZTNhMmQ4YTkzZmI3ZDMwNTY3YjQ4NGEyOGQzNjU5YTBhMzUxMGE1YWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImMxNzQ5NmEzYjkxZWY4OTY2YTBmYTc5NmE4ZWZjOWJjNzkyMDFhMzRhMzc0NDM0NDQ4NWM0YjY1Y2ViZjNlNjMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_09cd593487674605b4cf9f5bfa304cca",
+      "statement": "Conversation spacing uses 20 points between messages and around the 24-point work status, and 6 points between a completed process header and its answer; the composer contributes 8 points to the lower gap.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs",
+          "version": "repo-file-v1:sha256:c8ca14e75c0d72ec5a12f56c0c6721e083ec46ff14ff5de1fdeebcf699ab649c"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_timeline.rs",
+          "version": "repo-file-v1:sha256:52c7bef18ac5f93e3807af23396c980c6e9f852fe9237659ae783cff111af9a2"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/ui_theme.rs",
+          "version": "repo-file-v1:sha256:a5f1df9125386b738319a7b4559a829600da5756686f000aea4469d021e54558"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/ui_working.rs",
+          "version": "repo-file-v1:sha256:c9b5aa18a28c374860d97d89a1b5b096b6bdff73db3dbc70209abdb60dbdc994"
+        }
+      ]
+    },
+    {
+      "id": "claim_9e7435c907da485db1dd575742fa45c2",
+      "statement": "The composer uses a theme-accent Ultrafast glyph, shows an em dash for an explicitly unavailable model catalog, wraps suggestions in the normal editor, and reserves quotes for new conversations without history.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_composer.rs",
+          "version": "repo-file-v1:sha256:aca07a015dd0a8276d8f33214b086e118be0e0b9458f4355a0634824ddf580db"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_model_settings.rs",
+          "version": "repo-file-v1:sha256:793b39d583ed8a04edad18a69d18013e5b6475c410d9b7cc90a1e7d9627e13f3"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/composer_text.rs",
+          "version": "repo-file-v1:sha256:e9a86048083cd3aa62f3435f122122fe1f1a033d15c1ebfbf5c917f10e2228e6"
+        }
+      ]
+    },
+    {
+      "id": "claim_eed2cb030e994b609e1aee8f46e2e23a",
+      "statement": "The automated native activity probe runs 20 Work and Debug transitions with four interrupted openings, checks foreground origin and viewport geometry, and requires no daemon or model request; its trace measures CPU draw and submission rather than GPU completion or scanout.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/bin/probes/native_island.rs#L30-L147",
+          "version": "repo-lines-v1:sha256:70cb01ab43caad3f563e514ca2ac122c76c64d0880fe246e2e0bda319eb36f97:eyJzZWxlY3RlZExpbmVDb3VudCI6MTE4LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI3NWIwYTZhY2QwN2Y1YzE1NTU1MzMxNTZmMjdiZmU0OTc1NjhhY2QwMjA4YzAzZGYyNGMwMWY1YmNmNTdjZGQ5IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0MTJjYTM0NWNjZjc1YmY5YzA4MDZiY2U2OTViZThkZTgwOGI3OTk4NDI1MWE3YTU0ZDIwMmNmNjEwMWRkNDUxIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI4ZWQyOWFjYjdjZGUyMDgyMjliZWQ0YTNmNDQ4NWI3YjgwMzIwYTExOGM4MDY3NzhlNzBhNGFjNDk3ZTUzYzE3IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIxM2E4YzFjMTIxNWJiYjAxYTYyYmUzZTQ5YjVhOTU3MjZiNzJiNzFmMDllMjM3MWE1NTRkMzliMzQ0OGVkNjFmIn0"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/frame_trace.rs#L98-L200",
+          "version": "repo-lines-v1:sha256:b83978c8e8fd96509069529aeb7cf98f055f67eb2ce1d106d9e9820c097c228b:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAzLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJiNjg0MzQxZjVjNzA2MmRlZDRkZWJkZTliY2U2ODBhNzg1ZTUzODEwYjYyNmYzNDRiZWNiMjFlZWZjNjdjYTVhIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI2N2NkYTgyZGE2MDYyMzhlMDVlNjIzOTk1NjljNWVlMDM5OTM0MTk2NDhhZTVkNDNhMmJmOGNkNjM0N2Y4MjYzIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIyZDkwZDVhMzhmYzdmNjE4N2U4ZmJhMGJjZTBmMjdmMGRiOGY5ZTU0NTlhODFkYmNjMzZjN2IyZDNhNWRlODE4IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MSwiZm9sbG93aW5nQ29udGV4dEhhc2giOiI0MTJjYTM0NWNjZjc1YmY5YzA4MDZiY2U2OTViZThkZTgwOGI3OTk4NDI1MWE3YTU0ZDIwMmNmNjEwMWRkNDUxIn0"
+        }
+      ]
+    },
+    {
+      "id": "claim_f3ce2a2b343845829fb3789ceda47ff9",
+      "statement": "Repository instructions require all activity islands to reuse the shared geometry and motion contract and require new variants to update that contract and its focused checks.",
+      "evidence": [
+        {
+          "resource": "repo://AGENTS.md#L28-L36",
+          "version": "repo-lines-v1:sha256:8681e75cf468fcf0633c57d66b317285b63ead959bf3773bf2284f5690d3b379:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMGZhOWUwY2Y1Y2EzZTE5NWM5MDA3YjE1MzJmY2RjODkyMGY1M2ZlNmQzNzA0Y2UyZTZmMTBjODYwZGEwN2I3OCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNzAwNTAzMjJhOWU0N2QxOGRiYmE5ODc3ZjdiMDA5YmM1ZDA5YzJjNWU3YTQxZGMxNzYwMGE0Mzc5Yjk3YmM5YyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiY2Y4NTQ4NWFhNDE3NWUyM2U2NzM1OWEzODVjNzg4ODJjOGY0YWRhNGRkOWY1MTg5OGQ0MDVmODI4NDg4ZTI4YSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZWIxYmM1YmM0YTIzN2Y1NzhlNmFmNGE0MTVkMDY0N2Y5OTEwYjAzYjM2NGUxZTI3YzFmMWRiYWE3NDNkMDNiYSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_c5814dd9e5a34b1da729cfb6fea734f6",
+      "statement": "New Agent and an unstarted Assistant with confirmed empty history share a centered 20-point start heading above the composer; only New Agent includes the project chooser.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs#L1175-L1187",
+          "version": "repo-lines-v1:sha256:a02e5bfcb5244073eb64a475ec2c7213db21eef08596911cb6e8de49ce3541d4:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjEzN2ZlMzViNjkxNDJkOWE0MTQ2ZDRmMmQyZmRhZTA3YzdjYTExNjkwYzA4YzUzZDdjZGYxZjhhZTBiN2IxYmUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY0ZWZjNDk0MThkMjZkY2YxMjliMjJhNmFhMjExMDhjZWVjMzc2NzdhMzJkMDhlOWQ1ZmVlMzVkZGE2NmJiOWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRmN2FjN2ZiYjc1MDM1ZTk4MDQ4MWI4NjkwN2U1ZGM2OTY0MzE0MmZjMjJlMGU2OTQ2NDY2YTQ1NDg1MDdmMWMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZkMzcxYWNkNDI5MTQxY2M0ODM0YjZmMDMxMWY3MjkyNTU5YzY5MGY5M2ZhMTcwNDMyOWRmNDA2MTJkMmRhMGIifQ"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs#L1301-L1349",
+          "version": "repo-lines-v1:sha256:d49d0a3cf0464f16690c13f3df52976f57cbef855add0554366d9b9f1bd7151e:eyJzZWxlY3RlZExpbmVDb3VudCI6NDksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMxZTM3NzQ4M2Q2Y2NjMjU2YmE0NDgyMTZhZGFhM2Q4ZjJhYjg5NzYyYTkxNTljNzQ0NjQyYjE2YmU5MDQ3ZTciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU1MTRkMjA4Njg4NGY4MTdiMmFjYTFlYTkwOTE3Yjg4YTkxMzhmNzlkMmE5MmYwYzIxNTlkNDE5ZWJhOGZlZWYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM3M2FjMDMxZjM0Y2RmZDllMWU0YzJjZjhiNmQyODEzOTkwMDVlZDI0OTlkYzhiNDQ3OWYyMmNjZTRiYjU4YjgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAxZTYyYTgwZDg4NTE3YzFmZmVlZDQzNzIwYmJkOTczYTY1MDY5YWIwZjU5NGI3NmNjNmIyMjVmNzZmYjEyYWUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_86598d3fdb4948a1b811b5689a739bb8",
+      "statement": "The shared empty-conversation start heading yields to saved history, sending previews, retained failed or unconfirmed input, active work, questions, and misalignment; missing or unavailable history retains its existing loading or retry presentation.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L2226-L2343",
+          "version": "repo-lines-v1:sha256:5097a4d8a04b9c20b4f1d028e8b173065610af2b2a62cd9f8d5688603d105206:eyJzZWxlY3RlZExpbmVDb3VudCI6MTE4LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIyOGVmOTAxNmVmYmJkZWQ0N2UyZmZlZjQ5MmIxNzg4NWU3YWFlZmM5NDcxMjJjODdjYzJmZjE0ZTVmMjAxMjU5IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIxODdjM2FlMTRkMjRlYzA4YmFhNmViYjJjMjZjYTlhYTM1ZjRiNGYyM2JiMjBkNDkyNmZhYzdiMWU2N2ZhMjRhIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI1YmU0NTdiM2QxMzA0YjM1ZDExYjg4ZTA1MGI5Nzk2ZTk1MzhhZmViZmM1ZGM1MDFlMmZmOTI0YWEzMmUyOTUwIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJjNzdkMDk3MGFmZjNlZTk2NmZiZDljZDczYzMyNTUwZDQ5ODA3ZGY4OWQwZjlmNThhMzkyMDQxMDViNjM4ZjViIn0"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs#L1301-L1316",
+          "version": "repo-lines-v1:sha256:1c73bc5a4d8c9496950966b43ca5b9b69e139ca560e1dd7eda98c2fb3d481b44:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMxZTM3NzQ4M2Q2Y2NjMjU2YmE0NDgyMTZhZGFhM2Q4ZjJhYjg5NzYyYTkxNTljNzQ0NjQyYjE2YmU5MDQ3ZTciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM3M2FjMDMxZjM0Y2RmZDllMWU0YzJjZjhiNmQyODEzOTkwMDVlZDI0OTlkYzhiNDQ3OWYyMmNjZTRiYjU4YjgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA0NzFkZjg5YWE3M2M0NzVlN2Y1NTRmMzljMmNjNmFiMDRmODMyODQ5MTgzNTE3OGU5NjA2MjI3OGI0NTBjYzYifQ"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs#L3057-L3159",
+          "version": "repo-lines-v1:sha256:d3a2a50cdb4896ee9c8a15e8100df6aa1687524aa037ebbbd14d2a5fefb0d91b:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAzLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI0YTQzMDllZjY1ZDA2YTRkNmRhNGRlZTE4YzY3NDYwZThmNDI0ZjlmYzg0MGUwMjg4MzdmZThhMDlmMGUzOTdlIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI2N2NkYTgyZGE2MDYyMzhlMDVlNjIzOTk1NjljNWVlMDM5OTM0MTk2NDhhZTVkNDNhMmJmOGNkNjM0N2Y4MjYzIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIyMmYyZmY1ZmVlYzYwZjU4N2M4ZmFlNGU4N2Y4MDlhNjYxY2ZmZWQ2YjQ3YWFlNWY2ZDZhMjY1M2FhODk1MmVmIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJjYzlmNmMxNjNmYjBlOTViN2Q0NTY3MTllZTY0Zjk1MDJlMzU3MmRkOWRjNzUxM2Y2ZDQ0MzBkZTZlYzA2OTFiIn0"
+        }
+      ]
+    },
+    {
+      "id": "claim_2a57753b9f9141cab09aeee07e186232",
+      "statement": "A missing selected working directory is presented as an unavailable working folder with a restoration instruction; generic connection admission failures use Reconnecting to Codex while account readiness failures keep their specific Accounts guidance.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs#L1041-L1064",
+          "version": "repo-lines-v1:sha256:033b9206eb735cfd59cdfbfddf849d873fe802d9522574e466f5cdfb8a7b8406:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVmMTIyODE3NTliODRjYTQ4NDA3NGVjOTg1YWU4NGU1YmEyMWEzYTdkZDBiMDQ4NDY5ZmIwOGZlZTIxZDcxZWMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ5ZDg2NWJhNDFmYjk1NzA4MDc2ZmJiY2I3OGU4ODJmM2Q0ZTg4NDhmMTExOTRkNDExYjhkZjRmZmYwMjQzNWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImVhYWUzMzJiMWYzZjdkMDg5NzI4OGZmZGQzNGUxY2JmMWYzMGQzMWU4MTNiNjU0MjFhYzQ0MDZhYTEzMjA5ZWQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQxOGM2YThiMThiZmU1ZDFhMDlhNWJiZjZhOGI2MmM0MDk1ZDk0YzcyNzViOTdkYjlmZGY3NjYyZDExZTViZTMifQ"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs#L879-L893",
+          "version": "repo-lines-v1:sha256:f9f0454d4aadc9e3093c6460d7afaf2be65386f61788f1840f12f75fd0c4f7ce:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg5MDE0NDkwN2M1NmRkZTllYTE4NmVhMmVlOTllM2NmNWRiNWY0MzMzN2QyMzcwZjFlY2MyNGYzM2ZiN2M5MGIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFhNGUzNjRmNmJlNzMxNWQ5NGNlYTJjN2E1ZjM0NzMwNzBiOGQzOWQyNTI1NmQxMGM0ZWE2ZDQwYzc0YjM4YTUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY1Mzk2MWEyMDZjNGJkMGFhZWZiNmVmNTVhMTRkYmQxOTBiNzc3ZWNjZGU0N2E4MWMyNTRmZDQzMmY5OTM4MWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjYxZTNhYTVkNTY5YTE5M2UyNTUwYTA4MWFjZDk5NjM4ZWJkOWUxMWQzNmZiMDVkZmRkZDU3MzIwNGE3YWNkZDUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_bfdb79c7ea1246cf8debf132b07bedf6",
+      "statement": "The isolated native stream recovery test drops the first local SSE response before completion and proves that retry preserves the original running thread and turn, completes normally, and does not enqueue a duplicate input.",
+      "evidence": [
+        {
+          "resource": "repo://codex-runtime.lock.json",
+          "version": "repo-file-v1:sha256:c32996dfd93c63ac083782d3db72fbb475254fb1365beb5e78f63a7a59bc3f2c"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_context_tests.rs#L75-L160",
+          "version": "repo-lines-v1:sha256:77c5b5237e3a4654bc44b8f180b84ee99cd5f20f0cf9aebbefb340bcfa3e28d5:eyJzZWxlY3RlZExpbmVDb3VudCI6ODYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUxOTQ4NGVlZGYzNjRmYjhjMTJmMWViOThmYmY2YTliNGY2NTBmNDI3ODc0YThkNzM1OTAxMGFhZGU0MzFiYzgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjI1YmIxYWY1MjFiZWNkNTVkNzA1NmE4YTlhMGRkMWViY2RhMWZjNzlmZjIzZjc0NTc3NmY0OTk1ODMzNTI5MjMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjIyZjFmZGI3ODVkZmYxNThjZGFlNmVjMDU2OTZlMTMzNzY0MTY2YzE0Y2M3MWE4OTE3ZTEwODU0MjNjMGVmYTQifQ"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.9.0",
+    "at": "2026-11-07T06:35:26.732Z"
+  }
+}

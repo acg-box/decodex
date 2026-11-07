@@ -1974,6 +1974,9 @@ impl AgentHost {
 			),
 			_ => AgentHostError::Unknown("Deletion is not confirmed. Refresh before trying again."),
 		})?;
+		if active.as_ref().is_some_and(|(root, _, _)| root == work) {
+			*active = None;
+		}
 		Ok(work.into())
 	}
 
@@ -2605,17 +2608,10 @@ impl AgentHost {
 
 	async fn restore(&self) -> Option<(String, AgentCoordinator, mpsc::Receiver<ServerEvent>)> {
 		let _phase = Phase::new("agent_restore");
-		let root = self
-			.store
-			.list_agent_work_items()
-			.await
-			.ok()?
-			.into_iter()
-			.find(|work| work.parent_goal_id.is_none())?;
-		let settings = match self.store.read_agent_root_settings(&root.id).await {
-			Ok(Some(encoded)) => decode_settings(&encoded),
-			Ok(None) => self.initial_agent_settings(&root).await,
-			Err(_) => None,
+		let (root, saved) = initial_settings::restore_candidate(&self.store).await?;
+		let settings = match saved {
+			Some(encoded) => decode_settings(&encoded),
+			None => self.initial_agent_settings(&root).await,
 		};
 		let Some((config, account)) = settings else {
 			self.record_error(&root.id, "configuration_needs_attention").await;

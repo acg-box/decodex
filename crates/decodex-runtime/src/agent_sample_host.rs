@@ -7,7 +7,9 @@ use crate::{
 	agent_host::{AgentHost, AgentHostError},
 	agent_usage_estimate::Source,
 };
-use decodex_codex::app_server_client::{ClientError, NativeThreadSampleOutcome};
+use decodex_codex::app_server_client::{
+	AppServerClient, ClientError, NativeThreadGoalStatus, NativeThreadSampleOutcome,
+};
 use decodex_database::AgentVoiceHistoryRevision;
 use decodex_protocol::{
 	AgentActionDto, AgentSampleAnswer, AgentSampleStatus, EntityId, MAX_AGENT_SAMPLE_PROMPT_BYTES,
@@ -86,6 +88,15 @@ impl AgentHost {
 			.sample_source(work, thread)
 			.await
 			.ok_or("Sampling requires a connected root conversation")?;
+		load_sample_source(&source.client, thread)
+			.await
+			.map_err(|_| "The conversation could not be prepared for a suggestion")?;
+		// Loading publishes native settings. Bind the sample to that new revision,
+		// and recheck account and thread ownership before inference admission.
+		let source = self
+			.sample_source(work, thread)
+			.await
+			.ok_or("The conversation changed while preparing the suggestion")?;
 		let voice = self
 			.store
 			.agent_voice_history_revision(work.into(), thread.into())
@@ -178,3 +189,33 @@ impl AgentHost {
 		self.samples.finish(&source, &key, result);
 	}
 }
+
+/// Native sampling needs a loaded source even when its history can be read cold.
+async fn load_sample_source(client: &AppServerClient, thread: &str) -> Result<(), ClientError> {
+	let metadata = client.thread_read(serde_json::json!({"threadId":thread})).await?;
+	if metadata["thread"]["id"] != thread {
+		return Err(ClientError::InvalidFrame);
+	}
+	if metadata["thread"]["status"]["type"] != "notLoaded" {
+		return Ok(());
+	}
+	// Resuming an active native goal can start work. Suggestions may load only
+	// dormant conversations and must never continue a goal on the user's behalf.
+	if client
+		.thread_goal(thread)
+		.await?
+		.is_some_and(|goal| goal.status == NativeThreadGoalStatus::Active)
+	{
+		return Err(ClientError::InvalidFrame);
+	}
+	let resumed =
+		client.thread_resume(serde_json::json!({"threadId":thread,"excludeTurns":true})).await?;
+	if resumed["thread"]["id"] != thread {
+		return Err(ClientError::InvalidFrame);
+	}
+	Ok(())
+}
+
+#[cfg(test)]
+#[path = "agent_sample_loading_tests.rs"]
+mod loading_tests;

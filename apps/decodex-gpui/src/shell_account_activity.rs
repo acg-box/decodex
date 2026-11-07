@@ -111,10 +111,11 @@ pub(super) fn panel(shell: &Shell, account: &AccountDto) -> AnyElement {
 					.justify_between()
 					.gap_3()
 					.whitespace_nowrap()
-					.child(label)
+					.child(gpui::div().text_color(ui_theme::rgb(WB_TEXT_MUTED)).child(label))
 					.child(
 						gpui::div()
 							.flex_none()
+							.text_color(ui_theme::rgb(ui_theme::TEXT))
 							.font_features(ui_theme::tabular_figures())
 							.child(value),
 					)

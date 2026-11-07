@@ -32,16 +32,20 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent_skill_roots.rs
   - id: openwiki-source-8b32cad13ab2428dd54bd986
     resource: repo://crates/decodex-runtime/src/agent_skills.rs
+  - id: openwiki-source-dbc533dc306a3f520c4241e0
+    resource: repo://crates/decodex-runtime/src/agent.rs
   - id: openwiki-source-13f64682e8d77fd2c031de39
     resource: repo://crates/decodex-runtime/src/agent/assistant.rs
   - id: openwiki-source-1bebc823fa8b6426acb4d5e2
     resource: repo://crates/decodex-runtime/src/agent/native_settings.rs
+  - id: openwiki-source-1a6e9328d4cd6c8e5904f167
+    resource: repo://crates/decodex-runtime/src/agent/tests.rs
   - id: openwiki-source-3edc2f094826ee56ddec6b73
     resource: repo://crates/decodex-runtime/src/ragflow.rs
-generated: { by: "codex", at: "2026-11-05T14:56:49.835Z" }
+generated: { by: "codex", at: "2026-11-06T16:50:31.712Z" }
 verified:
-  - by: openwiki/0.7.3
-    at: 2026-11-05T16:20:29.596Z
+  - by: openwiki/0.9.0
+    at: 2026-11-06T16:50:31.712Z
 ---
 
 # Native tools and connection ownership
@@ -60,9 +64,11 @@ The explicit [EGM Component](elephant-goldfish.md) is a narrow native-lifecycle 
 
 ## Native settings boundaries
 
-The built-in [Assistant lifecycle](../decisions/assistant-lifecycle.md) exposes RAGFlow as an optional managed service component. Install prepares RAGFlow nightly, compatible Infinity and its private service account. Expanding installed RAGFlow directly opens one row per model with an independent OpenAI-compatible Base URL, optional API key and custom model ID. Save verifies both choices before saving and automatic dedicated Memory setup. The component installs no model runtime or weights. It requires a running Docker engine. The row shares version metadata, lifecycle buttons, disclosure and inline feedback with the other components. Update reads the actual installed version; Uninstall stops the owned project and keeps its data for reinstall. Service connection is automatic, with no Connect action or service-account form.
+The built-in [Assistant lifecycle](../decisions/assistant-lifecycle.md) exposes RAGFlow as an optional managed service component. Install prepares RAGFlow nightly, compatible Infinity and its private service account. Expanding installed RAGFlow shows the saved model summary and an Edit action, or Set up models when setup is incomplete. The editor has one shared OpenAI-compatible Base URL, an optional API key, an extraction model ID and an embedding model ID. Save verifies both models before saving their provider instances and configuring dedicated Memory. The component installs no model runtime or weights. It requires a running Docker engine. The row shares version metadata, lifecycle buttons, disclosure and inline feedback with the other components. Update reads the actual installed version; Uninstall stops the owned project and keeps its data for reinstall. Service connection is automatic, with no Connect action or service-account form.
 
-The HTTP adapter uses explicit dataset, Memory, Assistant and user scopes. It saves an origin-bound private component credential; settings retain only its reference. Knowledge retrieval and Memory are separate. Chat import starts off and needs its own direct-user opt-in; Update preserves that choice.
+The HTTP adapter uses explicit dataset, Memory, Assistant and user scopes. It saves an origin-bound private component credential; settings retain only its reference. Knowledge retrieval and Memory are separate. New managed Memory connections enable Automatic learning. Update and Reset Memory preserve the saved choice. The switch remains independent of model editing.
+
+Only the selected personal Assistant receives RAGFlow tools and its dedicated instructions. The backend rejects those tool calls from other Agents. Before ordinary user input, the Assistant recalls bounded Memory results as untrusted context. Background learning uses completed original user messages and final replies. Project Agents receive neither these tools nor automatic personal recall.
 
 Selecting Memory waits for a safe fresh context with native memory generation, use and the memories feature disabled. Cold resume retains this policy. Native compaction, history, unrelated Agents and shared defaults retain their owners. The account bridge admits only disabled `thread/memoryMode/set` writes, not general memory enablement or reset. See [Runtime architecture](../architecture/runtime-architecture.md#components-and-app-updates) for service and storage ownership.
 

@@ -399,6 +399,9 @@ impl AgentSurface {
 				s.workspace.archives.mutation = None;
 				s.workspace.archives.busy = None;
 				if let Some((deleted, catalog, active)) = result {
+					for work in &deleted {
+						s.forget_deleted_conversation(work, cx);
+					}
 					if let Some(AgentSnapshotResult::Available(data)) = catalog {
 						s.workspace.archives.data = Some(data);
 					} else if let Some(data) = &mut s.workspace.archives.data {

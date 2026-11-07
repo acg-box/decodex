@@ -1,17 +1,14 @@
 //! Keep local delivery evidence separate from canonical conversation rows.
 use std::collections::BTreeMap;
 
-use gpui::{AnyElement, Div, InteractiveElement, StatefulInteractiveElement};
+use gpui::{AnyElement, Div, InteractiveElement};
 
-use crate::{
-	shell::{
-		agent_surface,
-		agent_surface::native_timeline::{
-			self, AgentHistoryResult, AgentSurface, AgentTimelineContent, AgentWorkItemDto,
-			Context, FluentBuilder, IntoElement, ParentElement, Styled, inputs, markdown,
-		},
+use crate::shell::{
+	agent_surface,
+	agent_surface::native_timeline::{
+		self, AgentHistoryResult, AgentSurface, AgentTimelineContent, AgentWorkItemDto, Context,
+		FluentBuilder, IntoElement, ParentElement, Styled, inputs, markdown,
 	},
-	ui_loading,
 };
 use decodex_protocol::{AgentHistoryEntryDto, AgentHistorySourceDto, AgentTimelineEntry};
 
@@ -64,35 +61,14 @@ impl AgentSurface {
 		rows
 	}
 
-	fn earlier_local_records(&self, available: bool, cx: &mut Context<Self>) -> Option<AnyElement> {
-		available.then(|| {
-			if self.timeline.loading_older {
-				return ui_loading::loading("Loading earlier records").into_any_element();
-			}
-
-			gpui::div()
-				.id("native-earlier-local-records")
-				.debug_selector(|| "native-earlier-local-records".into())
-				.cursor_pointer()
-				.on_click(cx.listener(|surface, _, _, cx| surface.load_older_history(cx)))
-				.child("Load earlier local records")
-				.into_any_element()
-		})
-	}
-
 	pub(in super::super) fn native_receipts_panel(
 		&self,
 		work: &AgentWorkItemDto,
-		diagnostics: bool,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
-		let mut rows = Vec::new();
+		let mut rows = self.saved_input_rows(work, cx);
 
-		if !diagnostics {
-			rows.extend(self.saved_input_rows(work, cx));
-		}
-
-		let Some((_, AgentHistoryResult::Available { next_before, .. })) =
+		let Some((_, AgentHistoryResult::Available { .. })) =
 			self.history.as_ref().filter(|(id, _)| id == &work.id)
 		else {
 			return gpui::div()
@@ -103,23 +79,7 @@ impl AgentSurface {
 				.child(agent_surface::muted("Delivery records unavailable. Retrying…"))
 				.into_any_element();
 		};
-		let cursor =
-			self.timeline.older_history.get(&work.id).map_or(*next_before, |(_, cursor)| *cursor);
-		let records_key = format!("local-records-{}", work.id);
-		let expanded = diagnostics && self.timeline.expanded_records.contains(&records_key);
 		let saved = self.saved_delivery_entries(&work.id);
-		let has_records = cursor.is_some()
-			|| saved.values().any(|entry| {
-				entry.kind == "auth_recovery"
-					|| receipt_label(entry) == Some("Local execution record")
-			});
-
-		if has_records && diagnostics {
-			rows.push((self.local_records_toggle(records_key, expanded, cx)).into_any_element());
-		}
-		if expanded {
-			rows.extend(self.earlier_local_records(cursor.is_some(), cx));
-		}
 
 		for entry in saved.values() {
 			// Pending input is rendered once with its message, outside diagnostic records.
@@ -132,10 +92,7 @@ impl AgentSurface {
 				continue;
 			}
 			if entry.kind == "auth_recovery" {
-				if diagnostics && !expanded {
-					continue;
-				}
-				if !expanded && entry.receipt.as_ref().is_some_and(|r| r.disposed) {
+				if entry.receipt.as_ref().is_some_and(|r| r.disposed) {
 					continue;
 				}
 
@@ -163,20 +120,13 @@ impl AgentSurface {
 				continue;
 			};
 
-			if diagnostics && label != "Local execution record" {
-				continue;
-			}
-			if label == "Local execution record" && !expanded {
+			if label == "Local execution record" {
 				continue;
 			}
 
 			let row = self.local_receipt_row(entry, label, work, cx);
 
 			rows.push((row).into_any_element());
-		}
-
-		if diagnostics {
-			return gpui::div().flex().flex_col().gap_2().children(rows).into_any_element();
 		}
 
 		let empty = rows.is_empty();
@@ -230,32 +180,6 @@ impl AgentSurface {
 		}
 
 		row
-	}
-
-	fn local_records_toggle(
-		&self,
-		records_key: String,
-		expanded: bool,
-		cx: &mut Context<Self>,
-	) -> AnyElement {
-		gpui::div()
-			.id("local-records-toggle")
-			.debug_selector(|| "local-records-toggle".into())
-			.cursor_pointer()
-			.text_size(gpui::px(11.))
-			.child(agent_surface::muted(if expanded {
-				"Diagnostics ⌄"
-			} else {
-				"Diagnostics ›"
-			}))
-			.on_click(cx.listener(move |s, _, _, cx| {
-				if !s.timeline.expanded_records.remove(&records_key) {
-					s.timeline.expanded_records.insert(records_key.clone());
-				}
-
-				cx.notify();
-			}))
-			.into_any_element()
 	}
 }
 
@@ -418,7 +342,7 @@ mod tests {
 		assert!(visual.debug_bounds("local-receipt-93").is_some());
 		assert!(visual.debug_bounds("local-receipt-93").unwrap().size.height <= gpui::px(96.));
 		assert!(visual.debug_bounds("saved-input-agent-93-message").is_some());
-		assert!(visual.debug_bounds("local-records-toggle").is_some());
+		assert!(visual.debug_bounds("local-records-toggle").is_none());
 		assert!(visual.debug_bounds("saved-input-agent-93-copy").is_none());
 		assert!(visual.debug_bounds("saved-input-toggle").is_none());
 
@@ -433,8 +357,8 @@ mod tests {
 
 		visual.update(crate::ui_frame::draw_current_frame);
 
-		assert!(visual.debug_bounds("local-receipt-91").is_some());
-		assert!(visual.debug_bounds("local-receipt-92").is_some());
+		assert!(visual.debug_bounds("local-receipt-91").is_none());
+		assert!(visual.debug_bounds("local-receipt-92").is_none());
 		assert!(visual.debug_bounds("local-receipt-93").is_some());
 	}
 

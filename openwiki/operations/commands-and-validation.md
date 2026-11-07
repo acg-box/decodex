@@ -16,8 +16,6 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_prompt_confirm_wire_tests.rs
   - id: openwiki-source-b2084dffd07b4229957a0f94
     resource: repo://apps/decodex-gpui/src/agent_prompt_edit.rs
-  - id: openwiki-source-691432bb61082c358b6f9c24
-    resource: repo://apps/decodex-gpui/src/agent_timeline.rs
   - id: openwiki-source-f339a4d1910db63ca305c2df
     resource: repo://apps/decodex-gpui/src/assistant_settings.rs
   - id: openwiki-source-ca95ba5564216bb4898c8392
@@ -48,12 +46,12 @@ sources:
     resource: repo://crates/decodex-components/tests/development.rs
   - id: openwiki-source-62c1273bf1b2ac5041d1e920
     resource: repo://crates/decodex-core/src/assistant.rs
+  - id: openwiki-source-eac747e105c1c8d9e7e3c811
+    resource: repo://crates/decodex-runtime/examples/clear_development_data.rs
   - id: openwiki-source-95a7168e447de14b4b758f16
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_archive_tests.rs
   - id: openwiki-source-1a964823f348372d89aa1920
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_code_mode_tests.rs
-  - id: openwiki-source-a490ea3fbcddb9c007caf196
-    resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_context_tests.rs
   - id: openwiki-source-8fd14b27958d10f11e115032
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_desktop_acceptance.rs
   - id: openwiki-source-9145039d5c88ff2144ae6a60
@@ -108,8 +106,8 @@ sources:
     resource: repo://crates/decodex-webrtc-build/tests/trust_roots.json
   - id: openwiki-source-6197a876b2effbe992b1e2ec
     resource: repo://database/src/agent.rs
-  - id: openwiki-source-3f60f3a3aae45b3e3b355d3e
-    resource: repo://database/src/assistant.rs
+  - id: openwiki-source-7c3b932da49e58b50b150e50
+    resource: repo://database/src/development_reset.rs
   - id: openwiki-source-c8b1a2a9f2113ec43d4066da
     resource: repo://Makefile.toml
   - id: openwiki-source-b7793decf9d7c9ba48e57e0f
@@ -130,10 +128,10 @@ sources:
     resource: repo://scripts/macos/test_native_app.sh
   - id: openwiki-source-e201f60894c32a914dac99ee
     resource: repo://scripts/vnext/run_native_regression.py
-generated: { by: "codex", at: "2026-11-06T20:42:09.050Z" }
+generated: { by: "codex", at: "2026-11-07T06:35:26.732Z" }
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-06T20:42:09.050Z
+    at: 2026-11-07T06:35:26.732Z
 ---
 
 
@@ -176,11 +174,11 @@ The database gate uses an isolated owner-private root. It is not permission to r
 
 ## Assistant commands and checks
 
-Select an existing Agent with `decodex agent assistant-role --agent-id ID`. Use `--remove` to remove that role. `decodex agent assistant --agent-id ID --command-file /absolute/path/command.json --idempotency-key KEY` sends one typed command through the same service owner as the desktop. The command file contains an AssistantCommand, such as `{"operation":"refresh_context"}`. Do not put a RAGFlow API key in that file; Configure stores a private component credential reference bound to the RAGFlow origin.
+Initialize the built-in Assistant without a message with `decodex agent assistant-init --agent-id assistant`. Select an existing Agent with `decodex agent assistant-role --agent-id ID`. Use `--remove` to remove that role. `decodex agent assistant --agent-id ID --command-file /absolute/path/command.json --idempotency-key KEY` sends one typed command through the same service owner as the desktop. The command file contains an AssistantCommand, such as `{"operation":"refresh_context"}`. Do not put a RAGFlow API key in that file; Configure stores a private component credential reference bound to the RAGFlow origin.
 
 Assistant is built in and available from the sidebar by default. Its first use initializes an idle Agent; it has no Enable control in Components. Continuing instructions, teams and duties stay in chat. See [the lifecycle](../decisions/assistant-lifecycle.md) for supported operations and ownership.
 
-With Docker running, choose Install for RAGFlow in Settings > Components. The component prepares the nightly service, compatible Infinity and its private account, then reads the actual installed version. Expand installed RAGFlow, then choose Set up models or Edit to change each model's independent OpenAI-compatible Base URL, optional API key and exact model ID. Save verifies both choices and initializes dedicated Memory automatically. It derives the scopes and internal service credential without a Connect step or service-account form. No model runtime or model weights are installed. Update reuses the model settings, data volumes and import choice. Uninstall stops the owned project, clears its Assistant connection and retains data for reinstall. RAGFlow owns migrations in its service database; the Decodex SQLite schema does not change. Chat import starts off and requires a separate explicit action.
+With Docker running, choose Install for RAGFlow in Settings > Components. The component prepares the nightly service, compatible Infinity and its private account, then reads the actual installed version. Expand installed RAGFlow and choose Edit in the saved model summary, or Set up models when setup is incomplete. The editor has one shared OpenAI-compatible Base URL, an optional API key and the exact extraction and embedding model IDs. Save verifies both models and initializes dedicated Memory automatically. It derives the scopes and internal service credential without a Connect step or service-account form. No model runtime or model weights are installed. New managed Memory connections enable Automatic learning. Update and Reset Memory preserve an existing saved choice. Uninstall stops the owned project, clears its Assistant connection and retains data for reinstall. RAGFlow owns migrations in its service database; the Decodex SQLite schema does not change.
 
 Use isolated test processes for the backend fixture suite:
 
@@ -538,3 +536,18 @@ A `LEAK` marker can accompany a passed test when its captured output remains ope
 For documentation consolidation, validate page Claims, retained subject coverage, relative links and source paths. Do not rebuild the desktop or launch provider fixtures solely for a Markdown move. Keep historical test counts attached to their original revision. System-temporary fixtures must be cleaned after use; HOME is not a test-output directory.
 
 The disabled-input and direct-Fork regressions cover wrapping, contained actions, direct provider-fork submission after source preparation, durable intent, retained recovery, parent-managed drafts, archive, failed startup and queued reconnect behavior. Input-bar Fork has no second confirmation or Cancel control. The `historical_evidence` link in the [current router](../../automations/upstream/retained-evidence.json) preserves the original `provider_recovery.layout_repair` selectors, source hashes, results and limits. The earlier overflow reproduction remains historical evidence in PR 2583. Those local checks do not qualify a new native artifact.
+
+## Explicit development reset
+
+Use this operation only for an authorized development workspace whose conversation and Work data can be discarded. Finish active turns and stop Decodex and its daemon before Apply. The current schema is retained; this is not a schema upgrade or a production recovery command.
+
+```sh
+cargo +stable run --locked -p decodex-runtime --example clear_development_data -- /absolute/decodex-root /absolute/managed/codex SERVER_ID:assistant --plan
+cargo +stable run --locked -p decodex-runtime --example clear_development_data -- /absolute/decodex-root /absolute/managed/codex SERVER_ID:assistant --apply
+```
+
+Use the managed binary selected by `codex-runtime.lock.json`. `SERVER_ID` is the expected server identity for that root. Plan reports exact native targets and the current managed Memory without exposing credentials. Apply rejects a running local service, reads each target before native deletion and allows up to 60 seconds for each offline native read or delete. It stops on unrecognized failures. A later run reads the target again before another mutation. It then resets the managed Memory, clears local development state through the database owner, removes client drafts, blobs, cache, database backups and logs, and compacts the database. Accounts, credential and account-operation records, quota-reset receipts, model defaults and project folder configuration remain. No native inference turn is submitted.
+
+After Apply, start Decodex, initialize an idle Assistant and use its typed Configure command with the returned Memory connection and `ingest_chats: true`. No earlier chat is replayed. See [Assistant cutover](../decisions/assistant-lifecycle.md#development-cutover).
+
+Validate the reset boundary with the database `development_reset` regression, the CLI `assistant_init` regression and `cargo +stable test --locked -p decodex-runtime --example clear_development_data`. The example test checks that dependent contexts precede their sources. Actual cleanup requires plan, Apply and readback from the selected workspace.

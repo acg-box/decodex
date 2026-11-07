@@ -1,9 +1,52 @@
-//! Shared presentation sizes. Content owners keep their data, interaction and animation state.
+//! Activity-island sizing and motion. Content owners supply data and actions.
+
+use std::time::{Duration, Instant};
 
 use crate::ui_theme::CONTROL_GROUP_HEIGHT;
 
 pub(crate) const MIN_CAPSULE_WIDTH: f32 = 72.;
 pub(crate) const CAPSULE_HEIGHT: f32 = CONTROL_GROUP_HEIGHT;
+pub(crate) const COMPACT_WIDTH: f32 = 208.;
+pub(crate) const EXPANDED_WIDTH: f32 = 288.;
+pub(crate) const MORPH_DURATION: Duration = Duration::from_millis(240);
+pub(crate) const ISLAND_GAP: f32 = 6.;
+pub(crate) const EXPANDED_RADIUS: f32 = 20.;
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct Extent {
+	pub width: f32,
+	pub height: f32,
+}
+
+/// One clock moves both dimensions. Retargeting starts at the visible position.
+#[derive(Default)]
+pub(crate) struct Morph {
+	state: Option<(Extent, Extent, Instant)>,
+}
+impl Morph {
+	pub(crate) fn sample(&mut self, target: Extent, now: Instant, reduced: bool) -> (Extent, bool) {
+		let (from, to, started) = *self.state.get_or_insert((target, target, now));
+		let progress = if reduced {
+			1.
+		} else {
+			(now.duration_since(started).as_secs_f32() / MORPH_DURATION.as_secs_f32()).min(1.)
+		};
+		let ease = 1. - (1. - progress).powi(3);
+		let current = Extent {
+			width: from.width + (to.width - from.width) * ease,
+			height: from.height + (to.height - from.height) * ease,
+		};
+		if reduced {
+			self.state = Some((target, target, now));
+			return (target, false);
+		}
+		if target != to {
+			self.state = Some((current, target, now));
+			return (current, current != target);
+		}
+		(current, from != to && progress < 1.)
+	}
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum Presentation {
@@ -19,6 +62,14 @@ pub(crate) struct Sizing {
 	pub expanded: f32,
 }
 impl Sizing {
+	/// Reserve predictable tiers; round content exceptions to the same grid.
+	pub(crate) fn content(minimal: f32, compact: f32, expanded: f32) -> Self {
+		let snap = |value: f32, grid: f32| (value / grid).ceil() * grid;
+		let minimal = snap(minimal.max(MIN_CAPSULE_WIDTH), 8.);
+		let compact = snap(compact.max(COMPACT_WIDTH).max(minimal), 16.);
+		Self { minimal, compact, expanded: snap(expanded.max(EXPANDED_WIDTH).max(compact), 32.) }
+	}
+
 	pub(crate) fn presentation(self, width: f32) -> Presentation {
 		if width >= self.expanded {
 			Presentation::Expanded
@@ -95,7 +146,31 @@ pub(crate) fn arrange(
 
 #[cfg(test)]
 mod tests {
-	use crate::ui_live_activity::{self, Presentation, Sizing};
+	use crate::ui_live_activity::{self, Extent, Morph, Presentation, Sizing};
+	use std::time::{Duration, Instant};
+
+	#[test]
+	fn island_morph_keeps_one_path_on_resize_reversal_and_reduced_motion() {
+		let now = Instant::now();
+		let closed = Extent { width: 72., height: 28. };
+		let open = Extent { width: 288., height: 140. };
+		let mut motion = Morph::default();
+		assert_eq!(motion.sample(closed, now, false), (closed, false));
+		motion.sample(open, now, false);
+		let mid = now + Duration::from_millis(90);
+		let (visible, moving) = motion.sample(open, mid, false);
+		assert!(moving && visible.width > closed.width && visible.width < open.width);
+		assert!(
+			((visible.width - closed.width) / (open.width - closed.width)
+				- (visible.height - closed.height) / (open.height - closed.height))
+				.abs()
+				< 0.0001
+		);
+		assert_eq!(motion.sample(closed, mid, false).0, visible);
+		let reversed = motion.sample(closed, mid + Duration::from_millis(60), false).0;
+		assert!(reversed.width < visible.width && reversed.height < visible.height);
+		assert_eq!(motion.sample(open, mid, true), (open, false));
+	}
 
 	#[test]
 	fn activities_release_space_and_only_one_expands() {

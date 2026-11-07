@@ -433,7 +433,6 @@ impl AgentSurface {
 		page: AgentTimelinePage,
 	) -> bool {
 		if self.timeline.native.binding.as_ref() == Some(binding)
-			&& !self.timeline.native.show_saved
 			&& self.timeline.navigation.is_none()
 			&& let Some(scroll) = self.timeline.scroll.get(&binding.work)
 		{
@@ -608,7 +607,6 @@ impl AgentSurface {
 					let _ = surface.update(cx, |s, cx| {
 						if !Rc::ptr_eq(&geometry, &s.timeline.native.viewport.0)
 							|| s.selected.as_ref() != Some(&owner)
-							|| s.timeline.native.show_saved
 						{
 							return;
 						}

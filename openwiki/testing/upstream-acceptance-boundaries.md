@@ -26,8 +26,6 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_reconnect_queue_tests.rs
   - id: openwiki-source-ff9ae5d5274ad341f8658d86
     resource: repo://apps/decodex-gpui/src/agent_side_chat_question_tests.rs
-  - id: openwiki-source-691432bb61082c358b6f9c24
-    resource: repo://apps/decodex-gpui/src/agent_timeline.rs
   - id: openwiki-source-f339a4d1910db63ca305c2df
     resource: repo://apps/decodex-gpui/src/assistant_settings.rs
   - id: openwiki-source-032278b78f4f6cac0e654ef0
@@ -128,6 +126,8 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent/global_guardian.rs
   - id: openwiki-source-283a40a004fda23504fad7e1
     resource: repo://crates/decodex-runtime/src/agent/result_messages.rs
+  - id: openwiki-source-1a6e9328d4cd6c8e5904f167
+    resource: repo://crates/decodex-runtime/src/agent/tests.rs
   - id: openwiki-source-5af40fd50adccf5d93ff82a0
     resource: repo://crates/decodex-runtime/src/agent/tests/capacity.rs
   - id: openwiki-source-30c7edf894a639091ecbafc6
@@ -200,10 +200,10 @@ sources:
     resource: repo://scripts/macos/test_decodex_app_stage.sh
   - id: openwiki-source-e201f60894c32a914dac99ee
     resource: repo://scripts/vnext/run_native_regression.py
-generated: { by: "codex", at: "2026-11-06T20:42:09.050Z" }
+generated: { by: "codex", at: "2026-11-07T06:35:26.732Z" }
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-06T20:42:09.050Z
+    at: 2026-11-07T06:35:26.732Z
 ---
 
 # Upstream integration acceptance boundaries
@@ -288,6 +288,8 @@ These checks do not qualify arbitrary malformed archives, unpinned default targe
 ## Signed native WebRTC tests
 
 The separate `native-voice-test-development-signing` contract qualifies the explicit `test-native-voice` command on the measured macOS arm64 host, development certificate and stable test path. After the first user-confirmed firewall allow, the original and rebuilt test executables each passed four real WebRTC regressions. Their code hashes differed, their designated requirements matched, and both test windows contained known allow decisions without queued or prompt events. Two task reruns passed the same four tests, for 16 post-consent executions. The first pre-consent ICE timeout remains failed. Certificate, path, OS and policy changes and a locked session remain unmeasured. This result does not resolve the older post-unmute assertion or qualify physical audio, a provider or the installed app. See [the signed test procedure](../integrations/subscription-voice.md#run-native-webrtc-tests-with-a-development-signature).
+
+The database regression `automatic_export_advances_past_reserved_turns_after_restart` checks two completed exchanges across store reopen. Both unknown and acknowledged export receipts exclude the reserved exchange, allow the next exchange and leave no duplicate export candidate. It reproduces the former mismatch between a serialized operation key and a nested JSON array.
 
 ## Selected read-only views
 
@@ -654,6 +656,10 @@ The Assistant extension reuses the selected Codex runtime. Its opt-in `installed
 
 SQLite tests cover independent team membership and wakes, archive cancellation, exact delegated creation and linked authority, pending input, immutable native-context receipts and queued/unknown external imports across reopen. The desktop transition test covers drafts, loaded history, reading state, old native source IDs and pagination cursor rebasing. RAGFlow's loopback HTTP fixture checks explicit Memory/Agent/user scopes and rejects nonzero business codes even with HTTP 200. HTTP Memory setup fixtures cover default-model selection, recovery after a lost creation reply, origin-bound private credentials and missing-model failure without publishing a Memory credential. An idle Assistant setup fixture confirms atomic role selection and no fabricated first user message. The first-message fixture checks displayed model and effort, normal permission and speed defaults, and preservation of the previous Agent and draft. Shared component UI fixtures check installed readback, busy controls, disclosure and inline feedback. A queued extraction response is not proof that the memory is searchable.
 
-Managed-service fixtures check unavailable engine or Compose prerequisites without storage changes, image pulls or service startup. They also check loopback-only API exposure, absence of a model runtime and model volume, custom endpoint paths and model names, loopback host translation, private installation receipts and an Uninstall command scoped to the owned project without volume removal. Model fixtures check independent Base URLs and keys even when model IDs match, both verifications before provider updates, failure without receipt replacement, retained embedding instance identity, and rejection of indexed embedding changes. The model editor checks blank saved-key fields, per-model endpoint-bound key retention, required-field gating, input-driven updates, explicit URL validation, source invalidation and draft preservation. Status-light fixtures distinguish installed, disabled, ready, working and failed components. The service read checks the public API without credentials or model work. These checks use in-process and command fixtures, not real Docker images. Actual acceptance must separately verify the nightly version, native verification against a controlled compatible API, automatic Memory configuration, rejection of invalid credentials without replacing saved configuration, a synthetic scoped write/search, retained model settings and data across Update, Uninstall and reinstall, and the installed App controls.
+Managed-service fixtures check unavailable engine or Compose prerequisites without storage changes, image pulls or service startup. They also check loopback-only API exposure, absence of a model runtime and model volume, custom endpoint paths and model names, loopback host translation, private installation receipts and an Uninstall command scoped to the owned project without volume removal. Model fixtures check independent Base URLs and keys even when model IDs match, both verifications before provider updates, failure without receipt replacement, retained embedding instance identity, and rejection of indexed embedding changes. The model editor checks a shared Base URL and key with separate model IDs, blank saved-key fields, endpoint-bound key retention, required-field gating, input-driven updates, explicit URL validation, source invalidation and draft preservation. Status-light fixtures distinguish installed, disabled, ready, working and failed components. The service read checks the public API without credentials or model work. These checks use in-process and command fixtures, not real Docker images. Actual acceptance must separately verify the nightly version, native verification against a controlled compatible API, automatic Memory configuration, rejection of invalid credentials without replacing saved configuration, a synthetic scoped write/search, retained model settings and data across Update, Uninstall and reinstall, and the installed App controls.
+
+Automatic-memory fixtures check that new ordinary Agent contexts receive neither Assistant tools nor RAGFlow instructions, and that another Agent cannot invoke the Assistant back end. Recall fixtures keep current user input unchanged, use native untrusted additionalContext, omit recalled context on capacity retries and credential-bearing input, and continue when the optional service is unavailable. HTTP tests check the exact Memory, Assistant and user scope. Recall projection tests preserve source identifiers, bound Unicode text and exclude vectors and recognized credentials.
+
+Completed-dialogue tests exclude reasoning, tool results and intermediate commentary. Database tests prevent automatic relearning of a forget turn and duplicate learning of an explicit remember turn. The selected-native fixture also checks role-specific context and unavailable recall in the actual model request without an additional inference call. These tests qualify the integration and failure behavior; they do not establish long-term memory quality or a successful live extraction.
 
 These source and selected-native checks do not establish a real RAGFlow deployment, extraction quality, machine sleep behavior or installed desktop visual acceptance. See [Assistant lifecycle](../decisions/assistant-lifecycle.md) and [commands](../operations/commands-and-validation.md) for owners and repeatable checks. The earlier qualification records above retain their own artifacts and counts.

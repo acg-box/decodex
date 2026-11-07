@@ -14,7 +14,7 @@ use decodex_protocol::{
 pub(super) struct CatalogContext {
 	directory: String,
 	account: String,
-	has_root: bool,
+	has_native_thread: bool,
 	creating: bool,
 	runtime_source: Option<decodex_protocol::EntityId>,
 }
@@ -52,12 +52,9 @@ impl AgentSurface {
 			directory: self.cwd.read(cx).content().to_owned(),
 			account: self.account.read(cx).content().to_owned(),
 			creating: self.is_new_conversation(),
-			has_root: self
-				.snapshot
-				.as_ref()?
-				.work_items
-				.iter()
-				.any(|work| work.parent_goal_id.is_none()),
+			has_native_thread: self.snapshot.as_ref()?.work_items.iter().any(|work| {
+				Some(&work.id) == self.selected.as_ref() && work.codex_thread_id.is_some()
+			}),
 			runtime_source: self.snapshot.as_ref()?.runtime_source.clone(),
 		})
 	}
@@ -103,7 +100,7 @@ impl AgentSurface {
 		{
 			return;
 		}
-		let cold_request = if context.has_root && !context.creating {
+		let cold_request = if context.has_native_thread && !context.creating {
 			None
 		} else {
 			let Ok(working_directory) =
@@ -277,6 +274,7 @@ impl AgentSurface {
 mod effort_tests;
 #[cfg(test)]
 mod tests {
+	use futures_util::{SinkExt as _, StreamExt as _};
 	use std::future;
 
 	use gpui::AppContext as _;
@@ -286,6 +284,83 @@ mod tests {
 	};
 
 	#[gpui::test]
+	fn idle_assistant_reads_initial_catalog_and_uses_observed_model(cx: &mut gpui::TestAppContext) {
+		use crate::shell::agent_surface::wire_test_support::{self, SERVER};
+		use decodex_protocol::{ClientMessage, QueryPayload, QueryResultPayload, ServerMessage};
+		cx.background_executor.allow_parking();
+		let (_root, profile, server) = wire_test_support::fixture(|listener| async move {
+			let (mut socket, query, request) = loop {
+				let mut socket = wire_test_support::accept(&listener).await;
+				let tokio_tungstenite::tungstenite::Message::Text(text) =
+					socket.next().await.unwrap().unwrap()
+				else {
+					panic!("query")
+				};
+				let ClientMessage::Query(query) = serde_json::from_str(&text).unwrap() else {
+					panic!("metadata only")
+				};
+				if let QueryPayload::GetInitialModelCatalog { request } = &query.payload {
+					let request = request.clone();
+					break (socket, query, request);
+				}
+				assert!(
+					!matches!(query.payload, QueryPayload::GetAgentCapabilities),
+					"an idle Assistant must not use the active-thread catalog"
+				);
+			};
+			assert_eq!(request.working_directory.as_str(), "/tmp");
+			let AgentCapabilitiesResult::Available { models, .. } = fast_only_catalog() else {
+				unreachable!()
+			};
+			let result = decodex_protocol::InitialModelCatalogResult::Available {
+				account_id: decodex_protocol::EntityId::new("account").unwrap(),
+				account_revision: 1,
+				working_directory: request.working_directory,
+				models,
+				defaults: Some(Box::new(decodex_protocol::InitialModelDefaults {
+					configured: decodex_protocol::InitialExecutionDefaults {
+						model: Some(decodex_protocol::ConversationModel::new("custom").unwrap()),
+						..Default::default()
+					},
+					managed: Default::default(),
+					catalog_model: None,
+				})),
+			};
+			let message = ServerMessage::QueryResult(decodex_protocol::QueryResultEnvelope {
+				version: decodex_protocol::CURRENT_VERSION,
+				server_id: decodex_protocol::ServerId::new(SERVER).unwrap(),
+				query_id: query.query_id,
+				payload: QueryResultPayload::InitialModelCatalog(result),
+			});
+			socket
+				.send(tokio_tungstenite::tungstenite::Message::Text(
+					serde_json::to_string(&message).unwrap().into(),
+				))
+				.await
+				.unwrap();
+		});
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.profile = Some(profile);
+			s.cwd.update(cx, |input, cx| input.set_content("/tmp", cx));
+			assert!(!s.catalog_context(cx).unwrap().has_native_thread);
+			assert_eq!(s.composer_model_label(cx), "—");
+			s.load_capabilities(cx);
+		});
+		visual.run_until_parked();
+		server.join().unwrap();
+		surface.update(visual, |s, cx| {
+			assert!(s.capability_task.is_none());
+			assert_eq!(s.composer_model_value(cx).as_deref(), Some("custom"));
+			assert_ne!(s.composer_model_label(cx), "—");
+			assert!(
+				s.snapshot.as_ref().unwrap().work_items.iter().all(|w| w.codex_thread_id.is_none())
+			);
+		});
+	}
+
+	#[gpui::test]
 	fn warm_catalog_is_reused_until_expiry_or_source_change(cx: &mut gpui::TestAppContext) {
 		let (_root, profile, server) =
 			crate::shell::agent_surface::wire_test_support::fixture(|_| async {});
@@ -293,6 +368,7 @@ mod tests {
 		let surface = cx.new(AgentSurface::new);
 		surface.update(cx, |s, cx| {
 			s.visual_workspace_fixture(cx);
+			s.cwd.update(cx, |input, cx| input.set_content("/tmp", cx));
 			s.profile = Some(profile);
 			s.capabilities =
 				Some(AgentCapabilitiesResult::Available { models: vec![], memory_enabled: None });

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:074e7c6dd1d4cbb3df800857ac5aef941bc3c1df5516380f3a69b480d99f2bb7",
+  "pageVersion": "sha256:a28e97f131f1dbba357c1870cc50b1f408bebdbb63388bf6421a055e93802ccb",
   "claims": [
     {
       "id": "claim_3881a280a4044cdca9e8599100f0a4f0",
@@ -70,7 +70,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_draft_storage.rs",
-          "version": "repo-file-v1:sha256:10a6274b01cc944b2359a02a698702953536050259bd4a0af3b7812ad1012226"
+          "version": "repo-file-v1:sha256:4412f8b56de7d88163a0bc68902bdc5915be5348d5a856fb3e965f7febef9c06"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_prompt_edit.rs",
@@ -84,7 +84,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_inspection.rs",
-          "version": "repo-file-v1:sha256:9a7a80e991a3eeab59da3d4ce568ea8e55a162f5273a491b7d85390e17b07f9f"
+          "version": "repo-file-v1:sha256:329f23dd78faac31133717aacbe0cc09525d82fcff7034028988b4fb393243f4"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_prompt_fork.rs",
@@ -101,7 +101,7 @@
           "version": "repo-file-v1:sha256:cdf330e8db97cb474822c98ae2576da9c72d64e996820957197087833b1cadfb"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L2570-L2594",
+          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L2565-L2589",
           "version": "repo-lines-v1:sha256:89f74b3a2767daf923520e0d166a0070e9c62e1517c9c3fa8d17dd826ee08d9c:eyJzZWxlY3RlZExpbmVDb3VudCI6MjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA2NmI1YjkzMDg2NDc5ZmJiMjgzOTZiN2NlZjkzOGY3OWNiMzkyOWE3OGE4M2U2NGUwNjUyYzFkZWY3MmU4MTgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFlNDM4OTRkNmQ1Y2Q5YTQxZmI2MDFmNWI3NjgxMmVhMjNlYTRjODdjNjY1OWY2MTE2MWNkYWE0MzQ1YjBkNDkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImFjZTdkM2E5ZjcwYWZkY2JkOGNmMmZjZTM4NWZhMWZlODJjYWIxNjM1Y2IyYTM2MmVkMzcyYzc0NzYxOWU0YWQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY4ZjZjZjBiYmNlNzE4MjIxMTBlMDZjNDU3ZWE5YmY1YTM5MzEyNjU1YTMwZDRhOGYyMTg3MzBiYWNmYzBhOGMifQ"
         },
         {
@@ -140,7 +140,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_surface.rs",
-          "version": "repo-file-v1:sha256:8a0aa4f10a39b1b4a48aac0ae1e2e247bf2954c04a925456dcd733f19a9dfece"
+          "version": "repo-file-v1:sha256:1fc39901c3eb4c19bf1d291b950d3453fa5dd1a283e38e400cf78a04a29d964e"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
@@ -158,11 +158,11 @@
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_archive_tests.rs",
-          "version": "repo-file-v1:sha256:708dd5cdda395749ccefedf70dc8e1f422d8474e9e21de8e2606f676a9a56285"
+          "version": "repo-file-v1:sha256:a9a6f08b991c76aa2b62d00d626849045a7f03753b4bcf02aab85d146479d733"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent_visibility.rs",
-          "version": "repo-file-v1:sha256:7cc29fec14e40d644c1845718c454a6adf7b3ed1c532998c05f3283d24863d9c"
+          "version": "repo-file-v1:sha256:0c923139c97102e9c3d73b07f9f014236dbaa8b693c96192435f1e3a3393ce60"
         }
       ]
     },
@@ -172,7 +172,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/agent_visibility.rs",
-          "version": "repo-file-v1:sha256:7cc29fec14e40d644c1845718c454a6adf7b3ed1c532998c05f3283d24863d9c"
+          "version": "repo-file-v1:sha256:0c923139c97102e9c3d73b07f9f014236dbaa8b693c96192435f1e3a3393ce60"
         }
       ]
     },
@@ -214,11 +214,11 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/agent.rs",
-          "version": "repo-file-v1:sha256:723981fe7564aa4725c719a427a9f60fe6f58e805c83c79d374d6759d979fc7a"
+          "version": "repo-file-v1:sha256:d37d9b7a977702387b59368d454584564ca7c122c78804d310fa640940d87ec6"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/assistant.rs",
-          "version": "repo-file-v1:sha256:1e098d12f81905f772a623bec68c6ac68b124e99c452b5fab9b63cf0928a4cc6"
+          "version": "repo-file-v1:sha256:bf44f3d59cdb33602d9436cacf3b0d0200d83cf7153d46ea4782c35153235b59"
         }
       ]
     },
@@ -228,7 +228,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/agent/instructions.md",
-          "version": "repo-file-v1:sha256:a0571c64007c1d556e1b8f38911b2af4c93de48e5db8b0b4483b533cb6ac80cf"
+          "version": "repo-file-v1:sha256:10e6d8b1b0994aca55de0a81fb6601d53ec3b8af4a1db14f4692b2e4a7ccb53b"
         },
         {
           "resource": "repo://database/src/works.rs",
@@ -264,7 +264,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_attached_branches.rs",
-          "version": "repo-file-v1:sha256:fd9c7dc64620953c2b968994a79ac8159ece13ae50cd0f9ab1f99fdbdfd9288c"
+          "version": "repo-file-v1:sha256:0a7ed039c816d1b4ad9bade780bc41ddcafd54b1c6902af7cf279f83a993f53e"
         },
         {
           "resource": "repo://database/src/agent_fork.rs",
@@ -286,7 +286,7 @@
         },
         {
           "resource": "repo://crates/decodex-protocol/src/desktop_drafts.rs",
-          "version": "repo-file-v1:sha256:51ae24f699647c5f378e77c65f7f31d77694640c74f087cd493ab969f362b005"
+          "version": "repo-file-v1:sha256:0a2a6359ddd916cb04dba1b965888f1531d0c22155a1f97fd9f281c6a507207e"
         },
         {
           "resource": "repo://crates/decodex-protocol/src/desktop_message_delivery.rs",
@@ -303,7 +303,7 @@
           "version": "repo-lines-v1:sha256:9bac70bb2ac628ec4fa2bfe4ff4c6b0f33430ef502649dc0d34003a078113482:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcyLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJmYjcyNzY5NDM0NjhjMTY0OWVjYjYyMmVjN2IzMmUwNjVmODEzYWVlMzBkNzM5NDA0ZjNjODEyOWMxM2M2OWY0IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI2N2NkYTgyZGE2MDYyMzhlMDVlNjIzOTk1NjljNWVlMDM5OTM0MTk2NDhhZTVkNDNhMmJmOGNkNjM0N2Y4MjYzIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJhMGE4NzU2YTk4Yjk1ZWU1NzViZWVlNDYwMDQ4YzdmYzk3YTY3YWQ0ZGQxNTVhYzFhODU5N2VjNjVjNGZhMjgwIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI3MTU3MDIxYjdlM2IxMmU1NmNjOGFjOWQzN2E2MDVlZWMyMGQ5ZTVkNzI0ODQ1ZTBiZDlmYzFiNDlmY2YzZTYyIn0"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_timeline_receipts.rs#L34-L66",
+          "resource": "repo://apps/decodex-gpui/src/agent_timeline_receipts.rs#L31-L63",
           "version": "repo-lines-v1:sha256:e123af50b313c16263c038de062a249dc5346d66dd5d798f0e9be35a47a34175:eyJzZWxlY3RlZExpbmVDb3VudCI6MzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ3OTQ2ZmQzYWEwNjliZmNmMjBiYzBjMDkwOWE5MDVlMWVhODI4OWU0YWRmNTUzOGE0NjE0NmY2MzRlZmFmZWQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg3OGM0NjczYjU4Yzc1ZWQ3NjBiZjM1YTlkY2M0NTAwY2Y2MTEwNTg5YTI0YTdmNDdiMzJmODlhNGNjY2Y0OGIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM1Mjc5NDNiZWQ4NjVmNzBlOGZmYjZiMDVlYzU4MmM5MmMxMDJlNTgzNTJmNjllOTExZjU3YTU1YmFhYzlkMWEifQ"
         }
       ]
@@ -313,16 +313,16 @@
       "statement": "Confirmed archive discards never-dispatched user input and failed desktop retry records, retires pending questions and attention, and cancels pending capacity retries and scheduled checks while retaining sent history, claimed receipts, Work and the current editor; restoring the conversation does not revive the discarded input.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_draft_storage.rs#L133-L186",
+          "resource": "repo://apps/decodex-gpui/src/agent_draft_storage.rs#L166-L219",
           "version": "repo-lines-v1:sha256:7703642a6ba26a5703364891a8e15bdd016548169e6b480087bfc575dfa31ff1:eyJzZWxlY3RlZExpbmVDb3VudCI6NTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdjZWViNTVmNjY5YmM2MjQxNzg5MDRmYjE3NTVkYTU4ZmUzMGMzMGEyZDI5NjYyOWUwOWI2MWJlYWMwNjc5NjAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJkOWUwZTRjMzBkZTZiNDYwNWJjYzIxYjZmZmI1YWQ3MDdkODAzZGY5ZmZmNTZkMDI3ZGQ2M2ZkNTUyNDg2MTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImU4MjVmODNhMDAyY2VkYzBkOTA1OTVjMzUwMTc2NjlkMWIwNmMxYjRmZjg1MGMzYTE3ZjExOTFjYjMxZWIxOGUifQ"
         },
         {
-          "resource": "repo://crates/decodex-runtime/src/agent/archive.rs#L91-L103",
+          "resource": "repo://crates/decodex-runtime/src/agent/archive.rs#L86-L98",
           "version": "repo-lines-v1:sha256:505feab50b90684879b969966286928836fcea9d3ab6b27c7238bd20b5acd69d:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRhMGYwMzJiMmFiM2RmYjdkMzNjY2Q2M2VkNjljYTVkYWEyY2M0NDFlZTg1MmVmZWY4NjgyMmYxNzg0MjQ3YzMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRkZGYxNzQ4NzczN2JiYWVlOTNjY2RiOWQwMTBhNzg4ZmZjMDIzMmE4MzY5MjhlNjJjNTViNTc4NzlkODdjYjQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM0N2E3NjljMWY3MWZmMzhlYjYzYTQ5M2YzMzk5MzMwZWM5YTBkYmNhYjA1ODVmZjgxM2UyODZiODA2ODY1NDgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVkOTE1MmViMmIyNzU1MTJiYmU1YTQ4ZDU0ZGQyODYzZDVjMjEwNWU1Y2RhNmZmY2JlYjBlNjY3NTVlNWMzMDUifQ"
         },
         {
-          "resource": "repo://database/src/agent/archive.rs#L6-L100",
-          "version": "repo-lines-v1:sha256:a4f5d17d7f08e888d7a139bce4aaece8fe9ee826510f863c166b9f90ff133252:eyJzZWxlY3RlZExpbmVDb3VudCI6OTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlhY2QzNjZhNTc1MDVhMWM0M2Y5NmNmZThmODk2ZTdhNzBjMWFmZjdiOTI3YjhkMDU2ZDZhZTc4ZTg0NGM3NzUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjUxNWNhNjdhYzhlN2RjNDU3NzJiZWE0NDRkNjI0ZTkyNjM3MGQzYzMyMGVlMzU1Yzk3MzEyYTkzNWE0MTE0ZmYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE1MjE2MDRiMzVmYzQwYWYwMGNiYTRlZWEyZmQ1ZTJjM2FmMTg2M2IzOTExODVkN2JmNGJiMDllNzJkMGM4YjMifQ"
+          "resource": "repo://database/src/agent/archive.rs#L6-L50",
+          "version": "repo-lines-v1:sha256:35c1f9cf5390f7b3ee64baa90b15a9aa6384eee1ddc788b799aa305fe635f8a1:eyJzZWxlY3RlZExpbmVDb3VudCI6NDUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlhY2QzNjZhNTc1MDVhMWM0M2Y5NmNmZThmODk2ZTdhNzBjMWFmZjdiOTI3YjhkMDU2ZDZhZTc4ZTg0NGM3NzUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjUxNWNhNjdhYzhlN2RjNDU3NzJiZWE0NDRkNjI0ZTkyNjM3MGQzYzMyMGVlMzU1Yzk3MzEyYTkzNWE0MTE0ZmYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE1MjE2MDRiMzVmYzQwYWYwMGNiYTRlZWEyZmQ1ZTJjM2FmMTg2M2IzOTExODVkN2JmNGJiMDllNzJkMGM4YjMifQ"
         }
       ]
     },
@@ -380,19 +380,19 @@
     },
     {
       "id": "claim_00df095f06b942e592cfecad5e6f03ed",
-      "statement": "The enabled-by-default Next-message suggestions switch gates requests after newly completed visible root answers. Disabling consumes boundaries without sampling and re-enabling does not replay them. Existing draft text is preserved; Tab accepts only a current suggestion from the focused empty field as an undoable unsent draft.",
+      "statement": "Enabled next-message suggestions can recover the latest completed root answer after restart, reopen or lost local suggestion state. The empty idle composer starts at most one current request; existing drafts and exact native request ownership remain unchanged, and Tab inserts an undoable unsent draft.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_prompt_suggestions.rs",
-          "version": "repo-file-v1:sha256:09c3742917387465e58596e912fa8ce406259518806cad8149e0df13ab9f1b57"
+          "version": "repo-file-v1:sha256:2efb94057b8e1e6567cdc5b5e86a5376028126f2f12c5df711669c2bbf9774f8"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_sample.rs",
           "version": "repo-file-v1:sha256:8a05e50fa4e742b2a8743c6be110a10133e6fe079f82e06e9c493b390035376c"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/settings_surface.rs",
-          "version": "repo-file-v1:sha256:a6993a42f4fa83ebb7a3a60540df72192e9ae0b3ac1478bc7ac7314d05f72c27"
+          "resource": "repo://apps/decodex-gpui/src/agent_sample_tests.rs",
+          "version": "repo-file-v1:sha256:fd4552a9afbd579ce7950ee14cb168f82b8960383b3e6e62a05b33a7b03c5f5e"
         }
       ]
     },
@@ -402,7 +402,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_draft_storage.rs",
-          "version": "repo-file-v1:sha256:10a6274b01cc944b2359a02a698702953536050259bd4a0af3b7812ad1012226"
+          "version": "repo-file-v1:sha256:4412f8b56de7d88163a0bc68902bdc5915be5348d5a856fb3e965f7febef9c06"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_reconnect_queue_tests.rs",
@@ -410,7 +410,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_surface.rs",
-          "version": "repo-file-v1:sha256:8a0aa4f10a39b1b4a48aac0ae1e2e247bf2954c04a925456dcd733f19a9dfece"
+          "version": "repo-file-v1:sha256:1fc39901c3eb4c19bf1d291b950d3453fa5dd1a283e38e400cf78a04a29d964e"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
@@ -428,7 +428,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_timeline.rs",
-          "version": "repo-file-v1:sha256:4dfc9fbe77eb58506fdaee120671b2d23d541abbbe301a102fafaa083adeb527"
+          "version": "repo-file-v1:sha256:f1d5cca791b0cebc4c608656f76357fff461ba6dbdf96face55759097dbfca6b"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_timeline_find.rs",
@@ -436,7 +436,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/shell.rs",
-          "version": "repo-file-v1:sha256:ae72373d7beb3ad4781af4a9125ea9c2bac0d45bb8f6450e4024031a69f2b647"
+          "version": "repo-file-v1:sha256:ec355e93da1bae49fb909572b2537fea290052e3b26458c5a342a7b4071eedec"
         }
       ]
     },
@@ -714,15 +714,15 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_timeline.rs",
-          "version": "repo-file-v1:sha256:4dfc9fbe77eb58506fdaee120671b2d23d541abbbe301a102fafaa083adeb527"
+          "version": "repo-file-v1:sha256:f1d5cca791b0cebc4c608656f76357fff461ba6dbdf96face55759097dbfca6b"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/assistant.rs",
-          "version": "repo-file-v1:sha256:1e098d12f81905f772a623bec68c6ac68b124e99c452b5fab9b63cf0928a4cc6"
+          "version": "repo-file-v1:sha256:bf44f3d59cdb33602d9436cacf3b0d0200d83cf7153d46ea4782c35153235b59"
         },
         {
           "resource": "repo://database/src/assistant.rs",
-          "version": "repo-file-v1:sha256:3f0e073fdfa3a57e60afecd9c80d421d913224f041fd7df91aa629adabe0d8d0"
+          "version": "repo-file-v1:sha256:e89c7b4b71ecea701febe79bb627152ec7043004b80a4de1ed021fc215c8c9c0"
         }
       ]
     },
@@ -735,7 +735,7 @@
           "version": "repo-file-v1:sha256:d0b1eac5feffa79c50ab7dab41894fec4769898225194fff05ac768269e5f883"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs#L59-L98",
+          "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs#L66-L105",
           "version": "repo-lines-v1:sha256:dc3d1b6d419edb69bde030f020efb9b3ab066c207672c59d2dd4635a1c5048b8:eyJzZWxlY3RlZExpbmVDb3VudCI6NDAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZiYTBmMGRkOTVkNDViNzMxNTIxYWUwMGM0NTJjZTBkOGNjNzllZmEzMjBiZmU1ZDljYzhhMzhhZTExYTVhOWIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE1NzczMGE2NGE4MTgxMTEzNTEwMDZjNWMwYTZiZjMyM2M3ZDUyNjViMDBhZmU0MDBkOWYxNTI0ZmI0Y2ZhZmMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVlZjgzMzE5YjcxZDMyNGE3MmZkMjljZjQzMjgzNjg5ZWFlOWExOWQ4MmY3MWI0ZmY0ZWUzNTcyZTRiM2JjODIifQ"
         }
       ]
@@ -771,10 +771,64 @@
           "version": "repo-lines-v1:sha256:3de62feb83080daf08844daa9e6aa2da28f9e38843e410aabf33949266ac85c3:eyJzZWxlY3RlZExpbmVDb3VudCI6MTM5LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI1MTk0ODRlZWRmMzY0ZmI4YzEyZjFlYjk4ZmJmNmE5YjRmNjUwZjQyNzg3NGE4ZDczNTkwMTBhYWRlNDMxYmM4IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI2NTBlMjNkNGJkYWEyNTJiZjc3OGE1MjNhMmNmOTJlZjliMDgxOTI5YmI1MzQyYzlhMTVlN2YwNWViYTc2ODI1IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJmMjk2NDA3OWMzYzVjODE1MjBlZjMzYTJiOWQyZTE1YTFiODRkNzI4MGRiODU5MGRjZDY1NzQ3ZTNlMDEyYTQwIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI5MWQ2MzMxNWEzN2UwNDE1ZWMyNTU4Y2Y1NDNkOWNhYzI4ZTA2MTdhMWM0NTU2YmJiNjlhODczYmJhMmE1OGUyIn0"
         }
       ]
+    },
+    {
+      "id": "claim_379e85efa73549ff81c794e324998e7e",
+      "statement": "The conversation timeline uses native history as its single transcript and does not fall back to local execution records when a native read fails; current unsent input and unfinished output retain operational feedback.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs",
+          "version": "repo-file-v1:sha256:1fc39901c3eb4c19bf1d291b950d3453fa5dd1a283e38e400cf78a04a29d964e"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_timeline.rs",
+          "version": "repo-file-v1:sha256:f1d5cca791b0cebc4c608656f76357fff461ba6dbdf96face55759097dbfca6b"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_timeline_receipts.rs",
+          "version": "repo-file-v1:sha256:b575a9af217796f2be4073badbb2eef71a9c322ca37a68880c56ba460d05c7b2"
+        }
+      ]
+    },
+    {
+      "id": "claim_e6cdc6c3cf084138acb6030972d12d88",
+      "statement": "Deleting an archived conversation removes its recorded native contexts and local conversation state and drafts, while preserving learned Assistant Memory and independent Work; partial deletion remains visible for retry.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_draft_storage.rs",
+          "version": "repo-file-v1:sha256:4412f8b56de7d88163a0bc68902bdc5915be5348d5a856fb3e965f7febef9c06"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/archive.rs",
+          "version": "repo-file-v1:sha256:b926198826a8f08f15b4699eb4f3d18fde7d05faed4d13f6420bc7b6e8c83208"
+        },
+        {
+          "resource": "repo://database/src/agent/deletion.rs",
+          "version": "repo-file-v1:sha256:93e41675e6b5d5b475e8989eec252918565526ec64d4862d56f156557b521529"
+        }
+      ]
+    },
+    {
+      "id": "claim_f8331f653e2b4e2091cc0a5353387eb0",
+      "statement": "Inline suggestions wrap with normal workbench input geometry; quotes are limited to new conversations, while existing conversations without a suggestion use a message placeholder.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_composer.rs",
+          "version": "repo-file-v1:sha256:7af1fd75ba9135db7797a431158180e69d49c30887d9cdb629472fa8bfeab99b"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_sample_tests.rs",
+          "version": "repo-file-v1:sha256:fd4552a9afbd579ce7950ee14cb168f82b8960383b3e6e62a05b33a7b03c5f5e"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/composer_text.rs",
+          "version": "repo-file-v1:sha256:e9a86048083cd3aa62f3435f122122fe1f1a033d15c1ebfbf5c917f10e2228e6"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.9.0",
-    "at": "2026-11-05T21:05:15.623Z"
+    "at": "2026-11-06T18:11:51.612Z"
   }
 }

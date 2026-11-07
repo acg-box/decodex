@@ -5,7 +5,7 @@ description: "Workspace ownership, native menu focus, compositor motion, and con
 tags: [decodex, architecture, desktop, presentation]
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-06T12:32:00.964Z
+    at: 2026-11-06T14:22:47.581Z
 sources:
   - id: openwiki-source-98e7b23c4cc276d20fcb4649
     resource: repo://apps/decodex-gpui/menubar/Sources/DecodexApp/AccountControlViews.swift
@@ -135,13 +135,15 @@ sources:
     resource: repo://crates/decodex-runtime/src/work_portfolio.rs
   - id: openwiki-source-58c0167d31c3e40dc89591ab
     resource: repo://database/src/agent_fork.rs
+  - id: openwiki-source-3f60f3a3aae45b3e3b355d3e
+    resource: repo://database/src/assistant.rs
   - id: openwiki-source-d1279ad243eb550afec4d0e6
     resource: repo://database/src/guardian_settings.rs
   - id: openwiki-source-c0eb738b42368debe7ef7545
     resource: repo://database/src/works/commands.rs
   - id: openwiki-source-8fe6f1557e5d45d88b34bd0a
     resource: repo://scripts/macos/generate_workspace_symbols.swift
-generated: { by: "codex", at: "2026-11-06T12:32:00.964Z" }
+generated: { by: "codex", at: "2026-11-06T14:22:47.581Z" }
 ---
 
 # Desktop workspace and native glass
@@ -272,7 +274,7 @@ Reserve `arrow.triangle.branch` for Fork. Account routing uses `point.topleft.do
 
 The [Assistant lifecycle](../decisions/assistant-lifecycle.md) keeps a stable personal Agent and renews its native context behind the same conversation. Assistant is built in and always available from the sidebar. First use records an idle Agent and its role atomically without a generated user message. It has no Enable control or optional component row. Work retains its role selector, saved teams and shared pending-context feedback. Continuing instructions, teams and duties are managed in chat. The editor and reading state survive a confirmed context transition; older messages retain their native sources. Side chats remain separate native branches.
 
-RAGFlow is an optional component with Install, Update, Uninstall and complete installed version readback. It shares lifecycle buttons, busy state and inline feedback with the other components. Install checks the running Docker-compatible engine and Compose, then prepares RAGFlow, Infinity and the private account. Missing prerequisites use the shared notice; the App does not install or launch a container runtime. Successful installation opens model setup when no models are saved. Expand RAGFlow and select Set up models or Edit to enter one Base URL, an optional API key, an extraction model ID and an embedding model ID. Both models use that shared OpenAI-compatible connection. Save verifies the choices and initializes dedicated Memory without sending chat content. Chat import starts off and remains a separate opt-in.
+RAGFlow is an optional component with Install, Update, Uninstall and complete installed version readback. It shares lifecycle buttons, busy state and inline feedback with the other components. Install checks the running Docker-compatible engine and Compose, then prepares RAGFlow, Infinity and the private account. Missing prerequisites use the shared notice; the App does not install or launch a container runtime. Successful installation opens model setup when no models are saved. Expand RAGFlow and select Set up models or Edit to enter one Base URL, an optional API key, an extraction model ID and an embedding model ID. Both models use that shared OpenAI-compatible connection. Save verifies the choices and initializes dedicated Memory without sending chat content. New Memory connections enable automatic learning from completed Assistant dialogue. The Automatic learning switch can stop future learning; existing saved choices remain unchanged on update.
 
 Use GPUI tests in `shell.rs`, `agent_workspace.rs`, `agent_activity.rs`, `agent_markdown.rs`, `agent_archive.rs` and `settings_surface.rs`. Real macOS acceptance must also check focus, typing, scrolling, panel transitions, and transparency in the signed app. A white or missing automation screenshot alone is not evidence that the user sees a blank window.
 
@@ -288,7 +290,7 @@ The composer preserves current editable input. Submitted messages retain their o
 
 The RAGFlow status light distinguishes service installation from Assistant Memory configuration even when collapsed. The saved view aligns the Base URL, model IDs and API key status without showing the key. Edit remains available after Save. The four-field editor places the shared connection above the two model IDs. Empty required values disable Save; explicit submission validates complete input. Editing clears the old editor error. A blank key retains the saved extraction connection key only while its Base URL is unchanged. Collapse retains unsaved input. Cancel discards the draft and error and returns to the saved summary while the component stays expanded. API compatibility, model roles and native-memory consequences remain visible.
 
-Reset Memory first shows an inline confirmation bound to the exact reviewed Memory. Confirming removes only that managed Memory through the native RAGFlow API and initializes an empty replacement with the saved model choices. It retains chat history, model settings, credentials, knowledge selections and service volumes, and turns chat import off after success. A failed replacement leaves no deleted Memory identity in the private receipt and directs the user to Edit and Save. This is a logical Memory reset, not in-place reindexing or a physical storage-erasure guarantee. The App does not replay old conversations or modify another Memory or an external system.
+Reset Memory first shows an inline confirmation bound to the exact reviewed Memory. Confirming removes only that managed Memory through the native RAGFlow API and initializes an empty replacement with the saved model choices. It retains chat history, model settings, credentials, knowledge selections and service volumes, and preserves the current automatic-learning choice. The replacement starts a new export boundary, so earlier conversations are not replayed. A failed replacement leaves no deleted Memory identity in the private receipt and directs the user to Edit and Save. This is a logical Memory reset, not in-place reindexing or a physical storage-erasure guarantee. The App does not replay old conversations or modify another Memory or an external system.
 
 RAGFlow setup uses the current local service profile and selected Assistant. Profile, runtime or role changes clear its temporary presentation state while preserving the ordinary chat draft. The component's generated credentials and raw scope IDs are not UI fields. Setup progress and failures use shared inline feedback beside the component. See [Runtime architecture](runtime-architecture.md) for process, storage and native-memory ownership.
 

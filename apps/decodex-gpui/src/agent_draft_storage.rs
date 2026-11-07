@@ -130,6 +130,39 @@ impl Default for Storage {
 }
 
 impl AgentSurface {
+	pub(in super::super) fn forget_deleted_conversation(
+		&mut self,
+		work: &str,
+		cx: &mut Context<Self>,
+	) {
+		self.remember_draft_document(cx);
+		for profile in self.draft_profiles.storage.document.profiles.values_mut() {
+			profile.forget_conversation(work);
+		}
+		if let Some(profile) = self
+			.draft_profiles
+			.active
+			.as_ref()
+			.and_then(|profile| {
+				self.draft_profiles.storage.document.profiles.get(&profile.draft_scope_key())
+			})
+			.cloned()
+		{
+			self.apply_drafts(Drafts::from_document(profile, self.command_epoch), cx);
+		}
+		self.history = self.history.take().filter(|(owner, _)| owner != work);
+		self.timeline.older_history.remove(work);
+		self.timeline.native_cache.retain(|(owner, _), _| owner != work);
+		if self.timeline.native.binding.as_ref().is_some_and(|binding| binding.work == work) {
+			self.timeline.native = Default::default();
+		}
+		self.timeline.scroll.remove(work);
+		// Profile switches saved these editors to the document. Restore from that
+		// cleaned owner instead of retaining another copy of deleted content.
+		self.draft_profiles.saved.clear();
+		self.save_draft_document(cx);
+	}
+
 	pub(in super::super) fn retire_archived_messages(
 		&mut self,
 		snapshot: &AgentSnapshotDto,

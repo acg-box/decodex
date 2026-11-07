@@ -1101,6 +1101,38 @@ mod tests {
 	}
 
 	#[gpui::test]
+	fn active_status_has_equal_reading_space_above_and_below(cx: &mut gpui::TestAppContext) {
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		visual.simulate_resize(gpui::size(gpui::px(1_000.), gpui::px(700.)));
+		surface.update(visual, |s, cx| {
+			long_response(s, cx);
+			let work = s
+				.snapshot
+				.as_mut()
+				.unwrap()
+				.work_items
+				.iter_mut()
+				.find(|w| Some(&w.id) == s.selected.as_ref())
+				.unwrap();
+			work.dispatch_state = decodex_protocol::AgentDispatchStateDto::Running;
+			work.active_turn_id = Some("turn".into());
+			s.timeline.native.entries.pop();
+		});
+		visual.update(crate::ui_frame::draw_frame);
+		thread::sleep(std::time::Duration::from_millis(260));
+		for _ in 0..4 {
+			visual.update(crate::ui_frame::draw_frame);
+		}
+		let answer = visual.debug_bounds("native-promotion-content").unwrap();
+		let status = visual.debug_bounds("pixel-work-status").unwrap();
+		let editor = visual.debug_bounds("floating-composer").unwrap();
+		let above = status.top() - answer.bottom();
+		let below = editor.top() - status.bottom() + gpui::px(crate::ui_theme::COMPOSER_TOP_GAP);
+		assert!((above - below).abs() <= gpui::px(1.), "uneven status gaps: {above:?} / {below:?}");
+		assert!((above - gpui::px(crate::ui_theme::MESSAGE_GAP)).abs() <= gpui::px(1.));
+	}
+
+	#[gpui::test]
 	fn locked_conversation_keeps_failed_message_in_history_and_preserves_the_editor(
 		cx: &mut gpui::TestAppContext,
 	) {

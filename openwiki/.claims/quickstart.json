@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:b38ccdcebef14d9f67b1f37720f3ee6c05db3c4932bde3a088616d954bd73a97",
+  "pageVersion": "sha256:c43be0a2852dda297c9ae645c565cf7cdc654cbed90ea00fd550ef07df1c4c17",
   "claims": [
     {
       "id": "claim_b34298a8647a4e0b8653926b7568c5d4",
@@ -8,7 +8,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_collaboration.rs",
-          "version": "repo-file-v1:sha256:c4a1ac4648b8cd2c7cc24dd798fc68c10b8c39cb7cd50b13db4b3be72a276bff"
+          "version": "repo-file-v1:sha256:9f4559cc266428c843c4cc58eb8a8b52a63ec70ec6420e3f3bce632b97fcf2b0"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_collaboration_tests.rs",
@@ -50,7 +50,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-protocol/src/desktop_drafts.rs",
-          "version": "repo-file-v1:sha256:51ae24f699647c5f378e77c65f7f31d77694640c74f087cd493ab969f362b005"
+          "version": "repo-file-v1:sha256:0a2a6359ddd916cb04dba1b965888f1531d0c22155a1f97fd9f281c6a507207e"
         },
         {
           "resource": "repo://crates/decodex-protocol/src/lib.rs",
@@ -126,7 +126,7 @@
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/instructions.md",
-          "version": "repo-file-v1:sha256:a0571c64007c1d556e1b8f38911b2af4c93de48e5db8b0b4483b533cb6ac80cf"
+          "version": "repo-file-v1:sha256:10e6d8b1b0994aca55de0a81fb6601d53ec3b8af4a1db14f4692b2e4a7ccb53b"
         },
         {
           "resource": "repo://database/schema.sql",
@@ -134,7 +134,7 @@
         },
         {
           "resource": "repo://database/src/agent.rs",
-          "version": "repo-file-v1:sha256:30cc4283fbade29ef1b2285803a5d573acc28040d5cb0dda84c7c38a139152a2"
+          "version": "repo-file-v1:sha256:0e06aded02d8ea112848c47bfea7658f01f4dbce335fc3b72510aee62e6f0129"
         }
       ]
     },
@@ -144,7 +144,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_surface.rs",
-          "version": "repo-file-v1:sha256:2d05c7930f9695e34b55a9db9f71d4031b66c8fccc34cb8f4a54054787b91df7"
+          "version": "repo-file-v1:sha256:1fc39901c3eb4c19bf1d291b950d3453fa5dd1a283e38e400cf78a04a29d964e"
         },
         {
           "resource": "repo://automations/upstream/retained-contracts.json#L4145-L4361",
@@ -158,7 +158,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_attached_branches.rs",
-          "version": "repo-file-v1:sha256:fd9c7dc64620953c2b968994a79ac8159ece13ae50cd0f9ab1f99fdbdfd9288c"
+          "version": "repo-file-v1:sha256:0a7ed039c816d1b4ad9bade780bc41ddcafd54b1c6902af7cf279f83a993f53e"
         },
         {
           "resource": "repo://automations/upstream/retained-contracts.json#L4407-L5334",
@@ -176,7 +176,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_permissions.rs",
-          "version": "repo-file-v1:sha256:9be815a8a8a738c81edaeff7a7002ef809624ce248ef99c177bb035b7d993769"
+          "version": "repo-file-v1:sha256:c82c88c0329fdfd6b67ec456de5925f27f125c5dfa929bd61d560ef276ae1b4e"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/session_settings.rs",
@@ -184,7 +184,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:63ebe0cf2853eb06f54e80cc69499467df56be01c34d7a7b0b77b70c638fbb7f"
+          "version": "repo-file-v1:sha256:4cdbd7e914d88b0a42528c33396b7329d8cd21de69679604628b8b1d41aeb935"
         }
       ]
     },
@@ -194,7 +194,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_context_settings.rs",
-          "version": "repo-file-v1:sha256:d66056d801e843822d9444c9c3432dc2526c524f3dced6befd3d32941c6a538b"
+          "version": "repo-file-v1:sha256:9bcac9515779c29a6bce7e255fe21bd9af66b85578dd6be98d0b3eedab123cdf"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_native.rs",
@@ -202,7 +202,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_surface.rs",
-          "version": "repo-file-v1:sha256:a6993a42f4fa83ebb7a3a60540df72192e9ae0b3ac1478bc7ac7314d05f72c27"
+          "version": "repo-file-v1:sha256:c95911cf8db5baa1a2a3c56a524d8f63ebd9cf3748fabd3e8d72f0a2e21282af"
         }
       ]
     },
@@ -212,7 +212,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_surface.rs",
-          "version": "repo-file-v1:sha256:2d05c7930f9695e34b55a9db9f71d4031b66c8fccc34cb8f4a54054787b91df7"
+          "version": "repo-file-v1:sha256:1fc39901c3eb4c19bf1d291b950d3453fa5dd1a283e38e400cf78a04a29d964e"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_timeline_find.rs",
@@ -334,23 +334,35 @@
     },
     {
       "id": "claim_2f51bf620dff4bb0afcf4b66110fb5a4",
-      "statement": "Assistant is built in, initializes idle from the sidebar without a message, and accepts continuing delegated work without a built-in patrol. Optional RAGFlow setup requires a running Docker-compatible engine and Compose and installs the managed service and Infinity without a container runtime or model weights. Four model fields share one Base URL and optional API key with extraction and embedding IDs. Save verifies both models and initializes Memory without chat content; saved Edit remains available. Chat import is a separate opt-in. Confirmed Reset Memory creates an empty managed Memory and turns import off while retaining history and model settings. Update and Uninstall remain component actions.",
+      "statement": "Assistant is built in, initializes idle from the sidebar without a message, and accepts continuing delegated work without a built-in patrol. Optional RAGFlow setup requires a running Docker-compatible engine and Compose and installs the managed service and Infinity without a container runtime or model weights. Four model fields share one Base URL and optional API key with extraction and embedding IDs. Save verifies both models and initializes Memory without chat content; saved Edit remains available. New Memory connections enable automatic learning from completed Assistant conversations; existing connections retain the saved choice. The selected Assistant receives bounded scoped automatic recall before ordinary input. Project Agents receive neither personal-memory tools nor this context. Confirmed Reset Memory creates an empty managed Memory and preserves the learning choice, history and model settings while excluding earlier exchanges from export. Update and Uninstall remain component actions.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
-          "version": "repo-file-v1:sha256:af3372dfe92b54bdc19d109e1188e3aeeb74a1d70b2b74a213332c512b513d06"
+          "version": "repo-file-v1:sha256:a500aeabff659dfde69b68b1b68e9e8a1b2397e2da1b482d69d657b23e2553d5"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:63ebe0cf2853eb06f54e80cc69499467df56be01c34d7a7b0b77b70c638fbb7f"
+          "version": "repo-file-v1:sha256:4cdbd7e914d88b0a42528c33396b7329d8cd21de69679604628b8b1d41aeb935"
         },
         {
           "resource": "repo://crates/decodex-components/src/ragflow_service.rs",
           "version": "repo-file-v1:sha256:73b08678945947cc367153b9257d8c8e8a3e32d51e6fc67fdb5b9073831ff8d3"
         },
         {
-          "resource": "repo://crates/decodex-runtime/src/agent/instructions.md",
-          "version": "repo-file-v1:sha256:a0571c64007c1d556e1b8f38911b2af4c93de48e5db8b0b4483b533cb6ac80cf"
+          "resource": "repo://crates/decodex-runtime/src/agent.rs",
+          "version": "repo-file-v1:sha256:d37d9b7a977702387b59368d454584564ca7c122c78804d310fa640940d87ec6"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/assistant.rs",
+          "version": "repo-file-v1:sha256:bf44f3d59cdb33602d9436cacf3b0d0200d83cf7153d46ea4782c35153235b59"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/assistant_instructions.md",
+          "version": "repo-file-v1:sha256:992b00e1b03a1281ab9f8c40b9fc171ab3a2d2d7686fec0618e10e47dc43536c"
+        },
+        {
+          "resource": "repo://database/src/assistant.rs",
+          "version": "repo-file-v1:sha256:e89c7b4b71ecea701febe79bb627152ec7043004b80a4de1ed021fc215c8c9c0"
         }
       ]
     },
@@ -360,10 +372,10 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:63ebe0cf2853eb06f54e80cc69499467df56be01c34d7a7b0b77b70c638fbb7f"
+          "version": "repo-file-v1:sha256:4cdbd7e914d88b0a42528c33396b7329d8cd21de69679604628b8b1d41aeb935"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/settings_surface.rs#L494-L554",
+          "resource": "repo://apps/decodex-gpui/src/settings_surface.rs#L500-L560",
           "version": "repo-lines-v1:sha256:1d64f0e0728945f50a9ecb06de95815037fc53bd576e959d831906009518dde2:eyJzZWxlY3RlZExpbmVDb3VudCI6NjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUwMjQ4NWFkZWFiYTkyMmFkMWMzYmEzZGU0MWY1YmE2NmZiMTZhMjZiN2ViZTVhNjhkOGJiNDVlZmU0NDU4OTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU1MTRkMjA4Njg4NGY4MTdiMmFjYTFlYTkwOTE3Yjg4YTkxMzhmNzlkMmE5MmYwYzIxNTlkNDE5ZWJhOGZlZWYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjliMTE0Y2MyYjhkODYxMjk3ZmY2MGUwN2Q0NjQ2NjcwZmVjMGQ1ZjU5YWY4NDFjMTM3MmQ1NDFiOWVhYzk2YzYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjcwZTgzMGUzNTQ5NjMxODViMzg3MGRhY2Q0NWExMzhkZWJhOGZlYzMyMmZjODBlZjFhOTZjMWNjNWVkZTYxMjcifQ"
         },
         {
@@ -385,10 +397,24 @@
           "version": "repo-lines-v1:sha256:3de62feb83080daf08844daa9e6aa2da28f9e38843e410aabf33949266ac85c3:eyJzZWxlY3RlZExpbmVDb3VudCI6MTM5LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI1MTk0ODRlZWRmMzY0ZmI4YzEyZjFlYjk4ZmJmNmE5YjRmNjUwZjQyNzg3NGE4ZDczNTkwMTBhYWRlNDMxYmM4IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI2NTBlMjNkNGJkYWEyNTJiZjc3OGE1MjNhMmNmOTJlZjliMDgxOTI5YmI1MzQyYzlhMTVlN2YwNWViYTc2ODI1IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJmMjk2NDA3OWMzYzVjODE1MjBlZjMzYTJiOWQyZTE1YTFiODRkNzI4MGRiODU5MGRjZDY1NzQ3ZTNlMDEyYTQwIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI5MWQ2MzMxNWEzN2UwNDE1ZWMyNTU4Y2Y1NDNkOWNhYzI4ZTA2MTdhMWM0NTU2YmJiNjlhODczYmJhMmE1OGUyIn0"
         }
       ]
+    },
+    {
+      "id": "claim_03a979af4bec44d28e590804785c8f62",
+      "statement": "The quickstart directs changes to activity-island geometry, motion, colors and reading spacing to the shared interface design-language page and its implementation owners.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/ui_live_activity.rs",
+          "version": "repo-file-v1:sha256:9a5381bc51e707ae26c09f3e941fb9034eca946b75101b7170b38941b92c2438"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/ui_theme.rs",
+          "version": "repo-file-v1:sha256:a5f1df9125386b738319a7b4559a829600da5756686f000aea4469d021e54558"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.9.0",
-    "at": "2026-11-06T10:49:46.541Z"
+    "at": "2026-11-06T18:53:07.733Z"
   }
 }

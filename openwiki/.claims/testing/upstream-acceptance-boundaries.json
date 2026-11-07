@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:b26c8c3a8f9f1dd4c8fb919eafecbfe70e5effe71b116f6651c8ff258ef7c677",
+  "pageVersion": "sha256:9b32edbca4b32b049a8104e54abd14685d39894ed9ddc2343b671556fac37b97",
   "claims": [
     {
       "id": "claim_2dd4ad01dd984b80a22d9cb9c9bfd397",
@@ -80,7 +80,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/agent.rs",
-          "version": "repo-file-v1:sha256:0db1daf807cd75cf915bf9be58389ac6ab98adcbd3bb2f89910ac32f38ff14e3"
+          "version": "repo-file-v1:sha256:d37d9b7a977702387b59368d454584564ca7c122c78804d310fa640940d87ec6"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/result_messages.rs",
@@ -101,7 +101,7 @@
       "statement": "External context is sent as function_call_output through thread/inject_items; the lost-injection and lost-follow-up response test confirms that recovery retains an unknown outcome without replaying either request.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/agent.rs#L1542-L1557",
+          "resource": "repo://crates/decodex-runtime/src/agent.rs#L1554-L1569",
           "version": "repo-lines-v1:sha256:bc50eb129bc3ec0c12b2018556e2ce03d02e3860b29f914e175d959ada8bf996:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZkY2FkYmNhM2U5OWE2NjVlYzI1Yzk2ZTRhNzEwNTFkYjIzZjA4M2U5MDc1ZjJmNTljMDFlZTQwMTRiNjM2ZmEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRmNjIzYTM0ZTk2OWRmODg3NzNmYzc2MzVlMmMyODYyZGRiMzVjNTljODkxMDRkZTM1ZTEyYmIxNzc1YzZhZGYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY1NTA4YTBjYTIwNDQ5NzNjZDg1MDYyNDljZTFjMTlmZDlhMjdlMjM0YmEzYzA5MzIwYzFlMWNkYTkzN2I4NzMifQ"
         },
         {
@@ -144,7 +144,7 @@
     },
     {
       "id": "claim_cd7166a244d54d40aad171937a0946f2",
-      "statement": "Component tests separate official Release download, explicit retry, offline reuse and explicit reinstallation from fixed-commit development import, damaged-cache refusal and reinstallation, wrong-commit refusal and previous-selection preservation. Both use isolated stores without installing the app, and a development-package pass does not establish execution of the ignored official Release scenario.",
+      "statement": "Component fixtures separate official Release download, offline reuse, damaged-schema refusal and explicit reinstallation from fixed-commit development import, damaged-cache refusal, explicit verified recovery, wrong-commit refusal and previous-selection preservation. Both use isolated stores without installing the app; their execution records remain separate.",
       "evidence": [
         {
           "resource": "repo://crates/decodex-components/tests/development.rs",
@@ -226,7 +226,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/agent.rs",
-          "version": "repo-file-v1:sha256:0db1daf807cd75cf915bf9be58389ac6ab98adcbd3bb2f89910ac32f38ff14e3"
+          "version": "repo-file-v1:sha256:d37d9b7a977702387b59368d454584564ca7c122c78804d310fa640940d87ec6"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/tests/external_context.rs",
@@ -684,7 +684,7 @@
       "evidence": [
         {
           "resource": "repo://Cargo.lock",
-          "version": "repo-file-v1:sha256:2c333a11690cd466b2ae7c66c8c4fcf649d6b3ab28da8f41aafb04055846313b"
+          "version": "repo-file-v1:sha256:8c61e40a46330736a19cfd8bd5b4967825c56ce723aeeb43548f63f0ec27c2f5"
         },
         {
           "resource": "repo://crates/decodex-account-login/src/system_proxy.rs",
@@ -726,7 +726,7 @@
       "evidence": [
         {
           "resource": "repo://Cargo.lock",
-          "version": "repo-file-v1:sha256:2c333a11690cd466b2ae7c66c8c4fcf649d6b3ab28da8f41aafb04055846313b"
+          "version": "repo-file-v1:sha256:8c61e40a46330736a19cfd8bd5b4967825c56ce723aeeb43548f63f0ec27c2f5"
         },
         {
           "resource": "repo://crates/decodex-webrtc-build/src/archive.rs",
@@ -850,7 +850,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/agent.rs",
-          "version": "repo-file-v1:sha256:0db1daf807cd75cf915bf9be58389ac6ab98adcbd3bb2f89910ac32f38ff14e3"
+          "version": "repo-file-v1:sha256:d37d9b7a977702387b59368d454584564ca7c122c78804d310fa640940d87ec6"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/global_guardian.rs",
@@ -1044,11 +1044,11 @@
     },
     {
       "id": "claim_32a0abdd6b0b4d72b37fc46b02d82396",
-      "statement": "The development component regression damages every advertised standalone executor, rejects ordinary preparation of the damaged package, and explicitly reinstalls it through the verified local archive path used for the other helpers.",
+      "statement": "The development component fixture damages required helper files, checks that ordinary ensure rejects them, and restores them only through explicit reinstall from the verified local archive, while preserving other installed versions.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-components/tests/development.rs#L49-L75",
-          "version": "repo-lines-v1:sha256:0fba7e56f014378a1291c420e922c2ab1241525500ef11390fa5d39c07e68d15:eyJzZWxlY3RlZExpbmVDb3VudCI6MjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkxNGQxZTQxMDhiMzA1OGRlYTIxZWZkZWY4YzA3NjZhMGQ2ZWQxNDk2ZWU5OGMwNTQxOGE4ZmI3NTUxNmM4NmEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQ1NTUzN2Q3NmU5ZDQ4ZjQwYjZhYWRmMjc4MTFmMTgxMGMyNjZkZWY0ZTQ0ZTQ5Njk3N2M4M2Q5MmJjMGY4YjciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijc5ZGQ2NGI1YTQ3ZGI2MDNjYTkxZmMzZTM5NWM5OTcyNzUxMDBlOTg2OTM2ZTRlZTJiYWM4OTE3Njk3YjZkMTYifQ"
+          "resource": "repo://crates/decodex-components/tests/development.rs#L15-L76",
+          "version": "repo-lines-v1:sha256:860ed0305f578bd69a0e5a441261bc3771c1b8bab8fdc40a3ea4764b8de99d3a:eyJzZWxlY3RlZExpbmVDb3VudCI6NjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI3MDdiOWRlMDlkNDA3NjljZTQxYTcxMzk3Mjc1ZGRjMDM5ZWNlYTZmMDBjMzZhMTg4NmYxNmE3NmIxNjc3NDYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVjMjI1MzlhODdhMWY0ZGFmOTBlNDVmMTU0ZGUxNTgxOWM2OTNjNTQ3MDQ0MDMzZmNiZDllMTIyODY3ODcxZTYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjBlMTJhMGFmYmExY2Y0ODFhMjE0MTdmYjUwOGM1NDczMmFmMGFhOGI2NzkxODRmZDUxNGE4YTlkNDE1NjRjZmQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUxM2QyZmVhYTllNDA1YjNkNTdiNDI5NTQxNTA0YTI0MTQ5ODk1NzQyODdkODI5ZTMwYjk4ODgwMzUxMjYzY2IifQ"
         }
       ]
     },
@@ -1065,8 +1065,8 @@
           "version": "repo-lines-v1:sha256:1e9f72f8706988bad5445c4b02f4df81075261fde38d0dbbb3f8ce2ea80102f1:eyJzZWxlY3RlZExpbmVDb3VudCI6NzYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIzNjFlZjE2ZjIzNjg0NmUyZTYyMTY4OWEyZjlkOTA2OGZlOGI3MGQxYjBjYTUwM2RhYzA4MWFiMjNhYzBmOGQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjIzNjFlYzdjMjVhYWExZmYyYWJmYTI5M2I4NmIyMzY2NjQ2OWE1ZjE0Y2YwOGJhOTJhMTExMGNiN2QxZDhiYjIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEifQ"
         },
         {
-          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_fork_tests.rs#L255-L393",
-          "version": "repo-lines-v1:sha256:3de62feb83080daf08844daa9e6aa2da28f9e38843e410aabf33949266ac85c3:eyJzZWxlY3RlZExpbmVDb3VudCI6MTM5LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI1MTk0ODRlZWRmMzY0ZmI4YzEyZjFlYjk4ZmJmNmE5YjRmNjUwZjQyNzg3NGE4ZDczNTkwMTBhYWRlNDMxYmM4IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI2NTBlMjNkNGJkYWEyNTJiZjc3OGE1MjNhMmNmOTJlZjliMDgxOTI5YmI1MzQyYzlhMTVlN2YwNWViYTc2ODI1IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJmMjk2NDA3OWMzYzVjODE1MjBlZjMzYTJiOWQyZTE1YTFiODRkNzI4MGRiODU5MGRjZDY1NzQ3ZTNlMDEyYTQwIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI5MWQ2MzMxNWEzN2UwNDE1ZWMyNTU4Y2Y1NDNkOWNhYzI4ZTA2MTdhMWM0NTU2YmJiNjlhODczYmJhMmE1OGUyIn0"
+          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_fork_tests.rs",
+          "version": "repo-file-v1:sha256:9310cfa7d6be816dc759c347872655499ed0943b2a5bf977a1ff3d6941d43c0a"
         }
       ]
     },
@@ -1178,23 +1178,19 @@
     },
     {
       "id": "claim_199088d6ec9e4c77bd627bd1a3844b01",
-      "statement": "Assistant fixtures cover idle initialization, first-message choices with draft preservation, durable teams and wakes, context/import receipts, desktop continuity and selected-native fresh contexts. RAGFlow HTTP fixtures cover default models, missing-model failure, lost replies, private origin-bound credentials, exact scopes and business errors. Managed-service and shared-UI fixtures cover unavailable container prerequisites without storage changes or service effects, API-only model configuration, independent model URLs and keys even for matching model IDs, both verifications before provider updates, indexed embedding restrictions and retained instance identity, credential-free public service health reads, availability status lights, custom endpoint paths and names, loopback translation, blank saved-key fields and per-model key retention, required-field submission gating, input-driven updates, explicit URL validation, source invalidation, private receipts, shared lifecycle presentation and project-scoped Uninstall without volume removal. These fixtures do not establish real Docker bootstrap, live Memory extraction, model quality or installed-App acceptance.",
+      "statement": "Assistant fixtures cover idle initialization, first-message choices, durable teams and wakes, context/import receipts, desktop continuity and selected-native fresh contexts. RAGFlow fixtures check private origin-bound credentials, exact scopes, business errors, model verification before provider updates, indexed embedding restrictions, container prerequisites, shared gateway editing, key retention and project-scoped Uninstall without volume removal. These fixtures do not establish real Docker bootstrap, live Memory extraction, model quality or installed-App acceptance.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_timeline.rs",
-          "version": "repo-file-v1:sha256:d5ed79f9a6793a86c2ebe7d688d6b294b44e3e324ad2c0a181ef8d28e27a4f03"
-        },
-        {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
-          "version": "repo-file-v1:sha256:af3372dfe92b54bdc19d109e1188e3aeeb74a1d70b2b74a213332c512b513d06"
+          "version": "repo-file-v1:sha256:a500aeabff659dfde69b68b1b68e9e8a1b2397e2da1b482d69d657b23e2553d5"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
-          "version": "repo-file-v1:sha256:d70ec68a253c9a83b92946d602e61c5094327772c119ae84254c1721183d6df4"
+          "version": "repo-file-v1:sha256:4cdbd7e914d88b0a42528c33396b7329d8cd21de69679604628b8b1d41aeb935"
         },
         {
           "resource": "repo://crates/decodex-components/src/ragflow.rs",
-          "version": "repo-file-v1:sha256:cdeb415f7327808194dad8b81832d740be560cdb991a54705c740dacaa67f050"
+          "version": "repo-file-v1:sha256:eeeb8cfce35fa85da809e0064b80d80a0f3a6ca4c189482e48e70801b22bb051"
         },
         {
           "resource": "repo://crates/decodex-components/src/ragflow_service.rs",
@@ -1202,15 +1198,15 @@
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_context_tests.rs",
-          "version": "repo-file-v1:sha256:c7c3deb6eed1c8579a4f7c554167c1df941b25b0d0146ad9329f4e2de91e8be2"
+          "version": "repo-file-v1:sha256:0b422dddaea73731767c086745f05541a7a12b7b2feaa468759019aa2195b67e"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/ragflow.rs",
-          "version": "repo-file-v1:sha256:10711955e1abe0c725d1ad155fd5befd5699604ec5756d5286b3129e5b0cb14f"
+          "version": "repo-file-v1:sha256:f1696fd9782abb6f7332ed7d29b22f9a39d7129fb7d4836721ac8d7fc259165a"
         },
         {
           "resource": "repo://database/src/assistant.rs",
-          "version": "repo-file-v1:sha256:95f6f780bcbd2c95cc35b1ac1f54b52dcdf7066c683181681839fa22c5fa1ae3"
+          "version": "repo-file-v1:sha256:e89c7b4b71ecea701febe79bb627152ec7043004b80a4de1ed021fc215c8c9c0"
         }
       ]
     },
@@ -1223,8 +1219,8 @@
           "version": "repo-file-v1:sha256:12b5136278343e3957944e3a42961ab6b2785e5fdc70d61e75d9af4831828797"
         },
         {
-          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_context_tests.rs#L289-L405",
-          "version": "repo-lines-v1:sha256:9aa058f75a5be70f9cc538d0712a84c82f6556f28f133beaa28669ebd47436e6:eyJzZWxlY3RlZExpbmVDb3VudCI6MTE3LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJlMDNjNzdhYmE4NjI5YTEzZDViYzY2NmMyNzVlZTVjODUyYWE3YmUwNzU2OGI0NjUzZjBhYTcxMDQ3ZjcyZjZjIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0MTJjYTM0NWNjZjc1YmY5YzA4MDZiY2U2OTViZThkZTgwOGI3OTk4NDI1MWE3YTU0ZDIwMmNmNjEwMWRkNDUxIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI5MmZmMWExMDliOGU1YTM1NDk0ZTM5NGVlNjBiMGJjZTUwODA5NmY5MzdmNWMwODJiZWQwZTBkNTU1NDJmNzY1IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
+          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_context_tests.rs",
+          "version": "repo-file-v1:sha256:0b422dddaea73731767c086745f05541a7a12b7b2feaa468759019aa2195b67e"
         }
       ]
     },
@@ -1241,10 +1237,38 @@
           "version": "repo-lines-v1:sha256:8cee9678be86f7de9fa3f4165f721c687cad0a9ee21b7709fd6507c7c805cb7b:eyJzZWxlY3RlZExpbmVDb3VudCI6MTU3LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIxYjI5YjhlY2E4MGYzOTJmMmZmMWU5YTA2MmZkYmJhNjdkNDI0NzgzMDNiYTQ1MWY3YmNhMDM4ZTMxNDFlOTE1IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJhMmM3OWUzMjJjZWRjNjdhZDY1MjRjMWRiMzQ2MzhlOTg4ZTA5YzRiZWJkYzJlNzRjZTkyNjQwYWU0MDZlMDU3IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MCwicHJlY2VkaW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
         }
       ]
+    },
+    {
+      "id": "claim_4474a10a5e0e4f29997a4c0156e0a140",
+      "statement": "Automatic-memory tests cover ordinary-Agent tool/instruction isolation, exact retrieval scope, bounded Unicode evidence and source identities, credential exclusion, unavailable untrusted recall without user-input changes, and exclusion of forget or explicit-remember turns from automatic learning.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/tests.rs#L844-L976",
+          "version": "repo-lines-v1:sha256:56dff8e7725b78d038bc9f7fa64244eda59f03b37ec3ff88d4cd58efd204653c:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMzLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI1MTk0ODRlZWRmMzY0ZmI4YzEyZjFlYjk4ZmJmNmE5YjRmNjUwZjQyNzg3NGE4ZDczNTkwMTBhYWRlNDMxYmM4IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIwMWJhNDcxOWM4MGI2ZmU5MTFiMDkxYTdjMDUxMjRiNjRlZWVjZTk2NGUwOWMwNThlZjhmOTgwNWRhY2E1NDZiIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI3ZmYzODViZTAwMjZlOWI3NGE1ODViNTAxMGNiMmIxZTgyZjZlODBkMjE3NDVkZWQwNzBjMWJkMzE4ZmUyMTM4IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI5OGQ2MTk0YTRkZGJlZWYyMDMwOGU4YWNiY2Y2ZDdmODY0ZTRhY2M2ZDU3NDczOWU1M2E5ZGFmYmE4OTliNThhIn0"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/ragflow.rs",
+          "version": "repo-file-v1:sha256:f1696fd9782abb6f7332ed7d29b22f9a39d7129fb7d4836721ac8d7fc259165a"
+        },
+        {
+          "resource": "repo://database/src/assistant.rs#L1033-L1088",
+          "version": "repo-lines-v1:sha256:915db5e2c57bc050434587266cf0cd30c9ece5e6393b59a8eae61d5fa1450076:eyJzZWxlY3RlZExpbmVDb3VudCI6NTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUwODU5YjAyYmQwOTY0ZDJiMTA1OTAyZjRmMzhiZmZhNzkyOGU1Y2FkMjJlNjYwZTViNDY3ZjY1ZTJkNzcyMmMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIxYTIyYmI4YmJlNjRhODc3YmJlMjY3OGZlZDU1OTJmMTI1ZTViMmU0OWZjMjg3YjNiNDAxZjE2NTk0N2YyMjYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIyNTZmNGFiNDk1NGQzNDFkOTI0YWI2NmVkZDQwMGRiYjNiYTM1ZGJhMzBhN2EwNTMxOWFhYzM5ODFkMWRlMmQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImJhZWVmNzJiMDFlNDAxY2I1NjAxNzU5NWRiMDJkZGNlNjRkYzE4NzBjZWZhMGYzZTdiZmU1MzA0NWM3ZWRhN2YifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_3c99e42229af49dcbf2991c5ef7a3666",
+      "statement": "The automatic_export_advances_past_reserved_turns_after_restart regression checks that unknown and acknowledged receipts exclude reserved exchanges, allow subsequent exchanges and leave no duplicate candidate across store reopen. It reproduces the serialized-operation-key versus nested-JSON-array mismatch.",
+      "evidence": [
+        {
+          "resource": "repo://database/src/assistant.rs",
+          "version": "repo-file-v1:sha256:e89c7b4b71ecea701febe79bb627152ec7043004b80a4de1ed021fc215c8c9c0"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.9.0",
-    "at": "2026-11-06T20:42:09.050Z"
+    "at": "2026-11-07T06:35:26.732Z"
   }
 }

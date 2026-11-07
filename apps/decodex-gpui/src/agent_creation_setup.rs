@@ -2,8 +2,6 @@
 use crate::shell::agent_surface::{AgentSurface, Context, ConversationReasoningEffort};
 use decodex_protocol::DesktopCreationSetup;
 
-pub(super) const DEFAULT_MODEL: &str = "gpt-6-astra";
-
 impl AgentSurface {
 	pub(super) fn creation_setup(&self, cx: &Context<Self>) -> Option<DesktopCreationSetup> {
 		if self.composer_manager.is_some() || self.root_id().is_some() {
@@ -74,7 +72,7 @@ fn empty_setup() -> DesktopCreationSetup {
 			..Default::default()
 		},
 		inherit_effort: false,
-		model: DEFAULT_MODEL.into(),
+		model: String::new(),
 		working_directory: String::new(),
 		account: String::new(),
 		reasoning_effort: ConversationReasoningEffort::High,

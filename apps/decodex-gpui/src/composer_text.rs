@@ -317,7 +317,11 @@ fn shape_with_style(
 			text,
 			style.font_size.to_pixels(window.rem_size()),
 			&runs,
-			if empty { None } else { Some(width.max(gpui::px(1.0))) },
+			if input.appearance == ComposerAppearance::Workbench || !empty {
+				Some(width.max(gpui::px(1.0)))
+			} else {
+				None
+			},
 			None,
 		)
 		.unwrap_or_default()

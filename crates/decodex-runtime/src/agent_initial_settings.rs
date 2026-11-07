@@ -11,6 +11,28 @@ use decodex_protocol::{
 	InitialModelCatalogResult, ModelCatalogPurpose,
 };
 
+pub(super) async fn restore_candidate(
+	store: &SqliteStore,
+) -> Option<(AgentWorkItem, Option<String>)> {
+	let deleted = store.deleted_agent_thread_ids().await.ok()?;
+	for root in store.list_agent_work_items().await.ok()?.into_iter().filter(|work| {
+		work.parent_goal_id.is_none()
+			&& !work.codex_thread_id.as_ref().is_some_and(|id| deleted.contains(id))
+	}) {
+		let saved = store.read_agent_root_settings(&root.id).await.ok()?;
+		if saved.is_some()
+			|| root.codex_thread_id.is_some()
+			|| root.dispatch_state != AgentDispatchState::Idle
+			|| store.list_agent_wake_events(root.id.clone(), 100).await.ok()?.iter().any(|event| {
+				matches!(event.event_kind.as_str(), "user_message" | "assistant_instruction")
+					&& event.delivered_turn_id.is_none()
+			}) {
+			return Some((root, saved));
+		}
+	}
+	None
+}
+
 impl AgentHost {
 	pub(super) async fn initial_agent_settings(
 		&self,
@@ -128,10 +150,29 @@ mod tests {
 	use decodex_database::{EnqueueAgentEvent, SqliteStore};
 
 	#[tokio::test]
-	async fn first_project_input_restores_without_an_assistant_or_native_replay() {
+	async fn first_project_input_restores_past_an_idle_assistant_without_native_replay() {
 		let temporary = tempfile::tempdir().unwrap();
 		let root = DecodexRoot::new(temporary.path().canonicalize().unwrap()).unwrap();
 		let store = SqliteStore::open(&root.paths()).unwrap();
+		store
+			.create_assistant(decodex_database::AgentWorkItem {
+				id: "assistant".into(),
+				parent_goal_id: None,
+				kind: decodex_database::AgentWorkKind::Goal,
+				title: "Assistant".into(),
+				instructions: "Help the user.".into(),
+				codex_thread_id: None,
+				dispatch_state: AgentDispatchState::Idle,
+				active_turn_id: None,
+				status: decodex_database::AgentWorkStatus::Wait,
+				next_check_at_micros: None,
+				created_at_micros: 1,
+				updated_at_micros: 1,
+			})
+			.await
+			.unwrap();
+		assert!(initial_settings::restore_candidate(&store).await.is_none());
+		assert!(store.list_agent_wake_events("assistant".into(), 100).await.unwrap().is_empty());
 
 		store
 			.register_project(
@@ -151,16 +192,18 @@ mod tests {
 				.await
 				.unwrap();
 		let selected = initial_settings::pending_creation_input(&store, &item).await.unwrap();
+		assert_eq!(initial_settings::restore_candidate(&store).await.unwrap().0.id, "sage");
 
 		assert_eq!(selected.model.as_ref().unwrap().as_str(), "selected-model");
 		assert_eq!(selected.reasoning_effort.as_ref().unwrap().as_str(), "high");
-		assert_eq!(store.list_agent_work_items().await.unwrap().len(), 1);
+		assert_eq!(store.list_agent_work_items().await.unwrap().len(), 2);
 
 		drop(store);
 
 		let store = SqliteStore::open(&root.paths()).unwrap();
 
 		assert_eq!(initial_settings::pending_creation_input(&store, &item).await, Some(selected));
+		assert_eq!(initial_settings::restore_candidate(&store).await.unwrap().0.id, "sage");
 
 		let mut admitted = item.clone();
 

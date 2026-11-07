@@ -74,8 +74,6 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_timeline_groups.rs
   - id: openwiki-source-d57edbe5de23ebee985fc88b
     resource: repo://apps/decodex-gpui/src/agent_timeline_inputs.rs
-  - id: openwiki-source-1849030b658783d8ea0855b0
-    resource: repo://apps/decodex-gpui/src/agent_timeline_receipts.rs
   - id: openwiki-source-73d67d21d29d49e7272436e0
     resource: repo://apps/decodex-gpui/src/agent_timeline_render.rs
   - id: openwiki-source-2da3727221b66d60f1a2e9ef
@@ -106,6 +104,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/ui_native_popover.rs
   - id: openwiki-source-1b1f8653954117c3fd5fc77c
     resource: repo://apps/decodex-gpui/src/ui_palette.rs
+  - id: openwiki-source-6d7ff71d731da7268890d765
+    resource: repo://apps/decodex-gpui/src/ui_performance.rs
   - id: openwiki-source-23959670579000a30234423d
     resource: repo://apps/decodex-gpui/src/ui_text_reveal.rs
   - id: openwiki-source-570564020f98df7a4d6d0b61
@@ -148,10 +148,10 @@ sources:
     resource: repo://database/src/agent_titles.rs
   - id: openwiki-source-6197a876b2effbe992b1e2ec
     resource: repo://database/src/agent.rs
-generated: { by: "codex", at: "2026-11-04T14:17:02.441Z" }
+generated: { by: "codex", at: "2026-11-07T01:55:19.327Z" }
 verified:
-  - by: openwiki/0.7.3
-    at: 2026-11-05T14:56:49.835Z
+  - by: openwiki/0.9.0
+    at: 2026-11-07T01:55:19.327Z
 ---
 
 
@@ -221,9 +221,15 @@ The same topic serves the sidebar, conversation browser and Side chat tab. Agent
 
 ## Conversation layout
 
+Use the shared [interface geometry and motion](design-language.md) when you add a floating activity or change conversation spacing. The source tokens and components are the implementation authority.
+
 The composer and ordinary transcript share an 880-point maximum width with 16-point side insets. Narrow windows use the available width. User messages remain narrower and right-aligned. The history rail and composer use the same animated inset so their content edges stay aligned when the rail opens or closes. Native child-agent conversations use the same width tokens.
 
 The composer sits over the bottom of the conversation. Its measured height supplies bottom padding to the scroll content, so the final rows can move above the composer. The editor grows to six lines, then scrolls its text internally. Its action row remains below the text. In the conversation that owns the call, Live replaces the text editor slot with a compact waveform. Other conversations retain their own text editors. A background call bar identifies the owner and provides Return, Mute and End controls.
+
+Ordinary messages use a 20-point reading gap. A completed process header and its answer form one reading group, with a 6-point gap. The working indicator has 20 points above its 24-point status row and 20 points between that row and the composer. The composer contributes 8 points of the lower gap. When the status row closes, the normal message-to-composer gap remains.
+
+Work and Debug activity islands share size tiers and a 240 ms transition. Their contents use a fixed native drawable at the window origin. A foreground mask sits beside the glass material instead of inside its resizing content holder. The material contour and foreground mask change together; the text is not resized with the contour. Values keep one identity and follow a defined position. Labels follow their corresponding values and fade in only when the full field fits without overlap. Transparent space outside the current contour does not capture mouse input.
 
 ## Voice history and pagination
 

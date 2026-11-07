@@ -19,7 +19,7 @@ use gpui::{
 };
 use tokio::{runtime::Builder, time};
 use ui_theme::{
-	BLUE, CONTROL_SIZE, HOVER_FILL, TEXT, TEXT_MUTED,
+	CONTROL_SIZE, HOVER_FILL, TEXT, TEXT_MUTED,
 	material::{Material, Surface},
 };
 
@@ -416,13 +416,17 @@ impl AgentSurface {
 	fn update_message_placeholder(&self, cx: &mut Context<Self>) {
 		let placeholder = if let Some(suggestion) = self.prompt_suggestion(cx) {
 			suggestion.to_owned()
-		} else if self
-			.visible_conversation_feedback()
-			.is_some_and(|feedback| matches!(feedback.tone, Tone::Error | Tone::Warning))
+		} else if self.native_agents.selected.is_none()
+			&& (self.is_new_conversation()
+				|| self.conversation_work().is_none_or(|work| work.codex_thread_id.is_none()))
+			&& !self.sending
+			&& !self
+				.visible_conversation_feedback()
+				.is_some_and(|feedback| matches!(feedback.tone, Tone::Error | Tone::Warning))
 		{
-			"Message".to_owned()
-		} else {
 			prompts::session_quote()
+		} else {
+			"Message".to_owned()
 		};
 		let input = if self.native_agents.selected.is_some() {
 			self.conversation_composer()
@@ -1199,6 +1203,7 @@ impl AgentSurface {
 	}
 
 	fn composer_model_content(&self, label: String, cx: &Context<Self>) -> AnyElement {
+		let available = label != "—";
 		gpui::div()
 			.flex()
 			.items_center()
@@ -1215,15 +1220,20 @@ impl AgentSurface {
 					d.child(
 						gpui::div()
 							.debug_selector(move || format!("model-speed-{}", tier.as_str()))
-							.text_color(crate::ui_theme::rgb(BLUE))
+							.text_color(crate::ui_theme::rgb(crate::ui_theme::ACCENT))
 							.child(workspace_symbols::icon(symbol)),
 					)
 				},
 			)
 			.child(gpui::div().max_w(gpui::px(180.)).text_ellipsis().child(label))
-			.when_some(self.composer_effort_value(cx), |row, effort| {
-				row.child(gpui::div().ml(gpui::px(4.)).child(controls::effort_indicator(&effort)))
-			})
+			.when_some(
+				available.then(|| self.composer_effort_value(cx)).flatten(),
+				|row, effort| {
+					row.child(
+						gpui::div().ml(gpui::px(4.)).child(controls::effort_indicator(&effort)),
+					)
+				},
+			)
 			.when_some(self.composer_speed(cx).filter(|speed| speed.is_fallback()), |row, speed| {
 				row.child(
 					gpui::div()
@@ -1391,8 +1401,10 @@ impl AgentSurface {
 					)
 				},
 			)
-			.child(ui_theme::menu_separator())
-			.child(ui_theme::menu_section("Reasoning", self.effort_scale(cx)))
+			.when(self.selected_model(cx).is_some(), |menu| {
+				menu.child(ui_theme::menu_separator())
+					.child(ui_theme::menu_section("Reasoning", self.effort_scale(cx)))
+			})
 			.into_any_element()
 	}
 
@@ -2371,13 +2383,13 @@ mod tests {
 			s.capabilities = None;
 			s.capability_task = Some(gpui::Task::ready(()));
 
-			assert_eq!(s.composer_model_label(cx), "Loading model…");
+			assert_eq!(s.composer_model_label(cx), "—");
 			assert_eq!(s.composer_model_value(cx).as_deref(), Some("other-model"));
 
 			s.capability_task = None;
 			s.capabilities = Some(decodex_protocol::AgentCapabilitiesResult::Unavailable);
 
-			assert_eq!(s.composer_model_label(cx), "other-model");
+			assert_eq!(s.composer_model_label(cx), "—");
 		});
 	}
 
