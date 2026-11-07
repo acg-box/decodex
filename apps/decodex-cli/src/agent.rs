@@ -347,10 +347,8 @@ fn prepare(command: AgentCommand) -> Result<(AgentActionDto, IdempotencyKey), &'
 				model: ConversationModel::new(model).map_err(|_| "invalid model")?,
 				effort: effort
 					.map(|effort| {
-						serde_json::from_value::<ConversationReasoningEffort>(serde_json::json!(
-							effort
-						))
-						.map_err(|_| "invalid reasoning effort")
+						ConversationReasoningEffort::new(effort)
+							.map_err(|_| "invalid reasoning effort")
 					})
 					.transpose()?,
 				cwd: ConversationWorkingDirectory::new(cwd)

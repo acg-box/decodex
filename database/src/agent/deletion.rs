@@ -28,108 +28,6 @@ fn deletion_plan(
 		.transpose()
 }
 
-#[cfg(test)]
-mod tests {
-	use super::*;
-	use decodex_core::assistant::{AssistantCommand, AssistantSettings, RagflowConnection};
-
-	#[tokio::test]
-	async fn deleting_assistant_chat_keeps_identity_and_memory_but_starts_empty() {
-		let dir = tempfile::tempdir().unwrap();
-		let store = SqliteStore::open_test(&dir.path().join("assistant.sqlite3")).unwrap();
-		store.with_connection(|c| {
-			c.execute_batch("INSERT INTO agent_work_items(id,kind,title,instructions,codex_thread_id,dispatch_state,status,created_at_micros,updated_at_micros) VALUES('assistant','goal','Old chat','Private chat','thread','idle','wait',1,1); INSERT INTO agents VALUES('assistant',1); INSERT INTO agent_managers VALUES('assistant');").map_err(error::sqlite_error)?;
-			Ok(())
-		}).unwrap();
-		let settings = AssistantSettings {
-			mandate: "Ongoing preferences".into(),
-			renew_after_turns: 24,
-			ragflow: Some(RagflowConnection {
-				url: "https://memory.example.com".into(),
-				credential_id: "a".repeat(64),
-				user_id: "personal-user".into(),
-				memory_id: Some("retained-memory".into()),
-				dataset_ids: vec![],
-				ingest_chats: true,
-			}),
-		};
-		store
-			.apply_assistant_command(
-				"assistant".into(),
-				"configure".into(),
-				AssistantCommand::Configure { settings: settings.clone() },
-				true,
-			)
-			.await
-			.unwrap();
-		store.request_agent_thread_deletion("assistant".into(), "thread".into()).await.unwrap();
-		store.confirm_agent_thread_deletion("thread".into()).await.unwrap();
-		let state = store.assistant_state().await.unwrap();
-		assert_eq!(state.agent_id.as_deref(), Some("assistant"));
-		assert_eq!(state.settings, settings);
-		let work = store.get_agent_work_item("assistant".into()).await.unwrap();
-		assert!(work.codex_thread_id.is_none() && work.active_turn_id.is_none());
-		assert!(store.list_agent_wake_events("assistant".into(), 100).await.unwrap().is_empty());
-	}
-
-	#[tokio::test]
-	async fn deletion_keeps_a_frozen_lineage_and_removes_all_conversation_text() {
-		let dir = tempfile::tempdir().unwrap();
-		let path = dir.path().join("delete.sqlite3");
-		let store = SqliteStore::open_test(&path).unwrap();
-		store.with_connection(|c| {
-			c.execute_batch("INSERT INTO agent_work_items(id,kind,title,instructions,codex_thread_id,dispatch_state,status,created_at_micros,updated_at_micros) VALUES('chat','goal','private-delete-marker','private-delete-marker','third','idle','open',1,1),('keep','goal','Keep conversation','Keep instructions','other','idle','open',1,1); INSERT INTO agents VALUES('chat',1),('keep',0); INSERT INTO agent_thread_revisions VALUES('chat','first','second',1),('chat','second','third',2); INSERT INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros) VALUES('source','chat','user_message','{\"text\":\"private-delete-marker\"}',1); INSERT INTO agent_live_output(work_id,turn_id,item_id,text) VALUES('chat','turn','item','private-delete-marker');").map_err(error::sqlite_error)?;
-			Ok(())
-		}).unwrap();
-		store.set_assistant("chat".into(), false).await.unwrap();
-		assert_eq!(
-			store.request_agent_thread_deletion("chat".into(), "third".into()).await.unwrap(),
-			["third", "second", "first"]
-		);
-		assert!(store.pending_agent_deletions().await.unwrap().contains("chat"));
-		assert!(store.agent_thread_deletion_pending("first".into()).await.unwrap());
-		store.confirm_agent_thread_deletion("third".into()).await.unwrap();
-		assert!(store.pending_agent_deletions().await.unwrap().is_empty());
-		assert_eq!(
-			store.deleted_agent_thread_ids().await.unwrap(),
-			["first", "second", "third"].map(String::from).into()
-		);
-		store
-			.with_connection(|c| {
-				for table in ["agent_inbox_events", "agent_live_output", "agent_thread_revisions"] {
-					assert_eq!(
-						c.query_row(&format!("SELECT count(*) FROM {table}"), [], |r| r
-							.get::<_, i64>(0))
-							.unwrap(),
-						0
-					);
-				}
-				assert_eq!(
-					c.query_row("SELECT title FROM agent_work_items WHERE id='keep'", [], |r| {
-						r.get::<_, String>(0)
-					})
-					.unwrap(),
-					"Keep conversation"
-				);
-				assert_eq!(
-					c.query_row("SELECT count(*) FROM agent_work_items WHERE id='chat'", [], |r| r
-						.get::<_, i64>(0))
-						.unwrap(),
-					0
-				);
-				assert!(!c.prepare("PRAGMA foreign_key_check").unwrap().exists([]).unwrap());
-				Ok(())
-			})
-			.unwrap();
-		assert!(
-			!std::fs::read(path)
-				.unwrap()
-				.windows(b"private-delete-marker".len())
-				.any(|window| window == b"private-delete-marker")
-		);
-	}
-}
-
 impl SqliteStore {
 	/// Freeze this conversation's current and previous native contexts before deletion.
 	pub async fn request_agent_thread_deletion(
@@ -258,5 +156,107 @@ impl SqliteStore {
 			c.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);").map_err(error::sqlite_error)?;
 			Ok(())
 		}).await
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use decodex_core::assistant::{AssistantCommand, AssistantSettings, RagflowConnection};
+
+	#[tokio::test]
+	async fn deleting_assistant_chat_keeps_identity_and_memory_but_starts_empty() {
+		let dir = tempfile::tempdir().unwrap();
+		let store = SqliteStore::open_test(&dir.path().join("assistant.sqlite3")).unwrap();
+		store.with_connection(|c| {
+			c.execute_batch("INSERT INTO agent_work_items(id,kind,title,instructions,codex_thread_id,dispatch_state,status,created_at_micros,updated_at_micros) VALUES('assistant','goal','Old chat','Private chat','thread','idle','wait',1,1); INSERT INTO agents VALUES('assistant',1); INSERT INTO agent_managers VALUES('assistant');").map_err(error::sqlite_error)?;
+			Ok(())
+		}).unwrap();
+		let settings = AssistantSettings {
+			mandate: "Ongoing preferences".into(),
+			renew_after_turns: 24,
+			ragflow: Some(RagflowConnection {
+				url: "https://memory.example.com".into(),
+				credential_id: "a".repeat(64),
+				user_id: "personal-user".into(),
+				memory_id: Some("retained-memory".into()),
+				dataset_ids: vec![],
+				ingest_chats: true,
+			}),
+		};
+		store
+			.apply_assistant_command(
+				"assistant".into(),
+				"configure".into(),
+				AssistantCommand::Configure { settings: settings.clone() },
+				true,
+			)
+			.await
+			.unwrap();
+		store.request_agent_thread_deletion("assistant".into(), "thread".into()).await.unwrap();
+		store.confirm_agent_thread_deletion("thread".into()).await.unwrap();
+		let state = store.assistant_state().await.unwrap();
+		assert_eq!(state.agent_id.as_deref(), Some("assistant"));
+		assert_eq!(state.settings, settings);
+		let work = store.get_agent_work_item("assistant".into()).await.unwrap();
+		assert!(work.codex_thread_id.is_none() && work.active_turn_id.is_none());
+		assert!(store.list_agent_wake_events("assistant".into(), 100).await.unwrap().is_empty());
+	}
+
+	#[tokio::test]
+	async fn deletion_keeps_a_frozen_lineage_and_removes_all_conversation_text() {
+		let dir = tempfile::tempdir().unwrap();
+		let path = dir.path().join("delete.sqlite3");
+		let store = SqliteStore::open_test(&path).unwrap();
+		store.with_connection(|c| {
+			c.execute_batch("INSERT INTO agent_work_items(id,kind,title,instructions,codex_thread_id,dispatch_state,status,created_at_micros,updated_at_micros) VALUES('chat','goal','private-delete-marker','private-delete-marker','third','idle','open',1,1),('keep','goal','Keep conversation','Keep instructions','other','idle','open',1,1); INSERT INTO agents VALUES('chat',1),('keep',0); INSERT INTO agent_thread_revisions VALUES('chat','first','second',1),('chat','second','third',2); INSERT INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros) VALUES('source','chat','user_message','{\"text\":\"private-delete-marker\"}',1); INSERT INTO agent_live_output(work_id,turn_id,item_id,text) VALUES('chat','turn','item','private-delete-marker');").map_err(error::sqlite_error)?;
+			Ok(())
+		}).unwrap();
+		store.set_assistant("chat".into(), false).await.unwrap();
+		assert_eq!(
+			store.request_agent_thread_deletion("chat".into(), "third".into()).await.unwrap(),
+			["third", "second", "first"]
+		);
+		assert!(store.pending_agent_deletions().await.unwrap().contains("chat"));
+		assert!(store.agent_thread_deletion_pending("first".into()).await.unwrap());
+		store.confirm_agent_thread_deletion("third".into()).await.unwrap();
+		assert!(store.pending_agent_deletions().await.unwrap().is_empty());
+		assert_eq!(
+			store.deleted_agent_thread_ids().await.unwrap(),
+			["first", "second", "third"].map(String::from).into()
+		);
+		store
+			.with_connection(|c| {
+				for table in ["agent_inbox_events", "agent_live_output", "agent_thread_revisions"] {
+					assert_eq!(
+						c.query_row(&format!("SELECT count(*) FROM {table}"), [], |r| r
+							.get::<_, i64>(0))
+							.unwrap(),
+						0
+					);
+				}
+				assert_eq!(
+					c.query_row("SELECT title FROM agent_work_items WHERE id='keep'", [], |r| {
+						r.get::<_, String>(0)
+					})
+					.unwrap(),
+					"Keep conversation"
+				);
+				assert_eq!(
+					c.query_row("SELECT count(*) FROM agent_work_items WHERE id='chat'", [], |r| r
+						.get::<_, i64>(0))
+						.unwrap(),
+					0
+				);
+				assert!(!c.prepare("PRAGMA foreign_key_check").unwrap().exists([]).unwrap());
+				Ok(())
+			})
+			.unwrap();
+		assert!(
+			!std::fs::read(path)
+				.unwrap()
+				.windows(b"private-delete-marker".len())
+				.any(|window| window == b"private-delete-marker")
+		);
 	}
 }

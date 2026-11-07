@@ -367,14 +367,12 @@ async fn installed_saved_provider_continuation_and_fork_survive_default_changes(
 	assert_eq!(counts[1].load(Ordering::Acquire), 0, "creating a new conversation must not infer");
 	drop(restarted);
 	let restored = NativeSession::start(&binary, home.path());
-	assert_eq!(
-		restored
-			.client
-			.thread_resume(serde_json::json!({"threadId":source,"excludeTurns":true}))
-			.await
-			.unwrap()["modelProvider"],
-		"original"
-	);
+	let final_resume = restored
+		.client
+		.thread_resume(serde_json::json!({"threadId":source,"excludeTurns":true}))
+		.await
+		.unwrap();
+	assert_eq!(final_resume["modelProvider"], "original");
 	assert_eq!(restored.client.thread_turns_since(&source, None).await.unwrap(), history);
 
 	drop(restored);
@@ -392,7 +390,7 @@ async fn wait_provider_turn(session: &mut NativeSession, thread: &str) {
 		}
 	})
 	.await
-	.unwrap();
+	.expect("provider turn must complete before the fixture deadline");
 }
 
 async fn qualify_native_fork(binary: &OsStr, history_mode: &str) {
