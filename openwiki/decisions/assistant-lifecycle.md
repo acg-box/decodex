@@ -13,6 +13,10 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_drafts.rs
   - id: openwiki-source-bc52712de094b4e96e7db7d5
     resource: repo://apps/decodex-gpui/src/agent_execution_intent.rs
+  - id: openwiki-source-3664c9b8790465805ef686fd
+    resource: repo://apps/decodex-gpui/src/agent_navigation_actions.rs
+  - id: openwiki-source-c2592b96974e70b72f93f72b
+    resource: repo://apps/decodex-gpui/src/agent_navigation_sidebar_tests.rs
   - id: openwiki-source-541c96314da57ad5afa1835e
     resource: repo://apps/decodex-gpui/src/agent_navigation_sidebar.rs
   - id: openwiki-source-691432bb61082c358b6f9c24
@@ -33,6 +37,8 @@ sources:
     resource: repo://crates/decodex-protocol/src/agent_timeline.rs
   - id: openwiki-source-eac747e105c1c8d9e7e3c811
     resource: repo://crates/decodex-runtime/examples/clear_development_data.rs
+  - id: openwiki-source-95a7168e447de14b4b758f16
+    resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_archive_tests.rs
   - id: openwiki-source-a490ea3fbcddb9c007caf196
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_context_tests.rs
   - id: openwiki-source-e5be8be8499e6ccee0cf7ad0
@@ -61,6 +67,8 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent/instructions.md
   - id: openwiki-source-1bebc823fa8b6426acb4d5e2
     resource: repo://crates/decodex-runtime/src/agent/native_settings.rs
+  - id: openwiki-source-efd01c181e05be3cb110ec94
+    resource: repo://crates/decodex-runtime/src/agent/tests/archive.rs
   - id: openwiki-source-a09c082db4ad1473c4d1e557
     resource: repo://crates/decodex-runtime/src/application.rs
   - id: openwiki-source-3edc2f094826ee56ddec6b73
@@ -79,10 +87,10 @@ sources:
     resource: repo://database/src/development_reset.rs
   - id: openwiki-source-28af4781ad8d9558410630da
     resource: repo://database/src/works.rs
-generated: { by: "codex", at: "2026-11-07T07:31:20.360Z" }
+generated: { by: "codex", at: "2026-11-07T09:37:03.382Z" }
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-07T07:31:20.360Z
+    at: 2026-11-07T09:37:03.382Z
 ---
 
 
@@ -124,7 +132,7 @@ Team membership does not grant private-chat access, approval authority or a shar
 
 ## Select and configure the Assistant
 
-Open **My Assistant** in the sidebar. It is always available and has no Enable control or optional component row. First use saves an idle personal Agent and its role in one transaction. It does not manufacture a first user message or submit model work. Existing-Agent selection remains available in Work. Give continuing instructions and team or duty requests in chat; defaults handle context renewal. RAGFlow is the optional component in Settings > Components.
+Expand **My Assistant** in the sidebar and use its **New Assistant topic** creation control. The personal Assistant is always available and has no Enable control or optional component row. First use saves an idle personal Agent and its role in one transaction. It does not manufacture a first user message or submit model work. Give continuing instructions and team or duty requests in chat; defaults handle context renewal. RAGFlow is the optional component in Settings > Components.
 
 First setup seeds the existing per-Agent next-message choices from the displayed model and effort when available, the new-conversation permission default and the shared speed preference. The first actual message carries those choices through the configured-input path. Existing Agent settings and saved drafts remain independent.
 
@@ -138,6 +146,8 @@ decodex agent assistant --agent-id personal --command-file /absolute/path/comman
 Assistant tools are `assistant_read`, `assistant_manage` and `assistant_memory`. New native contexts receive these declarations and Assistant-specific instructions only for the canonical Assistant and its explicitly recorded personal topics. Ordinary project Agents keep the common Work and coordination surfaces. Back-end checks reject calls by other Agents. Existing native contexts retain their original declarations; this update does not replace project conversations or discard history.
 
 ## Independent personal topics
+
+**New Assistant topic** first reopens an unstarted personal draft, preserving its input. Repeated clicks do not add empty topics. If no eligible draft exists, the control creates an idle topic through the existing action described below. A local topic record is not a native conversation. Unstarted topic rows are labelled **Draft**. The empty canonical Assistant identity has no conversation row until it has input or a native binding.
 
 **New conversation** creates a local idle topic through `CreateAssistantTopic`. Creation records membership with the topic in one database transaction. It sends no message and makes no model request. The first submitted input starts a fresh native conversation through normal admission. It does not fork another topic or copy its dialogue.
 
@@ -201,6 +211,8 @@ Retired-context rows are read-only. Native source IDs remain exact for detail, m
 ## Delete an Assistant conversation
 
 Archive preserves conversation history and cancels its unsent interactions. Delete removes the current native conversation and its recorded earlier contexts, then purges local conversation text and desktop drafts. Partial native deletion remains visible in Archive until a retry completes.
+
+Conversation row menus expose native archive and confirmed permanent deletion. Archive requires the exact current idle binding and verifies the native archived state before local retirement. Active-conversation deletion archives that source first, then uses the existing durable deletion plan. A retry with a recorded deletion plan resumes that plan instead of repeating native creation or model work. An unused local topic uses the existing discard operation. Clearing the unstarted canonical draft keeps its personal identity and configuration.
 
 The personal Assistant identity, saved configuration and learned RAGFlow Memory survive conversation deletion. Deleting the canonical conversation returns it to an empty idle conversation with no native binding. Deleting a separate topic removes its active membership. If independent Work still references that topic's owner identity, retain only the content-free canonical membership marked retired. It remains absent from active topic and public Agent lists; its old title, instructions and chat content are purged. Work references keep their original identity. An unused empty topic can be discarded completely.
 

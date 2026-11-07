@@ -5,7 +5,7 @@ description: Reusable layout, activity-island motion, reading spacing and theme 
 tags: [desktop, design, motion, layout]
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-07T07:31:20.360Z
+    at: 2026-11-07T09:37:03.382Z
 sources:
   - id: openwiki-source-8037e2358a2c4f9b2c722a11
     resource: repo://AGENTS.md
@@ -15,6 +15,10 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_composer.rs
   - id: openwiki-source-079a15445a0295f222af8069
     resource: repo://apps/decodex-gpui/src/agent_model_settings.rs
+  - id: openwiki-source-3664c9b8790465805ef686fd
+    resource: repo://apps/decodex-gpui/src/agent_navigation_actions.rs
+  - id: openwiki-source-c2592b96974e70b72f93f72b
+    resource: repo://apps/decodex-gpui/src/agent_navigation_sidebar_tests.rs
   - id: openwiki-source-541c96314da57ad5afa1835e
     resource: repo://apps/decodex-gpui/src/agent_navigation_sidebar.rs
   - id: openwiki-source-5da2f5dd568514f1f464d177
@@ -33,6 +37,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/frame_trace.rs
   - id: openwiki-source-fca3688e96d92c09b7ba015f
     resource: repo://apps/decodex-gpui/src/native_material_panel.rs
+  - id: openwiki-source-1291f5243fa6c9cb52149bda
+    resource: repo://apps/decodex-gpui/src/shell.rs
   - id: openwiki-source-ccd97a4d4ef8dfe9b724e7ce
     resource: repo://apps/decodex-gpui/src/ui_live_activity.rs
   - id: openwiki-source-8f7f43de2b98b69bb43506d7
@@ -47,7 +53,7 @@ sources:
     resource: repo://codex-runtime.lock.json
   - id: openwiki-source-a490ea3fbcddb9c007caf196
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_context_tests.rs
-generated: { by: "codex", at: "2026-11-07T07:31:20.360Z" }
+generated: { by: "codex", at: "2026-11-07T09:37:03.382Z" }
 ---
 
 # Interface geometry and motion
@@ -97,7 +103,7 @@ The start heading gives way to saved messages, a sending preview, or a retained 
 
 ## Navigation and attention
 
-Use the shared navigation tokens for personal topics, Work and secondary project chats.
+Use the shared navigation tokens for personal topics, Work and project Agents.
 
 | Property | Value |
 | --- | --- |
@@ -105,11 +111,14 @@ Use the shared navigation tokens for personal topics, Work and secondary project
 | Supporting text | 10.5 points. |
 | Row corner radius | 8 points. |
 | Separation between sections | 18 points. |
-| Section heading height | 24 points, without wrapping. |
+| Section heading height | 28 points, without wrapping. |
+| Conversation row and icon target | 28 points, with a stable icon position during rail expansion. |
 
-Keep section headings at a fixed height when the left rail changes width. A selected Work and its conversation must not both appear selected in the rail. Conversation headers show the actual personal topic name.
+Keep section headings at a fixed height when the left rail changes width. Each group has its own collapse control; the Assistant and Project Agents groups have separately labelled creation controls. Search stays in the sidebar and reveals matching rows in collapsed groups. A selected Work and its conversation must not both appear selected in the rail. Conversation headers show the actual personal topic name.
 
-Use restrained warm emphasis for requests that need the user. Derive this state from a pending native request, an unanswered native question, or an explicit user decision. Do not classify attention from a displayed label. Returned agent work and ordinary collaboration remain distinct from requests for a user decision. The collapsed Collaboration control retains the pending count.
+Use restrained warm emphasis for requests that need the user. Derive this state from a pending native request, an unanswered native question, or an explicit user decision. Do not classify attention from a displayed label. Returned agent work and ordinary collaboration remain distinct from requests for a user decision. Window controls use fixed-size icons, with names in tooltips and accessibility labels. Collaboration retains a small pending-count badge when its panel is closed; it adds no visible toolbar label.
+
+Conversation rows reveal an actions button on hover or keyboard focus. Each row owns an exact conversation menu identity and uses the shared popover presentation. Archive, delete and discard actions stay in that menu. Permanent deletion requires an explicit confirmation and states that learned Assistant Memory remains.
 
 ## Recovery feedback
 

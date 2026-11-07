@@ -3902,7 +3902,8 @@ mod tests {
 			s.close_page("verify", cx);
 
 			assert_eq!(s.selected.as_deref(), Some("agent"));
-			assert!(s.workspace.closing_pages.contains("verify"));
+			assert!(!s.workspace.closing_pages.contains("verify"));
+			assert!(s.workspace.pages.is_empty());
 			assert_eq!(s.workspace.graph_pan, (15.0, 25.0));
 			assert_eq!(s.workspace.graph_zoom, 1.2);
 			assert_eq!(s.workspace.graph_scope.as_deref(), Some("release"));
