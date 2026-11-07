@@ -8,8 +8,12 @@ pub(crate) fn owner(c: &Connection, conversation: &str) -> Result<Option<String>
 	c.query_row("SELECT a.id FROM agents a WHERE a.assistant=1 AND (a.id=?1 OR EXISTS(SELECT 1 FROM agent_inbox_events e JOIN agents t ON t.id=e.work_item_id WHERE e.work_item_id=?1 AND e.event_kind='assistant_internal_topic' AND json_extract(e.payload,'$.assistantId')=a.id))",[conversation],|r|r.get(0)).optional().map_err(|e|error::sqlite_error(e).into())
 }
 
-pub(super) fn ids(c: &Connection, assistant: &str) -> Result<Vec<String>, StoreError> {
-	c.prepare("SELECT e.work_item_id FROM agent_inbox_events e JOIN agents a ON a.id=e.work_item_id WHERE e.event_kind='assistant_internal_topic' AND json_extract(e.payload,'$.assistantId')=?1 ORDER BY e.id DESC").map_err(error::sqlite_error)?.query_map([assistant],|r|r.get(0)).map_err(error::sqlite_error)?.collect::<Result<Vec<_>,_>>().map_err(|e|error::sqlite_error(e).into())
+pub(super) fn ids(
+	c: &Connection,
+	assistant: &str,
+	retired: Option<bool>,
+) -> Result<Vec<String>, StoreError> {
+	c.prepare("SELECT e.work_item_id FROM agent_inbox_events e JOIN agents a ON a.id=e.work_item_id WHERE e.event_kind='assistant_internal_topic' AND json_extract(e.payload,'$.assistantId')=?1 AND (?2 IS NULL OR coalesce(json_extract(e.payload,'$.retired'),0)=?2) ORDER BY e.id DESC").map_err(error::sqlite_error)?.query_map(rusqlite::params![assistant,retired],|r|r.get(0)).map_err(error::sqlite_error)?.collect::<Result<Vec<_>,_>>().map_err(|e|error::sqlite_error(e).into())
 }
 
 pub(super) fn refresh(
@@ -17,7 +21,7 @@ pub(super) fn refresh(
 	assistant: &str,
 	receipt: &str,
 ) -> Result<(), StoreError> {
-	for topic in std::iter::once(assistant.to_owned()).chain(ids(tx, assistant)?) {
+	for topic in std::iter::once(assistant.to_owned()).chain(ids(tx, assistant, None)?) {
 		super::record(
 			tx,
 			&topic,
@@ -54,6 +58,20 @@ pub(crate) fn register(
 		)?;
 	}
 	Ok(())
+}
+
+pub(crate) fn retain_deleted_identity(
+	tx: &Transaction<'_>,
+	conversation: &str,
+	assistant: &str,
+) -> Result<(), StoreError> {
+	super::record(
+		tx,
+		conversation,
+		&json!(["assistant_topic_retained_owner", conversation]).to_string(),
+		"assistant_internal_topic",
+		json!({"assistantId":assistant,"retired":true}),
+	)
 }
 
 impl SqliteStore {
@@ -132,6 +150,7 @@ mod tests {
 		);
 		assert!(store.get_agent_work_item("invalid".into()).await.is_err());
 		let state = store.assistant_state().await.unwrap();
+		assert!(store.set_assistant("topic-a".into(), true).await.is_err());
 		assert_eq!(state.agent_id.as_deref(), Some("personal"));
 		assert_eq!(state.topic_ids.len(), 2);
 		assert_eq!(store.agents().await.unwrap().iter().filter(|agent| agent.assistant).count(), 1);
@@ -186,5 +205,89 @@ mod tests {
 		store.set_assistant("personal".into(), false).await.unwrap();
 		assert!(store.assistant_settings("topic-a".into()).await.unwrap().is_none());
 		assert!(store.assistant_owner("topic-b".into()).await.unwrap().is_none());
+	}
+
+	#[tokio::test]
+	async fn deleting_a_topic_with_work_references_keeps_only_its_personal_identity() {
+		use decodex_core::work::{Work, WorkCommand, WorkRequirements, WorkState};
+		let dir = tempfile::tempdir().unwrap();
+		let store = SqliteStore::open_test(&dir.path().join("delete.sqlite3")).unwrap();
+		store.create_assistant(conversation("personal")).await.unwrap();
+		let mut topic = conversation("topic");
+		topic.title = "private-topic-title".into();
+		topic.instructions = "private-topic-content".into();
+		store.create_assistant_topic(topic, "personal".into()).await.unwrap();
+		store.begin_agent_thread_creation("topic".into()).await.unwrap();
+		store
+			.acknowledge_agent_thread_creation("topic".into(), "native-topic".into())
+			.await
+			.unwrap();
+		let work = Work {
+			id: "outcome".into(),
+			project_id: None,
+			owner_agent_id: "topic".into(),
+			title: "Independent outcome".into(),
+			requirements: WorkRequirements {
+				id: "req".into(),
+				goal: "Keep the independent Work".into(),
+				criteria: "Verify its result".into(),
+				source: "explicit-user-action".into(),
+			},
+			state: WorkState::Open,
+			reason: None,
+			resume_condition: None,
+			user_hold: false,
+			assessment: None,
+		};
+		store
+			.apply_work_command(
+				"topic".into(),
+				"create-work".into(),
+				WorkCommand::Create { work },
+				true,
+			)
+			.await
+			.unwrap();
+		store.request_agent_thread_deletion("topic".into(), "native-topic".into()).await.unwrap();
+		store.confirm_agent_thread_deletion("native-topic".into()).await.unwrap();
+		assert!(store.assistant_state().await.unwrap().topic_ids.is_empty());
+		assert_eq!(store.assistant_state().await.unwrap().retired_topic_ids, vec!["topic"]);
+		assert_eq!(
+			store.assistant_owner("topic".into()).await.unwrap().as_deref(),
+			Some("personal")
+		);
+		assert!(
+			store.agents().await.unwrap().iter().all(|agent| agent.id != "topic"),
+			"a deleted personal topic cannot become a project Agent"
+		);
+		assert_eq!(
+			store
+				.agent_work_portfolio("topic".into(), Some("outcome".into()))
+				.await
+				.unwrap()
+				.works
+				.len(),
+			1
+		);
+		let item = store.get_agent_work_item("topic".into()).await.unwrap();
+		assert_eq!(item.title, "Deleted conversation");
+		assert_eq!(item.instructions, "Deleted conversation");
+		store
+			.run(|c| {
+				let payload: String = c
+					.query_row(
+						"SELECT group_concat(payload) FROM agent_inbox_events WHERE work_item_id='topic'",
+						[],
+						|r| r.get(0),
+					)
+					.unwrap();
+				assert_eq!(
+					serde_json::from_str::<serde_json::Value>(&payload).unwrap(),
+					json!({"assistantId":"personal","retired":true})
+				);
+				Ok(())
+			})
+			.await
+			.unwrap();
 	}
 }

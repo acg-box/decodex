@@ -4,7 +4,10 @@ use decodex_core::assistant::{AssistantCommand, AssistantSettings, AssistantStat
 use rusqlite::{Connection, OptionalExtension as _, Transaction, TransactionBehavior};
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
-pub(crate) use topics::{owner as topic_owner, register as register_topic};
+pub(crate) use topics::{
+	owner as topic_owner, register as register_topic,
+	retain_deleted_identity as retain_topic_identity,
+};
 
 use crate::{DatabaseError, EnqueueAgentEvent, SqliteStore, StoreError, agent, error};
 
@@ -120,7 +123,7 @@ fn configure(
 		}
 	}
 	let before = settings(tx, owner)?;
-	for topic in std::iter::once(owner.to_owned()).chain(topics::ids(tx, owner)?) {
+	for topic in std::iter::once(owner.to_owned()).chain(topics::ids(tx, owner, None)?) {
 		if before.ragflow.as_ref().map(|r| (&r.url, &r.memory_id, &r.user_id))
 			!= s.ragflow.as_ref().map(|r| (&r.url, &r.memory_id, &r.user_id))
 		{
@@ -172,7 +175,7 @@ impl SqliteStore {
 			let previous=c.prepare("SELECT old_thread_id FROM agent_thread_revisions WHERE work_id=?1 ORDER BY created_at_micros DESC,rowid DESC").map_err(error::sqlite_error)?.query_map([&owner],|r|r.get(0)).map_err(error::sqlite_error)?.collect::<Result<_,_>>().map_err(error::sqlite_error)?;
 			let pending=c.query_row("SELECT EXISTS(SELECT 1 FROM agent_inbox_events e JOIN agent_work_items w ON w.id=e.work_item_id WHERE w.id=?1 AND e.source_event_id=json_array('assistant_internal_context',w.id,w.codex_thread_id))",[&owner],|r|r.get(0)).map_err(error::sqlite_error)?;
 			let memory_status=current(c,&owner,"assistant_internal_memory_health","health")?.and_then(|v|v["value"].as_str().map(str::to_owned));
-			Ok(AssistantState {topic_ids:topics::ids(c,&owner)?,settings:settings(c,&owner)?,teams:records(c,&owner,"assistant_internal_team")?,wakes:records(c,&owner,"assistant_internal_wake")?,previous_thread_ids:previous,context_pending:pending,memory_status,agent_id:Some(owner)})
+			Ok(AssistantState {topic_ids:topics::ids(c,&owner,Some(false))?,retired_topic_ids:topics::ids(c,&owner,Some(true))?,settings:settings(c,&owner)?,teams:records(c,&owner,"assistant_internal_team")?,wakes:records(c,&owner,"assistant_internal_wake")?,previous_thread_ids:previous,context_pending:pending,memory_status,agent_id:Some(owner)})
 		}).await
 	}
 
@@ -251,7 +254,7 @@ impl SqliteStore {
 						if !seen.insert(&m.agent_id)
 							|| !tx
 								.query_row(
-									"SELECT EXISTS(SELECT 1 FROM agents WHERE id=?1)",
+									"SELECT EXISTS(SELECT 1 FROM agents a WHERE a.id=?1 AND NOT EXISTS(SELECT 1 FROM agent_inbox_events t WHERE t.work_item_id=a.id AND t.event_kind='assistant_internal_topic'))",
 									[&m.agent_id],
 									|r| r.get::<_, bool>(0),
 								)

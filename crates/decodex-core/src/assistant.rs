@@ -137,6 +137,9 @@ pub struct AssistantState {
 	/// Independent conversation topics of this personal Assistant.
 	#[serde(default)]
 	pub topic_ids: Vec<String>,
+	/// Content-free topic identities retained only by independent Work references.
+	#[serde(default)]
+	pub retired_topic_ids: Vec<String>,
 	/// Current user-selected settings.
 	pub settings: AssistantSettings,
 	/// Current lightweight teams.

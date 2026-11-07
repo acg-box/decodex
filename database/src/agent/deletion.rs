@@ -111,6 +111,7 @@ impl SqliteStore {
 			for owner in &owners {
 				let assistant = tx.query_row("SELECT EXISTS(SELECT 1 FROM agents WHERE id=?1 AND assistant=1)",[owner],|r|r.get::<_,bool>(0)).map_err(error::sqlite_error)?;
 				let settings = if assistant { Some(crate::assistant::settings(&tx,owner)?) } else {None};
+				let personal_owner = crate::assistant::topic_owner(&tx,owner)?.filter(|identity| identity != owner);
 				if let Some(plan) = deletion_plan(&tx,owner,&threads[0])? { threads=plan; }
 				for (table,column) in [
 					("agent_async_answers","work_id"),("agent_async_questions","work_id"),("agent_async_recovery","work_id"),
@@ -144,6 +145,8 @@ impl SqliteStore {
 					tx.execute("DELETE FROM agent_managers WHERE work_id=?1",[owner]).map_err(error::sqlite_error)?;
 					tx.execute("DELETE FROM agents WHERE id=?1",[owner]).map_err(error::sqlite_error)?;
 					tx.execute("DELETE FROM agent_work_items WHERE id=?1",[owner]).map_err(error::sqlite_error)?;
+				} else if let Some(identity) = personal_owner {
+					crate::assistant::retain_topic_identity(&tx,owner,&identity)?;
 				}
 			}
 			for id in threads {

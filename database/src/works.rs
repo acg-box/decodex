@@ -235,6 +235,9 @@ impl SqliteStore {
 			let tx = c.transaction().map_err(crate::error::sqlite_error)?;
 
 			if enabled {
+				if tx.query_row("SELECT EXISTS(SELECT 1 FROM agent_inbox_events WHERE work_item_id=?1 AND event_kind='assistant_internal_topic')",[&agent],|r|r.get::<_,bool>(0)).map_err(error::sqlite_error)? {
+					return Err(invalid("personal topics are not independent Agent identities"));
+				}
 				tx.execute("UPDATE agents SET assistant=0 WHERE assistant=1", [])
 					.map_err(crate::error::sqlite_error)?;
 			}

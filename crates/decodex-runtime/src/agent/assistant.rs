@@ -106,7 +106,7 @@ impl AgentCoordinator {
 		}
 		match name {
 			"assistant_read" => Ok(
-				json!({"assistant":self.store.assistant_state().await?,"agents":self.store.agents().await?,"work":self.store.agent_work_portfolio(owner.id.clone(),None).await?,"authority":"Team membership is a responsibility, not access to another Agent's private history. Use existing Work and scoped Collaboration for assignments and results."}),
+				json!({"assistant":self.store.assistant_state().await?,"agents":self.store.agents().await?,"work":self.store.work_overview().await?,"authority":"Team membership is a responsibility, not access to another Agent's private history. Use existing Work and scoped Collaboration for assignments and results."}),
 			),
 			"assistant_manage" => {
 				let command = serde_json::from_value(args["command"].clone())

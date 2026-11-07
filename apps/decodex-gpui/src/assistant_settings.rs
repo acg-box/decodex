@@ -108,6 +108,7 @@ impl AgentSurface {
 		self.snapshot.as_ref().is_some_and(|s| {
 			s.assistant.agent_id.as_deref() == Some(id)
 				|| s.assistant.topic_ids.iter().any(|topic| topic == id)
+				|| s.assistant.retired_topic_ids.iter().any(|topic| topic == id)
 		})
 	}
 
