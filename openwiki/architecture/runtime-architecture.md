@@ -178,10 +178,10 @@ sources:
     resource: repo://scripts/macos/stage_decodex_app.sh
   - id: openwiki-source-76081c1a47ca8cf32593de34
     resource: repo://scripts/macos/test_decodex_app_stage.sh
-generated: { by: "codex", at: "2026-11-06T17:06:21.660Z" }
+generated: { by: "codex", at: "2026-11-07T06:35:26.732Z" }
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-06T17:06:21.660Z
+    at: 2026-11-07T06:35:26.732Z
 ---
 
 # Runtime Architecture
@@ -317,7 +317,7 @@ The per-server cached-catalog switch saves `mcp_servers.<quoted-server>.startup_
 
 ## Components and app updates
 
-`decodex-components` owns one per-user component store, package verification and cache repair. The GUI and service embed the same runtime requirement. Every local bundled App startup prepares that component on the existing background worker, including when its files are already present. The owned service waits for successful preparation; this wait does not consume connection retry attempts. Settings > Components reads the same preparation state and shows progress and errors. **Retry** appears only after failure; there is no permanent Verify control. Optional EGM installation, update and removal use the native Codex plugin lifecycle. Sparkle owns the Decodex application update flow. The app version and Check for updates action are in Settings > General; component updates remain in Components.
+`decodex-components` owns one per-user component store, package verification and explicit cache recovery. The GUI and service embed the same runtime requirement. Every local bundled App startup prepares that component on the existing background worker, including when its files are already present. The owned service waits for successful preparation; this wait does not consume connection retry attempts. A damaged existing runtime fails verification and requires an explicit reinstallation. Settings > Components reads the shared preparation state and shows Install for a missing runtime or Reinstall for an existing runtime. These actions stay disabled while preparation is active. Optional EGM installation, update, reinstallation and removal use the native Codex plugin lifecycle. Sparkle owns the Decodex application update flow. The app version and Check for updates action are in Settings > General; component updates remain in Components.
 
 Assistant is built in and always available from the sidebar. Its first use publishes an idle Agent and its role in one SQLite transaction. Components has no Assistant Enable control. The optional RAGFlow component shares lifecycle buttons, version metadata, collapsed details and inline feedback with the other components. It exposes Install, Update and Uninstall. Service connection is automatic; model settings use the component details.
 
@@ -335,7 +335,7 @@ Before a normal Assistant turn, the runtime searches only its configured Memory,
 
 Only the selected Assistant receives Assistant tool declarations and instructions in new native contexts. Existing ordinary contexts retain their original native declarations, while the back end still refuses their Assistant-tool calls. Project Agents do not receive the personal-memory connection or recalled content.
 
-Official Release inputs require an exact tag, canonical OpenAI asset URL, archive SHA-256, executable SHA-256 and generated schema fingerprint. The installer checks the archive before extraction, then verifies signatures, version and protocol evidence. Downloads have three bounded attempts. A verified replacement is published atomically; a failed repair preserves the previous directory, and other versions remain available.
+Official Release inputs require an exact tag, canonical OpenAI asset URL, archive SHA-256, executable SHA-256 and generated schema fingerprint. The installer checks the archive before extraction, then verifies signatures, version and protocol evidence. A failed download removes its partial archive and returns after one request. The user can start another attempt. Explicit reinstallation verifies the replacement before publishing it atomically; a failed replacement preserves the previous directory, and other versions remain available.
 
 Development keeps [the reviewed source requirement](../../codex-runtime.lock.json). `cargo +stable make prepare-codex` explicitly builds or imports its qualified artifact. The source builder uses the common checked download path, stable Rust and the unchanged upstream dependency graph. Its extractor refreshes source modification times while retaining the dependency build cache, so historical archive timestamps cannot select stale local objects. The app does not compile Codex.
 

@@ -42,6 +42,8 @@ sources:
     resource: repo://crates/decodex-components/src/ragflow_service.rs
   - id: openwiki-source-9ecfe8c96199e765ca2b4e1b
     resource: repo://crates/decodex-components/src/ragflow.rs
+  - id: openwiki-source-8bbd4ba0cf275fa1b4da9acf
+    resource: repo://crates/decodex-components/tests/development.rs
   - id: openwiki-source-62c1273bf1b2ac5041d1e920
     resource: repo://crates/decodex-core/src/assistant.rs
   - id: openwiki-source-eac747e105c1c8d9e7e3c811
@@ -126,10 +128,10 @@ sources:
     resource: repo://scripts/macos/test_native_app.sh
   - id: openwiki-source-e201f60894c32a914dac99ee
     resource: repo://scripts/vnext/run_native_regression.py
-generated: { by: "codex", at: "2026-11-06T16:50:31.712Z" }
+generated: { by: "codex", at: "2026-11-07T06:35:26.732Z" }
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-06T16:50:31.712Z
+    at: 2026-11-07T06:35:26.732Z
 ---
 
 
@@ -449,7 +451,7 @@ python3 scripts/vnext/run_native_regression.py \
   --desktop "$BUILT_DECODEX_GPUI" --provider-recovery
 ```
 
-Use absolute paths for the three inputs. This historical refusal rehearsal requires a CLI that emits a structured `modelProviderMismatch` after the configured default changes. The current native saved-provider behavior continues the existing conversation on its saved route, so a changed default does not produce that refusal. The runner verifies components in temporary storage and uses existing executable attestation before starting the isolated Decodex window and service with synthetic account data. The two provider names share a loopback backend. The current saved-provider and fork regressions use the exact CLI and separate loopback servers; read [current qualification](../../automations/upstream/qualification.json#saved_provider_admission) for their executed identities and limits.
+Use absolute paths for the three inputs. This historical refusal rehearsal requires a CLI that emits a structured `modelProviderMismatch` after the configured default changes. The current native saved-provider behavior continues the existing conversation on its saved route, so a changed default does not produce that refusal. The runner verifies components in temporary storage and uses existing executable attestation before starting the isolated Decodex window and service with synthetic account data. The two provider names share a loopback backend. The current saved-provider and fork regressions use the exact CLI and separate loopback servers; read [current qualification](../../automations/upstream/qualification.json#retained_consumers) for their executed identities and limits.
 
 Check the destination provider in the feedback band above the composer, then choose **Fork** once. It creates and opens the branch without a second confirmation or sending a message. Send only when ready to continue the branch. Quit the rehearsal window to end the fixture and remove its temporary profile. The runner does not install the app, select a runtime for the normal profile, or modify the automation schedule. Passing this fixture's setup is separate from a user's UI acceptance.
 
@@ -469,7 +471,7 @@ For a formal release, set `DECODEX_CODEX_RELEASE` to an exact official version a
 cargo +stable test --locked -p decodex-components
 ```
 
-The ignored tests in `tests/official_release.rs` download real official packages into a temporary store. The ignored development test requires `DECODEX_TEST_DEVELOPMENT_RUNTIME` to identify the qualified package. These tests cover failed downloads, wrong commits and hashes, offline reuse, failed import preservation and corrupt cache repair without installing the app.
+The ignored tests in `tests/official_release.rs` download real official packages into a temporary store. The ignored development test requires `DECODEX_TEST_DEVELOPMENT_RUNTIME` to identify the qualified package. These tests cover failed downloads, wrong commits and hashes, offline reuse, failed import preservation and explicit cache recovery without installing the app. The development fixture checks that ordinary `ensure` rejects damaged CLI, schema and helper files. It then calls `reinstall` to restore the verified package from the local archive and checks that other versions remain available.
 
 ## Diagnostics and macOS packaging
 

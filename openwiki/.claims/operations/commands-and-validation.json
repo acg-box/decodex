@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:fb899d17c7db38e3de622809e168bbdda5080c6a80ff447ef39526269e3c80b4",
+  "pageVersion": "sha256:3c703790bc1342b1164f31753b615dff34d21a5a84a58c38544e52b6eb833ef7",
   "claims": [
     {
       "id": "claim_8fa9284d970947ab9981d4144ecb9648",
@@ -94,11 +94,11 @@
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent_host.rs",
-          "version": "repo-file-v1:sha256:cba833da0ef2d3b38e54e9430058577c2d09d53d05566b6a21f2ad61b4c9ca6e"
+          "version": "repo-file-v1:sha256:a8298fbf070d22312c4c3fa88b9c813654740f5544bed44805e7b6127463727e"
         },
         {
           "resource": "repo://database/src/agent.rs",
-          "version": "repo-file-v1:sha256:30cc4283fbade29ef1b2285803a5d573acc28040d5cb0dda84c7c38a139152a2"
+          "version": "repo-file-v1:sha256:0e06aded02d8ea112848c47bfea7658f01f4dbce335fc3b72510aee62e6f0129"
         }
       ]
     },
@@ -108,7 +108,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_archive_tests.rs",
-          "version": "repo-file-v1:sha256:708dd5cdda395749ccefedf70dc8e1f422d8474e9e21de8e2606f676a9a56285"
+          "version": "repo-file-v1:sha256:a9a6f08b991c76aa2b62d00d626849045a7f03753b4bcf02aab85d146479d733"
         }
       ]
     },
@@ -176,7 +176,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:b6dc45148e7a8290a54aa5a47ef2e339959fb52ab6e5bb2a5a8b106a28e57b56"
+          "version": "repo-file-v1:sha256:12b5136278343e3957944e3a42961ab6b2785e5fdc70d61e75d9af4831828797"
         },
         {
           "resource": "repo://automations/upstream/retained-contracts.json",
@@ -336,7 +336,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:b6dc45148e7a8290a54aa5a47ef2e339959fb52ab6e5bb2a5a8b106a28e57b56"
+          "version": "repo-file-v1:sha256:12b5136278343e3957944e3a42961ab6b2785e5fdc70d61e75d9af4831828797"
         },
         {
           "resource": "repo://automations/upstream/retained-contracts.json#L4407-L4623",
@@ -350,7 +350,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:b6dc45148e7a8290a54aa5a47ef2e339959fb52ab6e5bb2a5a8b106a28e57b56"
+          "version": "repo-file-v1:sha256:12b5136278343e3957944e3a42961ab6b2785e5fdc70d61e75d9af4831828797"
         },
         {
           "resource": "repo://crates/decodex-runtime/tests/native_qualification/command_hooks.py",
@@ -450,7 +450,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:b6dc45148e7a8290a54aa5a47ef2e339959fb52ab6e5bb2a5a8b106a28e57b56"
+          "version": "repo-file-v1:sha256:12b5136278343e3957944e3a42961ab6b2785e5fdc70d61e75d9af4831828797"
         },
         {
           "resource": "repo://automations/upstream/retained-contracts.json#L2134-L2270",
@@ -528,7 +528,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:909d6e655a4393b5c616b4fbfcd2dc9c82659f01fdc663623114782ab81bb50e"
+          "version": "repo-file-v1:sha256:7d6cc53f76338fd829d8d2f70f30322d9f949924f209ed4eadf2dd027582bbfe"
         }
       ]
     },
@@ -635,10 +635,20 @@
           "version": "repo-file-v1:sha256:6486fbc639cd607613dd39f57a9106ab1c482367942c444ecb0878352c2717c1"
         }
       ]
+    },
+    {
+      "id": "claim_23c4afd6d70f4aaa85eb127cebbfb5aa",
+      "statement": "The ignored exact-artifact development component fixture verifies that ordinary ensure rejects damaged CLI, schema and helper files, then explicitly reinstalls the verified local package while retaining other versions. This fixture does not install or launch the desktop app.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-components/tests/development.rs",
+          "version": "repo-file-v1:sha256:0ccbd7b95fb091a8b686f9bb51851a94effa6c3fb66b8d838eb49284723156b5"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.9.0",
-    "at": "2026-11-06T16:50:31.712Z"
+    "at": "2026-11-07T06:35:26.732Z"
   }
 }

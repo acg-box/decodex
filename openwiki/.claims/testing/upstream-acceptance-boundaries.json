@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:e4686008ad0a46b8beef5b468371106413006518446527bf4d43889ea05de4cf",
+  "pageVersion": "sha256:9b32edbca4b32b049a8104e54abd14685d39894ed9ddc2343b671556fac37b97",
   "claims": [
     {
       "id": "claim_2dd4ad01dd984b80a22d9cb9c9bfd397",
@@ -80,7 +80,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/agent.rs",
-          "version": "repo-file-v1:sha256:1635de9a379269ecfac829543eaef71e84034b152f0ceca3c2fc4d93a289129f"
+          "version": "repo-file-v1:sha256:d37d9b7a977702387b59368d454584564ca7c122c78804d310fa640940d87ec6"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/result_messages.rs",
@@ -116,11 +116,11 @@
       "evidence": [
         {
           "resource": "repo://codex-runtime.lock.json",
-          "version": "repo-file-v1:sha256:1d67cc33f1a91a206e961996e13dd887750361a7e661994fe89c9c9fe50c98f6"
+          "version": "repo-file-v1:sha256:c32996dfd93c63ac083782d3db72fbb475254fb1365beb5e78f63a7a59bc3f2c"
         },
         {
           "resource": "repo://crates/decodex-components/tests/development.rs",
-          "version": "repo-file-v1:sha256:fcb52ee9d2f333ed24c123a5cf681dda190652e4704ea0bb626f689389fbcead"
+          "version": "repo-file-v1:sha256:0ccbd7b95fb091a8b686f9bb51851a94effa6c3fb66b8d838eb49284723156b5"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/tests/capacity.rs",
@@ -144,15 +144,15 @@
     },
     {
       "id": "claim_cd7166a244d54d40aad171937a0946f2",
-      "statement": "Component tests separate official Release download and offline repair from fixed-commit development import, damaged-cache recovery, wrong-commit refusal and previous-selection preservation; both use isolated stores without installing the app.",
+      "statement": "Component fixtures separate official Release download, offline reuse, damaged-schema refusal and explicit reinstallation from fixed-commit development import, damaged-cache refusal, explicit verified recovery, wrong-commit refusal and previous-selection preservation. Both use isolated stores without installing the app; their execution records remain separate.",
       "evidence": [
         {
           "resource": "repo://crates/decodex-components/tests/development.rs",
-          "version": "repo-file-v1:sha256:fcb52ee9d2f333ed24c123a5cf681dda190652e4704ea0bb626f689389fbcead"
+          "version": "repo-file-v1:sha256:0ccbd7b95fb091a8b686f9bb51851a94effa6c3fb66b8d838eb49284723156b5"
         },
         {
           "resource": "repo://crates/decodex-components/tests/official_release.rs",
-          "version": "repo-file-v1:sha256:bb4be218274baf22b575475f010272c483475c3d1f13522f52a9517cd18b4f07"
+          "version": "repo-file-v1:sha256:93154283896d019b26dfaa374404f5605b1df94d848ed0ddfdf664001e5e9c5d"
         }
       ]
     },
@@ -226,7 +226,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/agent.rs",
-          "version": "repo-file-v1:sha256:1635de9a379269ecfac829543eaef71e84034b152f0ceca3c2fc4d93a289129f"
+          "version": "repo-file-v1:sha256:d37d9b7a977702387b59368d454584564ca7c122c78804d310fa640940d87ec6"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/tests/external_context.rs",
@@ -258,7 +258,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:909d6e655a4393b5c616b4fbfcd2dc9c82659f01fdc663623114782ab81bb50e"
+          "version": "repo-file-v1:sha256:7d6cc53f76338fd829d8d2f70f30322d9f949924f209ed4eadf2dd027582bbfe"
         }
       ]
     },
@@ -276,7 +276,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:909d6e655a4393b5c616b4fbfcd2dc9c82659f01fdc663623114782ab81bb50e"
+          "version": "repo-file-v1:sha256:7d6cc53f76338fd829d8d2f70f30322d9f949924f209ed4eadf2dd027582bbfe"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/process.rs",
@@ -304,7 +304,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:909d6e655a4393b5c616b4fbfcd2dc9c82659f01fdc663623114782ab81bb50e"
+          "version": "repo-file-v1:sha256:7d6cc53f76338fd829d8d2f70f30322d9f949924f209ed4eadf2dd027582bbfe"
         }
       ]
     },
@@ -338,7 +338,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:909d6e655a4393b5c616b4fbfcd2dc9c82659f01fdc663623114782ab81bb50e"
+          "version": "repo-file-v1:sha256:7d6cc53f76338fd829d8d2f70f30322d9f949924f209ed4eadf2dd027582bbfe"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/tests/capacity.rs",
@@ -684,7 +684,7 @@
       "evidence": [
         {
           "resource": "repo://Cargo.lock",
-          "version": "repo-file-v1:sha256:2c333a11690cd466b2ae7c66c8c4fcf649d6b3ab28da8f41aafb04055846313b"
+          "version": "repo-file-v1:sha256:8c61e40a46330736a19cfd8bd5b4967825c56ce723aeeb43548f63f0ec27c2f5"
         },
         {
           "resource": "repo://crates/decodex-account-login/src/system_proxy.rs",
@@ -726,7 +726,7 @@
       "evidence": [
         {
           "resource": "repo://Cargo.lock",
-          "version": "repo-file-v1:sha256:2c333a11690cd466b2ae7c66c8c4fcf649d6b3ab28da8f41aafb04055846313b"
+          "version": "repo-file-v1:sha256:8c61e40a46330736a19cfd8bd5b4967825c56ce723aeeb43548f63f0ec27c2f5"
         },
         {
           "resource": "repo://crates/decodex-webrtc-build/src/archive.rs",
@@ -790,7 +790,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:909d6e655a4393b5c616b4fbfcd2dc9c82659f01fdc663623114782ab81bb50e"
+          "version": "repo-file-v1:sha256:7d6cc53f76338fd829d8d2f70f30322d9f949924f209ed4eadf2dd027582bbfe"
         },
         {
           "resource": "repo://crates/decodex-runtime/tests/native_qualification/dotenv_startup.py",
@@ -850,7 +850,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/agent.rs",
-          "version": "repo-file-v1:sha256:1635de9a379269ecfac829543eaef71e84034b152f0ceca3c2fc4d93a289129f"
+          "version": "repo-file-v1:sha256:d37d9b7a977702387b59368d454584564ca7c122c78804d310fa640940d87ec6"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/global_guardian.rs",
@@ -872,7 +872,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:909d6e655a4393b5c616b4fbfcd2dc9c82659f01fdc663623114782ab81bb50e"
+          "version": "repo-file-v1:sha256:7d6cc53f76338fd829d8d2f70f30322d9f949924f209ed4eadf2dd027582bbfe"
         }
       ]
     },
@@ -882,7 +882,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:909d6e655a4393b5c616b4fbfcd2dc9c82659f01fdc663623114782ab81bb50e"
+          "version": "repo-file-v1:sha256:7d6cc53f76338fd829d8d2f70f30322d9f949924f209ed4eadf2dd027582bbfe"
         }
       ]
     },
@@ -896,7 +896,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:909d6e655a4393b5c616b4fbfcd2dc9c82659f01fdc663623114782ab81bb50e"
+          "version": "repo-file-v1:sha256:7d6cc53f76338fd829d8d2f70f30322d9f949924f209ed4eadf2dd027582bbfe"
         }
       ]
     },
@@ -906,7 +906,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:909d6e655a4393b5c616b4fbfcd2dc9c82659f01fdc663623114782ab81bb50e"
+          "version": "repo-file-v1:sha256:7d6cc53f76338fd829d8d2f70f30322d9f949924f209ed4eadf2dd027582bbfe"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_lookup_tests.rs",
@@ -928,7 +928,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:909d6e655a4393b5c616b4fbfcd2dc9c82659f01fdc663623114782ab81bb50e"
+          "version": "repo-file-v1:sha256:7d6cc53f76338fd829d8d2f70f30322d9f949924f209ed4eadf2dd027582bbfe"
         }
       ]
     },
@@ -946,7 +946,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:909d6e655a4393b5c616b4fbfcd2dc9c82659f01fdc663623114782ab81bb50e"
+          "version": "repo-file-v1:sha256:7d6cc53f76338fd829d8d2f70f30322d9f949924f209ed4eadf2dd027582bbfe"
         }
       ]
     },
@@ -960,7 +960,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:909d6e655a4393b5c616b4fbfcd2dc9c82659f01fdc663623114782ab81bb50e"
+          "version": "repo-file-v1:sha256:7d6cc53f76338fd829d8d2f70f30322d9f949924f209ed4eadf2dd027582bbfe"
         }
       ]
     },
@@ -970,7 +970,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:909d6e655a4393b5c616b4fbfcd2dc9c82659f01fdc663623114782ab81bb50e"
+          "version": "repo-file-v1:sha256:7d6cc53f76338fd829d8d2f70f30322d9f949924f209ed4eadf2dd027582bbfe"
         }
       ]
     },
@@ -988,7 +988,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:909d6e655a4393b5c616b4fbfcd2dc9c82659f01fdc663623114782ab81bb50e"
+          "version": "repo-file-v1:sha256:7d6cc53f76338fd829d8d2f70f30322d9f949924f209ed4eadf2dd027582bbfe"
         }
       ]
     },
@@ -1016,7 +1016,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:b6dc45148e7a8290a54aa5a47ef2e339959fb52ab6e5bb2a5a8b106a28e57b56"
+          "version": "repo-file-v1:sha256:12b5136278343e3957944e3a42961ab6b2785e5fdc70d61e75d9af4831828797"
         },
         {
           "resource": "repo://automations/upstream/retained-contracts.json",
@@ -1024,7 +1024,7 @@
         },
         {
           "resource": "repo://codex-runtime.lock.json",
-          "version": "repo-file-v1:sha256:1d67cc33f1a91a206e961996e13dd887750361a7e661994fe89c9c9fe50c98f6"
+          "version": "repo-file-v1:sha256:c32996dfd93c63ac083782d3db72fbb475254fb1365beb5e78f63a7a59bc3f2c"
         }
       ]
     },
@@ -1034,21 +1034,21 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/current-review.json",
-          "version": "repo-file-v1:sha256:e574f01f7cedda0b944a89aace5a29961f12e9fa48f208c6f6ca8069b04baf41"
+          "version": "repo-file-v1:sha256:23a55292ba0305b6701647156d1206a04942a20dc1ec3763fd3b2406793f846d"
         },
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:b6dc45148e7a8290a54aa5a47ef2e339959fb52ab6e5bb2a5a8b106a28e57b56"
+          "version": "repo-file-v1:sha256:12b5136278343e3957944e3a42961ab6b2785e5fdc70d61e75d9af4831828797"
         }
       ]
     },
     {
       "id": "claim_32a0abdd6b0b4d72b37fc46b02d82396",
-      "statement": "The development cache-repair regression damages and restores any advertised standalone executor through the same verified local archive path as the existing helpers.",
+      "statement": "The development component fixture damages required helper files, checks that ordinary ensure rejects them, and restores them only through explicit reinstall from the verified local archive, while preserving other installed versions.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-components/tests/development.rs#L46-L74",
-          "version": "repo-lines-v1:sha256:ace0905403597e6212a12425b205dc5bcbd2a8b0010bcbd41b3b4ab80eef492c:eyJzZWxlY3RlZExpbmVDb3VudCI6MjksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVlNTlhN2ZjNmI4MjU3ZTRjNWMwMmZmMmU1Yjc3NGJhZTJiYjY0MTZjOTA0Mjc2MWYxZjc1MDVjOGI3ZGU0MTYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRiMzVhNWU3YTU5NzgzYTc5YWNkMmU3ZTNmZmY4NGMwYzQ3ZjhjYWFhZDVmY2Q4MmE1ZDI5MGQ1YjA1NWExZDMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM4YWFlNTIyNWRmZDk3ZmQ4YjUzMDVkOTI2Yzg4MjgzYTJjYThiNWRlNWY2NWMwNGI4YWU5OWRjZGFmOTc1ZDUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjcxOThjYzE5MzVlMDk1YzM1ZjJiMDA4OGVjZWNjMDNiZWFkNjgwYjE0NzBkMTA4NjNjNThlYmNmZWZiY2EwY2UifQ"
+          "resource": "repo://crates/decodex-components/tests/development.rs#L15-L76",
+          "version": "repo-lines-v1:sha256:860ed0305f578bd69a0e5a441261bc3771c1b8bab8fdc40a3ea4764b8de99d3a:eyJzZWxlY3RlZExpbmVDb3VudCI6NjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI3MDdiOWRlMDlkNDA3NjljZTQxYTcxMzk3Mjc1ZGRjMDM5ZWNlYTZmMDBjMzZhMTg4NmYxNmE3NmIxNjc3NDYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVjMjI1MzlhODdhMWY0ZGFmOTBlNDVmMTU0ZGUxNTgxOWM2OTNjNTQ3MDQ0MDMzZmNiZDllMTIyODY3ODcxZTYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjBlMTJhMGFmYmExY2Y0ODFhMjE0MTdmYjUwOGM1NDczMmFmMGFhOGI2NzkxODRmZDUxNGE4YTlkNDE1NjRjZmQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUxM2QyZmVhYTllNDA1YjNkNTdiNDI5NTQxNTA0YTI0MTQ5ODk1NzQyODdkODI5ZTMwYjk4ODgwMzUxMjYzY2IifQ"
         }
       ]
     },
@@ -1057,16 +1057,16 @@
       "statement": "Current provider-admission qualification uses separate loopback providers to verify saved-route continuation, selected fork prefixes, unchanged source history and no inference during creation or resume. Original explicit destination-switch and desktop-refusal rehearsals retain their artifact-specific limits and are separate from installed or real-user UI acceptance.",
       "evidence": [
         {
-          "resource": "repo://automations/upstream/qualification.json#L55-L74",
-          "version": "repo-lines-v1:sha256:4d44e3bccc9e3b57ee4d22155d83b4f07f0685f17f4e7ee591b4f0a464c8af22:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNiNTE4Y2ZmMWExZjA5ZjAxMTJkMzlmMjYxYThiMGNmMTVhZDk1MDQyOWVjNDNjOGE4YTcxNDBkNjRhNWZiMDgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRkNWNkMmZiNGYzZGY4ODQ1MTUyNTViMzk1MjNmMmY4YjU0NzJiZWVhOWY1NjZmZmNhMjA0ZGI4MDI1NjEwNDEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM1M2U2NzlmYTY5MTA0MDU4YTA1MGI1MGI2YTc0YjFmY2ViMTAyN2JiMTZlZTZmNDUwOTc1MzUyYTIxZTdjOTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijc2Mjc2ZWIyZWI2ZDYyZjUwOTU0ZmRmODM4ODA5NjY5ODExYjRiNzhjZDFmNTMzMDk3YWUxNjE5OGNjZGIwZmEifQ"
+          "resource": "repo://automations/upstream/qualification.json",
+          "version": "repo-file-v1:sha256:12b5136278343e3957944e3a42961ab6b2785e5fdc70d61e75d9af4831828797"
         },
         {
           "resource": "repo://automations/upstream/retained-contracts.json#L5258-L5333",
           "version": "repo-lines-v1:sha256:1e9f72f8706988bad5445c4b02f4df81075261fde38d0dbbb3f8ce2ea80102f1:eyJzZWxlY3RlZExpbmVDb3VudCI6NzYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIzNjFlZjE2ZjIzNjg0NmUyZTYyMTY4OWEyZjlkOTA2OGZlOGI3MGQxYjBjYTUwM2RhYzA4MWFiMjNhYzBmOGQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjIzNjFlYzdjMjVhYWExZmYyYWJmYTI5M2I4NmIyMzY2NjQ2OWE1ZjE0Y2YwOGJhOTJhMTExMGNiN2QxZDhiYjIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEifQ"
         },
         {
-          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_fork_tests.rs#L255-L393",
-          "version": "repo-lines-v1:sha256:3de62feb83080daf08844daa9e6aa2da28f9e38843e410aabf33949266ac85c3:eyJzZWxlY3RlZExpbmVDb3VudCI6MTM5LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI1MTk0ODRlZWRmMzY0ZmI4YzEyZjFlYjk4ZmJmNmE5YjRmNjUwZjQyNzg3NGE4ZDczNTkwMTBhYWRlNDMxYmM4IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI2NTBlMjNkNGJkYWEyNTJiZjc3OGE1MjNhMmNmOTJlZjliMDgxOTI5YmI1MzQyYzlhMTVlN2YwNWViYTc2ODI1IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJmMjk2NDA3OWMzYzVjODE1MjBlZjMzYTJiOWQyZTE1YTFiODRkNzI4MGRiODU5MGRjZDY1NzQ3ZTNlMDEyYTQwIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI5MWQ2MzMxNWEzN2UwNDE1ZWMyNTU4Y2Y1NDNkOWNhYzI4ZTA2MTdhMWM0NTU2YmJiNjlhODczYmJhMmE1OGUyIn0"
+          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_fork_tests.rs",
+          "version": "repo-file-v1:sha256:9310cfa7d6be816dc759c347872655499ed0943b2a5bf977a1ff3d6941d43c0a"
         }
       ]
     },
@@ -1108,7 +1108,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:909d6e655a4393b5c616b4fbfcd2dc9c82659f01fdc663623114782ab81bb50e"
+          "version": "repo-file-v1:sha256:7d6cc53f76338fd829d8d2f70f30322d9f949924f209ed4eadf2dd027582bbfe"
         }
       ]
     },
@@ -1118,7 +1118,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:909d6e655a4393b5c616b4fbfcd2dc9c82659f01fdc663623114782ab81bb50e"
+          "version": "repo-file-v1:sha256:7d6cc53f76338fd829d8d2f70f30322d9f949924f209ed4eadf2dd027582bbfe"
         },
         {
           "resource": "repo://crates/decodex-codex/src/app_server_client/thread_fork.rs#L59-L99",
@@ -1190,7 +1190,7 @@
         },
         {
           "resource": "repo://crates/decodex-components/src/ragflow.rs",
-          "version": "repo-file-v1:sha256:cdeb415f7327808194dad8b81832d740be560cdb991a54705c740dacaa67f050"
+          "version": "repo-file-v1:sha256:eeeb8cfce35fa85da809e0064b80d80a0f3a6ca4c189482e48e70801b22bb051"
         },
         {
           "resource": "repo://crates/decodex-components/src/ragflow_service.rs",
@@ -1198,7 +1198,7 @@
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_context_tests.rs",
-          "version": "repo-file-v1:sha256:f57b14a28aab5a7f8f271efc1027812ab8326383cfd2763a76bdab9bb6517e65"
+          "version": "repo-file-v1:sha256:0b422dddaea73731767c086745f05541a7a12b7b2feaa468759019aa2195b67e"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/ragflow.rs",
@@ -1206,7 +1206,7 @@
         },
         {
           "resource": "repo://database/src/assistant.rs",
-          "version": "repo-file-v1:sha256:484045b9d795e18e9e08fffb29ccfb3ef9304437d595f6249875425899e9d24b"
+          "version": "repo-file-v1:sha256:e89c7b4b71ecea701febe79bb627152ec7043004b80a4de1ed021fc215c8c9c0"
         }
       ]
     },
@@ -1216,11 +1216,11 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:b6dc45148e7a8290a54aa5a47ef2e339959fb52ab6e5bb2a5a8b106a28e57b56"
+          "version": "repo-file-v1:sha256:12b5136278343e3957944e3a42961ab6b2785e5fdc70d61e75d9af4831828797"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_context_tests.rs",
-          "version": "repo-file-v1:sha256:f57b14a28aab5a7f8f271efc1027812ab8326383cfd2763a76bdab9bb6517e65"
+          "version": "repo-file-v1:sha256:0b422dddaea73731767c086745f05541a7a12b7b2feaa468759019aa2195b67e"
         }
       ]
     },
@@ -1230,7 +1230,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/current-review.json",
-          "version": "repo-file-v1:sha256:e574f01f7cedda0b944a89aace5a29961f12e9fa48f208c6f6ca8069b04baf41"
+          "version": "repo-file-v1:sha256:23a55292ba0305b6701647156d1206a04942a20dc1ec3763fd3b2406793f846d"
         },
         {
           "resource": "repo://crates/decodex-runtime/tests/native_qualification/pending_mail.py#L1-L157",
@@ -1251,7 +1251,7 @@
           "version": "repo-file-v1:sha256:f1696fd9782abb6f7332ed7d29b22f9a39d7129fb7d4836721ac8d7fc259165a"
         },
         {
-          "resource": "repo://database/src/assistant.rs#L1022-L1077",
+          "resource": "repo://database/src/assistant.rs#L1033-L1088",
           "version": "repo-lines-v1:sha256:915db5e2c57bc050434587266cf0cd30c9ece5e6393b59a8eae61d5fa1450076:eyJzZWxlY3RlZExpbmVDb3VudCI6NTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUwODU5YjAyYmQwOTY0ZDJiMTA1OTAyZjRmMzhiZmZhNzkyOGU1Y2FkMjJlNjYwZTViNDY3ZjY1ZTJkNzcyMmMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIxYTIyYmI4YmJlNjRhODc3YmJlMjY3OGZlZDU1OTJmMTI1ZTViMmU0OWZjMjg3YjNiNDAxZjE2NTk0N2YyMjYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIyNTZmNGFiNDk1NGQzNDFkOTI0YWI2NmVkZDQwMGRiYjNiYTM1ZGJhMzBhN2EwNTMxOWFhYzM5ODFkMWRlMmQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImJhZWVmNzJiMDFlNDAxY2I1NjAxNzU5NWRiMDJkZGNlNjRkYzE4NzBjZWZhMGYzZTdiZmU1MzA0NWM3ZWRhN2YifQ"
         }
       ]
@@ -1262,13 +1262,13 @@
       "evidence": [
         {
           "resource": "repo://database/src/assistant.rs",
-          "version": "repo-file-v1:sha256:484045b9d795e18e9e08fffb29ccfb3ef9304437d595f6249875425899e9d24b"
+          "version": "repo-file-v1:sha256:e89c7b4b71ecea701febe79bb627152ec7043004b80a4de1ed021fc215c8c9c0"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.9.0",
-    "at": "2026-11-06T15:23:31.358Z"
+    "at": "2026-11-07T06:35:26.732Z"
   }
 }

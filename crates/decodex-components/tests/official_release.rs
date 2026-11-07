@@ -61,7 +61,7 @@ fn failed_pin_preserves_the_existing_lock() {
 
 #[test]
 #[ignore = "requires macOS and downloads the official signed Codex release twice"]
-fn official_download_retry_offline_reuse_and_corrupt_schema_repair() {
+fn official_download_explicit_retry_offline_reuse_and_reinstall() {
 	let temporary = tempfile::tempdir().expect("isolated store");
 	let root = temporary.path().join("components");
 	let store = ComponentStore::new(root.clone());
@@ -94,9 +94,11 @@ fn official_download_retry_offline_reuse_and_corrupt_schema_repair() {
 		"corrupt schema"
 	);
 
-	success(prepare(&root, false));
+	assert!(!prepare(&root, false).status.success(), "ordinary preparation must reject damage");
 
-	assert!(store.installed(&lock).expect("repaired package").is_some());
+	store.reinstall(&lock, |_| {}).expect("explicit reinstallation");
+
+	assert!(store.installed(&lock).expect("reinstalled package").is_some());
 
 	success(prepare(&root, true));
 

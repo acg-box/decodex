@@ -5,12 +5,12 @@
     "path": "automations/upstream/retained-contracts.json",
     "sha256": "dfbcb5f07ff9ce54daccf7f270553c99481f7dcf6fe4129485b9f8b52caf7c9d"
   },
-  "source_baseline": "2e58636d16794a150e562cc34b63ca3035494e50",
+  "source_baseline": "2889d8e1bf564af2ed3a72dc929b583551561363",
   "source_review_evidence": "automations/upstream/current-review.json",
   "source_review_summary": "The fixed review and its coverage limits are in current-review.json. Later upstream main is not certified.",
   "qualification": "automations/upstream/qualification.json",
   "retained_native_consumers": {
-    "source_commit": "2e58636d16794a150e562cc34b63ca3035494e50",
+    "source_commit": "2889d8e1bf564af2ed3a72dc929b583551561363",
     "tests": [
       "account_launch::process::context_preferences_native_tests::installed_native_context_preferences_share_config_and_preserve_thresholds",
       "account_launch::process::native_control_tests::installed_native_qualified_defaults_preserve_multi_agent_selection",
@@ -20,8 +20,8 @@
       "account_launch::agent_process::native_tests::compaction::code_metadata::installed_native_code_mode_metadata_reaches_compaction",
       "account_launch::agent_process::native_tests::history_recovery::installed_native_fork_history_recovers_from_intact_ancestor_copy",
       "account_launch::agent_process::native_tests::cold_settings::recap_socket::fork::installed_saved_provider_continuation_and_fork_survive_default_changes",
+      "account_launch::agent_process::native_tests::cold_settings::recap_socket::fork::installed_fork_preserves_source_provider_after_default_changes",
       "account_launch::agent_process::native_tests::reviewer::store::live_model::child_model::installed_native_child_inherits_updated_step_model",
-      "account_launch::agent_process::native_tests::reviewer::store::warning_tests::installed_native_warning_crosses_bridge_owner_history_and_reopen",
       "agent::tests::native_subagent_live::mcp::native_child_mcp_input_preserves_policy_and_exact_request",
       "agent::tests::native_agent_wake::native_child_completion_wakes_idle_root_once",
       "account_launch::agent_process::native_tests::reviewer::evidence::installed_guardian_retains_answer_after_compaction_and_restart",
@@ -34,7 +34,10 @@
       "account_launch::agent_process::native_tests::code_mode::installed_native_parallel_dynamic_tools_preserve_ids_and_result_order",
       "account_launch::process::refresh_tests::native::installed_native_401_uses_production_refresh_reply_and_reauthenticates_after_restart",
       "account_launch::process::refresh_tests::native::installed_native_401_refresh_refusal_fails_without_replaying_inference",
-      "account_launch::agent_process::native_tests::cold_settings::recap_socket::fork::installed_fork_preserves_source_provider_after_default_changes"
+      "account_launch::agent_process::native_tests::file_approval::installed_native_file_approval_saves_live_diff_before_history_and_declines_once",
+      "account_launch::agent_process::native_tests::models::installed_model_selection_changes_next_inference_and_survives_restart",
+      "account_launch::agent_process::native_tests::models::installed_active_model_selection_preserves_admitted_inference",
+      "account_launch::agent_process::native_tests::skills::installed_skill_picker_inventory_and_exact_input_use_native_skill_owner"
     ],
     "entrypoint": "<compiled-decodex-runtime-libtest> <registered selector> --exact --ignored --nocapture --test-threads=1",
     "fixture_source_sha256": "automations/upstream/qualification.json#fixture_source_sha256",
@@ -58,7 +61,7 @@
   },
   "component_cache_repair": {
     "evidence": "automations/upstream/qualification.json#component_cache_repair",
-    "selector": "fixed_commit_import_offline_repair_and_wrong_commit_rejection"
+    "selector": "fixed_commit_import_explicit_reinstall_and_wrong_commit_rejection"
   },
   "upstream_source_proof": {
     "review": "automations/upstream/current-review.json",
@@ -67,31 +70,34 @@
     "limits": "Read official implementation/test bodies and reuse official CI. No local upstream source suite."
   },
   "artifact": {
-    "source_commit": "2e58636d16794a150e562cc34b63ca3035494e50",
-    "source_archive_sha256": "87449c3227ea39a902ebdb670e4dd55ee27359798712895f4fae66441725a080",
-    "schema_sha256": "915618b87227656043219e6a0439f050e47ed42952a87d79524c84d9c4c6c30e",
+    "source_commit": "2889d8e1bf564af2ed3a72dc929b583551561363",
+    "source_archive_sha256": "17402c1714f328c1c0060f7cca088bdb18f05ac4d41b8c3ad4763e65888dec13",
+    "schema_sha256": "b32b48f52ce248ced1a7d74da867a8f3e7127ff4b7b6570db735c802a73a0619",
     "components": [
       {
         "path": "CodexCLI.app/Contents/MacOS/codex",
-        "sha256": "6ccbb839acaf5c11f5a1b3fbf8959f6421223badf183474c465f34a55f18161b",
-        "bytes": 269538016,
-        "strict_signature_verified": true
+        "sha256": "99af7cd06bc583ec8565988a4d8e536e38bfaf97d1e7df95e20f97289c78e885",
+        "bytes": 272429936,
+        "strict_signature_verified": true,
+        "contains_source_commit": true
       },
       {
         "path": "bin/codex-code-mode-host",
-        "sha256": "681dda151539d50f2e74f69543e354ef38142805de5438e89e05e76e82fbfc8e",
-        "bytes": 70166144,
-        "strict_signature_verified": true
+        "sha256": "5b67d689afae272ee36c17bcc1c2e2708d2da18d354ad0ff9e43184cef6b0e64",
+        "bytes": 70116304,
+        "strict_signature_verified": true,
+        "contains_source_commit": true
       },
       {
         "path": "bin/codex-exec-server",
-        "sha256": "5f481882b636cec2bed254c679350857b4f6206503ecd04d731ba67d34b3e9d9",
-        "bytes": 62233792,
-        "strict_signature_verified": true
+        "sha256": "dc3ef7867e201224acfd0265378fb943075c7ccbb977b1d15c36a34fe4a1a773",
+        "bytes": 61993024,
+        "strict_signature_verified": true,
+        "contains_source_commit": true
       },
       {
         "path": "codex-path/rg",
-        "sha256": "7d7e05702d05a7158d198fbcf3dc58496711e54f3f7d390dde7f4ea64c955ac1",
+        "sha256": "f2b0527afb8aef0d49971473b34196fd3413a160fe1be3a66ab8158547a9759a",
         "bytes": 4009552,
         "strict_signature_verified": true
       }
@@ -115,12 +121,12 @@
   "current_runtime_requalification": {
     "status": "qualified_fixed_development_artifact",
     "evidence": "automations/upstream/qualification.json",
-    "selected_source": "2e58636d16794a150e562cc34b63ca3035494e50",
+    "selected_source": "2889d8e1bf564af2ed3a72dc929b583551561363",
     "limits": "Development qualification only; delivery and installed acceptance remain separate."
   },
   "current_delivery": {
     "source_commit_references": [
-      "https://github.com/acg-box/decodex/commit/49d4581b2f98d3631e3a2bba24aaa727d8480d7a"
+      "https://github.com/acg-box/decodex/commit/9278f393cc95754da5fd964fb03102a986a2d61a"
     ],
     "status": "Public implementation commits identify the code. Native receipts own the current PR, exact-head CI and merge observations.",
     "installed_acceptance": "Not performed."
