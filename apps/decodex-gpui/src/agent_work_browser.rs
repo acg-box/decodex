@@ -579,6 +579,7 @@ impl AgentSurface {
 		let action = Rc::new(action);
 		let keyboard = action.clone();
 		let active = self.workspace.browsing
+			&& (id != "project-work" || self.workspace.work_detail.is_none())
 			&& id
 				== if self.workspace.archives.open {
 					"archive-browser"

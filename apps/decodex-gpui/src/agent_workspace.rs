@@ -603,6 +603,7 @@ impl AgentSurface {
 
 		for (id, label, closable) in self.project_conversation_pages() {
 			let active = !self.workspace.browsing
+				&& self.workspace.work_detail.is_none()
 				&& (self.conversation_page().as_ref() == Some(&id)
 					|| (!closable && self.selected.is_none()));
 			let keyboard_select = id.clone();
