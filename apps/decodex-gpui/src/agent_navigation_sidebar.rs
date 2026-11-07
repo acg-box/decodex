@@ -873,9 +873,7 @@ impl AgentSurface {
 		let key_target = target.clone();
 		let outside_key = key.clone();
 		let enter = key.clone();
-		let owner = item.owner.clone();
 		let timestamp = Self::navigation_timestamp(item.updated);
-		let tip_title = (!expanded).then(|| item.title.clone());
 		let mut row =
 			gpui::div()
 				.id(SharedString::from(format!("navigation-row-{key}")))
@@ -927,15 +925,8 @@ impl AgentSurface {
 							cx.notify();
 						}
 					}))
-				})
-				.tooltip(move |_, cx| {
-					cx.new(|_| NavigationTip {
-						title: tip_title.clone(),
-						owner: owner.clone(),
-						time: timestamp.clone(),
-					})
-					.into()
 				});
+		row = navigation_item_tooltip(row, item, expanded);
 		let base = if !expanded || item.draft { 0. } else { 44. };
 		let inset = base + (76. - base) * actions;
 		let label = navigation_item_label(
@@ -1138,14 +1129,42 @@ fn navigation_divider() -> AnyElement {
 		.into_any_element()
 }
 
+fn navigation_item_tooltip(
+	row: gpui::Stateful<gpui::Div>,
+	item: &Item,
+	expanded: bool,
+) -> gpui::Stateful<gpui::Div> {
+	let bounds = std::rc::Rc::new(std::cell::Cell::new(gpui::Bounds::<gpui::Pixels>::default()));
+	let measured = bounds.clone();
+	let title = (!expanded).then(|| item.title.clone());
+	let owner = item.owner.clone();
+	let time = AgentSurface::navigation_timestamp(item.updated);
+	row.tooltip(move |_, cx| {
+		cx.new(|_| NavigationTip {
+			title: title.clone(),
+			owner: owner.clone(),
+			time: time.clone(),
+			anchor: bounds.clone(),
+		})
+		.into()
+	})
+	.child(
+		gpui::canvas(move |bounds, _, _| measured.set(bounds), |_, _, _, _| {})
+			.absolute()
+			.inset_0(),
+	)
+}
+
 struct NavigationTip {
+	anchor: std::rc::Rc<std::cell::Cell<gpui::Bounds<gpui::Pixels>>>,
 	title: Option<String>,
 	owner: String,
 	time: String,
 }
 impl gpui::Render for NavigationTip {
 	fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl gpui::IntoElement {
-		crate::ui_motion::tooltip_surface(gpui::div())
+		let content = crate::ui_motion::tooltip_surface(gpui::div())
+			.debug_selector(|| "navigation-metadata-tooltip".into())
 			.flex()
 			.flex_col()
 			.gap(gpui::px(2.))
@@ -1157,7 +1176,13 @@ impl gpui::Render for NavigationTip {
 					.text_size(gpui::px(10.))
 					.text_color(ui_theme::rgb(TEXT_MUTED))
 					.child(self.time.clone()),
+			);
+		gpui::anchored()
+			.position(
+				self.anchor.get().top_right()
+					+ gpui::point(gpui::px(ui_theme::POPOVER_GAP), gpui::px(0.)),
 			)
+			.child(content)
 	}
 }
 

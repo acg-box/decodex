@@ -5,7 +5,7 @@ description: Reusable layout, activity-island motion, reading spacing and theme 
 tags: [desktop, design, motion, layout]
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-07T20:32:11.462Z
+    at: 2026-11-07T20:57:17.839Z
 sources:
   - id: openwiki-source-8037e2358a2c4f9b2c722a11
     resource: repo://AGENTS.md
@@ -59,7 +59,7 @@ sources:
     resource: repo://codex-runtime.lock.json
   - id: openwiki-source-a490ea3fbcddb9c007caf196
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_context_tests.rs
-generated: { by: "codex", at: "2026-11-07T20:32:11.462Z" }
+generated: { by: "codex", at: "2026-11-07T20:57:17.839Z" }
 ---
 
 # Interface geometry and motion
@@ -131,7 +131,7 @@ Keep Search and commands in the same leading slot when the sidebar contracts. It
 
 Long titles retain their full text. Hover or keyboard focus starts overflow motion; leaving returns the text smoothly. Each section can enable Always scroll titles. Use shared disclosure, chevron, popover, control-opacity and confirmation-nudge motion. Respect reduced motion and do not animate the complete transcript for a sidebar hover.
 
-Pin, Archive and Delete appear at the fixed far-right edge of a conversation row. The relative time fades while those actions appear. Do not put an opaque backing or gradient seam beneath them. The first Delete click turns the same symbol red and applies the shared nudge. The second click on that symbol confirms deletion. Escape or an outside click cancels. Deletion keeps learned Assistant Memory. Archived rows reuse the native restore and delete paths.
+Pin, Archive and Delete appear at the fixed far-right edge of a conversation row. The relative time fades while those actions appear. Anchor the owner and time tooltip 8 points outside the row’s trailing edge, aligned to its top; use the shared window-fitting anchor so it cannot cover the row actions. Do not put an opaque backing or gradient seam beneath them. The first Delete click turns the same symbol red and applies the shared nudge. The second click on that symbol confirms deletion. Escape or an outside click cancels. Deletion keeps learned Assistant Memory. Archived rows reuse the native restore and delete paths.
 
 Use restrained warm emphasis for requests that need the user. Derive this state from a pending native request, an unanswered native question, or an explicit user decision. Do not classify attention from a displayed label. Returned agent work and ordinary collaboration remain distinct from requests for a user decision. Window controls use fixed-size icons, with names in tooltips and accessibility labels. Collaboration retains a small pending-count badge when its panel is closed; it adds no visible toolbar label.
 

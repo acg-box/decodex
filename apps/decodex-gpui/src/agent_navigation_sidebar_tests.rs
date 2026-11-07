@@ -2,6 +2,33 @@ use super::AgentSurface;
 use gpui::TestAppContext;
 
 #[gpui::test]
+fn metadata_tooltip_stays_beside_the_row_and_cannot_cover_its_actions(cx: &mut TestAppContext) {
+	let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+	visual.simulate_resize(gpui::size(gpui::px(1440.), gpui::px(1000.)));
+	surface.update(visual, |s, cx| {
+		s.visual_workspace_fixture(cx);
+		s.visual_personal_navigation(cx);
+		cx.notify();
+	});
+	visual.update(crate::ui_frame::draw_current_frame);
+	let row = visual.debug_bounds("navigation-recent-topic-research").unwrap();
+	let actions = visual.debug_bounds("navigation-delete-recent-topic-research").unwrap();
+	visual.simulate_mouse_move(
+		gpui::point(row.left() + gpui::px(24.), row.center().y),
+		None,
+		Default::default(),
+	);
+	visual.run_until_parked();
+	visual.executor().advance_clock(std::time::Duration::from_secs(1));
+	visual.run_until_parked();
+	visual.update(crate::ui_frame::draw_current_frame);
+	let tooltip = visual.debug_bounds("navigation-metadata-tooltip").unwrap();
+	assert_eq!(tooltip.left(), row.right() + gpui::px(crate::ui_theme::POPOVER_GAP));
+	assert_eq!(tooltip.top(), row.top());
+	assert!(tooltip.intersect(&actions).is_empty());
+}
+
+#[gpui::test]
 fn new_assistant_topic_reuses_an_unsent_draft_after_navigation(cx: &mut TestAppContext) {
 	let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 	surface.update(visual, |s, cx| {
