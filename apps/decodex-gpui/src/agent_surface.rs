@@ -1398,6 +1398,7 @@ impl AgentSurface {
 	}
 
 	fn reset_profile_panels(&mut self, cx: &mut Context<Self>) {
+		self.workspace.navigation = Default::default();
 		self.assistant_settings = Default::default();
 		self.workspace.archives = Default::default();
 		self.work_board.clear(cx);
@@ -2717,6 +2718,7 @@ impl SurfacePresentations {
 }
 
 struct WorkspaceView {
+	navigation: navigation_sidebar::State,
 	attached: attached_branches::Panel,
 	archives: archive::Catalog,
 	portfolio_mode: bool,
@@ -2777,6 +2779,7 @@ impl Default for WorkspaceView {
 	fn default() -> Self {
 		Self {
 			attached: Default::default(),
+			navigation: Default::default(),
 			archives: Default::default(),
 			arrival: Default::default(),
 			portfolio_mode: false,

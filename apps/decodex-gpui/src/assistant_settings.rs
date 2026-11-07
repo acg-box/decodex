@@ -101,7 +101,7 @@ impl AgentSurface {
 	}
 
 	pub(super) fn assistant_id(&self) -> Option<String> {
-		self.snapshot.as_ref()?.agents.iter().find(|a| a.assistant).map(|a| a.id.clone())
+		self.snapshot.as_ref()?.assistant.agent_id.clone()
 	}
 
 	pub(super) fn is_assistant_conversation(&self, id: &str) -> bool {
@@ -124,7 +124,13 @@ impl AgentSurface {
 					.as_ref()
 					.is_none_or(|thread| !snapshot.conversation_titles.contains_key(thread))
 		});
-		if untitled { "General".into() } else { self.conversation_label(work) }
+		if work.codex_thread_id.is_none() && (untitled || work.title == "New conversation") {
+			"New topic".into()
+		} else if untitled {
+			"General".into()
+		} else {
+			self.conversation_label(work)
+		}
 	}
 
 	pub(super) fn new_assistant_conversation(&mut self, cx: &mut Context<Self>) {
@@ -133,6 +139,10 @@ impl AgentSurface {
 			return;
 		};
 		if self.sending || self.uncertain {
+			return;
+		}
+		if let Some(id) = self.unstarted_assistant_topic() {
+			self.open_navigation_conversation(&id, cx);
 			return;
 		}
 		let id = self
@@ -148,6 +158,28 @@ impl AgentSurface {
 			None,
 			cx,
 		);
+	}
+
+	fn unstarted_assistant_topic(&self) -> Option<String> {
+		let snapshot = self.snapshot.as_ref()?;
+		self.selected
+			.iter()
+			.chain(snapshot.assistant.topic_ids.iter())
+			.chain(snapshot.assistant.agent_id.iter())
+			.find(|id| {
+				self.is_assistant_conversation(id)
+					&& self.send_previews(id).is_empty()
+					&& !snapshot.archived_work_ids.contains(*id)
+					&& !snapshot.pending_events.iter().any(|event| &event.work_item_id == *id)
+					&& snapshot.work_items.iter().any(|work| {
+						&work.id == *id
+							&& work.codex_thread_id.is_none()
+							&& work.active_turn_id.is_none()
+							&& work.dispatch_state == decodex_protocol::AgentDispatchStateDto::Idle
+							&& work.status == decodex_protocol::AgentWorkStatusDto::Wait
+					})
+			})
+			.cloned()
 	}
 
 	pub(crate) fn ragflow_component_state(&self) -> ComponentState {

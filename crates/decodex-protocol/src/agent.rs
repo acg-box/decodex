@@ -753,6 +753,20 @@ pub enum AgentActionDto {
 		/// Expected running turn; None requires an idle native agent.
 		expected_turn: Option<WireText>,
 	},
+	/// Archive the exact idle native conversation selected by the user.
+	ArchiveConversation {
+		/// Local owner of the conversation selected in the sidebar.
+		work_id: EntityId,
+		/// Exact native conversation; a changed binding rejects the operation.
+		thread_id: WireText,
+	},
+	/// Permanently delete an exact conversation after explicit user confirmation.
+	DeleteConversation {
+		/// Local owner of the selected conversation.
+		work_id: EntityId,
+		/// Exact native conversation to archive and delete through native APIs.
+		thread_id: WireText,
+	},
 	/// Explicitly restore the exact archived native thread selected by the user.
 	RestoreArchivedThread {
 		/// Current local work identity.

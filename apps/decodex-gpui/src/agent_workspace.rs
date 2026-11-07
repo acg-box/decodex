@@ -2,9 +2,8 @@
 use std::{mem, rc::Rc};
 
 use gpui::{
-	AnyElement, AnyView, App, AppContext as _, Bounds, ClickEvent, DispatchPhase, Div,
-	KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, PathBuilder, Pixels, Point,
-	ScrollEvent, Stateful,
+	AnyElement, App, AppContext as _, Bounds, DispatchPhase, Div, KeyDownEvent, MouseButton,
+	MouseDownEvent, MouseMoveEvent, PathBuilder, Pixels, Point, ScrollEvent, Stateful,
 };
 use graph::{Layout, Node};
 use ui_theme::{
@@ -20,7 +19,7 @@ use crate::shell::agent_surface::{
 use crate::{
 	frame_trace,
 	shell::{
-		ControlTooltip, Shell, WINDOW_CONTROLS_CLEARANCE,
+		Shell, WINDOW_CONTROLS_CLEARANCE,
 		agent_surface::{
 			AgentDispatchStateDto, AgentHistoryResult, AgentSurface, AgentWorkItemDto, Context,
 			FluentBuilder, InteractiveElement, IntoElement, LoadState, ParentElement, Render, Role,
@@ -30,15 +29,15 @@ use crate::{
 			native_agents::NativeConnection,
 			prompts, ui_theme,
 			ui_theme::{
-				CAPTION_SIZE, CONVERSATION_HEADER_HEIGHT, CONVERSATION_INSET, CONVERSATION_TAB_GAP,
-				CONVERSATION_TAB_SIZE, CONVERSATION_WIDTH, SELECTED_FILL, WORKSPACE_RADIUS,
+				CAPTION_SIZE, CONVERSATION_HEADER_HEIGHT, CONVERSATION_INSET, CONVERSATION_WIDTH,
+				SELECTED_FILL, WORKSPACE_RADIUS,
 			},
 		},
 		workspace_symbols,
 	},
 	ui_feedback::{self, Feedback, Tone},
 	ui_layout, ui_loading,
-	ui_motion::{self, AgentRailStatus, OverflowLabel, SmoothControl, TabReveal},
+	ui_motion::{self, OverflowLabel, SmoothControl},
 	ui_theme::WORKSPACE_GUTTER,
 };
 use decodex_protocol::AgentWorkKindDto;
@@ -376,7 +375,16 @@ impl AgentSurface {
 			self.workspace.preview_page = None;
 		}
 
-		self.workspace.closing_pages.insert(id.to_owned());
+		let attached = self
+			.snapshot
+			.as_ref()
+			.is_some_and(|snapshot| self.workspace.attached.family_root(id, snapshot).is_some());
+		if attached {
+			self.workspace.closing_pages.insert(id.to_owned());
+		} else {
+			self.workspace.pages.retain(|page| page != id);
+			self.workspace.closing_pages.remove(id);
+		}
 
 		if self.conversation_page().as_deref() == Some(id)
 			&& let Some(root) = self
@@ -596,144 +604,6 @@ impl AgentSurface {
 					.map(|w| super::graph::state_in(snapshot, w).0.to_string())
 			})
 			.unwrap_or_default()
-	}
-
-	pub(super) fn workspace_tabs(&self, cx: &mut Context<Self>) -> AnyElement {
-		let mut list = Self::conversation_tab_list();
-
-		for (id, label, closable) in self.project_conversation_pages() {
-			let active = !self.workspace.browsing
-				&& self.workspace.work_detail.is_none()
-				&& (self.conversation_page().as_ref() == Some(&id)
-					|| (!closable && self.selected.is_none()));
-			let keyboard_select = id.clone();
-			let row_select = id.clone();
-			let group = SharedString::from(format!("conversation-tab-{id}"));
-			let mut tab = gpui::div()
-				.id(group.clone())
-				.group(group.clone())
-				.debug_selector({
-					let id = id.clone();
-
-					move || format!("page-{id}")
-				})
-				.role(Role::Tab)
-				.aria_label(label.clone())
-				.aria_selected(active)
-				.when(self.workspace.preview_page.as_deref() == Some(&id), |tab| {
-					tab.tooltip(preview_tip)
-				})
-				.tab_index(0)
-				.w_full()
-				.min_w_0()
-				.h(gpui::px(CONVERSATION_TAB_SIZE))
-				.flex_none()
-				.overflow_hidden()
-				.flex()
-				.items_center()
-				.rounded(gpui::px(9.))
-				.cursor_pointer()
-				.bg(ui_theme::rgba(if active { SELECTED_FILL } else { 0xffffff00 }))
-				.hover(move |s| {
-					s.bg(ui_theme::rgba(if active { SELECTED_HOVER_FILL } else { HOVER_FILL }))
-				})
-				.on_click(cx.listener(move |s, event: &ClickEvent, _, cx| {
-					if event.click_count() == 2
-						&& s.workspace.preview_page.as_deref() == Some(&row_select)
-					{
-						s.workspace.preview_page = None;
-					}
-
-					s.open_navigation_conversation(&row_select, cx);
-				}))
-				.on_key_down(cx.listener(move |s, event: &KeyDownEvent, _, cx| {
-					if !event.is_held && ["enter", "space"].contains(&event.keystroke.key.as_str())
-					{
-						s.open_navigation_conversation(&keyboard_select, cx);
-						cx.stop_propagation();
-					}
-				}))
-				.child(AgentRailStatus {
-					compact: false,
-					id: id.clone(),
-					state: self.conversation_status(&id),
-					label: label.clone(),
-				});
-
-			if closable {
-				let close = id.clone();
-				let keyboard = id.clone();
-
-				tab = tab.child(
-					gpui::div()
-						.id(SharedString::from(format!("close-{id}")))
-						.role(Role::Button)
-						.tab_index(0)
-						.aria_label(format!("Close {label}"))
-						.size(gpui::px(20.))
-						.mr(gpui::px(6.))
-						.flex_none()
-						.flex()
-						.items_center()
-						.justify_center()
-						.opacity(if active { 0.65 } else { 0. })
-						.group_hover(group, |s| s.opacity(0.65))
-						.focus(|s| s.opacity(1.))
-						.hover(|s| s.opacity(1.))
-						.active(|s| s.opacity(0.45))
-						.child(workspace_symbols::icon_sized(
-							super::super::workspace_symbols::Symbol::Close,
-							12.,
-						))
-						.on_click(cx.listener(move |s, _, _, cx| {
-							cx.stop_propagation();
-							s.close_page(&close, cx);
-						}))
-						.on_key_down(cx.listener(move |s, e: &KeyDownEvent, _, cx| {
-							if !e.is_held && ["enter", "space"].contains(&e.keystroke.key.as_str())
-							{
-								cx.stop_propagation();
-								s.close_page(&keyboard, cx);
-							}
-						})),
-				);
-
-				let visible = !self.workspace.closing_pages.contains(&id);
-				let surface = cx.entity().downgrade();
-
-				list = list.child(TabReveal {
-					id: SharedString::from(format!("tab-reveal-{id}")).into(),
-					visible,
-					width: None,
-					child: tab.into_any_element(),
-					closed: Box::new(move |cx| {
-						let _ = surface.update(cx, |s, cx| {
-							if s.workspace.closing_pages.remove(&id) {
-								s.workspace.pages.retain(|p| p != &id);
-								cx.notify();
-							}
-						});
-					}),
-				});
-			} else {
-				list = list.child(tab.mb(gpui::px(CONVERSATION_TAB_GAP)));
-			}
-		}
-
-		list.into_any_element()
-	}
-
-	fn conversation_tab_list() -> Stateful<Div> {
-		gpui::div()
-			.id("agent-pages")
-			.role(Role::TabList)
-			.aria_label("Open conversations")
-			.w_full()
-			.min_w_0()
-			.max_h(gpui::px(360.))
-			.overflow_y_scroll()
-			.flex()
-			.flex_col()
 	}
 
 	pub(crate) fn workspace_connecting(&self) -> bool {
@@ -2956,10 +2826,6 @@ fn action_icon(id: &str) -> Option<AnyElement> {
 	};
 
 	Some(workspace_symbols::icon(symbol))
-}
-
-fn preview_tip(_: &mut Window, cx: &mut App) -> AnyView {
-	cx.new(|_| ControlTooltip("Preview (double-click to keep open)")).into()
 }
 
 #[cfg(test)]

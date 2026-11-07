@@ -1132,6 +1132,10 @@ async fn serve_fixture(server_io: DuplexStream, history: Value, sent: UnboundedS
 				faults.deleted = true;
 				serde_json::json!({})
 			},
+			Some("thread/archive") => {
+				faults.archived = true;
+				serde_json::json!({})
+			},
 			Some("thread/unarchive") => {
 				faults.archived = false;
 

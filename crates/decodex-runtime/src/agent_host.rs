@@ -1962,13 +1962,59 @@ impl AgentHost {
 		}
 	}
 
-	async fn delete_archived_thread(
+	async fn handle_conversation_lifecycle(
+		&self,
+		action: AgentActionDto,
+		active: &mut Option<(String, AgentCoordinator, mpsc::Receiver<ServerEvent>)>,
+	) -> Result<String, AgentHostError> {
+		match action {
+			AgentActionDto::ArchiveConversation { work_id, thread_id } => {
+				let (_, agent, _) = active.as_mut().ok_or("Agent is not connected")?;
+				agent.archive_conversation(work_id.as_str(), thread_id.as_str()).await.map_err(
+					|_| {
+						AgentHostError::Unknown(
+							"Archive is not confirmed. Refresh the conversation before retrying.",
+						)
+					},
+				)?;
+				Ok(work_id.as_str().into())
+			},
+			AgentActionDto::DeleteConversation { work_id, thread_id } =>
+				Self::delete_conversation(work_id.as_str(), thread_id.as_str(), true, active).await,
+			AgentActionDto::RestoreArchivedThread { work_id, thread_id } => {
+				let (_, agent, _) = active.as_mut().ok_or("Agent is not connected")?;
+
+				agent.restore_archived_thread(work_id.as_str(),thread_id.as_str()).await.map_err(|error|match error {
+                    AgentError::Rejected(_)=>AgentHostError::Rejected("Restoration was not accepted. Refresh the task archive state before trying again."),
+                    _=>AgentHostError::Unknown("Restoration is not confirmed. Refresh archive state; the restore request will not be repeated automatically."),
+                })?;
+
+				// Restoration has exact native readback. Publish it immediately instead
+				// of leaving the restored node hidden for the next polling interval.
+				let mut visibility = self.archive_visibility.lock().await;
+				visibility.confirm_active(thread_id.as_str());
+
+				Ok(work_id.as_str().into())
+			},
+			AgentActionDto::DeleteArchivedThread { work_id, thread_id } =>
+				Self::delete_conversation(work_id.as_str(), thread_id.as_str(), false, active).await,
+			_ => Err("Unsupported conversation action".into()),
+		}
+	}
+
+	async fn delete_conversation(
 		work: &str,
 		thread: &str,
+		archive_first: bool,
 		active: &mut Option<(String, AgentCoordinator, mpsc::Receiver<ServerEvent>)>,
 	) -> Result<String, AgentHostError> {
 		let (_, agent, _) = active.as_mut().ok_or("Agent is not connected")?;
-		agent.delete_archived_thread(work, thread).await.map_err(|error| match error {
+		let result = if archive_first {
+			agent.delete_conversation(work, thread).await
+		} else {
+			agent.delete_archived_thread(work, thread).await
+		};
+		result.map_err(|error| match error {
 			AgentError::Rejected(_) => AgentHostError::Rejected(
 				"This conversation is no longer available for deletion. Refresh the archive.",
 			),
@@ -2039,23 +2085,11 @@ impl AgentHost {
 					expected_turn.as_ref().map(|turn| turn.as_str()),
 				)
 				.await,
-			AgentActionDto::RestoreArchivedThread { work_id, thread_id } => {
-				let (_, agent, _) = active.as_mut().ok_or("Agent is not connected")?;
-
-				agent.restore_archived_thread(work_id.as_str(),thread_id.as_str()).await.map_err(|error|match error {
-                    AgentError::Rejected(_)=>AgentHostError::Rejected("Restoration was not accepted. Refresh the task archive state before trying again."),
-                    _=>AgentHostError::Unknown("Restoration is not confirmed. Refresh archive state; the restore request will not be repeated automatically."),
-                })?;
-
-				// Restoration has exact native readback. Publish it immediately instead
-				// of leaving the restored node hidden for the next polling interval.
-				let mut visibility = self.archive_visibility.lock().await;
-				visibility.confirm_active(thread_id.as_str());
-
-				Ok(work_id.as_str().into())
-			},
-			AgentActionDto::DeleteArchivedThread { work_id, thread_id } =>
-				Self::delete_archived_thread(work_id.as_str(), thread_id.as_str(), active).await,
+			action @ (AgentActionDto::ArchiveConversation { .. }
+			| AgentActionDto::DeleteConversation { .. }
+			| AgentActionDto::RestoreArchivedThread { .. }
+			| AgentActionDto::DeleteArchivedThread { .. }) =>
+				self.handle_conversation_lifecycle(action, active).await,
 			action @ (AgentActionDto::AddResourceLink { .. }
 			| AgentActionDto::RemoveResource { .. }) => Self::handle_resource_change(action, active).await,
 

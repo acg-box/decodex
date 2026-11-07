@@ -38,8 +38,14 @@ struct WorkRow {
 
 impl AgentSurface {
 	pub(super) fn new_work_search(cx: &mut Context<Self>) -> Entity<ComposerInput> {
-		let input =
-			cx.new(|cx| ComposerInput::with_placeholder(46, "Search work…", "Search all work", cx));
+		let input = cx.new(|cx| {
+			ComposerInput::with_placeholder(
+				46,
+				"Search…",
+				"Search topics, Work and project Agents",
+				cx,
+			)
+		});
 
 		cx.observe(&input, |_, _, cx| cx.notify()).detach();
 

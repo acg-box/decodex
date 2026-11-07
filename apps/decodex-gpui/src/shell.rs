@@ -3115,9 +3115,6 @@ fn agent_panel_control(shell: &Shell, index: usize, cx: &Context<Shell>) -> AnyE
 		.aria_expanded(active)
 		.tooltip(move |_, cx| cx.new(|_| ControlTooltip(label)).into())
 		.size(gpui::px(CHROME_CONTROL_SIZE))
-		.when(index == 2, |control| {
-			control.w(gpui::px(if attention > 0 { 142. } else { 120. })).px_2().gap(gpui::px(5.))
-		})
 		.rounded(gpui::px(5.0))
 		.flex()
 		.items_center()
@@ -3171,12 +3168,24 @@ fn agent_panel_control(shell: &Shell, index: usize, cx: &Context<Shell>) -> AnyE
 				.opacity(if active { 1. } else { 0.55 })
 				.child(AgentSurface::panel_glyph(index)),
 		)
-		.when(index == 2, |control| {
-			control.child(gpui::div().text_size(gpui::px(11.)).child(if attention > 0 {
-				format!("Collaboration ({attention})")
-			} else {
-				"Collaboration".into()
-			}))
+		.when(index == 2 && attention > 0, |control| {
+			control.child(
+				gpui::div()
+					.absolute()
+					.top(gpui::px(1.))
+					.right(gpui::px(1.))
+					.min_w(gpui::px(10.))
+					.h(gpui::px(10.))
+					.px(gpui::px(2.))
+					.rounded(gpui::px(5.))
+					.flex()
+					.items_center()
+					.justify_center()
+					.text_size(gpui::px(8.))
+					.bg(ui_theme::rgb(ui_theme::WARNING))
+					.text_color(ui_theme::rgb(ui_theme::CANVAS))
+					.child(if attention > 9 { "9+".into() } else { attention.to_string() }),
+			)
 		})
 		.smooth()
 		.enabled(enabled)

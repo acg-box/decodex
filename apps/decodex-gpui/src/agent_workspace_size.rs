@@ -904,7 +904,7 @@ mod tests {
 		visual.update(crate::ui_frame::draw_current_frame);
 
 		let collapsed = visual.debug_bounds("workspace-transcript").unwrap();
-		let mark = "conversation-mark-agent";
+		let mark = "navigation-icon-page-agent";
 		let collapsed_mark = visual.debug_bounds(mark).unwrap();
 		let row = visual.debug_bounds("page-agent").unwrap();
 
