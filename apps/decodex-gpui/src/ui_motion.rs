@@ -42,6 +42,26 @@ use crate::ui_theme::{
 pub(crate) const HOVER_OPEN_DELAY: Duration = Duration::from_millis(180);
 pub(crate) const HOVER_CLOSE_DELAY: Duration = Duration::from_millis(220);
 
+/// Keep a panel's leading rail fixed while its details follow the visible width.
+/// Geometry owns the reveal, so a reversal cannot restart a separate fade.
+#[derive(Clone, Copy)]
+pub(crate) struct PanelReveal {
+	pub expanded: bool,
+	pub content_width: f32,
+	pub details_opacity: f32,
+}
+impl PanelReveal {
+	pub(crate) fn new(target: bool, visible: f32, rail: f32, full: f32) -> Self {
+		let expanded = target || visible > rail;
+		let progress = ((visible - rail) / (full - rail)).clamp(0., 1.);
+		Self {
+			expanded,
+			content_width: if expanded { full } else { rail },
+			details_opacity: progress * progress * (3. - 2. * progress),
+		}
+	}
+}
+
 pub(crate) trait SmoothControl {
 	fn smooth(self) -> Control;
 }
@@ -544,6 +564,7 @@ impl Tween {
 #[derive(IntoElement)]
 pub(crate) struct AgentRailStatus {
 	pub compact: bool,
+	pub details_opacity: f32,
 	pub scroll: bool,
 	pub id: String,
 	pub state: String,
@@ -638,11 +659,18 @@ impl RenderOnce for AgentRailStatus {
 					.text_color(ink)
 					.child(initial),
 			)
-			.child(gpui::div().flex_1().min_w_0().overflow_hidden().child(HoverOverflowLabel {
-				id: title_id.into(),
-				text: rest.into(),
-				active: self.scroll,
-			}))
+			.child(
+				gpui::div()
+					.flex_1()
+					.min_w_0()
+					.overflow_hidden()
+					.opacity(self.details_opacity)
+					.child(HoverOverflowLabel {
+						id: title_id.into(),
+						text: rest.into(),
+						active: self.scroll,
+					}),
+			)
 	}
 }
 
@@ -784,6 +812,29 @@ mod tests {
 	use std::time::{Duration, Instant};
 
 	use crate::ui_motion::Tween;
+
+	#[test]
+	fn panel_details_are_invisible_when_the_canvas_enters_or_leaves_the_rail() {
+		use super::PanelReveal;
+		for full in [160., 240., 480.] {
+			let closed = PanelReveal::new(false, 40., 40., full);
+			let opening = PanelReveal::new(true, 40., 40., full);
+			assert_eq!(closed.content_width, 40.);
+			assert_eq!(opening.content_width, full);
+			assert_eq!(closed.details_opacity, 0.);
+			assert_eq!(opening.details_opacity, 0.);
+			let final_frame = PanelReveal::new(false, 40.5, 40., full);
+			assert_eq!(final_frame.content_width, full);
+			assert!(final_frame.details_opacity < 0.001);
+			let middle = (full + 40.) / 2.;
+			let closing = PanelReveal::new(false, middle, 40., full);
+			let reversing = PanelReveal::new(true, middle, 40., full);
+			assert!(closing.details_opacity > 0. && closing.details_opacity < 1.);
+			assert_eq!(closing.details_opacity, reversing.details_opacity);
+			assert_eq!(closing.content_width, reversing.content_width);
+			assert_eq!(PanelReveal::new(true, full, 40., full).details_opacity, 1.);
+		}
+	}
 
 	#[gpui::test]
 	fn open_disclosures_mount_at_full_height_and_follow_live_content(
