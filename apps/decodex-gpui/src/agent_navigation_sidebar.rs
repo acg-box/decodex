@@ -5,7 +5,7 @@ use crate::{
 		agent_surface::{AgentSurface, Context},
 		workspace_symbols::{self},
 	},
-	ui_motion::SmoothControl as _,
+	ui_motion::{PanelReveal, SmoothControl as _},
 	ui_theme::{self, NAVIGATION_DETAIL_SIZE, TEXT, TEXT_MUTED},
 };
 #[cfg(any(test, feature = "visual-capture"))] use decodex_protocol::work::WorkState;
@@ -75,7 +75,7 @@ struct ProjectBranch<'a> {
 	name: &'a str,
 	directory: Option<&'a str>,
 	items: &'a [Item],
-	expanded: bool,
+	reveal: PanelReveal,
 	auto_scroll: bool,
 }
 impl AgentSurface {
@@ -223,16 +223,24 @@ impl AgentSurface {
 	) -> AnyElement {
 		let rail = ui_theme::CONVERSATION_TAB_SIZE + 2. * ui_theme::SIDEBAR_INSET;
 		let visible_width = self.workspace_sidebar_width(window);
-		let expanded = self.workspace_sidebar_expanded(window) || visible_width > rail;
-		let width = if expanded { self.workspace_sidebar_expanded_width(window) } else { rail };
-		crate::frame_trace::sidebar_geometry(visible_width, width);
+		let reveal = PanelReveal::new(
+			self.workspace_sidebar_expanded(window),
+			visible_width,
+			rail,
+			self.workspace_sidebar_expanded_width(window),
+		);
+		crate::frame_trace::sidebar_geometry(
+			visible_width,
+			reveal.content_width,
+			reveal.details_opacity,
+		);
 		let items = self.navigation_items(cx);
-		let directory = self.navigation_directory(&items, expanded, window, cx);
+		let directory = self.navigation_directory(&items, reveal, window, cx);
 		// Retain one complete content layout while the outer panel clips its width.
 		// A target change must not remove labels or squeeze trailing controls mid-motion.
 		let content = gpui::div()
 			.debug_selector(|| "navigation-content-canvas".into())
-			.w(gpui::px(width))
+			.w(gpui::px(reveal.content_width))
 			.h_full()
 			.flex_none()
 			.flex()
@@ -244,7 +252,7 @@ impl AgentSurface {
 				"navigation-command-entry",
 				"Search and commands",
 				Glyph::Search,
-				expanded,
+				reveal,
 				|s, w, cx| s.open_global_commands(w, cx),
 				cx,
 			))
@@ -270,7 +278,7 @@ impl AgentSurface {
 				"archive-browser",
 				"Archived",
 				Glyph::Archive,
-				expanded,
+				reveal,
 				|s, _, cx| {
 					s.workspace.navigation.archives_open = !s.workspace.navigation.archives_open;
 					s.workspace.sidebar_visible = true;
@@ -292,17 +300,18 @@ impl AgentSurface {
 	fn navigation_directory(
 		&self,
 		items: &[Item],
-		expanded: bool,
+		reveal: PanelReveal,
 		window: &mut Window,
 		cx: &mut Context<Self>,
 	) -> gpui::Div {
+		let expanded = reveal.expanded;
 		let mut directory = gpui::div().flex().flex_col();
 		if self.workspace.navigation.archives_open && expanded {
 			directory = directory.child(self.navigation_utility(
 				"archive-back",
 				"Archived",
 				Glyph::Back,
-				expanded,
+				reveal,
 				|s, _, cx| {
 					s.workspace.navigation.archives_open = false;
 					cx.notify();
@@ -311,7 +320,7 @@ impl AgentSurface {
 			));
 			for item in self.navigation_archived_items() {
 				directory = directory
-					.child(self.navigation_item(&item, "archive", expanded, false, window, cx));
+					.child(self.navigation_item(&item, "archive", reveal, false, window, cx));
 			}
 			if let Some(message) = self.navigation_archive_status() {
 				directory = directory.child(
@@ -320,6 +329,7 @@ impl AgentSurface {
 						.py_1()
 						.text_size(gpui::px(ui_theme::NAVIGATION_SECTION_SIZE))
 						.text_color(ui_theme::rgb(TEXT_MUTED))
+						.opacity(reveal.details_opacity)
 						.child(message),
 				);
 			}
@@ -329,7 +339,7 @@ impl AgentSurface {
 				let pref = self.workspace.navigation.preferences.section(section);
 				let open = !self.workspace.navigation.collapsed.contains(section.key());
 				if section == Section::Projects {
-					content = self.navigation_projects(items, pref, expanded, window, cx);
+					content = self.navigation_projects(items, pref, reveal, window, cx);
 				} else {
 					let mut selected: Vec<_> = items
 						.iter()
@@ -348,7 +358,7 @@ impl AgentSurface {
 						content = content.child(self.navigation_item(
 							&item,
 							section.key(),
-							expanded,
+							reveal,
 							pref.auto_scroll,
 							window,
 							cx,
@@ -356,7 +366,7 @@ impl AgentSurface {
 					}
 				}
 				let content = if section == Section::Projects {
-					content.into_any_element()
+					content.opacity(reveal.details_opacity).into_any_element()
 				} else {
 					gpui::div()
 						.id(SharedString::from(format!("navigation-list-{}", section.key())))
@@ -369,7 +379,7 @@ impl AgentSurface {
 						.into_any_element()
 				};
 				directory =
-					directory.child(self.navigation_heading(section, expanded, open, window, cx));
+					directory.child(self.navigation_heading(section, reveal, open, window, cx));
 				if section != Section::Projects || expanded {
 					directory = directory.child(crate::ui_motion::disclosure(
 						SharedString::from(format!("navigation-disclosure-{}", section.key())),
@@ -386,10 +396,12 @@ impl AgentSurface {
 		&self,
 		items: &[Item],
 		pref: model::Preference,
-		expanded: bool,
+		reveal: PanelReveal,
 		window: &mut Window,
 		cx: &mut Context<Self>,
 	) -> gpui::Div {
+		// The whole project tree fades, including names inside the leading rail.
+		let reveal = PanelReveal { details_opacity: 1., ..reveal };
 		let mut content = gpui::div().flex().flex_col();
 		let mut projects = self.snapshot.as_ref().map_or_else(Vec::new, |s| s.projects.clone());
 		projects.sort_by(|a, b| {
@@ -419,7 +431,7 @@ impl AgentSurface {
 					name: &project.name,
 					directory: Some(&project.directory),
 					items: &children,
-					expanded,
+					reveal,
 					auto_scroll: pref.auto_scroll,
 				},
 				window,
@@ -435,7 +447,7 @@ impl AgentSurface {
 					name: "No project",
 					directory: None,
 					items: &unassigned,
-					expanded,
+					reveal,
 					auto_scroll: pref.auto_scroll,
 				},
 				window,
@@ -450,7 +462,7 @@ impl AgentSurface {
 		id: &'static str,
 		label: &'static str,
 		glyph: Glyph,
-		expanded: bool,
+		reveal: PanelReveal,
 		action: impl Fn(&mut Self, &mut Window, &mut Context<Self>) + 'static,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
@@ -487,11 +499,12 @@ impl AgentSurface {
 					.text_color(ui_theme::rgb(TEXT_MUTED))
 					.child(Icon { glyph, size: ui_theme::NAVIGATION_ICON_SIZE }),
 			)
-			.when(expanded, |row| {
+			.when(reveal.expanded, |row| {
 				row.child(
 					gpui::div()
 						.flex_1()
 						.whitespace_nowrap()
+						.opacity(reveal.details_opacity)
 						.text_size(gpui::px(ui_theme::NAVIGATION_TITLE_SIZE))
 						.child(label),
 				)
@@ -499,6 +512,7 @@ impl AgentSurface {
 					row.child(
 						gpui::div()
 							.pr_1()
+							.opacity(reveal.details_opacity)
 							.text_size(gpui::px(10.))
 							.text_color(ui_theme::rgb(TEXT_MUTED))
 							.child("⌘K"),
@@ -519,11 +533,12 @@ impl AgentSurface {
 	fn navigation_heading(
 		&self,
 		section: Section,
-		expanded: bool,
+		reveal: PanelReveal,
 		open: bool,
 		window: &mut Window,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
+		let expanded = reveal.expanded;
 		let key = format!("heading-{}", section.key());
 		let focus = navigation_focus(&key, window, cx);
 		let hovered = self.workspace.navigation.hovered.as_ref() == Some(&key);
@@ -586,12 +601,18 @@ impl AgentSurface {
 				gpui::div()
 					.flex_1()
 					.min_w_0()
+					.opacity(reveal.details_opacity)
 					.text_size(gpui::px(ui_theme::NAVIGATION_SECTION_SIZE))
 					.font_weight(FontWeight::MEDIUM)
 					.text_color(ui_theme::rgb(TEXT_MUTED))
 					.child(section.label()),
 			);
-			row = row.child(self.navigation_options(section, opacity, window, cx));
+			row = row.child(self.navigation_options(
+				section,
+				opacity * reveal.details_opacity,
+				window,
+				cx,
+			));
 			if matches!(section, Section::Assistant | Section::Projects) {
 				row = row.child(self.navigation_create(
 					if section == Section::Assistant {
@@ -600,7 +621,7 @@ impl AgentSurface {
 						"New project"
 					},
 					format!("navigation-create-{}", section.key()),
-					opacity,
+					opacity * reveal.details_opacity,
 					move |s, cx| {
 						if section == Section::Assistant {
 							s.workspace.navigation.collapsed.remove(section.key());
@@ -617,6 +638,7 @@ impl AgentSurface {
 					.w(gpui::px(20.))
 					.h_full()
 					.flex_none()
+					.opacity(reveal.details_opacity)
 					.flex()
 					.items_center()
 					.justify_center()
@@ -695,7 +717,8 @@ impl AgentSurface {
 		window: &mut Window,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
-		let ProjectBranch { id, name, directory, expanded, auto_scroll, .. } = *branch;
+		let ProjectBranch { id, name, directory, reveal, auto_scroll, .. } = *branch;
+		let expanded = reveal.expanded;
 		let open = self.workspace.navigation.projects.contains(id);
 		let key = format!("project-{id}");
 		let focus = navigation_focus(&key, window, cx);
@@ -815,14 +838,14 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) -> AnyElement {
 		let header = self.navigation_project_heading(&branch, window, cx);
-		let ProjectBranch { id, items, expanded, auto_scroll, .. } = branch;
+		let ProjectBranch { id, items, reveal, auto_scroll, .. } = branch;
 		let open = self.workspace.navigation.projects.contains(id);
 		let mut children = gpui::div().relative().flex().flex_col();
 		for item in items {
 			children = children.child(self.navigation_item(
 				item,
 				&format!("project-{id}"),
-				expanded,
+				reveal,
 				auto_scroll,
 				window,
 				cx,
@@ -855,11 +878,12 @@ impl AgentSurface {
 		&self,
 		item: &Item,
 		section: &str,
-		expanded: bool,
+		reveal: PanelReveal,
 		auto_scroll: bool,
 		window: &mut Window,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
+		let expanded = reveal.expanded;
 		let key = format!("{section}-{}", item.id);
 		let group = if section.starts_with("project-") { "projects" } else { section };
 		let anchor = self.navigation_anchor(&key, &item.id, group, window, cx);
@@ -950,6 +974,7 @@ impl AgentSurface {
 			section,
 			&key,
 			expanded && (auto_scroll || hovered || keyboard),
+			reveal.details_opacity,
 		);
 		row = row.child(
 			gpui::div()
@@ -964,10 +989,15 @@ impl AgentSurface {
 		);
 		if expanded {
 			if !item.draft {
-				row = row.child(navigation_item_time(item, actions));
+				row = row.child(navigation_item_time(item, actions, reveal.details_opacity));
 			}
 			if manageable {
-				row = row.child(self.navigation_row_actions(item, &key, actions, cx));
+				row = row.child(self.navigation_row_actions(
+					item,
+					&key,
+					actions * reveal.details_opacity,
+					cx,
+				));
 			}
 		}
 		row.into_any_element()
@@ -1331,10 +1361,17 @@ impl AgentSurface {
 	}
 }
 
-fn navigation_item_label(item: &Item, section: &str, key: &str, scroll: bool) -> AnyElement {
+fn navigation_item_label(
+	item: &Item,
+	section: &str,
+	key: &str,
+	scroll: bool,
+	details_opacity: f32,
+) -> AnyElement {
 	if section.starts_with("project-") || section == "archive" {
 		gpui::div()
 			.pl(gpui::px(9.))
+			.opacity(details_opacity)
 			.text_size(gpui::px(ui_theme::NAVIGATION_TITLE_SIZE))
 			.child(crate::ui_motion::HoverOverflowLabel {
 				id: SharedString::from(format!("navigation-title-{key}")).into(),
@@ -1345,6 +1382,7 @@ fn navigation_item_label(item: &Item, section: &str, key: &str, scroll: bool) ->
 	} else {
 		crate::ui_motion::AgentRailStatus {
 			compact: false,
+			details_opacity,
 			id: format!("navigation-{key}"),
 			label: item.title.clone(),
 			state: item.state.clone(),
@@ -1354,7 +1392,7 @@ fn navigation_item_label(item: &Item, section: &str, key: &str, scroll: bool) ->
 	}
 }
 
-fn navigation_item_time(item: &Item, actions: f32) -> impl gpui::IntoElement {
+fn navigation_item_time(item: &Item, actions: f32, details_opacity: f32) -> impl gpui::IntoElement {
 	gpui::div()
 		.absolute()
 		.right(gpui::px(5.))
@@ -1363,7 +1401,7 @@ fn navigation_item_time(item: &Item, actions: f32) -> impl gpui::IntoElement {
 		.flex()
 		.items_center()
 		.justify_end()
-		.opacity(1. - actions)
+		.opacity((1. - actions) * details_opacity)
 		.text_size(gpui::px(10.))
 		.text_color(ui_theme::rgb(TEXT_MUTED))
 		.child(model::relative_time(item.updated, model::now()))
