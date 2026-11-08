@@ -80,6 +80,7 @@ mod native_menu;
 #[path = "agent_work_board.rs"] mod work_board;
 #[path = "agent_work_browser.rs"] mod work_browser;
 #[path = "agent_workspace.rs"] mod workspace;
+#[path = "agent_workspace_material.rs"] mod workspace_material;
 #[path = "agent_workspace_size.rs"] mod workspace_size;
 
 use std::{

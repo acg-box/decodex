@@ -230,6 +230,15 @@ impl AgentSurface {
 			self.workspace_sidebar_expanded_width(window),
 		);
 		crate::frame_trace::sidebar_geometry(visible_width, reveal.content_width);
+		self.render_navigation_sidebar_content(reveal, window, cx)
+	}
+
+	pub(super) fn render_navigation_sidebar_content(
+		&self,
+		reveal: PanelReveal,
+		window: &mut Window,
+		cx: &mut Context<Self>,
+	) -> AnyElement {
 		let items = self.navigation_items(cx);
 		let directory = self.navigation_directory(&items, &reveal, window, cx);
 		// Retain one complete content layout while the outer panel clips its width.

@@ -1042,7 +1042,12 @@ impl Shell {
 		cx.stop_propagation();
 	}
 
-	fn interrupt_reply(&mut self, event: &KeyDownEvent, _: &mut Window, cx: &mut Context<Self>) {
+	fn interrupt_reply(
+		&mut self,
+		event: &KeyDownEvent,
+		window: &mut Window,
+		cx: &mut Context<Self>,
+	) {
 		if event.keystroke.key != "escape"
 			|| event.keystroke.modifiers != Modifiers::default()
 			|| event.is_held
@@ -1050,6 +1055,10 @@ impl Shell {
 			return;
 		}
 		if self.selected == Destination::Agent {
+			if self.agent.update(cx, |agent, cx| agent.dismiss_workspace_overlays(window, cx)) {
+				cx.stop_propagation();
+				return;
+			}
 			if self.status_open {
 				self.status_open = false;
 
@@ -2055,6 +2064,9 @@ impl Render for Shell {
 
 		#[cfg(all(target_os = "macos", not(test)))]
 		self.agent.update(cx, |agent, cx| {
+			if self.selected != Destination::Agent {
+				agent.hide_workspace_materials(window, cx);
+			}
 			agent.prepare_native_composer(self.selected == Destination::Agent, window, cx);
 			agent.prepare_native_menu(window, cx);
 		});

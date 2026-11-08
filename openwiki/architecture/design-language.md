@@ -5,7 +5,7 @@ description: Reusable layout, activity-island motion, reading spacing and theme 
 tags: [desktop, design, motion, layout]
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-08T19:03:11.826Z
+    at: 2026-11-08T19:12:16.201Z
 sources:
   - id: openwiki-source-8037e2358a2c4f9b2c722a11
     resource: repo://AGENTS.md
@@ -35,6 +35,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_work_progress.rs
   - id: openwiki-source-c0e58bc836ac05c982449723
     resource: repo://apps/decodex-gpui/src/agent_workbench.rs
+  - id: openwiki-source-6c602da679f5962984ed428d
+    resource: repo://apps/decodex-gpui/src/agent_workspace_material.rs
   - id: openwiki-source-e269da8230b6d51390181459
     resource: repo://apps/decodex-gpui/src/agent_workspace_size.rs
   - id: openwiki-source-5d032c6be684964aa2c401fa
@@ -79,7 +81,7 @@ sources:
     resource: repo://codex-runtime.lock.json
   - id: openwiki-source-a490ea3fbcddb9c007caf196
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_context_tests.rs
-generated: { by: "codex", at: "2026-11-08T19:03:11.826Z" }
+generated: { by: "codex", at: "2026-11-08T19:12:16.201Z" }
 ---
 
 # Interface geometry and motion
@@ -113,7 +115,7 @@ Lay out detail text and metric columns at the complete content width. Clip that 
 
 The main window accepts sizes down to 480 by 360 points. Reserve a 360-point reading width before allocating persistent side panels. Keep the panel that was open first in the layout. If the other panel cannot fit, show it above the reading plane without moving the first panel or narrowing the conversation. Resizing to a wider window restores both requested panels to the layout. In a very narrow window that cannot fit either panel, show only the most recently opened temporary surface.
 
-Use the same 8-point outer gutter and 16-point corner radius for both side panels. Their requested width is between 160 and 480 points, constrained by the window. Keep the complete panel content layout behind the animated clipping edge. Temporary surfaces use the shared opaque workspace overlay color, so underlying text cannot show through. Escape or a click in the uncovered reading plane dismisses temporary surfaces. Preserve the docked panel, Graph state and conversation draft.
+Use the same 8-point outer gutter and 16-point corner radius for both side panels. Their requested width is between 160 and 480 points, constrained by the window. Keep the complete panel content layout behind the animated clipping edge. Temporary surfaces use `ui_motion::MaterialSurface` with the current Popover material preference. AppKit supplies the transparent material and background blur. The shared host keeps the complete foreground canvas and clips its material and input region together. Escape first dismisses a temporary surface before it can interrupt a reply. A click in the uncovered reading plane also dismisses it. Detached surface shortcuts return to the main workspace owner. Preserve the docked panel, Graph state and conversation draft.
 
 The native composer keeps its full layout behind temporary panels. Clip its material, foreground and pointer region to the uncovered area; do not resize or recreate its text editor. Graph expansion retains navigation and collaboration panels. Explicit conversation focus mode can still hide the side panels.
 

@@ -460,6 +460,9 @@ impl AgentSurface {
 		let width = self.workspace_sidebar_display_width(window);
 		let layout = self.workspace_panel_layout(window);
 		let floating = layout.left_floating || width > self.workspace_sidebar_width(window) + 0.5;
+		if !floating || width <= 0.1 {
+			self.hide_workspace_material(Panel::Left, window, cx);
+		}
 		if self
 			.workspace
 			.sidebar_content_motion
@@ -493,30 +496,42 @@ impl AgentSurface {
 				cx.listener(|s, _, _, _| s.workspace.focused_panel = Some(Panel::Left)),
 			)
 			.when(width > 0.1, |panel| {
-				panel.child(ui_layout::pane(self.presentations.sidebar.clone(), window))
+				if floating {
+					panel.bg(gpui::transparent_black()).child(self.workspace_material(
+						Panel::Left,
+						width,
+						self.workspace_sidebar_expanded_width(window),
+						window,
+						cx,
+					))
+				} else {
+					panel.child(ui_layout::pane(self.presentations.sidebar.clone(), window))
+				}
 			})
-			.when(width > 0.1 && self.workspace.sidebar_visible, |panel| {
+			.when(width > 0.1 && self.workspace.sidebar_visible && !floating, |panel| {
 				panel.child(self.sidebar_resize_handle(Panel::Left, cx))
 			})
 			.when(floating, |panel| {
-				panel.bg(ui_theme::workspace_overlay_color()).shadow_lg().on_mouse_down_out(
-					cx.listener(|s, event: &MouseDownEvent, window, cx| {
-						let right = s.agent_tree_width(window);
-						if event.position.y >= gpui::px(WINDOW_CONTROLS_CLEARANCE)
-							&& f32::from(event.position.x)
-								< f32::from(window.viewport_size().width) - right - WORKSPACE_GUTTER
-						{
-							s.dismiss_workspace_overlays(window, cx);
-						}
-					}),
-				)
+				panel.on_mouse_down_out(cx.listener(|s, event: &MouseDownEvent, window, cx| {
+					let right = s.agent_tree_width(window);
+					if event.position.y >= gpui::px(WINDOW_CONTROLS_CLEARANCE)
+						&& f32::from(event.position.x)
+							< f32::from(window.viewport_size().width) - right - WORKSPACE_GUTTER
+					{
+						s.dismiss_workspace_overlays(window, cx);
+					}
+				}))
 			})
 			.into_any_element()
 	}
 
-	pub(crate) fn dismiss_workspace_overlays(&mut self, window: &Window, cx: &mut Context<Self>) {
+	pub(crate) fn dismiss_workspace_overlays(
+		&mut self,
+		window: &Window,
+		cx: &mut Context<Self>,
+	) -> bool {
 		if self.workspace.chat_expanded {
-			return;
+			return false;
 		}
 		let layout = self.workspace_panel_layout(window);
 		let left = self.workspace.sidebar_peek
@@ -537,6 +552,7 @@ impl AgentSurface {
 			ui_motion::begin_interaction();
 			cx.notify();
 		}
+		left || right
 	}
 
 	pub(super) fn sidebar_resize_handle(
@@ -589,14 +605,11 @@ impl AgentSurface {
 					s.workspace.focused_panel = Some(panel);
 					s.workspace.panel_drag = Some((
 						panel,
-						event.position.x.into(),
+						f32::from(event.position.x + window.bounds().origin.x),
 						if right {
-							s.agent_tree_width(window)
+							s.workspace.agent_panel_width.clamp(160., 480.)
 						} else {
-							sidebar_width(
-								s.workspace.sidebar_width,
-								window.viewport_size().width.into(),
-							)
+							s.workspace.sidebar_width.clamp(160., 480.)
 						},
 					));
 
@@ -615,7 +628,7 @@ impl AgentSurface {
 					cx.notify();
 				}
 			}))
-			.on_key_down(cx.listener(move |s, event: &KeyDownEvent, window, cx| {
+			.on_key_down(cx.listener(move |s, event: &KeyDownEvent, _, cx| {
 				let delta = match event.keystroke.key.as_str() {
 					"left" => -16.0,
 					"right" => 16.0,
@@ -628,10 +641,8 @@ impl AgentSurface {
 					s.workspace.agent_panel_width =
 						(s.workspace.agent_panel_width - delta).clamp(160., 480.);
 				} else {
-					s.workspace.sidebar_width = sidebar_width(
-						s.workspace.sidebar_width + delta,
-						window.viewport_size().width.into(),
-					);
+					s.workspace.sidebar_width =
+						(s.workspace.sidebar_width + delta).clamp(160., 480.);
 				}
 
 				cx.stop_propagation();
@@ -678,7 +689,7 @@ impl AgentSurface {
 					s.workspace.focused_panel = Some(Panel::Bottom);
 					s.workspace.panel_drag = Some((
 						Panel::Bottom,
-						event.position.y.into(),
+						f32::from(event.position.y + window.bounds().origin.y),
 						s.workspace_graph_size(window, true).1,
 					));
 
@@ -725,17 +736,16 @@ impl AgentSurface {
 					return;
 				}
 
-				let delta = f32::from(event.position.x) - start;
+				let delta = f32::from(event.position.x + window.bounds().origin.x) - start;
 
 				if panel == Panel::Bottom {
-					let delta = f32::from(event.position.y) - start;
+					let delta = f32::from(event.position.y + window.bounds().origin.y) - start;
 
 					s.workspace.graph_panel_height = (width + delta).clamp(120., 640.);
 				} else if panel == Panel::Right {
 					s.workspace.agent_panel_width = (width - delta).clamp(160., 480.);
 				} else {
-					s.workspace.sidebar_width =
-						sidebar_width(width + delta, window.viewport_size().width.into());
+					s.workspace.sidebar_width = (width + delta).clamp(160., 480.);
 				}
 
 				cx.stop_propagation();

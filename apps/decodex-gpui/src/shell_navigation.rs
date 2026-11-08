@@ -371,6 +371,29 @@ mod tests {
 	}
 
 	#[gpui::test]
+	fn escape_dismisses_floating_panel_before_interrupting_the_conversation(
+		cx: &mut TestAppContext,
+	) {
+		let (shell, visual) = open_shell(cx);
+		visual.simulate_resize(gpui::size(gpui::px(800.), gpui::px(620.)));
+		shell.update(visual, |s, cx| {
+			s.agent.update(cx, |agent, cx| agent.visual_workspace_fixture(cx))
+		});
+		visual.update(|window, cx| {
+			let focus = shell.read(cx).root_focus.clone();
+			window.focus(&focus, cx);
+		});
+		visual.update(crate::ui_frame::draw_current_frame);
+		visual.simulate_keystrokes("escape");
+		shell.read_with(visual, |s, cx| {
+			let panels = s.agent.read(cx).workspace_panels();
+			assert!(panels[0].0, "keep the docked navigation");
+			assert!(panels[1].0, "keep Graph");
+			assert!(!panels[2].0, "dismiss the floating collaboration panel");
+		});
+	}
+
+	#[gpui::test]
 	fn sidebar_archive_disclosure_preserves_navigation_history(cx: &mut TestAppContext) {
 		let (shell, visual) = open_shell(cx);
 

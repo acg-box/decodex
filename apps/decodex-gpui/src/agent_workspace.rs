@@ -1176,6 +1176,7 @@ impl AgentSurface {
 			ui_motion::request_frame(window, cx);
 		}
 		if connecting {
+			self.hide_workspace_materials(window, cx);
 			let unavailable =
 				matches!(self.displayed_load_state(), LoadState::Unavailable | LoadState::Stale);
 

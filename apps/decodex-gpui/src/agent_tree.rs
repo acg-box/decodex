@@ -38,6 +38,10 @@ impl AgentSurface {
 	pub(super) fn activity_pane(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
 		let layout = self.workspace_panel_layout(window);
 		let width = self.workspace_right_display_width(window);
+		let floating = layout.right_floating || width > layout.right_slot + 0.5;
+		if !floating || width <= 0.1 {
+			self.hide_workspace_material(super::workspace_size::Panel::Right, window, cx);
+		}
 		if self
 			.workspace
 			.right_content_motion
@@ -63,7 +67,16 @@ impl AgentSurface {
 			.w(gpui::px(width))
 			.overflow_hidden()
 			.opacity(self.workspace.arrival.progress(0.08))
-			.when(width > 0.1, |panel| {
+			.when(width > 0.1 && floating, |panel| {
+				panel.bg(gpui::transparent_black()).child(self.workspace_material(
+					super::workspace_size::Panel::Right,
+					width,
+					content_width,
+					window,
+					cx,
+				))
+			})
+			.when(width > 0.1 && !floating, |panel| {
 				panel.child(
 					gpui::div()
 						.absolute()
@@ -81,17 +94,15 @@ impl AgentSurface {
 						.child(self.sidebar_resize_handle(super::workspace_size::Panel::Right, cx)),
 				)
 			})
-			.when(layout.right_floating, |panel| {
-				panel.bg(ui_theme::workspace_overlay_color()).shadow_lg().on_mouse_down_out(
-					cx.listener(|s, event: &MouseDownEvent, window, cx| {
-						if event.position.y >= gpui::px(crate::shell::WINDOW_CONTROLS_CLEARANCE)
-							&& f32::from(event.position.x)
-								> s.workspace_sidebar_width(window) + WORKSPACE_GUTTER
-						{
-							s.dismiss_workspace_overlays(window, cx);
-						}
-					}),
-				)
+			.when(floating, |panel| {
+				panel.on_mouse_down_out(cx.listener(|s, event: &MouseDownEvent, window, cx| {
+					if event.position.y >= gpui::px(crate::shell::WINDOW_CONTROLS_CLEARANCE)
+						&& f32::from(event.position.x)
+							> s.workspace_sidebar_width(window) + WORKSPACE_GUTTER
+					{
+						s.dismiss_workspace_overlays(window, cx);
+					}
+				}))
 			})
 			.into_any_element()
 	}

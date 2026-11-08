@@ -5,7 +5,7 @@ description: "Workspace ownership, native menu focus, compositor motion, and con
 tags: [decodex, architecture, desktop, presentation]
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-08T19:03:11.826Z
+    at: 2026-11-08T19:12:16.201Z
 sources:
   - id: openwiki-source-98e7b23c4cc276d20fcb4649
     resource: repo://apps/decodex-gpui/menubar/Sources/DecodexApp/AccountControlViews.swift
@@ -103,6 +103,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_work_browser.rs
   - id: openwiki-source-7131f576ee57d12a847fe177
     resource: repo://apps/decodex-gpui/src/agent_work_progress.rs
+  - id: openwiki-source-6c602da679f5962984ed428d
+    resource: repo://apps/decodex-gpui/src/agent_workspace_material.rs
   - id: openwiki-source-e269da8230b6d51390181459
     resource: repo://apps/decodex-gpui/src/agent_workspace_size.rs
   - id: openwiki-source-5d032c6be684964aa2c401fa
@@ -151,6 +153,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/ui_live_activity.rs
   - id: openwiki-source-afbf2d30c0979a844373d8e5
     resource: repo://apps/decodex-gpui/src/ui_motion.rs
+  - id: openwiki-source-79f9e926ceb3e6b2643c73a5
+    resource: repo://apps/decodex-gpui/src/ui_native_popover.rs
   - id: openwiki-source-8f7f43de2b98b69bb43506d7
     resource: repo://apps/decodex-gpui/src/ui_performance_readout.rs
   - id: openwiki-source-8c633c09481985d80c8f42f2
@@ -181,7 +185,7 @@ sources:
     resource: repo://database/src/works/commands.rs
   - id: openwiki-source-8fe6f1557e5d45d88b34bd0a
     resource: repo://scripts/macos/generate_workspace_symbols.swift
-generated: { by: "codex", at: "2026-11-08T19:03:11.826Z" }
+generated: { by: "codex", at: "2026-11-08T19:12:16.201Z" }
 ---
 
 # Desktop workspace and native glass
@@ -192,7 +196,7 @@ The workspace has three responsibilities. The left sidebar locates conversations
 
 The main window can shrink to 480 by 360 points. `PanelLayout` reserves a 360-point reading width and a 40-point navigation rail. It allocates requested side panels in opening order. A second panel that does not fit floats above the center without displacing the first panel or resizing the current conversation. Both requested panels return to the layout when space becomes available. If neither can fit, only the most recently opened temporary panel is visible. Escape or a click in uncovered conversation space dismisses the temporary panels. Width preferences, Graph state and the conversation draft remain with their current owners.
 
-Both floating panels use the shared opaque workspace overlay color and full content layouts clipped by shared width motion. The native composer applies a matching material, foreground and hit-region clip beneath these panels. Its complete editor layout and focus ownership stay intact.
+Both floating panels use the same native MaterialSurface host as activity islands. They follow the current Popover material preference, including native transparency, background blur and shared clipping motion. Their content retains its full layout behind the moving edge. The native composer applies a matching material, foreground and hit-region clip beneath these panels. Its complete editor layout and focus ownership stay intact. Floating-panel shortcuts route to the persistent main workspace. The first Escape dismisses a floating panel before the normal reply-interrupt action. Drag resizing uses screen coordinates, so moving a native panel does not change the pointer delta.
 
 With Graph closed, **Work in progress** provides a compact disclosure above the composer. It derives rows from the selected conversation's work subtree and observed native agents, excludes completed and archived work, and opens the existing conversation on selection. It introduces no work records or execution owner. New conversations and conversations without qualifying work omit the strip. The list uses the shared control-row size and disclosure motion, with bounded height and scrolling. Work and Debug activity islands use distinct accent-colored symbols under the shared activity-island sizing contract.
 

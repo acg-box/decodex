@@ -139,7 +139,7 @@ impl AgentSurface {
 				.mx(gpui::px(CONVERSATION_INSET))
 				.mb(gpui::px(8.))
 				.rounded(gpui::px(8.))
-				.bg(ui_theme::workspace_overlay_color())
+				.bg(ui_theme::annotation_surface())
 				.text_size(gpui::px(11.))
 				.line_height(gpui::px(16.))
 				.child(

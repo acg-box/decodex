@@ -303,11 +303,6 @@ pub(crate) fn workspace_surface() -> Div {
 		.overflow_hidden()
 }
 
-/// A workspace overlay must hide text from the reading plane below it.
-pub(crate) fn workspace_overlay_color() -> Rgba {
-	annotation_surface().alpha(1.)
-}
-
 pub(crate) fn settings_header_inset() -> Div {
 	gpui::div().px(gpui::px(SETTINGS_INSET)).pt(gpui::px(SETTINGS_TOP)).flex().justify_center()
 }
