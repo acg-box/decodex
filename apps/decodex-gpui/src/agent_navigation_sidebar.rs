@@ -221,8 +221,7 @@ impl AgentSurface {
 		window: &mut Window,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
-		let expanded =
-			self.workspace.sidebar_visible && f32::from(window.viewport_size().width) > 1_000.;
+		let expanded = self.workspace_sidebar_expanded(window);
 		let items = self.navigation_items(cx);
 		let directory = self.navigation_directory(&items, expanded, window, cx);
 		gpui::div()
@@ -617,7 +616,9 @@ impl AgentSurface {
 	}
 
 	fn toggle_navigation_section(&mut self, section: Section, cx: &mut Context<Self>) {
-		if section == Section::Projects && !self.workspace.sidebar_visible {
+		if section == Section::Projects
+			&& !(self.workspace.sidebar_visible || self.workspace.sidebar_peek)
+		{
 			self.workspace.sidebar_visible = true;
 			self.workspace.navigation.collapsed.remove(section.key());
 		} else if !self.workspace.navigation.collapsed.remove(section.key()) {

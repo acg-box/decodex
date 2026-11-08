@@ -2395,6 +2395,16 @@ pub(crate) fn bind_keys(cx: &mut App) {
 		});
 	});
 
+	cx.on_action(|_: &ActivateSettings, cx| {
+		cx.defer(|cx| {
+			if let Some(main) = cx.windows().into_iter().find_map(|w| w.downcast::<Shell>()) {
+				let _ = main.update(cx, |shell, _, cx| {
+					shell.open_settings_window(Destination::Settings, cx);
+				});
+			}
+		});
+	});
+
 	cx.on_action(|command: &ConversationCommand, cx| {
 		let command = *command;
 		cx.defer(move |cx| {
@@ -8382,6 +8392,39 @@ mod tests {
 		assert!(first.left() >= gallery.left());
 		assert!(fifth.right() <= gallery.right(), "previews stay within the page column");
 		assert!(sixth.top() >= first.bottom(), "keep five previews per row");
+	}
+
+	#[gpui::test]
+	fn settings_command_from_a_detached_window_preserves_the_main_conversation(
+		cx: &mut TestAppContext,
+	) {
+		let (shell, visual) = open_shell(cx);
+		shell.update(visual, |s, cx| {
+			s.selected = Destination::Agent;
+			s.agent.update(cx, |agent, cx| {
+				agent.visual_workspace_fixture(cx);
+			});
+			cx.notify();
+		});
+		visual.update(crate::ui_frame::draw_current_frame);
+		let conversation = shell.read_with(visual, |s, cx| s.agent.read(cx).navigation_location());
+		let popup = visual.update(|_, cx| {
+			cx.open_window(gpui::WindowOptions::default(), |_, cx| {
+				cx.new(|_| PanelControlView(shell.clone()))
+			})
+			.unwrap()
+		});
+		popup
+			.update(visual, |_, window, cx| {
+				window.dispatch_action(Box::new(shell::ActivateSettings), cx);
+			})
+			.unwrap();
+		visual.run_until_parked();
+		shell.read_with(visual, |s, cx| {
+			assert!(s.settings_window.is_some());
+			assert_eq!(s.selected, Destination::Agent);
+			assert_eq!(s.agent.read(cx).navigation_location(), conversation);
+		});
 	}
 
 	#[gpui::test]

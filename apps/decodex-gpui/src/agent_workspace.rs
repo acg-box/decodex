@@ -98,6 +98,8 @@ impl AgentSurface {
 		}
 
 		self.workspace.sidebar_visible = !self.workspace.sidebar_visible;
+		self.workspace.sidebar_peek = false;
+		self.workspace.sidebar_leave = None;
 
 		cx.notify();
 	}
