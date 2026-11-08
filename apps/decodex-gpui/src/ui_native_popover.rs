@@ -68,8 +68,6 @@ impl Panel {
 
 	fn place(&mut self, window: &mut Window, cx: &mut App) {
 		let Some(content) = &self.content else { return };
-		let x = f32::from(content.origin.x)
-			.clamp(8., (f32::from(content.viewport.width - content.width) - 8.).max(8.));
 		let y = if content.above {
 			content.trigger.map_or(content.origin.y, |trigger| trigger.top())
 				- self.height
@@ -77,14 +75,15 @@ impl Panel {
 		} else {
 			content.origin.y
 		};
-		let y =
-			f32::from(y).clamp(8., (f32::from(content.viewport.height - self.height) - 8.).max(8.));
+		let origin = super::surface_origin(
+			gpui::point(content.origin.x, y),
+			gpui::size(content.width, self.height),
+			content.viewport,
+			content.attached,
+		);
 		if let Some(surface) = &mut self.surface {
 			surface.set_radius(content.geometry.radius);
-			if surface.place(Bounds::new(
-				gpui::point(gpui::px(x), gpui::px(y)),
-				gpui::size(content.width, self.height),
-			)) {
+			if surface.place(Bounds::new(origin, gpui::size(content.width, self.height))) {
 				window.bounds_changed(cx);
 			}
 			if let Some(clip) = content.geometry.clip {

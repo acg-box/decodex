@@ -55,7 +55,6 @@ use gpui::{
 #[cfg(target_os = "macos")] use objc2::AnyThread;
 #[cfg(target_os = "macos")] use objc2::ClassType;
 #[cfg(target_os = "macos")] use objc2::MainThreadMarker;
-#[cfg(target_os = "macos")] use objc2_app_kit::NSWindowButton;
 #[cfg(target_os = "macos")] use objc2_app_kit::{NSApplication, NSPanel};
 #[cfg(target_os = "macos")] use objc2_app_kit::{NSTrackingArea, NSView};
 #[cfg(target_os = "macos")] use objc2_foundation as _;
@@ -139,6 +138,7 @@ fn main() {
 		let bounds = Bounds::centered(None, gpui::size(gpui::px(1_248.0), gpui::px(840.0)), cx);
 		let window = cx
 			.open_window(main_window_options(bounds), move |window, cx| {
+				ui_theme::window_chrome::configure(window);
 				let account_login = account_login.clone();
 
 				cx.new(|cx| {
@@ -159,22 +159,8 @@ fn main() {
 			.expect("configure window material");
 		#[cfg(target_os = "macos")]
 		window
-			.update(cx, |_, window, cx| {
+			.update(cx, |_, window, _| {
 				configure_pointer_tracking(window);
-				schedule_window_control_alignment(window);
-
-				cx.observe_window_activation(window, |_, window, _| {
-					schedule_window_control_alignment(window);
-				})
-				.detach();
-				cx.observe_window_bounds(window, |_, window, _| {
-					schedule_window_control_alignment(window);
-				})
-				.detach();
-				cx.observe_window_appearance(window, |_, window, _| {
-					schedule_window_control_alignment(window);
-				})
-				.detach();
 			})
 			.expect("configure native window material");
 
@@ -214,7 +200,7 @@ fn main_window_options(bounds: Bounds<Pixels>) -> WindowOptions {
 		titlebar: Some(TitlebarOptions {
 			title: Some("Decodex".into()),
 			appears_transparent: true,
-			traffic_light_position: Some(gpui::point(gpui::px(14.0), gpui::px(14.0))),
+			traffic_light_position: None,
 		}),
 		window_background: WindowBackgroundAppearance::Blurred,
 		// AppKit owns blank titlebar drags. Native control hit targets keep
@@ -289,36 +275,6 @@ fn configure_pointer_tracking(window: &gpui::Window) {
 	};
 
 	view.addTrackingArea(&tracking);
-}
-
-#[cfg(target_os = "macos")]
-fn schedule_window_control_alignment(window: &gpui::Window) {
-	// AppKit can replace or resize standard buttons during activation. Measure
-	// after that layout pass, not once while the initial window is still hidden.
-	window.on_next_frame(|window, _| {
-		let main_thread = MainThreadMarker::new().expect("window layout runs on the main thread");
-
-		for native in NSApplication::sharedApplication(main_thread).windows().iter() {
-			if native.title().to_string() != "Decodex" {
-				continue;
-			}
-
-			if let Some(button) = native.standardWindowButton(NSWindowButton::CloseButton) {
-				let center_y = ui_theme::CONTROL_MARGIN + ui_theme::CONTROL_GROUP_HEIGHT / 2.0;
-				let frame = button.frame();
-				let y = f64::from(center_y) - frame.size.height / 2.0;
-
-				// A move also publishes a bounds change. Keep the native titlebar
-				// geometry stable while WindowServer owns the drag.
-				if frame.origin.x != 16.0 || frame.origin.y != y {
-					window.set_traffic_light_position(gpui::point(
-						gpui::px(16.0),
-						gpui::px(y as f32),
-					));
-				}
-			}
-		}
-	});
 }
 
 #[cfg(target_os = "macos")]

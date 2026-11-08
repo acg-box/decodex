@@ -38,7 +38,7 @@ block2                 = { workspace = true }
 futures-util           = { workspace = true }
 libwebrtc              = { workspace = true }
 objc2                  = { workspace = true }
-objc2-app-kit          = { workspace = true, features = ["NSColor", "NSEvent", "objc2-core-graphics"] }
+objc2-app-kit          = { workspace = true, features = ["NSColor", "NSEvent", "NSToolbar", "objc2-core-graphics"] }
 objc2-audio-toolbox    = { workspace = true, features = ["AudioQueue", "objc2-core-foundation"] }
 objc2-core-audio-types = { workspace = true }
 objc2-core-foundation  = { workspace = true }
