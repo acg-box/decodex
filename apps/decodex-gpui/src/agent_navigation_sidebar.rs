@@ -232,7 +232,7 @@ impl AgentSurface {
 		crate::frame_trace::sidebar_geometry(
 			visible_width,
 			reveal.content_width,
-			reveal.details_opacity,
+			reveal.details_progress,
 		);
 		let items = self.navigation_items(cx);
 		let directory = self.navigation_directory(&items, reveal, window, cx);
@@ -329,8 +329,12 @@ impl AgentSurface {
 						.py_1()
 						.text_size(gpui::px(ui_theme::NAVIGATION_SECTION_SIZE))
 						.text_color(ui_theme::rgb(TEXT_MUTED))
-						.opacity(reveal.details_opacity)
-						.child(message),
+						.child(crate::ui_motion::ProgressiveLabel {
+							id: "archive-status-label".into(),
+							text: message.into(),
+							active: false,
+							progress: reveal.details_progress,
+						}),
 				);
 			}
 		} else {
@@ -366,7 +370,7 @@ impl AgentSurface {
 					}
 				}
 				let content = if section == Section::Projects {
-					content.opacity(reveal.details_opacity).into_any_element()
+					reveal.clip(reveal.content_width - 12., content).into_any_element()
 				} else {
 					gpui::div()
 						.id(SharedString::from(format!("navigation-list-{}", section.key())))
@@ -400,8 +404,6 @@ impl AgentSurface {
 		window: &mut Window,
 		cx: &mut Context<Self>,
 	) -> gpui::Div {
-		// The whole project tree fades, including names inside the leading rail.
-		let reveal = PanelReveal { details_opacity: 1., ..reveal };
 		let mut content = gpui::div().flex().flex_col();
 		let mut projects = self.snapshot.as_ref().map_or_else(Vec::new, |s| s.projects.clone());
 		projects.sort_by(|a, b| {
@@ -504,18 +506,26 @@ impl AgentSurface {
 					gpui::div()
 						.flex_1()
 						.whitespace_nowrap()
-						.opacity(reveal.details_opacity)
 						.text_size(gpui::px(ui_theme::NAVIGATION_TITLE_SIZE))
-						.child(label),
+						.child(crate::ui_motion::ProgressiveLabel {
+							id: SharedString::from(format!("{id}-label")).into(),
+							text: label.into(),
+							active: false,
+							progress: reveal.details_progress,
+						}),
 				)
 				.when(id == "navigation-command-entry", |row| {
 					row.child(
 						gpui::div()
 							.pr_1()
-							.opacity(reveal.details_opacity)
 							.text_size(gpui::px(10.))
 							.text_color(ui_theme::rgb(TEXT_MUTED))
-							.child("⌘K"),
+							.child(crate::ui_motion::ProgressiveLabel {
+								id: "command-shortcut-label".into(),
+								text: "⌘K".into(),
+								active: false,
+								progress: reveal.details_progress,
+							}),
 					)
 				})
 			})
@@ -601,18 +611,17 @@ impl AgentSurface {
 				gpui::div()
 					.flex_1()
 					.min_w_0()
-					.opacity(reveal.details_opacity)
 					.text_size(gpui::px(ui_theme::NAVIGATION_SECTION_SIZE))
 					.font_weight(FontWeight::MEDIUM)
 					.text_color(ui_theme::rgb(TEXT_MUTED))
-					.child(section.label()),
+					.child(crate::ui_motion::ProgressiveLabel {
+						id: SharedString::from(format!("{key}-label")).into(),
+						text: section.label().into(),
+						active: false,
+						progress: reveal.details_progress,
+					}),
 			);
-			row = row.child(self.navigation_options(
-				section,
-				opacity * reveal.details_opacity,
-				window,
-				cx,
-			));
+			row = row.child(self.navigation_options(section, opacity, window, cx));
 			if matches!(section, Section::Assistant | Section::Projects) {
 				row = row.child(self.navigation_create(
 					if section == Section::Assistant {
@@ -621,7 +630,7 @@ impl AgentSurface {
 						"New project"
 					},
 					format!("navigation-create-{}", section.key()),
-					opacity * reveal.details_opacity,
+					opacity,
 					move |s, cx| {
 						if section == Section::Assistant {
 							s.workspace.navigation.collapsed.remove(section.key());
@@ -638,7 +647,6 @@ impl AgentSurface {
 					.w(gpui::px(20.))
 					.h_full()
 					.flex_none()
-					.opacity(reveal.details_opacity)
 					.flex()
 					.items_center()
 					.justify_center()
@@ -801,10 +809,11 @@ impl AgentSurface {
 					.text_size(gpui::px(ui_theme::NAVIGATION_TITLE_SIZE))
 					.font_weight(FontWeight::MEDIUM)
 					.text_color(ui_theme::rgb(TEXT))
-					.child(crate::ui_motion::HoverOverflowLabel {
+					.child(crate::ui_motion::ProgressiveLabel {
 						id: SharedString::from(format!("project-title-{id}")).into(),
 						text: name.to_owned().into(),
 						active: expanded && (auto_scroll || active),
+						progress: reveal.details_progress,
 					}),
 			)
 			.child(self.navigation_create(
@@ -974,7 +983,7 @@ impl AgentSurface {
 			section,
 			&key,
 			expanded && (auto_scroll || hovered || keyboard),
-			reveal.details_opacity,
+			reveal.details_progress,
 		);
 		row = row.child(
 			gpui::div()
@@ -989,15 +998,10 @@ impl AgentSurface {
 		);
 		if expanded {
 			if !item.draft {
-				row = row.child(navigation_item_time(item, actions, reveal.details_opacity));
+				row = row.child(navigation_item_time(item, actions, reveal.details_progress));
 			}
 			if manageable {
-				row = row.child(self.navigation_row_actions(
-					item,
-					&key,
-					actions * reveal.details_opacity,
-					cx,
-				));
+				row = row.child(self.navigation_row_actions(item, &key, actions, cx));
 			}
 		}
 		row.into_any_element()
@@ -1366,23 +1370,23 @@ fn navigation_item_label(
 	section: &str,
 	key: &str,
 	scroll: bool,
-	details_opacity: f32,
+	details_progress: f32,
 ) -> AnyElement {
 	if section.starts_with("project-") || section == "archive" {
 		gpui::div()
 			.pl(gpui::px(9.))
-			.opacity(details_opacity)
 			.text_size(gpui::px(ui_theme::NAVIGATION_TITLE_SIZE))
-			.child(crate::ui_motion::HoverOverflowLabel {
+			.child(crate::ui_motion::ProgressiveLabel {
 				id: SharedString::from(format!("navigation-title-{key}")).into(),
 				text: item.title.clone().into(),
 				active: scroll,
+				progress: details_progress,
 			})
 			.into_any_element()
 	} else {
 		crate::ui_motion::AgentRailStatus {
 			compact: false,
-			details_opacity,
+			details_progress,
 			id: format!("navigation-{key}"),
 			label: item.title.clone(),
 			state: item.state.clone(),
@@ -1392,7 +1396,11 @@ fn navigation_item_label(
 	}
 }
 
-fn navigation_item_time(item: &Item, actions: f32, details_opacity: f32) -> impl gpui::IntoElement {
+fn navigation_item_time(
+	item: &Item,
+	actions: f32,
+	details_progress: f32,
+) -> impl gpui::IntoElement {
 	gpui::div()
 		.absolute()
 		.right(gpui::px(5.))
@@ -1401,10 +1409,15 @@ fn navigation_item_time(item: &Item, actions: f32, details_opacity: f32) -> impl
 		.flex()
 		.items_center()
 		.justify_end()
-		.opacity((1. - actions) * details_opacity)
+		.opacity(1. - actions)
 		.text_size(gpui::px(10.))
 		.text_color(ui_theme::rgb(TEXT_MUTED))
-		.child(model::relative_time(item.updated, model::now()))
+		.child(crate::ui_motion::ProgressiveLabel {
+			id: SharedString::from(format!("navigation-time-{}", item.id)).into(),
+			text: model::relative_time(item.updated, model::now()).into(),
+			active: false,
+			progress: details_progress,
+		})
 }
 
 #[cfg(test)]

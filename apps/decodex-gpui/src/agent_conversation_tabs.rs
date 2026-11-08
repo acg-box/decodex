@@ -333,7 +333,7 @@ impl AgentSurface {
 			}))
 			.child(ui_motion::AgentRailStatus {
 				compact: true,
-				details_opacity: 1.,
+				details_progress: 1.,
 				scroll: true,
 				id: format!("header-{}", tab.id),
 				state: self.conversation_status(&tab.id),

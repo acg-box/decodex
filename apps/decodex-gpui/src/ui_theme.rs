@@ -12,6 +12,7 @@
 #[cfg(all(target_os = "macos", not(test)))]
 #[path = "native_material_panel.rs"]
 pub(crate) mod native_material_panel;
+#[path = "window_chrome.rs"] pub(crate) mod window_chrome;
 #[path = "window_material.rs"] pub(crate) mod window_material;
 pub(crate) mod foreground {
 	//! Reading roles for the workspace. Materials and composer tokens stay separate.

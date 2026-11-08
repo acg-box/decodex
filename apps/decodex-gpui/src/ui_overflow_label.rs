@@ -8,6 +8,7 @@ use gpui::{
 };
 
 use crate::ui_motion;
+use unicode_segmentation::UnicodeSegmentation as _;
 
 #[derive(IntoElement)]
 pub(crate) struct OverflowLabel {
@@ -27,34 +28,51 @@ pub(crate) struct HoverOverflowLabel {
 }
 impl RenderOnce for HoverOverflowLabel {
 	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-		let line = OverflowLine::new_active(
-			self.id.clone(),
-			self.text,
-			window.text_style(),
-			self.active,
-			window,
-			cx,
-		);
+		render_label(self.id, self.text, self.active, None, window, cx)
+	}
+}
 
-		gpui::div()
-			.id(self.id)
-			.relative()
-			.min_w_0()
-			.w(line.width())
-			.max_w_full()
-			.h(line.height)
-			.overflow_hidden()
-			.child(
-				gpui::canvas(
-					|_, _, _| (),
-					move |bounds, _, window, cx| line.paint(bounds, window, cx),
-				)
+/// Reveal complete graphemes along the panel edge without changing text or ink.
+#[derive(IntoElement)]
+pub(crate) struct ProgressiveLabel {
+	pub id: ElementId,
+	pub text: SharedString,
+	pub active: bool,
+	pub progress: f32,
+}
+impl RenderOnce for ProgressiveLabel {
+	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+		render_label(self.id, self.text, self.active, Some(self.progress), window, cx)
+	}
+}
+
+fn render_label(
+	id: ElementId,
+	text: SharedString,
+	active: bool,
+	reveal: Option<f32>,
+	window: &mut Window,
+	cx: &mut App,
+) -> impl IntoElement {
+	let mut line =
+		OverflowLine::new_active(id.clone(), text, window.text_style(), active, window, cx);
+	line.reveal = reveal;
+
+	gpui::div()
+		.id(id)
+		.relative()
+		.min_w_0()
+		.w(line.width())
+		.max_w_full()
+		.h(line.height)
+		.overflow_hidden()
+		.child(
+			gpui::canvas(|_, _, _| (), move |bounds, _, window, cx| line.paint(bounds, window, cx))
 				.absolute()
 				.top_0()
 				.left_0()
 				.size_full(),
-			)
-	}
+		)
 }
 
 /// Shared shaping and motion for labels inside ordinary layouts or fixed canvases.
@@ -64,6 +82,7 @@ pub(crate) struct OverflowLine {
 	pub height: Pixels,
 	start: Entity<Motion>,
 	reduced: bool,
+	reveal: Option<f32>,
 }
 struct Motion {
 	started: Instant,
@@ -117,6 +136,7 @@ impl OverflowLine {
 			height: style.line_height_in_pixels(window.rem_size()),
 			start,
 			reduced: ui_motion::reduced(),
+			reveal: None,
 		}
 	}
 
@@ -125,7 +145,7 @@ impl OverflowLine {
 	}
 
 	pub(crate) fn paint(&self, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
-		let visible = bounds.intersect(&window.content_mask().bounds);
+		let mut visible = bounds.intersect(&window.content_mask().bounds);
 
 		if visible.is_empty() {
 			return;
@@ -150,6 +170,15 @@ impl OverflowLine {
 			value
 		};
 		self.start.update(cx, |state, _| state.offset = x);
+		if let Some(progress) = self.reveal.filter(|progress| *progress < 1.) {
+			let budget = (bounds.size.width * progress).min(visible.size.width);
+			let (end, width, count) = complete_prefix(&self.line, gpui::px(x) + budget);
+			visible.size.width = (width - gpui::px(x)).max(gpui::px(0.));
+			crate::frame_trace::label_reveal(progress, count, end, f32::from(visible.size.width));
+			if visible.is_empty() {
+				return;
+			}
+		}
 
 		window.with_content_mask(Some(ContentMask { bounds: visible }), |window| {
 			window.paint_layer(visible, |window| {
@@ -164,6 +193,19 @@ impl OverflowLine {
 			});
 		});
 	}
+}
+
+fn complete_prefix(line: &ShapedLine, budget: Pixels) -> (usize, Pixels, usize) {
+	let mut prefix = (0, gpui::px(0.), 0);
+	for (index, grapheme) in line.text.grapheme_indices(true) {
+		let end = index + grapheme.len();
+		let width = line.x_for_index(end);
+		if width > budget {
+			break;
+		}
+		prefix = (end, width, prefix.2 + 1);
+	}
+	prefix
 }
 
 fn offset(elapsed: f32, distance: f32) -> f32 {
@@ -184,6 +226,42 @@ fn offset(elapsed: f32, distance: f32) -> f32 {
 
 #[cfg(test)]
 mod tests {
+	use gpui::{App, Context, IntoElement, Render, TestAppContext, Window};
+
+	struct Label;
+	impl Render for Label {
+		fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+			gpui::div()
+		}
+	}
+
+	#[gpui::test]
+	fn progressive_reveal_keeps_combining_characters_and_emoji_complete(cx: &mut TestAppContext) {
+		let (_, visual) = cx.add_window_view(|_, _| Label);
+		visual.update(|window, _: &mut App| {
+			let text: gpui::SharedString = "A中e\u{301}👩‍💻Z".into();
+			let run = gpui::TextRun {
+				len: text.len(),
+				font: window.text_style().font(),
+				color: window.text_style().color,
+				background_color: None,
+				underline: None,
+				strikethrough: None,
+			};
+			let line = window.text_system().shape_line(text.clone(), gpui::px(12.5), &[run], None);
+			assert_eq!(super::complete_prefix(&line, gpui::px(0.)).0, 0);
+			let mut end = 0;
+			for grapheme in ["A", "中", "e\u{301}", "👩‍💻", "Z"] {
+				let previous = end;
+				end += grapheme.len();
+				let edge = line.x_for_index(end);
+				assert_eq!(super::complete_prefix(&line, edge - gpui::px(0.01)).0, previous);
+				assert_eq!(super::complete_prefix(&line, edge).0, end);
+			}
+			assert_eq!(super::complete_prefix(&line, line.width).0, text.len());
+		});
+	}
+
 	#[test]
 	fn overflow_motion_waits_reaches_the_end_and_returns_without_jumping() {
 		let distance = 140.;

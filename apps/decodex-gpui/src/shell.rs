@@ -2056,7 +2056,7 @@ impl Render for Shell {
 			agent.prepare_native_menu(window, cx);
 		});
 
-		let controls = floating_window_controls(self, &presentation, cx);
+		let controls = floating_window_controls(self, &presentation, window, cx);
 
 		#[cfg(all(target_os = "macos", not(test)))]
 		self.prepare_native_status(window, cx);
@@ -2947,11 +2947,13 @@ fn adjacent_conversation_index(current: Option<usize>, len: usize, delta: isize)
 fn floating_window_controls(
 	shell: &Shell,
 	presentation: &ConnectionPresentation,
+	window: &Window,
 	cx: &mut Context<Shell>,
 ) -> AnyElement {
 	shell.titlebar.begin_frame();
 
 	let performance = shell.performance.clone();
+	let top = ui_theme::window_chrome::controls_top(window);
 
 	gpui::div()
 		.on_children_prepainted(move |bounds, window, cx| {
@@ -2974,9 +2976,10 @@ fn floating_window_controls(
 		.left_0()
 		.right_0()
 		.h(gpui::px(WINDOW_CONTROLS_CLEARANCE))
-		.p(gpui::px(CONTROL_MARGIN))
+		.px(gpui::px(CONTROL_MARGIN))
+		.pt(gpui::px(top))
 		.flex()
-		.items_center()
+		.items_start()
 		.justify_between()
 		.window_control_area(WindowControlArea::Drag)
 		.when(!cfg!(target_os = "macos"), |header| {
@@ -2996,7 +2999,7 @@ fn floating_window_controls(
 		.child(
 			gpui::div()
 				.absolute()
-				.top(gpui::px(CONTROL_MARGIN))
+				.top(gpui::px(top))
 				.left_0()
 				.right_0()
 				.flex()

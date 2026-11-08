@@ -15,7 +15,7 @@ pub(crate) use crate::ui_frame::{
 };
 pub(crate) use disclosure::{disclosure, disclosure_lazy, settings_disclosure};
 pub(crate) use hover_intent::HoverIntent;
-pub(crate) use overflow_label::{HoverOverflowLabel, OverflowLabel};
+pub(crate) use overflow_label::{OverflowLabel, ProgressiveLabel};
 pub(crate) use segmented::{Choice, Segmented};
 pub(crate) use text_reveal::TextReveal;
 
@@ -43,12 +43,12 @@ pub(crate) const HOVER_OPEN_DELAY: Duration = Duration::from_millis(180);
 pub(crate) const HOVER_CLOSE_DELAY: Duration = Duration::from_millis(220);
 
 /// Keep a panel's leading rail fixed while its details follow the visible width.
-/// Geometry owns the reveal, so a reversal cannot restart a separate fade.
+/// Geometry owns the reveal, so a reversal continues at the same text boundary.
 #[derive(Clone, Copy)]
 pub(crate) struct PanelReveal {
 	pub expanded: bool,
 	pub content_width: f32,
-	pub details_opacity: f32,
+	pub details_progress: f32,
 }
 impl PanelReveal {
 	pub(crate) fn new(target: bool, visible: f32, rail: f32, full: f32) -> Self {
@@ -57,8 +57,18 @@ impl PanelReveal {
 		Self {
 			expanded,
 			content_width: if expanded { full } else { rail },
-			details_opacity: progress * progress * (3. - 2. * progress),
+			details_progress: progress,
 		}
+	}
+
+	/// Clip a complete subtree without changing its intrinsic content layout.
+	pub(crate) fn clip(self, width: f32, child: impl IntoElement) -> impl IntoElement {
+		gpui::div()
+			.w(gpui::px(width * self.details_progress))
+			.min_w_0()
+			.flex_none()
+			.overflow_hidden()
+			.child(gpui::div().w(gpui::px(width)).flex_none().child(child))
 	}
 }
 
@@ -564,7 +574,7 @@ impl Tween {
 #[derive(IntoElement)]
 pub(crate) struct AgentRailStatus {
 	pub compact: bool,
-	pub details_opacity: f32,
+	pub details_progress: f32,
 	pub scroll: bool,
 	pub id: String,
 	pub state: String,
@@ -659,18 +669,12 @@ impl RenderOnce for AgentRailStatus {
 					.text_color(ink)
 					.child(initial),
 			)
-			.child(
-				gpui::div()
-					.flex_1()
-					.min_w_0()
-					.overflow_hidden()
-					.opacity(self.details_opacity)
-					.child(HoverOverflowLabel {
-						id: title_id.into(),
-						text: rest.into(),
-						active: self.scroll,
-					}),
-			)
+			.child(gpui::div().flex_1().min_w_0().overflow_hidden().child(ProgressiveLabel {
+				id: title_id.into(),
+				text: rest.into(),
+				active: self.scroll,
+				progress: self.details_progress,
+			}))
 	}
 }
 
@@ -814,25 +818,25 @@ mod tests {
 	use crate::ui_motion::Tween;
 
 	#[test]
-	fn panel_details_are_invisible_when_the_canvas_enters_or_leaves_the_rail() {
+	fn panel_details_start_at_zero_and_reverse_at_the_current_text_boundary() {
 		use super::PanelReveal;
 		for full in [160., 240., 480.] {
 			let closed = PanelReveal::new(false, 40., 40., full);
 			let opening = PanelReveal::new(true, 40., 40., full);
 			assert_eq!(closed.content_width, 40.);
 			assert_eq!(opening.content_width, full);
-			assert_eq!(closed.details_opacity, 0.);
-			assert_eq!(opening.details_opacity, 0.);
+			assert_eq!(closed.details_progress, 0.);
+			assert_eq!(opening.details_progress, 0.);
 			let final_frame = PanelReveal::new(false, 40.5, 40., full);
 			assert_eq!(final_frame.content_width, full);
-			assert!(final_frame.details_opacity < 0.001);
+			assert!(final_frame.details_progress < 0.005);
 			let middle = (full + 40.) / 2.;
 			let closing = PanelReveal::new(false, middle, 40., full);
 			let reversing = PanelReveal::new(true, middle, 40., full);
-			assert!(closing.details_opacity > 0. && closing.details_opacity < 1.);
-			assert_eq!(closing.details_opacity, reversing.details_opacity);
+			assert!(closing.details_progress > 0. && closing.details_progress < 1.);
+			assert_eq!(closing.details_progress, reversing.details_progress);
 			assert_eq!(closing.content_width, reversing.content_width);
-			assert_eq!(PanelReveal::new(true, full, 40., full).details_opacity, 1.);
+			assert_eq!(PanelReveal::new(true, full, 40., full).details_progress, 1.);
 		}
 	}
 

@@ -5,7 +5,7 @@ description: Reusable layout, activity-island motion, reading spacing and theme 
 tags: [desktop, design, motion, layout]
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-08T13:22:32.618Z
+    at: 2026-11-08T14:06:07.625Z
 sources:
   - id: openwiki-source-8037e2358a2c4f9b2c722a11
     resource: repo://AGENTS.md
@@ -39,6 +39,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/composer_text.rs
   - id: openwiki-source-8baa689fd9c859a6d9a120d5
     resource: repo://apps/decodex-gpui/src/frame_trace.rs
+  - id: openwiki-source-37f9a508a2aebf9382d3b23f
+    resource: repo://apps/decodex-gpui/src/main.rs
   - id: openwiki-source-fca3688e96d92c09b7ba015f
     resource: repo://apps/decodex-gpui/src/native_material_panel.rs
   - id: openwiki-source-1291f5243fa6c9cb52149bda
@@ -61,11 +63,13 @@ sources:
     resource: repo://apps/decodex-gpui/src/ui_theme.rs
   - id: openwiki-source-343d35c489d39a7a672412a2
     resource: repo://apps/decodex-gpui/src/ui_working.rs
+  - id: openwiki-source-8f413b540123b1fe73628c7d
+    resource: repo://apps/decodex-gpui/src/window_chrome.rs
   - id: openwiki-source-f02ae41e2bd15dda85dc86b9
     resource: repo://codex-runtime.lock.json
   - id: openwiki-source-a490ea3fbcddb9c007caf196
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_context_tests.rs
-generated: { by: "codex", at: "2026-11-08T13:22:32.618Z" }
+generated: { by: "codex", at: "2026-11-08T14:06:07.625Z" }
 ---
 
 # Interface geometry and motion
@@ -137,7 +141,7 @@ Keep Search and commands in the same leading slot when the sidebar contracts. It
 
 The sidebar's outer width uses the shared interruptible 200 ms cubic ease-out. Its content retains the complete expanded canvas during opening, closing and a reversal; the outer panel clips that canvas. Keep titles and trailing controls mounted at their final positions until closing reaches the 40-point rail. Do not squeeze the content into intermediate widths or remove labels as soon as the target changes. At the settled compact width, omit project branches and their extra layout space.
 
-Use `ui_motion::PanelReveal` to derive detail opacity from the visible width. Labels, title suffixes, times and trailing controls fade with a smooth curve. Section symbols and conversation initials keep their position and full opacity. Fade the complete project tree because project names have no compact initial. Detail opacity is zero when the expanded canvas enters or leaves the rail, and one at the full width. A reversal uses the current width and opacity; it does not restart a separate fade. Reduced motion uses the target width and opacity directly.
+Use `ui_motion::PanelReveal` to derive text reveal progress from the visible width. `ProgressiveLabel` reveals complete graphemes in their original positions and color. It keeps the full shaped line and clips at character boundaries; it does not replace the text or fade its ink. Section symbols and conversation initials remain fixed. Clip the complete project tree with the same progress because project names have no compact initial. The reveal is empty when the expanded canvas enters or leaves the rail, and complete at the full width. A reversal uses the current width and text boundary without another clock. Reduced motion uses the target width and reveal directly.
 
 Use `ui_motion::HoverIntent` for surfaces revealed by pointer intent. The shared tokens set entry dwell to 180 ms and departure grace to 220 ms. Brief crossings cancel entry. Movement inside the same target does not restart its timer. Reentry cancels closing, and an exit from an older target cannot cancel a newer target. Explicit clicks, keyboard actions and dismissal cancel pending pointer work and retain their immediate behavior. The sidebar, Work and Debug islands, and response-statistics popover use this owner. History previews use the shared entry delay rather than a zero-delay tooltip. Ordinary hover ink, contextual row actions and native tooltip lifetime retain their own presentation roles.
 
@@ -156,6 +160,8 @@ Name the cause that the application can establish. A missing selected working fo
 Keep provider stream retries in native Codex. A retrying stream error does not authorize another user input or a new turn. The isolated native recovery check closes one local SSE response before completion, observes the retry while the original turn stays running, then verifies completion on the same thread and turn. This checks a controlled stream interruption; it does not qualify every physical network failure.
 
 ## Theme and controls
+
+On macOS, AppKit owns the window-button and window-sharing geometry. The main window uses a unified compact native toolbar. GPUI follows the measured native control-row center for the leading controls, activity islands and trailing controls. Keep `traffic_light_position` unset. Do not move native window buttons or their parent containers to fit a custom header. AppKit retains blank titlebar dragging.
 
 Use the current theme tokens for foreground, muted labels, emphasis and status colors. The Ultrafast double bolt uses the theme accent. Its silhouette is shared across the composer; its color is not copied from another application.
 
