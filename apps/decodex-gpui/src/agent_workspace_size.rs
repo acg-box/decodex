@@ -323,6 +323,30 @@ impl AgentSurface {
 		)
 	}
 
+	/// Closing releases the layout slot before the visible surface disappears.
+	/// Keep its material mode until that surface finishes closing.
+	pub(super) fn workspace_panel_floating(
+		&self,
+		panel: Panel,
+		layout: PanelLayout,
+		visible: f32,
+	) -> bool {
+		let rail = CONVERSATION_TAB_SIZE + 2. * SIDEBAR_INSET;
+		let (index, target, closed, floating) = match panel {
+			Panel::Left => (0, layout.left_width, rail, layout.left_floating),
+			Panel::Right => (1, layout.right_width, 0., layout.right_floating),
+			Panel::Bottom => return false,
+		};
+		let mut modes = self.workspace.panel_material_modes.get();
+		if target > closed + 0.1 {
+			modes[index] = floating;
+		} else if visible <= closed + 0.1 {
+			modes[index] = false;
+		}
+		self.workspace.panel_material_modes.set(modes);
+		modes[index]
+	}
+
 	fn panel_motion_width(
 		&self,
 		motion: &std::cell::RefCell<Option<Tween>>,
@@ -355,12 +379,12 @@ impl AgentSurface {
 		let width = f32::from(bounds.size.width);
 		let left_width = self.workspace_sidebar_display_width(window);
 		let right_width = self.workspace_right_display_width(window);
-		let left = if left_width > layout.left_slot + 0.5 {
+		let left = if self.workspace_panel_floating(Panel::Left, layout, left_width) {
 			(WORKSPACE_GUTTER + left_width - f32::from(bounds.left())).clamp(0., width)
 		} else {
 			0.
 		};
-		let right = if right_width > layout.right_slot + 0.5 {
+		let right = if self.workspace_panel_floating(Panel::Right, layout, right_width) {
 			(f32::from(window.viewport_size().width)
 				- WORKSPACE_GUTTER
 				- right_width
@@ -459,7 +483,7 @@ impl AgentSurface {
 	pub(super) fn sidebar_pane(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
 		let width = self.workspace_sidebar_display_width(window);
 		let layout = self.workspace_panel_layout(window);
-		let floating = layout.left_floating || width > self.workspace_sidebar_width(window) + 0.5;
+		let floating = self.workspace_panel_floating(Panel::Left, layout, width);
 		if !floating || width <= 0.1 {
 			self.hide_workspace_material(Panel::Left, window, cx);
 		}
@@ -1516,6 +1540,46 @@ mod tests {
 		);
 		assert_eq!((wide.left_slot, wide.right_slot), (240., 240.));
 		assert!(!wide.left_floating && !wide.right_floating);
+	}
+
+	#[gpui::test]
+	fn right_panel_keeps_its_material_during_close_and_reversal(cx: &mut gpui::TestAppContext) {
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		visual.simulate_resize(gpui::size(gpui::px(1400.), gpui::px(720.)));
+		surface.update(visual, |s, cx| s.visual_workspace_fixture(cx));
+		visual.update(crate::ui_frame::draw_current_frame);
+		assert!(visual.debug_bounds("workspace-activity-material").is_none());
+		surface.update(visual, |s, cx| s.toggle_agent_tree(cx));
+		visual.update(crate::ui_frame::draw_current_frame);
+		assert!(visual.debug_bounds("workspace-activity-pane").unwrap().size.width > gpui::px(1.));
+		assert!(
+			visual.debug_bounds("workspace-activity-material").is_none(),
+			"a docked panel must not become a glass overlay while closing"
+		);
+		thread::sleep(std::time::Duration::from_millis(80));
+		visual.update(crate::ui_frame::draw_current_frame);
+		assert!(visual.debug_bounds("workspace-activity-material").is_none());
+		surface.update(visual, |s, cx| s.toggle_agent_tree(cx));
+		visual.update(crate::ui_frame::draw_current_frame);
+		assert!(
+			visual.debug_bounds("workspace-activity-material").is_none(),
+			"reversal retains the docked material"
+		);
+		thread::sleep(std::time::Duration::from_millis(240));
+		visual.update(crate::ui_frame::draw_current_frame);
+
+		visual.simulate_resize(gpui::size(gpui::px(800.), gpui::px(720.)));
+		visual.update(crate::ui_frame::draw_current_frame);
+		assert!(visual.debug_bounds("workspace-activity-material").is_some());
+		surface.update(visual, |s, cx| s.toggle_agent_tree(cx));
+		visual.update(crate::ui_frame::draw_current_frame);
+		assert!(
+			visual.debug_bounds("workspace-activity-material").is_some(),
+			"a floating panel keeps glass until its closing animation ends"
+		);
+		thread::sleep(std::time::Duration::from_millis(240));
+		visual.update(crate::ui_frame::draw_current_frame);
+		assert!(visual.debug_bounds("workspace-activity-material").is_none());
 	}
 
 	#[gpui::test]

@@ -15,7 +15,7 @@ use objc2::{
 
 pub(crate) fn boolean(key: &str, cache: &AtomicU8, value: Option<bool>, default: bool) -> bool {
 	if let Some(value) = value {
-		stored_boolean(key, Some(value), default);
+		let _ = stored_boolean(key, Some(value));
 
 		cache.store(u8::from(value), Ordering::Relaxed);
 
@@ -28,11 +28,15 @@ pub(crate) fn boolean(key: &str, cache: &AtomicU8, value: Option<bool>, default:
 		return cached != 0;
 	}
 
-	let value = stored_boolean(key, None, default);
+	let value = stored_boolean(key, None).unwrap_or(default);
 
 	cache.store(u8::from(value), Ordering::Relaxed);
 
 	value
+}
+
+pub(crate) fn optional_boolean(key: &str) -> Option<bool> {
+	stored_boolean(key, None)
 }
 
 // Small host-local presentation receipts, separate from service dispositions.
@@ -64,7 +68,7 @@ pub(crate) fn string(_: &str, value: Option<&str>) -> Option<String> {
 
 // Host-local presentation settings never change service state.
 #[cfg(all(target_os = "macos", not(test)))]
-fn stored_boolean(key: &str, value: Option<bool>, default: bool) -> bool {
+fn stored_boolean(key: &str, value: Option<bool>) -> Option<bool> {
 	unsafe {
 		let defaults: Retained<AnyObject> = objc2::msg_send![
 			AnyClass::get(c"NSUserDefaults").expect("Foundation"),
@@ -78,17 +82,13 @@ fn stored_boolean(key: &str, value: Option<bool>, default: bool) -> bool {
 
 		let stored: Option<Retained<AnyObject>> = objc2::msg_send![&*defaults, objectForKey: &*key];
 
-		if stored.is_none() {
-			return default;
-		}
-
-		objc2::msg_send![&*defaults, boolForKey: &*key]
+		stored.map(|_| objc2::msg_send![&*defaults, boolForKey: &*key])
 	}
 }
 
 #[cfg(not(all(target_os = "macos", not(test))))]
-fn stored_boolean(_: &str, value: Option<bool>, default: bool) -> bool {
-	value.unwrap_or(default)
+fn stored_boolean(_: &str, value: Option<bool>) -> Option<bool> {
+	value
 }
 
 #[cfg(test)]

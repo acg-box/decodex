@@ -38,7 +38,8 @@ impl AgentSurface {
 	pub(super) fn activity_pane(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
 		let layout = self.workspace_panel_layout(window);
 		let width = self.workspace_right_display_width(window);
-		let floating = layout.right_floating || width > layout.right_slot + 0.5;
+		let floating =
+			self.workspace_panel_floating(super::workspace_size::Panel::Right, layout, width);
 		if !floating || width <= 0.1 {
 			self.hide_workspace_material(super::workspace_size::Panel::Right, window, cx);
 		}

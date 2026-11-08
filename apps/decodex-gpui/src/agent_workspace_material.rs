@@ -57,6 +57,7 @@ impl AgentSurface {
 		let owner = cx.entity().downgrade();
 		let escape_owner = owner.clone();
 		gpui::div()
+			.debug_selector(move || material_id(panel).into())
 			.relative()
 			.size_full()
 			.child(

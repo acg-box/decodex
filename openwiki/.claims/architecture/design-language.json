@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:5ad3dd0bf3c1456b13f3c594cc27a411ba942f889e699cbb63659c0a66a7643c",
+  "pageVersion": "sha256:cb7ebee07920089ae536562c13a378fcb3be32db52d644de8a38dcdb17a27818",
   "claims": [
     {
       "id": "claim_b70a9c3fa68642d29871a42ed05c1114",
@@ -64,7 +64,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_surface.rs",
-          "version": "repo-file-v1:sha256:13cde28d25fecd38730c9cbccb7aba4fe046d233a444a63657d468aaf05b138e"
+          "version": "repo-file-v1:sha256:dd54f2d05cfd4dc43535d9b2e18f67059d6750cccacbd483b5f1f9c37618d7c7"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_timeline.rs",
@@ -248,7 +248,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace_size.rs",
-          "version": "repo-file-v1:sha256:9fb26ea70895c752aa59ac2dc90a0da9f746c3b3e2350889c11e2bb12d6c2945"
+          "version": "repo-file-v1:sha256:9ad9f612d947d67f055fd59490e9b16ced5d5cf0bf2a814ac4e31f58e8f58d66"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_motion.rs",
@@ -301,7 +301,7 @@
           "version": "repo-lines-v1:sha256:52fe5e6875d95e4e9063f570d121a54fd460cdd824984747428a3c60832e5c58:eyJzZWxlY3RlZExpbmVDb3VudCI6MjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRkYzc2MDIwYmFlNzA1NzdlNjRiMzMwZGNhODNmZGYyNGYzZDc1OTNhMDE1NGQ4YWJlYzZkYzYzZjU4OTdmZDkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjdhOThiZWFjYzhjMDJkM2MwMDYwZWMzZWIyMTI1ODQ5M2E3OTJhNDkyMjBhNTdkZmUxZTllMjgzZDU3MTBjMTQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY2NzhjZDExZTdmOGViYzg0MTZhZThmMjhmYWI4ZDU0YmUxNWQzMmFkYWM4NTNkNDJhMmIyZGM4ZWIwNjFlMDMifQ"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_workspace_size.rs#L1178-L1232",
+          "resource": "repo://apps/decodex-gpui/src/agent_workspace_size.rs#L1202-L1256",
           "version": "repo-lines-v1:sha256:42f76f75e449f88c9b2450eb41f12677884b4bbe7907d745b461377e82e0000b:eyJzZWxlY3RlZExpbmVDb3VudCI6NTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRhNDMwOWVmNjVkMDZhNGQ2ZGE0ZGVlMThjNjc0NjBlOGY0MjRmOWZjODQwZTAyODgzN2ZlOGEwOWYwZTM5N2UiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjJkY2JlMDRmOTBkMDQ2Y2I1ZDgyMmU5N2M4NDM0NzRmYzcwODZhMDBmZWQ3ODYwODA2MzAyNDY1ZDJjOGI5MDEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImZmNzUxNWVhMzhmZTUxMWI4ZjI2ZTQzMTE3N2Q4NjMxY2E0Mjk1MGEwY2YwZTBiOTlmMmQxZmMyZWNhOWM2MmMifQ"
         }
       ]
@@ -319,7 +319,7 @@
           "version": "repo-lines-v1:sha256:fe981c19f7fc3ddcf94af2a90814f3c25cd9cc5fb1e3d24d72f5a6144bb17b0d:eyJzZWxlY3RlZExpbmVDb3VudCI6MzYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgzMGI0OTRkNjdmYzBmNTIxMDVjODdkYzg0NWE5YzI1ZjhmYmFiYjI2ZWQ2NTlhMDc2ZjNiNmNmYjJhNjkxMmEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3OGIyODNlZmU0MjUxYzU1N2ZhY2IzYTc2NDZkNGE2ZTllYTE2MjU0MjM2MzZmMzg1ZjIzZWM1NjhmNjMyYTYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijc0MjI1OGY2YWZmYzRlYWE1NmUxNzQ4ZTRkOWNjMDMyNWQ4Mzc2ODNjNGU5NTNiYzQ0YzkyMTg2MzI3Y2U4OGIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE3MDUzODVkOTJlMjgyZmM4NjI2ZjU0YWFjZWI0YzBmNWQ1YjUxZTRmNDlmYzY3ZDcyNTk2NjZjOWY5ZGYxNmEifQ"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_workspace_size.rs#L413-L438",
+          "resource": "repo://apps/decodex-gpui/src/agent_workspace_size.rs#L437-L462",
           "version": "repo-lines-v1:sha256:e2fdd191d9d8096c9ed67bd0c31358760dfdf3289efff550b9104e4813cc7399:eyJzZWxlY3RlZExpbmVDb3VudCI6MjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjExZTExYmQxMTA5MDQzODU3OTMyOGUwNDYzNjQ0YjczOTkxMjk0NDRlOTkxNzg2OGFiMTI1MzNiMGMyMGMzZDQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQ2MjVkYTI1YTBmNzdjZWQ3MjY3YjBkNTUwZDEzODBiODZiMjcyYWRkOTg2ZDM5ZjcyOGRmM2RhYTZmNmMwZmMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjYyZWZiZmUzYTI0MjU3ZThmNzU4OGExMWEzNTkyMThhMGZkNzVhOWQzZjdiNmJhNzlkN2M3ZDdkZTY0ODIzYjEifQ"
         },
         {
@@ -452,7 +452,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace_size.rs",
-          "version": "repo-file-v1:sha256:9fb26ea70895c752aa59ac2dc90a0da9f746c3b3e2350889c11e2bb12d6c2945"
+          "version": "repo-file-v1:sha256:9ad9f612d947d67f055fd59490e9b16ced5d5cf0bf2a814ac4e31f58e8f58d66"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/main.rs",
@@ -474,15 +474,15 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_tree.rs",
-          "version": "repo-file-v1:sha256:b45555fc2084ca439b9dd2fd4378563e170e0047cd39c6fe82a0e93bfa8fe8d9"
+          "version": "repo-file-v1:sha256:743b173354a8a261fc96fe73243d11ac8fa05892d4947afaebacdb49f1586f4d"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace_material.rs",
-          "version": "repo-file-v1:sha256:2df1e1a0fa4d1cef9c72ecc703f767107ef16df9cd00fe02e773b2f40507ef7b"
+          "version": "repo-file-v1:sha256:9a72c79d6fdf38bb8cb32d7a2fd62247e71538069f3562ea7c3141f27bde145b"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace_size.rs",
-          "version": "repo-file-v1:sha256:9fb26ea70895c752aa59ac2dc90a0da9f746c3b3e2350889c11e2bb12d6c2945"
+          "version": "repo-file-v1:sha256:9ad9f612d947d67f055fd59490e9b16ced5d5cf0bf2a814ac4e31f58e8f58d66"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/shell.rs",
@@ -511,10 +511,38 @@
           "version": "repo-file-v1:sha256:959e555dc2f4034ae5c99d97c8b5a821993e5cfcd6b73c234567c384d823f4b9"
         }
       ]
+    },
+    {
+      "id": "claim_4d6a743c3b834e16bc9f23b410a0cede",
+      "statement": "Panel material mode comes from open workspace allocation and remains docked or floating through closing and reversal; the animated-width difference from a released slot does not select floating material.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_tree.rs",
+          "version": "repo-file-v1:sha256:743b173354a8a261fc96fe73243d11ac8fa05892d4947afaebacdb49f1586f4d"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_workspace_size.rs",
+          "version": "repo-file-v1:sha256:9ad9f612d947d67f055fd59490e9b16ced5d5cf0bf2a814ac4e31f58e8f58d66"
+        }
+      ]
+    },
+    {
+      "id": "claim_1c8b208666d8405e88b4e7f6c10fccde",
+      "statement": "When Overlay glass style has no saved override it inherits Window glass style, including later changes, while an explicit Regular or Clear choice remains independent and inheritance creates no stored override.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/ui_material.rs",
+          "version": "repo-file-v1:sha256:0e809b637df626653adcd0366e2a8a5253a2f05fd2375c52bafa6eec470219c8"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/ui_preferences.rs",
+          "version": "repo-file-v1:sha256:19c0fc71d8c0b1dacdc78cafd9206c366e548bc693f33e9b0cbeeccd5e4bc073"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.9.0",
-    "at": "2026-11-08T19:12:16.201Z"
+    "at": "2026-11-08T19:24:43.067Z"
   }
 }

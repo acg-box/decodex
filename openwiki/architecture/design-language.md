@@ -5,7 +5,7 @@ description: Reusable layout, activity-island motion, reading spacing and theme 
 tags: [desktop, design, motion, layout]
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-08T19:12:16.201Z
+    at: 2026-11-08T19:24:43.067Z
 sources:
   - id: openwiki-source-8037e2358a2c4f9b2c722a11
     resource: repo://AGENTS.md
@@ -59,6 +59,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/ui_hover_intent.rs
   - id: openwiki-source-ccd97a4d4ef8dfe9b724e7ce
     resource: repo://apps/decodex-gpui/src/ui_live_activity.rs
+  - id: openwiki-source-2316e3cffd10487b54cd63f4
+    resource: repo://apps/decodex-gpui/src/ui_material.rs
   - id: openwiki-source-afbf2d30c0979a844373d8e5
     resource: repo://apps/decodex-gpui/src/ui_motion.rs
   - id: openwiki-source-79f9e926ceb3e6b2643c73a5
@@ -69,6 +71,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/ui_performance_readout.rs
   - id: openwiki-source-6d7ff71d731da7268890d765
     resource: repo://apps/decodex-gpui/src/ui_performance.rs
+  - id: openwiki-source-546812ff3637690f4a184b89
+    resource: repo://apps/decodex-gpui/src/ui_preferences.rs
   - id: openwiki-source-570564020f98df7a4d6d0b61
     resource: repo://apps/decodex-gpui/src/ui_theme.rs
   - id: openwiki-source-fa218a67bba67197ecf88d7b
@@ -81,7 +85,7 @@ sources:
     resource: repo://codex-runtime.lock.json
   - id: openwiki-source-a490ea3fbcddb9c007caf196
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_context_tests.rs
-generated: { by: "codex", at: "2026-11-08T19:12:16.201Z" }
+generated: { by: "codex", at: "2026-11-08T19:24:43.067Z" }
 ---
 
 # Interface geometry and motion
@@ -116,6 +120,10 @@ Lay out detail text and metric columns at the complete content width. Clip that 
 The main window accepts sizes down to 480 by 360 points. Reserve a 360-point reading width before allocating persistent side panels. Keep the panel that was open first in the layout. If the other panel cannot fit, show it above the reading plane without moving the first panel or narrowing the conversation. Resizing to a wider window restores both requested panels to the layout. In a very narrow window that cannot fit either panel, show only the most recently opened temporary surface.
 
 Use the same 8-point outer gutter and 16-point corner radius for both side panels. Their requested width is between 160 and 480 points, constrained by the window. Keep the complete panel content layout behind the animated clipping edge. Temporary surfaces use `ui_motion::MaterialSurface` with the current Popover material preference. AppKit supplies the transparent material and background blur. The shared host keeps the complete foreground canvas and clips its material and input region together. Escape first dismisses a temporary surface before it can interrupt a reply. A click in the uncovered reading plane also dismisses it. Detached surface shortcuts return to the main workspace owner. Preserve the docked panel, Graph state and conversation draft.
+
+Keep each panel's docked or floating material mode during closing and a reversal. Select that mode from workspace allocation while the panel is open. Do not infer floating mode from a difference between its animated width and the target layout slot: closing releases that slot before the visible panel has disappeared.
+
+An unset Overlay glass style inherits Window glass style, including later changes. An explicit Regular or Clear override remains independent. The inherited value does not create a saved override.
 
 The native composer keeps its full layout behind temporary panels. Clip its material, foreground and pointer region to the uncovered area; do not resize or recreate its text editor. Graph expansion retains navigation and collaboration panels. Explicit conversation focus mode can still hide the side panels.
 

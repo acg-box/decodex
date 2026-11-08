@@ -137,11 +137,20 @@ impl GlassScope {
 		{
 			cache.store(u8::from(value == "clear"), Ordering::Relaxed);
 		}
-		if ui_preferences::boolean(self.key(), cache, None, false) {
-			GlassStyle::Clear
-		} else {
-			GlassStyle::Regular
+		if cache.load(Ordering::Relaxed) == u8::MAX {
+			// Keep absence distinct from an explicit Regular choice. An unset
+			// overlay follows later window-style changes without saving an override.
+			cache.store(
+				ui_preferences::optional_boolean(self.key()).map_or(2, u8::from),
+				Ordering::Relaxed,
+			);
 		}
+		let clear = match cache.load(Ordering::Relaxed) {
+			0 => false,
+			1 => true,
+			_ => self == Self::Popover && Self::Window.configured() == GlassStyle::Clear,
+		};
+		if clear { GlassStyle::Clear } else { GlassStyle::Regular }
 	}
 
 	pub(crate) fn select(self, style: GlassStyle, cx: &mut App) {
@@ -185,6 +194,25 @@ mod tests {
 		}
 
 		assert_eq!(Material::from_preference("plain"), None);
+	}
+
+	#[gpui::test]
+	fn unset_overlay_style_follows_window_and_retains_explicit_choices(
+		cx: &mut gpui::TestAppContext,
+	) {
+		cx.update(|cx| {
+			super::GLASS_STYLES[GlassScope::Popover as usize]
+				.store(u8::MAX, std::sync::atomic::Ordering::Relaxed);
+			GlassScope::Window.select(GlassStyle::Clear, cx);
+			assert_eq!(GlassScope::Popover.configured(), GlassStyle::Clear);
+			GlassScope::Window.select(GlassStyle::Regular, cx);
+			assert_eq!(GlassScope::Popover.configured(), GlassStyle::Regular);
+			GlassScope::Popover.select(GlassStyle::Clear, cx);
+			assert_eq!(GlassScope::Popover.configured(), GlassStyle::Clear);
+			GlassScope::Window.select(GlassStyle::Clear, cx);
+			GlassScope::Popover.select(GlassStyle::Regular, cx);
+			assert_eq!(GlassScope::Popover.configured(), GlassStyle::Regular);
+		});
 	}
 
 	#[gpui::test]
