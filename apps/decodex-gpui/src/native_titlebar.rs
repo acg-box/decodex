@@ -67,6 +67,19 @@ mod macos {
 				if self.views[index].frame() != frame {
 					self.views[index].setFrame(frame);
 				}
+				if gpui::profiler::trace_enabled()
+					&& let Some(root) = unsafe { content.superview() }
+				{
+					let view = &self.views[index];
+					let bounds = view.bounds();
+					let point = view.convertPoint_toView(
+						NSPoint::new(bounds.size.width / 2., bounds.size.height / 2.),
+						Some(&root),
+					);
+					let hit =
+						root.hitTest(point).is_some_and(|target| std::ptr::eq(&*target, &**view));
+					crate::frame_trace::titlebar_hit(index, hit);
+				}
 			}
 		}
 	}

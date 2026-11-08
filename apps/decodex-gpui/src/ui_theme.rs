@@ -67,6 +67,9 @@ pub(crate) const CONTROL_SIZE: f32 = 28.0;
 pub(crate) const CHROME_CONTROL_SIZE: f32 = 24.0;
 pub(crate) const CONTROL_GROUP_HEIGHT: f32 = CONTROL_SIZE;
 pub(crate) const CONTROL_MARGIN: f32 = 8.0;
+pub(crate) const CONTROL_INSET: f32 = 4.0;
+pub(crate) const CONTROL_GAP: f32 = 4.0;
+pub(crate) const SMALL_CONTROL_RADIUS: f32 = 5.0;
 pub(crate) const CONTROL_RADIUS: f32 = 8.0;
 pub(crate) const POPOVER_RADIUS: f32 = 10.;
 pub(crate) const POPOVER_PADDING: f32 = 8.;
@@ -271,10 +274,10 @@ pub(crate) fn floating_group() -> Div {
 	gpui::div()
 		.h(gpui::px(CONTROL_GROUP_HEIGHT))
 		.flex_none()
-		.px_1()
+		.px(gpui::px(CONTROL_INSET))
 		.flex()
 		.items_center()
-		.gap_1()
+		.gap(gpui::px(CONTROL_GAP))
 		.rounded(gpui::px(CONTROL_RADIUS))
 		.bg(rgb(TOPBAR_MATERIAL >> 8))
 		.border_1()

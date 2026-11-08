@@ -5,7 +5,7 @@ description: Reusable layout, activity-island motion, reading spacing and theme 
 tags: [desktop, design, motion, layout]
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-08T14:06:07.625Z
+    at: 2026-11-08T14:43:35.992Z
 sources:
   - id: openwiki-source-8037e2358a2c4f9b2c722a11
     resource: repo://AGENTS.md
@@ -53,6 +53,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/ui_live_activity.rs
   - id: openwiki-source-afbf2d30c0979a844373d8e5
     resource: repo://apps/decodex-gpui/src/ui_motion.rs
+  - id: openwiki-source-79f9e926ceb3e6b2643c73a5
+    resource: repo://apps/decodex-gpui/src/ui_native_popover.rs
   - id: openwiki-source-9e7fc8b7290695ff7afa8373
     resource: repo://apps/decodex-gpui/src/ui_overflow_label.rs
   - id: openwiki-source-8f7f43de2b98b69bb43506d7
@@ -61,6 +63,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/ui_performance.rs
   - id: openwiki-source-570564020f98df7a4d6d0b61
     resource: repo://apps/decodex-gpui/src/ui_theme.rs
+  - id: openwiki-source-fa218a67bba67197ecf88d7b
+    resource: repo://apps/decodex-gpui/src/ui_viewport_clip.rs
   - id: openwiki-source-343d35c489d39a7a672412a2
     resource: repo://apps/decodex-gpui/src/ui_working.rs
   - id: openwiki-source-8f413b540123b1fe73628c7d
@@ -69,7 +73,7 @@ sources:
     resource: repo://codex-runtime.lock.json
   - id: openwiki-source-a490ea3fbcddb9c007caf196
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_context_tests.rs
-generated: { by: "codex", at: "2026-11-08T14:06:07.625Z" }
+generated: { by: "codex", at: "2026-11-08T14:43:35.992Z" }
 ---
 
 # Interface geometry and motion
@@ -141,7 +145,7 @@ Keep Search and commands in the same leading slot when the sidebar contracts. It
 
 The sidebar's outer width uses the shared interruptible 200 ms cubic ease-out. Its content retains the complete expanded canvas during opening, closing and a reversal; the outer panel clips that canvas. Keep titles and trailing controls mounted at their final positions until closing reaches the 40-point rail. Do not squeeze the content into intermediate widths or remove labels as soon as the target changes. At the settled compact width, omit project branches and their extra layout space.
 
-Use `ui_motion::PanelReveal` to derive text reveal progress from the visible width. `ProgressiveLabel` reveals complete graphemes in their original positions and color. It keeps the full shaped line and clips at character boundaries; it does not replace the text or fade its ink. Section symbols and conversation initials remain fixed. Clip the complete project tree with the same progress because project names have no compact initial. The reveal is empty when the expanded canvas enters or leaves the rail, and complete at the full width. A reversal uses the current width and text boundary without another clock. Reduced motion uses the target width and reveal directly.
+Keep the complete sidebar text at its final position and color. `ui_motion::Viewport` measures the actual pane bounds and clips the fixed content at the visible edge, including its shared inner padding. The edge reveals or covers the existing text as a curtain moves. Do not give labels an opacity transition, character counter, normalized reveal fraction or separate clock. Section symbols and conversation initials remain fixed. The Projects directory uses the shared intrinsic disclosure to release its extra space in the compact rail. A reversal changes only the current clipping geometry. Reduced motion selects the target geometry directly.
 
 Use `ui_motion::HoverIntent` for surfaces revealed by pointer intent. The shared tokens set entry dwell to 180 ms and departure grace to 220 ms. Brief crossings cancel entry. Movement inside the same target does not restart its timer. Reentry cancels closing, and an exit from an older target cannot cancel a newer target. Explicit clicks, keyboard actions and dismissal cancel pending pointer work and retain their immediate behavior. The sidebar, Work and Debug islands, and response-statistics popover use this owner. History previews use the shared entry delay rather than a zero-delay tooltip. Ordinary hover ink, contextual row actions and native tooltip lifetime retain their own presentation roles.
 
@@ -162,6 +166,8 @@ Keep provider stream retries in native Codex. A retrying stream error does not a
 ## Theme and controls
 
 On macOS, AppKit owns the window-button and window-sharing geometry. The main window uses a unified compact native toolbar. GPUI follows the measured native control-row center for the leading controls, activity islands and trailing controls. Keep `traffic_light_position` unset. Do not move native window buttons or their parent containers to fit a custom header. AppKit retains blank titlebar dragging.
+
+Control groups use the shared 28-point height, 24-point control targets, 4-point inner spacing and gap, 8-point outer inset and capsule radius, and 5-point small-control radius. Dense navigation retains its 6-point inner inset. Use these role tokens instead of feature-specific values. The native control row sets the top alignment for every titlebar group. Attached material surfaces retain that allocated anchor, including the clipping canvas; the native host must not add a menu edge inset. Independent floating menus use the shared 8-point edge clearance.
 
 Use the current theme tokens for foreground, muted labels, emphasis and status colors. The Ultrafast double bolt uses the theme accent. Its silhouette is shared across the composer; its color is not copied from another application.
 

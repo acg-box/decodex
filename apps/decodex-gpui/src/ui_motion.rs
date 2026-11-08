@@ -8,6 +8,7 @@ mod native_popover;
 #[path = "ui_overflow_label.rs"] mod overflow_label;
 #[path = "ui_segmented.rs"] mod segmented;
 #[path = "ui_text_reveal.rs"] mod text_reveal;
+#[path = "ui_viewport_clip.rs"] mod viewport_clip;
 
 pub(crate) use crate::ui_frame::{
 	animations_active, application_active, begin_interaction, observe_activation, reduced,
@@ -15,9 +16,10 @@ pub(crate) use crate::ui_frame::{
 };
 pub(crate) use disclosure::{disclosure, disclosure_lazy, settings_disclosure};
 pub(crate) use hover_intent::HoverIntent;
-pub(crate) use overflow_label::{OverflowLabel, ProgressiveLabel};
+pub(crate) use overflow_label::{HoverOverflowLabel, OverflowLabel};
 pub(crate) use segmented::{Choice, Segmented};
 pub(crate) use text_reveal::TextReveal;
+pub(crate) use viewport_clip::Viewport;
 
 use std::{
 	f32::consts::TAU,
@@ -42,33 +44,48 @@ use crate::ui_theme::{
 pub(crate) const HOVER_OPEN_DELAY: Duration = Duration::from_millis(180);
 pub(crate) const HOVER_CLOSE_DELAY: Duration = Duration::from_millis(220);
 
+/// Attached surfaces keep their owner's anchor; floating menus keep edge clearance.
+#[cfg(any(test, target_os = "macos"))]
+pub(crate) fn surface_origin(
+	origin: gpui::Point<Pixels>,
+	extent: gpui::Size<Pixels>,
+	viewport: gpui::Size<Pixels>,
+	attached: bool,
+) -> gpui::Point<Pixels> {
+	if attached {
+		return origin;
+	}
+	let margin = ui_theme::CONTROL_MARGIN;
+	gpui::point(
+		gpui::px(
+			f32::from(origin.x)
+				.clamp(margin, (f32::from(viewport.width - extent.width) - margin).max(margin)),
+		),
+		gpui::px(
+			f32::from(origin.y)
+				.clamp(margin, (f32::from(viewport.height - extent.height) - margin).max(margin)),
+		),
+	)
+}
+
 /// Keep a panel's leading rail fixed while its details follow the visible width.
-/// Geometry owns the reveal, so a reversal continues at the same text boundary.
-#[derive(Clone, Copy)]
+/// Text stays at its final positions behind the actual viewport mask.
+#[derive(Clone)]
 pub(crate) struct PanelReveal {
 	pub expanded: bool,
 	pub content_width: f32,
-	pub details_progress: f32,
+	pub target_expanded: bool,
+	pub viewport: Viewport,
 }
 impl PanelReveal {
 	pub(crate) fn new(target: bool, visible: f32, rail: f32, full: f32) -> Self {
 		let expanded = target || visible > rail;
-		let progress = ((visible - rail) / (full - rail)).clamp(0., 1.);
 		Self {
 			expanded,
 			content_width: if expanded { full } else { rail },
-			details_progress: progress,
+			target_expanded: target,
+			viewport: Viewport::default(),
 		}
-	}
-
-	/// Clip a complete subtree without changing its intrinsic content layout.
-	pub(crate) fn clip(self, width: f32, child: impl IntoElement) -> impl IntoElement {
-		gpui::div()
-			.w(gpui::px(width * self.details_progress))
-			.min_w_0()
-			.flex_none()
-			.overflow_hidden()
-			.child(gpui::div().w(gpui::px(width)).flex_none().child(child))
 	}
 }
 
@@ -574,7 +591,7 @@ impl Tween {
 #[derive(IntoElement)]
 pub(crate) struct AgentRailStatus {
 	pub compact: bool,
-	pub details_progress: f32,
+	pub viewport: Option<Viewport>,
 	pub scroll: bool,
 	pub id: String,
 	pub state: String,
@@ -645,6 +662,13 @@ impl RenderOnce for AgentRailStatus {
 		let inset =
 			if self.compact { 0. } else { ((CONVERSATION_TAB_SIZE - initial_width) * 0.5).max(0.) };
 		let title_id = SharedString::from(format!("left-title-{}", self.id));
+		let suffix =
+			HoverOverflowLabel { id: title_id.into(), text: rest.into(), active: self.scroll };
+		let suffix = if let Some(viewport) = self.viewport {
+			viewport.clip(ui_theme::SIDEBAR_INSET + inset, suffix).into_any_element()
+		} else {
+			suffix.into_any_element()
+		};
 
 		gpui::div()
 			.debug_selector(|| "conversation-name".into())
@@ -669,12 +693,7 @@ impl RenderOnce for AgentRailStatus {
 					.text_color(ink)
 					.child(initial),
 			)
-			.child(gpui::div().flex_1().min_w_0().overflow_hidden().child(ProgressiveLabel {
-				id: title_id.into(),
-				text: rest.into(),
-				active: self.scroll,
-				progress: self.details_progress,
-			}))
+			.child(gpui::div().flex_1().min_w_0().overflow_hidden().child(suffix))
 	}
 }
 
@@ -818,25 +837,30 @@ mod tests {
 	use crate::ui_motion::Tween;
 
 	#[test]
-	fn panel_details_start_at_zero_and_reverse_at_the_current_text_boundary() {
+	fn attached_surfaces_keep_the_shared_control_baseline() {
+		let origin = gpui::point(gpui::px(120.), gpui::px(6.));
+		let extent = gpui::size(gpui::px(72.), gpui::px(28.));
+		let viewport = gpui::size(gpui::px(1_200.), gpui::px(800.));
+		assert_eq!(super::surface_origin(origin, extent, viewport, true), origin);
+		assert_eq!(super::surface_origin(origin, extent, viewport, false).y, gpui::px(8.));
+		let canvas_origin = gpui::point(gpui::px(-60.), gpui::px(6.));
+		assert_eq!(super::surface_origin(canvas_origin, extent, viewport, true), canvas_origin);
+	}
+
+	#[test]
+	fn panel_canvas_stays_fixed_during_open_close_and_reversal() {
 		use super::PanelReveal;
 		for full in [160., 240., 480.] {
 			let closed = PanelReveal::new(false, 40., 40., full);
 			let opening = PanelReveal::new(true, 40., 40., full);
 			assert_eq!(closed.content_width, 40.);
 			assert_eq!(opening.content_width, full);
-			assert_eq!(closed.details_progress, 0.);
-			assert_eq!(opening.details_progress, 0.);
 			let final_frame = PanelReveal::new(false, 40.5, 40., full);
 			assert_eq!(final_frame.content_width, full);
-			assert!(final_frame.details_progress < 0.005);
 			let middle = (full + 40.) / 2.;
 			let closing = PanelReveal::new(false, middle, 40., full);
 			let reversing = PanelReveal::new(true, middle, 40., full);
-			assert!(closing.details_progress > 0. && closing.details_progress < 1.);
-			assert_eq!(closing.details_progress, reversing.details_progress);
 			assert_eq!(closing.content_width, reversing.content_width);
-			assert_eq!(PanelReveal::new(true, full, 40., full).details_progress, 1.);
 		}
 	}
 

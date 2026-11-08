@@ -25,24 +25,25 @@ pub(crate) fn surface_render(surface: &'static str) {
 }
 
 /// Compare a sidebar's moving clip with its stable content canvas.
-pub(crate) fn sidebar_geometry(visible_width: f32, content_width: f32, details_progress: f32) {
+pub(crate) fn sidebar_geometry(visible_width: f32, content_width: f32) {
 	record(
-		|at_ms| serde_json::json!({"at_ms":at_ms,"phase":"sidebar_geometry","visible_width":visible_width,"content_width":content_width,"details_progress":details_progress}),
-	);
-}
-
-/// Observe complete text units at the reveal edge without recording their text.
-pub(crate) fn label_reveal(progress: f32, graphemes: usize, bytes: usize, width: f32) {
-	record(
-		|at_ms| serde_json::json!({"at_ms":at_ms,"phase":"label_reveal","progress":progress,"graphemes":graphemes,"bytes":bytes,"width":width}),
+		|at_ms| serde_json::json!({"at_ms":at_ms,"phase":"sidebar_geometry","visible_width":visible_width,"content_width":content_width}),
 	);
 }
 
 /// Compare the public native control row and GPUI placement without window text.
 #[cfg(all(target_os = "macos", not(test)))]
-pub(crate) fn native_chrome(center: f64, top: f64, height: f64) {
+pub(crate) fn native_chrome(center: f64, top: f64, height: f64, frame: [f64; 4], screen_top: f64) {
 	record(
-		|at_ms| serde_json::json!({"at_ms":at_ms,"phase":"native_chrome","native_center_y":center,"gpui_top":top,"titlebar_height":height}),
+		|at_ms| serde_json::json!({"at_ms":at_ms,"phase":"native_chrome","native_center_y":center,"gpui_top":top,"titlebar_height":height,"window_frame":frame,"screen_top":screen_top}),
+	);
+}
+
+/// Check that native titlebar layers route pointer input to the registered control.
+#[cfg(all(target_os = "macos", not(test)))]
+pub(crate) fn titlebar_hit(control: usize, hit: bool) {
+	record(
+		|at_ms| serde_json::json!({"at_ms":at_ms,"phase":"titlebar_hit","control":control,"hit":hit}),
 	);
 }
 

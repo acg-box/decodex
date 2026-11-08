@@ -37,10 +37,15 @@ mod macos {
 		let center = native.frame().size.height - bounds.origin.y - bounds.size.height / 2.;
 		let top = center as f32 - crate::ui_theme::CONTROL_GROUP_HEIGHT / 2.;
 		let layout = native.contentLayoutRect();
+		let frame = native.frame();
 		crate::frame_trace::native_chrome(
 			center,
 			f64::from(top),
 			native.frame().size.height - layout.origin.y - layout.size.height,
+			[frame.origin.x, frame.origin.y, frame.size.width, frame.size.height],
+			native
+				.screen()
+				.map_or(0., |screen| screen.frame().origin.y + screen.frame().size.height),
 		);
 		Some(top)
 	}

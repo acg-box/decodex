@@ -75,7 +75,7 @@ struct ProjectBranch<'a> {
 	name: &'a str,
 	directory: Option<&'a str>,
 	items: &'a [Item],
-	reveal: PanelReveal,
+	reveal: &'a PanelReveal,
 	auto_scroll: bool,
 }
 impl AgentSurface {
@@ -229,13 +229,9 @@ impl AgentSurface {
 			rail,
 			self.workspace_sidebar_expanded_width(window),
 		);
-		crate::frame_trace::sidebar_geometry(
-			visible_width,
-			reveal.content_width,
-			reveal.details_progress,
-		);
+		crate::frame_trace::sidebar_geometry(visible_width, reveal.content_width);
 		let items = self.navigation_items(cx);
-		let directory = self.navigation_directory(&items, reveal, window, cx);
+		let directory = self.navigation_directory(&items, &reveal, window, cx);
 		// Retain one complete content layout while the outer panel clips its width.
 		// A target change must not remove labels or squeeze trailing controls mid-motion.
 		let content = gpui::div()
@@ -245,14 +241,14 @@ impl AgentSurface {
 			.flex_none()
 			.flex()
 			.flex_col()
-			.px(gpui::px(6.))
+			.px(gpui::px(ui_theme::SIDEBAR_INSET))
 			.py(gpui::px(4.))
 			.overflow_hidden()
 			.child(self.navigation_utility(
 				"navigation-command-entry",
 				"Search and commands",
 				Glyph::Search,
-				reveal,
+				&reveal,
 				|s, w, cx| s.open_global_commands(w, cx),
 				cx,
 			))
@@ -278,7 +274,7 @@ impl AgentSurface {
 				"archive-browser",
 				"Archived",
 				Glyph::Archive,
-				reveal,
+				&reveal,
 				|s, _, cx| {
 					s.workspace.navigation.archives_open = !s.workspace.navigation.archives_open;
 					s.workspace.sidebar_visible = true;
@@ -289,10 +285,13 @@ impl AgentSurface {
 				},
 				cx,
 			));
+		let viewport = reveal.viewport.anchor();
 		gpui::div()
 			.id("agent-sidebar")
 			.size_full()
+			.relative()
 			.overflow_hidden()
+			.child(viewport)
 			.child(content)
 			.into_any_element()
 	}
@@ -300,7 +299,7 @@ impl AgentSurface {
 	fn navigation_directory(
 		&self,
 		items: &[Item],
-		reveal: PanelReveal,
+		reveal: &PanelReveal,
 		window: &mut Window,
 		cx: &mut Context<Self>,
 	) -> gpui::Div {
@@ -329,12 +328,7 @@ impl AgentSurface {
 						.py_1()
 						.text_size(gpui::px(ui_theme::NAVIGATION_SECTION_SIZE))
 						.text_color(ui_theme::rgb(TEXT_MUTED))
-						.child(crate::ui_motion::ProgressiveLabel {
-							id: "archive-status-label".into(),
-							text: message.into(),
-							active: false,
-							progress: reveal.details_progress,
-						}),
+						.child(navigation_text(reveal, message)),
 				);
 			}
 		} else {
@@ -370,7 +364,7 @@ impl AgentSurface {
 					}
 				}
 				let content = if section == Section::Projects {
-					reveal.clip(reveal.content_width - 12., content).into_any_element()
+					content.into_any_element()
 				} else {
 					gpui::div()
 						.id(SharedString::from(format!("navigation-list-{}", section.key())))
@@ -384,13 +378,11 @@ impl AgentSurface {
 				};
 				directory =
 					directory.child(self.navigation_heading(section, reveal, open, window, cx));
-				if section != Section::Projects || expanded {
-					directory = directory.child(crate::ui_motion::disclosure(
-						SharedString::from(format!("navigation-disclosure-{}", section.key())),
-						open,
-						content,
-					));
-				}
+				directory = directory.child(crate::ui_motion::disclosure(
+					SharedString::from(format!("navigation-disclosure-{}", section.key())),
+					open && (section != Section::Projects || reveal.target_expanded),
+					content,
+				));
 			}
 		}
 		directory
@@ -400,7 +392,7 @@ impl AgentSurface {
 		&self,
 		items: &[Item],
 		pref: model::Preference,
-		reveal: PanelReveal,
+		reveal: &PanelReveal,
 		window: &mut Window,
 		cx: &mut Context<Self>,
 	) -> gpui::Div {
@@ -464,7 +456,7 @@ impl AgentSurface {
 		id: &'static str,
 		label: &'static str,
 		glyph: Glyph,
-		reveal: PanelReveal,
+		reveal: &PanelReveal,
 		action: impl Fn(&mut Self, &mut Window, &mut Context<Self>) + 'static,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
@@ -487,7 +479,7 @@ impl AgentSurface {
 			.overflow_hidden()
 			.flex()
 			.items_center()
-			.rounded(gpui::px(5.))
+			.rounded(gpui::px(ui_theme::SMALL_CONTROL_RADIUS))
 			.cursor_pointer()
 			.hover(|s| s.bg(ui_theme::rgba(ui_theme::HOVER_FILL)))
 			.tooltip(move |_, cx| cx.new(|_| crate::shell::ControlTooltip(label)).into())
@@ -507,12 +499,7 @@ impl AgentSurface {
 						.flex_1()
 						.whitespace_nowrap()
 						.text_size(gpui::px(ui_theme::NAVIGATION_TITLE_SIZE))
-						.child(crate::ui_motion::ProgressiveLabel {
-							id: SharedString::from(format!("{id}-label")).into(),
-							text: label.into(),
-							active: false,
-							progress: reveal.details_progress,
-						}),
+						.child(navigation_text(reveal, label)),
 				)
 				.when(id == "navigation-command-entry", |row| {
 					row.child(
@@ -520,12 +507,7 @@ impl AgentSurface {
 							.pr_1()
 							.text_size(gpui::px(10.))
 							.text_color(ui_theme::rgb(TEXT_MUTED))
-							.child(crate::ui_motion::ProgressiveLabel {
-								id: "command-shortcut-label".into(),
-								text: "⌘K".into(),
-								active: false,
-								progress: reveal.details_progress,
-							}),
+							.child(navigation_text(reveal, "⌘K")),
 					)
 				})
 			})
@@ -543,7 +525,7 @@ impl AgentSurface {
 	fn navigation_heading(
 		&self,
 		section: Section,
-		reveal: PanelReveal,
+		reveal: &PanelReveal,
 		open: bool,
 		window: &mut Window,
 		cx: &mut Context<Self>,
@@ -582,7 +564,7 @@ impl AgentSurface {
 				.flex_none()
 				.flex()
 				.items_center()
-				.rounded(gpui::px(5.))
+				.rounded(gpui::px(ui_theme::SMALL_CONTROL_RADIUS))
 				.overflow_hidden()
 				.cursor_pointer()
 				.hover(|s| s.bg(ui_theme::rgba(ui_theme::HOVER_FILL)))
@@ -614,12 +596,7 @@ impl AgentSurface {
 					.text_size(gpui::px(ui_theme::NAVIGATION_SECTION_SIZE))
 					.font_weight(FontWeight::MEDIUM)
 					.text_color(ui_theme::rgb(TEXT_MUTED))
-					.child(crate::ui_motion::ProgressiveLabel {
-						id: SharedString::from(format!("{key}-label")).into(),
-						text: section.label().into(),
-						active: false,
-						progress: reveal.details_progress,
-					}),
+					.child(navigation_text(reveal, section.label())),
 			);
 			row = row.child(self.navigation_options(section, opacity, window, cx));
 			if matches!(section, Section::Assistant | Section::Projects) {
@@ -766,7 +743,7 @@ impl AgentSurface {
 			.flex()
 			.items_center()
 			.pl(gpui::px(9.))
-			.rounded(gpui::px(5.))
+			.rounded(gpui::px(ui_theme::SMALL_CONTROL_RADIUS))
 			.bg(ui_theme::rgba(if open { ui_theme::HOVER_FILL } else { 0xffffff00 }))
 			.cursor_pointer()
 			.on_hover(
@@ -809,12 +786,14 @@ impl AgentSurface {
 					.text_size(gpui::px(ui_theme::NAVIGATION_TITLE_SIZE))
 					.font_weight(FontWeight::MEDIUM)
 					.text_color(ui_theme::rgb(TEXT))
-					.child(crate::ui_motion::ProgressiveLabel {
-						id: SharedString::from(format!("project-title-{id}")).into(),
-						text: name.to_owned().into(),
-						active: expanded && (auto_scroll || active),
-						progress: reveal.details_progress,
-					}),
+					.child(navigation_text(
+						reveal,
+						crate::ui_motion::HoverOverflowLabel {
+							id: SharedString::from(format!("project-title-{id}")).into(),
+							text: name.to_owned().into(),
+							active: expanded && (auto_scroll || active),
+						},
+					)),
 			)
 			.child(self.navigation_create(
 				&format!("New Agent in {name}"),
@@ -887,7 +866,7 @@ impl AgentSurface {
 		&self,
 		item: &Item,
 		section: &str,
-		reveal: PanelReveal,
+		reveal: &PanelReveal,
 		auto_scroll: bool,
 		window: &mut Window,
 		cx: &mut Context<Self>,
@@ -941,7 +920,7 @@ impl AgentSurface {
 				.flex()
 				.items_center()
 				.overflow_hidden()
-				.rounded(gpui::px(5.))
+				.rounded(gpui::px(ui_theme::SMALL_CONTROL_RADIUS))
 				.cursor_pointer()
 				.bg(ui_theme::rgba(if selected { ui_theme::SELECTED_FILL } else { 0xffffff00 }))
 				.hover(move |s| {
@@ -983,7 +962,7 @@ impl AgentSurface {
 			section,
 			&key,
 			expanded && (auto_scroll || hovered || keyboard),
-			reveal.details_progress,
+			&reveal.viewport,
 		);
 		row = row.child(
 			gpui::div()
@@ -998,7 +977,7 @@ impl AgentSurface {
 		);
 		if expanded {
 			if !item.draft {
-				row = row.child(navigation_item_time(item, actions, reveal.details_progress));
+				row = row.child(navigation_item_time(item, actions, reveal));
 			}
 			if manageable {
 				row = row.child(self.navigation_row_actions(item, &key, actions, cx));
@@ -1163,7 +1142,7 @@ fn navigation_divider() -> AnyElement {
 		.h(gpui::px(ui_theme::NAVIGATION_DIVIDER_HEIGHT))
 		.w_full()
 		.flex_none()
-		.px(gpui::px(6.))
+		.px(gpui::px(ui_theme::SIDEBAR_INSET))
 		.flex()
 		.items_center()
 		.child(gpui::div().h(gpui::px(1.)).flex_1().bg(gpui::linear_gradient(
@@ -1370,23 +1349,25 @@ fn navigation_item_label(
 	section: &str,
 	key: &str,
 	scroll: bool,
-	details_progress: f32,
+	viewport: &crate::ui_motion::Viewport,
 ) -> AnyElement {
 	if section.starts_with("project-") || section == "archive" {
 		gpui::div()
 			.pl(gpui::px(9.))
 			.text_size(gpui::px(ui_theme::NAVIGATION_TITLE_SIZE))
-			.child(crate::ui_motion::ProgressiveLabel {
-				id: SharedString::from(format!("navigation-title-{key}")).into(),
-				text: item.title.clone().into(),
-				active: scroll,
-				progress: details_progress,
-			})
+			.child(viewport.clip(
+				ui_theme::SIDEBAR_INSET,
+				crate::ui_motion::HoverOverflowLabel {
+					id: SharedString::from(format!("navigation-title-{key}")).into(),
+					text: item.title.clone().into(),
+					active: scroll,
+				},
+			))
 			.into_any_element()
 	} else {
 		crate::ui_motion::AgentRailStatus {
 			compact: false,
-			details_progress,
+			viewport: Some(viewport.clone()),
 			id: format!("navigation-{key}"),
 			label: item.title.clone(),
 			state: item.state.clone(),
@@ -1396,11 +1377,7 @@ fn navigation_item_label(
 	}
 }
 
-fn navigation_item_time(
-	item: &Item,
-	actions: f32,
-	details_progress: f32,
-) -> impl gpui::IntoElement {
+fn navigation_item_time(item: &Item, actions: f32, reveal: &PanelReveal) -> impl gpui::IntoElement {
 	gpui::div()
 		.absolute()
 		.right(gpui::px(5.))
@@ -1412,12 +1389,11 @@ fn navigation_item_time(
 		.opacity(1. - actions)
 		.text_size(gpui::px(10.))
 		.text_color(ui_theme::rgb(TEXT_MUTED))
-		.child(crate::ui_motion::ProgressiveLabel {
-			id: SharedString::from(format!("navigation-time-{}", item.id)).into(),
-			text: model::relative_time(item.updated, model::now()).into(),
-			active: false,
-			progress: details_progress,
-		})
+		.child(navigation_text(reveal, model::relative_time(item.updated, model::now())))
+}
+
+fn navigation_text(reveal: &PanelReveal, child: impl gpui::IntoElement) -> AnyElement {
+	reveal.viewport.clip(ui_theme::SIDEBAR_INSET, child).into_any_element()
 }
 
 #[cfg(test)]
