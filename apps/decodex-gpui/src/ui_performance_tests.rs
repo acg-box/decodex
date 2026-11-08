@@ -167,9 +167,13 @@ fn work_capsule_grows_and_shrinks_with_content_instead_of_the_agent_count(cx: &m
 	let fps = visual.debug_bounds("performance-fps").unwrap();
 
 	assert!(
-		(label.center().x - before.center().x).abs() < gpui::px(0.5),
+		(label.center().x - before.center().x - gpui::px(crate::ui_live_activity::ICON_SLOT / 2.))
+			.abs()
+			< gpui::px(0.5),
 		"label {label:?}, island {before:?}"
 	);
+	let icon = visual.debug_bounds("activity-work-icon").unwrap();
+	assert!(icon.right() < label.left(), "the Work icon must not overlap its value");
 	assert!(
 		(label.center().y - before.center().y).abs() < gpui::px(0.5),
 		"work label {label:?} is not centered in {before:?}"
@@ -443,10 +447,12 @@ fn hover_waits_for_dwell_cancels_on_exit_and_keeps_click_pinning(cx: &mut TestAp
 	let fps = visual.debug_bounds("performance-fps").unwrap();
 
 	assert!(fps.right() < toggle.right());
-	assert_eq!(
-		visual.debug_bounds("performance-island").unwrap().size.width,
-		gpui::px(crate::ui_live_activity::MIN_CAPSULE_WIDTH)
+	assert!(
+		visual.debug_bounds("performance-island").unwrap().size.width
+			>= gpui::px(crate::ui_live_activity::MIN_CAPSULE_WIDTH)
 	);
+	let icon = visual.debug_bounds("activity-performance-icon").unwrap();
+	assert!(icon.right() < fps.left(), "the icon has a dedicated slot before the value");
 	assert!(visual.debug_bounds("performance-gpu-label").is_none());
 
 	visual.simulate_mouse_move(toggle.center(), None, Default::default());
@@ -588,7 +594,10 @@ fn expanded_details_and_chart_fit_inside_the_compact_capsule(cx: &mut TestAppCon
 	assert_eq!(chart.top(), draw.top());
 	assert_eq!(chart.left() - draw.right(), gpui::px(16.));
 	assert!(chart.size.width >= gpui::px(96.));
-	assert_eq!(visual.debug_bounds("performance-fps-label").unwrap().left(), draw.left());
+	assert_eq!(
+		visual.debug_bounds("performance-fps-label").unwrap().left(),
+		draw.left() + gpui::px(crate::ui_live_activity::ICON_SLOT)
+	);
 	assert!(
 		visual.debug_bounds("performance-fps-label").unwrap().right()
 			< visual.debug_bounds("performance-fps").unwrap().left()

@@ -6,6 +6,8 @@ let output = URL(fileURLWithPath: CommandLine.arguments.dropFirst().first ?? "as
 try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
 let light = CommandLine.arguments.contains("--light")
 let symbols = [
+    "activity-work": "waveform.path",
+    "activity-performance": "gauge.with.dots.needle.50percent",
     "activity-goal": "scope",
     "activity-search": "magnifyingglass",
     "activity-edit": "pencil",

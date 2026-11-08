@@ -5,7 +5,7 @@ description: "Workspace ownership, native menu focus, compositor motion, and con
 tags: [decodex, architecture, desktop, presentation]
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-08T14:57:33.541Z
+    at: 2026-11-08T19:03:11.826Z
 sources:
   - id: openwiki-source-98e7b23c4cc276d20fcb4649
     resource: repo://apps/decodex-gpui/menubar/Sources/DecodexApp/AccountControlViews.swift
@@ -97,8 +97,12 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_usage_evidence.rs
   - id: openwiki-source-32bb36aae256aa57e6e82bd0
     resource: repo://apps/decodex-gpui/src/agent_voice.rs
+  - id: openwiki-source-28bed4ab59e05dbf07917451
+    resource: repo://apps/decodex-gpui/src/agent_work_board.rs
   - id: openwiki-source-3fa6d6c49e3542409542045b
     resource: repo://apps/decodex-gpui/src/agent_work_browser.rs
+  - id: openwiki-source-7131f576ee57d12a847fe177
+    resource: repo://apps/decodex-gpui/src/agent_work_progress.rs
   - id: openwiki-source-e269da8230b6d51390181459
     resource: repo://apps/decodex-gpui/src/agent_workspace_size.rs
   - id: openwiki-source-5d032c6be684964aa2c401fa
@@ -143,8 +147,12 @@ sources:
     resource: repo://apps/decodex-gpui/src/ui_frame.rs
   - id: openwiki-source-adab7a75320a305721fdd6d2
     resource: repo://apps/decodex-gpui/src/ui_hover_intent.rs
+  - id: openwiki-source-ccd97a4d4ef8dfe9b724e7ce
+    resource: repo://apps/decodex-gpui/src/ui_live_activity.rs
   - id: openwiki-source-afbf2d30c0979a844373d8e5
     resource: repo://apps/decodex-gpui/src/ui_motion.rs
+  - id: openwiki-source-8f7f43de2b98b69bb43506d7
+    resource: repo://apps/decodex-gpui/src/ui_performance_readout.rs
   - id: openwiki-source-8c633c09481985d80c8f42f2
     resource: repo://apps/decodex-gpui/src/ui_performance_tests.rs
   - id: openwiki-source-6d7ff71d731da7268890d765
@@ -173,7 +181,7 @@ sources:
     resource: repo://database/src/works/commands.rs
   - id: openwiki-source-8fe6f1557e5d45d88b34bd0a
     resource: repo://scripts/macos/generate_workspace_symbols.swift
-generated: { by: "codex", at: "2026-11-08T14:57:33.541Z" }
+generated: { by: "codex", at: "2026-11-08T19:03:11.826Z" }
 ---
 
 # Desktop workspace and native glass
@@ -182,13 +190,19 @@ generated: { by: "codex", at: "2026-11-08T14:57:33.541Z" }
 
 The workspace has three responsibilities. The left sidebar locates conversations and projects. The center keeps the selected conversation and its composer. The right Collaboration panel shows source-backed requests and exchanges across chats. A selected Work does not limit global pending requests to that Work.
 
+The main window can shrink to 480 by 360 points. `PanelLayout` reserves a 360-point reading width and a 40-point navigation rail. It allocates requested side panels in opening order. A second panel that does not fit floats above the center without displacing the first panel or resizing the current conversation. Both requested panels return to the layout when space becomes available. If neither can fit, only the most recently opened temporary panel is visible. Escape or a click in uncovered conversation space dismisses the temporary panels. Width preferences, Graph state and the conversation draft remain with their current owners.
+
+Both floating panels use the shared opaque workspace overlay color and full content layouts clipped by shared width motion. The native composer applies a matching material, foreground and hit-region clip beneath these panels. Its complete editor layout and focus ownership stay intact.
+
+With Graph closed, **Work in progress** provides a compact disclosure above the composer. It derives rows from the selected conversation's work subtree and observed native agents, excludes completed and archived work, and opens the existing conversation on selection. It introduces no work records or execution owner. New conversations and conversations without qualifying work omit the strip. The list uses the shared control-row size and disclosure motion, with bounded height and scrolling. Work and Debug activity islands use distinct accent-colored symbols under the shared activity-island sizing contract.
+
 The left sidebar contains **Pin**, **Recent**, **Assistant** and **Projects**. Pin contains locally pinned conversation references. Recent contains every available unpinned conversation, without an additional item-count cutoff. Assistant collects personal topics. Projects lists registered native project directories and their independent Agent conversations. Attached Side chats remain with their source tabs. Pin has a four-row viewport; Recent and Assistant have seven-row viewports. All returned entries remain scrollable. These viewports do not enlarge the service snapshot: Work summaries retain their existing 100-record bound.
 
 Click anywhere on a section header to expand or collapse it. Its secondary hover or keyboard-focus menu selects Last updated, Alphabetical or Always scroll titles. These preferences and pins are local UI state. The **Assistant** hover plus creates a **New Assistant topic** and reopens an existing unstarted personal draft before creating another. Personal topics share Assistant Memory and configuration, while retaining separate messages and drafts. The **Projects** hover plus opens the native folder chooser and existing AddProject path. It registers and reveals the project without rebinding the current draft. Each project's hover plus opens its own **New Agent** draft; repeated clicks and cross-project switches reuse the profile-scoped saved draft identity.
 
 **Search and commands (Command-K)** stays at the top in both expanded and compact layouts. It opens one global window for topics, projects, archived conversations, commands and Work. Arrow keys select visible results and Return opens the selected destination without submitting the chat composer. Choosing a result reveals its section or project and keeps the appropriate draft. New topic, New project, New project Agent, Archived conversations and Settings remain available from this window. Work search opens its existing owner conversation with the existing scoped evidence. There is no separate left-side Work hub or redundant inline search field.
 
-At workspace widths above 1,000 points, a 100 ms pointer dwell expands the compact rail temporarily. Leaving starts a 220 ms close delay, and reentry cancels the pending close. The existing width transition retains the leading command and initial positions. Opening a section during a hover does not make the sidebar permanently visible. The explicit sidebar toggle controls persistent visibility and clears the temporary state. Settings commands from a detached native popup route through the global action handler to the main Shell, which owns the reusable Settings window; opening it preserves the selected conversation.
+A 100 ms pointer dwell expands the compact rail temporarily when the right panel is not already floating. Leaving starts a 220 ms close delay, and reentry cancels the pending close. The existing width transition retains the leading command and initial positions. Opening a section during a hover does not make the sidebar permanently visible. The explicit sidebar toggle controls persistent visibility and clears the temporary state. Settings commands from a detached native popup route through the global action handler to the main Shell, which owns the reusable Settings window; opening it preserves the selected conversation.
 
 Sidebar content keeps its complete expanded canvas while the outer width opens, closes or reverses. The panel clips that canvas, so titles and trailing controls keep their final geometry instead of squeezing or disappearing at the first closing frame. The compact presentation mounts only after the rail reaches its settled width. Project branches then leave the compact layout entirely.
 
@@ -234,7 +248,7 @@ The Graph groups Agents by recorded Project membership. A quiet bottom rail and 
 
 Settings > Agents supplies permission and speed defaults for new independent conversations. The input-bar shield selects the current Agent's native permission mode; speed stays inside the model menu. Existing conversations retain their own settings, and native Subagents follow native inheritance rather than a Decodex broadcast.
 
-Shift-Esc toggles Graph or conversation fullscreen according to the active pane. Pane capture tracks clicks across cached Graph layers, and the native composer forwards actions to the persistent shell. Graph fullscreen hides both sidebars and restores their saved visibility and width preferences on exit.
+Shift-Esc toggles Graph or conversation fullscreen according to the active pane. Pane capture tracks clicks across cached Graph layers, and the native composer forwards actions to the persistent shell. Graph fullscreen preserves both sidebars and their allocation. Conversation fullscreen hides the sidebars and restores their saved visibility and width preferences on exit.
 
 The conversation header groups each source with its open Side chats. Use **+** to create and open a native attached branch from the selected conversation after source preparation. Creation needs no second confirmation and sends no message. Switching tabs preserves each conversation's draft and reading position; closing a tab retains the native branch. See [Side chat tabs](conversation-presentation.md#side-chat-tabs).
 

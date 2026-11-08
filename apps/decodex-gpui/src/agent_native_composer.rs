@@ -31,6 +31,7 @@ pub(super) struct NativeComposer {
 	pub(super) enabled: bool,
 	child: Option<WindowHandle<ComposerPanel>>,
 	pub(super) bounds: Option<Bounds<Pixels>>,
+	clip: Option<Bounds<Pixels>>,
 
 	height: f32,
 	creating: bool,
@@ -42,6 +43,7 @@ impl Default for NativeComposer {
 			enabled: false,
 			child: None,
 			bounds: None,
+			clip: None,
 			height: COMPOSER_MIN_HEIGHT,
 			creating: false,
 			failed: false,
@@ -320,10 +322,11 @@ impl AgentSurface {
 		let owner = cx.entity().downgrade();
 
 		cx.defer(move |cx| {
-			let Ok((child, bounds, enabled, opacity)) = owner.read_with(cx, |s, _| {
+			let Ok((child, bounds, clip, enabled, opacity)) = owner.read_with(cx, |s, _| {
 				(
 					s.native_controls.composer.child,
 					s.native_controls.composer.bounds,
+					s.native_controls.composer.clip,
 					s.native_controls.composer.enabled,
 					s.workspace.arrival.progress(0.12),
 				)
@@ -340,9 +343,17 @@ impl AgentSurface {
 						{
 							window.bounds_changed(cx);
 						}
+						if let Some(clip) = clip {
+							surface.clip_content(clip);
+						}
 
 						surface.set_opacity(opacity);
-						surface.set_visible(enabled && bounds.is_some() && opacity > 0.001);
+						surface.set_visible(
+							enabled
+								&& bounds.is_some()
+								&& clip.is_some_and(|clip| !clip.is_empty())
+								&& opacity > 0.001,
+						);
 					}
 				});
 			}
@@ -355,9 +366,11 @@ impl AgentSurface {
 		let read_only = blocked.is_some() && !archived;
 		let owner = cx.entity().downgrade();
 		let anchor = gpui::canvas(
-			move |bounds, _, cx| {
+			move |bounds, window, cx| {
 				let _ = owner.update(cx, |s, cx| {
 					s.native_controls.composer.bounds = Some(bounds);
+					s.native_controls.composer.clip =
+						Some(s.workspace_composer_clip(bounds, window));
 
 					s.sync_native_composer(cx);
 				});

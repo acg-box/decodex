@@ -32,7 +32,100 @@ pub(super) enum Panel {
 	Bottom,
 }
 
+pub(super) const MAIN_MIN_WIDTH: f32 = 360.;
+
+#[derive(Clone, Copy, Debug, Default)]
+pub(super) struct PanelLayout {
+	pub left_slot: f32,
+	pub right_slot: f32,
+	pub left_width: f32,
+	pub right_width: f32,
+	pub left_floating: bool,
+	pub right_floating: bool,
+}
+
+impl PanelLayout {
+	fn allocate(
+		width: f32,
+		left: Option<f32>,
+		right: Option<f32>,
+		first: Panel,
+		active: Panel,
+	) -> Self {
+		let rail = CONVERSATION_TAB_SIZE + 2. * SIDEBAR_INSET;
+		let mut layout = Self { left_slot: rail, left_width: rail, ..Self::default() };
+		let mut room = width - 2. * WORKSPACE_GUTTER - rail - WORKSPACE_GUTTER - MAIN_MIN_WIDTH;
+		let order = if first == Panel::Right {
+			[Panel::Right, Panel::Left]
+		} else {
+			[Panel::Left, Panel::Right]
+		};
+		for panel in order {
+			let requested = if panel == Panel::Left { left } else { right };
+			let Some(requested) = requested else { continue };
+			let cost =
+				if panel == Panel::Left { requested - rail } else { requested + WORKSPACE_GUTTER };
+			if room >= cost {
+				room -= cost;
+				if panel == Panel::Left {
+					layout.left_slot = requested;
+				} else {
+					layout.right_slot = requested;
+				}
+			}
+			if panel == Panel::Left {
+				layout.left_width = requested;
+				layout.left_floating = layout.left_slot < requested;
+			} else {
+				layout.right_width = requested;
+				layout.right_floating = layout.right_slot == 0.;
+			}
+		}
+		// A very narrow window has room for one temporary surface at a time.
+		if layout.left_floating && layout.right_floating {
+			if active == Panel::Left {
+				layout.right_width = 0.;
+				layout.right_floating = false;
+			} else {
+				layout.left_width = rail;
+				layout.left_floating = false;
+			}
+		}
+		layout
+	}
+}
+
 impl AgentSurface {
+	pub(super) fn workspace_panel_layout(&self, window: &Window) -> PanelLayout {
+		if self.workspace.chat_expanded {
+			return PanelLayout::default();
+		}
+		let width = f32::from(window.viewport_size().width);
+		let mut layout = PanelLayout::allocate(
+			width,
+			self.workspace.sidebar_visible.then(|| self.workspace_sidebar_expanded_width(window)),
+			(self.workspace.agent_tree_visible && self.reserve_workspace_panels())
+				.then(|| sidebar_width(self.workspace.agent_panel_width, width)),
+			self.workspace.panel_priority,
+			self.workspace.last_opened_panel,
+		);
+		if self.workspace.sidebar_peek && !self.workspace.sidebar_visible && !layout.right_floating
+		{
+			layout.left_width = self.workspace_sidebar_expanded_width(window);
+			layout.left_floating = true;
+		}
+		layout
+	}
+
+	pub(super) fn mark_panel_opened(&mut self, panel: Panel) {
+		if (panel == Panel::Left && !self.workspace.agent_tree_visible)
+			|| (panel == Panel::Right && !self.workspace.sidebar_visible)
+		{
+			self.workspace.panel_priority = panel;
+		}
+		self.workspace.last_opened_panel = panel;
+	}
+
 	#[cfg(test)]
 	pub(crate) fn panel_dimensions(&self) -> (f32, f32, f32) {
 		(
@@ -51,13 +144,10 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) {
 		let defaults = PanelDefaults::configured();
-		let width = f32::from(window.viewport_size().width);
+		let layout = self.workspace_panel_layout(window);
 		let visible = [
-			self.workspace.sidebar_visible && width > 1_000.0,
-			self.workspace.agent_tree_visible
-				&& self.reserve_workspace_panels()
-				&& !self.workspace.chat_expanded
-				&& !self.workspace.graph_expanded,
+			self.workspace.sidebar_visible && layout.left_width > 0.,
+			layout.right_width > 0.,
 			self.workspace.graph_visible
 				&& self.reserve_workspace_panels()
 				&& !self.workspace.graph_expanded,
@@ -191,20 +281,11 @@ impl AgentSurface {
 	}
 
 	fn sidebar_target_width(&self, window: &Window) -> f32 {
-		if self.workspace.graph_expanded || self.workspace.chat_expanded {
-			return 0.;
-		}
-
-		if self.workspace_sidebar_expanded(window) {
-			self.workspace_sidebar_expanded_width(window)
-		} else {
-			CONVERSATION_TAB_SIZE + 2. * SIDEBAR_INSET
-		}
+		self.workspace_panel_layout(window).left_slot
 	}
 
 	pub(super) fn workspace_sidebar_expanded(&self, window: &Window) -> bool {
-		(self.workspace.sidebar_visible || self.workspace.sidebar_peek)
-			&& f32::from(window.viewport_size().width) > 1_000.
+		self.workspace_panel_layout(window).left_width > CONVERSATION_TAB_SIZE + 2. * SIDEBAR_INSET
 	}
 
 	pub(super) fn workspace_sidebar_expanded_width(&self, window: &Window) -> f32 {
@@ -226,8 +307,72 @@ impl AgentSurface {
 		tween.sample(now)
 	}
 
+	pub(super) fn workspace_sidebar_display_width(&self, window: &Window) -> f32 {
+		self.panel_motion_width(
+			&self.workspace.sidebar_content_motion,
+			self.workspace_panel_layout(window).left_width,
+			Panel::Left,
+		)
+	}
+
+	pub(super) fn workspace_right_display_width(&self, window: &Window) -> f32 {
+		self.panel_motion_width(
+			&self.workspace.right_content_motion,
+			self.workspace_panel_layout(window).right_width,
+			Panel::Right,
+		)
+	}
+
+	fn panel_motion_width(
+		&self,
+		motion: &std::cell::RefCell<Option<Tween>>,
+		target: f32,
+		panel: Panel,
+	) -> f32 {
+		let now = Instant::now();
+		let mut motion = motion.borrow_mut();
+		let tween = motion.get_or_insert_with(|| Tween::new(target));
+		if self.workspace.panel_drag.is_some_and(|(dragged, _, _)| dragged == panel) {
+			*tween = Tween::new(target);
+		} else {
+			tween.target(target, now);
+		}
+		tween.sample(now)
+	}
+
 	pub(super) fn workspace_composer_clearance(&self) -> f32 {
 		self.workspace.composer_overlay_height.max(0.)
+	}
+
+	/// Keep the native child window behind temporary workspace panels without
+	/// changing the editor's layout or its input state.
+	pub(super) fn workspace_composer_clip(
+		&self,
+		bounds: gpui::Bounds<gpui::Pixels>,
+		window: &Window,
+	) -> gpui::Bounds<gpui::Pixels> {
+		let layout = self.workspace_panel_layout(window);
+		let width = f32::from(bounds.size.width);
+		let left_width = self.workspace_sidebar_display_width(window);
+		let right_width = self.workspace_right_display_width(window);
+		let left = if left_width > layout.left_slot + 0.5 {
+			(WORKSPACE_GUTTER + left_width - f32::from(bounds.left())).clamp(0., width)
+		} else {
+			0.
+		};
+		let right = if right_width > layout.right_slot + 0.5 {
+			(f32::from(window.viewport_size().width)
+				- WORKSPACE_GUTTER
+				- right_width
+				- f32::from(bounds.left()))
+			.clamp(0., width)
+		} else {
+			width
+		};
+		gpui::Bounds::new(
+			gpui::point(gpui::px(left), gpui::px(0.)),
+			gpui::size(gpui::px((right - left).max(0.)), bounds.size.height),
+		)
 	}
 
 	pub(super) fn workspace_graph_size(&self, window: &Window, _wide: bool) -> (f32, f32) {
@@ -266,10 +411,7 @@ impl AgentSurface {
 	}
 
 	pub(super) fn sidebar_hover(&mut self, hovered: bool, cx: &mut Context<Self>) {
-		if self.workspace.graph_expanded
-			|| self.workspace.chat_expanded
-			|| self.workspace.sidebar_visible
-		{
+		if self.workspace.chat_expanded || self.workspace.sidebar_visible {
 			self.workspace.sidebar_hover_intent.cancel();
 			return;
 		}
@@ -304,10 +446,39 @@ impl AgentSurface {
 			ui_motion::request_frame(window, cx);
 		}
 
-		ui_theme::workspace_surface()
+		gpui::div()
 			.id("left-panel-slot")
-			.opacity(self.workspace.arrival.progress(0.))
 			.debug_selector(|| "left-panel-slot".into())
+			.flex_none()
+			.w(gpui::px(width))
+			.mr(gpui::px(width.min(WORKSPACE_GUTTER)))
+			.h_full()
+			.into_any_element()
+	}
+
+	pub(super) fn sidebar_pane(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+		let width = self.workspace_sidebar_display_width(window);
+		let layout = self.workspace_panel_layout(window);
+		let floating = layout.left_floating || width > self.workspace_sidebar_width(window) + 0.5;
+		if self
+			.workspace
+			.sidebar_content_motion
+			.borrow()
+			.as_ref()
+			.is_some_and(|t| t.moving(Instant::now()))
+		{
+			ui_motion::request_frame(window, cx);
+		}
+		ui_theme::workspace_surface()
+			.id("workspace-navigation-pane")
+			.debug_selector(|| "workspace-navigation-pane".into())
+			.absolute()
+			.left(gpui::px(WORKSPACE_GUTTER))
+			.top(gpui::px(WINDOW_CONTROLS_CLEARANCE))
+			.bottom(gpui::px(WORKSPACE_GUTTER))
+			.w(gpui::px(width))
+			.overflow_hidden()
+			.opacity(self.workspace.arrival.progress(0.))
 			.on_mouse_move(cx.listener(|s, event: &MouseMoveEvent, _, cx| {
 				if event.pressed_button.is_none() && !cx.has_active_drag() {
 					s.sidebar_hover(true, cx);
@@ -318,10 +489,6 @@ impl AgentSurface {
 					s.sidebar_hover(false, cx);
 				}
 			}))
-			.flex_none()
-			.w(gpui::px(width))
-			.mr(gpui::px(width.min(WORKSPACE_GUTTER)))
-			.h_full()
 			.capture_any_mouse_down(
 				cx.listener(|s, _, _, _| s.workspace.focused_panel = Some(Panel::Left)),
 			)
@@ -331,7 +498,45 @@ impl AgentSurface {
 			.when(width > 0.1 && self.workspace.sidebar_visible, |panel| {
 				panel.child(self.sidebar_resize_handle(Panel::Left, cx))
 			})
+			.when(floating, |panel| {
+				panel.bg(ui_theme::workspace_overlay_color()).shadow_lg().on_mouse_down_out(
+					cx.listener(|s, event: &MouseDownEvent, window, cx| {
+						let right = s.agent_tree_width(window);
+						if event.position.y >= gpui::px(WINDOW_CONTROLS_CLEARANCE)
+							&& f32::from(event.position.x)
+								< f32::from(window.viewport_size().width) - right - WORKSPACE_GUTTER
+						{
+							s.dismiss_workspace_overlays(window, cx);
+						}
+					}),
+				)
+			})
 			.into_any_element()
+	}
+
+	pub(crate) fn dismiss_workspace_overlays(&mut self, window: &Window, cx: &mut Context<Self>) {
+		if self.workspace.chat_expanded {
+			return;
+		}
+		let layout = self.workspace_panel_layout(window);
+		let left = self.workspace.sidebar_peek
+			|| (self.workspace.sidebar_visible
+				&& layout.left_slot <= CONVERSATION_TAB_SIZE + 2. * SIDEBAR_INSET);
+		let right = self.workspace.agent_tree_visible
+			&& self.reserve_workspace_panels()
+			&& layout.right_slot == 0.;
+		if left {
+			self.workspace.sidebar_visible = false;
+			self.workspace.sidebar_peek = false;
+			self.workspace.sidebar_hover_intent.cancel();
+		}
+		if right {
+			self.workspace.agent_tree_visible = false;
+		}
+		if left || right {
+			ui_motion::begin_interaction();
+			cx.notify();
+		}
 	}
 
 	pub(super) fn sidebar_resize_handle(
@@ -556,7 +761,7 @@ impl AgentSurface {
 }
 
 fn sidebar_width(requested: f32, viewport: f32) -> f32 {
-	requested.clamp(160.0, (viewport - 600.0).clamp(160.0, 480.0))
+	requested.clamp(160.0, 480.0).min((viewport - 2. * WORKSPACE_GUTTER).max(0.))
 }
 
 #[cfg(test)]
@@ -570,7 +775,7 @@ mod tests {
 	};
 
 	#[gpui::test]
-	fn fullscreen_hides_sidebars_and_restores_preferences(cx: &mut gpui::TestAppContext) {
+	fn focused_chat_hides_panels_while_graph_keeps_navigation(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 
 		visual.simulate_resize(gpui::size(gpui::px(1_400.), gpui::px(900.)));
@@ -595,8 +800,11 @@ mod tests {
 			visual.update(|window, cx| {
 				let s = surface.read(cx);
 
-				assert_eq!(s.sidebar_target_width(window), 0.);
-				assert_eq!(s.agent_tree_width(window), 0.);
+				assert_eq!(
+					s.sidebar_target_width(window),
+					if target.is_none() { 0. } else { 230. }
+				);
+				assert_eq!(s.agent_tree_width(window), if target.is_none() { 0. } else { 270. });
 				assert_eq!(s.workspace.chat_expanded, target.is_none());
 				assert_eq!(s.workspace.graph_expanded, target.is_some());
 
@@ -925,7 +1133,11 @@ mod tests {
 		visual.update(crate::ui_frame::draw_current_frame);
 		thread::sleep(std::time::Duration::from_millis(250));
 		visual.update(crate::ui_frame::draw_current_frame);
-		assert!(visual.debug_bounds("left-panel-slot").unwrap().size.width > collapsed.size.width);
+		assert_eq!(visual.debug_bounds("left-panel-slot").unwrap(), collapsed);
+		assert!(
+			visual.debug_bounds("workspace-navigation-pane").unwrap().size.width
+				> collapsed.size.width
+		);
 		assert_eq!(visual.debug_bounds("conversation-mark-navigation-recent-agent").unwrap(), mark);
 		assert_eq!(visual.debug_bounds("navigation-command-entry").unwrap().origin, command);
 		surface.read_with(visual, |s, _| {
@@ -1259,7 +1471,100 @@ mod tests {
 	fn sidebar_limits_preserve_main_space() {
 		assert_eq!(workspace_size::sidebar_width(80.0, 1_200.0), 160.0);
 		assert_eq!(workspace_size::sidebar_width(500.0, 1_200.0), 480.0);
-		assert_eq!(workspace_size::sidebar_width(300.0, 800.0), 200.0);
+		assert_eq!(workspace_size::sidebar_width(300.0, 800.0), 300.0);
 		assert_eq!(workspace_size::sidebar_width(256.0, 1_200.0), 256.0);
+	}
+
+	#[test]
+	fn opening_the_other_panel_keeps_the_existing_slot() {
+		let left_first = workspace_size::PanelLayout::allocate(
+			800.,
+			Some(240.),
+			Some(240.),
+			Panel::Left,
+			Panel::Right,
+		);
+		assert_eq!((left_first.left_slot, left_first.right_slot), (240., 0.));
+		assert!(left_first.right_floating);
+		assert!(!left_first.left_floating);
+		let right_first = workspace_size::PanelLayout::allocate(
+			800.,
+			Some(240.),
+			Some(240.),
+			Panel::Right,
+			Panel::Left,
+		);
+		assert_eq!((right_first.left_slot, right_first.right_slot), (40., 240.));
+		assert!(right_first.left_floating);
+		assert!(!right_first.right_floating);
+		let wide = workspace_size::PanelLayout::allocate(
+			1200.,
+			Some(240.),
+			Some(240.),
+			Panel::Right,
+			Panel::Left,
+		);
+		assert_eq!((wide.left_slot, wide.right_slot), (240., 240.));
+		assert!(!wide.left_floating && !wide.right_floating);
+	}
+
+	#[gpui::test]
+	fn narrow_window_dismisses_temporary_panels_without_changing_graph(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		visual.simulate_resize(gpui::size(gpui::px(480.), gpui::px(360.)));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.workspace.graph_visible = true;
+		});
+		visual.update(|window, cx| {
+			surface.update(cx, |s, cx| {
+				s.dismiss_workspace_overlays(window, cx);
+				assert!(!s.workspace.sidebar_visible && !s.workspace.agent_tree_visible);
+				assert!(s.workspace.graph_visible);
+			})
+		});
+	}
+
+	#[gpui::test]
+	fn floating_panel_keeps_editor_graph_and_other_panel_geometry(cx: &mut gpui::TestAppContext) {
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		visual.simulate_resize(gpui::size(gpui::px(800.), gpui::px(620.)));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.workspace.sidebar_width = 240.;
+			s.workspace.agent_panel_width = 240.;
+			s.workspace.agent_tree_visible = false;
+			s.workspace.graph_visible = true;
+			s.workspace.graph_zoom = 1.7;
+			s.composer.update(cx, |input, cx| input.set_content("Keep this draft", cx));
+		});
+		visual.update(crate::ui_frame::draw_current_frame);
+		let before = visual.debug_bounds("workspace-center-frame").unwrap();
+		surface.update(visual, |s, cx| s.toggle_agent_tree(cx));
+		visual.update(crate::ui_frame::draw_current_frame);
+		assert_eq!(visual.debug_bounds("workspace-center-frame").unwrap(), before);
+		visual.update(|window, cx| {
+			surface.update(cx, |s, cx| {
+				assert!(s.workspace_panel_layout(window).right_floating);
+				s.workspace.right_content_motion = Default::default();
+				let editor = gpui::Bounds::new(
+					gpui::point(gpui::px(264.), gpui::px(500.)),
+					gpui::size(gpui::px(512.), gpui::px(100.)),
+				);
+				let clip = s.workspace_composer_clip(editor, window);
+				assert_eq!(clip.origin, gpui::point(gpui::px(0.), gpui::px(0.)));
+				assert_eq!(clip.size.width, gpui::px(288.));
+				assert_eq!(clip.size.height, editor.size.height);
+				assert!(s.workspace.sidebar_visible && s.workspace.graph_visible);
+				assert_eq!(s.workspace.graph_zoom, 1.7);
+				assert_eq!(s.composer.read(cx).content(), "Keep this draft");
+				s.dismiss_workspace_overlays(window, cx);
+				assert!(s.workspace.sidebar_visible && !s.workspace.agent_tree_visible);
+				s.workspace.right_content_motion = Default::default();
+				assert_eq!(s.workspace_composer_clip(editor, window).size, editor.size);
+			})
+		});
 	}
 }

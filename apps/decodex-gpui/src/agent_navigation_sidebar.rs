@@ -222,7 +222,7 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) -> AnyElement {
 		let rail = ui_theme::CONVERSATION_TAB_SIZE + 2. * ui_theme::SIDEBAR_INSET;
-		let visible_width = self.workspace_sidebar_width(window);
+		let visible_width = self.workspace_sidebar_display_width(window);
 		let reveal = PanelReveal::new(
 			self.workspace_sidebar_expanded(window),
 			visible_width,

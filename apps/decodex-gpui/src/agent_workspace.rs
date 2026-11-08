@@ -98,7 +98,13 @@ impl AgentSurface {
 		}
 
 		ui_motion::begin_interaction();
+		if !self.workspace.sidebar_visible {
+			self.mark_panel_opened(super::workspace_size::Panel::Left);
+		}
 		self.workspace.sidebar_visible = !self.workspace.sidebar_visible;
+		if !self.workspace.sidebar_visible && self.workspace.agent_tree_visible {
+			self.workspace.panel_priority = super::workspace_size::Panel::Right;
+		}
 		self.workspace.sidebar_peek = false;
 		self.workspace.sidebar_hover_intent.cancel();
 
@@ -1299,6 +1305,9 @@ impl AgentSurface {
 			.left_0()
 			.right_0()
 			.bottom_0()
+			.flex()
+			.flex_col()
+			.children(self.work_progress_bar(window, cx))
 			.child(self.composer_footer(window, cx))
 			.child(
 				gpui::canvas(
@@ -1324,7 +1333,7 @@ impl AgentSurface {
 			)
 	}
 
-	fn workspace_focus_region(
+	pub(super) fn workspace_focus_region(
 		&self,
 		panel: Option<super::workspace_size::Panel>,
 		cx: &mut Context<Self>,
@@ -1486,25 +1495,11 @@ impl AgentSurface {
 			.gap(gpui::px(right_width.min(WORKSPACE_GUTTER)))
 			.child(center)
 			.child(
-				ui_theme::workspace_surface()
+				gpui::div()
 					.debug_selector(|| "workspace-activity-frame".into())
 					.flex_none()
 					.w(gpui::px(right_width))
-					.h_full()
-					.opacity(self.workspace.arrival.progress(0.08))
-					.when(right_width > 0.1, |panel| {
-						self.deliveries.update(cx, |panel, cx| panel.set_width(right_width, cx));
-
-						panel
-							.child(self.workspace_focus_region(
-								Some(super::workspace_size::Panel::Right),
-								cx,
-							))
-							.child(ui_layout::pane(self.presentations.activity.clone(), window))
-							.child(
-								self.sidebar_resize_handle(super::workspace_size::Panel::Right, cx),
-							)
-					}),
+					.h_full(),
 			);
 		// Navigation, content and activity share one inset row with matching outer frames.
 		let main = gpui::div()
@@ -1517,7 +1512,9 @@ impl AgentSurface {
 			.relative()
 			.flex()
 			.child(self.sidebar_slot(wide, window, cx))
-			.child(body);
+			.child(body)
+			.child(gpui::deferred(self.sidebar_pane(window, cx)).with_priority(1))
+			.child(gpui::deferred(self.activity_pane(window, cx)).with_priority(1));
 
 		self.workspace_resize_root(cx)
 			.size_full()
@@ -2214,6 +2211,10 @@ impl AgentSurface {
 			"task-references" => self.visual_task_references(),
 			"conversation" => {
 				self.workspace.graph_visible = false;
+			},
+			"work-progress" => {
+				self.workspace.graph_visible = false;
+				self.workspace.work_progress_expanded = true;
 			},
 			_ => {},
 		}

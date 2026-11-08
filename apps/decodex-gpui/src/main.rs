@@ -207,7 +207,10 @@ fn main_window_options(bounds: Bounds<Pixels>) -> WindowOptions {
 		// GPUI buttons interactive without a client-initiated drag session.
 		app_owns_titlebar_drag: false,
 		window_bounds: Some(WindowBounds::Windowed(bounds)),
-		window_min_size: Some(gpui::size(gpui::px(1_180.0), gpui::px(720.0))),
+		window_min_size: Some(gpui::size(
+			gpui::px(ui_theme::MAIN_WINDOW_MIN_WIDTH),
+			gpui::px(ui_theme::MAIN_WINDOW_MIN_HEIGHT),
+		)),
 		focus: false,
 		show: false,
 		..ui_motion::window_options()

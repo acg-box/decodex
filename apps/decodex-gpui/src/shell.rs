@@ -2012,8 +2012,11 @@ impl Render for Shell {
 			.on_action(cx.listener(Self::toggle_inspector))
 			.on_action(cx.listener(Self::toggle_graph))
 			.on_action(cx.listener(Self::toggle_content_fullscreen))
-			.on_action(cx.listener(|s, _: &DismissStatus, _, cx| {
-				s.agent.update(cx, |agent, cx| agent.dismiss_navigation_confirmation(cx));
+			.on_action(cx.listener(|s, _: &DismissStatus, window, cx| {
+				s.agent.update(cx, |agent, cx| {
+					agent.dismiss_navigation_confirmation(cx);
+					agent.dismiss_workspace_overlays(window, cx);
+				});
 				if s.status_open {
 					s.status_open = false;
 
@@ -2038,8 +2041,8 @@ impl Render for Shell {
 				}
 			}))
 			.size_full()
-			.min_w(gpui::px(1_180.0))
-			.min_h(gpui::px(720.0))
+			.min_w(gpui::px(ui_theme::MAIN_WINDOW_MIN_WIDTH))
+			.min_h(gpui::px(ui_theme::MAIN_WINDOW_MIN_HEIGHT))
 			.flex()
 			.flex_col()
 			.bg(ui_theme::rgba(SHELL_MATERIAL))

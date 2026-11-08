@@ -6,6 +6,9 @@ use crate::ui_theme::CONTROL_GROUP_HEIGHT;
 
 pub(crate) const MIN_CAPSULE_WIDTH: f32 = 72.;
 pub(crate) const CAPSULE_HEIGHT: f32 = CONTROL_GROUP_HEIGHT;
+pub(crate) const ICON_SIZE: f32 = 14.;
+pub(crate) const ICON_GAP: f32 = 6.;
+pub(crate) const ICON_SLOT: f32 = ICON_SIZE + ICON_GAP;
 pub(crate) const COMPACT_WIDTH: f32 = 208.;
 pub(crate) const EXPANDED_WIDTH: f32 = 288.;
 pub(crate) const MORPH_DURATION: Duration = Duration::from_millis(240);

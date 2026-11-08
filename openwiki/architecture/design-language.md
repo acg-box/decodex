@@ -5,7 +5,7 @@ description: Reusable layout, activity-island motion, reading spacing and theme 
 tags: [desktop, design, motion, layout]
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-08T14:57:33.541Z
+    at: 2026-11-08T19:03:11.826Z
 sources:
   - id: openwiki-source-8037e2358a2c4f9b2c722a11
     resource: repo://AGENTS.md
@@ -15,6 +15,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_composer.rs
   - id: openwiki-source-079a15445a0295f222af8069
     resource: repo://apps/decodex-gpui/src/agent_model_settings.rs
+  - id: openwiki-source-ae2ce5cda718ede63f50be9b
+    resource: repo://apps/decodex-gpui/src/agent_native_composer.rs
   - id: openwiki-source-3664c9b8790465805ef686fd
     resource: repo://apps/decodex-gpui/src/agent_navigation_actions.rs
   - id: openwiki-source-c2592b96974e70b72f93f72b
@@ -27,6 +29,10 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_surface.rs
   - id: openwiki-source-691432bb61082c358b6f9c24
     resource: repo://apps/decodex-gpui/src/agent_timeline.rs
+  - id: openwiki-source-51a4755f3c4ddd78511e5c8e
+    resource: repo://apps/decodex-gpui/src/agent_tree.rs
+  - id: openwiki-source-7131f576ee57d12a847fe177
+    resource: repo://apps/decodex-gpui/src/agent_work_progress.rs
   - id: openwiki-source-c0e58bc836ac05c982449723
     resource: repo://apps/decodex-gpui/src/agent_workbench.rs
   - id: openwiki-source-e269da8230b6d51390181459
@@ -73,7 +79,7 @@ sources:
     resource: repo://codex-runtime.lock.json
   - id: openwiki-source-a490ea3fbcddb9c007caf196
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_context_tests.rs
-generated: { by: "codex", at: "2026-11-08T14:57:33.541Z" }
+generated: { by: "codex", at: "2026-11-08T19:03:11.826Z" }
 ---
 
 # Interface geometry and motion
@@ -82,7 +88,7 @@ Use shared geometry and presentation components when you add a desktop surface. 
 
 ## Activity islands
 
-Work and Debug use the same geometry contract.
+Work and Debug use the same geometry contract. Work uses the waveform symbol; Debug uses the performance gauge. Each header reserves a 14-point symbol and a 6-point gap in its measured width. The symbols use the current Decodex accent color.
 
 | Property | Rule |
 | --- | --- |
@@ -102,6 +108,16 @@ Only one activity expands at a time. Two activities retain their resting slots a
 Keep the native drawable at the complete content size and at the window origin during a transition. `MaterialSurface::clip` puts the foreground beside the material and applies a rounded foreground mask. The material contour and mask change together. The mask updates disable implicit Core Animation actions; `Morph` owns the transition. Do not resize the Metal drawable on each animation frame. The input region follows the visible contour, so the clear area outside an island does not block controls below it.
 
 Lay out detail text and metric columns at the complete content width. Clip that layout during opening and closing. Values retain one view identity and move along a defined path. Labels follow their corresponding values and fade in only when the complete field fits with its required separation. A narrow intermediate header must not paint secondary text over its main value. Do not reveal a label by repeatedly changing its text width or paint two copies of the same value at different positions.
+
+## Responsive workspace
+
+The main window accepts sizes down to 480 by 360 points. Reserve a 360-point reading width before allocating persistent side panels. Keep the panel that was open first in the layout. If the other panel cannot fit, show it above the reading plane without moving the first panel or narrowing the conversation. Resizing to a wider window restores both requested panels to the layout. In a very narrow window that cannot fit either panel, show only the most recently opened temporary surface.
+
+Use the same 8-point outer gutter and 16-point corner radius for both side panels. Their requested width is between 160 and 480 points, constrained by the window. Keep the complete panel content layout behind the animated clipping edge. Temporary surfaces use the shared opaque workspace overlay color, so underlying text cannot show through. Escape or a click in the uncovered reading plane dismisses temporary surfaces. Preserve the docked panel, Graph state and conversation draft.
+
+The native composer keeps its full layout behind temporary panels. Clip its material, foreground and pointer region to the uncovered area; do not resize or recreate its text editor. Graph expansion retains navigation and collaboration panels. Explicit conversation focus mode can still hide the side panels.
+
+When Graph is hidden, an existing conversation with unfinished scoped work can show **Work in progress** above the composer. Use the shared 28-point control height, 14-point Work symbol and intrinsic disclosure motion. Include unfinished tasks and observed native agents from the current conversation's work subtree. Do not insert example work. Limit the expanded list to one quarter of the window height, between two and six control rows, and scroll extra rows. A row opens the existing conversation. Hide the strip in a new conversation or when there is no matching work.
 
 ## Reading rhythm
 
@@ -141,7 +157,7 @@ Use one compact row rhythm for the left navigation. Pin, Recent, Assistant and P
 
 The whole section header toggles its content. Sorting remains a secondary hover or keyboard-focus control. Put the creation plus immediately before the disclosure chevron in Assistant, Projects and each project. Both controls retain their hit targets when hidden. An expanded project uses a quiet surface, a short accent mark and an end rule inside its final child row. Its conversation rows have no extra indent or folder symbols.
 
-Keep Search and commands in the same leading slot when the sidebar contracts. It opens the global command window, also available with Command-K. The compact rail retains each section symbol and conversation initial. A pointer dwell of 100 ms temporarily expands the rail at workspace widths above 1,000 points. Leaving starts a 220 ms close delay; returning cancels that close. Reuse the shared width transition and keep the leading symbols and initials fixed. Opening a section during a hover does not pin the sidebar. The explicit sidebar toggle controls persistent visibility and clears temporary hover state. Relative times and trailing actions do not add width or height to the compact rail.
+Keep Search and commands in the same leading slot when the sidebar contracts. It opens the global command window, also available with Command-K. The compact rail retains each section symbol and conversation initial. A pointer dwell of 100 ms temporarily expands the rail as a floating surface when the right panel does not already float. Leaving starts a 220 ms close delay; returning cancels that close. Reuse the shared width transition and keep the leading symbols and initials fixed. Opening a section during a hover does not pin the sidebar. The explicit sidebar toggle controls persistent visibility and clears temporary hover state. Relative times and trailing actions do not add width or height to the compact rail.
 
 The sidebar's outer width uses the shared interruptible 200 ms cubic ease-out. Its content retains the complete expanded canvas during opening, closing and a reversal; the outer panel clips that canvas. Keep titles and trailing controls mounted at their final positions until closing reaches the 40-point rail. Do not squeeze the content into intermediate widths or remove labels as soon as the target changes. At the settled compact width, omit project branches and their extra layout space.
 

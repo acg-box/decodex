@@ -78,6 +78,8 @@ pub(crate) const POPOVER_GAP: f32 = 8.;
 pub(crate) const POPOVER_ARRIVAL: Duration = Duration::from_millis(160);
 pub(crate) const POPOVER_OFFSET: f32 = 4.;
 pub(crate) const WORKSPACE_GUTTER: f32 = 8.0;
+pub(crate) const MAIN_WINDOW_MIN_WIDTH: f32 = 480.;
+pub(crate) const MAIN_WINDOW_MIN_HEIGHT: f32 = 360.;
 pub(crate) const WORKSPACE_RADIUS: f32 = 16.0;
 pub(crate) const CONVERSATION_HEADER_HEIGHT: f32 = 36.0;
 // Conversation text and composer share a bounded, responsive reading column.
@@ -299,6 +301,11 @@ pub(crate) fn workspace_surface() -> Div {
 		.rounded(gpui::px(WORKSPACE_RADIUS))
 		.bg(rgba(FIELD_MATERIAL))
 		.overflow_hidden()
+}
+
+/// A workspace overlay must hide text from the reading plane below it.
+pub(crate) fn workspace_overlay_color() -> Rgba {
+	annotation_surface().alpha(1.)
 }
 
 pub(crate) fn settings_header_inset() -> Div {

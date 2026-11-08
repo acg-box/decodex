@@ -371,9 +371,7 @@ mod tests {
 	}
 
 	#[gpui::test]
-	fn navigation_visits_workspace_lists_in_order_without_duplicate_history(
-		cx: &mut TestAppContext,
-	) {
+	fn sidebar_archive_disclosure_preserves_navigation_history(cx: &mut TestAppContext) {
 		let (shell, visual) = open_shell(cx);
 
 		shell.update(visual, |s, cx| {
@@ -381,42 +379,23 @@ mod tests {
 				agent.visual_workspace_fixture(cx);
 			});
 		});
-		let visits = [("archive-browser", AgentLocation::Archive)];
-
-		for (button, location) in &visits {
-			visual.update(crate::ui_frame::draw_current_frame);
-			let bounds = visual.debug_bounds(button).expect("sidebar navigation");
-
-			visual.simulate_click(bounds.center(), Default::default());
-			shell.read_with(visual, |s, cx| {
-				assert_eq!(&s.agent.read(cx).navigation_location(), location);
-			});
-		}
+		visual.update(crate::ui_frame::draw_current_frame);
 		let count = shell.read_with(visual, |s, _| s.navigation.entries.len());
-
-		assert_eq!(count, 2);
-
-		for location in visits[..visits.len() - 1]
-			.iter()
-			.rev()
-			.map(|(_, location)| location)
-			.chain([&AgentLocation::Root])
-		{
-			visual.update(crate::ui_frame::draw_current_frame);
-			let back = visual.debug_bounds("navigate-back").unwrap();
-
-			visual.simulate_click(back.center(), Default::default());
-			shell.read_with(visual, |s, cx| {
-				assert_eq!(&s.agent.read(cx).navigation_location(), location);
-			});
-		}
-		for (_, location) in &visits {
-			visual.simulate_keystrokes("cmd-]");
-			shell.read_with(visual, |s, cx| {
-				assert_eq!(&s.agent.read(cx).navigation_location(), location);
-				assert_eq!(s.navigation.entries.len(), count);
-			});
-		}
+		let archive = visual.debug_bounds("archive-browser").expect("sidebar archive entry");
+		visual.simulate_click(archive.center(), Default::default());
+		visual.update(crate::ui_frame::draw_current_frame);
+		let back = visual.debug_bounds("archive-back").expect("archive remains in the sidebar");
+		shell.read_with(visual, |s, cx| {
+			assert_eq!(s.agent.read(cx).navigation_location(), AgentLocation::Root);
+			assert_eq!(s.navigation.entries.len(), count);
+		});
+		visual.simulate_click(back.center(), Default::default());
+		visual.update(crate::ui_frame::draw_current_frame);
+		assert!(visual.debug_bounds("archive-back").is_none());
+		shell.read_with(visual, |s, cx| {
+			assert_eq!(s.agent.read(cx).navigation_location(), AgentLocation::Root);
+			assert_eq!(s.navigation.entries.len(), count);
+		});
 	}
 
 	#[gpui::test]
