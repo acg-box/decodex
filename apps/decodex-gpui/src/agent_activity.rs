@@ -4,7 +4,6 @@ use std::{
 	collections::{BTreeMap, BTreeSet},
 	fmt::{Display, Formatter},
 	rc::Rc,
-	time::Duration,
 };
 
 use gpui::{
@@ -822,9 +821,7 @@ impl AgentSurface {
 
 						cx.notify();
 					}))
-					// Navigation previews already have their text; do not use the
-					// generic tooltip's 500 ms discovery delay.
-					.tooltip_show_delay(Duration::ZERO)
+					.tooltip_show_delay(ui_motion::HOVER_OPEN_DELAY)
 					.tooltip(move |window, cx| {
 						cx.new(|cx| HistoryPreview::new(tip.clone(), window, cx)).into()
 					})

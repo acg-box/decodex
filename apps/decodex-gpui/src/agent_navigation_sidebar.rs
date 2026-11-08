@@ -221,13 +221,20 @@ impl AgentSurface {
 		window: &mut Window,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
-		let expanded =
-			self.workspace.sidebar_visible && f32::from(window.viewport_size().width) > 1_000.;
+		let rail = ui_theme::CONVERSATION_TAB_SIZE + 2. * ui_theme::SIDEBAR_INSET;
+		let visible_width = self.workspace_sidebar_width(window);
+		let expanded = self.workspace_sidebar_expanded(window) || visible_width > rail;
+		let width = if expanded { self.workspace_sidebar_expanded_width(window) } else { rail };
+		crate::frame_trace::sidebar_geometry(visible_width, width);
 		let items = self.navigation_items(cx);
 		let directory = self.navigation_directory(&items, expanded, window, cx);
-		gpui::div()
-			.id("agent-sidebar")
-			.size_full()
+		// Retain one complete content layout while the outer panel clips its width.
+		// A target change must not remove labels or squeeze trailing controls mid-motion.
+		let content = gpui::div()
+			.debug_selector(|| "navigation-content-canvas".into())
+			.w(gpui::px(width))
+			.h_full()
+			.flex_none()
 			.flex()
 			.flex_col()
 			.px(gpui::px(6.))
@@ -273,7 +280,12 @@ impl AgentSurface {
 					cx.notify();
 				},
 				cx,
-			))
+			));
+		gpui::div()
+			.id("agent-sidebar")
+			.size_full()
+			.overflow_hidden()
+			.child(content)
 			.into_any_element()
 	}
 
@@ -356,13 +368,15 @@ impl AgentSurface {
 						.child(content)
 						.into_any_element()
 				};
-				directory = directory
-					.child(self.navigation_heading(section, expanded, open, window, cx))
-					.child(crate::ui_motion::disclosure(
+				directory =
+					directory.child(self.navigation_heading(section, expanded, open, window, cx));
+				if section != Section::Projects || expanded {
+					directory = directory.child(crate::ui_motion::disclosure(
 						SharedString::from(format!("navigation-disclosure-{}", section.key())),
-						open && (section != Section::Projects || expanded),
+						open,
 						content,
 					));
+				}
 			}
 		}
 		directory
@@ -617,7 +631,9 @@ impl AgentSurface {
 	}
 
 	fn toggle_navigation_section(&mut self, section: Section, cx: &mut Context<Self>) {
-		if section == Section::Projects && !self.workspace.sidebar_visible {
+		if section == Section::Projects
+			&& !(self.workspace.sidebar_visible || self.workspace.sidebar_peek)
+		{
 			self.workspace.sidebar_visible = true;
 			self.workspace.navigation.collapsed.remove(section.key());
 		} else if !self.workspace.navigation.collapsed.remove(section.key()) {

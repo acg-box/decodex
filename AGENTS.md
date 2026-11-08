@@ -34,6 +34,9 @@ When working in this repository, read the OpenWiki quickstart first, then follow
 - Change the shared contract and its focused checks when a new requirement
   needs another variant. Do not add a feature-specific island animation or size
   system.
+- Use `ui_motion::HoverIntent` and its shared delay tokens for hover-triggered
+  expansion. Keep pointer dwell, departure grace, cancellation and explicit
+  click behavior in this shared contract; do not add feature-specific timers.
 
 <!-- OPENWIKI:START -->
 

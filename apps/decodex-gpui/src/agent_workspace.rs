@@ -97,7 +97,10 @@ impl AgentSurface {
 			return;
 		}
 
+		ui_motion::begin_interaction();
 		self.workspace.sidebar_visible = !self.workspace.sidebar_visible;
+		self.workspace.sidebar_peek = false;
+		self.workspace.sidebar_hover_intent.cancel();
 
 		cx.notify();
 	}
