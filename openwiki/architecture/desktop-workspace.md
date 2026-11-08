@@ -5,7 +5,7 @@ description: "Workspace ownership, native menu focus, compositor motion, and con
 tags: [decodex, architecture, desktop, presentation]
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-08T03:59:17.848Z
+    at: 2026-11-08T14:57:33.541Z
 sources:
   - id: openwiki-source-98e7b23c4cc276d20fcb4649
     resource: repo://apps/decodex-gpui/menubar/Sources/DecodexApp/AccountControlViews.swift
@@ -173,7 +173,7 @@ sources:
     resource: repo://database/src/works/commands.rs
   - id: openwiki-source-8fe6f1557e5d45d88b34bd0a
     resource: repo://scripts/macos/generate_workspace_symbols.swift
-generated: { by: "codex", at: "2026-11-08T03:59:17.848Z" }
+generated: { by: "codex", at: "2026-11-08T14:57:33.541Z" }
 ---
 
 # Desktop workspace and native glass
@@ -188,11 +188,11 @@ Click anywhere on a section header to expand or collapse it. Its secondary hover
 
 **Search and commands (Command-K)** stays at the top in both expanded and compact layouts. It opens one global window for topics, projects, archived conversations, commands and Work. Arrow keys select visible results and Return opens the selected destination without submitting the chat composer. Choosing a result reveals its section or project and keeps the appropriate draft. New topic, New project, New project Agent, Archived conversations and Settings remain available from this window. Work search opens its existing owner conversation with the existing scoped evidence. There is no separate left-side Work hub or redundant inline search field.
 
-At workspace widths above 1,000 points, a 180 ms pointer dwell expands the compact rail temporarily. Leaving starts a 220 ms close delay, and reentry cancels the pending close. The existing width transition retains the leading command and initial positions. Opening a section during a hover does not make the sidebar permanently visible. The explicit sidebar toggle controls persistent visibility and clears the temporary state. Settings commands from a detached native popup route through the global action handler to the main Shell, which owns the reusable Settings window; opening it preserves the selected conversation.
+At workspace widths above 1,000 points, a 100 ms pointer dwell expands the compact rail temporarily. Leaving starts a 220 ms close delay, and reentry cancels the pending close. The existing width transition retains the leading command and initial positions. Opening a section during a hover does not make the sidebar permanently visible. The explicit sidebar toggle controls persistent visibility and clears the temporary state. Settings commands from a detached native popup route through the global action handler to the main Shell, which owns the reusable Settings window; opening it preserves the selected conversation.
 
 Sidebar content keeps its complete expanded canvas while the outer width opens, closes or reverses. The panel clips that canvas, so titles and trailing controls keep their final geometry instead of squeezing or disappearing at the first closing frame. The compact presentation mounts only after the rail reaches its settled width. Project branches then leave the compact layout entirely.
 
-The sidebar, Work and Debug activity islands, and response-statistics popover share `ui_motion::HoverIntent`. It owns the 180 ms entry dwell, 220 ms departure grace and pending-task cancellation. Brief crossings do not expand a surface, internal movement does not restart entry, and stale exit events cannot cancel the next hovered target. Reentry cancels closing. Explicit clicks, keyboard actions and dismissal keep their immediate behavior; click-pinned surfaces stay open when the pointer leaves. History-rail previews use the same entry delay instead of opening immediately. Ordinary hover ink and contextual row actions retain direct feedback.
+The sidebar, Work and Debug activity islands, and response-statistics popover share `ui_motion::HoverIntent`. It owns the 100 ms entry dwell, 220 ms departure grace and pending-task cancellation. Brief crossings do not expand a surface, internal movement does not restart entry, and stale exit events cannot cancel the next hovered target. Reentry cancels closing. Explicit clicks, keyboard actions and dismissal keep their immediate behavior; click-pinned surfaces stay open when the pointer leaves. History-rail previews use the same entry delay instead of opening immediately. Ordinary hover ink and contextual row actions retain direct feedback.
 
 Committed pointer intent and explicit surface toggles permit 400 ms of finite motion even while the visible App is inactive. The background-rendering preference is unchanged, and the ordinary policy resumes after the interval. System reduced motion and VoiceOver remain authoritative. This separates animation of a user operation from continuous background activity.
 

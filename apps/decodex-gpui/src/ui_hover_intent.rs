@@ -95,14 +95,14 @@ mod tests {
 	) {
 		let state = cx.new(|_| Fixture::default());
 		state.update(cx, |s, cx| s.hover(1, true, cx));
-		elapse(cx, Duration::from_millis(90));
+		elapse(cx, OPEN_DELAY / 2);
 		state.update(cx, |s, cx| s.hover(1, false, cx));
 		elapse(cx, OPEN_DELAY);
 		state.read_with(cx, |s, _| assert!(s.changes.is_empty()));
 		state.update(cx, |s, cx| s.hover(1, true, cx));
-		elapse(cx, Duration::from_millis(90));
+		elapse(cx, OPEN_DELAY / 2);
 		state.update(cx, |s, cx| s.hover(1, true, cx));
-		elapse(cx, Duration::from_millis(89));
+		elapse(cx, OPEN_DELAY - OPEN_DELAY / 2 - Duration::from_millis(1));
 		state.read_with(cx, |s, _| assert!(s.open.is_none()));
 		elapse(cx, Duration::from_millis(1));
 		state.read_with(cx, |s, _| assert_eq!(s.open, Some(1)));

@@ -41,7 +41,7 @@ use crate::ui_theme::{
 	WARNING,
 };
 
-pub(crate) const HOVER_OPEN_DELAY: Duration = Duration::from_millis(180);
+pub(crate) const HOVER_OPEN_DELAY: Duration = Duration::from_millis(100);
 pub(crate) const HOVER_CLOSE_DELAY: Duration = Duration::from_millis(220);
 
 /// Attached surfaces keep their owner's anchor; floating menus keep edge clearance.

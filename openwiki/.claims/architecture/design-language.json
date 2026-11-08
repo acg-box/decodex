@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:03916b70956f0588f55fd432100c99a018623461576a7539a27cca4d08a04a95",
+  "pageVersion": "sha256:71e1016877f2dc2cf1ed7b8735ec8222a21f9a4f0e4851afbad24c6724d1c7ff",
   "claims": [
     {
       "id": "claim_b70a9c3fa68642d29871a42ed05c1114",
@@ -240,7 +240,7 @@
     },
     {
       "id": "claim_7bdd9f1b2be14a4982ebb8c3d5b9f015",
-      "statement": "The compact sidebar is a 40-point rail with distinct section symbols, conversation initials and a fixed leading command entry; a 180 ms pointer dwell temporarily expands it above 1,000-point workspace widths using the shared width transition, leaving closes it after 220 ms, reentry cancels that close, and disclosure during hover does not pin it.",
+      "statement": "The compact sidebar is a 40-point rail with distinct section symbols, conversation initials and a fixed leading command entry; a 100 ms pointer dwell temporarily expands it above 1,000-point workspace widths using the shared width transition, leaving closes it after 220 ms, reentry cancels that close, and disclosure during hover does not pin it.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_navigation_sidebar.rs#L219-L297",
@@ -256,7 +256,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_motion.rs#L42-L92",
-          "version": "repo-lines-v1:sha256:7ec418b446f8ef890745144e5cb344c0e26d155f02865dda247e44f690db2d00:eyJzZWxlY3RlZExpbmVDb3VudCI6NTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFhMWQxYTYzMzkwMjI5Yzc5ODM0N2U4M2EwNDA1NDQxYzk0MDAwMzUyODRhZDE2OGMxYmY2Y2RmMWQ3MGEzNzAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY2ZmUwNzYxN2M0YjQ4MWM5YmY4NjhiZWY1YTY0ODY2NWNiYWZhMDI3ZDEyNTE3ZjExOWRkMmIyZTZhNzEyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjllMjQ2Yjc5ZjZiMWZmYTYwOGExNGIzNjdhNTAyYzExNDQ5YjNjMjYyYWIyYjg0MzI4MzcxMTZkMDZkZDdjOTMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgzZmY1ZDViZWQ2ZjQ0YWFjZjQxOTJiMjM1ZjBkZTI3ZmE2YTc2ZjA3MTEzMWFkY2E5OGJlNDkyYTYzMjYyOGYifQ"
+          "version": "repo-lines-v1:sha256:56f3a4d7a74e641078935c5a3931f2861bff1a1fa3c092466db2d2949db41aab:eyJzZWxlY3RlZExpbmVDb3VudCI6NTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFhMWQxYTYzMzkwMjI5Yzc5ODM0N2U4M2EwNDA1NDQxYzk0MDAwMzUyODRhZDE2OGMxYmY2Y2RmMWQ3MGEzNzAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY2ZmUwNzYxN2M0YjQ4MWM5YmY4NjhiZWY1YTY0ODY2NWNiYWZhMDI3ZDEyNTE3ZjExOWRkMmIyZTZhNzEyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjllMjQ2Yjc5ZjZiMWZmYTYwOGExNGIzNjdhNTAyYzExNDQ5YjNjMjYyYWIyYjg0MzI4MzcxMTZkMDZkZDdjOTMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgzZmY1ZDViZWQ2ZjQ0YWFjZjQxOTJiMjM1ZjBkZTI3ZmE2YTc2ZjA3MTEzMWFkY2E5OGJlNDkyYTYzMjYyOGYifQ"
         }
       ]
     },
@@ -312,7 +312,7 @@
     },
     {
       "id": "claim_cd4e412a482c4db2afddef25eb428174",
-      "statement": "HoverIntent owns shared 180 ms entry dwell and 220 ms departure grace for the sidebar, activity islands and response-statistics popover; brief crossings cancel entry, internal movement keeps the original dwell, reentry cancels close, stale exits do not cancel a newer target, and explicit actions cancel pending hover work.",
+      "statement": "HoverIntent owns shared 100 ms entry dwell and 220 ms departure grace for the sidebar, activity islands and response-statistics popover; brief crossings cancel entry, internal movement keeps the original dwell, reentry cancels close, stale exits do not cancel a newer target, and explicit actions cancel pending hover work.",
       "evidence": [
         {
           "resource": "repo://AGENTS.md#L28-L40",
@@ -332,7 +332,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_motion.rs#L42-L92",
-          "version": "repo-lines-v1:sha256:7ec418b446f8ef890745144e5cb344c0e26d155f02865dda247e44f690db2d00:eyJzZWxlY3RlZExpbmVDb3VudCI6NTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFhMWQxYTYzMzkwMjI5Yzc5ODM0N2U4M2EwNDA1NDQxYzk0MDAwMzUyODRhZDE2OGMxYmY2Y2RmMWQ3MGEzNzAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY2ZmUwNzYxN2M0YjQ4MWM5YmY4NjhiZWY1YTY0ODY2NWNiYWZhMDI3ZDEyNTE3ZjExOWRkMmIyZTZhNzEyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjllMjQ2Yjc5ZjZiMWZmYTYwOGExNGIzNjdhNTAyYzExNDQ5YjNjMjYyYWIyYjg0MzI4MzcxMTZkMDZkZDdjOTMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgzZmY1ZDViZWQ2ZjQ0YWFjZjQxOTJiMjM1ZjBkZTI3ZmE2YTc2ZjA3MTEzMWFkY2E5OGJlNDkyYTYzMjYyOGYifQ"
+          "version": "repo-lines-v1:sha256:56f3a4d7a74e641078935c5a3931f2861bff1a1fa3c092466db2d2949db41aab:eyJzZWxlY3RlZExpbmVDb3VudCI6NTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFhMWQxYTYzMzkwMjI5Yzc5ODM0N2U4M2EwNDA1NDQxYzk0MDAwMzUyODRhZDE2OGMxYmY2Y2RmMWQ3MGEzNzAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY2ZmUwNzYxN2M0YjQ4MWM5YmY4NjhiZWY1YTY0ODY2NWNiYWZhMDI3ZDEyNTE3ZjExOWRkMmIyZTZhNzEyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjllMjQ2Yjc5ZjZiMWZmYTYwOGExNGIzNjdhNTAyYzExNDQ5YjNjMjYyYWIyYjg0MzI4MzcxMTZkMDZkZDdjOTMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgzZmY1ZDViZWQ2ZjQ0YWFjZjQxOTJiMjM1ZjBkZTI3ZmE2YTc2ZjA3MTEzMWFkY2E5OGJlNDkyYTYzMjYyOGYifQ"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_performance.rs#L272-L322",
@@ -420,7 +420,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/ui_motion.rs#L43-L66",
-          "version": "repo-lines-v1:sha256:8373a998479e103d55da586a57533061b41037f6696d15224412ac01f3c56ae7:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY4NmQyMGRlODlmYjhlZDdkNjE5MjM5YzhjY2UzMjY3MjM0MmNiODk4ZDUzNWYxYjJiMTg0ZGQ2NjkxOTYxYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk2OTFjMTkyNTMxZjc1ZWZlYzY5YzI2MjU2ZTM2NWRhYzQ1MDJmOTZkZjViOGYyYzEwMGFhMTdlZjA5ZmE2NGYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImIxYTIyMzMxYzI5YTIxMjQ1MGZjYzYzNWE3Y2I1ZTg0OWY5NjRjNTI1NGM3ZTkwMzg4ZTRjMjhmNTI4OWRlZmIifQ"
+          "version": "repo-lines-v1:sha256:86865953bffdf7d4141ad0b051a3557077f65d3594910f1616d980403012a591:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY4NmQyMGRlODlmYjhlZDdkNjE5MjM5YzhjY2UzMjY3MjM0MmNiODk4ZDUzNWYxYjJiMTg0ZGQ2NjkxOTYxYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk2OTFjMTkyNTMxZjc1ZWZlYzY5YzI2MjU2ZTM2NWRhYzQ1MDJmOTZkZjViOGYyYzEwMGFhMTdlZjA5ZmE2NGYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImIxYTIyMzMxYzI5YTIxMjQ1MGZjYzYzNWE3Y2I1ZTg0OWY5NjRjNTI1NGM3ZTkwMzg4ZTRjMjhmNTI4OWRlZmIifQ"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_native_popover.rs#L65-L98",
@@ -439,6 +439,6 @@
   ],
   "verification": {
     "by": "openwiki/0.9.0",
-    "at": "2026-11-08T14:43:35.992Z"
+    "at": "2026-11-08T14:57:33.541Z"
   }
 }

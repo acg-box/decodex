@@ -451,7 +451,7 @@ fn hover_waits_for_dwell_cancels_on_exit_and_keeps_click_pinning(cx: &mut TestAp
 
 	visual.simulate_mouse_move(toggle.center(), None, Default::default());
 	visual.run_until_parked();
-	visual.executor().advance_clock(Duration::from_millis(90));
+	visual.executor().advance_clock(crate::ui_motion::HOVER_OPEN_DELAY / 2);
 	visual.run_until_parked();
 	assert!(!island.read_with(visual, |s, _| s.expansion.is_open()));
 
@@ -468,7 +468,7 @@ fn hover_waits_for_dwell_cancels_on_exit_and_keeps_click_pinning(cx: &mut TestAp
 
 	visual.simulate_mouse_move(toggle.center(), None, Default::default());
 	visual.run_until_parked();
-	visual.executor().advance_clock(Duration::from_millis(90));
+	visual.executor().advance_clock(crate::ui_motion::HOVER_OPEN_DELAY / 2);
 	visual.run_until_parked();
 	// Moving inside must not restart the timer; a stationary pointer also opens.
 	visual.simulate_mouse_move(
@@ -477,7 +477,11 @@ fn hover_waits_for_dwell_cancels_on_exit_and_keeps_click_pinning(cx: &mut TestAp
 		Default::default(),
 	);
 	visual.run_until_parked();
-	visual.executor().advance_clock(Duration::from_millis(89));
+	visual.executor().advance_clock(
+		crate::ui_motion::HOVER_OPEN_DELAY
+			- crate::ui_motion::HOVER_OPEN_DELAY / 2
+			- Duration::from_millis(1),
+	);
 	visual.run_until_parked();
 	assert!(!island.read_with(visual, |s, _| s.expansion.is_open()));
 	visual.executor().advance_clock(Duration::from_millis(1));
