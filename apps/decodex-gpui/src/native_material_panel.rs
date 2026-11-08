@@ -19,7 +19,7 @@ use serde_json::Value;
 
 use crate::ui_theme::{
 	self,
-	material::{GlassScope, GlassStyle, Material, Surface},
+	material::{GlassScope, GlassStyle, Material, PanelStyle, Surface},
 };
 
 /// Reduced transparency keeps selection menus readable with the flat material.
@@ -40,6 +40,7 @@ thread_local! {
 /// Owns composition separately from the editor and its window lifecycle.
 pub(crate) struct MaterialPanel {
 	surface: Surface,
+	style: PanelStyle,
 	material: Material,
 	radius: f64,
 	host: Retained<NSView>,
@@ -68,6 +69,23 @@ impl MaterialPanel {
 
 	pub(crate) fn install_popover(parent: &Window, window: &mut Window) -> Option<Self> {
 		Self::install_surface(parent, window, Surface::Popover, f64::from(ui_theme::POPOVER_RADIUS))
+	}
+
+	pub(crate) fn set_style(&mut self, style: PanelStyle) {
+		if self.style == style {
+			return;
+		}
+		self.style = style;
+		self.refresh_material();
+		unsafe {
+			let _: () =
+				objc2::msg_send![&*self.native, setHasShadow: self.visible && style.shadow()];
+		}
+		self.shadow_dirty = true;
+	}
+
+	fn appearance(&self) -> Surface {
+		if self.surface == Surface::InputBar { self.surface } else { self.style.surface() }
 	}
 
 	pub(crate) fn set_radius(&mut self, radius: f64) {
@@ -186,6 +204,7 @@ impl MaterialPanel {
 
 			Some(Self {
 				surface,
+				style: Default::default(),
 				material,
 				radius,
 				host,
@@ -208,7 +227,7 @@ impl MaterialPanel {
 
 	/// Replace only the material host; the editor view and its focus stay intact.
 	pub(crate) fn refresh_material(&mut self) {
-		let surface = self.surface;
+		let surface = self.appearance();
 		let material = panel_material(surface);
 
 		if self.material == material {
@@ -425,13 +444,13 @@ impl MaterialPanel {
 			self.presented = true;
 			self.material_view.setAlphaValue(1.);
 			self.host.setAlphaValue(1.);
-			if self.surface == Surface::Popover {
+			if self.surface == Surface::Popover && self.style.shadow() {
 				unsafe {
 					let _: () = objc2::msg_send![&*self.native, setHasShadow: true];
 				}
 			}
 			self.refresh_shadow();
-			if crate::ui_frame::reduced() {
+			if crate::ui_frame::reduced() || matches!(self.style, PanelStyle::Workspace { .. }) {
 				return;
 			}
 			unsafe {
@@ -463,7 +482,7 @@ impl MaterialPanel {
 	}
 
 	fn refresh_shadow(&mut self) {
-		if self.surface == Surface::Popover && self.shadow_dirty {
+		if self.surface == Surface::Popover && self.style.shadow() && self.shadow_dirty {
 			// Reused popup windows change their rounded contour after Metal resizes.
 			// Rebuild the system shadow once the final foreground has been painted.
 			self.native.invalidateShadow();
@@ -800,10 +819,12 @@ fn set_glass_style(glass: &NSView, clear: bool, input_bar: bool) -> bool {
 }
 
 fn apply_popover_tint(view: &NSView, surface: Surface, material: Material) {
-	if surface != Surface::Popover {
+	if surface == Surface::InputBar {
 		return;
 	}
-	let color = ui_theme::popover_tint(material, GlassScope::Popover.configured());
+	let color = (surface == Surface::Popover)
+		.then(|| ui_theme::popover_tint(material, GlassScope::Popover.configured()))
+		.flatten();
 	unsafe {
 		let tint: Option<Retained<AnyObject>> = color.map(|color| objc2::msg_send![AnyClass::get(c"NSColor").expect("AppKit"), colorWithSRGBRed: f64::from(color.r), green: f64::from(color.g), blue: f64::from(color.b), alpha: f64::from(color.a)]);
 		let previous: Option<Retained<AnyObject>> = objc2::msg_send![view, tintColor];

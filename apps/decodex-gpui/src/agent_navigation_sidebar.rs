@@ -222,14 +222,14 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) -> AnyElement {
 		let rail = ui_theme::CONVERSATION_TAB_SIZE + 2. * ui_theme::SIDEBAR_INSET;
-		let visible_width = self.workspace_sidebar_display_width(window);
-		let reveal = PanelReveal::new(
-			self.workspace_sidebar_expanded(window),
-			visible_width,
-			rail,
-			self.workspace_sidebar_expanded_width(window),
-		);
-		crate::frame_trace::sidebar_geometry(visible_width, reveal.content_width);
+		let reveal = self.workspace.sidebar_reveal.borrow().clone().unwrap_or_else(|| {
+			PanelReveal::new(
+				self.workspace_sidebar_expanded(window),
+				self.workspace_sidebar_display_width(window),
+				rail,
+				self.workspace_sidebar_expanded_width(window),
+			)
+		});
 		self.render_navigation_sidebar_content(reveal, window, cx)
 	}
 
@@ -295,7 +295,7 @@ impl AgentSurface {
 				cx,
 			));
 		let viewport = reveal.viewport.anchor();
-		gpui::div()
+		ui_theme::workspace_panel_content()
 			.id("agent-sidebar")
 			.size_full()
 			.relative()

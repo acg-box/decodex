@@ -303,6 +303,17 @@ pub(crate) fn workspace_surface() -> Div {
 		.overflow_hidden()
 }
 
+/// A panel has one reading surface in both reserved and floating placements.
+pub(crate) fn workspace_panel_content() -> Div {
+	workspace_surface()
+		.size_full()
+		.font_family(FONT_FAMILY)
+		.text_size(gpui::px(BODY_SIZE))
+		.line_height(gpui::px(BODY_LINE_HEIGHT))
+		.text_color(rgb(TEXT))
+		.bg(rgba(AGENT_SIDEBAR_MATERIAL).blend(rgba(FIELD_MATERIAL)))
+}
+
 pub(crate) fn settings_header_inset() -> Div {
 	gpui::div().px(gpui::px(SETTINGS_INSET)).pt(gpui::px(SETTINGS_TOP)).flex().justify_center()
 }

@@ -49,6 +49,31 @@ pub(crate) enum Surface {
 	InputBar,
 	Popover,
 }
+
+/// Workspace panes retain their window appearance when their layout slot changes.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub(crate) enum PanelStyle {
+	#[default]
+	Overlay,
+	Workspace {
+		elevated: bool,
+	},
+}
+impl PanelStyle {
+	pub(crate) fn surface(self) -> Surface {
+		match self {
+			Self::Overlay => Surface::Popover,
+			Self::Workspace { .. } => Surface::Window,
+		}
+	}
+
+	pub(crate) fn shadow(self) -> bool {
+		match self {
+			Self::Overlay => true,
+			Self::Workspace { elevated } => elevated,
+		}
+	}
+}
 impl Surface {
 	pub(crate) const fn label(self) -> &'static str {
 		match self {
@@ -185,7 +210,18 @@ fn refresh(surface: Surface, cx: &mut App) {
 
 #[cfg(test)]
 mod tests {
-	use crate::ui_theme::material::{GlassScope, GlassStyle, Material, Surface};
+	use crate::ui_theme::material::{GlassScope, GlassStyle, Material, PanelStyle, Surface};
+
+	#[test]
+	fn workspace_placement_only_changes_elevation() {
+		let docked = PanelStyle::Workspace { elevated: false };
+		let floating = PanelStyle::Workspace { elevated: true };
+		assert_eq!(docked.surface(), Surface::Window);
+		assert_eq!(floating.surface(), docked.surface());
+		assert!(!docked.shadow());
+		assert!(floating.shadow());
+		assert_eq!(PanelStyle::Overlay.surface(), Surface::Popover);
+	}
 
 	#[test]
 	fn material_names_round_trip_and_match_the_native_panel() {

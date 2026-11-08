@@ -82,6 +82,7 @@ impl Panel {
 			content.attached,
 		);
 		if let Some(surface) = &mut self.surface {
+			surface.set_style(content.geometry.style);
 			surface.set_radius(content.geometry.radius);
 			if surface.place(Bounds::new(origin, gpui::size(content.width, self.height))) {
 				window.bounds_changed(cx);
@@ -162,7 +163,11 @@ impl Render for Panel {
 }
 
 pub(super) fn available() -> bool {
-	native_material_panel::available(Surface::Popover)
+	surface_available(Surface::Popover)
+}
+
+pub(super) fn surface_available(surface: Surface) -> bool {
+	native_material_panel::available(surface)
 }
 
 pub(super) fn render(mut popover: Popover, window: &mut Window, cx: &mut App) -> AnyElement {
@@ -197,6 +202,7 @@ pub(super) fn render(mut popover: Popover, window: &mut Window, cx: &mut App) ->
 				geometry: MaterialGeometry {
 					radius: f64::from(ui_theme::POPOVER_RADIUS),
 					clip: None,
+					style: Default::default(),
 				},
 				focus: popover.focus,
 			};

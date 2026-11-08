@@ -17,7 +17,6 @@ use crate::{
 			graph::{self, Node},
 		},
 	},
-	ui_layout,
 	ui_motion::{self, Tween},
 	ui_theme::{
 		self, ACCENT, CONVERSATION_HEADER_HEIGHT, CONVERSATION_TAB_SIZE, PANEL_DIVIDER,
@@ -337,13 +336,13 @@ impl AgentSurface {
 			Panel::Right => (1, layout.right_width, 0., layout.right_floating),
 			Panel::Bottom => return false,
 		};
-		let mut modes = self.workspace.panel_material_modes.get();
+		let mut modes = self.workspace.panel_floating_modes.get();
 		if target > closed + 0.1 {
 			modes[index] = floating;
 		} else if visible <= closed + 0.1 {
 			modes[index] = false;
 		}
-		self.workspace.panel_material_modes.set(modes);
+		self.workspace.panel_floating_modes.set(modes);
 		modes[index]
 	}
 
@@ -484,7 +483,7 @@ impl AgentSurface {
 		let width = self.workspace_sidebar_display_width(window);
 		let layout = self.workspace_panel_layout(window);
 		let floating = self.workspace_panel_floating(Panel::Left, layout, width);
-		if !floating || width <= 0.1 {
+		if width <= 0.1 {
 			self.hide_workspace_material(Panel::Left, window, cx);
 		}
 		if self
@@ -504,6 +503,7 @@ impl AgentSurface {
 			.top(gpui::px(WINDOW_CONTROLS_CLEARANCE))
 			.bottom(gpui::px(WORKSPACE_GUTTER))
 			.w(gpui::px(width))
+			.bg(gpui::transparent_black())
 			.overflow_hidden()
 			.opacity(self.workspace.arrival.progress(0.))
 			.on_mouse_move(cx.listener(|s, event: &MouseMoveEvent, _, cx| {
@@ -520,20 +520,13 @@ impl AgentSurface {
 				cx.listener(|s, _, _, _| s.workspace.focused_panel = Some(Panel::Left)),
 			)
 			.when(width > 0.1, |panel| {
-				if floating {
-					panel.bg(gpui::transparent_black()).child(self.workspace_material(
-						Panel::Left,
-						width,
-						self.workspace_sidebar_expanded_width(window),
-						window,
-						cx,
-					))
-				} else {
-					panel.child(ui_layout::pane(self.presentations.sidebar.clone(), window))
-				}
-			})
-			.when(width > 0.1 && self.workspace.sidebar_visible && !floating, |panel| {
-				panel.child(self.sidebar_resize_handle(Panel::Left, cx))
+				panel.child(self.workspace_material(
+					Panel::Left,
+					width,
+					self.workspace_sidebar_expanded_width(window),
+					window,
+					cx,
+				))
 			})
 			.when(floating, |panel| {
 				panel.on_mouse_down_out(cx.listener(|s, event: &MouseDownEvent, window, cx| {
@@ -1543,27 +1536,29 @@ mod tests {
 	}
 
 	#[gpui::test]
-	fn right_panel_keeps_its_material_during_close_and_reversal(cx: &mut gpui::TestAppContext) {
+	fn right_panel_keeps_its_host_during_close_reversal_and_floating(
+		cx: &mut gpui::TestAppContext,
+	) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 		visual.simulate_resize(gpui::size(gpui::px(1400.), gpui::px(720.)));
 		surface.update(visual, |s, cx| s.visual_workspace_fixture(cx));
 		visual.update(crate::ui_frame::draw_current_frame);
-		assert!(visual.debug_bounds("workspace-activity-material").is_none());
+		assert!(visual.debug_bounds("workspace-activity-material").is_some());
+		let body = visual.debug_bounds("workbench-body").unwrap().size;
 		surface.update(visual, |s, cx| s.toggle_agent_tree(cx));
 		visual.update(crate::ui_frame::draw_current_frame);
 		assert!(visual.debug_bounds("workspace-activity-pane").unwrap().size.width > gpui::px(1.));
-		assert!(
-			visual.debug_bounds("workspace-activity-material").is_none(),
-			"a docked panel must not become a glass overlay while closing"
-		);
+		assert!(visual.debug_bounds("workspace-activity-material").is_some());
+		surface.read_with(visual, |s, _| assert!(!s.workspace.panel_floating_modes.get()[1]));
 		thread::sleep(std::time::Duration::from_millis(80));
 		visual.update(crate::ui_frame::draw_current_frame);
-		assert!(visual.debug_bounds("workspace-activity-material").is_none());
+		assert!(visual.debug_bounds("workspace-activity-material").is_some());
+		assert_eq!(visual.debug_bounds("workbench-body").unwrap().size, body);
 		surface.update(visual, |s, cx| s.toggle_agent_tree(cx));
 		visual.update(crate::ui_frame::draw_current_frame);
 		assert!(
-			visual.debug_bounds("workspace-activity-material").is_none(),
-			"reversal retains the docked material"
+			visual.debug_bounds("workspace-activity-material").is_some(),
+			"reversal retains the same native host"
 		);
 		thread::sleep(std::time::Duration::from_millis(240));
 		visual.update(crate::ui_frame::draw_current_frame);
@@ -1571,6 +1566,7 @@ mod tests {
 		visual.simulate_resize(gpui::size(gpui::px(800.), gpui::px(720.)));
 		visual.update(crate::ui_frame::draw_current_frame);
 		assert!(visual.debug_bounds("workspace-activity-material").is_some());
+		assert_eq!(visual.debug_bounds("workbench-body").unwrap().size, body);
 		surface.update(visual, |s, cx| s.toggle_agent_tree(cx));
 		visual.update(crate::ui_frame::draw_current_frame);
 		assert!(

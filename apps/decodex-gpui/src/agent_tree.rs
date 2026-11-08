@@ -9,7 +9,7 @@ use gpui::{
 
 use crate::{
 	shell::agent_surface::{AgentSurface, Context, Window},
-	ui_layout, ui_motion,
+	ui_motion,
 	ui_theme::{self, WORKSPACE_GUTTER},
 };
 
@@ -40,7 +40,7 @@ impl AgentSurface {
 		let width = self.workspace_right_display_width(window);
 		let floating =
 			self.workspace_panel_floating(super::workspace_size::Panel::Right, layout, width);
-		if !floating || width <= 0.1 {
+		if width <= 0.1 {
 			self.hide_workspace_material(super::workspace_size::Panel::Right, window, cx);
 		}
 		if self
@@ -66,34 +66,17 @@ impl AgentSurface {
 			.top(gpui::px(crate::shell::WINDOW_CONTROLS_CLEARANCE))
 			.bottom(gpui::px(WORKSPACE_GUTTER))
 			.w(gpui::px(width))
+			.bg(gpui::transparent_black())
 			.overflow_hidden()
 			.opacity(self.workspace.arrival.progress(0.08))
-			.when(width > 0.1 && floating, |panel| {
-				panel.bg(gpui::transparent_black()).child(self.workspace_material(
+			.when(width > 0.1, |panel| {
+				panel.child(self.workspace_material(
 					super::workspace_size::Panel::Right,
 					width,
 					content_width,
 					window,
 					cx,
 				))
-			})
-			.when(width > 0.1 && !floating, |panel| {
-				panel.child(
-					gpui::div()
-						.absolute()
-						.right_0()
-						.top_0()
-						.bottom_0()
-						.w(gpui::px(content_width))
-						.child(
-							self.workspace_focus_region(
-								Some(super::workspace_size::Panel::Right),
-								cx,
-							),
-						)
-						.child(ui_layout::pane(self.presentations.activity.clone(), window))
-						.child(self.sidebar_resize_handle(super::workspace_size::Panel::Right, cx)),
-				)
 			})
 			.when(floating, |panel| {
 				panel.on_mouse_down_out(cx.listener(|s, event: &MouseDownEvent, window, cx| {
@@ -109,7 +92,7 @@ impl AgentSurface {
 	}
 
 	pub(super) fn agent_tree(&self, cx: &mut Context<Self>) -> AnyElement {
-		gpui::div()
+		ui_theme::workspace_panel_content()
 			.id("agent-panel-focus")
 			.relative()
 			.size_full()
