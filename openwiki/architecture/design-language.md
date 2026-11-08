@@ -5,7 +5,7 @@ description: Reusable layout, activity-island motion, reading spacing and theme 
 tags: [desktop, design, motion, layout]
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-08T19:34:47.672Z
+    at: 2026-11-08T19:45:40.115Z
 sources:
   - id: openwiki-source-8037e2358a2c4f9b2c722a11
     resource: repo://AGENTS.md
@@ -83,7 +83,7 @@ sources:
     resource: repo://codex-runtime.lock.json
   - id: openwiki-source-a490ea3fbcddb9c007caf196
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_context_tests.rs
-generated: { by: "codex", at: "2026-11-08T19:34:47.672Z" }
+generated: { by: "codex", at: "2026-11-08T19:45:40.115Z" }
 ---
 
 # Interface geometry and motion
@@ -117,9 +117,11 @@ Lay out detail text and metric columns at the complete content width. Clip that 
 
 The main window accepts sizes down to 480 by 360 points. Reserve a 360-point reading width before allocating persistent side panels. Keep the panel that was open first in the layout. If the other panel cannot fit, show it above the reading plane without moving the first panel or narrowing the conversation. Resizing to a wider window restores both requested panels to the layout. In a very narrow window that cannot fit either panel, show only the most recently opened temporary surface.
 
-Use the same 8-point outer gutter and 16-point corner radius for both side panels. Their requested width is between 160 and 480 points, constrained by the window. Keep the complete panel content layout behind the animated clipping edge. Both reserved and floating panes use the same `ui_motion::MaterialSurface` host with `PanelStyle::Workspace`. They follow Window material and glass style; a separate Overlay preference does not restyle a workspace pane. `workspace_panel_content` supplies the same theme tint, system font, 12.5-point body size and 19-point line height in both placements. AppKit supplies transparency and background blur. Floating adds a shadow but does not replace the material or foreground. The shared host keeps the complete foreground canvas and clips its material and input region together. Workspace clipping owns entrance motion; the menu opacity and vertical arrival effect do not run on these panes. Escape first dismisses a temporary surface before it can interrupt a reply. A click in the uncovered reading plane also dismisses it. Detached surface shortcuts return to the main workspace owner. Preserve the docked panel, Graph state and conversation draft.
+Use the same 8-point outer gutter and 16-point corner radius for both side panels. Their requested width is between 160 and 480 points, constrained by the window. Keep the complete panel content layout behind the animated clipping edge. Docked panels retain the existing workspace surface. Temporary surfaces use `ui_motion::MaterialSurface` with `PanelStyle::Workspace` and follow the Window material and glass style. They do not add another workspace tint over the native glass. Both content roots use the same system font, 12.5-point body size and 19-point line height. The existing clipping transition owns their motion; temporary workspace panes do not add the menu opacity or vertical arrival effect. AppKit supplies the transparent material and background blur. The shared host keeps the complete foreground canvas and clips its material and input region together. Escape first dismisses a temporary surface before it can interrupt a reply. A click in the uncovered reading plane also dismisses it. Detached surface shortcuts return to the main workspace owner. Preserve the docked panel, Graph state and conversation draft.
 
-Keep each panel's docked or floating placement through closing and a reversal. Select that placement from workspace allocation while the panel is open. It controls the shadow and overlap, not the material host. Do not infer floating placement from a difference between its animated width and the target layout slot: closing releases that slot before the visible panel has disappeared.
+Keep each panel's docked or floating material mode during closing and a reversal. Select that mode from workspace allocation while the panel is open. Do not infer floating mode from a difference between its animated width and the target layout slot: closing releases that slot before the visible panel has disappeared.
+
+When a panel changes between docked and floating placement, blend only its backing material with the shared interruptible 200 ms Tween. Fade the original workspace field and the native glass with complementary opacity. Keep the native host until its material reaches zero, including when the panel returns to a docked slot without changing width. Reversal starts from the current blend. MaterialSurface::material_opacity changes the clipped material view; the foreground stays at full opacity and keeps its curtain geometry. Once a floating child covers the left rail, that child owns pointer departure.
 
 An unset Overlay glass style inherits Window glass style, including later changes. An explicit Regular or Clear override remains independent. The inherited value does not create a saved override.
 
@@ -169,7 +171,7 @@ Keep Search and commands in the same leading slot when the sidebar contracts. It
 
 The sidebar's outer width uses the shared interruptible 200 ms cubic ease-out. Its content retains the complete expanded canvas during opening, closing and a reversal; the outer panel clips that canvas. Keep titles and trailing controls mounted at their final positions until closing reaches the 40-point rail. Do not squeeze the content into intermediate widths or remove labels as soon as the target changes. At the settled compact width, omit project branches and their extra layout space.
 
-Keep the complete sidebar text at its final position and color. The parent workspace supplies reveal geometry to the cached sidebar presentation. `ui_motion::Viewport` clips the fixed foreground, and `MaterialSurface::clip` keeps the native material, foreground mask and input region on the visible edge. The edge reveals or covers the existing text as a curtain moves. Do not give labels an opacity transition, character counter, normalized reveal fraction or separate clock. Section symbols and conversation initials remain fixed. The Projects directory uses the shared intrinsic disclosure to release its extra space in the compact rail. A reversal changes only the current clipping geometry. Reduced motion selects the target geometry directly.
+Keep the complete sidebar text at its final position and color. `ui_motion::Viewport` measures the actual pane bounds and clips the fixed content at the visible edge, including its shared inner padding. The edge reveals or covers the existing text as a curtain moves. Do not give labels an opacity transition, character counter, normalized reveal fraction or separate clock. Section symbols and conversation initials remain fixed. The Projects directory uses the shared intrinsic disclosure to release its extra space in the compact rail. A reversal changes only the current clipping geometry. Reduced motion selects the target geometry directly.
 
 Use `ui_motion::HoverIntent` for surfaces revealed by pointer intent. The shared tokens set entry dwell to 100 ms and departure grace to 220 ms. Brief crossings cancel entry. Movement inside the same target does not restart its timer. Reentry cancels closing, and an exit from an older target cannot cancel a newer target. Explicit clicks, keyboard actions and dismissal cancel pending pointer work and retain their immediate behavior. The sidebar, Work and Debug islands, and response-statistics popover use this owner. History previews use the shared entry delay rather than a zero-delay tooltip. Ordinary hover ink, contextual row actions and native tooltip lifetime retain their own presentation roles.
 

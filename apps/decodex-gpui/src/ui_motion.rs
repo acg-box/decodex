@@ -331,14 +331,21 @@ pub(crate) struct MaterialSurface {
 	radius: f64,
 	clip: Option<Bounds<Pixels>>,
 	style: ui_theme::material::PanelStyle,
+	material_opacity: f32,
 	content: std::rc::Rc<PopoverContent>,
 	dismiss: std::rc::Rc<dyn Fn(&mut App)>,
 	escape: std::rc::Rc<dyn Fn(&mut App)>,
 }
 impl MaterialSurface {
-	/// Keep a workspace pane on the window's material; only elevation can change.
-	pub(crate) fn workspace(mut self, elevated: bool) -> Self {
-		self.style = ui_theme::material::PanelStyle::Workspace { elevated };
+	/// Blend a clipped backing material without fading or moving its foreground.
+	pub(crate) fn material_opacity(mut self, opacity: f32) -> Self {
+		self.material_opacity = opacity.clamp(0., 1.);
+		self
+	}
+
+	/// Floating workspace panes follow Window appearance without another entrance effect.
+	pub(crate) fn workspace(mut self) -> Self {
+		self.style = ui_theme::material::PanelStyle::Workspace;
 		self
 	}
 
@@ -360,7 +367,12 @@ impl RenderOnce for MaterialSurface {
 		if native_popover::surface_available(self.style.surface()) {
 			return native_popover::render_surface(
 				self.id,
-				MaterialGeometry { radius: self.radius, clip: self.clip, style: self.style },
+				MaterialGeometry {
+					radius: self.radius,
+					clip: self.clip,
+					style: self.style,
+					material_opacity: self.material_opacity,
+				},
 				self.content,
 				self.dismiss,
 				self.escape,
@@ -372,9 +384,7 @@ impl RenderOnce for MaterialSurface {
 		let backdrop = gpui::div()
 			.absolute()
 			.rounded(gpui::px(self.radius as f32))
-			.when(self.style == ui_theme::material::PanelStyle::Overlay, |d| {
-				d.bg(ui_theme::popover_surface())
-			});
+			.bg(ui_theme::popover_surface().opacity(self.material_opacity));
 		let backdrop = match self.clip {
 			Some(bounds) => backdrop
 				.left(bounds.origin.x)
@@ -404,6 +414,7 @@ pub(crate) fn material_surface(
 		radius,
 		clip: None,
 		style: Default::default(),
+		material_opacity: 1.,
 		content: std::rc::Rc::new(content),
 		escape: dismiss.clone(),
 		dismiss,
@@ -416,6 +427,7 @@ pub(crate) struct MaterialGeometry {
 	pub radius: f64,
 	pub clip: Option<Bounds<Pixels>>,
 	pub style: ui_theme::material::PanelStyle,
+	pub material_opacity: f32,
 }
 
 pub(crate) fn hide_material_surface(id: impl Into<ElementId>, window: &Window, cx: &mut App) {

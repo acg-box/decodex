@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:af39fdba7892b9c388ad364242f2c2a32c98d3492bab7ca4055526e5f771d782",
+  "pageVersion": "sha256:0de2bbbc0c61b42e26da290cd1d71603d54929962777655591033658051f57e8",
   "claims": [
     {
       "id": "claim_b70a9c3fa68642d29871a42ed05c1114",
@@ -12,7 +12,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_theme.rs",
-          "version": "repo-file-v1:sha256:e9ca98e5a00c53e863da1fca13b2027bbe346e39f881dffc734b6a98f57fccd6"
+          "version": "repo-file-v1:sha256:37aa1fef899268ca29161b7db26fac9ea7f0f68553e5526ac2f01c9213d26790"
         }
       ]
     },
@@ -45,7 +45,7 @@
       "statement": "Activity content keeps a fixed drawable at the native window origin with a sibling rounded mask; details retain their full-width layout, and secondary header fields appear only after they fit beside the persistent main value.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/native_material_panel.rs#L330-L385",
+          "resource": "repo://apps/decodex-gpui/src/native_material_panel.rs#L334-L389",
           "version": "repo-lines-v1:sha256:6fe7355ae46bef9cb90962fabc15428457225eacf092696b7d65b69be5b75a7d:eyJzZWxlY3RlZExpbmVDb3VudCI6NTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVjOGQ1MmNiZWRlZDgwM2U4Y2U2M2VkZmI5NDUwZGJiMDYzNDIxNDRiODM4YWRiY2NhNzYzNGE1MjhmOWVjNWUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYzNWIwODA1YzczNzdlNjAyNDg0ZmJjZjNlZmY1YjQwN2RiNTIzYTU3MTRlNThhNjc5NGQ4ZjRjNTRjYzQ4ZWMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjYwNDI5YjRkODBmNzQzMGJhYWEwMDViMGU1YTgyZTNjNDllNWNkYzJiMTQ3OTMzZGZiYTNhNjI2ZWJkMzRhNzQifQ"
         },
         {
@@ -64,7 +64,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_surface.rs",
-          "version": "repo-file-v1:sha256:e70fc5752fca29bcc6ae939ff145b775e49f883d9e28df8e3229a17bb673e31f"
+          "version": "repo-file-v1:sha256:7ee32eb509cfae4a9f8ea100673f7fbe9437558f6ac22bd5673abad0596ab65d"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_timeline.rs",
@@ -72,7 +72,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_theme.rs",
-          "version": "repo-file-v1:sha256:e9ca98e5a00c53e863da1fca13b2027bbe346e39f881dffc734b6a98f57fccd6"
+          "version": "repo-file-v1:sha256:37aa1fef899268ca29161b7db26fac9ea7f0f68553e5526ac2f01c9213d26790"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_working.rs",
@@ -176,7 +176,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_navigation_sidebar.rs#L219-L306",
-          "version": "repo-lines-v1:sha256:862adc6d1f61d526bb11b21b178b897d5de0677d56928b31f177720d36742e05:eyJzZWxlY3RlZExpbmVDb3VudCI6ODgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZhM2RlZmRmODRiOTIxMmFlNzgwMzJmNWQzYjMwNzYzYmQzNTI1OWE2YWI1ZmQyZTMzOGVmNDViMThlOGM5MGQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRiZDRmMWRmY2E4ODk1NDNlNThmOWMyMjZjMzE4NTIxN2JjOTg0YzM0YmMyZWI4OWUzZjUzZTBmNGU2ZmJiODQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImIxMWEzOTM1YjA2ZjdkM2EzZWY5MGY3OTE5ZWI3OGQ3NGY3YWJhYjA2Y2QwNmE5ZGQ3N2I0YTliODdlYzMyYjMifQ"
+          "version": "repo-lines-v1:sha256:2cb47e1d6e2444c4b0d05885ae8a8d4a81e03619f237a0b059d2df1a6f0840f7:eyJzZWxlY3RlZExpbmVDb3VudCI6ODgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZhM2RlZmRmODRiOTIxMmFlNzgwMzJmNWQzYjMwNzYzYmQzNTI1OWE2YWI1ZmQyZTMzOGVmNDViMThlOGM5MGQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRiZDRmMWRmY2E4ODk1NDNlNThmOWMyMjZjMzE4NTIxN2JjOTg0YzM0YmMyZWI4OWUzZjUzZTBmNGU2ZmJiODQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImIxMWEzOTM1YjA2ZjdkM2EzZWY5MGY3OTE5ZWI3OGQ3NGY3YWJhYjA2Y2QwNmE5ZGQ3N2I0YTliODdlYzMyYjMifQ"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_navigation_sidebar.rs#L534-L647",
@@ -187,7 +187,7 @@
           "version": "repo-lines-v1:sha256:e920b759c3bd69d739bcfd07fd835f6fbbbfea6be63b653e12050ef8c422dc84:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIzLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJjYmUyYTk4NTkzYTA4NWU5Y2RhZDU0YzMzZjQ3ODkyNzM1MDQ3ODBmZTEyZWE3ZTA2ZDE2MTBmNTM5ODY1NjZiIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI2N2NkYTgyZGE2MDYyMzhlMDVlNjIzOTk1NjljNWVlMDM5OTM0MTk2NDhhZTVkNDNhMmJmOGNkNjM0N2Y4MjYzIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJjNzNhYzAzMWYzNGNkZmQ5ZTFlNGMyY2Y4YjZkMjgxMzk5MDA1ZWQyNDk5ZGM4YjQ0NzlmMjJjY2U0YmI1OGI4IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIzYmFmZjhkMGE0Yjg3ODkyOTQ0YjZmODNhNDcwMWJkNmU1NDRiNDYzNzIyZmViZTkwMzgyZjA4MjAxNTFiYWJmIn0"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/ui_motion.rs#L603-L709",
+          "resource": "repo://apps/decodex-gpui/src/ui_motion.rs#L615-L721",
           "version": "repo-lines-v1:sha256:7f758967e08b512ce2885efce5b720e7fe5758b9b5c8ad058356dafa4765636c:eyJzZWxlY3RlZExpbmVDb3VudCI6MTA3LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIyYjgxNWVlYzA4M2U2ZTk2MDU5MGI0MTVmNDlhZDM0NWMzYjIyNjEwOGY3ZGFlYzJlMDgxYzQ5OTczZDg4Y2U1IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0MTJjYTM0NWNjZjc1YmY5YzA4MDZiY2U2OTViZThkZTgwOGI3OTk4NDI1MWE3YTU0ZDIwMmNmNjEwMWRkNDUxIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIyMmY1M2UzZWEwY2E4ZmQ5ODUxMTgyMjA0NDhkMjViZjkyN2JlMTZhMjRlMTM4YjBiMjAwNzkxOTAxMTViMjUzIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI3ZmI1ODkwZWE3YjAwMDMyNDI3N2E5ODk4ZjBkMWNlNTgwNzE0NGZkZjVjZTUxMTM2YmY5NjhmZDU2NTYyYjhmIn0"
         },
         {
@@ -244,15 +244,15 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_navigation_sidebar.rs",
-          "version": "repo-file-v1:sha256:09bf8d8eff60cc1ef63e65285161c84d5e54106ab0d66ad90757968a1e29001f"
+          "version": "repo-file-v1:sha256:b390ab89e87574dc819bc5a907bf15e01c06d9fc4c39efe71172affa0a1c095c"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace_size.rs",
-          "version": "repo-file-v1:sha256:b0503ac2d83b0177bc824e4d91e7dc00ad6def8ab73cfc3be903e2b6c2b88db3"
+          "version": "repo-file-v1:sha256:0ecb87358207fc0508952dc4f54fe1bfbd162775d0a35f88543a2cdec6c84db2"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_motion.rs",
-          "version": "repo-file-v1:sha256:04bd6340c613fc0cd344cb527add7eb2c002a5f53f3d87ffa65278b70074c571"
+          "version": "repo-file-v1:sha256:897d6f6d8b4ee6113bce394c2243c026e33ae6bf98d4109e3360e266b3432a8a"
         }
       ]
     },
@@ -294,14 +294,14 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_navigation_sidebar.rs#L219-L306",
-          "version": "repo-lines-v1:sha256:862adc6d1f61d526bb11b21b178b897d5de0677d56928b31f177720d36742e05:eyJzZWxlY3RlZExpbmVDb3VudCI6ODgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZhM2RlZmRmODRiOTIxMmFlNzgwMzJmNWQzYjMwNzYzYmQzNTI1OWE2YWI1ZmQyZTMzOGVmNDViMThlOGM5MGQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRiZDRmMWRmY2E4ODk1NDNlNThmOWMyMjZjMzE4NTIxN2JjOTg0YzM0YmMyZWI4OWUzZjUzZTBmNGU2ZmJiODQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImIxMWEzOTM1YjA2ZjdkM2EzZWY5MGY3OTE5ZWI3OGQ3NGY3YWJhYjA2Y2QwNmE5ZGQ3N2I0YTliODdlYzMyYjMifQ"
+          "version": "repo-lines-v1:sha256:2cb47e1d6e2444c4b0d05885ae8a8d4a81e03619f237a0b059d2df1a6f0840f7:eyJzZWxlY3RlZExpbmVDb3VudCI6ODgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZhM2RlZmRmODRiOTIxMmFlNzgwMzJmNWQzYjMwNzYzYmQzNTI1OWE2YWI1ZmQyZTMzOGVmNDViMThlOGM5MGQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRiZDRmMWRmY2E4ODk1NDNlNThmOWMyMjZjMzE4NTIxN2JjOTg0YzM0YmMyZWI4OWUzZjUzZTBmNGU2ZmJiODQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImIxMWEzOTM1YjA2ZjdkM2EzZWY5MGY3OTE5ZWI3OGQ3NGY3YWJhYjA2Y2QwNmE5ZGQ3N2I0YTliODdlYzMyYjMifQ"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_navigation_sidebar.rs#L374-L399",
           "version": "repo-lines-v1:sha256:52fe5e6875d95e4e9063f570d121a54fd460cdd824984747428a3c60832e5c58:eyJzZWxlY3RlZExpbmVDb3VudCI6MjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRkYzc2MDIwYmFlNzA1NzdlNjRiMzMwZGNhODNmZGYyNGYzZDc1OTNhMDE1NGQ4YWJlYzZkYzYzZjU4OTdmZDkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjdhOThiZWFjYzhjMDJkM2MwMDYwZWMzZWIyMTI1ODQ5M2E3OTJhNDkyMjBhNTdkZmUxZTllMjgzZDU3MTBjMTQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY2NzhjZDExZTdmOGViYzg0MTZhZThmMjhmYWI4ZDU0YmUxNWQzMmFkYWM4NTNkNDJhMmIyZGM4ZWIwNjFlMDMifQ"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_workspace_size.rs#L1195-L1249",
+          "resource": "repo://apps/decodex-gpui/src/agent_workspace_size.rs#L1232-L1286",
           "version": "repo-lines-v1:sha256:42f76f75e449f88c9b2450eb41f12677884b4bbe7907d745b461377e82e0000b:eyJzZWxlY3RlZExpbmVDb3VudCI6NTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRhNDMwOWVmNjVkMDZhNGQ2ZGE0ZGVlMThjNjc0NjBlOGY0MjRmOWZjODQwZTAyODgzN2ZlOGEwOWYwZTM5N2UiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjJkY2JlMDRmOTBkMDQ2Y2I1ZDgyMmU5N2M4NDM0NzRmYzcwODZhMDBmZWQ3ODYwODA2MzAyNDY1ZDJjOGI5MDEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImZmNzUxNWVhMzhmZTUxMWI4ZjI2ZTQzMTE3N2Q4NjMxY2E0Mjk1MGEwY2YwZTBiOTlmMmQxZmMyZWNhOWM2MmMifQ"
         }
       ]
@@ -319,7 +319,7 @@
           "version": "repo-lines-v1:sha256:fe981c19f7fc3ddcf94af2a90814f3c25cd9cc5fb1e3d24d72f5a6144bb17b0d:eyJzZWxlY3RlZExpbmVDb3VudCI6MzYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgzMGI0OTRkNjdmYzBmNTIxMDVjODdkYzg0NWE5YzI1ZjhmYmFiYjI2ZWQ2NTlhMDc2ZjNiNmNmYjJhNjkxMmEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3OGIyODNlZmU0MjUxYzU1N2ZhY2IzYTc2NDZkNGE2ZTllYTE2MjU0MjM2MzZmMzg1ZjIzZWM1NjhmNjMyYTYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijc0MjI1OGY2YWZmYzRlYWE1NmUxNzQ4ZTRkOWNjMDMyNWQ4Mzc2ODNjNGU5NTNiYzQ0YzkyMTg2MzI3Y2U4OGIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE3MDUzODVkOTJlMjgyZmM4NjI2ZjU0YWFjZWI0YzBmNWQ1YjUxZTRmNDlmYzY3ZDcyNTk2NjZjOWY5ZGYxNmEifQ"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_workspace_size.rs#L436-L461",
+          "resource": "repo://apps/decodex-gpui/src/agent_workspace_size.rs#L461-L486",
           "version": "repo-lines-v1:sha256:e2fdd191d9d8096c9ed67bd0c31358760dfdf3289efff550b9104e4813cc7399:eyJzZWxlY3RlZExpbmVDb3VudCI6MjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjExZTExYmQxMTA5MDQzODU3OTMyOGUwNDYzNjQ0YjczOTkxMjk0NDRlOTkxNzg2OGFiMTI1MzNiMGMyMGMzZDQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQ2MjVkYTI1YTBmNzdjZWQ3MjY3YjBkNTUwZDEzODBiODZiMjcyYWRkOTg2ZDM5ZjcyOGRmM2RhYTZmNmMwZmMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjYyZWZiZmUzYTI0MjU3ZThmNzU4OGExMWEzNTkyMThhMGZkNzVhOWQzZjdiNmJhNzlkN2M3ZDdkZTY0ODIzYjEifQ"
         },
         {
@@ -368,19 +368,15 @@
     },
     {
       "id": "claim_b9b010441612431c91325ba053747be2",
-      "statement": "Sidebar text retains complete shaping, text, color and position. Parent-owned reveal geometry drives its cached presentation, shared Viewport clipping and the native MaterialSurface foreground mask reveal the fixed layout, and no per-label fade or character clock is added.",
+      "statement": "Sidebar text retains its complete shaping, text, color and position behind a shared Viewport mask measured from actual pane bounds. The visible edge reveals or covers it without a per-label fade, character counter or reveal clock, while section symbols and conversation initials remain fixed.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_navigation_sidebar.rs",
-          "version": "repo-file-v1:sha256:09bf8d8eff60cc1ef63e65285161c84d5e54106ab0d66ad90757968a1e29001f"
-        },
-        {
-          "resource": "repo://apps/decodex-gpui/src/agent_workspace_material.rs",
-          "version": "repo-file-v1:sha256:f06b38692aae24de8bb89546f63ba4e7f6f44b5e9224e565c5b83f29e7ca8736"
+          "version": "repo-file-v1:sha256:b390ab89e87574dc819bc5a907bf15e01c06d9fc4c39efe71172affa0a1c095c"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_motion.rs",
-          "version": "repo-file-v1:sha256:04bd6340c613fc0cd344cb527add7eb2c002a5f53f3d87ffa65278b70074c571"
+          "version": "repo-file-v1:sha256:897d6f6d8b4ee6113bce394c2243c026e33ae6bf98d4109e3360e266b3432a8a"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_viewport_clip.rs",
@@ -419,8 +415,8 @@
           "version": "repo-lines-v1:sha256:86865953bffdf7d4141ad0b051a3557077f65d3594910f1616d980403012a591:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY4NmQyMGRlODlmYjhlZDdkNjE5MjM5YzhjY2UzMjY3MjM0MmNiODk4ZDUzNWYxYjJiMTg0ZGQ2NjkxOTYxYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk2OTFjMTkyNTMxZjc1ZWZlYzY5YzI2MjU2ZTM2NWRhYzQ1MDJmOTZkZjViOGYyYzEwMGFhMTdlZjA5ZmE2NGYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImIxYTIyMzMxYzI5YTIxMjQ1MGZjYzYzNWE3Y2I1ZTg0OWY5NjRjNTI1NGM3ZTkwMzg4ZTRjMjhmNTI4OWRlZmIifQ"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/ui_native_popover.rs#L65-L99",
-          "version": "repo-lines-v1:sha256:6e4c6f4f63e3b3127e3e9b55b2c767603f84e7aaab9adcff8af851c4b8a20400:eyJzZWxlY3RlZExpbmVDb3VudCI6MzUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdmNzhkM2U0YmFlYzRkM2EzZjgxZGI1OGUxZGRiYjIwYzZkYmJlNjA2NDBjNjk2ZDhlZWE3ODczOTk0ZWQwNGMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEyNTI4ZDRkZjk4YWU0OGMwMDYyMTUwMzE3YmYxMjQyYzgwMTNhY2RjZDYyYWU4MzA0ZWM0YTEwODA4NTlhMzAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE0ZTAzZmI1YzRlODM3OGZkZWEzOWY5OGE4YzMyYmQwMDMxNWNiMDA3ZWVjOTZlY2JhMjBmMWQ5ZjUxZjkwMzYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQ2OGVlZWIwZjhkMWE1N2YyZTIyMDUxNDQwNTRkYTQxYWFjYTU3NDM3NGNmOTQ3OTAyYjgzODI4Yjk4NWE1MDcifQ"
+          "resource": "repo://apps/decodex-gpui/src/ui_native_popover.rs#L65-L100",
+          "version": "repo-lines-v1:sha256:1e513151cdbe99bf6c1a5ece5c0b3ea3e33d13bbb7d48406315d73743da6c084:eyJzZWxlY3RlZExpbmVDb3VudCI6MzYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdmNzhkM2U0YmFlYzRkM2EzZjgxZGI1OGUxZGRiYjIwYzZkYmJlNjA2NDBjNjk2ZDhlZWE3ODczOTk0ZWQwNGMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEyNTI4ZDRkZjk4YWU0OGMwMDYyMTUwMzE3YmYxMjQyYzgwMTNhY2RjZDYyYWU4MzA0ZWM0YTEwODA4NTlhMzAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE0ZTAzZmI1YzRlODM3OGZkZWEzOWY5OGE4YzMyYmQwMDMxNWNiMDA3ZWVjOTZlY2JhMjBmMWQ5ZjUxZjkwMzYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQ2OGVlZWIwZjhkMWE1N2YyZTIyMDUxNDQwNTRkYTQxYWFjYTU3NDM3NGNmOTQ3OTAyYjgzODI4Yjk4NWE1MDcifQ"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_theme.rs#L275-L292",
@@ -452,7 +448,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace_size.rs",
-          "version": "repo-file-v1:sha256:b0503ac2d83b0177bc824e4d91e7dc00ad6def8ab73cfc3be903e2b6c2b88db3"
+          "version": "repo-file-v1:sha256:0ecb87358207fc0508952dc4f54fe1bfbd162775d0a35f88543a2cdec6c84db2"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/main.rs",
@@ -460,41 +456,41 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_theme.rs",
-          "version": "repo-file-v1:sha256:e9ca98e5a00c53e863da1fca13b2027bbe346e39f881dffc734b6a98f57fccd6"
+          "version": "repo-file-v1:sha256:37aa1fef899268ca29161b7db26fac9ea7f0f68553e5526ac2f01c9213d26790"
         }
       ]
     },
     {
       "id": "claim_e7df8aa523864726bdc4a6a8c228ac9a",
-      "statement": "Reserved and floating workspace panes use the same MaterialSurface host and Window material/glass style with PanelStyle::Workspace. AppKit supplies transparency and clipping. Floating changes allocation and shadow, not the content or material host; Escape dismisses a floating pane and native composer clipping preserves the editor behind it.",
+      "statement": "Docked panels retain the existing workspace surface. Floating panes use MaterialSurface with PanelStyle::Workspace and Window material/glass style, native transparency and full-canvas clipping without an extra workspace tint. Their shortcuts target the main workspace; Escape dismisses a floating panel before reply interruption, and composer clipping retains the editor.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_tree.rs",
-          "version": "repo-file-v1:sha256:4a16160d428bb2cefa70fb3cd83baa1b76a854b45100f5ff9efaf26cf280bfe2"
+          "version": "repo-file-v1:sha256:10035edad7af93ae2b46cdfd8730a731cc961bb91e5eb937dcaf9c1f282628cb"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace_material.rs",
-          "version": "repo-file-v1:sha256:f06b38692aae24de8bb89546f63ba4e7f6f44b5e9224e565c5b83f29e7ca8736"
+          "version": "repo-file-v1:sha256:6bb6ca3233d0de9cffbc6b2d5e877624f290bb46dfcd60ad34193fb943b502f2"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace_size.rs",
-          "version": "repo-file-v1:sha256:b0503ac2d83b0177bc824e4d91e7dc00ad6def8ab73cfc3be903e2b6c2b88db3"
+          "version": "repo-file-v1:sha256:0ecb87358207fc0508952dc4f54fe1bfbd162775d0a35f88543a2cdec6c84db2"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/native_material_panel.rs",
-          "version": "repo-file-v1:sha256:60f61e88d5dde4bfe57930bcbe1c5e3231cad09750566428ad37a4f44ac1708f"
+          "version": "repo-file-v1:sha256:0e9689ea396a00da844b2f849058bde6963bd489be18bf83d30b07a0795edf45"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/shell.rs",
+          "version": "repo-file-v1:sha256:cbf7d0b1c2c94034694a091a22ddb1f50a882a460f4ca677eb0e79a396d42435"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_material.rs",
-          "version": "repo-file-v1:sha256:4edf257144a3a824a2a56d74c960ce825f69d131467fa92e2bc8476d260b41c6"
+          "version": "repo-file-v1:sha256:79d37ea5aca97acbf37a933f436163845a62f81c9833d4c0d67c651e9486ef4a"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_motion.rs",
-          "version": "repo-file-v1:sha256:04bd6340c613fc0cd344cb527add7eb2c002a5f53f3d87ffa65278b70074c571"
-        },
-        {
-          "resource": "repo://apps/decodex-gpui/src/ui_native_popover.rs",
-          "version": "repo-file-v1:sha256:458333d64a03b7ca51a1dbeded6d52df792a39c62783f9eb14221dda7ff13fc1"
+          "version": "repo-file-v1:sha256:897d6f6d8b4ee6113bce394c2243c026e33ae6bf98d4109e3360e266b3432a8a"
         }
       ]
     },
@@ -514,19 +510,15 @@
     },
     {
       "id": "claim_4d6a743c3b834e16bc9f23b410a0cede",
-      "statement": "Docked or floating placement comes from open workspace allocation and remains stable during closing and reversal; it controls overlap and elevation, while both placements keep the same native host and appearance.",
+      "statement": "Panel material mode comes from open workspace allocation and remains docked or floating through closing and reversal; an animated-width difference from a released slot does not select floating material.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_tree.rs",
-          "version": "repo-file-v1:sha256:4a16160d428bb2cefa70fb3cd83baa1b76a854b45100f5ff9efaf26cf280bfe2"
-        },
-        {
-          "resource": "repo://apps/decodex-gpui/src/agent_workspace_material.rs",
-          "version": "repo-file-v1:sha256:f06b38692aae24de8bb89546f63ba4e7f6f44b5e9224e565c5b83f29e7ca8736"
+          "version": "repo-file-v1:sha256:10035edad7af93ae2b46cdfd8730a731cc961bb91e5eb937dcaf9c1f282628cb"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace_size.rs",
-          "version": "repo-file-v1:sha256:b0503ac2d83b0177bc824e4d91e7dc00ad6def8ab73cfc3be903e2b6c2b88db3"
+          "version": "repo-file-v1:sha256:0ecb87358207fc0508952dc4f54fe1bfbd162775d0a35f88543a2cdec6c84db2"
         }
       ]
     },
@@ -536,7 +528,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/ui_material.rs",
-          "version": "repo-file-v1:sha256:4edf257144a3a824a2a56d74c960ce825f69d131467fa92e2bc8476d260b41c6"
+          "version": "repo-file-v1:sha256:79d37ea5aca97acbf37a933f436163845a62f81c9833d4c0d67c651e9486ef4a"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_preferences.rs",
@@ -546,29 +538,69 @@
     },
     {
       "id": "claim_5a47bbf5a48c4ce5b595ffcd212331ae",
-      "statement": "workspace_panel_content gives reserved and floating panes the same theme tint, system font, 12.5-point body size and 19-point line height; workspace panels use geometry-driven motion without the native menu opacity and vertical entrance animation.",
+      "statement": "workspace_panel_content supplies a shared system font, 12.5-point body size and 19-point line height without a background fill. Temporary workspace panels keep their clipping transition and omit the native menu opacity and vertical entrance effect.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_navigation_sidebar.rs",
-          "version": "repo-file-v1:sha256:09bf8d8eff60cc1ef63e65285161c84d5e54106ab0d66ad90757968a1e29001f"
+          "version": "repo-file-v1:sha256:b390ab89e87574dc819bc5a907bf15e01c06d9fc4c39efe71172affa0a1c095c"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_tree.rs",
-          "version": "repo-file-v1:sha256:4a16160d428bb2cefa70fb3cd83baa1b76a854b45100f5ff9efaf26cf280bfe2"
+          "version": "repo-file-v1:sha256:10035edad7af93ae2b46cdfd8730a731cc961bb91e5eb937dcaf9c1f282628cb"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/native_material_panel.rs",
-          "version": "repo-file-v1:sha256:60f61e88d5dde4bfe57930bcbe1c5e3231cad09750566428ad37a4f44ac1708f"
+          "version": "repo-file-v1:sha256:0e9689ea396a00da844b2f849058bde6963bd489be18bf83d30b07a0795edf45"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_theme.rs",
-          "version": "repo-file-v1:sha256:e9ca98e5a00c53e863da1fca13b2027bbe346e39f881dffc734b6a98f57fccd6"
+          "version": "repo-file-v1:sha256:37aa1fef899268ca29161b7db26fac9ea7f0f68553e5526ac2f01c9213d26790"
+        }
+      ]
+    },
+    {
+      "id": "claim_7ea5f0203135440aabdf68e2447f6cf6",
+      "statement": "Workspace material changes use a shared interruptible 200 ms Tween with complementary opacity for the original field and native glass. Native material opacity changes independently of the clipped foreground, the native host remains while its material is fading out, and reversal starts from the current blend even if panel width is unchanged.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_tree.rs",
+          "version": "repo-file-v1:sha256:10035edad7af93ae2b46cdfd8730a731cc961bb91e5eb937dcaf9c1f282628cb"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_workspace_material.rs",
+          "version": "repo-file-v1:sha256:6bb6ca3233d0de9cffbc6b2d5e877624f290bb46dfcd60ad34193fb943b502f2"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_workspace_size.rs",
+          "version": "repo-file-v1:sha256:0ecb87358207fc0508952dc4f54fe1bfbd162775d0a35f88543a2cdec6c84db2"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/native_material_panel.rs",
+          "version": "repo-file-v1:sha256:0e9689ea396a00da844b2f849058bde6963bd489be18bf83d30b07a0795edf45"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/ui_motion.rs",
+          "version": "repo-file-v1:sha256:897d6f6d8b4ee6113bce394c2243c026e33ae6bf98d4109e3360e266b3432a8a"
+        }
+      ]
+    },
+    {
+      "id": "claim_a8a03df0738247d997ede8b3c2d99188",
+      "statement": "The native floating sidebar owns pointer departure once it covers the parent rail; the parent does not treat that handoff as an exit.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_workspace_material.rs",
+          "version": "repo-file-v1:sha256:6bb6ca3233d0de9cffbc6b2d5e877624f290bb46dfcd60ad34193fb943b502f2"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_workspace_size.rs",
+          "version": "repo-file-v1:sha256:0ecb87358207fc0508952dc4f54fe1bfbd162775d0a35f88543a2cdec6c84db2"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.9.0",
-    "at": "2026-11-08T19:34:47.672Z"
+    "at": "2026-11-08T19:45:40.115Z"
   }
 }

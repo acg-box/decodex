@@ -16,18 +16,18 @@
       "completedRunId": "db84648f-510e-42b5-adf3-fab89d57867d"
     },
     "/openwiki/architecture/design-language.md": {
-      "pageVersion": "sha256:af39fdba7892b9c388ad364242f2c2a32c98d3492bab7ca4055526e5f771d782",
+      "pageVersion": "sha256:0de2bbbc0c61b42e26da290cd1d71603d54929962777655591033658051f57e8",
       "completedBy": "codex",
-      "completedRunId": "38accade-4ea2-470e-b0f9-795babc9ae52",
-      "gitHead": "c799da6ee3e9f57e2478e4762ae205bba932dd27",
-      "sourceFingerprint": "sha256:c713b72afe510d2de1ae1431718b8260264dca7ddb138ec90b4e9ce212f0fb11"
+      "completedRunId": "d478f203-f11e-41e2-87cc-75d5260148c4",
+      "gitHead": "fb72c1e30d9f2e71fe81072a72d4fade13d95cf7",
+      "sourceFingerprint": "sha256:05a8df9139aca4e84a8577d3ec85e7b502708e17c2bade4fc1327ab912bbc8f8"
     },
     "/openwiki/architecture/desktop-workspace.md": {
-      "pageVersion": "sha256:936dd3305c1de9745aae3e93de5a1ebbad7f182f022b0f60ff89ad805717a0ae",
+      "pageVersion": "sha256:bd0e715f782ba31a4a28a359d6d82470d29d4f61e7f45a59a251fb40cfb2b9d6",
       "completedBy": "codex",
-      "completedRunId": "38accade-4ea2-470e-b0f9-795babc9ae52",
-      "gitHead": "c799da6ee3e9f57e2478e4762ae205bba932dd27",
-      "sourceFingerprint": "sha256:c713b72afe510d2de1ae1431718b8260264dca7ddb138ec90b4e9ce212f0fb11"
+      "completedRunId": "d478f203-f11e-41e2-87cc-75d5260148c4",
+      "gitHead": "fb72c1e30d9f2e71fe81072a72d4fade13d95cf7",
+      "sourceFingerprint": "sha256:05a8df9139aca4e84a8577d3ec85e7b502708e17c2bade4fc1327ab912bbc8f8"
     },
     "/openwiki/architecture/runtime-architecture.md": {
       "gitHead": "83b4405c032c031198d2ed361e6888b471b09ed0",

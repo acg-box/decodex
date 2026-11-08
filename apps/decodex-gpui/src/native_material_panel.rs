@@ -41,6 +41,7 @@ thread_local! {
 pub(crate) struct MaterialPanel {
 	surface: Surface,
 	style: PanelStyle,
+	material_opacity: f32,
 	material: Material,
 	radius: f64,
 	host: Retained<NSView>,
@@ -77,11 +78,14 @@ impl MaterialPanel {
 		}
 		self.style = style;
 		self.refresh_material();
-		unsafe {
-			let _: () =
-				objc2::msg_send![&*self.native, setHasShadow: self.visible && style.shadow()];
+	}
+
+	pub(crate) fn set_material_opacity(&mut self, opacity: f32) {
+		if self.material_opacity != opacity {
+			self.material_opacity = opacity;
+			self.material_view.setAlphaValue(f64::from(opacity));
+			self.shadow_dirty = true;
 		}
-		self.shadow_dirty = true;
 	}
 
 	fn appearance(&self) -> Surface {
@@ -205,6 +209,7 @@ impl MaterialPanel {
 			Some(Self {
 				surface,
 				style: Default::default(),
+				material_opacity: 1.,
 				material,
 				radius,
 				host,
@@ -442,15 +447,15 @@ impl MaterialPanel {
 		self.set_opacity(1.);
 		if !self.presented {
 			self.presented = true;
-			self.material_view.setAlphaValue(1.);
+			self.material_view.setAlphaValue(f64::from(self.material_opacity));
 			self.host.setAlphaValue(1.);
-			if self.surface == Surface::Popover && self.style.shadow() {
+			if self.surface == Surface::Popover {
 				unsafe {
 					let _: () = objc2::msg_send![&*self.native, setHasShadow: true];
 				}
 			}
 			self.refresh_shadow();
-			if crate::ui_frame::reduced() || matches!(self.style, PanelStyle::Workspace { .. }) {
+			if crate::ui_frame::reduced() || self.style == PanelStyle::Workspace {
 				return;
 			}
 			unsafe {
@@ -482,7 +487,7 @@ impl MaterialPanel {
 	}
 
 	fn refresh_shadow(&mut self) {
-		if self.surface == Surface::Popover && self.style.shadow() && self.shadow_dirty {
+		if self.surface == Surface::Popover && self.shadow_dirty {
 			// Reused popup windows change their rounded contour after Metal resizes.
 			// Rebuild the system shadow once the final foreground has been painted.
 			self.native.invalidateShadow();

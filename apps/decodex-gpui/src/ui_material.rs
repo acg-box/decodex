@@ -55,22 +55,13 @@ pub(crate) enum Surface {
 pub(crate) enum PanelStyle {
 	#[default]
 	Overlay,
-	Workspace {
-		elevated: bool,
-	},
+	Workspace,
 }
 impl PanelStyle {
 	pub(crate) fn surface(self) -> Surface {
 		match self {
 			Self::Overlay => Surface::Popover,
-			Self::Workspace { .. } => Surface::Window,
-		}
-	}
-
-	pub(crate) fn shadow(self) -> bool {
-		match self {
-			Self::Overlay => true,
-			Self::Workspace { elevated } => elevated,
+			Self::Workspace => Surface::Window,
 		}
 	}
 }
@@ -212,15 +203,19 @@ fn refresh(surface: Surface, cx: &mut App) {
 mod tests {
 	use crate::ui_theme::material::{GlassScope, GlassStyle, Material, PanelStyle, Surface};
 
-	#[test]
-	fn workspace_placement_only_changes_elevation() {
-		let docked = PanelStyle::Workspace { elevated: false };
-		let floating = PanelStyle::Workspace { elevated: true };
-		assert_eq!(docked.surface(), Surface::Window);
-		assert_eq!(floating.surface(), docked.surface());
-		assert!(!docked.shadow());
-		assert!(floating.shadow());
-		assert_eq!(PanelStyle::Overlay.surface(), Surface::Popover);
+	#[gpui::test]
+	fn workspace_material_follows_window_even_with_an_overlay_override(
+		cx: &mut gpui::TestAppContext,
+	) {
+		cx.update(|cx| {
+			Surface::Window.select(Material::Thin, cx);
+			Surface::Popover.select(Material::LiquidGlass, cx);
+			assert_eq!(PanelStyle::Workspace.surface().material(), Material::Thin);
+			assert_eq!(PanelStyle::Overlay.surface().material(), Material::LiquidGlass);
+			Surface::Window.select(Material::LiquidGlass, cx);
+			Surface::Popover.select(Material::Thin, cx);
+			assert_eq!(PanelStyle::Workspace.surface().material(), Material::LiquidGlass);
+		});
 	}
 
 	#[test]

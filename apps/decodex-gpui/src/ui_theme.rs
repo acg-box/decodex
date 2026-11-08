@@ -303,15 +303,13 @@ pub(crate) fn workspace_surface() -> Div {
 		.overflow_hidden()
 }
 
-/// A panel has one reading surface in both reserved and floating placements.
+/// Keep detached workspace content on the same reading baseline as docked panes.
 pub(crate) fn workspace_panel_content() -> Div {
-	workspace_surface()
-		.size_full()
+	gpui::div()
 		.font_family(FONT_FAMILY)
 		.text_size(gpui::px(BODY_SIZE))
 		.line_height(gpui::px(BODY_LINE_HEIGHT))
 		.text_color(rgb(TEXT))
-		.bg(rgba(AGENT_SIDEBAR_MATERIAL).blend(rgba(FIELD_MATERIAL)))
 }
 
 pub(crate) fn settings_header_inset() -> Div {
