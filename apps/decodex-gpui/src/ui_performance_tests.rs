@@ -496,6 +496,13 @@ fn hover_waits_for_dwell_cancels_on_exit_and_keeps_click_pinning(cx: &mut TestAp
 	visual.update(crate::ui_frame::draw_current_frame);
 	visual.update(crate::ui_frame::draw_current_frame);
 
+	assert!(island.read_with(visual, |s, _| s.expansion.is_open()));
+	visual.run_until_parked();
+	visual.executor().advance_clock(crate::ui_motion::HOVER_CLOSE_DELAY - Duration::from_millis(1));
+	visual.run_until_parked();
+	assert!(island.read_with(visual, |s, _| s.expansion.is_open()));
+	visual.executor().advance_clock(Duration::from_millis(1));
+	visual.run_until_parked();
 	assert!(!island.read_with(visual, |s, _| s.expansion.is_open()));
 
 	visual.simulate_mouse_move(toggle.center(), None, Default::default());

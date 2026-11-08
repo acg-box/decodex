@@ -5,7 +5,7 @@ description: "Workspace ownership, native menu focus, compositor motion, and con
 tags: [decodex, architecture, desktop, presentation]
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-08T03:24:05.438Z
+    at: 2026-11-08T03:47:50.015Z
 sources:
   - id: openwiki-source-98e7b23c4cc276d20fcb4649
     resource: repo://apps/decodex-gpui/menubar/Sources/DecodexApp/AccountControlViews.swift
@@ -19,6 +19,8 @@ sources:
     resource: repo://apps/decodex-gpui/menubar/Tests/DecodexAppTests/StatusPanelLifecycleTests.swift
   - id: openwiki-source-fecafeb22abda7dad3877372
     resource: repo://apps/decodex-gpui/src/account_feedback.rs
+  - id: openwiki-source-2fc387fccf8dd1285437f49e
+    resource: repo://apps/decodex-gpui/src/agent_activity.rs
   - id: openwiki-source-7ae74e50dfed52e1206b6e48
     resource: repo://apps/decodex-gpui/src/agent_archive_catalog.rs
   - id: openwiki-source-6512b631b67649d924c16ba3
@@ -79,6 +81,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_relation_layout.rs
   - id: openwiki-source-a94720ef223006f5ecee5f55
     resource: repo://apps/decodex-gpui/src/agent_relation_scopes.rs
+  - id: openwiki-source-15d320ea458ddf705d950ba9
+    resource: repo://apps/decodex-gpui/src/agent_response_metrics.rs
   - id: openwiki-source-5da2f5dd568514f1f464d177
     resource: repo://apps/decodex-gpui/src/agent_surface.rs
   - id: openwiki-source-15ee466228bdb01892c9678b
@@ -105,6 +109,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/bundled_daemon.rs
   - id: openwiki-source-e8596cc5aac62aa16bde932b
     resource: repo://apps/decodex-gpui/src/component_runtime.rs
+  - id: openwiki-source-8baa689fd9c859a6d9a120d5
+    resource: repo://apps/decodex-gpui/src/frame_trace.rs
   - id: openwiki-source-fca3688e96d92c09b7ba015f
     resource: repo://apps/decodex-gpui/src/native_material_panel.rs
   - id: openwiki-source-a2f254020dd8eaabd6366c91
@@ -133,8 +139,14 @@ sources:
     resource: repo://apps/decodex-gpui/src/ui_disclosure.rs
   - id: openwiki-source-2f256c95c226c1326d164ad3
     resource: repo://apps/decodex-gpui/src/ui_feedback.rs
+  - id: openwiki-source-adab7a75320a305721fdd6d2
+    resource: repo://apps/decodex-gpui/src/ui_hover_intent.rs
   - id: openwiki-source-afbf2d30c0979a844373d8e5
     resource: repo://apps/decodex-gpui/src/ui_motion.rs
+  - id: openwiki-source-8c633c09481985d80c8f42f2
+    resource: repo://apps/decodex-gpui/src/ui_performance_tests.rs
+  - id: openwiki-source-6d7ff71d731da7268890d765
+    resource: repo://apps/decodex-gpui/src/ui_performance.rs
   - id: openwiki-source-546812ff3637690f4a184b89
     resource: repo://apps/decodex-gpui/src/ui_preferences.rs
   - id: openwiki-source-570564020f98df7a4d6d0b61
@@ -159,7 +171,7 @@ sources:
     resource: repo://database/src/works/commands.rs
   - id: openwiki-source-8fe6f1557e5d45d88b34bd0a
     resource: repo://scripts/macos/generate_workspace_symbols.swift
-generated: { by: "codex", at: "2026-11-08T03:24:05.438Z" }
+generated: { by: "codex", at: "2026-11-08T03:47:50.015Z" }
 ---
 
 # Desktop workspace and native glass
@@ -174,7 +186,11 @@ Click anywhere on a section header to expand or collapse it. Its secondary hover
 
 **Search and commands (Command-K)** stays at the top in both expanded and compact layouts. It opens one global window for topics, projects, archived conversations, commands and Work. Arrow keys select visible results and Return opens the selected destination without submitting the chat composer. Choosing a result reveals its section or project and keeps the appropriate draft. New topic, New project, New project Agent, Archived conversations and Settings remain available from this window. Work search opens its existing owner conversation with the existing scoped evidence. There is no separate left-side Work hub or redundant inline search field.
 
-At workspace widths above 1,000 points, hovering the compact rail expands it temporarily. Leaving starts a 220 ms close delay, and reentry cancels the pending close. The existing width transition retains the leading command and initial positions. Opening a section during a hover does not make the sidebar permanently visible. The explicit sidebar toggle controls persistent visibility and clears the temporary state. Settings commands from a detached native popup route through the global action handler to the main Shell, which owns the reusable Settings window; opening it preserves the selected conversation.
+At workspace widths above 1,000 points, a 180 ms pointer dwell expands the compact rail temporarily. Leaving starts a 220 ms close delay, and reentry cancels the pending close. The existing width transition retains the leading command and initial positions. Opening a section during a hover does not make the sidebar permanently visible. The explicit sidebar toggle controls persistent visibility and clears the temporary state. Settings commands from a detached native popup route through the global action handler to the main Shell, which owns the reusable Settings window; opening it preserves the selected conversation.
+
+Sidebar content keeps its complete expanded canvas while the outer width opens, closes or reverses. The panel clips that canvas, so titles and trailing controls keep their final geometry instead of squeezing or disappearing at the first closing frame. The compact presentation mounts only after the rail reaches its settled width. Project branches then leave the compact layout entirely.
+
+The sidebar, Work and Debug activity islands, and response-statistics popover share `ui_motion::HoverIntent`. It owns the 180 ms entry dwell, 220 ms departure grace and pending-task cancellation. Brief crossings do not expand a surface, internal movement does not restart entry, and stale exit events cannot cancel the next hovered target. Reentry cancels closing. Explicit clicks, keyboard actions and dismissal keep their immediate behavior; click-pinned surfaces stay open when the pointer leaves. History-rail previews use the same entry delay instead of opening immediately. Ordinary hover ink and contextual row actions retain direct feedback.
 
 Conversation rows expose fixed trailing Pin, Archive and Delete symbols on hover or keyboard focus. Update time uses a short relative value at the far right; hover provides the owner and complete local date and time in a tooltip beside the row’s trailing edge. The tooltip stays outside the action targets and uses the shared window-fitting anchor. The compact rail retains section symbols and conversation initials without time or action space. A first Delete click turns the same symbol red and applies a nudge; a second click confirms. Escape or an outside click cancels. Archive uses native Codex storage and retains history. Delete uses the exact native source, the complete existing deletion plan and local draft cleanup; learned personal Memory remains. Deleting an empty canonical Assistant draft clears its input while retaining its identity and configuration. A client-only project draft has no lifecycle symbols before the service records it.
 
@@ -309,6 +325,10 @@ The [Assistant lifecycle](../decisions/assistant-lifecycle.md) keeps a stable pe
 RAGFlow is an optional component with Install, Update, Uninstall and complete installed version readback. It shares lifecycle buttons, busy state and inline feedback with the other components. Install checks the running Docker-compatible engine and Compose, then prepares RAGFlow, Infinity and the private account. Missing prerequisites use the shared notice; the App does not install or launch a container runtime. Successful installation opens model setup when no models are saved. Expand RAGFlow and select Set up models or Edit to enter one Base URL, an optional API key, an extraction model ID and an embedding model ID. Both models use that shared OpenAI-compatible connection. Save verifies the choices and initializes dedicated Memory without sending chat content. New Memory connections enable automatic learning from completed Assistant dialogue. The Automatic learning switch can stop future learning; existing saved choices remain unchanged on update.
 
 Navigation fixtures cover pinning without changing the active draft, personal and project draft reuse, two-click delete cancellation, fixed 28-point spacing, complete available topic rendering, hover expansion from the 40-point rail, delayed close cancellation and command selection without chat submission. The hover check verifies fixed leading marks and section disclosure without persistent expansion. A detached-window action test verifies that Settings opens through the main Shell without changing the conversation. Use GPUI tests in `agent_navigation_sidebar_tests.rs`, `agent_command_palette.rs`, `shell.rs`, `agent_workspace_size.rs`, `agent_workspace.rs`, `agent_activity.rs`, `agent_markdown.rs`, `agent_archive.rs` and `settings_surface.rs`. Real macOS acceptance must also check focus, typing, scrolling, panel transitions, and transparency in the signed app. A white or missing automation screenshot alone is not evidence that the user sees a blank window.
+
+The sidebar motion fixture checks intermediate closing and reopening frames, a reversal, fixed command bounds and leading marks, and the settled compact layout. The opt-in `DECODEX_FRAME_TRACE` report records the moving sidebar width beside its content-canvas width. Frame construction and submission timing do not prove GPU completion, display scanout or subjective motion quality.
+
+Shared pointer-intent fixtures cover brief crossings, unchanged dwell during internal movement, close cancellation on reentry, stale exit ordering and explicit cancellation. Sidebar and island fixtures exercise these rules through pointer events, including native-style pointer exit and click pinning. Response-statistics fixtures preserve a preview when the pointer moves between its trigger and details in either callback order.
 
 The Work portfolio fixtures check Project grouping, scoped evidence, source-bound detail loading, global reviewer controls and explicit limits. The collaboration fixtures check cross-chat visibility, expansion without draft changes, participant location and the distinction between recorded messages, tool completion and context references. These checks do not replace signed-app interaction acceptance.
 

@@ -1,6 +1,7 @@
 //! Interruptible motion shared by native controls and workspace panels.
 
 #[path = "ui_disclosure.rs"] mod disclosure;
+#[path = "ui_hover_intent.rs"] mod hover_intent;
 #[cfg(all(target_os = "macos", not(test)))]
 #[path = "ui_native_popover.rs"]
 mod native_popover;
@@ -13,6 +14,7 @@ pub(crate) use crate::ui_frame::{
 	window_options,
 };
 pub(crate) use disclosure::{disclosure, disclosure_lazy, settings_disclosure};
+pub(crate) use hover_intent::HoverIntent;
 pub(crate) use overflow_label::{HoverOverflowLabel, OverflowLabel};
 pub(crate) use segmented::{Choice, Segmented};
 pub(crate) use text_reveal::TextReveal;
@@ -38,6 +40,7 @@ use crate::ui_theme::{
 };
 
 pub(crate) const HOVER_OPEN_DELAY: Duration = Duration::from_millis(180);
+pub(crate) const HOVER_CLOSE_DELAY: Duration = Duration::from_millis(220);
 
 pub(crate) trait SmoothControl {
 	fn smooth(self) -> Control;

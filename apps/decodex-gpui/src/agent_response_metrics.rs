@@ -1,14 +1,10 @@
 //! Compact response statistics with hover details, independent of transcript layout.
 
-use std::{
-	cell::Cell,
-	rc::Rc,
-	time::{Duration, Instant},
-};
+use std::{cell::Cell, rc::Rc, time::Instant};
 
 use gpui::{
 	self, Anchor, AnyElement, App, Bounds, Context, Div, IntoElement, Pixels, RenderOnce, Role,
-	SharedString, Stateful, Task, Window,
+	SharedString, Stateful, Window,
 	prelude::{
 		FluentBuilder as _, InteractiveElement as _, ParentElement as _,
 		StatefulInteractiveElement as _, Styled as _,
@@ -219,12 +215,12 @@ struct MetricsPopover {
 	pinned: bool,
 	trigger_hovered: bool,
 	panel_hovered: bool,
-	pending: Option<Task<()>>,
+	hover_intent: ui_motion::HoverIntent<()>,
 	anchor: Bounds<Pixels>,
 }
 impl MetricsPopover {
 	fn set_open(&mut self, open: bool, pinned: bool, cx: &mut Context<Self>) {
-		self.pending.take();
+		self.hover_intent.cancel();
 		self.open = open;
 		self.pinned = pinned;
 		cx.notify();
@@ -236,15 +232,15 @@ impl MetricsPopover {
 			HoverTarget::Panel => self.panel_hovered = inside,
 		}
 		let inside = self.trigger_hovered || self.panel_hovered;
-		self.pending.take();
-		if self.pinned || inside == self.open {
+		if self.pinned {
+			self.hover_intent.cancel();
 			return;
 		}
-		let delay = if inside { ui_motion::HOVER_OPEN_DELAY } else { Duration::from_millis(100) };
-		self.pending = Some(cx.spawn(async move |popover, cx| {
-			cx.background_executor().timer(delay).await;
-			let _ = popover.update(cx, |state, cx| state.set_open(inside, false, cx));
-		}));
+		self.hover_intent.update((), inside, self.open.then_some(()), cx, |state, next, cx| {
+			state.hover_intent.settled();
+			state.open = next.is_some();
+			cx.notify();
+		});
 	}
 }
 

@@ -24,6 +24,13 @@ pub(crate) fn surface_render(surface: &'static str) {
 	);
 }
 
+/// Compare a sidebar's moving clip with its stable content canvas.
+pub(crate) fn sidebar_geometry(visible_width: f32, content_width: f32) {
+	record(
+		|at_ms| serde_json::json!({"at_ms":at_ms,"phase":"sidebar_geometry","visible_width":visible_width,"content_width":content_width}),
+	);
+}
+
 /// Link a menu's pointer, selection and presentation without recording user input.
 pub(crate) fn popup_event(event: &'static str, menu: Option<&'static str>, visible: bool) {
 	record(

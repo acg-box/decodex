@@ -99,7 +99,7 @@ impl AgentSurface {
 
 		self.workspace.sidebar_visible = !self.workspace.sidebar_visible;
 		self.workspace.sidebar_peek = false;
-		self.workspace.sidebar_leave = None;
+		self.workspace.sidebar_hover_intent.cancel();
 
 		cx.notify();
 	}

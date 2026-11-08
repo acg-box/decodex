@@ -1,6 +1,6 @@
 //! Content bounds and direct manipulation for the Agent workspace.
 
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use gpui::{
 	AnyElement, ClickEvent, Div, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent,
@@ -195,10 +195,8 @@ impl AgentSurface {
 			return 0.;
 		}
 
-		let width = f32::from(window.viewport_size().width);
-
 		if self.workspace_sidebar_expanded(window) {
-			sidebar_width(self.workspace.sidebar_width, width)
+			self.workspace_sidebar_expanded_width(window)
 		} else {
 			CONVERSATION_TAB_SIZE + 2. * SIDEBAR_INSET
 		}
@@ -207,6 +205,10 @@ impl AgentSurface {
 	pub(super) fn workspace_sidebar_expanded(&self, window: &Window) -> bool {
 		(self.workspace.sidebar_visible || self.workspace.sidebar_peek)
 			&& f32::from(window.viewport_size().width) > 1_000.
+	}
+
+	pub(super) fn workspace_sidebar_expanded_width(&self, window: &Window) -> f32 {
+		sidebar_width(self.workspace.sidebar_width, f32::from(window.viewport_size().width))
 	}
 
 	pub(super) fn workspace_sidebar_width(&self, window: &Window) -> f32 {
@@ -264,25 +266,24 @@ impl AgentSurface {
 	}
 
 	pub(super) fn sidebar_hover(&mut self, hovered: bool, cx: &mut Context<Self>) {
-		if self.workspace.graph_expanded || self.workspace.chat_expanded {
+		if self.workspace.graph_expanded
+			|| self.workspace.chat_expanded
+			|| self.workspace.sidebar_visible
+		{
+			self.workspace.sidebar_hover_intent.cancel();
 			return;
 		}
-		self.workspace.sidebar_leave = None;
-		if self.workspace.sidebar_visible {
-			return;
-		}
-		if hovered {
-			self.workspace.sidebar_peek = true;
-			cx.notify();
-		} else {
-			self.workspace.sidebar_leave = Some(cx.spawn(async |surface, cx| {
-				cx.background_executor().timer(Duration::from_millis(220)).await;
-				let _ = surface.update(cx, |s, cx| {
-					s.workspace.sidebar_peek = false;
-					cx.notify();
-				});
-			}));
-		}
+		self.workspace.sidebar_hover_intent.update(
+			(),
+			hovered,
+			self.workspace.sidebar_peek.then_some(()),
+			cx,
+			|s, next, cx| {
+				s.workspace.sidebar_hover_intent.settled();
+				s.workspace.sidebar_peek = next.is_some();
+				cx.notify();
+			},
+		);
 	}
 
 	pub(super) fn sidebar_slot(
@@ -307,7 +308,16 @@ impl AgentSurface {
 			.id("left-panel-slot")
 			.opacity(self.workspace.arrival.progress(0.))
 			.debug_selector(|| "left-panel-slot".into())
-			.on_hover(cx.listener(|s, hovered: &bool, _, cx| s.sidebar_hover(*hovered, cx)))
+			.on_mouse_move(cx.listener(|s, event: &MouseMoveEvent, _, cx| {
+				if event.pressed_button.is_none() && !cx.has_active_drag() {
+					s.sidebar_hover(true, cx);
+				}
+			}))
+			.on_hover(cx.listener(|s, hovered: &bool, _, cx| {
+				if !hovered {
+					s.sidebar_hover(false, cx);
+				}
+			}))
 			.flex_none()
 			.w(gpui::px(width))
 			.mr(gpui::px(width.min(WORKSPACE_GUTTER)))
@@ -898,6 +908,20 @@ mod tests {
 		let command = visual.debug_bounds("navigation-command-entry").unwrap().origin;
 		assert_eq!(f32::from(collapsed.size.width), 40.);
 		visual.simulate_mouse_move(collapsed.center(), None, Default::default());
+		visual.run_until_parked();
+		visual.executor().advance_clock(std::time::Duration::from_millis(90));
+		visual.run_until_parked();
+		surface.read_with(visual, |s, _| assert!(!s.workspace.sidebar_peek));
+		let outside = gpui::point(gpui::px(1000.), gpui::px(800.));
+		visual.simulate_mouse_move(outside, None, Default::default());
+		visual.run_until_parked();
+		visual.executor().advance_clock(crate::ui_motion::HOVER_OPEN_DELAY);
+		visual.run_until_parked();
+		surface.read_with(visual, |s, _| assert!(!s.workspace.sidebar_peek));
+		visual.simulate_mouse_move(collapsed.center(), None, Default::default());
+		visual.run_until_parked();
+		visual.executor().advance_clock(crate::ui_motion::HOVER_OPEN_DELAY);
+		visual.run_until_parked();
 		visual.update(crate::ui_frame::draw_current_frame);
 		thread::sleep(std::time::Duration::from_millis(250));
 		visual.update(crate::ui_frame::draw_current_frame);
@@ -913,7 +937,6 @@ mod tests {
 		surface.read_with(visual, |s, _| {
 			assert!(!s.workspace.sidebar_visible, "a section disclosure must not pin a peek");
 		});
-		let outside = gpui::point(gpui::px(1000.), gpui::px(800.));
 		visual.simulate_mouse_move(outside, None, Default::default());
 		visual.executor().advance_clock(std::time::Duration::from_millis(100));
 		visual.run_until_parked();
@@ -922,13 +945,66 @@ mod tests {
 		visual.run_until_parked();
 		surface.read_with(visual, |s, _| assert!(s.workspace.sidebar_peek));
 		visual.simulate_mouse_move(outside, None, Default::default());
-		visual.executor().advance_clock(std::time::Duration::from_millis(220));
+		visual.executor().advance_clock(crate::ui_motion::HOVER_CLOSE_DELAY);
 		visual.run_until_parked();
 		visual.update(crate::ui_frame::draw_current_frame);
 		thread::sleep(std::time::Duration::from_millis(250));
 		visual.update(crate::ui_frame::draw_current_frame);
 		assert_eq!(visual.debug_bounds("left-panel-slot").unwrap(), collapsed);
 		surface.read_with(visual, |s, _| assert!(!s.workspace.sidebar_peek));
+	}
+
+	#[gpui::test]
+	fn sidebar_motion_keeps_content_geometry_through_close_and_reversal(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		visual.simulate_resize(gpui::size(gpui::px(1400.), gpui::px(900.)));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.workspace.sidebar_visible = true;
+			s.workspace.sidebar_motion = Default::default();
+			cx.notify();
+		});
+		visual.update(crate::ui_frame::draw_current_frame);
+		let open = visual.debug_bounds("left-panel-slot").unwrap();
+		let command = visual.debug_bounds("navigation-command-entry").unwrap();
+		let mark = visual.debug_bounds("conversation-mark-navigation-recent-agent").unwrap();
+		surface.update(visual, |s, cx| s.toggle_workspace_sidebar(cx));
+		visual.update(crate::ui_frame::draw_current_frame);
+		assert_eq!(visual.debug_bounds("navigation-command-entry").unwrap(), command);
+		assert!(visual.debug_bounds("navigation-create-assistant").is_some());
+		thread::sleep(std::time::Duration::from_millis(50));
+		visual.update(crate::ui_frame::draw_frame);
+		let closing = visual.debug_bounds("left-panel-slot").unwrap();
+		assert!(closing.size.width < open.size.width && closing.size.width > gpui::px(40.));
+		assert_eq!(visual.debug_bounds("navigation-command-entry").unwrap(), command);
+		assert_eq!(visual.debug_bounds("conversation-mark-navigation-recent-agent").unwrap(), mark);
+		surface.update(visual, |s, cx| s.toggle_workspace_sidebar(cx));
+		visual.update(crate::ui_frame::draw_current_frame);
+		let reversal = visual.debug_bounds("left-panel-slot").unwrap();
+		assert!(reversal.size.width > gpui::px(40.) && reversal.size.width < open.size.width);
+		thread::sleep(std::time::Duration::from_millis(50));
+		visual.update(crate::ui_frame::draw_frame);
+		let reopening = visual.debug_bounds("left-panel-slot").unwrap();
+		assert!(
+			reopening.size.width > reversal.size.width && reopening.size.width < open.size.width
+		);
+		assert_eq!(visual.debug_bounds("navigation-command-entry").unwrap(), command);
+		thread::sleep(std::time::Duration::from_millis(220));
+		visual.update(crate::ui_frame::draw_frame);
+		assert_eq!(visual.debug_bounds("left-panel-slot").unwrap(), open);
+		surface.update(visual, |s, cx| s.toggle_workspace_sidebar(cx));
+		visual.update(crate::ui_frame::draw_current_frame);
+		thread::sleep(std::time::Duration::from_millis(220));
+		visual.update(crate::ui_frame::draw_frame);
+		assert_eq!(visual.debug_bounds("left-panel-slot").unwrap().size.width, gpui::px(40.));
+		assert_eq!(
+			visual.debug_bounds("navigation-command-entry").unwrap().size.width,
+			gpui::px(28.)
+		);
+		assert!(visual.debug_bounds("navigation-create-assistant").is_none());
+		assert_eq!(visual.debug_bounds("conversation-mark-navigation-recent-agent").unwrap(), mark);
 	}
 
 	#[gpui::test]

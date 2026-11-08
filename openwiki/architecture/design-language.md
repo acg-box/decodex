@@ -5,7 +5,7 @@ description: Reusable layout, activity-island motion, reading spacing and theme 
 tags: [desktop, design, motion, layout]
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-08T03:24:05.438Z
+    at: 2026-11-08T03:47:50.015Z
 sources:
   - id: openwiki-source-8037e2358a2c4f9b2c722a11
     resource: repo://AGENTS.md
@@ -21,6 +21,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_navigation_sidebar_tests.rs
   - id: openwiki-source-541c96314da57ad5afa1835e
     resource: repo://apps/decodex-gpui/src/agent_navigation_sidebar.rs
+  - id: openwiki-source-15d320ea458ddf705d950ba9
+    resource: repo://apps/decodex-gpui/src/agent_response_metrics.rs
   - id: openwiki-source-5da2f5dd568514f1f464d177
     resource: repo://apps/decodex-gpui/src/agent_surface.rs
   - id: openwiki-source-691432bb61082c358b6f9c24
@@ -41,6 +43,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/native_material_panel.rs
   - id: openwiki-source-1291f5243fa6c9cb52149bda
     resource: repo://apps/decodex-gpui/src/shell.rs
+  - id: openwiki-source-adab7a75320a305721fdd6d2
+    resource: repo://apps/decodex-gpui/src/ui_hover_intent.rs
   - id: openwiki-source-ccd97a4d4ef8dfe9b724e7ce
     resource: repo://apps/decodex-gpui/src/ui_live_activity.rs
   - id: openwiki-source-afbf2d30c0979a844373d8e5
@@ -59,7 +63,7 @@ sources:
     resource: repo://codex-runtime.lock.json
   - id: openwiki-source-a490ea3fbcddb9c007caf196
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_context_tests.rs
-generated: { by: "codex", at: "2026-11-08T03:24:05.438Z" }
+generated: { by: "codex", at: "2026-11-08T03:47:50.015Z" }
 ---
 
 # Interface geometry and motion
@@ -127,7 +131,11 @@ Use one compact row rhythm for the left navigation. Pin, Recent, Assistant and P
 
 The whole section header toggles its content. Sorting remains a secondary hover or keyboard-focus control. Put the creation plus immediately before the disclosure chevron in Assistant, Projects and each project. Both controls retain their hit targets when hidden. An expanded project uses a quiet surface, a short accent mark and an end rule inside its final child row. Its conversation rows have no extra indent or folder symbols.
 
-Keep Search and commands in the same leading slot when the sidebar contracts. It opens the global command window, also available with Command-K. The compact rail retains each section symbol and conversation initial. Hover temporarily expands the rail at workspace widths above 1,000 points. Leaving starts a 220 ms close delay; returning cancels that close. Reuse the shared width transition and keep the leading symbols and initials fixed. Opening a section during a hover does not pin the sidebar. The explicit sidebar toggle controls persistent visibility and clears temporary hover state. Relative times and trailing actions do not add width or height to the compact rail.
+Keep Search and commands in the same leading slot when the sidebar contracts. It opens the global command window, also available with Command-K. The compact rail retains each section symbol and conversation initial. A pointer dwell of 180 ms temporarily expands the rail at workspace widths above 1,000 points. Leaving starts a 220 ms close delay; returning cancels that close. Reuse the shared width transition and keep the leading symbols and initials fixed. Opening a section during a hover does not pin the sidebar. The explicit sidebar toggle controls persistent visibility and clears temporary hover state. Relative times and trailing actions do not add width or height to the compact rail.
+
+The sidebar's outer width uses the shared interruptible 200 ms cubic ease-out. Its content retains the complete expanded canvas during opening, closing and a reversal; the outer panel clips that canvas. Keep titles and trailing controls mounted at their final positions until closing reaches the 40-point rail. Do not squeeze the content into intermediate widths or remove labels as soon as the target changes. At the settled compact width, omit project branches and their extra layout space.
+
+Use `ui_motion::HoverIntent` for surfaces revealed by pointer intent. The shared tokens set entry dwell to 180 ms and departure grace to 220 ms. Brief crossings cancel entry. Movement inside the same target does not restart its timer. Reentry cancels closing, and an exit from an older target cannot cancel a newer target. Explicit clicks, keyboard actions and dismissal cancel pending pointer work and retain their immediate behavior. The sidebar, Work and Debug islands, and response-statistics popover use this owner. History previews use the shared entry delay rather than a zero-delay tooltip. Ordinary hover ink, contextual row actions and native tooltip lifetime retain their own presentation roles.
 
 Long titles retain their full text. Hover or keyboard focus starts overflow motion; leaving returns the text smoothly. Each section can enable Always scroll titles. Use shared disclosure, chevron, popover, control-opacity and confirmation-nudge motion. Respect reduced motion and do not animate the complete transcript for a sidebar hover.
 
