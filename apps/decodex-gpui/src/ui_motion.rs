@@ -10,8 +10,8 @@ mod native_popover;
 #[path = "ui_text_reveal.rs"] mod text_reveal;
 
 pub(crate) use crate::ui_frame::{
-	animations_active, application_active, observe_activation, reduced, request_frame,
-	window_options,
+	animations_active, application_active, begin_interaction, observe_activation, reduced,
+	request_frame, window_options,
 };
 pub(crate) use disclosure::{disclosure, disclosure_lazy, settings_disclosure};
 pub(crate) use hover_intent::HoverIntent;

@@ -110,7 +110,7 @@ pub(crate) fn start_for(cx: &mut App, duration: Duration) {
 					}).ok()
 				}).collect();
 
-				serde_json::json!({"at_ms": start.elapsed().as_secs_f64() * 1_000., "application_active": ui_frame::application_active(), "full_background_rendering": ui_frame::background_rendering(None), "windows": windows})
+				serde_json::json!({"at_ms": start.elapsed().as_secs_f64() * 1_000., "application_active": ui_frame::application_active(), "full_background_rendering": ui_frame::background_rendering(None), "interaction_animation":ui_frame::interaction_active(), "windows": windows})
 			});
 
 			observations.lock().expect("frame activity").push(sample);

@@ -1,6 +1,15 @@
 //! Check rolling metrics and keep Debug independent of full task tracing.
 use std::{thread, time::Duration};
 
+#[gpui::test]
+fn disabled_idle_overlay_does_not_start_background_interaction_motion(cx: &mut TestAppContext) {
+	ui_performance::preference(Some(false));
+	let (_, visual) = cx.add_window_view(|_, cx| PerformanceIsland::new(cx));
+	visual.update(crate::ui_frame::draw_current_frame);
+	visual.update(crate::ui_frame::draw_current_frame);
+	assert!(!crate::ui_frame::interaction_active());
+}
+
 use gpui::{
 	AppContext as _, Context, Entity, Render, TestAppContext, Window,
 	prelude::{ParentElement as _, Styled as _},

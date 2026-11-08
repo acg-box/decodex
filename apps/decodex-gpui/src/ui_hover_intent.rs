@@ -53,7 +53,10 @@ impl<K: Clone + Eq + 'static> HoverIntent<K> {
 		let delay = if inside { OPEN_DELAY } else { CLOSE_DELAY };
 		self.pending = Some(cx.spawn(async move |owner, cx| {
 			cx.background_executor().timer(delay).await;
-			let _ = owner.update(cx, move |owner, cx| apply(owner, next, cx));
+			let _ = owner.update(cx, move |owner, cx| {
+				super::begin_interaction();
+				apply(owner, next, cx);
+			});
 		}));
 	}
 }

@@ -271,6 +271,7 @@ impl PerformanceIsland {
 	}
 
 	fn toggle(&mut self, activity: Activity) {
+		ui_motion::begin_interaction();
 		self.hover_intent.cancel();
 		self.expansion =
 			if self.activity == activity { self.expansion.clicked() } else { Expansion::Clicked };
@@ -278,6 +279,9 @@ impl PerformanceIsland {
 	}
 
 	fn close(&mut self) {
+		if self.expansion.is_open() {
+			ui_motion::begin_interaction();
+		}
 		self.hover_intent.cancel();
 		self.expansion = Expansion::Closed;
 	}

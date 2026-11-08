@@ -5,7 +5,7 @@ description: "Workspace ownership, native menu focus, compositor motion, and con
 tags: [decodex, architecture, desktop, presentation]
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-08T03:47:50.015Z
+    at: 2026-11-08T03:59:17.848Z
 sources:
   - id: openwiki-source-98e7b23c4cc276d20fcb4649
     resource: repo://apps/decodex-gpui/menubar/Sources/DecodexApp/AccountControlViews.swift
@@ -139,6 +139,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/ui_disclosure.rs
   - id: openwiki-source-2f256c95c226c1326d164ad3
     resource: repo://apps/decodex-gpui/src/ui_feedback.rs
+  - id: openwiki-source-592957b8edd8a689f738c189
+    resource: repo://apps/decodex-gpui/src/ui_frame.rs
   - id: openwiki-source-adab7a75320a305721fdd6d2
     resource: repo://apps/decodex-gpui/src/ui_hover_intent.rs
   - id: openwiki-source-afbf2d30c0979a844373d8e5
@@ -171,7 +173,7 @@ sources:
     resource: repo://database/src/works/commands.rs
   - id: openwiki-source-8fe6f1557e5d45d88b34bd0a
     resource: repo://scripts/macos/generate_workspace_symbols.swift
-generated: { by: "codex", at: "2026-11-08T03:47:50.015Z" }
+generated: { by: "codex", at: "2026-11-08T03:59:17.848Z" }
 ---
 
 # Desktop workspace and native glass
@@ -191,6 +193,8 @@ At workspace widths above 1,000 points, a 180 ms pointer dwell expands the compa
 Sidebar content keeps its complete expanded canvas while the outer width opens, closes or reverses. The panel clips that canvas, so titles and trailing controls keep their final geometry instead of squeezing or disappearing at the first closing frame. The compact presentation mounts only after the rail reaches its settled width. Project branches then leave the compact layout entirely.
 
 The sidebar, Work and Debug activity islands, and response-statistics popover share `ui_motion::HoverIntent`. It owns the 180 ms entry dwell, 220 ms departure grace and pending-task cancellation. Brief crossings do not expand a surface, internal movement does not restart entry, and stale exit events cannot cancel the next hovered target. Reentry cancels closing. Explicit clicks, keyboard actions and dismissal keep their immediate behavior; click-pinned surfaces stay open when the pointer leaves. History-rail previews use the same entry delay instead of opening immediately. Ordinary hover ink and contextual row actions retain direct feedback.
+
+Committed pointer intent and explicit surface toggles permit 400 ms of finite motion even while the visible App is inactive. The background-rendering preference is unchanged, and the ordinary policy resumes after the interval. System reduced motion and VoiceOver remain authoritative. This separates animation of a user operation from continuous background activity.
 
 Conversation rows expose fixed trailing Pin, Archive and Delete symbols on hover or keyboard focus. Update time uses a short relative value at the far right; hover provides the owner and complete local date and time in a tooltip beside the row’s trailing edge. The tooltip stays outside the action targets and uses the shared window-fitting anchor. The compact rail retains section symbols and conversation initials without time or action space. A first Delete click turns the same symbol red and applies a nudge; a second click confirms. Escape or an outside click cancels. Archive uses native Codex storage and retains history. Delete uses the exact native source, the complete existing deletion plan and local draft cleanup; learned personal Memory remains. Deleting an empty canonical Assistant draft clears its input while retaining its identity and configuration. A client-only project draft has no lifecycle symbols before the service records it.
 
@@ -329,6 +333,8 @@ Navigation fixtures cover pinning without changing the active draft, personal an
 The sidebar motion fixture checks intermediate closing and reopening frames, a reversal, fixed command bounds and leading marks, and the settled compact layout. The opt-in `DECODEX_FRAME_TRACE` report records the moving sidebar width beside its content-canvas width. Frame construction and submission timing do not prove GPU completion, display scanout or subjective motion quality.
 
 Shared pointer-intent fixtures cover brief crossings, unchanged dwell during internal movement, close cancellation on reentry, stale exit ordering and explicit cancellation. Sidebar and island fixtures exercise these rules through pointer events, including native-style pointer exit and click pinning. Response-statistics fixtures preserve a preview when the pointer moves between its trigger and details in either callback order.
+
+The disabled idle-overlay fixture checks that repeated renders do not start an interaction-animation window. Closed-state reconciliation must not renew finite user motion as continuous background activity.
 
 The Work portfolio fixtures check Project grouping, scoped evidence, source-bound detail loading, global reviewer controls and explicit limits. The collaboration fixtures check cross-chat visibility, expansion without draft changes, participant location and the distinction between recorded messages, tool completion and context references. These checks do not replace signed-app interaction acceptance.
 

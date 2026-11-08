@@ -1,5 +1,9 @@
 //! Application-wide animation cadence, independent of keyboard focus.
-use std::sync::atomic::AtomicU8;
+use std::{
+	cell::Cell,
+	sync::atomic::AtomicU8,
+	time::{Duration, Instant},
+};
 
 use gpui::{
 	AnyElement, App, AppContext as _, Context, Entity, IntoElement, Render, Subscription,
@@ -12,6 +16,19 @@ use objc2::{
 };
 
 use crate::ui_preferences;
+
+thread_local! {
+	static INTERACTION_UNTIL: Cell<Option<Instant>> = const { Cell::new(None) };
+}
+
+/// Finish a finite user transition even when its visible window is not foreground.
+pub(crate) fn begin_interaction() {
+	INTERACTION_UNTIL.set(Some(Instant::now() + Duration::from_millis(400)));
+}
+
+pub(crate) fn interaction_active() -> bool {
+	INTERACTION_UNTIL.get().is_some_and(|until| Instant::now() < until)
+}
 
 /// A model publishes state changes; its presentation owns animation frames.
 pub(crate) struct Presentation<T>
@@ -101,7 +118,7 @@ pub(crate) fn background_rendering(value: Option<bool>) -> bool {
 
 /// Rendering policy is separate from keyboard focus and application activation.
 pub(crate) fn animations_active() -> bool {
-	application_active() || background_rendering(None)
+	application_active() || background_rendering(None) || interaction_active()
 }
 
 /// Respect system accessibility preferences and the application rendering policy.

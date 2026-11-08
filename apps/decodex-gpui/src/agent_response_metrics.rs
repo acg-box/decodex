@@ -220,6 +220,9 @@ struct MetricsPopover {
 }
 impl MetricsPopover {
 	fn set_open(&mut self, open: bool, pinned: bool, cx: &mut Context<Self>) {
+		if self.open != open || self.pinned != pinned {
+			ui_motion::begin_interaction();
+		}
 		self.hover_intent.cancel();
 		self.open = open;
 		self.pinned = pinned;
