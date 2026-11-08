@@ -1278,23 +1278,6 @@ impl AgentSurface {
 							.flex()
 							.items_center()
 							.gap_2()
-							.child(
-								gpui::div()
-									.flex_none()
-									.text_color(ui_theme::rgb(TEXT_MUTED))
-									.text_size(gpui::px(11.))
-									.child(
-										if self
-											.selected
-											.as_deref()
-											.is_some_and(|id| self.is_assistant_conversation(id))
-										{
-											"My Assistant"
-										} else {
-											"Project Agent"
-										},
-									),
-							)
 							.child(self.conversation_tab_bar(cx))
 							.children(self.navigation_work_context()),
 					)
