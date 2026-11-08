@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:bd0e715f782ba31a4a28a359d6d82470d29d4f61e7f45a59a251fb40cfb2b9d6",
+  "pageVersion": "sha256:8102ecba0b5194c36616e11072b644cfc98372d576d96833fc3fc83cc624bcc2",
   "claims": [
     {
       "id": "claim_41c9eba720934771bd6b671a7aeb8b6e",
@@ -262,7 +262,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace_size.rs",
-          "version": "repo-file-v1:sha256:581a1bb00059b231919c9ba1b87fc482852d1e0fc0e47a670a973c1ba1fec6c0"
+          "version": "repo-file-v1:sha256:9df99bb665a8654931d457d36dcf2011a4c93642c0774fbd7ba2ecb46a7ff9be"
         }
       ]
     },
@@ -508,7 +508,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_surface.rs",
-          "version": "repo-file-v1:sha256:7ee32eb509cfae4a9f8ea100673f7fbe9437558f6ac22bd5673abad0596ab65d"
+          "version": "repo-file-v1:sha256:aee2938d28bca9e6318262732baaf4291266ce437f9cd7cf6a5a0c8fc560b3a3"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
@@ -844,7 +844,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_surface.rs",
-          "version": "repo-file-v1:sha256:7ee32eb509cfae4a9f8ea100673f7fbe9437558f6ac22bd5673abad0596ab65d"
+          "version": "repo-file-v1:sha256:aee2938d28bca9e6318262732baaf4291266ce437f9cd7cf6a5a0c8fc560b3a3"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/shell.rs#L3136-L3229",
@@ -960,7 +960,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace_size.rs",
-          "version": "repo-file-v1:sha256:581a1bb00059b231919c9ba1b87fc482852d1e0fc0e47a670a973c1ba1fec6c0"
+          "version": "repo-file-v1:sha256:9df99bb665a8654931d457d36dcf2011a4c93642c0774fbd7ba2ecb46a7ff9be"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_motion.rs",
@@ -999,7 +999,7 @@
           "version": "repo-lines-v1:sha256:52fe5e6875d95e4e9063f570d121a54fd460cdd824984747428a3c60832e5c58:eyJzZWxlY3RlZExpbmVDb3VudCI6MjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRkYzc2MDIwYmFlNzA1NzdlNjRiMzMwZGNhODNmZGYyNGYzZDc1OTNhMDE1NGQ4YWJlYzZkYzYzZjU4OTdmZDkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjdhOThiZWFjYzhjMDJkM2MwMDYwZWMzZWIyMTI1ODQ5M2E3OTJhNDkyMjBhNTdkZmUxZTllMjgzZDU3MTBjMTQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY2NzhjZDExZTdmOGViYzg0MTZhZThmMjhmYWI4ZDU0YmUxNWQzMmFkYWM4NTNkNDJhMmIyZGM4ZWIwNjFlMDMifQ"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_workspace_size.rs#L1232-L1286",
+          "resource": "repo://apps/decodex-gpui/src/agent_workspace_size.rs#L1237-L1291",
           "version": "repo-lines-v1:sha256:42f76f75e449f88c9b2450eb41f12677884b4bbe7907d745b461377e82e0000b:eyJzZWxlY3RlZExpbmVDb3VudCI6NTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRhNDMwOWVmNjVkMDZhNGQ2ZGE0ZGVlMThjNjc0NjBlOGY0MjRmOWZjODQwZTAyODgzN2ZlOGEwOWYwZTM5N2UiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjJkY2JlMDRmOTBkMDQ2Y2I1ZDgyMmU5N2M4NDM0NzRmYzcwODZhMDBmZWQ3ODYwODA2MzAyNDY1ZDJjOGI5MDEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImZmNzUxNWVhMzhmZTUxMWI4ZjI2ZTQzMTE3N2Q4NjMxY2E0Mjk1MGEwY2YwZTBiOTlmMmQxZmMyZWNhOWM2MmMifQ"
         }
       ]
@@ -1080,7 +1080,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace_size.rs",
-          "version": "repo-file-v1:sha256:581a1bb00059b231919c9ba1b87fc482852d1e0fc0e47a670a973c1ba1fec6c0"
+          "version": "repo-file-v1:sha256:9df99bb665a8654931d457d36dcf2011a4c93642c0774fbd7ba2ecb46a7ff9be"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_theme.rs",
@@ -1102,7 +1102,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace_size.rs",
-          "version": "repo-file-v1:sha256:581a1bb00059b231919c9ba1b87fc482852d1e0fc0e47a670a973c1ba1fec6c0"
+          "version": "repo-file-v1:sha256:9df99bb665a8654931d457d36dcf2011a4c93642c0774fbd7ba2ecb46a7ff9be"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/native_material_panel.rs",
@@ -1160,7 +1160,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace_size.rs",
-          "version": "repo-file-v1:sha256:581a1bb00059b231919c9ba1b87fc482852d1e0fc0e47a670a973c1ba1fec6c0"
+          "version": "repo-file-v1:sha256:9df99bb665a8654931d457d36dcf2011a4c93642c0774fbd7ba2ecb46a7ff9be"
         }
       ]
     },
@@ -1218,7 +1218,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace_size.rs",
-          "version": "repo-file-v1:sha256:581a1bb00059b231919c9ba1b87fc482852d1e0fc0e47a670a973c1ba1fec6c0"
+          "version": "repo-file-v1:sha256:9df99bb665a8654931d457d36dcf2011a4c93642c0774fbd7ba2ecb46a7ff9be"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/native_material_panel.rs",
@@ -1240,13 +1240,27 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace_size.rs",
-          "version": "repo-file-v1:sha256:581a1bb00059b231919c9ba1b87fc482852d1e0fc0e47a670a973c1ba1fec6c0"
+          "version": "repo-file-v1:sha256:9df99bb665a8654931d457d36dcf2011a4c93642c0774fbd7ba2ecb46a7ff9be"
+        }
+      ]
+    },
+    {
+      "id": "claim_7d5c9749241942b2b7dbba5df82fc587",
+      "statement": "When the native sidebar foreground is released, the workspace invalidates its cached sidebar presentation so the main window repaints SVG atlas content.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs",
+          "version": "repo-file-v1:sha256:aee2938d28bca9e6318262732baaf4291266ce437f9cd7cf6a5a0c8fc560b3a3"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_workspace_size.rs",
+          "version": "repo-file-v1:sha256:9df99bb665a8654931d457d36dcf2011a4c93642c0774fbd7ba2ecb46a7ff9be"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.9.0",
-    "at": "2026-11-08T19:45:40.115Z"
+    "at": "2026-11-08T19:52:12.596Z"
   }
 }

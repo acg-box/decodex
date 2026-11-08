@@ -511,6 +511,11 @@ impl AgentSurface {
 		let opacity =
 			self.workspace_panel_material_opacity(Panel::Left, layout, floating, window, cx);
 		let native = floating || opacity > 0.;
+		if self.workspace.sidebar_native_visible.replace(native) && !native {
+			// SVG atlas entries belong to the window that painted them. Rebuild
+			// the cached sidebar after the native child releases its foreground.
+			self.presentations.sidebar.update(cx, |_, cx| cx.notify());
+		}
 		if !native || width <= 0.1 {
 			self.hide_workspace_material(Panel::Left, window, cx);
 		}

@@ -5,7 +5,7 @@ description: "Workspace ownership, native menu focus, compositor motion, and con
 tags: [decodex, architecture, desktop, presentation]
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-08T19:45:40.115Z
+    at: 2026-11-08T19:52:12.596Z
 sources:
   - id: openwiki-source-98e7b23c4cc276d20fcb4649
     resource: repo://apps/decodex-gpui/menubar/Sources/DecodexApp/AccountControlViews.swift
@@ -185,7 +185,7 @@ sources:
     resource: repo://database/src/works/commands.rs
   - id: openwiki-source-8fe6f1557e5d45d88b34bd0a
     resource: repo://scripts/macos/generate_workspace_symbols.swift
-generated: { by: "codex", at: "2026-11-08T19:45:40.115Z" }
+generated: { by: "codex", at: "2026-11-08T19:52:12.596Z" }
 ---
 
 # Desktop workspace and native glass
@@ -200,7 +200,7 @@ Docked panels keep their existing GPUI workspace surfaces. Floating panels use t
 
 With Graph closed, **Work in progress** provides a compact disclosure above the composer. It derives rows from the selected conversation's work subtree and observed native agents, excludes completed and archived work, and opens the existing conversation on selection. It introduces no work records or execution owner. New conversations and conversations without qualifying work omit the strip. The list uses the shared control-row size and disclosure motion, with bounded height and scrolling. Work and Debug activity islands use distinct accent-colored symbols under the shared activity-island sizing contract.
 
-A docked/floating material change uses the shared 200 ms interruptible Tween. The workspace field and native glass blend with complementary opacity while text and symbols retain full opacity. The native host stays mounted until its material blend reaches zero, including a return to docked layout with the same panel width. A reversal starts from the current material state. The native child owns pointer departure once it covers the compact rail.
+A docked/floating material change uses the shared 200 ms interruptible Tween. The workspace field and native glass blend with complementary opacity while text and symbols retain full opacity. The native host stays mounted until its material blend reaches zero, including a return to docked layout with the same panel width. A reversal starts from the current material state. The native child owns pointer departure once it covers the compact rail. When that child releases the sidebar foreground, the workspace invalidates the cached sidebar presentation so the main window repaints its SVG atlas entries.
 
 The left sidebar contains **Pin**, **Recent**, **Assistant** and **Projects**. Pin contains locally pinned conversation references. Recent contains every available unpinned conversation, without an additional item-count cutoff. Assistant collects personal topics. Projects lists registered native project directories and their independent Agent conversations. Attached Side chats remain with their source tabs. Pin has a four-row viewport; Recent and Assistant have seven-row viewports. All returned entries remain scrollable. These viewports do not enlarge the service snapshot: Work summaries retain their existing 100-record bound.
 
