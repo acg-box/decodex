@@ -25,6 +25,30 @@ pub(super) fn mouse_direction(button: MouseButton) -> Option<bool> {
 	}
 }
 
+/// Window history stays reachable through panes that occlude underlying controls.
+pub(super) fn mouse_navigation<T: 'static>(
+	owner: gpui::WeakEntity<T>,
+	navigate: fn(&mut T, bool, &mut gpui::Window, &mut Context<T>),
+) -> impl gpui::IntoElement {
+	gpui::canvas(
+		|_, _, _| (),
+		move |_, _, window, _| {
+			let owner = owner.clone();
+			window.on_mouse_event(move |event: &gpui::MouseDownEvent, phase, window, cx| {
+				if phase == gpui::DispatchPhase::Capture
+					&& let Some(forward) = mouse_direction(event.button)
+				{
+					window.prevent_default();
+					let _ = owner.update(cx, |owner, cx| navigate(owner, forward, window, cx));
+					cx.stop_propagation();
+				}
+			});
+		},
+	)
+	.absolute()
+	.size_full()
+}
+
 #[cfg(any(target_os = "macos", test))]
 pub(super) fn forward_mouse_navigation(
 	parent: gpui::AnyWindowHandle,
@@ -524,6 +548,8 @@ mod tests {
 
 				visual.simulate_mouse_down(pointer, button, Default::default());
 				visual.simulate_mouse_up(pointer, button, Default::default());
+				visual.update(crate::ui_frame::draw_current_frame);
+				assert!(visual.debug_bounds("archive-back").is_none());
 				shell.read_with(visual, |s, cx| {
 					assert_eq!(s.agent.read(cx).navigation_location(), expected);
 					assert_eq!(s.navigation.entries.len(), 3);

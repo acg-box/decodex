@@ -1082,7 +1082,7 @@ mod tests {
 	}
 
 	#[gpui::test]
-	fn history_hover_shows_without_dwell_and_clears_on_exit(cx: &mut gpui::TestAppContext) {
+	fn history_hover_obeys_shared_dwell_and_clears_on_exit(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 
 		visual.simulate_resize(gpui::size(gpui::px(1_400.), gpui::px(900.)));
@@ -1104,7 +1104,15 @@ mod tests {
 		assert_eq!(rail.size.width, gpui::px(crate::ui_theme::CONVERSATION_INSET));
 
 		visual.simulate_mouse_move(bounds.center(), gpui::MouseButton::Left, Default::default());
-		// No clock advance: cached content must appear before the default tooltip dwell.
+		visual.run_until_parked();
+		visual.update(crate::ui_frame::draw_current_frame);
+		assert!(visual.debug_bounds("history-hover-preview").is_none());
+		let tick = std::time::Duration::from_millis(1);
+		visual.executor().advance_clock(crate::ui_motion::HOVER_OPEN_DELAY - tick);
+		visual.run_until_parked();
+		visual.update(crate::ui_frame::draw_current_frame);
+		assert!(visual.debug_bounds("history-hover-preview").is_none());
+		visual.executor().advance_clock(tick);
 		visual.run_until_parked();
 		visual.update(crate::ui_frame::draw_current_frame);
 

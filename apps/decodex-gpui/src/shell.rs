@@ -1986,13 +1986,7 @@ impl Render for Shell {
 			.text_size(gpui::px(13.0))
 			.key_context("Conversations")
 			.track_focus(&self.root_focus)
-			.capture_any_mouse_down(cx.listener(|s, event: &gpui::MouseDownEvent, window, cx| {
-				if let Some(forward) = navigation::mouse_direction(event.button) {
-					window.prevent_default();
-					s.navigate_history(forward, window, cx);
-					cx.stop_propagation();
-				}
-			}))
+			.child(navigation::mouse_navigation(cx.entity().downgrade(), Self::navigate_history))
 			.on_action(cx.listener(Self::focus_next))
 			.on_action(cx.listener(Self::focus_previous))
 			.on_action(cx.listener(Self::activate_conversations))
@@ -2201,15 +2195,7 @@ impl Render for SettingsWindow {
 			.bg(ui_theme::rgba(SHELL_MATERIAL))
 			.key_context("SettingsWindow")
 			.track_focus(&self.focus)
-			.capture_any_mouse_down(cx.listener(
-				|settings, event: &gpui::MouseDownEvent, window, cx| {
-					if let Some(forward) = navigation::mouse_direction(event.button) {
-						window.prevent_default();
-						settings.navigate_history(forward, window, cx);
-						cx.stop_propagation();
-					}
-				},
-			))
+			.child(navigation::mouse_navigation(cx.entity().downgrade(), Self::navigate_history))
 			.on_action(cx.listener(|_, _: &CloseWindow, window, cx| {
 				window.remove_window();
 				cx.stop_propagation();
