@@ -51,20 +51,12 @@ impl AgentSurface {
 		rows
 	}
 
-	pub(in super::super) fn work_progress_bar(
+	fn work_progress_details(
 		&self,
+		rows: Vec<super::Row>,
 		window: &gpui::Window,
 		cx: &mut Context<Self>,
-	) -> Option<AnyElement> {
-		if self.workspace.graph_visible || self.is_new_conversation() {
-			return None;
-		}
-		let rows = self.progress_rows();
-		if rows.is_empty() {
-			return None;
-		}
-		let expanded = self.workspace.work_progress_expanded;
-		let count = rows.len();
+	) -> AnyElement {
 		let mut details = gpui::div()
 			.id("work-progress-rows")
 			.debug_selector(|| "work-progress-rows".into())
@@ -127,7 +119,25 @@ impl AgentSurface {
 					})),
 			)
 		}
-		let toggle = |s: &mut AgentSurface, cx: &mut Context<AgentSurface>| {
+		details.into_any_element()
+	}
+
+	pub(in super::super) fn work_progress_bar(
+		&self,
+		window: &gpui::Window,
+		cx: &mut Context<Self>,
+	) -> Option<AnyElement> {
+		if self.workspace.graph_visible || self.is_new_conversation() {
+			return None;
+		}
+		let rows = self.progress_rows();
+		if rows.is_empty() {
+			return None;
+		}
+		let expanded = self.workspace.work_progress_expanded;
+		let count = rows.len();
+		let details = self.work_progress_details(rows, window, cx);
+		let toggle = |s: &mut Self, cx: &mut Context<Self>| {
 			ui_motion::begin_interaction();
 			s.workspace.work_progress_expanded = !s.workspace.work_progress_expanded;
 			cx.notify();

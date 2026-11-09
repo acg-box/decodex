@@ -7,7 +7,7 @@ try FileManager.default.createDirectory(at: output, withIntermediateDirectories:
 let light = CommandLine.arguments.contains("--light")
 let symbols = [
     "activity-work": "waveform.path",
-    "activity-performance": "gauge.open.with.lines.needle.33percent",
+    "activity-performance": "chart.xyaxis.line",
     "activity-goal": "scope",
     "activity-search": "magnifyingglass",
     "activity-edit": "pencil",

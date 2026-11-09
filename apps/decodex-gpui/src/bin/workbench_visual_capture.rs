@@ -135,27 +135,16 @@ impl Render for CollaborationComponent {
 	}
 }
 
+struct CommandComponent(Entity<AgentSurface>);
+impl Render for CommandComponent {
+	fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+		self.0.update(cx, |surface, cx| surface.visual_command_content(window, cx))
+	}
+}
+
 fn main() -> Result<()> {
 	#[cfg(target_os = "macos")]
-	if env::var_os("DECODEX_VISUAL_NATIVE_COMPOSER").is_some() {
-		native_workspace::run_composer();
-		return Ok(());
-	}
-	#[cfg(target_os = "macos")]
-	if env::var_os("DECODEX_VISUAL_NATIVE_WORKSPACE").is_some() {
-		native_workspace::run();
-		return Ok(());
-	}
-	#[cfg(target_os = "macos")]
-	if env::var_os("DECODEX_VISUAL_NATIVE_ISLAND").is_some() {
-		crate::native_island::run();
-
-		return Ok(());
-	}
-	#[cfg(target_os = "macos")]
-	if env::var_os("DECODEX_VISUAL_NATIVE_SCROLL").is_some() {
-		native_scroll::run();
-
+	if capture_native_probe() {
 		return Ok(());
 	}
 	if env::var_os("DECODEX_VISUAL_DRAFT_ROOT").is_none() {
@@ -193,6 +182,8 @@ fn main() -> Result<()> {
 		== Ok("loading")
 	{
 		capture_loading::open(&mut cx)?
+	} else if env::var("DECODEX_VISUAL_COMPONENT").as_deref() == Ok("commands") {
+		capture_commands(&mut cx)?
 	} else if env::var("DECODEX_VISUAL_COMPONENT").as_deref() == Ok("collaboration") {
 		capture_collaboration(&mut cx)?
 	} else if integrations {
@@ -279,6 +270,50 @@ fn main() -> Result<()> {
 	println!("{}", output.display());
 
 	Ok(())
+}
+
+#[cfg(target_os = "macos")]
+fn capture_native_probe() -> bool {
+	if env::var_os("DECODEX_VISUAL_NATIVE_COMPOSER").is_some() {
+		native_workspace::run_composer();
+		return true;
+	}
+	if env::var_os("DECODEX_VISUAL_NATIVE_WORKSPACE").is_some() {
+		native_workspace::run();
+		return true;
+	}
+	if env::var_os("DECODEX_VISUAL_NATIVE_ISLAND").is_some() {
+		crate::native_island::run();
+
+		return true;
+	}
+	if env::var_os("DECODEX_VISUAL_NATIVE_SCROLL").is_some() {
+		native_scroll::run();
+
+		return true;
+	}
+	false
+}
+
+fn capture_commands(cx: &mut VisualTestAppContext) -> Result<AnyWindowHandle> {
+	let size = capture_size()?;
+	Ok(cx
+		.open_offscreen_window(size, |_, cx| {
+			cx.new(|cx| {
+				let surface = cx.new(|cx| {
+					let mut surface = AgentSurface::new(cx);
+					surface.visual_command_palette(
+						&env::var("DECODEX_VISUAL_WORKSPACE_PAGE")
+							.unwrap_or_else(|_| "commands".into()),
+						cx,
+					);
+					surface
+				});
+				cx.observe(&surface, |_, _, cx| cx.notify()).detach();
+				CommandComponent(surface)
+			})
+		})?
+		.into())
 }
 
 fn capture_collaboration(cx: &mut VisualTestAppContext) -> Result<AnyWindowHandle> {

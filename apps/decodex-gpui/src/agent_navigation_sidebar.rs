@@ -6,7 +6,7 @@ use crate::{
 		workspace_symbols::{self},
 	},
 	ui_motion::{PanelReveal, SmoothControl as _},
-	ui_theme::{self, NAVIGATION_DETAIL_SIZE, TEXT, TEXT_MUTED},
+	ui_theme::{self, NAVIGATION_DETAIL_SIZE, TEXT_MUTED},
 };
 #[cfg(any(test, feature = "visual-capture"))] use decodex_protocol::work::WorkState;
 use gpui::{
@@ -21,6 +21,7 @@ use std::collections::HashSet;
 #[path = "agent_command_palette.rs"] mod commands;
 #[path = "agent_navigation_icons.rs"] mod icons;
 #[path = "agent_navigation_model.rs"] pub(in crate::shell::agent_surface) mod model;
+#[path = "agent_navigation_style.rs"] mod style;
 use gpui::{FocusHandle, Window};
 use icons::{Glyph, Icon};
 use model::{Item, Section, Sort};
@@ -41,6 +42,7 @@ pub(super) struct State {
 	search: Option<gpui::Entity<crate::composer_input::ComposerInput>>,
 	command_open: bool,
 	command_index: usize,
+	command_session: usize,
 	command_scroll: gpui::ScrollHandle,
 	choose_project: bool,
 	clock: Option<Task<()>>,
@@ -63,6 +65,7 @@ impl Default for State {
 			search: None,
 			command_open: false,
 			command_index: 0,
+			command_session: 0,
 			command_scroll: gpui::ScrollHandle::new(),
 			choose_project: false,
 			clock: None,
@@ -77,6 +80,7 @@ struct ProjectBranch<'a> {
 	items: &'a [Item],
 	reveal: &'a PanelReveal,
 	auto_scroll: bool,
+	last: bool,
 }
 impl AgentSurface {
 	pub(super) fn project_conversation_pages(&self) -> Vec<(String, String, bool)> {
@@ -340,6 +344,7 @@ impl AgentSurface {
 		} else {
 			for section in [Section::Pin, Section::Recent, Section::Assistant, Section::Projects] {
 				let mut content = gpui::div().flex().flex_col();
+				let mut populated = false;
 				let pref = self.workspace.navigation.preferences.section(section);
 				let open = !self.workspace.navigation.collapsed.contains(section.key());
 				if section == Section::Projects {
@@ -358,6 +363,7 @@ impl AgentSurface {
 						.cloned()
 						.collect();
 					model::sort(&mut selected, pref.sort);
+					populated = !selected.is_empty();
 					for item in selected {
 						content = content.child(self.navigation_item(
 							&item,
@@ -379,14 +385,18 @@ impl AgentSurface {
 							ui_theme::CONTROL_SIZE * if section == Section::Pin { 4. } else { 7. },
 						))
 						.overflow_y_scroll()
-						.child(content)
+						.child(style::section_guide(
+							section.key(),
+							content.into_any_element(),
+							populated,
+						))
 						.into_any_element()
 				};
 				directory =
 					directory.child(self.navigation_heading(section, reveal, open, window, cx));
 				directory = directory.child(crate::ui_motion::disclosure(
 					SharedString::from(format!("navigation-disclosure-{}", section.key())),
-					open && (section != Section::Projects || reveal.target_expanded),
+					open,
 					content,
 				));
 			}
@@ -421,7 +431,10 @@ impl AgentSurface {
 					.then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
 			}
 		});
-		for project in projects {
+		let unassigned: Vec<_> =
+			items.iter().filter(|i| !i.assistant && i.project.is_none()).cloned().collect();
+		let project_count = projects.len();
+		for (index, project) in projects.into_iter().enumerate() {
 			let mut children: Vec<_> =
 				items.iter().filter(|i| i.project.as_ref() == Some(&project.id)).cloned().collect();
 			model::sort(&mut children, pref.sort);
@@ -433,13 +446,12 @@ impl AgentSurface {
 					items: &children,
 					reveal,
 					auto_scroll: pref.auto_scroll,
+					last: index + 1 == project_count && unassigned.is_empty(),
 				},
 				window,
 				cx,
 			));
 		}
-		let unassigned: Vec<_> =
-			items.iter().filter(|i| !i.assistant && i.project.is_none()).cloned().collect();
 		if !unassigned.is_empty() {
 			content = content.child(self.navigation_project(
 				ProjectBranch {
@@ -449,6 +461,7 @@ impl AgentSurface {
 					items: &unassigned,
 					reveal,
 					auto_scroll: pref.auto_scroll,
+					last: true,
 				},
 				window,
 				cx,
@@ -504,7 +517,14 @@ impl AgentSurface {
 					gpui::div()
 						.flex_1()
 						.whitespace_nowrap()
-						.text_size(gpui::px(ui_theme::NAVIGATION_TITLE_SIZE))
+						.text_size(gpui::px(if id == "navigation-command-entry" {
+							ui_theme::CONTROL_LABEL_SIZE
+						} else {
+							ui_theme::NAVIGATION_TITLE_SIZE
+						}))
+						.when(id == "navigation-command-entry", |label| {
+							label.text_color(ui_theme::rgb(TEXT_MUTED))
+						})
 						.child(navigation_text(reveal, label)),
 				)
 				.when(id == "navigation-command-entry", |row| {
@@ -591,7 +611,7 @@ impl AgentSurface {
 						.flex()
 						.items_center()
 						.justify_center()
-						.text_color(ui_theme::rgb(TEXT_MUTED))
+						.text_color(style::section_color(section))
 						.child(Icon { glyph, size: ui_theme::NAVIGATION_ICON_SIZE }),
 				);
 		if expanded {
@@ -601,7 +621,7 @@ impl AgentSurface {
 					.min_w_0()
 					.text_size(gpui::px(ui_theme::NAVIGATION_SECTION_SIZE))
 					.font_weight(FontWeight::MEDIUM)
-					.text_color(ui_theme::rgb(TEXT_MUTED))
+					.text_color(ui_theme::ColorScheme::current().navigation_heading())
 					.child(navigation_text(reveal, section.label())),
 			);
 			row = row.child(self.navigation_options(section, opacity, window, cx));
@@ -634,7 +654,7 @@ impl AgentSurface {
 					.items_center()
 					.justify_center()
 					.text_color(ui_theme::rgb(TEXT_MUTED))
-					.child(workspace_symbols::disclosure_chevron(
+					.child(workspace_symbols::process_chevron(
 						SharedString::from(format!("navigation-chevron-{}", section.key())),
 						open,
 					)),
@@ -644,12 +664,7 @@ impl AgentSurface {
 	}
 
 	fn toggle_navigation_section(&mut self, section: Section, cx: &mut Context<Self>) {
-		if section == Section::Projects
-			&& !(self.workspace.sidebar_visible || self.workspace.sidebar_peek)
-		{
-			self.workspace.sidebar_visible = true;
-			self.workspace.navigation.collapsed.remove(section.key());
-		} else if !self.workspace.navigation.collapsed.remove(section.key()) {
+		if !self.workspace.navigation.collapsed.remove(section.key()) {
 			self.workspace.navigation.collapsed.insert(section.key());
 		}
 		cx.notify();
@@ -728,100 +743,99 @@ impl AgentSurface {
 		let draft = project.clone();
 		let debug = project.clone();
 		let enter = key.clone();
-		let folder = directory.map(str::to_owned);
-		let header = gpui::div()
-			.id(SharedString::from(format!("project-header-{id}")))
-			.when_some(folder, |row, folder| {
-				row.tooltip(move |_, cx| {
-					cx.new(|_| crate::shell::ControlTooltip(format!("Folder: {folder}"))).into()
-				})
-			})
-			.anchor_scroll(Some(anchor))
-			.debug_selector(move || format!("project-header-{debug}"))
-			.track_focus(&focus)
-			.role(Role::Button)
-			.tab_index(0)
-			.aria_label(format!("{name} project"))
-			.aria_expanded(open)
-			.h(gpui::px(ui_theme::CONTROL_SIZE))
-			.flex_none()
-			.relative()
-			.flex()
-			.items_center()
-			.pl(gpui::px(9.))
-			.rounded(gpui::px(ui_theme::SMALL_CONTROL_RADIUS))
-			.bg(ui_theme::rgba(if open { ui_theme::HOVER_FILL } else { 0xffffff00 }))
-			.cursor_pointer()
-			.on_hover(
-				cx.listener(move |s, hovered: &bool, _, cx| {
+		let tip = directory.map_or_else(|| name.to_owned(), |folder| format!("{name}\n{folder}"));
+		let identity = ui_theme::ColorScheme::current().navigation_project(id);
+		let badge = crate::ui_motion::value(
+			SharedString::from(format!("navigation-project-badge-{id}")),
+			if reveal.target_expanded { 0. } else { 1. },
+			window,
+			cx,
+		);
+		let header =
+			gpui::div()
+				.id(SharedString::from(format!("project-header-{id}")))
+				.tooltip(move |_, cx| cx.new(|_| crate::shell::ControlTooltip(tip.clone())).into())
+				.anchor_scroll(Some(anchor))
+				.debug_selector(move || format!("project-header-{debug}"))
+				.track_focus(&focus)
+				.role(Role::Button)
+				.tab_index(0)
+				.aria_label(format!("{name} project"))
+				.aria_expanded(open)
+				.h(gpui::px(ui_theme::CONTROL_SIZE))
+				.flex_none()
+				.relative()
+				.flex()
+				.items_center()
+				.rounded(gpui::px(ui_theme::SMALL_CONTROL_RADIUS))
+				.hover(|row| row.bg(ui_theme::rgba(ui_theme::HOVER_FILL)))
+				.cursor_pointer()
+				.on_hover(cx.listener(move |s, hovered: &bool, _, cx| {
 					s.navigation_hover(&enter, *hovered, cx)
-				}),
-			)
-			.on_click(cx.listener(move |s, _, _, cx| {
-				if !s.workspace.navigation.projects.remove(&project) {
-					s.workspace.navigation.projects.insert(project.clone());
-				}
-				cx.notify();
-			}))
-			.on_key_down(cx.listener(move |s, e: &KeyDownEvent, _, cx| {
-				if !e.is_held && ["enter", "space"].contains(&e.keystroke.key.as_str()) {
-					if !s.workspace.navigation.projects.remove(&keyboard) {
-						s.workspace.navigation.projects.insert(keyboard.clone());
+				}))
+				.on_click(cx.listener(move |s, _, _, cx| {
+					if !s.workspace.navigation.projects.remove(&project) {
+						s.workspace.navigation.projects.insert(project.clone());
 					}
-					cx.stop_propagation();
 					cx.notify();
-				}
-			}))
-			.when(open, |h| {
-				h.child(
+				}))
+				.on_key_down(cx.listener(move |s, e: &KeyDownEvent, _, cx| {
+					if !e.is_held && ["enter", "space"].contains(&e.keystroke.key.as_str()) {
+						if !s.workspace.navigation.projects.remove(&keyboard) {
+							s.workspace.navigation.projects.insert(keyboard.clone());
+						}
+						cx.stop_propagation();
+						cx.notify();
+					}
+				}))
+				.child(style::project_header_connector())
+				.child(
 					gpui::div()
-						.absolute()
-						.left_0()
-						.top(gpui::px(8.))
-						.w(gpui::px(2.))
-						.h(gpui::px(12.))
-						.rounded(gpui::px(1.))
-						.bg(ui_theme::rgb(ui_theme::BLUE)),
+						.flex_1()
+						.min_w_0()
+						.h_full()
+						.overflow_hidden()
+						.text_size(gpui::px(ui_theme::NAVIGATION_TITLE_SIZE))
+						.font_weight(FontWeight::MEDIUM)
+						.text_color(identity.label)
+						.child(crate::ui_motion::RailLabel {
+							compact: false,
+							viewport: Some(reveal.viewport.clone()),
+							scroll: expanded && (auto_scroll || active),
+							id: key,
+							label: name.to_owned(),
+							size: ui_theme::NAVIGATION_TITLE_SIZE,
+							initial_color: identity.label,
+							initial_weight: FontWeight::MEDIUM,
+							badge: Some(identity.ink.opacity(0.12 * badge)),
+							status: None,
+						}),
 				)
-			})
-			.child(
-				gpui::div()
-					.flex_1()
-					.min_w_0()
-					.overflow_hidden()
-					.text_size(gpui::px(ui_theme::NAVIGATION_TITLE_SIZE))
-					.font_weight(FontWeight::MEDIUM)
-					.text_color(ui_theme::rgb(TEXT))
-					.child(navigation_text(
-						reveal,
-						crate::ui_motion::HoverOverflowLabel {
-							id: SharedString::from(format!("project-title-{id}")).into(),
-							text: name.to_owned().into(),
-							active: expanded && (auto_scroll || active),
+				.when(expanded, |row| {
+					row.child(self.navigation_create(
+						&format!("New Agent in {name}"),
+						format!("navigation-new-agent-{id}"),
+						opacity,
+						move |s, cx| {
+							s.new_project_agent((!draft.is_empty()).then_some(draft.as_str()), cx)
 						},
-					)),
-			)
-			.child(self.navigation_create(
-				&format!("New Agent in {name}"),
-				format!("navigation-new-agent-{id}"),
-				opacity,
-				move |s, cx| s.new_project_agent((!draft.is_empty()).then_some(draft.as_str()), cx),
-				cx,
-			))
-			.child(
-				gpui::div()
-					.w(gpui::px(20.))
-					.h_full()
-					.flex_none()
-					.flex()
-					.items_center()
-					.justify_center()
-					.text_color(ui_theme::rgb(TEXT_MUTED))
-					.child(workspace_symbols::disclosure_chevron(
-						SharedString::from(format!("project-chevron-{id}")),
-						open,
-					)),
-			);
+						cx,
+					))
+					.child(
+						gpui::div()
+							.w(gpui::px(20.))
+							.h_full()
+							.flex_none()
+							.flex()
+							.items_center()
+							.justify_center()
+							.text_color(ui_theme::rgb(TEXT_MUTED))
+							.child(workspace_symbols::process_chevron(
+								SharedString::from(format!("project-chevron-{id}")),
+								open,
+							)),
+					)
+				});
 		header.into_any_element()
 	}
 
@@ -832,7 +846,7 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) -> AnyElement {
 		let header = self.navigation_project_heading(&branch, window, cx);
-		let ProjectBranch { id, items, reveal, auto_scroll, .. } = branch;
+		let ProjectBranch { id, items, reveal, auto_scroll, last, .. } = branch;
 		let open = self.workspace.navigation.projects.contains(id);
 		let mut children = gpui::div().relative().flex().flex_col();
 		for item in items {
@@ -845,18 +859,7 @@ impl AgentSurface {
 				cx,
 			));
 		}
-		if !items.is_empty() {
-			children = children.child(
-				gpui::div()
-					.absolute()
-					.left(gpui::px(9.))
-					.right(gpui::px(9.))
-					.bottom_0()
-					.h(gpui::px(1.))
-					.bg(ui_theme::rgba(ui_theme::PANEL_DIVIDER)),
-			);
-		}
-		gpui::div()
+		let content = gpui::div()
 			.flex()
 			.flex_col()
 			.child(header)
@@ -865,7 +868,13 @@ impl AgentSurface {
 				open,
 				children,
 			))
-			.into_any_element()
+			.into_any_element();
+		style::project_guides(
+			id,
+			content,
+			last,
+			ui_theme::ColorScheme::current().navigation_project(id).ink,
+		)
 	}
 
 	fn navigation_item(
@@ -989,7 +998,10 @@ impl AgentSurface {
 				row = row.child(self.navigation_row_actions(item, &key, actions, cx));
 			}
 		}
-		row.into_any_element()
+		row.when_some(style::item_color(section), |row, color| {
+			row.child(style::connector(&key, section.starts_with("project-"), color))
+		})
+		.into_any_element()
 	}
 
 	fn activate_navigation_item(&mut self, item: &Item, cx: &mut Context<Self>) {
@@ -1058,6 +1070,63 @@ impl AgentSurface {
 
 #[cfg(any(test, feature = "visual-capture"))]
 impl AgentSurface {
+	pub(super) fn visual_navigation_hierarchy(&mut self, compact: bool, cx: &mut Context<Self>) {
+		self.visual_workspace_fixture(cx);
+		self.visual_personal_navigation(cx);
+		let snapshot = self.snapshot.as_mut().expect("visual workspace");
+		let seed = snapshot.work_items[0].clone();
+		for (index, name) in [
+			"Decodex",
+			"Data tools",
+			"HAST",
+			"ProfitPilot",
+			"Research",
+			"Design system",
+			"Notes",
+			"Deployments",
+			"Docs",
+			"Automations",
+			"Desktop",
+			"Observability",
+		]
+		.into_iter()
+		.enumerate()
+		{
+			let id = format!("navigation-project-{index}");
+			let mut agents = Vec::new();
+			for (child, title) in ["Review next steps", "Working notes"].into_iter().enumerate() {
+				let agent_id = format!("{id}-agent-{child}");
+				let mut work = seed.clone();
+				work.id = agent_id.clone();
+				work.title = title.into();
+				work.codex_thread_id = Some(format!("fixture-{agent_id}"));
+				snapshot.work_items.push(work);
+				snapshot.agents.push(decodex_protocol::work::Agent {
+					id: agent_id.clone(),
+					name: title.into(),
+					native_thread_id: None,
+					assistant: false,
+				});
+				agents.push(agent_id);
+			}
+			snapshot.projects.push(decodex_protocol::ProjectDto {
+				id: id.clone(),
+				name: name.into(),
+				directory: format!("/workspace/{name}"),
+				native_project_id: None,
+				lead_agent_id: None,
+				agent_ids: agents,
+			});
+		}
+		self.workspace.navigation.projects =
+			HashSet::from(["navigation-project-0".into(), "navigation-project-1".into()]);
+		self.workspace.navigation.collapsed = HashSet::from(["pin", "recent", "assistant"]);
+		self.workspace.sidebar_visible = !compact;
+		self.workspace.sidebar_peek = false;
+		self.workspace.work_detail = None;
+		cx.notify();
+	}
+
 	pub(super) fn visual_personal_navigation(&mut self, cx: &mut Context<Self>) {
 		use decodex_protocol::work::{Agent, Work, WorkRequirements};
 		let history = self.history.clone();
@@ -1357,7 +1426,7 @@ fn navigation_item_label(
 	scroll: bool,
 	viewport: &crate::ui_motion::Viewport,
 ) -> AnyElement {
-	if section.starts_with("project-") || section == "archive" {
+	if section == "archive" {
 		gpui::div()
 			.pl(gpui::px(9.))
 			.text_size(gpui::px(ui_theme::NAVIGATION_TITLE_SIZE))

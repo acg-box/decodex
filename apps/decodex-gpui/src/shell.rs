@@ -1953,6 +1953,24 @@ impl Drop for Shell {
 	}
 }
 
+impl Shell {
+	fn dismiss_workspace_status(
+		&mut self,
+		_: &DismissStatus,
+		window: &mut Window,
+		cx: &mut Context<Self>,
+	) {
+		self.agent.update(cx, |agent, cx| {
+			agent.dismiss_navigation_confirmation(cx);
+			agent.dismiss_workspace_overlays(window, cx);
+		});
+		if self.status_open {
+			self.status_open = false;
+			cx.notify();
+		}
+	}
+}
+
 impl Render for Shell {
 	fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
 		self.navigation.repair_focus(&self.root_focus, window);
@@ -2021,17 +2039,7 @@ impl Render for Shell {
 			.on_action(cx.listener(Self::toggle_inspector))
 			.on_action(cx.listener(Self::toggle_graph))
 			.on_action(cx.listener(Self::toggle_content_fullscreen))
-			.on_action(cx.listener(|s, _: &DismissStatus, window, cx| {
-				s.agent.update(cx, |agent, cx| {
-					agent.dismiss_navigation_confirmation(cx);
-					agent.dismiss_workspace_overlays(window, cx);
-				});
-				if s.status_open {
-					s.status_open = false;
-
-					cx.notify();
-				}
-			}))
+			.on_action(cx.listener(Self::dismiss_workspace_status))
 			.on_key_down(cx.listener(Self::interrupt_reply))
 			.on_action(
 				cx.listener(|s, _: &NavigateBack, window, cx| {
@@ -2437,6 +2445,7 @@ pub(crate) fn bind_keys(cx: &mut App) {
 	});
 
 	composer_input::bind_keys(cx);
+	AgentSurface::bind_command_keys(cx);
 
 	cx.bind_keys([KeyBinding::new("cmd-w", CloseWindow, Some("SettingsWindow"))]);
 	crate::session_settings::bind_keys(cx);

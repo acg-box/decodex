@@ -6,6 +6,7 @@
 #[path = "ui_native_popover.rs"]
 mod native_popover;
 #[path = "ui_overflow_label.rs"] mod overflow_label;
+#[path = "ui_rail_label.rs"] mod rail_label;
 #[path = "ui_segmented.rs"] mod segmented;
 #[path = "ui_text_reveal.rs"] mod text_reveal;
 #[path = "ui_viewport_clip.rs"] mod viewport_clip;
@@ -17,6 +18,7 @@ pub(crate) use crate::ui_frame::{
 pub(crate) use disclosure::{disclosure, disclosure_lazy, settings_disclosure};
 pub(crate) use hover_intent::HoverIntent;
 pub(crate) use overflow_label::{HoverOverflowLabel, OverflowLabel};
+pub(crate) use rail_label::RailLabel;
 pub(crate) use segmented::{Choice, Segmented};
 pub(crate) use text_reveal::TextReveal;
 pub(crate) use viewport_clip::Viewport;
@@ -28,13 +30,12 @@ use std::{
 
 use gpui::{
 	AnyElement, App, Bounds, Div, Element, ElementId, FontWeight, IntoElement, MouseButton, Pixels,
-	RenderOnce, Rgba, Role, SharedString, Stateful, TextRun, Window,
+	RenderOnce, Rgba, SharedString, Stateful, Window,
 	prelude::{
 		FluentBuilder as _, InteractiveElement as _, ParentElement as _,
 		StatefulInteractiveElement as _, Styled,
 	},
 };
-use unicode_segmentation::UnicodeSegmentation as _;
 
 use crate::ui_theme::{
 	self, CONVERSATION_TAB_GAP, CONVERSATION_TAB_SIZE, ColorScheme, ERROR, INFO, SUCCESS, TEXT,
@@ -638,62 +639,18 @@ impl RenderOnce for AgentRailStatus {
 			b: channels[2] * intensity,
 			a: 1.,
 		};
-		let label = self.label.replace(['\n', '\r'], " ");
-		let initial = label.graphemes(true).next().unwrap_or("?").to_owned();
-		let rest = label.get(initial.len()..).unwrap_or("").to_owned();
-		let mut font = window.text_style().font();
-
-		font.weight = FontWeight::SEMIBOLD;
-
-		let run = TextRun {
-			len: initial.len(),
-			font,
-			color: ink.into(),
-			background_color: None,
-			underline: None,
-			strikethrough: None,
-		};
-		let initial_width = f32::from(
-			window
-				.text_system()
-				.shape_line(initial.clone().into(), gpui::px(12.5), &[run], None)
-				.width,
-		);
-		let inset =
-			if self.compact { 0. } else { ((CONVERSATION_TAB_SIZE - initial_width) * 0.5).max(0.) };
-		let title_id = SharedString::from(format!("left-title-{}", self.id));
-		let suffix =
-			HoverOverflowLabel { id: title_id.into(), text: rest.into(), active: self.scroll };
-		let suffix = if let Some(viewport) = self.viewport {
-			viewport.clip(ui_theme::SIDEBAR_INSET + inset, suffix).into_any_element()
-		} else {
-			suffix.into_any_element()
-		};
-
-		gpui::div()
-			.debug_selector(|| "conversation-name".into())
-			.min_w(gpui::px(if self.compact { 0. } else { CONVERSATION_TAB_SIZE }))
-			.h_full()
-			.flex_1()
-			.relative()
-			.flex()
-			.items_center()
-			.pl(gpui::px(inset))
-			.pr(gpui::px(inset))
-			.text_size(gpui::px(12.5))
-			.child(
-				gpui::div()
-					.id(SharedString::from(format!("conversation-mark-{}", self.id)))
-					.debug_selector(move || format!("conversation-mark-{}", self.id))
-					.role(Role::Status)
-					.aria_label(self.state)
-					.w(gpui::px(initial_width))
-					.flex_none()
-					.font_weight(FontWeight::SEMIBOLD)
-					.text_color(ink)
-					.child(initial),
-			)
-			.child(gpui::div().flex_1().min_w_0().overflow_hidden().child(suffix))
+		RailLabel {
+			compact: self.compact,
+			viewport: self.viewport,
+			scroll: self.scroll,
+			id: self.id,
+			label: self.label,
+			size: 12.5,
+			initial_color: ink,
+			initial_weight: FontWeight::SEMIBOLD,
+			badge: None,
+			status: Some(self.state),
+		}
 	}
 }
 

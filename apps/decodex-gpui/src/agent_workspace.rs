@@ -2150,6 +2150,10 @@ impl AgentSurface {
 			"workbench" | "workbench-agent" | "workbench-history" | "workbench-split" =>
 				self.visual_workbench_page(page, cx),
 			"assistant-workspace" => self.visual_personal_navigation(cx),
+			"navigation-hierarchy" | "navigation-hierarchy-compact" =>
+				self.visual_navigation_hierarchy(page.ends_with("compact"), cx),
+			"commands" | "commands-search" | "commands-projects" | "commands-empty" =>
+				self.visual_command_palette(page, cx),
 			"factory" | "relations" | "relations-resource" => {
 				self.work_board.graph = false;
 				self.workspace.graph_expanded = true;
@@ -2207,9 +2211,7 @@ impl AgentSurface {
 			#[cfg(feature = "visual-capture")]
 			"mermaid-scroll" => self.visual_mermaid_scroll_page(cx),
 			"task-references" => self.visual_task_references(),
-			"conversation" => {
-				self.workspace.graph_visible = false;
-			},
+			"conversation" => self.workspace.graph_visible = false,
 			"work-progress" => {
 				self.workspace.graph_visible = false;
 				self.workspace.work_progress_expanded = true;

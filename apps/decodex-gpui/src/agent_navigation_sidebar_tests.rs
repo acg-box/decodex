@@ -2,6 +2,40 @@ use super::AgentSurface;
 use gpui::TestAppContext;
 
 #[gpui::test]
+fn compact_projects_keep_their_children_and_fixed_initial_positions(cx: &mut TestAppContext) {
+	let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+	visual.simulate_resize(gpui::size(gpui::px(1440.), gpui::px(1400.)));
+	surface.update(visual, |s, cx| s.visual_navigation_hierarchy(false, cx));
+	visual.update(crate::ui_frame::draw_current_frame);
+	const INITIAL: &str = "conversation-mark-project-navigation-project-0";
+	const CHILD: &str = "navigation-project-navigation-project-0-navigation-project-0-agent-0";
+	let before = visual.debug_bounds(INITIAL).unwrap();
+	let header = visual.debug_bounds("project-header-navigation-project-0").unwrap();
+	let child = visual.debug_bounds(CHILD).unwrap();
+	assert_eq!(header.size.height, gpui::px(28.));
+	assert_eq!(child.size.height, gpui::px(28.));
+	assert_eq!(header.left(), child.left());
+	surface.update(visual, |s, cx| {
+		s.workspace.sidebar_visible = false;
+		cx.notify();
+	});
+	visual.update(crate::ui_frame::draw_current_frame);
+	visual.executor().advance_clock(std::time::Duration::from_millis(400));
+	visual.run_until_parked();
+	visual.update(crate::ui_frame::draw_current_frame);
+	let after = visual.debug_bounds(INITIAL).unwrap();
+	assert_eq!(before.origin, after.origin);
+	assert!(visual.debug_bounds(CHILD).is_some());
+	let section = visual.debug_bounds("navigation-section-projects").unwrap();
+	visual.simulate_click(section.center(), Default::default());
+	visual.update(crate::ui_frame::draw_current_frame);
+	surface.read_with(visual, |s, _| {
+		assert!(!s.workspace.sidebar_visible);
+		assert!(s.workspace.navigation.collapsed.contains("projects"));
+	});
+}
+
+#[gpui::test]
 fn metadata_tooltip_stays_beside_the_row_and_cannot_cover_its_actions(cx: &mut TestAppContext) {
 	let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 	visual.simulate_resize(gpui::size(gpui::px(1440.), gpui::px(1000.)));

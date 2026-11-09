@@ -71,6 +71,7 @@ pub(crate) enum ComposerEvent {
 enum ComposerAppearance {
 	Workbench,
 	Field,
+	Search,
 }
 
 /// Conversation composer input and its native text-input lifecycle.
@@ -124,6 +125,15 @@ impl ComposerInput {
 		cx: &mut Context<Self>,
 	) -> Self {
 		Self::build(tab_index, placeholder, aria_label, ComposerAppearance::Field, cx)
+	}
+
+	/// A search surface owns its outline; the text field keeps native editing behavior.
+	pub(crate) fn search(
+		placeholder: impl Into<SharedString>,
+		aria_label: impl Into<SharedString>,
+		cx: &mut Context<Self>,
+	) -> Self {
+		Self::build(0, placeholder, aria_label, ComposerAppearance::Search, cx)
 	}
 
 	fn build(
@@ -598,6 +608,7 @@ impl ComposerInput {
 		let entity = cx.entity();
 		let focus_handle = self.focus_handle.clone();
 		let workbench = self.appearance == ComposerAppearance::Workbench;
+		let search = self.appearance == ComposerAppearance::Search;
 
 		gpui::div()
 			.id("conversation-composer-input")
@@ -659,22 +670,32 @@ impl ComposerInput {
 			.cursor(CursorStyle::IBeam)
 			.w_full()
 			.when(!workbench, |d| d.h_full())
-			.px_2()
+			.px(gpui::px(if search { 0. } else { 8. }))
 			.py(gpui::px(if workbench { 4.0 } else { 1.5 }))
 			.flex()
 			.items_start()
 			.when(!workbench, |d| d.items_center())
 			.overflow_hidden()
 			.rounded(gpui::px(if workbench { 8.0 } else { ui_theme::SETTINGS_CONTROL_RADIUS }))
-			.border(gpui::px(if workbench { 1.0 } else { 0.5 }))
-			.border_color(if workbench {
+			.border(gpui::px(if search {
+				0.
+			} else if workbench {
+				1.0
+			} else {
+				0.5
+			}))
+			.border_color(if workbench || search {
 				ui_theme::rgba(0x00000000)
 			} else if focus_handle.is_focused(window) {
 				ui_theme::rgb(ui_theme::ACCENT)
 			} else {
 				ui_theme::rgba(ui_theme::PANEL_DIVIDER)
 			})
-			.bg(if workbench { ui_theme::rgba(0x00000000) } else { ui_theme::rgba(FIELD_MATERIAL) })
+			.bg(if workbench || search {
+				ui_theme::rgba(0x00000000)
+			} else {
+				ui_theme::rgba(FIELD_MATERIAL)
+			})
 			.text_size(gpui::px(BODY_SIZE))
 			.text_color(ui_theme::rgb(if workbench { 0xeeeaf0 } else { ui_theme::TEXT }))
 			.child(ComposerTextElement { input: entity })

@@ -26,6 +26,7 @@ pub(crate) mod foreground {
 }
 
 #[path = "ui_color_theme.rs"] mod color_themes;
+#[path = "ui_navigation_palette.rs"] mod navigation_palette;
 #[path = "ui_palette.rs"] mod palette;
 
 pub(crate) use self::{color_themes::ColorTheme, palette::ColorScheme};
