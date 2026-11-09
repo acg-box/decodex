@@ -370,7 +370,7 @@ impl AgentSurface {
 				let _ = owner.update(cx, |s, cx| {
 					s.native_controls.composer.bounds = Some(bounds);
 					s.native_controls.composer.clip =
-						Some(s.workspace_composer_clip(bounds, window));
+						Some(s.workspace_content_clip(bounds, window));
 
 					s.sync_native_composer(cx);
 				});

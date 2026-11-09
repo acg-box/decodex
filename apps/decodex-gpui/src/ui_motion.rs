@@ -330,18 +330,11 @@ pub(crate) struct MaterialSurface {
 	id: ElementId,
 	radius: f64,
 	clip: Option<Bounds<Pixels>>,
-	style: ui_theme::material::PanelStyle,
 	content: std::rc::Rc<PopoverContent>,
 	dismiss: std::rc::Rc<dyn Fn(&mut App)>,
 	escape: std::rc::Rc<dyn Fn(&mut App)>,
 }
 impl MaterialSurface {
-	/// Workspace panes follow Window appearance without another entrance effect.
-	pub(crate) fn workspace(mut self) -> Self {
-		self.style = ui_theme::material::PanelStyle::Workspace;
-		self
-	}
-
 	/// Morph a material inside a stable drawable without rescaling its contents.
 	pub(crate) fn clip(mut self, bounds: Bounds<Pixels>) -> Self {
 		self.clip = Some(bounds);
@@ -357,10 +350,10 @@ impl MaterialSurface {
 impl RenderOnce for MaterialSurface {
 	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
 		#[cfg(all(target_os = "macos", not(test)))]
-		if native_popover::surface_available(self.style.surface()) {
+		if native_popover::available() {
 			return native_popover::render_surface(
 				self.id,
-				MaterialGeometry { radius: self.radius, clip: self.clip, style: self.style },
+				MaterialGeometry { radius: self.radius, clip: self.clip },
 				self.content,
 				self.dismiss,
 				self.escape,
@@ -401,7 +394,6 @@ pub(crate) fn material_surface(
 		id: id.into(),
 		radius,
 		clip: None,
-		style: Default::default(),
 		content: std::rc::Rc::new(content),
 		escape: dismiss.clone(),
 		dismiss,
@@ -413,7 +405,6 @@ pub(crate) fn material_surface(
 pub(crate) struct MaterialGeometry {
 	pub radius: f64,
 	pub clip: Option<Bounds<Pixels>>,
-	pub style: ui_theme::material::PanelStyle,
 }
 
 pub(crate) fn hide_material_surface(id: impl Into<ElementId>, window: &Window, cx: &mut App) {

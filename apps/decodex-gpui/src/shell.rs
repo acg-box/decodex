@@ -2064,9 +2064,6 @@ impl Render for Shell {
 
 		#[cfg(all(target_os = "macos", not(test)))]
 		self.agent.update(cx, |agent, cx| {
-			if self.selected != Destination::Agent {
-				agent.hide_workspace_materials(window, cx);
-			}
 			agent.prepare_native_composer(self.selected == Destination::Agent, window, cx);
 			agent.prepare_native_menu(window, cx);
 		});

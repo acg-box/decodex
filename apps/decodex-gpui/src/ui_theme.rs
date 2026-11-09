@@ -294,14 +294,13 @@ pub(crate) fn canvas_control_group() -> Div {
 		.bg(rgba(FIELD_MATERIAL))
 }
 
-/// Shared pane geometry. The native material owns its backing surface.
-pub(crate) fn workspace_panel_frame() -> Div {
-	gpui::div().relative().rounded(gpui::px(WORKSPACE_RADIUS)).overflow_hidden()
-}
-
-/// Reading regions use quiet framing over their existing backing surface.
+/// Reading regions and sidebars share quiet framing over the window backing.
 pub(crate) fn workspace_surface() -> Div {
-	workspace_panel_frame().bg(rgba(FIELD_MATERIAL))
+	gpui::div()
+		.relative()
+		.rounded(gpui::px(WORKSPACE_RADIUS))
+		.bg(rgba(FIELD_MATERIAL))
+		.overflow_hidden()
 }
 
 /// Keep detached workspace content on the same reading baseline as docked panes.

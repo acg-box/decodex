@@ -9,7 +9,7 @@ use gpui::{
 
 use crate::{
 	shell::agent_surface::{AgentSurface, Context, Window},
-	ui_motion,
+	ui_layout, ui_motion,
 	ui_theme::{self, WORKSPACE_GUTTER},
 };
 
@@ -40,9 +40,6 @@ impl AgentSurface {
 		let width = self.workspace_right_display_width(window);
 		let floating =
 			self.workspace_panel_floating(super::workspace_size::Panel::Right, layout, width);
-		if width <= 0.1 {
-			self.hide_workspace_material(super::workspace_size::Panel::Right, window, cx);
-		}
 		if self
 			.workspace
 			.right_content_motion
@@ -58,7 +55,7 @@ impl AgentSurface {
 			.clamp(160., 480.)
 			.min((f32::from(window.viewport_size().width) - 2. * WORKSPACE_GUTTER).max(0.));
 		self.deliveries.update(cx, |panel, cx| panel.set_width(content_width, cx));
-		ui_theme::workspace_panel_frame()
+		ui_theme::workspace_surface()
 			.id("workspace-activity-pane")
 			.debug_selector(|| "workspace-activity-pane".into())
 			.absolute()
@@ -69,13 +66,22 @@ impl AgentSurface {
 			.overflow_hidden()
 			.opacity(self.workspace.arrival.progress(0.08))
 			.when(width > 0.1, |panel| {
-				panel.child(self.workspace_material(
-					super::workspace_size::Panel::Right,
-					width,
-					content_width,
-					window,
-					cx,
-				))
+				panel.child(
+					gpui::div()
+						.absolute()
+						.right_0()
+						.top_0()
+						.bottom_0()
+						.w(gpui::px(content_width))
+						.child(
+							self.workspace_focus_region(
+								Some(super::workspace_size::Panel::Right),
+								cx,
+							),
+						)
+						.child(ui_layout::pane(self.presentations.activity.clone(), window))
+						.child(self.sidebar_resize_handle(super::workspace_size::Panel::Right, cx)),
+				)
 			})
 			.when(floating, |panel| {
 				panel.on_mouse_down_out(cx.listener(|s, event: &MouseDownEvent, window, cx| {

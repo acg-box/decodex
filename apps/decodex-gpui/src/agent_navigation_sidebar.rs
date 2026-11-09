@@ -222,14 +222,11 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) -> AnyElement {
 		let rail = ui_theme::CONVERSATION_TAB_SIZE + 2. * ui_theme::SIDEBAR_INSET;
-		let reveal = self.workspace.sidebar_reveal.borrow().clone().unwrap_or_else(|| {
-			PanelReveal::new(
-				self.workspace_sidebar_expanded(window),
-				self.workspace_sidebar_display_width(window),
-				rail,
-				self.workspace_sidebar_expanded_width(window),
-			)
-		});
+		let width = self.workspace_sidebar_display_width(window);
+		let content_width = self.workspace_sidebar_expanded_width(window);
+		let reveal =
+			PanelReveal::new(self.workspace_sidebar_expanded(window), width, rail, content_width);
+		crate::frame_trace::sidebar_geometry(width, content_width);
 		self.render_navigation_sidebar_content(reveal, window, cx)
 	}
 

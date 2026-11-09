@@ -5,7 +5,7 @@ description: "Workspace ownership, native menu focus, compositor motion, and con
 tags: [decodex, architecture, desktop, presentation]
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-09T03:03:25.717Z
+    at: 2026-11-09T03:40:28.414Z
 sources:
   - id: openwiki-source-98e7b23c4cc276d20fcb4649
     resource: repo://apps/decodex-gpui/menubar/Sources/DecodexApp/AccountControlViews.swift
@@ -103,8 +103,6 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_work_browser.rs
   - id: openwiki-source-7131f576ee57d12a847fe177
     resource: repo://apps/decodex-gpui/src/agent_work_progress.rs
-  - id: openwiki-source-6c602da679f5962984ed428d
-    resource: repo://apps/decodex-gpui/src/agent_workspace_material.rs
   - id: openwiki-source-e269da8230b6d51390181459
     resource: repo://apps/decodex-gpui/src/agent_workspace_size.rs
   - id: openwiki-source-5d032c6be684964aa2c401fa
@@ -167,6 +165,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/ui_preferences.rs
   - id: openwiki-source-570564020f98df7a4d6d0b61
     resource: repo://apps/decodex-gpui/src/ui_theme.rs
+  - id: openwiki-source-fa218a67bba67197ecf88d7b
+    resource: repo://apps/decodex-gpui/src/ui_viewport_clip.rs
   - id: openwiki-source-69e9fd7efd8c3cd616184e27
     resource: repo://crates/decodex-components/src/ragflow_service.rs
   - id: openwiki-source-052a4071b057633df77b1e21
@@ -187,7 +187,7 @@ sources:
     resource: repo://database/src/works/commands.rs
   - id: openwiki-source-8fe6f1557e5d45d88b34bd0a
     resource: repo://scripts/macos/generate_workspace_symbols.swift
-generated: { by: "codex", at: "2026-11-09T03:03:25.717Z" }
+generated: { by: "codex", at: "2026-11-09T03:40:28.414Z" }
 ---
 
 # Desktop workspace and native glass
@@ -198,11 +198,11 @@ The workspace has three responsibilities. The left sidebar locates conversations
 
 The main window can shrink to 480 by 360 points. `PanelLayout` reserves a 360-point reading width and a 40-point navigation rail. It allocates requested side panels in opening order. A second panel that does not fit floats above the center without displacing the first panel or resizing the current conversation. Both requested panels return to the layout when space becomes available. If neither can fit, only the most recently opened temporary panel is visible. Escape or a click in uncovered conversation space dismisses the temporary panels. Width preferences, Graph state and the conversation draft remain with their current owners.
 
-Both side panels use the same native MaterialSurface host with PanelStyle::Workspace in docked, floating and compact navigation states. They follow Window material and glass style, including native transparency, background blur and shared clipping motion. They add no extra workspace tint and do not use the menu opacity or vertical arrival effect. Both pane content roots share system typography through workspace_panel_content. Their content retains its full layout behind the moving edge. Placement controls allocation and dismissal, not the material. Closing and reversing a panel retain its last placement until the surface disappears. An animated width larger than a released layout slot does not change that placement. Overlay glass style follows Window glass style when no explicit override is saved; explicit Regular and Clear choices remain independent. The native composer applies a matching material, foreground and hit-region clip beneath these panels. Its complete editor layout and focus ownership stay intact. Panel shortcuts route to the persistent main workspace, while Tab and Shift-Tab move focus within the panel. The first Escape dismisses a floating panel before the normal reply-interrupt action. Drag resizing uses screen coordinates, so moving a native panel does not change the pointer delta.
+Both side panels use the original workspace_surface and its workspace field color in the main GPUI window. This applies to docked, floating and compact navigation states. Sidebars do not create separate native Liquid Glass hosts. Both content roots share system typography through workspace_panel_content, and content retains its full layout behind the moving edge. Placement controls allocation and dismissal, not the material. Closing and reversing a panel retain its last placement until the surface disappears. An animated width larger than a released layout slot does not change that placement. The input bar, activity islands and menus retain their native materials and settings. Overlay glass style follows Window glass style when no explicit override is saved; explicit Regular and Clear choices remain independent. The native composer keeps its material, foreground and hit-region clip beneath temporary sidebars. Its complete editor layout and focus ownership stay intact. Sidebar keyboard actions stay in the main workspace. The first Escape dismisses a floating panel before the normal reply-interrupt action. Drag resizing retains the shared screen-coordinate behavior.
 
 With Graph closed, **Work in progress** provides a compact disclosure above the composer. It derives rows from the selected conversation's work subtree and observed native agents, excludes completed and archived work, and opens the existing conversation on selection. It introduces no work records or execution owner. New conversations and conversations without qualifying work omit the strip. The list uses the shared control-row size and disclosure motion, with bounded height and scrolling. Work and Debug activity islands use distinct accent-colored symbols under the shared activity-island sizing contract.
 
-A placement change keeps the same native host and material. Width transitions retain that host until the visible width reaches zero; the compact navigation rail remains mounted. There is no workspace-field and glass blend. The parent workspace supplies sidebar reveal geometry. Retained sidebar and activity presentation entities use ui_layout::pane to reuse unchanged content within the same native window; state, activity animation and hover updates still invalidate it. Active accessibility uses live semantic geometry. SVG symbols therefore stay on the same surface. The glass contour and foreground mask change in one Core Animation transaction with implicit actions disabled. The native sidebar owns pointer departure in both expanded and compact states. Focused rendering tests cover unchanged content geometry across docked and floating placement, interrupted closing, and the retained compact rail.
+A placement change keeps the same workspace surface. The compact navigation rail remains in the main window. Sidebar reveal geometry comes from that window, and retained sidebar and activity presentation entities use ui_layout::pane to reuse unchanged content there. State, activity animation and hover updates still invalidate the content. Active accessibility uses live semantic geometry. The sidebar owns pointer departure in both expanded and compact states. Floating panels exclude covered reading-plane paint and hit targets through the shared Viewport mask. The native composer uses the same workspace_content_clip geometry, without changing its complete layout. Focused rendering tests cover unchanged content geometry across docked and floating placement, the absence of separate native sidebar glass, interrupted closing, the retained compact rail, and covered controls. Native activity islands still update their glass contour and foreground mask in one Core Animation transaction with implicit actions disabled.
 
 The left sidebar contains **Pin**, **Recent**, **Assistant** and **Projects**. Pin contains locally pinned conversation references. Recent contains every available unpinned conversation, without an additional item-count cutoff. Assistant collects personal topics. Projects lists registered native project directories and their independent Agent conversations. Attached Side chats remain with their source tabs. Pin has a four-row viewport; Recent and Assistant have seven-row viewports. All returned entries remain scrollable. These viewports do not enlarge the service snapshot: Work summaries retain their existing 100-record bound.
 

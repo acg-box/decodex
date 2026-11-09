@@ -50,21 +50,6 @@ pub(crate) enum Surface {
 	Popover,
 }
 
-/// Workspace panes retain their window appearance when their layout slot changes.
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub(crate) enum PanelStyle {
-	#[default]
-	Overlay,
-	Workspace,
-}
-impl PanelStyle {
-	pub(crate) fn surface(self) -> Surface {
-		match self {
-			Self::Overlay => Surface::Popover,
-			Self::Workspace => Surface::Window,
-		}
-	}
-}
 impl Surface {
 	pub(crate) const fn label(self) -> &'static str {
 		match self {
@@ -201,22 +186,7 @@ fn refresh(surface: Surface, cx: &mut App) {
 
 #[cfg(test)]
 mod tests {
-	use crate::ui_theme::material::{GlassScope, GlassStyle, Material, PanelStyle, Surface};
-
-	#[gpui::test]
-	fn workspace_material_follows_window_even_with_an_overlay_override(
-		cx: &mut gpui::TestAppContext,
-	) {
-		cx.update(|cx| {
-			Surface::Window.select(Material::Thin, cx);
-			Surface::Popover.select(Material::LiquidGlass, cx);
-			assert_eq!(PanelStyle::Workspace.surface().material(), Material::Thin);
-			assert_eq!(PanelStyle::Overlay.surface().material(), Material::LiquidGlass);
-			Surface::Window.select(Material::LiquidGlass, cx);
-			Surface::Popover.select(Material::Thin, cx);
-			assert_eq!(PanelStyle::Workspace.surface().material(), Material::LiquidGlass);
-		});
-	}
+	use crate::ui_theme::material::{GlassScope, GlassStyle, Material, Surface};
 
 	#[test]
 	fn material_names_round_trip_and_match_the_native_panel() {

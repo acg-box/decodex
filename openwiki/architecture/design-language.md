@@ -5,7 +5,7 @@ description: Reusable layout, activity-island motion, reading spacing and theme 
 tags: [desktop, design, motion, layout]
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-09T03:05:02.223Z
+    at: 2026-11-09T03:40:28.414Z
 sources:
   - id: openwiki-source-8037e2358a2c4f9b2c722a11
     resource: repo://AGENTS.md
@@ -15,6 +15,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_composer.rs
   - id: openwiki-source-079a15445a0295f222af8069
     resource: repo://apps/decodex-gpui/src/agent_model_settings.rs
+  - id: openwiki-source-ae2ce5cda718ede63f50be9b
+    resource: repo://apps/decodex-gpui/src/agent_native_composer.rs
   - id: openwiki-source-3664c9b8790465805ef686fd
     resource: repo://apps/decodex-gpui/src/agent_navigation_actions.rs
   - id: openwiki-source-c2592b96974e70b72f93f72b
@@ -33,8 +35,6 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_work_progress.rs
   - id: openwiki-source-c0e58bc836ac05c982449723
     resource: repo://apps/decodex-gpui/src/agent_workbench.rs
-  - id: openwiki-source-6c602da679f5962984ed428d
-    resource: repo://apps/decodex-gpui/src/agent_workspace_material.rs
   - id: openwiki-source-e269da8230b6d51390181459
     resource: repo://apps/decodex-gpui/src/agent_workspace_size.rs
   - id: openwiki-source-5d032c6be684964aa2c401fa
@@ -89,7 +89,7 @@ sources:
     resource: repo://codex-runtime.lock.json
   - id: openwiki-source-a490ea3fbcddb9c007caf196
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_context_tests.rs
-generated: { by: "codex", at: "2026-11-09T03:03:25.717Z" }
+generated: { by: "codex", at: "2026-11-09T03:40:28.414Z" }
 ---
 
 # Interface geometry and motion
@@ -123,15 +123,15 @@ Lay out detail text and metric columns at the complete content width. Clip that 
 
 The main window accepts sizes down to 480 by 360 points. Reserve a 360-point reading width before allocating persistent side panels. Keep the panel that was open first in the layout. If the other panel cannot fit, show it above the reading plane without moving the first panel or narrowing the conversation. Resizing to a wider window restores both requested panels to the layout. In a very narrow window that cannot fit either panel, show only the most recently opened temporary surface.
 
-Use the same 8-point outer gutter and 16-point corner radius for both side panels. Their requested width is between 160 and 480 points, constrained by the window. Keep the complete panel content layout behind the animated clipping edge. Both panels use one `ui_motion::MaterialSurface` host with `PanelStyle::Workspace` in every placement, including the compact navigation rail. Follow the Window material and glass style without an extra workspace tint. Both content roots use the same system font, 12.5-point body size and 19-point line height. The existing clipping transition owns their motion; workspace panes do not add the menu opacity or vertical arrival effect. AppKit supplies the transparent material and background blur. The shared host keeps the complete foreground canvas and clips its material and input region together. Escape first dismisses a temporary surface before it can interrupt a reply. A click in the uncovered reading plane also dismisses it. Surface shortcuts return to the main workspace owner. Preserve the docked panel, Graph state and conversation draft.
+Use the same 8-point outer gutter and 16-point corner radius for both side panels. Their requested width is between 160 and 480 points, constrained by the window. Keep the complete panel content layout behind the animated clipping edge. Both panels use the original `ui_theme::workspace_surface` and its workspace field color in the main GPUI window, including floating panels and the compact navigation rail. Do not create a separate native Liquid Glass surface for a sidebar. Both content roots use the same system font, 12.5-point body size and 19-point line height. The existing clipping transition owns their motion. Escape first dismisses a temporary panel before it can interrupt a reply. A click in the uncovered reading plane also dismisses it. Preserve the docked panel, Graph state and conversation draft.
 
 Docked and floating placement changes allocation and dismissal, not the material or typography. Keep the placement state during closing and a reversal. Do not infer floating placement from a difference between the animated width and the target layout slot: closing releases that slot before the visible panel has disappeared.
 
-Keep the same native host while a panel changes placement or width. Remove it only when the panel reaches zero width; the compact navigation rail keeps its host. Do not blend between separate workspace and floating materials. The parent workspace supplies sidebar reveal geometry. `ui_layout::pane` can reuse an unchanged presentation within that native window while the outer clip moves. State changes, activity animation and hover updates invalidate the presentation normally. Active accessibility uses a live semantic tree. SVG symbols stay with the same native surface. The native sidebar owns pointer departure in both expanded and compact states.
+Keep the same workspace surface while a panel changes placement or width. Do not blend between separate workspace and floating materials. The sidebar derives its reveal geometry from the main window and uses the shared viewport mask. `ui_layout::pane` can reuse an unchanged presentation in that window. State changes, activity animation and hover updates invalidate the presentation normally. Active accessibility uses a live semantic tree. The sidebar itself owns pointer departure in both expanded and compact states. The input bar, activity islands and menus retain their separate native material behavior.
 
 An unset Overlay glass style inherits Window glass style, including later changes. An explicit Regular or Clear override remains independent. The inherited value does not create a saved override.
 
-The native composer keeps its full layout behind temporary panels. Clip its material, foreground and pointer region to the uncovered area; do not resize or recreate its text editor. Graph expansion retains navigation and collaboration panels. Explicit conversation focus mode can still hide the side panels.
+Floating sidebars clip the covered reading plane, including its background, Graph, text and pointer regions, without changing its layout. This keeps underlying text out of the sidebar without changing its material. The native composer uses the same exclusion geometry for its material, foreground and pointer region; do not resize or recreate its text editor. Graph expansion retains navigation and collaboration panels. Explicit conversation focus mode can still hide the side panels.
 
 When Graph is hidden, an existing conversation with unfinished scoped work can show **Work in progress** above the composer. Use the shared 28-point control height, 14-point Work symbol and intrinsic disclosure motion. Include unfinished tasks and observed native agents from the current conversation's work subtree. Do not insert example work. Limit the expanded list to one quarter of the window height, between two and six control rows, and scroll extra rows. A row opens the existing conversation. Hide the strip in a new conversation or when there is no matching work.
 

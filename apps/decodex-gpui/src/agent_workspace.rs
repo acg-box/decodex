@@ -1176,7 +1176,6 @@ impl AgentSurface {
 			ui_motion::request_frame(window, cx);
 		}
 		if connecting {
-			self.hide_workspace_materials(window, cx);
 			let unavailable =
 				matches!(self.displayed_load_state(), LoadState::Unavailable | LoadState::Stale);
 
@@ -1478,6 +1477,13 @@ impl AgentSurface {
 			.flex_col()
 			.children(self.background_voice_toolbar(cx))
 			.child(center);
+		// Floating panes reveal the same backing as docked panes. Clip the
+		// covered reading plane instead of changing the sidebar's material.
+		let content_viewport = ui_motion::Viewport::from_bounds(self.workspace_content_clip(
+			gpui::Bounds::new(gpui::point(gpui::px(0.), gpui::px(0.)), window.viewport_size()),
+			window,
+		));
+		let center = content_viewport.clip(0., center);
 		let right_width = ui_motion::direct_value(
 			"agent-tree-panel",
 			self.agent_tree_width(window),

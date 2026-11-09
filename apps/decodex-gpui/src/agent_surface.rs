@@ -80,7 +80,6 @@ mod native_menu;
 #[path = "agent_work_board.rs"] mod work_board;
 #[path = "agent_work_browser.rs"] mod work_browser;
 #[path = "agent_workspace.rs"] mod workspace;
-#[path = "agent_workspace_material.rs"] mod workspace_material;
 #[path = "agent_workspace_size.rs"] mod workspace_size;
 
 use std::{
@@ -2776,7 +2775,6 @@ struct WorkspaceView {
 	sidebar_content_motion: RefCell<Option<Tween>>,
 	right_content_motion: RefCell<Option<Tween>>,
 	panel_floating_modes: Cell<[bool; 2]>,
-	sidebar_reveal: RefCell<Option<ui_motion::PanelReveal>>,
 	panel_priority: workspace_size::Panel,
 	last_opened_panel: workspace_size::Panel,
 	work_progress_expanded: bool,
@@ -2843,7 +2841,6 @@ impl Default for WorkspaceView {
 			sidebar_content_motion: Default::default(),
 			right_content_motion: Default::default(),
 			panel_floating_modes: Default::default(),
-			sidebar_reveal: Default::default(),
 			panel_priority: workspace_size::Panel::Left,
 			last_opened_panel: workspace_size::Panel::Right,
 			work_progress_expanded: false,

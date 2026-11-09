@@ -19,7 +19,7 @@ use serde_json::Value;
 
 use crate::ui_theme::{
 	self,
-	material::{GlassScope, GlassStyle, Material, PanelStyle, Surface},
+	material::{GlassScope, GlassStyle, Material, Surface},
 };
 
 /// Reduced transparency keeps selection menus readable with the flat material.
@@ -40,7 +40,6 @@ thread_local! {
 /// Owns composition separately from the editor and its window lifecycle.
 pub(crate) struct MaterialPanel {
 	surface: Surface,
-	style: PanelStyle,
 	material: Material,
 	radius: f64,
 	host: Retained<NSView>,
@@ -69,18 +68,6 @@ impl MaterialPanel {
 
 	pub(crate) fn install_popover(parent: &Window, window: &mut Window) -> Option<Self> {
 		Self::install_surface(parent, window, Surface::Popover, f64::from(ui_theme::POPOVER_RADIUS))
-	}
-
-	pub(crate) fn set_style(&mut self, style: PanelStyle) {
-		if self.style == style {
-			return;
-		}
-		self.style = style;
-		self.refresh_material();
-	}
-
-	fn appearance(&self) -> Surface {
-		if self.surface == Surface::InputBar { self.surface } else { self.style.surface() }
 	}
 
 	pub(crate) fn set_radius(&mut self, radius: f64) {
@@ -202,7 +189,6 @@ impl MaterialPanel {
 
 			Some(Self {
 				surface,
-				style: Default::default(),
 				material,
 				radius,
 				host,
@@ -225,7 +211,7 @@ impl MaterialPanel {
 
 	/// Replace only the material host; the editor view and its focus stay intact.
 	pub(crate) fn refresh_material(&mut self) {
-		let surface = self.appearance();
+		let surface = self.surface;
 		let material = panel_material(surface);
 
 		if self.material == material {
@@ -450,7 +436,7 @@ impl MaterialPanel {
 				}
 			}
 			self.refresh_shadow();
-			if crate::ui_frame::reduced() || self.style == PanelStyle::Workspace {
+			if crate::ui_frame::reduced() {
 				return;
 			}
 			unsafe {

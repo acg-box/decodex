@@ -17,6 +17,7 @@ use crate::{
 			graph::{self, Node},
 		},
 	},
+	ui_layout,
 	ui_motion::{self, Tween},
 	ui_theme::{
 		self, ACCENT, CONVERSATION_HEADER_HEIGHT, CONVERSATION_TAB_SIZE, PANEL_DIVIDER,
@@ -369,7 +370,7 @@ impl AgentSurface {
 
 	/// Keep the native child window behind temporary workspace panels without
 	/// changing the editor's layout or its input state.
-	pub(super) fn workspace_composer_clip(
+	pub(super) fn workspace_content_clip(
 		&self,
 		bounds: gpui::Bounds<gpui::Pixels>,
 		window: &Window,
@@ -483,9 +484,6 @@ impl AgentSurface {
 		let width = self.workspace_sidebar_display_width(window);
 		let layout = self.workspace_panel_layout(window);
 		let floating = self.workspace_panel_floating(Panel::Left, layout, width);
-		if width <= 0.1 {
-			self.hide_workspace_material(Panel::Left, window, cx);
-		}
 		if self
 			.workspace
 			.sidebar_content_motion
@@ -495,7 +493,7 @@ impl AgentSurface {
 		{
 			ui_motion::request_frame(window, cx);
 		}
-		ui_theme::workspace_panel_frame()
+		ui_theme::workspace_surface()
 			.id("workspace-navigation-pane")
 			.debug_selector(|| "workspace-navigation-pane".into())
 			.absolute()
@@ -510,17 +508,19 @@ impl AgentSurface {
 					s.sidebar_hover(true, cx);
 				}
 			}))
+			.on_hover(cx.listener(|s, hovered: &bool, _, cx| {
+				if !hovered {
+					s.sidebar_hover(false, cx);
+				}
+			}))
 			.capture_any_mouse_down(
 				cx.listener(|s, _, _, _| s.workspace.focused_panel = Some(Panel::Left)),
 			)
 			.when(width > 0.1, |panel| {
-				panel.child(self.workspace_material(
-					Panel::Left,
-					width,
-					self.workspace_sidebar_expanded_width(window),
-					window,
-					cx,
-				))
+				panel.child(ui_layout::pane(self.presentations.sidebar.clone(), window))
+			})
+			.when(width > 0.1 && self.workspace.sidebar_visible, |panel| {
+				panel.child(self.sidebar_resize_handle(Panel::Left, cx))
 			})
 			.when(floating, |panel| {
 				panel.on_mouse_down_out(cx.listener(|s, event: &MouseDownEvent, window, cx| {
@@ -1530,7 +1530,9 @@ mod tests {
 	}
 
 	#[gpui::test]
-	fn docked_and_floating_panels_keep_the_same_material_surface(cx: &mut gpui::TestAppContext) {
+	fn docked_and_floating_panels_use_workspace_content_without_native_glass(
+		cx: &mut gpui::TestAppContext,
+	) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 		visual.simulate_resize(gpui::size(gpui::px(1400.), gpui::px(720.)));
 		surface.update(visual, |s, cx| s.visual_workspace_fixture(cx));
@@ -1539,43 +1541,14 @@ mod tests {
 		for width in [800., 1400., 800., 1200.] {
 			visual.simulate_resize(gpui::size(gpui::px(width), gpui::px(720.)));
 			visual.update(crate::ui_frame::draw_current_frame);
-			assert!(visual.debug_bounds("workspace-navigation-material").is_some());
-			assert!(visual.debug_bounds("workspace-activity-material").is_some());
+			assert!(visual.debug_bounds("workspace-navigation-material").is_none());
+			assert!(visual.debug_bounds("workspace-activity-material").is_none());
+			assert!(visual.debug_bounds("navigation-command-entry").is_some());
+			assert!(
+				visual.debug_bounds("workspace-activity-pane").unwrap().size.width > gpui::px(0.)
+			);
 			assert_eq!(visual.debug_bounds("workbench-body").unwrap().size, content);
 		}
-	}
-
-	#[gpui::test]
-	fn panel_material_stays_mounted_through_collapse_and_reversal(cx: &mut gpui::TestAppContext) {
-		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
-		visual.simulate_resize(gpui::size(gpui::px(1400.), gpui::px(720.)));
-		surface.update(visual, |s, cx| s.visual_workspace_fixture(cx));
-		visual.update(crate::ui_frame::draw_current_frame);
-		assert!(visual.debug_bounds("workspace-activity-material").is_some());
-		surface.update(visual, |s, cx| s.toggle_agent_tree(cx));
-		visual.update(crate::ui_frame::draw_current_frame);
-		thread::sleep(std::time::Duration::from_millis(70));
-		visual.update(crate::ui_frame::draw_current_frame);
-		assert!(visual.debug_bounds("workspace-activity-material").is_some());
-		surface.update(visual, |s, cx| s.toggle_agent_tree(cx));
-		visual.update(crate::ui_frame::draw_current_frame);
-		assert!(visual.debug_bounds("workspace-activity-material").is_some());
-		thread::sleep(std::time::Duration::from_millis(240));
-		visual.update(crate::ui_frame::draw_current_frame);
-		surface.update(visual, |s, cx| s.toggle_agent_tree(cx));
-		visual.update(crate::ui_frame::draw_current_frame);
-		thread::sleep(std::time::Duration::from_millis(240));
-		visual.update(crate::ui_frame::draw_current_frame);
-		assert!(visual.debug_bounds("workspace-activity-material").is_none());
-		surface.update(visual, |s, cx| s.toggle_workspace_sidebar(cx));
-		visual.update(crate::ui_frame::draw_current_frame);
-		thread::sleep(std::time::Duration::from_millis(240));
-		visual.update(crate::ui_frame::draw_current_frame);
-		assert!(visual.debug_bounds("workspace-navigation-material").is_some());
-		assert_eq!(
-			visual.debug_bounds("navigation-content-canvas").unwrap().size.width,
-			gpui::px(40.)
-		);
 	}
 
 	#[gpui::test]
@@ -1623,7 +1596,7 @@ mod tests {
 					gpui::point(gpui::px(264.), gpui::px(500.)),
 					gpui::size(gpui::px(512.), gpui::px(100.)),
 				);
-				let clip = s.workspace_composer_clip(editor, window);
+				let clip = s.workspace_content_clip(editor, window);
 				assert_eq!(clip.origin, gpui::point(gpui::px(0.), gpui::px(0.)));
 				assert_eq!(clip.size.width, gpui::px(288.));
 				assert_eq!(clip.size.height, editor.size.height);
@@ -1633,7 +1606,7 @@ mod tests {
 				s.dismiss_workspace_overlays(window, cx);
 				assert!(s.workspace.sidebar_visible && !s.workspace.agent_tree_visible);
 				s.workspace.right_content_motion = Default::default();
-				assert_eq!(s.workspace_composer_clip(editor, window).size, editor.size);
+				assert_eq!(s.workspace_content_clip(editor, window).size, editor.size);
 			})
 		});
 	}
