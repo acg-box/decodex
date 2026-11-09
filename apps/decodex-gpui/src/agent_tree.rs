@@ -40,10 +40,10 @@ impl AgentSurface {
 		let width = self.workspace_right_display_width(window);
 		let floating =
 			self.workspace_panel_floating(super::workspace_size::Panel::Right, layout, width);
-		let bottom = ui_motion::direct_value(
+		let bottom = ui_motion::revealed_value(
 			"activity-panel-bottom",
 			self.workspace_panel_bottom(floating),
-			false,
+			width > 0.1,
 			window,
 			cx,
 		);

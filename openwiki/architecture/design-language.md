@@ -5,7 +5,7 @@ description: Reusable layout, activity-island motion, reading spacing and theme 
 tags: [desktop, design, motion, layout]
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-09T04:05:52.249Z
+    at: 2026-11-09T05:41:00.802Z
 sources:
   - id: openwiki-source-8037e2358a2c4f9b2c722a11
     resource: repo://AGENTS.md
@@ -89,7 +89,7 @@ sources:
     resource: repo://codex-runtime.lock.json
   - id: openwiki-source-a490ea3fbcddb9c007caf196
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_context_tests.rs
-generated: { by: "codex", at: "2026-11-09T04:05:52.249Z" }
+generated: { by: "codex", at: "2026-11-09T05:41:00.802Z" }
 ---
 
 # Interface geometry and motion
@@ -131,7 +131,7 @@ Keep the same workspace surface while a panel changes placement or width. Do not
 
 An unset Overlay glass style inherits Window glass style, including later changes. An explicit Regular or Clear override remains independent. The inherited value does not create a saved override.
 
-Floating sidebars end above the complete composer area, including Work in progress and conversation feedback. They cover the reading plane without changing its width. Clip covered Graph, history and pointer regions only; keep the composer outside that mask. The input, model controls and Send action remain visible and usable even at the minimum window size. Shared panel motion controls the lower edge. Graph expansion retains navigation and collaboration panels. Explicit conversation focus mode can still hide the side panels.
+Floating sidebars end above the complete composer area, including Work in progress and conversation feedback. They cover the reading plane without changing its width. Clip covered Graph, history and pointer regions only; keep the composer outside that mask. The input, model controls and Send action remain visible and usable even at the minimum window size. Use `ui_motion::revealed_value` for the lower edge. A panel that opens into a known floating placement starts at its calculated height, without a separate lower-edge transition. Animate later height changes while the panel is already visible, such as a docked panel becoming floating. Closing and reversal retain continuity until the panel reaches its closed state. Graph expansion retains navigation and collaboration panels. Explicit conversation focus mode can still hide the side panels.
 
 The native composer uses one selected system material. Do not add a second GPUI background fill or a window backdrop below it. Text and controls use the current theme. Measure the native content at the latest parent anchor width before painting so the content, glass contour and input region stay aligned during resize. Retain the editor and its focus.
 

@@ -793,6 +793,32 @@ pub(crate) fn direct_value(
 	value
 }
 
+/// Resolve geometry before revealing a surface. Ease later changes only while
+/// it remains visible, including an interrupted close or placement change.
+pub(crate) fn revealed_value(
+	id: impl Into<ElementId>,
+	target: f32,
+	visible: bool,
+	window: &mut Window,
+	cx: &mut App,
+) -> f32 {
+	let state = window.use_keyed_state(id.into(), cx, |_, _| (false, Tween::new(target)));
+	let now = Instant::now();
+	let (value, moving) = state.update(cx, |(was_visible, tween), _| {
+		if !visible || !*was_visible {
+			*tween = Tween::new(target);
+		} else {
+			tween.target(target, now);
+		}
+		*was_visible = visible;
+		(tween.sample(now), tween.moving(now))
+	});
+	if moving {
+		request_frame(window, cx);
+	}
+	value
+}
+
 pub(crate) fn arrival(route: String, child: impl IntoElement) -> Arrival {
 	Arrival { route, child: child.into_any_element() }
 }

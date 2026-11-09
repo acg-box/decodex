@@ -497,10 +497,10 @@ impl AgentSurface {
 		let width = self.workspace_sidebar_display_width(window);
 		let layout = self.workspace_panel_layout(window);
 		let floating = self.workspace_panel_floating(Panel::Left, layout, width);
-		let bottom = ui_motion::direct_value(
+		let bottom = ui_motion::revealed_value(
 			"navigation-panel-bottom",
 			self.workspace_panel_bottom(floating),
-			false,
+			width > CONVERSATION_TAB_SIZE + 2. * SIDEBAR_INSET + 0.1,
 			window,
 			cx,
 		);
@@ -1590,6 +1590,76 @@ mod tests {
 				assert!(s.workspace.graph_visible);
 			})
 		});
+	}
+
+	#[gpui::test]
+	fn opening_a_floating_panel_uses_its_final_bottom_from_the_first_frame(
+		cx: &mut gpui::TestAppContext,
+	) {
+		for panel in [Panel::Left, Panel::Right] {
+			let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+			visual.simulate_resize(gpui::size(gpui::px(800.), gpui::px(620.)));
+			surface.update(visual, |s, cx| {
+				s.visual_workspace_fixture(cx);
+				s.workspace.sidebar_width = 240.;
+				s.workspace.agent_panel_width = 240.;
+				s.workspace.sidebar_visible = panel != Panel::Left;
+				s.workspace.agent_tree_visible = panel != Panel::Right;
+				s.workspace.panel_priority =
+					if panel == Panel::Left { Panel::Right } else { Panel::Left };
+			});
+			visual.update(crate::ui_frame::draw_current_frame);
+			surface.update(visual, |s, cx| match panel {
+				Panel::Left => s.toggle_workspace_sidebar(cx),
+				Panel::Right => s.toggle_agent_tree(cx),
+				Panel::Bottom => unreachable!(),
+			});
+			let selector = if panel == Panel::Left {
+				"workspace-navigation-pane"
+			} else {
+				"workspace-activity-pane"
+			};
+			for delay in [0, 40] {
+				thread::sleep(std::time::Duration::from_millis(delay));
+				visual.update(crate::ui_frame::draw_current_frame);
+				let pane = visual.debug_bounds(selector).unwrap();
+				let input = visual.debug_bounds("agent-composer").unwrap();
+				assert!(pane.bottom() <= input.top(), "opening must not retract the lower edge");
+			}
+		}
+	}
+
+	#[gpui::test]
+	fn an_open_panel_animates_its_bottom_when_it_becomes_floating(cx: &mut gpui::TestAppContext) {
+		for panel in [Panel::Left, Panel::Right] {
+			let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+			visual.simulate_resize(gpui::size(gpui::px(1200.), gpui::px(620.)));
+			surface.update(visual, |s, cx| {
+				s.visual_workspace_fixture(cx);
+				s.workspace.sidebar_width = 240.;
+				s.workspace.agent_panel_width = 240.;
+				s.workspace.sidebar_visible = true;
+				s.workspace.agent_tree_visible = true;
+				s.workspace.panel_priority =
+					if panel == Panel::Left { Panel::Right } else { Panel::Left };
+			});
+			visual.update(crate::ui_frame::draw_current_frame);
+			let selector = if panel == Panel::Left {
+				"workspace-navigation-pane"
+			} else {
+				"workspace-activity-pane"
+			};
+			let before = visual.debug_bounds(selector).unwrap().bottom();
+			visual.simulate_resize(gpui::size(gpui::px(800.), gpui::px(620.)));
+			visual.update(crate::ui_frame::draw_current_frame);
+			let first = visual.debug_bounds(selector).unwrap().bottom();
+			let input = visual.debug_bounds("agent-composer").unwrap();
+			assert!(first <= before, "floating retracts the existing lower edge");
+			assert!(first > input.top() + gpui::px(20.), "an exposed panel must animate");
+			thread::sleep(crate::ui_theme::MOTION_PANEL + std::time::Duration::from_millis(40));
+			visual.update(crate::ui_frame::draw_current_frame);
+			assert!(visual.debug_bounds(selector).unwrap().bottom() <= input.top());
+		}
 	}
 
 	#[gpui::test]
