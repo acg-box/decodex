@@ -1,18 +1,18 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:dce478cf3a72227be582428ef568ca72368d859a014d461d64b02bb14a97e185",
+  "pageVersion": "sha256:798d081feb03f7ac7665459de93243fdf33fa94ab266783a16883a60d4c38e4a",
   "claims": [
     {
       "id": "claim_b70a9c3fa68642d29871a42ed05c1114",
-      "statement": "Activity islands share a 28-point collapsed height, minimum 72-point content width on an 8-point grid, at least 208-point compact width on a 16-point grid, and at least 288-point expanded width on a 32-point grid.",
+      "statement": "Activity islands share a 28-point collapsed height and minimum 72-point width. Compact and expanded widths are measured from actual content and rounded to the shared 8-point grid, without fixed 208-point or 288-point minimums.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/ui_live_activity.rs",
-          "version": "repo-file-v1:sha256:b5b0926468293b521bb6a9a2f37869adb49c8bf83cace9b03e640f7c636b39c5"
+          "version": "repo-file-v1:sha256:833ff11a9ddf9354d3ed7488c9144ce10ffb7f43c40b7afa2357079bcb245398"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/ui_theme.rs",
-          "version": "repo-file-v1:sha256:7cc2885f0d64e4acb9ac41966e8c7a3bedb06bd45130dc058d03df7fbf02f8d9"
+          "resource": "repo://apps/decodex-gpui/src/ui_performance_readout.rs",
+          "version": "repo-file-v1:sha256:02e4bac44a55427f65a40f21aa980fede13392ae09a32892baec0f6d49c5e769"
         }
       ]
     },
@@ -22,25 +22,25 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/ui_live_activity.rs",
-          "version": "repo-file-v1:sha256:b5b0926468293b521bb6a9a2f37869adb49c8bf83cace9b03e640f7c636b39c5"
+          "version": "repo-file-v1:sha256:833ff11a9ddf9354d3ed7488c9144ce10ffb7f43c40b7afa2357079bcb245398"
         }
       ]
     },
     {
       "id": "claim_af2b7044ca88480d956d000c1d86548e",
-      "statement": "Only the selected activity expands, using all remaining available width after peers retain their minimum widths. Paired resting anchors stay fixed while they fit; the pair translates only enough to keep its current animated extents inside the available boundary. A single activity stays centered, and expanded, compact or minimal presentation follows the complete available budget.",
+      "statement": "Only one activity expands at a time. Paired activities use equal fixed slots and a 6-point gap, keeping their inner anchors stable across selection and metric digit changes. They expand outward within their respective half of the available space; a single activity stays centered and smaller tiers are used if the complete detail grid cannot fit.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/ui_live_activity.rs",
-          "version": "repo-file-v1:sha256:b5b0926468293b521bb6a9a2f37869adb49c8bf83cace9b03e640f7c636b39c5"
+          "version": "repo-file-v1:sha256:833ff11a9ddf9354d3ed7488c9144ce10ffb7f43c40b7afa2357079bcb245398"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_performance.rs",
-          "version": "repo-file-v1:sha256:1448810d6d221cdb723f890095c3aee9fcba7a5f77b496652fe195ea6987a526"
+          "version": "repo-file-v1:sha256:0d2762472cc66ad118685fd7e08c818ac86f6d13a4c09f802a33ef960513c154"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_performance_tests.rs",
-          "version": "repo-file-v1:sha256:55d104746b6b040132074b3d7864d46d0c8e65d79894f877d4494c91be6babc2"
+          "version": "repo-file-v1:sha256:e806513db2bd38bf18bf9e39bee2062f688dba5c86923c7d3eaf71bfe87122d9"
         }
       ]
     },
@@ -57,8 +57,8 @@
           "version": "repo-lines-v1:sha256:67207066bf577d0cc362bf8a55fe29b843f72b97ccb937bf8410b435c9685f2d:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEwLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI5ODZjMzEzYjVmZWQyNzU4YmUwNzRhMzhmYzViMzUwNjY3NjMyYjY5MWI2YzA2NWMwZWQ5ZDhiYjIwNTI4ODAyIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI2N2NkYTgyZGE2MDYyMzhlMDVlNjIzOTk1NjljNWVlMDM5OTM0MTk2NDhhZTVkNDNhMmJmOGNkNjM0N2Y4MjYzIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI0ODVhMGEwYjMxOGZiOThkOTAxZDBkOTE2YjYwNGNiMDVjMDUwYjc0YzQwMjhkZjY5YzI0YzAxYWNlZmE0MDY4IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJiZTQ4ZDg5ZTg5YjAzNjg0YmU3NGE3ZDg4M2NhMTYzOGFiYTg4MzY0NGVmNDE5MzkxNWMyZDIxYmE0MGFjMmFkIn0"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/ui_performance_readout.rs#L460-L555",
-          "version": "repo-lines-v1:sha256:809482d23fe25dd3994ae3acff20ea4ffc50cab5d60469d87b1a6dd48806142d:eyJzZWxlY3RlZExpbmVDb3VudCI6OTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkwZDA3YjY2MThmODJjZDExMWZmMjMyNWIzYTdlZGNkZWM1NGYzMjcwYmEyYmY5ODQ0MmVmZjE5ZjE1MGE5NWUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU1OGVhY2I1MTU1MjY5YzhhMzUwNGRjZTNhMmQ4YTkzZmI3ZDMwNTY3YjQ4NGEyOGQzNjU5YTBhMzUxMGE1YWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImMxNzQ5NmEzYjkxZWY4OTY2YTBmYTc5NmE4ZWZjOWJjNzkyMDFhMzRhMzc0NDM0NDQ4NWM0YjY1Y2ViZjNlNjMifQ"
+          "resource": "repo://apps/decodex-gpui/src/ui_performance_readout.rs#L464-L559",
+          "version": "repo-lines-v1:sha256:6d68d8fdb6f8f0da8c944d00b2bac4d2403ddae630efcbd2fa5748435c15b8bc:eyJzZWxlY3RlZExpbmVDb3VudCI6OTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkwZDA3YjY2MThmODJjZDExMWZmMjMyNWIzYTdlZGNkZWM1NGYzMjcwYmEyYmY5ODQ0MmVmZjE5ZjE1MGE5NWUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU1OGVhY2I1MTU1MjY5YzhhMzUwNGRjZTNhMmQ4YTkzZmI3ZDMwNTY3YjQ4NGEyOGQzNjU5YTBhMzUxMGE1YWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImMxNzQ5NmEzYjkxZWY4OTY2YTBmYTc5NmE4ZWZjOWJjNzkyMDFhMzRhMzc0NDM0NDQ4NWM0YjY1Y2ViZjNlNjMifQ"
         }
       ]
     },
@@ -438,11 +438,11 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/ui_live_activity.rs",
-          "version": "repo-file-v1:sha256:b5b0926468293b521bb6a9a2f37869adb49c8bf83cace9b03e640f7c636b39c5"
+          "version": "repo-file-v1:sha256:833ff11a9ddf9354d3ed7488c9144ce10ffb7f43c40b7afa2357079bcb245398"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_performance_readout.rs",
-          "version": "repo-file-v1:sha256:470d1bbe1e8edde0826c3c36b46d3319b4e484e85e82dcdca56fa3efe252070f"
+          "version": "repo-file-v1:sha256:02e4bac44a55427f65a40f21aa980fede13392ae09a32892baec0f6d49c5e769"
         }
       ]
     },
@@ -733,10 +733,20 @@
           "version": "repo-file-v1:sha256:373641361299b932c5f785b3252a98b83f18d0dea84d9584fff5198070e3b689"
         }
       ]
+    },
+    {
+      "id": "claim_9cfbe8edadfb4f5e8f0c588721fd1206",
+      "statement": "The idle Work header does not reserve or render a hidden generation-rate field. Header and detail measurement retain actual metric values and a legible compact sparkline.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/ui_performance_readout.rs",
+          "version": "repo-file-v1:sha256:02e4bac44a55427f65a40f21aa980fede13392ae09a32892baec0f6d49c5e769"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.9.0",
-    "at": "2026-11-09T06:32:42.102Z"
+    "at": "2026-11-09T06:37:11.127Z"
   }
 }

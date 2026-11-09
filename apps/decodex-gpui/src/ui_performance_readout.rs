@@ -167,7 +167,11 @@ impl Content {
 			width("activity-width-total-value", &tokens(&data.total), TEXT_SIZE, FontWeight::MEDIUM)
 		};
 		data.header_widths = [primary, total_label + 4., total_value];
-		let compact = primary + 16. + total_label + 4. + total_value + FRAME;
+		let compact = if data.idle_total() {
+			total_label + 4. + total_value + FRAME
+		} else {
+			primary + 16. + total_label + 4. + total_value + FRAME
+		};
 		let longest = |get: fn(&Live) -> String| {
 			data.rows.iter().map(get).max_by_key(String::len).unwrap_or_default()
 		};
@@ -272,7 +276,7 @@ impl Content {
 		];
 
 		// The sparkline gets enough space to show its measured history.
-		let details = data.columns[0] + data.columns[1].max(96.) + COLUMN_GAP + FRAME;
+		let details = data.columns[0] + data.columns[1].max(64.) + COLUMN_GAP + FRAME;
 
 		data.sizing = Sizing::content(minimal + ICON_SLOT, compact + ICON_SLOT, details);
 
@@ -514,11 +518,11 @@ fn work_header(data: &Work, fraction: f32, width: f32) -> AnyElement {
 	} else {
 		(width - primary) / 2. * (1. - fraction) + INSET * fraction
 	};
-	let secondary_opacity = separated_opacity(
-		fraction,
-		total_position - label - primary_position - primary,
-		COLUMN_GAP,
-	);
+	let secondary_opacity = if data.idle_total() {
+		separated_opacity(fraction, total_position - label - INSET, 4.)
+	} else {
+		separated_opacity(fraction, total_position - label - primary_position - primary, COLUMN_GAP)
+	};
 	let primary_view = gpui::div()
 		.debug_selector(|| "activity-live-rate".into())
 		.w(gpui::px(primary))
@@ -527,7 +531,7 @@ fn work_header(data: &Work, fraction: f32, width: f32) -> AnyElement {
 	gpui::div()
 		.relative()
 		.size_full()
-		.children((!data.idle_total() || fraction > 0.).then(|| {
+		.children((!data.idle_total()).then(|| {
 			header_slot(
 				primary_position,
 				primary,

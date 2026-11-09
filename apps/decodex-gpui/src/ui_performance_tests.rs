@@ -162,8 +162,25 @@ fn paired_islands_expand_in_the_available_space_and_keep_their_details_visible(
 	visual.simulate_resize(gpui::size(gpui::px(800.), gpui::px(620.)));
 	let island = root.read_with(visual, |root, _| root.0.clone());
 	visual.update(crate::ui_frame::draw_frame);
-	for activity in [Activity::Debug, Activity::Work] {
+	let work_anchor = visual.debug_bounds("activity-work-control").unwrap().right();
+	let debug_anchor = visual.debug_bounds("activity-debug-control").unwrap().left();
+	for (index, activity) in
+		[Activity::Debug, Activity::Work, Activity::Debug, Activity::Work].into_iter().enumerate()
+	{
 		island.update(visual, |s, cx| {
+			if index == 2 {
+				s.metrics.fps = 165.;
+				s.set_work(
+					Some(Summary {
+						samples: vec![Sample {
+							tokens: Some(98_765_432_100),
+							..Default::default()
+						}],
+						..Default::default()
+					}),
+					cx,
+				);
+			}
 			s.toggle(activity);
 			cx.notify();
 		});
@@ -180,6 +197,14 @@ fn paired_islands_expand_in_the_available_space_and_keep_their_details_visible(
 		assert!(panel.size.height > gpui::px(100.), "both islands must expose their full details");
 		assert!(panel.left() >= gpui::px(190.) && panel.right() <= gpui::px(610.));
 		assert!(panel.right() <= peer.left() || peer.right() <= panel.left());
+		assert!(
+			(visual.debug_bounds("activity-work-control").unwrap().right() - work_anchor).abs()
+				<= gpui::px(0.5)
+		);
+		assert!(
+			(visual.debug_bounds("activity-debug-control").unwrap().left() - debug_anchor).abs()
+				<= gpui::px(0.5)
+		);
 	}
 	ui_performance::preference(Some(false));
 }
@@ -634,7 +659,7 @@ fn expanded_details_and_chart_fit_inside_the_compact_capsule(cx: &mut TestAppCon
 
 	assert_eq!(chart.top(), draw.top());
 	assert_eq!(chart.left() - draw.right(), gpui::px(16.));
-	assert!(chart.size.width >= gpui::px(96.));
+	assert!(chart.size.width >= gpui::px(64.));
 	assert_eq!(
 		visual.debug_bounds("performance-fps-label").unwrap().left(),
 		draw.left() + gpui::px(crate::ui_live_activity::ICON_SLOT)
@@ -656,7 +681,10 @@ fn expanded_details_and_chart_fit_inside_the_compact_capsule(cx: &mut TestAppCon
 		assert!(unit.left() >= capsule.left() && unit.right() <= capsule.right());
 	}
 	assert_eq!(capsule.size.height, gpui::px(140.));
-	assert_eq!(capsule.size.width, gpui::px(crate::ui_live_activity::EXPANDED_WIDTH));
+	assert!(
+		capsule.size.width <= gpui::px(240.),
+		"ordinary metrics should not reserve a wide empty panel"
+	);
 	assert!(visual.debug_bounds("performance-island-note").is_none());
 
 	ui_performance::preference(Some(false));
@@ -709,10 +737,8 @@ fn metric_columns_fit_their_content_and_adapt_together_for_wider_values(cx: &mut
 
 	let after = visual.debug_bounds("performance-island").unwrap();
 
-	assert_eq!(
-		after.size.width, before.size.width,
-		"value updates stay within their reserved size tier"
-	);
+	assert!(after.size.width > before.size.width, "wide values receive their measured width");
+	assert_eq!(after.size.height, before.size.height);
 
 	for id in ids {
 		let bounds = visual.debug_bounds(id).unwrap();

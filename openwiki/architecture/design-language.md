@@ -5,7 +5,7 @@ description: Reusable layout, activity-island motion, reading spacing and theme 
 tags: [desktop, design, motion, layout]
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-09T06:32:42.102Z
+    at: 2026-11-09T06:37:11.127Z
 sources:
   - id: openwiki-source-8037e2358a2c4f9b2c722a11
     resource: repo://AGENTS.md
@@ -91,7 +91,7 @@ sources:
     resource: repo://codex-runtime.lock.json
   - id: openwiki-source-a490ea3fbcddb9c007caf196
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_context_tests.rs
-generated: { by: "codex", at: "2026-11-09T06:32:42.102Z" }
+generated: { by: "codex", at: "2026-11-09T06:37:11.127Z" }
 ---
 
 # Interface geometry and motion
@@ -106,14 +106,14 @@ Work and Debug use the same geometry contract. Work uses the waveform symbol; De
 | --- | --- |
 | Collapsed height | 28 points, from the shared control-group height. |
 | Minimum width | At least 72 points; round measured content up to an 8-point grid. |
-| Compact width | At least 208 points; round wider content up to a 16-point grid. |
-| Expanded width | At least 288 points; round wider content up to a 32-point grid. |
+| Compact width | Measure the header content and round up to the shared 8-point grid. |
+| Expanded width | Fit the header and detail content on the shared 8-point grid; do not impose an oversized preset. |
 | Space between islands | 6 points. |
 | Corner radius | 14 points when collapsed, increasing to 20 points when expanded. |
 | Transition | 240 ms, with a cubic ease-out and no overshoot. |
 | Detail appearance | Fade details during the final 45 percent of the height transition. |
 
-Only one activity expands at a time. Give the selected activity all remaining space after the other activities keep their minimum widths. Do not restrict a pair to half the unused space. Two activities retain their resting slots and inner edges while they fit. If an expanding edge reaches the available boundary, translate the pair only as far as needed, using its current animated widths. Keep the gap between the activities. A single activity remains centered. If the complete available space cannot fit the expanded tier, use the compact or minimum tier. Do not squeeze the expanded detail grid into a narrow header.
+Only one activity expands at a time. A pair uses two equal fixed slots with a 6-point gap, so its inner anchors stay in place when selection or metric digits change. Each activity grows outward within its side of the available space. Do not translate the pair to make room for expansion. Measure each header and detail grid from visible content; an idle Work header does not reserve a hidden generation-rate field. A single activity remains centered. If a full detail grid cannot fit, use the compact or minimum tier without squeezing its columns. Retain all meaningful metrics and keep the sparkline legible.
 
 `Morph` uses one clock for width and height. A reversal starts at the current visible size. Reduced motion selects the target size directly. Round visible dimensions to physical pixels using the current display scale.
 

@@ -573,7 +573,6 @@ impl Render for PerformanceIsland {
 		let sizes: Vec<_> = activities.iter().map(|(_, content)| content.sizing()).collect();
 		let available =
 			self.available_width.unwrap_or(f32::from(window.viewport_size().width) / 2.);
-		let resting = ui_live_activity::arrange(available, ISLAND_GAP, &sizes, None);
 		let allocations = ui_live_activity::arrange(available, ISLAND_GAP, &sizes, selected);
 		let now = Instant::now();
 		let extents: Vec<_> = activities
@@ -602,32 +601,18 @@ impl Render for PerformanceIsland {
 			})
 			.collect();
 		let paired = activities.len() == 2;
-		let offset = if paired {
-			ui_live_activity::paired_offset(
-				available,
-				ISLAND_GAP,
-				[resting[0].width, resting[1].width],
-				[extents[0].width, extents[1].width],
-			)
-		} else {
-			0.
-		};
-		let mut islands = gpui::div()
-			.relative()
-			.left(gpui::px(offset))
-			.flex()
-			.items_start()
-			.gap(gpui::px(ISLAND_GAP));
+		let mut islands = gpui::div().relative().flex().items_start().gap(gpui::px(ISLAND_GAP));
 
 		for (index, (((activity, content), allocation), extent)) in
 			activities.iter().zip(allocations).zip(extents).enumerate()
 		{
 			let pill = self.pill(*activity, allocation, (extent, paired), content, cx);
 			islands = islands.child(if paired {
-				// Fixed resting slots keep the inner edges stable through pixel rounding.
+				// Equal fixed slots keep the two inner anchors stable even when
+				// metric digits, activity content or the expanded selection change.
 				gpui::div()
 					.relative()
-					.w(gpui::px(resting[index].width))
+					.w(gpui::px(ui_live_activity::MIN_CAPSULE_WIDTH))
 					.h(gpui::px(CAPSULE_HEIGHT))
 					.flex_none()
 					.child(
