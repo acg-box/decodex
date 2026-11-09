@@ -60,6 +60,9 @@ const DECODEX: Palette = Palette {
 	status_success: 0xaab9d8,
 	status_warning: 0xd6b99a,
 	status_error: 0xdf969c,
+	navigation_bases: [
+		0x91afd4, 0x83b8b1, 0xadb994, 0xc3ac7e, 0xc19683, 0xbf9aa9, 0xac9ac8, 0x9fabbc,
+	],
 	mascot_bases: [
 		0x89a6ca, 0xa89bc7, 0x7da1dc, 0xc89c8d, 0xc2ad8e, 0xbdc3cd, 0xc69aac, 0x969fcb, 0x95b3d4,
 		0x98a8bd, 0xd2939b, 0x7e94ba,
@@ -331,6 +334,8 @@ pub(crate) struct Palette {
 	pub(crate) status_success: u32,
 	pub(crate) status_warning: u32,
 	pub(crate) status_error: u32,
+	/// Stable project-color slots; each theme supplies its own related hues.
+	pub(crate) navigation_bases: [u32; 8],
 	// Catalog order: mint, lilac, sky, peach, butter, cream, rose,
 	// periwinkle, ice, sage, coral, midnight. Identity does not depend on theme.
 	pub(crate) mascot_bases: [u32; 12],
@@ -443,6 +448,16 @@ impl Palette {
 			status_success: mix(green, text, 12),
 			status_warning: mix(amber, text, 15),
 			status_error: mix(error, text, 60),
+			navigation_bases: [
+				mix(blue, text, 20),
+				mix(green, blue, 35),
+				mix(green, amber, 30),
+				mix(amber, text, 20),
+				mix(amber, error, 55),
+				mix(error, accent, 50),
+				mix(accent, blue, 20),
+				mix(text, blue, 45),
+			],
 			mascot_bases: [
 				mix(blue, green, 35),
 				mix(accent, blue, 25),

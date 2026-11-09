@@ -1020,9 +1020,9 @@ impl Shell {
 		cx.notify();
 	}
 
-	fn toggle_sidebar(&mut self, _: &ToggleSidebar, _: &mut Window, cx: &mut Context<Self>) {
+	fn toggle_sidebar(&mut self, _: &ToggleSidebar, window: &mut Window, cx: &mut Context<Self>) {
 		if self.selected == Destination::Agent {
-			self.agent.update(cx, AgentSurface::toggle_workspace_sidebar);
+			self.agent.update(cx, |agent, cx| agent.toggle_workspace_sidebar(window, cx));
 		}
 		if self.selected != Destination::Agent {
 			self.set_left_sidebar_visible(!self.left_sidebar_visible, cx);
@@ -1042,7 +1042,12 @@ impl Shell {
 		cx.stop_propagation();
 	}
 
-	fn interrupt_reply(&mut self, event: &KeyDownEvent, _: &mut Window, cx: &mut Context<Self>) {
+	fn interrupt_reply(
+		&mut self,
+		event: &KeyDownEvent,
+		window: &mut Window,
+		cx: &mut Context<Self>,
+	) {
 		if event.keystroke.key != "escape"
 			|| event.keystroke.modifiers != Modifiers::default()
 			|| event.is_held
@@ -1050,6 +1055,10 @@ impl Shell {
 			return;
 		}
 		if self.selected == Destination::Agent {
+			if self.agent.update(cx, |agent, cx| agent.dismiss_workspace_overlays(window, cx)) {
+				cx.stop_propagation();
+				return;
+			}
 			if self.status_open {
 				self.status_open = false;
 
@@ -1944,6 +1953,24 @@ impl Drop for Shell {
 	}
 }
 
+impl Shell {
+	fn dismiss_workspace_status(
+		&mut self,
+		_: &DismissStatus,
+		window: &mut Window,
+		cx: &mut Context<Self>,
+	) {
+		self.agent.update(cx, |agent, cx| {
+			agent.dismiss_navigation_confirmation(cx);
+			agent.dismiss_workspace_overlays(window, cx);
+		});
+		if self.status_open {
+			self.status_open = false;
+			cx.notify();
+		}
+	}
+}
+
 impl Render for Shell {
 	fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
 		self.navigation.repair_focus(&self.root_focus, window);
@@ -1959,13 +1986,7 @@ impl Render for Shell {
 			.text_size(gpui::px(13.0))
 			.key_context("Conversations")
 			.track_focus(&self.root_focus)
-			.capture_any_mouse_down(cx.listener(|s, event: &gpui::MouseDownEvent, window, cx| {
-				if let Some(forward) = navigation::mouse_direction(event.button) {
-					window.prevent_default();
-					s.navigate_history(forward, window, cx);
-					cx.stop_propagation();
-				}
-			}))
+			.child(navigation::mouse_navigation(cx.entity().downgrade(), Self::navigate_history))
 			.on_action(cx.listener(Self::focus_next))
 			.on_action(cx.listener(Self::focus_previous))
 			.on_action(cx.listener(Self::activate_conversations))
@@ -2012,14 +2033,7 @@ impl Render for Shell {
 			.on_action(cx.listener(Self::toggle_inspector))
 			.on_action(cx.listener(Self::toggle_graph))
 			.on_action(cx.listener(Self::toggle_content_fullscreen))
-			.on_action(cx.listener(|s, _: &DismissStatus, _, cx| {
-				s.agent.update(cx, |agent, cx| agent.dismiss_navigation_confirmation(cx));
-				if s.status_open {
-					s.status_open = false;
-
-					cx.notify();
-				}
-			}))
+			.on_action(cx.listener(Self::dismiss_workspace_status))
 			.on_key_down(cx.listener(Self::interrupt_reply))
 			.on_action(
 				cx.listener(|s, _: &NavigateBack, window, cx| {
@@ -2038,8 +2052,8 @@ impl Render for Shell {
 				}
 			}))
 			.size_full()
-			.min_w(gpui::px(1_180.0))
-			.min_h(gpui::px(720.0))
+			.min_w(gpui::px(ui_theme::MAIN_WINDOW_MIN_WIDTH))
+			.min_h(gpui::px(ui_theme::MAIN_WINDOW_MIN_HEIGHT))
 			.flex()
 			.flex_col()
 			.bg(ui_theme::rgba(SHELL_MATERIAL))
@@ -2181,15 +2195,7 @@ impl Render for SettingsWindow {
 			.bg(ui_theme::rgba(SHELL_MATERIAL))
 			.key_context("SettingsWindow")
 			.track_focus(&self.focus)
-			.capture_any_mouse_down(cx.listener(
-				|settings, event: &gpui::MouseDownEvent, window, cx| {
-					if let Some(forward) = navigation::mouse_direction(event.button) {
-						window.prevent_default();
-						settings.navigate_history(forward, window, cx);
-						cx.stop_propagation();
-					}
-				},
-			))
+			.child(navigation::mouse_navigation(cx.entity().downgrade(), Self::navigate_history))
 			.on_action(cx.listener(|_, _: &CloseWindow, window, cx| {
 				window.remove_window();
 				cx.stop_propagation();
@@ -2425,6 +2431,7 @@ pub(crate) fn bind_keys(cx: &mut App) {
 	});
 
 	composer_input::bind_keys(cx);
+	AgentSurface::bind_command_keys(cx);
 
 	cx.bind_keys([KeyBinding::new("cmd-w", CloseWindow, Some("SettingsWindow"))]);
 	crate::session_settings::bind_keys(cx);
@@ -3157,18 +3164,18 @@ fn agent_panel_control(shell: &Shell, index: usize, cx: &Context<Shell>) -> AnyE
 			window.prevent_default();
 			cx.stop_propagation();
 		})
-		.on_click(cx.listener(move |s, _, _, cx| {
+		.on_click(cx.listener(move |s, _, window, cx| {
 			if enabled && index == 0 && s.selected != Destination::Agent {
 				s.set_left_sidebar_visible(!s.left_sidebar_visible, cx);
 			} else if enabled {
 				s.agent.update(cx, |agent, cx| match index {
-					0 => agent.toggle_workspace_sidebar(cx),
+					0 => agent.toggle_workspace_sidebar(window, cx),
 					1 => agent.toggle_workspace_graph(cx),
 					_ => agent.toggle_agent_tree(cx),
 				});
 			}
 		}))
-		.on_key_down(cx.listener(move |s, event: &KeyDownEvent, _, cx| {
+		.on_key_down(cx.listener(move |s, event: &KeyDownEvent, window, cx| {
 			if enabled
 				&& !event.is_held
 				&& ["enter", "space"].contains(&event.keystroke.key.as_str())
@@ -3181,7 +3188,7 @@ fn agent_panel_control(shell: &Shell, index: usize, cx: &Context<Shell>) -> AnyE
 				}
 
 				s.agent.update(cx, |agent, cx| match index {
-					0 => agent.toggle_workspace_sidebar(cx),
+					0 => agent.toggle_workspace_sidebar(window, cx),
 					1 => agent.toggle_workspace_graph(cx),
 					_ => agent.toggle_agent_tree(cx),
 				});

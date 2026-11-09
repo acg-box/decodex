@@ -8,6 +8,10 @@ use std::{cell::Cell, panic::Location, rc::Rc};
 #[derive(Clone, Default)]
 pub(crate) struct Viewport(Rc<Cell<Bounds<Pixels>>>);
 impl Viewport {
+	pub(crate) fn from_bounds(bounds: Bounds<Pixels>) -> Self {
+		Self(Rc::new(Cell::new(bounds)))
+	}
+
 	pub(crate) fn anchor(&self) -> impl IntoElement {
 		let viewport = self.0.clone();
 		gpui::div().absolute().size_full().child(
@@ -15,8 +19,9 @@ impl Viewport {
 		)
 	}
 
-	pub(crate) fn clip(&self, right_inset: f32, child: impl IntoElement) -> impl IntoElement {
+	pub(crate) fn clip(&self, right_inset: f32, child: impl IntoElement) -> AnyElement {
 		Clip { viewport: self.0.clone(), right_inset, child: child.into_any_element() }
+			.into_any_element()
 	}
 }
 
@@ -142,5 +147,51 @@ mod tests {
 			assert_eq!(*origin.get_or_insert(canvas.origin), canvas.origin);
 			assert_eq!(mask.right() - canvas.left(), gpui::px(width - 6.));
 		}
+	}
+
+	struct CoveredPlane(Rc<Cell<usize>>);
+	impl Render for CoveredPlane {
+		fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+			let covered = self.0.clone();
+			let uncovered = self.0.clone();
+			Viewport::from_bounds(Bounds::new(
+				gpui::point(gpui::px(80.), gpui::px(0.)),
+				gpui::size(gpui::px(160.), gpui::px(60.)),
+			))
+			.clip(
+				0.,
+				gpui::div()
+					.debug_selector(|| "covered-plane".into())
+					.w(gpui::px(240.))
+					.h(gpui::px(60.))
+					.flex()
+					.child(
+						gpui::div()
+							.id("covered-action")
+							.w(gpui::px(80.))
+							.h_full()
+							.on_click(move |_, _, _| covered.set(covered.get() + 1)),
+					)
+					.child(
+						gpui::div()
+							.id("uncovered-action")
+							.w(gpui::px(160.))
+							.h_full()
+							.on_click(move |_, _, _| uncovered.set(uncovered.get() + 1)),
+					),
+			)
+		}
+	}
+
+	#[gpui::test]
+	fn clipping_covered_controls_preserves_layout_and_uncovered_input(cx: &mut TestAppContext) {
+		let hits = Rc::new(Cell::new(0));
+		let (_, visual) = cx.add_window_view(|_, _| CoveredPlane(hits.clone()));
+		visual.update(crate::ui_frame::draw_current_frame);
+		assert_eq!(visual.debug_bounds("covered-plane").unwrap().size.width, gpui::px(240.));
+		visual.simulate_click(gpui::point(gpui::px(40.), gpui::px(30.)), Default::default());
+		assert_eq!(hits.get(), 0);
+		visual.simulate_click(gpui::point(gpui::px(160.), gpui::px(30.)), Default::default());
+		assert_eq!(hits.get(), 1);
 	}
 }

@@ -338,16 +338,22 @@ mod tests {
 
 			visual.update(crate::ui_frame::draw_frame);
 
-			let height = surface.read_with(visual, |s, _| {
+			let (width, height) = surface.read_with(visual, |s, _| {
 				let graph = s.relation_graph();
 				let painted = s.relation_team_rect(&graph, "release").unwrap();
 
 				// Reproduce the narrow interval where painted content fits but its
 				// stable zoom envelope sends the old camera back to the owner alone.
-				360. + painted.height + 2. * FRAME_INSET + 1. - s.work_board.view.viewport.1
+				// Account for the width allocated to responsive sidebars first.
+				(
+					1_040.
+						+ (painted.width + 2. * FRAME_INSET + 1. - s.work_board.view.viewport.0)
+							.max(0.),
+					360. + painted.height + 2. * FRAME_INSET + 1. - s.work_board.view.viewport.1,
+				)
 			});
 
-			visual.simulate_resize(gpui::size(gpui::px(1_040.), gpui::px(height)));
+			visual.simulate_resize(gpui::size(gpui::px(width), gpui::px(height)));
 			visual.update(crate::ui_frame::draw_frame);
 
 			thread::sleep(crate::ui_theme::MOTION_PANEL + std::time::Duration::from_millis(40));

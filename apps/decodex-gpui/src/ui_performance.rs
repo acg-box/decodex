@@ -573,7 +573,6 @@ impl Render for PerformanceIsland {
 		let sizes: Vec<_> = activities.iter().map(|(_, content)| content.sizing()).collect();
 		let available =
 			self.available_width.unwrap_or(f32::from(window.viewport_size().width) / 2.);
-		let resting = ui_live_activity::arrange(available, ISLAND_GAP, &sizes, None);
 		let allocations = ui_live_activity::arrange(available, ISLAND_GAP, &sizes, selected);
 		let now = Instant::now();
 		let extents: Vec<_> = activities
@@ -609,10 +608,11 @@ impl Render for PerformanceIsland {
 		{
 			let pill = self.pill(*activity, allocation, (extent, paired), content, cx);
 			islands = islands.child(if paired {
-				// Fixed resting slots keep the inner edges stable through pixel rounding.
+				// Equal fixed slots keep the two inner anchors stable even when
+				// metric digits, activity content or the expanded selection change.
 				gpui::div()
 					.relative()
-					.w(gpui::px(resting[index].width))
+					.w(gpui::px(ui_live_activity::MIN_CAPSULE_WIDTH))
 					.h(gpui::px(CAPSULE_HEIGHT))
 					.flex_none()
 					.child(

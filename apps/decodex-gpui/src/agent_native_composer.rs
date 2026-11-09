@@ -31,7 +31,7 @@ pub(super) struct NativeComposer {
 	pub(super) enabled: bool,
 	child: Option<WindowHandle<ComposerPanel>>,
 	pub(super) bounds: Option<Bounds<Pixels>>,
-
+	visible_region: Option<Bounds<Pixels>>,
 	height: f32,
 	creating: bool,
 	failed: bool,
@@ -42,10 +42,49 @@ impl Default for NativeComposer {
 			enabled: false,
 			child: None,
 			bounds: None,
+			visible_region: None,
 			height: COMPOSER_MIN_HEIGHT,
 			creating: false,
 			failed: false,
 		}
+	}
+}
+
+struct ComposerPlacement {
+	child: WindowHandle<ComposerPanel>,
+	bounds: Option<Bounds<Pixels>>,
+	visible_region: Option<Bounds<Pixels>>,
+	enabled: bool,
+	opacity: f32,
+}
+impl NativeComposer {
+	fn placement(&self, opacity: f32) -> Option<ComposerPlacement> {
+		Some(ComposerPlacement {
+			child: self.child?,
+			bounds: self.bounds,
+			visible_region: self.visible_region,
+			enabled: self.enabled,
+			opacity,
+		})
+	}
+}
+impl ComposerPlacement {
+	fn apply(self, cx: &mut App) {
+		let _ = self.child.update(cx, |panel, window, cx| {
+			if let Some(surface) = &mut panel.surface {
+				if self.enabled
+					&& let Some(bounds) = self.bounds
+					&& surface.place(bounds)
+				{
+					window.bounds_changed(cx);
+				}
+				if let Some(region) = self.visible_region {
+					surface.occlude_content(region);
+				}
+				surface.set_opacity(self.opacity);
+				surface.set_visible(self.enabled && self.bounds.is_some() && self.opacity > 0.001);
+			}
+		});
 	}
 }
 
@@ -83,8 +122,15 @@ impl Render for ComposerPanel {
 		});
 		let parent = self.parent;
 		let focus_owner = self.owner.clone();
+		let width = self
+			.owner
+			.read(cx)
+			.native_controls
+			.composer
+			.bounds
+			.map_or(window.viewport_size().width, |bounds| bounds.size.width);
 
-		gpui::div()
+		let root = gpui::div()
 			.w_full()
 			.font_family(FONT_FAMILY)
 			.on_mouse_down(MouseButton::Left, move |_, _, cx| {
@@ -92,30 +138,6 @@ impl Render for ComposerPanel {
 			})
 			.text_size(gpui::px(BODY_SIZE))
 			.text_color(ui_theme::rgb(TEXT))
-			.on_children_prepainted(move |bounds, _, cx| {
-				if let Some(bounds) = bounds.first() {
-					let height = f32::from(bounds.size.height).max(COMPOSER_MIN_HEIGHT);
-					let _ = owner.update(cx, |s, cx| {
-						if (s.native_controls.composer.height - height).abs() > 0.5 {
-							// Reserve the same new height in the transcript before its next
-							// layout. Waiting for the parent's footer measurement adds a
-							// second scroll correction to every question animation frame.
-							if s.native_controls.composer.enabled
-								&& s.native_controls.composer.bounds.is_some()
-							{
-								s.workspace.composer_overlay_height =
-									(s.workspace.composer_overlay_height + height
-										- s.native_controls.composer.height)
-										.max(0.);
-							}
-
-							s.native_controls.composer.height = height;
-
-							cx.notify();
-						}
-					});
-				}
-			})
 			.id("native-composer-focus-panel")
 			.capture_any_mouse_down(move |event, window, cx| {
 				if crate::shell::navigation::forward_mouse_navigation(parent, event, window, cx) {
@@ -124,6 +146,7 @@ impl Render for ComposerPanel {
 
 				ui_motion::dismiss_shared_popover(parent, cx);
 				focus_owner.update(cx, |s, cx| {
+					s.dismiss_sidebar_preview(cx);
 					if let Some((name, _)) =
 						s.menu_trigger_bounds.iter().find(|(_, b)| b.contains(&event.position))
 					{
@@ -157,7 +180,27 @@ impl Render for ComposerPanel {
 			.on_action(move |action: &NavigateForward, _, cx| forward(parent, action, cx))
 			.on_action(move |action: &FindConversation, _, cx| forward(parent, action, cx))
 			.on_action(move |action: &OpenGlobalCommands, _, cx| forward(parent, action, cx))
-			.child(capsule)
+			.child(capsule);
+
+		// Use the parent's current anchor as the layout authority, just as native
+		// menus do. AppKit can resize before the child's next viewport callback.
+		crate::ui_layout::intrinsic(width, root, move |size, _, cx| {
+			let height = f32::from(size.height).max(COMPOSER_MIN_HEIGHT);
+			let _ = owner.update(cx, |s, cx| {
+				if (s.native_controls.composer.height - height).abs() > 0.5 {
+					if s.native_controls.composer.enabled
+						&& s.native_controls.composer.bounds.is_some()
+					{
+						s.workspace.composer_overlay_height = (s.workspace.composer_overlay_height
+							+ height
+							- s.native_controls.composer.height)
+							.max(0.);
+					}
+					s.native_controls.composer.height = height;
+					cx.notify();
+				}
+			});
+		})
 	}
 }
 
@@ -320,31 +363,10 @@ impl AgentSurface {
 		let owner = cx.entity().downgrade();
 
 		cx.defer(move |cx| {
-			let Ok((child, bounds, enabled, opacity)) = owner.read_with(cx, |s, _| {
-				(
-					s.native_controls.composer.child,
-					s.native_controls.composer.bounds,
-					s.native_controls.composer.enabled,
-					s.workspace.arrival.progress(0.12),
-				)
-			}) else {
-				return;
-			};
-
-			if let Some(child) = child {
-				let _ = child.update(cx, |panel, window, cx| {
-					if let Some(surface) = &mut panel.surface {
-						if enabled
-							&& let Some(bounds) = bounds
-							&& surface.place(bounds)
-						{
-							window.bounds_changed(cx);
-						}
-
-						surface.set_opacity(opacity);
-						surface.set_visible(enabled && bounds.is_some() && opacity > 0.001);
-					}
-				});
+			if let Ok(Some(placement)) = owner.read_with(cx, |s, _| {
+				s.native_controls.composer.placement(s.workspace.arrival.progress(0.12))
+			}) {
+				placement.apply(cx);
 			}
 		});
 	}
@@ -355,12 +377,18 @@ impl AgentSurface {
 		let read_only = blocked.is_some() && !archived;
 		let owner = cx.entity().downgrade();
 		let anchor = gpui::canvas(
-			move |bounds, _, cx| {
-				let _ = owner.update(cx, |s, cx| {
+			move |bounds, window, cx| {
+				let placement = owner.update(cx, |s, _| {
 					s.native_controls.composer.bounds = Some(bounds);
-
-					s.sync_native_composer(cx);
+					s.native_controls.composer.visible_region =
+						Some(s.workspace_composer_visible_region(bounds, window));
+					s.native_controls.composer.placement(s.workspace.arrival.progress(0.12))
 				});
+				// Apply this frame's mask before its paint. A deferred application
+				// can expose an entire native control for one frame at the moving edge.
+				if let Ok(Some(placement)) = placement {
+					placement.apply(cx);
+				}
 			},
 			|_, _, _, _| {},
 		);

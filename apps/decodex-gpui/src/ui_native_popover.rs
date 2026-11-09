@@ -162,7 +162,11 @@ impl Render for Panel {
 }
 
 pub(super) fn available() -> bool {
-	native_material_panel::available(Surface::Popover)
+	surface_available(Surface::Popover)
+}
+
+pub(super) fn surface_available(surface: Surface) -> bool {
+	native_material_panel::available(surface)
 }
 
 pub(super) fn render(mut popover: Popover, window: &mut Window, cx: &mut App) -> AnyElement {

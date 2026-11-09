@@ -1942,9 +1942,9 @@ phase: None,
 		selectors
 	}
 
-	fn advance_metrics_hover(visual: &mut gpui::VisualTestContext, millis: u64) {
+	fn advance_metrics_hover(visual: &mut gpui::VisualTestContext, delay: std::time::Duration) {
 		visual.run_until_parked();
-		visual.executor().advance_clock(std::time::Duration::from_millis(millis));
+		visual.executor().advance_clock(delay);
 		visual.run_until_parked();
 		visual.update(crate::ui_frame::draw_current_frame);
 	}
@@ -1953,6 +1953,8 @@ phase: None,
 	fn native_messages_and_promotions_render_with_distinct_provider_identities(
 		cx: &mut gpui::TestAppContext,
 	) {
+		let dwell = crate::ui_motion::HOVER_OPEN_DELAY;
+		let tick = std::time::Duration::from_millis(1);
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 
 		visual.simulate_resize(gpui::size(gpui::px(1_400.), gpui::px(1_400.)));
@@ -1986,11 +1988,11 @@ phase: None,
 		visual.run_until_parked();
 		assert!(visual.debug_bounds("native-turn-usage").is_none(), "passing over is not intent");
 
-		visual.executor().advance_clock(std::time::Duration::from_millis(100));
+		visual.executor().advance_clock(dwell / 2);
 		let away = gpui::point(gpui::px(1_390.), gpui::px(1_390.));
 		visual.simulate_mouse_move(away, gpui::MouseButton::Left, Default::default());
 		visual.update(crate::ui_frame::draw_current_frame);
-		advance_metrics_hover(visual, 600);
+		advance_metrics_hover(visual, dwell);
 		assert!(
 			visual.debug_bounds("native-turn-usage").is_none(),
 			"leaving cancels pending details"
@@ -2000,12 +2002,12 @@ phase: None,
 
 		visual.simulate_mouse_move(details.center(), gpui::MouseButton::Left, Default::default());
 		visual.update(crate::ui_frame::draw_current_frame);
-		advance_metrics_hover(visual, 179);
+		advance_metrics_hover(visual, dwell - tick);
 		assert!(
 			visual.debug_bounds("native-turn-usage").is_none(),
 			"details wait for a steady hover"
 		);
-		visual.executor().advance_clock(std::time::Duration::from_millis(1));
+		visual.executor().advance_clock(tick);
 		visual.run_until_parked();
 		visual.update(crate::ui_frame::draw_current_frame);
 
@@ -2022,7 +2024,7 @@ phase: None,
 		let panel = visual.debug_bounds("native-turn-usage").unwrap();
 		visual.simulate_mouse_move(panel.center(), gpui::MouseButton::Left, Default::default());
 		visual.update(crate::ui_frame::draw_current_frame);
-		advance_metrics_hover(visual, 600);
+		advance_metrics_hover(visual, crate::ui_motion::HOVER_CLOSE_DELAY);
 		assert!(
 			visual.debug_bounds("native-turn-usage").is_some(),
 			"the pointer can enter details"
@@ -2030,7 +2032,7 @@ phase: None,
 
 		visual.simulate_mouse_move(away, gpui::MouseButton::Left, Default::default());
 		visual.update(crate::ui_frame::draw_current_frame);
-		advance_metrics_hover(visual, 500);
+		advance_metrics_hover(visual, crate::ui_motion::HOVER_CLOSE_DELAY);
 
 		thread::sleep(std::time::Duration::from_millis(180));
 		visual.update(crate::ui_frame::draw_frame);

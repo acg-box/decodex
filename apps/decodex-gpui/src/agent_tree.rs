@@ -1,12 +1,16 @@
 //! Right-panel placement, sharing the existing workspace resize behavior.
 use gpui::{
-	AnyElement,
-	prelude::{InteractiveElement as _, IntoElement as _, ParentElement as _, Styled as _},
+	AnyElement, MouseDownEvent,
+	prelude::{
+		FluentBuilder as _, InteractiveElement as _, IntoElement as _, ParentElement as _,
+		Styled as _,
+	},
 };
 
 use crate::{
 	shell::agent_surface::{AgentSurface, Context, Window},
-	ui_theme::WORKSPACE_GUTTER,
+	ui_layout, ui_motion,
+	ui_theme::{self, WORKSPACE_GUTTER},
 };
 
 impl AgentSurface {
@@ -15,29 +19,86 @@ impl AgentSurface {
 			return;
 		}
 
+		crate::ui_motion::begin_interaction();
 		self.workspace.agent_tree_visible = !self.workspace.agent_tree_visible;
 
 		cx.notify();
 	}
 
 	pub(super) fn agent_tree_width(&self, window: &Window) -> f32 {
-		if !self.workspace.agent_tree_visible
-			|| self.workspace.chat_expanded
-			|| self.workspace.graph_expanded
-			|| !self.reserve_workspace_panels()
+		self.workspace_panel_layout(window).right_slot
+	}
+
+	pub(super) fn activity_pane(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+		let layout = self.workspace_panel_layout(window);
+		let width = self.workspace_right_display_width(window);
+		let floating =
+			self.workspace_panel_floating(super::workspace_size::Panel::Right, layout, width);
+		let bottom = ui_motion::revealed_value(
+			"activity-panel-bottom",
+			self.workspace_panel_bottom(floating),
+			width > 0.1,
+			window,
+			cx,
+		);
+		if self
+			.workspace
+			.right_content_motion
+			.borrow()
+			.as_ref()
+			.is_some_and(|t| t.moving(std::time::Instant::now()))
 		{
-			return 0.0;
+			ui_motion::request_frame(window, cx);
 		}
-
-		let width = f32::from(window.viewport_size().width);
-		let left = self.workspace_sidebar_width(window);
-		let gutters = 3. * WORKSPACE_GUTTER + left.min(WORKSPACE_GUTTER);
-
-		self.workspace.agent_panel_width.min((width - left - 440.0 - gutters).max(0.0))
+		let content_width = self
+			.workspace
+			.agent_panel_width
+			.clamp(160., 480.)
+			.min((f32::from(window.viewport_size().width) - 2. * WORKSPACE_GUTTER).max(0.));
+		self.deliveries.update(cx, |panel, cx| panel.set_width(content_width, cx));
+		ui_theme::workspace_surface()
+			.id("workspace-activity-pane")
+			.debug_selector(|| "workspace-activity-pane".into())
+			.absolute()
+			.right(gpui::px(WORKSPACE_GUTTER))
+			.top(gpui::px(crate::shell::WINDOW_CONTROLS_CLEARANCE))
+			.bottom(gpui::px(bottom))
+			.w(gpui::px(width))
+			.overflow_hidden()
+			.opacity(self.workspace.arrival.progress(0.08))
+			.when(width > 0.1, |panel| {
+				panel.child(
+					gpui::div()
+						.absolute()
+						.right_0()
+						.top_0()
+						.bottom_0()
+						.w(gpui::px(content_width))
+						.child(
+							self.workspace_focus_region(
+								Some(super::workspace_size::Panel::Right),
+								cx,
+							),
+						)
+						.child(ui_layout::pane(self.presentations.activity.clone(), window))
+						.child(self.sidebar_resize_handle(super::workspace_size::Panel::Right, cx)),
+				)
+			})
+			.when(floating, |panel| {
+				panel.on_mouse_down_out(cx.listener(|s, event: &MouseDownEvent, window, cx| {
+					if event.position.y >= gpui::px(crate::shell::WINDOW_CONTROLS_CLEARANCE)
+						&& f32::from(event.position.x)
+							> s.workspace_sidebar_width(window) + WORKSPACE_GUTTER
+					{
+						s.dismiss_workspace_overlays(window, cx);
+					}
+				}))
+			})
+			.into_any_element()
 	}
 
 	pub(super) fn agent_tree(&self, cx: &mut Context<Self>) -> AnyElement {
-		gpui::div()
+		ui_theme::workspace_panel_content()
 			.id("agent-panel-focus")
 			.relative()
 			.size_full()

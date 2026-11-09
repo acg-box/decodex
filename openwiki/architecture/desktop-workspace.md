@@ -5,7 +5,7 @@ description: "Workspace ownership, native menu focus, compositor motion, and con
 tags: [decodex, architecture, desktop, presentation]
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-08T14:57:33.541Z
+    at: 2026-11-09T06:32:42.102Z
 sources:
   - id: openwiki-source-98e7b23c4cc276d20fcb4649
     resource: repo://apps/decodex-gpui/menubar/Sources/DecodexApp/AccountControlViews.swift
@@ -97,14 +97,20 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_usage_evidence.rs
   - id: openwiki-source-32bb36aae256aa57e6e82bd0
     resource: repo://apps/decodex-gpui/src/agent_voice.rs
+  - id: openwiki-source-28bed4ab59e05dbf07917451
+    resource: repo://apps/decodex-gpui/src/agent_work_board.rs
   - id: openwiki-source-3fa6d6c49e3542409542045b
     resource: repo://apps/decodex-gpui/src/agent_work_browser.rs
+  - id: openwiki-source-7131f576ee57d12a847fe177
+    resource: repo://apps/decodex-gpui/src/agent_work_progress.rs
   - id: openwiki-source-e269da8230b6d51390181459
     resource: repo://apps/decodex-gpui/src/agent_workspace_size.rs
   - id: openwiki-source-5d032c6be684964aa2c401fa
     resource: repo://apps/decodex-gpui/src/agent_workspace.rs
   - id: openwiki-source-f339a4d1910db63ca305c2df
     resource: repo://apps/decodex-gpui/src/assistant_settings.rs
+  - id: openwiki-source-b485e07e98ac03dcff5db641
+    resource: repo://apps/decodex-gpui/src/bin/probes/native_workspace.rs
   - id: openwiki-source-ae991159453be2ee0c611ac1
     resource: repo://apps/decodex-gpui/src/bundled_daemon.rs
   - id: openwiki-source-e8596cc5aac62aa16bde932b
@@ -143,8 +149,16 @@ sources:
     resource: repo://apps/decodex-gpui/src/ui_frame.rs
   - id: openwiki-source-adab7a75320a305721fdd6d2
     resource: repo://apps/decodex-gpui/src/ui_hover_intent.rs
+  - id: openwiki-source-39b5e0e9a125062f8acc2126
+    resource: repo://apps/decodex-gpui/src/ui_layout.rs
+  - id: openwiki-source-ccd97a4d4ef8dfe9b724e7ce
+    resource: repo://apps/decodex-gpui/src/ui_live_activity.rs
+  - id: openwiki-source-2316e3cffd10487b54cd63f4
+    resource: repo://apps/decodex-gpui/src/ui_material.rs
   - id: openwiki-source-afbf2d30c0979a844373d8e5
     resource: repo://apps/decodex-gpui/src/ui_motion.rs
+  - id: openwiki-source-8f7f43de2b98b69bb43506d7
+    resource: repo://apps/decodex-gpui/src/ui_performance_readout.rs
   - id: openwiki-source-8c633c09481985d80c8f42f2
     resource: repo://apps/decodex-gpui/src/ui_performance_tests.rs
   - id: openwiki-source-6d7ff71d731da7268890d765
@@ -153,6 +167,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/ui_preferences.rs
   - id: openwiki-source-570564020f98df7a4d6d0b61
     resource: repo://apps/decodex-gpui/src/ui_theme.rs
+  - id: openwiki-source-fa218a67bba67197ecf88d7b
+    resource: repo://apps/decodex-gpui/src/ui_viewport_clip.rs
   - id: openwiki-source-69e9fd7efd8c3cd616184e27
     resource: repo://crates/decodex-components/src/ragflow_service.rs
   - id: openwiki-source-052a4071b057633df77b1e21
@@ -173,7 +189,7 @@ sources:
     resource: repo://database/src/works/commands.rs
   - id: openwiki-source-8fe6f1557e5d45d88b34bd0a
     resource: repo://scripts/macos/generate_workspace_symbols.swift
-generated: { by: "codex", at: "2026-11-08T14:57:33.541Z" }
+generated: { by: "codex", at: "2026-11-09T06:32:42.102Z" }
 ---
 
 # Desktop workspace and native glass
@@ -182,13 +198,21 @@ generated: { by: "codex", at: "2026-11-08T14:57:33.541Z" }
 
 The workspace has three responsibilities. The left sidebar locates conversations and projects. The center keeps the selected conversation and its composer. The right Collaboration panel shows source-backed requests and exchanges across chats. A selected Work does not limit global pending requests to that Work.
 
+The main window can shrink to 480 by 360 points. `PanelLayout` reserves a 360-point reading width and a 40-point navigation rail. It allocates the left navigation before the right panel, regardless of opening order. A right panel that does not fit floats above the center without changing the conversation width. A full left sidebar that does not fit returns to its rail and retains its pinned preference; more space restores its full width. A left preview temporarily hides a right floating panel and restores it on close. Escape or a click in uncovered conversation space dismisses the temporary panels. Width preferences, Graph state and the conversation draft remain with their current owners.
+
+Both side panels use the original workspace_surface and its workspace field color in the main GPUI window. This applies to docked, floating and compact navigation states. Sidebars do not create separate native Liquid Glass hosts. Both content roots share system typography through workspace_panel_content, and content retains its full layout behind the moving edge. Placement controls allocation and dismissal, not the material. Closing and reversing a panel retain its last placement until the surface disappears. An animated width larger than a released layout slot does not change that placement. The input bar, activity islands and menus retain their native materials and settings. Overlay glass style follows Window glass style when no explicit override is saved; explicit Regular and Clear choices remain independent. The left rail and temporary navigation preview keep their full height and bottom Archived footer, including during automatic collapse and restoration. Only an explicitly pinned full navigation panel that must float, and the right floating panel, stop above the complete composer area. The preview can cover the composer, but does not resize or reshape it. Focusing the composer closes the temporary preview and restores its complete controls. The editor, draft and focus ownership stay intact. Sidebar keyboard actions stay in the main workspace. The first Escape dismisses a floating panel before the normal reply-interrupt action. Drag resizing retains the shared screen-coordinate behavior.
+
+With Graph closed, **Work in progress** provides a compact disclosure above the composer. It derives rows from the selected conversation's work subtree and observed native agents, excludes completed and archived work, and opens the existing conversation on selection. It introduces no work records or execution owner. New conversations and conversations without qualifying work omit the strip. The list uses the shared control-row size and disclosure motion, with bounded height and scrolling. Work and Debug activity islands use distinct accent-colored symbols under the shared activity-island sizing contract.
+
+A placement change keeps the same workspace surface. The compact navigation rail remains in the main window. Sidebar reveal geometry comes from that window, and retained sidebar and activity presentation entities use ui_layout::pane to reuse unchanged content there. State, activity animation and hover updates still invalidate the content. Active accessibility uses live semantic geometry. The sidebar owns pointer departure in both expanded and compact states. Floating panels exclude covered reading-plane paint and hit targets through the shared Viewport mask. One `PanelFrame` samples the layout slots and visible panel widths for each workspace frame. The sidebar, conversation header and reading-plane mask reuse those positions, including closing and reversals. The native composer applies its matching mask during parent prepaint, before painting that frame. The composer remains outside the reading-plane mask. A full-height left preview uses a separate rectangular mask on the native composer composite and its pointer region. That mask hides the covered portion without changing the complete material contour or foreground size. Its native content measures at the current parent anchor width; one native material supplies the surface, with no extra GPUI fill or window backdrop. Focused rendering tests cover unchanged content geometry across docked and floating placement, the absence of separate native sidebar glass, interrupted closing, the retained compact rail, and covered controls. Native activity islands still update their glass contour and foreground mask in one Core Animation transaction with implicit actions disabled.
+
 The left sidebar contains **Pin**, **Recent**, **Assistant** and **Projects**. Pin contains locally pinned conversation references. Recent contains every available unpinned conversation, without an additional item-count cutoff. Assistant collects personal topics. Projects lists registered native project directories and their independent Agent conversations. Attached Side chats remain with their source tabs. Pin has a four-row viewport; Recent and Assistant have seven-row viewports. All returned entries remain scrollable. These viewports do not enlarge the service snapshot: Work summaries retain their existing 100-record bound.
 
 Click anywhere on a section header to expand or collapse it. Its secondary hover or keyboard-focus menu selects Last updated, Alphabetical or Always scroll titles. These preferences and pins are local UI state. The **Assistant** hover plus creates a **New Assistant topic** and reopens an existing unstarted personal draft before creating another. Personal topics share Assistant Memory and configuration, while retaining separate messages and drafts. The **Projects** hover plus opens the native folder chooser and existing AddProject path. It registers and reveals the project without rebinding the current draft. Each project's hover plus opens its own **New Agent** draft; repeated clicks and cross-project switches reuse the profile-scoped saved draft identity.
 
 **Search and commands (Command-K)** stays at the top in both expanded and compact layouts. It opens one global window for topics, projects, archived conversations, commands and Work. Arrow keys select visible results and Return opens the selected destination without submitting the chat composer. Choosing a result reveals its section or project and keeps the appropriate draft. New topic, New project, New project Agent, Archived conversations and Settings remain available from this window. Work search opens its existing owner conversation with the existing scoped evidence. There is no separate left-side Work hub or redundant inline search field.
 
-At workspace widths above 1,000 points, a 100 ms pointer dwell expands the compact rail temporarily. Leaving starts a 220 ms close delay, and reentry cancels the pending close. The existing width transition retains the leading command and initial positions. Opening a section during a hover does not make the sidebar permanently visible. The explicit sidebar toggle controls persistent visibility and clears the temporary state. Settings commands from a detached native popup route through the global action handler to the main Shell, which owns the reusable Settings window; opening it preserves the selected conversation.
+A 100 ms pointer dwell expands the compact rail temporarily, including when it was collapsed automatically. The temporary preview stays full height and takes precedence over a right floating panel without clearing that panel's requested state. Leaving starts a 220 ms close delay, and reentry cancels the pending close. The existing width transition retains the leading command and initial positions. Opening a section during a hover does not make the sidebar permanently visible. The explicit sidebar toggle controls persistent visibility and clears the temporary state. Clicking it on a compact rail opens a pinned full panel, floating above the composer when it cannot fit beside the conversation. Settings commands from a detached native popup route through the global action handler to the main Shell, which owns the reusable Settings window; opening it preserves the selected conversation.
 
 Sidebar content keeps its complete expanded canvas while the outer width opens, closes or reverses. The panel clips that canvas, so titles and trailing controls keep their final geometry instead of squeezing or disappearing at the first closing frame. The compact presentation mounts only after the rail reaches its settled width. Project branches then leave the compact layout entirely.
 
@@ -234,7 +258,7 @@ The Graph groups Agents by recorded Project membership. A quiet bottom rail and 
 
 Settings > Agents supplies permission and speed defaults for new independent conversations. The input-bar shield selects the current Agent's native permission mode; speed stays inside the model menu. Existing conversations retain their own settings, and native Subagents follow native inheritance rather than a Decodex broadcast.
 
-Shift-Esc toggles Graph or conversation fullscreen according to the active pane. Pane capture tracks clicks across cached Graph layers, and the native composer forwards actions to the persistent shell. Graph fullscreen hides both sidebars and restores their saved visibility and width preferences on exit.
+Shift-Esc toggles Graph or conversation fullscreen according to the active pane. Pane capture tracks clicks across cached Graph layers, and the native composer forwards actions to the persistent shell. Graph fullscreen preserves both sidebars and their allocation. Conversation fullscreen hides the sidebars and restores their saved visibility and width preferences on exit.
 
 The conversation header groups each source with its open Side chats. Use **+** to create and open a native attached branch from the selected conversation after source preparation. Creation needs no second confirmation and sends no message. Switching tabs preserves each conversation's draft and reading position; closing a tab retains the native branch. See [Side chat tabs](conversation-presentation.md#side-chat-tabs).
 
@@ -353,3 +377,5 @@ Reset Memory first shows an inline confirmation bound to the exact reviewed Memo
 RAGFlow setup uses the current local service profile and selected Assistant. Profile, runtime or role changes clear its temporary presentation state while preserving the ordinary chat draft. The component's generated credentials and raw scope IDs are not UI fields. Setup progress and failures use shared inline feedback beside the component. See [Runtime architecture](runtime-architecture.md) for process, storage and native-memory ownership.
 
 Component status lights use the existing component owners and the theme’s semantic success, warning, information, error and muted tones. Ready means Codex is ready, EGM is enabled, or Research is connected with its tools enabled. RAGFlow requires both a responding service API and configured Memory for Ready. Warning marks disabled or incomplete setup, information marks operations, error marks failures or an unavailable service, and muted marks unchecked or absent components. Tooltips and accessibility labels state the meaning. RAGFlow checks its public version API in the background on initial inspection and Components entry, with a three-second limit; passive reads retain the previous light without adding loading rows.
+
+Focused workspace regressions check fixed navigation priority, automatic collapse and restoration, the full-height preview and Archived footer, ordinary sidebar material, stable conversation geometry, interrupted closing, and complete composer controls below pinned floating panels at the 480 by 360 minimum size. Glass-style tests cover inherited window changes and explicit overlay overrides. The display-backed `DECODEX_VISUAL_NATIVE_COMPOSER` probe resizes a real AppKit input bar and toggles the right panel with isolated draft storage. Adding `DECODEX_VISUAL_NATIVE_NAVIGATION` exercises the shared hover entry and departure path. Its trace records viewport, foreground, drawable and mask geometry. These source checks remain separate from installed-app visual acceptance.

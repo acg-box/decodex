@@ -144,6 +144,72 @@ fn expanding_either_capsule_keeps_the_other_in_place(cx: &mut TestAppContext) {
 }
 
 #[gpui::test]
+fn paired_islands_expand_in_the_available_space_and_keep_their_details_visible(
+	cx: &mut TestAppContext,
+) {
+	ui_performance::preference(Some(true));
+	let (root, visual) = cx.add_window_view(|_, cx| {
+		CenteredIsland(cx.new(|cx| {
+			let mut island = PerformanceIsland::new(cx);
+			island.set_available_width(420., cx);
+			island.work = Some(Summary {
+				samples: vec![Sample { tokens: Some(2_000), ..Default::default() }],
+				..Default::default()
+			});
+			island
+		}))
+	});
+	visual.simulate_resize(gpui::size(gpui::px(800.), gpui::px(620.)));
+	let island = root.read_with(visual, |root, _| root.0.clone());
+	visual.update(crate::ui_frame::draw_frame);
+	let work_anchor = visual.debug_bounds("activity-work-control").unwrap().right();
+	let debug_anchor = visual.debug_bounds("activity-debug-control").unwrap().left();
+	for (index, activity) in
+		[Activity::Debug, Activity::Work, Activity::Debug, Activity::Work].into_iter().enumerate()
+	{
+		island.update(visual, |s, cx| {
+			if index == 2 {
+				s.metrics.fps = 165.;
+				s.set_work(
+					Some(Summary {
+						samples: vec![Sample {
+							tokens: Some(98_765_432_100),
+							..Default::default()
+						}],
+						..Default::default()
+					}),
+					cx,
+				);
+			}
+			s.toggle(activity);
+			cx.notify();
+		});
+		visual.update(crate::ui_frame::draw_frame);
+		thread::sleep(crate::ui_live_activity::MORPH_DURATION + Duration::from_millis(30));
+		visual.update(crate::ui_frame::draw_frame);
+		let (selected, other) = if activity == Activity::Debug {
+			("performance-island", "activity-work-island")
+		} else {
+			("activity-work-island", "performance-island")
+		};
+		let panel = visual.debug_bounds(selected).unwrap();
+		let peer = visual.debug_bounds(other).unwrap();
+		assert!(panel.size.height > gpui::px(100.), "both islands must expose their full details");
+		assert!(panel.left() >= gpui::px(190.) && panel.right() <= gpui::px(610.));
+		assert!(panel.right() <= peer.left() || peer.right() <= panel.left());
+		assert!(
+			(visual.debug_bounds("activity-work-control").unwrap().right() - work_anchor).abs()
+				<= gpui::px(0.5)
+		);
+		assert!(
+			(visual.debug_bounds("activity-debug-control").unwrap().left() - debug_anchor).abs()
+				<= gpui::px(0.5)
+		);
+	}
+	ui_performance::preference(Some(false));
+}
+
+#[gpui::test]
 fn work_capsule_grows_and_shrinks_with_content_instead_of_the_agent_count(cx: &mut TestAppContext) {
 	ui_performance::preference(Some(true));
 
@@ -167,9 +233,13 @@ fn work_capsule_grows_and_shrinks_with_content_instead_of_the_agent_count(cx: &m
 	let fps = visual.debug_bounds("performance-fps").unwrap();
 
 	assert!(
-		(label.center().x - before.center().x).abs() < gpui::px(0.5),
+		(label.center().x - before.center().x - gpui::px(crate::ui_live_activity::ICON_SLOT / 2.))
+			.abs()
+			< gpui::px(0.5),
 		"label {label:?}, island {before:?}"
 	);
+	let icon = visual.debug_bounds("activity-work-icon").unwrap();
+	assert!(icon.right() < label.left(), "the Work icon must not overlap its value");
 	assert!(
 		(label.center().y - before.center().y).abs() < gpui::px(0.5),
 		"work label {label:?} is not centered in {before:?}"
@@ -443,10 +513,12 @@ fn hover_waits_for_dwell_cancels_on_exit_and_keeps_click_pinning(cx: &mut TestAp
 	let fps = visual.debug_bounds("performance-fps").unwrap();
 
 	assert!(fps.right() < toggle.right());
-	assert_eq!(
-		visual.debug_bounds("performance-island").unwrap().size.width,
-		gpui::px(crate::ui_live_activity::MIN_CAPSULE_WIDTH)
+	assert!(
+		visual.debug_bounds("performance-island").unwrap().size.width
+			>= gpui::px(crate::ui_live_activity::MIN_CAPSULE_WIDTH)
 	);
+	let icon = visual.debug_bounds("activity-performance-icon").unwrap();
+	assert!(icon.right() < fps.left(), "the icon has a dedicated slot before the value");
 	assert!(visual.debug_bounds("performance-gpu-label").is_none());
 
 	visual.simulate_mouse_move(toggle.center(), None, Default::default());
@@ -587,8 +659,11 @@ fn expanded_details_and_chart_fit_inside_the_compact_capsule(cx: &mut TestAppCon
 
 	assert_eq!(chart.top(), draw.top());
 	assert_eq!(chart.left() - draw.right(), gpui::px(16.));
-	assert!(chart.size.width >= gpui::px(96.));
-	assert_eq!(visual.debug_bounds("performance-fps-label").unwrap().left(), draw.left());
+	assert!(chart.size.width >= gpui::px(64.));
+	assert_eq!(
+		visual.debug_bounds("performance-fps-label").unwrap().left(),
+		draw.left() + gpui::px(crate::ui_live_activity::ICON_SLOT)
+	);
 	assert!(
 		visual.debug_bounds("performance-fps-label").unwrap().right()
 			< visual.debug_bounds("performance-fps").unwrap().left()
@@ -606,7 +681,10 @@ fn expanded_details_and_chart_fit_inside_the_compact_capsule(cx: &mut TestAppCon
 		assert!(unit.left() >= capsule.left() && unit.right() <= capsule.right());
 	}
 	assert_eq!(capsule.size.height, gpui::px(140.));
-	assert_eq!(capsule.size.width, gpui::px(crate::ui_live_activity::EXPANDED_WIDTH));
+	assert!(
+		capsule.size.width <= gpui::px(240.),
+		"ordinary metrics should not reserve a wide empty panel"
+	);
 	assert!(visual.debug_bounds("performance-island-note").is_none());
 
 	ui_performance::preference(Some(false));
@@ -659,10 +737,8 @@ fn metric_columns_fit_their_content_and_adapt_together_for_wider_values(cx: &mut
 
 	let after = visual.debug_bounds("performance-island").unwrap();
 
-	assert_eq!(
-		after.size.width, before.size.width,
-		"value updates stay within their reserved size tier"
-	);
+	assert!(after.size.width > before.size.width, "wide values receive their measured width");
+	assert_eq!(after.size.height, before.size.height);
 
 	for id in ids {
 		let bounds = visual.debug_bounds(id).unwrap();

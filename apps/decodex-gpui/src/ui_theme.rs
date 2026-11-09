@@ -26,6 +26,7 @@ pub(crate) mod foreground {
 }
 
 #[path = "ui_color_theme.rs"] mod color_themes;
+#[path = "ui_navigation_palette.rs"] mod navigation_palette;
 #[path = "ui_palette.rs"] mod palette;
 
 pub(crate) use self::{color_themes::ColorTheme, palette::ColorScheme};
@@ -78,6 +79,8 @@ pub(crate) const POPOVER_GAP: f32 = 8.;
 pub(crate) const POPOVER_ARRIVAL: Duration = Duration::from_millis(160);
 pub(crate) const POPOVER_OFFSET: f32 = 4.;
 pub(crate) const WORKSPACE_GUTTER: f32 = 8.0;
+pub(crate) const MAIN_WINDOW_MIN_WIDTH: f32 = 480.;
+pub(crate) const MAIN_WINDOW_MIN_HEIGHT: f32 = 360.;
 pub(crate) const WORKSPACE_RADIUS: f32 = 16.0;
 pub(crate) const CONVERSATION_HEADER_HEIGHT: f32 = 36.0;
 // Conversation text and composer share a bounded, responsive reading column.
@@ -292,13 +295,22 @@ pub(crate) fn canvas_control_group() -> Div {
 		.bg(rgba(FIELD_MATERIAL))
 }
 
-/// Workspace columns share quiet framing while their content keeps its own palette.
+/// Reading regions and sidebars share quiet framing over the window backing.
 pub(crate) fn workspace_surface() -> Div {
 	gpui::div()
 		.relative()
 		.rounded(gpui::px(WORKSPACE_RADIUS))
 		.bg(rgba(FIELD_MATERIAL))
 		.overflow_hidden()
+}
+
+/// Keep detached workspace content on the same reading baseline as docked panes.
+pub(crate) fn workspace_panel_content() -> Div {
+	gpui::div()
+		.font_family(FONT_FAMILY)
+		.text_size(gpui::px(BODY_SIZE))
+		.line_height(gpui::px(BODY_LINE_HEIGHT))
+		.text_color(rgb(TEXT))
 }
 
 pub(crate) fn settings_header_inset() -> Div {

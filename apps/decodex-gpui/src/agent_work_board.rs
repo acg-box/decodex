@@ -1,5 +1,6 @@
 //! Source-backed agent relationships and execution previews.
 #[path = "agent_relation_activity.rs"] mod activity;
+#[path = "agent_work_progress.rs"] mod progress;
 #[path = "agent_relation_canvas.rs"] mod relations;
 #[path = "agent_review.rs"] mod review;
 #[path = "agent_workbench.rs"] mod workbench;

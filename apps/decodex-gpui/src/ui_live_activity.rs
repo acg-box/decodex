@@ -6,8 +6,9 @@ use crate::ui_theme::CONTROL_GROUP_HEIGHT;
 
 pub(crate) const MIN_CAPSULE_WIDTH: f32 = 72.;
 pub(crate) const CAPSULE_HEIGHT: f32 = CONTROL_GROUP_HEIGHT;
-pub(crate) const COMPACT_WIDTH: f32 = 208.;
-pub(crate) const EXPANDED_WIDTH: f32 = 288.;
+pub(crate) const ICON_SIZE: f32 = 14.;
+pub(crate) const ICON_GAP: f32 = 6.;
+pub(crate) const ICON_SLOT: f32 = ICON_SIZE + ICON_GAP;
 pub(crate) const MORPH_DURATION: Duration = Duration::from_millis(240);
 pub(crate) const ISLAND_GAP: f32 = 6.;
 pub(crate) const EXPANDED_RADIUS: f32 = 20.;
@@ -62,12 +63,12 @@ pub(crate) struct Sizing {
 	pub expanded: f32,
 }
 impl Sizing {
-	/// Reserve predictable tiers; round content exceptions to the same grid.
+	/// Keep the shared grid while sizing each tier from its actual content.
 	pub(crate) fn content(minimal: f32, compact: f32, expanded: f32) -> Self {
 		let snap = |value: f32, grid: f32| (value / grid).ceil() * grid;
 		let minimal = snap(minimal.max(MIN_CAPSULE_WIDTH), 8.);
-		let compact = snap(compact.max(COMPACT_WIDTH).max(minimal), 16.);
-		Self { minimal, compact, expanded: snap(expanded.max(EXPANDED_WIDTH).max(compact), 32.) }
+		let compact = snap(compact.max(minimal), 8.);
+		Self { minimal, compact, expanded: snap(expanded.max(compact), 8.) }
 	}
 
 	pub(crate) fn presentation(self, width: f32) -> Presentation {
@@ -120,11 +121,9 @@ pub(crate) fn arrange(
 			.filter(|(i, _)| *i != index)
 			.map(|(_, item)| item.width)
 			.sum();
-		let room = if allocations.len() == 2 {
-			// The two controls keep their inner edges fixed while expanding outward.
-			// Only half of the unused centered space is available on either side.
-			let resting: f32 = allocations.iter().map(|item| item.width).sum();
-			allocations[index].width + ((budget - resting) / 2.).max(0.)
+		let room = if sizes.len() == 2 {
+			// Fixed inner anchors divide the available space at the center.
+			budget / 2.
 		} else {
 			(budget - others).max(0.)
 		};

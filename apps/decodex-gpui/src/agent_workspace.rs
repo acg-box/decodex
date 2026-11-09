@@ -92,13 +92,19 @@ impl AgentSurface {
 		]
 	}
 
-	pub(crate) fn toggle_workspace_sidebar(&mut self, cx: &mut Context<Self>) {
+	pub(crate) fn toggle_workspace_sidebar(&mut self, window: &Window, cx: &mut Context<Self>) {
 		if self.workspace_connecting() {
 			return;
 		}
 
 		ui_motion::begin_interaction();
-		self.workspace.sidebar_visible = !self.workspace.sidebar_visible;
+		if self.workspace.sidebar_peek || !self.workspace_sidebar_expanded(window) {
+			self.workspace.sidebar_visible = true;
+			self.workspace.sidebar_forced_open.set(self.sidebar_must_preview(window));
+		} else {
+			self.workspace.sidebar_visible = false;
+			self.workspace.sidebar_forced_open.set(false);
+		}
 		self.workspace.sidebar_peek = false;
 		self.workspace.sidebar_hover_intent.cancel();
 
@@ -1198,6 +1204,7 @@ impl AgentSurface {
 				.into_any_element();
 		}
 
+		self.begin_panel_frame(window, cx);
 		self.observe_visible_output(cx);
 		self.prepare_workspace_history(window, cx);
 		self.sync_side_chat_family(cx);
@@ -1299,6 +1306,9 @@ impl AgentSurface {
 			.left_0()
 			.right_0()
 			.bottom_0()
+			.flex()
+			.flex_col()
+			.children(self.work_progress_bar(window, cx))
 			.child(self.composer_footer(window, cx))
 			.child(
 				gpui::canvas(
@@ -1324,7 +1334,7 @@ impl AgentSurface {
 			)
 	}
 
-	fn workspace_focus_region(
+	pub(super) fn workspace_focus_region(
 		&self,
 		panel: Option<super::workspace_size::Panel>,
 		cx: &mut Context<Self>,
@@ -1421,6 +1431,11 @@ impl AgentSurface {
 				)
 			});
 
+		let content_viewport = ui_motion::Viewport::from_bounds(self.workspace_content_clip(
+			gpui::Bounds::new(gpui::point(gpui::px(0.), gpui::px(0.)), window.viewport_size()),
+			window,
+		));
+
 		ui_theme::workspace_surface()
 			.debug_selector(|| "workspace-center-frame".into())
 			.flex_1()
@@ -1429,7 +1444,7 @@ impl AgentSurface {
 			.bg(palette.conversation)
 			.flex()
 			.flex_col()
-			.child(plane)
+			.child(content_viewport.clip(0., plane))
 			.when(has_composer, |center| center.child(self.floating_composer(window, cx)))
 	}
 
@@ -1468,15 +1483,7 @@ impl AgentSurface {
 			.flex_col()
 			.children(self.background_voice_toolbar(cx))
 			.child(center);
-		let right_width = ui_motion::direct_value(
-			"agent-tree-panel",
-			self.agent_tree_width(window),
-			self.workspace
-				.panel_drag
-				.is_some_and(|(panel, _, _)| panel == super::workspace_size::Panel::Right),
-			window,
-			cx,
-		);
+		let right_width = self.workspace_right_layout_width(window);
 		let body = gpui::div()
 			.flex_1()
 			.min_w_0()
@@ -1486,25 +1493,11 @@ impl AgentSurface {
 			.gap(gpui::px(right_width.min(WORKSPACE_GUTTER)))
 			.child(center)
 			.child(
-				ui_theme::workspace_surface()
+				gpui::div()
 					.debug_selector(|| "workspace-activity-frame".into())
 					.flex_none()
 					.w(gpui::px(right_width))
-					.h_full()
-					.opacity(self.workspace.arrival.progress(0.08))
-					.when(right_width > 0.1, |panel| {
-						self.deliveries.update(cx, |panel, cx| panel.set_width(right_width, cx));
-
-						panel
-							.child(self.workspace_focus_region(
-								Some(super::workspace_size::Panel::Right),
-								cx,
-							))
-							.child(ui_layout::pane(self.presentations.activity.clone(), window))
-							.child(
-								self.sidebar_resize_handle(super::workspace_size::Panel::Right, cx),
-							)
-					}),
+					.h_full(),
 			);
 		// Navigation, content and activity share one inset row with matching outer frames.
 		let main = gpui::div()
@@ -1517,7 +1510,9 @@ impl AgentSurface {
 			.relative()
 			.flex()
 			.child(self.sidebar_slot(wide, window, cx))
-			.child(body);
+			.child(body)
+			.child(gpui::deferred(self.sidebar_pane(window, cx)).with_priority(2))
+			.child(gpui::deferred(self.activity_pane(window, cx)).with_priority(1));
 
 		self.workspace_resize_root(cx)
 			.size_full()
@@ -2155,6 +2150,10 @@ impl AgentSurface {
 			"workbench" | "workbench-agent" | "workbench-history" | "workbench-split" =>
 				self.visual_workbench_page(page, cx),
 			"assistant-workspace" => self.visual_personal_navigation(cx),
+			"navigation-hierarchy" | "navigation-hierarchy-compact" =>
+				self.visual_navigation_hierarchy(page.ends_with("compact"), cx),
+			"commands" | "commands-search" | "commands-projects" | "commands-empty" =>
+				self.visual_command_palette(page, cx),
 			"factory" | "relations" | "relations-resource" => {
 				self.work_board.graph = false;
 				self.workspace.graph_expanded = true;
@@ -2212,8 +2211,10 @@ impl AgentSurface {
 			#[cfg(feature = "visual-capture")]
 			"mermaid-scroll" => self.visual_mermaid_scroll_page(cx),
 			"task-references" => self.visual_task_references(),
-			"conversation" => {
+			"conversation" => self.workspace.graph_visible = false,
+			"work-progress" => {
 				self.workspace.graph_visible = false;
+				self.workspace.work_progress_expanded = true;
 			},
 			_ => {},
 		}
@@ -3377,27 +3378,29 @@ mod tests {
 		assert!((workspace.center().x - loading.center().x).abs() < gpui::px(1.));
 		assert!((workspace.center().y - loading.center().y).abs() < gpui::px(1.));
 
-		surface.update(visual, |s, cx| {
-			assert_eq!(s.workspace_panels(), [(false, false); 3]);
+		visual.update(|window, cx| {
+			surface.update(cx, |s, cx| {
+				assert_eq!(s.workspace_panels(), [(false, false); 3]);
 
-			let panels = (
-				s.workspace.sidebar_visible,
-				s.workspace.graph_visible,
-				s.workspace.agent_tree_visible,
-			);
-
-			s.toggle_workspace_sidebar(cx);
-			s.toggle_workspace_graph(cx);
-			s.toggle_agent_tree(cx);
-
-			assert_eq!(
-				panels,
-				(
+				let panels = (
 					s.workspace.sidebar_visible,
 					s.workspace.graph_visible,
-					s.workspace.agent_tree_visible
-				)
-			);
+					s.workspace.agent_tree_visible,
+				);
+
+				s.toggle_workspace_sidebar(window, cx);
+				s.toggle_workspace_graph(cx);
+				s.toggle_agent_tree(cx);
+
+				assert_eq!(
+					panels,
+					(
+						s.workspace.sidebar_visible,
+						s.workspace.graph_visible,
+						s.workspace.agent_tree_visible
+					)
+				);
+			})
 		});
 
 		assert!(visual.debug_bounds("composer-send").is_none());

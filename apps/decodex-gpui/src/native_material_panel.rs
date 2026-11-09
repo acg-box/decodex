@@ -56,6 +56,8 @@ pub(crate) struct MaterialPanel {
 	side_buttons: Retained<AnyObject>,
 	hit_region: Rc<Cell<Option<NSRect>>>,
 	clip_mask: Option<Retained<AnyObject>>,
+	occlusion_mask: Option<Retained<AnyObject>>,
+	occlusion_frame: Option<NSRect>,
 }
 impl MaterialPanel {
 	pub(crate) fn install_input_bar(
@@ -77,6 +79,9 @@ impl MaterialPanel {
 		self.radius = radius;
 		unsafe {
 			let _: () = objc2::msg_send![&*self.material_view, setCornerRadius: radius];
+			if let Some(mask) = &self.clip_mask {
+				let _: () = objc2::msg_send![&**mask, setCornerRadius: radius];
+			}
 		}
 		if self.surface == Surface::Popover
 			&& let Some(content) = self.native.contentView()
@@ -114,14 +119,12 @@ impl MaterialPanel {
 			let material_view = create_surface(material, radius)?;
 			// Transfer material ownership. A window backdrop under a Clear panel
 			// would blur or tint the same pixels twice.
+			ui_theme::window_material::remove_backdrop(window);
+			// The attached material supplies the rounded shape and shadow itself.
+			let clear: Retained<AnyObject> =
+				objc2::msg_send![AnyClass::get(c"NSColor")?, clearColor];
+			let _: () = objc2::msg_send![&*native, setBackgroundColor: &*clear];
 			if surface == Surface::Popover {
-				ui_theme::window_material::remove_backdrop(window);
-				// GPUI gives transparent Metal windows a tiny black background so
-				// AppKit can infer a shadow. Our material already supplies that shape;
-				// the workaround instead leaves a rectangular rim outside its corners.
-				let clear: Retained<AnyObject> =
-					objc2::msg_send![AnyClass::get(c"NSColor")?, clearColor];
-				let _: () = objc2::msg_send![&*native, setBackgroundColor: &*clear];
 				clip_popover_content(&content, radius);
 			}
 
@@ -202,6 +205,8 @@ impl MaterialPanel {
 				side_buttons,
 				hit_region,
 				clip_mask: None,
+				occlusion_mask: None,
+				occlusion_frame: None,
 			})
 		}
 	}
@@ -310,6 +315,7 @@ impl MaterialPanel {
 	/// Keep the Metal drawable fixed while the material's visible contour changes.
 	pub(crate) fn clip_content(&mut self, bounds: Bounds<Pixels>) {
 		let Some(content) = self.native.contentView() else { return };
+		let initialize = self.clip_mask.is_none();
 		if self.clip_mask.is_none() {
 			// Glass resizes its content holder to its contour. Keep the GPUI view
 			// at the window origin and clip a sibling foreground instead: moving
@@ -339,19 +345,20 @@ impl MaterialPanel {
 				f64::from(f32::from(bounds.size.height)),
 			),
 		);
-		if self.material_view.frame() != frame {
-			self.material_view.setFrame(frame);
-			self.shadow_dirty = true;
-		}
-		if let Some(mask) = &self.clip_mask {
+		if initialize || self.material_view.frame() != frame {
 			unsafe {
 				let transaction = AnyClass::get(c"CATransaction").expect("QuartzCore");
 				let _: () = objc2::msg_send![transaction, begin];
 				let _: () = objc2::msg_send![transaction, setDisableActions: true];
-				let _: () = objc2::msg_send![&**mask, setFrame: frame];
-				let _: () = objc2::msg_send![&**mask, setCornerRadius: self.radius];
+				// Glass and foreground must expose the same edge in one transaction.
+				self.material_view.setFrame(frame);
+				if let Some(mask) = &self.clip_mask {
+					let _: () = objc2::msg_send![&**mask, setFrame: frame];
+					let _: () = objc2::msg_send![&**mask, setCornerRadius: self.radius];
+				}
 				let _: () = objc2::msg_send![transaction, commit];
 			}
+			self.shadow_dirty = true;
 		}
 		let window_frame = self.native.frame();
 		let region = NSRect::new(
@@ -359,6 +366,51 @@ impl MaterialPanel {
 				window_frame.origin.x + frame.origin.x,
 				window_frame.origin.y + frame.origin.y,
 			),
+			frame.size,
+		);
+		self.hit_region.set(Some(region));
+		update_hit_region(&self.native, region);
+	}
+
+	/// Clip the composite behind another surface. This does not resize the glass
+	/// contour or foreground, unlike an island's animated contour.
+	pub(crate) fn occlude_content(&mut self, bounds: Bounds<Pixels>) {
+		let Some(content) = self.native.contentView() else { return };
+		let frame = NSRect::new(
+			NSPoint::new(
+				f64::from(f32::from(bounds.left())),
+				content.bounds().size.height - f64::from(f32::from(bounds.bottom())),
+			),
+			NSSize::new(
+				f64::from(f32::from(bounds.size.width)),
+				f64::from(f32::from(bounds.size.height)),
+			),
+		);
+		if self.occlusion_frame != Some(frame) {
+			content.setWantsLayer(true);
+			unsafe {
+				let transaction = AnyClass::get(c"CATransaction").expect("QuartzCore");
+				let _: () = objc2::msg_send![transaction, begin];
+				let _: () = objc2::msg_send![transaction, setDisableActions: true];
+				if self.occlusion_mask.is_none() {
+					let mask: Retained<AnyObject> =
+						objc2::msg_send![AnyClass::get(c"CALayer").expect("QuartzCore"), layer];
+					let color = NSColor::whiteColor().CGColor();
+					let _: () = objc2::msg_send![&*mask, setBackgroundColor: &*color];
+					let layer: Retained<AnyObject> = objc2::msg_send![&*content, layer];
+					let _: () = objc2::msg_send![&*layer, setMask: &*mask];
+					self.occlusion_mask = Some(mask);
+				}
+				if let Some(mask) = &self.occlusion_mask {
+					let _: () = objc2::msg_send![&**mask, setFrame: frame];
+				}
+				let _: () = objc2::msg_send![transaction, commit];
+			}
+			self.occlusion_frame = Some(frame);
+		}
+		let window = self.native.frame();
+		let region = NSRect::new(
+			NSPoint::new(window.origin.x + frame.origin.x, window.origin.y + frame.origin.y),
 			frame.size,
 		);
 		self.hit_region.set(Some(region));
@@ -695,6 +747,11 @@ pub(crate) fn observed_rendering(window: &Window) -> Option<Value> {
 					objc2::msg_send![&*layer, animationKeys];
 				let rasterized: bool = objc2::msg_send![&*layer, shouldRasterize];
 				let filters: Option<Retained<NSArray<AnyObject>>> = objc2::msg_send![&*layer, filters];
+				let mask: Option<Retained<AnyObject>> = objc2::msg_send![&*layer, mask];
+				let mask_frame = mask.map(|mask| {
+					let frame: NSRect = objc2::msg_send![&*mask, frame];
+					[frame.origin.x, frame.origin.y, frame.size.width, frame.size.height]
+				});
 
 				serde_json::json!({
 					"class": layer.class().name().to_string_lossy(),
@@ -706,6 +763,7 @@ pub(crate) fn observed_rendering(window: &Window) -> Option<Value> {
 					"presentation_opacity": presentation_opacity,
 					"animations": animations.map(|keys| keys.iter().map(|key| key.to_string()).collect::<Vec<_>>()).unwrap_or_default(),
 					"rasterized": rasterized,
+					"mask_frame": mask_frame,
 					"filters": filters.map(|filters| filters.iter().map(|filter| filter.class().name().to_string_lossy().into_owned()).collect::<Vec<_>>()).unwrap_or_default(),
 				})
 			});
@@ -800,10 +858,12 @@ fn set_glass_style(glass: &NSView, clear: bool, input_bar: bool) -> bool {
 }
 
 fn apply_popover_tint(view: &NSView, surface: Surface, material: Material) {
-	if surface != Surface::Popover {
+	if surface == Surface::InputBar {
 		return;
 	}
-	let color = ui_theme::popover_tint(material, GlassScope::Popover.configured());
+	let color = (surface == Surface::Popover)
+		.then(|| ui_theme::popover_tint(material, GlassScope::Popover.configured()))
+		.flatten();
 	unsafe {
 		let tint: Option<Retained<AnyObject>> = color.map(|color| objc2::msg_send![AnyClass::get(c"NSColor").expect("AppKit"), colorWithSRGBRed: f64::from(color.r), green: f64::from(color.g), blue: f64::from(color.b), alpha: f64::from(color.a)]);
 		let previous: Option<Retained<AnyObject>> = objc2::msg_send![view, tintColor];

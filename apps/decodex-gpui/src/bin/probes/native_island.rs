@@ -67,7 +67,8 @@ pub(super) fn run() {
 						let island = cx.new(PerformanceIsland::new);
 
 						island.update(cx, |island, cx| {
-							island.set_available_width(860., cx);
+							// Leave asymmetric expansion space to exercise paired allocation.
+							island.set_available_width(640., cx);
 							island.set_work(Some(self::work(false)), cx);
 						});
 

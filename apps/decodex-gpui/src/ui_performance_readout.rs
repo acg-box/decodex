@@ -11,7 +11,8 @@ use gpui::{
 };
 
 use crate::{
-	ui_live_activity::{CAPSULE_HEIGHT, Sizing},
+	shell::workspace_symbols::{self, Symbol},
+	ui_live_activity::{CAPSULE_HEIGHT, ICON_SIZE, ICON_SLOT, Sizing},
 	ui_motion,
 	ui_performance::{self, PerformanceIsland, chart},
 	ui_theme::{self, BLUE, TEXT, TEXT_MUTED, WARNING},
@@ -166,7 +167,11 @@ impl Content {
 			width("activity-width-total-value", &tokens(&data.total), TEXT_SIZE, FontWeight::MEDIUM)
 		};
 		data.header_widths = [primary, total_label + 4., total_value];
-		let compact = primary + 16. + total_label + 4. + total_value + FRAME;
+		let compact = if data.idle_total() {
+			total_label + 4. + total_value + FRAME
+		} else {
+			primary + 16. + total_label + 4. + total_value + FRAME
+		};
 		let longest = |get: fn(&Live) -> String| {
 			data.rows.iter().map(get).max_by_key(String::len).unwrap_or_default()
 		};
@@ -207,7 +212,8 @@ impl Content {
 		data.breakdown_columns = breakdown_columns(&data, &mut width);
 		let breakdown_width = data.breakdown_columns.iter().sum::<f32>() + COLUMN_GAP + FRAME;
 
-		data.sizing = Sizing::content(minimal, compact, details.max(breakdown_width));
+		data.sizing =
+			Sizing::content(minimal + ICON_SLOT, compact + ICON_SLOT, details.max(breakdown_width));
 
 		Self::Work(data)
 	}
@@ -270,9 +276,9 @@ impl Content {
 		];
 
 		// The sparkline gets enough space to show its measured history.
-		let details = data.columns[0] + data.columns[1].max(96.) + COLUMN_GAP + FRAME;
+		let details = data.columns[0] + data.columns[1].max(64.) + COLUMN_GAP + FRAME;
 
-		data.sizing = Sizing::content(minimal, compact, details);
+		data.sizing = Sizing::content(minimal + ICON_SLOT, compact + ICON_SLOT, details);
 
 		Self::Debug(data)
 	}
@@ -314,10 +320,34 @@ impl Content {
 	}
 
 	pub(super) fn header(&self, fraction: f32, width: f32) -> AnyElement {
-		match self {
-			Self::Work(v) => work_header(v, fraction, width),
-			Self::Debug(v) => debug_header(v, fraction, width),
-		}
+		let (name, symbol, content) = match self {
+			Self::Work(v) => (
+				"activity-work-icon",
+				Symbol::WorkActivity,
+				work_header(v, fraction, (width - ICON_SLOT).max(0.)),
+			),
+			Self::Debug(v) => (
+				"activity-performance-icon",
+				Symbol::PerformanceActivity,
+				debug_header(v, fraction, (width - ICON_SLOT).max(0.)),
+			),
+		};
+		gpui::div()
+			.relative()
+			.size_full()
+			.child(
+				gpui::div()
+					.debug_selector(move || name.into())
+					.absolute()
+					.left(gpui::px(8.))
+					.top(gpui::px((CAPSULE_HEIGHT - 2. - ICON_SIZE) / 2.))
+					.text_color(ui_theme::rgb(ui_theme::ACCENT))
+					.child(workspace_symbols::icon_sized(symbol, ICON_SIZE)),
+			)
+			.child(
+				gpui::div().absolute().left(gpui::px(ICON_SLOT)).right_0().h_full().child(content),
+			)
+			.into_any_element()
 	}
 
 	pub(super) fn details(
@@ -488,11 +518,11 @@ fn work_header(data: &Work, fraction: f32, width: f32) -> AnyElement {
 	} else {
 		(width - primary) / 2. * (1. - fraction) + INSET * fraction
 	};
-	let secondary_opacity = separated_opacity(
-		fraction,
-		total_position - label - primary_position - primary,
-		COLUMN_GAP,
-	);
+	let secondary_opacity = if data.idle_total() {
+		separated_opacity(fraction, total_position - label - INSET, 4.)
+	} else {
+		separated_opacity(fraction, total_position - label - primary_position - primary, COLUMN_GAP)
+	};
 	let primary_view = gpui::div()
 		.debug_selector(|| "activity-live-rate".into())
 		.w(gpui::px(primary))
@@ -501,7 +531,7 @@ fn work_header(data: &Work, fraction: f32, width: f32) -> AnyElement {
 	gpui::div()
 		.relative()
 		.size_full()
-		.children((!data.idle_total() || fraction > 0.).then(|| {
+		.children((!data.idle_total()).then(|| {
 			header_slot(
 				primary_position,
 				primary,
