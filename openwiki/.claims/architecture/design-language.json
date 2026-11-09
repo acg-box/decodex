@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:558b426298c8f50b099c32367d52b7743b5a3f7f8e00a50351366df1ec12e7b6",
+  "pageVersion": "sha256:2e821e39293c5be75bacc151ed75fd44c639ff561526e08a0729d5eb49f76271",
   "claims": [
     {
       "id": "claim_b70a9c3fa68642d29871a42ed05c1114",
@@ -45,7 +45,7 @@
       "statement": "Activity content keeps a fixed drawable at the native window origin with a sibling rounded mask; details retain their full-width layout, and secondary header fields appear only after they fit beside the persistent main value.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/native_material_panel.rs#L314-L371",
+          "resource": "repo://apps/decodex-gpui/src/native_material_panel.rs#L312-L369",
           "version": "repo-lines-v1:sha256:a9a05f6086ed3345c67a38c5cf09019569189ccfda6b3084b8314fc6954a577b:eyJzZWxlY3RlZExpbmVDb3VudCI6NTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVjOGQ1MmNiZWRlZDgwM2U4Y2U2M2VkZmI5NDUwZGJiMDYzNDIxNDRiODM4YWRiY2NhNzYzNGE1MjhmOWVjNWUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYzNWIwODA1YzczNzdlNjAyNDg0ZmJjZjNlZmY1YjQwN2RiNTIzYTU3MTRlNThhNjc5NGQ4ZjRjNTRjYzQ4ZWMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjYwNDI5YjRkODBmNzQzMGJhYWEwMDViMGU1YTgyZTNjNDllNWNkYzJiMTQ3OTMzZGZiYTNhNjI2ZWJkMzRhNzQifQ"
         },
         {
@@ -86,7 +86,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_composer.rs",
-          "version": "repo-file-v1:sha256:aca07a015dd0a8276d8f33214b086e118be0e0b9458f4355a0634824ddf580db"
+          "version": "repo-file-v1:sha256:b7dfd5ec4ef9dfe5c815be692215d7dcdefc69e68467d84ad5e6721566f16afb"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_model_settings.rs",
@@ -248,7 +248,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace_size.rs",
-          "version": "repo-file-v1:sha256:86cf9a6e2affebdcae7b3654871a7d6fbc998f4970200e334500db226f5ad404"
+          "version": "repo-file-v1:sha256:5f0bee27856de824748347f0af853351d8d5ebd3b70c62a66d3371c8210bf24b"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_motion.rs",
@@ -301,7 +301,7 @@
           "version": "repo-lines-v1:sha256:52fe5e6875d95e4e9063f570d121a54fd460cdd824984747428a3c60832e5c58:eyJzZWxlY3RlZExpbmVDb3VudCI6MjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRkYzc2MDIwYmFlNzA1NzdlNjRiMzMwZGNhODNmZGYyNGYzZDc1OTNhMDE1NGQ4YWJlYzZkYzYzZjU4OTdmZDkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjdhOThiZWFjYzhjMDJkM2MwMDYwZWMzZWIyMTI1ODQ5M2E3OTJhNDkyMjBhNTdkZmUxZTllMjgzZDU3MTBjMTQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY2NzhjZDExZTdmOGViYzg0MTZhZThmMjhmYWI4ZDU0YmUxNWQzMmFkYWM4NTNkNDJhMmIyZGM4ZWIwNjFlMDMifQ"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_workspace_size.rs#L1189-L1243",
+          "resource": "repo://apps/decodex-gpui/src/agent_workspace_size.rs#L1209-L1263",
           "version": "repo-lines-v1:sha256:42f76f75e449f88c9b2450eb41f12677884b4bbe7907d745b461377e82e0000b:eyJzZWxlY3RlZExpbmVDb3VudCI6NTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRhNDMwOWVmNjVkMDZhNGQ2ZGE0ZGVlMThjNjc0NjBlOGY0MjRmOWZjODQwZTAyODgzN2ZlOGEwOWYwZTM5N2UiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjJkY2JlMDRmOTBkMDQ2Y2I1ZDgyMmU5N2M4NDM0NzRmYzcwODZhMDBmZWQ3ODYwODA2MzAyNDY1ZDJjOGI5MDEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImZmNzUxNWVhMzhmZTUxMWI4ZjI2ZTQzMTE3N2Q4NjMxY2E0Mjk1MGEwY2YwZTBiOTlmMmQxZmMyZWNhOWM2MmMifQ"
         }
       ]
@@ -319,7 +319,7 @@
           "version": "repo-lines-v1:sha256:fe981c19f7fc3ddcf94af2a90814f3c25cd9cc5fb1e3d24d72f5a6144bb17b0d:eyJzZWxlY3RlZExpbmVDb3VudCI6MzYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgzMGI0OTRkNjdmYzBmNTIxMDVjODdkYzg0NWE5YzI1ZjhmYmFiYjI2ZWQ2NTlhMDc2ZjNiNmNmYjJhNjkxMmEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3OGIyODNlZmU0MjUxYzU1N2ZhY2IzYTc2NDZkNGE2ZTllYTE2MjU0MjM2MzZmMzg1ZjIzZWM1NjhmNjMyYTYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijc0MjI1OGY2YWZmYzRlYWE1NmUxNzQ4ZTRkOWNjMDMyNWQ4Mzc2ODNjNGU5NTNiYzQ0YzkyMTg2MzI3Y2U4OGIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE3MDUzODVkOTJlMjgyZmM4NjI2ZjU0YWFjZWI0YzBmNWQ1YjUxZTRmNDlmYzY3ZDcyNTk2NjZjOWY5ZGYxNmEifQ"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_workspace_size.rs#L437-L462",
+          "resource": "repo://apps/decodex-gpui/src/agent_workspace_size.rs#L450-L475",
           "version": "repo-lines-v1:sha256:e2fdd191d9d8096c9ed67bd0c31358760dfdf3289efff550b9104e4813cc7399:eyJzZWxlY3RlZExpbmVDb3VudCI6MjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjExZTExYmQxMTA5MDQzODU3OTMyOGUwNDYzNjQ0YjczOTkxMjk0NDRlOTkxNzg2OGFiMTI1MzNiMGMyMGMzZDQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQ2MjVkYTI1YTBmNzdjZWQ3MjY3YjBkNTUwZDEzODBiODZiMjcyYWRkOTg2ZDM5ZjcyOGRmM2RhYTZmNmMwZmMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjYyZWZiZmUzYTI0MjU3ZThmNzU4OGExMWEzNTkyMThhMGZkNzVhOWQzZjdiNmJhNzlkN2M3ZDdkZTY0ODIzYjEifQ"
         },
         {
@@ -448,7 +448,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace_size.rs",
-          "version": "repo-file-v1:sha256:86cf9a6e2affebdcae7b3654871a7d6fbc998f4970200e334500db226f5ad404"
+          "version": "repo-file-v1:sha256:5f0bee27856de824748347f0af853351d8d5ebd3b70c62a66d3371c8210bf24b"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/main.rs",
@@ -462,15 +462,15 @@
     },
     {
       "id": "claim_e7df8aa523864726bdc4a6a8c228ac9a",
-      "statement": "Both sidebars use the original workspace_surface and workspace field color in the main GPUI window for docked, floating and compact states, without separate native Liquid Glass surfaces. Shared clipping, overlay dismissal and composer clipping preserve the existing editor and responsive layout.",
+      "statement": "Both sidebars use the original workspace_surface and workspace field color in the main GPUI window for docked, floating and compact states, without separate native Liquid Glass surfaces. Shared clipping and overlay dismissal preserve the existing editor and responsive layout.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_tree.rs",
-          "version": "repo-file-v1:sha256:826482e23420989c1f9e5b645bb03e1b4579a3213b15b2c09c0d895a41f73aee"
+          "version": "repo-file-v1:sha256:14abe9141774587165b6bb470430eaedd28bed1206a94224687ecf137f07fc21"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace_size.rs",
-          "version": "repo-file-v1:sha256:86cf9a6e2affebdcae7b3654871a7d6fbc998f4970200e334500db226f5ad404"
+          "version": "repo-file-v1:sha256:5f0bee27856de824748347f0af853351d8d5ebd3b70c62a66d3371c8210bf24b"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_theme.rs",
@@ -488,7 +488,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:b1a03c4c2e7fae2508fd0f26435d07c480f3d6794f5e4e7642d564c48955c1e5"
+          "version": "repo-file-v1:sha256:c145c13a7a19c5435c7f98454e145fea6a20bb9fb49cf0ef0eb9640d6d04bf49"
         }
       ]
     },
@@ -498,11 +498,11 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_tree.rs",
-          "version": "repo-file-v1:sha256:826482e23420989c1f9e5b645bb03e1b4579a3213b15b2c09c0d895a41f73aee"
+          "version": "repo-file-v1:sha256:14abe9141774587165b6bb470430eaedd28bed1206a94224687ecf137f07fc21"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace_size.rs",
-          "version": "repo-file-v1:sha256:86cf9a6e2affebdcae7b3654871a7d6fbc998f4970200e334500db226f5ad404"
+          "version": "repo-file-v1:sha256:5f0bee27856de824748347f0af853351d8d5ebd3b70c62a66d3371c8210bf24b"
         }
       ]
     },
@@ -530,11 +530,11 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_tree.rs",
-          "version": "repo-file-v1:sha256:826482e23420989c1f9e5b645bb03e1b4579a3213b15b2c09c0d895a41f73aee"
+          "version": "repo-file-v1:sha256:14abe9141774587165b6bb470430eaedd28bed1206a94224687ecf137f07fc21"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/native_material_panel.rs",
-          "version": "repo-file-v1:sha256:615a2190ed683782432d14f13c2ee5ef1ef6dd7cfa4fa5979310ec753cba53ce"
+          "version": "repo-file-v1:sha256:8551b1b9e34debede5e69b52543804a8e4458af648419bdae0e72fdd5ff67095"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_theme.rs",
@@ -548,7 +548,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace_size.rs",
-          "version": "repo-file-v1:sha256:86cf9a6e2affebdcae7b3654871a7d6fbc998f4970200e334500db226f5ad404"
+          "version": "repo-file-v1:sha256:5f0bee27856de824748347f0af853351d8d5ebd3b70c62a66d3371c8210bf24b"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_motion.rs",
@@ -562,7 +562,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_native_composer.rs",
-          "version": "repo-file-v1:sha256:6cc5defd496ffa56c69f7df3738f2113449917a5739a8c987ca40b52dd90c7dd"
+          "version": "repo-file-v1:sha256:701515c4d7bbac8898d7e3b9a7d60f2613288d29af927863eda28b25cab0393e"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_navigation_sidebar.rs",
@@ -570,7 +570,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace_size.rs",
-          "version": "repo-file-v1:sha256:86cf9a6e2affebdcae7b3654871a7d6fbc998f4970200e334500db226f5ad404"
+          "version": "repo-file-v1:sha256:5f0bee27856de824748347f0af853351d8d5ebd3b70c62a66d3371c8210bf24b"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_layout.rs",
@@ -588,7 +588,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/native_material_panel.rs",
-          "version": "repo-file-v1:sha256:615a2190ed683782432d14f13c2ee5ef1ef6dd7cfa4fa5979310ec753cba53ce"
+          "version": "repo-file-v1:sha256:8551b1b9e34debede5e69b52543804a8e4458af648419bdae0e72fdd5ff67095"
         }
       ]
     },
@@ -598,11 +598,11 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/bin/probes/native_workspace.rs",
-          "version": "repo-file-v1:sha256:c6d018ee1d10f782b45282757622287c4da2ece26f06dd842f0129300f64bc10"
+          "version": "repo-file-v1:sha256:89038de16e13e8f29ee377409c9acf57bbf086ea456a9a5637dea0e4159a1ebd"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/bin/workbench_visual_capture.rs",
-          "version": "repo-file-v1:sha256:2f8fb13fe146f2ea65f8763a7680a57c971dae277efa995075bd7b2ad300bc9c"
+          "version": "repo-file-v1:sha256:8d4ffee0bbc443c81c027e519acfa7d4b0c7199faf839f57fb030fc42f80bf7b"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/frame_trace.rs",
@@ -612,29 +612,69 @@
     },
     {
       "id": "claim_7e161061e1e54a4d8e47f71f13771560",
-      "statement": "Floating sidebars clip covered reading-plane paint and hit regions without reflow. The native composer uses the same workspace_content_clip exclusion geometry, so underlying text need not be hidden by changing sidebar material.",
+      "statement": "Floating sidebars end above the complete composer area and mask only covered reading-plane paint and hit regions without reflow. The composer remains outside this mask with visible input and Send controls.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_native_composer.rs",
-          "version": "repo-file-v1:sha256:6cc5defd496ffa56c69f7df3738f2113449917a5739a8c987ca40b52dd90c7dd"
+          "resource": "repo://apps/decodex-gpui/src/agent_tree.rs",
+          "version": "repo-file-v1:sha256:14abe9141774587165b6bb470430eaedd28bed1206a94224687ecf137f07fc21"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:b1a03c4c2e7fae2508fd0f26435d07c480f3d6794f5e4e7642d564c48955c1e5"
+          "version": "repo-file-v1:sha256:c145c13a7a19c5435c7f98454e145fea6a20bb9fb49cf0ef0eb9640d6d04bf49"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace_size.rs",
-          "version": "repo-file-v1:sha256:86cf9a6e2affebdcae7b3654871a7d6fbc998f4970200e334500db226f5ad404"
+          "version": "repo-file-v1:sha256:5f0bee27856de824748347f0af853351d8d5ebd3b70c62a66d3371c8210bf24b"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_viewport_clip.rs",
           "version": "repo-file-v1:sha256:c72a39f12c130e72e3e8d5fff9d413433b2cf9fd2129b5b30f51d4df1cd19e02"
         }
       ]
+    },
+    {
+      "id": "claim_39f3039680554416a75bf79a37d40cee",
+      "statement": "The native composer measures content at its current parent anchor width and uses one selected native material without an additional GPUI fill or window backdrop, while retaining the editor and its focus.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_composer.rs",
+          "version": "repo-file-v1:sha256:b7dfd5ec4ef9dfe5c815be692215d7dcdefc69e68467d84ad5e6721566f16afb"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_native_composer.rs",
+          "version": "repo-file-v1:sha256:701515c4d7bbac8898d7e3b9a7d60f2613288d29af927863eda28b25cab0393e"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/native_material_panel.rs",
+          "version": "repo-file-v1:sha256:8551b1b9e34debede5e69b52543804a8e4458af648419bdae0e72fdd5ff67095"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/ui_layout.rs",
+          "version": "repo-file-v1:sha256:347d2ee581e3da3e8ba4a8bda819950f18ad293a17346903659bc29315d4c005"
+        }
+      ]
+    },
+    {
+      "id": "claim_e23153da5cbe4346bc4a9ffdadb4d019",
+      "statement": "The visual capture binary's DECODEX_VISUAL_NATIVE_COMPOSER mode resizes a real AppKit composer and toggles a workspace panel with an isolated draft root and process-local appearance, recording native rendering dimensions without a live service.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/bin/probes/native_workspace.rs",
+          "version": "repo-file-v1:sha256:89038de16e13e8f29ee377409c9acf57bbf086ea456a9a5637dea0e4159a1ebd"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/bin/workbench_visual_capture.rs",
+          "version": "repo-file-v1:sha256:8d4ffee0bbc443c81c027e519acfa7d4b0c7199faf839f57fb030fc42f80bf7b"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/frame_trace.rs",
+          "version": "repo-file-v1:sha256:46d44373ff9c4a016a5e5dfb73f29d8a22b6da7419fe2760a860141708c27256"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.9.0",
-    "at": "2026-11-09T03:40:28.414Z"
+    "at": "2026-11-09T04:05:52.249Z"
   }
 }

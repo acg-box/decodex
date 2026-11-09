@@ -1669,9 +1669,8 @@ pub(super) fn composer_capsule(native: bool) -> Stateful<Div> {
 		.when(!native || Surface::InputBar.material() == Material::Thin, |d| {
 			d.border_1().border_color(crate::ui_theme::rgb(LINE_STRONG).opacity(0.4))
 		})
-		// Native materials can take on a desktop tint. Keep the editor's reading
-		// surface in the selected palette while AppKit retains the material edge.
-		.when(native, |d| d.bg(crate::ui_theme::rgba(COMPOSER_MATERIAL)))
+		// Native composition owns the surface. A second rounded fill creates a
+		// second contour when its layout and the material resize at different times.
 		.when(!native, |d| d.bg(crate::ui_theme::rgba(COMPOSER_MATERIAL)))
 		.when(!native, |d| {
 			d.shadow(vec![gpui::BoxShadow {

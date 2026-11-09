@@ -324,7 +324,7 @@ impl AgentSurface {
 	}
 
 	/// Closing releases the layout slot before the visible surface disappears.
-	/// Keep its material mode until that surface finishes closing.
+	/// Keep its placement until that surface finishes closing.
 	pub(super) fn workspace_panel_floating(
 		&self,
 		panel: Panel,
@@ -368,8 +368,21 @@ impl AgentSurface {
 		self.workspace.composer_overlay_height.max(0.)
 	}
 
-	/// Keep the native child window behind temporary workspace panels without
-	/// changing the editor's layout or its input state.
+	/// A temporary panel covers history, not the controls needed to send a message.
+	pub(super) fn workspace_panel_bottom(&self, floating: bool) -> f32 {
+		WORKSPACE_GUTTER
+			+ if floating && self.graph_has_composer() && !self.workspace.browsing {
+				self.workspace_composer_clearance().max(
+					ui_theme::COMPOSER_MIN_HEIGHT
+						+ ui_theme::COMPOSER_TOP_GAP
+						+ ui_theme::COMPOSER_BOTTOM_GAP,
+				)
+			} else {
+				0.
+			}
+	}
+
+	/// Exclude covered history without reflowing it. The composer is outside this mask.
 	pub(super) fn workspace_content_clip(
 		&self,
 		bounds: gpui::Bounds<gpui::Pixels>,
@@ -484,6 +497,13 @@ impl AgentSurface {
 		let width = self.workspace_sidebar_display_width(window);
 		let layout = self.workspace_panel_layout(window);
 		let floating = self.workspace_panel_floating(Panel::Left, layout, width);
+		let bottom = ui_motion::direct_value(
+			"navigation-panel-bottom",
+			self.workspace_panel_bottom(floating),
+			false,
+			window,
+			cx,
+		);
 		if self
 			.workspace
 			.sidebar_content_motion
@@ -499,7 +519,7 @@ impl AgentSurface {
 			.absolute()
 			.left(gpui::px(WORKSPACE_GUTTER))
 			.top(gpui::px(WINDOW_CONTROLS_CLEARANCE))
-			.bottom(gpui::px(WORKSPACE_GUTTER))
+			.bottom(gpui::px(bottom))
 			.w(gpui::px(width))
 			.overflow_hidden()
 			.opacity(self.workspace.arrival.progress(0.))
@@ -1547,7 +1567,9 @@ mod tests {
 			assert!(
 				visual.debug_bounds("workspace-activity-pane").unwrap().size.width > gpui::px(0.)
 			);
-			assert_eq!(visual.debug_bounds("workbench-body").unwrap().size, content);
+			let current = visual.debug_bounds("workbench-body").unwrap().size;
+			assert_eq!(current.width, content.width);
+			assert!(current.height <= content.height);
 		}
 	}
 
@@ -1568,6 +1590,54 @@ mod tests {
 				assert!(s.workspace.graph_visible);
 			})
 		});
+	}
+
+	#[gpui::test]
+	fn floating_panels_leave_the_complete_composer_and_send_action_accessible(
+		cx: &mut gpui::TestAppContext,
+	) {
+		for (width, height, active) in [
+			(480., 360., Panel::Left),
+			(480., 360., Panel::Right),
+			(480., 620., Panel::Left),
+			(480., 620., Panel::Right),
+			(800., 620., Panel::Right),
+		] {
+			let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+			visual.simulate_resize(gpui::size(gpui::px(width), gpui::px(height)));
+			surface.update(visual, |s, cx| {
+				s.visual_workspace_fixture(cx);
+				s.workspace.sidebar_width = 240.;
+				s.workspace.agent_panel_width = 240.;
+				s.workspace.sidebar_visible = true;
+				s.workspace.agent_tree_visible = true;
+				s.workspace.panel_priority = Panel::Left;
+				s.workspace.last_opened_panel = active;
+				s.composer.update(cx, |input, cx| input.set_content("Keep this draft", cx));
+			});
+			visual.update(crate::ui_frame::draw_current_frame);
+			thread::sleep(crate::ui_theme::MOTION_PANEL + std::time::Duration::from_millis(40));
+			visual.update(crate::ui_frame::draw_current_frame);
+			let composer = visual.debug_bounds("agent-composer").unwrap();
+			let send = visual.debug_bounds("composer-send").unwrap();
+			let floating = visual
+				.debug_bounds(if active == Panel::Left {
+					"workspace-navigation-pane"
+				} else {
+					"workspace-activity-pane"
+				})
+				.unwrap();
+			assert!(floating.bottom() <= composer.top(), "temporary panels stop above input");
+			assert!(composer.contains(&send.origin) && composer.contains(&send.bottom_right()));
+			assert!(composer.right() <= gpui::px(width));
+			let permissions = visual.debug_bounds("composer-permissions").unwrap();
+			visual.simulate_click(permissions.center(), Default::default());
+			assert_eq!(surface.read_with(visual, |s, _| s.composer_menu), Some("permissions"));
+			assert_eq!(
+				surface.read_with(visual, |s, cx| s.composer.read(cx).content().to_owned()),
+				"Keep this draft"
+			);
+		}
 	}
 
 	#[gpui::test]

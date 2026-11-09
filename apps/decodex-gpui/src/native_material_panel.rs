@@ -117,14 +117,12 @@ impl MaterialPanel {
 			let material_view = create_surface(material, radius)?;
 			// Transfer material ownership. A window backdrop under a Clear panel
 			// would blur or tint the same pixels twice.
+			ui_theme::window_material::remove_backdrop(window);
+			// The attached material supplies the rounded shape and shadow itself.
+			let clear: Retained<AnyObject> =
+				objc2::msg_send![AnyClass::get(c"NSColor")?, clearColor];
+			let _: () = objc2::msg_send![&*native, setBackgroundColor: &*clear];
 			if surface == Surface::Popover {
-				ui_theme::window_material::remove_backdrop(window);
-				// GPUI gives transparent Metal windows a tiny black background so
-				// AppKit can infer a shadow. Our material already supplies that shape;
-				// the workaround instead leaves a rectangular rim outside its corners.
-				let clear: Retained<AnyObject> =
-					objc2::msg_send![AnyClass::get(c"NSColor")?, clearColor];
-				let _: () = objc2::msg_send![&*native, setBackgroundColor: &*clear];
 				clip_popover_content(&content, radius);
 			}
 

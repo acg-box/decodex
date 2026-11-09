@@ -40,6 +40,13 @@ impl AgentSurface {
 		let width = self.workspace_right_display_width(window);
 		let floating =
 			self.workspace_panel_floating(super::workspace_size::Panel::Right, layout, width);
+		let bottom = ui_motion::direct_value(
+			"activity-panel-bottom",
+			self.workspace_panel_bottom(floating),
+			false,
+			window,
+			cx,
+		);
 		if self
 			.workspace
 			.right_content_motion
@@ -61,7 +68,7 @@ impl AgentSurface {
 			.absolute()
 			.right(gpui::px(WORKSPACE_GUTTER))
 			.top(gpui::px(crate::shell::WINDOW_CONTROLS_CLEARANCE))
-			.bottom(gpui::px(WORKSPACE_GUTTER))
+			.bottom(gpui::px(bottom))
 			.w(gpui::px(width))
 			.overflow_hidden()
 			.opacity(self.workspace.arrival.progress(0.08))

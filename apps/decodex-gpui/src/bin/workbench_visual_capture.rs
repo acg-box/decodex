@@ -137,6 +137,11 @@ impl Render for CollaborationComponent {
 
 fn main() -> Result<()> {
 	#[cfg(target_os = "macos")]
+	if env::var_os("DECODEX_VISUAL_NATIVE_COMPOSER").is_some() {
+		native_workspace::run_composer();
+		return Ok(());
+	}
+	#[cfg(target_os = "macos")]
 	if env::var_os("DECODEX_VISUAL_NATIVE_WORKSPACE").is_some() {
 		native_workspace::run();
 		return Ok(());

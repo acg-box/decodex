@@ -5,7 +5,7 @@ description: Reusable layout, activity-island motion, reading spacing and theme 
 tags: [desktop, design, motion, layout]
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-09T03:40:28.414Z
+    at: 2026-11-09T04:05:52.249Z
 sources:
   - id: openwiki-source-8037e2358a2c4f9b2c722a11
     resource: repo://AGENTS.md
@@ -89,7 +89,7 @@ sources:
     resource: repo://codex-runtime.lock.json
   - id: openwiki-source-a490ea3fbcddb9c007caf196
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_context_tests.rs
-generated: { by: "codex", at: "2026-11-09T03:40:28.414Z" }
+generated: { by: "codex", at: "2026-11-09T04:05:52.249Z" }
 ---
 
 # Interface geometry and motion
@@ -131,7 +131,9 @@ Keep the same workspace surface while a panel changes placement or width. Do not
 
 An unset Overlay glass style inherits Window glass style, including later changes. An explicit Regular or Clear override remains independent. The inherited value does not create a saved override.
 
-Floating sidebars clip the covered reading plane, including its background, Graph, text and pointer regions, without changing its layout. This keeps underlying text out of the sidebar without changing its material. The native composer uses the same exclusion geometry for its material, foreground and pointer region; do not resize or recreate its text editor. Graph expansion retains navigation and collaboration panels. Explicit conversation focus mode can still hide the side panels.
+Floating sidebars end above the complete composer area, including Work in progress and conversation feedback. They cover the reading plane without changing its width. Clip covered Graph, history and pointer regions only; keep the composer outside that mask. The input, model controls and Send action remain visible and usable even at the minimum window size. Shared panel motion controls the lower edge. Graph expansion retains navigation and collaboration panels. Explicit conversation focus mode can still hide the side panels.
+
+The native composer uses one selected system material. Do not add a second GPUI background fill or a window backdrop below it. Text and controls use the current theme. Measure the native content at the latest parent anchor width before painting so the content, glass contour and input region stay aligned during resize. Retain the editor and its focus.
 
 When Graph is hidden, an existing conversation with unfinished scoped work can show **Work in progress** above the composer. Use the shared 28-point control height, 14-point Work symbol and intrinsic disclosure motion. Include unfinished tasks and observed native agents from the current conversation's work subtree. Do not insert example work. Limit the expanded list to one quarter of the window height, between two and six control rows, and scroll extra rows. A row opens the existing conversation. Hide the strip in a new conversation or when there is no matching work.
 
@@ -211,6 +213,6 @@ An unknown model is `—`. An explicit unavailable catalog must not leave a defa
 
 `AGENTS.md` requires every activity island to use this shared contract. Reuse `Sizing::content`, `arrange`, `Morph`, `MaterialSurface::clip` and the spacing constants. A new variant must update the shared contract and its focused checks. Keep feature-specific content outside the geometry owner. Use the same components in isolated fixtures and the installed application.
 
-The layout tests cover size allocation, fixed canvas bounds, a transition reversal, reduced motion, status spacing and the process-to-answer gap. The native island probe exercises 20 Work and Debug transitions, including four reversals before an opening completes, without a daemon or model request. It checks that the foreground remains at the window origin and that native bounds match the GPUI viewport. The visual-capture binary also accepts `DECODEX_VISUAL_NATIVE_WORKSPACE` with an explicit `DECODEX_FRAME_TRACE` path and isolated `DECODEX_VISUAL_DRAFT_ROOT`. This display-backed workspace probe exercises 12 left, right and combined transitions, including interrupted closing, with the existing Graph fixture. It uses process-local appearance settings. Frame traces count content rebuilds and record CPU draw and submission timing; they do not measure GPU completion or screen scanout. Use the installed app for final mouse, clipping and visual checks.
+The layout tests cover size allocation, fixed canvas bounds, a transition reversal, reduced motion, status spacing and the process-to-answer gap. The native island probe exercises 20 Work and Debug transitions, including four reversals before an opening completes, without a daemon or model request. It checks that the foreground remains at the window origin and that native bounds match the GPUI viewport. The visual-capture binary also accepts `DECODEX_VISUAL_NATIVE_WORKSPACE` with an explicit `DECODEX_FRAME_TRACE` path and isolated `DECODEX_VISUAL_DRAFT_ROOT`. This display-backed workspace probe exercises 12 left, right and combined transitions, including interrupted closing, with the existing Graph fixture. It uses process-local appearance settings. The `DECODEX_VISUAL_NATIVE_COMPOSER` variant resizes a real AppKit composer with the workspace and toggles the right panel. Its trace records the native foreground, viewport and Metal drawable dimensions without a live service. Frame traces count content rebuilds and record CPU draw and submission timing; they do not measure GPU completion or screen scanout. Use the installed app for final mouse, clipping and visual checks.
 
 See [conversation presentation](conversation-presentation.md) and [models and settings](../workflows/models-and-settings.md) for the related product flows.
