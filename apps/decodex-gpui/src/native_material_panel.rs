@@ -90,6 +90,9 @@ impl MaterialPanel {
 		self.radius = radius;
 		unsafe {
 			let _: () = objc2::msg_send![&*self.material_view, setCornerRadius: radius];
+			if let Some(mask) = &self.clip_mask {
+				let _: () = objc2::msg_send![&**mask, setCornerRadius: radius];
+			}
 		}
 		if self.surface == Surface::Popover
 			&& let Some(content) = self.native.contentView()
@@ -324,6 +327,7 @@ impl MaterialPanel {
 	/// Keep the Metal drawable fixed while the material's visible contour changes.
 	pub(crate) fn clip_content(&mut self, bounds: Bounds<Pixels>) {
 		let Some(content) = self.native.contentView() else { return };
+		let initialize = self.clip_mask.is_none();
 		if self.clip_mask.is_none() {
 			// Glass resizes its content holder to its contour. Keep the GPUI view
 			// at the window origin and clip a sibling foreground instead: moving
@@ -353,19 +357,20 @@ impl MaterialPanel {
 				f64::from(f32::from(bounds.size.height)),
 			),
 		);
-		if self.material_view.frame() != frame {
-			self.material_view.setFrame(frame);
-			self.shadow_dirty = true;
-		}
-		if let Some(mask) = &self.clip_mask {
+		if initialize || self.material_view.frame() != frame {
 			unsafe {
 				let transaction = AnyClass::get(c"CATransaction").expect("QuartzCore");
 				let _: () = objc2::msg_send![transaction, begin];
 				let _: () = objc2::msg_send![transaction, setDisableActions: true];
-				let _: () = objc2::msg_send![&**mask, setFrame: frame];
-				let _: () = objc2::msg_send![&**mask, setCornerRadius: self.radius];
+				// Glass and foreground must expose the same edge in one transaction.
+				self.material_view.setFrame(frame);
+				if let Some(mask) = &self.clip_mask {
+					let _: () = objc2::msg_send![&**mask, setFrame: frame];
+					let _: () = objc2::msg_send![&**mask, setCornerRadius: self.radius];
+				}
 				let _: () = objc2::msg_send![transaction, commit];
 			}
+			self.shadow_dirty = true;
 		}
 		let window_frame = self.native.frame();
 		let region = NSRect::new(

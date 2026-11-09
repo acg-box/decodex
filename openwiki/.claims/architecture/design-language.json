@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:2caa14f0bfccf085d898714be1fd6d93e4668b60abbe1dd1cc462c62e2d9a73c",
+  "pageVersion": "sha256:b9bcde9d440d7ec3790edd5a64f921394893b67c263d9abb8fb94c77ef20737f",
   "claims": [
     {
       "id": "claim_b70a9c3fa68642d29871a42ed05c1114",
@@ -45,8 +45,8 @@
       "statement": "Activity content keeps a fixed drawable at the native window origin with a sibling rounded mask; details retain their full-width layout, and secondary header fields appear only after they fit beside the persistent main value.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/native_material_panel.rs#L325-L380",
-          "version": "repo-lines-v1:sha256:6fe7355ae46bef9cb90962fabc15428457225eacf092696b7d65b69be5b75a7d:eyJzZWxlY3RlZExpbmVDb3VudCI6NTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVjOGQ1MmNiZWRlZDgwM2U4Y2U2M2VkZmI5NDUwZGJiMDYzNDIxNDRiODM4YWRiY2NhNzYzNGE1MjhmOWVjNWUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYzNWIwODA1YzczNzdlNjAyNDg0ZmJjZjNlZmY1YjQwN2RiNTIzYTU3MTRlNThhNjc5NGQ4ZjRjNTRjYzQ4ZWMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjYwNDI5YjRkODBmNzQzMGJhYWEwMDViMGU1YTgyZTNjNDllNWNkYzJiMTQ3OTMzZGZiYTNhNjI2ZWJkMzRhNzQifQ"
+          "resource": "repo://apps/decodex-gpui/src/native_material_panel.rs#L328-L385",
+          "version": "repo-lines-v1:sha256:a9a05f6086ed3345c67a38c5cf09019569189ccfda6b3084b8314fc6954a577b:eyJzZWxlY3RlZExpbmVDb3VudCI6NTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVjOGQ1MmNiZWRlZDgwM2U4Y2U2M2VkZmI5NDUwZGJiMDYzNDIxNDRiODM4YWRiY2NhNzYzNGE1MjhmOWVjNWUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYzNWIwODA1YzczNzdlNjAyNDg0ZmJjZjNlZmY1YjQwN2RiNTIzYTU3MTRlNThhNjc5NGQ4ZjRjNTRjYzQ4ZWMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjYwNDI5YjRkODBmNzQzMGJhYWEwMDViMGU1YTgyZTNjNDllNWNkYzJiMTQ3OTMzZGZiYTNhNjI2ZWJkMzRhNzQifQ"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_performance.rs#L418-L527",
@@ -470,7 +470,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace_material.rs",
-          "version": "repo-file-v1:sha256:114aaea441608d13eb7ec4c386e991bb980383c720a8a1a866d37657f05f18c3"
+          "version": "repo-file-v1:sha256:fb6b18d7903fa8cd167f8df2098733ab4dd08308e40c4634bfa3d68055352ef9"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace_size.rs",
@@ -478,7 +478,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/native_material_panel.rs",
-          "version": "repo-file-v1:sha256:451197efcae59a462904d24e4213874fdffc33e835f682fcb8c5d9e6958b21cc"
+          "version": "repo-file-v1:sha256:3a3c0cc4146cd144b2c40c0ba1d9cfaa4b8d9f43790e5124d09dd292314b3058"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_material.rs",
@@ -546,7 +546,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/native_material_panel.rs",
-          "version": "repo-file-v1:sha256:451197efcae59a462904d24e4213874fdffc33e835f682fcb8c5d9e6958b21cc"
+          "version": "repo-file-v1:sha256:3a3c0cc4146cd144b2c40c0ba1d9cfaa4b8d9f43790e5124d09dd292314b3058"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_theme.rs",
@@ -560,7 +560,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace_material.rs",
-          "version": "repo-file-v1:sha256:114aaea441608d13eb7ec4c386e991bb980383c720a8a1a866d37657f05f18c3"
+          "version": "repo-file-v1:sha256:fb6b18d7903fa8cd167f8df2098733ab4dd08308e40c4634bfa3d68055352ef9"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace_size.rs",
@@ -570,7 +570,7 @@
     },
     {
       "id": "claim_2480781dcd91402ab79bf3637a263bf4",
-      "statement": "Workspace panels retain the same native host across width and placement changes until their visible width reaches zero. The compact left rail stays mounted. Parent-owned reveal geometry and retained presentations rendered through ui_layout::panel keep sidebar layout, SVG symbols and hover updates on the native foreground.",
+      "statement": "Workspace panels retain the same native host across width and placement changes until visible width reaches zero, with the compact left rail still mounted. Parent-owned reveal geometry and ui_layout::pane reuse presentation content within the native window; state and hover changes invalidate the cache, and active accessibility uses live semantic geometry.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_navigation_sidebar.rs",
@@ -578,7 +578,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace_material.rs",
-          "version": "repo-file-v1:sha256:114aaea441608d13eb7ec4c386e991bb980383c720a8a1a866d37657f05f18c3"
+          "version": "repo-file-v1:sha256:fb6b18d7903fa8cd167f8df2098733ab4dd08308e40c4634bfa3d68055352ef9"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace_size.rs",
@@ -589,10 +589,38 @@
           "version": "repo-file-v1:sha256:347d2ee581e3da3e8ba4a8bda819950f18ad293a17346903659bc29315d4c005"
         }
       ]
+    },
+    {
+      "id": "claim_aacd778b87224f2197106e599ed9f0e6",
+      "statement": "Native clipped surfaces update material and foreground mask geometry in one Core Animation transaction with implicit actions disabled and skip unchanged clipping geometry.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/native_material_panel.rs",
+          "version": "repo-file-v1:sha256:3a3c0cc4146cd144b2c40c0ba1d9cfaa4b8d9f43790e5124d09dd292314b3058"
+        }
+      ]
+    },
+    {
+      "id": "claim_5bbf497874cf44008630c6e574da1bdf",
+      "statement": "The visual-capture binary has an opt-in display-backed native workspace probe. With explicit trace and isolated draft paths, it exercises 12 left, right and combined transitions including reversals, uses the existing Graph fixture and process-local appearance preferences, and records CPU frame timing and rebuild counts without a live service.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/bin/probes/native_workspace.rs",
+          "version": "repo-file-v1:sha256:c6d018ee1d10f782b45282757622287c4da2ece26f06dd842f0129300f64bc10"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/bin/workbench_visual_capture.rs",
+          "version": "repo-file-v1:sha256:2f8fb13fe146f2ea65f8763a7680a57c971dae277efa995075bd7b2ad300bc9c"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/frame_trace.rs",
+          "version": "repo-file-v1:sha256:46d44373ff9c4a016a5e5dfb73f29d8a22b6da7419fe2760a860141708c27256"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.9.0",
-    "at": "2026-11-09T02:50:43.748Z"
+    "at": "2026-11-09T03:05:02.223Z"
   }
 }

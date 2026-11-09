@@ -5,7 +5,7 @@ description: Reusable layout, activity-island motion, reading spacing and theme 
 tags: [desktop, design, motion, layout]
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-09T02:50:43.748Z
+    at: 2026-11-09T03:05:02.223Z
 sources:
   - id: openwiki-source-8037e2358a2c4f9b2c722a11
     resource: repo://AGENTS.md
@@ -41,6 +41,10 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_workspace.rs
   - id: openwiki-source-686aae4ae35c7f99c92e3d9b
     resource: repo://apps/decodex-gpui/src/bin/probes/native_island.rs
+  - id: openwiki-source-b485e07e98ac03dcff5db641
+    resource: repo://apps/decodex-gpui/src/bin/probes/native_workspace.rs
+  - id: openwiki-source-1bc5c8a6672bb09ef7b2d30f
+    resource: repo://apps/decodex-gpui/src/bin/workbench_visual_capture.rs
   - id: openwiki-source-7b89f5bc6ecd604ca4e97dc2
     resource: repo://apps/decodex-gpui/src/composer_text.rs
   - id: openwiki-source-8baa689fd9c859a6d9a120d5
@@ -85,7 +89,7 @@ sources:
     resource: repo://codex-runtime.lock.json
   - id: openwiki-source-a490ea3fbcddb9c007caf196
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_context_tests.rs
-generated: { by: "codex", at: "2026-11-09T02:50:43.748Z" }
+generated: { by: "codex", at: "2026-11-09T03:03:25.717Z" }
 ---
 
 # Interface geometry and motion
@@ -111,7 +115,7 @@ Only one activity expands at a time. Two activities retain their resting slots a
 
 `Morph` uses one clock for width and height. A reversal starts at the current visible size. Reduced motion selects the target size directly. Round visible dimensions to physical pixels using the current display scale.
 
-Keep the native drawable at the complete content size and at the window origin during a transition. `MaterialSurface::clip` puts the foreground beside the material and applies a rounded foreground mask. The material contour and mask change together. The mask updates disable implicit Core Animation actions; `Morph` owns the transition. Do not resize the Metal drawable on each animation frame. The input region follows the visible contour, so the clear area outside an island does not block controls below it.
+Keep the native drawable at the complete content size and at the window origin during a transition. `MaterialSurface::clip` puts the foreground beside the material and applies a rounded foreground mask. Update the material contour and foreground mask in the same Core Animation transaction with implicit actions disabled. Reuse unchanged clipping geometry; `Morph` owns the transition. Do not resize the Metal drawable on each animation frame. The input region follows the visible contour, so the clear area outside an island does not block controls below it.
 
 Lay out detail text and metric columns at the complete content width. Clip that layout during opening and closing. Values retain one view identity and move along a defined path. Labels follow their corresponding values and fade in only when the complete field fits with its required separation. A narrow intermediate header must not paint secondary text over its main value. Do not reveal a label by repeatedly changing its text width or paint two copies of the same value at different positions.
 
@@ -123,7 +127,7 @@ Use the same 8-point outer gutter and 16-point corner radius for both side panel
 
 Docked and floating placement changes allocation and dismissal, not the material or typography. Keep the placement state during closing and a reversal. Do not infer floating placement from a difference between the animated width and the target layout slot: closing releases that slot before the visible panel has disappeared.
 
-Keep the same native host while a panel changes placement or width. Remove it only when the panel reaches zero width; the compact navigation rail keeps its host. Do not blend between separate workspace and floating materials. The parent workspace supplies sidebar reveal geometry. Retained presentation entities paint directly in the native foreground through `ui_layout::panel`, so SVG symbols and hover updates stay with that surface. The native sidebar owns pointer departure in both expanded and compact states.
+Keep the same native host while a panel changes placement or width. Remove it only when the panel reaches zero width; the compact navigation rail keeps its host. Do not blend between separate workspace and floating materials. The parent workspace supplies sidebar reveal geometry. `ui_layout::pane` can reuse an unchanged presentation within that native window while the outer clip moves. State changes, activity animation and hover updates invalidate the presentation normally. Active accessibility uses a live semantic tree. SVG symbols stay with the same native surface. The native sidebar owns pointer departure in both expanded and compact states.
 
 An unset Overlay glass style inherits Window glass style, including later changes. An explicit Regular or Clear override remains independent. The inherited value does not create a saved override.
 
@@ -207,6 +211,6 @@ An unknown model is `—`. An explicit unavailable catalog must not leave a defa
 
 `AGENTS.md` requires every activity island to use this shared contract. Reuse `Sizing::content`, `arrange`, `Morph`, `MaterialSurface::clip` and the spacing constants. A new variant must update the shared contract and its focused checks. Keep feature-specific content outside the geometry owner. Use the same components in isolated fixtures and the installed application.
 
-The layout tests cover size allocation, fixed canvas bounds, a transition reversal, reduced motion, status spacing and the process-to-answer gap. The native island probe exercises 20 Work and Debug transitions, including four reversals before an opening completes, without a daemon or model request. It checks that the foreground remains at the window origin and that native bounds match the GPUI viewport. Its frame trace records CPU draw and submission timing; it does not measure GPU completion or screen scanout. Use the installed app for final mouse, clipping and visual checks.
+The layout tests cover size allocation, fixed canvas bounds, a transition reversal, reduced motion, status spacing and the process-to-answer gap. The native island probe exercises 20 Work and Debug transitions, including four reversals before an opening completes, without a daemon or model request. It checks that the foreground remains at the window origin and that native bounds match the GPUI viewport. The visual-capture binary also accepts `DECODEX_VISUAL_NATIVE_WORKSPACE` with an explicit `DECODEX_FRAME_TRACE` path and isolated `DECODEX_VISUAL_DRAFT_ROOT`. This display-backed workspace probe exercises 12 left, right and combined transitions, including interrupted closing, with the existing Graph fixture. It uses process-local appearance settings. Frame traces count content rebuilds and record CPU draw and submission timing; they do not measure GPU completion or screen scanout. Use the installed app for final mouse, clipping and visual checks.
 
 See [conversation presentation](conversation-presentation.md) and [models and settings](../workflows/models-and-settings.md) for the related product flows.

@@ -87,16 +87,18 @@ impl AgentSurface {
 						ui_motion::material_surface(
 							material_id(panel),
 							f64::from(ui_theme::WORKSPACE_RADIUS),
-							move |_, cx| {
+							move |window, cx| {
 								owner
 									.update(cx, |s, cx| {
-										let content = if panel == Panel::Left {
-											ui_layout::panel(s.presentations.sidebar.clone())
-												.into_any_element()
+										// The native window owns this cache for its whole lifetime.
+										// Moving its clip must not rebuild the fixed content
+										// canvas.
+										let presentation = if panel == Panel::Left {
+											s.presentations.sidebar.clone()
 										} else {
-											ui_layout::panel(s.presentations.activity.clone())
-												.into_any_element()
+											s.presentations.activity.clone()
 										};
+										let content = ui_layout::pane(presentation, window);
 										let root = s
 											.workspace_resize_root(cx)
 											.w(gpui::px(content_width))

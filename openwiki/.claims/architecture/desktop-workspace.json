@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:0d308a9a506d7b020b26c477889aa804d0f340d86cefa68f3fbfc171372cef36",
+  "pageVersion": "sha256:7649108dc7b425290aecf28931e957012d0c8449555fef81537ca271656a5557",
   "claims": [
     {
       "id": "claim_41c9eba720934771bd6b671a7aeb8b6e",
@@ -34,7 +34,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/native_material_panel.rs",
-          "version": "repo-file-v1:sha256:451197efcae59a462904d24e4213874fdffc33e835f682fcb8c5d9e6958b21cc"
+          "version": "repo-file-v1:sha256:3a3c0cc4146cd144b2c40c0ba1d9cfaa4b8d9f43790e5124d09dd292314b3058"
         }
       ]
     },
@@ -1014,7 +1014,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace_material.rs",
-          "version": "repo-file-v1:sha256:114aaea441608d13eb7ec4c386e991bb980383c720a8a1a866d37657f05f18c3"
+          "version": "repo-file-v1:sha256:fb6b18d7903fa8cd167f8df2098733ab4dd08308e40c4634bfa3d68055352ef9"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/frame_trace.rs",
@@ -1098,7 +1098,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace_material.rs",
-          "version": "repo-file-v1:sha256:114aaea441608d13eb7ec4c386e991bb980383c720a8a1a866d37657f05f18c3"
+          "version": "repo-file-v1:sha256:fb6b18d7903fa8cd167f8df2098733ab4dd08308e40c4634bfa3d68055352ef9"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace_size.rs",
@@ -1106,7 +1106,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/native_material_panel.rs",
-          "version": "repo-file-v1:sha256:451197efcae59a462904d24e4213874fdffc33e835f682fcb8c5d9e6958b21cc"
+          "version": "repo-file-v1:sha256:3a3c0cc4146cd144b2c40c0ba1d9cfaa4b8d9f43790e5124d09dd292314b3058"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_motion.rs",
@@ -1176,23 +1176,15 @@
     },
     {
       "id": "claim_d2199be828b0498bb890b028608c9ba8",
-      "statement": "Workspace pane foreground uses parent-supplied geometry and retained presentation entities rendered through ui_layout::panel. Both content roots share system typography through workspace_panel_content with no background fill; workspace panes omit menu opacity and vertical entrance animation.",
+      "statement": "Workspace pane foreground uses parent-supplied geometry and retained presentations through ui_layout::pane, which can reuse unchanged content within the same native window and retains live accessibility geometry. Both content roots share system typography through workspace_panel_content with no background fill; workspace panes omit menu opacity and vertical entrance animation.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_navigation_sidebar.rs",
-          "version": "repo-file-v1:sha256:09bf8d8eff60cc1ef63e65285161c84d5e54106ab0d66ad90757968a1e29001f"
-        },
-        {
-          "resource": "repo://apps/decodex-gpui/src/agent_tree.rs",
-          "version": "repo-file-v1:sha256:5ed869d5d635551830b3faf5eb688e9e4ba9e7a1be8f5d13393225f0d396586c"
-        },
-        {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace_material.rs",
-          "version": "repo-file-v1:sha256:114aaea441608d13eb7ec4c386e991bb980383c720a8a1a866d37657f05f18c3"
+          "version": "repo-file-v1:sha256:fb6b18d7903fa8cd167f8df2098733ab4dd08308e40c4634bfa3d68055352ef9"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/native_material_panel.rs",
-          "version": "repo-file-v1:sha256:451197efcae59a462904d24e4213874fdffc33e835f682fcb8c5d9e6958b21cc"
+          "version": "repo-file-v1:sha256:3a3c0cc4146cd144b2c40c0ba1d9cfaa4b8d9f43790e5124d09dd292314b3058"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_layout.rs",
@@ -1210,7 +1202,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace_material.rs",
-          "version": "repo-file-v1:sha256:114aaea441608d13eb7ec4c386e991bb980383c720a8a1a866d37657f05f18c3"
+          "version": "repo-file-v1:sha256:fb6b18d7903fa8cd167f8df2098733ab4dd08308e40c4634bfa3d68055352ef9"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace_size.rs",
@@ -1220,15 +1212,11 @@
     },
     {
       "id": "claim_be02ec6bbbe044679b3b08484989babe",
-      "statement": "The same native pane host remains across placement and width changes until visible width reaches zero, including the compact left rail. Live native foreground painting keeps SVG symbols and hover updates with their retained presentation entities; global shortcuts forward to the workspace while Tab and Shift-Tab navigate native panel focus.",
+      "statement": "The same native pane host remains across placement and width changes until visible width reaches zero, including the compact left rail. Cached foreground content keeps SVG symbols on that native surface; state, activity animation and hover changes still invalidate the presentation. Global shortcuts forward to the workspace while Tab and Shift-Tab navigate panel focus.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_tree.rs",
-          "version": "repo-file-v1:sha256:5ed869d5d635551830b3faf5eb688e9e4ba9e7a1be8f5d13393225f0d396586c"
-        },
-        {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace_material.rs",
-          "version": "repo-file-v1:sha256:114aaea441608d13eb7ec4c386e991bb980383c720a8a1a866d37657f05f18c3"
+          "version": "repo-file-v1:sha256:fb6b18d7903fa8cd167f8df2098733ab4dd08308e40c4634bfa3d68055352ef9"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace_size.rs",
@@ -1239,10 +1227,20 @@
           "version": "repo-file-v1:sha256:347d2ee581e3da3e8ba4a8bda819950f18ad293a17346903659bc29315d4c005"
         }
       ]
+    },
+    {
+      "id": "claim_e64d2d8e68a84cd3ba9a9b51b0a36216",
+      "statement": "The glass contour and foreground mask change in one Core Animation transaction with implicit actions disabled.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/native_material_panel.rs",
+          "version": "repo-file-v1:sha256:3a3c0cc4146cd144b2c40c0ba1d9cfaa4b8d9f43790e5124d09dd292314b3058"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.9.0",
-    "at": "2026-11-09T02:50:43.748Z"
+    "at": "2026-11-09T03:03:25.717Z"
   }
 }

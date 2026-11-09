@@ -5,7 +5,7 @@ description: "Workspace ownership, native menu focus, compositor motion, and con
 tags: [decodex, architecture, desktop, presentation]
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-09T02:50:43.748Z
+    at: 2026-11-09T03:03:25.717Z
 sources:
   - id: openwiki-source-98e7b23c4cc276d20fcb4649
     resource: repo://apps/decodex-gpui/menubar/Sources/DecodexApp/AccountControlViews.swift
@@ -187,7 +187,7 @@ sources:
     resource: repo://database/src/works/commands.rs
   - id: openwiki-source-8fe6f1557e5d45d88b34bd0a
     resource: repo://scripts/macos/generate_workspace_symbols.swift
-generated: { by: "codex", at: "2026-11-09T02:50:43.748Z" }
+generated: { by: "codex", at: "2026-11-09T03:03:25.717Z" }
 ---
 
 # Desktop workspace and native glass
@@ -202,7 +202,7 @@ Both side panels use the same native MaterialSurface host with PanelStyle::Works
 
 With Graph closed, **Work in progress** provides a compact disclosure above the composer. It derives rows from the selected conversation's work subtree and observed native agents, excludes completed and archived work, and opens the existing conversation on selection. It introduces no work records or execution owner. New conversations and conversations without qualifying work omit the strip. The list uses the shared control-row size and disclosure motion, with bounded height and scrolling. Work and Debug activity islands use distinct accent-colored symbols under the shared activity-island sizing contract.
 
-A placement change keeps the same native host and material. Width transitions retain that host until the visible width reaches zero; the compact navigation rail remains mounted. There is no workspace-field and glass blend. The parent workspace supplies sidebar reveal geometry, and retained sidebar and activity presentation entities paint directly in the native foreground through ui_layout::panel. SVG symbols and hover updates therefore stay on the same surface. The native sidebar owns pointer departure in both expanded and compact states. Focused rendering tests cover unchanged content geometry across docked and floating placement, interrupted closing, and the retained compact rail.
+A placement change keeps the same native host and material. Width transitions retain that host until the visible width reaches zero; the compact navigation rail remains mounted. There is no workspace-field and glass blend. The parent workspace supplies sidebar reveal geometry. Retained sidebar and activity presentation entities use ui_layout::pane to reuse unchanged content within the same native window; state, activity animation and hover updates still invalidate it. Active accessibility uses live semantic geometry. SVG symbols therefore stay on the same surface. The glass contour and foreground mask change in one Core Animation transaction with implicit actions disabled. The native sidebar owns pointer departure in both expanded and compact states. Focused rendering tests cover unchanged content geometry across docked and floating placement, interrupted closing, and the retained compact rail.
 
 The left sidebar contains **Pin**, **Recent**, **Assistant** and **Projects**. Pin contains locally pinned conversation references. Recent contains every available unpinned conversation, without an additional item-count cutoff. Assistant collects personal topics. Projects lists registered native project directories and their independent Agent conversations. Attached Side chats remain with their source tabs. Pin has a four-row viewport; Recent and Assistant have seven-row viewports. All returned entries remain scrollable. These viewports do not enlarge the service snapshot: Work summaries retain their existing 100-record bound.
 

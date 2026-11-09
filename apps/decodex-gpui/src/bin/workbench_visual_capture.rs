@@ -58,6 +58,9 @@ mod native_scroll;
 #[allow(dead_code)]
 #[path = "../native_updater.rs"]
 mod native_updater;
+#[cfg(target_os = "macos")]
+#[path = "probes/native_workspace.rs"]
+mod native_workspace;
 #[path = "../panel_preferences.rs"] mod panel_preferences;
 #[path = "../session_settings.rs"] mod session_settings;
 #[allow(dead_code)]
@@ -133,6 +136,11 @@ impl Render for CollaborationComponent {
 }
 
 fn main() -> Result<()> {
+	#[cfg(target_os = "macos")]
+	if env::var_os("DECODEX_VISUAL_NATIVE_WORKSPACE").is_some() {
+		native_workspace::run();
+		return Ok(());
+	}
 	#[cfg(target_os = "macos")]
 	if env::var_os("DECODEX_VISUAL_NATIVE_ISLAND").is_some() {
 		crate::native_island::run();
