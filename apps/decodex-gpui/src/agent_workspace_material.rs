@@ -1,4 +1,4 @@
-//! Temporary workspace panes use the same native material host as activity islands.
+//! Workspace panes keep one native glass surface across all layout modes.
 use gpui::{AnyElement, MouseMoveEvent, prelude::*};
 
 use super::workspace_size::Panel;
@@ -7,6 +7,7 @@ use crate::{
 		self,
 		agent_surface::{AgentSurface, Context, Window},
 	},
+	ui_layout,
 	ui_motion::{self, PanelReveal},
 	ui_theme,
 };
@@ -40,7 +41,6 @@ impl AgentSurface {
 		panel: Panel,
 		visible_width: f32,
 		content_width: f32,
-		material_opacity: f32,
 		window: &mut Window,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
@@ -52,9 +52,23 @@ impl AgentSurface {
 			if panel == Panel::Right { (content_width - visible_width).max(0.) } else { 0. };
 		let parent = window.window_handle();
 		let rail = ui_theme::CONVERSATION_TAB_SIZE + 2. * ui_theme::SIDEBAR_INSET;
-		let expanded = self.workspace_sidebar_expanded(window);
 		if panel == Panel::Left {
 			crate::frame_trace::sidebar_geometry(visible_width, content_width);
+			let reveal = PanelReveal::new(
+				self.workspace_sidebar_expanded(window),
+				visible_width,
+				rail,
+				content_width,
+			);
+			let changed = self.workspace.sidebar_reveal.borrow().as_ref().is_none_or(|old| {
+				old.expanded != reveal.expanded
+					|| old.target_expanded != reveal.target_expanded
+					|| old.content_width != reveal.content_width
+			});
+			if changed {
+				self.workspace.sidebar_reveal.replace(Some(reveal));
+				self.presentations.sidebar.update(cx, |_, cx| cx.notify());
+			}
 		}
 		let owner = cx.entity().downgrade();
 		let escape_owner = owner.clone();
@@ -73,30 +87,20 @@ impl AgentSurface {
 						ui_motion::material_surface(
 							material_id(panel),
 							f64::from(ui_theme::WORKSPACE_RADIUS),
-							move |window, cx| {
+							move |_, cx| {
 								owner
 									.update(cx, |s, cx| {
 										let content = if panel == Panel::Left {
-											s.render_navigation_sidebar_content(
-												PanelReveal::new(
-													expanded,
-													visible_width,
-													rail,
-													content_width,
-												),
-												window,
-												cx,
-											)
+											ui_layout::panel(s.presentations.sidebar.clone())
+												.into_any_element()
 										} else {
-											s.agent_tree(cx)
+											ui_layout::panel(s.presentations.activity.clone())
+												.into_any_element()
 										};
 										let root = s
 											.workspace_resize_root(cx)
 											.w(gpui::px(content_width))
 											.h(gpui::px(height))
-											.font_family(ui_theme::FONT_FAMILY)
-											.text_size(gpui::px(ui_theme::BODY_SIZE))
-											.text_color(ui_theme::rgb(ui_theme::TEXT))
 											.capture_any_mouse_down(cx.listener(
 												move |s, _, _, _| {
 													s.workspace.focused_panel = Some(panel);
@@ -136,6 +140,9 @@ impl AgentSurface {
 										#[cfg(any(target_os = "macos", test))]
 										let root = forward!(
 											root,
+											shell::ActivateAgent,
+											shell::ActivateHealth,
+											shell::FindConversation,
 											shell::ToggleSidebar,
 											shell::ToggleInspector,
 											shell::ToggleGraph,
@@ -151,6 +158,14 @@ impl AgentSurface {
 											shell::ShrinkPanels,
 											shell::ResetPanels,
 										)
+										.on_action(|_: &shell::FocusNext, window, cx| {
+											window.focus_next(cx);
+											cx.stop_propagation();
+										})
+										.on_action(|_: &shell::FocusPrevious, window, cx| {
+											window.focus_prev(cx);
+											cx.stop_propagation();
+										})
 										.on_key_down(move |event: &gpui::KeyDownEvent, _, cx| {
 											if event.keystroke.key == "escape" {
 												shell::forward_shell_action(
@@ -167,7 +182,6 @@ impl AgentSurface {
 							|_| {},
 						)
 						.workspace()
-						.material_opacity(material_opacity)
 						.clip(gpui::Bounds::new(
 							gpui::point(gpui::px(clip_x), gpui::px(0.)),
 							gpui::size(gpui::px(visible_width), gpui::px(height)),

@@ -9,7 +9,7 @@ use gpui::{
 
 use crate::{
 	shell::agent_surface::{AgentSurface, Context, Window},
-	ui_layout, ui_motion,
+	ui_motion,
 	ui_theme::{self, WORKSPACE_GUTTER},
 };
 
@@ -40,15 +40,7 @@ impl AgentSurface {
 		let width = self.workspace_right_display_width(window);
 		let floating =
 			self.workspace_panel_floating(super::workspace_size::Panel::Right, layout, width);
-		let opacity = self.workspace_panel_material_opacity(
-			super::workspace_size::Panel::Right,
-			layout,
-			floating,
-			window,
-			cx,
-		);
-		let native = floating || opacity > 0.;
-		if !native || width <= 0.1 {
+		if width <= 0.1 {
 			self.hide_workspace_material(super::workspace_size::Panel::Right, window, cx);
 		}
 		if self
@@ -66,7 +58,7 @@ impl AgentSurface {
 			.clamp(160., 480.)
 			.min((f32::from(window.viewport_size().width) - 2. * WORKSPACE_GUTTER).max(0.));
 		self.deliveries.update(cx, |panel, cx| panel.set_width(content_width, cx));
-		ui_theme::workspace_surface()
+		ui_theme::workspace_panel_frame()
 			.id("workspace-activity-pane")
 			.debug_selector(|| "workspace-activity-pane".into())
 			.absolute()
@@ -74,36 +66,16 @@ impl AgentSurface {
 			.top(gpui::px(crate::shell::WINDOW_CONTROLS_CLEARANCE))
 			.bottom(gpui::px(WORKSPACE_GUTTER))
 			.w(gpui::px(width))
-			.bg(ui_theme::rgba(ui_theme::FIELD_MATERIAL).opacity(1. - opacity))
 			.overflow_hidden()
 			.opacity(self.workspace.arrival.progress(0.08))
-			.when(width > 0.1 && native, |panel| {
+			.when(width > 0.1, |panel| {
 				panel.child(self.workspace_material(
 					super::workspace_size::Panel::Right,
 					width,
 					content_width,
-					opacity,
 					window,
 					cx,
 				))
-			})
-			.when(width > 0.1 && !native, |panel| {
-				panel.child(
-					gpui::div()
-						.absolute()
-						.right_0()
-						.top_0()
-						.bottom_0()
-						.w(gpui::px(content_width))
-						.child(
-							self.workspace_focus_region(
-								Some(super::workspace_size::Panel::Right),
-								cx,
-							),
-						)
-						.child(ui_layout::pane(self.presentations.activity.clone(), window))
-						.child(self.sidebar_resize_handle(super::workspace_size::Panel::Right, cx)),
-				)
 			})
 			.when(floating, |panel| {
 				panel.on_mouse_down_out(cx.listener(|s, event: &MouseDownEvent, window, cx| {

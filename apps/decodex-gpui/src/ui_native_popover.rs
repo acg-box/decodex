@@ -83,7 +83,6 @@ impl Panel {
 		);
 		if let Some(surface) = &mut self.surface {
 			surface.set_style(content.geometry.style);
-			surface.set_material_opacity(content.geometry.material_opacity);
 			surface.set_radius(content.geometry.radius);
 			if surface.place(Bounds::new(origin, gpui::size(content.width, self.height))) {
 				window.bounds_changed(cx);
@@ -204,7 +203,6 @@ pub(super) fn render(mut popover: Popover, window: &mut Window, cx: &mut App) ->
 					radius: f64::from(ui_theme::POPOVER_RADIUS),
 					clip: None,
 					style: Default::default(),
-					material_opacity: 1.,
 				},
 				focus: popover.focus,
 			};
