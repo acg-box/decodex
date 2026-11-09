@@ -144,6 +144,47 @@ fn expanding_either_capsule_keeps_the_other_in_place(cx: &mut TestAppContext) {
 }
 
 #[gpui::test]
+fn paired_islands_expand_in_the_available_space_and_keep_their_details_visible(
+	cx: &mut TestAppContext,
+) {
+	ui_performance::preference(Some(true));
+	let (root, visual) = cx.add_window_view(|_, cx| {
+		CenteredIsland(cx.new(|cx| {
+			let mut island = PerformanceIsland::new(cx);
+			island.set_available_width(420., cx);
+			island.work = Some(Summary {
+				samples: vec![Sample { tokens: Some(2_000), ..Default::default() }],
+				..Default::default()
+			});
+			island
+		}))
+	});
+	visual.simulate_resize(gpui::size(gpui::px(800.), gpui::px(620.)));
+	let island = root.read_with(visual, |root, _| root.0.clone());
+	visual.update(crate::ui_frame::draw_frame);
+	for activity in [Activity::Debug, Activity::Work] {
+		island.update(visual, |s, cx| {
+			s.toggle(activity);
+			cx.notify();
+		});
+		visual.update(crate::ui_frame::draw_frame);
+		thread::sleep(crate::ui_live_activity::MORPH_DURATION + Duration::from_millis(30));
+		visual.update(crate::ui_frame::draw_frame);
+		let (selected, other) = if activity == Activity::Debug {
+			("performance-island", "activity-work-island")
+		} else {
+			("activity-work-island", "performance-island")
+		};
+		let panel = visual.debug_bounds(selected).unwrap();
+		let peer = visual.debug_bounds(other).unwrap();
+		assert!(panel.size.height > gpui::px(100.), "both islands must expose their full details");
+		assert!(panel.left() >= gpui::px(190.) && panel.right() <= gpui::px(610.));
+		assert!(panel.right() <= peer.left() || peer.right() <= panel.left());
+	}
+	ui_performance::preference(Some(false));
+}
+
+#[gpui::test]
 fn work_capsule_grows_and_shrinks_with_content_instead_of_the_agent_count(cx: &mut TestAppContext) {
 	ui_performance::preference(Some(true));
 

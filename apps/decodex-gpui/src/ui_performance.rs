@@ -602,7 +602,22 @@ impl Render for PerformanceIsland {
 			})
 			.collect();
 		let paired = activities.len() == 2;
-		let mut islands = gpui::div().relative().flex().items_start().gap(gpui::px(ISLAND_GAP));
+		let offset = if paired {
+			ui_live_activity::paired_offset(
+				available,
+				ISLAND_GAP,
+				[resting[0].width, resting[1].width],
+				[extents[0].width, extents[1].width],
+			)
+		} else {
+			0.
+		};
+		let mut islands = gpui::div()
+			.relative()
+			.left(gpui::px(offset))
+			.flex()
+			.items_start()
+			.gap(gpui::px(ISLAND_GAP));
 
 		for (index, (((activity, content), allocation), extent)) in
 			activities.iter().zip(allocations).zip(extents).enumerate()

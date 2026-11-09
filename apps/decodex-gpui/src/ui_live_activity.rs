@@ -123,14 +123,7 @@ pub(crate) fn arrange(
 			.filter(|(i, _)| *i != index)
 			.map(|(_, item)| item.width)
 			.sum();
-		let room = if allocations.len() == 2 {
-			// The two controls keep their inner edges fixed while expanding outward.
-			// Only half of the unused centered space is available on either side.
-			let resting: f32 = allocations.iter().map(|item| item.width).sum();
-			allocations[index].width + ((budget - resting) / 2.).max(0.)
-		} else {
-			(budget - others).max(0.)
-		};
+		let room = (budget - others).max(0.);
 		let resting = sizes[index].minimal.max(MIN_CAPSULE_WIDTH);
 		let size = Sizing {
 			minimal: resting,
@@ -145,6 +138,23 @@ pub(crate) fn arrange(
 	}
 
 	allocations
+}
+
+/// Keep the resting anchors until expansion reaches an edge. Then translate
+/// the pair only as far as needed to use the available space.
+pub(crate) fn paired_offset(available: f32, gap: f32, resting: [f32; 2], widths: [f32; 2]) -> f32 {
+	let total = resting[0] + gap + resting[1];
+	let left = resting[0] - widths[0];
+	let right = resting[0] + gap + widths[1];
+	let limit_left = (total - available) / 2.;
+	let limit_right = (total + available) / 2.;
+	if left < limit_left {
+		limit_left - left
+	} else if right > limit_right {
+		limit_right - right
+	} else {
+		0.
+	}
 }
 
 #[cfg(test)]

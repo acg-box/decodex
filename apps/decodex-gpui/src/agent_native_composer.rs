@@ -50,6 +50,44 @@ impl Default for NativeComposer {
 	}
 }
 
+struct ComposerPlacement {
+	child: WindowHandle<ComposerPanel>,
+	bounds: Option<Bounds<Pixels>>,
+	visible_region: Option<Bounds<Pixels>>,
+	enabled: bool,
+	opacity: f32,
+}
+impl NativeComposer {
+	fn placement(&self, opacity: f32) -> Option<ComposerPlacement> {
+		Some(ComposerPlacement {
+			child: self.child?,
+			bounds: self.bounds,
+			visible_region: self.visible_region,
+			enabled: self.enabled,
+			opacity,
+		})
+	}
+}
+impl ComposerPlacement {
+	fn apply(self, cx: &mut App) {
+		let _ = self.child.update(cx, |panel, window, cx| {
+			if let Some(surface) = &mut panel.surface {
+				if self.enabled
+					&& let Some(bounds) = self.bounds
+					&& surface.place(bounds)
+				{
+					window.bounds_changed(cx);
+				}
+				if let Some(region) = self.visible_region {
+					surface.occlude_content(region);
+				}
+				surface.set_opacity(self.opacity);
+				surface.set_visible(self.enabled && self.bounds.is_some() && self.opacity > 0.001);
+			}
+		});
+	}
+}
+
 struct ComposerPanel {
 	owner: Entity<AgentSurface>,
 	parent: AnyWindowHandle,
@@ -325,36 +363,10 @@ impl AgentSurface {
 		let owner = cx.entity().downgrade();
 
 		cx.defer(move |cx| {
-			let Ok((child, bounds, visible_region, enabled, opacity)) =
-				owner.read_with(cx, |s, _| {
-					(
-						s.native_controls.composer.child,
-						s.native_controls.composer.bounds,
-						s.native_controls.composer.visible_region,
-						s.native_controls.composer.enabled,
-						s.workspace.arrival.progress(0.12),
-					)
-				})
-			else {
-				return;
-			};
-
-			if let Some(child) = child {
-				let _ = child.update(cx, |panel, window, cx| {
-					if let Some(surface) = &mut panel.surface {
-						if enabled
-							&& let Some(bounds) = bounds
-							&& surface.place(bounds)
-						{
-							window.bounds_changed(cx);
-						}
-						if let Some(region) = visible_region {
-							surface.occlude_content(region);
-						}
-						surface.set_opacity(opacity);
-						surface.set_visible(enabled && bounds.is_some() && opacity > 0.001);
-					}
-				});
+			if let Ok(Some(placement)) = owner.read_with(cx, |s, _| {
+				s.native_controls.composer.placement(s.workspace.arrival.progress(0.12))
+			}) {
+				placement.apply(cx);
 			}
 		});
 	}
@@ -366,12 +378,17 @@ impl AgentSurface {
 		let owner = cx.entity().downgrade();
 		let anchor = gpui::canvas(
 			move |bounds, window, cx| {
-				let _ = owner.update(cx, |s, cx| {
+				let placement = owner.update(cx, |s, _| {
 					s.native_controls.composer.bounds = Some(bounds);
 					s.native_controls.composer.visible_region =
 						Some(s.workspace_composer_visible_region(bounds, window));
-					s.sync_native_composer(cx);
+					s.native_controls.composer.placement(s.workspace.arrival.progress(0.12))
 				});
+				// Apply this frame's mask before its paint. A deferred application
+				// can expose an entire native control for one frame at the moving edge.
+				if let Ok(Some(placement)) = placement {
+					placement.apply(cx);
+				}
 			},
 			|_, _, _, _| {},
 		);

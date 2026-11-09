@@ -34,6 +34,14 @@ pub(super) enum Panel {
 
 pub(super) const MAIN_MIN_WIDTH: f32 = 360.;
 
+#[derive(Clone, Copy)]
+pub(super) struct PanelFrame {
+	pub left_slot: f32,
+	pub right_slot: f32,
+	pub left_width: f32,
+	pub right_width: f32,
+}
+
 #[derive(Clone, Copy, Debug, Default)]
 pub(super) struct PanelLayout {
 	pub left_slot: f32,
@@ -74,6 +82,51 @@ impl PanelLayout {
 }
 
 impl AgentSurface {
+	/// Sample all panel edges once. Content masks and native controls must use
+	/// the positions painted in this frame, not advance the clocks independently.
+	pub(super) fn begin_panel_frame(&self, window: &Window, cx: &mut Context<Self>) {
+		let layout = self.workspace_panel_layout(window);
+		let now = Instant::now();
+		let frame = PanelFrame {
+			left_slot: self.panel_motion_width(
+				&self.workspace.sidebar_motion,
+				layout.left_slot,
+				Panel::Left,
+				now,
+			),
+			right_slot: self.panel_motion_width(
+				&self.workspace.right_slot_motion,
+				layout.right_slot,
+				Panel::Right,
+				now,
+			),
+			left_width: self.panel_motion_width(
+				&self.workspace.sidebar_content_motion,
+				layout.left_width,
+				Panel::Left,
+				now,
+			),
+			right_width: self.panel_motion_width(
+				&self.workspace.right_content_motion,
+				layout.right_width,
+				Panel::Right,
+				now,
+			),
+		};
+		self.workspace.panel_frame.set(Some(frame));
+		if [
+			&self.workspace.sidebar_motion,
+			&self.workspace.right_slot_motion,
+			&self.workspace.sidebar_content_motion,
+			&self.workspace.right_content_motion,
+		]
+		.iter()
+		.any(|motion| motion.borrow().as_ref().is_some_and(|t| t.moving(now)))
+		{
+			ui_motion::request_frame(window, cx);
+		}
+	}
+
 	fn panel_allocation(&self, sidebar_requested: bool, window: &Window) -> PanelLayout {
 		let width = f32::from(window.viewport_size().width);
 		PanelLayout::allocate(
@@ -277,6 +330,9 @@ impl AgentSurface {
 	}
 
 	pub(super) fn workspace_sidebar_width(&self, window: &Window) -> f32 {
+		if let Some(frame) = self.workspace.panel_frame.get() {
+			return frame.left_slot;
+		}
 		let target = self.sidebar_target_width(window);
 		let now = Instant::now();
 		let mut motion = self.workspace.sidebar_motion.borrow_mut();
@@ -292,19 +348,34 @@ impl AgentSurface {
 	}
 
 	pub(super) fn workspace_sidebar_display_width(&self, window: &Window) -> f32 {
+		if let Some(frame) = self.workspace.panel_frame.get() {
+			return frame.left_width;
+		}
 		self.panel_motion_width(
 			&self.workspace.sidebar_content_motion,
 			self.workspace_panel_layout(window).left_width,
 			Panel::Left,
+			Instant::now(),
 		)
 	}
 
 	pub(super) fn workspace_right_display_width(&self, window: &Window) -> f32 {
+		if let Some(frame) = self.workspace.panel_frame.get() {
+			return frame.right_width;
+		}
 		self.panel_motion_width(
 			&self.workspace.right_content_motion,
 			self.workspace_panel_layout(window).right_width,
 			Panel::Right,
+			Instant::now(),
 		)
+	}
+
+	pub(super) fn workspace_right_layout_width(&self, window: &Window) -> f32 {
+		self.workspace
+			.panel_frame
+			.get()
+			.map_or_else(|| self.agent_tree_width(window), |frame| frame.right_slot)
 	}
 
 	/// Closing releases the layout slot before the visible surface disappears.
@@ -336,8 +407,8 @@ impl AgentSurface {
 		motion: &std::cell::RefCell<Option<Tween>>,
 		target: f32,
 		panel: Panel,
+		now: Instant,
 	) -> f32 {
-		let now = Instant::now();
 		let mut motion = motion.borrow_mut();
 		let tween = motion.get_or_insert_with(|| Tween::new(target));
 		if self.workspace.panel_drag.is_some_and(|(dragged, _, _)| dragged == panel) {
@@ -440,7 +511,7 @@ impl AgentSurface {
 
 		let viewport = window.viewport_size();
 		let sidebar = self.workspace_sidebar_width(window);
-		let right = self.agent_tree_width(window);
+		let right = self.workspace_right_layout_width(window);
 		let gutters =
 			2. * WORKSPACE_GUTTER + sidebar.min(WORKSPACE_GUTTER) + right.min(WORKSPACE_GUTTER);
 		let available = (
@@ -1690,6 +1761,54 @@ mod tests {
 	}
 
 	#[gpui::test]
+	fn navigation_masks_follow_the_painted_edge_through_close_and_reversal(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		visual.simulate_resize(gpui::size(gpui::px(800.), gpui::px(620.)));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.workspace.sidebar_visible = false;
+			s.workspace.agent_tree_visible = false;
+			s.workspace.graph_visible = false;
+			s.workspace.sidebar_width = 240.;
+		});
+		visual.update(crate::ui_frame::draw_frame);
+		let composer = visual.debug_bounds("agent-composer").unwrap();
+		for open in [true, false, true, false] {
+			surface.update(visual, |s, cx| {
+				s.workspace.sidebar_peek = open;
+				cx.notify();
+			});
+			visual.update(crate::ui_frame::draw_frame);
+			for _ in 0..3 {
+				thread::sleep(std::time::Duration::from_millis(25));
+				visual.update(crate::ui_frame::draw_frame);
+				let pane = visual.debug_bounds("workspace-navigation-pane").unwrap();
+				// The next consumer must use the displayed edge even if time has
+				// advanced since the parent painted this frame.
+				thread::sleep(std::time::Duration::from_millis(8));
+				visual.update(|window, cx| {
+					surface.read_with(cx, |s, _| {
+						let input = s.workspace_composer_visible_region(composer, window);
+						let expected = (pane.right() - composer.left()).max(gpui::px(0.));
+						assert!((input.left() - expected).abs() <= gpui::px(0.5));
+						let clip = s.workspace_content_clip(
+							gpui::Bounds::new(
+								gpui::point(gpui::px(0.), gpui::px(0.)),
+								window.viewport_size(),
+							),
+							window,
+						);
+						assert!((clip.left() - pane.right()).abs() <= gpui::px(0.5));
+					});
+				});
+				assert_eq!(visual.debug_bounds("agent-composer").unwrap(), composer);
+			}
+		}
+	}
+
+	#[gpui::test]
 	fn docked_and_floating_panels_use_workspace_content_without_native_glass(
 		cx: &mut gpui::TestAppContext,
 	) {
@@ -1868,10 +1987,11 @@ mod tests {
 		surface.update(visual, |s, cx| s.toggle_agent_tree(cx));
 		visual.update(crate::ui_frame::draw_current_frame);
 		assert_eq!(visual.debug_bounds("workspace-center-frame").unwrap(), before);
+		thread::sleep(crate::ui_theme::MOTION_PANEL + std::time::Duration::from_millis(40));
+		visual.update(crate::ui_frame::draw_current_frame);
 		visual.update(|window, cx| {
 			surface.update(cx, |s, cx| {
 				assert!(s.workspace_panel_layout(window).right_floating);
-				s.workspace.right_content_motion = Default::default();
 				let editor = gpui::Bounds::new(
 					gpui::point(gpui::px(264.), gpui::px(500.)),
 					gpui::size(gpui::px(512.), gpui::px(100.)),
@@ -1885,7 +2005,22 @@ mod tests {
 				assert_eq!(s.composer.read(cx).content(), "Keep this draft");
 				s.dismiss_workspace_overlays(window, cx);
 				assert!(s.workspace.sidebar_visible && !s.workspace.agent_tree_visible);
-				s.workspace.right_content_motion = Default::default();
+				assert_eq!(
+					s.workspace_content_clip(editor, window).size,
+					clip.size,
+					"dismissal retains the currently painted mask until the next frame"
+				);
+			})
+		});
+		visual.update(crate::ui_frame::draw_current_frame);
+		thread::sleep(crate::ui_theme::MOTION_PANEL + std::time::Duration::from_millis(40));
+		visual.update(crate::ui_frame::draw_current_frame);
+		visual.update(|window, cx| {
+			surface.read_with(cx, |s, _| {
+				let editor = gpui::Bounds::new(
+					gpui::point(gpui::px(264.), gpui::px(500.)),
+					gpui::size(gpui::px(512.), gpui::px(100.)),
+				);
 				assert_eq!(s.workspace_content_clip(editor, window).size, editor.size);
 			})
 		});

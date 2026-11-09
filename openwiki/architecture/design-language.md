@@ -5,7 +5,7 @@ description: Reusable layout, activity-island motion, reading spacing and theme 
 tags: [desktop, design, motion, layout]
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-09T06:17:07.236Z
+    at: 2026-11-09T06:32:42.102Z
 sources:
   - id: openwiki-source-8037e2358a2c4f9b2c722a11
     resource: repo://AGENTS.md
@@ -73,6 +73,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/ui_overflow_label.rs
   - id: openwiki-source-8f7f43de2b98b69bb43506d7
     resource: repo://apps/decodex-gpui/src/ui_performance_readout.rs
+  - id: openwiki-source-8c633c09481985d80c8f42f2
+    resource: repo://apps/decodex-gpui/src/ui_performance_tests.rs
   - id: openwiki-source-6d7ff71d731da7268890d765
     resource: repo://apps/decodex-gpui/src/ui_performance.rs
   - id: openwiki-source-546812ff3637690f4a184b89
@@ -89,7 +91,7 @@ sources:
     resource: repo://codex-runtime.lock.json
   - id: openwiki-source-a490ea3fbcddb9c007caf196
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_context_tests.rs
-generated: { by: "codex", at: "2026-11-09T06:17:07.236Z" }
+generated: { by: "codex", at: "2026-11-09T06:32:42.102Z" }
 ---
 
 # Interface geometry and motion
@@ -111,7 +113,7 @@ Work and Debug use the same geometry contract. Work uses the waveform symbol; De
 | Transition | 240 ms, with a cubic ease-out and no overshoot. |
 | Detail appearance | Fade details during the final 45 percent of the height transition. |
 
-Only one activity expands at a time. Two activities retain their resting slots and inner edges; they expand outward. A single activity remains centered. If space cannot fit the expanded tier, use the compact or minimum tier. Do not squeeze the expanded detail grid into a narrow header.
+Only one activity expands at a time. Give the selected activity all remaining space after the other activities keep their minimum widths. Do not restrict a pair to half the unused space. Two activities retain their resting slots and inner edges while they fit. If an expanding edge reaches the available boundary, translate the pair only as far as needed, using its current animated widths. Keep the gap between the activities. A single activity remains centered. If the complete available space cannot fit the expanded tier, use the compact or minimum tier. Do not squeeze the expanded detail grid into a narrow header.
 
 `Morph` uses one clock for width and height. A reversal starts at the current visible size. Reduced motion selects the target size directly. Round visible dimensions to physical pixels using the current display scale.
 
@@ -125,6 +127,8 @@ The main window accepts sizes down to 480 by 360 points. Reserve a 360-point rea
 
 Use the same 8-point outer gutter and 16-point corner radius for both side panels. Their requested width is between 160 and 480 points, constrained by the window. Keep the complete panel content layout behind the animated clipping edge. Both panels use the original `ui_theme::workspace_surface` and its workspace field color in the main GPUI window, including floating panels and the compact navigation rail. Do not create a separate native Liquid Glass surface for a sidebar. Both content roots use the same system font, 12.5-point body size and 19-point line height. The existing clipping transition owns their motion. Escape first dismisses a temporary panel before it can interrupt a reply. A click in the uncovered reading plane also dismisses it. Preserve the docked panel, Graph state and conversation draft.
 
+Sample the left and right layout slots and visible panel widths together once per workspace frame. The sidebar, conversation header, reading-plane clip and native composer mask all use that same `PanelFrame`. Reading geometry later in the frame must not advance an independent animation clock. Keep the currently painted mask until the next frame; opening, closing and reversal reveal content at the moving edge rather than switching complete controls on or off.
+
 Docked and floating placement changes allocation and dismissal, not the material or typography. Keep the placement state during closing and a reversal. Do not infer floating placement from a difference between the animated width and the target layout slot: closing releases that slot before the visible panel has disappeared.
 
 Keep the same workspace surface while a panel changes placement or width. Do not blend between separate workspace and floating materials. The sidebar derives its reveal geometry from the main window and uses the shared viewport mask. `ui_layout::pane` can reuse an unchanged presentation in that window. State changes, activity animation and hover updates invalidate the presentation normally. Active accessibility uses a live semantic tree. The sidebar itself owns pointer departure in both expanded and compact states. The input bar, activity islands and menus retain their separate native material behavior.
@@ -133,7 +137,7 @@ An unset Overlay glass style inherits Window glass style, including later change
 
 The compact navigation rail and its temporary hover preview stay full height, including during automatic collapse and restoration. Keep the Archived footer at the bottom; do not lift it above the composer. Only an explicitly pinned full navigation panel that must float, and the right floating panel, end above the complete composer area, including Work in progress and conversation feedback. Floating panels cover the reading plane without changing its width. Clip covered Graph, history and pointer regions without reflow. Use `ui_motion::revealed_value` for the lower edge. A panel that opens into a known floating placement starts at its calculated height, without a separate lower-edge transition. Animate later height changes while the panel is already visible. Closing and reversal retain continuity until the panel reaches its closed state. Graph expansion retains navigation and collaboration panels. Explicit conversation focus mode can still hide the side panels.
 
-The native composer uses one selected system material. Do not add a second GPUI background fill or a window backdrop below it. Text and controls use the current theme. Measure the native content at the latest parent anchor width before painting so the content, glass contour and input region stay aligned during resize. A full-height navigation preview can cover part of the composer. Mask the covered part of the complete native composite and its pointer region; keep the original material contour, foreground size and draft. Close the temporary preview when the user focuses the composer. Retain the editor and its focus ownership.
+The native composer uses one selected system material. Do not add a second GPUI background fill or a window backdrop below it. Text and controls use the current theme. Measure the native content at the latest parent anchor width before painting so the content, glass contour and input region stay aligned during resize. A full-height navigation preview can cover part of the composer. Mask the covered part of the complete native composite and its pointer region; keep the original material contour, foreground size and draft. Apply that native mask during parent prepaint, before the corresponding frame is painted. Close the temporary preview when the user focuses the composer. Retain the editor and its focus ownership.
 
 When Graph is hidden, an existing conversation with unfinished scoped work can show **Work in progress** above the composer. Use the shared 28-point control height, 14-point Work symbol and intrinsic disclosure motion. Include unfinished tasks and observed native agents from the current conversation's work subtree. Do not insert example work. Limit the expanded list to one quarter of the window height, between two and six control rows, and scroll extra rows. A row opens the existing conversation. Hide the strip in a new conversation or when there is no matching work.
 

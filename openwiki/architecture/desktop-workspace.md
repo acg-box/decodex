@@ -5,7 +5,7 @@ description: "Workspace ownership, native menu focus, compositor motion, and con
 tags: [decodex, architecture, desktop, presentation]
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-09T06:17:07.236Z
+    at: 2026-11-09T06:32:42.102Z
 sources:
   - id: openwiki-source-98e7b23c4cc276d20fcb4649
     resource: repo://apps/decodex-gpui/menubar/Sources/DecodexApp/AccountControlViews.swift
@@ -189,7 +189,7 @@ sources:
     resource: repo://database/src/works/commands.rs
   - id: openwiki-source-8fe6f1557e5d45d88b34bd0a
     resource: repo://scripts/macos/generate_workspace_symbols.swift
-generated: { by: "codex", at: "2026-11-09T06:17:07.236Z" }
+generated: { by: "codex", at: "2026-11-09T06:32:42.102Z" }
 ---
 
 # Desktop workspace and native glass
@@ -204,7 +204,7 @@ Both side panels use the original workspace_surface and its workspace field colo
 
 With Graph closed, **Work in progress** provides a compact disclosure above the composer. It derives rows from the selected conversation's work subtree and observed native agents, excludes completed and archived work, and opens the existing conversation on selection. It introduces no work records or execution owner. New conversations and conversations without qualifying work omit the strip. The list uses the shared control-row size and disclosure motion, with bounded height and scrolling. Work and Debug activity islands use distinct accent-colored symbols under the shared activity-island sizing contract.
 
-A placement change keeps the same workspace surface. The compact navigation rail remains in the main window. Sidebar reveal geometry comes from that window, and retained sidebar and activity presentation entities use ui_layout::pane to reuse unchanged content there. State, activity animation and hover updates still invalidate the content. Active accessibility uses live semantic geometry. The sidebar owns pointer departure in both expanded and compact states. Floating panels exclude covered reading-plane paint and hit targets through the shared Viewport mask. The composer remains outside the reading-plane mask. A full-height left preview uses a separate rectangular mask on the native composer composite and its pointer region. That mask hides the covered portion without changing the complete material contour or foreground size. Its native content measures at the current parent anchor width; one native material supplies the surface, with no extra GPUI fill or window backdrop. Focused rendering tests cover unchanged content geometry across docked and floating placement, the absence of separate native sidebar glass, interrupted closing, the retained compact rail, and covered controls. Native activity islands still update their glass contour and foreground mask in one Core Animation transaction with implicit actions disabled.
+A placement change keeps the same workspace surface. The compact navigation rail remains in the main window. Sidebar reveal geometry comes from that window, and retained sidebar and activity presentation entities use ui_layout::pane to reuse unchanged content there. State, activity animation and hover updates still invalidate the content. Active accessibility uses live semantic geometry. The sidebar owns pointer departure in both expanded and compact states. Floating panels exclude covered reading-plane paint and hit targets through the shared Viewport mask. One `PanelFrame` samples the layout slots and visible panel widths for each workspace frame. The sidebar, conversation header and reading-plane mask reuse those positions, including closing and reversals. The native composer applies its matching mask during parent prepaint, before painting that frame. The composer remains outside the reading-plane mask. A full-height left preview uses a separate rectangular mask on the native composer composite and its pointer region. That mask hides the covered portion without changing the complete material contour or foreground size. Its native content measures at the current parent anchor width; one native material supplies the surface, with no extra GPUI fill or window backdrop. Focused rendering tests cover unchanged content geometry across docked and floating placement, the absence of separate native sidebar glass, interrupted closing, the retained compact rail, and covered controls. Native activity islands still update their glass contour and foreground mask in one Core Animation transaction with implicit actions disabled.
 
 The left sidebar contains **Pin**, **Recent**, **Assistant** and **Projects**. Pin contains locally pinned conversation references. Recent contains every available unpinned conversation, without an additional item-count cutoff. Assistant collects personal topics. Projects lists registered native project directories and their independent Agent conversations. Attached Side chats remain with their source tabs. Pin has a four-row viewport; Recent and Assistant have seven-row viewports. All returned entries remain scrollable. These viewports do not enlarge the service snapshot: Work summaries retain their existing 100-record bound.
 

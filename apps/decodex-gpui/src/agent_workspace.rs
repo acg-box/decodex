@@ -1204,6 +1204,7 @@ impl AgentSurface {
 				.into_any_element();
 		}
 
+		self.begin_panel_frame(window, cx);
 		self.observe_visible_output(cx);
 		self.prepare_workspace_history(window, cx);
 		self.sync_side_chat_family(cx);
@@ -1482,15 +1483,7 @@ impl AgentSurface {
 			.flex_col()
 			.children(self.background_voice_toolbar(cx))
 			.child(center);
-		let right_width = ui_motion::direct_value(
-			"agent-tree-panel",
-			self.agent_tree_width(window),
-			self.workspace
-				.panel_drag
-				.is_some_and(|(panel, _, _)| panel == super::workspace_size::Panel::Right),
-			window,
-			cx,
-		);
+		let right_width = self.workspace_right_layout_width(window);
 		let body = gpui::div()
 			.flex_1()
 			.min_w_0()
