@@ -1020,9 +1020,9 @@ impl Shell {
 		cx.notify();
 	}
 
-	fn toggle_sidebar(&mut self, _: &ToggleSidebar, _: &mut Window, cx: &mut Context<Self>) {
+	fn toggle_sidebar(&mut self, _: &ToggleSidebar, window: &mut Window, cx: &mut Context<Self>) {
 		if self.selected == Destination::Agent {
-			self.agent.update(cx, AgentSurface::toggle_workspace_sidebar);
+			self.agent.update(cx, |agent, cx| agent.toggle_workspace_sidebar(window, cx));
 		}
 		if self.selected != Destination::Agent {
 			self.set_left_sidebar_visible(!self.left_sidebar_visible, cx);
@@ -3169,18 +3169,18 @@ fn agent_panel_control(shell: &Shell, index: usize, cx: &Context<Shell>) -> AnyE
 			window.prevent_default();
 			cx.stop_propagation();
 		})
-		.on_click(cx.listener(move |s, _, _, cx| {
+		.on_click(cx.listener(move |s, _, window, cx| {
 			if enabled && index == 0 && s.selected != Destination::Agent {
 				s.set_left_sidebar_visible(!s.left_sidebar_visible, cx);
 			} else if enabled {
 				s.agent.update(cx, |agent, cx| match index {
-					0 => agent.toggle_workspace_sidebar(cx),
+					0 => agent.toggle_workspace_sidebar(window, cx),
 					1 => agent.toggle_workspace_graph(cx),
 					_ => agent.toggle_agent_tree(cx),
 				});
 			}
 		}))
-		.on_key_down(cx.listener(move |s, event: &KeyDownEvent, _, cx| {
+		.on_key_down(cx.listener(move |s, event: &KeyDownEvent, window, cx| {
 			if enabled
 				&& !event.is_held
 				&& ["enter", "space"].contains(&event.keystroke.key.as_str())
@@ -3193,7 +3193,7 @@ fn agent_panel_control(shell: &Shell, index: usize, cx: &Context<Shell>) -> AnyE
 				}
 
 				s.agent.update(cx, |agent, cx| match index {
-					0 => agent.toggle_workspace_sidebar(cx),
+					0 => agent.toggle_workspace_sidebar(window, cx),
 					1 => agent.toggle_workspace_graph(cx),
 					_ => agent.toggle_agent_tree(cx),
 				});

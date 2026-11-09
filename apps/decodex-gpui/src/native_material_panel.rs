@@ -56,6 +56,8 @@ pub(crate) struct MaterialPanel {
 	side_buttons: Retained<AnyObject>,
 	hit_region: Rc<Cell<Option<NSRect>>>,
 	clip_mask: Option<Retained<AnyObject>>,
+	occlusion_mask: Option<Retained<AnyObject>>,
+	occlusion_frame: Option<NSRect>,
 }
 impl MaterialPanel {
 	pub(crate) fn install_input_bar(
@@ -203,6 +205,8 @@ impl MaterialPanel {
 				side_buttons,
 				hit_region,
 				clip_mask: None,
+				occlusion_mask: None,
+				occlusion_frame: None,
 			})
 		}
 	}
@@ -362,6 +366,51 @@ impl MaterialPanel {
 				window_frame.origin.x + frame.origin.x,
 				window_frame.origin.y + frame.origin.y,
 			),
+			frame.size,
+		);
+		self.hit_region.set(Some(region));
+		update_hit_region(&self.native, region);
+	}
+
+	/// Clip the composite behind another surface. This does not resize the glass
+	/// contour or foreground, unlike an island's animated contour.
+	pub(crate) fn occlude_content(&mut self, bounds: Bounds<Pixels>) {
+		let Some(content) = self.native.contentView() else { return };
+		let frame = NSRect::new(
+			NSPoint::new(
+				f64::from(f32::from(bounds.left())),
+				content.bounds().size.height - f64::from(f32::from(bounds.bottom())),
+			),
+			NSSize::new(
+				f64::from(f32::from(bounds.size.width)),
+				f64::from(f32::from(bounds.size.height)),
+			),
+		);
+		if self.occlusion_frame != Some(frame) {
+			content.setWantsLayer(true);
+			unsafe {
+				let transaction = AnyClass::get(c"CATransaction").expect("QuartzCore");
+				let _: () = objc2::msg_send![transaction, begin];
+				let _: () = objc2::msg_send![transaction, setDisableActions: true];
+				if self.occlusion_mask.is_none() {
+					let mask: Retained<AnyObject> =
+						objc2::msg_send![AnyClass::get(c"CALayer").expect("QuartzCore"), layer];
+					let color = NSColor::whiteColor().CGColor();
+					let _: () = objc2::msg_send![&*mask, setBackgroundColor: &*color];
+					let layer: Retained<AnyObject> = objc2::msg_send![&*content, layer];
+					let _: () = objc2::msg_send![&*layer, setMask: &*mask];
+					self.occlusion_mask = Some(mask);
+				}
+				if let Some(mask) = &self.occlusion_mask {
+					let _: () = objc2::msg_send![&**mask, setFrame: frame];
+				}
+				let _: () = objc2::msg_send![transaction, commit];
+			}
+			self.occlusion_frame = Some(frame);
+		}
+		let window = self.native.frame();
+		let region = NSRect::new(
+			NSPoint::new(window.origin.x + frame.origin.x, window.origin.y + frame.origin.y),
 			frame.size,
 		);
 		self.hit_region.set(Some(region));
@@ -698,6 +747,11 @@ pub(crate) fn observed_rendering(window: &Window) -> Option<Value> {
 					objc2::msg_send![&*layer, animationKeys];
 				let rasterized: bool = objc2::msg_send![&*layer, shouldRasterize];
 				let filters: Option<Retained<NSArray<AnyObject>>> = objc2::msg_send![&*layer, filters];
+				let mask: Option<Retained<AnyObject>> = objc2::msg_send![&*layer, mask];
+				let mask_frame = mask.map(|mask| {
+					let frame: NSRect = objc2::msg_send![&*mask, frame];
+					[frame.origin.x, frame.origin.y, frame.size.width, frame.size.height]
+				});
 
 				serde_json::json!({
 					"class": layer.class().name().to_string_lossy(),
@@ -709,6 +763,7 @@ pub(crate) fn observed_rendering(window: &Window) -> Option<Value> {
 					"presentation_opacity": presentation_opacity,
 					"animations": animations.map(|keys| keys.iter().map(|key| key.to_string()).collect::<Vec<_>>()).unwrap_or_default(),
 					"rasterized": rasterized,
+					"mask_frame": mask_frame,
 					"filters": filters.map(|filters| filters.iter().map(|filter| filter.class().name().to_string_lossy().into_owned()).collect::<Vec<_>>()).unwrap_or_default(),
 				})
 			});

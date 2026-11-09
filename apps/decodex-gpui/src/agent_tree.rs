@@ -20,13 +20,7 @@ impl AgentSurface {
 		}
 
 		crate::ui_motion::begin_interaction();
-		if !self.workspace.agent_tree_visible {
-			self.mark_panel_opened(super::workspace_size::Panel::Right);
-		}
 		self.workspace.agent_tree_visible = !self.workspace.agent_tree_visible;
-		if !self.workspace.agent_tree_visible && self.workspace.sidebar_visible {
-			self.workspace.panel_priority = super::workspace_size::Panel::Left;
-		}
 
 		cx.notify();
 	}

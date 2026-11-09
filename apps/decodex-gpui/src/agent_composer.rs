@@ -124,6 +124,7 @@ impl AgentSurface {
 		if self.composer_unavailable_reason().is_some() {
 			return;
 		}
+		self.dismiss_sidebar_preview(cx);
 		#[cfg(all(target_os = "macos", not(test)))]
 		if self.focus_native_message(cx) {
 			return;

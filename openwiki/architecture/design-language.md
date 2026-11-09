@@ -5,7 +5,7 @@ description: Reusable layout, activity-island motion, reading spacing and theme 
 tags: [desktop, design, motion, layout]
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-09T05:41:00.802Z
+    at: 2026-11-09T06:17:07.236Z
 sources:
   - id: openwiki-source-8037e2358a2c4f9b2c722a11
     resource: repo://AGENTS.md
@@ -89,7 +89,7 @@ sources:
     resource: repo://codex-runtime.lock.json
   - id: openwiki-source-a490ea3fbcddb9c007caf196
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_context_tests.rs
-generated: { by: "codex", at: "2026-11-09T05:41:00.802Z" }
+generated: { by: "codex", at: "2026-11-09T06:17:07.236Z" }
 ---
 
 # Interface geometry and motion
@@ -121,7 +121,7 @@ Lay out detail text and metric columns at the complete content width. Clip that 
 
 ## Responsive workspace
 
-The main window accepts sizes down to 480 by 360 points. Reserve a 360-point reading width before allocating persistent side panels. Keep the panel that was open first in the layout. If the other panel cannot fit, show it above the reading plane without moving the first panel or narrowing the conversation. Resizing to a wider window restores both requested panels to the layout. In a very narrow window that cannot fit either panel, show only the most recently opened temporary surface.
+The main window accepts sizes down to 480 by 360 points. Reserve a 360-point reading width and the 40-point navigation rail before allocating persistent side panels. Always allocate the left navigation before the right panel, regardless of opening order. A right panel that cannot fit floats above the reading plane. If the requested full navigation cannot fit, it returns to the rail and keeps its pinned preference. Resizing to a wider window restores the requested full navigation. Opening the left preview temporarily hides a right floating panel and restores it when the preview closes.
 
 Use the same 8-point outer gutter and 16-point corner radius for both side panels. Their requested width is between 160 and 480 points, constrained by the window. Keep the complete panel content layout behind the animated clipping edge. Both panels use the original `ui_theme::workspace_surface` and its workspace field color in the main GPUI window, including floating panels and the compact navigation rail. Do not create a separate native Liquid Glass surface for a sidebar. Both content roots use the same system font, 12.5-point body size and 19-point line height. The existing clipping transition owns their motion. Escape first dismisses a temporary panel before it can interrupt a reply. A click in the uncovered reading plane also dismisses it. Preserve the docked panel, Graph state and conversation draft.
 
@@ -131,9 +131,9 @@ Keep the same workspace surface while a panel changes placement or width. Do not
 
 An unset Overlay glass style inherits Window glass style, including later changes. An explicit Regular or Clear override remains independent. The inherited value does not create a saved override.
 
-Floating sidebars end above the complete composer area, including Work in progress and conversation feedback. They cover the reading plane without changing its width. Clip covered Graph, history and pointer regions only; keep the composer outside that mask. The input, model controls and Send action remain visible and usable even at the minimum window size. Use `ui_motion::revealed_value` for the lower edge. A panel that opens into a known floating placement starts at its calculated height, without a separate lower-edge transition. Animate later height changes while the panel is already visible, such as a docked panel becoming floating. Closing and reversal retain continuity until the panel reaches its closed state. Graph expansion retains navigation and collaboration panels. Explicit conversation focus mode can still hide the side panels.
+The compact navigation rail and its temporary hover preview stay full height, including during automatic collapse and restoration. Keep the Archived footer at the bottom; do not lift it above the composer. Only an explicitly pinned full navigation panel that must float, and the right floating panel, end above the complete composer area, including Work in progress and conversation feedback. Floating panels cover the reading plane without changing its width. Clip covered Graph, history and pointer regions without reflow. Use `ui_motion::revealed_value` for the lower edge. A panel that opens into a known floating placement starts at its calculated height, without a separate lower-edge transition. Animate later height changes while the panel is already visible. Closing and reversal retain continuity until the panel reaches its closed state. Graph expansion retains navigation and collaboration panels. Explicit conversation focus mode can still hide the side panels.
 
-The native composer uses one selected system material. Do not add a second GPUI background fill or a window backdrop below it. Text and controls use the current theme. Measure the native content at the latest parent anchor width before painting so the content, glass contour and input region stay aligned during resize. Retain the editor and its focus.
+The native composer uses one selected system material. Do not add a second GPUI background fill or a window backdrop below it. Text and controls use the current theme. Measure the native content at the latest parent anchor width before painting so the content, glass contour and input region stay aligned during resize. A full-height navigation preview can cover part of the composer. Mask the covered part of the complete native composite and its pointer region; keep the original material contour, foreground size and draft. Close the temporary preview when the user focuses the composer. Retain the editor and its focus ownership.
 
 When Graph is hidden, an existing conversation with unfinished scoped work can show **Work in progress** above the composer. Use the shared 28-point control height, 14-point Work symbol and intrinsic disclosure motion. Include unfinished tasks and observed native agents from the current conversation's work subtree. Do not insert example work. Limit the expanded list to one quarter of the window height, between two and six control rows, and scroll extra rows. A row opens the existing conversation. Hide the strip in a new conversation or when there is no matching work.
 
@@ -175,7 +175,7 @@ Use one compact row rhythm for the left navigation. Pin, Recent, Assistant and P
 
 The whole section header toggles its content. Sorting remains a secondary hover or keyboard-focus control. Put the creation plus immediately before the disclosure chevron in Assistant, Projects and each project. Both controls retain their hit targets when hidden. An expanded project uses a quiet surface, a short accent mark and an end rule inside its final child row. Its conversation rows have no extra indent or folder symbols.
 
-Keep Search and commands in the same leading slot when the sidebar contracts. It opens the global command window, also available with Command-K. The compact rail retains each section symbol and conversation initial. A pointer dwell of 100 ms temporarily expands the rail as a floating surface when the right panel does not already float. Leaving starts a 220 ms close delay; returning cancels that close. Reuse the shared width transition and keep the leading symbols and initials fixed. Opening a section during a hover does not pin the sidebar. The explicit sidebar toggle controls persistent visibility and clears temporary hover state. Relative times and trailing actions do not add width or height to the compact rail.
+Keep Search and commands in the same leading slot when the sidebar contracts. It opens the global command window, also available with Command-K. The compact rail retains each section symbol and conversation initial. A pointer dwell of 100 ms temporarily expands the rail as a full-height floating surface, including after an automatic collapse. It temporarily hides a right floating panel without clearing that panel's requested state. Leaving starts a 220 ms close delay; returning cancels that close. Reuse the shared width transition and keep the leading symbols and initials fixed. Opening a section during a hover does not pin the sidebar. The explicit sidebar toggle controls persistent visibility and clears temporary hover state. Relative times and trailing actions do not add width or height to the compact rail.
 
 The sidebar's outer width uses the shared interruptible 200 ms cubic ease-out. Its content retains the complete expanded canvas during opening, closing and a reversal; the outer panel clips that canvas. Keep titles and trailing controls mounted at their final positions until closing reaches the 40-point rail. Do not squeeze the content into intermediate widths or remove labels as soon as the target changes. At the settled compact width, omit project branches and their extra layout space.
 

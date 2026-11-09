@@ -31,6 +31,7 @@ pub(super) struct NativeComposer {
 	pub(super) enabled: bool,
 	child: Option<WindowHandle<ComposerPanel>>,
 	pub(super) bounds: Option<Bounds<Pixels>>,
+	visible_region: Option<Bounds<Pixels>>,
 	height: f32,
 	creating: bool,
 	failed: bool,
@@ -41,6 +42,7 @@ impl Default for NativeComposer {
 			enabled: false,
 			child: None,
 			bounds: None,
+			visible_region: None,
 			height: COMPOSER_MIN_HEIGHT,
 			creating: false,
 			failed: false,
@@ -106,6 +108,7 @@ impl Render for ComposerPanel {
 
 				ui_motion::dismiss_shared_popover(parent, cx);
 				focus_owner.update(cx, |s, cx| {
+					s.dismiss_sidebar_preview(cx);
 					if let Some((name, _)) =
 						s.menu_trigger_bounds.iter().find(|(_, b)| b.contains(&event.position))
 					{
@@ -322,14 +325,17 @@ impl AgentSurface {
 		let owner = cx.entity().downgrade();
 
 		cx.defer(move |cx| {
-			let Ok((child, bounds, enabled, opacity)) = owner.read_with(cx, |s, _| {
-				(
-					s.native_controls.composer.child,
-					s.native_controls.composer.bounds,
-					s.native_controls.composer.enabled,
-					s.workspace.arrival.progress(0.12),
-				)
-			}) else {
+			let Ok((child, bounds, visible_region, enabled, opacity)) =
+				owner.read_with(cx, |s, _| {
+					(
+						s.native_controls.composer.child,
+						s.native_controls.composer.bounds,
+						s.native_controls.composer.visible_region,
+						s.native_controls.composer.enabled,
+						s.workspace.arrival.progress(0.12),
+					)
+				})
+			else {
 				return;
 			};
 
@@ -341,6 +347,9 @@ impl AgentSurface {
 							&& surface.place(bounds)
 						{
 							window.bounds_changed(cx);
+						}
+						if let Some(region) = visible_region {
+							surface.occlude_content(region);
 						}
 						surface.set_opacity(opacity);
 						surface.set_visible(enabled && bounds.is_some() && opacity > 0.001);
@@ -356,9 +365,11 @@ impl AgentSurface {
 		let read_only = blocked.is_some() && !archived;
 		let owner = cx.entity().downgrade();
 		let anchor = gpui::canvas(
-			move |bounds, _, cx| {
+			move |bounds, window, cx| {
 				let _ = owner.update(cx, |s, cx| {
 					s.native_controls.composer.bounds = Some(bounds);
+					s.native_controls.composer.visible_region =
+						Some(s.workspace_composer_visible_region(bounds, window));
 					s.sync_native_composer(cx);
 				});
 			},

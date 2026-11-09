@@ -92,18 +92,18 @@ impl AgentSurface {
 		]
 	}
 
-	pub(crate) fn toggle_workspace_sidebar(&mut self, cx: &mut Context<Self>) {
+	pub(crate) fn toggle_workspace_sidebar(&mut self, window: &Window, cx: &mut Context<Self>) {
 		if self.workspace_connecting() {
 			return;
 		}
 
 		ui_motion::begin_interaction();
-		if !self.workspace.sidebar_visible {
-			self.mark_panel_opened(super::workspace_size::Panel::Left);
-		}
-		self.workspace.sidebar_visible = !self.workspace.sidebar_visible;
-		if !self.workspace.sidebar_visible && self.workspace.agent_tree_visible {
-			self.workspace.panel_priority = super::workspace_size::Panel::Right;
+		if self.workspace.sidebar_peek || !self.workspace_sidebar_expanded(window) {
+			self.workspace.sidebar_visible = true;
+			self.workspace.sidebar_forced_open.set(self.sidebar_must_preview(window));
+		} else {
+			self.workspace.sidebar_visible = false;
+			self.workspace.sidebar_forced_open.set(false);
 		}
 		self.workspace.sidebar_peek = false;
 		self.workspace.sidebar_hover_intent.cancel();
@@ -1518,7 +1518,7 @@ impl AgentSurface {
 			.flex()
 			.child(self.sidebar_slot(wide, window, cx))
 			.child(body)
-			.child(gpui::deferred(self.sidebar_pane(window, cx)).with_priority(1))
+			.child(gpui::deferred(self.sidebar_pane(window, cx)).with_priority(2))
 			.child(gpui::deferred(self.activity_pane(window, cx)).with_priority(1));
 
 		self.workspace_resize_root(cx)
@@ -3383,27 +3383,29 @@ mod tests {
 		assert!((workspace.center().x - loading.center().x).abs() < gpui::px(1.));
 		assert!((workspace.center().y - loading.center().y).abs() < gpui::px(1.));
 
-		surface.update(visual, |s, cx| {
-			assert_eq!(s.workspace_panels(), [(false, false); 3]);
+		visual.update(|window, cx| {
+			surface.update(cx, |s, cx| {
+				assert_eq!(s.workspace_panels(), [(false, false); 3]);
 
-			let panels = (
-				s.workspace.sidebar_visible,
-				s.workspace.graph_visible,
-				s.workspace.agent_tree_visible,
-			);
-
-			s.toggle_workspace_sidebar(cx);
-			s.toggle_workspace_graph(cx);
-			s.toggle_agent_tree(cx);
-
-			assert_eq!(
-				panels,
-				(
+				let panels = (
 					s.workspace.sidebar_visible,
 					s.workspace.graph_visible,
-					s.workspace.agent_tree_visible
-				)
-			);
+					s.workspace.agent_tree_visible,
+				);
+
+				s.toggle_workspace_sidebar(window, cx);
+				s.toggle_workspace_graph(cx);
+				s.toggle_agent_tree(cx);
+
+				assert_eq!(
+					panels,
+					(
+						s.workspace.sidebar_visible,
+						s.workspace.graph_visible,
+						s.workspace.agent_tree_visible
+					)
+				);
+			})
 		});
 
 		assert!(visual.debug_bounds("composer-send").is_none());

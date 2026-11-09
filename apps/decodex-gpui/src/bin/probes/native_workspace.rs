@@ -26,7 +26,8 @@ pub(super) fn run_composer() {
 	assert!(env::var_os("DECODEX_FRAME_TRACE").is_some(), "explicit trace output");
 	assert!(env::var_os("DECODEX_VISUAL_DRAFT_ROOT").is_some(), "isolated draft root");
 	preferences();
-	gpui_platform::application().run(|cx| {
+	let navigation_preview = env::var_os("DECODEX_VISUAL_NATIVE_NAVIGATION").is_some();
+	gpui_platform::application().run(move |cx| {
 		ui_theme::appearance::Appearance::Dark.apply(cx);
 		frame_trace::start_for(cx, Duration::from_secs(12));
 		let bounds = Bounds::centered(None, gpui::size(gpui::px(1200.), gpui::px(720.)), cx);
@@ -45,6 +46,9 @@ pub(super) fn run_composer() {
 					let surface = cx.new(|cx| {
 						let mut surface = AgentSurface::new(cx);
 						surface.visual_workspace_fixture(cx);
+						if navigation_preview {
+							surface.toggle_workspace_sidebar(window, cx);
+						}
 						surface
 					});
 					cx.new(|_| ComposerWorkspace(surface))
@@ -61,8 +65,22 @@ pub(super) fn run_composer() {
 					cx.notify();
 				})
 				.expect("resize native composer fixture");
+				if navigation_preview {
+					cx.background_executor().timer(Duration::from_millis(250)).await;
+					root.update(cx, |probe, window, cx| {
+						probe.0.update(cx, |surface, cx| surface.sidebar_hover(true, window, cx));
+					})
+					.expect("preview navigation beside native input");
+					cx.background_executor().timer(Duration::from_millis(400)).await;
+					root.update(cx, |probe, window, cx| {
+						probe.0.update(cx, |surface, cx| surface.sidebar_hover(false, window, cx));
+					})
+					.expect("close navigation preview");
+				}
 			}
-			cx.background_executor().timer(Duration::from_secs(7)).await;
+			cx.background_executor()
+				.timer(Duration::from_secs(if navigation_preview { 4 } else { 7 }))
+				.await;
 			cx.update(|cx| cx.quit());
 		})
 		.detach();
@@ -104,9 +122,9 @@ pub(super) fn run() {
 		cx.spawn(async move |cx| {
 			cx.background_executor().timer(Duration::from_secs(1)).await;
 			for step in 0..12 {
-				root.update(cx, |surface, _, cx| {
+				root.update(cx, |surface, window, cx| {
 					if !(4..8).contains(&step) {
-						surface.toggle_workspace_sidebar(cx);
+						surface.toggle_workspace_sidebar(window, cx);
 					}
 					if step >= 4 {
 						surface.toggle_agent_tree(cx);
