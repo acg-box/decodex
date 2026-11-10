@@ -17,6 +17,10 @@ When working in this repository, read the OpenWiki quickstart first, then follow
   user explicitly authorizes that change.
 - Build and test commands must not override this policy with a numbered toolchain.
 
+## GitHub labels
+
+- Do not create or apply GitHub labels in this repository.
+
 ## UI copy
 
 - Use explicit labels for values and complete sentences for explanations.

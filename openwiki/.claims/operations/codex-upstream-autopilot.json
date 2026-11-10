@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:64032c00b5c7e1dca3cac6650902961e6252f736c5c7efe532bdffd060f6d8ee",
+  "pageVersion": "sha256:f8123fa4681da84851fbef01b88359588de2e5dd9bcb1c74af9833fd8f065d87",
   "claims": [
     {
       "id": "claim_b6c6b65984924f69970e7f0410d50903",
@@ -30,7 +30,7 @@
         },
         {
           "resource": "repo://automations/upstream/prompts/maintainer.md",
-          "version": "repo-file-v1:sha256:bfaf047744eae94e157aff6d8adf148acf9aa162fffaa61bcf6324249ff84501"
+          "version": "repo-file-v1:sha256:803a0661dd8e7396b198dd88c47f34b068d7181c2e5863c3caac8a32f1e98ad7"
         }
       ]
     },
@@ -50,7 +50,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/prompts/maintainer.md#L65-L77",
-          "version": "repo-lines-v1:sha256:cee4e11366302cec2f15bd4f731946d5843dadfc2df8cc7434b0b0666c564ae2:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg4NTBlMzYyOGNjYTA3ZGM5ZDcwNTVjMzk4YWM5Y2RiYzNjZTQyNGNmYTg0Nzc4MzlhZmU1NjkzMGMwYWNhYmYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIzMzE2ZjBiN2RjNzk2ZmMyYWU2YThmYTZmNTE1NzMxN2U2NjI5ODI2ODhjNTdjY2YyNWEyYTM3ODE3ZTVhNmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRkNThjYjM5ODEyNTMyMzY0M2VkZTBlMjk3OTNmZGE0ZDQxNTE0MWVmMjNkNTQxZGYxNjQ0YjZkOTM5NmVlNjgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+          "version": "repo-lines-v1:sha256:748612f44a06a6746d530cfc5d868ae5ee11c5d95318ef02baf0ddc806034d04:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM3Mzk5MjliMDUyYWNhMWIyMGY4NmFiNDUwYTNlYzdjNzAwZWU2NGYxMmE4ZDFkOTg2NjJjOTViMjdlNDFhNjciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIzMzE2ZjBiN2RjNzk2ZmMyYWU2YThmYTZmNTE1NzMxN2U2NjI5ODI2ODhjNTdjY2YyNWEyYTM3ODE3ZTVhNmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRkNThjYjM5ODEyNTMyMzY0M2VkZTBlMjk3OTNmZGE0ZDQxNTE0MWVmMjNkNTQxZGYxNjQ0YjZkOTM5NmVlNjgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
         }
       ]
     },
@@ -70,7 +70,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/prompts/maintainer.md",
-          "version": "repo-file-v1:sha256:bfaf047744eae94e157aff6d8adf148acf9aa162fffaa61bcf6324249ff84501"
+          "version": "repo-file-v1:sha256:803a0661dd8e7396b198dd88c47f34b068d7181c2e5863c3caac8a32f1e98ad7"
         }
       ]
     },
@@ -118,7 +118,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/prompts/maintainer.md",
-          "version": "repo-file-v1:sha256:bfaf047744eae94e157aff6d8adf148acf9aa162fffaa61bcf6324249ff84501"
+          "version": "repo-file-v1:sha256:803a0661dd8e7396b198dd88c47f34b068d7181c2e5863c3caac8a32f1e98ad7"
         }
       ]
     },
@@ -260,7 +260,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/prompts/maintainer.md",
-          "version": "repo-file-v1:sha256:bfaf047744eae94e157aff6d8adf148acf9aa162fffaa61bcf6324249ff84501"
+          "version": "repo-file-v1:sha256:803a0661dd8e7396b198dd88c47f34b068d7181c2e5863c3caac8a32f1e98ad7"
         }
       ]
     },
@@ -288,7 +288,7 @@
         },
         {
           "resource": "repo://automations/upstream/prompts/maintainer.md",
-          "version": "repo-file-v1:sha256:bfaf047744eae94e157aff6d8adf148acf9aa162fffaa61bcf6324249ff84501"
+          "version": "repo-file-v1:sha256:803a0661dd8e7396b198dd88c47f34b068d7181c2e5863c3caac8a32f1e98ad7"
         }
       ]
     },
@@ -380,7 +380,7 @@
         },
         {
           "resource": "repo://automations/upstream/prompts/maintainer.md",
-          "version": "repo-file-v1:sha256:bfaf047744eae94e157aff6d8adf148acf9aa162fffaa61bcf6324249ff84501"
+          "version": "repo-file-v1:sha256:803a0661dd8e7396b198dd88c47f34b068d7181c2e5863c3caac8a32f1e98ad7"
         }
       ]
     },
@@ -401,10 +401,24 @@
           "version": "repo-file-v1:sha256:983bbbd18afbbaf45291e3065cc7d830da3f9255daf11498316a10c4d1e56d66"
         }
       ]
+    },
+    {
+      "id": "claim_e11a1abbc1524d9c88b14882e0fa8987",
+      "statement": "This repository uses no GitHub labels. Issues and pull requests must be created without labels.",
+      "evidence": [
+        {
+          "resource": "repo://AGENTS.md",
+          "version": "repo-file-v1:sha256:a864cd99e7de96a23942f3ed2b1be6d16811abbe99382d6015e5ead4fca5fe98"
+        },
+        {
+          "resource": "repo://automations/upstream/prompts/maintainer.md",
+          "version": "repo-file-v1:sha256:803a0661dd8e7396b198dd88c47f34b068d7181c2e5863c3caac8a32f1e98ad7"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.9.0",
-    "at": "2026-11-10T08:10:56.086Z"
+    "at": "2026-11-10T08:48:08.589Z"
   }
 }
