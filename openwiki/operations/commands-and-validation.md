@@ -44,8 +44,12 @@ sources:
     resource: repo://crates/decodex-components/src/ragflow.rs
   - id: openwiki-source-8bbd4ba0cf275fa1b4da9acf
     resource: repo://crates/decodex-components/tests/development.rs
+  - id: openwiki-source-b07ecdcdf742d9917cba472c
+    resource: repo://crates/decodex-core/src/agent_schedule.rs
   - id: openwiki-source-62c1273bf1b2ac5041d1e920
     resource: repo://crates/decodex-core/src/assistant.rs
+  - id: openwiki-source-991553c8d747a54ecf5a9376
+    resource: repo://crates/decodex-core/src/work.rs
   - id: openwiki-source-eac747e105c1c8d9e7e3c811
     resource: repo://crates/decodex-runtime/examples/clear_development_data.rs
   - id: openwiki-source-95a7168e447de14b4b758f16
@@ -68,6 +72,8 @@ sources:
     resource: repo://crates/decodex-runtime/src/account_launch/process_native_component_tests.rs
   - id: openwiki-source-c75093d19a3bc72db5836102
     resource: repo://crates/decodex-runtime/src/agent_host.rs
+  - id: openwiki-source-1a6e9328d4cd6c8e5904f167
+    resource: repo://crates/decodex-runtime/src/agent/tests.rs
   - id: openwiki-source-5af40fd50adccf5d93ff82a0
     resource: repo://crates/decodex-runtime/src/agent/tests/capacity.rs
   - id: openwiki-source-24139c353e393a9759b0267a
@@ -106,6 +112,8 @@ sources:
     resource: repo://crates/decodex-webrtc-build/tests/trust_roots.json
   - id: openwiki-source-6197a876b2effbe992b1e2ec
     resource: repo://database/src/agent.rs
+  - id: openwiki-source-3f60f3a3aae45b3e3b355d3e
+    resource: repo://database/src/assistant.rs
   - id: openwiki-source-7c3b932da49e58b50b150e50
     resource: repo://database/src/development_reset.rs
   - id: openwiki-source-c8b1a2a9f2113ec43d4066da
@@ -128,10 +136,10 @@ sources:
     resource: repo://scripts/macos/test_native_app.sh
   - id: openwiki-source-e201f60894c32a914dac99ee
     resource: repo://scripts/vnext/run_native_regression.py
-generated: { by: "codex", at: "2026-11-07T06:35:26.732Z" }
+generated: { by: "codex", at: "2026-11-10T08:10:56.086Z" }
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-07T06:35:26.732Z
+    at: 2026-11-10T08:10:56.086Z
 ---
 
 
@@ -195,6 +203,42 @@ cargo +stable test --locked -p decodex-runtime --lib installed_assistant_renews_
 ```
 
 The native test uses an isolated home and loopback provider. It checks three clean native contexts, original dialogue and memory isolation. The HTTP fixtures check scoped RAGFlow requests, business-error responses, default-model setup, lost-creation-reply recovery and private origin-bound credentials. Managed-service fixtures check loopback-only exposure, custom endpoint paths and names, loopback host translation and a project-scoped Uninstall without volume removal. The model editor fixture checks blank saved-key fields and draft preservation. These fixtures do not qualify a real Docker startup, live Memory extraction or installed desktop application. For actual acceptance, record the installed nightly version, configure a controlled compatible API and verify both model calls, use synthetic scoped data for a write/search check, reject invalid credentials without replacing the saved configuration, then verify Update, Uninstall and reinstall without removing unrelated services or retained memory. Keep credentials and raw service receipts outside Git.
+
+## Independent Agent duties
+
+Use an existing persistent Agent identity and an `AgentWake` JSON file. Its fields
+are `id`, `instruction`, `authority_event_id`, `due_at_micros` and
+`interval_seconds`. The due time is a future Unix timestamp in microseconds; a
+direct user command can use zero for the authority reference. A recurring interval
+must be at least 60 seconds. Use a stable idempotency key for the exact request.
+
+```sh
+decodex agent schedule --agent-id AGENT_ID \
+  --wake-file /absolute/path/wake.json --idempotency-key exact-save-key
+decodex --output json agent status
+decodex agent cancel-schedule --agent-id AGENT_ID \
+  --wake-id DUTY_ID --idempotency-key exact-cancel-key
+```
+
+The Agent's `scheduled_wakes` are separate from personal Assistant settings. A
+save readback proves configuration only. Verify an actual due occurrence, native
+automation delivery and completion before accepting a migration. Retain the same
+owner and next due time after restart; cancel temporary acceptance duties. See
+[upstream maintenance](codex-upstream-autopilot.md#register-and-accept-an-internal-duty)
+for the internal maintainer handoff.
+
+Focused regressions cover cadence and receipt recovery, archive cancellation and
+native input provenance:
+
+```sh
+cargo +stable test --locked -p decodex-database project_wakes_keep_their_owner_cadence_and_receipts_across_restart
+cargo +stable test --locked -p decodex-database archiving_project_agent_cancels_its_duties_and_keeps_assistant_duties
+cargo +stable test --locked -p decodex-runtime --lib scheduled_project_duty_uses_native_automation_input_without_personal_assistant
+```
+
+The [current qualification](../../automations/upstream/qualification.json) lists
+executed retained native consumers, exact component identities and limits. Its
+loopback tests do not establish a live provider or installed scheduler result.
 
 ## Signed native WebRTC checks
 

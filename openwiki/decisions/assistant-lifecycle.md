@@ -1,12 +1,12 @@
 ---
 type: "Reference"
 title: "Assistant delegation, memory and context lifecycle"
+description: "Personal Assistant ownership, context renewal, Memory boundaries and independent Agent duties."
+tags: [assistant, agents, lifecycle, scheduling]
 openwiki_generated: true
 sources:
   - id: openwiki-source-586227b5591e5f24cdfe6427
     resource: repo://apps/decodex-cli/src/agent.rs
-  - id: openwiki-source-36b7f34eeb55f2eec55e903d
-    resource: repo://apps/decodex-gpui/src/agent_command_palette.rs
   - id: openwiki-source-48758ba7d154c82885281d2c
     resource: repo://apps/decodex-gpui/src/agent_composer.rs
   - id: openwiki-source-5eddd1d872eed61f8ba7e703
@@ -27,16 +27,22 @@ sources:
     resource: repo://apps/decodex-gpui/src/assistant_settings.rs
   - id: openwiki-source-0813b2e35e2133631c0aa4db
     resource: repo://apps/decodex-gpui/src/settings_components.rs
+  - id: openwiki-source-f580b10e16f1d25ebfea3bf8
+    resource: repo://automations/upstream/qualification.json
   - id: openwiki-source-f02ae41e2bd15dda85dc86b9
     resource: repo://codex-runtime.lock.json
   - id: openwiki-source-69e9fd7efd8c3cd616184e27
     resource: repo://crates/decodex-components/src/ragflow_service.rs
   - id: openwiki-source-9ecfe8c96199e765ca2b4e1b
     resource: repo://crates/decodex-components/src/ragflow.rs
+  - id: openwiki-source-b07ecdcdf742d9917cba472c
+    resource: repo://crates/decodex-core/src/agent_schedule.rs
   - id: openwiki-source-62c1273bf1b2ac5041d1e920
     resource: repo://crates/decodex-core/src/assistant.rs
   - id: openwiki-source-8b27f0ff96b57583d8d59731
     resource: repo://crates/decodex-protocol/src/agent_timeline.rs
+  - id: openwiki-source-cc0439b23243c3697ba49199
+    resource: repo://crates/decodex-protocol/src/lib.rs
   - id: openwiki-source-eac747e105c1c8d9e7e3c811
     resource: repo://crates/decodex-runtime/examples/clear_development_data.rs
   - id: openwiki-source-95a7168e447de14b4b758f16
@@ -69,12 +75,16 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent/instructions.md
   - id: openwiki-source-1bebc823fa8b6426acb4d5e2
     resource: repo://crates/decodex-runtime/src/agent/native_settings.rs
+  - id: openwiki-source-1a6e9328d4cd6c8e5904f167
+    resource: repo://crates/decodex-runtime/src/agent/tests.rs
   - id: openwiki-source-efd01c181e05be3cb110ec94
     resource: repo://crates/decodex-runtime/src/agent/tests/archive.rs
   - id: openwiki-source-a09c082db4ad1473c4d1e557
     resource: repo://crates/decodex-runtime/src/application.rs
   - id: openwiki-source-3edc2f094826ee56ddec6b73
     resource: repo://crates/decodex-runtime/src/ragflow.rs
+  - id: openwiki-source-605dc8d044212b397f13e8d7
+    resource: repo://database/src/agent_schedule.rs
   - id: openwiki-source-6197a876b2effbe992b1e2ec
     resource: repo://database/src/agent.rs
   - id: openwiki-source-dd880acfb699314e78cc9985
@@ -89,10 +99,10 @@ sources:
     resource: repo://database/src/development_reset.rs
   - id: openwiki-source-28af4781ad8d9558410630da
     resource: repo://database/src/works.rs
-generated: { by: "codex", at: "2026-11-07T20:36:56.030Z" }
+generated: { by: "codex", at: "2026-11-10T08:10:56.086Z" }
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-07T20:57:17.839Z
+    at: 2026-11-10T08:10:56.086Z
 ---
 
 
@@ -103,7 +113,7 @@ verified:
 
 The Assistant lifecycle is implemented in the current source. Assistant is built in and available by default. The sidebar opens its persistent personal identity and initializes it on first use. The same Assistant can have several independent conversation topics. The user can also select an existing Agent in Work. It accepts continuing instructions, manages lightweight teams and delegated Agents, registers independent duties, connects to optional RAGFlow Memory and renews native context within each topic. It has no built-in project patrol or monitoring assignment. The user can work directly with any other Agent or Project Lead.
 
-Native Codex remains the executor. Decodex retains identity, relationships, Work and delivery records. The implementation adds no second executor, mandatory management hierarchy, parallel task ledger, memory framework or database migration. Local protocol is 4.8 and the current SQLite schema is 61. The application accepts one current state format; it has no automatic upgrade chain.
+Native Codex remains the executor. Decodex retains identity, relationships, Work and delivery records. The implementation adds no second executor, mandatory management hierarchy, parallel task ledger, memory framework or database migration. Local protocol is 4.9 and the current SQLite schema is 61. The application accepts one current state format; it has no automatic upgrade chain.
 
 ```mermaid
 flowchart LR
@@ -178,6 +188,27 @@ The existing 15-second service tick queues due entries in the durable Inbox and 
 Shared instructions request notifications for material changes, outcomes, failures or required user decisions unless the user requested routine reports. This is an Agent instruction, not a separate deterministic notification classifier.
 
 Execution requires the service and machine to be available. A restart restores saved duties; it does not promise uninterrupted cloud execution. Explicit Agent archive cancels future duties. Retiring an old context during renewal does not run that archive cleanup.
+
+## Independent project duties
+
+An ordinary persistent Agent can own continuing duties without the personal
+Assistant role. The direct user commands `decodex agent schedule` and
+`decodex agent cancel-schedule` use the same typed service boundary as other
+Agent commands. Each duty has its own identity and instruction. The Agent
+snapshot exposes its saved `scheduled_wakes`.
+
+The existing service tick uses the durable Inbox journal. It queues an occurrence
+and advances that duty in one transaction. A recurring duty retains its selected
+UTC cadence: missed intervals produce one occurrence, then the next future time
+on that cadence. Repeating the same save receipt cannot restore an old due time.
+Cancellation leaves an already admitted turn intact. Agent archive cancels its
+future duties; a normal service restart retains them.
+
+Delivery uses native automation input and separate application-tool context. It
+does not manufacture a user message or grant personal Memory access. The machine
+and service must be available. [Codex upstream maintenance](../operations/codex-upstream-autopilot.md)
+uses this independent owner, with registration and actual trigger evidence in its
+accepted internal handoff.
 
 ## Context assembly
 
@@ -270,7 +301,7 @@ Database fixtures cover team reuse, independent wakes and archive cancellation, 
 
 Reset fixtures cover exact-target deletion, namespace rejection, retained credentials and model choices, failed replacement without a stale Memory ID, and missing-resource handling. Desktop interaction fixtures cover Edit after Save, Cancel to the saved summary, disclosure without implicit editing, reset confirmation and cancellation, and rejection of a changed confirmation target. Database fixtures clear stale health and reject a late import result from the previous Memory. These fixtures do not clear a live user Memory.
 
-The isolated native test `installed_assistant_renews_fresh_contexts_with_original_dialogue_and_isolated_memory` uses the explicit `DECODEX_TEST_CODEX_BINARY`. The selected development runtime is pinned to upstream commit `2889d8e1bf564af2ed3a72dc929b583551561363`. It checks three successive fresh contexts, original dialogue across their boundaries, no fork ancestry, one model request per user turn, Assistant-specific context and absent native-memory injection. It also checks that unavailable automatic recall reaches the model as bounded untrusted context. Two separate personal topics then start independent fresh contexts with personal tools and no copied earlier dialogue; a project control context has no personal tools. An unrelated control context retains native memory settings. Native schemas were generated from the selected binary; upstream main is not a substitute for installed capability.
+The isolated native test `installed_assistant_renews_fresh_contexts_with_original_dialogue_and_isolated_memory` uses the explicit `DECODEX_TEST_CODEX_BINARY`. The [current qualification](../../automations/upstream/qualification.json) identifies the selected development runtime and exact artifact. It checks three successive fresh contexts, original dialogue across their boundaries, no fork ancestry, one model request per user turn, Assistant-specific context and absent native-memory injection. It also checks that unavailable automatic recall reaches the model as bounded untrusted context. Two separate personal topics then start independent fresh contexts with personal tools and no copied earlier dialogue; a project control context has no personal tools. An unrelated control context retains native memory settings. Native schemas were generated from the selected binary; upstream main is not a substitute for installed capability.
 
 Database fixtures check topic creation retries, shared settings, project and team exclusion, actual-topic user authority, complete empty-topic discard and deletion with retained independent Work. The desktop fixture checks separate topic rows and draft preservation during switching.
 

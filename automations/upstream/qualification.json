@@ -1,572 +1,565 @@
 {
   "version": 2,
   "status": "qualified_fixed_development_artifact",
-  "source_commit": "2889d8e1bf564af2ed3a72dc929b583551561363",
-  "development_version": "0.166.0+decodex.2889d8e1bf56",
-  "source_archive_sha256": "17402c1714f328c1c0060f7cca088bdb18f05ac4d41b8c3ad4763e65888dec13",
-  "cargo_lock_sha256": "788b3b0189834f6d1d36a1f3ea4c2b35b3ca6d82b6f6c21822606f49d8ca9fcf",
-  "schema_sha256": "b32b48f52ce248ced1a7d74da867a8f3e7127ff4b7b6570db735c802a73a0619",
+  "source_commit": "c875667eb837663697d5ffa32d375043434e73b4",
+  "development_version": "0.167.0+decodex.c875667eb837",
+  "source_archive_sha256": "f85004583306739f48ab2963df8454b53d1388e9b2b1a75f6769282e70f96be3",
+  "cargo_lock_sha256": "3913151547fd9f15764df0c7f50a31e1ad3061ba27aba99891f53713c7ac9958",
+  "schema_sha256": "4b9940618494210f5a836211261c0718b6691acda91222040f68a4a632ae6c43",
   "schema_identity": {
-    "file_count": 476,
-    "fingerprint": "b32b48f52ce248ced1a7d74da867a8f3e7127ff4b7b6570db735c802a73a0619",
-    "file_digests": {
-      "ClientRequest.json": "7310b908c60e5aad315395560d26ea6f28ae2962c612d8858369ce7a88c7c290",
-      "ServerRequest.json": "e0ea4e3d53092e699637271b9eed4d2a177db64fca6440091204ea6538c4099e",
-      "ServerNotification.json": "acd60e1d291f1028bf253ff54d70178f9336cbe6f0ae5ad31ac928ad349ddff9",
-      "codex_app_server_protocol.v2.schemas.json": "8bd8e06841bdd800c4e21c1abd907e503ef1e0dfda58821dfbc908ba63c8cfd8",
-      "v2/LoginAccountParams.json": "7b41b6881d98b4ec6872d73d7981f5ab61e5960e4296510728d08d4abbfaebf2",
-      "ChatgptAuthTokensRefreshParams.json": "74d490082dab616ac01c94d388c9a836304c96092db37290cfdd10a46b0f3ef9",
-      "ChatgptAuthTokensRefreshResponse.json": "ff76f5cc58bff40216f9d5f3c5be921268059f6d66d6c034970cddf0e08f0ced",
-      "v2/ThreadReadResponse.json": "33b43fedb0e4f7b9da162ab0f8d456a282fc9ef2d4c5d3a76bfa41820ed64c41",
-      "v2/ThreadStartParams.json": "44a122637f6208314268b9d58c395b8fe7e9277f05af11f9d199b327db7d71e5",
-      "v2/TurnStartParams.json": "6353f2a6e5028ede1d691b750c89304555686dcfc6f4a6a0fdb49a1e3e1d488d"
-    },
+    "file_count": 477,
+    "fingerprint": "4b9940618494210f5a836211261c0718b6691acda91222040f68a4a632ae6c43",
     "generated_from_exact_signed_cli": true,
     "component_library_verifier_accepted": true
   },
   "components": [
     {
       "path": "CodexCLI.app/Contents/MacOS/codex",
-      "sha256": "99af7cd06bc583ec8565988a4d8e536e38bfaf97d1e7df95e20f97289c78e885",
-      "bytes": 272429936,
+      "sha256": "fc5d51da330ef7fb0c1450b5cb23be842e031576a16e7f152a6ef9d2784d1ac3",
+      "bytes": 275619680,
       "strict_signature_verified": true,
-      "contains_source_commit": true
+      "team_identifier": "4N949UKQ55"
     },
     {
       "path": "bin/codex-code-mode-host",
-      "sha256": "5b67d689afae272ee36c17bcc1c2e2708d2da18d354ad0ff9e43184cef6b0e64",
-      "bytes": 70116304,
+      "sha256": "8eb86e453c14991dd6519e2e7248e7fd6ad7ea853982e75502d3a30bf93900f2",
+      "bytes": 70131776,
       "strict_signature_verified": true,
-      "contains_source_commit": true
+      "team_identifier": "4N949UKQ55"
     },
     {
       "path": "bin/codex-exec-server",
-      "sha256": "dc3ef7867e201224acfd0265378fb943075c7ccbb977b1d15c36a34fe4a1a773",
-      "bytes": 61993024,
+      "sha256": "7e9db33c257071fb5c246d8a62f9c1a4e6b373e73694d151adcfd7edc7540cb6",
+      "bytes": 62323728,
       "strict_signature_verified": true,
-      "contains_source_commit": true
+      "team_identifier": "4N949UKQ55"
     },
     {
       "path": "codex-path/rg",
-      "sha256": "f2b0527afb8aef0d49971473b34196fd3413a160fe1be3a66ab8158547a9759a",
+      "sha256": "19c677e856bdcabd3d26e88b12f2b9729ba76a6faf7a9036454415ccb46f0a77",
       "bytes": 4009552,
-      "strict_signature_verified": true
+      "strict_signature_verified": true,
+      "team_identifier": "4N949UKQ55"
     }
   ],
-  "decodex_source_revision": "9278f393cc95754da5fd964fb03102a986a2d61a",
-  "decodex_main_baseline": "b5f5bef2e56646897f719f6df31991f5495e1cab",
-  "runtime_pin_commit": "9278f393cc95754da5fd964fb03102a986a2d61a",
-  "runtime_pin_sha256": "c32996dfd93c63ac083782d3db72fbb475254fb1365beb5e78f63a7a59bc3f2c",
-  "qualified_scope": "Signed macOS arm64 CLI and three packaged helpers; 26 direct compiled native cases, one explicit offline component-reinstallation case and four protocol entrypoints (12 scenarios).",
+  "decodex_source_revision": "c8f860d25e17e29aceeb2d9db00c316b5e851791",
+  "decodex_main_baseline": "9293d179a96232fd298809498cb27ba65cf3eea3",
+  "runtime_pin_commit": "c8f860d25e17e29aceeb2d9db00c316b5e851791",
+  "runtime_pin_sha256": "0d0ef308f3e44f317c0259160f2cd1b2453e054b3259423ba41b24b4f7bb1e18",
+  "qualified_scope": "Signed macOS arm64 CLI and three helpers; 30 direct compiled native cases, one component integrity fixture and four protocol entrypoints with 12 scenarios. Independent duty storage and routing tests are separate.",
   "limits": [
-    "No installed application, real account, live provider or visual acceptance. No installation, startup, tag, release or publication.",
-    "This selection covers concrete affected retained consumers. It is not an execution of every historical feature fixture or generic upstream suite.",
-    "Read 67 upstream test-body references. No upstream source test was executed locally. Official CI has failures with unresolved causes; those are not passes or a local repair backlog.",
-    "Code Mode host does not accept --version. Its identity uses bound package/source, SHA-256, strict signature and actual Code Mode consumer execution.",
-    "Remote/shared-host latency, Windows/Linux runtime, gateway/Decisions credential networks and optional experimental controls remain source-reviewed or excluded as stated per commit.",
-    "Native fixtures use isolated system-temporary homes, explicit signed CLI/helpers and direct compiled tests. No Nextest artifact replacement or shared native history.",
-    "The initial obsolete component fixture failed. The repaired fixture tests the explicit reinstallation contract already present on current main; no production behavior changed.",
-    "The official Release fixture uses the same explicit recovery API and passed compilation/strict lint. Its ignored real-package download scenario was not executed; development-package proof does not qualify an official Release.",
-    "The unchanged runtime test entrypoint and fixture digests bind its executions to the final source. The component test was rebuilt and executed after its fixture change."
+    "The fixed source target is not a formal upstream Release.",
+    "No generic upstream source suite ran locally. Tests read are source evidence, not execution.",
+    "Official required rust-ci passed; the full matrix contains failures, skips and cancellations. The macOS full-platform failure cause remains unknown.",
+    "Experimental shared MCP diagnostics passed 1 of 4 cases. Keep sharing disabled and preserve its pending adaptation.",
+    "Loopback fixtures do not establish live provider, voice-network or installed-app acceptance.",
+    "Windows/Linux runtime, Cloud transport and optional gateway/product controls remain excluded or source-reviewed as stated per commit.",
+    "Native run receipts own live PR, CI, installation and scheduler acceptance; portable evidence does not infer them."
   ],
   "historical_scope": {
-    "previous_selected_source": "2e58636d16794a150e562cc34b63ca3035494e50",
-    "previous_qualification": "https://github.com/acg-box/decodex/blob/b5f5bef2e56646897f719f6df31991f5495e1cab/automations/upstream/qualification.json",
+    "previous_selected_source": "2889d8e1bf564af2ed3a72dc929b583551561363",
+    "previous_qualification": "https://github.com/acg-box/decodex/blob/9293d179a96232fd298809498cb27ba65cf3eea3/automations/upstream/qualification.json",
     "contract_catalog": "automations/upstream/retained-contracts.json",
     "retained_contracts_sha256": "dfbcb5f07ff9ce54daccf7f270553c99481f7dcf6fe4129485b9f8b52caf7c9d",
-    "limits": "Original feature limits and historical qualifications remain separate; no previous upstream test cohort or historical execution is adopted as current proof."
+    "limits": "Historical source coverage and original feature limits remain in Git and the stable catalog."
   },
   "source_integrity": {
-    "source_commit": "2889d8e1bf564af2ed3a72dc929b583551561363",
-    "source_archive_sha256": "17402c1714f328c1c0060f7cca088bdb18f05ac4d41b8c3ad4763e65888dec13",
-    "archive_entries_bound_to_official_git_blobs": 10089,
-    "build_source_entries_checked": 10089,
+    "source_commit": "c875667eb837663697d5ffa32d375043434e73b4",
+    "source_archive_sha256": "f85004583306739f48ab2963df8454b53d1388e9b2b1a75f6769282e70f96be3",
+    "archive_entries_bound_to_official_git_blobs": 10190,
+    "build_source_entries_checked": 10190,
     "allowed_preparation": [
-      "Cargo.toml workspace version",
-      "Cargo.lock workspace package versions only"
+      "codex-rs/Cargo.toml",
+      "codex-rs/Cargo.lock"
     ],
     "external_dependency_graph_unchanged_by_preparation": true,
-    "changed_dependency_since_previous_baseline": {
-      "ignore": {
-        "previous": "0.4.25",
-        "candidate": "0.4.30"
-      }
-    },
     "unexpected_differences": []
   },
   "prepared_development_package": {
     "variant": "codex",
     "target": "aarch64-apple-darwin",
     "layout_version": 1,
-    "source_commit": "2889d8e1bf564af2ed3a72dc929b583551561363",
+    "source_commit": "c875667eb837663697d5ffa32d375043434e73b4",
     "strict_signature_verified_components": 4,
     "artifact_helper_hashes_unchanged_after_tests": true,
-    "helper_provenance": {
-      "native_helpers": "Built with the CLI from the bound official source tree by scripts/codex_package/cargo.py.",
-      "ripgrep_manifest": "scripts/codex_package/rg",
-      "ripgrep_archive_sha256": "3750b2e93f37e0c692657da574d7019a101c0084da05a790c83fd335bad973e4",
-      "ripgrep_verifier": "scripts/codex_package/dotslash.py::verify_archive checks exact size and SHA-256 before extraction."
-    }
+    "helper_provenance": "All helpers are selected from the same signed fixed-commit package and exercised through its actual consumers."
   },
   "development_preparation": {
     "command": "cargo +stable make prepare-codex",
-    "import_command": "DECODEX_CODEX_DEVELOPMENT_RUNTIME=<exact prepared package> cargo +stable make prepare-codex",
+    "import_command": "cargo +stable run --locked -p decodex-components -- import-dev codex-runtime.lock.json <qualified-runtime>",
     "toolchain_channel": "stable",
     "node_version_file": "site/.nvmrc",
-    "signing": "Existing host signing tools; no installation or reconfiguration.",
-    "bootstrap": "Initial import rejected the old schema fingerprint. Generated the actual candidate schema, updated the pin and re-imported successfully."
+    "signing": "Existing host-managed Apple development identity; team 4N949UKQ55.",
+    "bootstrap": "Generate experimental schemas from the built signed CLI, pin their fingerprint, then verify/import the complete package. No upstream setup scripts."
   },
   "retained_source_inclusion": {
-    "previous_selected_source": "2e58636d16794a150e562cc34b63ca3035494e50",
-    "candidate_source": "2889d8e1bf564af2ed3a72dc929b583551561363",
+    "previous_selected_source": "2889d8e1bf564af2ed3a72dc929b583551561363",
+    "candidate_source": "c875667eb837663697d5ffa32d375043434e73b4",
     "previous_source_is_ancestor": true,
     "review": "automations/upstream/current-review.json",
-    "decodex_baseline": "b5f5bef2e56646897f719f6df31991f5495e1cab",
-    "later_main_reconciliation": "Preserve saved-provider continuation/forks and current Settings/RAGFlow changes. Align only the stale component fixture with explicit recovery in e50a606e053abef9693c24e036c43d900bab47c4.",
-    "limits": "Ancestry establishes source inclusion; named current executions establish retained-consumer proof."
+    "decodex_baseline": "9293d179a96232fd298809498cb27ba65cf3eea3",
+    "later_main_reconciliation": "Not part of this fixed source review.",
+    "limits": "Source inclusion does not execute every upstream path."
   },
   "source_validation": {
-    "upstream_tests_read": 67,
+    "upstream_tests_read": 71,
     "upstream_test_body_references": [
       {
-        "source": "codex-rs/core/src/config/config_tests.rs",
-        "symbol": "multi_agent_v2_disabled_native_tools_omit_default_roles",
-        "revision": "c8a1109fa78b46df24b055250b67d5daf745e566",
+        "source": "codex-rs/rollout/src/writer_lock_tests.rs",
+        "symbol": "writer_locks_reject_competing_owners_and_release_their_files",
+        "revision": "e428b9a16b033fb7ca65020a489f2d05231d8ddf",
         "body_read": true
       },
       {
-        "source": "codex-rs/core/tests/suite/scenarios_guardian_direct_mcp.rs",
-        "symbol": "direct_mcp_review_without_dispatch",
-        "revision": "3934ae926a7caf4e07ab1d62356546467bfa69a6",
+        "source": "codex-rs/core/tests/suite/code_mode.rs",
+        "symbol": "code_mode_zero_budget_reports_host_truncation",
+        "revision": "247934cfe5f57daffe064a7229ab8bfb3feffb49",
         "body_read": true
       },
       {
-        "source": "codex-rs/linux-sandbox/src/bwrap_tests.rs",
-        "symbol": "unreadable_glob_traversal_errors_fail_closed",
-        "revision": "84a1476a11011e22f09424f582b851df2a9a2169",
+        "source": "codex-rs/core/tests/suite/code_mode.rs",
+        "symbol": "code_mode_only_can_call_nested_tools",
+        "revision": "247934cfe5f57daffe064a7229ab8bfb3feffb49",
         "body_read": true
       },
       {
-        "source": "codex-rs/core/tests/suite/scenarios_guardian_agent_messages_tests.rs",
-        "symbol": "native_agent_review_requires_openai_on_start_and_resume",
-        "revision": "9abfbcea0d5b6e37b14cb32d5c42338872fdd10a",
+        "source": "codex-rs/core/tests/suite/network_approval_completion.rs",
+        "symbol": "exec_command_returns_before_denial_grace_for_executor_owned_proxy",
+        "revision": "1be4eb123e5f870cfdee701dee171801cab39c66",
         "body_read": true
       },
       {
-        "source": "codex-rs/tui/src/app/tests/key_chords.rs",
-        "symbol": "sidebar_chooser_preserves_the_parent_draft_and_starts_a_side_chat",
-        "revision": "194f2662b8b63390416c44ebb7e6a3a35a845e3a",
+        "source": "codex-rs/core/tests/suite/network_approval_completion.rs",
+        "symbol": "run_remote_review_cleanup",
+        "revision": "1be4eb123e5f870cfdee701dee171801cab39c66",
         "body_read": true
       },
       {
-        "source": "codex-rs/core/tests/suite/actor_access_program_tests.rs",
-        "symbol": "actor_program_http_preserves_explicit_choices_and_omission",
-        "revision": "af92ae158d2c9cb79cf745d609694c5a76d527b0",
+        "source": "codex-rs/utils/image/src/image_tests.rs",
+        "symbol": "rejects_png_with_readable_dimensions_and_corrupt_pixels",
+        "revision": "6abffd442d6865a72056b305a31a604b83d087d8",
         "body_read": true
       },
       {
-        "source": "codex-rs/core/tests/suite/actor_access_program_tests.rs",
-        "symbol": "actor_program_backend_denial_remains_authoritative",
-        "revision": "af92ae158d2c9cb79cf745d609694c5a76d527b0",
-        "body_read": true
-      },
-      {
-        "source": "codex-rs/core/tests/suite/actor_access_program_tests.rs",
-        "symbol": "actor_program_websocket_reuse_preserves_choices_and_actor",
-        "revision": "af92ae158d2c9cb79cf745d609694c5a76d527b0",
-        "body_read": true
-      },
-      {
-        "source": "codex-rs/windows-sandbox-service/src/ipc_tests.rs",
-        "symbol": "repair_legacy_bin_as_its_owner",
-        "revision": "b93a7b15124698a34cec2ee4d155c8a55152e319",
-        "body_read": true
-      },
-      {
-        "source": "codex-rs/app-server-client/src/cloud_backend/submission_tests.rs",
-        "symbol": "native_submission_uses_one_admission_and_keeps_preflight_guards",
-        "revision": "e934edd68c73da93486320c77af672a015b4514a",
-        "body_read": true
-      },
-      {
-        "source": "codex-rs/rmcp-client/src/http_client_adapter_tests.rs",
-        "symbol": "requests_await_auth_and_stop_assertion_redirects",
-        "revision": "219ab4043e328ec7a88eabdae163d8fbbd8802ee",
-        "body_read": true
-      },
-      {
-        "source": "codex-rs/rmcp-client/src/http_client_adapter_tests.rs",
-        "symbol": "runtime_assertions_stop_redirects_in_both_mcp_modes",
-        "revision": "219ab4043e328ec7a88eabdae163d8fbbd8802ee",
-        "body_read": true
-      },
-      {
-        "source": "codex-rs/exec-server/src/noise_channel_tests.rs",
-        "symbol": "registry_rejection_must_be_authenticated",
-        "revision": "c48785a9b746cbfd01fcae3bef6e4dacb73ca49a",
-        "body_read": true
-      },
-      {
-        "source": "codex-rs/login/src/auth/auth_tests.rs",
-        "symbol": "cancelled_refresh_marks_only_started_exchanges_as_unsettled",
-        "revision": "09358089b0dd2cc5aa7c6c37ad4c834e9066561c",
-        "body_read": true
-      },
-      {
-        "source": "codex-rs/core/tests/suite/required_access_program_tests.rs",
-        "symbol": "required_actor_program_http",
-        "revision": "b313cca1cfe06d3b2c2af37daa6935175673318e",
-        "body_read": true
-      },
-      {
-        "source": "codex-rs/model-provider/src/shared_state_tests.rs",
-        "symbol": "gateway_credentials_accompany_primary_auth_in_models_and_responses",
-        "revision": "b3c5a494589ccedc1232bf219edb4103a50fd357",
-        "body_read": true
-      },
-      {
-        "source": "codex-rs/tui/src/app/tests/key_chords.rs",
-        "symbol": "sidebar_chooser_preserves_the_parent_draft_and_starts_a_side_chat",
-        "revision": "9df200a0680f5653ffb69725ecac6a201e2790fb",
-        "body_read": true
-      },
-      {
-        "source": "codex-rs/app-server/tests/suite/v2/plugin_list.rs",
-        "symbol": "app_server_startup_downloads_installed_plugin_bundles_without_discovery",
-        "revision": "08e4f43c9a50af94fad1fed511749e22fb53dc11",
-        "body_read": true
-      },
-      {
-        "source": "codex-rs/core/tests/suite/client_websockets.rs",
-        "symbol": "responses_websocket_invalid_request_error_with_status_is_forwarded",
-        "revision": "74417e9c6bd77bee8b7bb315084d6743f9390394",
-        "body_read": true
-      },
-      {
-        "source": "codex-rs/core/src/thread_manager_tests.rs",
-        "symbol": "shared_service_tier_is_published_by_registered_startup",
-        "revision": "94ca55a93c11348c6e3431e292b8e9a33dfefc82",
-        "body_read": true
-      },
-      {
-        "source": "codex-rs/exec-server/src/server/file_system_handler.rs",
-        "symbol": "no_platform_sandbox_policies_do_not_require_configured_sandbox_helper",
-        "revision": "c2bd770ca7b26416f2eb9d8f79ad6729fad82239",
-        "body_read": true
-      },
-      {
-        "source": "codex-rs/sandboxing/src/seatbelt_tests.rs",
-        "symbol": "seatbelt_allows_semaphore_limit_sysconf",
-        "revision": "73b1a3bc85bad3beeb0946eeddb37180351d4959",
-        "body_read": true
-      },
-      {
-        "source": "codex-rs/app-server/tests/suite/v2/model_list_requirements_tests.rs",
-        "symbol": "model_list_selects_a_provider_without_replacing_the_startup_catalog",
-        "revision": "daa69c411c1ed611a357dd97b35edc089bc80399",
-        "body_read": true
-      },
-      {
-        "source": "codex-rs/rollout-trace/src/reducer/acceptance_tests.rs",
-        "symbol": "inherited_output_is_child_prefill_without_copying_parent_sampling_provenance",
-        "revision": "6103cf6c78b90effe3da8b943f943505308d5de8",
-        "body_read": true
-      },
-      {
-        "source": "codex-rs/tui/src/app/provider/editor_tests.rs",
-        "symbol": "hidden_gateway_settings_stay_out_of_rename_patch",
-        "revision": "74bfe33ec8a1aea060a5c68d59c55abc9e31f827",
-        "body_read": true
-      },
-      {
-        "source": "codex-rs/tui/src/app/provider/editor_tests.rs",
-        "symbol": "cloud_provider_edits_preserve_credentials",
-        "revision": "74bfe33ec8a1aea060a5c68d59c55abc9e31f827",
-        "body_read": true
-      },
-      {
-        "source": "codex-rs/code-mode-host/tests/grpc/session_recovery_tests.rs",
-        "symbol": "quiet_session_reuses_its_worker_connection",
-        "revision": "f6a69b587344c187d4c12de947ee258b205f142c",
-        "body_read": true
-      },
-      {
-        "source": "codex-rs/code-mode-host/tests/grpc/session_recovery_tests.rs",
-        "symbol": "last_failed_session_releases_the_shared_connection",
-        "revision": "f6a69b587344c187d4c12de947ee258b205f142c",
-        "body_read": true
-      },
-      {
-        "source": "codex-rs/tui/src/chatwidget/tests/side.rs",
-        "symbol": "side_aliases_request_forked_questions_while_task_running",
-        "revision": "d63a3422563f526316318b5cde267bd5713e68b4",
-        "body_read": true
-      },
-      {
-        "source": "codex-rs/core/tests/suite/agent_mailbox.rs",
-        "symbol": "idle_mail_survives_eviction_and_preserves_followup_order",
-        "revision": "5e5bdee745fbe2b643ba9e2179e842a24d5493e3",
-        "body_read": true
-      },
-      {
-        "source": "codex-rs/core/tests/suite/gateway_auth.rs",
-        "symbol": "command_gateway_authenticates_without_an_oauth_grant_and_caches_the_token",
-        "revision": "b1263c593decab5077474c28b8bbe1135a604d8a",
-        "body_read": true
-      },
-      {
-        "source": "codex-rs/tui/src/history_cell/tests.rs",
-        "symbol": "delegated_message_list_spacing_in_scrollback_and_transcript",
-        "revision": "3cf4899cb529a71807a1fb8740855937199222e5",
-        "body_read": true
-      },
-      {
-        "source": "codex-rs/exec-server/tests/exec_process/windows_sandbox.rs",
-        "symbol": "native_windows_skips_owned_proxy_before_brokering",
-        "revision": "a6ed292aa313f0a8620eb3a78332fa59d722d390",
-        "body_read": true
-      },
-      {
-        "source": "codex-rs/thread-store/src/local/thread_history/read_tests.rs",
-        "symbol": "item_anchors_require_creation_order_without_an_update_boundary",
-        "revision": "2f02d8461deac546ab0fdaafc23ee98e5fd48c3a",
-        "body_read": true
-      },
-      {
-        "source": "codex-rs/core/tests/suite/model_request.rs",
-        "symbol": "budget_is_checked_again_after_tool_call",
-        "revision": "1031a7b9aa74c1c74561a6133cbaf0349284ad5d",
-        "body_read": true
-      },
-      {
-        "source": "codex-rs/codex-api/src/files.rs",
-        "symbol": "upload_hosted_app_preserves_empty_finalization_for_older_servers",
-        "revision": "da279f6fd4a942261b3232feb515af4259922417",
-        "body_read": true
-      },
-      {
-        "source": "codex-rs/core/tests/suite/gateway_auth.rs",
-        "symbol": "command_gateway_reexports_after_401",
-        "revision": "6eb51a438ac95769e2d9d04df048e72b9b2626e0",
-        "body_read": true
-      },
-      {
-        "source": "codex-rs/tui/src/chatwidget/tests/composer_submission.rs",
-        "symbol": "resumed_steers_reconcile_by_client_id_and_hold_unmatched_admissions",
-        "revision": "a142c90e2601d7b7bc9ab07e4d0552a3814b0501",
-        "body_read": true
-      },
-      {
-        "source": "codex-rs/app-server/src/message_processor_gateway_oauth_tests.rs",
-        "symbol": "gateway_oauth_read_retains_each_provider_status",
-        "revision": "aece559654ccfb814703d3bb377156fa7d4a09a3",
-        "body_read": true
-      },
-      {
-        "source": "codex-rs/login/src/oauth_session_device_tests.rs",
-        "symbol": "device_login_rejects_an_insecure_verification_link_before_showing_the_code",
-        "revision": "df38cb3b2af40dd413d0af7f000fe5cb3f077aad",
-        "body_read": true
-      },
-      {
-        "source": "codex-rs/login/src/auth/source_tests.rs",
-        "symbol": "explicit_api_key_never_reloads_an_ambient_credential",
-        "revision": "faeb379646bdbad016e11f7c9ca91113cad4bc9d",
-        "body_read": true
-      },
-      {
-        "source": "codex-rs/login/src/auth/auth_tests.rs",
-        "symbol": "failed_storage_reload_preserves_cached_identity",
-        "revision": "faeb379646bdbad016e11f7c9ca91113cad4bc9d",
-        "body_read": true
-      },
-      {
-        "source": "codex-rs/core/src/client_runtime_auth_tests.rs",
-        "symbol": "request_owner_tracks_the_selected_explicit_key",
-        "revision": "faeb379646bdbad016e11f7c9ca91113cad4bc9d",
-        "body_read": true
-      },
-      {
-        "source": "codex-rs/tui/src/app/tests/key_chords.rs",
-        "symbol": "sidebar_chooser_resize_survives_startup_thread_assignment",
-        "revision": "5fab289359a3101bcd585a86137ba41f7adc5993",
-        "body_read": true
-      },
-      {
-        "source": "codex-rs/ext/queue/tests/queue_service.rs",
-        "symbol": "queued_input_and_unique_event_ids_round_trip",
-        "revision": "a037e65ead8f6789f960e9450bfe6af5a87a0053",
-        "body_read": true
-      },
-      {
-        "source": "codex-rs/tui/src/app_server_session.rs",
-        "symbol": "cloud_bootstrap_waits_for_the_thread_to_supply_its_model",
-        "revision": "7b8d67e4560e03d1c9a69a59f05ca005edf7e355",
-        "body_read": true
-      },
-      {
-        "source": "codex-rs/core/tests/suite/scenarios_incremental_tools.rs",
-        "symbol": "incremental_tools_append_changed_catalog_without_rewriting_history",
-        "revision": "55897425e839d943a744c658701445ff732568a0",
-        "body_read": true
-      },
-      {
-        "source": "codex-rs/core/tests/suite/model_request.rs",
-        "symbol": "final_answer_carries_its_moderation_decision",
-        "revision": "ddd1812a51f4aded35c3ec5446672474d5cb546b",
-        "body_read": true
-      },
-      {
-        "source": ".github/scripts/test_releases.py",
-        "symbol": "test_failed_alpha_upload_cleanup_and_rerun",
-        "revision": "b6f53857fcff781b6bef10a46bb33405b5c75985",
-        "body_read": true
-      },
-      {
-        "source": "codex-rs/guardian-context/src/preparation/source_tests.rs",
-        "symbol": "elastic_repl_rendering_keeps_stored_text_images_and_omissions",
-        "revision": "b1a0dff15854d5f62a9c0931431d70f6148da9e6",
-        "body_read": true
-      },
-      {
-        "source": "codex-rs/app-server/tests/suite/v2/model_auto_review.rs",
-        "symbol": "thread_and_turn_settings_enforce_protected_model_auto_review",
-        "revision": "f49ae52079859e9cfff41ed92dd935d022a2da0b",
-        "body_read": true
-      },
-      {
-        "source": "codex-rs/guardian-context/tests/cache_prefix.rs",
-        "symbol": "elastic_verified_answers_preserve_question_answer_identity",
-        "revision": "b8725c1896089b1bcf8e74973077d5a69a71686c",
-        "body_read": true
-      },
-      {
-        "source": ".github/scripts/test_releases.py",
-        "symbol": "test_github_release_upload_and_cleanup",
-        "revision": "e3fe1ade2ca4cfcea0c192317beefa38c0ff1b5a",
-        "body_read": true
-      },
-      {
-        "source": "codex-rs/ext/guardian-v2/src/async_scorer/decisions_tests.rs",
-        "symbol": "decisions_prefers_cached_api_key_over_openai_env",
-        "revision": "f57966695fc936a1b4e5da6758ad6d532724fe83",
-        "body_read": true
-      },
-      {
-        "source": "codex-rs/core/src/context_manager/history_tests.rs",
-        "symbol": "original_detail_images_scale_with_dimensions",
-        "revision": "bbf57cec15bcc8b96ec96638d0e83c9d787d6919",
-        "body_read": true
-      },
-      {
-        "source": "codex-rs/core/src/context_manager/history_tests.rs",
-        "symbol": "original_detail_images_are_capped_at_max_patch_count",
-        "revision": "bbf57cec15bcc8b96ec96638d0e83c9d787d6919",
-        "body_read": true
-      },
-      {
-        "source": "codex-rs/core/src/context_manager/history_tests.rs",
-        "symbol": "original_detail_webp_images_scale_with_dimensions",
-        "revision": "bbf57cec15bcc8b96ec96638d0e83c9d787d6919",
-        "body_read": true
-      },
-      {
-        "source": "codex-rs/core/src/session/patch_approval_tests.rs",
-        "symbol": "patch_approval_cancel_only_interrupts_its_requesting_turn",
-        "revision": "ad1dbba32db4b0204d2f769c762f329dc37c8895",
-        "body_read": true
-      },
-      {
-        "source": "codex-rs/ext/guardian-v2/src/async_scorer/extension_tests.rs",
-        "symbol": "contributor_uses_the_thread_reviewers_catalog_policy",
-        "revision": "22103802324dc51e4dfa5b1f5d2c5fe2fad3d21e",
-        "body_read": true
-      },
-      {
-        "source": "codex-rs/ext/guardian-v2/src/async_scorer/decisions_tests.rs",
-        "symbol": "decisions_key_lookup_honors_override_or_reloaded_login",
-        "revision": "2c502d8b3d382dd609179164f31396d95deee55c",
-        "body_read": true
-      },
-      {
-        "source": "codex-rs/tui/src/app/tests/key_chords.rs",
-        "symbol": "sidebar_chooser_preserves_the_parent_draft_and_starts_a_side_chat",
-        "revision": "814347ecd21b49d25479f5499f168b9f7b7e1803",
-        "body_read": true
-      },
-      {
-        "source": "codex-rs/core/tests/suite/settings_constraints.rs",
-        "symbol": "protected_model_startup_preserves_legacy_permission_behavior",
-        "revision": "c1c07853fe6e8e712f264030a30758cfa80eedfe",
-        "body_read": true
-      },
-      {
-        "source": "codex-rs/ext/skills/tests/skills_extension/name_resolution_tests.rs",
-        "symbol": "ambiguous_skill_names_require_a_package_locator",
-        "revision": "0768988e5563dd78a6802be5bdffc9cc3eceee09",
-        "body_read": true
-      },
-      {
-        "source": "codex-rs/linux-sandbox/src/bwrap_tests.rs",
-        "symbol": "unreadable_glob_traversal_errors_fail_closed",
-        "revision": "ebe94e25c5930fd6154490e50155f7f88a4a398c",
+        "source": "codex-rs/tui/src/history_cell/messages_tests.rs",
+        "symbol": "typed_prompt_markdown_keeps_the_prompt_gutter_and_links",
+        "revision": "78b1dda5f6b9f78a452d8b0b3d10b1d5fc1c6d51",
         "body_read": true
       },
       {
         "source": "codex-rs/core/tests/suite/models_cache_auth.rs",
         "symbol": "host_model_info_uses_the_thread_catalog",
-        "revision": "12dc86beb3d407091f34a246b22af348933a79c2",
+        "revision": "cf39544acd74ad649d98b96ceb43320b6e9b88ec",
         "body_read": true
       },
       {
-        "source": "codex-rs/core/src/unified_exec/process_manager_tests.rs",
-        "symbol": "late_network_denial_grace_observes_cancellation_after_exit",
-        "revision": "4e688da4372888da372596948786ca00f421c979",
+        "source": "codex-rs/core/tests/suite/models_cache_auth.rs",
+        "symbol": "host_model_info_honors_provider_fallback",
+        "revision": "cf39544acd74ad649d98b96ceb43320b6e9b88ec",
         "body_read": true
       },
       {
-        "source": "codex-rs/protocol/src/protocol.rs",
-        "symbol": "turn_context_item_normalizes_legacy_permissions_and_writes_profile_only",
-        "revision": "2889d8e1bf564af2ed3a72dc929b583551561363",
+        "source": "codex-rs/tui/src/ui_tree_tests.rs",
+        "symbol": "text_and_row_share_the_literal_color_contract",
+        "revision": "1a2f5babe83bc4b8d4d89701a01b7044a0ea6135",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/tui/src/ui_tree_tests.rs",
+        "symbol": "inline_modifiers_and_row_surfaces_follow_the_tree",
+        "revision": "1a2f5babe83bc4b8d4d89701a01b7044a0ea6135",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/tui/src/ui_tree_tests.rs",
+        "symbol": "hex_colors_use_the_terminal_palette_for_both_channels",
+        "revision": "1a2f5babe83bc4b8d4d89701a01b7044a0ea6135",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/core/tests/suite/code_mode.rs",
+        "symbol": "code_mode_mcp_metadata_keeps_originating_window_after_compaction",
+        "revision": "8fcabd75a033ef281561a80e8595b2fc24d3743a",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/message-board/tests/local_board/read_view_tests.rs",
+        "symbol": "read_views_freeze_catalog_and_pages_without_changing_live_handles",
+        "revision": "632eee03e9707fbd2424b4a44f5d068605f857e6",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/ext/guardian-v3/tests/retrieval.rs",
+        "symbol": "searches_unsubscribed_guardian_posts_only_through_the_review_cutoff",
+        "revision": "e4bd7871b1b156e4c69ff66fbd9ea89890875091",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/ext/guardian-v3/tests/retrieval/selection.rs",
+        "symbol": "subscription_tools_only_change_the_caller_and_return_captured_post_ids",
+        "revision": "8d0098930ef555097f1f155a2b0b5ecbea98a7de",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/message-board/tests/local_board.rs",
+        "symbol": "bulk_subscriptions_are_atomic_and_scoped_to_the_caller_and_supplied_channels",
+        "revision": "eb485f57ba02ca8cdedfcc07aca0f9d75c8faefd",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/ext/guardian-v3/tests/retrieval/selection.rs",
+        "symbol": "preparation_commits_only_valid_selections_from_the_captured_catalog",
+        "revision": "af83299ada26148091325c2198286c1373940027",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/ext/guardian-v3/tests/retrieval/planning.rs",
+        "symbol": "plans_unique_originals_in_source_order_from_a_fixed_view",
+        "revision": "5f82dc9e59b47783b79ad51567c8ddc516f5c204",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/ext/guardian-v3/tests/retrieval/planning.rs",
+        "symbol": "plans_across_storage_pages_in_reverse_insertion_order",
+        "revision": "5f82dc9e59b47783b79ad51567c8ddc516f5c204",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/ext/guardian-v3/tests/retrieval/delivery.rs",
+        "symbol": "delivers_ordered_originals_once_after_admission_and_keeps_older_channel_evidence",
+        "revision": "ecef7e09366ef08490de7daa0c48739871394ec6",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/ext/guardian-v3/tests/retrieval/selection.rs",
+        "symbol": "subscription_tools_only_change_the_caller_and_return_captured_post_ids",
+        "revision": "09bd19a0deb54cce82439c23373b07b84d3e5d04",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/message-board/tests/local_board/read_view_tests.rs",
+        "symbol": "read_views_freeze_catalog_and_pages_without_changing_live_handles",
+        "revision": "09bd19a0deb54cce82439c23373b07b84d3e5d04",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/app-server/tests/suite/v2/account_gcp.rs",
+        "symbol": "gcp_account_tracks_provider_changes_with_saved_chatgpt_credentials",
+        "revision": "01ab354312f758c343c85c139d5fee3be0ec93f2",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/state/src/runtime/threads.rs",
+        "symbol": "token_usage_preserves_concurrent_edits_and_requires_current_spawn_metadata",
+        "revision": "df769889c0b4d41afcc9e02502aab91bac862083",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/cloud-client/src/client_tests.rs",
+        "symbol": "prewarm_encodes_blank_and_project_managed_environments",
+        "revision": "7de8a0afc0c14fb600ec657befafa1312845f155",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/protocol/src/sanitized_git_url_tests.rs",
+        "symbol": "http_query_and_fragment_are_outside_the_authority",
+        "revision": "7de8a0afc0c14fb600ec657befafa1312845f155",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/protocol/src/sanitized_git_url_tests.rs",
+        "symbol": "non_http_credentials_can_contain_query_and_fragment_delimiters",
+        "revision": "7de8a0afc0c14fb600ec657befafa1312845f155",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/tui/src/chatwidget/tests/composer_submission.rs",
+        "symbol": "local_clipboard_image_does_not_turn_a_held_bang_into_a_shell_command",
+        "revision": "0389e80f07871a51e7b5a7b7e393139c38e5cbf0",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/tui/src/onboarding/gateway_tests.rs",
+        "symbol": "select_a_saved_gateway_during_sign_in",
+        "revision": "2497eab2511d450d4f25d7ffa389018aaaf7a5ad",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/tui/src/onboarding/gateway_tests.rs",
+        "symbol": "gateway_oauth_displays_the_browser_link_and_retry_action",
+        "revision": "2497eab2511d450d4f25d7ffa389018aaaf7a5ad",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/core/tests/suite/multi_agent_mode.rs",
+        "symbol": "disabling_hosted_multi_agent_after_cold_resume_resets_proactive_mode",
+        "revision": "e0aa0434f415b0c5bc0fb64abd7f03c5510f9ed6",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/core/tests/suite/multi_agent_mode.rs",
+        "symbol": "mode_hints_override_reasoning_effort",
+        "revision": "e0aa0434f415b0c5bc0fb64abd7f03c5510f9ed6",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/core/src/config/runtime_auth_tests.rs",
+        "symbol": "managed_runtime_mode_pins_defaults_and_rejects_overrides",
+        "revision": "10cf2b9ea230ccad1aa6b66cb7ff45231daaf056",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/core/src/config/runtime_auth_tests.rs",
+        "symbol": "unmanaged_runtime_modes_and_legacy_boolean_requirements_work",
+        "revision": "10cf2b9ea230ccad1aa6b66cb7ff45231daaf056",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/analytics/src/tests/suite/apps_tests.rs",
+        "symbol": "app_used_event_serializes_expected_shape",
+        "revision": "5ff78c5e66051f2527cf38967f52e8ef6cdac6cb",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/tui/src/ui_tree_tests.rs",
+        "symbol": "semantic_colors_follow_the_theme_and_terminal",
+        "revision": "2157f986489f36a0cd4c866b17e8f8ff418cf959",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/tui/src/ui_tree_tests.rs",
+        "symbol": "terminal_commands_are_sanitized_within_each_string",
+        "revision": "7e980a54fee3bb71182b3443677595dee973a77f",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/tui/src/ui_tree/render/text_tests.rs",
+        "symbol": "chunks_of_a_clean_leaf_share_its_original_buffer",
+        "revision": "f8df49a196c4da4b6b482c727aa087fa7e07f5e0",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/tui/src/ui_tree_tests.rs",
+        "symbol": "measures_natural_and_viewport_sizes_in_cells",
+        "revision": "7cdb2198831e3e6e647c31a1d5c409ab8acc8568",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/core/src/spawn_tests.rs",
+        "symbol": "spawn_trace_omits_sensitive_inputs",
+        "revision": "738ef9f3bb4a5f17892eda6e5b52e06f11f680ea",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/ext/git-attribution/src/git_attribution_tests.rs",
+        "symbol": "world_state_stops_after_rejected_refresh",
+        "revision": "0c58612c3c178428f38c907912cd52888ae5d6b9",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/core/tests/suite/mcp_tool_cache.rs",
+        "symbol": "cached_stdio_negotiates_sharing_on_first_use",
+        "revision": "7ccf78dec4abcba68367b79172fda6f3fe609601",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/core/tests/suite/scenarios.rs",
+        "symbol": "cached_stdio_stays_dormant_in_a_new_chat_until_first_use",
+        "revision": "af9a98b07401cb9e5279eb4128e50078b18ee7c4",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/core/src/session/network_policy_tests.rs",
+        "symbol": "failed_network_rule_write_keeps_native_denial_in_mcp_policy",
+        "revision": "b7d2321ef7b2405b72a4186447c810756866896b",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/models-manager/src/manager_tests.rs",
+        "symbol": "initialization_retains_loaded_catalogs_including_empty_responses",
+        "revision": "44ccf394573cabb95e1f751a59f9d76f6f79faf1",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/ext/guardian-v2/src/async_scorer/sampler/connection_pool_tests.rs",
+        "symbol": "runtime_transports_authenticate_each_classification",
+        "revision": "d4a341bd52cc47ff635761334bde8a972d6de943",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/ext/guardian-v2/src/async_scorer/decisions_tests.rs",
+        "symbol": "decisions_preserves_platform_wif_credentials",
+        "revision": "1c414e0d6525ea385aeabad32fac252467a6b836",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/core/tests/suite/scenarios.rs",
+        "symbol": "attached_side_chat_preserves_model_context_on_cold_resume",
+        "revision": "0ed34eb9ceddc759e283f0d657be9339afc6b25a",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/core/tests/suite/agent_websocket.rs",
+        "symbol": "accept_committed_tier",
+        "revision": "f5ac7a757e8f6f4fe922f3daab0fcaba02f1fa72",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/app-server/tests/suite/v2/rate_limits.rs",
+        "symbol": "security_setup_requires_matching_saved_chatgpt_login",
+        "revision": "4be90eb069e6e027423c29eedeab5cab9da349dd",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/model-provider/src/runtime_auth_tests.rs",
+        "symbol": "runtime_denial_recovery_is_scoped_to_openai",
+        "revision": "efdacaf46ff54660a239189a6d62434c5db33d2c",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/core/src/tools/tool_dispatch_trace_tests.rs",
+        "symbol": "dispatch_lifecycle_trace_records_incompatible_payload_failures",
+        "revision": "57a808a3920f05f2d4b9eab2d0493e1df136ae6b",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/core/src/context/world_state/top_level_tools_tests.rs",
+        "symbol": "changed_and_added_entries_share_one_update_and_removed_entries_are_withdrawn",
+        "revision": "2bc8e7f5459b084afa482c7aac3f56fef36286b3",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/core/tests/suite/code_mode_model_messages.rs",
+        "symbol": "exec_tools_follow_incremental_exec_flag",
+        "revision": "33b3f80a0935e51a49cbbda7d6473ef757d4241b",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/app-server-protocol/src/protocol/v2/tests.rs",
+        "symbol": "answer_moderation_exposes_nullable_display_fields",
+        "revision": "202b590e84d01fb4326c50969b8ff4d41e37d2d6",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/core/tests/suite/scenarios_incremental_tools_resume.rs",
+        "symbol": "exec_tools_follow_current_settings_across_history",
+        "revision": "aa9b9cc94e215eb205901fcbfee6c68037130a4a",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/ext/goal/tests/steering.rs",
+        "symbol": "enabled_checklist_preserves_the_original_continuation_prompt",
+        "revision": "8703d32bd0ea5cf26768859a3dd476df906ba053",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/ext/goal/tests/steering.rs",
+        "symbol": "disabled_checklist_preserves_goal_text_that_mentions_the_tool",
+        "revision": "8703d32bd0ea5cf26768859a3dd476df906ba053",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/app-server/tests/suite/v2/thread_read.rs",
+        "symbol": "thread_items_list_defers_requested_outputs",
+        "revision": "d2b4d63e95aaca86730e10d6ed049d2aaba159dd",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/app-server/tests/suite/v2/gateway_oauth_tests.rs",
+        "symbol": "gateway_oauth_without_api_key_discovers_explicit_catalog_by_default",
+        "revision": "6222faa3c463442b3788b2690108568786f6ffc7",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/login/src/auth/change_state_tests.rs",
+        "symbol": "platform_wif_refresh_preserves_source_but_family_changes_retire_it",
+        "revision": "3ff5d6223b4f659805c48b8fe7bd5a4c7475a9d1",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/core/tests/suite/realtime_attachment.rs",
+        "symbol": "attachment_deadline_releases_a_pending_handshake",
+        "revision": "9f04d886f3663b584fba87d6fd71001fb6f9fcf3",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/core/tests/suite/compact.rs",
+        "symbol": "manual_local_compaction_retries_only_when_the_error_allows_it",
+        "revision": "d3147716e071276efb62c6f70c5d3b5a738a4549",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/codex-api/src/endpoint/responses_websocket.rs",
+        "symbol": "wrapped_context_length_error_respects_http_status",
+        "revision": "1885417cd45a8da5bfdeb7864a5380a7481d48f2",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/guardian-context/src/preparation/transcript_tests.rs",
+        "symbol": "fixed_preparation_caps_text_and_omits_whole_native_entries",
+        "revision": "1c9b058d2694b736798d1b1ce2d3fd60a0fb15ac",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/core/src/session/mcp_refresh_tests.rs",
+        "symbol": "refresh_keeps_concurrent_invalidations_and_restores_unpublished_causes",
+        "revision": "aa39ded1534b55280bbea0ae1bd021c9d155d01b",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/codex-api/src/endpoint/responses_websocket.rs",
+        "symbol": "large_turn_is_one_text_message_in_bounded_frames",
+        "revision": "d15bf1deb77e0b43dd73ee7dbf7fd6487e6c5837",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/network-proxy/src/tcp_upstream_tests.rs",
+        "symbol": "remote_dns_requires_policy_independent_of_the_resolved_ip",
+        "revision": "b514f638aa67840c4836a8dfeb1404675159fa8a",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/app-server/tests/suite/v2/model_list.rs",
+        "symbol": "list_models_uses_display_order_and_marks_the_selection_default",
+        "revision": "86a5522deddc5e52333a35e6191e4503ed95e5a0",
+        "body_read": true
+      },
+      {
+        "source": "codex-rs/app-server/tests/suite/v2/marketplace_upgrade.rs",
+        "symbol": "marketplace_upgrade_reuses_the_installed_revision_when_git_supports_it",
+        "revision": "c875667eb837663697d5ffa32d375043434e73b4",
         "body_read": true
       }
     ],
     "upstream_tests_executed": [],
     "official_ci": {
-      "observed_conclusions": {
-        "failure": 59,
-        "success": 92,
-        "skipped": 29,
-        "cancelled": 7,
-        "in_progress": 2
-      },
-      "status": "Reused official CI/source evidence. The observed check set is not all green; unresolved generic failures are not counted as passes."
+      "name": "rust-ci / CI results (required)",
+      "status": "completed",
+      "conclusion": "success",
+      "html_url": "https://github.com/openai/codex/actions/runs/42761601757/job/129658956799",
+      "head_sha": "c875667eb837663697d5ffa32d375043434e73b4"
     },
-    "official_checks_reference": "https://github.com/openai/codex/commit/2889d8e1bf564af2ed3a72dc929b583551561363/checks",
-    "limits": "No broad source suite or previous test cohort. The per-commit review records state consumer/exclusion and source-only limits."
+    "official_checks_reference": "https://github.com/openai/codex/commit/c875667eb837663697d5ffa32d375043434e73b4/checks",
+    "limits": "Only named complete test bodies are recorded as read. The full matrix is not claimed as passed."
   },
   "retained_consumers": {
-    "entrypoint": "crates/decodex-runtime/src/lib.rs (direct compiled libtest)",
-    "features": "--all-features",
-    "compiled_entrypoint_sha256": "b3fe11079c3b08ee6407978fcf9358976d9eb01cd993f8cdf3504210f84802ce",
-    "registered_count": 26,
-    "executed": 26,
-    "passed": 26,
+    "entrypoint": "<compiled-decodex-runtime-libtest>",
+    "features": "all-features",
+    "compiled_entrypoint_sha256": "fe8577ec44fa969c031ce5c9c62632d79ff0a57ccbfe8021f13c5efa93a50692",
+    "registered_count": 30,
+    "executed": 30,
+    "passed": 30,
     "failed": 0,
     "unmatched_selectors": [],
     "cases": [
       {
         "selector": "account_launch::process::context_preferences_native_tests::installed_native_context_preferences_share_config_and_preserve_thresholds",
+        "consumer": "Native context defaults and permission-profile config roundtrip",
+        "selection_reason": "The candidate changes native startup/model catalogs, rollout/SQLite history, MCP invocation/network policy, Code Mode defaults and request authentication used by these retained consumers.",
+        "exit_code": 0,
         "executed": 1,
         "passed": 1,
         "failed": 0,
-        "exit_code": 0,
-        "consumer": "Native context defaults and permission-profile config roundtrip",
-        "upstream_review_indices": [
-          18,
-          55,
-          62
-        ],
         "command": [
           "<compiled-decodex-runtime-libtest>",
           "account_launch::process::context_preferences_native_tests::installed_native_context_preferences_share_config_and_preserve_thresholds",
@@ -578,16 +571,12 @@
       },
       {
         "selector": "account_launch::process::native_control_tests::installed_native_qualified_defaults_preserve_multi_agent_selection",
+        "consumer": "Retained launch flags and native V2 enable/disable ownership",
+        "selection_reason": "The candidate changes native startup/model catalogs, rollout/SQLite history, MCP invocation/network policy, Code Mode defaults and request authentication used by these retained consumers.",
+        "exit_code": 0,
         "executed": 1,
         "passed": 1,
         "failed": 0,
-        "exit_code": 0,
-        "consumer": "Retained launch flags and native V2 enable/disable ownership",
-        "upstream_review_indices": [
-          1,
-          17,
-          42
-        ],
         "command": [
           "<compiled-decodex-runtime-libtest>",
           "account_launch::process::native_control_tests::installed_native_qualified_defaults_preserve_multi_agent_selection",
@@ -599,17 +588,12 @@
       },
       {
         "selector": "account_launch::agent_process::native_tests::compaction::installed_native_streams_auto_compaction_and_resumes_its_checkpoint",
+        "consumer": "Native compaction/checkpoint cold continuation",
+        "selection_reason": "The candidate changes native startup/model catalogs, rollout/SQLite history, MCP invocation/network policy, Code Mode defaults and request authentication used by these retained consumers.",
+        "exit_code": 0,
         "executed": 1,
         "passed": 1,
         "failed": 0,
-        "exit_code": 0,
-        "consumer": "Native compaction/checkpoint cold continuation",
-        "upstream_review_indices": [
-          31,
-          38,
-          42,
-          62
-        ],
         "command": [
           "<compiled-decodex-runtime-libtest>",
           "account_launch::agent_process::native_tests::compaction::installed_native_streams_auto_compaction_and_resumes_its_checkpoint",
@@ -621,16 +605,12 @@
       },
       {
         "selector": "account_launch::agent_process::native_tests::compaction::installed_native_preserves_prompt_before_compaction_error_and_after_restart",
+        "consumer": "Preserve pending prompt across failed compaction and restart",
+        "selection_reason": "The candidate changes native startup/model catalogs, rollout/SQLite history, MCP invocation/network policy, Code Mode defaults and request authentication used by these retained consumers.",
+        "exit_code": 0,
         "executed": 1,
         "passed": 1,
         "failed": 0,
-        "exit_code": 0,
-        "consumer": "Preserve pending prompt across failed compaction and restart",
-        "upstream_review_indices": [
-          31,
-          38,
-          62
-        ],
         "command": [
           "<compiled-decodex-runtime-libtest>",
           "account_launch::agent_process::native_tests::compaction::installed_native_preserves_prompt_before_compaction_error_and_after_restart",
@@ -642,16 +622,12 @@
       },
       {
         "selector": "account_launch::agent_process::native_tests::compaction::installed_native_discards_partial_compaction_output_after_restart",
+        "consumer": "Partial compaction output cannot become retained context",
+        "selection_reason": "The candidate changes native startup/model catalogs, rollout/SQLite history, MCP invocation/network policy, Code Mode defaults and request authentication used by these retained consumers.",
+        "exit_code": 0,
         "executed": 1,
         "passed": 1,
         "failed": 0,
-        "exit_code": 0,
-        "consumer": "Partial compaction output cannot become retained context",
-        "upstream_review_indices": [
-          38,
-          42,
-          62
-        ],
         "command": [
           "<compiled-decodex-runtime-libtest>",
           "account_launch::agent_process::native_tests::compaction::installed_native_discards_partial_compaction_output_after_restart",
@@ -663,16 +639,12 @@
       },
       {
         "selector": "account_launch::agent_process::native_tests::compaction::code_metadata::installed_native_code_mode_metadata_reaches_compaction",
+        "consumer": "Code Mode metadata survives native compaction boundary",
+        "selection_reason": "The candidate changes native startup/model catalogs, rollout/SQLite history, MCP invocation/network policy, Code Mode defaults and request authentication used by these retained consumers.",
+        "exit_code": 0,
         "executed": 1,
         "passed": 1,
         "failed": 0,
-        "exit_code": 0,
-        "consumer": "Code Mode metadata survives native compaction boundary",
-        "upstream_review_indices": [
-          24,
-          42,
-          45
-        ],
         "command": [
           "<compiled-decodex-runtime-libtest>",
           "account_launch::agent_process::native_tests::compaction::code_metadata::installed_native_code_mode_metadata_reaches_compaction",
@@ -684,15 +656,12 @@
       },
       {
         "selector": "account_launch::agent_process::native_tests::history_recovery::installed_native_fork_history_recovers_from_intact_ancestor_copy",
+        "consumer": "Ordinary and attached native fork history and cold ancestor recovery",
+        "selection_reason": "The candidate changes native startup/model catalogs, rollout/SQLite history, MCP invocation/network policy, Code Mode defaults and request authentication used by these retained consumers.",
+        "exit_code": 0,
         "executed": 1,
         "passed": 1,
         "failed": 0,
-        "exit_code": 0,
-        "consumer": "Ordinary and attached native fork history and cold ancestor recovery",
-        "upstream_review_indices": [
-          30,
-          62
-        ],
         "command": [
           "<compiled-decodex-runtime-libtest>",
           "account_launch::agent_process::native_tests::history_recovery::installed_native_fork_history_recovers_from_intact_ancestor_copy",
@@ -704,17 +673,12 @@
       },
       {
         "selector": "account_launch::agent_process::native_tests::cold_settings::recap_socket::fork::installed_saved_provider_continuation_and_fork_survive_default_changes",
+        "consumer": "Saved-provider continuation and exact fork source context",
+        "selection_reason": "The candidate changes native startup/model catalogs, rollout/SQLite history, MCP invocation/network policy, Code Mode defaults and request authentication used by these retained consumers.",
+        "exit_code": 0,
         "executed": 1,
         "passed": 1,
         "failed": 0,
-        "exit_code": 0,
-        "consumer": "Saved-provider continuation and exact fork source context",
-        "upstream_review_indices": [
-          20,
-          38,
-          60,
-          62
-        ],
         "command": [
           "<compiled-decodex-runtime-libtest>",
           "account_launch::agent_process::native_tests::cold_settings::recap_socket::fork::installed_saved_provider_continuation_and_fork_survive_default_changes",
@@ -726,17 +690,12 @@
       },
       {
         "selector": "account_launch::agent_process::native_tests::cold_settings::recap_socket::fork::installed_fork_preserves_source_provider_after_default_changes",
+        "consumer": "Ordinary/attached fork provider remains source-bound",
+        "selection_reason": "The candidate changes native startup/model catalogs, rollout/SQLite history, MCP invocation/network policy, Code Mode defaults and request authentication used by these retained consumers.",
+        "exit_code": 0,
         "executed": 1,
         "passed": 1,
         "failed": 0,
-        "exit_code": 0,
-        "consumer": "Ordinary/attached fork provider remains source-bound",
-        "upstream_review_indices": [
-          20,
-          38,
-          60,
-          62
-        ],
         "command": [
           "<compiled-decodex-runtime-libtest>",
           "account_launch::agent_process::native_tests::cold_settings::recap_socket::fork::installed_fork_preserves_source_provider_after_default_changes",
@@ -748,18 +707,12 @@
       },
       {
         "selector": "account_launch::agent_process::native_tests::reviewer::store::live_model::child_model::installed_native_child_inherits_updated_step_model",
+        "consumer": "Native child model/effort and next-step selection",
+        "selection_reason": "The candidate changes native startup/model catalogs, rollout/SQLite history, MCP invocation/network policy, Code Mode defaults and request authentication used by these retained consumers.",
+        "exit_code": 0,
         "executed": 1,
         "passed": 1,
         "failed": 0,
-        "exit_code": 0,
-        "consumer": "Native child model/effort and next-step selection",
-        "upstream_review_indices": [
-          1,
-          17,
-          46,
-          52,
-          60
-        ],
         "command": [
           "<compiled-decodex-runtime-libtest>",
           "account_launch::agent_process::native_tests::reviewer::store::live_model::child_model::installed_native_child_inherits_updated_step_model",
@@ -771,16 +724,12 @@
       },
       {
         "selector": "agent::tests::native_subagent_live::mcp::native_child_mcp_input_preserves_policy_and_exact_request",
+        "consumer": "MCP child input policy and exact native request ownership",
+        "selection_reason": "The candidate changes native startup/model catalogs, rollout/SQLite history, MCP invocation/network policy, Code Mode defaults and request authentication used by these retained consumers.",
+        "exit_code": 0,
         "executed": 1,
         "passed": 1,
         "failed": 0,
-        "exit_code": 0,
-        "consumer": "MCP child input policy and exact native request ownership",
-        "upstream_review_indices": [
-          9,
-          26,
-          32
-        ],
         "command": [
           "<compiled-decodex-runtime-libtest>",
           "agent::tests::native_subagent_live::mcp::native_child_mcp_input_preserves_policy_and_exact_request",
@@ -792,16 +741,12 @@
       },
       {
         "selector": "agent::tests::native_agent_wake::native_child_completion_wakes_idle_root_once",
+        "consumer": "Native child completion wakes the retained root once",
+        "selection_reason": "The candidate changes native startup/model catalogs, rollout/SQLite history, MCP invocation/network policy, Code Mode defaults and request authentication used by these retained consumers.",
+        "exit_code": 0,
         "executed": 1,
         "passed": 1,
         "failed": 0,
-        "exit_code": 0,
-        "consumer": "Native child completion wakes the retained root once",
-        "upstream_review_indices": [
-          1,
-          26,
-          40
-        ],
         "command": [
           "<compiled-decodex-runtime-libtest>",
           "agent::tests::native_agent_wake::native_child_completion_wakes_idle_root_once",
@@ -813,18 +758,12 @@
       },
       {
         "selector": "account_launch::agent_process::native_tests::reviewer::evidence::installed_guardian_retains_answer_after_compaction_and_restart",
+        "consumer": "Guardian retains exact verified answers after compaction/restart",
+        "selection_reason": "The candidate changes native startup/model catalogs, rollout/SQLite history, MCP invocation/network policy, Code Mode defaults and request authentication used by these retained consumers.",
+        "exit_code": 0,
         "executed": 1,
         "passed": 1,
         "failed": 0,
-        "exit_code": 0,
-        "consumer": "Guardian retains exact verified answers after compaction/restart",
-        "upstream_review_indices": [
-          38,
-          45,
-          47,
-          52,
-          62
-        ],
         "command": [
           "<compiled-decodex-runtime-libtest>",
           "account_launch::agent_process::native_tests::reviewer::evidence::installed_guardian_retains_answer_after_compaction_and_restart",
@@ -836,16 +775,12 @@
       },
       {
         "selector": "account_launch::agent_process::native_tests::reviewer::image_evidence::installed_guardian_preserves_native_image_profile_after_restart",
+        "consumer": "Native image evidence and profile survive cold review",
+        "selection_reason": "The candidate changes native startup/model catalogs, rollout/SQLite history, MCP invocation/network policy, Code Mode defaults and request authentication used by these retained consumers.",
+        "exit_code": 0,
         "executed": 1,
         "passed": 1,
         "failed": 0,
-        "exit_code": 0,
-        "consumer": "Native image evidence and profile survive cold review",
-        "upstream_review_indices": [
-          45,
-          50,
-          52
-        ],
         "command": [
           "<compiled-decodex-runtime-libtest>",
           "account_launch::agent_process::native_tests::reviewer::image_evidence::installed_guardian_preserves_native_image_profile_after_restart",
@@ -857,17 +792,12 @@
       },
       {
         "selector": "account_launch::agent_process::native_tests::reviewer::installed_native_guardian_preserves_large_action",
+        "consumer": "Guardian retains the complete action and native reviewer owner",
+        "selection_reason": "The candidate changes native startup/model catalogs, rollout/SQLite history, MCP invocation/network policy, Code Mode defaults and request authentication used by these retained consumers.",
+        "exit_code": 0,
         "executed": 1,
         "passed": 1,
         "failed": 0,
-        "exit_code": 0,
-        "consumer": "Guardian retains the complete action and native reviewer owner",
-        "upstream_review_indices": [
-          4,
-          46,
-          52,
-          55
-        ],
         "command": [
           "<compiled-decodex-runtime-libtest>",
           "account_launch::agent_process::native_tests::reviewer::installed_native_guardian_preserves_large_action",
@@ -879,19 +809,12 @@
       },
       {
         "selector": "account_launch::agent_process::native_tests::permissions::installed_named_permission_selection_during_active_turn_survives_restart",
+        "consumer": "Active named permission selection and acknowledged cold persistence",
+        "selection_reason": "The candidate changes native startup/model catalogs, rollout/SQLite history, MCP invocation/network policy, Code Mode defaults and request authentication used by these retained consumers.",
+        "exit_code": 0,
         "executed": 1,
         "passed": 1,
         "failed": 0,
-        "exit_code": 0,
-        "consumer": "Active named permission selection and acknowledged cold persistence",
-        "upstream_review_indices": [
-          18,
-          19,
-          29,
-          46,
-          55,
-          62
-        ],
         "command": [
           "<compiled-decodex-runtime-libtest>",
           "account_launch::agent_process::native_tests::permissions::installed_named_permission_selection_during_active_turn_survives_restart",
@@ -903,16 +826,12 @@
       },
       {
         "selector": "account_launch::agent_process::native_tests::structured::installed_temporary_requests_isolate_environment_and_preserve_custom_permissions",
+        "consumer": "Temporary requests preserve custom permission/environment isolation",
+        "selection_reason": "The candidate changes native startup/model catalogs, rollout/SQLite history, MCP invocation/network policy, Code Mode defaults and request authentication used by these retained consumers.",
+        "exit_code": 0,
         "executed": 1,
         "passed": 1,
         "failed": 0,
-        "exit_code": 0,
-        "consumer": "Temporary requests preserve custom permission/environment isolation",
-        "upstream_review_indices": [
-          38,
-          55,
-          62
-        ],
         "command": [
           "<compiled-decodex-runtime-libtest>",
           "account_launch::agent_process::native_tests::structured::installed_temporary_requests_isolate_environment_and_preserve_custom_permissions",
@@ -924,18 +843,12 @@
       },
       {
         "selector": "account_launch::agent_process::native_tests::context::installed_native_tool_context_survives_restart_without_replay",
+        "consumer": "Tool context remains tool-authority data through restart",
+        "selection_reason": "The candidate changes native startup/model catalogs, rollout/SQLite history, MCP invocation/network policy, Code Mode defaults and request authentication used by these retained consumers.",
+        "exit_code": 0,
         "executed": 1,
         "passed": 1,
         "failed": 0,
-        "exit_code": 0,
-        "consumer": "Tool context remains tool-authority data through restart",
-        "upstream_review_indices": [
-          26,
-          31,
-          38,
-          42,
-          62
-        ],
         "command": [
           "<compiled-decodex-runtime-libtest>",
           "account_launch::agent_process::native_tests::context::installed_native_tool_context_survives_restart_without_replay",
@@ -947,17 +860,12 @@
       },
       {
         "selector": "account_launch::agent_process::native_tests::context::installed_assistant_renews_fresh_contexts_with_original_dialogue_and_isolated_memory",
+        "consumer": "Retained Assistant renewal preserves source dialogue and permission boundary",
+        "selection_reason": "The candidate changes native startup/model catalogs, rollout/SQLite history, MCP invocation/network policy, Code Mode defaults and request authentication used by these retained consumers.",
+        "exit_code": 0,
         "executed": 1,
         "passed": 1,
         "failed": 0,
-        "exit_code": 0,
-        "consumer": "Retained Assistant renewal preserves source dialogue and permission boundary",
-        "upstream_review_indices": [
-          26,
-          38,
-          42,
-          62
-        ],
         "command": [
           "<compiled-decodex-runtime-libtest>",
           "account_launch::agent_process::native_tests::context::installed_assistant_renews_fresh_contexts_with_original_dialogue_and_isolated_memory",
@@ -969,18 +877,12 @@
       },
       {
         "selector": "account_launch::agent_process::native_tests::code_mode::installed_native_parallel_dynamic_tools_preserve_ids_and_result_order",
+        "consumer": "Exact packaged Code Mode callback identity and ordering",
+        "selection_reason": "The candidate changes native startup/model catalogs, rollout/SQLite history, MCP invocation/network policy, Code Mode defaults and request authentication used by these retained consumers.",
+        "exit_code": 0,
         "executed": 1,
         "passed": 1,
         "failed": 0,
-        "exit_code": 0,
-        "consumer": "Exact packaged Code Mode callback identity and ordering",
-        "upstream_review_indices": [
-          24,
-          26,
-          31,
-          42,
-          43
-        ],
         "command": [
           "<compiled-decodex-runtime-libtest>",
           "account_launch::agent_process::native_tests::code_mode::installed_native_parallel_dynamic_tools_preserve_ids_and_result_order",
@@ -992,16 +894,12 @@
       },
       {
         "selector": "account_launch::process::refresh_tests::native::installed_native_401_uses_production_refresh_reply_and_reauthenticates_after_restart",
+        "consumer": "Production native refresh callback and cold reauthentication",
+        "selection_reason": "The candidate changes native startup/model catalogs, rollout/SQLite history, MCP invocation/network policy, Code Mode defaults and request authentication used by these retained consumers.",
+        "exit_code": 0,
         "executed": 1,
         "passed": 1,
         "failed": 0,
-        "exit_code": 0,
-        "consumer": "Production native refresh callback and cold reauthentication",
-        "upstream_review_indices": [
-          9,
-          34,
-          38
-        ],
         "command": [
           "<compiled-decodex-runtime-libtest>",
           "account_launch::process::refresh_tests::native::installed_native_401_uses_production_refresh_reply_and_reauthenticates_after_restart",
@@ -1013,16 +911,12 @@
       },
       {
         "selector": "account_launch::process::refresh_tests::native::installed_native_401_refresh_refusal_fails_without_replaying_inference",
+        "consumer": "Native refresh refusal does not replay inference",
+        "selection_reason": "The candidate changes native startup/model catalogs, rollout/SQLite history, MCP invocation/network policy, Code Mode defaults and request authentication used by these retained consumers.",
+        "exit_code": 0,
         "executed": 1,
         "passed": 1,
         "failed": 0,
-        "exit_code": 0,
-        "consumer": "Native refresh refusal does not replay inference",
-        "upstream_review_indices": [
-          9,
-          34,
-          38
-        ],
         "command": [
           "<compiled-decodex-runtime-libtest>",
           "account_launch::process::refresh_tests::native::installed_native_401_refresh_refusal_fails_without_replaying_inference",
@@ -1034,16 +928,12 @@
       },
       {
         "selector": "account_launch::agent_process::native_tests::file_approval::installed_native_file_approval_saves_live_diff_before_history_and_declines_once",
+        "consumer": "Exact file approval/live diff persistence and one-reply ownership",
+        "selection_reason": "The candidate changes native startup/model catalogs, rollout/SQLite history, MCP invocation/network policy, Code Mode defaults and request authentication used by these retained consumers.",
+        "exit_code": 0,
         "executed": 1,
         "passed": 1,
         "failed": 0,
-        "exit_code": 0,
-        "consumer": "Exact file approval/live diff persistence and one-reply ownership",
-        "upstream_review_indices": [
-          51,
-          55,
-          62
-        ],
         "command": [
           "<compiled-decodex-runtime-libtest>",
           "account_launch::agent_process::native_tests::file_approval::installed_native_file_approval_saves_live_diff_before_history_and_declines_once",
@@ -1055,17 +945,12 @@
       },
       {
         "selector": "account_launch::agent_process::native_tests::models::installed_model_selection_changes_next_inference_and_survives_restart",
+        "consumer": "Current-thread model selection and cold persistence",
+        "selection_reason": "The candidate changes native startup/model catalogs, rollout/SQLite history, MCP invocation/network policy, Code Mode defaults and request authentication used by these retained consumers.",
+        "exit_code": 0,
         "executed": 1,
         "passed": 1,
         "failed": 0,
-        "exit_code": 0,
-        "consumer": "Current-thread model selection and cold persistence",
-        "upstream_review_indices": [
-          20,
-          46,
-          60,
-          62
-        ],
         "command": [
           "<compiled-decodex-runtime-libtest>",
           "account_launch::agent_process::native_tests::models::installed_model_selection_changes_next_inference_and_survives_restart",
@@ -1077,16 +962,12 @@
       },
       {
         "selector": "account_launch::agent_process::native_tests::models::installed_active_model_selection_preserves_admitted_inference",
+        "consumer": "Active model changes do not replace admitted inference",
+        "selection_reason": "The candidate changes native startup/model catalogs, rollout/SQLite history, MCP invocation/network policy, Code Mode defaults and request authentication used by these retained consumers.",
+        "exit_code": 0,
         "executed": 1,
         "passed": 1,
         "failed": 0,
-        "exit_code": 0,
-        "consumer": "Active model changes do not replace admitted inference",
-        "upstream_review_indices": [
-          20,
-          46,
-          60
-        ],
         "command": [
           "<compiled-decodex-runtime-libtest>",
           "account_launch::agent_process::native_tests::models::installed_active_model_selection_preserves_admitted_inference",
@@ -1098,21 +979,83 @@
       },
       {
         "selector": "account_launch::agent_process::native_tests::skills::installed_skill_picker_inventory_and_exact_input_use_native_skill_owner",
+        "consumer": "Native enabled skill identity, discovery without inference and exact skill injection",
+        "selection_reason": "The candidate changes native startup/model catalogs, rollout/SQLite history, MCP invocation/network policy, Code Mode defaults and request authentication used by these retained consumers.",
+        "exit_code": 0,
         "executed": 1,
         "passed": 1,
         "failed": 0,
-        "exit_code": 0,
-        "consumer": "Native enabled skill identity, discovery without inference and exact skill injection",
-        "upstream_review_indices": [
-          15,
-          56,
-          57,
-          58,
-          59
-        ],
         "command": [
           "<compiled-decodex-runtime-libtest>",
           "account_launch::agent_process::native_tests::skills::installed_skill_picker_inventory_and_exact_input_use_native_skill_owner",
+          "--exact",
+          "--ignored",
+          "--nocapture",
+          "--test-threads=1"
+        ]
+      },
+      {
+        "selector": "agent::tests::native_goals::native_goal_turn_preserves_separate_user_input_delivery",
+        "consumer": "Native goal authority, cold continuation, Realtime history, or baseline-to-candidate state upgrade",
+        "selection_reason": "Source review identified the corresponding retained consumer; this final execution uses the final scheduler-compatible adapter.",
+        "exit_code": 0,
+        "executed": 1,
+        "passed": 1,
+        "failed": 0,
+        "command": [
+          "<compiled-decodex-runtime-libtest>",
+          "agent::tests::native_goals::native_goal_turn_preserves_separate_user_input_delivery",
+          "--exact",
+          "--ignored",
+          "--nocapture",
+          "--test-threads=1"
+        ]
+      },
+      {
+        "selector": "agent::tests::native_goal_recovery::native_active_goal_on_unloaded_thread_resumes_without_local_turn_submission",
+        "consumer": "Native goal authority, cold continuation, Realtime history, or baseline-to-candidate state upgrade",
+        "selection_reason": "Source review identified the corresponding retained consumer; this final execution uses the final scheduler-compatible adapter.",
+        "exit_code": 0,
+        "executed": 1,
+        "passed": 1,
+        "failed": 0,
+        "command": [
+          "<compiled-decodex-runtime-libtest>",
+          "agent::tests::native_goal_recovery::native_active_goal_on_unloaded_thread_resumes_without_local_turn_submission",
+          "--exact",
+          "--ignored",
+          "--nocapture",
+          "--test-threads=1"
+        ]
+      },
+      {
+        "selector": "account_launch::agent_process::native_tests::realtime::installed_native_realtime_history_survives_agent_and_cold_bridge",
+        "consumer": "Native goal authority, cold continuation, Realtime history, or baseline-to-candidate state upgrade",
+        "selection_reason": "Source review identified the corresponding retained consumer; this final execution uses the final scheduler-compatible adapter.",
+        "exit_code": 0,
+        "executed": 1,
+        "passed": 1,
+        "failed": 0,
+        "command": [
+          "<compiled-decodex-runtime-libtest>",
+          "account_launch::agent_process::native_tests::realtime::installed_native_realtime_history_survives_agent_and_cold_bridge",
+          "--exact",
+          "--ignored",
+          "--nocapture",
+          "--test-threads=1"
+        ]
+      },
+      {
+        "selector": "account_launch::agent_process::native_tests::upgrade::installed_runtime_upgrade_preserves_history_paused_goal_and_voice",
+        "consumer": "Native goal authority, cold continuation, Realtime history, or baseline-to-candidate state upgrade",
+        "selection_reason": "Source review identified the corresponding retained consumer; this final execution uses the final scheduler-compatible adapter.",
+        "exit_code": 0,
+        "executed": 1,
+        "passed": 1,
+        "failed": 0,
+        "command": [
+          "<compiled-decodex-runtime-libtest>",
+          "account_launch::agent_process::native_tests::upgrade::installed_runtime_upgrade_preserves_history_paused_goal_and_voice",
           "--exact",
           "--ignored",
           "--nocapture",
@@ -1132,7 +1075,7 @@
       "passed": 4,
       "failed": 0,
       "exit_code": 0,
-      "scope": "Exact packaged private-stdio CLI and loopback provider; no live account or installed app."
+      "scope": "Exact signed CLI and package-relative helpers in an isolated home and loopback provider. No live account or installed-app proof."
     },
     {
       "source": "crates/decodex-runtime/tests/native_qualification/mcp_cancel.py",
@@ -1144,7 +1087,7 @@
       "passed": 2,
       "failed": 0,
       "exit_code": 0,
-      "scope": "Exact packaged private-stdio CLI, stdio MCP fixture and loopback provider; no live account or installed app."
+      "scope": "Exact signed CLI and package-relative helpers in an isolated home and loopback provider. No live account or installed-app proof."
     },
     {
       "source": "crates/decodex-runtime/tests/native_qualification/response_identity.py",
@@ -1156,7 +1099,7 @@
       "passed": 1,
       "failed": 0,
       "exit_code": 0,
-      "scope": "Exact packaged private-stdio CLI and loopback provider; no live account or installed app."
+      "scope": "Exact signed CLI and package-relative helpers in an isolated home and loopback provider. No live account or installed-app proof."
     },
     {
       "source": "crates/decodex-runtime/tests/native_qualification/thread_settings.py",
@@ -1168,69 +1111,31 @@
       "passed": 5,
       "failed": 0,
       "exit_code": 0,
-      "scope": "Packaged private-stdio CLI and local provider; no live account or installed-app acceptance."
+      "scope": "Exact signed CLI and package-relative helpers in an isolated home and loopback provider. No live account or installed-app proof."
     }
   ],
   "before_after_regressions": [
     {
-      "contract": "Explicit component recovery from the verified local archive",
-      "current_main_behavior_commit": "e50a606e053abef9693c24e036c43d900bab47c4",
-      "artifact_source": "2889d8e1bf564af2ed3a72dc929b583551561363",
-      "before": {
-        "selector": "fixed_commit_import_offline_repair_and_wrong_commit_rejection",
-        "executed": 1,
-        "passed": 0,
-        "failed": 1,
-        "exit_code": 101,
-        "command": [
-          "<compiled-decodex-components-development-test>",
-          "fixed_commit_import_offline_repair_and_wrong_commit_rejection",
-          "--exact",
-          "--ignored",
-          "--nocapture",
-          "--test-threads=1"
-        ]
-      },
-      "failure": "The obsolete fixture called ensure after damaging the CLI and received the expected pin-mismatch rejection.",
-      "after": {
-        "selector": "fixed_commit_import_explicit_reinstall_and_wrong_commit_rejection",
-        "executed": 1,
-        "passed": 1,
-        "failed": 0,
-        "exit_code": 0,
-        "command": [
-          "<compiled-decodex-components-development-test>",
-          "fixed_commit_import_explicit_reinstall_and_wrong_commit_rejection",
-          "--exact",
-          "--ignored",
-          "--nocapture",
-          "--test-threads=1"
-        ]
-      },
-      "production_change": false
+      "selector": "account_launch::agent_process::native_tests::upgrade::installed_runtime_upgrade_preserves_history_paused_goal_and_voice",
+      "previous_source": "2889d8e1bf564af2ed3a72dc929b583551561363",
+      "candidate_source": "c875667eb837663697d5ffa32d375043434e73b4",
+      "passed": true,
+      "scope": "One native state directory across old and new CLI processes; history, paused goal and voice metadata retained."
     }
   ],
   "component_cache_repair": {
-    "entrypoint": "crates/decodex-components/tests/development.rs",
-    "compiled_entrypoint_sha256": "6d7c850a80108c0583c1d0f3879e408b69418dc7d253d485db6f53c5530176f6",
+    "entrypoint": "<compiled-development-integration-test>",
+    "compiled_entrypoint_sha256": "6ecb5e231761a72421728ca8087fb8e79d050e101a4d92a154ae19ec483ae544",
     "registered_count": 1,
     "unmatched_selectors": [],
     "case": {
       "selector": "fixed_commit_import_explicit_reinstall_and_wrong_commit_rejection",
+      "exit_code": 0,
       "executed": 1,
       "passed": 1,
-      "failed": 0,
-      "exit_code": 0,
-      "command": [
-        "<compiled-decodex-components-development-test>",
-        "fixed_commit_import_explicit_reinstall_and_wrong_commit_rejection",
-        "--exact",
-        "--ignored",
-        "--nocapture",
-        "--test-threads=1"
-      ]
+      "failed": 0
     },
-    "contract": "Ordinary ensure rejects damaged CLI, schema and helpers. Explicit reinstall restores verified bytes offline, preserves other versions and rejects wrong-commit imports."
+    "contract": "Reject damaged CLI/schema/helpers during ensure; restore only through explicit reinstall from the verified local archive. Preserve other versions and reject wrong-commit import."
   },
   "fixture_source_sha256": {
     "crates/decodex-codex/src/app_server_client/provider_recovery.rs": "bcacad447daf80f5b63a28d7120013947f7e336c574820449e5bb3c263ce2ff3",
@@ -1241,26 +1146,30 @@
     "crates/decodex-runtime/src/account_launch/agent_process_native_code_compaction_tests.rs": "1bf2f316df1e33036f2f1e02dd512b01d6272a338f2185e02b0049b902a8e6d8",
     "crates/decodex-runtime/src/account_launch/agent_process_native_code_mode_tests.rs": "9ee4e9dd6b4867a2c57c4f775549f397352303f478a118d98d55841ba8afd539",
     "crates/decodex-runtime/src/account_launch/agent_process_native_compaction_tests.rs": "51f3685a98c8ebfc3c3d4a20b198a3dfb8c60782a193246a8dea66a4af690b10",
-    "crates/decodex-runtime/src/account_launch/agent_process_native_context_tests.rs": "c7c3deb6eed1c8579a4f7c554167c1df941b25b0d0146ad9329f4e2de91e8be2",
+    "crates/decodex-runtime/src/account_launch/agent_process_native_context_tests.rs": "7c0f5dcc30f7cf4c0d4e2de69914fed1f192476c68919b08700b3d8e5efba7dd",
     "crates/decodex-runtime/src/account_launch/agent_process_native_file_approval_tests.rs": "82e164ef1f001147cfddda18bc4c98a0873bb73f04439f5da355eb650edd21ed",
-    "crates/decodex-runtime/src/account_launch/agent_process_native_fork_tests.rs": "9310cfa7d6be816dc759c347872655499ed0943b2a5bf977a1ff3d6941d43c0a",
+    "crates/decodex-runtime/src/account_launch/agent_process_native_fork_tests.rs": "896ee1dc29e494ea12c99ebccd8efba6b572c2689dbea036395e1f90c9f8fbd4",
     "crates/decodex-runtime/src/account_launch/agent_process_native_guardian_evidence_tests.rs": "81b238444dbc248a22dd6ade2f7eed0d5a415c0bfbf98225d3a0f538562e136a",
     "crates/decodex-runtime/src/account_launch/agent_process_native_guardian_image_tests.rs": "096f5d64d5b4a6c214e1625545ad924da831bdf07ea23c86c3a6b5274750c4ac",
     "crates/decodex-runtime/src/account_launch/agent_process_native_history_recovery_tests.rs": "e6652a7c8db916664315cb5687fb5724330f6f38075bcda67543c9b17a1ae72a",
     "crates/decodex-runtime/src/account_launch/agent_process_native_model_tests.rs": "2ff55ec73f029f6516db1149e125e56e77eceea3e8b44b8ca1cd8c9c3bf38372",
     "crates/decodex-runtime/src/account_launch/agent_process_native_permission_tests.rs": "bdc7b2bcbc94f5258c5390cbb2ec4d5839f1e90000d89db635dd4a743e2e9b60",
+    "crates/decodex-runtime/src/account_launch/agent_process_native_realtime_tests.rs": "d164163cbdfd2e280635000db69c55e3ad88b191a6737a8d4abfbc960cbfe6a2",
     "crates/decodex-runtime/src/account_launch/agent_process_native_recap_socket_tests.rs": "4ef196654ce096dca1fd06e826b6085f1cc981972f505497e773b753ebc55caa",
     "crates/decodex-runtime/src/account_launch/agent_process_native_reviewer_store.rs": "2362610c40ada2d8a86fa334f92410f55c54636714194b10b3e01f4061712651",
     "crates/decodex-runtime/src/account_launch/agent_process_native_reviewer_tests.rs": "764c0537366afc659d27d76a8ccc1bc40cba058cb559d33ba470efce14ae93f4",
     "crates/decodex-runtime/src/account_launch/agent_process_native_skills_tests.rs": "ff0df22702edfa42a03c0eec1a1b563b116de52ff14204e5a557efed2be687cf",
     "crates/decodex-runtime/src/account_launch/agent_process_native_structured_tests.rs": "fb5087ec2616bf9e897cc7c0b9603fbc057b315c3d01ea9fdd7b944b12794e07",
     "crates/decodex-runtime/src/account_launch/agent_process_native_tests.rs": "d690b507403aafaaa9fc75ec8649c8cfb6addf82a5ac2df4836ce15fb22a99eb",
+    "crates/decodex-runtime/src/account_launch/agent_process_native_upgrade_tests.rs": "dd82709d140b83ccfcbd3589016356a10be7fecf3a5008758bcd2bf229e59d76",
     "crates/decodex-runtime/src/account_launch/agent_process_warning_tests.rs": "bcd9a1c15eb4da2073b7a6a7f3e8a9305b531e58322bba1ddcbfef6ea25187a0",
     "crates/decodex-runtime/src/account_launch/process.rs": "bc1e6230e991b4a960795b24d19c3b75f35829de7c77350b7a3ff2b4546ff512",
     "crates/decodex-runtime/src/account_launch/process_native_control_tests.rs": "62a7b8ce0fd31aac25ac1223577293d76d31a9b8741724b38e53141a2d179ec9",
     "crates/decodex-runtime/src/account_launch/process_refresh_native_tests.rs": "e9e9957ef78d259f0b98ba11886789fa7eaee4936faad5fc73563e3a9af30931",
     "crates/decodex-runtime/src/account_launch/process_refresh_tests.rs": "35cf4aeede9f65e58240c12b9653a6859f30bbda68470dcb5931f379a0815643",
     "crates/decodex-runtime/src/agent/tests/native_agent_wake.rs": "da4710d8af187859caaf64bc714b19a393a484c297294bdb0dc83c519a1ff4d3",
+    "crates/decodex-runtime/src/agent/tests/native_goal_recovery.rs": "d7fcdb3e384aca379544c690e0db7cb51735e09b20c4cafcad48a6708307ce59",
+    "crates/decodex-runtime/src/agent/tests/native_goals.rs": "f0be531789036465b2a346c9c53b0a9675e9c555c00ecb2c62ae5f1d3dce7d3e",
     "crates/decodex-runtime/src/agent/tests/native_subagent_mcp.rs": "1caffa78fe704e7b5d76edc5d3704006c6009a9eed1ea4dbaa1faafa501d8343",
     "crates/decodex-runtime/src/agent/tests/native_subagent_mcp_server.py": "0f5a92e7ffc4f828db4843764164c7aa5b9b2b56db1fe1452baeaf538c3519f6",
     "crates/decodex-runtime/src/agent_context_settings_native_tests.rs": "027013e0211827e0473e282c54e1a30d4502cc34a36ca076b7018d8bc964d6f9",
@@ -1275,33 +1184,40 @@
     "scripts/macos/version_codex_source.py": "60961200e31270b46574d5b83f5477b767cddaa66b8b7eea8c6cbc57b3ef269d"
   },
   "decodex_validation": {
-    "native_cases": 26,
+    "native_cases": 30,
     "component_cases": 1,
     "protocol_entrypoints": 4,
     "protocol_scenarios": 12,
-    "checkpoint_tests": 8,
-    "portfolio_tests": 7,
-    "repository_automation_evaluation": "passed",
-    "component_lint": "passed with repository deny flags",
-    "rust_format": "cargo +nightly fmt --all -- --check passed",
-    "whitespace": "git diff --check passed",
+    "scheduler_owner_tests": {
+      "cli": 47,
+      "database": 187,
+      "protocol": 166,
+      "runtime_routing": 1
+    },
+    "repository_automation_evaluation": "Passed before evidence publication; final repository gate has a native receipt.",
+    "component_lint": "Strict Clippy passed for CLI, database, protocol and runtime, all targets/features.",
+    "rust_format": "Passed unversioned nightly check.",
+    "whitespace": "Passed.",
     "commands": [
-      "cargo +stable test --locked -p decodex-runtime --lib --all-features --no-run --message-format=json",
-      "cargo +stable test --locked -p decodex-components --test development --no-run --message-format=json",
-      "<compiled test binary> <registered selector> --exact --ignored --nocapture --test-threads=1",
-      "python3 <exact protocol fixture listed above>",
-      "cargo +stable clippy --package decodex-components --all-features --all-targets --keep-going -- --no-deps <scripts/lint_rust_workspace.py DENY_FLAGS>",
-      "cargo +stable make test-automations",
-      "python3 automations/decodex/scripts/config/evaluate_automations.py --repo-only --json",
+      "cargo +stable test --locked -p decodex-cli -p decodex-database -p decodex-protocol --lib",
+      "cargo +stable clippy --locked -p decodex-cli -p decodex-database -p decodex-protocol -p decodex-runtime --all-targets --all-features -- -D warnings",
+      "cargo +stable check --locked -p decodex-gpui --all-targets",
       "cargo +nightly fmt --all -- --check",
-      "git diff --check"
+      "cargo +stable make test-automations"
     ],
-    "limits": "Only the runtime pin and test fixture changed. No Rust production source changed, and no broad app/provider/upstream source suite was required."
+    "limits": "No whole-app test suite or broad upstream matrix is inferred."
   },
-  "installed_application": "Not started or installed. No installed acceptance was performed.",
-  "documentation_lifecycle": "Use supported OpenWiki page jobs after these inputs are frozen. Native receipts own completion.",
+  "experimental_sharing": {
+    "enabled": false,
+    "executed": 4,
+    "passed": 1,
+    "failed": 3,
+    "scope": "Diagnostic only. Keep the pending native MCP sharing adaptation open."
+  },
+  "installed_application": "Installation and real scheduled execution have separate native acceptance receipts. They are not inferred from this qualification.",
+  "documentation_lifecycle": "Use supported OpenWiki page jobs after these evidence inputs are frozen. Native receipts own completion.",
   "delivery_reference": [
-    "https://github.com/acg-box/decodex/commit/9278f393cc95754da5fd964fb03102a986a2d61a"
+    "https://github.com/acg-box/decodex/commit/c8f860d25e17e29aceeb2d9db00c316b5e851791"
   ],
-  "delivery_status": "Public implementation commits identify the code. Native receipts own the current PR, exact-head CI and merge observations."
+  "delivery_status": "Native receipts own the current PR, exact-head CI, merge, installed acceptance and internal-owner handoff."
 }

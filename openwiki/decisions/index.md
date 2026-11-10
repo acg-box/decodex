@@ -1,5 +1,5 @@
 # Files
 
-- [Assistant delegation, memory and context lifecycle](assistant-lifecycle.md)
+- [Assistant delegation, memory and context lifecycle](assistant-lifecycle.md) - Personal Assistant ownership, context renewal, Memory boundaries and independent Agent duties.
 - [Project, Agent and Work contract](project-agent-work.md) - Accepted architecture, shared English vocabulary, minimum Work and Collaboration contracts, recovery, and global Guardian controls.
 - [Retained upstream product capabilities](upstream-product-scope.md) - Current native integration, account and conversation scope, with excluded duplicate surfaces.

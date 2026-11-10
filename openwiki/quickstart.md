@@ -62,12 +62,12 @@ sources:
     resource: repo://apps/decodex-gpui/src/ui_live_activity.rs
   - id: openwiki-source-570564020f98df7a4d6d0b61
     resource: repo://apps/decodex-gpui/src/ui_theme.rs
-  - id: openwiki-source-f5d4f5acdb41fe7c4e985337
-    resource: repo://automations/decodex/README.md
   - id: openwiki-source-14193a66abfb7d3230f476bf
     resource: repo://automations/portfolio.toml
-  - id: openwiki-source-7dcbb082d2502f1ec4386c39
-    resource: repo://automations/upstream/prompts/maintainer.md
+  - id: openwiki-source-ac3a52e89a6632ea457c56b7
+    resource: repo://automations/upstream/duty.json
+  - id: openwiki-source-8b67a68a7ef89772aa8180d1
+    resource: repo://automations/upstream/README.md
   - id: openwiki-source-3127fd4c7b2aefcc9cea7961
     resource: repo://automations/upstream/retained-contracts.json
   - id: openwiki-source-69e9fd7efd8c3cd616184e27
@@ -106,10 +106,10 @@ sources:
     resource: repo://database/src/schema.rs
   - id: openwiki-source-3b57179b92b257bc3fff51a1
     resource: repo://scripts/macos/stage_decodex_app.sh
-generated: { by: "codex", at: "2026-11-06T18:53:07.733Z" }
+generated: { by: "codex", at: "2026-11-10T08:10:56.086Z" }
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-06T18:53:07.733Z
+    at: 2026-11-10T08:10:56.086Z
 ---
 
 # OpenWiki quickstart
@@ -195,13 +195,13 @@ The app version and **Check for updates** are in **Settings > General > Updates*
 ## Current boundaries
 
 - `decodex serve` is the service and SQLite product-state owner. GPUI and CLI use typed local clients. The bundled helper is `decodex`, not `decodexd`.
-- The current local formats are protocol 4.8, SQLite schema 61 and desktop draft format 12. New stores start with the exact current schema; startup does not run a historical migration chain. Retained-data conversion is an explicit operator task outside the application.
+- The current local formats are protocol 4.9, SQLite schema 61 and desktop draft format 12. New stores start with the exact current schema; startup does not run a historical migration chain. Retained-data conversion is an explicit operator task outside the application.
 - The Agent graph presents work relationships; the right Collaboration panel keeps recorded exchanges and pending response requests visible across chats. Expanding an exchange preserves the active chat and draft. Historical Factory diagrams do not define the current desktop.
 - Account admission accepts native `plus`, `pro`, `prolite`, `promax` and `team` plans. OAuth and PAT use the same plan scope; native identity, quota and entitlement remain authoritative. See [Accounts](operations/accounts-and-routing.md).
 - Account Route is synchronous and service-owned. Shared-auth liveness, exact source identity and readback govern completion. Same-account refresh adopts a valid non-older native winner instead of restoring a losing token.
 - Unknown submission outcomes require exact receipts or native history. They do not authorize replay. Unavailable conversations keep readable history.
 - Generic plugin management and embedded MCP HTML widgets are retired. The explicit EGM component uses the native Codex plugin lifecycle through Settings > Components. Codex owns configuration and execution; Decodex retains tool observations, native forms and readable history.
-- The checked-in automation portfolio retains only the upstream maintainer with its existing daily cadence. The two content schedules and their prompts are retired; retained Publisher tools do not register a schedule. Pause it during manual catch-up; resume it only with explicit user authorization through the supported native tools. This is configuration evidence, not scheduler readback. Documentation generation does not enable automations, install an app or publish a release.
+- Codex upstream maintenance is an independent Decodex Agent duty with a dedicated managed worktree and the declared daily UTC cadence. The former desktop definition stays paused as a rollback reference. Manual catch-up holds the current owner; explicit user authorization controls resumption. Declarations do not prove registration or execution. See [upstream maintenance](operations/codex-upstream-autopilot.md) for registration, acceptance and the sole checkpoint handoff. The two content schedules remain retired.
 
 ## Build and evidence
 

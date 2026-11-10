@@ -6,8 +6,6 @@ tags: ["decodex", "architecture"]
 sources:
   - id: openwiki-source-bf03f317e64cfefd11f6ea83
     resource: repo://apps/decodex-gpui/src/agent_attached_branches.rs
-  - id: openwiki-source-d9c9b48c73ee4a2adc90f01c
-    resource: repo://apps/decodex-gpui/src/agent_collaboration_cases.rs
   - id: openwiki-source-48758ba7d154c82885281d2c
     resource: repo://apps/decodex-gpui/src/agent_composer.rs
   - id: openwiki-source-c76550e85b25876b339f9255
@@ -18,8 +16,6 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_list_branch.rs
   - id: openwiki-source-02f8a02cdfa0616877cdad62
     resource: repo://apps/decodex-gpui/src/agent_list_status.rs
-  - id: openwiki-source-9c68c30b2ff24ddf9a764d74
-    resource: repo://apps/decodex-gpui/src/agent_memory.rs
   - id: openwiki-source-b2084dffd07b4229957a0f94
     resource: repo://apps/decodex-gpui/src/agent_prompt_edit.rs
   - id: openwiki-source-5e245e8cc4db92f2dbe2ba47
@@ -40,8 +36,6 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_timeline_render.rs
   - id: openwiki-source-5606e779f593d160176b0a27
     resource: repo://apps/decodex-gpui/src/agent_transcript.rs
-  - id: openwiki-source-0d053d4de2f668168f982629
-    resource: repo://apps/decodex-gpui/src/agent_usage_evidence.rs
   - id: openwiki-source-3fa6d6c49e3542409542045b
     resource: repo://apps/decodex-gpui/src/agent_work_browser.rs
   - id: openwiki-source-59ed67d26d1c310707a365e5
@@ -56,8 +50,14 @@ sources:
     resource: repo://apps/decodex-gpui/src/shell_status.rs
   - id: openwiki-source-14193a66abfb7d3230f476bf
     resource: repo://automations/portfolio.toml
+  - id: openwiki-source-a5b9d61b2b9a5f7492d602ac
+    resource: repo://automations/upstream/current-review.json
+  - id: openwiki-source-ac3a52e89a6632ea457c56b7
+    resource: repo://automations/upstream/duty.json
   - id: openwiki-source-7dcbb082d2502f1ec4386c39
     resource: repo://automations/upstream/prompts/maintainer.md
+  - id: openwiki-source-f580b10e16f1d25ebfea3bf8
+    resource: repo://automations/upstream/qualification.json
   - id: openwiki-source-3127fd4c7b2aefcc9cea7961
     resource: repo://automations/upstream/retained-contracts.json
   - id: openwiki-source-02bd3cfc9d4db9d1d1d8fd59
@@ -136,10 +136,10 @@ sources:
     resource: repo://database/src/agent_titles.rs
   - id: openwiki-source-6197a876b2effbe992b1e2ec
     resource: repo://database/src/agent.rs
-generated: { by: "codex", at: "2026-11-05T21:05:15.623Z" }
+generated: { by: "codex", at: "2026-11-10T08:15:33.063Z" }
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-05T21:05:15.623Z
+    at: 2026-11-10T08:15:33.063Z
 ---
 
 # Product scope and native ownership
@@ -158,7 +158,7 @@ The default coordination surface uses `work_read` and `work_manage`. Users creat
 
 Permission changes use the selected native conversation's supported profile and reviewer settings. Existing child captures and pending human approvals retain native ownership. Optional private details retain bounded assistant output and terminal metadata without raw reasoning. Exact action associations are unavailable in the selected runtime and remain explicit. This does not select the separate native Guardian V3 experiment.
 
-The current schema and protocol 4.8 store the business model directly. Native Projects provide catalog identity and directory context; Decodex retains Work and responsibility associations. A native Project entry does not prove synchronization with desktop saved Projects. Work association is not a new execution sandbox or automatic directory switch.
+The current schema and protocol 4.9 store the business model directly. Native Projects provide catalog identity and directory context; Decodex retains Work and responsibility associations. A native Project entry does not prove synchronization with desktop saved Projects. Work association is not a new execution sandbox or automatic directory switch.
 
 The retained-conversation repair reconciles unassigned native Project membership before input and preserves conflicts for inspection. The current schema retains actual native child-input receipts for Work attribution when native configuration permits nested V2 Code Mode. Recovery joins exact evidence without replay. V1 nesting remains supported; V2 keeps its direct-only default. These are repairs to retained integration contracts. Native Project identity and membership and Decodex Project presentation passed in the separate installed qualification. Official desktop saved-Project/sidebar presentation remains unobserved. See the [canonical contract](project-agent-work.md#qualification-and-evidence-limits).
 
@@ -172,7 +172,7 @@ The selected scope includes three views in the existing desktop:
 - **Collaboration history:** Retain exact local question replies, their delivery and receiving-turn outcome, plus independent contribution cycles and explicit owner assessments. A reply or returned contribution does not establish resolution or complete Work. Missing external reply bodies remain unknown.
 - **Actual usage:** Read known whole-turn token deltas and recorded duration for a persistent Agent or retained Work references. Shared Work references, missing counters and unobserved child usage remain explicit. Linked turns can contain other activity; recorded duration is not Work elapsed time and these values are not a bill.
 
-These views are available through local protocol 4.8 and the same source owners. Their reusable regression identities, exact-artifact checks and limits are in `selected_read_views` in the [stable retained contract catalog](../../automations/upstream/retained-contracts.json). Installed-app acceptance remains separate.
+These views are available through local protocol 4.9 and the same source owners. Their reusable regression identities, exact-artifact checks and limits are in `selected_read_views` in the [stable retained contract catalog](../../automations/upstream/retained-contracts.json). Installed-app acceptance remains separate.
 
 ## Current optional decisions
 
@@ -217,7 +217,7 @@ Diagnostic-log upload (**original item 24**) is excluded at the user's request t
 
 ## Next-message suggestions and current choices
 
-The user selected **original item 26** with automatic generation, controlled by **Settings > Agents > Assistance > Next-message suggestions**: a newly completed answer in the selected independent root conversation requests one suggestion when its composer is empty. Opening saved history, repeated refreshes and an existing draft do not trigger inference. The composer menu retains **Suggest next message…** for an explicit request. Press **Tab** in the focused empty message field to place the current suggestion in the composer as one undoable edit. Other fields, Shift-Tab and nonempty drafts keep normal focus navigation. Later edits are preserved, and acceptance does not send a message. The switch defaults on. Disabling prevents new automatic requests, and re-enabling does not replay answers completed while disabled. The feature uses the existing native sampler and conversation refresh; it adds no separate poller. See [the suggestion workflow](../workflows/conversations-and-recovery.md#next-message-suggestions) and `retained_prompt_suggestions` in the [retained contracts](../../automations/upstream/retained-contracts.json).
+The user selected **original item 26** with automatic generation, controlled by **Settings > Agents > Assistance > Next-message suggestions**: a newly completed answer in the selected independent root conversation requests one suggestion when its composer is empty. The latest eligible visible answer can be considered after reopening or enabling suggestions. An existing draft prevents automatic generation. The composer menu retains **Suggest next message…** for an explicit request. Press **Tab** in the focused empty message field to place the current suggestion in the composer as one undoable edit. Other fields, Shift-Tab and nonempty drafts keep normal focus navigation. Later edits are preserved, and acceptance does not send a message. The switch defaults on. Disabling prevents automatic requests. The feature uses the existing native sampler and conversation refresh; it adds no separate poller. See [the suggestion workflow](../workflows/conversations-and-recovery.md#next-message-suggestions) and `retained_prompt_suggestions` in the [retained contracts](../../automations/upstream/retained-contracts.json).
 
 **Original items 19 and 69**, authenticated remote execution, remain deferred in [issue 1693](https://github.com/acg-box/decodex/issues/1693). **Item 21** retains Decodex account management: independent account observations and reset-credit requests use the existing account API client. This decision does not make those operations inherit native `application.network` policy.
 
@@ -250,7 +250,7 @@ Item 67 uses the current shared native store. Exact current local conversations 
 
 **Items 32, 33, 37, 40, 52, 54, 56 and 81 are excluded.** Codex owns its app-server self-diagnostics. Decodex diagnoses its own product and integration failures. The standalone Codex startup-configuration UI, query and dedicated qualification helper are retired. Diagnostic export and upload capabilities are not selected. Ordinary conversation Markdown export and normal error or warning presentation remain retained.
 
-The manual proposal records have current dispositions. Deferred research does not authorize implementation, experimental activation, a new setting or daily maintenance debt. Microphone selection does not select independent output-device or input-channel controls. The [current contracts](../../automations/upstream/retained-contracts.json) retain approvals, deferrals, exclusions and duplicates. The [qualification index](../../automations/upstream/retained-evidence.json) separates executed Decodex tests, source inspection, unchanged runtime identities and installed-app limits. Pause the automation during manual catch-up. Resume it only with explicit user authorization through the supported native tools.
+The manual proposal records have current dispositions. Deferred research does not authorize implementation, experimental activation, a new setting or daily maintenance debt. Microphone selection does not select independent output-device or input-channel controls. The [current contracts](../../automations/upstream/retained-contracts.json) retain approvals, deferrals, exclusions and duplicates. The [qualification index](../../automations/upstream/retained-evidence.json) separates executed Decodex tests, source inspection, unchanged runtime identities and installed-app limits. Pause the maintenance owner during manual catch-up. Resume the internal Decodex duty only under explicit user authorization. Keep the former desktop definition paused while the internal duty owns the workload.
 
 ## Conversation list and remaining manual scope
 
@@ -271,6 +271,23 @@ The following native options remain deferred research:
 Items 44 and 82 are not selected. Item 46 shares the retired parser scope of item 38. Item 58 adds no separate next-message suggestion feature. The ignored native async-classifier override in item 62 must not become an ineffective setting; it is distinct from the retained background-compaction control.
 
 Conditional research on [account-safe cross-process MCP sharing](https://github.com/acg-box/decodex/issues/2524) and [a supported complete critical-path interface](https://github.com/acg-box/decodex/issues/2525) also retains its existing issues. These records preserve deferred scope; they do not authorize implementation or add daily maintenance debt.
+
+## Maintenance ownership and current qualification
+
+An independent persistent Decodex Agent owns the Codex upstream duty. Its
+[declaration](../../automations/upstream/duty.json) and
+[operational procedure](../operations/codex-upstream-autopilot.md) retain the
+selected model, effort, isolated worktree, daily UTC cadence and sole checkpoint
+publisher. This role does not select the personal Assistant or its Memory.
+Registration and actual scheduled execution require separate native acceptance.
+
+The [current review](../../automations/upstream/current-review.json) records the
+complete fixed upstream delta. The [qualification](../../automations/upstream/qualification.json)
+records the exact signed artifact and named retained consumers. Generic upstream
+CI failures remain diagnostic limits. Experimental same-process MCP sharing
+passed only one of four diagnostic cases; keep it disabled and retain the pending
+adaptation. Guardian V3, new gateway controls and deferred product decisions keep
+their existing scope.
 
 ## Native compatibility maintenance
 
