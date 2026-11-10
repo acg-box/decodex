@@ -1,11 +1,13 @@
 # Codex upstream synchronization
 
-One daily task, `codex-upstream-maintainer`, owns incremental source review,
-retained-capability repairs, qualification and delivery. Its desired model,
-effort, worktree environment and daily UTC cadence are in
-`automations/portfolio.toml`. The [maintainer prompt](prompts/maintainer.md) owns
-the workload contract. Native tools own registration; repository declarations do
-not activate or resume a task.
+An independent Decodex Agent, `codex-upstream-maintainer`, owns incremental
+source review, retained-capability repairs, qualification and delivery. The
+[internal duty definition](duty.json) declares its model, effort, managed worktree
+and daily UTC cadence. The [maintainer prompt](prompts/maintainer.md) owns the
+workload contract. Decodex's Agent service owns registration, due-event receipts
+and native Codex execution. A repository declaration alone does not activate it.
+The former desktop schedule in `automations/portfolio.toml` stays paused with a
+[retirement guard](prompts/desktop-retired.md) to prevent a second owner.
 
 Upstream owns generic Codex correctness. Read its relevant implementation and
 test bodies, and reuse upstream CI evidence. Default execution covers affected
@@ -22,18 +24,21 @@ Codex. Installation, startup, tags and publication are outside maintenance scope
 
 ## Current state and checkpoint
 
-The native automation directory's `state.json` is the current cursor and pending
-index. Memory, dated receipts and archives remain evidence. Establish one owner
+The accepted internal handoff records the duty state directory and managed
+worktree. Its `state.json` is the current cursor and pending index. Keep it under
+Decodex's application data root, separate from the desktop automation directory.
+Preserve the previous directory as historical evidence. Memory, dated receipts
+and archives remain evidence. Establish one owner
 before writing; the checkpoint command is not a scheduler or distributed lock.
 Use the already-managed Node version from `site/.nvmrc`:
 
 ```sh
 node --experimental-strip-types automations/upstream/checkpoint.mts \
-  --automation-dir "$AUTOMATION_DIRECTORY"
+  --automation-dir "$DUTY_STATE_DIRECTORY"
 node --experimental-strip-types automations/upstream/checkpoint.mts \
-  --automation-dir "$AUTOMATION_DIRECTORY" --input "$RUN_DIRECTORY/checkpoint.json" --dry-run
+  --automation-dir "$DUTY_STATE_DIRECTORY" --input "$RUN_DIRECTORY/checkpoint.json" --dry-run
 node --experimental-strip-types automations/upstream/checkpoint.mts \
-  --automation-dir "$AUTOMATION_DIRECTORY" --input "$RUN_DIRECTORY/checkpoint.json"
+  --automation-dir "$DUTY_STATE_DIRECTORY" --input "$RUN_DIRECTORY/checkpoint.json"
 ```
 
 The read-only form returns a compact summary and state digest. The publisher
@@ -49,7 +54,8 @@ After manual delivery, reconcile later merges and their native receipts with mai
 Replace the current continuation with one accurate next action. Keep deferred
 issues separate from approved implementation and daily source-review backlog.
 Save the fixed target, certified prefix, remaining work and verification limits
-together. Keep the schedule paused until the user explicitly requests resumption.
+together. Resume the internal duty only under explicit user authorization. Keep
+the retired desktop definition paused while Decodex owns the workload.
 
 ## Portable evidence and delivery
 

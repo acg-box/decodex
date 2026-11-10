@@ -3865,7 +3865,9 @@ fn agent_action_work_id(action: &AgentActionDto) -> &EntityId {
 	match action {
 		AgentActionDto::CreateAssistantTopic { topic_id, .. } => topic_id,
 		AgentActionDto::CreateAssistant { agent_id }
-		| AgentActionDto::ManageAssistant { agent_id, .. } => agent_id,
+		| AgentActionDto::ManageAssistant { agent_id, .. }
+		| AgentActionDto::ScheduleWake { agent_id, .. }
+		| AgentActionDto::CancelWake { agent_id, .. } => agent_id,
 		AgentActionDto::ManageWork { agent_id, .. } => agent_id,
 		AgentActionDto::SetReviewDetails { settings_id, .. } => settings_id,
 		AgentActionDto::SetProjectLead { project_id, .. } => project_id,

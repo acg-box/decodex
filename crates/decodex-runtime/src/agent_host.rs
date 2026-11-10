@@ -1871,6 +1871,25 @@ impl AgentHost {
 		active: &mut Option<(String, AgentCoordinator, mpsc::Receiver<ServerEvent>)>,
 	) -> Result<String, AgentHostError> {
 		match action {
+			AgentActionDto::ScheduleWake { agent_id, wake } => {
+				self.store.schedule_agent_wake(agent_id.as_str().into(), key, wake).await.map_err(
+					|_| {
+						AgentHostError::Rejected(
+							"Could not save the duty. Select an existing Agent and a future time.",
+						)
+					},
+				)?;
+				Ok(agent_id.as_str().into())
+			},
+			AgentActionDto::CancelWake { agent_id, wake_id } => {
+				self.store
+					.cancel_agent_wake(agent_id.as_str().into(), key, wake_id.as_str().into())
+					.await
+					.map_err(|_| {
+						AgentHostError::Rejected("Could not cancel the scheduled duty.")
+					})?;
+				Ok(agent_id.as_str().into())
+			},
 			AgentActionDto::ManageAssistant { agent_id, command } => {
 				if let Some((_, coordinator, _)) = active.as_mut() {
 					coordinator.manage_assistant(agent_id.as_str(),&key,command,true).await.map_err(|_|AgentHostError::Rejected("Assistant settings or command could not be saved. Refresh current state and check the selected scopes."))?;
@@ -2036,6 +2055,8 @@ impl AgentHost {
 
 		match action {
 			action @ (AgentActionDto::SetAssistant { .. }
+			| AgentActionDto::ScheduleWake { .. }
+			| AgentActionDto::CancelWake { .. }
 			| AgentActionDto::ManageAssistant { .. }
 			| AgentActionDto::SetProjectLead { .. }
 			| AgentActionDto::SetReviewDetails { .. }

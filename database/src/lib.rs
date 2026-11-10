@@ -30,6 +30,7 @@ mod agent_questions;
 mod agent_reasoning_summary;
 mod agent_request_payload;
 mod agent_response_usage;
+mod agent_schedule;
 mod agent_settings_observations;
 mod agent_slots;
 mod agent_task_references;

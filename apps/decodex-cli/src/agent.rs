@@ -22,6 +22,24 @@ use decodex_protocol::{
 /// Explicit Agent operations. Execution stays inside the service.
 #[derive(Clone, Debug, Eq, PartialEq, Subcommand)]
 pub enum AgentCommand {
+	/// Save one independent duty from an AgentWake JSON file.
+	Schedule {
+		#[arg(long)]
+		agent_id: String,
+		#[arg(long)]
+		wake_file: PathBuf,
+		#[arg(long)]
+		idempotency_key: Option<String>,
+	},
+	/// Cancel one scheduled duty. Already delivered work keeps its authority.
+	CancelSchedule {
+		#[arg(long)]
+		agent_id: String,
+		#[arg(long)]
+		wake_id: String,
+		#[arg(long)]
+		idempotency_key: Option<String>,
+	},
 	/// Initialize the built-in Assistant without sending a message or starting a model turn.
 	AssistantInit {
 		#[arg(long)]
@@ -282,6 +300,21 @@ fn prepare(command: AgentCommand) -> Result<(AgentActionDto, IdempotencyKey), &'
 	let identity =
 		|value: String| EntityId::new(value).map_err(|_| "invalid work or account identity");
 	let (action, key) = match command {
+		AgentCommand::Schedule { agent_id, wake_file, idempotency_key } => {
+			let bytes = fs::read(wake_file).map_err(|_| "Could not read scheduled duty file")?;
+			if bytes.len() > 65_536 {
+				return Err("Scheduled duty exceeds 64 KiB");
+			}
+			let wake = serde_json::from_slice(&bytes).map_err(|_| "Invalid scheduled duty JSON")?;
+			(AgentActionDto::ScheduleWake { agent_id: identity(agent_id)?, wake }, idempotency_key)
+		},
+		AgentCommand::CancelSchedule { agent_id, wake_id, idempotency_key } => (
+			AgentActionDto::CancelWake {
+				agent_id: identity(agent_id)?,
+				wake_id: identity(wake_id)?,
+			},
+			idempotency_key,
+		),
 		AgentCommand::AssistantInit { agent_id, idempotency_key } =>
 			(AgentActionDto::CreateAssistant { agent_id: identity(agent_id)? }, idempotency_key),
 		AgentCommand::AssistantRole { agent_id, remove, idempotency_key } => (

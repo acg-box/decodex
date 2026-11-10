@@ -60,21 +60,8 @@ pub struct TeamMember {
 	pub responsibility: String,
 }
 
-/// One independent user-delegated wake. It uses the host's existing due-check tick.
-#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct AssistantWake {
-	/// Stable identity within this Assistant.
-	pub id: String,
-	/// What to inspect or continue. The Agent decides whether a notification is useful.
-	pub instruction: String,
-	/// Original delivered user decision.
-	pub authority_event_id: i64,
-	/// Next Unix timestamp in microseconds, or None after completion/cancellation.
-	pub due_at_micros: Option<i64>,
-	/// Optional recurring interval in seconds. Missed occurrences coalesce into one wake.
-	pub interval_seconds: Option<u32>,
-}
+/// Assistant duties retain their existing serialized contract.
+pub type AssistantWake = crate::agent_schedule::AgentWake;
 
 /// Mutations use stable command identities in the existing Inbox journal.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]

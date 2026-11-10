@@ -379,6 +379,7 @@ mod tests {
 				name: id.into(),
 				native_thread_id: Some(format!("thread-{id}")),
 				assistant: id == "main",
+				scheduled_wakes: Default::default(),
 			})
 			.into();
 		let mut visible = original.clone();

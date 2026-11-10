@@ -27,7 +27,7 @@ fn decode<T: DeserializeOwned>(s: String) -> Result<T, StoreError> {
 fn current(c: &Connection, owner: &str, kind: &str, id: &str) -> Result<Option<Value>, StoreError> {
 	c.query_row("SELECT payload FROM agent_inbox_events WHERE work_item_id=?1 AND event_kind=?2 AND json_extract(payload,'$.id')=?3 ORDER BY id DESC LIMIT 1",rusqlite::params![owner,kind,id],|r|r.get::<_,String>(0)).optional().map_err(error::sqlite_error)?.map(decode).transpose()
 }
-fn records<T: DeserializeOwned>(
+pub(crate) fn records<T: DeserializeOwned>(
 	c: &Connection,
 	owner: &str,
 	kind: &str,
@@ -41,7 +41,7 @@ fn records<T: DeserializeOwned>(
 		})
 		.collect()
 }
-fn record(
+pub(crate) fn record(
 	tx: &Transaction<'_>,
 	owner: &str,
 	key: &str,
@@ -72,6 +72,7 @@ pub(crate) fn cancel_wakes_on_archive(
 	owner: &str,
 	thread: &str,
 ) -> Result<(), StoreError> {
+	crate::agent_schedule::cancel_on_archive(tx, owner, thread)?;
 	for wake in records::<AssistantWake>(tx, owner, "assistant_internal_wake")? {
 		if let Some(due) = wake.due_at_micros {
 			record(
@@ -320,9 +321,10 @@ impl SqliteStore {
 	}
 
 	/// Claim due occurrences and queue their stable Agent-owned evidence in one transaction.
-	pub async fn enqueue_assistant_wakes(&self, now: i64) -> Result<(), StoreError> {
+	pub async fn enqueue_scheduled_agent_wakes(&self, now: i64) -> Result<(), StoreError> {
 		self.run(move|c| {
 			let tx=c.transaction_with_behavior(TransactionBehavior::Immediate).map_err(error::sqlite_error)?;
+			crate::agent_schedule::enqueue_due(&tx, now)?;
 			let owner=tx.query_row("SELECT id FROM agents WHERE assistant=1",[],|r|r.get::<_,String>(0)).optional().map_err(error::sqlite_error)?;
 			if let Some(owner)=owner {
 				for mut wake in records::<AssistantWake>(&tx,&owner,"assistant_internal_wake")? {
@@ -746,13 +748,138 @@ mod tests {
 		}
 		drop(store);
 		let store = SqliteStore::open_test(&dir.path().join("assistant.sqlite3")).unwrap();
-		store.enqueue_assistant_wakes(now + 10_000_000).await.unwrap();
-		store.enqueue_assistant_wakes(now + 10_000_000).await.unwrap();
+		store.enqueue_scheduled_agent_wakes(now + 10_000_000).await.unwrap();
+		store.enqueue_scheduled_agent_wakes(now + 10_000_000).await.unwrap();
 		let wakes = store.list_agent_wake_events("assistant".into(), 100).await.unwrap();
 		assert_eq!(wakes.iter().filter(|e| e.event_kind == "followup_due").count(), 2);
 		assert_eq!(store.assistant_state().await.unwrap().wakes.len(), 2);
 		store.retire_archived_agent_threads(vec!["old".into()]).await.unwrap();
 		assert!(store.assistant_state().await.unwrap().wakes.is_empty());
+	}
+
+	#[tokio::test]
+	async fn project_wakes_keep_their_owner_cadence_and_receipts_across_restart() {
+		let (dir, store, _) = setup().await;
+		agent(&store, "maintenance").await;
+		let day = 86_400_000_000;
+		let due = crate::unix_micros().unwrap() + 1_000_000;
+		let wake = AssistantWake {
+			id: "upstream".into(),
+			instruction: "Review the fixed upstream target".into(),
+			authority_event_id: 0,
+			due_at_micros: Some(due),
+			interval_seconds: Some(86_400),
+		};
+		store.schedule_agent_wake("maintenance".into(), "save".into(), wake.clone()).await.unwrap();
+		let mut other = wake.clone();
+		other.id = "other".into();
+		store.schedule_agent_wake("maintenance".into(), "other".into(), other).await.unwrap();
+		drop(store);
+		let store = SqliteStore::open_test(&dir.path().join("assistant.sqlite3")).unwrap();
+		let late = due + 3 * day + 17_000_000;
+		store.enqueue_scheduled_agent_wakes(late).await.unwrap();
+		store.enqueue_scheduled_agent_wakes(late).await.unwrap();
+		let events = store.list_agent_wake_events("maintenance".into(), 100).await.unwrap();
+		assert_eq!(events.iter().filter(|e| e.event_kind == "followup_due").count(), 2);
+		assert!(
+			store
+				.list_agent_wake_events("assistant".into(), 100)
+				.await
+				.unwrap()
+				.iter()
+				.all(|e| e.event_kind != "followup_due")
+		);
+		let saved = store
+			.agents()
+			.await
+			.unwrap()
+			.into_iter()
+			.find(|a| a.id == "maintenance")
+			.unwrap()
+			.scheduled_wakes;
+		assert_eq!(saved.len(), 2);
+		assert!(saved.iter().all(|wake| wake.due_at_micros == Some(due + 4 * day)));
+		// A repeated acceptance must not restore an old occurrence after advancement.
+		store.schedule_agent_wake("maintenance".into(), "save".into(), wake.clone()).await.unwrap();
+		assert_eq!(
+			store
+				.agents()
+				.await
+				.unwrap()
+				.into_iter()
+				.find(|a| a.id == "maintenance")
+				.unwrap()
+				.scheduled_wakes,
+			saved
+		);
+		let mut conflicting = wake;
+		conflicting.instruction = "Different instruction".into();
+		assert!(matches!(
+			store.schedule_agent_wake("maintenance".into(), "save".into(), conflicting).await,
+			Err(StoreError::IdempotencyConflict)
+		));
+		store
+			.cancel_agent_wake("maintenance".into(), "cancel".into(), "upstream".into())
+			.await
+			.unwrap();
+		assert_eq!(
+			store
+				.agents()
+				.await
+				.unwrap()
+				.into_iter()
+				.find(|a| a.id == "maintenance")
+				.unwrap()
+				.scheduled_wakes
+				.len(),
+			1
+		);
+		assert_eq!(store.assistant_state().await.unwrap().agent_id.as_deref(), Some("assistant"));
+	}
+
+	#[tokio::test]
+	async fn archiving_project_agent_cancels_its_duties_and_keeps_assistant_duties() {
+		let (_dir, store, event) = setup().await;
+		agent(&store, "maintenance").await;
+		store.begin_agent_thread_creation("maintenance".into()).await.unwrap();
+		store
+			.acknowledge_agent_thread_creation("maintenance".into(), "maintenance-thread".into())
+			.await
+			.unwrap();
+		let due = crate::unix_micros().unwrap() + 60_000_000;
+		let wake = AssistantWake {
+			id: "daily".into(),
+			instruction: "Continue this duty".into(),
+			authority_event_id: event,
+			due_at_micros: Some(due),
+			interval_seconds: Some(86_400),
+		};
+		store
+			.schedule_agent_wake("maintenance".into(), "maintenance".into(), wake.clone())
+			.await
+			.unwrap();
+		store
+			.apply_assistant_command(
+				"assistant".into(),
+				"personal".into(),
+				AssistantCommand::Schedule { wake },
+				false,
+			)
+			.await
+			.unwrap();
+		store.retire_archived_agent_threads(vec!["maintenance-thread".into()]).await.unwrap();
+		assert!(
+			store
+				.agents()
+				.await
+				.unwrap()
+				.into_iter()
+				.find(|a| a.id == "maintenance")
+				.unwrap()
+				.scheduled_wakes
+				.is_empty()
+		);
+		assert_eq!(store.assistant_state().await.unwrap().wakes.len(), 1);
 	}
 
 	#[tokio::test]

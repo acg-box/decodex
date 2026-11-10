@@ -1482,6 +1482,62 @@ async fn dependencies_block_turns_until_explicit_resolution() {
 }
 
 #[tokio::test]
+async fn scheduled_project_duty_uses_native_automation_input_without_personal_assistant() {
+	let (mut coordinator, mut sent, _directory) = fixture().await;
+	coordinator.start_agent("maintenance", "Maintain the selected project").await.unwrap();
+	complete(&mut coordinator, "maintenance").await;
+	while sent.try_recv().is_ok() {}
+	let due = agent::now_micros().unwrap() + 60_000_000;
+	coordinator
+		.store
+		.schedule_agent_wake(
+			"maintenance".into(),
+			"daily".into(),
+			decodex_core::agent_schedule::AgentWake {
+				id: "upstream".into(),
+				instruction: "REVIEW_FIXED_UPSTREAM_TARGET".into(),
+				authority_event_id: 0,
+				due_at_micros: Some(due),
+				interval_seconds: Some(86_400),
+			},
+		)
+		.await
+		.unwrap();
+	coordinator.check_due_followups(due).await.unwrap();
+	let mut submitted = None;
+	let mut evidence = None;
+	while let Ok(message) = sent.try_recv() {
+		if message["method"] == "turn/start" {
+			submitted = Some(message["params"].clone());
+		}
+		if message["method"] == "thread/inject_items" {
+			evidence = Some(message["params"].clone());
+		}
+	}
+	let submitted = submitted.expect("scheduled native turn");
+	assert_eq!(submitted["turnTrigger"], "automation");
+	assert!(submitted["input"].as_array().unwrap().iter().all(|part| part["type"] != "text"));
+	assert!(
+		evidence
+			.expect("application-owned wake evidence")
+			.to_string()
+			.contains("REVIEW_FIXED_UPSTREAM_TARGET")
+	);
+	assert!(coordinator.store.assistant_state().await.unwrap().agent_id.is_none());
+	complete(&mut coordinator, "maintenance").await;
+	coordinator.check_due_followups(due + 1).await.unwrap();
+	assert!(
+		coordinator
+			.store
+			.get_agent_work_item("maintenance".into())
+			.await
+			.unwrap()
+			.active_turn_id
+			.is_none()
+	);
+}
+
+#[tokio::test]
 async fn wait_requires_future_due_and_due_checks_wake_once_per_timestamp() {
 	let (mut coordinator, _sent, _directory) = fixture().await;
 
