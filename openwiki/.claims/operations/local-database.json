@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:4852b0d33cf38651bf6531203ad7c43f2c3e765ef1d333ff8e1083e6f86fc687",
+  "pageVersion": "sha256:c3a8682b763b5565dbba5d0f05bdce1ab7710fa096c064e2506085d04db2a2df",
   "claims": [
     {
       "id": "claim_e8d1527490f540cdafcbe921403c8c3c",
@@ -46,7 +46,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-protocol/src/lib.rs",
-          "version": "repo-file-v1:sha256:1e18181fa19c12267b4178c541e788aa5bea6de951fba6016bed0e6175e063a5"
+          "version": "repo-file-v1:sha256:c17eb950b76524ccc84165e633896692e4d59d8e0b664cc0cf46371484221fb4"
         },
         {
           "resource": "repo://scripts/macos/verify_decodex_bundle_contracts.py",
@@ -98,7 +98,7 @@
       "evidence": [
         {
           "resource": "repo://database/src/works.rs",
-          "version": "repo-file-v1:sha256:97d41568b6a6346d8505db5825634a727a160e0457658c02e50028e78a035c82"
+          "version": "repo-file-v1:sha256:6489f8517699dccff508af5e2688296079a88db5d70c0a783f48a9e1dcb7a562"
         },
         {
           "resource": "repo://database/src/works/commands.rs",
@@ -156,11 +156,15 @@
     },
     {
       "id": "claim_968638910f4c42cbbee88d97feb202cd",
-      "statement": "Current local protocol 4.8 exposes selected read-only views and retained attached branches and rejects any different major or minor version.",
+      "statement": "Current local protocol 4.9 exposes selected read-only views, retained attached branches and independent duty commands; clients reject a different major or minor version.",
       "evidence": [
         {
+          "resource": "repo://crates/decodex-protocol/src/agent.rs",
+          "version": "repo-file-v1:sha256:52c8b930feb04b441016feb874fe608e1e09e1190d463177590efb9aabe85e66"
+        },
+        {
           "resource": "repo://crates/decodex-protocol/src/lib.rs",
-          "version": "repo-file-v1:sha256:1e18181fa19c12267b4178c541e788aa5bea6de951fba6016bed0e6175e063a5"
+          "version": "repo-file-v1:sha256:c17eb950b76524ccc84165e633896692e4d59d8e0b664cc0cf46371484221fb4"
         }
       ]
     },
@@ -184,7 +188,7 @@
         },
         {
           "resource": "repo://database/src/agent.rs",
-          "version": "repo-file-v1:sha256:0e06aded02d8ea112848c47bfea7658f01f4dbce335fc3b72510aee62e6f0129"
+          "version": "repo-file-v1:sha256:5582d5d9538b7ccbf9192c9b0fa0c43440b1fada1684274ffc4738cd57fc0d44"
         },
         {
           "resource": "repo://database/src/agent_titles.rs",
@@ -202,11 +206,11 @@
         },
         {
           "resource": "repo://database/src/agent.rs",
-          "version": "repo-file-v1:sha256:0e06aded02d8ea112848c47bfea7658f01f4dbce335fc3b72510aee62e6f0129"
+          "version": "repo-file-v1:sha256:5582d5d9538b7ccbf9192c9b0fa0c43440b1fada1684274ffc4738cd57fc0d44"
         },
         {
           "resource": "repo://database/src/assistant.rs",
-          "version": "repo-file-v1:sha256:e89c7b4b71ecea701febe79bb627152ec7043004b80a4de1ed021fc215c8c9c0"
+          "version": "repo-file-v1:sha256:d9cc6750aae4c56f6add2a9e562e566841ec9646ee857fde0fb37add313fd861"
         }
       ]
     },
@@ -220,11 +224,11 @@
         },
         {
           "resource": "repo://database/src/agent.rs",
-          "version": "repo-file-v1:sha256:0e06aded02d8ea112848c47bfea7658f01f4dbce335fc3b72510aee62e6f0129"
+          "version": "repo-file-v1:sha256:5582d5d9538b7ccbf9192c9b0fa0c43440b1fada1684274ffc4738cd57fc0d44"
         },
         {
           "resource": "repo://database/src/assistant.rs",
-          "version": "repo-file-v1:sha256:e89c7b4b71ecea701febe79bb627152ec7043004b80a4de1ed021fc215c8c9c0"
+          "version": "repo-file-v1:sha256:d9cc6750aae4c56f6add2a9e562e566841ec9646ee857fde0fb37add313fd861"
         }
       ]
     },
@@ -234,7 +238,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
-          "version": "repo-file-v1:sha256:a500aeabff659dfde69b68b1b68e9e8a1b2397e2da1b482d69d657b23e2553d5"
+          "version": "repo-file-v1:sha256:d1c66447645124cb4d80afd0a7571364b79c5760f25947480159629e2e6457d2"
         },
         {
           "resource": "repo://crates/decodex-components/src/ragflow_service.rs",
@@ -252,7 +256,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/ui_preferences.rs",
-          "version": "repo-file-v1:sha256:540a21db111b48ddc5db30848f8c5885593558d1ffd11d7524545b86e6ea933b"
+          "version": "repo-file-v1:sha256:19c0fc71d8c0b1dacdc78cafd9206c366e548bc693f33e9b0cbeeccd5e4bc073"
         },
         {
           "resource": "repo://crates/decodex-protocol/src/desktop_drafts.rs",
@@ -284,7 +288,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_draft_storage.rs",
-          "version": "repo-file-v1:sha256:4412f8b56de7d88163a0bc68902bdc5915be5348d5a856fb3e965f7febef9c06"
+          "version": "repo-file-v1:sha256:508e28d2c28c0e7e38f83161cbfc6808b4f637b7393898d4ae39ab37b0256c68"
         },
         {
           "resource": "repo://crates/decodex-protocol/src/desktop_drafts.rs",
@@ -292,7 +296,7 @@
         },
         {
           "resource": "repo://database/src/agent/deletion.rs",
-          "version": "repo-file-v1:sha256:93e41675e6b5d5b475e8989eec252918565526ec64d4862d56f156557b521529"
+          "version": "repo-file-v1:sha256:1ea6ac703baf2a8f4cd99ed54f37517a4d1f76f25c58b3bb7e8df204d9e13542"
         }
       ]
     },
@@ -302,17 +306,39 @@
       "evidence": [
         {
           "resource": "repo://database/src/agent/deletion.rs",
-          "version": "repo-file-v1:sha256:93e41675e6b5d5b475e8989eec252918565526ec64d4862d56f156557b521529"
+          "version": "repo-file-v1:sha256:1ea6ac703baf2a8f4cd99ed54f37517a4d1f76f25c58b3bb7e8df204d9e13542"
         },
         {
           "resource": "repo://database/src/assistant.rs",
-          "version": "repo-file-v1:sha256:e89c7b4b71ecea701febe79bb627152ec7043004b80a4de1ed021fc215c8c9c0"
+          "version": "repo-file-v1:sha256:d9cc6750aae4c56f6add2a9e562e566841ec9646ee857fde0fb37add313fd861"
+        }
+      ]
+    },
+    {
+      "id": "claim_fbe35493cd2142c896cf2f7c2ece7665",
+      "statement": "Independent Agent duties use agent_internal_wake records in the existing Inbox and appear on the owning Agent's scheduled_wakes. Due checks atomically enqueue stable followup_due occurrences and advance to the next future interval on the selected cadence, coalescing missed intervals. Save receipts are idempotent across advancement and restart; archive cancels that owner's future duties. The shared AgentWake alias preserves existing Assistant serialization without a schema change.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-core/src/assistant.rs",
+          "version": "repo-file-v1:sha256:6b231cf395c23ff711c5b019526355c0cc84383fbbbb1f1cd6ad069db3dced94"
+        },
+        {
+          "resource": "repo://database/src/agent_schedule.rs",
+          "version": "repo-file-v1:sha256:983bbbd18afbbaf45291e3065cc7d830da3f9255daf11498316a10c4d1e56d66"
+        },
+        {
+          "resource": "repo://database/src/assistant.rs",
+          "version": "repo-file-v1:sha256:d9cc6750aae4c56f6add2a9e562e566841ec9646ee857fde0fb37add313fd861"
+        },
+        {
+          "resource": "repo://database/src/works.rs",
+          "version": "repo-file-v1:sha256:6489f8517699dccff508af5e2688296079a88db5d70c0a783f48a9e1dcb7a562"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.9.0",
-    "at": "2026-11-06T17:37:20.544Z"
+    "at": "2026-11-10T08:10:56.086Z"
   }
 }

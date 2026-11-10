@@ -1,5 +1,6 @@
 //! Domain, application, configuration, and owned local-storage foundations for Decodex vNext.
 
+pub mod agent_schedule;
 pub mod assistant;
 pub mod guardian;
 pub mod work;

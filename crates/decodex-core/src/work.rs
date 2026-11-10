@@ -14,6 +14,9 @@ pub struct Agent {
 	pub native_thread_id: Option<String>,
 	/// Optional personal-assistance responsibility. This grants no other Agent's history.
 	pub assistant: bool,
+	/// Independent continuing duties. These do not select a personal Assistant.
+	#[serde(default)]
+	pub scheduled_wakes: Vec<crate::agent_schedule::AgentWake>,
 }
 
 /// Business state of an outcome, independent of a native turn.

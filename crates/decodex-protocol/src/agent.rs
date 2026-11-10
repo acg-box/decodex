@@ -398,6 +398,20 @@ pub struct AgentTaskReferenceDto {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "action", content = "data", rename_all = "snake_case", deny_unknown_fields)]
 pub enum AgentActionDto {
+	/// Save a recurring or one-time duty for an existing independent Agent.
+	ScheduleWake {
+		/// Existing persistent Agent selected by the user.
+		agent_id: EntityId,
+		/// Explicit continuing duty. This does not change execution permissions.
+		wake: decodex_core::agent_schedule::AgentWake,
+	},
+	/// Cancel one duty without interrupting an already admitted turn.
+	CancelWake {
+		/// Existing persistent Agent.
+		agent_id: EntityId,
+		/// Exact duty identity.
+		wake_id: EntityId,
+	},
 	/// Create an idle personal Assistant. Native execution starts with user input.
 	CreateAssistant {
 		/// Stable identity for this setup attempt and its retries.
@@ -1109,6 +1123,15 @@ impl AgentSnapshotDto {
 		let ids: HashSet<_> = self.work_items.iter().map(|item| item.id.as_str()).collect();
 
 		self.projects.len() <= MAX_AGENT_WORK_ITEMS
+			&& self.agents.iter().all(|agent| {
+				agent.scheduled_wakes.len() <= MAX_AGENT_WORK_ITEMS
+					&& agent.scheduled_wakes.iter().all(|wake| {
+						text(&wake.id, 128)
+							&& text(&wake.instruction, 8_192)
+							&& wake.due_at_micros.is_none_or(|due| due >= 0)
+							&& wake.interval_seconds.is_none_or(|seconds| seconds >= 60)
+					})
+			})
 			&& self.archived_work_ids.iter().all(|id| ids.contains(id.as_str()))
 			&& self.conversation_titles.len() <= MAX_AGENT_WORK_ITEMS
 			&& self.conversation_titles.iter().all(|(thread, title)| {

@@ -227,7 +227,9 @@ impl SqliteStore {
 
 impl SqliteStore {
 	pub async fn agents(&self) -> Result<Vec<decodex_core::work::Agent>, StoreError> {
-		self.run(|c|c.prepare("SELECT a.id,w.title,w.codex_thread_id,a.assistant FROM agents a JOIN agent_work_items w ON w.id=a.id WHERE NOT EXISTS(SELECT 1 FROM agent_inbox_events t WHERE t.work_item_id=a.id AND t.event_kind='assistant_internal_topic') ORDER BY a.id").map_err(crate::error::sqlite_error)?.query_map([],|r|Ok(decodex_core::work::Agent{id:r.get(0)?,name:r.get(1)?,native_thread_id:r.get(2)?,assistant:r.get(3)?})).map_err(crate::error::sqlite_error)?.collect::<Result<_,_>>().map_err(|e|error::sqlite_error(e).into())).await
+		self.run(|c| {let mut agents = c.prepare("SELECT a.id,w.title,w.codex_thread_id,a.assistant FROM agents a JOIN agent_work_items w ON w.id=a.id WHERE NOT EXISTS(SELECT 1 FROM agent_inbox_events t WHERE t.work_item_id=a.id AND t.event_kind='assistant_internal_topic') ORDER BY a.id").map_err(crate::error::sqlite_error)?.query_map([],|r|Ok(decodex_core::work::Agent{id:r.get(0)?,name:r.get(1)?,native_thread_id:r.get(2)?,assistant:r.get(3)?,scheduled_wakes:Vec::new()})).map_err(crate::error::sqlite_error)?.collect::<Result<Vec<_>,_>>().map_err(error::sqlite_error)?;
+for agent in &mut agents { agent.scheduled_wakes = crate::agent_schedule::wakes(c, &agent.id)?; }
+Ok(agents) }).await
 	}
 
 	pub async fn set_assistant(&self, agent: String, enabled: bool) -> Result<(), StoreError> {

@@ -1106,6 +1106,7 @@ impl AgentSurface {
 					name: title.into(),
 					native_thread_id: None,
 					assistant: false,
+					scheduled_wakes: Default::default(),
 				});
 				agents.push(agent_id);
 			}
@@ -1146,6 +1147,7 @@ impl AgentSurface {
 			name: "My Assistant".into(),
 			native_thread_id: None,
 			assistant: true,
+			scheduled_wakes: Default::default(),
 		});
 		let personal =
 			snapshot.work_items.iter_mut().find(|w| w.id == "agent").expect("visual Assistant");
@@ -1501,6 +1503,7 @@ mod tests {
 				name: "My Assistant".into(),
 				native_thread_id: None,
 				assistant: true,
+				scheduled_wakes: Default::default(),
 			});
 			s.workspace.work_detail = None;
 			s.workspace.navigation.collapsed.remove("assistant");

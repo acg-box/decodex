@@ -2455,7 +2455,7 @@ impl AgentCoordinator {
 		if now < 0 {
 			return Err(AgentError::Invalid("invalid due-check time".into()));
 		}
-		self.store.enqueue_assistant_wakes(now).await?;
+		self.store.enqueue_scheduled_agent_wakes(now).await?;
 		// Keep optional external I/O outside the conversation actor and serialize imports.
 		if self.memory_export.as_ref().is_none_or(|job| job.is_finished()) {
 			let store = self.store.clone();

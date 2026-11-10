@@ -1,36 +1,36 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:96330c9ef78058f12d439fddca99593e301f96624f658b09c75bbb17098a9355",
+  "pageVersion": "sha256:64032c00b5c7e1dca3cac6650902961e6252f736c5c7efe532bdffd060f6d8ee",
   "claims": [
     {
       "id": "claim_b6c6b65984924f69970e7f0410d50903",
-      "statement": "The repository portfolio specifies only the upstream Maintainer. Content Manager and Xurl Publisher schedules and prompts are retired; desired configuration does not prove live scheduler registration or execution.",
+      "statement": "The former desktop Maintainer stays paused as a rollback reference with a retirement guard. Content Manager and Xurl Publisher remain retired; repository declarations do not prove live registration or execution.",
       "evidence": [
         {
-          "resource": "repo://automations/decodex/README.md",
-          "version": "repo-file-v1:sha256:9f7c5029ab38ff344eb049a601812a4d571b3bdc0f1a7fcf067719557065e32b"
-        },
-        {
           "resource": "repo://automations/portfolio.toml",
-          "version": "repo-file-v1:sha256:a56486557134cf6e720d5ec4bd3183a7b52e34a97d185f55016cbd7a32a7e462"
+          "version": "repo-file-v1:sha256:70b6eb8d6f8d9a3fe860051bfbe1bf092fbf117da8728ed3380588f14173ff96"
         },
         {
-          "resource": "repo://automations/upstream/prompts/maintainer.md#L1-L3",
-          "version": "repo-lines-v1:sha256:5ee9f284ed180ea5076618b07373423b1617c3d133f68e6495a64e5bdd684166:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOGNlMGVlMTJiZDEyMzEzZmVkMDMzMDllYjEzYWNmODQwOTBlZTI0NTVjMThlNGE2NWRlNjViZjRjMzBiNjdmNiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjIxNjdmODRlNzNiMzVkYWE0NjRhYWE2YmIwNGU2ZmYzNGU4OGU2MDkyMTliNWYyYWJjNTRkMGMyNzkyZmUzOSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjAsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNzU0ZTU4YjM0MDk1Mzg5ODJiMjY5YTc5NjcyZDliOTBmYmU2MTRjZjViZjcxNzkyZDVhYjViOWEzMjY2YzI0ZSJ9"
+          "resource": "repo://automations/upstream/prompts/desktop-retired.md",
+          "version": "repo-file-v1:sha256:fd45df76c481b630251a26cad6e5226a675a11e5a56abd9a8011b4cbc4699ac8"
         }
       ]
     },
     {
       "id": "claim_d1a992e40d1147c3928b5de580178ed5",
-      "statement": "The portfolio enables the upstream Maintainer with its existing daily UTC 20:05 cadence, model, reasoning effort and worktree execution. Manual catch-up requires a pause; explicit user authorization and the supported native tools control resumption.",
+      "statement": "The independent Decodex maintenance duty declares gpt-6.1-sol, max reasoning effort, a dedicated managed worktree and daily UTC 20:05 cadence. Manual catch-up holds the current owner, explicit user authorization controls resumption, and the former desktop task stays paused during internal ownership.",
       "evidence": [
         {
           "resource": "repo://automations/portfolio.toml",
-          "version": "repo-file-v1:sha256:a56486557134cf6e720d5ec4bd3183a7b52e34a97d185f55016cbd7a32a7e462"
+          "version": "repo-file-v1:sha256:70b6eb8d6f8d9a3fe860051bfbe1bf092fbf117da8728ed3380588f14173ff96"
+        },
+        {
+          "resource": "repo://automations/upstream/duty.json",
+          "version": "repo-file-v1:sha256:6b1f1cd7288ab2b84265565690589383ea00c39229b5a56e7b2510e23fed8fd7"
         },
         {
           "resource": "repo://automations/upstream/prompts/maintainer.md",
-          "version": "repo-file-v1:sha256:01bebe4274c10a0d25c17ca9181cb005c26d18abaccde7e780505064f5189b3f"
+          "version": "repo-file-v1:sha256:bfaf047744eae94e157aff6d8adf148acf9aa162fffaa61bcf6324249ff84501"
         }
       ]
     },
@@ -40,7 +40,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/prompts/maintainer.md#L1-L9",
-          "version": "repo-lines-v1:sha256:6d375480ac0af053310e00ad61e89b0a69d55e388980f22e5d7d2eb18ef30244:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOGNlMGVlMTJiZDEyMzEzZmVkMDMzMDllYjEzYWNmODQwOTBlZTI0NTVjMThlNGE2NWRlNjViZjRjMzBiNjdmNiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYmY2NzAwYjFkOGEzYzEyMGU5YWUzNDU1ODRmYzhmNmZlZWIyZTBjYzJlYzU0MjYyOGUzODRhZDEwMzg0YzgyMyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjAsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYWFkNDA2ZDYyNTFiNmE2ZGQyZWU1YjliYmFkOWMwYTA3MWE0ZmQ5NDliY2U1ZTI4NGJjODc1ZmMwMDZiY2Y4YSJ9"
+          "version": "repo-lines-v1:sha256:b236f032931c925c700e42b2644833d31249a3354a88723b233e8e8bcd46a3f3:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOGNlMGVlMTJiZDEyMzEzZmVkMDMzMDllYjEzYWNmODQwOTBlZTI0NTVjMThlNGE2NWRlNjViZjRjMzBiNjdmNiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYmY2NzAwYjFkOGEzYzEyMGU5YWUzNDU1ODRmYzhmNmZlZWIyZTBjYzJlYzU0MjYyOGUzODRhZDEwMzg0YzgyMyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjAsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYWFkNDA2ZDYyNTFiNmE2ZGQyZWU1YjliYmFkOWMwYTA3MWE0ZmQ5NDliY2U1ZTI4NGJjODc1ZmMwMDZiY2Y4YSJ9"
         }
       ]
     },
@@ -66,11 +66,11 @@
     },
     {
       "id": "claim_154006fe1db74652a6cd21137caa55a5",
-      "statement": "Manual catch-up keeps the automation paused; completion or a configuration change does not authorize resumption without an explicit user instruction.",
+      "statement": "Manual catch-up keeps the current maintenance owner paused; completion or a definition update does not authorize resumption without an explicit user instruction.",
       "evidence": [
         {
-          "resource": "repo://automations/upstream/prompts/maintainer.md#L19-L23",
-          "version": "repo-lines-v1:sha256:322e0c30d86b1fa9480fbadcce9ac350640655401d60cedfdf804e44f3cc898f:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOTk1ZmU5M2M3MDljZGI2YTY2MjBhZjQ5ODc4NmI5MDAyNDYwNWJlNzVjODU4ZTdlZWNhN2YxZDljZDhiZWZmZCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMTY3NWUzNzYzZDQwMzgzMGI0NjcxNTgzMGQ5NTI0MTQyNDcwYzcxOGViYzY3YzUzMDk5Zjk2NmQ3M2Y2MjMwOCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYWNkMTIzY2U5MjJjNzAzMDE3N2Q1MTdmZTk3MjViMmEzZTQ5OGFlNGZmNjNlOGExY2M4NjQ5MzZlNGMwN2Y4MyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZGE2YTlhYjlkOGExMmM3Mzg5ODdmZjI1ZTEwMDc2ZjJiODgzYzZmODNlMjg4MWE3NTE1N2JkMDI3ODMzMzc3NCJ9"
+          "resource": "repo://automations/upstream/prompts/maintainer.md",
+          "version": "repo-file-v1:sha256:bfaf047744eae94e157aff6d8adf148acf9aa162fffaa61bcf6324249ff84501"
         }
       ]
     },
@@ -104,7 +104,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/agent.rs",
-          "version": "repo-file-v1:sha256:0db1daf807cd75cf915bf9be58389ac6ab98adcbd3bb2f89910ac32f38ff14e3"
+          "version": "repo-file-v1:sha256:6a5b70e045ebd58d7b087b584e61cdf178ef67f69f3eb91f3074c83f20d3d277"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/tests/external_context.rs",
@@ -114,11 +114,11 @@
     },
     {
       "id": "claim_0fe48341c2be4d38acb35dead51cc8a8",
-      "statement": "The maintainer requires affected native behavior qualification separately from schema and installed acceptance; new optional product capabilities require a user decision, and a completed manual catch-up does not resume the automation.",
+      "statement": "The maintainer requires affected native behavior qualification separately from schema and installed acceptance; new optional product capabilities require a user decision, and completing manual catch-up does not activate the internal duty.",
       "evidence": [
         {
-          "resource": "repo://automations/upstream/prompts/maintainer.md#L21-L51",
-          "version": "repo-lines-v1:sha256:85a7197d3ba890ec562aefc4d6fefd6c60dc894098f81ba9dfe6626dd024d039:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE3NjMwNzM1ZDBlNTFkMGM3YjcxMzE2MDViM2YyYzkxOGRkMjVkYmExN2ZiNWY5ZDc0MmMxZWEyNmFiZmU3NjYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJiY2QxMzViNmYyZmRlZmY2OTU0ZGI1MDBhMTQwMzE2ZDcwM2M0NjJjMTU5YTM5MzRlYjYyYTY5NjhlYjhmYWMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZkNmEyMWIyM2ExNjZhNmFlNzg2ZmEwNjY3YTMwOWM4YmVmMmE1YTE2M2Y5NWIwNTcwZDhiNDJlOGQ4MjIyMmUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE1NDI2ODdjNjk2MWExZmI1NWJlNzcyYmIxZWI2ZmNjNDViOGFiZmRiMGY2MDg2Mzc2OTY3OWE3ZjNiNGQ4OWQifQ"
+          "resource": "repo://automations/upstream/prompts/maintainer.md",
+          "version": "repo-file-v1:sha256:bfaf047744eae94e157aff6d8adf148acf9aa162fffaa61bcf6324249ff84501"
         }
       ]
     },
@@ -146,7 +146,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_context_settings.rs",
-          "version": "repo-file-v1:sha256:c857f947f5d4a7be8367ad08e5ba7839057b27d58ac3c9c1d85de571d8d8d5ab"
+          "version": "repo-file-v1:sha256:9bcac9515779c29a6bce7e255fe21bd9af66b85578dd6be98d0b3eedab123cdf"
         },
         {
           "resource": "repo://crates/decodex-codex/src/app_server_client/context_preferences.rs#L52-L118",
@@ -159,7 +159,7 @@
       "statement": "The compact evidence router links current qualification and a digest-bound stable catalog of retained contracts and original limits; native state owns the live cursor and detailed receipts, while raw logs, builds and private runtime data stay outside the repository.",
       "evidence": [
         {
-          "resource": "repo://automations/upstream/README.md#L54-L69",
+          "resource": "repo://automations/upstream/README.md#L60-L75",
           "version": "repo-lines-v1:sha256:d3a762ea3fa395e01d0024e6adcb575ab10587a29978a7282f5aa40a817d9cfd:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUxM2U5ODE0M2JiNjI2ZWJmZDFiOGVjZTI3ZDVlNmE5Yzg2YzIxMGQ5ZGFjNTE0YjFjY2YyMTQ0YzUwZGEyNzciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYzZTIxOTRlM2Y2NjU0MGU5YzE2YjhkMDA2MmYyZGUzNTFkNTNhOTA3MmQ3MzIxYjI2ZTMwMzgzNjU1NDU5YmEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgwOTNkZjFmNmNiZmVhNDEwM2JkYjAyMGNhMDg2MWFkNjg5NjliMjdlMDViYWY5ZmJkN2RkYmYwNWY2MjBlNGMifQ"
         }
       ]
@@ -170,7 +170,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/prompts/maintainer.md#L55-L61",
-          "version": "repo-lines-v1:sha256:a571ba1eabc65310dac51722833cad58d43390c1b77432cb2433e8b91d6500a8:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNDNlMmU1NTMxOWVlYjdhZWVkOTA3ZjUyMGY1MmUyM2RhMTVhY2I2MGMzNGQ2M2ExY2U3YzYxZWQ4ZDFhNDE5MCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNzM3N2ZhODc0NDIxMzRiYjY0NTNkODc4NzhiNzk4OTdjNWJjYTFjOTg1MjUzNTE1MDA5YmUzMDEyZjFhYWM1NSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYTU0MjY4N2M2OTYxYTFmYjU1YmU3NzJiYjFlYjZmY2M0NWI4YWJmZGIwZjYwODYzNzY5Njc5YTdmM2I0ZDg5ZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNGQ1OGNiMzk4MTI1MzIzNjQzZWRlMGUyOTc5M2ZkYTRkNDE1MTQxZWYyM2Q1NDFkZjE2NDRiNmQ5Mzk2ZWU2OCJ9"
+          "version": "repo-lines-v1:sha256:00fc9f73105b095b4c2dfaf2fb13f4459e5fcea629b208f345997c96e1728f5a:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNDNlMmU1NTMxOWVlYjdhZWVkOTA3ZjUyMGY1MmUyM2RhMTVhY2I2MGMzNGQ2M2ExY2U3YzYxZWQ4ZDFhNDE5MCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNzM3N2ZhODc0NDIxMzRiYjY0NTNkODc4NzhiNzk4OTdjNWJjYTFjOTg1MjUzNTE1MDA5YmUzMDEyZjFhYWM1NSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYTU0MjY4N2M2OTYxYTFmYjU1YmU3NzJiYjFlYjZmY2M0NWI4YWJmZGIwZjYwODYzNzY5Njc5YTdmM2I0ZDg5ZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNGQ1OGNiMzk4MTI1MzIzNjQzZWRlMGUyOTc5M2ZkYTRkNDE1MTQxZWYyM2Q1NDFkZjE2NDRiNmQ5Mzk2ZWU2OCJ9"
         }
       ]
     },
@@ -179,12 +179,12 @@
       "statement": "Current portable source-review and qualification records retain per-commit behavior and consumer evidence, exact artifact/helper identities, reusable fixture hashes, executed tests and explicit limits; Git retains replaced versions without moving the native review cursor.",
       "evidence": [
         {
-          "resource": "repo://automations/upstream/README.md#L54-L69",
+          "resource": "repo://automations/upstream/README.md#L60-L75",
           "version": "repo-lines-v1:sha256:d3a762ea3fa395e01d0024e6adcb575ab10587a29978a7282f5aa40a817d9cfd:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUxM2U5ODE0M2JiNjI2ZWJmZDFiOGVjZTI3ZDVlNmE5Yzg2YzIxMGQ5ZGFjNTE0YjFjY2YyMTQ0YzUwZGEyNzciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYzZTIxOTRlM2Y2NjU0MGU5YzE2YjhkMDA2MmYyZGUzNTFkNTNhOTA3MmQ3MzIxYjI2ZTMwMzgzNjU1NDU5YmEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgwOTNkZjFmNmNiZmVhNDEwM2JkYjAyMGNhMDg2MWFkNjg5NjliMjdlMDViYWY5ZmJkN2RkYmYwNWY2MjBlNGMifQ"
         },
         {
           "resource": "repo://automations/upstream/prompts/maintainer.md#L55-L57",
-          "version": "repo-lines-v1:sha256:8cce290be8546089884b3253b957ad48d5aa19a191b6d2d6cb0d5d359b2dc34d:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNDNlMmU1NTMxOWVlYjdhZWVkOTA3ZjUyMGY1MmUyM2RhMTVhY2I2MGMzNGQ2M2ExY2U3YzYxZWQ4ZDFhNDE5MCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZWY4NmJhOWYzY2MyZTE0MDNkNmQ4MTFlM2JlNjhmMWE2N2UwZjlhODdjNDM1OTk5NDdmZWRlZmJmODI0ZjBiYSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYTU0MjY4N2M2OTYxYTFmYjU1YmU3NzJiYjFlYjZmY2M0NWI4YWJmZGIwZjYwODYzNzY5Njc5YTdmM2I0ZDg5ZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMzY5Nzc5ODVlN2VjZWUzZTgwMmI1MTJiOTc3ZmFiODBhNmZmMTMxYTA1YjgzYjRhMzdlYWU5OGMxNWRlZDQ1OCJ9"
+          "version": "repo-lines-v1:sha256:fc65069f55c952d0e6e249ecd27fbad4f3e214f3a0b91a1ac877fb9f05815ee2:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNDNlMmU1NTMxOWVlYjdhZWVkOTA3ZjUyMGY1MmUyM2RhMTVhY2I2MGMzNGQ2M2ExY2U3YzYxZWQ4ZDFhNDE5MCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYzc3MTczZTYyMjJjNjhlYTk4YTdlYjg5NTcwYjNjN2IxNDk1YzEwMmI4NzQ2ZDNkZGY2NTI3NDRmYTE0NzJkNiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYTU0MjY4N2M2OTYxYTFmYjU1YmU3NzJiYjFlYjZmY2M0NWI4YWJmZGIwZjYwODYzNzY5Njc5YTdmM2I0ZDg5ZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMzY5Nzc5ODVlN2VjZWUzZTgwMmI1MTJiOTc3ZmFiODBhNmZmMTMxYTA1YjgzYjRhMzdlYWU5OGMxNWRlZDQ1OCJ9"
         }
       ]
     },
@@ -204,7 +204,7 @@
       "evidence": [
         {
           "resource": "repo://automations/portfolio.toml",
-          "version": "repo-file-v1:sha256:a56486557134cf6e720d5ec4bd3183a7b52e34a97d185f55016cbd7a32a7e462"
+          "version": "repo-file-v1:sha256:70b6eb8d6f8d9a3fe860051bfbe1bf092fbf117da8728ed3380588f14173ff96"
         },
         {
           "resource": "repo://automations/upstream/retained-contracts.json",
@@ -249,8 +249,8 @@
           "version": "repo-lines-v1:sha256:78c97bce9320e7bb34ed8c3c2e5c052e1332d3840e540d6f905393a5be8056a8:eyJzZWxlY3RlZExpbmVDb3VudCI6MjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAwMTg4Mzk3ZDRlOTcxNGZmZDBjMzVkMDZjYWZiY2VkMmRlMjA2MjBlYWEyNDBkODBjNjEwNzBhMTY0Zjg2M2EiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNiZjQ1NDc1NzFiMzdhM2M0OTY2MjEzMGRjNTMzMjAyM2NlZGEyNzFiMDM0MzE1ZDBlMTUyYTgwNzkyNzZmNDEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNhYjdkNGU3ZGU3MmZlZmE4MDA2MmJlMGUwNWIwNDI5Y2I4MDE2ZDRlYjk0ZjA4Nzc1OWUwNmY3OTNjYjQ5NjAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU2OGY5MzA4YzVlMWZmNDNhNGRmOGViYjRlODA3YzFhNTEzMmVlNGExNjY0Yjg0ZmRhOWJiMTM3ODY4N2FiNzgifQ"
         },
         {
-          "resource": "repo://automations/upstream/prompts/maintainer.md#L23-L31",
-          "version": "repo-lines-v1:sha256:366cc8baf12f9829d2c3eadb5194832e503666e2a411650d42d7a7932ffbf0fc:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMTY3NWUzNzYzZDQwMzgzMGI0NjcxNTgzMGQ5NTI0MTQyNDcwYzcxOGViYzY3YzUzMDk5Zjk2NmQ3M2Y2MjMwOCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZGRkYTNhMWM0NmNkNGYxNDYyMzUwMGUzZjBjYzk2ZGUxNGM3NTI5MDI0MDM3OWFlZTVmMjZhMDIzODRhNmM2YyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiM2NiYTQxMTkyZjEwYTM1ODdkMTNlZmJkZWUzNDdiMjkyMDE1OTRmYTlhN2Y5YThhMjMyODIzYzk4ZmI5OWEyZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOGY4Y2ViNzI5MmIwMDczMDY3YTQxNDVkYTIwMTc3MjY4NDIzNGVjNjkxZWY5M2JiNjRlOWI4YzI1NzRlNWMxMSJ9"
+          "resource": "repo://automations/upstream/prompts/maintainer.md#L23-L33",
+          "version": "repo-lines-v1:sha256:8084dd170aec00f6020a1de9fe59e2b3460b7a6bda573e9edbc68644da385e55:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBkMTQ5MjdhZDZkMzYwMzc0NzZkNDMwZmY0YTA3ZTU1Yzk3NDYxNWEwOWM1OGEyNzliNTExY2IwMTY5NGY0OTciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMDk4NmRiMDdlMjU2MzU2OWMwYTg1MTZkNDk3ZmEwMGU3OGIwMDcxNTY2NjBiYWJlZWNhZjZkOTA4NDUyNjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjNjYmE0MTE5MmYxMGEzNTg3ZDEzZWZiZGVlMzQ3YjI5MjAxNTk0ZmE5YTdmOWE4YTIzMjgyM2M5OGZiOTlhMmYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhmOGNlYjcyOTJiMDA3MzA2N2E0MTQ1ZGEyMDE3NzI2ODQyMzRlYzY5MWVmOTNiYjY0ZTliOGMyNTc0ZTVjMTEifQ"
         }
       ]
     },
@@ -260,7 +260,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/prompts/maintainer.md",
-          "version": "repo-file-v1:sha256:01bebe4274c10a0d25c17ca9181cb005c26d18abaccde7e780505064f5189b3f"
+          "version": "repo-file-v1:sha256:bfaf047744eae94e157aff6d8adf148acf9aa162fffaa61bcf6324249ff84501"
         }
       ]
     },
@@ -270,7 +270,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/README.md",
-          "version": "repo-file-v1:sha256:d5ec8ffce5d7e254c0d6d4ad26dd453159a7f55214bbd6356a6f244e6cc72941"
+          "version": "repo-file-v1:sha256:34fa1f49fa7e3e0d336f311314d157aa3a694900d53bfbc328866eef71a9a156"
         },
         {
           "resource": "repo://automations/upstream/prompts/maintainer.md#L33-L33",
@@ -284,11 +284,11 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/README.md",
-          "version": "repo-file-v1:sha256:d5ec8ffce5d7e254c0d6d4ad26dd453159a7f55214bbd6356a6f244e6cc72941"
+          "version": "repo-file-v1:sha256:34fa1f49fa7e3e0d336f311314d157aa3a694900d53bfbc328866eef71a9a156"
         },
         {
           "resource": "repo://automations/upstream/prompts/maintainer.md",
-          "version": "repo-file-v1:sha256:01bebe4274c10a0d25c17ca9181cb005c26d18abaccde7e780505064f5189b3f"
+          "version": "repo-file-v1:sha256:bfaf047744eae94e157aff6d8adf148acf9aa162fffaa61bcf6324249ff84501"
         }
       ]
     },
@@ -322,7 +322,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:12b5136278343e3957944e3a42961ab6b2785e5fdc70d61e75d9af4831828797"
+          "version": "repo-file-v1:sha256:3d65520110d62c50e6460c911df0eb31e0ff48e3aa13fd1425b5b28887f2d92b"
         },
         {
           "resource": "repo://scripts/macos/build_codex_source.mts",
@@ -369,10 +369,42 @@
           "version": "repo-lines-v1:sha256:8cee9678be86f7de9fa3f4165f721c687cad0a9ee21b7709fd6507c7c805cb7b:eyJzZWxlY3RlZExpbmVDb3VudCI6MTU3LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIxYjI5YjhlY2E4MGYzOTJmMmZmMWU5YTA2MmZkYmJhNjdkNDI0NzgzMDNiYTQ1MWY3YmNhMDM4ZTMxNDFlOTE1IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJhMmM3OWUzMjJjZWRjNjdhZDY1MjRjMWRiMzQ2MzhlOTg4ZTA5YzRiZWJkYzJlNzRjZTkyNjQwYWU0MDZlMDU3IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MCwicHJlY2VkaW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
         }
       ]
+    },
+    {
+      "id": "claim_9fd98f6affe9451e824a2774be396d4a",
+      "statement": "The accepted internal handoff records one current checkpoint directory under Decodex application data, its managed worktree and independent Agent identity, plus the former desktop directory as historical evidence. The sole checkpoint publisher remains the writer; registration alone does not establish scheduled execution.",
+      "evidence": [
+        {
+          "resource": "repo://automations/upstream/README.md",
+          "version": "repo-file-v1:sha256:34fa1f49fa7e3e0d336f311314d157aa3a694900d53bfbc328866eef71a9a156"
+        },
+        {
+          "resource": "repo://automations/upstream/prompts/maintainer.md",
+          "version": "repo-file-v1:sha256:bfaf047744eae94e157aff6d8adf148acf9aa162fffaa61bcf6324249ff84501"
+        }
+      ]
+    },
+    {
+      "id": "claim_675cc359b49541faa9792adfe93c58b5",
+      "statement": "Agent schedule and cancel-schedule use typed AgentWake input. The existing journal and service tick atomically enqueue and advance, preserve UTC cadence, coalesce missed intervals, retain idempotent save receipts across restart and cancel future duties on archive. Actual native automation delivery and completion require separate acceptance.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-cli/src/agent.rs",
+          "version": "repo-file-v1:sha256:c0592c8c5cfbee636e5be4eaa85fc4d445940e42895a45643126625a03579e38"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/tests.rs",
+          "version": "repo-file-v1:sha256:ad8b9268021ce0cccf6de24a152a9c013f6139942855b522ef91dd7634805cd8"
+        },
+        {
+          "resource": "repo://database/src/agent_schedule.rs",
+          "version": "repo-file-v1:sha256:983bbbd18afbbaf45291e3065cc7d830da3f9255daf11498316a10c4d1e56d66"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.9.0",
-    "at": "2026-11-06T20:42:09.050Z"
+    "at": "2026-11-10T08:10:56.086Z"
   }
 }

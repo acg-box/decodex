@@ -14,6 +14,10 @@ sources:
     resource: repo://crates/decodex-components/src/ragflow_service.rs
   - id: openwiki-source-9ecfe8c96199e765ca2b4e1b
     resource: repo://crates/decodex-components/src/ragflow.rs
+  - id: openwiki-source-62c1273bf1b2ac5041d1e920
+    resource: repo://crates/decodex-core/src/assistant.rs
+  - id: openwiki-source-eccf08613126ff810078b520
+    resource: repo://crates/decodex-protocol/src/agent.rs
   - id: openwiki-source-caeefdea0805519b59a469aa
     resource: repo://crates/decodex-protocol/src/desktop_drafts.rs
   - id: openwiki-source-cc0439b23243c3697ba49199
@@ -36,6 +40,8 @@ sources:
     resource: repo://database/src/agent_process/attachments.rs
   - id: openwiki-source-d31590aa1b62ee057094fb38
     resource: repo://database/src/agent_process/tests/attachments.rs
+  - id: openwiki-source-605dc8d044212b397f13e8d7
+    resource: repo://database/src/agent_schedule.rs
   - id: openwiki-source-82bb214209944301d2efacfb
     resource: repo://database/src/agent_titles.rs
   - id: openwiki-source-6197a876b2effbe992b1e2ec
@@ -56,10 +62,10 @@ sources:
     resource: repo://database/src/works/commands.rs
   - id: openwiki-source-960cb6b925f1fa45c737a735
     resource: repo://scripts/macos/verify_decodex_bundle_contracts.py
-generated: { by: "codex", at: "2026-11-06T17:37:20.544Z" }
+generated: { by: "codex", at: "2026-11-10T08:10:56.086Z" }
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-06T17:37:20.544Z
+    at: 2026-11-10T08:10:56.086Z
 ---
 
 # Local database operations
@@ -84,7 +90,7 @@ Ordinary input resumes its original native context and recorded tool declaration
 
 Global Guardian stores the Review Details opt-in and private review records. Conversation permission settings have a separate owner. Private records are deduplicated by reviewer thread, turn and item. Records are bounded to 64 KiB and the newest 128; small snapshot previews and exact selected reads stay separate. These records do not grant execution authority or complete Work.
 
-Local clients and service must agree on exact protocol 4.8. Publication-instance and command receipts preserve reconnect and idempotent recovery. Exact native bundle ABI checks remain a separate verification boundary. See [commands](commands-and-validation.md) and [the canonical contract](../decisions/project-agent-work.md).
+Local clients and service must agree on exact protocol 4.9. Publication-instance and command receipts preserve reconnect and idempotent recovery. Exact native bundle ABI checks remain a separate verification boundary. See [commands](commands-and-validation.md) and [the canonical contract](../decisions/project-agent-work.md).
 
 ## Authority and paths
 
@@ -148,6 +154,26 @@ Assistant configuration, team membership, independent wakes, context intent/ackn
 A context transition changes the existing Agent binding and appends the existing `agent_thread_revisions` relationship in one immediate transaction. It preserves queued input, Work and independent duties. Exact native creation and import receipts remain authoritative after a missing reply; semantic Memory is not the delivery ledger. Explicit native Agent archive cancels future duties, while retirement of an old Assistant context does not call archive cleanup.
 
 The current schema is 61. No migration chain, duplicate history store or RAGFlow database tables are added. See [Assistant lifecycle](../decisions/assistant-lifecycle.md).
+
+## Independent Agent duty records
+
+Independent project duties use `agent_internal_wake` entries in the existing
+Inbox journal. They do not change the personal Assistant role. Each saved duty
+belongs to one persistent Agent and appears on that Agent's `scheduled_wakes`.
+The serialized `AssistantWake` contract reuses the shared `AgentWake` type; existing
+personal duties retain their namespace and behavior.
+
+A due check queues the stable `followup_due` occurrence and advances its definition
+in one transaction. Recurrence advances from the selected due time to the next
+future interval, so a late service tick retains UTC cadence and coalesces missed
+intervals. An exact repeated save key keeps the existing receipt and cannot
+restore an earlier occurrence. Different content with that key conflicts.
+
+A service restart reads the same definitions and occurrence receipts. Cancellation
+removes one future duty without interrupting admitted execution. Native Agent
+archive cancels that owner's duties. These records add no table or schema version.
+Database fixtures check owner isolation, restart, delayed cadence, idempotent
+receipts and archive cancellation. See [Agent duties](commands-and-validation.md#independent-agent-duties).
 
 ## Delete one conversation
 

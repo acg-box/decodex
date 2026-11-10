@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:9d7bbfd8fc0251b881987a01f8f9da8b1344ee14a53ac2c8684e7cf83afed6d4",
+  "pageVersion": "sha256:82c6f2a687ddc841fded906d511c5ed82a67499ddeeaee7baf72aa6c4fc88e7f",
   "claims": [
     {
       "id": "claim_8d60aaceeea74d6189e3d7b0b3ed21fe",
@@ -126,7 +126,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/agent.rs",
-          "version": "repo-file-v1:sha256:723981fe7564aa4725c719a427a9f60fe6f58e805c83c79d374d6759d979fc7a"
+          "version": "repo-file-v1:sha256:6a5b70e045ebd58d7b087b584e61cdf178ef67f69f3eb91f3074c83f20d3d277"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/tests/external_context.rs",
@@ -140,7 +140,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_context_settings.rs",
-          "version": "repo-file-v1:sha256:d66056d801e843822d9444c9c3432dc2526c524f3dced6befd3d32941c6a538b"
+          "version": "repo-file-v1:sha256:9bcac9515779c29a6bce7e255fe21bd9af66b85578dd6be98d0b3eedab123cdf"
         },
         {
           "resource": "repo://crates/decodex-codex/src/app_server_client/context_preferences.rs",
@@ -182,11 +182,11 @@
     },
     {
       "id": "claim_52eb8e8acaa34810819bb23c97df6feb",
-      "statement": "Current product scope includes separate Project, Agent and Work records, scoped peer Collaboration and native helper execution in the current schema and protocol 4.8.",
+      "statement": "Current product scope includes separate Project, Agent and Work records, scoped peer Collaboration and native helper execution in the current schema and protocol 4.9.",
       "evidence": [
         {
           "resource": "repo://crates/decodex-protocol/src/lib.rs",
-          "version": "repo-file-v1:sha256:1e18181fa19c12267b4178c541e788aa5bea6de951fba6016bed0e6175e063a5"
+          "version": "repo-file-v1:sha256:c17eb950b76524ccc84165e633896692e4d59d8e0b664cc0cf46371484221fb4"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/work.rs",
@@ -254,27 +254,15 @@
     },
     {
       "id": "claim_242dce1d84bd41829bf2704462e76665",
-      "statement": "The product exposes read-only native memory summary, exact collaboration reply and contribution history, and retained native usage in existing desktop surfaces through protocol 4.8. Native execution and explicit Work assessment retain their owners; missing and shared attribution remain explicit.",
+      "statement": "The product exposes read-only native memory summary, exact collaboration reply and contribution history, and retained native usage in existing desktop surfaces through protocol 4.9. Native execution and explicit Work assessment retain their owners; missing and shared attribution remain explicit.",
       "evidence": [
-        {
-          "resource": "repo://apps/decodex-gpui/src/agent_collaboration_cases.rs",
-          "version": "repo-file-v1:sha256:68976ecb354999ba0ab59317cd01f47ee9ca89ea3cbc2ec66c7c9c6a0cb85595"
-        },
-        {
-          "resource": "repo://apps/decodex-gpui/src/agent_memory.rs",
-          "version": "repo-file-v1:sha256:79d087a6d13c3659d6fb84ec08a86ecf0f47127d1d262bd36a7dfcddf4affb9a"
-        },
-        {
-          "resource": "repo://apps/decodex-gpui/src/agent_usage_evidence.rs",
-          "version": "repo-file-v1:sha256:905be7d95f94f3fb6b9b1c15e0bc7f32600ad58e912af3973c5d14a1a2240215"
-        },
         {
           "resource": "repo://automations/upstream/retained-contracts.json",
           "version": "repo-file-v1:sha256:dfbcb5f07ff9ce54daccf7f270553c99481f7dcf6fe4129485b9f8b52caf7c9d"
         },
         {
           "resource": "repo://crates/decodex-protocol/src/lib.rs",
-          "version": "repo-file-v1:sha256:1e18181fa19c12267b4178c541e788aa5bea6de951fba6016bed0e6175e063a5"
+          "version": "repo-file-v1:sha256:c17eb950b76524ccc84165e633896692e4d59d8e0b664cc0cf46371484221fb4"
         }
       ]
     },
@@ -284,7 +272,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_attached_branches.rs",
-          "version": "repo-file-v1:sha256:fd9c7dc64620953c2b968994a79ac8159ece13ae50cd0f9ab1f99fdbdfd9288c"
+          "version": "repo-file-v1:sha256:0a7ed039c816d1b4ad9bade780bc41ddcafd54b1c6902af7cf279f83a993f53e"
         },
         {
           "resource": "repo://automations/upstream/retained-contracts.json",
@@ -306,7 +294,7 @@
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_fork_tests.rs",
-          "version": "repo-file-v1:sha256:9310cfa7d6be816dc759c347872655499ed0943b2a5bf977a1ff3d6941d43c0a"
+          "version": "repo-file-v1:sha256:896ee1dc29e494ea12c99ebccd8efba6b572c2689dbea036395e1f90c9f8fbd4"
         },
         {
           "resource": "repo://database/src/agent_fork.rs#L45-L68",
@@ -366,25 +354,21 @@
         },
         {
           "resource": "repo://crates/decodex-components/src/plugins.rs",
-          "version": "repo-file-v1:sha256:e93dfce3fa78548c4e6c7569b98478092562292b7a0b69b53c7440daef660916"
+          "version": "repo-file-v1:sha256:2962dbd555111f638d656a0f0c6b57e2680d94ad8213114f95fffbe8af1f9c91"
         }
       ]
     },
     {
       "id": "claim_c3dfe225c5fe4237868d3ca93830c019",
-      "statement": "When Next-message suggestions is enabled in Settings > Agents > Assistance, newly completed visible answers request one native suggestion for an empty root composer. Disabling consumes completion boundaries without requests; re-enabling does not replay them. Tab still accepts only a current suggestion in the focused empty message field as an undoable unsent draft, preserving ordinary navigation elsewhere.",
+      "statement": "Optional native next-message suggestions apply to eligible completed visible answers and an empty root composer. The latest eligible answer can be reconsidered after reopening or enabling suggestions. Tab accepts a current suggestion as an undoable unsent draft and preserves ordinary navigation elsewhere.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_prompt_suggestions.rs",
-          "version": "repo-file-v1:sha256:09c3742917387465e58596e912fa8ce406259518806cad8149e0df13ab9f1b57"
+          "version": "repo-file-v1:sha256:2efb94057b8e1e6567cdc5b5e86a5376028126f2f12c5df711669c2bbf9774f8"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_sample_tests.rs",
-          "version": "repo-file-v1:sha256:08fd12d47eeca90e729b571d7c27a8a98d01a6e80a30de87cd8a559032765a40"
-        },
-        {
-          "resource": "repo://apps/decodex-gpui/src/settings_surface.rs",
-          "version": "repo-file-v1:sha256:a6993a42f4fa83ebb7a3a60540df72192e9ae0b3ac1478bc7ac7314d05f72c27"
+          "version": "repo-file-v1:sha256:fd4552a9afbd579ce7950ee14cb168f82b8960383b3e6e62a05b33a7b03c5f5e"
         }
       ]
     },
@@ -404,7 +388,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/settings_surface.rs",
-          "version": "repo-file-v1:sha256:a6993a42f4fa83ebb7a3a60540df72192e9ae0b3ac1478bc7ac7314d05f72c27"
+          "version": "repo-file-v1:sha256:c95911cf8db5baa1a2a3c56a524d8f63ebd9cf3748fabd3e8d72f0a2e21282af"
         },
         {
           "resource": "repo://automations/upstream/retained-contracts.json#L4850-L4922",
@@ -468,7 +452,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_work_browser.rs",
-          "version": "repo-file-v1:sha256:d1ec80c8574e02ed5c7c80fc70dad830e571d8a219378b768c0014f51ada9e0d"
+          "version": "repo-file-v1:sha256:a7963f63306f124caf3c1d5d9995cb5a1dd0108d8d9a39932dc7dc552a37f0e3"
         },
         {
           "resource": "repo://automations/upstream/retained-contracts.json",
@@ -530,7 +514,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_conversation_tabs.rs",
-          "version": "repo-file-v1:sha256:f6b181400a6d0b94fc959a329095723dfac7bde6734f858484e0f5671f409c36"
+          "version": "repo-file-v1:sha256:4c6a3132a8ef03b66684b7a04fa1183ddb9aa460e531f03189210f66e1e0ac6f"
         },
         {
           "resource": "repo://automations/upstream/retained-contracts.json",
@@ -544,7 +528,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_composer.rs",
-          "version": "repo-file-v1:sha256:1bb82012c4bdc094f6d19cfc8c454e782db032efcbe67d50ef1bddbbdef5fe68"
+          "version": "repo-file-v1:sha256:6cdf55b64d8fe494e1fe2c2e216f2b805a3a86e108ee740654ae433277327f05"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_side_chat_question.rs",
@@ -552,7 +536,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_timeline_render.rs",
-          "version": "repo-file-v1:sha256:077978d8e3d1e4f7f3611470c62426996673e1e6c190402700c7296a707924b5"
+          "version": "repo-file-v1:sha256:eb33eac5960c587b30570c89787b0161d4519e526f1ab4a2abaaf0c88af0615f"
         }
       ]
     },
@@ -582,15 +566,19 @@
     },
     {
       "id": "claim_adb60fd2604a46ce91755ec8aee0f646",
-      "statement": "Manual catch-up pauses the maintainer; resumption requires explicit user authorization and the supported native tools.",
+      "statement": "Manual catch-up pauses the maintenance owner; internal-duty resumption requires explicit user authorization. The former desktop definition stays paused while Decodex owns the workload.",
       "evidence": [
         {
           "resource": "repo://automations/portfolio.toml",
-          "version": "repo-file-v1:sha256:a56486557134cf6e720d5ec4bd3183a7b52e34a97d185f55016cbd7a32a7e462"
+          "version": "repo-file-v1:sha256:70b6eb8d6f8d9a3fe860051bfbe1bf092fbf117da8728ed3380588f14173ff96"
+        },
+        {
+          "resource": "repo://automations/upstream/duty.json",
+          "version": "repo-file-v1:sha256:6b1f1cd7288ab2b84265565690589383ea00c39229b5a56e7b2510e23fed8fd7"
         },
         {
           "resource": "repo://automations/upstream/prompts/maintainer.md",
-          "version": "repo-file-v1:sha256:01bebe4274c10a0d25c17ca9181cb005c26d18abaccde7e780505064f5189b3f"
+          "version": "repo-file-v1:sha256:bfaf047744eae94e157aff6d8adf148acf9aa162fffaa61bcf6324249ff84501"
         }
       ]
     },
@@ -617,8 +605,8 @@
       "statement": "Automatic conversation topics use isolated native structured requests and native naming, generate after the first eligible completed user exchange and review after seven more exchanges. The source tab stays Main and Side chats display topics independently of Agent identity.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_conversation_tabs.rs#L122-L147",
-          "version": "repo-lines-v1:sha256:116e534c44447fb5d049bafb926d6f2be41f6a5494f93ca7cecfd826afff19bf:eyJzZWxlY3RlZExpbmVDb3VudCI6MjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhiMWQwZDg1M2JhMjQ3YjI1MmM1OTkwYjViM2M0NzQ2OWMyZTVhNTE4YmMzN2Q3NmZhNGYzNGE4OGU3YjIzNDMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRkNjQ5OTI5MjJiZWE0MTI3NzkzODVlZDcxNzAwNTM0MTZmMDFkMzViODkwOTI5OTc4YTI2OGNlZTJjMzM2ZjIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE5OTFiYmViOWNjNWRlYTM2ZTE4OWI2Y2QzYjA5ZGQwYWMxODM4YmRjY2M1ODg4NTI1MzUyMmI1YzViYzMwYjQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjBkNTMyNzAxNWNkYzdlNmZjOGEwZjBlODM0YWQ1YzIzYjUyODQwNjNkZTM1OTlmNjZhMTdmYTc0YzM2N2EzZjMifQ"
+          "resource": "repo://apps/decodex-gpui/src/agent_conversation_tabs.rs#L122-L157",
+          "version": "repo-lines-v1:sha256:bee21ba62f3f086047355c574d65953fcec71c3cb2c03aeb1ca77f8477b6042e:eyJzZWxlY3RlZExpbmVDb3VudCI6MzYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhiMWQwZDg1M2JhMjQ3YjI1MmM1OTkwYjViM2M0NzQ2OWMyZTVhNTE4YmMzN2Q3NmZhNGYzNGE4OGU3YjIzNDMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRkNjQ5OTI5MjJiZWE0MTI3NzkzODVlZDcxNzAwNTM0MTZmMDFkMzViODkwOTI5OTc4YTI2OGNlZTJjMzM2ZjIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE5OTFiYmViOWNjNWRlYTM2ZTE4OWI2Y2QzYjA5ZGQwYWMxODM4YmRjY2M1ODg4NTI1MzUyMmI1YzViYzMwYjQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjBkNTMyNzAxNWNkYzdlNmZjOGEwZjBlODM0YWQ1YzIzYjUyODQwNjNkZTM1OTlmNjZhMTdmYTc0YzM2N2EzZjMifQ"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent_titles/host.rs",
@@ -636,17 +624,45 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/agent/assistant.rs",
-          "version": "repo-file-v1:sha256:1e098d12f81905f772a623bec68c6ac68b124e99c452b5fab9b63cf0928a4cc6"
+          "version": "repo-file-v1:sha256:0f4f43a8d2a1d74df69973f71ee8af10ef5098c33a37a1585bbf8bee9280df06"
         },
         {
           "resource": "repo://database/src/agent.rs",
-          "version": "repo-file-v1:sha256:30cc4283fbade29ef1b2285803a5d573acc28040d5cb0dda84c7c38a139152a2"
+          "version": "repo-file-v1:sha256:5582d5d9538b7ccbf9192c9b0fa0c43440b1fada1684274ffc4738cd57fc0d44"
+        }
+      ]
+    },
+    {
+      "id": "claim_dfdcea05209543349258a891ff4bf462",
+      "statement": "Codex upstream maintenance is declared as an independent Decodex Agent duty with a dedicated managed worktree and daily UTC cadence. It does not select personal Assistant Memory; registration and real execution require native acceptance.",
+      "evidence": [
+        {
+          "resource": "repo://automations/upstream/duty.json",
+          "version": "repo-file-v1:sha256:6b1f1cd7288ab2b84265565690589383ea00c39229b5a56e7b2510e23fed8fd7"
+        },
+        {
+          "resource": "repo://automations/upstream/prompts/maintainer.md",
+          "version": "repo-file-v1:sha256:bfaf047744eae94e157aff6d8adf148acf9aa162fffaa61bcf6324249ff84501"
+        }
+      ]
+    },
+    {
+      "id": "claim_0b12506553c04fe9bd6e40f30ee97f6e",
+      "statement": "The current fixed source review and exact signed-artifact qualification are separate portable evidence. Experimental shared MCP diagnostics passed one of four cases and sharing remains disabled with a pending adaptation; generic upstream CI failures are not counted as local passing proof.",
+      "evidence": [
+        {
+          "resource": "repo://automations/upstream/current-review.json",
+          "version": "repo-file-v1:sha256:0bf31a238d5c1414739a0b664b79ac3ea4c727f4d4ed19928ceac112a7e99fa2"
+        },
+        {
+          "resource": "repo://automations/upstream/qualification.json",
+          "version": "repo-file-v1:sha256:3d65520110d62c50e6460c911df0eb31e0ff48e3aa13fd1425b5b28887f2d92b"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.9.0",
-    "at": "2026-11-05T21:05:15.623Z"
+    "at": "2026-11-10T08:15:33.063Z"
   }
 }
