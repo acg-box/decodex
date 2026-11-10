@@ -62,7 +62,7 @@ Keep earlier coverage uncertainty in a separate baseline-audit queue. Check curr
 
 ## Deliver one completed batch
 
-Prepare code, reusable tests, portable evidence and relevant OpenWiki updates before the first push when practical. Use small signed local commits and a focused PR. Public code commit references are sufficient in tracked evidence; keep the PR number, live CI and merge receipt native. Do not create a commit solely to backfill a PR link. Attach each created PR to the chat and use codex plus codex-automation labels when available.
+Prepare code, reusable tests, portable evidence and relevant OpenWiki updates before the first push when practical. Use small signed local commits and a focused PR. Public code commit references are sufficient in tracked evidence; keep the PR number, live CI and merge receipt native. Do not create a commit solely to backfill a PR link. Attach each created PR to the chat. Create pull requests without GitHub labels.
 
 Finish source and portable evidence edits, verify the contract-catalog digest, then freeze those inputs before starting Wiki page jobs. Keep live PR, CI and merge observations in native receipts so delivery bookkeeping does not repeatedly invalidate Wiki claims. A source change during generation requires the supported lifecycle to reconcile the affected pages; it does not authorize unrelated runtime tests.
 

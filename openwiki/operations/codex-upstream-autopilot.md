@@ -4,8 +4,10 @@ title: "Codex upstream maintenance"
 openwiki_generated: true
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-10T08:10:56.086Z
+    at: 2026-11-10T08:48:08.589Z
 sources:
+  - id: openwiki-source-8037e2358a2c4f9b2c722a11
+    resource: repo://AGENTS.md
   - id: openwiki-source-586227b5591e5f24cdfe6427
     resource: repo://apps/decodex-cli/src/agent.rs
   - id: openwiki-source-c76550e85b25876b339f9255
@@ -62,7 +64,7 @@ sources:
     resource: repo://scripts/macos/prepare_codex.mts
   - id: openwiki-source-3b57179b92b257bc3fff51a1
     resource: repo://scripts/macos/stage_decodex_app.sh
-generated: { by: "codex", at: "2026-11-10T08:10:56.086Z" }
+generated: { by: "codex", at: "2026-11-10T08:48:08.589Z" }
 ---
 
 
@@ -231,6 +233,8 @@ Background compaction can prepare work before foreground compaction needs it. Ex
 The selected per-server cached MCP catalog switch shares this versioned native writer. It saves only an existing user-configured server’s `startup_readiness` as `catalog` or `connection`. Configuration roundtrips do not establish cache performance, live tool execution or installed-app acceptance. See [retained switches](../workflows/models-and-settings.md#find-the-retained-switches).
 
 ## Deliver small complete batches
+
+This repository uses no GitHub labels. Create issues and pull requests without labels.
 
 Complete source and portable evidence edits and verify the contract-catalog digest before starting Wiki page jobs. Freeze these inputs during generation. Keep live PR, CI and merge observations in native receipts so bookkeeping does not repeatedly invalidate Wiki evidence. If source changes during generation, reconcile it through the supported lifecycle without adding unrelated runtime tests.
 
