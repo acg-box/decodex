@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:f8123fa4681da84851fbef01b88359588de2e5dd9bcb1c74af9833fd8f065d87",
+  "pageVersion": "sha256:16e757ccf775fb26b6474ed108351a124df0e5002b7690ae053264d3fc03474b",
   "claims": [
     {
       "id": "claim_b6c6b65984924f69970e7f0410d50903",
@@ -18,19 +18,15 @@
     },
     {
       "id": "claim_d1a992e40d1147c3928b5de580178ed5",
-      "statement": "The independent Decodex maintenance duty declares gpt-6.1-sol, max reasoning effort, a dedicated managed worktree and daily UTC 20:05 cadence. Manual catch-up holds the current owner, explicit user authorization controls resumption, and the former desktop task stays paused during internal ownership.",
+      "statement": "The independent Decodex maintenance duty declares gpt-6.1-sol, max reasoning effort, a dedicated managed worktree and daily UTC 20:05 cadence. Recurring maintenance remains idle during authorized manual catch-up until the accepted handoff releases its owner. Explicit user authorization controls resumption; the former desktop task stays paused during internal ownership.",
       "evidence": [
         {
-          "resource": "repo://automations/portfolio.toml",
-          "version": "repo-file-v1:sha256:70b6eb8d6f8d9a3fe860051bfbe1bf092fbf117da8728ed3380588f14173ff96"
+          "resource": "repo://automations/upstream/duty.json#L1-L13",
+          "version": "repo-lines-v1:sha256:6b1f1cd7288ab2b84265565690589383ea00c39229b5a56e7b2510e23fed8fd7:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE2ZmIwOGZkYTFhY2I5NTdiNjExNmJkMzc4MTFhMWZlNDFhMDE2MTFjMDYzMWVkYmY3ODZkNjg4OWEyN2E1NWMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
         },
         {
-          "resource": "repo://automations/upstream/duty.json",
-          "version": "repo-file-v1:sha256:6b1f1cd7288ab2b84265565690589383ea00c39229b5a56e7b2510e23fed8fd7"
-        },
-        {
-          "resource": "repo://automations/upstream/prompts/maintainer.md",
-          "version": "repo-file-v1:sha256:803a0661dd8e7396b198dd88c47f34b068d7181c2e5863c3caac8a32f1e98ad7"
+          "resource": "repo://automations/upstream/prompts/maintainer.md#L19-L35",
+          "version": "repo-lines-v1:sha256:473866145cf33b0f5cdc41e0585f8250406eceb572bbd73430105050481d25d9:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZhNzJjMzU3YzZmZTRhMGIyY2IyNDkzYjFlMjE1Yjk3MWVlMDQwNGM4MzQ2MGYyZmRkNWFkYjIwNWVjOWE4YjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI2NTFkZThmMTFiMjBkZDNjMWU3NTE3OTU1ODkzMTFiNTU3NDlhZjJlNGFjNjJlZDE2MDEzMjM4MDMzN2UzMTIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImFjZDEyM2NlOTIyYzcwMzAxNzdkNTE3ZmU5NzI1YjJhM2U0OThhZTRmZjYzZThhMWNjODY0OTM2ZTRjMDdmODMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk5NTY2OWIxNjdkMGYyZjI2NzgyNDhjYzVhYmEyNTAwZTIxZmNhZmVkMDFiNmIxMmMxYzQzZjJkOWJjNjRlMDEifQ"
         }
       ]
     },
@@ -76,11 +72,19 @@
     },
     {
       "id": "claim_67d1ef78b6ef43aab12447f1516d0b58",
-      "statement": "Source runtime qualification uses an exact official archive and digest, refreshes extracted source timestamps to prevent stale Cargo artifact reuse, builds with stable Rust and locked dependencies, checks the stamped commit and package identity including required bin/codex-exec-server, and signs and verifies the app and packaged helpers.",
+      "statement": "Source runtime preparation verifies the official archive and digest, refreshes extracted source timestamps, stamps the build version and normalizes the extracted Rust channel to stable while preserving components. It rejects external dependency-graph changes, builds with locked dependencies, checks the stamped commit and required executor, and signs and verifies the app and packaged helpers.",
       "evidence": [
         {
-          "resource": "repo://scripts/macos/build_codex_source.mts",
-          "version": "repo-file-v1:sha256:44225ba7067b143f2613cc02f0482c7875982919edf4af3720fb273db1d4459c"
+          "resource": "repo://scripts/macos/build_codex_source.mts#L35-L103",
+          "version": "repo-lines-v1:sha256:704176568001b201f582a9d5d7f433a6e8d69889447a497b6b33f1916c9ff8b2:eyJzZWxlY3RlZExpbmVDb3VudCI6NjksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk4NDUzZjJhMmIxMGQ0ZDdkMDhjZTg3OWNhY2NkOWNlMzAzODIxYzkwNDJlNjM0ODVjMDJiOTk2ODNkODdiYjEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE3YTU2YTEwZjJiNjQ0YmU5NmI1Y2YyNTU4NGQwZDQzYzE2MzU5M2RkMzU4ZWVmYTgyNDE0MDcyNzE4OTExYzciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        },
+        {
+          "resource": "repo://scripts/macos/build_codex_source.test.mts#L24-L44",
+          "version": "repo-lines-v1:sha256:5c20c4f2fb846805a93173e61fef7656c422a6d84955abdb483b8f49812cd7d4:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRlZTkxNDllMWFhNjA5OGRiMjFiNGJlZGUwMGI2YjIwN2VhMzRhMDk5NDM3NDQyNmJkOTY5NjBhMzIyZWVjZDMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYyODVkYzRjZTczN2I1MTIyZDgxZWJmOThiMjM4ZDkxOWQyYjdhMzRmOGRlYzQ5NDVmMGQ1ZTk1ZjNkYmEyZmIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE3YjAyZDhmOWQxZTU2Zjg0MDk3OTZjMTg3MmJmNDQ2ZGYxZjMzMmRkNTFjZmJjYjY1MTVlZWU1NGM4OWZmNjkifQ"
+        },
+        {
+          "resource": "repo://scripts/macos/version_codex_source.py#L12-L54",
+          "version": "repo-lines-v1:sha256:94c27b8d6f37ff36e34cf89e21f41780f67fcf9c03807749f8e3b9e29c4594d2:eyJzZWxlY3RlZExpbmVDb3VudCI6NDMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVjMDQ2YmQ4ZTZjMWY3ZTY0MmY0Mzg2ZGY3ZTIwNzVhZWU0NDI1YjZkODIzMWI0MWU1MTEzY2E3N2RjMmM4YTAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY0ODZmZjVjZjkzNjNiNDQyOTMzNjgwM2IyYzk2MGU3M2RhOGM0N2ZhMGM2ZjY3NjU4ZDE0YjMyM2NkMjJkMzQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYzZTM1MWIyZTc3N2Y3MWM1MGIyYzMxYmM5MjFjMDFkZjVkMDBiZTQ1NThiYTdlOTkxODQ4ZDIxZDBmOGM4MzUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM4ODJhZmM0NjlkNWEyZDlmMjEwNzYwZjMwMTAzYjE3N2NhNmUzZDZjMTFlZTY3OGQ2YzYyNmU5YThiM2I0YjEifQ"
         }
       ]
     },
@@ -322,7 +326,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:3d65520110d62c50e6460c911df0eb31e0ff48e3aa13fd1425b5b28887f2d92b"
+          "version": "repo-file-v1:sha256:72032556b857b533b716eba96ab32c73fc5040a9c1188ae56916b511113f5792"
         },
         {
           "resource": "repo://scripts/macos/build_codex_source.mts",
@@ -419,6 +423,6 @@
   ],
   "verification": {
     "by": "openwiki/0.9.0",
-    "at": "2026-11-10T08:48:08.589Z"
+    "at": "2026-11-11T18:21:36.914Z"
   }
 }

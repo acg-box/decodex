@@ -34,8 +34,6 @@ sources:
     resource: repo://automations/upstream/README.md
   - id: openwiki-source-3127fd4c7b2aefcc9cea7961
     resource: repo://automations/upstream/retained-contracts.json
-  - id: openwiki-source-7eedab1ccdf82ac9ccd3ab32
-    resource: repo://automations/upstream/retained-evidence.json
   - id: openwiki-source-2d990e4e2bc233a95b4894b9
     resource: repo://crates/decodex-components/src/pin.rs
   - id: openwiki-source-69e9fd7efd8c3cd616184e27
@@ -120,6 +118,8 @@ sources:
     resource: repo://Makefile.toml
   - id: openwiki-source-b7793decf9d7c9ba48e57e0f
     resource: repo://rust-toolchain.toml
+  - id: openwiki-source-e8c30c6f5849a5077d7b4aa5
+    resource: repo://scripts/macos/build_codex_source.test.mts
   - id: openwiki-source-8341ffcf9eaf781ab2d51b69
     resource: repo://scripts/macos/compile_decodex_app_icon.sh
   - id: openwiki-source-58e225584250806d8658ea09
@@ -134,12 +134,14 @@ sources:
     resource: repo://scripts/macos/test_decodex_app_stage.sh
   - id: openwiki-source-e0e48fb115095577a43dbc91
     resource: repo://scripts/macos/test_native_app.sh
+  - id: openwiki-source-1295465b51f4c563c25d3f43
+    resource: repo://scripts/macos/version_codex_source.py
   - id: openwiki-source-e201f60894c32a914dac99ee
     resource: repo://scripts/vnext/run_native_regression.py
-generated: { by: "codex", at: "2026-11-10T08:10:56.086Z" }
+generated: { by: "codex", at: "2026-11-11T18:21:36.914Z" }
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-10T08:10:56.086Z
+    at: 2026-11-11T18:21:36.914Z
 ---
 
 
@@ -507,7 +509,7 @@ Development uses the fixed reviewed commit in `codex-runtime.lock.json`. Prepare
 cargo make prepare-codex
 ```
 
-The command reuses or repairs a verified component. If no usable artifact exists, it builds the exact source archive with stable Rust and locked upstream dependencies, then imports the signed package. To reuse an already qualified package instead of rebuilding it, set `DECODEX_CODEX_DEVELOPMENT_RUNTIME` to that package directory for the command. The archive, executable, helper commit and generated schema are checked. Native behavior qualification remains required when changing the reviewed pin.
+The command reuses or repairs a verified component. If no usable artifact exists, it builds the exact source archive with stable Rust and locked upstream dependencies, then imports the signed package. Source preparation sets the build version and changes the extracted workspace's Rust channel to `stable`. It preserves the requested components and rejects external dependency-graph changes. The focused preparation checks are in `scripts/macos/build_codex_source.test.mts`. To reuse an already qualified package instead of rebuilding it, set `DECODEX_CODEX_DEVELOPMENT_RUNTIME` to that package directory for the command. The archive, executable, helper commit and generated schema are checked. Native behavior qualification remains required when changing the reviewed pin.
 
 For a formal release, set `DECODEX_CODEX_RELEASE` to an exact official version and run `cargo make pin-codex`. This writes `codex-runtime.release.lock.json` only after official package verification and confirmation that its commit contains the current development baseline. An older Release is rejected. Run the relevant native regressions against that package before approving the pin.
 
@@ -579,7 +581,7 @@ A `LEAK` marker can accompany a passed test when its captured output remains ope
 
 For documentation consolidation, validate page Claims, retained subject coverage, relative links and source paths. Do not rebuild the desktop or launch provider fixtures solely for a Markdown move. Keep historical test counts attached to their original revision. System-temporary fixtures must be cleaned after use; HOME is not a test-output directory.
 
-The disabled-input and direct-Fork regressions cover wrapping, contained actions, direct provider-fork submission after source preparation, durable intent, retained recovery, parent-managed drafts, archive, failed startup and queued reconnect behavior. Input-bar Fork has no second confirmation or Cancel control. The `historical_evidence` link in the [current router](../../automations/upstream/retained-evidence.json) preserves the original `provider_recovery.layout_repair` selectors, source hashes, results and limits. The earlier overflow reproduction remains historical evidence in PR 2583. Those local checks do not qualify a new native artifact.
+The disabled-input and direct-Fork regressions cover wrapping, contained actions, direct provider-fork submission after source preparation, durable intent, retained recovery, parent-managed drafts, archive, failed startup and queued reconnect behavior. Input-bar Fork has no second confirmation or Cancel control. The `retained_provider_recovery` entry in the [stable contract catalog](../../automations/upstream/retained-contracts.json) preserves the source symbols, regressions and original qualification limits. The earlier overflow reproduction remains historical evidence in PR 2583. Those local checks do not qualify a new native artifact.
 
 ## Explicit development reset
 

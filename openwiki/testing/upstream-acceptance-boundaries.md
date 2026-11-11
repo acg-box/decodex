@@ -36,8 +36,6 @@ sources:
     resource: repo://apps/decodex-gpui/src/native_voice_transport.rs
   - id: openwiki-source-0813b2e35e2133631c0aa4db
     resource: repo://apps/decodex-gpui/src/settings_components.rs
-  - id: openwiki-source-3122dd472ce3039751b99877
-    resource: repo://automations/decodex/scripts/config/tests/test_portfolio.py
   - id: openwiki-source-f7ecbc6c02d8c1b7873858d6
     resource: repo://automations/upstream/checkpoint.test.mts
   - id: openwiki-source-a5b9d61b2b9a5f7492d602ac
@@ -102,6 +100,8 @@ sources:
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_recap_service_tests.rs
   - id: openwiki-source-68238f7343c9fc1bd11783f3
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_recap_socket_tests.rs
+  - id: openwiki-source-2a6e477ef92f657376cbf051
+    resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_reviewer_tests.rs
   - id: openwiki-source-3d7045bfa872a564d938d3e2
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_unreported_usage_tests.rs
   - id: openwiki-source-ea794ca791dfc854f2ec0a89
@@ -198,12 +198,14 @@ sources:
     resource: repo://scripts/macos/run_native_voice_tests.py
   - id: openwiki-source-76081c1a47ca8cf32593de34
     resource: repo://scripts/macos/test_decodex_app_stage.sh
+  - id: openwiki-source-1295465b51f4c563c25d3f43
+    resource: repo://scripts/macos/version_codex_source.py
   - id: openwiki-source-e201f60894c32a914dac99ee
     resource: repo://scripts/vnext/run_native_regression.py
-generated: { by: "codex", at: "2026-11-07T06:35:26.732Z" }
+generated: { by: "codex", at: "2026-11-11T18:21:36.914Z" }
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-07T06:35:26.732Z
+    at: 2026-11-11T18:21:36.914Z
 ---
 
 # Upstream integration acceptance boundaries
@@ -227,7 +229,7 @@ The current qualification covers only its named CLI, helpers and affected consum
 
 For native compatibility, record the upstream commit separately from the installed binary and generated schema. Test the actual consumer contract. A schema field or retained database row is not proof of a delivered UI or supported execution path.
 
-Workflow-only maintenance uses the checkpoint and portfolio checks in `cargo +stable make test-automations`. This verifies maintenance bookkeeping and repository configuration; it does not require app, provider or upstream suites and does not qualify a different runtime. The portable index retains the executed identities and limits. Native definition readback is separate from repository validation, and neither resumes a paused schedule.
+Workflow-only maintenance uses the checkpoint and portfolio checks in `cargo +stable make test-automations`. This verifies maintenance bookkeeping and repository configuration; it does not require app, provider or upstream suites and does not qualify a different runtime. The current qualification records the executed repository checks and limits; Git retains earlier workflow receipts. Native definition readback is separate from repository validation, and neither resumes a paused schedule.
 
 ## Current fixed development qualification
 
@@ -410,6 +412,8 @@ Choose the smallest test that can fail for the changed behavior. Preserve comple
 
 `node --test scripts/macos/build_codex_source.test.mts` checks official source selection and extracts an archive with old timestamps into an existing source cache. The extraction test verifies that obsolete files are removed, archive content is restored, and file timestamps become newer than a simulated cached-build time. This checks the extractor contract. Qualify the resulting package, generated schema and affected native behavior separately.
 
+The preparation fixture also checks the extracted workspace's `stable` Rust channel, preserved component list and unchanged external dependency graph after the build version changes. It does not install or reconfigure host toolchains.
+
 ## Component migration
 
 `decodex-components` tests cover exact official source selection, release baseline coverage, download interruption and retry, hash refusal, atomic replacement, failed publication preservation and damaged cache handling. The ignored official package test uses an isolated store to exercise failed network access, a new explicit attempt, offline reuse, damaged-schema refusal and explicit reinstallation with a real signed Release. Its execution is separate from development-package qualification. That fixture is not the production pin.
@@ -550,6 +554,8 @@ The following table preserves the original architecture qualification and its se
 Counts overlap. The original two full-suite failures are `native_call_exchanges_audio_captions_mutes_and_releases_buffers` and `remote_channel_loss_reports_failure_and_releases_buffers`, both native ICE connection timeouts. Their failed receipt remains intact. The later `native_media_followup` compares identical audio source, dependency and WebRTC feature identities across current main and the pre-change baseline. Historical macOS firewall traces queued inbound flows without a verdict during both architecture failures; later passing runs had known allow verdicts. This supports an external firewall admission cause, with no identified architecture-induced audio change. Recovered session events place both failures within the locked interval. The already-allowed package-only baseline passed in that same interval. The workspace binary received its prompt and known allow verdict after unlock. A new controlled lock or firewall-denial comparison was not run. See the [native media diagnosis](../integrations/subscription-voice.md#diagnose-native-media-ice-timeouts). The original leaky pass was `ui_working::tests::appearance_and_disappearance_share_one_continuous_fade`; its cause remains unknown. No product source, test assertion, deadline or runner policy changed.
 
 The native matrix covers production-bridge Project idempotency, reviewer routing and private observations; V1 helper attribution; V2 idle-owner wake with both feature settings; child approval and MCP identity/policy; saved/live native permissions; failed compaction and restart; large Guardian actions; Code Mode yields and parallel dynamic-tool order. The reusable Python `project_guardian.py` adds a synthetic exact-CLI Project/private-review probe. It uses `QUALIFIED_CODEX_BINARY` and `DECODEX_QUALIFICATION_OUTPUT` as described in the [command guide](../operations/commands-and-validation.md#qualify-retained-native-behavior).
+
+The retained large-action Guardian fixture supplies its policy through `auto_review.policy` and uses the native template. It checks the complete action in both review events and model input, including payloads larger than 256 KiB. It also checks the policy text, absence of the raw policy placeholder, denial, request count and separation from parent dynamic tools. This fixture does not depend on a custom experimental template. Read the current qualification for its executed artifact and before/after evidence; the loopback result does not establish live-provider or installed desktop acceptance.
 
 Local regressions cover one Agent across four Works in two Projects, wrong-Work Result refusal, current-requirement guards, requirement changes, scoped Collaboration/repair/cancellation, exact command retry, lost delivery, source/digest verification, paused Work, restart and selected evidence paging. The SQL scope defect was reproduced before repair: unrelated earlier records hid the Agent's own Work. The repaired test also verifies that only granted Materials enter a bounded peer read.
 
