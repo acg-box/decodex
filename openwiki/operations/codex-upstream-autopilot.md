@@ -4,7 +4,7 @@ title: "Codex upstream maintenance"
 openwiki_generated: true
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-11T19:14:11.241Z
+    at: 2026-11-11T20:39:38.450Z
 sources:
   - id: openwiki-source-8037e2358a2c4f9b2c722a11
     resource: repo://AGENTS.md
@@ -20,8 +20,6 @@ sources:
     resource: repo://automations/upstream/duty.json
   - id: openwiki-source-7dcbb082d2502f1ec4386c39
     resource: repo://automations/upstream/prompts/maintainer.md
-  - id: openwiki-source-f580b10e16f1d25ebfea3bf8
-    resource: repo://automations/upstream/qualification.json
   - id: openwiki-source-8b67a68a7ef89772aa8180d1
     resource: repo://automations/upstream/README.md
   - id: openwiki-source-3127fd4c7b2aefcc9cea7961

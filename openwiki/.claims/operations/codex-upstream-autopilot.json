@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:e8efe5f3758d18a041f9c86b41c94390df394c90ce8b53daa6b7a20f81aa4bb1",
+  "pageVersion": "sha256:1ac093be47644fb854ce2df1feec73efa001f9a3ea30a3727b20504720b6c734",
   "claims": [
     {
       "id": "claim_b6c6b65984924f69970e7f0410d50903",
@@ -329,16 +329,16 @@
       "statement": "Source preparation accepts an existing local signing identity through DECODEX_APP_SIGN_IDENTITY; an existing signed package can be imported through DECODEX_CODEX_DEVELOPMENT_RUNTIME. Certificate identities stay out of repository evidence.",
       "evidence": [
         {
-          "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:72032556b857b533b716eba96ab32c73fc5040a9c1188ae56916b511113f5792"
+          "resource": "repo://automations/upstream/README.md#L66-L90",
+          "version": "repo-lines-v1:sha256:daef6ddb6e478c4dfcfcce86ecf73d1cd82335d787a1fb3be9d4b92be7ce35bf:eyJzZWxlY3RlZExpbmVDb3VudCI6MjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUxM2U5ODE0M2JiNjI2ZWJmZDFiOGVjZTI3ZDVlNmE5Yzg2YzIxMGQ5ZGFjNTE0YjFjY2YyMTQ0YzUwZGEyNzciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA3MTY0NTJjMDNkMWUyZmFhOGQyZmQ1ZDFkOWM5MDkwNzVmNWY0OTkyNzE5OWMzYzE1OWI2ZTgwYzNlNjViNjIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjUwNmEwMjFmMmMyNDNjYTM2MzQ2YmYzMmI0MGNkY2M3ZGZkODZlNDczMjVkYzUzMjM2YTFjYjNhMTNmNjc3NzkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM0M2UxNjUyNDM3NTBkOThkNDdjOGVjYWVmNjYyZWUxYTQ1NGQ5YjIxYjM5YTk0ZDllZGE3ZmU5ZTgxNjc1ZDcifQ"
         },
         {
-          "resource": "repo://scripts/macos/build_codex_source.mts",
-          "version": "repo-file-v1:sha256:44225ba7067b143f2613cc02f0482c7875982919edf4af3720fb273db1d4459c"
+          "resource": "repo://scripts/macos/build_codex_source.mts#L35-L37",
+          "version": "repo-lines-v1:sha256:25c55381a7df99be23946bc1f56b60a900fed5db4a40c55e28dc383a29ad583f:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOTg0NTNmMmEyYjEwZDRkN2QwOGNlODc5Y2FjY2Q5Y2UzMDM4MjFjOTA0MmU2MzQ4NWMwMmI5OTY4M2Q4N2JiMSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMmEzZjlhMGNlMzc5NGJmNGE1ZjY2ZjY2YmFkNGE4MjNiMmI5MTlkYWFjNjVmMDUzMmU3MzAwMjkyZTU0Nzg1OSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMTdhNTZhMTBmMmI2NDRiZTk2YjVjZjI1NTg0ZDBkNDNjMTYzNTkzZGQzNThlZWZhODI0MTQwNzI3MTg5MTFjNyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiODk4YmIxY2YxZWFmODViZDEyYWEyMTVhYzRlMzdjNTc5ZTE0YjZmMWU2NmQ4ZjdkYTViOGFiNTlkYTUzNGRhMSJ9"
         },
         {
-          "resource": "repo://scripts/macos/prepare_codex.mts",
-          "version": "repo-file-v1:sha256:4d85b6503324c5e81366b10eeaa7f6e41e2c92a9864bb7d61bb90fe34afc4f4b"
+          "resource": "repo://scripts/macos/prepare_codex.mts#L8-L17",
+          "version": "repo-lines-v1:sha256:be047e4e93781553b5ff593f8291481e9e6156771a8102bba42ddeae2545fa8c:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA5MGY5MzhkNTRjNzU5ZDAwMGZhZGMyYjQ3NWU0NmRhZjgyZjQ4MTAzYzc3YzU1YjhjNjliNDJmZDJkMmRlNDYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE4YzBlNGIzZTBhMWRlZDc2MDgxMWFlNGZhMDg1YzU3ZmI1MDA0ZTk5MTkwZmNkNTI3ZGQ0YWFmY2U5ZTNjM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjYyMGMwNjJlYjU5ZjNkMTVlMjBhYTk5ZDYxODYxZWFiODA5MWQ0MjNjNWUzNzM4MTc0OWIxZDYwMjM4YmU2YjUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
         }
       ]
     },
@@ -431,6 +431,6 @@
   ],
   "verification": {
     "by": "openwiki/0.9.0",
-    "at": "2026-11-11T19:14:11.241Z"
+    "at": "2026-11-11T20:39:38.450Z"
   }
 }
