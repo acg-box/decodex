@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:3f4ca7fa3f9ef64103b99f146407c312a393dde324cdcf62dc314a90304a81d3",
+  "pageVersion": "sha256:33b4cae0a84f8fc274861c98999f3977f17e513977236cf1c0523aef2cb66194",
   "claims": [
     {
       "id": "claim_b34298a8647a4e0b8653926b7568c5d4",
@@ -82,19 +82,19 @@
     },
     {
       "id": "claim_ff1c469c90a84778af3fc5cc4d53d84b",
-      "statement": "Codex upstream maintenance is declared as an independent Decodex Agent duty with a dedicated managed worktree and daily UTC cadence. The former desktop definition stays paused during internal ownership. Manual catch-up and resumption require explicit ownership and user authorization; repository declarations do not prove registration or execution. The two content schedules remain retired.",
+      "statement": "Codex upstream maintenance declares standalone Codex app cron, with a fresh chat and assigned managed worktree per daily occurrence; completed run chats are independent of the schedule. The former Decodex wake stays cancelled. Manual catch-up and resumption require explicit ownership and user authorization; declarations do not prove execution, and the two content schedules remain retired.",
       "evidence": [
         {
           "resource": "repo://automations/portfolio.toml",
-          "version": "repo-file-v1:sha256:70b6eb8d6f8d9a3fe860051bfbe1bf092fbf117da8728ed3380588f14173ff96"
+          "version": "repo-file-v1:sha256:e89caf7eb5502007a1e2aa8571769158a0352f37bc8d63afe6981151f4ab1740"
         },
         {
-          "resource": "repo://automations/upstream/README.md",
-          "version": "repo-file-v1:sha256:34fa1f49fa7e3e0d336f311314d157aa3a694900d53bfbc328866eef71a9a156"
+          "resource": "repo://automations/upstream/README.md#L1-L16",
+          "version": "repo-lines-v1:sha256:6306027fdd10b11b2fbf628ea0c42a8a238456b2a22f89a89ecb55d7a4977f28:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkyOGJmMDcwMTMxMzE1ZDIwYzc4ZmI5NjRjNDJlZWJjNDIwNWExOGNmMzFiYmJlODE4OWU1NzQ1OTFlZTYxODUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVlMmUxMjY3NTVjY2EwZWUxYzlhMjNhNDJhNDg1ZDQwZGQyNTI1MWQ2MDEzYzBlNmIzMmNmN2IzZThlYTk5NGUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNiZGMwOWUxMTc4ZDcxMzdiOWNjMmNhNzJkZjJjMDU1NWQ4NjAyODQxNWJhOWI2NjQzM2E5YWY5ODc1ODQyYmIifQ"
         },
         {
           "resource": "repo://automations/upstream/duty.json",
-          "version": "repo-file-v1:sha256:6b1f1cd7288ab2b84265565690589383ea00c39229b5a56e7b2510e23fed8fd7"
+          "version": "repo-file-v1:sha256:232538e34702c3cfd9f66d468618b4f76ec158288c96166f27d7581d2ef9aadf"
         }
       ]
     },
@@ -411,6 +411,6 @@
   ],
   "verification": {
     "by": "openwiki/0.9.0",
-    "at": "2026-11-10T08:10:56.086Z"
+    "at": "2026-11-11T19:14:11.241Z"
   }
 }

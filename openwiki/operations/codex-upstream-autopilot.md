@@ -4,12 +4,10 @@ title: "Codex upstream maintenance"
 openwiki_generated: true
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-11T18:21:36.914Z
+    at: 2026-11-11T19:14:11.241Z
 sources:
   - id: openwiki-source-8037e2358a2c4f9b2c722a11
     resource: repo://AGENTS.md
-  - id: openwiki-source-586227b5591e5f24cdfe6427
-    resource: repo://apps/decodex-cli/src/agent.rs
   - id: openwiki-source-c76550e85b25876b339f9255
     resource: repo://apps/decodex-gpui/src/agent_context_settings.rs
   - id: openwiki-source-14193a66abfb7d3230f476bf
@@ -20,8 +18,6 @@ sources:
     resource: repo://automations/upstream/checkpoint.test.mts
   - id: openwiki-source-ac3a52e89a6632ea457c56b7
     resource: repo://automations/upstream/duty.json
-  - id: openwiki-source-7e2a9e116bc60596e56ebb7a
-    resource: repo://automations/upstream/prompts/desktop-retired.md
   - id: openwiki-source-7dcbb082d2502f1ec4386c39
     resource: repo://automations/upstream/prompts/maintainer.md
   - id: openwiki-source-f580b10e16f1d25ebfea3bf8
@@ -46,8 +42,6 @@ sources:
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_runtime_submit_tests.rs
   - id: openwiki-source-dbc533dc306a3f520c4241e0
     resource: repo://crates/decodex-runtime/src/agent.rs
-  - id: openwiki-source-1a6e9328d4cd6c8e5904f167
-    resource: repo://crates/decodex-runtime/src/agent/tests.rs
   - id: openwiki-source-30c7edf894a639091ecbafc6
     resource: repo://crates/decodex-runtime/src/agent/tests/external_context.rs
   - id: openwiki-source-a7b97dd347fbe2f630692d12
@@ -56,8 +50,8 @@ sources:
     resource: repo://crates/decodex-runtime/tests/native_qualification/native_session.py
   - id: openwiki-source-6cd65761e9a87b1e53c53373
     resource: repo://crates/decodex-runtime/tests/native_qualification/pending_mail.py
-  - id: openwiki-source-605dc8d044212b397f13e8d7
-    resource: repo://database/src/agent_schedule.rs
+  - id: openwiki-source-dd880acfb699314e78cc9985
+    resource: repo://database/src/agent/archive.rs
   - id: openwiki-source-87eeaebc39a3d2229938f9d2
     resource: repo://scripts/macos/build_codex_source.mts
   - id: openwiki-source-e8c30c6f5849a5077d7b4aa5
@@ -68,7 +62,7 @@ sources:
     resource: repo://scripts/macos/stage_decodex_app.sh
   - id: openwiki-source-1295465b51f4c563c25d3f43
     resource: repo://scripts/macos/version_codex_source.py
-generated: { by: "codex", at: "2026-11-11T18:21:36.914Z" }
+generated: { by: "codex", at: "2026-11-11T19:14:11.241Z" }
 ---
 
 
@@ -77,55 +71,50 @@ generated: { by: "codex", at: "2026-11-11T18:21:36.914Z" }
 
 ## Desired registration and authority
 
-An independent persistent Decodex Agent owns upstream maintenance. The
+The Codex app's standalone cron automation owns upstream maintenance. The
 `automations/upstream/duty.json` declaration selects `gpt-6.1-sol`, reasoning
-effort `max`, a dedicated managed worktree and the daily UTC 20:05 cadence. The
-workload prompt is `automations/upstream/prompts/maintainer.md`. Decodex owns the
-durable wake and native Codex execution. It does not select the personal
-Assistant role or its Memory.
+effort `max`, a new chat and assigned managed worktree for each occurrence,
+and the daily UTC 20:05 cadence. The workload prompt is
+`automations/upstream/prompts/maintainer.md`; `automations/portfolio.toml`
+declares the app automation. A completed run chat can be archived independently
+of the standalone schedule. The workload does not select the personal Assistant
+role or its Memory.
 
-The former desktop task stays paused in `automations/portfolio.toml` with a
-retirement guard. Content Manager and Xurl Publisher remain retired. A checked-in
-declaration does not prove registration or execution. During authorized manual
-catch-up, keep recurring maintenance idle until the accepted handoff releases
-the manual owner. Explicit user authorization controls resumption. Keep
-one checkpoint writer during the internal handoff. Existing-capability fixes can
-be delivered after required checks; new optional product capabilities still need
-a user decision.
+Keep the former Decodex wake cancelled while the Codex app owns this workload.
+Content Manager and Xurl Publisher remain retired. A checked-in declaration does
+not prove registration or execution. During authorized manual catch-up, keep
+recurring maintenance idle until the accepted handoff releases the manual owner.
+Explicit user authorization controls resumption. Keep one checkpoint writer.
+Existing-capability fixes can be delivered after required checks; new optional
+product capabilities still need a user decision.
 
-## Register and accept an internal duty
+## Configure standalone daily runs
 
-Use the supported Agent CLI against the intended Decodex service. Create or
-reconnect the independent persistent Agent with the declared model, effort and
-managed worktree. Preserve its execution settings. Do not use a personal topic
-as the maintenance identity.
+Use the supported Codex app automation operation to update the existing
+`codex-upstream-maintainer` task. Select standalone cron execution, retain the
+project, worktree isolation, model, effort and UTC cadence, and use the checked-in
+workload prompt. Do not write private scheduler files directly.
 
-Prepare an `AgentWake` JSON file with `id`, `instruction`, `authority_event_id`,
-`due_at_micros` and `interval_seconds`. Use a future Unix timestamp in microseconds;
-a direct user command can set the authority reference to zero. The duty declares
-an interval of 86,400 seconds. Register or cancel it through the typed service:
+Before changing schedulers, cancel the former internal wake through the supported
+Decodex CLI and read back its absence. Confirm that no maintenance run still owns
+the source checkout or checkpoint. Preserve the existing cursor, pending work and
+qualified artifact receipts. Activate only the selected app automation and read
+back its complete definition. The two scheduler changes are separate operations.
 
-```sh
-decodex agent schedule --agent-id codex-upstream-maintainer \
-  --wake-file /absolute/path/wake.json --idempotency-key exact-save-key
-decodex --output json agent status
-decodex agent cancel-schedule --agent-id codex-upstream-maintainer \
-  --wake-id codex-upstream-maintenance-daily --idempotency-key exact-cancel-key
-```
+Configuration readback proves the selected task type and settings. It does not
+prove a future scheduled execution. Observe the first occurrence separately:
+verify its new chat, assigned worktree, model and effort, shared checkpoint and
+actual result. Keep detailed scheduler and run receipts outside Git.
 
-The Agent snapshot exposes `scheduled_wakes`. The service tick writes an occurrence
-and its next due time in one transaction. Missed intervals coalesce into one
-occurrence; the next time stays on the selected UTC cadence. Repeating an accepted
-save key does not reset an advanced occurrence. Archive cancels future duties.
-The service and machine must be available; a restart retains saved definitions.
+## Internal duty history
 
-Before handoff, verify a due occurrence reaches this Agent as native automation
-input and completes under its exact instruction. Read the owner, next due time
-and durable receipts after restart. Configuration readback alone is not execution
-acceptance. Cancel temporary acceptance duties and retain only the declared daily
-duty. Record the internal state directory, managed worktree, owner identity,
-previous evidence location and acceptance receipts in the native handoff. Keep
-the former desktop task paused while Decodex owns the work.
+The earlier Decodex duty delivered scheduled turns to one persistent Agent's
+existing native conversation. Its archive lifecycle cancelled that Agent's
+wakes. Those acceptance receipts remain historical evidence; they do not prove
+standalone fresh-chat execution. Keep `codex-upstream-maintenance-daily`
+cancelled. The general [Agent duty commands](commands-and-validation.md#independent-agent-duties)
+remain available for other continuing duties. Do not restore this maintenance
+wake without a new user-selected ownership change.
 
 ## Review the delta against real consumers
 
@@ -162,9 +151,12 @@ For a source build, set `DECODEX_APP_SIGN_IDENTITY` to an existing valid local s
 
 After manual product work or catch-up, reconcile later merged deliveries with current main and their native receipts. Replace a stale continuation with one accurate next action. Keep deferred product decisions in their issues and pending indexes, separate from required daily repairs. Save the fixed target, certified prefix, remaining inventory, pending delivery and verification limits together. Completion of a fixed target does not certify later upstream commits.
 
-The accepted internal duty state directory contains the sole current `state.json`
-cursor and pending-work index. Keep it under the Decodex application data root.
-Preserve the former desktop directory as historical evidence. Establish one owner before a write. Use the managed Node version from `site/.nvmrc` and the repository publisher:
+The shared maintenance state directory contains the sole current `state.json`
+cursor and pending-work index. Keep its accepted location under the Decodex
+application data root across fresh chats and scheduler changes. The earlier
+internal handoff records historical provenance, not current scheduler authority.
+Preserve previous evidence directories. Establish one owner before a write. Use
+the managed Node version from `site/.nvmrc` and the repository publisher:
 
 ```sh
 node --experimental-strip-types automations/upstream/checkpoint.mts \
@@ -201,11 +193,11 @@ The runtime lock can select an exact official source archive. Use the explicit d
 
 Read the development lock and linked current qualification for the selected source, component identities, executed identities and limits. Do not copy each daily target or cohort count into this procedure. A source test can select its own helpers; that result does not establish execution of the signed production artifact.
 
-The provider-recovery follow-up distinguishes native admission from an obsolete fixture expectation. A saved-provider conversation resumes after its provider is restored. The approved alternative creates a new native fork on the current provider through the existing review and receipt flow. Keep source-provider and history assertions, test both routes against the exact artifact, and record the revised contract separately from the earlier failure. The qualified development lock preserves that recovery route. Each later runtime update must pass the affected native consumer and component checks against the new artifact. Historical cohort passes remain bound to the original artifact and source scope. HumanCommand support is user-deferred in [issue 2585](https://github.com/acg-box/decodex/issues/2585), not a required daily implementation task. Keep it unsupported and unadvertised; runtime migration still requires qualification of the retained scope. Runtime qualification does not activate the schedule; explicit user authorization and native readback govern resumption.
+The provider-recovery follow-up distinguishes native admission from an obsolete fixture expectation. A saved-provider conversation resumes after its provider is restored. The approved alternative creates a new native fork on the current provider through the existing review and receipt flow. Keep source-provider and history assertions, test both routes against the exact artifact, and record the revised contract separately from the earlier failure. The qualified development lock preserves that recovery route. Each later runtime update must pass the affected native consumer and component checks against the new artifact. Historical cohort passes remain bound to the original artifact and source scope. HumanCommand support is user-deferred in [issue 2585](https://github.com/acg-box/decodex/issues/2585), not a required daily implementation task. Keep it unsupported and unadvertised; runtime migration still requires qualification of the retained scope. Runtime qualification does not activate the schedule; explicit user authorization and app automation readback govern resumption.
 
 ## Retain evidence after artifact cleanup
 
-The [portable evidence router](../../automations/upstream/retained-evidence.json) identifies the current runtime evidence and the digest of the [stable retained contract catalog](../../automations/upstream/retained-contracts.json). The catalog keeps consumer requirements, selected product decisions and original feature-qualification limits. Change it only when those contracts or their evidence change. The linked [current source review](../../automations/upstream/current-review.json) records each reviewed behavior, source and test references, concrete consumers and validation limits. The [current qualification](../../automations/upstream/qualification.json) records the exact CLI and helpers, reusable fixture hashes and executed test identities. These current records are replaced when the baseline changes; Git retains earlier versions. The accepted internal duty state directory owns the live cursor, pending work and detailed run receipts. The index does not turn a source review, a historical test selection or a merged PR into fresh artifact qualification.
+The [portable evidence router](../../automations/upstream/retained-evidence.json) identifies the current runtime evidence and the digest of the [stable retained contract catalog](../../automations/upstream/retained-contracts.json). The catalog keeps consumer requirements, selected product decisions and original feature-qualification limits. Change it only when those contracts or their evidence change. The linked [current source review](../../automations/upstream/current-review.json) records each reviewed behavior, source and test references, concrete consumers and validation limits. The [current qualification](../../automations/upstream/qualification.json) records the exact CLI and helpers, reusable fixture hashes and executed test identities. These current records are replaced when the baseline changes; Git retains earlier versions. The shared maintenance state directory owns the live cursor, pending work and detailed run receipts. The index does not turn a source review, a historical test selection or a merged PR into fresh artifact qualification.
 
 Keep the router compact and use Git history for replaced entries. Wiki records stable responsibilities, behavior and procedures. Prefer narrow source/test or stable-contract Claim evidence; link current qualification instead of copying per-run counters and hashes into several pages. Use one page job at a time and retain unrelated stale work with its owner rather than expanding this batch. Keep binaries, build trees, real account data, personal paths, native scheduler definitions and raw logs outside the repository. Preserve a required custom regression fixture with its repository test owner so that removal of a local run directory does not remove the only implementation.
 
@@ -257,4 +249,4 @@ The automation directory's `state.json` owns the current reviewed cursor, next u
 
 ## Project and Work delivery evidence
 
-The stable contract catalog has a separate `retained_project_agent_work` qualification for the direct schema56/protocol3 change and global Guardian. It records exact source, artifact/helper/schema identities, reusable tests, executed counts and unmeasured limits. It does not advance the upstream source-review cursor. Its original source and synthetic qualification does not certify an installed app. The separate `installed_acceptance` entry binds later authorized local development acceptance to its own signed application identity and measured limits; it does not authorize release or a runtime-baseline change. The accepted private Review Details decision is implemented; unrelated optional proposals keep their recorded decisions. Native automation state and current supported host readback own the actual schedule status. A product receipt does not prove that the schedule is paused or authorize activation. Reconcile delivered changes with current main and pending native receipts; resuming a paused schedule still requires explicit user authorization.
+The stable contract catalog has a separate `retained_project_agent_work` qualification for the direct schema56/protocol3 change and global Guardian. It records exact source, artifact/helper/schema identities, reusable tests, executed counts and unmeasured limits. It does not advance the upstream source-review cursor. Its original source and synthetic qualification does not certify an installed app. The separate `installed_acceptance` entry binds later authorized local development acceptance to its own signed application identity and measured limits; it does not authorize release or a runtime-baseline change. The accepted private Review Details decision is implemented; unrelated optional proposals keep their recorded decisions. The supported Codex app automation readback owns the actual schedule status; earlier native duty acceptance remains historical. A product receipt does not prove that the schedule is paused or authorize activation. Reconcile delivered changes with current main and pending native receipts; resuming a paused schedule still requires explicit user authorization.
