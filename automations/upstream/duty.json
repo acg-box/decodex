@@ -1,13 +1,14 @@
 {
-  "version": 1,
-  "owner": "decodex",
-  "agent_id": "codex-upstream-maintainer",
+  "version": 2,
+  "owner": "codex_app",
+  "automation_id": "codex-upstream-maintainer",
+  "kind": "cron",
   "name": "Codex Upstream Maintainer",
   "model": "gpt-6.1-sol",
   "reasoning_effort": "max",
   "prompt_file": "automations/upstream/prompts/maintainer.md",
-  "workspace": "dedicated_managed_worktree",
-  "wake_id": "codex-upstream-maintenance-daily",
+  "workspace": "managed_worktree_per_run",
+  "conversation": "new_per_run",
   "interval_seconds": 86400,
   "utc_time": "20:05:00"
 }

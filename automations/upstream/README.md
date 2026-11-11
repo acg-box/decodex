@@ -1,13 +1,17 @@
 # Codex upstream synchronization
 
-An independent Decodex Agent, `codex-upstream-maintainer`, owns incremental
-source review, retained-capability repairs, qualification and delivery. The
-[internal duty definition](duty.json) declares its model, effort, managed worktree
-and daily UTC cadence. The [maintainer prompt](prompts/maintainer.md) owns the
-workload contract. Decodex's Agent service owns registration, due-event receipts
-and native Codex execution. A repository declaration alone does not activate it.
-The former desktop schedule in `automations/portfolio.toml` stays paused with a
-[retirement guard](prompts/desktop-retired.md) to prevent a second owner.
+The Codex app's standalone cron automation, `codex-upstream-maintainer`, owns
+incremental source review, retained-capability repairs, qualification and
+delivery. Each daily occurrence starts a new chat in an assigned managed
+worktree. The [duty definition](duty.json) declares the model, effort, execution
+mode and daily UTC cadence. The [maintainer prompt](prompts/maintainer.md) owns
+the workload contract. `automations/portfolio.toml` declares the app automation;
+a repository declaration alone does not activate it. Archiving a completed run
+chat does not retire the standalone automation.
+
+The former Decodex Agent wake, `codex-upstream-maintenance-daily`, is cancelled.
+Keep it cancelled while the Codex app owns this workload. Its same-chat scheduler
+acceptance remains historical evidence and does not prove fresh-chat execution.
 
 Upstream owns generic Codex correctness. Read its relevant implementation and
 test bodies, and reuse upstream CI evidence. Default execution covers affected
@@ -24,11 +28,12 @@ Codex. Installation, startup, tags and publication are outside maintenance scope
 
 ## Current state and checkpoint
 
-The accepted internal handoff records the duty state directory and managed
-worktree. Its `state.json` is the current cursor and pending index. Keep it under
-Decodex's application data root, separate from the desktop automation directory.
-Preserve the previous directory as historical evidence. Memory, dated receipts
-and archives remain evidence. Establish one owner
+The existing maintenance directory under the local Decodex application data
+root retains the shared `state.json` cursor and pending index across fresh chats.
+Its historical internal handoff records that location and previous evidence
+directories, not current scheduler ownership. Keep these accepted state and
+evidence locations; do not start a second cursor in the app automation directory.
+Memory, dated receipts and archives remain evidence. Establish one owner
 before writing; the checkpoint command is not a scheduler or distributed lock.
 Use the already-managed Node version from `site/.nvmrc`:
 
@@ -54,8 +59,9 @@ After manual delivery, reconcile later merges and their native receipts with mai
 Replace the current continuation with one accurate next action. Keep deferred
 issues separate from approved implementation and daily source-review backlog.
 Save the fixed target, certified prefix, remaining work and verification limits
-together. Resume the internal duty only under explicit user authorization. Keep
-the retired desktop definition paused while Decodex owns the workload.
+together. The user selected standalone Codex app runs; keep the former internal
+wake cancelled. Resume a manually paused app automation only under explicit user
+authorization.
 
 ## Portable evidence and delivery
 
