@@ -5,12 +5,12 @@
     "path": "automations/upstream/retained-contracts.json",
     "sha256": "dfbcb5f07ff9ce54daccf7f270553c99481f7dcf6fe4129485b9f8b52caf7c9d"
   },
-  "source_baseline": "c875667eb837663697d5ffa32d375043434e73b4",
+  "source_baseline": "82e6bacb9c6950d3b56cb153847fa80bdd698053",
   "source_review_evidence": "automations/upstream/current-review.json",
   "source_review_summary": "The fixed review and its coverage limits are in current-review.json. Later upstream main is not certified.",
   "qualification": "automations/upstream/qualification.json",
   "retained_native_consumers": {
-    "source_commit": "c875667eb837663697d5ffa32d375043434e73b4",
+    "source_commit": "82e6bacb9c6950d3b56cb153847fa80bdd698053",
     "tests": [
       "account_launch::process::context_preferences_native_tests::installed_native_context_preferences_share_config_and_preserve_thresholds",
       "account_launch::process::native_control_tests::installed_native_qualified_defaults_preserve_multi_agent_selection",
@@ -50,7 +50,8 @@
       "DECODEX_NATIVE_BINARY=<same CLI for the two agent fixtures>",
       "DECODEX_CODEX_DEVELOPMENT_RUNTIME=<exact package>",
       "HOME/CODEX_HOME=<owned temporary home>",
-      "CARGO_HOME/RUSTUP_HOME=<existing host-managed locations>"
+      "CARGO_HOME/RUSTUP_HOME=<existing host-managed locations>",
+      "DECODEX_TEST_PREVIOUS_CODEX_BINARY=<exact previous qualified CLI for the upgrade fixture>"
     ],
     "limits": "Only the executions in qualification.json establish current named consumer proof."
   },
@@ -60,7 +61,9 @@
       "crates/decodex-runtime/tests/native_qualification/pending_mail.py",
       "crates/decodex-runtime/tests/native_qualification/mcp_cancel.py",
       "crates/decodex-runtime/tests/native_qualification/response_identity.py",
-      "crates/decodex-runtime/tests/native_qualification/thread_settings.py"
+      "crates/decodex-runtime/tests/native_qualification/thread_settings.py",
+      "crates/decodex-runtime/tests/native_qualification/finished_sample.py",
+      "crates/decodex-runtime/tests/native_qualification/apps_recovery.py"
     ]
   },
   "component_cache_repair": {
@@ -74,34 +77,34 @@
     "limits": "Read official implementation/test bodies and reuse official CI. No local upstream source suite."
   },
   "artifact": {
-    "source_commit": "c875667eb837663697d5ffa32d375043434e73b4",
-    "source_archive_sha256": "f85004583306739f48ab2963df8454b53d1388e9b2b1a75f6769282e70f96be3",
-    "schema_sha256": "4b9940618494210f5a836211261c0718b6691acda91222040f68a4a632ae6c43",
+    "source_commit": "82e6bacb9c6950d3b56cb153847fa80bdd698053",
+    "source_archive_sha256": "c99ecb96bcfe07c7cc9d637df9a5db5a317aadfcc0fe8e230aaed53d1cd21654",
+    "schema_sha256": "eae450a13754068fe95a377bb4b9ed638f89ca3d272e47ac548640f8b5b162eb",
     "components": [
       {
         "path": "CodexCLI.app/Contents/MacOS/codex",
-        "sha256": "fc5d51da330ef7fb0c1450b5cb23be842e031576a16e7f152a6ef9d2784d1ac3",
-        "bytes": 275619680,
+        "sha256": "e7c92dee9d87a015d9c13f760f44e4340dae876869b63669fce104df3d6b333e",
+        "bytes": 276356080,
         "strict_signature_verified": true,
         "team_identifier": "4N949UKQ55"
       },
       {
         "path": "bin/codex-code-mode-host",
-        "sha256": "8eb86e453c14991dd6519e2e7248e7fd6ad7ea853982e75502d3a30bf93900f2",
-        "bytes": 70131776,
+        "sha256": "60dcaec6cab032527e0d2368d0420999bc7134c2a30473eb5b7e62edc94704bb",
+        "bytes": 70115136,
         "strict_signature_verified": true,
         "team_identifier": "4N949UKQ55"
       },
       {
         "path": "bin/codex-exec-server",
-        "sha256": "7e9db33c257071fb5c246d8a62f9c1a4e6b373e73694d151adcfd7edc7540cb6",
-        "bytes": 62323728,
+        "sha256": "555265184cf8d582b28f9c54fcfad2d94e6d02ac5c08f66463291dbe3c9d285b",
+        "bytes": 62045584,
         "strict_signature_verified": true,
         "team_identifier": "4N949UKQ55"
       },
       {
         "path": "codex-path/rg",
-        "sha256": "19c677e856bdcabd3d26e88b12f2b9729ba76a6faf7a9036454415ccb46f0a77",
+        "sha256": "61cad98ae687dfe3c0c7cc8b34f834e37a61755277d1b7dec3d010ee9b2fb736",
         "bytes": 4009552,
         "strict_signature_verified": true,
         "team_identifier": "4N949UKQ55"
@@ -126,14 +129,14 @@
   "current_runtime_requalification": {
     "status": "qualified_fixed_development_artifact",
     "evidence": "automations/upstream/qualification.json",
-    "selected_source": "c875667eb837663697d5ffa32d375043434e73b4",
+    "selected_source": "82e6bacb9c6950d3b56cb153847fa80bdd698053",
     "limits": "Development qualification only; delivery and installed acceptance remain separate."
   },
   "current_delivery": {
     "source_commit_references": [
-      "https://github.com/acg-box/decodex/commit/c8f860d25e17e29aceeb2d9db00c316b5e851791"
+      "https://github.com/acg-box/decodex/commit/8570016e6fb9ad709de088dba8d470fba835d6aa"
     ],
-    "status": "Native receipts own delivery and the independent internal-owner handoff.",
+    "status": "Native receipts own final-head CI, merge and independent-duty observations.",
     "installed_acceptance": "See native acceptance; qualification alone does not establish installation or scheduler execution."
   },
   "documentation_lifecycle": "Use supported OpenWiki page jobs after these inputs are frozen. Native receipts own completion.",

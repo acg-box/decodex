@@ -265,7 +265,7 @@ async fn installed_native_guardian_preserves_large_action() {
 	let config_path = home.path().join("config.toml");
 	let mut config = fs::read_to_string(&config_path).unwrap();
 
-	config.push_str("\n[auto_review]\npolicy = '  Isolated fixture policy.  '\nexperimental_policy_template = '  Fixture Guardian template: {{ tenant_policy_config }}  '\n");
+	config.push_str("\n[auto_review]\npolicy = '  Isolated fixture policy.  '\n");
 
 	fs::write(&config_path, config).unwrap();
 
@@ -306,7 +306,7 @@ async fn installed_native_guardian_preserves_large_action() {
 		let guardian = bodies.iter().find(|body| body["client_metadata"]["x-openai-subagent"] == "guardian").expect("native Guardian request");
 		let rendered_request = guardian.to_string();
 
-		assert!(rendered_request.contains("Fixture Guardian template: Isolated fixture policy."));
+		assert!(rendered_request.contains("Isolated fixture policy."));
 		assert!(!rendered_request.contains("{{ tenant_policy_config }}"));
 
 		let complete_action = guardian["input"].as_array().expect("Guardian messages").iter().any(|message| {

@@ -4,7 +4,7 @@ title: "Codex upstream maintenance"
 openwiki_generated: true
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-10T08:48:08.589Z
+    at: 2026-11-11T18:21:36.914Z
 sources:
   - id: openwiki-source-8037e2358a2c4f9b2c722a11
     resource: repo://AGENTS.md
@@ -60,11 +60,15 @@ sources:
     resource: repo://database/src/agent_schedule.rs
   - id: openwiki-source-87eeaebc39a3d2229938f9d2
     resource: repo://scripts/macos/build_codex_source.mts
+  - id: openwiki-source-e8c30c6f5849a5077d7b4aa5
+    resource: repo://scripts/macos/build_codex_source.test.mts
   - id: openwiki-source-58e225584250806d8658ea09
     resource: repo://scripts/macos/prepare_codex.mts
   - id: openwiki-source-3b57179b92b257bc3fff51a1
     resource: repo://scripts/macos/stage_decodex_app.sh
-generated: { by: "codex", at: "2026-11-10T08:48:08.589Z" }
+  - id: openwiki-source-1295465b51f4c563c25d3f43
+    resource: repo://scripts/macos/version_codex_source.py
+generated: { by: "codex", at: "2026-11-11T18:21:36.914Z" }
 ---
 
 
@@ -82,8 +86,9 @@ Assistant role or its Memory.
 
 The former desktop task stays paused in `automations/portfolio.toml` with a
 retirement guard. Content Manager and Xurl Publisher remain retired. A checked-in
-declaration does not prove registration or execution. Manual catch-up holds the
-current maintenance owner; explicit user authorization controls resumption. Keep
+declaration does not prove registration or execution. During authorized manual
+catch-up, keep recurring maintenance idle until the accepted handoff releases
+the manual owner. Explicit user authorization controls resumption. Keep
 one checkpoint writer during the internal handoff. Existing-capability fixes can
 be delivered after required checks; new optional product capabilities still need
 a user decision.
@@ -190,7 +195,7 @@ Use this same entrypoint for pending work, runtime and delivery observations. It
 
 The runtime lock can select an exact official source archive. Use the explicit development preparation command and shared component store described in [Runtime architecture](../architecture/runtime-architecture.md); retain the repository's stable Rust build channel.
 
-1. Verify the selected commit, official archive URL and SHA-256 digest. The builder recreates its extracted source with current file modification times, invokes the upstream package builder with locked Cargo dependencies, stamps the selected commit, and checks package identity and the unchanged Cargo lock. Refreshing the source timestamps prevents reuse of stale local Cargo artifacts.
+1. Verify the selected commit, official archive URL and SHA-256 digest. The builder recreates its extracted source with current file modification times. Source preparation sets the build version and changes the extracted workspace's Rust channel to `stable`, while preserving its component list. It regenerates the lock for local package versions and rejects external dependency-graph changes. The builder uses locked Cargo dependencies, stamps the selected commit and checks package identity. Refreshing the source timestamps prevents reuse of stale local Cargo artifacts.
 2. Qualify the packaged executable, Code Mode helper, `rg` and the required standalone executor. The builder requires `bin/codex-exec-server` and signs and verifies these components. The shared component store requires that same executor path and checks development executable/helper commits, CLI version, signatures and generated experimental app-server schemas against the local adapter and pinned fingerprint. It records archive and executable hashes with the fixed source requirement. The selection changes only after the prepared component verifies. App startup and packaging never compile Codex.
 3. Exercise the affected native behavior and current local consumer before delivering a lock update. A matching schema establishes protocol structure. It does not establish saved-permission behavior, compaction, transport lifecycle or desktop acceptance. Keep source review, artifact qualification, merge, installed identity and live acceptance as separate evidence. If a retained contract fails on the candidate and passes on the selected artifact, keep the runtime lock unchanged. Save the exact failure, original-artifact comparison and supported next action; deliver independent component or fixture repairs separately. A completed source-review prefix does not deliver native fixes in an unselected artifact.
 

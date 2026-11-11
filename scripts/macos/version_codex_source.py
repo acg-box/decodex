@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Set the reviewed source build version without changing external dependencies."""
+"""Prepare the reviewed build version and stable Rust channel."""
 
 import argparse
 import json
@@ -28,6 +28,16 @@ def set_version(source: Path, version: str) -> None:
     if count != 1:
         raise ValueError("Upstream workspace version is missing")
     manifest.write_text(contents[:section.start()] + updated + contents[section.end():])
+    toolchain = workspace / "rust-toolchain.toml"
+    if toolchain.exists():
+        updated, count = re.subn(
+            r'(?m)^channel[ \t]*=[ \t]*"[^"\n]+"[ \t]*$',
+            'channel = "stable"',
+            toolchain.read_text(),
+        )
+        if count != 1:
+            raise ValueError("Upstream workspace toolchain channel is missing")
+        toolchain.write_text(updated)
     subprocess.run(
         ["cargo", "+stable", "update", "--workspace"],
         cwd=workspace,
