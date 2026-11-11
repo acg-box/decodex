@@ -21,7 +21,7 @@ test('source builds require the exact official commit archive', () => {
   assert.throws(() => validateSource({ ...lock, version: '0.0.0' }));
 });
 
-test('source version preparation regenerates the lock without changing dependencies', () => {
+test('source preparation uses stable and regenerates the lock without changing dependencies', () => {
   const source = mkdtempSync(join(tmpdir(), 'decodex-source-version-'));
   try {
     const workspace = join(source, 'codex-rs');
@@ -31,8 +31,11 @@ test('source version preparation regenerates the lock without changing dependenc
     writeFileSync(join(workspace, 'vendor/Cargo.toml'), '[package]\nname="vendor"\nversion="4.2.0"\nedition="2021"\n');
     for (const member of ['core', 'vendor']) writeFileSync(join(workspace, member, 'src/lib.rs'), 'pub fn current() {}\n');
     execFileSync('cargo', ['+stable', 'generate-lockfile', '--offline'], { cwd: workspace });
+    writeFileSync(join(workspace, 'rust-toolchain.toml'), '[toolchain]\nchannel = "beta"\ncomponents = ["clippy"]\n');
     const version = '0.166.0+decodex.aaaaaaaaaaaa';
     execFileSync('python3', [new URL('./version_codex_source.py', import.meta.url).pathname, source, version]);
+    assert.match(readFileSync(join(workspace, 'rust-toolchain.toml'), 'utf8'), /channel = "stable"/);
+    assert.match(readFileSync(join(workspace, 'rust-toolchain.toml'), 'utf8'), /components = \["clippy"\]/);
     const metadata = JSON.parse(execFileSync('cargo', ['+stable', 'metadata', '--locked', '--offline', '--no-deps', '--format-version', '1'], { cwd: workspace, encoding: 'utf8' }));
     assert.equal(metadata.packages.find((entry: { name: string }) => entry.name === 'codex-core').version, version);
     assert.match(readFileSync(join(workspace, 'Cargo.lock'), 'utf8'), /name = "vendor"\nversion = "4.2.0"/);
