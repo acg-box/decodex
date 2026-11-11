@@ -26,6 +26,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/ui_feedback.rs
   - id: openwiki-source-f7ecbc6c02d8c1b7873858d6
     resource: repo://automations/upstream/checkpoint.test.mts
+  - id: openwiki-source-ac3a52e89a6632ea457c56b7
+    resource: repo://automations/upstream/duty.json
   - id: openwiki-source-7dcbb082d2502f1ec4386c39
     resource: repo://automations/upstream/prompts/maintainer.md
   - id: openwiki-source-f580b10e16f1d25ebfea3bf8
@@ -70,6 +72,8 @@ sources:
     resource: repo://crates/decodex-runtime/src/account_launch/process_native_component_tests.rs
   - id: openwiki-source-c75093d19a3bc72db5836102
     resource: repo://crates/decodex-runtime/src/agent_host.rs
+  - id: openwiki-source-dbc533dc306a3f520c4241e0
+    resource: repo://crates/decodex-runtime/src/agent.rs
   - id: openwiki-source-1a6e9328d4cd6c8e5904f167
     resource: repo://crates/decodex-runtime/src/agent/tests.rs
   - id: openwiki-source-5af40fd50adccf5d93ff82a0
@@ -138,10 +142,10 @@ sources:
     resource: repo://scripts/macos/version_codex_source.py
   - id: openwiki-source-e201f60894c32a914dac99ee
     resource: repo://scripts/vnext/run_native_regression.py
-generated: { by: "codex", at: "2026-11-11T18:21:36.914Z" }
+generated: { by: "codex", at: "2026-11-11T19:14:11.241Z" }
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-11T18:21:36.914Z
+    at: 2026-11-11T19:14:11.241Z
 ---
 
 
@@ -226,8 +230,10 @@ The Agent's `scheduled_wakes` are separate from personal Assistant settings. A
 save readback proves configuration only. Verify an actual due occurrence, native
 automation delivery and completion before accepting a migration. Retain the same
 owner and next due time after restart; cancel temporary acceptance duties. See
-[upstream maintenance](codex-upstream-autopilot.md#register-and-accept-an-internal-duty)
-for the internal maintainer handoff.
+[upstream maintenance](codex-upstream-autopilot.md#configure-standalone-daily-runs)
+for its separate standalone Codex cron. General Agent duties continue the existing
+native conversation; upstream maintenance starts a new chat and assigned worktree
+for each occurrence and keeps its former Decodex wake cancelled.
 
 Focused regressions cover cadence and receipt recovery, archive cancellation and
 native input provenance:

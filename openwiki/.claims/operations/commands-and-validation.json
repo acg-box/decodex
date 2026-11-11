@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:7a27f4817b0062af4b29e169516c60cabe4184854fd3b3c88acb2ef133726ae6",
+  "pageVersion": "sha256:5056419b652798d1fb9d0e79dca9939df1c9c98ce09670eaae91f550cb7ecff5",
   "claims": [
     {
       "id": "claim_8fa9284d970947ab9981d4144ecb9648",
@@ -117,11 +117,11 @@
       "statement": "Retained native qualification uses the portable evidence index, explicit selected CLI/helpers and actual test registration; ignored native fixtures must be selected explicitly and zero or missing selectors are not execution evidence.",
       "evidence": [
         {
-          "resource": "repo://automations/upstream/README.md#L12-L17",
+          "resource": "repo://automations/upstream/README.md#L16-L21",
           "version": "repo-lines-v1:sha256:b94033b49fc609e270a91ad28151e77ba0a65f0c8206699487e8b39175d2c7eb:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNWUyZTEyNjc1NWNjYTBlZTFjOWEyM2E0MmE0ODVkNDBkZDI1MjUxZDYwMTNjMGU2YjMyY2Y3YjNlOGVhOTk0ZSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiN2FhZmVmYWE1ZDVhZDQ2MWNkOWU5MGE5NWU4NDA3YWU4MjU2MGY5ZDBjNzgwZWEyZjFhMDMyMWMzMDU1MzI1YiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNjVjZmYxMjc1MjRjOWVkYjdkZDMzZTgxZGQ2MTA0OWU1MWU4ZjE4OTk2YzE0MmFlZjc4ZjkxNjFkNDI5MTgwMiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNmQxYzYwZWUwYTE4MjhlMWUzMDI5NzU5NGVmNmQ4MDYyMDgwYzc0NTY0MzA1YjcwOGNiYTgyOWNiNmUyNDkzNiJ9"
         },
         {
-          "resource": "repo://automations/upstream/prompts/maintainer.md#L7-L15",
+          "resource": "repo://automations/upstream/prompts/maintainer.md#L9-L17",
           "version": "repo-lines-v1:sha256:ba1f073685d6e0ad8446402cf4f9b6745f75f9714a3c354475310f70034da702:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYmJiNDg5YzIyMTM3OTY3NDhlYzRjNWI3ZGJlMWE1NTNiZWUxZTZmMTc0ZTNjZjU0MjA3NWU4OGI5MmZkMjRhMiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZTMzOWI3MDcxMzhlYTk2OGQ4YThiY2I4MWI0MGM3Y2M5NmMzYjM2YzAyMjYxZDhiNWRlNTQxOTc5YjgxNmQ1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNzU0ZTU4YjM0MDk1Mzg5ODJiMjY5YTc5NjcyZDliOTBmYmU2MTRjZjViZjcxNzkyZDVhYjViOWEzMjY2YzI0ZSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYWNkMTIzY2U5MjJjNzAzMDE3N2Q1MTdmZTk3MjViMmEzZTQ5OGFlNGZmNjNlOGExY2M4NjQ5MzZlNGMwN2Y4MyJ9"
         }
       ]
@@ -407,7 +407,7 @@
           "version": "repo-file-v1:sha256:ae6673e3b1847a82c7eb80ae3a81ecb94c2a4cc2adf8ccebe7a1e34745ac4165"
         },
         {
-          "resource": "repo://automations/upstream/prompts/maintainer.md#L7-L15",
+          "resource": "repo://automations/upstream/prompts/maintainer.md#L9-L17",
           "version": "repo-lines-v1:sha256:ba1f073685d6e0ad8446402cf4f9b6745f75f9714a3c354475310f70034da702:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYmJiNDg5YzIyMTM3OTY3NDhlYzRjNWI3ZGJlMWE1NTNiZWUxZTZmMTc0ZTNjZjU0MjA3NWU4OGI5MmZkMjRhMiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZTMzOWI3MDcxMzhlYTk2OGQ4YThiY2I4MWI0MGM3Y2M5NmMzYjM2YzAyMjYxZDhiNWRlNTQxOTc5YjgxNmQ1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNzU0ZTU4YjM0MDk1Mzg5ODJiMjY5YTc5NjcyZDliOTBmYmU2MTRjZjViZjcxNzkyZDVhYjViOWEzMjY2YzI0ZSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYWNkMTIzY2U5MjJjNzAzMDE3N2Q1MTdmZTk3MjViMmEzZTQ5OGFlNGZmNjNlOGExY2M4NjQ5MzZlNGMwN2Y4MyJ9"
         }
       ]
@@ -695,10 +695,28 @@
           "version": "repo-lines-v1:sha256:94c27b8d6f37ff36e34cf89e21f41780f67fcf9c03807749f8e3b9e29c4594d2:eyJzZWxlY3RlZExpbmVDb3VudCI6NDMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVjMDQ2YmQ4ZTZjMWY3ZTY0MmY0Mzg2ZGY3ZTIwNzVhZWU0NDI1YjZkODIzMWI0MWU1MTEzY2E3N2RjMmM4YTAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY0ODZmZjVjZjkzNjNiNDQyOTMzNjgwM2IyYzk2MGU3M2RhOGM0N2ZhMGM2ZjY3NjU4ZDE0YjMyM2NkMjJkMzQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYzZTM1MWIyZTc3N2Y3MWM1MGIyYzMxYmM5MjFjMDFkZjVkMDBiZTQ1NThiYTdlOTkxODQ4ZDIxZDBmOGM4MzUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM4ODJhZmM0NjlkNWEyZDlmMjEwNzYwZjMwMTAzYjE3N2NhNmUzZDZjMTFlZTY3OGQ2YzYyNmU5YThiM2I0YjEifQ"
         }
       ]
+    },
+    {
+      "id": "claim_6722f366f85c4db4a94f3ddc4d6b4ed7",
+      "statement": "General Agent duties continue their bound native conversation. Upstream maintenance separately declares standalone Codex cron with a fresh chat and assigned worktree per occurrence, while its former Decodex wake remains cancelled.",
+      "evidence": [
+        {
+          "resource": "repo://automations/upstream/README.md#L1-L16",
+          "version": "repo-lines-v1:sha256:6306027fdd10b11b2fbf628ea0c42a8a238456b2a22f89a89ecb55d7a4977f28:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkyOGJmMDcwMTMxMzE1ZDIwYzc4ZmI5NjRjNDJlZWJjNDIwNWExOGNmMzFiYmJlODE4OWU1NzQ1OTFlZTYxODUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVlMmUxMjY3NTVjY2EwZWUxYzlhMjNhNDJhNDg1ZDQwZGQyNTI1MWQ2MDEzYzBlNmIzMmNmN2IzZThlYTk5NGUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNiZGMwOWUxMTc4ZDcxMzdiOWNjMmNhNzJkZjJjMDU1NWQ4NjAyODQxNWJhOWI2NjQzM2E5YWY5ODc1ODQyYmIifQ"
+        },
+        {
+          "resource": "repo://automations/upstream/duty.json",
+          "version": "repo-file-v1:sha256:232538e34702c3cfd9f66d468618b4f76ec158288c96166f27d7581d2ef9aadf"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent.rs#L1045-L1052",
+          "version": "repo-lines-v1:sha256:1d97f750515512c3dccc1dba684c9c6f93c1c4db29ca7e3209550235e8e91464:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZWZkZDg0NjFjMDUwNzdiZTg5NzFhYmUxMWM5ODJhMjU0YWFlMTEyZTM3NzIwZDdhZmViNjBlMWU0ZDUzNDRmZiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDFiYTQ3MTljODBiNmZlOTExYjA5MWE3YzA1MTI0YjY0ZWVlY2U5NjRlMDljMDU4ZWY4Zjk4MDVkYWNhNTQ2YiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMzNhM2E4NGU0NTc2MjMxMDU0MzhlYTg2MGM3MDk5NjA2YTEwYzVkOTM2YTM2ZDQ0Mjk1ZDMyZmE3N2Q3ZjdmNyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNDZhYmEzZWJlNTk5ZDA3OTUyMzUwMDc4MjU3OGU0NGY3NzEyNDA1YjI3MzBhMTE0YTRkZDg2YTEwOTFkYjcyMSJ9"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.9.0",
-    "at": "2026-11-11T18:21:36.914Z"
+    "at": "2026-11-11T19:14:11.241Z"
   }
 }

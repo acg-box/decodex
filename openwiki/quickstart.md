@@ -106,10 +106,10 @@ sources:
     resource: repo://database/src/schema.rs
   - id: openwiki-source-3b57179b92b257bc3fff51a1
     resource: repo://scripts/macos/stage_decodex_app.sh
-generated: { by: "codex", at: "2026-11-10T08:10:56.086Z" }
+generated: { by: "codex", at: "2026-11-11T19:14:11.241Z" }
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-10T08:10:56.086Z
+    at: 2026-11-11T19:14:11.241Z
 ---
 
 # OpenWiki quickstart
@@ -201,7 +201,7 @@ The app version and **Check for updates** are in **Settings > General > Updates*
 - Account Route is synchronous and service-owned. Shared-auth liveness, exact source identity and readback govern completion. Same-account refresh adopts a valid non-older native winner instead of restoring a losing token.
 - Unknown submission outcomes require exact receipts or native history. They do not authorize replay. Unavailable conversations keep readable history.
 - Generic plugin management and embedded MCP HTML widgets are retired. The explicit EGM component uses the native Codex plugin lifecycle through Settings > Components. Codex owns configuration and execution; Decodex retains tool observations, native forms and readable history.
-- Codex upstream maintenance is an independent Decodex Agent duty with a dedicated managed worktree and the declared daily UTC cadence. The former desktop definition stays paused as a rollback reference. Manual catch-up holds the current owner; explicit user authorization controls resumption. Declarations do not prove registration or execution. See [upstream maintenance](operations/codex-upstream-autopilot.md) for registration, acceptance and the sole checkpoint handoff. The two content schedules remain retired.
+- Codex upstream maintenance uses the Codex app's standalone daily cron. Each occurrence starts a new chat and assigned managed worktree; completed run chats can be archived independently of the schedule. The former Decodex wake remains cancelled. Manual catch-up and resumption require explicit ownership and user authorization. Declarations do not prove registration or execution. See [upstream maintenance](operations/codex-upstream-autopilot.md) for configuration, execution evidence and the shared checkpoint. The two content schedules remain retired.
 
 ## Build and evidence
 
