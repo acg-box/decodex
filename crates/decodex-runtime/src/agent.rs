@@ -1888,6 +1888,12 @@ impl AgentCoordinator {
 		if completed && !params["item"]["text"].is_string() {
 			return Ok(false);
 		}
+		let text = if completed && kind == "agentMessage" {
+			crate::agent_message_history::assistant_text(&params["item"])
+		} else {
+			params.pointer(if completed { "/item/text" } else { "/delta" }).and_then(Value::as_str)
+		}
+		.ok_or_else(|| AgentError::Invalid("missing output text".into()))?;
 
 		self.store
 			.update_agent_output_record(AgentOutputUpdate {
@@ -1897,11 +1903,7 @@ impl AgentCoordinator {
 				kind: kind.into(),
 				// Native final messages and deltas may be empty. Identity fields must
 				// be nonempty, but an empty text value can clear a retained draft.
-				text: params
-					.pointer(if completed { "/item/text" } else { "/delta" })
-					.and_then(Value::as_str)
-					.ok_or_else(|| AgentError::Invalid("missing output text".into()))?
-					.to_owned(),
+				text: text.to_owned(),
 				completed,
 			})
 			.await?;

@@ -54,7 +54,15 @@ pub(super) fn completion_summary(turn: &Value) -> Option<Value> {
 				&& item["text"].as_str().is_some_and(|text| !text.trim().is_empty())
 				&& (item["phase"].is_null() || item["phase"] == "final_answer")
 		})
-		.cloned()
+		.map(displayed_message)
+}
+
+fn displayed_message(item: &Value) -> Value {
+	let mut message = item.clone();
+	if let Some(text) = crate::agent_message_history::assistant_text(item) {
+		message["text"] = text.into();
+	}
+	message
 }
 
 pub(super) fn collect(turn: Option<&Value>) -> (Vec<Value>, bool) {
@@ -85,14 +93,15 @@ pub(super) fn collect(turn: Option<&Value>) -> (Vec<Value>, bool) {
 	let mut truncated = false;
 
 	for (index, item) in items {
+		let item = displayed_message(item);
 		let separator = usize::from(!messages.is_empty());
 		let budget = remaining.saturating_sub(separator);
 		let message = if item.to_string().len() <= budget {
-			Some(item.clone())
+			Some(item)
 		} else {
 			truncated = true;
 
-			truncate_message(item, budget)
+			truncate_message(&item, budget)
 		};
 
 		if let Some(message) = message {

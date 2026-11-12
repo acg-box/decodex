@@ -172,6 +172,18 @@ fn finish(exchanges: Vec<Exchange>, latest_turn: Option<String>) -> Result<Histo
 	Ok(History { exchanges, latest_turn })
 }
 
+/// Apply the native answer display decision before text enters a local view or result.
+pub(crate) fn assistant_text(item: &Value) -> Option<&str> {
+	let text = item["text"].as_str()?;
+	let moderation = &item["moderation"];
+	let display = &moderation["display"];
+	let visible = moderation.is_null()
+		|| (display.is_null() && moderation["moderated"] == false)
+		|| (display["version"] == 1 && display["mode"] == "show");
+
+	Some(if visible { text } else { "" })
+}
+
 fn visible(items: &[Value]) -> Result<Vec<Message>, ClientError> {
 	let mut messages = Vec::new();
 
@@ -204,7 +216,7 @@ fn visible(items: &[Value]) -> Result<Vec<Message>, ClientError> {
 				(true, decodex_protocol::render_agent_async_question_history(&text))
 			},
 			Some("agentMessage") =>
-				(false, item["text"].as_str().ok_or(ClientError::InvalidFrame)?.to_owned()),
+				(false, assistant_text(item).ok_or(ClientError::InvalidFrame)?.to_owned()),
 			_ => continue,
 		};
 
