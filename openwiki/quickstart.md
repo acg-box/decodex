@@ -113,7 +113,7 @@ sources:
 generated: { by: "codex", at: "2026-11-12T04:15:17.900Z" }
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-12T04:15:17.900Z
+    at: 2026-11-12T12:41:07.431Z
 ---
 
 # OpenWiki quickstart

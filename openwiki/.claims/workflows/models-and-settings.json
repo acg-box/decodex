@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:7d9f84bf5e9f874d2631760784ae0a633b7f6bdabf4ad35ef4f13ee1946e0779",
+  "pageVersion": "sha256:2cc3d0a65dad3bd8c6d930fefb0d66253a132c98ad24786dddc1b6ec23ead431",
   "claims": [
     {
       "id": "claim_f0c37462522f4442acd94d53819ef75c",
@@ -195,7 +195,7 @@
       "statement": "The Agent model catalog refreshes through native model/list every 60 seconds, with account, directory and process binding. Model and effort cycling have no fixed fallback list when the catalog is unavailable.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L1672-L1678",
+          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L1675-L1681",
           "version": "repo-lines-v1:sha256:ec57be10edb464df8b1247da2b96223a885c7911b9fef2da7839e011a926563c:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMzExMjRhOTBmYzk1YjFjMTIzMTZiYTliNTFiNzkxZDZkMGMzNTIyYTczYTA2ZDM5YjFhMTk3M2VkNmU0YzE1OSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiN2ZkOWJmZjc2MjQwMTQwNjA1ZTIzZmVlOGM4NzNkMTJjMzA0Y2JkMGU5MGEzYWFmOGJkOTk0N2VmOWQ0OWExNiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZDc3NzdmNDlkYTJlYjE2NzU4YjViMzE0OWFkOGFkZTlkMmI4MzBhZDQzMmQ2N2UzNDdkNmQ0YmQ5MGJhOWRhMyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNDU5ODRjN2QxZjljNTFkMDJhM2JkODBlNTkyZTlhMjkyODY3MTE0YzAzMjU5MGZhOGNlNjFjNGY2MjQyMTlmMyJ9"
         },
         {
@@ -254,7 +254,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_sample_tests.rs",
-          "version": "repo-file-v1:sha256:fd4552a9afbd579ce7950ee14cb168f82b8960383b3e6e62a05b33a7b03c5f5e"
+          "version": "repo-file-v1:sha256:53a8c19c5c5b8926ce8887aa2e5eeca322708523faf3b0e5eb163efd8d572a68"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_surface.rs",
@@ -268,11 +268,11 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/ConversationEstimatesView.swift",
-          "version": "repo-file-v1:sha256:cc8ac5a9f2888fa23dbe0bc1bc42139421c5c48dc6c3538626db240aeeaf5450"
+          "version": "repo-file-v1:sha256:04d7c295bc771d10f2ed38953ebdb90e7b5121ed416fa289bd7150746e27f113"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_usage_estimates.rs",
-          "version": "repo-file-v1:sha256:d12d56683510873535cfc75faafc075d277547d9491840f94462c4f248a056b9"
+          "version": "repo-file-v1:sha256:93aa786ec507f90f30cfdaa260aac67f588b72a14f6c97bf32196c16e547e7a9"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent_host.rs",
@@ -356,7 +356,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/composer_input.rs",
-          "version": "repo-file-v1:sha256:c73324adabdc9d4606038a9c08543c7bac232591d4f751e4c425ddf576796180"
+          "version": "repo-file-v1:sha256:61672cdb6826708227510d0947b8c1c945b59dc4299e51bce4524048f9c648cc"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
@@ -394,7 +394,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_theme.rs",
-          "version": "repo-file-v1:sha256:e4634a8b90c34a4d6804f4d9feb2fb09dc46ba7abfe285d2f7eee3d04aeed92f"
+          "version": "repo-file-v1:sha256:d667c61839df71ac632ae093a93f3caef1ec60234e31d487dd0e0d9710a7440a"
         }
       ]
     },
@@ -416,7 +416,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_theme.rs",
-          "version": "repo-file-v1:sha256:e4634a8b90c34a4d6804f4d9feb2fb09dc46ba7abfe285d2f7eee3d04aeed92f"
+          "version": "repo-file-v1:sha256:d667c61839df71ac632ae093a93f3caef1ec60234e31d487dd0e0d9710a7440a"
         }
       ]
     },
@@ -570,7 +570,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_theme.rs",
-          "version": "repo-file-v1:sha256:e4634a8b90c34a4d6804f4d9feb2fb09dc46ba7abfe285d2f7eee3d04aeed92f"
+          "version": "repo-file-v1:sha256:d667c61839df71ac632ae093a93f3caef1ec60234e31d487dd0e0d9710a7440a"
         }
       ]
     },
@@ -584,7 +584,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_composer.rs",
-          "version": "repo-file-v1:sha256:04ef2e263135aaf92afd58e92dfc6422c1257535343c621d7d9b1d01271581a3"
+          "version": "repo-file-v1:sha256:bf7ca64c4f56eab4620a1ca4a1bd264a530852a182faa91941d8d9ec4d7bdbce"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_creation_setup.rs",
@@ -676,7 +676,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/agent_api_pricing.rs",
-          "version": "repo-file-v1:sha256:487039f1c63eacdfe04517bd49d673863e2f829465be1ac4c5df1b0eb78b5a04"
+          "version": "repo-file-v1:sha256:292cbd4e6993e88a85b400d3435c277ebab1437c7797fcc4680cc8668e76ddba"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent_api_pricing/official-prices.json",
@@ -687,6 +687,6 @@
   ],
   "verification": {
     "by": "openwiki/0.9.0",
-    "at": "2026-11-12T04:15:17.900Z"
+    "at": "2026-11-12T12:41:07.431Z"
   }
 }

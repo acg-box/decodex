@@ -5,7 +5,7 @@ description: "Native model, Goal and search settings, source-bound writes and me
 tags: ["decodex", "architecture"]
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-12T04:15:17.900Z
+    at: 2026-11-12T12:41:07.431Z
 sources:
   - id: openwiki-source-4e2d2760a1fe5d904918afb7
     resource: repo://apps/decodex-gpui/menubar/Sources/DecodexApp/ConversationEstimatesView.swift

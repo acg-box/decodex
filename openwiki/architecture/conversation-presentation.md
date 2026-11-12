@@ -140,6 +140,8 @@ sources:
     resource: repo://crates/decodex-codex/src/app_server_client/context_preferences.rs
   - id: openwiki-source-de4d0cc1dfd69783c61c375f
     resource: repo://crates/decodex-codex/src/app_server_client/observed_timing.rs
+  - id: openwiki-source-38991dd5f5687970bfc48ba1
+    resource: repo://crates/decodex-codex/src/app_server_client/sample.rs
   - id: openwiki-source-787f8ad27b8519fbed2bd039
     resource: repo://crates/decodex-codex/src/app_server_client/thread_fork.rs
   - id: openwiki-source-c01ab8da738707861c64c143
@@ -170,10 +172,10 @@ sources:
     resource: repo://database/src/agent_titles.rs
   - id: openwiki-source-6197a876b2effbe992b1e2ec
     resource: repo://database/src/agent.rs
-generated: { by: "codex", at: "2026-11-12T08:03:12.038Z" }
+generated: { by: "codex", at: "2026-11-12T12:41:07.431Z" }
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-12T08:03:12.038Z
+    at: 2026-11-12T12:41:07.431Z
 ---
 
 
@@ -257,7 +259,7 @@ The composer sits over the bottom of the conversation. Its measured height suppl
 
 An available next-message suggestion uses the complete editor width. Its **Tab** button uses the shared shortcut keycap, with a compact font, a rounded outline and a light fill. The keycap and adjacent refresh button follow the last line of the suggestion and move to the next line if they cannot fit. They do not reserve a trailing column across the other lines. Both controls stay outside the editable draft and disappear when the user types or the suggestion is unavailable. Clicking **Tab** or pressing the Tab key accepts the suggestion as an unsent, undoable draft. Clearing that draft restores the cached suggestion. A new turn or a change to the conversation source invalidates it.
 
-The refresh button makes one native sampling request and asks for a different follow-up from the previous suggestion. It does not send a chat message. The previous suggestion stays visible while generation runs. Both controls are disabled during generation, and the refresh icon shows progress. A completed sample replaces the preview. If generation fails, the previous suggestion remains available for acceptance or another explicit retry.
+The refresh button makes one native sampling request and asks for a different follow-up from the previous suggestion. The native sample keeps the source conversation's model and reasoning settings. It does not send a chat message. The previous suggestion stays visible while generation runs. Both controls are disabled during generation, and the refresh icon shows progress. A completed sample replaces the preview. If generation fails, the previous suggestion remains available for acceptance or another explicit retry.
 
 The history rail highlights every measured exchange that intersects the reading viewport above the composer. Several short exchanges can therefore have highlighted marks at the same time. A long answer keeps its mark highlighted after its prompt has scrolled above the viewport. Scrolling and resizing update this visible range; a retained navigation target does not limit the highlight to one mark.
 

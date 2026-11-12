@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:f28263bbbf45728e4457dcb01510bfca7c3b2ee66fd74169aad83f9dc41ad532",
+  "pageVersion": "sha256:98ed22b5959866822702edc7e13505b9ecd5ddbd33df5053ba0fefe7286a5bd3",
   "claims": [
     {
       "id": "claim_36b9a49ffa87416e8add8befc7d10efe",
@@ -8,7 +8,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_timeline_groups.rs",
-          "version": "repo-file-v1:sha256:93e0983114797d1c92bbab4900ef80fb75b94c55a234da8bd3ebb6a3a4b72706"
+          "version": "repo-file-v1:sha256:db4824da8c03b0bb23ff73ae8528135f5abbaaa7ef2a3eb32c98a5ed2c1f42f0"
         }
       ]
     },
@@ -18,7 +18,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_response_metrics.rs",
-          "version": "repo-file-v1:sha256:41b55833e64ea401bed09e7019180b2c4f1d4522130d445d9bacc36c42d67752"
+          "version": "repo-file-v1:sha256:de78e851433be3bb81a9dfbb9abbb4e8ffa0dc87c75a81a3a89bf4266d959984"
         }
       ]
     },
@@ -78,7 +78,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:96c60bd194d0b193455af1e755eb7fd121f4bfd594a1fa5e181b682a1a5390af"
+          "version": "repo-file-v1:sha256:6cb99bfe3d064b4e418c4fbc79406a5581bfad9589c6b98a54161ea9ae02d46a"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/composer_text.rs",
@@ -96,7 +96,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_timeline.rs",
-          "version": "repo-file-v1:sha256:95dd73439bd317861cd58d3cbf640940dc7a7e1b05896a0f21a55f5aeb8c6b55"
+          "version": "repo-file-v1:sha256:f1da642b2008bf73ff6cfe520fe52aa362338d8c197f931a994f2195ec8355f3"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/voice_conversation_groups.rs",
@@ -110,11 +110,11 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_timeline.rs",
-          "version": "repo-file-v1:sha256:95dd73439bd317861cd58d3cbf640940dc7a7e1b05896a0f21a55f5aeb8c6b55"
+          "version": "repo-file-v1:sha256:f1da642b2008bf73ff6cfe520fe52aa362338d8c197f931a994f2195ec8355f3"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/timeline.rs",
-          "version": "repo-file-v1:sha256:8d71a5deccb5cb6100d56aca7ba19bc7a23bbc6500a05bd00a1a1ea7e43cb6a9"
+          "version": "repo-file-v1:sha256:00a9ff3e3062fe2e9b50f67bef79b8add89a8d0d43ed30ead1ab7d91efbfb4a8"
         }
       ]
     },
@@ -292,7 +292,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_response_metrics.rs",
-          "version": "repo-file-v1:sha256:41b55833e64ea401bed09e7019180b2c4f1d4522130d445d9bacc36c42d67752"
+          "version": "repo-file-v1:sha256:de78e851433be3bb81a9dfbb9abbb4e8ffa0dc87c75a81a3a89bf4266d959984"
         },
         {
           "resource": "repo://crates/decodex-codex/src/app_server_client/observed_timing.rs",
@@ -328,7 +328,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_response_metrics.rs",
-          "version": "repo-file-v1:sha256:41b55833e64ea401bed09e7019180b2c4f1d4522130d445d9bacc36c42d67752"
+          "version": "repo-file-v1:sha256:de78e851433be3bb81a9dfbb9abbb4e8ffa0dc87c75a81a3a89bf4266d959984"
         },
         {
           "resource": "repo://crates/decodex-codex/src/app_server_client/observed_timing.rs",
@@ -396,7 +396,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:96c60bd194d0b193455af1e755eb7fd121f4bfd594a1fa5e181b682a1a5390af"
+          "version": "repo-file-v1:sha256:6cb99bfe3d064b4e418c4fbc79406a5581bfad9589c6b98a54161ea9ae02d46a"
         }
       ]
     },
@@ -428,7 +428,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:96c60bd194d0b193455af1e755eb7fd121f4bfd594a1fa5e181b682a1a5390af"
+          "version": "repo-file-v1:sha256:6cb99bfe3d064b4e418c4fbc79406a5581bfad9589c6b98a54161ea9ae02d46a"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_loading.rs",
@@ -446,7 +446,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_timeline.rs",
-          "version": "repo-file-v1:sha256:95dd73439bd317861cd58d3cbf640940dc7a7e1b05896a0f21a55f5aeb8c6b55"
+          "version": "repo-file-v1:sha256:f1da642b2008bf73ff6cfe520fe52aa362338d8c197f931a994f2195ec8355f3"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_timeline_find.rs",
@@ -566,7 +566,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:96c60bd194d0b193455af1e755eb7fd121f4bfd594a1fa5e181b682a1a5390af"
+          "version": "repo-file-v1:sha256:6cb99bfe3d064b4e418c4fbc79406a5581bfad9589c6b98a54161ea9ae02d46a"
         }
       ]
     },
@@ -588,7 +588,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:96c60bd194d0b193455af1e755eb7fd121f4bfd594a1fa5e181b682a1a5390af"
+          "version": "repo-file-v1:sha256:6cb99bfe3d064b4e418c4fbc79406a5581bfad9589c6b98a54161ea9ae02d46a"
         }
       ]
     },
@@ -658,7 +658,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_timeline.rs",
-          "version": "repo-file-v1:sha256:95dd73439bd317861cd58d3cbf640940dc7a7e1b05896a0f21a55f5aeb8c6b55"
+          "version": "repo-file-v1:sha256:f1da642b2008bf73ff6cfe520fe52aa362338d8c197f931a994f2195ec8355f3"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent_host.rs",
@@ -676,7 +676,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_timeline.rs",
-          "version": "repo-file-v1:sha256:95dd73439bd317861cd58d3cbf640940dc7a7e1b05896a0f21a55f5aeb8c6b55"
+          "version": "repo-file-v1:sha256:f1da642b2008bf73ff6cfe520fe52aa362338d8c197f931a994f2195ec8355f3"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_theme.rs",
@@ -736,7 +736,7 @@
     },
     {
       "id": "claim_2110425b22af43cc99d9c2f90cf6bbd2",
-      "statement": "The next-message suggestion uses the full editor width. Its distinct shared shortcut keycap and adjacent refresh control follow the final text line or wrap together without reserving a trailing column. The controls stay outside editable content and hide while typing. Clicking the keycap or pressing Tab creates an unsent, undoable draft. Clearing the draft restores the cached suggestion until a new turn or source change invalidates it. Explicit refresh makes one native sample request that asks for a different follow-up, keeps the previous preview during generation or failure, disables both controls while pending, and does not send a chat message.",
+      "statement": "The next-message suggestion uses the full editor width. Its distinct shared shortcut keycap and adjacent refresh control follow the final text line or wrap together without reserving a trailing column. The controls stay outside editable content and hide while typing. Clicking the keycap or pressing Tab creates an unsent, undoable draft. Clearing the draft restores the cached suggestion until a new turn or source change invalidates it. Explicit refresh makes one native sample request that asks for a different follow-up, keeps the previous preview during generation or failure, disables both controls while pending, and does not send a chat message. Generation inherits the source conversation's model and reasoning settings.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_composer.rs",
@@ -760,7 +760,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/composer_hint.rs",
-          "version": "repo-file-v1:sha256:fee6c151e0e11d57e35de9b48b0bed3e95f9c7df8bc353744ec6b05e03663522"
+          "version": "repo-file-v1:sha256:25e83aedab3ec5b32b01d14c52ac16cf85766101e36d373a7161caba294e4893"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/composer_input.rs",
@@ -773,6 +773,10 @@
         {
           "resource": "repo://apps/decodex-gpui/src/ui_theme.rs",
           "version": "repo-file-v1:sha256:d667c61839df71ac632ae093a93f3caef1ec60234e31d487dd0e0d9710a7440a"
+        },
+        {
+          "resource": "repo://crates/decodex-codex/src/app_server_client/sample.rs",
+          "version": "repo-file-v1:sha256:424ef6cb93c923c8db8f050a10b67bfd9a008860e8054d04b6843b3379568e2a"
         }
       ]
     },
@@ -811,6 +815,6 @@
   ],
   "verification": {
     "by": "openwiki/0.9.0",
-    "at": "2026-11-12T08:03:12.038Z"
+    "at": "2026-11-12T12:41:07.431Z"
   }
 }
