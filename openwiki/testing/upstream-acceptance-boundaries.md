@@ -202,10 +202,10 @@ sources:
     resource: repo://scripts/macos/version_codex_source.py
   - id: openwiki-source-e201f60894c32a914dac99ee
     resource: repo://scripts/vnext/run_native_regression.py
-generated: { by: "codex", at: "2026-11-11T18:21:36.914Z" }
+generated: { by: "codex", at: "2026-11-11T20:39:38.450Z" }
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-11T18:21:36.914Z
+    at: 2026-11-11T20:39:38.450Z
 ---
 
 # Upstream integration acceptance boundaries
@@ -658,7 +658,7 @@ The synthetic cohorts do not establish installed-app, live-account, general mode
 
 ## Assistant lifecycle boundary
 
-The Assistant extension reuses the selected Codex runtime. Its opt-in `installed_assistant_renews_fresh_contexts_with_original_dialogue_and_isolated_memory` fixture uses an explicit binary with an isolated native home and loopback Responses provider. It verifies three successive clean contexts, recent original dialogue across context boundaries, no fork ancestry, one model request per user turn and no native Memory injection in successor contexts. An unrelated control retains native memory settings. The [current qualification](../../automations/upstream/qualification.json) identifies the artifact and this execution separately from the original Assistant delivery. This test does not qualify a live provider or long-duration conversation quality.
+The Assistant extension reuses the selected Codex runtime. Its opt-in `installed_assistant_renews_fresh_contexts_with_original_dialogue_and_isolated_memory` fixture uses an explicit binary with an isolated native home and loopback Responses provider. It verifies three successive clean contexts, recent original dialogue across context boundaries, no fork ancestry, one model request per user turn and no native Memory injection in successor contexts. An unrelated control retains native memory settings. The [earlier qualification](https://github.com/acg-box/decodex/blob/562371054960947e2e973c425047a17907aa0577/automations/upstream/qualification.json#retained_consumers) identifies that fixture execution and its artifact separately from the original Assistant delivery. Read the current qualification for the tests selected for each later runtime; a retained fixture is not a claim that it ran in every batch. This test does not qualify a live provider or long-duration conversation quality.
 
 SQLite tests cover independent team membership and wakes, archive cancellation, exact delegated creation and linked authority, pending input, immutable native-context receipts and queued/unknown external imports across reopen. The desktop transition test covers drafts, loaded history, reading state, old native source IDs and pagination cursor rebasing. RAGFlow's loopback HTTP fixture checks explicit Memory/Agent/user scopes and rejects nonzero business codes even with HTTP 200. HTTP Memory setup fixtures cover default-model selection, recovery after a lost creation reply, origin-bound private credentials and missing-model failure without publishing a Memory credential. An idle Assistant setup fixture confirms atomic role selection and no fabricated first user message. The first-message fixture checks displayed model and effort, normal permission and speed defaults, and preservation of the previous Agent and draft. Shared component UI fixtures check installed readback, busy controls, disclosure and inline feedback. A queued extraction response is not proof that the memory is searchable.
 

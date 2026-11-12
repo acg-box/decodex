@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:5056419b652798d1fb9d0e79dca9939df1c9c98ce09670eaae91f550cb7ecff5",
+  "pageVersion": "sha256:373317c1275e20429d60ed6757f570a7a36fe374a09829a6f2f668b20c125649",
   "claims": [
     {
       "id": "claim_8fa9284d970947ab9981d4144ecb9648",
@@ -176,7 +176,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:72032556b857b533b716eba96ab32c73fc5040a9c1188ae56916b511113f5792"
+          "version": "repo-file-v1:sha256:11b1818162eeab192d4f61a4d7ee4fba3fa7b4ec79f701bff140c110229da66f"
         },
         {
           "resource": "repo://automations/upstream/retained-contracts.json",
@@ -336,7 +336,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:72032556b857b533b716eba96ab32c73fc5040a9c1188ae56916b511113f5792"
+          "version": "repo-file-v1:sha256:11b1818162eeab192d4f61a4d7ee4fba3fa7b4ec79f701bff140c110229da66f"
         },
         {
           "resource": "repo://automations/upstream/retained-contracts.json#L4407-L4623",
@@ -349,12 +349,12 @@
       "statement": "The exact-artifact command hook probe checks nested command cwd in PreToolUse, PermissionRequest and PostToolUse payloads while the hook process keeps the project cwd; its synthetic local command does not qualify a remote executor.",
       "evidence": [
         {
-          "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:72032556b857b533b716eba96ab32c73fc5040a9c1188ae56916b511113f5792"
+          "resource": "repo://automations/upstream/retained-contracts.json#L1142-L1159",
+          "version": "repo-lines-v1:sha256:14b36f98cd824f47d857ae5399534e89f8994e15de6216a33afd68313e952628:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVlMDBkZWVmYWZkN2ZlYTFmMzRlNmU1NDU4YmU1OTc4OTMxN2VmNDQzNjhhOWQ0NDAzODQ0Mjc2NjUzMTYxNjIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMxZjVhMDBhZjliYWNhMmQxMjVlYTEyMTNmN2Y4OGVhMjllMmE1Y2IzZmNlZTU0MTk5NzkwNjIzMTNiZDQ2Y2MiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZmMmQ0OTk2ODcxMzk1Njc0ODYwNDBjMDhiZTAwNGEwZDdlNjIzYTYwOGY2ODA0MjdiMTJmODEyMDczYjkyZjQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjlmOWZmNmFkMGEwMTFjNmY1ZTk0ZWRmMTA3ZDc4NjU1MmVlMjdiYmI5Njg2NTdhYzU5NzgzYTQ5ZmYyMWFkMDkifQ"
         },
         {
-          "resource": "repo://crates/decodex-runtime/tests/native_qualification/command_hooks.py",
-          "version": "repo-file-v1:sha256:369a93ff63a36048bddf87ad60c04aa376f2907cf51b5115b13a07b88a63973a"
+          "resource": "repo://crates/decodex-runtime/tests/native_qualification/command_hooks.py#L17-L118",
+          "version": "repo-lines-v1:sha256:0a401981e8177ceb65ce93076a0a081ed6b468450b1505f0458b9b5ceab2ed7e:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAyLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJmMTA2NWNmNDc4ZTg4Y2RlYTgyYTYzM2VjNmU1YjhhZTMzMTlhYjI0ZmExYjBjOWJjZTFmOWRlY2MwMjc1ODExIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI5NzNjNjUwNTYxYTQ1YzA1MmNmMDM4N2RkYmRmZDc3Mzk2NTYwNmUwOTI3ZGExNmI3NDJjMWIyMWFhODZkYzU2IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJmYjZjODFjZGE5NmE0NjJhMDQzZjdjMTQ3ZGE1NmQ0ZjQzNjgxNDQ5ZmM2YzJhYWNiOWFhZTJkMjgyZjQ5ZjkzIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJkMWFhNDU1NjUyZmViZTkzYTgwMGVhMjljNWNkNThlOGE3MDhjYTIyODViZDg2NmM2ZTliM2M1YzZkZTI5YTQ5In0"
         }
       ]
     },
@@ -450,7 +450,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:72032556b857b533b716eba96ab32c73fc5040a9c1188ae56916b511113f5792"
+          "version": "repo-file-v1:sha256:11b1818162eeab192d4f61a4d7ee4fba3fa7b4ec79f701bff140c110229da66f"
         },
         {
           "resource": "repo://automations/upstream/retained-contracts.json#L2134-L2270",
@@ -669,16 +669,12 @@
       "statement": "Focused database and runtime fixtures cover independent duty cadence and receipt recovery, owner isolation, archive cancellation and native automation input with separate application-tool context. These fixture results do not establish installed scheduled execution.",
       "evidence": [
         {
-          "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:72032556b857b533b716eba96ab32c73fc5040a9c1188ae56916b511113f5792"
+          "resource": "repo://crates/decodex-runtime/src/agent/tests.rs#L1485-L1541",
+          "version": "repo-lines-v1:sha256:b688da67fac24fccdef37c46a8d2a62aaf81598320f5deb141187a9ddac38684:eyJzZWxlY3RlZExpbmVDb3VudCI6NTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMxYzc4NTc2ZjBhODM2NTFlMDZhNGNkODAzYTgyMWM4YjU2NDg0MGIxZjRlOTU1NzZlNzlmYzA5ZGQxZjY4MTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJjNzNhNmY3ZjFmYTA3ZjRhMDBiMzUyYjdlNWQyZTgwYzk4NzU4N2ExYmUxZTUzYmNhZjZkZmU3MWIwMjEzMDAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijc3NzJlOTI3NWNiNmEyNGZmYTg5NTJjY2E3N2U2YTRhNWEyYWRlNjNjZWQ0MzUxYzZiYzU4NjBhYWZlNTIyZDEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgxN2UzZTllYzMwNGFlYWI0NmEyMWI2NzJmMmJkNTA1MWMwZDE1MmZhMjRiYzQyNmU0OGI2MzBjZTNjM2I2ZTgifQ"
         },
         {
-          "resource": "repo://crates/decodex-runtime/src/agent/tests.rs",
-          "version": "repo-file-v1:sha256:ad8b9268021ce0cccf6de24a152a9c013f6139942855b522ef91dd7634805cd8"
-        },
-        {
-          "resource": "repo://database/src/assistant.rs",
-          "version": "repo-file-v1:sha256:d9cc6750aae4c56f6add2a9e562e566841ec9646ee857fde0fb37add313fd861"
+          "resource": "repo://database/src/assistant.rs#L761-L884",
+          "version": "repo-lines-v1:sha256:e97db8e5bd6f5bbcd8d318a2f1e9a887794cdb5bf6c321b00b2ee0fa253aafd2:eyJzZWxlY3RlZExpbmVDb3VudCI6MTI0LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIyOTRmYzRhNTBhMmY2M2ExODQ2OTk2OWZiMzIzZmE3YjEzYTM1YTEzN2Q2YmIxODJkM2I5OWJlZTI4M2FkYWQ0IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIwMWJhNDcxOWM4MGI2ZmU5MTFiMDkxYTdjMDUxMjRiNjRlZWVjZTk2NGUwOWMwNThlZjhmOTgwNWRhY2E1NDZiIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJiMjU2ZjRhYjQ5NTRkMzQxZDkyNGFiNjZlZGQ0MDBkYmIzYmEzNWRiYTMwYTdhMDUzMTlhYWMzOTgxZDFkZTJkIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI0OTlhODA5ZWMyODE0YmU0ZWNjY2MzY2EwNzEyNzc5MTlmZDhhNTlkYmI2ZDc5ZWE0ZmIxOGI0ZTZjZjg0MjBhIn0"
         }
       ]
     },
@@ -717,6 +713,6 @@
   ],
   "verification": {
     "by": "openwiki/0.9.0",
-    "at": "2026-11-11T19:14:11.241Z"
+    "at": "2026-11-11T20:39:38.450Z"
   }
 }

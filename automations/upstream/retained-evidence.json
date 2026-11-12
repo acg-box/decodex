@@ -5,48 +5,37 @@
     "path": "automations/upstream/retained-contracts.json",
     "sha256": "dfbcb5f07ff9ce54daccf7f270553c99481f7dcf6fe4129485b9f8b52caf7c9d"
   },
-  "source_baseline": "82e6bacb9c6950d3b56cb153847fa80bdd698053",
+  "source_baseline": "392ced7d3a9160fd35d40c606359869215f50522",
   "source_review_evidence": "automations/upstream/current-review.json",
   "source_review_summary": "The fixed review and its coverage limits are in current-review.json. Later upstream main is not certified.",
   "qualification": "automations/upstream/qualification.json",
   "retained_native_consumers": {
-    "source_commit": "82e6bacb9c6950d3b56cb153847fa80bdd698053",
+    "source_commit": "392ced7d3a9160fd35d40c606359869215f50522",
     "tests": [
-      "account_launch::process::context_preferences_native_tests::installed_native_context_preferences_share_config_and_preserve_thresholds",
-      "account_launch::process::native_control_tests::installed_native_qualified_defaults_preserve_multi_agent_selection",
+      "account_launch::agent_process::native_tests::reviewer::installed_native_guardian_preserves_large_action",
+      "account_launch::agent_process::native_tests::reviewer::evidence::installed_guardian_retains_answer_after_compaction_and_restart",
+      "account_launch::agent_process::native_tests::reviewer::image_evidence::installed_guardian_preserves_native_image_profile_after_restart",
+      "account_launch::agent_process::native_tests::permissions::installed_named_permission_selection_during_active_turn_survives_restart",
+      "account_launch::agent_process::native_tests::structured::installed_temporary_requests_isolate_environment_and_preserve_custom_permissions",
+      "account_launch::agent_process::native_tests::models::installed_model_selection_changes_next_inference_and_survives_restart",
+      "account_launch::agent_process::native_tests::models::installed_active_model_selection_preserves_admitted_inference",
+      "account_launch::agent_process::native_tests::reviewer::store::live_model::child_model::installed_native_child_inherits_updated_step_model",
+      "account_launch::agent_process::native_tests::code_mode::installed_native_parallel_dynamic_tools_preserve_ids_and_result_order",
+      "account_launch::agent_process::native_tests::context::installed_native_tool_context_survives_restart_without_replay",
       "account_launch::agent_process::native_tests::compaction::installed_native_streams_auto_compaction_and_resumes_its_checkpoint",
       "account_launch::agent_process::native_tests::compaction::installed_native_preserves_prompt_before_compaction_error_and_after_restart",
       "account_launch::agent_process::native_tests::compaction::installed_native_discards_partial_compaction_output_after_restart",
-      "account_launch::agent_process::native_tests::compaction::code_metadata::installed_native_code_mode_metadata_reaches_compaction",
       "account_launch::agent_process::native_tests::history_recovery::installed_native_fork_history_recovers_from_intact_ancestor_copy",
       "account_launch::agent_process::native_tests::cold_settings::recap_socket::fork::installed_saved_provider_continuation_and_fork_survive_default_changes",
-      "account_launch::agent_process::native_tests::cold_settings::recap_socket::fork::installed_fork_preserves_source_provider_after_default_changes",
-      "account_launch::agent_process::native_tests::reviewer::store::live_model::child_model::installed_native_child_inherits_updated_step_model",
-      "agent::tests::native_subagent_live::mcp::native_child_mcp_input_preserves_policy_and_exact_request",
-      "agent::tests::native_agent_wake::native_child_completion_wakes_idle_root_once",
-      "account_launch::agent_process::native_tests::reviewer::evidence::installed_guardian_retains_answer_after_compaction_and_restart",
-      "account_launch::agent_process::native_tests::reviewer::image_evidence::installed_guardian_preserves_native_image_profile_after_restart",
-      "account_launch::agent_process::native_tests::reviewer::installed_native_guardian_preserves_large_action",
-      "account_launch::agent_process::native_tests::permissions::installed_named_permission_selection_during_active_turn_survives_restart",
-      "account_launch::agent_process::native_tests::structured::installed_temporary_requests_isolate_environment_and_preserve_custom_permissions",
-      "account_launch::agent_process::native_tests::context::installed_native_tool_context_survives_restart_without_replay",
-      "account_launch::agent_process::native_tests::context::installed_assistant_renews_fresh_contexts_with_original_dialogue_and_isolated_memory",
-      "account_launch::agent_process::native_tests::code_mode::installed_native_parallel_dynamic_tools_preserve_ids_and_result_order",
-      "account_launch::process::refresh_tests::native::installed_native_401_uses_production_refresh_reply_and_reauthenticates_after_restart",
-      "account_launch::process::refresh_tests::native::installed_native_401_refresh_refusal_fails_without_replaying_inference",
-      "account_launch::agent_process::native_tests::file_approval::installed_native_file_approval_saves_live_diff_before_history_and_declines_once",
-      "account_launch::agent_process::native_tests::models::installed_model_selection_changes_next_inference_and_survives_restart",
-      "account_launch::agent_process::native_tests::models::installed_active_model_selection_preserves_admitted_inference",
-      "account_launch::agent_process::native_tests::skills::installed_skill_picker_inventory_and_exact_input_use_native_skill_owner",
-      "agent::tests::native_goals::native_goal_turn_preserves_separate_user_input_delivery",
-      "agent::tests::native_goal_recovery::native_active_goal_on_unloaded_thread_resumes_without_local_turn_submission",
       "account_launch::agent_process::native_tests::realtime::installed_native_realtime_history_survives_agent_and_cold_bridge",
-      "account_launch::agent_process::native_tests::upgrade::installed_runtime_upgrade_preserves_history_paused_goal_and_voice"
+      "account_launch::agent_process::native_tests::upgrade::installed_runtime_upgrade_preserves_history_paused_goal_and_voice",
+      "agent::tests::native_subagent_live::mcp::native_child_mcp_input_preserves_policy_and_exact_request",
+      "agent::tests::native_agent_wake::native_child_completion_wakes_idle_root_once"
     ],
     "entrypoint": "<compiled-decodex-runtime-libtest> <registered selector> --exact --ignored --nocapture --test-threads=1",
     "fixture_source_sha256": "automations/upstream/qualification.json#fixture_source_sha256",
     "required_environment": [
-      "DECODEX_TEST_CODEX_BINARY=<exact signed CLI>",
+      "DECODEX_TEST_CODEX_BINARY=<exact official packaged launcher>",
       "DECODEX_NATIVE_BINARY=<same CLI for the two agent fixtures>",
       "DECODEX_CODEX_DEVELOPMENT_RUNTIME=<exact package>",
       "HOME/CODEX_HOME=<owned temporary home>",
@@ -77,39 +66,40 @@
     "limits": "Read official implementation/test bodies and reuse official CI. No local upstream source suite."
   },
   "artifact": {
-    "source_commit": "82e6bacb9c6950d3b56cb153847fa80bdd698053",
-    "source_archive_sha256": "c99ecb96bcfe07c7cc9d637df9a5db5a317aadfcc0fe8e230aaed53d1cd21654",
-    "schema_sha256": "eae450a13754068fe95a377bb4b9ed638f89ca3d272e47ac548640f8b5b162eb",
+    "source_commit": "392ced7d3a9160fd35d40c606359869215f50522",
+    "source_archive_sha256": "9ccd1782b2b36b212139ab617ded37f293972c76d477e473eb46f72325de5e4c",
+    "schema_sha256": "2018674a18fb8dced349a683faa87cbe98a7ef8b8044a5a93e49d281abf70503",
     "components": [
       {
         "path": "CodexCLI.app/Contents/MacOS/codex",
-        "sha256": "e7c92dee9d87a015d9c13f760f44e4340dae876869b63669fce104df3d6b333e",
-        "bytes": 276356080,
+        "sha256": "844312d4f2830f9f25e34cbf97f7c63371c7087ff03b40c020b96ba40f1c79c0",
+        "bytes": 276712848,
         "strict_signature_verified": true,
-        "team_identifier": "4N949UKQ55"
+        "pinned_commit_embedded": true
       },
       {
         "path": "bin/codex-code-mode-host",
-        "sha256": "60dcaec6cab032527e0d2368d0420999bc7134c2a30473eb5b7e62edc94704bb",
-        "bytes": 70115136,
+        "sha256": "567d18d66d2017359b60ce7a953fa4c78aec78acaa9964b038ad5a397cc87fed",
+        "bytes": 70231856,
         "strict_signature_verified": true,
-        "team_identifier": "4N949UKQ55"
+        "pinned_commit_embedded": true
       },
       {
         "path": "bin/codex-exec-server",
-        "sha256": "555265184cf8d582b28f9c54fcfad2d94e6d02ac5c08f66463291dbe3c9d285b",
-        "bytes": 62045584,
+        "sha256": "f5d59a19fb6db2515f374f4deb99a687b1ca686e28d4c03a3c559ceede15cd63",
+        "bytes": 62129024,
         "strict_signature_verified": true,
-        "team_identifier": "4N949UKQ55"
+        "pinned_commit_embedded": true
       },
       {
         "path": "codex-path/rg",
-        "sha256": "61cad98ae687dfe3c0c7cc8b34f834e37a61755277d1b7dec3d010ee9b2fb736",
+        "sha256": "ada0c354c428af8fa61b9ffa9ab933f49829e6482adec78b1f5262cd0a69bb4f",
         "bytes": 4009552,
         "strict_signature_verified": true,
-        "team_identifier": "4N949UKQ55"
+        "pinned_commit_embedded": null
       }
-    ]
+    ],
+    "launcher_sha256": "50ab38ba21d0d9f8346f32f41848382f15b556190f3c7a07e885a4fb73e379c8"
   },
   "validation": {
     "evidence": "automations/upstream/qualification.json#decodex_validation",
@@ -129,12 +119,12 @@
   "current_runtime_requalification": {
     "status": "qualified_fixed_development_artifact",
     "evidence": "automations/upstream/qualification.json",
-    "selected_source": "82e6bacb9c6950d3b56cb153847fa80bdd698053",
+    "selected_source": "392ced7d3a9160fd35d40c606359869215f50522",
     "limits": "Development qualification only; delivery and installed acceptance remain separate."
   },
   "current_delivery": {
     "source_commit_references": [
-      "https://github.com/acg-box/decodex/commit/8570016e6fb9ad709de088dba8d470fba835d6aa"
+      "https://github.com/acg-box/decodex/commit/ca565aaf3e5dcd3928d78d057bc556ed132a4ca2"
     ],
     "status": "Native receipts own final-head CI, merge and independent-duty observations.",
     "installed_acceptance": "See native acceptance; qualification alone does not establish installation or scheduler execution."
