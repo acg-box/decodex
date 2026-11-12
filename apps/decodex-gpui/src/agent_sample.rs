@@ -19,6 +19,8 @@ pub(super) struct Panel {
 	work: Option<String>,
 	thread: Option<String>,
 	state: Option<AgentSampleStatus>,
+	prompt: Option<String>,
+	previous: Option<String>,
 	closed: Option<Sender<bool>>,
 	task: Option<Task<()>>,
 	epoch: u64,
@@ -82,19 +84,31 @@ impl AgentSurface {
 		self.reset_sample();
 		self.sample.work = Some(work);
 		self.sample.thread = Some(thread);
+		self.sample.prompt = Some(NEXT_PROMPT.into());
 		self.sample.feedback = "Reconnect to generate a suggestion.".into();
 		self.run_sample_request(cx);
 		cx.notify();
 	}
 
 	fn suggested_prompt(&self) -> Option<&str> {
-		let state = self.sample.state.as_ref()?;
-		if state.phase != AgentSamplePhase::Ready
-			|| state.prompt.as_ref().is_none_or(|prompt| prompt.as_str() != NEXT_PROMPT)
+		if self.sample.state.as_ref().is_some_and(|state| state.phase == AgentSamplePhase::Obsolete)
 		{
 			return None;
 		}
-		state.answer.as_ref()?.text.as_deref().filter(|text| !text.trim().is_empty())
+		self.sample
+			.state
+			.as_ref()
+			.filter(|state| {
+				state.phase == AgentSamplePhase::Ready
+					&& state.prompt.as_ref().map(WireText::as_str) == self.sample.prompt.as_deref()
+			})
+			.and_then(|state| state.answer.as_ref()?.text.as_deref())
+			.or(self.sample.previous.as_deref())
+			.filter(|text| !text.trim().is_empty())
+	}
+
+	pub(super) fn prompt_suggestion_busy(&self) -> bool {
+		self.sample.busy()
 	}
 
 	pub(super) fn prompt_suggestion(&self, cx: &Context<Self>) -> Option<&str> {
@@ -124,12 +138,28 @@ impl AgentSurface {
 	}
 
 	pub(super) fn accept_prompt_suggestion(&mut self, cx: &mut Context<Self>) {
+		if self.sample.busy() {
+			return;
+		}
 		let Some(text) = self.prompt_suggestion(cx).map(str::to_owned) else { return };
 		if self.composer.update(cx, |input, cx| input.append_recovered_text(&text, cx)) {
 			self.remember_draft_document(cx);
-			self.reset_sample();
 			cx.notify();
 		}
+	}
+
+	pub(super) fn refresh_prompt_suggestion(&mut self, cx: &mut Context<Self>) {
+		if self.sample.busy() || !self.command_connection_ready() {
+			return;
+		}
+		let Some(previous) = self.prompt_suggestion(cx).map(str::to_owned) else { return };
+		let quoted = serde_json::to_string(&previous.chars().take(500).collect::<String>())
+			.expect("bounded suggestion text");
+		self.sample.previous = Some(previous);
+		self.sample.prompt = Some(format!(
+			"{NEXT_PROMPT}\n\nThe user requested a different suggestion. Choose another useful follow-up instead of repeating this previous suggestion: {quoted}"
+		));
+		self.run_sample_request(cx);
 	}
 
 	fn run_sample_request(&mut self, cx: &mut Context<Self>) {
@@ -145,6 +175,10 @@ impl AgentSurface {
 		}
 
 		let (Ok(work), Ok(thread)) = (EntityId::new(work), WireText::new(thread)) else { return };
+		let Some(prompt) = self.sample.prompt.clone().and_then(|prompt| WireText::new(prompt).ok())
+		else {
+			return;
+		};
 		self.sample.epoch = self.sample.epoch.wrapping_add(1);
 		self.sample.state = None;
 		self.sample.feedback = "Generating suggestion…".into();
@@ -161,14 +195,7 @@ impl AgentSurface {
 				if let Ok(runtime) =
 					tokio::runtime::Builder::new_current_thread().enable_all().build()
 				{
-					runtime.block_on(request::run(
-						profile,
-						work,
-						thread,
-						WireText::new(NEXT_PROMPT).expect("bounded suggestion prompt"),
-						closure,
-						updates,
-					));
+					runtime.block_on(request::run(profile, work, thread, prompt, closure, updates));
 				}
 			})
 			.is_err()

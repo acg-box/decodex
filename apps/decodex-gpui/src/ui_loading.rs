@@ -414,6 +414,10 @@ pub(crate) fn execution() -> Loading {
 	Loading { label: "Executing", presentation: Presentation::Execution }
 }
 
+pub(crate) fn progress(label: &'static str) -> Loading {
+	Loading { label, presentation: Presentation::Execution }
+}
+
 pub(crate) fn pagination(active: bool) -> PaginationLoading {
 	PaginationLoading { active }
 }

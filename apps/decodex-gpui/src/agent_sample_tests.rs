@@ -261,16 +261,23 @@ fn tab_accepts_prompt_suggestion_as_an_undoable_unsent_draft(cx: &mut TestAppCon
 		SuggestionPanel(surface, 0)
 	});
 	let surface = view.read_with(visual, |view, _| view.0.clone());
-	for width in [280., 650.] {
+	for width in [180., 280., 650.] {
 		visual.update(|window, cx| {
 			window.resize(gpui::size(gpui::px(width), gpui::px(700.)));
 			window.draw(cx).clear(cx);
 		});
-		let hint =
-			visual.debug_bounds("composer-suggestion-hint").expect("Tab hint in the input bar");
+		let text = visual.debug_bounds("composer-input-text").expect("full-width composer");
 		let editor = visual.debug_bounds("composer-editor-area").unwrap();
-		assert!(hint.left() >= editor.left() && hint.right() <= editor.right());
-		assert!(hint.top() >= editor.top() && hint.bottom() <= editor.bottom());
+		assert!((text.size.width - editor.size.width).abs() < gpui::px(1.));
+		let keycap =
+			visual.debug_bounds("composer-suggestion-keycap").expect("separate keyboard cue");
+		assert_eq!(keycap.size.height, gpui::px(18.));
+		assert!(keycap.left() >= editor.left() && keycap.right() <= editor.right());
+		assert!(keycap.top() >= editor.top() && keycap.bottom() <= editor.bottom());
+		assert!(
+			surface
+				.read_with(visual, |s, cx| s.composer.read(cx).placeholder_hint() == Some("Tab"))
+		);
 	}
 	surface.update(visual, |s, cx| {
 		assert!(s.composer.read(cx).content().is_empty());
@@ -282,15 +289,141 @@ fn tab_accepts_prompt_suggestion_as_an_undoable_unsent_draft(cx: &mut TestAppCon
 	visual.simulate_keystrokes("tab");
 	surface.update(visual, |s, cx| {
 		assert_eq!(s.composer.read(cx).content(), "Compare the two approaches.");
-		assert!(s.sample.work.is_none());
+		assert_eq!(s.sample.work, s.selected, "keep the cached suggestion after acceptance");
 		assert!(!s.sending);
 	});
 	visual.update(crate::ui_frame::draw_current_frame);
-	assert!(visual.debug_bounds("composer-suggestion-hint").is_none());
+	assert!(surface.read_with(visual, |s, cx| s.composer.read(cx).placeholder_hint().is_none()));
+	assert!(visual.debug_bounds("composer-suggestion-keycap").is_none());
 	assert_eq!(view.read_with(visual, |view, _| view.1), 0, "accept without moving focus");
 	visual.update(|window, cx| window.focus(&surface.read(cx).composer.focus_handle(cx), cx));
 	visual.simulate_keystrokes("cmd-z");
 	surface.update(visual, |s, cx| assert!(s.composer.read(cx).content().is_empty()));
+	visual.update(crate::ui_frame::draw_current_frame);
+	assert!(visual.debug_bounds("composer-suggestion-accept").is_some());
+	assert!(surface.read_with(visual, |s, cx| s.composer.read(cx).placeholder()
+		== "Compare the two approaches."));
+}
+
+#[gpui::test]
+fn clicking_tab_and_clearing_the_draft_restores_the_same_suggestion(cx: &mut TestAppContext) {
+	cx.update(crate::shell::bind_keys);
+	let (view, visual) = cx.add_window_view(|_, cx| {
+		let surface = cx.new(AgentSurface::new);
+		surface.update(cx, suggestion_fixture);
+		SuggestionPanel(surface, 0)
+	});
+	let surface = view.read_with(visual, |view, _| view.0.clone());
+	visual.simulate_resize(gpui::size(gpui::px(650.), gpui::px(700.)));
+	visual.update(crate::ui_frame::draw_current_frame);
+	let accept = visual.debug_bounds("composer-suggestion-accept").unwrap();
+	visual.simulate_click(accept.center(), Default::default());
+	surface.read_with(visual, |s, cx| {
+		assert_eq!(s.composer.read(cx).content(), "Compare the two approaches.");
+		assert!(!s.sending);
+	});
+	visual.simulate_keystrokes("cmd-a backspace");
+	visual.update(crate::ui_frame::draw_current_frame);
+	surface.read_with(visual, |s, cx| {
+		assert_eq!(s.composer.read(cx).content(), "");
+		assert_eq!(s.composer.read(cx).placeholder(), "Compare the two approaches.");
+		assert_eq!(
+			s.sample.state.as_ref().unwrap().request_id.as_ref().unwrap().as_str(),
+			"suggestion"
+		);
+		assert!(!s.sending);
+	});
+	assert!(visual.debug_bounds("composer-suggestion-accept").is_some());
+	assert!(visual.debug_bounds("composer-suggestion-refresh").is_some());
+}
+
+#[gpui::test]
+async fn refresh_requests_one_different_suggestion_without_sending_a_chat_message(
+	cx: &mut TestAppContext,
+) {
+	cx.background_executor.allow_parking();
+	let (reply, ready) = tokio::sync::oneshot::channel();
+	let (_root, profile, server) = wire_test_support::fixture(|listener| async move {
+		let mut socket = wire_test_support::accept(&listener).await;
+		let Message::Text(text) = socket.next().await.unwrap().unwrap() else {
+			panic!("generation")
+		};
+		let ClientMessage::Command(command) = serde_json::from_str::<ClientMessage>(&text).unwrap()
+		else {
+			panic!("generation command")
+		};
+		let CommandPayload::Agent { action } = command.payload else { panic!("agent command") };
+		let AgentActionDto::GenerateSample { work_id, thread_id, prompt } = *action else {
+			panic!("must not send a chat message")
+		};
+		assert_ne!(prompt.as_str(), NEXT_PROMPT);
+		assert!(prompt.as_str().contains("Compare the two approaches."));
+		assert!(prompt.as_str().contains("different suggestion"));
+		assert!(prompt.as_str().len() <= decodex_protocol::MAX_AGENT_SAMPLE_PROMPT_BYTES);
+		socket.close(None).await.unwrap();
+		let mut socket = wire_test_support::accept(&listener).await;
+		let Message::Text(text) = socket.next().await.unwrap().unwrap() else { panic!("status") };
+		let ClientMessage::Query(query) = serde_json::from_str::<ClientMessage>(&text).unwrap()
+		else {
+			panic!("no duplicate generation")
+		};
+		assert!(matches!(query.payload, QueryPayload::GetAgentSample { .. }));
+		ready.await.unwrap();
+		let state = AgentSampleStatus {
+			work_id,
+			thread_id: Some(thread_id),
+			request_id: Some(WireText::new(command.idempotency_key.as_str()).unwrap()),
+			prompt: Some(prompt),
+			phase: AgentSamplePhase::Ready,
+			answer: Some(AgentSampleAnswer {
+				source_turn_id: WireText::new("finished-turn").unwrap(),
+				response_id: WireText::new("refreshed-response").unwrap(),
+				text: Some("Check the trade-offs next.".into()),
+				input_tokens: None,
+				cached_input_tokens: None,
+				output_tokens: None,
+			}),
+		};
+		wire_test_support::answer_query(
+			&mut socket,
+			query.query_id,
+			QueryResultPayload::AgentSample(state),
+		)
+		.await;
+	});
+	let (view, visual) = cx.add_window_view(|_, cx| {
+		let surface = cx.new(AgentSurface::new);
+		surface.update(cx, |s, cx| {
+			suggestion_fixture(s, cx);
+			s.profile = Some(profile);
+		});
+		SuggestionPanel(surface, 0)
+	});
+	let surface = view.read_with(visual, |view, _| view.0.clone());
+	visual.simulate_resize(gpui::size(gpui::px(650.), gpui::px(700.)));
+	visual.update(crate::ui_frame::draw_current_frame);
+	let refresh = visual.debug_bounds("composer-suggestion-refresh").unwrap();
+	visual.simulate_click(refresh.center(), Default::default());
+	surface.update(visual, |s, cx| {
+		assert!(s.prompt_suggestion_busy());
+		assert_eq!(s.prompt_suggestion(cx), Some("Compare the two approaches."));
+		let epoch = s.sample.epoch;
+		s.refresh_prompt_suggestion(cx);
+		assert_eq!(s.sample.epoch, epoch, "ignore repeated refresh while busy");
+		s.accept_prompt_suggestion(cx);
+		assert_eq!(s.composer.read(cx).content(), "");
+	});
+	reply.send(()).unwrap();
+	visual
+		.condition(&surface, |s, _| s.suggested_prompt() == Some("Check the trade-offs next."))
+		.await;
+	server.join().unwrap();
+	surface.update(visual, |s, cx| {
+		assert_eq!(s.prompt_suggestion(cx), Some("Check the trade-offs next."));
+		assert_eq!(s.composer.read(cx).content(), "");
+		assert!(!s.sending);
+		s.reset_sample();
+	});
 }
 
 #[gpui::test]
@@ -319,7 +452,7 @@ fn tab_preserves_normal_focus_navigation_without_a_current_empty_draft_suggestio
 	});
 	visual.update(|window, cx| window.focus(&surface.read(cx).composer.focus_handle(cx), cx));
 	visual.update(crate::ui_frame::draw_current_frame);
-	assert!(visual.debug_bounds("composer-suggestion-hint").is_none());
+	assert!(surface.read_with(visual, |s, cx| s.composer.read(cx).placeholder_hint().is_none()));
 	visual.simulate_keystrokes("tab");
 	assert_eq!(
 		surface.read_with(visual, |s, cx| s.composer.read(cx).content().to_owned()),
@@ -479,7 +612,9 @@ fn unfinished_or_unavailable_suggestions_leave_the_input_bar_quiet(cx: &mut Test
 		surface.update(visual, |s, _| s.sample.state.as_mut().unwrap().phase = phase);
 		visual.update(crate::ui_frame::draw_current_frame);
 		assert!(visual.debug_bounds("sample-panel").is_none());
-		assert!(visual.debug_bounds("composer-suggestion-hint").is_none());
+		assert!(
+			surface.read_with(visual, |s, cx| s.composer.read(cx).placeholder_hint().is_none())
+		);
 		assert!(surface.read_with(visual, |s, cx| s.composer.read(cx).content().is_empty()));
 	}
 }

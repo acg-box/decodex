@@ -166,6 +166,25 @@ pub(crate) const MOTION_PANEL: Duration = Duration::from_millis(240);
 /// Stable gutter shared by conversation history and composer alignment.
 pub(crate) const HISTORY_RAIL_WIDTH: f32 = CONVERSATION_INSET;
 
+/// Keyboard cues remain separate from editable or suggested text.
+pub(crate) fn shortcut_keycap(label: impl Into<gpui::SharedString>) -> Div {
+	gpui::div()
+		.min_w(gpui::px(18.))
+		.h(gpui::px(18.))
+		.px(gpui::px(CONTROL_INSET))
+		.flex()
+		.items_center()
+		.justify_center()
+		.rounded(gpui::px(4.))
+		.border(gpui::px(0.5))
+		.border_color(rgb(TEXT).opacity(0.24))
+		.bg(rgb(TEXT).opacity(0.06))
+		.text_size(gpui::px(CAPTION_SIZE))
+		.line_height(gpui::px(CAPTION_LINE_HEIGHT))
+		.text_color(rgb(TEXT).opacity(0.85))
+		.child(label.into())
+}
+
 /// The reading plane keeps its tone when the outer frame becomes translucent.
 pub(crate) struct WorkspacePalette {
 	pub(crate) graph: Rgba,

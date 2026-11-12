@@ -518,8 +518,11 @@ impl AgentSurface {
 			cx.new(|cx| ComposerInput::message(35, prompts::session_quote(), "Agent message", cx));
 
 		cx.subscribe(&composer, |s, _, event, cx| {
-			if let ComposerEvent::Attach(item) = event {
-				s.attach_clipboard(item, cx);
+			match event {
+				ComposerEvent::Attach(item) => s.attach_clipboard(item, cx),
+				ComposerEvent::AcceptSuggestion => s.accept_prompt_suggestion(cx),
+				ComposerEvent::RefreshSuggestion => s.refresh_prompt_suggestion(cx),
+				ComposerEvent::Changed => {},
 			}
 
 			cx.notify();
