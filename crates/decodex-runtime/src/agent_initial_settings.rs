@@ -33,6 +33,16 @@ pub(super) async fn restore_candidate(
 	None
 }
 
+/// A removed project must not prevent the shared read connection from starting.
+/// This changes only the process directory, never the saved thread configuration.
+pub(super) fn restore_process_directory(cwd: &str) -> Option<String> {
+	if std::fs::metadata(cwd).is_err_and(|error| error.kind() == std::io::ErrorKind::NotFound) {
+		env::var("HOME").ok()
+	} else {
+		None
+	}
+}
+
 impl AgentHost {
 	pub(super) async fn initial_agent_settings(
 		&self,
@@ -148,6 +158,23 @@ mod tests {
 	};
 	use decodex_core::DecodexRoot;
 	use decodex_database::{EnqueueAgentEvent, SqliteStore};
+
+	#[test]
+	fn a_removed_project_only_changes_the_shared_connection_directory() {
+		let directory = tempfile::tempdir().unwrap();
+		let removed = directory.path().join("removed-project");
+		let cwd = removed.to_str().unwrap();
+		assert_eq!(initial_settings::restore_process_directory(cwd), std::env::var("HOME").ok());
+		std::fs::create_dir(&removed).unwrap();
+		assert_eq!(initial_settings::restore_process_directory(cwd), None);
+		std::fs::remove_dir(&removed).unwrap();
+		std::fs::write(&removed, "Not a directory").unwrap();
+		assert_eq!(
+			initial_settings::restore_process_directory(cwd),
+			None,
+			"invalid existing targets still pass through native directory admission"
+		);
+	}
 
 	#[tokio::test]
 	async fn first_project_input_restores_past_an_idle_assistant_without_native_replay() {

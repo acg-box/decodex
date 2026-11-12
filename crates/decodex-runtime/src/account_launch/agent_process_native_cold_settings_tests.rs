@@ -535,6 +535,14 @@ async fn serve_with_quota_fault(
 
 				continue;
 			}
+			if env::var_os("DECODEX_TEST_DESKTOP_TIMELINE").is_some()
+				&& !title
+				&& serial > 0
+				&& input["text"]["format"]["type"] != "json_schema"
+			{
+				stream_desktop_timeline(&mut socket, serial).await;
+				continue;
+			}
 
 			let id = format!("cold-fixture-{serial}");
 			let answer = if title {
@@ -589,6 +597,69 @@ async fn serve_with_quota_fault(
 		};
 
 		socket.get_mut().write_all(format!("HTTP/1.1 {status} Fixture\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",body.len()).as_bytes()).await.expect("loopback native backend");
+	}
+}
+
+async fn stream_desktop_timeline(socket: &mut tokio::io::BufReader<TcpStream>, serial: usize) {
+	let id = format!("timeline-{serial}");
+	let reasoning =
+		"Checking the current conversation. Verifying the response layout and its final state.";
+	let chunks = if serial.is_multiple_of(2) {
+		vec![
+			"已完成检查。\n\n",
+			"聊天正文保留原有阅读节奏。这个段落用于观察中英文混排、自动换行以及新文字到达时的滚动位置，",
+			"不应突然跳动、重复整段内容，或把最后一行压到输入栏下面。\n\n",
+			"- 锁定时只读，草稿不发送。\n",
+			"- 工作过程中展示进度。\n",
+			"- 完成后保留最终答复，过程可以再次展开。\n\n",
+			"```text\nready → thinking → completed\n```\n\n",
+			"这是独立测试会话。验证结束后移除测试数据，不改动正在执行的 Codex 会话。",
+		]
+	} else {
+		vec![
+			"The conversation keeps ",
+			"its live output smooth.\n\n",
+			"When work finishes, ",
+			"the process folds away ",
+			"and the final reply stays visible.",
+		]
+	};
+	let answer = chunks.concat();
+	let mut frames = vec![
+		serde_json::json!({"type":"response.created","response":{"id":id}}),
+		serde_json::json!({"type":"response.output_item.added","output_index":0,"item":{"type":"reasoning","id":"process","summary":[]}}),
+		serde_json::json!({"type":"response.reasoning_summary_part.added","item_id":"process","output_index":0,"summary_index":0,"part":{"type":"summary_text","text":""}}),
+	];
+	for chunk in [
+		"Checking the current conversation. ",
+		"Verifying the response layout ",
+		"and its final state.",
+	] {
+		frames.push(serde_json::json!({"type":"response.reasoning_summary_text.delta","item_id":"process","output_index":0,"summary_index":0,"delta":chunk}));
+	}
+	frames.extend([
+		serde_json::json!({"type":"response.reasoning_summary_text.done","item_id":"process","output_index":0,"summary_index":0,"text":reasoning}),
+		serde_json::json!({"type":"response.output_item.done","output_index":0,"item":{"type":"reasoning","id":"process","summary":[{"type":"summary_text","text":reasoning}]}}),
+		serde_json::json!({"type":"response.output_item.added","output_index":1,"item":{"type":"message","id":"answer","role":"assistant","content":[]}}),
+		serde_json::json!({"type":"response.content_part.added","item_id":"answer","output_index":1,"content_index":0,"part":{"type":"output_text","text":""}}),
+	]);
+	for chunk in chunks {
+		frames.push(serde_json::json!({"type":"response.output_text.delta","item_id":"answer","output_index":1,"content_index":0,"delta":chunk}));
+	}
+	frames.extend([
+		serde_json::json!({"type":"response.output_text.done","item_id":"answer","output_index":1,"content_index":0,"text":answer}),
+		serde_json::json!({"type":"response.output_item.done","output_index":1,"item":{"type":"message","id":"answer","role":"assistant","content":[{"type":"output_text","text":answer}]}}),
+		serde_json::json!({"type":"response.completed","response":{"id":id,"usage":{"input_tokens":20,"output_tokens":40,"total_tokens":60}}}),
+	]);
+	let data: Vec<_> = frames
+		.iter()
+		.map(|value| format!("event: {}\ndata: {value}\n\n", value["type"].as_str().unwrap()))
+		.collect();
+	let length: usize = data.iter().map(String::len).sum();
+	socket.get_mut().write_all(format!("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {length}\r\nConnection: close\r\n\r\n").as_bytes()).await.unwrap();
+	for frame in data {
+		socket.get_mut().write_all(frame.as_bytes()).await.unwrap();
+		time::sleep(Duration::from_millis(400)).await;
 	}
 }
 

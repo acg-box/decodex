@@ -2517,7 +2517,7 @@ impl AgentHost {
 		persist_input(&self.store, &root, key, draft.prompt.as_str(), input_options).await?;
 
 		if active.is_none() {
-			match self.connect(&root, key.to_owned(), config, account_id).await {
+			match self.connect(&root, key.to_owned(), config, account_id, None).await {
 				Ok(connection) => *active = Some(connection),
 				Err(_) => {
 					self.record_error(&root, "reconnection_needs_attention").await;
@@ -2598,6 +2598,7 @@ impl AgentHost {
 		operation_key: String,
 		config: AgentConfig,
 		account_id: Option<AccountId>,
+		process_directory: Option<String>,
 	) -> Result<(String, AgentCoordinator, mpsc::Receiver<ServerEvent>), &'static str> {
 		let skill_roots = self.skill_roots.as_ref().map_err(|error| *error)?;
 		let phase = Phase::new("agent_process_connect");
@@ -2606,7 +2607,7 @@ impl AgentHost {
 			.open_agent_connection(StartAgentProcess {
 				operation_key,
 				root_id: root.into(),
-				working_directory: config.cwd.clone(),
+				working_directory: process_directory.unwrap_or_else(|| config.cwd.clone()),
 				account_id,
 			})
 			.await
@@ -2716,7 +2717,10 @@ impl AgentHost {
 		} else {
 			false
 		};
-		let connected = self.connect(&root.id, format!("restore-{}", now()), config, account).await;
+		let process_directory = initial_settings::restore_process_directory(&config.cwd);
+		let connected = self
+			.connect(&root.id, format!("restore-{}", now()), config, account, process_directory)
+			.await;
 
 		if reused_observation && let Some(observations) = &self.observations {
 			// Refresh alongside history recovery, after releasing the startup credential lock.

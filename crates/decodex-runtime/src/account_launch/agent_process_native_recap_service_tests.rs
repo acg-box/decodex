@@ -61,7 +61,7 @@ async fn qualify(mode: &str) {
 		None,
 		Some(bodies.clone()),
 		None,
-		|serial| serde_json::json!({"type":"message","role":"assistant","id":format!("output-{serial}"),"content":[{"type":"output_text","text":if serial==1 {r#"{"summary":"The fix was tested but is not installed.","next_action":null}"#} else {"The fix is tested, but not installed."}}]}),
+		|serial| serde_json::json!({"type":"message","role":"assistant","id":format!("output-{serial}"),"content":[{"type":"output_text","text":if matches!(serial, 1 | 2) {r#"{"summary":"The fix was tested but is not installed.","next_action":null}"#} else {"The fix is tested, but not installed."}}]}),
 	));
 
 	fs::write(home.path().join("config.toml"),format!("model=\"gpt-5.6-sol\"\nmodel_provider=\"fixture\"\n[features]\nenable_request_compression=false\n[model_providers.fixture]\nname=\"fixture\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n")).expect("fixture config");
@@ -159,6 +159,35 @@ async fn qualify(mode: &str) {
 
 		assert!(captured[1]["tools"].as_array().is_none_or(Vec::is_empty));
 	}
+
+	// The source stays loaded in its original process, which retains its writer
+	// lock. Another process must summarize it using reads and its own temporary
+	// thread, without resuming or acquiring the source writer.
+	let reader = NativeSession::start(&binary, home.path());
+	let external_source = Source { client: reader.client.clone(), key: source.key.clone() };
+	assert!(reader.client.configured_task_permissions(&thread).is_none());
+	let external = agent_recap::prepare(&external_source, None)
+		.await
+		.expect("cold read while another process owns the source");
+	let temporary = reader
+		.client
+		.start_temporary_structured(external.options)
+		.await
+		.expect("independent recap thread");
+	assert_ne!(temporary.id(), thread);
+	let (_cancel, cancellation) = tokio::sync::watch::channel(false);
+	let result = temporary
+		.run_isolated(external.prompt, agent_recap::schema(), None, cancellation)
+		.await
+		.expect("recap does not need the source writer");
+	assert!(agent_recap::parse(&result).is_some());
+	assert!(reader.client.configured_task_permissions(&thread).is_none());
+	assert_eq!(
+		session.client.thread_latest_turn_id(&thread).await.expect("source remains unchanged"),
+		before
+	);
+	assert_eq!(calls.load(Ordering::Acquire), 3);
+	assert!(bodies.lock().unwrap()[2]["tools"].as_array().is_none_or(Vec::is_empty));
 
 	session
 		.client

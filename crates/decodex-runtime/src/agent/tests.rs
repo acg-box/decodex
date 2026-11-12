@@ -4722,6 +4722,25 @@ async fn first_message_creates_conversation_and_starts_exactly_once() {
 	assert_eq!(starts[0]["params"]["input"][0]["text"], "Improve sidebar navigation");
 }
 #[tokio::test]
+async fn failed_thread_preparation_does_not_leave_a_creation_fence() {
+	let (mut agent, mut sent, _home) = fixture().await;
+	let work = AgentCoordinator::create_conversation(&agent.store, "invalid-preparation",
+		EnqueueAgentEvent {
+			source_event_id: "invalid-permission".into(), work_item_id: "invalid-preparation".into(),
+			event_kind: "user_message".into(),
+			payload: serde_json::json!({"text":"Read the file","source":"user","options":{"permissionMode":"invalid"}}).to_string(),
+		}, None).await.unwrap();
+	assert!(agent.ensure_thread(&work).await.is_err());
+	let saved = agent.store.get_agent_work_item(work.id).await.unwrap();
+	assert_eq!(saved.dispatch_state, decodex_database::AgentDispatchState::Idle);
+	assert!(saved.codex_thread_id.is_none());
+	assert!(
+		!std::iter::from_fn(|| sent.try_recv().ok())
+			.any(|request| request["method"] == "thread/start")
+	);
+}
+
+#[tokio::test]
 async fn initial_permission_choice_applies_only_to_the_new_native_conversation() {
 	let (agent, _, _home) = fixture().await;
 	let mut work = AgentCoordinator::create_conversation(

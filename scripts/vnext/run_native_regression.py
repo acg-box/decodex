@@ -12,6 +12,7 @@ import argparse
 import os
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 
 
@@ -52,7 +53,12 @@ def main() -> int:
         )
         preparation = environment | {"CODEX_HOME": str(fixture / "preparation-native-home")}
         if args.lock:
-            command = ["cargo", "+stable", "run", "--locked", "--quiet", "-p", "decodex-components", "--", "import-dev", str(args.lock.resolve(strict=True)), str(runtime), "--store", str(fixture / "components")]
+            # The desktop prepares its platform-default store before it connects.
+            # Populate that same isolated store, not a CLI-only test directory.
+            store = fixture / "components"
+            if args.desktop:
+                store = fixture / ("Library/Application Support/Decodex/components" if sys.platform == "darwin" else ".local/share/decodex/components")
+            command = ["cargo", "+stable", "run", "--locked", "--quiet", "-p", "decodex-components", "--", "import-dev", str(args.lock.resolve(strict=True)), str(runtime), "--store", str(store)]
         else:
             command = ["cargo", "+stable", "make", "prepare-codex"]
         result = subprocess.run(command, cwd=ROOT, env=preparation, check=False)

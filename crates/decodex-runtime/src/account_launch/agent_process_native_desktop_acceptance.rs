@@ -30,13 +30,9 @@ pub(super) async fn check(
 	assert!(std::path::Path::new(&binary).is_absolute());
 
 	let provider_recovery = env::var_os("DECODEX_TEST_PROVIDER_RECOVERY").is_some();
-	let workspace = if provider_recovery {
-		env::current_dir().expect("owned fixture checkout")
-	} else {
-		let workspace = home.join("workspace");
-		fs::create_dir(&workspace).expect("create isolated workspace");
-		workspace
-	};
+	// Native directory admission follows the OS account, not the temporary HOME.
+	// Keep account data isolated and reuse this test's already-owned checkout.
+	let workspace = recap_socket::fixture_working_directory();
 	recap_socket::accepted(
 		client,
 		AgentActionDto::Start(AgentStartDto {
@@ -59,6 +55,11 @@ pub(super) async fn check(
 	.await;
 
 	let thread = recap_socket::settled(client).await;
+	let mut external_writer = if env::var_os("DECODEX_TEST_DESKTOP_LOCK").is_some() {
+		Some(prepare_external_writer(runtime, home, &thread).await)
+	} else {
+		None
+	};
 	if provider_recovery {
 		prepare_provider_recovery(client, runtime, home, &thread).await;
 	}
@@ -97,6 +98,12 @@ pub(super) async fn check(
 	let mut observed_requests = requests.load(Ordering::Acquire);
 
 	loop {
+		if home.join("desktop-unlock").exists() {
+			drop(external_writer.take());
+			fs::remove_file(home.join("desktop-unlock")).expect("consume isolated writer release");
+			fs::write(home.join("desktop-unlocked"), b"released\n")
+				.expect("record isolated writer release");
+		}
 		let current_requests = requests.load(Ordering::Acquire);
 
 		if current_requests != observed_requests {
@@ -147,6 +154,51 @@ pub(super) async fn check(
 
 		time::sleep(Duration::from_millis(100)).await;
 	}
+}
+
+async fn prepare_external_writer(
+	runtime: &crate::conversation::ConversationRuntime,
+	home: &Path,
+	thread: &str,
+) -> crate::account_launch::agent_process::native_tests::NativeSession {
+	let (_, native) = runtime.agent_catalog_client().expect("fixture native client");
+	native
+		.request("thread/unsubscribe", serde_json::json!({"threadId":thread}))
+		.await
+		.expect("release the idle fixture writer");
+	time::timeout(Duration::from_secs(5), async {
+		loop {
+			let read = native
+				.thread_read(serde_json::json!({"threadId":thread}))
+				.await
+				.expect("read isolated writer state");
+			if read["thread"]["status"]["type"] == "notLoaded" {
+				break;
+			}
+			time::sleep(Duration::from_millis(25)).await;
+		}
+	})
+	.await
+	.expect("isolated writer unloads");
+	let binary = env::var_os("DECODEX_TEST_CODEX_BINARY").expect("isolated native executable");
+	let writer = crate::account_launch::agent_process::native_tests::NativeSession::start(
+		&binary,
+		&home.join(".codex"),
+	);
+	writer
+		.client
+		.thread_resume(serde_json::json!({"threadId":thread,"excludeTurns":true}))
+		.await
+		.expect("second native process owns only the fixture thread");
+	fs::write(
+		home.join("desktop-writer-lock.json"),
+		serde_json::to_vec(&serde_json::json!({
+			"thread":thread,"native_pid":writer.child.0.id(),"synthetic":true
+		}))
+		.unwrap(),
+	)
+	.expect("record isolated writer identity");
+	writer
 }
 
 async fn prepare_provider_recovery(

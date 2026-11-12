@@ -8,13 +8,14 @@ mod voice;
 use std::{
 	collections::BTreeMap,
 	sync::{Arc, Mutex},
+	time::Duration,
 };
 
 use serde_json::Value;
 use tokio::sync::watch;
 
 use crate::agent_usage_estimate::{Source, same_owner};
-use decodex_codex::app_server_client::{HistoryGuard, ServerEvent};
+use decodex_codex::app_server_client::{HistoryGuard, NativeThreadModelSettings, ServerEvent};
 use decodex_database::{AgentVoiceHistory, AgentVoiceHistoryRevision};
 use decodex_protocol::{
 	AgentActionDto, EntityId, TaskRecap, TaskRecapPhase, TaskRecapStatus, WireText,
@@ -229,9 +230,21 @@ pub(crate) async fn prepare(
 	source: &Source,
 	voice: Option<&AgentVoiceHistory>,
 ) -> Option<Prepared> {
-	let (permissions, guard) = source.client.configured_task_permissions(&source.key.thread)?;
+	let guard = source.client.thread_settings_guard(&source.key.thread)?;
+	let metadata = tokio::time::timeout(
+		Duration::from_secs(8),
+		source.client.request_with_history(
+			"thread/read",
+			serde_json::json!({"threadId":source.key.thread,"includeTurns":false}),
+			guard.clone(),
+		),
+	)
+	.await
+	.ok()?
+	.ok()?;
+	let cwd = metadata["thread"]["cwd"].as_str()?.to_owned();
 	let model =
-		source.client.thread_model_settings(&source.key.thread, guard.clone()).await.ok()??;
+		NativeThreadModelSettings::from_read_response(metadata, &source.key.thread).ok()??;
 	let has_voice = voice.is_some_and(|v| v.revision.calls > 0);
 	let history = history::read(&source.client, &source.key.thread, has_voice).await.ok()?;
 
@@ -244,8 +257,10 @@ pub(crate) async fn prepare(
 		options: decodex_codex::app_server_client::TemporaryStructuredOptions {
 			model: model.model?,
 			model_provider: model.model_provider?,
-			cwd: permissions.cwd,
-			active_permission_profile: permissions.profile_id,
+			cwd,
+			// A recap has no tools. Its isolated read-only request must not depend
+			// on execution permissions cached only after the source was resumed.
+			active_permission_profile: None,
 			mcp_server_names: Vec::new(),
 		},
 		prompt: match voice {

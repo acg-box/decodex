@@ -40,6 +40,56 @@ fn result() -> TaskRecap {
 		.expect("valid recap")
 }
 
+#[tokio::test]
+async fn cold_recap_reads_native_metadata_without_resuming_the_parent() {
+	use tokio::io::{AsyncBufReadExt as _, BufReader};
+
+	let (source, remote, _events) = source();
+	assert!(source.client.configured_task_permissions("native").is_none());
+	let (finished, finish) = tokio::sync::oneshot::channel();
+	let server = tokio::spawn(async move {
+		let (read, mut write) = io::split(remote);
+		let mut lines = BufReader::new(read).lines();
+		let responses = [
+			serde_json::json!({"thread":{"id":"native","model":"source-model","modelProvider":"source-provider","reasoningEffort":"high","cwd":"/tmp/recap-source"}}),
+			serde_json::json!({"thread":{"id":"native","historyMode":"legacy"}}),
+			serde_json::json!({"thread":{"id":"native","turns":[{"id":"turn-one","status":"completed","items":[
+				{"type":"userMessage","content":[{"type":"text","text":"Fix the issue; do not install it."}]},
+				{"type":"agentMessage","text":"The fix is tested. Installation remains pending."}
+			]}]}}),
+		];
+		for response in responses {
+			let request: serde_json::Value =
+				serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
+			assert_eq!(
+				request["method"], "thread/read",
+				"recap must not resume or change its source"
+			);
+			assert_eq!(request["params"]["threadId"], "native");
+			write
+				.write_all(
+					format!("{}\n", serde_json::json!({"id":request["id"],"result":response}))
+						.as_bytes(),
+				)
+				.await
+				.unwrap();
+		}
+		let _ = finish.await;
+	});
+	let prepared =
+		agent_recap::prepare(&source, None).await.expect("cold history can be summarized");
+	assert_eq!(prepared.options.model, "source-model");
+	assert_eq!(prepared.options.model_provider, "source-provider");
+	assert_eq!(prepared.options.cwd, "/tmp/recap-source");
+	assert_eq!(prepared.options.active_permission_profile, None);
+	assert!(prepared.options.mcp_server_names.is_empty());
+	assert!(prepared.prompt.contains("Installation remains pending"));
+	assert!(prepared.guard.is_live());
+	assert!(source.client.configured_task_permissions("native").is_none());
+	let _ = finished.send(());
+	server.await.unwrap();
+}
+
 #[test]
 fn recap_requires_nullable_next_action_and_character_bounds() {
 	assert!(agent_recap::parse(r#"{"summary":"done"}"#).is_none());
