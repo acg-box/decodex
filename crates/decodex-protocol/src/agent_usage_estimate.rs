@@ -66,6 +66,17 @@ pub enum AgentUsageEstimateResult {
 		/// Reported integer estimates and optional token groups.
 		estimate: ThreadUsageEstimate,
 	},
+	/// Public API price equivalent of observed tokens, not subscription billing.
+	ApiEstimate {
+		/// Exact requested work.
+		work_id: EntityId,
+		/// Account that owns the observed conversation.
+		account_id: EntityId,
+		/// Time of the local calculation.
+		observed_at_micros: i64,
+		/// Token-only estimate with explicit coverage and price age.
+		estimate: ApiCostEstimate,
+	},
 	/// Native returned no estimate (including unavailable billing route).
 	NotReported,
 	/// The native provider does not implement this endpoint.
@@ -74,4 +85,19 @@ pub enum AgentUsageEstimateResult {
 	CapacityExceeded,
 	/// Request failed or its source changed; no zero estimate is implied.
 	Unavailable,
+}
+
+/// API-equivalent text-token cost. It excludes tool charges and subscription fees.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+pub struct ApiCostEstimate {
+	/// Exact native conversation.
+	pub thread_id: String,
+	/// Estimated USD in millionths.
+	pub usd_micros: u64,
+	/// Number of observed model responses included in the estimate.
+	pub priced_responses: u64,
+	/// Some earlier usage, models, speeds or pricing fields could not be priced.
+	pub partial: bool,
+	/// Last successful check of the official price table, in Unix microseconds.
+	pub pricing_checked_at_micros: i64,
 }

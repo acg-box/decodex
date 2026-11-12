@@ -172,7 +172,7 @@ pub use self::{
 		AgentTranscriptRequest, AgentTranscriptResult, MAX_TRANSCRIPT_BYTES, TRANSCRIPT_CHUNK_BYTES,
 	},
 	agent_usage_estimate::{
-		AgentUsageEstimateResult, ThreadUsageEstimate, ThreadUsageEstimateGroup,
+		AgentUsageEstimateResult, ApiCostEstimate, ThreadUsageEstimate, ThreadUsageEstimateGroup,
 	},
 	agent_voice_settings::AgentVoiceSettingsResult,
 	client::{

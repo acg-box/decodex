@@ -12,6 +12,7 @@ mod account_observation;
 mod account_profile;
 mod account_service;
 mod agent;
+mod agent_api_pricing;
 mod agent_app_exposure;
 mod agent_app_ui_receipt;
 mod agent_capabilities;

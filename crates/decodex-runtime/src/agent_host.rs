@@ -108,6 +108,7 @@ pub(crate) struct AgentHost {
 	samples: Samples,
 	transcripts: Transcripts,
 	weather_cache: Arc<Mutex<Option<CachedWeather>>>,
+	api_prices: crate::agent_api_pricing::Prices,
 	archive_visibility: Arc<Mutex<crate::agent_visibility::ArchiveVisibility>>,
 	voice: crate::agent_voice::VoiceGateway,
 	dictation: DictationGateway,
@@ -122,6 +123,9 @@ impl AgentHost {
 		let (sender, receiver) = mpsc::channel(32);
 
 		Self {
+			api_prices: crate::agent_api_pricing::Prices::new(
+				store.path().with_file_name("api-pricing-cache.json"),
+			),
 			initializing: watch::channel(true).0,
 			observations: None,
 			skill_roots: crate::agent_skill_roots::RuntimeSkillRoots::from_environment(),
@@ -483,7 +487,7 @@ impl AgentHost {
 	}
 
 	pub(crate) async fn usage_estimate(&self, work: &str) -> AgentUsageEstimateResult {
-		agent_usage_estimate::read(|| async {
+		let source = || async {
 			let (generation, account, revision, client) = self.runtime.agent_usage_source().await?;
 			let owner = self.store.get_agent_work_item(work.into()).await.ok()?;
 
@@ -498,8 +502,40 @@ impl AgentHost {
 				},
 				client,
 			})
-		})
-		.await
+		};
+		let native = agent_usage_estimate::read(&source).await;
+		if matches!(&native, AgentUsageEstimateResult::Available { estimate, .. }
+			if estimate.reported_usd_micros().is_some())
+		{
+			return native;
+		}
+		let Some(before) = source().await else { return native };
+		let Ok((rows, truncated)) =
+			self.store.read_agent_cost_observations(work.into(), before.key.thread.clone()).await
+		else {
+			return native;
+		};
+		let catalog = self.api_prices.snapshot().await;
+		let Some(estimate) =
+			crate::agent_api_pricing::calculate(&catalog, &before.key.thread, &rows, truncated)
+		else {
+			return native;
+		};
+		if source().await.is_none_or(|after| before.key != after.key) {
+			return AgentUsageEstimateResult::Unavailable;
+		}
+		let (Ok(work_id), Ok(account_id)) = (
+			decodex_protocol::EntityId::new(work),
+			decodex_protocol::EntityId::new(before.key.account.as_str()),
+		) else {
+			return AgentUsageEstimateResult::Unavailable;
+		};
+		AgentUsageEstimateResult::ApiEstimate {
+			work_id,
+			account_id,
+			observed_at_micros: crate::agent_api_pricing::now(),
+			estimate,
+		}
 	}
 
 	async fn read_state_source(
