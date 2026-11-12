@@ -150,6 +150,10 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent_api_pricing.rs
   - id: openwiki-source-c75093d19a3bc72db5836102
     resource: repo://crates/decodex-runtime/src/agent_host.rs
+  - id: openwiki-source-c3df87a54ef9d43795de5124
+    resource: repo://crates/decodex-runtime/src/agent_message_history.rs
+  - id: openwiki-source-8a155c93f55f20176452e149
+    resource: repo://crates/decodex-runtime/src/agent_message_history/tests.rs
   - id: openwiki-source-c6a513f4a72008998a474ca0
     resource: repo://crates/decodex-runtime/src/agent_titles.rs
   - id: openwiki-source-7111b71a47931c3e55d3ff6f
@@ -158,6 +162,10 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent.rs
   - id: openwiki-source-4a97944ff4c701a054e27291
     resource: repo://crates/decodex-runtime/src/agent/activity.rs
+  - id: openwiki-source-283a40a004fda23504fad7e1
+    resource: repo://crates/decodex-runtime/src/agent/result_messages.rs
+  - id: openwiki-source-0bdc548eba96b09c39e22383
+    resource: repo://crates/decodex-runtime/src/agent/tests/result_integrity.rs
   - id: openwiki-source-64d7588c1af50398568a792e
     resource: repo://crates/decodex-runtime/src/agent/timeline.rs
   - id: openwiki-source-6b78c4fcf18e4d7a81d69679
@@ -172,16 +180,22 @@ sources:
     resource: repo://database/src/agent_titles.rs
   - id: openwiki-source-6197a876b2effbe992b1e2ec
     resource: repo://database/src/agent.rs
-generated: { by: "codex", at: "2026-11-12T12:41:07.431Z" }
+generated: { by: "codex", at: "2026-11-12T20:40:36.077Z" }
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-12T12:41:07.431Z
+    at: 2026-11-12T20:40:36.077Z
 ---
 
 
 # Conversation presentation and motion
 
 The transcript is the primary reading surface. Intermediate work, response statistics and controls support it without replacing the final answer. The UI derives these views from recorded events; collapsing a group does not delete its evidence.
+
+## Native answer display
+
+The runtime applies the native answer display decision through one text projection. An absent moderation record, legacy output explicitly marked unmoderated, or a version 1 `show` decision retains the answer text. A restricted or unsupported decision produces empty text. Timeline history, Recap input and retained completion evidence use this projection.
+
+A completed native message can replace text already received through streaming with empty text. Streaming deltas can arrive before the final native decision. Codex owns that decision; Decodex applies it to the existing message views. The implementation is in `agent_message_history::assistant_text`, `agent::observe_live_text` and `agent::result_messages`. See the [acceptance boundaries](../testing/upstream-acceptance-boundaries.md) for the regression and native fixture scope.
 
 ## Progressive disclosure
 

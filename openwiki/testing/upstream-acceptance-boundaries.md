@@ -136,6 +136,8 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent/tests/native_agent_wake.rs
   - id: openwiki-source-24139c353e393a9759b0267a
     resource: repo://crates/decodex-runtime/src/agent/tests/native_permissions.rs
+  - id: openwiki-source-0bdc548eba96b09c39e22383
+    resource: repo://crates/decodex-runtime/src/agent/tests/result_integrity.rs
   - id: openwiki-source-1c25f1eb2ea8f33c9b46e78e
     resource: repo://crates/decodex-runtime/src/agent/tests/work_contract.rs
   - id: openwiki-source-64d7588c1af50398568a792e
@@ -154,6 +156,8 @@ sources:
     resource: repo://crates/decodex-runtime/src/work_portfolio.rs
   - id: openwiki-source-275dc903aab820a109a196b4
     resource: repo://crates/decodex-runtime/tests/fixtures/project_work_acceptance.json
+  - id: openwiki-source-e09ec698c2e4d73878b3aa45
+    resource: repo://crates/decodex-runtime/tests/native_qualification/answer_display.py
   - id: openwiki-source-b1a8e98eb39febad19f64bda
     resource: repo://crates/decodex-runtime/tests/native_qualification/dotenv_startup.py
   - id: openwiki-source-07c9cc033899826079f8efb5
@@ -202,10 +206,10 @@ sources:
     resource: repo://scripts/macos/version_codex_source.py
   - id: openwiki-source-e201f60894c32a914dac99ee
     resource: repo://scripts/vnext/run_native_regression.py
-generated: { by: "codex", at: "2026-11-11T20:39:38.450Z" }
+generated: { by: "codex", at: "2026-11-12T20:40:36.077Z" }
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-11T20:39:38.450Z
+    at: 2026-11-12T20:40:36.077Z
 ---
 
 # Upstream integration acceptance boundaries
@@ -240,6 +244,12 @@ The provider-refusal follow-up resolves [the former compatibility blocker](https
 The retired Codex startup-configuration diagnostic is absent from the current router. Its earlier execution remains historical proof. Valid named-permission defaults and an owned Recap working directory repair fixture admission without weakening existing behavior assertions. The exact-artifact development cache test also corrupts the required standalone executor, checks that ordinary preparation rejects it, and restores it through explicit reinstallation.
 
 The default execution scope is affected Decodex consumers against the prepared artifact and the applicable repository gate. Read relevant upstream implementation and test bodies for source review; execute upstream tests only for a concrete compatibility question or missing retained-fix proof. An unconsumed fixture failure remains a diagnostic limit and is not counted as passed. It does not create a Decodex repair item. This does not relax the evidence needed to advance the source-review cursor or qualify an artifact.
+
+## Native answer display
+
+The original-symptom regressions are `native_answer_display_applies_to_history_and_recap` and `native_answer_display_clears_streamed_and_completed_results`. They check restricted and unsupported decisions, readable legacy and `show` output, history and Recap input, completion evidence and replacement of previously streamed text with empty text. The regressions failed before the shared projection repair. The `retained_answer_display` entry in the [contract catalog](../../automations/upstream/retained-contracts.json) preserves that original qualification.
+
+The reusable `answer_display.py` fixture uses the selected CLI and packaged helpers with a loopback provider and a disposable home. It checks native completion and cold item-history flags for `show`, `hide`, `block` and an unsupported version. Those flags and the local projection tests establish separate boundaries. Read the [current qualification](../../automations/upstream/qualification.json) for later executions and exact artifact identities. These checks do not establish replacement-card interaction, a trusted-contact workflow, live-provider behavior or installed-desktop acceptance.
 
 ## Provider recovery qualification
 
@@ -468,7 +478,7 @@ The fixture is ignored by default. It checks the named CLI with synthetic input 
 
 Native Codex preserves an unsampled worker `FINAL_ANSWER` message across bounded compaction and cold continuation. The summary precedes pending mail and later caller input. Compactor output does not acknowledge that mail; an ordinary inference request supplies the sampling boundary. Decodex reuses this native ownership and adds no mailbox or retention policy.
 
-The reusable `pending_mail.py` probe checks repeated manual compaction and cold continuation with legacy and paginated history, through local and remote compaction. It checks exact message identity, order, route and removal after ordinary inference has sampled the completion. Use the current qualification for artifact identities, before/after results and executed cases. This loopback fixture uses idle injected completion messages. It does not qualify ordinary agent-message retention, mid-turn preemption or live-provider behavior.
+The reusable `pending_mail.py` probe checks repeated manual compaction and cold continuation with legacy and paginated history, through local and remote compaction. It checks exact message identity, order, route and removal after ordinary inference has sampled the completion. The [original qualification](https://github.com/acg-box/decodex/blob/d5f2386e1be6aa887ef16f11272a3e7b69211ae1/automations/upstream/qualification.json) retains its artifact identities and results; current qualification lists later named executions separately. This loopback fixture uses idle injected completion messages. It does not qualify ordinary agent-message retention, mid-turn preemption or live-provider behavior.
 
 ## Saved settings and diagnostic storage
 

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:98ed22b5959866822702edc7e13505b9ecd5ddbd33df5053ba0fefe7286a5bd3",
+  "pageVersion": "sha256:d57b1a0fd65dc09f6a907d3a8462abcccaf75d541a5474ed758752ef3fd556c0",
   "claims": [
     {
       "id": "claim_36b9a49ffa87416e8add8befc7d10efe",
@@ -114,7 +114,7 @@
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/timeline.rs",
-          "version": "repo-file-v1:sha256:00a9ff3e3062fe2e9b50f67bef79b8add89a8d0d43ed30ead1ab7d91efbfb4a8"
+          "version": "repo-file-v1:sha256:99e34f37c482b4b41f80e842261d934ac685289435f2f876ece6627e733b9a44"
         }
       ]
     },
@@ -310,7 +310,7 @@
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent.rs",
-          "version": "repo-file-v1:sha256:d73cbaca126ab27dc4fec5114d1d2097612bdba327bc684c6847ee6abc298c6c"
+          "version": "repo-file-v1:sha256:bf37795ce103536e5f9f41a4d3263b709ecc6012d3e2a494b6ab5dfb5088832d"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/timeline/metrics.rs",
@@ -811,10 +811,40 @@
           "version": "repo-file-v1:sha256:373641361299b932c5f785b3252a98b83f18d0dea84d9584fff5198070e3b689"
         }
       ]
+    },
+    {
+      "id": "claim_fa9f405aaabc47c8900c7b366d86934a",
+      "statement": "One native answer text projection retains absent moderation, legacy explicitly unmoderated output and version 1 show text; restricted or unsupported decisions produce empty text in timeline history, Recap input and retained completion evidence, and completion can clear text already received through streaming.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent.rs",
+          "version": "repo-file-v1:sha256:bf37795ce103536e5f9f41a4d3263b709ecc6012d3e2a494b6ab5dfb5088832d"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/result_messages.rs",
+          "version": "repo-file-v1:sha256:11ec56f8450b565e5a8c1477d3dcb5a31d521667aaa13e4cba7b88ef5d0a0a55"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/tests/result_integrity.rs",
+          "version": "repo-file-v1:sha256:61813b96e52c9a7416b030701c3a1f1ef96faf783e7aad42d19049c9f2f2f1f9"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/timeline.rs",
+          "version": "repo-file-v1:sha256:99e34f37c482b4b41f80e842261d934ac685289435f2f876ece6627e733b9a44"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent_message_history.rs",
+          "version": "repo-file-v1:sha256:5f0e589d6365cbb888988830007f6d785e41b37f097f7c7a2686fbb143174a1c"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent_message_history/tests.rs",
+          "version": "repo-file-v1:sha256:2d525df109adc5cfe9d1bc9fdd17e899f4ea29cf82be4767dfc759a279f9e229"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.9.0",
-    "at": "2026-11-12T12:41:07.431Z"
+    "at": "2026-11-12T20:40:36.077Z"
   }
 }
