@@ -10,6 +10,33 @@ fn render(exchanges: &[Exchange]) -> String {
 }
 
 #[test]
+fn native_answer_display_applies_to_history_and_recap() {
+	for display in [
+		serde_json::json!(null),
+		serde_json::json!({"version":1,"mode":"hide","replacement":{"kind":"wellbeingPromptHelpline"}}),
+		serde_json::json!({"version":1,"mode":"block","reason":{"kind":"protection","protectionType":"omnimod"}}),
+		serde_json::json!({"version":2,"mode":"show","trustedContacts":"skip"}),
+		serde_json::json!({"version":1,"mode":"unknown"}),
+	] {
+		let item = serde_json::json!({"type":"agentMessage","id":"answer","text":"RESTRICTED_ANSWER",
+			"moderation":{"moderated":true,"display":display}});
+		assert!(history::visible(std::slice::from_ref(&item)).unwrap().is_empty());
+		let projected =
+			crate::agent::timeline::ordinary(&serde_json::json!({"turnId":"turn","item":item}))
+				.unwrap();
+		assert!(!serde_json::to_string(&projected).unwrap().contains("RESTRICTED_ANSWER"));
+	}
+	for moderation in [
+		serde_json::json!(null),
+		serde_json::json!({"moderated":false,"display":null}),
+		serde_json::json!({"moderated":true,"display":{"version":1,"mode":"show","trustedContacts":"skip"}}),
+	] {
+		let item = serde_json::json!({"type":"agentMessage","text":"Allowed answer","moderation":moderation});
+		assert_eq!(history::visible(&[item]).unwrap()[0].text, "Allowed answer");
+	}
+}
+
+#[test]
 fn latest_eight_answered_exchanges_and_pending_correction_exclude_tool_and_reasoning_text() {
 	let mut items = Vec::new();
 

@@ -4,7 +4,7 @@ title: "Codex upstream maintenance"
 openwiki_generated: true
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-11T20:39:38.450Z
+    at: 2026-11-12T20:40:36.077Z
 sources:
   - id: openwiki-source-8037e2358a2c4f9b2c722a11
     resource: repo://AGENTS.md
@@ -38,12 +38,20 @@ sources:
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_recap_socket_tests.rs
   - id: openwiki-source-1e1e3397756e63672a9c1f2d
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_runtime_submit_tests.rs
+  - id: openwiki-source-8a155c93f55f20176452e149
+    resource: repo://crates/decodex-runtime/src/agent_message_history/tests.rs
   - id: openwiki-source-dbc533dc306a3f520c4241e0
     resource: repo://crates/decodex-runtime/src/agent.rs
+  - id: openwiki-source-052a4071b057633df77b1e21
+    resource: repo://crates/decodex-runtime/src/agent/archive.rs
   - id: openwiki-source-30c7edf894a639091ecbafc6
     resource: repo://crates/decodex-runtime/src/agent/tests/external_context.rs
   - id: openwiki-source-a7b97dd347fbe2f630692d12
     resource: repo://crates/decodex-runtime/src/agent/tests/native_agent_wake.rs
+  - id: openwiki-source-0bdc548eba96b09c39e22383
+    resource: repo://crates/decodex-runtime/src/agent/tests/result_integrity.rs
+  - id: openwiki-source-e09ec698c2e4d73878b3aa45
+    resource: repo://crates/decodex-runtime/tests/native_qualification/answer_display.py
   - id: openwiki-source-e7a53f398340c29957bd81d3
     resource: repo://crates/decodex-runtime/tests/native_qualification/native_session.py
   - id: openwiki-source-6cd65761e9a87b1e53c53373
@@ -60,7 +68,7 @@ sources:
     resource: repo://scripts/macos/stage_decodex_app.sh
   - id: openwiki-source-1295465b51f4c563c25d3f43
     resource: repo://scripts/macos/version_codex_source.py
-generated: { by: "codex", at: "2026-11-11T19:14:11.241Z" }
+generated: { by: "codex", at: "2026-11-12T20:40:36.077Z" }
 ---
 
 
@@ -190,6 +198,8 @@ The runtime lock can select an exact official source archive. Use the explicit d
 3. Exercise the affected native behavior and current local consumer before delivering a lock update. A matching schema establishes protocol structure. It does not establish saved-permission behavior, compaction, transport lifecycle or desktop acceptance. Keep source review, artifact qualification, merge, installed identity and live acceptance as separate evidence. If a retained contract fails on the candidate and passes on the selected artifact, keep the runtime lock unchanged. Save the exact failure, original-artifact comparison and supported next action; deliver independent component or fixture repairs separately. A completed source-review prefix does not deliver native fixes in an unselected artifact.
 
 Read the development lock and linked current qualification for the selected source, component identities, executed identities and limits. Do not copy each daily target or cohort count into this procedure. A source test can select its own helpers; that result does not establish execution of the signed production artifact.
+
+For retained answer display, check the native completion and cold-history flags together with the local text projection. Keep those two proof boundaries separate in the [acceptance record](../testing/upstream-acceptance-boundaries.md#native-answer-display).
 
 The provider-recovery follow-up distinguishes native admission from an obsolete fixture expectation. A saved-provider conversation resumes after its provider is restored. The approved alternative creates a new native fork on the current provider through the existing review and receipt flow. Keep source-provider and history assertions, test both routes against the exact artifact, and record the revised contract separately from the earlier failure. The qualified development lock preserves that recovery route. Each later runtime update must pass the affected native consumer and component checks against the new artifact. Historical cohort passes remain bound to the original artifact and source scope. HumanCommand support is user-deferred in [issue 2585](https://github.com/acg-box/decodex/issues/2585), not a required daily implementation task. Keep it unsupported and unadvertised; runtime migration still requires qualification of the retained scope. Runtime qualification does not activate the schedule; explicit user authorization and app automation readback govern resumption.
 

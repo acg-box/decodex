@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:1ac093be47644fb854ce2df1feec73efa001f9a3ea30a3727b20504720b6c734",
+  "pageVersion": "sha256:82a4ea9b2fcd424181b8a8ca9716d32de2cfc5d49256036173cffeafc50c3cdc",
   "claims": [
     {
       "id": "claim_b6c6b65984924f69970e7f0410d50903",
@@ -108,7 +108,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/agent.rs",
-          "version": "repo-file-v1:sha256:6a5b70e045ebd58d7b087b584e61cdf178ef67f69f3eb91f3074c83f20d3d277"
+          "version": "repo-file-v1:sha256:bf37795ce103536e5f9f41a4d3263b709ecc6012d3e2a494b6ab5dfb5088832d"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/tests/external_context.rs",
@@ -216,7 +216,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-contracts.json",
-          "version": "repo-file-v1:sha256:dfbcb5f07ff9ce54daccf7f270553c99481f7dcf6fe4129485b9f8b52caf7c9d"
+          "version": "repo-file-v1:sha256:931dee0e3f97691f67f093dc921885c20ccef45aa5b7ae1ad461491d4f670c08"
         }
       ]
     },
@@ -348,11 +348,11 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_cold_settings_tests.rs",
-          "version": "repo-file-v1:sha256:30275f79a8604adccd6e355c350282fe1981e621bd44d430f139a168eb022389"
+          "version": "repo-file-v1:sha256:ed43ce05b2c8ebc2565ddb57e919ef4ef879f5db32fd2061cf6969d0ddfb2b80"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_recap_socket_tests.rs",
-          "version": "repo-file-v1:sha256:4ef196654ce096dca1fd06e826b6085f1cc981972f505497e773b753ebc55caa"
+          "version": "repo-file-v1:sha256:cb17dec231e3d6daea2a92bee884375afcf5ba773242b117f644c116b429ce2e"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_runtime_submit_tests.rs",
@@ -405,8 +405,8 @@
           "version": "repo-lines-v1:sha256:d87feee22a65fb490afcde3de28cd8c18fccc5269742c71bd2c3663f007f9e72:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOGNlMGVlMTJiZDEyMzEzZmVkMDMzMDllYjEzYWNmODQwOTBlZTI0NTVjMThlNGE2NWRlNjViZjRjMzBiNjdmNiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOTFjZGVhZmIwZGQyZjdhN2E1ZWExOTMzZTY5YzYwMWVlMTA1MTA4OTE0ODU5NTJjNjEzMjI1NDc1NjMwNjgwNCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjAsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOGQ1YTMwNWE5MzI2Nzk2ZTQ4MWVhZjc2ZmRjODUxYjA3Mjk4YmUxOGZkOTdjMzU2MzMyMmY0ZmIyZTM5Y2MxZCJ9"
         },
         {
-          "resource": "repo://crates/decodex-runtime/src/agent.rs#L1045-L1052",
-          "version": "repo-lines-v1:sha256:1d97f750515512c3dccc1dba684c9c6f93c1c4db29ca7e3209550235e8e91464:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZWZkZDg0NjFjMDUwNzdiZTg5NzFhYmUxMWM5ODJhMjU0YWFlMTEyZTM3NzIwZDdhZmViNjBlMWU0ZDUzNDRmZiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDFiYTQ3MTljODBiNmZlOTExYjA5MWE3YzA1MTI0YjY0ZWVlY2U5NjRlMDljMDU4ZWY4Zjk4MDVkYWNhNTQ2YiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMzNhM2E4NGU0NTc2MjMxMDU0MzhlYTg2MGM3MDk5NjA2YTEwYzVkOTM2YTM2ZDQ0Mjk1ZDMyZmE3N2Q3ZjdmNyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNDZhYmEzZWJlNTk5ZDA3OTUyMzUwMDc4MjU3OGU0NGY3NzEyNDA1YjI3MzBhMTE0YTRkZDg2YTEwOTFkYjcyMSJ9"
+          "resource": "repo://crates/decodex-runtime/src/agent/archive.rs#L24-L57",
+          "version": "repo-lines-v1:sha256:54e073c0ed34794c995b1ce3d4d1eef7bf195f281d1d6007b99011b799979ffd:eyJzZWxlY3RlZExpbmVDb3VudCI6MzQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNjYWRlNzBlZjNhMGQzNmZjMjAxOTRjYmYyZmE3MTQ5YzFkMWY4YTgxMmQwYmViYzE0YjViMTcxN2VhZjg2ZDEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhkZDc3N2ViNGRhZmVhZGU0M2I2OGFkYTU5ZjBlNTdjNDZmMjcyYWQ0NjRmYjNlZTk0NWMxYzIwOWY0YjExYjEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk0ZGViZGNiZjU4MmFjZDhkZGIxMzllZjk1Mzc4Y2FlMWU5ODQ2MzZkYWEyYjk1ZjI3ODg3MTE3NDM2NDQwZTUifQ"
         },
         {
           "resource": "repo://database/src/agent/archive.rs#L20-L32",
@@ -427,10 +427,32 @@
           "version": "repo-file-v1:sha256:dead50712efa2e9f89beac5a6ad5342056c3c37a09f05cd7def9e982e791114d"
         }
       ]
+    },
+    {
+      "id": "claim_0d62d6e7b2af43c592e3664f34f784c8",
+      "statement": "Retained native answer display qualification separates completion and cold-history flags from the local text projection regressions.",
+      "evidence": [
+        {
+          "resource": "repo://automations/upstream/retained-contracts.json",
+          "version": "repo-file-v1:sha256:931dee0e3f97691f67f093dc921885c20ccef45aa5b7ae1ad461491d4f670c08"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/tests/result_integrity.rs",
+          "version": "repo-file-v1:sha256:61813b96e52c9a7416b030701c3a1f1ef96faf783e7aad42d19049c9f2f2f1f9"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent_message_history/tests.rs",
+          "version": "repo-file-v1:sha256:2d525df109adc5cfe9d1bc9fdd17e899f4ea29cf82be4767dfc759a279f9e229"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/tests/native_qualification/answer_display.py",
+          "version": "repo-file-v1:sha256:d9d811b992653301af17bb8d26b9bf2ca758edd48acbc384c13fd883785b2fc9"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.9.0",
-    "at": "2026-11-11T20:39:38.450Z"
+    "at": "2026-11-12T20:40:36.077Z"
   }
 }
