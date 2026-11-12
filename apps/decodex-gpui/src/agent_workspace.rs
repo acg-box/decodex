@@ -950,7 +950,10 @@ impl AgentSurface {
 		self.prepare_transcript_history(window, cx);
 
 		let selected = self.conversation_work();
-		let is_agent = self.native_agents.selected.is_some() || self.selected_is_agent();
+		// Archiving changes write access, not the conversation's presentation.
+		let is_agent = self.native_agents.selected.is_some()
+			|| self.selected_is_agent()
+			|| self.selected_is_archived();
 
 		self.workspace_transcript(selected.as_ref(), is_agent, window, cx)
 	}
@@ -1209,7 +1212,9 @@ impl AgentSurface {
 		self.prepare_workspace_history(window, cx);
 		self.sync_side_chat_family(cx);
 
-		let is_agent = self.native_agents.selected.is_some() || self.selected_is_agent();
+		let is_agent = self.native_agents.selected.is_some()
+			|| self.selected_is_agent()
+			|| self.selected_is_archived();
 		let selected = self.conversation_work();
 		let wide = f32::from(window.viewport_size().width) > 1_000.0;
 
@@ -1692,22 +1697,24 @@ impl AgentSurface {
 
 	fn workspace_followup(&self, work: &AgentWorkItemDto, cx: &mut Context<Self>) -> AnyElement {
 		let title = work.title.clone();
-		let footer = gpui::div().p_3().child(self.workspace_action(
-			"discuss-with-agent".into(),
-			"Discuss this work →".into(),
-			move |s, cx| {
-				if let Some(root) = s.root_id() {
-					s.open_page(&root, cx);
+		let footer = gpui::div().debug_selector(|| "workspace-followup".into()).p_3().child(
+			self.workspace_action(
+				"discuss-with-agent".into(),
+				"Discuss this work →".into(),
+				move |s, cx| {
+					if let Some(root) = s.root_id() {
+						s.open_page(&root, cx);
 
-					if s.composer.read(cx).content().trim().is_empty() {
-						s.composer.update(cx, |input, cx| {
-							input.set_content(&format!("About {title}: "), cx)
-						});
+						if s.composer.read(cx).content().trim().is_empty() {
+							s.composer.update(cx, |input, cx| {
+								input.set_content(&format!("About {title}: "), cx)
+							});
+						}
 					}
-				}
-			},
-			cx,
-		));
+				},
+				cx,
+			),
+		);
 
 		footer
 			.when(
@@ -2087,6 +2094,10 @@ impl AgentSurface {
 #[cfg(any(test, feature = "visual-capture"))]
 impl AgentSurface {
 	pub(crate) fn visual_workspace_page(&mut self, page: &str, cx: &mut Context<Self>) {
+		if page == "process" {
+			self.visual_process_page(cx);
+			return;
+		}
 		if matches!(page, "cost" | "cost-estimated" | "cost-unknown") {
 			self.visual_workspace_page("markdown", cx);
 			self.visual_conversation_cost(page);

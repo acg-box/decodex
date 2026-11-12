@@ -911,6 +911,7 @@ impl AgentHost {
 				.map(|(n, c)| format!("assistant:{}", serde_json::json!([thread, n, c])));
 			if let Some(newer) = combined.as_mut() {
 				page.entries.append(&mut newer.entries);
+				page.observed_activities.append(&mut newer.observed_activities);
 				page.weather.append(&mut newer.weather);
 				page.source_threads.append(&mut newer.source_threads);
 				page.safety_buffering_turn_id = newer.safety_buffering_turn_id.take();

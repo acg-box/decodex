@@ -211,8 +211,8 @@ fn light(token: u32) -> u32 {
 		CONTROL_ACTIVE_FILL => 0x526ca6,
 		ON_PRIMARY => 0xffffff,
 		INFO => 0x2e63a8,
-		SUCCESS => 0x315f9d,
-		WARNING => 0x8d5549,
+		SUCCESS => 0x2c7050,
+		WARNING => 0x94611d,
 		ERROR => 0xb43a46,
 		// Materials retain their original alpha and glass ownership.
 		0x0b0a0f => 0xf5f6f9,
@@ -413,6 +413,25 @@ mod tests {
 		for appearance in [Theme::Dark, Theme::Light] {
 			for theme in ColorTheme::ALL {
 				let colors = ColorScheme::new(appearance, theme);
+				let states = [
+					super::super::INFO,
+					super::super::SUCCESS,
+					super::super::WARNING,
+					super::super::ERROR,
+				];
+				for (index, token) in states.iter().enumerate() {
+					let a = colors.rgb(*token);
+					for other in &states[index + 1..] {
+						let b = colors.rgb(*other);
+						let distance =
+							((a.r - b.r).powi(2) + (a.g - b.g).powi(2) + (a.b - b.b).powi(2))
+								.sqrt();
+						assert!(
+							distance >= 0.08,
+							"{appearance:?} {theme:?}: status colors are too similar"
+						);
+					}
+				}
 
 				for token in [
 					super::super::INFO,

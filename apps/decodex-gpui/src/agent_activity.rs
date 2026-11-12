@@ -1260,6 +1260,7 @@ mod tests {
 					thread_token_breakdown: None,
 					thread_metrics: None,
 					safety_buffering_turn_id: None,
+					observed_activities: Vec::new(),
 					active_realtime_session_at_page_start: None,
 				}
 			));
@@ -1299,6 +1300,7 @@ mod tests {
 					thread_token_breakdown: None,
 					thread_metrics: None,
 					safety_buffering_turn_id: None,
+					observed_activities: Vec::new(),
 					active_realtime_session_at_page_start: None,
 				}
 			));
@@ -1419,6 +1421,7 @@ mod tests {
 					thread_token_breakdown: None,
 					thread_metrics: None,
 					safety_buffering_turn_id: None,
+					observed_activities: Vec::new(),
 					active_realtime_session_at_page_start: None
 				}
 			));
@@ -1503,7 +1506,7 @@ phase: None,
 				source_threads: Default::default(),
 				thread_id: "benchmark-thread".into(), entries, next_cursor: None,
 				weather: Default::default(), thread_token_total: None, thread_token_breakdown: None,
-		thread_metrics: None, safety_buffering_turn_id: None, active_realtime_session_at_page_start: None,
+		thread_metrics: None, safety_buffering_turn_id: None, observed_activities: Vec::new(), active_realtime_session_at_page_start: None,
 			}));
 
 			cx.notify();

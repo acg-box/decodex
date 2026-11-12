@@ -656,6 +656,7 @@ pub(super) fn final_response_text(
 			if work_id.as_str() == work && page.thread_id == thread =>
 			page.entries.iter().map(|entry| &entry.content).collect(),
 		AgentTimelineResult::Summary { work_id, thread_id, items, .. }
+		| AgentTimelineResult::Saved { work_id, thread_id, items, .. }
 			if work_id.as_str() == work && thread_id == thread =>
 			items.iter().collect(),
 		_ => return None,
@@ -898,6 +899,7 @@ mod tests {
 						.collect(),
 					next_cursor: None,
 					weather: Default::default(),
+					observed_activities: Vec::new(),
 					active_realtime_session_at_page_start: None,
 				},
 			},

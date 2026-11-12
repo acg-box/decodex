@@ -44,6 +44,15 @@ impl AgentSurface {
 			.unwrap_or_default();
 		let live = self.streamed_output(work).unwrap_or(saved_live);
 		let mut rows = Vec::new();
+		let mut preceding_process = self
+			.timeline
+			.native
+			.entries
+			.iter()
+			.rev()
+			.find(|entry| matches!(entry.content, AgentTimelineContent::Item { .. }))
+			.and_then(super::groups::process_turn)
+			.map(str::to_owned);
 
 		for message in live {
 			if self.timeline.native.entries.iter().any(|entry| match &entry.content {
@@ -57,14 +66,19 @@ impl AgentSurface {
 			}
 
 			let key = output_key(work, &message.turn_id, &message.item_id);
+			let follows_process = preceding_process.as_ref() == Some(&message.turn_id);
+			preceding_process = Some(message.turn_id.clone());
 
-			self.timeline.native.arrivals.present_live(&message.item_id);
-			self.timeline.native.completions.present_live(&message.item_id);
+			self.timeline.native.arrivals.present_live(&message.turn_id, &message.item_id);
+			self.timeline.native.completions.present_live(&message.turn_id, &message.item_id);
 
-			let streamed =
+			let streamed = if message.kind == AgentLiveMessageKind::AgentMessage {
 				StreamingText::output(markdown::response_text(&message.text), key.clone(), false)
-					.settled(self.timeline.native.completions.output(&message.item_id))
-					.into_any_element();
+			} else {
+				StreamingText::process(markdown::response_text(&message.text), key.clone(), false)
+			}
+			.settled(self.timeline.native.completions.output(&message.turn_id, &message.item_id))
+			.into_any_element();
 			let body = if message.kind == AgentLiveMessageKind::AgentMessage {
 				let entry = self.native_message_entry(
 					work,
@@ -79,7 +93,9 @@ impl AgentSurface {
 					None,
 					Some(streamed),
 					false,
-					Some(self.timeline.native.completions.output(&message.item_id)),
+					Some(
+						self.timeline.native.completions.output(&message.turn_id, &message.item_id),
+					),
 					None,
 				)
 			} else {
@@ -94,6 +110,11 @@ impl AgentSurface {
 				gpui::div()
 					.id(SharedString::from(key))
 					.w_full()
+					// Match the gap this same row will have after native acknowledgement.
+					// Otherwise every streamed step moves up by MESSAGE_GAP - PROCESS_STEP_GAP.
+					.when(follows_process, |row| {
+						row.mt(gpui::px(ui_theme::PROCESS_STEP_GAP - MESSAGE_GAP))
+					})
 					.child(
 						body.debug_selector({
 							let selector = match message.kind {
@@ -114,6 +135,23 @@ impl AgentSurface {
 		}
 
 		rows
+	}
+
+	pub(super) fn native_row_gap(&self, work: &AgentWorkItemDto, index: usize) -> f32 {
+		let entries = &self.timeline.native.entries;
+		if let Some(turn) = super::groups::process_turn(&entries[index])
+			&& let Some(AgentTimelineEntry {
+				content: AgentTimelineContent::Item { turn_id, item_id, kind, .. },
+				..
+			}) = entries.get(index + 1)
+			&& turn == turn_id
+			&& self.native_item_draft(work, kind, turn_id, item_id).is_some()
+		{
+			// A final answer keeps its streaming footprint until the completed turn
+			// owns the process-fold transition and answer spacing.
+			return ui_theme::PROCESS_STEP_GAP;
+		}
+		super::groups::row_gap(entries, index)
 	}
 
 	pub(super) fn native_summary_exchanges(
@@ -295,6 +333,7 @@ impl AgentSurface {
 		&self,
 		work: &AgentWorkItemDto,
 		entry: &AgentTimelineEntry,
+		gap_after: f32,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
 		let identity =
@@ -302,7 +341,7 @@ impl AgentSurface {
 				.to_string();
 		let content = self.native_timeline_content(work, entry, &identity, false, cx);
 
-		self.native_timeline_row_with_content(work, entry, content, cx)
+		self.native_timeline_row_with_content(work, entry, content, gap_after, cx)
 	}
 
 	pub(super) fn native_timeline_row_with_content(
@@ -310,6 +349,7 @@ impl AgentSurface {
 		work: &AgentWorkItemDto,
 		entry: &AgentTimelineEntry,
 		content: AnyElement,
+		gap_after: f32,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
 		let identity =
@@ -330,6 +370,7 @@ impl AgentSurface {
 			}))
 			.w_full()
 			.min_w_0()
+			.mb(gpui::px(gap_after - super::scroll::ROW_GAP))
 			.child(content)
 			.into_any_element()
 	}
@@ -594,13 +635,13 @@ turn_id: turn, kind, .. } if turn == turn_id && kind == "agentMessage")
 
 		if kind == "agentMessage" && !truncated && attachments.is_empty() {
 			if let Some(panel) = self.async_question_item_text(work, item_id) {
-				self.timeline.native.completions.output(item_id).set(true);
+				self.timeline.native.completions.output(turn_id, item_id).set(true);
 
 				return panel;
 			}
 
 			if text.is_empty() {
-				self.timeline.native.completions.output(item_id).set(true);
+				self.timeline.native.completions.output(turn_id, item_id).set(true);
 
 				return gpui::div().into_any_element();
 			}
@@ -650,7 +691,7 @@ turn_id: turn, kind, .. } if turn == turn_id && kind == "agentMessage")
 					output_key(work, turn_id, item_id),
 					draft.is_none(),
 				)
-				.settled(self.timeline.native.completions.output(item_id))
+				.settled(self.timeline.native.completions.output(turn_id, item_id))
 				.on_ask(self.side_chat_selection_action(cx))
 				.into_any_element()
 			});
@@ -661,7 +702,8 @@ turn_id: turn, kind, .. } if turn == turn_id && kind == "agentMessage")
 				metrics,
 				streamed,
 				complete,
-				(kind == "agentMessage").then(|| self.timeline.native.completions.output(item_id)),
+				(kind == "agentMessage")
+					.then(|| self.timeline.native.completions.output(turn_id, item_id)),
 				if kind == "userMessage" {
 					self.native_prompt_action(work, content, identity, cx)
 				} else if complete {
@@ -687,7 +729,7 @@ turn_id: turn, kind, .. } if turn == turn_id && kind == "agentMessage")
 			return body.into_any_element();
 		}
 		if activity.is_some() && attachments.is_empty() {
-			return self.native_activity_content(work, content, identity, cx);
+			return self.native_activity_content(work, content, identity, true, cx);
 		}
 
 		self.native_item_text(work, content, identity, text, truncated, cx)
@@ -783,11 +825,13 @@ turn_id: turn, kind, .. } if turn == turn_id && kind == "agentMessage")
 				_ => "native-promotion-content",
 			};
 
-			row = row.child(
-				gpui::div()
-					.debug_selector(move || selector.into())
-					.child(markdown::render(text, identity)),
-			);
+			row = row.child(gpui::div().debug_selector(move || selector.into()).child(
+				if kind == "reasoning" {
+					markdown::render_process(text, identity)
+				} else {
+					markdown::render(text, identity)
+				},
+			));
 		}
 		if truncated {
 			row = row.child(agent_surface::muted("History preview shortened."));
@@ -872,11 +916,33 @@ turn_id: turn, kind, .. } if turn == turn_id && kind == "agentMessage")
 		Some(edit.into_any_element())
 	}
 
+	pub(super) fn observed_activity_content(
+		&self,
+		work: &AgentWorkItemDto,
+		activity: &AgentActivityDto,
+		cx: &mut Context<Self>,
+	) -> AnyElement {
+		let content = AgentTimelineContent::Item {
+			turn_id: activity.turn_id.clone(),
+			item_id: activity.item_id.clone(),
+			kind: activity.kind.clone(),
+			phase: None,
+			text: String::new(),
+			truncated: false,
+			activity: Some(activity.clone()),
+			attachments: vec![],
+			collaboration: None,
+		};
+		let identity = format!("observed-{}-{}-{}", work.id, activity.turn_id, activity.item_id);
+		self.native_activity_content(work, &content, &identity, false, cx)
+	}
+
 	fn native_activity_content(
 		&self,
 		work: &AgentWorkItemDto,
 		content: &AgentTimelineContent,
 		identity: &str,
+		native: bool,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
 		let AgentTimelineContent::Item {
@@ -895,46 +961,67 @@ turn_id: turn, kind, .. } if turn == turn_id && kind == "agentMessage")
 			collaboration.as_ref(),
 			self.native_agents.lists.get(&work.id).map(Vec::as_slice).unwrap_or_default(),
 		);
-		let detail_key = detail::supports_activity_detail(kind)
+		let detail_key = (native && detail::supports_activity_detail(kind))
 			.then(|| self.activity_detail_key(&(work.id.clone(), turn_id.clone(), item_id.clone())))
 			.flatten();
 		let expanded = detail_key.as_ref().is_some_and(|key| {
 			self.activity_detail.value.as_ref().is_some_and(|(current, _)| current == key)
 		});
+		use workspace_symbols::Symbol;
+		let operation = match (kind.as_str(), activity.label.as_str()) {
+			("commandExecution", "File read" | "File listing") => Symbol::Document,
+			("commandExecution", "File search") | ("webSearch", _) => Symbol::ActivitySearch,
+			("commandExecution", _) => Symbol::ActivityCommand,
+			("fileChange", _) => Symbol::ActivityEdit,
+			("mcpToolCall" | "dynamicToolCall" | "collabAgentToolCall", _) => Symbol::Agents,
+			_ => Symbol::Document,
+		};
 		let row = gpui::div()
 			.w_full()
 			.min_w_0()
 			.flex()
 			.items_center()
 			.gap(gpui::px(8.))
-			.py(gpui::px(5.))
+			.min_h(gpui::px(ui_theme::PROCESS_ROW_HEIGHT))
+			.py(gpui::px(3.))
 			.rounded(gpui::px(6.))
 			.text_size(gpui::px(12.))
 			.line_height(gpui::px(18.))
 			.text_color(ui_theme::rgb(TEXT_MUTED))
-			.child(ui_feedback::execution_icon(
+			.child(ui_feedback::operation_icon(
 				format!("execution-status-{identity}"),
 				&activity.status,
+				operation,
 			))
-			.child(gpui::div().flex_1().min_w_0().text_ellipsis().child(label))
+			.child(
+				gpui::div()
+					.flex_1()
+					.min_w_0()
+					.text_ellipsis()
+					.text_color(ui_theme::rgb(ui_theme::foreground::BODY))
+					.child(label),
+			)
+			.when(
+				!native && activity.status != "unreported" && !activity.detail.is_empty(),
+				|row| {
+					row.child(
+						gpui::div()
+							.text_size(gpui::px(ui_theme::CAPTION_SIZE))
+							.child(activity.detail.clone()),
+					)
+				},
+			)
 			.when_some((kind == "sleep").then(|| waits::timing(activity)).flatten(), |d, time| {
 				d.child(time)
 			})
-			.when_some(activity.plugin_id.clone(), |d, plugin| {
-				d.child(
-					gpui::div()
-						.max_w(gpui::px(140.))
-						.text_ellipsis()
-						.child(format!("Plugin: {plugin}")),
-				)
-			})
-			.when(activity.read_only_hint == Some(true), |d| d.child("Read-only hint"))
 			.when_some(activity.duration_ms.filter(|ms| *ms > 0 && kind != "sleep"), |d, ms| {
-				d.child(if ms < 1_000 {
-					format!("{ms}ms")
-				} else {
-					format!("{:.1}s", ms as f64 / 1_000.)
-				})
+				d.child(gpui::div().text_size(gpui::px(ui_theme::CAPTION_SIZE)).child(
+					if ms < 1_000 {
+						format!("{ms}ms")
+					} else {
+						format!("{:.1}s", ms as f64 / 1_000.)
+					},
+				))
 			})
 			.when_some(
 				(!expanded && kind == "commandExecution")
@@ -942,9 +1029,15 @@ turn_id: turn, kind, .. } if turn == turn_id && kind == "agentMessage")
 					.flatten()
 					.filter(|count| *count > 0),
 				|row, count| {
-					row.child(gpui::div().debug_selector(|| "hidden-output-lines".into()).child(
-						format!("{count} output {}", if count == 1 { "line" } else { "lines" }),
-					))
+					row.child(
+						gpui::div()
+							.text_size(gpui::px(ui_theme::CAPTION_SIZE))
+							.debug_selector(|| "hidden-output-lines".into())
+							.child(format!(
+								"{count} output {}",
+								if count == 1 { "line" } else { "lines" }
+							)),
+					)
 				},
 			)
 			.when(detail_key.is_some(), |row| {
@@ -960,7 +1053,11 @@ turn_id: turn, kind, .. } if turn == turn_id && kind == "agentMessage")
 				)
 			});
 
-		self.detail_row(work, activity, collaboration.as_ref(), row, cx)
+		if native {
+			self.detail_row(work, activity, collaboration.as_ref(), row, cx)
+		} else {
+			row.into_any_element()
+		}
 	}
 
 	fn native_promotion(
@@ -1150,7 +1247,7 @@ pub(super) fn process_indent(content: impl IntoElement) -> AnyElement {
 				.w_full()
 				.min_w_0()
 				.border_l_1()
-				.border_color(ui_theme::rgba(0xffffff14))
+				.border_color(ui_theme::rgb(ui_theme::LINE_STRONG).opacity(0.45))
 				.pl(gpui::px(14.))
 				.child(content),
 		)
@@ -1373,6 +1470,72 @@ mod tests {
 	}
 
 	#[gpui::test]
+	fn live_step_keeps_its_position_when_native_history_acknowledges_it(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		visual.simulate_resize(gpui::size(gpui::px(1_400.), gpui::px(1_400.)));
+		let message = surface.update(visual, |s, cx| {
+			prepare_footer_history(
+				s,
+				cx,
+				"The first command is complete. Checking the next result.",
+			);
+			let mut message = s.timeline.native.entries[0].clone();
+			if let AgentTimelineContent::Item { phase, .. } = &mut message.content {
+				*phase = Some("commentary".into());
+			}
+			let mut command = message.clone();
+			command.position = 0;
+			if let AgentTimelineContent::Item { kind, item_id, text, phase, activity, .. } =
+				&mut command.content
+			{
+				*kind = "commandExecution".into();
+				*item_id = "first-command".into();
+				text.clear();
+				*phase = None;
+				*activity = Some(
+					serde_json::from_value(serde_json::json!({
+						"turn_id":"turn", "item_id":"first-command", "kind":"commandExecution",
+						"status":"completed", "label":"Command", "detail":"Exit code 0"
+					}))
+					.unwrap(),
+				);
+			}
+			s.timeline.native.entries = vec![command];
+			cx.notify();
+			message
+		});
+		visual.update(crate::ui_frame::draw_current_frame);
+		thread::sleep(std::time::Duration::from_millis(750));
+		visual.update(crate::ui_frame::draw_current_frame);
+		thread::sleep(std::time::Duration::from_millis(240));
+		visual.update(crate::ui_frame::draw_current_frame);
+		let streamed = visual.debug_bounds("native-live-output").unwrap();
+		surface.update(visual, |s, cx| {
+			s.timeline.native.entries.push(message);
+			cx.notify();
+		});
+		visual.update(crate::ui_frame::draw_current_frame);
+		let retained = visual.debug_bounds("native-promotion-content").unwrap();
+		assert_eq!(retained, streamed, "acknowledging a streamed step must not move it");
+		surface.update(visual, |s, cx| {
+			if let AgentTimelineContent::Item { phase, .. } =
+				&mut s.timeline.native.entries[1].content
+			{
+				*phase = Some("final_answer".into());
+			}
+			cx.notify();
+		});
+		visual.update(crate::ui_frame::draw_current_frame);
+		assert_eq!(
+			visual.debug_bounds("native-promotion-content").unwrap(),
+			streamed,
+			"a final answer must keep its streaming position before the completion transition"
+		);
+	}
+
+	#[gpui::test]
 	fn live_answer_keeps_its_bounds_when_saved_and_completed(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 
@@ -1411,6 +1574,7 @@ mod tests {
 					thread_token_breakdown: None,
 					thread_metrics: None,
 					safety_buffering_turn_id: None,
+					observed_activities: Vec::new(),
 					active_realtime_session_at_page_start: None,
 				},
 			);
@@ -1623,6 +1787,7 @@ mod tests {
 				thread_token_breakdown: None,
 				thread_metrics: None,
 				safety_buffering_turn_id: None,
+				observed_activities: Vec::new(),
 				active_realtime_session_at_page_start: None,
 			},
 		);
@@ -1798,6 +1963,7 @@ phase: None,
 					thread_token_breakdown: None,
 					thread_metrics: None,
 					safety_buffering_turn_id: None,
+					observed_activities: Vec::new(),
 					active_realtime_session_at_page_start: None
 				}
 			));
@@ -1931,6 +2097,7 @@ phase: None,
 				thread_token_breakdown: None,
 				thread_metrics: None,
 				safety_buffering_turn_id: None,
+				observed_activities: Vec::new(),
 				active_realtime_session_at_page_start: None
 			}
 		));
@@ -2157,6 +2324,7 @@ phase: None,
 					thread_token_breakdown: None,
 					thread_metrics: None,
 					safety_buffering_turn_id: None,
+					observed_activities: Vec::new(),
 					active_realtime_session_at_page_start: None
 				}
 			));

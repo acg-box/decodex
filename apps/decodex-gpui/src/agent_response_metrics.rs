@@ -110,15 +110,25 @@ impl RenderOnce for ResponseMetrics {
 						.child(label),
 				)
 			})
-			.when_some(self.usage, |d, u| {
-				d.child(
-					gpui::div()
-						.flex()
-						.items_center()
-						.gap(gpui::px(6.))
-						.child(format!("↑ {}", agent_surface::compact_tokens(u.input_tokens)))
-						.child(format!("↓ {}", agent_surface::compact_tokens(u.output_tokens))),
-				)
+			.child({
+				let count = |input| {
+					self.usage
+						.as_ref()
+						.map(|u| {
+							agent_surface::compact_tokens(if input {
+								u.input_tokens
+							} else {
+								u.output_tokens
+							})
+						})
+						.unwrap_or_else(|| "—".into())
+				};
+				gpui::div()
+					.flex()
+					.items_center()
+					.gap(gpui::px(6.))
+					.child(format!("↑ {}", count(true)))
+					.child(format!("↓ {}", count(false)))
 			})
 			.hover(|d| d.text_color(ui_theme::rgb(TEXT)))
 			.active(|d| d.text_color(ui_theme::rgb(TEXT).opacity(0.8)))

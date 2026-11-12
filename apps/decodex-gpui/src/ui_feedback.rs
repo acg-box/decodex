@@ -425,39 +425,65 @@ impl gpui::Render for IndicatorTip {
 /// A compact execution state, shared by live history, saved history and Graph.
 /// Keep the state name available to assistive technology without repeating it visually.
 pub(crate) fn execution_icon(id: impl Into<SharedString>, status: &str) -> Stateful<Div> {
-	let (tone, label, running) = match status {
-		"running" | "inProgress" | "Running" => (Tone::Info, "Running", true),
-		"completed" => (Tone::Success, "Completed", false),
-		"failed" => (Tone::Error, "Failed", false),
-		"declined" => (Tone::Warning, "Declined", false),
-		"interrupted" => (Tone::Neutral, "Stopped", false),
-		"exited" => (Tone::Neutral, "Exited", false),
-		"waiting" => (Tone::Neutral, "Waiting", false),
-		"recorded" => (Tone::Neutral, "Recorded", false),
-		_ => (Tone::Neutral, "Unconfirmed", false),
-	};
+	execution_symbol(id, status, None)
+}
 
+/// Keep the operation identifiable when the native result is unavailable.
+pub(crate) fn operation_icon(
+	id: impl Into<SharedString>,
+	status: &str,
+	operation: crate::shell::workspace_symbols::Symbol,
+) -> Stateful<Div> {
+	execution_symbol(id, status, Some(operation))
+}
+
+fn execution_symbol(
+	id: impl Into<SharedString>,
+	status: &str,
+	operation: Option<crate::shell::workspace_symbols::Symbol>,
+) -> Stateful<Div> {
+	let (tone, label, path) = match status {
+		"running" | "inProgress" | "Running" => (Tone::Info, "Running", None),
+		"completed" => (Tone::Success, "Completed", Some("m3 8 3.2 3.2L13 4.5")),
+		"failed" => (Tone::Error, "Failed", Some("m4 4 8 8M12 4l-8 8")),
+		"declined" => (Tone::Warning, "Declined", Some("m5 12 6-8")),
+		"interrupted" => (Tone::Neutral, "Stopped", Some("M4.5 4.5h7v7h-7z")),
+		"exited" => (Tone::Neutral, "Exited", Some("M4 8h8")),
+		"waiting" | "recorded" => (
+			Tone::Neutral,
+			if status == "waiting" { "Waiting" } else { "Recorded" },
+			Some("M13.5 8a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0M8 4.5V8l2.5 1.5"),
+		),
+		_ => (
+			Tone::Neutral,
+			"Execution result unavailable",
+			Some("M6 5a2.2 2.2 0 1 1 3.2 2L8 8.5V9M8 12v.1"),
+		),
+	};
+	let symbol = if status == "unreported"
+		&& let Some(operation) = operation
+	{
+		crate::shell::workspace_symbols::icon_sized(operation, ui_theme::PROCESS_ICON_SIZE)
+	} else {
+		path.map_or_else(|| ui_loading::execution().into_any_element(), |path| {
+		gpui::svg().data(format!(r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="{path}" fill="none" stroke="white" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>"#).as_bytes())
+			.size(gpui::px(ui_theme::PROCESS_ICON_SIZE))
+			.text_color(ui_theme::rgb(tone.color())).into_any_element()
+		})
+	};
 	gpui::div()
 		.id(id.into())
 		.role(Role::Status)
 		.aria_label(label)
-		.w(gpui::px(16.))
+		.w(gpui::px(ui_theme::PROCESS_ICON_SLOT))
 		.h(gpui::px(18.))
 		.flex_none()
 		.flex()
 		.items_center()
 		.justify_center()
-		.child(if matches!(status, "waiting" | "recorded") {
-			gpui::svg()
-				.data(br#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><g fill="none" stroke="white" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="6"/><path d="M8 4.5V8l2.5 1.5"/></g></svg>"#)
-				.size(gpui::px(14.))
-				.text_color(ui_theme::rgb(TEXT_MUTED))
-				.into_any_element()
-		} else if running {
-			ui_loading::loading("").into_any_element()
-		} else {
-			tone.icon().into_any_element()
-		})
+		.text_color(ui_theme::rgb(tone.color()))
+		.child(symbol)
+		.tooltip(move |_, cx| cx.new(|_| IndicatorTip(label)).into())
 }
 
 pub(crate) fn notice(
@@ -605,6 +631,60 @@ mod tests {
 	};
 
 	const SETTLE: Duration = Duration::from_millis(220);
+	struct ExecutionRows;
+	impl Render for ExecutionRows {
+		fn render(&mut self, _: &mut Window, _: &mut gpui::Context<Self>) -> impl IntoElement {
+			gpui::div().flex().flex_col().children(
+				[
+					"running",
+					"completed",
+					"failed",
+					"declined",
+					"interrupted",
+					"exited",
+					"recorded",
+					"unreported",
+				]
+				.map(|status| {
+					gpui::div()
+						.debug_selector(move || format!("execution-row-{status}"))
+						.h(gpui::px(crate::ui_theme::PROCESS_ROW_HEIGHT))
+						.flex()
+						.items_center()
+						.child(
+							ui_feedback::execution_icon(status, status)
+								.debug_selector(move || format!("execution-symbol-{status}")),
+						)
+				}),
+			)
+		}
+	}
+
+	#[gpui::test]
+	fn execution_states_share_one_compact_slot_including_live_progress(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let (_, visual) = cx.add_window_view(|_, _| ExecutionRows);
+		visual.update(crate::ui_frame::draw_current_frame);
+		for (status, row_id, symbol_id) in [
+			("running", "execution-row-running", "execution-symbol-running"),
+			("completed", "execution-row-completed", "execution-symbol-completed"),
+			("failed", "execution-row-failed", "execution-symbol-failed"),
+			("declined", "execution-row-declined", "execution-symbol-declined"),
+			("interrupted", "execution-row-interrupted", "execution-symbol-interrupted"),
+			("exited", "execution-row-exited", "execution-symbol-exited"),
+			("recorded", "execution-row-recorded", "execution-symbol-recorded"),
+			("unreported", "execution-row-unreported", "execution-symbol-unreported"),
+		] {
+			let row = visual.debug_bounds(row_id).unwrap();
+			let symbol = visual.debug_bounds(symbol_id).unwrap();
+			assert_eq!(symbol.size.width, gpui::px(crate::ui_theme::PROCESS_ICON_SLOT));
+			assert!(
+				symbol.top() >= row.top() && symbol.bottom() <= row.bottom(),
+				"{status} exceeds its row"
+			);
+		}
+	}
 
 	struct NoticeView(Option<Feedback>);
 	impl Render for NoticeView {

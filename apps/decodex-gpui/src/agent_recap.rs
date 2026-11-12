@@ -46,9 +46,13 @@ impl AgentSurface {
 		self.invalidate_automatic_recap(next);
 
 		let Some(work) = &self.recap.work else { return };
-		let before =
-			self.snapshot.as_ref().and_then(|s| s.work_items.iter().find(|w| &w.id == work));
-		let after = next.work_items.iter().find(|w| &w.id == work);
+		let archived = self.workspace.archives.viewed_work().filter(|item| &item.id == work);
+		let before = self
+			.snapshot
+			.as_ref()
+			.and_then(|s| s.work_items.iter().find(|w| &w.id == work))
+			.or(archived);
+		let after = next.work_items.iter().find(|w| &w.id == work).or(archived);
 
 		if self.snapshot.as_ref().is_none_or(|s| s.runtime_source != next.runtime_source)
 			|| !matches!((before, after), (Some(a), Some(b)) if a.codex_thread_id == b.codex_thread_id && a.active_turn_id == b.active_turn_id)
@@ -104,9 +108,7 @@ impl AgentSurface {
 			return;
 		}
 
-		let Some(item) =
-			self.snapshot.as_ref().and_then(|s| s.work_items.iter().find(|w| w.id == work))
-		else {
+		let Some(item) = self.conversation_work().filter(|item| item.id == work) else {
 			return;
 		};
 		let Some(thread) =

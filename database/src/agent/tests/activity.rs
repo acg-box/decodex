@@ -37,6 +37,14 @@ async fn activity_is_idempotent_turn_bound_and_never_wakes_work() {
 
 	assert_eq!(events.len(), 1);
 	assert_eq!(events[0].event_kind, "activity_started");
+	assert_eq!(
+		store
+			.read_agent_activity_observations("agent".into(), "thread".into(), vec!["turn".into()])
+			.await
+			.unwrap()
+			.len(),
+		1
+	);
 	assert!(store.list_agent_wake_events("agent".into(), 32).await.unwrap().is_empty());
 
 	store
@@ -61,6 +69,25 @@ async fn activity_is_idempotent_turn_bound_and_never_wakes_work() {
 
 	assert_eq!(events.len(), 1);
 	assert_eq!(events[0].event_kind, "activity_completed");
+	let observations = store
+		.read_agent_activity_observations("agent".into(), "thread".into(), vec!["turn".into()])
+		.await
+		.unwrap();
+	assert!(observations.is_empty(), "completed observations belong to native history");
+	assert!(
+		store
+			.read_agent_activity_observations("agent".into(), "other".into(), vec!["turn".into()])
+			.await
+			.unwrap()
+			.is_empty()
+	);
+	assert!(
+		store
+			.read_agent_activity_observations("agent".into(), "thread".into(), vec!["stale".into()])
+			.await
+			.unwrap()
+			.is_empty()
+	);
 
 	let work = store.get_agent_work_item("agent".into()).await.unwrap();
 

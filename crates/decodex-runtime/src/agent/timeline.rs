@@ -4,7 +4,9 @@ pub(crate) mod metrics;
 pub(crate) mod tool_output;
 
 mod attachments;
+mod observed;
 mod promotions;
+mod saved;
 mod statistics;
 mod summary;
 
@@ -47,6 +49,17 @@ where
 	let Some(before) = source().await else {
 		return AgentTimelineResult::Unavailable;
 	};
+	if cursor.is_some_and(saved::is_cursor) {
+		let result = time::timeout(Duration::from_secs(25), saved::read(store, &before, cursor))
+			.await
+			.ok()
+			.flatten();
+		return if source().await.is_some_and(|after| after.key == before.key) {
+			result.unwrap_or(AgentTimelineResult::Unavailable)
+		} else {
+			AgentTimelineResult::Unavailable
+		};
+	}
 	let operation = async {
 		let limits: &[u32] = if cursor.is_some() { &[15, 7, 3, 1] } else { &[30, 15, 7, 3, 1] };
 
@@ -89,6 +102,21 @@ where
 							&& metrics::enrich(store, &before.key.work, &mut page).await.is_err()
 						{
 							return AgentTimelineResult::Unavailable;
+						}
+						if let Some(store) = store {
+							page.observed_activities = match observed::read(
+								store,
+								&before.key.work,
+								&before.key.thread,
+								page.entries.iter().map(|entry| &entry.content),
+							)
+							.await
+							{
+								Ok(activities) => activities,
+								Err(ProjectionError::Capacity) => continue,
+								Err(ProjectionError::Malformed) =>
+									return AgentTimelineResult::Unavailable,
+							};
 						}
 
 						if cursor.is_none()
@@ -144,7 +172,16 @@ where
 		return AgentTimelineResult::Unavailable;
 	}
 
-	let recovered = summary::read(&before).await;
+	let recovered = time::timeout(Duration::from_secs(15), async {
+		if let Some(page) = saved::read(store, &before, None).await {
+			Some(page)
+		} else {
+			summary::read(&before).await
+		}
+	})
+	.await
+	.ok()
+	.flatten();
 
 	if source().await.is_none_or(|after| after.key != before.key) {
 		return AgentTimelineResult::Unavailable;
@@ -225,6 +262,7 @@ fn project_fields(
 		thread_token_breakdown: None,
 		thread_metrics: None,
 		safety_buffering_turn_id: None,
+		observed_activities: Vec::new(),
 		active_realtime_session_at_page_start: nullable_text(
 			value.get("activeRealtimeSessionAtPageStart")?,
 			512,
@@ -238,41 +276,43 @@ fn entry(row: &Value) -> Option<AgentTimelineEntry> {
 	let content = match row["type"].as_str()? {
 		"item" => ordinary(row)?,
 		"realtime" => realtime(&row["item"])?,
-		"turnStarted" | "turnCompleted" => {
-			let completed = row["type"] == "turnCompleted";
-			let status = if completed {
-				let status = row["status"].as_str()?;
-
-				if !["completed", "interrupted", "failed"].contains(&status) {
-					return None;
-				}
-
-				Some(status.into())
-			} else {
-				None
-			};
-
-			AgentTimelineContent::TurnBoundary {
-				turn_id: id(&row["turnId"])?,
-				completed,
-				status,
-				duration_ms: row["durationMs"].as_u64(),
-				usage: None,
-				timing: None,
-				usage_summary: None,
-				error: if completed && !row["error"].is_null() {
-					let (message, truncated) = visible_text(row["error"]["message"].as_str()?);
-
-					Some(AgentTimelineError { message, truncated })
-				} else {
-					None
-				},
-			}
-		},
+		"turnStarted" | "turnCompleted" => turn_boundary(row)?,
 		_ => return None,
 	};
 
 	Some(AgentTimelineEntry { position: row["position"].as_u64()?, content })
+}
+
+fn turn_boundary(row: &Value) -> Option<AgentTimelineContent> {
+	let completed = row["type"] == "turnCompleted";
+	let status = if completed {
+		let status = row["status"].as_str()?;
+
+		if !["completed", "interrupted", "failed"].contains(&status) {
+			return None;
+		}
+
+		Some(status.into())
+	} else {
+		None
+	};
+
+	Some(AgentTimelineContent::TurnBoundary {
+		turn_id: id(&row["turnId"])?,
+		completed,
+		status,
+		duration_ms: row["durationMs"].as_u64(),
+		usage: None,
+		timing: None,
+		usage_summary: None,
+		error: if completed && !row["error"].is_null() {
+			let (message, truncated) = visible_text(row["error"]["message"].as_str()?);
+
+			Some(AgentTimelineError { message, truncated })
+		} else {
+			None
+		},
+	})
 }
 
 pub(crate) fn ordinary(row: &Value) -> Option<AgentTimelineContent> {

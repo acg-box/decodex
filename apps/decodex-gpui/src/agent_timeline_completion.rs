@@ -14,7 +14,7 @@ use gpui::{
 use crate::{
 	frame_trace,
 	shell::agent_surface::native_timeline::{
-		AgentTimelineEntry,
+		AgentTimelineEntry, ItemKey,
 		groups::{Group, HEADER_HEIGHT},
 	},
 	ui_motion,
@@ -44,7 +44,7 @@ impl Completions {
 					let entry = &entries[*i];
 
 					(state.normal.contains(&entry.position)
-						|| state.live.contains(super::key(entry).2))
+						|| ItemKey::for_entry(entry).is_some_and(|key| state.live.contains(&key)))
 					.then_some(entry.position)
 				})
 				.collect::<BTreeSet<_>>();
@@ -53,11 +53,11 @@ impl Completions {
 
 			if !group.expanded && !outgoing.is_empty() && !ui_motion::reduced() {
 				let header_present = state.headers.contains(&group.turn);
-				let ready = state
-					.outputs
-					.entry(super::key(&entries[group.final_index]).2.into())
-					.or_default()
-					.clone();
+				let ready = if let Some(key) = ItemKey::for_entry(&entries[group.final_index]) {
+					state.outputs.entry(key).or_default().clone()
+				} else {
+					Rc::new(Cell::new(true))
+				};
 
 				state.closing.insert(
 					group.turn.clone(),
@@ -70,12 +70,14 @@ impl Completions {
 		state.headers = groups.iter().map(|g| g.turn.clone()).collect();
 
 		for entry in entries {
-			state.live.remove(super::key(entry).2);
+			if let Some(key) = ItemKey::for_entry(entry) {
+				state.live.remove(&key);
+			}
 		}
 	}
 
-	pub(super) fn present_live(&self, item: &str) {
-		self.0.borrow_mut().live.insert(item.into());
+	pub(super) fn present_live(&self, turn: &str, item: &str) {
+		self.0.borrow_mut().live.insert(ItemKey::new(turn, item));
 	}
 
 	pub(super) fn replace_history(&mut self, same_source: bool) {
@@ -90,8 +92,8 @@ impl Completions {
 		self.0.borrow().closing.get(&group.turn).cloned()
 	}
 
-	pub(super) fn output(&self, item: &str) -> Rc<Cell<bool>> {
-		self.0.borrow_mut().outputs.entry(item.into()).or_default().clone()
+	pub(super) fn output(&self, turn: &str, item: &str) -> Rc<Cell<bool>> {
+		self.0.borrow_mut().outputs.entry(ItemKey::new(turn, item)).or_default().clone()
 	}
 }
 
@@ -200,17 +202,63 @@ impl RenderOnce for Closing {
 #[derive(Default)]
 struct Presented {
 	normal: BTreeSet<u64>,
-	live: BTreeSet<String>,
+	live: BTreeSet<ItemKey>,
 	headers: BTreeSet<String>,
 	closing: BTreeMap<String, Rc<Completion>>,
-	outputs: BTreeMap<String, Rc<Cell<bool>>>,
+	outputs: BTreeMap<ItemKey, Rc<Cell<bool>>>,
 }
 
 #[cfg(test)]
 mod tests {
-	use crate::shell::agent_surface::native_timeline::completion::{
-		BTreeSet, Cell, Completion, DURATION, Duration, Instant, Rc,
+	use crate::shell::agent_surface::native_timeline::{
+		AgentTimelineContent, AgentTimelineEntry,
+		completion::{BTreeSet, Cell, Completion, Completions, DURATION, Duration, Instant, Rc},
+		groups,
 	};
+
+	#[test]
+	fn terminal_process_closes_without_waiting_for_a_missing_final_answer() {
+		for status in ["failed", "interrupted"] {
+			let entries = vec![
+				AgentTimelineEntry {
+					position: 1,
+					content: AgentTimelineContent::Item {
+						turn_id: "turn".into(),
+						item_id: "reasoning".into(),
+						kind: "reasoning".into(),
+						phase: None,
+						text: "Checking the result".into(),
+						truncated: false,
+						attachments: Vec::new(),
+						activity: None,
+						collaboration: None,
+					},
+				},
+				AgentTimelineEntry {
+					position: 2,
+					content: AgentTimelineContent::TurnBoundary {
+						turn_id: "turn".into(),
+						completed: true,
+						status: Some(status.into()),
+						duration_ms: None,
+						timing: None,
+						usage_summary: None,
+						usage: None,
+						error: None,
+					},
+				},
+			];
+			let groups = groups::groups(&entries, &BTreeSet::new());
+			let state = Completions::default();
+			state.present_live("turn", "reasoning");
+			state.prepare(&entries, &groups);
+			let motion = state.get(&groups[0]).expect("displayed process closes");
+			motion.height.set(Some(120.));
+			let now = Instant::now();
+			assert_eq!(motion.progress(now, false), 0.);
+			assert_eq!(motion.progress(now + DURATION, false), 1., "{status}");
+		}
+	}
 
 	#[test]
 	fn completion_waits_for_the_displayed_answer_and_finishes_without_a_replay() {

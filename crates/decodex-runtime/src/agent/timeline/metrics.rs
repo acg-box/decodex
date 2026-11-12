@@ -30,11 +30,26 @@ pub(crate) async fn enrich(
 		output_tokens: usage.total.output_tokens,
 		reasoning_output_tokens: usage.total.reasoning_output_tokens,
 	});
+	enrich_contents(
+		store,
+		work,
+		&page.thread_id,
+		page.entries.iter_mut().map(|entry| &mut entry.content),
+	)
+	.await
+}
 
-	let items = page
-		.entries
+pub(crate) async fn enrich_contents<'a>(
+	store: &SqliteStore,
+	work: &str,
+	thread: &str,
+	contents: impl Iterator<Item = &'a mut AgentTimelineContent>,
+) -> Result<(), StoreError> {
+	let mut contents = contents.collect::<Vec<_>>();
+
+	let items = contents
 		.iter()
-		.filter_map(|entry| match &entry.content {
+		.filter_map(|entry| match &**entry {
 			AgentTimelineContent::Item { turn_id, item_id, activity: Some(activity), .. }
 				if activity.duration_ms.is_none() && activity.status != "running" =>
 				Some((turn_id.clone(), item_id.clone())),
@@ -44,11 +59,11 @@ pub(crate) async fn enrich(
 
 	if !items.is_empty() {
 		let durations =
-			store.read_agent_activity_durations(work.into(), page.thread_id.clone(), items).await?;
+			store.read_agent_activity_durations(work.into(), thread.into(), items).await?;
 
-		for entry in &mut page.entries {
+		for entry in &mut contents {
 			if let AgentTimelineContent::Item { turn_id, item_id, activity: Some(activity), .. } =
-				&mut entry.content
+				&mut **entry
 				&& activity.duration_ms.is_none()
 				&& activity.status != "running"
 				&& let Some((_, _, duration)) =
@@ -59,10 +74,9 @@ pub(crate) async fn enrich(
 		}
 	}
 
-	let turns = page
-		.entries
+	let turns = contents
 		.iter()
-		.filter_map(|entry| match &entry.content {
+		.filter_map(|entry| match &**entry {
 			AgentTimelineContent::TurnBoundary { turn_id, completed: true, .. } =>
 				Some(turn_id.clone()),
 			_ => None,
@@ -74,10 +88,10 @@ pub(crate) async fn enrich(
 	}
 
 	let responses =
-		store.read_agent_response_usage(work.into(), page.thread_id.clone(), turns.clone()).await?;
-	let saved = store.read_agent_turn_metrics(work.into(), page.thread_id.clone(), turns).await?;
+		store.read_agent_response_usage(work.into(), thread.into(), turns.clone()).await?;
+	let saved = store.read_agent_turn_metrics(work.into(), thread.into(), turns).await?;
 
-	for entry in &mut page.entries {
+	for entry in &mut contents {
 		if let AgentTimelineContent::TurnBoundary {
 			turn_id,
 			completed: true,
@@ -85,7 +99,7 @@ pub(crate) async fn enrich(
 			usage,
 			timing,
 			..
-		} = &mut entry.content
+		} = &mut **entry
 		{
 			*timing = saved
 				.iter()

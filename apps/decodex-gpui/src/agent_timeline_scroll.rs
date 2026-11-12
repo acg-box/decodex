@@ -461,17 +461,19 @@ impl AgentSurface {
 	pub(super) fn native_history_spacer(
 		&self,
 		work: &AgentWorkItemDto,
-		rows: Vec<(&AgentTimelineEntry, f32)>,
+		rows: Vec<(&AgentTimelineEntry, f32, f32)>,
 	) -> AnyElement {
 		let scroll = self.timeline.scroll[&work.id].clone();
 		let geometry = self.timeline.native.viewport.0.clone();
 		let mut height = 0.;
+		let mut last_gap = ROW_GAP;
 		let rows: Vec<_> = rows
 			.into_iter()
-			.map(|(entry, row_height)| {
+			.map(|(entry, row_height, gap)| {
 				let offset = height;
 
-				height += row_height + ROW_GAP;
+				height += row_height + gap;
+				last_gap = gap;
 
 				let mark = self
 					.timeline
@@ -486,11 +488,12 @@ impl AgentSurface {
 			})
 			.collect();
 
-		height = (height - ROW_GAP).max(0.);
+		height = (height - last_gap).max(0.);
 
 		gpui::div()
 			.w_full()
 			.flex_none()
+			.mb(gpui::px(last_gap - ROW_GAP))
 			.debug_selector(|| "native-history-spacer".into())
 			.child(gpui::div().h(gpui::px(height)))
 			.on_children_prepainted(move |bounds, _, _| {
@@ -726,6 +729,7 @@ mod tests {
 				first_index: 1,
 				final_index: 1,
 				count: 1,
+				observations: vec![],
 			};
 
 			// The final reply can precede its last process item. Its header is
@@ -830,6 +834,7 @@ mod tests {
 				thread_token_breakdown: None,
 				thread_metrics: None,
 				safety_buffering_turn_id: None,
+				observed_activities: Vec::new(),
 				active_realtime_session_at_page_start: None,
 			}
 		));
@@ -916,6 +921,7 @@ mod tests {
 							thread_token_breakdown: None,
 							thread_metrics: None,
 							safety_buffering_turn_id: None,
+							observed_activities: Vec::new(),
 							active_realtime_session_at_page_start: None,
 						}
 					));
@@ -974,6 +980,7 @@ mod tests {
 					thread_token_breakdown: None,
 					thread_metrics: None,
 					safety_buffering_turn_id: None,
+					observed_activities: Vec::new(),
 					active_realtime_session_at_page_start: None
 				}
 			));
@@ -1327,6 +1334,7 @@ mod tests {
 			thread_token_breakdown: None,
 			thread_metrics: None,
 			safety_buffering_turn_id: None,
+			observed_activities: Vec::new(),
 			active_realtime_session_at_page_start: None,
 		}
 	}

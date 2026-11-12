@@ -2265,6 +2265,9 @@ impl AgentClient {
 					work_id: actual,
 					thread_id: actual_thread,
 					..
+				}
+				| AgentTimelineResult::Saved {
+					work_id: actual, thread_id: actual_thread, ..
 				} = &result
 					&& (actual != &work_id || actual_thread != thread_id.as_str())
 				{

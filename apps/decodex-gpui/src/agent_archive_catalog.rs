@@ -1986,6 +1986,91 @@ mod tests {
 	}
 
 	#[gpui::test]
+	fn archived_history_keeps_the_native_composer_and_reading_gap(cx: &mut gpui::TestAppContext) {
+		use crate::shell::agent_surface::native_timeline::Binding;
+		use decodex_protocol::{AgentTimelineContent, AgentTimelineEntry, AgentTimelinePage};
+
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		visual.simulate_resize(gpui::size(gpui::px(1_000.), gpui::px(700.)));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.workspace.graph_visible = false;
+			let mut catalog = s.snapshot.clone().unwrap();
+			s.snapshot.as_mut().unwrap().runtime_source = Some(EntityId::new("source").unwrap());
+			let work = catalog.work_items.iter_mut().find(|work| work.id == "agent").unwrap();
+			work.codex_thread_id = Some("native-thread".into());
+			catalog.archived_work_ids.insert("agent".into());
+			s.workspace.archives.data = Some(catalog);
+			s.workspace.archives.viewed = Some("agent".into());
+			s.snapshot.as_mut().unwrap().work_items.retain(|work| work.id != "agent");
+			s.timeline.native.replace(
+				Binding {
+					work: "agent".into(),
+					thread: "native-thread".into(),
+					account: "account".into(),
+				},
+				AgentTimelinePage {
+					thread_id: "native-thread".into(),
+					entries: vec![AgentTimelineEntry {
+						position: 0,
+						content: AgentTimelineContent::Item {
+							turn_id: "turn".into(),
+							item_id: "answer".into(),
+							kind: "agentMessage".into(),
+							text: "A paragraph in the completed response.\n\n".repeat(40),
+							phase: Some("final_answer".into()),
+							truncated: false,
+							activity: None,
+							attachments: vec![],
+							collaboration: None,
+						},
+					}],
+					source_threads: Default::default(),
+					next_cursor: None,
+					weather: Default::default(),
+					thread_token_total: None,
+					thread_token_breakdown: None,
+					thread_metrics: None,
+					safety_buffering_turn_id: None,
+					observed_activities: Vec::new(),
+					active_realtime_session_at_page_start: None,
+				},
+			);
+			s.timeline.latest_follow_work = s.selected.clone();
+			assert!(s.selected_is_archived());
+			assert!(!s.selected_is_agent(), "the archive is absent from the active catalog");
+			assert_eq!(
+				s.usage_estimate_binding("agent"),
+				Some((EntityId::new("source").unwrap(), "native-thread".into()))
+			);
+			assert!(
+				s.activity_detail_key(&("agent".into(), "turn".into(), "tool".into())).is_some(),
+				"archived native tool output remains readable"
+			);
+			assert!(s.native_composer_requested(true, true), "read-only keeps native material");
+			cx.notify();
+		});
+		visual.update(crate::ui_frame::draw_frame);
+		thread::sleep(Duration::from_millis(240));
+		for _ in 0..4 {
+			visual.update(crate::ui_frame::draw_frame);
+		}
+
+		assert!(visual.debug_bounds("conversation-content").is_some());
+		assert!(visual.debug_bounds("workspace-followup").is_none());
+		assert!(visual.debug_bounds("composer-editor-area").is_none());
+		assert!(visual.debug_bounds("archive-banner").is_some());
+		assert!(visual.debug_bounds("archive-recap").is_none());
+		let answer = visual.debug_bounds("native-promotion-content").unwrap();
+		let footer = visual.debug_bounds("floating-composer").unwrap();
+		let gap = footer.top() - answer.bottom() + gpui::px(ui_theme::COMPOSER_TOP_GAP);
+		assert!(
+			gap >= gpui::px(16.) && gap <= gpui::px(28.),
+			"archived replies retain the same reading gap as active replies, got {gap:?}"
+		);
+	}
+
+	#[gpui::test]
 	fn opening_archive_is_read_only_and_retains_the_active_draft(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 		surface.update(visual, |s, cx| {
@@ -2026,6 +2111,12 @@ mod tests {
 			assert_eq!(s.composer.read(cx).content(), "Keep the active draft");
 			assert!(s.restore_location(&location, cx));
 			assert!(s.selected_is_archived(), "navigation restores the read-only archive view");
+		});
+		visual.update(crate::ui_frame::draw_current_frame);
+		assert!(visual.debug_bounds("archive-recap").is_none());
+		surface.read_with(visual, |s, _| {
+			assert!(s.selected_is_archived());
+			assert!(s.workspace.archives.mutation.is_none(), "viewing history must not unarchive");
 		});
 	}
 

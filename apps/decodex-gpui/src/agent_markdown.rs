@@ -275,16 +275,18 @@ pub(super) fn render_process(text: &str, key: &str) -> AnyElement {
 				if let NodeContent::Block(Kind::Heading(_) | Kind::Paragraph, children) =
 					&node.content
 				{
+					// Keep semantic emphasis at the compact process size. Flattening
+					// headings and strong text makes a long process hard to scan.
+					let heading = matches!(&node.content, NodeContent::Block(Kind::Heading(_), _));
 					gpui::div()
-						.font_weight(FontWeight::NORMAL)
+						.font_weight(if heading { FontWeight::MEDIUM } else { FontWeight::NORMAL })
+						.when(heading, |row| {
+							row.text_color(crate::ui_theme::rgb(crate::ui_theme::foreground::BODY))
+						})
 						.child({
 							let mut out = Inline::default();
 
 							append_inline(children, HighlightStyle::default(), None, &mut out);
-
-							for (_, style) in &mut out.highlights {
-								style.font_weight = None;
-							}
 
 							let start = selection.checkpoint();
 							let element = selectable(out, &key, &mut selection);

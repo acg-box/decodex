@@ -446,6 +446,28 @@ impl SqliteStore {
 		}).await
 	}
 
+	/// Read unfinished tool observations for exact native turns, without raw arguments or output.
+	pub async fn read_agent_activity_observations(
+		&self,
+		work: String,
+		thread: String,
+		turns: Vec<String>,
+	) -> Result<Vec<String>, StoreError> {
+		if work.len() > 512
+			|| thread.len() > 512
+			|| turns.len() > 100
+			|| turns.iter().any(|turn| turn.is_empty() || turn.len() > 512)
+		{
+			return Err(StoreError::InvalidInput("invalid activity turns"));
+		}
+		let turns = serde_json::to_string(&turns).expect("serializable identities");
+		self.run(move |connection| {
+			connection.prepare("SELECT e.payload FROM json_each(?3) requested JOIN agent_inbox_events e ON e.work_item_id=?1 AND e.delivered_turn_id=requested.value WHERE e.event_kind='activity_started' AND e.source_event_id=json_array('activity',?1,requested.value,json_extract(e.payload,'$.item_id'),'started') AND NOT EXISTS(SELECT 1 FROM agent_inbox_events done WHERE done.source_event_id=json_array('activity',?1,requested.value,json_extract(e.payload,'$.item_id'),'completed')) AND (EXISTS(SELECT 1 FROM agent_work_items w WHERE w.id=?1 AND w.codex_thread_id=?2) OR EXISTS(SELECT 1 FROM agent_inbox_events terminal WHERE terminal.work_item_id=?1 AND terminal.source_event_id=json_array('turn/completed',?2,requested.value))) ORDER BY e.id LIMIT 257")
+				.map_err(error::sqlite_error)?.query_map(rusqlite::params![work,thread,turns], |row| row.get(0))
+				.map_err(error::sqlite_error)?.collect::<Result<Vec<_>,_>>().map_err(|error| error::sqlite_error(error).into())
+		}).await
+	}
+
 	/// Read saved activity durations for the exact bound native thread and item identities.
 	pub async fn read_agent_activity_durations(
 		&self,

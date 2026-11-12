@@ -310,6 +310,7 @@ mod tests {
 			thread_token_breakdown: None,
 			thread_metrics: None,
 			safety_buffering_turn_id: None,
+			observed_activities: Vec::new(),
 			active_realtime_session_at_page_start: None,
 		};
 		let binding = surface.update(visual, |s, cx| {

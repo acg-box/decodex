@@ -39,6 +39,7 @@ mod realtime_settings;
 mod recovery_auth;
 mod resume;
 mod sample;
+mod saved_history;
 mod search_preferences;
 mod server_requests;
 mod settings_guard;

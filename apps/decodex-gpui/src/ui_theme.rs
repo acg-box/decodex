@@ -60,6 +60,10 @@ pub(crate) const SIDEBAR_INSET: f32 = 6.0;
 pub(crate) const MESSAGE_GAP: f32 = 20.0;
 /// Execution steps and their answer form one reading group.
 pub(crate) const PROCESS_CONTENT_GAP: f32 = 6.;
+pub(crate) const PROCESS_STEP_GAP: f32 = 6.;
+pub(crate) const PROCESS_ROW_HEIGHT: f32 = 24.;
+pub(crate) const PROCESS_ICON_SIZE: f32 = 12.;
+pub(crate) const PROCESS_ICON_SLOT: f32 = 16.;
 pub(crate) const WORK_INDICATOR_SIZE: f32 = 24.;
 pub(crate) const USER_MESSAGE_INSET: f32 = 12.0;
 pub(crate) const USER_MESSAGE_ACTION_SIZE: f32 = 24.0;

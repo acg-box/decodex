@@ -532,6 +532,7 @@ mod tests {
 			entries,
 			next_cursor: next.map(str::to_owned),
 			weather: Default::default(),
+			observed_activities: Vec::new(),
 			active_realtime_session_at_page_start: None,
 		}
 	}

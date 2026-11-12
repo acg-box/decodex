@@ -290,7 +290,7 @@ fn spawn_server(
 									},
 									QueryPayload::GetAgentHistory { .. } if step == 2 => QueryResultPayload::AgentHistory(AgentHistoryResult::Available { questions: vec![], expired_question_ids: Vec::new(), questions_truncated: false, questions_recovering: false, misalignment: None, usage: None, entries: vec![], has_more: false, next_before: None, live: vec![] }),
 									QueryPayload::GetAgentTimeline { work_id, thread_id, .. } if step == 3 => QueryResultPayload::AgentTimeline(AgentTimelineResult::Available { work_id, account_id: EntityId::new("account").unwrap(), page: AgentTimelinePage { source_threads:Default::default(), thread_id: thread_id.as_str().into(), entries: vec![], next_cursor: None, weather: Default::default(), thread_token_total: None, thread_token_breakdown: None,
-		thread_metrics: None, safety_buffering_turn_id: None, active_realtime_session_at_page_start: None } }),
+		thread_metrics: None, safety_buffering_turn_id: None, observed_activities: Vec::new(), active_realtime_session_at_page_start: None } }),
 									_ => panic!("unexpected query at step {step}"),
 								};
 								let response = ServerMessage::QueryResult(QueryResultEnvelope { version: CURRENT_VERSION, server_id: ServerId::new(SERVER).unwrap(), query_id: query.query_id, payload });

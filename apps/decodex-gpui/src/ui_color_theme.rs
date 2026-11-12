@@ -57,7 +57,7 @@ const DECODEX: Palette = Palette {
 	amber: 0xd4b58a,
 	error: 0xdf969c,
 	status_info: 0x9eb8df,
-	status_success: 0xaab9d8,
+	status_success: 0x9bc7ab,
 	status_warning: 0xd6b99a,
 	status_error: 0xdf969c,
 	navigation_bases: [
