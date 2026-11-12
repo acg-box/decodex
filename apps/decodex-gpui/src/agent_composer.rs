@@ -116,7 +116,9 @@ impl AgentSurface {
 			&& !self.workspace_connecting()
 			&& !self.workspace.browsing
 			&& self.snapshot.is_some()
-			&& (self.native_agents.selected.is_some() || self.selected_is_agent())
+			&& (self.native_agents.selected.is_some()
+				|| self.selected_is_agent()
+				|| self.selected_is_archived())
 	}
 
 	/// Move keyboard and accessibility focus into the current message editor.
@@ -415,7 +417,9 @@ impl AgentSurface {
 	}
 
 	fn update_message_placeholder(&self, cx: &mut Context<Self>) {
-		let placeholder = if let Some(suggestion) = self.prompt_suggestion(cx) {
+		let suggestion = self.prompt_suggestion(cx);
+		let hint = suggestion.is_some().then(|| "Tab".into());
+		let placeholder = if let Some(suggestion) = suggestion {
 			suggestion.to_owned()
 		} else if self.native_agents.selected.is_none()
 			&& (self.is_new_conversation()
@@ -435,7 +439,10 @@ impl AgentSurface {
 			&self.composer
 		};
 
-		input.update(cx, |input, cx| input.set_placeholder(placeholder, cx));
+		input.update(cx, |input, cx| {
+			input.set_placeholder(placeholder, cx);
+			input.set_placeholder_hint(hint, self.prompt_suggestion_busy(), cx);
+		});
 	}
 
 	pub(super) fn render_composer_capsule(
@@ -570,6 +577,7 @@ impl AgentSurface {
 			.on_action(cx.listener(|s, _: &FocusNext, window, cx| {
 				if s.composer.focus_handle(cx).is_focused(window)
 					&& s.prompt_suggestion(cx).is_some()
+					&& !s.prompt_suggestion_busy()
 				{
 					s.accept_prompt_suggestion(cx);
 					cx.stop_propagation();
@@ -581,42 +589,7 @@ impl AgentSurface {
 				if let Some(waveform) = self.voice_controls(window, cx) {
 					editor.child(waveform)
 				} else {
-					editor.child(
-						gpui::div()
-							.w_full()
-							.min_w_0()
-							.flex()
-							.items_start()
-							.gap_2()
-							.child(
-								gpui::div()
-									.min_w_0()
-									.flex_1()
-									.child(self.conversation_composer().clone()),
-							)
-							.when(self.prompt_suggestion(cx).is_some(), |row| {
-								row.child(
-									gpui::div()
-										.debug_selector(|| "composer-suggestion-hint".into())
-										.flex_none()
-										.flex()
-										.items_center()
-										.gap_1()
-										.pt(gpui::px(4.))
-										.pr(gpui::px(8.))
-										.text_size(gpui::px(11.))
-										.text_color(ui_theme::rgb(TEXT_MUTED))
-										.child(
-											gpui::div()
-												.px_1()
-												.rounded_sm()
-												.bg(ui_theme::rgba(0xffffff0c))
-												.child("Tab"),
-										)
-										.child("to use"),
-								)
-							}),
-					)
+					editor.child(self.conversation_composer().clone())
 				}
 			})
 	}

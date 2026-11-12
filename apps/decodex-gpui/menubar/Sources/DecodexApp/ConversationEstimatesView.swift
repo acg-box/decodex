@@ -9,19 +9,20 @@ struct ConversationEstimateRow: Decodable, Identifiable, Equatable, Sendable {
 	let native_usd_micros: UInt64?
 	let credits_micros: UInt64?
 	let observed_at_micros: Int64?
+	let api_equivalent: Bool?
+	let partial: Bool?
 	var id: String { work_id }
 
 	var amount: String? {
-		if let native_usd_micros { return "$\(Self.micros(native_usd_micros))" }
-		if let usd_micros { return "≈ $\(Self.micros(usd_micros))" }
+		if let native_usd_micros { return Self.currency(native_usd_micros) }
+		if let usd_micros { return "≈ \(Self.currency(usd_micros))\(partial == true ? "+" : "")" }
 		return nil
 	}
 
-	static func micros(_ value: UInt64) -> String {
-		let fraction = value % 1_000_000
-		guard fraction != 0 else { return "\(value / 1_000_000)" }
-		let tail = String(format: "%06llu", fraction).replacingOccurrences(of: "0+$", with: "", options: .regularExpression)
-		return "\(value / 1_000_000).\(tail)"
+	static func currency(_ value: UInt64) -> String {
+		if value > 0 && value < 10_000 { return "< $0.01" }
+		let cents = value / 10_000 + (value % 10_000 >= 5_000 ? 1 : 0)
+		return "$\(cents / 100).\(String(format: "%02llu", cents % 100))"
 	}
 }
 
@@ -84,7 +85,7 @@ struct ConversationEstimatesView: View {
 										.foregroundStyle(PanelPalette.secondaryText(colorScheme))
 								}
 							}
-							.help(row.title)
+							.help(row.api_equivalent == true ? "API text-token estimate, not a subscription charge.\(row.partial == true ? " Some usage could not be priced." : "")" : row.title)
 						}
 						Text(result.more_available ? "Latest 8 conversations (estimates may lag)" : "Conversation estimates may lag")
 							.font(PanelFont.tertiary)

@@ -762,29 +762,38 @@ impl AgentSurface {
 			})
 	}
 
+	fn visible_history_range(&self, scroll: &ScrollHandle) -> std::ops::Range<usize> {
+		let positions =
+			self.timeline.marks.values().map(|mark| mark.position.get()).collect::<Vec<_>>();
+		visible_marks(
+			&positions,
+			-f32::from(scroll.offset().y),
+			(f32::from(scroll.bounds().size.height) - self.workspace_composer_clearance()).max(0.),
+		)
+	}
+
 	pub(super) fn history_rail(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
 		if self.timeline.marks.len() < 2 {
 			return gpui::div().into_any_element();
 		}
 
 		let scroll = self.timeline.scroll_for(self.selected.as_deref());
-		let positions: Vec<_> =
-			self.timeline.marks.values().map(|mark| mark.position.clone()).collect();
 		let working = self.conversation_work().is_some_and(|work| self.response_in_progress(&work));
-		let last = positions.len() - 1;
-		let current = self.active_history_index(&scroll);
-		let active_position = ui_motion::value(
-			SharedString::from(format!(
-				"rail-active-{}",
-				self.selected.as_deref().unwrap_or_default()
-			)),
-			current as f32,
-			window,
-			cx,
-		);
+		let last = self.timeline.marks.len() - 1;
+		let visible_range = self.visible_history_range(&scroll);
 		let mut rail = self.history_rail_surface(cx);
 
 		for (index, (id, mark)) in self.timeline.marks.iter().enumerate() {
+			let visible = mark.position.get().is_finite() && visible_range.contains(&index);
+			let activity = ui_motion::value(
+				SharedString::from(format!(
+					"rail-visible-{}-{id}",
+					self.selected.as_deref().unwrap_or_default()
+				)),
+				if visible { 1. } else { 0. },
+				window,
+				cx,
+			);
 			let influence = ui_motion::value(
 				SharedString::from(format!(
 					"rail-magnify-{}-{id}",
@@ -805,6 +814,7 @@ impl AgentSurface {
 					.role(Role::Button)
 					.tab_index(0)
 					.aria_label(format!("Jump to: {}", mark.question))
+					.aria_selected(visible)
 					.w_full()
 					// Size the hit target and its tick together in the current layout.
 					// Reading the previous scroll bounds lags behind a Dock resize.
@@ -839,10 +849,8 @@ impl AgentSurface {
 						gpui::canvas(
 							move |bounds, _, _| hit_bounds.set(Some(bounds)),
 							move |bounds, _, window, _| {
-								let activity =
-									(1. - (index as f32 - active_position).abs()).clamp(0., 1.);
 								let color = if working && index == last {
-									crate::ui_theme::rgb(BLUE)
+									crate::ui_theme::rgb(BLUE).opacity(0.4 + 0.6 * activity)
 								} else {
 									crate::ui_theme::rgba(
 										(TEXT << 8) | (100. + 155. * activity) as u32,
@@ -1016,6 +1024,27 @@ fn current_mark(positions: &[f32], offset: f32) -> usize {
 		.unwrap_or(0)
 }
 
+/// A mark represents the exchange up to the next measured prompt. Its answer
+/// can remain visible after the prompt has scrolled above the viewport.
+fn visible_marks(positions: &[f32], top: f32, height: f32) -> std::ops::Range<usize> {
+	if height <= 0. {
+		return 0..0;
+	}
+	let bottom = top + height;
+	let Some(first) =
+		positions.iter().rposition(|position| position.is_finite() && *position <= top).or_else(
+			|| positions.iter().position(|position| position.is_finite() && *position < bottom),
+		)
+	else {
+		return 0..0;
+	};
+	let end = positions
+		.iter()
+		.rposition(|position| position.is_finite() && *position < bottom)
+		.map_or(first + 1, |index| index + 1);
+	first..end
+}
+
 #[cfg(test)]
 mod tests {
 	use std::thread;
@@ -1026,6 +1055,48 @@ mod tests {
 	};
 	#[cfg(test)] use decodex_protocol::AgentTimelineEntry;
 	#[cfg(test)] use decodex_protocol::AgentTimelinePage;
+
+	#[test]
+	fn visible_rail_marks_cover_short_exchanges_long_answers_and_viewport_edges() {
+		assert_eq!(activity::visible_marks(&[0., 80., 160., 240.], 0., 400.), 0..4);
+		assert_eq!(activity::visible_marks(&[0., 80., 160., 240.], 80., 160.), 1..3);
+		assert_eq!(activity::visible_marks(&[0., 100., 1_800.], 400., 500.), 1..2);
+		assert_eq!(activity::visible_marks(&[0., 100., 1_800.], 1_700., 500.), 1..3);
+		assert_eq!(activity::visible_marks(&[0., 100., f32::INFINITY], 200., 500.), 1..2);
+		assert_eq!(activity::visible_marks(&[200.], 0., 100.), 0..0);
+		assert_eq!(activity::visible_marks(&[0., 80.], 0., 0.), 0..0);
+	}
+
+	#[gpui::test]
+	fn one_screen_highlights_all_four_short_exchanges(cx: &mut gpui::TestAppContext) {
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		visual.simulate_resize(gpui::size(gpui::px(1_400.), gpui::px(1_400.)));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.workspace.graph_visible = false;
+			let Some((_, AgentHistoryResult::Available { entries, .. })) = &mut s.history else {
+				panic!("fixture history");
+			};
+			let source = entries[0].clone();
+			*entries = (0..8)
+				.map(|index| {
+					let mut entry = source.clone();
+					entry.id = index;
+					entry.kind = if index % 2 == 0 { "user" } else { "assistant" }.into();
+					entry.text = format!("Short message {index}");
+					entry
+				})
+				.collect();
+			cx.notify();
+		});
+		visual.update(crate::ui_frame::draw_current_frame);
+		visual.update(crate::ui_frame::draw_current_frame);
+		surface.read_with(visual, |s, _| {
+			assert_eq!(s.timeline.marks.len(), 4);
+			let scroll = s.timeline.scroll_for(s.selected.as_deref());
+			assert_eq!(s.visible_history_range(&scroll), 0..4);
+		});
+	}
 
 	#[gpui::test]
 	fn disclosure_layout_keeps_rail_selection_until_reader_scrolls(cx: &mut gpui::TestAppContext) {
@@ -1260,6 +1331,7 @@ mod tests {
 					thread_token_breakdown: None,
 					thread_metrics: None,
 					safety_buffering_turn_id: None,
+					observed_activities: Vec::new(),
 					active_realtime_session_at_page_start: None,
 				}
 			));
@@ -1299,6 +1371,7 @@ mod tests {
 					thread_token_breakdown: None,
 					thread_metrics: None,
 					safety_buffering_turn_id: None,
+					observed_activities: Vec::new(),
 					active_realtime_session_at_page_start: None,
 				}
 			));
@@ -1419,6 +1492,7 @@ mod tests {
 					thread_token_breakdown: None,
 					thread_metrics: None,
 					safety_buffering_turn_id: None,
+					observed_activities: Vec::new(),
 					active_realtime_session_at_page_start: None
 				}
 			));
@@ -1503,7 +1577,7 @@ phase: None,
 				source_threads: Default::default(),
 				thread_id: "benchmark-thread".into(), entries, next_cursor: None,
 				weather: Default::default(), thread_token_total: None, thread_token_breakdown: None,
-		thread_metrics: None, safety_buffering_turn_id: None, active_realtime_session_at_page_start: None,
+		thread_metrics: None, safety_buffering_turn_id: None, observed_activities: Vec::new(), active_realtime_session_at_page_start: None,
 			}));
 
 			cx.notify();

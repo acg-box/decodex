@@ -416,19 +416,5 @@ fn command_footer(command: &Command) -> AnyElement {
 }
 
 fn keycap(label: &'static str) -> AnyElement {
-	gpui::div()
-		.min_w(gpui::px(18.))
-		.h(gpui::px(18.))
-		.px(gpui::px(4.))
-		.flex()
-		.items_center()
-		.justify_center()
-		.rounded(gpui::px(4.))
-		.border(gpui::px(0.5))
-		.border_color(ui_theme::rgb(ui_theme::TEXT).opacity(0.1))
-		.text_size(gpui::px(ui_theme::CAPTION_SIZE))
-		.line_height(gpui::px(14.))
-		.text_color(ui_theme::rgb(ui_theme::TEXT_MUTED))
-		.child(label)
-		.into_any_element()
+	ui_theme::shortcut_keycap(label).into_any_element()
 }

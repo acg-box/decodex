@@ -18,6 +18,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_context_settings.rs
   - id: openwiki-source-1bf529ea3f1649ac9a28334a
     resource: repo://apps/decodex-gpui/src/agent_conversation_tabs.rs
+  - id: openwiki-source-7aecb0d94903aac848b2cdfd
+    resource: repo://apps/decodex-gpui/src/agent_item_context.rs
   - id: openwiki-source-77ad5024b567271a0f618fd7
     resource: repo://apps/decodex-gpui/src/agent_list_branch.rs
   - id: openwiki-source-02f8a02cdfa0616877cdad62
@@ -82,6 +84,8 @@ sources:
     resource: repo://crates/decodex-runtime/src/account_service.rs
   - id: openwiki-source-ff8abff5a675874c627f1969
     resource: repo://crates/decodex-runtime/src/account_service/tests/plan_scope.rs
+  - id: openwiki-source-f4a9f4bcee102e076f5c5398
+    resource: repo://crates/decodex-runtime/src/agent_api_pricing.rs
   - id: openwiki-source-7111b71a47931c3e55d3ff6f
     resource: repo://crates/decodex-runtime/src/agent_titles/host.rs
   - id: openwiki-source-dbc533dc306a3f520c4241e0
@@ -106,10 +110,10 @@ sources:
     resource: repo://database/src/schema.rs
   - id: openwiki-source-3b57179b92b257bc3fff51a1
     resource: repo://scripts/macos/stage_decodex_app.sh
-generated: { by: "codex", at: "2026-11-11T19:14:11.241Z" }
+generated: { by: "codex", at: "2026-11-12T04:15:17.900Z" }
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-11T19:14:11.241Z
+    at: 2026-11-12T12:41:07.431Z
 ---
 
 # OpenWiki quickstart
@@ -154,7 +158,7 @@ Use **Cmd-F** or the conversation header's search control to find loaded convers
 
 Choose **Show in conversation** in a tool detail to locate a loaded message or read its unloaded native history in the main transcript. The history window has native earlier/later pages and a fixed **Return to conversation** action. **Related conversations** in Resources uses registered resource identities, archive filtering and native paging. It opens existing local conversations or copies an unmanaged native reference. It does not scan historical uploads. See [history and resource lookup](workflows/conversations-and-recovery.md#read-items-near-a-known-message).
 
-Reported dollars appear beside **Context** in the composer; **Conversation estimates** in Menu Bar retains explicit refresh and source-account labels. Missing dollar values stay hidden. The Menu Bar list covers up to eight recent locally managed conversations, not account-wide spending. See [estimate scope](workflows/models-and-settings.md#conversation-cost-estimates).
+Conversation cost appears beside **Context**. Native dollars have priority; when they are unavailable, `≈ $` can show an API-equivalent text-token estimate from recorded requests and official prices. Hover shows its basis and price age; `+` marks incomplete coverage, and `$—` means no estimate is available. Prices use a bundled snapshot and a daily background cache refresh. **Conversation estimates** in Menu Bar retains source-account labels and covers up to eight recent locally managed conversations. These estimates are not account-wide spending or subscription charges. See [estimate scope](workflows/models-and-settings.md#conversation-cost-estimates).
 
 ## Branch from a list row
 

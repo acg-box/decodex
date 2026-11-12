@@ -158,7 +158,7 @@ mod tests {
 				assert_eq!(result, AgentTimelineResult::Unavailable);
 			}
 
-			assert_eq!(methods.len(), if case == "older" { 2 } else { 4 });
+			assert_eq!(methods.len(), if case == "older" { 2 } else { 6 });
 		}
 	}
 
@@ -182,6 +182,8 @@ mod tests {
 					serde_json::json!({"result":{"thread":{"id":"thread","historyMode":"paginated"}}}),
 				"thread/timeline/list" =>
 					serde_json::json!({"error":{"code":-32_603,"message":"history unavailable"}}),
+				"thread/items/list" =>
+					serde_json::json!({"error":{"code":-32_601,"message":"stored item pages unavailable"}}),
 				"thread/turns/list" => {
 					assert_eq!(
 						request["params"],

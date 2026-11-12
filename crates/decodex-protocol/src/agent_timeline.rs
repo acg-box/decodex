@@ -8,6 +8,9 @@ use crate::{AgentActivityDto, AgentTurnUsageDto, EntityId, WeatherForecast};
 /// One exact native page, oldest entry first. The continuation reads older entries.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct AgentTimelinePage {
+	/// Exact observed tool lifecycles missing from the native page. These have no native position.
+	#[serde(default, skip_serializing_if = "Vec::is_empty")]
+	pub observed_activities: Vec<AgentActivityDto>,
 	/// Exact native thread for entries at each logical position across Assistant contexts.
 	#[serde(
 		default,
@@ -313,6 +316,24 @@ pub enum AgentTimelineResult {
 		account_id: EntityId,
 		/// Native timeline page.
 		page: AgentTimelinePage,
+	},
+	/// A native item page without mixed-timeline ordinals, such as archived history.
+	/// Items retain their exact turn and item identities. Clients may assign local
+	/// layout positions, but must not send those positions to native history APIs.
+	Saved {
+		/// Exact requested local task.
+		work_id: EntityId,
+		/// Account that owns the native history.
+		account_id: EntityId,
+		/// Native source thread for every returned item.
+		thread_id: String,
+		/// Stored native items in reading order, without invented native ordinals.
+		items: Vec<AgentTimelineContent>,
+		/// Observed tool lifecycles missing from the stored item page.
+		#[serde(default, skip_serializing_if = "Vec::is_empty")]
+		observed_activities: Vec<AgentActivityDto>,
+		/// Opaque continuation owned by the service, bound to this exact thread.
+		next_cursor: Option<String>,
 	},
 	/// Incomplete recent display content; never execution or pagination evidence.
 	Summary {

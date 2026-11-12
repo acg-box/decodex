@@ -27,6 +27,7 @@ const HISTORY_HANDOFF: f32 = 0.16;
 #[derive(Clone, Copy, Eq, PartialEq)]
 enum Presentation {
 	Inline,
+	Execution,
 	Conversation,
 	Workspace,
 	Pagination,
@@ -51,11 +52,13 @@ impl RenderOnce for Loading {
 			ui_motion::request_frame(window, cx);
 		}
 
-		indicator(self.label, self.presentation, elapsed, reduced).opacity(if reduced {
-			1.
-		} else {
-			((elapsed - 0.12) / 0.12).clamp(0., 1.)
-		})
+		indicator(self.label, self.presentation, elapsed, reduced).opacity(
+			if reduced || self.presentation == Presentation::Execution {
+				1.
+			} else {
+				((elapsed - 0.12) / 0.12).clamp(0., 1.)
+			},
+		)
 	}
 }
 
@@ -406,6 +409,15 @@ pub(crate) fn loading(label: &'static str) -> Loading {
 	Loading { label, presentation: Presentation::Inline }
 }
 
+/// A small progress arc for execution rows, using the shared loading clock and motion policy.
+pub(crate) fn execution() -> Loading {
+	Loading { label: "Executing", presentation: Presentation::Execution }
+}
+
+pub(crate) fn progress(label: &'static str) -> Loading {
+	Loading { label, presentation: Presentation::Execution }
+}
+
 pub(crate) fn pagination(active: bool) -> PaginationLoading {
 	PaginationLoading { active }
 }
@@ -450,6 +462,15 @@ fn indicator(
 	elapsed: f32,
 	reduced: bool,
 ) -> Stateful<Div> {
+	if presentation == Presentation::Execution {
+		return gpui::div().id("execution-progress").role(Role::Status).aria_label("Running")
+			.size(gpui::px(ui_theme::PROCESS_ICON_SIZE))
+			.child(gpui::svg()
+				.data(br#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M8 2.5a5.5 5.5 0 1 1-5.5 5.5" fill="none" stroke="white" stroke-width="1.6" stroke-linecap="round"/></svg>"#)
+				.size(gpui::px(ui_theme::PROCESS_ICON_SIZE))
+				.text_color(ui_theme::rgb(ui_theme::INFO))
+				.with_transformation(gpui::Transformation::rotate(gpui::radians(if reduced { 0. } else { elapsed * std::f32::consts::TAU / 0.9 }))));
+	}
 	let edge = match presentation {
 		Presentation::Workspace => 48.,
 		Presentation::Conversation => 32.,

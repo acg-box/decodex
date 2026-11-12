@@ -37,7 +37,7 @@ use core_foundation::{
 };
 use libc::{
 	EINTR, ESRCH, F_GETFD, F_GETFL, F_SETFL, FD_CLOEXEC, O_CLOEXEC, O_NOFOLLOW, O_NONBLOCK,
-	O_RDONLY, O_WRONLY, POSIX_SPAWN_CLOEXEC_DEFAULT, POSIX_SPAWN_SETSIGDEF,
+	O_RDONLY, O_WRONLY, POSIX_SPAWN_CLOEXEC_DEFAULT, POSIX_SPAWN_SETSIGDEF, POSIX_SPAWN_SETSIGMASK,
 	POSIX_SPAWN_START_SUSPENDED, SIGCONT, SIGKILL, SIGPIPE, STDERR_FILENO, STDIN_FILENO,
 	STDOUT_FILENO, WNOHANG, c_int, mode_t, pid_t, posix_spawn_file_actions_t, posix_spawnattr_t,
 	sigset_t,
@@ -482,6 +482,11 @@ impl SpawnAttributes {
 		if unsafe { libc::sigemptyset(default_signals.as_mut_ptr()) } != 0 {
 			return Err(io::Error::last_os_error());
 		}
+		// A GUI worker may block SIGCHLD. The native host and all of its worker
+		// threads must start with an empty mask so asynchronous child waits wake.
+		let result =
+			unsafe { libc::posix_spawnattr_setsigmask(&mut self.0, default_signals.as_ptr()) };
+		spawn_configuration_result(result)?;
 		// SAFETY: the set was initialized above and SIGPIPE is a valid signal number.
 		if unsafe { libc::sigaddset(default_signals.as_mut_ptr(), SIGPIPE) } != 0 {
 			return Err(io::Error::last_os_error());
@@ -493,8 +498,10 @@ impl SpawnAttributes {
 
 		spawn_configuration_result(result)?;
 
-		let exposed =
-			POSIX_SPAWN_START_SUSPENDED | POSIX_SPAWN_CLOEXEC_DEFAULT | POSIX_SPAWN_SETSIGDEF;
+		let exposed = POSIX_SPAWN_START_SUSPENDED
+			| POSIX_SPAWN_CLOEXEC_DEFAULT
+			| POSIX_SPAWN_SETSIGDEF
+			| POSIX_SPAWN_SETSIGMASK;
 		let flags = c_short::try_from(exposed)
 			.map_err(|_| invalid_input("Darwin spawn flags do not fit posix_spawnattr_setflags"))?
 			| POSIX_SPAWN_SETSID_DARWIN;
@@ -1332,6 +1339,38 @@ mod tests {
 		assert_eq!(spawned.child.id(), pid);
 		assert_eq!(spawned.child.try_wait().unwrap(), Some(status));
 		assert!(spawned.child.kill().is_ok());
+	}
+
+	#[test]
+	fn child_does_not_inherit_the_launching_threads_blocked_sigchld() {
+		let identity = system_identity("/usr/bin/python3");
+		let working = TempDir::new().unwrap();
+		let mut blocked = unsafe { std::mem::zeroed::<libc::sigset_t>() };
+		let mut previous = unsafe { std::mem::zeroed::<libc::sigset_t>() };
+		// pthread_sigmask changes only this test's thread, not concurrent tests.
+		assert_eq!(unsafe { libc::sigemptyset(&mut blocked) }, 0);
+		assert_eq!(unsafe { libc::sigaddset(&mut blocked, libc::SIGCHLD) }, 0);
+		assert_eq!(unsafe { libc::pthread_sigmask(libc::SIG_BLOCK, &blocked, &mut previous) }, 0);
+		let suspended = macos_attested_spawn::spawn_suspended(
+			&identity,
+			&[
+				"-c".into(),
+				"import signal; assert signal.SIGCHLD not in signal.pthread_sigmask(signal.SIG_BLOCK, []); print('unblocked')".into(),
+			],
+			working.path(),
+			working.path(),
+		);
+		// Restore the launcher before resuming the child or asserting spawn success.
+		assert_eq!(
+			unsafe { libc::pthread_sigmask(libc::SIG_SETMASK, &previous, std::ptr::null_mut()) },
+			0
+		);
+		let mut spawned = suspended.unwrap().attest_and_resume(&identity).unwrap();
+		drop(spawned.stdin);
+		let mut output = String::new();
+		spawned.stdout.read_to_string(&mut output).unwrap();
+		assert!(spawned.child.wait().unwrap().success());
+		assert_eq!(output.trim(), "unblocked");
 	}
 
 	#[test]

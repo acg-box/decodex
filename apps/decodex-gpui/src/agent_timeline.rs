@@ -32,7 +32,8 @@ use crate::{
 };
 use completion::{Closing, Completions};
 use decodex_protocol::{
-	AgentSnapshotDto, AgentTimelineContent, AgentTimelineEntry, AgentTimelinePage, WeatherForecast,
+	AgentActivityDto, AgentSnapshotDto, AgentTimelineContent, AgentTimelineEntry,
+	AgentTimelinePage, WeatherForecast,
 };
 use inputs::InputReceipts;
 use media::Preview;
@@ -683,7 +684,8 @@ impl AgentSurface {
 				.copied()
 				.filter(|i| motion.outgoing.contains(&self.timeline.native.entries[*i].position))
 				.collect();
-			let body = self.process_history_content(work, &indices, entry, false, cx);
+			let body =
+				self.process_history_content(work, &indices, &group.observations, entry, false, cx);
 
 			return gpui::div().w_full().mb(gpui::px(trailing)).child(Closing {
 				motion,
@@ -695,6 +697,7 @@ impl AgentSurface {
 
 		let owner = cx.entity();
 		let indices = group.indices.clone();
+		let observations = group.observations.clone();
 		let anchor = entry.clone();
 		let source_work = work.clone();
 
@@ -713,7 +716,14 @@ impl AgentSurface {
 				group.expanded,
 				move |cx| {
 					owner.update(cx, |s, cx| {
-						s.process_history_content(&source_work, &indices, &anchor, true, cx)
+						s.process_history_content(
+							&source_work,
+							&indices,
+							&observations,
+							&anchor,
+							true,
+							cx,
+						)
 					})
 				},
 			))
@@ -723,6 +733,7 @@ impl AgentSurface {
 		&self,
 		work: &AgentWorkItemDto,
 		indices: &[usize],
+		observations: &[AgentActivityDto],
 		anchor: &AgentTimelineEntry,
 		archived: bool,
 		cx: &mut Context<Self>,
@@ -736,28 +747,51 @@ impl AgentSurface {
 		});
 		let hidden: BTreeSet<_> =
 			waits.values().flat_map(|group| group.indices.iter().skip(1)).collect();
-		let body = gpui::div().w_full().min_w_0().flex().flex_col().gap_2().children(
-			indices.iter().filter(|i| !hidden.contains(i)).map(|i| {
-				if let Some(group) = waits.get(i) {
-					self.native_wait_group(work, group, anchor, archived, cx)
+		let mut observed = observations.iter().peekable();
+		let mut rows = Vec::new();
+		for i in indices.iter().filter(|i| !hidden.contains(i)) {
+			let entry = &self.timeline.native.entries[*i];
+			let timestamp = match &entry.content {
+				AgentTimelineContent::Item { activity: Some(activity), .. } =>
+					activity.native_timestamp_ms,
+				_ => None,
+			};
+			while observed.peek().is_some_and(|activity| {
+				timestamp
+					.zip(activity.native_timestamp_ms)
+					.is_some_and(|(next, current)| current < next)
+			}) {
+				rows.push(self.observed_activity_content(
+					work,
+					observed.next().expect("peeked activity"),
+					cx,
+				));
+			}
+			rows.push(if let Some(group) = waits.get(i) {
+				self.native_wait_group(work, group, anchor, archived, cx)
+			} else {
+				let body = self.native_timeline_content(
+					work,
+					entry,
+					&serde_json::json!([work.id, work.codex_thread_id, key(entry)]).to_string(),
+					archived && !self.is_located_item(&entry.content),
+					cx,
+				);
+				if self.is_revealed_history_item(entry) {
+					self.native_scroll_row(work, entry, body, cx)
 				} else {
-					let entry = &self.timeline.native.entries[*i];
-
-					let body = self.native_timeline_content(
-						work,
-						entry,
-						&serde_json::json!([work.id, work.codex_thread_id, key(entry)]).to_string(),
-						archived && !self.is_located_item(&entry.content),
-						cx,
-					);
-					if self.is_revealed_history_item(entry) {
-						self.native_scroll_row(work, entry, body, cx)
-					} else {
-						body
-					}
+					body
 				}
-			}),
-		);
+			});
+		}
+		rows.extend(observed.map(|activity| self.observed_activity_content(work, activity, cx)));
+		let body = gpui::div()
+			.w_full()
+			.min_w_0()
+			.flex()
+			.flex_col()
+			.gap(gpui::px(crate::ui_theme::PROCESS_STEP_GAP))
+			.children(rows);
 
 		if archived { render::process_indent(body) } else { body.into_any_element() }
 	}
@@ -807,8 +841,11 @@ impl AgentSurface {
 		work: &AgentWorkItemDto,
 		cx: &mut Context<Self>,
 	) -> Div {
-		let mut groups =
-			groups::groups(&self.timeline.native.entries, &self.timeline.native.expanded_turns);
+		let mut groups = groups::with_observations(
+			&self.timeline.native.entries,
+			&self.timeline.native.expanded_turns,
+			&self.timeline.native.observed_activities,
+		);
 		for group in &mut groups {
 			group.expanded |= group
 				.indices
@@ -917,12 +954,18 @@ impl AgentSurface {
 
 				let body = self.native_wait_group(work, group, entry, false, cx);
 
-				panel = panel.child(self.native_timeline_row_with_content(work, entry, body, cx));
+				panel = panel.child(self.native_timeline_row_with_content(
+					work,
+					entry,
+					body,
+					self.native_row_gap(work, index),
+					cx,
+				));
 
 				continue;
 			}
 			if let Some(height) = self.native_offscreen_height(work, entry) {
-				hidden.push((entry, height));
+				hidden.push((entry, height, self.native_row_gap(work, index)));
 
 				continue;
 			}
@@ -931,14 +974,16 @@ impl AgentSurface {
 				panel = panel.child(self.native_history_spacer(work, mem::take(&mut hidden)));
 			}
 
-			panel = panel.child(self.native_timeline_row(work, entry, cx));
-		}
-
-		if !hidden.is_empty() {
-			panel = panel.child(self.native_history_spacer(work, hidden));
+			panel = panel.child(self.native_timeline_row(
+				work,
+				entry,
+				self.native_row_gap(work, index),
+				cx,
+			));
 		}
 
 		panel
+			.when(!hidden.is_empty(), |panel| panel.child(self.native_history_spacer(work, hidden)))
 	}
 
 	fn prepare_native_process_folds(
@@ -1184,6 +1229,38 @@ impl AgentSurface {
 		}
 
 		self.timeline.native.task = None;
+		let saved = matches!(result, Some(decodex_protocol::AgentTimelineResult::Saved { .. }));
+		let result = match result {
+			Some(decodex_protocol::AgentTimelineResult::Saved {
+				work_id,
+				account_id,
+				thread_id,
+				items,
+				observed_activities,
+				next_cursor,
+			}) if work_id.as_str() == work && thread_id == thread => {
+				let binding = Binding {
+					work: work.clone(),
+					thread: thread.clone(),
+					account: account_id.as_str().into(),
+				};
+				self.timeline
+					.native
+					.saved_page(
+						&binding,
+						sent_cursor.as_deref(),
+						items,
+						next_cursor,
+						observed_activities,
+					)
+					.map(|page| decodex_protocol::AgentTimelineResult::Available {
+						work_id,
+						account_id,
+						page,
+					})
+			},
+			other => other,
+		};
 
 		if let Some(decodex_protocol::AgentTimelineResult::Summary {
 			work_id,
@@ -1242,6 +1319,7 @@ impl AgentSurface {
 			};
 
 			if accepted {
+				self.timeline.native.saved_positions = saved;
 				changed |= self.retire_native_output();
 
 				self.timeline.native.recovered();
@@ -1275,6 +1353,23 @@ impl AgentSurface {
 	}
 }
 
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub(super) struct ItemKey(String, String);
+
+impl ItemKey {
+	pub(super) fn new(turn: &str, item: &str) -> Self {
+		Self(turn.into(), item.into())
+	}
+
+	pub(super) fn for_entry(entry: &AgentTimelineEntry) -> Option<Self> {
+		match &entry.content {
+			AgentTimelineContent::Item { turn_id, item_id, .. } =>
+				Some(Self::new(turn_id, item_id)),
+			_ => None,
+		}
+	}
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) struct Binding {
 	pub work: String,
@@ -1293,6 +1388,9 @@ pub(super) struct Timeline {
 	pub revision: u64,
 	pub binding: Option<Binding>,
 	pub entries: Vec<AgentTimelineEntry>,
+	pub observed_activities: Vec<AgentActivityDto>,
+	/// Stored-item pages use view-local layout keys, never native timeline ordinals.
+	saved_positions: bool,
 	pub safety_buffering_turn_id: Option<String>,
 	pub weather: std::collections::BTreeMap<String, Vec<WeatherForecast>>,
 	pub source_threads: std::collections::BTreeMap<u64, String>,
@@ -1316,10 +1414,63 @@ pub(super) struct Timeline {
 	seen_cursors: BTreeSet<String>,
 }
 impl Timeline {
+	fn saved_page(
+		&self,
+		binding: &Binding,
+		cursor: Option<&str>,
+		mut items: Vec<AgentTimelineContent>,
+		next_cursor: Option<String>,
+		observed_activities: Vec<AgentActivityDto>,
+	) -> Option<AgentTimelinePage> {
+		let same = self.saved_positions && self.binding.as_ref() == Some(binding);
+		if cursor.is_some() {
+			if !same || self.older_cursor.as_deref() != cursor {
+				return None;
+			}
+			items.retain(|item| {
+				!self.entries.iter().any(|old| same_content_identity(item, &old.content))
+			});
+		}
+		let first = if cursor.is_some() {
+			self.entries.first()?.position.checked_sub(items.len() as u64)?
+		} else if same {
+			items
+				.first()
+				.and_then(|item| {
+					self.entries.iter().find(|old| same_content_identity(item, &old.content))
+				})
+				.map(|entry| entry.position)
+				.unwrap_or(1_u64 << 62)
+		} else {
+			1_u64 << 62
+		};
+		Some(AgentTimelinePage {
+			thread_id: binding.thread.clone(),
+			entries: items
+				.into_iter()
+				.enumerate()
+				.map(|(offset, content)| AgentTimelineEntry {
+					position: first + offset as u64,
+					content,
+				})
+				.collect(),
+			next_cursor,
+			source_threads: Default::default(),
+			weather: Default::default(),
+			thread_token_total: None,
+			thread_token_breakdown: None,
+			thread_metrics: None,
+			safety_buffering_turn_id: None,
+			observed_activities,
+			active_realtime_session_at_page_start: None,
+		})
+	}
+
 	fn matches_page(&self, binding: &Binding, page: &AgentTimelinePage) -> bool {
 		self.binding.as_ref() == Some(binding)
 			&& page.thread_id == binding.thread
 			&& self.entries == page.entries
+			&& self.observed_activities == page.observed_activities
 			&& self.summary.is_empty()
 			&& self.weather == page.weather
 			&& self.safety_buffering_turn_id == page.safety_buffering_turn_id
@@ -1433,6 +1584,7 @@ impl Timeline {
 	}
 
 	fn clear_page(&mut self) {
+		self.saved_positions = false;
 		self.summary_focus.borrow_mut().clear();
 
 		self.revision = self.revision.wrapping_add(1);
@@ -1445,6 +1597,7 @@ impl Timeline {
 		self.binding = None;
 
 		self.entries.clear();
+		self.observed_activities.clear();
 		self.weather.clear();
 		self.source_threads.clear();
 
@@ -1486,6 +1639,7 @@ impl Timeline {
 
 			self.weather.extend(page.weather);
 			self.source_threads.extend(page.source_threads);
+			self.merge_observed(page.observed_activities, &page.entries);
 			self.entries.splice(start.., page.entries);
 
 			return true;
@@ -1506,6 +1660,7 @@ impl Timeline {
 
 		let changed = self.binding.as_ref() != Some(&binding)
 			|| self.entries != page.entries
+			|| self.observed_activities != page.observed_activities
 			|| self.weather != page.weather
 			|| !self.summary.is_empty();
 
@@ -1531,6 +1686,7 @@ impl Timeline {
 		self.weather = page.weather;
 		self.source_threads = page.source_threads;
 		self.entries = page.entries;
+		self.observed_activities = page.observed_activities;
 		self.older_cursor = page.next_cursor;
 		self.pagination = Pagination::Idle;
 		self.opening_session = page.active_realtime_session_at_page_start;
@@ -1583,6 +1739,7 @@ impl Timeline {
 
 		self.weather.extend(page.weather);
 		self.source_threads.extend(page.source_threads);
+		self.merge_observed(page.observed_activities, &page.entries);
 		self.entries.splice(0..0, page.entries);
 
 		self.revision = self.revision.wrapping_add(1);
@@ -1599,6 +1756,22 @@ impl Timeline {
 		self.viewport.retain(&self.entries);
 
 		true
+	}
+
+	fn merge_observed(&mut self, incoming: Vec<AgentActivityDto>, page: &[AgentTimelineEntry]) {
+		self.observed_activities.retain(|activity| {
+			!page.iter().any(|entry| match &entry.content {
+				AgentTimelineContent::Item { turn_id, .. }
+				| AgentTimelineContent::TurnBoundary { turn_id, .. } => turn_id == &activity.turn_id,
+				_ => false,
+			})
+		});
+		for activity in incoming {
+			self.observed_activities
+				.retain(|old| old.turn_id != activity.turn_id || old.item_id != activity.item_id);
+			self.observed_activities.push(activity);
+		}
+		self.observed_activities.sort_by_key(|activity| activity.native_timestamp_ms);
 	}
 }
 
@@ -1621,6 +1794,20 @@ pub(super) fn key(entry: &AgentTimelineEntry) -> (u64, u8, &str) {
 	};
 
 	(entry.position, kind, id)
+}
+
+fn same_content_identity(a: &AgentTimelineContent, b: &AgentTimelineContent) -> bool {
+	match (a, b) {
+		(
+			AgentTimelineContent::Item { turn_id: at, item_id: ai, .. },
+			AgentTimelineContent::Item { turn_id: bt, item_id: bi, .. },
+		) => at == bt && ai == bi,
+		(
+			AgentTimelineContent::TurnBoundary { turn_id: at, completed: ac, .. },
+			AgentTimelineContent::TurnBoundary { turn_id: bt, completed: bc, .. },
+		) => at == bt && ac == bc,
+		_ => false,
+	}
 }
 
 fn bounded<'a>(entries: impl IntoIterator<Item = &'a AgentTimelineEntry>) -> bool {
@@ -2174,6 +2361,7 @@ mod tests {
 				thread_token_breakdown: None,
 				thread_metrics: None,
 				safety_buffering_turn_id: None,
+				observed_activities: Vec::new(),
 				active_realtime_session_at_page_start: None
 			}
 		));
@@ -2341,6 +2529,83 @@ mod tests {
 
 	fn binding() -> Binding {
 		Binding { work: "work".into(), thread: "thread".into(), account: "account".into() }
+	}
+
+	#[test]
+	fn native_refresh_replaces_an_unreported_operation_and_updates_its_result() {
+		let activity = |status: &str| {
+			serde_json::from_value(serde_json::json!({
+				"turn_id":"turn", "item_id":"command", "kind":"commandExecution",
+				"status":status, "label":"File read", "detail":""
+			}))
+			.unwrap()
+		};
+		let command = |status: &str| AgentTimelineEntry {
+			position: 2,
+			content: AgentTimelineContent::Item {
+				turn_id: "turn".into(),
+				item_id: "command".into(),
+				kind: "commandExecution".into(),
+				phase: None,
+				text: String::new(),
+				truncated: false,
+				activity: Some(activity(status)),
+				attachments: vec![],
+				collaboration: None,
+			},
+		};
+		let mut state = Timeline::default();
+		let mut pending = page(vec![boundary(1, true)], None, None);
+		pending.observed_activities.push(activity("unreported"));
+		assert!(state.replace(binding(), pending));
+		for status in ["completed", "failed"] {
+			assert!(
+				state
+					.refresh(binding(), page(vec![boundary(1, true), command(status)], None, None))
+			);
+			assert!(state.observed_activities.is_empty());
+			assert_eq!(state.entries.len(), 2);
+			assert!(matches!(&state.entries[1].content,
+				AgentTimelineContent::Item { activity: Some(item), .. } if item.status == status));
+		}
+	}
+
+	#[test]
+	fn stored_item_pages_keep_display_order_and_deduplicate_turn_boundaries() {
+		let binding = binding();
+		let item = |id: &str| AgentTimelineContent::Item {
+			turn_id: "turn".into(),
+			item_id: id.into(),
+			kind: "agentMessage".into(),
+			phase: Some("final_answer".into()),
+			text: id.into(),
+			truncated: false,
+			attachments: vec![],
+			activity: None,
+			collaboration: None,
+		};
+		let terminal = boundary(0, true).content;
+		let mut timeline = Timeline::default();
+		let page = timeline
+			.saved_page(
+				&binding,
+				None,
+				vec![item("answer"), terminal.clone()],
+				Some("saved:older".into()),
+				vec![],
+			)
+			.unwrap();
+		assert!(timeline.replace(binding.clone(), page));
+		timeline.saved_positions = true;
+		let anchor = timeline.entries[0].position;
+		let older = timeline
+			.saved_page(&binding, Some("saved:older"), vec![item("before"), terminal], None, vec![])
+			.unwrap();
+		assert_eq!(older.entries.len(), 1, "the same native completion is shown once");
+		assert!(timeline.prepend(&binding, "saved:older", older));
+		assert_eq!(timeline.entries[1].position, anchor, "prepending keeps existing view anchors");
+		assert!(super::valid_entries(&timeline.entries));
+		assert!(timeline.saved_page(&binding, Some("wrong"), vec![], None, vec![]).is_none());
 	}
 
 	#[gpui::test]
@@ -2511,6 +2776,7 @@ mod tests {
 			thread_token_breakdown: None,
 			thread_metrics: None,
 			safety_buffering_turn_id: None,
+			observed_activities: Vec::new(),
 			active_realtime_session_at_page_start: session.map(str::to_owned),
 		}
 	}

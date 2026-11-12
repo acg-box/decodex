@@ -1,5 +1,5 @@
 //! Source-bound conversation dollars, read in the background without model inference.
-use gpui::AnyElement;
+use gpui::{AnyElement, AppContext};
 use tokio::runtime::Builder;
 
 use crate::shell::agent_surface::{
@@ -15,26 +15,62 @@ use decodex_protocol::AgentUsageEstimateResult;
 impl AgentSurface {
 	pub(super) fn conversation_cost(&self) -> Option<AnyElement> {
 		let work = self.conversation_work()?;
-		let (_, Some(AgentUsageEstimateResult::Available { estimate, .. })) =
-			self.usage_estimate.as_ref().filter(|(id, _)| id == &work.id)?
+		let (_, Some(result)) = self.usage_estimate.as_ref().filter(|(id, _)| id == &work.id)?
 		else {
 			return None;
 		};
-		if work.codex_thread_id.as_deref() != Some(&estimate.thread_id) {
-			return None;
-		}
-		let label = amount_label(estimate)?;
+		let (label, description) = match result {
+			AgentUsageEstimateResult::Available { estimate, .. } => {
+				if work.codex_thread_id.as_deref() != Some(&estimate.thread_id) {
+					return None;
+				}
+				let label = amount_label(estimate).unwrap_or_else(|| "$—".into());
+				let precise = estimate.reported_usd_micros().map(micros).map(|v| format!("${v}"));
+				let description =
+					format!("Conversation cost: {} USD", precise.as_deref().unwrap_or("$—"));
+				(label, description)
+			},
+			AgentUsageEstimateResult::ApiEstimate { estimate, .. } => {
+				if work.codex_thread_id.as_deref() != Some(&estimate.thread_id) {
+					return None;
+				}
+				let date = time::OffsetDateTime::from_unix_timestamp(
+					estimate.pricing_checked_at_micros / 1_000_000,
+				)
+				.map(|d| format!("{:04}-{:02}-{:02}", d.year(), u8::from(d.month()), d.day()))
+				.unwrap_or_else(|_| "unavailable".into());
+				let label = format!(
+					"≈ {}{}",
+					currency(estimate.usd_micros),
+					if estimate.partial { "+" } else { "" }
+				);
+				let description = format!(
+					"API equivalent: ${} USD. Based on {} observed responses and official prices checked {date}. This is a text-token estimate, not a subscription charge.{}",
+					micros(estimate.usd_micros),
+					estimate.priced_responses,
+					if estimate.partial {
+						" Some usage could not be priced."
+					} else {
+						" Tool charges are excluded."
+					},
+				);
+				(label, description)
+			},
+			_ => ("$—".into(), "Conversation cost is not available.".into()),
+		};
+		let tooltip = description.clone();
 		Some(
 			gpui::div()
 				.id("composer-conversation-cost")
 				.debug_selector(|| "composer-conversation-cost".into())
-				.aria_label(format!("Conversation cost: {label} USD"))
+				.aria_label(description)
 				.flex_shrink_0()
 				.whitespace_nowrap()
 				.text_size(gpui::px(11.))
 				.line_height(gpui::px(16.))
 				.text_color(crate::ui_theme::rgb(crate::ui_theme::TEXT))
 				.child(label)
+				.tooltip(move |_, cx| cx.new(|_| CostTip(tooltip.clone())).into())
 				.into_any_element(),
 		)
 	}
@@ -67,19 +103,23 @@ impl AgentSurface {
 		self.usage_estimate_task = None;
 	}
 
-	fn usage_estimate_binding(&self, work: &str) -> Option<(EntityId, String)> {
+	pub(super) fn usage_estimate_binding(&self, work: &str) -> Option<(EntityId, String)> {
 		let snapshot = self.snapshot.as_ref()?;
 
 		Some((
 			snapshot.runtime_source.clone()?,
-			snapshot.work_items.iter().find(|w| w.id == work)?.codex_thread_id.clone()?,
+			self.conversation_record(work)?.codex_thread_id.clone()?,
 		))
 	}
 
 	pub(super) fn invalidate_usage_estimate(&mut self, next: &AgentSnapshotDto) {
 		let Some((work, _)) = &self.usage_estimate else { return };
 		let next_binding = next.runtime_source.clone().zip(
-			next.work_items.iter().find(|w| &w.id == work).and_then(|w| w.codex_thread_id.clone()),
+			next.work_items
+				.iter()
+				.find(|w| &w.id == work)
+				.or_else(|| self.workspace.archives.viewed_work().filter(|w| &w.id == work))
+				.and_then(|w| w.codex_thread_id.clone()),
 		);
 
 		if self.usage_estimate_binding(work) != next_binding
@@ -153,13 +193,24 @@ impl AgentSurface {
 	}
 }
 
+struct CostTip(String);
+impl gpui::Render for CostTip {
+	fn render(&mut self, _: &mut gpui::Window, _: &mut Context<Self>) -> impl IntoElement {
+		crate::ui_motion::tooltip_surface(gpui::div()).child(self.0.clone())
+	}
+}
+
 fn amount_label(estimate: &decodex_protocol::ThreadUsageEstimate) -> Option<String> {
-	let amount = micros(estimate.reported_usd_micros()?);
-	Some(if estimate.native_usage_usd_micros.is_some() {
-		format!("${amount}")
-	} else {
-		format!("≈ ${amount}")
-	})
+	let amount = currency(estimate.reported_usd_micros()?);
+	Some(if estimate.native_usage_usd_micros.is_some() { amount } else { format!("≈ {amount}") })
+}
+
+fn currency(value: u64) -> String {
+	if value > 0 && value < 10_000 {
+		return "< $0.01".into();
+	}
+	let cents = value / 10_000 + u64::from(value % 10_000 >= 5_000);
+	format!("${}.{:02}", cents / 100, cents % 100)
 }
 
 #[cfg(any(test, feature = "visual-capture"))]
@@ -227,7 +278,53 @@ mod tests {
 	};
 
 	#[gpui::test]
-	fn conversation_dollars_follow_context_keep_zero_and_hide_unknowns(
+	fn api_equivalent_keeps_the_native_source_and_partial_coverage_visible(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.visual_workspace_page("markdown", cx);
+			s.snapshot
+				.as_mut()
+				.unwrap()
+				.work_items
+				.iter_mut()
+				.find(|w| w.id == "agent")
+				.unwrap()
+				.codex_thread_id = Some("thread".into());
+			s.usage_estimate = Some((
+				"agent".into(),
+				Some(AgentUsageEstimateResult::ApiEstimate {
+					work_id: EntityId::new("agent").unwrap(),
+					account_id: EntityId::new("account").unwrap(),
+					observed_at_micros: 1,
+					estimate: decodex_protocol::ApiCostEstimate {
+						thread_id: "thread".into(),
+						usd_micros: 329_020,
+						priced_responses: 19,
+						partial: true,
+						pricing_checked_at_micros: 1,
+					},
+				}),
+			));
+			assert!(s.conversation_cost().is_some());
+			cx.notify();
+		});
+		visual.update(crate::ui_frame::draw_current_frame);
+		assert!(visual.debug_bounds("composer-conversation-cost").is_some());
+		surface.update(visual, |s, _| {
+			if let Some((_, Some(AgentUsageEstimateResult::ApiEstimate { estimate, .. }))) =
+				&mut s.usage_estimate
+			{
+				estimate.thread_id = "other-thread".into();
+			}
+			assert!(s.conversation_cost().is_none());
+		});
+	}
+
+	#[gpui::test]
+	fn conversation_dollars_follow_context_keep_zero_and_mark_unknowns(
 		cx: &mut gpui::TestAppContext,
 	) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
@@ -247,9 +344,9 @@ mod tests {
 			visual.simulate_resize(gpui::size(gpui::px(width), gpui::px(1_000.)));
 			for (native, estimated, expected) in [
 				(None, None, None),
-				(None, Some(0), Some("≈ $0")),
-				(Some(0), Some(9_000_000), Some("$0")),
-				(Some(1_234_567), None, Some("$1.234567")),
+				(None, Some(0), Some("≈ $0.00")),
+				(Some(0), Some(9_000_000), Some("$0.00")),
+				(Some(1_234_567), None, Some("$1.23")),
 			] {
 				surface.update(visual, |s, cx| {
 					s.usage_estimate = Some((
@@ -276,7 +373,7 @@ mod tests {
 				});
 				visual.update(crate::ui_frame::draw_current_frame);
 				let cost = visual.debug_bounds("composer-conversation-cost");
-				assert_eq!(cost.is_some(), expected.is_some());
+				assert!(cost.is_some(), "unknown cost keeps its explicit placeholder");
 				if let Some(cost) = cost {
 					let context = visual.debug_bounds("composer-context-detail").unwrap();
 					let send = visual.debug_bounds("composer-send").unwrap();
@@ -396,6 +493,18 @@ mod tests {
 		assert_eq!(usage_estimates::micros(9_007_199_254_740_993), "9007199254.740993");
 		assert_eq!(usage_estimates::micros(0), "0");
 		assert_eq!(usage_estimates::micros(1), "0.000001");
+		for (value, expected) in [
+			(0, "$0.00"),
+			(1, "< $0.01"),
+			(9_999, "< $0.01"),
+			(10_000, "$0.01"),
+			(351_369, "$0.35"),
+			(999_999, "$1.00"),
+			(1_234_567, "$1.23"),
+			(u64::MAX, "$18446744073709.55"),
+		] {
+			assert_eq!(usage_estimates::currency(value), expected);
+		}
 	}
 
 	#[gpui::test]

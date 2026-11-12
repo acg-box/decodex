@@ -16,6 +16,8 @@ struct Row {
 	native_usd_micros: Option<u64>,
 	credits_micros: Option<u64>,
 	observed_at_micros: Option<i64>,
+	api_equivalent: bool,
+	partial: bool,
 }
 
 pub(super) async fn read(profile: ClientProfile) -> Result<Value, RequestFailure> {
@@ -60,19 +62,37 @@ pub(super) async fn read(profile: ClientProfile) -> Result<Value, RequestFailure
 				native_usd_micros: None,
 				credits_micros: None,
 				observed_at_micros: None,
+				api_equivalent: false,
+				partial: false,
 			};
-			if let Ok(Ok(AgentUsageEstimateResult::Available {
-				account_id,
-				estimate,
-				observed_at_micros,
-				..
-			})) = result
-			{
-				row.account_id = Some(account_id.as_str().to_owned());
-				row.usd_micros = estimate.estimated_usage_usd_micros;
-				row.native_usd_micros = estimate.native_usage_usd_micros;
-				row.credits_micros = Some(estimate.estimated_usage_credits_micros);
-				row.observed_at_micros = Some(observed_at_micros);
+			if let Ok(Ok(result)) = result {
+				match result {
+					AgentUsageEstimateResult::Available {
+						account_id,
+						estimate,
+						observed_at_micros,
+						..
+					} => {
+						row.account_id = Some(account_id.as_str().to_owned());
+						row.usd_micros = estimate.estimated_usage_usd_micros;
+						row.native_usd_micros = estimate.native_usage_usd_micros;
+						row.credits_micros = Some(estimate.estimated_usage_credits_micros);
+						row.observed_at_micros = Some(observed_at_micros);
+					},
+					AgentUsageEstimateResult::ApiEstimate {
+						account_id,
+						estimate,
+						observed_at_micros,
+						..
+					} => {
+						row.account_id = Some(account_id.as_str().to_owned());
+						row.usd_micros = Some(estimate.usd_micros);
+						row.observed_at_micros = Some(observed_at_micros);
+						row.api_equivalent = true;
+						row.partial = estimate.partial;
+					},
+					_ => {},
+				}
 			}
 			(index, row)
 		});

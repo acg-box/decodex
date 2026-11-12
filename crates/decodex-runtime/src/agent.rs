@@ -1048,9 +1048,14 @@ impl AgentCoordinator {
 			return Ok(item.clone());
 		}
 
-		self.store.begin_agent_thread_creation(item.id.clone()).await?;
-
-		let mut params = self.work_thread_params(item).await?;
+		let mut params = match self.work_thread_params(item).await {
+			Ok(params) => params,
+			Err(error) => {
+				self.store.hold_agent_unsent_input_with_reason(item.id.clone(),
+					"Not sent: the selected workspace could not be prepared. Check the workspace before retrying.".into()).await?;
+				return Err(error);
+			},
+		};
 
 		if let Some(catalog) = agent_capabilities::read_catalog(&self.client).await {
 			let now = SystemTime::now()
@@ -1088,6 +1093,9 @@ impl AgentCoordinator {
 
 		params["historyMode"] = serde_json::json!("paginated");
 
+		// Preparing a Project can fail before any native thread request. Fence only
+		// the actual creation request, so a local preparation error remains retryable.
+		self.store.begin_agent_thread_creation(item.id.clone()).await?;
 		let response = match self.client.thread_start(params).await {
 			Ok(response) => response,
 			Err(error) => {

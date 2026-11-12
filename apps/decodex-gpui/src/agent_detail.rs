@@ -42,13 +42,13 @@ impl AgentSurface {
 	}
 
 	pub(super) fn activity_detail_key(&self, ids: &(String, String, String)) -> Option<String> {
-		if !self.command_connection_ready() {
+		if !self.read_connection_ready() {
 			return None;
 		}
 
 		let snapshot = self.snapshot.as_ref()?;
 		let source = snapshot.runtime_source.as_ref()?;
-		let work = snapshot.work_items.iter().find(|work| work.id == ids.0)?;
+		let work = self.conversation_record(&ids.0)?;
 		let thread = work.codex_thread_id.as_ref()?;
 
 		Some(serde_json::json!([ids, thread, source]).to_string())
@@ -175,8 +175,9 @@ impl AgentSurface {
 					.max_h(gpui::px(280.))
 					.overflow_y_scroll()
 					.p(gpui::px(10.))
-					.rounded(gpui::px(7.))
-					.bg(crate::ui_theme::rgba(0x10101445))
+					.pl(gpui::px(crate::ui_theme::PROCESS_ICON_SLOT + 8.))
+					.rounded(gpui::px(crate::ui_theme::SMALL_CONTROL_RADIUS))
+					.bg(crate::ui_theme::rgba(crate::ui_theme::FIELD_MATERIAL))
 					.when(!markdown_reply, |d| d.font_family("Menlo"))
 					.text_size(gpui::px(if markdown_reply { 13. } else { 11.5 }))
 					.line_height(gpui::px(if markdown_reply { 19. } else { 16. }))
@@ -192,15 +193,7 @@ impl AgentSurface {
 						gpui::div()
 							.mt(gpui::px(6.))
 							.text_color(crate::ui_theme::rgb(TEXT_MUTED))
-							.child(SelectableText {
-								key: format!("detail-metadata-{key}"),
-								text: format!(
-									"Type: {}\nStatus: {}\nTurn: {}\nCall: {}",
-									item.kind, item.status, item.turn_id, item.item_id
-								),
-								highlights: Vec::new(),
-								links: Vec::new(),
-							}),
+							.child(activity_metadata(&key, item)),
 					)),
 			))
 			.into_any_element()
@@ -877,3 +870,20 @@ mod tests {
 #[cfg(test)]
 #[path = "agent_detail_wire_tests.rs"]
 mod wire_tests;
+
+fn activity_metadata(key: &str, item: &AgentActivityDto) -> SelectableText {
+	SelectableText {
+		key: format!("detail-metadata-{key}"),
+		text: format!(
+			"Type: {}\nStatus: {}\nTurn: {}\nCall: {}{}{}",
+			item.kind,
+			item.status,
+			item.turn_id,
+			item.item_id,
+			item.plugin_id.as_ref().map_or(String::new(), |id| format!("\nPlugin: {id}")),
+			item.read_only_hint.map_or(String::new(), |hint| format!("\nRead-only hint: {hint}"))
+		),
+		highlights: Vec::new(),
+		links: Vec::new(),
+	}
+}

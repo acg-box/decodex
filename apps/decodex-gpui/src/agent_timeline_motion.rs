@@ -13,7 +13,7 @@ use gpui::{
 
 use crate::{
 	frame_trace,
-	shell::agent_surface::native_timeline::{AgentTimelineContent, AgentTimelineEntry},
+	shell::agent_surface::native_timeline::{AgentTimelineContent, AgentTimelineEntry, ItemKey},
 	ui_motion,
 };
 
@@ -24,8 +24,8 @@ const MAX_STAGGER: Duration = Duration::from_millis(120);
 #[derive(Default)]
 pub(super) struct Arrivals {
 	latest: Option<u64>,
-	rows: BTreeMap<String, Rc<Arrival>>,
-	live: RefCell<BTreeSet<String>>,
+	rows: BTreeMap<ItemKey, Rc<Arrival>>,
+	live: RefCell<BTreeSet<ItemKey>>,
 }
 impl Arrivals {
 	pub(super) fn observe(&mut self, entries: &[AgentTimelineEntry], animate: bool) {
@@ -38,8 +38,8 @@ impl Arrivals {
 		let mut delay = Duration::ZERO;
 
 		for entry in entries {
-			if let AgentTimelineContent::Item { kind, item_id, .. } = &entry.content
-				&& !self.live.get_mut().remove(item_id)
+			if let AgentTimelineContent::Item { kind, turn_id, item_id, .. } = &entry.content
+				&& !self.live.get_mut().remove(&ItemKey::new(turn_id, item_id))
 				&& animate
 				&& self.latest.is_some_and(|last| entry.position > last)
 				&& !matches!(kind.as_str(), "userMessage" | "agentInput")
@@ -49,7 +49,7 @@ impl Arrivals {
 				// A native page can contain several completed tools. Keep this burst
 				// ordered without making later network updates wait behind a queue.
 				self.rows
-					.entry(item_id.clone())
+					.entry(ItemKey::new(turn_id, item_id))
 					.or_insert_with(|| Rc::new(Arrival::new(now + delay)));
 
 				delay = (delay + STAGGER).min(MAX_STAGGER);
@@ -63,26 +63,24 @@ impl Arrivals {
 		}
 	}
 
-	pub(super) fn present_live(&self, item: &str) {
-		self.live.borrow_mut().insert(item.into());
+	pub(super) fn present_live(&self, turn: &str, item: &str) {
+		self.live.borrow_mut().insert(ItemKey::new(turn, item));
 	}
 
 	pub(super) fn active(&self, entry: &AgentTimelineEntry) -> bool {
-		matches!(&entry.content, AgentTimelineContent::Item { item_id, .. }
-			if self.rows.get(item_id).is_some_and(|arrival| !arrival.finished.get() && arrival.started.elapsed() < DURATION))
+		ItemKey::for_entry(entry).is_some_and(|key| {
+			self.rows.get(&key).is_some_and(|arrival| {
+				!arrival.finished.get() && arrival.started.elapsed() < DURATION
+			})
+		})
 	}
 
 	pub(super) fn wrap(&self, entry: &AgentTimelineEntry, child: AnyElement) -> AnyElement {
-		let AgentTimelineContent::Item { item_id, .. } = &entry.content else { return child };
-		let Some(arrival) = self.rows.get(item_id).cloned() else { return child };
+		let Some(key) = ItemKey::for_entry(entry) else { return child };
+		let Some(arrival) = self.rows.get(&key).cloned() else { return child };
 
-		Row {
-			key: format!("row-arrival-{item_id}").into(),
-			position: entry.position,
-			arrival,
-			child,
-		}
-		.into_any_element()
+		Row { key: format!("row-arrival-{key:?}").into(), position: entry.position, arrival, child }
+			.into_any_element()
 	}
 }
 
@@ -172,7 +170,8 @@ mod tests {
 	use crate::shell::agent_surface::native_timeline::{
 		motion::{
 			self, AgentTimelineContent, AgentTimelineEntry, Arrival, Arrivals, DURATION, Duration,
-			Instant, IntoElement, MAX_STAGGER, ParentElement, Rc, Row, STAGGER, Styled, Window,
+			Instant, IntoElement, ItemKey, MAX_STAGGER, ParentElement, Rc, Row, STAGGER, Styled,
+			Window,
 		},
 		render,
 	};
@@ -218,20 +217,45 @@ mod tests {
 	}
 
 	#[test]
+	fn repeated_item_ids_do_not_share_arrival_or_live_promotion_state() {
+		let mut arrivals = Arrivals::default();
+		let old = row(1);
+		arrivals.observe(std::slice::from_ref(&old), true);
+		let mut live = row(2);
+		if let AgentTimelineContent::Item { turn_id, item_id, .. } = &mut live.content {
+			*turn_id = "next-turn".into();
+			*item_id = "1".into();
+		}
+		arrivals.present_live("next-turn", "1");
+		arrivals.observe(&[old.clone(), live.clone()], true);
+		assert!(!arrivals.active(&old));
+		assert!(!arrivals.active(&live), "a displayed live row must not replay its arrival");
+		let mut next = live.clone();
+		next.position = 3;
+		if let AgentTimelineContent::Item { turn_id, .. } = &mut next.content {
+			*turn_id = "third-turn".into();
+		}
+		arrivals.observe(&[old.clone(), live.clone(), next.clone()], true);
+		assert!(arrivals.active(&next));
+		assert!(!arrivals.active(&old), "the older row must stay at its settled height");
+		assert!(!arrivals.active(&live));
+	}
+
+	#[test]
 	fn a_tool_burst_has_a_short_bounded_stagger_and_no_initial_velocity_jump() {
 		let mut arrivals = Arrivals::default();
 
 		arrivals.observe(&[row(1)], true);
 		arrivals.observe(&(1..=8).map(row).collect::<Vec<_>>(), true);
 
-		let first = arrivals.rows["2"].started;
+		let first = arrivals.rows[&ItemKey::new("turn", "2")].started;
 
-		assert_eq!(arrivals.rows["3"].started - first, STAGGER);
-		assert_eq!(arrivals.rows["8"].started - first, MAX_STAGGER);
+		assert_eq!(arrivals.rows[&ItemKey::new("turn", "3")].started - first, STAGGER);
+		assert_eq!(arrivals.rows[&ItemKey::new("turn", "8")].started - first, MAX_STAGGER);
 
 		arrivals.observe(&(1..=8).map(row).collect::<Vec<_>>(), true);
 
-		assert_eq!(arrivals.rows["3"].started - first, STAGGER);
+		assert_eq!(arrivals.rows[&ItemKey::new("turn", "3")].started - first, STAGGER);
 		assert!(motion::progress(DURATION / 4, false) < 0.2);
 		assert_eq!(motion::progress(DURATION / 2, false), 0.5);
 	}
@@ -250,15 +274,18 @@ mod tests {
 
 		arrivals.observe(&[row(11), row(12)], true);
 
-		let born = arrivals.rows["12"].started;
+		let born = arrivals.rows[&ItemKey::new("turn", "12")].started;
 
 		arrivals.observe(&[row(11), row(12)], true);
 
-		assert_eq!(arrivals.rows["12"].started, born);
+		assert_eq!(arrivals.rows[&ItemKey::new("turn", "12")].started, born);
 
 		arrivals.observe(&[row(12), row(13)], false);
 
-		assert!(!arrivals.rows.contains_key("13"), "background updates stay static");
+		assert!(
+			!arrivals.rows.contains_key(&ItemKey::new("turn", "13")),
+			"background updates stay static"
+		);
 		assert_eq!(motion::progress(Duration::ZERO, false), 0.);
 		assert!(motion::progress(Duration::from_millis(100), false) < 1.);
 		assert_eq!(motion::progress(DURATION, false), 1.);

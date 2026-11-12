@@ -52,7 +52,9 @@ def main() -> int:
         )
         preparation = environment | {"CODEX_HOME": str(fixture / "preparation-native-home")}
         if args.lock:
-            command = ["cargo", "+stable", "run", "--locked", "--quiet", "-p", "decodex-components", "--", "import-dev", str(args.lock.resolve(strict=True)), str(runtime), "--store", str(fixture / "components")]
+            # All fixture modes resolve the runtime through the default store in
+            # their isolated HOME. Let the component owner select its path.
+            command = ["cargo", "+stable", "run", "--locked", "--quiet", "-p", "decodex-components", "--", "import-dev", str(args.lock.resolve(strict=True)), str(runtime)]
         else:
             command = ["cargo", "+stable", "make", "prepare-codex"]
         result = subprocess.run(command, cwd=ROOT, env=preparation, check=False)

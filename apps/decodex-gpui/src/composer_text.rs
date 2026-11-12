@@ -10,7 +10,7 @@ use crate::{
 		self, App, Bounds, ComposerAppearance, ComposerInput, Element, ElementId,
 		ElementInputHandler, Entity, GlobalElementId, InspectorElementId, IntoElement, LayoutId,
 		Pixels, Point, SharedString, Style, TextRun, UnderlineStyle, Window, WrappedLine, cursor,
-		ui_theme,
+		hint::InlineHint, ui_theme,
 	},
 	ui_motion,
 };
@@ -28,7 +28,7 @@ impl IntoElement for ComposerTextElement {
 
 impl Element for ComposerTextElement {
 	type PrepaintState = TextPaint;
-	type RequestLayoutState = ();
+	type RequestLayoutState = Option<InlineHint>;
 
 	fn id(&self) -> Option<ElementId> {
 		None
@@ -43,14 +43,18 @@ impl Element for ComposerTextElement {
 		_: Option<&GlobalElementId>,
 		_: Option<&InspectorElementId>,
 		window: &mut Window,
-		_: &mut App,
-	) -> (LayoutId, ()) {
+		cx: &mut App,
+	) -> (LayoutId, Self::RequestLayoutState) {
 		let mut style = Style::default();
 
 		style.size.width = composer_input::relative(1.0).into();
 
 		let input = self.input.clone();
 		let text_style = window.text_style();
+		let label = input.read(cx).placeholder_hint().map(SharedString::from);
+		let busy = input.read(cx).placeholder_hint_busy;
+		let hint = InlineHint::new(label, busy, input.clone(), window, cx);
+		let hint_size = hint.as_ref().map(|hint| hint.size);
 
 		(
 			window.request_measured_layout(style, move |known, available, window, cx| {
@@ -62,14 +66,16 @@ impl Element for ComposerTextElement {
 				let lines = shape_with_style(input, width, window, &text_style);
 				let limit =
 					if input.appearance == ComposerAppearance::Workbench { 6.0 } else { 1.0 };
+				let end = position_at(&lines, input.placeholder.len());
+				let text_height = height(&lines);
+				let (_, height) = InlineHint::flow(hint_size, end, text_height, width);
 
 				gpui::size(
 					width,
-					height(&lines)
-						.clamp(gpui::px(BODY_LINE_HEIGHT), gpui::px(BODY_LINE_HEIGHT * limit)),
+					height.clamp(gpui::px(BODY_LINE_HEIGHT), gpui::px(BODY_LINE_HEIGHT * limit)),
 				)
 			}),
-			(),
+			hint,
 		)
 	}
 
@@ -78,24 +84,42 @@ impl Element for ComposerTextElement {
 		_: Option<&GlobalElementId>,
 		_: Option<&InspectorElementId>,
 		bounds: Bounds<Pixels>,
-		_: &mut (),
+		hint: &mut Self::RequestLayoutState,
 		window: &mut Window,
 		cx: &mut App,
 	) -> TextPaint {
 		let input = self.input.read(cx);
 		let lines = shape(input, bounds.size.width, window);
 		let caret = position_at(&lines, input.cursor_offset()).y;
-		let max = (height(&lines) - bounds.size.height).max(gpui::px(0.0));
-		let offset = if input.scroll_manually {
-			input.text_offset.clamp(gpui::px(0.0), max)
+		let end = position_at(&lines, input.placeholder.len());
+		let text_height = height(&lines);
+		let scroll_manually = input.scroll_manually;
+		let text_offset = input.text_offset;
+		let (_, height) = InlineHint::flow(
+			hint.as_ref().map(|hint| hint.size),
+			end,
+			text_height,
+			bounds.size.width,
+		);
+		let max = (height - bounds.size.height).max(gpui::px(0.0));
+		let offset = if scroll_manually {
+			text_offset.clamp(gpui::px(0.0), max)
 		} else {
-			input
-				.text_offset
+			text_offset
 				.max(caret + gpui::px(BODY_LINE_HEIGHT) - bounds.size.height)
 				.min(caret)
 				.clamp(gpui::px(0.0), max)
 		};
 
+		if let Some(hint) = hint {
+			hint.prepaint(
+				end,
+				bounds.size.width,
+				bounds.origin - gpui::point(gpui::px(0.), offset),
+				window,
+				cx,
+			);
+		}
 		TextPaint { lines, offset }
 	}
 
@@ -104,7 +128,7 @@ impl Element for ComposerTextElement {
 		_: Option<&GlobalElementId>,
 		_: Option<&InspectorElementId>,
 		bounds: Bounds<Pixels>,
-		_: &mut (),
+		hint: &mut Self::RequestLayoutState,
 		state: &mut TextPaint,
 		window: &mut Window,
 		cx: &mut App,
@@ -179,6 +203,9 @@ impl Element for ComposerTextElement {
 
 			y += line.size(line_height).height;
 			start += line.len() + 1;
+		}
+		if let Some(hint) = hint {
+			hint.element.paint(window, cx);
 		}
 
 		if draw_cursor {
@@ -288,7 +315,7 @@ fn shape_with_style(
 	let run = TextRun {
 		len: text.len(),
 		font: style.font(),
-		color: if empty { crate::ui_theme::rgb(0x89909c).into() } else { style.color },
+		color: if empty { crate::ui_theme::rgb(ui_theme::TEXT_MUTED).into() } else { style.color },
 		background_color: None,
 		underline: None,
 		strikethrough: None,

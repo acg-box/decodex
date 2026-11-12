@@ -5,7 +5,7 @@ description: "Native model, Goal and search settings, source-bound writes and me
 tags: ["decodex", "architecture"]
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-06T18:53:07.733Z
+    at: 2026-11-12T12:41:07.431Z
 sources:
   - id: openwiki-source-4e2d2760a1fe5d904918afb7
     resource: repo://apps/decodex-gpui/menubar/Sources/DecodexApp/ConversationEstimatesView.swift
@@ -85,8 +85,6 @@ sources:
     resource: repo://automations/upstream/retained-contracts.json
   - id: openwiki-source-f02ae41e2bd15dda85dc86b9
     resource: repo://codex-runtime.lock.json
-  - id: openwiki-source-451b1382eb8cdcb9915ac78b
-    resource: repo://crates/decodex-app-client-ffi/src/conversation_estimates.rs
   - id: openwiki-source-2b08587e9b26e203156110c8
     resource: repo://crates/decodex-codex/src/app_server_client/context_preferences.rs
   - id: openwiki-source-f2483b817a8847254a871b51
@@ -127,8 +125,16 @@ sources:
     resource: repo://crates/decodex-runtime/src/account_launch/process_native_control_tests.rs
   - id: openwiki-source-b2869e6da778a74cb6afc667
     resource: repo://crates/decodex-runtime/src/account_launch/process.rs
+  - id: openwiki-source-f4a9f4bcee102e076f5c5398
+    resource: repo://crates/decodex-runtime/src/agent_api_pricing.rs
+  - id: openwiki-source-beb7bbfa35b3158fddebcabc
+    resource: repo://crates/decodex-runtime/src/agent_api_pricing/estimate.rs
+  - id: openwiki-source-f8a12b245e7f29285b47055b
+    resource: repo://crates/decodex-runtime/src/agent_api_pricing/official-prices.json
   - id: openwiki-source-ba9677fef0b3a23f71d07771
     resource: repo://crates/decodex-runtime/src/agent_capabilities.rs
+  - id: openwiki-source-c75093d19a3bc72db5836102
+    resource: repo://crates/decodex-runtime/src/agent_host.rs
   - id: openwiki-source-dc51b38db429ec5fe466c5f2
     resource: repo://crates/decodex-runtime/src/agent_memory.rs
   - id: openwiki-source-81ce54e50da763fa2a1f8813
@@ -161,11 +167,13 @@ sources:
     resource: repo://crates/decodex-runtime/tests/native_qualification/thread_settings.py
   - id: openwiki-source-003f00974f49a9f106bbcbea
     resource: repo://database/schema.sql
+  - id: openwiki-source-1095606bf12a2569abd1159f
+    resource: repo://database/src/agent_cost_observations.rs
   - id: openwiki-source-8c78df4b382026886ac50894
     resource: repo://database/src/usage_evidence.rs
   - id: openwiki-source-8fe6f1557e5d45d88b34bd0a
     resource: repo://scripts/macos/generate_workspace_symbols.swift
-generated: { by: "codex", at: "2026-11-06T18:53:07.733Z" }
+generated: { by: "codex", at: "2026-11-12T04:15:17.900Z" }
 ---
 
 # Model selection and settings ownership
@@ -223,7 +231,7 @@ Menu-bar visibility and automatic task recaps are App-local preferences. The ser
 
 Automatic suggestions are enabled by default. Turning the switch off prevents future automatic requests. Turning it back on can restore a suggestion for the latest completed answer in the current empty composer. Tab acceptance still creates an undoable draft and never sends it. This setting does not turn on content export or the deferred messaging experiments.
 
-After an application restart, reading history does not mean that the native source is loaded for sampling. The service checks that exact source before `thread/sample`. It can load a dormant source with `thread/resume`, without adding input or changing its settings, then binds the sample to the new native revision. It does not load an unloaded active native goal because resume could continue that goal. The source requirement in `codex-runtime.lock.json` is upstream commit `2e58636d16794a150e562cc34b63ca3035494e50`; that native sampling interface requires a loaded persistent root. The desktop still waits for a successful completed answer and an empty editor, and rejects stale results after a source change.
+After an application restart, reading history does not mean that the native source is loaded for sampling. The service checks that exact source before `thread/sample`. It can load a dormant source with `thread/resume`, without adding input or changing its settings, then binds the sample to the new native revision. It does not load an unloaded active native goal because resume could continue that goal. The source requirement in `codex-runtime.lock.json` is upstream commit `392ced7d3a9160fd35d40c606359869215f50522`; that native sampling interface requires a loaded persistent root. The desktop still waits for a successful completed answer and an empty editor, and rejects stale results after a source change.
 
 See [interface geometry and motion](../architecture/design-language.md) for shared suggestion wrapping, unknown-model display and activity-surface rules.
 
@@ -301,11 +309,15 @@ Only the native read method is admitted through the retained bridge. This view d
 
 ## Conversation cost estimates
 
-The composer displays reported dollars beside **Context**. Native dollars use `$`; estimated dollars use `≈ $`. Missing dollar data is hidden and reported zero remains zero. A source-bound background read refreshes after an idle conversation update; unchanged idle conversations do not poll billing. A changed conversation or runtime source discards the old observation.
+The composer shows conversation cost beside **Context**. A native dollar amount has priority and uses `$`. If the native provider returns an estimated dollar amount, it uses `≈ $`. If neither is available, the service can calculate an API-equivalent text-token amount from recorded usage and official OpenAI prices. This amount also uses `≈ $`. Hover identifies the estimate basis, the number of observed responses and the price-check date. A trailing `+` identifies incomplete coverage. Missing estimates remain `$—`; a reported zero remains zero.
 
-The Menu Bar account surface has **Conversation estimates** and **Refresh estimates**. Opening it reads up to eight recent locally managed native conversations with available sources. Each row with a reported dollar amount retains its source-account label. Rows without a dollar amount stay hidden. Email visibility follows the existing privacy preference. The view is a recent-conversation list, not an account total, and unavailable conversations stay unavailable.
+The API calculation uses each recorded request's model selection, service tier, input tokens, cached input tokens, cache-write tokens and output tokens. It uses the long-context rate when the request crosses the published threshold. Repeated cumulative counters do not add a second charge. Missing history, unknown model prices and gaps in the counters mark coverage incomplete. Cache writes use the published 30-minute rate and mark the unspecified retention cost as incomplete. Tool charges and subscription fees are outside this text-token estimate. It does not measure consumed subscription allowance.
 
-Native estimates can lag activity. A missing USD value is not zero; reported zero stays zero. No local model price table, incomplete account sum, final-bill promise or quota calculation is added. The main view and Menu Bar reuse the existing service usage path. See [the retained qualification](../../automations/upstream/retained-evidence.json) for the `history_resource_cost` entry, named checks and installed-app limits.
+The price catalog is a versioned data file included with the application. The service reads a local cache beside its database and uses that data immediately. A background request checks the official Markdown price table when the cache is more than one day old. A failed request or invalid table retains the last valid prices and permits another attempt after one hour. Price refresh does not block chat startup or require another model request. The catalog date remains available in the estimate explanation.
+
+A source-bound background read refreshes the amount after an idle conversation update. An unchanged idle conversation does not poll billing. A changed conversation or runtime source discards the old observation. Native dollar reporting remains connected, so it takes priority when the provider supports it. [Issue #2578](https://github.com/acg-box/decodex/issues/2578) tracks native conversation cost for personal Pro plans.
+
+The Menu Bar account surface has **Conversation estimates** and **Refresh estimates**. It reads up to eight recent locally managed native conversations with available sources. Amounts retain their source-account label and their API-equivalent or native basis. Rows without any estimate stay hidden. Email visibility follows the existing privacy preference. The list does not calculate an account total or a final bill.
 
 ## Native launch defaults
 

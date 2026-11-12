@@ -172,6 +172,7 @@ fn page(items: Vec<AgentTimelineContent>) -> AgentTimelineResult {
 				.collect(),
 			next_cursor: None,
 			weather: Default::default(),
+			observed_activities: Vec::new(),
 			active_realtime_session_at_page_start: None,
 		},
 	}

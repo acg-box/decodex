@@ -6,6 +6,12 @@ tags: [desktop, conversation, motion]
 sources:
   - id: openwiki-source-ca9ad15cc8ba4a0657d1c24d
     resource: repo://apps/decodex-gpui/menubar/Sources/DecodexApp/BrandLoading.swift
+  - id: openwiki-source-4e2d2760a1fe5d904918afb7
+    resource: repo://apps/decodex-gpui/menubar/Sources/DecodexApp/ConversationEstimatesView.swift
+  - id: openwiki-source-68d65838a1077c1c2f4ce90b
+    resource: repo://apps/decodex-gpui/menubar/Tests/DecodexAppTests/ConversationEstimatesTests.swift
+  - id: openwiki-source-2fc387fccf8dd1285437f49e
+    resource: repo://apps/decodex-gpui/src/agent_activity.rs
   - id: openwiki-source-bf03f317e64cfefd11f6ea83
     resource: repo://apps/decodex-gpui/src/agent_attached_branches.rs
   - id: openwiki-source-48758ba7d154c82885281d2c
@@ -54,6 +60,12 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_read_state.rs
   - id: openwiki-source-15d320ea458ddf705d950ba9
     resource: repo://apps/decodex-gpui/src/agent_response_metrics.rs
+  - id: openwiki-source-9db9edbd5ce47e3b722c8750
+    resource: repo://apps/decodex-gpui/src/agent_sample_request.rs
+  - id: openwiki-source-296a92a9cefecb19f0fc1f95
+    resource: repo://apps/decodex-gpui/src/agent_sample_tests.rs
+  - id: openwiki-source-912dbe8f46e7ec6026887bbe
+    resource: repo://apps/decodex-gpui/src/agent_sample.rs
   - id: openwiki-source-77f7f96f348908c8779b5df6
     resource: repo://apps/decodex-gpui/src/agent_selectable_text.rs
   - id: openwiki-source-ff9ae5d5274ad341f8658d86
@@ -68,6 +80,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_text_links.rs
   - id: openwiki-source-4247deee56f626d37a52d5b0
     resource: repo://apps/decodex-gpui/src/agent_text_reveal.rs
+  - id: openwiki-source-4afdbd3a615f5f042edb83aa
+    resource: repo://apps/decodex-gpui/src/agent_timeline_completion.rs
   - id: openwiki-source-2fb9e466c6aafdf4f4950bc1
     resource: repo://apps/decodex-gpui/src/agent_timeline_find.rs
   - id: openwiki-source-b76859cf2790cc53340f082d
@@ -84,8 +98,14 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_usage_estimates.rs
   - id: openwiki-source-32bb36aae256aa57e6e82bd0
     resource: repo://apps/decodex-gpui/src/agent_voice.rs
+  - id: openwiki-source-e269da8230b6d51390181459
+    resource: repo://apps/decodex-gpui/src/agent_workspace_size.rs
   - id: openwiki-source-5d032c6be684964aa2c401fa
     resource: repo://apps/decodex-gpui/src/agent_workspace.rs
+  - id: openwiki-source-b46da522b014c2fee5a538ad
+    resource: repo://apps/decodex-gpui/src/composer_hint.rs
+  - id: openwiki-source-7a7e7b3407a8222085c2d27e
+    resource: repo://apps/decodex-gpui/src/composer_input.rs
   - id: openwiki-source-7b89f5bc6ecd604ca4e97dc2
     resource: repo://apps/decodex-gpui/src/composer_text.rs
   - id: openwiki-source-fca3688e96d92c09b7ba015f
@@ -120,10 +140,14 @@ sources:
     resource: repo://crates/decodex-codex/src/app_server_client/context_preferences.rs
   - id: openwiki-source-de4d0cc1dfd69783c61c375f
     resource: repo://crates/decodex-codex/src/app_server_client/observed_timing.rs
+  - id: openwiki-source-38991dd5f5687970bfc48ba1
+    resource: repo://crates/decodex-codex/src/app_server_client/sample.rs
   - id: openwiki-source-787f8ad27b8519fbed2bd039
     resource: repo://crates/decodex-codex/src/app_server_client/thread_fork.rs
   - id: openwiki-source-c01ab8da738707861c64c143
     resource: repo://crates/decodex-protocol/src/desktop_message_delivery.rs
+  - id: openwiki-source-f4a9f4bcee102e076f5c5398
+    resource: repo://crates/decodex-runtime/src/agent_api_pricing.rs
   - id: openwiki-source-c75093d19a3bc72db5836102
     resource: repo://crates/decodex-runtime/src/agent_host.rs
   - id: openwiki-source-c6a513f4a72008998a474ca0
@@ -148,10 +172,10 @@ sources:
     resource: repo://database/src/agent_titles.rs
   - id: openwiki-source-6197a876b2effbe992b1e2ec
     resource: repo://database/src/agent.rs
-generated: { by: "codex", at: "2026-11-07T01:55:19.327Z" }
+generated: { by: "codex", at: "2026-11-12T12:41:07.431Z" }
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-07T01:55:19.327Z
+    at: 2026-11-12T12:41:07.431Z
 ---
 
 
@@ -161,7 +185,11 @@ The transcript is the primary reading surface. Intermediate work, response stati
 
 ## Progressive disclosure
 
-`agent_timeline_groups` folds process items only after a successful completed turn has a nonempty, explicitly marked final answer. It groups reasoning, plans, commentary and finished tool activity. Failed or interrupted turns and answers with unknown phases remain visible. Attachments and interactive items remain outside the folded group.
+`agent_timeline_groups` folds process items after a completed turn has a nonempty final answer. An explicit final phase or a legacy absent phase is accepted. Reasoning, plans, commentary and tool activity remain available through the steps disclosure. Failed and interrupted turns can also fold their process records while retaining their final message and terminal status. Attachments and interactive items remain outside the group.
+
+During execution, records stay in source order. Late command completions retain their original turn. Streaming text and its saved record use the same process gap, so native acknowledgement does not move a step. Completion waits for the visible answer to settle before it folds the process. Reopening the disclosure retains the recorded steps.
+
+Known successful and failed commands use compact check and cross symbols with semantic theme colors. A missing exit result, including native exit code `-1`, uses a neutral operation icon and an unavailable-result tooltip. It does not imply success or failure.
 
 Interleaved user input remains in source order. A native turn can contain several user messages, including steering input; grouping uses the native turn identity rather than assuming that each input starts another turn. The disclosure shows a count of earlier messages and lets the reader inspect the underlying process.
 
@@ -171,7 +199,9 @@ A completed response has an **Ask in side chat** question action on hover or key
 
 A collapsed command row shows the number of native-retained output lines when that count is available. Opening the output removes the count label. The count excludes command text and discarded output; it does not claim terminal wrapping or recovery of truncated bytes.
 
-The composer shows a reported dollar amount beside **Context**. A native amount uses `$`; an estimated amount uses `≈ $`. Missing dollar data stays hidden. The source-bound read refreshes when the conversation becomes idle after an update; an unchanged idle conversation does not poll billing. See [usage estimates](../workflows/models-and-settings.md#conversation-cost-estimates) for the Menu Bar view and coverage limits.
+The composer shows conversation cost beside **Context**. Native dollars take priority. If native dollars are unavailable, the service can calculate an API-equivalent text-token estimate from recorded requests and official prices. An estimate uses `≈ $`; a trailing `+` marks incomplete coverage. Hover identifies the basis and price-check date. A missing estimate remains `$—`, not zero. The source-bound read refreshes after an idle conversation update without polling an unchanged idle conversation. See [usage estimates](../workflows/models-and-settings.md#conversation-cost-estimates) for price caching and coverage limits.
+
+The composer and Menu Bar show dollars with two decimal places. A nonzero amount below one cent shows `< $0.01`; exact zero shows `$0.00`. The composer's hover explanation retains the precise amount.
 
 ### Observed turn activity
 
@@ -203,7 +233,7 @@ Item pages have no canonical timeline ordinals. They remain separate from the ca
 
 ## Side chat tabs
 
-The conversation header contains the source conversation and its open Side chats. The source tab is **Main**. A Side chat tab uses its confirmed native conversation title, also used by the conversation browser. Until a topic is available, it uses **Side chat 1**, **Side chat 2** and so on. The sidebar uses the source conversation title, so Main does not repeat it. Each tab shows the existing activity state. The tab strip scrolls horizontally and brings the selected tab into view. The adjacent **+** action prepares and opens an attached branch from the selected conversation's latest completed turn. Creation needs no second confirmation and sends no message.
+The conversation header contains the source conversation and its open Side chats. The project conversation source tab is **Main**; an Assistant source uses its conversation label. A Side chat tab uses its confirmed native conversation title, also used by the conversation browser. Until a topic is available, it uses **Side chat 1**, **Side chat 2** and so on. The sidebar uses the source conversation title, so Main does not repeat it. Each tab shows the existing activity state. The tab strip scrolls horizontally and brings the selected tab into view. The adjacent **+** action prepares and opens an attached branch from the selected conversation's latest completed turn. Creation needs no second confirmation and sends no message.
 
 A Side chat uses the existing native attached fork. Its visible history starts empty, while its model context includes the reviewed source prefix. Later messages in the source do not automatically enter the Side chat. Each conversation keeps its own draft and history position through the existing workspace navigation.
 
@@ -226,6 +256,12 @@ Use the shared [interface geometry and motion](design-language.md) when you add 
 The composer and ordinary transcript share an 880-point maximum width with 16-point side insets. Narrow windows use the available width. User messages remain narrower and right-aligned. The history rail and composer use the same animated inset so their content edges stay aligned when the rail opens or closes. Native child-agent conversations use the same width tokens.
 
 The composer sits over the bottom of the conversation. Its measured height supplies bottom padding to the scroll content, so the final rows can move above the composer. The editor grows to six lines, then scrolls its text internally. Its action row remains below the text. In the conversation that owns the call, Live replaces the text editor slot with a compact waveform. Other conversations retain their own text editors. A background call bar identifies the owner and provides Return, Mute and End controls.
+
+An available next-message suggestion uses the complete editor width. Its **Tab** button uses the shared shortcut keycap, with a compact font, a rounded outline and a light fill. The keycap and adjacent refresh button follow the last line of the suggestion and move to the next line if they cannot fit. They do not reserve a trailing column across the other lines. Both controls stay outside the editable draft and disappear when the user types or the suggestion is unavailable. Clicking **Tab** or pressing the Tab key accepts the suggestion as an unsent, undoable draft. Clearing that draft restores the cached suggestion. A new turn or a change to the conversation source invalidates it.
+
+The refresh button makes one native sampling request and asks for a different follow-up from the previous suggestion. The native sample keeps the source conversation's model and reasoning settings. It does not send a chat message. The previous suggestion stays visible while generation runs. Both controls are disabled during generation, and the refresh icon shows progress. A completed sample replaces the preview. If generation fails, the previous suggestion remains available for acceptance or another explicit retry.
+
+The history rail highlights every measured exchange that intersects the reading viewport above the composer. Several short exchanges can therefore have highlighted marks at the same time. A long answer keeps its mark highlighted after its prompt has scrolled above the viewport. Scrolling and resizing update this visible range; a retained navigation target does not limit the highlight to one mark.
 
 Ordinary messages use a 20-point reading gap. A completed process header and its answer form one reading group, with a 6-point gap. The working indicator has 20 points above its 24-point status row and 20 points between that row and the composer. The composer contributes 8 points of the lower gap. When the status row closes, the normal message-to-composer gap remains.
 

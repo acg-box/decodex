@@ -60,6 +60,10 @@ pub(crate) const SIDEBAR_INSET: f32 = 6.0;
 pub(crate) const MESSAGE_GAP: f32 = 20.0;
 /// Execution steps and their answer form one reading group.
 pub(crate) const PROCESS_CONTENT_GAP: f32 = 6.;
+pub(crate) const PROCESS_STEP_GAP: f32 = 6.;
+pub(crate) const PROCESS_ROW_HEIGHT: f32 = 24.;
+pub(crate) const PROCESS_ICON_SIZE: f32 = 12.;
+pub(crate) const PROCESS_ICON_SLOT: f32 = 16.;
 pub(crate) const WORK_INDICATOR_SIZE: f32 = 24.;
 pub(crate) const USER_MESSAGE_INSET: f32 = 12.0;
 pub(crate) const USER_MESSAGE_ACTION_SIZE: f32 = 24.0;
@@ -161,6 +165,25 @@ pub(crate) const ERROR: u32 = 0xef4444;
 pub(crate) const MOTION_PANEL: Duration = Duration::from_millis(240);
 /// Stable gutter shared by conversation history and composer alignment.
 pub(crate) const HISTORY_RAIL_WIDTH: f32 = CONVERSATION_INSET;
+
+/// Keyboard cues remain separate from editable or suggested text.
+pub(crate) fn shortcut_keycap(label: impl Into<gpui::SharedString>) -> Div {
+	gpui::div()
+		.min_w(gpui::px(18.))
+		.h(gpui::px(18.))
+		.px(gpui::px(CONTROL_INSET))
+		.flex()
+		.items_center()
+		.justify_center()
+		.rounded(gpui::px(4.))
+		.border(gpui::px(0.5))
+		.border_color(rgb(TEXT).opacity(0.24))
+		.bg(rgb(TEXT).opacity(0.06))
+		.text_size(gpui::px(CAPTION_SIZE))
+		.line_height(gpui::px(CAPTION_LINE_HEIGHT))
+		.text_color(rgb(TEXT).opacity(0.85))
+		.child(label.into())
+}
 
 /// The reading plane keeps its tone when the outer frame becomes translucent.
 pub(crate) struct WorkspacePalette {

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:39016a0d2fdbf77ea5614f614b831a7b462be1a1384c3a6db31e763949b3f43d",
+  "pageVersion": "sha256:2cc3d0a65dad3bd8c6d930fefb0d66253a132c98ad24786dddc1b6ec23ead431",
   "claims": [
     {
       "id": "claim_f0c37462522f4442acd94d53819ef75c",
@@ -88,7 +88,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:b6dc45148e7a8290a54aa5a47ef2e339959fb52ab6e5bb2a5a8b106a28e57b56"
+          "version": "repo-file-v1:sha256:11b1818162eeab192d4f61a4d7ee4fba3fa7b4ec79f701bff140c110229da66f"
         },
         {
           "resource": "repo://automations/upstream/retained-contracts.json",
@@ -177,20 +177,16 @@
       "statement": "Side chats preserve source provider and Goal ownership without sending. Current qualification checks saved-provider continuation and ordinary and attached forks on the selected artifact; original explicit recovery and branch proof keep their historical limits. HumanCommand remains user-deferred and unsupported.",
       "evidence": [
         {
-          "resource": "repo://automations/upstream/qualification.json#L55-L74",
-          "version": "repo-lines-v1:sha256:4d44e3bccc9e3b57ee4d22155d83b4f07f0685f17f4e7ee591b4f0a464c8af22:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNiNTE4Y2ZmMWExZjA5ZjAxMTJkMzlmMjYxYThiMGNmMTVhZDk1MDQyOWVjNDNjOGE4YTcxNDBkNjRhNWZiMDgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRkNWNkMmZiNGYzZGY4ODQ1MTUyNTViMzk1MjNmMmY4YjU0NzJiZWVhOWY1NjZmZmNhMjA0ZGI4MDI1NjEwNDEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM1M2U2NzlmYTY5MTA0MDU4YTA1MGI1MGI2YTc0YjFmY2ViMTAyN2JiMTZlZTZmNDUwOTc1MzUyYTIxZTdjOTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijc2Mjc2ZWIyZWI2ZDYyZjUwOTU0ZmRmODM4ODA5NjY5ODExYjRiNzhjZDFmNTMzMDk3YWUxNjE5OGNjZGIwZmEifQ"
+          "resource": "repo://automations/upstream/qualification.json",
+          "version": "repo-file-v1:sha256:11b1818162eeab192d4f61a4d7ee4fba3fa7b4ec79f701bff140c110229da66f"
         },
         {
-          "resource": "repo://automations/upstream/retained-contracts.json#L4407-L4421",
-          "version": "repo-lines-v1:sha256:38646cec951d2418520e17483b5e52bac495fe113df805bf6ca1f3829d6b7439:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg3YjUzNDQ2ODRiMDI2OGZmYjc0ZDE4M2Q0Nzg1OTIyNmRhYmYwMTRkOWVmNjc4YWY0MWI4OGYwY2RmOTZiZjYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZlOGQ5MmRhZDI4NjAwMzdhMTI1OGYyNDc4ODc5MzExNzJjOWJkYjkxYTE3YTJhODdkMzhiYjg0NDk1ZTI1ZGUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYxYWQ3ZWEyYTc4ODJlYTE5NTg1NzU2YzA5ZDRkNzZkMDhhZTU0N2FhODU3ZWYzNmEzNjM2YWJkMTRlMzA1ZTgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM2OTcxMjFjZWM4MzFmZWI0ZDNkMzExM2JiYzFiMWFkNjczZWI2YjY4ZmQ3ODYzOTM3ODAwYmEzMzIyZTQwMmEifQ"
+          "resource": "repo://automations/upstream/retained-contracts.json",
+          "version": "repo-file-v1:sha256:dfbcb5f07ff9ce54daccf7f270553c99481f7dcf6fe4129485b9f8b52caf7c9d"
         },
         {
-          "resource": "repo://automations/upstream/retained-contracts.json#L5316-L5333",
-          "version": "repo-lines-v1:sha256:ad5a77d3d5dd9cc1f108fc8aa2c9354f4855cac37d0cc5d4bda41e7970c6f359:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFmODE4ZTAyYjBlNmQwYmRjMDlkNDI3OTljMzIwZTAyNzY5ODQyMTEwNGMxMWE1Njk3ZjZjNjMxMzcxMWRhNzQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU3OTdjZDg3NDA4MzljNjM2ZGM5NDhlOGQ2YTNkMGNjNDIzNDM3YjZkM2E0MWVmMWRiMDRiYjkxNzQ0MWY1ZDQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEifQ"
-        },
-        {
-          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_fork_tests.rs#L407-L519",
-          "version": "repo-lines-v1:sha256:de286f4bb375a1f45dc2a29eefbe3bb612b026f57ff23859e5d8f9689ff0a073:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEzLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIwOGI3OGEwNTdjNDUyZmIzOTI0MTY2MzVmMWEzMDYyMTZiOWNmYzVjYjBkYjI2OTQ0NzE1OTFhNDYyNjUxZTI2IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIwMWJhNDcxOWM4MGI2ZmU5MTFiMDkxYTdjMDUxMjRiNjRlZWVjZTk2NGUwOWMwNThlZjhmOTgwNWRhY2E1NDZiIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJmMDJhZjRkMTJkN2NkMmFiODhlYTZmZGM5MjM2NmVlNGNkNmY1MzQ1NjE0ZjI2YTc2Nzk1MGYzM2I1MzlhZGUzIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIzOTEzMWVmZTA4ODEwZmNlYWQzZGEyYmQ4OWNhYmEyYzA5N2IyNzAyNjg3MThjNWQ3ZDhiOGY3YjZiOTAzMzMwIn0"
+          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_fork_tests.rs",
+          "version": "repo-file-v1:sha256:896ee1dc29e494ea12c99ebccd8efba6b572c2689dbea036395e1f90c9f8fbd4"
         }
       ]
     },
@@ -199,7 +195,7 @@
       "statement": "The Agent model catalog refreshes through native model/list every 60 seconds, with account, directory and process binding. Model and effort cycling have no fixed fallback list when the catalog is unavailable.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L1693-L1699",
+          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L1675-L1681",
           "version": "repo-lines-v1:sha256:ec57be10edb464df8b1247da2b96223a885c7911b9fef2da7839e011a926563c:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMzExMjRhOTBmYzk1YjFjMTIzMTZiYTliNTFiNzkxZDZkMGMzNTIyYTczYTA2ZDM5YjFhMTk3M2VkNmU0YzE1OSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiN2ZkOWJmZjc2MjQwMTQwNjA1ZTIzZmVlOGM4NzNkMTJjMzA0Y2JkMGU5MGEzYWFmOGJkOTk0N2VmOWQ0OWExNiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZDc3NzdmNDlkYTJlYjE2NzU4YjViMzE0OWFkOGFkZTlkMmI4MzBhZDQzMmQ2N2UzNDdkNmQ0YmQ5MGJhOWRhMyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNDU5ODRjN2QxZjljNTFkMDJhM2JkODBlNTkyZTlhMjkyODY3MTE0YzAzMjU5MGZhOGNlNjFjNGY2MjQyMTlmMyJ9"
         },
         {
@@ -258,7 +254,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_sample_tests.rs",
-          "version": "repo-file-v1:sha256:fd4552a9afbd579ce7950ee14cb168f82b8960383b3e6e62a05b33a7b03c5f5e"
+          "version": "repo-file-v1:sha256:53a8c19c5c5b8926ce8887aa2e5eeca322708523faf3b0e5eb163efd8d572a68"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_surface.rs",
@@ -268,19 +264,19 @@
     },
     {
       "id": "claim_7817c7b72e854491af3db423ce49d596",
-      "statement": "The composer displays native or estimated dollars beside Context and hides missing dollar data; Menu Bar Conversation estimates retains source-account labels and explicit refresh without inventing account totals or final billing.",
+      "statement": "The composer and Menu Bar prefer native conversation dollars and can display an API-equivalent text-token estimate when those amounts are absent. Amounts retain source-account identity, mark incomplete coverage, and do not establish an account total or subscription charge.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/ConversationEstimatesView.swift",
-          "version": "repo-file-v1:sha256:67b654d51aba65439f108fa72f1cf38c31a6529fd46714af7e4c2637c35d9b9e"
+          "version": "repo-file-v1:sha256:04d7c295bc771d10f2ed38953ebdb90e7b5121ed416fa289bd7150746e27f113"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_usage_estimates.rs",
-          "version": "repo-file-v1:sha256:395cf2707a1c1573b8205f7a20ab299a8d25b1251701925a5668d473fe322f24"
+          "version": "repo-file-v1:sha256:93aa786ec507f90f30cfdaa260aac67f588b72a14f6c97bf32196c16e547e7a9"
         },
         {
-          "resource": "repo://crates/decodex-app-client-ffi/src/conversation_estimates.rs",
-          "version": "repo-file-v1:sha256:ad071eccb3e39d40e1c793cb4846ede9a720c04e6d63af342d67a839579cd869"
+          "resource": "repo://crates/decodex-runtime/src/agent_host.rs",
+          "version": "repo-file-v1:sha256:5c216f285b34bdf10ae44795a0b672027876d4b7da421145b2831e5b597200e8"
         }
       ]
     },
@@ -322,7 +318,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
-          "version": "repo-file-v1:sha256:a500aeabff659dfde69b68b1b68e9e8a1b2397e2da1b482d69d657b23e2553d5"
+          "version": "repo-file-v1:sha256:d1c66447645124cb4d80afd0a7571364b79c5760f25947480159629e2e6457d2"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
@@ -338,11 +334,11 @@
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent.rs",
-          "version": "repo-file-v1:sha256:d37d9b7a977702387b59368d454584564ca7c122c78804d310fa640940d87ec6"
+          "version": "repo-file-v1:sha256:d73cbaca126ab27dc4fec5114d1d2097612bdba327bc684c6847ee6abc298c6c"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/assistant.rs",
-          "version": "repo-file-v1:sha256:bf44f3d59cdb33602d9436cacf3b0d0200d83cf7153d46ea4782c35153235b59"
+          "version": "repo-file-v1:sha256:0f4f43a8d2a1d74df69973f71ee8af10ef5098c33a37a1585bbf8bee9280df06"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/native_settings.rs",
@@ -356,11 +352,11 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
-          "version": "repo-file-v1:sha256:a500aeabff659dfde69b68b1b68e9e8a1b2397e2da1b482d69d657b23e2553d5"
+          "version": "repo-file-v1:sha256:d1c66447645124cb4d80afd0a7571364b79c5760f25947480159629e2e6457d2"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/composer_input.rs",
-          "version": "repo-file-v1:sha256:51012784fcf6528a12d1ac1c1089195d0da09e8fa06554dca10e0aa6596682aa"
+          "version": "repo-file-v1:sha256:61672cdb6826708227510d0947b8c1c945b59dc4299e51bce4524048f9c648cc"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
@@ -386,7 +382,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/shell.rs",
-          "version": "repo-file-v1:sha256:ec355e93da1bae49fb909572b2537fea290052e3b26458c5a342a7b4071eedec"
+          "version": "repo-file-v1:sha256:b4f458cbad51e62923c33316c93b9a2ec24a87302dbefa80bc203fa16fc04c06"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/shell_diagnostics.rs",
@@ -394,11 +390,11 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_feedback.rs",
-          "version": "repo-file-v1:sha256:530dce0ba4d3afcde3ee0c0a790224ea642bd69765265d5953809733d4be1698"
+          "version": "repo-file-v1:sha256:e3c48c86bd11486b5182511f53e2de50c55a677b8acd54e42e99cb7bd5b4e0b0"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_theme.rs",
-          "version": "repo-file-v1:sha256:a5f1df9125386b738319a7b4559a829600da5756686f000aea4469d021e54558"
+          "version": "repo-file-v1:sha256:d667c61839df71ac632ae093a93f3caef1ec60234e31d487dd0e0d9710a7440a"
         }
       ]
     },
@@ -416,11 +412,11 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/shell.rs",
-          "version": "repo-file-v1:sha256:ec355e93da1bae49fb909572b2537fea290052e3b26458c5a342a7b4071eedec"
+          "version": "repo-file-v1:sha256:b4f458cbad51e62923c33316c93b9a2ec24a87302dbefa80bc203fa16fc04c06"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_theme.rs",
-          "version": "repo-file-v1:sha256:a5f1df9125386b738319a7b4559a829600da5756686f000aea4469d021e54558"
+          "version": "repo-file-v1:sha256:d667c61839df71ac632ae093a93f3caef1ec60234e31d487dd0e0d9710a7440a"
         }
       ]
     },
@@ -441,7 +437,7 @@
           "version": "repo-file-v1:sha256:bb648a0d9f0a8363809909cb2838996f3592caa86a33f5c7a9e8b8afd89b958f"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/shell.rs#L209-L219",
+          "resource": "repo://apps/decodex-gpui/src/shell.rs#L210-L220",
           "version": "repo-lines-v1:sha256:29bee6618a0e23e816e645126eb377c923b2b38f284ca297d0deb1c6dd0adf99:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3NWUzZTg1YmI2YTk4Y2M2MDNjYjU2MWUyYTA1NWU0ZGUzNWM3ZTBmOTYzOTZkYzgxZGFkN2ZlY2I5Mjc2NDciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA1ZmNlZGY2YTBiM2NkNmQyZjNhOGNjODljNjk2OTliYmUyN2I4MWUzMDU2OTEwYWMxZWJjZGRiNDg0NmFjOWEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjViOTFkZDA3MjEwZDg5Mjg2MTg1YThlYjAzYTY5NjE4YjkyMzAwYzcwOTI4M2ZjMDU1ZTQzOGJhNjMwZGUzMGYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgyNjRhMzY1MTQ3NjVmNGU0MDk4NDgzZmU0ZDk4NWZkZmViNjI4ZDkyZjAyMTdjNmM0NzA1ZmMzZWM3OWJmZjIifQ"
         }
       ]
@@ -492,7 +488,7 @@
         },
         {
           "resource": "repo://crates/decodex-protocol/src/lib.rs",
-          "version": "repo-file-v1:sha256:1e18181fa19c12267b4178c541e788aa5bea6de951fba6016bed0e6175e063a5"
+          "version": "repo-file-v1:sha256:8d44c6282acb5004e0cb15587e9f6c2777e92216ef3d3fe3e09eead354c71b23"
         }
       ]
     },
@@ -506,7 +502,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_preferences.rs",
-          "version": "repo-file-v1:sha256:540a21db111b48ddc5db30848f8c5885593558d1ffd11d7524545b86e6ea933b"
+          "version": "repo-file-v1:sha256:19c0fc71d8c0b1dacdc78cafd9206c366e548bc693f33e9b0cbeeccd5e4bc073"
         },
         {
           "resource": "repo://database/schema.sql",
@@ -520,11 +516,11 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-core/src/assistant.rs",
-          "version": "repo-file-v1:sha256:d4139890fb093ad9084c8dc038faf57e00adbf27f71930dd1bfeec52feaa0d25"
+          "version": "repo-file-v1:sha256:6b231cf395c23ff711c5b019526355c0cc84383fbbbb1f1cd6ad069db3dced94"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/ragflow.rs",
-          "version": "repo-file-v1:sha256:f1696fd9782abb6f7332ed7d29b22f9a39d7129fb7d4836721ac8d7fc259165a"
+          "version": "repo-file-v1:sha256:9a1d2f19c43367b2ba6c15ab534812bd591510f65f874bb56fb639121a906248"
         }
       ]
     },
@@ -552,15 +548,15 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/agent.rs",
-          "version": "repo-file-v1:sha256:d37d9b7a977702387b59368d454584564ca7c122c78804d310fa640940d87ec6"
+          "version": "repo-file-v1:sha256:d73cbaca126ab27dc4fec5114d1d2097612bdba327bc684c6847ee6abc298c6c"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/assistant.rs",
-          "version": "repo-file-v1:sha256:bf44f3d59cdb33602d9436cacf3b0d0200d83cf7153d46ea4782c35153235b59"
+          "version": "repo-file-v1:sha256:0f4f43a8d2a1d74df69973f71ee8af10ef5098c33a37a1585bbf8bee9280df06"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/ragflow.rs",
-          "version": "repo-file-v1:sha256:f1696fd9782abb6f7332ed7d29b22f9a39d7129fb7d4836721ac8d7fc259165a"
+          "version": "repo-file-v1:sha256:9a1d2f19c43367b2ba6c15ab534812bd591510f65f874bb56fb639121a906248"
         }
       ]
     },
@@ -574,7 +570,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_theme.rs",
-          "version": "repo-file-v1:sha256:a5f1df9125386b738319a7b4559a829600da5756686f000aea4469d021e54558"
+          "version": "repo-file-v1:sha256:d667c61839df71ac632ae093a93f3caef1ec60234e31d487dd0e0d9710a7440a"
         }
       ]
     },
@@ -588,7 +584,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_composer.rs",
-          "version": "repo-file-v1:sha256:aca07a015dd0a8276d8f33214b086e118be0e0b9458f4355a0634824ddf580db"
+          "version": "repo-file-v1:sha256:bf7ca64c4f56eab4620a1ca4a1bd264a530852a182faa91941d8d9ec4d7bdbce"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_creation_setup.rs",
@@ -600,7 +596,7 @@
         },
         {
           "resource": "repo://scripts/macos/generate_workspace_symbols.swift",
-          "version": "repo-file-v1:sha256:1c453039736cfd47e6670368e097d2b92266ac31abf183be8a8aa92751de85e8"
+          "version": "repo-file-v1:sha256:ae68161ded88a64132ef0a5529055c8883e20207810d2b26d0abece137c4ba04"
         }
       ]
     },
@@ -614,7 +610,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/shell.rs",
-          "version": "repo-file-v1:sha256:ec355e93da1bae49fb909572b2537fea290052e3b26458c5a342a7b4071eedec"
+          "version": "repo-file-v1:sha256:b4f458cbad51e62923c33316c93b9a2ec24a87302dbefa80bc203fa16fc04c06"
         }
       ]
     },
@@ -628,7 +624,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/native_material_panel.rs",
-          "version": "repo-file-v1:sha256:8d766c6ee9510577a1d512b22af69d52fb5d15810a78875b63cca31a184792aa"
+          "version": "repo-file-v1:sha256:159c75c023b8c5038e5641a66673e10badd5aa22ff4530279da6e175ccdefa0c"
         }
       ]
     },
@@ -648,7 +644,7 @@
     },
     {
       "id": "claim_6616b090272c4d59995d5d422030eb09",
-      "statement": "The native source requirement records upstream commit 2e58636d16794a150e562cc34b63ca3035494e50, and automatic desktop suggestions require a successful completed answer and an empty editor.",
+      "statement": "The native source requirement records upstream commit 392ced7d3a9160fd35d40c606359869215f50522, and automatic desktop suggestions require a successful completed answer and an empty editor.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_prompt_suggestions.rs",
@@ -656,13 +652,41 @@
         },
         {
           "resource": "repo://codex-runtime.lock.json",
-          "version": "repo-file-v1:sha256:1d67cc33f1a91a206e961996e13dd887750361a7e661994fe89c9c9fe50c98f6"
+          "version": "repo-file-v1:sha256:fad5e8fc2a2ef475bb111fae33783d8a7b955e6a7c4b656a7e719967d2eb7417"
+        }
+      ]
+    },
+    {
+      "id": "claim_a9548fe185184654b92f3c9a29f15cc3",
+      "statement": "The API-equivalent estimator prices recorded request tokens with their saved model selection and service tier, does not count repeated cumulative counters twice, and marks missing history, unsupported prices and cache-retention uncertainty as partial coverage.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent_api_pricing/estimate.rs",
+          "version": "repo-file-v1:sha256:3b28d59b2c69eb1fd994ad9dc66ddb855e37a8efd58d57e42169ae854c082893"
+        },
+        {
+          "resource": "repo://database/src/agent_cost_observations.rs",
+          "version": "repo-file-v1:sha256:917bca3f1a2e3fe9d82220016f20abc38c439347575c6aa7ddffcb372eb747fd"
+        }
+      ]
+    },
+    {
+      "id": "claim_603572db66004240977c18666eb07dc6",
+      "statement": "The service starts with a bundled official price catalog and a local cache. It refreshes the official Markdown table in the background after one day, retains valid prices on refresh failure, and waits one hour before another failed-refresh attempt.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent_api_pricing.rs",
+          "version": "repo-file-v1:sha256:292cbd4e6993e88a85b400d3435c277ebab1437c7797fcc4680cc8668e76ddba"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent_api_pricing/official-prices.json",
+          "version": "repo-file-v1:sha256:3df27c2bc02e544c8ebb1be69e173ccb1acfad7f27b533ede4a0e8fa1c350176"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.9.0",
-    "at": "2026-11-06T18:53:07.733Z"
+    "at": "2026-11-12T12:41:07.431Z"
   }
 }

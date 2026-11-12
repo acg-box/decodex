@@ -174,6 +174,18 @@ async fn observe_fixture_quota(accounts: &AccountService, account: &AccountId) {
 	}
 }
 
+fn prepare_native_configuration(native_home: &Path, address: std::net::SocketAddr) {
+	write_native_configuration(native_home, address);
+	if env::var_os("DECODEX_TEST_PROVIDER_RECOVERY").is_some()
+		|| env::var_os("DECODEX_TEST_DESKTOP_LOCK").is_some()
+	{
+		let path = native_home.join("config.toml");
+		let current = fs::read_to_string(&path).expect("isolated native configuration");
+		fs::write(path, format!("thread_unload_delay_secs=0\n{current}"))
+			.expect("immediate idle unload for desktop rehearsal");
+	}
+}
+
 async fn qualify(home: &Path, rotation: bool) {
 	let interactive = env::var_os("DECODEX_TEST_DESKTOP_APP").is_some();
 	let native_home = home.join(".codex");
@@ -197,13 +209,7 @@ async fn qualify(home: &Path, rotation: bool) {
 		quota_fault.clone(),
 	));
 
-	write_native_configuration(&native_home, address);
-	if env::var_os("DECODEX_TEST_PROVIDER_RECOVERY").is_some() {
-		let path = native_home.join("config.toml");
-		let current = fs::read_to_string(&path).expect("isolated native configuration");
-		fs::write(path, format!("thread_unload_delay_secs=0\n{current}"))
-			.expect("immediate idle unload for provider rehearsal");
-	}
+	prepare_native_configuration(&native_home, address);
 
 	let root = DecodexRoot::new(home.join(if interactive { ".decodex" } else { "product" }))
 		.expect("fixture root");
@@ -238,9 +244,9 @@ async fn qualify(home: &Path, rotation: bool) {
 	}
 
 	let profile = task::spawn_blocking(move || {
-		if env::var_os("DECODEX_TEST_PROVIDER_RECOVERY").is_some() {
+		if interactive {
 			let binary = env::var_os("DECODEX_TEST_CODEX_BINARY")
-				.expect("explicit provider rehearsal executable");
+				.expect("explicit desktop rehearsal executable");
 			Ok(crate::account_launch::process::native_control_tests::attested_profile(
 				&binary, &directory,
 			))

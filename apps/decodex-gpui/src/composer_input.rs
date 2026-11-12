@@ -2,6 +2,7 @@
 #[path = "composer_cursor.rs"] pub(crate) mod cursor;
 
 #[path = "composer_edit.rs"] mod edit;
+#[path = "composer_hint.rs"] mod hint;
 #[path = "composer_native.rs"] mod native;
 #[path = "composer_shortcuts.rs"] mod shortcuts;
 #[path = "composer_text.rs"] mod text;
@@ -65,6 +66,8 @@ pub(crate) const MAX_COMPOSER_BYTES: usize = 16 * 1_024;
 pub(crate) enum ComposerEvent {
 	Changed,
 	Attach(ClipboardItem),
+	AcceptSuggestion,
+	RefreshSuggestion,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -80,6 +83,8 @@ pub(crate) struct ComposerInput {
 	cursor: Cursor,
 	focus_handle: FocusHandle,
 	placeholder: SharedString,
+	placeholder_hint: Option<SharedString>,
+	placeholder_hint_busy: bool,
 	aria_label: SharedString,
 	content: String,
 	text_reveal: Option<crate::ui_motion::TextReveal>,
@@ -151,6 +156,8 @@ impl ComposerInput {
 			cursor: Default::default(),
 			focus_handle: cx.focus_handle().tab_index(tab_index).tab_stop(true),
 			placeholder: placeholder.into(),
+			placeholder_hint: None,
+			placeholder_hint_busy: false,
 			aria_label: aria_label.into(),
 			content: String::new(),
 			text_reveal: None,
@@ -191,6 +198,23 @@ impl ComposerInput {
 
 	pub(crate) fn is_composing(&self) -> bool {
 		self.marked_range.is_some()
+	}
+
+	pub(crate) fn set_placeholder_hint(
+		&mut self,
+		hint: Option<SharedString>,
+		busy: bool,
+		cx: &mut Context<Self>,
+	) {
+		if self.placeholder_hint != hint || self.placeholder_hint_busy != busy {
+			self.placeholder_hint = hint;
+			self.placeholder_hint_busy = busy;
+			cx.notify();
+		}
+	}
+
+	pub(crate) fn placeholder_hint(&self) -> Option<&str> {
+		self.content.is_empty().then_some(self.placeholder_hint.as_deref()).flatten()
 	}
 
 	#[cfg(test)]
@@ -612,9 +636,16 @@ impl ComposerInput {
 
 		gpui::div()
 			.id("conversation-composer-input")
+			.debug_selector(move || {
+				if workbench { "composer-input-text" } else { "field-input-text" }.into()
+			})
 			.key_context("ComposerInput")
 			.role(Role::TextInput)
-			.aria_label(self.aria_label.clone())
+			.aria_label(if let Some(hint) = self.placeholder_hint() {
+				format!("{}. Press {hint} to use the suggestion.", self.aria_label).into()
+			} else {
+				self.aria_label.clone()
+			})
 			.aria_placeholder(self.placeholder.clone())
 			.aria_value(if self.secret {
 				"*".repeat(self.content.len())

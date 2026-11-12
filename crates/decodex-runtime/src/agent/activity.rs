@@ -63,6 +63,10 @@ pub(super) fn project(params: &Value, completed: bool) -> Option<AgentActivityDt
 		if completed { "recorded" } else { "waiting" }
 	} else if !completed {
 		"running"
+	} else if kind == "commandExecution" && item["exitCode"] == -1 {
+		// Native unified exec uses -1 when termination has no observed exit status.
+		// A failed collection is not evidence that the command itself exited nonzero.
+		"unreported"
 	} else if search_exit_without_failure(item) {
 		"exited"
 	} else if failed {
@@ -343,8 +347,16 @@ mod tests {
 
 		let unavailable = activity::project(&value, true).unwrap();
 
-		assert_eq!(unavailable.status, "failed");
+		assert_eq!(unavailable.status, "unreported");
 		assert_eq!(unavailable.detail, "Exit status unavailable");
+
+		value["item"]["status"] = serde_json::json!("failed");
+		assert_eq!(activity::project(&value, true).unwrap().status, "unreported");
+		value["item"]["exitCode"] = serde_json::json!(2);
+		assert_eq!(activity::project(&value, true).unwrap().status, "failed");
+		value["item"]["status"] = serde_json::json!("completed");
+		value["item"]["exitCode"] = serde_json::json!(0);
+		assert_eq!(activity::project(&value, true).unwrap().status, "completed");
 
 		value["item"]["type"] = serde_json::json!("agentMessage");
 

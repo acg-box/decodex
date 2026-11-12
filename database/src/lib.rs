@@ -10,6 +10,7 @@ mod agent;
 mod agent_app_settings;
 mod agent_app_ui_calls;
 mod agent_config_journal;
+mod agent_cost_observations;
 mod agent_deliveries;
 mod agent_dispatch_rejection;
 mod agent_fork;
@@ -84,6 +85,7 @@ pub use self::{
 	},
 	agent_app_ui_calls::{AgentAppUiCallAttempt, AgentAppUiCallReceipt},
 	agent_config_journal::AgentConfigOwner,
+	agent_cost_observations::AgentCostObservation,
 	agent_dispatch_rejection::AgentDispatchRefusal,
 	agent_fork::{AgentForkAttempt, AgentForkBoundary, AgentForkReceipt},
 	agent_guardian::{AgentGuardianObservation, AgentGuardianReview},
