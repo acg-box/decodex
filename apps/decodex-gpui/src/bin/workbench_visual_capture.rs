@@ -69,6 +69,7 @@ mod settings_surface;
 #[allow(dead_code)]
 #[path = "../shell.rs"]
 mod shell;
+pub(crate) use shell::workspace_symbols;
 #[path = "../ui_cloudlet.rs"] mod ui_cloudlet;
 #[path = "../ui_feedback.rs"] mod ui_feedback;
 #[path = "../ui_frame.rs"] mod ui_frame;

@@ -454,6 +454,61 @@ struct QuotaFault {
 	release: tokio::sync::Notify,
 }
 
+fn fixture_inference_response(
+	input: &Value,
+	title: bool,
+	serial: usize,
+	expected_recap: Option<&str>,
+) -> (u16, &'static str, String) {
+	let id = format!("cold-fixture-{serial}");
+	let answer = if title {
+		r#"{"title":"Account handover"}"#
+	} else if input["text"]["format"]["type"] == "json_schema" {
+		if let Some(expected) = expected_recap {
+			assert!(input.to_string().contains(expected), "recap omitted visible voice input");
+		}
+
+		assert!(
+			input["tools"].as_array().is_none_or(Vec::is_empty),
+			"structured fixture tool names: {:?}; schema fields: {:?}",
+			input["tools"].as_array().map(|tools| tools
+				.iter()
+				.map(|tool| (&tool["type"], &tool["name"]))
+				.collect::<Vec<_>>()),
+			input["text"]["format"]["schema"]["properties"]
+				.as_object()
+				.map(|p| p.keys().collect::<Vec<_>>())
+		);
+		r#"{"summary":"The requested fix was tested; installation is still pending.","next_action":null}"#
+	} else {
+		"Saved native answer"
+	};
+	let output = if env::var("DECODEX_TEST_APP_UI").as_deref() == Ok("1") && serial == 0 {
+		counter_output(input)
+	} else {
+		serde_json::json!({"type":"message","role":"assistant","id":"answer","content":[{"type":"output_text","text":answer}]})
+	};
+	let frames = [
+		serde_json::json!({"type":"response.created","response":{"id":id}}),
+		serde_json::json!({"type":"response.output_item.done","item":output}),
+		serde_json::json!({"type":"response.completed","response":{"id":id,"usage":{"input_tokens":0,"output_tokens":0,"total_tokens":0}}}),
+	];
+
+	(
+		200,
+		"text/event-stream",
+		frames
+			.iter()
+			.map(|value| {
+				format!(
+					"event: {}\ndata: {value}\n\n",
+					value["type"].as_str().expect("loopback native backend")
+				)
+			})
+			.collect::<String>(),
+	)
+}
+
 async fn serve_with_quota_fault(
 	listener: tokio::net::TcpListener,
 	requests: Arc<std::sync::atomic::AtomicUsize>,
@@ -544,56 +599,7 @@ async fn serve_with_quota_fault(
 				continue;
 			}
 
-			let id = format!("cold-fixture-{serial}");
-			let answer = if title {
-				r#"{"title":"Account handover"}"#
-			} else if input["text"]["format"]["type"] == "json_schema" {
-				if let Some(expected) = expected_recap {
-					assert!(
-						input.to_string().contains(expected),
-						"recap omitted visible voice input"
-					);
-				}
-
-				assert!(
-					input["tools"].as_array().is_none_or(Vec::is_empty),
-					"structured fixture tool names: {:?}; schema fields: {:?}",
-					input["tools"].as_array().map(|tools| tools
-						.iter()
-						.map(|tool| (&tool["type"], &tool["name"]))
-						.collect::<Vec<_>>()),
-					input["text"]["format"]["schema"]["properties"]
-						.as_object()
-						.map(|p| p.keys().collect::<Vec<_>>())
-				);
-				r#"{"summary":"The requested fix was tested; installation is still pending.","next_action":null}"#
-			} else {
-				"Saved native answer"
-			};
-			let output = if env::var("DECODEX_TEST_APP_UI").as_deref() == Ok("1") && serial == 0 {
-				counter_output(&input)
-			} else {
-				serde_json::json!({"type":"message","role":"assistant","id":"answer","content":[{"type":"output_text","text":answer}]})
-			};
-			let frames = [
-				serde_json::json!({"type":"response.created","response":{"id":id}}),
-				serde_json::json!({"type":"response.output_item.done","item":output}),
-				serde_json::json!({"type":"response.completed","response":{"id":id,"usage":{"input_tokens":0,"output_tokens":0,"total_tokens":0}}}),
-			];
-
-			(
-				200,
-				"text/event-stream",
-				frames
-					.iter()
-					.map(|value| {
-						format!(
-							"event: {}\ndata: {value}\n\n",
-							value["type"].as_str().expect("loopback native backend")
-						)
-					})
-					.collect::<String>(),
-			)
+			fixture_inference_response(&input, title, serial, expected_recap)
 		};
 
 		socket.get_mut().write_all(format!("HTTP/1.1 {status} Fixture\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",body.len()).as_bytes()).await.expect("loopback native backend");
@@ -653,12 +659,17 @@ async fn stream_desktop_timeline(socket: &mut tokio::io::BufReader<TcpStream>, s
 	]);
 	let data: Vec<_> = frames
 		.iter()
-		.map(|value| format!("event: {}\ndata: {value}\n\n", value["type"].as_str().unwrap()))
+		.map(|value| {
+			format!(
+				"event: {}\ndata: {value}\n\n",
+				value["type"].as_str().expect("fixture event type")
+			)
+		})
 		.collect();
 	let length: usize = data.iter().map(String::len).sum();
-	socket.get_mut().write_all(format!("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {length}\r\nConnection: close\r\n\r\n").as_bytes()).await.unwrap();
+	socket.get_mut().write_all(format!("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {length}\r\nConnection: close\r\n\r\n").as_bytes()).await.expect("fixture response write");
 	for frame in data {
-		socket.get_mut().write_all(frame.as_bytes()).await.unwrap();
+		socket.get_mut().write_all(frame.as_bytes()).await.expect("fixture response write");
 		time::sleep(Duration::from_millis(400)).await;
 	}
 }

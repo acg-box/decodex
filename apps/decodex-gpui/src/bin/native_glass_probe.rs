@@ -20,13 +20,17 @@ mod popover_probe;
 #[cfg(target_os = "macos")]
 #[path = "probes/native_popup_system.rs"]
 mod popup_system_probe;
+#[path = "../ui_cloudlet.rs"] mod ui_cloudlet;
 #[path = "../ui_frame.rs"] mod ui_frame;
 #[path = "../ui_layout.rs"] mod ui_layout;
+#[path = "../ui_loading.rs"] mod ui_loading;
 #[allow(unused_imports)]
 #[path = "../ui_motion.rs"]
 mod ui_motion;
 #[path = "../ui_preferences.rs"] mod ui_preferences;
 #[path = "../ui_theme.rs"] mod ui_theme;
+#[path = "../ui_working.rs"] mod ui_working;
+#[path = "../workspace_symbols.rs"] mod workspace_symbols;
 #[cfg(target_os = "macos")]
 mod probe {
 	use gpui::{

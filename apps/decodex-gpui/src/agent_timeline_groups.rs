@@ -274,8 +274,8 @@ pub(super) fn groups(entries: &[AgentTimelineEntry], expanded: &BTreeSet<String>
 	}
 	let mut responses = vec![Vec::new(); starts.len() - 1];
 	for (range_owner, range) in starts.windows(2).enumerate() {
-		for index in range[0]..range[1] {
-			if let AgentTimelineContent::Item { turn_id, .. } = &entries[index].content
+		for (index, entry) in entries.iter().enumerate().take(range[1]).skip(range[0]) {
+			if let AgentTimelineContent::Item { turn_id, .. } = &entry.content
 				&& let Some(&owner) = owners.get(turn_id)
 			{
 				// Several inputs inside one native turn still delimit separate responses.
@@ -336,6 +336,17 @@ pub(super) fn groups(entries: &[AgentTimelineEntry], expanded: &BTreeSet<String>
 		}
 	}
 
+	result.extend(failed_groups(entries, &empty, expanded));
+	result.sort_by_key(|group| group.first_index);
+	result
+}
+
+fn failed_groups(
+	entries: &[AgentTimelineEntry],
+	empty: &BTreeSet<usize>,
+	expanded: &BTreeSet<String>,
+) -> Vec<Group> {
+	let mut result = Vec::new();
 	// Failed and interrupted turns have finished too. Keep their final message and
 	// failure boundary visible, but let the user collapse the preceding process.
 	for (terminal, entry) in entries.iter().enumerate() {
@@ -386,7 +397,6 @@ pub(super) fn groups(entries: &[AgentTimelineEntry], expanded: &BTreeSet<String>
 			});
 		}
 	}
-	result.sort_by_key(|group| group.first_index);
 	result
 }
 
@@ -397,106 +407,21 @@ fn process_label(count: usize) -> String {
 #[cfg(any(test, feature = "visual-capture"))]
 impl AgentSurface {
 	pub(crate) fn visual_process_page(&mut self, cx: &mut Context<Self>) {
-		use decodex_protocol::{AgentActivityDetailResult, AgentActivityDto, AgentTimelinePage};
+		use decodex_protocol::{AgentActivityDetailResult, AgentTimelinePage};
 		self.visual_workspace_fixture(cx);
 		self.workspace.graph_visible = false;
 		self.workspace.sidebar_visible = false;
 		self.workspace.agent_tree_visible = false;
 		let work = self.selected.clone().expect("process fixture selection");
-		let snapshot = self.snapshot.as_mut().unwrap();
-		snapshot.runtime_source = Some(decodex_protocol::EntityId::new("process-preview").unwrap());
+		let snapshot = self.snapshot.as_mut().expect("process fixture snapshot");
+		snapshot.runtime_source = Some(
+			decodex_protocol::EntityId::new("process-preview").expect("process fixture source"),
+		);
 		snapshot.work_items.retain(|item| item.id == work);
 		snapshot.dependencies.clear();
 		snapshot.pending_events.clear();
 		snapshot.work_items[0].codex_thread_id = Some("process-preview".into());
-		let item = |position, id: &str, kind: &str, text: &str, phase: Option<&str>, activity| {
-			AgentTimelineEntry {
-				position,
-				content: AgentTimelineContent::Item {
-					turn_id: "preview-turn".into(),
-					item_id: id.into(),
-					kind: kind.into(),
-					phase: phase.map(str::to_owned),
-					text: text.into(),
-					truncated: false,
-					activity,
-					attachments: vec![],
-					collaboration: None,
-				},
-			}
-		};
-		let mut entries = vec![
-			item(
-				0,
-				"prompt",
-				"userMessage",
-				"Check the export changes and verify the result.",
-				None,
-				None,
-			),
-			item(
-				1,
-				"reasoning",
-				"reasoning",
-				"### Verify the change\n\nCheck the **source, tests and output** before handing it back.",
-				None,
-				None,
-			),
-		];
-		for (index, (id, kind, status, label, duration, lines)) in [
-			("read", "commandExecution", "completed", "File read", Some(12), Some(24)),
-			("test", "commandExecution", "completed", "Tests passed", Some(1380), Some(8)),
-			("remote", "mcpToolCall", "failed", "Reference source unavailable", Some(620), None),
-			("declined", "commandExecution", "declined", "Optional check declined", None, None),
-			("stopped", "commandExecution", "interrupted", "Background check stopped", None, None),
-			("wait", "sleep", "recorded", "Wait", Some(1200), None),
-			("unknown", "commandExecution", "unreported", "Result not reported", None, None),
-			("running", "commandExecution", "running", "Background check", None, None),
-		]
-		.into_iter()
-		.enumerate()
-		{
-			let activity = AgentActivityDto {
-				turn_id: "preview-turn".into(),
-				item_id: id.into(),
-				kind: kind.into(),
-				status: status.into(),
-				label: label.into(),
-				detail: String::new(),
-				duration_ms: duration,
-				retained_output_lines: lines,
-				review: None,
-				plugin_id: None,
-				read_only_hint: None,
-				native_timestamp_ms: None,
-			};
-			entries.push(item(index as u64 + 2, id, kind, "", None, Some(activity)));
-		}
-		entries.push(item(
-			10,
-			"answer",
-			"agentMessage",
-			"The source and tests are verified. The optional reference could not be reached.",
-			Some("final_answer"),
-			None,
-		));
-		entries.push(AgentTimelineEntry {
-			position: 11,
-			content: AgentTimelineContent::TurnBoundary {
-				turn_id: "preview-turn".into(),
-				completed: true,
-				status: Some("completed".into()),
-				duration_ms: Some(3240),
-				usage_summary: None,
-				usage: Some(decodex_protocol::AgentTurnUsageDto {
-					input_tokens: 9750,
-					output_tokens: 418,
-					details: None,
-				}),
-				timing: None,
-				error: None,
-			},
-		});
+		let entries = process_preview_entries();
 		self.timeline.native.replace(
 			super::Binding {
 				work: work.clone(),
@@ -532,6 +457,100 @@ impl AgentSurface {
 	}
 }
 
+#[cfg(any(test, feature = "visual-capture"))]
+fn process_preview_entries() -> Vec<AgentTimelineEntry> {
+	use decodex_protocol::AgentActivityDto;
+	let item = |position, id: &str, kind: &str, text: &str, phase: Option<&str>, activity| {
+		AgentTimelineEntry {
+			position,
+			content: AgentTimelineContent::Item {
+				turn_id: "preview-turn".into(),
+				item_id: id.into(),
+				kind: kind.into(),
+				phase: phase.map(str::to_owned),
+				text: text.into(),
+				truncated: false,
+				activity,
+				attachments: vec![],
+				collaboration: None,
+			},
+		}
+	};
+	let mut entries = vec![
+		item(
+			0,
+			"prompt",
+			"userMessage",
+			"Check the export changes and verify the result.",
+			None,
+			None,
+		),
+		item(
+			1,
+			"reasoning",
+			"reasoning",
+			"### Verify the change\n\nCheck the **source, tests and output** before handing it back.",
+			None,
+			None,
+		),
+	];
+	for (index, (id, kind, status, label, duration, lines)) in [
+		("read", "commandExecution", "completed", "File read", Some(12), Some(24)),
+		("test", "commandExecution", "completed", "Tests passed", Some(1380), Some(8)),
+		("remote", "mcpToolCall", "failed", "Reference source unavailable", Some(620), None),
+		("declined", "commandExecution", "declined", "Optional check declined", None, None),
+		("stopped", "commandExecution", "interrupted", "Background check stopped", None, None),
+		("wait", "sleep", "recorded", "Wait", Some(1200), None),
+		("unknown", "commandExecution", "unreported", "Result not reported", None, None),
+		("running", "commandExecution", "running", "Background check", None, None),
+	]
+	.into_iter()
+	.enumerate()
+	{
+		let activity = AgentActivityDto {
+			turn_id: "preview-turn".into(),
+			item_id: id.into(),
+			kind: kind.into(),
+			status: status.into(),
+			label: label.into(),
+			detail: String::new(),
+			duration_ms: duration,
+			retained_output_lines: lines,
+			review: None,
+			plugin_id: None,
+			read_only_hint: None,
+			native_timestamp_ms: None,
+		};
+		entries.push(item(index as u64 + 2, id, kind, "", None, Some(activity)));
+	}
+	entries.push(item(
+		10,
+		"answer",
+		"agentMessage",
+		"The source and tests are verified. The optional reference could not be reached.",
+		Some("final_answer"),
+		None,
+	));
+	entries.push(AgentTimelineEntry {
+		position: 11,
+		content: AgentTimelineContent::TurnBoundary {
+			turn_id: "preview-turn".into(),
+			completed: true,
+			status: Some("completed".into()),
+			duration_ms: Some(3240),
+			usage_summary: None,
+			usage: Some(decodex_protocol::AgentTurnUsageDto {
+				input_tokens: 9750,
+				output_tokens: 418,
+				details: None,
+			}),
+			timing: None,
+			error: None,
+		},
+	});
+	entries
+}
+
 #[cfg(test)]
 mod tests {
 	use std::thread;
@@ -553,7 +572,8 @@ mod tests {
 				"label":"Reading files","detail":"Result not reported","duration_ms":null
 			}))
 			.unwrap();
-		let groups = groups::with_observations(&entries, &BTreeSet::new(), &[command.clone()]);
+		let groups =
+			groups::with_observations(&entries, &BTreeSet::new(), std::slice::from_ref(&command));
 		assert_eq!(groups.len(), 1);
 		assert_eq!(groups[0].count, 1);
 		assert_eq!(groups[0].first_index, 0);

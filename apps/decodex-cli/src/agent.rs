@@ -290,13 +290,6 @@ fn wire_identity(value: String) -> Result<WireText, &'static str> {
 }
 
 fn prepare(command: AgentCommand) -> Result<(AgentActionDto, IdempotencyKey), &'static str> {
-	let text = |value: String| {
-		if value.trim().is_empty() {
-			return Err("input text must not be empty");
-		}
-
-		HistoryText::new(value).map_err(|_| "input text exceeds the protocol limit")
-	};
 	let identity =
 		|value: String| EntityId::new(value).map_err(|_| "invalid work or account identity");
 	let (action, key) = match command {
@@ -346,23 +339,8 @@ fn prepare(command: AgentCommand) -> Result<(AgentActionDto, IdempotencyKey), &'
 				idempotency_key,
 			)
 		},
-		AgentCommand::Answer { work_id, event_id, idempotency_key, response_json } => {
-			if event_id <= 0
-				|| !serde_json::from_str::<Value>(&response_json)
-					.is_ok_and(|value| value.is_object())
-			{
-				return Err("answer requires a positive event identity and a JSON response object");
-			}
-
-			(
-				AgentActionDto::Respond {
-					work_id: identity(work_id)?,
-					event_id,
-					response_json: text(response_json)?,
-				},
-				idempotency_key,
-			)
-		},
+		AgentCommand::Answer { work_id, event_id, idempotency_key, response_json } =>
+			(answer_action(work_id, event_id, response_json)?, idempotency_key),
 		AgentCommand::Start {
 			model,
 			effort,
@@ -376,7 +354,7 @@ fn prepare(command: AgentCommand) -> Result<(AgentActionDto, IdempotencyKey), &'
 		} => (
 			AgentActionDto::Start(AgentStartDto {
 				root_id: identity(root_id)?,
-				prompt: text(prompt)?,
+				prompt: input_text(prompt)?,
 				model: ConversationModel::new(model).map_err(|_| "invalid model")?,
 				effort: effort
 					.map(|effort| {
@@ -398,7 +376,7 @@ fn prepare(command: AgentCommand) -> Result<(AgentActionDto, IdempotencyKey), &'
 			idempotency_key,
 		),
 		AgentCommand::Send { root_id, idempotency_key, text: input } => (
-			AgentActionDto::Send { root_id: identity(root_id)?, text: text(input)? },
+			AgentActionDto::Send { root_id: identity(root_id)?, text: input_text(input)? },
 			idempotency_key,
 		),
 		AgentCommand::Interrupt { work_id, turn_id, idempotency_key } => (
@@ -419,7 +397,7 @@ fn prepare(command: AgentCommand) -> Result<(AgentActionDto, IdempotencyKey), &'
 				AgentActionDto::AutomationResult {
 					work_id: identity(work_id)?,
 					source_event_id: wire_identity(source_event_id)?,
-					payload: text(payload)?,
+					payload: input_text(payload)?,
 				},
 				idempotency_key,
 			)
@@ -430,6 +408,32 @@ fn prepare(command: AgentCommand) -> Result<(AgentActionDto, IdempotencyKey), &'
 	};
 
 	Ok((action, command_key(key)?))
+}
+
+fn input_text(value: String) -> Result<HistoryText, &'static str> {
+	if value.trim().is_empty() {
+		return Err("input text must not be empty");
+	}
+
+	HistoryText::new(value).map_err(|_| "input text exceeds the protocol limit")
+}
+
+fn answer_action(
+	work_id: String,
+	event_id: i64,
+	response_json: String,
+) -> Result<AgentActionDto, &'static str> {
+	if event_id <= 0
+		|| !serde_json::from_str::<Value>(&response_json).is_ok_and(|value| value.is_object())
+	{
+		return Err("answer requires a positive event identity and a JSON response object");
+	}
+	Ok(AgentActionDto::Respond {
+		work_id: EntityId::new(work_id).map_err(|_| "invalid work or account identity")?,
+		event_id,
+		response_json: HistoryText::new(response_json)
+			.map_err(|_| "input text exceeds the protocol limit")?,
+	})
 }
 
 fn read_result_file(path: PathBuf) -> Result<String, &'static str> {

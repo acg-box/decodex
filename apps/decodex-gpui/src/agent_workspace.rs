@@ -2146,18 +2146,7 @@ impl AgentSurface {
 				self.visual_side_chat_failure(profile, cx);
 			},
 			"side-chat-tabs" => self.visual_side_chat_tabs("agent", cx),
-			"side-chat-titles" => {
-				self.visual_side_chat_tabs("agent", cx);
-				let titles =
-					&mut self.snapshot.as_mut().expect("fixture snapshot").conversation_titles;
-				for (thread, title) in [
-					("source-agent", "Improve Sidechat"),
-					("native-side-one", "Design automatic conversation titles"),
-					("native-side-two", "Keep titles stable across follow-ups"),
-				] {
-					titles.insert(thread.into(), title.into());
-				}
-			},
+			"side-chat-titles" => self.visual_side_chat_titles(cx),
 			"workbench" | "workbench-agent" | "workbench-history" | "workbench-split" =>
 				self.visual_workbench_page(page, cx),
 			"assistant-workspace" => self.visual_personal_navigation(cx),
@@ -2231,6 +2220,18 @@ impl AgentSurface {
 		}
 
 		cx.notify();
+	}
+
+	fn visual_side_chat_titles(&mut self, cx: &mut Context<Self>) {
+		self.visual_side_chat_tabs("agent", cx);
+		let titles = &mut self.snapshot.as_mut().expect("fixture snapshot").conversation_titles;
+		for (thread, title) in [
+			("source-agent", "Improve Sidechat"),
+			("native-side-one", "Design automatic conversation titles"),
+			("native-side-two", "Keep titles stable across follow-ups"),
+		] {
+			titles.insert(thread.into(), title.into());
+		}
 	}
 
 	fn visual_markdown_page(&mut self) {

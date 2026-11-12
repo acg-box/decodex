@@ -195,7 +195,7 @@ async fn prepare_external_writer(
 		serde_json::to_vec(&serde_json::json!({
 			"thread":thread,"native_pid":writer.child.0.id(),"synthetic":true
 		}))
-		.unwrap(),
+		.expect("native writer fixture receipt"),
 	)
 	.expect("record isolated writer identity");
 	writer

@@ -7,9 +7,9 @@ use gpui::{
 
 use crate::{
 	composer_input::{ComposerEvent, ComposerInput},
-	shell::workspace_symbols::{self, Symbol},
 	ui_loading, ui_motion,
 	ui_theme::{self, BODY_LINE_HEIGHT, METADATA_GAP},
+	workspace_symbols::{self, Symbol},
 };
 
 pub(super) struct InlineHint {

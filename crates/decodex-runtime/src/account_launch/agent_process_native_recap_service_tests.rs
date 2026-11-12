@@ -48,6 +48,48 @@ async fn assert_recap_invalidated(recaps: &Recaps, source: &Source) {
 	);
 }
 
+async fn independent_recap(
+	binary: &std::ffi::OsStr,
+	home: &std::path::Path,
+	source: &Source,
+) -> NativeSession {
+	let reader = NativeSession::start(binary, home);
+	let external_source = Source { client: reader.client.clone(), key: source.key.clone() };
+	assert!(reader.client.configured_task_permissions(&source.key.thread).is_none());
+	let external = agent_recap::prepare(&external_source, None)
+		.await
+		.expect("cold read while another process owns the source");
+	let temporary = reader
+		.client
+		.start_temporary_structured(external.options)
+		.await
+		.expect("independent recap thread");
+	assert_ne!(temporary.id(), source.key.thread);
+	let (_cancel, cancellation) = tokio::sync::watch::channel(false);
+	let result = temporary
+		.run_isolated(external.prompt, agent_recap::schema(), None, cancellation)
+		.await
+		.expect("recap does not need the source writer");
+	assert!(agent_recap::parse(&result).is_some());
+	assert!(reader.client.configured_task_permissions(&source.key.thread).is_none());
+	reader
+}
+
+fn recap_source(session: &NativeSession, thread: &str) -> Source {
+	Source {
+		client: session.client.clone(),
+		key: SourceKey {
+			generation: ProcessGenerationId::new("10000000-0000-4000-8000-000000000001")
+				.expect("id"),
+			account: AccountId::new("20000000-0000-4000-8000-000000000002").expect("id"),
+			work: "work".into(),
+			thread: thread.into(),
+			revision: 1,
+			history_revision: session.client.history_revision(),
+		},
+	}
+}
+
 async fn qualify(mode: &str) {
 	let binary = env::var_os("DECODEX_TEST_CODEX_BINARY").expect("native binary");
 	let home = tempfile::tempdir().expect("fixture home");
@@ -79,18 +121,7 @@ async fn qualify(mode: &str) {
 		}
 	}
 
-	let source = Source {
-		client: session.client.clone(),
-		key: SourceKey {
-			generation: ProcessGenerationId::new("10000000-0000-4000-8000-000000000001")
-				.expect("id"),
-			account: AccountId::new("20000000-0000-4000-8000-000000000002").expect("id"),
-			work: "work".into(),
-			thread: thread.clone(),
-			revision: 1,
-			history_revision: session.client.history_revision(),
-		},
-	};
+	let source = recap_source(&session, &thread);
 	let recaps = Recaps::default();
 	let cancelled = recaps
 		.start(
@@ -163,31 +194,17 @@ async fn qualify(mode: &str) {
 	// The source stays loaded in its original process, which retains its writer
 	// lock. Another process must summarize it using reads and its own temporary
 	// thread, without resuming or acquiring the source writer.
-	let reader = NativeSession::start(&binary, home.path());
-	let external_source = Source { client: reader.client.clone(), key: source.key.clone() };
-	assert!(reader.client.configured_task_permissions(&thread).is_none());
-	let external = agent_recap::prepare(&external_source, None)
-		.await
-		.expect("cold read while another process owns the source");
-	let temporary = reader
-		.client
-		.start_temporary_structured(external.options)
-		.await
-		.expect("independent recap thread");
-	assert_ne!(temporary.id(), thread);
-	let (_cancel, cancellation) = tokio::sync::watch::channel(false);
-	let result = temporary
-		.run_isolated(external.prompt, agent_recap::schema(), None, cancellation)
-		.await
-		.expect("recap does not need the source writer");
-	assert!(agent_recap::parse(&result).is_some());
-	assert!(reader.client.configured_task_permissions(&thread).is_none());
+	let _reader = independent_recap(&binary, home.path(), &source).await;
 	assert_eq!(
 		session.client.thread_latest_turn_id(&thread).await.expect("source remains unchanged"),
 		before
 	);
 	assert_eq!(calls.load(Ordering::Acquire), 3);
-	assert!(bodies.lock().unwrap()[2]["tools"].as_array().is_none_or(Vec::is_empty));
+	assert!(
+		bodies.lock().expect("captured native requests")[2]["tools"]
+			.as_array()
+			.is_none_or(Vec::is_empty)
+	);
 
 	session
 		.client

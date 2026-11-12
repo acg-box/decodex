@@ -172,16 +172,7 @@ where
 		return AgentTimelineResult::Unavailable;
 	}
 
-	let recovered = time::timeout(Duration::from_secs(15), async {
-		if let Some(page) = saved::read(store, &before, None).await {
-			Some(page)
-		} else {
-			summary::read(&before).await
-		}
-	})
-	.await
-	.ok()
-	.flatten();
+	let recovered = recover_saved(store, &before).await;
 
 	if source().await.is_none_or(|after| after.key != before.key) {
 		return AgentTimelineResult::Unavailable;
@@ -270,6 +261,22 @@ fn project_fields(
 	};
 
 	Some(page)
+}
+
+async fn recover_saved(
+	store: Option<&SqliteStore>,
+	before: &Source,
+) -> Option<AgentTimelineResult> {
+	time::timeout(Duration::from_secs(15), async {
+		if let Some(page) = saved::read(store, before, None).await {
+			Some(page)
+		} else {
+			summary::read(before).await
+		}
+	})
+	.await
+	.ok()
+	.flatten()
 }
 
 fn entry(row: &Value) -> Option<AgentTimelineEntry> {

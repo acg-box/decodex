@@ -761,7 +761,11 @@ impl AgentSurface {
 					.zip(activity.native_timestamp_ms)
 					.is_some_and(|(next, current)| current < next)
 			}) {
-				rows.push(self.observed_activity_content(work, observed.next().unwrap(), cx));
+				rows.push(self.observed_activity_content(
+					work,
+					observed.next().expect("peeked activity"),
+					cx,
+				));
 			}
 			rows.push(if let Some(group) = waits.get(i) {
 				self.native_wait_group(work, group, anchor, archived, cx)
@@ -978,11 +982,8 @@ impl AgentSurface {
 			));
 		}
 
-		if !hidden.is_empty() {
-			panel = panel.child(self.native_history_spacer(work, hidden));
-		}
-
 		panel
+			.when(!hidden.is_empty(), |panel| panel.child(self.native_history_spacer(work, hidden)))
 	}
 
 	fn prepare_native_process_folds(

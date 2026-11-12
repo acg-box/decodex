@@ -220,7 +220,7 @@ mod tests {
 	fn repeated_item_ids_do_not_share_arrival_or_live_promotion_state() {
 		let mut arrivals = Arrivals::default();
 		let old = row(1);
-		arrivals.observe(&[old.clone()], true);
+		arrivals.observe(std::slice::from_ref(&old), true);
 		let mut live = row(2);
 		if let AgentTimelineContent::Item { turn_id, item_id, .. } = &mut live.content {
 			*turn_id = "next-turn".into();

@@ -31,6 +31,7 @@ mod panel_preferences;
 mod session_settings;
 mod settings_surface;
 mod shell;
+pub(crate) use shell::workspace_symbols;
 mod ui_cloudlet;
 mod ui_feedback;
 mod ui_frame;

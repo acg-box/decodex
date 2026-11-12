@@ -193,24 +193,7 @@ impl AgentSurface {
 						gpui::div()
 							.mt(gpui::px(6.))
 							.text_color(crate::ui_theme::rgb(TEXT_MUTED))
-							.child(SelectableText {
-								key: format!("detail-metadata-{key}"),
-								text: format!(
-									"Type: {}\nStatus: {}\nTurn: {}\nCall: {}{}{}",
-									item.kind,
-									item.status,
-									item.turn_id,
-									item.item_id,
-									item.plugin_id
-										.as_ref()
-										.map_or(String::new(), |id| format!("\nPlugin: {id}")),
-									item.read_only_hint.map_or(String::new(), |hint| format!(
-										"\nRead-only hint: {hint}"
-									))
-								),
-								highlights: Vec::new(),
-								links: Vec::new(),
-							}),
+							.child(activity_metadata(&key, item)),
 					)),
 			))
 			.into_any_element()
@@ -887,3 +870,20 @@ mod tests {
 #[cfg(test)]
 #[path = "agent_detail_wire_tests.rs"]
 mod wire_tests;
+
+fn activity_metadata(key: &str, item: &AgentActivityDto) -> SelectableText {
+	SelectableText {
+		key: format!("detail-metadata-{key}"),
+		text: format!(
+			"Type: {}\nStatus: {}\nTurn: {}\nCall: {}{}{}",
+			item.kind,
+			item.status,
+			item.turn_id,
+			item.item_id,
+			item.plugin_id.as_ref().map_or(String::new(), |id| format!("\nPlugin: {id}")),
+			item.read_only_hint.map_or(String::new(), |hint| format!("\nRead-only hint: {hint}"))
+		),
+		highlights: Vec::new(),
+		links: Vec::new(),
+	}
+}

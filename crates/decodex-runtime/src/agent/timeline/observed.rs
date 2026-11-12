@@ -84,7 +84,7 @@ mod tests {
 			"status":status,"label":"Reading files","detail":"","duration_ms":null})
 			.to_string()
 		};
-		let items = vec![
+		let items = [
 			AgentTimelineContent::Item {
 				turn_id: "turn".into(),
 				item_id: "native".into(),

@@ -321,9 +321,13 @@ pub enum AgentTimelineResult {
 	/// Items retain their exact turn and item identities. Clients may assign local
 	/// layout positions, but must not send those positions to native history APIs.
 	Saved {
+		/// Exact requested local task.
 		work_id: EntityId,
+		/// Account that owns the native history.
 		account_id: EntityId,
+		/// Native source thread for every returned item.
 		thread_id: String,
+		/// Stored native items in reading order, without invented native ordinals.
 		items: Vec<AgentTimelineContent>,
 		/// Observed tool lifecycles missing from the stored item page.
 		#[serde(default, skip_serializing_if = "Vec::is_empty")]
