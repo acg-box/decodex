@@ -45,8 +45,8 @@ fn metadata_tooltip_stays_beside_the_row_and_cannot_cover_its_actions(cx: &mut T
 		cx.notify();
 	});
 	visual.update(crate::ui_frame::draw_current_frame);
-	let row = visual.debug_bounds("navigation-recent-topic-research").unwrap();
-	let actions = visual.debug_bounds("navigation-delete-recent-topic-research").unwrap();
+	let row = visual.debug_bounds("assistant-topic-topic-research").unwrap();
+	let actions = visual.debug_bounds("navigation-delete-assistant-topic-research").unwrap();
 	visual.simulate_mouse_move(
 		gpui::point(row.left() + gpui::px(24.), row.center().y),
 		None,
@@ -97,7 +97,7 @@ fn pin_moves_one_reference_and_keeps_the_conversation_and_draft(cx: &mut TestApp
 		cx.notify();
 	});
 	visual.update(crate::ui_frame::draw_current_frame);
-	let pin = visual.debug_bounds("navigation-pin-recent-topic-research").unwrap();
+	let pin = visual.debug_bounds("navigation-pin-assistant-topic-research").unwrap();
 	visual.simulate_click(pin.center(), Default::default());
 	visual.update(crate::ui_frame::draw_current_frame);
 	surface.read_with(visual, |s, cx| {
@@ -106,7 +106,7 @@ fn pin_moves_one_reference_and_keeps_the_conversation_and_draft(cx: &mut TestApp
 		assert!(s.workspace.navigation.preferences.pinned.contains("topic-research"));
 	});
 	assert!(visual.debug_bounds("navigation-pin-topic-research").is_some());
-	assert!(visual.debug_bounds("navigation-recent-topic-research").is_none());
+	assert!(visual.debug_bounds("assistant-topic-topic-research").is_none());
 }
 
 #[gpui::test]
@@ -150,13 +150,13 @@ fn delete_arms_the_same_icon_and_outside_click_cancels_without_changing_a_draft(
 		cx.notify();
 	});
 	visual.update(crate::ui_frame::draw_current_frame);
-	let before = visual.debug_bounds("navigation-delete-recent-topic-research").unwrap();
+	let before = visual.debug_bounds("navigation-delete-assistant-topic-research").unwrap();
 	visual.simulate_click(before.center(), Default::default());
 	visual.update(crate::ui_frame::draw_current_frame);
-	assert_eq!(visual.debug_bounds("navigation-delete-recent-topic-research").unwrap(), before);
+	assert_eq!(visual.debug_bounds("navigation-delete-assistant-topic-research").unwrap(), before);
 	surface.read_with(visual, |s, cx| {
 		assert!(s.workspace.navigation.confirm_delete);
-		assert_eq!(s.workspace.navigation.menu.as_deref(), Some("recent-topic-research"));
+		assert_eq!(s.workspace.navigation.menu.as_deref(), Some("assistant-topic-research"));
 		assert!(s.workspace.navigation.mutation.is_none());
 		assert_eq!(s.composer.read(cx).content(), "Keep my draft");
 	});
@@ -169,7 +169,7 @@ fn delete_arms_the_same_icon_and_outside_click_cancels_without_changing_a_draft(
 }
 
 #[gpui::test]
-fn recent_renders_every_available_topic_and_sections_keep_the_compact_rhythm(
+fn assistant_renders_every_available_topic_and_sections_keep_the_compact_rhythm(
 	cx: &mut TestAppContext,
 ) {
 	let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
@@ -183,21 +183,21 @@ fn recent_renders_every_available_topic_and_sections_keep_the_compact_rhythm(
 			let mut topic = seed.clone();
 			topic.id = format!("topic-{index}");
 			topic.title = format!("Topic {index}");
+			topic.codex_thread_id = Some(format!("thread-{index}"));
+			topic.updated_at_micros = (index + 1) * 60_000_000;
 			snapshot.assistant.topic_ids.push(topic.id.clone());
 			snapshot.work_items.push(topic);
 		}
 		s.workspace.navigation.collapsed =
-			std::collections::HashSet::from(["pin", "recent", "assistant", "projects"]);
+			std::collections::HashSet::from(["pin", "assistant", "projects"]);
 		cx.notify();
 	});
 	visual.update(crate::ui_frame::draw_current_frame);
+	assert!(visual.debug_bounds("navigation-section-recent").is_none());
 	let mut previous = None;
-	for section in [
-		"navigation-section-pin",
-		"navigation-section-recent",
-		"navigation-section-assistant",
-		"navigation-section-projects",
-	] {
+	for section in
+		["navigation-section-pin", "navigation-section-assistant", "navigation-section-projects"]
+	{
 		let bounds = visual.debug_bounds(section).unwrap();
 		assert_eq!(f32::from(bounds.size.height), 28.);
 		if let Some(top) = previous {
@@ -207,9 +207,12 @@ fn recent_renders_every_available_topic_and_sections_keep_the_compact_rhythm(
 	}
 	surface.update(visual, |s, cx| {
 		assert!(s.navigation_items(cx).iter().any(|item| item.id == "topic-19"));
-		s.workspace.navigation.collapsed.remove("recent");
+		s.workspace.navigation.collapsed.remove("assistant");
 		cx.notify();
 	});
 	visual.update(crate::ui_frame::draw_current_frame);
-	assert!(visual.debug_bounds("navigation-recent-topic-19").is_some());
+	assert!(visual.debug_bounds("assistant-topic-topic-19").is_some());
+	let latest = visual.debug_bounds("assistant-topic-topic-19").unwrap();
+	let older = visual.debug_bounds("assistant-topic-topic-18").unwrap();
+	assert!(latest.top() < older.top());
 }

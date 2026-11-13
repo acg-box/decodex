@@ -683,9 +683,12 @@ fn main() {
 
 #[cfg(target_os = "macos")]
 fn main() {
-	if std::env::args()
-		.any(|arg| matches!(arg.as_str(), "--popup-material-system" | "--popup-material-islands"))
-	{
+	if std::env::args().any(|arg| {
+		matches!(
+			arg.as_str(),
+			"--popup-material-system" | "--popup-material-islands" | "--popup-centered-preview"
+		)
+	}) {
 		popup_system_probe::run();
 		return;
 	}

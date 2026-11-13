@@ -4,16 +4,17 @@ use std::panic::Location;
 use gpui::{
 	AnyElement, App, Bounds, Element, ElementId, Entity, GlobalElementId, InspectorElementId,
 	IntoElement, LayoutId, Pixels, Render, Size, Style, StyleRefinement, Window,
-	prelude::Styled as _,
+	prelude::{ParentElement as _, Styled as _},
 };
 
 type VisibilityGuard = dyn Fn(&Window, &App) -> bool;
-type Measured = dyn FnMut(Size<Pixels>, &mut Window, &mut App);
+type Measured = dyn FnMut(Size<Pixels>, &mut Window, &mut App) -> Size<Pixels>;
 
 struct Intrinsic {
 	child: AnyElement,
 	width: Pixels,
 	measured: Box<Measured>,
+	clip: bool,
 }
 impl IntoElement for Intrinsic {
 	type Element = Self;
@@ -46,7 +47,7 @@ impl Element for Intrinsic {
 			window,
 			cx,
 		);
-		(self.measured)(size, window, cx);
+		let size = (self.measured)(size, window, cx);
 		(
 			window.request_layout(
 				Style { size: size.map(Into::into), ..Default::default() },
@@ -66,20 +67,22 @@ impl Element for Intrinsic {
 		window: &mut Window,
 		cx: &mut App,
 	) {
-		self.child.prepaint_at(bounds.origin, window, cx);
+		let mask = self.clip.then_some(gpui::ContentMask { bounds });
+		window.with_content_mask(mask, |window| self.child.prepaint_at(bounds.origin, window, cx));
 	}
 
 	fn paint(
 		&mut self,
 		_: Option<&GlobalElementId>,
 		_: Option<&InspectorElementId>,
-		_: Bounds<Pixels>,
+		bounds: Bounds<Pixels>,
 		_: &mut (),
 		_: &mut (),
 		window: &mut Window,
 		cx: &mut App,
 	) {
-		self.child.paint(window, cx);
+		let mask = self.clip.then_some(gpui::ContentMask { bounds });
+		window.with_content_mask(mask, |window| self.child.paint(window, cx));
 	}
 }
 
@@ -87,9 +90,31 @@ impl Element for Intrinsic {
 pub(crate) fn intrinsic(
 	width: Pixels,
 	child: impl IntoElement,
-	measured: impl FnMut(Size<Pixels>, &mut Window, &mut App) + 'static,
+	mut measured: impl FnMut(Size<Pixels>, &mut Window, &mut App) + 'static,
 ) -> impl IntoElement {
-	Intrinsic { child: child.into_any_element(), width, measured: Box::new(measured) }
+	Intrinsic {
+		child: child.into_any_element(),
+		width,
+		measured: Box::new(move |size, window, cx| {
+			measured(size, window, cx);
+			size
+		}),
+		clip: false,
+	}
+}
+
+/// Keep content at its measured size while its visible frame changes.
+pub(crate) fn resized(
+	width: Pixels,
+	child: impl IntoElement,
+	measured: impl FnMut(Size<Pixels>, &mut Window, &mut App) -> Size<Pixels> + 'static,
+) -> impl IntoElement {
+	Intrinsic {
+		child: gpui::div().w(width).flex().flex_col().child(child).into_any_element(),
+		width,
+		measured: Box::new(measured),
+		clip: true,
+	}
 }
 
 struct Visible {

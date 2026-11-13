@@ -89,10 +89,16 @@ fn project(value: &Value) -> Result<Vec<AgentTimelineContent>, ProjectionError> 
 		let header = &value["turns"][turn];
 		let status = header["status"].as_str().ok_or(ProjectionError::Malformed)?;
 		if status == "inProgress" {
+			items.push(
+				super::turn_boundary(&json!({"type":"turnStarted", "turn_id":turn,
+				"started_at":header["startedAt"]}))
+				.ok_or(ProjectionError::Malformed)?,
+			);
 			continue;
 		}
-		let boundary = super::turn_boundary(&json!({"type":"turnCompleted", "turnId":turn,
-			"status":status,"durationMs":header["durationMs"],"error":header["error"]}))
+		let boundary = super::turn_boundary(&json!({"type":"turnCompleted", "turn_id":turn,
+			"started_at":header["startedAt"],
+			"status":status,"duration_ms":header["durationMs"],"error":header["error"]}))
 		.ok_or(ProjectionError::Malformed)?;
 		items.push(boundary);
 	}
@@ -110,7 +116,7 @@ mod tests {
 		let items = project(&json!({"data":[
 			{"turnId":"t","item":{"id":"process","type":"reasoning","summary":["Checking"]}},
 			{"turnId":"t","item":{"id":"reply","type":"agentMessage","text":"Done","phase":"final_answer"}}
-		],"turns":{"t":{"status":"completed","durationMs":1250}}}))
+		],"turns":{"t":{"status":"completed","startedAt":1_800_000_000,"durationMs":1250}}}))
 		.unwrap();
 		assert_eq!(items.len(), 3);
 		assert!(
@@ -118,7 +124,12 @@ mod tests {
 		);
 		assert!(matches!(
 			&items[2],
-			AgentTimelineContent::TurnBoundary { completed: true, duration_ms: Some(1250), .. }
+			AgentTimelineContent::TurnBoundary {
+				completed: true,
+				started_at_micros: Some(1_800_000_000_000_000),
+				duration_ms: Some(1250),
+				..
+			}
 		));
 	}
 }

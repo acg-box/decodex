@@ -6,12 +6,10 @@ use std::{
 	rc::Rc,
 };
 
-use gpui::{
-	AnyElement, AppContext as _, Div, FontWeight, KeyDownEvent, Pixels, Role, ScrollEvent,
-	ScrollHandle, Stateful,
-};
-use ui_theme::{BLUE, BODY_LINE_HEIGHT, SURFACE_OVERLAY_MATERIAL, TEXT, TEXT_MUTED};
+use gpui::{AnyElement, Div, KeyDownEvent, Pixels, Role, ScrollEvent, ScrollHandle, Stateful};
+use ui_theme::{BLUE, BODY_LINE_HEIGHT, TEXT};
 
+use super::conversation_metric::{Metric, StepCount, StepMetric};
 use crate::{
 	shell::{
 		agent_surface::{
@@ -19,7 +17,6 @@ use crate::{
 			InteractiveElement, IntoElement, ParentElement, Render, SharedString,
 			StatefulInteractiveElement, Styled, Window, markdown, native_timeline, ui_theme,
 			voice::{history, history::VoiceBlock},
-			workspace,
 		},
 		workspace_symbols,
 		workspace_symbols::Symbol,
@@ -27,7 +24,9 @@ use crate::{
 	ui_motion, ui_scroll,
 	ui_theme::HISTORY_RAIL_WIDTH,
 };
-use decodex_protocol::{AgentHistoryEntryDto, AgentTimelineContent, AgentTimelineEntry};
+use decodex_protocol::{
+	AgentHistoryEntryDto, AgentTimelineContent, AgentTimelineEntry, AgentTurnUsageDto,
+};
 
 const HISTORY_ANCHOR_INSET: f32 = 56.0;
 
@@ -55,6 +54,19 @@ impl Display for HistoryKey {
 }
 
 impl AgentSurface {
+	fn history_preview_mark(&self, key: &HistoryKey) -> Option<HistoryMark> {
+		let mut mark = self.timeline.marks.get(key)?.clone();
+		if let Some(work) = self.conversation_work().filter(|work| self.response_in_progress(work))
+			&& let Some(turn) = &work.active_turn_id
+			&& let Some(input) = self.timeline.native.history_input_for_turn(turn)
+			&& let Some(binding) = &self.timeline.native.binding
+			&& HistoryKey::native(&binding.thread, input) == *key
+		{
+			mark.details.status = Some("In progress");
+		}
+		Some(mark)
+	}
+
 	pub(super) fn prepare_history_marks(&mut self) {
 		if self.item_context_window_active() {
 			self.timeline.marks.clear();
@@ -135,27 +147,26 @@ impl AgentSurface {
 								|| preview(&entry.text),
 								|(_, text)| format!("Voice conversation: {}", preview(text)),
 							),
-							time: format!(
-								"{} {} UTC",
-								time::OffsetDateTime::from_unix_timestamp(
-									entry.created_at_micros / 1_000_000
-								)
-								.map(|t| t.date().to_string())
-								.unwrap_or_default(),
-								workspace::clock_label(entry.created_at_micros)
-							),
+							details: HistoryDetails {
+								started_at_micros: Some(entry.created_at_micros).filter(|t| *t > 0),
+								..Default::default()
+							},
 							answer: String::new(),
 						}
 					});
 
 				mark.answer.clear();
+				mark.details.duration_ms = None;
+				mark.details.usage = None;
 
 				current = Some(HistoryKey::Local(entry.id));
 			} else if entry.kind == "assistant"
 				&& let Some(id) = current.as_ref()
 			{
-				self.timeline.marks.get_mut(id).expect("current mark").answer =
-					preview(&entry.text);
+				let mark = self.timeline.marks.get_mut(id).expect("current mark");
+				mark.answer = preview(&entry.text);
+				mark.details.duration_ms = entry.duration_ms;
+				mark.details.usage.clone_from(&entry.usage);
 			}
 		}
 	}
@@ -230,6 +241,8 @@ impl AgentSurface {
 			voice_groups.iter().flat_map(|g| g.indices.iter().skip(1).copied()).collect();
 		let mut retained = BTreeSet::new();
 		let mut current = None;
+		let details = history_turn_details(&self.timeline.native.entries);
+		let processes = self.timeline.native.history_processes();
 
 		for (index, entry) in self.timeline.native.entries.iter().enumerate() {
 			if voice_hidden.contains(&index)
@@ -241,8 +254,8 @@ impl AgentSurface {
 			let entry = voice_headers.get(&index).map_or(entry, |g| {
 				&self.timeline.native.entries[g.anchor_index(&self.timeline.native.entries)]
 			});
-			let (user, text, label) = if let Some(group) = voice_headers.get(&index) {
-				(true, &group.text, "Voice conversation")
+			let (user, text) = if let Some(group) = voice_headers.get(&index) {
+				(true, &group.text)
 			} else {
 				match &entry.content {
 					AgentTimelineContent::Item { kind, text, .. }
@@ -250,17 +263,8 @@ impl AgentSurface {
 							kind.as_str(),
 							"userMessage" | "agentInput" | "agentMessage"
 						) =>
-						(
-							kind != "agentMessage",
-							text,
-							if kind == "agentInput" {
-								"Task input"
-							} else {
-								"Conversation message"
-							},
-						),
-					AgentTimelineContent::Speech { role, text, .. } =>
-						(role == "user", text, "Voice message"),
+						(kind != "agentMessage", text),
+					AgentTimelineContent::Speech { role, text, .. } => (role == "user", text),
 					_ => continue,
 				}
 			};
@@ -274,7 +278,7 @@ impl AgentSurface {
 					position: Rc::new(Cell::new(0.0)),
 					hit_bounds: Rc::new(Cell::new(None)),
 					question: String::new(),
-					time: label.into(),
+					details: HistoryDetails::default(),
 					answer: String::new(),
 				});
 
@@ -289,12 +293,55 @@ impl AgentSurface {
 				};
 
 				mark.answer.clear();
+				let turn = match &entry.content {
+					AgentTimelineContent::Item { turn_id, .. } => Some(turn_id),
+					_ => None,
+				};
+				mark.details = turn.and_then(|turn| details.get(turn)).cloned().unwrap_or_default();
+				mark.details.turn_id = turn.cloned();
 
 				current = Some(key);
 			} else if let Some(key) = &current {
-				self.timeline.marks.get_mut(key).expect("current native mark").answer =
-					preview(text);
+				let mark = self.timeline.marks.get_mut(key).expect("current native mark");
+				if let AgentTimelineContent::Item { turn_id, .. } = &entry.content
+					&& mark.details.turn_id.as_ref().is_some_and(|turn| turn != turn_id)
+				{
+					continue;
+				}
+				mark.answer = preview(text);
 			}
+		}
+		for process in processes {
+			let input = &self.timeline.native.entries[process.input_index];
+			let key = HistoryKey::native(&binding.thread, input);
+			let Some(mark) = self.timeline.marks.get_mut(&key) else { continue };
+			mark.details.steps = Some(process.count);
+			let turn_id = match &self.timeline.native.entries[process.final_index].content {
+				AgentTimelineContent::Item { turn_id, .. }
+				| AgentTimelineContent::TurnBoundary { turn_id, .. } => turn_id,
+				_ => continue,
+			};
+			let reply = self.timeline.native.entries[process.input_index..=process.final_index]
+				.iter()
+				.rev()
+				.find_map(|entry| match &entry.content {
+					AgentTimelineContent::Item { turn_id: owner, kind, phase, text, .. }
+						if owner == turn_id
+							&& kind == "agentMessage"
+							&& matches!(phase.as_deref(), None | Some("final_answer"))
+							&& !text.trim().is_empty() =>
+						Some(text),
+					_ => None,
+				});
+			if let Some(text) = reply {
+				mark.answer = preview(text);
+			}
+			if let Some(final_details) = details.get(turn_id) {
+				mark.details.duration_ms = final_details.duration_ms;
+				mark.details.usage.clone_from(&final_details.usage);
+				mark.details.status = final_details.status;
+			}
+			mark.details.turn_id = Some(turn_id.clone());
 		}
 
 		self.timeline.marks.retain(|key, _| retained.contains(key));
@@ -641,6 +688,10 @@ impl AgentSurface {
 
 		let opacity =
 			ui_motion::value("jump-latest-opacity", if visible { 1. } else { 0. }, window, cx);
+		if opacity <= 0.001 {
+			self.hide_latest_button(window, cx);
+		}
+		let owner = cx.entity().downgrade();
 
 		gpui::div()
 			.absolute()
@@ -651,53 +702,79 @@ impl AgentSurface {
 			.bottom(gpui::px(self.workspace_composer_clearance() + 8.))
 			.when(opacity > 0.001, |d| {
 				d.child(
-					gpui::div()
-						.id("jump-to-latest")
-						.debug_selector(|| "jump-to-latest".into())
-						.occlude()
-						.role(Role::Button)
-						.aria_label(if working {
-							"Working. Jump to latest message"
-						} else {
-							"Jump to latest message"
-						})
-						.tab_index(0)
-						.h(gpui::px(28.))
-						.w(gpui::px(width))
-						.rounded_full()
-						.bg(crate::ui_theme::rgba(SURFACE_OVERLAY_MATERIAL))
-						.flex()
-						.items_center()
-						.justify_center()
-						.gap(gpui::px(5.))
-						.opacity(opacity)
-						.cursor_pointer()
-						.on_scroll(cx.listener(|s, event, _, cx| s.scroll_history(event, cx)))
-						.hover(|d| d.bg(crate::ui_theme::rgba(0x302d397c)))
-						.on_click(cx.listener(|s, _, _, cx| s.jump_to_latest(cx)))
-						.on_key_down(cx.listener(|s, e: &KeyDownEvent, _, cx| {
-							if ["enter", "space"].contains(&e.keystroke.key.as_str()) {
-								s.jump_to_latest(cx);
-								cx.stop_propagation();
-							}
-						}))
-						.when(working, |d| {
-							d.child(gpui::div().flex().items_center().gap(gpui::px(2.)).children(
-								(0..3).map(|i| {
-									gpui::div()
-										.size(gpui::px(3.))
-										.rounded_full()
-										.bg(crate::ui_theme::rgb(BLUE))
-										.opacity(
-											0.35 + 0.65 * ((phase - i as f32 * 0.7).sin() + 1.)
-												/ 2.,
-										)
-								}),
-							))
-						})
-						.child(workspace_symbols::icon(Symbol::ArrowDown)),
+					gpui::div().w(gpui::px(width)).h(gpui::px(28.)).child(
+						ui_motion::material_surface(
+							"jump-to-latest-material",
+							14.,
+							move |_, cx| {
+								owner
+									.update(cx, |surface, cx| {
+										surface.latest_button_content(width, working, phase, cx)
+									})
+									.unwrap_or_else(|_| gpui::div().into_any_element())
+							},
+							|_| {},
+						)
+						.opacity(opacity),
+					),
 				)
 			})
+			.into_any_element()
+	}
+
+	pub(crate) fn hide_latest_button(&self, window: &Window, cx: &mut gpui::App) {
+		ui_motion::hide_material_surface("jump-to-latest-material", window, cx);
+	}
+
+	fn latest_button_content(
+		&self,
+		width: f32,
+		working: bool,
+		phase: f32,
+		cx: &mut Context<Self>,
+	) -> AnyElement {
+		gpui::div()
+			.id("jump-to-latest")
+			.debug_selector(|| "jump-to-latest".into())
+			.occlude()
+			.role(Role::Button)
+			.aria_label(if working {
+				"Working. Jump to latest message"
+			} else {
+				"Jump to latest message"
+			})
+			.tab_index(0)
+			.h(gpui::px(28.))
+			.w(gpui::px(width))
+			.rounded_full()
+			.text_color(ui_theme::rgb(TEXT))
+			.flex()
+			.items_center()
+			.justify_center()
+			.gap(gpui::px(5.))
+			.cursor_pointer()
+			.on_scroll(cx.listener(|s, event, _, cx| s.scroll_history(event, cx)))
+			.hover(|d| d.bg(ui_theme::rgba(ui_theme::HOVER_FILL)))
+			.focus_visible(|d| d.bg(ui_theme::rgba(ui_theme::HOVER_FILL)))
+			.on_click(cx.listener(|s, _, _, cx| s.jump_to_latest(cx)))
+			.on_key_down(cx.listener(|s, e: &KeyDownEvent, _, cx| {
+				if ["enter", "space"].contains(&e.keystroke.key.as_str()) {
+					s.jump_to_latest(cx);
+					cx.stop_propagation();
+				}
+			}))
+			.when(working, |d| {
+				d.child(gpui::div().flex().items_center().gap(gpui::px(2.)).children((0..3).map(
+					|i| {
+						gpui::div()
+							.size(gpui::px(3.))
+							.rounded_full()
+							.bg(crate::ui_theme::rgb(BLUE))
+							.opacity(0.35 + 0.65 * ((phase - i as f32 * 0.7).sin() + 1.) / 2.)
+					},
+				)))
+			})
+			.child(workspace_symbols::icon(Symbol::ArrowDown))
 			.into_any_element()
 	}
 
@@ -781,102 +858,149 @@ impl AgentSurface {
 		let working = self.conversation_work().is_some_and(|work| self.response_in_progress(&work));
 		let last = self.timeline.marks.len() - 1;
 		let visible_range = self.visible_history_range(&scroll);
-		let mut rail = self.history_rail_surface(cx);
+		let source = cx.entity().downgrade();
+		let preview = window.use_keyed_state(
+			SharedString::from(format!("history-preview-{:?}", self.timeline.marks_work)),
+			cx,
+			|window, cx| HistoryPreview::new(source, window, cx),
+		);
+		let group_hover = preview.clone();
+		let bounds = preview.read(cx).bounds.clone();
+		// One retained owner spans the tick group and the preview. Internal movement
+		// updates content immediately without resetting dwell or surface arrival.
+		let mut ticks = gpui::div()
+			.id("conversation-history-ticks")
+			.w_full()
+			.h(gpui::px(self.timeline.marks.len() as f32 * 11.))
+			.min_h_0()
+			.flex_shrink(1.)
+			.flex()
+			.flex_col()
+			.on_hover(move |inside, _, cx| {
+				group_hover.update(cx, |preview, cx| preview.hover(false, *inside, cx));
+			})
+			.child(
+				gpui::canvas(move |area, _, _| bounds.set(Some(area)), |_, _, _, _| {})
+					.absolute()
+					.inset_0(),
+			);
 
 		for (index, (id, mark)) in self.timeline.marks.iter().enumerate() {
 			let visible = mark.position.get().is_finite() && visible_range.contains(&index);
-			let activity = ui_motion::value(
-				SharedString::from(format!(
-					"rail-visible-{}-{id}",
-					self.selected.as_deref().unwrap_or_default()
-				)),
-				if visible { 1. } else { 0. },
+			ticks = ticks.child(self.history_tick(
+				HistoryTick { index, id, mark, visible, working: working && index == last },
+				&preview,
 				window,
 				cx,
-			);
-			let influence = ui_motion::value(
-				SharedString::from(format!(
-					"rail-magnify-{}-{id}",
-					self.selected.as_deref().unwrap_or_default()
-				)),
-				dock_influence(index, self.timeline.hover),
-				window,
-				cx,
-			);
-			let tip = mark.clone();
-			let id = id.clone();
-			let keyboard_id = id.clone();
-			let hit_bounds = mark.hit_bounds.clone();
-
-			rail = rail.child(
-				gpui::div()
-					.id(SharedString::from(format!("history-tick-{id}")))
-					.role(Role::Button)
-					.tab_index(0)
-					.aria_label(format!("Jump to: {}", mark.question))
-					.aria_selected(visible)
-					.w_full()
-					// Size the hit target and its tick together in the current layout.
-					// Reading the previous scroll bounds lags behind a Dock resize.
-					.flex_1()
-					.min_h_0()
-					.max_h(gpui::px(11.))
-					.cursor_pointer()
-					.on_hover(cx.listener(move |s, hovered: &bool, _, cx| {
-						if *hovered {
-							s.timeline.hover = Some(index);
-						} else if s.timeline.hover == Some(index) {
-							s.timeline.hover = None;
-						}
-
-						cx.notify();
-					}))
-					.tooltip_show_delay(ui_motion::HOVER_OPEN_DELAY)
-					.tooltip(move |window, cx| {
-						cx.new(|cx| HistoryPreview::new(tip.clone(), window, cx)).into()
-					})
-					.on_click(cx.listener(move |s, _, _, cx| {
-						s.jump_to_history(id.clone(), cx);
-					}))
-					.on_key_down(cx.listener(move |s, event: &KeyDownEvent, _, cx| {
-						if event.keystroke.key == "enter" || event.keystroke.key == "space" {
-							s.jump_to_history(keyboard_id.clone(), cx);
-							cx.stop_propagation();
-							cx.notify();
-						}
-					}))
-					.child(
-						gpui::canvas(
-							move |bounds, _, _| hit_bounds.set(Some(bounds)),
-							move |bounds, _, window, _| {
-								let color = if working && index == last {
-									crate::ui_theme::rgb(BLUE).opacity(0.4 + 0.6 * activity)
-								} else {
-									crate::ui_theme::rgba(
-										(TEXT << 8) | (100. + 155. * activity) as u32,
-									)
-								};
-								let width = 7.0 + influence * 7.0;
-								let height = 2.0 + influence;
-
-								window.paint_quad(gpui::fill(
-									gpui::Bounds::new(
-										gpui::point(
-											bounds.center().x - gpui::px(width / 2.0),
-											bounds.center().y - gpui::px(height / 2.),
-										),
-										gpui::size(gpui::px(width), gpui::px(height)),
-									),
-									color,
-								));
-							},
-						)
-						.size_full(),
-					),
-			);
+			));
 		}
 
-		rail.into_any_element()
+		self.history_rail_surface(cx)
+			.child(ticks)
+			.child(gpui::deferred(gpui::div().absolute().child(preview)).with_priority(4))
+			.into_any_element()
+	}
+
+	fn history_tick(
+		&self,
+		tick: HistoryTick<'_>,
+		preview: &gpui::Entity<HistoryPreview>,
+		window: &mut Window,
+		cx: &mut Context<Self>,
+	) -> AnyElement {
+		let HistoryTick { index, id, mark, visible, working } = tick;
+		let activity = ui_motion::value(
+			SharedString::from(format!(
+				"rail-visible-{}-{id}",
+				self.selected.as_deref().unwrap_or_default()
+			)),
+			if visible { 1. } else { 0. },
+			window,
+			cx,
+		);
+		let influence = ui_motion::value(
+			SharedString::from(format!(
+				"rail-magnify-{}-{id}",
+				self.selected.as_deref().unwrap_or_default()
+			)),
+			dock_influence(index, self.timeline.hover),
+			window,
+			cx,
+		);
+		let id = id.clone();
+		let keyboard_id = id.clone();
+		let hit_bounds = mark.hit_bounds.clone();
+		let hover_preview = preview.clone();
+		let click_preview = preview.clone();
+		let keyboard_preview = preview.clone();
+		let preview_key = id.clone();
+
+		gpui::div()
+			.id(SharedString::from(format!("history-tick-{id}")))
+			.role(Role::Button)
+			.tab_index(0)
+			.aria_label(format!("Jump to: {}", mark.question))
+			.aria_selected(visible)
+			.w_full()
+			// Size the hit target and its tick together in the current layout.
+			// Reading the previous scroll bounds lags behind a Dock resize.
+			.flex_1()
+			.min_h_0()
+			.max_h(gpui::px(11.))
+			.cursor_pointer()
+			.on_hover(cx.listener(move |s, hovered: &bool, _, cx| {
+				if *hovered {
+					s.timeline.hover = Some(index);
+					hover_preview.update(cx, |preview, cx| {
+						preview.key = Some(preview_key.clone());
+						preview.hover(false, true, cx);
+						cx.notify();
+					});
+				} else if s.timeline.hover == Some(index) {
+					s.timeline.hover = None;
+				}
+
+				cx.notify();
+			}))
+			.on_click(cx.listener(move |s, _, _, cx| {
+				click_preview.update(cx, |preview, cx| preview.dismiss(cx));
+				s.jump_to_history(id.clone(), cx);
+			}))
+			.on_key_down(cx.listener(move |s, event: &KeyDownEvent, _, cx| {
+				if event.keystroke.key == "enter" || event.keystroke.key == "space" {
+					keyboard_preview.update(cx, |preview, cx| preview.dismiss(cx));
+					s.jump_to_history(keyboard_id.clone(), cx);
+					cx.stop_propagation();
+					cx.notify();
+				}
+			}))
+			.child(
+				gpui::canvas(
+					move |bounds, _, _| hit_bounds.set(Some(bounds)),
+					move |bounds, _, window, _| {
+						let color = if working {
+							crate::ui_theme::rgb(BLUE).opacity(0.4 + 0.6 * activity)
+						} else {
+							crate::ui_theme::rgba((TEXT << 8) | (100. + 155. * activity) as u32)
+						};
+						let width = 7.0 + influence * 7.0;
+						let height = 2.0 + influence;
+
+						window.paint_quad(gpui::fill(
+							gpui::Bounds::new(
+								gpui::point(
+									bounds.center().x - gpui::px(width / 2.0),
+									bounds.center().y - gpui::px(height / 2.),
+								),
+								gpui::size(gpui::px(width), gpui::px(height)),
+							),
+							color,
+						));
+					},
+				)
+				.size_full(),
+			)
+			.into_any_element()
 	}
 
 	fn history_rail_surface(&self, cx: &mut Context<Self>) -> Stateful<Div> {
@@ -897,13 +1021,70 @@ impl AgentSurface {
 	}
 }
 
+struct HistoryTick<'a> {
+	index: usize,
+	id: &'a HistoryKey,
+	mark: &'a HistoryMark,
+	visible: bool,
+	working: bool,
+}
+
 #[derive(Clone)]
 pub(super) struct HistoryMark {
 	pub(super) position: Rc<Cell<f32>>,
 	hit_bounds: Rc<Cell<Option<gpui::Bounds<Pixels>>>>,
 	question: String,
-	time: String,
+	details: HistoryDetails,
 	answer: String,
+}
+
+#[derive(Clone, Default)]
+struct HistoryDetails {
+	turn_id: Option<String>,
+	started_at_micros: Option<i64>,
+	duration_ms: Option<u64>,
+	steps: Option<usize>,
+	usage: Option<AgentTurnUsageDto>,
+	status: Option<&'static str>,
+}
+
+impl HistoryDetails {
+	fn step_count(&self) -> StepCount {
+		if self.status == Some("In progress") {
+			StepCount::InProgress
+		} else {
+			self.steps.map_or(StepCount::Unknown, StepCount::Known)
+		}
+	}
+}
+
+fn history_turn_details(entries: &[AgentTimelineEntry]) -> BTreeMap<String, HistoryDetails> {
+	let mut turns: BTreeMap<String, HistoryDetails> = BTreeMap::new();
+	for entry in entries {
+		if let AgentTimelineContent::TurnBoundary {
+			turn_id,
+			started_at_micros,
+			duration_ms,
+			usage,
+			completed,
+			status,
+			..
+		} = &entry.content
+		{
+			let details = turns.entry(turn_id.clone()).or_default();
+			details.started_at_micros = started_at_micros.or(details.started_at_micros);
+			if *completed {
+				details.duration_ms = *duration_ms;
+				details.usage.clone_from(usage);
+				details.status = match status.as_deref() {
+					Some("failed") => Some("Failed"),
+					Some("interrupted") => Some("Interrupted"),
+					_ => None,
+				};
+			}
+		}
+	}
+	turns
 }
 
 #[derive(Clone)]
@@ -933,12 +1114,24 @@ pub(super) struct WheelScroll {
 }
 
 struct HistoryPreview {
-	mark: HistoryMark,
+	source: gpui::WeakEntity<AgentSurface>,
 	id: SharedString,
-	dismissed: bool,
+	bounds: Rc<Cell<Option<gpui::Bounds<Pixels>>>>,
+	key: Option<HistoryKey>,
+	open: bool,
+	trigger_hovered: bool,
+	panel_hovered: bool,
+	intent: ui_motion::HoverIntent<()>,
 }
 impl HistoryPreview {
-	fn new(mark: HistoryMark, window: &Window, cx: &mut Context<Self>) -> Self {
+	fn new(
+		source: gpui::WeakEntity<AgentSurface>,
+		window: &Window,
+		cx: &mut Context<Self>,
+	) -> Self {
+		if let Some(source) = source.upgrade() {
+			cx.observe(&source, |_, _, cx| cx.notify()).detach();
+		}
 		let id = SharedString::from(format!("history-preview-{}", cx.entity_id()));
 		let released = id.clone();
 		let parent = window.window_handle();
@@ -946,54 +1139,268 @@ impl HistoryPreview {
 			ui_motion::dismiss_popover(parent, released.into(), cx);
 		})
 		.detach();
-		Self { mark, id, dismissed: false }
+		Self {
+			source,
+			id,
+			bounds: Default::default(),
+			key: None,
+			open: false,
+			trigger_hovered: false,
+			panel_hovered: false,
+			intent: Default::default(),
+		}
+	}
+
+	fn dismiss(&mut self, cx: &mut Context<Self>) {
+		self.intent.cancel();
+		self.open = false;
+		self.trigger_hovered = false;
+		self.panel_hovered = false;
+		cx.notify();
+	}
+
+	fn hover(&mut self, panel: bool, inside: bool, cx: &mut Context<Self>) {
+		if panel {
+			self.panel_hovered = inside;
+		} else {
+			self.trigger_hovered = inside;
+		}
+		self.intent.update(
+			(),
+			self.trigger_hovered || self.panel_hovered,
+			self.open.then_some(()),
+			cx,
+			|preview, next, cx| {
+				preview.intent.settled();
+				preview.open = next.is_some();
+				cx.notify();
+			},
+		);
 	}
 }
 impl Render for HistoryPreview {
 	fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-		let mark = self.mark.clone();
+		let mark = self
+			.source
+			.upgrade()
+			.and_then(|source| source.read(cx).history_preview_mark(self.key.as_ref()?));
 		let owner = cx.entity().downgrade();
-		gpui::div().w(gpui::px(320.)).child(
-			ui_motion::popover_lazy(self.id.clone(), !self.dismissed, move |_, _| {
-				history_preview_content(&mark).into_any_element()
-			})
-			.preview()
-			.on_dismiss(move |cx| {
-				let _ = owner.update(cx, |preview, cx| {
-					preview.dismissed = true;
-					cx.notify();
-				});
-			}),
-		)
+		let hover = owner.clone();
+		let trigger = self.bounds.clone();
+		ui_motion::popover_lazy(self.id.clone(), self.open && mark.is_some(), move |_, _| {
+			mark.as_ref().map_or_else(
+				|| gpui::div().into_any_element(),
+				|mark| {
+					let hover = hover.clone();
+					history_preview_content(mark)
+						.id("history-preview-panel")
+						.on_hover(move |inside, _, cx| {
+							let _ =
+								hover.update(cx, |preview, cx| preview.hover(true, *inside, cx));
+						})
+						.into_any_element()
+				},
+			)
+		})
+		.preview()
+		.left_centered(320.)
+		.trigger(trigger)
+		.on_dismiss(move |cx| {
+			let _ = owner.update(cx, |preview, cx| {
+				preview.dismiss(cx);
+			});
+		})
 	}
 }
 
 fn history_preview_content(mark: &HistoryMark) -> Div {
+	let time = mark.details.started_at_micros;
+	let duration = mark.details.duration_ms;
 	gpui::div()
 		.debug_selector(|| "history-hover-preview".into())
 		.p(gpui::px(10.))
 		.flex()
 		.flex_col()
-		.gap(gpui::px(6.))
-		.text_size(gpui::px(12.0))
-		.line_height(gpui::px(18.0))
-		.child(
-			gpui::div()
-				.text_size(gpui::px(11.0))
-				.text_color(crate::ui_theme::rgb(TEXT_MUTED))
-				.child(mark.time.clone()),
-		)
-		.child(
-			gpui::div()
-				.font_weight(FontWeight::MEDIUM)
-				.text_color(crate::ui_theme::rgb(TEXT))
-				.child(mark.question.clone()),
-		)
+		.text_size(gpui::px(ui_theme::COMPACT_BODY_SIZE))
+		.line_height(gpui::px(ui_theme::COMPACT_BODY_LINE_HEIGHT))
+		.font_weight(gpui::FontWeight::NORMAL)
+		.child(history_preview_text(
+			true,
+			&mark.question,
+			2. * ui_theme::COMPACT_BODY_LINE_HEIGHT,
+			"history-preview-question",
+		))
 		.when(!mark.answer.is_empty(), |panel| {
 			panel.child(
-				gpui::div().text_color(crate::ui_theme::rgb(TEXT_MUTED)).child(mark.answer.clone()),
+				gpui::div()
+					.relative()
+					.mt(gpui::px(10.))
+					.child(
+						ui_theme::menu_separator()
+							.mx(gpui::px(0.))
+							.my(gpui::px(0.))
+							.absolute()
+							.left(gpui::px(0.))
+							.right(gpui::px(0.))
+							.top(gpui::px(-5.25))
+							.debug_selector(|| "history-preview-divider".into()),
+					)
+					.child(history_preview_text(
+						false,
+						&mark.answer,
+						3. * ui_theme::COMPACT_BODY_LINE_HEIGHT,
+						"history-preview-answer",
+					)),
 			)
 		})
+		.child(
+			gpui::div()
+				.debug_selector(|| "history-preview-metadata".into())
+				.mt(gpui::px(ui_theme::METRIC_GROUP_GAP))
+				.w_full()
+				.flex()
+				.items_center()
+				.whitespace_nowrap()
+				.h(gpui::px(ui_theme::CAPTION_LINE_HEIGHT))
+				.text_size(gpui::px(ui_theme::CAPTION_SIZE))
+				.line_height(gpui::px(ui_theme::CAPTION_LINE_HEIGHT))
+				.text_color(ui_theme::metric_ink())
+				.child(history_metric_column("history-preview-time", Metric::Age(time).element()))
+				.child(history_metric_column(
+					"history-preview-duration",
+					Metric::Duration(duration).element(),
+				))
+				.child(history_metric_column(
+					"history-preview-steps",
+					StepMetric { count: mark.details.step_count(), status: mark.details.status },
+				))
+				.child(history_metric_column(
+					"history-preview-input",
+					Metric::Input(mark.details.usage.as_ref().map(|usage| usage.input_tokens))
+						.element(),
+				))
+				.child(history_metric_column(
+					"history-preview-output",
+					Metric::Output(mark.details.usage.as_ref().map(|usage| usage.output_tokens))
+						.element(),
+				)),
+		)
+}
+
+fn history_metric_column(id: &'static str, content: impl IntoElement) -> Div {
+	gpui::div()
+		.debug_selector(move || id.into())
+		.flex_1()
+		.min_w_0()
+		.flex()
+		.items_center()
+		.justify_center()
+		.child(gpui::div().flex_none().debug_selector(move || format!("{id}-value")).child(content))
+}
+
+#[cfg(feature = "visual-capture")]
+impl AgentSurface {
+	#[allow(dead_code)] // The diagnostic executable renders this fixture.
+	pub(crate) fn visual_history_preview_content(scenario: &str) -> Div {
+		let mut mark = HistoryMark {
+			position: Default::default(),
+			hit_bounds: Default::default(),
+			question: preview(
+				"检查 Timeline 的长短消息切换，确认时间、步骤和 token 用量都来自当前这一轮，不要修改正在运行的会话。",
+			),
+			answer: preview(
+				"已检查长、短消息的切换。预览保留同一个窗口，连续划过刻度时不会重新入场。输入和输出用量取自对应轮次；缺少数据时保留横杠，指标位置固定，正文使用完整宽度。",
+			),
+			details: HistoryDetails {
+				started_at_micros: Some(crate::ui_time::now() - 3_600_000_000),
+				duration_ms: Some(31_300),
+				steps: Some(6),
+				usage: Some(AgentTurnUsageDto {
+					input_tokens: 236_500,
+					output_tokens: 328,
+					details: None,
+				}),
+				..Default::default()
+			},
+		};
+		match scenario {
+			"long-values" => {
+				mark.question =
+					"Check long duration, step and token values without moving their columns."
+						.into();
+				mark.answer = "The same five columns remain visible. Long durations use days and hours; token values retain compact units.".into();
+				mark.details.duration_ms = Some(123 * 3_600_000 + 45 * 60_000);
+				mark.details.steps = Some(99_999);
+				mark.details.usage = Some(AgentTurnUsageDto {
+					input_tokens: 999_900_000_000,
+					output_tokens: 999_949_999,
+					details: None,
+				});
+			},
+			"partial" => {
+				mark.question = "Check a response with incomplete metrics.".into();
+				mark.answer = "The available values stay in their original columns.".into();
+				mark.details.duration_ms = None;
+				mark.details.steps = Some(0);
+			},
+			"zero" => mark.details.steps = Some(0),
+			"unknown" => mark.details.steps = None,
+			"running" => mark.details.status = Some("In progress"),
+			"short" => {
+				mark.question = "确认一下结果。".into();
+				mark.answer = "验证完成。".into();
+				mark.details.steps = None;
+			},
+			"missing" => {
+				mark.question =
+					"Check the changes and preserve the original working directory.".into();
+				mark.answer.clear();
+				mark.details = HistoryDetails::default();
+			},
+			_ => {},
+		}
+		let content = history_preview_content(&mark);
+		if scenario == "comparison" {
+			gpui::div().flex().flex_col().child(content).child(
+				gpui::div().px(gpui::px(10.)).pb(gpui::px(10.)).child(
+					super::response_metrics::ResponseMetrics {
+						key: "history-metric-comparison".into(),
+						duration_ms: mark.details.duration_ms,
+						status: None,
+						usage: mark.details.usage,
+						timing: None,
+					},
+				),
+			)
+		} else {
+			content
+		}
+	}
+}
+
+fn history_preview_text(
+	input: bool,
+	text: &str,
+	height: f32,
+	selector: &'static str,
+) -> Stateful<Div> {
+	gpui::div()
+		.id(SharedString::from(format!("{selector}-row")))
+		.w_full()
+		.aria_label(if input { "Input" } else { "Reply" })
+		.flex()
+		.child(
+			gpui::div()
+				.debug_selector(move || selector.into())
+				.w_full()
+				.min_w_0()
+				// GPUI's wrap cache omits the clamp. Clip complete line boxes so
+				// identical input and reply text can have different line limits.
+				.max_h(gpui::px(height))
+				.overflow_hidden()
+				.text_color(ui_theme::rgb(TEXT))
+				.child(text.to_owned()),
+		)
 }
 
 fn navigation_offset(position: f32, maximum: f32) -> f32 {
@@ -1044,6 +1451,10 @@ fn visible_marks(positions: &[f32], top: f32, height: f32) -> std::ops::Range<us
 		.map_or(first + 1, |index| index + 1);
 	first..end
 }
+
+#[cfg(test)]
+#[path = "agent_history_preview_tests.rs"]
+mod preview_tests;
 
 #[cfg(test)]
 mod tests {
@@ -1174,6 +1585,22 @@ mod tests {
 		assert_eq!(rail.right(), transcript.right());
 		assert_eq!(rail.size.width, gpui::px(crate::ui_theme::CONVERSATION_INSET));
 
+		// Passing through must cancel entry, including after the original dwell expires.
+		visual.simulate_mouse_move(bounds.center(), gpui::MouseButton::Left, Default::default());
+		visual.run_until_parked();
+		visual.executor().advance_clock(crate::ui_motion::HOVER_OPEN_DELAY / 2);
+		visual.run_until_parked();
+		visual.simulate_mouse_move(
+			gpui::point(gpui::px(1.), gpui::px(1.)),
+			gpui::MouseButton::Left,
+			Default::default(),
+		);
+		visual.run_until_parked();
+		visual.executor().advance_clock(crate::ui_motion::HOVER_CLOSE_DELAY);
+		visual.run_until_parked();
+		visual.update(crate::ui_frame::draw_current_frame);
+		assert!(visual.debug_bounds("history-hover-preview").is_none());
+
 		visual.simulate_mouse_move(bounds.center(), gpui::MouseButton::Left, Default::default());
 		visual.run_until_parked();
 		visual.update(crate::ui_frame::draw_current_frame);
@@ -1189,6 +1616,22 @@ mod tests {
 
 		assert!(visual.debug_bounds("history-hover-preview").is_some());
 
+		// A brief departure and return must keep the same surface open.
+		visual.simulate_mouse_move(
+			gpui::point(gpui::px(1.), gpui::px(1.)),
+			gpui::MouseButton::Left,
+			Default::default(),
+		);
+		visual.run_until_parked();
+		visual.executor().advance_clock(crate::ui_motion::HOVER_CLOSE_DELAY / 2);
+		visual.run_until_parked();
+		visual.simulate_mouse_move(bounds.center(), gpui::MouseButton::Left, Default::default());
+		visual.run_until_parked();
+		visual.executor().advance_clock(crate::ui_motion::HOVER_CLOSE_DELAY);
+		visual.run_until_parked();
+		visual.update(crate::ui_frame::draw_current_frame);
+		assert!(visual.debug_bounds("history-hover-preview").is_some());
+
 		visual.simulate_mouse_move(
 			gpui::point(gpui::px(1.), gpui::px(1.)),
 			gpui::MouseButton::Left,
@@ -1197,6 +1640,10 @@ mod tests {
 		visual.run_until_parked();
 		visual.update(crate::ui_frame::draw_current_frame);
 
+		assert!(visual.debug_bounds("history-hover-preview").is_some());
+		visual.executor().advance_clock(crate::ui_motion::HOVER_CLOSE_DELAY);
+		visual.run_until_parked();
+		visual.update(crate::ui_frame::draw_current_frame);
 		assert!(visual.debug_bounds("history-hover-preview").is_none());
 	}
 
@@ -1558,7 +2005,7 @@ mod tests {
 
 			let entries = (0..300).map(|i| AgentTimelineEntry {
 				position: i,
-				content: if i % 3 == 2 { decodex_protocol::AgentTimelineContent::TurnBoundary {
+				content: if i % 3 == 2 { decodex_protocol::AgentTimelineContent::TurnBoundary { started_at_micros: None,
 					turn_id: format!("turn-{}", i / 3), completed: true, status: Some("completed".into()),
 					duration_ms: Some(3_200), usage: None, timing: None, usage_summary: None, error: None,
 				} } else { decodex_protocol::AgentTimelineContent::Item { collaboration: None,
@@ -2300,10 +2747,9 @@ phase: None,
 		visual.update(crate::ui_frame::draw_current_frame);
 
 		let button = visual.debug_bounds("jump-to-latest").expect("button while reading history");
+		visual.simulate_click(button.center(), Default::default());
 
 		surface.update(visual, |s, cx| {
-			s.jump_to_latest(cx);
-
 			if let Some(navigation) = &mut s.timeline.navigation {
 				assert!(navigation.id.is_none());
 

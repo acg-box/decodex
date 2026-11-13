@@ -43,6 +43,7 @@ mod ui_performance;
 mod ui_preferences;
 mod ui_scroll;
 mod ui_theme;
+mod ui_time;
 mod ui_work_metrics;
 mod ui_working;
 

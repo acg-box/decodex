@@ -162,3 +162,58 @@ fn keyboard_selection_accounts_for_group_headers_and_repaint_keeps_scroll(
 		assert_eq!(s.workspace.navigation.command_scroll.offset(), before);
 	});
 }
+
+#[gpui::test]
+fn search_reveals_pinned_topics_and_project_agents_without_losing_drafts(
+	cx: &mut gpui::TestAppContext,
+) {
+	bind_commands(cx);
+	let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+	visual.simulate_resize(gpui::size(gpui::px(1440.), gpui::px(1000.)));
+	surface.update(visual, |s, cx| {
+		s.visual_navigation_overview(false, cx);
+		s.open_navigation_conversation("agent", cx);
+		s.composer.update(cx, |input, cx| input.set_content("Keep the original draft", cx));
+	});
+	for (query, id, section) in [
+		("Weekly priorities 1", "personal-topic-0", "pin"),
+		("Review next steps Observability", "navigation-project-11-agent-0", "projects"),
+	] {
+		visual.update(|window, cx| {
+			surface.update(cx, |s, cx| {
+				s.workspace.navigation.collapsed.insert(section);
+				s.workspace.navigation.projects.clear();
+				s.open_global_commands(window, cx);
+			})
+		});
+		surface.update(visual, |s, cx| {
+			s.workspace
+				.navigation
+				.search
+				.as_ref()
+				.unwrap()
+				.update(cx, |input, cx| input.set_content(query, cx));
+			let index = s
+				.global_commands(cx)
+				.iter()
+				.position(
+					|command| matches!(&command.action, Action::Conversation(item) if item.id == id),
+				)
+				.unwrap();
+			s.workspace.navigation.command_index = index;
+		});
+		visual.update(crate::ui_frame::draw_current_frame);
+		visual.simulate_keystrokes("enter");
+		surface.update(visual, |s, cx| {
+			assert_eq!(s.selected.as_deref(), Some(id));
+			assert!(!s.workspace.navigation.collapsed.contains(section));
+			if section == "projects" {
+				assert!(s.workspace.navigation.projects.contains("navigation-project-11"));
+			}
+			assert!(!s.workspace.navigation.command_open);
+			assert!(!s.sending);
+			s.open_navigation_conversation("agent", cx);
+			assert_eq!(s.composer.read(cx).content(), "Keep the original draft");
+		});
+	}
+}

@@ -305,10 +305,14 @@ fn turn_boundary(row: &Value) -> Option<AgentTimelineContent> {
 	};
 
 	Some(AgentTimelineContent::TurnBoundary {
-		turn_id: id(&row["turnId"])?,
+		turn_id: id(&row["turn_id"])?,
 		completed,
 		status,
-		duration_ms: row["durationMs"].as_u64(),
+		started_at_micros: row["started_at"]
+			.as_i64()
+			.filter(|time| *time > 0)
+			.and_then(|time| time.checked_mul(1_000_000)),
+		duration_ms: row["duration_ms"].as_u64(),
 		usage: None,
 		timing: None,
 		usage_summary: None,
@@ -793,9 +797,31 @@ mod tests {
 	}
 
 	#[test]
+	fn native_boundary_preserves_seconds_as_microseconds_and_unknown_time_stays_unknown() {
+		let mut row = serde_json::json!({"type":"turnCompleted","position":9,
+			"turn_id":"turn","started_at":1_800_000_000,"completed_at":1_800_000_005,
+			"status":"completed","duration_ms":5_000});
+		assert!(matches!(
+			timeline::entry(&row).unwrap().content,
+			AgentTimelineContent::TurnBoundary {
+				started_at_micros: Some(1_800_000_000_000_000),
+				duration_ms: Some(5_000),
+				..
+			}
+		));
+		for missing in [serde_json::Value::Null, serde_json::json!(0), serde_json::json!(-1)] {
+			row["started_at"] = missing;
+			assert!(matches!(
+				timeline::entry(&row).unwrap().content,
+				AgentTimelineContent::TurnBoundary { started_at_micros: None, .. }
+			));
+		}
+	}
+
+	#[test]
 	fn failed_turn_keeps_public_reason_and_explicit_bounds() {
-		let mut row = serde_json::json!({"type":"turnCompleted","position":9,"turnId":"turn",
-			"status":"failed","durationMs":5,"error":{"message":"Model is overloaded. Try again.","additionalDetails":"private raw metadata"}});
+		let mut row = serde_json::json!({"type":"turnCompleted","position":9,"turn_id":"turn",
+			"status":"failed","duration_ms":5,"error":{"message":"Model is overloaded. Try again.","additionalDetails":"private raw metadata"}});
 		let projected = timeline::entry(&row).unwrap();
 
 		assert!(

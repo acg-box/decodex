@@ -375,7 +375,7 @@ mod tests {
 					("thread/read", serde_json::json!({"thread":{"id":"thread"}})),
 					(
 						"thread/timeline/list",
-						serde_json::json!({"data":[{"type":"turnCompleted","position":1,"turnId":"turn","status":"completed","error":null},{"type":"turnCompleted","position":2,"turnId":"unreported","status":"completed","error":null}],"nextCursor":null,"activeRealtimeSessionAtPageStart":null}),
+						serde_json::json!({"data":[{"type":"turnCompleted","position":1,"turn_id":"turn","status":"completed","error":null},{"type":"turnCompleted","position":2,"turn_id":"unreported","status":"completed","error":null}],"nextCursor":null,"activeRealtimeSessionAtPageStart":null}),
 					),
 				] {
 					let request: serde_json::Value =

@@ -9,25 +9,25 @@
       "completedRunId": "dc4ee244-070c-47ed-b00e-7a02f76a8295"
     },
     "/openwiki/architecture/conversation-presentation.md": {
-      "pageVersion": "sha256:d57b1a0fd65dc09f6a907d3a8462abcccaf75d541a5474ed758752ef3fd556c0",
+      "pageVersion": "sha256:8033f624f252d6c704b799c2a99da5574ffad3c979b6d227f78102c971691cf6",
       "completedBy": "codex",
-      "completedRunId": "024d4d66-677a-40b3-bfd9-021ac45d5efe",
-      "gitHead": "7308c757f7455d85fb4a4c0845d369a53b9d5676",
-      "sourceFingerprint": "sha256:c8e23f7d7883d6c491479fcedea47ae27156fe5380d16cc32f716873f6556e68"
+      "completedRunId": "b69a8496-62ca-4fce-a4ad-5b8f17a4ece3",
+      "gitHead": "7e9f5634e5c5be8022776b811aef67be2a02a7d5",
+      "sourceFingerprint": "sha256:4e73f1ed56a4b6fe2faf776614673bba9b41d3a947d0b4d3338b2aa5d543e447"
     },
     "/openwiki/architecture/design-language.md": {
-      "gitHead": "eb85d3eb776042dd8b0905da5d3d054154623274",
-      "sourceFingerprint": "sha256:4f43f5279847e3cd890f76f1ca4d2b493db4b6dc150ba970e92da9473829f0d6",
-      "pageVersion": "sha256:798d081feb03f7ac7665459de93243fdf33fa94ab266783a16883a60d4c38e4a",
+      "pageVersion": "sha256:673219e523001f33630b5f5f659462db0c71f876dd87e1bf31c552deda9e4a64",
       "completedBy": "codex",
-      "completedRunId": "d0f16185-cdb3-4921-b487-19fdc493d504"
+      "completedRunId": "b69a8496-62ca-4fce-a4ad-5b8f17a4ece3",
+      "gitHead": "7e9f5634e5c5be8022776b811aef67be2a02a7d5",
+      "sourceFingerprint": "sha256:4e73f1ed56a4b6fe2faf776614673bba9b41d3a947d0b4d3338b2aa5d543e447"
     },
     "/openwiki/architecture/desktop-workspace.md": {
-      "gitHead": "24c62584ed7f4e58118b2e7461b2a6d71bcdda5f",
-      "sourceFingerprint": "sha256:64e23988c5ccbb8a1146fe807ded5a1d093223d229beb771969e8ac7a69d4690",
-      "pageVersion": "sha256:6d6c802c5ea6951516f092296544f48907d330c0b96c5df40c24a2638533a477",
+      "pageVersion": "sha256:0b0a1ed15c883e0d33dd94a7857e5565a81b3e9910cdcc455ddb764e97af0dd9",
       "completedBy": "codex",
-      "completedRunId": "63c69e0c-9b96-47c3-b108-10e359e03c4a"
+      "completedRunId": "b69a8496-62ca-4fce-a4ad-5b8f17a4ece3",
+      "gitHead": "7e9f5634e5c5be8022776b811aef67be2a02a7d5",
+      "sourceFingerprint": "sha256:4e73f1ed56a4b6fe2faf776614673bba9b41d3a947d0b4d3338b2aa5d543e447"
     },
     "/openwiki/architecture/runtime-architecture.md": {
       "gitHead": "83b4405c032c031198d2ed361e6888b471b09ed0",
@@ -128,11 +128,11 @@
       "completedRunId": "446a8a3f-6d00-456b-8817-b4bfbc5a0ae8"
     },
     "/openwiki/operations/codex-upstream-autopilot.md": {
+      "gitHead": "7308c757f7455d85fb4a4c0845d369a53b9d5676",
+      "sourceFingerprint": "sha256:c8e23f7d7883d6c491479fcedea47ae27156fe5380d16cc32f716873f6556e68",
       "pageVersion": "sha256:82a4ea9b2fcd424181b8a8ca9716d32de2cfc5d49256036173cffeafc50c3cdc",
       "completedBy": "codex",
-      "completedRunId": "024d4d66-677a-40b3-bfd9-021ac45d5efe",
-      "gitHead": "7308c757f7455d85fb4a4c0845d369a53b9d5676",
-      "sourceFingerprint": "sha256:c8e23f7d7883d6c491479fcedea47ae27156fe5380d16cc32f716873f6556e68"
+      "completedRunId": "024d4d66-677a-40b3-bfd9-021ac45d5efe"
     },
     "/openwiki/operations/commands-and-validation.md": {
       "gitHead": "ca565aaf3e5dcd3928d78d057bc556ed132a4ca2",
@@ -219,11 +219,11 @@
       "completedRunId": "446a8a3f-6d00-456b-8817-b4bfbc5a0ae8"
     },
     "/openwiki/testing/upstream-acceptance-boundaries.md": {
+      "gitHead": "7308c757f7455d85fb4a4c0845d369a53b9d5676",
+      "sourceFingerprint": "sha256:c8e23f7d7883d6c491479fcedea47ae27156fe5380d16cc32f716873f6556e68",
       "pageVersion": "sha256:e98518fe9f38c18ad861d34b5d32e1d11e5ba1e924a1c4b4032b454fe71f284b",
       "completedBy": "codex",
-      "completedRunId": "024d4d66-677a-40b3-bfd9-021ac45d5efe",
-      "gitHead": "7308c757f7455d85fb4a4c0845d369a53b9d5676",
-      "sourceFingerprint": "sha256:c8e23f7d7883d6c491479fcedea47ae27156fe5380d16cc32f716873f6556e68"
+      "completedRunId": "024d4d66-677a-40b3-bfd9-021ac45d5efe"
     },
     "/openwiki/workflows/approvals-and-native-ownership.md": {
       "gitHead": "fac5349d14a3f0219d6e1817c3d4737539be5f5e",

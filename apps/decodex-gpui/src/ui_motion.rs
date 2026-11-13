@@ -310,6 +310,54 @@ impl RenderOnce for Arrival {
 }
 
 /// Resolve final dimensions before the complete surface arrives.
+#[derive(Clone, Copy, Default)]
+enum PopoverPlacement {
+	#[default]
+	Below,
+	Above,
+	LeftCenter(Pixels),
+}
+impl PopoverPlacement {
+	fn origin(
+		self,
+		origin: gpui::Point<Pixels>,
+		size: gpui::Size<Pixels>,
+		trigger: Option<Bounds<Pixels>>,
+	) -> gpui::Point<Pixels> {
+		match self {
+			Self::Below => origin,
+			Self::Above => gpui::point(
+				origin.x,
+				trigger.map_or(origin.y, |trigger| trigger.top())
+					- size.height
+					- gpui::px(ui_theme::POPOVER_GAP),
+			),
+			Self::LeftCenter(_) => trigger.map_or(origin, |trigger| {
+				gpui::point(
+					trigger.left() - size.width - gpui::px(ui_theme::POPOVER_GAP),
+					trigger.center().y - size.height / 2.,
+				)
+			}),
+		}
+	}
+}
+
+/// First presentation uses the measured height; subsequent changes retain one curve.
+fn popover_height(
+	motion: &mut Option<Tween>,
+	target: Pixels,
+	window: &mut Window,
+	cx: &mut App,
+) -> Pixels {
+	let now = cx.background_executor().now();
+	let motion = motion.get_or_insert_with(|| Tween::new(f32::from(target)));
+	motion.target(f32::from(target), now);
+	if motion.moving(now) {
+		request_frame(window, cx);
+	}
+	gpui::px(motion.sample(now))
+}
+
 #[derive(IntoElement)]
 pub(crate) struct Popover {
 	id: ElementId,
@@ -318,7 +366,7 @@ pub(crate) struct Popover {
 	content: Option<std::rc::Rc<PopoverContent>>,
 	dismiss: std::rc::Rc<dyn Fn(&mut App)>,
 	trigger: std::rc::Rc<std::cell::Cell<Option<gpui::Bounds<gpui::Pixels>>>>,
-	above: bool,
+	placement: PopoverPlacement,
 	preview: bool,
 	focus: Option<gpui::FocusHandle>,
 }
@@ -330,12 +378,19 @@ type PopoverContent = dyn Fn(&mut Window, &mut App) -> AnyElement;
 pub(crate) struct MaterialSurface {
 	id: ElementId,
 	radius: f64,
+	opacity: f32,
 	clip: Option<Bounds<Pixels>>,
 	content: std::rc::Rc<PopoverContent>,
 	dismiss: std::rc::Rc<dyn Fn(&mut App)>,
 	escape: std::rc::Rc<dyn Fn(&mut App)>,
 }
 impl MaterialSurface {
+	/// Fade the material and foreground together without adding a second surface.
+	pub(crate) fn opacity(mut self, opacity: f32) -> Self {
+		self.opacity = opacity.clamp(0., 1.);
+		self
+	}
+
 	/// Morph a material inside a stable drawable without rescaling its contents.
 	pub(crate) fn clip(mut self, bounds: Bounds<Pixels>) -> Self {
 		self.clip = Some(bounds);
@@ -354,7 +409,7 @@ impl RenderOnce for MaterialSurface {
 		if native_popover::available() {
 			return native_popover::render_surface(
 				self.id,
-				MaterialGeometry { radius: self.radius, clip: self.clip },
+				MaterialGeometry { radius: self.radius, clip: self.clip, opacity: self.opacity },
 				self.content,
 				self.dismiss,
 				self.escape,
@@ -378,6 +433,7 @@ impl RenderOnce for MaterialSurface {
 		gpui::div()
 			.relative()
 			.size_full()
+			.opacity(self.opacity)
 			.child(backdrop)
 			.child((self.content)(window, cx))
 			.into_any_element()
@@ -394,6 +450,7 @@ pub(crate) fn material_surface(
 	MaterialSurface {
 		id: id.into(),
 		radius,
+		opacity: 1.,
 		clip: None,
 		content: std::rc::Rc::new(content),
 		escape: dismiss.clone(),
@@ -406,6 +463,7 @@ pub(crate) fn material_surface(
 pub(crate) struct MaterialGeometry {
 	pub radius: f64,
 	pub clip: Option<Bounds<Pixels>>,
+	pub opacity: f32,
 }
 
 pub(crate) fn hide_material_surface(id: impl Into<ElementId>, window: &Window, cx: &mut App) {
@@ -455,7 +513,13 @@ impl Popover {
 	}
 
 	pub(crate) fn above(mut self) -> Self {
-		self.above = true;
+		self.placement = PopoverPlacement::Above;
+		self
+	}
+
+	/// Keep a changing preview centered beside its complete trigger group.
+	pub(crate) fn left_centered(mut self, width: f32) -> Self {
+		self.placement = PopoverPlacement::LeftCenter(gpui::px(width));
 		self
 	}
 
@@ -495,6 +559,39 @@ impl RenderOnce for Popover {
 		});
 		if moving {
 			request_frame(window, cx);
+		}
+		if let PopoverPlacement::LeftCenter(width) = self.placement {
+			let motion = window.use_keyed_state(
+				SharedString::from(format!("popover-height-{:?}", self.id)),
+				cx,
+				|_, _| None,
+			);
+			if !self.visible {
+				motion.update(cx, |motion, _| *motion = None);
+				return gpui::div().into_any_element();
+			}
+			let origin =
+				self.placement.origin(Default::default(), Default::default(), self.trigger.get());
+			let content = crate::ui_layout::resized(width, child, move |mut size, window, cx| {
+				size.height =
+					motion.update(cx, |motion, cx| popover_height(motion, size.height, window, cx));
+				size
+			});
+			return gpui::anchored()
+				.anchor(gpui::Anchor::RightCenter)
+				.position(origin)
+				.snap_to_window_with_margin(gpui::px(ui_theme::CONTROL_MARGIN))
+				.child(
+					gpui::div()
+						.w(width)
+						.relative()
+						.top(gpui::px(ui_theme::POPOVER_OFFSET * (1. - opacity)))
+						.opacity(opacity)
+						.debug_selector(|| "popover-surface".into())
+						.map(menu_surface)
+						.child(content),
+				)
+				.into_any_element();
 		}
 		// The complete surface arrives together; its size and text scale stay fixed.
 		gpui::div()
@@ -788,7 +885,7 @@ pub(crate) fn popover(id: impl Into<ElementId>, visible: bool, child: impl IntoE
 		content: None,
 		dismiss: std::rc::Rc::new(|_| {}),
 		trigger: Default::default(),
-		above: false,
+		placement: PopoverPlacement::Below,
 		preview: false,
 		focus: None,
 	}
@@ -807,7 +904,7 @@ pub(crate) fn popover_lazy(
 		content: Some(std::rc::Rc::new(content)),
 		dismiss: std::rc::Rc::new(|_| {}),
 		trigger: Default::default(),
-		above: false,
+		placement: PopoverPlacement::Below,
 		preview: false,
 		focus: None,
 	}
@@ -818,6 +915,107 @@ mod tests {
 	use std::time::{Duration, Instant};
 
 	use crate::ui_motion::Tween;
+
+	#[gpui::test]
+	fn centered_previews_keep_their_center_during_resize_and_fit_window_edges(
+		cx: &mut gpui::TestAppContext,
+	) {
+		use gpui::{IntoElement, Render, prelude::*};
+		use std::{cell::Cell, rc::Rc};
+		struct Preview {
+			height: f32,
+			open: bool,
+			trigger: Rc<Cell<Option<gpui::Bounds<gpui::Pixels>>>>,
+		}
+		impl Render for Preview {
+			fn render(
+				&mut self,
+				_: &mut gpui::Window,
+				_: &mut gpui::Context<Self>,
+			) -> impl IntoElement {
+				gpui::div().size_full().child(
+					super::popover(
+						"centered-preview",
+						self.open,
+						gpui::div().h(gpui::px(self.height)),
+					)
+					.preview()
+					.left_centered(320.)
+					.trigger(self.trigger.clone()),
+				)
+			}
+		}
+		let trigger = Rc::new(Cell::new(Some(gpui::Bounds::new(
+			gpui::point(gpui::px(700.), gpui::px(220.)),
+			gpui::size(gpui::px(10.), gpui::px(40.)),
+		))));
+		let (view, visual) = cx.add_window_view(|_, _| Preview {
+			height: 88.,
+			open: true,
+			trigger: trigger.clone(),
+		});
+		visual.update(crate::ui_frame::draw_current_frame);
+		std::thread::sleep(crate::ui_theme::POPOVER_ARRIVAL + Duration::from_millis(10));
+		visual.update(crate::ui_frame::draw_current_frame);
+		let initial = visual.debug_bounds("popover-surface").unwrap();
+		assert_eq!(initial.size.height, gpui::px(89.)); // Include the shared outline.
+		assert!((initial.center().y - gpui::px(240.)).abs() <= gpui::px(0.5));
+		view.update(visual, |view, cx| {
+			view.height = 142.;
+			cx.notify();
+		});
+		visual.update(crate::ui_frame::draw_current_frame);
+		assert_eq!(
+			visual.debug_bounds("popover-surface").unwrap(),
+			initial,
+			"a new height must not jump"
+		);
+		visual.executor().advance_clock(Duration::from_millis(80));
+		visual.update(crate::ui_frame::draw_current_frame);
+		let middle = visual.debug_bounds("popover-surface").unwrap();
+		assert!(middle.size.height > initial.size.height && middle.size.height < gpui::px(143.));
+		assert!(
+			(middle.center().y - gpui::px(240.)).abs() <= gpui::px(0.5),
+			"centered frame: {middle:?}"
+		);
+		view.update(visual, |view, cx| {
+			view.height = 88.;
+			cx.notify();
+		});
+		visual.update(crate::ui_frame::draw_current_frame);
+		assert_eq!(
+			visual.debug_bounds("popover-surface").unwrap(),
+			middle,
+			"reversal must retain its current position"
+		);
+		visual.executor().advance_clock(Duration::from_millis(220));
+		visual.update(crate::ui_frame::draw_current_frame);
+		assert_eq!(visual.debug_bounds("popover-surface").unwrap(), initial);
+		let viewport = visual.update(|window, _| window.viewport_size());
+		for center in [gpui::px(0.), viewport.height] {
+			view.update(visual, |view, cx| {
+				view.open = false;
+				cx.notify();
+			});
+			visual.update(crate::ui_frame::draw_current_frame);
+			trigger.set(Some(gpui::Bounds::new(
+				gpui::point(gpui::px(700.), center),
+				gpui::size(gpui::px(10.), gpui::px(0.)),
+			)));
+			view.update(visual, |view, cx| {
+				view.open = true;
+				view.height = 142.;
+				cx.notify();
+			});
+			visual.update(crate::ui_frame::draw_current_frame);
+			std::thread::sleep(crate::ui_theme::POPOVER_ARRIVAL + Duration::from_millis(10));
+			visual.update(crate::ui_frame::draw_current_frame);
+			let bounds = visual.debug_bounds("popover-surface").unwrap();
+			assert_eq!(bounds.size.height, gpui::px(143.), "reopening uses its final size");
+			assert!(bounds.top() >= gpui::px(crate::ui_theme::CONTROL_MARGIN));
+			assert!(bounds.bottom() <= viewport.height - gpui::px(crate::ui_theme::CONTROL_MARGIN));
+		}
+	}
 
 	#[test]
 	fn attached_surfaces_keep_the_shared_control_baseline() {

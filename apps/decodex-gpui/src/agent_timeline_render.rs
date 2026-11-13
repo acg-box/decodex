@@ -1676,6 +1676,7 @@ mod tests {
 					s.timeline.native.entries.push(AgentTimelineEntry {
 						position: 2,
 						content: AgentTimelineContent::TurnBoundary {
+							started_at_micros: None,
 							turn_id: "turn".into(),
 							completed: true,
 							status: Some("completed".into()),
@@ -1905,7 +1906,7 @@ phase: None,
 			},
 			AgentTimelineEntry {
 				position: 5,
-				content: AgentTimelineContent::TurnBoundary {
+				content: AgentTimelineContent::TurnBoundary { started_at_micros: None,
 					turn_id: "turn".into(),
 					completed: true,
 					status: Some("failed".into()),

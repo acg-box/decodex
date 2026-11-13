@@ -102,15 +102,15 @@ impl AgentSurface {
 					.rounded(gpui::px(4.))
 					.opacity(if enabled { 1. } else { 0.35 })
 					.when(enabled, |button| button.cursor_pointer())
-					.text_color(ui_theme::rgb(if confirming {
-						ui_theme::ERROR
+					.text_color(if confirming {
+						ui_theme::rgb(ui_theme::ERROR)
 					} else if action == "pin"
 						&& self.workspace.navigation.preferences.pinned.contains(&item.id)
 					{
-						ui_theme::BLUE
+						super::style::section_color(super::Section::Pin)
 					} else {
-						ui_theme::TEXT_MUTED
-					}))
+						ui_theme::rgb(ui_theme::TEXT_MUTED)
+					})
 					.hover(|s| s.bg(ui_theme::rgba(ui_theme::HOVER_FILL)))
 					.focus_visible(|s| s.bg(ui_theme::rgba(ui_theme::HOVER_FILL)))
 					.tooltip(move |_, cx| {

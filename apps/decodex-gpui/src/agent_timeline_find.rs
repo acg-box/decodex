@@ -557,6 +557,7 @@ mod tests {
 		entries.push(AgentTimelineEntry {
 			position: 13,
 			content: AgentTimelineContent::TurnBoundary {
+				started_at_micros: None,
 				turn_id: "turn".into(),
 				completed: true,
 				status: Some("completed".into()),

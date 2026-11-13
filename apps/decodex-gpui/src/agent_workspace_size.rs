@@ -1254,13 +1254,14 @@ mod tests {
 		);
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
+			s.visual_personal_navigation(cx);
 			s.workspace.sidebar_visible = false;
 			s.workspace.sidebar_peek = false;
 			cx.notify();
 		});
 		visual.update(crate::ui_frame::draw_current_frame);
 		let collapsed = visual.debug_bounds("left-panel-slot").unwrap();
-		let mark = visual.debug_bounds("conversation-mark-navigation-recent-agent").unwrap();
+		let mark = visual.debug_bounds("conversation-mark-navigation-assistant-agent").unwrap();
 		let command = visual.debug_bounds("navigation-command-entry").unwrap().origin;
 		assert_eq!(f32::from(collapsed.size.width), 40.);
 		visual.simulate_mouse_move(collapsed.center(), None, Default::default());
@@ -1286,7 +1287,10 @@ mod tests {
 			visual.debug_bounds("workspace-navigation-pane").unwrap().size.width
 				> collapsed.size.width
 		);
-		assert_eq!(visual.debug_bounds("conversation-mark-navigation-recent-agent").unwrap(), mark);
+		assert_eq!(
+			visual.debug_bounds("conversation-mark-navigation-assistant-agent").unwrap(),
+			mark
+		);
 		assert_eq!(visual.debug_bounds("navigation-command-entry").unwrap().origin, command);
 		surface.read_with(visual, |s, _| {
 			assert!(s.workspace.sidebar_peek);
@@ -1322,6 +1326,7 @@ mod tests {
 		visual.simulate_resize(gpui::size(gpui::px(1400.), gpui::px(900.)));
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
+			s.visual_personal_navigation(cx);
 			s.workspace.sidebar_visible = true;
 			s.workspace.sidebar_motion = Default::default();
 			cx.notify();
@@ -1329,7 +1334,7 @@ mod tests {
 		visual.update(crate::ui_frame::draw_current_frame);
 		let open = visual.debug_bounds("left-panel-slot").unwrap();
 		let command = visual.debug_bounds("navigation-command-entry").unwrap();
-		let mark = visual.debug_bounds("conversation-mark-navigation-recent-agent").unwrap();
+		let mark = visual.debug_bounds("conversation-mark-navigation-assistant-agent").unwrap();
 		visual.update(|window, cx| {
 			surface.update(cx, |s, cx| s.toggle_workspace_sidebar(window, cx))
 		});
@@ -1341,7 +1346,10 @@ mod tests {
 		let closing = visual.debug_bounds("left-panel-slot").unwrap();
 		assert!(closing.size.width < open.size.width && closing.size.width > gpui::px(40.));
 		assert_eq!(visual.debug_bounds("navigation-command-entry").unwrap(), command);
-		assert_eq!(visual.debug_bounds("conversation-mark-navigation-recent-agent").unwrap(), mark);
+		assert_eq!(
+			visual.debug_bounds("conversation-mark-navigation-assistant-agent").unwrap(),
+			mark
+		);
 		visual.update(|window, cx| {
 			surface.update(cx, |s, cx| s.toggle_workspace_sidebar(window, cx))
 		});
@@ -1370,7 +1378,10 @@ mod tests {
 			gpui::px(28.)
 		);
 		assert!(visual.debug_bounds("navigation-create-assistant").is_none());
-		assert_eq!(visual.debug_bounds("conversation-mark-navigation-recent-agent").unwrap(), mark);
+		assert_eq!(
+			visual.debug_bounds("conversation-mark-navigation-assistant-agent").unwrap(),
+			mark
+		);
 	}
 
 	#[gpui::test]

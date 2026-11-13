@@ -2192,6 +2192,7 @@ mod tests {
 				s.timeline.native.entries = vec![AgentTimelineEntry {
 					position: 1,
 					content: AgentTimelineContent::TurnBoundary {
+						started_at_micros: None,
 						turn_id: "turn".into(),
 						completed: true,
 						status: Some(status.into()),

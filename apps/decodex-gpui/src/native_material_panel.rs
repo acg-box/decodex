@@ -466,13 +466,17 @@ impl MaterialPanel {
 
 	/// Reveal the prepared content as one surface, without resizing its texture.
 	pub(crate) fn set_open(&mut self, open: bool) {
+		self.set_open_at_opacity(open, 1.);
+	}
+
+	pub(crate) fn set_open_at_opacity(&mut self, open: bool, opacity: f32) {
 		if !open {
 			self.set_visible(false);
 			self.presented = false;
 			return;
 		}
 		self.prepare_open();
-		self.set_opacity(1.);
+		self.set_opacity(opacity);
 		if !self.presented {
 			self.presented = true;
 			self.material_view.setAlphaValue(1.);
@@ -483,7 +487,9 @@ impl MaterialPanel {
 				}
 			}
 			self.refresh_shadow();
-			if crate::ui_frame::reduced() {
+			// An owner that fades the complete surface must not receive a second
+			// native arrival animation on top of the same transition.
+			if crate::ui_frame::reduced() || opacity < 1. {
 				return;
 			}
 			unsafe {
@@ -803,6 +809,7 @@ pub(crate) fn observed_rendering(window: &Window) -> Option<Value> {
 
 		Some(serde_json::json!({
 			"window_shadow": native.hasShadow(),
+			"window_alpha": native.alphaValue(),
 			"window_background_alpha": background_alpha,
 			"gpui_scale": window.scale_factor(),
 			"gpui_viewport": [f32::from(viewport.width), f32::from(viewport.height)],

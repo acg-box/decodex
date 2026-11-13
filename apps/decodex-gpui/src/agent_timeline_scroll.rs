@@ -722,6 +722,7 @@ mod tests {
 			s.timeline.native.entries = entries.clone();
 
 			let group = super::super::groups::Group {
+				input_index: None,
 				turn: "turn".into(),
 				turns: ["turn".into()].into(),
 				indices: vec![2],

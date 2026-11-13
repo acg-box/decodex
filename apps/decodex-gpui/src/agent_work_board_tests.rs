@@ -963,6 +963,7 @@ fn new_turn_start_clears_previous_terminal_outcome() {
 	let boundary = |position, completed, status: &str| AgentTimelineEntry {
 		position,
 		content: AgentTimelineContent::TurnBoundary {
+			started_at_micros: None,
 			turn_id: position.to_string(),
 			completed,
 			status: Some(status.into()),

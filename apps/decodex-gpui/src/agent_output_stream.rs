@@ -275,6 +275,7 @@ mod tests {
 			s.timeline.native.entries.push(AgentTimelineEntry {
 				position: 4,
 				content: AgentTimelineContent::TurnBoundary {
+					started_at_micros: None,
 					turn_id: "current".into(),
 					completed: true,
 					status: Some("completed".into()),

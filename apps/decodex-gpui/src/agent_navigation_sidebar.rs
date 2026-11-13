@@ -51,7 +51,7 @@ pub(super) struct State {
 impl Default for State {
 	fn default() -> Self {
 		Self {
-			collapsed: HashSet::from(["assistant"]),
+			collapsed: HashSet::new(),
 			projects: HashSet::new(),
 			preferences: model::Preferences::load(),
 			menu: None,
@@ -117,6 +117,24 @@ impl AgentSurface {
 		self.workspace.work_detail = None;
 		self.workspace.navigation.menu = None;
 		self.open_page(id, cx);
+	}
+
+	pub(super) fn reveal_navigation_conversation(&mut self, id: &str, cx: &Context<Self>) {
+		let Some(item) = self.navigation_items(cx).into_iter().find(|item| item.id == id) else {
+			return;
+		};
+		let section = if self.workspace.navigation.preferences.pinned.contains(id) {
+			Section::Pin
+		} else if item.assistant {
+			Section::Assistant
+		} else {
+			Section::Projects
+		};
+		self.workspace.navigation.collapsed.remove(section.key());
+		if section == Section::Projects {
+			self.workspace.navigation.projects.insert(item.project.unwrap_or_default());
+		}
+		self.prepare_navigation_reveal(id, section.key());
 	}
 
 	pub(super) fn navigation_work_context(&self) -> Option<AnyElement> {
@@ -342,7 +360,7 @@ impl AgentSurface {
 				);
 			}
 		} else {
-			for section in [Section::Pin, Section::Recent, Section::Assistant, Section::Projects] {
+			for section in Section::ALL {
 				let mut content = gpui::div().flex().flex_col();
 				let mut populated = false;
 				let pref = self.workspace.navigation.preferences.section(section);
@@ -355,9 +373,14 @@ impl AgentSurface {
 						.filter(|item| match section {
 							Section::Pin =>
 								self.workspace.navigation.preferences.pinned.contains(&item.id),
-							Section::Recent =>
-								!self.workspace.navigation.preferences.pinned.contains(&item.id),
-							Section::Assistant => item.assistant,
+							Section::Assistant =>
+								item.assistant
+									&& !self
+										.workspace
+										.navigation
+										.preferences
+										.pinned
+										.contains(&item.id),
 							Section::Projects => false,
 						})
 						.cloned()
@@ -571,7 +594,6 @@ impl AgentSurface {
 		);
 		let glyph = match section {
 			Section::Pin => Glyph::Pin,
-			Section::Recent => Glyph::Recent,
 			Section::Assistant => Glyph::Assistant,
 			Section::Projects => Glyph::Folder,
 		};
@@ -916,7 +938,7 @@ impl AgentSurface {
 		let key_target = target.clone();
 		let outside_key = key.clone();
 		let enter = key.clone();
-		let timestamp = Self::navigation_timestamp(item.updated);
+		let timestamp = crate::ui_time::timestamp(item.updated);
 		let mut row =
 			gpui::div()
 				.id(SharedString::from(format!("navigation-row-{key}")))
@@ -1070,6 +1092,33 @@ impl AgentSurface {
 
 #[cfg(any(test, feature = "visual-capture"))]
 impl AgentSurface {
+	pub(super) fn visual_navigation_overview(&mut self, compact: bool, cx: &mut Context<Self>) {
+		self.visual_navigation_hierarchy(compact, cx);
+		let snapshot = self.snapshot.as_mut().expect("visual workspace");
+		let seed = snapshot.work_items[0].clone();
+		let now = crate::ui_time::now();
+		for index in 0..40 {
+			let mut topic = seed.clone();
+			topic.id = format!("personal-topic-{index}");
+			topic.title = format!(
+				"{} {}",
+				["Weekly priorities", "Release planning", "Research notes", "Writing review"]
+					[index % 4],
+				index / 4 + 1
+			);
+			topic.codex_thread_id = Some(format!("personal-thread-{index}"));
+			topic.updated_at_micros = now - index as i64 * 900_000_000;
+			snapshot.assistant.topic_ids.push(topic.id.clone());
+			snapshot.work_items.push(topic);
+		}
+		self.workspace.navigation.collapsed.clear();
+		self.workspace.navigation.preferences.pinned = std::collections::BTreeSet::from([
+			"personal-topic-0".into(),
+			"navigation-project-0-agent-0".into(),
+		]);
+		cx.notify();
+	}
+
 	pub(super) fn visual_navigation_hierarchy(&mut self, compact: bool, cx: &mut Context<Self>) {
 		self.visual_workspace_fixture(cx);
 		self.visual_personal_navigation(cx);
@@ -1121,7 +1170,7 @@ impl AgentSurface {
 		}
 		self.workspace.navigation.projects =
 			HashSet::from(["navigation-project-0".into(), "navigation-project-1".into()]);
-		self.workspace.navigation.collapsed = HashSet::from(["pin", "recent", "assistant"]);
+		self.workspace.navigation.collapsed = HashSet::from(["pin", "assistant"]);
 		self.workspace.sidebar_visible = !compact;
 		self.workspace.sidebar_peek = false;
 		self.workspace.work_detail = None;
@@ -1244,7 +1293,7 @@ fn navigation_item_tooltip(
 	let measured = bounds.clone();
 	let title = (!expanded).then(|| item.title.clone());
 	let owner = item.owner.clone();
-	let time = AgentSurface::navigation_timestamp(item.updated);
+	let time = crate::ui_time::timestamp(item.updated);
 	row.tooltip(move |_, cx| {
 		cx.new(|_| NavigationTip {
 			title: title.clone(),
@@ -1366,7 +1415,7 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) -> gpui::ScrollAnchor {
 		let scroll = navigation_scroll(
-			if ["pin", "recent", "assistant"].contains(&group) { group } else { "main" },
+			if ["pin", "assistant"].contains(&group) { group } else { "main" },
 			window,
 			cx,
 		);
@@ -1389,7 +1438,7 @@ impl AgentSurface {
 				if started.elapsed() >= std::time::Duration::from_millis(200)
 					|| crate::ui_motion::reduced()
 				{
-					if ["pin", "recent", "assistant"].contains(&group) {
+					if ["pin", "assistant"].contains(&group) {
 						navigation_scroll("main", window, cx)
 							.set_offset(gpui::point(gpui::px(0.), gpui::px(0.)));
 					}
@@ -1411,7 +1460,11 @@ impl AgentSurface {
 			loop {
 				cx.background_executor().timer(std::time::Duration::from_secs(60)).await;
 				if owner
-					.update(cx, |s, cx| s.presentations.sidebar.update(cx, |_, cx| cx.notify()))
+					.update(cx, |s, cx| {
+						s.presentations.sidebar.update(cx, |_, cx| cx.notify());
+						// Conversation previews observe this owner and share the same clock.
+						cx.notify();
+					})
 					.is_err()
 				{
 					break;
@@ -1455,7 +1508,7 @@ fn navigation_item_label(
 }
 
 fn navigation_item_time(item: &Item, actions: f32, reveal: &PanelReveal) -> impl gpui::IntoElement {
-	gpui::div()
+	ui_theme::metric_text()
 		.absolute()
 		.right(gpui::px(5.))
 		.w(gpui::px(34.))
@@ -1464,9 +1517,11 @@ fn navigation_item_time(item: &Item, actions: f32, reveal: &PanelReveal) -> impl
 		.items_center()
 		.justify_end()
 		.opacity(1. - actions)
-		.text_size(gpui::px(10.))
-		.text_color(ui_theme::rgb(TEXT_MUTED))
-		.child(navigation_text(reveal, model::relative_time(item.updated, model::now())))
+		.text_color(ui_theme::metric_ink())
+		.child(navigation_text(
+			reveal,
+			crate::ui_time::relative_time(item.updated, crate::ui_time::now()),
+		))
 }
 
 fn navigation_text(reveal: &PanelReveal, child: impl gpui::IntoElement) -> AnyElement {

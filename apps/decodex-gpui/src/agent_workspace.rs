@@ -204,6 +204,7 @@ impl AgentSurface {
 		let archived = self.work_is_archived(id);
 		if !archived {
 			self.workspace.archives.viewed = None;
+			self.reveal_navigation_conversation(id, cx);
 		}
 		let thread = (!archived)
 			.then(|| {
@@ -1172,6 +1173,9 @@ impl AgentSurface {
 		}
 
 		let connecting = self.workspace_connecting();
+		if connecting || self.workspace.browsing {
+			self.hide_latest_button(window, cx);
+		}
 
 		self.workspace.arrival.observe(!connecting);
 
@@ -2152,6 +2156,8 @@ impl AgentSurface {
 			"assistant-workspace" => self.visual_personal_navigation(cx),
 			"navigation-hierarchy" | "navigation-hierarchy-compact" =>
 				self.visual_navigation_hierarchy(page.ends_with("compact"), cx),
+			"navigation-overview" | "navigation-overview-compact" =>
+				self.visual_navigation_overview(page.ends_with("compact"), cx),
 			"commands" | "commands-search" | "commands-projects" | "commands-empty" =>
 				self.visual_command_palette(page, cx),
 			"factory" | "relations" | "relations-resource" => {
@@ -2688,12 +2694,6 @@ pub(super) fn restore_shell_focus(window: &mut Window, cx: &mut App) {
 
 		window.focus(&focus, cx);
 	}
-}
-
-pub(super) fn clock_label(micros: i64) -> String {
-	let seconds = micros / 1_000_000;
-
-	format!("{:02}:{:02}:{:02}", (seconds / 3_600) % 24, (seconds / 60) % 60, seconds % 60)
 }
 
 fn action_accessible_label(id: &str, label: &str) -> String {

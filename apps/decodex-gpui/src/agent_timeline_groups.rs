@@ -45,6 +45,8 @@ pub(super) fn row_gap(entries: &[AgentTimelineEntry], index: usize) -> f32 {
 }
 
 pub(super) struct Group {
+	/// Exact prompt that owns this folded response, when present in this page.
+	pub input_index: Option<usize>,
 	pub turn: String,
 	pub turns: BTreeSet<String>,
 	pub indices: Vec<usize>,
@@ -61,7 +63,18 @@ pub(super) fn with_observations(
 	expanded: &BTreeSet<String>,
 	observations: &[decodex_protocol::AgentActivityDto],
 ) -> Vec<Group> {
-	let mut result = groups(entries, expanded);
+	responses_with_observations(entries, expanded, observations)
+		.into_iter()
+		.filter(|group| group.count > 0)
+		.collect()
+}
+
+pub(super) fn responses_with_observations(
+	entries: &[AgentTimelineEntry],
+	expanded: &BTreeSet<String>,
+	observations: &[decodex_protocol::AgentActivityDto],
+) -> Vec<Group> {
+	let mut result = responses(entries, expanded);
 	for activity in observations {
 		if entries.iter().any(|entry| {
 			matches!(&entry.content,
@@ -87,6 +100,7 @@ pub(super) fn with_observations(
 				if turn_id == &activity.turn_id && kind == "agentMessage" && phase.as_deref() != Some("commentary")))
 				.unwrap_or(terminal);
 			result.push(Group {
+				input_index: input_for_turn(entries, final_index, &activity.turn_id),
 				turn: activity.turn_id.clone(),
 				turns: BTreeSet::from([activity.turn_id.clone()]),
 				indices: vec![],
@@ -224,7 +238,12 @@ pub(super) fn hidden_items(entries: &[AgentTimelineEntry]) -> BTreeSet<usize> {
 
 /// A user response can span several native turns (worker wakes have no user input).
 /// Keep its last completed answer and fold the preceding execution records together.
+#[cfg(test)]
 pub(super) fn groups(entries: &[AgentTimelineEntry], expanded: &BTreeSet<String>) -> Vec<Group> {
+	responses(entries, expanded).into_iter().filter(|group| group.count > 0).collect()
+}
+
+fn responses(entries: &[AgentTimelineEntry], expanded: &BTreeSet<String>) -> Vec<Group> {
 	let empty = hidden_items(entries);
 	let finished: BTreeSet<_> = entries
 		.iter()
@@ -287,7 +306,7 @@ pub(super) fn groups(entries: &[AgentTimelineEntry], expanded: &BTreeSet<String>
 
 	let mut result = Vec::new();
 
-	for response in responses {
+	for (owner, response) in responses.into_iter().enumerate() {
 		let final_index = response.iter().copied().rev().find(|index| {
 			matches!(&entries[*index].content,
 				AgentTimelineContent::Item { turn_id, kind, phase, text, .. }
@@ -296,7 +315,15 @@ pub(super) fn groups(entries: &[AgentTimelineEntry], expanded: &BTreeSet<String>
 		});
 		let Some(final_index) = final_index else { continue };
 		let mut indices = Vec::new();
-		let mut turns = BTreeSet::new();
+		let turns = response
+			.iter()
+			.filter_map(|index| match &entries[*index].content {
+				AgentTimelineContent::Item { turn_id, .. }
+					if finished.contains(turn_id.as_str()) =>
+					Some(turn_id.clone()),
+				_ => None,
+			})
+			.collect::<BTreeSet<_>>();
 
 		for index in response {
 			if empty.contains(&index) || index == final_index {
@@ -314,29 +341,32 @@ pub(super) fn groups(entries: &[AgentTimelineEntry], expanded: &BTreeSet<String>
 					|| (kind != "agentInput" && activity.is_some()))
 			{
 				indices.push(index);
-				turns.insert(turn_id.clone());
 			}
 		}
 
-		if let Some(&first_index) = indices.first() {
-			let AgentTimelineContent::Item { turn_id, .. } = &entries[first_index].content else {
-				unreachable!("process contains items");
-			};
+		let first_index = indices.first().copied().unwrap_or(final_index);
+		let AgentTimelineContent::Item { turn_id, .. } = &entries[first_index].content else {
+			unreachable!("process contains items");
+		};
 
-			result.push(Group {
-				turn: turn_id.clone(),
-				expanded: !expanded.is_disjoint(&turns),
-				turns,
-				first_index: first_index.min(final_index),
-				final_index,
-				count: indices.len(),
-				observations: vec![],
-				indices,
-			});
-		}
+		result.push(Group {
+			input_index: input_at(entries, starts[owner]),
+			turn: turn_id.clone(),
+			expanded: !expanded.is_disjoint(&turns),
+			turns,
+			first_index: first_index.min(final_index),
+			final_index,
+			count: indices.len(),
+			observations: vec![],
+			indices,
+		});
 	}
 
-	result.extend(failed_groups(entries, &empty, expanded));
+	let input_owners = owners
+		.iter()
+		.map(|(turn, owner)| (turn.as_str(), input_at(entries, starts[*owner])))
+		.collect();
+	result.extend(failed_groups(entries, &empty, expanded, &input_owners));
 	result.sort_by_key(|group| group.first_index);
 	result
 }
@@ -345,6 +375,7 @@ fn failed_groups(
 	entries: &[AgentTimelineEntry],
 	empty: &BTreeSet<usize>,
 	expanded: &BTreeSet<String>,
+	input_owners: &BTreeMap<&str, Option<usize>>,
 ) -> Vec<Group> {
 	let mut result = Vec::new();
 	// Failed and interrupted turns have finished too. Keep their final message and
@@ -384,8 +415,10 @@ fn failed_groups(
 				_ => None,
 			})
 			.collect();
-		if let Some(&first_index) = indices.first() {
+		if !indices.is_empty() || input_owners.get(turn_id.as_str()).copied().flatten().is_some() {
+			let first_index = indices.first().copied().unwrap_or(terminal);
 			result.push(Group {
+				input_index: input_owners.get(turn_id.as_str()).copied().flatten(),
 				turn: turn_id.clone(),
 				turns: BTreeSet::from([turn_id.clone()]),
 				expanded: expanded.contains(turn_id),
@@ -400,8 +433,22 @@ fn failed_groups(
 	result
 }
 
+fn input_at(entries: &[AgentTimelineEntry], index: usize) -> Option<usize> {
+	matches!(&entries[index].content, AgentTimelineContent::Item { kind, .. }
+		if matches!(kind.as_str(), "userMessage" | "agentInput"))
+	.then_some(index)
+}
+
+fn input_for_turn(entries: &[AgentTimelineEntry], through: usize, turn: &str) -> Option<usize> {
+	entries[..=through].iter().rposition(|entry| {
+		matches!(&entry.content,
+		AgentTimelineContent::Item { turn_id, kind, .. }
+		if turn_id == turn && matches!(kind.as_str(), "userMessage" | "agentInput"))
+	})
+}
+
 fn process_label(count: usize) -> String {
-	format!("{count} {}", if count == 1 { "step" } else { "steps" })
+	crate::shell::agent_surface::conversation_metric::steps_label(count)
 }
 
 #[cfg(any(test, feature = "visual-capture"))]
@@ -534,6 +581,7 @@ fn process_preview_entries() -> Vec<AgentTimelineEntry> {
 	entries.push(AgentTimelineEntry {
 		position: 11,
 		content: AgentTimelineContent::TurnBoundary {
+			started_at_micros: None,
 			turn_id: "preview-turn".into(),
 			completed: true,
 			status: Some("completed".into()),
@@ -561,6 +609,26 @@ mod tests {
 		Binding, Timeline,
 		groups::{self, AgentSurface, AgentTimelineContent, AgentTimelineEntry, BTreeSet},
 	};
+
+	#[test]
+	fn a_silent_completed_turn_keeps_observed_steps_with_its_worker_reply() {
+		let entries = vec![
+			message(0, "userMessage", None),
+			completed("completed"),
+			in_turn(message(2, "agentMessage", Some("final_answer")), "wake"),
+			in_turn(completed("completed"), "wake"),
+		];
+		let observed = serde_json::from_value(serde_json::json!({
+			"turn_id":"turn", "item_id":"observed-only", "kind":"commandExecution",
+			"status":"unreported", "label":"Read source", "detail":"", "duration_ms":null
+		}))
+		.unwrap();
+		let result = groups::responses_with_observations(&entries, &BTreeSet::new(), &[observed]);
+		assert_eq!(result.len(), 1);
+		assert_eq!(result[0].input_index, Some(0));
+		assert_eq!(result[0].final_index, 2);
+		assert_eq!(result[0].count, 1, "the observed step must not become a false zero");
+	}
 
 	#[test]
 	fn observed_commands_stay_in_the_finished_process_until_native_history_contains_them() {
@@ -633,6 +701,7 @@ mod tests {
 		AgentTimelineEntry {
 			position: 4,
 			content: AgentTimelineContent::TurnBoundary {
+				started_at_micros: None,
 				turn_id: "turn".into(),
 				completed: true,
 				status: Some(status.into()),

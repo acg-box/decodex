@@ -1413,7 +1413,49 @@ pub(super) struct Timeline {
 	notice: Option<&'static str>,
 	seen_cursors: BTreeSet<String>,
 }
+pub(super) struct HistoryProcess {
+	pub input_index: usize,
+	pub final_index: usize,
+	pub count: usize,
+}
+
 impl Timeline {
+	pub(super) fn history_processes(&self) -> Vec<HistoryProcess> {
+		groups::responses_with_observations(
+			&self.entries,
+			&BTreeSet::new(),
+			&self.observed_activities,
+		)
+		.into_iter()
+		.filter_map(|group| {
+			Some(HistoryProcess {
+				input_index: group.input_index?,
+				final_index: group.final_index,
+				count: group.count,
+			})
+		})
+		.collect()
+	}
+
+	pub(super) fn history_input_for_turn(&self, turn: &str) -> Option<&AgentTimelineEntry> {
+		let input = |entry: &&AgentTimelineEntry| {
+			matches!(&entry.content,
+			AgentTimelineContent::Item { kind, .. } if matches!(kind.as_str(), "userMessage" | "agentInput"))
+		};
+		if let Some(entry) = self.entries.iter().rev().find(|entry| {
+			input(entry)
+				&& matches!(
+			&entry.content, AgentTimelineContent::Item { turn_id, .. } if turn_id == turn)
+		}) {
+			return Some(entry);
+		}
+		let first = self.entries.iter().position(|entry| {
+			matches!(&entry.content,
+			AgentTimelineContent::Item { turn_id, .. } if turn_id == turn)
+		})?;
+		self.entries[..first].iter().rev().find(input)
+	}
+
 	fn saved_page(
 		&self,
 		binding: &Binding,
@@ -2749,6 +2791,7 @@ mod tests {
 		AgentTimelineEntry {
 			position,
 			content: AgentTimelineContent::TurnBoundary {
+				started_at_micros: None,
 				turn_id: "turn".into(),
 				completed,
 				status: None,

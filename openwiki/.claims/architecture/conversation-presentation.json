@@ -1,14 +1,18 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:d57b1a0fd65dc09f6a907d3a8462abcccaf75d541a5474ed758752ef3fd556c0",
+  "pageVersion": "sha256:8033f624f252d6c704b799c2a99da5574ffad3c979b6d227f78102c971691cf6",
   "claims": [
     {
       "id": "claim_36b9a49ffa87416e8add8befc7d10efe",
-      "statement": "Completed process groups retain the final answer and fold preceding process records. Successful turns accept an explicit final phase or a legacy absent phase; failed and interrupted turns retain their terminal status. Interleaved user inputs, attachments and interactive items keep their source positions.",
+      "statement": "Completed response groups retain the last displayed final and fold preceding process records, including deduplicated observations. The final is excluded and a superseded answer can enter a continued response's process. Each response retains its exact loaded prompt. Complete responses can project a known zero count without an empty process disclosure; incomplete or unavailable responses remain unknown. Success accepts explicit final or legacy absent phase, failed/interrupted turns retain terminal status, and interleaved input, attachments and interactive items retain their source positions. Every completed native turn stays in the response ownership so independently observed activity from an otherwise silent turn contributes before a zero count is produced.",
       "evidence": [
         {
+          "resource": "repo://apps/decodex-gpui/src/agent_history_preview_tests.rs",
+          "version": "repo-file-v1:sha256:3e281e7161efada6570b77914697a6915d481417fc74036d1c75b4a2b5184a3e"
+        },
+        {
           "resource": "repo://apps/decodex-gpui/src/agent_timeline_groups.rs",
-          "version": "repo-file-v1:sha256:db4824da8c03b0bb23ff73ae8528135f5abbaaa7ef2a3eb32c98a5ed2c1f42f0"
+          "version": "repo-file-v1:sha256:c85008d4af0468eec603785cbc3c47cec897c2ed3ba07ab802b01a57784e27d1"
         }
       ]
     },
@@ -18,7 +22,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_response_metrics.rs",
-          "version": "repo-file-v1:sha256:de78e851433be3bb81a9dfbb9abbb4e8ffa0dc87c75a81a3a89bf4266d959984"
+          "version": "repo-file-v1:sha256:4e00ae1f7fd2655875fecaa45b77e87f6f80265132a32c59ab35883f14a312ed"
         }
       ]
     },
@@ -34,19 +38,23 @@
     },
     {
       "id": "claim_db7a69c23698468587f610b31c09fe20",
-      "statement": "Lazy shared popovers use the native material host when available. The GPUI fallback moves and fades the complete surface without animating height or fading primitives separately. Presentation entities request animation frames independently of keyboard focus while application policy permits animation.",
+      "statement": "Lazy shared popovers use the native material host when available. The GPUI fallback moves and fades the complete surface. Ordinary menu arrival keeps its resolved height and does not fade primitives separately. Centered previews use the shared interruptible height transition after their first presentation. Presentation entities request animation frames independently of keyboard focus while application policy permits animation.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/ui_frame.rs",
           "version": "repo-file-v1:sha256:f8f41248ae784e165bb77cdc1ec0065d7ba689a0918c6afbf0dc6f3d921527c7"
         },
         {
+          "resource": "repo://apps/decodex-gpui/src/ui_layout.rs",
+          "version": "repo-file-v1:sha256:cbdd41d38aea90d04371ff211193fad2e01e27de0442df837ab3324aea407fe6"
+        },
+        {
           "resource": "repo://apps/decodex-gpui/src/ui_motion.rs",
-          "version": "repo-file-v1:sha256:a00b93df57baf56a5cbc77f99195162d07dc00281d554b027d8feac98051053a"
+          "version": "repo-file-v1:sha256:9512eea876967a4010f2e5ff129a1643c69db074ed0c068b2c50cc2370f64823"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_native_popover.rs",
-          "version": "repo-file-v1:sha256:47a49f2ec55274c6a4916fd9f2ff0ac6f503080ee3939c079832fcadec8d3db8"
+          "version": "repo-file-v1:sha256:44707f7079de8d777ce628956e28a379afe3d89bba33b38f83a5ec71d464443e"
         }
       ]
     },
@@ -78,7 +86,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:6cb99bfe3d064b4e418c4fbc79406a5581bfad9589c6b98a54161ea9ae02d46a"
+          "version": "repo-file-v1:sha256:501694e4e9253f869914ae7d9bd252bd22632dd94c6645410155896e65560c51"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/composer_text.rs",
@@ -86,7 +94,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_theme.rs",
-          "version": "repo-file-v1:sha256:d667c61839df71ac632ae093a93f3caef1ec60234e31d487dd0e0d9710a7440a"
+          "version": "repo-file-v1:sha256:ce2a662bf892561cd2404a82841645bb7d25958bda8c6c28940ece032e39b7a8"
         }
       ]
     },
@@ -96,7 +104,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_timeline.rs",
-          "version": "repo-file-v1:sha256:f1da642b2008bf73ff6cfe520fe52aa362338d8c197f931a994f2195ec8355f3"
+          "version": "repo-file-v1:sha256:8dc08c3b0223855715ce805f6d6573ab1476cd8fe90ab5235832000c6e3d262c"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/voice_conversation_groups.rs",
@@ -110,11 +118,11 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_timeline.rs",
-          "version": "repo-file-v1:sha256:f1da642b2008bf73ff6cfe520fe52aa362338d8c197f931a994f2195ec8355f3"
+          "version": "repo-file-v1:sha256:8dc08c3b0223855715ce805f6d6573ab1476cd8fe90ab5235832000c6e3d262c"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/timeline.rs",
-          "version": "repo-file-v1:sha256:99e34f37c482b4b41f80e842261d934ac685289435f2f876ece6627e733b9a44"
+          "version": "repo-file-v1:sha256:22af9c03bb02aa3bf535d6f9753ecb7946c49b5fc0e485776d42d7f0db4d4164"
         }
       ]
     },
@@ -156,7 +164,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_surface.rs",
-          "version": "repo-file-v1:sha256:c8fa7db5209cc4be7279f424e2e60cb44966a2714f36af943abc57a8cc66b71d"
+          "version": "repo-file-v1:sha256:4962a8043ab238ee0a8d861f4c9f6e8790619148f0d3180b85fd0bafa4a32c8b"
         }
       ]
     },
@@ -292,7 +300,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_response_metrics.rs",
-          "version": "repo-file-v1:sha256:de78e851433be3bb81a9dfbb9abbb4e8ffa0dc87c75a81a3a89bf4266d959984"
+          "version": "repo-file-v1:sha256:4e00ae1f7fd2655875fecaa45b77e87f6f80265132a32c59ab35883f14a312ed"
         },
         {
           "resource": "repo://crates/decodex-codex/src/app_server_client/observed_timing.rs",
@@ -314,7 +322,7 @@
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/timeline/metrics.rs",
-          "version": "repo-file-v1:sha256:796410692801930d3a0ff59a6e4a25e2ce1bbf33fa489e2c1f7acebf1b7188eb"
+          "version": "repo-file-v1:sha256:abf020397824205f5b04fc26c72e3196b7819269e4d809daf8f90c65767e655b"
         },
         {
           "resource": "repo://database/src/agent.rs",
@@ -328,7 +336,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_response_metrics.rs",
-          "version": "repo-file-v1:sha256:de78e851433be3bb81a9dfbb9abbb4e8ffa0dc87c75a81a3a89bf4266d959984"
+          "version": "repo-file-v1:sha256:4e00ae1f7fd2655875fecaa45b77e87f6f80265132a32c59ab35883f14a312ed"
         },
         {
           "resource": "repo://crates/decodex-codex/src/app_server_client/observed_timing.rs",
@@ -392,11 +400,11 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_voice.rs",
-          "version": "repo-file-v1:sha256:a506dfbe2d6f129547ba44c74bbbcab9ee569aa1995717275cc9698bae1d513e"
+          "version": "repo-file-v1:sha256:0bb46da7484de316caa100f2b7b00928e5237526bf4444a2b6609282eaab59f1"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:6cb99bfe3d064b4e418c4fbc79406a5581bfad9589c6b98a54161ea9ae02d46a"
+          "version": "repo-file-v1:sha256:501694e4e9253f869914ae7d9bd252bd22632dd94c6645410155896e65560c51"
         }
       ]
     },
@@ -406,7 +414,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/native_material_panel.rs",
-          "version": "repo-file-v1:sha256:159c75c023b8c5038e5641a66673e10badd5aa22ff4530279da6e175ccdefa0c"
+          "version": "repo-file-v1:sha256:c043f3f520a180c63782abccac2056161555191fab0d78274582591af2bc67a9"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_material.rs",
@@ -428,7 +436,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:6cb99bfe3d064b4e418c4fbc79406a5581bfad9589c6b98a54161ea9ae02d46a"
+          "version": "repo-file-v1:sha256:501694e4e9253f869914ae7d9bd252bd22632dd94c6645410155896e65560c51"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_loading.rs",
@@ -446,19 +454,19 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_timeline.rs",
-          "version": "repo-file-v1:sha256:f1da642b2008bf73ff6cfe520fe52aa362338d8c197f931a994f2195ec8355f3"
+          "version": "repo-file-v1:sha256:8dc08c3b0223855715ce805f6d6573ab1476cd8fe90ab5235832000c6e3d262c"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_timeline_find.rs",
-          "version": "repo-file-v1:sha256:1bbc06cc08cd8bf2be51aff28123dbda5ff033de05f460c2bb55ea60460c940b"
+          "version": "repo-file-v1:sha256:00520863e4e67ece7f98942b301b66f2b6e4122950b4faaf07206b4959bb2207"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_timeline_render.rs",
-          "version": "repo-file-v1:sha256:c305534fcb761beaaaea80c7c1f8c5639e92e8247799355ef95f4cb092b86efd"
+          "version": "repo-file-v1:sha256:5ae455a7c5f778c2839e6cb92bc50c7e3f62280012bdc0879e7440e5e92c4886"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_timeline_scroll.rs",
-          "version": "repo-file-v1:sha256:ad91af48f0a07e1d4bc71605acee633b9dddcf2485713550a17c89b13326f98f"
+          "version": "repo-file-v1:sha256:5fc78ed2817191323669e518a67e849408994c97ea6a43486ea2967586996198"
         }
       ]
     },
@@ -468,7 +476,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_timeline_render.rs",
-          "version": "repo-file-v1:sha256:c305534fcb761beaaaea80c7c1f8c5639e92e8247799355ef95f4cb092b86efd"
+          "version": "repo-file-v1:sha256:5ae455a7c5f778c2839e6cb92bc50c7e3f62280012bdc0879e7440e5e92c4886"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/activity.rs",
@@ -522,11 +530,11 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_item_context_tests.rs",
-          "version": "repo-file-v1:sha256:8b7816a708ac3076c3e59dac4867132a94df2b8a88e70de295bb290f444c3254"
+          "version": "repo-file-v1:sha256:b08ef6482670e5ffcf3540a679f54f95e2ee61bee7512adfec7c3283fcc17933"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_timeline_scroll.rs",
-          "version": "repo-file-v1:sha256:ad91af48f0a07e1d4bc71605acee633b9dddcf2485713550a17c89b13326f98f"
+          "version": "repo-file-v1:sha256:5fc78ed2817191323669e518a67e849408994c97ea6a43486ea2967586996198"
         }
       ]
     },
@@ -544,7 +552,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_timeline_render.rs",
-          "version": "repo-file-v1:sha256:c305534fcb761beaaaea80c7c1f8c5639e92e8247799355ef95f4cb092b86efd"
+          "version": "repo-file-v1:sha256:5ae455a7c5f778c2839e6cb92bc50c7e3f62280012bdc0879e7440e5e92c4886"
         }
       ]
     },
@@ -566,7 +574,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:6cb99bfe3d064b4e418c4fbc79406a5581bfad9589c6b98a54161ea9ae02d46a"
+          "version": "repo-file-v1:sha256:501694e4e9253f869914ae7d9bd252bd22632dd94c6645410155896e65560c51"
         }
       ]
     },
@@ -588,7 +596,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:6cb99bfe3d064b4e418c4fbc79406a5581bfad9589c6b98a54161ea9ae02d46a"
+          "version": "repo-file-v1:sha256:501694e4e9253f869914ae7d9bd252bd22632dd94c6645410155896e65560c51"
         }
       ]
     },
@@ -654,11 +662,11 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_surface.rs",
-          "version": "repo-file-v1:sha256:c8fa7db5209cc4be7279f424e2e60cb44966a2714f36af943abc57a8cc66b71d"
+          "version": "repo-file-v1:sha256:4962a8043ab238ee0a8d861f4c9f6e8790619148f0d3180b85fd0bafa4a32c8b"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_timeline.rs",
-          "version": "repo-file-v1:sha256:f1da642b2008bf73ff6cfe520fe52aa362338d8c197f931a994f2195ec8355f3"
+          "version": "repo-file-v1:sha256:8dc08c3b0223855715ce805f6d6573ab1476cd8fe90ab5235832000c6e3d262c"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent_host.rs",
@@ -672,15 +680,15 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_surface.rs",
-          "version": "repo-file-v1:sha256:c8fa7db5209cc4be7279f424e2e60cb44966a2714f36af943abc57a8cc66b71d"
+          "version": "repo-file-v1:sha256:4962a8043ab238ee0a8d861f4c9f6e8790619148f0d3180b85fd0bafa4a32c8b"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_timeline.rs",
-          "version": "repo-file-v1:sha256:f1da642b2008bf73ff6cfe520fe52aa362338d8c197f931a994f2195ec8355f3"
+          "version": "repo-file-v1:sha256:8dc08c3b0223855715ce805f6d6573ab1476cd8fe90ab5235832000c6e3d262c"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_theme.rs",
-          "version": "repo-file-v1:sha256:d667c61839df71ac632ae093a93f3caef1ec60234e31d487dd0e0d9710a7440a"
+          "version": "repo-file-v1:sha256:ce2a662bf892561cd2404a82841645bb7d25958bda8c6c28940ece032e39b7a8"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_working.rs",
@@ -694,7 +702,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/native_material_panel.rs",
-          "version": "repo-file-v1:sha256:159c75c023b8c5038e5641a66673e10badd5aa22ff4530279da6e175ccdefa0c"
+          "version": "repo-file-v1:sha256:c043f3f520a180c63782abccac2056161555191fab0d78274582591af2bc67a9"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_performance.rs",
@@ -708,11 +716,11 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_timeline_completion.rs",
-          "version": "repo-file-v1:sha256:e18c2c8f415ece4a99d626d08dd27b80faa1afd3ac0fc2b1a990f5938ed51bde"
+          "version": "repo-file-v1:sha256:cb2007c7393d789e5e50a2a9dd40770b3acddf9f4a437a1111c663c31a65b971"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_timeline_render.rs",
-          "version": "repo-file-v1:sha256:c305534fcb761beaaaea80c7c1f8c5639e92e8247799355ef95f4cb092b86efd"
+          "version": "repo-file-v1:sha256:5ae455a7c5f778c2839e6cb92bc50c7e3f62280012bdc0879e7440e5e92c4886"
         }
       ]
     },
@@ -722,7 +730,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_timeline_render.rs",
-          "version": "repo-file-v1:sha256:c305534fcb761beaaaea80c7c1f8c5639e92e8247799355ef95f4cb092b86efd"
+          "version": "repo-file-v1:sha256:5ae455a7c5f778c2839e6cb92bc50c7e3f62280012bdc0879e7440e5e92c4886"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_feedback.rs",
@@ -740,7 +748,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_composer.rs",
-          "version": "repo-file-v1:sha256:bf7ca64c4f56eab4620a1ca4a1bd264a530852a182faa91941d8d9ec4d7bdbce"
+          "version": "repo-file-v1:sha256:66ef79f8154c6b0c89dd977208b262cf4e9692633b31eb057ebdc2a7d725ea5a"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_sample.rs",
@@ -752,11 +760,11 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_sample_tests.rs",
-          "version": "repo-file-v1:sha256:53a8c19c5c5b8926ce8887aa2e5eeca322708523faf3b0e5eb163efd8d572a68"
+          "version": "repo-file-v1:sha256:ccefac392c8d3de792bb16a40ecc501124c5dd53c717d2f8ab2643a95e0c69d9"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_surface.rs",
-          "version": "repo-file-v1:sha256:c8fa7db5209cc4be7279f424e2e60cb44966a2714f36af943abc57a8cc66b71d"
+          "version": "repo-file-v1:sha256:4962a8043ab238ee0a8d861f4c9f6e8790619148f0d3180b85fd0bafa4a32c8b"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/composer_hint.rs",
@@ -772,7 +780,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_theme.rs",
-          "version": "repo-file-v1:sha256:d667c61839df71ac632ae093a93f3caef1ec60234e31d487dd0e0d9710a7440a"
+          "version": "repo-file-v1:sha256:ce2a662bf892561cd2404a82841645bb7d25958bda8c6c28940ece032e39b7a8"
         },
         {
           "resource": "repo://crates/decodex-codex/src/app_server_client/sample.rs",
@@ -804,11 +812,11 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_activity.rs",
-          "version": "repo-file-v1:sha256:c37fd7657e8c81f9c9b0ef53896a98adacc47931acb1220ca19e5855178e73dd"
+          "version": "repo-file-v1:sha256:bc3aa90e6e27eaa7be6f25d30c8c3d6c97182676f7e7b87f08141fadd3f713af"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace_size.rs",
-          "version": "repo-file-v1:sha256:373641361299b932c5f785b3252a98b83f18d0dea84d9584fff5198070e3b689"
+          "version": "repo-file-v1:sha256:1878477b669185697c745d758eb252ef3fa9661e79992b353b18f58e5f874cc9"
         }
       ]
     },
@@ -830,7 +838,7 @@
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/timeline.rs",
-          "version": "repo-file-v1:sha256:99e34f37c482b4b41f80e842261d934ac685289435f2f876ece6627e733b9a44"
+          "version": "repo-file-v1:sha256:22af9c03bb02aa3bf535d6f9753ecb7946c49b5fc0e485776d42d7f0db4d4164"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent_message_history.rs",
@@ -841,10 +849,166 @@
           "version": "repo-file-v1:sha256:2d525df109adc5cfe9d1bc9fdd17e899f4ea29cf82be4767dfc759a279f9e229"
         }
       ]
+    },
+    {
+      "id": "claim_cf9ec7c63904420c8ef3bbc079f22dc3",
+      "statement": "History previews use a 320-point width, at most two input lines and three reply lines left-aligned in one full-width text column. Input and replies use the same normal theme body color, font size, weight and line height. A shared 0.5-point menu-separator hairline sits within the existing 10-point gap without adding layout height and is absent when the reply is missing. Navigation excerpts retain up to 180 characters with an ellipsis when more text exists. There are no message-direction marks, message bubbles or speaker headings; short or missing content releases space.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_activity.rs",
+          "version": "repo-file-v1:sha256:bc3aa90e6e27eaa7be6f25d30c8c3d6c97182676f7e7b87f08141fadd3f713af"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_history_preview_tests.rs",
+          "version": "repo-file-v1:sha256:3e281e7161efada6570b77914697a6915d481417fc74036d1c75b4a2b5184a3e"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/ui_theme.rs",
+          "version": "repo-file-v1:sha256:ce2a662bf892561cd2404a82841645bb7d25958bda8c6c28940ece032e39b7a8"
+        }
+      ]
+    },
+    {
+      "id": "claim_db747ef683934bcd9166bce455222bcf",
+      "statement": "The tick group and preview share one retained HoverIntent owner with 100 ms entry dwell, 220 ms departure grace, reentry cancellation and immediate explicit navigation. Scrubbing updates one preview without repeated dwell or arrival and preserves transcript geometry; focused checks cover text density, single-row metadata bounds, brief crossings and departures. History previews retain a 320-point width and align to the complete tick group's vertical center. First presentation resolves its final height. Later changes use the shared 200 ms Tween, preserve continuity on reversal and clip full-size text within the changing frame. Native and GPUI hosts keep the center except for the shared 8-point window-edge clearance. Reduced motion resolves directly.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_activity.rs",
+          "version": "repo-file-v1:sha256:bc3aa90e6e27eaa7be6f25d30c8c3d6c97182676f7e7b87f08141fadd3f713af"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_history_preview_tests.rs",
+          "version": "repo-file-v1:sha256:3e281e7161efada6570b77914697a6915d481417fc74036d1c75b4a2b5184a3e"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/ui_hover_intent.rs",
+          "version": "repo-file-v1:sha256:43bdbc8f730a8da2c88e03858b90e537d02acde2dcb4bad55334ff33b27b06c0"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/ui_layout.rs",
+          "version": "repo-file-v1:sha256:cbdd41d38aea90d04371ff211193fad2e01e27de0442df837ab3324aea407fe6"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/ui_motion.rs",
+          "version": "repo-file-v1:sha256:9512eea876967a4010f2e5ff129a1643c69db074ed0c068b2c50cc2370f64823"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/ui_native_popover.rs",
+          "version": "repo-file-v1:sha256:44707f7079de8d777ce628956e28a379afe3d89bba33b38f83a5ec71d464443e"
+        }
+      ]
+    },
+    {
+      "id": "claim_1dae0e91662347b0aefefc9bfca6f762",
+      "statement": "Transient native popovers measure new content before placement. Ordinary menus immediately use the final measured height. An already visible centered preview uses the measured height as its transition target without an extra placement from a stale measurement.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/ui_layout.rs",
+          "version": "repo-file-v1:sha256:cbdd41d38aea90d04371ff211193fad2e01e27de0442df837ab3324aea407fe6"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/ui_motion.rs",
+          "version": "repo-file-v1:sha256:9512eea876967a4010f2e5ff129a1643c69db074ed0c068b2c50cc2370f64823"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/ui_native_popover.rs",
+          "version": "repo-file-v1:sha256:44707f7079de8d777ce628956e28a379afe3d89bba33b38f83a5ec71d464443e"
+        }
+      ]
+    },
+    {
+      "id": "claim_6f454115c2d94be5aacb6b9d0e5890d6",
+      "statement": "Native response footers and previews share Metric symbols. Their caption typography and the sidebar time use ui_theme::metric_text and metric_ink: 10.5-point normal text, 14-point line height, tabular digits and muted ink at 85% opacity. Fixed vector input/output arrows do not depend on the font. ui_time owns relative ages and elapsed durations for conversation and Work views; durations omit unnecessary .0 seconds and use days with remaining hours from one day onward. Missing duration is an em dash and recorded zero is 0s. Preview metadata retains five equal-width centered columns for age, duration, steps, input and output. StepMetric keeps full wording and terminal status in its tooltip. Missing, zero, active and long values preserve neighboring allocation and prompt ownership. No call counter or second row is added. The final excerpt and metric row are separated by 8 points through ui_theme::METRIC_GROUP_GAP, with no second divider.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_activity.rs",
+          "version": "repo-file-v1:sha256:bc3aa90e6e27eaa7be6f25d30c8c3d6c97182676f7e7b87f08141fadd3f713af"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_conversation_metric.rs",
+          "version": "repo-file-v1:sha256:35dbf54a4b3d12af8118c296e9ab513e687f1d9e3ce613f4c2c736da358d6735"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_history_preview_tests.rs",
+          "version": "repo-file-v1:sha256:3e281e7161efada6570b77914697a6915d481417fc74036d1c75b4a2b5184a3e"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_navigation_sidebar.rs",
+          "version": "repo-file-v1:sha256:e5cbcba4a1d8283b2f958bff6d8c8f8f040aeb4e0791dc2fa9f3b9e94b60b08f"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/ui_theme.rs",
+          "version": "repo-file-v1:sha256:ce2a662bf892561cd2404a82841645bb7d25958bda8c6c28940ece032e39b7a8"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/ui_time.rs",
+          "version": "repo-file-v1:sha256:c13e04216516c0cfab1fcd1b856587d0c58c0698084266bac530fcab1bd1a4d1"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/ui_work_metrics.rs",
+          "version": "repo-file-v1:sha256:0fe3e35fcc059fa457aaf87ffe861d720976e37d258686deeffc07bf41c1409e"
+        }
+      ]
+    },
+    {
+      "id": "claim_34b5416b38b3456a910a48c71e783af6",
+      "statement": "Mixed-timeline boundary projection consumes turn_id, started_at and duration_ms. Projection converts reported seconds to microseconds; saved-item history preserves startedAt and durationMs from native turn headers without resuming the thread. The current native runtime requirement is recorded in codex-runtime.lock.json.",
+      "evidence": [
+        {
+          "resource": "repo://codex-runtime.lock.json",
+          "version": "repo-file-v1:sha256:ce5d0bde0a9d28c56fae1b3996878ba0071ad5e2deda5b1c0befa39d514096f4"
+        },
+        {
+          "resource": "repo://crates/decodex-codex/src/app_server_client/saved_history.rs",
+          "version": "repo-file-v1:sha256:f1360112289f835155bc7b81c24ffc6a8845ceb68e73c341b00ff780ea8d9218"
+        },
+        {
+          "resource": "repo://crates/decodex-codex/src/app_server_client/timeline.rs",
+          "version": "repo-file-v1:sha256:e3243ed5461c8288eb7115a43c7e078e4b141cdd32810ae1004ff4b246d35514"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/timeline.rs",
+          "version": "repo-file-v1:sha256:22af9c03bb02aa3bf535d6f9753ecb7946c49b5fc0e485776d42d7f0db4d4164"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/timeline/saved.rs",
+          "version": "repo-file-v1:sha256:a7430bd468b6769a2edd3b3828869e73d9f2c6acb6f6f198a84c79e2bb86e1ee"
+        }
+      ]
+    },
+    {
+      "id": "claim_ab5a71ec902d4b43b63bfd6f173c3aa2",
+      "statement": "Jump to latest message uses the shared MaterialSurface with Overlay material and glass-style preferences. Its 28-point control can expand to a 56-point working capsule. The shared opacity applies to the complete native composite. Click, Enter, Space and wheel-scroll actions retain their owners, and the attached surface hides after fading or when the Agent workspace is not showing the conversation.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_activity.rs",
+          "version": "repo-file-v1:sha256:bc3aa90e6e27eaa7be6f25d30c8c3d6c97182676f7e7b87f08141fadd3f713af"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
+          "version": "repo-file-v1:sha256:501694e4e9253f869914ae7d9bd252bd22632dd94c6645410155896e65560c51"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/native_material_panel.rs",
+          "version": "repo-file-v1:sha256:c043f3f520a180c63782abccac2056161555191fab0d78274582591af2bc67a9"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/shell.rs",
+          "version": "repo-file-v1:sha256:514ce2fb5ff07b7139c3ed7d73ce4517e757780209faee40c648063ef57424bf"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/ui_motion.rs",
+          "version": "repo-file-v1:sha256:9512eea876967a4010f2e5ff129a1643c69db074ed0c068b2c50cc2370f64823"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/ui_native_popover.rs",
+          "version": "repo-file-v1:sha256:44707f7079de8d777ce628956e28a379afe3d89bba33b38f83a5ec71d464443e"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.9.0",
-    "at": "2026-11-12T20:40:36.077Z"
+    "at": "2026-11-13T07:35:09.322Z"
   }
 }

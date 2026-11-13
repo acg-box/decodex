@@ -3,7 +3,6 @@ use gpui::{App, IntoElement, RenderOnce, Window, prelude::Styled as _};
 #[derive(Clone, Copy)]
 pub(super) enum Glyph {
 	Pin,
-	Recent,
 	Assistant,
 	Folder,
 	Sort,
@@ -29,7 +28,6 @@ impl RenderOnce for Icon {
 		}
 		let path: &'static [u8] = match self.glyph {
             Glyph::Pin => br#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M5 2h6M5.5 2l-.5 6-2 2v1h10v-1l-2-2-.5-6M8 11v3" fill="none" stroke="white" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round"/></svg>"#,
-            Glyph::Recent => br#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M2 7a6 6 0 1 1 1 4M2 3v4h4M8 4v4l-2 2" fill="none" stroke="white" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round"/></svg>"#,
             Glyph::Assistant => br#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M7 2l1.5 4.5L13 8l-4.5 1.5L7 14 5.5 9.5 1 8l4.5-1.5L7 2zM12 1v3M10.5 2.5h3" fill="none" stroke="white" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round"/></svg>"#,
             Glyph::Folder => br#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M2 4V3h4l2 2h6v8H2V4z" fill="none" stroke="white" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round"/></svg>"#,
             Glyph::Sort => br#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M2 5h5m3 0h4M2 11h2m3 0h7M7 3v4M4 9v4" fill="none" stroke="white" stroke-width="1.25" stroke-linecap="round"/></svg>"#,
