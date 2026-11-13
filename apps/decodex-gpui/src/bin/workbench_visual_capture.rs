@@ -89,6 +89,7 @@ mod ui_scroll;
 #[allow(dead_code)]
 #[path = "../ui_theme.rs"]
 mod ui_theme;
+#[path = "../ui_time.rs"] mod ui_time;
 #[path = "../ui_work_metrics.rs"] mod ui_work_metrics;
 #[path = "../ui_working.rs"] mod ui_working;
 
@@ -143,6 +144,41 @@ impl Render for CommandComponent {
 	}
 }
 
+struct HistoryPreviewComponent;
+impl Render for HistoryPreviewComponent {
+	fn render(&mut self, window: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+		use gpui::prelude::{FluentBuilder as _, ParentElement as _, Styled as _};
+		let centered = env::var_os("DECODEX_VISUAL_PREVIEW_CENTERED").is_some();
+		let trigger = std::rc::Rc::new(std::cell::Cell::new(Some(gpui::Bounds::new(
+			gpui::point(
+				window.viewport_size().width - gpui::px(16.),
+				window.viewport_size().height / 2.,
+			),
+			gpui::size(gpui::px(0.), gpui::px(0.)),
+		))));
+		gpui::div()
+			.size_full()
+			.p(gpui::px(8.))
+			.font_family(
+				env::var("DECODEX_VISUAL_FONT_FAMILY")
+					.unwrap_or_else(|_| ui_theme::FONT_FAMILY.into()),
+			)
+			.child(
+				gpui::div().w(gpui::px(320.)).child(
+					ui_motion::popover(
+						"history-capture",
+						true,
+						AgentSurface::visual_history_preview_content(
+							&env::var("DECODEX_VISUAL_WORKSPACE_PAGE").unwrap_or_default(),
+						),
+					)
+					.preview()
+					.when(centered, |popup| popup.left_centered(320.).trigger(trigger)),
+				),
+			)
+	}
+}
+
 fn main() -> Result<()> {
 	#[cfg(target_os = "macos")]
 	if capture_native_probe() {
@@ -185,6 +221,9 @@ fn main() -> Result<()> {
 		capture_loading::open(&mut cx)?
 	} else if env::var("DECODEX_VISUAL_COMPONENT").as_deref() == Ok("commands") {
 		capture_commands(&mut cx)?
+	} else if env::var("DECODEX_VISUAL_COMPONENT").as_deref() == Ok("history-preview") {
+		cx.open_offscreen_window(capture_size()?, |_, cx| cx.new(|_| HistoryPreviewComponent))?
+			.into()
 	} else if env::var("DECODEX_VISUAL_COMPONENT").as_deref() == Ok("collaboration") {
 		capture_collaboration(&mut cx)?
 	} else if integrations {

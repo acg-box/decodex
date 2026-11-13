@@ -693,6 +693,7 @@ mod tests {
 		let terminal = decodex_protocol::AgentTimelineEntry {
 			position: 2,
 			content: AgentTimelineContent::TurnBoundary {
+				started_at_micros: None,
 				turn_id: "turn".into(),
 				completed: true,
 				status: None,

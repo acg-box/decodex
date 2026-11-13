@@ -502,6 +502,7 @@ mod tests {
 		decodex_protocol::AgentTimelineEntry {
 			position: 0,
 			content: decodex_protocol::AgentTimelineContent::TurnBoundary {
+				started_at_micros: None,
 				turn_id: id.into(),
 				completed: true,
 				status: None,

@@ -45,6 +45,7 @@ impl AgentSurface {
 				"Canceling closes the dialog, but the sign-in button stays disabled. The regression test still fails.",
 			),
 			AgentTimelineContent::TurnBoundary {
+				started_at_micros: None,
 				turn_id: "first".into(),
 				completed: true,
 				status: Some("completed".into()),
@@ -56,6 +57,7 @@ impl AgentSurface {
 			},
 			message("retry", "userMessage", "Fix the disabled button and verify again"),
 			AgentTimelineContent::TurnBoundary {
+				started_at_micros: None,
 				turn_id: "retry".into(),
 				completed: false,
 				status: None,

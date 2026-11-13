@@ -2,6 +2,8 @@
 
 use std::time::Instant;
 
+pub(crate) use crate::ui_time::optional_duration as time_label;
+
 use decodex_protocol::{
 	AgentThreadMetrics, AgentThreadTokenBreakdown, AgentTimelineContent, AgentTimelineEntry,
 	AgentTimelinePage,
@@ -159,15 +161,6 @@ impl Summary {
 			});
 
 		rate_label(rate)
-	}
-}
-
-pub(crate) fn time_label(ms: Option<u64>) -> String {
-	match ms {
-		Some(ms) if ms >= 3_600_000 => format!("{}h {}m", ms / 3_600_000, ms / 60_000 % 60),
-		Some(ms) if ms >= 60_000 => format!("{}m {}s", ms / 60_000, ms / 1_000 % 60),
-		Some(ms) => format!("{}s", ms / 1_000),
-		None => "—".into(),
 	}
 }
 

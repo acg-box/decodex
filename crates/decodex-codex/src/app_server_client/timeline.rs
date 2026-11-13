@@ -100,7 +100,7 @@ fn entry_key(row: &Value) -> Result<(u64, u8, &str), ClientError> {
 		.filter(|n| *n <= i64::MAX as u64)
 		.ok_or(ClientError::InvalidFrame)?;
 	let (kind, id) = match row["type"].as_str() {
-		Some("turnStarted") => (0, identity(&row["turnId"])?),
+		Some("turnStarted") => (0, identity(&row["turn_id"])?),
 		Some("item") => {
 			identity(&row["turnId"])?;
 			identity(&row["item"]["type"])?;
@@ -113,7 +113,7 @@ fn entry_key(row: &Value) -> Result<(u64, u8, &str), ClientError> {
 
 			(2, identity(&row["item"]["id"])?)
 		},
-		Some("turnCompleted") => (3, identity(&row["turnId"])?),
+		Some("turnCompleted") => (3, identity(&row["turn_id"])?),
 		_ => return Err(ClientError::InvalidFrame),
 	};
 
@@ -129,10 +129,10 @@ mod tests {
 	#[test]
 	fn equal_positions_keep_native_kind_order_and_opening_voice_state() {
 		let page = serde_json::json!({"data":[
-			{"type":"turnStarted","position":5,"turnId":"turn"},
+			{"type":"turnStarted","position":5,"turn_id":"turn"},
 			{"type":"item","position":5,"turnId":"turn","item":{"type":"userMessage","id":"message"}},
 			{"type":"realtime","position":5,"item":{"type":"transcriptSegment","id":"speech","realtimeSessionId":"voice"}},
-			{"type":"turnCompleted","position":5,"turnId":"turn"}
+			{"type":"turnCompleted","position":5,"turn_id":"turn"}
 		],"nextCursor":"older","activeRealtimeSessionAtPageStart":"voice"});
 
 		assert!(timeline::validate_page(&page, None, 4).is_ok());

@@ -11,6 +11,7 @@ use gpui::{
 	},
 };
 
+use super::conversation_metric::{Metric, duration_label};
 use crate::{
 	shell::agent_surface::{
 		self, markdown,
@@ -68,9 +69,11 @@ pub(super) struct ResponseMetrics {
 impl RenderOnce for ResponseMetrics {
 	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
 		let details = Rc::new(MetricsDetails::new(&self));
-		let duration = details.duration.clone();
-		let has_duration = duration.is_some();
-		let label = duration.or(self.status).unwrap_or_else(|| "—".into());
+		let summary = if self.duration_ms.is_some() {
+			Metric::Duration(self.duration_ms)
+		} else {
+			self.status.map_or(Metric::Duration(None), Metric::Status)
+		};
 		let state = window.use_keyed_state(
 			SharedString::from(format!("turn-details-{}", self.key)),
 			cx,
@@ -99,18 +102,10 @@ impl RenderOnce for ResponseMetrics {
 			.items_center()
 			.gap(gpui::px(6.))
 			.text_size(gpui::px(CAPTION_SIZE))
-			.text_color(ui_theme::rgb(TEXT_MUTED))
-			.when(!label.is_empty(), |d| {
-				d.child(
-					gpui::div()
-						.flex()
-						.items_center()
-						.gap(gpui::px(3.))
-						.when(has_duration, |d| d.child(duration_icon()))
-						.child(label),
-				)
-			})
-			.child(token_counts(self.usage.as_ref()))
+			.text_color(ui_theme::metric_ink())
+			.child(summary.element())
+			.child(Metric::Input(self.usage.as_ref().map(|u| u.input_tokens)).element())
+			.child(Metric::Output(self.usage.as_ref().map(|u| u.output_tokens)).element())
 			.hover(|d| d.text_color(ui_theme::rgb(TEXT)))
 			.active(|d| d.text_color(ui_theme::rgb(TEXT).opacity(0.8)))
 			.on_hover(move |inside, _, cx| {
@@ -171,23 +166,6 @@ impl RenderOnce for ResponseMetrics {
 				.with_priority(4),
 			)
 	}
-}
-
-fn token_counts(usage: Option<&AgentTurnUsageDto>) -> Div {
-	let count = |input| {
-		usage
-			.as_ref()
-			.map(|u| {
-				agent_surface::compact_tokens(if input { u.input_tokens } else { u.output_tokens })
-			})
-			.unwrap_or_else(|| "—".into())
-	};
-	gpui::div()
-		.flex()
-		.items_center()
-		.gap(gpui::px(6.))
-		.child(format!("↑ {}", count(true)))
-		.child(format!("↓ {}", count(false)))
 }
 
 struct MetricsDetails {
@@ -372,16 +350,6 @@ fn usage_rows(usage: &AgentTurnUsageDto) -> Vec<(&'static str, String)> {
 	.collect()
 }
 
-fn duration_label(ms: u64) -> String {
-	if ms >= 3_600_000 {
-		format!("{}h {}m", ms / 3_600_000, ms % 3_600_000 / 60_000)
-	} else if ms >= 60_000 {
-		format!("{}m {}s", ms / 60_000, ms % 60_000 / 1_000)
-	} else {
-		format!("{:.1}s", ms as f64 / 1_000.)
-	}
-}
-
 fn timing_rows(timing: &AgentTurnTimingDto) -> Vec<(&'static str, String)> {
 	[
 		("Output activity", timing.model_output_ms),
@@ -397,14 +365,6 @@ fn timing_rows(timing: &AgentTurnTimingDto) -> Vec<(&'static str, String)> {
 			.map(|ms| (label, if ms < 1_000 { format!("{ms}ms") } else { duration_label(ms) }))
 	})
 	.collect()
-}
-
-fn duration_icon() -> impl IntoElement {
-	gpui::svg()
-		.data(br#"<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11"><g fill="none" stroke="white" stroke-width="1"><circle cx="5.5" cy="5.5" r="4.25"/><path d="M5.5 2.5V5.5L7.5 6.5"/></g></svg>"#)
-		.text_color(ui_theme::rgb(TEXT_MUTED))
-		.size(gpui::px(11.))
-		.flex_none()
 }
 
 fn details_panel(details: &MetricsDetails) -> Stateful<Div> {

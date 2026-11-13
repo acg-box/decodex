@@ -138,6 +138,7 @@ fn located_loaded_item_reveals_its_fold_without_a_native_read(cx: &mut gpui::Tes
 				decodex_protocol::AgentTimelineEntry {
 					position: 3,
 					content: decodex_protocol::AgentTimelineContent::TurnBoundary {
+						started_at_micros: None,
 						turn_id: "turn".into(),
 						completed: true,
 						status: Some("completed".into()),

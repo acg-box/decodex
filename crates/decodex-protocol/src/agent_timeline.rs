@@ -290,6 +290,9 @@ pub enum AgentTimelineContent {
 		completed: bool,
 		/// Native terminal status, absent at turn start.
 		status: Option<String>,
+		/// Native turn start as Unix microseconds, absent in older history.
+		#[serde(default, skip_serializing_if = "Option::is_none")]
+		started_at_micros: Option<i64>,
 		/// Provider duration, never reconstructed from page order.
 		duration_ms: Option<u64>,
 		/// Saved provider usage for this exact completed turn. Native timeline has no usage field.

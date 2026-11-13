@@ -6,15 +6,15 @@ use std::collections::{BTreeMap, BTreeSet};
 #[serde(rename_all = "snake_case")]
 pub(super) enum Section {
 	Pin,
-	Recent,
 	Assistant,
 	Projects,
 }
 impl Section {
+	pub const ALL: [Self; 3] = [Self::Pin, Self::Assistant, Self::Projects];
+
 	pub fn key(self) -> &'static str {
 		match self {
 			Self::Pin => "pin",
-			Self::Recent => "recent",
 			Self::Assistant => "assistant",
 			Self::Projects => "projects",
 		}
@@ -23,7 +23,6 @@ impl Section {
 	pub fn label(self) -> &'static str {
 		match self {
 			Self::Pin => "Pin",
-			Self::Recent => "Recent",
 			Self::Assistant => "Assistant",
 			Self::Projects => "Projects",
 		}
@@ -44,9 +43,26 @@ pub(super) struct Preference {
 #[derive(Default, Serialize, Deserialize)]
 #[serde(default)]
 pub(super) struct Preferences {
+	#[serde(deserialize_with = "read_sections")]
 	pub sections: BTreeMap<Section, Preference>,
 	pub pinned: BTreeSet<String>,
 	pub project_drafts: BTreeMap<String, BTreeMap<String, String>>,
+}
+
+fn read_sections<'de, D>(reader: D) -> Result<BTreeMap<Section, Preference>, D::Error>
+where
+	D: serde::Deserializer<'de>,
+{
+	let saved = BTreeMap::<String, Preference>::deserialize(reader)?;
+	Ok(saved
+		.into_iter()
+		.filter_map(|(key, value)| {
+			Section::ALL
+				.into_iter()
+				.find(|section| section.key() == key)
+				.map(|section| (section, value))
+		})
+		.collect())
 }
 impl Preferences {
 	pub fn load() -> Self {
@@ -97,30 +113,6 @@ pub(super) fn sort(items: &mut [Item], by: Sort) {
 		})
 	});
 }
-pub(super) fn relative_time(micros: i64, now: i64) -> String {
-	if micros <= 0 {
-		return "—".into();
-	}
-	let seconds = now.saturating_sub(micros).max(0) / 1_000_000;
-	for (unit, suffix) in [
-		(31_536_000, "y"),
-		(2_592_000, "m"),
-		(604_800, "w"),
-		(86_400, "d"),
-		(3_600, "h"),
-		(60, "min"),
-	] {
-		if seconds >= unit {
-			return format!("{}{suffix}", seconds / unit);
-		}
-	}
-	"now".into()
-}
-pub(super) fn now() -> i64 {
-	std::time::SystemTime::now()
-		.duration_since(std::time::UNIX_EPOCH)
-		.map_or(0, |d| d.as_micros().min(i64::MAX as u128) as i64)
-}
 pub(super) fn matches(query: &str, text: &str) -> bool {
 	let text = text.to_lowercase();
 	query.split_whitespace().all(|word| text.contains(word))
@@ -128,33 +120,29 @@ pub(super) fn matches(query: &str, text: &str) -> bool {
 #[cfg(test)]
 mod tests {
 	#[test]
-	fn relative_units_keep_minutes_and_months_distinct() {
-		let now = 40_000_000_000_000;
-		for (seconds, expected) in [
-			(0, "now"),
-			(60, "1min"),
-			(3_600, "1h"),
-			(86_400, "1d"),
-			(604_800, "1w"),
-			(2_592_000, "1m"),
-			(31_536_000, "1y"),
-		] {
-			assert_eq!(super::relative_time(now - seconds * 1_000_000, now), expected);
-		}
-		assert_eq!(super::relative_time(0, now), "—");
-	}
-	#[test]
 	fn preferences_round_trip_each_section_without_changing_pins() {
 		let mut value = super::Preferences::default();
 		value.pinned.insert("topic".into());
 		value.sections.insert(
-			super::Section::Recent,
+			super::Section::Pin,
 			super::Preference { sort: super::Sort::Alphabetical, auto_scroll: true },
 		);
 		let saved = serde_json::to_string(&value).unwrap();
 		let loaded: super::Preferences = serde_json::from_str(&saved).unwrap();
 		assert!(loaded.pinned.contains("topic"));
-		assert!(loaded.section(super::Section::Recent).auto_scroll);
+		assert!(loaded.section(super::Section::Pin).auto_scroll);
 		assert!(!loaded.section(super::Section::Assistant).auto_scroll);
+	}
+
+	#[test]
+	fn retired_recent_preferences_do_not_erase_pins_or_other_sections() {
+		let saved = r#"{"sections":{"recent":{"sort":"alphabetical","auto_scroll":true},"pin":{"sort":"alphabetical","auto_scroll":true},"projects":{"sort":"updated","auto_scroll":false}},"pinned":["topic"],"project_drafts":{"profile":{"project":"draft"}}}"#;
+		let loaded: super::Preferences = serde_json::from_str(saved).unwrap();
+		assert!(loaded.pinned.contains("topic"));
+		assert!(loaded.section(super::Section::Pin).auto_scroll);
+		assert!(matches!(loaded.section(super::Section::Projects).sort, super::Sort::Updated));
+		assert!(matches!(loaded.section(super::Section::Assistant).sort, super::Sort::Updated));
+		assert_eq!(loaded.project_drafts["profile"]["project"], "draft");
+		assert!(!serde_json::to_string(&loaded).unwrap().contains("recent"));
 	}
 }

@@ -11,6 +11,7 @@ pub(crate) use assistant_settings::ComponentAction as RagflowComponentAction;
 #[path = "agent_capabilities.rs"] mod capabilities;
 #[path = "agent_composer.rs"] mod composer;
 #[path = "agent_context_settings.rs"] mod context_settings;
+#[path = "agent_conversation_metric.rs"] mod conversation_metric;
 #[path = "agent_creation_defaults.rs"] mod creation_defaults;
 #[path = "agent_creation_setup.rs"] mod creation_setup;
 #[path = "agent_debug_reload.rs"] mod debug_reload;
@@ -1701,6 +1702,7 @@ impl AgentSurface {
 		result: Result<AgentSnapshotResult, ()>,
 		cx: &mut Context<Self>,
 	) {
+		let first_snapshot = self.snapshot.is_none();
 		let owner = self.composer_manager.clone().or_else(|| self.root_id());
 		let previous_selection = self.selected.clone();
 
@@ -1735,6 +1737,9 @@ impl AgentSurface {
 		}
 
 		self.apply_result(result);
+		if first_snapshot && let Some(id) = self.selected.clone() {
+			self.reveal_navigation_conversation(&id, cx);
+		}
 
 		let recovered_selection = previous_selection != self.selected;
 

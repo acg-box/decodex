@@ -9,9 +9,8 @@ use super::{model::Section, ui_theme};
 pub(super) fn section_color(section: Section) -> Rgba {
 	let slot = match section {
 		Section::Pin => 3,
-		Section::Recent => 0,
-		Section::Assistant => 1,
-		Section::Projects => 7,
+		Section::Assistant => 0,
+		Section::Projects => 1,
 	};
 	ui_theme::ColorScheme::current().navigation_slot(slot).ink
 }
@@ -20,7 +19,7 @@ pub(super) fn item_color(section: &str) -> Option<Rgba> {
 	if let Some(id) = section.strip_prefix("project-") {
 		return Some(ui_theme::ColorScheme::current().navigation_project(id).ink);
 	}
-	[Section::Pin, Section::Recent, Section::Assistant]
+	[Section::Pin, Section::Assistant]
 		.into_iter()
 		.find(|value| value.key() == section)
 		.map(section_color)

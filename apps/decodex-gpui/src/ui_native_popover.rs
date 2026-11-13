@@ -8,7 +8,7 @@ use gpui::{
 	prelude::{FluentBuilder as _, InteractiveElement as _, ParentElement as _, Styled as _},
 };
 
-use super::{MaterialGeometry, Popover, PopoverContent};
+use super::{MaterialGeometry, Popover, PopoverContent, PopoverPlacement, Tween};
 use crate::{
 	ui_frame,
 	ui_theme::{
@@ -40,7 +40,7 @@ struct Content {
 	origin: Point<Pixels>,
 	viewport: Size<Pixels>,
 	width: Pixels,
-	above: bool,
+	placement: PopoverPlacement,
 	preview: bool,
 	attached: bool,
 	geometry: MaterialGeometry,
@@ -54,10 +54,12 @@ struct Panel {
 	focus: FocusHandle,
 	focus_pending: bool,
 	height: Pixels,
+	resize: Option<Tween>,
 }
 
 impl Panel {
 	fn close(&mut self, cx: &mut App) {
+		self.resize = None;
 		if let Some(content) = self.content.take() {
 			(content.dismiss)(cx);
 		}
@@ -68,16 +70,10 @@ impl Panel {
 
 	fn place(&mut self, window: &mut Window, cx: &mut App) {
 		let Some(content) = &self.content else { return };
-		let y = if content.above {
-			content.trigger.map_or(content.origin.y, |trigger| trigger.top())
-				- self.height
-				- gpui::px(ui_theme::POPOVER_GAP)
-		} else {
-			content.origin.y
-		};
+		let size = gpui::size(content.width, self.height);
 		let origin = super::surface_origin(
-			gpui::point(content.origin.x, y),
-			gpui::size(content.width, self.height),
+			content.placement.origin(content.origin, size, content.trigger),
+			size,
 			content.viewport,
 			content.attached,
 		);
@@ -100,6 +96,7 @@ impl Render for Panel {
 		}
 		let Some(content) = &self.content else { return gpui::div().into_any_element() };
 		let width = content.width;
+		let opacity = content.geometry.opacity;
 		let focus = content.focus.clone().unwrap_or_else(|| self.focus.clone());
 		let foreground = (content.render)(window, cx);
 		let measured = cx.entity().downgrade();
@@ -107,8 +104,8 @@ impl Render for Panel {
 			.w_full()
 			.when(!content.attached, ui_theme::menu_outline)
 			.font_family(ui_theme::FONT_FAMILY)
-			.text_size(gpui::px(12.))
-			.line_height(gpui::px(18.))
+			.text_size(gpui::px(ui_theme::COMPACT_BODY_SIZE))
+			.line_height(gpui::px(ui_theme::COMPACT_BODY_LINE_HEIGHT))
 			.text_color(ui_theme::rgb(ui_theme::TEXT))
 			.track_focus(&self.focus)
 			.on_key_down(cx.listener(|panel, event: &gpui::KeyDownEvent, window, cx| {
@@ -133,8 +130,13 @@ impl Render for Panel {
 			.child(foreground);
 		crate::ui_layout::intrinsic(width, root, move |size, window, cx| {
 			let _ = measured.update(cx, |panel, cx| {
-				if panel.content.as_ref().is_some_and(|content| !content.attached) {
-					panel.height = size.height.max(gpui::px(1.));
+				if let Some(content) = panel.content.as_ref().filter(|content| !content.attached) {
+					let height = size.height.max(gpui::px(1.));
+					panel.height = if matches!(content.placement, PopoverPlacement::LeftCenter(_)) {
+						super::popover_height(&mut panel.resize, height, window, cx)
+					} else {
+						height
+					};
 					panel.place(window, cx);
 				}
 				if let Some(surface) = &mut panel.surface {
@@ -146,7 +148,7 @@ impl Render for Panel {
 						return;
 					}
 					if let Some(surface) = &mut panel.surface {
-						surface.set_open(true);
+						surface.set_open_at_opacity(true, opacity);
 						if panel.focus_pending {
 							panel.focus_pending = false;
 							surface.focus_text();
@@ -178,6 +180,7 @@ pub(super) fn render(mut popover: Popover, window: &mut Window, cx: &mut App) ->
 		return gpui::div().into_any_element();
 	}
 	let viewport = window.viewport_size();
+	let placement = popover.placement;
 	let content = popover.content.take().expect("native popover content");
 	gpui::canvas(
 		move |bounds, _, cx| {
@@ -191,16 +194,24 @@ pub(super) fn render(mut popover: Popover, window: &mut Window, cx: &mut App) ->
 				origin: bounds.origin
 					+ gpui::point(
 						gpui::px(inset),
-						gpui::px(if popover.above { 0. } else { ui_theme::POPOVER_GAP }),
+						gpui::px(if matches!(placement, PopoverPlacement::Below) {
+							ui_theme::POPOVER_GAP
+						} else {
+							0.
+						}),
 					),
 				viewport,
-				width: bounds.size.width - gpui::px(inset * 2.),
-				above: popover.above,
+				width: match placement {
+					PopoverPlacement::LeftCenter(width) => width,
+					_ => bounds.size.width - gpui::px(inset * 2.),
+				},
+				placement,
 				preview: popover.preview,
 				attached: false,
 				geometry: MaterialGeometry {
 					radius: f64::from(ui_theme::POPOVER_RADIUS),
 					clip: None,
+					opacity: 1.,
 				},
 				focus: popover.focus,
 			};
@@ -266,7 +277,11 @@ fn present(parent: AnyWindowHandle, request: Content, cx: &mut App) {
 			panel.height = bounds.size.height.max(gpui::px(1.));
 		}
 		panel.content = Some(request);
-		panel.place(window, cx);
+		// Transient content is measured before placement in Panel::render. Reusing
+		// the previous height here makes a short/long preview resize twice.
+		if panel.content.as_ref().is_some_and(|content| content.attached) {
+			panel.place(window, cx);
+		}
 		if let Some(surface) = &mut panel.surface {
 			surface.prepare_open();
 		}
@@ -298,7 +313,7 @@ pub(super) fn render_surface(
 				origin: bounds.origin,
 				viewport,
 				width: bounds.size.width,
-				above: false,
+				placement: PopoverPlacement::Below,
 				preview: true,
 				attached: true,
 				geometry,
@@ -404,6 +419,7 @@ fn create(
 						focus: cx.focus_handle(),
 						focus_pending: false,
 						height: gpui::px(120.),
+						resize: None,
 					}
 				})
 			},

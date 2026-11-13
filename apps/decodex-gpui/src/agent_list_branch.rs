@@ -117,6 +117,7 @@ mod tests {
 		AgentTimelineEntry {
 			position: 1,
 			content: AgentTimelineContent::TurnBoundary {
+				started_at_micros: None,
 				turn_id: turn.into(),
 				completed,
 				status: None,

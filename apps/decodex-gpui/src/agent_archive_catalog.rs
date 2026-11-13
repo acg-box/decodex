@@ -88,7 +88,7 @@ impl Catalog {
 				let text = format!("{} {}", item.title, project.as_deref().unwrap_or_default())
 					.to_lowercase();
 				query.split_whitespace().all(|word| text.contains(word)).then(|| {
-					let (day, clock) = archive_timestamp(item.updated_at_micros);
+					let (day, clock) = crate::ui_time::local_parts(item.updated_at_micros);
 					let date = format!("{day} {clock}");
 					Row {
 						id: item.id.clone(),
@@ -1238,23 +1238,6 @@ fn archive_row_title(item: &Row) -> gpui::Div {
 		}))
 }
 
-fn archive_timestamp(micros: i64) -> (String, String) {
-	let seconds = (micros / 1_000_000) as libc::time_t;
-	let mut local = std::mem::MaybeUninit::<libc::tm>::zeroed();
-	// SAFETY: localtime_r writes a tm into valid storage for the supplied timestamp.
-	let local = unsafe {
-		libc::localtime_r(&seconds, local.as_mut_ptr());
-		local.assume_init()
-	};
-	let month =
-		["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
-			[local.tm_mon as usize];
-	(
-		format!("{month} {}, {}", local.tm_mday, local.tm_year + 1900),
-		format!("{:02}:{:02}", local.tm_hour, local.tm_min),
-	)
-}
-
 impl AgentSurface {
 	pub(in crate::shell::agent_surface) fn load_navigation_archives(
 		&mut self,
@@ -1322,14 +1305,6 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) {
 		self.delete_archive_item(id, cx);
-	}
-
-	pub(in crate::shell::agent_surface) fn navigation_timestamp(micros: i64) -> String {
-		if micros <= 0 {
-			return "—".into();
-		}
-		let (day, clock) = archive_timestamp(micros);
-		format!("{day} {clock}")
 	}
 }
 

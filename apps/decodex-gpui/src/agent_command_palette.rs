@@ -330,16 +330,7 @@ impl AgentSurface {
 		match action {
 			Action::Conversation(item) => {
 				if !item.archived {
-					let section =
-						if item.assistant { Section::Assistant } else { Section::Projects };
-					self.workspace.navigation.collapsed.remove(section.key());
-					if !item.assistant {
-						self.workspace
-							.navigation
-							.projects
-							.insert(item.project.clone().unwrap_or_default());
-					}
-					self.prepare_navigation_reveal(&item.id, section.key());
+					self.reveal_navigation_conversation(&item.id, cx);
 				} else {
 					self.workspace.navigation.archives_open = true;
 					self.workspace.sidebar_visible = true;
@@ -349,7 +340,7 @@ impl AgentSurface {
 			},
 			Action::Project(id) => self.reveal_navigation_project(&id, cx),
 			Action::NewAssistant => {
-				self.workspace.navigation.collapsed.remove("assistant");
+				self.workspace.navigation.collapsed.remove(Section::Assistant.key());
 				self.new_assistant_conversation(cx);
 			},
 			Action::NewProject => self.add_navigation_project(cx),

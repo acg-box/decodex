@@ -92,6 +92,7 @@ fn boundary(position: u64, turn: &str, status: &str) -> decodex_protocol::AgentT
 	decodex_protocol::AgentTimelineEntry {
 		position,
 		content: AgentTimelineContent::TurnBoundary {
+			started_at_micros: None,
 			turn_id: turn.into(),
 			completed: true,
 			status: Some(status.into()),

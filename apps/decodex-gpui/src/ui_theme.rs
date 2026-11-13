@@ -48,6 +48,8 @@ use material::Surface;
 
 pub(crate) const FONT_FAMILY: &str = ".SystemUIFont";
 pub(crate) const BODY_SIZE: f32 = 12.5;
+pub(crate) const COMPACT_BODY_SIZE: f32 = 12.;
+pub(crate) const COMPACT_BODY_LINE_HEIGHT: f32 = 18.;
 pub(crate) const CONTROL_LABEL_SIZE: f32 = BODY_SIZE - 1.;
 pub(crate) const CAPTION_SIZE: f32 = 10.5;
 pub(crate) const CAPTION_LINE_HEIGHT: f32 = 14.;
@@ -68,6 +70,7 @@ pub(crate) const WORK_INDICATOR_SIZE: f32 = 24.;
 pub(crate) const USER_MESSAGE_INSET: f32 = 12.0;
 pub(crate) const USER_MESSAGE_ACTION_SIZE: f32 = 24.0;
 pub(crate) const METADATA_GAP: f32 = 4.0;
+pub(crate) const METRIC_GROUP_GAP: f32 = 8.0;
 pub(crate) const CONTROL_SIZE: f32 = 28.0;
 pub(crate) const CHROME_CONTROL_SIZE: f32 = 24.0;
 pub(crate) const CONTROL_GROUP_HEIGHT: f32 = CONTROL_SIZE;
@@ -199,6 +202,19 @@ pub(crate) fn rgb(token: u32) -> Rgba {
 pub(crate) fn tabular_figures() -> gpui::FontFeatures {
 	static FEATURES: OnceLock<gpui::FontFeatures> = OnceLock::new();
 	FEATURES.get_or_init(|| gpui::FontFeatures(Arc::new(vec![("tnum".into(), 1)]))).clone()
+}
+
+/// Compact times and counters share type, numeric alignment and hierarchy.
+pub(crate) fn metric_text() -> Div {
+	gpui::div()
+		.text_size(gpui::px(CAPTION_SIZE))
+		.line_height(gpui::px(CAPTION_LINE_HEIGHT))
+		.font_weight(FontWeight::NORMAL)
+		.font_features(tabular_figures())
+}
+
+pub(crate) fn metric_ink() -> Rgba {
+	rgb(TEXT_MUTED).opacity(0.85)
 }
 
 /// Content annotations remain readable without adding a glass layer per Agent.
