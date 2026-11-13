@@ -5,24 +5,34 @@ description: Reusable layout, activity-island motion, reading spacing and theme 
 tags: [desktop, design, motion, layout]
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-09T06:37:11.127Z
+    at: 2026-11-13T07:18:38.615Z
 sources:
   - id: openwiki-source-8037e2358a2c4f9b2c722a11
     resource: repo://AGENTS.md
+  - id: openwiki-source-2fc387fccf8dd1285437f49e
+    resource: repo://apps/decodex-gpui/src/agent_activity.rs
   - id: openwiki-source-2a6989c7fa25b9681df71f95
     resource: repo://apps/decodex-gpui/src/agent_collaboration.rs
   - id: openwiki-source-48758ba7d154c82885281d2c
     resource: repo://apps/decodex-gpui/src/agent_composer.rs
+  - id: openwiki-source-a65c3fa1ed74697b3bd42810
+    resource: repo://apps/decodex-gpui/src/agent_conversation_metric.rs
+  - id: openwiki-source-1ee22a183019eba898707d3c
+    resource: repo://apps/decodex-gpui/src/agent_history_preview_tests.rs
   - id: openwiki-source-079a15445a0295f222af8069
     resource: repo://apps/decodex-gpui/src/agent_model_settings.rs
   - id: openwiki-source-ae2ce5cda718ede63f50be9b
     resource: repo://apps/decodex-gpui/src/agent_native_composer.rs
   - id: openwiki-source-3664c9b8790465805ef686fd
     resource: repo://apps/decodex-gpui/src/agent_navigation_actions.rs
+  - id: openwiki-source-e0f9712ab121145d154e8324
+    resource: repo://apps/decodex-gpui/src/agent_navigation_model.rs
   - id: openwiki-source-c2592b96974e70b72f93f72b
     resource: repo://apps/decodex-gpui/src/agent_navigation_sidebar_tests.rs
   - id: openwiki-source-541c96314da57ad5afa1835e
     resource: repo://apps/decodex-gpui/src/agent_navigation_sidebar.rs
+  - id: openwiki-source-900f42e1407829846d06b483
+    resource: repo://apps/decodex-gpui/src/agent_navigation_style.rs
   - id: openwiki-source-15d320ea458ddf705d950ba9
     resource: repo://apps/decodex-gpui/src/agent_response_metrics.rs
   - id: openwiki-source-5da2f5dd568514f1f464d177
@@ -41,6 +51,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_workspace.rs
   - id: openwiki-source-686aae4ae35c7f99c92e3d9b
     resource: repo://apps/decodex-gpui/src/bin/probes/native_island.rs
+  - id: openwiki-source-328b0f351dacca05a8787dd5
+    resource: repo://apps/decodex-gpui/src/bin/probes/native_popup_system.rs
   - id: openwiki-source-b485e07e98ac03dcff5db641
     resource: repo://apps/decodex-gpui/src/bin/probes/native_workspace.rs
   - id: openwiki-source-1bc5c8a6672bb09ef7b2d30f
@@ -69,6 +81,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/ui_motion.rs
   - id: openwiki-source-79f9e926ceb3e6b2643c73a5
     resource: repo://apps/decodex-gpui/src/ui_native_popover.rs
+  - id: openwiki-source-99f4016fe88083269824aa76
+    resource: repo://apps/decodex-gpui/src/ui_navigation_palette.rs
   - id: openwiki-source-9e7fc8b7290695ff7afa8373
     resource: repo://apps/decodex-gpui/src/ui_overflow_label.rs
   - id: openwiki-source-8f7f43de2b98b69bb43506d7
@@ -81,8 +95,12 @@ sources:
     resource: repo://apps/decodex-gpui/src/ui_preferences.rs
   - id: openwiki-source-570564020f98df7a4d6d0b61
     resource: repo://apps/decodex-gpui/src/ui_theme.rs
+  - id: openwiki-source-c3fab9156f998a4c38613276
+    resource: repo://apps/decodex-gpui/src/ui_time.rs
   - id: openwiki-source-fa218a67bba67197ecf88d7b
     resource: repo://apps/decodex-gpui/src/ui_viewport_clip.rs
+  - id: openwiki-source-8cb8ccb33352e11a3da74500
+    resource: repo://apps/decodex-gpui/src/ui_work_metrics.rs
   - id: openwiki-source-343d35c489d39a7a672412a2
     resource: repo://apps/decodex-gpui/src/ui_working.rs
   - id: openwiki-source-8f413b540123b1fe73628c7d
@@ -91,12 +109,14 @@ sources:
     resource: repo://codex-runtime.lock.json
   - id: openwiki-source-a490ea3fbcddb9c007caf196
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_context_tests.rs
-generated: { by: "codex", at: "2026-11-09T06:37:11.127Z" }
+generated: { by: "codex", at: "2026-11-13T07:16:13.362Z" }
 ---
 
 # Interface geometry and motion
 
 Use shared geometry and presentation components when you add a desktop surface. `ui_theme` owns spacing, type and color tokens. `ui_live_activity` owns activity-island size tiers and motion. A feature owns its data and actions. It does not need another animation system.
+
+Use `MaterialSurface` for persistent floating controls such as **Jump to latest message**. These controls follow the **Overlay material** and **Overlay glass style** preferences. Apply `MaterialSurface::opacity` to fade the native material, shadow and foreground together. When the owner controls opacity, do not add a second native arrival animation. Retain the control's geometry and actions while its surface changes. Hide its attached window when the owning control is no longer present.
 
 ## Activity islands
 
@@ -161,7 +181,7 @@ The start heading gives way to saved messages, a sending preview, or a retained 
 
 ## Navigation and attention
 
-Use one compact row rhythm for the left navigation. Pin, Recent, Assistant and Projects have distinct outline symbols. Keep their labels in title case. Do not add total counts.
+Use one compact row rhythm for the left navigation. Pin, Assistant and Projects have distinct outline symbols. Pin uses the warm gold theme slot, Assistant uses blue and Projects uses teal. The theme palette supplies these roles in light and dark appearances; project identity slots remain stable. Pinned actions use the same Pin color. Keep their labels in title case. Do not add total counts.
 
 | Property | Value |
 | --- | --- |
@@ -169,7 +189,7 @@ Use one compact row rhythm for the left navigation. Pin, Recent, Assistant and P
 | Conversation text | 12.5 points, with a fixed first grapheme. |
 | Project title | 12 points, medium weight, normal foreground. |
 | Section label | 11 points, medium weight, muted foreground. |
-| Relative update time | 10 points, at the far right. |
+| Relative update time | Shared 10.5-point metric text, at the far right. |
 | Row corner radius | 5 points. |
 | Gap between adjacent rows and section headings | 0 points. |
 | Divider slot below commands and above Archived | 12 points, with a quiet fading line. |
@@ -185,7 +205,13 @@ The sidebar's outer width uses the shared interruptible 200 ms cubic ease-out. I
 
 Keep the complete sidebar text at its final position and color. `ui_motion::Viewport` measures the actual pane bounds and clips the fixed content at the visible edge, including its shared inner padding. The edge reveals or covers the existing text as a curtain moves. Do not give labels an opacity transition, character counter, normalized reveal fraction or separate clock. Section symbols and conversation initials remain fixed. The Projects directory uses the shared intrinsic disclosure to release its extra space in the compact rail. A reversal changes only the current clipping geometry. Reduced motion selects the target geometry directly.
 
-Use `ui_motion::HoverIntent` for surfaces revealed by pointer intent. The shared tokens set entry dwell to 100 ms and departure grace to 220 ms. Brief crossings cancel entry. Movement inside the same target does not restart its timer. Reentry cancels closing, and an exit from an older target cannot cancel a newer target. Explicit clicks, keyboard actions and dismissal cancel pending pointer work and retain their immediate behavior. The sidebar, Work and Debug islands, and response-statistics popover use this owner. History previews use the shared entry delay rather than a zero-delay tooltip. Ordinary hover ink, contextual row actions and native tooltip lifetime retain their own presentation roles.
+Use `ui_motion::HoverIntent` for surfaces revealed by pointer intent. The shared tokens set entry dwell to 100 ms and departure grace to 220 ms. Brief crossings cancel entry. Movement inside the same target does not restart its timer. Reentry cancels closing, and an exit from an older target cannot cancel a newer target. Explicit clicks, keyboard actions and dismissal cancel pending pointer work and retain their immediate behavior. The sidebar, Work and Debug islands, response-statistics popover and history previews use this owner. A history tick group and its card form one hover target: scrubbing changes the message immediately while retaining the surface and its arrival state. Ordinary hover ink, contextual row actions and native tooltip lifetime retain their own presentation roles.
+
+Group previews use `Popover::left_centered` with the full trigger group as their vertical anchor. Keep the 320-point Timeline preview width fixed. The first appearance uses its final measured height; subsequent content changes expand or contract around the same center with the shared 200 ms interruptible `Tween`. Reversal continues from the current height. The shared 8-point window-edge clearance takes priority near the top or bottom. Native and GPUI hosts use the same placement and height policy. Keep text at its measured size behind the changing frame, and resolve the target directly for reduced motion. Ordinary menus retain their existing placement and fixed-size arrival.
+
+Use `ui_time` as the single formatter for relative age, elapsed duration, complete local timestamps and the current clock. Sidebar ages and Timeline ages use the same minute, hour, day, week, month and year units. They share `ui_theme::metric_text` and `metric_ink`: normal 10.5-point caption text, a 14-point line height, tabular digits and muted theme ink at 85% opacity. History previews show only relative age, using the same calculation as navigation. Keep both excerpts left-aligned in one full-width text column, using the same normal theme body color, font size, weight and line height for input and reply. Place the shared 0.5-point menu-separator hairline inside the existing 10-point gap between them. Do not increase the gap or card height for the divider, and omit it when the reply is missing. Input has at most two lines; the reply has at most three. Do not add message-direction marks, message bubbles or speaker headings. Use the shared compact-body tokens at 12 points with an 18-point line height and normal weight. Separate the final excerpt and metrics by 8 points with `ui_theme::METRIC_GROUP_GAP`, without a second divider. Metrics use the shared 10.5-point caption and 14-point line height. Inherit the interface font and its language fallback; keep tabular numeric features in the metadata. Font changes must preserve readable line bounds and the same five-column allocation.
+
+Use `agent_conversation_metric.rs` for compact conversation metric symbols, value formats, caption type, symbol-value gaps and base ink. Native response footers and Timeline previews must render its shared `Metric` elements. Duration uses the existing response clock, input/output use fixed vector up/down symbols, age uses a history clock, and explicit status uses a neutral circle with text. Steps use the footprints symbol. The compact value is a bare number, including `0`; unknown uses `—` and active work uses `…`. The main process header and tooltip retain the full step label. Do not reserve an independent width for Steps. Keep terminal status in the slot tooltip. Count the records in the folded process and exclude its last displayed final answer. Icons and values inherit the same color. The base ink is muted theme text at 85% opacity; interactive response rows apply hover ink to the complete row. Conversation metrics and `ui_work_metrics::time_label` delegate duration formatting to `ui_time`. Whole seconds omit the unnecessary `.0`; durations of at least one day show days and remaining hours, such as `5d 3h`. Recorded zero is `0s`; missing duration is `—`. Keep symbol size and shape independent of the selected font. Keep preview metadata in one caption-height row with five equal-width columns for age, duration, steps, input and output. Center every symbol-value group within its own column. Keep all columns present and use an em dash for each unknown value. Value length and availability must not change column allocation. Do not nest metric groups with different spacing rules or show model-call counts. Preserve the difference between unknown native response values and recorded zero, and use the exact turn's recorded usage. Do not add a divider or second row. Do not substitute thread totals or billing.
 
 A committed pointer intent or explicit surface toggle starts a bounded 400 ms animation window. A visible inactive App can therefore finish the transition without taking foreground focus. This does not change the Full background rendering preference. When that window expires, the ordinary background policy applies again. System reduced motion and VoiceOver still select the target geometry directly. Continuous activity does not renew this window; a new user operation does.
 

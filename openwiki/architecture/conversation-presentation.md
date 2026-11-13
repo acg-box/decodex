@@ -20,12 +20,16 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_context_settings_wire_tests.rs
   - id: openwiki-source-c76550e85b25876b339f9255
     resource: repo://apps/decodex-gpui/src/agent_context_settings.rs
+  - id: openwiki-source-a65c3fa1ed74697b3bd42810
+    resource: repo://apps/decodex-gpui/src/agent_conversation_metric.rs
   - id: openwiki-source-d56ea7499f2ed784b1b6c970
     resource: repo://apps/decodex-gpui/src/agent_conversation_tab_tests.rs
   - id: openwiki-source-1bf529ea3f1649ac9a28334a
     resource: repo://apps/decodex-gpui/src/agent_conversation_tabs.rs
   - id: openwiki-source-9e6b2fcb5c2b3d17fcfda57b
     resource: repo://apps/decodex-gpui/src/agent_drafts.rs
+  - id: openwiki-source-1ee22a183019eba898707d3c
+    resource: repo://apps/decodex-gpui/src/agent_history_preview_tests.rs
   - id: openwiki-source-85ab533d66ee904d83d8a21a
     resource: repo://apps/decodex-gpui/src/agent_item_context_tests.rs
   - id: openwiki-source-7aecb0d94903aac848b2cdfd
@@ -52,6 +56,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_mermaid/tests.rs
   - id: openwiki-source-ae2ce5cda718ede63f50be9b
     resource: repo://apps/decodex-gpui/src/agent_native_composer.rs
+  - id: openwiki-source-541c96314da57ad5afa1835e
+    resource: repo://apps/decodex-gpui/src/agent_navigation_sidebar.rs
   - id: openwiki-source-0eea3c2bab20e4a9d8e3d80a
     resource: repo://apps/decodex-gpui/src/agent_prompt_confirm_wire_tests.rs
   - id: openwiki-source-b2084dffd07b4229957a0f94
@@ -110,10 +116,16 @@ sources:
     resource: repo://apps/decodex-gpui/src/composer_text.rs
   - id: openwiki-source-fca3688e96d92c09b7ba015f
     resource: repo://apps/decodex-gpui/src/native_material_panel.rs
+  - id: openwiki-source-1291f5243fa6c9cb52149bda
+    resource: repo://apps/decodex-gpui/src/shell.rs
   - id: openwiki-source-2f256c95c226c1326d164ad3
     resource: repo://apps/decodex-gpui/src/ui_feedback.rs
   - id: openwiki-source-592957b8edd8a689f738c189
     resource: repo://apps/decodex-gpui/src/ui_frame.rs
+  - id: openwiki-source-adab7a75320a305721fdd6d2
+    resource: repo://apps/decodex-gpui/src/ui_hover_intent.rs
+  - id: openwiki-source-39b5e0e9a125062f8acc2126
+    resource: repo://apps/decodex-gpui/src/ui_layout.rs
   - id: openwiki-source-246a7882a46c2cac4571760d
     resource: repo://apps/decodex-gpui/src/ui_loading.rs
   - id: openwiki-source-2316e3cffd10487b54cd63f4
@@ -130,20 +142,30 @@ sources:
     resource: repo://apps/decodex-gpui/src/ui_text_reveal.rs
   - id: openwiki-source-570564020f98df7a4d6d0b61
     resource: repo://apps/decodex-gpui/src/ui_theme.rs
+  - id: openwiki-source-c3fab9156f998a4c38613276
+    resource: repo://apps/decodex-gpui/src/ui_time.rs
+  - id: openwiki-source-8cb8ccb33352e11a3da74500
+    resource: repo://apps/decodex-gpui/src/ui_work_metrics.rs
   - id: openwiki-source-343d35c489d39a7a672412a2
     resource: repo://apps/decodex-gpui/src/ui_working.rs
   - id: openwiki-source-d6e2f0d0037f3d6ddcd4f6ac
     resource: repo://apps/decodex-gpui/src/voice_conversation_groups.rs
   - id: openwiki-source-651d1fb6c9e49916a916ab51
     resource: repo://Cargo.toml
+  - id: openwiki-source-f02ae41e2bd15dda85dc86b9
+    resource: repo://codex-runtime.lock.json
   - id: openwiki-source-2b08587e9b26e203156110c8
     resource: repo://crates/decodex-codex/src/app_server_client/context_preferences.rs
   - id: openwiki-source-de4d0cc1dfd69783c61c375f
     resource: repo://crates/decodex-codex/src/app_server_client/observed_timing.rs
   - id: openwiki-source-38991dd5f5687970bfc48ba1
     resource: repo://crates/decodex-codex/src/app_server_client/sample.rs
+  - id: openwiki-source-43bb8e2957cde367e0219222
+    resource: repo://crates/decodex-codex/src/app_server_client/saved_history.rs
   - id: openwiki-source-787f8ad27b8519fbed2bd039
     resource: repo://crates/decodex-codex/src/app_server_client/thread_fork.rs
+  - id: openwiki-source-e61069983d1f80f086a73408
+    resource: repo://crates/decodex-codex/src/app_server_client/timeline.rs
   - id: openwiki-source-c01ab8da738707861c64c143
     resource: repo://crates/decodex-protocol/src/desktop_message_delivery.rs
   - id: openwiki-source-f4a9f4bcee102e076f5c5398
@@ -168,14 +190,16 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent/timeline/media.rs
   - id: openwiki-source-74145d84eb83d80ec3062595
     resource: repo://crates/decodex-runtime/src/agent/timeline/metrics.rs
+  - id: openwiki-source-fa6695c69a9206b199c05f9e
+    resource: repo://crates/decodex-runtime/src/agent/timeline/saved.rs
   - id: openwiki-source-82bb214209944301d2efacfb
     resource: repo://database/src/agent_titles.rs
   - id: openwiki-source-6197a876b2effbe992b1e2ec
     resource: repo://database/src/agent.rs
-generated: { by: "codex", at: "2026-11-12T12:41:07.431Z" }
+generated: { by: "codex", at: "2026-11-13T07:16:13.362Z" }
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-12T12:41:07.431Z
+    at: 2026-11-13T07:18:38.615Z
 ---
 
 
@@ -186,6 +210,10 @@ The transcript is the primary reading surface. Intermediate work, response stati
 ## Progressive disclosure
 
 `agent_timeline_groups` folds process items after a completed turn has a nonempty final answer. An explicit final phase or a legacy absent phase is accepted. Reasoning, plans, commentary and tool activity remain available through the steps disclosure. Failed and interrupted turns can also fold their process records while retaining their final message and terminal status. Attachments and interactive items remain outside the group.
+
+The step count is the number of retained process records in that disclosure, including deduplicated observed activities. The last displayed final answer is outside this count. If a worker resumes without another user input, a superseded answer can become part of the process before the latest answer. The count describes visible process records; it is not a model-call count or a plan-progress total. A complete response with a loaded prompt and no process records has a known count of zero, without an empty process disclosure. An incomplete or unavailable response has an unknown count. Active work uses its exact owning prompt, including worker wakes and repeated input within a native turn.
+
+Retain every completed native turn in its response ownership, even when that turn has no saved process item. Independently observed activity from that turn must contribute to the response before its count can be zero.
 
 During execution, records stay in source order. Late command completions retain their original turn. Streaming text and its saved record use the same process gap, so native acknowledgement does not move a step. Completion waits for the visible answer to settle before it folds the process. Reopening the disclosure retains the recorded steps.
 
@@ -263,6 +291,24 @@ The refresh button makes one native sampling request and asks for a different fo
 
 The history rail highlights every measured exchange that intersects the reading viewport above the composer. Several short exchanges can therefore have highlighted marks at the same time. A long answer keeps its mark highlighted after its prompt has scrolled above the viewport. Scrolling and resizing update this visible range; a retained navigation target does not limit the highlight to one mark.
 
+The **Jump to latest message** control uses the shared `MaterialSurface` and the **Overlay material** and **Overlay glass style** preferences. It is 28 points high and expands from a circle to a 56-point capsule while work is active. The shared opacity value applies to the native material and foreground together. It keeps the existing click, Enter, Space and wheel-scroll actions. The native surface hides when its fade completes, when the workspace is connecting or browsing, and when the user leaves the Agent destination. Do not add a fixed background color behind this control.
+
+History hover previews keep a 320-point width. Questions occupy at most two lines and answers occupy at most three, both left-aligned in the same full-width text column. Input and replies use the same normal theme body color, font size, weight and line height. Both excerpts remain more prominent than metadata. A shared 0.5-point menu-separator hairline sits inside the existing 10-point gap between the excerpts. It uses the shared theme ink and adds no layout height. A missing reply has no divider. Navigation excerpts retain at most 180 characters, with an ellipsis when more text exists. The preview has no message-direction marks, message bubble or speaker headings. Short text and missing answers release unused space.
+
+The metadata footer uses one caption-height row with five equal-width columns in this order: relative age, elapsed duration, process steps, input tokens and output tokens. Separate the final excerpt and this row by 8 points through `ui_theme::METRIC_GROUP_GAP`. Do not add a second divider. Center each symbol-value group within its column and keep every column present. Missing data shows **—**. The footprint value is the bare step count, including **0**; active work shows **…**. Its tooltip retains the full step description and failed or interrupted status. Data length and availability must not change the column widths or move adjacent metrics. Model-call counts are absent from this preview. Token counters cover the exact turn, including its model calls. They are not the thread total or the final message's text length. Local records retain the recorded assistant turn usage; native records use the matching completed turn boundary. Billing remains outside this preview.
+
+`agent_conversation_metric.rs` owns compact metric symbols and the symbol-value gap. `ui_time` owns relative ages and elapsed-duration formats. `ui_theme::metric_text` and `metric_ink` supply the shared caption typography and base ink for these metrics and sidebar times. Native response footers and Timeline previews render the same `Metric` elements. Duration keeps the response clock; input and output use fixed vector up/down symbols. Symbols do not change with the selected text font. Relative age uses a history clock, steps use the footprints symbol, and explicit response status uses a neutral circle plus its text. Symbols and values inherit the same ink. The shared base color is muted theme text at 85% opacity. An interactive response footer retains its existing hover behavior for the complete row. Unknown native response metrics remain distinct from recorded zero. Missing preview metrics keep their symbol and an em dash in the same column. Changes to a compact metric's symbol or format belong in this shared module.
+
+The preview uses a footprint and a bare number to keep the row compact. Its tooltip and the main process header keep the full **N steps** or **1 step** label. One shared column renderer distributes the complete row into five equal parts. The former independent Steps width reservation is removed, so zero, unknown and active states do not change neighboring allocations. The body uses the shared 12-point compact text and 18-point line height; metrics use the shared 10.5-point caption and 14-point line height with normal weight. A response retains the exact input index that owns it. `history_processes` projects this owner, the final index and count together, including known zero responses; previews use this projection instead of requiring the final native turn to match the input turn. Worker wakes therefore retain their original prompt, process count and latest reply, and late activity cannot move a count to a later prompt. Duration, usage and terminal status follow the response's last native endpoint, matching the ordinary response footer. The prompt retains its own age. The preview does not invent an aggregate duration or usage for several native turns.
+
+The footer uses `ui_time` for the same relative age as navigation. Both use 10.5-point normal caption text, a 14-point line height, tabular digits and muted theme ink at 85% opacity. Conversation and Work durations use the same formatter: seconds omit an unnecessary `.0`, and durations of at least one day use days and remaining hours, such as `5d 3h`. A missing duration remains an em dash, while a recorded zero is `0s`. Do not repeat the complete date and time. Saved local inputs retain their creation time. Native inputs use the exact turn's reported start, with provider duration for that turn. Native step counts reuse the loaded response groups and their deduplicated observed activity. A plain, complete response shows zero; missing process data retains the unknown placeholder. Failed and interrupted status stays available through the process tooltip, while a matching active response shows the ellipsis. Ordinary completion adds no success symbol.
+
+The preview uses `Popover::left_centered` to align its vertical center with the complete tick group. It keeps that center and a fixed 320-point width when the selected excerpt changes. Only the shared 8-point window-edge clearance can displace it. The first presentation uses the measured final size. Later height changes expand or contract around the center through the shared 200 ms interruptible `Tween`; a reversal starts from the current height. Text retains its measured size and is clipped by the changing frame. Reduced motion resolves the target directly. Native and GPUI presentations share this placement and height policy.
+
+The tick group and preview retain one `ui_motion::HoverIntent` owner. Initial entry waits 100 ms. Leaving starts a 220 ms departure grace, and returning to the marks or card cancels closing. Brief crossings cancel entry. Moving across adjacent marks updates the same preview without another delay or arrival animation. Hover does not move or resize the transcript. Clicking a mark still navigates immediately and cancels pending preview work. Focused rendering checks cover long English and Chinese text, identical question and answer text, short content, single-row metadata bounds, repeated direction changes, brief departures and dismissal.
+
+The qualified Codex revision is `392ced7d3a9160fd35d40c606359869215f50522`. Its installed-binary schema uses `turn_id`, `started_at` and `duration_ms` for mixed-timeline boundaries. Native turn headers use `startedAt` and `durationMs`. Runtime projection converts known Unix seconds to microseconds and retains missing timestamps. These are capabilities of the qualified binary, not a claim about upstream main. The saved-item path retains the same start and duration from exact native turn headers without resuming a thread.
+
 Ordinary messages use a 20-point reading gap. A completed process header and its answer form one reading group, with a 6-point gap. The working indicator has 20 points above its 24-point status row and 20 points between that row and the composer. The composer contributes 8 points of the lower gap. When the status row closes, the normal message-to-composer gap remains.
 
 Work and Debug activity islands share size tiers and a 240 ms transition. Their contents use a fixed native drawable at the window origin. A foreground mask sits beside the glass material instead of inside its resizing content holder. The material contour and foreground mask change together; the text is not resized with the contour. Values keep one identity and follow a defined position. Labels follow their corresponding values and fade in only when the full field fits without overlap. Transparent space outside the current contour does not capture mouse input.
@@ -309,7 +355,9 @@ These defaults apply to new conversations. Saving them does not restart a loaded
 
 ## Floating controls and motion
 
-Lazy shared popovers use one native material host per parent window when that host is available. The host places and focuses its content outside the transcript layout. The GPUI fallback moves and fades the complete surface by four points, with its background, shadow and content together. It does not animate the height or fade primitives separately.
+Lazy shared popovers use one native material host per parent window when that host is available. The host places and focuses its content outside the transcript layout. The GPUI fallback moves and fades the complete surface by four points, with its background, shadow and content together. Ordinary menu arrival keeps its resolved height and does not fade primitives separately. Centered preview height changes use the shared transition described above.
+
+Transient native popovers measure new content before placement. Ordinary menus use that final height immediately. An already visible centered preview uses the measured height as its transition target; it does not make an extra placement with a stale measurement.
 
 Presentation entities request GPUI animation frames while application policy permits animation. Keyboard focus does not set the cadence of sibling windows. Native glass surfaces have their own host integration. Transcript expansion must not recreate or change the composer's material.
 

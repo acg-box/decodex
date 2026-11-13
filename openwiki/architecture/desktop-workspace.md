@@ -5,7 +5,7 @@ description: "Workspace ownership, native menu focus, compositor motion, and con
 tags: [decodex, architecture, desktop, presentation]
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-09T06:32:42.102Z
+    at: 2026-11-13T06:42:12.414Z
 sources:
   - id: openwiki-source-98e7b23c4cc276d20fcb4649
     resource: repo://apps/decodex-gpui/menubar/Sources/DecodexApp/AccountControlViews.swift
@@ -35,6 +35,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_collaboration_tests.rs
   - id: openwiki-source-2a6989c7fa25b9681df71f95
     resource: repo://apps/decodex-gpui/src/agent_collaboration.rs
+  - id: openwiki-source-4f748464984e05f0240896f2
+    resource: repo://apps/decodex-gpui/src/agent_command_palette_tests.rs
   - id: openwiki-source-36b7f34eeb55f2eec55e903d
     resource: repo://apps/decodex-gpui/src/agent_command_palette.rs
   - id: openwiki-source-48758ba7d154c82885281d2c
@@ -47,6 +49,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_conversation_tab_tests.rs
   - id: openwiki-source-1bf529ea3f1649ac9a28334a
     resource: repo://apps/decodex-gpui/src/agent_conversation_tabs.rs
+  - id: openwiki-source-1ee22a183019eba898707d3c
+    resource: repo://apps/decodex-gpui/src/agent_history_preview_tests.rs
   - id: openwiki-source-02f8a02cdfa0616877cdad62
     resource: repo://apps/decodex-gpui/src/agent_list_status.rs
   - id: openwiki-source-2ee1164d01a09b38a208f1ac
@@ -189,7 +193,7 @@ sources:
     resource: repo://database/src/works/commands.rs
   - id: openwiki-source-8fe6f1557e5d45d88b34bd0a
     resource: repo://scripts/macos/generate_workspace_symbols.swift
-generated: { by: "codex", at: "2026-11-09T06:32:42.102Z" }
+generated: { by: "codex", at: "2026-11-13T06:42:12.414Z" }
 ---
 
 # Desktop workspace and native glass
@@ -206,17 +210,17 @@ With Graph closed, **Work in progress** provides a compact disclosure above the 
 
 A placement change keeps the same workspace surface. The compact navigation rail remains in the main window. Sidebar reveal geometry comes from that window, and retained sidebar and activity presentation entities use ui_layout::pane to reuse unchanged content there. State, activity animation and hover updates still invalidate the content. Active accessibility uses live semantic geometry. The sidebar owns pointer departure in both expanded and compact states. Floating panels exclude covered reading-plane paint and hit targets through the shared Viewport mask. One `PanelFrame` samples the layout slots and visible panel widths for each workspace frame. The sidebar, conversation header and reading-plane mask reuse those positions, including closing and reversals. The native composer applies its matching mask during parent prepaint, before painting that frame. The composer remains outside the reading-plane mask. A full-height left preview uses a separate rectangular mask on the native composer composite and its pointer region. That mask hides the covered portion without changing the complete material contour or foreground size. Its native content measures at the current parent anchor width; one native material supplies the surface, with no extra GPUI fill or window backdrop. Focused rendering tests cover unchanged content geometry across docked and floating placement, the absence of separate native sidebar glass, interrupted closing, the retained compact rail, and covered controls. Native activity islands still update their glass contour and foreground mask in one Core Animation transaction with implicit actions disabled.
 
-The left sidebar contains **Pin**, **Recent**, **Assistant** and **Projects**. Pin contains locally pinned conversation references. Recent contains every available unpinned conversation, without an additional item-count cutoff. Assistant collects personal topics. Projects lists registered native project directories and their independent Agent conversations. Attached Side chats remain with their source tabs. Pin has a four-row viewport; Recent and Assistant have seven-row viewports. All returned entries remain scrollable. These viewports do not enlarge the service snapshot: Work summaries retain their existing 100-record bound.
+The left sidebar contains **Pin**, **Assistant** and **Projects**. Pin contains locally pinned conversation references. Assistant opens by default and lists unpinned personal topics, ordered by last update unless the user chooses another sort. Projects lists registered native project directories and their independent Agent conversations. A pinned personal topic is shown in Pin rather than repeated in Assistant; project membership remains visible in its tree. Attached Side chats remain with their source tabs. Pin has a four-row viewport and Assistant has a seven-row viewport. All returned entries remain scrollable without another item-count cutoff. These viewports do not enlarge the service snapshot: Work summaries retain their existing 100-record bound. The retired Recent preference is ignored without discarding pins, saved project drafts or preferences for the remaining sections.
 
 Click anywhere on a section header to expand or collapse it. Its secondary hover or keyboard-focus menu selects Last updated, Alphabetical or Always scroll titles. These preferences and pins are local UI state. The **Assistant** hover plus creates a **New Assistant topic** and reopens an existing unstarted personal draft before creating another. Personal topics share Assistant Memory and configuration, while retaining separate messages and drafts. The **Projects** hover plus opens the native folder chooser and existing AddProject path. It registers and reveals the project without rebinding the current draft. Each project's hover plus opens its own **New Agent** draft; repeated clicks and cross-project switches reuse the profile-scoped saved draft identity.
 
-**Search and commands (Command-K)** stays at the top in both expanded and compact layouts. It opens one global window for topics, projects, archived conversations, commands and Work. Arrow keys select visible results and Return opens the selected destination without submitting the chat composer. Choosing a result reveals its section or project and keeps the appropriate draft. New topic, New project, New project Agent, Archived conversations and Settings remain available from this window. Work search opens its existing owner conversation with the existing scoped evidence. There is no separate left-side Work hub or redundant inline search field.
+**Search and commands (Command-K)** stays at the top in both expanded and compact layouts. It opens one global window for topics, projects, archived conversations, commands and Work. Arrow keys select visible results and Return opens the selected destination without submitting the chat composer. Choosing a result reveals its Pin, Assistant or project location and keeps the appropriate draft. The first loaded snapshot also reveals the restored conversation location; later refreshes do not repeatedly reopen manually collapsed sections. New topic, New project, New project Agent, Archived conversations and Settings remain available from this window. Work search opens its existing owner conversation with the existing scoped evidence. There is no separate left-side Work hub or redundant inline search field.
 
 A 100 ms pointer dwell expands the compact rail temporarily, including when it was collapsed automatically. The temporary preview stays full height and takes precedence over a right floating panel without clearing that panel's requested state. Leaving starts a 220 ms close delay, and reentry cancels the pending close. The existing width transition retains the leading command and initial positions. Opening a section during a hover does not make the sidebar permanently visible. The explicit sidebar toggle controls persistent visibility and clears the temporary state. Clicking it on a compact rail opens a pinned full panel, floating above the composer when it cannot fit beside the conversation. Settings commands from a detached native popup route through the global action handler to the main Shell, which owns the reusable Settings window; opening it preserves the selected conversation.
 
 Sidebar content keeps its complete expanded canvas while the outer width opens, closes or reverses. The panel clips that canvas, so titles and trailing controls keep their final geometry instead of squeezing or disappearing at the first closing frame. The compact presentation mounts only after the rail reaches its settled width. Project branches then leave the compact layout entirely.
 
-The sidebar, Work and Debug activity islands, and response-statistics popover share `ui_motion::HoverIntent`. It owns the 100 ms entry dwell, 220 ms departure grace and pending-task cancellation. Brief crossings do not expand a surface, internal movement does not restart entry, and stale exit events cannot cancel the next hovered target. Reentry cancels closing. Explicit clicks, keyboard actions and dismissal keep their immediate behavior; click-pinned surfaces stay open when the pointer leaves. History-rail previews use the same entry delay instead of opening immediately. Ordinary hover ink and contextual row actions retain direct feedback.
+The sidebar, Work and Debug activity islands, response-statistics popover and history-rail previews share `ui_motion::HoverIntent`. It owns the 100 ms entry dwell, 220 ms departure grace and pending-task cancellation. Brief crossings do not expand a surface, internal movement does not restart entry, and stale exit events cannot cancel the next hovered target. Reentry cancels closing. Explicit clicks, keyboard actions and dismissal keep their immediate behavior; click-pinned surfaces stay open when the pointer leaves. The history marks and their preview form one target. Moving across marks updates the retained card immediately, and returning during departure grace keeps it open. Ordinary hover ink and contextual row actions retain direct feedback.
 
 Committed pointer intent and explicit surface toggles permit 400 ms of finite motion even while the visible App is inactive. The background-rendering preference is unchanged, and the ordinary policy resumes after the interval. System reduced motion and VoiceOver remain authoritative. This separates animation of a user operation from continuous background activity.
 
