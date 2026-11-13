@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:b013b75bb81170420f3b3d282e3a14efd8c76b16306f3672b1d69770de7a0d81",
+  "pageVersion": "sha256:8033f624f252d6c704b799c2a99da5574ffad3c979b6d227f78102c971691cf6",
   "claims": [
     {
       "id": "claim_36b9a49ffa87416e8add8befc7d10efe",
@@ -122,7 +122,7 @@
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/timeline.rs",
-          "version": "repo-file-v1:sha256:37d849c21fabd1b505be560c61d18a014a63489a22ab958dd1d7ddbab4b2a0d9"
+          "version": "repo-file-v1:sha256:22af9c03bb02aa3bf535d6f9753ecb7946c49b5fc0e485776d42d7f0db4d4164"
         }
       ]
     },
@@ -318,7 +318,7 @@
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent.rs",
-          "version": "repo-file-v1:sha256:d73cbaca126ab27dc4fec5114d1d2097612bdba327bc684c6847ee6abc298c6c"
+          "version": "repo-file-v1:sha256:bf37795ce103536e5f9f41a4d3263b709ecc6012d3e2a494b6ab5dfb5088832d"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/timeline/metrics.rs",
@@ -821,7 +821,37 @@
       ]
     },
     {
-      "id": "claim_1f25ac84d48f4d74ab8a8cc08c04fe8a",
+      "id": "claim_fa9f405aaabc47c8900c7b366d86934a",
+      "statement": "One native answer text projection retains absent moderation, legacy explicitly unmoderated output and version 1 show text; restricted or unsupported decisions produce empty text in timeline history, Recap input and retained completion evidence, and completion can clear text already received through streaming.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent.rs",
+          "version": "repo-file-v1:sha256:bf37795ce103536e5f9f41a4d3263b709ecc6012d3e2a494b6ab5dfb5088832d"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/result_messages.rs",
+          "version": "repo-file-v1:sha256:11ec56f8450b565e5a8c1477d3dcb5a31d521667aaa13e4cba7b88ef5d0a0a55"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/tests/result_integrity.rs",
+          "version": "repo-file-v1:sha256:61813b96e52c9a7416b030701c3a1f1ef96faf783e7aad42d19049c9f2f2f1f9"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/timeline.rs",
+          "version": "repo-file-v1:sha256:22af9c03bb02aa3bf535d6f9753ecb7946c49b5fc0e485776d42d7f0db4d4164"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent_message_history.rs",
+          "version": "repo-file-v1:sha256:5f0e589d6365cbb888988830007f6d785e41b37f097f7c7a2686fbb143174a1c"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent_message_history/tests.rs",
+          "version": "repo-file-v1:sha256:2d525df109adc5cfe9d1bc9fdd17e899f4ea29cf82be4767dfc759a279f9e229"
+        }
+      ]
+    },
+    {
+      "id": "claim_cf9ec7c63904420c8ef3bbc079f22dc3",
       "statement": "History previews use a 320-point width, at most two input lines and three reply lines left-aligned in one full-width text column. Input and replies use the same normal theme body color, font size, weight and line height. A shared 0.5-point menu-separator hairline sits within the existing 10-point gap without adding layout height and is absent when the reply is missing. Navigation excerpts retain up to 180 characters with an ellipsis when more text exists. There are no message-direction marks, message bubbles or speaker headings; short or missing content releases space.",
       "evidence": [
         {
@@ -839,7 +869,7 @@
       ]
     },
     {
-      "id": "claim_37793653c865476fa04b217eab692689",
+      "id": "claim_db747ef683934bcd9166bce455222bcf",
       "statement": "The tick group and preview share one retained HoverIntent owner with 100 ms entry dwell, 220 ms departure grace, reentry cancellation and immediate explicit navigation. Scrubbing updates one preview without repeated dwell or arrival and preserves transcript geometry; focused checks cover text density, single-row metadata bounds, brief crossings and departures. History previews retain a 320-point width and align to the complete tick group's vertical center. First presentation resolves its final height. Later changes use the shared 200 ms Tween, preserve continuity on reversal and clip full-size text within the changing frame. Native and GPUI hosts keep the center except for the shared 8-point window-edge clearance. Reduced motion resolves directly.",
       "evidence": [
         {
@@ -869,7 +899,7 @@
       ]
     },
     {
-      "id": "claim_c607cee44a304edf907575771508ccdd",
+      "id": "claim_1dae0e91662347b0aefefc9bfca6f762",
       "statement": "Transient native popovers measure new content before placement. Ordinary menus immediately use the final measured height. An already visible centered preview uses the measured height as its transition target without an extra placement from a stale measurement.",
       "evidence": [
         {
@@ -887,7 +917,7 @@
       ]
     },
     {
-      "id": "claim_c065352007e545a5aaa7eb3ca219fced",
+      "id": "claim_6f454115c2d94be5aacb6b9d0e5890d6",
       "statement": "Native response footers and previews share Metric symbols. Their caption typography and the sidebar time use ui_theme::metric_text and metric_ink: 10.5-point normal text, 14-point line height, tabular digits and muted ink at 85% opacity. Fixed vector input/output arrows do not depend on the font. ui_time owns relative ages and elapsed durations for conversation and Work views; durations omit unnecessary .0 seconds and use days with remaining hours from one day onward. Missing duration is an em dash and recorded zero is 0s. Preview metadata retains five equal-width centered columns for age, duration, steps, input and output. StepMetric keeps full wording and terminal status in its tooltip. Missing, zero, active and long values preserve neighboring allocation and prompt ownership. No call counter or second row is added. The final excerpt and metric row are separated by 8 points through ui_theme::METRIC_GROUP_GAP, with no second divider.",
       "evidence": [
         {
@@ -921,12 +951,12 @@
       ]
     },
     {
-      "id": "claim_6e2089c09ae94a92adedff387fb7038f",
-      "statement": "For qualified Codex revision 392ced7d3a9160fd35d40c606359869215f50522, mixed timeline boundaries use turn_id, started_at and duration_ms. Projection converts reported seconds to microseconds; saved-item history preserves startedAt and durationMs from native turn headers without resuming the thread.",
+      "id": "claim_34b5416b38b3456a910a48c71e783af6",
+      "statement": "Mixed-timeline boundary projection consumes turn_id, started_at and duration_ms. Projection converts reported seconds to microseconds; saved-item history preserves startedAt and durationMs from native turn headers without resuming the thread. The current native runtime requirement is recorded in codex-runtime.lock.json.",
       "evidence": [
         {
           "resource": "repo://codex-runtime.lock.json",
-          "version": "repo-file-v1:sha256:fad5e8fc2a2ef475bb111fae33783d8a7b955e6a7c4b656a7e719967d2eb7417"
+          "version": "repo-file-v1:sha256:ce5d0bde0a9d28c56fae1b3996878ba0071ad5e2deda5b1c0befa39d514096f4"
         },
         {
           "resource": "repo://crates/decodex-codex/src/app_server_client/saved_history.rs",
@@ -938,7 +968,7 @@
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/timeline.rs",
-          "version": "repo-file-v1:sha256:37d849c21fabd1b505be560c61d18a014a63489a22ab958dd1d7ddbab4b2a0d9"
+          "version": "repo-file-v1:sha256:22af9c03bb02aa3bf535d6f9753ecb7946c49b5fc0e485776d42d7f0db4d4164"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/timeline/saved.rs",
@@ -947,7 +977,7 @@
       ]
     },
     {
-      "id": "claim_fb2ebecea611431190564aebe3232e31",
+      "id": "claim_ab5a71ec902d4b43b63bfd6f173c3aa2",
       "statement": "Jump to latest message uses the shared MaterialSurface with Overlay material and glass-style preferences. Its 28-point control can expand to a 56-point working capsule. The shared opacity applies to the complete native composite. Click, Enter, Space and wheel-scroll actions retain their owners, and the attached surface hides after fading or when the Agent workspace is not showing the conversation.",
       "evidence": [
         {
@@ -979,6 +1009,6 @@
   ],
   "verification": {
     "by": "openwiki/0.9.0",
-    "at": "2026-11-13T07:18:38.615Z"
+    "at": "2026-11-13T07:35:09.322Z"
   }
 }

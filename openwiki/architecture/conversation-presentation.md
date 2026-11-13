@@ -172,6 +172,10 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent_api_pricing.rs
   - id: openwiki-source-c75093d19a3bc72db5836102
     resource: repo://crates/decodex-runtime/src/agent_host.rs
+  - id: openwiki-source-c3df87a54ef9d43795de5124
+    resource: repo://crates/decodex-runtime/src/agent_message_history.rs
+  - id: openwiki-source-8a155c93f55f20176452e149
+    resource: repo://crates/decodex-runtime/src/agent_message_history/tests.rs
   - id: openwiki-source-c6a513f4a72008998a474ca0
     resource: repo://crates/decodex-runtime/src/agent_titles.rs
   - id: openwiki-source-7111b71a47931c3e55d3ff6f
@@ -180,6 +184,10 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent.rs
   - id: openwiki-source-4a97944ff4c701a054e27291
     resource: repo://crates/decodex-runtime/src/agent/activity.rs
+  - id: openwiki-source-283a40a004fda23504fad7e1
+    resource: repo://crates/decodex-runtime/src/agent/result_messages.rs
+  - id: openwiki-source-0bdc548eba96b09c39e22383
+    resource: repo://crates/decodex-runtime/src/agent/tests/result_integrity.rs
   - id: openwiki-source-64d7588c1af50398568a792e
     resource: repo://crates/decodex-runtime/src/agent/timeline.rs
   - id: openwiki-source-6b78c4fcf18e4d7a81d69679
@@ -196,16 +204,22 @@ sources:
     resource: repo://database/src/agent_titles.rs
   - id: openwiki-source-6197a876b2effbe992b1e2ec
     resource: repo://database/src/agent.rs
-generated: { by: "codex", at: "2026-11-13T07:16:13.362Z" }
+generated: { by: "codex", at: "2026-11-13T07:35:09.322Z" }
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-13T07:18:38.615Z
+    at: 2026-11-13T07:35:09.322Z
 ---
 
 
 # Conversation presentation and motion
 
 The transcript is the primary reading surface. Intermediate work, response statistics and controls support it without replacing the final answer. The UI derives these views from recorded events; collapsing a group does not delete its evidence.
+
+## Native answer display
+
+The runtime applies the native answer display decision through one text projection. An absent moderation record, legacy output explicitly marked unmoderated, or a version 1 `show` decision retains the answer text. A restricted or unsupported decision produces empty text. Timeline history, Recap input and retained completion evidence use this projection.
+
+A completed native message can replace text already received through streaming with empty text. Streaming deltas can arrive before the final native decision. Codex owns that decision; Decodex applies it to the existing message views. The implementation is in `agent_message_history::assistant_text`, `agent::observe_live_text` and `agent::result_messages`. See the [acceptance boundaries](../testing/upstream-acceptance-boundaries.md) for the regression and native fixture scope.
 
 ## Progressive disclosure
 
@@ -307,7 +321,7 @@ The preview uses `Popover::left_centered` to align its vertical center with the 
 
 The tick group and preview retain one `ui_motion::HoverIntent` owner. Initial entry waits 100 ms. Leaving starts a 220 ms departure grace, and returning to the marks or card cancels closing. Brief crossings cancel entry. Moving across adjacent marks updates the same preview without another delay or arrival animation. Hover does not move or resize the transcript. Clicking a mark still navigates immediately and cancels pending preview work. Focused rendering checks cover long English and Chinese text, identical question and answer text, short content, single-row metadata bounds, repeated direction changes, brief departures and dismissal.
 
-The qualified Codex revision is `392ced7d3a9160fd35d40c606359869215f50522`. Its installed-binary schema uses `turn_id`, `started_at` and `duration_ms` for mixed-timeline boundaries. Native turn headers use `startedAt` and `durationMs`. Runtime projection converts known Unix seconds to microseconds and retains missing timestamps. These are capabilities of the qualified binary, not a claim about upstream main. The saved-item path retains the same start and duration from exact native turn headers without resuming a thread.
+Mixed-timeline boundary projection consumes `turn_id`, `started_at` and `duration_ms`. Native turn headers use `startedAt` and `durationMs`. Runtime projection converts known Unix seconds to microseconds and retains missing timestamps. The saved-item path retains the same start and duration from exact native turn headers without resuming a thread. The current native runtime requirement is recorded in `codex-runtime.lock.json`; see the [acceptance boundaries](../testing/upstream-acceptance-boundaries.md) for qualification evidence.
 
 Ordinary messages use a 20-point reading gap. A completed process header and its answer form one reading group, with a 6-point gap. The working indicator has 20 points above its 24-point status row and 20 points between that row and the composer. The composer contributes 8 points of the lower gap. When the status row closes, the normal message-to-composer gap remains.
 

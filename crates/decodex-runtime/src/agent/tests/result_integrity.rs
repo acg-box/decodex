@@ -1,6 +1,45 @@
 use crate::agent::tests::{self, ClientError, ServerEvent, Value, result_messages};
 
 #[tokio::test]
+async fn native_answer_display_clears_streamed_and_completed_results() {
+	let (mut agent, mut sent, _directory) = tests::fixture().await;
+	agent.start_agent("agent", "Coordinate").await.unwrap();
+	while sent.try_recv().is_ok() {}
+	let item = serde_json::json!({"type":"agentMessage","id":"answer","phase":"final_answer",
+		"text":"RESTRICTED_ANSWER","moderation":{"moderated":true,"display":{
+			"version":1,"mode":"block","reason":{"kind":"cyber","trustedAccess":false}}}});
+	agent.observe_live_text("item/agentMessage/delta", &serde_json::json!({
+		"threadId":"opaque thread/1","turnId":"opaque turn/1","itemId":"answer","delta":"RESTRICTED_ANSWER"
+	})).await.unwrap();
+	agent
+		.observe_live_text(
+			"item/completed",
+			&serde_json::json!({
+				"threadId":"opaque thread/1","turnId":"opaque turn/1","item":item
+			}),
+		)
+		.await
+		.unwrap();
+	assert!(
+		agent
+			.store
+			.read_agent_output("agent".into())
+			.await
+			.unwrap()
+			.iter()
+			.all(|row| row.text.is_empty())
+	);
+	let turn = serde_json::json!({"status":"completed","itemsView":"summary","items":[item]});
+	assert_eq!(result_messages::completion_summary(&turn).unwrap()["text"], "");
+	assert!(
+		!serde_json::to_string(&result_messages::collect(Some(&turn)))
+			.unwrap()
+			.contains("RESTRICTED_ANSWER")
+	);
+	assert!(sent.try_recv().is_err(), "display updates cannot dispatch a turn");
+}
+
+#[tokio::test]
 async fn live_transport_saves_observed_timings_for_the_exact_completed_turn() {
 	let (mut agent, _sent, _directory) = tests::fixture().await;
 	let work = agent.start_agent("agent", "Coordinate").await.unwrap();

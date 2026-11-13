@@ -4705,7 +4705,7 @@
     "manual_review_item": 28,
     "behavior": [
       "Read the current source-bound native model catalog, including its explicit default and retirement deadlines. Keep the existing automatic catalog refresh.",
-      "After an explicit retirement deadline, choose the same complete catalog\u2019s current default for new Agent settings and loaded idle Agent recovery. Reuse the existing settings journal, source checks and readback.",
+      "After an explicit retirement deadline, choose the same complete catalog’s current default for new Agent settings and loaded idle Agent recovery. Reuse the existing settings journal, source checks and readback.",
       "Keep an available model and preserve compatible reasoning/service-tier choices. Do not infer retirement from a missing catalog entry, an upgrade suggestion, a quota response or a network error.",
       "Desktop model and effort cycling requires a current native catalog; it does not fall back to a fixed list. Restored unsent drafts are not sent by this change."
     ],
@@ -5329,6 +5329,48 @@
       ],
       "historical_explicit_recovery_selector": "account_launch::agent_process::native_tests::cold_settings::recap_socket::fork::installed_provider_recovery_fork_preserves_context_and_restarts_on_current_provider",
       "evidence": "automations/upstream/current-review.json#records; automations/upstream/qualification.json#saved_provider_admission"
+    }
+  },
+  "retained_answer_display": {
+    "owner": "Native Codex chooses the answer display instruction. Decodex applies that instruction to its existing text consumers.",
+    "contract": [
+      "Show text when native moderation is absent or unrestricted, or when version 1 explicitly selects show.",
+      "Suppress original text for native hide, block, unsupported or unreadable restricted instructions.",
+      "Use one projection for the live completed output, native timeline/history, Recap excerpts and bounded completion evidence.",
+      "Preserve native item and turn identities. An empty completed text clears a previously retained streaming value.",
+      "Keep plan text and non-text native items under their existing contracts."
+    ],
+    "source_symbols": [
+      "crates/decodex-runtime/src/agent_message_history.rs::assistant_text",
+      "crates/decodex-runtime/src/agent.rs::observe_live_text",
+      "crates/decodex-runtime/src/agent/timeline.rs::ordinary",
+      "crates/decodex-runtime/src/agent/result_messages.rs::displayed_message"
+    ],
+    "upstream_contract": "https://github.com/openai/codex/blob/8a4b226ad5d69978d62cf0c5a20c41420431a93e/codex-rs/protocol/src/items/display.rs",
+    "source_commit_reference": "https://github.com/acg-box/decodex/commit/7308c757f7455d85fb4a4c0845d369a53b9d5676",
+    "original_qualification": {
+      "upstream_source": "72532ecae5efe500d9e722f3ed5214e63cc8098a",
+      "cli_sha256": "91f87a64614ae6b94093a25e95debd5bc1ba114270c5968913f09204c9d0bbcc",
+      "schema_sha256": "fe2ac723840c68d587b5644b9ad1e64bf7fa4642bd4fc23dc97e18a90afcf841",
+      "regressions": [
+        "agent_message_history::tests::native_answer_display_applies_to_history_and_recap",
+        "agent::tests::result_integrity::native_answer_display_clears_streamed_and_completed_results"
+      ],
+      "baseline": "Both new regressions failed on the original retained-text symptom before the repair.",
+      "affected_gate": "65 current projection, result and Recap cases passed after the final source and runtime pin settled.",
+      "native_fixture": "crates/decodex-runtime/tests/native_qualification/answer_display.py",
+      "native_scenarios": [
+        "show",
+        "hide",
+        "block",
+        "unsupported"
+      ],
+      "limits": [
+        "Synthetic metadata and disposable native homes; no installed desktop or live-provider acceptance.",
+        "The native fixture proves completion and cold-history flags. Local regressions prove their text projection.",
+        "This repair adds no replacement cards, trusted-contact workflow or local moderation decision.",
+        "Later artifact qualification is separate from this original contract evidence."
+      ]
     }
   }
 }

@@ -336,7 +336,8 @@ pub(crate) fn ordinary(row: &Value) -> Option<AgentTimelineContent> {
 		&& item["name"] == "work_instruction";
 	let (attachments, omitted) = attachments::project(item);
 	let source = match kind.as_str() {
-		"agentMessage" | "plan" => item["text"].as_str()?.to_owned(),
+		"agentMessage" => crate::agent_message_history::assistant_text(item)?.to_owned(),
+		"plan" => item["text"].as_str()?.to_owned(),
 		"reasoning" => item["summary"]
 			.as_array()?
 			.iter()
