@@ -63,6 +63,35 @@ impl SqliteStore {
 }
 
 impl SqliteStore {
+	/// Remove the exact registered project without deleting conversations or Work.
+	pub async fn delete_project(
+		&self,
+		id: String,
+		native: Option<String>,
+	) -> Result<(), StoreError> {
+		self.run(move |c| {
+			let tx = c.transaction().map_err(error::sqlite_error)?;
+			let current: Option<Option<String>> = tx
+				.query_row("SELECT native_project_id FROM projects WHERE id=?1", [&id], |r| {
+					r.get(0)
+				})
+				.optional()
+				.map_err(error::sqlite_error)?;
+			let Some(current) = current else { return Ok(()) };
+			if current != native {
+				return Err(DatabaseError::Conflict.into());
+			}
+			tx.execute("UPDATE works SET project_id=NULL WHERE project_id=?1", [&id])
+				.map_err(error::sqlite_error)?;
+			tx.execute("DELETE FROM project_agents WHERE project_id=?1", [&id])
+				.map_err(error::sqlite_error)?;
+			tx.execute("DELETE FROM projects WHERE id=?1", [&id]).map_err(error::sqlite_error)?;
+			tx.commit().map_err(error::sqlite_error)?;
+			Ok(())
+		})
+		.await
+	}
+
 	pub async fn bind_native_project(
 		&self,
 		id: String,
@@ -106,4 +135,69 @@ pub(crate) fn read_projects(connection: &Connection) -> Result<Vec<Project>, Sto
 	}
 
 	Ok(result)
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[tokio::test]
+	async fn delete_project_detaches_records_atomically_and_keeps_content() {
+		let dir = tempfile::tempdir().unwrap();
+		let file = dir.path().join("keep.txt");
+		std::fs::write(&file, "Keep local project files").unwrap();
+		let store = SqliteStore::open_test(&dir.path().join("projects.sqlite3")).unwrap();
+		store
+			.register_project("removed".into(), "Removed".into(), dir.path().display().to_string())
+			.await
+			.unwrap();
+		store.register_project("kept".into(), "Kept".into(), "/kept".into()).await.unwrap();
+		store
+			.bind_native_project("removed".into(), "native".into(), "Removed".into())
+			.await
+			.unwrap();
+		store.with_connection(|c| {
+			c.execute_batch("BEGIN;
+			 INSERT INTO agent_work_items(id,kind,title,instructions,codex_thread_id,dispatch_state,status,created_at_micros,updated_at_micros) VALUES('chat','goal','Keep title','Keep instructions','thread','idle','open',1,1);
+			 INSERT INTO agents VALUES('chat',0);
+			 INSERT INTO project_agents VALUES('chat','removed');
+			 INSERT INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros) VALUES('input','chat','user_message','{\"text\":\"Keep history\"}',1);
+			 INSERT INTO works(id,project_id,owner_agent_id,title,requirements_id,state) VALUES('work','removed','chat','Keep Work','requirements','open');
+			 INSERT INTO work_requirements VALUES('work','requirements','Goal','[]','User'); COMMIT;")
+			 .map_err(error::sqlite_error)?;
+			Ok(())
+		}).unwrap();
+		assert!(store.delete_project("removed".into(), Some("wrong-native".into())).await.is_err());
+		assert_eq!(store.projects().await.unwrap().len(), 2);
+		store.delete_project("removed".into(), Some("native".into())).await.unwrap();
+		store.delete_project("removed".into(), Some("native".into())).await.unwrap();
+		assert_eq!(store.projects().await.unwrap()[0].id, "kept");
+		assert_eq!(store.get_agent_work_item("chat".into()).await.unwrap().title, "Keep title");
+		store
+			.with_connection(|c| {
+				assert_eq!(
+					c.query_row(
+						"SELECT payload FROM agent_inbox_events WHERE source_event_id='input'",
+						[],
+						|r| r.get::<_, String>(0)
+					)
+					.unwrap(),
+					"{\"text\":\"Keep history\"}"
+				);
+				assert!(
+					c.query_row("SELECT project_id FROM works WHERE id='work'", [], |r| r
+						.get::<_, Option<String>>(0))
+						.unwrap()
+						.is_none()
+				);
+				assert_eq!(
+					c.query_row("SELECT count(*) FROM project_agents", [], |r| r.get::<_, i64>(0))
+						.unwrap(),
+					0
+				);
+				Ok(())
+			})
+			.unwrap();
+		assert_eq!(std::fs::read_to_string(file).unwrap(), "Keep local project files");
+	}
 }

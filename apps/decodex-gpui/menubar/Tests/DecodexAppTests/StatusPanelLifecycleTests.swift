@@ -182,7 +182,7 @@ final class StatusPanelLifecycleTests: XCTestCase {
 		func buttons(_ view: NSView) -> [NSButton] {
 			(view as? NSButton).map { [$0] } ?? view.subviews.flatMap(buttons)
 		}
-		let next = try XCTUnwrap(buttons(host).first { $0.toolTip == "Next reset cards" })
+		let next = try XCTUnwrap(buttons(host).first { $0.accessibilityLabel() == "Next reset cards" })
 		XCTAssertFalse(next.isHidden)
 		next.performClick(nil)
 		try await Task.sleep(for: .milliseconds(70))

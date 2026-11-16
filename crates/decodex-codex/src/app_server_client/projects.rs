@@ -13,6 +13,18 @@ impl AppServerClient {
 		&self,
 		directory: &str,
 	) -> Result<Option<Value>, ClientError> {
+		self.find_project(|project| {
+			project["roots"]
+				.as_array()
+				.is_some_and(|roots| roots.iter().any(|root| root["path"] == directory))
+		})
+		.await
+	}
+
+	async fn find_project(
+		&self,
+		matches: impl Fn(&Value) -> bool,
+	) -> Result<Option<Value>, ClientError> {
 		let mut cursor = Value::Null;
 		let mut seen = HashSet::new();
 		let mut selected = None;
@@ -28,10 +40,7 @@ impl AppServerClient {
 				.ok_or(ClientError::InvalidFrame)?;
 
 			for project in rows {
-				if project["roots"]
-					.as_array()
-					.is_some_and(|roots| roots.iter().any(|r| r["path"] == directory))
-				{
+				if matches(project) {
 					if selected.is_some() {
 						return Err(ClientError::InvalidFrame);
 					}
@@ -55,6 +64,26 @@ impl AppServerClient {
 
 			cursor = serde_json::json!(next);
 		}
+	}
+
+	/// Remove only the catalog entry; native Codex retains and detaches its threads.
+	pub async fn delete_project(&self, id: &str) -> Result<(), ClientError> {
+		let params = serde_json::json!({"projectId":id});
+		if !is_project_read(&params) {
+			return Err(ClientError::InvalidFrame);
+		}
+		if self.find_project(|project| project["id"] == id).await?.is_none() {
+			return Ok(());
+		}
+		let result = time::timeout(Duration::from_secs(8), self.request("project/delete", params))
+			.await
+			.map_err(|_| ClientError::Io)
+			.and_then(|r| r);
+		if self.find_project(|project| project["id"] == id).await?.is_none() {
+			return Ok(());
+		}
+		result?;
+		Err(ClientError::InvalidFrame)
 	}
 
 	/// Publish a title only while its originating native task settings remain current.

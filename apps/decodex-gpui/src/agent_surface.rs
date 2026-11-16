@@ -11,6 +11,7 @@ pub(crate) use assistant_settings::ComponentAction as RagflowComponentAction;
 #[path = "agent_capabilities.rs"] mod capabilities;
 #[path = "agent_composer.rs"] mod composer;
 #[path = "agent_context_settings.rs"] mod context_settings;
+#[path = "conversation_divider.rs"] mod conversation_divider;
 #[path = "agent_conversation_metric.rs"] mod conversation_metric;
 #[path = "agent_creation_defaults.rs"] mod creation_defaults;
 #[path = "agent_creation_setup.rs"] mod creation_setup;
@@ -504,8 +505,13 @@ impl AgentSurface {
 	fn new_inputs(cx: &mut Context<Self>) -> AgentInputs {
 		Self::refresh_prompt(cx);
 
-		let model =
-			cx.new(|cx| ComposerInput::with_placeholder(31, "Select model", "Agent model", cx));
+		let model = cx.new(|cx| {
+			let mut input = ComposerInput::with_placeholder(31, "-", "Agent model", cx);
+			if let Some(model) = crate::session_settings::Defaults::load().last_model {
+				input.set_content(model.as_str(), cx);
+			}
+			input
+		});
 
 		let cwd = cx.new(|cx| {
 			ComposerInput::with_placeholder(
@@ -858,6 +864,15 @@ impl AgentSurface {
 				.execution
 				.choice(self.selected.as_deref().expect("new draft identity"));
 			return Ok(AgentActionDto::NewConversation {
+				assistant_id: self
+					.workspace
+					.new_conversation_workspace
+					.is_none()
+					.then(|| self.assistant_id())
+					.flatten()
+					.map(EntityId::new)
+					.transpose()
+					.map_err(|_| "Invalid Assistant identity")?,
 				project_id: self
 					.workspace
 					.new_conversation_workspace
@@ -1678,10 +1693,9 @@ impl AgentSurface {
 			self.refresh_factory_briefs(cx);
 			self.refresh_deliveries(cx);
 
-			if self.current_model_catalog(cx).is_none()
-				|| self.capabilities_checked.is_none_or(|at| at.elapsed().as_secs() >= 60)
-			{
-				self.load_capabilities(cx);
+			self.load_capabilities(cx);
+			if !self.creation_defaults_applied {
+				self.apply_creation_defaults(cx);
 			}
 
 			self.sync_request(cx);
@@ -1709,7 +1723,11 @@ impl AgentSurface {
 		if let Ok(AgentSnapshotResult::Available(snapshot)) = &result
 			&& self.voice_owner().is_some_and(|voice| {
 				snapshot.archived_work_ids.iter().any(|id| id == voice)
-					|| !snapshot.work_items.iter().any(|work| work.id == voice)
+					// A local Live draft is unpublished until speech arrives. Its absence
+					// is removal only after a prior snapshot actually contained it.
+					|| (self.snapshot.as_ref().is_some_and(|previous| {
+						previous.work_items.iter().any(|work| work.id == voice)
+					}) && !snapshot.work_items.iter().any(|work| work.id == voice))
 			}) {
 			self.stop_voice(cx);
 		}
@@ -1738,6 +1756,14 @@ impl AgentSurface {
 
 		self.apply_result(result);
 		if first_snapshot && let Some(id) = self.selected.clone() {
+			if self.composer_manager.is_none()
+				&& self.conversation_record(&id).is_some_and(|work| {
+					work.parent_goal_id.is_none() || work.kind == AgentWorkKindDto::Manager
+				}) {
+				// The restored draft already belongs to this selected conversation.
+				// Bind it directly so settings and input do not target the unused Assistant.
+				self.composer_manager = Some(id.clone());
+			}
 			self.reveal_navigation_conversation(&id, cx);
 		}
 
@@ -3167,6 +3193,8 @@ fn history_entry_presented(
 		&& let Some(text) = history::handoff(&entry.text)
 	{
 		return gpui::div().w_full().child(VoiceBlock {
+			action: None,
+			presentation: None,
 			viewport: None,
 			key: identity.into(),
 			title: "Voice conversation".into(),
@@ -3252,6 +3280,7 @@ fn history_entry_presented(
 
 fn reply_metrics(entry: &AgentHistoryEntryDto) -> impl IntoElement {
 	ResponseMetrics {
+		spend: entry.usage.as_ref().and_then(|u| u.details.as_ref()?.spend.clone()),
 		key: format!("local-{}", entry.id),
 		duration_ms: entry.duration_ms,
 		status: None,

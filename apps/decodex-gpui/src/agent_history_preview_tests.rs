@@ -542,7 +542,7 @@ fn scrubbing_ticks_updates_one_preview_without_dwell_gaps_or_transcript_movement
 	assert!(visual.debug_bounds("history-hover-preview").is_some());
 	thread::sleep(crate::ui_theme::POPOVER_ARRIVAL + Duration::from_millis(10));
 	visual.update(crate::ui_frame::draw_current_frame);
-	let center = visual.debug_bounds("popover-surface").expect("preview surface").center();
+	let origin = visual.debug_bounds("popover-surface").expect("preview surface").origin;
 	let columns = [
 		"history-preview-time",
 		"history-preview-duration",
@@ -557,8 +557,8 @@ fn scrubbing_ticks_updates_one_preview_without_dwell_gaps_or_transcript_movement
 		visual.update(crate::ui_frame::draw_current_frame);
 		let preview = visual.debug_bounds("history-hover-preview").expect("no gap while scrubbing");
 		let panel_bounds = visual.debug_bounds("popover-surface").expect("same preview surface");
-		assert!((panel_bounds.center().y - center.y).abs() <= gpui::px(0.5));
-		assert_eq!(panel_bounds.center().x, center.x);
+		assert!((panel_bounds.top() - origin.y).abs() <= gpui::px(0.5));
+		assert_eq!(panel_bounds.left(), origin.x);
 		assert_eq!(
 			visual.debug_bounds("history-preview-question").expect("updated question").size.height,
 			gpui::px(if index == 0 { 36. } else { 18. })

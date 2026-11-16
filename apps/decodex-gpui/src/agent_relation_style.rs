@@ -1,12 +1,13 @@
 //! One visual grammar for graph edges. Line patterns denote relation types, not certainty.
+use crate::ui_motion::HoverHint as _;
 use gpui::{KeyDownEvent, Path, PathStyle, Pixels, Point, StrokeOptions, Window};
 
 use crate::{
 	shell::{
 		agent_surface::work_board::relations::{
-			AgentSurface, AnyElement, AppContext, Context, InteractiveElement, IntoElement, Kind,
-			MouseButton, ParentElement, PathBuilder, RelationTip, Role, Route, SUCCESS,
-			StatefulInteractiveElement, Styled, TEXT_MUTED, WARNING,
+			AgentSurface, AnyElement, Context, InteractiveElement, IntoElement, Kind, MouseButton,
+			ParentElement, PathBuilder, Role, Route, SUCCESS, StatefulInteractiveElement, Styled,
+			TEXT_MUTED, WARNING,
 		},
 		workspace_symbols,
 		workspace_symbols::Symbol,
@@ -79,7 +80,7 @@ impl AgentSurface {
 			.cursor_pointer()
 			.occlude()
 			.hover(|d| d.bg(ui_theme::rgba(0xffffff10)))
-			.tooltip(move |_, cx| cx.new(|_| RelationTip(label.into())).into())
+			.hover_hint(label)
 			.child(workspace_symbols::icon_sized(
 				if hidden { Symbol::Eye } else { Symbol::EyeSlash },
 				14.,

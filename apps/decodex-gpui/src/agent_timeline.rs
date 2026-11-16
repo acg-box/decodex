@@ -796,32 +796,6 @@ impl AgentSurface {
 		if archived { render::process_indent(body) } else { body.into_any_element() }
 	}
 
-	fn native_voice_history_content(
-		&self,
-		identity: String,
-		empty_key: String,
-		title: &str,
-		text: &str,
-		empty_status: &str,
-		cx: &mut Context<Self>,
-	) -> AnyElement {
-		if text.trim().is_empty() {
-			gpui::div()
-				.id(SharedString::from(format!("voice-status-{empty_key}")))
-				.role(Role::Status)
-				.child(agent_surface::muted(empty_status.to_owned()))
-				.into_any_element()
-		} else {
-			VoiceBlock {
-				viewport: Some(self.voice_history_viewport(cx)),
-				key: identity,
-				title: title.into(),
-				text: text.to_owned(),
-			}
-			.into_any_element()
-		}
-	}
-
 	fn replied_native_turns(&self) -> BTreeSet<&String> {
 		self.timeline
 			.native
@@ -1029,19 +1003,30 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) -> AnyElement {
 		let title = if group.failed { "Voice conversation (failed)" } else { "Voice conversation" };
-		let body = self.native_voice_history_content(
-			serde_json::json!([
-				work.id,
-				work.codex_thread_id,
-				group.identity(&self.timeline.native.entries)
-			])
-			.to_string(),
-			serde_json::json!([work.id, key(entry)]).to_string(),
-			title,
-			&group.text,
-			group.empty_status(),
-			cx,
-		);
+		let identity = serde_json::json!([
+			work.id,
+			work.codex_thread_id,
+			group.identity(&self.timeline.native.entries)
+		])
+		.to_string();
+		let body = if group.text.trim().is_empty() {
+			gpui::div()
+				.id(SharedString::from(format!("voice-status-{identity}")))
+				.role(Role::Status)
+				.child(agent_surface::muted(group.empty_status()))
+				.into_any_element()
+		} else {
+			let action = self.side_chat_response_action(&group.text, &identity, cx);
+			VoiceBlock {
+				action,
+				key: identity,
+				title: title.into(),
+				text: group.text.clone(),
+				presentation: self.voice_presentation(&work.id, &group.session),
+				viewport: Some(self.voice_history_viewport(cx)),
+			}
+			.into_any_element()
+		};
 
 		self.anchored_native_history_entry(work, entry, body)
 	}

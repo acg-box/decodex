@@ -1127,7 +1127,7 @@ async fn serve_fixture(server_io: DuplexStream, history: Value, sent: UnboundedS
 				fixture_thread_read(&request, &history, &settings, turns)
 			},
 			Some("thread/list") =>
-				serde_json::json!({"data":if !faults.deleted && request["params"]["archived"]==faults.archived {vec![serde_json::json!({"id":"opaque thread/1"})]} else {vec![]},"nextCursor":null}),
+				serde_json::json!({"data":if !faults.deleted && history["_not_listed"] != true && request["params"]["archived"]==faults.archived {vec![serde_json::json!({"id":"opaque thread/1"})]} else {vec![]},"nextCursor":null}),
 			Some("thread/delete") => {
 				faults.deleted = true;
 				serde_json::json!({})

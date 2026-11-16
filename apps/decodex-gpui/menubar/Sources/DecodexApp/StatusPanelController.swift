@@ -141,7 +141,6 @@ final class StatusPanelController: NSObject {
 		button.target = self
 		button.action = #selector(togglePanel)
 		button.sendAction(on: [.leftMouseUp])
-		button.toolTip = "Decodex"
 		button.setAccessibilityLabel("Decodex")
 	}
 

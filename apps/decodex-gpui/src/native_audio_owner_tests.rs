@@ -262,6 +262,7 @@ fn prepared_dictation_starts_without_recording_during_preparation() {
 			ready.recv_timeout(Duration::from_secs(15)).unwrap(),
 			"preparation must not record"
 		);
+		assert_dictation_processing(&owner);
 
 		let requested = Instant::now();
 		let mut session =
@@ -292,7 +293,25 @@ fn prepared_dictation_starts_without_recording_during_preparation() {
 		}
 
 		while session.parts().1.captured.pop().is_ok() {}
+
+		thread::sleep(Duration::from_millis(30));
+
+		assert!(session.parts().1.captured.pop().is_err(), "stopped capture must stay stopped");
 	}
+}
+
+fn assert_dictation_processing(owner: &Owner) {
+	let (reply, input) = mpsc::sync_channel(1);
+
+	owner.commands.send(Command::CheckDictationInput(reply)).unwrap();
+
+	let input = input.recv_timeout(Duration::from_secs(15)).unwrap().expect("dictation input");
+
+	eprintln!("dictation_input={input:?}");
+	assert_eq!(input.sample_rate, 24_000.);
+	assert_eq!(input.channels, 1);
+	assert!(input.voice_processing, "Apple Voice Processing must be enabled and not bypassed");
+	assert!(input.agc, "Apple automatic gain must be enabled");
 }
 
 #[test]
@@ -302,11 +321,8 @@ fn default_dictation_keeps_warm_capture_and_does_not_pin_a_physical_device() {
 
 	owner.commands.send(Command::Prepare(0)).unwrap();
 
-	let (reply, cold) = mpsc::sync_channel(1);
+	assert_dictation_processing(&owner);
 
-	owner.commands.send(Command::CheckCaptureChannels(reply)).unwrap();
-
-	let expected_channels = cold.recv_timeout(Duration::from_secs(15)).unwrap().unwrap();
 	let (reply, ready) = mpsc::sync_channel(1);
 
 	owner.commands.send(Command::CheckPrepared(Mode::Dictation, reply)).unwrap();
@@ -317,18 +333,11 @@ fn default_dictation_keeps_warm_capture_and_does_not_pin_a_physical_device() {
 
 	for attempt in 0..5 {
 		let requested = Instant::now();
-		let (reply, channels) = mpsc::sync_channel(1);
 		let mut session = owner
 			.start(Key { device: 0, mode: Mode::Dictation }, Arc::new(AtomicBool::new(false)), true)
 			.unwrap();
 
-		owner.commands.send(Command::CheckCaptureChannels(reply)).unwrap();
-
-		assert_eq!(
-			channels.recv_timeout(Duration::from_secs(15)).unwrap(),
-			Some(expected_channels),
-			"dictation must retain its mono input format"
-		);
+		assert_dictation_processing(&owner);
 
 		let (state, pcm) = session.parts();
 		let until = Instant::now() + Duration::from_secs(4);
@@ -338,7 +347,8 @@ fn default_dictation_keeps_warm_capture_and_does_not_pin_a_physical_device() {
 		while Instant::now() < until {
 			assert!(state.running(), "capture stopped on attempt {attempt}");
 
-			while pcm.captured.pop().is_ok() {
+			while let Ok(sample) = pcm.captured.pop() {
+				assert!(sample.is_finite() && (-1. ..=1.).contains(&sample));
 				first_pcm.get_or_insert_with(|| requested.elapsed());
 
 				samples += 1;

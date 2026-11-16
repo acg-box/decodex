@@ -261,7 +261,7 @@ struct AccountDailyUsageChart: View {
 									available: proxy.size.height
 								)
 							)
-							.help(
+							.hoverHint(
 								"\(compactUsageDate(record.date)): "
 									+ "\(record.tokens.formatted()) tokens"
 							)

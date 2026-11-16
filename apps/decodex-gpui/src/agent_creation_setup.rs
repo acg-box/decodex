@@ -36,7 +36,8 @@ impl AgentSurface {
 		self.creation_setup_present = setup.is_some();
 
 		let mut empty = empty_setup();
-		empty.service_tier = crate::session_settings::default_speed().ok();
+		empty.service_tier =
+			empty.service_tier.or_else(|| crate::session_settings::default_speed().ok());
 		let setup = setup.unwrap_or(&empty);
 
 		self.model.update(cx, |input, cx| input.set_content(&setup.model, cx));
@@ -72,11 +73,13 @@ fn empty_setup() -> DesktopCreationSetup {
 			..Default::default()
 		},
 		inherit_effort: false,
-		model: String::new(),
+		model: defaults.last_model.map(|model| model.as_str().to_owned()).unwrap_or_default(),
 		working_directory: String::new(),
 		account: String::new(),
-		reasoning_effort: ConversationReasoningEffort::High,
-		service_tier: None,
+		reasoning_effort: defaults
+			.last_reasoning_effort
+			.unwrap_or(ConversationReasoningEffort::High),
+		service_tier: defaults.last_service_tier,
 		permission_mode: defaults.permissions,
 	}
 }

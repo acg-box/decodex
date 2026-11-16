@@ -1,9 +1,10 @@
 //! Source-bound question actions open the existing native Side chat flow.
+use crate::ui_motion::HoverHint as _;
 use std::rc::Rc;
 
 use gpui::{
-	AnyElement, AppContext as _, InteractiveElement as _, IntoElement as _, KeyDownEvent,
-	ParentElement as _, Role, SharedString, StatefulInteractiveElement as _, Styled as _, Window,
+	AnyElement, InteractiveElement as _, IntoElement as _, KeyDownEvent, ParentElement as _, Role,
+	SharedString, StatefulInteractiveElement as _, Styled as _, Window,
 };
 
 use crate::{
@@ -110,7 +111,7 @@ fn question_button(
 		.size(gpui::px(24.)).flex().items_center().justify_center().rounded_md()
 		.cursor_pointer().text_color(ui_theme::rgb(ui_theme::TEXT_MUTED))
 		.hover(|style| style.bg(ui_theme::rgba(ui_theme::HOVER_FILL)).text_color(ui_theme::rgb(ui_theme::TEXT)))
-		.tooltip(|_, cx| cx.new(|_| crate::shell::agent_surface::composer::ComposerTip("Ask in side chat".into())).into())
+		.hover_hint("Ask in side chat")
 		.on_click(move |_, window, cx| { action(window, cx); cx.stop_propagation(); })
 		.on_key_down(move |event: &KeyDownEvent, window, cx| {
 			if ["enter", "space"].contains(&event.keystroke.key.as_str()) {

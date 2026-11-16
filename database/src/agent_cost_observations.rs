@@ -22,7 +22,7 @@ impl SqliteStore {
 				'settings',json_extract(e.payload,'$.settings'),
 				'execution',json_extract(e.payload,'$.execution'))
 				FROM agent_inbox_events e JOIN agent_work_items w ON w.id=e.work_item_id
-				WHERE w.id=?1 AND w.codex_thread_id=?2 AND json_extract(e.payload,'$.threadId')=?2
+				WHERE w.id=?1 AND (w.codex_thread_id=?2 OR EXISTS(SELECT 1 FROM agent_thread_revisions r WHERE r.work_id=w.id AND r.old_thread_id=?2)) AND json_extract(e.payload,'$.threadId')=?2
 				AND e.event_kind IN ('token_usage','native_task_models','turn_execution')
 				ORDER BY e.id LIMIT 10001",
 				)

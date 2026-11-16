@@ -49,10 +49,12 @@ impl AgentCoordinator {
 				.find(|model| Some(model.model.as_str()) == params["model"].as_str())
 			&& let Ok(requested) = decodex_protocol::ServiceTier::new(tier)
 		{
-			// Native persists serviceTier as the preference and applies serviceTierForTurn
-			// only to this turn. Account routing never depends on either selection.
-			params["serviceTierForTurn"] =
-				serde_json::json!(model.effective_service_tier(&requested));
+			let effective = model.effective_service_tier(&requested);
+			if effective != requested {
+				// Replace the removed speed for this thread and its next turn together.
+				params["serviceTier"] = serde_json::json!(effective.thread_value());
+			}
+			params["serviceTierForTurn"] = serde_json::json!(effective);
 		}
 		if !guard.is_live() {
 			return Err(ClientError::StaleHistory.into());
@@ -134,5 +136,42 @@ impl AgentCoordinator {
 		}
 
 		Ok(())
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use crate::agent::tests::fixture_with_history;
+
+	#[tokio::test]
+	async fn removed_speed_uses_the_native_default_and_supported_choices_stay_unchanged() {
+		for (tiers, default, expected) in [
+			(vec!["priority"], None, "default"),
+			(vec!["priority"], Some("priority"), "priority"),
+			(vec!["priority", "ultrafast"], Some("priority"), "ultrafast"),
+		] {
+			let (coordinator, _sent, _directory) =
+				fixture_with_history(serde_json::json!({"_models":[{
+					"model":"selected-model","displayName":"Selected",
+					"supportedReasoningEfforts":[{"reasoningEffort":"high"}],"defaultReasoningEffort":"high",
+					"serviceTiers":tiers.iter().map(|tier| serde_json::json!({"id":tier})).collect::<Vec<_>>(),
+					"defaultServiceTier":default
+				}]}))
+				.await;
+			let mut params = serde_json::json!({"threadId":"thread","model":"selected-model","effort":"high","serviceTier":"ultrafast","serviceTierForTurn":"ultrafast"});
+			let guard = coordinator.client.history_guard(0).unwrap();
+			coordinator.select_turn_execution(&mut params, guard).await.unwrap().unwrap();
+			assert_eq!(params["model"], "selected-model");
+			assert_eq!(params["effort"], "high");
+			assert_eq!(params["serviceTierForTurn"], expected);
+			assert_eq!(
+				params["serviceTier"],
+				if expected == "default" {
+					serde_json::Value::Null
+				} else {
+					serde_json::json!(expected)
+				}
+			);
+		}
 	}
 }

@@ -14,6 +14,7 @@ mod archive;
 mod async_projection;
 mod background_terminals;
 mod checklist;
+mod conversation_drafts;
 mod file_changes;
 mod global_guardian;
 mod guardian;
@@ -221,6 +222,7 @@ impl AgentCoordinator {
 		let phase = Phase::new("recover_voice");
 
 		self.recover_voice_calls().await?;
+		self.discard_empty_conversation_drafts().await?;
 
 		drop(phase);
 
@@ -848,29 +850,8 @@ impl AgentCoordinator {
 		input: EnqueueAgentEvent,
 		workspace: Option<String>,
 	) -> Result<AgentWorkItem, AgentError> {
-		let now = now_micros()?;
-
 		Ok(store
-			.create_agent_conversation(
-				AgentWorkItem {
-					id: id.into(),
-					parent_goal_id: None,
-					kind: AgentWorkKind::Goal,
-					title: "New Agent".into(),
-					instructions:
-						"Help the user with their requests. Use other agents when useful.".into(),
-					codex_thread_id: None,
-					// Empty conversations wait for explicit input, not dependency release.
-					status: AgentWorkStatus::Wait,
-					dispatch_state: AgentDispatchState::Idle,
-					active_turn_id: None,
-					next_check_at_micros: None,
-					created_at_micros: now,
-					updated_at_micros: now,
-				},
-				input,
-				workspace,
-			)
+			.create_agent_conversation(Self::new_conversation_work(id)?, input, workspace)
 			.await?)
 	}
 
@@ -1043,6 +1024,14 @@ impl AgentCoordinator {
 	}
 
 	async fn ensure_thread(&mut self, item: &AgentWorkItem) -> Result<AgentWorkItem, AgentError> {
+		self.ensure_thread_for_execution(item, None).await
+	}
+
+	async fn ensure_thread_for_execution(
+		&mut self,
+		item: &AgentWorkItem,
+		execution: Option<&AgentExecutionOverrides>,
+	) -> Result<AgentWorkItem, AgentError> {
 		if item.codex_thread_id.is_some() {
 			// Continue the exact native context without changing its history or tool declarations.
 			return Ok(item.clone());
@@ -1056,6 +1045,9 @@ impl AgentCoordinator {
 				return Err(error);
 			},
 		};
+		if let Some(execution) = execution {
+			conversation_drafts::apply_initial_execution(&mut params, execution);
+		}
 
 		if let Some(catalog) = agent_capabilities::read_catalog(&self.client).await {
 			let now = SystemTime::now()
@@ -1065,7 +1057,7 @@ impl AgentCoordinator {
 
 			if let Some((target, _)) = params["model"].as_str().and_then(|model| {
 				now.and_then(|now| {
-					AgentModelDto::retired_default(
+					AgentModelDto::unavailable_default(
 						model,
 						&catalog.models,
 						catalog.default_model.as_ref(),
@@ -2066,11 +2058,7 @@ impl AgentCoordinator {
 				)
 				.await?;
 		}
-		if self.observe_live_text(method, params).await? {
-			return Ok(true);
-		}
-
-		Ok(false)
+		self.observe_live_text(method, params).await
 	}
 
 	async fn resolve_provider_request(&mut self, params: &Value) -> Result<(), AgentError> {

@@ -11,7 +11,7 @@ use std::{
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 
-pub(crate) use estimate::calculate;
+pub(crate) use estimate::{calculate, calculate_turns};
 
 pub(crate) const SOURCE: &str = "https://developers.openai.com/api/docs/pricing.md";
 const MAX_BYTES: usize = 262_144;

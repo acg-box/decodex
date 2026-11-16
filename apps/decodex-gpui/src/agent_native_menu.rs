@@ -212,7 +212,8 @@ impl AgentSurface {
 			)
 			.map(|(composer, trigger)| Bounds::new(composer.origin + trigger.origin, trigger.size));
 		let active = ui_motion::application_active();
-		let available = self.composer_unavailable_reason().is_none();
+		let available = self.composer_unavailable_reason().is_none()
+			&& (menu != Some("model") || self.composer_models(cx).is_some());
 		let open = active
 			&& available
 			&& self.native_controls.composer.enabled

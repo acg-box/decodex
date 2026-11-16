@@ -5,7 +5,7 @@ description: "Workspace ownership, native menu focus, compositor motion, and con
 tags: [decodex, architecture, desktop, presentation]
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-13T07:35:09.322Z
+    at: 2026-11-16T05:35:34.259Z
 sources:
   - id: openwiki-source-98e7b23c4cc276d20fcb4649
     resource: repo://apps/decodex-gpui/menubar/Sources/DecodexApp/AccountControlViews.swift
@@ -65,8 +65,12 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_native_menu.rs
   - id: openwiki-source-3664c9b8790465805ef686fd
     resource: repo://apps/decodex-gpui/src/agent_navigation_actions.rs
+  - id: openwiki-source-782cfab091c6439c4ff4dee2
+    resource: repo://apps/decodex-gpui/src/agent_navigation_icons.rs
   - id: openwiki-source-e0f9712ab121145d154e8324
     resource: repo://apps/decodex-gpui/src/agent_navigation_model.rs
+  - id: openwiki-source-2ca09fa226c111bf23378654
+    resource: repo://apps/decodex-gpui/src/agent_navigation_projects.rs
   - id: openwiki-source-c2592b96974e70b72f93f72b
     resource: repo://apps/decodex-gpui/src/agent_navigation_sidebar_tests.rs
   - id: openwiki-source-541c96314da57ad5afa1835e
@@ -169,14 +173,14 @@ sources:
     resource: repo://apps/decodex-gpui/src/ui_performance.rs
   - id: openwiki-source-546812ff3637690f4a184b89
     resource: repo://apps/decodex-gpui/src/ui_preferences.rs
+  - id: openwiki-source-41bad78d71f1e6614f8d340d
+    resource: repo://apps/decodex-gpui/src/ui_rail_label.rs
   - id: openwiki-source-570564020f98df7a4d6d0b61
     resource: repo://apps/decodex-gpui/src/ui_theme.rs
   - id: openwiki-source-fa218a67bba67197ecf88d7b
     resource: repo://apps/decodex-gpui/src/ui_viewport_clip.rs
   - id: openwiki-source-69e9fd7efd8c3cd616184e27
     resource: repo://crates/decodex-components/src/ragflow_service.rs
-  - id: openwiki-source-052a4071b057633df77b1e21
-    resource: repo://crates/decodex-runtime/src/agent/archive.rs
   - id: openwiki-source-c29d70b5569f29b7122f2f6b
     resource: repo://crates/decodex-runtime/src/native_agents.rs
   - id: openwiki-source-6085af9603cb7ac0ff3ef1cf
@@ -187,13 +191,15 @@ sources:
     resource: repo://database/src/assistant.rs
   - id: openwiki-source-d1279ad243eb550afec4d0e6
     resource: repo://database/src/guardian_settings.rs
+  - id: openwiki-source-2e3c9a4e5d3be13007ea32c3
+    resource: repo://database/src/projects.rs
   - id: openwiki-source-28af4781ad8d9558410630da
     resource: repo://database/src/works.rs
   - id: openwiki-source-c0eb738b42368debe7ef7545
     resource: repo://database/src/works/commands.rs
   - id: openwiki-source-8fe6f1557e5d45d88b34bd0a
     resource: repo://scripts/macos/generate_workspace_symbols.swift
-generated: { by: "codex", at: "2026-11-13T06:42:12.414Z" }
+generated: { by: "codex", at: "2026-11-16T05:35:34.259Z" }
 ---
 
 # Desktop workspace and native glass
@@ -208,9 +214,9 @@ Both side panels use the original workspace_surface and its workspace field colo
 
 With Graph closed, **Work in progress** provides a compact disclosure above the composer. It derives rows from the selected conversation's work subtree and observed native agents, excludes completed and archived work, and opens the existing conversation on selection. It introduces no work records or execution owner. New conversations and conversations without qualifying work omit the strip. The list uses the shared control-row size and disclosure motion, with bounded height and scrolling. Work and Debug activity islands use distinct accent-colored symbols under the shared activity-island sizing contract.
 
-A placement change keeps the same workspace surface. The compact navigation rail remains in the main window. Sidebar reveal geometry comes from that window, and retained sidebar and activity presentation entities use ui_layout::pane to reuse unchanged content there. State, activity animation and hover updates still invalidate the content. Active accessibility uses live semantic geometry. The sidebar owns pointer departure in both expanded and compact states. Floating panels exclude covered reading-plane paint and hit targets through the shared Viewport mask. One `PanelFrame` samples the layout slots and visible panel widths for each workspace frame. The sidebar, conversation header and reading-plane mask reuse those positions, including closing and reversals. The native composer applies its matching mask during parent prepaint, before painting that frame. The composer remains outside the reading-plane mask. A full-height left preview uses a separate rectangular mask on the native composer composite and its pointer region. That mask hides the covered portion without changing the complete material contour or foreground size. Its native content measures at the current parent anchor width; one native material supplies the surface, with no extra GPUI fill or window backdrop. Focused rendering tests cover unchanged content geometry across docked and floating placement, the absence of separate native sidebar glass, interrupted closing, the retained compact rail, and covered controls. Native activity islands still update their glass contour and foreground mask in one Core Animation transaction with implicit actions disabled.
+A placement change keeps the same workspace surface. The compact navigation rail remains in the main window. Sidebar reveal geometry comes from that window, and retained sidebar and activity presentation entities use ui_layout::pane to reuse unchanged content there. State, activity animation and hover updates still invalidate the content. Active accessibility uses live semantic geometry. The sidebar owns pointer entry and departure in both expanded and compact states. Entry starts the shared dwell even when the pointer stops without another mouse move. Floating panels exclude covered reading-plane paint and hit targets through the shared Viewport mask. One `PanelFrame` samples the layout slots and visible panel widths for each workspace frame. The sidebar, conversation header and reading-plane mask reuse those positions, including closing and reversals. The native composer applies its matching mask during parent prepaint, before painting that frame. The composer remains outside the reading-plane mask. A full-height left preview uses a separate rectangular mask on the native composer composite and its pointer region. That mask hides the covered portion without changing the complete material contour or foreground size. Its native content measures at the current parent anchor width; one native material supplies the surface, with no extra GPUI fill or window backdrop. Focused rendering tests cover unchanged content geometry across docked and floating placement, the absence of separate native sidebar glass, interrupted closing, the retained compact rail, and covered controls. Native activity islands still update their glass contour and foreground mask in one Core Animation transaction with implicit actions disabled.
 
-The left sidebar contains **Pin**, **Assistant** and **Projects**. Pin contains locally pinned conversation references. Assistant opens by default and lists unpinned personal topics, ordered by last update unless the user chooses another sort. Projects lists registered native project directories and their independent Agent conversations. A pinned personal topic is shown in Pin rather than repeated in Assistant; project membership remains visible in its tree. Attached Side chats remain with their source tabs. Pin has a four-row viewport and Assistant has a seven-row viewport. All returned entries remain scrollable without another item-count cutoff. These viewports do not enlarge the service snapshot: Work summaries retain their existing 100-record bound. The retired Recent preference is ignored without discarding pins, saved project drafts or preferences for the remaining sections.
+The left sidebar contains **Pin**, **Assistant** and **Projects** in one scrolling directory. Pin adds shortcuts without removing conversations from their source groups. Assistant opens by default and lists personal topics, ordered by last update unless the user chooses another sort. Projects lists registered directories and their independent conversations. Several projects can stay open together. Categories, projects and conversations share one text origin after a 28-point leading slot, without tree lines or increasing indentation. The 40-point compact rail has equal 6-point insets around this slot; only centered category icons and project or conversation initials remain visible, with no partial title suffixes. Categories and Archived use 12.5-point medium text in primary ink. Project names and conversation titles use 12.5-point normal text in body ink. Projects retain neutral folder symbols. Attached Side chats stay with their source tabs. Search remains above the directory and Archived stays fixed below it. The retired Recent preference is ignored without discarding pins, saved project drafts or preferences for the remaining sections.
 
 Click anywhere on a section header to expand or collapse it. Its secondary hover or keyboard-focus menu selects Last updated, Alphabetical or Always scroll titles. These preferences and pins are local UI state. The **Assistant** hover plus creates a **New Assistant topic** and reopens an existing unstarted personal draft before creating another. Personal topics share Assistant Memory and configuration, while retaining separate messages and drafts. The **Projects** hover plus opens the native folder chooser and existing AddProject path. It registers and reveals the project without rebinding the current draft. Each project's hover plus opens its own **New Agent** draft; repeated clicks and cross-project switches reuse the profile-scoped saved draft identity.
 
@@ -218,15 +224,17 @@ Click anywhere on a section header to expand or collapse it. Its secondary hover
 
 A 100 ms pointer dwell expands the compact rail temporarily, including when it was collapsed automatically. The temporary preview stays full height and takes precedence over a right floating panel without clearing that panel's requested state. Leaving starts a 220 ms close delay, and reentry cancels the pending close. The existing width transition retains the leading command and initial positions. Opening a section during a hover does not make the sidebar permanently visible. The explicit sidebar toggle controls persistent visibility and clears the temporary state. Clicking it on a compact rail opens a pinned full panel, floating above the composer when it cannot fit beside the conversation. Settings commands from a detached native popup route through the global action handler to the main Shell, which owns the reusable Settings window; opening it preserves the selected conversation.
 
-Sidebar content keeps its complete expanded canvas while the outer width opens, closes or reverses. The panel clips that canvas, so titles and trailing controls keep their final geometry instead of squeezing or disappearing at the first closing frame. The compact presentation mounts only after the rail reaches its settled width. Project branches then leave the compact layout entirely.
+Sidebar content keeps its complete expanded canvas while the outer width opens, closes or reverses. The panel clips that canvas, so titles and trailing controls keep their final geometry instead of squeezing or disappearing at the first closing frame. The compact presentation mounts only after the rail reaches its settled width. The settled compact layout retains project and conversation initials. Empty explanations and project-group spacing apply only while expanded, so the compact rail has no blank rows for empty groups.
 
 The sidebar, Work and Debug activity islands, response-statistics popover and history-rail previews share `ui_motion::HoverIntent`. It owns the 100 ms entry dwell, 220 ms departure grace and pending-task cancellation. Brief crossings do not expand a surface, internal movement does not restart entry, and stale exit events cannot cancel the next hovered target. Reentry cancels closing. Explicit clicks, keyboard actions and dismissal keep their immediate behavior; click-pinned surfaces stay open when the pointer leaves. The history marks and their preview form one target. Moving across marks updates the retained card immediately, and returning during departure grace keeps it open. Ordinary hover ink and contextual row actions retain direct feedback.
 
 Committed pointer intent and explicit surface toggles permit 400 ms of finite motion even while the visible App is inactive. The background-rendering preference is unchanged, and the ordinary policy resumes after the interval. System reduced motion and VoiceOver remain authoritative. This separates animation of a user operation from continuous background activity.
 
-Conversation rows expose fixed trailing Pin, Archive and Delete symbols on hover or keyboard focus. Update time uses a short relative value at the far right; hover provides the owner and complete local date and time in a tooltip beside the row’s trailing edge. The tooltip stays outside the action targets and uses the shared window-fitting anchor. The compact rail retains section symbols and conversation initials without time or action space. A first Delete click turns the same symbol red and applies a nudge; a second click confirms. Escape or an outside click cancels. Archive uses native Codex storage and retains history. Delete uses the exact native source, the complete existing deletion plan and local draft cleanup; learned personal Memory remains. Deleting an empty canonical Assistant draft clears its input while retaining its identity and configuration. A client-only project draft has no lifecycle symbols before the service records it.
+Conversation rows reveal inline Pin or Unpin, Archive, and Delete controls on hover or keyboard focus. Archived rows have only Restore and Delete. Update time uses a short relative value at the far right and fades while actions appear. The owner and full local timestamp are available in a tooltip that stays outside the row and action targets. The compact rail retains category icons and project or conversation initials without time or action space. The first Delete click turns the icon red with the shared confirmation nudge inside its fixed 24-point target; a second click confirms. Leaving the row, pressing Escape or clicking outside cancels. Archive uses native Codex storage and retains history. Conversation deletion uses its exact native source, the existing deletion plan and local draft cleanup; learned personal Memory remains. Deleting an empty canonical Assistant draft clears its input while retaining its identity and configuration. A client-only project draft has no lifecycle symbols before the service records it.
 
-The fixed **Archived** footer has a quiet divider. It opens the archive list inside the left sidebar, preserving the center conversation and draft. Its rows use existing native restore and delete operations. Return to the normal groups with its back control. Settings remains available through Command-K and the native Settings shortcut.
+Project headers reveal their delete and new-conversation icons through the same hover and keyboard-focus behavior. **Delete project** uses the same fixed target and two-click nudge confirmation. Its short confirmation hint states that chats and files are kept. It removes the native catalog entry and local directory registration. Active and archived conversation history, independent Work records and local files remain. Active conversations move to **No project**; archived conversations remain in Archived. The selected conversation and current draft are retained. The native client checks the exact project in the bounded catalog before and after deletion, and local cleanup requires the same native identity. A missing project is already deleted; an uncertain native result leaves the local entry available for inspection and retry.
+
+The fixed **Archived** footer has a quiet divider. It opens the archive list inside the left sidebar, preserving the center conversation and draft. Its rows use existing native restore and delete operations. A confirmed sidebar deletion dispatches through the archive owner directly, without a third confirmation click. Return to the normal groups with its back control. Settings remains available through Command-K and the native Settings shortcut.
 
 Collaboration shows **Needs you** before **Between agents**. Pending native requests, unanswered questions and explicit user decisions need a response; a returned result still needs its original assessment and is not automatically accepted. Opening an exchange's details keeps the active conversation and draft. Explicit **Open request**, **Open question** and **Open review** actions lead to the owning conversation, where its native response controls retain authority. Its fixed-size toolbar icon keeps a pending-count badge when the right panel is closed, with its name in the tooltip. The Graph remains available through its existing control and shortcut, but starts closed.
 

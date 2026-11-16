@@ -19,6 +19,7 @@
 #[path = "agent_relation_usage.rs"] mod usage;
 #[path = "agent_relation_visibility.rs"] mod visibility;
 
+use crate::ui_motion::HoverHint as _;
 use std::{
 	cell::{OnceCell, RefCell},
 	iter, mem,
@@ -26,9 +27,9 @@ use std::{
 };
 
 use gpui::{
-	AppContext, ClickEvent, Div, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent,
-	PathBuilder, Pixels, Point, Render, Role, ScrollEvent, SharedString, Stateful,
-	StatefulInteractiveElement, TextRun, Window, WindowTextSystem,
+	ClickEvent, Div, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, PathBuilder,
+	Pixels, Point, Role, ScrollEvent, SharedString, Stateful, StatefulInteractiveElement, TextRun,
+	Window, WindowTextSystem,
 };
 
 #[cfg(any(test, feature = "visual-capture"))]
@@ -266,13 +267,6 @@ impl Node {
 		let [left, top, right, bottom] = self.connection_bounds();
 
 		((left + right) / 2., (top + bottom) / 2.)
-	}
-}
-
-pub(super) struct RelationTip(pub(super) String);
-impl Render for RelationTip {
-	fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-		ui_motion::tooltip_surface(gpui::div()).child(self.0.clone())
 	}
 }
 
@@ -945,9 +939,7 @@ impl AgentSurface {
 			.rounded(gpui::px(8.))
 			.cursor_pointer()
 			.hover(|d| d.bg(ui_theme::rgba(0xffffff10)))
-			.when(id != "usage" || !self.work_board.view.usage_menu, |d| {
-				d.tooltip(move |_, cx| cx.new(|_| RelationTip(tip.clone())).into())
-			})
+			.when(id != "usage" || !self.work_board.view.usage_menu, |d| d.hover_hint(tip.clone()))
 			.child(label)
 			.on_click(cx.listener(move |s, _, window, cx| {
 				action(s, cx);

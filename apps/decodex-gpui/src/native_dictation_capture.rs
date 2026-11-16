@@ -1,4 +1,4 @@
-//! Dictation captures raw Apple microphone input on the shared audio owner thread.
+//! Dictation captures Apple voice-processed microphone input on the shared audio owner thread.
 #![cfg_attr(test, allow(dead_code))]
 use std::{
 	cell::Cell,
@@ -154,7 +154,7 @@ fn run(
 			let Ok(packet) = DictationAudio::from_pcm(mem::take(&mut bytes)) else {
 				return false;
 			};
-			let event = serde_json::json!({"type":"pcm","audio":packet,"level":(engine.level() * 5.).min(1.)});
+			let event = serde_json::json!({"type":"pcm","audio":packet,"level":engine.level()});
 
 			if events.try_send(event).is_err() {
 				healthy = false;

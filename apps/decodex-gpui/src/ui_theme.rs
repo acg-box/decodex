@@ -114,11 +114,14 @@ pub(crate) const PANEL_DIVIDER: u32 = 0xffffff10;
 // Navigation and collaboration use the same compact reading hierarchy.
 pub(crate) const NAVIGATION_SECTION_GAP: f32 = 18.0;
 pub(crate) const NAVIGATION_ROW_RADIUS: f32 = 8.0;
-pub(crate) const NAVIGATION_TITLE_SIZE: f32 = 12.0;
+pub(crate) const NAVIGATION_TITLE_SIZE: f32 = BODY_SIZE;
 pub(crate) const NAVIGATION_DETAIL_SIZE: f32 = 10.5;
-pub(crate) const NAVIGATION_SECTION_SIZE: f32 = 11.0;
-pub(crate) const NAVIGATION_ICON_SIZE: f32 = 14.0;
-pub(crate) const NAVIGATION_DISCLOSURE_SIZE: f32 = 12.0;
+pub(crate) const NAVIGATION_SECTION_SIZE: f32 = BODY_SIZE;
+pub(crate) const NAVIGATION_PROJECT_GAP: f32 = 8.0;
+/// Fill the compact rail between its equal outer insets.
+pub(crate) const NAVIGATION_LEADING_SIZE: f32 = CONTROL_SIZE;
+pub(crate) const NAVIGATION_ICON_SIZE: f32 = 16.0;
+pub(crate) const NAVIGATION_ACTION_SIZE: f32 = 14.0;
 pub(crate) const NAVIGATION_DIVIDER_HEIGHT: f32 = 12.0;
 // Color values below are stable role IDs. ColorScheme resolves display colors.
 pub(crate) const CANVAS: u32 = 0x0b0a0f;

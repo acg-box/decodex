@@ -21,6 +21,7 @@ pub(crate) use self::{
 	status::{count_preference as notification_count_preference, question_notice_preference},
 };
 
+use crate::ui_motion::HoverHint as _;
 use std::{
 	array,
 	cell::RefCell,
@@ -2240,33 +2241,6 @@ struct LifecycleOwnerGlobal {
 }
 impl Global for LifecycleOwnerGlobal {}
 
-struct RefreshTooltip;
-impl Render for RefreshTooltip {
-	fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-		tooltip_surface("Run diagnostic checks".into(), ui_theme::TEXT)
-	}
-}
-
-struct ControlTooltip<T>(T);
-impl<T> Render for ControlTooltip<T>
-where
-	T: Clone + Into<SharedString> + 'static,
-{
-	fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-		tooltip_surface(self.0.clone().into(), ui_theme::TEXT)
-	}
-}
-
-struct StatusTooltip {
-	text: SharedString,
-	color: u32,
-}
-impl Render for StatusTooltip {
-	fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-		tooltip_surface(self.text.clone(), self.color)
-	}
-}
-
 #[derive(Clone, Copy)]
 struct HealthPresentation {
 	label: &'static str,
@@ -3020,10 +2994,6 @@ fn floating_window_controls(
 		.into_any_element()
 }
 
-fn tooltip_surface(text: SharedString, color: u32) -> Div {
-	ui_motion::tooltip_surface(gpui::div()).text_color(ui_theme::rgb(color)).child(text)
-}
-
 fn topbar_controls(
 	shell: &Shell,
 	presentation: &ConnectionPresentation,
@@ -3071,7 +3041,7 @@ fn topbar_controls(
 				.debug_selector(|| "open-settings".into())
 				.role(Role::Button)
 				.aria_label("Open settings")
-				.tooltip(|_, cx| cx.new(|_| ControlTooltip("Settings (Command-,)")).into())
+				.hover_hint("Settings (Command-,)")
 				.key_context("Destination")
 				.track_focus(&shell.destination_focus[settings_index])
 				.on_action(cx.listener(Shell::focus_next))
@@ -3151,7 +3121,7 @@ fn agent_panel_control(shell: &Shell, index: usize, cx: &Context<Shell>) -> AnyE
 		.when(enabled, |el| el.tab_index(0))
 		.aria_label(label)
 		.aria_expanded(active)
-		.tooltip(move |_, cx| cx.new(|_| ControlTooltip(label)).into())
+		.hover_hint(label)
 		.size(gpui::px(CHROME_CONTROL_SIZE))
 		.rounded(gpui::px(ui_theme::SMALL_CONTROL_RADIUS))
 		.flex()
@@ -3401,7 +3371,7 @@ fn refresh_control(
 
 	button
 		.aria_label("Run diagnostic checks")
-		.tooltip(|_, cx| cx.new(|_| RefreshTooltip).into())
+		.hover_hint("Run diagnostics")
 		.tab_index(if can_refresh { 0 } else { -1 })
 		.border_color(if can_refresh && focus.is_focused(window) {
 			ui_theme::rgb(WB_BLUE)
@@ -3754,16 +3724,6 @@ fn account_mode_button(selected: bool, can_manage: bool, cx: &mut Context<Shell>
 			"Choose an available account automatically for new conversations"
 		})
 		.aria_description("Select an account below to use it for new conversations.")
-		.tooltip(move |_, cx| {
-			cx.new(move |_| {
-				ControlTooltip(if selected {
-					"Select an account below to use it for new conversations."
-				} else {
-					"Choose an available account for each new conversation."
-				})
-			})
-			.into()
-		})
 		.cursor_default()
 		.when(selected, |status| status.border_color(gpui::transparent_black()))
 		.when(can_manage && !selected, |button| {
@@ -4424,9 +4384,7 @@ fn account_icon_action(
 		.h(gpui::px(24.))
 		.px_0()
 		.tab_index(if enabled { 0 } else { -1 })
-		.tooltip(move |_, cx| {
-			cx.new(|_| StatusTooltip { text: label.into(), color: ui_theme::TEXT }).into()
-		})
+		.hover_hint(label)
 		.child(workspace_symbols::icon(symbol))
 }
 
@@ -5303,7 +5261,6 @@ fn history_page_controls(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 		.id("conversation-history-previous")
 		.role(Role::Button)
 		.aria_label("Show less conversation history")
-		.tooltip(|_, cx| cx.new(|_| ControlTooltip("Show less history")).into())
 		.h(gpui::px(24.0))
 		.px_2()
 		.flex()
@@ -5354,7 +5311,6 @@ fn history_page_controls(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 		.id("conversation-history-next")
 		.role(Role::Button)
 		.aria_label("Load more conversation history")
-		.tooltip(|_, cx| cx.new(|_| ControlTooltip("Load more history")).into())
 		.h(gpui::px(24.0))
 		.px_2()
 		.flex()
@@ -6329,7 +6285,6 @@ fn composer_model_control(model_label: String, cx: &mut Context<Shell>) -> AnyEl
 		.id("conversation-model")
 		.role(Role::Button)
 		.aria_label(format!("Model {model_label}; select next model"))
-		.tooltip(|_, cx| cx.new(|_| ControlTooltip("Model (click to cycle)")).into())
 		.h(gpui::px(23.0))
 		.px_2()
 		.flex()
@@ -6356,7 +6311,7 @@ fn composer_fast_control(fast_enabled: bool, cx: &mut Context<Shell>) -> AnyElem
 		.id("conversation-fast")
 		.role(Role::Button)
 		.aria_label(if fast_enabled { "Fast mode on" } else { "Fast mode off" })
-		.tooltip(|_, cx| cx.new(|_| ControlTooltip("Fast (priority service tier)")).into())
+		.hover_hint("Priority processing can cost more than Standard.")
 		.h(gpui::px(23.0))
 		.px_2()
 		.flex()
@@ -6407,7 +6362,6 @@ fn composer_effort_control(effort_label: String, cx: &mut Context<Shell>) -> Any
 		.id("conversation-effort")
 		.role(Role::Button)
 		.aria_label(format!("Reasoning effort {effort_label}; select next effort"))
-		.tooltip(|_, cx| cx.new(|_| ControlTooltip("Reasoning effort (click to cycle)")).into())
 		.h(gpui::px(23.0))
 		.px_2()
 		.flex()
@@ -6439,7 +6393,7 @@ fn topbar_sessions_toggle(
 		.role(Role::Button)
 		.aria_label("Toggle conversation sidebar")
 		.aria_expanded(left_sidebar_visible)
-		.tooltip(|_, cx| cx.new(|_| ControlTooltip("Toggle sessions (Command-E)")).into())
+		.hover_hint("Toggle sessions (Command-E)")
 		.h(gpui::px(27.0))
 		.px_3()
 		.flex()
@@ -6491,7 +6445,7 @@ fn topbar_inspector_toggle(
 		.role(Role::Button)
 		.aria_label("Toggle conversation context")
 		.aria_expanded(inspector_visible)
-		.tooltip(|_, cx| cx.new(|_| ControlTooltip("Toggle context (Command-B)")).into())
+		.hover_hint("Toggle context (Command-B)")
 		.h(gpui::px(27.0))
 		.px_3()
 		.flex()
@@ -6608,9 +6562,7 @@ fn account_row_identity(
 		.aria_label(format!("Activity for {}", account.alias.as_str()))
 		.aria_expanded(presentation.expanded)
 		.tab_stop(true)
-		.when_some(email.map(str::to_owned), |row, email| {
-			row.tooltip(move |_, cx| cx.new(|_| ControlTooltip(email.clone())).into())
-		})
+		.when_some(email.map(str::to_owned), |row, email| row.hover_hint(email.clone()))
 		.flex_1()
 		.min_w_0()
 		.flex()
@@ -6881,7 +6833,6 @@ fn conversation_refresh_button(
 		.id("refresh-conversation")
 		.role(Role::Button)
 		.aria_label("Sync Codex-backed conversations")
-		.tooltip(|_, cx| cx.new(|_| ControlTooltip("Sync Codex-backed conversations")).into())
 		.h(gpui::px(27.0))
 		.min_w(gpui::px(27.0))
 		.px_2()
@@ -6917,7 +6868,6 @@ fn conversation_archive_button(can_control: bool, cx: &mut Context<Shell>) -> An
 		.id("archive-conversation")
 		.role(Role::Button)
 		.aria_label("Archive selected Codex conversation")
-		.tooltip(|_, cx| cx.new(|_| ControlTooltip("Archive selected thread")).into())
 		.h(gpui::px(27.0))
 		.px_2()
 		.flex()
@@ -8176,7 +8126,10 @@ mod tests {
 		visual.update(crate::ui_frame::draw_current_frame);
 
 		assert!(visual.debug_bounds("conversation-defaults-pending").is_none());
-		assert!(conversations.snapshot().execution.reasoning_effort.is_none());
+		assert_eq!(
+			conversations.snapshot().execution.reasoning_effort,
+			Some(decodex_protocol::ConversationReasoningEffort::High)
+		);
 
 		let send = visual.debug_bounds("conversation-send").unwrap();
 
@@ -8191,7 +8144,10 @@ mod tests {
 
 		assert_eq!(message.as_str(), "Keep my input");
 		assert_eq!(execution.model.as_str(), "configured-model");
-		assert!(execution.reasoning_effort.is_none());
+		assert_eq!(
+			execution.reasoning_effort,
+			Some(decodex_protocol::ConversationReasoningEffort::High)
+		);
 		assert_eq!(execution.effective_service_tier().as_str(), "flex");
 	}
 

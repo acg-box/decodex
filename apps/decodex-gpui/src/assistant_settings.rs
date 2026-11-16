@@ -134,33 +134,21 @@ impl AgentSurface {
 	}
 
 	pub(super) fn new_assistant_conversation(&mut self, cx: &mut Context<Self>) {
-		let Some(assistant) = self.assistant_id() else {
+		let Some(_) = self.assistant_id() else {
 			self.open_assistant(cx);
 			return;
 		};
 		if self.sending || self.uncertain {
 			return;
 		}
-		if let Some(id) = self.unstarted_assistant_topic() {
+		if let Some(id) = self.unstarted_assistant_topic(cx) {
 			self.open_navigation_conversation(&id, cx);
 			return;
 		}
-		let id = self
-			.workspace
-			.assistant_open
-			.get_or_insert_with(|| format!("assistant-topic-{}", super::unique_command()))
-			.clone();
-		self.execute(
-			AgentActionDto::CreateAssistantTopic {
-				assistant_id: EntityId::new(assistant).expect("saved Assistant identity"),
-				topic_id: EntityId::new(id).expect("generated topic identity"),
-			},
-			None,
-			cx,
-		);
+		self.new_project_agent(None, cx);
 	}
 
-	fn unstarted_assistant_topic(&self) -> Option<String> {
+	fn unstarted_assistant_topic(&self, cx: &Context<Self>) -> Option<String> {
 		let snapshot = self.snapshot.as_ref()?;
 		self.selected
 			.iter()
@@ -168,6 +156,7 @@ impl AgentSurface {
 			.chain(snapshot.assistant.agent_id.iter())
 			.find(|id| {
 				self.is_assistant_conversation(id)
+					&& self.assistant_home_has_draft(id, cx)
 					&& self.send_previews(id).is_empty()
 					&& !snapshot.archived_work_ids.contains(*id)
 					&& !snapshot.pending_events.iter().any(|event| &event.work_item_id == *id)

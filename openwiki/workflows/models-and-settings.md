@@ -5,22 +5,30 @@ description: "Native model, Goal and search settings, source-bound writes and me
 tags: ["decodex", "architecture"]
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-12T12:41:07.431Z
+    at: 2026-11-14T16:13:41.978Z
 sources:
   - id: openwiki-source-4e2d2760a1fe5d904918afb7
     resource: repo://apps/decodex-gpui/menubar/Sources/DecodexApp/ConversationEstimatesView.swift
   - id: openwiki-source-b243cfb8ae3053f8047fdab0
     resource: repo://apps/decodex-gpui/src/agent_capabilities.rs
+  - id: openwiki-source-84fd1e57414f48af7e0f0f5e
+    resource: repo://apps/decodex-gpui/src/agent_composer_controls.rs
   - id: openwiki-source-48758ba7d154c82885281d2c
     resource: repo://apps/decodex-gpui/src/agent_composer.rs
   - id: openwiki-source-0a61b25348131fe1bb6e1d12
     resource: repo://apps/decodex-gpui/src/agent_context_settings_wire_tests.rs
   - id: openwiki-source-c76550e85b25876b339f9255
     resource: repo://apps/decodex-gpui/src/agent_context_settings.rs
+  - id: openwiki-source-d612b37045ad3a6800cad8c7
+    resource: repo://apps/decodex-gpui/src/agent_creation_defaults.rs
   - id: openwiki-source-f1af15e83185d3b1f12d8331
     resource: repo://apps/decodex-gpui/src/agent_creation_setup.rs
+  - id: openwiki-source-bc52712de094b4e96e7db7d5
+    resource: repo://apps/decodex-gpui/src/agent_execution_intent.rs
   - id: openwiki-source-9c68c30b2ff24ddf9a764d74
     resource: repo://apps/decodex-gpui/src/agent_memory.rs
+  - id: openwiki-source-09a2c045309673f306153f39
+    resource: repo://apps/decodex-gpui/src/agent_model_settings_wire_tests.rs
   - id: openwiki-source-079a15445a0295f222af8069
     resource: repo://apps/decodex-gpui/src/agent_model_settings.rs
   - id: openwiki-source-e59b6fade5576eca54cd30f7
@@ -29,14 +37,22 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_permissions.rs
   - id: openwiki-source-0f9840ddf9e841a062aa905a
     resource: repo://apps/decodex-gpui/src/agent_prompt_suggestions.rs
+  - id: openwiki-source-15d320ea458ddf705d950ba9
+    resource: repo://apps/decodex-gpui/src/agent_response_metrics.rs
   - id: openwiki-source-296a92a9cefecb19f0fc1f95
     resource: repo://apps/decodex-gpui/src/agent_sample_tests.rs
+  - id: openwiki-source-e17c54dbfafcd157cd611626
+    resource: repo://apps/decodex-gpui/src/agent_speed_tests.rs
+  - id: openwiki-source-a909d8bec005d446da08462a
+    resource: repo://apps/decodex-gpui/src/agent_speed.rs
   - id: openwiki-source-5da2f5dd568514f1f464d177
     resource: repo://apps/decodex-gpui/src/agent_surface.rs
   - id: openwiki-source-40c9c6a55485557343853517
     resource: repo://apps/decodex-gpui/src/agent_usage_estimates.rs
   - id: openwiki-source-0d053d4de2f668168f982629
     resource: repo://apps/decodex-gpui/src/agent_usage_evidence.rs
+  - id: openwiki-source-3fa6d6c49e3542409542045b
+    resource: repo://apps/decodex-gpui/src/agent_work_browser.rs
   - id: openwiki-source-f339a4d1910db63ca305c2df
     resource: repo://apps/decodex-gpui/src/assistant_settings.rs
   - id: openwiki-source-ae991159453be2ee0c611ac1
@@ -47,6 +63,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/composer_input.rs
   - id: openwiki-source-682f90c6d08ed3207257f1d5
     resource: repo://apps/decodex-gpui/src/conversations.rs
+  - id: openwiki-source-0e4cbbd4351dea10ac5960fc
+    resource: repo://apps/decodex-gpui/src/creation_defaults.rs
   - id: openwiki-source-ade4d2e52af67f3b8534ec9f
     resource: repo://apps/decodex-gpui/src/desktop_settings.rs
   - id: openwiki-source-fca3688e96d92c09b7ba015f
@@ -83,8 +101,6 @@ sources:
     resource: repo://automations/upstream/qualification.json
   - id: openwiki-source-3127fd4c7b2aefcc9cea7961
     resource: repo://automations/upstream/retained-contracts.json
-  - id: openwiki-source-f02ae41e2bd15dda85dc86b9
-    resource: repo://codex-runtime.lock.json
   - id: openwiki-source-2b08587e9b26e203156110c8
     resource: repo://crates/decodex-codex/src/app_server_client/context_preferences.rs
   - id: openwiki-source-f2483b817a8847254a871b51
@@ -135,6 +151,8 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent_capabilities.rs
   - id: openwiki-source-c75093d19a3bc72db5836102
     resource: repo://crates/decodex-runtime/src/agent_host.rs
+  - id: openwiki-source-1477615a268800361379ce21
+    resource: repo://crates/decodex-runtime/src/agent_initial_settings.rs
   - id: openwiki-source-dc51b38db429ec5fe466c5f2
     resource: repo://crates/decodex-runtime/src/agent_memory.rs
   - id: openwiki-source-81ce54e50da763fa2a1f8813
@@ -151,6 +169,10 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent_sample_loading_tests.rs
   - id: openwiki-source-d28152527a1218d5afb307f7
     resource: repo://crates/decodex-runtime/src/agent_search_settings.rs
+  - id: openwiki-source-98241e88a283d90105e672a7
+    resource: repo://crates/decodex-runtime/src/agent_spend.rs
+  - id: openwiki-source-2446905cd66169ccfd107760
+    resource: repo://crates/decodex-runtime/src/agent_voice_presentation.rs
   - id: openwiki-source-dbc533dc306a3f520c4241e0
     resource: repo://crates/decodex-runtime/src/agent.rs
   - id: openwiki-source-13f64682e8d77fd2c031de39
@@ -159,6 +181,8 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent/native_settings.rs
   - id: openwiki-source-a7b97dd347fbe2f630692d12
     resource: repo://crates/decodex-runtime/src/agent/tests/native_agent_wake.rs
+  - id: openwiki-source-2d6de0f454e69bbff3bf6e5b
+    resource: repo://crates/decodex-runtime/src/agent/turn_execution.rs
   - id: openwiki-source-3edc2f094826ee56ddec6b73
     resource: repo://crates/decodex-runtime/src/ragflow.rs
   - id: openwiki-source-07c9cc033899826079f8efb5
@@ -173,14 +197,14 @@ sources:
     resource: repo://database/src/usage_evidence.rs
   - id: openwiki-source-8fe6f1557e5d45d88b34bd0a
     resource: repo://scripts/macos/generate_workspace_symbols.swift
-generated: { by: "codex", at: "2026-11-12T04:15:17.900Z" }
+generated: { by: "codex", at: "2026-11-14T16:13:41.978Z" }
 ---
 
 # Model selection and settings ownership
 
 ## One native settings owner
 
-Codex owns the effective model catalog, task configuration, provider admission and execution settings. Decodex reads and presents these values through a retained connection. Catalog, directory, account, process and task identity belong to the observation. An absent native value can mean unknown or inherited; it must not silently become an explicit override. Current local execution settings carry one exact `service_tier`, with no duplicate `fast` flag. A new-conversation draft includes explicit creation intent; every submitted ordinary turn includes its overrides object.
+Codex owns the effective model catalog, task configuration, provider admission and execution settings. Decodex reads and presents these values through a retained connection. Catalog, directory, account, process and task identity belong to the observation. Absent native reasoning and service-tier values can mean unknown or inherited; metadata reads must not silently turn them into explicit overrides. A conversation with no reported model uses the startup model policy described below. Current local execution settings carry one exact `service_tier`, with no duplicate `fast` flag. A new-conversation draft includes explicit creation intent; every submitted ordinary turn includes its overrides object.
 
 ## Retained choices
 
@@ -259,17 +283,29 @@ Context defaults shows a quiet connection explanation before a conversation has 
 
 Native model popovers stay transparent until their final bounds and drawable are ready. A content-height change hides the previous drawable until the replacement frame is prepared. The double-bolt icon uses the supplied Codex silhouette and the current Decodex theme accent color.
 
-## Native model retirement
+## Model catalog and startup
 
-The desktop reads `model/list` from the current native connection and refreshes its Agent catalog at a 60-second interval. Account, directory and process changes invalidate the observation. Model and effort cycling require that catalog; an unavailable read does not provide a fixed fallback list. The composer shows `—` when no model value is known. A pending catalog read also uses `—`; otherwise, a known model retains its actual identifier.
+The desktop preloads the Agent catalog after the connection is ready. It reads `model/list` from the current native connection and reuses a nonempty catalog for 60 seconds. An unsuccessful or empty read permits another attempt after two seconds through the existing snapshot poll. Account, directory and process changes invalidate the observation. Model and effort cycling require that catalog; an unavailable read does not provide a fixed fallback list.
 
-An idle Assistant without a native thread uses the existing initial model-catalog query. Its local Agent record does not imply a running Codex connection. Initial model text starts empty and is resolved from current native defaults or explicit user input. An explicitly unavailable catalog shows `—` rather than the earlier initialization value.
+The composer model menu opens only when the current catalog contains models. Opening it does not start another metadata read. A known model stays visible while its catalog refreshes or is unavailable. Without a known model, the closed control shows `-`. Initialization does not ask the user to select a model. The popover contains model choices instead of a loading or empty-state layout.
 
-When the same complete catalog gives the selected model a retirement deadline that has passed, Decodex uses the catalog's explicit current default. This applies to new Agent settings, new Agents in an existing shared process, and loaded idle Agent recovery. Shared process configuration stays unchanged. An upgrade suggestion alone, a missing model, a network failure or an account quota response does not prove retirement. A usable selected model stays selected.
+An idle Assistant without a native thread uses the existing initial model-catalog query. Its local Agent record does not imply a running Codex connection. The desktop remembers the most recently selected or submitted model, reasoning level and speed as one group in host-local session preferences. Reading metadata or opening an old conversation does not change this group. A new conversation uses its own draft choices first, then the remembered group, then native defaults. Without a remembered model, it uses the current native catalog default. The catalog default comes from native `isDefault` metadata; the desktop does not guess a release from model names. Native configuration supplies a fallback when the provider reports no catalog default. These preferences do not rewrite native global configuration or a supported retained conversation's saved settings. Existing windows and drafts keep their own choices.
+
+A retained Live thread can report no model before its first ordinary message. That observation requests initial model discovery and applies the same last-model and catalog-default policy. The desktop places the resolved model, reasoning level and speed in the next-message choices; it does not start a turn or send a message. It keeps compatible pending choices. A retained thread whose model is absent from the complete catalog uses its own compatible reasoning and speed when it changes to the native default.
+
+On the first snapshot after restart, the restored editor binds to its selected independent topic before reading model settings. This retains that topic's last native model and keeps its unsent draft. A change in the thread or runtime invalidates old observations. If a command is busy when creation defaults arrive, the next snapshot after that command finishes applies the pending defaults. Metadata reads and automatic defaults do not send input.
+
+## Unavailable models and speed
+
+When a complete native catalog omits the selected model or gives it a retirement deadline that has passed, Decodex uses that catalog's explicit current default. This applies to new Agent settings, new Agents in an existing shared process, and loaded idle Agent recovery. Shared process configuration stays unchanged. An upgrade suggestion, an unsuccessful catalog read, an empty catalog or an account quota response alone does not establish model removal. A supported selected model stays selected.
 
 Recovery uses the existing source-bound settings journal and publication readback. It preserves compatible effort and service-tier choices, does not change provider or permission ownership, and does not replay input. Active turns keep their current execution. A native session that cannot be loaded remains outside this retirement check.
 
-The `retained_model_retirement_defaults` record in the [stable contract catalog](../../automations/upstream/retained-contracts.json) preserves the behavior, regression groups and original qualification limits. The fixtures cover native-default selection, future or absent deadlines, missing defaults, source changes, draft preservation and no replay. Their original local qualification does not establish a real retired provider model or installed application.
+An absent speed record selects Standard. A native null service tier also means Standard. The model menu always has a selected speed and shows the effective supported choice. This display default does not add an override to an old conversation or change its saved configuration.
+
+An unsupported speed uses the selected model's advertised default service tier, or Standard when no usable tier default is reported. A supported saved speed stays selected. The next message writes the replacement as both the thread preference and the per-turn speed. The desktop keeps that replacement after acceptance so an older observation cannot restore the removed speed. A missing catalog does not justify replacement.
+
+The `retained_model_retirement_defaults` record in the [stable contract catalog](../../automations/upstream/retained-contracts.json) preserves the behavior, regression groups and original qualification limits. The fixtures cover native-default selection, future or absent deadlines, missing defaults, source changes, draft preservation and no replay. Their original local qualification does not establish a real retired provider model or installed application. Current focused tests also cover catalog removal, remembered groups, old-window isolation and default-speed persistence.
 
 ## Guardian and helper settings
 
@@ -311,7 +347,11 @@ Only the native read method is admitted through the retained bridge. This view d
 
 The composer shows conversation cost beside **Context**. A native dollar amount has priority and uses `$`. If the native provider returns an estimated dollar amount, it uses `≈ $`. If neither is available, the service can calculate an API-equivalent text-token amount from recorded usage and official OpenAI prices. This amount also uses `≈ $`. Hover identifies the estimate basis, the number of observed responses and the price-check date. A trailing `+` identifies incomplete coverage. Missing estimates remain `$—`; a reported zero remains zero.
 
-The API calculation uses each recorded request's model selection, service tier, input tokens, cached input tokens, cache-write tokens and output tokens. It uses the long-context rate when the request crosses the published threshold. Repeated cumulative counters do not add a second charge. Missing history, unknown model prices and gaps in the counters mark coverage incomplete. Cache writes use the published 30-minute rate and mark the unspecified retention cost as incomplete. Tool charges and subscription fees are outside this text-token estimate. It does not measure consumed subscription allowance.
+The API calculation uses each recorded request's model selection, service tier, input tokens, cached input tokens, cache-write tokens and output tokens. The estimator retains the speed recorded at turn admission, so a later settings change does not reprice that turn. It uses the long-context rate when the request crosses the published threshold. Repeated cumulative counters do not add a second charge. Missing history, unknown model prices and gaps in the counters mark coverage incomplete. Cache writes use the published 30-minute rate and mark the unspecified retention cost as incomplete. Tool charges and subscription fees are outside this text-token estimate. It does not measure consumed subscription allowance.
+
+Completed ordinary replies and Live records share one Time, Input, Output and Spend footer. Ordinary reply Spend uses the same API calculation grouped by exact native turn. The runtime reads only cost metadata for the current native context or a recorded prior context belonging to that conversation. Each native timeline entry retains its source thread when contexts are combined. Optional spend enrichment leaves native content and existing token counters intact. Missing model, speed, rates or receipts leave Spend unknown rather than using the currently selected model. The shared details explain unavailable inputs, the API-equivalent basis and partial coverage.
+
+Live Spend estimates the local call interval at the published desktop Voice minute rate. It remains separate from backend task model work. The installed call projection has no independent input/output token receipts, so those shared fields remain unknown. See [call previews and metrics](../integrations/subscription-voice.md#call-previews) for the rate and elapsed-time basis. These response estimates use the existing money formatting and do not create a second billing service.
 
 The price catalog is a versioned data file included with the application. The service reads a local cache beside its database and uses that data immediately. A background request checks the official Markdown price table when the cache is more than one day old. A failed request or invalid table retains the last valid prices and permits another attempt after one hour. Price refresh does not block chat startup or require another model request. The catalog date remains available in the estimate explanation.
 

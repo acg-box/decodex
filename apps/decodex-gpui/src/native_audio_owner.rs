@@ -1,7 +1,7 @@
 //! Sole owner of native audio I/O. Network work never runs here.
 //!
-//! Sessions reserve dictation queues or one prewarmed WebRTC factory. Cancellation stops
-//! capture independently of transport teardown. Dictation returns its reusable queue;
+//! Sessions reserve a dictation engine or one prewarmed WebRTC factory. Cancellation stops
+//! capture independently of transport teardown. Dictation returns its stopped engine;
 //! Live prepares the next factory after release because WebRTC retires its native device
 //! with the last peer. Identity checks discard late releases from an old session.
 use std::{
@@ -16,6 +16,7 @@ use std::{
 
 use libwebrtc::peer_connection_factory::PeerConnectionFactory;
 
+#[cfg(test)] use crate::shell::agent_surface::voice::audio::DictationInput;
 use crate::shell::agent_surface::voice::audio::{Device, LIVE_SAMPLE_RATE, Pcm};
 use decodex_protocol::DICTATION_SAMPLE_RATE;
 
@@ -66,7 +67,7 @@ enum Command {
 	#[cfg(test)]
 	CheckPrepared(Mode, SyncSender<bool>),
 	#[cfg(test)]
-	CheckCaptureChannels(SyncSender<Option<u32>>),
+	CheckDictationInput(SyncSender<Option<DictationInput>>),
 	Prepare(u32),
 	Start {
 		key: Key,
@@ -237,16 +238,19 @@ impl Prepared {
 
 	fn follow_route(&mut self) -> Result<bool, ()> {
 		let (input, output) = self.engine.as_mut().ok_or(())?.route.update()?;
+		let configuration = self.engine().configuration_changed();
 
-		if input && self.key.mode == Mode::Dictation {
+		if (input || output || configuration) && self.key.mode == Mode::Dictation {
 			self.rebuild()?;
 		}
 		// The native WebRTC device follows its selected route and owns Live recovery.
-		if input || output {
-			eprintln!("DecodexAudio route_change input={input} output={output}");
+		if input || output || configuration {
+			eprintln!(
+				"DecodexAudio route_change input={input} output={output} configuration={configuration}"
+			);
 		}
 
-		Ok(input || (output && self.key.mode == Mode::Live))
+		Ok(input || output || configuration)
 	}
 
 	fn rebuild(&mut self) -> Result<(), ()> {
@@ -426,12 +430,12 @@ fn worker(inbox: Receiver<Command>) {
 
 		match command {
 			#[cfg(test)]
-			Ok(Command::CheckCaptureChannels(reply)) => {
-				let channels = cached[Mode::Dictation.slot()]
+			Ok(Command::CheckDictationInput(reply)) => {
+				let input = cached[Mode::Dictation.slot()]
 					.as_ref()
 					.filter(|graph| graph.key.mode == Mode::Dictation)
-					.map(|graph| graph.engine().capture_channels().expect("input format"));
-				let _ = reply.send(channels);
+					.and_then(|graph| graph.engine().dictation_input());
+				let _ = reply.send(input);
 			},
 			#[cfg(test)]
 			Ok(Command::CheckPrepared(mode, reply)) => {

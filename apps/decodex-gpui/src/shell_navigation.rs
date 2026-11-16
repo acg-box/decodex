@@ -1,6 +1,7 @@
 //! Local navigation history. Traversal restores a view; it never replays a command.
+use crate::ui_motion::HoverHint as _;
 use gpui::{
-	AppContext as _, InteractiveElement as _, IntoElement as _, KeyDownEvent, ParentElement as _,
+	InteractiveElement as _, IntoElement as _, KeyDownEvent, ParentElement as _,
 	StatefulInteractiveElement as _, Styled as _, prelude::FluentBuilder as _,
 };
 
@@ -9,7 +10,7 @@ use decodex_protocol::EntityId;
 use crate::{
 	settings_surface::SettingsCategory,
 	shell::{
-		AnyElement, Context, ControlTooltip, Destination, MouseButton, Role, SettingsWindow, Shell,
+		AnyElement, Context, Destination, MouseButton, Role, SettingsWindow, Shell,
 		agent_surface::AgentLocation, ui_theme::CHROME_CONTROL_SIZE, workspace_symbols,
 		workspace_symbols::Symbol,
 	},
@@ -290,7 +291,7 @@ impl Shell {
 				el.aria_label(if forward { "Forward unavailable" } else { "Back unavailable" })
 			})
 			.when(enabled, |el| el.tab_index(0))
-			.tooltip(move |_, cx| cx.new(|_| ControlTooltip(label)).into())
+			.hover_hint(label)
 			.size(gpui::px(CHROME_CONTROL_SIZE))
 			.flex_none()
 			.flex()

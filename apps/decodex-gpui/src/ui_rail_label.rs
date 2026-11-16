@@ -11,6 +11,31 @@ use unicode_segmentation::UnicodeSegmentation as _;
 use super::{HoverOverflowLabel, Viewport};
 use crate::ui_theme;
 
+/// The first complete visible character, including combined accents and emoji.
+fn first_grapheme(label: &str) -> &str {
+	label.graphemes(true).next().unwrap_or("?")
+}
+
+/// A compact identity that fits the existing centered navigation slot.
+#[derive(IntoElement)]
+pub(crate) struct RailInitial {
+	pub id: String,
+	pub label: String,
+}
+impl RenderOnce for RailInitial {
+	fn render(self, _: &mut Window, _: &mut App) -> impl IntoElement {
+		let initial = first_grapheme(self.label.trim_start()).to_owned();
+		gpui::div()
+			.id(SharedString::from(self.id.clone()))
+			.debug_selector(move || self.id.clone())
+			.flex_none()
+			.whitespace_nowrap()
+			.text_size(gpui::px(ui_theme::NAVIGATION_TITLE_SIZE))
+			.font_weight(FontWeight::MEDIUM)
+			.child(initial)
+	}
+}
+
 #[derive(IntoElement)]
 pub(crate) struct RailLabel {
 	pub compact: bool,
@@ -28,7 +53,7 @@ pub(crate) struct RailLabel {
 impl RenderOnce for RailLabel {
 	fn render(self, window: &mut Window, _: &mut App) -> impl IntoElement {
 		let label = self.label.replace(['\n', '\r'], " ");
-		let initial = label.graphemes(true).next().unwrap_or("?").to_owned();
+		let initial = first_grapheme(&label).to_owned();
 		let rest = label.get(initial.len()..).unwrap_or("").to_owned();
 		let size = gpui::px(self.size);
 		let mut font = window.text_style().font();
@@ -95,5 +120,21 @@ impl RenderOnce for RailLabel {
 					.child(initial),
 			)
 			.child(gpui::div().flex_1().min_w_0().overflow_hidden().child(suffix))
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	#[test]
+	fn compact_initial_preserves_complete_unicode_characters() {
+		for (label, initial) in [
+			("Decodex", "D"),
+			("研发计划", "研"),
+			("e\u{301}lan", "e\u{301}"),
+			("👨‍👩‍👧‍👦 Family", "👨‍👩‍👧‍👦"),
+			("", "?"),
+		] {
+			assert_eq!(super::first_grapheme(label), initial);
+		}
 	}
 }

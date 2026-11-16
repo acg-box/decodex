@@ -5,6 +5,7 @@ mod capacity;
 mod collaboration;
 mod delegation;
 mod deletion;
+mod drafts;
 mod steer;
 
 pub use self::{
@@ -29,6 +30,7 @@ enum CreationRole {
 	Agent,
 	Assistant,
 	Topic(String),
+	VoiceDraft(Option<String>),
 }
 
 /// Recovery checks have separate lifecycles; model refresh does not block chat input.
@@ -132,13 +134,14 @@ impl SqliteStore {
 			let Some(work) = tx.query_row("SELECT * FROM agent_work_items WHERE id=?1", [&id], work_row).optional().map_err(error::sqlite_error)? else { return Ok(()); };
 
 			let personal_topic = crate::assistant::topic_owner(&tx, &id)?.is_some_and(|owner| owner != id);
-			if (work.parent_goal_id.is_none() && !personal_topic) || work.codex_thread_id.is_some() || work.dispatch_state != AgentDispatchState::Idle || work.active_turn_id.is_some() || work.next_check_at_micros.is_some() {
+			let empty_conversation = drafts::is_empty(&tx, &work)?;
+			if (work.parent_goal_id.is_none() && !personal_topic && !empty_conversation) || work.codex_thread_id.is_some() || work.dispatch_state != AgentDispatchState::Idle || work.active_turn_id.is_some() || work.next_check_at_micros.is_some() {
 				return Err(StoreError::InvalidInput("only an unused local draft can be discarded"));
 			}
 
 			let referenced: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM agent_work_items WHERE parent_goal_id=?1 UNION ALL SELECT 1 FROM agent_inbox_events WHERE work_item_id=?1 AND event_kind NOT IN('assistant_internal_topic','assistant_internal_export_boundary','assistant_internal_refresh','assistant_internal_memory_health') UNION ALL SELECT 1 FROM agent_dependencies WHERE work_item_id=?1 OR depends_on_id=?1 UNION ALL SELECT 1 FROM agent_thread_revisions WHERE work_id=?1 UNION ALL SELECT 1 FROM agent_prompt_inputs WHERE work_item_id=?1 UNION ALL SELECT 1 FROM agent_prompt_input_chunks WHERE work_item_id=?1)", [&id], |row| row.get(0)).map_err(error::sqlite_error)?;
 
-			if referenced { return Err(StoreError::InvalidInput("the local draft contains work or references")); }
+			if referenced && !empty_conversation { return Err(StoreError::InvalidInput("the local draft contains work or references")); }
 
 			tx.execute("DELETE FROM agent_inbox_events WHERE work_item_id=?1", [&id]).map_err(error::sqlite_error)?;
 			tx.execute("DELETE FROM agent_root_settings WHERE root_id=?1", [&id]).map_err(error::sqlite_error)?;
@@ -201,7 +204,7 @@ impl SqliteStore {
 		self.run(move |connection| {
 			read_work(connection, &work_id)?;
 
-			connection.prepare("SELECT * FROM (SELECT * FROM agent_inbox_events WHERE work_item_id = ?1 AND event_kind NOT LIKE 'assistant_internal_%' AND event_kind NOT IN ('collaboration_delivery','reasoning_voice_handoff','turn_execution','native_task_settings','model_recovery','model_recovery_result','model_recovery_observation','model_selection_reconciled','token_usage','response_usage','live_reviewer_attempt','live_reviewer_result','native_task_permissions','permission_selection','permission_selection_result','permission_selection_observation','native_task_models','model_selection','model_selection_result','model_selection_observation','native_task_plugins','plugin_selection','plugin_selection_result','plugin_selection_observation','hook_setting_attempt','hook_setting_result','hook_setting_observation','app_setting_attempt','app_setting_result','app_setting_observation','prompt_edit_attempt','prompt_edit_observation','prompt_edit_release','conversation_title','research_requested') AND (?3 IS NULL OR id < ?3) ORDER BY id DESC LIMIT ?2) ORDER BY id")
+			connection.prepare("SELECT * FROM (SELECT * FROM agent_inbox_events WHERE work_item_id = ?1 AND event_kind NOT LIKE 'assistant_internal_%' AND event_kind NOT IN ('collaboration_delivery','reasoning_voice_handoff','turn_execution','native_task_settings','model_recovery','model_recovery_result','model_recovery_observation','model_selection_reconciled','token_usage','response_usage','live_reviewer_attempt','live_reviewer_result','native_task_permissions','permission_selection','permission_selection_result','permission_selection_observation','native_task_models','model_selection','model_selection_result','model_selection_observation','native_task_plugins','plugin_selection','plugin_selection_result','plugin_selection_observation','hook_setting_attempt','hook_setting_result','hook_setting_observation','app_setting_attempt','app_setting_result','app_setting_observation','prompt_edit_attempt','prompt_edit_observation','prompt_edit_release','conversation_title','voice_conversation_draft','native_conversation_content','research_requested') AND (?3 IS NULL OR id < ?3) ORDER BY id DESC LIMIT ?2) ORDER BY id")
 				.map_err(error::sqlite_error)?.query_map(rusqlite::params![work_id, limit, before], event_row)
 				.map_err(error::sqlite_error)?.collect::<Result<Vec<_>, _>>().map_err(|error| error::sqlite_error(error).into())
 		}).await
@@ -243,7 +246,7 @@ impl SqliteStore {
 
             read_work(&tx,&id)?;
 
-            let events=tx.prepare("SELECT * FROM (SELECT e.* FROM agent_inbox_events e WHERE work_item_id=?1 AND event_kind NOT LIKE 'assistant_internal_%' AND event_kind NOT IN ('collaboration_delivery','reasoning_voice_handoff','turn_execution','native_task_settings','model_recovery','model_recovery_result','model_recovery_observation','model_selection_reconciled','token_usage','response_usage','live_reviewer_attempt','live_reviewer_result','native_task_permissions','permission_selection','permission_selection_result','permission_selection_observation','native_task_models','model_selection','model_selection_result','model_selection_observation','native_task_plugins','plugin_selection','plugin_selection_result','plugin_selection_observation','hook_setting_attempt','hook_setting_result','hook_setting_observation','app_setting_attempt','app_setting_result','app_setting_observation','prompt_edit_attempt','prompt_edit_observation','prompt_edit_release','conversation_title') AND (event_kind<>'activity_started' OR NOT EXISTS(SELECT 1 FROM agent_inbox_events c WHERE c.source_event_id=json_array('activity',e.work_item_id,json_extract(e.payload,'$.turn_id'),json_extract(e.payload,'$.item_id'),'completed'))) AND (event_kind<>'plan_updated' OR NOT EXISTS(SELECT 1 FROM agent_inbox_events p WHERE p.work_item_id=e.work_item_id AND p.event_kind='plan_updated' AND p.delivered_turn_id=e.delivered_turn_id AND json_extract(p.payload,'$.threadId')=json_extract(e.payload,'$.threadId') AND p.id>e.id)) AND (event_kind<>'steer_pending' OR disposition IS NULL) AND NOT (e.event_kind='user_message' AND e.disposition='user_decision' AND e.delivered_turn_id IS NULL AND EXISTS(SELECT 1 FROM agent_inbox_events retry WHERE retry.source_event_id=json_array('user_message_retry',e.work_item_id,e.id))) AND (?3 IS NULL OR id<?3) ORDER BY id DESC LIMIT ?2) ORDER BY id").map_err(error::sqlite_error)?.query_map(rusqlite::params![id,limit,before],event_row).map_err(error::sqlite_error)?.collect::<Result<Vec<_>,_>>().map_err(error::sqlite_error)?;
+            let events=tx.prepare("SELECT * FROM (SELECT e.* FROM agent_inbox_events e WHERE work_item_id=?1 AND event_kind NOT LIKE 'assistant_internal_%' AND event_kind NOT IN ('collaboration_delivery','reasoning_voice_handoff','turn_execution','native_task_settings','model_recovery','model_recovery_result','model_recovery_observation','model_selection_reconciled','token_usage','response_usage','live_reviewer_attempt','live_reviewer_result','native_task_permissions','permission_selection','permission_selection_result','permission_selection_observation','native_task_models','model_selection','model_selection_result','model_selection_observation','native_task_plugins','plugin_selection','plugin_selection_result','plugin_selection_observation','hook_setting_attempt','hook_setting_result','hook_setting_observation','app_setting_attempt','app_setting_result','app_setting_observation','prompt_edit_attempt','prompt_edit_observation','prompt_edit_release','conversation_title','voice_conversation_draft','native_conversation_content','voice_overview','voice_turn') AND (event_kind<>'activity_started' OR NOT EXISTS(SELECT 1 FROM agent_inbox_events c WHERE c.source_event_id=json_array('activity',e.work_item_id,json_extract(e.payload,'$.turn_id'),json_extract(e.payload,'$.item_id'),'completed'))) AND (event_kind<>'plan_updated' OR NOT EXISTS(SELECT 1 FROM agent_inbox_events p WHERE p.work_item_id=e.work_item_id AND p.event_kind='plan_updated' AND p.delivered_turn_id=e.delivered_turn_id AND json_extract(p.payload,'$.threadId')=json_extract(e.payload,'$.threadId') AND p.id>e.id)) AND (event_kind<>'steer_pending' OR disposition IS NULL) AND NOT (e.event_kind='user_message' AND e.disposition='user_decision' AND e.delivered_turn_id IS NULL AND EXISTS(SELECT 1 FROM agent_inbox_events retry WHERE retry.source_event_id=json_array('user_message_retry',e.work_item_id,e.id))) AND (?3 IS NULL OR id<?3) ORDER BY id DESC LIMIT ?2) ORDER BY id").map_err(error::sqlite_error)?.query_map(rusqlite::params![id,limit,before],event_row).map_err(error::sqlite_error)?.collect::<Result<Vec<_>,_>>().map_err(error::sqlite_error)?;
             let live=if before.is_none() {agent_output::read_live(&tx,&id)?} else {vec![]};
 
             tx.commit().map_err(error::sqlite_error)?;
@@ -396,6 +399,55 @@ impl SqliteStore {
 		.await
 	}
 
+	/// Save a personal topic and its first user message in one transaction.
+	pub async fn create_assistant_conversation(
+		&self,
+		item: AgentWorkItem,
+		input: EnqueueAgentEvent,
+		owner: String,
+	) -> Result<AgentWorkItem, StoreError> {
+		if item.id == owner
+			|| item.parent_goal_id.is_some()
+			|| item.kind != AgentWorkKind::Goal
+			|| input.work_item_id != item.id
+			|| input.event_kind != "user_message"
+		{
+			return Err(StoreError::InvalidInput(
+				"personal conversation requires its first user message",
+			));
+		}
+		self.create_agent_work_record(
+			item,
+			true,
+			None,
+			Vec::new(),
+			Some(input),
+			CreationRole::Topic(owner),
+		)
+		.await
+	}
+
+	/// Reserve native voice ownership. This draft is discarded if the call stays empty.
+	pub async fn reserve_agent_voice_draft(
+		&self,
+		item: AgentWorkItem,
+		workspace: Option<String>,
+		assistant: Option<String>,
+	) -> Result<AgentWorkItem, StoreError> {
+		if workspace.is_some() && assistant.is_some() {
+			return Err(StoreError::InvalidInput("a voice draft has one conversation scope"));
+		}
+		self.create_agent_work_record(
+			item,
+			true,
+			workspace,
+			Vec::new(),
+			None,
+			CreationRole::VoiceDraft(assistant),
+		)
+		.await
+	}
+
 	/// A delegated persistent Agent keeps application-origin input and its user decision.
 	pub async fn create_delegated_agent(
 		&self,
@@ -520,8 +572,11 @@ impl SqliteStore {
 				transaction.execute("UPDATE agents SET assistant=0 WHERE assistant=1", []).map_err(error::sqlite_error)?;
 			}
 			if manager || item.parent_goal_id.is_none() { transaction.execute("INSERT INTO agents(id,assistant) VALUES(?1,?2)", rusqlite::params![item.id,assistant]).map_err(error::sqlite_error)?; }
-			if let CreationRole::Topic(owner) = &role {
+			if let CreationRole::Topic(owner) | CreationRole::VoiceDraft(Some(owner)) = &role {
 				crate::assistant::register_topic(&transaction, &item.id, owner)?;
+			}
+			if matches!(role, CreationRole::VoiceDraft(_)) {
+				crate::assistant::record(&transaction, &item.id, &format!("voice-draft:{}", item.id), "voice_conversation_draft", serde_json::json!({}))?;
 			}
 
             if let Some(workspace) = workspace {
@@ -1229,7 +1284,9 @@ impl SqliteStore {
 	/// Close connection errors after an attested connection, without changing work judgment.
 	pub async fn resolve_agent_connection_failure(&self, root: String) -> Result<(), StoreError> {
 		self.run(move |connection| {
-			connection.execute("UPDATE agent_inbox_events SET disposition='resolved',disposition_note='The Agent connection was restored.',disposed_at_micros=max(created_at_micros,?2) WHERE work_item_id=?1 AND event_kind='reconnection_needs_attention' AND disposition IS NULL",rusqlite::params![root,crate::unix_micros()?]).map_err(error::sqlite_error)?;
+			// A retained independent thread uses the shared connection. Earlier versions could
+			// incorrectly require its own root settings and leave its composer blocked.
+			connection.execute("UPDATE agent_inbox_events SET disposition='resolved',disposition_note=CASE event_kind WHEN 'configuration_needs_attention' THEN 'The shared Agent connection configuration is available.' ELSE 'The Agent connection was restored.' END,disposed_at_micros=max(created_at_micros,?2) WHERE disposition IS NULL AND ((work_item_id=?1 AND event_kind IN ('reconnection_needs_attention','configuration_needs_attention')) OR (event_kind='configuration_needs_attention' AND work_item_id IN (SELECT w.id FROM agent_work_items w LEFT JOIN agent_root_settings s ON s.root_id=w.id WHERE w.parent_goal_id IS NULL AND w.codex_thread_id IS NOT NULL AND s.root_id IS NULL)))",rusqlite::params![root,crate::unix_micros()?]).map_err(error::sqlite_error)?;
 
 			Ok(())
 		}).await
@@ -2977,6 +3034,60 @@ mod tests {
 			store.get_agent_work_item("agent".into()).await.unwrap().status,
 			AgentWorkStatus::Open
 		);
+	}
+
+	#[tokio::test]
+	async fn restored_shared_connection_clears_only_obsolete_configuration_notices() {
+		let directory = tempfile::tempdir().unwrap();
+		let store = SqliteStore::open_test(&directory.path().join("agent.sqlite3")).unwrap();
+
+		for name in ["owner", "live-only", "unconfigured", "saved-config"] {
+			store.create_agent_work_item(item(name, None)).await.unwrap();
+			store
+				.enqueue_agent_event(EnqueueAgentEvent {
+					source_event_id: format!("config-{name}"),
+					work_item_id: name.into(),
+					event_kind: "configuration_needs_attention".into(),
+					payload: "{}".into(),
+				})
+				.await
+				.unwrap();
+		}
+		for name in ["live-only", "saved-config"] {
+			store.bind_agent_thread(name.into(), format!("thread-{name}")).await.unwrap();
+		}
+		store.bind_agent_root_settings("saved-config", "{}").await.unwrap();
+		store
+			.enqueue_agent_event(EnqueueAgentEvent {
+				source_event_id: "user-input".into(),
+				work_item_id: "live-only".into(),
+				event_kind: "user_message".into(),
+				payload: r#"{"text":"Keep this input"}"#.into(),
+			})
+			.await
+			.unwrap();
+		store
+			.record_agent_thread_in_use("live-only".into(), "Open elsewhere".into())
+			.await
+			.unwrap();
+		store.resolve_agent_connection_failure("owner".into()).await.unwrap();
+
+		let pending = store.list_pending_agent_events(20).await.unwrap();
+		let mut configuration: Vec<_> = pending
+			.iter()
+			.filter(|event| event.event_kind == "configuration_needs_attention")
+			.map(|event| event.work_item_id.as_str())
+			.collect();
+
+		configuration.sort_unstable();
+
+		assert_eq!(configuration, ["saved-config", "unconfigured"]);
+		assert!(
+			pending.iter().any(
+				|event| event.event_kind == "user_message" && event.delivered_turn_id.is_none()
+			)
+		);
+		assert_eq!(store.list_agent_thread_in_use_events().await.unwrap().len(), 1);
 	}
 
 	#[tokio::test]

@@ -37,7 +37,7 @@ use crate::{
 };
 use decodex_protocol::{
 	AgentHistoryEntryDto, AgentTimelineContent, AgentVoiceOptions, AgentVoicePhase,
-	AgentVoiceRequest, AgentVoiceSettingsResult, AgentVoiceStatus, HistoryText, VoiceSdp,
+	AgentVoiceRequest, AgentVoiceStatus, HistoryText, VoiceSdp,
 };
 
 pub(super) struct VoiceUi {
@@ -245,7 +245,7 @@ impl Media {
 				self.level_at = std::time::Instant::now();
 
 				return Some(
-					serde_json::json!({"type":"level","level":if self.muted {0.0} else {(transport.level() * 5.0).min(1.0)}}),
+					serde_json::json!({"type":"level","level":if self.muted {0.0} else {transport.level()}}),
 				);
 			}
 		}
@@ -303,6 +303,13 @@ struct Caption {
 	turn: String,
 	role: &'static str,
 	text: String,
+}
+
+fn microphone_meter_level(rms: f32) -> f32 {
+	// Display speech between -42 and -12 dBFS. This floor affects only the meter;
+	// captured PCM still reaches dictation unchanged.
+	let decibels = 20. * rms.max(0.000_001).log10();
+	((decibels + 42.) / 30.).clamp(0., 1.)
 }
 
 impl AgentSurface {
@@ -406,14 +413,34 @@ impl AgentSurface {
 	}
 
 	pub(super) fn start_voice(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+		crate::frame_trace::voice_event("start_requested");
 		if self.selected_is_archived() || self.composer_unavailable_reason().is_some() {
+			crate::frame_trace::voice_event("conversation_unavailable");
 			return;
 		}
 		if self.voice.is_some() || self.voice_task.is_some() || self.dictation_task.is_some() {
+			crate::frame_trace::voice_event("media_busy");
 			return;
 		}
+		if self.assistant_id().as_ref() == self.composer_manager.as_ref()
+			&& self.snapshot.as_ref().is_some_and(|snapshot| {
+				snapshot.work_items.iter().any(|work| {
+					Some(&work.id) == self.composer_manager.as_ref()
+						&& work.codex_thread_id.is_none()
+						&& !snapshot
+							.pending_events
+							.iter()
+							.any(|event| event.work_item_id == work.id)
+				})
+			}) {
+			self.new_project_agent(None, cx);
+		}
 
-		let Some(profile) = self.profile.clone() else { return };
+		if self.profile.is_none() {
+			self.feedback = Feedback::warning("Voice requires a service connection.");
+			cx.notify();
+			return;
+		}
 		let Some(work) = self
 			.composer_manager
 			.clone()
@@ -426,43 +453,9 @@ impl AgentSurface {
 
 			return;
 		};
-		let Some(target) = self.voice_option_target(work.as_str()) else {
-			return;
-		};
-		let source = profile.clone();
-		let query_work = work.clone();
-		let future = cx.background_executor().spawn(async move {
-			let runtime = Builder::new_current_thread().enable_all().build().ok()?;
-
-			runtime.block_on(AgentClient::new(profile).voice_settings(query_work)).ok()
-		});
-
-		self.feedback = Feedback::loading("Checking voice availability…");
-		self.voice_task = Some(cx.spawn_in(window, async move |surface, cx| {
-            let result = future.await;
-            let _ = cx.update(|window, cx| {
-                let _ = surface.update(cx, |s, cx| {
-                    s.voice_task = None;
-
-                    if s.profile.as_ref() != Some(&source) || s.voice_option_target(work.as_str()).as_ref() != Some(&target) {
-                        s.feedback = Feedback::neutral("Conversation changed. Voice start cancelled.");
-
-                        cx.notify();
-
-                        return;
-                    }
-                    if matches!(result, Some(AgentVoiceSettingsResult::Available { ref work_id, .. }) if work_id == &work) {
-                        s.start_allowed_voice(work, window, cx);
-                    } else {
-                        s.feedback = Feedback::warning("Voice unavailable or disabled by policy.");
-
-                        cx.notify();
-                    }
-                });
-            });
-        }));
-
-		cx.notify();
+		// The actor checks policy before signaling. A voice-settings read requires
+		// an existing thread and must not prevent the first call in an empty topic.
+		self.start_allowed_voice(work, window, cx);
 	}
 
 	fn start_allowed_voice(&mut self, work: EntityId, window: &mut Window, cx: &mut Context<Self>) {
@@ -477,7 +470,7 @@ impl AgentSurface {
 		let Some(profile) = self.profile.clone() else {
 			return;
 		};
-		let options = match self.voice_call_options(work.as_str(), cx) {
+		let mut options = match self.voice_call_options(work.as_str(), cx) {
 			Ok(options) => options,
 			Err(message) => {
 				self.feedback = Feedback::warning(message);
@@ -487,9 +480,41 @@ impl AgentSurface {
 				return;
 			},
 		};
+		if self.is_new_conversation() {
+			let mut execution = self.draft_profiles.execution.choice(work.as_str());
+			execution.model = self
+				.composer_model_value(cx)
+				.and_then(|value| decodex_protocol::ConversationModel::new(value).ok());
+			execution.reasoning_effort = self
+				.composer_effort_value(cx)
+				.and_then(|value| decodex_protocol::ConversationReasoningEffort::new(value).ok());
+			execution.service_tier = self.composer_speed(cx).map(|speed| speed.effective);
+			execution.permission_mode = Some(self.creation_permission_mode());
+			options.draft = Some(Box::new(decodex_protocol::AgentVoiceDraft {
+				project_id: self
+					.workspace
+					.new_conversation_workspace
+					.as_deref()
+					.map(EntityId::new)
+					.transpose()
+					.expect("saved Project identity"),
+				assistant_id: self
+					.workspace
+					.new_conversation_workspace
+					.is_none()
+					.then(|| self.assistant_id())
+					.flatten()
+					.map(EntityId::new)
+					.transpose()
+					.expect("saved Assistant identity"),
+				execution,
+			}));
+			self.remember_composer_execution(cx);
+		}
 		let mut media = match Media::new(window) {
 			Ok(media) => media,
 			Err(()) => {
+				crate::frame_trace::voice_event("host_create_failed");
 				self.feedback = Feedback::error("Voice requires the current signed Decodex app.");
 
 				cx.notify();
@@ -499,6 +524,7 @@ impl AgentSurface {
 		};
 
 		if !media.command(serde_json::json!({"operation":"start","input":self.audio_input})) {
+			crate::frame_trace::voice_event("host_start_failed");
 			self.feedback = Feedback::error("The audio host could not start.");
 
 			cx.notify();
@@ -510,6 +536,7 @@ impl AgentSurface {
 			EntityId::new(agent_surface::unique_command()).expect("bounded voice identity");
 
 		self.prepare_voice_ui(options, media, &session, work);
+		crate::frame_trace::voice_event("audio_preparing");
 
 		self.voice_task = Some(cx.spawn(async move |surface, cx| {
 			loop {
@@ -598,6 +625,7 @@ impl AgentSurface {
 				},
 				Some("error" | "ended") => {
 					if event["type"] == "error" {
+						crate::frame_trace::voice_event("audio_failed");
 						self.feedback = Feedback::error(
 							event["message"].as_str().unwrap_or("Voice disconnected."),
 						);
@@ -914,7 +942,7 @@ impl AgentSurface {
 
 			ui_motion::value(
 				(id, i),
-				if inactive { 0. } else { 22. * level.clamp(0., 1.).sqrt() },
+				if inactive { 0. } else { 22. * microphone_meter_level(level) },
 				window,
 				cx,
 			)
@@ -1041,12 +1069,16 @@ impl AgentSurface {
 				caption.complete = true;
 			}
 
-			self.retired_voice_captions.push(CaptionHistory {
-				session: voice.session,
-				matched_receipts: voice.matched_receipts,
-				work: voice.work,
-				captions: voice.captions,
-			});
+			voice.captions.retain(|caption| !caption.text.trim().is_empty());
+
+			if !voice.captions.is_empty() {
+				self.retired_voice_captions.push(CaptionHistory {
+					session: voice.session,
+					matched_receipts: voice.matched_receipts,
+					work: voice.work,
+					captions: voice.captions,
+				});
+			}
 		}
 		if let Some((work, history)) = self.history.take() {
 			self.reconcile_voice_captions(&work, &history);
@@ -1072,7 +1104,13 @@ impl AgentSurface {
 
 		for call in self.retired_voice_captions.iter_mut().filter(|v| v.work.as_str() == work) {
 			if native {
-				if ready.contains(call.session.as_str()) {
+				if ready.contains(call.session.as_str())
+					|| entries.iter().any(|e| {
+						e.receipt.as_ref().is_some_and(|r| {
+							r.voice_session_id.as_deref() == Some(call.session.as_str())
+								&& r.voice.as_ref().is_some_and(|p| p.duration_ms.is_some())
+						})
+					}) {
 					call.captions.clear();
 				}
 			} else {
@@ -1091,18 +1129,101 @@ impl AgentSurface {
 	}
 
 	fn native_voice_presentation_ready(&self, work: &str, session: &str) -> bool {
-		self.timeline.native.binding.as_ref().is_some_and(|b| b.work == work)
-            && super::voice::history::groups(&self.timeline.native.entries).iter().any(|group| {
-                group.session == session && group.ended
-                    && group.indices.iter().any(|i| matches!(&self.timeline.native.entries[*i].content,
-                        AgentTimelineContent::VoiceBoundary{kind,..} if kind=="realtimeSessionStarted"))
-            })
+		self.timeline.native.binding.as_ref().is_some_and(|b|b.work==work)
+            && history::groups(&self.timeline.native.entries).iter().any(|group|group.session==session && group.ended && group.indices.iter().any(|i|matches!(&self.timeline.native.entries[*i].content,AgentTimelineContent::VoiceBoundary{kind,..} if kind=="realtimeSessionStarted")))
+	}
+
+	pub(super) fn voice_presentation(
+		&self,
+		work: &str,
+		session: &str,
+	) -> Option<decodex_protocol::AgentVoicePresentation> {
+		self.voice_record(work, session).and_then(|(_, presentation)| presentation)
+	}
+
+	fn voice_record(
+		&self,
+		work: &str,
+		session: &str,
+	) -> Option<(String, Option<decodex_protocol::AgentVoicePresentation>)> {
+		let mut entries = std::collections::BTreeMap::new();
+		if let Some((older, _)) = self.timeline.older_history.get(work) {
+			entries.extend(older.iter().map(|entry| (entry.id, entry)));
+		}
+		if let Some((_, AgentHistoryResult::Available { entries: recent, .. })) =
+			self.history.as_ref().filter(|(id, _)| id == work)
+		{
+			entries.extend(recent.iter().map(|entry| (entry.id, entry)));
+		}
+		let entries = entries
+			.values()
+			.copied()
+			.filter(|e| {
+				e.receipt.as_ref().is_some_and(|r| r.voice_session_id.as_deref() == Some(session))
+			})
+			.collect::<Vec<_>>();
+		let presentation = entries.iter().find_map(|entry| entry.receipt.as_ref()?.voice.clone());
+		let text = entries
+			.iter()
+			.map(|e| format!("{}: {}", e.kind, e.text))
+			.collect::<Vec<_>>()
+			.join("\n");
+		(!text.is_empty()).then_some((text, presentation))
+	}
+
+	fn saved_voice_records(
+		&self,
+		work: &str,
+	) -> Vec<(String, String, decodex_protocol::AgentVoicePresentation)> {
+		if !self.timeline.native.binding.as_ref().is_some_and(|b| b.work == work) {
+			return Vec::new();
+		}
+		let mut entries = std::collections::BTreeMap::new();
+		if let Some((older, _)) = self.timeline.older_history.get(work) {
+			entries.extend(older.iter().map(|e| (e.id, e)));
+		}
+		if let Some((_, AgentHistoryResult::Available { entries: recent, .. })) =
+			self.history.as_ref().filter(|(id, _)| id == work)
+		{
+			entries.extend(recent.iter().map(|e| (e.id, e)));
+		}
+		let mut seen = BTreeSet::new();
+		entries
+			.values()
+			.filter_map(|e| {
+				let receipt = e.receipt.as_ref()?;
+				let session = receipt.voice_session_id.as_deref()?;
+				if !seen.insert(session) {
+					return None;
+				}
+				let (text, presentation) = self.voice_record(work, session)?;
+				let presentation = presentation?;
+				presentation.duration_ms?;
+				(!self.native_voice_presentation_ready(work, session))
+					.then(|| (session.into(), text, presentation))
+			})
+			.collect()
+	}
+
+	pub(super) fn covered_voice_handoff(&self, work: &str, text: &str) -> bool {
+		if !history::delegation(text).is_some_and(|d| d.source == "transcript_tail_flush") {
+			return false;
+		}
+		let Some(tail) = history::handoff(text) else { return false };
+		let normalize = |text: &str| text.split_whitespace().collect::<Vec<_>>().join(" ");
+		let tail = normalize(&tail);
+		!tail.is_empty()
+			&& self
+				.saved_voice_records(work)
+				.iter()
+				.any(|(_, text, _)| normalize(text).ends_with(&tail))
 	}
 
 	pub(super) fn live_voice_owns_session(&self, work: &str, session: &str) -> bool {
 		self.voice
 			.as_ref()
 			.is_some_and(|v| v.work.as_str() == work && v.session.as_str() == session)
+			|| self.saved_voice_records(work).iter().any(|(id, _, _)| id == session)
 			|| self.retired_voice_captions.iter().any(|v| {
 				v.work.as_str() == work
 					&& v.session.as_str() == session
@@ -1111,12 +1232,18 @@ impl AgentSurface {
 			})
 	}
 
-	pub(super) fn live_chat_caption(&self, work: &str, cx: &Context<Self>) -> Option<AnyElement> {
+	pub(super) fn live_chat_caption(
+		&self,
+		work: &str,
+		cx: &mut Context<Self>,
+	) -> Option<AnyElement> {
+		let saved = self.saved_voice_records(work);
 		let retired: Vec<_> = self
 			.retired_voice_captions
 			.iter()
 			.filter(|v| {
 				v.work.as_str() == work
+					&& !saved.iter().any(|(session, _, _)| session == v.session.as_str())
 					&& !self.native_voice_presentation_ready(work, v.session.as_str())
 			})
 			.collect();
@@ -1130,7 +1257,7 @@ impl AgentSurface {
 		// speakers moves an interruption above the reply it interrupted.
 		let captions = presentation_captions(captions);
 
-		if captions.is_empty() && retired.is_empty() {
+		if captions.is_empty() && retired.is_empty() && saved.is_empty() {
 			return None;
 		}
 
@@ -1140,8 +1267,31 @@ impl AgentSurface {
 				.gap(gpui::px(MESSAGE_GAP))
 				.flex()
 				.flex_col()
+				.children(saved.into_iter().map(|(session, text, presentation)| VoiceBlock {
+					action: self.side_chat_response_action(
+						&text,
+						&format!("saved-voice-{work}-{session}"),
+						cx,
+					),
+					viewport: Some(self.voice_history_viewport(cx)),
+					key: format!("saved-voice-{work}-{session}"),
+					title: "Voice conversation".into(),
+					text,
+					presentation: Some(presentation),
+				}))
 				.children(retired.into_iter().map(|call| {
 					VoiceBlock {
+						action: self.side_chat_response_action(
+							&call
+								.captions
+								.iter()
+								.map(|c| format!("{}: {}", c.role, c.text))
+								.collect::<Vec<_>>()
+								.join("\n"),
+							&format!("retired-{}-{}", work, call.session.as_str()),
+							cx,
+						),
+						presentation: self.voice_presentation(work, call.session.as_str()),
 						viewport: Some(self.voice_history_viewport(cx)),
 						key: format!("retired-{}-{}", work, call.session.as_str()),
 						title: "Voice conversation".into(),
@@ -1527,6 +1677,90 @@ mod tests {
 	struct VoiceComposerView(Entity<AgentSurface>);
 
 	struct VoiceToolbarView(Entity<AgentSurface>);
+
+	#[test]
+	fn microphone_meter_ignores_quiet_noise_and_keeps_speech_dynamics() {
+		for rms in [0., 0.000_1, 0.001, 0.003, 0.007] {
+			assert_eq!(super::microphone_meter_level(rms), 0.);
+		}
+		let quiet = super::microphone_meter_level(0.02);
+		let normal = super::microphone_meter_level(0.06);
+		let loud = super::microphone_meter_level(0.15);
+		assert!(quiet > 0. && quiet < normal && normal < loud && loud < 1.);
+		assert_eq!(super::microphone_meter_level(1.), 1.);
+	}
+
+	#[gpui::test]
+	fn snapshot_refresh_keeps_unpublished_live_but_stops_removed_or_archived_owners(
+		cx: &mut gpui::TestAppContext,
+	) {
+		for transition in ["draft", "removed", "archived"] {
+			let surface = cx.new(AgentSurface::new);
+			surface.update(cx, |s, cx| {
+				s.visual_workspace_fixture(cx);
+				if transition == "draft" {
+					s.new_project_agent(None, cx);
+				}
+				let owner = s.selected.clone().unwrap();
+				s.prepare_voice_ui(
+					Default::default(),
+					Media,
+					&EntityId::new("snapshot-live").unwrap(),
+					EntityId::new(&owner).unwrap(),
+				);
+				let mut next = s.snapshot.clone().unwrap();
+				match transition {
+					"removed" => next.work_items.retain(|work| work.id != owner),
+					"archived" => {
+						next.archived_work_ids.insert(owner.clone());
+					},
+					_ => assert!(!next.work_items.iter().any(|work| work.id == owner)),
+				}
+				s.apply_refreshed_snapshot(
+					Ok(decodex_protocol::AgentSnapshotResult::Available(next)),
+					cx,
+				);
+				assert_eq!(s.voice_owner(), (transition == "draft").then_some(owner.as_str()));
+				if transition == "draft" {
+					let next = s.snapshot.clone().unwrap();
+					s.apply_refreshed_snapshot(
+						Ok(decodex_protocol::AgentSnapshotResult::Available(next)),
+						cx,
+					);
+					assert_eq!(s.voice_owner(), Some(owner.as_str()));
+				}
+				s.stop_voice(cx);
+			});
+		}
+	}
+
+	#[gpui::test]
+	fn empty_topic_voice_click_reaches_media_instead_of_returning_silently(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let (_root, profile, server) =
+			crate::shell::agent_surface::wire_test_support::fixture(|_| async {});
+		server.join().unwrap();
+		let (view, visual) =
+			cx.add_window_view(|_, cx| VoiceComposerView(cx.new(AgentSurface::new)));
+		let surface = view.read_with(visual, |view, _| view.0.clone());
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.profile = Some(profile);
+			assert!(s.snapshot.as_ref().unwrap().work_items[0].codex_thread_id.is_none());
+			s.new_project_agent(None, cx);
+			assert!(s.is_new_conversation());
+			cx.notify();
+		});
+		visual.update(crate::ui_frame::draw_current_frame);
+		let button = visual.debug_bounds("composer-send").expect("Live action");
+		visual.simulate_click(button.center(), Default::default());
+		surface.read_with(visual, |s, _| {
+			// Unit tests have no signed platform media host. Reaching this error proves
+			// the first call is no longer gated on an already-created native thread.
+			assert_eq!(s.feedback.message, "Voice requires the current signed Decodex app.");
+		});
+	}
 
 	impl Render for VoiceComposerView {
 		fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
@@ -1952,6 +2186,34 @@ mod tests {
 	}
 
 	#[gpui::test]
+	fn ending_empty_live_does_not_leave_a_retained_transcript_without_history(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let surface = cx.new(AgentSurface::new);
+
+		surface.update(cx, |s, cx| {
+			s.prepare_voice_ui(
+				Default::default(),
+				Media,
+				&EntityId::new("empty").unwrap(),
+				EntityId::new("agent").unwrap(),
+			);
+			s.voice.as_mut().unwrap().captions.push(Caption {
+				key: "blank".into(),
+				turn: "blank".into(),
+				role: "user",
+				complete: false,
+				text: " \n\u{3000}".into(),
+			});
+
+			s.retire_voice_media();
+
+			assert!(s.retired_voice_captions.is_empty());
+			assert!(s.live_chat_caption("agent", cx).is_none());
+		});
+	}
+
+	#[gpui::test]
 	fn voice_tail_flush_does_not_render_task_duration_but_preserves_failure(
 		cx: &mut gpui::TestAppContext,
 	) {
@@ -1986,7 +2248,7 @@ mod tests {
 
 		assert!(visual.debug_bounds("voice-history-block").is_some());
 		assert!(
-			visual.debug_bounds("turn-metrics-hover").is_none(),
+			visual.debug_bounds("native-turn-metrics").is_none(),
 			"A transcript flush is not a timed user task"
 		);
 
@@ -2003,7 +2265,7 @@ mod tests {
 		visual.update(crate::ui_frame::draw_current_frame);
 
 		assert!(
-			visual.debug_bounds("turn-metrics-hover").is_some(),
+			visual.debug_bounds("native-turn-metrics").is_some(),
 			"Actual failed turns must remain visible"
 		);
 	}
@@ -2623,6 +2885,7 @@ mod tests {
 				turn_id: None,
 				weather: Vec::new(),
 				receipt: session.map(|session| decodex_protocol::AgentHistoryReceiptDto {
+					voice: None,
 					unsent_reason: None,
 					voice_session_id: Some(session.into()),
 					event_kind: "voice_user".into(),
@@ -2638,6 +2901,31 @@ mod tests {
 				created_at_micros: 100,
 			}],
 		}
+	}
+
+	#[gpui::test]
+	fn saved_tail_flush_replaces_retired_captions_by_call_identity(cx: &mut gpui::TestAppContext) {
+		let surface = cx.new(AgentSurface::new);
+		surface.update(cx,|s,_cx| {
+			s.prepare_voice_ui(Default::default(),Media,&EntityId::new("call").unwrap(),EntityId::new("agent").unwrap());
+			voice::update_caption(&serde_json::json!({"type":"turn.done","turn":{"id":"speech","role":"user","transcript":"Hello"}}),&mut s.voice.as_mut().unwrap().captions);
+			s.retire_voice_media();
+			let mut history=saved_voice_history(Some("call"));
+			if let AgentHistoryResult::Available{entries,..}=&mut history {
+				entries[0].receipt.as_mut().unwrap().voice=Some(decodex_protocol::AgentVoicePresentation {spend:None,duration_ms:Some(9000)});
+			}
+			s.history=Some(("agent".into(),history.clone()));
+			s.timeline.native.binding=Some(crate::shell::agent_surface::native_timeline::Binding {work:"agent".into(),thread:"thread".into(),account:"account".into()});
+			assert!(s.live_chat_caption("agent",_cx).is_some());
+			s.timeline.native.entries.push(decodex_protocol::AgentTimelineEntry {position:0,content:decodex_protocol::AgentTimelineContent::Item {turn_id:"tail".into(),item_id:"handoff".into(),kind:"userMessage".into(),phase:None,text:"<realtime_delegation><source>transcript_tail_flush</source><input>Internal instruction</input><transcript_delta>user: Hello</transcript_delta></realtime_delegation>".into(),truncated:false,collaboration:None,attachments:vec![],activity:None}});
+			s.reconcile_voice_captions("agent",&history);
+			assert!(s.retired_voice_captions.is_empty(),"one complete call must render once");
+            let records=s.saved_voice_records("agent");assert_eq!(records.len(),1);
+            assert_eq!(records[0].1,"user: Hello");
+            assert_eq!(records[0].2.duration_ms,Some(9000));
+            assert!(s.covered_voice_handoff("agent","<realtime_delegation><source>transcript_tail_flush</source><input>Internal</input><transcript_delta>user: Hello</transcript_delta></realtime_delegation>"));
+            assert!(!s.covered_voice_handoff("agent","<realtime_delegation><source>transcript_tail_flush</source><input>Internal</input><transcript_delta>user: New words</transcript_delta></realtime_delegation>"));
+        });
 	}
 
 	#[gpui::test]

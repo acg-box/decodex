@@ -1,4 +1,5 @@
 //! On-demand archive browser. Native identities and retained relations stay authoritative.
+use crate::ui_motion::HoverHint as _;
 use gpui::{
 	AnyElement, AppContext as _, Entity, IntoElement as _, KeyDownEvent, Role, Task, prelude::*,
 };
@@ -12,7 +13,6 @@ use tokio::runtime::Builder;
 use crate::{
 	composer_input::ComposerInput,
 	shell::{
-		ControlTooltip,
 		agent_surface::{AgentSurface, Context},
 		workspace_symbols::{self, Symbol},
 	},
@@ -319,10 +319,15 @@ impl AgentSurface {
 	}
 
 	fn delete_archive_item(&mut self, id: &str, cx: &mut Context<Self>) {
-		self.delete_archive_items(vec![id.into()], cx);
+		self.delete_archive_items(vec![id.into()], false, cx);
 	}
 
-	fn delete_archive_items(&mut self, mut ids: Vec<String>, cx: &mut Context<Self>) {
+	fn delete_archive_items(
+		&mut self,
+		mut ids: Vec<String>,
+		confirmed: bool,
+		cx: &mut Context<Self>,
+	) {
 		if self.workspace.archives.mutation.is_some()
 			|| ids.is_empty()
 			|| ids.iter().any(|id| self.workspace.archives.archived_work(id).is_none())
@@ -332,12 +337,13 @@ impl AgentSurface {
 		// Native deletion includes descendants. Delete selected children first so
 		// their individual receipts do not race an earlier parent deletion.
 		ids.sort_by_cached_key(|id| std::cmp::Reverse(self.workspace.archives.parent_depth(id)));
-		if !self
-			.workspace
-			.archives
-			.confirmation
-			.as_ref()
-			.is_some_and(|(owners, at)| owners == &ids && at.elapsed() < Duration::from_secs(5))
+		if !confirmed
+			&& !self
+				.workspace
+				.archives
+				.confirmation
+				.as_ref()
+				.is_some_and(|(owners, at)| owners == &ids && at.elapsed() < Duration::from_secs(5))
 		{
 			let now = Instant::now();
 			self.workspace.archives.confirmation = Some((ids.clone(), now));
@@ -585,7 +591,7 @@ impl AgentSurface {
 					.text_size(gpui::px(ui_theme::CAPTION_SIZE))
 					.line_height(gpui::px(ui_theme::CAPTION_LINE_HEIGHT))
 					.text_color(ui_theme::rgb(ui_theme::TEXT_MUTED))
-					.tooltip(move |_, cx| cx.new(|_| ControlTooltip(detail.clone())).into())
+					.hover_hint(detail.clone())
 					.child(if catalog.sort == Sort::Name {
 						item.day.clone()
 					} else {
@@ -828,7 +834,11 @@ impl AgentSurface {
 	}
 
 	fn delete_selected_archives(&mut self, cx: &mut Context<Self>) {
-		self.delete_archive_items(self.workspace.archives.selected.iter().cloned().collect(), cx);
+		self.delete_archive_items(
+			self.workspace.archives.selected.iter().cloned().collect(),
+			false,
+			cx,
+		);
 	}
 
 	fn select_archive_row(&mut self, id: &str, cx: &mut Context<Self>) {
@@ -1191,7 +1201,7 @@ fn archive_action(
 		.focus_visible(|d| {
 			d.bg(ui_theme::rgba(ui_theme::HOVER_FILL)).border_color(ui_theme::rgb(ui_theme::ACCENT))
 		})
-		.tooltip(move |_, cx| cx.new(|_| ControlTooltip(label)).into())
+		.hover_hint(label)
 		.child(ConfirmationNudge {
 			started: confirmation_started,
 			child: workspace_symbols::icon_sized(symbol, 16.),
@@ -1299,12 +1309,13 @@ impl AgentSurface {
 		self.unarchive_catalog_item(id, cx);
 	}
 
-	pub(in crate::shell::agent_surface) fn delete_navigation_archive(
+	pub(in crate::shell::agent_surface) fn delete_confirmed_navigation_archive(
 		&mut self,
 		id: &str,
 		cx: &mut Context<Self>,
 	) {
-		self.delete_archive_item(id, cx);
+		// The sidebar already confirmed the second click on this exact row.
+		self.delete_archive_items(vec![id.to_owned()], true, cx);
 	}
 }
 
@@ -1323,10 +1334,20 @@ mod tests {
 	};
 	use tokio_tungstenite::tungstenite::Message;
 
-	struct ArchiveView(Entity<AgentSurface>);
+	struct ArchiveView(Entity<AgentSurface>, bool);
 	impl gpui::Render for ArchiveView {
-		fn render(&mut self, _: &mut gpui::Window, cx: &mut Context<Self>) -> impl IntoElement {
-			self.0.update(cx, |s, cx| s.render_archive_catalog(cx))
+		fn render(
+			&mut self,
+			window: &mut gpui::Window,
+			cx: &mut Context<Self>,
+		) -> impl IntoElement {
+			self.0.update(cx, |s, cx| {
+				if self.1 {
+					s.render_navigation_sidebar(window, cx)
+				} else {
+					s.render_archive_catalog(cx)
+				}
+			})
 		}
 	}
 
@@ -1435,7 +1456,7 @@ mod tests {
 		let (view, visual) = cx.add_window_view(|_, cx| {
 			let surface = cx.new(bulk_archive_surface);
 			cx.observe(&surface, |_, _, cx| cx.notify()).detach();
-			ArchiveView(surface)
+			ArchiveView(surface, false)
 		});
 		let surface = view.read_with(visual, |v, _| v.0.clone());
 		let active = surface.read_with(visual, |s, _| s.snapshot.clone().unwrap());
@@ -1573,7 +1594,7 @@ mod tests {
 				}];
 				s.workspace.archives.data = Some(data);
 			});
-			ArchiveView(surface)
+			ArchiveView(surface, false)
 		});
 		for width in [1600., 900., 500., 360.] {
 			visual.simulate_resize(gpui::size(gpui::px(width), gpui::px(720.)));
@@ -1643,7 +1664,7 @@ mod tests {
 						ComposerInput::with_placeholder(48, "Search", "Search archive", cx)
 					}));
 			});
-			ArchiveView(surface)
+			ArchiveView(surface, false)
 		});
 		let surface = view.read_with(visual, |v, _| v.0.clone());
 		for (query, expected) in [
@@ -1695,7 +1716,7 @@ mod tests {
 				}
 				s.workspace.archives.data = Some(data);
 			});
-			ArchiveView(surface)
+			ArchiveView(surface, false)
 		});
 		let surface = view.read_with(visual, |v, _| v.0.clone());
 		visual.update(crate::ui_frame::draw_current_frame);
@@ -1767,16 +1788,105 @@ mod tests {
 	fn archive_second_delete_click_sends_once_and_removes_only_the_confirmed_row(
 		cx: &mut gpui::TestAppContext,
 	) {
+		check_archive_two_click_deletion(cx, false);
+	}
+
+	#[gpui::test]
+	fn sidebar_archive_has_only_restore_delete_and_dispatches_on_second_click(
+		cx: &mut gpui::TestAppContext,
+	) {
+		check_archive_two_click_deletion(cx, true);
+	}
+
+	fn check_archive_two_click_deletion(cx: &mut gpui::TestAppContext, sidebar: bool) {
 		cx.background_executor.allow_parking();
 		let (view, visual) = cx.add_window_view(|_, cx| {
 			let surface = cx.new(single_archive_surface);
 			cx.observe(&surface, |_, _, cx| cx.notify()).detach();
-			ArchiveView(surface)
+			ArchiveView(surface, sidebar)
 		});
 		let surface = view.read_with(visual, |v, _| v.0.clone());
 		let active = surface.read_with(visual, |s, _| s.snapshot.clone().unwrap());
 		let expected = active.clone();
-		let (_root, profile, server) = wire_test_support::fixture(move |listener| async move {
+		let (_root, profile, server) = archive_delete_server(active);
+		if sidebar {
+			visual.update(crate::ui_frame::draw_current_frame);
+			let archive = visual.debug_bounds("archive-browser").unwrap();
+			visual.simulate_click(archive.center(), Default::default());
+		}
+		surface.update(visual, |s, _| s.profile = Some(profile));
+		visual.update(crate::ui_frame::draw_current_frame);
+		let delete =
+			if sidebar { "navigation-delete-archive-discard" } else { "delete-archive-discard" };
+		if sidebar {
+			let row = visual.debug_bounds("navigation-archive-discard").unwrap();
+			visual.simulate_mouse_move(row.center(), None, Default::default());
+			visual.update(crate::ui_frame::draw_current_frame);
+			thread::sleep(ui_theme::MOTION_PANEL + Duration::from_millis(30));
+			visual.update(crate::ui_frame::draw_frame);
+			assert!(visual.debug_bounds("navigation-restore-archive-discard").is_some());
+			assert!(visual.debug_bounds("navigation-pin-archive-discard").is_none());
+			assert!(visual.debug_bounds("navigation-row-menu-archive-discard").is_none());
+			assert_eq!(
+				visual.debug_bounds("navigation-actions-archive-discard").unwrap().size.width,
+				gpui::px(48.)
+			);
+		}
+		let button = visual.debug_bounds(delete).unwrap();
+		visual.simulate_click(button.center(), Default::default());
+		surface.read_with(visual, |s, _| {
+			assert!(s.workspace.archives.mutation.is_none());
+			if sidebar {
+				assert!(s.workspace.archives.confirmation.is_none());
+			} else {
+				assert!(s.workspace.archives.confirming("discard"));
+			}
+		});
+		visual.update(crate::ui_frame::draw_current_frame);
+		let confirmed = visual.debug_bounds(delete).unwrap();
+		assert!(
+			(confirmed.center().x - button.center().x).abs() < gpui::px(4.),
+			"confirmation must keep its click target"
+		);
+		surface.read_with(visual, |s, _| {
+			if !sidebar {
+				assert!(
+					s.workspace.archives.confirming("discard"),
+					"confirmation expired during render"
+				);
+			}
+		});
+		visual.simulate_click(confirmed.center(), Default::default());
+		surface.read_with(visual, |s, _| {
+			assert!(
+				s.workspace.archives.confirmation.is_none(),
+				"second click must leave confirmation"
+			)
+		});
+		let until = Instant::now() + Duration::from_secs(5);
+		loop {
+			visual.run_until_parked();
+			if surface.read_with(visual, |s, _| s.workspace.archives.mutation.is_none()) {
+				break;
+			}
+			assert!(Instant::now() < until, "delete request timed out");
+			thread::sleep(Duration::from_millis(5));
+		}
+		server.join().unwrap();
+		visual.update(crate::ui_frame::draw_current_frame);
+		assert!(visual.debug_bounds(delete).is_none());
+		surface.read_with(visual, |s, cx| {
+			assert_eq!(s.snapshot.as_ref(), Some(&expected));
+			assert_eq!(s.composer.read(cx).content(), "Preserve Main draft");
+			assert!(s.workspace.archives.viewed.is_none());
+			assert!(s.workspace.archives.feedback.is_none());
+		});
+	}
+
+	fn archive_delete_server(
+		active: AgentSnapshotDto,
+	) -> (tempfile::TempDir, decodex_protocol::ClientProfile, std::thread::JoinHandle<()>) {
+		wire_test_support::fixture(move |listener| async move {
 			for step in 0..3 {
 				let mut socket = wire_test_support::accept(&listener).await;
 				let Message::Text(text) = socket.next().await.unwrap().unwrap() else {
@@ -1833,52 +1943,7 @@ mod tests {
 					.await
 					.unwrap();
 			}
-		});
-		surface.update(visual, |s, _| s.profile = Some(profile));
-		visual.update(crate::ui_frame::draw_current_frame);
-		let button = visual.debug_bounds("delete-archive-discard").unwrap();
-		visual.simulate_click(button.center(), Default::default());
-		surface.read_with(visual, |s, _| {
-			assert!(s.workspace.archives.mutation.is_none());
-			assert!(s.workspace.archives.confirming("discard"));
-		});
-		visual.update(crate::ui_frame::draw_current_frame);
-		let confirmed = visual.debug_bounds("delete-archive-discard").unwrap();
-		assert!(
-			(confirmed.center().x - button.center().x).abs() < gpui::px(4.),
-			"confirmation must keep its click target"
-		);
-		surface.read_with(visual, |s, _| {
-			assert!(
-				s.workspace.archives.confirming("discard"),
-				"confirmation expired during render"
-			)
-		});
-		visual.simulate_click(confirmed.center(), Default::default());
-		surface.read_with(visual, |s, _| {
-			assert!(
-				s.workspace.archives.confirmation.is_none(),
-				"second click must leave confirmation"
-			)
-		});
-		let until = Instant::now() + Duration::from_secs(5);
-		loop {
-			visual.run_until_parked();
-			if surface.read_with(visual, |s, _| s.workspace.archives.mutation.is_none()) {
-				break;
-			}
-			assert!(Instant::now() < until, "delete request timed out");
-			thread::sleep(Duration::from_millis(5));
-		}
-		server.join().unwrap();
-		visual.update(crate::ui_frame::draw_current_frame);
-		assert!(visual.debug_bounds("delete-archive-discard").is_none());
-		surface.read_with(visual, |s, cx| {
-			assert_eq!(s.snapshot.as_ref(), Some(&expected));
-			assert_eq!(s.composer.read(cx).content(), "Preserve Main draft");
-			assert!(s.workspace.archives.viewed.is_none());
-			assert!(s.workspace.archives.feedback.is_none());
-		});
+		})
 	}
 
 	#[gpui::test]
@@ -1898,7 +1963,7 @@ mod tests {
 				}
 				s.workspace.archives.data = Some(data);
 			});
-			ArchiveView(surface)
+			ArchiveView(surface, false)
 		});
 		visual.update(crate::ui_frame::draw_current_frame);
 		let surface = view.read_with(visual, |v, _| v.0.clone());
@@ -2103,7 +2168,7 @@ mod tests {
 		let (view, visual) = cx.add_window_view(|_, cx| {
 			let surface = cx.new(AgentSurface::new);
 			cx.observe(&surface, |_, _, cx| cx.notify()).detach();
-			ArchiveView(surface)
+			ArchiveView(surface, false)
 		});
 		let surface = view.read_with(visual, |view, _| view.0.clone());
 		let (catalog, active, selection) = surface.update(visual, |s, cx| {

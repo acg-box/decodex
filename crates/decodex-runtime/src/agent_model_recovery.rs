@@ -89,7 +89,7 @@ where
 		.ok()
 		.and_then(|now| i64::try_from(now.as_secs()).ok());
 	let (target, evidence) = if let Some((target, retirement_at)) = now.and_then(|now| {
-		AgentModelDto::retired_default(
+		AgentModelDto::unavailable_default(
 			&settings.model,
 			&catalog.models,
 			catalog.default_model.as_ref(),
@@ -224,18 +224,13 @@ fn target_settings(
 
 // Resolve the candidate before reading its native policy. Ultra Fast has its own gate.
 fn target_service_tier(current: &NativeTaskModelSettings, target: &AgentModelDto) -> String {
-	match current.service_tier.as_deref() {
-		Some("default") => "default".into(),
-		Some("flex") => "flex".into(),
-		Some(tier) if target.service_tiers.iter().any(|t| t.id.as_str() == tier) => tier.into(),
-		Some(_) => "default".into(),
-		None => target
-			.default_service_tier
-			.as_ref()
-			.filter(|t| target.service_tiers.iter().any(|v| &v.id == *t))
-			.map(|t| t.as_str().to_owned())
-			.unwrap_or_else(|| "default".into()),
-	}
+	let requested = current
+		.service_tier
+		.as_deref()
+		.and_then(|tier| decodex_protocol::ServiceTier::new(tier).ok())
+		.or_else(|| target.default_service_tier.clone())
+		.unwrap_or_else(decodex_protocol::ServiceTier::standard);
+	target.effective_service_tier(&requested).as_str().to_owned()
 }
 
 async fn queue_recovery(
@@ -347,7 +342,7 @@ mod tests {
 		);
 		assert_eq!(
 			recovery::target_settings(&current(None, Some("withdrawn")), &model, Some(true)),
-			Some(("medium".into(), Some("default".into())))
+			Some(("medium".into(), Some("priority".into())))
 		);
 		assert_eq!(
 			recovery::target_settings(&current(None, None), &model, Some(false)),

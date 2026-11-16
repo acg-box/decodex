@@ -1,4 +1,5 @@
 //! Questions share the input surface while retaining a separate answer draft.
+use crate::ui_motion::HoverHint as _;
 use std::{cell::Cell, rc::Rc};
 
 use gpui::{
@@ -12,7 +13,6 @@ use crate::{
 		self, AgentActionDto, AgentHistoryResult, AgentSurface, AgentWorkItemDto, ClientProfile,
 		Context, Entity, EntityId, InteractiveElement, IntoElement, ParentElement, Role,
 		SharedString, StatefulInteractiveElement, Styled, Window,
-		composer::ComposerTip,
 		selectable_text::SelectableText,
 		workspace_symbols::{self, Symbol},
 	},
@@ -453,10 +453,7 @@ impl AgentSurface {
 		label: String,
 		cx: &mut Context<Self>,
 	) -> Stateful<Div> {
-		let tooltip = match action {
-			QuestionAction::Send { .. } => "Send answer",
-			QuestionAction::Skip => "Skip question",
-		};
+		let tooltip = matches!(action, QuestionAction::Skip).then_some("Skip question");
 		let target = target.clone();
 		let key_target = target.clone();
 		let key_action = action.clone();
@@ -467,7 +464,7 @@ impl AgentSurface {
 			.role(Role::Button)
 			.tab_index(0)
 			.aria_label(label.clone())
-			.tooltip(move |_, cx| cx.new(|_| ComposerTip(tooltip.into())).into())
+			.when_some(tooltip, |button, tip| button.hover_hint(tip))
 			.rounded(gpui::px(6.))
 			.cursor_pointer()
 			.hover(|style| style.bg(ui_theme::rgba(HOVER_FILL)))

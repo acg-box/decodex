@@ -93,11 +93,11 @@ pub use self::{
 		AgentMisalignmentDto, AgentModelDto, AgentModelUpgradeDto, AgentOutputResult,
 		AgentPendingEventDto, AgentRequestResult, AgentRequestText, AgentResourceDto,
 		AgentResourcesResult, AgentReviewActivity, AgentServiceTierDto, AgentSnapshotDto,
-		AgentSnapshotResult, AgentStartDto, AgentTaskReferenceDto, AgentTurnUsageDto,
-		AgentUsageDetailsDto, AgentUsageDto, AgentWorkItemDto, AgentWorkKindDto,
-		AgentWorkStatusDto, MAX_AGENT_DEPENDENCIES, MAX_AGENT_PENDING_EVENTS,
-		MAX_AGENT_SNAPSHOT_BYTES, MAX_AGENT_WORK_ITEMS, NATIVE_PARENT_RECONNECT_MESSAGE,
-		ProjectDto,
+		AgentSnapshotResult, AgentSpendDto, AgentStartDto, AgentTaskReferenceDto,
+		AgentTurnUsageDto, AgentUsageDetailsDto, AgentUsageDto, AgentVoicePresentation,
+		AgentWorkItemDto, AgentWorkKindDto, AgentWorkStatusDto, MAX_AGENT_DEPENDENCIES,
+		MAX_AGENT_PENDING_EVENTS, MAX_AGENT_SNAPSHOT_BYTES, MAX_AGENT_WORK_ITEMS,
+		NATIVE_PARENT_RECONNECT_MESSAGE, ProjectDto,
 	},
 	agent_app_exposure::{AgentAppExposureResult, AgentToolExposureSurface},
 	agent_app_ui::{
@@ -233,7 +233,10 @@ pub use self::{
 		ApplicationConfirmation, RetainedSession, RetainedSessionConfig, RetainedSessionFailure,
 		SessionCancellation, SessionCheckpoint, SessionDelivery,
 	},
-	voice::{AgentVoiceOptions, AgentVoicePhase, AgentVoiceRequest, AgentVoiceStatus, VoiceSdp},
+	voice::{
+		AgentVoiceDraft, AgentVoiceOptions, AgentVoicePhase, AgentVoiceRequest, AgentVoiceStatus,
+		VoiceSdp,
+	},
 	weather::WeatherForecast,
 	wire::{
 		AccountCommandRejectionDto, AccountCredentialBindingDto, AccountDto,

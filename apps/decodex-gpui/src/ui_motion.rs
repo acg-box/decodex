@@ -9,6 +9,7 @@ mod native_popover;
 #[path = "ui_rail_label.rs"] mod rail_label;
 #[path = "ui_segmented.rs"] mod segmented;
 #[path = "ui_text_reveal.rs"] mod text_reveal;
+#[path = "ui_tooltip.rs"] mod tooltip;
 #[path = "ui_viewport_clip.rs"] mod viewport_clip;
 
 pub(crate) use crate::ui_frame::{
@@ -18,9 +19,10 @@ pub(crate) use crate::ui_frame::{
 pub(crate) use disclosure::{disclosure, disclosure_lazy, settings_disclosure};
 pub(crate) use hover_intent::HoverIntent;
 pub(crate) use overflow_label::{HoverOverflowLabel, OverflowLabel};
-pub(crate) use rail_label::RailLabel;
+pub(crate) use rail_label::{RailInitial, RailLabel};
 pub(crate) use segmented::{Choice, Segmented};
 pub(crate) use text_reveal::TextReveal;
+pub(crate) use tooltip::{HoverHint, tooltip_at};
 pub(crate) use viewport_clip::Viewport;
 
 use std::{
@@ -45,8 +47,65 @@ use crate::ui_theme::{
 pub(crate) const HOVER_OPEN_DELAY: Duration = Duration::from_millis(100);
 pub(crate) const HOVER_CLOSE_DELAY: Duration = Duration::from_millis(220);
 
-/// Attached surfaces keep their owner's anchor; floating menus keep edge clearance.
+/// Place every hover surface outside its complete trigger, with one shared gap.
+pub(crate) fn hover_origin(
+	trigger: Bounds<Pixels>,
+	size: gpui::Size<Pixels>,
+	viewport: Bounds<Pixels>,
+) -> gpui::Point<Pixels> {
+	let gap = gpui::px(ui_theme::POPOVER_GAP);
+	let candidates = [
+		gpui::point(trigger.left(), trigger.bottom() + gap),
+		gpui::point(trigger.left(), trigger.top() - size.height - gap),
+		gpui::point(trigger.right() + gap, trigger.top()),
+		gpui::point(trigger.left() - size.width - gap, trigger.top()),
+	];
+	let expanded = trigger.dilate(gap);
+	candidates
+		.into_iter()
+		.map(|origin| {
+			surface_origin(origin - viewport.origin, size, viewport.size, false) + viewport.origin
+		})
+		.find(|origin| Bounds::new(*origin, size).intersect(&expanded).is_empty())
+		.unwrap_or_else(|| {
+			surface_origin(candidates[0] - viewport.origin, size, viewport.size, false)
+				+ viewport.origin
+		})
+}
+
+/// Native child controls can place hints in the screen area outside their drawable.
+pub(crate) fn hover_viewport(window: &Window) -> Bounds<Pixels> {
+	#[cfg(all(target_os = "macos", not(test)))]
+	if let Some(bounds) = crate::ui_theme::native_material_panel::hover_viewport(window) {
+		return bounds;
+	}
+	Bounds::new(Default::default(), window.viewport_size())
+}
+
+/// GPUI retains its last in-window position on MouseExited. Clear it before
+/// the next hover pass, so a child material window cannot retain a stale hover.
 #[cfg(any(test, target_os = "macos"))]
+fn observe_pointer_departure(window: &mut Window) {
+	window.on_mouse_event(|event: &gpui::MouseExitEvent, phase, window, cx| {
+		if !phase.capture() {
+			return;
+		}
+		let handle = window.window_handle();
+		let event = gpui::MouseMoveEvent {
+			position: gpui::point(gpui::px(-1.), gpui::px(-1.)),
+			pressed_button: event.pressed_button,
+			modifiers: event.modifiers,
+		};
+		cx.defer(move |cx| {
+			let _ = handle.update(cx, |_, window, cx| {
+				window.dispatch_event(gpui::PlatformInput::MouseMove(event), cx);
+				window.refresh();
+			});
+		});
+	});
+}
+
+/// Attached surfaces keep their owner's anchor; floating menus keep edge clearance.
 pub(crate) fn surface_origin(
 	origin: gpui::Point<Pixels>,
 	extent: gpui::Size<Pixels>,
@@ -75,7 +134,6 @@ pub(crate) fn surface_origin(
 pub(crate) struct PanelReveal {
 	pub expanded: bool,
 	pub content_width: f32,
-	pub target_expanded: bool,
 	pub viewport: Viewport,
 }
 impl PanelReveal {
@@ -84,7 +142,6 @@ impl PanelReveal {
 		Self {
 			expanded,
 			content_width: if expanded { full } else { rail },
-			target_expanded: target,
 			viewport: Viewport::default(),
 		}
 	}
@@ -314,34 +371,8 @@ impl RenderOnce for Arrival {
 enum PopoverPlacement {
 	#[default]
 	Below,
-	Above,
-	LeftCenter(Pixels),
+	Hover(Pixels),
 }
-impl PopoverPlacement {
-	fn origin(
-		self,
-		origin: gpui::Point<Pixels>,
-		size: gpui::Size<Pixels>,
-		trigger: Option<Bounds<Pixels>>,
-	) -> gpui::Point<Pixels> {
-		match self {
-			Self::Below => origin,
-			Self::Above => gpui::point(
-				origin.x,
-				trigger.map_or(origin.y, |trigger| trigger.top())
-					- size.height
-					- gpui::px(ui_theme::POPOVER_GAP),
-			),
-			Self::LeftCenter(_) => trigger.map_or(origin, |trigger| {
-				gpui::point(
-					trigger.left() - size.width - gpui::px(ui_theme::POPOVER_GAP),
-					trigger.center().y - size.height / 2.,
-				)
-			}),
-		}
-	}
-}
-
 /// First presentation uses the measured height; subsequent changes retain one curve.
 fn popover_height(
 	motion: &mut Option<Tween>,
@@ -512,14 +543,10 @@ impl Popover {
 		self
 	}
 
-	pub(crate) fn above(mut self) -> Self {
-		self.placement = PopoverPlacement::Above;
-		self
-	}
-
-	/// Keep a changing preview centered beside its complete trigger group.
-	pub(crate) fn left_centered(mut self, width: f32) -> Self {
-		self.placement = PopoverPlacement::LeftCenter(gpui::px(width));
+	/// Give hover previews a fixed content width and the shared control anchor.
+	pub(crate) fn hover_preview(mut self, width: f32) -> Self {
+		self.preview = true;
+		self.placement = PopoverPlacement::Hover(gpui::px(width));
 		self
 	}
 
@@ -560,7 +587,7 @@ impl RenderOnce for Popover {
 		if moving {
 			request_frame(window, cx);
 		}
-		if let PopoverPlacement::LeftCenter(width) = self.placement {
+		if let PopoverPlacement::Hover(width) = self.placement {
 			let motion = window.use_keyed_state(
 				SharedString::from(format!("popover-height-{:?}", self.id)),
 				cx,
@@ -570,28 +597,24 @@ impl RenderOnce for Popover {
 				motion.update(cx, |motion, _| *motion = None);
 				return gpui::div().into_any_element();
 			}
-			let origin =
-				self.placement.origin(Default::default(), Default::default(), self.trigger.get());
 			let content = crate::ui_layout::resized(width, child, move |mut size, window, cx| {
 				size.height =
 					motion.update(cx, |motion, cx| popover_height(motion, size.height, window, cx));
 				size
 			});
-			return gpui::anchored()
-				.anchor(gpui::Anchor::RightCenter)
-				.position(origin)
-				.snap_to_window_with_margin(gpui::px(ui_theme::CONTROL_MARGIN))
-				.child(
-					gpui::div()
-						.w(width)
-						.relative()
-						.top(gpui::px(ui_theme::POPOVER_OFFSET * (1. - opacity)))
-						.opacity(opacity)
-						.debug_selector(|| "popover-surface".into())
-						.map(menu_surface)
-						.child(content),
-				)
+			let surface = gpui::div()
+				.w(width)
+				.relative()
+				.opacity(opacity)
+				.debug_selector(|| "popover-surface".into())
+				.map(menu_surface)
+				.child(content)
 				.into_any_element();
+			return crate::ui_layout::hover_surface(
+				self.trigger.get().unwrap_or_default(),
+				surface,
+			)
+			.into_any_element();
 		}
 		// The complete surface arrives together; its size and text scale stay fixed.
 		gpui::div()
@@ -685,6 +708,57 @@ impl Tween {
 	}
 }
 
+fn agent_state_style(state: &str) -> (u32, bool) {
+	match state {
+		"Running" | "Starting" | "running" | "working" | "active" => (INFO, true),
+		"Needs you" | "Needs attention" | "Blocked" => (WARNING, false),
+		"failed" | "systemError" | "Failed" => (ERROR, false),
+		"Completed" | "completed" | "Resolved" => (SUCCESS, false),
+		_ => (TEXT, false),
+	}
+}
+
+/// Reserve expanded conversation symbols for states with semantic emphasis.
+pub(crate) fn agent_state_emphasized(state: &str) -> bool {
+	agent_state_style(state).0 != TEXT
+}
+
+/// Keep conversation state ink and activity motion shared across labels and icons.
+pub(crate) fn agent_state_ink(id: &str, state: &str, window: &mut Window, cx: &mut App) -> Rgba {
+	let (color, busy) = agent_state_style(state);
+	let color = ColorScheme::current().hex(color);
+	let mut channels = [0.; 3];
+
+	for (index, channel) in channels.iter_mut().enumerate() {
+		*channel = value(
+			SharedString::from(format!("rail-color-{}-{index}", id)),
+			((color >> (16 - index * 8)) & 255) as f32 / 255.,
+			window,
+			cx,
+		);
+	}
+
+	// No completion percentage exists for a model turn. A quiet change in
+	// the letter's ink indicates activity without implying measured progress.
+	let clock =
+		window.use_keyed_state(SharedString::from(format!("rail-activity-{}", id)), cx, |_, _| {
+			Instant::now()
+		});
+	let intensity = if busy && !reduced() {
+		request_frame(window, cx);
+
+		0.82 + 0.18 * (clock.read(cx).elapsed().as_secs_f32() * TAU / 2.4).cos()
+	} else {
+		1.
+	};
+	Rgba {
+		r: channels[0] * intensity,
+		g: channels[1] * intensity,
+		b: channels[2] * intensity,
+		a: 1.,
+	}
+}
+
 /// The title's first grapheme carries state without adding a badge or changing layout.
 #[derive(IntoElement)]
 pub(crate) struct AgentRailStatus {
@@ -697,52 +771,14 @@ pub(crate) struct AgentRailStatus {
 }
 impl RenderOnce for AgentRailStatus {
 	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-		let (color, busy) = match self.state.as_str() {
-			"Running" | "Starting" | "running" | "working" | "active" => (INFO, true),
-			"Needs you" | "Needs attention" | "Blocked" => (WARNING, false),
-			"failed" | "systemError" | "Failed" => (ERROR, false),
-			"Completed" | "completed" | "Resolved" => (SUCCESS, false),
-			_ => (TEXT, false),
-		};
-		let color = ColorScheme::current().hex(color);
-		let mut channels = [0.; 3];
-
-		for (index, channel) in channels.iter_mut().enumerate() {
-			*channel = value(
-				SharedString::from(format!("rail-color-{}-{index}", self.id)),
-				((color >> (16 - index * 8)) & 255) as f32 / 255.,
-				window,
-				cx,
-			);
-		}
-
-		// No completion percentage exists for a model turn. A quiet change in
-		// the letter's ink indicates activity without implying measured progress.
-		let clock = window.use_keyed_state(
-			SharedString::from(format!("rail-activity-{}", self.id)),
-			cx,
-			|_, _| Instant::now(),
-		);
-		let intensity = if busy && !reduced() {
-			request_frame(window, cx);
-
-			0.82 + 0.18 * (clock.read(cx).elapsed().as_secs_f32() * TAU / 2.4).cos()
-		} else {
-			1.
-		};
-		let ink = Rgba {
-			r: channels[0] * intensity,
-			g: channels[1] * intensity,
-			b: channels[2] * intensity,
-			a: 1.,
-		};
+		let ink = agent_state_ink(&self.id, &self.state, window, cx);
 		RailLabel {
 			compact: self.compact,
 			viewport: self.viewport,
 			scroll: self.scroll,
 			id: self.id,
 			label: self.label,
-			size: 12.5,
+			size: ui_theme::NAVIGATION_TITLE_SIZE,
 			initial_color: ink,
 			initial_weight: FontWeight::SEMIBOLD,
 			badge: None,
@@ -775,22 +811,6 @@ impl SmoothControl for Stateful<Div> {
 	fn smooth(self) -> Control {
 		Control { div: self, enabled: true }
 	}
-}
-
-/// Hover text must remain readable over arbitrary conversation content.
-pub(crate) fn tooltip_surface(surface: Div) -> Div {
-	surface
-		.rounded(gpui::px(8.))
-		.border(gpui::px(0.5))
-		.border_color(ui_theme::rgb(TEXT).opacity(0.1))
-		.bg(ui_theme::popover_surface())
-		.px(gpui::px(8.))
-		.py(gpui::px(6.))
-		.map(popover_elevation)
-		.text_color(ui_theme::rgb(TEXT))
-		.text_size(gpui::px(11.))
-		.line_height(gpui::px(16.))
-		.max_w(gpui::px(360.))
 }
 
 /// Shared matte menu surface with a quiet outline and compact elevation.
@@ -916,8 +936,75 @@ mod tests {
 
 	use crate::ui_motion::Tween;
 
+	#[test]
+	fn hover_placement_prefers_below_then_flips_and_keeps_the_control_clear() {
+		use gpui::{Bounds, point, px, size};
+		let viewport = Bounds::new(Default::default(), size(px(800.), px(600.)));
+		for (trigger, expected_y) in [
+			(Bounds::new(point(px(200.), px(100.)), size(px(30.), px(24.))), px(132.)),
+			(Bounds::new(point(px(200.), px(550.)), size(px(30.), px(24.))), px(462.)),
+		] {
+			let extent = size(px(180.), px(80.));
+			let origin = super::hover_origin(trigger, extent, viewport);
+			assert_eq!(origin.y, expected_y);
+			assert_eq!(origin.x, trigger.left());
+			assert!(Bounds::new(origin, extent).intersect(&trigger).is_empty());
+		}
+		let trigger = Bounds::new(point(px(770.), px(100.)), size(px(24.), px(24.)));
+		let origin = super::hover_origin(trigger, size(px(180.), px(80.)), viewport);
+		assert_eq!(origin.x, px(612.));
+		assert_eq!(origin.y, px(132.));
+	}
+
 	#[gpui::test]
-	fn centered_previews_keep_their_center_during_resize_and_fit_window_edges(
+	fn native_window_exit_releases_the_last_hover_position(cx: &mut gpui::TestAppContext) {
+		use gpui::{Render, prelude::*};
+		struct Pointer(bool);
+		impl Render for Pointer {
+			fn render(
+				&mut self,
+				_: &mut gpui::Window,
+				cx: &mut gpui::Context<Self>,
+			) -> impl gpui::IntoElement {
+				gpui::div()
+					.id("exit-owner")
+					.size_full()
+					.on_hover(cx.listener(|s, inside, _, _| s.0 = *inside))
+					.child(
+						gpui::canvas(
+							|_, _, _| (),
+							|_, _, w, _| super::observe_pointer_departure(w),
+						)
+						.absolute()
+						.inset_0(),
+					)
+			}
+		}
+		let (view, visual) = cx.add_window_view(|_, _| Pointer(false));
+		visual.update(crate::ui_frame::draw_current_frame);
+		visual.simulate_mouse_move(
+			gpui::point(gpui::px(20.), gpui::px(20.)),
+			None,
+			Default::default(),
+		);
+		visual.update(crate::ui_frame::draw_current_frame);
+		assert!(view.read_with(visual, |s, _| s.0));
+		visual.update(|window, cx| {
+			window.dispatch_event(
+				gpui::PlatformInput::MouseExited(gpui::MouseExitEvent {
+					position: gpui::point(gpui::px(-1.), gpui::px(-1.)),
+					..Default::default()
+				}),
+				cx,
+			);
+		});
+		visual.run_until_parked();
+		visual.update(crate::ui_frame::draw_current_frame);
+		assert!(!view.read_with(visual, |s, _| s.0), "MouseExited must clear the retained hover");
+	}
+
+	#[gpui::test]
+	fn hover_previews_keep_their_anchor_during_resize_and_fit_window_edges(
 		cx: &mut gpui::TestAppContext,
 	) {
 		use gpui::{IntoElement, Render, prelude::*};
@@ -940,7 +1027,7 @@ mod tests {
 						gpui::div().h(gpui::px(self.height)),
 					)
 					.preview()
-					.left_centered(320.)
+					.hover_preview(320.)
 					.trigger(self.trigger.clone()),
 				)
 			}
@@ -959,7 +1046,7 @@ mod tests {
 		visual.update(crate::ui_frame::draw_current_frame);
 		let initial = visual.debug_bounds("popover-surface").unwrap();
 		assert_eq!(initial.size.height, gpui::px(89.)); // Include the shared outline.
-		assert!((initial.center().y - gpui::px(240.)).abs() <= gpui::px(0.5));
+		assert!((initial.top() - gpui::px(268.)).abs() <= gpui::px(0.5));
 		view.update(visual, |view, cx| {
 			view.height = 142.;
 			cx.notify();
@@ -975,8 +1062,8 @@ mod tests {
 		let middle = visual.debug_bounds("popover-surface").unwrap();
 		assert!(middle.size.height > initial.size.height && middle.size.height < gpui::px(143.));
 		assert!(
-			(middle.center().y - gpui::px(240.)).abs() <= gpui::px(0.5),
-			"centered frame: {middle:?}"
+			(middle.top() - gpui::px(268.)).abs() <= gpui::px(0.5),
+			"anchored frame: {middle:?}"
 		);
 		view.update(visual, |view, cx| {
 			view.height = 88.;

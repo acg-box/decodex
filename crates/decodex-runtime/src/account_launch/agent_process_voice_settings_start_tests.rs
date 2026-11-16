@@ -48,6 +48,7 @@ fn assert_voice_start(start: &Value, thread: &str, voice: &str) {
 fn voice_options(voice: &str) -> AgentVoiceOptions {
 	if voice == "juniper" {
 		AgentVoiceOptions {
+			draft: None,
 			model: Some(
 				WireText::new("realtime-fixture").expect("Use the bounded fixture model name."),
 			),
@@ -64,16 +65,37 @@ fn voice_options(voice: &str) -> AgentVoiceOptions {
 	}
 }
 
+fn start_options(voice: &str, unstarted: bool) -> AgentVoiceOptions {
+	let mut options = voice_options(voice);
+	if unstarted {
+		options.draft = Some(Box::new(decodex_protocol::AgentVoiceDraft {
+			execution: decodex_protocol::AgentExecutionOverrides {
+				model: Some(
+					decodex_protocol::ConversationModel::new("selected-voice-agent-model")
+						.expect("fixture model"),
+				),
+				reasoning_effort: Some(decodex_protocol::ConversationReasoningEffort::Medium),
+				service_tier: Some(decodex_protocol::ServiceTier::priority()),
+				permission_mode: Some(decodex_protocol::PermissionMode::ReadOnly),
+			},
+			..Default::default()
+		}));
+	}
+	options
+}
+
 #[tokio::test]
 async fn voice_start_applies_effective_voice_and_rejects_failed_reads_before_recording_call() {
-	for (voice, config_fails, policy, hosted, occupied) in [
-		("juniper", false, None, false, false),
-		("juniper", false, None, true, false),
-		("juniper", false, None, true, true),
-		("aube", false, None, false, false),
-		("future_voice", false, Some(true), false, false),
-		("juniper", true, None, false, false),
-		("juniper", false, Some(false), false, false),
+	for (voice, config_fails, policy, hosted, occupied, unstarted) in [
+		("juniper", false, None, false, false, false),
+		("juniper", false, None, true, false, false),
+		("juniper", false, None, true, true, false),
+		("aube", false, None, false, false, false),
+		("future_voice", false, Some(true), false, false, false),
+		("juniper", true, None, false, false, false),
+		("juniper", false, Some(false), false, false, false),
+		("juniper", false, None, true, false, true),
+		("juniper", false, Some(false), true, false, true),
 	] {
 		let thread = if hosted { "hosted-voice-thread" } else { "voice-thread" };
 		let work = if hosted { "conversation" } else { "root" };
@@ -90,6 +112,12 @@ async fn voice_start_applies_effective_voice_and_rejects_failed_reads_before_rec
 			while let Some(line) = lines.next_line().await.unwrap() {
 				let request: Value = serde_json::from_str(&line).unwrap();
 				let mut response = match request["method"].as_str().unwrap() {
+					"model/list" => serde_json::json!({"result":{"data":[],"nextCursor":null}}),
+					"thread/start" => serde_json::json!({"result":{
+						"thread":{"id":thread},"model":request["params"]["model"],
+						"reasoningEffort":request["params"]["config"]["model_reasoning_effort"]
+					}}),
+					"thread/name/set" => serde_json::json!({"result":{}}),
 					"thread/resume" if occupied =>
 						serde_json::json!({"error":{"code":-32_600,"message":format!("thread {thread} already has an active writer")}}),
 					"thread/read" | "thread/resume" =>
@@ -117,7 +145,9 @@ async fn voice_start_applies_effective_voice_and_rejects_failed_reads_before_rec
 		});
 		let owned = OwnedReviewer::new(home.path(), &client, "voice-thread", "turn").await;
 
-		if hosted {
+		if unstarted {
+			reserve_hosted_voice(&owned, work).await;
+		} else if hosted {
 			bind_hosted_voice(&owned, work, thread).await;
 		}
 
@@ -139,21 +169,31 @@ async fn voice_start_applies_effective_voice_and_rejects_failed_reads_before_rec
 				session_id: EntityId::new("voice").unwrap(),
 				work_id: EntityId::new(work).unwrap(),
 				offer: VoiceSdp::new("offer".into()).unwrap(),
-				options: voice_options(voice),
+				options: start_options(voice, unstarted),
 			})
 			.await;
 
-		assert_eq!(result.is_err(), fails);
+		assert_eq!(result.is_err(), fails, "voice start: {result:?}");
 
 		let mut starts = Vec::new();
+		let mut thread_starts = 0;
 
 		while let Ok(request) = requests.try_recv() {
+			assert_ne!(request["method"], "turn/start", "Live waits for spoken input");
+			thread_starts += usize::from(request["method"] == "thread/start");
+			if unstarted && request["method"] == "thread/start" {
+				assert_eq!(request["params"]["model"], "selected-voice-agent-model");
+				assert_eq!(request["params"]["config"]["model_reasoning_effort"], "medium");
+				assert_eq!(request["params"]["serviceTier"], "priority");
+				assert_eq!(request["params"]["sandbox"], "read-only");
+			}
 			if request["method"] == "thread/realtime/start" {
 				starts.push(request);
 			}
 		}
 
 		assert_eq!(starts.len(), usize::from(!fails));
+		assert_eq!(thread_starts, usize::from(unstarted && !fails));
 		assert_eq!(owned.store.open_agent_voice_calls().await.unwrap().len(), usize::from(!fails));
 
 		let blocked = owned.store.list_agent_thread_in_use_events().await.unwrap();
@@ -173,15 +213,7 @@ async fn voice_start_applies_effective_voice_and_rejects_failed_reads_before_rec
 }
 
 async fn bind_hosted_voice(owned: &OwnedReviewer, work: &str, thread: &str) {
-	let mut conversation = owned.store.get_agent_work_item("root".into()).await.expect("root");
-
-	conversation.id = work.into();
-	conversation.parent_goal_id = Some("root".into());
-	conversation.codex_thread_id = None;
-	conversation.active_turn_id = None;
-	conversation.dispatch_state = AgentDispatchState::Idle;
-
-	owned.store.create_agent_manager(conversation).await.expect("hosted conversation");
+	reserve_hosted_voice(owned, work).await;
 	owned.store.bind_agent_thread(work.into(), thread.into()).await.expect("voice thread");
 
 	assert!(
@@ -191,6 +223,18 @@ async fn bind_hosted_voice(owned: &OwnedReviewer, work: &str, thread: &str) {
 			.await
 			.expect("voice ownership")
 	);
+}
+
+async fn reserve_hosted_voice(owned: &OwnedReviewer, work: &str) {
+	let mut conversation = owned.store.get_agent_work_item("root".into()).await.expect("root");
+
+	conversation.id = work.into();
+	conversation.parent_goal_id = Some("root".into());
+	conversation.codex_thread_id = None;
+	conversation.active_turn_id = None;
+	conversation.dispatch_state = AgentDispatchState::Idle;
+
+	owned.store.create_agent_manager(conversation).await.expect("hosted conversation");
 }
 
 #[tokio::test]

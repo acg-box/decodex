@@ -151,7 +151,7 @@ struct AccountReauthenticationView: View {
 			.foregroundStyle(PanelPalette.secondaryText(colorScheme))
 			.keyboardShortcut(.cancelAction)
 			.focused($focusedAction, equals: .cancel)
-			.help(actionLabel)
+			.hoverHint(actionLabel)
 			.accessibilityLabel(actionLabel)
 			.transition(
 				.opacity.combined(
@@ -161,7 +161,6 @@ struct AccountReauthenticationView: View {
 		} else {
 			BrandLoading(size: 14)
 				.frame(width: 28, height: 28)
-				.help(presentation.mode.installingLabel)
 				.accessibilityLabel(presentation.mode.installingLabel)
 				.transition(
 					.opacity.combined(
@@ -223,7 +222,7 @@ struct AccountReauthenticationView: View {
 		.keyboardShortcut(.defaultAction)
 		.focused($focusedAction, equals: .codeCard)
 		.contentShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
-		.help("Copy the code and open the sign-in page")
+		.hoverHint("Copy the code and open the sign-in page")
 		.accessibilityLabel("One-time sign-in code \(prompt.userCode)")
 		.accessibilityHint("Copies the code and opens sign-in")
 		.accessibilityAction(named: Text("Copy code and open sign-in page")) {

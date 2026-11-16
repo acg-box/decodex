@@ -54,6 +54,68 @@ impl Panel {
 }
 
 impl AgentSurface {
+	pub(super) fn composer_execution_defaults(
+		&self,
+		cx: &Context<Self>,
+	) -> decodex_protocol::InitialExecutionDefaults {
+		decodex_protocol::InitialExecutionDefaults {
+			model: self
+				.composer_model_value(cx)
+				.and_then(|model| decodex_protocol::ConversationModel::new(model).ok()),
+			reasoning_effort: self
+				.composer_effort_value(cx)
+				.and_then(|effort| decodex_protocol::ConversationReasoningEffort::new(effort).ok()),
+			service_tier: self.composer_service_tier(),
+		}
+	}
+
+	pub(super) fn remember_composer_execution(&self, cx: &Context<Self>) {
+		let mut execution = self.composer_execution_defaults(cx);
+		execution.service_tier =
+			self.composer_speed(cx).map(|speed| speed.effective).or(execution.service_tier);
+		crate::session_settings::Defaults::remember_execution(execution);
+	}
+
+	pub(super) fn composer_needs_model_default(&self, cx: &Context<Self>) -> bool {
+		if self.composer_reports_no_model() {
+			return true;
+		}
+		let Some(owner) = self.composer_manager.clone().or_else(|| self.root_id()) else {
+			return false;
+		};
+		if !matches!(
+			self.model_settings.observations.get(&owner),
+			Some(
+				AgentModelSettingsResult::Available { .. } | AgentModelSettingsResult::NotReported
+			)
+		) {
+			return false;
+		}
+		let Some(current) = self.composer_model_value(cx) else { return true };
+		let Some(models) = self.composer_models(cx) else { return false };
+		let now = std::time::SystemTime::now()
+			.duration_since(std::time::UNIX_EPOCH)
+			.ok()
+			.and_then(|now| i64::try_from(now.as_secs()).ok());
+		models
+			.iter()
+			.find(|model| model.model.as_str() == current)
+			.is_none_or(|model| now.is_some_and(|now| model.retired_at(now).is_some()))
+	}
+
+	pub(super) fn composer_reports_no_model(&self) -> bool {
+		let Some(owner) = self.composer_manager.as_deref().or(self.selected.as_deref()) else {
+			return false;
+		};
+		matches!(
+			self.model_settings.observations.get(owner),
+			Some(
+				AgentModelSettingsResult::Available { model: None, .. }
+					| AgentModelSettingsResult::NotReported
+			)
+		)
+	}
+
 	pub(super) fn selected_provider_mismatch(
 		&self,
 	) -> Option<(decodex_protocol::WireText, decodex_protocol::WireText)> {
@@ -94,25 +156,13 @@ impl AgentSurface {
 	}
 
 	pub(super) fn composer_model_label(&self, cx: &Context<Self>) -> String {
-		let catalog = self.current_model_catalog(cx);
-		if matches!(catalog, Some(AgentCapabilitiesResult::Unavailable))
-			|| (self.uses_initial_model_defaults()
-				&& !matches!(catalog, Some(AgentCapabilitiesResult::Available { .. })))
-			|| (catalog.is_none() && self.capability_task.is_some())
-		{
-			return "—".into();
+		if let Some(model) = self.composer_model_value(cx) {
+			return self
+				.composer_models(cx)
+				.and_then(|models| models.iter().find(|entry| entry.model.as_str() == model))
+				.map_or(model, |entry| entry.name.clone());
 		}
-		let Some(model) = self.composer_model_value(cx) else {
-			return "—".into();
-		};
-
-		if let Some(AgentCapabilitiesResult::Available { models, .. }) = catalog
-			&& let Some(entry) = models.iter().find(|entry| entry.model.as_str() == model)
-		{
-			return entry.name.clone();
-		}
-
-		model
+		"-".into()
 	}
 
 	fn composer_model_settings(&self, cx: &Context<Self>) -> (Option<String>, Option<String>) {
@@ -184,7 +234,14 @@ impl AgentSurface {
 				else {
 					return None;
 				};
-				decodex_protocol::ServiceTier::new(service_tier.as_ref()?.as_str()).ok()
+				// Native null means the standard tier, not an unknown selection.
+				Some(service_tier.as_ref().map_or_else(
+					decodex_protocol::ServiceTier::standard,
+					|tier| {
+						decodex_protocol::ServiceTier::new(tier.as_str())
+							.unwrap_or_else(|_| decodex_protocol::ServiceTier::standard())
+					},
+				))
 			})
 		} else {
 			self.service_tier.clone()
@@ -194,10 +251,7 @@ impl AgentSurface {
 	pub(super) fn composer_speed_label(&self, cx: &Context<Self>) -> String {
 		match self.composer_speed(cx).as_ref().map(|s| s.effective.as_str()) {
 			Some(value) => crate::session_settings::speed_label(value).into(),
-			None if self.is_new_conversation()
-				|| (self.composer_manager.is_none() && self.root_id().is_none()) =>
-				"Standard".into(),
-			None => "Not reported".into(),
+			None => "Standard".into(),
 		}
 	}
 
@@ -224,9 +278,10 @@ impl AgentSurface {
 			return;
 		}
 
-		let AgentModelSettingsResult::Available { reasoning_effort, .. } = state else { return };
+		let AgentModelSettingsResult::Available { reasoning_effort, .. } = state else {
+			return;
+		};
 		let choice = self.draft_profiles.execution.choice(work);
-
 		if choice.reasoning_effort.is_none()
 			&& let Some(effort) = reasoning_effort
 			&& let Ok(effort) = serde_json::from_value(serde_json::json!(effort.as_str()))

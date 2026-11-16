@@ -339,8 +339,7 @@ impl AgentSurface {
 }
 
 fn command_icon(command: &Command) -> AnyElement {
-	let colors = ui_theme::ColorScheme::current();
-	let mut ink = colors.rgb(ui_theme::TEXT_MUTED);
+	let ink = ui_theme::rgb(ui_theme::TEXT_MUTED);
 	let icon = match &command.action {
 		Action::Conversation(item) if item.archived =>
 			icons::Icon { glyph: icons::Glyph::Archive, size: 14. }.into_any_element(),
@@ -348,14 +347,10 @@ fn command_icon(command: &Command) -> AnyElement {
 			icons::Icon { glyph: icons::Glyph::Assistant, size: 14. }.into_any_element(),
 		Action::Conversation(_) | Action::ChooseProject =>
 			workspace_symbols::icon_sized(Symbol::TeamMembers, 14.),
-		Action::Project(id) | Action::NewAgent(id) => {
-			ink = colors.navigation_project(id).ink;
-			icons::Icon { glyph: icons::Glyph::Folder, size: 14. }.into_any_element()
-		},
+		Action::Project(_) | Action::NewAgent(_) | Action::NewProject =>
+			icons::Icon { glyph: icons::Glyph::Folder, size: 14. }.into_any_element(),
 		Action::NewAssistant =>
 			icons::Icon { glyph: icons::Glyph::Assistant, size: 14. }.into_any_element(),
-		Action::NewProject =>
-			icons::Icon { glyph: icons::Glyph::Folder, size: 14. }.into_any_element(),
 		Action::Archives =>
 			icons::Icon { glyph: icons::Glyph::Archive, size: 14. }.into_any_element(),
 		Action::Settings => workspace_symbols::icon_sized(Symbol::Settings, 14.),

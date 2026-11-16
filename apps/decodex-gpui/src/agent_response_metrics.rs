@@ -61,6 +61,7 @@ impl RenderOnce for FinishedFooter {
 #[derive(IntoElement)]
 pub(super) struct ResponseMetrics {
 	pub key: String,
+	pub spend: Option<decodex_protocol::AgentSpendDto>,
 	pub duration_ms: Option<u64>,
 	pub status: Option<String>,
 	pub usage: Option<AgentTurnUsageDto>,
@@ -106,6 +107,7 @@ impl RenderOnce for ResponseMetrics {
 			.child(summary.element())
 			.child(Metric::Input(self.usage.as_ref().map(|u| u.input_tokens)).element())
 			.child(Metric::Output(self.usage.as_ref().map(|u| u.output_tokens)).element())
+			.child(Metric::Spend(self.spend.clone()).element())
 			.hover(|d| d.text_color(ui_theme::rgb(TEXT)))
 			.active(|d| d.text_color(ui_theme::rgb(TEXT).opacity(0.8)))
 			.on_hover(move |inside, _, cx| {
@@ -154,7 +156,7 @@ impl RenderOnce for ResponseMetrics {
 										.into_any_element()
 								})
 								.preview()
-								.above()
+								.hover_preview(260.)
 								.trigger(Rc::new(Cell::new(Some(anchor))))
 								.on_dismiss(move |cx| {
 									dismiss
@@ -170,6 +172,7 @@ impl RenderOnce for ResponseMetrics {
 
 struct MetricsDetails {
 	key: String,
+	spend: Option<decodex_protocol::AgentSpendDto>,
 	duration: Option<String>,
 	input: Option<u64>,
 	output: Option<u64>,
@@ -181,6 +184,7 @@ impl MetricsDetails {
 	fn new(metrics: &ResponseMetrics) -> Self {
 		Self {
 			key: metrics.key.clone(),
+			spend: metrics.spend.clone(),
 			duration: metrics.duration_ms.map(duration_label),
 			input: metrics.usage.as_ref().map(|usage| usage.input_tokens),
 			output: metrics.usage.as_ref().map(|usage| usage.output_tokens),
@@ -255,19 +259,29 @@ pub(super) fn footer(
 		)
 	};
 
+	actions_footer(
+		identity,
+		metrics.unwrap_or_else(|| agent_surface::reply_metrics(entry).into_any_element()),
+		(entry.kind == "assistant").then_some(("Copy response", text)),
+		action,
+	)
+}
+
+pub(super) fn actions_footer(
+	identity: &str,
+	metrics: AnyElement,
+	copy: Option<(&'static str, String)>,
+	action: Option<AnyElement>,
+) -> AnyElement {
 	gpui::div()
 		.mt(gpui::px(METADATA_GAP))
 		.flex()
 		.items_center()
 		.gap(gpui::px(2.))
-		.child(metrics.unwrap_or_else(|| agent_surface::reply_metrics(entry).into_any_element()))
-		.when(entry.kind == "assistant", |row| {
-			row.child(markdown::response_copy_button(
-				&format!("copy-response-{identity}"),
-				"Copy response",
-				text,
-			))
-		})
+		.child(metrics)
+		.children(copy.map(|(label, text)| {
+			markdown::response_copy_button(&format!("copy-response-{identity}"), label, text)
+		}))
 		.children(action)
 		.into_any_element()
 }
@@ -396,8 +410,36 @@ fn details_panel(details: &MetricsDetails) -> Stateful<Div> {
 					"Output",
 					details.output.map(exact_tokens).unwrap_or_else(|| "—".into()),
 				))
+				.child(row(
+					"Spend",
+					details
+						.spend
+						.as_ref()
+						.map(super::conversation_metric::spend_label)
+						.unwrap_or_else(|| "—".into()),
+				))
 				.children(details.calls.map(|count| row("Model calls", count.to_string()))),
 		)
+		.when(details.input.is_none() || details.output.is_none(), |panel| {
+			panel.child(
+				gpui::div()
+					.text_color(ui_theme::rgb(TEXT_MUTED))
+					.child("The provider has not reported token usage for this record."),
+			)
+		})
+		.children(details.spend.as_ref().map(|spend| {
+			gpui::div().text_color(ui_theme::rgb(TEXT_MUTED)).child(spend.explanation.clone())
+		}))
+		.when(details.spend.as_ref().is_some_and(|spend| spend.partial), |panel| {
+			panel.child(gpui::div().text_color(ui_theme::rgb(TEXT_MUTED)).child(
+				"Some requests could not be priced. The plus sign marks a partial estimate.",
+			))
+		})
+		.when(details.spend.is_none(), |panel| {
+			panel.child(gpui::div().text_color(ui_theme::rgb(TEXT_MUTED)).child(
+				"Spend is unavailable because this record has no priceable model or usage data.",
+			))
+		})
 		.when(!details.tokens.is_empty(), |panel| {
 			panel.child(details_section("Last model call", &details.tokens))
 		})

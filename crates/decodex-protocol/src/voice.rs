@@ -3,7 +3,19 @@ use std::fmt::{self, Debug, Formatter};
 
 use serde::{Deserialize, Deserializer, Serialize, de::Error as _};
 
-use crate::{EntityId, HistoryText, WireScalarTooLong, WireText};
+use crate::{AgentExecutionOverrides, EntityId, HistoryText, WireScalarTooLong, WireText};
+
+/// Local editor scope reserved only when its first Live call starts.
+#[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct AgentVoiceDraft {
+	/// Optional Project for this new conversation.
+	pub project_id: Option<EntityId>,
+	/// Personal Assistant owner when this is a personal topic.
+	pub assistant_id: Option<EntityId>,
+	/// The editor's model, reasoning, speed and permissions for native creation.
+	pub execution: AgentExecutionOverrides,
+}
 
 /// Bounded private WebRTC session description, redacted from diagnostics.
 #[derive(Clone, Eq, PartialEq, Serialize)]
@@ -42,6 +54,9 @@ impl<'de> Deserialize<'de> for VoiceSdp {
 #[derive(Clone, Default, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentVoiceOptions {
+	/// First Live call from a local editor. Existing conversations omit this field.
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub draft: Option<Box<AgentVoiceDraft>>,
 	/// Native realtime model name for this call only.
 	#[serde(skip_serializing_if = "Option::is_none")]
 	pub model: Option<WireText>,
@@ -62,7 +77,7 @@ impl Debug for AgentVoiceOptions {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "operation", rename_all = "snake_case", deny_unknown_fields)]
 pub enum AgentVoiceRequest {
-	/// Authorize live voice on an existing Agent. The service persists the call identity only.
+	/// Authorize Live on the selected conversation, reserving a local draft when supplied.
 	Start {
 		/// Caller-generated unique call identity.
 		session_id: EntityId,

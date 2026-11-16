@@ -22,6 +22,22 @@ use crate::ui_theme::{
 	material::{GlassScope, GlassStyle, Material, Surface},
 };
 
+/// Resolve the screen's visible bounds in the parent's flipped GPUI coordinates.
+pub(crate) fn hover_viewport(window: &Window) -> Option<Bounds<Pixels>> {
+	let window = native(window)?;
+	let content = window.contentView()?;
+	let visible = window.convertRectFromScreen(window.screen()?.visibleFrame());
+	Some(Bounds::new(
+		gpui::point(
+			gpui::px(visible.origin.x as f32),
+			gpui::px(
+				(content.bounds().size.height - visible.origin.y - visible.size.height) as f32,
+			),
+		),
+		gpui::size(gpui::px(visible.size.width as f32), gpui::px(visible.size.height as f32)),
+	))
+}
+
 /// Reduced transparency keeps selection menus readable with the flat material.
 fn panel_material(surface: Surface) -> Material {
 	let requested = surface.material();
@@ -60,6 +76,11 @@ pub(crate) struct MaterialPanel {
 	occlusion_frame: Option<NSRect>,
 }
 impl MaterialPanel {
+	/// Hints must not intercept pointer movement or steal focus from their owner.
+	pub(crate) fn set_passive(&mut self, passive: bool) {
+		self.native.setIgnoresMouseEvents(passive);
+	}
+
 	pub(crate) fn install_input_bar(
 		parent: &Window,
 		window: &mut Window,

@@ -108,12 +108,16 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_workspace_size.rs
   - id: openwiki-source-5d032c6be684964aa2c401fa
     resource: repo://apps/decodex-gpui/src/agent_workspace.rs
+  - id: openwiki-source-f339a4d1910db63ca305c2df
+    resource: repo://apps/decodex-gpui/src/assistant_settings.rs
   - id: openwiki-source-b46da522b014c2fee5a538ad
     resource: repo://apps/decodex-gpui/src/composer_hint.rs
   - id: openwiki-source-7a7e7b3407a8222085c2d27e
     resource: repo://apps/decodex-gpui/src/composer_input.rs
   - id: openwiki-source-7b89f5bc6ecd604ca4e97dc2
     resource: repo://apps/decodex-gpui/src/composer_text.rs
+  - id: openwiki-source-303e0ddb3b6a519e014a6fd2
+    resource: repo://apps/decodex-gpui/src/conversation_divider.rs
   - id: openwiki-source-fca3688e96d92c09b7ba015f
     resource: repo://apps/decodex-gpui/src/native_material_panel.rs
   - id: openwiki-source-1291f5243fa6c9cb52149bda
@@ -144,12 +148,16 @@ sources:
     resource: repo://apps/decodex-gpui/src/ui_theme.rs
   - id: openwiki-source-c3fab9156f998a4c38613276
     resource: repo://apps/decodex-gpui/src/ui_time.rs
+  - id: openwiki-source-b17dbfde5c614f0bffe7770a
+    resource: repo://apps/decodex-gpui/src/ui_tooltip.rs
   - id: openwiki-source-8cb8ccb33352e11a3da74500
     resource: repo://apps/decodex-gpui/src/ui_work_metrics.rs
   - id: openwiki-source-343d35c489d39a7a672412a2
     resource: repo://apps/decodex-gpui/src/ui_working.rs
   - id: openwiki-source-d6e2f0d0037f3d6ddcd4f6ac
     resource: repo://apps/decodex-gpui/src/voice_conversation_groups.rs
+  - id: openwiki-source-5a4dfc4ce84de6c05c56d3fb
+    resource: repo://apps/decodex-gpui/src/voice_history_block.rs
   - id: openwiki-source-651d1fb6c9e49916a916ab51
     resource: repo://Cargo.toml
   - id: openwiki-source-f02ae41e2bd15dda85dc86b9
@@ -166,24 +174,34 @@ sources:
     resource: repo://crates/decodex-codex/src/app_server_client/thread_fork.rs
   - id: openwiki-source-e61069983d1f80f086a73408
     resource: repo://crates/decodex-codex/src/app_server_client/timeline.rs
+  - id: openwiki-source-eccf08613126ff810078b520
+    resource: repo://crates/decodex-protocol/src/agent.rs
   - id: openwiki-source-c01ab8da738707861c64c143
     resource: repo://crates/decodex-protocol/src/desktop_message_delivery.rs
   - id: openwiki-source-f4a9f4bcee102e076f5c5398
     resource: repo://crates/decodex-runtime/src/agent_api_pricing.rs
+  - id: openwiki-source-beb7bbfa35b3158fddebcabc
+    resource: repo://crates/decodex-runtime/src/agent_api_pricing/estimate.rs
   - id: openwiki-source-c75093d19a3bc72db5836102
     resource: repo://crates/decodex-runtime/src/agent_host.rs
   - id: openwiki-source-c3df87a54ef9d43795de5124
     resource: repo://crates/decodex-runtime/src/agent_message_history.rs
   - id: openwiki-source-8a155c93f55f20176452e149
     resource: repo://crates/decodex-runtime/src/agent_message_history/tests.rs
+  - id: openwiki-source-98241e88a283d90105e672a7
+    resource: repo://crates/decodex-runtime/src/agent_spend.rs
   - id: openwiki-source-c6a513f4a72008998a474ca0
     resource: repo://crates/decodex-runtime/src/agent_titles.rs
   - id: openwiki-source-7111b71a47931c3e55d3ff6f
     resource: repo://crates/decodex-runtime/src/agent_titles/host.rs
+  - id: openwiki-source-2446905cd66169ccfd107760
+    resource: repo://crates/decodex-runtime/src/agent_voice_presentation.rs
   - id: openwiki-source-dbc533dc306a3f520c4241e0
     resource: repo://crates/decodex-runtime/src/agent.rs
   - id: openwiki-source-4a97944ff4c701a054e27291
     resource: repo://crates/decodex-runtime/src/agent/activity.rs
+  - id: openwiki-source-a11095ee2d127564345b4574
+    resource: repo://crates/decodex-runtime/src/agent/conversation_drafts.rs
   - id: openwiki-source-283a40a004fda23504fad7e1
     resource: repo://crates/decodex-runtime/src/agent/result_messages.rs
   - id: openwiki-source-0bdc548eba96b09c39e22383
@@ -202,12 +220,16 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent/timeline/saved.rs
   - id: openwiki-source-82bb214209944301d2efacfb
     resource: repo://database/src/agent_titles.rs
+  - id: openwiki-source-f580db3132c852bedbf0155b
+    resource: repo://database/src/agent_voice_presentation.rs
   - id: openwiki-source-6197a876b2effbe992b1e2ec
     resource: repo://database/src/agent.rs
-generated: { by: "codex", at: "2026-11-13T07:35:09.322Z" }
+  - id: openwiki-source-c9f290c212ee80724ccf643a
+    resource: repo://database/src/agent/drafts.rs
+generated: { by: "codex", at: "2026-11-14T18:04:20.030Z" }
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-13T07:35:09.322Z
+    at: 2026-11-14T18:04:20.030Z
 ---
 
 
@@ -235,7 +257,9 @@ Known successful and failed commands use compact check and cross symbols with se
 
 Interleaved user input remains in source order. A native turn can contain several user messages, including steering input; grouping uses the native turn identity rather than assuming that each input starts another turn. The disclosure shows a count of earlier messages and lets the reader inspect the underlying process.
 
-Response metadata stays compact at the end of the answer: duration and abbreviated input/output amounts. Hover reveals grouped details in a window-anchored overlay. It does not insert a large block into the transcript. Copy controls are separate actions, not part of the statistics disclosure.
+Ordinary replies and Live records share one compact response footer with Time, Input, Output and Spend. Hover or click opens the same deferred, window-anchored details overlay. Copy and Side chat controls remain separate actions in the shared footer. Missing values retain an em dash; the details explain missing token receipts or pricing inputs. Recorded zero remains zero. Spend uses the common USD formatter, an approximation mark for estimates and a trailing plus sign for incomplete coverage.
+
+The runtime adds ordinary reply spend to the exact completed native turn, using its recorded model, admitted speed and token receipts with the shared official API price catalog. Repeated cumulative counters are deduplicated, and cached input uses its applicable rate. Current model settings do not reprice an earlier turn. Read-side enrichment checks source ownership and keeps optional pricing below the existing wire bound. See [conversation cost estimates](../workflows/models-and-settings.md#conversation-cost-estimates) for rates and coverage limits.
 
 A completed response has an **Ask in side chat** question action on hover or keyboard focus. Selected response text offers the same action. Each action opens a native Side chat and adds the referenced passage to its ordinary, unsent draft. The source keeps its own draft. Selection callbacks reject a replaced source. A long passage uses a marked excerpt within the normal composer limit. The user can add a question, send it, and continue the discussion in that Side chat. See [questions about a passage](../workflows/conversations-and-recovery.md#ask-about-a-passage-in-a-side-chat).
 
@@ -244,6 +268,8 @@ A collapsed command row shows the number of native-retained output lines when th
 The composer shows conversation cost beside **Context**. Native dollars take priority. If native dollars are unavailable, the service can calculate an API-equivalent text-token estimate from recorded requests and official prices. An estimate uses `≈ $`; a trailing `+` marks incomplete coverage. Hover identifies the basis and price-check date. A missing estimate remains `$—`, not zero. The source-bound read refreshes after an idle conversation update without polling an unchanged idle conversation. See [usage estimates](../workflows/models-and-settings.md#conversation-cost-estimates) for price caching and coverage limits.
 
 The composer and Menu Bar show dollars with two decimal places. A nonzero amount below one cent shows `< $0.01`; exact zero shows `$0.00`. The composer's hover explanation retains the precise amount.
+
+Use the [shared hover policy](design-language.md#hover-content-and-surfaces) for conversation controls. Icon-only actions keep their names and shortcuts. Unsent inputs keep the failure reason. Cost hints retain precise dollars and pricing inputs as short labelled lines. Visible model, reasoning, Mute, Unmute, End and Cancel labels do not need another hover explanation.
 
 ### Observed turn activity
 
@@ -309,15 +335,15 @@ The **Jump to latest message** control uses the shared `MaterialSurface` and the
 
 History hover previews keep a 320-point width. Questions occupy at most two lines and answers occupy at most three, both left-aligned in the same full-width text column. Input and replies use the same normal theme body color, font size, weight and line height. Both excerpts remain more prominent than metadata. A shared 0.5-point menu-separator hairline sits inside the existing 10-point gap between the excerpts. It uses the shared theme ink and adds no layout height. A missing reply has no divider. Navigation excerpts retain at most 180 characters, with an ellipsis when more text exists. The preview has no message-direction marks, message bubble or speaker headings. Short text and missing answers release unused space.
 
-The metadata footer uses one caption-height row with five equal-width columns in this order: relative age, elapsed duration, process steps, input tokens and output tokens. Separate the final excerpt and this row by 8 points through `ui_theme::METRIC_GROUP_GAP`. Do not add a second divider. Center each symbol-value group within its column and keep every column present. Missing data shows **—**. The footprint value is the bare step count, including **0**; active work shows **…**. Its tooltip retains the full step description and failed or interrupted status. Data length and availability must not change the column widths or move adjacent metrics. Model-call counts are absent from this preview. Token counters cover the exact turn, including its model calls. They are not the thread total or the final message's text length. Local records retain the recorded assistant turn usage; native records use the matching completed turn boundary. Billing remains outside this preview.
+The metadata footer uses one caption-height row with five equal-width columns in this order: relative age, elapsed duration, process steps, input tokens and output tokens. Separate the final excerpt and this row by 8 points through `ui_theme::METRIC_GROUP_GAP`. Do not add a second divider. Center each symbol-value group within its column and keep every column present. Missing data shows **—**. The footprint value is the bare step count, including **0**; active work shows **…**. Unknown counts, running processes and terminal failures retain their explanations. Data length and availability must not change the column widths or move adjacent metrics. Model-call counts are absent from this preview. Token counters cover the exact turn, including its model calls. They are not the thread total or the final message's text length. Local records retain the recorded assistant turn usage; native records use the matching completed turn boundary. Billing remains outside this preview.
 
 `agent_conversation_metric.rs` owns compact metric symbols and the symbol-value gap. `ui_time` owns relative ages and elapsed-duration formats. `ui_theme::metric_text` and `metric_ink` supply the shared caption typography and base ink for these metrics and sidebar times. Native response footers and Timeline previews render the same `Metric` elements. Duration keeps the response clock; input and output use fixed vector up/down symbols. Symbols do not change with the selected text font. Relative age uses a history clock, steps use the footprints symbol, and explicit response status uses a neutral circle plus its text. Symbols and values inherit the same ink. The shared base color is muted theme text at 85% opacity. An interactive response footer retains its existing hover behavior for the complete row. Unknown native response metrics remain distinct from recorded zero. Missing preview metrics keep their symbol and an em dash in the same column. Changes to a compact metric's symbol or format belong in this shared module.
 
-The preview uses a footprint and a bare number to keep the row compact. Its tooltip and the main process header keep the full **N steps** or **1 step** label. One shared column renderer distributes the complete row into five equal parts. The former independent Steps width reservation is removed, so zero, unknown and active states do not change neighboring allocations. The body uses the shared 12-point compact text and 18-point line height; metrics use the shared 10.5-point caption and 14-point line height with normal weight. A response retains the exact input index that owns it. `history_processes` projects this owner, the final index and count together, including known zero responses; previews use this projection instead of requiring the final native turn to match the input turn. Worker wakes therefore retain their original prompt, process count and latest reply, and late activity cannot move a count to a later prompt. Duration, usage and terminal status follow the response's last native endpoint, matching the ordinary response footer. The prompt retains its own age. The preview does not invent an aggregate duration or usage for several native turns.
+The preview uses a footprint and a bare number to keep the row compact. The main process header and accessibility name keep the full **N steps** or **1 step** label. Ordinary recorded counts add no hint. Unknown counts, running processes and terminal failures retain their explanations. One shared column renderer distributes the complete row into five equal parts. The former independent Steps width reservation is removed, so zero, unknown and active states do not change neighboring allocations. The body uses the shared 12-point compact text and 18-point line height; metrics use the shared 10.5-point caption and 14-point line height with normal weight. A response retains the exact input index that owns it. `history_processes` projects this owner, the final index and count together, including known zero responses; previews use this projection instead of requiring the final native turn to match the input turn. Worker wakes therefore retain their original prompt, process count and latest reply, and late activity cannot move a count to a later prompt. Duration, usage and terminal status follow the response's last native endpoint, matching the ordinary response footer. The prompt retains its own age. The preview does not invent an aggregate duration or usage for several native turns.
 
 The footer uses `ui_time` for the same relative age as navigation. Both use 10.5-point normal caption text, a 14-point line height, tabular digits and muted theme ink at 85% opacity. Conversation and Work durations use the same formatter: seconds omit an unnecessary `.0`, and durations of at least one day use days and remaining hours, such as `5d 3h`. A missing duration remains an em dash, while a recorded zero is `0s`. Do not repeat the complete date and time. Saved local inputs retain their creation time. Native inputs use the exact turn's reported start, with provider duration for that turn. Native step counts reuse the loaded response groups and their deduplicated observed activity. A plain, complete response shows zero; missing process data retains the unknown placeholder. Failed and interrupted status stays available through the process tooltip, while a matching active response shows the ellipsis. Ordinary completion adds no success symbol.
 
-The preview uses `Popover::left_centered` to align its vertical center with the complete tick group. It keeps that center and a fixed 320-point width when the selected excerpt changes. Only the shared 8-point window-edge clearance can displace it. The first presentation uses the measured final size. Later height changes expand or contract around the center through the shared 200 ms interruptible `Tween`; a reversal starts from the current height. Text retains its measured size and is clipped by the changing frame. Reduced motion resolves the target directly. Native and GPUI presentations share this placement and height policy.
+The preview uses `Popover::hover_preview` with the complete tick group as its anchor and a fixed 320-point width. It follows the shared [hover placement contract](design-language.md#hover-content-and-surfaces): keep an 8-point gap from the trigger, fit the available area and avoid covering the trigger. The first presentation uses the measured final size. Later height changes use the shared 200 ms interruptible `Tween`; a reversal starts from the current height. Keep the trigger anchor stable when the selected excerpt changes. Text retains its measured size and is clipped by the changing frame. Reduced motion resolves the target directly. Native and GPUI presentations share this placement and height policy.
 
 The tick group and preview retain one `ui_motion::HoverIntent` owner. Initial entry waits 100 ms. Leaving starts a 220 ms departure grace, and returning to the marks or card cancels closing. Brief crossings cancel entry. Moving across adjacent marks updates the same preview without another delay or arrival animation. Hover does not move or resize the transcript. Clicking a mark still navigates immediately and cancels pending preview work. Focused rendering checks cover long English and Chinese text, identical question and answer text, short content, single-row metadata bounds, repeated direction changes, brief departures and dismissal.
 
@@ -327,11 +353,25 @@ Ordinary messages use a 20-point reading gap. A completed process header and its
 
 Work and Debug activity islands share size tiers and a 240 ms transition. Their contents use a fixed native drawable at the window origin. A foreground mask sits beside the glass material instead of inside its resizing content holder. The material contour and foreground mask change together; the text is not resized with the contour. Values keep one identity and follow a defined position. Labels follow their corresponding values and fade in only when the full field fits without overlap. Transparent space outside the current contour does not capture mouse input.
 
+## Empty editors and saved conversations
+
+Opening a new personal topic or Project conversation creates a local desktop draft. An empty editor does not appear in the conversation list. The first submitted message saves the conversation and its input in one transaction. A personal topic also receives its Assistant membership in that transaction. The built-in Assistant identity remains available without an empty conversation row.
+
+The first Live call from a local draft reserves the native ownership needed to accept speech. This recovery record is not published as conversation history until content arrives. Closure removes an unused reservation only after local checks and native history confirm that it is empty. A native turn retains the conversation and records the observed content without replaying input. Existing conversations, active work and received transcripts keep their ownership. Internal reservation and publication receipts do not appear as transcript messages.
+
 ## Voice history and pagination
 
-A voice call has one expandable group with speaker-labelled transcript text. Call occurrences remain distinct even when a session ID is reused. An overlapping final transcript tail is merged into the recorded utterances instead of becoming another chat message. Ordinary typed messages stay outside the voice group.
+Each complete Live call has one expandable record. Its disclosure reuses `conversation_divider`, including the native **N steps** leading chevron and short fading separator. The shared Section variant uses 12.5-point semibold primary text and a 24-point row; the Process variant retains its shared 11-point muted caption and 20-point row. The control changes text ink on hover; it has no filled hover row or waveform symbol. The transcript uses the ordinary right-aligned user bubbles and left-aligned assistant text. It has no extra card fill or side inset. Call occurrences remain distinct even when a session ID is reused. Task handoffs within an active call and an overlapping final transcript tail join that call's record. Internal handoff instructions do not become spoken messages. Ordinary typed messages stay outside the record. Saved local voice receipts with the same session ID stay together when task output or typed messages occur between them.
 
-Completed calls with no transcript and no failure are hidden from history and its navigation rail. Failed or pending empty calls retain a compact status. A completed call uses its closing boundary for both the disclosure identity and the outer history anchor. Loading earlier records therefore preserves an already-expanded call.
+A folded call shows a source preview below its disclosure. It uses the first nonempty user utterance, or the first available speech when no user utterance exists. Markdown is converted to plain text, whitespace is normalized, and the preview retains at most 160 characters with an ellipsis when shortened. It preserves the spoken wording and language. A short acknowledgement such as **Mm-hmm.** stays as the acknowledgement. The preview is computed directly from the loaded transcript. History reads do not generate or persist a call summary, and legacy generated overview metadata is ignored. See [call previews](../integrations/subscription-voice.md#call-previews).
+
+Opening a call replaces the preview with its complete loaded transcript. The shared 6-point process-content gap separates the divider from either the preview or the first transcript turn. Speaker turns retain the ordinary 20-point reading gap, and the final visible text uses the normal response footer gap. The preview is absent while the full transcript is open.
+
+The call reuses the normal Time, Input, Output and Spend metrics, hover details and copy footer in both disclosure states. Its duration measures local authorization through closure. Spend is estimated from this elapsed interval at the published desktop Voice rate of $0.05 per minute, checked on November 14, 2026. The detail text identifies the elapsed-time basis and separate backend model work. Input and output retain their shared unknown-value presentation because the installed call projection has no independent token receipts. Task-turn usage, thread totals and transcript character counts do not fill those fields. **Copy voice transcript** copies the complete recorded speaker text in either disclosure state. When native Side chat creation is available, the same footer also offers **Ask in side chat** for the recorded transcript. It uses the ordinary source guard and stages a quoted, unsent draft. A four-turn interaction fixture checks copying while folded and retaining every displayed turn after expansion.
+
+When a host exposes saved task items without native voice boundaries, closed local receipts provide one record per exact call session. This source replaces retired captions. An internal transcript-tail handoff is omitted only when the saved transcript already covers its spoken text. An uncovered tail stays readable. Native pages with a complete voice occurrence retain their canonical group. Earlier history retains the ordinary page limits described below.
+
+Ended calls with no transcript are hidden from history and its navigation rail, including failed calls. Pending empty calls can retain a compact status. Ending local media also discards blank retained captions, even when history has not loaded. A completed call uses its closing boundary for both the disclosure identity and the outer history anchor. Loading earlier records therefore preserves an already-expanded call. See [Live voice persistence](../integrations/subscription-voice.md#live-voice) for removal of empty local call records.
 
 The first native page requests up to 30 records. Earlier pages request up to 15 and can retry smaller sizes when a page is too dense. Records are not conversation rounds: grouping and hidden items affect how many rows appear. Automatic prefetch waits for anchor restoration. It can fill an underfilled viewport; once content fills the viewport, further prefetch requires upward-scroll intent.
 
@@ -369,9 +409,9 @@ These defaults apply to new conversations. Saving them does not restart a loaded
 
 ## Floating controls and motion
 
-Lazy shared popovers use one native material host per parent window when that host is available. The host places and focuses its content outside the transcript layout. The GPUI fallback moves and fades the complete surface by four points, with its background, shadow and content together. Ordinary menu arrival keeps its resolved height and does not fade primitives separately. Centered preview height changes use the shared transition described above.
+Lazy shared popovers use one native material host per parent window when that host is available. The host places and focuses its content outside the transcript layout. The GPUI fallback moves and fades the complete surface by four points, with its background, shadow and content together. Ordinary menu arrival keeps its resolved height and does not fade primitives separately. Hover preview height changes use the shared transition described above.
 
-Transient native popovers measure new content before placement. Ordinary menus use that final height immediately. An already visible centered preview uses the measured height as its transition target; it does not make an extra placement with a stale measurement.
+Transient native popovers measure new content before placement. Ordinary menus use that final height immediately. An already visible hover preview uses the measured height as its transition target; it does not make an extra placement with a stale measurement.
 
 Presentation entities request GPUI animation frames while application policy permits animation. Keyboard focus does not set the cadence of sibling windows. Native glass surfaces have their own host integration. Transcript expansion must not recreate or change the composer's material.
 

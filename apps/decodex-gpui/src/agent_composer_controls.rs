@@ -12,14 +12,14 @@ use crate::{
 	shell::{
 		agent_surface::composer::{
 			AgentSurface, SmoothControl, model_settings,
-			ui_theme::{self, BODY_SIZE, CONTROL_SIZE, ON_PRIMARY, TEXT_MUTED},
+			ui_theme::{self, BODY_SIZE, CONTROL_SIZE, ON_PRIMARY},
 		},
 		workspace_symbols,
 	},
-	ui_loading, ui_motion,
+	ui_motion,
 	ui_theme::WARNING,
 };
-use decodex_protocol::AgentCapabilitiesResult;
+use decodex_protocol::AgentModelDto;
 
 const LEVELS: [(&str, &str); 9] = [
 	("none", "None"),
@@ -34,11 +34,11 @@ const LEVELS: [(&str, &str); 9] = [
 ];
 
 impl AgentSurface {
-	pub(super) fn model_palette(&self, cx: &mut Context<Self>) -> AnyElement {
-		self.catalog_model_palette(cx)
-	}
-
-	fn catalog_model_palette(&self, cx: &mut Context<Self>) -> AnyElement {
+	pub(super) fn model_palette(
+		&self,
+		models: &[AgentModelDto],
+		cx: &mut Context<Self>,
+	) -> AnyElement {
 		let mut palette = gpui::div()
 			.id("native-model-palette")
 			.max_h(gpui::px(240.))
@@ -46,23 +46,6 @@ impl AgentSurface {
 			.flex()
 			.flex_col()
 			.gap(gpui::px(2.));
-		let models = match self.current_model_catalog(cx) {
-			Some(AgentCapabilitiesResult::Available { models, .. }) => models,
-			_ if self.capability_task.is_some() =>
-				return palette
-					.min_h(gpui::px(64.))
-					.child(ui_loading::loading("Loading models…"))
-					.into_any_element(),
-			_ =>
-				return palette
-					.child(
-						gpui::div()
-							.text_size(gpui::px(11.))
-							.text_color(crate::ui_theme::rgb(TEXT_MUTED))
-							.child("Models unavailable. Reopen to retry."),
-					)
-					.into_any_element(),
-		};
 		let mut models: Vec<_> = models.iter().collect();
 
 		models.sort_by_key(|entry| Reverse(model_version(entry.model.as_str())));

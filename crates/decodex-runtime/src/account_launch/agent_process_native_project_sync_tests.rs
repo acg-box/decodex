@@ -11,6 +11,66 @@ use decodex_codex::app_server_client::{InitializeCapabilities, NativeTaskPermiss
 use decodex_database::EnqueueAgentEvent;
 
 #[tokio::test]
+#[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated project deletion"]
+async fn native_project_delete_keeps_active_and_archived_conversation_history() {
+	let (home, mut session, store, mut agent, backend) = project_work::setup(|serial| {
+		serde_json::json!({"type":"message","role":"assistant","id":format!("answer-{serial}"),"content":[{"type":"output_text","text":"Keep this answer"}]})
+	}).await;
+	let outcome = time::timeout(Duration::from_secs(60), async {
+		let file = home.path().join("keep.txt");
+		fs::write(&file, "Keep project files").unwrap();
+		store
+			.register_project("market".into(), "Market".into(), home.path().display().to_string())
+			.await
+			.unwrap();
+		let mut threads = Vec::new();
+		for id in ["active", "archived"] {
+			AgentCoordinator::create_conversation(
+				&store,
+				id,
+				EnqueueAgentEvent {
+					source_event_id: format!("{id}-input"),
+					work_item_id: id.into(),
+					event_kind: "user_message".into(),
+					payload: "{\"text\":\"Keep this history\"}".into(),
+				},
+				Some("market".into()),
+			)
+			.await
+			.unwrap();
+			agent.wake_pending().await.unwrap();
+			let thread =
+				store.get_agent_work_item(id.into()).await.unwrap().codex_thread_id.unwrap();
+			project_work::finish(&mut session, &mut agent, &thread).await;
+			let before = session.client.thread_history_page(&thread, None, 20).await.unwrap();
+			assert!(!before["turns"].as_array().unwrap().is_empty());
+			threads.push((id, thread, before["turns"].clone()));
+		}
+		agent.archive_conversation("archived", &threads[1].1).await.unwrap();
+		let native = store.projects().await.unwrap()[0].native_project_id.clone().unwrap();
+		AgentCoordinator::delete_project(&store, None, "market").await.unwrap_err();
+		assert_eq!(store.projects().await.unwrap().len(), 1);
+		AgentCoordinator::delete_project(&store, Some(&session.client), "market").await.unwrap();
+		AgentCoordinator::delete_project(&store, Some(&session.client), "market").await.unwrap();
+		assert!(store.projects().await.unwrap().is_empty());
+		assert!(session.client.read_project(&native).await.is_err());
+		for (id, thread, history) in threads {
+			let after = session.client.thread_history_page(&thread, None, 20).await.unwrap();
+			assert!(after["thread"]["projectId"].is_null());
+			assert_eq!(after["turns"], history);
+			assert_eq!(
+				store.get_agent_work_item(id.into()).await.unwrap().codex_thread_id.as_deref(),
+				Some(thread.as_str())
+			);
+		}
+		assert_eq!(fs::read_to_string(file).unwrap(), "Keep project files");
+	})
+	.await;
+	backend.abort();
+	outcome.unwrap();
+}
+
+#[tokio::test]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY; first-input native Project dispatch"]
 async fn native_new_project_conversations_materialize_before_first_input() {
 	let (home, mut session, store, mut agent, backend) = project_work::setup(|serial| {

@@ -61,6 +61,94 @@ async fn disconnected_voice_preserves_received_tail_without_replay() {
 	assert!(sent.try_recv().is_err(), "received text must not become new native input");
 }
 
+#[tokio::test]
+async fn closing_silent_voice_discards_the_call_and_whitespace_transcripts() {
+	let (mut agent, mut sent, _directory, database) = fixture().await;
+
+	agent
+		.voice_event(&ServerEvent::Notification {
+			method: "thread/realtime/transcript/delta".into(),
+			params: serde_json::json!({"threadId":"opaque thread/1","role":"user","delta":" \n\u{3000}"}),
+		})
+		.await
+		.expect("blank caption");
+	agent
+		.voice_event(&ServerEvent::Notification {
+			method: "thread/realtime/closed".into(),
+			params: serde_json::json!({"threadId":"opaque thread/1"}),
+		})
+		.await
+		.expect("empty call closed");
+
+	let calls: i64 =
+		database.query_row("SELECT count(*) FROM agent_voice_calls", [], |row| row.get(0)).unwrap();
+	let transcripts: i64 = database
+		.query_row(
+			"SELECT count(*) FROM agent_inbox_events WHERE event_kind IN ('voice_user','voice_assistant')",
+			[],
+			|row| row.get(0),
+		)
+		.unwrap();
+
+	assert_eq!((calls, transcripts), (0, 0));
+	assert!(agent.voice.as_ref().unwrap().session.is_none());
+	assert!(sent.try_recv().is_err());
+}
+
+#[tokio::test]
+async fn call_timing_survives_reopen_and_late_speech_stays_readable() {
+	let (mut agent, mut sent, directory, _database) = fixture().await;
+	agent
+		.store
+		.record_agent_voice_transcript(
+			"voice".into(),
+			1,
+			"user".into(),
+			"Discuss the divider".into(),
+			true,
+		)
+		.await
+		.unwrap();
+	assert!(
+		agent.store.agent_voice_presentations("root".into()).await.unwrap()[0]
+			.duration_ms
+			.is_none()
+	);
+	agent
+		.voice_event(&ServerEvent::Notification {
+			method: "thread/realtime/closed".into(),
+			params: serde_json::json!({"threadId":"opaque thread/1"}),
+		})
+		.await
+		.unwrap();
+	let root = DecodexRoot::new(directory.path().canonicalize().unwrap().join("state")).unwrap();
+	let reopened = SqliteStore::open(&root.paths()).unwrap();
+	let call = reopened.agent_voice_presentations("root".into()).await.unwrap().remove(0);
+	assert_eq!(call.session, "voice");
+	assert!(call.duration_ms.is_some());
+	reopened
+		.record_agent_voice_transcript(
+			"voice".into(),
+			2,
+			"assistant".into(),
+			"Use the existing steps divider.".into(),
+			true,
+		)
+		.await
+		.unwrap();
+	let (history, _) = reopened.read_agent_transcript("root".into(), None, 100).await.unwrap();
+	let speech = history
+		.iter()
+		.filter(|event| matches!(event.event_kind.as_str(), "voice_user" | "voice_assistant"))
+		.map(|event| {
+			let value: Value = serde_json::from_str(&event.payload).unwrap();
+			value["text"].as_str().unwrap().to_owned()
+		})
+		.collect::<Vec<_>>();
+	assert_eq!(speech, ["Discuss the divider", "Use the existing steps divider."]);
+	assert!(sent.try_recv().is_err(), "reading call metadata cannot submit native input");
+}
+
 async fn fixture() -> (AgentCoordinator, UnboundedReceiver<Value>, TempDir, rusqlite::Connection) {
 	fixture_with_history(serde_json::json!({})).await
 }

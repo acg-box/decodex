@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:f30b09c3d1cc7ba88ec825a3de47ac0b8b28fddf5d63b66d60117ca4d188a309",
+  "pageVersion": "sha256:a6d31c11efcd96dcaa21d8185291920ac117f12d81f62a42945aa9605f4bff7a",
   "claims": [
     {
       "id": "claim_93b99ffbc7b84692b730b24680f83bd2",
@@ -36,11 +36,23 @@
     },
     {
       "id": "claim_2a943d0b1a444ac0a14d84a2271007b5",
-      "statement": "Live voice uses native thread/realtime RPC on an existing Agent thread and records native transcript observations.",
+      "statement": "Live uses native thread/realtime RPCs on the owned thread and records received transcripts. A first call from a local editor reserves its scope when signaling begins and captures the editor's model, reasoning, speed and permissions for fenced native creation, without an ordinary text turn.",
       "evidence": [
         {
+          "resource": "repo://apps/decodex-gpui/src/agent_voice.rs",
+          "version": "repo-file-v1:sha256:ac855a6c111d5442eaacae61e1aac8bdaca1b31548dc9a30778522475d555040"
+        },
+        {
+          "resource": "repo://crates/decodex-protocol/src/voice.rs",
+          "version": "repo-file-v1:sha256:1a2c95d19428c323008132255b22e74270c4e031451e59a401446aca0e0ade88"
+        },
+        {
           "resource": "repo://crates/decodex-runtime/src/agent/voice.rs",
-          "version": "repo-file-v1:sha256:e1b98a6b32598b8eb9b520c8d8a6e80b2064cde153e5e3954d4032f4aa2c40ac"
+          "version": "repo-file-v1:sha256:4f6311bf560dfdd060be2bc2b6e2c706df54a906b869e5d1bd229ba5ad02d47f"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent_host.rs",
+          "version": "repo-file-v1:sha256:32256ac2997c300af7189095f4ce77f1d03e7e295a9806feff4286bf7dd8dbbf"
         }
       ]
     },
@@ -60,7 +72,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_voice.rs",
-          "version": "repo-file-v1:sha256:fc6723ffdb4fab1b6e1c23ce9a41be5b60ed1f6bd0cc7053926117c546262d4c"
+          "version": "repo-file-v1:sha256:ac855a6c111d5442eaacae61e1aac8bdaca1b31548dc9a30778522475d555040"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/native_live_audio.rs",
@@ -81,7 +93,7 @@
           "version": "repo-lines-v1:sha256:24f325c14fea0fb35b22ffcb52b61b6f9bb6d3f67c5b76db0c1221d5c96fca18:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIyYTM5Yzg5N2Y2ZGE0NzgzNTE5MTdlYzAxNzI2NzBhMGJiMzkwZGNlZjE3MGQzZTAxMjRhOWJlMzA5MWFjNTgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUyZDFmZjJlNjc4YjNhOTViNGU3Y2NjYTQzNGY3YjJhZTAwNWQ1M2IwYzgwM2Q3NDY0OTc5ZjFjZTFkODA1ZTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZiYWY2M2U5NTlhYWQ2ODY2Y2FjYzYwNTUyOGE2NjVlY2U4YmM1NWNiNjU5ZTMyMTU4ZTcyMzYzZDRmNzVlODQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYmE3ZThlYjFlMGVjMWYyZWQzYjUzNmFlZGVkMjQ1YjE3ZThhMzAwZGZkNGYwMTg1ZmNhMmJlODEzNWM1NGEifQ"
         },
         {
-          "resource": "repo://crates/decodex-runtime/src/agent/voice.rs#L269-L308",
+          "resource": "repo://crates/decodex-runtime/src/agent/voice.rs#L283-L322",
           "version": "repo-lines-v1:sha256:dc89c87cf7649a9efeae98f9f34bae50ca3c7c9afa33c0441c18bcbccb1508d4:eyJzZWxlY3RlZExpbmVDb3VudCI6NDAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJmYzUyZjAxMGQyYTdhNzY3ZTBkOTc0MTQwMWNhMjkwMzI4Y2NlNWI0NWY1ZDMwNTJlNTBkNzYxY2Q4Y2RkYjEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY2MWVlYjE3YWMyNDkzYzlmMDZkMDVjM2YxMGY5MjQ3ZjdlNGU3Mzg2Y2UyNDhiMTdmYjk2YmE3MDJkYTQ1NzMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM1MGIxODU0YmUzNTNjMGM4YWNjZDczNWViYWZiY2U4OWY5YTRmNTNmNDhlNzU0MWNmMTkzZGFjNWQ5NWU3NzYifQ"
         }
       ]
@@ -92,11 +104,11 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_voice.rs",
-          "version": "repo-file-v1:sha256:fc6723ffdb4fab1b6e1c23ce9a41be5b60ed1f6bd0cc7053926117c546262d4c"
+          "version": "repo-file-v1:sha256:ac855a6c111d5442eaacae61e1aac8bdaca1b31548dc9a30778522475d555040"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/native_audio_owner.rs",
-          "version": "repo-file-v1:sha256:3e432795a35a13759955e9287452fd928fd721c28c1aa2eed54e8eceb547cb3f"
+          "version": "repo-file-v1:sha256:9ea864dfba848b986ad988a7e715e42a760c551b622168fbcc64a4eb4909d7e4"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/native_voice_transport.rs",
@@ -109,26 +121,26 @@
       "statement": "Local live-voice transcript storage preserves newer received text when a final is its shorter prefix, marks that saved text incomplete, and ignores empty finals without replaying transcript input; expanded finals and ordinary corrections remain supported.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/agent/voice.rs#L354-L400",
+          "resource": "repo://crates/decodex-runtime/src/agent/voice.rs#L368-L414",
           "version": "repo-lines-v1:sha256:529dbd63e889b87c68b548df6bfaa3cea689fc956c352608dd7b66d88f16d87f:eyJzZWxlY3RlZExpbmVDb3VudCI6NDcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUxY2FkZTFkNTBjNzY4YjM0YzdmODg3OGYxZjI1ODY3ZTY3N2FmNWNhN2YxMmZlOTYwOTJmMmE5Y2M1NGRmNGYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZjOWI2YTRmMjBiODUwZTcxNjFjNjM1MzQ0MDhhOTJiYTdiZmZlMTc3NjQ1ZDEwYjc2MTgwMDE0MTIzNWVhNmMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAxMWI2MjhkNGJjNDQ0MzI5ZTRmYTU0ZDE5MzZiZjBmMTVmYzdiYzQyODEzOTBiMjYwOWM4YTMwNDUwOGI5ZTcifQ"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/voice_persistence_tests.rs",
-          "version": "repo-file-v1:sha256:5be244662e168d2d50f653be98ce4a373885c2c7021c38b2be049aac623a1ed2"
+          "version": "repo-file-v1:sha256:decad7725ba0847725e9e003c90333a9cbbd3f9cc7b2486b3dfbd8ea750bdf65"
         }
       ]
     },
     {
       "id": "claim_df5da7bde1244ccb896c5b328ec25d36",
-      "statement": "Dictation uses an input-only Apple Audio Queue at 24 kHz mono without playback; Live uses WebRTC's platform audio device and software audio processing under the shared resource owner.",
+      "statement": "Dictation uses AVAudioEngine with Apple Voice Processing enabled, bypass disabled and automatic gain enabled. Its sink receives processed 24 kHz mono Float32 and the capture worker converts to PCM16. Its required output renders silence with minimum other-audio ducking; Live retains WebRTC native audio and software processing.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/native_audio_owner.rs",
-          "version": "repo-file-v1:sha256:3e432795a35a13759955e9287452fd928fd721c28c1aa2eed54e8eceb547cb3f"
+          "resource": "repo://apps/decodex-gpui/src/native_dictation_audio.rs",
+          "version": "repo-file-v1:sha256:cd88377d0f5e12b08724475b22953bfce49d6bd5dd3b880d9afc29b56d4ad996"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/native_input_queue.rs",
-          "version": "repo-file-v1:sha256:71ee26c72237a2a5a12f70e8cad8588c12da0dd184934ce8fabb64b4f9c02481"
+          "resource": "repo://apps/decodex-gpui/src/native_dictation_capture.rs",
+          "version": "repo-file-v1:sha256:de0f191d09964cb0bd231d41edcc68d97ff761c5eebfa95500eb9591ec6cbdb2"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/native_live_audio.rs",
@@ -170,7 +182,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_voice.rs",
-          "version": "repo-file-v1:sha256:fc6723ffdb4fab1b6e1c23ce9a41be5b60ed1f6bd0cc7053926117c546262d4c"
+          "version": "repo-file-v1:sha256:ac855a6c111d5442eaacae61e1aac8bdaca1b31548dc9a30778522475d555040"
         },
         {
           "resource": "repo://scripts/macos/stage_decodex_app.sh",
@@ -180,11 +192,11 @@
     },
     {
       "id": "claim_079c4413bfe54bc89e78c9c0fa9b6148",
-      "statement": "Native transport tests define loopback audio, captions, mute and buffer-release checks; opt-in owner tests define hardware preparation, capture and route checks. These definitions do not prove provider entitlement or sound quality.",
+      "statement": "Native transport tests define loopback audio, captions, mute and buffer-release checks. Opt-in owner tests check hardware lifecycle and routes plus dictation's 24 kHz mono format, enabled non-bypassed Apple Voice Processing, automatic gain, repeated startup, valid PCM and stopped capture after the final drain. These definitions do not prove recognition accuracy, provider entitlement or sound quality.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/native_audio_owner_tests.rs",
-          "version": "repo-file-v1:sha256:0229370992e3d38d85e557920ad50ea3854587a6df73b188de07a0791d295004"
+          "version": "repo-file-v1:sha256:74857375272442c5bb58f36358719cc4e35b1900d601fba82ca6142fc2791b03"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/native_voice_transport.rs",
@@ -194,15 +206,23 @@
     },
     {
       "id": "claim_642e05ce915d4c1a8cd711b5e90f434e",
-      "statement": "The audio owner prepares stopped resources for both modes and leases one session, clears old buffers before Start, drains dictation after stopping capture and handles cancellation separately from transport. First-PCM timing measures capture rather than recognition.",
+      "statement": "The audio owner prepares stopped resources and leases one session, resets dictation nodes and clears old buffers before capture, pauses hardware while retaining prepared dictation resources, and drains remaining PCM on Finish. It handles cancellation separately from transport, rebuilds dictation on input, output or engine configuration changes, and preserves Apple's default aggregate route. First-PCM timing measures capture rather than recognition.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/native_audio_owner.rs",
-          "version": "repo-file-v1:sha256:3e432795a35a13759955e9287452fd928fd721c28c1aa2eed54e8eceb547cb3f"
+          "version": "repo-file-v1:sha256:9ea864dfba848b986ad988a7e715e42a760c551b622168fbcc64a4eb4909d7e4"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/native_audio_route.rs",
+          "version": "repo-file-v1:sha256:d95f1462ef919259875bf2369824145025bca254962a85178e18b77734f2716d"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/native_dictation_audio.rs",
+          "version": "repo-file-v1:sha256:cd88377d0f5e12b08724475b22953bfce49d6bd5dd3b880d9afc29b56d4ad996"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/native_dictation_capture.rs",
-          "version": "repo-file-v1:sha256:00512a0a227433851ef49f24e3b1265c5b97d9b857be778d183f091575ff4a8a"
+          "version": "repo-file-v1:sha256:de0f191d09964cb0bd231d41edcc68d97ff761c5eebfa95500eb9591ec6cbdb2"
         }
       ]
     },
@@ -212,7 +232,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_dictation.rs",
-          "version": "repo-file-v1:sha256:c77a452c518185a2927796081e17742e4e4dc2096abe28596dd5101073c076b6"
+          "version": "repo-file-v1:sha256:3893862aa840b8bc60a9f99305015af0055e3ca179a1b701964cf570fb82edb1"
         }
       ]
     },
@@ -256,7 +276,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/native_audio_owner_tests.rs",
-          "version": "repo-file-v1:sha256:0229370992e3d38d85e557920ad50ea3854587a6df73b188de07a0791d295004"
+          "version": "repo-file-v1:sha256:74857375272442c5bb58f36358719cc4e35b1900d601fba82ca6142fc2791b03"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/native_voice_transport.rs",
@@ -363,22 +383,176 @@
       "statement": "Navigation preserves the call's work and session, exposes background Return, Mute and End controls, and keeps other conversation drafts separate; ending the call or confirmed removal/archive of its owner retires local capture.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_voice.rs#L2485-L2596",
+          "resource": "repo://apps/decodex-gpui/src/agent_voice.rs#L2748-L2859",
           "version": "repo-lines-v1:sha256:8b26039f048a1adc852af223c27270237314ae6720658dedeafc38f1c9f37a9f:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEyLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJkM2Y1MjgxOGNiMGM0NjU3YmFiYzY3MDc0OGIzODYwMjdiYmI0YzZlMDg5ZjRlODk0N2Y5YmEyMGE2YTU4ZTRlIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIwMWJhNDcxOWM4MGI2ZmU5MTFiMDkxYTdjMDUxMjRiNjRlZWVjZTk2NGUwOWMwNThlZjhmOTgwNWRhY2E1NDZiIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJmMTI2OWJhMGQ1Mjg0MjM2OGNhMjIwMWI0NGYyMTNhOWMwNGJmOTkzNjFiODE4YzljMjM1MzhjZjM1MWQ2MjgxIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIyOTllNWVhMmM3NDgxYzM2NTA1MjUxYjQ2NWU3ODRlOWIzZmRmNDRlYzE0YzI3M2I1MTlmMzI3NjEyMmMxNDc4In0"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_voice.rs#L793-L889",
+          "resource": "repo://apps/decodex-gpui/src/agent_voice.rs#L821-L917",
           "version": "repo-lines-v1:sha256:8a05d0aa03c18ba0684cf254012623c130e129e20e95c42ee0f0b6cbb0b83a67:eyJzZWxlY3RlZExpbmVDb3VudCI6OTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlkYTgxMGEzZGU2ZWEwODJjYzMwN2ExMWUxZmZiOGFlNDc5ZWY2OWM2NTI0ZTRiY2VhOTdkMzgxNzYwN2U0NGUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM3M2FjMDMxZjM0Y2RmZDllMWU0YzJjZjhiNmQyODEzOTkwMDVlZDI0OTlkYzhiNDQ3OWYyMmNjZTRiYjU4YjgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhhODA3MTdhZjVkZDFiYWQ1ZTNlNjNkN2RiYjg4Yjc3ZGY4OTU4M2FiYjc1Y2ZjNDBmZjIwNDUyYmFmOThlNTcifQ"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs#L323-L333",
+          "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs#L330-L340",
           "version": "repo-lines-v1:sha256:7d98300818cdea607d56f5a69824fd0de26210869a9d0434ba8e59b1d9b2f18e:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhjZWIzYjgzMjZjNzY5YzMzNmRiMzZmNjgyNGY0OGMwOGQxZDNmNmRiNzU4YWQ0NTdlNjQxYmY2Zjg4NWU2MjgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY0ZWZjNDk0MThkMjZkY2YxMjliMjJhNmFhMjExMDhjZWVjMzc2NzdhMzJkMDhlOWQ1ZmVlMzVkZGE2NmJiOWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU0ZTE5NWVmZmQ0OTgyNmFjMDcyNDY0MDU3MjBlZTljYWNhMGE0MjdkYjFlOTYzZDNmNzY1NGM0ZTI3ZTY5MDciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk0MjVlYWNlNTE0NzJjZTY1NzQxNDdkNmY3YTUwYTcxMGQyNjdmYmQ4ODk3NjE3ODc1N2E3OWZkOThkMTRmZTAifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_c57cc4c9c4c44edf84f1e265f6f0c9ec",
+      "statement": "Local Live call authorization remains while the call is active. Empty or whitespace-only transcript text is not stored; after native stop or positive process death, closure removes a call with no stored transcript. Empty calls remain absent after database reopen, while nonempty partial text and already-started task ownership keep their existing persistence.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/voice.rs#L23-L55",
+          "version": "repo-lines-v1:sha256:8a0f5a038506e7c67f0b0bf69873a9c5729060d888e04573c6912bd1b1bc9a14:eyJzZWxlY3RlZExpbmVDb3VudCI6MzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA0ZmE2NTBiNzRlODUwNTA5NGQwOTExMzI2N2I1MGVmNDcxMjE3YjJkMTdkMDFiOWJlNzRkNTM3ZmFmY2Q5OTYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQwNDEyNmFhY2I3Zjk1YzFhODQzYjQ4ODE4YWZiYmMxNzIzNDc5NjM1OGY0MzE1MGEwOTJlZTQwZjE4ODQ5Y2YiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE4MTNiNThhNWEyN2I0YTE0NjJlZTMxYTgyNjMzOTBjOWQyNDhhNDQzNmY1NzZlNzI1ZDExOGYyMmRkNmY2OTQifQ"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/voice_persistence_tests.rs#L63-L96",
+          "version": "repo-lines-v1:sha256:92b077eb61d54c619bd6d07dbd145ce519dc0588c06abe2e2a26d29d644fe370:eyJzZWxlY3RlZExpbmVDb3VudCI6MzQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImMzODI4MzNlNDc1ZjIyMTg3NjNkN2FhZGU3YmE4NjI0ZWIxNTQ4ZDcxNjMwMjgzY2QzODMyZTBlNmU1ODRjMjgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk0NjRhOWI4NWMxOTgwYzJkYWE5YjFjNjdkYmNlMjEzMDQ4ODc3MDQwMzdjNDQwNDg5ODBhNzJjYmIxYWU4NDEifQ"
+        },
+        {
+          "resource": "repo://database/src/agent_process.rs#L1270-L1365",
+          "version": "repo-lines-v1:sha256:3c7a9fd5b04049699e75cd4db926c705536c8377ef5d51f72cc05f5249b41846:eyJzZWxlY3RlZExpbmVDb3VudCI6OTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjljNzY1NDBjMWVhNTkwOTJkNGUyOTZkNWM4OTY0Y2RkOWUyZjAzNTlkZjM0ZTA0NGFhYjlmMWYwZDVhNDY0MTAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImFkMDJkNjY5ZDgwOWY1ODYzN2M4NDc3N2IwODc2NGE5MTRkYWNmNzgzYWMwZjQ4NjY4ZWQwZGViYzNmZjk5N2UiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM1NzA3YmUwOGUxNjdlNWRkMDA3MWE1NTg1Yjg0NzY5ZDI3MzA1MjhkZDNlMDgwYzY3YzlmMmI0YzYwNDE5YzYifQ"
+        },
+        {
+          "resource": "repo://database/src/agent_process.rs#L1433-L1474",
+          "version": "repo-lines-v1:sha256:cd8b836a800bccf06d43717933770cf3937ce4cb2d9ce3f937a194e1a6071354:eyJzZWxlY3RlZExpbmVDb3VudCI6NDIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZmOWZiMWI3ZjdlNGEyNTliNDBkMmYyM2EyNDRhZGIzZjFjNGVlYjBjOTJlMzAyNDJiYThkZDMzNjQwMTUzMTciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjAwYzc0ZjZkOTA4YjNmN2FlODgzODU3NWU5YTgzYzI2ZjVkZWVjZGM3YjgzOGNhMDM3MWE5NTUzNGIwZmMwNmQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFiMTdjYzdhMmM5ODgzYzc1ODk2YzZkNGQ4MmRiZWUxNWE2ODZlYjY3NGExNDQ5NzZkMmRmOTkxNGYwYjAwNDQifQ"
+        },
+        {
+          "resource": "repo://database/src/agent_voice.rs#L18-L107",
+          "version": "repo-lines-v1:sha256:bf919609b65df2cd8c049a73078459373d1ae0b185780488bd2df568f035d837:eyJzZWxlY3RlZExpbmVDb3VudCI6OTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBlYWNiODcyMzdkNTRiNDY2M2ZiYjc3YzliMmYxM2RiOTRkYWRhNGJiMGI2ZjI3ZDc0ZjRkNjU1ZWY3N2YwOTUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg3MTUxZjI2Y2Y2Yzc0N2MzOGQ5NGMxZjk5MjM5Njk3ZTRhYWNjOGEwZjAzOWViMDAwM2U0MDY5ZjQyZjZlMjUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImVkZWY1NDRmZDRhYWJhNWM1Zjc3NDcxNjZlZDdmZTk5NDQyYWRkYzlhZmJiMzUxMjQ3YWMyODI2ZmU4NWVjOWEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_1270bbd4cd4e4037bc2896e84c23b121",
+      "statement": "Dictation supplies levels from Apple's processed input and Live supplies native media levels to a shared display-only meter without extra display gain. The meter maps -42 to -12 dBFS with shared UI motion. Its display floor does not gate or change captured PCM, and dictation adds no separate software noise gate.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_voice.rs",
+          "version": "repo-file-v1:sha256:ac855a6c111d5442eaacae61e1aac8bdaca1b31548dc9a30778522475d555040"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/native_dictation_audio.rs",
+          "version": "repo-file-v1:sha256:cd88377d0f5e12b08724475b22953bfce49d6bd5dd3b880d9afc29b56d4ad996"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/native_dictation_capture.rs",
+          "version": "repo-file-v1:sha256:de0f191d09964cb0bd231d41edcc68d97ff761c5eebfa95500eb9591ec6cbdb2"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/native_voice_audio.rs",
+          "version": "repo-file-v1:sha256:8a1a9f4cbd165253766520e9c600950e58593b7b9142cc86ca39e722aa65f669"
+        }
+      ]
+    },
+    {
+      "id": "claim_6c8d083f5a7847459694d6aa451f8ff9",
+      "statement": "Live startup begins local media preparation without a thread-bound voice-settings preflight. The service checks managed policy before creating a native thread and reads the effective voice before realtime signaling. The startup regression covers both allowed and blocked empty topics without turn/start.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_voice.rs",
+          "version": "repo-file-v1:sha256:ac855a6c111d5442eaacae61e1aac8bdaca1b31548dc9a30778522475d555040"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_voice_settings_start_tests.rs",
+          "version": "repo-file-v1:sha256:f379d70addcd6cb8f3c45c01c2725c31a9eb7fa47b90754832485e15bbd84c6b"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/voice.rs",
+          "version": "repo-file-v1:sha256:4f6311bf560dfdd060be2bc2b6e2c706df54a906b869e5d1bd229ba5ad02d47f"
+        }
+      ]
+    },
+    {
+      "id": "claim_30b43133d8a24deab92b1023e4cfd8ca",
+      "statement": "Unused Live reservations stay outside saved conversation projection. Received transcripts or native work publish them. Closure and startup recovery delete only locally unused reservations with positively empty native history, while real turns, the built-in Assistant identity and existing project Agents are retained. Internal reservation and publication receipts stay outside transcript display. Native archive catalog membership is not required for a positively empty draft. A restarted host resumes the exact thread and attaches its current admitted process before deletion; a pending deletion receipt does not publish an empty conversation. When an existing deletion plan and positive native absence agree, recovery confirms local cleanup without another native resume or delete.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-codex/src/app_server_client/archive.rs",
+          "version": "repo-file-v1:sha256:9dc524e6c077a8178a92642f6022cdae244a70a5a49c3371a5c12c223d5a7be2"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/conversation_drafts.rs",
+          "version": "repo-file-v1:sha256:8484be7e84003f743f2b09699f5390d097793aef90ac4788b1371162380ce48f"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/voice.rs",
+          "version": "repo-file-v1:sha256:4f6311bf560dfdd060be2bc2b6e2c706df54a906b869e5d1bd229ba5ad02d47f"
+        },
+        {
+          "resource": "repo://database/src/agent.rs",
+          "version": "repo-file-v1:sha256:d8939e3ed28ec0c60032f4a5e8cfad7012435231fd57fd624160ae949b8afb73"
+        },
+        {
+          "resource": "repo://database/src/agent/drafts.rs",
+          "version": "repo-file-v1:sha256:39fd6cc129a4d2224a21bb2a274c74ac0e5a758f7a6ffe3312196e43605a5bc8"
+        }
+      ]
+    },
+    {
+      "id": "claim_a2142af0fb49463ba1a2d8c02dec8d4e",
+      "statement": "A transient native thread-creation dispatch fence does not publish an unused conversation reservation. Cleanup still requires idle dispatch and no active voice call. Desktop refresh retains unpublished local call owners, while explicit archive and removal of a previously published owner stop local capture.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs",
+          "version": "repo-file-v1:sha256:5d0de452a9e029f95e309d3636dca508bd88282284ae5643811b9bbb42139875"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_voice.rs",
+          "version": "repo-file-v1:sha256:ac855a6c111d5442eaacae61e1aac8bdaca1b31548dc9a30778522475d555040"
+        },
+        {
+          "resource": "repo://database/src/agent/drafts.rs",
+          "version": "repo-file-v1:sha256:39fd6cc129a4d2224a21bb2a274c74ac0e5a758f7a6ffe3312196e43605a5bc8"
+        }
+      ]
+    },
+    {
+      "id": "claim_d14c41fd1d074071a0065f0dd0ff48bd",
+      "statement": "Live and ordinary replies share Time, Input, Output and Spend footers. Live Spend is an integer-microdollar estimate of local authorization-to-closure time at the published desktop Voice rate of $0.05 per minute, checked November 14, 2026. Details identify elapsed-time estimation and separate backend model work; unreported call token counts remain unknown.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_response_metrics.rs",
+          "version": "repo-file-v1:sha256:912a0904aa0e41afa4d283f126b18434eef6b8d2038be64a196dba5e95677053"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/voice_history_block.rs",
+          "version": "repo-file-v1:sha256:e9eeaf76acd3ed6765b6d27aa0548bd550bed3f211d0d4ef3e61aa481ceb6e6f"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent_voice_presentation.rs",
+          "version": "repo-file-v1:sha256:533d08c0bf76b1b854ac3fc08a233852d4bf7dd8f1d25039fd4a4202091e04a9"
+        }
+      ]
+    },
+    {
+      "id": "claim_1f9a85de201e46baaec1f02cc919b608",
+      "statement": "A folded Live record directly previews the first nonempty user utterance or the first available speech without user input, normalized to plain text and at most 160 characters with an ellipsis if shortened. Expansion replaces the preview with the complete loaded speaker transcript. Call history reads attach recorded timing and spend without model inference or new overview metadata, and legacy overview fields and transcript metadata are ignored.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/voice_history_block.rs",
+          "version": "repo-file-v1:sha256:e9eeaf76acd3ed6765b6d27aa0548bd550bed3f211d0d4ef3e61aa481ceb6e6f"
+        },
+        {
+          "resource": "repo://crates/decodex-protocol/src/agent.rs",
+          "version": "repo-file-v1:sha256:f02a6d74b53ba4558d21f6e1fe40a2a1fccb082c2e942cb974315ecc43cb4d84"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent_voice_presentation.rs",
+          "version": "repo-file-v1:sha256:533d08c0bf76b1b854ac3fc08a233852d4bf7dd8f1d25039fd4a4202091e04a9"
+        },
+        {
+          "resource": "repo://database/src/agent.rs",
+          "version": "repo-file-v1:sha256:d8939e3ed28ec0c60032f4a5e8cfad7012435231fd57fd624160ae949b8afb73"
+        },
+        {
+          "resource": "repo://database/src/agent_voice_presentation.rs",
+          "version": "repo-file-v1:sha256:28f588fdc5e8a7a578549ac3f984220df8bf5778fc5b78c930fa4681c30c1219"
         }
       ]
     }
   ],
   "verification": {
-    "by": "openwiki/0.7.3",
-    "at": "2026-11-05T14:56:49.835Z"
+    "by": "openwiki/0.9.0",
+    "at": "2026-11-14T16:13:41.978Z"
   }
 }

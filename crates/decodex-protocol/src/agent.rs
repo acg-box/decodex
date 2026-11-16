@@ -196,6 +196,9 @@ pub struct AgentHistorySourceDto {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentHistoryReceiptDto {
+	/// Presentation for the exact completed voice call, independent of task turn totals.
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub voice: Option<AgentVoicePresentation>,
 	/// A confirmed local refusal, separate from the original input text.
 	#[serde(skip_serializing_if = "Option::is_none")]
 	pub unsent_reason: Option<String>,
@@ -208,6 +211,29 @@ pub struct AgentHistoryReceiptDto {
 	pub delivered_turn_id: Option<String>,
 	/// Whether the coordinator recorded a disposition; this does not prove delivery.
 	pub disposed: bool,
+}
+
+/// Observed timing and estimated spend for one complete Live session.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+pub struct AgentVoicePresentation {
+	/// Estimated value of voice usage, separate from backend model work.
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub spend: Option<AgentSpendDto>,
+	/// Elapsed time between local call authorization and native closure.
+	pub duration_ms: Option<u64>,
+}
+
+/// Monetary value for one displayed record, with its scope and estimate status.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+pub struct AgentSpendDto {
+	/// USD millionths; zero is a measured or calculated zero, not missing data.
+	pub usd_micros: u64,
+	/// True for a price equivalent or duration estimate instead of native USD.
+	pub estimated: bool,
+	/// Some usage could not be priced; the value covers only the priced portion.
+	pub partial: bool,
+	/// Short explanation of the source, scope and rate used.
+	pub explanation: String,
 }
 
 /// Public streamed text category; this does not change execution authority.
@@ -255,6 +281,9 @@ pub struct AgentTurnUsageDto {
 /// Observed last-response counters, distinct from whole-turn and thread totals.
 #[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]
 pub struct AgentUsageDetailsDto {
+	/// Spend for the complete exact turn, independent of last-response counters.
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub spend: Option<AgentSpendDto>,
 	/// Last response input, including cached input.
 	pub last_input: Option<u64>,
 	/// Cached input, a subset of last response input.
@@ -473,10 +502,18 @@ pub enum AgentActionDto {
 		/// Existing directory selected by the user.
 		directory: WireText,
 	},
+	/// Remove a project while retaining its conversations, Work and local files.
+	DeleteProject {
+		/// Exact local project selected after confirmation.
+		project_id: EntityId,
+	},
 	/// Create a user conversation with its first submitted message.
 	NewConversation {
 		/// Optional directory scope, independent of parent ownership.
 		project_id: Option<EntityId>,
+		/// Personal topic owner. Omission creates an independent project Agent.
+		#[serde(default, skip_serializing_if = "Option::is_none")]
+		assistant_id: Option<EntityId>,
 		/// Stable local identity supplied by the desktop.
 		work_id: EntityId,
 		/// First submitted input.
@@ -1233,8 +1270,8 @@ pub struct AgentModelDto {
 	pub supports_images: bool,
 	/// Provider availability information for the current account, when supplied.
 	pub availability: Option<String>,
-	/// Native upgrade or retirement notice. Only an explicit retirement deadline can trigger
-	/// the retained automatic-default policy; an upgrade suggestion alone cannot.
+	/// Native upgrade or retirement notice. An elapsed retirement deadline or removal from a
+	/// complete catalog permits default replacement; an upgrade suggestion alone does not.
 	pub upgrade: Option<AgentModelUpgradeDto>,
 }
 
@@ -1396,6 +1433,15 @@ mod tests {
 
 		assert_eq!(encoded["voice_session_id"], "opaque call/1");
 		assert_eq!(serde_json::from_value::<AgentHistoryReceiptDto>(encoded).unwrap(), receipt);
+
+		let mut previous = serde_json::to_value(&receipt).unwrap();
+		previous["voice"] = serde_json::json!({
+			"duration_ms":9000,
+			"overview":"The call contains only a brief acknowledgement."
+		});
+		let current: AgentHistoryReceiptDto = serde_json::from_value(previous).unwrap();
+		assert_eq!(current.voice.as_ref().unwrap().duration_ms, Some(9000));
+		assert!(serde_json::to_value(current).unwrap()["voice"].get("overview").is_none());
 	}
 
 	#[test]

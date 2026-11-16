@@ -136,7 +136,7 @@ sources:
     resource: repo://database/src/agent_titles.rs
   - id: openwiki-source-6197a876b2effbe992b1e2ec
     resource: repo://database/src/agent.rs
-generated: { by: "codex", at: "2026-11-10T08:15:33.063Z" }
+generated: { by: "codex", at: "2026-11-13T17:21:21.772Z" }
 verified:
   - by: openwiki/0.9.0
     at: 2026-11-10T08:15:33.063Z
@@ -211,6 +211,7 @@ The [retained contracts](../../automations/upstream/retained-contracts.json) and
 
 The user selected **original item 28**: use the current native catalog default after an explicit model retirement deadline. An upgrade suggestion or a missing entry alone does not establish retirement. New Agent settings and idle loaded Agent recovery use the existing native settings and receipt paths. The desktop no longer cycles through a fixed model or reasoning-effort list when a current catalog is unavailable.
 
+<!-- openwiki: broken internal link [../workflows/models-and-settings.md#native-model-retirement] heading anchor "native-model-retirement" does not exist in "../workflows/models-and-settings.md". Fix the href or restore the target, then delete this comment. -->
 The native model catalog already refreshes automatically; this work does not add another model directory, poller or provider. See [model retirement](../workflows/models-and-settings.md#native-model-retirement) for the preserved settings and validation limits, and `retained_model_retirement_defaults` in the [retained contracts](../../automations/upstream/retained-contracts.json).
 
 Diagnostic-log upload (**original item 24**) is excluded at the user's request to protect privacy. Terminal queue-navigation keys, copy-on-select and additional semantic range-copy gestures (**items 16, 17 and 25**) are not selected. Clipboard latency (**item 22**) requires a reproduced defect before maintenance work starts. Existing desktop copy behavior remains supported.

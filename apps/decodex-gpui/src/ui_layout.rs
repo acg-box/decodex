@@ -12,7 +12,8 @@ type Measured = dyn FnMut(Size<Pixels>, &mut Window, &mut App) -> Size<Pixels>;
 
 struct Intrinsic {
 	child: AnyElement,
-	width: Pixels,
+	width: gpui::AvailableSpace,
+	anchor: Option<Bounds<Pixels>>,
 	measured: Box<Measured>,
 	clip: bool,
 }
@@ -43,14 +44,22 @@ impl Element for Intrinsic {
 		cx: &mut App,
 	) -> (LayoutId, ()) {
 		let size = self.child.layout_as_root(
-			gpui::size(self.width.into(), gpui::AvailableSpace::MinContent),
+			gpui::size(self.width, gpui::AvailableSpace::MinContent),
 			window,
 			cx,
 		);
 		let size = (self.measured)(size, window, cx);
 		(
 			window.request_layout(
-				Style { size: size.map(Into::into), ..Default::default() },
+				Style {
+					size: size.map(Into::into),
+					position: if self.anchor.is_some() {
+						gpui::Position::Absolute
+					} else {
+						gpui::Position::Relative
+					},
+					..Default::default()
+				},
 				[],
 				cx,
 			),
@@ -68,7 +77,14 @@ impl Element for Intrinsic {
 		cx: &mut App,
 	) {
 		let mask = self.clip.then_some(gpui::ContentMask { bounds });
-		window.with_content_mask(mask, |window| self.child.prepaint_at(bounds.origin, window, cx));
+		let origin = self.anchor.map_or(bounds.origin, |anchor| {
+			crate::ui_motion::hover_origin(
+				anchor,
+				bounds.size,
+				crate::ui_motion::hover_viewport(window),
+			)
+		});
+		window.with_content_mask(mask, |window| self.child.prepaint_at(origin, window, cx));
 	}
 
 	fn paint(
@@ -94,11 +110,23 @@ pub(crate) fn intrinsic(
 ) -> impl IntoElement {
 	Intrinsic {
 		child: child.into_any_element(),
-		width,
+		width: width.into(),
+		anchor: None,
 		measured: Box::new(move |size, window, cx| {
 			measured(size, window, cx);
 			size
 		}),
+		clip: false,
+	}
+}
+
+/// Measure a hover surface once and position its painted content outside its owner.
+pub(crate) fn hover_surface(anchor: Bounds<Pixels>, child: impl IntoElement) -> impl IntoElement {
+	Intrinsic {
+		child: child.into_any_element(),
+		width: gpui::AvailableSpace::MinContent,
+		anchor: Some(anchor),
+		measured: Box::new(|size, _, _| size),
 		clip: false,
 	}
 }
@@ -111,7 +139,8 @@ pub(crate) fn resized(
 ) -> impl IntoElement {
 	Intrinsic {
 		child: gpui::div().w(width).flex().flex_col().child(child).into_any_element(),
-		width,
+		width: width.into(),
+		anchor: None,
 		measured: Box::new(measured),
 		clip: true,
 	}

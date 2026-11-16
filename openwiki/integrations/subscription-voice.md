@@ -12,6 +12,10 @@ sources:
     resource: repo://apps/decodex-gpui/menubar/Sources/DecodexTransport/DictationStream.swift
   - id: openwiki-source-7a380101e79db24d163b9af6
     resource: repo://apps/decodex-gpui/src/agent_dictation.rs
+  - id: openwiki-source-15d320ea458ddf705d950ba9
+    resource: repo://apps/decodex-gpui/src/agent_response_metrics.rs
+  - id: openwiki-source-5da2f5dd568514f1f464d177
+    resource: repo://apps/decodex-gpui/src/agent_surface.rs
   - id: openwiki-source-32bb36aae256aa57e6e82bd0
     resource: repo://apps/decodex-gpui/src/agent_voice.rs
   - id: openwiki-source-5d032c6be684964aa2c401fa
@@ -20,20 +24,40 @@ sources:
     resource: repo://apps/decodex-gpui/src/native_audio_owner_tests.rs
   - id: openwiki-source-684fc3cac9c65ba3343eb51f
     resource: repo://apps/decodex-gpui/src/native_audio_owner.rs
+  - id: openwiki-source-bad2d1d628fcf7393964c766
+    resource: repo://apps/decodex-gpui/src/native_audio_route.rs
+  - id: openwiki-source-edba7179ea148b6abe727c00
+    resource: repo://apps/decodex-gpui/src/native_dictation_audio.rs
   - id: openwiki-source-7bc7ef970363495451bd9aac
     resource: repo://apps/decodex-gpui/src/native_dictation_capture.rs
-  - id: openwiki-source-09e15400c0eb6fa34f087b07
-    resource: repo://apps/decodex-gpui/src/native_input_queue.rs
   - id: openwiki-source-95412047c2ed776dd7116977
     resource: repo://apps/decodex-gpui/src/native_live_audio.rs
+  - id: openwiki-source-7647aba6b390035d3777c2b5
+    resource: repo://apps/decodex-gpui/src/native_voice_audio.rs
   - id: openwiki-source-ca95ba5564216bb4898c8392
     resource: repo://apps/decodex-gpui/src/native_voice_online_tests.rs
   - id: openwiki-source-d1f06f7b22d0c2eec328d95f
     resource: repo://apps/decodex-gpui/src/native_voice_transport.rs
+  - id: openwiki-source-5a4dfc4ce84de6c05c56d3fb
+    resource: repo://apps/decodex-gpui/src/voice_history_block.rs
   - id: openwiki-source-3127fd4c7b2aefcc9cea7961
     resource: repo://automations/upstream/retained-contracts.json
+  - id: openwiki-source-d0b9aaf952250307abc4342e
+    resource: repo://crates/decodex-codex/src/app_server_client/archive.rs
   - id: openwiki-source-c990afbb3dfa828de42edbc3
     resource: repo://crates/decodex-codex/src/app_server_client/realtime_preferences.rs
+  - id: openwiki-source-eccf08613126ff810078b520
+    resource: repo://crates/decodex-protocol/src/agent.rs
+  - id: openwiki-source-d7ed9b56d246c61c91fd95a4
+    resource: repo://crates/decodex-protocol/src/voice.rs
+  - id: openwiki-source-a9a90ca34e6ca9f516d3d482
+    resource: repo://crates/decodex-runtime/src/account_launch/agent_process_voice_settings_start_tests.rs
+  - id: openwiki-source-c75093d19a3bc72db5836102
+    resource: repo://crates/decodex-runtime/src/agent_host.rs
+  - id: openwiki-source-2446905cd66169ccfd107760
+    resource: repo://crates/decodex-runtime/src/agent_voice_presentation.rs
+  - id: openwiki-source-a11095ee2d127564345b4574
+    resource: repo://crates/decodex-runtime/src/agent/conversation_drafts.rs
   - id: openwiki-source-91dfc90839432583cfb2a467
     resource: repo://crates/decodex-runtime/src/agent/voice_persistence_tests.rs
   - id: openwiki-source-b415683824e98dc4ed730738
@@ -52,6 +76,16 @@ sources:
     resource: repo://crates/decodex-webrtc-build/tests/qualify_trust_roots.py
   - id: openwiki-source-b7b32ffdb5400494a6a36b80
     resource: repo://crates/decodex-webrtc-build/tests/trust_roots.json
+  - id: openwiki-source-e1fc2e0e81623c7dd7ff5417
+    resource: repo://database/src/agent_process.rs
+  - id: openwiki-source-f580db3132c852bedbf0155b
+    resource: repo://database/src/agent_voice_presentation.rs
+  - id: openwiki-source-bffc76f9844e337b0c8df764
+    resource: repo://database/src/agent_voice.rs
+  - id: openwiki-source-6197a876b2effbe992b1e2ec
+    resource: repo://database/src/agent.rs
+  - id: openwiki-source-c9f290c212ee80724ccf643a
+    resource: repo://database/src/agent/drafts.rs
   - id: openwiki-source-c8b1a2a9f2113ec43d4066da
     resource: repo://Makefile.toml
   - id: openwiki-source-90e2e66c4c17531650b4f54e
@@ -60,10 +94,10 @@ sources:
     resource: repo://scripts/macos/run_native_voice_tests.py
   - id: openwiki-source-3b57179b92b257bc3fff51a1
     resource: repo://scripts/macos/stage_decodex_app.sh
-generated: { by: "codex", at: "2026-11-05T14:56:49.835Z" }
+generated: { by: "codex", at: "2026-11-14T16:13:41.978Z" }
 verified:
-  - by: openwiki/0.7.3
-    at: 2026-11-05T14:56:49.835Z
+  - by: openwiki/0.9.0
+    at: 2026-11-14T16:13:41.978Z
 ---
 
 # Subscription dictation and live voice
@@ -83,17 +117,27 @@ The Swift URLSession adapter connects to the subscription dictation stream and t
 
 Audio, authentication and the draft are not stored in SQLite by this gateway. Starting without a ready account fails clearly. The composer buffers captured audio while the subscription handshake is pending and drains that audio before sending Finish. The service rejects audio submitted before its Listening state; the UI therefore waits for that state before upload. Capture feedback continues while a network request is pending. Disconnect before final correction preserves received text and does not replay audio. The endpoint is a subscription transport dependency, not a promise that every account or future server version supports it.
 
-Dictation and Live share the resource owner in `native_voice_audio.rs` but use separate hardware implementations. Dictation uses an input-only Apple Audio Queue, with mono Float32 capture at the requested 24 kHz rate and conversion to PCM16 for upload. It has no playback graph. Live uses WebRTC's platform audio device and software echo cancellation, noise suppression and gain control. Swift retains permission and device discovery.
+Dictation and Live share the resource owner in `native_voice_audio.rs` but use separate hardware implementations. Dictation uses `AVAudioEngine` with Apple's Voice Processing enabled, bypass disabled and automatic gain control enabled. `native_dictation_audio.rs` sends the processed Float32 input to an `AVAudioSinkNode` at 24 kHz mono, then the existing capture worker converts it to PCM16 for upload. Apple's I/O unit owns noise suppression, gain control and sample-rate conversion. Configuration fails if Voice Processing or automatic gain cannot be enabled. The required duplex output renders silence with the minimum other-audio ducking setting. Captured speech does not play through the speakers. Live uses WebRTC's platform audio device and software echo cancellation, noise suppression and gain control. Swift retains permission and device discovery.
 
-The shared `native_audio_owner.rs` thread caches a stopped resource for each mode but leases only one session at a time. Preparation does not start recording. Dictation returns its PCM queues for reuse; a released Live factory is replaced and the next one is prepared. Start clears old capture and playback buffers before enabling I/O. Finish stops hardware and drains the remaining dictation samples. Cancellation stops hardware independently of network teardown, and identity checks discard late releases from an old session. The owner handles hardware route changes while retaining session queues. The first received dictation PCM sample emits the Listening event and the `dictation_sink_first_pcm_ms` diagnostic. This measures capture startup, not subscription connection time or time to recognized text. Preparation and buffering do not establish a latency guarantee. First-word completeness, microphone quality, device switching and playback effects require installed acceptance.
+The waveform is a display meter, not a speech detector. Dictation supplies levels from Apple's processed input; Live supplies levels from its native media path. Neither applies an extra display gain before the shared meter. It maps -42 to -12 dBFS to the visible range and keeps lower levels flat. The shared UI motion smooths the bars. This display floor does not remove, gate or change captured PCM. Dictation does not add a separate software noise gate.
+
+The shared `native_audio_owner.rs` thread caches a stopped resource for each mode but leases only one session at a time. Preparation does not start recording. Dictation pauses the engine to stop audio hardware while retaining prepared resources for the next start. It returns its PCM queues for reuse; a released Live factory is replaced and the next one is prepared. Start resets the dictation nodes and clears old capture and playback buffers before enabling I/O. Finish stops hardware and drains the remaining dictation samples. Cancellation stops hardware independently of network teardown, and identity checks discard late releases from an old session. The owner rebuilds dictation after input, output or engine configuration changes while retaining session queues. Explicit input selection occurs before Voice Processing is enabled; the system-default input keeps Apple's aggregate route. The first received dictation PCM sample emits the capture-ready event and the `dictation_sink_first_pcm_ms` diagnostic. This measures capture startup, not subscription connection time or time to recognized text. Preparation and buffering do not establish a latency guarantee. First-word completeness, microphone quality, device switching and playback effects require installed acceptance.
 
 The versioned `decodex_dictation_create_v2` symbol binds the Rust session to the matching native message contract. This adapter remains in the existing signed application library.
 
 ## Live voice
 
-The coordinator uses native `thread/realtime/start` and `thread/realtime/stop` with the existing owned Agent thread and connection generation. Start requires a ready manager work item. Native transcript deltas and completion events update durable conversation observations; they are not simulated worker steps.
+The coordinator uses native `thread/realtime/start` and `thread/realtime/stop` with the owned Agent thread and connection generation. A prior text turn is not required. Starting from a local editor reserves its conversation scope when signaling begins. The editor captures its model, reasoning, speed and permission settings for native thread creation. The host prepares the connection, and the coordinator uses the existing fenced thread-creation path. Realtime then starts without an ordinary text turn. Native transcript deltas and completion events update durable conversation observations; they are not simulated worker steps.
+
+The desktop starts local media preparation immediately instead of requiring a voice-settings read from a thread that does not yet exist. The service checks managed voice policy before native thread creation and reads the effective voice before realtime signaling. Existing threads retain their native context. Connection and media errors use the existing conversation feedback.
 
 Local transcript storage keeps newer received text when a delayed final is a shorter prefix of that text. The saved text remains marked incomplete. An empty final does not erase the received tail; normal closure can save it. Expanded finals and normal transcription corrections still replace provisional text. Saving a transcript never resubmits it as native input.
+
+An active call keeps its local authorization until native stop or positive process death. Empty and whitespace-only transcript text is not saved. Closure saves nonempty received tails, then removes the local call record if it has no stored transcript. This also applies to an empty failed call. The call does not remain in local voice history after a database reopen. Already-started task ownership remains intact. A transport disconnect alone does not prove closure and keeps its existing recovery behavior.
+
+An unused Live reservation does not appear as a saved conversation. Received transcript text or real native work publishes it. The transient native thread-creation dispatch fence does not publish an empty reservation. Cleanup still requires idle dispatch and no active call, so an unpublished reservation cannot be removed while creation is unresolved. Desktop refresh retains a local unpublished call owner; confirmed removal of a previously published owner and explicit archive still stop capture. After closure or startup recovery, cleanup checks local content and native history before removing an empty reservation through native deletion and the existing durable deletion receipt. A fresh native thread can be absent from both archive catalogs before its first turn; cleanup does not require an archive entry. After a host restart, cleanup resumes the exact saved thread and attaches it to the current admitted process before deletion. A pending deletion receipt does not publish an empty conversation. If that receipt exists and an exact read plus both complete native catalogs confirm absence, recovery completes local cleanup without resuming or deleting the native thread again. A native turn preserves the conversation and records the observed content without submitting it again. The built-in Assistant identity and existing project Agents are retained. Internal reservation and publication receipts are excluded from transcript display.
+
+The UI also discards blank retained captions when local media ends. A complete nonempty call has one expandable record that reuses the existing steps divider, with a topic overview and the shared response footer. See [voice history and pagination](../architecture/conversation-presentation.md#voice-history-and-pagination).
 
 The Rust media owner creates a native libwebrtc peer connection for each live call. No WebView or JavaScript media runtime is used. Swift handles microphone permission and device discovery; Rust owns WebRTC's platform audio-device lifecycle. The service retains subscription authentication, session binding and native RPC.
 
@@ -116,6 +160,17 @@ that a known control root remains. This artifact check complements the real WebR
 transport tests; it does not execute a TURN/TLS handshake or qualify a live
 provider. See the [archive procedure](../operations/commands-and-validation.md#qualify-native-dependency-artifacts).
 
+
+## Call previews
+
+A folded Live record shows a preview of its original transcript. The desktop uses the first nonempty user utterance, or the first available speech when no user utterance exists. It converts Markdown to plain text, normalizes whitespace and retains at most 160 characters with an ellipsis for shortened text. The spoken wording and language stay intact. A call containing only **Mm-hmm.** previews **Mm-hmm.**.
+
+The preview is available directly from the loaded transcript. Opening the record replaces the preview with the complete loaded speaker transcript. Call history reads attach only recorded timing and estimated spend; they do not schedule model inference, generate an overview or persist new summary metadata. Earlier overview fields are ignored by the current receipt projection, and legacy overview events remain excluded from transcript messages.
+
+Live uses the same Time, Input, Output and Spend footer as ordinary replies in either disclosure state, with shared details and transcript copy. Time is the local authorization-to-closure interval. Spend estimates this interval at the [published desktop Voice rate](https://learn.chatgpt.com/docs/pricing#how-much-does-voice-cost) of $0.05 per minute, checked November 14, 2026. It uses integer USD millionths and displays the shared estimate mark. Backend model work has separate token-based pricing. The detail text identifies this scope and elapsed-time basis. The interval is an estimate rather than a provider-reported billed duration.
+
+The current call projection has no independent token receipts, so Input and Output stay unknown and the common details explain why. Task-turn counts, thread totals and transcript character counts do not fill those fields. Database checks cover timing after reopen and retained late speech. The rendered four-turn fixture checks all four fields in both disclosure states, folded copy, complete expanded speaker turns, the 6-point divider content gap and the standard response footer gap. These checks do not establish physical microphone quality or installed-window visual acceptance.
+
 ## Call ownership while navigating
 
 The accepted [Assistant lifecycle design](../decisions/assistant-lifecycle.md) preserves this exact call owner. Automatic native-context renewal waits for a suitable call boundary; it must not change the call's native thread or stop capture merely to refresh text context.
@@ -128,7 +183,7 @@ Ending the call retires its media owner. Confirmed removal or archive of the cal
 
 The normal composer receives dictation text. The conversation that owns a Live call shows its waveform in that area. The selected input device applies to capture, not to a model-selector control.
 
-Focused tests live in the Rust dictation/voice modules and Swift `VoiceMediaHostTests`. Rust capture tests cover PCM conversion and terminal delivery, while composer tests cover early audio buffering, continued capture feedback during a pending network request, and draining audio before Finish. Rust `dictation_transcript.rs` tests cover segment order, stale revisions, final corrections and transcript limits. The native transport loopback test covers offer/answer, bidirectional audio, captions, mute before negotiation, subsequent mute changes and buffer release. Opt-in tests in `native_audio_owner_tests.rs` exercise hardware capture, playback, mode changes, preparation and route changes. These test definitions do not establish audible quality, echo cancellation quality or provider entitlement. Live acceptance separately requires microphone permission, selected-device capture, partial text, final correction, and both live transcript roles. Unit tests do not establish provider entitlement or network latency.
+Focused tests live in the Rust dictation/voice modules and Swift `VoiceMediaHostTests`. Rust capture tests cover PCM conversion and terminal delivery, while composer tests cover early audio buffering, continued capture feedback during a pending network request, and draining audio before Finish. Rust `dictation_transcript.rs` tests cover segment order, stale revisions, final corrections and transcript limits. The native transport loopback test covers offer/answer, bidirectional audio, captions, mute before negotiation, subsequent mute changes and buffer release. Opt-in tests in `native_audio_owner_tests.rs` exercise hardware capture, playback, mode changes, preparation and route changes. Dictation hardware checks read back the 24 kHz mono format, enabled and non-bypassed Voice Processing, and enabled automatic gain. They also check repeated startup, valid PCM and no further samples after the final buffer is drained. These test definitions do not establish speech-recognition accuracy, audible quality, echo cancellation quality or provider entitlement. Live acceptance separately requires microphone permission, selected-device capture, partial text, final correction, and both live transcript roles. Unit tests do not establish provider entitlement or network latency.
 
 ### Run native WebRTC tests with a development signature
 

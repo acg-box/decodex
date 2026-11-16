@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:2cc3d0a65dad3bd8c6d930fefb0d66253a132c98ad24786dddc1b6ec23ead431",
+  "pageVersion": "sha256:d114deca9f5f5fde45a1c5d182f2e3fd9d089ba24a2ef28b7b0f548867ee785e",
   "claims": [
     {
       "id": "claim_f0c37462522f4442acd94d53819ef75c",
@@ -88,11 +88,11 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:11b1818162eeab192d4f61a4d7ee4fba3fa7b4ec79f701bff140c110229da66f"
+          "version": "repo-file-v1:sha256:61d8678ad835c7b68500200d3de5fa08fd45a1950705b9cfcf42a8ff9f51a1ee"
         },
         {
           "resource": "repo://automations/upstream/retained-contracts.json",
-          "version": "repo-file-v1:sha256:dfbcb5f07ff9ce54daccf7f270553c99481f7dcf6fe4129485b9f8b52caf7c9d"
+          "version": "repo-file-v1:sha256:931dee0e3f97691f67f093dc921885c20ccef45aa5b7ae1ad461491d4f670c08"
         },
         {
           "resource": "repo://crates/decodex-runtime/tests/native_qualification/large_catalog.py",
@@ -106,7 +106,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_capabilities.rs",
-          "version": "repo-file-v1:sha256:8cfa89ccb1a25b21956095ef83ede4fc8b5efc156df06948df0ec5d32895883d"
+          "version": "repo-file-v1:sha256:7eec1848758fe6f9c7523bc837065fbdca5ac0bc6360ebfcdb6081ea4cfa3fe5"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_permissions.rs",
@@ -114,7 +114,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/session_settings.rs",
-          "version": "repo-file-v1:sha256:0dbe254a2d431e3494ee06a2b65339b22881cd1d2b7153c845502e89d5629ed3"
+          "version": "repo-file-v1:sha256:727862ba3f0793fc72c6cfa1105dd0af9638d710f02629b7ec6a89b43211153a"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent_permissions.rs",
@@ -178,11 +178,11 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:11b1818162eeab192d4f61a4d7ee4fba3fa7b4ec79f701bff140c110229da66f"
+          "version": "repo-file-v1:sha256:61d8678ad835c7b68500200d3de5fa08fd45a1950705b9cfcf42a8ff9f51a1ee"
         },
         {
           "resource": "repo://automations/upstream/retained-contracts.json",
-          "version": "repo-file-v1:sha256:dfbcb5f07ff9ce54daccf7f270553c99481f7dcf6fe4129485b9f8b52caf7c9d"
+          "version": "repo-file-v1:sha256:931dee0e3f97691f67f093dc921885c20ccef45aa5b7ae1ad461491d4f670c08"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_fork_tests.rs",
@@ -192,15 +192,19 @@
     },
     {
       "id": "claim_ca851ae0999941d39a8320f5bce6f24b",
-      "statement": "The Agent model catalog refreshes through native model/list every 60 seconds, with account, directory and process binding. Model and effort cycling have no fixed fallback list when the catalog is unavailable.",
+      "statement": "Snapshot refresh preloads the source-bound Agent model catalog, reuses a nonempty catalog for 60 seconds, and permits automatic retry of failed or empty reads after two seconds. Account, directory and process changes invalidate the observation. Model and effort cycling have no fixed fallback list.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L1675-L1681",
-          "version": "repo-lines-v1:sha256:ec57be10edb464df8b1247da2b96223a885c7911b9fef2da7839e011a926563c:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMzExMjRhOTBmYzk1YjFjMTIzMTZiYTliNTFiNzkxZDZkMGMzNTIyYTczYTA2ZDM5YjFhMTk3M2VkNmU0YzE1OSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiN2ZkOWJmZjc2MjQwMTQwNjA1ZTIzZmVlOGM4NzNkMTJjMzA0Y2JkMGU5MGEzYWFmOGJkOTk0N2VmOWQ0OWExNiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZDc3NzdmNDlkYTJlYjE2NzU4YjViMzE0OWFkOGFkZTlkMmI4MzBhZDQzMmQ2N2UzNDdkNmQ0YmQ5MGJhOWRhMyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNDU5ODRjN2QxZjljNTFkMDJhM2JkODBlNTkyZTlhMjkyODY3MTE0YzAzMjU5MGZhOGNlNjFjNGY2MjQyMTlmMyJ9"
+          "resource": "repo://apps/decodex-gpui/src/agent_capabilities.rs",
+          "version": "repo-file-v1:sha256:7eec1848758fe6f9c7523bc837065fbdca5ac0bc6360ebfcdb6081ea4cfa3fe5"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs",
+          "version": "repo-file-v1:sha256:5d0de452a9e029f95e309d3636dca508bd88282284ae5643811b9bbb42139875"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/conversations.rs",
-          "version": "repo-file-v1:sha256:2d41bccda9a43f337353dfc21ef0b0aa2104c7b67b41e1a29587a0a8093d83ac"
+          "version": "repo-file-v1:sha256:83d6771d2da07816d00114cc315743bbc6c51ed0a161b55d8b4cc410135a94ae"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent_capabilities.rs",
@@ -210,19 +214,27 @@
     },
     {
       "id": "claim_22c649d4fcdf471a899e2d9c03b35774",
-      "statement": "An explicit past native retirement deadline selects the same complete catalog's current default for new Agent settings, new Agents in a shared process and loaded idle recovery, preserving shared config and existing settings journal/readback. Missing entries, upgrade suggestions, network errors or quota responses alone do not trigger migration. Original regression groups and acceptance limits remain in the stable catalog.",
+      "statement": "An elapsed native retirement deadline or absence from a complete native catalog selects that catalog's current default for new Agent settings, new Agents in a shared process and loaded idle recovery, preserving shared configuration and the existing settings journal/readback. Upgrade suggestions, failed or empty catalog reads and quota responses alone do not establish removal. Original retirement qualification keeps its historical limits.",
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-contracts.json#L4704-L4784",
-          "version": "repo-lines-v1:sha256:8bc2982d2fc27cd565ab0beb2e4dac65554dce2bbb7037d37263b5fd3caa561c:eyJzZWxlY3RlZExpbmVDb3VudCI6ODEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJmZmU5Nzc4MWUzZmNmODc5MjI3OTc4ZjVmMjE5NzJmMzEyYzJjZGE4OTI3OWYxNjFkMjVhYzFhZTU5ODUxNmQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZiYmE2NWQwYjFlNDkzZDY1Y2Y1ZGFlZTM3ZjIxYzNkY2ViM2I0YmJkMjQyZWNjNWZmMWVjZjllZGI0OWI4OWUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZiMzNlNmEyZjdmZDEwZjE0NTgwMTJlOTYyYmM2YTRiZjllZDM1YWZlMjQzMmZmOGI5NjA4Zjc0NzFhOWEwMDQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijc2ZTVlN2EzMjdjZWE4NDVjZTE2YzdjZTdjODFjYmM0OTkzNzcxZjA2NTQwNTljOTMxMTEwOWRlYWQxYjBiZjEifQ"
+          "version": "repo-lines-v1:sha256:95cb47444f8f524c90030549b3b90dd0de7d2cce90d8ce5edc52f42316bc00c7:eyJzZWxlY3RlZExpbmVDb3VudCI6ODEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJmZmU5Nzc4MWUzZmNmODc5MjI3OTc4ZjVmMjE5NzJmMzEyYzJjZGE4OTI3OWYxNjFkMjVhYzFhZTU5ODUxNmQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZiYmE2NWQwYjFlNDkzZDY1Y2Y1ZGFlZTM3ZjIxYzNkY2ViM2I0YmJkMjQyZWNjNWZmMWVjZjllZGI0OWI4OWUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZiMzNlNmEyZjdmZDEwZjE0NTgwMTJlOTYyYmM2YTRiZjllZDM1YWZlMjQzMmZmOGI5NjA4Zjc0NzFhOWEwMDQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijc2ZTVlN2EzMjdjZWE4NDVjZTE2YzdjZTdjODFjYmM0OTkzNzcxZjA2NTQwNTljOTMxMTEwOWRlYWQxYjBiZjEifQ"
         },
         {
-          "resource": "repo://crates/decodex-protocol/src/model_catalog.rs#L94-L124",
-          "version": "repo-lines-v1:sha256:d15a6982ee6b85497325b30040426441648a73e59d5060efee2f9d4ec2209215:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE1NjkyMzBkNDBhZjg0NWZmZDdmMzhiMjRkYzg1MjY1ZDVjM2I0ZjM0OGMxNzY3MzhjZmJjYTU2ZTBkMzE0NzkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJiNGVjNjQyNjhmY2VmNDUxYTM0NjJlYTQ3NGIyYjU2Zjc4ZGEwNWQ1MDNjMTgxODMwZGU5YThjYjliMDcxYTAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjIyZjJmZjVmZWVjNjBmNTg3YzhmYWU0ZTg3ZjgwOWE2NjFjZmZlZDZiNDdhYWU1ZjZkNmEyNjUzYWE4OTUyZWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjcxYzc2OWQ5Yzc1NzZkOWRiNTAwNzJhMzYyZmU2MmEyMzAyZjlmNGFmZjFhYTdhNjczMjIzZjRjM2U5NTM2OGUifQ"
+          "resource": "repo://crates/decodex-protocol/src/model_catalog.rs",
+          "version": "repo-file-v1:sha256:bcd46daec0b232eff4b460a8539e58b4c8cd3748f3ed892e55e96e456bfd1cd9"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent.rs",
+          "version": "repo-file-v1:sha256:3d9643645d91201ee11de7a52f42ca26fa2106173bfdaa3c453e9272d88b6008"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent_initial_settings.rs",
+          "version": "repo-file-v1:sha256:2594daac21de13e689a057dc0cca17e6d77941c5207bd3a1d25c6dd8e99cfc59"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent_model_recovery.rs",
-          "version": "repo-file-v1:sha256:4cb67bcf80a54a5d7b04c4b85acff08f0dbf5f7345a3c5e0f938040675f49203"
+          "version": "repo-file-v1:sha256:8f01e24910fd3fe6cfdbe9f48947934ca4cedde3e943d66564af659962d0e5df"
         }
       ]
     },
@@ -254,7 +266,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_sample_tests.rs",
-          "version": "repo-file-v1:sha256:53a8c19c5c5b8926ce8887aa2e5eeca322708523faf3b0e5eb163efd8d572a68"
+          "version": "repo-file-v1:sha256:ccefac392c8d3de792bb16a40ecc501124c5dd53c717d2f8ab2643a95e0c69d9"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_surface.rs",
@@ -272,11 +284,11 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_usage_estimates.rs",
-          "version": "repo-file-v1:sha256:93aa786ec507f90f30cfdaa260aac67f588b72a14f6c97bf32196c16e547e7a9"
+          "version": "repo-file-v1:sha256:27b7ee7824ed887b4701ae4ff3b15f041ac7a73d1f6eb7159fc0ad92b0986b35"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent_host.rs",
-          "version": "repo-file-v1:sha256:5c216f285b34bdf10ae44795a0b672027876d4b7da421145b2831e5b597200e8"
+          "version": "repo-file-v1:sha256:32256ac2997c300af7189095f4ce77f1d03e7e295a9806feff4286bf7dd8dbbf"
         }
       ]
     },
@@ -318,7 +330,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
-          "version": "repo-file-v1:sha256:d1c66447645124cb4d80afd0a7571364b79c5760f25947480159629e2e6457d2"
+          "version": "repo-file-v1:sha256:e6f0edc30751e8db488a29b4bad02bda2885089340ca384872cadfa9889ff8b0"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
@@ -334,7 +346,7 @@
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent.rs",
-          "version": "repo-file-v1:sha256:d73cbaca126ab27dc4fec5114d1d2097612bdba327bc684c6847ee6abc298c6c"
+          "version": "repo-file-v1:sha256:3d9643645d91201ee11de7a52f42ca26fa2106173bfdaa3c453e9272d88b6008"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/assistant.rs",
@@ -352,7 +364,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/assistant_settings.rs",
-          "version": "repo-file-v1:sha256:d1c66447645124cb4d80afd0a7571364b79c5760f25947480159629e2e6457d2"
+          "version": "repo-file-v1:sha256:e6f0edc30751e8db488a29b4bad02bda2885089340ca384872cadfa9889ff8b0"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/composer_input.rs",
@@ -382,7 +394,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/shell.rs",
-          "version": "repo-file-v1:sha256:b4f458cbad51e62923c33316c93b9a2ec24a87302dbefa80bc203fa16fc04c06"
+          "version": "repo-file-v1:sha256:514ce2fb5ff07b7139c3ed7d73ce4517e757780209faee40c648063ef57424bf"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/shell_diagnostics.rs",
@@ -394,7 +406,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_theme.rs",
-          "version": "repo-file-v1:sha256:d667c61839df71ac632ae093a93f3caef1ec60234e31d487dd0e0d9710a7440a"
+          "version": "repo-file-v1:sha256:e7e60b2a14f0ec1f2646abd2d4b8807f0a6a6f243792d117fb9363c9e1f61aeb"
         }
       ]
     },
@@ -404,7 +416,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/session_settings.rs",
-          "version": "repo-file-v1:sha256:0dbe254a2d431e3494ee06a2b65339b22881cd1d2b7153c845502e89d5629ed3"
+          "version": "repo-file-v1:sha256:727862ba3f0793fc72c6cfa1105dd0af9638d710f02629b7ec6a89b43211153a"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_surface.rs",
@@ -412,11 +424,11 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/shell.rs",
-          "version": "repo-file-v1:sha256:b4f458cbad51e62923c33316c93b9a2ec24a87302dbefa80bc203fa16fc04c06"
+          "version": "repo-file-v1:sha256:514ce2fb5ff07b7139c3ed7d73ce4517e757780209faee40c648063ef57424bf"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_theme.rs",
-          "version": "repo-file-v1:sha256:d667c61839df71ac632ae093a93f3caef1ec60234e31d487dd0e0d9710a7440a"
+          "version": "repo-file-v1:sha256:e7e60b2a14f0ec1f2646abd2d4b8807f0a6a6f243792d117fb9363c9e1f61aeb"
         }
       ]
     },
@@ -488,7 +500,7 @@
         },
         {
           "resource": "repo://crates/decodex-protocol/src/lib.rs",
-          "version": "repo-file-v1:sha256:8d44c6282acb5004e0cb15587e9f6c2777e92216ef3d3fe3e09eead354c71b23"
+          "version": "repo-file-v1:sha256:00ae8540b5a013e2eff952c99fc8047175bb8c674d960a7bcf4d0ee2eed61a71"
         }
       ]
     },
@@ -548,7 +560,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/agent.rs",
-          "version": "repo-file-v1:sha256:d73cbaca126ab27dc4fec5114d1d2097612bdba327bc684c6847ee6abc298c6c"
+          "version": "repo-file-v1:sha256:3d9643645d91201ee11de7a52f42ca26fa2106173bfdaa3c453e9272d88b6008"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/assistant.rs",
@@ -570,29 +582,37 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_theme.rs",
-          "version": "repo-file-v1:sha256:d667c61839df71ac632ae093a93f3caef1ec60234e31d487dd0e0d9710a7440a"
+          "version": "repo-file-v1:sha256:e7e60b2a14f0ec1f2646abd2d4b8807f0a6a6f243792d117fb9363c9e1f61aeb"
         }
       ]
     },
     {
       "id": "claim_562201959e7843038249f2383b8f7ef7",
-      "statement": "An idle Assistant without a native thread uses initial model discovery; the model starts empty and explicitly unavailable catalogs display an em dash. Ultrafast uses the supplied double-bolt silhouette with the current Decodex theme accent color.",
+      "statement": "An idle Assistant uses initial model discovery. New conversations prefer their own draft choices, then the host-local recent model, reasoning and speed group, then native defaults. An absent remembered model uses the native catalog default, with native configuration as fallback when no catalog default is reported. A known model remains visible during catalog refresh or failure; otherwise the control shows a hyphen without a selection prompt. Ultrafast keeps its shared silhouette and theme accent.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_capabilities.rs",
-          "version": "repo-file-v1:sha256:8cfa89ccb1a25b21956095ef83ede4fc8b5efc156df06948df0ec5d32895883d"
-        },
-        {
-          "resource": "repo://apps/decodex-gpui/src/agent_composer.rs",
-          "version": "repo-file-v1:sha256:bf7ca64c4f56eab4620a1ca4a1bd264a530852a182faa91941d8d9ec4d7bdbce"
+          "resource": "repo://apps/decodex-gpui/src/agent_creation_defaults.rs",
+          "version": "repo-file-v1:sha256:65122291384a6f7163e85c7064951f3c992bc328941bb181d1556209e147d656"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_creation_setup.rs",
-          "version": "repo-file-v1:sha256:250dd929cc1d07b7b68ce0351b7b1bb61646c154360baf73e5b7f51eb15ae523"
+          "version": "repo-file-v1:sha256:e07b52bfe273dab4f4749b2d121c25f6ac3966cee9d00a21c5185ceccd0e8e6a"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_model_settings.rs",
-          "version": "repo-file-v1:sha256:793b39d583ed8a04edad18a69d18013e5b6475c410d9b7cc90a1e7d9627e13f3"
+          "version": "repo-file-v1:sha256:49436ab9a80bbd6675c402aab8498abf6fb20d57b9d15c0237cca68710c0f432"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_work_browser.rs",
+          "version": "repo-file-v1:sha256:6de6c0657e1af6e7ef88db22d0fcbc80403f8e9ff24709c39b98115914697279"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/creation_defaults.rs",
+          "version": "repo-file-v1:sha256:89a84c685c7313612a69c343dac2a23dec586a80604e682018391bb642784514"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/session_settings.rs",
+          "version": "repo-file-v1:sha256:727862ba3f0793fc72c6cfa1105dd0af9638d710f02629b7ec6a89b43211153a"
         },
         {
           "resource": "repo://scripts/macos/generate_workspace_symbols.swift",
@@ -610,7 +630,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/shell.rs",
-          "version": "repo-file-v1:sha256:b4f458cbad51e62923c33316c93b9a2ec24a87302dbefa80bc203fa16fc04c06"
+          "version": "repo-file-v1:sha256:514ce2fb5ff07b7139c3ed7d73ce4517e757780209faee40c648063ef57424bf"
         }
       ]
     },
@@ -620,11 +640,11 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_native_menu.rs",
-          "version": "repo-file-v1:sha256:20d6e711f2ab03cbdd0e8fdf6403cdd9aa28dd537a71987f2d68478c92bd38b3"
+          "version": "repo-file-v1:sha256:e94c802646eb6bc8bb5b790d5acb8649603aa38b1341b6b4a0180b236677a0d1"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/native_material_panel.rs",
-          "version": "repo-file-v1:sha256:159c75c023b8c5038e5641a66673e10badd5aa22ff4530279da6e175ccdefa0c"
+          "version": "repo-file-v1:sha256:c043f3f520a180c63782abccac2056161555191fab0d78274582591af2bc67a9"
         }
       ]
     },
@@ -643,30 +663,16 @@
       ]
     },
     {
-      "id": "claim_6616b090272c4d59995d5d422030eb09",
-      "statement": "The native source requirement records upstream commit 392ced7d3a9160fd35d40c606359869215f50522, and automatic desktop suggestions require a successful completed answer and an empty editor.",
-      "evidence": [
-        {
-          "resource": "repo://apps/decodex-gpui/src/agent_prompt_suggestions.rs",
-          "version": "repo-file-v1:sha256:2efb94057b8e1e6567cdc5b5e86a5376028126f2f12c5df711669c2bbf9774f8"
-        },
-        {
-          "resource": "repo://codex-runtime.lock.json",
-          "version": "repo-file-v1:sha256:fad5e8fc2a2ef475bb111fae33783d8a7b955e6a7c4b656a7e719967d2eb7417"
-        }
-      ]
-    },
-    {
       "id": "claim_a9548fe185184654b92f3c9a29f15cc3",
-      "statement": "The API-equivalent estimator prices recorded request tokens with their saved model selection and service tier, does not count repeated cumulative counters twice, and marks missing history, unsupported prices and cache-retention uncertainty as partial coverage.",
+      "statement": "The API-equivalent estimator prices recorded request tokens with their saved model and service tier captured at turn admission, so later settings changes do not reprice earlier turns. It produces both thread and exact-turn estimates from the same deduplicated cumulative receipts and marks missing history, unsupported prices and cache-retention uncertainty as partial coverage.",
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/agent_api_pricing/estimate.rs",
-          "version": "repo-file-v1:sha256:3b28d59b2c69eb1fd994ad9dc66ddb855e37a8efd58d57e42169ae854c082893"
+          "version": "repo-file-v1:sha256:62617e303d936868825bf84cfd943f3e2cfbcccfe33bc66c03c83fe3d8838374"
         },
         {
           "resource": "repo://database/src/agent_cost_observations.rs",
-          "version": "repo-file-v1:sha256:917bca3f1a2e3fe9d82220016f20abc38c439347575c6aa7ddffcb372eb747fd"
+          "version": "repo-file-v1:sha256:e767924d3cec548963db37abc9d926afcf53539d28cba50f420d871d961ffb03"
         }
       ]
     },
@@ -676,17 +682,191 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/agent_api_pricing.rs",
-          "version": "repo-file-v1:sha256:292cbd4e6993e88a85b400d3435c277ebab1437c7797fcc4680cc8668e76ddba"
+          "version": "repo-file-v1:sha256:36bb6f3fe249e2b0db2e09c14ebd0978fd2ab6a8f381e6e874f933863d395494"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent_api_pricing/official-prices.json",
           "version": "repo-file-v1:sha256:3df27c2bc02e544c8ebb1be69e173ccb1acfad7f27b533ede4a0e8fa1c350176"
         }
       ]
+    },
+    {
+      "id": "claim_a45a5a76239742c2ae76732bf851eaef",
+      "statement": "The composer model popover opens only with a nonempty current model catalog, and opening it does not start a metadata read. Native and GPUI hosts suppress an empty model popover.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_capabilities.rs",
+          "version": "repo-file-v1:sha256:7eec1848758fe6f9c7523bc837065fbdca5ac0bc6360ebfcdb6081ea4cfa3fe5"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_composer.rs",
+          "version": "repo-file-v1:sha256:2dc2703cfef42704ac60c1dc2e70ff09122408a953fec202ec635349936de7f6"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_composer_controls.rs",
+          "version": "repo-file-v1:sha256:e18282b481abfa3fbbafe6fdf2151b04e681d65e9a8fcfdcadc8d18433630031"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_native_menu.rs",
+          "version": "repo-file-v1:sha256:e94c802646eb6bc8bb5b790d5acb8649603aa38b1341b6b4a0180b236677a0d1"
+        }
+      ]
+    },
+    {
+      "id": "claim_dd0b800633cb49e09fe68612845f94d7",
+      "statement": "If a command is busy when native creation defaults arrive, those defaults remain pending and the first eligible snapshot refresh applies them after the command finishes without sending input.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_capabilities.rs",
+          "version": "repo-file-v1:sha256:7eec1848758fe6f9c7523bc837065fbdca5ac0bc6360ebfcdb6081ea4cfa3fe5"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_creation_defaults.rs",
+          "version": "repo-file-v1:sha256:65122291384a6f7163e85c7064951f3c992bc328941bb181d1556209e147d656"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs",
+          "version": "repo-file-v1:sha256:5d0de452a9e029f95e309d3636dca508bd88282284ae5643811b9bbb42139875"
+        }
+      ]
+    },
+    {
+      "id": "claim_6dd1349266b8498fa0cb7eebb6434363",
+      "statement": "Explicit selection or message preparation remembers the composer model, reasoning and speed together in host-local preferences. Metadata reads and navigation do not change this group, native global configuration or supported existing conversation choices. The first restored snapshot binds the editor to its selected independent topic before model reads and preserves its unsent draft.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_capabilities.rs",
+          "version": "repo-file-v1:sha256:7eec1848758fe6f9c7523bc837065fbdca5ac0bc6360ebfcdb6081ea4cfa3fe5"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_composer.rs",
+          "version": "repo-file-v1:sha256:2dc2703cfef42704ac60c1dc2e70ff09122408a953fec202ec635349936de7f6"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_execution_intent.rs",
+          "version": "repo-file-v1:sha256:2bab40d4a77f6d5cd73505807296ea0f7d2d11aeb3619b7591ff56e2010d8bee"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_model_settings.rs",
+          "version": "repo-file-v1:sha256:49436ab9a80bbd6675c402aab8498abf6fb20d57b9d15c0237cca68710c0f432"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_model_settings_wire_tests.rs",
+          "version": "repo-file-v1:sha256:e3a403f2d26000206c2a436a5af5fbcc951759d00e965e511f0dafc898a62fb2"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_speed.rs",
+          "version": "repo-file-v1:sha256:d8c9905494cd3c4378898c8ec1e1a832ba8e63b0f02091f9416876b99dce6832"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs",
+          "version": "repo-file-v1:sha256:5d0de452a9e029f95e309d3636dca508bd88282284ae5643811b9bbb42139875"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/conversations.rs",
+          "version": "repo-file-v1:sha256:83d6771d2da07816d00114cc315743bbc6c51ed0a161b55d8b4cc410135a94ae"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/session_settings.rs",
+          "version": "repo-file-v1:sha256:727862ba3f0793fc72c6cfa1105dd0af9638d710f02629b7ec6a89b43211153a"
+        }
+      ]
+    },
+    {
+      "id": "claim_f4e479d8eaf24fd9a628710f46cf07fa",
+      "statement": "A retained Live thread with no reported model uses initial model discovery and the recent-group/default policy. The resolved execution group becomes a next-message choice without starting a turn or sending input. A retained model absent from the complete catalog also requests native-default discovery and preserves its own compatible reasoning and speed.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_capabilities.rs",
+          "version": "repo-file-v1:sha256:7eec1848758fe6f9c7523bc837065fbdca5ac0bc6360ebfcdb6081ea4cfa3fe5"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_creation_defaults.rs",
+          "version": "repo-file-v1:sha256:65122291384a6f7163e85c7064951f3c992bc328941bb181d1556209e147d656"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_model_settings.rs",
+          "version": "repo-file-v1:sha256:49436ab9a80bbd6675c402aab8498abf6fb20d57b9d15c0237cca68710c0f432"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_model_settings_wire_tests.rs",
+          "version": "repo-file-v1:sha256:e3a403f2d26000206c2a436a5af5fbcc951759d00e965e511f0dafc898a62fb2"
+        }
+      ]
+    },
+    {
+      "id": "claim_054f925d7c10465890c60f13ca9836c7",
+      "statement": "An unsupported speed uses the selected model's valid advertised default tier or Standard. The next message writes the replacement as the thread preference and per-turn speed; the desktop retains it after acceptance. Supported saved speeds and choices without an available catalog are not replaced.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_speed.rs",
+          "version": "repo-file-v1:sha256:d8c9905494cd3c4378898c8ec1e1a832ba8e63b0f02091f9416876b99dce6832"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_speed_tests.rs",
+          "version": "repo-file-v1:sha256:b68a94e788441a38564446a50d9320e862d2d4f2b09d7f62b259e7c0655e42e6"
+        },
+        {
+          "resource": "repo://crates/decodex-protocol/src/model_catalog.rs",
+          "version": "repo-file-v1:sha256:bcd46daec0b232eff4b460a8539e58b4c8cd3748f3ed892e55e96e456bfd1cd9"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/turn_execution.rs",
+          "version": "repo-file-v1:sha256:a8ea612029435f5e535eab2b419c2e2ceebaef78b506cf8b3625b72275084d59"
+        }
+      ]
+    },
+    {
+      "id": "claim_f3e434fd2adf4c5b8da2d7a07b86edd7",
+      "statement": "An absent speed record or native null service tier selects Standard. The model menu selects the effective supported speed, including a supported saved tier, and a display default does not add overrides or change an old conversation's saved settings.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_capabilities.rs#L21-L39",
+          "version": "repo-lines-v1:sha256:a4763e84abaf2b6fbefe35b598699f9e4258662918ae2c9ca4bd277af0929304:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjUyYzFiZTVjMzMzMTlhYjhkOTE0ODRjOWVhYTIxYjhlNGY3ZTQyZjgxMjgwZTM1ZWZjZTcxOTYwYTAxYzU0OTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImFmMzFkNmU5ZGYwZDQwMzZkZGYxZDMxYTk5Nzc3MTE1ZDMxODUwM2FmMTM0NDM2M2MyOWI0ZDBkMzcwNjZjYjMifQ"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_model_settings.rs#L221-L257",
+          "version": "repo-lines-v1:sha256:ce2e168fb9d8d5c7637a268c41cc0ed60493acc3cd60cd66b983b0d2e1bf149f:eyJzZWxlY3RlZExpbmVDb3VudCI6MzcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZmMTgyNTBkYWQxMTBjOWMyOGJlZDE4MjM2YzFjMjg0ZDAyYmJmOTZhOTM2MjliOGRiZWY0ZWY2ODM2NjY3OWUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZjNzBhNGYwZWUzN2NiODI0MzVmNWMyZmQwODgzY2E2ZWE2OTM4MzljMzFjNmE3MjZkMThjZmMwYjM1ZmIwZTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImRlZmI3N2FhOWEzNmE1YWFlY2M1NTNiNmY1YmM0NDIyYWE0YWU1OTA2ZjA1MzEzODZlOWE2ZDI2N2I4M2Y3NmYifQ"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_speed.rs#L31-L38",
+          "version": "repo-lines-v1:sha256:1713d5a28b28e7e9e60e8abfb377c98a8eab04a37c63de622c86182cb6173d3e:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNzk5MTNkMWRmMzEyNjYwYmMzNTM4NzI1YzkwNjNhOTBhODRkMDQzNTU5NTZhOTkwMjA3M2Q0ZWJjMmNhY2M5OSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZGEwODI0YmM0YjhkYzY3YTg2ZjIzMTVkYmVkZDM5Y2E5ZGUwZjliYWQxMTQyMDZjZmRlMzVkZmIzMmMzMjA0ZiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZjI5NjQwNzljM2M1YzgxNTIwZWYzM2EyYjlkMmUxNWExYjg0ZDcyODBkYjg1OTBkY2Q2NTc0N2UzZTAxMmE0MCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOTgwYThiOTk3Nzc1NzA1N2UxOGYxZmZlOTQ5NTY5ODk2ZmE1NmQ1NTMyMWJlMDcwNGIzNDk2M2RkZjQ2ODU2NSJ9"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_speed_tests.rs#L88-L120",
+          "version": "repo-lines-v1:sha256:abcd1df8ad000db109f8f7ceb0f01a5bf0dd35e76576397126a7e860d0ff5727:eyJzZWxlY3RlZExpbmVDb3VudCI6MzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVmM2M5MjdjYTdkNWFmYWJlOWEzYjRlNjNiMmFmNGIyODkxYmU4NmQxOTAwYTJlZDM3ZTkxYTY2ZWNjYmY5YWYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjljNDRhZDJiODUzNDJhOGZiNGUyMWVmYjMyZDY3Y2M2ZDg3OTI0OWE0ZmNjNmQ5ZjY0ZjU4NzljNDIzZTAwODEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjJjMTI1NGIwNDY4ZGE4NDEwNmJiMTE2MzhjZDk1NjMzMjg0NmQ2MTZmZGE5OGRlOTNjNDgxNmE0Y2NkM2JhY2QiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImZhNTBmZmZlMDcyZmYwMGViYTEwM2UxNDA2MjM2NTdiYTM2OGEzYjdlMTQ4YTQ1ZDQ5Y2YzMjI3NmRjMmZiZmYifQ"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/session_settings.rs#L394-L447",
+          "version": "repo-lines-v1:sha256:a386fdf773e6165d3074c3fa9ea06c3c39178f5e739c6ea83b9ee543dec7ef2a:eyJzZWxlY3RlZExpbmVDb3VudCI6NTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ3MzI0MmVmZGQ4ZjU4MGQxNTRlZDljYjQ1ODAyNGZhZjM0NDNiYjlkZTJiYzVlYTk2ZWE3NmUwYTRiYTMwMzYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYyOTY0MDc5YzNjNWM4MTUyMGVmMzNhMmI5ZDJlMTVhMWI4NGQ3MjgwZGI4NTkwZGNkNjU3NDdlM2UwMTJhNDAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZmNDRjZDI4MjZkZWE0ZjAzYmE0OTc4MjQ5ZWVkNTBkOTM4NjQ4NWI2YjZhY2IwYWY0Y2NjNjMwZWVjNmRlMGYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_11112cfd9ed04463b5c07bf12afe6ce1",
+      "statement": "Ordinary replies and Live share a Time, Input, Output and Spend footer. Ordinary reply Spend enriches the exact source turn using the existing API estimate calculation and known current or recorded prior contexts. Optional pricing preserves native content and usage counters; unavailable pricing inputs leave the value unknown. Live uses its separate elapsed-minute estimate and retains unknown token fields when receipts are absent.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_response_metrics.rs",
+          "version": "repo-file-v1:sha256:912a0904aa0e41afa4d283f126b18434eef6b8d2038be64a196dba5e95677053"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent_spend.rs",
+          "version": "repo-file-v1:sha256:9ead88956eef7d205024da93727ff41dac215c7e6439403f1762dd3a06e50d2f"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent_voice_presentation.rs",
+          "version": "repo-file-v1:sha256:533d08c0bf76b1b854ac3fc08a233852d4bf7dd8f1d25039fd4a4202091e04a9"
+        },
+        {
+          "resource": "repo://database/src/agent_cost_observations.rs",
+          "version": "repo-file-v1:sha256:e767924d3cec548963db37abc9d926afcf53539d28cba50f420d871d961ffb03"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.9.0",
-    "at": "2026-11-12T12:41:07.431Z"
+    "at": "2026-11-14T16:13:41.978Z"
   }
 }

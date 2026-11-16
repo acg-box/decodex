@@ -306,6 +306,7 @@ mod tests {
 				usage: None,
 				duration_ms: None,
 				receipt: Some(decodex_protocol::AgentHistoryReceiptDto {
+					voice: None,
 					unsent_reason: None,
 					voice_session_id: None,
 					event_kind: event.into(),
@@ -471,7 +472,8 @@ mod tests {
             entries.clear();
             entries.push(AgentHistoryEntryDto {native_source:None,turn_id:Some("turn".into()),weather:vec![],id:92,kind:"checklist".into(),text:"- **Completed**: Inspect source\n- **Pending**: Verify changes\n\nLast observed checklist for this turn.".into(),created_at_micros:1,receipt:None,activity:None,usage:None,duration_ms:None});
 
-            entries[0].receipt = Some(decodex_protocol::AgentHistoryReceiptDto { unsent_reason: None, voice_session_id: None, event_kind:"plan_updated".into(),delivered_turn_id:Some("turn".into()),disposed:true});
+            entries[0].receipt = Some(decodex_protocol::AgentHistoryReceiptDto { voice: None,
+unsent_reason: None, voice_session_id: None, event_kind:"plan_updated".into(),delivered_turn_id:Some("turn".into()),disposed:true});
 
             let mut old = entries[0].clone(); old.id=91; old.text="Stale checklist".into();
 
@@ -571,6 +573,7 @@ mod tests {
 			turn_id: None,
 			weather: Vec::new(),
 			receipt: Some(decodex_protocol::AgentHistoryReceiptDto {
+				voice: None,
 				unsent_reason: None,
 				voice_session_id: None,
 				event_kind: "user_message".into(),
@@ -617,6 +620,7 @@ mod tests {
 		assert_eq!(receipts::receipt_label(&entry), Some("Execution notice"));
 
 		entry.receipt = Some(decodex_protocol::AgentHistoryReceiptDto {
+			voice: None,
 			unsent_reason: None,
 			voice_session_id: None,
 			event_kind: "native_warning".into(),

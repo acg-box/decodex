@@ -35,6 +35,7 @@ fn fallback_is_sent(mode: &str) -> bool {
 		mode,
 		"queued"
 			| "retired"
+			| "removed"
 			| "unknown"
 			| "rejected"
 			| "preserve-tier"
@@ -69,7 +70,9 @@ async fn automatic_fallback_service_preserves_source_settings_and_no_replay() {
 
 #[tokio::test]
 async fn retired_model_uses_current_native_default_without_replaying_input() {
-	for mode in ["retired", "retirement-future", "retirement-no-default", "retirement-no-notice"] {
+	for mode in
+		["retired", "removed", "retirement-future", "retirement-no-default", "retirement-no-notice"]
+	{
 		time::timeout(Duration::from_secs(15), scenario(mode)).await.expect(mode);
 	}
 }
@@ -116,7 +119,7 @@ async fn scenario(mode: &'static str) {
 	let banner = |account, revision| {
 		let call = banner_reads.fetch_add(1, Ordering::AcqRel);
 		let mut value = recovery(account, revision, mode == "reserve");
-		if mode.starts_with("retir") {
+		if mode.starts_with("retir") || mode == "removed" {
 			value.state = AccountRecoveryState::Absent;
 		}
 
@@ -235,11 +238,11 @@ async fn serve(remote: DuplexStream, writes: Arc<AtomicUsize>, mode: &str) {
 				let mut models = vec![
 					serde_json::json!({"id":"scoped","model":"scoped","displayName":"Scoped","supportedReasoningEfforts":[{"reasoningEffort":"low"},{"reasoningEffort":"medium"}],"defaultReasoningEffort":"medium","serviceTiers":[{"id":tier}],"defaultServiceTier":tier,"isDefault":mode!="retirement-no-default"}),
 				];
-				if mode.starts_with("retir") {
+				if mode != "removed" {
 					let mut previous = models[0].clone();
 					previous["model"] = serde_json::json!("original");
 					previous["isDefault"] = serde_json::json!(false);
-					if mode != "retirement-no-notice" {
+					if mode.starts_with("retir") && mode != "retirement-no-notice" {
 						previous["upgradeInfo"] = serde_json::json!({"model":"advertised-upgrade","retirementAt":if mode=="retirement-future" {i64::MAX} else {1}});
 					}
 					models.insert(0, previous);
@@ -261,7 +264,7 @@ async fn serve(remote: DuplexStream, writes: Arc<AtomicUsize>, mode: &str) {
 				assert_eq!(request["params"], expected);
 
 				match mode {
-					"queued" | "retired" | "preserve-tier" | "ultrafast-allowed"
+					"queued" | "retired" | "removed" | "preserve-tier" | "ultrafast-allowed"
 					| "ultrafast-default" | "ultrafast-denied" => {
 						let event = serde_json::json!({"method":"thread/settings/updated","params":{"threadId":"thread","threadSettings":settings_for("scoped")}});
 

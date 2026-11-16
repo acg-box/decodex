@@ -54,6 +54,11 @@ pub(crate) fn popup_event(event: &'static str, menu: Option<&'static str>, visib
 	);
 }
 
+/// Record a bounded voice lifecycle stage without audio, text or identities.
+pub(crate) fn voice_event(stage: &'static str) {
+	record(|at_ms| serde_json::json!({"at_ms":at_ms,"phase":"voice","stage":stage}));
+}
+
 pub(crate) fn mermaid_prepared(duration: Duration, width: f32, height: f32) {
 	record(|at_ms| {
 		serde_json::json!({

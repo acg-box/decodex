@@ -325,6 +325,7 @@ fn validate_catalog_method(method: &Value, params: &Value) -> Option<Result<(), 
 	let valid = match method.as_str()? {
 		"project/create" => app_server_client::is_project_create(params),
 		"project/read" => app_server_client::is_project_read(params),
+		"project/delete" => app_server_client::is_project_read(params),
 		"project/list" => app_server_client::is_project_list(params),
 		"thread/name/set" => app_server_client::is_thread_name_selection(params),
 		"thread/metadata/update" => app_server_client::is_thread_project_assignment(params),

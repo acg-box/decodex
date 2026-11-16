@@ -178,10 +178,14 @@ impl AgentSurface {
 		text: String,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
+		let key = format!("saved-{work}-{}", entry.id);
+		let action = self.side_chat_response_action(&text, &key, cx);
 		self.anchor_history_row(
 			&HistoryKey::Local(entry.id),
 			VoiceBlock {
-				key: format!("saved-{work}-{}", entry.id),
+				action,
+				presentation: entry.receipt.as_ref().and_then(|r| r.voice.clone()),
+				key,
 				title: "Voice conversation".into(),
 				text,
 				viewport: Some(self.voice_history_viewport(cx)),
@@ -200,6 +204,8 @@ impl AgentSurface {
 			&& let Some(text) = history::handoff(&entry.text)
 		{
 			VoiceBlock {
+				action: None,
+				presentation: entry.receipt.as_ref().and_then(|r| r.voice.clone()),
 				key: format!("saved-{work}-{}", entry.id),
 				title: "Voice conversation".into(),
 				text,
@@ -1203,7 +1209,7 @@ impl Render for HistoryPreview {
 			)
 		})
 		.preview()
-		.left_centered(320.)
+		.hover_preview(320.)
 		.trigger(trigger)
 		.on_dismiss(move |cx| {
 			let _ = owner.update(cx, |preview, cx| {
@@ -1364,6 +1370,11 @@ impl AgentSurface {
 			gpui::div().flex().flex_col().child(content).child(
 				gpui::div().px(gpui::px(10.)).pb(gpui::px(10.)).child(
 					super::response_metrics::ResponseMetrics {
+						spend: mark
+							.details
+							.usage
+							.as_ref()
+							.and_then(|u| u.details.as_ref()?.spend.clone()),
 						key: "history-metric-comparison".into(),
 						duration_ms: mark.details.duration_ms,
 						status: None,

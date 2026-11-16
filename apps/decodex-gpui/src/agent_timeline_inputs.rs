@@ -1,9 +1,9 @@
 //! Current unconfirmed input pages are independent of both transcript cursors.
+use crate::ui_motion::HoverHint as _;
 use std::rc::Rc;
 
 use gpui::{
-	AnyElement, AppContext as _, Div, KeyDownEvent, Role, StatefulInteractiveElement,
-	prelude::FluentBuilder as _,
+	AnyElement, Div, KeyDownEvent, Role, StatefulInteractiveElement, prelude::FluentBuilder as _,
 };
 use tokio::runtime::Builder;
 
@@ -12,7 +12,6 @@ use crate::{
 	shell::{
 		agent_surface,
 		agent_surface::{
-			composer::ComposerTip,
 			native_timeline::{
 				AgentClient, AgentSurface, AgentWorkItemDto, Context, EntityId, InteractiveElement,
 				IntoElement, ParentElement, Styled, Task,
@@ -363,9 +362,7 @@ impl AgentSurface {
 					.into_any_element()
 			}))
 			.when_some(reason, |status, reason| {
-				status
-					.aria_description(reason.clone())
-					.tooltip(move |_, cx| cx.new(|_| ComposerTip(reason.clone())).into())
+				status.aria_description(reason.clone()).hover_hint(reason.clone())
 			});
 
 		gpui::div()
@@ -1046,6 +1043,7 @@ mod tests {
 			usage: None,
 			duration_ms: None,
 			receipt: Some(AgentHistoryReceiptDto {
+				voice: None,
 				unsent_reason: None,
 				voice_session_id: None,
 				event_kind: "async_question_answer".into(),
@@ -1393,6 +1391,7 @@ mod tests {
 					turn_id: None,
 					weather: Vec::new(),
 					receipt: Some(AgentHistoryReceiptDto {
+						voice: None,
 						unsent_reason: None,
 						voice_session_id: None,
 						event_kind: "user_message".into(),

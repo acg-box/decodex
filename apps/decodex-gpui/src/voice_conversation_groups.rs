@@ -1,5 +1,5 @@
 //! Group native speech by call occurrence; never change the stored timeline.
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::shell::agent_surface::native_timeline;
 use decodex_protocol::{AgentHistoryEntryDto, AgentTimelineContent, AgentTimelineEntry};
@@ -28,7 +28,7 @@ impl Conversation {
 	}
 
 	pub fn hidden(&self) -> bool {
-		self.ended && !self.failed && self.text.trim().is_empty()
+		self.ended && self.text.trim().is_empty()
 	}
 
 	pub fn empty_status(&self) -> &'static str {
@@ -50,12 +50,18 @@ pub(crate) fn groups(entries: &[AgentTimelineEntry]) -> Vec<Conversation> {
 				(session_id, kind == "realtimeSessionStarted"),
 			AgentTimelineContent::Speech { session_id, .. } => (session_id, false),
 			AgentTimelineContent::Item { kind, text, attachments, .. } if kind == "userMessage" => {
+				let current = latest.or_else(|| result.iter().rposition(|group| !group.ended));
+
 				if attachments.is_empty()
-					&& text.contains("<source>transcript_tail_flush</source>")
-					&& let Some(tail) = super::handoff(text)
-					&& let Some(group) = latest.map(|i| &mut result[i])
+					&& let Some(delegation) = super::delegation(text)
+					&& let Some(group) = current.map(|i| &mut result[i])
+					&& (!group.ended || delegation.source == "transcript_tail_flush")
 				{
-					merge_tail(&mut group.text, &tail);
+					// Native speech is the transcript. Handoff input is a task instruction;
+					// it must not become a second conversation or an extra spoken sentence.
+					if let Some(transcript) = delegation.transcript {
+						merge_tail(&mut group.text, &super::unescape(transcript));
+					}
 
 					group.indices.push(index);
 				} else {
@@ -66,11 +72,7 @@ pub(crate) fn groups(entries: &[AgentTimelineEntry]) -> Vec<Conversation> {
 			},
 			_ => continue,
 		};
-		let group = if !start {
-			result.iter().rposition(|g| g.session == *session && !g.ended)
-		} else {
-			None
-		};
+		let group = if !start { result.iter().rposition(|g| g.session == *session) } else { None };
 		let group = group.unwrap_or_else(|| {
 			result.push(Conversation {
 				indices: vec![],
@@ -118,10 +120,10 @@ pub(crate) fn groups(entries: &[AgentTimelineEntry]) -> Vec<Conversation> {
 }
 
 /// Group the saved fallback with the same call boundary as native history.
-/// System notices do not split a call; ordinary messages always do.
+/// Interleaved task output and typed messages do not split an identified call.
 pub(crate) fn saved_groups(entries: &[&AgentHistoryEntryDto]) -> Vec<(Vec<usize>, String)> {
 	let mut groups: Vec<(Vec<usize>, String)> = Vec::new();
-	let mut session: Option<&str> = None;
+	let mut sessions = BTreeMap::new();
 
 	for (index, entry) in entries.iter().enumerate() {
 		let voice = entry.receipt.as_ref().filter(|receipt| {
@@ -132,13 +134,13 @@ pub(crate) fn saved_groups(entries: &[&AgentHistoryEntryDto]) -> Vec<(Vec<usize>
 		});
 
 		if let Some(id) = voice.and_then(|receipt| receipt.voice_session_id.as_deref()) {
-			if session != Some(id) {
+			let group = *sessions.entry(id).or_insert_with(|| {
 				groups.push((Vec::new(), String::new()));
 
-				session = Some(id);
-			}
+				groups.len() - 1
+			});
 
-			let (indices, text) = groups.last_mut().expect("call group");
+			let (indices, text) = &mut groups[group];
 
 			indices.push(index);
 
@@ -146,9 +148,9 @@ pub(crate) fn saved_groups(entries: &[&AgentHistoryEntryDto]) -> Vec<(Vec<usize>
 				text.push('\n');
 			}
 
-			text.push_str(&format!("{}: {}", entry.kind, entry.text));
-		} else if entry.kind != "system" {
-			session = None;
+			if !entry.text.trim().is_empty() {
+				text.push_str(&format!("{}: {}", entry.kind, entry.text));
+			}
 		}
 	}
 
@@ -244,6 +246,32 @@ mod tests {
 		})
 	}
 	#[test]
+	fn speech_received_after_close_stays_in_the_same_complete_call() {
+		let calls = conversations::groups(&[
+			boundary("start", true),
+			speech("user", "Question"),
+			boundary("end", false),
+			speech("assistant", "Late final words"),
+			boundary("end", false),
+		]);
+		assert_eq!(calls.len(), 1);
+		assert!(calls[0].ended);
+		assert_eq!(calls[0].text, "user: Question\nassistant: Late final words");
+		let repeated = conversations::groups(&[
+			boundary("start", true),
+			speech("user", "First"),
+			boundary("end", false),
+			boundary("start-again", true),
+			speech("user", "Second"),
+			boundary("end-again", false),
+		]);
+		assert_eq!(
+			repeated.len(),
+			2,
+			"a new start is a new call even when a provider reuses its session ID"
+		);
+	}
+	#[test]
 	fn saved_voice_groups_keep_calls_separate_without_grouping_normal_messages() {
 		let make = |id, kind: &str, session: Option<&str>| decodex_protocol::AgentHistoryEntryDto {
 			id,
@@ -257,6 +285,7 @@ mod tests {
 			usage: None,
 			duration_ms: None,
 			receipt: session.map(|session| decodex_protocol::AgentHistoryReceiptDto {
+				voice: None,
 				unsent_reason: None,
 				voice_session_id: Some(session.into()),
 				event_kind: format!("voice_{kind}"),
@@ -269,16 +298,20 @@ mod tests {
 			make(2, "system", None),
 			make(3, "assistant", Some("a")),
 			make(4, "user", None),
-			make(5, "user", Some("b")),
-			make(6, "assistant", Some("b")),
+			make(5, "assistant", Some("a")),
+			make(6, "user", Some("b")),
+			make(7, "assistant", Some("b")),
 		];
 		let groups = conversations::saved_groups(&entries.iter().collect::<Vec<_>>());
 
 		assert_eq!(
 			groups,
 			vec![
-				(vec![0, 2], "user: message 1\nassistant: message 3".into()),
-				(vec![4, 5], "user: message 5\nassistant: message 6".into())
+				(
+					vec![0, 2, 4],
+					"user: message 1\nassistant: message 3\nassistant: message 5".into()
+				),
+				(vec![5, 6], "user: message 6\nassistant: message 7".into())
 			]
 		);
 	}
@@ -411,7 +444,7 @@ mod tests {
 	}
 
 	#[test]
-	fn empty_calls_hide_only_after_successful_end() {
+	fn ended_empty_calls_are_hidden_including_failures() {
 		let empty = conversations::groups(&[
 			boundary("start", true),
 			speech("user", "   "),
@@ -433,7 +466,7 @@ mod tests {
 
 		let failed = conversations::groups(&[boundary("start", true), failure]);
 
-		assert!(!failed[0].hidden());
+		assert!(failed[0].hidden(), "An empty failed call is not retained in history");
 		assert_eq!(failed[0].empty_status(), "Voice conversation failed");
 
 		let spoken = conversations::groups(&[speech("user", "Hello"), boundary("end", false)]);
@@ -481,6 +514,31 @@ mod tests {
 		conversations::merge_tail(&mut text, "user: Hi\nassistant: Hello");
 
 		assert_eq!(text, "user: Hi\nassistant: Hello");
+	}
+
+	#[test]
+	fn handoffs_remain_in_one_complete_call_without_internal_instructions() {
+		let handoff = "<realtime_delegation><input>Internal task instruction</input><transcript_delta>user: Hi\nassistant: Hello</transcript_delta></realtime_delegation>";
+		let next = "<realtime_delegation><input>Another task instruction</input><transcript_delta>assistant: Hello\nuser: Check the tests</transcript_delta></realtime_delegation>";
+		let entries = vec![
+			boundary("start", true),
+			speech("user", "Hi"),
+			speech("assistant", "Hello"),
+			message(handoff),
+			message("Typed message outside the transcript"),
+			message(next),
+			speech("assistant", "Tests passed"),
+			boundary("end", false),
+		];
+		let groups = conversations::groups(&entries);
+
+		assert_eq!(groups.len(), 1);
+		assert_eq!(groups[0].indices, vec![0, 1, 2, 3, 5, 6, 7]);
+		assert_eq!(
+			groups[0].text,
+			"user: Hi\nassistant: Hello\nuser: Check the tests\nassistant: Tests passed"
+		);
+		assert_eq!(groups[0].anchor_index(&entries), 7);
 	}
 	#[test]
 	fn partial_pages_and_reused_session_ids_remain_separate() {

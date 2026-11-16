@@ -25,7 +25,7 @@ macro_rules! symbol_sources {
 	]};
 }
 
-static TEMPLATES: LazyLock<[String; 55]> = LazyLock::new(|| {
+static TEMPLATES: LazyLock<[String; 62]> = LazyLock::new(|| {
 	let sources = symbol_sources![
 		"sidebar",
 		"graph",
@@ -82,6 +82,13 @@ static TEMPLATES: LazyLock<[String; 55]> = LazyLock::new(|| {
 		"fork",
 		"activity-work",
 		"activity-performance",
+		"navigation-pin",
+		"navigation-assistant",
+		"navigation-folder",
+		"navigation-sort",
+		"conversation",
+		"chevron-left",
+		"navigation-projects",
 	];
 	sources.map(|bytes| {
 		format!(
@@ -148,6 +155,13 @@ pub(crate) enum Symbol {
 	Fork,
 	WorkActivity,
 	PerformanceActivity,
+	NavigationPin,
+	NavigationAssistant,
+	NavigationFolder,
+	NavigationSort,
+	Conversation,
+	ChevronLeft,
+	NavigationProjects,
 }
 
 /// Both panel controls use their layout state and the same interruptible transition.

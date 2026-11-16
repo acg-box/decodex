@@ -1,5 +1,7 @@
 //! Question entry points retain their source and use ordinary Side chat creation.
-use gpui::{Context, Entity, IntoElement, MouseButton, Render, TestAppContext, Window};
+use gpui::{
+	AppContext as _, Context, Entity, IntoElement, MouseButton, Render, TestAppContext, Window,
+};
 
 use super::*;
 use crate::shell::agent_surface::{drafts, markdown};

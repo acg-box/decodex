@@ -73,7 +73,7 @@ struct ConversationEstimatesView: View {
 						ForEach(result.pricedRows) { row in
 							VStack(alignment: .leading, spacing: PanelSpacing.micro) {
 								HStack(alignment: .firstTextBaseline, spacing: PanelSpacing.related) {
-									Text(row.title).lineLimit(1)
+									Text(row.title).fixedSize(horizontal: false, vertical: true)
 									Spacer(minLength: 0)
 									Text(row.amount ?? "").monospacedDigit().fixedSize()
 								}
@@ -85,7 +85,7 @@ struct ConversationEstimatesView: View {
 										.foregroundStyle(PanelPalette.secondaryText(colorScheme))
 								}
 							}
-							.help(row.api_equivalent == true ? "API text-token estimate, not a subscription charge.\(row.partial == true ? " Some usage could not be priced." : "")" : row.title)
+							.hoverHint(row.api_equivalent == true ? "Estimated from API text-token prices.\(row.partial == true ? " Some usage could not be priced." : "")" : nil)
 						}
 						Text(result.more_available ? "Latest 8 conversations (estimates may lag)" : "Conversation estimates may lag")
 							.font(PanelFont.tertiary)
