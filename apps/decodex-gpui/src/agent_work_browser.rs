@@ -20,8 +20,8 @@ use crate::{
 	ui_theme::{self, BODY_SIZE, CONTROL_SIZE, ERROR, HOVER_FILL, TEXT_MUTED},
 };
 use decodex_protocol::{
-	AgentClient, AgentCommandResponse, ConversationModel, ConversationReasoningEffort, EntityId,
-	IdempotencyKey, ProjectDto, WireText,
+	AgentClient, AgentCommandResponse, ConversationReasoningEffort, EntityId, IdempotencyKey,
+	ProjectDto, WireText,
 };
 
 struct WorkRow {
@@ -70,12 +70,8 @@ impl AgentSurface {
 			return;
 		}
 
-		let initial_model = self
-			.workspace
-			.new_conversation
-			.is_none()
-			.then(|| (self.composer_model_value(cx), self.composer_effort_value(cx)));
-		let defaults = initial_model.as_ref().map(|_| crate::session_settings::Defaults::load());
+		let defaults =
+			self.workspace.new_conversation.is_none().then(crate::session_settings::Defaults::load);
 
 		self.close_native_agent(cx);
 		self.cancel_dictation(cx);
@@ -86,19 +82,25 @@ impl AgentSurface {
 			.get_or_insert_with(|| format!("conversation-{}", super::unique_command()))
 			.clone();
 
-		if let Some((Some(model), effort)) = initial_model
-			&& let Ok(model) = ConversationModel::new(model)
-		{
-			let effort = effort.and_then(|value| ConversationReasoningEffort::new(value).ok());
-
-			self.draft_profiles.execution.change(id.clone(), |choice| {
-				choice.model = Some(model);
-				choice.reasoning_effort = effort;
-			});
-		}
 		if let Some(defaults) = defaults {
+			let execution = defaults.last_execution();
+			self.model.update(cx, |input, cx| {
+				input.set_content(execution.model.as_ref().map_or("", |model| model.as_str()), cx)
+			});
+			self.effort =
+				execution.reasoning_effort.clone().unwrap_or(ConversationReasoningEffort::High);
+			self.service_tier = execution
+				.service_tier
+				.clone()
+				.or_else(|| crate::session_settings::default_speed().ok());
+			self.creation_intent = Default::default();
+			self.creation_defaults_applied = false;
+			self.draft_profiles.execution.change(id.clone(), |choice| {
+				choice.model = execution.model;
+				choice.reasoning_effort = execution.reasoning_effort;
+				choice.service_tier = execution.service_tier;
+			});
 			self.workspace.new_conversation_permissions = Some(defaults.permissions);
-			self.service_tier = crate::session_settings::default_speed().ok();
 		}
 
 		self.restore_manager_composer(&id, cx);

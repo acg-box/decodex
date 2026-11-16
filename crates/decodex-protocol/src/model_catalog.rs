@@ -82,13 +82,42 @@ impl AgentModelDto {
 		{
 			return requested.clone();
 		}
-		if requested.as_str() == "ultrafast"
-			&& self.service_tiers.iter().any(|tier| tier.id.as_str() == "priority")
-		{
-			ServiceTier::priority()
-		} else {
-			ServiceTier::standard()
+		self.default_service_tier
+			.as_ref()
+			.filter(|tier| {
+				matches!(tier.as_str(), "default" | "flex")
+					|| self.service_tiers.iter().any(|choice| &choice.id == *tier)
+			})
+			.cloned()
+			.unwrap_or_else(ServiceTier::standard)
+	}
+
+	/// Select the native default when a complete catalog omits the saved model or reports
+	/// its retirement deadline. Empty and unavailable catalogs cannot supply a replacement.
+	pub fn unavailable_default<'a>(
+		current: &str,
+		models: &'a [Self],
+		default_model: Option<&ConversationModel>,
+		now: i64,
+	) -> Option<(&'a Self, Option<i64>)> {
+		let current_model = models.iter().find(|model| model.model.as_str() == current);
+		let retirement_at = current_model.and_then(|model| model.retired_at(now));
+		if current_model.is_some() && retirement_at.is_none() {
+			return None;
 		}
+		let target = models.iter().find(|model| Some(&model.model) == default_model)?;
+		if target.model.as_str() == current
+			|| target.model.as_str() == "gpt-reserve"
+			|| target.retired_at(now).is_some()
+		{
+			return None;
+		}
+		Some((target, retirement_at))
+	}
+
+	/// Return an elapsed, positive native retirement deadline.
+	pub fn retired_at(&self, now: i64) -> Option<i64> {
+		self.upgrade.as_ref()?.retirement_at.filter(|at| *at > 0 && *at <= now)
 	}
 
 	/// Choose the current native default only after the selected model's explicit retirement
@@ -99,25 +128,9 @@ impl AgentModelDto {
 		default_model: Option<&ConversationModel>,
 		now: i64,
 	) -> Option<(&'a Self, i64)> {
-		let retirement_at = models
-			.iter()
-			.find(|model| model.model.as_str() == current)?
-			.upgrade
-			.as_ref()?
-			.retirement_at
-			.filter(|at| *at > 0 && *at <= now)?;
-		let target = models.iter().find(|model| Some(&model.model) == default_model)?;
-		if target.model.as_str() == current
-			|| target.model.as_str() == "gpt-reserve"
-			|| target
-				.upgrade
-				.as_ref()
-				.and_then(|upgrade| upgrade.retirement_at)
-				.is_some_and(|at| at <= now)
-		{
-			return None;
-		}
-		Some((target, retirement_at))
+		let (target, retirement_at) =
+			Self::unavailable_default(current, models, default_model, now)?;
+		Some((target, retirement_at?))
 	}
 }
 

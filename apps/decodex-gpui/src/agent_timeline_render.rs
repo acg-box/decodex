@@ -253,10 +253,18 @@ impl AgentSurface {
 
 		if kind == "userMessage"
 			&& attachments.is_empty()
+			&& self.covered_voice_handoff(&work.id, text)
+		{
+			return Some(gpui::div().into_any_element());
+		}
+		if kind == "userMessage"
+			&& attachments.is_empty()
 			&& let Some(text) = history::handoff(text)
 		{
 			return Some(
 				VoiceBlock {
+					action: None,
+					presentation: None,
 					viewport: Some(self.voice_history_viewport(cx)),
 					key: identity,
 					title: "Voice conversation".into(),
@@ -569,14 +577,17 @@ turn_id: turn, kind, .. } if turn == turn_id && kind == "agentMessage")
 			return gpui::div().into_any_element();
 		};
 
-		ResponseMetrics {
-			key: identity.into(),
-			duration_ms: *duration_ms,
-			status: status.clone(),
-			usage: usage.clone(),
-			timing: timing.clone(),
-		}
-		.into_any_element()
+		gpui::div()
+			.debug_selector(|| "native-turn-metrics".into())
+			.child(ResponseMetrics {
+				spend: usage.as_ref().and_then(|u| u.details.as_ref()?.spend.clone()),
+				key: identity.into(),
+				duration_ms: *duration_ms,
+				status: status.clone(),
+				usage: usage.clone(),
+				timing: timing.clone(),
+			})
+			.into_any_element()
 	}
 
 	fn native_reply_metrics(
@@ -648,9 +659,17 @@ turn_id: turn, kind, .. } if turn == turn_id && kind == "agentMessage")
 		}
 		if kind == "userMessage"
 			&& attachments.is_empty()
+			&& self.covered_voice_handoff(&work.id, text)
+		{
+			return gpui::div().into_any_element();
+		}
+		if kind == "userMessage"
+			&& attachments.is_empty()
 			&& let Some(text) = history::handoff(text)
 		{
 			return VoiceBlock {
+				action: None,
+				presentation: None,
 				viewport: Some(self.voice_history_viewport(cx)),
 				key: identity.into(),
 				title: "Voice conversation".into(),

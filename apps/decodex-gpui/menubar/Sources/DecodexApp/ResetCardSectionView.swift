@@ -20,7 +20,7 @@ struct InlineAccountFeedback: View {
 				.contentShape(Rectangle())
 		}
 		.buttonStyle(PanelPressButtonStyle(pressedScale: 0.94))
-		.help(expanded ? "" : text)
+		.hoverHint(expanded ? nil : text)
 		.accessibilityLabel(text)
 		.popover(isPresented: $expanded, arrowEdge: .bottom) {
 			VStack(alignment: .leading, spacing: 10) {
@@ -196,7 +196,7 @@ struct ResetCardAccountRow: View {
 				isReorderHandleHovered = isHovered
                 if !isReorderHandleDragging { (isHovered ? NSCursor.openHand : NSCursor.arrow).set() }
 			}
-			.help("Drag to reorder accounts")
+			.hoverHint("Drag to reorder accounts")
 			.accessibilityElement()
 			.accessibilityLabel("Reorder \(identity.text)")
 			.accessibilityValue(reorderAccessibilityValue)
@@ -427,7 +427,7 @@ struct ResetCardAccountRow: View {
 						.disabled(store.blocksNewAttempt(for: target) || isUsed(target))
 						.accessibilityLabel(accessibilityLabel(target))
 						.accessibilityHint(accessibilityHint(target))
-						.help(help(target))
+						.hoverHint(help(target))
 						.transition(
 							.opacity.combined(
 								with: .scale(scale: 0.96)
@@ -554,20 +554,11 @@ struct ResetCardAccountRow: View {
 			: "Click twice within five seconds to use this card."
 	}
 
-	private func help(_ target: ResetCardUseTarget) -> String {
-		let label = accessibilityLabel(target)
-		if isUsed(target) { return "Reset confirmed." }
-		if isUsing(target) { return "Applying reset card…" }
-		if confirmation.isSubmitting {
-			return confirmation.isSubmitting(target)
-				? "\(label). Request in progress."
-				: "Wait for the current reset."
-		}
-		if confirmation.isArmed(target) {
-			return "\(label). Click again within five seconds to use it."
-		}
-
-		return "\(label). Click once to confirm use."
+	private func help(_ target: ResetCardUseTarget) -> String? {
+		if isUsed(target) || isUsing(target) { return nil }
+		if confirmation.isSubmitting { return "Wait for the current reset." }
+		if confirmation.isArmed(target) { return "Click again to use this reset card." }
+		return "\(accessibilityLabel(target)). Click twice within five seconds to use it."
 	}
 
 	private func tap(_ target: ResetCardUseTarget) {
@@ -913,7 +904,6 @@ struct ResetCardQuotaWindowView: View {
 		.accessibilityElement(children: .ignore)
 		.accessibilityLabel("\(title) quota")
 		.accessibilityValue(accessibility)
-		.help(accessibility)
 	}
 
 	private var quotaValueAnimation: Animation? {

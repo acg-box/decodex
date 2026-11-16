@@ -1,6 +1,25 @@
 //! Adopt native Project identity without adding another execution owner.
 use crate::agent::{AgentCoordinator, AgentError, AgentWorkItem, Value};
 impl AgentCoordinator {
+	/// Remove the native and local project while preserving its conversation history.
+	pub async fn delete_project(
+		store: &super::SqliteStore,
+		client: Option<&super::AppServerClient>,
+		id: &str,
+	) -> Result<(), AgentError> {
+		let Some(project) = store.projects().await?.into_iter().find(|p| p.id == id) else {
+			return Ok(());
+		};
+		if let Some(native) = &project.native_project_id {
+			client
+				.ok_or_else(|| AgentError::Rejected("Connect before deleting this project".into()))?
+				.delete_project(native)
+				.await?;
+		}
+		store.delete_project(project.id, project.native_project_id).await?;
+		Ok(())
+	}
+
 	pub(super) async fn sync_native_project(&self, item: &AgentWorkItem) -> Result<(), AgentError> {
 		let Some(thread) = &item.codex_thread_id else { return Ok(()) };
 		let Some(project) = self.native_project(item).await? else { return Ok(()) };

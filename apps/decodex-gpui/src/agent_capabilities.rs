@@ -27,7 +27,7 @@ impl AgentSurface {
 				crate::session_settings::speed_label(id).to_owned(),
 			)
 		});
-		let selected = self.composer_speed(cx).map(|speed| speed.requested);
+		let selected = self.composer_speed(cx).map(|speed| speed.effective);
 		crate::session_settings::speed_choices(
 			selected.as_ref(),
 			tiers,
@@ -43,6 +43,7 @@ impl AgentSurface {
 		}
 		self.service_tier = Some(tier);
 		self.mark_tier_intent();
+		self.remember_composer_execution(cx);
 		self.save_draft_document(cx);
 		cx.notify();
 	}
@@ -74,6 +75,14 @@ impl AgentSurface {
 		self.capabilities.as_ref()
 	}
 
+	pub(super) fn composer_models(&self, cx: &Context<Self>) -> Option<&[AgentModelDto]> {
+		match self.current_model_catalog(cx) {
+			Some(AgentCapabilitiesResult::Available { models, .. }) if !models.is_empty() =>
+				Some(models),
+			_ => None,
+		}
+	}
+
 	pub(super) fn reset_capabilities(&mut self) {
 		self.capability_generation += 1;
 		self.capability_task = None;
@@ -91,16 +100,34 @@ impl AgentSurface {
 		let Some(profile) = self.profile.clone() else {
 			return;
 		};
+		if self.cwd.read(cx).content().is_empty()
+			&& let Ok(directory) = std::env::var("HOME")
+		{
+			self.cwd.update(cx, |input, cx| input.set_content(&directory, cx));
+		}
 		let Some(context) = self.catalog_context(cx) else {
 			return;
 		};
+		// Snapshot polling preloads the catalog. Retry an unsuccessful startup read
+		// promptly instead of making the user open the model menu to retry it.
+		let needs_default = self.composer_needs_model_default(cx);
+		let refresh_after = if self.composer_models(cx).is_some()
+			&& !(needs_default && self.creation_defaults.is_none())
+		{
+			60
+		} else {
+			2
+		};
 		if self.capabilities_context.as_ref() == Some(&context)
-			&& matches!(self.capabilities, Some(AgentCapabilitiesResult::Available { .. }))
-			&& self.capabilities_checked.is_some_and(|at| at.elapsed().as_secs() < 60)
+			&& self.capabilities_checked.is_some_and(|at| at.elapsed().as_secs() < refresh_after)
 		{
 			return;
 		}
-		let cold_request = if context.has_native_thread && !context.creating {
+		if self.composer_models(cx).is_none() && self.composer_menu == Some("model") {
+			self.dismiss_composer_menu(cx);
+			self.composer_menu_content = None;
+		}
+		let cold_request = if context.has_native_thread && !context.creating && !needs_default {
 			None
 		} else {
 			let Ok(working_directory) =
@@ -202,6 +229,9 @@ impl AgentSurface {
 		self.capabilities_context = Some(context);
 		self.creation_defaults = result.as_ref().and_then(|(_, defaults)| defaults.clone());
 		self.capabilities = result.map(|(capabilities, _)| capabilities);
+		if self.creation_defaults.is_some() {
+			self.creation_defaults_applied = false;
+		}
 
 		self.apply_creation_defaults(cx);
 		self.save_draft_document(cx);
@@ -284,7 +314,9 @@ mod tests {
 	};
 
 	#[gpui::test]
-	fn idle_assistant_reads_initial_catalog_and_uses_observed_model(cx: &mut gpui::TestAppContext) {
+	fn startup_preloads_models_and_applies_defaults_after_a_busy_command(
+		cx: &mut gpui::TestAppContext,
+	) {
 		use crate::shell::agent_surface::wire_test_support::{self, SERVER};
 		use decodex_protocol::{ClientMessage, QueryPayload, QueryResultPayload, ServerMessage};
 		cx.background_executor.allow_parking();
@@ -341,19 +373,35 @@ mod tests {
 		});
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 		surface.update(visual, |s, cx| {
-			s.visual_workspace_fixture(cx);
+			s.visual_ragflow_settings(cx);
 			s.profile = Some(profile);
 			s.cwd.update(cx, |input, cx| input.set_content("/tmp", cx));
 			assert!(!s.catalog_context(cx).unwrap().has_native_thread);
-			assert_eq!(s.composer_model_label(cx), "—");
-			s.load_capabilities(cx);
+			assert_eq!(s.composer_model_label(cx), "-");
+			let snapshot = s.snapshot.clone().unwrap();
+			s.finish_snapshot_refresh(
+				Ok(decodex_protocol::AgentSnapshotResult::Available(snapshot)),
+				cx,
+			);
+			assert!(s.capability_task.is_some(), "startup preloads without opening a menu");
+			assert!(s.composer_models(cx).is_none());
+			s.sending = true;
 		});
 		visual.run_until_parked();
 		server.join().unwrap();
 		surface.update(visual, |s, cx| {
 			assert!(s.capability_task.is_none());
+			assert!(s.composer_models(cx).is_some());
+			assert_eq!(s.composer_model_value(cx), None, "do not change defaults while sending");
+			s.sending = false;
+			let snapshot = s.snapshot.clone().unwrap();
+			s.finish_snapshot_refresh(
+				Ok(decodex_protocol::AgentSnapshotResult::Available(snapshot)),
+				cx,
+			);
 			assert_eq!(s.composer_model_value(cx).as_deref(), Some("custom"));
-			assert_ne!(s.composer_model_label(cx), "—");
+			assert_eq!(s.composer_model_label(cx), "Custom");
+			assert!(s.composer_models(cx).is_some());
 			assert!(
 				s.snapshot.as_ref().unwrap().work_items.iter().all(|w| w.codex_thread_id.is_none())
 			);
@@ -370,8 +418,7 @@ mod tests {
 			s.visual_workspace_fixture(cx);
 			s.cwd.update(cx, |input, cx| input.set_content("/tmp", cx));
 			s.profile = Some(profile);
-			s.capabilities =
-				Some(AgentCapabilitiesResult::Available { models: vec![], memory_enabled: None });
+			s.capabilities = Some(fast_only_catalog());
 			s.capabilities_context = s.catalog_context(cx);
 			s.capabilities_checked = Some(std::time::Instant::now());
 			let before = s.capability_generation;
@@ -392,9 +439,50 @@ mod tests {
 			s.capability_task = None;
 			s.capabilities_context = s.catalog_context(cx);
 			s.capabilities = Some(AgentCapabilitiesResult::Unavailable);
+			s.capabilities_checked =
+				Some(std::time::Instant::now() - std::time::Duration::from_secs(2));
 			s.load_capabilities(cx);
 			assert_eq!(s.capability_generation, before + 3, "failed catalogs remain retryable");
 			s.capability_task = None;
+		});
+	}
+
+	#[gpui::test]
+	fn startup_retries_missing_models_without_opening_the_picker(cx: &mut gpui::TestAppContext) {
+		let surface = cx.new(AgentSurface::new);
+		let (_root, profile, server) =
+			crate::shell::agent_surface::wire_test_support::fixture(|_| async {});
+		server.join().unwrap();
+		surface.update(cx, |s, cx| {
+			s.visual_ragflow_settings(cx);
+			s.cwd.update(cx, |input, cx| input.set_content("/tmp", cx));
+			s.profile = Some(profile);
+			s.capabilities_context = s.catalog_context(cx);
+			for result in [
+				Some(AgentCapabilitiesResult::Unavailable),
+				Some(AgentCapabilitiesResult::Available { models: vec![], memory_enabled: None }),
+				None,
+			] {
+				s.capabilities = result;
+				s.capabilities_checked = Some(std::time::Instant::now());
+				let generation = s.capability_generation;
+				let snapshot = s.snapshot.clone().unwrap();
+				s.finish_snapshot_refresh(
+					Ok(decodex_protocol::AgentSnapshotResult::Available(snapshot.clone())),
+					cx,
+				);
+				assert_eq!(s.capability_generation, generation, "do not retry on every poll");
+				s.capabilities_checked =
+					Some(std::time::Instant::now() - std::time::Duration::from_secs(2));
+				s.finish_snapshot_refresh(
+					Ok(decodex_protocol::AgentSnapshotResult::Available(snapshot)),
+					cx,
+				);
+				assert_eq!(s.capability_generation, generation + 1);
+				assert!(s.capability_task.is_some());
+				assert!(s.composer_menu.is_none());
+				s.capability_task = None;
+			}
 		});
 	}
 
@@ -563,9 +651,9 @@ mod tests {
 		assert!(visual.debug_bounds("tier-inherited").is_none());
 		assert!(visual.debug_bounds("tier-default").is_some());
 		assert!(visual.debug_bounds("tier-ultrafast").is_some());
-		if surface.read_with(visual, |s, _| s.composer_service_tier().is_none()) {
-			assert!(visual.debug_bounds("service-tier-picker-thumb").is_none());
-		}
+		let standard = visual.debug_bounds("tier-default").unwrap();
+		let selection = visual.debug_bounds("service-tier-picker-thumb").unwrap();
+		assert!(standard.contains(&selection.center()), "an absent record selects Standard");
 
 		let bounds = visual.debug_bounds("tier-priority").expect("Fast tier visible");
 
@@ -578,7 +666,7 @@ mod tests {
 		assert!(visual.debug_bounds("model-speed-fallback-note").is_some());
 		surface.update(visual, |s, cx| {
 			assert_eq!(s.composer_service_tier().unwrap().as_str(), "ultrafast");
-			assert_eq!(s.composer_speed_label(cx), "Fast");
+			assert_eq!(s.composer_speed_label(cx), "Standard");
 			assert!(s.composer_capability_error(cx).is_none());
 			s.composer_menu = None;
 			s.composer_menu_content = None;

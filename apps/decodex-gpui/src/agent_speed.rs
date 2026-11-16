@@ -30,11 +30,13 @@ impl Selection {
 
 impl AgentSurface {
 	pub(super) fn composer_speed(&self, cx: &Context<Self>) -> Option<Selection> {
-		Some(Selection::resolve(self.composer_service_tier()?, self.selected_model(cx)))
+		let model = self.selected_model(cx);
+		let requested = self.composer_service_tier().unwrap_or_else(ServiceTier::standard);
+		Some(Selection::resolve(requested, model))
 	}
 
-	/// Keep the preference through acceptance. The admitted runtime resolves the per-turn
-	/// tier after account selection, without replacing the native conversation preference.
+	/// Replace an unsupported speed with its catalog default for the next message, then
+	/// retain that choice so an older native observation cannot restore the removed speed.
 	pub(super) fn prepare_submission_speed(
 		&mut self,
 		action: &mut AgentActionDto,
@@ -55,6 +57,7 @@ impl AgentSurface {
 		if current.as_deref() != Some(owner.as_str()) {
 			return (self.draft_profiles.execution.capture(action), None);
 		}
+		self.remember_composer_execution(cx);
 		let requested = execution.selected_service_tier().or_else(|| self.composer_service_tier());
 		let Some(selection) = requested
 			.map(|tier| Selection::resolve(tier, self.selected_model(cx)))
@@ -64,14 +67,14 @@ impl AgentSurface {
 		};
 		let owner = owner.as_str().to_owned();
 		if self.draft_profiles.execution.choice(&owner).selected_service_tier()
-			!= Some(selection.requested.clone())
+			!= Some(selection.effective.clone())
 		{
 			self.draft_profiles.execution.change(owner, |choice| {
-				choice.service_tier = Some(selection.requested.clone());
+				choice.service_tier = Some(selection.effective.clone());
 			});
 		}
-		execution.service_tier = Some(selection.requested.clone());
+		execution.service_tier = Some(selection.effective.clone());
 		let captured = self.draft_profiles.execution.capture(action);
-		(captured, Some(selection.requested))
+		(captured, Some(selection.effective))
 	}
 }

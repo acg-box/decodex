@@ -1,13 +1,14 @@
 //! A keyboard cue after the last line of a full-width suggestion.
+use crate::ui_motion::HoverHint as _;
 use gpui::{
-	AnyElement, App, AppContext as _, AvailableSpace, Context, Entity, InteractiveElement,
-	IntoElement, KeyDownEvent, MouseButton, ParentElement, Pixels, Point, Render, Role,
-	SharedString, Size, StatefulInteractiveElement, Styled, WeakEntity, Window,
+	AnyElement, App, AvailableSpace, Entity, InteractiveElement, IntoElement, KeyDownEvent,
+	MouseButton, ParentElement, Pixels, Point, Role, SharedString, Size,
+	StatefulInteractiveElement, Styled, WeakEntity, Window,
 };
 
 use crate::{
 	composer_input::{ComposerEvent, ComposerInput},
-	ui_loading, ui_motion,
+	ui_loading,
 	ui_theme::{self, BODY_LINE_HEIGHT, METADATA_GAP},
 	workspace_symbols::{self, Symbol},
 };
@@ -142,7 +143,7 @@ fn button(
 				cx.stop_propagation();
 			}
 		})
-		.tooltip(move |_, cx| cx.new(|_| HintTip(label)).into())
+		.hover_hint(label)
 		.child(child)
 		.into_any_element()
 }
@@ -158,12 +159,5 @@ fn emit(
 		super::claim_native_text_focus(window);
 		window.focus(&input.read(cx).focus_handle.clone(), cx);
 		input.update(cx, |_, cx| cx.emit(event));
-	}
-}
-
-struct HintTip(&'static str);
-impl Render for HintTip {
-	fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-		ui_motion::tooltip_surface(gpui::div()).child(self.0)
 	}
 }

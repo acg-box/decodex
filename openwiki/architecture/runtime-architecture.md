@@ -178,10 +178,10 @@ sources:
     resource: repo://scripts/macos/stage_decodex_app.sh
   - id: openwiki-source-76081c1a47ca8cf32593de34
     resource: repo://scripts/macos/test_decodex_app_stage.sh
-generated: { by: "codex", at: "2026-11-07T06:35:26.732Z" }
+generated: { by: "codex", at: "2026-11-13T15:58:52.308Z" }
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-07T06:35:26.732Z
+    at: 2026-11-13T15:58:52.308Z
 ---
 
 # Runtime Architecture
@@ -233,7 +233,7 @@ Project and Work are durable business records. A persistent Agent owns one curre
 
 The first actual user input can initialize an independent Agent without an Assistant. Native thread metadata is materialized before Project reconciliation. Every independent conversation must attach to the exact process that created or resumed its native thread; a shared account process does not make one Agent the parent of another.
 
-An idle Assistant can exist before its first native context. Startup skips roots with no saved execution settings, native context or pending first user input. This avoids a configuration error for an unused Assistant and lets a later project conversation initialize from its own first input. Draft-only snapshots do not require a native archive observation. Retained native contexts still require a valid restore and archive view before the service presents them as active.
+An idle Assistant can exist before its first native context. Startup first selects a root with saved execution settings for the shared process connection. Independent chats, including Live-only native threads, do not replace that connection owner or require a duplicate root configuration. If no configured root exists, a pending first input can initialize one. Startup skips an unused Assistant. This avoids a configuration error and lets a later project conversation initialize from its own first input without replaying an admitted native effect. Draft-only snapshots do not require a native archive observation. Retained native contexts still require a valid restore and archive view before the service presents them as active.
 
 The overview contains Work headers. `work_portfolio` serves selected evidence in digest-checked 8 KiB pages with a 32 MiB ceiling. SQL applies Agent and granted Material scope before the per-category record limit. Guardian observes optional native review records without overriding conversation permissions or business assessment. Private records exclude raw reasoning and preserve explicit missing action associations.
 
@@ -357,9 +357,9 @@ Production staging selects a separate official Release requirement. Release pinn
 
 ## Protocol and safety
 
-The development app uses one current state contract: SQLite schema 61, desktop draft format 12 and local protocol 4.8. Execution settings carry one exact `service_tier`; per-turn commands require explicit override intent. There is no old boolean speed mirror or format upgrade chain. Existing personal development data can be converted directly while the app is stopped, after a private backup; this is an operator action outside the application.
+The development app uses one current state contract: SQLite schema 61, desktop draft format 12 and local protocol 4.9. Execution settings carry one exact `service_tier`; per-turn commands require explicit override intent. There is no old boolean speed mirror or format upgrade chain. Existing personal development data can be converted directly while the app is stopped, after a private backup; this is an operator action outside the application.
 
-Clients use same-UID local transport and exact protocol/artifact compatibility. Protocol 4.8 exposes current Project, Agent, Work, Guardian and attached-branch operations. An incompatible client fails explicitly; there is no parallel alias rollout. Publication-instance receipts remain enabled for this generation, including reconnect and idempotent command recovery. Credentials do not enter normal product projections. Revisions and stable command identities guard mutations. An unknown outcome requires authoritative readback, not blind retry.
+Clients use same-UID local transport and exact protocol/artifact compatibility. Protocol 4.9 exposes current Project, Agent, Work, Guardian and attached-branch operations. An incompatible client fails explicitly; there is no parallel alias rollout. Publication-instance receipts remain enabled for this generation, including reconnect and idempotent command recovery. Credentials do not enter normal product projections. Revisions and stable command identities guard mutations. An unknown outcome requires authoritative readback, not blind retry.
 
 Diagnostics covers Decodex product storage, local transport and integration failures. The standalone Codex startup-configuration check, its local query and its dedicated qualification helper are retired. Codex owns its app-server self-diagnostics. Ordinary error and warning presentation and user-requested conversation Markdown export remain supported. This retirement does not qualify an installed protocol 4.0 application against the current service.
 

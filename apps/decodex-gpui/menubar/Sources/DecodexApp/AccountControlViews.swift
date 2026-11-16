@@ -226,7 +226,7 @@ private struct CompactAccountActionButton: View {
 		.animation(controlStateAnimation, value: isActive)
 		.animation(controlStateAnimation, value: isConfirming)
 		.animation(controlStateAnimation, value: hovered)
-		.help(help)
+		.hoverHint(help)
 		.accessibilityLabel(title)
 		.accessibilityValue(isConfirming ? "Confirmation required" : (isBusy ? "In progress" : (isActive ? "Selected" : "")))
 	}

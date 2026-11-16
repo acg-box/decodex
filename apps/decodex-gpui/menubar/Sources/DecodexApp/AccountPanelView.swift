@@ -250,7 +250,7 @@ struct AccountPanelView: View {
 			.menuStyle(.borderlessButton)
 			.menuIndicator(.hidden)
 			.fixedSize()
-			.help("Decodex menu")
+			.hoverHint("Decodex menu")
 			.accessibilityLabel("Decodex menu")
 		}
 	}

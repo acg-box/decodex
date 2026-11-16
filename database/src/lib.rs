@@ -39,6 +39,7 @@ mod agent_titles;
 mod agent_turn_execution;
 mod agent_voice;
 mod agent_voice_history;
+mod agent_voice_presentation;
 mod assistant;
 mod command;
 mod continuations;
@@ -115,6 +116,7 @@ pub use self::{
 		AgentVoiceHistory, AgentVoiceHistoryRevision, AgentVoiceTranscript,
 		AgentVoiceTranscriptCall,
 	},
+	agent_voice_presentation::AgentVoicePresentation,
 	command::CommandIdentity,
 	continuations::{
 		ContextPackRecord, ContinuationPlanEffect, PlanContinuation, PlanInitialThreadContinuation,

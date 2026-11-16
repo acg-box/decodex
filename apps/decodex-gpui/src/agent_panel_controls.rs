@@ -1,6 +1,7 @@
 //! Shared, borderless controls for expanding and closing workspace panes.
+use crate::ui_motion::HoverHint as _;
 use gpui::{
-	AnyElement, AppContext as _, KeyDownEvent,
+	AnyElement, KeyDownEvent,
 	prelude::{
 		FluentBuilder as _, InteractiveElement as _, IntoElement as _, ParentElement as _,
 		StatefulInteractiveElement as _, Styled as _,
@@ -9,7 +10,6 @@ use gpui::{
 
 use crate::{
 	shell::{
-		ControlTooltip,
 		agent_surface::{AgentSurface, Context, Role, workspace},
 		workspace_symbols::{self, Symbol},
 	},
@@ -98,7 +98,7 @@ impl AgentSurface {
 			.tab_index(0)
 			.aria_label(label)
 			.when_some(expanded, |button, value| button.aria_expanded(value))
-			.tooltip(move |_, cx| cx.new(|_| ControlTooltip(label)).into())
+			.hover_hint(label)
 			.size(gpui::px(CHROME_CONTROL_SIZE))
 			.flex_none()
 			.flex()

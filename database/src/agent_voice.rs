@@ -27,6 +27,9 @@ impl SqliteStore {
 		if !["user", "assistant"].contains(&role.as_str()) || text.len() > 32_768 {
 			return Err(StoreError::InvalidInput("invalid voice transcript"));
 		}
+		if text.trim().is_empty() {
+			return Ok(());
+		}
 
 		self.run(move |connection| {
             let work:String=connection.query_row("SELECT work_id FROM agent_voice_calls WHERE session_id=?1",[&session],|r|r.get(0)).map_err(sqlite_error)?;
@@ -71,10 +74,11 @@ impl SqliteStore {
 	}
 
 	/// End the media authorization after native stop or positive process death.
-	/// Already-started task ownership remains intact.
+	/// Discard calls with no transcript. Already-started task ownership remains intact.
 	pub async fn close_agent_voice_call(&self, session_id: String) -> Result<(), StoreError> {
 		self.run(move |connection| {
-			let changed = connection
+			let tx = connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(sqlite_error)?;
+			let changed = tx
 				.execute(
 					"UPDATE agent_voice_calls SET closed_at_micros=max(created_at_micros,?2)
                 WHERE session_id=?1 AND closed_at_micros IS NULL",
@@ -85,6 +89,17 @@ impl SqliteStore {
 			if changed > 1 {
 				return Err(DatabaseError::Conflict.into());
 			}
+
+			tx.execute(
+				"DELETE FROM agent_voice_calls WHERE session_id=?1 AND closed_at_micros IS NOT NULL
+                AND NOT EXISTS(SELECT 1 FROM agent_inbox_events e
+                    WHERE e.work_item_id=agent_voice_calls.work_id AND e.event_kind IN ('voice_user','voice_assistant')
+                    AND CASE WHEN json_valid(e.source_event_id) THEN
+                        CASE WHEN json_extract(e.source_event_id,'$[0]')='voice_transcript'
+                        THEN json_extract(e.source_event_id,'$[1]') END END=?1)",
+				[session_id],
+			).map_err(sqlite_error)?;
+			tx.commit().map_err(sqlite_error)?;
 
 			Ok(())
 		})

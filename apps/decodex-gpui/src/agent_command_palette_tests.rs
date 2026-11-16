@@ -176,12 +176,12 @@ fn search_reveals_pinned_topics_and_project_agents_without_losing_drafts(
 		s.composer.update(cx, |input, cx| input.set_content("Keep the original draft", cx));
 	});
 	for (query, id, section) in [
-		("Weekly priorities 1", "personal-topic-0", "pin"),
+		("Weekly priorities 1", "personal-topic-0", "assistant"),
 		("Review next steps Observability", "navigation-project-11-agent-0", "projects"),
 	] {
 		visual.update(|window, cx| {
 			surface.update(cx, |s, cx| {
-				s.workspace.navigation.collapsed.insert(section);
+				s.workspace.navigation.collapsed.insert(Section::Projects.key());
 				s.workspace.navigation.projects.clear();
 				s.open_global_commands(window, cx);
 			})

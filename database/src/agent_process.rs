@@ -1316,6 +1316,16 @@ mod tests {
 				.unwrap()
 		);
 
+		store
+			.record_agent_voice_transcript(
+				"voice-1".into(),
+				1,
+				"user".into(),
+				"A spoken request".into(),
+				true,
+			)
+			.await
+			.unwrap();
 		store.close_agent_voice_call("voice-1".into()).await.unwrap();
 
 		assert_eq!(
@@ -1339,17 +1349,6 @@ mod tests {
 			store.get_agent_work_item("root".into()).await.unwrap().dispatch_state,
 			AgentDispatchState::Idle
 		);
-
-		store
-			.record_agent_voice_transcript(
-				"voice-1".into(),
-				1,
-				"user".into(),
-				"A spoken request".into(),
-				true,
-			)
-			.await
-			.unwrap();
 
 		assert!(store.list_agent_wake_events("root".into(), 100).await.unwrap().is_empty());
 
@@ -1408,6 +1407,16 @@ mod tests {
 			next.session_id = format!("voice-{index}");
 
 			store.begin_agent_voice_call(next.clone()).await.unwrap();
+			store
+				.record_agent_voice_transcript(
+					next.session_id.clone(),
+					1,
+					"user".into(),
+					format!("Spoken request {index}"),
+					true,
+				)
+				.await
+				.unwrap();
 			store.close_agent_voice_call(next.session_id.clone()).await.unwrap();
 		}
 
@@ -1419,6 +1428,49 @@ mod tests {
 		assert_eq!(bounded.calls[7].session_id, "voice-10");
 		assert!(bounded.truncated);
 		assert_eq!(bounded.revision.open_calls, 0);
+	}
+
+	#[tokio::test]
+	async fn ended_empty_voice_calls_are_discarded_without_losing_active_authorization() {
+		let directory = tempfile::tempdir().unwrap();
+		let path = directory.path().join("empty-voice.sqlite3");
+		let store = SqliteStore::open_test(&path).unwrap();
+
+		seed(&store).await;
+		prepare_voice_process(&store).await;
+
+		for (index, text) in ["", " \n\t", "\u{3000}"].into_iter().enumerate() {
+			let session = format!("empty-{index}");
+			store
+				.begin_agent_voice_call(crate::AgentVoiceCall {
+					session_id: session.clone(),
+					work_id: "root".into(),
+					thread_id: "voice-thread".into(),
+					generation_id: generation_id(1).as_str().into(),
+					baseline_turn_id: None,
+				})
+				.await
+				.unwrap();
+
+			assert_eq!(store.open_agent_voice_calls().await.unwrap().len(), 1);
+			store
+				.record_agent_voice_transcript(session.clone(), 1, "user".into(), text.into(), true)
+				.await
+				.unwrap();
+			store.close_agent_voice_call(session.clone()).await.unwrap();
+			store.close_agent_voice_call(session).await.unwrap();
+		}
+
+		drop(store);
+
+		let reopened = SqliteStore::open_test(&path).unwrap();
+		let history =
+			reopened.read_agent_voice_history("root".into(), "voice-thread".into()).await.unwrap();
+
+		assert_eq!(history.revision.calls, 0);
+		assert_eq!(history.revision.last_event, 0);
+		assert!(history.calls.is_empty());
+		assert!(reopened.open_agent_voice_calls().await.unwrap().is_empty());
 	}
 
 	async fn prepare_voice_process(store: &SqliteStore) {

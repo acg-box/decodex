@@ -1,4 +1,5 @@
 //! Conversation-local tabs reuse retained native attachments and ordinary page navigation.
+use crate::ui_motion::HoverHint as _;
 use gpui::{AnyElement, ClickEvent, KeyDownEvent, Role, SharedString, prelude::*};
 
 use super::{Panel, PromptForkPhase};
@@ -260,12 +261,7 @@ impl AgentSurface {
 			.debug_selector(|| "new-side-chat".into())
 			.role(Role::Button)
 			.aria_label("New side chat")
-			.tooltip(|_, cx| {
-				cx.new(|_| {
-					crate::shell::agent_surface::composer::ComposerTip("New side chat".into())
-				})
-				.into()
-			})
+			.hover_hint("New side chat")
 			.tab_index(if ready { 0 } else { -1 })
 			.size(gpui::px(25.))
 			.flex_none()

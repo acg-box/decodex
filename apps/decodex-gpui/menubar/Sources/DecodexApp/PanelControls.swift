@@ -43,7 +43,7 @@ struct PanelIconButtonView: View {
 		.disabled(isDisabled)
 		.animation(controlStateAnimation, value: symbol)
 		.animation(controlStateAnimation, value: isActive)
-		.help(help)
+		.hoverHint(help)
 		.accessibilityLabel(help)
 	}
 

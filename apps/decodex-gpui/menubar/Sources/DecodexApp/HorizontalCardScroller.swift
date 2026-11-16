@@ -144,13 +144,13 @@ final class CardScrollerView<Content: View>: NSView {
 
 	required init?(coder: NSCoder) { nil }
 
-	private func configure(_ button: NSButton, symbol: String, label: String, action: Selector) {
+	private func configure(_ button: CardArrowButton, symbol: String, label: String, action: Selector) {
 		button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: label)
 		button.imagePosition = .imageOnly
 		button.isBordered = false
 		button.controlSize = .mini
 		button.setAccessibilityLabel(label)
-		button.toolTip = label
+		button.hintText = label
 		button.target = self
 		button.action = action
 		addSubview(button)
@@ -183,6 +183,7 @@ final class CardScrollerView<Content: View>: NSView {
 }
 
 final class CardArrowButton: NSButton {
+	var hintText: String?
 	private var hovered = false
 	private var pressed = false
 	private var hoverTracking: NSTrackingArea?
@@ -195,14 +196,20 @@ final class CardArrowButton: NSButton {
 		hoverTracking = tracking
 	}
 
-	override func mouseEntered(with event: NSEvent) { hovered = true; updateAppearance() }
-	override func mouseExited(with event: NSEvent) { hovered = false; updateAppearance() }
+	override func mouseEntered(with event: NSEvent) { hovered = true; updateAppearance(); if isEnabled { HoverHint.shared.schedule(owner: self, text: hintText) } }
+	override func mouseExited(with event: NSEvent) { hovered = false; updateAppearance(); HoverHint.shared.hide(owner: self) }
 	override func mouseDown(with event: NSEvent) {
+		HoverHint.shared.hide(owner: self)
 		pressed = true
 		updateAppearance()
 		super.mouseDown(with: event)
 		pressed = false
 		updateAppearance()
+	}
+
+	override func viewDidMoveToWindow() {
+		super.viewDidMoveToWindow()
+		if window == nil { HoverHint.shared.hide(owner: self) }
 	}
 
 	override var isEnabled: Bool { didSet { if oldValue != isEnabled { updateAppearance() } } }

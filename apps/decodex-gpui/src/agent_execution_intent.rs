@@ -113,12 +113,13 @@ impl AgentSurface {
 			self.apply_creation_defaults(cx);
 		}
 
-		let Some(owner) = self.composer_manager.clone().or_else(|| self.root_id()) else { return };
-		let effort = self.effort.clone();
-
-		self.draft_profiles
-			.execution
-			.change(owner, |choice| choice.reasoning_effort = Some(effort));
+		if let Some(owner) = self.composer_manager.clone().or_else(|| self.root_id()) {
+			let effort = self.effort.clone();
+			self.draft_profiles
+				.execution
+				.change(owner, |choice| choice.reasoning_effort = Some(effort));
+		}
+		self.remember_composer_execution(cx);
 	}
 
 	pub(super) fn mark_tier_intent(&mut self) {

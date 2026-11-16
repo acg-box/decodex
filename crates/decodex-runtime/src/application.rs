@@ -440,6 +440,8 @@ impl ServiceApplication {
 
 		if let Some(agent) = &self.agent {
 			agent.enrich_weather(work, &mut history).await;
+			agent.enrich_voice_history(work, &mut history).await;
+			agent.enrich_history_spend(work, &mut history).await;
 		}
 
 		QueryResultPayload::AgentHistory(history)
@@ -4931,6 +4933,7 @@ fn agent_history_receipt(
 	}
 
 	Some(decodex_protocol::AgentHistoryReceiptDto {
+		voice: None,
 		unsent_reason: event.disposition_note.clone().filter(|_| {
 			event.event_kind == "user_message"
 				&& event.disposition == Some(AgentDisposition::UserDecision)
@@ -5833,11 +5836,28 @@ async fn query_agent_snapshot(store: &ProductStore) -> decodex_protocol::AgentSn
 			pending_events: counts.2,
 		};
 	}
-	if snapshot.is_valid() {
-		decodex_protocol::AgentSnapshotResult::Available(snapshot)
-	} else {
-		decodex_protocol::AgentSnapshotResult::Unavailable
+	match project_started_conversations(store, snapshot).await {
+		Some(snapshot) => decodex_protocol::AgentSnapshotResult::Available(snapshot),
+		None => decodex_protocol::AgentSnapshotResult::Unavailable,
 	}
+}
+
+async fn project_started_conversations(
+	store: &SqliteStore,
+	mut snapshot: AgentSnapshotDto,
+) -> Option<AgentSnapshotDto> {
+	let drafts = store.unpublished_agent_conversation_drafts().await.ok()?;
+	snapshot.work_items.retain(|work| !drafts.contains(&work.id));
+	snapshot.pending_events.retain(|event| !drafts.contains(&event.work_item_id));
+	snapshot.conversation_titles.retain(|thread, _| {
+		snapshot.work_items.iter().any(|work| work.codex_thread_id.as_ref() == Some(thread))
+	});
+	snapshot.agents.retain(|agent| !drafts.contains(&agent.id));
+	snapshot.assistant.topic_ids.retain(|id| !drafts.contains(id));
+	for project in &mut snapshot.projects {
+		project.agent_ids.retain(|id| !drafts.contains(id));
+	}
+	snapshot.is_valid().then_some(snapshot)
 }
 
 async fn query_agent_context_references(
@@ -6656,6 +6676,57 @@ mod tests {
 			}),
 		);
 		assert_eq!(application::decode_account_command_receipt(encoded), Ok(Err(error)));
+	}
+
+	#[tokio::test]
+	async fn voice_draft_projection_waits_for_content_and_keeps_the_assistant_identity() {
+		let directory = tempfile::tempdir().unwrap();
+		let root = DecodexRoot::new(directory.path().canonicalize().unwrap()).unwrap();
+		let store = SqliteStore::open(&root.paths()).unwrap();
+		let owner = ProductStore::Available(store.clone());
+		store
+			.create_assistant(
+				crate::agent::AgentCoordinator::new_conversation_work("assistant").unwrap(),
+			)
+			.await
+			.unwrap();
+		store
+			.reserve_agent_voice_draft(
+				crate::agent::AgentCoordinator::new_conversation_work("draft").unwrap(),
+				None,
+				Some("assistant".into()),
+			)
+			.await
+			.unwrap();
+		let decodex_protocol::AgentSnapshotResult::Available(snapshot) =
+			super::query_agent_snapshot(&owner).await
+		else {
+			panic!("draft snapshot")
+		};
+		assert!(snapshot.is_valid());
+		assert_eq!(snapshot.assistant.agent_id.as_deref(), Some("assistant"));
+		assert!(snapshot.assistant.topic_ids.is_empty());
+		assert_eq!(
+			snapshot.work_items.iter().map(|work| work.id.as_str()).collect::<Vec<_>>(),
+			["assistant"]
+		);
+		store
+			.enqueue_agent_event(EnqueueAgentEvent {
+				source_event_id: "first".into(),
+				work_item_id: "draft".into(),
+				event_kind: "user_message".into(),
+				payload: "{\"text\":\"First content\"}".into(),
+			})
+			.await
+			.unwrap();
+		let decodex_protocol::AgentSnapshotResult::Available(snapshot) =
+			super::query_agent_snapshot(&owner).await
+		else {
+			panic!("saved snapshot")
+		};
+		assert!(snapshot.is_valid());
+		assert_eq!(snapshot.assistant.topic_ids, ["draft"]);
+		assert!(snapshot.work_items.iter().any(|work| work.id == "draft"));
 	}
 
 	#[tokio::test]

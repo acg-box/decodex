@@ -13,6 +13,7 @@ use decodex_protocol::{InitialExecutionDefaults, InitialModelCatalogResult, Serv
 impl AgentSurface {
 	pub(super) fn uses_initial_model_defaults(&self) -> bool {
 		self.is_new_conversation()
+			|| self.composer_reports_no_model()
 			|| self
 				.composer_manager
 				.as_deref()
@@ -23,7 +24,8 @@ impl AgentSurface {
 
 	pub(super) fn creation_defaults_need_refresh(&self, cx: &Context<Self>) -> bool {
 		if (!self.is_new_conversation()
-			&& (self.root_id().is_some() || self.composer_manager.is_some()))
+			&& (self.root_id().is_some() || self.composer_manager.is_some())
+			&& !self.composer_needs_model_default(cx))
 			|| (self.creation_intent.model
 				&& self.creation_intent.reasoning
 				&& self.creation_intent.service_tier)
@@ -58,10 +60,14 @@ impl AgentSurface {
 	}
 
 	pub(super) fn apply_creation_defaults(&mut self, cx: &mut Context<Self>) {
+		let missing_native_model = self.composer_needs_model_default(cx);
+		let owner =
+			self.composer_manager.clone().or(self.selected.clone()).or_else(|| self.root_id());
 		if self.sending
 			|| self.uncertain
 			|| (!self.uses_initial_model_defaults()
-				&& (self.root_id().is_some() || self.composer_manager.is_some()))
+				&& (self.root_id().is_some() || self.composer_manager.is_some())
+				&& !missing_native_model)
 			|| self.current_model_catalog(cx).is_none()
 		{
 			return;
@@ -86,16 +92,30 @@ impl AgentSurface {
 		{
 			return;
 		}
+		let current = self.composer_execution_defaults(cx);
+		let retained = !self.uses_initial_model_defaults() && current.model.is_some();
+		let pending = owner
+			.as_deref()
+			.map(|owner| self.draft_profiles.execution.choice(owner))
+			.unwrap_or_default();
+		let mut intent = self.creation_intent.clone();
+		intent.model |= pending.model.is_some() || retained;
+		intent.reasoning |= pending.reasoning_effort.is_some() || retained;
+		intent.service_tier |= pending.service_tier.is_some() || retained;
 
 		let selected = creation_defaults::resolve(
 			defaults,
-			&self.creation_intent,
+			&intent,
 			InitialExecutionDefaults {
-				model: ConversationModel::new(self.model.read(cx).content()).ok(),
-				reasoning_effort: self.creation_effort(),
-				service_tier: self.service_tier.clone().or_else(|| Some(ServiceTier::standard())),
+				model: pending.model.or(current.model),
+				reasoning_effort: pending.reasoning_effort.or(current.reasoning_effort),
+				service_tier: pending
+					.service_tier
+					.or(current.service_tier)
+					.or_else(|| Some(ServiceTier::standard())),
 			},
 			models,
+			&crate::session_settings::Defaults::load().last_execution(),
 		);
 
 		self.creation_defaults_applied = true;
@@ -115,6 +135,19 @@ impl AgentSurface {
 
 		self.service_tier = selected.service_tier;
 		self.creation_setup_present = true;
+
+		// Retain the resolved group for this editor without starting a turn.
+		if let Some(owner) = owner {
+			let execution = decodex_protocol::AgentExecutionOverrides {
+				model: ConversationModel::new(self.model.read(cx).content()).ok(),
+				reasoning_effort: self.creation_effort(),
+				service_tier: self.service_tier.clone(),
+				permission_mode: pending.permission_mode,
+			};
+			if self.draft_profiles.execution.choice(&owner) != execution {
+				self.draft_profiles.execution.change(owner, |choice| *choice = execution);
+			}
+		}
 	}
 }
 
@@ -195,13 +228,15 @@ mod tests {
 			s.apply_creation_defaults(cx);
 
 			assert!(!s.creation_defaults_need_refresh(cx));
-			assert_eq!(s.model.read(cx).content(), "managed");
+			assert_eq!(s.model.read(cx).content(), "catalog");
 			assert_eq!(s.composer.read(cx).content(), "Keep this unsent request");
 		});
 	}
 
 	#[gpui::test]
-	fn managed_pair_opts_out_per_field_and_survives_draft_restore(cx: &mut gpui::TestAppContext) {
+	fn latest_model_preserves_field_choices_and_survives_draft_restore(
+		cx: &mut gpui::TestAppContext,
+	) {
 		let surface = cx.new(AgentSurface::new);
 		let saved = surface.update(cx, |s, cx| {
 			s.cwd.update(cx, |input, cx| input.set_content("/tmp", cx));
@@ -220,16 +255,16 @@ mod tests {
 
 			s.apply_creation_defaults(cx);
 
-			assert_eq!(s.model.read(cx).content(), "managed");
+			assert_eq!(s.model.read(cx).content(), "catalog");
 			assert_eq!(s.creation_effort(), Some(ConversationReasoningEffort::Low));
 			assert!(!s.creation_intent.model && !s.creation_intent.reasoning);
 
-			// Selecting effort opts out of the managed model, not just managed effort.
+			// An effort selection keeps the current default model.
 			s.effort = ConversationReasoningEffort::High;
 
 			s.mark_effort_intent(cx);
 
-			assert_eq!(s.model.read(cx).content(), "project");
+			assert_eq!(s.model.read(cx).content(), "catalog");
 			assert_eq!(s.creation_effort(), Some(ConversationReasoningEffort::High));
 			assert_eq!(s.service_tier.as_ref().unwrap().as_str(), "priority");
 			assert!(!s.creation_intent.model && s.creation_intent.reasoning);
@@ -289,6 +324,7 @@ mod tests {
 				service_tier: None,
 			},
 			&[],
+			&Default::default(),
 		);
 
 		assert_eq!(selected.model.unwrap().as_str(), "chosen");

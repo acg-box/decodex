@@ -1,9 +1,10 @@
 //! Conversation-first desktop presentation. All displayed work comes from the service.
+use crate::ui_motion::HoverHint as _;
 use std::{mem, rc::Rc};
 
 use gpui::{
-	AnyElement, App, AppContext as _, Bounds, DispatchPhase, Div, KeyDownEvent, MouseButton,
-	MouseDownEvent, MouseMoveEvent, PathBuilder, Pixels, Point, ScrollEvent, Stateful,
+	AnyElement, App, Bounds, DispatchPhase, Div, KeyDownEvent, MouseButton, MouseDownEvent,
+	MouseMoveEvent, PathBuilder, Pixels, Point, ScrollEvent, Stateful,
 };
 use graph::{Layout, Node};
 use ui_theme::{
@@ -22,7 +23,7 @@ use crate::{
 		Shell, WINDOW_CONTROLS_CLEARANCE,
 		agent_surface::{
 			AgentDispatchStateDto, AgentHistoryResult, AgentSurface, AgentWorkItemDto, Context,
-			FluentBuilder, InteractiveElement, IntoElement, LoadState, ParentElement, Render, Role,
+			FluentBuilder, InteractiveElement, IntoElement, LoadState, ParentElement, Role,
 			SharedString, StatefulInteractiveElement, Styled, SubmitComposer, Window,
 			activity::HistoryScrollAnchor,
 			dock, graph,
@@ -62,13 +63,6 @@ pub(super) struct PageView {
 	selected: Option<String>,
 	pan: (f32, f32),
 	zoom: f32,
-}
-
-struct PanelTip(String);
-impl Render for PanelTip {
-	fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-		ui_motion::tooltip_surface(gpui::div()).child(self.0.clone())
-	}
 }
 
 impl AgentSurface {
@@ -435,7 +429,7 @@ impl AgentSurface {
 		let icon = action_icon(&id);
 		let restores_focus = id.starts_with("graph-usage-");
 		let icon_only = icon.is_some();
-		let show_tip = is_tab || icon_only || id.starts_with("attention-");
+		let show_tip = icon_only;
 		let tip = accessible.clone();
 		let action = Rc::new(action);
 		let keyboard = action.clone();
@@ -450,9 +444,7 @@ impl AgentSurface {
 			.when(active && !is_tab, |row| row.bg(ui_theme::rgba(SELECTED_FILL)))
 			.tab_index(0)
 			.aria_label(accessible)
-			.when(show_tip, |button| {
-				button.tooltip(move |_, cx| cx.new(|_| PanelTip(tip.clone())).into())
-			})
+			.when(show_tip, |button| button.hover_hint(tip.clone()))
 			.px_2()
 			.py_1()
 			.flex()
@@ -2024,7 +2016,7 @@ impl AgentSurface {
 		let state = dock::progress_state(self.snapshot.as_ref().expect("graph snapshot"), work);
 		let status = self.graph_node_caption(work);
 		let color = state.color;
-		let tip = format!("{} ({})\n{}", self.work_label(work), status, state.reason);
+		let tip = state.reason.to_owned();
 		let element = gpui::div()
 			.id(SharedString::from(format!("graph-node-{id}")))
 			.role(Role::Button)
@@ -2035,7 +2027,7 @@ impl AgentSurface {
 
 				move || format!("graph-node-{key}")
 			})
-			.tooltip(move |_, cx| cx.new(|_| PanelTip(tip.clone())).into())
+			.when(tip != status && !tip.is_empty(), |node| node.hover_hint(tip.clone()))
 			.absolute()
 			.left(gpui::px(node.x * zoom + pan.0))
 			.top(gpui::px(node.y * zoom + pan.1))
@@ -2833,12 +2825,12 @@ fn action_icon(id: &str) -> Option<AnyElement> {
 mod tests {
 	use std::thread;
 
-	use gpui::{AppContext as _, Focusable as _, prelude::InteractiveElement as _};
+	use gpui::{AppContext as _, Focusable as _, Render, prelude::InteractiveElement as _};
 
 	use crate::{
 		shell::agent_surface::workspace::{
 			AgentHistoryResult, AgentSurface, Context, ConversationWorkingDirectory, IntoElement,
-			LoadState, Render, Window, graph,
+			LoadState, Window, graph,
 		},
 		ui_frame,
 	};
@@ -3265,6 +3257,7 @@ mod tests {
 					entry.kind = if id % 2 == 1 { "user" } else { "assistant" }.into();
 					entry.text = "Saved speech".into();
 					entry.receipt = Some(decodex_protocol::AgentHistoryReceiptDto {
+						voice: None,
 						unsent_reason: None,
 						voice_session_id: Some(if id < 3 { "first" } else { "second" }.into()),
 						event_kind: format!("voice_{}", entry.kind),

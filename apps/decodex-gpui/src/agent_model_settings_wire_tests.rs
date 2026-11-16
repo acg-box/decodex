@@ -95,6 +95,124 @@ fn repeated_model_observations_only_invalidate_changed_values() {
 }
 
 #[gpui::test]
+fn restored_topic_reads_its_last_model_without_replacing_the_draft(cx: &mut TestAppContext) {
+	let surface = cx.new(AgentSurface::new);
+	surface.update(cx, |s, cx| {
+		let mut snapshot = snapshot();
+		snapshot.work_items[0].codex_thread_id = None;
+		let mut topic = work();
+		topic.id = "topic".into();
+		topic.codex_thread_id = Some("topic-thread".into());
+		snapshot.work_items.push(topic);
+		s.selected = Some("topic".into());
+		s.composer.update(cx, |input, cx| input.set_content("Keep my draft", cx));
+
+		s.apply_refreshed_snapshot(Ok(AgentSnapshotResult::Available(snapshot)), cx);
+
+		assert_eq!(s.composer_manager.as_deref(), Some("topic"));
+		s.model_settings.observe(
+			"topic".into(),
+			AgentModelSettingsResult::Available {
+				work_id: EntityId::new("topic").unwrap(),
+				thread_id: EntityId::new("topic-thread").unwrap(),
+				account_id: EntityId::new("account").unwrap(),
+				model: Some(WireText::new("last-used-model").unwrap()),
+				model_provider: None,
+				reasoning_effort: None,
+				service_tier: None,
+			},
+		);
+		assert_eq!(s.composer_model_label(cx), "last-used-model");
+		assert_eq!(s.composer.read(cx).content(), "Keep my draft");
+		assert!(s.submission.command.is_none());
+	});
+}
+
+#[gpui::test]
+fn missing_models_use_defaults_and_supported_conversations_keep_their_choices(
+	cx: &mut TestAppContext,
+) {
+	for native_model in [None, Some("removed"), Some("latest-model")] {
+		let surface = cx.new(AgentSurface::new);
+		surface.update(cx, |s, cx| {
+			s.apply_refreshed_snapshot(Ok(AgentSnapshotResult::Available(snapshot())), cx);
+			s.cwd.update(cx, |input, cx| input.set_content("/tmp", cx));
+			s.composer.update(cx, |input, cx| input.set_content("Keep my draft", cx));
+			s.model_settings.observe(
+				"root".into(),
+				AgentModelSettingsResult::Available {
+					work_id: EntityId::new("root").unwrap(),
+					thread_id: EntityId::new("thread").unwrap(),
+					account_id: EntityId::new("account").unwrap(),
+					model: native_model.map(|model| WireText::new(model).unwrap()),
+					model_provider: None,
+					reasoning_effort: None,
+					service_tier: None,
+				},
+			);
+			let model = ConversationModel::new("latest-model").unwrap();
+			let models = vec![AgentModelDto {
+				model: model.clone(),
+				name: "Latest model".into(),
+				efforts: vec![ConversationReasoningEffort::Medium],
+				default_effort: Some(ConversationReasoningEffort::Medium),
+				supports_fast: false,
+				service_tiers: vec![],
+				default_service_tier: None,
+				available_cyber_programs: None,
+				specialty: None,
+				supports_images: true,
+				availability: None,
+				upgrade: None,
+			}];
+			s.capabilities = Some(AgentCapabilitiesResult::Available {
+				models: models.clone(),
+				memory_enabled: None,
+			});
+			s.creation_defaults = Some(decodex_protocol::InitialModelCatalogResult::Available {
+				account_id: EntityId::new("account").unwrap(),
+				account_revision: 1,
+				working_directory: decodex_protocol::ConversationWorkingDirectory::new("/tmp")
+					.unwrap(),
+				models,
+				defaults: Some(Box::new(decodex_protocol::InitialModelDefaults {
+					configured: Default::default(),
+					managed: Default::default(),
+					catalog_model: Some(model),
+				})),
+			});
+			assert_eq!(s.composer_needs_model_default(cx), native_model != Some("latest-model"));
+			s.apply_creation_defaults(cx);
+			assert_eq!(s.composer_model_label(cx), "Latest model");
+			assert!(!s.creation_defaults_need_refresh(cx));
+			let send = s.configured_send(
+				EntityId::new("root").unwrap(),
+				decodex_protocol::HistoryText::new("Continue").unwrap(),
+				vec![],
+			);
+			let AgentActionDto::SendConfigured { execution, .. } = send else {
+				panic!("configured send")
+			};
+			assert_eq!(
+				execution.model.as_ref().map(|model| model.as_str()),
+				(native_model != Some("latest-model")).then_some("latest-model")
+			);
+			if native_model != Some("latest-model") {
+				assert_eq!(execution.reasoning_effort, Some(ConversationReasoningEffort::Medium));
+				assert_eq!(execution.service_tier, Some(decodex_protocol::ServiceTier::standard()));
+			} else {
+				assert!(
+					execution.is_empty(),
+					"supported old conversations keep native configuration"
+				);
+			}
+			assert_eq!(s.composer.read(cx).content(), "Keep my draft");
+			assert!(s.submission.command.is_none());
+		});
+	}
+}
+
+#[gpui::test]
 fn provider_recovery_uses_shared_button_without_confirmation_and_keeps_the_draft(
 	cx: &mut TestAppContext,
 ) {
@@ -318,9 +436,16 @@ fn main_and_other_chats_keep_their_models_across_navigation_and_turn_changes(
 		}
 
 		s.new_work_conversation(cx);
+		assert_eq!(
+			s.composer_model_value(cx),
+			None,
+			"a new editor must not borrow the window just inspected"
+		);
+		s.select_composer_option("model", "fresh-model", cx);
+		s.select_composer_option("effort", "high", cx);
 
-		assert_eq!(s.composer_model_label(cx), "—");
-		assert_eq!(s.composer_model_value(cx).as_deref(), Some("main-model"));
+		assert_eq!(s.composer_model_label(cx), "fresh-model");
+		assert_eq!(s.composer_model_value(cx).as_deref(), Some("fresh-model"));
 		assert_eq!(s.composer_effort_value(cx).as_deref(), Some("high"));
 
 		let action = s.build_submission("Start this conversation", cx).unwrap();
@@ -328,7 +453,7 @@ fn main_and_other_chats_keep_their_models_across_navigation_and_turn_changes(
 			panic!("new conversation")
 		};
 
-		assert_eq!(execution.model.as_ref().unwrap().as_str(), "main-model");
+		assert_eq!(execution.model.as_ref().unwrap().as_str(), "fresh-model");
 		assert_eq!(execution.reasoning_effort, Some(ConversationReasoningEffort::High));
 
 		let captured = s.draft_profiles.execution.capture(&action).unwrap();
@@ -338,10 +463,10 @@ fn main_and_other_chats_keep_their_models_across_navigation_and_turn_changes(
 
 		assert_eq!(
 			s.composer_model_label(cx),
-			"—",
-			"an unverified catalog does not supply a display model"
+			"fresh-model",
+			"the remembered model stays visible while the catalog refreshes"
 		);
-		assert_eq!(s.composer_model_value(cx).as_deref(), Some("main-model"));
+		assert_eq!(s.composer_model_value(cx).as_deref(), Some("fresh-model"));
 
 		s.draft_profiles.execution.accepted(Some(&captured), None);
 
@@ -425,7 +550,7 @@ fn failed_refresh_keeps_the_same_threads_last_native_model(cx: &mut TestAppConte
 
 		s.model_settings.observe("root".into(), AgentModelSettingsResult::Unavailable);
 
-		assert_eq!(s.composer_model_label(cx), "—");
+		assert_eq!(s.composer_model_label(cx), "-");
 	});
 }
 
@@ -437,12 +562,13 @@ fn new_conversation_model_does_not_depend_on_a_cold_existing_root(cx: &mut TestA
 		s.model.update(cx, |input, cx| input.set_content("gpt-6.1-sol", cx));
 		s.model_settings.observe("root".into(), AgentModelSettingsResult::Unavailable);
 		s.new_work_conversation(cx);
-		assert_eq!(s.composer_model_value(cx).as_deref(), Some("gpt-6.1-sol"));
-		assert_eq!(s.composer_model_label(cx), "—");
+		assert_eq!(s.composer_model_value(cx), None);
+		s.select_composer_option("model", "fresh-model", cx);
+		assert_eq!(s.composer_model_label(cx), "fresh-model");
 		s.open_page("root", cx);
-		assert_eq!(s.composer_model_label(cx), "—");
+		assert_eq!(s.composer_model_label(cx), "-");
 		s.new_work_conversation(cx);
-		assert_eq!(s.composer_model_value(cx).as_deref(), Some("gpt-6.1-sol"));
+		assert_eq!(s.composer_model_value(cx).as_deref(), Some("fresh-model"));
 	});
 }
 
@@ -507,7 +633,7 @@ fn model_default_reasoning_has_the_same_value_in_new_and_existing_chats(cx: &mut
 		s.model_settings.observations.insert("root".into(), AgentModelSettingsResult::Unavailable);
 
 		assert_eq!(s.composer_model_value(cx), None);
-		assert_eq!(s.composer_model_label(cx), "—");
+		assert_eq!(s.composer_model_label(cx), "-");
 		assert_eq!(s.composer_effort_value(cx), None, "never reuse an unrelated editor value");
 	});
 }

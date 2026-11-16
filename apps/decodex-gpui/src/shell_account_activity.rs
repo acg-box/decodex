@@ -1,15 +1,16 @@
 //! Account activity uses the menu-bar label/value hierarchy within the Settings card.
 #[cfg(any(test, feature = "visual-capture"))] use std::time::Instant;
 
+use crate::ui_motion::HoverHint as _;
 use gpui::{
-	self, AnyElement, AppContext as _, InteractiveElement as _, IntoElement as _,
-	ParentElement as _, SharedString, StatefulInteractiveElement as _, Styled as _,
+	self, AnyElement, InteractiveElement as _, IntoElement as _, ParentElement as _, SharedString,
+	StatefulInteractiveElement as _, Styled as _,
 };
 
 #[cfg(any(test, feature = "visual-capture"))]
 use crate::account_profile::AccountProfileLoadState;
 use crate::{
-	shell::{ControlTooltip, Shell, WB_BLUE, WB_TEXT_FAINT, WB_TEXT_MUTED, agent_surface},
+	shell::{Shell, WB_BLUE, WB_TEXT_FAINT, WB_TEXT_MUTED, agent_surface},
 	ui_feedback::{self, Feedback},
 	ui_theme,
 };
@@ -151,7 +152,7 @@ pub(super) fn panel(shell: &Shell, account: &AccountDto) -> AnyElement {
 						.rounded(gpui::px(1.5))
 						.bg(ui_theme::rgb(if day.tokens == 0 { WB_TEXT_FAINT } else { WB_BLUE })
 							.opacity(0.65))
-						.tooltip(move |_, cx| cx.new(|_| ControlTooltip(tip.clone())).into())
+						.hover_hint(tip.clone())
 				})),
 		);
 	}

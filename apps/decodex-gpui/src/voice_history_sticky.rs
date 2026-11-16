@@ -16,7 +16,8 @@ use crate::{shell::agent_surface::AgentSurface, ui_motion, ui_theme};
 
 type Position = Rc<Cell<(Pixels, Pixels)>>;
 
-pub(super) const HEADER_HEIGHT: f32 = 28.;
+pub(super) const HEADER_HEIGHT: f32 =
+	crate::shell::agent_surface::conversation_divider::Style::Section.height();
 
 pub(super) trait Toggle {
 	fn toggle(&self, open: bool, position: &Position, cx: &mut App);
@@ -154,7 +155,11 @@ impl Element for Group {
 		let sticky = top > bounds.top();
 		let header = self.header.take().expect("voice header prepaints once");
 		let mut header = if sticky {
-			gpui::div().w_full().bg(ui_theme::rgb(0x111113)).child(header).into_any_element()
+			gpui::div()
+				.w_full()
+				.bg(ui_theme::rgb(ui_theme::CANVAS))
+				.child(header)
+				.into_any_element()
 		} else {
 			header
 		};
@@ -322,6 +327,8 @@ mod tests {
 							.min_h(gpui::px(self.min_height.get()))
 							.gap_2()
 							.children(["first", "second"].into_iter().map(|key| VoiceBlock {
+								action: None,
+								presentation: None,
 								key: key.into(),
 								title: "Voice conversation".into(),
 								text: "user: Question\nassistant: A long answer.\n".repeat(12),

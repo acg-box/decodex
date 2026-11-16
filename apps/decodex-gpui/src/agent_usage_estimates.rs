@@ -1,5 +1,6 @@
 //! Source-bound conversation dollars, read in the background without model inference.
-use gpui::{AnyElement, AppContext};
+use crate::ui_motion::HoverHint as _;
+use gpui::AnyElement;
 use tokio::runtime::Builder;
 
 use crate::shell::agent_surface::{
@@ -45,13 +46,13 @@ impl AgentSurface {
 					if estimate.partial { "+" } else { "" }
 				);
 				let description = format!(
-					"API equivalent: ${} USD. Based on {} observed responses and official prices checked {date}. This is a text-token estimate, not a subscription charge.{}",
+					"API equivalent: ${} USD\nObserved responses: {}\nPrices checked: {date}\nText tokens only.{}",
 					micros(estimate.usd_micros),
 					estimate.priced_responses,
 					if estimate.partial {
-						" Some usage could not be priced."
+						"\nSome usage could not be priced."
 					} else {
-						" Tool charges are excluded."
+						"\nTool charges are excluded."
 					},
 				);
 				(label, description)
@@ -70,7 +71,7 @@ impl AgentSurface {
 				.line_height(gpui::px(16.))
 				.text_color(crate::ui_theme::rgb(crate::ui_theme::TEXT))
 				.child(label)
-				.tooltip(move |_, cx| cx.new(|_| CostTip(tooltip.clone())).into())
+				.hover_hint(tooltip.clone())
 				.into_any_element(),
 		)
 	}
@@ -193,19 +194,12 @@ impl AgentSurface {
 	}
 }
 
-struct CostTip(String);
-impl gpui::Render for CostTip {
-	fn render(&mut self, _: &mut gpui::Window, _: &mut Context<Self>) -> impl IntoElement {
-		crate::ui_motion::tooltip_surface(gpui::div()).child(self.0.clone())
-	}
-}
-
 fn amount_label(estimate: &decodex_protocol::ThreadUsageEstimate) -> Option<String> {
 	let amount = currency(estimate.reported_usd_micros()?);
 	Some(if estimate.native_usage_usd_micros.is_some() { amount } else { format!("≈ {amount}") })
 }
 
-fn currency(value: u64) -> String {
+pub(super) fn currency(value: u64) -> String {
 	if value > 0 && value < 10_000 {
 		return "< $0.01".into();
 	}

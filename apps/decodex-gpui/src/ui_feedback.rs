@@ -21,15 +21,16 @@
 //! Use concise, complete wording that explains the state, effect and required action.
 //! Explain unfamiliar controls and scope beside the control. Remove repeated labels and
 //! boilerplate, while retaining consequences, costs, defaults and recovery steps.
+use crate::ui_motion::HoverHint as _;
 use std::{
 	ops::Deref,
 	time::{Duration, Instant},
 };
 
 use gpui::{
-	self, AnyElement, App, AppContext as _, Div, ElementId, FontWeight, InteractiveElement as _,
-	IntoElement, ParentElement as _, RenderOnce, Role, SharedString, Stateful,
-	StatefulInteractiveElement as _, Styled as _, Window, prelude::FluentBuilder as _,
+	self, AnyElement, App, Div, ElementId, FontWeight, InteractiveElement as _, IntoElement,
+	ParentElement as _, RenderOnce, Role, SharedString, Stateful, StatefulInteractiveElement as _,
+	Styled as _, Window, prelude::FluentBuilder as _,
 };
 
 use crate::{
@@ -412,14 +413,7 @@ pub(crate) fn status_indicator(
 		.items_center()
 		.justify_center()
 		.child(gpui::div().size(gpui::px(6.)).rounded_full().bg(ui_theme::rgb(tone.color())))
-		.tooltip(move |_, cx| cx.new(|_| IndicatorTip(label)).into())
-}
-
-struct IndicatorTip(&'static str);
-impl gpui::Render for IndicatorTip {
-	fn render(&mut self, _: &mut Window, _: &mut gpui::Context<Self>) -> impl IntoElement {
-		ui_motion::tooltip_surface(gpui::div()).child(self.0)
-	}
+		.hover_hint(label)
 }
 
 /// A compact execution state, shared by live history, saved history and Graph.
@@ -483,7 +477,7 @@ fn execution_symbol(
 		.justify_center()
 		.text_color(ui_theme::rgb(tone.color()))
 		.child(symbol)
-		.tooltip(move |_, cx| cx.new(|_| IndicatorTip(label)).into())
+		.hover_hint(label)
 }
 
 pub(crate) fn notice(

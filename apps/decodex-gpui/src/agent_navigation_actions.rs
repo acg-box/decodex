@@ -4,14 +4,16 @@ use crate::{
 		agent_surface::{AgentSurface, Context},
 		workspace_symbols::{self, Symbol},
 	},
-	ui_motion::{self},
+	ui_motion::{
+		HoverHint as _, {self},
+	},
 	ui_theme,
 };
 use decodex_protocol::{
 	AgentActionDto, AgentClient, AgentCommandResponse, EntityId, IdempotencyKey, WireText,
 };
 use gpui::{
-	AnyElement, AppContext as _, Bounds, Pixels, Role, SharedString,
+	AnyElement, Bounds, Pixels, Role, SharedString,
 	prelude::{
 		FluentBuilder as _, InteractiveElement as _, IntoElement as _, ParentElement as _,
 		StatefulInteractiveElement as _, Styled as _,
@@ -29,30 +31,25 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) -> AnyElement {
 		let mut row = gpui::div()
+			.debug_selector({
+				let key = key.to_owned();
+				move || format!("navigation-actions-{key}")
+			})
 			.absolute()
 			.right(gpui::px(1.))
 			.top(gpui::px(2.))
 			.h(gpui::px(ui_theme::CHROME_CONTROL_SIZE))
 			.flex()
 			.items_center()
-			.opacity(opacity);
-		for (action, label, glyph) in [
-			(
-				"pin",
-				if self.workspace.navigation.preferences.pinned.contains(&item.id) {
-					"Unpin"
-				} else {
-					"Pin"
-				},
-				super::Glyph::Pin,
-			),
-			(
-				if item.archived { "restore" } else { "archive" },
-				if item.archived { "Restore" } else { "Archive" },
-				if item.archived { super::Glyph::Restore } else { super::Glyph::Archive },
-			),
-			("delete", "Delete", super::Glyph::Trash),
-		] {
+			.opacity(opacity)
+			.when(opacity == 0., |row| row.invisible());
+		for (action, label, glyph) in row_commands(
+			self.workspace.navigation.preferences.pinned.contains(&item.id),
+			item.archived,
+		) {
+			if item.archived && action == "pin" {
+				continue;
+			}
 			let target = item.clone();
 			let keyboard = target.clone();
 			let row_key = key.to_owned();
@@ -85,7 +82,7 @@ impl AgentSurface {
 			} else if confirming {
 				"Click again to delete permanently.".to_owned()
 			} else {
-				format!("{label} {}", item.title)
+				label.to_owned()
 			};
 			row = row.child(
 				gpui::div()
@@ -113,16 +110,15 @@ impl AgentSurface {
 					})
 					.hover(|s| s.bg(ui_theme::rgba(ui_theme::HOVER_FILL)))
 					.focus_visible(|s| s.bg(ui_theme::rgba(ui_theme::HOVER_FILL)))
-					.tooltip(move |_, cx| {
-						cx.new(|_| crate::shell::ControlTooltip(tip.clone())).into()
-					})
+					.hover_hint(tip)
 					.child(ui_motion::ConfirmationNudge {
 						started: if confirming {
 							self.workspace.navigation.confirm_started
 						} else {
 							None
 						},
-						child: super::Icon { glyph, size: 13. }.into_any_element(),
+						child: super::Icon { glyph, size: ui_theme::NAVIGATION_ACTION_SIZE }
+							.into_any_element(),
 					})
 					.on_click(cx.listener(move |s, _, _, cx| {
 						cx.stop_propagation();
@@ -162,6 +158,7 @@ impl AgentSurface {
 			return;
 		}
 		self.workspace.navigation.confirm_delete = false;
+		self.workspace.navigation.confirm_started = None;
 		self.workspace.navigation.menu = None;
 		match action {
 			"pin" => {
@@ -171,7 +168,7 @@ impl AgentSurface {
 				self.workspace.navigation.preferences.save();
 			},
 			"restore" => self.restore_navigation_archive(&item.id, cx),
-			"delete" if item.archived => self.delete_navigation_archive(&item.id, cx),
+			"delete" if item.archived => self.delete_confirmed_navigation_archive(&item.id, cx),
 			"archive" | "delete" =>
 				self.mutate_navigation_conversation(&item.id, action == "delete", cx),
 			_ => {},
@@ -218,7 +215,10 @@ impl AgentSurface {
 							.absolute()
 							.inset_0(),
 					)
-					.child(super::Icon { glyph: super::Glyph::Sort, size: 12. })
+					.child(super::Icon {
+						glyph: super::Glyph::Sort,
+						size: ui_theme::NAVIGATION_ICON_SIZE,
+					})
 					.on_click(cx.listener(move |s, _, _, cx| {
 						cx.stop_propagation();
 						s.workspace.navigation.options = if open { None } else { Some(section) };
@@ -450,4 +450,16 @@ impl AgentSurface {
 		}));
 		cx.notify();
 	}
+}
+
+fn row_commands(pinned: bool, archived: bool) -> [(&'static str, &'static str, super::Glyph); 3] {
+	[
+		("pin", if pinned { "Unpin" } else { "Pin" }, super::Glyph::Pin),
+		(
+			if archived { "restore" } else { "archive" },
+			if archived { "Restore" } else { "Archive" },
+			if archived { super::Glyph::Restore } else { super::Glyph::Archive },
+		),
+		("delete", "Delete", super::Glyph::Trash),
+	]
 }

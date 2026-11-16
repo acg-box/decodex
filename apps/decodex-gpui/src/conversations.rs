@@ -213,6 +213,7 @@ impl Conversations {
 			}
 
 			state.reconcile_catalog_tier();
+			state.remember_execution();
 		}
 	}
 
@@ -240,6 +241,7 @@ impl Conversations {
 		state.creation_intent.reasoning = true;
 
 		state.apply_initial_defaults();
+		state.remember_execution();
 	}
 
 	pub(crate) fn toggle_fast(&self) {
@@ -352,6 +354,7 @@ impl Conversations {
 
 		state.execution = state.execution.clone().with_service_tier(tier);
 		state.creation_intent.service_tier = true;
+		state.remember_execution();
 
 		true
 	}
@@ -1523,6 +1526,14 @@ impl State {
 		});
 	}
 
+	fn remember_execution(&self) {
+		crate::session_settings::Defaults::remember_execution(InitialExecutionDefaults {
+			model: Some(self.execution.model.clone()),
+			reasoning_effort: self.execution.reasoning_effort.clone(),
+			service_tier: Some(self.execution.effective_service_tier()),
+		});
+	}
+
 	fn creation_ready(&self) -> bool {
 		self.initial_defaults_ready
 			|| (self.creation_intent.model
@@ -1559,6 +1570,7 @@ impl State {
 				service_tier: Some(self.execution.effective_service_tier()),
 			},
 			self.current_catalog().expect("catalog checked above"),
+			&crate::session_settings::Defaults::load().last_execution(),
 		);
 		let Some(model) = resolved.model else { return };
 

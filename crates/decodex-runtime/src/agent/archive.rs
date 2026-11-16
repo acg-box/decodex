@@ -87,9 +87,12 @@ impl AgentCoordinator {
 				continue;
 			}
 			self.loaded_threads.remove(&target);
-			if self.client.thread_delete(&target).await.is_err()
+			if let Err(error) = self.client.thread_delete(&target).await
 				&& !self.client.archived_thread_absent(&target).await.unwrap_or(false)
 			{
+				if matches!(error, ClientError::Remote(_)) {
+					return Err(error.into());
+				}
 				return Err(AgentError::UnknownDispatch);
 			}
 		}

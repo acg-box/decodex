@@ -3,6 +3,7 @@
 #[path = "agent_composer_controls.rs"] mod controls;
 #[path = "agent_task_references.rs"] mod task_references;
 
+use crate::ui_motion::HoverHint as _;
 use std::{
 	env,
 	f32::consts::{FRAC_PI_2, TAU},
@@ -13,9 +14,9 @@ use std::{
 };
 
 use gpui::{
-	Anchor, AnyElement, AppContext as _, ClipboardEntry, Div, ExternalPaths, Focusable as _,
-	FontWeight, Image, ImageFormat, KeyDownEvent, MouseButton, MouseDownEvent, PathBuilder,
-	PathPromptOptions, Rgba, Stateful,
+	Anchor, AnyElement, ClipboardEntry, Div, ExternalPaths, Focusable as _, FontWeight, Image,
+	ImageFormat, KeyDownEvent, MouseButton, MouseDownEvent, PathBuilder, PathPromptOptions, Rgba,
+	Stateful,
 };
 use tokio::{runtime::Builder, time};
 use ui_theme::{
@@ -32,8 +33,8 @@ use crate::{
 			AgentHistoryResult, AgentSnapshotResult, AgentSurface, ClipboardItem, ComposerInput,
 			Context, ConversationReasoningEffort, ConversationWorkingDirectory, Entity, EntityId,
 			FluentBuilder, HistoryText, IdempotencyKey, InteractiveElement, IntoElement,
-			ParentElement, Render, Role, SharedString, SmoothControl, StatefulInteractiveElement,
-			Styled, SubmitComposer, Window, model_settings, prompts, ui_theme,
+			ParentElement, Role, SharedString, SmoothControl, StatefulInteractiveElement, Styled,
+			SubmitComposer, Window, model_settings, prompts, ui_theme,
 			ui_theme::{
 				BODY_SIZE, COMPOSER_MATERIAL, COMPOSER_MIN_HEIGHT, COMPOSER_RADIUS,
 				CONVERSATION_WIDTH, ERROR, INFO, LINE_STRONG, ON_PRIMARY, PRIMARY_FILL, WARNING,
@@ -48,7 +49,7 @@ use crate::{
 	ui_theme::{COMPOSER_BOTTOM_GAP, COMPOSER_TOP_GAP, CONVERSATION_INSET},
 };
 use controls::{PrimaryMark, PrimaryMode};
-use decodex_protocol::AgentAttachmentDto;
+use decodex_protocol::{AgentAttachmentDto, AgentModelDto};
 
 pub(super) fn selection_menu(menu: Option<&str>) -> bool {
 	matches!(
@@ -78,15 +79,6 @@ pub(super) fn composer_menu_width(menu: Option<&str>) -> f32 {
 		Some("tasks") => 280.,
 		Some("agent-settings" | "skills") => 320.,
 		_ => 224.,
-	}
-}
-
-pub(super) struct ComposerTip(pub(super) String);
-impl Render for ComposerTip {
-	fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-		ui_motion::tooltip_surface(gpui::div())
-			.debug_selector(|| "composer-hover-tip".into())
-			.child(self.0.clone())
 	}
 }
 
@@ -685,6 +677,9 @@ impl AgentSurface {
 		else {
 			return gpui::div().absolute();
 		};
+		let Some(content) = self.composer_options(cx) else {
+			return gpui::div().absolute();
+		};
 		gpui::div().absolute().inset_0().child(
 			gpui::deferred(
 				gpui::anchored()
@@ -702,8 +697,7 @@ impl AgentSurface {
 							.child(ui_motion::popover(
 								"composer-popover-motion",
 								self.composer_menu.is_some(),
-								self.composer_options(cx)
-									.unwrap_or_else(|| gpui::div().into_any_element()),
+								content,
 							)),
 					),
 			)
@@ -955,7 +949,8 @@ impl AgentSurface {
 		let send = id == "send";
 		let dictation_action = self.dictation.is_some()
 			&& matches!(id, "send" | "dictation-cancel" | "dictation-finish");
-		let disabled = send && self.composer_unavailable_reason().is_some();
+		let disabled = (send && self.composer_unavailable_reason().is_some())
+			|| (id == "model" && self.composer_models(cx).is_none());
 		let menu_active = self.composer_menu.is_some_and(|menu| composer_menu_trigger(menu) == id);
 		let target = cx.entity().downgrade();
 		let tooltip = self.composer_control_tip(id, &label, tip, disabled, cx);
@@ -1032,9 +1027,10 @@ impl AgentSurface {
 				d.bg(composer_hover_fill(send))
 			})
 			.focus_visible(move |d| d.bg(composer_hover_fill(send)))
-			.when(!menu_active && !["model", "effort"].contains(&id), |d| {
-				d.tooltip(move |_, cx| cx.new(|_| ComposerTip(tooltip.clone())).into())
-			})
+			.when(
+				!menu_active && !["model", "effort", "voice-mute", "voice-end"].contains(&id),
+				|d| d.hover_hint(tooltip.clone()),
+			)
 			.on_click(cx.listener(move |s, _, window, cx| {
 				if !disabled {
 					action(s, window, cx);
@@ -1077,7 +1073,9 @@ impl AgentSurface {
 		disabled: bool,
 		cx: &Context<Self>,
 	) -> String {
-		if disabled {
+		if disabled && id == "model" {
+			format!("Model selection: {label}")
+		} else if disabled {
 			"Sending paused until the connection is restored".to_owned()
 		} else if id == "model" {
 			let speed = self.composer_speed(cx);
@@ -1177,7 +1175,10 @@ impl AgentSurface {
 	}
 
 	fn composer_model_content(&self, label: String, cx: &Context<Self>) -> AnyElement {
-		let available = label != "—";
+		if self.composer_models(cx).is_none() {
+			return gpui::div().text_ellipsis().child(label).into_any_element();
+		}
+		let available = self.composer_model_value(cx).is_some();
 		gpui::div()
 			.flex()
 			.items_center()
@@ -1228,6 +1229,9 @@ impl AgentSurface {
 	}
 
 	fn toggle_composer_menu(&mut self, name: &'static str, cx: &mut Context<Self>) {
+		if name == "model" && self.composer_models(cx).is_none() {
+			return;
+		}
 		self.escape_stop = None;
 
 		let same_menu = self.composer_menu == Some(name)
@@ -1246,7 +1250,7 @@ impl AgentSurface {
 			if name == "permissions" {
 				self.refresh_composer_permissions(true, cx);
 			}
-			if matches!(name, "model" | "agent-settings") {
+			if name == "agent-settings" {
 				self.load_capabilities(cx);
 				self.refresh_composer_model_settings(cx);
 			}
@@ -1337,20 +1341,20 @@ impl AgentSurface {
 				} else if matches!(menu, "attachments" | "microphone") {
 					self.attachment_options(cx)
 				} else {
-					self.model_options(cx)
+					self.model_options(self.composer_models(cx)?, cx)
 				})
 				.into_any_element(),
 		)
 	}
 
-	pub(super) fn model_options(&self, cx: &mut Context<Self>) -> AnyElement {
+	fn model_options(&self, models: &[AgentModelDto], cx: &mut Context<Self>) -> AnyElement {
 		gpui::div()
 			.id("model-options")
 			.debug_selector(|| "model-options".into())
 			.flex()
 			.flex_col()
 			.gap(gpui::px(2.))
-			.child(self.model_palette(cx))
+			.child(self.model_palette(models, cx))
 			.child(ui_theme::menu_separator())
 			.child(ui_theme::menu_section(
 				"Speed",
@@ -1406,6 +1410,7 @@ impl AgentSurface {
 
 			self.mark_effort_intent(cx);
 		}
+		self.remember_composer_execution(cx);
 
 		self.save_draft_document(cx);
 		cx.notify();
@@ -1747,7 +1752,29 @@ mod tests {
 		},
 		native_timeline::Binding,
 	};
-	use decodex_protocol::{AgentTimelineContent, AgentTimelineEntry};
+	use decodex_protocol::{
+		AgentCapabilitiesResult, AgentModelDto, AgentTimelineContent, AgentTimelineEntry,
+	};
+
+	fn model_catalog() -> AgentCapabilitiesResult {
+		AgentCapabilitiesResult::Available {
+			memory_enabled: None,
+			models: vec![AgentModelDto {
+				model: ConversationModel::new("custom").unwrap(),
+				name: "Custom".into(),
+				efforts: vec![ConversationReasoningEffort::High],
+				default_effort: Some(ConversationReasoningEffort::High),
+				supports_fast: false,
+				service_tiers: vec![],
+				default_service_tier: None,
+				available_cyber_programs: None,
+				specialty: None,
+				supports_images: false,
+				availability: None,
+				upgrade: None,
+			}],
+		}
+	}
 
 	#[gpui::test]
 	fn conversation_menu_reaches_the_workspace_without_a_mounted_focus_node(
@@ -1798,7 +1825,7 @@ mod tests {
 			visual.executor().advance_clock(std::time::Duration::from_secs(1));
 			visual.run_until_parked();
 			visual.update(crate::ui_frame::draw_frame);
-			assert_eq!(visual.debug_bounds("composer-hover-tip").is_some(), !open);
+			assert_eq!(visual.debug_bounds("hover-hint-surface").is_some(), !open);
 		}
 	}
 
@@ -1987,6 +2014,7 @@ mod tests {
 
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
+			s.capabilities = Some(model_catalog());
 			s.composer.update(cx, |input, cx| input.set_content(&"Draft line\n".repeat(6), cx));
 
 			s.composer_menu = Some("model");
@@ -2017,6 +2045,7 @@ mod tests {
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
 			s.new_work_conversation(cx);
+			s.capabilities = Some(model_catalog());
 		});
 		for width in [1_180., 1_400.] {
 			visual.simulate_resize(gpui::size(gpui::px(width), gpui::px(1_000.)));
@@ -2032,6 +2061,56 @@ mod tests {
 		assert!(visual.debug_bounds("tier-default").is_some());
 		assert!(visual.debug_bounds("tier-priority").is_some());
 		assert!(visual.debug_bounds("tier-ultrafast").is_some());
+	}
+
+	#[gpui::test]
+	fn model_picker_opens_only_with_models_and_never_starts_a_read(cx: &mut gpui::TestAppContext) {
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.capability_task = Some(gpui::Task::ready(()));
+			s.toggle_composer_menu("model", cx);
+			assert!(s.composer_menu.is_none());
+			assert_eq!(s.composer_model_label(cx), "-");
+			cx.notify();
+		});
+		visual.update(crate::ui_frame::draw_current_frame);
+		let trigger = visual.debug_bounds("composer-model").unwrap();
+		visual.simulate_click(trigger.center(), Default::default());
+		visual.update(crate::ui_frame::draw_current_frame);
+		assert!(visual.debug_bounds("model-options").is_none());
+		assert!(visual.debug_bounds("popover-surface").is_none());
+		surface.update(visual, |s, cx| {
+			assert!(s.composer_menu.is_none());
+			s.capability_task = None;
+			for catalog in [
+				AgentCapabilitiesResult::Unavailable,
+				AgentCapabilitiesResult::Available { models: vec![], memory_enabled: None },
+			] {
+				s.capabilities = Some(catalog);
+				s.toggle_composer_menu("model", cx);
+				assert!(s.composer_menu.is_none());
+				assert_eq!(s.composer_model_label(cx), "-");
+				assert!(s.composer_options(cx).is_none());
+			}
+			s.capabilities = Some(model_catalog());
+			s.model.update(cx, |input, cx| input.set_content("custom", cx));
+			let generation = s.capability_generation;
+			s.toggle_composer_menu("model", cx);
+			assert_eq!(s.composer_menu, Some("model"));
+			assert!(s.capability_task.is_none());
+			assert_eq!(s.capability_generation, generation);
+			cx.notify();
+		});
+		visual.update(crate::ui_frame::draw_current_frame);
+		assert!(visual.debug_bounds("model-options").is_some());
+		surface.update(visual, |s, cx| {
+			s.capabilities = None;
+			assert!(s.composer_options(cx).is_none(), "stale content must not be retained");
+			cx.notify();
+		});
+		visual.update(crate::ui_frame::draw_current_frame);
+		assert!(visual.debug_bounds("popover-surface").is_none());
 	}
 
 	#[gpui::test]
@@ -2357,13 +2436,13 @@ mod tests {
 			s.capabilities = None;
 			s.capability_task = Some(gpui::Task::ready(()));
 
-			assert_eq!(s.composer_model_label(cx), "—");
+			assert_eq!(s.composer_model_label(cx), "other-model");
 			assert_eq!(s.composer_model_value(cx).as_deref(), Some("other-model"));
 
 			s.capability_task = None;
 			s.capabilities = Some(decodex_protocol::AgentCapabilitiesResult::Unavailable);
 
-			assert_eq!(s.composer_model_label(cx), "—");
+			assert_eq!(s.composer_model_label(cx), "other-model");
 		});
 	}
 

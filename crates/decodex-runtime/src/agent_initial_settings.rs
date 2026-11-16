@@ -15,22 +15,32 @@ pub(super) async fn restore_candidate(
 	store: &SqliteStore,
 ) -> Option<(AgentWorkItem, Option<String>)> {
 	let deleted = store.deleted_agent_thread_ids().await.ok()?;
+	let mut pending = None;
 	for root in store.list_agent_work_items().await.ok()?.into_iter().filter(|work| {
 		work.parent_goal_id.is_none()
 			&& !work.codex_thread_id.as_ref().is_some_and(|id| deleted.contains(id))
 	}) {
 		let saved = store.read_agent_root_settings(&root.id).await.ok()?;
-		if saved.is_some()
-			|| root.codex_thread_id.is_some()
-			|| root.dispatch_state != AgentDispatchState::Idle
-			|| store.list_agent_wake_events(root.id.clone(), 100).await.ok()?.iter().any(|event| {
-				matches!(event.event_kind.as_str(), "user_message" | "assistant_instruction")
-					&& event.delivered_turn_id.is_none()
-			}) {
+		// Independent chats (including Live-only threads) share the configured connection.
+		// Their native thread alone does not make them a process configuration owner.
+		if saved.is_some() {
 			return Some((root, saved));
 		}
+		if pending.is_none()
+			&& root.codex_thread_id.is_none()
+			&& (root.dispatch_state != AgentDispatchState::Idle
+				|| store.list_agent_wake_events(root.id.clone(), 100).await.ok()?.iter().any(
+					|event| {
+						matches!(
+							event.event_kind.as_str(),
+							"user_message" | "assistant_instruction"
+						) && event.delivered_turn_id.is_none()
+					},
+				)) {
+			pending = Some((root, None));
+		}
 	}
-	None
+	pending
 }
 
 /// A removed project must not prevent the shared read connection from starting.
@@ -49,6 +59,17 @@ impl AgentHost {
 		root: &AgentWorkItem,
 	) -> Option<(AgentConfig, Option<AccountId>)> {
 		let execution = pending_creation_input(&self.store, root).await?;
+		self.initial_settings_for_execution(root, execution).await
+	}
+
+	pub(super) async fn initial_settings_for_execution(
+		&self,
+		root: &AgentWorkItem,
+		execution: AgentExecutionOverrides,
+	) -> Option<(AgentConfig, Option<AccountId>)> {
+		if root.codex_thread_id.is_some() || root.dispatch_state != AgentDispatchState::Idle {
+			return None;
+		}
 		let cwd = self
 			.store
 			.work_directory(root.id.clone())
@@ -88,7 +109,7 @@ impl AgentHost {
 					.ok()
 					.and_then(|time| i64::try_from(time.as_secs()).ok());
 				if let Some((target, _)) = now.and_then(|now| {
-					decodex_protocol::AgentModelDto::retired_default(
+					decodex_protocol::AgentModelDto::unavailable_default(
 						selected.as_str(),
 						&models,
 						defaults.catalog_model.as_ref(),
@@ -243,5 +264,38 @@ mod tests {
 		uncertain.dispatch_state = AgentDispatchState::Unknown;
 
 		assert!(initial_settings::pending_creation_input(&store, &uncertain).await.is_none());
+	}
+
+	#[tokio::test]
+	async fn live_only_threads_do_not_replace_the_saved_connection_owner_after_restart() {
+		let temporary = tempfile::tempdir().unwrap();
+		let root = DecodexRoot::new(temporary.path().canonicalize().unwrap()).unwrap();
+		let store = SqliteStore::open(&root.paths()).unwrap();
+
+		let mut owner = AgentCoordinator::reserve_root(&store, "live-only", "Voice").await.unwrap();
+		store.bind_agent_thread("live-only".into(), "live-thread".into()).await.unwrap();
+		owner.id = "connection-owner".into();
+		owner.created_at_micros += 1;
+		owner.updated_at_micros += 1;
+		store.create_agent_work_item(owner).await.unwrap();
+
+		let config = crate::AgentConfig::new("fixture-model".into(), "high".into(), "/tmp".into());
+		let encoded = serde_json::to_string(&config).unwrap();
+
+		store.bind_agent_root_settings("connection-owner", &encoded).await.unwrap();
+
+		drop(store);
+
+		let store = SqliteStore::open(&root.paths()).unwrap();
+		let (owner, saved) = initial_settings::restore_candidate(&store).await.unwrap();
+
+		assert_eq!(owner.id, "connection-owner");
+		assert_eq!(saved.as_deref(), Some(encoded.as_str()));
+		assert_eq!(
+			store.get_agent_work_item("live-only".into()).await.unwrap().codex_thread_id.as_deref(),
+			Some("live-thread")
+		);
+		assert!(store.read_agent_root_settings("live-only").await.unwrap().is_none());
+		assert!(store.list_agent_wake_events("live-only".into(), 100).await.unwrap().is_empty());
 	}
 }

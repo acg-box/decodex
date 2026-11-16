@@ -5,7 +5,9 @@
 #[path = "agent_prompt_upload_host.rs"] mod prompt_upload;
 #[path = "agent_recap/host.rs"] mod recap;
 #[path = "agent_sample_host.rs"] mod sample;
+#[path = "agent_spend.rs"] mod spend;
 #[path = "agent_titles/host.rs"] mod titles;
+#[path = "agent_voice_presentation.rs"] mod voice_presentation;
 #[path = "agent_weather.rs"] mod weather;
 
 use std::{
@@ -855,6 +857,7 @@ impl AgentHost {
 		if let decodex_protocol::AgentTimelineResult::Available { page, .. } = &mut result {
 			self.enrich_timeline_weather(page).await;
 		}
+		self.enrich_timeline_spend(work, &mut result).await;
 
 		result
 	}
@@ -1220,7 +1223,7 @@ impl AgentHost {
 					},
 					request = requests.recv() => {
 						let Some(request) = request else {break;};
-						let defer_dispatch = matches!(&request.action,AgentActionDto::PreparePromptEdit{..}|AgentActionDto::ConfirmPromptEdit{..}|AgentActionDto::ForkPromptEdit{..}|AgentActionDto::RecoverPromptFork{..}|AgentActionDto::RecoverPromptEdit{..}|AgentActionDto::AcknowledgePromptEditDraft{..}|AgentActionDto::UploadPromptInput{..}|AgentActionDto::CompletePromptInputUpload{..}|AgentActionDto::DiscardEmptyWork{..}|AgentActionDto::GenerateSample{..}|AgentActionDto::CancelSample{..});
+						let defer_dispatch = matches!(&request.action,AgentActionDto::PreparePromptEdit{..}|AgentActionDto::ConfirmPromptEdit{..}|AgentActionDto::ForkPromptEdit{..}|AgentActionDto::RecoverPromptFork{..}|AgentActionDto::RecoverPromptEdit{..}|AgentActionDto::AcknowledgePromptEditDraft{..}|AgentActionDto::UploadPromptInput{..}|AgentActionDto::CompletePromptInputUpload{..}|AgentActionDto::DiscardEmptyWork{..}|AgentActionDto::DeleteProject{..}|AgentActionDto::GenerateSample{..}|AgentActionDto::CancelSample{..});
 
 						if !defer_dispatch && !matches!(&request.action, AgentActionDto::SendPromptInput { .. }) { self.rotate_exhausted(&mut active).await; }
 
@@ -1408,19 +1411,57 @@ impl AgentHost {
 	) {
 		let id = request.session_id().as_str().to_owned();
 		let speech = matches!(&request, AgentVoiceRequest::Speak { .. });
-		let result = match active.as_mut() {
-			Some((_, agent, _)) =>
-				time::timeout(Duration::from_secs(30), agent.voice_request(request))
-					.await
-					.unwrap_or_else(|_| {
-						Err(AgentError::Invalid(
-							"voice signaling timed out; do not replay input".into(),
-						))
-					}),
-			None => Err(AgentError::Invalid("Agent is reconnecting".into())),
-		};
+		let result = time::timeout(Duration::from_secs(30), async {
+			let execution = if let AgentVoiceRequest::Start { work_id, options, .. } = &request
+				&& let Some(draft) = &options.draft
+			{
+				self.store
+					.reserve_agent_voice_draft(
+						AgentCoordinator::new_conversation_work(work_id.as_str())?,
+						draft.project_id.as_ref().map(|id| id.as_str().into()),
+						draft.assistant_id.as_ref().map(|id| id.as_str().into()),
+					)
+					.await?;
+				draft.execution.clone()
+			} else {
+				Default::default()
+			};
+			if active.is_none() {
+				let AgentVoiceRequest::Start { work_id, options, .. } = &request else {
+					return Err(AgentError::Invalid("Agent is reconnecting".into()));
+				};
+				let owner = options
+					.draft
+					.as_ref()
+					.and_then(|draft| draft.assistant_id.as_ref())
+					.unwrap_or(work_id);
+				let root = self.store.get_agent_work_item(owner.as_str().into()).await?;
+				let saved = self.store.read_agent_root_settings(&root.id).await?;
+				let settings = match saved {
+					Some(saved) => decode_settings(&saved),
+					None => self.initial_settings_for_execution(&root, execution).await,
+				};
+				let (config, account) = settings.ok_or_else(|| {
+					AgentError::Invalid("Voice could not load this conversation's settings.".into())
+				})?;
+				*active = Some(
+					self.connect(&root.id, format!("voice-{id}"), config, account, None)
+						.await
+						.map_err(|message| AgentError::Invalid(message.into()))?,
+				);
+			}
+			let (_, agent, _) = active.as_mut().expect("voice connection prepared");
+			agent.voice_request(request).await
+		})
+		.await
+		.unwrap_or_else(|_| {
+			Err(AgentError::Invalid("voice signaling timed out; do not replay input".into()))
+		});
 
 		if let Err(error) = result {
+			if let Some((_, agent, _)) = active {
+				let _ = agent.discard_empty_conversation_drafts().await;
+			}
 			if speech {
 				self.voice.notice(&id, "Read-aloud could not be confirmed. It was not retried.");
 
@@ -2104,6 +2145,7 @@ impl AgentHost {
 			action @ (AgentActionDto::CreateAssistant { .. }
 			| AgentActionDto::CreateAssistantTopic { .. }
 			| AgentActionDto::AddProject { .. }
+			| AgentActionDto::DeleteProject { .. }
 			| AgentActionDto::DiscardEmptyWork { .. }
 			| AgentActionDto::NewConversation { .. }) =>
 				self.handle_workspace_action(&key, action, active).await,
@@ -2317,8 +2359,20 @@ impl AgentHost {
 						"Workspace folder could not be added. Check that the folder is available.",
 					)
 				}),
+			AgentActionDto::DeleteProject { project_id } => {
+				let client = self.runtime.agent_catalog_client().map(|(_, client)| client);
+				AgentCoordinator::delete_project(&self.store, client.as_ref(), project_id.as_str())
+					.await
+					.map_err(|_| {
+						AgentHostError::Unknown(
+							"Project deletion is not confirmed. Refresh before trying again.",
+						)
+					})?;
+				Ok(project_id.as_str().into())
+			},
 			AgentActionDto::NewConversation {
 				project_id,
+				assistant_id,
 				work_id,
 				text,
 				execution,
@@ -2330,14 +2384,30 @@ impl AgentHost {
 
 				let options = serde_json::json!({"execution":execution,"permissionMode":permission_mode,"attachments":attachments,"taskReferences":task_references});
 
-				AgentCoordinator::create_conversation(
-					&self.store,
-					work_id.as_str(),
-					user_input(work_id.as_str(), key, text.as_str(), Some(&options)),
-					project_id.map(|id| id.as_str().to_owned()),
-				)
-				.await
-				.map_err(|_| "Conversation could not be created")?;
+				let input = user_input(work_id.as_str(), key, text.as_str(), Some(&options));
+				if let Some(owner) = assistant_id {
+					if project_id.is_some() {
+						return Err("A personal topic cannot belong to a Project".into());
+					}
+					self.store
+						.create_assistant_conversation(
+							AgentCoordinator::new_conversation_work(work_id.as_str())
+								.map_err(|_| "Conversation could not be created")?,
+							input,
+							owner.as_str().into(),
+						)
+						.await
+						.map_err(|_| "Conversation could not be created")?;
+				} else {
+					AgentCoordinator::create_conversation(
+						&self.store,
+						work_id.as_str(),
+						input,
+						project_id.map(|id| id.as_str().to_owned()),
+					)
+					.await
+					.map_err(|_| "Conversation could not be created")?;
+				}
 
 				if active.is_none() {
 					*active = self.restore().await;

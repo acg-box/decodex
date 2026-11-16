@@ -1,4 +1,5 @@
 //! Inline account Reset Cards. The service owns receipts and recovery.
+use crate::ui_motion::HoverHint as _;
 use std::{
 	collections::HashMap,
 	future::Future,
@@ -11,15 +12,15 @@ use std::{
 };
 
 use gpui::{
-	self, AnyElement, AppContext as _, Context, InteractiveElement as _, IntoElement as _,
-	ParentElement as _, SharedString, StatefulInteractiveElement as _, Styled as _,
+	self, AnyElement, Context, InteractiveElement as _, IntoElement as _, ParentElement as _,
+	SharedString, StatefulInteractiveElement as _, Styled as _,
 };
 use time::OffsetDateTime;
 use tokio::runtime::Builder;
 
 use crate::{
 	shell::{
-		self, ControlTooltip, Destination, Shell, WB_TEXT_MUTED, WB_WARNING,
+		self, Destination, Shell, WB_TEXT_MUTED, WB_WARNING,
 		quota_meter::{self, ResetFill},
 		workspace_symbols::{self, Symbol},
 	},
@@ -526,7 +527,7 @@ pub(super) fn row(
 		let tip = if state.blocked {
 			state.message.clone()
 		} else {
-			format!("Reset card: {}. Click twice within five seconds to use it.", title)
+			"Click twice within five seconds to use this reset card.".to_owned()
 		};
 
 		strip = strip.child(
@@ -547,7 +548,7 @@ pub(super) fn row(
 				move || format!("reset-card-{}-{index}", id.as_str())
 			})
 			.bg(ui_theme::rgb(WB_WARNING).opacity(if armed.is_some() { 0.12 } else { 0. }))
-			.tooltip(move |_, cx| cx.new(|_| ControlTooltip(tip.clone())).into())
+			.hover_hint(tip.clone())
 			.child(title)
 			.on_click(cx.listener(move |shell, _, _, cx| {
 				cx.stop_propagation();

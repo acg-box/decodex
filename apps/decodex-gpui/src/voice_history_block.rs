@@ -10,27 +10,28 @@ pub(crate) use self::{
 use std::rc::Rc;
 
 use gpui::{
-	App, Div, FontWeight, IntoElement, KeyDownEvent, Pixels, RenderOnce, Role, SharedString,
-	Stateful, Window,
+	App, Div, IntoElement, KeyDownEvent, Pixels, RenderOnce, SharedString, Stateful, Window,
 	prelude::{InteractiveElement, ParentElement, StatefulInteractiveElement, Styled},
 };
 
 use crate::{
-	shell::{
-		agent_surface::{self, markdown},
-		workspace_symbols::{self, Symbol},
+	shell::agent_surface::{
+		self, conversation_divider, markdown,
+		response_metrics::{self, ResponseMetrics},
 	},
 	ui_motion,
-	ui_theme::{self, HOVER_FILL, MESSAGE_GAP, PANEL_HEADER_TINT, PRESSED_FILL, TEXT_MUTED},
+	ui_theme::MESSAGE_GAP,
 };
 use sticky::{Group, HEADER_HEIGHT, Toggle as _};
 
 #[derive(IntoElement)]
 pub(crate) struct VoiceBlock {
 	pub key: String,
+	pub action: Option<gpui::AnyElement>,
 	pub title: String,
 	pub text: String,
 	pub viewport: Option<Viewport>,
+	pub presentation: Option<decodex_protocol::AgentVoicePresentation>,
 }
 impl RenderOnce for VoiceBlock {
 	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
@@ -75,6 +76,7 @@ impl RenderOnce for VoiceBlock {
 				}
 			});
 		let body = gpui::div()
+			.group(SharedString::from(format!("history-response-{}", self.key)))
 			.w_full()
 			.min_w_0()
 			.child(gpui::div().h(gpui::px(HEADER_HEIGHT)))
@@ -91,10 +93,7 @@ impl RenderOnce for VoiceBlock {
 						.debug_selector(move || {
 							format!("voice-history-transcript-{transcript_key}")
 						})
-						.bg(ui_theme::rgba(0xffffff03))
-						.px_4()
-						.pb_3()
-						.pt_2()
+						.pt(gpui::px(crate::ui_theme::PROCESS_CONTENT_GAP))
 						.flex()
 						.flex_col()
 						.gap(gpui::px(MESSAGE_GAP))
@@ -108,29 +107,45 @@ impl RenderOnce for VoiceBlock {
 								)
 								.debug_selector(move || format!("voice-transcript-turn-{index}"))
 							},
-						))
-						.child(markdown::response_copy_button(
-							&format!("voice-copy-{}", self.key),
-							"Copy voice transcript",
-							self.text,
 						)),
 				),
+			))
+			.children((!open).then(|| {
+				gpui::div()
+					.debug_selector(|| "voice-history-preview".into())
+					.mt(gpui::px(crate::ui_theme::PROCESS_CONTENT_GAP))
+					.child(agent_surface::selectable_prose(
+						format!("voice-preview-{}", self.key),
+						preview(&self.text),
+					))
+			}))
+			.child(response_metrics::actions_footer(
+				&format!("voice-{}", self.key),
+				ResponseMetrics {
+					spend: self.presentation.as_ref().and_then(|p| p.spend.clone()),
+					key: format!("voice-{}", self.key),
+					duration_ms: self.presentation.as_ref().and_then(|p| p.duration_ms),
+					status: None,
+					usage: None,
+					timing: None,
+				}
+				.into_any_element(),
+				Some(("Copy voice transcript", self.text)),
+				self.action,
 			));
 
 		Group {
 			body: body.into_any_element(),
 			header: Some(
-				gpui::div()
-					.w_full()
-					.flex()
-					.items_start()
-					.child(
-						gpui::div()
-							.w_full()
-							.debug_selector(|| "voice-history-block".into())
-							.child(header),
-					)
-					.into_any_element(),
+				conversation_divider::row(
+					gpui::div()
+						.debug_selector(|| "voice-history-block".into())
+						.child(header)
+						.into_any_element(),
+					conversation_divider::Style::Section,
+				)
+				.debug_selector(|| "voice-history-divider".into())
+				.into_any_element(),
 			),
 			open,
 			position,
@@ -152,7 +167,13 @@ impl Expansion {
 	}
 }
 
-pub(crate) fn handoff(text: &str) -> Option<String> {
+pub(crate) struct Delegation<'a> {
+	pub source: &'a str,
+	input: &'a str,
+	pub transcript: Option<&'a str>,
+}
+
+pub(crate) fn delegation(text: &str) -> Option<Delegation<'_>> {
 	let body = text
 		.trim()
 		.strip_prefix("<realtime_delegation>")?
@@ -176,6 +197,11 @@ pub(crate) fn handoff(text: &str) -> Option<String> {
 	} else {
 		Some(rest.strip_prefix("<transcript_delta>")?.strip_suffix("</transcript_delta>")?.trim())
 	};
+	Some(Delegation { source, input: input.trim(), transcript })
+}
+
+pub(crate) fn handoff(text: &str) -> Option<String> {
+	let Delegation { source, input, transcript } = delegation(text)?;
 	let text = if source == "transcript_tail_flush" {
 		transcript?.to_owned()
 	} else if let Some(transcript) = transcript.filter(|t| *t != input.trim()) {
@@ -184,7 +210,31 @@ pub(crate) fn handoff(text: &str) -> Option<String> {
 		input.trim().to_owned()
 	};
 
-	Some(text.replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&"))
+	Some(unescape(&text))
+}
+
+pub(crate) fn unescape(text: &str) -> String {
+	text.replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&")
+}
+
+/// Preview the first user utterance, or the first available speech without user input.
+pub(crate) fn preview(text: &str) -> String {
+	let turns = transcript_turns(text);
+	let turn = turns
+		.iter()
+		.find(|(role, text)| *role == "user" && !text.trim().is_empty())
+		.or_else(|| turns.iter().find(|(_, text)| !text.trim().is_empty()));
+	let plain = turn
+		.map(|(_, text)| markdown::plain_text(text))
+		.unwrap_or_default()
+		.split_whitespace()
+		.collect::<Vec<_>>()
+		.join(" ");
+	let mut excerpt = plain.chars().take(160).collect::<String>();
+	if plain.chars().count() > 160 {
+		excerpt.push('…')
+	}
+	excerpt
 }
 
 fn transcript_turns(text: &str) -> Vec<(&str, String)> {
@@ -215,40 +265,14 @@ fn transcript_turns(text: &str) -> Vec<(&str, String)> {
 }
 
 fn voice_header(key: &str, title: String, open: bool) -> Stateful<Div> {
-	let header_key = key.to_owned();
-
-	gpui::div()
-		.id(SharedString::from(format!("voice-block-toggle-{}", key)))
-		.debug_selector(move || format!("voice-history-block-{header_key}"))
-		.role(Role::Button)
-		.aria_label(title.clone())
-		.aria_expanded(open)
-		.tab_index(0)
-		.rounded(gpui::px(4.))
-		.flex_none()
-		.w_full()
-		.bg(ui_theme::rgba(PANEL_HEADER_TINT))
-		.flex()
-		.items_center()
-		.text_size(gpui::px(12.))
-		.font_weight(FontWeight::NORMAL)
-		.text_color(ui_theme::rgb(TEXT_MUTED))
-		.gap_2()
-		.px_3()
-		.h(gpui::px(HEADER_HEIGHT))
-		.cursor_pointer()
-		.hover(|s| s.bg(ui_theme::rgba(HOVER_FILL)))
-		.focus(|s| s.bg(ui_theme::rgba(HOVER_FILL)))
-		.active(|s| s.bg(ui_theme::rgba(PRESSED_FILL)))
-		.child(
-			gpui::div().opacity(0.65).child(workspace_symbols::icon_sized(Symbol::Waveform, 12.)),
-		)
-		.child(title)
-		.child(gpui::div().flex_1())
-		.child(workspace_symbols::process_chevron(
-			SharedString::from(format!("voice-chevron-{}", key)),
-			open,
-		))
+	let selector = format!("voice-history-block-{key}");
+	conversation_divider::control(
+		format!("voice-block-toggle-{key}"),
+		title,
+		open,
+		conversation_divider::Style::Section,
+	)
+	.debug_selector(move || selector.clone())
 }
 
 #[cfg(test)]
@@ -260,10 +284,20 @@ mod tests {
 	impl Render for Fixture {
 		fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
 			VoiceBlock {
+				action: None,
+	presentation: Some(decodex_protocol::AgentVoicePresentation {
+		spend: Some(decodex_protocol::AgentSpendDto {
+			usd_micros: 7_500,
+			estimated: true,
+			partial: false,
+			explanation: "Voice usage estimated from elapsed call time.".into(),
+		}),
+		duration_ms: Some(9000),
+	}),
 				key: "fixture".into(),
 				viewport: None,
 				title: "Voice conversation".into(),
-				text: "user: Hello\nassistant: Hi".into(),
+				text: "user: Hello\nassistant: Hi\nuser: Keep the entire call\nassistant: All four turns are retained".into(),
 			}
 		}
 	}
@@ -274,14 +308,71 @@ mod tests {
 		visual.update(crate::ui_frame::draw_current_frame);
 
 		assert!(visual.debug_bounds("voice-history-transcript-fixture").is_none());
+		assert!(visual.debug_bounds("voice-history-preview").is_some());
+		assert!(visual.debug_bounds("turn-metrics-hover").is_some());
+		for metric in [
+			"conversation-metric-Duration",
+			"conversation-metric-Input tokens",
+			"conversation-metric-Output tokens",
+			"conversation-metric-Spend",
+		] {
+			assert!(visual.debug_bounds(metric).is_some());
+		}
+		let copy = visual.debug_bounds("copy-response-voice-fixture").unwrap();
+		visual.simulate_click(copy.center(), Default::default());
+		visual.update(|_,cx|assert_eq!(cx.read_from_clipboard().and_then(|item|item.text()).as_deref(),Some("user: Hello\nassistant: Hi\nuser: Keep the entire call\nassistant: All four turns are retained")));
 
 		let button = visual.debug_bounds("voice-history-block-fixture").unwrap();
 
 		visual.simulate_click(button.center(), Default::default());
 		visual.run_until_parked();
+		visual.executor().advance_clock(std::time::Duration::from_millis(250));
+		visual.run_until_parked();
 		visual.update(crate::ui_frame::draw_current_frame);
 
 		assert!(visual.debug_bounds("voice-history-transcript-fixture").is_some());
+		for selector in [
+			"voice-transcript-turn-0",
+			"voice-transcript-turn-1",
+			"voice-transcript-turn-2",
+			"voice-transcript-turn-3",
+		] {
+			assert!(visual.debug_bounds(selector).is_some());
+		}
+		assert!(visual.debug_bounds("voice-history-preview").is_none());
+		for metric in [
+			"conversation-metric-Duration",
+			"conversation-metric-Input tokens",
+			"conversation-metric-Output tokens",
+			"conversation-metric-Spend",
+		] {
+			assert!(visual.debug_bounds(metric).is_some());
+		}
+		let divider = visual.debug_bounds("voice-history-divider").unwrap();
+		let first = visual.debug_bounds("voice-transcript-turn-0").unwrap();
+		let last = visual.debug_bounds("voice-transcript-turn-3").unwrap();
+		let metrics = visual.debug_bounds("turn-metrics-hover").unwrap();
+		assert_eq!(divider.size.height, gpui::px(super::HEADER_HEIGHT));
+		assert_eq!(first.top() - divider.bottom(), gpui::px(crate::ui_theme::PROCESS_CONTENT_GAP));
+		assert_eq!(metrics.top() - last.bottom(), gpui::px(crate::ui_theme::METADATA_GAP));
+	}
+
+	#[test]
+	fn preview_uses_first_user_speech_or_original_acknowledgement() {
+		assert_eq!(
+			history::preview("user: Check **the tests**\nassistant: Working"),
+			"Check the tests"
+		);
+		assert_eq!(history::preview("assistant: Mm-hmm."), "Mm-hmm.");
+		assert_eq!(
+			history::preview("assistant: Hello\nuser: Explain the metrics\nassistant: Sure"),
+			"Explain the metrics"
+		);
+		assert!(history::preview(" \nuser: \nassistant:   ").is_empty());
+		assert_eq!(
+			history::preview(&format!("assistant: {}", "字".repeat(161))),
+			format!("{}…", "字".repeat(160))
+		);
 	}
 
 	#[test]

@@ -1,7 +1,10 @@
 //! Shared desktop creation defaults and session-setting choices.
 use std::rc::Rc;
 
-use decodex_protocol::{PermissionMode, ServiceTier};
+use decodex_protocol::{
+	ConversationModel, ConversationReasoningEffort, InitialExecutionDefaults, PermissionMode,
+	ServiceTier,
+};
 use gpui::{
 	App, Context, Div, Entity, FocusHandle, KeyBinding, RenderOnce, Window,
 	prelude::{
@@ -23,6 +26,12 @@ const DEFAULTS_KEY: &str = "DecodexSessionDefaults";
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub(crate) struct Defaults {
 	pub permissions: PermissionMode,
+	#[serde(default)]
+	pub last_model: Option<ConversationModel>,
+	#[serde(default)]
+	pub last_reasoning_effort: Option<ConversationReasoningEffort>,
+	#[serde(default)]
+	pub last_service_tier: Option<ServiceTier>,
 }
 impl Defaults {
 	pub(crate) fn load() -> Self {
@@ -34,6 +43,28 @@ impl Defaults {
 	pub(crate) fn save(&self) {
 		let value = serde_json::to_string(self).expect("session defaults");
 		ui_preferences::string(DEFAULTS_KEY, Some(&value));
+	}
+
+	pub(crate) fn last_execution(&self) -> InitialExecutionDefaults {
+		InitialExecutionDefaults {
+			model: self.last_model.clone(),
+			reasoning_effort: self.last_reasoning_effort.clone(),
+			service_tier: self.last_service_tier.clone(),
+		}
+	}
+
+	pub(crate) fn remember_execution(execution: InitialExecutionDefaults) {
+		if execution.model.is_none() {
+			return;
+		}
+		let mut defaults = Self::load();
+
+		if defaults.last_execution() != execution {
+			defaults.last_model = execution.model;
+			defaults.last_reasoning_effort = execution.reasoning_effort;
+			defaults.last_service_tier = execution.service_tier;
+			defaults.save();
+		}
 	}
 }
 
@@ -369,13 +400,18 @@ pub(crate) fn speed_choices<T: 'static>(
 	let mut tiers: Vec<_> = std::iter::once((ServiceTier::standard(), "Standard".into()))
 		.chain(tiers.into_iter().filter(|(id, _)| id.as_str() != "default"))
 		.collect();
+	let standard = ServiceTier::standard();
+	let selected = selected.unwrap_or(&standard);
+	if !tiers.iter().any(|(tier, _)| tier == selected) {
+		tiers.push((selected.clone(), speed_label(selected.as_str()).into()));
+	}
 	tiers.sort_by_key(|(id, _)| match id.as_str() {
 		"default" => 0,
 		"priority" => 1,
 		"ultrafast" => 2,
 		_ => 3,
 	});
-	let selected = tiers.iter().position(|(tier, _)| Some(tier) == selected);
+	let selected = tiers.iter().position(|(tier, _)| tier == selected);
 	let choices: Vec<_> = tiers
 		.iter()
 		.map(|(id, name)| {
@@ -416,5 +452,28 @@ pub(crate) fn speed_label(id: &str) -> &str {
 		"priority" => "Fast",
 		"ultrafast" => "Ultrafast",
 		_ => id,
+	}
+}
+
+#[cfg(test)]
+mod remembered_execution_tests {
+	use super::Defaults;
+	use decodex_protocol::{ConversationModel, ConversationReasoningEffort, ServiceTier};
+
+	#[test]
+	fn recent_execution_round_trips_without_losing_permissions_or_older_preferences() {
+		let mut defaults: Defaults = serde_json::from_value(serde_json::json!({
+			"permissions":"ask_for_approval", "last_model":"previous"
+		}))
+		.unwrap();
+		assert_eq!(defaults.last_model.as_ref().unwrap().as_str(), "previous");
+		assert!(defaults.last_reasoning_effort.is_none() && defaults.last_service_tier.is_none());
+		defaults.last_model = Some(ConversationModel::new("recent").unwrap());
+		defaults.last_reasoning_effort = Some(ConversationReasoningEffort::XHigh);
+		defaults.last_service_tier = Some(ServiceTier::new("ultrafast").unwrap());
+		let decoded: Defaults =
+			serde_json::from_slice(&serde_json::to_vec(&defaults).unwrap()).unwrap();
+		assert_eq!(decoded.last_execution(), defaults.last_execution());
+		assert_eq!(decoded.permissions, defaults.permissions);
 	}
 }

@@ -180,13 +180,16 @@ impl AgentHost {
 	}
 }
 
-struct TitleModel {
-	name: String,
-	provider: String,
-	effort: Option<String>,
+pub(super) struct TitleModel {
+	pub(super) name: String,
+	pub(super) provider: String,
+	pub(super) effort: Option<String>,
 }
 
-async fn title_model(source: &Source, model: NativeThreadModelSettings) -> Option<TitleModel> {
+pub(super) async fn title_model(
+	source: &Source,
+	model: NativeThreadModelSettings,
+) -> Option<TitleModel> {
 	let provider = model.model_provider?;
 	if provider == "openai"
 		&& let AgentCapabilitiesResult::Available { models, .. } =

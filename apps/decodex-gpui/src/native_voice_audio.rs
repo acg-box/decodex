@@ -1,8 +1,8 @@
-//! Native audio resources: input-only dictation and WebRTC's duplex voice device.
+//! Native audio resources: Apple voice-processed dictation and WebRTC's duplex voice device.
 #![cfg_attr(test, allow(dead_code))]
 #[path = "native_audio_owner.rs"] pub(super) mod owner;
 
-#[path = "native_input_queue.rs"] mod input;
+#[path = "native_dictation_audio.rs"] mod input;
 #[path = "native_live_audio.rs"] mod live;
 #[path = "native_audio_route.rs"] mod route;
 
@@ -122,6 +122,13 @@ impl Device {
 		}
 	}
 
+	fn configuration_changed(&self) -> bool {
+		match &self.hardware {
+			Hardware::Input(input) => input.configuration_changed(),
+			Hardware::Live(_) => false,
+		}
+	}
+
 	fn clear_playback(&self) -> Result<(), ()> {
 		let mut output = self.ports.output.lock().map_err(|_| ())?;
 
@@ -149,12 +156,21 @@ impl Device {
 	}
 
 	#[cfg(test)]
-	fn capture_channels(&self) -> Option<u32> {
+	fn dictation_input(&self) -> Option<DictationInput> {
 		match &self.hardware {
-			Hardware::Input(input) => input.channels(),
+			Hardware::Input(input) => Some(input.settings()),
 			Hardware::Live(_) => None,
 		}
 	}
+}
+
+#[cfg(test)]
+#[derive(Debug)]
+struct DictationInput {
+	sample_rate: f64,
+	channels: u32,
+	voice_processing: bool,
+	agc: bool,
 }
 
 impl Drop for Device {

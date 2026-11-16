@@ -26,7 +26,8 @@ impl VoiceConnection {
 		id: &str,
 		index: usize,
 	) -> Result<(), AgentError> {
-		if self.transcript_tail[index].is_empty() {
+		if self.transcript_tail[index].trim().is_empty() {
+			self.transcript_tail[index].clear();
 			self.transcript_complete[index] = false;
 
 			return Ok(());
@@ -230,15 +231,28 @@ impl AgentCoordinator {
 		) {
 			return Err(AgentError::Busy);
 		}
-
-		let thread = item
-			.codex_thread_id
-			.ok_or_else(|| AgentError::Invalid("Agent thread is not ready".into()))?;
-		let generation = self.selected_voice_generation(work_id.as_str(), &thread).await?;
+		let generation = match item.codex_thread_id.as_deref() {
+			Some(thread) => Some(self.selected_voice_generation(work_id.as_str(), thread).await?),
+			None => None,
+		};
 
 		if !agent_voice_settings::voice_allowed(&self.client).await? {
 			return Err(AgentError::Invalid("Voice is disabled by managed policy.".into()));
 		}
+
+		// Live can be the first input in a topic. Reuse native thread creation and
+		// its durable ownership/readback without submitting an ordinary model turn.
+		let item = self
+			.ensure_thread_for_execution(
+				&item,
+				options.draft.as_ref().map(|draft| &draft.execution),
+			)
+			.await?;
+		let thread = item.codex_thread_id.expect("prepared native thread");
+		let generation = match generation {
+			Some(generation) => generation,
+			None => self.selected_voice_generation(work_id.as_str(), &thread).await?,
+		};
 		if !self.loaded_threads.contains(&thread) {
 			let mut params = Self::resume_params(&thread);
 
@@ -310,6 +324,7 @@ impl AgentCoordinator {
 			self.store.close_agent_voice_call(session_id.as_str().into()).await?;
 
 			self.voice.as_mut().expect("voice host").session = None;
+			self.discard_empty_conversation_drafts().await?;
 		}
 
 		result?;
@@ -343,7 +358,6 @@ impl AgentCoordinator {
 				.observe_agent_voice_turn(voice.generation.clone(), thread.into(), turn.into())
 				.await?;
 		}
-
 		let Some((id, _current)) = voice.session.clone().filter(|(_, t)| t == thread) else {
 			return Ok(());
 		};
@@ -417,6 +431,7 @@ impl AgentCoordinator {
 					self.store.close_agent_voice_call(id).await?;
 
 					voice.session = None;
+					self.discard_empty_conversation_drafts().await?;
 				}
 			},
 
@@ -428,6 +443,7 @@ impl AgentCoordinator {
 				voice.gateway.update(&id, AgentVoicePhase::Ended, None, None);
 
 				voice.session = None;
+				self.discard_empty_conversation_drafts().await?;
 			},
 			_ => {},
 		}

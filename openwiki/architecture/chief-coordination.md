@@ -126,7 +126,7 @@ sources:
     resource: repo://database/src/works/collaboration.rs
   - id: openwiki-source-c0eb738b42368debe7ef7545
     resource: repo://database/src/works/commands.rs
-generated: { by: "codex", at: "2026-11-06T17:37:20.544Z" }
+generated: { by: "codex", at: "2026-11-13T17:21:21.772Z" }
 verified:
   - by: openwiki/0.9.0
     at: 2026-11-06T17:37:20.544Z
@@ -148,6 +148,7 @@ New Assistant Memory connections learn from completed public dialogue automatica
 
 The desktop sends typed commands to the service. SQLite owns Project membership, Agent responsibilities, Work requirements, holds, Results, assessments and Collaboration Requests. Codex owns native threads, turns, Subagents, messages, waits, context, Goals, permissions and enforcement. Work commands persist business decisions; they do not spawn or message native helpers.
 
+<!-- openwiki: broken internal link [../workflows/models-and-settings.md#native-model-retirement] heading anchor "native-model-retirement" does not exist in "../workflows/models-and-settings.md". Fix the href or restore the target, then delete this comment. -->
 A new independent conversation can derive its initial settings from its actual first pending user input. An Assistant is not required. Explicit model and compatible effort choices are retained. If the current native catalog gives the model a retirement deadline that has passed, creation uses that catalog's current default. The normal model workflow describes this [retirement policy](../workflows/models-and-settings.md#native-model-retirement). A bound conversation or uncertain native effect never uses this bootstrap path. After native creation, Decodex materializes the thread name before Project reconciliation.
 
 Several independent conversations can share one admitted native process. Each Agent attaches only after that process has created or resumed its exact native thread. The binding preserves the process account, generation and live-owner fences; Project membership alone grants no process authority.

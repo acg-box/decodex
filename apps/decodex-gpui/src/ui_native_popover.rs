@@ -21,6 +21,7 @@ use crate::{
 #[derive(Default)]
 struct Hosts {
 	children: HashMap<WindowId, WindowHandle<Panel>>,
+	hints: HashMap<WindowId, WindowHandle<Panel>>,
 	accessories: HashMap<(WindowId, ElementId), WindowHandle<Panel>>,
 	active: HashMap<WindowId, ActivePopup>,
 }
@@ -39,10 +40,12 @@ struct Content {
 	trigger: Option<Bounds<Pixels>>,
 	origin: Point<Pixels>,
 	viewport: Size<Pixels>,
+	hover_viewport: Bounds<Pixels>,
 	width: Pixels,
 	placement: PopoverPlacement,
 	preview: bool,
 	attached: bool,
+	passive: bool,
 	geometry: MaterialGeometry,
 	focus: Option<FocusHandle>,
 }
@@ -71,12 +74,13 @@ impl Panel {
 	fn place(&mut self, window: &mut Window, cx: &mut App) {
 		let Some(content) = &self.content else { return };
 		let size = gpui::size(content.width, self.height);
-		let origin = super::surface_origin(
-			content.placement.origin(content.origin, size, content.trigger),
-			size,
-			content.viewport,
-			content.attached,
-		);
+		let origin = if content.preview && !content.attached {
+			content.trigger.map_or(content.origin, |trigger| {
+				super::hover_origin(trigger, size, content.hover_viewport)
+			})
+		} else {
+			super::surface_origin(content.origin, size, content.viewport, content.attached)
+		};
 		if let Some(surface) = &mut self.surface {
 			surface.set_radius(content.geometry.radius);
 			if surface.place(Bounds::new(origin, gpui::size(content.width, self.height))) {
@@ -91,7 +95,9 @@ impl Panel {
 
 impl Render for Panel {
 	fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-		if !ui_frame::application_active() && self.content.as_ref().is_some_and(|c| !c.attached) {
+		if !ui_frame::application_active()
+			&& self.content.as_ref().is_some_and(|c| !c.attached || c.passive)
+		{
 			self.close(cx);
 		}
 		let Some(content) = &self.content else { return gpui::div().into_any_element() };
@@ -101,6 +107,7 @@ impl Render for Panel {
 		let foreground = (content.render)(window, cx);
 		let measured = cx.entity().downgrade();
 		let root = gpui::div()
+			.relative()
 			.w_full()
 			.when(!content.attached, ui_theme::menu_outline)
 			.font_family(ui_theme::FONT_FAMILY)
@@ -127,12 +134,20 @@ impl Render for Panel {
 				}
 				cx.stop_propagation();
 			}))
-			.child(foreground);
+			.child(foreground)
+			.child(
+				gpui::canvas(
+					|_, _, _| (),
+					|_, _, window, _| super::observe_pointer_departure(window),
+				)
+				.absolute()
+				.inset_0(),
+			);
 		crate::ui_layout::intrinsic(width, root, move |size, window, cx| {
 			let _ = measured.update(cx, |panel, cx| {
 				if let Some(content) = panel.content.as_ref().filter(|content| !content.attached) {
 					let height = size.height.max(gpui::px(1.));
-					panel.height = if matches!(content.placement, PopoverPlacement::LeftCenter(_)) {
+					panel.height = if matches!(content.placement, PopoverPlacement::Hover(_)) {
 						super::popover_height(&mut panel.resize, height, window, cx)
 					} else {
 						height
@@ -180,6 +195,7 @@ pub(super) fn render(mut popover: Popover, window: &mut Window, cx: &mut App) ->
 		return gpui::div().into_any_element();
 	}
 	let viewport = window.viewport_size();
+	let hover_viewport = super::hover_viewport(window);
 	let placement = popover.placement;
 	let content = popover.content.take().expect("native popover content");
 	gpui::canvas(
@@ -201,13 +217,15 @@ pub(super) fn render(mut popover: Popover, window: &mut Window, cx: &mut App) ->
 						}),
 					),
 				viewport,
+				hover_viewport,
 				width: match placement {
-					PopoverPlacement::LeftCenter(width) => width,
+					PopoverPlacement::Hover(width) => width,
 					_ => bounds.size.width - gpui::px(inset * 2.),
 				},
 				placement,
 				preview: popover.preview,
 				attached: false,
+				passive: false,
 				geometry: MaterialGeometry {
 					radius: f64::from(ui_theme::POPOVER_RADIUS),
 					clip: None,
@@ -218,6 +236,7 @@ pub(super) fn render(mut popover: Popover, window: &mut Window, cx: &mut App) ->
 			cx.defer(move |cx| present(parent, request, cx));
 		},
 		move |_, _, window, _| {
+			super::observe_pointer_departure(window);
 			window.on_mouse_event(move |event: &MouseDownEvent, phase, _, cx| {
 				if !phase.capture() {
 					return;
@@ -242,7 +261,9 @@ pub(super) fn render(mut popover: Popover, window: &mut Window, cx: &mut App) ->
 
 fn present(parent: AnyWindowHandle, request: Content, cx: &mut App) {
 	let key = (parent.window_id(), request.id.clone());
-	let existing = if request.attached {
+	let existing = if request.passive {
+		cx.global::<Hosts>().hints.get(&parent.window_id()).copied()
+	} else if request.attached {
 		cx.global::<Hosts>().accessories.get(&key).copied()
 	} else {
 		cx.global::<Hosts>().children.get(&parent.window_id()).copied()
@@ -250,7 +271,9 @@ fn present(parent: AnyWindowHandle, request: Content, cx: &mut App) {
 	let child = existing
 		.or_else(|| parent.update(cx, |_, window, cx| create(parent, window, cx)).ok().flatten());
 	let Some(child) = child else { return };
-	if request.attached {
+	if request.passive {
+		cx.global_mut::<Hosts>().hints.insert(parent.window_id(), child);
+	} else if request.attached {
 		cx.global_mut::<Hosts>().accessories.insert(key, child);
 	} else {
 		cx.global_mut::<Hosts>().children.insert(parent.window_id(), child);
@@ -267,7 +290,7 @@ fn present(parent: AnyWindowHandle, request: Content, cx: &mut App) {
 		let changed = panel.content.as_ref().is_none_or(|old| old.id != request.id);
 		if changed {
 			panel.close(cx);
-			panel.focus_pending = !request.preview && !request.attached;
+			panel.focus_pending = !request.preview && !request.attached && !request.passive;
 		}
 		if request.attached
 			&& let Some(bounds) = request.trigger
@@ -283,6 +306,7 @@ fn present(parent: AnyWindowHandle, request: Content, cx: &mut App) {
 			panel.place(window, cx);
 		}
 		if let Some(surface) = &mut panel.surface {
+			surface.set_passive(panel.content.as_ref().is_some_and(|content| content.passive));
 			surface.prepare_open();
 		}
 		cx.notify();
@@ -301,6 +325,7 @@ pub(super) fn render_surface(
 	initialize(cx);
 	let parent = window.window_handle();
 	let viewport = window.viewport_size();
+	let hover_viewport = super::hover_viewport(window);
 	let outside_id = id.clone();
 	gpui::canvas(
 		move |bounds, _, cx| {
@@ -312,10 +337,12 @@ pub(super) fn render_surface(
 				trigger: Some(bounds),
 				origin: bounds.origin,
 				viewport,
+				hover_viewport,
 				width: bounds.size.width,
 				placement: PopoverPlacement::Below,
 				preview: true,
 				attached: true,
+				passive: false,
 				geometry,
 				focus: None,
 			};
@@ -349,6 +376,111 @@ pub(super) fn hide_surface(parent: AnyWindowHandle, id: ElementId, cx: &mut App)
 	}
 }
 
+/// Measure in GPUI's tooltip slot, then compose the foreground once in its material host.
+pub(super) fn render_hint(
+	id: ElementId,
+	content: Rc<PopoverContent>,
+	window: &mut Window,
+	cx: &mut App,
+) -> AnyElement {
+	initialize(cx);
+	HintAnchor { id, measure: content(window, cx), content }.into_any_element()
+}
+
+struct HintAnchor {
+	id: ElementId,
+	measure: AnyElement,
+	content: Rc<PopoverContent>,
+}
+impl IntoElement for HintAnchor {
+	type Element = Self;
+
+	fn into_element(self) -> Self {
+		self
+	}
+}
+impl gpui::Element for HintAnchor {
+	type PrepaintState = ();
+	type RequestLayoutState = ();
+
+	fn id(&self) -> Option<ElementId> {
+		None
+	}
+
+	fn source_location(&self) -> Option<&'static std::panic::Location<'static>> {
+		None
+	}
+
+	fn request_layout(
+		&mut self,
+		_: Option<&gpui::GlobalElementId>,
+		_: Option<&gpui::InspectorElementId>,
+		window: &mut Window,
+		cx: &mut App,
+	) -> (gpui::LayoutId, ()) {
+		(self.measure.request_layout(window, cx), ())
+	}
+
+	fn prepaint(
+		&mut self,
+		_: Option<&gpui::GlobalElementId>,
+		_: Option<&gpui::InspectorElementId>,
+		bounds: Bounds<Pixels>,
+		_: &mut (),
+		window: &mut Window,
+		cx: &mut App,
+	) {
+		let parent = window.window_handle();
+		let request = Content {
+			id: self.id.clone(),
+			render: self.content.clone(),
+			dismiss: Rc::new(|_| {}),
+			escape: Rc::new(|_| {}),
+			trigger: Some(bounds),
+			origin: bounds.origin,
+			viewport: window.viewport_size(),
+			hover_viewport: super::hover_viewport(window),
+			width: bounds.size.width,
+			placement: PopoverPlacement::Below,
+			preview: true,
+			attached: true,
+			passive: true,
+			geometry: MaterialGeometry {
+				radius: f64::from(ui_theme::POPOVER_RADIUS),
+				clip: None,
+				opacity: 1.,
+			},
+			focus: None,
+		};
+		cx.defer(move |cx| present(parent, request, cx));
+	}
+
+	fn paint(
+		&mut self,
+		_: Option<&gpui::GlobalElementId>,
+		_: Option<&gpui::InspectorElementId>,
+		_: Bounds<Pixels>,
+		_: &mut (),
+		_: &mut (),
+		window: &mut Window,
+		_: &mut App,
+	) {
+		super::observe_pointer_departure(window);
+	}
+}
+
+pub(super) fn hide_hint(parent: AnyWindowHandle, id: ElementId, cx: &mut App) {
+	if cx.has_global::<Hosts>()
+		&& let Some(child) = cx.global::<Hosts>().hints.get(&parent.window_id()).copied()
+	{
+		let _ = child.update(cx, |panel, _, cx| {
+			if panel.content.as_ref().is_some_and(|content| content.id == id) {
+				panel.close(cx);
+			}
+		});
+	}
+}
+
 fn initialize(cx: &mut App) {
 	if cx.has_global::<Hosts>() {
 		return;
@@ -372,6 +504,12 @@ fn initialize(cx: &mut App) {
 			}
 		}
 		if let Some(child) = cx.global_mut::<Hosts>().children.remove(&id) {
+			let _ = child.update(cx, |panel, window, cx| {
+				panel.close(cx);
+				window.remove_window();
+			});
+		}
+		if let Some(child) = cx.global_mut::<Hosts>().hints.remove(&id) {
 			let _ = child.update(cx, |panel, window, cx| {
 				panel.close(cx);
 				window.remove_window();
@@ -406,7 +544,10 @@ fn create(
 					cx.observe_window_activation(window, |panel: &mut Panel, window, cx| {
 						if !window.is_window_active()
 							&& !ui_frame::application_active()
-							&& panel.content.as_ref().is_some_and(|content| !content.attached)
+							&& panel
+								.content
+								.as_ref()
+								.is_some_and(|content| !content.attached || content.passive)
 						{
 							panel.close(cx);
 						}
@@ -446,6 +587,9 @@ pub(super) fn claim(
 	cx: &mut App,
 ) {
 	initialize(cx);
+	if let Some(hint) = cx.global::<Hosts>().hints.get(&parent.window_id()).copied() {
+		let _ = hint.update(cx, |panel, _, cx| panel.close(cx));
+	}
 	if cx
 		.global::<Hosts>()
 		.active

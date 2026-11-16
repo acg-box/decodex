@@ -36,98 +36,152 @@ pub(crate) fn calculate(
 	catalog: &Catalog,
 	thread: &str,
 	rows: &[AgentCostObservation],
-	mut partial: bool,
+	partial: bool,
 ) -> Option<ApiCostEstimate> {
+	calculate_all(catalog, thread, rows, partial).0
+}
+
+pub(crate) fn calculate_turns(
+	catalog: &Catalog,
+	thread: &str,
+	rows: &[AgentCostObservation],
+	partial: bool,
+) -> BTreeMap<String, ApiCostEstimate> {
+	calculate_all(catalog, thread, rows, partial).1
+}
+
+#[derive(Default)]
+struct Amount {
+	numerator: u128,
+	responses: u64,
+	partial: bool,
+}
+impl Amount {
+	fn add(&mut self, amount: Option<u128>, partial: bool) {
+		self.partial |= partial || amount.is_none();
+		if let Some(amount) = amount {
+			match self.numerator.checked_add(amount) {
+				Some(total) => {
+					self.numerator = total;
+					self.responses += 1;
+				},
+				None => self.partial = true,
+			}
+		}
+	}
+
+	fn finish(self, thread: &str, catalog: &Catalog) -> Option<ApiCostEstimate> {
+		(self.responses > 0).then_some(())?;
+		Some(ApiCostEstimate {
+			thread_id: thread.into(),
+			usd_micros: u64::try_from((self.numerator + 500_000) / 1_000_000).ok()?,
+			priced_responses: self.responses,
+			partial: self.partial,
+			pricing_checked_at_micros: catalog.checked_at_micros,
+		})
+	}
+}
+
+fn calculate_all(
+	catalog: &Catalog,
+	thread: &str,
+	rows: &[AgentCostObservation],
+	partial: bool,
+) -> (Option<ApiCostEstimate>, BTreeMap<String, ApiCostEstimate>) {
 	let mut settings = Value::Null;
 	let mut selections = BTreeMap::new();
 	let mut previous = Tokens::default();
-	let mut numerator = 0_u128;
-	let mut priced = 0;
+	let mut total = Amount { partial, ..Default::default() };
+	let mut turns: BTreeMap<String, Amount> = BTreeMap::new();
+	let mut malformed = partial;
 	for row in rows {
 		let Ok(value) = serde_json::from_str::<Value>(&row.payload) else {
-			partial = true;
+			malformed = true;
+			total.partial = true;
 			continue;
 		};
 		match row.kind.as_str() {
-			"native_task_models" => {
-				settings = value["settings"].clone();
-			},
+			"native_task_models" => settings = value["settings"].clone(),
 			"turn_execution" => {
 				if let (Some(turn), Some(model)) =
 					(value["turnId"].as_str(), value["execution"]["model"].as_str())
 				{
-					selections.insert(turn.to_owned(), model.to_owned());
+					// Keep the selection at admission; a later dropdown change is not this
+					// request's rate.
+					let tier = value["execution"]["serviceTier"]
+						.as_str()
+						.map(str::to_owned)
+						.or_else(|| settings["serviceTier"].as_str().map(str::to_owned))
+						.or_else(|| settings.is_object().then(|| "default".into()));
+					selections.insert(turn.to_owned(), (model.to_owned(), tier));
 				}
 			},
 			"token_usage" => {
-				let usage = &value["tokenUsage"];
-				let (Ok(total), Ok(last)) = (
-					serde_json::from_value::<Tokens>(usage["total"].clone()),
-					serde_json::from_value::<Tokens>(usage["last"].clone()),
+				let (Ok(current), Ok(last)) = (
+					serde_json::from_value::<Tokens>(value["tokenUsage"]["total"].clone()),
+					serde_json::from_value::<Tokens>(value["tokenUsage"]["last"].clone()),
 				) else {
-					partial = true;
+					malformed = true;
+					total.partial = true;
 					continue;
 				};
-				if total == previous {
+				if current == previous {
 					continue;
 				}
-				partial |= total.difference(&previous).as_ref() != Some(&last);
-				// Native token receipts do not identify cache retention. Use the
-				// published 30-minute write rate and mark longer-retention cost unknown.
-				partial |= last.cache_write_input_tokens > 0;
-				previous = total;
-				let model = value["turnId"].as_str().and_then(|turn| selections.get(turn));
-				let speed = match settings["serviceTier"].as_str() {
-					Some("default" | "standard") => Some("standard"),
-					Some("priority" | "fast") => Some("fast"),
-					Some("ultrafast") => Some("ultrafast"),
-					None if settings.is_object() => Some("standard"),
-					_ => None,
-				};
-				let amount = model.zip(speed).and_then(|(model, speed)| {
-					let rates = catalog.rates.get(model)?.get(speed)?;
-					let prices = if last.input_tokens > 272_000 {
-						rates.long.as_ref().unwrap_or(&rates.short)
-					} else {
-						&rates.short
-					};
-					let input = last
-						.input_tokens
-						.checked_sub(last.cached_input_tokens)?
-						.checked_sub(last.cache_write_input_tokens)?;
-					let counts = [
-						input,
-						last.cached_input_tokens,
-						last.cache_write_input_tokens,
-						0,
-						last.output_tokens,
-					];
-					counts.into_iter().zip(prices).try_fold(0_u128, |sum, (count, price)| {
-						if count == 0 {
-							return Some(sum);
-						}
-						sum.checked_add(u128::from(count) * u128::from((*price)?))
-					})
-				});
-				if let Some(amount) = amount {
-					numerator = numerator.checked_add(amount)?;
-					priced += 1;
-				} else {
-					partial = true;
+				let incomplete = current.difference(&previous).as_ref() != Some(&last)
+					|| last.cache_write_input_tokens > 0;
+				previous = current;
+				let turn = value["turnId"].as_str();
+				let selected = turn.and_then(|turn| selections.get(turn));
+				let amount = selected
+					.and_then(|(model, tier)| price(catalog, &last, model, tier.as_deref()));
+				total.add(amount, incomplete);
+				if let Some(turn) = turn {
+					turns.entry(turn.into()).or_default().add(amount, incomplete);
 				}
 			},
 			_ => {},
 		}
 	}
-	if priced == 0 {
-		return None;
-	}
-	Some(ApiCostEstimate {
-		thread_id: thread.into(),
-		usd_micros: u64::try_from((numerator + 500_000) / 1_000_000).ok()?,
-		priced_responses: priced,
-		partial,
-		pricing_checked_at_micros: catalog.checked_at_micros,
+	let turns = turns
+		.into_iter()
+		.filter_map(|(turn, mut amount)| {
+			amount.partial |= malformed;
+			amount.finish(thread, catalog).map(|estimate| (turn, estimate))
+		})
+		.collect();
+	(total.finish(thread, catalog), turns)
+}
+
+fn price(catalog: &Catalog, tokens: &Tokens, model: &str, tier: Option<&str>) -> Option<u128> {
+	let speed = match tier? {
+		"default" | "standard" => "standard",
+		"priority" | "fast" => "fast",
+		"ultrafast" => "ultrafast",
+		_ => return None,
+	};
+	let rates = catalog.rates.get(model)?.get(speed)?;
+	let prices = if tokens.input_tokens > 272_000 {
+		rates.long.as_ref().unwrap_or(&rates.short)
+	} else {
+		&rates.short
+	};
+	let input = tokens
+		.input_tokens
+		.checked_sub(tokens.cached_input_tokens)?
+		.checked_sub(tokens.cache_write_input_tokens)?;
+	let counts = [
+		input,
+		tokens.cached_input_tokens,
+		tokens.cache_write_input_tokens,
+		0,
+		tokens.output_tokens,
+	];
+	counts.into_iter().zip(prices).try_fold(0_u128, |sum, (count, price)| {
+		if count == 0 {
+			return Some(sum);
+		}
+		sum.checked_add(u128::from(count) * u128::from((*price)?))
 	})
 }
 
@@ -167,6 +221,30 @@ mod tests {
 		assert_eq!(estimate.usd_micros, 4_100);
 		assert_eq!(estimate.priced_responses, 2);
 		assert!(!estimate.partial);
+		let turns = calculate_turns(&catalog, "thread", &rows, false);
+		assert_eq!(turns["a"].usd_micros, 2_050);
+		assert_eq!(turns["b"].usd_micros, 2_050);
+		assert_eq!(turns.values().map(|turn| turn.usd_micros).sum::<u64>(), estimate.usd_micros);
+	}
+
+	#[test]
+	fn turn_price_retains_the_admitted_speed_when_settings_change_before_usage_arrives() {
+		let catalog: Catalog = serde_json::from_str(include_str!("official-prices.json")).unwrap();
+		let counts =
+			serde_json::json!({"inputTokens":1000,"cachedInputTokens":500,"outputTokens":100});
+		let rows = vec![
+			row("native_task_models", serde_json::json!({"settings":{"serviceTier":"default"}})),
+			row(
+				"turn_execution",
+				serde_json::json!({"turnId":"a","execution":{"model":"gpt-6.1-sol"}}),
+			),
+			row("native_task_models", serde_json::json!({"settings":{"serviceTier":"ultrafast"}})),
+			row(
+				"token_usage",
+				serde_json::json!({"turnId":"a","tokenUsage":{"last":counts,"total":counts}}),
+			),
+		];
+		assert_eq!(calculate_turns(&catalog, "thread", &rows, false)["a"].usd_micros, 2050);
 	}
 	#[test]
 	fn missing_history_or_unknown_models_are_marked_as_partial() {

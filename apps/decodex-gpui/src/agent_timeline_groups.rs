@@ -2,24 +2,18 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use gpui::{
-	AnyElement, Context, FontWeight, KeyDownEvent, Role, SharedString,
-	prelude::{
-		InteractiveElement as _, IntoElement as _, ParentElement as _,
-		StatefulInteractiveElement as _, Styled as _,
-	},
+	AnyElement, Context, KeyDownEvent,
+	prelude::{InteractiveElement as _, IntoElement as _, StatefulInteractiveElement as _},
 };
 
 use crate::{
-	shell::{
-		agent_surface::native_timeline::{
-			AgentSurface, AgentTimelineContent, AgentTimelineEntry, AgentWorkItemDto,
-		},
-		workspace_symbols,
+	shell::agent_surface::native_timeline::{
+		AgentSurface, AgentTimelineContent, AgentTimelineEntry, AgentWorkItemDto,
 	},
-	ui_theme::{self, TEXT, TEXT_MUTED},
+	ui_theme,
 };
 
-pub(super) const HEADER_HEIGHT: f32 = 20.;
+pub(super) const HEADER_HEIGHT: f32 = super::super::conversation_divider::Style::Process.height();
 
 pub(super) fn process_turn(entry: &AgentTimelineEntry) -> Option<&str> {
 	match &entry.content {
@@ -135,71 +129,43 @@ impl AgentSurface {
 		let entry = entry.clone();
 		let expanded = group.expanded;
 		let keyboard = (work_id.clone(), entry.clone(), turn.clone(), turns.clone());
-		let control = gpui::div()
-			.id(SharedString::from(format!("turn-process-{identity}")))
-			.debug_selector(|| "turn-process-toggle".into())
-			.role(Role::Button)
-			.tab_index(0)
-			.aria_expanded(expanded)
-			.aria_label(process_label(group.count))
-			.cursor_pointer()
-			.flex()
-			.items_center()
-			.flex_none()
-			.gap(gpui::px(6.))
-			.py(gpui::px(3.))
-			.text_size(gpui::px(ui_theme::foreground::METRIC_SIZE))
-			.font_weight(FontWeight::NORMAL)
-			.line_height(gpui::px(14.))
-			.whitespace_nowrap()
-			.text_color(ui_theme::rgb(TEXT_MUTED))
-			.hover(|s| s.text_color(ui_theme::rgb(TEXT)))
-			.child(workspace_symbols::process_chevron(
-				SharedString::from(format!("turn-chevron-{identity}")),
-				expanded,
-			))
-			.child(process_label(group.count))
-			.on_click(cx.listener(move |s, _, _, cx| {
-				s.anchor_process_toggle(&work_id, &entry);
-				s.timeline.native.expanded_turns.retain(|id| !turns.contains(id));
+		let control = super::super::conversation_divider::control(
+			format!("turn-process-{identity}"),
+			process_label(group.count),
+			expanded,
+			super::super::conversation_divider::Style::Process,
+		)
+		.debug_selector(|| "turn-process-toggle".into())
+		.on_click(cx.listener(move |s, _, _, cx| {
+			s.anchor_process_toggle(&work_id, &entry);
+			s.timeline.native.expanded_turns.retain(|id| !turns.contains(id));
+
+			if !expanded {
+				s.timeline.native.expanded_turns.insert(turn.clone());
+			}
+
+			cx.notify();
+		}))
+		.on_key_down(cx.listener(move |s, event: &KeyDownEvent, _, cx| {
+			if ["enter", "space"].contains(&event.keystroke.key.as_str()) && !event.is_held {
+				s.anchor_process_toggle(&keyboard.0, &keyboard.1);
+				s.timeline.native.expanded_turns.retain(|id| !keyboard.3.contains(id));
 
 				if !expanded {
-					s.timeline.native.expanded_turns.insert(turn.clone());
+					s.timeline.native.expanded_turns.insert(keyboard.2.clone());
 				}
 
 				cx.notify();
-			}))
-			.on_key_down(cx.listener(move |s, event: &KeyDownEvent, _, cx| {
-				if ["enter", "space"].contains(&event.keystroke.key.as_str()) && !event.is_held {
-					s.anchor_process_toggle(&keyboard.0, &keyboard.1);
-					s.timeline.native.expanded_turns.retain(|id| !keyboard.3.contains(id));
+				cx.stop_propagation();
+			}
+		}))
+		.into_any_element();
 
-					if !expanded {
-						s.timeline.native.expanded_turns.insert(keyboard.2.clone());
-					}
-
-					cx.notify();
-					cx.stop_propagation();
-				}
-			}))
-			.into_any_element();
-
-		gpui::div()
-			.w_full()
-			.min_w_0()
-			.h(gpui::px(HEADER_HEIGHT))
-			.flex()
-			.items_center()
-			.gap(gpui::px(12.))
-			.child(control)
-			.child(gpui::div().min_w_0().flex_1().max_w(gpui::px(160.)).h(gpui::px(1.)).bg(
-				gpui::linear_gradient(
-					90.,
-					gpui::linear_color_stop(ui_theme::rgb(TEXT).opacity(0.17), 0.),
-					gpui::linear_color_stop(ui_theme::rgb(TEXT).opacity(0.), 1.),
-				),
-			))
-			.into_any_element()
+		super::super::conversation_divider::row(
+			control,
+			super::super::conversation_divider::Style::Process,
+		)
+		.into_any_element()
 	}
 }
 

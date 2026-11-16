@@ -285,7 +285,11 @@ async fn delete_refuses_active_threads_and_preserves_rejected_or_uncertain_archi
 		let (mut agent, mut sent, _) = tests::fixture_with_history(settings.clone()).await;
 		agent.start_agent("agent", "Initial").await.unwrap();
 		while sent.try_recv().is_ok() {}
-		assert!(agent.delete_archived_thread("agent", "opaque thread/1").await.is_err());
+		let result = agent.delete_archived_thread("agent", "opaque thread/1").await;
+		assert!(result.is_err());
+		if settings["_delete_reject"] == true {
+			assert!(matches!(result, Err(AgentError::Transport(ClientError::Remote(_)))));
+		}
 		let requests = iter::from_fn(|| sent.try_recv().ok()).collect::<Vec<_>>();
 		assert_eq!(
 			requests.iter().filter(|r| r["method"] == "thread/delete").count(),
