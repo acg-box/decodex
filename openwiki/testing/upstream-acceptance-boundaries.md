@@ -80,6 +80,8 @@ sources:
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_compaction_tests.rs
   - id: openwiki-source-a490ea3fbcddb9c007caf196
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_context_tests.rs
+  - id: openwiki-source-9145039d5c88ff2144ae6a60
+    resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_discovery_tests.rs
   - id: openwiki-source-4a57fba4bea69171318c6323
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_fork_tests.rs
   - id: openwiki-source-8d32d49a0bc31600300d9335
@@ -106,6 +108,8 @@ sources:
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_unreported_usage_tests.rs
   - id: openwiki-source-ea794ca791dfc854f2ec0a89
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_usage_tests.rs
+  - id: openwiki-source-a9a90ca34e6ca9f516d3d482
+    resource: repo://crates/decodex-runtime/src/account_launch/agent_process_voice_settings_start_tests.rs
   - id: openwiki-source-f5d073da07bcb17ee416f3b5
     resource: repo://crates/decodex-runtime/src/account_launch/process_native_control_tests.rs
   - id: openwiki-source-b2869e6da778a74cb6afc667
@@ -158,6 +162,8 @@ sources:
     resource: repo://crates/decodex-runtime/tests/fixtures/project_work_acceptance.json
   - id: openwiki-source-e09ec698c2e4d73878b3aa45
     resource: repo://crates/decodex-runtime/tests/native_qualification/answer_display.py
+  - id: openwiki-source-30f880169ba4c3067a852d8f
+    resource: repo://crates/decodex-runtime/tests/native_qualification/command_hooks.py
   - id: openwiki-source-b1a8e98eb39febad19f64bda
     resource: repo://crates/decodex-runtime/tests/native_qualification/dotenv_startup.py
   - id: openwiki-source-07c9cc033899826079f8efb5
@@ -172,6 +178,8 @@ sources:
     resource: repo://crates/decodex-runtime/tests/native_qualification/project_guardian.py
   - id: openwiki-source-c6bea677adcde563202b65b9
     resource: repo://crates/decodex-runtime/tests/native_qualification/response_identity.py
+  - id: openwiki-source-12467dcbd472f383d8918add
+    resource: repo://crates/decodex-runtime/tests/native_qualification/seatbelt_launch.py
   - id: openwiki-source-b30d382781a313611ecd221f
     resource: repo://crates/decodex-runtime/tests/native_qualification/thread_settings.py
   - id: openwiki-source-042bf1b2b00d2d0ac4dced71
@@ -206,10 +214,10 @@ sources:
     resource: repo://scripts/macos/version_codex_source.py
   - id: openwiki-source-e201f60894c32a914dac99ee
     resource: repo://scripts/vnext/run_native_regression.py
-generated: { by: "codex", at: "2026-11-12T20:40:36.077Z" }
+generated: { by: "codex", at: "2026-11-18T19:17:42.865Z" }
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-12T20:40:36.077Z
+    at: 2026-11-18T19:17:42.865Z
 ---
 
 # Upstream integration acceptance boundaries
@@ -238,6 +246,10 @@ Workflow-only maintenance uses the checkpoint and portfolio checks in `cargo +st
 ## Current fixed development qualification
 
 Read the development lock, [current source review](../../automations/upstream/current-review.json) and [current qualification](../../automations/upstream/qualification.json) for the fixed target, exact CLI/helpers/schema, executed identities and limits. Keep source review, source-test execution, exact production-artifact tests, delivery and installed acceptance separate. Current run counts and hashes belong in those records, not repeated across Wiki pages.
+
+The retained MCP fixture reads same-name registrations from two environments through the signed CLI and executor. The voice start fixture checks the unset V3 request, and the native preference fixtures check project and managed settings. The cold history fixture reads native turn boundaries and retained tool context before continuing the conversation. The [current qualification](../../automations/upstream/qualification.json) identifies the executions for the selected artifact.
+
+Use the [Seatbelt launch fixture](../../crates/decodex-runtime/tests/native_qualification/seatbelt_launch.py) to check local command permissions in a disposable macOS home. It checks denial under read-only permissions and a successful write to the subtree granted by a named command-directory profile. The native command hook fixture checks the working directory and one execution of the approved command.
 
 The provider-refusal follow-up resolves [the former compatibility blocker](https://github.com/acg-box/decodex/issues/2575) through the supported native fork. The original cohort remains historical evidence; it is not a freshly rerun matrix. The runtime lock selects the fixed reviewed target after fresh affected native consumer and component checks. Earlier cohort results remain historical and are not counted as passes on a newer artifact. The current source-review record covers every commit through its fixed target. HumanCommand support is [user-deferred](https://github.com/acg-box/decodex/issues/2585), unsupported and unadvertised. Earlier worker-permission reload source tests retain their original source and helper limits. Read the current qualification for actual executions. Source tests are separate from signed production-artifact tests; no broad upstream suite is a daily gate.
 

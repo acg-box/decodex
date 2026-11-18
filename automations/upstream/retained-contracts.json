@@ -259,7 +259,7 @@
           "upstream_commits": [
             "90e653014ab56215362f065be0cb4698bd75a15e"
           ],
-          "behavior": "Native V3 voice starts opt into backendReasoningStatus. Codex owns public-summary filtering and quiet context delivery; Decodex does not copy private reasoning.",
+          "behavior": "Native V3 voice starts opt into backendReasoningStatus. Check explicit voice values against the native V3 catalog. Leave an unset voice to the call destination. Codex owns public-summary filtering and quiet context delivery; Decodex does not copy private reasoning.",
           "source_symbols": [
             "crates/decodex-runtime/src/agent/voice.rs#start_voice"
           ],
@@ -938,7 +938,7 @@
     },
     {
       "id": "exact-native-history",
-      "contract": "Use exact native thread, turn and item identities; preserve complete large patch pages through cold restart, expire old process continuations and never replay inference to read history. Compaction checkpoints retain complete history and reject partial output.",
+      "contract": "Use exact native thread, turn and item identities; preserve complete large patch pages through cold restart, expire old process continuations and never replay inference to read history. Compaction checkpoints retain complete history and reject partial output. Accept the native turn-boundary field spellings before matching turns and timestamps in the mixed timeline.",
       "source_symbols": [
         "crates/decodex-codex/src/app_server_client/history.rs#thread_read_turn",
         "crates/decodex-codex/src/app_server_client/history.rs#thread_read_turn_items",
@@ -968,7 +968,7 @@
     },
     {
       "id": "native-mcp-boundary",
-      "contract": "Observe per-thread native MCP status and preserve discovery failure as failure rather than empty inventory. Preserve exact child request ownership and policy; reject a project downgrade of enterprise requirements. Native discovery, credentials, refresh and execution keep their upstream owners.",
+      "contract": "Observe per-thread native MCP status and preserve discovery failure as failure rather than empty inventory. Preserve the optional environment ID so equal server names can remain distinct. Preserve exact child request ownership and policy; reject a project downgrade of enterprise requirements. Native discovery, credentials, refresh and execution keep their upstream owners.",
       "source_symbols": [
         "crates/decodex-codex/src/app_server_client/integrations.rs#mcp_server_statuses"
       ],

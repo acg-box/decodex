@@ -160,16 +160,12 @@ sources:
     resource: repo://apps/decodex-gpui/src/voice_history_block.rs
   - id: openwiki-source-651d1fb6c9e49916a916ab51
     resource: repo://Cargo.toml
-  - id: openwiki-source-f02ae41e2bd15dda85dc86b9
-    resource: repo://codex-runtime.lock.json
   - id: openwiki-source-2b08587e9b26e203156110c8
     resource: repo://crates/decodex-codex/src/app_server_client/context_preferences.rs
   - id: openwiki-source-de4d0cc1dfd69783c61c375f
     resource: repo://crates/decodex-codex/src/app_server_client/observed_timing.rs
   - id: openwiki-source-38991dd5f5687970bfc48ba1
     resource: repo://crates/decodex-codex/src/app_server_client/sample.rs
-  - id: openwiki-source-43bb8e2957cde367e0219222
-    resource: repo://crates/decodex-codex/src/app_server_client/saved_history.rs
   - id: openwiki-source-787f8ad27b8519fbed2bd039
     resource: repo://crates/decodex-codex/src/app_server_client/thread_fork.rs
   - id: openwiki-source-e61069983d1f80f086a73408
@@ -226,10 +222,10 @@ sources:
     resource: repo://database/src/agent.rs
   - id: openwiki-source-c9f290c212ee80724ccf643a
     resource: repo://database/src/agent/drafts.rs
-generated: { by: "codex", at: "2026-11-14T18:04:20.030Z" }
+generated: { by: "codex", at: "2026-11-18T19:17:42.865Z" }
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-14T18:04:20.030Z
+    at: 2026-11-18T19:17:42.865Z
 ---
 
 
@@ -347,7 +343,7 @@ The preview uses `Popover::hover_preview` with the complete tick group as its an
 
 The tick group and preview retain one `ui_motion::HoverIntent` owner. Initial entry waits 100 ms. Leaving starts a 220 ms departure grace, and returning to the marks or card cancels closing. Brief crossings cancel entry. Moving across adjacent marks updates the same preview without another delay or arrival animation. Hover does not move or resize the transcript. Clicking a mark still navigates immediately and cancels pending preview work. Focused rendering checks cover long English and Chinese text, identical question and answer text, short content, single-row metadata bounds, repeated direction changes, brief departures and dismissal.
 
-Mixed-timeline boundary projection consumes `turn_id`, `started_at` and `duration_ms`. Native turn headers use `startedAt` and `durationMs`. Runtime projection converts known Unix seconds to microseconds and retains missing timestamps. The saved-item path retains the same start and duration from exact native turn headers without resuming a thread. The current native runtime requirement is recorded in `codex-runtime.lock.json`; see the [acceptance boundaries](../testing/upstream-acceptance-boundaries.md) for qualification evidence.
+The mixed-timeline reader accepts camelCase and snake_case fields on native turn-start and turn-completion rows. It maps turn ID, start time, completion time and duration to the retained boundary fields before it validates the page. Runtime projection converts known Unix seconds to microseconds and preserves missing timestamps. The saved-item path reads start time and duration from exact native turn headers without resuming the thread. The [acceptance boundaries](../testing/upstream-acceptance-boundaries.md) link to qualification for the current runtime pin.
 
 Ordinary messages use a 20-point reading gap. A completed process header and its answer form one reading group, with a 6-point gap. The working indicator has 20 points above its 24-point status row and 20 points between that row and the composer. The composer contributes 8 points of the lower gap. When the status row closes, the normal message-to-composer gap remains.
 

@@ -173,7 +173,7 @@ async fn catalog_failure_rejects_settings_and_save_readback_without_retry() {
 	for catalog in [
 		serde_json::json!({"error":{"code":-32_603,"message":"catalog unavailable"}}),
 		serde_json::json!({"result":{"voices":{"v1":[],"v3":[],"defaultV1":"cove"}}}),
-		serde_json::json!({"result":{"voices":{"v1":["juniper"],"v3":["juniper"],"defaultV1":"cove"}}}),
+		serde_json::json!({"result":{"voices":{"v1":["cove"],"v3":["juniper",7],"defaultV1":"cove"}}}),
 	] {
 		let (local, remote) = io::duplex(8_192);
 		let (read, write) = io::split(local);

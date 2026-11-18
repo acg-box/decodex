@@ -6,6 +6,8 @@ tags: ["decodex", "architecture"]
 sources:
   - id: openwiki-source-08ce10c44b7d18a074304e2e
     resource: repo://apps/decodex-gpui/src/agent_hooks.rs
+  - id: openwiki-source-70469d1f0a6cf4c1fc423277
+    resource: repo://apps/decodex-gpui/src/agent_integrations.rs
   - id: openwiki-source-01379a7fb49ab2d638863891
     resource: repo://apps/decodex-gpui/src/agent_skills.rs
   - id: openwiki-source-f339a4d1910db63ca305c2df
@@ -14,12 +16,16 @@ sources:
     resource: repo://apps/decodex-gpui/src/component_plugins.rs
   - id: openwiki-source-0813b2e35e2133631c0aa4db
     resource: repo://apps/decodex-gpui/src/settings_components.rs
+  - id: openwiki-source-464d033c9eccea7feb8e422f
+    resource: repo://crates/decodex-codex/src/app_server_client/integrations.rs
   - id: openwiki-source-e379b8a714d71f87371ae328
     resource: repo://crates/decodex-components/src/plugins.rs
   - id: openwiki-source-69e9fd7efd8c3cd616184e27
     resource: repo://crates/decodex-components/src/ragflow_service.rs
   - id: openwiki-source-9ecfe8c96199e765ca2b4e1b
     resource: repo://crates/decodex-components/src/ragflow.rs
+  - id: openwiki-source-6e7bf590f5b3ff3b6996dd7f
+    resource: repo://crates/decodex-protocol/src/agent_integrations.rs
   - id: openwiki-source-eccf08613126ff810078b520
     resource: repo://crates/decodex-protocol/src/agent.rs
   - id: openwiki-source-a0063c7b07a1bc990ee9af6c
@@ -42,10 +48,10 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent/tests.rs
   - id: openwiki-source-3edc2f094826ee56ddec6b73
     resource: repo://crates/decodex-runtime/src/ragflow.rs
-generated: { by: "codex", at: "2026-11-06T16:50:31.712Z" }
+generated: { by: "codex", at: "2026-11-18T19:17:42.865Z" }
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-06T16:50:31.712Z
+    at: 2026-11-18T19:17:42.865Z
 ---
 
 # Native tools and connection ownership
@@ -53,6 +59,8 @@ verified:
 ## Native discovery and execution
 
 The service reads MCP status, installed plugins and Apps independently. It binds results to the selected native thread, directory and settings guard. Unavailable, unsupported, empty and over-capacity results have different meanings. Ordinary inventory reads do not force a refresh or authorize installation.
+
+MCP status uses the server name and its optional native environment ID as the registration identity. Servers with the same name can appear in different environments. Tool status displays the environment with the server name and shows authentication on a separate line. Registrations without an environment ID use their server name alone.
 
 Codex owns native tool discovery, filtering, plugin activation and execution. Decodex must not create a second MCP connection or a local tool-policy engine to imitate native behavior. Exact server and plugin names are identities, not display aliases.
 

@@ -202,6 +202,7 @@ fn project_mcp(result: Result<Vec<Value>, ClientError>) -> AgentMcpInventory {
 
 		servers.push(AgentMcpStatusDto {
 			name: name.into(),
+			environment_id: optional(&row["environmentId"]),
 			plugin_id: optional(&row["pluginId"]),
 			presentation: server_presentation(&row["serverInfo"]),
 			runtime_status: optional(&row["runtimeStatus"]),
@@ -281,13 +282,14 @@ mod tests {
 	#[test]
 	fn failed_discovery_and_plugin_policy_are_not_readiness() {
 		let mcp = agent_integrations::project_mcp(Ok(vec![
-			serde_json::json!({"name":"server","runtimeStatus":"authenticationRequired","authStatus":"notLoggedIn","tools":{},"toolsError":"Discovery failed","resources":[],"resourceTemplates":[],"serverCapabilities":{"tools":{},"resources":{},"extensions":{"openai/settings":{"readTool":"settings.read","updateTool":"private-fixture-value"}}}}),
+			serde_json::json!({"name":"server","environmentId":"workspace","runtimeStatus":"authenticationRequired","authStatus":"notLoggedIn","tools":{},"toolsError":"Discovery failed","resources":[],"resourceTemplates":[],"serverCapabilities":{"tools":{},"resources":{},"extensions":{"openai/settings":{"readTool":"settings.read","updateTool":"private-fixture-value"}}}}),
 		]));
 		let AgentMcpInventory::Available { servers } = mcp else {
 			panic!("inventory");
 		};
 
 		assert_eq!(servers[0].tool_count, 0);
+		assert_eq!(servers[0].environment_id.as_deref(), Some("workspace"));
 		assert_eq!(servers[0].tools_error.as_deref(), Some("Discovery failed"));
 		assert_eq!(servers[0].runtime_status.as_deref(), Some("authenticationRequired"));
 		assert_eq!(

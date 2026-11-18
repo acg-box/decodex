@@ -72,6 +72,7 @@ impl AgentSurface {
 				mcp: AgentMcpInventory::Available {
 					servers: vec![decodex_protocol::AgentMcpStatusDto {
 						name: "Local MCP fixture".into(),
+						environment_id: None,
 						plugin_id: None,
 						presentation: None,
 						runtime_status: Some("authenticationRequired".into()),
@@ -256,7 +257,12 @@ fn integration_text(result: &AgentIntegrationsResult) -> String {
 					_ => "Authentication status unknown",
 				};
 
-				lines.push(format!("{} — {runtime}; {auth}", server.name));
+				let name = server.environment_id.as_ref().map_or_else(
+					|| server.name.clone(),
+					|environment| format!("{} (environment {environment})", server.name),
+				);
+				lines.push(format!("{name} ({runtime})"));
+				lines.push(format!("Authentication ({auth})"));
 
 				if let Some(presentation) = &server.presentation {
 					lines.push(presentation.clone());
@@ -411,6 +417,7 @@ mod tests {
 			mcp: AgentMcpInventory::Available {
 				servers: vec![decodex_protocol::AgentMcpStatusDto {
 					name: "test".into(),
+					environment_id: Some("workspace".into()),
 					plugin_id: None,
 					presentation: Some("Reference docs (version 1.2)".into()),
 					runtime_status: Some("authenticationRequired".into()),
@@ -432,6 +439,7 @@ mod tests {
 		});
 
 		assert!(text.contains("Reference docs (version 1.2)"));
+		assert!(text.contains("test (environment workspace)"));
 		assert!(text.contains("Sign-in required"));
 		assert!(text.contains("Tool discovery failed"));
 		assert!(text.contains("Capabilities: tools, extensions/openai/settings"));

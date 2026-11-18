@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:87f5511ea839b14923e22ab374dfd8c27391982e6f266fb1df5c650949f2083c",
+  "pageVersion": "sha256:7e210939744c070137ed022517e36eb8414931efe4b0707f45ba9ea3a397a0be",
   "claims": [
     {
       "id": "claim_36b9a49ffa87416e8add8befc7d10efe",
@@ -54,7 +54,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_motion.rs",
-          "version": "repo-file-v1:sha256:79a8fcb3714cbee64d3a32a44a01be8ec7760c8ac438508c43876e59eff4901c"
+          "version": "repo-file-v1:sha256:9431a875527d0829f1af5b64afa8a6df28147b0dc7d08446e29780defc7cc0ee"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_native_popover.rs",
@@ -98,7 +98,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_theme.rs",
-          "version": "repo-file-v1:sha256:e7e60b2a14f0ec1f2646abd2d4b8807f0a6a6f243792d117fb9363c9e1f61aeb"
+          "version": "repo-file-v1:sha256:c4069aae9f3d1365c5fab5f549de21e752067b33f323a3f0bd711eb9d07413ae"
         }
       ]
     },
@@ -502,7 +502,7 @@
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent_host.rs",
-          "version": "repo-file-v1:sha256:32256ac2997c300af7189095f4ce77f1d03e7e295a9806feff4286bf7dd8dbbf"
+          "version": "repo-file-v1:sha256:c0a6dfad5c59b82758ec50ac5d08255e85394b06826e1f11d3df9dd8dce74dfa"
         }
       ]
     },
@@ -674,7 +674,7 @@
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent_host.rs",
-          "version": "repo-file-v1:sha256:32256ac2997c300af7189095f4ce77f1d03e7e295a9806feff4286bf7dd8dbbf"
+          "version": "repo-file-v1:sha256:c0a6dfad5c59b82758ec50ac5d08255e85394b06826e1f11d3df9dd8dce74dfa"
         }
       ]
     },
@@ -692,7 +692,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_theme.rs",
-          "version": "repo-file-v1:sha256:e7e60b2a14f0ec1f2646abd2d4b8807f0a6a6f243792d117fb9363c9e1f61aeb"
+          "version": "repo-file-v1:sha256:c4069aae9f3d1365c5fab5f549de21e752067b33f323a3f0bd711eb9d07413ae"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_working.rs",
@@ -784,7 +784,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_theme.rs",
-          "version": "repo-file-v1:sha256:e7e60b2a14f0ec1f2646abd2d4b8807f0a6a6f243792d117fb9363c9e1f61aeb"
+          "version": "repo-file-v1:sha256:c4069aae9f3d1365c5fab5f549de21e752067b33f323a3f0bd711eb9d07413ae"
         },
         {
           "resource": "repo://crates/decodex-codex/src/app_server_client/sample.rs",
@@ -820,7 +820,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace_size.rs",
-          "version": "repo-file-v1:sha256:1878477b669185697c745d758eb252ef3fa9661e79992b353b18f58e5f874cc9"
+          "version": "repo-file-v1:sha256:97a7881c3e8c93c22e52f6bb2f7566fbc3dfe4f22f5147fffc85f9a8a7d33c08"
         }
       ]
     },
@@ -868,7 +868,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_theme.rs",
-          "version": "repo-file-v1:sha256:e7e60b2a14f0ec1f2646abd2d4b8807f0a6a6f243792d117fb9363c9e1f61aeb"
+          "version": "repo-file-v1:sha256:c4069aae9f3d1365c5fab5f549de21e752067b33f323a3f0bd711eb9d07413ae"
         }
       ]
     },
@@ -894,7 +894,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_motion.rs",
-          "version": "repo-file-v1:sha256:79a8fcb3714cbee64d3a32a44a01be8ec7760c8ac438508c43876e59eff4901c"
+          "version": "repo-file-v1:sha256:9431a875527d0829f1af5b64afa8a6df28147b0dc7d08446e29780defc7cc0ee"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_native_popover.rs",
@@ -912,7 +912,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_motion.rs",
-          "version": "repo-file-v1:sha256:79a8fcb3714cbee64d3a32a44a01be8ec7760c8ac438508c43876e59eff4901c"
+          "version": "repo-file-v1:sha256:9431a875527d0829f1af5b64afa8a6df28147b0dc7d08446e29780defc7cc0ee"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_native_popover.rs",
@@ -938,11 +938,11 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_navigation_sidebar.rs",
-          "version": "repo-file-v1:sha256:2c6157292bbc1d5ea167a9e900c28fcd4f46cb0271d794137869352c659899a7"
+          "version": "repo-file-v1:sha256:74596bb714d41ce9e4748ee970d7e635120a64e3602ff9fcaa30517519a5829e"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_theme.rs",
-          "version": "repo-file-v1:sha256:e7e60b2a14f0ec1f2646abd2d4b8807f0a6a6f243792d117fb9363c9e1f61aeb"
+          "version": "repo-file-v1:sha256:c4069aae9f3d1365c5fab5f549de21e752067b33f323a3f0bd711eb9d07413ae"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_time.rs",
@@ -956,19 +956,11 @@
     },
     {
       "id": "claim_34b5416b38b3456a910a48c71e783af6",
-      "statement": "Mixed-timeline boundary projection consumes turn_id, started_at and duration_ms. Projection converts reported seconds to microseconds; saved-item history preserves startedAt and durationMs from native turn headers without resuming the thread. The current native runtime requirement is recorded in codex-runtime.lock.json.",
+      "statement": "The mixed-timeline reader accepts camelCase and snake_case fields on native turn-start and turn-completion rows. It maps their turn ID, start time, completion time and duration to the retained fields before page validation. Runtime projection converts known Unix seconds to microseconds and preserves missing times. Saved-item history reads start time and duration from exact native turn headers without resuming the thread.",
       "evidence": [
         {
-          "resource": "repo://codex-runtime.lock.json",
-          "version": "repo-file-v1:sha256:ce5d0bde0a9d28c56fae1b3996878ba0071ad5e2deda5b1c0befa39d514096f4"
-        },
-        {
-          "resource": "repo://crates/decodex-codex/src/app_server_client/saved_history.rs",
-          "version": "repo-file-v1:sha256:f1360112289f835155bc7b81c24ffc6a8845ceb68e73c341b00ff780ea8d9218"
-        },
-        {
           "resource": "repo://crates/decodex-codex/src/app_server_client/timeline.rs",
-          "version": "repo-file-v1:sha256:e3243ed5461c8288eb7115a43c7e078e4b141cdd32810ae1004ff4b246d35514"
+          "version": "repo-file-v1:sha256:45514de72505b84d8c8e89594d8e1886c4ffa065e3829e90a9368470c73f5a38"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/timeline.rs",
@@ -998,11 +990,11 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/shell.rs",
-          "version": "repo-file-v1:sha256:3658f19e2e3dff09e08dc559c3dcd499ab10cc1b0728b5d026e5ae17e19ae79e"
+          "version": "repo-file-v1:sha256:455f6444e664a2cac4ee164e3a431c895adf1da6dcc22ca2c79ee894f012d31d"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_motion.rs",
-          "version": "repo-file-v1:sha256:79a8fcb3714cbee64d3a32a44a01be8ec7760c8ac438508c43876e59eff4901c"
+          "version": "repo-file-v1:sha256:9431a875527d0829f1af5b64afa8a6df28147b0dc7d08446e29780defc7cc0ee"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_native_popover.rs",
@@ -1020,7 +1012,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_theme.rs",
-          "version": "repo-file-v1:sha256:e7e60b2a14f0ec1f2646abd2d4b8807f0a6a6f243792d117fb9363c9e1f61aeb"
+          "version": "repo-file-v1:sha256:c4069aae9f3d1365c5fab5f549de21e752067b33f323a3f0bd711eb9d07413ae"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/voice_history_block.rs",
@@ -1047,7 +1039,7 @@
       "statement": "New personal and Project editors stay local until the first submitted message atomically creates the conversation and input; empty editors are absent from the conversation list, and personal membership is saved with the first input.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_navigation_sidebar.rs#L170-L248",
+          "resource": "repo://apps/decodex-gpui/src/agent_navigation_sidebar.rs#L171-L249",
           "version": "repo-lines-v1:sha256:644e0ce8d72b669010150186d74863a24a44db5f3fea9dc248c61f23f1757a2f:eyJzZWxlY3RlZExpbmVDb3VudCI6NzksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNlYTNjYzllNmZkMmZiOTAwYTMxN2IxMmZhNDhlMWNmZjkyODM5YjAwNWZkMzAzNmMyODFmNGJmYWM3N2ZkNGYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE2ZjlhYTY0Y2NiNjE5MWYyMzM5NTMwYzZiOWE5YzY3NjZlZTBkNjg4NDc0YjczNjcwOTJjZjQxZjExM2EyYTIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImFjOWM4YzIwZGZkZDcyZTU1M2U2YzJhMzllNjRlYTc2MjdhMmRkMjBlMjAxYzg2NmM5YWMwYTY1MzhlNWE5MTQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ2YWVmODE0NjRmMTUwNWFhMTM0OTUwMzFlY2EwNzQ5ZDZiODI1MTkxZDg3ZTIzZDNkZjU3MDc2MjgxODRjZmIifQ"
         },
         {
@@ -1174,7 +1166,7 @@
         },
         {
           "resource": "repo://crates/decodex-protocol/src/agent.rs",
-          "version": "repo-file-v1:sha256:f02a6d74b53ba4558d21f6e1fe40a2a1fccb082c2e942cb974315ecc43cb4d84"
+          "version": "repo-file-v1:sha256:82002e49cd8ac5273b7dcf9264fe081e78a2738fce024ac4b18a0b4a56a92fce"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent_voice_presentation.rs",
@@ -1211,6 +1203,6 @@
   ],
   "verification": {
     "by": "openwiki/0.9.0",
-    "at": "2026-11-14T18:04:20.030Z"
+    "at": "2026-11-18T19:17:42.865Z"
   }
 }

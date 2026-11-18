@@ -315,7 +315,9 @@ impl AgentSurface {
 		if let Some(AgentVoiceSettingsResult::Available { voices, effective, preference, .. }) =
 			&self.voice_settings.state
 		{
-			if preference != effective {
+			if preference.is_none() && effective.is_none() {
+				panel = panel.child("Voice (server default)");
+			} else if preference != effective {
 				panel = panel.child(format!(
 					"Saved: {}; effective: {}",
 					preference.as_ref().map_or("Server default", WireText::as_str),

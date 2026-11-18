@@ -32,20 +32,14 @@ impl AppServerClient {
 				return Err(ClientError::InvalidFrame);
 			}
 
-			match &config["config"]["realtime"]["voice"] {
-				Value::Null => {
-					// The server owns the supported catalog and its default.
-					let (_, default) = self.realtime_voice_catalog().await?;
+			let configured = match &config["config"]["realtime"]["voice"] {
+				Value::Null => None,
+				Value::String(voice) => Some(voice),
+				_ => return Err(ClientError::InvalidFrame),
+			};
+			let voices = self.realtime_voice_catalog().await?;
 
-					Ok(Some(default))
-				},
-				Value::String(voice) => {
-					let (voices, _) = self.realtime_voice_catalog().await?;
-
-					Ok(voices.contains(voice).then(|| voice.clone()))
-				},
-				_ => Err(ClientError::InvalidFrame),
-			}
+			Ok(configured.filter(|voice| voices.contains(voice)).cloned())
 		})
 		.await
 		.map_err(|_| ClientError::Io)?
@@ -64,7 +58,7 @@ mod tests {
 			(
 				serde_json::json!({"result":{"config":{}}}),
 				serde_json::json!({"result":{"voices":{"v1":["cove"],"v3":["cove"],"defaultV1":"cove"}}}),
-				Ok(Some("cove")),
+				Ok(None),
 			),
 			(
 				serde_json::json!({"result":{"config":{}}}),
@@ -74,7 +68,7 @@ mod tests {
 			(
 				serde_json::json!({"result":{"config":{}}}),
 				serde_json::json!({"result":{"voices":{"v1":["cove"],"v3":["aube"],"defaultV1":"cove"}}}),
-				Err(()),
+				Ok(None),
 			),
 			(
 				serde_json::json!({"result":{"config":{"realtime":{"voice":"aube"}}}}),
@@ -89,7 +83,7 @@ mod tests {
 			(
 				serde_json::json!({"result":{"config":{}}}),
 				serde_json::json!({"result":{"voices":{"v1":["maple"],"v3":["maple"],"defaultV1":"maple"}}}),
-				Ok(Some("maple")),
+				Ok(None),
 			),
 			(
 				serde_json::json!({"result":{"config":{}}}),
@@ -104,7 +98,7 @@ mod tests {
 			(
 				serde_json::json!({"result":{"config":{}}}),
 				serde_json::json!({"result":{"voices":{"v1":["juniper"],"v3":["juniper"],"defaultV1":"maple"}}}),
-				Err(()),
+				Ok(None),
 			),
 			(
 				serde_json::json!({"result":{"config":{"realtime":{"voice":"future_voice"}}}}),
