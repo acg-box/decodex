@@ -6,7 +6,7 @@ final class StatusPanelController: NSObject {
 	private static let screenMargin: CGFloat = 8
 	private static let menuBarGap: CGFloat = 4
 
-	private let statusItem: NSStatusItem
+	let statusItem: NSStatusItem
 	let panel: TransparentStatusPanel
 	private let hostingView: TransparentHostingView<StatusPanelRootView>
 	private let store: ResetCardStore
@@ -93,8 +93,8 @@ final class StatusPanelController: NSObject {
 
 	private func observeOutsideClicks() {
 		stopObservingOutsideClicks()
-		outsideClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
-			MainActor.assumeIsolated { self?.orderPanelOut() }
+		outsideClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
+			MainActor.assumeIsolated { self?.handleGlobalMouseDown(event) }
 		}
 		localClickMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
 			MainActor.assumeIsolated {
@@ -105,6 +105,17 @@ final class StatusPanelController: NSObject {
 			}
 			return event
 		}
+	}
+
+	func handleGlobalMouseDown(_ event: NSEvent) {
+		if event.type == .leftMouseDown,
+			let frame = statusItem.button?.window?.frame,
+			let location = event.cgEvent?.unflippedLocation,
+			NSMouseInRect(location, frame, false)
+		{
+			return
+		}
+		orderPanelOut()
 	}
 
 	private func stopObservingOutsideClicks() {

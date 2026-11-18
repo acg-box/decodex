@@ -289,6 +289,34 @@ final class StatusPanelLifecycleTests: XCTestCase {
 		Thread.sleep(forTimeInterval: 0.08)
 	}
 
+	func testStatusItemClickClosesPanelAfterGlobalMouseDown() async throws {
+		let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+		defer { try? FileManager.default.removeItem(at: root) }
+		let store = ResetCardStore(client: EmptyWidgetClient(), pendingStore: ResetCardPendingAttemptStore(nativeRequest: NativeJournalFixture.request, journalURL: root.appendingPathComponent("pending.json")))
+		let controller = StatusPanelController(store: store)
+		defer { controller.invalidate() }
+		let button = try XCTUnwrap(controller.statusItem.button)
+		func mouseDown(at point: NSPoint) throws -> NSEvent {
+			try XCTUnwrap(NSEvent.mouseEvent(with: .leftMouseDown, location: point, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: 0, context: nil, eventNumber: 1, clickCount: 1, pressure: 1))
+		}
+
+		button.performClick(nil)
+		XCTAssertTrue(controller.panel.isVisible)
+		let window = try XCTUnwrap(button.window)
+		let positioned = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in !window.frame.isEmpty }, object: nil)
+		await fulfillment(of: [positioned], timeout: 2)
+		let frame = window.frame
+		controller.handleGlobalMouseDown(try mouseDown(at: NSPoint(x: frame.midX, y: frame.maxY)))
+		XCTAssertTrue(controller.panel.isVisible, "Only the status button action should handle this click")
+		button.performClick(nil)
+		XCTAssertFalse(controller.panel.isVisible)
+
+		button.performClick(nil)
+		XCTAssertTrue(controller.panel.isVisible)
+		controller.handleGlobalMouseDown(try mouseDown(at: NSPoint(x: frame.maxX + 1, y: frame.midY)))
+		XCTAssertFalse(controller.panel.isVisible, "An outside click must still dismiss the panel")
+	}
+
 	func testWidgetOpensWithoutActivationAndSurvivesFocusChanges() async throws {
 		let application = NSApplication.shared
 		let foregroundPID = NSWorkspace.shared.frontmostApplication?.processIdentifier
