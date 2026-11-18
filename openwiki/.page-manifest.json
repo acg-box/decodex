@@ -16,18 +16,18 @@
       "completedRunId": "e604c276-505c-44e8-b3ca-c72c50274559"
     },
     "/openwiki/architecture/design-language.md": {
+      "gitHead": "98476ea3580caf6cdee6e416fbc9feaae2b19f47",
+      "sourceFingerprint": "sha256:3c058a0890f537ad6e11eb60eb453fafdeec274ca225b7b7585229fe1813704a",
       "pageVersion": "sha256:bcc8365dfba3f3d0ed97a9333d7f6295360d42c44774e36ff92311274156fc9c",
       "completedBy": "codex",
-      "completedRunId": "8f0eaca7-6748-457d-a734-c133e27b7efd",
-      "gitHead": "98476ea3580caf6cdee6e416fbc9feaae2b19f47",
-      "sourceFingerprint": "sha256:3c058a0890f537ad6e11eb60eb453fafdeec274ca225b7b7585229fe1813704a"
+      "completedRunId": "8f0eaca7-6748-457d-a734-c133e27b7efd"
     },
     "/openwiki/architecture/desktop-workspace.md": {
+      "gitHead": "98476ea3580caf6cdee6e416fbc9feaae2b19f47",
+      "sourceFingerprint": "sha256:3c058a0890f537ad6e11eb60eb453fafdeec274ca225b7b7585229fe1813704a",
       "pageVersion": "sha256:617a4a52af73241e1915cfd9e82eb444b9b2cda7b77c2a3d8db2e2a7ecec16e8",
       "completedBy": "codex",
-      "completedRunId": "8f0eaca7-6748-457d-a734-c133e27b7efd",
-      "gitHead": "98476ea3580caf6cdee6e416fbc9feaae2b19f47",
-      "sourceFingerprint": "sha256:3c058a0890f537ad6e11eb60eb453fafdeec274ca225b7b7585229fe1813704a"
+      "completedRunId": "8f0eaca7-6748-457d-a734-c133e27b7efd"
     },
     "/openwiki/architecture/runtime-architecture.md": {
       "gitHead": "98476ea3580caf6cdee6e416fbc9feaae2b19f47",
@@ -128,11 +128,11 @@
       "completedRunId": "446a8a3f-6d00-456b-8817-b4bfbc5a0ae8"
     },
     "/openwiki/operations/codex-upstream-autopilot.md": {
-      "gitHead": "7308c757f7455d85fb4a4c0845d369a53b9d5676",
-      "sourceFingerprint": "sha256:c8e23f7d7883d6c491479fcedea47ae27156fe5380d16cc32f716873f6556e68",
-      "pageVersion": "sha256:82a4ea9b2fcd424181b8a8ca9716d32de2cfc5d49256036173cffeafc50c3cdc",
+      "pageVersion": "sha256:8988d8f484cdf906df981b436e1f9dbefb40c989dc128d6b1cbb9f82912a577c",
       "completedBy": "codex",
-      "completedRunId": "024d4d66-677a-40b3-bfd9-021ac45d5efe"
+      "completedRunId": "c7327ba2-6fd3-467c-b42b-d97c4e2f97f1",
+      "gitHead": "b61da15dc0e760d89da3a6e33a04ccb2a0fd85fb",
+      "sourceFingerprint": "sha256:03702f3faa796bcd8ed735454426369c2ae1bdb4fec9367f33dade07228cae50"
     },
     "/openwiki/operations/commands-and-validation.md": {
       "gitHead": "ca565aaf3e5dcd3928d78d057bc556ed132a4ca2",

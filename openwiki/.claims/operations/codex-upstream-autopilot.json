@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:82a4ea9b2fcd424181b8a8ca9716d32de2cfc5d49256036173cffeafc50c3cdc",
+  "pageVersion": "sha256:8988d8f484cdf906df981b436e1f9dbefb40c989dc128d6b1cbb9f82912a577c",
   "claims": [
     {
       "id": "claim_b6c6b65984924f69970e7f0410d50903",
@@ -8,7 +8,7 @@
       "evidence": [
         {
           "resource": "repo://automations/portfolio.toml",
-          "version": "repo-file-v1:sha256:e89caf7eb5502007a1e2aa8571769158a0352f37bc8d63afe6981151f4ab1740"
+          "version": "repo-file-v1:sha256:d86bb06e2b06ed9405b92f9effcf20a9ae021a601ac4f4ade1e7fe90fa047bae"
         },
         {
           "resource": "repo://automations/upstream/README.md#L1-L16",
@@ -18,11 +18,11 @@
     },
     {
       "id": "claim_d1a992e40d1147c3928b5de580178ed5",
-      "statement": "The maintenance definition declares standalone Codex app cron execution with a new chat and assigned managed worktree per occurrence, gpt-6.1-sol, max reasoning effort and daily UTC 20:05 cadence. A completed run chat is independent of the schedule; manual catch-up still requires one owner and explicit resumption authority.",
+      "statement": "The maintenance definition declares standalone Codex app cron execution with a new chat and assigned managed worktree per occurrence, gpt-6.2-sol, max reasoning effort and daily UTC 20:05 cadence. A completed run chat is independent of the schedule. Manual catch-up still requires one owner and explicit resumption authority.",
       "evidence": [
         {
           "resource": "repo://automations/upstream/duty.json",
-          "version": "repo-file-v1:sha256:232538e34702c3cfd9f66d468618b4f76ec158288c96166f27d7581d2ef9aadf"
+          "version": "repo-file-v1:sha256:73460fbdedc669d7c837ef4ad12557c9c9514843eb6b51e16c07717ef8b20b08"
         },
         {
           "resource": "repo://automations/upstream/prompts/maintainer.md#L1-L25",
@@ -108,7 +108,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/agent.rs",
-          "version": "repo-file-v1:sha256:bf37795ce103536e5f9f41a4d3263b709ecc6012d3e2a494b6ab5dfb5088832d"
+          "version": "repo-file-v1:sha256:3d9643645d91201ee11de7a52f42ca26fa2106173bfdaa3c453e9272d88b6008"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/tests/external_context.rs",
@@ -212,7 +212,7 @@
       "evidence": [
         {
           "resource": "repo://automations/portfolio.toml",
-          "version": "repo-file-v1:sha256:e89caf7eb5502007a1e2aa8571769158a0352f37bc8d63afe6981151f4ab1740"
+          "version": "repo-file-v1:sha256:d86bb06e2b06ed9405b92f9effcf20a9ae021a601ac4f4ade1e7fe90fa047bae"
         },
         {
           "resource": "repo://automations/upstream/retained-contracts.json",
@@ -453,6 +453,6 @@
   ],
   "verification": {
     "by": "openwiki/0.9.0",
-    "at": "2026-11-12T20:40:36.077Z"
+    "at": "2026-11-18T17:19:36.083Z"
   }
 }

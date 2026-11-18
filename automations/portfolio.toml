@@ -7,7 +7,7 @@ version               = 1
 [[automations]]
 execution_environment = "worktree"
 id                    = "codex-upstream-maintainer"
-model                 = "gpt-6.1-sol"
+model                 = "gpt-6.2-sol"
 name                  = "Codex Upstream Maintainer"
 prompt_file           = "automations/upstream/prompts/maintainer.md"
 reasoning_effort      = "max"
