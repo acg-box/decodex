@@ -31,13 +31,14 @@ impl AppServerClient {
 				return Err(ClientError::InvalidFrame);
 			}
 
-			let page = self
+			let mut page = self
 				.request(
 					"thread/timeline/list",
 					serde_json::json!({"threadId":thread,"cursor":cursor,"limit":limit}),
 				)
 				.await?;
 
+			normalize_turn_boundaries(&mut page);
 			validate_page(&page, cursor, limit)?;
 
 			Ok(page)
@@ -53,6 +54,30 @@ fn valid_id(id: &str) -> bool {
 
 fn identity(value: &Value) -> Result<&str, ClientError> {
 	value.as_str().filter(|id| valid_id(id)).ok_or(ClientError::InvalidFrame)
+}
+
+fn normalize_turn_boundaries(page: &mut Value) {
+	let Some(rows) = page.get_mut("data").and_then(Value::as_array_mut) else { return };
+
+	for row in rows {
+		if !matches!(row["type"].as_str(), Some("turnStarted" | "turnCompleted")) {
+			continue;
+		}
+
+		if let Some(fields) = row.as_object_mut() {
+			// Keep the retained timeline shape for consumers of either native version.
+			for (native, retained) in [
+				("turnId", "turn_id"),
+				("startedAt", "started_at"),
+				("completedAt", "completed_at"),
+				("durationMs", "duration_ms"),
+			] {
+				if let Some(value) = fields.remove(native) {
+					fields.insert(retained.into(), value);
+				}
+			}
+		}
+	}
 }
 
 fn validate_page(page: &Value, cursor: Option<&str>, limit: u32) -> Result<(), ClientError> {
@@ -192,7 +217,11 @@ mod tests {
 				(
 					"thread/timeline/list",
 					"paged",
-					serde_json::json!({"result":{"data":[],"nextCursor":null,"activeRealtimeSessionAtPageStart":null}}),
+					serde_json::json!({"result":{"data":[
+						{"type":"turnStarted","position":1,"turnId":"turn","startedAt":10},
+						{"type":"item","position":2,"turnId":"turn","item":{"type":"agentMessage","id":"answer"}},
+						{"type":"turnCompleted","position":3,"turnId":"turn","startedAt":10,"completedAt":12,"durationMs":2000,"status":"completed"}
+					],"nextCursor":null,"activeRealtimeSessionAtPageStart":null}}),
 				),
 				(
 					"thread/read",
@@ -221,7 +250,16 @@ mod tests {
 
 		assert!(matches!(client.thread_timeline_page("legacy", None, 10).await,
 			Err(ClientError::Remote(error)) if error.code == -32_601));
-		assert!(client.thread_timeline_page("paged", None, 10).await.is_ok());
+		let page = client.thread_timeline_page("paged", None, 10).await.unwrap();
+
+		assert_eq!(
+			page["data"],
+			serde_json::json!([
+				{"type":"turnStarted","position":1,"turn_id":"turn","started_at":10},
+				{"type":"item","position":2,"turnId":"turn","item":{"type":"agentMessage","id":"answer"}},
+				{"type":"turnCompleted","position":3,"turn_id":"turn","started_at":10,"completed_at":12,"duration_ms":2000,"status":"completed"}
+			])
+		);
 		assert!(matches!(
 			client.thread_timeline_page("wrong", None, 10).await,
 			Err(ClientError::InvalidFrame)
