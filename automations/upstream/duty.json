@@ -4,7 +4,7 @@
   "automation_id": "codex-upstream-maintainer",
   "kind": "cron",
   "name": "Codex Upstream Maintainer",
-  "model": "gpt-6.1-sol",
+  "model": "gpt-6.2-sol",
   "reasoning_effort": "max",
   "prompt_file": "automations/upstream/prompts/maintainer.md",
   "workspace": "managed_worktree_per_run",
