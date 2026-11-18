@@ -1,7 +1,11 @@
 //! Retain independent native discovery and directory policy evidence.
-use std::{env, fs};
+use std::{env, fs, process::Stdio};
 
-use tokio::time;
+use tokio::{
+	io::{AsyncBufReadExt as _, BufReader},
+	process::Command,
+	time,
+};
 
 use crate::account_launch::agent_process::native_tests::{
 	Child, ClientError, Duration, NativeSession, Value,
@@ -13,6 +17,87 @@ impl Drop for NativeChild {
 		let _ = self.0.kill();
 		let _ = self.0.wait();
 	}
+}
+
+#[tokio::test]
+#[ignore = "requires exact Codex CLI and exec-server; isolated same-name MCP registrations"]
+async fn installed_native_mcp_inventory_retains_same_name_scopes() {
+	let binary = env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit native binary");
+	let executor = env::var_os("DECODEX_TEST_CODEX_EXEC_SERVER").expect("explicit native executor");
+	assert!(std::path::Path::new(&binary).is_absolute());
+	assert!(std::path::Path::new(&executor).is_absolute());
+	let home = tempfile::tempdir().unwrap();
+	let fixture = home.path().join("mcp.py");
+	fs::write(&fixture, include_str!("native_scoped_mcp.py")).unwrap();
+	let mut server = Command::new("/usr/bin/python3")
+		.arg(fixture)
+		.stdout(Stdio::piped())
+		.kill_on_drop(true)
+		.spawn()
+		.unwrap();
+	let mut announcements = BufReader::new(server.stdout.take().unwrap()).lines();
+	let port: u16 = time::timeout(Duration::from_secs(10), announcements.next_line())
+		.await
+		.unwrap()
+		.unwrap()
+		.unwrap()
+		.parse()
+		.unwrap();
+	fs::write(
+		home.path().join("config.toml"),
+		"cli_auth_credentials_store = \"file\"\n[features]\nmulti_environment_mcp = true\nexecutor_capability_discovery = true\n",
+	)
+	.unwrap();
+	let mut environments_file = String::from("default = \"env-a\"\ninclude_local = false\n");
+	let mut environments = Vec::new();
+	let executor = serde_json::to_string(executor.to_str().unwrap()).unwrap();
+
+	for id in ["env-a", "env-b"] {
+		let executor_home = home.path().join(id);
+		fs::create_dir(&executor_home).unwrap();
+		fs::write(
+			executor_home.join("config.toml"),
+			format!("[mcp_servers.notes]\nurl = \"http://127.0.0.1:{port}/{id}\"\n"),
+		)
+		.unwrap();
+		environments_file.push_str(&format!(
+			"\n[[environments]]\nid = \"{id}\"\nprogram = {executor}\nargs = [\"--listen\", \"stdio\"]\n[environments.env]\nCODEX_HOME = {}\n",
+			serde_json::to_string(&executor_home).unwrap()
+		));
+		environments.push(serde_json::json!({"environmentId":id,"cwd":executor_home}));
+	}
+
+	fs::write(home.path().join("environments.toml"), environments_file).unwrap();
+	let session = NativeSession::start(&binary, home.path());
+	let result = time::timeout(Duration::from_secs(35), async {
+		let started = session
+			.client
+			.thread_start(serde_json::json!({
+				"environments":environments,"approvalPolicy":"never","sandbox":"read-only"
+			}))
+			.await
+			.unwrap();
+		let id = started["thread"]["id"].as_str().unwrap();
+
+		loop {
+			let rows = session.client.mcp_server_statuses(id).await.unwrap();
+			if rows.len() == 2 && rows.iter().all(|row| row["runtimeStatus"] == "connected") {
+				break rows;
+			}
+			time::sleep(Duration::from_millis(10)).await;
+		}
+	})
+	.await
+	.expect("same-name MCP discovery completed");
+
+	assert_eq!(result[0]["name"], "notes");
+	assert_eq!(result[0]["environmentId"], "env-a");
+	assert_eq!(result[0]["serverInfo"]["name"], "env-a");
+	assert!(result[0]["toolsError"].is_null());
+	assert_eq!(result[1]["name"], "notes");
+	assert_eq!(result[1]["environmentId"], "env-b");
+	assert_eq!(result[1]["serverInfo"]["name"], "env-b");
+	assert!(result[1]["toolsError"].is_null());
 }
 
 #[tokio::test]

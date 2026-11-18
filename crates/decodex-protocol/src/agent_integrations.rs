@@ -21,6 +21,9 @@ pub struct AgentAppStatusDto {
 pub struct AgentMcpStatusDto {
 	/// Exact configured server name.
 	pub name: String,
+	/// Native execution environment for this registration, when scoped.
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub environment_id: Option<String>,
 	/// Native owning plugin when known.
 	pub plugin_id: Option<String>,
 	/// Public presentation advertised by the initialized server, when available.

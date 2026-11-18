@@ -16,7 +16,7 @@ pub struct NativeVoiceSettings {
 	version: String,
 	/// Native V3 voice catalog.
 	pub voices: Vec<String>,
-	/// Effective project voice, or an unknown voice supplied by a newer server.
+	/// Effective configured voice. None leaves the choice to the call destination.
 	pub effective: Option<String>,
 	/// The user preference can be overridden by project or managed configuration.
 	pub preference: Option<String>,
@@ -71,9 +71,8 @@ impl AppServerClient {
 			}
 
 			let version = string(&user["version"])?;
-			let (voices, default) = self.realtime_voice_catalog().await?;
-			let effective =
-				optional_voice(&config["config"]["realtime"]["voice"])?.or(Some(default));
+			let voices = self.realtime_voice_catalog().await?;
+			let effective = optional_voice(&config["config"]["realtime"]["voice"])?;
 			let preference = optional_voice(&user["config"]["realtime"]["voice"])?;
 
 			Ok(NativeVoiceSettings {
@@ -120,9 +119,7 @@ impl AppServerClient {
 		self.realtime_voice_settings(&observed.cwd).await
 	}
 
-	pub(super) async fn realtime_voice_catalog(
-		&self,
-	) -> Result<(Vec<String>, String), ClientError> {
+	pub(super) async fn realtime_voice_catalog(&self) -> Result<Vec<String>, ClientError> {
 		let value = self.request("thread/realtime/listVoices", serde_json::json!({})).await?;
 		let catalog = value["voices"]["v3"].as_array().ok_or(ClientError::InvalidFrame)?;
 
@@ -130,14 +127,7 @@ impl AppServerClient {
 			return Err(ClientError::InvalidFrame);
 		}
 
-		let voices = catalog.iter().map(string).collect::<Result<Vec<_>, _>>()?;
-		let default = string(&value["voices"]["defaultV1"])?;
-
-		if !voices.contains(&default) {
-			return Err(ClientError::InvalidFrame);
-		}
-
-		Ok((voices, default))
+		catalog.iter().map(string).collect()
 	}
 }
 

@@ -21,7 +21,7 @@ use decodex_protocol::{
 	AgentVoiceOptions, AgentVoiceRequest, EntityId, HistoryText, VoiceSdp, WireText,
 };
 
-fn assert_voice_start(start: &Value, thread: &str, voice: &str) {
+fn assert_voice_start(start: &Value, thread: &str, voice: Option<&str>) {
 	assert_eq!(start["params"]["threadId"], thread);
 	assert_eq!(start["params"]["version"], "v3");
 	assert_eq!(start["params"]["realtimeSessionId"], "voice");
@@ -29,7 +29,7 @@ fn assert_voice_start(start: &Value, thread: &str, voice: &str) {
 	assert_eq!(start["params"]["outputModality"], "audio");
 	assert_eq!(start["params"]["backendReasoningStatus"], true);
 
-	if voice == "juniper" {
+	if voice == Some("juniper") {
 		assert_eq!(start["params"]["model"], "realtime-fixture");
 		assert_eq!(start["params"]["realtimeStartInstructions"], "Start fixture");
 		assert_eq!(start["params"]["realtimeEndInstructions"], "");
@@ -41,12 +41,12 @@ fn assert_voice_start(start: &Value, thread: &str, voice: &str) {
 
 	assert_eq!(
 		start["params"]["voice"],
-		if voice == "future_voice" { Value::Null } else { serde_json::json!(voice) }
+		serde_json::json!(voice.filter(|voice| *voice != "future_voice"))
 	);
 }
 
-fn voice_options(voice: &str) -> AgentVoiceOptions {
-	if voice == "juniper" {
+fn voice_options(voice: Option<&str>) -> AgentVoiceOptions {
+	if voice == Some("juniper") {
 		AgentVoiceOptions {
 			draft: None,
 			model: Some(
@@ -65,7 +65,7 @@ fn voice_options(voice: &str) -> AgentVoiceOptions {
 	}
 }
 
-fn start_options(voice: &str, unstarted: bool) -> AgentVoiceOptions {
+fn start_options(voice: Option<&str>, unstarted: bool) -> AgentVoiceOptions {
 	let mut options = voice_options(voice);
 	if unstarted {
 		options.draft = Some(Box::new(decodex_protocol::AgentVoiceDraft {
@@ -87,15 +87,16 @@ fn start_options(voice: &str, unstarted: bool) -> AgentVoiceOptions {
 #[tokio::test]
 async fn voice_start_applies_effective_voice_and_rejects_failed_reads_before_recording_call() {
 	for (voice, config_fails, policy, hosted, occupied, unstarted) in [
-		("juniper", false, None, false, false, false),
-		("juniper", false, None, true, false, false),
-		("juniper", false, None, true, true, false),
-		("aube", false, None, false, false, false),
-		("future_voice", false, Some(true), false, false, false),
-		("juniper", true, None, false, false, false),
-		("juniper", false, Some(false), false, false, false),
-		("juniper", false, None, true, false, true),
-		("juniper", false, Some(false), true, false, true),
+		(Some("juniper"), false, None, false, false, false),
+		(Some("juniper"), false, None, true, false, false),
+		(Some("juniper"), false, None, true, true, false),
+		(Some("aube"), false, None, false, false, false),
+		(None, false, None, false, false, false),
+		(Some("future_voice"), false, Some(true), false, false, false),
+		(Some("juniper"), true, None, false, false, false),
+		(Some("juniper"), false, Some(false), false, false, false),
+		(Some("juniper"), false, None, true, false, true),
+		(Some("juniper"), false, Some(false), true, false, true),
 	] {
 		let thread = if hosted { "hosted-voice-thread" } else { "voice-thread" };
 		let work = if hosted { "conversation" } else { "root" };
@@ -290,10 +291,10 @@ async fn installed_native_voice_reads_project_override_and_refreshed_user_defaul
 	)
 	.unwrap();
 
-	assert_eq!(
-		session.client.realtime_voice_for_thread(thread).await.unwrap().as_deref(),
-		Some("cove")
-	);
+	assert_eq!(session.client.realtime_voice_for_thread(thread).await.unwrap().as_deref(), None);
+	let settings = session.client.realtime_voice_settings(project.to_str().unwrap()).await.unwrap();
+	assert!(settings.effective.is_none());
+	assert!(settings.preference.is_none());
 }
 
 #[tokio::test]

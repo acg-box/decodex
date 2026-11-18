@@ -59,7 +59,7 @@ impl AppServerClient {
 
 		time::timeout(Duration::from_secs(30), async {
 			let mut rows = Vec::new();
-			let mut names = HashSet::new();
+			let mut registrations = HashSet::new();
 			let mut cursors = HashSet::new();
 			let mut cursor: Option<String> = None;
 			let mut budget = MAX_FRAME_BYTES;
@@ -83,8 +83,17 @@ impl AppServerClient {
 						.as_str()
 						.filter(|name| !name.is_empty())
 						.ok_or(ClientError::InvalidFrame)?;
+					let environment = match &row["environmentId"] {
+						Value::Null => None,
+						Value::String(id)
+							if !id.is_empty()
+								&& id.len() <= 4_096
+								&& !id.chars().any(char::is_control) =>
+							Some(id.clone()),
+						_ => return Err(ClientError::InvalidFrame),
+					};
 
-					if !names.insert(name.to_owned())
+					if !registrations.insert((name.to_owned(), environment))
 						|| !row["tools"].is_object()
 						|| !row["authStatus"].is_string()
 						|| !row["resources"].is_array()
@@ -159,16 +168,24 @@ mod tests {
 		let server = tokio::spawn(async move {
 			let (reader, mut writer) = io::split(remote);
 			let mut lines = BufReader::new(reader).lines();
+			let mut broken = server(
+				"lookup",
+				serde_json::json!("authenticationRequired"),
+				serde_json::json!("Discovery failed"),
+			);
+			broken["environmentId"] = serde_json::json!("env-a");
+			let mut empty = server("lookup", serde_json::json!("connected"), Value::Null);
+			empty["environmentId"] = serde_json::json!("env-b");
 
 			for (method, response, cursor) in [
 				(
 					"mcpServerStatus/list",
-					serde_json::json!({"data":[server("broken",serde_json::json!("authenticationRequired"),serde_json::json!("Discovery failed"))],"nextCursor":"page2"}),
+					serde_json::json!({"data":[broken],"nextCursor":"page2"}),
 					Value::Null,
 				),
 				(
 					"mcpServerStatus/list",
-					serde_json::json!({"data":[server("empty",serde_json::json!("connected"),Value::Null)],"nextCursor":null}),
+					serde_json::json!({"data":[empty],"nextCursor":null}),
 					serde_json::json!("page2"),
 				),
 				(
@@ -202,6 +219,8 @@ mod tests {
 		let statuses = client.mcp_server_statuses("exact-thread").await.unwrap();
 
 		assert_eq!(statuses.len(), 2);
+		assert_eq!(statuses[0]["environmentId"], "env-a");
+		assert_eq!(statuses[1]["environmentId"], "env-b");
 		assert_eq!(statuses[0]["toolsError"], "Discovery failed");
 		assert!(statuses[1]["toolsError"].is_null());
 		assert_eq!(statuses[0]["runtimeStatus"], "authenticationRequired");
