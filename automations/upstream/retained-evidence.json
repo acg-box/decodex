@@ -3,51 +3,70 @@
   "scope": "Compact evidence router for the retained consumer boundary. The native checkpoint owns live review/delivery state.",
   "retained_contracts": {
     "path": "automations/upstream/retained-contracts.json",
-    "sha256": "931dee0e3f97691f67f093dc921885c20ccef45aa5b7ae1ad461491d4f670c08"
+    "sha256": "101e42ca528a01a3a1e3537c29e904af8f217f81a307ac9c2be163e977531f70"
   },
-  "source_baseline": "72532ecae5efe500d9e722f3ed5214e63cc8098a",
+  "source_baseline": "6257fbc4bd5339144e6ffb3398a011917d883a2e",
   "source_review_evidence": "automations/upstream/current-review.json",
   "source_review_summary": "The fixed review and its coverage limits are in current-review.json. Later upstream main is not certified.",
   "qualification": "automations/upstream/qualification.json",
   "retained_native_consumers": {
-    "source_commit": "72532ecae5efe500d9e722f3ed5214e63cc8098a",
+    "source_commit": "6257fbc4bd5339144e6ffb3398a011917d883a2e",
     "tests": [
-      "account_launch::agent_process::native_tests::reviewer::installed_native_guardian_preserves_large_action",
-      "account_launch::agent_process::native_tests::reviewer::evidence::installed_guardian_retains_answer_after_compaction_and_restart",
-      "account_launch::agent_process::native_tests::permissions::installed_named_permission_selection_during_active_turn_survives_restart",
-      "account_launch::agent_process::native_tests::structured::installed_temporary_requests_isolate_environment_and_preserve_custom_permissions",
-      "account_launch::agent_process::native_tests::code_mode::installed_native_parallel_dynamic_tools_preserve_ids_and_result_order",
+      "account_launch::agent_process::native_tests::discovery::installed_native_mcp_inventory_retains_same_name_scopes",
+      "account_launch::agent_process::native_tests::discovery::installed_native_mcp_capabilities_survive_tool_discovery_failure",
+      "account_launch::agent_process::native_tests::reviewer::store::voice_settings_start::installed_native_voice_reads_project_override_and_refreshed_user_default",
+      "account_launch::agent_process::native_tests::reviewer::store::voice_settings_start::installed_voice_preference_bridge_saves_absent_file_and_rejects_old_connection",
+      "account_launch::agent_process::native_tests::reviewer::store::voice_settings_start::installed_native_voice_policy_read_does_not_use_user_feature_flags",
+      "app_server_client::realtime_preferences::tests::native_v3_voice_preferences_survive_restart_and_preserve_project_override",
+      "schema::tests::official_schema_supports_current_consumers",
+      "account_launch::agent_process::native_tests::project_sync::native_project_delete_keeps_active_and_archived_conversation_history",
       "account_launch::agent_process::native_tests::context::installed_native_tool_context_survives_restart_without_replay",
-      "account_launch::agent_process::native_tests::compaction::installed_native_streams_auto_compaction_and_resumes_its_checkpoint",
-      "account_launch::agent_process::native_tests::history_recovery::installed_native_fork_history_recovers_from_intact_ancestor_copy",
-      "account_launch::agent_process::native_tests::upgrade::installed_runtime_upgrade_preserves_history_paused_goal_and_voice",
-      "agent::tests::native_subagent_live::mcp::native_child_mcp_input_preserves_policy_and_exact_request",
-      "agent::tests::native_agent_wake::native_child_completion_wakes_idle_root_once",
+      "account_launch::agent_process::native_tests::installed_native_history_reads_cross_retained_bridge_without_new_model_work",
+      "account_launch::agent_process::native_tests::reviewer::installed_native_guardian_preserves_large_action",
+      "account_launch::agent_process::native_tests::code_mode::installed_native_parallel_dynamic_tools_preserve_ids_and_result_order",
+      "account_launch::agent_process::native_tests::permissions::installed_named_permission_selection_during_active_turn_survives_restart",
+      "agent::tests::native_subagent_live::native_child_approval_round_trip",
+      "agent::tests::native_partial_output::native_interrupted_output_is_retained_without_replay",
       "account_launch::agent_process::native_tests::realtime::installed_native_realtime_history_survives_agent_and_cold_bridge",
-      "account_launch::agent_process::native_tests::recap_service::installed_recap_uses_native_history_and_invalidates_after_new_input",
-      "account_launch::agent_process::native_tests::cold_settings::recap_socket::installed_recap_public_socket_preserves_parent_and_exact_request_identity",
-      "account_launch::agent_process::native_tests::cold_settings::recap_socket::fork::installed_saved_provider_continuation_and_fork_survive_default_changes"
+      "account_launch::agent_process::native_tests::archive::installed_native_archive_catalog_pages_every_timestamp_tie",
+      "account_launch::agent_process::native_tests::project_sync::native_project_reconciles_retained_conversation_and_survives_restart",
+      "account_launch::agent_process::native_tests::file_approval::installed_native_file_approval_saves_live_diff_before_history_and_declines_once",
+      "account_launch::agent_process::native_tests::cold_settings::recap_socket::fork::installed_saved_provider_continuation_and_fork_survive_default_changes",
+      "account_launch::agent_process::native_tests::read_state::installed_native_read_state_preserves_new_results_and_cold_marks",
+      "account_launch::agent_process::native_tests::file_image::installed_native_file_images_survive_cold_history",
+      "account_launch::agent_process::native_tests::capacity::installed_capacity_retry_retains_selected_model_after_process_and_store_restart",
+      "account_launch::agent_process::native_tests::catalog::installed_catalog_discovery_reports_endpoint_and_opt_in_behavior",
+      "account_launch::agent_process::native_tests::effort::installed_custom_effort_survives_catalog_and_coordinator_dispatch",
+      "account_launch::agent_process::native_tests::misalignment::installed_native_continuation_uses_live_details_and_rejects_restart_authority",
+      "account_launch::agent_process::native_tests::account_nudge::installed_native_account_nudge_uses_attested_control_and_ephemeral_auth",
+      "account_launch::agent_process::native_tests::reviewer::evidence::installed_guardian_retains_answer_after_compaction_and_restart"
     ],
-    "entrypoint": "<compiled-decodex-runtime-libtest> <registered selector> --exact --ignored --nocapture --test-threads=1",
+    "entrypoint": "<compiled libtest> <registered selector> --exact [--ignored for opt-in tests] --nocapture --test-threads=1",
     "fixture_source_sha256": "automations/upstream/qualification.json#fixture_source_sha256",
     "required_environment": [
-      "DECODEX_TEST_CODEX_BINARY=<exact official packaged launcher>",
-      "DECODEX_NATIVE_BINARY=<same CLI for the two agent fixtures>",
+      "DECODEX_TEST_CODEX_BINARY=<exact signed CLI>",
+      "DECODEX_NATIVE_BINARY=<exact CLI>",
       "DECODEX_CODEX_DEVELOPMENT_RUNTIME=<exact package>",
-      "HOME/CODEX_HOME=<owned temporary home>",
-      "CARGO_HOME/RUSTUP_HOME=<existing host-managed locations>",
-      "DECODEX_TEST_PREVIOUS_CODEX_BINARY=<exact previous qualified CLI for the upgrade fixture>"
+      "DECODEX_TEST_CODEX_EXEC_SERVER=<exact packaged executor>",
+      "DECODEX_REVIEW_SCHEMA=<exact generated schema directory>",
+      "HOME/CODEX_HOME=<owned isolated home>",
+      "CARGO_HOME/RUSTUP_HOME=<existing host-managed paths>"
     ],
-    "limits": "Only the executions in qualification.json establish current named consumer proof."
+    "limits": "The exact selected paths and outcomes are recorded in qualification.json."
   },
   "direct_protocol_regressions": {
     "evidence": "automations/upstream/qualification.json#direct_protocol_regressions",
     "entrypoints": [
       "crates/decodex-runtime/tests/native_qualification/answer_display.py",
+      "crates/decodex-runtime/tests/native_qualification/apps_recovery.py",
+      "crates/decodex-runtime/tests/native_qualification/finished_sample.py",
+      "crates/decodex-runtime/tests/native_qualification/async_compaction.py",
+      "crates/decodex-runtime/tests/native_qualification/pending_mail.py",
+      "crates/decodex-runtime/tests/native_qualification/command_hooks.py",
+      "crates/decodex-runtime/tests/native_qualification/seatbelt_launch.py",
       "crates/decodex-runtime/tests/native_qualification/mcp_cancel.py",
-      "crates/decodex-runtime/tests/native_qualification/response_identity.py",
-      "crates/decodex-runtime/tests/native_qualification/thread_settings.py",
-      "crates/decodex-runtime/tests/native_qualification/apps_recovery.py"
+      "crates/decodex-runtime/tests/native_qualification/model_errors.py",
+      "crates/decodex-runtime/tests/native_qualification/response_identity.py"
     ]
   },
   "component_cache_repair": {
@@ -61,34 +80,34 @@
     "limits": "Read official implementation/test bodies and reuse official CI. No local upstream source suite."
   },
   "artifact": {
-    "source_commit": "72532ecae5efe500d9e722f3ed5214e63cc8098a",
-    "source_archive_sha256": "232099138b9d8782557f28b8276393b468f673145630b6daffbe02916439853e",
-    "schema_sha256": "fe2ac723840c68d587b5644b9ad1e64bf7fa4642bd4fc23dc97e18a90afcf841",
+    "source_commit": "6257fbc4bd5339144e6ffb3398a011917d883a2e",
+    "source_archive_sha256": "31ded241395870208f4b060432a34d9766b025ddb79e18d3f047fe3583896007",
+    "schema_sha256": "bf203417c5ac7bdd444f5a326b6cbe52b8da0208da39523121e768dd05b6e8a7",
     "components": [
       {
         "path": "CodexCLI.app/Contents/MacOS/codex",
-        "sha256": "91f87a64614ae6b94093a25e95debd5bc1ba114270c5968913f09204c9d0bbcc",
-        "bytes": 280039664,
+        "sha256": "6cc3d38f7a9abdb6985ffad582100166d78fd1617783c6406234eb51341ebfb6",
+        "bytes": 318676944,
         "strict_signature_verified": true,
         "pinned_commit_embedded": true
       },
       {
         "path": "bin/codex-code-mode-host",
-        "sha256": "3eb08a6485853d73e1a299fb604fe2df4afa0a75e0d08928cf23ca0a67730d2c",
-        "bytes": 70385216,
+        "sha256": "1fb84faa0117d177ec3055b8391e39195a911b560d98f58153e0ec12e553760b",
+        "bytes": 70504640,
         "strict_signature_verified": true,
         "pinned_commit_embedded": true
       },
       {
         "path": "bin/codex-exec-server",
-        "sha256": "8696b3918ff5f40599d48e95eab39e517ee7c81c486aba160a4c66c05c6284aa",
-        "bytes": 62246352,
+        "sha256": "aa0e98b1ac5413665ad66a5a6c13b6f9927f7aa800d40744d903536661d2cf56",
+        "bytes": 64949712,
         "strict_signature_verified": true,
         "pinned_commit_embedded": true
       },
       {
         "path": "codex-path/rg",
-        "sha256": "e0fdcfc601881c7a7073ea5b3e05271bd501999763ca943471952b839e52fe9c",
+        "sha256": "78a6e5846a7d74571500a32f1f19d1169d07be5788c490416d9a1aedda58b03e",
         "bytes": 4009552,
         "strict_signature_verified": true,
         "pinned_commit_embedded": null
@@ -115,20 +134,22 @@
   "current_runtime_requalification": {
     "status": "qualified_fixed_development_artifact",
     "evidence": "automations/upstream/qualification.json",
-    "selected_source": "72532ecae5efe500d9e722f3ed5214e63cc8098a",
-    "limits": "Development qualification only; delivery and installed acceptance remain separate."
+    "selected_source": "6257fbc4bd5339144e6ffb3398a011917d883a2e",
+    "limits": "The named macOS tests establish development qualification."
   },
   "current_delivery": {
     "source_commit_references": [
-      "https://github.com/acg-box/decodex/commit/7308c757f7455d85fb4a4c0845d369a53b9d5676"
+      "https://github.com/acg-box/decodex/commit/0168cfef040e5226c7c2793da846fc89d829f7de",
+      "https://github.com/acg-box/decodex/commit/c0823750055f1718d91c9e31b4a37eae084cf743",
+      "https://github.com/acg-box/decodex/commit/1ef4efed9515e61da409144c8eb354d87121f808"
     ],
-    "status": "Native receipts own final-head CI, merge and independent-duty observations.",
-    "installed_acceptance": "See native acceptance; qualification alone does not establish installation or scheduler execution."
+    "status": "Native receipts record final-head CI and merge.",
+    "installed_acceptance": "See the original installed acceptance record for each delivered artifact."
   },
   "documentation_lifecycle": "Use supported OpenWiki page jobs after these inputs are frozen. Native receipts own completion.",
   "historical_evidence": {
-    "reference": "https://github.com/acg-box/decodex/blob/6b73ccb3348ec694c4a15d70b572ccdec20a871c/automations/upstream/retained-evidence.json",
-    "limits": "Git preserves replaced evidence and original coverage limits. Historical observations are not current runtime proof."
+    "reference": "https://github.com/acg-box/decodex/blob/14836b01e4d426ef3f872e6e353b9b1a1ea8fa00/automations/upstream/retained-evidence.json",
+    "limits": "Git preserves the previous evidence and its original coverage limits."
   },
   "projection_regressions": "automations/upstream/qualification.json#projection_regressions"
 }
