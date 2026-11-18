@@ -184,8 +184,9 @@ async fn installed_throttling_and_quota_do_not_schedule_capacity_retries() {
 	for (code, expected, requests) in [
 		("slow_down", "rateLimitExceeded", 2),
 		("credit_balance_exhausted", "usageLimitExceeded", 1),
-		("organization_spend_limit_exceeded", "usageLimitExceeded", 1),
-		("project_spend_limit_exceeded", "usageLimitExceeded", 1),
+		("organization_spend_limit_exceeded", "organizationSpendLimitExceeded", 1),
+		("project_spend_limit_exceeded", "projectSpendLimitExceeded", 1),
+		("api_key_spend_limit_exceeded", "apiKeySpendLimitExceeded", 1),
 	] {
 		native_error_classification(code, expected, requests).await;
 	}
@@ -241,7 +242,7 @@ async fn native_error_classification(code: &'static str, expected: &str, request
 		.await
 		.expect("input");
 
-	time::timeout(Duration::from_secs(30), async {
+	let (thread, failed_turn) = time::timeout(Duration::from_secs(30), async {
 		agent.wake_pending().await.expect("start");
 
 		loop {
@@ -251,18 +252,20 @@ async fn native_error_classification(code: &'static str, expected: &str, request
 					assert_eq!(params["turn"]["status"], "failed");
 					assert_eq!(params["turn"]["error"]["codexErrorInfo"], expected, "code={code}");
 
-					true
+					let thread = params["threadId"].as_str().expect("terminal thread id");
+
+					Some((thread.to_owned(), params["turn"].clone()))
 				} else {
-					false
+					None
 				}
 			} else {
-				false
+				None
 			};
 
 			agent.handle_event(event).await.expect("reduce");
 
-			if terminal {
-				break;
+			if let Some(terminal) = terminal {
+				break terminal;
 			}
 		}
 	})
@@ -279,6 +282,15 @@ async fn native_error_classification(code: &'static str, expected: &str, request
 
 	let reopened = SqliteStore::open(&root.paths()).expect("reopen");
 
+	let events = reopened.read_agent_work_events("agent".into(), 100).await.expect("cold events");
+	let terminal = events
+		.iter()
+		.find(|event| event.event_kind == "agent_turn_completed")
+		.expect("durable failed turn");
+	let payload: Value = serde_json::from_str(&terminal.payload).expect("terminal record");
+	assert_eq!(payload["terminal"]["turn"]["id"], failed_turn["id"]);
+	assert_eq!(payload["terminal"]["turn"]["error"], failed_turn["error"]);
+	assert_eq!(payload["threadReadback"]["exactTurnReadback"], true);
 	assert!(
 		reopened
 			.pending_agent_capacity_retry("agent".into())
@@ -286,6 +298,14 @@ async fn native_error_classification(code: &'static str, expected: &str, request
 			.expect("cold retry read")
 			.is_none()
 	);
+
+	let cold_session = NativeSession::start(&binary, &path);
+	let turn_id = failed_turn["id"].as_str().expect("failed turn id");
+	let history =
+		cold_session.client.thread_read_turn(&thread, turn_id).await.expect("cold native history");
+	let turns = history["thread"]["turns"].as_array().expect("turn history");
+	let retained = turns.iter().find(|turn| turn["id"] == turn_id).expect("native failed turn");
+	assert_eq!(retained["error"], failed_turn["error"]);
 
 	backend.abort();
 }
