@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:a6d31c11efcd96dcaa21d8185291920ac117f12d81f62a42945aa9605f4bff7a",
+  "pageVersion": "sha256:acedf8387674e67715f7d747fe4247d7d08246d9cd2168a256b6d9daf13959c9",
   "claims": [
     {
       "id": "claim_93b99ffbc7b84692b730b24680f83bd2",
@@ -52,7 +52,7 @@
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent_host.rs",
-          "version": "repo-file-v1:sha256:32256ac2997c300af7189095f4ce77f1d03e7e295a9806feff4286bf7dd8dbbf"
+          "version": "repo-file-v1:sha256:c0a6dfad5c59b82758ec50ac5d08255e85394b06826e1f11d3df9dd8dce74dfa"
         }
       ]
     },
@@ -61,7 +61,7 @@
       "statement": "Saving a reviewed native voice preference affects the next call and does not restart active audio.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-codex/src/app_server_client/realtime_preferences.rs#L93-L120",
+          "resource": "repo://crates/decodex-codex/src/app_server_client/realtime_preferences.rs#L92-L119",
           "version": "repo-lines-v1:sha256:6780641b229ee2cefaae00ffc529153d77987a79104f9624b41ee13c757cb15e:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJiZjRlNzhjZmNkZDFlM2ZkM2Q2YjU2YjZjMDNmNTIyMTgzN2EwNTE4YWE5OGQ5MzA3ZDkxN2EzNTQwOGFmMzgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI0NTczMmRlZWUxMDQzYWYwM2FlNDRkZmMzOTY4NDA0MzNjMjMxZTFmNjQ5ODg4Njg3OTYyZjc3ODAxNjlkODgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYwMDllOTljNDZjZTA3MmFmMDViYjI3MGVkOGZmZjE5MTc1Y2EzYjA3MjY2NGYxNzQxMmEzODRjNGQ3ODliNTEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFhN2IzM2IxNDZiODRiYzg4YzI5MzgxMmVjNmY5NWRiYTJkZGFmNTMzODk5OTc1NjI3ZjRhYTcyMmZmMGQ2MDEifQ"
         }
       ]
@@ -86,15 +86,19 @@
     },
     {
       "id": "claim_8e6eeb5613c24f06a1a7268d8e65ea2f",
-      "statement": "Live startup reads the effective voice for the exact native thread and sends a V3 request with startup context, transcript-tail flushing and backendReasoningStatus enabled. Optional model and start/end instructions remain call-scoped; Codex owns public-summary filtering and quiet context delivery.",
+      "statement": "Live startup reads effective voice configuration for the exact native thread. The V3 request carries a supported explicit voice or null for the call destination to choose. It enables startup context, transcript-tail flushing, and backendReasoningStatus. Optional model and start and end instructions stay bound to the call. Codex owns public-summary filtering and quiet context delivery.",
       "evidence": [
         {
-          "resource": "repo://automations/upstream/retained-contracts.json#L250-L267",
-          "version": "repo-lines-v1:sha256:24f325c14fea0fb35b22ffcb52b61b6f9bb6d3f67c5b76db0c1221d5c96fca18:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIyYTM5Yzg5N2Y2ZGE0NzgzNTE5MTdlYzAxNzI2NzBhMGJiMzkwZGNlZjE3MGQzZTAxMjRhOWJlMzA5MWFjNTgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUyZDFmZjJlNjc4YjNhOTViNGU3Y2NjYTQzNGY3YjJhZTAwNWQ1M2IwYzgwM2Q3NDY0OTc5ZjFjZTFkODA1ZTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZiYWY2M2U5NTlhYWQ2ODY2Y2FjYzYwNTUyOGE2NjVlY2U4YmM1NWNiNjU5ZTMyMTU4ZTcyMzYzZDRmNzVlODQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYmE3ZThlYjFlMGVjMWYyZWQzYjUzNmFlZGVkMjQ1YjE3ZThhMzAwZGZkNGYwMTg1ZmNhMmJlODEzNWM1NGEifQ"
+          "resource": "repo://crates/decodex-codex/src/app_server_client/realtime_settings.rs",
+          "version": "repo-file-v1:sha256:e27f5bfe439a79a790b5a72fc689172f86f9a0b14762effe1addc9bf879faada"
         },
         {
-          "resource": "repo://crates/decodex-runtime/src/agent/voice.rs#L283-L322",
-          "version": "repo-lines-v1:sha256:dc89c87cf7649a9efeae98f9f34bae50ca3c7c9afa33c0441c18bcbccb1508d4:eyJzZWxlY3RlZExpbmVDb3VudCI6NDAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJmYzUyZjAxMGQyYTdhNzY3ZTBkOTc0MTQwMWNhMjkwMzI4Y2NlNWI0NWY1ZDMwNTJlNTBkNzYxY2Q4Y2RkYjEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY2MWVlYjE3YWMyNDkzYzlmMDZkMDVjM2YxMGY5MjQ3ZjdlNGU3Mzg2Y2UyNDhiMTdmYjk2YmE3MDJkYTQ1NzMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM1MGIxODU0YmUzNTNjMGM4YWNjZDczNWViYWZiY2U4OWY5YTRmNTNmNDhlNzU0MWNmMTkzZGFjNWQ5NWU3NzYifQ"
+          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_voice_settings_start_tests.rs",
+          "version": "repo-file-v1:sha256:66ce52fdeb7eb394e00b6e709e5a411eccaffceef547a2f45fd5de8947420ea4"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/voice.rs",
+          "version": "repo-file-v1:sha256:4f6311bf560dfdd060be2bc2b6e2c706df54a906b869e5d1bd229ba5ad02d47f"
         }
       ]
     },
@@ -238,11 +242,15 @@
     },
     {
       "id": "claim_e25079cbb5dc40dab2c2b03d2ec7f61d",
-      "statement": "The voice picker requires a nonempty native V3 catalog and checks the shared defaultV1 against that catalog. Missing, empty or malformed V3 data is an error; there is no fixed local voice whitelist.",
+      "statement": "The voice picker requires a nonempty native V3 catalog and uses it for all explicit selections. Missing or malformed catalog data is an error. The picker displays Server default for an unset effective voice.",
       "evidence": [
         {
+          "resource": "repo://apps/decodex-gpui/src/agent_voice_settings.rs",
+          "version": "repo-file-v1:sha256:bb3901adb0a4c3c3c97d842ed1a6339221af7f32da821f2183da41ebb3a37017"
+        },
+        {
           "resource": "repo://crates/decodex-codex/src/app_server_client/realtime_preferences.rs",
-          "version": "repo-file-v1:sha256:88f2a137fd6a1e2df0b686632874eefc7a720f99f5021bfec26ee0d748d8a91c"
+          "version": "repo-file-v1:sha256:a37c9d33a043b3d68dc3b057a108dc4f25e36f12c1b21e49b861c68f8a620d13"
         }
       ]
     },
@@ -391,7 +399,7 @@
           "version": "repo-lines-v1:sha256:8a05d0aa03c18ba0684cf254012623c130e129e20e95c42ee0f0b6cbb0b83a67:eyJzZWxlY3RlZExpbmVDb3VudCI6OTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlkYTgxMGEzZGU2ZWEwODJjYzMwN2ExMWUxZmZiOGFlNDc5ZWY2OWM2NTI0ZTRiY2VhOTdkMzgxNzYwN2U0NGUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM3M2FjMDMxZjM0Y2RmZDllMWU0YzJjZjhiNmQyODEzOTkwMDVlZDI0OTlkYzhiNDQ3OWYyMmNjZTRiYjU4YjgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhhODA3MTdhZjVkZDFiYWQ1ZTNlNjNkN2RiYjg4Yjc3ZGY4OTU4M2FiYjc1Y2ZjNDBmZjIwNDUyYmFmOThlNTcifQ"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs#L330-L340",
+          "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs#L324-L334",
           "version": "repo-lines-v1:sha256:7d98300818cdea607d56f5a69824fd0de26210869a9d0434ba8e59b1d9b2f18e:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhjZWIzYjgzMjZjNzY5YzMzNmRiMzZmNjgyNGY0OGMwOGQxZDNmNmRiNzU4YWQ0NTdlNjQxYmY2Zjg4NWU2MjgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY0ZWZjNDk0MThkMjZkY2YxMjliMjJhNmFhMjExMDhjZWVjMzc2NzdhMzJkMDhlOWQ1ZmVlMzVkZGE2NmJiOWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU0ZTE5NWVmZmQ0OTgyNmFjMDcyNDY0MDU3MjBlZTljYWNhMGE0MjdkYjFlOTYzZDNmNzY1NGM0ZTI3ZTY5MDciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk0MjVlYWNlNTE0NzJjZTY1NzQxNDdkNmY3YTUwYTcxMGQyNjdmYmQ4ODk3NjE3ODc1N2E3OWZkOThkMTRmZTAifQ"
         }
       ]
@@ -454,7 +462,7 @@
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_voice_settings_start_tests.rs",
-          "version": "repo-file-v1:sha256:f379d70addcd6cb8f3c45c01c2725c31a9eb7fa47b90754832485e15bbd84c6b"
+          "version": "repo-file-v1:sha256:66ce52fdeb7eb394e00b6e709e5a411eccaffceef547a2f45fd5de8947420ea4"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/voice.rs",
@@ -512,7 +520,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_response_metrics.rs",
-          "version": "repo-file-v1:sha256:912a0904aa0e41afa4d283f126b18434eef6b8d2038be64a196dba5e95677053"
+          "version": "repo-file-v1:sha256:21185c248a19ca7f3d7f06769bd0432649a402923d30e5b4a4d302ad46228f85"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/voice_history_block.rs",
@@ -534,7 +542,7 @@
         },
         {
           "resource": "repo://crates/decodex-protocol/src/agent.rs",
-          "version": "repo-file-v1:sha256:f02a6d74b53ba4558d21f6e1fe40a2a1fccb082c2e942cb974315ecc43cb4d84"
+          "version": "repo-file-v1:sha256:82002e49cd8ac5273b7dcf9264fe081e78a2738fce024ac4b18a0b4a56a92fce"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent_voice_presentation.rs",
@@ -553,6 +561,6 @@
   ],
   "verification": {
     "by": "openwiki/0.9.0",
-    "at": "2026-11-14T16:13:41.978Z"
+    "at": "2026-11-18T19:17:42.865Z"
   }
 }

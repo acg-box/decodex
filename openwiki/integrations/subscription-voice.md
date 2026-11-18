@@ -16,6 +16,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_response_metrics.rs
   - id: openwiki-source-5da2f5dd568514f1f464d177
     resource: repo://apps/decodex-gpui/src/agent_surface.rs
+  - id: openwiki-source-e8d0929bc0eb570f21e8bf45
+    resource: repo://apps/decodex-gpui/src/agent_voice_settings.rs
   - id: openwiki-source-32bb36aae256aa57e6e82bd0
     resource: repo://apps/decodex-gpui/src/agent_voice.rs
   - id: openwiki-source-5d032c6be684964aa2c401fa
@@ -46,6 +48,8 @@ sources:
     resource: repo://crates/decodex-codex/src/app_server_client/archive.rs
   - id: openwiki-source-c990afbb3dfa828de42edbc3
     resource: repo://crates/decodex-codex/src/app_server_client/realtime_preferences.rs
+  - id: openwiki-source-e577aa8a2c4a08b3ced5f846
+    resource: repo://crates/decodex-codex/src/app_server_client/realtime_settings.rs
   - id: openwiki-source-eccf08613126ff810078b520
     resource: repo://crates/decodex-protocol/src/agent.rs
   - id: openwiki-source-d7ed9b56d246c61c91fd95a4
@@ -94,10 +98,10 @@ sources:
     resource: repo://scripts/macos/run_native_voice_tests.py
   - id: openwiki-source-3b57179b92b257bc3fff51a1
     resource: repo://scripts/macos/stage_decodex_app.sh
-generated: { by: "codex", at: "2026-11-14T16:13:41.978Z" }
+generated: { by: "codex", at: "2026-11-18T19:17:42.865Z" }
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-14T16:13:41.978Z
+    at: 2026-11-18T19:17:42.865Z
 ---
 
 # Subscription dictation and live voice
@@ -251,8 +255,8 @@ This is a bounded synthetic sample. Separate playback through the current virtua
 
 ## Retained voice preferences and limitations
 
-The voice preference picker uses the nonempty native V3 catalog. Missing, null, empty or malformed V3 data is an error. The native `defaultV1` field supplies the shared default and must belong to the selected catalog. There is no local fixed voice whitelist.
+The voice preference picker uses the native V3 catalog. Missing, empty or malformed V3 data is an error. The catalog supplies the choices for an explicit voice preference. When the effective voice is unset, the picker shows **Server default** and the V3 call destination selects the voice.
 
-The picker reads effective project settings, then writes one reviewed `realtime.voice` preference with native version checking. It affects the next call and does not restart active audio. Project settings can override the saved preference. At each call start, the coordinator reads the effective voice for the exact native thread and passes it to the v3 real-time request. The request retains startup context, requests transcript-tail flush at session end, and sets `backendReasoningStatus: true`. Codex can relay completed public reasoning summaries as quiet V3 context. Decodex does not copy private reasoning or force a summary when none is available. Optional model and start/end instructions stay bound to that call.
+The picker reads effective project settings, then writes one reviewed `realtime.voice` preference with native version checking. It affects the next call. Project settings can override the saved preference. At each call start, the coordinator reads the effective voice for the exact native thread. It passes a supported voice to V3 or sends a null voice to use the destination default. The request retains startup context, requests transcript-tail flush at session end, and enables `backendReasoningStatus`. Codex can relay completed public reasoning summaries as quiet V3 context. Optional model and start and end instructions stay bound to that call.
 
 Configuration and synthetic media tests do not establish real microphone, WebRTC, audible next-call selection or late remote caption identity. See [acceptance boundaries](../testing/upstream-acceptance-boundaries.md). Memory configuration is separate from audio capture; see [Models and settings](../workflows/models-and-settings.md).
