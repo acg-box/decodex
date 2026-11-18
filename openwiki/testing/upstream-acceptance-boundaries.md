@@ -76,6 +76,8 @@ sources:
     resource: repo://crates/decodex-components/tests/development.rs
   - id: openwiki-source-08dbb31668b58707418687d2
     resource: repo://crates/decodex-components/tests/official_release.rs
+  - id: openwiki-source-9e21e877b2d7ad96b0a4d637
+    resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_capacity_tests.rs
   - id: openwiki-source-aee901c2feaee74f17637372
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_compaction_tests.rs
   - id: openwiki-source-a490ea3fbcddb9c007caf196
@@ -166,6 +168,8 @@ sources:
     resource: repo://crates/decodex-runtime/tests/native_qualification/command_hooks.py
   - id: openwiki-source-b1a8e98eb39febad19f64bda
     resource: repo://crates/decodex-runtime/tests/native_qualification/dotenv_startup.py
+  - id: openwiki-source-ab5a496884cadd74846b3ae1
+    resource: repo://crates/decodex-runtime/tests/native_qualification/interrupted_mail.py
   - id: openwiki-source-07c9cc033899826079f8efb5
     resource: repo://crates/decodex-runtime/tests/native_qualification/large_catalog.py
   - id: openwiki-source-c772fc057f500f765d09a3c7
@@ -214,10 +218,10 @@ sources:
     resource: repo://scripts/macos/version_codex_source.py
   - id: openwiki-source-e201f60894c32a914dac99ee
     resource: repo://scripts/vnext/run_native_regression.py
-generated: { by: "codex", at: "2026-11-18T19:17:42.865Z" }
+generated: { by: "codex", at: "2026-11-18T20:35:34.828Z" }
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-18T19:17:42.865Z
+    at: 2026-11-18T20:35:34.828Z
 ---
 
 # Upstream integration acceptance boundaries
@@ -265,7 +269,7 @@ The reusable `answer_display.py` fixture uses the selected CLI and packaged help
 
 ## Provider recovery qualification
 
-The [original provider-recovery qualification](https://github.com/acg-box/decodex/blob/4c9b2c5fce988f038569a7a23092c8b97443b53f/automations/upstream/qualification.json) binds the focused local tests, exact candidate and baseline native tests, component signatures and regenerated schemas to the implementation commit. The current [qualification record](../../automations/upstream/qualification.json#retained_consumers) identifies the separately qualified saved-provider behavior. Native resume and input keep the saved configured provider after the default changes; new conversations use the new default. Two loopback providers verify routing, source history, the selected fork prefix and no inference during creation or resume. The existing explicit recovery action still requires an actual native `modelProviderMismatch`; its original destination-switch proof keeps its recorded artifact and limits.
+The [original provider-recovery qualification](https://github.com/acg-box/decodex/blob/4c9b2c5fce988f038569a7a23092c8b97443b53f/automations/upstream/qualification.json) binds the focused local tests, exact candidate and baseline native tests, component signatures and regenerated schemas to the implementation commit. Native resume and input keep the saved configured provider after the default changes. New conversations use the new default. The [saved-provider qualification](https://github.com/acg-box/decodex/blob/52671664045f6af72230e96b828d0786eaf7c5da/automations/upstream/qualification.json#retained_consumers) used two loopback providers to verify routing, retained source history, the selected fork prefix and absence of inference during creation or resume. The explicit recovery action requires a native `modelProviderMismatch`. The destination-switch proof keeps its recorded artifact and limits.
 
 The UI and receipt tests cover source identity, configuration changes, cancellation, the durable destination choice and preservation of unsent input. The historical public-socket refusal rehearsal requires an artifact that emits that mismatch; the current saved-provider behavior does not produce it from a changed default. Its setup check substitutes `/usr/bin/true` for the desktop and is separate from UI acceptance. The [interactive rehearsal command](../operations/commands-and-validation.md#rehearse-provider-recovery) uses a real desktop window and an isolated temporary profile; its two provider names share one local backend. Neither fixture qualifies live accounts, provider policy migration, installed-app behavior or performance. The provider follow-up alone did not change the runtime pin; the later migration has its own qualification. Neither result authorizes installation, release or schedule activation.
 
@@ -460,6 +464,8 @@ Earlier conditional remote-credential snapshot cases failed because the host res
 
 The terminal projection retains the native turn status and bounds its error details. Capacity retry requires an exact failed-turn readback with `serverOverloaded`. The `quota_other_errors_and_missing_history_do_not_schedule_capacity_retries` test includes `other` and `policyCapacityUnavailable`; neither selects an overload retry. The `failed_turn_keeps_public_reason_and_explicit_bounds` test checks the public failure reason and its size and privacy limits.
 
+The native capacity fixture checks separate errors for API key, project and organization spend limits. It sends one loopback SSE failure per scope. It checks the same error in the native terminal event, the stored Decodex event and the failed turn read after app-server restarts. The capacity retry queue stays empty for each of these failures.
+
 The exact-artifact `model_errors.py` probe covers HTTP 404, SSE `error` and SSE `response.failed` carrying `model_not_found`. Each candidate case makes one request without retry and preserves `modelNotFound` plus the provider message in live, stored and cold history. The native capacity fixture also checks that Decodex does not schedule another attempt. Source tests cover additional HTTP and WebSocket mappings; these source cases are not additional artifact transport executions.
 
 The same model-error probe checks `policy_capacity_unavailable` over HTTP 503 and SSE `response.failed`. Native `policyCapacityUnavailable` and the provider message survive live, stored and cold reads. The HTTP fixture permits three native requests with `request_max_retries=2`; the SSE case permits one. Native transport retry is distinct from a Decodex continuation, and no Decodex automatic retry is added. Bare SSE `error` policy classification is outside the upstream change and this qualification.
@@ -491,6 +497,8 @@ The fixture is ignored by default. It checks the named CLI with synthetic input 
 Native Codex preserves an unsampled worker `FINAL_ANSWER` message across bounded compaction and cold continuation. The summary precedes pending mail and later caller input. Compactor output does not acknowledge that mail; an ordinary inference request supplies the sampling boundary. Decodex reuses this native ownership and adds no mailbox or retention policy.
 
 The reusable `pending_mail.py` probe checks repeated manual compaction and cold continuation with legacy and paginated history, through local and remote compaction. It checks exact message identity, order, route and removal after ordinary inference has sampled the completion. The [original qualification](https://github.com/acg-box/decodex/blob/d5f2386e1be6aa887ef16f11272a3e7b69211ae1/automations/upstream/qualification.json) retains its artifact identities and results; current qualification lists later named executions separately. This loopback fixture uses idle injected completion messages. It does not qualify ordinary agent-message retention, mid-turn preemption or live-provider behavior.
+
+The `interrupted_mail.py` probe holds a model request open and interrupts the exact parent turn after app-server acknowledges an injected child result. It checks the saved result when the interrupted terminal event arrives, with the interruption marker disabled. After a cold resume, it checks that the next model request contains one copy of that result. The probe uses a loopback Responses provider and paginated history.
 
 ## Saved settings and diagnostic storage
 
