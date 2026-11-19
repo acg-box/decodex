@@ -1,68 +1,33 @@
-//! A keyboard cue after the last line of a full-width suggestion.
+//! Compact actions for the current composer suggestion.
 use crate::ui_motion::HoverHint as _;
 use gpui::{
-	AnyElement, App, AvailableSpace, Entity, InteractiveElement, IntoElement, KeyDownEvent,
-	MouseButton, ParentElement, Pixels, Point, Role, SharedString, Size,
-	StatefulInteractiveElement, Styled, WeakEntity, Window,
+	AnyElement, App, AvailableSpace, Div, Entity, InteractiveElement, IntoElement, KeyDownEvent,
+	MouseButton, ParentElement, Pixels, Role, Size, StatefulInteractiveElement, Styled, WeakEntity,
+	Window,
 };
 
 use crate::{
 	composer_input::{ComposerEvent, ComposerInput},
 	ui_loading,
-	ui_theme::{self, BODY_LINE_HEIGHT, METADATA_GAP},
+	ui_theme::{self, CHROME_CONTROL_SIZE, CONTROL_GAP, SMALL_CONTROL_RADIUS},
 	workspace_symbols::{self, Symbol},
 };
 
-pub(super) struct InlineHint {
+pub(super) struct SuggestionActions {
 	pub element: AnyElement,
 	pub size: Size<Pixels>,
 }
 
-impl InlineHint {
-	pub(super) fn new(
-		label: Option<SharedString>,
-		busy: bool,
-		input: Entity<ComposerInput>,
+impl SuggestionActions {
+	pub(super) fn measure(
+		input: &Entity<ComposerInput>,
 		window: &mut Window,
 		cx: &mut App,
 	) -> Option<Self> {
-		let accept = button(
-			"composer-suggestion-accept",
-			"Use suggestion (Tab)",
-			busy,
-			&input,
-			ComposerEvent::AcceptSuggestion,
-			ui_theme::shortcut_keycap(label?)
-				.debug_selector(|| "composer-suggestion-keycap".into())
-				.into_any_element(),
-		);
-		let refresh_icon = if busy {
-			ui_loading::progress("Generating another suggestion").into_any_element()
-		} else {
-			workspace_symbols::icon_sized(Symbol::ResetCards, 12.)
-		};
-		let refresh = button(
-			"composer-suggestion-refresh",
-			if busy { "Generating another suggestion" } else { "Generate another suggestion" },
-			busy,
-			&input,
-			ComposerEvent::RefreshSuggestion,
-			gpui::div()
-				.size(gpui::px(18.))
-				.flex()
-				.items_center()
-				.justify_center()
-				.rounded(gpui::px(4.))
-				.child(refresh_icon)
-				.into_any_element(),
-		);
-		let mut element = gpui::div()
-			.flex()
-			.items_center()
-			.gap(gpui::px(METADATA_GAP))
-			.child(accept)
-			.child(refresh)
-			.into_any_element();
+		let state = input.read(cx);
+		let mut element =
+			suggestion_actions(state.placeholder_hint()?, state.placeholder_hint_busy, input)
+				.into_any_element();
 		let size = element.layout_as_root(
 			gpui::size(AvailableSpace::MinContent, AvailableSpace::MinContent),
 			window,
@@ -70,35 +35,39 @@ impl InlineHint {
 		);
 		Some(Self { element, size })
 	}
+}
 
-	pub(super) fn flow(
-		size: Option<Size<Pixels>>,
-		end: Point<Pixels>,
-		text_height: Pixels,
-		width: Pixels,
-	) -> (Point<Pixels>, Pixels) {
-		let Some(size) = size else { return (end, text_height) };
-		let mut position = end + gpui::point(gpui::px(METADATA_GAP), gpui::px(0.));
-		if position.x + size.width > width {
-			position.x = gpui::px(0.);
-			position.y += gpui::px(BODY_LINE_HEIGHT);
-		}
-		let height = text_height.max(position.y + gpui::px(BODY_LINE_HEIGHT));
-		position.y += (gpui::px(BODY_LINE_HEIGHT) - size.height) / 2.;
-		(position, height)
-	}
-
-	pub(super) fn prepaint(
-		&mut self,
-		end: Point<Pixels>,
-		width: Pixels,
-		origin: Point<Pixels>,
-		window: &mut Window,
-		cx: &mut App,
-	) {
-		let (position, _) = Self::flow(Some(self.size), end, gpui::px(0.), width);
-		self.element.prepaint_at(origin + position, window, cx);
-	}
+fn suggestion_actions(label: &str, busy: bool, input: &Entity<ComposerInput>) -> Div {
+	let accept = button(
+		"composer-suggestion-accept",
+		"Use suggestion (Tab)",
+		busy,
+		input,
+		ComposerEvent::AcceptSuggestion,
+		ui_theme::shortcut_keycap(label)
+			.debug_selector(|| "composer-suggestion-keycap".into())
+			.into_any_element(),
+	);
+	let refresh_icon = if busy {
+		ui_loading::progress("Generating another suggestion").into_any_element()
+	} else {
+		workspace_symbols::icon_sized(Symbol::ResetCards, 12.)
+	};
+	let refresh = button(
+		"composer-suggestion-refresh",
+		if busy { "Generating another suggestion" } else { "Generate another suggestion" },
+		busy,
+		input,
+		ComposerEvent::RefreshSuggestion,
+		refresh_icon,
+	);
+	gpui::div()
+		.flex_none()
+		.flex()
+		.items_center()
+		.gap(gpui::px(CONTROL_GAP / 2.))
+		.child(accept)
+		.child(refresh)
 }
 
 fn button(
@@ -119,13 +88,13 @@ fn button(
 		.aria_label(label)
 		.tab_index(if busy { -1 } else { 0 })
 		.flex_none()
-		.min_h(gpui::px(ui_theme::CHROME_CONTROL_SIZE))
-		.min_w(gpui::px(ui_theme::CHROME_CONTROL_SIZE))
+		.h(gpui::px(CHROME_CONTROL_SIZE))
+		.min_w(gpui::px(CHROME_CONTROL_SIZE))
 		.flex()
 		.items_center()
 		.justify_center()
 		.cursor_pointer()
-		.rounded(gpui::px(4.))
+		.rounded(gpui::px(SMALL_CONTROL_RADIUS))
 		.opacity(if busy { 0.5 } else { 1. })
 		.hover(|style| style.bg(ui_theme::rgb(ui_theme::TEXT).opacity(0.08)))
 		.on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())

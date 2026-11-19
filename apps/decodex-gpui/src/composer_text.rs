@@ -1,16 +1,16 @@
 //! Wrapped text geometry shared by painting, selection, and native input methods.
 use core::panic::Location;
-use std::mem;
+use std::{mem, ops::Range};
 
-use gpui::{AvailableSpace, TextAlign, TextStyle};
-use ui_theme::{BODY_LINE_HEIGHT, BODY_SIZE};
+use gpui::{AvailableSpace, Size, TextAlign, TextStyle};
+use ui_theme::{BODY_LINE_HEIGHT, BODY_SIZE, CONTROL_GAP};
 
 use crate::{
 	composer_input::{
-		self, App, Bounds, ComposerAppearance, ComposerInput, Element, ElementId,
-		ElementInputHandler, Entity, GlobalElementId, InspectorElementId, IntoElement, LayoutId,
-		Pixels, Point, SharedString, Style, TextRun, UnderlineStyle, Window, WrappedLine, cursor,
-		hint::InlineHint, ui_theme,
+		self, App, Bounds, ComposerInput, Element, ElementId, ElementInputHandler, Entity,
+		GlobalElementId, InspectorElementId, IntoElement, LayoutId, Pixels, Point, SharedString,
+		Style, TextRun, UnderlineStyle, Window, WrappedLine, cursor, hint::SuggestionActions,
+		ui_theme,
 	},
 	ui_motion,
 };
@@ -28,7 +28,7 @@ impl IntoElement for ComposerTextElement {
 
 impl Element for ComposerTextElement {
 	type PrepaintState = TextPaint;
-	type RequestLayoutState = Option<InlineHint>;
+	type RequestLayoutState = Option<SuggestionActions>;
 
 	fn id(&self) -> Option<ElementId> {
 		None
@@ -51,11 +51,8 @@ impl Element for ComposerTextElement {
 
 		let input = self.input.clone();
 		let text_style = window.text_style();
-		let label = input.read(cx).placeholder_hint().map(SharedString::from);
-		let busy = input.read(cx).placeholder_hint_busy;
-		let hint = InlineHint::new(label, busy, input.clone(), window, cx);
-		let hint_size = hint.as_ref().map(|hint| hint.size);
-
+		let actions = SuggestionActions::measure(&input, window, cx);
+		let action_size = actions.as_ref().map(|actions| actions.size);
 		(
 			window.request_measured_layout(style, move |known, available, window, cx| {
 				let width = known.width.unwrap_or_else(|| match available.width {
@@ -63,19 +60,16 @@ impl Element for ComposerTextElement {
 					_ => gpui::px(500.0),
 				});
 				let input = input.read(cx);
-				let lines = shape_with_style(input, width, window, &text_style);
-				let limit =
-					if input.appearance == ComposerAppearance::Workbench { 6.0 } else { 1.0 };
-				let end = position_at(&lines, input.placeholder.len());
-				let text_height = height(&lines);
-				let (_, height) = InlineHint::flow(hint_size, end, text_height, width);
-
+				let layout = layout_text(input, width, action_size, window, &text_style);
+				let limit = if input.appearance.multiline() { 6.0 } else { 1.0 };
 				gpui::size(
 					width,
-					height.clamp(gpui::px(BODY_LINE_HEIGHT), gpui::px(BODY_LINE_HEIGHT * limit)),
+					layout
+						.height
+						.clamp(gpui::px(BODY_LINE_HEIGHT), gpui::px(BODY_LINE_HEIGHT * limit)),
 				)
 			}),
-			hint,
+			actions,
 		)
 	}
 
@@ -84,43 +78,32 @@ impl Element for ComposerTextElement {
 		_: Option<&GlobalElementId>,
 		_: Option<&InspectorElementId>,
 		bounds: Bounds<Pixels>,
-		hint: &mut Self::RequestLayoutState,
+		actions: &mut Self::RequestLayoutState,
 		window: &mut Window,
 		cx: &mut App,
 	) -> TextPaint {
 		let input = self.input.read(cx);
-		let lines = shape(input, bounds.size.width, window);
-		let caret = position_at(&lines, input.cursor_offset()).y;
-		let end = position_at(&lines, input.placeholder.len());
-		let text_height = height(&lines);
-		let scroll_manually = input.scroll_manually;
-		let text_offset = input.text_offset;
-		let (_, height) = InlineHint::flow(
-			hint.as_ref().map(|hint| hint.size),
-			end,
-			text_height,
-			bounds.size.width,
-		);
-		let max = (height - bounds.size.height).max(gpui::px(0.0));
-		let offset = if scroll_manually {
-			text_offset.clamp(gpui::px(0.0), max)
+		let action_size = actions.as_ref().map(|actions| actions.size);
+		let layout =
+			layout_text(input, bounds.size.width, action_size, window, &window.text_style());
+		let caret = position_at(&layout.lines, input.cursor_offset()).y;
+		let max = (layout.height - bounds.size.height).max(gpui::px(0.0));
+		let offset = if input.scroll_manually {
+			input.text_offset.clamp(gpui::px(0.0), max)
 		} else {
-			text_offset
+			input
+				.text_offset
 				.max(caret + gpui::px(BODY_LINE_HEIGHT) - bounds.size.height)
 				.min(caret)
 				.clamp(gpui::px(0.0), max)
 		};
 
-		if let Some(hint) = hint {
-			hint.prepaint(
-				end,
-				bounds.size.width,
-				bounds.origin - gpui::point(gpui::px(0.), offset),
-				window,
-				cx,
-			);
+		if let (Some(actions), Some(position)) = (actions, layout.action_origin) {
+			let origin = bounds.origin + position - gpui::point(gpui::px(0.), offset);
+			actions.element.prepaint_at(origin, window, cx);
 		}
-		TextPaint { lines, offset }
+
+		TextPaint { lines: layout.lines, offset }
 	}
 
 	fn paint(
@@ -128,88 +111,47 @@ impl Element for ComposerTextElement {
 		_: Option<&GlobalElementId>,
 		_: Option<&InspectorElementId>,
 		bounds: Bounds<Pixels>,
-		hint: &mut Self::RequestLayoutState,
+		actions: &mut Self::RequestLayoutState,
 		state: &mut TextPaint,
 		window: &mut Window,
 		cx: &mut App,
 	) {
 		let input = self.input.read(cx);
 		let focus = input.focus_handle.clone();
-		let selections = [input.selected_range.clone()];
+		let selection = input.selected_range.clone();
 		let draw_cursor = cursor::eligible(
 			focus.is_focused(window),
 			window.is_window_active() && ui_motion::application_active(),
-			input.selected_range.is_empty(),
+			selection.is_empty(),
 		);
 		let next = composer_input::next_boundary(&input.content, input.cursor_offset());
-		let gutter = gpui::px(0.);
-		let origin = bounds.origin + gpui::point(gutter, -state.offset);
+		let origin = bounds.origin - gpui::point(gpui::px(0.), state.offset);
 
 		window.handle_input(&focus, ElementInputHandler::new(bounds, self.input.clone()), cx);
 
-		let mut y = gpui::px(0.0);
+		let line_height = gpui::px(BODY_LINE_HEIGHT);
+		let mut line_origin = origin;
 		let mut start = 0;
 
 		for line in &state.lines {
-			let line_height = gpui::px(BODY_LINE_HEIGHT);
-			let rows = line.wrap_boundaries().len() + 1;
-
-			for row in 0..rows {
-				let top = line_height * row;
-				let first = line
-					.closest_index_for_position(gpui::point(gpui::px(0.0), top), line_height)
-					.unwrap_or_else(|i| i);
-				let last = line
-					.closest_index_for_position(
-						gpui::point(bounds.size.width - gutter, top),
-						line_height,
-					)
-					.unwrap_or_else(|i| i);
-
-				for selection in &selections {
-					let from = selection.start.max(start + first);
-					let to = selection.end.min(start + last);
-
-					if from < to {
-						let x = line
-							.position_for_index(from - start, line_height)
-							.unwrap_or_default()
-							.x;
-						let end = if to == start + last {
-							line.width()
-						} else {
-							line.position_for_index(to - start, line_height).unwrap_or_default().x
-						};
-
-						window.paint_quad(composer_input::fill(
-							Bounds::new(
-								origin + gpui::point(x, y + top),
-								gpui::size((end - x).max(gpui::px(1.0)), line_height),
-							),
-							crate::ui_theme::rgba(0x60a5fa40),
-						));
-					}
-				}
+			let from = selection.start.saturating_sub(start);
+			let to = selection.end.saturating_sub(start).min(line.len());
+			if from < to {
+				paint_selection(line, from..to, line_origin, window);
 			}
 
-			let _ = line.paint(
-				origin + gpui::point(gpui::px(0.0), y),
-				line_height,
-				TextAlign::Left,
-				None,
-				window,
-				cx,
-			);
+			let _ = line.paint(line_origin, line_height, TextAlign::Left, None, window, cx);
 
-			y += line.size(line_height).height;
+			line_origin.y += line.size(line_height).height;
 			start += line.len() + 1;
 		}
-		if let Some(hint) = hint {
-			hint.element.paint(window, cx);
+
+		if let Some(actions) = actions {
+			actions.element.paint(window, cx);
 		}
 
 		if draw_cursor {
-			let caret = position_at(&state.lines, selections[0].end);
+			let caret = position_at(&state.lines, selection.end);
 			let next = position_at(&state.lines, next);
 			let width = if next.y == caret.y && next.x > caret.x {
 				next.x - caret.x
@@ -219,8 +161,8 @@ impl Element for ComposerTextElement {
 
 			self.input.update(cx, |input, cx| {
 				input.cursor.paint(
-					selections[0].end,
-					Bounds::new(origin + caret, gpui::size(width, gpui::px(BODY_LINE_HEIGHT))),
+					selection.end,
+					Bounds::new(origin + caret, gpui::size(width, line_height)),
 					bounds,
 					state.offset,
 					window,
@@ -231,12 +173,56 @@ impl Element for ComposerTextElement {
 
 		self.input.update(cx, |input, _| {
 			input.last_layout = Some(mem::take(&mut state.lines));
-			input.last_bounds = Some(Bounds::new(
-				bounds.origin + gpui::point(gutter, gpui::px(0.0)),
-				gpui::size(bounds.size.width - gutter, bounds.size.height),
-			));
+			input.last_bounds = Some(bounds);
 			input.text_offset = state.offset;
 		});
+	}
+}
+
+fn paint_selection(
+	line: &WrappedLine,
+	selection: Range<usize>,
+	origin: Point<Pixels>,
+	window: &mut Window,
+) {
+	let line_height = gpui::px(BODY_LINE_HEIGHT);
+	let color = ui_theme::rgba(0x60a5fa40);
+	let paint_span = |window: &mut Window, origin: Point<Pixels>, start: Pixels, end: Pixels| {
+		window.paint_quad(composer_input::fill(
+			Bounds::new(
+				origin + gpui::point(start, gpui::px(0.)),
+				gpui::size((end - start).max(gpui::px(1.)), line_height),
+			),
+			color,
+		));
+	};
+	let mut wraps = line.wrap_boundaries().iter().peekable();
+	let mut row_origin = origin;
+	let mut span_start = None;
+
+	for (run_ix, run) in line.runs().iter().enumerate() {
+		for (glyph_ix, glyph) in run.glyphs.iter().enumerate() {
+			let x = glyph.position.x;
+			let wrapped = wraps
+				.next_if(|boundary| boundary.run_ix == run_ix && boundary.glyph_ix == glyph_ix)
+				.is_some();
+			let selected = selection.contains(&glyph.index);
+			if (wrapped || !selected)
+				&& let Some(start) = span_start.take()
+			{
+				paint_span(window, row_origin, start, x);
+			}
+			if wrapped {
+				row_origin = gpui::point(origin.x - x, row_origin.y + line_height);
+			}
+			if selected {
+				span_start.get_or_insert(x);
+			}
+		}
+	}
+
+	if let Some(start) = span_start {
+		paint_span(window, row_origin, start, line.unwrapped_layout.width);
 	}
 }
 
@@ -292,26 +278,86 @@ fn height(lines: &[WrappedLine]) -> Pixels {
 	lines.iter().map(|line| line.size(gpui::px(BODY_LINE_HEIGHT)).height).sum()
 }
 
-fn shape(input: &ComposerInput, width: Pixels, window: &Window) -> Vec<WrappedLine> {
-	let style = window.text_style();
-
-	shape_with_style(input, width, window, &style)
+struct TextLayout {
+	lines: Vec<WrappedLine>,
+	height: Pixels,
+	action_origin: Option<Point<Pixels>>,
 }
 
-fn shape_with_style(
+fn layout_text(
 	input: &ComposerInput,
 	width: Pixels,
+	action_size: Option<Size<Pixels>>,
 	window: &Window,
 	style: &TextStyle,
-) -> Vec<WrappedLine> {
-	let empty = input.content.is_empty();
-	let text: SharedString = if empty {
+) -> TextLayout {
+	let text = if action_size.is_some() {
+		input.placeholder.trim_end().into()
+	} else if input.content.is_empty() {
 		input.placeholder.clone()
 	} else if input.secret {
 		"*".repeat(input.content.len()).into()
 	} else {
 		input.visible_content().to_owned().into()
 	};
+	let mut lines = shape_text(input, text, width, window, style);
+	let mut text_height = height(&lines);
+	let action_origin = action_size.map(|actions| {
+		let gap = gpui::px(CONTROL_GAP);
+		let available = width - actions.width - gap;
+		let mut end = end_of_last_row(&lines);
+
+		if end > available
+			&& let Some(last) = lines.last()
+		{
+			// Reflow the last visible row so the text carries the controls onto
+			// the next row. Earlier rows get the full text width.
+			let row_start = last_row_start(last).0;
+			let tail = shape_text(input, last.text[row_start..].into(), available, window, style);
+			if let Some(row) = tail.first()
+				&& let Some(boundary) = row.wrap_boundaries().last()
+			{
+				let split = row_start + row.runs()[boundary.run_ix].glyphs[boundary.glyph_ix].index;
+				let (before, after) = last.text.split_at(split);
+				let text = format!("{}\n{}", before.trim_end(), after.trim_start());
+				lines.pop();
+				lines.extend(shape_text(input, text.into(), width, window, style));
+				text_height = height(&lines);
+				end = end_of_last_row(&lines);
+			}
+		}
+
+		let line_height = gpui::px(BODY_LINE_HEIGHT);
+		let x = if end <= available {
+			end + gap
+		} else {
+			text_height += line_height;
+			(width - actions.width).max(gpui::px(0.))
+		};
+		gpui::point(x, text_height - (line_height + actions.height) / 2.)
+	});
+	TextLayout { lines, height: text_height, action_origin }
+}
+
+fn last_row_start(line: &WrappedLine) -> (usize, Pixels) {
+	line.wrap_boundaries().last().map_or((0, gpui::px(0.)), |boundary| {
+		let glyph = &line.runs()[boundary.run_ix].glyphs[boundary.glyph_ix];
+		(glyph.index, glyph.position.x)
+	})
+}
+
+fn end_of_last_row(lines: &[WrappedLine]) -> Pixels {
+	lines.last().map_or(gpui::px(0.), |line| line.unwrapped_layout.width - last_row_start(line).1)
+}
+
+fn shape_text(
+	input: &ComposerInput,
+	text: SharedString,
+	width: Pixels,
+	window: &Window,
+	style: &TextStyle,
+) -> Vec<WrappedLine> {
+	let empty = input.content.is_empty();
 	let run = TextRun {
 		len: text.len(),
 		font: style.font(),
@@ -344,7 +390,7 @@ fn shape_with_style(
 			text,
 			style.font_size.to_pixels(window.rem_size()),
 			&runs,
-			if input.appearance == ComposerAppearance::Workbench || !empty {
+			if input.appearance.multiline() || !empty {
 				Some(width.max(gpui::px(1.0)))
 			} else {
 				None

@@ -9,7 +9,10 @@ use crate::{
 		ui_theme::TEXT_MUTED,
 	},
 	ui_feedback::Feedback,
-	ui_theme::{self, HOVER_FILL},
+	ui_theme::{
+		self, COMPOSER_TEXT_INSET, CONTROL_GAP, CONTROL_MARGIN, CONTROL_RADIUS, CONTROL_SIZE,
+		HOVER_FILL,
+	},
 };
 use decodex_protocol::{AgentTaskReferenceDto, WireText};
 
@@ -182,7 +185,11 @@ impl AgentSurface {
 			return None;
 		}
 
-		let mut row = gpui::div().flex().flex_wrap().gap_1().px_1();
+		let mut row = gpui::div()
+			.flex()
+			.flex_wrap()
+			.gap(gpui::px(CONTROL_GAP))
+			.px(gpui::px(COMPOSER_TEXT_INSET));
 
 		for reference in &self.task_references {
 			let remove = reference.clone();
@@ -207,19 +214,24 @@ impl AgentSurface {
 					.role(Role::Button)
 					.tab_index(0)
 					.aria_label(format!("Remove task reference {}", reference.title.as_str()))
+					.h(gpui::px(CONTROL_SIZE))
 					.max_w(gpui::px(220.))
-					.px_2()
-					.py_1()
-					.rounded(gpui::px(6.))
+					.px(gpui::px(CONTROL_MARGIN))
+					.flex()
+					.items_center()
+					.gap(gpui::px(CONTROL_GAP))
+					.rounded(gpui::px(CONTROL_RADIUS))
 					.bg(ui_theme::rgba(0xffffff0a))
 					.text_size(gpui::px(11.))
 					.cursor_pointer()
 					.child(
 						gpui::div()
+							.min_w_0()
 							.overflow_hidden()
 							.text_ellipsis()
-							.child(format!("@{} ×", reference.title.as_str())),
+							.child(format!("@{}", reference.title.as_str())),
 					)
+					.child("×")
 					.on_click(cx.listener(move |s, _, _, cx| {
 						s.task_references.retain(|r| r != &clicked);
 						cx.notify();
@@ -378,6 +390,10 @@ mod tests {
 		let chip = visual
 			.debug_bounds("selected-task-verify-fixture-thread-verify")
 			.expect("selected chip rendered");
+		let editor = visual.debug_bounds("composer-input-text").unwrap();
+		assert_eq!(chip.size.height, gpui::px(crate::ui_theme::CONTROL_SIZE));
+		assert_eq!(chip.left() - editor.left(), gpui::px(crate::ui_theme::COMPOSER_TEXT_INSET));
+		assert_eq!(editor.top() - chip.bottom(), gpui::px(crate::ui_theme::CONTROL_GAP));
 
 		visual.simulate_click(chip.center(), gpui::Modifiers::default());
 		surface.update(visual, |s, _| assert!(s.task_references.is_empty()));

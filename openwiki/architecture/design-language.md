@@ -5,7 +5,7 @@ description: Reusable layout, activity-island motion, reading spacing and theme 
 tags: [desktop, design, motion, layout]
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-16T05:35:34.259Z
+    at: 2026-11-19T08:47:45.891Z
 sources:
   - id: openwiki-source-8037e2358a2c4f9b2c722a11
     resource: repo://AGENTS.md
@@ -131,7 +131,7 @@ sources:
     resource: repo://codex-runtime.lock.json
   - id: openwiki-source-a490ea3fbcddb9c007caf196
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_context_tests.rs
-generated: { by: "codex", at: "2026-11-16T05:35:34.259Z" }
+generated: { by: "codex", at: "2026-11-19T08:47:45.891Z" }
 ---
 
 # Interface geometry and motion
@@ -165,7 +165,7 @@ Lay out detail text and metric columns at the complete content width. Clip that 
 
 ## Responsive workspace
 
-The main window accepts sizes down to 480 by 360 points. Reserve a 360-point reading width and the 40-point navigation rail before allocating persistent side panels. Always allocate the left navigation before the right panel, regardless of opening order. A right panel that cannot fit floats above the reading plane. If the requested full navigation cannot fit, it returns to the rail and keeps its pinned preference. Resizing to a wider window restores the requested full navigation. Opening the left preview temporarily hides a right floating panel and restores it when the preview closes.
+The main window accepts sizes down to 480 by 360 points. Reserve a 360-point reading width and the 40-point navigation rail before allocating persistent side panels. Always allocate the left navigation before the right panel, regardless of opening order. A right panel that cannot fit floats above the reading plane. If the requested full navigation cannot fit, it returns to the rail and keeps its pinned preference. Resizing to a wider window restores the requested full navigation. The left hover preview clips the overlap with the right panel. Collaboration keeps its size and position.
 
 Use the same 8-point outer gutter and 16-point corner radius for both side panels. Their requested width is between 160 and 480 points, constrained by the window. Keep the complete panel content layout behind the animated clipping edge. Both panels use the original `ui_theme::workspace_surface` and its workspace field color in the main GPUI window, including floating panels and the compact navigation rail. Do not create a separate native Liquid Glass surface for a sidebar. Both content roots use the same system font, 12.5-point body size and 19-point line height. The existing clipping transition owns their motion. Escape first dismisses a temporary panel before it can interrupt a reply. A click in the uncovered reading plane also dismisses it. Preserve the docked panel, Graph state and conversation draft.
 
@@ -237,7 +237,7 @@ Project headers expose a **Delete project** icon beside the new-conversation act
 
 The directory and archive browser have separate retained scroll handles. Category and project expansion choices belong to the current window. The default closes Pin and opens Assistant and Projects. Opening a saved conversation reveals its required category and project. **Search and commands** also opens the required group and scrolls to the target without closing other projects. Project creation and conversation actions retain their existing service and draft ownership.
 
-Keep Search and commands in the same leading slot when the sidebar contracts. It opens the global command window, also available with Command-K. The compact rail retains category and utility symbols, plus the first complete grapheme for each project and conversation. A pointer dwell of 100 ms temporarily expands it as a full-height floating surface, including after automatic collapse. It temporarily hides a right floating panel without clearing that panel's requested state. Leaving starts a 220 ms close delay; returning cancels that close. Reuse the shared width transition and keep the leading symbols fixed. A category or project disclosure during a hover does not pin the sidebar. The explicit sidebar toggle controls persistent visibility and clears temporary hover state. Relative times and trailing actions do not add width or height to the compact rail.
+Keep Search and commands in the same leading slot when the sidebar contracts. It opens the global command window, also available with Command-K. The compact rail retains category and utility symbols, plus the first complete grapheme for each project and conversation. A pointer dwell of 100 ms temporarily expands it as a full-height floating surface, including after automatic collapse. Uncovered Collaboration content stays visible and accepts input while the hover preview is open. Leaving starts a 220 ms close delay; returning cancels that close. Reuse the shared width transition and keep the leading symbols fixed. A category or project disclosure during a hover does not pin the sidebar. The explicit sidebar toggle controls persistent visibility and clears temporary hover state. Relative times and trailing actions do not add width or height to the compact rail.
 
 The sidebar's outer width uses the shared interruptible 200 ms cubic ease-out. Its content retains the complete expanded canvas during opening, closing and a reversal; the outer panel clips that canvas. Keep titles and trailing controls at their final positions during the transition. Do not squeeze text into intermediate widths or remove labels as soon as the target changes. The settled compact rail exposes category symbols and project or conversation initials. Its 28-point symbol column is centered between two 6-point insets in the 40-point rail, so labels start at the clipping edge and no partial glyph remains visible.
 

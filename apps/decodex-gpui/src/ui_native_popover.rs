@@ -42,6 +42,7 @@ struct Content {
 	viewport: Size<Pixels>,
 	hover_viewport: Bounds<Pixels>,
 	width: Pixels,
+	viewport_clip: Option<Bounds<Pixels>>,
 	placement: PopoverPlacement,
 	preview: bool,
 	attached: bool,
@@ -88,6 +89,13 @@ impl Panel {
 			}
 			if let Some(clip) = content.geometry.clip {
 				surface.clip_content(clip);
+			}
+			if content.attached {
+				let contour = content
+					.geometry
+					.clip
+					.unwrap_or_else(|| Bounds::new(gpui::point(gpui::px(0.), gpui::px(0.)), size));
+				surface.occlude_attached_content(contour, content.viewport_clip);
 			}
 		}
 	}
@@ -222,6 +230,7 @@ pub(super) fn render(mut popover: Popover, window: &mut Window, cx: &mut App) ->
 					PopoverPlacement::Hover(width) => width,
 					_ => bounds.size.width - gpui::px(inset * 2.),
 				},
+				viewport_clip: None,
 				placement,
 				preview: popover.preview,
 				attached: false,
@@ -328,7 +337,12 @@ pub(super) fn render_surface(
 	let hover_viewport = super::hover_viewport(window);
 	let outside_id = id.clone();
 	gpui::canvas(
-		move |bounds, _, cx| {
+		move |bounds, window, cx| {
+			// Attached native windows bypass GPUI's paint mask. Carry the
+			// current viewport into their material and hit region as well.
+			let visible = bounds.intersect(&window.content_mask().bounds);
+			let viewport_clip = (visible != bounds)
+				.then(|| Bounds::new(visible.origin - bounds.origin, visible.size));
 			let request = Content {
 				id,
 				render: content,
@@ -339,6 +353,7 @@ pub(super) fn render_surface(
 				viewport,
 				hover_viewport,
 				width: bounds.size.width,
+				viewport_clip,
 				placement: PopoverPlacement::Below,
 				preview: true,
 				attached: true,
@@ -441,6 +456,7 @@ impl gpui::Element for HintAnchor {
 			viewport: window.viewport_size(),
 			hover_viewport: super::hover_viewport(window),
 			width: bounds.size.width,
+			viewport_clip: None,
 			placement: PopoverPlacement::Below,
 			preview: true,
 			attached: true,

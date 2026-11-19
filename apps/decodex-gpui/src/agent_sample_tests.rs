@@ -237,6 +237,7 @@ fn long_suggestion_wraps_and_an_existing_chat_never_returns_to_a_quote(cx: &mut 
 	visual.simulate_resize(gpui::size(gpui::px(360.), gpui::px(800.)));
 	visual.update(crate::ui_frame::draw_current_frame);
 	let short = visual.debug_bounds("composer-editor-area").unwrap().size.height;
+	let refresh = visual.debug_bounds("composer-suggestion-refresh").unwrap();
 	let long = "请把刚才讨论的两个方案逐项比较，说明各自的维护成本、适用条件和风险，再给出下一步可以执行的建议。".repeat(3);
 	surface.update(visual, |s, cx| {
 		s.sample.state.as_mut().unwrap().answer.as_mut().unwrap().text = Some(long.clone());
@@ -244,6 +245,10 @@ fn long_suggestion_wraps_and_an_existing_chat_never_returns_to_a_quote(cx: &mut 
 	});
 	visual.update(crate::ui_frame::draw_current_frame);
 	assert!(visual.debug_bounds("composer-editor-area").unwrap().size.height > short);
+	let wrapped_refresh = visual.debug_bounds("composer-suggestion-refresh").unwrap();
+	let editor = visual.debug_bounds("composer-editor-area").unwrap();
+	assert!(wrapped_refresh.top() > refresh.top());
+	assert!(wrapped_refresh.bottom() <= editor.bottom());
 	surface.update(visual, |s, cx| {
 		assert_eq!(s.composer.read(cx).placeholder(), long);
 		s.reset_sample();
@@ -270,11 +275,20 @@ fn tab_accepts_prompt_suggestion_as_an_undoable_unsent_draft(cx: &mut TestAppCon
 		let text = visual.debug_bounds("composer-input-text").expect("full-width composer");
 		let editor = visual.debug_bounds("composer-editor-area").unwrap();
 		assert!((text.size.width - editor.size.width).abs() < gpui::px(1.));
+		let accept = visual.debug_bounds("composer-suggestion-accept").unwrap();
+		let refresh = visual.debug_bounds("composer-suggestion-refresh").unwrap();
+		assert_eq!(refresh.center().y, accept.center().y);
+		assert_eq!(refresh.left() - accept.right(), gpui::px(crate::ui_theme::CONTROL_GAP / 2.));
+		assert!(accept.left() >= text.left() && refresh.right() <= text.right());
+		assert!(accept.top() >= editor.top() && accept.bottom() <= editor.bottom());
+		let capsule = visual.debug_bounds("agent-composer").unwrap();
+		let toolbar = visual.debug_bounds("composer-action-row").unwrap();
+		let attach = visual.debug_bounds("composer-attach").unwrap();
+		assert_eq!(editor.bottom(), toolbar.top());
+		assert_eq!(attach.left() - capsule.left(), capsule.bottom() - attach.bottom());
 		let keycap =
 			visual.debug_bounds("composer-suggestion-keycap").expect("separate keyboard cue");
 		assert_eq!(keycap.size.height, gpui::px(18.));
-		assert!(keycap.left() >= editor.left() && keycap.right() <= editor.right());
-		assert!(keycap.top() >= editor.top() && keycap.bottom() <= editor.bottom());
 		assert!(
 			surface
 				.read_with(visual, |s, cx| s.composer.read(cx).placeholder_hint() == Some("Tab"))
@@ -405,6 +419,8 @@ async fn refresh_requests_one_different_suggestion_without_sending_a_chat_messag
 	visual.update(crate::ui_frame::draw_current_frame);
 	let refresh = visual.debug_bounds("composer-suggestion-refresh").unwrap();
 	visual.simulate_click(refresh.center(), Default::default());
+	visual.update(crate::ui_frame::draw_current_frame);
+	assert_eq!(visual.debug_bounds("composer-suggestion-refresh"), Some(refresh));
 	surface.update(visual, |s, cx| {
 		assert!(s.prompt_suggestion_busy());
 		assert_eq!(s.prompt_suggestion(cx), Some("Compare the two approaches."));
