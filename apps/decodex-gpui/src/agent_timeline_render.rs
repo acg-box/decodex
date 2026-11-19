@@ -1,4 +1,6 @@
 //! Render native history without converting provider IDs into local inbox IDs.
+use std::collections::BTreeMap;
+
 use gpui::{
 	AnyElement, Div, FontWeight, KeyDownEvent, Role, Stateful, StatefulInteractiveElement as _,
 };
@@ -32,7 +34,11 @@ use decodex_protocol::{
 };
 
 impl AgentSurface {
-	pub(in super::super) fn native_live_rows(&self, work: &AgentWorkItemDto) -> Vec<AnyElement> {
+	pub(in super::super) fn native_live_rows<'a>(
+		&'a self,
+		work: &AgentWorkItemDto,
+		mut preceding_process: Option<&'a str>,
+	) -> Vec<AnyElement> {
 		let saved_live = self
 			.history
 			.as_ref()
@@ -44,30 +50,21 @@ impl AgentSurface {
 			.unwrap_or_default();
 		let live = self.streamed_output(work).unwrap_or(saved_live);
 		let mut rows = Vec::new();
-		let mut preceding_process = self
-			.timeline
-			.native
-			.entries
-			.iter()
-			.rev()
-			.find(|entry| matches!(entry.content, AgentTimelineContent::Item { .. }))
-			.and_then(super::groups::process_turn)
-			.map(str::to_owned);
-
 		for message in live {
-			if self.timeline.native.entries.iter().any(|entry| match &entry.content {
-				AgentTimelineContent::Item { turn_id, item_id, .. } =>
-					turn_id == &message.turn_id && item_id == &message.item_id,
-				AgentTimelineContent::TurnBoundary { turn_id, completed: true, .. } =>
-					turn_id == &message.turn_id,
-				_ => false,
-			}) {
+			if (message.text.trim().is_empty() && !message.truncated)
+				|| self.timeline.native.entries.iter().any(|entry| match &entry.content {
+					AgentTimelineContent::Item { turn_id, item_id, .. } =>
+						turn_id == &message.turn_id && item_id == &message.item_id,
+					AgentTimelineContent::TurnBoundary { turn_id, completed: true, .. } =>
+						turn_id == &message.turn_id,
+					_ => false,
+				}) {
 				continue;
 			}
 
 			let key = output_key(work, &message.turn_id, &message.item_id);
-			let follows_process = preceding_process.as_ref() == Some(&message.turn_id);
-			preceding_process = Some(message.turn_id.clone());
+			let follows_process = preceding_process == Some(message.turn_id.as_str());
+			preceding_process = Some(message.turn_id.as_str());
 
 			self.timeline.native.arrivals.present_live(&message.turn_id, &message.item_id);
 			self.timeline.native.completions.present_live(&message.turn_id, &message.item_id);
@@ -94,7 +91,7 @@ impl AgentSurface {
 					Some(streamed),
 					false,
 					Some(
-						self.timeline.native.completions.output(&message.turn_id, &message.item_id),
+						self.timeline.native.completions.footer(&message.turn_id, &message.item_id),
 					),
 					None,
 				)
@@ -110,8 +107,7 @@ impl AgentSurface {
 				gpui::div()
 					.id(SharedString::from(key))
 					.w_full()
-					// Match the gap this same row will have after native acknowledgement.
-					// Otherwise every streamed step moves up by MESSAGE_GAP - PROCESS_STEP_GAP.
+					// Keep adjacent process steps compact through native acknowledgement.
 					.when(follows_process, |row| {
 						row.mt(gpui::px(ui_theme::PROCESS_STEP_GAP - MESSAGE_GAP))
 					})
@@ -137,33 +133,41 @@ impl AgentSurface {
 		rows
 	}
 
-	pub(super) fn native_row_gap(&self, work: &AgentWorkItemDto, index: usize) -> f32 {
-		let entries = &self.timeline.native.entries;
-		if let Some(turn) = super::groups::process_turn(&entries[index])
-			&& let Some(AgentTimelineEntry {
-				content: AgentTimelineContent::Item { turn_id, item_id, kind, .. },
-				..
-			}) = entries.get(index + 1)
+	pub(super) fn native_row_gap(
+		&self,
+		work: &AgentWorkItemDto,
+		previous: &AgentTimelineEntry,
+		current: &AgentTimelineEntry,
+	) -> f32 {
+		if let Some(turn) = super::groups::process_turn(previous)
+			&& let AgentTimelineContent::Item { turn_id, item_id, kind, .. } = &current.content
 			&& turn == turn_id
 			&& self.native_item_draft(work, kind, turn_id, item_id).is_some()
 		{
-			// A final answer keeps its streaming footprint until the completed turn
-			// owns the process-fold transition and answer spacing.
+			// Preserve the streamed position until the completed response folds the process.
 			return ui_theme::PROCESS_STEP_GAP;
 		}
-		super::groups::row_gap(entries, index)
+		super::groups::row_gap(previous, current)
 	}
 
 	pub(super) fn native_summary_exchanges(
 		&self,
 		work: &AgentWorkItemDto,
+		voice_rows: &mut BTreeMap<usize, Vec<AnyElement>>,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
 		let mut body = gpui::div().w_full().min_w_0().flex().flex_col().gap(gpui::px(MESSAGE_GAP));
 		let mut current_turn = None;
 		let mut exchange: Option<(String, Stateful<Div>)> = None;
 
-		for item in &self.timeline.native.summary {
+		for (index, item) in self.timeline.native.summary.iter().enumerate() {
+			if let Some(rows) = voice_rows.remove(&index) {
+				if let Some((key, previous)) = exchange.take() {
+					body = body.child(self.summary_exchange(key, previous, cx));
+				}
+				body = body.children(rows);
+				current_turn = None;
+			}
 			let Some(row) = self.native_summary_row(work, item, cx) else { continue };
 			let AgentTimelineContent::Item { turn_id, item_id, .. } = item else { continue };
 
@@ -255,7 +259,7 @@ impl AgentSurface {
 			&& attachments.is_empty()
 			&& self.covered_voice_handoff(&work.id, text)
 		{
-			return Some(gpui::div().into_any_element());
+			return None;
 		}
 		if kind == "userMessage"
 			&& attachments.is_empty()
@@ -341,7 +345,7 @@ impl AgentSurface {
 		&self,
 		work: &AgentWorkItemDto,
 		entry: &AgentTimelineEntry,
-		gap_after: f32,
+		gap_before: f32,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
 		let identity =
@@ -349,7 +353,7 @@ impl AgentSurface {
 				.to_string();
 		let content = self.native_timeline_content(work, entry, &identity, false, cx);
 
-		self.native_timeline_row_with_content(work, entry, content, gap_after, cx)
+		self.native_timeline_row_with_content(work, entry, content, gap_before, cx)
 	}
 
 	pub(super) fn native_timeline_row_with_content(
@@ -357,13 +361,18 @@ impl AgentSurface {
 		work: &AgentWorkItemDto,
 		entry: &AgentTimelineEntry,
 		content: AnyElement,
-		gap_after: f32,
+		gap_before: f32,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
 		let identity =
 			serde_json::json!([work.id, work.codex_thread_id, native_timeline::key(entry)])
 				.to_string();
 		let selector = format!("native-history-{identity}");
+		let gap_before = if gap_before < super::scroll::ROW_GAP {
+			self.timeline.native.arrivals.leading_gap(entry, gap_before)
+		} else {
+			gap_before
+		};
 		let content = self.timeline.native.arrivals.wrap(entry, content);
 		let content = self.anchored_native_history_entry(work, entry, content);
 		let content = self.native_scroll_row(work, entry, content, cx);
@@ -378,7 +387,7 @@ impl AgentSurface {
 			}))
 			.w_full()
 			.min_w_0()
-			.mb(gpui::px(gap_after - super::scroll::ROW_GAP))
+			.mt(gpui::px(gap_before - super::scroll::ROW_GAP))
 			.child(content)
 			.into_any_element()
 	}
@@ -722,7 +731,7 @@ turn_id: turn, kind, .. } if turn == turn_id && kind == "agentMessage")
 				streamed,
 				complete,
 				(kind == "agentMessage")
-					.then(|| self.timeline.native.completions.output(turn_id, item_id)),
+					.then(|| self.timeline.native.completions.footer(turn_id, item_id)),
 				if kind == "userMessage" {
 					self.native_prompt_action(work, content, identity, cx)
 				} else if complete {

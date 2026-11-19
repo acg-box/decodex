@@ -19,7 +19,7 @@ use crate::{
 		activity::HistoryKey,
 		native_timeline::{
 			self, AgentSurface, AgentTimelineEntry, AgentTimelinePage, AgentWorkItemDto, Binding,
-			Context, groups::Group,
+			Context, groups::Group, motion::ToolBatch,
 		},
 	},
 	ui_theme::MESSAGE_GAP,
@@ -394,16 +394,25 @@ impl AgentSurface {
 		self.timeline.wheel_scroll = None;
 	}
 
-	pub(super) fn prepare_process_folds(&self, groups: &[Group], hidden: &BTreeSet<usize>) {
-		self.timeline.native.completions.prepare(&self.timeline.native.entries, groups);
-
+	pub(super) fn prepare_process_folds(
+		&self,
+		groups: &[Group],
+		hidden: &BTreeSet<usize>,
+		batches: &BTreeMap<usize, ToolBatch>,
+	) {
+		let mut state = self.timeline.native.viewport.0.borrow_mut();
+		self.timeline.native.completions.prepare(
+			&self.timeline.native.entries,
+			groups,
+			batches,
+			|entry| state.rows.get(&row_key(entry)).map(|(_, height)| *height),
+		);
 		let folded = hidden
 			.iter()
 			.copied()
 			.chain(groups.iter().map(|group| group.first_index))
 			.map(|i| row_key(&self.timeline.native.entries[i]))
 			.collect();
-		let mut state = self.timeline.native.viewport.0.borrow_mut();
 
 		if let Some(RowKey::Native(first, ..)) =
 			state.folded.symmetric_difference(&folded).next().cloned()
@@ -466,14 +475,16 @@ impl AgentSurface {
 		let scroll = self.timeline.scroll[&work.id].clone();
 		let geometry = self.timeline.native.viewport.0.clone();
 		let mut height = 0.;
-		let mut last_gap = ROW_GAP;
+		let first_gap = rows[0].2;
 		let rows: Vec<_> = rows
 			.into_iter()
-			.map(|(entry, row_height, gap)| {
+			.enumerate()
+			.map(|(index, (entry, row_height, gap))| {
+				if index > 0 {
+					height += gap;
+				}
 				let offset = height;
-
-				height += row_height + gap;
-				last_gap = gap;
+				height += row_height;
 
 				let mark = self
 					.timeline
@@ -488,12 +499,10 @@ impl AgentSurface {
 			})
 			.collect();
 
-		height = (height - last_gap).max(0.);
-
 		gpui::div()
 			.w_full()
 			.flex_none()
-			.mb(gpui::px(last_gap - ROW_GAP))
+			.mt(gpui::px(first_gap - ROW_GAP))
 			.debug_selector(|| "native-history-spacer".into())
 			.child(gpui::div().h(gpui::px(height)))
 			.on_children_prepainted(move |bounds, _, _| {
@@ -743,7 +752,7 @@ mod tests {
 				);
 			}
 
-			s.prepare_process_folds(&[group], &[2].into());
+			s.prepare_process_folds(&[group], &[2].into(), &Default::default());
 
 			let viewport = &s.timeline.native.viewport;
 
@@ -759,7 +768,7 @@ mod tests {
 				viewport.0.borrow_mut().measure(scroll::row_key(entry), 5_000., 700.);
 			}
 
-			s.prepare_process_folds(&[], &Default::default());
+			s.prepare_process_folds(&[], &Default::default(), &Default::default());
 
 			assert_eq!(
 				s.timeline.native.viewport.offscreen_height(&entries[0], 0., 900.),

@@ -18,7 +18,7 @@ impl AgentSurface {
 		let Some(current) = self.conversation_work() else { return Vec::new() };
 		let Some(snapshot) = &self.snapshot else { return Vec::new() };
 		let mut scope = BTreeSet::new();
-		let mut pending = vec![current.id];
+		let mut pending = vec![current.id.clone()];
 		while let Some(id) = pending.pop() {
 			if scope.insert(id.clone()) {
 				pending.extend(
@@ -34,7 +34,11 @@ impl AgentSurface {
 			.factory_rows()
 			.into_iter()
 			.filter(|row| {
-				if !scope.contains(&row.work) || row.group == 3 {
+				// The current turn already has its own execution indicator in the transcript.
+				if !scope.contains(&row.work)
+					|| row.group == 3
+					|| (row.work == current.id && !row.native)
+				{
 					return false;
 				}
 				row.native
@@ -54,16 +58,13 @@ impl AgentSurface {
 	fn work_progress_details(
 		&self,
 		rows: Vec<super::Row>,
-		window: &gpui::Window,
+		max_height: f32,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
 		let mut details = gpui::div()
 			.id("work-progress-rows")
 			.debug_selector(|| "work-progress-rows".into())
-			.max_h(gpui::px(
-				(f32::from(window.viewport_size().height) * 0.25)
-					.clamp(2. * CONTROL_GROUP_HEIGHT, 6. * CONTROL_GROUP_HEIGHT),
-			))
+			.max_h(gpui::px(max_height))
 			.overflow_y_scroll()
 			.px(gpui::px(8.));
 		for row in rows {
@@ -124,78 +125,102 @@ impl AgentSurface {
 
 	pub(in super::super) fn work_progress_bar(
 		&self,
-		window: &gpui::Window,
+		window: &mut gpui::Window,
 		cx: &mut Context<Self>,
 	) -> Option<AnyElement> {
 		if self.workspace.graph_visible || self.is_new_conversation() {
 			return None;
 		}
+		let conversation = self.conversation_page()?;
 		let rows = self.progress_rows();
-		if rows.is_empty() {
-			return None;
+		let visible = !rows.is_empty();
+		let cached = window.use_keyed_state(
+			gpui::SharedString::from(format!("work-progress-rows-{conversation}")),
+			cx,
+			|_, _| Vec::new(),
+		);
+		if visible {
+			cached.update(cx, |outgoing, _| *outgoing = rows);
 		}
+		let max_height = (f32::from(window.viewport_size().height) * 0.25)
+			.clamp(2. * CONTROL_GROUP_HEIGHT, 6. * CONTROL_GROUP_HEIGHT);
+		let owner = cx.entity();
+		Some(
+			ui_motion::disclosure_lazy(
+				format!("work-progress-presence-{conversation}"),
+				visible,
+				move |cx| {
+					let rows = cached.read(cx).clone();
+					owner.update(cx, |s, cx| s.work_progress_content(rows, max_height, cx))
+				},
+			)
+			.into_any_element(),
+		)
+	}
+
+	fn work_progress_content(
+		&self,
+		rows: Vec<super::Row>,
+		max_height: f32,
+		cx: &mut Context<Self>,
+	) -> AnyElement {
 		let expanded = self.workspace.work_progress_expanded;
 		let count = rows.len();
-		let details = self.work_progress_details(rows, window, cx);
+		let details = self.work_progress_details(rows, max_height, cx);
 		let toggle = |s: &mut Self, cx: &mut Context<Self>| {
 			ui_motion::begin_interaction();
 			s.workspace.work_progress_expanded = !s.workspace.work_progress_expanded;
 			cx.notify();
 		};
-		Some(
-			gpui::div()
-				.debug_selector(|| "work-progress".into())
-				.flex_none()
-				.mx(gpui::px(CONVERSATION_INSET))
-				.mb(gpui::px(8.))
-				.rounded(gpui::px(8.))
-				.bg(ui_theme::annotation_surface())
-				.text_size(gpui::px(11.))
-				.line_height(gpui::px(16.))
-				.child(
-					gpui::div()
-						.id("work-progress-toggle")
-						.debug_selector(|| "work-progress-toggle".into())
-						.h(gpui::px(CONTROL_GROUP_HEIGHT))
-						.px(gpui::px(8.))
-						.flex()
-						.items_center()
-						.gap(gpui::px(6.))
-						.role(Role::Button)
-						.tab_index(0)
-						.aria_expanded(expanded)
-						.aria_label(format!("Work in progress ({count})"))
-						.child(
-							gpui::div().text_color(ui_theme::rgb(ui_theme::ACCENT)).child(
-								workspace_symbols::icon_sized(Symbol::WorkActivity, ICON_SIZE),
-							),
-						)
-						.child(
-							gpui::div()
-								.flex_1()
-								.font_weight(FontWeight::MEDIUM)
-								.child("Work in progress"),
-						)
-						.child(
-							gpui::div()
-								.text_color(ui_theme::rgb(TEXT_MUTED))
-								.child(format!("({count})")),
-						)
-						.child(workspace_symbols::disclosure_chevron(
-							"work-progress-chevron",
-							expanded,
-						))
-						.on_click(cx.listener(move |s, _, _, cx| toggle(s, cx)))
-						.on_key_down(cx.listener(move |s, event: &KeyDownEvent, _, cx| {
-							if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
-								toggle(s, cx);
-								cx.stop_propagation();
-							}
-						})),
-				)
-				.child(ui_motion::disclosure("work-progress-details", expanded, details))
-				.into_any_element(),
-		)
+		gpui::div()
+			.debug_selector(|| "work-progress".into())
+			.flex_none()
+			.mx(gpui::px(CONVERSATION_INSET))
+			.mb(gpui::px(8.))
+			.rounded(gpui::px(8.))
+			.bg(ui_theme::annotation_surface())
+			.text_size(gpui::px(11.))
+			.line_height(gpui::px(16.))
+			.child(
+				gpui::div()
+					.id("work-progress-toggle")
+					.debug_selector(|| "work-progress-toggle".into())
+					.h(gpui::px(CONTROL_GROUP_HEIGHT))
+					.px(gpui::px(8.))
+					.flex()
+					.items_center()
+					.gap(gpui::px(6.))
+					.role(Role::Button)
+					.tab_index(0)
+					.aria_expanded(expanded)
+					.aria_label(format!("Work in progress ({count})"))
+					.child(
+						gpui::div()
+							.text_color(ui_theme::rgb(ui_theme::ACCENT))
+							.child(workspace_symbols::icon_sized(Symbol::WorkActivity, ICON_SIZE)),
+					)
+					.child(
+						gpui::div()
+							.flex_1()
+							.font_weight(FontWeight::MEDIUM)
+							.child("Work in progress"),
+					)
+					.child(
+						gpui::div()
+							.text_color(ui_theme::rgb(TEXT_MUTED))
+							.child(format!("({count})")),
+					)
+					.child(workspace_symbols::disclosure_chevron("work-progress-chevron", expanded))
+					.on_click(cx.listener(move |s, _, _, cx| toggle(s, cx)))
+					.on_key_down(cx.listener(move |s, event: &KeyDownEvent, _, cx| {
+						if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
+							toggle(s, cx);
+							cx.stop_propagation();
+						}
+					})),
+			)
+			.child(ui_motion::disclosure("work-progress-details", expanded, details))
+			.into_any_element()
 	}
 }
 

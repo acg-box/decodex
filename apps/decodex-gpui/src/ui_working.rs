@@ -1,5 +1,7 @@
 //! A stationary work signal whose space closes with its opacity after work ends.
 use std::{
+	cell::Cell,
+	rc::Rc,
 	sync::{Arc, LazyLock},
 	time::Instant,
 };
@@ -34,6 +36,7 @@ pub(crate) struct Working {
 	pub turn: Option<String>,
 	pub activity: State,
 	pub completed_turn: Option<String>,
+	pub footer_progress: Option<Rc<Cell<f32>>>,
 }
 impl RenderOnce for Working {
 	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
@@ -50,11 +53,21 @@ impl RenderOnce for Working {
 				reduced,
 			)
 		});
-		let (opacity, moving, elapsed) = (frame.opacity, frame.moving, frame.elapsed);
+		let (presence, moving, elapsed) = (frame.opacity, frame.moving, frame.elapsed);
+		// The footer and the completed status share one slot below the reply.
+		let handoff = if frame.pose == State::Done {
+			self.footer_progress.as_ref().map_or(0., |progress| progress.get())
+		} else {
+			0.
+		};
+		let height =
+			(ui_theme::MESSAGE_GAP + ui_theme::WORK_INDICATOR_SIZE) * presence * (1. - handoff);
+		// Fade the complete status row before closing the space it needs.
+		let opacity = ((height - ui_theme::WORK_INDICATOR_SIZE) / ui_theme::MESSAGE_GAP).max(0.);
 		let label =
 			if frame.pose == State::Still { frame.action.label() } else { frame.pose.label() };
 
-		if moving || (self.turn.is_some() && !reduced) {
+		if (moving && handoff < 1.) || (self.turn.is_some() && !reduced) {
 			ui_motion::request_frame(window, cx);
 		}
 
@@ -62,7 +75,7 @@ impl RenderOnce for Working {
 			.id("work-status-slot")
 			.debug_selector(|| "work-status-slot".into())
 			.relative()
-			.h(gpui::px((ui_theme::MESSAGE_GAP + ui_theme::WORK_INDICATOR_SIZE) * opacity))
+			.h(gpui::px(height))
 			.flex_none()
 			.overflow_hidden()
 			.when(opacity > 0., |slot| {
@@ -71,7 +84,7 @@ impl RenderOnce for Working {
 						.id("pixel-work-status")
 						.debug_selector(|| "pixel-work-status".into())
 						.absolute()
-						.top(gpui::px(ui_theme::MESSAGE_GAP))
+						.bottom_0()
 						.left_0()
 						.role(Role::Status)
 						.aria_label(label)
@@ -408,6 +421,7 @@ mod tests {
 				turn: self.0.then(|| "turn".into()),
 				activity: super::State::Working,
 				completed_turn: None,
+				footer_progress: None,
 			}
 		}
 	}

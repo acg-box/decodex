@@ -1131,6 +1131,61 @@ mod tests {
 	}
 
 	#[gpui::test]
+	fn tool_tail_keeps_the_reading_gap_when_the_next_record_is_hidden(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		visual.simulate_resize(gpui::size(gpui::px(700.), gpui::px(540.)));
+		surface.update(visual, |s, cx| {
+			long_response(s, cx);
+			let work = s
+				.snapshot
+				.as_mut()
+				.unwrap()
+				.work_items
+				.iter_mut()
+				.find(|w| Some(&w.id) == s.selected.as_ref())
+				.unwrap();
+			work.dispatch_state = decodex_protocol::AgentDispatchStateDto::Running;
+			work.active_turn_id = Some("next-turn".into());
+
+			let mut empty = s.timeline.native.entries[0].clone();
+			if let decodex_protocol::AgentTimelineContent::Item { item_id, text, phase, .. } =
+				&mut empty.content
+			{
+				*item_id = "empty-commentary".into();
+				*phase = Some("commentary".into());
+				text.clear();
+			}
+			if let decodex_protocol::AgentTimelineContent::Item { kind, item_id, text, .. } =
+				&mut s.timeline.native.entries[0].content
+			{
+				*kind = "functionCallOutput".into();
+				*item_id = "tool".into();
+				*text = "Read the layout file.\n\n".repeat(45);
+			}
+			empty.position = 1;
+			s.timeline.native.entries[1].position = 2;
+			s.timeline.native.entries.insert(1, empty);
+			cx.notify();
+		});
+		visual.update(crate::ui_frame::draw_frame);
+		thread::sleep(std::time::Duration::from_millis(260));
+		for _ in 0..4 {
+			visual.update(crate::ui_frame::draw_frame);
+		}
+		let tool = visual
+			.debug_bounds(r#"native-history-["agent","native-thread",[0,1,"tool"]]"#)
+			.unwrap();
+		let status = visual.debug_bounds("pixel-work-status").unwrap();
+		let editor = visual.debug_bounds("floating-composer").unwrap();
+		let gap = gpui::px(crate::ui_theme::MESSAGE_GAP);
+		assert!((status.top() - tool.bottom() - gap).abs() <= gpui::px(1.));
+		let below = editor.top() - status.bottom() + gpui::px(crate::ui_theme::COMPOSER_TOP_GAP);
+		assert!((below - gap).abs() <= gpui::px(1.), "gap below status: {below:?}");
+	}
+
+	#[gpui::test]
 	fn locked_conversation_keeps_failed_message_in_history_and_preserves_the_editor(
 		cx: &mut gpui::TestAppContext,
 	) {

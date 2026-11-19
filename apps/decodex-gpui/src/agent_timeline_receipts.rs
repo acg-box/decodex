@@ -13,7 +13,10 @@ use crate::shell::{
 use decodex_protocol::{AgentHistoryEntryDto, AgentHistorySourceDto, AgentTimelineEntry};
 
 impl AgentSurface {
-	fn saved_delivery_entries(&self, work: &str) -> BTreeMap<i64, &AgentHistoryEntryDto> {
+	pub(in super::super) fn saved_delivery_entries(
+		&self,
+		work: &str,
+	) -> BTreeMap<i64, &AgentHistoryEntryDto> {
 		let mut saved = BTreeMap::new();
 
 		if let Some((older, _)) = self.timeline.older_history.get(work) {

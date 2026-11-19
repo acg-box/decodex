@@ -20,12 +20,20 @@ use crate::{
 const DURATION: Duration = Duration::from_millis(260);
 const STAGGER: Duration = Duration::from_millis(40);
 const MAX_STAGGER: Duration = Duration::from_millis(120);
+const MIN_TOOL_BATCH: usize = 4;
+
+#[derive(Clone, Copy)]
+pub(super) struct ToolBatch {
+	pub count: usize,
+	pub expanded: bool,
+}
 
 #[derive(Default)]
 pub(super) struct Arrivals {
 	latest: Option<u64>,
 	rows: BTreeMap<ItemKey, Rc<Arrival>>,
 	live: RefCell<BTreeSet<ItemKey>>,
+	batches: BTreeMap<ItemKey, ToolBatch>,
 }
 impl Arrivals {
 	pub(super) fn observe(&mut self, entries: &[AgentTimelineEntry], animate: bool) {
@@ -35,24 +43,37 @@ impl Arrivals {
 			!arrival.finished.get() && now.saturating_duration_since(arrival.started) < DURATION
 		});
 
+		let start = self
+			.latest
+			.map_or(entries.len(), |last| entries.partition_point(|entry| entry.position <= last));
+		for entry in &entries[..start] {
+			if let Some(key) = ItemKey::for_entry(entry) {
+				self.live.get_mut().remove(&key);
+			}
+		}
+
 		let mut delay = Duration::ZERO;
-
-		for entry in entries {
-			if let AgentTimelineContent::Item { kind, turn_id, item_id, .. } = &entry.content
-				&& !self.live.get_mut().remove(&ItemKey::new(turn_id, item_id))
-				&& animate
-				&& self.latest.is_some_and(|last| entry.position > last)
-				&& !matches!(kind.as_str(), "userMessage" | "agentInput")
-			{
-				frame_trace::row_arrival(entry.position, "queued", 0., 0.);
-
-				// A native page can contain several completed tools. Keep this burst
-				// ordered without making later network updates wait behind a queue.
-				self.rows
-					.entry(ItemKey::new(turn_id, item_id))
-					.or_insert_with(|| Rc::new(Arrival::new(now + delay)));
-
-				delay = (delay + STAGGER).min(MAX_STAGGER);
+		for run in entries[start..].chunk_by(|a, b| {
+			quiet_tool_turn(a).is_some_and(|turn| quiet_tool_turn(b) == Some(turn))
+		}) {
+			let mut visible = run;
+			if run.len() >= MIN_TOOL_BATCH {
+				let key = ItemKey::for_entry(&run[0]).expect("tool batch begins with an item");
+				self.batches.insert(key, ToolBatch { count: run.len(), expanded: false });
+				visible = &run[..1];
+			}
+			for entry in visible {
+				if let AgentTimelineContent::Item { kind, turn_id, item_id, .. } = &entry.content
+					&& !self.live.get_mut().remove(&ItemKey::new(turn_id, item_id))
+					&& animate
+					&& !matches!(kind.as_str(), "userMessage" | "agentInput")
+				{
+					frame_trace::row_arrival(entry.position, "queued", 0., 0.);
+					self.rows
+						.entry(ItemKey::new(turn_id, item_id))
+						.or_insert_with(|| Rc::new(Arrival::new(now + delay)));
+					delay = (delay + STAGGER).min(MAX_STAGGER);
+				}
 			}
 		}
 
@@ -61,6 +82,32 @@ impl Arrivals {
 		if let Some(last) = entries.last() {
 			self.latest = Some(self.latest.unwrap_or(0).max(last.position));
 		}
+	}
+
+	pub(super) fn tool_batch(&self, entries: &[AgentTimelineEntry]) -> Option<ToolBatch> {
+		if self.batches.is_empty() {
+			return None;
+		}
+		let first = entries.first()?;
+		let turn = quiet_tool_turn(first)?;
+		let batch = *self.batches.get(&ItemKey::for_entry(first)?)?;
+		entries
+			.get(..batch.count)?
+			.iter()
+			.all(|entry| quiet_tool_turn(entry) == Some(turn))
+			.then_some(batch)
+	}
+
+	pub(super) fn expand_tool_batch(&mut self, key: &ItemKey, expanded: bool) {
+		if let Some(batch) = self.batches.get_mut(key) {
+			batch.expanded = expanded;
+		}
+	}
+
+	pub(super) fn leading_gap(&self, entry: &AgentTimelineEntry, gap: f32) -> f32 {
+		ItemKey::for_entry(entry)
+			.and_then(|key| self.rows.get(&key))
+			.map_or(gap, |arrival| gap * arrival.sample(Instant::now(), ui_motion::reduced()))
 	}
 
 	pub(super) fn present_live(&self, turn: &str, item: &str) {
@@ -81,6 +128,23 @@ impl Arrivals {
 
 		Row { key: format!("row-arrival-{key:?}").into(), position: entry.position, arrival, child }
 			.into_any_element()
+	}
+}
+
+// Keep running work, failures, review activity, and anything with an attachment in view.
+fn quiet_tool_turn(entry: &AgentTimelineEntry) -> Option<&str> {
+	match &entry.content {
+		AgentTimelineContent::Item {
+			turn_id, kind, activity: Some(activity), attachments, ..
+		} if attachments.is_empty()
+			&& activity.review.is_none()
+			&& matches!(activity.status.as_str(), "completed" | "exited")
+			&& matches!(
+				kind.as_str(),
+				"commandExecution" | "fileChange" | "mcpToolCall" | "dynamicToolCall" | "webSearch"
+			) =>
+			Some(turn_id),
+		_ => None,
 	}
 }
 
@@ -204,6 +268,40 @@ mod tests {
 				attachments: vec![],
 			},
 		}
+	}
+
+	#[test]
+	fn one_append_coalesces_tools_but_preserves_running_failed_and_later_rows() {
+		fn tool(position: u64, status: &str) -> AgentTimelineEntry {
+			let mut entry = row(position);
+			if let AgentTimelineContent::Item { activity, .. } = &mut entry.content {
+				*activity = Some(
+					serde_json::from_value(serde_json::json!({
+						"turn_id": "turn", "item_id": position.to_string(), "kind": "dynamicToolCall",
+						"status": status, "label": "Tool", "detail": "", "duration_ms": null
+					}))
+					.unwrap(),
+				);
+			}
+			entry
+		}
+		let mut arrivals = Arrivals::default();
+		let mut entries = vec![row(1)];
+		arrivals.observe(&entries, true);
+		entries.extend((2..=7).map(|i| tool(i, "completed")));
+		entries.extend([tool(8, "failed"), tool(9, "running")]);
+		arrivals.observe(&entries, true);
+		assert_eq!(arrivals.tool_batch(&entries[1..]).unwrap().count, 6);
+		assert!(arrivals.active(&entries[1]));
+		assert!(entries[2..7].iter().all(|e| !arrivals.active(e)));
+		assert!(entries[7..].iter().all(|e| arrivals.active(e)));
+		arrivals.expand_tool_batch(&ItemKey::for_entry(&entries[1]).unwrap(), true);
+		entries.push(tool(10, "completed"));
+		arrivals.observe(&entries, false);
+		let batch = arrivals.tool_batch(&entries[1..]).unwrap();
+		assert_eq!(batch.count, 6);
+		assert!(batch.expanded);
+		assert!(arrivals.tool_batch(&entries[9..]).is_none());
 	}
 
 	#[test]

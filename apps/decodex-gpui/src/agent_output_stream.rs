@@ -232,7 +232,7 @@ mod tests {
 			};
 
 			assert_eq!(
-				s.native_live_rows(&work).len(),
+				s.native_live_rows(&work, None).len(),
 				1,
 				"history and the output stream share one live row"
 			);
@@ -240,7 +240,11 @@ mod tests {
 			s.timeline.native.entries.push(saved_output("older", "answer"));
 			s.timeline.native.entries.push(saved_output("current", "commentary"));
 
-			assert_eq!(s.native_live_rows(&work).len(), 1, "other items do not hide this answer");
+			assert_eq!(
+				s.native_live_rows(&work, None).len(),
+				1,
+				"other items do not hide this answer"
+			);
 
 			work.active_turn_id = None;
 
@@ -251,7 +255,7 @@ mod tests {
 			s.retire_native_output();
 
 			assert_eq!(
-				s.native_live_rows(&work).len(),
+				s.native_live_rows(&work, None).len(),
 				1,
 				"idle work must retain the displayed answer until native history takes over"
 			);
@@ -259,7 +263,7 @@ mod tests {
 			s.timeline.native.entries.push(saved_output("current", "answer"));
 
 			assert!(
-				s.native_live_rows(&work).is_empty(),
+				s.native_live_rows(&work, None).is_empty(),
 				"saved item takes over without a second copy"
 			);
 
