@@ -79,6 +79,9 @@ pub(crate) use shell::workspace_symbols;
 #[path = "../ui_loading.rs"]
 mod ui_loading;
 #[path = "../ui_motion.rs"] mod ui_motion;
+#[cfg(target_os = "macos")]
+#[path = "../ui_native_menu.rs"]
+mod ui_native_menu;
 #[path = "../ui_performance.rs"] mod ui_performance;
 #[allow(dead_code)]
 #[path = "../ui_preferences.rs"]

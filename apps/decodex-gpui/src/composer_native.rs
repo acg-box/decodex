@@ -31,10 +31,12 @@ impl ComposerInput {
 		self.selected_range = self.content.len()..self.content.len();
 		self.marked_range = None;
 		self.selection_reversed = false;
+		self.caret_after_wrap = true;
 		self.last_layout = None;
 
 		self.undo.clear();
 		self.redo.clear();
+		self.edit_group = None;
 		self.changed(cx);
 
 		Ok(())
@@ -50,7 +52,7 @@ impl ComposerInput {
 mod tests {
 	use gpui::AppContext as _;
 
-	use crate::composer_input::{Redo, Undo, native::ComposerInput};
+	use crate::composer_input::{Redo, Undo, edit::Edit, native::ComposerInput};
 
 	#[gpui::test]
 	fn large_native_edits_keep_a_bounded_undo_history(cx: &mut gpui::TestAppContext) {
@@ -65,7 +67,7 @@ mod tests {
 				.unwrap();
 
 			for replacement in ["a", "b", "c", "d", "e"] {
-				input.replace_bytes(0..1, replacement, false, None, cx);
+				input.replace_bytes(0..1, replacement, Edit::Replace, cx);
 			}
 
 			assert!(!input.undo.is_empty());
@@ -84,7 +86,7 @@ mod tests {
 
 			assert_eq!(input.content(), original["text"].as_str().unwrap());
 
-			input.replace_bytes(0..3, "\thello", false, None, cx);
+			input.replace_bytes(0..3, "\thello", Edit::Replace, cx);
 
 			assert_eq!(input.native_part().unwrap()["text_elements"][0]["byteRange"]["start"], 7);
 		});
@@ -98,7 +100,7 @@ mod tests {
 
 			let before = input.native_part().cloned();
 
-			input.replace_bytes(7..8, "x", false, None, cx);
+			input.replace_bytes(7..8, "x", Edit::Replace, cx);
 
 			assert_eq!(input.native_part(), before.as_ref());
 

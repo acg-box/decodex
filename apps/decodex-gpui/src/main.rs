@@ -39,6 +39,7 @@ mod ui_layout;
 mod ui_live_activity;
 mod ui_loading;
 mod ui_motion;
+#[cfg(all(target_os = "macos", not(test)))] mod ui_native_menu;
 mod ui_performance;
 mod ui_preferences;
 mod ui_scroll;
@@ -71,7 +72,7 @@ use crate::{
 	},
 	shell::Shell,
 };
-use composer_input::{Copy, Cut, Paste, SelectAll};
+use composer_input::{Copy, Cut, Paste, PastePlainText, Redo, SelectAll, Undo};
 use decodex_protocol::{ClientFailure, ClientProfile};
 use shell::{CloseWindow, ReloadWorkspace};
 use ui_theme::{appearance, window_material};
@@ -461,9 +462,13 @@ fn install_application_menu(cx: &mut App) {
 		]),
 		Menu::new("File").items([MenuItem::action("Close Window", CloseWindow)]),
 		Menu::new("Edit").items([
+			MenuItem::action("Undo", Undo),
+			MenuItem::action("Redo", Redo),
+			MenuItem::separator(),
 			MenuItem::action("Cut", Cut),
 			MenuItem::action("Copy", Copy),
 			MenuItem::action("Paste", Paste),
+			MenuItem::action("Paste as Plain Text", PastePlainText),
 			MenuItem::action("Select All", SelectAll),
 		]),
 		Menu::new("Conversation").items([

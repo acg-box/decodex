@@ -27,6 +27,9 @@ mod popup_system_probe;
 #[allow(unused_imports)]
 #[path = "../ui_motion.rs"]
 mod ui_motion;
+#[cfg(target_os = "macos")]
+#[path = "../ui_native_menu.rs"]
+mod ui_native_menu;
 #[path = "../ui_preferences.rs"] mod ui_preferences;
 #[path = "../ui_theme.rs"] mod ui_theme;
 #[path = "../ui_working.rs"] mod ui_working;

@@ -819,7 +819,11 @@ impl AgentSurface {
 			return;
 		}
 
-		let text = input.read(cx).content().to_owned();
+		let input = input.read(cx);
+		if input.is_composing() {
+			return;
+		}
+		let text = input.content().to_owned();
 
 		if text.trim().is_empty() {
 			return;

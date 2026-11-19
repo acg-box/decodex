@@ -3,6 +3,9 @@
 
 #[path = "composer_edit.rs"] mod edit;
 #[path = "composer_hint.rs"] mod hint;
+#[cfg(all(target_os = "macos", not(test)))]
+#[path = "composer_menu.rs"]
+mod menu;
 #[path = "composer_native.rs"] mod native;
 #[path = "composer_shortcuts.rs"] mod shortcuts;
 #[path = "composer_text.rs"] mod text;
@@ -15,7 +18,7 @@ use gpui::{
 	Focusable, GlobalElementId, InspectorElementId, IntoElement, KeyBinding, LayoutId, MouseButton,
 	MouseDownEvent, MouseMoveEvent, MouseUpEvent, NoAction, Pixels, Point, Render, Role,
 	ScrollEvent, SharedString, Style, TextRun, UTF16Selection, UnderlineStyle, Window, WrappedLine,
-	actions, fill,
+	fill,
 	prelude::{
 		FluentBuilder, InteractiveElement, ParentElement, StatefulInteractiveElement, Styled,
 	},
@@ -31,7 +34,7 @@ use crate::{
 };
 use cursor::Cursor;
 use decodex_protocol::PromptDraft;
-use edit::Snapshot;
+use edit::{Edit, EditGroup, Snapshot};
 use native::MAX_NATIVE_EDITOR_BYTES;
 use text::ComposerTextElement;
 
@@ -42,16 +45,13 @@ gpui::actions!(
 		Delete,
 		Left,
 		Right,
-		Up,
-		Down,
 		SelectLeft,
 		SelectRight,
 		SelectAll,
-		Home,
-		End,
 		InsertNewline,
 		ShowCharacterPalette,
 		Paste,
+		PastePlainText,
 		Cut,
 		Copy,
 		Undo,
@@ -84,6 +84,17 @@ impl ComposerAppearance {
 	}
 }
 
+#[derive(Clone, Copy)]
+enum SelectionUnit {
+	Word,
+	Line,
+}
+
+enum MouseSelection {
+	Character,
+	Unit { unit: SelectionUnit, anchor: Range<usize> },
+}
+
 /// Conversation composer input and its native text-input lifecycle.
 pub(crate) struct ComposerInput {
 	presentation: Entity<crate::ui_frame::Presentation<Self>>,
@@ -99,16 +110,19 @@ pub(crate) struct ComposerInput {
 	native_part: Option<PromptDraft>,
 	selected_range: Range<usize>,
 	selection_reversed: bool,
+	caret_after_wrap: bool,
+	vertical_x: Option<Pixels>,
 	marked_range: Option<Range<usize>>,
 	last_layout: Option<Vec<WrappedLine>>,
 	last_bounds: Option<Bounds<Pixels>>,
 	text_offset: Pixels,
 	scroll_manually: bool,
-	is_selecting: bool,
+	mouse_selection: Option<MouseSelection>,
 	appearance: ComposerAppearance,
 	secret: bool,
 	undo: Vec<Snapshot>,
 	redo: Vec<Snapshot>,
+	edit_group: Option<(EditGroup, Instant)>,
 }
 impl ComposerInput {
 	pub(crate) fn new(tab_index: isize, cx: &mut Context<Self>) -> Self {
@@ -172,16 +186,19 @@ impl ComposerInput {
 			native_part: None,
 			selected_range: 0..0,
 			selection_reversed: false,
+			caret_after_wrap: false,
+			vertical_x: None,
 			marked_range: None,
 			last_layout: None,
 			last_bounds: None,
 			text_offset: gpui::px(0.0),
 			scroll_manually: false,
-			is_selecting: false,
+			mouse_selection: None,
 			appearance,
 			secret: false,
 			undo: vec![],
 			redo: vec![],
+			edit_group: None,
 		}
 	}
 
@@ -249,9 +266,11 @@ impl ComposerInput {
 
 		self.undo.clear();
 		self.redo.clear();
+		self.edit_group = None;
 
 		self.selected_range = 0..0;
 		self.selection_reversed = false;
+		self.caret_after_wrap = false;
 		self.marked_range = None;
 		self.last_layout = None;
 
@@ -266,7 +285,7 @@ impl ComposerInput {
 		self.native_part = None;
 
 		self.cursor.reset_motion();
-		self.replace_bytes(0..self.content.len(), value, false, None, cx);
+		self.replace_bytes(0..self.content.len(), value, Edit::Replace, cx);
 		self.undo.clear();
 		self.redo.clear();
 	}
@@ -279,7 +298,7 @@ impl ComposerInput {
 			return false;
 		}
 		let end = self.content.len();
-		self.replace_bytes(end..end, &appended, false, None, cx);
+		self.replace_bytes(end..end, &appended, Edit::Replace, cx);
 		true
 	}
 
@@ -303,6 +322,8 @@ impl ComposerInput {
 
 	fn changed(&mut self, cx: &mut Context<Self>) {
 		self.scroll_manually = false;
+		self.mouse_selection = None;
+		self.vertical_x = None;
 		self.text_reveal = None;
 		self.visible_end = None;
 
@@ -319,31 +340,28 @@ impl ComposerInput {
 	}
 
 	fn right(&mut self, _: &Right, _: &mut Window, cx: &mut Context<Self>) {
-		if self.selected_range.is_empty() {
-			self.move_to(next_boundary(&self.content, self.cursor_offset()), cx);
+		let offset = if self.selected_range.is_empty() {
+			next_boundary(&self.content, self.cursor_offset())
 		} else {
-			self.move_to(self.selected_range.end, cx);
-		}
+			self.selected_range.end
+		};
+		self.apply_caret((offset, true), false, cx);
 	}
 
-	fn vertical(&mut self, direction: f32, cx: &mut Context<Self>) {
+	fn vertical(&mut self, direction: f32, extend: bool, cx: &mut Context<Self>) {
 		if let Some(lines) = &self.last_layout {
-			let position = text::position_at(lines, self.cursor_offset());
-			let index = text::index_at(
-				lines,
-				position + gpui::point(gpui::px(0.0), gpui::px(BODY_LINE_HEIGHT * direction)),
-			);
+			let position = text::caret_position(lines, self.cursor_offset(), self.caret_after_wrap);
+			let goal = self.vertical_x.unwrap_or(position.x);
+			let y = position.y + gpui::px(BODY_LINE_HEIGHT * direction);
+			let caret = if y < gpui::px(0.) {
+				(0, false)
+			} else {
+				text::caret_at(lines, gpui::point(goal, y))
+			};
 
-			self.move_to(index, cx);
+			self.apply_caret(caret, extend, cx);
+			self.vertical_x = Some(goal);
 		}
-	}
-
-	fn up(&mut self, _: &Up, _: &mut Window, cx: &mut Context<Self>) {
-		self.vertical(-1.0, cx);
-	}
-
-	fn down(&mut self, _: &Down, _: &mut Window, cx: &mut Context<Self>) {
-		self.vertical(1.0, cx);
 	}
 
 	fn select_left(&mut self, _: &SelectLeft, _: &mut Window, cx: &mut Context<Self>) {
@@ -351,59 +369,47 @@ impl ComposerInput {
 	}
 
 	fn select_right(&mut self, _: &SelectRight, _: &mut Window, cx: &mut Context<Self>) {
-		self.select_to(next_boundary(&self.content, self.cursor_offset()), cx);
+		self.apply_caret((next_boundary(&self.content, self.cursor_offset()), true), true, cx);
 	}
 
 	fn select_all(&mut self, _: &SelectAll, _: &mut Window, cx: &mut Context<Self>) {
-		self.selected_range = 0..self.content.len();
-		self.selection_reversed = false;
-		self.marked_range = None;
-
-		cx.notify();
-	}
-
-	fn home(&mut self, _: &Home, _: &mut Window, cx: &mut Context<Self>) {
-		self.move_to(0, cx);
-	}
-
-	fn end(&mut self, _: &End, _: &mut Window, cx: &mut Context<Self>) {
-		self.move_to(self.content.len(), cx);
+		self.set_selection(0, self.content.len(), cx);
+		self.scroll_manually = true;
 	}
 
 	fn backspace(&mut self, _: &Backspace, window: &mut Window, cx: &mut Context<Self>) {
-		if self.selected_range.is_empty() {
-			let previous = previous_boundary(&self.content, self.cursor_offset());
-
-			if previous == self.cursor_offset() {
-				window.play_system_bell();
-
-				return;
-			}
-
-			self.select_to(previous, cx);
+		let previous = previous_boundary(&self.content, self.cursor_offset());
+		if !self.delete_to(previous, Some(EditGroup::Backspace), cx) {
+			window.play_system_bell();
 		}
-
-		self.replace_text_in_range(None, "", window, cx);
 	}
 
 	fn delete(&mut self, _: &Delete, window: &mut Window, cx: &mut Context<Self>) {
-		if self.selected_range.is_empty() {
-			let next = next_boundary(&self.content, self.cursor_offset());
-
-			if next == self.cursor_offset() {
-				window.play_system_bell();
-
-				return;
-			}
-
-			self.select_to(next, cx);
+		let next = next_boundary(&self.content, self.cursor_offset());
+		if !self.delete_to(next, Some(EditGroup::Delete), cx) {
+			window.play_system_bell();
 		}
-
-		self.replace_text_in_range(None, "", window, cx);
 	}
 
-	fn insert_newline(&mut self, _: &InsertNewline, window: &mut Window, cx: &mut Context<Self>) {
-		self.replace_text_in_range(None, "\n", window, cx);
+	fn delete_to(
+		&mut self,
+		offset: usize,
+		group: Option<EditGroup>,
+		cx: &mut Context<Self>,
+	) -> bool {
+		let selection = self.replacement_range(None);
+		let (range, edit) = if selection.is_empty() {
+			let cursor = selection.start;
+			let offset = self.content.floor_char_boundary(offset.min(self.content.len()));
+			(cursor.min(offset)..cursor.max(offset), group.map_or(Edit::Replace, Edit::Group))
+		} else {
+			(selection, Edit::Replace)
+		};
+		!range.is_empty() && self.replace_bytes(range, "", edit, cx)
+	}
+
+	fn insert_newline(&mut self, _: &InsertNewline, _: &mut Window, cx: &mut Context<Self>) {
+		self.replace_bytes(self.replacement_range(None), "\n", Edit::Replace, cx);
 	}
 
 	fn show_character_palette(
@@ -415,24 +421,26 @@ impl ComposerInput {
 		window.show_character_palette();
 	}
 
-	fn paste(&mut self, _: &Paste, window: &mut Window, cx: &mut Context<Self>) {
+	fn paste(&mut self, _: &Paste, _: &mut Window, cx: &mut Context<Self>) {
 		if let Some(item) = cx.read_from_clipboard() {
-			if self.appearance.multiline()
-				&& item
-					.entries
-					.iter()
-					.any(|entry| !matches!(entry, gpui::ClipboardEntry::String(_)))
-			{
-				cx.emit(ComposerEvent::Attach(item));
+			self.paste_clipboard(item, false, cx);
+		}
+	}
 
-				return;
-			}
+	fn paste_plain_text(&mut self, _: &PastePlainText, _: &mut Window, cx: &mut Context<Self>) {
+		if let Some(item) = cx.read_from_clipboard() {
+			self.paste_clipboard(item, true, cx);
+		}
+	}
 
-			let Some(text) = item.text() else {
-				return;
-			};
-
-			self.replace_text_in_range(None, &text, window, cx);
+	fn paste_clipboard(&mut self, item: ClipboardItem, plain: bool, cx: &mut Context<Self>) {
+		if !plain
+			&& self.appearance.multiline()
+			&& item.entries.iter().any(|entry| !matches!(entry, gpui::ClipboardEntry::String(_)))
+		{
+			cx.emit(ComposerEvent::Attach(item));
+		} else if let Some(text) = item.text() {
+			self.replace_bytes(self.replacement_range(None), &text, Edit::Replace, cx);
 		}
 	}
 
@@ -447,18 +455,16 @@ impl ComposerInput {
 		}
 	}
 
-	fn cut(&mut self, _: &Cut, window: &mut Window, cx: &mut Context<Self>) {
-		if self.secret {
-			return;
-		}
-		if self.selected_range.is_empty() {
+	fn cut(&mut self, _: &Cut, _: &mut Window, cx: &mut Context<Self>) {
+		if self.secret || self.selected_range.is_empty() {
 			return;
 		}
 
-		cx.write_to_clipboard(ClipboardItem::new_string(
-			self.content[self.selected_range.clone()].to_owned(),
-		));
-		self.replace_text_in_range(None, "", window, cx);
+		let range = self.selected_range.clone();
+		let text = self.content[range.clone()].to_owned();
+		if self.replace_bytes(range, "", Edit::Replace, cx) {
+			cx.write_to_clipboard(ClipboardItem::new_string(text));
+		}
 	}
 
 	fn on_mouse_down(
@@ -473,58 +479,158 @@ impl ComposerInput {
 		self.cursor.reset();
 		window.focus(&self.focus_handle, cx);
 
-		self.is_selecting = true;
-
-		let offset = self.index_for_mouse_position(event.position);
-
+		self.mouse_selection = Some(MouseSelection::Character);
 		if event.modifiers.shift {
+			self.apply_caret(self.caret_for_mouse_position(event.position), true, cx);
+			return;
+		}
+
+		let unit = match event.click_count {
+			2 => SelectionUnit::Word,
+			3.. => SelectionUnit::Line,
+			_ => {
+				self.apply_caret(self.caret_for_mouse_position(event.position), false, cx);
+				return;
+			},
+		};
+		let anchor = self.mouse_selection_range(event.position, unit);
+		self.set_selection(anchor.start, anchor.end, cx);
+		self.mouse_selection = Some(MouseSelection::Unit { unit, anchor });
+	}
+
+	fn on_context_menu(
+		&mut self,
+		event: &MouseDownEvent,
+		window: &mut Window,
+		cx: &mut Context<Self>,
+	) {
+		#[cfg(target_os = "macos")]
+		claim_native_text_focus(window);
+		window.focus(&self.focus_handle, cx);
+		self.cursor.reset();
+		self.mouse_selection = None;
+		self.edit_group = None;
+		let glyph = self
+			.text_hit(event.position)
+			.and_then(|(lines, point)| text::character_at(lines, point));
+		if !glyph.is_some_and(|glyph| self.selected_range.contains(&glyph)) {
+			if self.secret {
+				self.move_to(self.index_for_mouse_position(event.position), cx);
+			} else {
+				let range = self.mouse_selection_range(event.position, SelectionUnit::Word);
+				self.set_selection(range.start, range.end, cx);
+			}
+		}
+
+		#[cfg(all(target_os = "macos", not(test)))]
+		menu::show(self, window, cx);
+		cx.stop_propagation();
+	}
+
+	fn on_mouse_up(&mut self, _: &MouseUpEvent, _: &mut Window, _: &mut Context<Self>) {
+		self.mouse_selection = None;
+	}
+
+	fn on_mouse_move(&mut self, event: &MouseMoveEvent, cx: &mut Context<Self>) {
+		if event.pressed_button != Some(MouseButton::Left) {
+			self.mouse_selection = None;
+			return;
+		}
+
+		let position = self.scroll_selection_drag(event.position);
+		let scrolled = position != event.position;
+		match &self.mouse_selection {
+			Some(MouseSelection::Character) =>
+				self.apply_caret(self.caret_for_mouse_position(position), true, cx),
+			Some(MouseSelection::Unit { unit, anchor }) => {
+				let target = self.mouse_selection_range(position, *unit);
+				let (anchor, head) = if target.start < anchor.start {
+					(anchor.end, target.start)
+				} else {
+					(anchor.start, anchor.end.max(target.end))
+				};
+				self.set_selection(anchor, head, cx);
+			},
+			None => (),
+		}
+		if scrolled {
+			self.scroll_manually = true;
+		}
+	}
+
+	fn scroll_selection_drag(&mut self, mut position: Point<Pixels>) -> Point<Pixels> {
+		if let (Some(bounds), Some(lines)) = (self.last_bounds, &self.last_layout) {
+			let step = gpui::px(BODY_LINE_HEIGHT);
+			let max = (text::height(lines) - bounds.size.height).max(gpui::px(0.));
+			if position.y < bounds.top() && self.text_offset > gpui::px(0.) {
+				self.text_offset = (self.text_offset - step).max(gpui::px(0.));
+				position.y = bounds.top();
+			} else if position.y >= bounds.bottom() && self.text_offset < max {
+				self.text_offset = (self.text_offset + step).min(max);
+				position.y = bounds.bottom() - gpui::px(1.);
+			}
+		}
+		position
+	}
+
+	fn mouse_selection_range(&self, position: Point<Pixels>, unit: SelectionUnit) -> Range<usize> {
+		if self.secret {
+			return 0..self.content.len();
+		}
+
+		if let Some((lines, position)) = self.text_hit(position) {
+			let range = match unit {
+				SelectionUnit::Word => text::character_at(lines, position)
+					.and_then(|index| word_at(&self.content, index)),
+				SelectionUnit::Line => text::row_range_at(lines, position),
+			};
+			if let Some(range) = range {
+				return range;
+			}
+		}
+
+		let offset = self.index_for_mouse_position(position);
+		offset..offset
+	}
+
+	fn move_to(&mut self, offset: usize, cx: &mut Context<Self>) {
+		self.set_selection(offset, offset, cx);
+	}
+
+	fn apply_caret(
+		&mut self,
+		(offset, after_wrap): (usize, bool),
+		extend: bool,
+		cx: &mut Context<Self>,
+	) {
+		if extend {
 			self.select_to(offset, cx);
 		} else {
 			self.move_to(offset, cx);
 		}
-	}
-
-	fn on_mouse_up(&mut self, _: &MouseUpEvent, _: &mut Window, _: &mut Context<Self>) {
-		self.is_selecting = false;
-	}
-
-	fn on_mouse_move(&mut self, event: &MouseMoveEvent, _: &mut Window, cx: &mut Context<Self>) {
-		if self.is_selecting {
-			self.select_to(self.index_for_mouse_position(event.position), cx);
-		}
-	}
-
-	fn move_to(&mut self, offset: usize, cx: &mut Context<Self>) {
-		self.scroll_manually = false;
-
-		let offset = self.content.floor_char_boundary(offset.min(self.content.len()));
-
-		self.selected_range = offset..offset;
-		self.selection_reversed = false;
-		self.marked_range = None;
-
-		cx.notify();
+		self.caret_after_wrap = after_wrap;
 	}
 
 	fn select_to(&mut self, offset: usize, cx: &mut Context<Self>) {
-		self.scroll_manually = false;
-
-		let offset = self.content.floor_char_boundary(offset.min(self.content.len()));
 		let anchor = if self.selection_reversed {
 			self.selected_range.end
 		} else {
 			self.selected_range.start
 		};
+		self.set_selection(anchor, offset, cx);
+	}
 
-		if offset < anchor {
-			self.selected_range = offset..anchor;
-			self.selection_reversed = true;
-		} else {
-			self.selected_range = anchor..offset;
-			self.selection_reversed = false;
-		}
-
+	fn set_selection(&mut self, anchor: usize, head: usize, cx: &mut Context<Self>) {
+		let boundary =
+			|offset: usize| self.content.floor_char_boundary(offset.min(self.content.len()));
+		let (anchor, head) = (boundary(anchor), boundary(head));
+		self.selected_range = anchor.min(head)..anchor.max(head);
+		self.selection_reversed = head < anchor;
+		self.caret_after_wrap = false;
+		self.vertical_x = None;
+		self.scroll_manually = false;
 		self.marked_range = None;
+		self.edit_group = None;
 
 		cx.notify();
 	}
@@ -533,27 +639,37 @@ impl ComposerInput {
 		if self.selection_reversed { self.selected_range.start } else { self.selected_range.end }
 	}
 
+	fn text_position(&self, position: Point<Pixels>, origin: Point<Pixels>) -> Point<Pixels> {
+		position - origin + gpui::point(gpui::px(0.0), self.text_offset)
+	}
+
+	fn text_hit(&self, position: Point<Pixels>) -> Option<(&[WrappedLine], Point<Pixels>)> {
+		let bounds = self.last_bounds?;
+		(!self.content.is_empty() && position.y >= bounds.top() && position.y < bounds.bottom())
+			.then_some((self.last_layout.as_deref()?, self.text_position(position, bounds.origin)))
+	}
+
 	fn index_for_mouse_position(&self, position: Point<Pixels>) -> usize {
+		self.caret_for_mouse_position(position).0
+	}
+
+	fn caret_for_mouse_position(&self, position: Point<Pixels>) -> (usize, bool) {
 		if self.content.is_empty() {
-			return 0;
+			return (0, false);
 		}
 
-		let (Some(bounds), Some(line)) = (self.last_bounds.as_ref(), self.last_layout.as_ref())
-		else {
-			return self.cursor_offset();
+		let (Some(bounds), Some(lines)) = (self.last_bounds, self.last_layout.as_deref()) else {
+			return (self.cursor_offset(), self.caret_after_wrap);
 		};
 
 		if position.y < bounds.top() {
-			return 0;
+			return (0, false);
 		}
-		if position.y > bounds.bottom() {
-			return self.content.len();
+		if position.y >= bounds.bottom() {
+			return (self.content.len(), false);
 		}
 
-		text::index_at(
-			line,
-			position - bounds.origin + gpui::point(gpui::px(0.0), self.text_offset),
-		)
+		text::caret_at(lines, self.text_position(position, bounds.origin))
 	}
 
 	fn replacement_range(&self, range_utf16: Option<&Range<usize>>) -> Range<usize> {
@@ -567,30 +683,32 @@ impl ComposerInput {
 		&mut self,
 		range: Range<usize>,
 		new_text: &str,
-		mark: bool,
-		selected_range_utf16: Option<&Range<usize>>,
+		edit: Edit,
 		cx: &mut Context<Self>,
-	) {
+	) -> bool {
 		let retained = self.content.len().saturating_sub(range.end.saturating_sub(range.start));
 		let maximum =
 			if self.native_part.is_some() { MAX_NATIVE_EDITOR_BYTES } else { MAX_COMPOSER_BYTES };
 		let replacement = bounded_input(new_text, maximum.saturating_sub(retained));
+		let mark = matches!(edit, Edit::Marked(_));
 		let mut native_part = self.native_part.clone();
 
 		if let Some(part) = &mut native_part {
 			// Native restoration never truncates an edit or strips a bound marker.
 			if replacement != new_text || part.replace_text(0, range.clone(), new_text).is_err() {
-				return;
+				return false;
 			}
 		}
 
-		self.checkpoint();
+		self.checkpoint(&edit);
 
 		self.native_part = native_part;
 
 		let inserted = range.start..range.start + replacement.len();
-		let relative_selection =
-			selected_range_utf16.map(|selection| range_from_utf16(&replacement, selection));
+		let relative_selection = match edit {
+			Edit::Marked(Some(selection)) => Some(range_from_utf16(&replacement, &selection)),
+			_ => None,
+		};
 
 		self.content.replace_range(range, &replacement);
 
@@ -600,9 +718,11 @@ impl ComposerInput {
 			|selection| inserted.start + selection.start..inserted.start + selection.end,
 		);
 		self.selection_reversed = false;
+		self.caret_after_wrap = true;
 		self.last_layout = None;
 
 		self.changed(cx);
+		true
 	}
 
 	fn set_accessible_value(
@@ -614,7 +734,7 @@ impl ComposerInput {
 			return;
 		};
 
-		self.replace_bytes(0..self.content.len(), value, false, None, cx);
+		self.replace_bytes(0..self.content.len(), value, Edit::Replace, cx);
 		self.undo.clear();
 		self.redo.clear();
 	}
@@ -675,26 +795,28 @@ impl ComposerInput {
 			.on_action(cx.listener(Self::delete))
 			.on_action(cx.listener(Self::left))
 			.on_action(cx.listener(Self::right))
-			.on_action(cx.listener(Self::up))
-			.on_action(cx.listener(Self::down))
 			.on_action(cx.listener(Self::select_left))
 			.on_action(cx.listener(Self::select_right))
 			.on_action(cx.listener(Self::select_all))
-			.on_action(cx.listener(Self::home))
-			.on_action(cx.listener(Self::end))
 			.on_action(cx.listener(Self::insert_newline))
 			.on_action(cx.listener(Self::show_character_palette))
 			.on_action(cx.listener(Self::paste))
+			.on_action(cx.listener(Self::paste_plain_text))
 			.on_action(cx.listener(Self::cut))
 			.on_action(cx.listener(Self::copy))
+			.on_action(cx.listener(|s, _: &SubmitComposer, _, cx| {
+				if !s.is_composing() {
+					cx.propagate();
+				}
+			}))
 			.on_key_down(cx.listener(|s, _, _, cx| {
 				s.cursor.reset();
 				cx.notify();
 			}))
 			.on_mouse_down(MouseButton::Left, cx.listener(Self::on_mouse_down))
+			.on_mouse_down(MouseButton::Right, cx.listener(Self::on_context_menu))
 			.on_mouse_up(MouseButton::Left, cx.listener(Self::on_mouse_up))
 			.on_mouse_up_out(MouseButton::Left, cx.listener(Self::on_mouse_up))
-			.on_mouse_move(cx.listener(Self::on_mouse_move))
 			.on_scroll(cx.listener(|s, e: &ScrollEvent, _, cx| {
 				if s.appearance.multiline() {
 					s.text_offset = (s.text_offset
@@ -792,6 +914,10 @@ impl EntityInputHandler for ComposerInput {
 		cx.notify();
 	}
 
+	fn paste(&mut self, item: ClipboardItem, _: &mut Window, cx: &mut Context<Self>) {
+		self.paste_clipboard(item, false, cx);
+	}
+
 	fn replace_text_in_range(
 		&mut self,
 		range_utf16: Option<Range<usize>>,
@@ -800,8 +926,12 @@ impl EntityInputHandler for ComposerInput {
 		cx: &mut Context<Self>,
 	) {
 		let range = self.replacement_range(range_utf16.as_ref());
-
-		self.replace_bytes(range, new_text, false, None, cx);
+		let edit = if range_utf16.is_none() && !new_text.is_empty() && !new_text.contains('\n') {
+			Edit::Group(EditGroup::Typing)
+		} else {
+			Edit::Replace
+		};
+		self.replace_bytes(range, new_text, edit, cx);
 	}
 
 	fn replace_and_mark_text_in_range(
@@ -814,7 +944,7 @@ impl EntityInputHandler for ComposerInput {
 	) {
 		let range = self.replacement_range(range_utf16.as_ref());
 
-		self.replace_bytes(range, new_text, true, new_selected_range_utf16.as_ref(), cx);
+		self.replace_bytes(range, new_text, Edit::Marked(new_selected_range_utf16), cx);
 	}
 
 	fn bounds_for_range(
@@ -826,7 +956,11 @@ impl EntityInputHandler for ComposerInput {
 	) -> Option<Bounds<Pixels>> {
 		let line = self.last_layout.as_ref()?;
 		let range = range_from_utf16(&self.content, &range_utf16);
-		let start = text::position_at(line, range.start);
+		let start = text::caret_position(
+			line,
+			range.start,
+			range.start == self.cursor_offset() && self.caret_after_wrap,
+		);
 		let end = text::position_at(line, range.end);
 		let origin = self.last_bounds.unwrap_or(bounds).origin
 			- gpui::point(gpui::px(0.0), self.text_offset);
@@ -852,11 +986,8 @@ impl EntityInputHandler for ComposerInput {
 		_: &mut Window,
 		cx: &mut Context<Self>,
 	) {
-		self.selected_range = range_from_utf16(&self.content, &range_utf16);
-		self.selection_reversed = false;
-		self.marked_range = None;
-
-		cx.notify();
+		let range = range_from_utf16(&self.content, &range_utf16);
+		self.set_selection(range.start, range.end, cx);
 	}
 
 	fn text_length_utf16(&mut self, _: &mut Window, _: &mut Context<Self>) -> Option<usize> {
@@ -878,16 +1009,13 @@ pub(crate) fn bind_keys(cx: &mut App) {
 		KeyBinding::new("delete", Delete, Some("ComposerInput")),
 		KeyBinding::new("left", Left, Some("ComposerInput")),
 		KeyBinding::new("right", Right, Some("ComposerInput")),
-		KeyBinding::new("up", Up, Some("ComposerInput")),
-		KeyBinding::new("down", Down, Some("ComposerInput")),
 		KeyBinding::new("shift-left", SelectLeft, Some("ComposerInput")),
 		KeyBinding::new("shift-right", SelectRight, Some("ComposerInput")),
 		KeyBinding::new("cmd-a", SelectAll, Some("ComposerInput")),
-		KeyBinding::new("home", Home, Some("ComposerInput")),
-		KeyBinding::new("end", End, Some("ComposerInput")),
 		KeyBinding::new("shift-enter", InsertNewline, Some("ComposerInput")),
 		KeyBinding::new("ctrl-cmd-space", ShowCharacterPalette, Some("ComposerInput")),
 		KeyBinding::new("cmd-v", Paste, Some("ComposerInput")),
+		KeyBinding::new("alt-cmd-shift-v", PastePlainText, Some("ComposerInput")),
 		KeyBinding::new("cmd-x", Cut, Some("ComposerInput")),
 		KeyBinding::new("cmd-c", Copy, Some("ComposerInput")),
 		KeyBinding::new("enter", SubmitComposer, Some("ComposerInput")),
@@ -931,6 +1059,56 @@ fn next_boundary(content: &str, offset: usize) -> usize {
 		.graphemes(true)
 		.next()
 		.map_or(content.len(), |grapheme| offset + grapheme.len())
+}
+
+#[cfg(target_os = "macos")]
+fn native_word_text(content: &str) -> objc2::rc::Retained<objc2_foundation::NSAttributedString> {
+	use objc2::AnyThread as _;
+	use objc2_foundation::{NSAttributedString, NSString};
+
+	NSAttributedString::initWithString(NSAttributedString::alloc(), &NSString::from_str(content))
+}
+
+#[cfg(target_os = "macos")]
+fn word_at(content: &str, offset: usize) -> Option<Range<usize>> {
+	use objc2_app_kit::NSAttributedStringAppKitAdditions as _;
+
+	if offset >= content.len() {
+		return None;
+	}
+
+	let text = native_word_text(content);
+	let range = text.doubleClickAtIndex(offset_to_utf16(content, offset));
+	Some(range_from_utf16(content, &(range.location..range.location + range.length)))
+}
+
+#[cfg(target_os = "macos")]
+fn word_boundary(content: &str, offset: usize, forward: bool) -> usize {
+	use objc2_app_kit::NSAttributedStringAppKitAdditions as _;
+
+	let index = native_word_text(content)
+		.nextWordFromIndex_forward(offset_to_utf16(content, offset), forward);
+	offset_from_utf16(content, index)
+}
+
+#[cfg(not(target_os = "macos"))]
+fn word_boundary(content: &str, offset: usize, forward: bool) -> usize {
+	if forward {
+		content[offset..]
+			.unicode_word_indices()
+			.next()
+			.map_or(content.len(), |(i, word)| offset + i + word.len())
+	} else {
+		content[..offset].unicode_word_indices().next_back().map_or(0, |(i, _)| i)
+	}
+}
+
+#[cfg(not(target_os = "macos"))]
+fn word_at(content: &str, offset: usize) -> Option<Range<usize>> {
+	content.split_word_bound_indices().find_map(|(start, word)| {
+		let range = start..start + word.len();
+		range.contains(&offset).then_some(range)
+	})
 }
 
 fn offset_from_utf16(content: &str, offset: usize) -> usize {
@@ -1003,10 +1181,13 @@ fn bounded_input(value: &str, maximum_bytes: usize) -> String {
 
 #[cfg(test)]
 mod multiline_tests {
-	use gpui::{EntityInputHandler as _, Focusable as _};
+	use gpui::{
+		EntityInputHandler as _, Focusable as _, MouseButton, MouseDownEvent, Pixels, Point,
+		VisualTestContext,
+	};
 
 	use crate::composer_input::{
-		self, ClipboardItem, ComposerInput, Paste, Redo, Undo, bind_keys, text, ui_theme,
+		self, ClipboardItem, ComposerInput, Edit, Paste, Redo, Undo, bind_keys, text, ui_theme,
 	};
 
 	#[gpui::test]
@@ -1057,6 +1238,45 @@ mod multiline_tests {
 	}
 
 	#[gpui::test]
+	fn typing_cut_paste_and_undo_preserve_selection(cx: &mut gpui::TestAppContext) {
+		cx.update(bind_keys);
+		let (input, visual) = cx.add_window_view(|_, cx| ComposerInput::new(0, cx));
+		input.update(visual, |input, cx| input.set_content("Some ", cx));
+		visual.update(|window, cx| {
+			window.focus(&input.focus_handle(cx), cx);
+			crate::ui_frame::draw_current_frame(window, cx);
+		});
+
+		for character in ["t", "e", "x", "t"] {
+			visual.simulate_input(character);
+		}
+		visual.simulate_keystrokes("cmd-z");
+		input.read_with(visual, |input, _| assert_eq!(input.content(), "Some "));
+		visual.simulate_keystrokes("cmd-shift-z alt-shift-left cmd-x");
+		input.read_with(visual, |input, cx| {
+			assert_eq!(input.content(), "Some ");
+			assert_eq!(
+				cx.read_from_clipboard().and_then(|item| item.text()).as_deref(),
+				Some("text")
+			);
+		});
+		visual.simulate_keystrokes("cmd-z");
+		input.read_with(visual, |input, _| {
+			assert_eq!(input.content(), "Some text");
+			assert_eq!(input.selected_range, 5..9);
+			assert!(input.selection_reversed);
+		});
+		visual.simulate_keystrokes("cmd-shift-z alt-cmd-shift-v");
+		input.read_with(visual, |input, _| assert_eq!(input.content(), "Some text"));
+
+		visual.simulate_keystrokes("backspace backspace cmd-z");
+		input.read_with(visual, |input, _| {
+			assert_eq!(input.content(), "Some text");
+			assert_eq!(input.selected_range, 9..9);
+		});
+	}
+
+	#[gpui::test]
 	fn ordinary_draft_preserves_composition_undo_and_redo(cx: &mut gpui::TestAppContext) {
 		cx.update(bind_keys);
 
@@ -1099,7 +1319,7 @@ mod multiline_tests {
 			);
 			assert!(input.visible_content().len() < text.len());
 
-			input.replace_bytes(0..0, "Edit: ", false, None, cx);
+			input.replace_bytes(0..0, "Edit: ", Edit::Replace, cx);
 
 			assert!(input.text_reveal.is_none());
 			assert_eq!(input.visible_content(), input.content());
@@ -1226,6 +1446,127 @@ mod multiline_tests {
 				.collect();
 			assert_eq!(highlights, expected);
 		});
+	}
+
+	fn press(visual: &mut VisualTestContext, position: Point<Pixels>, click_count: usize) {
+		visual.simulate_event(MouseDownEvent {
+			position,
+			button: MouseButton::Left,
+			modifiers: Default::default(),
+			click_count,
+			first_mouse: false,
+		});
+	}
+
+	#[cfg(target_os = "macos")]
+	#[gpui::test]
+	fn double_click_selects_native_words_and_drags_by_word(cx: &mut gpui::TestAppContext) {
+		cx.update(bind_keys);
+		let (input, visual) = cx.add_window_view(|_, cx| ComposerInput::new(0, cx));
+		let draft = "alpha 你好 e\u{301} 👩‍💻";
+		input.update(visual, |input, cx| input.set_content(draft, cx));
+		visual.update(crate::ui_frame::draw_current_frame);
+		let (alpha, chinese, emoji) = input.read_with(visual, |input, _| {
+			let lines = input.last_layout.as_ref().unwrap();
+			let origin = input.last_bounds.unwrap().origin;
+			let glyph = |start, end| {
+				let left = text::position_at(lines, start).x;
+				let right = text::position_at(lines, end).x;
+				origin + gpui::point(left + (right - left) * 0.75, gpui::px(5.))
+			};
+			(
+				glyph("alph".len(), "alpha".len()),
+				glyph("alpha 你".len(), "alpha 你好".len()),
+				glyph("alpha 你好 e\u{301} ".len(), draft.len()),
+			)
+		});
+		let check_selection = |visual: &mut VisualTestContext, expected, reversed| {
+			input.read_with(visual, |input, _| {
+				assert_eq!(&input.content[input.selected_range.clone()], expected);
+				assert_eq!(input.selection_reversed, reversed);
+			});
+		};
+
+		visual.simulate_click(alpha, Default::default());
+		check_selection(visual, "", false);
+		press(visual, alpha, 2);
+		check_selection(visual, "alpha", false);
+		visual.simulate_mouse_up(alpha, MouseButton::Left, Default::default());
+
+		press(visual, chinese, 2);
+		check_selection(visual, "你好", false);
+		visual.simulate_mouse_move(alpha, MouseButton::Left, Default::default());
+		check_selection(visual, "alpha 你好", true);
+		visual.simulate_mouse_move(emoji, MouseButton::Left, Default::default());
+		check_selection(visual, "你好 e\u{301} 👩‍💻", false);
+		visual.simulate_mouse_up(emoji, MouseButton::Left, Default::default());
+		visual.simulate_mouse_move(alpha, None, Default::default());
+		visual.simulate_event(MouseDownEvent {
+			position: chinese,
+			button: MouseButton::Right,
+			modifiers: Default::default(),
+			click_count: 1,
+			first_mouse: false,
+		});
+		check_selection(visual, "你好 e\u{301} 👩‍💻", false);
+		visual.simulate_keystrokes("cmd-c");
+		visual.update(|_, cx| {
+			assert_eq!(
+				cx.read_from_clipboard().and_then(|item| item.text()).as_deref(),
+				Some("你好 e\u{301} 👩‍💻")
+			);
+		});
+	}
+
+	#[gpui::test]
+	fn triple_click_selects_and_drags_by_visual_row(cx: &mut gpui::TestAppContext) {
+		let (input, visual) = cx.add_window_view(|_, cx| ComposerInput::new(0, cx));
+		let first_line = "这是需要自动换行的中文草稿，Wrap selection。";
+		let draft = format!("{first_line}\nNext line");
+		visual.simulate_resize(gpui::size(gpui::px(205.), gpui::px(300.)));
+		input.update(visual, |input, cx| input.set_content(&draft, cx));
+		visual.update(crate::ui_frame::draw_current_frame);
+		let (points, split) = input.read_with(visual, |input, _| {
+			let bounds = input.last_bounds.unwrap();
+			let line = &input.last_layout.as_ref().unwrap()[0];
+			let [boundary] = line.wrap_boundaries() else {
+				panic!("expected two visual rows in the first line");
+			};
+			let split = line.runs()[boundary.run_ix].glyphs[boundary.glyph_ix].index;
+			let points = [0.5, 1.5, 2.5].map(|row| {
+				gpui::point(
+					bounds.right() - gpui::px(1.),
+					bounds.top() + gpui::px(ui_theme::BODY_LINE_HEIGHT * row),
+				)
+			});
+			(points, split)
+		});
+
+		press(visual, points[1], 3);
+		visual.update(|window, cx| {
+			crate::ui_frame::draw_current_frame(window, cx);
+			assert_eq!(input.read(cx).selected_range, split..first_line.len());
+			let paint = gpui::Background::from(ui_theme::rgba(0x60a5fa40));
+			let highlights: Vec<_> = window
+				.painted_quads()
+				.into_iter()
+				.filter(|quad| quad.background == paint)
+				.collect();
+			assert_eq!(highlights.len(), 1);
+			let center = points[1].y.scale(window.scale_factor());
+			assert!(highlights[0].bounds.top() < center && center < highlights[0].bounds.bottom());
+		});
+		visual.simulate_mouse_move(points[0], MouseButton::Left, Default::default());
+		input.read_with(visual, |input, _| {
+			assert_eq!(input.selected_range, 0..first_line.len());
+			assert!(input.selection_reversed);
+		});
+		visual.simulate_mouse_move(points[2], MouseButton::Left, Default::default());
+		input.read_with(visual, |input, _| {
+			assert_eq!(input.selected_range, split..draft.len());
+			assert!(!input.selection_reversed);
+		});
+		visual.simulate_mouse_up(points[2], MouseButton::Left, Default::default());
 	}
 
 	#[gpui::test]

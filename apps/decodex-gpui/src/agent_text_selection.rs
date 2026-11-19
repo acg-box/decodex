@@ -1,7 +1,4 @@
 //! One selection and clipboard range for a rendered message.
-#[cfg(all(target_os = "macos", not(test)))]
-#[path = "agent_selection_menu.rs"]
-mod menu;
 #[path = "agent_selection_source.rs"] mod source;
 
 use std::{
@@ -117,12 +114,24 @@ impl Scope {
 
 		if !range.is_empty() {
 			#[cfg(all(target_os = "macos", not(test)))]
-			menu::show(
-				_window,
-				cx,
-				self.source.copy(&self.text, range.clone()),
-				self.text[range].into(),
-			);
+			{
+				use crate::ui_native_menu::{self as menu, Item};
+
+				menu::show(
+					_window,
+					cx,
+					vec![
+						Item::command(
+							"Copy Markdown",
+							"c",
+							true,
+							self.source.copy(&self.text, range.clone()),
+						),
+						Item::command("Copy Text", "", true, self.text[range].into()),
+					],
+					|text, cx| cx.write_to_clipboard(ClipboardItem::new_string(text)),
+				);
+			}
 		}
 	}
 

@@ -935,6 +935,10 @@ impl AgentSurface {
 	}
 
 	fn submit(&mut self, cx: &mut Context<Self>) {
+		if self.conversation_composer().read(cx).is_composing() {
+			return;
+		}
+
 		if self.native_agents.selected.is_some() {
 			self.send_native_agent(cx);
 
@@ -985,20 +989,16 @@ impl AgentSurface {
 
 		match self.build_submission(&text, cx) {
 			Ok(action) => {
-				let Ok(model) = ConversationModel::new(self.model.read(cx).content()) else {
-					return;
-				};
-				let execution = AgentExecutionOverrides {
-					model: Some(model),
-					reasoning_effort: self.creation_effort(),
-					service_tier: self.service_tier.clone(),
-					permission_mode: None,
-				};
 				let attachments = self.attachments.clone();
 				let action = match action {
 					AgentActionDto::Start(start) => AgentActionDto::StartConfigured {
+						execution: AgentExecutionOverrides {
+							model: Some(start.model.clone()),
+							reasoning_effort: self.creation_effort(),
+							service_tier: self.service_tier.clone(),
+							permission_mode: None,
+						},
 						start,
-						execution,
 						attachments,
 						task_references: self.task_references.clone(),
 					},
@@ -3731,6 +3731,10 @@ mod tests {
 	fn command_enter_submits_agent_composer_and_keeps_unaccepted_draft(
 		cx: &mut gpui::TestAppContext,
 	) {
+		use gpui::EntityInputHandler as _;
+
+		use crate::ui_feedback::Feedback;
+
 		cx.update(crate::composer_input::bind_keys);
 
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
@@ -3784,6 +3788,25 @@ mod tests {
 			assert_eq!(surface.feedback.message, "No service profile is configured.");
 			assert_eq!(surface.composer.read(cx).content(), "Please coordinate this goal");
 			assert!(!surface.sending);
+			surface.feedback = Feedback::neutral("");
+		});
+		visual.update(|window, cx| {
+			input.update(cx, |input, cx| {
+				input.clear(cx);
+				input.replace_and_mark_text_in_range(None, "nihao", Some(5..5), window, cx);
+			})
+		});
+		visual.simulate_keystrokes("enter");
+		surface.read_with(visual, |surface, _| assert!(surface.feedback.message.is_empty()));
+		visual.update(|window, cx| {
+			input.update(cx, |input, cx| {
+				input.replace_text_in_range(None, "你好", window, cx);
+			})
+		});
+		visual.simulate_keystrokes("shift-enter enter");
+		surface.read_with(visual, |surface, cx| {
+			assert_eq!(surface.feedback.message, "No service profile is configured.");
+			assert_eq!(surface.composer.read(cx).content(), "你好\n");
 		});
 	}
 

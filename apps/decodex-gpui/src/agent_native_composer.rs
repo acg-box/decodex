@@ -78,8 +78,12 @@ impl ComposerPlacement {
 				{
 					window.bounds_changed(cx);
 				}
-				if let Some(region) = self.visible_region {
+				if let Some(region) =
+					self.visible_region.filter(|region| region.left() > gpui::px(0.))
+				{
 					surface.occlude_content(region);
+				} else {
+					surface.clear_content_occlusion();
 				}
 				surface.set_opacity(self.opacity);
 				surface.set_visible(self.enabled && self.bounds.is_some() && self.opacity > 0.001);
