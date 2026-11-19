@@ -438,6 +438,18 @@ impl MaterialPanel {
 		update_hit_region(&self.native, region);
 	}
 
+	pub(crate) fn occlude_attached_content(
+		&mut self,
+		contour: Bounds<Pixels>,
+		viewport: Option<Bounds<Pixels>>,
+	) {
+		if let Some(viewport) = viewport {
+			self.occlude_content(contour.intersect(&viewport));
+		} else if self.occlusion_mask.is_some() {
+			self.occlude_content(contour);
+		}
+	}
+
 	pub(crate) fn set_title(&self, title: &str) {
 		self.native.setTitle(&NSString::from_str(title));
 	}

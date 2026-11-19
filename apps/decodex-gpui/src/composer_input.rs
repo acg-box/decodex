@@ -27,7 +27,7 @@ use unicode_segmentation::UnicodeSegmentation as _;
 
 use crate::{
 	ui_motion,
-	ui_theme::{self, BODY_LINE_HEIGHT, BODY_SIZE, FIELD_MATERIAL},
+	ui_theme::{self, BODY_LINE_HEIGHT, BODY_SIZE, CONTROL_INSET, FIELD_MATERIAL},
 };
 use cursor::Cursor;
 use decodex_protocol::PromptDraft;
@@ -72,9 +72,16 @@ pub(crate) enum ComposerEvent {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum ComposerAppearance {
+	Message,
 	Workbench,
 	Field,
 	Search,
+}
+
+impl ComposerAppearance {
+	fn multiline(self) -> bool {
+		matches!(self, Self::Message | Self::Workbench)
+	}
 }
 
 /// Conversation composer input and its native text-input lifecycle.
@@ -120,7 +127,7 @@ impl ComposerInput {
 		aria_label: impl Into<SharedString>,
 		cx: &mut Context<Self>,
 	) -> Self {
-		Self::build(tab_index, placeholder, aria_label, ComposerAppearance::Workbench, cx)
+		Self::build(tab_index, placeholder, aria_label, ComposerAppearance::Message, cx)
 	}
 
 	pub(crate) fn with_placeholder(
@@ -410,7 +417,7 @@ impl ComposerInput {
 
 	fn paste(&mut self, _: &Paste, window: &mut Window, cx: &mut Context<Self>) {
 		if let Some(item) = cx.read_from_clipboard() {
-			if self.appearance == ComposerAppearance::Workbench
+			if self.appearance.multiline()
 				&& item
 					.entries
 					.iter()
@@ -631,17 +638,18 @@ impl ComposerInput {
 
 		let entity = cx.entity();
 		let focus_handle = self.focus_handle.clone();
-		let workbench = self.appearance == ComposerAppearance::Workbench;
+		let multiline = self.appearance.multiline();
 		let search = self.appearance == ComposerAppearance::Search;
+		let suggestion = self.placeholder_hint();
 
 		gpui::div()
 			.id("conversation-composer-input")
 			.debug_selector(move || {
-				if workbench { "composer-input-text" } else { "field-input-text" }.into()
+				if multiline { "composer-input-text" } else { "field-input-text" }.into()
 			})
 			.key_context("ComposerInput")
 			.role(Role::TextInput)
-			.aria_label(if let Some(hint) = self.placeholder_hint() {
+			.aria_label(if let Some(hint) = suggestion {
 				format!("{}. Press {hint} to use the suggestion.", self.aria_label).into()
 			} else {
 				self.aria_label.clone()
@@ -688,7 +696,7 @@ impl ComposerInput {
 			.on_mouse_up_out(MouseButton::Left, cx.listener(Self::on_mouse_up))
 			.on_mouse_move(cx.listener(Self::on_mouse_move))
 			.on_scroll(cx.listener(|s, e: &ScrollEvent, _, cx| {
-				if s.appearance == ComposerAppearance::Workbench {
+				if s.appearance.multiline() {
 					s.text_offset = (s.text_offset
 						- e.delta.pixel_delta(gpui::px(BODY_LINE_HEIGHT)).y)
 						.max(gpui::px(0.0));
@@ -700,35 +708,40 @@ impl ComposerInput {
 			}))
 			.cursor(CursorStyle::IBeam)
 			.w_full()
-			.when(!workbench, |d| d.h_full())
+			.when(!multiline, |d| d.h_full())
 			.px(gpui::px(if search { 0. } else { 8. }))
-			.py(gpui::px(if workbench { 4.0 } else { 1.5 }))
+			.py(gpui::px(if multiline { CONTROL_INSET } else { 1.5 }))
+			.when(self.appearance == ComposerAppearance::Message, |d| {
+				d.px(gpui::px(ui_theme::COMPOSER_TEXT_INSET))
+					.pt(gpui::px(ui_theme::COMPOSER_TEXT_TOP_INSET))
+					.pb(gpui::px(ui_theme::COMPOSER_TEXT_BOTTOM_INSET))
+			})
 			.flex()
 			.items_start()
-			.when(!workbench, |d| d.items_center())
+			.when(!multiline, |d| d.items_center())
 			.overflow_hidden()
-			.rounded(gpui::px(if workbench { 8.0 } else { ui_theme::SETTINGS_CONTROL_RADIUS }))
-			.border(gpui::px(if search {
+			.rounded(gpui::px(if multiline { 8.0 } else { ui_theme::SETTINGS_CONTROL_RADIUS }))
+			.border(gpui::px(if search || self.appearance == ComposerAppearance::Message {
 				0.
-			} else if workbench {
+			} else if multiline {
 				1.0
 			} else {
 				0.5
 			}))
-			.border_color(if workbench || search {
+			.border_color(if multiline || search {
 				ui_theme::rgba(0x00000000)
 			} else if focus_handle.is_focused(window) {
 				ui_theme::rgb(ui_theme::ACCENT)
 			} else {
 				ui_theme::rgba(ui_theme::PANEL_DIVIDER)
 			})
-			.bg(if workbench || search {
+			.bg(if multiline || search {
 				ui_theme::rgba(0x00000000)
 			} else {
 				ui_theme::rgba(FIELD_MATERIAL)
 			})
 			.text_size(gpui::px(BODY_SIZE))
-			.text_color(ui_theme::rgb(if workbench { 0xeeeaf0 } else { ui_theme::TEXT }))
+			.text_color(ui_theme::rgb(if multiline { 0xeeeaf0 } else { ui_theme::TEXT }))
 			.child(ComposerTextElement { input: entity })
 			.into_any_element()
 	}
@@ -1125,6 +1138,94 @@ mod multiline_tests {
 				);
 			});
 		}
+	}
+
+	#[gpui::test]
+	fn suggestion_actions_wrap_with_trailing_text_at_full_width(cx: &mut gpui::TestAppContext) {
+		let (input, visual) =
+			cx.add_window_view(|_, cx| ComposerInput::message(0, "", "Message", cx));
+		let tail = "Compare all earlier options before choosing the next step.";
+		let draft = format!("{tail} {tail}\n{tail}");
+		input.update(visual, |input, cx| input.set_placeholder(draft, cx));
+		visual.update(crate::ui_frame::draw_current_frame);
+		let width = visual.update(|window, cx| {
+			let input = input.read(cx);
+			let inset = window.viewport_size().width - input.last_bounds.unwrap().size.width;
+			let last = input.last_layout.as_ref().unwrap().last().unwrap();
+			last.unwrapped_layout.width.ceil() + inset + gpui::px(12.)
+		});
+		visual.simulate_resize(gpui::size(width, gpui::px(300.)));
+		visual.update(crate::ui_frame::draw_current_frame);
+		let (plain_width, first_wraps) = input.read_with(visual, |input, _| {
+			let lines = input.last_layout.as_ref().unwrap();
+			assert!(!lines[0].wrap_boundaries().is_empty());
+			assert!(lines[1].wrap_boundaries().is_empty());
+			(input.last_bounds.unwrap().size.width, lines[0].wrap_boundaries().to_vec())
+		});
+
+		input.update(visual, |input, cx| input.set_placeholder_hint(Some("Tab".into()), false, cx));
+		visual.update(crate::ui_frame::draw_current_frame);
+		let accept = visual.debug_bounds("composer-suggestion-accept").unwrap();
+		input.read_with(visual, |input, _| {
+			let bounds = input.last_bounds.unwrap();
+			let lines = input.last_layout.as_ref().unwrap();
+			assert_eq!(bounds.size.width, plain_width);
+			assert_eq!(lines[0].wrap_boundaries(), first_wraps);
+			assert_eq!(lines.len(), 3, "only the trailing text needs another row");
+			let tail = &lines[2];
+			assert!(!tail.text.trim().is_empty());
+			assert!(tail.wrap_boundaries().is_empty());
+			let line_height = gpui::px(ui_theme::BODY_LINE_HEIGHT);
+			assert!(
+				(accept.center().y - (bounds.bottom() - line_height / 2.)).abs() <= gpui::px(1.)
+			);
+			let tail_end = bounds.left() + tail.unwrapped_layout.width;
+			assert!(
+				(accept.left() - tail_end - gpui::px(ui_theme::CONTROL_GAP)).abs() <= gpui::px(1.)
+			);
+		});
+	}
+
+	#[gpui::test]
+	fn select_all_highlight_covers_each_wrapped_row(cx: &mut gpui::TestAppContext) {
+		cx.update(bind_keys);
+		let (input, visual) = cx.add_window_view(|_, cx| ComposerInput::new(0, cx));
+		let draft = "这是需要自动换行的中文草稿，Wrap selection。";
+
+		visual.simulate_resize(gpui::size(gpui::px(205.), gpui::px(300.)));
+		input.update(visual, |input, cx| input.set_content(draft, cx));
+		visual.update(|window, cx| window.focus(&input.focus_handle(cx), cx));
+		visual.simulate_keystrokes("cmd-a");
+		visual.update(|window, cx| {
+			crate::ui_frame::draw_current_frame(window, cx);
+
+			let input = input.read(cx);
+			assert_eq!(input.selected_range, 0..draft.len());
+			let lines = input.last_layout.as_ref().unwrap();
+			let [boundary] = lines[0].wrap_boundaries() else {
+				panic!("expected two visual rows in a single paragraph");
+			};
+			let split = lines[0].runs()[boundary.run_ix].glyphs[boundary.glyph_ix].index;
+			let line_height = gpui::px(ui_theme::BODY_LINE_HEIGHT);
+			let origin = input.last_bounds.unwrap().origin;
+			let expected = [split, draft.len()].map(|end| {
+				let edge = text::position_at(lines, end);
+				gpui::Bounds::new(
+					origin + gpui::point(gpui::px(0.), edge.y),
+					gpui::size(edge.x, line_height),
+				)
+				.scale(window.scale_factor())
+			});
+
+			let paint = gpui::Background::from(ui_theme::rgba(0x60a5fa40));
+			let highlights: Vec<_> = window
+				.painted_quads()
+				.into_iter()
+				.filter(|quad| quad.background == paint)
+				.map(|quad| quad.bounds)
+				.collect();
+			assert_eq!(highlights, expected);
+		});
 	}
 
 	#[gpui::test]

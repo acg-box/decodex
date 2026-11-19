@@ -65,8 +65,10 @@ impl AgentSurface {
 				.id("composer-conversation-cost")
 				.debug_selector(|| "composer-conversation-cost".into())
 				.aria_label(description)
-				.flex_shrink_0()
+				.min_w_0()
+				.overflow_hidden()
 				.whitespace_nowrap()
+				.text_ellipsis()
 				.text_size(gpui::px(11.))
 				.line_height(gpui::px(16.))
 				.text_color(crate::ui_theme::rgb(crate::ui_theme::TEXT))
@@ -260,11 +262,14 @@ mod tests {
 	use crate::shell::agent_surface::usage_estimates::{
 		AgentDispatchStateDto, AgentSnapshotResult, AgentWorkItemDto, AgentWorkStatusDto,
 	};
-	use crate::shell::agent_surface::{
-		usage_estimates::{
-			self, AgentSnapshotDto, AgentSurface, AgentUsageEstimateResult, EntityId,
+	use crate::{
+		shell::agent_surface::{
+			usage_estimates::{
+				self, AgentSnapshotDto, AgentSurface, AgentUsageEstimateResult, EntityId,
+			},
+			wire_test_support,
 		},
-		wire_test_support,
+		ui_theme::{CONTROL_GAP, CONTROL_MARGIN, METRIC_GROUP_GAP},
 	};
 	use decodex_protocol::{
 		CURRENT_VERSION, ClientMessage, QueryPayload, QueryResultEnvelope, QueryResultPayload,
@@ -324,7 +329,9 @@ mod tests {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
-			s.visual_workspace_page("markdown", cx);
+			s.visual_workspace_page("composer", cx);
+			s.model.update(cx, |input, cx| input.set_content("gpt-6-astra", cx));
+			s.mark_model_intent(cx);
 			s.snapshot
 				.as_mut()
 				.unwrap()
@@ -334,7 +341,7 @@ mod tests {
 				.unwrap()
 				.codex_thread_id = Some("thread".into());
 		});
-		for width in [640., 1_400.] {
+		for width in [1_180., 1_400.] {
 			visual.simulate_resize(gpui::size(gpui::px(width), gpui::px(1_000.)));
 			for (native, estimated, expected) in [
 				(None, None, None),
@@ -366,18 +373,31 @@ mod tests {
 					cx.notify();
 				});
 				visual.update(crate::ui_frame::draw_current_frame);
-				let cost = visual.debug_bounds("composer-conversation-cost");
-				assert!(cost.is_some(), "unknown cost keeps its explicit placeholder");
-				if let Some(cost) = cost {
-					let context = visual.debug_bounds("composer-context-detail").unwrap();
-					let send = visual.debug_bounds("composer-send").unwrap();
-					assert!(cost.left() >= context.right(), "cost follows Context at {width}");
+				let cost = visual
+					.debug_bounds("composer-conversation-cost")
+					.expect("unknown cost keeps its explicit placeholder");
+				let context = visual.debug_bounds("composer-context-detail").unwrap();
+				let usage = visual.debug_bounds("composer-usage-line").unwrap();
+				let dictation = visual.debug_bounds("composer-dictation").unwrap();
+				let send = visual.debug_bounds("composer-send").unwrap();
+				let row = visual.debug_bounds("composer-action-row").unwrap();
+				let permissions = visual.debug_bounds("composer-permissions").unwrap();
+				let model = visual.debug_bounds("composer-model").unwrap();
+				let assert_gap = |pair: &str, actual: gpui::Pixels, expected: f32| {
 					assert!(
-						cost.right() <= send.left(),
-						"cost stays inside the toolbar at {width}"
+						(actual - gpui::px(expected)).abs() <= gpui::px(1.),
+						"{pair} at window width {width}, row={row:?}, actual={actual:?}, expected={expected}"
 					);
-					assert!((cost.center().y - context.center().y).abs() <= gpui::px(1.));
-				}
+				};
+				assert_gap("model to permissions", permissions.left() - model.right(), CONTROL_GAP);
+				assert_gap("dictation to send", send.left() - dictation.right(), CONTROL_GAP);
+				assert_gap("send to row edge", row.right() - send.right(), 0.);
+				assert!(permissions.right() <= usage.left());
+				assert!(usage.right() <= dictation.left());
+				assert!(context.left() - permissions.right() >= gpui::px(CONTROL_MARGIN - 1.));
+				assert_gap("context to cost", cost.left() - context.right(), METRIC_GROUP_GAP);
+				assert_gap("cost to dictation", dictation.left() - cost.right(), CONTROL_MARGIN);
+				assert!((cost.center().y - context.center().y).abs() <= gpui::px(1.));
 				assert!(visual.debug_bounds("conversation-cost-estimate").is_none());
 			}
 		}

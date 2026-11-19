@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:7e210939744c070137ed022517e36eb8414931efe4b0707f45ba9ea3a397a0be",
+  "pageVersion": "sha256:85ffea35e36b96425cfd12d6fef9abb73ab17c52e413ec2754e7c032d4c3d387",
   "claims": [
     {
       "id": "claim_36b9a49ffa87416e8add8befc7d10efe",
@@ -58,7 +58,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_native_popover.rs",
-          "version": "repo-file-v1:sha256:aec006495fbe0c74d975071f659ba6e20a7da8894b247bea962a17ace5ec8fc8"
+          "version": "repo-file-v1:sha256:fe1905cb586206532106e0aeaabb33bb6f4f9f32c540f424813fc6ef76772a05"
         }
       ]
     },
@@ -82,23 +82,31 @@
     },
     {
       "id": "claim_0ec1759382264ba09c1a8decf57f73e0",
-      "statement": "The transcript and composer use an 880-point conversation width and 16-point side insets. The composer overlays the bottom of the conversation, its measured height supplies scroll-content bottom padding, and the workbench editor caps editable height at six lines.",
+      "statement": "The transcript and composer use an 880-point conversation width and 16-point side insets. The composer overlays the bottom of the conversation, its measured height supplies scroll-content bottom padding, and the workbench editor caps editable height at six lines. Selection highlights follow glyph positions on each wrapped row. The action row sits 3 points below the editor's final visible line box and uses matching 8-point insets at the sides and bottom of the capsule.",
       "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_composer.rs",
+          "version": "repo-file-v1:sha256:8d11651fdf65453d9500bf800e22e72f2c51e5419c6280a72ee923b2aafcf354"
+        },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_native_composer.rs",
           "version": "repo-file-v1:sha256:9431b536f47e7a0b354901b64e465afff7648f838da15eacfca254b2b4bceed3"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:b15d5feea20cac93ebe3c4ccf6c463a25de757488e501a6d679b15fd332794e9"
+          "version": "repo-file-v1:sha256:7a9450c5e2cd5047bc179b377f3c34670544bcb1ed471660b60d53a28126c7c9"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/composer_input.rs",
+          "version": "repo-file-v1:sha256:c537347969ab0721b7e42096d88c1e4777f60b4fc6d0426d0cb87453380aa3c7"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/composer_text.rs",
-          "version": "repo-file-v1:sha256:621ed4f1f1a8b95ffebde4977490f764b0b8e29b5e0a9d113484bcaa6ece6551"
+          "version": "repo-file-v1:sha256:4bb8e4e85750d75422199b94b297b1f4b5e9149996e3413ee472bcc436d821de"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_theme.rs",
-          "version": "repo-file-v1:sha256:c4069aae9f3d1365c5fab5f549de21e752067b33f323a3f0bd711eb9d07413ae"
+          "version": "repo-file-v1:sha256:68ad90c34ad1920ea8c764032e5fd1f818e8497b7e780d7a45847fea9236a0e6"
         }
       ]
     },
@@ -168,7 +176,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_surface.rs",
-          "version": "repo-file-v1:sha256:5d0de452a9e029f95e309d3636dca508bd88282284ae5643811b9bbb42139875"
+          "version": "repo-file-v1:sha256:64eb04473157e8ea586a4867a8640b2dea88c23b21caa3fc9e2706b868ee2b48"
         }
       ]
     },
@@ -408,7 +416,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:b15d5feea20cac93ebe3c4ccf6c463a25de757488e501a6d679b15fd332794e9"
+          "version": "repo-file-v1:sha256:7a9450c5e2cd5047bc179b377f3c34670544bcb1ed471660b60d53a28126c7c9"
         }
       ]
     },
@@ -418,7 +426,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/native_material_panel.rs",
-          "version": "repo-file-v1:sha256:67ba2da0155f6931103e58829b487cbf637c0c116a07d74ada0ffe5b1940776f"
+          "version": "repo-file-v1:sha256:69c6b1c851787cb13066f4dfa0aa478adedabd3213bd22f6cf5088d1b1c0889f"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_material.rs",
@@ -440,7 +448,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:b15d5feea20cac93ebe3c4ccf6c463a25de757488e501a6d679b15fd332794e9"
+          "version": "repo-file-v1:sha256:7a9450c5e2cd5047bc179b377f3c34670544bcb1ed471660b60d53a28126c7c9"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_loading.rs",
@@ -494,7 +502,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_usage_estimates.rs",
-          "version": "repo-file-v1:sha256:e259fd49161a82ae64fdf1c205cad43e03b1416faa302c2a9d6a67ac76433b32"
+          "version": "repo-file-v1:sha256:141e6ffb5d003508258b20085b5eb2e3adfe4b04f08258a55743d0673f3cc8a9"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent_api_pricing.rs",
@@ -578,7 +586,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:b15d5feea20cac93ebe3c4ccf6c463a25de757488e501a6d679b15fd332794e9"
+          "version": "repo-file-v1:sha256:7a9450c5e2cd5047bc179b377f3c34670544bcb1ed471660b60d53a28126c7c9"
         }
       ]
     },
@@ -600,7 +608,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:b15d5feea20cac93ebe3c4ccf6c463a25de757488e501a6d679b15fd332794e9"
+          "version": "repo-file-v1:sha256:7a9450c5e2cd5047bc179b377f3c34670544bcb1ed471660b60d53a28126c7c9"
         }
       ]
     },
@@ -666,7 +674,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_surface.rs",
-          "version": "repo-file-v1:sha256:5d0de452a9e029f95e309d3636dca508bd88282284ae5643811b9bbb42139875"
+          "version": "repo-file-v1:sha256:64eb04473157e8ea586a4867a8640b2dea88c23b21caa3fc9e2706b868ee2b48"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_timeline.rs",
@@ -684,7 +692,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_surface.rs",
-          "version": "repo-file-v1:sha256:5d0de452a9e029f95e309d3636dca508bd88282284ae5643811b9bbb42139875"
+          "version": "repo-file-v1:sha256:64eb04473157e8ea586a4867a8640b2dea88c23b21caa3fc9e2706b868ee2b48"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_timeline.rs",
@@ -692,7 +700,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_theme.rs",
-          "version": "repo-file-v1:sha256:c4069aae9f3d1365c5fab5f549de21e752067b33f323a3f0bd711eb9d07413ae"
+          "version": "repo-file-v1:sha256:68ad90c34ad1920ea8c764032e5fd1f818e8497b7e780d7a45847fea9236a0e6"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_working.rs",
@@ -706,7 +714,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/native_material_panel.rs",
-          "version": "repo-file-v1:sha256:67ba2da0155f6931103e58829b487cbf637c0c116a07d74ada0ffe5b1940776f"
+          "version": "repo-file-v1:sha256:69c6b1c851787cb13066f4dfa0aa478adedabd3213bd22f6cf5088d1b1c0889f"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_performance.rs",
@@ -748,11 +756,11 @@
     },
     {
       "id": "claim_2110425b22af43cc99d9c2f90cf6bbd2",
-      "statement": "The next-message suggestion uses the full editor width. Its distinct shared shortcut keycap and adjacent refresh control follow the final text line or wrap together without reserving a trailing column. The controls stay outside editable content and hide while typing. Clicking the keycap or pressing Tab creates an unsent, undoable draft. Clearing the draft restores the cached suggestion until a new turn or source change invalidates it. Explicit refresh makes one native sample request that asks for a different follow-up, keeps the previous preview during generation or failure, disables both controls while pending, and does not send a chat message. Generation inherits the source conversation's model and reasoning settings.",
+      "statement": "The next-message suggestion wraps across the full text width. The shared shortcut keycap and refresh button form an inline group after the last words and use half the standard control gap. When space is tight, a trailing part of the suggestion can wrap with the controls. The controls stay outside editable content and hide while typing. Clicking the keycap or pressing Tab creates an unsent, undoable draft. Clearing the draft restores the cached suggestion until a new turn or source change invalidates it. Explicit refresh makes one native sample request that asks for a different follow-up, keeps the previous preview during generation or failure, disables both controls while pending, and does not send a chat message. Generation inherits the source conversation's model and reasoning settings.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_composer.rs",
-          "version": "repo-file-v1:sha256:c044453cdefa20de1ea8896cbadaaaf7f7802c0b30a10fad86711e9ab4f6c162"
+          "version": "repo-file-v1:sha256:8d11651fdf65453d9500bf800e22e72f2c51e5419c6280a72ee923b2aafcf354"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_sample.rs",
@@ -764,27 +772,27 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_sample_tests.rs",
-          "version": "repo-file-v1:sha256:ccefac392c8d3de792bb16a40ecc501124c5dd53c717d2f8ab2643a95e0c69d9"
+          "version": "repo-file-v1:sha256:1213f89b45d254169b337e5493832e6f289d0b00ee72281fb665ec1603a417a8"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_surface.rs",
-          "version": "repo-file-v1:sha256:5d0de452a9e029f95e309d3636dca508bd88282284ae5643811b9bbb42139875"
+          "version": "repo-file-v1:sha256:64eb04473157e8ea586a4867a8640b2dea88c23b21caa3fc9e2706b868ee2b48"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/composer_hint.rs",
-          "version": "repo-file-v1:sha256:d6c81e5ae8fae73e1e562fbcb00d22a847a9a972f684ddeee357752e2ce27c89"
+          "version": "repo-file-v1:sha256:ff0abb28f21975df8e7988ab294700fd424d7a1a6e285a17fcda8a7d6d6ea519"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/composer_input.rs",
-          "version": "repo-file-v1:sha256:61672cdb6826708227510d0947b8c1c945b59dc4299e51bce4524048f9c648cc"
+          "version": "repo-file-v1:sha256:c537347969ab0721b7e42096d88c1e4777f60b4fc6d0426d0cb87453380aa3c7"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/composer_text.rs",
-          "version": "repo-file-v1:sha256:621ed4f1f1a8b95ffebde4977490f764b0b8e29b5e0a9d113484bcaa6ece6551"
+          "version": "repo-file-v1:sha256:4bb8e4e85750d75422199b94b297b1f4b5e9149996e3413ee472bcc436d821de"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_theme.rs",
-          "version": "repo-file-v1:sha256:c4069aae9f3d1365c5fab5f549de21e752067b33f323a3f0bd711eb9d07413ae"
+          "version": "repo-file-v1:sha256:68ad90c34ad1920ea8c764032e5fd1f818e8497b7e780d7a45847fea9236a0e6"
         },
         {
           "resource": "repo://crates/decodex-codex/src/app_server_client/sample.rs",
@@ -806,7 +814,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_usage_estimates.rs",
-          "version": "repo-file-v1:sha256:e259fd49161a82ae64fdf1c205cad43e03b1416faa302c2a9d6a67ac76433b32"
+          "version": "repo-file-v1:sha256:141e6ffb5d003508258b20085b5eb2e3adfe4b04f08258a55743d0673f3cc8a9"
         }
       ]
     },
@@ -820,7 +828,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace_size.rs",
-          "version": "repo-file-v1:sha256:97a7881c3e8c93c22e52f6bb2f7566fbc3dfe4f22f5147fffc85f9a8a7d33c08"
+          "version": "repo-file-v1:sha256:6dfcaed427010124e12fb7758885a8f6705590b91e88783aaa0fe911ce3d2477"
         }
       ]
     },
@@ -868,7 +876,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_theme.rs",
-          "version": "repo-file-v1:sha256:c4069aae9f3d1365c5fab5f549de21e752067b33f323a3f0bd711eb9d07413ae"
+          "version": "repo-file-v1:sha256:68ad90c34ad1920ea8c764032e5fd1f818e8497b7e780d7a45847fea9236a0e6"
         }
       ]
     },
@@ -898,7 +906,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_native_popover.rs",
-          "version": "repo-file-v1:sha256:aec006495fbe0c74d975071f659ba6e20a7da8894b247bea962a17ace5ec8fc8"
+          "version": "repo-file-v1:sha256:fe1905cb586206532106e0aeaabb33bb6f4f9f32c540f424813fc6ef76772a05"
         }
       ]
     },
@@ -916,7 +924,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_native_popover.rs",
-          "version": "repo-file-v1:sha256:aec006495fbe0c74d975071f659ba6e20a7da8894b247bea962a17ace5ec8fc8"
+          "version": "repo-file-v1:sha256:fe1905cb586206532106e0aeaabb33bb6f4f9f32c540f424813fc6ef76772a05"
         }
       ]
     },
@@ -942,7 +950,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_theme.rs",
-          "version": "repo-file-v1:sha256:c4069aae9f3d1365c5fab5f549de21e752067b33f323a3f0bd711eb9d07413ae"
+          "version": "repo-file-v1:sha256:68ad90c34ad1920ea8c764032e5fd1f818e8497b7e780d7a45847fea9236a0e6"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_time.rs",
@@ -982,11 +990,11 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:b15d5feea20cac93ebe3c4ccf6c463a25de757488e501a6d679b15fd332794e9"
+          "version": "repo-file-v1:sha256:7a9450c5e2cd5047bc179b377f3c34670544bcb1ed471660b60d53a28126c7c9"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/native_material_panel.rs",
-          "version": "repo-file-v1:sha256:67ba2da0155f6931103e58829b487cbf637c0c116a07d74ada0ffe5b1940776f"
+          "version": "repo-file-v1:sha256:69c6b1c851787cb13066f4dfa0aa478adedabd3213bd22f6cf5088d1b1c0889f"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/shell.rs",
@@ -998,7 +1006,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_native_popover.rs",
-          "version": "repo-file-v1:sha256:aec006495fbe0c74d975071f659ba6e20a7da8894b247bea962a17ace5ec8fc8"
+          "version": "repo-file-v1:sha256:fe1905cb586206532106e0aeaabb33bb6f4f9f32c540f424813fc6ef76772a05"
         }
       ]
     },
@@ -1012,7 +1020,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_theme.rs",
-          "version": "repo-file-v1:sha256:c4069aae9f3d1365c5fab5f549de21e752067b33f323a3f0bd711eb9d07413ae"
+          "version": "repo-file-v1:sha256:68ad90c34ad1920ea8c764032e5fd1f818e8497b7e780d7a45847fea9236a0e6"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/voice_history_block.rs",
@@ -1184,7 +1192,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_composer.rs",
-          "version": "repo-file-v1:sha256:c044453cdefa20de1ea8896cbadaaaf7f7802c0b30a10fad86711e9ab4f6c162"
+          "version": "repo-file-v1:sha256:8d11651fdf65453d9500bf800e22e72f2c51e5419c6280a72ee923b2aafcf354"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_timeline_inputs.rs",
@@ -1192,17 +1200,47 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_usage_estimates.rs",
-          "version": "repo-file-v1:sha256:e259fd49161a82ae64fdf1c205cad43e03b1416faa302c2a9d6a67ac76433b32"
+          "version": "repo-file-v1:sha256:141e6ffb5d003508258b20085b5eb2e3adfe4b04f08258a55743d0673f3cc8a9"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_tooltip.rs",
           "version": "repo-file-v1:sha256:814fe67a7d1a8e91cb6c5d4bb5e35bd5e1ace0ba1d49a25d69f770974d79f14c"
         }
       ]
+    },
+    {
+      "id": "claim_b05bce29f7d74ca2bc7391ece5f8f224",
+      "statement": "Attachment and task-reference chips align with the text inset and use the shared 28-point height. Single-row toolbar buttons use 4-point gaps and usage readouts use 8-point separation. The toolbar measures its allocated width, hides Context and cost before replacing the model label with an icon, and keeps at least 24-point compact targets. When needed, it wraps model, permissions and dictation above the attachment and primary actions.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_composer.rs",
+          "version": "repo-file-v1:sha256:8d11651fdf65453d9500bf800e22e72f2c51e5419c6280a72ee923b2aafcf354"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_composer_toolbar.rs",
+          "version": "repo-file-v1:sha256:226b57b749592f39e289d910cdb95f4194c084b7e0b8d7ae041fd1cea81036cc"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_task_references.rs",
+          "version": "repo-file-v1:sha256:a05d661b6f450d2c065ffdb31633025682e2e04af30b0a8017acef92f93c9466"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_usage_estimates.rs",
+          "version": "repo-file-v1:sha256:141e6ffb5d003508258b20085b5eb2e3adfe4b04f08258a55743d0673f3cc8a9"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/composer_input.rs",
+          "version": "repo-file-v1:sha256:c537347969ab0721b7e42096d88c1e4777f60b4fc6d0426d0cb87453380aa3c7"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/ui_theme.rs",
+          "version": "repo-file-v1:sha256:68ad90c34ad1920ea8c764032e5fd1f818e8497b7e780d7a45847fea9236a0e6"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.9.0",
-    "at": "2026-11-18T19:17:42.865Z"
+    "at": "2026-11-19T08:42:02.757Z"
   }
 }

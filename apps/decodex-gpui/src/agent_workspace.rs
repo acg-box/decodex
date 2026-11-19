@@ -1347,8 +1347,9 @@ impl AgentSurface {
 		gpui::canvas(
 			|_, _, _| (),
 			move |bounds, _, window, _| {
+				let visible = bounds.intersect(&window.content_mask().bounds);
 				window.on_mouse_event(move |event: &MouseDownEvent, phase, window, cx| {
-					if phase == DispatchPhase::Capture && bounds.contains(&event.position) {
+					if phase == DispatchPhase::Capture && visible.contains(&event.position) {
 						let _ = owner.update(cx, |s, cx| {
 							s.workspace.focused_panel = panel;
 
@@ -1484,6 +1485,20 @@ impl AgentSurface {
 			.flex_col()
 			.children(self.background_voice_toolbar(cx))
 			.child(center);
+		let navigation_preview = self.navigation_preview_edge(window).map(|edge| {
+			let viewport = window.viewport_size();
+			ui_motion::Viewport::from_bounds(gpui::Bounds::new(
+				gpui::point(edge, gpui::px(0.)),
+				gpui::size((viewport.width - edge).max(gpui::px(0.)), viewport.height),
+			))
+		});
+		// A full-height preview exposes the window material at every point under
+		// its surface. The reading-plane mask alone leaves the center fill and
+		// composer footer behind the sidebar's translucent background.
+		let clip_for_navigation = |element: AnyElement| match &navigation_preview {
+			Some(viewport) => viewport.clip(0., element),
+			None => element,
+		};
 		let right_width = self.workspace_right_layout_width(window);
 		let body = gpui::div()
 			.flex_1()
@@ -1492,7 +1507,7 @@ impl AgentSurface {
 			.flex()
 			.overflow_hidden()
 			.gap(gpui::px(right_width.min(WORKSPACE_GUTTER)))
-			.child(center)
+			.child(clip_for_navigation(center.into_any_element()))
 			.child(
 				gpui::div()
 					.debug_selector(|| "workspace-activity-frame".into())
@@ -1512,8 +1527,14 @@ impl AgentSurface {
 			.flex()
 			.child(self.sidebar_slot(wide, window, cx))
 			.child(body)
-			.child(gpui::deferred(self.sidebar_pane(window, cx)).with_priority(2))
-			.child(gpui::deferred(self.activity_pane(window, cx)).with_priority(1));
+			.child(
+				gpui::deferred(self.sidebar_pane(window, cx))
+					.with_priority(if navigation_preview.is_some() { 5 } else { 2 }),
+			)
+			.child(
+				gpui::deferred(clip_for_navigation(self.activity_pane(window, cx)))
+					.with_priority(1),
+			);
 
 		self.workspace_resize_root(cx)
 			.size_full()

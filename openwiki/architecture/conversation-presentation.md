@@ -14,6 +14,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_activity.rs
   - id: openwiki-source-bf03f317e64cfefd11f6ea83
     resource: repo://apps/decodex-gpui/src/agent_attached_branches.rs
+  - id: openwiki-source-ffd63d0b4dd014a8aaa9145f
+    resource: repo://apps/decodex-gpui/src/agent_composer_toolbar.rs
   - id: openwiki-source-48758ba7d154c82885281d2c
     resource: repo://apps/decodex-gpui/src/agent_composer.rs
   - id: openwiki-source-0a61b25348131fe1bb6e1d12
@@ -80,6 +82,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_side_chat_question.rs
   - id: openwiki-source-5da2f5dd568514f1f464d177
     resource: repo://apps/decodex-gpui/src/agent_surface.rs
+  - id: openwiki-source-92ca1d78f1b4ce0789118f6f
+    resource: repo://apps/decodex-gpui/src/agent_task_references.rs
   - id: openwiki-source-04e81f339ea9d70e791f5b0e
     resource: repo://apps/decodex-gpui/src/agent_text_link_hover_tests.rs
   - id: openwiki-source-afe7c47e476800002dba8df3
@@ -222,10 +226,10 @@ sources:
     resource: repo://database/src/agent.rs
   - id: openwiki-source-c9f290c212ee80724ccf643a
     resource: repo://database/src/agent/drafts.rs
-generated: { by: "codex", at: "2026-11-18T19:17:42.865Z" }
+generated: { by: "codex", at: "2026-11-19T08:42:02.757Z" }
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-18T19:17:42.865Z
+    at: 2026-11-19T08:42:02.757Z
 ---
 
 
@@ -319,9 +323,11 @@ Use the shared [interface geometry and motion](design-language.md) when you add 
 
 The composer and ordinary transcript share an 880-point maximum width with 16-point side insets. Narrow windows use the available width. User messages remain narrower and right-aligned. The history rail and composer use the same animated inset so their content edges stay aligned when the rail opens or closes. Native child-agent conversations use the same width tokens.
 
-The composer sits over the bottom of the conversation. Its measured height supplies bottom padding to the scroll content, so the final rows can move above the composer. The editor grows to six lines, then scrolls its text internally. Its action row remains below the text. In the conversation that owns the call, Live replaces the text editor slot with a compact waveform. Other conversations retain their own text editors. A background call bar identifies the owner and provides Return, Mute and End controls.
+The composer sits over the bottom of the conversation. Its measured height supplies bottom padding to the scroll content, so the final rows can move above the composer. The editor grows to six lines, then scrolls its text internally. The action row starts 3 points below the editor's final visible line box. It uses the same 8-point inset on both sides and at the bottom of the capsule. Selection highlights follow the glyph positions on each wrapped row. In the conversation that owns the call, Live replaces the text editor slot with a compact waveform. Other conversations retain their own text editors. A background call bar identifies the owner and provides Return, Mute and End controls.
 
-An available next-message suggestion uses the complete editor width. Its **Tab** button uses the shared shortcut keycap, with a compact font, a rounded outline and a light fill. The keycap and adjacent refresh button follow the last line of the suggestion and move to the next line if they cannot fit. They do not reserve a trailing column across the other lines. Both controls stay outside the editable draft and disappear when the user types or the suggestion is unavailable. Clicking **Tab** or pressing the Tab key accepts the suggestion as an unsent, undoable draft. Clearing that draft restores the cached suggestion. A new turn or a change to the conversation source invalidates it.
+Attachment and task-reference chips align with the left text edge and use the shared 28-point height. The toolbar groups attachment, model and permissions controls on the left. Context and cost sit beside the microphone and send controls on the right. Related buttons use a 4-point gap on one row. The usage readouts use an 8-point gap from each other and from the adjacent buttons. The toolbar measures the space that the conversation gives it. It hides Context and cost first and then replaces the model label with a button icon. Compact buttons retain targets of at least 24 points. If the targets cannot fit on one row, model, permissions and dictation wrap above the attachment and primary actions. The attachment and primary actions retain their respective bottom edges on opposite sides when both fit.
+
+The next-message suggestion wraps across the full text width. The shared **Tab** keycap and the refresh button form an inline group after the last words, half a standard control gap apart. When space is tight, a trailing part of the suggestion can wrap with the controls. Both controls stay outside the editable draft and disappear when the user types or the suggestion is unavailable. Clicking **Tab** or pressing the Tab key accepts the suggestion as an unsent, undoable draft. Clearing that draft restores the cached suggestion. A new turn or a change to the conversation source invalidates it.
 
 The refresh button makes one native sampling request and asks for a different follow-up from the previous suggestion. The native sample keeps the source conversation's model and reasoning settings. It does not send a chat message. The previous suggestion stays visible while generation runs. Both controls are disabled during generation, and the refresh icon shows progress. A completed sample replaces the preview. If generation fails, the previous suggestion remains available for acceptance or another explicit retry.
 

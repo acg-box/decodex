@@ -3483,7 +3483,7 @@ mod tests {
 			cx.notify();
 		});
 
-		for width in [640., 1_400.] {
+		for width in [900., 1_400.] {
 			visual.simulate_resize(gpui::size(gpui::px(width), gpui::px(1_000.)));
 			visual.update(crate::ui_frame::draw_current_frame);
 

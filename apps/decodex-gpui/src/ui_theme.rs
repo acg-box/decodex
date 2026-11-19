@@ -94,8 +94,16 @@ pub(crate) const CONVERSATION_HEADER_HEIGHT: f32 = 36.0;
 pub(crate) const CONVERSATION_WIDTH: f32 = 880.0;
 pub(crate) const CONVERSATION_INSET: f32 = 16.0;
 pub(crate) const COMPOSER_RADIUS: f32 = 14.0;
+// Align the text and accessory edges with the leading attachment symbol.
+pub(crate) const COMPOSER_TEXT_INSET: f32 = 9.0;
+pub(crate) const COMPOSER_TEXT_TOP_INSET: f32 = 5.0;
+pub(crate) const COMPOSER_TEXT_BOTTOM_INSET: f32 = 3.0;
 // A one-line editor and its toolbar keep the same footprint in read-only states.
-pub(crate) const COMPOSER_MIN_HEIGHT: f32 = 77.0;
+pub(crate) const COMPOSER_MIN_HEIGHT: f32 = BODY_LINE_HEIGHT
+	+ COMPOSER_TEXT_TOP_INSET
+	+ COMPOSER_TEXT_BOTTOM_INSET
+	+ CONTROL_SIZE
+	+ 2.0 * (CONTROL_MARGIN + 1.0);
 pub(crate) const COMPOSER_TOP_GAP: f32 = 8.0;
 pub(crate) const COMPOSER_BOTTOM_GAP: f32 = 12.0;
 // Settings use readable form text and one bounded content width.

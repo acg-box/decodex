@@ -155,7 +155,8 @@ impl AgentSurface {
 		{
 			layout.left_width = self.workspace_sidebar_expanded_width(window);
 			layout.left_floating = true;
-			if layout.right_floating {
+			// The hover preview clips the overlap in the workspace frame.
+			if layout.right_floating && !self.workspace.sidebar_peek {
 				layout.right_width = 0.;
 				layout.right_floating = false;
 			}
@@ -433,6 +434,14 @@ impl AgentSurface {
 		self.workspace.sidebar_preview_presentation.get()
 	}
 
+	pub(super) fn navigation_preview_edge(&self, window: &Window) -> Option<gpui::Pixels> {
+		let layout = self.workspace_panel_layout(window);
+		let visible = self.workspace_sidebar_display_width(window);
+		(self.sidebar_preview_presentation(layout, visible)
+			&& self.workspace_panel_floating(Panel::Left, layout, visible))
+		.then(|| gpui::px(WORKSPACE_GUTTER + visible))
+	}
+
 	/// Temporary navigation keeps its full-height rail and footer. Mask only the
 	/// covered native input region, without changing the input's material contour.
 	#[cfg(any(test, target_os = "macos"))]
@@ -441,19 +450,12 @@ impl AgentSurface {
 		bounds: gpui::Bounds<gpui::Pixels>,
 		window: &Window,
 	) -> gpui::Bounds<gpui::Pixels> {
-		let layout = self.workspace_panel_layout(window);
-		let visible = self.workspace_sidebar_display_width(window);
-		let covered = if self.sidebar_preview_presentation(layout, visible)
-			&& self.workspace_panel_floating(Panel::Left, layout, visible)
-		{
-			(WORKSPACE_GUTTER + visible - f32::from(bounds.left()))
-				.clamp(0., f32::from(bounds.size.width))
-		} else {
-			0.
-		};
+		let covered = self.navigation_preview_edge(window).map_or(gpui::px(0.), |edge| {
+			(edge - bounds.left()).clamp(gpui::px(0.), bounds.size.width)
+		});
 		gpui::Bounds::new(
-			gpui::point(gpui::px(covered), gpui::px(0.)),
-			gpui::size(bounds.size.width - gpui::px(covered), bounds.size.height),
+			gpui::point(covered, gpui::px(0.)),
+			gpui::size(bounds.size.width - covered, bounds.size.height),
 		)
 	}
 
@@ -642,7 +644,7 @@ impl AgentSurface {
 			})
 			.when(floating, |panel| {
 				panel.on_mouse_down_out(cx.listener(|s, event: &MouseDownEvent, window, cx| {
-					let right = s.agent_tree_width(window);
+					let right = s.workspace_right_display_width(window);
 					if event.position.y >= gpui::px(WINDOW_CONTROLS_CLEARANCE)
 						&& f32::from(event.position.x)
 							< f32::from(window.viewport_size().width) - right - WORKSPACE_GUTTER
@@ -1761,6 +1763,8 @@ mod tests {
 			let bottom = visual.debug_bounds("workspace-navigation-pane").unwrap().bottom();
 			let archive = visual.debug_bounds("archive-browser").unwrap().bottom();
 			let composer = visual.debug_bounds("agent-composer").unwrap();
+			let activity = visual.debug_bounds("workspace-activity-pane").unwrap();
+			let collaboration = visual.debug_bounds("workbench-body").unwrap();
 			for preview in [true, false] {
 				surface.update(visual, |s, cx| {
 					s.workspace.sidebar_peek = preview;
@@ -1776,7 +1780,24 @@ mod tests {
 				visual.update(crate::ui_frame::draw_current_frame);
 				assert_eq!(visual.debug_bounds("agent-composer").unwrap(), composer);
 				assert_eq!(visual.debug_bounds("archive-browser").unwrap().bottom(), archive);
+				assert_eq!(visual.debug_bounds("workspace-activity-pane").unwrap(), activity);
+				assert_eq!(visual.debug_bounds("workbench-body").unwrap(), collaboration);
+				let navigation = visual.debug_bounds("workspace-navigation-pane").unwrap();
 				visual.update(|window, cx| {
+					let scale = window.scale_factor();
+					let painted = activity.scale(scale);
+					let fill = window
+						.painted_quads()
+						.into_iter()
+						.find(|quad| quad.bounds == painted)
+						.expect("Collaboration surface still paints");
+					let visible = painted.intersect(&fill.content_mask.bounds);
+					let expected_left = painted.left().max(navigation.scale(scale).right());
+					assert!(
+						(f64::from(visible.left()) - f64::from(expected_left)).abs()
+							<= f64::from(scale) * 0.5
+					);
+					assert_eq!(visible.right(), painted.right());
 					surface.read_with(cx, |s, cx| {
 						let region = s.workspace_composer_visible_region(composer, window);
 						assert_eq!(region.size.height, composer.size.height);
@@ -1785,6 +1806,23 @@ mod tests {
 						assert_eq!(s.composer.read(cx).content(), "Keep this draft");
 					})
 				});
+				if preview && pinned {
+					assert!(
+						activity.left() < navigation.right()
+							&& navigation.right() < activity.right()
+					);
+					let y = activity.center().y;
+					for (x, panel) in [
+						((activity.left() + navigation.right()) / 2., Panel::Left),
+						(activity.right() - gpui::px(20.), Panel::Right),
+					] {
+						visual.simulate_click(gpui::point(x, y), Default::default());
+						surface.read_with(visual, |s, _| {
+							assert_eq!(s.workspace.focused_panel, Some(panel));
+							assert!(s.workspace.agent_tree_visible);
+						});
+					}
+				}
 			}
 		}
 	}
@@ -1814,6 +1852,7 @@ mod tests {
 				thread::sleep(std::time::Duration::from_millis(25));
 				visual.update(crate::ui_frame::draw_frame);
 				let pane = visual.debug_bounds("workspace-navigation-pane").unwrap();
+				let center = visual.debug_bounds("workspace-center-frame").unwrap();
 				// The next consumer must use the displayed edge even if time has
 				// advanced since the parent painted this frame.
 				thread::sleep(std::time::Duration::from_millis(8));
@@ -1830,6 +1869,26 @@ mod tests {
 							window,
 						);
 						assert!((clip.left() - pane.right()).abs() <= gpui::px(0.5));
+						if pane.right() > center.left() {
+							let scale = window.scale_factor();
+							let conversation = gpui::Background::from(
+								crate::ui_theme::workspace_palette().conversation,
+							);
+							let fill = window
+								.painted_quads()
+								.into_iter()
+								.find(|quad| {
+									quad.bounds == center.scale(scale)
+										&& quad.background == conversation
+								})
+								.expect("center background");
+							assert!(
+								f64::from(fill.content_mask.bounds.left()) + f64::from(scale) * 0.5
+									>= f64::from(pane.scale(scale).right()),
+								"the sidebar covers the complete center background: {fill:?}, pane={pane:?}, edge={:?}",
+								s.navigation_preview_edge(window),
+							);
+						}
 					});
 				});
 				assert_eq!(visual.debug_bounds("agent-composer").unwrap(), composer);

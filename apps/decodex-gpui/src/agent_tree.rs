@@ -88,7 +88,7 @@ impl AgentSurface {
 				panel.on_mouse_down_out(cx.listener(|s, event: &MouseDownEvent, window, cx| {
 					if event.position.y >= gpui::px(crate::shell::WINDOW_CONTROLS_CLEARANCE)
 						&& f32::from(event.position.x)
-							> s.workspace_sidebar_width(window) + WORKSPACE_GUTTER
+							> s.workspace_sidebar_display_width(window) + WORKSPACE_GUTTER
 					{
 						s.dismiss_workspace_overlays(window, cx);
 					}
