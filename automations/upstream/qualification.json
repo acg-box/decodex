@@ -1,594 +1,683 @@
 {
-  "version": 4,
-  "status": "qualified_retained_boundary",
-  "source_commit": "60fcb1649f0c3213d9d44c7c0caaca6459fb7c6c",
-  "development_version": "0.170.0+decodex.60fcb1649f0c",
-  "decodex_main_baseline": "52671664045f6af72230e96b828d0786eaf7c5da",
-  "decodex_source_revision": "3200eeb86f1a1f1a95b977fcd0f02cbb9404d2fc",
-  "runtime_pin_commit": "3200eeb86f1a1f1a95b977fcd0f02cbb9404d2fc",
-  "runtime_pin_sha256": "7d113821090ec7de009808611ea7a89ffa54cb849732ff6770278970e09af8e4",
-  "delivery_reference": "https://github.com/acg-box/decodex/commit/3200eeb86f1a1f1a95b977fcd0f02cbb9404d2fc",
-  "delivery_status": "Native receipts track final-head CI and merge.",
+  "version": 3,
+  "status": "qualified_development",
+  "source_commit": "2f0374456fd5cd280ee76de54220ab8315a0f8d0",
+  "development_version": "0.170.0+decodex.2f0374456fd",
+  "decodex_main_baseline": "84ed19d57ba9de97dfaf172a33f1592bb3cafb13",
+  "decodex_source_revision": "9921b198a3a697fb88123032573d58f0f2ddca13",
+  "delivery_reference": "https://github.com/acg-box/decodex/commit/9921b198a3a697fb88123032573d58f0f2ddca13",
+  "runtime_pin_sha256": "7119f5b3996a03851eed20599d221c60b9b148e4650cc6aec9a29891f531913d",
+  "artifact": {
+    "source_commit": "2f0374456fd5cd280ee76de54220ab8315a0f8d0",
+    "source_archive_sha256": "cb7784045de81181da307eb9ebb8da7df5bae71ff343f388517af863f4f69c2c",
+    "schema_sha256": "ecdacaf743969be1a6e9029cb4d3a1121c5e858ccf64d90467f724d95003e2bc",
+    "components": [
+      {
+        "path": "CodexCLI.app/Contents/MacOS/codex",
+        "sha256": "3feb6c23f87958f461b0bac6373af3c86c3d9296fbe1dd51039df895f47967b8",
+        "bytes": 301046048,
+        "strict_signature_verified": true,
+        "pinned_commit_embedded": true
+      },
+      {
+        "path": "bin/codex-code-mode-host",
+        "sha256": "773694510e5993078e3d5092c5d71bf8094fa0df3e6afad6f9ae65afda8ddc5a",
+        "bytes": 69765056,
+        "strict_signature_verified": true,
+        "pinned_commit_embedded": true
+      },
+      {
+        "path": "bin/codex-exec-server",
+        "sha256": "f73996d56b0cad91b17a0325e5ee6840f980022382a3f854b14bab120e0d7489",
+        "bytes": 65479024,
+        "strict_signature_verified": true,
+        "pinned_commit_embedded": true
+      },
+      {
+        "path": "codex-path/rg",
+        "sha256": "81e418ed107507ad5a42979abff8b57c377d3d423f9f1736e31010f3ee9ec791",
+        "bytes": 4009552,
+        "strict_signature_verified": true,
+        "pinned_commit_embedded": null
+      }
+    ],
+    "launcher_sha256": "50ab38ba21d0d9f8346f32f41848382f15b556190f3c7a07e885a4fb73e379c8"
+  },
   "prepared_development_package": {
     "target": "aarch64-apple-darwin",
     "variant": "codex",
     "layout_version": 1
   },
   "development_preparation": {
-    "command": "cargo +stable make prepare-codex",
-    "verification_import": "DECODEX_CODEX_DEVELOPMENT_RUNTIME=<exact signed package> cargo +stable make prepare-codex",
+    "build": "cargo +stable make prepare-codex",
+    "schema": "signed CLI app-server generate-json-schema --experimental",
+    "isolated_import": "cargo +stable run --locked --quiet -p decodex-components -- import-dev codex-runtime.lock.json <signed package> --store <system-temporary store>",
     "toolchain": "rustc 1.100.0 (0ef1bc386 2026-11-09)",
-    "node_version_file": "site/.nvmrc",
-    "signing": "The isolated build produced the candidate bytes. Its identity lookup failed at signing. The same package was signed with the existing Developer ID identity, verified strictly and imported under the generated schema digest.",
-    "isolation": "System-temporary homes and existing managed Cargo and Rustup locations."
+    "node_version": "26.10.0",
+    "result": "Signed build succeeded. The import rejected the prior fingerprint, then reached Ready after the pin used the fingerprint generated from the same signed bytes."
   },
   "source_integrity": {
-    "source_commit": "60fcb1649f0c3213d9d44c7c0caaca6459fb7c6c",
-    "archive_entries_bound_to_git_blobs": true,
-    "git_blob_entries": 10483,
-    "archive_git_differences": 0,
-    "build_source_regular_files_compared": 10482,
+    "source_commit": "2f0374456fd5cd280ee76de54220ab8315a0f8d0",
+    "git_blob_entries": 10480,
+    "archive_git_differences": [],
+    "missing_archive_files": [],
     "missing_build_files": [],
     "preparation_file_sha256": {
       "codex-rs/Cargo.lock": {
-        "archive_sha256": "1e02b5954f94ea5f2d7f93daf1ecae7b3a2d6da58d701cf9aea93de58adebf8a",
-        "prepared_sha256": "a02704b680ae95fe18ecf8ac7d28b9abd1da7eb2389f3c9cbe3faac9e904e156"
+        "archive_sha256": "263226fb0040872dc4f28e409c32259549735db27497b2d870ad20245f181f79",
+        "prepared_sha256": "a31f2f20e6594a578328f1713456b30ab7e49bb11e96478cd58b59b3524d073b"
       },
       "codex-rs/Cargo.toml": {
-        "archive_sha256": "a5479852aa72b3ad6b95e40d039e348540f02c64ed25c6c49c7e910e8c292080",
-        "prepared_sha256": "1d8001ddefe5c578b2107d3a103d75f8a7a42c710bc1f34d0e16a3dcdf02d543"
+        "archive_sha256": "b946c98f01bda0745a12371bc07bcf0dde4fdd7f7c1f9bb2d5c1c496ba4b52ba",
+        "prepared_sha256": "a4dc454faccfe607626f3dd1d77b98b52934a564d9f7cf30804e046e3afbb342"
       },
       "codex-rs/rust-toolchain.toml": {
         "archive_sha256": "913d7e9d7adcd7abfeb0c4554c39a5a57c3cf84a694bc6a6aeae038a1f6ae33b",
         "prepared_sha256": "cb358b5f3f066eb6d2c15d537c362ca217d7b963739360b04057c685bd469086"
       }
-    },
-    "active_rust_channel": "stable"
+    }
+  },
+  "schema_identity": {
+    "source": "exact signed CLI",
+    "experimental_files": 483,
+    "fingerprint": "ecdacaf743969be1a6e9029cb4d3a1121c5e858ccf64d90467f724d95003e2bc",
+    "adapter_contract": "schema::tests::official_schema_supports_current_consumers"
   },
   "retained_source_inclusion": {
-    "previous_selected_source": "6257fbc4bd5339144e6ffb3398a011917d883a2e",
-    "candidate_source": "60fcb1649f0c3213d9d44c7c0caaca6459fb7c6c",
+    "previous_selected_source": "60fcb1649f0c3213d9d44c7c0caaca6459fb7c6c",
     "previous_source_is_ancestor": true,
-    "decodex_baseline": "52671664045f6af72230e96b828d0786eaf7c5da",
-    "preserves_decodex_merge": "https://github.com/acg-box/decodex/commit/52671664045f6af72230e96b828d0786eaf7c5da",
-    "review": "automations/upstream/current-review.json",
-    "qualified_prior_fixes": [
-      "Environment-scoped MCP inventory and retained discovery failures",
-      "Native V3 voice preferences and effective voice defaults",
-      "Mixed native timeline boundaries and saved V2 realtime history"
+    "previous_decodex_merge": "https://github.com/acg-box/decodex/commit/fd5492345ce60d8ead906bed830078556546d4af",
+    "prior_fixes_rechecked": [
+      "Acknowledged child results across interruption and cold resume",
+      "Scoped native API spend errors without capacity retry",
+      "Environment-scoped MCP inventory with the signed executor",
+      "Native Code Mode work attribution and Apps recovery",
+      "Saved native history, permissions, sampling and realtime history"
     ]
-  },
-  "source_archive_sha256": "fb80d2c4bd6dfe3a4540c77a064b060dc391d6bb5413d471c905185e12aebb45",
-  "cargo_lock_sha256": "a02704b680ae95fe18ecf8ac7d28b9abd1da7eb2389f3c9cbe3faac9e904e156",
-  "components": [
-    {
-      "path": "CodexCLI.app/Contents/MacOS/codex",
-      "sha256": "93b5db0558c349aebf297d5e1783f593c6e67bf73035daebe62f7b288342e815",
-      "bytes": 320257568,
-      "strict_signature_verified": true,
-      "pinned_commit_embedded": true
-    },
-    {
-      "path": "bin/codex-code-mode-host",
-      "sha256": "b3923d3e1e20d8c0ebf230e1e7aed2bc7409be795771bcff3f76e2bd58e1c05c",
-      "bytes": 70504848,
-      "strict_signature_verified": true,
-      "pinned_commit_embedded": true
-    },
-    {
-      "path": "bin/codex-exec-server",
-      "sha256": "75206f9f99d3ea21c46c8f24ce6970ce6fcee662d4fb5d07e9a3a164181a4cbc",
-      "bytes": 65197792,
-      "strict_signature_verified": true,
-      "pinned_commit_embedded": true
-    },
-    {
-      "path": "codex-path/rg",
-      "sha256": "f6cb1c9a027d958e247b7566a015f2f62cc083b3db39a8bf18efaa4fc2f53325",
-      "bytes": 4009552,
-      "strict_signature_verified": true,
-      "pinned_commit_embedded": null
-    }
-  ],
-  "launcher_sha256": "50ab38ba21d0d9f8346f32f41848382f15b556190f3c7a07e885a4fb73e379c8",
-  "schema_sha256": "62cf6cdce26c623fc2bf06b595d37742dedffbc9c98719b7bfeda491e48a5458",
-  "schema_identity": {
-    "file_count": 483,
-    "fingerprint": "62cf6cdce26c623fc2bf06b595d37742dedffbc9c98719b7bfeda491e48a5458",
-    "generated_from_exact_signed_cli": true,
-    "scoped_spend_error_variants": [
-      "apiKeySpendLimitExceeded",
-      "projectSpendLimitExceeded",
-      "organizationSpendLimitExceeded"
-    ],
-    "component_library_verifier_accepted": true
-  },
-  "retained_consumers": {
-    "entrypoint": "<compiled libtest> <registered selector> --exact [--ignored] --nocapture --test-threads=1",
-    "features": "locked, all selected package features",
-    "registered_count": 13,
-    "executed": 13,
-    "passed": 13,
-    "failed": 0,
-    "unmatched_selectors": [],
-    "cases": [
-      {
-        "selector": "account_launch::agent_process::native_tests::capacity::installed_throttling_and_quota_do_not_schedule_capacity_retries",
-        "package": "decodex-runtime",
-        "source": [
-          "crates/decodex-runtime/src/account_launch/agent_process_native_capacity_tests.rs"
-        ],
-        "libtest_sha256": "e303f97cea3c6d4d1d7a8ab765d626e2c6cc79269b58efc8750568178e58d121",
-        "ignored_selector": true,
-        "counts": [
-          1,
-          0,
-          0
-        ],
-        "passed": true
-      },
-      {
-        "selector": "account_launch::agent_process::native_tests::capacity::installed_model_not_found_does_not_schedule_capacity_retries",
-        "package": "decodex-runtime",
-        "source": [
-          "crates/decodex-runtime/src/account_launch/agent_process_native_capacity_tests.rs"
-        ],
-        "libtest_sha256": "e303f97cea3c6d4d1d7a8ab765d626e2c6cc79269b58efc8750568178e58d121",
-        "ignored_selector": true,
-        "counts": [
-          1,
-          0,
-          0
-        ],
-        "passed": true
-      },
-      {
-        "selector": "account_launch::agent_process::native_tests::capacity::installed_capacity_retry_retains_selected_model_after_process_and_store_restart",
-        "package": "decodex-runtime",
-        "source": [
-          "crates/decodex-runtime/src/account_launch/agent_process_native_capacity_tests.rs"
-        ],
-        "libtest_sha256": "e303f97cea3c6d4d1d7a8ab765d626e2c6cc79269b58efc8750568178e58d121",
-        "ignored_selector": true,
-        "counts": [
-          1,
-          0,
-          0
-        ],
-        "passed": true
-      },
-      {
-        "selector": "account_launch::agent_process::native_tests::discovery::installed_native_mcp_inventory_retains_same_name_scopes",
-        "package": "decodex-runtime",
-        "source": [
-          "crates/decodex-runtime/src/account_launch/agent_process_native_discovery_tests.rs"
-        ],
-        "libtest_sha256": "e303f97cea3c6d4d1d7a8ab765d626e2c6cc79269b58efc8750568178e58d121",
-        "ignored_selector": true,
-        "counts": [
-          1,
-          0,
-          0
-        ],
-        "passed": true
-      },
-      {
-        "selector": "account_launch::agent_process::native_tests::discovery::installed_native_mcp_capabilities_survive_tool_discovery_failure",
-        "package": "decodex-runtime",
-        "source": [
-          "crates/decodex-runtime/src/account_launch/agent_process_native_discovery_tests.rs"
-        ],
-        "libtest_sha256": "e303f97cea3c6d4d1d7a8ab765d626e2c6cc79269b58efc8750568178e58d121",
-        "ignored_selector": true,
-        "counts": [
-          1,
-          0,
-          0
-        ],
-        "passed": true
-      },
-      {
-        "selector": "account_launch::agent_process::native_tests::reviewer::store::voice_settings_start::installed_native_voice_reads_project_override_and_refreshed_user_default",
-        "package": "decodex-runtime",
-        "source": [
-          "crates/decodex-runtime/src/account_launch/agent_process_voice_settings_start_tests.rs"
-        ],
-        "libtest_sha256": "e303f97cea3c6d4d1d7a8ab765d626e2c6cc79269b58efc8750568178e58d121",
-        "ignored_selector": true,
-        "counts": [
-          1,
-          0,
-          0
-        ],
-        "passed": true
-      },
-      {
-        "selector": "account_launch::agent_process::native_tests::realtime::installed_native_realtime_history_survives_agent_and_cold_bridge",
-        "package": "decodex-runtime",
-        "source": [
-          "crates/decodex-runtime/src/account_launch/agent_process_native_realtime_tests.rs"
-        ],
-        "libtest_sha256": "e303f97cea3c6d4d1d7a8ab765d626e2c6cc79269b58efc8750568178e58d121",
-        "ignored_selector": true,
-        "counts": [
-          1,
-          0,
-          0
-        ],
-        "passed": true
-      },
-      {
-        "selector": "account_launch::agent_process::native_tests::installed_native_history_reads_cross_retained_bridge_without_new_model_work",
-        "package": "decodex-runtime",
-        "source": [
-          "crates/decodex-runtime/src/account_launch/agent_process_native_tests.rs"
-        ],
-        "libtest_sha256": "e303f97cea3c6d4d1d7a8ab765d626e2c6cc79269b58efc8750568178e58d121",
-        "ignored_selector": true,
-        "counts": [
-          1,
-          0,
-          0
-        ],
-        "passed": true
-      },
-      {
-        "selector": "agent::tests::native_agent_wake::native_child_completion_wakes_idle_root_once",
-        "package": "decodex-runtime",
-        "source": [
-          "crates/decodex-runtime/src/agent/tests/native_agent_wake.rs"
-        ],
-        "libtest_sha256": "e303f97cea3c6d4d1d7a8ab765d626e2c6cc79269b58efc8750568178e58d121",
-        "ignored_selector": true,
-        "counts": [
-          1,
-          0,
-          0
-        ],
-        "passed": true
-      },
-      {
-        "selector": "agent::tests::native_agent_wake::native_nested_code_mode_work_attribution_survives_store_reopen",
-        "package": "decodex-runtime",
-        "source": [
-          "crates/decodex-runtime/src/agent/tests/native_agent_wake.rs"
-        ],
-        "libtest_sha256": "e303f97cea3c6d4d1d7a8ab765d626e2c6cc79269b58efc8750568178e58d121",
-        "ignored_selector": true,
-        "counts": [
-          1,
-          0,
-          0
-        ],
-        "passed": true
-      },
-      {
-        "selector": "agent::tests::native_partial_output::native_interrupted_output_is_retained_without_replay",
-        "package": "decodex-runtime",
-        "source": [
-          "crates/decodex-runtime/src/agent/tests/native_partial_output.rs"
-        ],
-        "libtest_sha256": "e303f97cea3c6d4d1d7a8ab765d626e2c6cc79269b58efc8750568178e58d121",
-        "ignored_selector": true,
-        "counts": [
-          1,
-          0,
-          0
-        ],
-        "passed": true
-      },
-      {
-        "selector": "schema::tests::official_schema_supports_current_consumers",
-        "package": "decodex-codex",
-        "source": [
-          "crates/decodex-codex/src/schema.rs"
-        ],
-        "libtest_sha256": "e682d8fe9819c7d350bcf16197c80f02b4b0cf7983872ebb3212216756112d13",
-        "ignored_selector": true,
-        "counts": [
-          1,
-          0,
-          0
-        ],
-        "passed": true
-      },
-      {
-        "selector": "app_server_client::realtime_preferences::tests::native_v3_voice_preferences_survive_restart_and_preserve_project_override",
-        "package": "decodex-codex",
-        "source": [
-          "crates/decodex-codex/src/app_server_client/realtime_preferences_tests.rs"
-        ],
-        "libtest_sha256": "e682d8fe9819c7d350bcf16197c80f02b4b0cf7983872ebb3212216756112d13",
-        "ignored_selector": true,
-        "counts": [
-          1,
-          0,
-          0
-        ],
-        "passed": true
-      }
-    ]
-  },
-  "projection_regressions": {
-    "entrypoint": "<compiled libtest> <registered selector> --exact [--ignored] --nocapture --test-threads=1",
-    "features": "locked, all selected package features",
-    "registered_count": 4,
-    "executed": 4,
-    "passed": 4,
-    "failed": 0,
-    "unmatched_selectors": [],
-    "cases": [
-      {
-        "selector": "agent::tests::capacity::quota_other_errors_and_missing_history_do_not_schedule_capacity_retries",
-        "package": "decodex-runtime",
-        "source": [
-          "crates/decodex-runtime/src/agent/tests/capacity.rs"
-        ],
-        "libtest_sha256": "e303f97cea3c6d4d1d7a8ab765d626e2c6cc79269b58efc8750568178e58d121",
-        "ignored_selector": false,
-        "counts": [
-          1,
-          0,
-          0
-        ],
-        "passed": true
-      },
-      {
-        "selector": "agent::tests::capacity::terminal_quota_failure_preserves_accepted_input_without_replay_after_recovery",
-        "package": "decodex-runtime",
-        "source": [
-          "crates/decodex-runtime/src/agent/tests/capacity.rs"
-        ],
-        "libtest_sha256": "e303f97cea3c6d4d1d7a8ab765d626e2c6cc79269b58efc8750568178e58d121",
-        "ignored_selector": false,
-        "counts": [
-          1,
-          0,
-          0
-        ],
-        "passed": true
-      },
-      {
-        "selector": "account_launch::agent_process::native_tests::reviewer::store::voice_settings_start::voice_start_applies_effective_voice_and_rejects_failed_reads_before_recording_call",
-        "package": "decodex-runtime",
-        "source": [
-          "crates/decodex-runtime/src/account_launch/agent_process_voice_settings_start_tests.rs"
-        ],
-        "libtest_sha256": "e303f97cea3c6d4d1d7a8ab765d626e2c6cc79269b58efc8750568178e58d121",
-        "ignored_selector": false,
-        "counts": [
-          1,
-          0,
-          0
-        ],
-        "passed": true
-      },
-      {
-        "selector": "app_server_client::timeline::tests::equal_positions_keep_native_kind_order_and_opening_voice_state",
-        "package": "decodex-codex",
-        "source": [
-          "crates/decodex-codex/src/app_server_client/timeline.rs"
-        ],
-        "libtest_sha256": "e682d8fe9819c7d350bcf16197c80f02b4b0cf7983872ebb3212216756112d13",
-        "ignored_selector": false,
-        "counts": [
-          1,
-          0,
-          0
-        ],
-        "passed": true
-      }
-    ]
-  },
-  "component_cache_repair": {
-    "selector": "fixed_commit_import_explicit_reinstall_and_wrong_commit_rejection",
-    "package": "decodex-components",
-    "source": [
-      "crates/decodex-components/tests/development.rs"
-    ],
-    "libtest_sha256": "89ef62053ef9d74d6a065510d6d9fb891a7205eea956a2dd29dd1c1bcce8ace3",
-    "ignored_selector": true,
-    "counts": [
-      1,
-      0,
-      0
-    ],
-    "passed": true,
-    "entrypoint": "<compiled libtest> <registered selector> --exact [--ignored] --nocapture --test-threads=1"
-  },
-  "direct_protocol_regressions": [
-    {
-      "source": "crates/decodex-runtime/tests/native_qualification/interrupted_mail.py",
-      "command": [
-        "/usr/bin/python3",
-        "crates/decodex-runtime/tests/native_qualification/interrupted_mail.py"
-      ],
-      "cases_passed": 1,
-      "status": "passed",
-      "scope": "One acknowledged child final is durable at interrupt and sampled once in the next cold-resumed request. The fixture disables instant interruption and the interruption marker."
-    },
-    {
-      "source": "crates/decodex-runtime/tests/native_qualification/pending_mail.py",
-      "command": [
-        "/usr/bin/python3",
-        "crates/decodex-runtime/tests/native_qualification/pending_mail.py"
-      ],
-      "cases_passed": 4,
-      "status": "passed",
-      "scope": "Legacy and paginated history through local and remote compaction. Checks pending identity and removal at acknowledgement."
-    },
-    {
-      "source": "crates/decodex-runtime/tests/native_qualification/seatbelt_launch.py",
-      "command": [
-        "/usr/bin/python3",
-        "crates/decodex-runtime/tests/native_qualification/seatbelt_launch.py"
-      ],
-      "cases_passed": 2,
-      "status": "passed",
-      "scope": "Native app-server command/exec denies a read-only write and allows the same write under the explicit named command-cwd profile."
-    },
-    {
-      "source": "crates/decodex-runtime/tests/native_qualification/apps_recovery.py",
-      "command": [
-        "/usr/bin/python3",
-        "crates/decodex-runtime/tests/native_qualification/apps_recovery.py"
-      ],
-      "cases_passed": 1,
-      "status": "passed",
-      "scope": "Prepared native Apps and Code Mode host preserve cached discovery and share the gated retry with invocation."
-    },
-    {
-      "source": "crates/decodex-runtime/tests/native_qualification/mcp_cancel.py",
-      "command": [
-        "/usr/bin/python3",
-        "crates/decodex-runtime/tests/native_qualification/mcp_cancel.py"
-      ],
-      "cases_passed": 2,
-      "status": "passed",
-      "scope": "Both legacy and paginated history cancel the exact native MCP request and reuse its live connection."
-    }
-  ],
-  "direct_protocol_environment": {
-    "QUALIFIED_CODEX_BINARY": "<exact prepared package>/bin/codex",
-    "QUALIFIED_CODEX_SOURCE_COMMIT": "60fcb1649f0c3213d9d44c7c0caaca6459fb7c6c",
-    "DECODEX_QUALIFICATION_OUTPUT": "<private result directory>",
-    "scope": "Run each probe in an isolated Codex home with loopback fixtures."
   },
   "fixture_source_sha256": {
-    "crates/decodex-codex/src/app_server_client/realtime_preferences_tests.rs": "4d2bc44e4fdd01b38f881394c023b16d920bfaa82b70639000788bb4b8ae0296",
-    "crates/decodex-codex/src/app_server_client/timeline.rs": "45514de72505b84d8c8e89594d8e1886c4ffa065e3829e90a9368470c73f5a38",
+    "apps/decodex-gpui/src/agent_math/render.rs": "2dd78df7241347a21076723f811d1be9f8fc16a0ce2497ea1f3f67806060320d",
+    "apps/decodex-gpui/src/agent_math/render/structured.rs": "c1e878b7a058e746862be5322f0474d25099ca3657349f5785c6e2edfb4b63f1",
+    "apps/decodex-gpui/src/agent_math_tests.rs": "ca7d3bb7dbdba3cf92dd5e992a9cdd5864255101f120db7cb675017fcef411e0",
     "crates/decodex-codex/src/schema.rs": "07f3f3fc920da90cef1bc03da685525969e84ff40e8973f3dc9ee936ad97da83",
     "crates/decodex-components/tests/development.rs": "0ccbd7b95fb091a8b686f9bb51851a94effa6c3fb66b8d838eb49284723156b5",
     "crates/decodex-runtime/src/account_launch/agent_process_native_capacity_tests.rs": "7440ec0228364697c7fb461bebff821cfb8120bc945893a998a691f54b50ac9d",
     "crates/decodex-runtime/src/account_launch/agent_process_native_discovery_tests.rs": "e90c8c6714b30209979f81fafd8d9263f8ff163bf9b9554625810bfa2b5149f3",
-    "crates/decodex-runtime/src/account_launch/agent_process_native_realtime_tests.rs": "d164163cbdfd2e280635000db69c55e3ad88b191a6737a8d4abfbc960cbfe6a2",
-    "crates/decodex-runtime/src/account_launch/agent_process_native_tests.rs": "d690b507403aafaaa9fc75ec8649c8cfb6addf82a5ac2df4836ce15fb22a99eb",
-    "crates/decodex-runtime/src/account_launch/agent_process_voice_settings_start_tests.rs": "66ce52fdeb7eb394e00b6e709e5a411eccaffceef547a2f45fd5de8947420ea4",
+    "crates/decodex-runtime/src/account_launch/agent_process_native_mcp_sharing_tests.rs": "9bc841bc2575560a2cdc47fea6b8c2d26ca04999e029b6b22054fe0cab72e741",
+    "crates/decodex-runtime/src/account_launch/native_mcp_sharing.py": "c58796ab40f1a51aa28e9ea548523c87639362514c55d8d85c85b6d85e8427dc",
     "crates/decodex-runtime/src/account_launch/native_scoped_mcp.py": "7b8ce2175a5043ad8f3987ff65bf5dd78d69721ce0b33a0a1346fdee64e210a6",
-    "crates/decodex-runtime/src/agent/tests/capacity.rs": "27480ae36639e328b5661ad170674d4dbe9d1252ec4f713066fca6583f72a2f9",
     "crates/decodex-runtime/src/agent/tests/native_agent_wake.rs": "da4710d8af187859caaf64bc714b19a393a484c297294bdb0dc83c519a1ff4d3",
-    "crates/decodex-runtime/src/agent/tests/native_partial_output.rs": "f660e1d95fb242d197b86553a0c26246d3e5688bf2caebf386e009ba2013227d",
+    "crates/decodex-runtime/src/agent/tests/native_subagent_mcp.rs": "1e1c964601e76014f7450693fc39028930cd22655208c1dc6e2f0ec67bbf67e4",
+    "crates/decodex-runtime/src/agent/tests/native_subagent_mcp_server.py": "0f5a92e7ffc4f828db4843764164c7aa5b9b2b56db1fe1452baeaf538c3519f6",
     "crates/decodex-runtime/tests/native_qualification/apps_recovery.py": "998764c0d4ff0c227602811d3424ee85df00231db3ef77c932afb5a979422597",
+    "crates/decodex-runtime/tests/native_qualification/command_hooks.py": "369a93ff63a36048bddf87ad60c04aa376f2907cf51b5115b13a07b88a63973a",
+    "crates/decodex-runtime/tests/native_qualification/finished_sample.py": "791d223fab303f5576d94ceb80d9b8e4b392781065eb00672a1b4c41c5724596",
     "crates/decodex-runtime/tests/native_qualification/interrupted_mail.py": "ce3b398b988600d531ec1c2b087504ef822857362671b81a35316c365a80c827",
     "crates/decodex-runtime/tests/native_qualification/mcp_cancel.py": "ff2dce50665fb8610921915491907998c1bc0034475d63deedf031321f5e4fb1",
     "crates/decodex-runtime/tests/native_qualification/native_session.py": "ae24e58b6ed7404fce007e174fce23aa5ff49038b8b1e77818f59313fdc4aa1f",
     "crates/decodex-runtime/tests/native_qualification/pending_mail.py": "8cee9678be86f7de9fa3f4165f721c687cad0a9ee21b7709fd6507c7c805cb7b",
     "crates/decodex-runtime/tests/native_qualification/seatbelt_launch.py": "621a5d214640cc83bc9e989fb20c317eb60498703bdd2b13377d290129488c1d",
+    "crates/decodex-runtime/tests/native_qualification/thread_settings.py": "cf4bb4274aac52b69ebd3936204a2f1570753e2e38c2afc4fd9796deaa278049",
     "scripts/macos/build_codex_source.mts": "44225ba7067b143f2613cc02f0482c7875982919edf4af3720fb273db1d4459c",
     "scripts/macos/prepare_codex.mts": "4d85b6503324c5e81366b10eeaa7f6e41e2c92a9864bb7d61bb90fe34afc4f4b",
     "scripts/macos/version_codex_source.py": "4b140d89c39cd1021c19033cd30e944486acdb19f5ffd40bc27bcf720aa4964d"
   },
-  "baseline_observations": {
-    "source": "6257fbc4bd5339144e6ffb3398a011917d883a2e",
-    "cli_sha256": "6cc3d38f7a9abdb6985ffad582100166d78fd1617783c6406234eb51341ebfb6",
+  "retained_consumers": {
     "cases": [
       {
-        "fixture": "interrupted_mail.py",
-        "fixture_sha256": "ce3b398b988600d531ec1c2b087504ef822857362671b81a35316c365a80c827",
-        "result": "Expected failure. Acknowledged mail is absent from the rollout at the interrupted terminal event."
+        "crate": "decodex-runtime",
+        "selector": "account_launch::agent_process::native_tests::capacity::installed_throttling_and_quota_do_not_schedule_capacity_retries",
+        "executed": 1,
+        "passed": 1,
+        "failed": 0,
+        "entrypoint": "compiled libtest binary with --exact --test-threads=1 --ignored",
+        "environment": {
+          "DECODEX_TEST_CODEX_BINARY": "<signed package>/bin/codex",
+          "DECODEX_NATIVE_BINARY": "<signed package>/bin/codex"
+        }
       },
       {
-        "selector": "account_launch::agent_process::native_tests::capacity::installed_throttling_and_quota_do_not_schedule_capacity_retries",
-        "fixture_sha256": "a9ff56e73d3daf9a8efd23969f45b8fb7e3b306910c6379c484876fbd8d5ccc3",
-        "result": "Expected mismatch. The baseline emits usageLimitExceeded for an organization spend limit. The candidate emits organizationSpendLimitExceeded."
+        "crate": "decodex-runtime",
+        "selector": "account_launch::agent_process::native_tests::capacity::installed_model_not_found_does_not_schedule_capacity_retries",
+        "executed": 1,
+        "passed": 1,
+        "failed": 0,
+        "entrypoint": "compiled libtest binary with --exact --test-threads=1 --ignored",
+        "environment": {
+          "DECODEX_TEST_CODEX_BINARY": "<signed package>/bin/codex",
+          "DECODEX_NATIVE_BINARY": "<signed package>/bin/codex"
+        }
+      },
+      {
+        "crate": "decodex-runtime",
+        "selector": "account_launch::agent_process::native_tests::capacity::installed_capacity_retry_retains_selected_model_after_process_and_store_restart",
+        "executed": 1,
+        "passed": 1,
+        "failed": 0,
+        "entrypoint": "compiled libtest binary with --exact --test-threads=1 --ignored",
+        "environment": {
+          "DECODEX_TEST_CODEX_BINARY": "<signed package>/bin/codex",
+          "DECODEX_NATIVE_BINARY": "<signed package>/bin/codex"
+        }
+      },
+      {
+        "crate": "decodex-runtime",
+        "selector": "account_launch::agent_process::native_tests::discovery::installed_native_mcp_inventory_retains_same_name_scopes",
+        "executed": 1,
+        "passed": 1,
+        "failed": 0,
+        "entrypoint": "compiled libtest binary with --exact --test-threads=1 --ignored",
+        "environment": {
+          "DECODEX_TEST_CODEX_BINARY": "<signed package>/bin/codex",
+          "DECODEX_NATIVE_BINARY": "<signed package>/bin/codex",
+          "DECODEX_TEST_CODEX_EXEC_SERVER": "<signed package>/bin/codex-exec-server"
+        },
+        "initial_setup": {
+          "execution": "failed before native startup",
+          "reason": "The first runner invocation omitted DECODEX_TEST_CODEX_EXEC_SERVER. The same compiled selector passed with the exact signed helper."
+        }
+      },
+      {
+        "crate": "decodex-runtime",
+        "selector": "account_launch::agent_process::native_tests::discovery::installed_native_mcp_capabilities_survive_tool_discovery_failure",
+        "executed": 1,
+        "passed": 1,
+        "failed": 0,
+        "entrypoint": "compiled libtest binary with --exact --test-threads=1 --ignored",
+        "environment": {
+          "DECODEX_TEST_CODEX_BINARY": "<signed package>/bin/codex",
+          "DECODEX_NATIVE_BINARY": "<signed package>/bin/codex"
+        }
+      },
+      {
+        "crate": "decodex-runtime",
+        "selector": "account_launch::agent_process::native_tests::permissions::installed_permission_selection_publishes_and_survives_native_restart",
+        "executed": 1,
+        "passed": 1,
+        "failed": 0,
+        "entrypoint": "compiled libtest binary with --exact --test-threads=1 --ignored",
+        "environment": {
+          "DECODEX_TEST_CODEX_BINARY": "<signed package>/bin/codex",
+          "DECODEX_NATIVE_BINARY": "<signed package>/bin/codex"
+        }
+      },
+      {
+        "crate": "decodex-runtime",
+        "selector": "account_launch::agent_process::native_tests::project_work::native_project_global_review_and_private_records_cross_retained_bridge",
+        "executed": 1,
+        "passed": 1,
+        "failed": 0,
+        "entrypoint": "compiled libtest binary with --exact --test-threads=1 --ignored",
+        "environment": {
+          "DECODEX_TEST_CODEX_BINARY": "<signed package>/bin/codex",
+          "DECODEX_NATIVE_BINARY": "<signed package>/bin/codex"
+        }
+      },
+      {
+        "crate": "decodex-runtime",
+        "selector": "account_launch::agent_process::native_tests::realtime::installed_native_realtime_history_survives_agent_and_cold_bridge",
+        "executed": 1,
+        "passed": 1,
+        "failed": 0,
+        "entrypoint": "compiled libtest binary with --exact --test-threads=1 --ignored",
+        "environment": {
+          "DECODEX_TEST_CODEX_BINARY": "<signed package>/bin/codex",
+          "DECODEX_NATIVE_BINARY": "<signed package>/bin/codex"
+        }
+      },
+      {
+        "crate": "decodex-runtime",
+        "selector": "account_launch::agent_process::native_tests::installed_native_history_reads_cross_retained_bridge_without_new_model_work",
+        "executed": 1,
+        "passed": 1,
+        "failed": 0,
+        "entrypoint": "compiled libtest binary with --exact --test-threads=1 --ignored",
+        "environment": {
+          "DECODEX_TEST_CODEX_BINARY": "<signed package>/bin/codex",
+          "DECODEX_NATIVE_BINARY": "<signed package>/bin/codex"
+        }
+      },
+      {
+        "crate": "decodex-runtime",
+        "selector": "agent::tests::native_agent_wake::native_child_completion_wakes_idle_root_once",
+        "executed": 1,
+        "passed": 1,
+        "failed": 0,
+        "entrypoint": "compiled libtest binary with --exact --test-threads=1 --ignored",
+        "environment": {
+          "DECODEX_TEST_CODEX_BINARY": "<signed package>/bin/codex",
+          "DECODEX_NATIVE_BINARY": "<signed package>/bin/codex"
+        }
+      },
+      {
+        "crate": "decodex-runtime",
+        "selector": "agent::tests::native_agent_wake::native_nested_code_mode_work_attribution_survives_store_reopen",
+        "executed": 1,
+        "passed": 1,
+        "failed": 0,
+        "entrypoint": "compiled libtest binary with --exact --test-threads=1 --ignored",
+        "environment": {
+          "DECODEX_TEST_CODEX_BINARY": "<signed package>/bin/codex",
+          "DECODEX_NATIVE_BINARY": "<signed package>/bin/codex"
+        }
+      },
+      {
+        "crate": "decodex-runtime",
+        "selector": "agent::tests::native_agent_wake::native_v1_nested_code_mode_keeps_exact_work_attribution",
+        "executed": 1,
+        "passed": 1,
+        "failed": 0,
+        "entrypoint": "compiled libtest binary with --exact --test-threads=1 --ignored",
+        "environment": {
+          "DECODEX_TEST_CODEX_BINARY": "<signed package>/bin/codex",
+          "DECODEX_NATIVE_BINARY": "<signed package>/bin/codex"
+        }
+      },
+      {
+        "crate": "decodex-codex",
+        "selector": "schema::tests::official_schema_supports_current_consumers",
+        "executed": 1,
+        "passed": 1,
+        "failed": 0,
+        "entrypoint": "compiled libtest binary with --exact --test-threads=1 --ignored",
+        "environment": {
+          "DECODEX_REVIEW_SCHEMA": "<schema from signed CLI>"
+        }
+      },
+      {
+        "crate": "decodex-runtime",
+        "selector": "agent::tests::native_subagent_live::mcp::native_shared_child_mcp_input_preserves_policy_and_exact_request",
+        "executed": 1,
+        "passed": 1,
+        "failed": 0,
+        "entrypoint": "compiled libtest binary with --exact --test-threads=1 --ignored",
+        "environment": {
+          "DECODEX_NATIVE_BINARY": "<signed package>/bin/codex"
+        }
+      },
+      {
+        "crate": "decodex-runtime",
+        "selector": "account_launch::agent_process::native_tests::mcp_sharing::explicit_sharing_candidate_uses_compatible_same_process_mcp_connections",
+        "executed": 1,
+        "passed": 1,
+        "failed": 0,
+        "entrypoint": "compiled libtest binary with --exact --test-threads=1 --ignored",
+        "environment": {
+          "DECODEX_TEST_CODEX_BINARY": "<signed package>/bin/codex"
+        }
+      },
+      {
+        "crate": "decodex-runtime",
+        "selector": "agent::tests::native_subagent_live::mcp::native_shared_child_mcp_input_survives_late_empty_discovery",
+        "executed": 1,
+        "passed": 1,
+        "failed": 0,
+        "entrypoint": "compiled libtest binary with --exact --test-threads=1 --ignored",
+        "environment": {
+          "DECODEX_NATIVE_BINARY": "<signed package>/bin/codex"
+        }
+      },
+      {
+        "crate": "decodex-runtime",
+        "selector": "account_launch::agent_process::native_tests::mcp_sharing::explicit_sharing_keeps_unmarked_legacy_connection_private",
+        "executed": 1,
+        "passed": 1,
+        "failed": 0,
+        "entrypoint": "compiled libtest binary with --exact --test-threads=1 --ignored",
+        "environment": {
+          "DECODEX_TEST_CODEX_BINARY": "<signed package>/bin/codex"
+        }
+      },
+      {
+        "crate": "decodex-runtime",
+        "selector": "agent::tests::native_subagent_live::mcp::native_child_mcp_input_preserves_policy_and_exact_request",
+        "executed": 1,
+        "passed": 1,
+        "failed": 0,
+        "entrypoint": "compiled libtest binary with --exact --test-threads=1 --ignored",
+        "environment": {
+          "DECODEX_NATIVE_BINARY": "<signed package>/bin/codex"
+        }
       }
+    ],
+    "registered_count": 18,
+    "executed": 18,
+    "passed": 18,
+    "failed": 0,
+    "unmatched_selectors": [],
+    "features": "Cargo default features",
+    "build_commands": [
+      "cargo +stable test --locked -p decodex-runtime -p decodex-codex --lib --no-run --message-format=json",
+      "Select each compiler-artifact executable and register exact names with --list --ignored. Execute each selector directly with --ignored --exact <selector> --test-threads=1 --nocapture."
+    ]
+  },
+  "direct_protocol_regressions": [
+    {
+      "source": "crates/decodex-runtime/tests/native_qualification/interrupted_mail.py",
+      "scope": "acknowledged terminal child result across interrupt and cold resume",
+      "exit_code": 0,
+      "status": "passed",
+      "command": "python3 crates/decodex-runtime/tests/native_qualification/interrupted_mail.py"
+    },
+    {
+      "source": "crates/decodex-runtime/tests/native_qualification/pending_mail.py",
+      "scope": "acknowledged and unacknowledged native result through compaction in four modes",
+      "exit_code": 0,
+      "status": "passed",
+      "command": "python3 crates/decodex-runtime/tests/native_qualification/pending_mail.py"
+    },
+    {
+      "source": "crates/decodex-runtime/tests/native_qualification/mcp_cancel.py",
+      "scope": "exact native cancel and reuse in both history modes",
+      "exit_code": 0,
+      "status": "passed",
+      "command": "python3 crates/decodex-runtime/tests/native_qualification/mcp_cancel.py"
+    },
+    {
+      "source": "crates/decodex-runtime/tests/native_qualification/apps_recovery.py",
+      "scope": "cached discovery and Apps invocation retry through exact Code Mode host",
+      "exit_code": 0,
+      "status": "passed",
+      "command": "python3 crates/decodex-runtime/tests/native_qualification/apps_recovery.py"
+    },
+    {
+      "source": "crates/decodex-runtime/tests/native_qualification/seatbelt_launch.py",
+      "scope": "macOS read-only refusal and named command-cwd write",
+      "exit_code": 0,
+      "status": "passed",
+      "command": "python3 crates/decodex-runtime/tests/native_qualification/seatbelt_launch.py"
+    },
+    {
+      "source": "crates/decodex-runtime/tests/native_qualification/finished_sample.py",
+      "scope": "retained native finished-turn sampling and cleanup",
+      "exit_code": 0,
+      "status": "passed",
+      "command": "python3 crates/decodex-runtime/tests/native_qualification/finished_sample.py"
+    },
+    {
+      "source": "crates/decodex-runtime/tests/native_qualification/command_hooks.py",
+      "scope": "native command-hook choice and runtime authority",
+      "exit_code": 0,
+      "status": "passed",
+      "command": "python3 crates/decodex-runtime/tests/native_qualification/command_hooks.py"
+    },
+    {
+      "source": "crates/decodex-runtime/tests/native_qualification/thread_settings.py",
+      "scope": "exact loaded and cold native thread settings",
+      "exit_code": 0,
+      "status": "passed",
+      "command": "python3 crates/decodex-runtime/tests/native_qualification/thread_settings.py"
+    }
+  ],
+  "direct_protocol_environment": {
+    "QUALIFIED_CODEX_BINARY": "<signed package>/bin/codex",
+    "QUALIFIED_CODEX_SOURCE_COMMIT": "2f0374456fd5cd280ee76de54220ab8315a0f8d0",
+    "DECODEX_QUALIFICATION_OUTPUT": "<isolated output directory>",
+    "scope": "System-temporary Codex homes, synthetic loopback services and the packaged helper paths."
+  },
+  "component_cache_repair": {
+    "crate": "decodex-components",
+    "selector": "fixed_commit_import_explicit_reinstall_and_wrong_commit_rejection",
+    "executed": 1,
+    "passed": 1,
+    "failed": 0,
+    "entrypoint": "compiled libtest binary with --exact --test-threads=1 --ignored",
+    "environment": {
+      "DECODEX_TEST_DEVELOPMENT_RUNTIME": "<signed package>"
+    },
+    "build_command": "cargo +stable test --locked -p decodex-components --test development --no-run --message-format=json"
+  },
+  "local_mcp_sharing": {
+    "status": "qualified",
+    "upstream_fix": "https://github.com/openai/codex/pull/62552",
+    "upstream_issue": "https://github.com/openai/codex/issues/57480",
+    "prior_artifact_comparison": {
+      "source": "60fcb1649f0c3213d9d44c7c0caaca6459fb7c6c",
+      "cli_sha256": "93b5db0558c349aebf297d5e1783f593c6e67bf73035daebe62f7b288342e815",
+      "four_selectors": 4,
+      "passed": 1,
+      "failed": 3,
+      "scope": "Original fixtures. Three legacy-discovery failures reproduced."
+    },
+    "candidate": {
+      "sharing_selectors_passed": 4,
+      "private_control_passed": 1,
+      "feature_list": [
+        {
+          "configuration": "native default",
+          "features": {
+            "mcp_connection_sharing": {
+              "stage": "stable",
+              "defaultEnabled": true,
+              "enabled": true
+            },
+            "mcp_lazy_stdio_startup": {
+              "stage": "stable",
+              "defaultEnabled": true,
+              "enabled": true
+            }
+          }
+        },
+        {
+          "configuration": "explicit false",
+          "features": {
+            "mcp_connection_sharing": {
+              "stage": "stable",
+              "defaultEnabled": true,
+              "enabled": false
+            },
+            "mcp_lazy_stdio_startup": {
+              "stage": "stable",
+              "defaultEnabled": true,
+              "enabled": true
+            }
+          }
+        }
+      ],
+      "launch_policy": "Use the native default and honor native explicit configuration."
+    },
+    "limits": "Same-process leases and private legacy fallback with synthetic servers and child input. Cross-process sharing is a separate deferred decision."
+  },
+  "code_mode_host": {
+    "transport": "native gRPC over stdio",
+    "upstream_change": "https://github.com/openai/codex/pull/62476",
+    "checks": [
+      "agent::tests::native_agent_wake::native_nested_code_mode_work_attribution_survives_store_reopen",
+      "agent::tests::native_agent_wake::native_v1_nested_code_mode_keeps_exact_work_attribution",
+      "crates/decodex-runtime/tests/native_qualification/apps_recovery.py"
+    ]
+  },
+  "math_presentation": {
+    "cases": [
+      {
+        "crate": "decodex-gpui",
+        "selector": "shell::agent_surface::markdown::math_tests::display_math_keeps_geometry_on_resize_and_copies_tex",
+        "executed": 1,
+        "passed": 1,
+        "failed": 0,
+        "entrypoint": "compiled libtest binary with --exact --test-threads=1"
+      },
+      {
+        "crate": "decodex-gpui",
+        "selector": "shell::agent_surface::markdown::math_tests::formulas_render_without_changing_protected_markdown_or_copy_source",
+        "executed": 1,
+        "passed": 1,
+        "failed": 0,
+        "entrypoint": "compiled libtest binary with --exact --test-threads=1"
+      },
+      {
+        "crate": "decodex-gpui",
+        "selector": "shell::agent_surface::markdown::math_tests::growing_display_stays_literal_until_closed_and_bounds_preserve_following_text",
+        "executed": 1,
+        "passed": 1,
+        "failed": 0,
+        "entrypoint": "compiled libtest binary with --exact --test-threads=1"
+      },
+      {
+        "crate": "decodex-gpui",
+        "selector": "shell::agent_surface::markdown::math_tests::math_keeps_link_ranges_and_code_bytes_correct",
+        "executed": 1,
+        "passed": 1,
+        "failed": 0,
+        "entrypoint": "compiled libtest binary with --exact --test-threads=1"
+      },
+      {
+        "crate": "decodex-gpui",
+        "selector": "shell::agent_surface::markdown::math_tests::structured_math_renders_aligned_models_and_grouped_scripts",
+        "executed": 1,
+        "passed": 1,
+        "failed": 0,
+        "entrypoint": "compiled libtest binary with --exact --test-threads=1"
+      }
+    ],
+    "registered_count": 5,
+    "passed": 5,
+    "baseline": "The two modified tests reproduced literal wide tilde and underbrace output. Three other tests passed.",
+    "command": "cargo +stable test --locked -p decodex-gpui --bin decodex-gpui math_tests:: -- --test-threads=1"
+  },
+  "decodex_validation": {
+    "nightly_format": "passed",
+    "runtime_strict_clippy": "passed",
+    "desktop_strict_clippy": "Existing append_native_history_rows length diagnostic (194/120), reproduced on exact main and the delivery source. Changed renderer and fixtures emitted no Clippy diagnostics.",
+    "automation_manifest": "passed",
+    "automation_tests": {
+      "checkpoint": 8,
+      "portfolio": 7
+    },
+    "commands": [
+      "cargo +nightly fmt --all --check",
+      "Repository strict Clippy flags on decodex-runtime and decodex-gpui with all features and targets",
+      "cargo +stable make test-automations",
+      "python3 automations/decodex/scripts/config/evaluate_automations.py --repo-only --json",
+      "git diff --check"
     ]
   },
   "source_validation": {
     "fixed_review": "automations/upstream/current-review.json",
-    "reviewed_commits": 13,
-    "test_bodies_read": 22,
+    "reviewed_commits": 67,
+    "test_bodies_read": 78,
     "upstream_tests_executed_locally": [],
-    "official_rust_check_observations": [
+    "official_rollup_observation": {
+      "FAILURE": 67
+    },
+    "official_relevant_check_observations": [
       {
-        "head": "cc7a62e19cb4703495e3a6d01e1af076e8223833",
+        "head": "2f0374456fd5cd280ee76de54220ab8315a0f8d0",
         "workflow_check": "rust-ci / CI results (required)",
         "status": "completed",
         "conclusion": "success",
-        "url": "https://github.com/openai/codex/actions/runs/44367141281/job/135043981610"
+        "url": "https://github.com/openai/codex/actions/runs/44603202189/job/135860333688"
       },
       {
-        "head": "cc7a62e19cb4703495e3a6d01e1af076e8223833",
+        "head": "2f0374456fd5cd280ee76de54220ab8315a0f8d0",
         "workflow_check": "rust-ci / CI results (required)",
         "status": "completed",
         "conclusion": "success",
-        "url": "https://github.com/openai/codex/actions/runs/44367132591/job/135043909519"
+        "url": "https://github.com/openai/codex/actions/runs/44603216556/job/135859751978"
       },
       {
-        "head": "9d8ca1df71dd95e0bb77b22207236f29a83bdc5f",
-        "workflow_check": "rust-ci / CI results (required)",
-        "status": "completed",
-        "conclusion": "success",
-        "url": "https://github.com/openai/codex/actions/runs/44382873940/job/135099710163"
+        "head": "2f0374456fd5cd280ee76de54220ab8315a0f8d0",
+        "workflow_check": "Bazel / Bazel test on macos-15-xlarge for aarch64-apple-darwin",
+        "status": "in_progress",
+        "conclusion": null,
+        "url": "https://github.com/openai/codex/actions/runs/44603216556/job/135839892071"
       },
       {
-        "head": "9d8ca1df71dd95e0bb77b22207236f29a83bdc5f",
-        "workflow_check": "rust-ci / CI results (required)",
-        "status": "completed",
-        "conclusion": "success",
-        "url": "https://github.com/openai/codex/actions/runs/44382676564/job/135098975331"
+        "head": "2f0374456fd5cd280ee76de54220ab8315a0f8d0",
+        "workflow_check": "Bazel / Bazel test on macos-15-xlarge for aarch64-apple-darwin",
+        "status": "in_progress",
+        "conclusion": null,
+        "url": "https://github.com/openai/codex/actions/runs/44603202189/job/135839842824"
       },
       {
-        "head": "60fcb1649f0c3213d9d44c7c0caaca6459fb7c6c",
+        "head": "ac784eb10e6d02486b00d383b64822b69473c0e8",
         "workflow_check": "rust-ci / CI results (required)",
         "status": "completed",
         "conclusion": "success",
-        "url": "https://github.com/openai/codex/actions/runs/44385813692/job/135109631616"
+        "url": "https://github.com/openai/codex/actions/runs/44571890644/job/135749253968"
       },
       {
-        "head": "60fcb1649f0c3213d9d44c7c0caaca6459fb7c6c",
+        "head": "ac784eb10e6d02486b00d383b64822b69473c0e8",
         "workflow_check": "rust-ci / CI results (required)",
         "status": "completed",
         "conclusion": "success",
-        "url": "https://github.com/openai/codex/actions/runs/44385805424/job/135109444218"
+        "url": "https://github.com/openai/codex/actions/runs/44571877159/job/135749141306"
+      },
+      {
+        "head": "ac784eb10e6d02486b00d383b64822b69473c0e8",
+        "workflow_check": "Bazel / Bazel test on macos-15-xlarge for aarch64-apple-darwin",
+        "status": "completed",
+        "conclusion": "failure",
+        "url": "https://github.com/openai/codex/actions/runs/44571890644/job/135728898933"
+      },
+      {
+        "head": "ac784eb10e6d02486b00d383b64822b69473c0e8",
+        "workflow_check": "Bazel / Bazel test on macos-15-xlarge for aarch64-apple-darwin",
+        "status": "completed",
+        "conclusion": "failure",
+        "url": "https://github.com/openai/codex/actions/runs/44571877159/job/135728850841"
+      },
+      {
+        "head": "0b248182be6ff496c7b11401e3217c4c380848ca",
+        "workflow_check": "rust-ci / CI results (required)",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/openai/codex/actions/runs/44558466770/job/135701868504"
+      },
+      {
+        "head": "0b248182be6ff496c7b11401e3217c4c380848ca",
+        "workflow_check": "rust-ci / CI results (required)",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/openai/codex/actions/runs/44558459738/job/135701755551"
+      },
+      {
+        "head": "0b248182be6ff496c7b11401e3217c4c380848ca",
+        "workflow_check": "Bazel / Bazel test on macos-15-xlarge for aarch64-apple-darwin",
+        "status": "completed",
+        "conclusion": "failure",
+        "url": "https://github.com/openai/codex/actions/runs/44558466770/job/135680877643"
+      },
+      {
+        "head": "0b248182be6ff496c7b11401e3217c4c380848ca",
+        "workflow_check": "Bazel / Bazel test on macos-15-xlarge for aarch64-apple-darwin",
+        "status": "completed",
+        "conclusion": "failure",
+        "url": "https://github.com/openai/codex/actions/runs/44558459738/job/135680854755"
+      },
+      {
+        "head": "336dc645fbaf00b3f0b56f598aa872b244f687b5",
+        "workflow_check": "rust-ci / CI results (required)",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/openai/codex/actions/runs/44498200767/job/135487187308"
+      },
+      {
+        "head": "336dc645fbaf00b3f0b56f598aa872b244f687b5",
+        "workflow_check": "rust-ci / CI results (required)",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/openai/codex/actions/runs/44498213781/job/135487158601"
+      },
+      {
+        "head": "336dc645fbaf00b3f0b56f598aa872b244f687b5",
+        "workflow_check": "Bazel / Bazel test on macos-15-xlarge for aarch64-apple-darwin",
+        "status": "completed",
+        "conclusion": "failure",
+        "url": "https://github.com/openai/codex/actions/runs/44498213781/job/135470761418"
+      },
+      {
+        "head": "336dc645fbaf00b3f0b56f598aa872b244f687b5",
+        "workflow_check": "Bazel / Bazel test on macos-15-xlarge for aarch64-apple-darwin",
+        "status": "completed",
+        "conclusion": "failure",
+        "url": "https://github.com/openai/codex/actions/runs/44498200767/job/135470718623"
       }
     ],
-    "limits": "The upstream toolchain and Bazel job observations are separate from the named signed Cargo artifact checks. Unresolved or failed broad checks do not count as passes."
+    "limits": "Official merge rollups were failures at observation time and do not certify generic suites. Source test evidence and the selected Decodex execution evidence retain their own scopes."
   },
-  "decodex_validation": {
-    "repository_gate": "Passed strict Clippy for decodex-runtime, nightly formatting, manifest evaluation, eight checkpoint tests, seven portfolio tests and whitespace checks.",
-    "strict_clippy": "passed",
-    "nightly_format": "passed",
-    "automation_manifest": "passed",
-    "automations": {
-      "checkpoint": 8,
-      "portfolio": 7
-    },
-    "native_or_schema_rust_cases": 13,
-    "projection_rust_cases": 4,
-    "component_cases": 1,
-    "protocol_entrypoints": 5,
-    "protocol_scenarios": 10,
-    "commands": [
-      "cargo +stable make prepare-codex",
-      "cargo +stable test --locked --all-features -p decodex-runtime --lib --no-run --message-format=json",
-      "cargo +stable test --locked --all-features -p decodex-codex --lib --no-run --message-format=json",
-      "cargo +stable test --locked --all-features -p decodex-components --test development --no-run --message-format=json",
-      "Registered compiled libtest entrypoints with explicit exact package and helper paths",
-      "Repository strict Clippy command for decodex-runtime under stable",
-      "cargo +nightly fmt --all --check",
-      "python3 automations/decodex/scripts/config/evaluate_automations.py --repo-only --json",
-      "cargo +stable make test-automations",
-      "git diff --check"
-    ]
-  },
-  "qualified_scope": [
-    "Exact macOS arm64 development package and its local component cache repair.",
-    "Queued native child result at confirmed parent interruption and single delivery on cold resume.",
-    "API key, project and organization spend errors in live, durable Decodex and cold native history without capacity retry.",
-    "Retained environment-scoped MCP, code-mode helper, voice defaults, mixed timeline, interruption and local Seatbelt paths."
-  ],
-  "experimental_sharing": {
-    "status": "User-approved sharing remains gated on the official fix and four exact-artifact regressions.",
-    "native_source_default": false,
-    "executed_in_this_batch": false,
-    "official_issue": "https://github.com/openai/codex/issues/57480"
-  },
-  "installed_application": {
-    "status": "outside_this_development_qualification",
-    "earlier_qualification": "https://github.com/acg-box/decodex/blob/52671664045f6af72230e96b828d0786eaf7c5da/automations/upstream/qualification.json"
-  },
-  "limits": "Exact selected signed artifact and named isolated macOS tests. Live providers, installed desktop acceptance, Windows, remote executor admission and experimental MCP sharing have separate scopes.",
-  "historical_scope": "https://github.com/acg-box/decodex/blob/52671664045f6af72230e96b828d0786eaf7c5da/automations/upstream/qualification.json",
-  "documentation_lifecycle": "Use supported OpenWiki page jobs after source and evidence freeze. Native receipts record lifecycle completion."
+  "limits": [
+    "Signed development package on macOS arm64, isolated native homes and loopback fixtures.",
+    "Installed app, live providers, physical audio and a formal Codex Release have separate acceptance."
+  ]
 }

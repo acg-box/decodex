@@ -88,6 +88,8 @@ sources:
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_fork_tests.rs
   - id: openwiki-source-8d32d49a0bc31600300d9335
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_lookup_tests.rs
+  - id: openwiki-source-ead7f3ba21ec266ad1e56243
+    resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_mcp_sharing_tests.rs
   - id: openwiki-source-19796bbb5939eefbc15bb222
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_mcp_socket_tests.rs
   - id: openwiki-source-e5be8be8499e6ccee0cf7ad0
@@ -142,6 +144,8 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent/tests/native_agent_wake.rs
   - id: openwiki-source-24139c353e393a9759b0267a
     resource: repo://crates/decodex-runtime/src/agent/tests/native_permissions.rs
+  - id: openwiki-source-4580224fd9e0f9155a53b60f
+    resource: repo://crates/decodex-runtime/src/agent/tests/native_subagent_mcp.rs
   - id: openwiki-source-0bdc548eba96b09c39e22383
     resource: repo://crates/decodex-runtime/src/agent/tests/result_integrity.rs
   - id: openwiki-source-1c25f1eb2ea8f33c9b46e78e
@@ -218,10 +222,10 @@ sources:
     resource: repo://scripts/macos/version_codex_source.py
   - id: openwiki-source-e201f60894c32a914dac99ee
     resource: repo://scripts/vnext/run_native_regression.py
-generated: { by: "codex", at: "2026-11-18T20:35:34.828Z" }
+generated: { by: "codex", at: "2026-11-19T20:35:23.841Z" }
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-18T20:35:34.828Z
+    at: 2026-11-19T20:35:23.841Z
 ---
 
 # Upstream integration acceptance boundaries
@@ -283,7 +287,15 @@ The selected CLI's generated schema exposes a nullable total turn duration but n
 
 Five historical socket cases ran against the then-selected unmodified CLI from upstream source `abf4bb91ec49fbf443ccec0069f9cab5dd1462d8`. Three passed: compatible modern sharing, concurrent input routing, and an explicitly marked legacy helper with the modern protocol feature disabled. Two failed at thread startup: an unmarked helper returned an empty discovery result, and a marked legacy helper was used with the modern protocol feature enabled. An empty successful discovery result is a synthetic compatibility case, not a conforming method-not-found error or proof of a legacy server.
 
-Two proxy clients sharing one native app-server and one synthetic account home do not prove sharing between separate app-server processes or account isolation. Decodex has not added a launch flag that enables sharing; the native user setting was not inspected. Follow [Decodex issue #2522](https://github.com/acg-box/decodex/issues/2522) and requalify the exact unmodified CLI, helpers and retained mixed-server and child-input regressions before adding a sharing default.
+The [current qualification](../../automations/upstream/qualification.json#local_mcp_sharing)
+records native same-process sharing on the exact signed CLI and helpers. Check the
+four registered selectors for modern helper reuse, private legacy fallback, and
+exact child input after immediate and late empty discovery replies. Keep a private
+control with `mcp_connection_sharing = false` because the native default enables
+sharing. Read the native feature state from an isolated home.
+
+The two-proxy socket cases cover one app-server and one synthetic account home.
+Cross-process sharing requires its own qualification. See [Decodex issue #2524](https://github.com/acg-box/decodex/issues/2524).
 
 ## TLS dependency qualification
 
@@ -551,7 +563,7 @@ The ignored prediction fixture checks parent context and tool-catalog inheritanc
 
 For a runtime change to prediction compaction, also test a fork above the compaction threshold. Check pre-turn, tool-continuation and post-turn boundaries in both native history modes. The prediction must preserve its inherited context while the parent retains normal compaction. Check context-limit failures and model-requested context resets separately. The local inheritance fixture alone does not cover these cases.
 
-The native launch fixture checks admitted production arguments and the resulting child-context, Agent-message wake and fork-prefix configuration values while retaining boolean and table forms of the user's multi-agent selection. A configuration readback alone does not prove every feature's behavior. Semantic prefix preservation does not prove provider cache savings. Synthetic context-limit and compaction probes do not prove real-provider latency or cost improvements. Code Mode transport remains controlled by native configuration; this integration adds no transport selector or universal tool-output retention policy.
+The native launch fixture checks admitted production arguments and the resulting child-context, Agent-message wake and fork-prefix configuration values while retaining boolean and table forms of the user's multi-agent selection. A configuration readback alone does not prove every feature's behavior. Semantic prefix preservation does not prove provider cache savings. Synthetic context-limit and compaction probes do not prove real-provider latency or cost improvements. The pinned CLI uses gRPC over standard input and output for the packaged Code Mode host. Check the [native Code Mode qualification](../../automations/upstream/qualification.json#code_mode_host) for the exact helper and exercised paths.
 
 ## Question routing, completion and cancellation
 

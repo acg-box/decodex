@@ -42,6 +42,8 @@ sources:
     resource: repo://automations/upstream/retained-contracts.json
   - id: openwiki-source-651d1fb6c9e49916a916ab51
     resource: repo://Cargo.toml
+  - id: openwiki-source-f02ae41e2bd15dda85dc86b9
+    resource: repo://codex-runtime.lock.json
   - id: openwiki-source-b1948e1beb6e361503aa2db1
     resource: repo://crates/decodex-codex/src/app_server_client.rs
   - id: openwiki-source-d0b9aaf952250307abc4342e
@@ -178,10 +180,10 @@ sources:
     resource: repo://scripts/macos/stage_decodex_app.sh
   - id: openwiki-source-76081c1a47ca8cf32593de34
     resource: repo://scripts/macos/test_decodex_app_stage.sh
-generated: { by: "codex", at: "2026-11-13T15:58:52.308Z" }
+generated: { by: "codex", at: "2026-11-19T20:35:23.841Z" }
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-13T15:58:52.308Z
+    at: 2026-11-19T20:35:23.841Z
 ---
 
 # Runtime Architecture
@@ -275,7 +277,7 @@ The conversation header and Menu Bar expose the existing source-bound provider u
 
 ## Native launch policy
 
-Decodex constructs and attests one fixed app-server argument list. It requests native subagent context defaults, Agent message wakeups, and full-fork prefix preservation. Tool description ordering is native-owned; the launch does not request the removed `code_mode_tool_description_first` feature. The dotted prefix option preserves the existing `multi_agent_v2` selection; it does not enable multi-agent execution by itself. Code Mode hosting transport stays under native configuration.
+Decodex constructs and attests one fixed app-server argument list. It requests native subagent context defaults, Agent message wakeups, and full-fork prefix preservation. Tool description ordering is native-owned; the launch does not request the removed `code_mode_tool_description_first` feature. The dotted prefix option preserves the existing `multi_agent_v2` selection; it does not enable multi-agent execution by itself. The pinned Codex CLI starts the bundled Code Mode host over gRPC on standard input and output. [Native qualification](../../automations/upstream/qualification.json#code_mode_host) checks the packaged host through nested tool calls and Apps recovery.
 
 The embedded runtime requirement selects the exact component. Development uses a reviewed upstream commit; production selects a qualified official Release. Check the actual component and its generated protocol schema before claiming that an API is available. See [upstream maintenance](../operations/codex-upstream-autopilot.md).
 

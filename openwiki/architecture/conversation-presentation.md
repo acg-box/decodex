@@ -46,6 +46,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_math_tests.rs
   - id: openwiki-source-d69026af05a9b3138e4656f4
     resource: repo://apps/decodex-gpui/src/agent_math.rs
+  - id: openwiki-source-c8bd7105020177d668f6f845
+    resource: repo://apps/decodex-gpui/src/agent_math/render.rs
   - id: openwiki-source-3cb0fdba7d0304893cb4f3a3
     resource: repo://apps/decodex-gpui/src/agent_math/render/structured.rs
   - id: openwiki-source-bbf48964e1bd60f04ecb7f62
@@ -226,10 +228,10 @@ sources:
     resource: repo://database/src/agent.rs
   - id: openwiki-source-c9f290c212ee80724ccf643a
     resource: repo://database/src/agent/drafts.rs
-generated: { by: "codex", at: "2026-11-19T08:42:02.757Z" }
+generated: { by: "codex", at: "2026-11-19T20:35:23.841Z" }
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-19T08:42:02.757Z
+    at: 2026-11-19T20:35:23.841Z
 ---
 
 
@@ -391,7 +393,7 @@ HTTP and HTTPS URLs in prose are clickable in messages, question titles, approva
 
 Selectable text shows a hand pointer over an actionable link. Ordinary text, empty space and unsupported destinations keep the text cursor. Hover and click use the current shaped text positions. Each paint recomputes the hover target, so reflow and scrolling do not retain an old link position. Drag selection and copy keep their existing behavior.
 
-The bounded Unicode math renderer supports aligned equations, boxed models, grouped scripts, parenthesized matrices, display annotations and inline zero. Unsupported notation and layouts that exceed the available width retain their TeX source. Conversion is limited to 4,096 input bytes, 16 rows and 256 columns, with a shared parser-depth limit. Copy retains the original source.
+The bounded Unicode math renderer supports aligned equations, boxed models, grouped scripts, parenthesized matrices, display annotations and inline zero. `\widetilde` puts an accent above one grapheme. In display math, `\underbrace{expression}_{label}` shows a brace and label below a single-line expression. Unsupported notation and layouts that exceed the available width retain their TeX source. Conversion is limited to 4,096 input bytes, 16 rows and 256 columns, with a shared parser-depth limit. Copy retains the original source.
 
 ## Generated image attachments
 

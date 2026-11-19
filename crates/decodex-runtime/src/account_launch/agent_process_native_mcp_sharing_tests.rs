@@ -73,13 +73,18 @@ async fn qualify_sharing(unmarked_legacy: bool) {
 		.copied()
 		.chain(["-c", "features.mcp_connection_sharing=true"])
 		.collect::<Vec<_>>();
+	let private_args = APP_SERVER_ARGS
+		.iter()
+		.copied()
+		.chain(["-c", "features.mcp_connection_sharing=false"])
+		.collect::<Vec<_>>();
 
 	time::timeout(Duration::from_secs(90), async {
 		let baseline = NativeSession::with_arguments(
 			&binary,
 			&first_home,
 			Default::default(),
-			&APP_SERVER_ARGS,
+			&private_args,
 		);
 		let old_first = start(&baseline, &first_home, "baseline first").await;
 		let old_second = start(&baseline, &first_home, "baseline second").await;

@@ -203,16 +203,19 @@
             "639d2478cc2e16d6ca715952d2e726a3aecc024e",
             "7b7d934408e6df20950a7a2501a669650279ab06"
           ],
-          "behavior": "Bounded Unicode math adds aligned equations, boxed models, grouped scripts, parenthesized matrices, display annotations and inline zero. Source copy, code protection and literal fallback remain intact.",
+          "behavior": "Bounded Unicode math supports aligned equations, boxed models, grouped scripts, parenthesized matrices, display annotations and inline zero. A wide tilde accepts one grapheme. A display underbrace renders a single-line expression and label. Copy retains the TeX source and unsupported layouts retain their literal text.",
           "source_symbols": [
             "apps/decodex-gpui/src/agent_math.rs#render_formula",
             "apps/decodex-gpui/src/agent_math/render.rs#render",
-            "apps/decodex-gpui/src/agent_math/render/structured.rs#grid"
+            "apps/decodex-gpui/src/agent_math/render/structured.rs#grid",
+            "apps/decodex-gpui/src/agent_math/render/structured.rs#underbrace"
           ],
           "test_identities_or_selectors": [
             "structured_math_renders_aligned_models_and_grouped_scripts",
-            "display_math_keeps_geometry_on_resize_and_copies_tex"
+            "display_math_keeps_geometry_on_resize_and_copies_tex",
+            "formulas_render_without_changing_protected_markdown_or_copy_source"
           ],
+          "current_qualification": "automations/upstream/qualification.json#math_presentation",
           "limits": "Retains 4096-byte input, 16-row, 256-column and depth limits. Spatial output must fit; nested or unsupported layout retains literal source."
         },
         {
@@ -1329,7 +1332,8 @@
     },
     {
       "id": "native-mcp-sharing-qualification-fixtures",
-      "contract": "Keep a reproducible native qualification for compatible same-process MCP sharing, compliant private legacy fallback, including an unmarked legacy server alongside a modern shared server, separate-process isolation, per-chat helper leases and actual tool calls. Keep the child input and policy assertions for both immediate and late empty legacy discovery responses. Do not add sharing to the Decodex launch until every retained regression passes against the exact selected artifact; native user configuration was not inspected.",
+      "contract": "Qualify same-process MCP sharing on the exact signed runtime. Verify private legacy fallback alongside a modern shared server, separate-process isolation, per-chat helper leases and actual tool calls. Preserve exact native child input and authority after immediate and late empty legacy discovery responses. The native runtime owns its default and reads the explicit native setting. Keep an explicit private control in the fixtures.",
+      "current_qualification": "automations/upstream/qualification.json#local_mcp_sharing",
       "source_symbols": [
         "crates/decodex-runtime/src/account_launch/agent_process_native_mcp_sharing_tests.rs#explicit_sharing_candidate_uses_compatible_same_process_mcp_connections",
         "crates/decodex-runtime/src/account_launch/agent_process_native_mcp_sharing_tests.rs#explicit_sharing_keeps_unmarked_legacy_connection_private",
@@ -1689,7 +1693,7 @@
         ]
       },
       "followup_delivery_reference": "https://github.com/acg-box/decodex/pull/2520",
-      "current_source_reconciliation": "The native test registry adds the separate socket-client module; the previously qualified sharing and child-input fixtures are unchanged."
+      "current_source_reconciliation": "The native test registry includes the separate socket-client module. The current qualification binds the updated private controls and the previously retained sharing and child-input assertions to the selected artifact. The original fixture hashes and results above apply to their recorded artifact."
     },
     {
       "id": "native-mcp-multi-client-socket-research",

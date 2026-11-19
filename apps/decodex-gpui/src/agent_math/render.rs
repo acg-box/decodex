@@ -234,7 +234,7 @@ impl MathParser<'_> {
 			"sum" | "bigwedge" | "int"
 				if self.stack_annotations && (name != "int" || self.mode == MathMode::Display) =>
 				self.display_operator(symbol(name)?),
-			"begin" | "boxed" | "underset" | "overset" | "substack" | "mathcal" =>
+			"begin" | "boxed" | "underset" | "overset" | "underbrace" | "substack" | "mathcal" =>
 				self.structured_command(name),
 			"frac" | "dfrac" | "tfrac" => {
 				let numerator = self.compact_argument()?;
@@ -290,7 +290,7 @@ impl MathParser<'_> {
 				};
 				Some(Layout::text(text))
 			},
-			"hat" | "widehat" | "bar" | "tilde" | "vec" | "dot" | "ddot" => {
+			"hat" | "widehat" | "bar" | "tilde" | "widetilde" | "vec" | "dot" | "ddot" => {
 				let arg = self.argument()?;
 				let text = arg.single()?;
 				if text.graphemes(/* is_extended */ true).count() != 1
@@ -302,7 +302,7 @@ impl MathParser<'_> {
 				let accent = match name {
 					"hat" | "widehat" => '\u{0302}',
 					"bar" => '\u{0304}',
-					"tilde" => '\u{0303}',
+					"tilde" | "widetilde" => '\u{0303}',
 					"vec" => '\u{20d7}',
 					"dot" => '\u{0307}',
 					"ddot" => '\u{0308}',

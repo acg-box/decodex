@@ -36,8 +36,6 @@ async fn native_child_mcp_input_preserves_policy_and_exact_request() {
 #[tokio::test]
 #[ignore = "requires DECODEX_NATIVE_BINARY; run before enabling native MCP sharing"]
 async fn native_shared_child_mcp_input_preserves_policy_and_exact_request() {
-	// The selected runtime currently fails this qualification during legacy discovery.
-	// Keep sharing disabled until the exact runtime passes these unchanged assertions.
 	qualify_cases(true, false).await;
 }
 
@@ -89,8 +87,7 @@ async fn qualify(marker: Value, interactive: bool, sharing: bool, late_discovery
 		mcp_response,
 	));
 
-	let sharing_feature = if sharing { "mcp_connection_sharing=true\n" } else { "" };
-	fs::write(home.join("config.toml"),format!("model=\"gpt-5.6-sol\"\nmodel_provider=\"fixture\"\napprovals_reviewer=\"user\"\n[features]\nmulti_agent=true\nmulti_agent_v2=true\n{sharing_feature}[model_providers.fixture]\nname=\"Isolated MCP child\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n[mcp_servers.fixture]\ncommand=\"/usr/bin/python3\"\nargs=[{},{},{},{},{}]\nrequired=true\ndefault_tools_approval_mode=\"approve\"\n",serde_json::json!(script),serde_json::json!(record),serde_json::json!(marker.to_string()),serde_json::json!(interactive.to_string()),serde_json::json!(late_discovery.to_string()))).expect("config");
+	fs::write(home.join("config.toml"),format!("model=\"gpt-5.6-sol\"\nmodel_provider=\"fixture\"\napprovals_reviewer=\"user\"\n[features]\nmulti_agent=true\nmulti_agent_v2=true\nmcp_connection_sharing={sharing}\n[model_providers.fixture]\nname=\"Isolated MCP child\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n[mcp_servers.fixture]\ncommand=\"/usr/bin/python3\"\nargs=[{},{},{},{},{}]\nrequired=true\ndefault_tools_approval_mode=\"approve\"\n",serde_json::json!(script),serde_json::json!(record),serde_json::json!(marker.to_string()),serde_json::json!(interactive.to_string()),serde_json::json!(late_discovery.to_string()))).expect("config");
 
 	let (mut agent, _, _store_home) = tests::fixture().await;
 	let mut command = Command::new(binary);

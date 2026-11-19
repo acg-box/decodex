@@ -27,6 +27,7 @@ fn formulas_render_without_changing_protected_markdown_or_copy_source() {
 	for (source, expected) in [
 		(r"Inline $\alpha^2 + \beta_{10}$", "Inline α² + β₁₀"),
 		(r"$\hat H^2 + \hbar^2$", "Ĥ² + ℏ²"),
+		(r"$\widetilde{I} + \widetilde I$", "I\u{0303} + I\u{0303}"),
 		(r"$\left\langle\vec{v}_i\right\rangle$", "⟨v⃗ᵢ⟩"),
 		(r"$$\frac{a+b}{c+d}$$", "a+b\n───\nc+d"),
 		(
@@ -77,7 +78,15 @@ fn structured_math_renders_aligned_models_and_grouped_scripts() {
 	assert!(model.contains("x≥0"));
 	assert!(model.contains('∑'));
 	assert!(!model.contains('\\'));
-	for formula in [r"\begin{aligned}x&=1\end{pmatrix}", r"\boxed{\unknown{x}}"] {
+	assert_eq!(plain(r"$$\underbrace{x+y}_{C}$$"), "x+y\n└┬┘\n C");
+	assert_eq!(plain(r"$$\underbrace{x}_{\text{term}}$$"), " x\n ┬\nterm");
+	for formula in [
+		r"\begin{aligned}x&=1\end{pmatrix}",
+		r"\boxed{\unknown{x}}",
+		r"\underbrace{x+y}_C",
+		r"\underbrace{\frac{x}{y}}_{C}",
+		r"\underbrace{\underbrace{x}_{C}}_{D}",
+	] {
 		let source = format!("$${formula}$$");
 		assert_eq!(plain(&source), source);
 	}
@@ -97,7 +106,14 @@ fn growing_display_stays_literal_until_closed_and_bounds_preserve_following_text
 
 	assert!(plain(&oversized).ends_with("After α."));
 
-	for formula in [r"\hat{xy}", r"\ddot{ }", r"{a+b}^2", r"\sqrt[3]{x}"] {
+	for formula in [
+		r"\hat{xy}",
+		r"\widetilde{xy}",
+		r"\ddot{ }",
+		r"{a+b}^2",
+		r"\sqrt[3]{x}",
+		r"\underbrace{x}_{C}",
+	] {
 		let source = format!("\\({formula}\\)");
 
 		assert_eq!(plain(&source), source);

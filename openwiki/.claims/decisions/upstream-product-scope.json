@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:82c6f2a687ddc841fded906d511c5ed82a67499ddeeaee7baf72aa6c4fc88e7f",
+  "pageVersion": "sha256:8f220e3e808777ba2dd23e196256e9618ab5f815909b9e898421d113079da8fc",
   "claims": [
     {
       "id": "claim_8d60aaceeea74d6189e3d7b0b3ed21fe",
@@ -17,7 +17,7 @@
       "statement": "The native bridge retains installed-plugin observations but rejects plugin list/read/install/reconcile management and MCP configuration reload; historical plugin state is still persisted as observations.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process.rs#L856-L897",
+          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process.rs#L857-L898",
           "version": "repo-lines-v1:sha256:54d229cbf84d87383e867f093b72e720d3db151884b97c6a1006816ad9a88a74:eyJzZWxlY3RlZExpbmVDb3VudCI6NDIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI0ZDAyMDk0NDNhMGVhMDQxNTNlYjM3YzdhNGYzMTU4OGE0MDBmNGE0ZTNkYTE0NDc3ZmVjYTRhYmQ4M2YzYWQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY0ZWZjNDk0MThkMjZkY2YxMjliMjJhNmFhMjExMDhjZWVjMzc2NzdhMzJkMDhlOWQ1ZmVlMzVkZGE2NmJiOWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjgwODJhZmMzZTFkMmY0ODY0MDA4MDZhZTVlMDQ4ZGQ2YTY5NDRiOGQ5MDExODI4NmUwYTg3MzllMjYzYjIzNDkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgwODJhZmMzZTFkMmY0ODY0MDA4MDZhZTVlMDQ4ZGQ2YTY5NDRiOGQ5MDExODI4NmUwYTg3MzllMjYzYjIzNDkifQ"
         },
         {
@@ -126,7 +126,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/agent.rs",
-          "version": "repo-file-v1:sha256:6a5b70e045ebd58d7b087b584e61cdf178ef67f69f3eb91f3074c83f20d3d277"
+          "version": "repo-file-v1:sha256:3d9643645d91201ee11de7a52f42ca26fa2106173bfdaa3c453e9272d88b6008"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/tests/external_context.rs",
@@ -186,7 +186,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-protocol/src/lib.rs",
-          "version": "repo-file-v1:sha256:c17eb950b76524ccc84165e633896692e4d59d8e0b664cc0cf46371484221fb4"
+          "version": "repo-file-v1:sha256:973523fb9b658b3585cb7aa689f17936d343dd6a0a584d07fcd263e26559c075"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/work.rs",
@@ -217,12 +217,12 @@
       "statement": "Retained integration repairs reconcile unassigned native Project membership and retain native child-input receipts for permitted V2 nested Work attribution without changing native V2 defaults or adding another executor; native identity, membership and Decodex presentation passed separate installed qualification, while official desktop Project presentation remains unobserved.",
       "evidence": [
         {
-          "resource": "repo://automations/upstream/retained-contracts.json#L2657-L4144",
+          "resource": "repo://automations/upstream/retained-contracts.json#L2661-L4148",
           "version": "repo-lines-v1:sha256:dca51e28f266f3fd054b394a5451bb61a595544c5b5e6c017bbc9a2bff362c86:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQ4OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYTRlOTQ2ZjE1NzYwNjdhMTM0ZWZiZDhhZTE1MjI2MDI5NzdkMDBlOTFkNjY2YzYyMGE3Yzg0NjdjYjY0ZjE4OSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNGQ1Y2QyZmI0ZjNkZjg4NDUxNTI1NWIzOTUyM2YyZjhiNTQ3MmJlZWE5ZjU2NmZmY2EyMDRkYjgwMjU2MTA0MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMDhlNmNhNGUyMTVlOTEyMDdlOWZlMDk3ZDUyZGI5M2ViNjVkZTRjOThmZDgwYjE3OTY3MjliM2UxMWQ3MTY5YSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMzIyZjc2YzIxZjc0OTU3ZDkyNWUxOGQzYTY0YWJiNTYwN2ZmMDgwYTc3NDU2MjA4ZThlMDY3ODQ0MDJjMGNhMSJ9"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/project.rs",
-          "version": "repo-file-v1:sha256:c68660f56ba49a7ca83bac6e472dde10c00e75193ff8db5582d7c7fecdd85cc7"
+          "version": "repo-file-v1:sha256:e9bb5396b21c25b70569a262a662a3b0df61e901de02733ff614e607ea3029aa"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/work_delivery.rs",
@@ -235,7 +235,7 @@
       "statement": "The lifecycle follow-up repairs independent native ownership, encrypted assignment attribution and Guardian history recovery without another executor or reviewer; later installed development qualification repairs independent-Agent conversation controls and input routing and retains distinct artifact, data-preservation and test-cleanup limits.",
       "evidence": [
         {
-          "resource": "repo://automations/upstream/retained-contracts.json#L2657-L4144",
+          "resource": "repo://automations/upstream/retained-contracts.json#L2661-L4148",
           "version": "repo-lines-v1:sha256:dca51e28f266f3fd054b394a5451bb61a595544c5b5e6c017bbc9a2bff362c86:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQ4OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYTRlOTQ2ZjE1NzYwNjdhMTM0ZWZiZDhhZTE1MjI2MDI5NzdkMDBlOTFkNjY2YzYyMGE3Yzg0NjdjYjY0ZjE4OSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNGQ1Y2QyZmI0ZjNkZjg4NDUxNTI1NWIzOTUyM2YyZjhiNTQ3MmJlZWE5ZjU2NmZmY2EyMDRkYjgwMjU2MTA0MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMDhlNmNhNGUyMTVlOTEyMDdlOWZlMDk3ZDUyZGI5M2ViNjVkZTRjOThmZDgwYjE3OTY3MjliM2UxMWQ3MTY5YSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMzIyZjc2YzIxZjc0OTU3ZDkyNWUxOGQzYTY0YWJiNTYwN2ZmMDgwYTc3NDU2MjA4ZThlMDY3ODQ0MDJjMGNhMSJ9"
         },
         {
@@ -258,11 +258,11 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-contracts.json",
-          "version": "repo-file-v1:sha256:dfbcb5f07ff9ce54daccf7f270553c99481f7dcf6fe4129485b9f8b52caf7c9d"
+          "version": "repo-file-v1:sha256:66a6830ca6507dc3ab5a33aa8465162f58709acf1e4e02cadca3795b07201d7c"
         },
         {
           "resource": "repo://crates/decodex-protocol/src/lib.rs",
-          "version": "repo-file-v1:sha256:c17eb950b76524ccc84165e633896692e4d59d8e0b664cc0cf46371484221fb4"
+          "version": "repo-file-v1:sha256:973523fb9b658b3585cb7aa689f17936d343dd6a0a584d07fcd263e26559c075"
         }
       ]
     },
@@ -276,7 +276,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-contracts.json",
-          "version": "repo-file-v1:sha256:dfbcb5f07ff9ce54daccf7f270553c99481f7dcf6fe4129485b9f8b52caf7c9d"
+          "version": "repo-file-v1:sha256:66a6830ca6507dc3ab5a33aa8465162f58709acf1e4e02cadca3795b07201d7c"
         },
         {
           "resource": "repo://crates/decodex-codex/src/app_server_client/thread_fork.rs",
@@ -289,8 +289,8 @@
       "statement": "Persistent attached branches expose only their own turns while native inference retains the reviewed parent context and saved source turn IDs retain boundary provenance. The retained public workflow already requires paginated source history.",
       "evidence": [
         {
-          "resource": "repo://automations/upstream/retained-contracts.json#L4407-L5334",
-          "version": "repo-lines-v1:sha256:2f100e70b086f33fd4d996459157354c317fea49cc78c553d0efeb76131aafdd:eyJzZWxlY3RlZExpbmVDb3VudCI6OTI4LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI4N2I1MzQ0Njg0YjAyNjhmZmI3NGQxODNkNDc4NTkyMjZkYWJmMDE0ZDllZjY3OGFmNDFiODhmMGNkZjk2YmY2IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0MTJjYTM0NWNjZjc1YmY5YzA4MDZiY2U2OTViZThkZTgwOGI3OTk4NDI1MWE3YTU0ZDIwMmNmNjEwMWRkNDUxIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJmMWFkN2VhMmE3ODgyZWExOTU4NTc1NmMwOWQ0ZDc2ZDA4YWU1NDdhYTg1N2VmMzZhMzYzNmFiZDE0ZTMwNWU4IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
+          "resource": "repo://automations/upstream/retained-contracts.json#L4411-L5380",
+          "version": "repo-lines-v1:sha256:ecf878fea5baefe689e2c0cdbe9e88f127a7be70a48842d3c2483b487962cb86:eyJzZWxlY3RlZExpbmVDb3VudCI6OTcwLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI4N2I1MzQ0Njg0YjAyNjhmZmI3NGQxODNkNDc4NTkyMjZkYWJmMDE0ZDllZjY3OGFmNDFiODhmMGNkZjk2YmY2IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0MTJjYTM0NWNjZjc1YmY5YzA4MDZiY2U2OTViZThkZTgwOGI3OTk4NDI1MWE3YTU0ZDIwMmNmNjEwMWRkNDUxIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJmMWFkN2VhMmE3ODgyZWExOTU4NTc1NmMwOWQ0ZDc2ZDA4YWU1NDdhYTg1N2VmMzZhMzYzNmFiZDE0ZTMwNWU4IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_fork_tests.rs",
@@ -308,7 +308,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-contracts.json",
-          "version": "repo-file-v1:sha256:dfbcb5f07ff9ce54daccf7f270553c99481f7dcf6fe4129485b9f8b52caf7c9d"
+          "version": "repo-file-v1:sha256:66a6830ca6507dc3ab5a33aa8465162f58709acf1e4e02cadca3795b07201d7c"
         }
       ]
     },
@@ -317,16 +317,12 @@
       "statement": "Original item 28 selects the current native catalog default after an explicit model retirement deadline, through existing new-Agent settings and idle recovery paths. Missing entries or upgrade suggestions alone do not cause migration; desktop cycling no longer uses a fixed model or effort list.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/conversations.rs",
-          "version": "repo-file-v1:sha256:2d41bccda9a43f337353dfc21ef0b0aa2104c7b67b41e1a29587a0a8093d83ac"
-        },
-        {
           "resource": "repo://automations/upstream/retained-contracts.json",
-          "version": "repo-file-v1:sha256:dfbcb5f07ff9ce54daccf7f270553c99481f7dcf6fe4129485b9f8b52caf7c9d"
+          "version": "repo-file-v1:sha256:66a6830ca6507dc3ab5a33aa8465162f58709acf1e4e02cadca3795b07201d7c"
         },
         {
-          "resource": "repo://crates/decodex-protocol/src/model_catalog.rs#L94-L124",
-          "version": "repo-lines-v1:sha256:d15a6982ee6b85497325b30040426441648a73e59d5060efee2f9d4ec2209215:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE1NjkyMzBkNDBhZjg0NWZmZDdmMzhiMjRkYzg1MjY1ZDVjM2I0ZjM0OGMxNzY3MzhjZmJjYTU2ZTBkMzE0NzkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJiNGVjNjQyNjhmY2VmNDUxYTM0NjJlYTQ3NGIyYjU2Zjc4ZGEwNWQ1MDNjMTgxODMwZGU5YThjYjliMDcxYTAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjIyZjJmZjVmZWVjNjBmNTg3YzhmYWU0ZTg3ZjgwOWE2NjFjZmZlZDZiNDdhYWU1ZjZkNmEyNjUzYWE4OTUyZWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjcxYzc2OWQ5Yzc1NzZkOWRiNTAwNzJhMzYyZmU2MmEyMzAyZjlmNGFmZjFhYTdhNjczMjIzZjRjM2U5NTM2OGUifQ"
+          "resource": "repo://crates/decodex-protocol/src/model_catalog.rs#L118-L134",
+          "version": "repo-lines-v1:sha256:a3b2aa4b1330e87a3d16f845a20d0a3b4e1b920a637a2b73bdcc6e7cb04c19cb:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRhYjA4NzIwOGU5ZmY2MjU4MTk2OWNmNDA3MjI3MjAxMDViMzA2OTI3MmRiMjAyZWQ2ZTQ4M2Q0YzQ3YWU2ZmQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjdiYTNkNGM1MzQ1OTZjZTU3YjA4ZWM2NGNlNjkwZDFkN2YwMTdhZWYxMDExZDAyOTBiMDZmNjEwOTE4ZTc1MDkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM3N2I2YjVjMzk5MTEzMjYyZTg0NDY4ZjJjN2E1YmMwMmU2NDQ4ZDVkOWYyOGM3Y2RlNTM0YjIwOGRiYTJiOTUifQ"
         }
       ]
     },
@@ -335,11 +331,11 @@
       "statement": "The user excludes diagnostic-log upload for privacy. Queue-navigation keys, copy-on-select and additional semantic range-copy gestures are not selected; clipboard latency work needs a reproduced defect, and current copy behavior stays supported.",
       "evidence": [
         {
-          "resource": "repo://automations/upstream/retained-contracts.json#L4924-L4933",
+          "resource": "repo://automations/upstream/retained-contracts.json#L4928-L4937",
           "version": "repo-lines-v1:sha256:618e65ec456eba3ced5b4b1d23fe8081bbc5c4e4ca4188239c807f7c007ec57d:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI3OGZlNDQxMzQxNDdiNTEzYTdhZTM5M2RhNmU3MzQ1ZWFmZjI2ZWM0NGE0ZjMyODVmYzNkZmYwODhhYzE0ZGIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZkMDU2NGQzOTE0OTU2ZmExMWRhYmUyOWY2ZjE5NWUwOGY1NWY4YjExNTQ0NDc5OTExYTY0ZGIyODNkMjZjNDMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjFkZWRmZDYwNDdiYTUwMDExN2UyMTczNDQ3NjdmMzRhYjljMWY5NjEzYjMxNWY0NjA4MTgzM2Q5ZWFkM2UxNzEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE0YzJjMWYxMDNkNDMwZDAwZjQyNjE2ZDhiZTZmN2M0MmZkZTRmYTY4ODBmOTg4MzNjM2M3OTc3ODFkYWVhYzMifQ"
         },
         {
-          "resource": "repo://automations/upstream/retained-contracts.json#L5127-L5256",
+          "resource": "repo://automations/upstream/retained-contracts.json#L5131-L5260",
           "version": "repo-lines-v1:sha256:c595343b2ec62a903c5b308afe397635f07c306e42356c28bdb66668a0c2274b:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMwLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJiOTc4ZTI1MDNiOGNmMzdhMDZmN2Q2ZjBhM2E2YjZmZTM1NjkxZmJjYWI1MGI4Nzc1Y2FiNmZhYmM3MWM1OTJiIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI3NzllNjlhNDQ4NzAxMmE5NDE3MTFkMTZmMTg4MWIxYWI2NjkwYTZhYTNkZDJhNjNkMjlhMWQ4Y2Q0ODgwZDUzIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI5OWNmYjE0ZDU3YmRlNTgzZmNhNzZjOWMxNDAyOGI3ZTUyNDFlZWU4MDljMzJlMTViZjdmZTMzYTMwYThiMjZhIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlMGY3ZjQ4MjIzOTYxZTJkZThjNzg2YmU4YTlkN2NmYmYwZTVlNmZkMjVjOWVkZGVkNWZlNmM2MWVmMWUyMzUxIn0"
         }
       ]
@@ -368,7 +364,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_sample_tests.rs",
-          "version": "repo-file-v1:sha256:fd4552a9afbd579ce7950ee14cb168f82b8960383b3e6e62a05b33a7b03c5f5e"
+          "version": "repo-file-v1:sha256:1213f89b45d254169b337e5493832e6f289d0b00ee72281fb665ec1603a417a8"
         }
       ]
     },
@@ -391,7 +387,7 @@
           "version": "repo-file-v1:sha256:c95911cf8db5baa1a2a3c56a524d8f63ebd9cf3748fabd3e8d72f0a2e21282af"
         },
         {
-          "resource": "repo://automations/upstream/retained-contracts.json#L4850-L4922",
+          "resource": "repo://automations/upstream/retained-contracts.json#L4854-L4926",
           "version": "repo-lines-v1:sha256:c71abad5ce6f9a3ceb19f4f62c9568b138cb42bc62815ac39b7baf69c767068b:eyJzZWxlY3RlZExpbmVDb3VudCI6NzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAwZjFlMGQyNDQ0M2YyZWU0ZGY0MjBhNGRlMWZlMmVmM2MxMjMyMDM0Y2RmZWEzNWMyMjA0ZDRkNDkzZmRjNGIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM2NTM2Yzc4YjAyOWM3MjBkYWQzMjEwMmU4M2M5OWMzMzBiOTM4MGVlNjA4ZWFmYjc1NmFkNDQzNDc4ZDQ4ZTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjIzNjZhNjEzYTcwNjFmZWU5NTY4Mzc4MzI2MTA3YzViMzg1ZjA0ZTVjMzJlZTU1M2FiZjI2MDM3YThiZjRiNmQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImFiM2Y3NDMzNzZlZTY0ZTE3OWE3YWJkYzViOWFjZmE0YzNjZDhhMjRiYzFiOGVhOTI2YzM4NjE4ZGJmZjc1ODkifQ"
         },
         {
@@ -406,7 +402,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-contracts.json",
-          "version": "repo-file-v1:sha256:dfbcb5f07ff9ce54daccf7f270553c99481f7dcf6fe4129485b9f8b52caf7c9d"
+          "version": "repo-file-v1:sha256:66a6830ca6507dc3ab5a33aa8465162f58709acf1e4e02cadca3795b07201d7c"
         }
       ]
     },
@@ -428,7 +424,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-contracts.json",
-          "version": "repo-file-v1:sha256:dfbcb5f07ff9ce54daccf7f270553c99481f7dcf6fe4129485b9f8b52caf7c9d"
+          "version": "repo-file-v1:sha256:66a6830ca6507dc3ab5a33aa8465162f58709acf1e4e02cadca3795b07201d7c"
         }
       ]
     },
@@ -437,7 +433,7 @@
       "statement": "Original item35 selects exact native historical-item navigation in the main conversation, reusing loaded records or reading bounded same-turn anchor pages with a fixed return action and no per-message nearby-history buttons. Items43,67 and72 retain collapsed-output counts, registered-resource owner lookup and existing cost estimates; resource lookup adds no historical upload scan or adoption, and estimates add no account sum or local price engine.",
       "evidence": [
         {
-          "resource": "repo://automations/upstream/retained-contracts.json#L5000-L5063",
+          "resource": "repo://automations/upstream/retained-contracts.json#L5004-L5067",
           "version": "repo-lines-v1:sha256:f9c137f55109f2dde38887d907200b2e3b9bc133f683e3751fdc9f7bdb7343f8:eyJzZWxlY3RlZExpbmVDb3VudCI6NjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEzZDU0ZTI4NjZmZTcyNWM3YjczZWFiNGNhOWZiM2I5M2RjMDFjMmJjOGY3N2Y2ODAwMDVhYWY5MDBjMjhmZjEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQyMGEzNzM1MWUwNzM1MDI1NDQwYjViN2M3MWNkOGRkNzgyYzA5YTVlMjQyYzYyYmI2YjU2YThmZTNmYjllOTIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImFkZDJjMTljZTlmYmM2OWYwN2YzOTlkM2M5ZTE4YjhhMDcwNWZkYTlmMjNjYzkwMDE2ZGY3YmUzMzRkNmEwMTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhlNjk4Y2UzZTJmYzE1ODJhNzdhZmRlN2YxZDlhMjQzNDAxYjE0NmM1YjFhYTMwNzY3OTZjZTU3MTQ4YTI5M2EifQ"
         }
       ]
@@ -448,15 +444,15 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_list_branch.rs",
-          "version": "repo-file-v1:sha256:0ec5da197a25269aa38fff2d89cd4b5f7cc786e3f318c55d5d827f84bff62b00"
+          "version": "repo-file-v1:sha256:c7c9ab876c5f7a0abf82a88e94b7acebbe101ebc27b3becf4272224606d2a6a0"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_work_browser.rs",
-          "version": "repo-file-v1:sha256:a7963f63306f124caf3c1d5d9995cb5a1dd0108d8d9a39932dc7dc552a37f0e3"
+          "version": "repo-file-v1:sha256:6de6c0657e1af6e7ef88db22d0fcbc80403f8e9ff24709c39b98115914697279"
         },
         {
           "resource": "repo://automations/upstream/retained-contracts.json",
-          "version": "repo-file-v1:sha256:dfbcb5f07ff9ce54daccf7f270553c99481f7dcf6fe4129485b9f8b52caf7c9d"
+          "version": "repo-file-v1:sha256:66a6830ca6507dc3ab5a33aa8465162f58709acf1e4e02cadca3795b07201d7c"
         }
       ]
     },
@@ -470,7 +466,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-contracts.json",
-          "version": "repo-file-v1:sha256:dfbcb5f07ff9ce54daccf7f270553c99481f7dcf6fe4129485b9f8b52caf7c9d"
+          "version": "repo-file-v1:sha256:66a6830ca6507dc3ab5a33aa8465162f58709acf1e4e02cadca3795b07201d7c"
         }
       ]
     },
@@ -479,11 +475,11 @@
       "statement": "Native Guardian root handoff context and JSON transcript mode remain deferred in issues for original items 49 and 79. A deferred issue does not authorize implementation, a setting, experimental activation or daily maintenance work.",
       "evidence": [
         {
-          "resource": "repo://automations/upstream/retained-contracts.json#L5150-L5156",
+          "resource": "repo://automations/upstream/retained-contracts.json#L5154-L5160",
           "version": "repo-lines-v1:sha256:9c391f919d1027aa659e4de4cc604b27f0a2eafe9f060d9133344256b03f93f4:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNDk1YjhjNWJmODYzNzQzNjcxZGVmM2Y2MzBlYjIzMmQ1OWE3YTYzNGEwNzBmYzQzNmVlYzM3YTg2NzRlNmMzMCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYjk3OGUyNTAzYjhjZjM3YTA2ZjdkNmYwYTNhNmI2ZmUzNTY5MWZiY2FiNTBiODc3NWNhYjZmYWJjNzFjNTkyYiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiODNiY2ZhYmJhYmQ5Y2M2OWNiYmUwY2ViMWMyOTZjNTAwYTc3NjQ4MDBkZDcxNDNhN2NlOGUwOGU4M2E4YjkxZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZWVlNzc1ODVkOWI2YTJlMGI2OGJhYWFiNTVkMDdiNDcwNmY4ZjA2ZTczNzgyNzVjMGQ0YzcxNWIzZGIzYzNkOSJ9"
         },
         {
-          "resource": "repo://automations/upstream/retained-contracts.json#L5185-L5193",
+          "resource": "repo://automations/upstream/retained-contracts.json#L5189-L5197",
           "version": "repo-lines-v1:sha256:01643ed6bd9f6f52a0a7f7af028ddc189d6c3db086e294b06a7980591c4be2c0:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNDk1YjhjNWJmODYzNzQzNjcxZGVmM2Y2MzBlYjIzMmQ1OWE3YTYzNGEwNzBmYzQzNmVlYzM3YTg2NzRlNmMzMCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiY2Y3OTcwNGRiN2Q5N2YyNTc1N2UxOGFkMmU0NzU4MDA3ZjdhYjEyOWRiNjhhOWI4ODgzODdkNmY5ODI0ZjRjNiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZjQ5N2UyYjc3MGFmODg0ZjQ2Nzc5MGIxNDA2ODFkN2QxYWE5Y2M3YmJkODQ0NjYwMzUxOTExYzMxZWVjNzJjNCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOTI4ZmE1MzNmOWY0ODE3MzU2MjRlNDcxNzg2MzVlYTk5YWMwYTE4N2JlN2U4ZDA5YWM4ZmNlZDU2YjY2NDA0OCJ9"
         }
       ]
@@ -493,7 +489,7 @@
       "statement": "Compatibility maintenance for original items 45, 48, 55, 60, 73, 75 and 76 is limited to actual Decodex consumers. Native algorithms, enforcement and execution keep their owner; optional modes are not activated automatically, and source inspection alone does not qualify item-76 caller attribution.",
       "evidence": [
         {
-          "resource": "repo://automations/upstream/retained-contracts.json#L5242-L5254",
+          "resource": "repo://automations/upstream/retained-contracts.json#L5246-L5258",
           "version": "repo-lines-v1:sha256:5d4ac92bb78b2aca4dc14fb3d3aa974fc9e1ba26fe837e2bbce71226fadb6b8e:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE3YWQ5ZDE4Nzk0MjA1YzIzZWNlM2NmODE5MzEzMzc3MDNkMDk1N2UzYjU2ZjY3NmVlOWZkNTYxMjgyMTdhNzMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFmMGNkYjk3MmE3YmZiN2VkMjQ2ZjlmZjY3MjM4NWU1NWY0OTY4ZmMxMTA0M2RjNWI2ODRkNTFkZmEzMWRiY2IiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjYxNmQxODdmMWQ3ZTIyY2U2ZDNiYzBhMmVmZjQ0NTc5OWIwNzkyNDllNzFjNTUxODllMjBlYzIyMTNmNjcyMTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhiMGYwNDI1ZTNkMTg5OWYzMTQ3MzhkZWM1MjY2ZDhhZGE0MDcxOGZjM2IwZjZjNDg0MmFiMzQzOTM3ZjZlMDEifQ"
         }
       ]
@@ -504,7 +500,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-contracts.json",
-          "version": "repo-file-v1:sha256:dfbcb5f07ff9ce54daccf7f270553c99481f7dcf6fe4129485b9f8b52caf7c9d"
+          "version": "repo-file-v1:sha256:66a6830ca6507dc3ab5a33aa8465162f58709acf1e4e02cadca3795b07201d7c"
         }
       ]
     },
@@ -514,11 +510,11 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_conversation_tabs.rs",
-          "version": "repo-file-v1:sha256:4c6a3132a8ef03b66684b7a04fa1183ddb9aa460e531f03189210f66e1e0ac6f"
+          "version": "repo-file-v1:sha256:a55a772b4e1859e5f467dbf925e38e97d0d36d357ecebeb563e6d5fd6ad1017b"
         },
         {
           "resource": "repo://automations/upstream/retained-contracts.json",
-          "version": "repo-file-v1:sha256:dfbcb5f07ff9ce54daccf7f270553c99481f7dcf6fe4129485b9f8b52caf7c9d"
+          "version": "repo-file-v1:sha256:66a6830ca6507dc3ab5a33aa8465162f58709acf1e4e02cadca3795b07201d7c"
         }
       ]
     },
@@ -528,15 +524,15 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_composer.rs",
-          "version": "repo-file-v1:sha256:6cdf55b64d8fe494e1fe2c2e216f2b805a3a86e108ee740654ae433277327f05"
+          "version": "repo-file-v1:sha256:36b0d52650e55b62c229d7c2b08e0f3394e0af728b935d67e70529ef18b1607c"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_side_chat_question.rs",
-          "version": "repo-file-v1:sha256:7d6e4eb2cfec93f282cf3962637e888e6730877cdd1dcad267beb200c971da4f"
+          "version": "repo-file-v1:sha256:226dbd33a8cffa3f5061421b298b2b217b4c21115ed13250b56ac37c5a174012"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_timeline_render.rs",
-          "version": "repo-file-v1:sha256:eb33eac5960c587b30570c89787b0161d4519e526f1ab4a2abaaf0c88af0615f"
+          "version": "repo-file-v1:sha256:cab05d36566735fb91db36fdc75d2d87daaa8a39b7319b1eb9be066be345d9a4"
         }
       ]
     },
@@ -545,8 +541,8 @@
       "statement": "Native Codex retains the saved configured provider after a default-provider change. The existing user-approved explicit recovery action still requires a live native modelProviderMismatch; its source preparation and durable fork receipt preserve history and draft, and creation sends no input.",
       "evidence": [
         {
-          "resource": "repo://automations/upstream/retained-contracts.json#L5258-L5333",
-          "version": "repo-lines-v1:sha256:1e9f72f8706988bad5445c4b02f4df81075261fde38d0dbbb3f8ce2ea80102f1:eyJzZWxlY3RlZExpbmVDb3VudCI6NzYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIzNjFlZjE2ZjIzNjg0NmUyZTYyMTY4OWEyZjlkOTA2OGZlOGI3MGQxYjBjYTUwM2RhYzA4MWFiMjNhYzBmOGQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjIzNjFlYzdjMjVhYWExZmYyYWJmYTI5M2I4NmIyMzY2NjQ2OWE1ZjE0Y2YwOGJhOTJhMTExMGNiN2QxZDhiYjIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEifQ"
+          "resource": "repo://automations/upstream/retained-contracts.json#L5262-L5379",
+          "version": "repo-lines-v1:sha256:209d1bc07be6f387ecc448b7b46254bb546a5ece7933e2c1d8016b3712bcfd90:eyJzZWxlY3RlZExpbmVDb3VudCI6MTE4LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIyMzYxZWYxNmYyMzY4NDZlMmU2MjE2ODlhMmY5ZDkwNjhmZThiNzBkMWIwY2E1MDNkYWMwODFhYjIzYWMwZjhkIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIyN2U1Nzg4ZDVkOWQ3M2QyNGE4MWRiYzBhNWE3NGJmYTgyYzljM2IzYWY5OWU1MmFmNzk2ZTkwYjQ2OGE4YTNkIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIyMzYxZWM3YzI1YWFhMWZmMmFiZmEyOTNiODZiMjM2NjY0NjlhNWYxNGNmMDhiYTkyYTExMTBjYjdkMWQ4YmIyIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MSwiZm9sbG93aW5nQ29udGV4dEhhc2giOiI0MTJjYTM0NWNjZjc1YmY5YzA4MDZiY2U2OTViZThkZTgwOGI3OTk4NDI1MWE3YTU0ZDIwMmNmNjEwMWRkNDUxIn0"
         },
         {
           "resource": "repo://crates/decodex-codex/src/app_server_client/thread_fork.rs#L56-L91",
@@ -566,19 +562,15 @@
     },
     {
       "id": "claim_adb60fd2604a46ce91755ec8aee0f646",
-      "statement": "Manual catch-up pauses the maintenance owner; internal-duty resumption requires explicit user authorization. The former desktop definition stays paused while Decodex owns the workload.",
+      "statement": "An authorized manual catch-up pauses the standalone Codex app automation. Resumption requires explicit user authorization. The former Decodex Agent wake remains cancelled.",
       "evidence": [
         {
-          "resource": "repo://automations/portfolio.toml",
-          "version": "repo-file-v1:sha256:70b6eb8d6f8d9a3fe860051bfbe1bf092fbf117da8728ed3380588f14173ff96"
+          "resource": "repo://automations/upstream/README.md",
+          "version": "repo-file-v1:sha256:597be3b61ffc092770bafa7088eb8813d79b04f9c45bd80afd0e6a891b04b207"
         },
         {
           "resource": "repo://automations/upstream/duty.json",
-          "version": "repo-file-v1:sha256:6b1f1cd7288ab2b84265565690589383ea00c39229b5a56e7b2510e23fed8fd7"
-        },
-        {
-          "resource": "repo://automations/upstream/prompts/maintainer.md",
-          "version": "repo-file-v1:sha256:bfaf047744eae94e157aff6d8adf148acf9aa162fffaa61bcf6324249ff84501"
+          "version": "repo-file-v1:sha256:73460fbdedc669d7c837ef4ad12557c9c9514843eb6b51e16c07717ef8b20b08"
         }
       ]
     },
@@ -588,7 +580,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_sample.rs",
-          "version": "repo-file-v1:sha256:8a05e50fa4e742b2a8743c6be110a10133e6fe079f82e06e9c493b390035376c"
+          "version": "repo-file-v1:sha256:203aff28151c2252360c476a966e2080d66992b24d43be62a7aad8b5f759be48"
         },
         {
           "resource": "repo://crates/decodex-codex/src/app_server_client/sample.rs",
@@ -605,12 +597,12 @@
       "statement": "Automatic conversation topics use isolated native structured requests and native naming, generate after the first eligible completed user exchange and review after seven more exchanges. The source tab stays Main and Side chats display topics independently of Agent identity.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_conversation_tabs.rs#L122-L157",
+          "resource": "repo://apps/decodex-gpui/src/agent_conversation_tabs.rs#L123-L158",
           "version": "repo-lines-v1:sha256:bee21ba62f3f086047355c574d65953fcec71c3cb2c03aeb1ca77f8477b6042e:eyJzZWxlY3RlZExpbmVDb3VudCI6MzYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhiMWQwZDg1M2JhMjQ3YjI1MmM1OTkwYjViM2M0NzQ2OWMyZTVhNTE4YmMzN2Q3NmZhNGYzNGE4OGU3YjIzNDMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRkNjQ5OTI5MjJiZWE0MTI3NzkzODVlZDcxNzAwNTM0MTZmMDFkMzViODkwOTI5OTc4YTI2OGNlZTJjMzM2ZjIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE5OTFiYmViOWNjNWRlYTM2ZTE4OWI2Y2QzYjA5ZGQwYWMxODM4YmRjY2M1ODg4NTI1MzUyMmI1YzViYzMwYjQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjBkNTMyNzAxNWNkYzdlNmZjOGEwZjBlODM0YWQ1YzIzYjUyODQwNjNkZTM1OTlmNjZhMTdmYTc0YzM2N2EzZjMifQ"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent_titles/host.rs",
-          "version": "repo-file-v1:sha256:9be947d4fe9601c082dfd74860226395560b425884359bbe9afc915cfe18d2a4"
+          "version": "repo-file-v1:sha256:226636370a3483bbfa1dc9485343cf4a6f153a5a7bd9b33e3e93d91c4da1bbde"
         },
         {
           "resource": "repo://database/src/agent_titles.rs",
@@ -628,41 +620,45 @@
         },
         {
           "resource": "repo://database/src/agent.rs",
-          "version": "repo-file-v1:sha256:5582d5d9538b7ccbf9192c9b0fa0c43440b1fada1684274ffc4738cd57fc0d44"
+          "version": "repo-file-v1:sha256:d8939e3ed28ec0c60032f4a5e8cfad7012435231fd57fd624160ae949b8afb73"
         }
       ]
     },
     {
       "id": "claim_dfdcea05209543349258a891ff4bf462",
-      "statement": "Codex upstream maintenance is declared as an independent Decodex Agent duty with a dedicated managed worktree and daily UTC cadence. It does not select personal Assistant Memory; registration and real execution require native acceptance.",
+      "statement": "The Codex app declares one standalone daily upstream maintenance automation with a new chat and assigned managed worktree for each occurrence. Runtime registration is confirmed in the app.",
       "evidence": [
         {
-          "resource": "repo://automations/upstream/duty.json",
-          "version": "repo-file-v1:sha256:6b1f1cd7288ab2b84265565690589383ea00c39229b5a56e7b2510e23fed8fd7"
+          "resource": "repo://automations/portfolio.toml",
+          "version": "repo-file-v1:sha256:d86bb06e2b06ed9405b92f9effcf20a9ae021a601ac4f4ade1e7fe90fa047bae"
         },
         {
-          "resource": "repo://automations/upstream/prompts/maintainer.md",
-          "version": "repo-file-v1:sha256:bfaf047744eae94e157aff6d8adf148acf9aa162fffaa61bcf6324249ff84501"
+          "resource": "repo://automations/upstream/README.md",
+          "version": "repo-file-v1:sha256:597be3b61ffc092770bafa7088eb8813d79b04f9c45bd80afd0e6a891b04b207"
+        },
+        {
+          "resource": "repo://automations/upstream/duty.json",
+          "version": "repo-file-v1:sha256:73460fbdedc669d7c837ef4ad12557c9c9514843eb6b51e16c07717ef8b20b08"
         }
       ]
     },
     {
       "id": "claim_0b12506553c04fe9bd6e40f30ee97f6e",
-      "statement": "The current fixed source review and exact signed-artifact qualification are separate portable evidence. Experimental shared MCP diagnostics passed one of four cases and sharing remains disabled with a pending adaptation; generic upstream CI failures are not counted as local passing proof.",
+      "statement": "The fixed source review and exact signed development qualification have separate evidence. The qualified native default enables same-process MCP sharing and preserves explicit native configuration and private legacy fallback. Cross-process sharing remains deferred.",
       "evidence": [
         {
-          "resource": "repo://automations/upstream/current-review.json",
-          "version": "repo-file-v1:sha256:0bf31a238d5c1414739a0b664b79ac3ea4c727f4d4ed19928ceac112a7e99fa2"
+          "resource": "repo://automations/upstream/qualification.json#L430-L479",
+          "version": "repo-lines-v1:sha256:021477fe4adacd5c720fe5399d026966e1b41c0df81774ae76c8c3b844108089:eyJzZWxlY3RlZExpbmVDb3VudCI6NTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ4NGMzZDQxMWMzM2IyYmM4NmI5MGY4OTY2ODk0NWRjZDUyODY2NDQwYjIyZThlMzcwNGU2MmYxZjdjYTcyNjAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM1OTJlMjcxNGI2ZmE5M2E1MGRiZWY0NmU2NGY3YzA1N2NmNDcxMmE1NDVhZWYwMWQ0ZDRmMjM4ODMzNTZlYzIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRiNmFiMGEzYmJmZDE5ZWYxNzJmNDA3OWIyYzJkM2JiNDVlYjVkNDYwMjRjZTFhZmUwNWYzYjUyNjlkODdmZjkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE0ZGFhNjMyNDQxYjU5YjY2ODMyYzBlM2ZjYmZkZDFiZjIyZDk5OWRlZDI3NTNiMDQzYzI5NDBmNTQ2ZmFiMzUifQ"
         },
         {
-          "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:3d65520110d62c50e6460c911df0eb31e0ff48e3aa13fd1425b5b28887f2d92b"
+          "resource": "repo://automations/upstream/retained-evidence.json",
+          "version": "repo-file-v1:sha256:89798d043a55a23faa4745f21965030fdedf37f73619ecbd95ca303536098d86"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.9.0",
-    "at": "2026-11-10T08:15:33.063Z"
+    "at": "2026-11-19T20:35:23.841Z"
   }
 }
