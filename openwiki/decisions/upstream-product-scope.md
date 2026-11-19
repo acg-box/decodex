@@ -40,8 +40,6 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_work_browser.rs
   - id: openwiki-source-59ed67d26d1c310707a365e5
     resource: repo://apps/decodex-gpui/src/component_plugins.rs
-  - id: openwiki-source-682f90c6d08ed3207257f1d5
-    resource: repo://apps/decodex-gpui/src/conversations.rs
   - id: openwiki-source-a16804a567889414868e5d67
     resource: repo://apps/decodex-gpui/src/settings_surface.rs
   - id: openwiki-source-5afd606185b0f01d8fc4f429
@@ -50,16 +48,16 @@ sources:
     resource: repo://apps/decodex-gpui/src/shell_status.rs
   - id: openwiki-source-14193a66abfb7d3230f476bf
     resource: repo://automations/portfolio.toml
-  - id: openwiki-source-a5b9d61b2b9a5f7492d602ac
-    resource: repo://automations/upstream/current-review.json
   - id: openwiki-source-ac3a52e89a6632ea457c56b7
     resource: repo://automations/upstream/duty.json
-  - id: openwiki-source-7dcbb082d2502f1ec4386c39
-    resource: repo://automations/upstream/prompts/maintainer.md
   - id: openwiki-source-f580b10e16f1d25ebfea3bf8
     resource: repo://automations/upstream/qualification.json
+  - id: openwiki-source-8b67a68a7ef89772aa8180d1
+    resource: repo://automations/upstream/README.md
   - id: openwiki-source-3127fd4c7b2aefcc9cea7961
     resource: repo://automations/upstream/retained-contracts.json
+  - id: openwiki-source-7eedab1ccdf82ac9ccd3ab32
+    resource: repo://automations/upstream/retained-evidence.json
   - id: openwiki-source-02bd3cfc9d4db9d1d1d8fd59
     resource: repo://crates/decodex-codex/src/app_server_client/context_preferences_tests.rs
   - id: openwiki-source-2b08587e9b26e203156110c8
@@ -136,10 +134,10 @@ sources:
     resource: repo://database/src/agent_titles.rs
   - id: openwiki-source-6197a876b2effbe992b1e2ec
     resource: repo://database/src/agent.rs
-generated: { by: "codex", at: "2026-11-13T17:21:21.772Z" }
+generated: { by: "codex", at: "2026-11-19T20:35:23.841Z" }
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-10T08:15:33.063Z
+    at: 2026-11-19T20:35:23.841Z
 ---
 
 # Product scope and native ownership
@@ -275,20 +273,19 @@ Conditional research on [account-safe cross-process MCP sharing](https://github.
 
 ## Maintenance ownership and current qualification
 
-An independent persistent Decodex Agent owns the Codex upstream duty. Its
-[declaration](../../automations/upstream/duty.json) and
-[operational procedure](../operations/codex-upstream-autopilot.md) retain the
-selected model, effort, isolated worktree, daily UTC cadence and sole checkpoint
-publisher. This role does not select the personal Assistant or its Memory.
-Registration and actual scheduled execution require separate native acceptance.
+The Codex app owns the standalone daily upstream maintenance automation. Each
+occurrence starts a new chat in its assigned managed worktree. The [duty declaration](../../automations/upstream/duty.json)
+and [operating procedure](../operations/codex-upstream-autopilot.md) define the cadence,
+run isolation and checkpoint publisher. Keep the former Decodex Agent wake cancelled.
+An authorized manual catch-up pauses the standalone automation. Resuming it requires
+explicit user authorization.
 
 The [current review](../../automations/upstream/current-review.json) records the
-complete fixed upstream delta. The [qualification](../../automations/upstream/qualification.json)
-records the exact signed artifact and named retained consumers. Generic upstream
-CI failures remain diagnostic limits. Experimental same-process MCP sharing
-passed only one of four diagnostic cases; keep it disabled and retain the pending
-adaptation. Guardian V3, new gateway controls and deferred product decisions keep
-their existing scope.
+fixed upstream delta. The [qualification](../../automations/upstream/qualification.json)
+records the exact signed artifact and named retained consumers. The qualified native
+runtime enables same-process MCP sharing by default and honors its native setting.
+Decodex uses that setting for compatible connections and private legacy fallback.
+Cross-process sharing and Guardian V3 remain deferred at their existing decisions.
 
 ## Native compatibility maintenance
 
@@ -332,7 +329,7 @@ Eligible root conversations expose native read receipts in task preferences. Rea
 
 The client also exposes a bounded, explicitly invoked ephemeral prediction fork. It inherits the loaded parent's context, tools and permissions. It is not a tool-free recap or an automatic background job. Its caller must own authorization and event routing. Next-message suggestions use the separate native sampling path described above; the isolated recap path remains separate.
 
-Native launch policy requests full-fork prefix preservation, model-specific subagent context defaults and Agent message wakeups. Tool ordering stays native-owned; the removed description-first feature is not requested. The native configuration still selects Code Mode hosting transport.
+Native launch policy requests full-fork prefix preservation, model-specific subagent context defaults and Agent message wakeups. Tool ordering stays native-owned; the removed description-first feature is not requested. The pinned native CLI uses gRPC over standard input and output for the packaged Code Mode host.
 
 Background compaction and retention of marked client tool outputs are configurable native additions. Settings > Agents > Context defaults Native and Agent preferences > Context defaults read and write the same native configuration used by manual `config.toml` edits. An omitted value follows the native feature default; explicit effective project configuration takes priority. Explicit off values remain valid, and saving a default does not restart loaded conversations. The panel distinguishes saved user and effective project values. This preserves the existing controls when native defaults change.
 
