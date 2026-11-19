@@ -2,7 +2,7 @@
 use core::panic::Location;
 use std::{mem, ops::Range};
 
-use gpui::{AvailableSpace, Size, TextAlign, TextStyle};
+use gpui::{AvailableSpace, DispatchPhase, MouseMoveEvent, Size, TextAlign, TextStyle};
 use ui_theme::{BODY_LINE_HEIGHT, BODY_SIZE, CONTROL_GAP};
 
 use crate::{
@@ -86,7 +86,7 @@ impl Element for ComposerTextElement {
 		let action_size = actions.as_ref().map(|actions| actions.size);
 		let layout =
 			layout_text(input, bounds.size.width, action_size, window, &window.text_style());
-		let caret = position_at(&layout.lines, input.cursor_offset()).y;
+		let caret = caret_position(&layout.lines, input.cursor_offset(), input.caret_after_wrap).y;
 		let max = (layout.height - bounds.size.height).max(gpui::px(0.0));
 		let offset = if input.scroll_manually {
 			input.text_offset.clamp(gpui::px(0.0), max)
@@ -119,6 +119,7 @@ impl Element for ComposerTextElement {
 		let input = self.input.read(cx);
 		let focus = input.focus_handle.clone();
 		let selection = input.selected_range.clone();
+		let caret_after_wrap = input.caret_after_wrap;
 		let draw_cursor = cursor::eligible(
 			focus.is_focused(window),
 			window.is_window_active() && ui_motion::application_active(),
@@ -128,6 +129,12 @@ impl Element for ComposerTextElement {
 		let origin = bounds.origin - gpui::point(gpui::px(0.), state.offset);
 
 		window.handle_input(&focus, ElementInputHandler::new(bounds, self.input.clone()), cx);
+		let editor = self.input.clone();
+		window.on_mouse_event(move |event: &MouseMoveEvent, phase, _, cx| {
+			if phase == DispatchPhase::Capture && editor.read(cx).mouse_selection.is_some() {
+				editor.update(cx, |input, cx| input.on_mouse_move(event, cx));
+			}
+		});
 
 		let line_height = gpui::px(BODY_LINE_HEIGHT);
 		let mut line_origin = origin;
@@ -151,7 +158,7 @@ impl Element for ComposerTextElement {
 		}
 
 		if draw_cursor {
-			let caret = position_at(&state.lines, selection.end);
+			let caret = caret_position(&state.lines, selection.end, caret_after_wrap);
 			let next = position_at(&state.lines, next);
 			let width = if next.y == caret.y && next.x > caret.x {
 				next.x - caret.x
@@ -232,49 +239,93 @@ pub(super) struct TextPaint {
 }
 
 pub(super) fn position_at(lines: &[WrappedLine], index: usize) -> Point<Pixels> {
+	caret_position(lines, index, false)
+}
+
+pub(super) fn caret_position(
+	lines: &[WrappedLine],
+	index: usize,
+	after_wrap: bool,
+) -> Point<Pixels> {
+	let line_height = gpui::px(BODY_LINE_HEIGHT);
 	let mut start = 0;
 	let mut y = gpui::px(0.0);
 
 	for line in lines {
 		if index <= start + line.len() {
-			return line
-				.position_for_index(index - start, gpui::px(BODY_LINE_HEIGHT))
-				.unwrap_or_default()
-				+ gpui::point(gpui::px(0.0), y);
+			let local = index - start;
+			let position = line.position_for_index(local, line_height).unwrap_or_default();
+			let next_row = (position.y / line_height) as usize + 1;
+			if after_wrap
+				&& next_row <= line.wrap_boundaries().len()
+				&& row_start(line, next_row).0 == local
+			{
+				return gpui::point(gpui::px(0.0), y + position.y + line_height);
+			}
+			return position + gpui::point(gpui::px(0.0), y);
 		}
 
 		start += line.len() + 1;
-		y += line.size(gpui::px(BODY_LINE_HEIGHT)).height;
+		y += line.size(line_height).height;
 	}
 
 	gpui::point(gpui::px(0.0), y)
 }
 
+#[cfg(test)]
 pub(super) fn index_at(lines: &[WrappedLine], position: Point<Pixels>) -> usize {
+	caret_at(lines, position).0
+}
+
+pub(super) fn caret_at(lines: &[WrappedLine], position: Point<Pixels>) -> (usize, bool) {
+	let line_height = gpui::px(BODY_LINE_HEIGHT);
+	match line_at_y(lines, position.y) {
+		Ok((start, line, y)) => {
+			let local = line
+				.closest_index_for_position(gpui::point(position.x, y), line_height)
+				.unwrap_or_else(|index| index);
+			let row = (y / line_height) as usize;
+			(start + local, row > 0 && row_start(line, row).0 == local)
+		},
+		Err(end) => (end, false),
+	}
+}
+
+pub(super) fn character_at(lines: &[WrappedLine], position: Point<Pixels>) -> Option<usize> {
+	let (start, line, y) = line_at_y(lines, position.y).ok()?;
+	line.index_for_position(gpui::point(position.x, y), gpui::px(BODY_LINE_HEIGHT))
+		.ok()
+		.map(|index| start + index)
+}
+
+pub(super) fn row_range_at(lines: &[WrappedLine], position: Point<Pixels>) -> Option<Range<usize>> {
+	let (start, line, y) = line_at_y(lines, position.y).ok()?;
+	let row = (y / gpui::px(BODY_LINE_HEIGHT)) as usize;
+	Some(start + row_start(line, row).0..start + row_start(line, row + 1).0)
+}
+
+fn line_at_y(
+	lines: &[WrappedLine],
+	position_y: Pixels,
+) -> Result<(usize, &WrappedLine, Pixels), usize> {
 	let mut start = 0;
 	let mut y = gpui::px(0.0);
 
 	for line in lines {
 		let next = y + line.size(gpui::px(BODY_LINE_HEIGHT)).height;
 
-		if position.y < next {
-			return start
-				+ line
-					.closest_index_for_position(
-						gpui::point(position.x, (position.y - y).max(gpui::px(0.0))),
-						gpui::px(BODY_LINE_HEIGHT),
-					)
-					.unwrap_or_else(|index| index);
+		if position_y < next {
+			return Ok((start, line, (position_y - y).max(gpui::px(0.0))));
 		}
 
 		start += line.len() + 1;
 		y = next;
 	}
 
-	start.saturating_sub(1)
+	Err(start.saturating_sub(1))
 }
 
-fn height(lines: &[WrappedLine]) -> Pixels {
+pub(super) fn height(lines: &[WrappedLine]) -> Pixels {
 	lines.iter().map(|line| line.size(gpui::px(BODY_LINE_HEIGHT)).height).sum()
 }
 
@@ -340,10 +391,21 @@ fn layout_text(
 }
 
 fn last_row_start(line: &WrappedLine) -> (usize, Pixels) {
-	line.wrap_boundaries().last().map_or((0, gpui::px(0.)), |boundary| {
-		let glyph = &line.runs()[boundary.run_ix].glyphs[boundary.glyph_ix];
-		(glyph.index, glyph.position.x)
-	})
+	row_start(line, line.wrap_boundaries().len())
+}
+
+fn row_start(line: &WrappedLine, row: usize) -> (usize, Pixels) {
+	if row == 0 {
+		return (0, gpui::px(0.));
+	}
+
+	line.wrap_boundaries().get(row - 1).map_or(
+		(line.len(), line.unwrapped_layout.width),
+		|boundary| {
+			let glyph = &line.runs()[boundary.run_ix].glyphs[boundary.glyph_ix];
+			(glyph.index, glyph.position.x)
+		},
+	)
 }
 
 fn end_of_last_row(lines: &[WrappedLine]) -> Pixels {

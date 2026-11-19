@@ -450,6 +450,22 @@ impl MaterialPanel {
 		}
 	}
 
+	pub(crate) fn clear_content_occlusion(&mut self) {
+		if self.occlusion_mask.take().is_none() {
+			return;
+		}
+		if let Some(content) = self.native.contentView() {
+			// This is the mask installed by occlude_content on the outer view.
+			unsafe {
+				let layer: Retained<AnyObject> = objc2::msg_send![&*content, layer];
+				let _: () = objc2::msg_send![&*layer, setMask: ptr::null::<AnyObject>()];
+			}
+		}
+		self.occlusion_frame = None;
+		self.hit_region.set(None);
+		self.native.setIgnoresMouseEvents(false);
+	}
+
 	pub(crate) fn set_title(&self, title: &str) {
 		self.native.setTitle(&NSString::from_str(title));
 	}

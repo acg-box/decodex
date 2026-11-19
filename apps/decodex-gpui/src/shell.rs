@@ -1741,6 +1741,10 @@ impl Shell {
 	}
 
 	fn submit_conversation(&mut self, _: &mut Window, cx: &mut Context<Self>) {
+		if self.composer.read(cx).is_composing() {
+			return;
+		}
+
 		let creating = self.creating_new || self.quick.selected.is_none();
 		let message = self.composer.read(cx).content().to_owned();
 		// Read the controller's current terminal-result fence before queueing. The rendered
