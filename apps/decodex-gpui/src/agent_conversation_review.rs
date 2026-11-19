@@ -128,23 +128,24 @@ impl AgentSurface {
 					.collect(),
 			);
 		} else {
-			self.timeline.native.replace(
-				binding,
-				AgentTimelinePage {
-					source_threads: Default::default(),
-					thread_id: "review-thread".into(),
-					entries: rows,
-					next_cursor: None,
-					weather: Default::default(),
-					thread_token_total: None,
-					thread_token_breakdown: None,
-					thread_metrics: None,
-					safety_buffering_turn_id: None,
-					observed_activities: Vec::new(),
-					active_realtime_session_at_page_start: None,
-				},
-			);
+			self.timeline.native.replace(binding, review_page(rows));
 		}
+	}
+}
+
+fn review_page(entries: Vec<AgentTimelineEntry>) -> AgentTimelinePage {
+	AgentTimelinePage {
+		source_threads: Default::default(),
+		thread_id: "review-thread".into(),
+		entries,
+		next_cursor: None,
+		weather: Default::default(),
+		thread_token_total: None,
+		thread_token_breakdown: None,
+		thread_metrics: None,
+		safety_buffering_turn_id: None,
+		observed_activities: Vec::new(),
+		active_realtime_session_at_page_start: None,
 	}
 }
 
@@ -355,6 +356,88 @@ mod tests {
 
 		assert_eq!(visual.debug_bounds(selectors("native")[3]).unwrap(), text);
 		assert_eq!(visual.debug_bounds("response-footer").unwrap().size.height, gpui::px(28.));
+	}
+
+	#[gpui::test]
+	fn completed_reply_does_not_bounce_above_its_streamed_position_at_the_bottom(
+		cx: &mut gpui::TestAppContext,
+	) {
+		use super::AgentTimelineContent;
+		use std::time::Duration;
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		visual.simulate_resize(gpui::size(gpui::px(860.), gpui::px(620.)));
+		surface.update(visual, |s, cx| {
+			s.conversation_review("live", cx);
+			let mut entries = s.timeline.native.entries.clone();
+			for position in 3..9 {
+				let id = format!("tool-{position}");
+				let mut entry =
+					conversation_review::item(position, "current", &id, "commandExecution", "");
+				if let AgentTimelineContent::Item { activity, .. } = &mut entry.content {
+					*activity = Some(
+						serde_json::from_value(serde_json::json!({
+							"turn_id": "current", "item_id": id, "kind": "commandExecution",
+							"status": "completed", "label": "Read layout", "detail": "", "duration_ms": 120
+						}))
+						.unwrap(),
+					);
+				}
+				entries.push(entry);
+			}
+			let binding = s.timeline.native.binding.clone().unwrap();
+			assert!(s.refresh_native_history(binding, conversation_review::review_page(entries)));
+			s.timeline.latest_follow_work = Some("agent".into());
+		});
+		settled(visual);
+		let toggle = visual.debug_bounds("turn-process-toggle").unwrap();
+		visual.simulate_click(toggle.center(), Default::default());
+		visual.update(crate::ui_frame::draw_frame);
+		visual.executor().advance_clock(Duration::from_millis(240));
+		visual.update(crate::ui_frame::draw_frame);
+		assert!(visual.debug_bounds("tool-batch-block").unwrap().size.height > toggle.size.height);
+		surface.update(visual, |s, cx| s.jump_to_latest(cx));
+		settled(visual);
+		assert!(
+			surface.read_with(visual, |s, _| s.timeline.latest_follow_work.as_deref()
+				== Some("agent"))
+		);
+
+		let selector = selectors("live")[3];
+		let original = visual.debug_bounds(selector).unwrap().top();
+		let composer = visual.debug_bounds("composer-input-region").unwrap();
+		assert!(visual.debug_bounds("work-status-slot").unwrap().size.height > gpui::px(40.));
+
+		surface.update(visual, |s, cx| {
+			s.timeline.native.entries.extend([
+				conversation_review::item(9, "current", "answer", "agentMessage", ANSWER),
+				conversation_review::completed(10, "current"),
+			]);
+			let work = s
+				.snapshot
+				.as_mut()
+				.unwrap()
+				.work_items
+				.iter_mut()
+				.find(|work| work.id == "agent")
+				.unwrap();
+			work.active_turn_id = None;
+			work.dispatch_state = AgentDispatchStateDto::Idle;
+			cx.notify();
+		});
+		let mut previous = original;
+		let mut saw_fold = false;
+		for _ in 0..10 {
+			visual.update(crate::ui_frame::draw_frame);
+			saw_fold |= visual.debug_bounds("turn-process-finishing").is_some();
+			let top = visual.debug_bounds(selector).unwrap().top();
+			assert!(top >= previous - gpui::px(1.), "reply bounced: {previous:?} -> {top:?}");
+			assert_eq!(visual.debug_bounds("composer-input-region").unwrap(), composer);
+			previous = top;
+			thread::sleep(Duration::from_millis(40));
+		}
+		assert!(saw_fold);
+		assert!(visual.debug_bounds("turn-process-finishing").is_none());
+		assert_eq!(visual.debug_bounds("work-status-slot").unwrap().size.height, gpui::px(0.));
 	}
 
 	#[gpui::test]

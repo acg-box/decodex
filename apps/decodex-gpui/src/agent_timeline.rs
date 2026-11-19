@@ -12,7 +12,12 @@
 
 pub(super) use render::activity_label;
 
-use std::{cell::RefCell, collections::BTreeSet, mem, time::Duration};
+use std::{
+	cell::RefCell,
+	collections::{BTreeMap, BTreeSet},
+	mem,
+	time::Duration,
+};
 
 use gpui::{AnyElement, Div, FocusHandle, Role, StatefulInteractiveElement as _};
 use tokio::runtime::Builder;
@@ -24,20 +29,23 @@ use crate::{
 		self, AgentClient, AgentHistoryResult, AgentSurface, AgentWorkItemDto, Context, EntityId,
 		FluentBuilder, InteractiveElement, IntoElement, ParentElement, SharedString, Styled,
 		StyledImage, Task, WireText, auth_recovery_entry, markdown,
-		voice::history::{self, Conversation, VoiceBlock},
+		voice::{
+			VoiceTimeline,
+			history::{self, Conversation, VoiceBlock},
+		},
 	},
 	ui_feedback::{self, Feedback},
 	ui_loading::{self, ContentArrival},
 	ui_motion,
 };
-use completion::{Closing, Completions};
+use completion::{Closing, Completion, Completions};
 use decodex_protocol::{
 	AgentActivityDto, AgentSnapshotDto, AgentTimelineContent, AgentTimelineEntry,
 	AgentTimelinePage, WeatherForecast,
 };
 use inputs::InputReceipts;
 use media::Preview;
-use motion::Arrivals;
+use motion::{Arrivals, ToolBatch};
 use scroll::{ROW_GAP, Viewport};
 
 const SUMMARY_NOTICE: &str =
@@ -417,6 +425,35 @@ impl AgentSurface {
 		) && !self.current_turn_completed(work)
 	}
 
+	pub(super) fn uncommitted_reply_turn(&self, work: &AgentWorkItemDto) -> Option<String> {
+		if !self.native_history_active(work) {
+			return None;
+		}
+		let reply = self.streamed_output(work)?.iter().rev().find(|message| {
+			message.kind == decodex_protocol::AgentLiveMessageKind::AgentMessage
+				&& !message.text.trim().is_empty()
+		})?;
+		let saved = self.timeline.native.entries.iter().rev().any(|entry| {
+			matches!(&entry.content, AgentTimelineContent::TurnBoundary { turn_id, completed: true, .. }
+				if turn_id == &reply.turn_id)
+		});
+		(!saved).then(|| reply.turn_id.clone())
+	}
+
+	pub(super) fn final_footer_progress(
+		&self,
+		completed: &str,
+	) -> Option<std::rc::Rc<std::cell::Cell<f32>>> {
+		self.timeline.native.entries.iter().rev().find_map(|entry| match &entry.content {
+			AgentTimelineContent::Item { turn_id, item_id, kind, phase, .. }
+				if turn_id == completed
+					&& kind == "agentMessage"
+					&& matches!(phase.as_deref(), None | Some("final_answer")) =>
+				Some(self.timeline.native.completions.footer(turn_id, item_id).progress),
+			_ => None,
+		})
+	}
+
 	/// Present observed current-turn activity; saved process items do not imply live work.
 	pub(super) fn working_presentation(
 		&self,
@@ -590,13 +627,27 @@ impl AgentSurface {
 					"Voice conversation continues from the previous page.",
 				));
 			}
+			let voice_groups = history::groups(&self.timeline.native.entries);
+			let mut voice = self.completed_voice_timeline(
+				&work.id,
+				&self.timeline.native.summary,
+				&self.timeline.native.entries,
+				&voice_groups,
+				cx,
+			);
 			if !self.timeline.native.summary.is_empty() {
-				panel = panel.child(self.native_summary_exchanges(work, cx));
+				panel = panel.child(self.native_summary_exchanges(work, &mut voice.rows, cx));
 			}
 
-			panel = self.append_native_history_rows(panel, work, cx);
-			panel = panel.children(self.send_previews(&work.id));
-			panel = panel.children(self.native_live_rows(work));
+			let (history, last_process) =
+				self.append_native_history_rows(panel, work, &mut voice, voice_groups, cx);
+			let previews = self.send_previews(&work.id);
+			let last_process =
+				last_process.filter(|_| voice.rows.is_empty() && previews.is_empty());
+			panel = history
+				.children(voice.rows.into_values().flatten())
+				.children(previews)
+				.children(self.native_live_rows(work, last_process));
 		}
 		if !self.native_history_active(work) && !self.native_history_loading(work) {
 			// An absent source must not insert an empty row and an extra message gap.
@@ -664,13 +715,6 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) -> Div {
 		let header = self.turn_process_header(work, group, entry, cx);
-		// The timeline supplies MESSAGE_GAP between rows. A process header and
-		// its following answer are one group, including during fold animation.
-		let trailing = if group.final_index > group.first_index {
-			crate::ui_theme::PROCESS_CONTENT_GAP - ROW_GAP
-		} else {
-			0.
-		};
 
 		if let Some(motion) = self.timeline.native.completions.get(group)
 			&& !group
@@ -682,12 +726,28 @@ impl AgentSurface {
 				.indices
 				.iter()
 				.copied()
-				.filter(|i| motion.outgoing.contains(&self.timeline.native.entries[*i].position))
+				.filter(|i| {
+					motion.outgoing.contains_key(&self.timeline.native.entries[*i].position)
+				})
 				.collect();
-			let body =
-				self.process_history_content(work, &indices, &group.observations, entry, false, cx);
+			let body = self.process_history_content(
+				work,
+				&indices,
+				&group.observations,
+				entry,
+				Some(&motion),
+				cx,
+			);
+			let outgoing_header = motion.batch(entry.position).is_some();
+			let body = gpui::div()
+				.w_full()
+				.when(motion.header_present && !outgoing_header, |body| {
+					body.pt(gpui::px(crate::ui_theme::PROCESS_STEP_GAP))
+				})
+				.child(body)
+				.into_any_element();
 
-			return gpui::div().w_full().mb(gpui::px(trailing)).child(Closing {
+			return gpui::div().w_full().child(Closing {
 				motion,
 				position: entry.position,
 				header,
@@ -701,12 +761,8 @@ impl AgentSurface {
 		let anchor = entry.clone();
 		let source_work = work.clone();
 
-		gpui::div()
-			.w_full()
-			.mb(gpui::px(trailing))
-			.debug_selector(|| "turn-process-block".into())
-			.child(header)
-			.child(ui_motion::disclosure_lazy(
+		gpui::div().w_full().debug_selector(|| "turn-process-block".into()).child(header).child(
+			ui_motion::disclosure_lazy(
 				SharedString::from(format!(
 					"turn-process-body-{}-{}-{}",
 					work.id,
@@ -721,12 +777,13 @@ impl AgentSurface {
 							&indices,
 							&observations,
 							&anchor,
-							true,
+							None,
 							cx,
 						)
 					})
 				},
-			))
+			),
+		)
 	}
 
 	fn process_history_content(
@@ -735,9 +792,10 @@ impl AgentSurface {
 		indices: &[usize],
 		observations: &[AgentActivityDto],
 		anchor: &AgentTimelineEntry,
-		archived: bool,
+		completion: Option<&Completion>,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
+		let archived = completion.is_none();
 		let mut waits = waits::groups(&self.timeline.native.entries, indices);
 		waits.retain(|_, group| {
 			!group
@@ -767,22 +825,28 @@ impl AgentSurface {
 					cx,
 				));
 			}
-			rows.push(if let Some(group) = waits.get(i) {
-				self.native_wait_group(work, group, anchor, archived, cx)
-			} else {
-				let body = self.native_timeline_content(
-					work,
-					entry,
-					&serde_json::json!([work.id, work.codex_thread_id, key(entry)]).to_string(),
-					archived && !self.is_located_item(&entry.content),
-					cx,
-				);
-				if self.is_revealed_history_item(entry) {
-					self.native_scroll_row(work, entry, body, cx)
+			rows.push(
+				if let Some(batch) = completion.and_then(|motion| motion.batch(entry.position))
+					&& self.timeline.native.entries.get(*i..*i + batch.count).is_some()
+				{
+					self.outgoing_tool_batch(work, *i, batch, entry.position == anchor.position, cx)
+				} else if let Some(group) = waits.get(i) {
+					self.native_wait_group(work, group, anchor, archived, cx)
 				} else {
-					body
-				}
-			});
+					let body = self.native_timeline_content(
+						work,
+						entry,
+						&serde_json::json!([work.id, work.codex_thread_id, key(entry)]).to_string(),
+						archived && !self.is_located_item(&entry.content),
+						cx,
+					);
+					if self.is_revealed_history_item(entry) {
+						self.native_scroll_row(work, entry, body, cx)
+					} else {
+						body
+					}
+				},
+			);
 		}
 		rows.extend(observed.map(|activity| self.observed_activity_content(work, activity, cx)));
 		let body = gpui::div()
@@ -813,8 +877,10 @@ impl AgentSurface {
 		&self,
 		mut panel: Div,
 		work: &AgentWorkItemDto,
+		voice: &mut VoiceTimeline,
+		mut voice_groups: Vec<Conversation>,
 		cx: &mut Context<Self>,
-	) -> Div {
+	) -> (Div, Option<&str>) {
 		let mut groups = groups::with_observations(
 			&self.timeline.native.entries,
 			&self.timeline.native.expanded_turns,
@@ -844,9 +910,19 @@ impl AgentSurface {
 		let wait_hidden: BTreeSet<_> =
 			waits.values().flat_map(|group| group.indices.iter().skip(1).copied()).collect();
 
-		self.prepare_native_process_folds(&groups, &collapsed, &wait_hidden, &waits);
+		let batches = self.native_tool_batches(&collapsed);
+		let batch_hidden: BTreeSet<_> =
+			batches.iter().flat_map(|(start, batch)| start + 1..start + batch.count).collect();
+		let folds = collapsed
+			.iter()
+			.chain(&wait_hidden)
+			.chain(waits.keys())
+			.chain(&batch_hidden)
+			.chain(batches.keys())
+			.copied()
+			.collect();
+		self.prepare_process_folds(&groups, &folds, &batches);
 
-		let mut voice_groups = history::groups(&self.timeline.native.entries);
 		voice_groups.retain(|group| {
 			group.hidden()
 				|| !group.indices.iter().any(|index| {
@@ -858,13 +934,33 @@ impl AgentSurface {
 		let hidden_items = groups::hidden_items(&self.timeline.native.entries);
 		let replied_turns = self.replied_native_turns();
 		let mut hidden = Vec::new();
+		let mut previous = None;
 
 		for (index, entry) in self.timeline.native.entries.iter().enumerate() {
+			if let Some(rows) = voice.rows.remove(&(self.timeline.native.summary.len() + index)) {
+				if !hidden.is_empty() {
+					panel = panel.child(self.native_history_spacer(work, mem::take(&mut hidden)));
+				}
+				previous = None;
+				if matches!(&entry.content, AgentTimelineContent::Item { kind, text, attachments, .. }
+					if kind == "userMessage" && attachments.is_empty() && self.covered_voice_handoff(&work.id, text))
+				{
+					let body = gpui::div().flex().flex_col().gap(gpui::px(ROW_GAP)).children(rows);
+					let body =
+						self.anchored_native_history_entry(work, entry, body.into_any_element());
+					panel = panel.child(self.native_scroll_row(work, entry, body, cx));
+					continue;
+				}
+				panel = panel.children(rows);
+			}
 			if let Some(group) = voice_headers.get(&index) {
 				let entry = &self.timeline.native.entries
 					[group.anchor_index(&self.timeline.native.entries)];
 
-				if group.hidden() || self.live_voice_owns_session(&work.id, &group.session) {
+				if group.hidden()
+					|| voice.fallback_sessions.contains(&group.session)
+					|| self.active_voice_owns_session(&work.id, &group.session)
+				{
 					continue;
 				}
 				if !hidden.is_empty() {
@@ -874,6 +970,7 @@ impl AgentSurface {
 				let body = self.native_voice_group_body(work, group, entry, cx);
 
 				panel = panel.child(self.native_scroll_row(work, entry, body, cx));
+				previous = None;
 
 				continue;
 			}
@@ -894,52 +991,86 @@ impl AgentSurface {
 				continue;
 			}
 
-			if let Some(group) = headers.get(&index) {
+			let header = headers.get(&index);
+			if header.is_none()
+				&& (collapsed.contains(&index)
+					|| wait_hidden.contains(&index)
+					|| batch_hidden.contains(&index))
+			{
+				continue;
+			}
+			// Only a rendered neighbour can request a compact gap.
+			let gap = match previous.replace(index) {
+				Some(prior) => match headers.get(&prior) {
+					Some(group) if group.final_index == index =>
+						crate::ui_theme::PROCESS_CONTENT_GAP,
+					Some(_) => ROW_GAP,
+					None => self.native_row_gap(work, &self.timeline.native.entries[prior], entry),
+				},
+				None => ROW_GAP,
+			};
+			if let Some(group) = header {
 				if !hidden.is_empty() {
 					panel = panel.child(self.native_history_spacer(work, mem::take(&mut hidden)));
 				}
 
-				let mut body = self.process_history_body(work, group, entry, cx);
+				let body = self.process_history_body(work, group, entry, cx);
 
-				if !group.indices.contains(&index) {
-					body = body.child(self.native_timeline_content(
+				let body = if group.indices.contains(&index) {
+					if self.timeline.native.completions.get(group).is_none()
+						&& self
+							.timeline
+							.native
+							.arrivals
+							.tool_batch(&self.timeline.native.entries[index..])
+							.is_some()
+					{
+						panel = panel.child(self.native_timeline_row_with_content(
+							work,
+							entry,
+							body.into_any_element(),
+							gap,
+							cx,
+						));
+						continue;
+					}
+					body.into_any_element()
+				} else {
+					let answer = self.native_timeline_content(
 						work,
 						entry,
 						&serde_json::json!([work.id, work.codex_thread_id, key(entry)]).to_string(),
 						false,
 						cx,
-					));
-				}
+					);
+					gpui::div()
+						.w_full()
+						.flex()
+						.flex_col()
+						.gap(gpui::px(crate::ui_theme::PROCESS_CONTENT_GAP))
+						.child(body)
+						.child(answer)
+						.into_any_element()
+				};
 
-				panel =
-					panel.child(self.native_scroll_row(work, entry, body.into_any_element(), cx));
-
-				continue;
-			}
-
-			if collapsed.contains(&index) || wait_hidden.contains(&index) {
-				continue;
-			}
-
-			if let Some(group) = waits.get(&index) {
-				if !hidden.is_empty() {
-					panel = panel.child(self.native_history_spacer(work, mem::take(&mut hidden)));
-				}
-
-				let body = self.native_wait_group(work, group, entry, false, cx);
-
-				panel = panel.child(self.native_timeline_row_with_content(
-					work,
-					entry,
-					body,
-					self.native_row_gap(work, index),
-					cx,
-				));
+				panel = panel.child(
+					gpui::div()
+						.mt(gpui::px(gap - ROW_GAP))
+						.child(self.native_scroll_row(work, entry, body, cx)),
+				);
 
 				continue;
 			}
-			if let Some(height) = self.native_offscreen_height(work, entry) {
-				hidden.push((entry, height, self.native_row_gap(work, index)));
+
+			let group_body = if let Some(batch) = batches.get(&index) {
+				Some(self.tool_batch_body(work, index, *batch, cx))
+			} else {
+				waits.get(&index).map(|group| self.native_wait_group(work, group, entry, false, cx))
+			};
+			if group_body.is_none()
+				&& let Some(height) = self.native_offscreen_height(work, entry)
+			{
+				hidden.push((entry, height, gap));
 
 				continue;
 			}
@@ -948,33 +1079,40 @@ impl AgentSurface {
 				panel = panel.child(self.native_history_spacer(work, mem::take(&mut hidden)));
 			}
 
-			panel = panel.child(self.native_timeline_row(
-				work,
-				entry,
-				self.native_row_gap(work, index),
-				cx,
-			));
+			let row = if let Some(body) = group_body {
+				self.native_timeline_row_with_content(work, entry, body, gap, cx)
+			} else {
+				self.native_timeline_row(work, entry, gap, cx)
+			};
+			panel = panel.child(row);
 		}
 
-		panel
-			.when(!hidden.is_empty(), |panel| panel.child(self.native_history_spacer(work, hidden)))
+		let last_process = previous
+			.filter(|i| !headers.contains_key(i))
+			.and_then(|i| groups::process_turn(&self.timeline.native.entries[i]));
+		(
+			panel.when(!hidden.is_empty(), |panel| {
+				panel.child(self.native_history_spacer(work, hidden))
+			}),
+			last_process,
+		)
 	}
 
-	fn prepare_native_process_folds(
-		&self,
-		groups: &[groups::Group],
-		collapsed: &BTreeSet<usize>,
-		wait_hidden: &BTreeSet<usize>,
-		waits: &std::collections::BTreeMap<usize, waits::Group>,
-	) {
-		let folds = collapsed
-			.iter()
-			.copied()
-			.chain(wait_hidden.iter().copied())
-			.chain(waits.keys().copied())
-			.collect();
-
-		self.prepare_process_folds(groups, &folds);
+	fn native_tool_batches(&self, folded: &BTreeSet<usize>) -> BTreeMap<usize, ToolBatch> {
+		let native = &self.timeline.native;
+		(0..native.entries.len())
+			.filter_map(|start| {
+				let mut batch = native.arrivals.tool_batch(&native.entries[start..])?;
+				let indices = start..start + batch.count;
+				if folded.range(indices.clone()).next().is_some() {
+					return None;
+				}
+				batch.expanded |= native.entries[indices]
+					.iter()
+					.any(|entry| self.is_revealed_history_item(entry));
+				Some((start, batch))
+			})
+			.collect()
 	}
 
 	fn native_wait_groups(&self) -> std::collections::BTreeMap<usize, waits::Group> {

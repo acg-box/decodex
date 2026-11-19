@@ -25,6 +25,17 @@ impl Style {
 }
 
 pub(super) fn control(key: String, label: String, expanded: bool, style: Style) -> Stateful<Div> {
+	caption(&key, label.clone(), expanded, style)
+		.id(SharedString::from(key))
+		.role(Role::Button)
+		.tab_index(0)
+		.aria_expanded(expanded)
+		.aria_label(label)
+		.cursor_pointer()
+		.hover(|s| s.text_color(ui_theme::rgb(TEXT)))
+}
+
+pub(super) fn caption(key: &str, label: String, expanded: bool, style: Style) -> Div {
 	let (size, weight, ink, line_height, padding) = match style {
 		Style::Process =>
 			(ui_theme::foreground::METRIC_SIZE, FontWeight::NORMAL, TEXT_MUTED, 14., 3.),
@@ -32,12 +43,6 @@ pub(super) fn control(key: String, label: String, expanded: bool, style: Style) 
 			(ui_theme::BODY_SIZE, FontWeight::SEMIBOLD, TEXT, ui_theme::BODY_LINE_HEIGHT, 2.),
 	};
 	gpui::div()
-		.id(SharedString::from(key.clone()))
-		.role(Role::Button)
-		.tab_index(0)
-		.aria_expanded(expanded)
-		.aria_label(label.clone())
-		.cursor_pointer()
 		.flex()
 		.items_center()
 		.flex_none()
@@ -49,7 +54,6 @@ pub(super) fn control(key: String, label: String, expanded: bool, style: Style) 
 		.line_height(gpui::px(line_height))
 		.whitespace_nowrap()
 		.text_color(ui_theme::rgb(ink))
-		.hover(|s| s.text_color(ui_theme::rgb(TEXT)))
 		.child(workspace_symbols::process_chevron(
 			SharedString::from(format!("{key}-chevron")),
 			expanded,

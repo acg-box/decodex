@@ -12,7 +12,11 @@ mod dictation_capture;
 mod transport;
 
 #[cfg(all(target_os = "macos", not(test)))] use std::os::unix::ffi::OsStrExt as _;
-use std::{array, collections::BTreeSet, time::Duration};
+use std::{
+	array,
+	collections::{BTreeMap, BTreeSet},
+	time::Duration,
+};
 
 use gpui::{AnyElement, Bounds, KeyDownEvent, prelude::FluentBuilder as _};
 use raw_window_handle as _;
@@ -36,8 +40,9 @@ use crate::{
 	ui_theme::{BODY_LINE_HEIGHT, HOVER_FILL, MESSAGE_GAP},
 };
 use decodex_protocol::{
-	AgentHistoryEntryDto, AgentTimelineContent, AgentVoiceOptions, AgentVoicePhase,
-	AgentVoiceRequest, AgentVoiceStatus, HistoryText, VoiceSdp,
+	AgentHistoryEntryDto, AgentTimelineContent, AgentTimelineEntry, AgentVoiceOptions,
+	AgentVoicePhase, AgentVoicePresentation, AgentVoiceRequest, AgentVoiceStatus, HistoryText,
+	VoiceSdp,
 };
 
 pub(super) struct VoiceUi {
@@ -292,8 +297,22 @@ impl Drop for Media {
 pub(super) struct CaptionHistory {
 	session: EntityId,
 	work: EntityId,
+	ended_at_micros: i64,
 	captions: Vec<Caption>,
 	matched_receipts: BTreeSet<i64>,
+}
+
+struct CompletedVoice {
+	session: String,
+	at_micros: i64,
+	text: String,
+	presentation: Option<AgentVoicePresentation>,
+}
+
+#[derive(Default)]
+pub(super) struct VoiceTimeline {
+	pub rows: BTreeMap<usize, Vec<AnyElement>>,
+	pub fallback_sessions: BTreeSet<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -1076,6 +1095,7 @@ impl AgentSurface {
 					session: voice.session,
 					matched_receipts: voice.matched_receipts,
 					work: voice.work,
+					ended_at_micros: crate::ui_time::now(),
 					captions: voice.captions,
 				});
 			}
@@ -1091,16 +1111,12 @@ impl AgentSurface {
 
 	pub(super) fn reconcile_voice_captions(&mut self, work: &str, history: &AgentHistoryResult) {
 		let AgentHistoryResult::Available { entries, .. } = history else { return };
+		if self.retired_voice_captions.is_empty() {
+			return;
+		}
 		let native = self.timeline.native.binding.as_ref().is_some_and(|b| b.work == work);
-		let ready: BTreeSet<_> = self
-			.retired_voice_captions
-			.iter()
-			.filter(|v| {
-				v.work.as_str() == work
-					&& self.native_voice_presentation_ready(work, v.session.as_str())
-			})
-			.map(|v| v.session.as_str().to_owned())
-			.collect();
+		let groups = history::groups(&self.timeline.native.entries);
+		let ready = self.complete_native_voice_sessions(work, &groups);
 
 		for call in self.retired_voice_captions.iter_mut().filter(|v| v.work.as_str() == work) {
 			if native {
@@ -1128,108 +1144,226 @@ impl AgentSurface {
 		// place for the whole call, even when storage has already accepted it.
 	}
 
-	fn native_voice_presentation_ready(&self, work: &str, session: &str) -> bool {
-		self.timeline.native.binding.as_ref().is_some_and(|b|b.work==work)
-            && history::groups(&self.timeline.native.entries).iter().any(|group|group.session==session && group.ended && group.indices.iter().any(|i|matches!(&self.timeline.native.entries[*i].content,AgentTimelineContent::VoiceBoundary{kind,..} if kind=="realtimeSessionStarted")))
+	fn complete_native_voice_sessions<'a>(
+		&self,
+		work: &str,
+		groups: &'a [history::Conversation],
+	) -> BTreeSet<&'a str> {
+		if !self.timeline.native.binding.as_ref().is_some_and(|b| b.work == work) {
+			return BTreeSet::new();
+		}
+		groups
+			.iter()
+			.filter_map(|group| {
+				let first = &self.timeline.native.entries[group.indices[0]].content;
+				(group.ended
+					&& matches!(first, AgentTimelineContent::VoiceBoundary { kind, .. }
+				if kind == "realtimeSessionStarted"))
+				.then_some(group.session.as_str())
+			})
+			.collect()
 	}
 
 	pub(super) fn voice_presentation(
 		&self,
 		work: &str,
 		session: &str,
-	) -> Option<decodex_protocol::AgentVoicePresentation> {
-		self.voice_record(work, session).and_then(|(_, presentation)| presentation)
-	}
-
-	fn voice_record(
-		&self,
-		work: &str,
-		session: &str,
-	) -> Option<(String, Option<decodex_protocol::AgentVoicePresentation>)> {
-		let mut entries = std::collections::BTreeMap::new();
-		if let Some((older, _)) = self.timeline.older_history.get(work) {
-			entries.extend(older.iter().map(|entry| (entry.id, entry)));
-		}
-		if let Some((_, AgentHistoryResult::Available { entries: recent, .. })) =
-			self.history.as_ref().filter(|(id, _)| id == work)
-		{
-			entries.extend(recent.iter().map(|entry| (entry.id, entry)));
-		}
-		let entries = entries
-			.values()
-			.copied()
-			.filter(|e| {
-				e.receipt.as_ref().is_some_and(|r| r.voice_session_id.as_deref() == Some(session))
-			})
-			.collect::<Vec<_>>();
-		let presentation = entries.iter().find_map(|entry| entry.receipt.as_ref()?.voice.clone());
-		let text = entries
-			.iter()
-			.map(|e| format!("{}: {}", e.kind, e.text))
-			.collect::<Vec<_>>()
-			.join("\n");
-		(!text.is_empty()).then_some((text, presentation))
+	) -> Option<AgentVoicePresentation> {
+		self.saved_delivery_entries(work)
+			.into_values()
+			.filter_map(|entry| entry.receipt.as_ref())
+			.filter(|receipt| receipt.voice_session_id.as_deref() == Some(session))
+			.find_map(|receipt| receipt.voice.clone())
 	}
 
 	fn saved_voice_records(
 		&self,
 		work: &str,
-	) -> Vec<(String, String, decodex_protocol::AgentVoicePresentation)> {
+		entries: &[&AgentHistoryEntryDto],
+		complete: &BTreeSet<&str>,
+	) -> Vec<CompletedVoice> {
 		if !self.timeline.native.binding.as_ref().is_some_and(|b| b.work == work) {
 			return Vec::new();
 		}
-		let mut entries = std::collections::BTreeMap::new();
-		if let Some((older, _)) = self.timeline.older_history.get(work) {
-			entries.extend(older.iter().map(|e| (e.id, e)));
-		}
-		if let Some((_, AgentHistoryResult::Available { entries: recent, .. })) =
-			self.history.as_ref().filter(|(id, _)| id == work)
-		{
-			entries.extend(recent.iter().map(|e| (e.id, e)));
-		}
-		let mut seen = BTreeSet::new();
-		entries
-			.values()
-			.filter_map(|e| {
-				let receipt = e.receipt.as_ref()?;
-				let session = receipt.voice_session_id.as_deref()?;
-				if !seen.insert(session) {
+		history::saved_groups(entries)
+			.into_iter()
+			.filter_map(|(indices, text)| {
+				let first = entries[indices[0]];
+				let session = first.receipt.as_ref()?.voice_session_id.as_deref()?;
+				if complete.contains(session) {
 					return None;
 				}
-				let (text, presentation) = self.voice_record(work, session)?;
-				let presentation = presentation?;
-				presentation.duration_ms?;
-				(!self.native_voice_presentation_ready(work, session))
-					.then(|| (session.into(), text, presentation))
+				let presentation = indices
+					.into_iter()
+					.filter_map(|index| entries[index].receipt.as_ref()?.voice.as_ref())
+					.find(|presentation| presentation.duration_ms.is_some())?;
+				Some(CompletedVoice {
+					session: session.into(),
+					at_micros: first.created_at_micros,
+					text,
+					presentation: Some(presentation.clone()),
+				})
 			})
 			.collect()
 	}
 
 	pub(super) fn covered_voice_handoff(&self, work: &str, text: &str) -> bool {
-		if !history::delegation(text).is_some_and(|d| d.source == "transcript_tail_flush") {
-			return false;
-		}
-		let Some(tail) = history::handoff(text) else { return false };
-		let normalize = |text: &str| text.split_whitespace().collect::<Vec<_>>().join(" ");
-		let tail = normalize(&tail);
-		!tail.is_empty()
-			&& self
-				.saved_voice_records(work)
-				.iter()
-				.any(|(_, text, _)| normalize(text).ends_with(&tail))
+		self.native_agents.selected.is_none()
+			&& voice_tail(text).is_some_and(|tail| {
+				let groups = history::groups(&self.timeline.native.entries);
+				let entries = self.saved_delivery_entries(work).into_values().collect::<Vec<_>>();
+				self.completed_voice_records(work, &groups, &entries)
+					.iter()
+					.any(|record| normalized(&record.text).ends_with(&tail))
+			})
 	}
 
-	pub(super) fn live_voice_owns_session(&self, work: &str, session: &str) -> bool {
+	pub(super) fn active_voice_owns_session(&self, work: &str, session: &str) -> bool {
 		self.voice
 			.as_ref()
 			.is_some_and(|v| v.work.as_str() == work && v.session.as_str() == session)
-			|| self.saved_voice_records(work).iter().any(|(id, _, _)| id == session)
-			|| self.retired_voice_captions.iter().any(|v| {
+	}
+
+	fn completed_voice_records(
+		&self,
+		work: &str,
+		groups: &[history::Conversation],
+		entries: &[&AgentHistoryEntryDto],
+	) -> Vec<CompletedVoice> {
+		let complete = self.complete_native_voice_sessions(work, groups);
+		let mut records = self.saved_voice_records(work, entries, &complete);
+		let retired = self
+			.retired_voice_captions
+			.iter()
+			.filter(|v| {
 				v.work.as_str() == work
-					&& v.session.as_str() == session
-					&& !v.captions.is_empty()
-					&& !self.native_voice_presentation_ready(work, session)
+					&& !complete.contains(v.session.as_str())
+					&& !records.iter().any(|record| record.session == v.session.as_str())
 			})
+			.map(|call| CompletedVoice {
+				session: call.session.as_str().into(),
+				at_micros: call.ended_at_micros,
+				text: call
+					.captions
+					.iter()
+					.map(|c| format!("{}: {}", c.role, c.text))
+					.collect::<Vec<_>>()
+					.join("\n"),
+				presentation: entries
+					.iter()
+					.filter_map(|entry| entry.receipt.as_ref())
+					.filter(|receipt| {
+						receipt.voice_session_id.as_deref() == Some(call.session.as_str())
+					})
+					.find_map(|receipt| receipt.voice.clone()),
+			})
+			.collect::<Vec<_>>();
+		records.extend(retired);
+		records.sort_by_key(|record| record.at_micros);
+		records
+	}
+
+	fn completed_voice_block(
+		&self,
+		work: &str,
+		record: CompletedVoice,
+		cx: &mut Context<Self>,
+	) -> VoiceBlock {
+		let key = format!("saved-voice-{work}-{}", record.session);
+		VoiceBlock {
+			action: self.side_chat_response_action(&record.text, &key, cx),
+			viewport: Some(self.voice_history_viewport(cx)),
+			key,
+			title: "Voice conversation".into(),
+			text: record.text,
+			presentation: record.presentation,
+		}
+	}
+
+	pub(super) fn completed_voice_timeline(
+		&self,
+		work: &str,
+		summary: &[AgentTimelineContent],
+		entries: &[AgentTimelineEntry],
+		groups: &[history::Conversation],
+		cx: &mut Context<Self>,
+	) -> VoiceTimeline {
+		let mut voice = VoiceTimeline::default();
+		if self.native_agents.selected.is_some() {
+			return voice;
+		}
+		let saved = self.saved_delivery_entries(work).into_values().collect::<Vec<_>>();
+		let records = self.completed_voice_records(work, groups, &saved);
+		if records.is_empty() {
+			return voice;
+		}
+		let items =
+			summary.iter().chain(entries.iter().map(|entry| &entry.content)).collect::<Vec<_>>();
+		let mut turn_times = saved
+			.iter()
+			.filter_map(|entry| {
+				let receipt = entry.receipt.as_ref()?;
+				(receipt.event_kind == "user_message" && entry.created_at_micros > 0)
+					.then_some((receipt.delivered_turn_id.as_deref()?, entry.created_at_micros))
+			})
+			.collect::<BTreeMap<_, _>>();
+		for item in &items {
+			if let AgentTimelineContent::TurnBoundary {
+				turn_id, started_at_micros: Some(at), ..
+			} = item
+				&& *at > 0
+			{
+				turn_times.insert(turn_id, *at);
+			}
+		}
+		let transcripts: Vec<_> = records.iter().map(|record| normalized(&record.text)).collect();
+		let tails: Vec<_> = items
+			.iter()
+			.enumerate()
+			.filter_map(|(index, item)| {
+				let AgentTimelineContent::Item { kind, text, attachments, .. } = item else {
+					return None;
+				};
+				if kind != "userMessage" || !attachments.is_empty() {
+					return None;
+				}
+				let tail = voice_tail(text)?;
+				let mut matches = transcripts
+					.iter()
+					.enumerate()
+					.filter(|(_, transcript)| transcript.ends_with(&tail));
+				let (record, _) = matches.next()?;
+				matches.next().is_none().then_some((record, index))
+			})
+			.collect();
+		for (record_index, record) in records.into_iter().enumerate() {
+			voice.fallback_sessions.insert(record.session.clone());
+			let position = groups
+				.iter()
+				.find(|group| group.session == record.session)
+				.map(|group| summary.len() + group.indices[0])
+				.or_else(|| {
+					let mut positions = tails.iter().filter(|(owner, _)| *owner == record_index);
+					let (_, index) = positions.next()?;
+					positions.next().is_none().then_some(*index)
+				})
+				.or_else(|| {
+					items.iter().position(|item| match item {
+						AgentTimelineContent::Item { turn_id, .. }
+						| AgentTimelineContent::TurnBoundary { turn_id, .. } => turn_times
+							.get(turn_id.as_str())
+							.is_some_and(|at| *at > record.at_micros),
+						_ => false,
+					})
+				})
+				.unwrap_or(items.len());
+			voice
+				.rows
+				.entry(position)
+				.or_default()
+				.push(self.completed_voice_block(work, record, cx).into_any_element());
+		}
+		voice
 	}
 
 	pub(super) fn live_chat_caption(
@@ -1237,16 +1371,12 @@ impl AgentSurface {
 		work: &str,
 		cx: &mut Context<Self>,
 	) -> Option<AnyElement> {
-		let saved = self.saved_voice_records(work);
-		let retired: Vec<_> = self
-			.retired_voice_captions
-			.iter()
-			.filter(|v| {
-				v.work.as_str() == work
-					&& !saved.iter().any(|(session, _, _)| session == v.session.as_str())
-					&& !self.native_voice_presentation_ready(work, v.session.as_str())
-			})
-			.collect();
+		let completed = if self.timeline.native.binding.as_ref().is_some_and(|b| b.work == work) {
+			Vec::new()
+		} else {
+			let saved = self.saved_delivery_entries(work).into_values().collect::<Vec<_>>();
+			self.completed_voice_records(work, &[], &saved)
+		};
 		let captions = self
 			.voice
 			.as_ref()
@@ -1257,7 +1387,7 @@ impl AgentSurface {
 		// speakers moves an interruption above the reply it interrupted.
 		let captions = presentation_captions(captions);
 
-		if captions.is_empty() && retired.is_empty() && saved.is_empty() {
+		if captions.is_empty() && completed.is_empty() {
 			return None;
 		}
 
@@ -1267,42 +1397,11 @@ impl AgentSurface {
 				.gap(gpui::px(MESSAGE_GAP))
 				.flex()
 				.flex_col()
-				.children(saved.into_iter().map(|(session, text, presentation)| VoiceBlock {
-					action: self.side_chat_response_action(
-						&text,
-						&format!("saved-voice-{work}-{session}"),
-						cx,
-					),
-					viewport: Some(self.voice_history_viewport(cx)),
-					key: format!("saved-voice-{work}-{session}"),
-					title: "Voice conversation".into(),
-					text,
-					presentation: Some(presentation),
-				}))
-				.children(retired.into_iter().map(|call| {
-					VoiceBlock {
-						action: self.side_chat_response_action(
-							&call
-								.captions
-								.iter()
-								.map(|c| format!("{}: {}", c.role, c.text))
-								.collect::<Vec<_>>()
-								.join("\n"),
-							&format!("retired-{}-{}", work, call.session.as_str()),
-							cx,
-						),
-						presentation: self.voice_presentation(work, call.session.as_str()),
-						viewport: Some(self.voice_history_viewport(cx)),
-						key: format!("retired-{}-{}", work, call.session.as_str()),
-						title: "Voice conversation".into(),
-						text: call
-							.captions
-							.iter()
-							.map(|c| format!("{}: {}", c.role, c.text))
-							.collect::<Vec<_>>()
-							.join("\n"),
-					}
-				}))
+				.children(
+					completed
+						.into_iter()
+						.map(|record| self.completed_voice_block(work, record, cx)),
+				)
 				.children(captions.into_iter().map(|caption| {
 					agent_surface::speech_bubble(
 						caption.role,
@@ -1397,6 +1496,18 @@ impl AgentSurface {
 			voice.follow = following;
 		}
 	}
+}
+
+fn normalized(text: &str) -> String {
+	text.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+fn voice_tail(text: &str) -> Option<String> {
+	if history::delegation(text)?.source != "transcript_tail_flush" {
+		return None;
+	}
+	let tail = normalized(&history::handoff(text)?);
+	(!tail.is_empty()).then_some(tail)
 }
 
 fn presentation_captions<'a>(captions: impl Iterator<Item = &'a Caption>) -> Vec<Caption> {
@@ -1673,6 +1784,12 @@ mod tests {
 		},
 		ui_feedback::Tone,
 	};
+
+	fn completed_records(surface: &AgentSurface) -> Vec<super::CompletedVoice> {
+		let entries = surface.saved_delivery_entries("agent").into_values().collect::<Vec<_>>();
+		let groups = super::history::groups(&surface.timeline.native.entries);
+		surface.completed_voice_records("agent", &groups, &entries)
+	}
 
 	struct VoiceComposerView(Entity<AgentSurface>);
 
@@ -2136,19 +2253,18 @@ mod tests {
 			s.reconcile_voice_captions("agent", &saved_voice_history(Some("call")));
 
 			assert!(s.live_chat_caption("agent", cx).is_some());
-			assert!(s.live_voice_owns_session("agent", "call"));
-			assert!(!s.live_voice_owns_session("agent", "other-call"));
-			assert!(!s.live_voice_owns_session("other-work", "call"));
+			assert!(s.active_voice_owns_session("agent", "call"));
+			assert!(!s.active_voice_owns_session("agent", "other-call"));
+			assert!(!s.active_voice_owns_session("other-work", "call"));
 
 			let _ = s.retire_voice_media();
 
 			s.reconcile_voice_captions("agent", &saved_voice_history(Some("call")));
 
 			assert!(
-				s.live_chat_caption("agent", cx).is_some(),
+				completed_records(s).iter().any(|call| call.session == "call"),
 				"Do not clear speech before the closed native group arrives"
 			);
-			assert!(s.live_voice_owns_session("agent", "call"));
 
 			s.timeline.native.entries.push(decodex_protocol::AgentTimelineEntry {
 				position: 2,
@@ -2165,15 +2281,14 @@ mod tests {
 			s.reconcile_voice_captions("agent", &saved_voice_history(Some("call")));
 
 			assert!(
-				s.live_chat_caption("agent", cx).is_some(),
+				!completed_records(s).is_empty(),
 				"A partial native page must not discard the full retained call"
 			);
 
 			s.timeline.native.entries.insert(0, start);
 
-			assert!(s.live_chat_caption("agent", cx).is_none());
 			assert!(
-				!s.live_voice_owns_session("agent", "call"),
+				completed_records(s).is_empty(),
 				"Native group and live text must switch on the same page"
 			);
 
@@ -2904,6 +3019,89 @@ mod tests {
 	}
 
 	#[gpui::test]
+	fn completed_voice_history_stays_before_later_native_text(cx: &mut gpui::TestAppContext) {
+		use crate::shell::agent_surface::native_timeline;
+		use decodex_protocol::{AgentTimelineContent, AgentTimelineEntry, AgentVoicePresentation};
+
+		let (view, visual) = cx.add_window_view(voice_history_fixture);
+		visual.simulate_resize(gpui::size(gpui::px(700.), gpui::px(800.)));
+		let surface = view.read_with(visual, |view, _| view.0.clone());
+		let message = |position, turn: &str, text: &str| AgentTimelineEntry {
+			position,
+			content: AgentTimelineContent::Item {
+				turn_id: turn.into(),
+				item_id: turn.into(),
+				kind: "userMessage".into(),
+				phase: None,
+				text: text.into(),
+				truncated: false,
+				collaboration: None,
+				attachments: vec![],
+				activity: None,
+			},
+		};
+		let before = message(1, "before", "Text before the call");
+		let after = message(4, "after", "Text after the call");
+		let selector = |entry: &AgentTimelineEntry| -> &'static str {
+			Box::leak(
+				format!(
+					"native-history-{}",
+					serde_json::json!(["agent", "thread", native_timeline::key(entry)])
+				)
+				.into_boxed_str(),
+			)
+		};
+		let before_selector = selector(&before);
+		let after_selector = selector(&after);
+		let voice_block = "voice-history-block-saved-voice-agent-call";
+		let mut history = saved_voice_history(Some("call"));
+		let AgentHistoryResult::Available { entries, .. } = &mut history else { unreachable!() };
+		entries[0].receipt.as_mut().unwrap().voice =
+			Some(AgentVoicePresentation { spend: None, duration_ms: Some(9_000) });
+
+		for with_handoff in [true, false] {
+			surface.update(visual, |s, cx| {
+				s.voice = None;
+				s.history = Some(("agent".into(), history.clone()));
+				s.timeline.native.entries = vec![before.clone()];
+				if with_handoff {
+					s.timeline.native.entries.push(message(2, "tail", "<realtime_delegation><source>transcript_tail_flush</source><input>Internal</input><transcript_delta>user: Hello</transcript_delta></realtime_delegation>"));
+				}
+				cx.notify();
+			});
+			visual.update(crate::ui_frame::draw_current_frame);
+			assert!(visual.debug_bounds(voice_block).is_some());
+
+			surface.update(visual, |s, cx| {
+				if !with_handoff {
+					s.timeline.native.entries.push(AgentTimelineEntry {
+						position: 3,
+						content: AgentTimelineContent::TurnBoundary {
+							turn_id: "after".into(),
+							completed: false,
+							status: None,
+							started_at_micros: Some(200),
+							duration_ms: None,
+							usage_summary: None,
+							usage: None,
+							timing: None,
+							error: None,
+						},
+					});
+				}
+				s.timeline.native.entries.push(after.clone());
+				cx.notify();
+			});
+			visual.update(crate::ui_frame::draw_current_frame);
+			let before = visual.debug_bounds(before_selector).unwrap();
+			let voice = visual.debug_bounds(voice_block).unwrap();
+			let after = visual.debug_bounds(after_selector).unwrap();
+			assert!(before.bottom() <= voice.top() && voice.bottom() <= after.top());
+			assert!(visual.debug_bounds("live-voice-captions").is_none());
+		}
+	}
+
+	#[gpui::test]
 	fn saved_tail_flush_replaces_retired_captions_by_call_identity(cx: &mut gpui::TestAppContext) {
 		let surface = cx.new(AgentSurface::new);
 		surface.update(cx,|s,_cx| {
@@ -2916,13 +3114,13 @@ mod tests {
 			}
 			s.history=Some(("agent".into(),history.clone()));
 			s.timeline.native.binding=Some(crate::shell::agent_surface::native_timeline::Binding {work:"agent".into(),thread:"thread".into(),account:"account".into()});
-			assert!(s.live_chat_caption("agent",_cx).is_some());
+			assert!(!completed_records(s).is_empty());
 			s.timeline.native.entries.push(decodex_protocol::AgentTimelineEntry {position:0,content:decodex_protocol::AgentTimelineContent::Item {turn_id:"tail".into(),item_id:"handoff".into(),kind:"userMessage".into(),phase:None,text:"<realtime_delegation><source>transcript_tail_flush</source><input>Internal instruction</input><transcript_delta>user: Hello</transcript_delta></realtime_delegation>".into(),truncated:false,collaboration:None,attachments:vec![],activity:None}});
 			s.reconcile_voice_captions("agent",&history);
 			assert!(s.retired_voice_captions.is_empty(),"one complete call must render once");
-            let records=s.saved_voice_records("agent");assert_eq!(records.len(),1);
-            assert_eq!(records[0].1,"user: Hello");
-            assert_eq!(records[0].2.duration_ms,Some(9000));
+            let records=completed_records(s);assert_eq!(records.len(),1);
+            assert_eq!(records[0].text,"user: Hello");
+            assert_eq!(records[0].presentation.as_ref().and_then(|p| p.duration_ms),Some(9000));
             assert!(s.covered_voice_handoff("agent","<realtime_delegation><source>transcript_tail_flush</source><input>Internal</input><transcript_delta>user: Hello</transcript_delta></realtime_delegation>"));
             assert!(!s.covered_voice_handoff("agent","<realtime_delegation><source>transcript_tail_flush</source><input>Internal</input><transcript_delta>user: New words</transcript_delta></realtime_delegation>"));
         });

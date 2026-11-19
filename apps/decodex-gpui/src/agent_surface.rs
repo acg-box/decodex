@@ -145,7 +145,7 @@ use output_stream::OutputStream;
 use question_notices::QuestionNotices;
 use recap::Automatic;
 use requests::{QuestionTimer, RequestReader};
-use response_metrics::{FinishedFooter, ResponseMetrics};
+use response_metrics::{FinishedFooter, FooterPresentation, ResponseMetrics};
 use selectable_text::SelectableText;
 use skills::Picker;
 use text_reveal::StreamingText;
@@ -2376,6 +2376,14 @@ impl AgentSurface {
 				&& self.selected.as_ref() == Some(&work.id)
 				&& (self.sending || self.feedback.message == "Message saved. Waiting for agent…"));
 		let (activity, completed_turn) = self.working_presentation(work);
+		let turn = (active
+			&& (self.native_agents.selected.is_some()
+				|| self.composer_unavailable_reason().is_none()
+				|| activity == crate::ui_cloudlet::State::Attention))
+			.then(|| work.active_turn_id.clone().unwrap_or_else(|| work.id.clone()))
+			.or_else(|| self.uncommitted_reply_turn(work));
+		let footer_progress =
+			completed_turn.as_deref().and_then(|turn| self.final_footer_progress(turn));
 
 		if self.native_agents.selected.is_none() && !self.native_history_active(work) {
 			panel = panel.children(self.send_previews(&work.id));
@@ -2393,16 +2401,13 @@ impl AgentSurface {
 			.child(Working {
 				activity,
 				completed_turn,
+				footer_progress,
 				key: format!(
 					"working-{}-{}",
 					work.id,
 					work.codex_thread_id.as_deref().unwrap_or_default()
 				),
-				turn: (active
-					&& (self.native_agents.selected.is_some()
-						|| self.composer_unavailable_reason().is_none()
-						|| activity == crate::ui_cloudlet::State::Attention))
-					.then(|| work.active_turn_id.clone().unwrap_or_else(|| work.id.clone())),
+				turn,
 			});
 
 		if active
@@ -3175,7 +3180,7 @@ fn history_entry_presented(
 	metrics: Option<AnyElement>,
 	streamed_body: Option<AnyElement>,
 	show_metadata: bool,
-	metadata_ready: Option<Rc<Cell<bool>>>,
+	metadata: Option<FooterPresentation>,
 	message_action: Option<AnyElement>,
 ) -> Div {
 	if matches!(entry.kind.as_str(), "partial_plan" | "partial_answer") {
@@ -3266,10 +3271,10 @@ fn history_entry_presented(
 				)
 				// Native output keeps its footer mounted through live-to-saved
 				// promotion. Paths without completion metadata must not create one.
-				.when(!user && (show_metadata || metadata_ready.is_some()), |body| {
+				.when(!user && (show_metadata || metadata.is_some()), |body| {
 					body.child(FinishedFooter {
 						visible: show_metadata,
-						ready: metadata_ready,
+						presentation: metadata,
 						child: show_metadata.then(|| {
 							response_metrics::footer(entry, identity, metrics, footer_action)
 						}),

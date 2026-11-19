@@ -24,16 +24,26 @@ use decodex_protocol::{AgentHistoryEntryDto, AgentTurnTimingDto, AgentTurnUsageD
 
 const METRICS_HEIGHT: f32 = 24.;
 
+#[derive(Clone, Default)]
+pub(super) struct FooterPresentation {
+	pub ready: Rc<Cell<bool>>,
+	pub progress: Rc<Cell<f32>>,
+}
+
 #[derive(IntoElement)]
 pub(super) struct FinishedFooter {
 	pub visible: bool,
-	pub ready: Option<Rc<Cell<bool>>>,
+	pub presentation: Option<FooterPresentation>,
 	pub child: Option<AnyElement>,
 }
 impl RenderOnce for FinishedFooter {
 	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
 		let target =
-			if self.visible && self.ready.is_none_or(|ready| ready.get()) { 1. } else { 0. };
+			if self.visible && self.presentation.as_ref().is_none_or(|state| state.ready.get()) {
+				1.
+			} else {
+				0.
+			};
 		// Keep this slot mounted while streaming. Saved replies start at their final size.
 		let state = window.use_keyed_state("response-footer-motion", cx, |_, _| Tween::new(target));
 		let now = Instant::now();
@@ -42,6 +52,9 @@ impl RenderOnce for FinishedFooter {
 
 			(motion.sample(now), motion.moving(now))
 		});
+		if let Some(state) = self.presentation {
+			state.progress.set(progress);
+		}
 
 		if moving {
 			ui_motion::request_frame(window, cx);

@@ -642,6 +642,7 @@ impl AgentSurface {
 
 	pub(super) fn jump_to_latest(&mut self, cx: &mut Context<Self>) {
 		self.reset_item_context();
+		self.cancel_native_scroll_anchor();
 		self.clear_voice_reading_space();
 
 		let Some(work) = self.selected.clone() else {
@@ -651,6 +652,7 @@ impl AgentSurface {
 			return;
 		};
 
+		ui_motion::begin_interaction();
 		self.timeline.selected = None;
 
 		self.timeline.follow_paused.insert(work.clone());
@@ -1110,7 +1112,11 @@ pub(super) struct HistoryNavigation {
 }
 impl HistoryNavigation {
 	fn progress(&self) -> f32 {
-		(self.started.elapsed().as_secs_f32() / 0.28).min(1.)
+		if ui_motion::reduced() {
+			1.
+		} else {
+			(self.started.elapsed().as_secs_f32() / 0.28).min(1.)
+		}
 	}
 }
 

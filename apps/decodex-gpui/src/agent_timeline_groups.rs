@@ -2,18 +2,24 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use gpui::{
-	AnyElement, Context, KeyDownEvent,
-	prelude::{InteractiveElement as _, IntoElement as _, StatefulInteractiveElement as _},
+	AnyElement, Context, KeyDownEvent, SharedString,
+	prelude::{
+		InteractiveElement as _, IntoElement as _, ParentElement as _,
+		StatefulInteractiveElement as _, Styled as _,
+	},
 };
 
 use crate::{
 	shell::agent_surface::native_timeline::{
-		AgentSurface, AgentTimelineContent, AgentTimelineEntry, AgentWorkItemDto,
+		AgentSurface, AgentTimelineContent, AgentTimelineEntry, AgentWorkItemDto, ItemKey,
+		motion::ToolBatch,
 	},
-	ui_theme,
+	ui_motion, ui_theme,
 };
 
-pub(super) const HEADER_HEIGHT: f32 = super::super::conversation_divider::Style::Process.height();
+use super::super::conversation_divider::{self, Style};
+
+pub(super) const HEADER_HEIGHT: f32 = Style::Process.height();
 
 pub(super) fn process_turn(entry: &AgentTimelineEntry) -> Option<&str> {
 	match &entry.content {
@@ -29,9 +35,9 @@ pub(super) fn process_turn(entry: &AgentTimelineEntry) -> Option<&str> {
 	}
 }
 
-pub(super) fn row_gap(entries: &[AgentTimelineEntry], index: usize) -> f32 {
-	let current = process_turn(&entries[index]);
-	if current.is_some() && entries.get(index + 1).and_then(process_turn) == current {
+pub(super) fn row_gap(previous: &AgentTimelineEntry, current: &AgentTimelineEntry) -> f32 {
+	let turn = process_turn(current);
+	if turn.is_some() && process_turn(previous) == turn {
 		ui_theme::PROCESS_STEP_GAP
 	} else {
 		ui_theme::MESSAGE_GAP
@@ -121,52 +127,137 @@ impl AgentSurface {
 		entry: &AgentTimelineEntry,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
-		let identity =
-			serde_json::json!([work.id, work.codex_thread_id, super::key(entry)]).to_string();
 		let turn = group.turn.clone();
 		let turns = group.turns.clone();
-		let work_id = work.id.clone();
-		let entry = entry.clone();
 		let expanded = group.expanded;
-		let keyboard = (work_id.clone(), entry.clone(), turn.clone(), turns.clone());
-		let control = super::super::conversation_divider::control(
-			format!("turn-process-{identity}"),
+		self.process_header(
+			work,
+			entry,
 			process_label(group.count),
 			expanded,
-			super::super::conversation_divider::Style::Process,
-		)
-		.debug_selector(|| "turn-process-toggle".into())
-		.on_click(cx.listener(move |s, _, _, cx| {
-			s.anchor_process_toggle(&work_id, &entry);
-			s.timeline.native.expanded_turns.retain(|id| !turns.contains(id));
-
-			if !expanded {
-				s.timeline.native.expanded_turns.insert(turn.clone());
-			}
-
-			cx.notify();
-		}))
-		.on_key_down(cx.listener(move |s, event: &KeyDownEvent, _, cx| {
-			if ["enter", "space"].contains(&event.keystroke.key.as_str()) && !event.is_held {
-				s.anchor_process_toggle(&keyboard.0, &keyboard.1);
-				s.timeline.native.expanded_turns.retain(|id| !keyboard.3.contains(id));
-
+			move |s| {
+				s.timeline.native.expanded_turns.retain(|id| !turns.contains(id));
 				if !expanded {
-					s.timeline.native.expanded_turns.insert(keyboard.2.clone());
+					s.timeline.native.expanded_turns.insert(turn.clone());
 				}
-
-				cx.notify();
-				cx.stop_propagation();
-			}
-		}))
-		.into_any_element();
-
-		super::super::conversation_divider::row(
-			control,
-			super::super::conversation_divider::Style::Process,
+			},
+			cx,
 		)
-		.into_any_element()
 	}
+
+	pub(super) fn tool_batch_body(
+		&self,
+		work: &AgentWorkItemDto,
+		start: usize,
+		batch: ToolBatch,
+		cx: &mut Context<Self>,
+	) -> AnyElement {
+		let entry = &self.timeline.native.entries[start];
+		let key = ItemKey::for_entry(entry).expect("tool batch anchor");
+		let header = self.process_header(
+			work,
+			entry,
+			tool_batch_label(batch.count),
+			batch.expanded,
+			move |s| s.timeline.native.arrivals.expand_tool_batch(&key, !batch.expanded),
+			cx,
+		);
+		let identity = process_identity(work, entry);
+		let owner = cx.entity();
+		let work = work.clone();
+
+		gpui::div()
+			.w_full()
+			.debug_selector(|| "tool-batch-block".into())
+			.child(header)
+			.child(ui_motion::disclosure_lazy(
+				SharedString::from(format!("tool-batch-body-{identity}")),
+				batch.expanded,
+				move |cx| owner.update(cx, |s, cx| s.tool_batch_details(&work, start, batch, cx)),
+			))
+			.into_any_element()
+	}
+
+	pub(super) fn outgoing_tool_batch(
+		&self,
+		work: &AgentWorkItemDto,
+		start: usize,
+		batch: ToolBatch,
+		keeps_header: bool,
+		cx: &mut Context<Self>,
+	) -> AnyElement {
+		let entry = &self.timeline.native.entries[start];
+		let header = (!keeps_header).then(|| {
+			let caption = conversation_divider::caption(
+				&process_identity(work, entry),
+				tool_batch_label(batch.count),
+				batch.expanded,
+				Style::Process,
+			);
+			conversation_divider::row(caption.into_any_element(), Style::Process)
+		});
+		gpui::div()
+			.w_full()
+			.children(header)
+			.children(batch.expanded.then(|| self.tool_batch_details(work, start, batch, cx)))
+			.into_any_element()
+	}
+
+	fn tool_batch_details(
+		&self,
+		work: &AgentWorkItemDto,
+		start: usize,
+		batch: ToolBatch,
+		cx: &mut Context<Self>,
+	) -> AnyElement {
+		let indices = (start..start + batch.count).collect::<Vec<_>>();
+		let entry = &self.timeline.native.entries[start];
+		gpui::div()
+			.pt(gpui::px(ui_theme::PROCESS_STEP_GAP))
+			.child(self.process_history_content(work, &indices, &[], entry, None, cx))
+			.into_any_element()
+	}
+
+	fn process_header(
+		&self,
+		work: &AgentWorkItemDto,
+		entry: &AgentTimelineEntry,
+		label: String,
+		expanded: bool,
+		toggle: impl Fn(&mut Self) + Clone + 'static,
+		cx: &mut Context<Self>,
+	) -> AnyElement {
+		let identity = process_identity(work, entry);
+		let action = (work.id.clone(), entry.clone());
+		let keyboard = action.clone();
+		let toggle_key = toggle.clone();
+		let control = conversation_divider::control(identity, label, expanded, Style::Process)
+			.debug_selector(|| "turn-process-toggle".into())
+			.on_click(cx.listener(move |s, _, _, cx| {
+				s.anchor_process_toggle(&action.0, &action.1);
+				toggle(s);
+				cx.notify();
+			}))
+			.on_key_down(cx.listener(move |s, event: &KeyDownEvent, _, cx| {
+				if ["enter", "space"].contains(&event.keystroke.key.as_str()) && !event.is_held {
+					s.anchor_process_toggle(&keyboard.0, &keyboard.1);
+					toggle_key(s);
+					cx.notify();
+					cx.stop_propagation();
+				}
+			}))
+			.into_any_element();
+		conversation_divider::row(control, Style::Process).into_any_element()
+	}
+}
+
+fn process_identity(work: &AgentWorkItemDto, entry: &AgentTimelineEntry) -> String {
+	let identity = serde_json::json!([work.id, work.codex_thread_id, super::key(entry)]);
+	format!("turn-process-{identity}")
+}
+
+fn tool_batch_label(count: usize) -> String {
+	format!("Tool calls ({count})")
 }
 
 /// Empty finished messages have no content to render. Process records stay visible.
@@ -574,6 +665,7 @@ mod tests {
 	use crate::shell::agent_surface::native_timeline::{
 		Binding, Timeline,
 		groups::{self, AgentSurface, AgentTimelineContent, AgentTimelineEntry, BTreeSet},
+		motion::ToolBatch,
 	};
 
 	#[test]
@@ -1015,11 +1107,11 @@ mod tests {
 			];
 			let groups = groups::groups(&entries, &BTreeSet::new());
 			let state = &s.timeline.native.completions;
-			state.prepare(&entries, &groups);
+			state.prepare(&entries, &groups, &Default::default(), |_| None);
 			state.output("turn", "2").set(true);
 			state.present_live("next-turn", "1");
 			assert!(!state.output("next-turn", "2").get());
-			state.prepare(&entries, &groups);
+			state.prepare(&entries, &groups, &Default::default(), |_| None);
 			assert!(state.get(&groups[0]).is_none(), "old steps must not start closing again");
 			assert!(state.output("turn", "2").get(), "old answer completion stays independent");
 		});
@@ -1042,32 +1134,158 @@ mod tests {
 
 			state.present_live("turn", "1");
 			state.replace_history(true);
-			state.prepare(&entries, &groups);
+			state.prepare(&entries, &groups, &Default::default(), |_| None);
 
 			let motion = state.get(&groups[0]).unwrap();
 
-			assert_eq!(motion.outgoing, BTreeSet::from([1]));
+			assert!(motion.outgoing.keys().copied().eq([1]));
 
 			state.replace_history(true);
-			state.prepare(&entries, &groups);
+			state.prepare(&entries, &groups, &Default::default(), |_| None);
 
 			assert!(std::rc::Rc::ptr_eq(&motion, &state.get(&groups[0]).unwrap()));
 
 			state.present_live("turn", "1");
 			state.replace_history(false);
-			state.prepare(&entries, &groups);
+			state.prepare(&entries, &groups, &Default::default(), |_| None);
 
 			assert!(state.get(&groups[0]).is_none(), "a different source is static history");
 
-			state.prepare(&entries[..2], &[]);
+			state.prepare(&entries[..2], &[], &Default::default(), |_| None);
 			state.replace_history(true);
-			state.prepare(&entries, &groups);
+			state.prepare(&entries, &groups, &Default::default(), |_| None);
 
 			assert!(
 				state.get(&groups[0]).is_some(),
 				"a native page replacement must retain displayed rows too"
 			);
 		});
+	}
+
+	#[gpui::test]
+	fn a_tool_batch_folds_from_the_details_the_reader_actually_saw(cx: &mut gpui::TestAppContext) {
+		let surface = cx.new(AgentSurface::new);
+		surface.update(cx, |s, _| {
+			let mut entries = vec![message(0, "userMessage", None)];
+			entries.extend((1..=4).map(|i| message(i, "functionCallOutput", None)));
+			entries.push(message(5, "agentMessage", Some("final_answer")));
+			entries.push(AgentTimelineEntry { position: 6, ..completed("completed") });
+			let groups = groups::groups(&entries, &BTreeSet::new());
+			let state = &mut s.timeline.native.completions;
+			for expanded in [false, true] {
+				let batches = [(1, ToolBatch { count: 4, expanded })].into();
+				state.replace_history(false);
+				state.prepare(&entries[..5], &[], &batches, |_| None);
+				state.prepare(&entries, &groups, &Default::default(), |_| Some(88.));
+				let motion = state.get(&groups[0]);
+				if expanded {
+					let motion = motion.expect("expanded details close with the process");
+					assert!(motion.outgoing.keys().copied().eq([1]));
+					assert!(motion.header_present && motion.batch(1).unwrap().expanded);
+				} else {
+					assert!(motion.is_none(), "a compact batch keeps the same header height");
+				}
+			}
+		});
+	}
+
+	#[gpui::test]
+	fn completing_during_tool_batch_expansion_never_adds_hidden_height(
+		cx: &mut gpui::TestAppContext,
+	) {
+		use std::time::Duration;
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		visual.simulate_resize(gpui::size(gpui::px(1_248.), gpui::px(840.)));
+		let (binding, mut page) = surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.workspace.graph_visible = false;
+			let work = s
+				.snapshot
+				.as_mut()
+				.unwrap()
+				.work_items
+				.iter_mut()
+				.find(|w| Some(&w.id) == s.selected.as_ref())
+				.unwrap();
+			work.codex_thread_id = Some("thread".into());
+			let binding = Binding {
+				work: work.id.clone(),
+				thread: "thread".into(),
+				account: "account".into(),
+			};
+			let page = decodex_protocol::AgentTimelinePage {
+				thread_id: binding.thread.clone(),
+				entries: vec![message(0, "userMessage", None)],
+				next_cursor: None,
+				source_threads: Default::default(),
+				weather: Default::default(),
+				thread_token_total: None,
+				thread_token_breakdown: None,
+				thread_metrics: None,
+				safety_buffering_turn_id: None,
+				active_realtime_session_at_page_start: None,
+				observed_activities: Vec::new(),
+			};
+			assert!(s.timeline.native.replace(binding.clone(), page.clone()));
+			cx.notify();
+			(binding, page)
+		});
+		visual.update(crate::ui_frame::draw_frame);
+		for position in 1..=6 {
+			let mut step = message(position, "commandExecution", None);
+			if let AgentTimelineContent::Item { activity, .. } = &mut step.content {
+				*activity = Some(
+					serde_json::from_value(serde_json::json!({
+						"turn_id": "turn", "item_id": position.to_string(), "kind": "commandExecution",
+						"status": "completed", "label": "Read layout", "detail": "", "duration_ms": null
+					}))
+					.unwrap(),
+				);
+			}
+			page.entries.push(step);
+		}
+		surface.update(visual, |s, cx| {
+			assert!(s.refresh_native_history(binding.clone(), page.clone()));
+			cx.notify();
+		});
+		visual.update(crate::ui_frame::draw_frame);
+		thread::sleep(Duration::from_millis(270));
+		visual.update(crate::ui_frame::draw_frame);
+		let toggle = visual.debug_bounds("turn-process-toggle").unwrap();
+		assert_eq!(
+			visual.debug_bounds("tool-batch-block").unwrap().size.height,
+			toggle.size.height
+		);
+		assert!(visual.debug_bounds("archived-process-content").is_none());
+		visual.simulate_click(toggle.center(), Default::default());
+		visual.update(crate::ui_frame::draw_frame);
+		visual.executor().advance_clock(Duration::from_millis(50));
+		visual.update(crate::ui_frame::draw_frame);
+		let opened =
+			visual.debug_bounds("tool-batch-block").unwrap().size.height - toggle.size.height;
+		assert!(opened > gpui::px(0.));
+
+		page.entries.push(message(7, "agentMessage", Some("final_answer")));
+		page.entries.push(AgentTimelineEntry { position: 8, ..completed("completed") });
+		surface.update(visual, |s, cx| {
+			assert!(s.refresh_native_history(binding, page));
+			cx.notify();
+		});
+		visual.update(crate::ui_frame::draw_frame);
+		let initial = visual.debug_bounds("turn-process-finishing").unwrap().size.height;
+		assert!((initial - opened).abs() <= gpui::px(1.), "{opened:?} -> {initial:?}");
+		visual.update(crate::ui_frame::draw_frame);
+		thread::sleep(Duration::from_millis(90));
+		visual.update(crate::ui_frame::draw_frame);
+		let middle = visual.debug_bounds("turn-process-finishing").unwrap().size.height;
+		assert!(middle > gpui::px(0.) && middle < initial, "{initial:?} -> {middle:?}");
+		thread::sleep(Duration::from_millis(280));
+		visual.update(crate::ui_frame::draw_frame);
+		assert!(visual.debug_bounds("turn-process-finishing").is_none());
+		assert_eq!(
+			visual.debug_bounds("turn-process-toggle").unwrap().size.height,
+			toggle.size.height
+		);
 	}
 
 	#[gpui::test]
