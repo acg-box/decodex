@@ -1,13 +1,13 @@
 {
-  "version": "0.170.0+decodex.60fcb1649f0c",
-  "upstreamCommit": "60fcb1649f0c3213d9d44c7c0caaca6459fb7c6c",
+  "version": "0.170.0+decodex.2f0374456fd",
+  "upstreamCommit": "2f0374456fd5cd280ee76de54220ab8315a0f8d0",
   "source": {
-    "url": "https://codeload.github.com/openai/codex/tar.gz/60fcb1649f0c3213d9d44c7c0caaca6459fb7c6c",
-    "sha256": "fb80d2c4bd6dfe3a4540c77a064b060dc391d6bb5413d471c905185e12aebb45"
+    "url": "https://codeload.github.com/openai/codex/tar.gz/2f0374456fd5cd280ee76de54220ab8315a0f8d0",
+    "sha256": "cb7784045de81181da307eb9ebb8da7df5bae71ff343f388517af863f4f69c2c"
   },
   "targets": {
     "aarch64-apple-darwin": {
-      "schemaSha256": "62cf6cdce26c623fc2bf06b595d37742dedffbc9c98719b7bfeda491e48a5458"
+      "schemaSha256": "ecdacaf743969be1a6e9029cb4d3a1121c5e858ccf64d90467f724d95003e2bc"
     }
   }
 }

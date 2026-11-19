@@ -8,6 +8,9 @@ The math recognizer is adapted from OpenAI Codex commit
 The Unicode layout parser is adapted from commit
 `33d306d457a4632b22bebf214e0c25d91f90f6e8`, files
 `codex-rs/tui/src/markdown_render/math/render.rs` and `math/render/structured.rs`.
+The wide tilde and display underbrace fixes come from
+`325123ae4a72faedf66939795bd0affd5c3939dd` and
+`2f0374456fd5cd280ee76de54220ab8315a0f8d0`.
 The `display_width` helper comes from `codex-rs/tui/src/width.rs`.
 
 The included Apache 2.0 license applies to this derived code. Decodex changes

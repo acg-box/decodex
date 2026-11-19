@@ -112,6 +112,7 @@ impl MathParser<'_> {
 				// Parenthesize the base so an annotation cannot attach to only its last atom.
 				Some(Layout::text(format!("({base}){marker}{{{annotation}}}")))
 			},
+			"underbrace" => self.underbrace(),
 			"substack" => {
 				self.remaining = self.remaining.trim_start().strip_prefix('{')?;
 				let mut rows = Vec::new();
@@ -144,6 +145,51 @@ impl MathParser<'_> {
 			},
 			_ => None,
 		}
+	}
+
+	fn underbrace(&mut self) -> Option<Layout> {
+		if self.mode != MathMode::Display || !self.stack_annotations {
+			return None;
+		}
+		self.remaining = self.remaining.trim_start();
+		if !self.remaining.starts_with('{') {
+			return None;
+		}
+		let expression = self.compact_argument()?;
+		let expression = expression.single()?.trim();
+		self.remaining = self.remaining.trim_start().strip_prefix('_')?.trim_start();
+		if !self.remaining.starts_with('{') {
+			return None;
+		}
+		let label = self.compact_argument()?;
+		let label = label.single()?.trim();
+		let width = display_width(expression);
+		let label_width = display_width(label);
+		if width == 0 || label_width == 0 {
+			return None;
+		}
+		// Use the same left-center column for the marker tip and the label.
+		let tip = (width - 1) / 2;
+		let label_center = (label_width - 1) / 2;
+		let expression_padding = label_center.saturating_sub(tip);
+		let label_padding = tip.saturating_sub(label_center);
+		if (expression_padding + width).max(label_padding + label_width) > MAX_COLUMNS {
+			return None;
+		}
+		let marker = match width {
+			1 => "┬".to_owned(),
+			2 => "└┘".to_owned(),
+			_ => format!("└{}┬{}┘", "─".repeat((width - 3) / 2), "─".repeat((width - 2) / 2)),
+		};
+		let padding = " ".repeat(expression_padding);
+		Some(Layout {
+			rows: vec![
+				format!("{padding}{expression}"),
+				format!("{padding}{marker}"),
+				format!("{}{label}", " ".repeat(label_padding)),
+			],
+			baseline: 0,
+		})
 	}
 
 	#[allow(
