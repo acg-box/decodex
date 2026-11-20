@@ -175,6 +175,8 @@ pub(crate) enum ConversationCommand {
 
 // Match the gap below floating controls to their inset from the window edge.
 const WINDOW_CONTROLS_CLEARANCE: f32 = CONTROL_MARGIN * 2.0 + CONTROL_GROUP_HEIGHT;
+// Reserve the system titlebar area, including AppKit's window-sharing indicator.
+const NATIVE_WINDOW_CONTROLS_RESERVE: f32 = 74.;
 const WORKBENCH_SESSION_SIDEBAR_WIDTH: f32 = 248.0;
 const WORKBENCH_INSPECTOR_WIDTH: f32 = 344.0;
 const LIFECYCLE_POLL: Duration = Duration::from_millis(40);
@@ -2978,7 +2980,11 @@ fn floating_window_controls(
 		})
 		.child(
 			ui_theme::floating_group()
-				.pl(gpui::px(74.0))
+				.debug_selector(|| "leading-titlebar-controls".into())
+				// Extend the backing around the fixed AppKit controls without moving either set of
+				// buttons.
+				.ml(gpui::px(-ui_theme::CONTROL_INSET))
+				.pl(gpui::px(NATIVE_WINDOW_CONTROLS_RESERVE + ui_theme::CONTROL_INSET))
 				.child(agent_panel_control(shell, 0, cx))
 				.child(shell.navigation_control(false, cx))
 				.child(shell.navigation_control(true, cx)),
@@ -3011,7 +3017,7 @@ fn topbar_controls(
 		.expect("Settings destination");
 
 	ui_theme::floating_group()
-		.gap(gpui::px(2.))
+		.debug_selector(|| "trailing-titlebar-controls".into())
 		.text_size(gpui::px(11.0))
 		.when(shell.selected == Destination::Agent, |controls| {
 			// Keep global controls in place while their data is loading.
@@ -3030,17 +3036,17 @@ fn topbar_controls(
 			|controls| {
 				controls.child(
 					gpui::div()
+						.debug_selector(|| "titlebar-control-divider".into())
 						.w(gpui::px(1.))
-						.h(gpui::px(12.))
-						.mx(gpui::px(4.))
+						.h(gpui::px(CHROME_CONTROL_SIZE / 2.))
 						.flex_none()
-						.bg(ui_theme::rgba(0xffffff30)),
+						.bg(ui_theme::rgb(WB_TEXT).opacity(0.16)),
 				)
 			},
 		)
 		.child(shell.render_status_toggle(presentation, cx))
 		.child(
-			gpui::div()
+			ui_theme::titlebar_button()
 				.id("open-settings")
 				.debug_selector(|| "open-settings".into())
 				.role(Role::Button)
@@ -3051,11 +3057,6 @@ fn topbar_controls(
 				.on_action(cx.listener(Shell::focus_next))
 				.on_action(cx.listener(Shell::focus_previous))
 				.on_action(cx.listener(Shell::activate_destination))
-				.size(gpui::px(CHROME_CONTROL_SIZE))
-				.flex()
-				.items_center()
-				.justify_center()
-				.rounded(gpui::px(6.0))
 				.border_1()
 				.border_color(ui_theme::rgba(0x00000000))
 				.bg(
@@ -3118,7 +3119,7 @@ fn agent_panel_control(shell: &Shell, index: usize, cx: &Context<Shell>) -> AnyE
 		_ => "Panel unavailable",
 	};
 
-	gpui::div()
+	ui_theme::titlebar_button()
 		.id(("agent-panel-control", index))
 		.debug_selector(move || format!("agent-panel-control-{index}"))
 		.role(Role::Button)
@@ -3126,11 +3127,6 @@ fn agent_panel_control(shell: &Shell, index: usize, cx: &Context<Shell>) -> AnyE
 		.aria_label(label)
 		.aria_expanded(active)
 		.hover_hint(label)
-		.size(gpui::px(CHROME_CONTROL_SIZE))
-		.rounded(gpui::px(ui_theme::SMALL_CONTROL_RADIUS))
-		.flex()
-		.items_center()
-		.justify_center()
 		.when(active && index == 0, |el| el.bg(ui_theme::rgba(0xffffff0c)))
 		.when(!enabled, |el| el.opacity(0.35))
 		.when(enabled, |el| {
@@ -6392,17 +6388,14 @@ fn topbar_sessions_toggle(
 	left_sidebar_visible: bool,
 	cx: &mut Context<Shell>,
 ) -> AnyElement {
-	gpui::div()
+	ui_theme::titlebar_button()
 		.id("toggle-left-sidebar")
 		.role(Role::Button)
 		.aria_label("Toggle conversation sidebar")
 		.aria_expanded(left_sidebar_visible)
 		.hover_hint("Toggle sessions (Command-E)")
-		.h(gpui::px(27.0))
+		.w_auto()
 		.px_3()
-		.flex()
-		.items_center()
-		.rounded(gpui::px(7.0))
 		.border_1()
 		.border_color(if left_sidebar_visible {
 			ui_theme::rgba(0xffffff20)
@@ -6444,17 +6437,14 @@ fn topbar_inspector_toggle(
 	inspector_visible: bool,
 	cx: &mut Context<Shell>,
 ) -> AnyElement {
-	gpui::div()
+	ui_theme::titlebar_button()
 		.id("toggle-inspector")
 		.role(Role::Button)
 		.aria_label("Toggle conversation context")
 		.aria_expanded(inspector_visible)
 		.hover_hint("Toggle context (Command-B)")
-		.h(gpui::px(27.0))
+		.w_auto()
 		.px_3()
-		.flex()
-		.items_center()
-		.rounded(gpui::px(7.0))
 		.border_1()
 		.border_color(if inspector_visible {
 			ui_theme::rgba(0xffffff20)
@@ -8625,42 +8615,75 @@ mod tests {
 		shell.update(visual, |s, cx| {
 			s.agent.update(cx, |agent, cx| agent.visual_workspace_fixture(cx))
 		});
-		visual.update(crate::ui_frame::draw_current_frame);
-		visual.run_until_parked();
-		visual.update(crate::ui_frame::draw_current_frame);
+		for width in [ui_theme::MAIN_WINDOW_MIN_WIDTH, 1_248.] {
+			visual.simulate_resize(gpui::size(gpui::px(width), gpui::px(840.)));
+			visual.update(crate::ui_frame::draw_current_frame);
+			visual.run_until_parked();
+			visual.update(crate::ui_frame::draw_current_frame);
 
-		let region = visual.debug_bounds("window-drag-region").unwrap();
+			let region = visual.debug_bounds("window-drag-region").unwrap();
+			let leading = visual.debug_bounds("leading-titlebar-controls").unwrap();
+			let trailing = visual.debug_bounds("trailing-titlebar-controls").unwrap();
+			let divider = visual.debug_bounds("titlebar-control-divider").unwrap();
+			let margin = gpui::px(ui_theme::CONTROL_MARGIN);
+			let gap = gpui::px(ui_theme::CONTROL_GAP);
+			let size = gpui::px(ui_theme::CHROME_CONTROL_SIZE);
 
-		assert_eq!(region.top(), gpui::px(0.));
-		assert_eq!(region.left(), gpui::px(0.));
-		assert_eq!(region.size.height, gpui::px(super::WINDOW_CONTROLS_CLEARANCE));
+			assert_eq!(region.top(), gpui::px(0.));
+			assert_eq!(region.left(), gpui::px(0.));
+			assert_eq!(region.size.height, gpui::px(super::WINDOW_CONTROLS_CLEARANCE));
+			assert_eq!(leading.left() - region.left(), margin - gpui::px(ui_theme::CONTROL_INSET));
+			assert_eq!(region.right() - trailing.right(), margin);
+			assert_eq!(leading.top(), trailing.top());
+			assert_eq!(leading.size.height, trailing.size.height);
+			assert_eq!(divider.center().y, trailing.center().y);
 
-		let buttons = [
-			"agent-panel-control-0",
-			"navigate-back",
-			"navigate-forward",
-			"agent-panel-control-1",
-			"agent-panel-control-2",
-			"status-toggle",
-			"open-settings",
-			"activity-work-control",
-		]
-		.map(|selector| visual.debug_bounds(selector).unwrap());
-		let controls = shell.read_with(visual, |s, _| s.titlebar.controls.borrow().clone());
+			let buttons = [
+				"agent-panel-control-0",
+				"navigate-back",
+				"navigate-forward",
+				"agent-panel-control-1",
+				"agent-panel-control-2",
+				"status-toggle",
+				"open-settings",
+				"activity-work-control",
+			]
+			.map(|selector| visual.debug_bounds(selector).unwrap());
+			let [sidebar, back, forward, dock, collaboration, status, settings, _] = buttons;
 
-		assert_eq!(controls.len(), buttons.len());
-
-		for bounds in buttons {
-			assert!(
-				controls.contains(&bounds),
-				"native control must match {bounds:?}: {controls:?}"
+			for (left, right) in [
+				(sidebar, back),
+				(back, forward),
+				(dock, collaboration),
+				(collaboration, divider),
+				(divider, status),
+				(status, settings),
+			] {
+				assert_eq!(right.left() - left.right(), gap);
+			}
+			let inset = leading.right() - forward.right();
+			assert_eq!(
+				sidebar.left() - region.left(),
+				margin + gpui::px(super::NATIVE_WINDOW_CONTROLS_RESERVE + 1.)
 			);
+			assert_eq!(dock.left() - trailing.left(), inset);
+			assert_eq!(trailing.right() - settings.right(), inset);
+			assert!(trailing.left() > leading.right());
+			for bounds in &buttons[..7] {
+				assert_eq!(bounds.size, gpui::size(size, size));
+				assert_eq!(bounds.center().y, leading.center().y);
+			}
+
+			let controls = shell.read_with(visual, |s, _| s.titlebar.controls.borrow().clone());
+			assert_eq!(controls.len(), buttons.len());
+			for bounds in buttons {
+				assert!(controls.contains(&bounds), "native control must match {bounds:?}");
+			}
+
+			let pill = visual.debug_bounds("activity-island-toggle").unwrap();
+			let blank = gpui::point(pill.left() - gpui::px(20.), region.center().y);
+			assert!(!controls.iter().any(|bounds| bounds.contains(&blank)));
 		}
-
-		let pill = visual.debug_bounds("activity-island-toggle").unwrap();
-		let blank = gpui::point(pill.left() - gpui::px(20.), region.center().y);
-
-		assert!(!controls.iter().any(|bounds| bounds.contains(&blank)));
 
 		let sidebar = visual.debug_bounds("agent-panel-control-0").unwrap();
 		let before = shell.read_with(visual, |s, cx| s.agent.read(cx).workspace_panels()[0].0);

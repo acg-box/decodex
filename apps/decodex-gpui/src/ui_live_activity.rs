@@ -105,12 +105,15 @@ pub(crate) fn arrange(
 ) -> Vec<Allocation> {
 	let budget = (available - gap * sizes.len().saturating_sub(1) as f32).max(0.);
 	let minimum: f32 = sizes.iter().map(|size| size.minimal.max(MIN_CAPSULE_WIDTH)).sum();
-	let ratio = (budget / minimum.max(1.)).min(1.);
+	if budget < minimum {
+		let width = (budget / sizes.len() as f32).min(CAPSULE_HEIGHT);
+		return vec![Allocation { presentation: Presentation::Minimal, width }; sizes.len()];
+	}
 	let mut allocations: Vec<_> = sizes
 		.iter()
 		.map(|size| Allocation {
 			presentation: Presentation::Minimal,
-			width: size.minimal.max(MIN_CAPSULE_WIDTH) * ratio,
+			width: size.minimal.max(MIN_CAPSULE_WIDTH),
 		})
 		.collect();
 
@@ -198,6 +201,12 @@ mod tests {
 		let centered_right = (310. + narrow_rest[0].width + 6. + narrow_rest[1].width) / 2.;
 		assert!(centered_right + narrow[1].width - narrow_rest[1].width <= 310.);
 		assert_eq!(sizes[0].presentation(120.), Presentation::Minimal);
+
+		let icons = ui_live_activity::arrange(122., 6., &sizes, Some(0));
+		assert!(icons.iter().all(|item| {
+			item.presentation == Presentation::Minimal
+				&& item.width == ui_live_activity::CAPSULE_HEIGHT
+		}));
 
 		let mut uneven = sizes;
 

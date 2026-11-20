@@ -5,7 +5,7 @@ description: Reusable layout, activity-island motion, reading spacing and theme 
 tags: [desktop, design, motion, layout]
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-20T03:25:39.066Z
+    at: 2026-11-20T07:13:28.942Z
 sources:
   - id: openwiki-source-8037e2358a2c4f9b2c722a11
     resource: repo://AGENTS.md
@@ -137,7 +137,7 @@ sources:
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_context_tests.rs
   - id: openwiki-source-8fe6f1557e5d45d88b34bd0a
     resource: repo://scripts/macos/generate_workspace_symbols.swift
-generated: { by: "codex", at: "2026-11-20T03:25:39.066Z" }
+generated: { by: "codex", at: "2026-11-20T07:13:28.942Z" }
 ---
 
 # Interface geometry and motion
@@ -148,12 +148,13 @@ Use `MaterialSurface` for persistent floating controls such as **Jump to latest 
 
 ## Activity islands
 
-Work and Debug use the same geometry contract. Work uses the waveform symbol; Debug uses the performance gauge. Each header reserves a 14-point symbol and a 6-point gap in its measured width. The symbols use the current Decodex accent color.
+Work and Debug use the same geometry contract. Work uses the waveform symbol. Debug uses the performance gauge. Each text header reserves a 14-point symbol and a 6-point gap in its measured width. The symbols use the current Decodex accent color.
 
 | Property | Rule |
 | --- | --- |
 | Collapsed height | 28 points, from the shared control-group height. |
-| Minimum width | At least 72 points; round measured content up to an 8-point grid. |
+| Minimum text width | Round measured content up to the 8-point grid, with a 72-point minimum. |
+| Symbol-only width | When the row cannot fit the measured minimum text widths, give each symbol the same space, up to the 28-point capsule height. |
 | Compact width | Measure the header content and round up to the shared 8-point grid. |
 | Expanded width | Fit the header and detail content on the shared 8-point grid; do not impose an oversized preset. |
 | Space between islands | 6 points. |
@@ -295,7 +296,7 @@ Keep provider stream retries in native Codex. A retrying stream error does not a
 
 On macOS, AppKit owns the window-button and window-sharing geometry. The main window uses a unified compact native toolbar. GPUI follows the measured native control-row center for the leading controls, activity islands and trailing controls. Keep `traffic_light_position` unset. Do not move native window buttons or their parent containers to fit a custom header. AppKit retains blank titlebar dragging.
 
-Control groups use the shared 28-point height, 24-point control targets, 4-point inner spacing and gap, 8-point outer inset and capsule radius, and 5-point small-control radius. Dense navigation retains its 6-point inner inset. Use these role tokens instead of feature-specific values. The native control row sets the top alignment for every titlebar group. Attached material surfaces retain that allocated anchor, including the clipping canvas; the native host must not add a menu edge inset. Independent floating menus use the shared 8-point edge clearance.
+Control groups use the shared 28-point height, 24-point control targets, 4-point inner spacing and gap, 8-point outer inset and capsule radius, and 5-point small-control radius. Dense navigation retains its 6-point inner inset. Use these role tokens instead of feature-specific values. The titlebar groups share the native control-row centerline. Draw one leading surface behind the AppKit window controls and app navigation buttons. Extend this surface 4 points toward the window edge and add the same amount to its leading padding. The trailing group uses the 8-point window inset and the same 4-point gap on both sides of the divider between panel controls and app utilities. Keep the control targets and gaps at the minimum window width. Attached material surfaces retain their allocated anchor, including the clipping canvas; the native host must not add a menu edge inset. Independent floating menus use the shared 8-point edge clearance.
 
 Use the current theme tokens for foreground, muted labels, emphasis and status colors. The Ultrafast double bolt uses the theme accent. Its silhouette is shared across the composer; its color is not copied from another application.
 

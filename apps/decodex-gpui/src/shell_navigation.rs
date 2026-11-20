@@ -11,8 +11,8 @@ use crate::{
 	settings_surface::SettingsCategory,
 	shell::{
 		AnyElement, Context, Destination, MouseButton, Role, SettingsWindow, Shell,
-		agent_surface::AgentLocation, ui_theme::CHROME_CONTROL_SIZE, workspace_symbols,
-		workspace_symbols::Symbol,
+		agent_surface::AgentLocation,
+		workspace_symbols::{self, Symbol},
 	},
 	ui_motion::SmoothControl as _,
 	ui_theme::{self, HOVER_FILL},
@@ -280,7 +280,7 @@ impl Shell {
 			&& self.navigation_neighbor(forward, cx).is_some();
 		let label = if forward { "Forward (Command-])" } else { "Back (Command-[)" };
 
-		gpui::div()
+		ui_theme::titlebar_button()
 			.id(if forward { "navigate-forward" } else { "navigate-back" })
 			.debug_selector(move || {
 				if forward { "navigate-forward" } else { "navigate-back" }.into()
@@ -292,12 +292,6 @@ impl Shell {
 			})
 			.when(enabled, |el| el.tab_index(0))
 			.hover_hint(label)
-			.size(gpui::px(CHROME_CONTROL_SIZE))
-			.flex_none()
-			.flex()
-			.items_center()
-			.justify_center()
-			.rounded(gpui::px(5.0))
 			.occlude()
 			.when(!enabled, |el| el.opacity(0.25))
 			.when(enabled, |el| el.cursor_pointer().hover(|el| el.bg(ui_theme::rgba(HOVER_FILL))))
