@@ -1,4 +1,5 @@
 use super::AgentSurface;
+use decodex_protocol::{AgentDispatchStateDto, AgentWorkStatusDto};
 use gpui::{AppContext as _, TestAppContext};
 
 fn settle(visual: &mut gpui::VisualTestContext) {
@@ -13,6 +14,22 @@ fn projects_expand_independently_and_all_labels_share_one_origin(cx: &mut TestAp
 	visual.simulate_resize(gpui::size(gpui::px(1440.), gpui::px(1000.)));
 	surface.update(visual, |s, cx| {
 		s.visual_navigation_hierarchy(false, cx);
+		let snapshot = s.snapshot.as_mut().unwrap();
+		let completed = snapshot
+			.work_items
+			.iter_mut()
+			.find(|work| work.id == "navigation-project-0-agent-0")
+			.unwrap();
+		completed.status = AgentWorkStatusDto::Resolved;
+		let completed = completed.clone();
+		let result = s.handoffs.item_for(snapshot, &completed).unwrap();
+		s.handoffs.acknowledge(&result.work, &result.key, snapshot);
+		snapshot
+			.work_items
+			.iter_mut()
+			.find(|work| work.id == "navigation-project-0-agent-1")
+			.unwrap()
+			.dispatch_state = AgentDispatchStateDto::Running;
 		s.composer.update(cx, |input, cx| input.set_content("Keep this project draft", cx));
 	});
 	settle(visual);
@@ -25,6 +42,40 @@ fn projects_expand_independently_and_all_labels_share_one_origin(cx: &mut TestAp
 	let category = visual.debug_bounds("navigation-section-label-projects").unwrap();
 	assert_eq!(label.left(), category.left());
 	assert_eq!(heading.left(), label.left());
+	for (title, slot, icon, visible) in [
+		(
+			"navigation-item-label-assistant-topic-research",
+			"navigation-leading-assistant-topic-research",
+			"navigation-assistant-topic-research-mark",
+			false,
+		),
+		(
+			"navigation-item-label-project-navigation-project-0-navigation-project-0-agent-0",
+			"navigation-leading-project-navigation-project-0-navigation-project-0-agent-0",
+			"navigation-project-navigation-project-0-navigation-project-0-agent-0-mark",
+			false,
+		),
+		(
+			"navigation-item-label-project-navigation-project-0-navigation-project-0-agent-1",
+			"navigation-leading-project-navigation-project-0-navigation-project-0-agent-1",
+			"navigation-project-navigation-project-0-navigation-project-0-agent-1-mark",
+			true,
+		),
+	] {
+		let title = visual.debug_bounds(title).unwrap();
+		let slot = visual.debug_bounds(slot).unwrap();
+		let icon = visual.debug_bounds(icon);
+		assert_eq!(title.left(), category.left());
+		assert_eq!(slot.right(), title.left());
+		if visible {
+			let icon = icon.unwrap();
+			let edge = gpui::px(crate::ui_theme::NAVIGATION_ACTION_SIZE);
+			assert_eq!(icon.center(), slot.center());
+			assert_eq!(icon.size, gpui::size(edge, edge));
+		} else {
+			assert!(icon.is_none());
+		}
+	}
 	let row = visual
 		.debug_bounds("navigation-project-navigation-project-0-navigation-project-0-agent-0")
 		.unwrap();
@@ -65,6 +116,41 @@ fn projects_expand_independently_and_all_labels_share_one_origin(cx: &mut TestAp
 		assert_eq!(s.composer.read(cx).content(), "Keep this project draft");
 		assert!(!s.sending);
 	});
+}
+
+#[gpui::test]
+fn sidebar_result_dot_clears_after_opening_and_loading_the_conversation(cx: &mut TestAppContext) {
+	let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+	visual.simulate_resize(gpui::size(gpui::px(1440.), gpui::px(1000.)));
+	surface.update(visual, |s, cx| {
+		s.visual_navigation_hierarchy(false, cx);
+		s.snapshot
+			.as_mut()
+			.unwrap()
+			.work_items
+			.iter_mut()
+			.find(|work| work.id == "topic-research")
+			.unwrap()
+			.status = AgentWorkStatusDto::Resolved;
+	});
+	settle(visual);
+	let mark = "navigation-assistant-topic-research-mark";
+	let title = "navigation-item-label-assistant-topic-research";
+	let origin = visual.debug_bounds(title).unwrap().left();
+	assert!(visual.debug_bounds(mark).is_some());
+
+	let row = visual.debug_bounds("assistant-topic-topic-research").unwrap();
+	visual.simulate_click(row.center(), Default::default());
+	settle(visual);
+	assert!(visual.debug_bounds(mark).is_some());
+	surface.update(visual, |s, cx| {
+		assert_eq!(s.selected.as_deref(), Some("topic-research"));
+		assert!(s.acknowledge_open_handoff("topic-research"));
+		cx.notify();
+	});
+	settle(visual);
+	assert!(visual.debug_bounds(mark).is_none());
+	assert_eq!(visual.debug_bounds(title).unwrap().left(), origin);
 }
 
 fn show_actions(visual: &mut gpui::VisualTestContext, row: &'static str) {

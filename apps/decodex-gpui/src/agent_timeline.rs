@@ -1417,9 +1417,11 @@ impl AgentSurface {
 		if let Some(decodex_protocol::AgentTimelineResult::Available { account_id, page, .. }) =
 			result
 		{
-			let binding = Binding { work, thread, account: account_id.as_str().into() };
+			let binding =
+				Binding { work: work.clone(), thread, account: account_id.as_str().into() };
 
-			changed = sent_cursor.is_some() || !self.timeline.native.matches_page(&binding, &page);
+			let latest = sent_cursor.is_none();
+			changed = !latest || !self.timeline.native.matches_page(&binding, &page);
 
 			let accepted = match sent_cursor {
 				Some(cursor) => {
@@ -1442,6 +1444,7 @@ impl AgentSurface {
 			};
 
 			if accepted {
+				changed |= latest && self.acknowledge_open_handoff(&work);
 				self.timeline.native.saved_positions = saved;
 				changed |= self.retire_native_output();
 

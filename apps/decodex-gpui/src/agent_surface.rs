@@ -617,8 +617,10 @@ impl AgentSurface {
 				if surface.selected.as_ref() == Some(&id) {
 					surface.observe_question_notices(&history);
 
-					if matches!(history, AgentHistoryResult::Available { .. }) {
-						surface.acknowledge_open_handoff(&id);
+					if matches!(history, AgentHistoryResult::Available { .. })
+						&& surface.acknowledge_open_handoff(&id)
+					{
+						cx.notify();
 					}
 					if surface
 						.history

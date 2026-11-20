@@ -25,7 +25,7 @@ macro_rules! symbol_sources {
 	]};
 }
 
-static TEMPLATES: LazyLock<[String; 62]> = LazyLock::new(|| {
+static TEMPLATES: LazyLock<[String; 61]> = LazyLock::new(|| {
 	let sources = symbol_sources![
 		"sidebar",
 		"graph",
@@ -86,7 +86,6 @@ static TEMPLATES: LazyLock<[String; 62]> = LazyLock::new(|| {
 		"navigation-assistant",
 		"navigation-folder",
 		"navigation-sort",
-		"conversation",
 		"chevron-left",
 		"navigation-projects",
 	];
@@ -159,7 +158,6 @@ pub(crate) enum Symbol {
 	NavigationAssistant,
 	NavigationFolder,
 	NavigationSort,
-	Conversation,
 	ChevronLeft,
 	NavigationProjects,
 }

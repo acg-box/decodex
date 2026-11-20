@@ -222,10 +222,26 @@ impl AgentSurface {
 
 		self.workspace.closing_pages.remove(id);
 
+		self.handoffs.read_on_open = self
+			.snapshot
+			.as_ref()
+			.filter(|_| {
+				!archived
+					&& thread
+						.as_ref()
+						.is_none_or(|thread| work.codex_thread_id.as_ref() == Some(thread))
+			})
+			.and_then(|snapshot| self.handoffs.item_for(snapshot, &work))
+			.filter(|handoff| handoff.result)
+			.map(|handoff| (handoff.work, handoff.key));
+
 		if self.selected.as_deref() == Some(id)
 			&& self.native_agents.selected.as_ref().map(|(_, thread)| thread) == thread.as_ref()
 			&& editor_ready
 		{
+			if self.handoffs.read_on_open.is_some() {
+				self.load_history(cx);
+			}
 			cx.notify();
 
 			return;
@@ -233,12 +249,6 @@ impl AgentSurface {
 
 		self.close_native_agent(cx);
 		self.release_previous_conversation(id, cx);
-
-		self.handoffs.read_on_open = self
-			.handoff_items()
-			.into_iter()
-			.find(|h| h.work == id && h.result)
-			.map(|h| (h.work, h.key));
 
 		self.restore_manager_composer(id, cx);
 
