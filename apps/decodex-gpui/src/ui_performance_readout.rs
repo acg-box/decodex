@@ -320,18 +320,13 @@ impl Content {
 	}
 
 	pub(super) fn header(&self, fraction: f32, width: f32) -> AnyElement {
-		let (name, symbol, content) = match self {
-			Self::Work(v) => (
-				"activity-work-icon",
-				Symbol::WorkActivity,
-				work_header(v, fraction, (width - ICON_SLOT).max(0.)),
-			),
-			Self::Debug(v) => (
-				"activity-performance-icon",
-				Symbol::PerformanceActivity,
-				debug_header(v, fraction, (width - ICON_SLOT).max(0.)),
-			),
+		let (name, symbol) = match self {
+			Self::Work(_) => ("activity-work-icon", Symbol::WorkActivity),
+			Self::Debug(_) => ("activity-performance-icon", Symbol::PerformanceActivity),
 		};
+		// The available header width excludes the outline on both sides.
+		let show_label = width + 2. >= self.sizing().minimal;
+		let icon_left = ((width - ICON_SIZE) / 2.).min(8.);
 		gpui::div()
 			.relative()
 			.size_full()
@@ -339,14 +334,26 @@ impl Content {
 				gpui::div()
 					.debug_selector(move || name.into())
 					.absolute()
-					.left(gpui::px(8.))
+					.left(gpui::px(icon_left))
 					.top(gpui::px((CAPSULE_HEIGHT - 2. - ICON_SIZE) / 2.))
 					.text_color(ui_theme::rgb(ui_theme::ACCENT))
 					.child(workspace_symbols::icon_sized(symbol, ICON_SIZE)),
 			)
-			.child(
-				gpui::div().absolute().left(gpui::px(ICON_SLOT)).right_0().h_full().child(content),
-			)
+			.when(show_label, |header| {
+				let label_width = width - ICON_SLOT;
+				let content = match self {
+					Self::Work(v) => work_header(v, fraction, label_width),
+					Self::Debug(v) => debug_header(v, fraction, label_width),
+				};
+				header.child(
+					gpui::div()
+						.absolute()
+						.left(gpui::px(ICON_SLOT))
+						.right_0()
+						.h_full()
+						.child(content),
+				)
+			})
 			.into_any_element()
 	}
 

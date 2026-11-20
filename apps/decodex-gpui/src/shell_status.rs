@@ -20,8 +20,8 @@ use crate::{
 	ui_motion::{self, SmoothControl},
 	ui_preferences,
 	ui_theme::{
-		self, CHROME_CONTROL_SIZE, CONTROL_GROUP_HEIGHT, CONTROL_MARGIN, ERROR, HOVER_FILL,
-		LINE_STRONG, WARNING,
+		self, CHROME_CONTROL_SIZE, CONTROL_GAP, CONTROL_GROUP_HEIGHT, CONTROL_MARGIN, ERROR,
+		HOVER_FILL, LINE_STRONG, WARNING,
 	},
 };
 use decodex_protocol::AccountProfileResult;
@@ -354,19 +354,14 @@ impl Shell {
 		};
 		let open = self.status_open;
 
-		gpui::div()
+		ui_theme::titlebar_button()
 			.id("status-toggle")
 			.debug_selector(|| "status-toggle".into())
 			.role(Role::Button)
 			.tab_index(0)
 			.aria_label(label.clone())
 			.aria_expanded(open)
-			.size(gpui::px(CHROME_CONTROL_SIZE))
 			.relative()
-			.rounded(gpui::px(6.))
-			.flex()
-			.items_center()
-			.justify_center()
 			.text_size(gpui::px(11.))
 			.text_color(ui_theme::rgb(WB_TEXT_MUTED))
 			.cursor_pointer()
@@ -407,8 +402,8 @@ impl Shell {
 				d.child(
 					gpui::div()
 						.absolute()
-						.top(gpui::px(-4.))
-						.right(gpui::px(-5.))
+						.top(gpui::px((CHROME_CONTROL_SIZE - CONTROL_GROUP_HEIGHT) / 2.))
+						.right(gpui::px(-CONTROL_GAP / 2.))
 						.min_w(gpui::px(14.))
 						.h(gpui::px(14.))
 						.px(gpui::px(3.))

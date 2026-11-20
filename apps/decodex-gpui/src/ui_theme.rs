@@ -337,6 +337,16 @@ pub(crate) fn floating_group() -> Div {
 		.border_color(rgba(0xffffff12))
 }
 
+pub(crate) fn titlebar_button() -> Div {
+	gpui::div()
+		.size(gpui::px(CHROME_CONTROL_SIZE))
+		.flex_none()
+		.flex()
+		.items_center()
+		.justify_center()
+		.rounded(gpui::px(SMALL_CONTROL_RADIUS))
+}
+
 /// Graph controls share shell geometry, with a clear surface of their own.
 pub(crate) fn canvas_control_group() -> Div {
 	floating_group()
