@@ -19,14 +19,16 @@ impl AgentSurface {
 		self.snapshot.as_ref().map_or_else(Vec::new, |snapshot| self.handoffs.dock_items(snapshot))
 	}
 
-	pub(super) fn acknowledge_open_handoff(&mut self, work: &str) {
-		if let Some((id, key)) = self.handoffs.read_on_open.clone().filter(|(id, _)| id == work)
-			&& let Some(snapshot) = &self.snapshot
+	pub(super) fn acknowledge_open_handoff(&mut self, work: &str) -> bool {
+		if let Some(snapshot) = &self.snapshot
+			&& let Some((id, key)) = self.handoffs.read_on_open.take_if(|(id, _)| id == work)
 		{
 			self.handoffs.acknowledge(&id, &key, snapshot);
 
-			self.handoffs.read_on_open = None;
+			return true;
 		}
+
+		false
 	}
 
 	pub(super) fn activate_graph_node(&mut self, id: &str, cx: &mut Context<Self>) {

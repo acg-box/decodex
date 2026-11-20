@@ -22,7 +22,7 @@ use crate::{
 		workspace_symbols::Symbol,
 	},
 	ui_motion, ui_scroll,
-	ui_theme::HISTORY_RAIL_WIDTH,
+	ui_theme::{CONVERSATION_INSET, HISTORY_RAIL_WIDTH, WORKSPACE_GUTTER},
 };
 use decodex_protocol::{
 	AgentHistoryEntryDto, AgentTimelineContent, AgentTimelineEntry, AgentTurnUsageDto,
@@ -795,11 +795,12 @@ impl AgentSurface {
 			return gpui::div().into_any_element();
 		}
 
-		// Overlay the existing text inset so navigation never changes line wrapping.
-		gpui::div()
+		// Center the rail in the minimum gap, including the workspace gutter.
+		let inset = (CONVERSATION_INSET - WORKSPACE_GUTTER - HISTORY_RAIL_WIDTH) / 2.;
+		let rail = gpui::div()
 			.absolute()
 			.top_0()
-			.right_0()
+			.right(gpui::px(inset))
 			.bottom_0()
 			.w(gpui::px(HISTORY_RAIL_WIDTH))
 			.flex_none()
@@ -810,8 +811,14 @@ impl AgentSurface {
 					.inset_0()
 					.bottom(gpui::px(self.workspace_composer_clearance()))
 					.child(self.history_rail(window, cx)),
-			)
-			.into_any_element()
+			);
+		// Let the full hit target extend into the gutter while clipping any
+		// part covered by a floating sidebar.
+		let viewport = ui_motion::Viewport::from_bounds(self.workspace_content_clip(
+			gpui::Bounds::new(gpui::point(gpui::px(0.), gpui::px(0.)), window.viewport_size()),
+			window,
+		));
+		gpui::deferred(viewport.clip(0., rail)).into_any_element()
 	}
 
 	pub(super) fn preserve_history_selection(&mut self) {
@@ -1581,6 +1588,43 @@ mod tests {
 	}
 
 	#[gpui::test]
+	fn history_rail_keeps_the_edge_spacing_from_the_narrow_layout(cx: &mut gpui::TestAppContext) {
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.workspace.graph_visible = false;
+			s.workspace.agent_tree_visible = false;
+		});
+
+		let inset = gpui::px(crate::ui_theme::CONVERSATION_INSET);
+		let rail_width = gpui::px(crate::ui_theme::HISTORY_RAIL_WIDTH);
+		let edge_spacing = (inset + gpui::px(crate::ui_theme::WORKSPACE_GUTTER)) / 2.;
+		for width in [480., 1_400., 2_400.] {
+			visual.simulate_resize(gpui::size(gpui::px(width), gpui::px(900.)));
+			visual.update(crate::ui_frame::draw_current_frame);
+
+			let rail = visual.debug_bounds("conversation-history-rail").unwrap();
+			let content = visual.debug_bounds("conversation-content").unwrap();
+			let message_edge = content.right() - inset;
+			let edge_gap = gpui::px(width) - rail.center().x;
+			let message_gap = rail.center().x - message_edge;
+
+			assert_eq!(rail.size.width, rail_width);
+			assert!(rail.left() >= message_edge - gpui::px(0.5));
+			assert!(rail.right() <= gpui::px(width));
+			assert!(
+				(edge_gap - edge_spacing).abs() <= gpui::px(0.5),
+				"window width {width}: expected {edge_spacing:?}, got {edge_gap:?}",
+			);
+			if width == 480. {
+				assert!((message_gap - edge_gap).abs() <= gpui::px(0.5));
+			} else {
+				assert!(message_gap > edge_gap);
+			}
+		}
+	}
+
+	#[gpui::test]
 	fn history_hover_obeys_shared_dwell_and_clears_on_exit(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 
@@ -1591,17 +1635,6 @@ mod tests {
 		let bounds = surface.read_with(visual, |s, _| {
 			s.timeline.marks.values().next().unwrap().hit_bounds.get().unwrap()
 		});
-		let rail = visual.debug_bounds("conversation-history-rail").unwrap();
-		let transcript = visual.debug_bounds("workspace-transcript").unwrap();
-		let content = visual.debug_bounds("conversation-content").unwrap();
-
-		assert!(
-			rail.left() >= content.right() - gpui::px(crate::ui_theme::CONVERSATION_INSET),
-			"navigation must stay outside the message text"
-		);
-		assert_eq!(rail.right(), transcript.right());
-		assert_eq!(rail.size.width, gpui::px(crate::ui_theme::CONVERSATION_INSET));
-
 		// Passing through must cancel entry, including after the original dwell expires.
 		visual.simulate_mouse_move(bounds.center(), gpui::MouseButton::Left, Default::default());
 		visual.run_until_parked();

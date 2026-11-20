@@ -6,7 +6,7 @@ use crate::{
 		agent_surface::{AgentSurface, Context},
 		workspace_symbols::{self},
 	},
-	ui_motion::{HoverHint as _, PanelReveal, SmoothControl as _},
+	ui_motion::{AgentStatusStyle, HoverHint as _, PanelReveal, SmoothControl as _},
 	ui_theme::{self, NAVIGATION_DETAIL_SIZE, TEXT_MUTED},
 };
 #[cfg(any(test, feature = "visual-capture"))] use decodex_protocol::work::WorkState;
@@ -562,13 +562,7 @@ impl AgentSurface {
 				})
 			})
 			.child(
-				gpui::div()
-					.w(gpui::px(ui_theme::NAVIGATION_LEADING_SIZE))
-					.h(gpui::px(ui_theme::CONTROL_SIZE))
-					.flex_none()
-					.flex()
-					.items_center()
-					.justify_center()
+				navigation_leading_slot()
 					.text_color(ui_theme::rgb(TEXT_MUTED))
 					.child(Icon { glyph, size: ui_theme::NAVIGATION_ICON_SIZE }),
 			)
@@ -671,13 +665,7 @@ impl AgentSurface {
 			}))
 			.when(!reveal.expanded, |row| row.hover_hint(section.label()))
 			.child(
-				gpui::div()
-					.w(gpui::px(ui_theme::NAVIGATION_LEADING_SIZE))
-					.h(gpui::px(ui_theme::CONTROL_SIZE))
-					.flex_none()
-					.flex()
-					.items_center()
-					.justify_center()
+				navigation_leading_slot()
 					.text_color(style::section_color(section))
 					.child(Icon { glyph, size: ui_theme::NAVIGATION_ICON_SIZE }),
 			)
@@ -866,21 +854,13 @@ impl AgentSurface {
 					cx.stop_propagation();
 				}
 			}))
-			.child(
-				gpui::div()
-					.w(gpui::px(ui_theme::NAVIGATION_LEADING_SIZE))
-					.h(gpui::px(ui_theme::CONTROL_SIZE))
-					.flex_none()
-					.flex()
-					.items_center()
-					.justify_center()
-					.text_color(ui_theme::rgb(TEXT_MUTED))
-					.child(icons::ProjectIcon {
-						id: id.to_owned(),
-						label: name.to_owned(),
-						compact: !reveal.expanded,
-					}),
-			)
+			.child(navigation_leading_slot().text_color(ui_theme::rgb(TEXT_MUTED)).child(
+				icons::ProjectIcon {
+					id: id.to_owned(),
+					label: name.to_owned(),
+					compact: !reveal.expanded,
+				},
+			))
 			.child(navigation_project_label(
 				id,
 				name,
@@ -918,6 +898,17 @@ impl AgentSurface {
 	) -> AnyElement {
 		let expanded = reveal.expanded;
 		let key = format!("{section}-{}", item.id);
+		let work = self.snapshot.as_ref().and_then(|snapshot| {
+			snapshot.work_items.iter().find(|work| work.id == item.id).map(|work| (snapshot, work))
+		});
+		let handoff = work
+			.filter(|_| !item.archived)
+			.and_then(|(snapshot, work)| self.handoffs.item_for(snapshot, work));
+		let (status, state) = match handoff {
+			Some(handoff) if handoff.result => (AgentStatusStyle::UnreadResult, handoff.label),
+			Some(handoff) => (AgentStatusStyle::Attention, handoff.label),
+			None => AgentStatusStyle::presentation(&item.state),
+		};
 		let group = if section.starts_with("project-") { "projects" } else { section };
 		let anchor = self.navigation_anchor(&key, &item.id, group, window, cx);
 		let debug = if section == "assistant" {
@@ -929,8 +920,7 @@ impl AgentSurface {
 		let hovered = self.workspace.navigation.hovered.as_ref() == Some(&key);
 		let keyboard = window.last_input_was_keyboard() && focus.contains_focused(window, cx);
 		let menu_open = self.workspace.navigation.menu.as_deref() == Some(&key);
-		let manageable = item.archived
-			|| self.snapshot.as_ref().is_some_and(|s| s.work_items.iter().any(|w| w.id == item.id));
+		let manageable = item.archived || work.is_some();
 		let shown = expanded && manageable && (hovered || keyboard || menu_open);
 		let actions = crate::ui_motion::value(
 			SharedString::from(format!("row-actions-{key}")),
@@ -955,6 +945,9 @@ impl AgentSurface {
 				.tab_index(0)
 				.aria_label(format!("{} ({}) {}", item.title, item.owner, timestamp))
 				.aria_selected(selected)
+				.when(expanded && status == AgentStatusStyle::Completed, |row| {
+					row.aria_description(state.to_owned())
+				})
 				.h(gpui::px(ui_theme::CONTROL_SIZE))
 				.min_w(gpui::px(ui_theme::CONTROL_SIZE))
 				.w_full()
@@ -989,17 +982,22 @@ impl AgentSurface {
 					}
 				}));
 		row = self.navigation_cancel_on_outside(row, key.clone(), cx);
-		row = navigation_item_tooltip(row, item, expanded);
+		row = navigation_item_tooltip(
+			row,
+			item,
+			expanded,
+			(status != AgentStatusStyle::Quiet).then_some(state),
+		);
 		let base = if !expanded || item.draft { 0. } else { 44. };
 		let action_width = if item.archived { 52. } else { 76. };
 		let inset = base + (action_width - base) * actions;
 		let label = navigation_item_label(
 			item,
-			section,
 			&key,
+			status,
+			state,
 			expanded && (auto_scroll || hovered || keyboard),
-			&reveal.viewport,
-			expanded,
+			reveal,
 		);
 		row = row.child(
 			gpui::div()
@@ -1323,16 +1321,19 @@ fn navigation_item_tooltip(
 	row: gpui::Stateful<gpui::Div>,
 	item: &Item,
 	expanded: bool,
+	state: Option<&str>,
 ) -> gpui::Stateful<gpui::Div> {
 	let bounds = std::rc::Rc::new(std::cell::Cell::new(gpui::Bounds::<gpui::Pixels>::default()));
 	let measured = bounds.clone();
 	let title = (!expanded).then(|| item.title.clone());
 	let owner = item.owner.clone();
 	let time = crate::ui_time::timestamp(item.updated);
+	let state = state.map(str::to_owned);
 	row.tooltip(move |_, cx| {
 		let title = title.clone();
 		let owner = owner.clone();
 		let time = time.clone();
+		let state = state.clone();
 		crate::ui_motion::tooltip_at(cx, bounds.clone(), move |_, _| {
 			gpui::div()
 				.debug_selector(|| "navigation-metadata-tooltip".into())
@@ -1340,6 +1341,7 @@ fn navigation_item_tooltip(
 				.flex_col()
 				.gap(gpui::px(2.))
 				.children(title.clone())
+				.children(state.clone())
 				.child(format!("Owner: {owner}"))
 				.child(
 					gpui::div()
@@ -1508,6 +1510,16 @@ impl AgentSurface {
 	}
 }
 
+fn navigation_leading_slot() -> gpui::Div {
+	gpui::div()
+		.w(gpui::px(ui_theme::NAVIGATION_LEADING_SIZE))
+		.h(gpui::px(ui_theme::CONTROL_SIZE))
+		.flex_none()
+		.flex()
+		.items_center()
+		.justify_center()
+}
+
 fn navigation_project_label(
 	id: &str,
 	name: &str,
@@ -1538,14 +1550,17 @@ fn navigation_project_label(
 
 fn navigation_item_label(
 	item: &Item,
-	_section: &str,
 	key: &str,
+	status: AgentStatusStyle,
+	state: &str,
 	scroll: bool,
-	viewport: &crate::ui_motion::Viewport,
-	expanded: bool,
+	reveal: &PanelReveal,
 ) -> AnyElement {
 	let label_debug = format!("navigation-item-label-{key}");
 	let leading_debug = format!("navigation-leading-{key}");
+	let compact = !reveal.expanded;
+	let show_mark =
+		compact || !matches!(status, AgentStatusStyle::Quiet | AgentStatusStyle::Completed);
 	gpui::div()
 		.h_full()
 		.flex_1()
@@ -1555,29 +1570,20 @@ fn navigation_item_label(
 		.text_size(gpui::px(ui_theme::NAVIGATION_TITLE_SIZE))
 		.font_weight(FontWeight::NORMAL)
 		.text_color(ui_theme::rgb(ui_theme::foreground::BODY))
-		.child(
-			gpui::div()
-				.debug_selector(move || leading_debug.clone())
-				.w(gpui::px(ui_theme::NAVIGATION_LEADING_SIZE))
-				.h(gpui::px(ui_theme::CONTROL_SIZE))
-				.flex_none()
-				.flex()
-				.items_center()
-				.justify_center()
-				.when(
-					!expanded || crate::ui_motion::agent_state_emphasized(&item.state),
-					|gutter| {
-						gutter.child(icons::ConversationIcon {
-							id: format!("navigation-{key}"),
-							state: item.state.clone(),
-							label: item.title.clone(),
-							compact: !expanded,
-						})
-					},
-				),
-		)
+		.child(navigation_leading_slot().debug_selector(move || leading_debug.clone()).when(
+			show_mark,
+			|slot| {
+				slot.child(icons::ConversationMark {
+					id: format!("navigation-{key}"),
+					state: state.to_owned(),
+					style: status,
+					label: item.title.clone(),
+					compact,
+				})
+			},
+		))
 		.child(gpui::div().debug_selector(move || label_debug.clone()).flex_1().min_w_0().child(
-			viewport.clip(
+			reveal.viewport.clip(
 				ui_theme::SIDEBAR_INSET,
 				crate::ui_motion::HoverOverflowLabel {
 					id: SharedString::from(format!("navigation-title-{key}")).into(),

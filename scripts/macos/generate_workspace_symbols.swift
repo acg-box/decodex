@@ -11,7 +11,6 @@ let symbols = [
     "navigation-folder": "folder",
     "navigation-projects": "folder.fill",
     "navigation-sort": "arrow.up.arrow.down",
-    "conversation": "bubble.left",
     "chevron-left": "chevron.left",
     "activity-work": "waveform.path",
     "activity-performance": "chart.xyaxis.line",

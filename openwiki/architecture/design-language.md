@@ -5,7 +5,7 @@ description: Reusable layout, activity-island motion, reading spacing and theme 
 tags: [desktop, design, motion, layout]
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-19T08:47:45.891Z
+    at: 2026-11-20T03:25:39.066Z
 sources:
   - id: openwiki-source-8037e2358a2c4f9b2c722a11
     resource: repo://AGENTS.md
@@ -31,6 +31,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_composer.rs
   - id: openwiki-source-a65c3fa1ed74697b3bd42810
     resource: repo://apps/decodex-gpui/src/agent_conversation_metric.rs
+  - id: openwiki-source-5080be62f09cdc91d9e2f37b
+    resource: repo://apps/decodex-gpui/src/agent_handoff_view.rs
   - id: openwiki-source-1ee22a183019eba898707d3c
     resource: repo://apps/decodex-gpui/src/agent_history_preview_tests.rs
   - id: openwiki-source-079a15445a0295f222af8069
@@ -127,11 +129,15 @@ sources:
     resource: repo://apps/decodex-gpui/src/voice_history_block.rs
   - id: openwiki-source-8f413b540123b1fe73628c7d
     resource: repo://apps/decodex-gpui/src/window_chrome.rs
+  - id: openwiki-source-35beef376e748f87821e9639
+    resource: repo://apps/decodex-gpui/src/workspace_symbols.rs
   - id: openwiki-source-f02ae41e2bd15dda85dc86b9
     resource: repo://codex-runtime.lock.json
   - id: openwiki-source-a490ea3fbcddb9c007caf196
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_context_tests.rs
-generated: { by: "codex", at: "2026-11-19T08:47:45.891Z" }
+  - id: openwiki-source-8fe6f1557e5d45d88b34bd0a
+    resource: repo://scripts/macos/generate_workspace_symbols.swift
+generated: { by: "codex", at: "2026-11-20T03:25:39.066Z" }
 ---
 
 # Interface geometry and motion
@@ -207,7 +213,9 @@ The start heading gives way to saved messages, a sending preview, or a retained 
 
 Use three independently collapsible categories: **Pin**, **Assistant** and **Projects**. Each project has its own disclosure. Several projects can remain open at the same time. Categories, project headers and conversations share one scrolling directory. Keep **Search and commands** above that directory and **Archived** at the bottom. Every label shares the same text column after one 28-point leading slot. Use weight and group spacing to express ownership without tree guides or additional indentation.
 
-Pin uses the warm gold theme slot, Assistant uses blue and Projects uses teal. Projects uses a filled folder; each expanded project uses a neutral outline folder. Project names and folder symbols use neutral ink. Project IDs do not select colors. Use the shared native SF Symbol artwork through `workspace_symbols`; the macOS generator supplies the symbol assets. Ordinary neutral-state conversation rows leave the leading slot empty in the expanded sidebar. Expanded conversation activity uses the conversation symbol with `ui_motion::agent_state_ink`. In the compact sidebar, project and conversation rows show the first complete grapheme of their name in the centered leading slot. Chinese characters, combined accents and emoji remain intact. Category and utility controls keep their icons. Expanded titles remain one normal-weight text run; the compact initial does not split or restyle the full title.
+Pin uses the warm gold theme slot, Assistant uses blue and Projects uses teal. Projects uses a filled folder; each expanded project uses a neutral outline folder. Project names and folder symbols use neutral ink. Project IDs do not select colors. Use the shared native SF Symbol artwork through `workspace_symbols`. The macOS generator supplies the symbol assets. In the compact sidebar, project and conversation rows show the first complete grapheme of their name in the centered leading slot. Conversation initials use the shared state ink. Chinese characters, combined accents and emoji remain intact. Category and utility controls keep their icons. Expanded titles remain one normal-weight text run.
+
+In the expanded sidebar, running conversations show three dots with a repeating opacity pulse. Reduced motion keeps the dots steady. Requests for attention use an amber ring and failures use the same ring in red. Unread results use a filled blue dot. Rings and the result dot use the same 6-point diameter. Opening the conversation and loading its available history clears that result's unread mark. Quiet conversations and completed conversations with no unread result leave the slot empty. The title column stays fixed through status changes.
 
 | Property | Value |
 | --- | --- |
@@ -224,7 +232,7 @@ Pin uses the warm gold theme slot, Assistant uses blue and Projects uses teal. P
 | Collapsed rail | 40 points, including two 6-point insets. |
 | Leading symbol slot | 28 points within the 28-point row. |
 | Category and project symbols | 16 points. |
-| Conversation and creation symbols | 14 points. |
+| Conversation mark frame and creation symbol | 14 points. |
 | Sorting symbol | 16 points, native up/down arrows. |
 | Disclosure symbols | 12 points. |
 | Small action target | 24 points. |
@@ -241,9 +249,11 @@ Keep Search and commands in the same leading slot when the sidebar contracts. It
 
 The sidebar's outer width uses the shared interruptible 200 ms cubic ease-out. Its content retains the complete expanded canvas during opening, closing and a reversal; the outer panel clips that canvas. Keep titles and trailing controls at their final positions during the transition. Do not squeeze text into intermediate widths or remove labels as soon as the target changes. The settled compact rail exposes category symbols and project or conversation initials. Its 28-point symbol column is centered between two 6-point insets in the 40-point rail, so labels start at the clipping edge and no partial glyph remains visible.
 
-Keep the complete sidebar text at its final position and color. `ui_motion::Viewport` measures the actual pane bounds and clips the fixed content at the visible edge, including its shared inner padding. The edge reveals or covers the existing text. Do not give labels an opacity transition, character counter, normalized reveal fraction or separate clock. Category, project and conversation symbols remain fixed. A reversal changes only the current clipping geometry. Reduced motion selects the target geometry directly.
+Keep the complete sidebar text at its final position and color. `ui_motion::Viewport` measures the actual pane bounds and clips the fixed content at the visible edge, including its shared inner padding. The edge reveals or covers the existing text. Do not give labels an opacity transition, character counter, normalized reveal fraction or separate clock. Category, project and conversation leading slots remain fixed. A reversal changes only the current clipping geometry. Reduced motion selects the target geometry directly.
 
 Use `ui_motion::HoverIntent` for surfaces revealed by pointer intent. The shared tokens set entry dwell to 100 ms and departure grace to 220 ms. Brief crossings cancel entry. Movement inside the same target does not restart its timer. Reentry cancels closing, and an exit from an older target cannot cancel a newer target. Explicit clicks, keyboard actions and dismissal cancel pending pointer work and retain their immediate behavior. The sidebar, Work and Debug islands, response-statistics popover and history previews use this owner. A history tick group and its card form one hover target: scrubbing changes the message immediately while retaining the surface and its arrival state. Ordinary hover ink, contextual row actions and native tooltip lifetime retain their own presentation roles.
+
+Keep the Timeline rail centered in the minimum 24-point gap between the message edge and the trailing workspace edge. Its center stays 12 points from the workspace edge as the window widens. The 16-point hit target extends into the workspace gutter, and the reading-plane mask clips any part that a floating panel covers.
 
 Group previews use `Popover::hover_preview` with the full trigger group as their anchor. Keep the 320-point Timeline preview width fixed. The first appearance uses its final measured height; subsequent content changes use the shared 200 ms interruptible `Tween`. Reversal continues from the current height. Keep the trigger anchor stable and use the common hover placement contract below for available space and edge clearance. Native and GPUI hosts use the same placement and height policy. Keep text at its measured size behind the changing frame, and resolve the target directly for reduced motion. Ordinary menus retain their existing placement and fixed-size arrival.
 
@@ -257,13 +267,13 @@ A committed pointer intent or explicit surface toggle starts a bounded 400 ms an
 
 Long titles retain their full text. Hover or keyboard focus starts overflow motion; leaving returns the text smoothly. Each section can enable Always scroll titles. Use shared disclosure, chevron, popover, control-opacity and confirmation-nudge motion. Respect reduced motion and do not animate the complete transcript for a sidebar hover.
 
-Conversation rows reveal **Pin** or **Unpin**, **Archive** and **Delete** as three inline icons on hover or keyboard focus. Archived rows reveal only **Restore** and **Delete**. The relative time fades while these actions appear. The first Delete click turns its icon red and applies the shared confirmation nudge; the next click confirms deletion without another prompt. The icon keeps the same 24-point hit target. Leaving the row, pressing Escape or clicking outside cancels. Icon hints use short action names and explain confirmation or unavailable actions when needed. Deletion keeps learned Assistant Memory. Archived rows reuse the native restore and delete paths. Anchor the owner and time tooltip to the complete row through the common hover placement contract so it stays clear of the row and its actions.
+Conversation rows reveal **Pin** or **Unpin**, **Archive** and **Delete** as three inline icons on hover or keyboard focus. Archived rows reveal only **Restore** and **Delete**. The relative time fades while these actions appear. The first Delete click turns its icon red and applies the shared confirmation nudge; the next click confirms deletion without another prompt. The icon keeps the same 24-point hit target. Leaving the row, pressing Escape or clicking outside cancels. Icon hints use short action names and explain confirmation or unavailable actions when needed. Deletion keeps learned Assistant Memory. Archived rows reuse the native restore and delete paths. Anchor the owner, time and active status tooltip to the complete row through the common hover placement contract so it stays clear of the row and its actions.
 
 Use restrained warm emphasis for requests that need the user. Derive this state from a pending native request, an unanswered native question, or an explicit user decision. Do not classify attention from a displayed label. Returned agent work and ordinary collaboration remain distinct from requests for a user decision. Window controls use fixed-size icons, with names in tooltips and accessibility labels. Collaboration retains a small pending-count badge when its panel is closed; it adds no visible toolbar label.
 
 ## Hover content and surfaces
 
-A hover hint must add useful information. Keep the action name for an icon-only control, a shortcut, a hidden value, a failure reason or the inputs behind an estimate. Remove a hint when it repeats a visible label or explanation. Use short action names and explicit value labels. Keep accessibility names when a visible hint is removed. Expanded navigation utilities, ordinary recorded step counts, visible answer options and Live Mute, Unmute, End and Cancel controls do not need duplicate explanations. A project hint can show its hidden directory. A compact navigation item can show its title; an expanded item needs only owner and update details.
+A hover hint must add useful information. Keep the action name for an icon-only control, a shortcut, a hidden value, a failure reason or the inputs behind an estimate. Remove a hint when it repeats a visible label or explanation. Use short action names and explicit value labels. Keep accessibility names when a visible hint is removed. Expanded navigation utilities, ordinary recorded step counts, visible answer options and Live Mute, Unmute, End and Cancel controls do not need duplicate explanations. A project hint can show its hidden directory. A conversation hint includes the owner, update time and active status when available. The compact hint also includes its title.
 
 GPUI callers attach text with `ui_motion::HoverHint::hover_hint` or use `tooltip_at` for anchored metadata. The common owner supplies the complete surface. It uses the interface font at 12 points, an 18-point line height, 8-point horizontal and 6-point vertical insets, a 360-point maximum width, a 10-point corner radius and the shared 0.5-point outline. Feature callers supply content, not another background or shadow. Text can wrap. Fit a text hint to the smallest width that preserves its line count at the maximum width. This removes unused trailing space without adding lines or changing the text. Cost explanations use short labelled lines for precise amount, observed responses and the price-check date.
 

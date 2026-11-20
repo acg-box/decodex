@@ -708,25 +708,50 @@ impl Tween {
 	}
 }
 
-fn agent_state_style(state: &str) -> (u32, bool) {
-	match state {
-		"Running" | "Starting" | "running" | "working" | "active" => (INFO, true),
-		"Needs you" | "Needs attention" | "Blocked" => (WARNING, false),
-		"failed" | "systemError" | "Failed" => (ERROR, false),
-		"Completed" | "completed" | "Resolved" => (SUCCESS, false),
-		_ => (TEXT, false),
+#[derive(Clone, Copy, Eq, PartialEq)]
+pub(crate) enum AgentStatusStyle {
+	Quiet,
+	Running,
+	Attention,
+	Failed,
+	Completed,
+	UnreadResult,
+}
+impl AgentStatusStyle {
+	pub(crate) fn presentation(state: &str) -> (Self, &str) {
+		match state {
+			"Running" | "Starting" => (Self::Running, state),
+			"running" | "working" | "active" => (Self::Running, "Running"),
+			"Needs you" | "Needs attention" | "Blocked" => (Self::Attention, state),
+			"waitingOnApproval" => (Self::Attention, "Approval needed"),
+			"waitingOnUserInput" => (Self::Attention, "Input needed"),
+			"failed" | "Failed" => (Self::Failed, "Failed"),
+			"systemError" => (Self::Failed, "System error"),
+			"Completed" | "completed" => (Self::Completed, "Completed"),
+			"Resolved" => (Self::Completed, state),
+			_ => (Self::Quiet, state),
+		}
+	}
+
+	pub(crate) fn color(self) -> u32 {
+		match self {
+			Self::Quiet => TEXT,
+			Self::Running | Self::UnreadResult => INFO,
+			Self::Attention => WARNING,
+			Self::Failed => ERROR,
+			Self::Completed => SUCCESS,
+		}
 	}
 }
 
-/// Reserve expanded conversation symbols for states with semantic emphasis.
-pub(crate) fn agent_state_emphasized(state: &str) -> bool {
-	agent_state_style(state).0 != TEXT
-}
-
-/// Keep conversation state ink and activity motion shared across labels and icons.
-pub(crate) fn agent_state_ink(id: &str, state: &str, window: &mut Window, cx: &mut App) -> Rgba {
-	let (color, busy) = agent_state_style(state);
-	let color = ColorScheme::current().hex(color);
+/// Keep state ink and activity motion shared across conversation initials.
+pub(crate) fn agent_state_ink(
+	id: &str,
+	style: AgentStatusStyle,
+	window: &mut Window,
+	cx: &mut App,
+) -> Rgba {
+	let color = ColorScheme::current().hex(style.color());
 	let mut channels = [0.; 3];
 
 	for (index, channel) in channels.iter_mut().enumerate() {
@@ -740,11 +765,12 @@ pub(crate) fn agent_state_ink(id: &str, state: &str, window: &mut Window, cx: &m
 
 	// No completion percentage exists for a model turn. A quiet change in
 	// the letter's ink indicates activity without implying measured progress.
-	let clock =
-		window.use_keyed_state(SharedString::from(format!("rail-activity-{}", id)), cx, |_, _| {
-			Instant::now()
-		});
-	let intensity = if busy && !reduced() {
+	let intensity = if style == AgentStatusStyle::Running && !reduced() {
+		let clock = window.use_keyed_state(
+			SharedString::from(format!("rail-activity-{id}")),
+			cx,
+			|_, _| Instant::now(),
+		);
 		request_frame(window, cx);
 
 		0.82 + 0.18 * (clock.read(cx).elapsed().as_secs_f32() * TAU / 2.4).cos()
@@ -771,7 +797,8 @@ pub(crate) struct AgentRailStatus {
 }
 impl RenderOnce for AgentRailStatus {
 	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-		let ink = agent_state_ink(&self.id, &self.state, window, cx);
+		let (style, status) = AgentStatusStyle::presentation(&self.state);
+		let ink = agent_state_ink(&self.id, style, window, cx);
 		RailLabel {
 			compact: self.compact,
 			viewport: self.viewport,
@@ -782,7 +809,7 @@ impl RenderOnce for AgentRailStatus {
 			initial_color: ink,
 			initial_weight: FontWeight::SEMIBOLD,
 			badge: None,
-			status: Some(self.state),
+			status: Some(status.to_owned()),
 		}
 	}
 }
