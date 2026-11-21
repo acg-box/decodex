@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:8f220e3e808777ba2dd23e196256e9618ab5f815909b9e898421d113079da8fc",
+  "pageVersion": "sha256:02962ed5a139eb85b5f75dd1fc1a7c3d2d5a415f5956f7d01865a59fc00be9c3",
   "claims": [
     {
       "id": "claim_8d60aaceeea74d6189e3d7b0b3ed21fe",
@@ -420,7 +420,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/shell_status.rs",
-          "version": "repo-file-v1:sha256:e272f87a26993aecacedaabb796b29dc8c467e93648bfda170a6e9c68b981196"
+          "version": "repo-file-v1:sha256:ee167fa7d65b7b900b7bd2d0a1b5131e1f2dc2e66a92ccd65f248c21dede8cab"
         },
         {
           "resource": "repo://automations/upstream/retained-contracts.json",
@@ -647,18 +647,18 @@
       "statement": "The fixed source review and exact signed development qualification have separate evidence. The qualified native default enables same-process MCP sharing and preserves explicit native configuration and private legacy fallback. Cross-process sharing remains deferred.",
       "evidence": [
         {
-          "resource": "repo://automations/upstream/qualification.json#L430-L479",
-          "version": "repo-lines-v1:sha256:021477fe4adacd5c720fe5399d026966e1b41c0df81774ae76c8c3b844108089:eyJzZWxlY3RlZExpbmVDb3VudCI6NTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ4NGMzZDQxMWMzM2IyYmM4NmI5MGY4OTY2ODk0NWRjZDUyODY2NDQwYjIyZThlMzcwNGU2MmYxZjdjYTcyNjAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM1OTJlMjcxNGI2ZmE5M2E1MGRiZWY0NmU2NGY3YzA1N2NmNDcxMmE1NDVhZWYwMWQ0ZDRmMjM4ODMzNTZlYzIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRiNmFiMGEzYmJmZDE5ZWYxNzJmNDA3OWIyYzJkM2JiNDVlYjVkNDYwMjRjZTFhZmUwNWYzYjUyNjlkODdmZjkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE0ZGFhNjMyNDQxYjU5YjY2ODMyYzBlM2ZjYmZkZDFiZjIyZDk5OWRlZDI3NTNiMDQzYzI5NDBmNTQ2ZmFiMzUifQ"
+          "resource": "repo://automations/upstream/README.md#L68-L77",
+          "version": "repo-lines-v1:sha256:e880f6d0b1b52bb14054c4af8c611391a3cafd88f0ff3ba0405f99016c770665:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQwYzg1M2ZjMzM2ZmNmYjE1MDk5ZGJjZjhlMjVhMjI2MTk3NWFkYjVlMzAwODI1Nzc0M2M5YjU5ZTQ4NGM4YTgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA1M2U4OTRkNGZlNjNlMjZkYWI5OTIzZWEzODM4NjVhYzFiZmFjMTFhM2Q3Nzk5OTlhZWE4ZGI0NDk5YzNhYWYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZkMzUwNDJhZWFkNDQ4Y2Q5MWNjNzQ4MTIzM2JmNTM2OTBkODZhZjFlOTJmYTk0ZjA2NzAxOGNmNDE0YWEyMWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFmZDRiM2RlODBiY2ZlZWIwYWY2OTlkYzA3ZGZmMjlhM2U4NjJiN2U0OGFmNTBiZDYyNzMzMzk2NmIwYmE2M2EifQ"
         },
         {
-          "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:89798d043a55a23faa4745f21965030fdedf37f73619ecbd95ca303536098d86"
+          "resource": "repo://automations/upstream/qualification.json#L521-L573",
+          "version": "repo-lines-v1:sha256:97dee83bc6f6ae9fa7e28c16cdc4bf398f33db5e06241e44535d0bfd7c78a82a:eyJzZWxlY3RlZExpbmVDb3VudCI6NTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ4NGMzZDQxMWMzM2IyYmM4NmI5MGY4OTY2ODk0NWRjZDUyODY2NDQwYjIyZThlMzcwNGU2MmYxZjdjYTcyNjAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRjNDEwYzU4NTcwOTlkNDM2M2EyYzcxYzU0N2RiNmM0ODc5MDhkOTIwOWRhNDMyZjk2MWFhN2MxMDQwOWFkYjYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjVkMzc5NDIyNDc3ZTI3MWUzZjc0NjFkZGE5YzdlZmQ2ODEyY2I1NTkzYjU5NGUwNjgxNDliMmM1ZGI5OGFhMmEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE0ZGFhNjMyNDQxYjU5YjY2ODMyYzBlM2ZjYmZkZDFiZjIyZDk5OWRlZDI3NTNiMDQzYzI5NDBmNTQ2ZmFiMzUifQ"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.9.0",
-    "at": "2026-11-19T20:35:23.841Z"
+    "at": "2026-11-21T20:41:08.948Z"
   }
 }

@@ -42,8 +42,6 @@ sources:
     resource: repo://automations/upstream/retained-contracts.json
   - id: openwiki-source-651d1fb6c9e49916a916ab51
     resource: repo://Cargo.toml
-  - id: openwiki-source-f02ae41e2bd15dda85dc86b9
-    resource: repo://codex-runtime.lock.json
   - id: openwiki-source-b1948e1beb6e361503aa2db1
     resource: repo://crates/decodex-codex/src/app_server_client.rs
   - id: openwiki-source-d0b9aaf952250307abc4342e
@@ -183,7 +181,7 @@ sources:
 generated: { by: "codex", at: "2026-11-19T20:35:23.841Z" }
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-19T20:35:23.841Z
+    at: 2026-11-21T20:41:08.948Z
 ---
 
 # Runtime Architecture

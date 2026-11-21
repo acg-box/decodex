@@ -38,8 +38,6 @@ sources:
     resource: repo://apps/decodex-gpui/src/settings_components.rs
   - id: openwiki-source-f7ecbc6c02d8c1b7873858d6
     resource: repo://automations/upstream/checkpoint.test.mts
-  - id: openwiki-source-a5b9d61b2b9a5f7492d602ac
-    resource: repo://automations/upstream/current-review.json
   - id: openwiki-source-7dcbb082d2502f1ec4386c39
     resource: repo://automations/upstream/prompts/maintainer.md
   - id: openwiki-source-f580b10e16f1d25ebfea3bf8
@@ -102,6 +100,8 @@ sources:
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_project_work_tests.rs
   - id: openwiki-source-21c0991a686dae637a3616cd
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_read_state_tests.rs
+  - id: openwiki-source-608d1b60a8c7a9cd37e8dda4
+    resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_reasoning_tests.rs
   - id: openwiki-source-ddbcad5474bc4311e2556223
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_recap_service_tests.rs
   - id: openwiki-source-68238f7343c9fc1bd11783f3
@@ -222,10 +222,10 @@ sources:
     resource: repo://scripts/macos/version_codex_source.py
   - id: openwiki-source-e201f60894c32a914dac99ee
     resource: repo://scripts/vnext/run_native_regression.py
-generated: { by: "codex", at: "2026-11-19T20:35:23.841Z" }
+generated: { by: "codex", at: "2026-11-21T20:41:08.948Z" }
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-19T20:35:23.841Z
+    at: 2026-11-21T20:41:08.948Z
 ---
 
 # Upstream integration acceptance boundaries
@@ -256,6 +256,8 @@ Workflow-only maintenance uses the checkpoint and portfolio checks in `cargo +st
 Read the development lock, [current source review](../../automations/upstream/current-review.json) and [current qualification](../../automations/upstream/qualification.json) for the fixed target, exact CLI/helpers/schema, executed identities and limits. Keep source review, source-test execution, exact production-artifact tests, delivery and installed acceptance separate. Current run counts and hashes belong in those records, not repeated across Wiki pages.
 
 The retained MCP fixture reads same-name registrations from two environments through the signed CLI and executor. The voice start fixture checks the unset V3 request, and the native preference fixtures check project and managed settings. The cold history fixture reads native turn boundaries and retained tool context before continuing the conversation. The [current qualification](../../automations/upstream/qualification.json) identifies the executions for the selected artifact.
+
+The public reasoning fixture projects a summary from a loopback provider through the signed CLI. It reads the same summary after a cold restart and verifies that the provider received one inference request.
 
 Use the [Seatbelt launch fixture](../../crates/decodex-runtime/tests/native_qualification/seatbelt_launch.py) to check local command permissions in a disposable macOS home. It checks denial under read-only permissions and a successful write to the subtree granted by a named command-directory profile. The native command hook fixture checks the working directory and one execution of the approved command.
 

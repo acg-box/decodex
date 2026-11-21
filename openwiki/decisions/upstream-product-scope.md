@@ -56,8 +56,6 @@ sources:
     resource: repo://automations/upstream/README.md
   - id: openwiki-source-3127fd4c7b2aefcc9cea7961
     resource: repo://automations/upstream/retained-contracts.json
-  - id: openwiki-source-7eedab1ccdf82ac9ccd3ab32
-    resource: repo://automations/upstream/retained-evidence.json
   - id: openwiki-source-02bd3cfc9d4db9d1d1d8fd59
     resource: repo://crates/decodex-codex/src/app_server_client/context_preferences_tests.rs
   - id: openwiki-source-2b08587e9b26e203156110c8
@@ -137,7 +135,7 @@ sources:
 generated: { by: "codex", at: "2026-11-19T20:35:23.841Z" }
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-19T20:35:23.841Z
+    at: 2026-11-21T20:41:08.948Z
 ---
 
 # Product scope and native ownership

@@ -204,6 +204,8 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent/activity.rs
   - id: openwiki-source-a11095ee2d127564345b4574
     resource: repo://crates/decodex-runtime/src/agent/conversation_drafts.rs
+  - id: openwiki-source-deaf00afb3b01f66706578c1
+    resource: repo://crates/decodex-runtime/src/agent/reasoning.rs
   - id: openwiki-source-283a40a004fda23504fad7e1
     resource: repo://crates/decodex-runtime/src/agent/result_messages.rs
   - id: openwiki-source-0bdc548eba96b09c39e22383
@@ -228,10 +230,10 @@ sources:
     resource: repo://database/src/agent.rs
   - id: openwiki-source-c9f290c212ee80724ccf643a
     resource: repo://database/src/agent/drafts.rs
-generated: { by: "codex", at: "2026-11-19T20:35:23.841Z" }
+generated: { by: "codex", at: "2026-11-21T20:41:08.948Z" }
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-19T20:35:23.841Z
+    at: 2026-11-21T20:41:08.948Z
 ---
 
 
@@ -248,6 +250,8 @@ A completed native message can replace text already received through streaming w
 ## Progressive disclosure
 
 `agent_timeline_groups` folds process items after a completed turn has a nonempty final answer. An explicit final phase or a legacy absent phase is accepted. Reasoning, plans, commentary and tool activity remain available through the steps disclosure. Failed and interrupted turns can also fold their process records while retaining their final message and terminal status. Attachments and interactive items remain outside the group.
+
+The runtime groups public reasoning summary parts by native thread, turn and item. Native completion replaces the partial summary with the completed parts.
 
 The step count is the number of retained process records in that disclosure, including deduplicated observed activities. The last displayed final answer is outside this count. If a worker resumes without another user input, a superseded answer can become part of the process before the latest answer. The count describes visible process records; it is not a model-call count or a plan-progress total. A complete response with a loaded prompt and no process records has a known count of zero, without an empty process disclosure. An incomplete or unavailable response has an unknown count. Active work uses its exact owning prompt, including worker wakes and repeated input within a native turn.
 
@@ -400,6 +404,8 @@ The bounded Unicode math renderer supports aligned equations, boxed models, grou
 The runtime keeps a generated image attachment when the native item contains a `fileId`. It uses the existing Stored attachment description and does not copy that identity into public history fields. A file reference takes precedence over a transitional `result`, including nonempty stale bytes.
 
 The media reader currently supports inline generated image bytes. It reports file references as unsupported. It does not interpret `savedPath` as a service-host file because that path can belong to another execution environment. The regression tests cover file-only and transitional records, inline bytes, and same-named host paths. These checks do not establish live image generation or desktop visual acceptance.
+
+For supported local media, the runtime uses the path from the exact native item. It checks the size of the opened regular file and caps the read before decoding.
 
 ## Conversation read status
 
