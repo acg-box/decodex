@@ -159,8 +159,8 @@ fn locate(item: &Value, index: usize) -> std::result::Result<Media<'_>, AgentMed
 
 fn local_media_sync(path: &str) -> std::result::Result<(String, Vec<u8>), AgentMediaResult> {
 	// The admitted Codex child runs on this service host (account_launch/agent_process).
-	// Native fs/readFile returns an unbounded base64 frame; fs/getMetadata has no size.
-	// Read only the path recovered from the exact native item, never a UI-supplied path.
+	// Native fs/readFile returns an unbounded base64 frame. A separate metadata request cannot cap
+	// that read. Read only the path recovered from the exact native item, never a UI-supplied path.
 	if path.len() > 4_096 || path.contains('\0') || !Path::new(path).is_absolute() {
 		return Err(AgentMediaResult::Unavailable);
 	}

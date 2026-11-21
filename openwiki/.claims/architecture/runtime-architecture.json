@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:beb19dcf303345f8065f78ebf92fab40f6d208777cf882dc03718a51f0683b9e",
+  "pageVersion": "sha256:4aa6801dd53ab0493852b18de10020a316eee5db2a2672699c492a0e6c055516",
   "claims": [
     {
       "id": "claim_613df7e7c10d49d28b26d6db94c525e5",
@@ -277,8 +277,8 @@
       "statement": "Repository-owned model-error and large-catalog fixtures check terminal modelNotFound classification and explicit catalogs larger than 1 MiB with an exact CLI. Current qualification identifies the executed fixtures; historical executions keep their original artifact limits.",
       "evidence": [
         {
-          "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:16b8dda895c654e2366e7c172e5387edec596a6a8d4923c6f60f49a0ac030e00"
+          "resource": "repo://automations/upstream/README.md#L68-L77",
+          "version": "repo-lines-v1:sha256:e880f6d0b1b52bb14054c4af8c611391a3cafd88f0ff3ba0405f99016c770665:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQwYzg1M2ZjMzM2ZmNmYjE1MDk5ZGJjZjhlMjVhMjI2MTk3NWFkYjVlMzAwODI1Nzc0M2M5YjU5ZTQ4NGM4YTgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA1M2U4OTRkNGZlNjNlMjZkYWI5OTIzZWEzODM4NjVhYzFiZmFjMTFhM2Q3Nzk5OTlhZWE4ZGI0NDk5YzNhYWYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZkMzUwNDJhZWFkNDQ4Y2Q5MWNjNzQ4MTIzM2JmNTM2OTBkODZhZjFlOTJmYTk0ZjA2NzAxOGNmNDE0YWEyMWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFmZDRiM2RlODBiY2ZlZWIwYWY2OTlkYzA3ZGZmMjlhM2U4NjJiN2U0OGFmNTBiZDYyNzMzMzk2NmIwYmE2M2EifQ"
         },
         {
           "resource": "repo://crates/decodex-runtime/tests/native_qualification/large_catalog.py",
@@ -470,7 +470,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:16b8dda895c654e2366e7c172e5387edec596a6a8d4923c6f60f49a0ac030e00"
+          "version": "repo-file-v1:sha256:3ab07483f51e4e2d96c18226d47a60609652d5cd91b7661de53216ff9b950886"
         }
       ]
     },
@@ -570,7 +570,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:16b8dda895c654e2366e7c172e5387edec596a6a8d4923c6f60f49a0ac030e00"
+          "version": "repo-file-v1:sha256:3ab07483f51e4e2d96c18226d47a60609652d5cd91b7661de53216ff9b950886"
         },
         {
           "resource": "repo://automations/upstream/retained-contracts.json#L40-L51",
@@ -601,8 +601,8 @@
       "statement": "A reusable exact-CLI fixture checks retained reasoning after incomplete or usage-less responses before automatic compaction. Historical proof and the current executed checks retain separate artifact limits.",
       "evidence": [
         {
-          "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:16b8dda895c654e2366e7c172e5387edec596a6a8d4923c6f60f49a0ac030e00"
+          "resource": "repo://automations/upstream/README.md#L68-L77",
+          "version": "repo-lines-v1:sha256:e880f6d0b1b52bb14054c4af8c611391a3cafd88f0ff3ba0405f99016c770665:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQwYzg1M2ZjMzM2ZmNmYjE1MDk5ZGJjZjhlMjVhMjI2MTk3NWFkYjVlMzAwODI1Nzc0M2M5YjU5ZTQ4NGM4YTgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA1M2U4OTRkNGZlNjNlMjZkYWI5OTIzZWEzODM4NjVhYzFiZmFjMTFhM2Q3Nzk5OTlhZWE4ZGI0NDk5YzNhYWYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZkMzUwNDJhZWFkNDQ4Y2Q5MWNjNzQ4MTIzM2JmNTM2OTBkODZhZjFlOTJmYTk0ZjA2NzAxOGNmNDE0YWEyMWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFmZDRiM2RlODBiY2ZlZWIwYWY2OTlkYzA3ZGZmMjlhM2U4NjJiN2U0OGFmNTBiZDYyNzMzMzk2NmIwYmE2M2EifQ"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_unreported_usage_tests.rs",
@@ -893,18 +893,18 @@
       "statement": "The pinned native CLI starts the packaged Code Mode host over gRPC on standard input and output. The exact package qualification checks nested work attribution and Apps recovery.",
       "evidence": [
         {
-          "resource": "repo://automations/upstream/qualification.json#L481-L489",
-          "version": "repo-lines-v1:sha256:f7b3841b7a80210e144d9e653ee7dba5f5edeaa05a7cd8c7671fc481530fefff:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZDIyZDNjMTU1NTAxZDQ4NjE4ZjM2YTc2ODVjNTRkYjY4NTgyZTJlM2EzODVlMGZjOTQzODk3YTBhMTkyOWIxOSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNGQ1Y2QyZmI0ZjNkZjg4NDUxNTI1NWIzOTUyM2YyZjhiNTQ3MmJlZWE5ZjU2NmZmY2EyMDRkYjgwMjU2MTA0MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZDZmMDk5NzJhMmQ3NmEwNjM5NTk1MDBmYjQzZjViNTY1ZDgxMDcxNWFjYWQ5MmRjZThlZDQ5OWU3NzMyZDZkNiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNjUyZTQyYmE0MzVhMzdmM2E3ZTc1ZTYyYjQ4NWQyNTMyZGIwOTRmNTZhNThkMWQ1YTljMjQzNTMwMWU2MDdkYyJ9"
+          "resource": "repo://automations/upstream/qualification.json#L575-L584",
+          "version": "repo-lines-v1:sha256:eefee96ebdfaf27d87703fcff6c9d3d92766a56d3bbeb8f28be556158ca14aee:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQyMmQzYzE1NTUwMWQ0ODYxOGYzNmE3Njg1YzU0ZGI2ODU4MmUyZTNhMzg1ZTBmYzk0Mzg5N2EwYTE5MjliMTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRkNWNkMmZiNGYzZGY4ODQ1MTUyNTViMzk1MjNmMmY4YjU0NzJiZWVhOWY1NjZmZmNhMjA0ZGI4MDI1NjEwNDEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjFjYWY2OWIzMDQyZWJjMTkyZWEzNTRiZmUwYWU2ZjFlZmUxMDExNjkxMTcwYTdhMDdkNGFmODE3ZThlOWIzYmIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY0MjY0NTQ1ZTNiYTg0OGEwYTdmZGZhYmU4MzdlNzdiZmU4M2ZiYThlZTQ3NjQ0ZDdhNjJjZmQzNGNlOTkyMmYifQ"
         },
         {
-          "resource": "repo://codex-runtime.lock.json",
-          "version": "repo-file-v1:sha256:7119f5b3996a03851eed20599d221c60b9b148e4650cc6aec9a29891f531913d"
+          "resource": "repo://scripts/macos/build_codex_source.mts#L80-L102",
+          "version": "repo-lines-v1:sha256:3e621f7c6e325b8c885db60a53cd2d90e634ad2fb95fbe52894bd1d6ed4318bb:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA1ODQyNzE5ZjkyYjMyNTIxYTMyYjQ0ZWY3ODJjOTE5ZjIwNmM2NmM5YzdkNmM2M2E1N2VjYjAyYzA1ODk2NTgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImMzYThmY2UyZjFlYWJlYWY0YTZlMGEwNmExYWJhN2RhOTk0ODUzOTE3NzY2YmQ1MTExYzJiZDNiNmEzY2U4MDQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEifQ"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.9.0",
-    "at": "2026-11-19T20:35:23.841Z"
+    "at": "2026-11-21T20:41:08.948Z"
   }
 }
