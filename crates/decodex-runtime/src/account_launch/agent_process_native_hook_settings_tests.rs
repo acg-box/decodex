@@ -1,5 +1,5 @@
 //! Native hook trust must control script effects, independently of enablement and previews.
-use std::{env, fs, net::SocketAddr, path::Path, sync::atomic::AtomicUsize};
+use std::{env, fs, net::SocketAddr, path::Path, process::Command, sync::atomic::AtomicUsize};
 
 use tokio::{net::TcpListener, time};
 
@@ -54,6 +54,65 @@ fn setup(root: &Path, address: SocketAddr) {
 
 	fs::write(root.join(".agents/plugins/marketplace.json"),serde_json::json!({"name":"test","plugins":[{"name":"sample","source":{"source":"local","path":"./plugins/cache/test/sample/local"}}]}).to_string()).expect("marketplace");
 	fs::write(root.join("config.toml"),format!("model=\"gpt-5.6-sol\"\nmodel_provider=\"fixture\"\n[features]\nplugins=true\nhooks=true\n[plugins.\"sample@test\"]\nenabled=true\n[projects.{}]\ntrust_level=\"trusted\"\n[model_providers.fixture]\nname=\"Isolated plugin fixture\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n",serde_json::json!(root))).expect("config");
+}
+
+#[tokio::test]
+#[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated hook configuration"]
+async fn installed_hook_settings_read_inherited_hooks_in_linked_worktree() {
+	let binary = env::var_os("DECODEX_TEST_CODEX_BINARY").expect("binary");
+	let temporary = tempfile::tempdir().expect("fixture root");
+	let root = temporary.path().canonicalize().expect("canonical fixture root");
+	let home = root.join("home");
+	let repository = root.join("repository");
+	let worktree = root.join("worktree");
+	fs::create_dir(&home).expect("home");
+	fs::create_dir(&repository).expect("repository");
+	let git = |args: &[&str]| {
+		let output = Command::new("git")
+			.current_dir(&repository)
+			.env("GIT_CONFIG_GLOBAL", "/dev/null")
+			.env("GIT_CONFIG_NOSYSTEM", "1")
+			.args(["-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid"])
+			.args(args)
+			.output()
+			.expect("git");
+		assert!(
+			output.status.success(),
+			"git {args:?}: {}",
+			String::from_utf8_lossy(&output.stderr)
+		);
+	};
+	git(&["init", "--quiet"]);
+	git(&["commit", "--quiet", "--allow-empty", "-m", "Create fixture"]);
+	git(&["worktree", "add", "--quiet", "--detach", worktree.to_str().expect("worktree path")]);
+	fs::write(repository.join(".codex"), "").expect("regular file at repository root");
+	let inherited_config = repository.join("child/.codex/config.toml");
+	fs::create_dir_all(inherited_config.parent().expect("config directory"))
+		.expect("nested config directory");
+	fs::write(&inherited_config, "[[hooks.UserPromptSubmit]]\n[[hooks.UserPromptSubmit.hooks]]\ntype = 'command'\ncommand = 'true'\n")
+		.expect("nested hook declaration");
+	let cwd = worktree.join("child");
+	fs::create_dir(worktree.join(".codex")).expect("worktree root config directory");
+	fs::create_dir_all(cwd.join(".codex")).expect("worktree child config directory");
+	fs::write(
+		home.join("config.toml"),
+		format!(
+			"[features]\nhooks = true\n[projects.{}]\ntrust_level = 'trusted'\n",
+			serde_json::json!(repository)
+		),
+	)
+	.expect("trusted project config");
+
+	let session = NativeSession::start(&binary, &home);
+	let review = session
+		.client
+		.hook_settings(cwd.to_str().expect("worktree child path"))
+		.await
+		.expect("hook review");
+	let hooks = review.inventory["hooks"].as_array().expect("hook list");
+	assert_eq!(hooks.len(), 1);
+	assert_eq!(hooks[0]["sourcePath"], serde_json::json!(inherited_config));
+	assert_eq!(hooks[0]["trustStatus"], "untrusted");
 }
 
 #[tokio::test]

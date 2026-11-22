@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:f962b70422f647ae6f1efbff383707f50624a7213ff405122fa505a67ce96f76",
+  "pageVersion": "sha256:7d04c58e643f21ac7845bba294dad8fb4e5b395d77983dcd3a9ca2af68f99730",
   "claims": [
     {
       "id": "claim_3f139c853db04d169600a9ee50a8d9b8",
@@ -169,10 +169,24 @@
           "version": "repo-file-v1:sha256:0173744e567ce91a89135fa20d15ce9d4fe2a78505d440f453e15d04eced2d2b"
         }
       ]
+    },
+    {
+      "id": "claim_60cacd394de74519b60d724869bdc8d3",
+      "statement": "Shared Hooks uses the native inventory for the worktree cwd. A linked worktree can inherit a nested hook declaration with its source path and untrusted status when the primary checkout has a regular .codex file at its root.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-codex/src/app_server_client/hooks.rs#L123-L135",
+          "version": "repo-lines-v1:sha256:0b92cd2d52a9a9dd922b31ee01cf0bb9e4dc5e7eb5ff693b1c68a08ba9914033:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJlYzRmM2EzNDk2NTMzM2E0MzUzMzRiMDUzMmY0NWFkYzllMWMxZjRmZDA5MmU4MzE3MWJkOTFiZGU4ODNmNmYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNlNzkzMzQ2MGRkODVlNjZkN2QzOGI4ZTMwOWI3M2M2ZTMzNjdmNDY1YjU5ODYzODE5YzllODk2Mzk4MWI3YjgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIxM2Y2NThkMWE0YmU4NGFhYmRjMzhhOWUyMmNjOWZkNzlkN2MyOGVlODc3MmExYjU2ZTQ0OTRiYWM3MjIyZjgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImU2NjQ4YzI1MWM2NzhiMmIyYTVjMDc2NjJjYmRmMTIxNjU4YjU3MzVkZGNhNDI4NzU1ZTM2MWMzM2JjMDA4MWEifQ"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_hook_settings_tests.rs#L61-L115",
+          "version": "repo-lines-v1:sha256:76417c4d5638ed3318fa325e55bc949f7e29e4006fbe5cd1358648144849bf4e:eyJzZWxlY3RlZExpbmVDb3VudCI6NTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUxNzc3ZjAwMWU1ZmYxNTZhODVkNmFkNzlmNjE0YmNhZTJmNGQyNGI0MWYxNjFiYmJiMGVjNGU3MDE0YjNiMTciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNjYWE3NWQ0ODdlMTdjNDM3YTEwYzMxN2RiNGYyOTcwNzcyMDNmMjQ2ODI0ZWQ1ZmE0MWUxMWRmMjRkNjIyODgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZmMDM1MTYzMjY2MDliYTBmOWYwMjFlMzc0N2I3NTZkMTYxMWYzYmJiZWI0ZGRjMWY1ZWUwOTZhYjM4OTU0NzYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijc3NzJlOTI3NWNiNmEyNGZmYTg5NTJjY2E3N2U2YTRhNWEyYWRlNjNjZWQ0MzUxYzZiYzU4NjBhYWZlNTIyZDEifQ"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.9.0",
-    "at": "2026-11-18T19:17:42.865Z"
+    "at": "2026-11-22T20:29:03.056Z"
   }
 }
