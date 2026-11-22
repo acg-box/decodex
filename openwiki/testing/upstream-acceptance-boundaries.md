@@ -84,6 +84,8 @@ sources:
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_discovery_tests.rs
   - id: openwiki-source-4a57fba4bea69171318c6323
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_fork_tests.rs
+  - id: openwiki-source-053611cb863c8c6865cef2ca
+    resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_hook_settings_tests.rs
   - id: openwiki-source-8d32d49a0bc31600300d9335
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_lookup_tests.rs
   - id: openwiki-source-ead7f3ba21ec266ad1e56243
@@ -222,10 +224,10 @@ sources:
     resource: repo://scripts/macos/version_codex_source.py
   - id: openwiki-source-e201f60894c32a914dac99ee
     resource: repo://scripts/vnext/run_native_regression.py
-generated: { by: "codex", at: "2026-11-21T20:41:08.948Z" }
+generated: { by: "codex", at: "2026-11-22T20:29:03.056Z" }
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-21T20:41:08.948Z
+    at: 2026-11-22T20:29:03.056Z
 ---
 
 # Upstream integration acceptance boundaries
@@ -261,6 +263,8 @@ The public reasoning fixture projects a summary from a loopback provider through
 
 Use the [Seatbelt launch fixture](../../crates/decodex-runtime/tests/native_qualification/seatbelt_launch.py) to check local command permissions in a disposable macOS home. It checks denial under read-only permissions and a successful write to the subtree granted by a named command-directory profile. The native command hook fixture checks the working directory and one execution of the approved command.
 
+The `installed_hook_settings_read_inherited_hooks_in_linked_worktree` fixture uses the retained Hook settings client with an exact signed CLI and a temporary Codex home. It creates a linked Git worktree and a regular `.codex` file at the primary checkout root. The native readback must include the inherited nested declaration with its exact source path and untrusted status. See [current qualification](../../automations/upstream/qualification.json#linked_worktree_hook_inventory).
+
 The provider-refusal follow-up resolves [the former compatibility blocker](https://github.com/acg-box/decodex/issues/2575) through the supported native fork. The original cohort remains historical evidence; it is not a freshly rerun matrix. The runtime lock selects the fixed reviewed target after fresh affected native consumer and component checks. Earlier cohort results remain historical and are not counted as passes on a newer artifact. The current source-review record covers every commit through its fixed target. HumanCommand support is [user-deferred](https://github.com/acg-box/decodex/issues/2585), unsupported and unadvertised. Earlier worker-permission reload source tests retain their original source and helper limits. Read the current qualification for actual executions. Source tests are separate from signed production-artifact tests; no broad upstream suite is a daily gate.
 
 The retired Codex startup-configuration diagnostic is absent from the current router. Its earlier execution remains historical proof. Valid named-permission defaults and an owned Recap working directory repair fixture admission without weakening existing behavior assertions. The exact-artifact development cache test also corrupts the required standalone executor, checks that ordinary preparation rejects it, and restores it through explicit reinstallation.
@@ -289,12 +293,11 @@ The selected CLI's generated schema exposes a nullable total turn duration but n
 
 Five historical socket cases ran against the then-selected unmodified CLI from upstream source `abf4bb91ec49fbf443ccec0069f9cab5dd1462d8`. Three passed: compatible modern sharing, concurrent input routing, and an explicitly marked legacy helper with the modern protocol feature disabled. Two failed at thread startup: an unmarked helper returned an empty discovery result, and a marked legacy helper was used with the modern protocol feature enabled. An empty successful discovery result is a synthetic compatibility case, not a conforming method-not-found error or proof of a legacy server.
 
-The [current qualification](../../automations/upstream/qualification.json#local_mcp_sharing)
-records native same-process sharing on the exact signed CLI and helpers. Check the
-four registered selectors for modern helper reuse, private legacy fallback, and
-exact child input after immediate and late empty discovery replies. Keep a private
-control with `mcp_connection_sharing = false` because the native default enables
-sharing. Read the native feature state from an isolated home.
+Use the exact signed CLI and helpers to check shared child input, private fallback
+for unmarked legacy helpers, and distinct environment identities for same-name
+MCP registrations. For a change to sharing policy, read the feature state in an
+isolated home and exercise `mcp_connection_sharing = false` as a private control.
+See [current qualification](../../automations/upstream/qualification.json#local_mcp_sharing).
 
 The two-proxy socket cases cover one app-server and one synthetic account home.
 Cross-process sharing requires its own qualification. See [Decodex issue #2524](https://github.com/acg-box/decodex/issues/2524).

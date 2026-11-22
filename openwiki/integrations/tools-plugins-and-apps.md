@@ -16,6 +16,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/component_plugins.rs
   - id: openwiki-source-0813b2e35e2133631c0aa4db
     resource: repo://apps/decodex-gpui/src/settings_components.rs
+  - id: openwiki-source-434b5ae919e8291800ff43f2
+    resource: repo://crates/decodex-codex/src/app_server_client/hooks.rs
   - id: openwiki-source-464d033c9eccea7feb8e422f
     resource: repo://crates/decodex-codex/src/app_server_client/integrations.rs
   - id: openwiki-source-e379b8a714d71f87371ae328
@@ -28,6 +30,8 @@ sources:
     resource: repo://crates/decodex-protocol/src/agent_integrations.rs
   - id: openwiki-source-eccf08613126ff810078b520
     resource: repo://crates/decodex-protocol/src/agent.rs
+  - id: openwiki-source-053611cb863c8c6865cef2ca
+    resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_hook_settings_tests.rs
   - id: openwiki-source-a0063c7b07a1bc990ee9af6c
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process.rs
   - id: openwiki-source-c75093d19a3bc72db5836102
@@ -48,10 +52,10 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent/tests.rs
   - id: openwiki-source-3edc2f094826ee56ddec6b73
     resource: repo://crates/decodex-runtime/src/ragflow.rs
-generated: { by: "codex", at: "2026-11-18T19:17:42.865Z" }
+generated: { by: "codex", at: "2026-11-22T20:29:03.056Z" }
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-18T19:17:42.865Z
+    at: 2026-11-22T20:29:03.056Z
 ---
 
 # Native tools and connection ownership
@@ -84,6 +88,8 @@ Selecting Memory waits for a safe fresh context with native memory generation, u
 | --- | --- | --- |
 | Shared Hooks | Review current content, trust its hash, enable or disable | Trust and enablement are separate; other tasks using the same file can be affected |
 | Connector tool exposure | Edit native `omit_tools_from` preferences for supported surfaces | Inherit, explicit empty and exclusions differ; server restrictions still apply |
+
+Shared Hooks can list declarations inherited from nested project configuration in a linked Git worktree when the primary checkout has a regular `.codex` file at its root. The native inventory keeps the inherited declaration's source path and trust status. See [Upstream integration acceptance boundaries](../testing/upstream-acceptance-boundaries.md#current-fixed-development-qualification).
 
 The local API has no connector approval/reviewer configuration commands. Pending native approvals and their exact request identities remain supported. Configure account-specific connection policy in Codex.
 
