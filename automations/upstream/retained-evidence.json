@@ -3,7 +3,7 @@
   "scope": "Current Decodex upstream review, selected development artifact and stable consumer contracts.",
   "retained_contracts": {
     "path": "automations/upstream/retained-contracts.json",
-    "sha256": "66a6830ca6507dc3ab5a33aa8465162f58709acf1e4e02cadca3795b07201d7c"
+    "sha256": "9a7e0a1f00f55dc6da2e7c9162ea70ce3b6da10024626d76eabaec03b780d966"
   },
   "retained_contract_routes": {
     "behavior": "automations/upstream/retained-contracts.json#retained_behavior_contracts",
@@ -17,43 +17,43 @@
     "optional_decisions": "automations/upstream/retained-contracts.json#optional_decisions",
     "answer_display": "automations/upstream/retained-contracts.json#retained_answer_display"
   },
-  "source_baseline": "61cb947f057155b705dda922739663fe2c37cf65",
+  "source_baseline": "00696090d65a747848e0a40661e1da8badb1f146",
   "source_review_evidence": "automations/upstream/current-review.json",
   "source_review_summary": {
-    "previous_cursor": "140815f19c05a24a70ebc273016bd54ff71ced7c",
-    "reviewed_commits": 22,
+    "previous_cursor": "61cb947f057155b705dda922739663fe2c37cf65",
+    "reviewed_commits": 66,
     "fixed_target_remaining": 0
   },
   "qualification": "automations/upstream/qualification.json",
   "artifact": {
-    "source_commit": "61cb947f057155b705dda922739663fe2c37cf65",
-    "source_archive_sha256": "4ed75746cc62baef39e02beb841b6b3b14e932c9f8309c68ae34b353a6af1b10",
+    "source_commit": "00696090d65a747848e0a40661e1da8badb1f146",
+    "source_archive_sha256": "44c4313c1faf20f17de58941860a071d14f77335f49403667fa881fe8b7b2306",
     "schema_sha256": "f391d0fc24d1e37a4389386b3525c974cfaa2ed5ef0ce4cc446126de79d0449e",
     "components": [
       {
         "path": "CodexCLI.app/Contents/MacOS/codex",
-        "sha256": "c106420b07a54d25c4f761a2ca512ccd25982c756ad97f1f7e3a226cbf9c9d09",
-        "bytes": 289991120,
+        "sha256": "6591922519f1fe9821d48d72a3028dcd41826bb6f85b1bfb3f324c031b9b1bc3",
+        "bytes": 268893904,
         "strict_signature_verified": true,
         "pinned_commit_embedded": true
       },
       {
         "path": "bin/codex-code-mode-host",
-        "sha256": "1206bcbbc6593ea64125942088e4612174dd9e1fc5c87ed6bd3e48348bfd07f0",
-        "bytes": 62134064,
+        "sha256": "ab4477c9d73183e086b41aabf2cd10e78a4f39519529d911cc252ec32a02ea74",
+        "bytes": 59278624,
         "strict_signature_verified": true,
         "pinned_commit_embedded": true
       },
       {
         "path": "bin/codex-exec-server",
-        "sha256": "fb491300a2a60320e36cd259a1da172ce1a54c350194b584702c161807867e31",
-        "bytes": 65591856,
+        "sha256": "189627a59284368507cf1dfd484ead8cb249abe80bf22c1540507c27227b8334",
+        "bytes": 63561760,
         "strict_signature_verified": true,
         "pinned_commit_embedded": true
       },
       {
         "path": "codex-path/rg",
-        "sha256": "8cb251f880c131b3cf2aea28052c9fcab3d9df98cde1157043a8378d91354c82",
+        "sha256": "44392f7cda5e281e6ceb5217c0579841f97fcfada7b9eb858ec2cf6a82ad64c3",
         "bytes": 4009552,
         "strict_signature_verified": true,
         "pinned_commit_embedded": null
@@ -62,20 +62,21 @@
     "launcher_sha256": "50ab38ba21d0d9f8346f32f41848382f15b556190f3c7a07e885a4fb73e379c8"
   },
   "retained_native_consumers": "automations/upstream/qualification.json#retained_consumers",
-  "direct_protocol_regressions": "automations/upstream/qualification.json#direct_protocol_regressions",
   "component_cache_repair": "automations/upstream/qualification.json#component_cache_repair",
-  "mcp_sharing": "automations/upstream/qualification.json#local_mcp_sharing",
-  "math_presentation": "automations/upstream/qualification.json#math_presentation",
   "validation": "automations/upstream/qualification.json#decodex_validation",
   "current_delivery": {
     "source_commit_references": [
-      "https://github.com/acg-box/decodex/commit/143852077d182d5705ab747c951e488e814de36f"
+      "https://github.com/acg-box/decodex/commit/1b4cf9ee1ad18b90ceddfcb601bfb4d5b4c55c6c"
     ],
     "status": "Final-head CI and merge evidence are in native receipts."
   },
   "historical_evidence": {
-    "reference": "https://github.com/acg-box/decodex/blob/319499e8bcfd4c2d48c4974338031c2d8dfb4112/automations/upstream/retained-evidence.json",
-    "limits": "Git preserves previous runtime identities, executed fixtures and qualification limits."
+    "reference": "https://github.com/acg-box/decodex/blob/720d45a30bd8296e34112a39938398e9b29e8dd7/automations/upstream/retained-evidence.json",
+    "limits": "Git retains replaced artifact identities, executed cases and original scenario limits."
   },
-  "linked_worktree_hook_inventory": "automations/upstream/qualification.json#linked_worktree_hook_inventory"
+  "prompt_revert": "automations/upstream/qualification.json#prompt_revert",
+  "mcp_sharing": "automations/upstream/qualification.json#local_mcp_sharing",
+  "math_presentation": "automations/upstream/qualification.json#math_presentation",
+  "linked_worktree_hook_inventory": "automations/upstream/qualification.json#linked_worktree_hook_inventory",
+  "direct_protocol_regressions": "automations/upstream/qualification.json#direct_protocol_regressions"
 }
