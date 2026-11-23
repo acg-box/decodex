@@ -305,6 +305,23 @@ impl SqliteStore {
 		.await
 	}
 
+	/// Look up the unique provider identity, including a removed account and its saved label.
+	pub async fn account_by_provider(
+		&self,
+		provider: &ProviderIdentity,
+	) -> Result<Option<AccountRecord>, StoreError> {
+		let provider = provider.clone();
+		self.run(move |connection| {
+			let Some(account_id) = account_id_for_provider(connection, &provider)? else {
+				return Ok(None);
+			};
+			Ok(read_account_registry_sync(connection, Some(account_id.as_str()), 1)?
+				.into_iter()
+				.next())
+		})
+		.await
+	}
+
 	pub async fn prepare_account_operation(
 		&self,
 		preparation: &AccountOperationPreparation,
@@ -2075,24 +2092,30 @@ fn account_base_sync(
 		.map_err(sql_error)
 }
 
+fn account_id_for_provider(
+	connection: &Connection,
+	provider: &ProviderIdentity,
+) -> Result<Option<AccountId>, StoreError> {
+	connection
+		.query_row(
+			"SELECT account_id FROM accounts WHERE provider = ?1 AND provider_account_id = ?2",
+			rusqlite::params![provider_text(provider.provider()), provider.account_id()],
+			|row| row.get::<_, String>(0),
+		)
+		.optional()
+		.map_err(sql_error)?
+		.map(|id| AccountId::new(id).map_err(|_| incompatible("account identity")))
+		.transpose()
+}
+
 fn resolve_account_enrollment_sync(
 	connection: &Connection,
 	requested_account_id: &AccountId,
 	provider: &ProviderIdentity,
 ) -> Result<AccountEnrollmentResolution, StoreError> {
-	let existing = connection
-		.query_row(
-			"SELECT account_id FROM accounts
-			 WHERE provider = ?1 AND provider_account_id = ?2",
-			rusqlite::params![provider_text(provider.provider()), provider.account_id()],
-			|row| row.get::<_, String>(0),
-		)
-		.optional()
-		.map_err(sql_error)?;
-	let Some(existing) = existing else {
+	let Some(account_id) = account_id_for_provider(connection, provider)? else {
 		return Ok(AccountEnrollmentResolution::Fresh { account_id: requested_account_id.clone() });
 	};
-	let account_id = AccountId::new(existing).map_err(|_| incompatible("account identity"))?;
 	let account = account_base_sync(connection, &account_id)?
 		.ok_or_else(|| incompatible("account enrollment resolution"))?;
 

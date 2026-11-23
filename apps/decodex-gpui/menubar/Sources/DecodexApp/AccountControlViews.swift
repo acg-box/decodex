@@ -108,11 +108,11 @@ struct AccountUtilityActionsView: View {
 
 	var body: some View {
 		CompactAccountActionButton(
-			title: "Sign out", symbol: "rectangle.portrait.and.arrow.right",
+			title: "Remove account from Decodex", symbol: "rectangle.portrait.and.arrow.right",
 			isActive: false, isDisabled: lifecycleActionIsDisabled,
 			isVisuallyDisabled: !store.canPerformDirectAccountControl,
 			usesDisabledEnvironment: !store.canPerformDirectAccountControl,
-			isBusy: false, help: "Sign out",
+			isBusy: false, help: "Remove this account and its saved sign-in from Decodex.",
 			isConfirming: confirmation.isArmed(), confirmationTrigger: confirmationTrigger
 		) {
 			if confirmation.tap() {

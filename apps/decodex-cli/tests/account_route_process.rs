@@ -693,6 +693,164 @@ async fn actual_service_routes_a_b_a_restarts_and_routes_again_with_exact_readba
 	);
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn route_away_from_a_downgraded_then_removed_shared_login() {
+	let fixture = Fixture::new();
+	let old = fixture.tokens(PROVIDER_A, "old");
+	let target = fixture.tokens(PROVIDER_B, "target");
+	fixture.write_shared_auth(&old);
+	let refresh = RefreshServer::start(vec![]);
+	let daemon =
+		RunningDaemon::start(fixture.home(), refresh.endpoint(), fixture.codex_running_marker());
+	let client = fixture.client();
+	import_account(
+		&client,
+		ACCOUNT_A,
+		"22000000-0000-4000-8000-0000000000a1",
+		"import-old",
+		&fixture.write_import("a.json", &old),
+	)
+	.await;
+	import_account(
+		&client,
+		ACCOUNT_B,
+		"22000000-0000-4000-8000-0000000000b1",
+		"import-target",
+		&fixture.write_import("b.json", &target),
+	)
+	.await;
+
+	let other_id = "21000000-0000-4000-8000-0000000000c1";
+	let other = fixture.tokens("fixture-other", "other");
+	import_account(
+		&client,
+		other_id,
+		"22000000-0000-4000-8000-0000000000c1",
+		"import-other",
+		&fixture.write_import("c.json", &other),
+	)
+	.await;
+	let stored_other = fixture.credential_bytes(other_id);
+
+	let mut downgraded = fixture.tokens(PROVIDER_A, "downgraded");
+	downgraded.id_token = jwt(serde_json::json!({
+		"email": downgraded.email,
+		"https://api.openai.com/auth": {"chatgpt_account_id": PROVIDER_A, "chatgpt_plan_type": "free"},
+	}));
+	let mut legacy_login = downgraded.shared_auth();
+	legacy_login.as_object_mut().unwrap().remove("auth_mode");
+	write_private_json(&fixture.home.join(".codex/auth.json"), &legacy_login);
+	let revision = route_account(&client, ACCOUNT_B, "leave-free")
+		.await
+		.expect("leave the downgraded source on the first attempt");
+	fixture.assert_exact_readback(ACCOUNT_B, PROVIDER_B, &target, revision).await;
+	assert_eq!(
+		route_account(&client, ACCOUNT_A, "select-free").await,
+		Err(AccountCommandRejectionDto::UnsupportedPlan)
+	);
+	let decodex_protocol::AccountInspectResult::Available(removed) =
+		client.inspect(entity(ACCOUNT_A)).await.unwrap()
+	else {
+		panic!("source account is visible")
+	};
+	assert_eq!(
+		removed.lifecycle_readiness,
+		decodex_protocol::AccountLifecycleReadinessDto::UnsupportedPlan
+	);
+
+	fixture.write_shared_auth(&downgraded);
+	let logout = client
+		.execute(
+			CommandPayload::LogoutAccount {
+				operation_id: entity("22000000-0000-4000-8000-0000000000a2"),
+				account_id: entity(ACCOUNT_A),
+			},
+			Some(removed.account_revision),
+			idempotency("remove-old"),
+		)
+		.await
+		.unwrap();
+	assert!(matches!(logout, AccountCommandResponse::Applied { .. }));
+	let stored_target = fixture.credential_bytes(ACCOUNT_B);
+	let before = fixture.auth_and_routing_snapshot().await;
+	let request = |key| client.route_account(entity(ACCOUNT_B), idempotency(key));
+	let confirm = |digest, key| {
+		client.route_account_with_confirmation(entity(ACCOUNT_B), Some(digest), idempotency(key))
+	};
+	let prompt = |response| match response {
+		AccountCommandResponse::Rejected {
+			error: CommandError::SharedLoginReplacementRequired { source_label, confirmation },
+		} => {
+			assert_eq!(source_label, removed.alias);
+			confirmation
+		},
+		_ => panic!("expected a replacement prompt naming the removed account"),
+	};
+
+	let first = prompt(request("switch").await.unwrap());
+	assert_eq!(
+		first,
+		prompt(request("switch").await.unwrap()),
+		"a replay must return the original prompt"
+	);
+	assert!(fixture.auth_and_routing_snapshot().await == before);
+	let different_target = client
+		.route_account_with_confirmation(
+			entity(other_id),
+			Some(first.clone()),
+			idempotency("different-target"),
+		)
+		.await
+		.unwrap();
+	assert!(matches!(
+		different_target,
+		AccountCommandResponse::Rejected {
+			error: CommandError::AccountCommandRejected {
+				rejection: AccountCommandRejectionDto::AuthFileChanged,
+				..
+			}
+		}
+	));
+	fixture.set_codex_running(true);
+	assert!(matches!(
+		confirm(first.clone(), "busy").await.unwrap(),
+		AccountCommandResponse::Rejected {
+			error: CommandError::AccountCommandRejected {
+				rejection: AccountCommandRejectionDto::CodexIsRunning,
+				..
+			}
+		}
+	));
+	fixture.set_codex_running(false);
+	assert!(fixture.auth_and_routing_snapshot().await == before);
+
+	fixture.write_shared_auth(&fixture.tokens(PROVIDER_A, "another-native-login"));
+	let changed = fixture.auth_and_routing_snapshot().await;
+	assert!(matches!(
+		confirm(first, "stale-confirmation").await.unwrap(),
+		AccountCommandResponse::Rejected {
+			error: CommandError::AccountCommandRejected {
+				rejection: AccountCommandRejectionDto::AuthFileChanged,
+				..
+			}
+		}
+	));
+	assert!(fixture.auth_and_routing_snapshot().await == changed);
+	let current = prompt(request("switch-again").await.unwrap());
+	let result = confirm(current.clone(), "confirm").await.unwrap();
+	assert!(matches!(result, AccountCommandResponse::Applied { .. }));
+	assert_eq!(result, confirm(current, "confirm").await.unwrap());
+	fixture.assert_exact_readback(ACCOUNT_B, PROVIDER_B, &target, revision).await;
+	assert!(fixture.credential_bytes(ACCOUNT_B) == stored_target);
+	assert!(fixture.credential_bytes(other_id) == stored_other);
+	assert!(matches!(
+		client.inspect(entity(ACCOUNT_A)).await.unwrap(),
+		decodex_protocol::AccountInspectResult::NotFound
+	));
+	daemon.stop();
+	refresh.finish();
+}
+
 async fn import_account(
 	client: &AccountClient,
 	account: &str,

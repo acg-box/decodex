@@ -6,6 +6,8 @@ tags: ["decodex", "architecture"]
 sources:
   - id: openwiki-source-d700ef551f46158044378d8f
     resource: repo://apps/decodex-cli/src/lib.rs
+  - id: openwiki-source-230c7c1843682509316cd745
+    resource: repo://apps/decodex-cli/tests/account_route_process.rs
   - id: openwiki-source-4e2d2760a1fe5d904918afb7
     resource: repo://apps/decodex-gpui/menubar/Sources/DecodexApp/ConversationEstimatesView.swift
   - id: openwiki-source-bf03f317e64cfefd11f6ea83
@@ -58,6 +60,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/settings_surface.rs
   - id: openwiki-source-cfb92e5db8b3a39d51f6a057
     resource: repo://apps/decodex-gpui/src/settings_updates.rs
+  - id: openwiki-source-1291f5243fa6c9cb52149bda
+    resource: repo://apps/decodex-gpui/src/shell.rs
   - id: openwiki-source-2f256c95c226c1326d164ad3
     resource: repo://apps/decodex-gpui/src/ui_feedback.rs
   - id: openwiki-source-ccd97a4d4ef8dfe9b724e7ce
@@ -110,10 +114,10 @@ sources:
     resource: repo://database/src/schema.rs
   - id: openwiki-source-3b57179b92b257bc3fff51a1
     resource: repo://scripts/macos/stage_decodex_app.sh
-generated: { by: "codex", at: "2026-11-12T04:15:17.900Z" }
+generated: { by: "codex", at: "2026-11-23T03:02:45.946Z" }
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-12T12:41:07.431Z
+    at: 2026-11-23T03:02:45.946Z
 ---
 
 # OpenWiki quickstart
@@ -146,7 +150,7 @@ The conversation browser and Work list have independent saved **status filters**
 
 ## Side chats
 
-The source tab stays **Main**. Side chat tabs use their conversation topics, with numbered labels only before a title is available. Topics are summarized automatically after the first eligible completed user exchange and reviewed after seven more exchanges. The sidebar keeps the source title, and Agent identity stays separate. See [automatic titles](workflows/conversations-and-recovery.md#automatic-conversation-titles).
+The source tab for a Project Agent is **Main**. Assistant uses its conversation label. Side chat tabs use their conversation topics, with numbered labels until a title becomes available. Topics are summarized automatically after the first eligible completed user exchange and reviewed after seven more exchanges. The sidebar keeps the source title, and Agent identity stays separate. See [automatic titles](workflows/conversations-and-recovery.md#automatic-conversation-titles).
 
 Use **+** in the conversation header to open a Side chat from the selected idle conversation's latest completed turn. Creation needs no second confirmation and sends no message. Each tab keeps its own draft and reading position. Closing a tab retains the native branch; reopen it from **Agent preferences → Side chats**.
 
@@ -189,6 +193,7 @@ The app version and **Check for updates** are in **Settings > General > Updates*
 | Use native skills or understand plugin and connection ownership | [Tools and integrations](integrations/tools-plugins-and-apps.md) |
 | Change dictation, live voice or voice preferences | [Subscription voice](integrations/subscription-voice.md) |
 | Import OAuth/PAT accounts or diagnose routing and activation | [Accounts and routing](operations/accounts-and-routing.md) |
+| Switch away from a downgraded or removed Codex account | [Account switching and confirmation](operations/accounts-and-routing.md#switch-away-from-a-downgraded-or-removed-account) |
 | Diagnose storage | [Local database](operations/local-database.md) |
 | Decide which upstream capabilities belong here | [Product scope](decisions/upstream-product-scope.md) |
 | Review an upstream change | [Upstream maintenance](operations/codex-upstream-autopilot.md) |
@@ -199,7 +204,7 @@ The app version and **Check for updates** are in **Settings > General > Updates*
 ## Current boundaries
 
 - `decodex serve` is the service and SQLite product-state owner. GPUI and CLI use typed local clients. The bundled helper is `decodex`, not `decodexd`.
-- The current local formats are protocol 4.9, SQLite schema 61 and desktop draft format 12. New stores start with the exact current schema; startup does not run a historical migration chain. Retained-data conversion is an explicit operator task outside the application.
+- The current local formats are protocol 4.11, SQLite schema 61 and desktop draft format 12. New stores start with the current schema. Operators convert retained data outside the application.
 - The Agent graph presents work relationships; the right Collaboration panel keeps recorded exchanges and pending response requests visible across chats. Expanding an exchange preserves the active chat and draft. Historical Factory diagrams do not define the current desktop.
 - Account admission accepts native `plus`, `pro`, `prolite`, `promax` and `team` plans. OAuth and PAT use the same plan scope; native identity, quota and entitlement remain authoritative. See [Accounts](operations/accounts-and-routing.md).
 - Account Route is synchronous and service-owned. Shared-auth liveness, exact source identity and readback govern completion. Same-account refresh adopts a valid non-older native winner instead of restoring a losing token.

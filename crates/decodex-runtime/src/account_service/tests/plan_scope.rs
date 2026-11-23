@@ -273,7 +273,7 @@ async fn old_excluded_accounts_remain_readable_but_cannot_supply_work() {
 			panic!("fresh route command")
 		};
 		let routing_before = service.routing_control().await.unwrap();
-		let response = service.route_account_command_sync(lease, &excluded, |result| {
+		let response = service.route_account_command_sync(lease, &excluded, None, |result| {
 			Ok(serde_json::json!({"unsupported":matches!(result, Err(account_service::AccountRouteFailure::Lifecycle(AccountLifecycleError::UnsupportedPlan)))}))
 		}).await.unwrap();
 

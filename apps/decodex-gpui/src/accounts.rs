@@ -18,10 +18,17 @@ use decodex_protocol::{
 	CommandOutcome, CommandPayload, CommandReceipt, CommandResultEnvelope, CorrelationId, EntityId,
 	EntityRevision, EventEnvelope, EventPayload, IdempotencyKey, QueryEnvelope, QueryId,
 	QueryPayload, QueryResultEnvelope, QueryResultPayload, ReceiptDisposition, ResultPayload,
-	ServerId,
+	ServerId, Sha256Digest, WireText,
 };
 
 static NEXT_ID: AtomicU64 = AtomicU64::new(0);
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct SharedLoginReplacement {
+	pub(crate) target: EntityId,
+	pub(crate) source_label: WireText,
+	pub(crate) confirmation: Sha256Digest,
+}
 
 /// Current bounded state rendered by the Accounts destination.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -31,6 +38,7 @@ pub(crate) struct AccountsSnapshot {
 	pub(crate) accounts: Vec<AccountDto>,
 	pub(crate) routing: Option<AccountRoutingControlDto>,
 	pub(crate) rejection: Option<AccountCommandRejectionDto>,
+	pub(crate) replacement: Option<SharedLoginReplacement>,
 	pub(crate) can_manage: bool,
 	pub(crate) can_route: bool,
 	pub(crate) route_success_alias: Option<String>,
@@ -136,7 +144,11 @@ impl AccountsController {
 		Ok(())
 	}
 
-	pub(crate) fn select_fixed(&self, account_id: &EntityId) -> Result<(), AccountInputError> {
+	pub(crate) fn select_fixed(
+		&self,
+		account_id: &EntityId,
+		replace_shared_login: Option<Sha256Digest>,
+	) -> Result<(), AccountInputError> {
 		let mut state = self.lock();
 
 		if !state.accounts.iter().any(|account| &account.account_id == account_id) {
@@ -145,20 +157,23 @@ impl AccountsController {
 		if state.routing.is_none() {
 			return Err(AccountInputError::RoutingUnavailable);
 		}
-		if state.routing.as_ref().is_some_and(|routing| {
-			matches!(&routing.mode, AccountSelectionModeDto::Fixed(current) if current == account_id)
-		}) {
-			return Ok(());
-		}
-
-		state
-			.queue_command(CommandPayload::RouteAccount { account_id: account_id.clone() }, None)?;
+		state.queue_command(
+			CommandPayload::RouteAccount { account_id: account_id.clone(), replace_shared_login },
+			None,
+		)?;
 
 		drop(state);
 
 		self.inner.notify.notify_one();
 
 		Ok(())
+	}
+
+	pub(crate) fn cancel_shared_login_replacement(&self) {
+		let mut state = self.lock();
+		if state.replacement.take().is_some() {
+			state.command = AccountCommandState::Idle;
+		}
 	}
 
 	pub(crate) fn select_balanced(&self) -> Result<(), AccountInputError> {
@@ -244,6 +259,7 @@ impl AccountsController {
 			return;
 		}
 
+		state.replacement = None;
 		state.latch_in_flight_outcome_unknown();
 		state.reset_query();
 
@@ -284,6 +300,7 @@ impl AccountsController {
 
 		state.reset_query();
 
+		state.replacement = None;
 		state.session = None;
 		state.load = if state.ever_activated {
 			AccountsLoadState::Offline
@@ -554,6 +571,20 @@ impl AccountsController {
 				(AccountRouteOutcome::Fresh, false)
 			},
 			CommandOutcome::Rejected => {
+				if let (
+					CommandPayload::RouteAccount { account_id, .. },
+					Some(CommandError::SharedLoginReplacementRequired {
+						source_label,
+						confirmation,
+					}),
+				) = (&in_flight.envelope.payload, &result.error)
+				{
+					state.replacement = Some(SharedLoginReplacement {
+						target: account_id.clone(),
+						source_label: source_label.clone(),
+						confirmation: confirmation.clone(),
+					});
+				}
 				state.rejection = match result.error.as_ref() {
 					Some(CommandError::AccountCommandRejected { rejection, .. }) =>
 						Some(*rejection),
@@ -614,6 +645,7 @@ struct State {
 	accounts: Vec<AccountDto>,
 	routing: Option<AccountRoutingControlDto>,
 	rejection: Option<AccountCommandRejectionDto>,
+	replacement: Option<SharedLoginReplacement>,
 	route_success_alias: Option<String>,
 }
 impl State {
@@ -632,6 +664,7 @@ impl State {
 			accounts: Vec::new(),
 			routing: None,
 			rejection: None,
+			replacement: None,
 			route_success_alias: None,
 		}
 	}
@@ -654,6 +687,7 @@ impl State {
 			accounts: self.accounts.clone(),
 			routing: self.routing.clone(),
 			rejection: self.rejection,
+			replacement: self.replacement.clone(),
 			can_manage: idle,
 			can_route: idle,
 			route_success_alias: self.route_success_alias.clone(),
@@ -718,6 +752,7 @@ impl State {
 			payload,
 		});
 		self.route_success_alias = None;
+		self.replacement = None;
 		self.rejection = None;
 		self.command = AccountCommandState::Sending;
 
@@ -962,7 +997,7 @@ mod tests {
 	};
 	use decodex_protocol::{
 		AccountLifecycleReadinessDto, AccountObservedStateDto, AccountQuotaStateDto,
-		AccountQuotaWindowDto, Sha256Digest, WireText,
+		AccountQuotaWindowDto, CommandError, Sha256Digest, WireText,
 	};
 
 	fn server() -> ServerId {
@@ -1116,7 +1151,7 @@ mod tests {
 		assert_eq!(snapshot.accounts, vec![first.clone(), second.clone()]);
 
 		controller
-			.select_fixed(&second.account_id)
+			.select_fixed(&second.account_id, None)
 			.expect("ready account can become the fixed route");
 
 		let dispatch =
@@ -1126,7 +1161,7 @@ mod tests {
 		assert_eq!(command.expected_revision, None);
 		assert!(matches!(
 			&command.payload,
-			CommandPayload::RouteAccount { account_id } if account_id == &second.account_id
+			CommandPayload::RouteAccount { account_id, replace_shared_login: None } if account_id == &second.account_id
 		));
 
 		controller.command_sent(&dispatch);
@@ -1163,6 +1198,65 @@ mod tests {
 
 		assert_eq!(routed_snapshot.routing, Some(routed));
 		assert_eq!(routed_snapshot.route_success_alias.as_deref(), Some(second.alias.as_str()));
+	}
+
+	#[test]
+	fn fixed_route_can_repair_shared_login_only_after_confirmation() {
+		let controller = AccountsController::production();
+		let server = server();
+		let target = account("10000000-0000-4000-8000-000000000002", "Reserve", true, 7);
+		controller.bind_session(2, server.clone());
+		{
+			let mut state = controller.lock();
+			state.load = AccountsLoadState::Ready;
+			state.accounts = vec![target.clone()];
+			state.routing = Some(AccountRoutingControlDto {
+				revision: EntityRevision(3),
+				mode: AccountSelectionModeDto::Fixed(target.account_id.clone()),
+				order: vec![target.account_id.clone()],
+			});
+		}
+		let confirmation = Sha256Digest::new("a".repeat(64)).unwrap();
+		let request = || {
+			controller.select_fixed(&target.account_id, None).unwrap();
+			let dispatch = controller.try_take_dispatch(2, &server).unwrap();
+			controller.command_sent(&dispatch);
+			let command = dispatch.command().unwrap();
+			let reply = CommandResultEnvelope {
+				version: CURRENT_VERSION,
+				server_id: server.clone(),
+				client_command_id: command.client_command_id.clone(),
+				idempotency_key: command.idempotency_key.clone(),
+				outcome: CommandOutcome::Rejected,
+				entity_revision: None,
+				payload: None,
+				error: Some(CommandError::SharedLoginReplacementRequired {
+					source_label: WireText::new("Old").unwrap(),
+					confirmation: confirmation.clone(),
+				}),
+			};
+			assert_eq!(
+				controller.route_command_result(2, &server, &reply),
+				AccountRouteOutcome::Fresh
+			);
+			assert!(controller.try_take_dispatch(2, &server).is_none());
+			controller.snapshot().replacement.unwrap()
+		};
+
+		let prompt = request();
+		assert_eq!(prompt.target, target.account_id);
+		assert_eq!(prompt.source_label.as_str(), "Old");
+		controller.cancel_shared_login_replacement();
+		assert!(controller.snapshot().replacement.is_none());
+		assert!(controller.try_take_dispatch(2, &server).is_none());
+
+		let prompt = request();
+		controller.select_fixed(&prompt.target, Some(prompt.confirmation)).unwrap();
+		let dispatch = controller.try_take_dispatch(2, &server).unwrap();
+		assert!(
+			matches!(&dispatch.command().unwrap().payload, CommandPayload::RouteAccount { account_id, replace_shared_login: Some(proof) } if account_id == &target.account_id && proof == &confirmation)
+		);
+		assert!(controller.snapshot().replacement.is_none());
 	}
 
 	#[test]

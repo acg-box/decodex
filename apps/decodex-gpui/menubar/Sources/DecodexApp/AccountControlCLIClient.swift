@@ -109,7 +109,7 @@ enum AccountControlRejection: String, Decodable, Equatable, Sendable {
 		case .staleRoutingControl:
 			return "Routing changed. Refresh and retry."
 		case .accountInUse:
-			return "Account in use. Cannot sign out."
+			return "This account is in use. Finish its work before removing it."
 		case .operationUnsettled:
 			return "Another account operation is pending."
 		case .operationNotFound:
@@ -137,9 +137,9 @@ enum AccountControlRejection: String, Decodable, Equatable, Sendable {
 		case .credentialRefreshUnavailable:
 			return "Sign-in refresh unavailable. Try later."
 		case .authSourceAccountUnknown:
-			return "Add the current Codex account before switching."
+			return "Import the current Codex sign-in before switching accounts."
 		case .authCredentialConflict:
-			return "Codex sign-in mismatch. Sign in again."
+			return "The shared Codex sign-in conflicts with the saved sign-in. Reconnect the current Codex account before switching."
 		case .authFileUnreadable:
 			return "Could not read Codex sign-in."
 		case .authFileChanged:
@@ -156,6 +156,11 @@ enum AccountControlRejection: String, Decodable, Equatable, Sendable {
 	}
 }
 
+struct SharedLoginReplacement: Equatable, Sendable {
+	let sourceLabel: String
+	let confirmation: String
+}
+
 enum AccountControlError: Error, Equatable, LocalizedError, Sendable {
 	case invalidInput
 	case invalidResponse
@@ -166,6 +171,7 @@ enum AccountControlError: Error, Equatable, LocalizedError, Sendable {
 	case applicationUnavailable
 	case acceptanceUnknown
 	case rejected(AccountControlRejection, actualRevision: UInt64?)
+	case sharedLoginReplacementRequired(SharedLoginReplacement)
 	case potentiallyDispatched
 
 	var errorDescription: String? {
@@ -197,6 +203,8 @@ enum AccountControlError: Error, Equatable, LocalizedError, Sendable {
 			return "The account service is unavailable."
 		case .acceptanceUnknown, .potentiallyDispatched:
 			return "Account change unconfirmed. Refresh before retrying."
+		case .sharedLoginReplacementRequired(let replacement):
+			return "Codex is signed in as \(replacement.sourceLabel) outside Decodex."
 		case .rejected(let rejection, _):
 			return rejection.presentation
 		}
@@ -341,6 +349,7 @@ protocol AccountControlClient: ResetCardClient {
 	func routeAccount(
 		authority: ResetCardAuthority?,
 		accountID: String,
+		replaceSharedLogin: String?,
 		idempotencyKey: String
 	) async throws -> AccountControlResult
 
@@ -393,6 +402,7 @@ extension AccountControlClient {
 	func routeAccount(
 		authority _: ResetCardAuthority?,
 		accountID _: String,
+		replaceSharedLogin _: String?,
 		idempotencyKey _: String
 	) async throws -> AccountControlResult {
 		throw AccountControlError.applicationUnavailable
@@ -554,6 +564,7 @@ extension DecodexNativeClient: AccountControlClient {
 	func routeAccount(
 		authority: ResetCardAuthority?,
 		accountID: String,
+		replaceSharedLogin: String? = nil,
 		idempotencyKey: String
 	) async throws -> AccountControlResult {
 		try Self.validateAccountControlInput(
@@ -567,6 +578,7 @@ extension DecodexNativeClient: AccountControlClient {
 			request: DecodexNativeRequest(
 				operation: "route_account",
 				accountID: accountID,
+				replaceSharedLogin: replaceSharedLogin,
 				idempotencyKey: idempotencyKey
 			),
 			authority: authority,
@@ -1435,6 +1447,7 @@ private enum AccountControlCommandErrorWire: Decodable {
 	case applicationUnavailable
 	case acceptanceUnknown
 	case accountRejected(AccountControlRejection, actualRevision: UInt64?)
+	case sharedLoginReplacementRequired(SharedLoginReplacement)
 
 	init(from decoder: Decoder) throws {
 		let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -1470,6 +1483,14 @@ private enum AccountControlCommandErrorWire: Decodable {
 		case "acceptance_unknown":
 			try requireExactFields(in: decoder, expected: ["reason"])
 			self = .acceptanceUnknown
+		case "shared_login_replacement_required":
+			try requireExactFields(in: decoder, expected: ["reason", "source_label", "confirmation"])
+			let source = try container.decode(String.self, forKey: .sourceLabel)
+			let confirmation = try container.decode(String.self, forKey: .confirmation)
+			guard isBoundedWireText(source, maximumBytes: 512), CodexAuthProjectionWire.isSHA256(confirmation) else {
+				throw AccountControlError.invalidResponse
+			}
+			self = .sharedLoginReplacementRequired(SharedLoginReplacement(sourceLabel: source, confirmation: confirmation))
 		case "account_command_rejected":
 			try rejectUnknownFields(
 				in: decoder,
@@ -1504,6 +1525,8 @@ private enum AccountControlCommandErrorWire: Decodable {
 			return .applicationUnavailable
 		case .acceptanceUnknown:
 			return .acceptanceUnknown
+		case .sharedLoginReplacementRequired(let replacement):
+			return .sharedLoginReplacementRequired(replacement)
 		case .accountRejected(let rejection, let actualRevision):
 			return .rejected(rejection, actualRevision: actualRevision)
 		}
@@ -1517,6 +1540,8 @@ private enum AccountControlCommandErrorWire: Decodable {
 		case message
 		case rejection
 		case actualRevision = "actual_revision"
+		case sourceLabel = "source_label"
+		case confirmation
 	}
 }
 

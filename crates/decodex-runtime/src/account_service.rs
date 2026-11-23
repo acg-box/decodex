@@ -377,24 +377,11 @@ impl AccountService {
 			},
 		};
 		let provider_account_id = credential.provider.account_id();
-		let Ok(accounts) = self.store.read_account_registry(None, MAX_ACCOUNT_READ).await else {
-			return CodexAuthProjectionInspection::Unavailable;
+		let candidate = match self.store.account_by_provider(&credential.provider).await {
+			Ok(Some(account)) if !account.tombstoned => account,
+			Ok(_) => return CodexAuthProjectionInspection::Unmanaged,
+			Err(_) => return CodexAuthProjectionInspection::Unavailable,
 		};
-		let mut matching = accounts.into_iter().filter(|account| {
-			!account.tombstoned
-				&& account.credential.as_ref().is_some_and(|binding| {
-					binding.provider.provider() == AccountProvider::Chatgpt
-						&& binding.provider.account_id() == provider_account_id
-				})
-		});
-		let Some(candidate) = matching.next() else {
-			return CodexAuthProjectionInspection::Unmanaged;
-		};
-
-		if matching.next().is_some() {
-			return CodexAuthProjectionInspection::Unavailable;
-		}
-
 		let account_id = candidate.account_id;
 		let Ok(lock) = self.lock_for(&account_id) else {
 			return CodexAuthProjectionInspection::Unavailable;
@@ -438,54 +425,31 @@ impl AccountService {
 		target_account_id: &AccountId,
 		target_binding: &CredentialBinding,
 		snapshot: SharedCodexAuthSnapshot,
-	) -> Result<RouteSharedAuthSnapshot, AccountLifecycleError> {
-		let (version, credential) = match self.resolve_shared_pat(snapshot).await? {
-			SharedCodexAuthSnapshot::Managed { version, credential } => (version, *credential),
+	) -> Result<RouteSource, AccountLifecycleError> {
+		let credential = match self.resolve_shared_pat(snapshot).await? {
+			SharedCodexAuthSnapshot::Managed { credential, .. } => credential,
 			SharedCodexAuthSnapshot::PersonalAccessToken { .. } =>
 				return Err(AccountLifecycleError::AuthSourceAccountUnknown),
-			SharedCodexAuthSnapshot::Unmanaged { version } => {
-				return Ok(RouteSharedAuthSnapshot { version, source: None });
-			},
+			SharedCodexAuthSnapshot::Unmanaged { .. } => return Ok(RouteSource::NoChatgptLogin),
+		};
+		let account_id = if target_binding.provider == credential.provider {
+			target_account_id.clone()
+		} else {
+			match self.store.account_by_provider(&credential.provider).await? {
+				Some(account) if account.tombstoned =>
+					return Ok(RouteSource::External(account.label)),
+				Some(account) => account.account_id,
+				None =>
+					return Ok(RouteSource::External(stable_account_alias(&credential.provider))),
+			}
 		};
 
-		if target_binding.provider == credential.provider {
-			return Ok(RouteSharedAuthSnapshot {
-				version,
-				source: Some(RouteSharedAuthSource {
-					account_id: target_account_id.clone(),
-					credential,
-				}),
-			});
-		}
-
-		let mut sources =
-			self.store.read_account_registry(None, MAX_ACCOUNT_READ).await?.into_iter().filter(
-				|account| {
-					!account.tombstoned
-						&& account
-							.credential
-							.as_ref()
-							.is_some_and(|binding| binding.provider == credential.provider)
-				},
-			);
-		let source = sources
-			.next()
-			.map(|account| account.account_id)
-			.ok_or(AccountLifecycleError::ProviderMismatch)?;
-
-		if sources.next().is_some() {
-			return Err(AccountLifecycleError::CoordinatorUnavailable);
-		}
-
-		Ok(RouteSharedAuthSnapshot {
-			version,
-			source: Some(RouteSharedAuthSource { account_id: source, credential }),
-		})
+		Ok(RouteSource::Enrolled(RouteSharedAuthSource { account_id, credential }))
 	}
 
 	async fn reconcile_shared_auth_route_source(
 		&self,
-		source: &RouteSharedAuthSource,
+		source: RouteSharedAuthSource,
 	) -> Result<(), AccountLifecycleError> {
 		let lock = self.lock_for(&source.account_id)?;
 		let _guard = lock.lock().await;
@@ -495,10 +459,9 @@ impl AccountService {
 
 	async fn reconcile_shared_auth_route_source_while_locked(
 		&self,
-		source: &RouteSharedAuthSource,
+		source: RouteSharedAuthSource,
 	) -> Result<(), AccountLifecycleError> {
 		let source_account_id = &source.account_id;
-		let source_operation_id = refresh_journal_operation_id(source_account_id)?;
 		let account = self.load_account(source_account_id).await?;
 
 		if account.tombstoned {
@@ -524,24 +487,56 @@ impl AccountService {
 			binding,
 			stored.bundle(),
 			current_unix_micros()?,
-			Ok(ImportedCredential {
-				provider: source.credential.provider.clone(),
-				bundle: source.credential.bundle.clone(),
-			}),
+			Ok(*source.credential),
 		)
 		.ok_or(AccountLifecycleError::CoordinatorUnavailable)?;
 
-		self.refresh_while_locked(
-			source_operation_id,
+		// Save the native successor even if the source no longer qualifies for new work.
+		let operation_id = refresh_journal_operation_id(source_account_id)?;
+		let target = refreshed_credential_target(
+			binding,
 			source_account_id,
-			Some(account.revision),
-			None,
-			None,
-			RefreshPlan::route_source(supplied_refresh),
-		)
-		.await?;
-
-		Ok(())
+			&operation_id,
+			&supplied_refresh,
+		)?;
+		let preparation = AccountOperationPreparation {
+			operation_id: operation_id.clone(),
+			account_id: source_account_id.clone(),
+			kind: AccountOperationKind::Refresh,
+			display_label: None,
+			enabled: None,
+			expected_account_revision: Some(account.revision),
+			expected: Some(binding.clone()),
+			target: Some(target.clone()),
+			provider: binding.provider.clone(),
+		};
+		accepted_phase(self.store.prepare_account_operation(&preparation).await?)?;
+		if let Err(error) = self.rotate_prepared_credential(
+			source_account_id,
+			binding,
+			&target,
+			supplied_refresh.bundle,
+		) {
+			self.recover_or_cancel(
+				&operation_id,
+				AccountOperationPhase::Prepared,
+				"credential_rotate_failed",
+				store_effect_may_be_ambiguous(error),
+			)
+			.await?;
+			return Err(error.into());
+		}
+		accepted_phase(
+			self.store
+				.advance_account_operation(
+					&operation_id,
+					AccountOperationPhase::Prepared,
+					AccountOperationPhase::StoreApplied,
+					None,
+				)
+				.await?,
+		)?;
+		self.commit_store_applied(&operation_id).await
 	}
 
 	/// Refresh, project, and select one account under one daemon-owned command receipt.
@@ -549,6 +544,7 @@ impl AccountService {
 		&self,
 		lease: AccountCommandReceiptLease,
 		account_id: &AccountId,
+		replace_shared_login: Option<&str>,
 		build_response: F,
 	) -> Result<Value, AccountLifecycleError>
 	where
@@ -595,6 +591,7 @@ impl AccountService {
 		let command = AccountRouteCommand {
 			lease,
 			account_id,
+			replace_shared_login,
 			expected_routing_revision,
 			expected_account_revision,
 			build_response,
@@ -638,7 +635,8 @@ impl AccountService {
 			None
 		};
 
-		if matches!(&routing.mode, AccountSelectionMode::Fixed(current) if current == command.account_id)
+		if command.replace_shared_login.is_none()
+			&& matches!(&routing.mode, AccountSelectionMode::Fixed(current) if current == command.account_id)
 			&& let Some((revision, projection_digest)) = projected_current.as_ref()
 		{
 			let response = (command.build_response)(Ok(AccountRouteResult::Committed(Box::new(
@@ -707,29 +705,22 @@ impl AccountService {
 					.await;
 			},
 		};
-		let shared_auth =
-			match self.shared_auth_route_source(command.account_id, target_binding, stable).await {
-				Ok(source) => source,
-				Err(error) => {
-					return self
-						.finish_route_auth_error(
-							command.lease,
-							"source_account_match",
-							if matches!(error, AccountLifecycleError::ProviderMismatch) {
-								AccountLifecycleError::AuthSourceAccountUnknown
-							} else {
-								AccountLifecycleError::AuthCredentialConflict
-							},
-							error.to_string(),
-							command.build_response,
-						)
-						.await;
-				},
-			};
-		let source_is_target = shared_auth
-			.source
-			.as_ref()
-			.is_some_and(|source| &source.account_id == command.account_id);
+		let version = stable.version().clone();
+		let source = self
+			.shared_auth_route_source(command.account_id, target_binding, stable)
+			.await
+			.map_err(AccountRouteFailure::Lifecycle)
+			.and_then(|source| command.confirm_source(&version, source));
+		let source = match source {
+			Ok(source) => source,
+			Err(failure) => {
+				return self
+					.complete_route_command_failure(command.lease, failure, command.build_response)
+					.await;
+			},
+		};
+		let source_is_target =
+			source.as_ref().is_some_and(|source| &source.account_id == command.account_id);
 		let liveness = self.shared_auth.liveness_observation();
 
 		if !source_is_target && liveness.state() != CodexLiveness::Quiescent {
@@ -742,7 +733,7 @@ impl AccountService {
 				.await;
 		}
 
-		if let Some(source) = shared_auth.source.as_ref() {
+		if let Some(source) = source {
 			let result = if source_is_target {
 				self.reconcile_shared_auth_route_source_while_locked(source).await
 			} else {
@@ -762,15 +753,14 @@ impl AccountService {
 			}
 		}
 
-		self.refresh_account_route_target(command, target_binding, &shared_auth, source_is_target)
-			.await
+		self.refresh_account_route_target(command, target_binding, &version, source_is_target).await
 	}
 
 	async fn refresh_account_route_target<F>(
 		&self,
 		command: AccountRouteCommand<'_, F>,
 		target_binding: &CredentialBinding,
-		shared_auth: &RouteSharedAuthSnapshot,
+		source_version: &SharedCodexAuthVersion,
 		source_is_target: bool,
 	) -> Result<Value, AccountLifecycleError>
 	where
@@ -859,13 +849,13 @@ impl AccountService {
 			}
 		}
 
-		self.verify_account_route_source(command, shared_auth, source_is_target).await
+		self.verify_account_route_source(command, source_version, source_is_target).await
 	}
 
 	async fn verify_account_route_source<F>(
 		&self,
 		command: AccountRouteCommand<'_, F>,
-		shared_auth: &RouteSharedAuthSnapshot,
+		source_version: &SharedCodexAuthVersion,
 		source_is_target: bool,
 	) -> Result<Value, AccountLifecycleError>
 	where
@@ -898,7 +888,7 @@ impl AccountService {
 		}
 
 		let final_source = match self.shared_auth.read_current_exact() {
-			Ok(snapshot) if snapshot.version() == &shared_auth.version => *snapshot,
+			Ok(snapshot) if snapshot.version() == source_version => *snapshot,
 			Ok(_) => {
 				return self
 					.finish_route_error(
@@ -921,20 +911,12 @@ impl AccountService {
 			},
 		};
 
-		self.project_account_route(
-			command,
-			shared_auth,
-			source_is_target,
-			&routed_account,
-			&final_source,
-		)
-		.await
+		self.project_account_route(command, source_is_target, &routed_account, &final_source).await
 	}
 
 	async fn project_account_route<F>(
 		&self,
 		command: AccountRouteCommand<'_, F>,
-		shared_auth: &RouteSharedAuthSnapshot,
 		source_is_target: bool,
 		routed_account: &AccountRecord,
 		final_source: &SharedCodexAuthSnapshot,
@@ -989,7 +971,7 @@ impl AccountService {
 				.project_shared_auth_locked(
 					command.account_id,
 					routed_account.revision,
-					&shared_auth.version,
+					final_source.version(),
 				)
 				.await
 			{
@@ -2282,16 +2264,9 @@ impl AccountService {
 				.await;
 		}
 
-		let rotation = self.credentials.compare_and_swap_rotate(
-			account_id,
-			&current,
-			&target,
-			imported.bundle,
-		);
-		let target_is_exact =
-			rotation.is_err() && self.credentials.read_exact(account_id, &target).is_ok();
-
-		if let Err(error) = resolve_reauthentication_store_effect(rotation, target_is_exact) {
+		if let Err(error) =
+			self.rotate_prepared_credential(account_id, &current, &target, imported.bundle)
+		{
 			let ambiguous = store_effect_may_be_ambiguous(error);
 
 			return self
@@ -2330,6 +2305,20 @@ impl AccountService {
 			build_response,
 		)
 		.await
+	}
+
+	fn rotate_prepared_credential(
+		&self,
+		account_id: &AccountId,
+		current: &CredentialBinding,
+		target: &CredentialBinding,
+		bundle: CredentialSecretBundle,
+	) -> Result<(), CredentialStoreError> {
+		let rotation =
+			self.credentials.compare_and_swap_rotate(account_id, current, target, bundle);
+		let target_is_exact =
+			rotation.is_err() && self.credentials.read_exact(account_id, target).is_ok();
+		resolve_reauthentication_store_effect(rotation, target_is_exact)
 	}
 
 	async fn reauthentication_material(
@@ -3002,7 +2991,7 @@ impl AccountService {
 			Some(account.revision),
 			None,
 			None,
-			RefreshPlan::route_source(winner),
+			RefreshPlan::adopt_winner(winner),
 		))
 		.await?;
 
@@ -5218,7 +5207,7 @@ impl RefreshPlan {
 		consumer_credential: None,
 	};
 
-	fn route_source(supplied_refresh: CredentialRefreshResult) -> Self {
+	fn adopt_winner(supplied_refresh: CredentialRefreshResult) -> Self {
 		Self {
 			allow_disabled: true,
 			shared_family: SharedFamilyRefreshPolicy::Guard,
@@ -5231,19 +5220,57 @@ impl RefreshPlan {
 struct AccountRouteCommand<'a, F> {
 	lease: AccountCommandReceiptLease,
 	account_id: &'a AccountId,
+	replace_shared_login: Option<&'a str>,
 	expected_routing_revision: i64,
 	expected_account_revision: i64,
 	build_response: F,
 }
 
-struct RouteSharedAuthSource {
-	account_id: AccountId,
-	credential: ImportedCredential,
+impl<F> AccountRouteCommand<'_, F> {
+	fn confirm_source(
+		&self,
+		version: &SharedCodexAuthVersion,
+		source: RouteSource,
+	) -> Result<Option<RouteSharedAuthSource>, AccountRouteFailure> {
+		match source {
+			RouteSource::External(source_label) => {
+				let evidence = (
+					"decodex/replace-shared-login/1",
+					self.account_id.as_str(),
+					self.expected_account_revision,
+					self.expected_routing_revision,
+					version,
+				);
+				let confirmation = decodex_core::BlobHash::digest(
+					&serde_json::to_vec(&evidence)
+						.expect("route confirmation evidence is serializable"),
+				)
+				.to_hex();
+				match self.replace_shared_login {
+					None =>
+						Err(AccountRouteFailure::ReplaceSharedLogin { source_label, confirmation }),
+					Some(expected) if expected == confirmation => Ok(None),
+					Some(_) =>
+						Err(AccountRouteFailure::Lifecycle(AccountLifecycleError::AuthFileChanged)),
+				}
+			},
+			_ if self.replace_shared_login.is_some() =>
+				Err(AccountRouteFailure::Lifecycle(AccountLifecycleError::AuthFileChanged)),
+			RouteSource::NoChatgptLogin => Ok(None),
+			RouteSource::Enrolled(source) => Ok(Some(source)),
+		}
+	}
 }
 
-struct RouteSharedAuthSnapshot {
-	version: SharedCodexAuthVersion,
-	source: Option<RouteSharedAuthSource>,
+enum RouteSource {
+	NoChatgptLogin,
+	Enrolled(RouteSharedAuthSource),
+	External(String),
+}
+
+struct RouteSharedAuthSource {
+	account_id: AccountId,
+	credential: Box<ImportedCredential>,
 }
 
 struct ReauthenticationCommandInput<'a> {
@@ -5268,6 +5295,7 @@ pub(crate) enum AccountRouteResult {
 
 /// Closed failure passed to the Route publication builder before its receipt commits.
 pub(crate) enum AccountRouteFailure {
+	ReplaceSharedLogin { source_label: String, confirmation: String },
 	Lifecycle(AccountLifecycleError),
 	Routing(RoutingControlOutcome),
 }
@@ -5354,6 +5382,7 @@ pub enum AccountLifecycleError {
 	AuthFileUnreadable,
 	/// The current shared login is not in the account pool.
 	AuthSourceAccountUnknown,
+
 	/// The current shared credential could not be reconciled with the saved account.
 	AuthCredentialConflict,
 	/// The shared auth source changed before projection.
@@ -7662,7 +7691,7 @@ mod tests {
 			};
 
 			service
-				.route_account_command_sync(lease, target, move |result| {
+				.route_account_command_sync(lease, target, None, move |result| {
 					if liveness == CodexLiveness::Quiescent {
 						assert!(result.is_ok());
 					} else {
@@ -7822,22 +7851,19 @@ mod tests {
 			};
 
 			service
-				.route_account_command_sync(lease, &account_id, move |result| {
-					let error = match result {
-						Err(super::AccountRouteFailure::Lifecycle(error)) => error,
-						_ => panic!("expected route failure"),
-					};
-
+				.route_account_command_sync(lease, &account_id, None, move |result| {
 					if conflict {
-						assert!(
-							matches!(error, AccountLifecycleError::AuthCredentialConflict),
-							"{error:?}"
-						);
+						assert!(matches!(
+							result,
+							Err(super::AccountRouteFailure::Lifecycle(
+								AccountLifecycleError::AuthCredentialConflict
+							))
+						));
 					} else {
-						assert!(
-							matches!(error, AccountLifecycleError::AuthSourceAccountUnknown),
-							"{error:?}"
-						);
+						assert!(matches!(
+							result,
+							Err(super::AccountRouteFailure::ReplaceSharedLogin { .. })
+						));
 					}
 
 					Ok(serde_json::json!({"outcome":"rejected"}))

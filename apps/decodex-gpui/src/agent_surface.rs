@@ -3103,6 +3103,8 @@ fn command_rejection_message(error: &CommandError) -> String {
 			"Acceptance unconfirmed. Check status before retrying.".into(),
 		CommandError::ConversationRecoveryRequired { action } =>
 			super::recovery_action_label(*action).into(),
+		CommandError::SharedLoginReplacementRequired { .. } =>
+			"Open Accounts to confirm the sign-in change.".into(),
 		CommandError::AccountCommandRejected { rejection, .. } =>
 			super::account_rejection_label(*rejection).into(),
 	}

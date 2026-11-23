@@ -928,6 +928,7 @@ impl ServiceApplication {
 		};
 
 		match service.inspect(&account_id).await {
+			Ok(inspection) if inspection.account.tombstoned => AccountInspectResult::NotFound,
 			Ok(inspection) => account_dto(inspection.account)
 				.map(Box::new)
 				.map(AccountInspectResult::Available)
@@ -1186,13 +1187,16 @@ impl ServiceApplication {
 					})
 					.await
 			},
-			CommandPayload::RouteAccount { account_id } => {
+			CommandPayload::RouteAccount { account_id, replace_shared_login } => {
 				let account_id = account_id_from_wire(account_id)?;
 
 				service
-					.route_account_command_sync(lease, &account_id, |result| {
-						encode_account_command_receipt(&account_route_result(result))
-					})
+					.route_account_command_sync(
+						lease,
+						&account_id,
+						replace_shared_login.as_ref().map(Sha256Digest::as_str),
+						|result| encode_account_command_receipt(&account_route_result(result)),
+					)
 					.await
 			},
 			CommandPayload::RecoverAccountOperation { operation_id, action } => {
@@ -3947,7 +3951,7 @@ fn validate_account_command_envelope(command: &CommandEnvelope) -> Result<(), Co
 			let _ = account_id_from_wire(account_id)?;
 			let _ = required_expected_revision(command)?;
 		},
-		CommandPayload::RouteAccount { account_id } => {
+		CommandPayload::RouteAccount { account_id, .. } => {
 			let _ = account_id_from_wire(account_id)?;
 
 			if command.expected_revision.is_some() {
@@ -4077,6 +4081,13 @@ fn account_route_result(
 	match result {
 		Ok(AccountRouteResult::Committed(commit)) => account_routed_publication(*commit),
 		Err(AccountRouteFailure::Lifecycle(error)) => Err(account_route_command_error(error)),
+		Err(AccountRouteFailure::ReplaceSharedLogin { source_label, confirmation }) =>
+			Err(CommandError::SharedLoginReplacementRequired {
+				source_label: WireText::new(source_label)
+					.map_err(|_| application_unavailable("invalid shared sign-in label"))?,
+				confirmation: Sha256Digest::new(confirmation)
+					.expect("route confirmation is a SHA-256 digest"),
+			}),
 		Err(AccountRouteFailure::Routing(outcome)) => match routing_command_result(&outcome) {
 			Err(error) => Err(error),
 			Ok(_) => Err(application_unavailable("account Route result is incompatible")),

@@ -28,7 +28,7 @@ use decodex_protocol::{
 	AccountClient, AccountCommandResponse, AccountLoginClient, AccountLoginInstallMode,
 	AccountLoginMethod, AccountLoginStart, AccountLoginState, AccountLoginStatus, ClientFailure,
 	ClientProfile, CommandPayload, EntityId, EntityRevision, IdempotencyKey, ResetCardClient,
-	ResetCardConsumeResponse, ResetCardDescriptorDto, ServerId,
+	ResetCardConsumeResponse, ResetCardDescriptorDto, ServerId, Sha256Digest,
 };
 
 const ABI_VERSION: u32 = 1;
@@ -142,6 +142,7 @@ enum Request {
 	RouteAccount {
 		schema: String,
 		account_id: String,
+		replace_shared_login: Option<Sha256Digest>,
 		idempotency_key: String,
 	},
 	SetBalancedSelection {
@@ -867,8 +868,8 @@ async fn execute_request(
 		} =>
 			logout_account(profile, operation_id, account_id, expected_revision, idempotency_key)
 				.await,
-		Request::RouteAccount { account_id, idempotency_key, .. } =>
-			route_account(profile, account_id, idempotency_key).await,
+		Request::RouteAccount { account_id, replace_shared_login, idempotency_key, .. } =>
+			route_account(profile, account_id, replace_shared_login, idempotency_key).await,
 		Request::SetBalancedSelection { expected_routing_revision, idempotency_key, .. } =>
 			set_balanced_selection(profile, expected_routing_revision, idempotency_key).await,
 		Request::SetAccountOrder { order, expected_routing_revision, idempotency_key, .. } =>
@@ -1137,10 +1138,15 @@ async fn consume_reset_card(
 async fn route_account(
 	profile: ClientProfile,
 	account_id: String,
+	replace_shared_login: Option<Sha256Digest>,
 	idempotency_key: String,
 ) -> Result<Value, RequestFailure> {
 	let response = AccountClient::new(profile)
-		.route_account(entity_id(&account_id)?, parse_idempotency_key(idempotency_key)?)
+		.route_account_with_confirmation(
+			entity_id(&account_id)?,
+			replace_shared_login,
+			parse_idempotency_key(idempotency_key)?,
+		)
 		.await
 		.map_err(RequestFailure::Client)?;
 

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:0e42002dd483a86696535cd4fb48f6871b160f8474450f5d78123939b48b4488",
+  "pageVersion": "sha256:a943020761770b6bf945b187962c0a136b3711c59c1b110205378f7050a50ec2",
   "claims": [
     {
       "id": "claim_d7063028d6a742dfa815d671fa660272",
@@ -8,7 +8,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/account_service.rs",
-          "version": "repo-file-v1:sha256:baf8d4144ab11e6d9fc540b18c5388f958c7cc9e568ad362b6a1389d82d9dbdb"
+          "version": "repo-file-v1:sha256:edf92ff5f1d666ba78bccd693bcb82011551a42f3e20bdfe979a8e710370d8c9"
         }
       ]
     },
@@ -17,8 +17,8 @@
       "statement": "Passive shared-auth observation requires a stable two-poll source and one known account with the exact stored bundle; a different bundle is unmanaged and is not imported by this observation.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/account_service.rs#L366-L438",
-          "version": "repo-lines-v1:sha256:dc4c05d0c74f1615394f673a6cf59bbb6b3c6157e036cca261b6b49aeedca06e:eyJzZWxlY3RlZExpbmVDb3VudCI6NzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA3YjBjZDgzODg0NDA4NDhhODc4ZTRiNTcyOWE5YTEzOTU0YzM3Y2Y2ZGYyMWFmOTU0NDk5ZjZmOGU5OGI2MTIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRlZTAxNWFhNWFjNmU2NTNiZWZkNzVjYjA4ZGQ4ZmRjM2E1MmE0ZmVhYzM2NDdiMjNiNDViNjY5ZjdkNTJmNTkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjdiMmQ5ODQyMTBiOTFlYzI0NjNjZjJlYTdjODViOGI3MzI2YmQ0ZDE1MTY0YmI1MTM4MGNkMWFiMjRlZDczZWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQzMGM5ZDMzMjIwY2ZhNmRjMzNhOThmOGE2NmQ5NzhiNGJlMzgyZjNhZTJjZmZmM2JhODY0NzEyMTkyMzU0MDcifQ"
+          "resource": "repo://crates/decodex-runtime/src/account_service.rs#L366-L420",
+          "version": "repo-lines-v1:sha256:5f4ef515e1515410f74c6ba37096f4b850461f8d1a6dd96d5d8965abed1cfb1e:eyJzZWxlY3RlZExpbmVDb3VudCI6NTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA3YjBjZDgzODg0NDA4NDhhODc4ZTRiNTcyOWE5YTEzOTU0YzM3Y2Y2ZGYyMWFmOTU0NDk5ZjZmOGU5OGI2MTIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY0ZWZjNDk0MThkMjZkY2YxMjliMjJhNmFhMjExMDhjZWVjMzc2NzdhMzJkMDhlOWQ1ZmVlMzVkZGE2NmJiOWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjdiMmQ5ODQyMTBiOTFlYzI0NjNjZjJlYTdjODViOGI3MzI2YmQ0ZDE1MTY0YmI1MTM4MGNkMWFiMjRlZDczZWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhkYzZmYzgzNTRlNDdkOTk5ZmY5MDhjYzA3NmRhOTIyMjE2NGNlZjBmZTVlNjMxNjRlMWQxNDRlYWMxZGJiZWMifQ"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/shared_auth_coordinator.rs#L167-L198",
@@ -32,7 +32,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/account_service.rs",
-          "version": "repo-file-v1:sha256:baf8d4144ab11e6d9fc540b18c5388f958c7cc9e568ad362b6a1389d82d9dbdb"
+          "version": "repo-file-v1:sha256:edf92ff5f1d666ba78bccd693bcb82011551a42f3e20bdfe979a8e710370d8c9"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/shared_auth_coordinator.rs",
@@ -46,7 +46,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/account_service.rs",
-          "version": "repo-file-v1:sha256:baf8d4144ab11e6d9fc540b18c5388f958c7cc9e568ad362b6a1389d82d9dbdb"
+          "version": "repo-file-v1:sha256:edf92ff5f1d666ba78bccd693bcb82011551a42f3e20bdfe979a8e710370d8c9"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/shared_auth_coordinator.rs",
@@ -59,7 +59,7 @@
       "statement": "Desktop account controllers apply only authoritative results matching the active session, command identity, idempotency key and protocol, without receiving credentials.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/accounts.rs#L496-L542",
+          "resource": "repo://apps/decodex-gpui/src/accounts.rs#L513-L559",
           "version": "repo-lines-v1:sha256:c75d33058a3baf0eaf01ee78c218b7d6c73f168dd81a3f1b5652f0c514ed39cd:eyJzZWxlY3RlZExpbmVDb3VudCI6NDcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNlMmRkNTEyMWFkOTQ2OTM0ZmUyMDQxODg4ZWE4OWU2MzJhMTIzZDM0ZjljODgxMDBhNTAyODk5YjQyMzJkMGQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdmMDUwYjhmOTk4MDRmODE2Mjk4NmNiYzZhYWFlOThiODUxZjlkMGMzZDVlZjJlZDM4NDNjZDJhMmFmZjMwYWIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQyNjYyMTE4NTBhNzA5NDEwODlkZmY3MTI2YWI1MzAyZTAwYzhmYWE2NDRhMTcwMjMyNGI0Njg1ZTBmYzkyYTAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAyOTVmNjc1YjJlOGY5MzlmMGI4ZjRlMDQzMjUyNzMyNDllYzdmMmY5ODJkNjgxMWFiMjNjYTMzNmMzMmNlMmQifQ"
         }
       ]
@@ -69,15 +69,15 @@
       "statement": "Explicit logout reuses the exact recovery-operation link for known rejected refreshes and records supersession only at commit; pending and ambiguous refreshes remain blocked.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/account_service.rs#L3043-L3230",
+          "resource": "repo://crates/decodex-runtime/src/account_service.rs#L3032-L3219",
           "version": "repo-lines-v1:sha256:61e101c541dd6849fbe1e29b0e770ae4ca860ab09c2e31cbef3e0f958a8c0a39:eyJzZWxlY3RlZExpbmVDb3VudCI6MTg4LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI4ZTA4MGJmNGE3NDU0MTdlMDIxNWE2ZjFlZDJjNTM2ZGJiZmQ0OTg2ZTU0YWNkOTc3M2FiOTI4OTU1MDk1N2JmIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJlNTA0YjRiMjBiZjJmMjg4MGRjY2RlNGQzYTEwNmExMzRiYmEzOTExMDM5MGE3ZDQxMDA1MGM5ZWFkNWVmZmI1IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJhOWVmZjAyMDk3MDIwMDgzYmRhZDlkNzQ5NDZhNjk2ODQ1ZmY5ZTVlMTcwMGI1YzBhNWMyOTFjNTAyMTE2ZWNkIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJkODBhNjQzNWIzMTM5YmFkNWM3NDFmNGZiYWQ3OTIyMzQ5MDc2ZDE4M2U2NTM1ZWM2OTMxMGMyN2YwMzQ0ODgzIn0"
         },
         {
-          "resource": "repo://database/src/account_lifecycle.rs#L1459-L1533",
+          "resource": "repo://database/src/account_lifecycle.rs#L1476-L1550",
           "version": "repo-lines-v1:sha256:121eef2cf6ad3bd298587c864424399c4fd4dfa5398f9c16a95b38886d3eb3ea:eyJzZWxlY3RlZExpbmVDb3VudCI6NzUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ3NGFhZGIxNjVlZjIyZmFmZTY3ZTJhMDYyNjdmOTU4ZTk4MzNlZTdiYmRlOWVmZWE2YjU5OTQ0ODY1MDFjMzMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjkxNjJhYjlmNzZiYjZjMzVmYjIxNmE3OGNlZWEyOGQ0ODQ4ZWYwYjRlYjNjZGE5YjA0ZTM5MDAzMjRlYTYwMTEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ3NTgyMTZmZWZlNzQ3ZGYxMzA2OWIzNWZlZjVkNDFjNjE3MWNjNTE0Yzk3MTFiMGIzMDZjY2UwYzExMDFkMzEifQ"
         },
         {
-          "resource": "repo://database/src/account_lifecycle.rs#L1826-L1883",
+          "resource": "repo://database/src/account_lifecycle.rs#L1843-L1900",
           "version": "repo-lines-v1:sha256:425e37a5351f4e4abbfe751e1d061188ec9f955ef8315ef968fb99450ba67fb0:eyJzZWxlY3RlZExpbmVDb3VudCI6NTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY1YmJhZjVjNWFjMDFiM2EwNTQzYWQwNzQ2MGQ2MWM5MDhmNzNhMGNkZWIzMmVlOTU0MTU5ODJmMzk5ZDU2NjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjllOWQyZTAzNmU3NGNhYjJkYjI4NzA2OWUzZTEzOWRmZjY5YTFiZGVkZDBiZjJmYTFiZTVmMGMwYTQ2ZWJkNDkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFmOGJjNThhNjI3OTYxODlhZWQyNTJmN2EyY2U2YzA4NDZjM2FiYTY3OWRmMjkwOWFiYzc3ZDQ2ZjY1NTMxYzQifQ"
         }
       ]
@@ -91,10 +91,72 @@
           "version": "repo-file-v1:sha256:46e8425b3c155438a42c6e6c1c2432e9c36ad1eaef7330ef1a4e22be3724d502"
         }
       ]
+    },
+    {
+      "id": "claim_7a2a1ade1a5946ef99a7e23be358a516",
+      "statement": "An enrolled source can save a validated native successor through the refresh journal after a plan downgrade. Admission for the selected target and new work still applies.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-cli/tests/account_route_process.rs#L725-L765",
+          "version": "repo-lines-v1:sha256:6591181cdff966798daa0dc839dd826778274dadf230c8577369c2b105405883:eyJzZWxlY3RlZExpbmVDb3VudCI6NDEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRjOWU4ZDI5ZWZkMGI1NjY2YjkzMmY4ZWY0MDMzYjhlMTQ2NGFhMzk0NWVhM2VkY2NmMWVhOWUyZTMwYmI2NjkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY4MWYwOTM0ZmJhNjFhYTU0MzU5MTJiNDIxMDNjYzZhOTgwM2RhNmUzYTQ2NDEzMWEwNWFlMjU4OGM0YThiNWMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU5ZjU5NzQxYWFiOTA0YjA5M2M3NTczY2RhNTA2NzRlYjMzOGJlODQzNGFlNzg3NDA3NTkzMDU1MjdjZmE5NmUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk5ZGVmOGIzMmJlNmU0ZjgzMTJkM2FhYzZlZmVmYWRkYmE4YzRmNTExZmIwMDQ5Zjc5NDZhYzVmNDlmZDdlZTkifQ"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_service.rs#L460-L537",
+          "version": "repo-lines-v1:sha256:54721d389272e95ae2e7ed7c2d92bfef016dba872e1e3e16c7a069b409d2b421:eyJzZWxlY3RlZExpbmVDb3VudCI6NzgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjEyYWFjOTNlMGIxY2ZmZWQ0NGQyZmE5OGJlZjRmNzZjODExNzFjYTJmMjg2NWQxNzM5ZWFmNDQ2Mjk1ZDdmMzgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBhYTYwOThiMTZlNzMxZmI0YTIxZjI0MzZmZTgzMmQ2OTQ1NzhhM2VhOTgwMDRlMTBjZjRjZDRlZDQ1MzE3NDkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQ3YTUzY2E3MDYyMzMyNGMzOWVlZWYwYjMwNGI0ZWQ3Y2VlY2M3MjhiMmQ1NzRmMDE4NWEyYWJhNzExM2FlYTgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk1MzliMmQ0YjM4NGY2ZTQ0N2RmNjg1ZGExZWU3MDExNjQ0NTNmNjBmMDdhMTA2ZTg2NzA0YTIxODBkNWRhMjIifQ"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_service.rs#L610-L624",
+          "version": "repo-lines-v1:sha256:300604743688b58dd5c69aaff835b5cf00ece3766747070349265aecef4f9000:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE2Y2RlMTZmMGQzZGE2OTViNzZmNTc3YzlmNzhkODc3MDEzZWZjZTQwZGE0MGQ3ZDRmYTk0NTU5MjJmZjdmOTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZkOWMzOWM0NDRkZTRmNWYzY2YxNzllNzFiNWMxODk5NzVmZWQ1NTFlOTExY2E4YzMyMDUxY2FkY2VmM2JmMjgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM0N2Y3M2QwMzEwMDc0YWYxZDlmZjkzYzAwZjBhZDcyMDQ2ZGIxMGEwZGQ1MTM4YjQ1YTQ5MWEzYWY3ZmViOWQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjkyYmM0MGY0Nzk3NDczY2ViMGM4ZGMwM2M1NTA3MTNjMTBjZmNiNjNiYjY0N2ZjNmI0NTBhOWU2MTBhYmQwMDkifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_9e4413f4e83e4a2684bebac3e54935e5",
+      "statement": "An external OAuth source, including a legacy file without auth_mode, requires a second route command. Its confirmation binds the exact shared file version, target ID, target revision and routing revision. Both commands have durable replayable results.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-cli/tests/account_route_process.rs#L776-L850",
+          "version": "repo-lines-v1:sha256:ab6bfacec32900d201c34e2761c44aee3580e62390501e76c0211efdb5a4963b:eyJzZWxlY3RlZExpbmVDb3VudCI6NzUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRhYTBjN2EyMjhjMGZlMDIzZDBlNjljYTRiMTcxZmZmYzY2MDI2OTg3OTVkYTdhZTdmMGZmNWUyMzlkNDEwNjgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ5ODY1OTVhZDA1ZjhlY2U1ZDdiNDIzYjFlN2UxNmJkZmYyZDY0ZTU5MmNjNTY2ZjkwNTczZTAzOGU2N2U2YzkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE4OGE5OTkwZGU5NzVlYzc4MjdmMmFjZTQyNWUyMTlhOTI0ODY5YzA4NjVjMDEyYmZmYzAzNmU5ODQxOTc5ZTMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjIyNGIwODliNzQ1MzBkNmEyZGYxYjMzY2U2ZjZmNDVjZGE4YjQ2ZmE5MWZkZWYxMjQ5MmJmYTkzYjBkNGRlYzkifQ"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_service.rs#L423-L447",
+          "version": "repo-lines-v1:sha256:8902fd6fb7aca8480fb52c3436de62c53801045fcf9c1284be67ecf74b9407a9:eyJzZWxlY3RlZExpbmVDb3VudCI6MjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjcyNWIxYzAxMTQ0NDBlNGVmMmQ2OGE1NGM5Y2FjMDA5MGMyNWQyNDliODQ5ZjIwMDUyMTU1ZWM5Y2Y1N2RkNWUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVhNTY5Njk5NGU5N2JmNDNiNGY1N2JhZDkwNTZjOTI5Y2ZkYjU5MjYzODZmNzQ2OWY5NDc3NzJkMmExNGJhZjYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjIyZjJmZjVmZWVjNjBmNTg3YzhmYWU0ZTg3ZjgwOWE2NjFjZmZlZDZiNDdhYWU1ZjZkNmEyNjUzYWE4OTUyZWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImIyZTI1NzNlNzc2NDAyYWMwZDY2NDY2MzBmN2ZhNjMxMDg3MjdkMGJhZDFlYzZhZjYzZmFmYjIyYThmOTQxODQifQ"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_service.rs#L5230-L5261",
+          "version": "repo-lines-v1:sha256:65807a8fe6a379ff514021ba8b0ff390b2a7a3ca1dd8924aa4a3831a8ff59f7b:eyJzZWxlY3RlZExpbmVDb3VudCI6MzIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ0ODE2NWIxNGY0M2ViMWFkODljNTNjOTIyMzhhYTIwOThiZWRmMDlhNWY1NzgzM2I5MTU2NzMyNDk0ZDNlZGEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY0ZWZjNDk0MThkMjZkY2YxMjliMjJhNmFhMjExMDhjZWVjMzc2NzdhMzJkMDhlOWQ1ZmVlMzVkZGE2NmJiOWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjFjNDJhODYyNDkyNDg0ZTgwZWFlOWJkYzkxNWNjMGQzZGY3MThmYzA3NWRmZWVmNWU2YjM4ODViMTIxMDM0YjQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImYyOTY0MDc5YzNjNWM4MTUyMGVmMzNhMmI5ZDJlMTVhMWI4NGQ3MjgwZGI4NTkwZGNkNjU3NDdlM2UwMTJhNDAifQ"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/auth_projection.rs#L743-L780",
+          "version": "repo-lines-v1:sha256:30a6e34e380a1c81c11663629c7b2be93de8f7d30cddf595cbf928b0e169a505:eyJzZWxlY3RlZExpbmVDb3VudCI6MzgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM3MjUxZTUxMDRhMWRmYWMxMTE1YjNjZTcwOTEzYmMwYzUzZDQ4NzEyZGNkYTAwN2FiMjMwMjk1ZWQ4ODNkNDAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg1MGE3ZGQwZGFlMWNlNjMwNmY5Y2Q3MGVmMzZiNjU2NjRkY2Y4MjdiZDQ4ZDRjOWM2M2ViNDgzMDBiODBlYTQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNmYWFiZTk3ZDUyZjU5ZmY3ODkxYTU0ZDJhNGJmOGViNmZhNWY1MjZmNjQ0YTNmZTNhYWU0OTkwZWE4OTEzZTAifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_73646880068d41ccab92cc7dcaf72792",
+      "statement": "Shared sign-in replacement uses the local projection and readback. The process test verifies live-owner protection, source-change rejection, revision readback and preservation of the other saved credentials.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-cli/tests/account_route_process.rs#L799-L850",
+          "version": "repo-lines-v1:sha256:7b9917aa9b390577a754aa97223bf9a06b62a6b6429c42f1446ad7b0682390b9:eyJzZWxlY3RlZExpbmVDb3VudCI6NTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRjNzViZTEwOWJiYWU4MWE5OWQ4NjMwODcxZjk5YTgzMWFkZmIyZTM3M2U5YWEwMmEyZjkzY2Y1YmVmYjM3ZTMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ5ODY1OTVhZDA1ZjhlY2U1ZDdiNDIzYjFlN2UxNmJkZmYyZDY0ZTU5MmNjNTY2ZjkwNTczZTAzOGU2N2U2YzkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE5MDBkNmQyNWEwN2NiM2YwZGQ0NWUzMmY4NGYyNDQ0ZDY0ZmU0ZTkwMDYxMzk0ZWNhNWQ1NTc5OWMxZTU1ODIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjIyNGIwODliNzQ1MzBkNmEyZGYxYjMzY2U2ZjZmNDVjZGE4YjQ2ZmE5MWZkZWYxMjQ5MmJmYTkzYjBkNGRlYzkifQ"
+        },
+        {
+          "resource": "repo://codex-runtime.lock.json#L2-L6",
+          "version": "repo-lines-v1:sha256:b1c77231c48dfaae409a9b32a6cc05f84fde8d2675beb7ac8d8dbd3cc5771645:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNGQ0YjgyMTlkMjFhZWMzYjU5MzliZWJkMjZiNTUwYjcxZTc2Mzk1YTQyZDYwZWEwNDg1YTZjZjYyZmE5MWVjZSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZDI3NTg0ZWE3Y2YyMTcxYWRkMTU3OTAwMzJkNmE4OTdlMzBhZWFhYjRlZGJlZGNiZDY2NzM1NmRlNWQwMzVkMSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjEsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYTZmYjA4ZmRhMWFjYjk1N2I2MTE2YmQzNzgxMWExZmU0MWEwMTYxMWMwNjMxZWRiZjc4NmQ2ODg5YTI3YTU1YyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNTQ3OWQzNzU5OTE5YmQ2ZjZkZjQwYjZiMGIzNjdhODg1OTJjZWYzY2U2YTIwNWFjOWFkZGQyOGM0NGYyZDI5OCJ9"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_service.rs#L855-L925",
+          "version": "repo-lines-v1:sha256:4ec66c23717b19e2bd730788c2030c7187a704885f4aec2309c39932e1d8ec95:eyJzZWxlY3RlZExpbmVDb3VudCI6NzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk3NjUzMDVjY2U5NDAyNjVhYTE4MWU3MjEzMGYzZDU3MzZiZWNjMzYyZTk4YjhhY2RiNDEwYWRkMDEyODg1YzYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE2Y2RlMTZmMGQzZGE2OTViNzZmNTc3YzlmNzhkODc3MDEzZWZjZTQwZGE0MGQ3ZDRmYTk0NTU5MjJmZjdmOTkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZmYWRkZmNhZTU3MDk5N2YxZmM5MmRhMzQ0M2VlNjg5ZjA3OGEyY2VlMzY5ZDFiZDk4YTRlNGQ5ZmNjY2QxN2EiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZjNGJmZDJmY2Y5MTUzYzQ3NWM5YWU2Mjg0MThkZGZkNTIyNmJkYjZkMjBkNjFkZGIyYWUwYThkMjVhZjIwYjAifQ"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_service.rs#L956-L1028",
+          "version": "repo-lines-v1:sha256:fd5bdce0e17d5f185aec803825f4c832059253a340de0e85a8c5d45e916e228a:eyJzZWxlY3RlZExpbmVDb3VudCI6NzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRlMzliM2M4YTgzODk4ZTFmN2RiNTY4ZmExMzlhNDY2MDE3NzEzNzM3MzM5NmQwODhjNWQwOWFjOWIwZDYzMGQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZDY1ZjAzODY3NWQ5NmEzNWZhNjYwY2JjMGIxYWIzYmU0NjVmODk4ZjZjYjlmYmI3YmI5MGNhODliNWMzMTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjlhYTc2MzA5OGRkOWFiNjY1ZTZkMmRjMDQ0MDBmNjU5ZTUwNjhhMTUyNDRiM2NlYjVmMmZkNTVjNjFhMTAzZjUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRkZTg2MWE0MzZhMGE3NzJhM2Y2NTFmZGFiMmQ3MTE4MzBiNTIwNmE1MmRiNjRhMmZkMjBiOWYyOTZlOGM1ZWIifQ"
+        }
+      ]
     }
   ],
   "verification": {
-    "by": "openwiki/0.7.3",
-    "at": "2026-11-05T14:56:49.835Z"
+    "by": "openwiki/0.9.0",
+    "at": "2026-11-23T03:02:45.946Z"
   }
 }

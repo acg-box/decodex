@@ -649,6 +649,7 @@ const fn command_error_name(error: &CommandError) -> &'static str {
 		CommandError::ConversationRecoveryRequired { .. } => "conversation_recovery_required",
 		CommandError::AcceptanceUnknown => "acceptance_unknown",
 		CommandError::AccountCommandRejected { .. } => "account_command_rejected",
+		CommandError::SharedLoginReplacementRequired { .. } => "shared_login_replacement_required",
 	}
 }
 

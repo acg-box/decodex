@@ -15,6 +15,7 @@ struct DecodexNativeRequest: Encodable, Sendable {
 	var expiresAtUnixSeconds: Int64? = nil
 	var expectedRevision: UInt64? = nil
 	var expectedRoutingRevision: UInt64? = nil
+	var replaceSharedLogin: String? = nil
 	var afterGeneration: UInt64? = nil
 	var requestRefresh: Bool? = nil
 	var order: [String]? = nil
@@ -34,6 +35,7 @@ struct DecodexNativeRequest: Encodable, Sendable {
 		case expiresAtUnixSeconds = "expires_at_unix_seconds"
 		case expectedRevision = "expected_revision"
 		case expectedRoutingRevision = "expected_routing_revision"
+		case replaceSharedLogin = "replace_shared_login"
 		case afterGeneration = "after_generation"
 		case requestRefresh = "request_refresh"
 		case order

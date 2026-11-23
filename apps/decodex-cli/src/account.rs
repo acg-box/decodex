@@ -36,7 +36,7 @@ pub enum AccountCommand {
 	Enable(AdministrationArgs),
 	/// Disable new work admission for one account.
 	Disable(AdministrationArgs),
-	/// Log out and tombstone one account.
+	/// Remove an account and its saved sign-in from Decodex.
 	Logout(OperationAccountArgs),
 	/// Refresh, project, and select one account through one synchronous service command.
 	Route(RouteArgs),
@@ -115,10 +115,19 @@ pub struct OperationAccountArgs {
 
 #[derive(Clone, Debug, Eq, PartialEq, Args)]
 pub struct RouteArgs {
+	/// Replace the shared sign-in using the confirmation returned by the previous route. Use a new
+	/// idempotency key.
+	#[arg(long, value_name = "CONFIRMATION", value_parser = parse_route_confirmation)]
+	replace_shared_login: Option<decodex_protocol::Sha256Digest>,
 	#[arg(long)]
 	account_id: String,
 	#[arg(long)]
 	idempotency_key: String,
+}
+
+fn parse_route_confirmation(value: &str) -> Result<decodex_protocol::Sha256Digest, &'static str> {
+	decodex_protocol::Sha256Digest::new(value)
+		.map_err(|_| "expected the confirmation from the previous route")
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Args)]
@@ -222,7 +231,12 @@ pub async fn execute(
 				return InvalidInput.render(format);
 			};
 
-			return render_command(format, client.route_account(account_id, key).await);
+			return render_command(
+				format,
+				client
+					.route_account_with_confirmation(account_id, args.replace_shared_login, key)
+					.await,
+			);
 		},
 		AccountCommand::SetBalancedSelection(args) => {
 			let input = (revision(args.expected_revision), idempotency_key(args.idempotency_key));
