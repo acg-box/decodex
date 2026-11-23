@@ -266,6 +266,30 @@ final class AccountControlNativeClientTests: XCTestCase {
 		}
 	}
 
+	func testSharedLoginConfirmationSurvivesNativeRoundTrip() async throws {
+		let authority = authority
+		let confirmation = String(repeating: "c", count: 64)
+		let recorder = NativeRequestRecorder()
+		let client = DecodexNativeClient { request, requestedAuthority in
+			recorder.append(request, authority: requestedAuthority)
+			return nativeSuccess(operation: "route_account", authority: authority, data: """
+				{"outcome":"rejected","data":{"error":{"reason":"shared_login_replacement_required",
+				"source_label":"Old","confirmation":"\(confirmation)"}}}
+				""")
+		}
+		for expected in [nil, confirmation] {
+			do {
+				_ = try await client.routeAccount(authority: authority, accountID: accountID, replaceSharedLogin: expected, idempotencyKey: idempotencyKey)
+				XCTFail("Expected a replacement prompt")
+			} catch let error as AccountControlError {
+				XCTAssertEqual(error, .sharedLoginReplacementRequired(SharedLoginReplacement(sourceLabel: "Old", confirmation: confirmation)))
+			}
+		}
+		let requests = try recorder.requests.map { try nativeJSONObject($0.data) }
+		XCTAssertNil(requests.first?["replace_shared_login"])
+		XCTAssertEqual(requests.last?["replace_shared_login"] as? String, confirmation)
+	}
+
 	func testRunningCodexDecodesAsATerminalTypedRejection() async throws {
 		let authority = authority
 		let client = DecodexNativeClient { _, _ in

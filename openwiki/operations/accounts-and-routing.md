@@ -4,6 +4,10 @@ title: "Account routing and recovery"
 description: "Service-owned account routing and recovery, compact account rows, quota alignment, and cached activity status."
 tags: [decodex, accounts, operations, presentation]
 sources:
+  - id: openwiki-source-96374b161003fb4874b09534
+    resource: repo://apps/decodex-cli/src/account.rs
+  - id: openwiki-source-230c7c1843682509316cd745
+    resource: repo://apps/decodex-cli/tests/account_route_process.rs
   - id: openwiki-source-98e7b23c4cc276d20fcb4649
     resource: repo://apps/decodex-gpui/menubar/Sources/DecodexApp/AccountControlViews.swift
   - id: openwiki-source-51c6a903a86b67bbf46fe288
@@ -20,8 +24,6 @@ sources:
     resource: repo://apps/decodex-gpui/src/shell.rs
   - id: openwiki-source-fe671b38d0336d4630edcd46
     resource: repo://apps/decodex-gpui/src/ui_disclosure.rs
-  - id: openwiki-source-35beef376e748f87821e9639
-    resource: repo://apps/decodex-gpui/src/workspace_symbols.rs
   - id: openwiki-source-b52eea0658a5f27f944ae338
     resource: repo://crates/decodex-runtime/src/account_api/activation.rs
   - id: openwiki-source-7415e92f61bcf0ca4195142c
@@ -44,10 +46,10 @@ sources:
     resource: repo://database/src/quota_activation.rs
   - id: openwiki-source-8fe6f1557e5d45d88b34bd0a
     resource: repo://scripts/macos/generate_workspace_symbols.swift
-generated: { by: "codex", at: "2026-11-05T12:06:42.474Z" }
+generated: { by: "codex", at: "2026-11-23T03:02:45.946Z" }
 verified:
-  - by: openwiki/0.7.3
-    at: 2026-11-05T14:56:49.835Z
+  - by: openwiki/0.9.0
+    at: 2026-11-23T03:02:45.946Z
 ---
 
 # Account routing and recovery
@@ -60,11 +62,19 @@ Account admission is limited to the native plans `plus`, `pro`, `prolite`, `prom
 
 Same-account refresh converges on one token lineage. If native Codex rotates first, Decodex can adopt the valid non-older same-account winner instead of writing back a losing token or making another provider refresh. A live unrelated credential owner or changed source can reject a route. Stored observations are not authorization to redirect unrelated account APIs.
 
-## Sign out after a rejected refresh
+## Switch away from a downgraded or removed account
 
-A rejected credential refresh does not require another login before Sign out. The service links the logout to the exact failed refresh and rechecks the current account revision and credential binding. When logout commits, it marks that failure as superseded and retains its original reason in the operation journal. A repeated logout command returns its saved result.
+Select the account you want to use. If the current Codex account is still in Decodex and its plan has changed, you can switch away from it. Decodex saves a newer valid sign-in for that account. The selected target must qualify for use.
 
-An operation that is still pending or has an ambiguous provider result continues to block logout. Resolve that operation through its existing recovery flow. Removing a Decodex account does not change the shared Codex login.
+If the shared Codex OAuth sign-in belongs to an account outside Decodex, the desktop and menu bar show the current sign-in and the selected target. Select **Replace sign-in and switch** to replace that local sign-in. Select **Cancel** to keep it. You can select a target that is already fixed if the shared login has changed. If a native app is using the sign-in, quit it and try again. If the sign-in changes before you confirm, select the target again and review the new sign-in.
+
+In the CLI, run `decodex account route --account-id <TARGET> --idempotency-key <KEY>`. If the result is `shared_login_replacement_required`, review `source_label`. Run the same command for the same target with a new idempotency key and `--replace-shared-login <CONFIRMATION>`. Use the `confirmation` value from the result. Other enrolled accounts keep their saved credentials.
+
+## Remove an account after a rejected refresh
+
+Select **Remove account from Decodex** to remove the account and its saved sign-in. You can remove an account after a rejected refresh without signing in again. The service checks the account revision and credential binding, marks that refresh failure as superseded and keeps its original reason. A repeat of the same removal command returns its saved result.
+
+A pending operation or an ambiguous provider result blocks removal. Resolve that operation through its existing recovery flow. The shared Codex sign-in stays in place until you switch accounts.
 
 ## Imported ChatGPT personal access tokens
 
@@ -84,15 +94,15 @@ Account recovery notices and explicit recovery actions remain supported. A missi
 
 ## Account rows and details
 
-Swift and GPUI use the same interaction model. Normal accounts retain route, power and logout actions. An account that requires a new login shows a red warning with sign-in and logout controls; it does not reserve usage-bar space or require the user to sign in before logging out. Separate drag handles distinguish reordering from a click. Clicking the account summary toggles its details; action buttons keep their own behavior. In GPUI, the hand cursor belongs to that summary. Expanded metrics and the chart use the normal cursor, and clicking them does not collapse the account.
+Swift and GPUI show route, power and removal actions on normal accounts. When an account requires a new login, its row shows a red warning and actions to sign in or remove the account. The row uses the space normally reserved for usage bars. Drag the handle to reorder accounts or click the summary to toggle details. In GPUI, the hand cursor belongs to that summary. Expanded metrics and the chart use the normal cursor, and clicking them keeps the account open.
 
 Each account has independent expanded state. Opening one account does not close another. Details contain the saved activity metrics, usage graph and Reset Cards. GPUI uses the shared 200 ms disclosure animation for expansion and collapse. Each moving frame measures current content before placing the next account and clips the visible area. It does not reuse a previous frame's content height. Already open details use their full height on first entry. Do not add a second Reset Cards disclosure or duplicate logout control. The GPUI account hover covers the row. Native menu focus and synchronized expansion belong to the [desktop presentation boundary](../architecture/desktop-workspace.md).
 
 GPUI places the compact divided list in one shared Settings panel. The header uses a primary Add account action. Each summary aligns identity, short `5h` and `7d` quota meters and management actions on one row. The quota column has a fixed width, and one or two windows keep the same summary height. Labels, percentages and local reset timestamps retain stable columns. A not-applicable window has no row, matching Menu Bar. Unknown usage retains its row with a placeholder; it does not become a fake zero-percent value. Both clients show the local reset date and time and pad single-digit calendar days with a digit-width space. On macOS, Foundation supplies the system hour-cycle preference, locale and time zone for quota reset and Reset Card expiry labels. Quoted locale words stay literal. This changes presentation only; it does not change the native reset instant or quota evidence.
 
-In GPUI, Use automatic routing is an explicit action for new conversations. When active, Routing: Automatic is a read-only status, not a toggle that suggests an opposite action. Select an account's route action to use a fixed account. These controls keep the existing service-owned routing transaction. During an active sign-in, Add account and Device code are replaced by the current session's available Copy link or Copy code, Open sign-in page and Cancel actions. This keeps unrelated disabled actions out of the sign-in flow and retains all session actions within the minimum window width.
+In GPUI, select **Choose automatically** to use automatic account selection for new conversations. **Automatic** shows the active mode. Select an account's route action to use a fixed account. The service applies the route. During sign-in, the toolbar shows **Cancel**. When a link or device code becomes available, the toolbar also shows **Copy link** or **Copy code** and **Open sign-in page**. These actions fit within the minimum window width.
 
-The route action uses a curved connection between two endpoints in Settings and Menu Bar. Its existing active color and disabled behavior remain. The branching-arrow icon is reserved for conversation Fork actions.
+The route action uses a curved connection between two endpoints in Settings and Menu Bar. GPUI highlights the fixed target and lets you select it again to restore its shared sign-in. The branching-arrow icon is reserved for conversation Fork actions.
 
 Expanded activity uses a two-column grid of labels and values. Total tokens, Daily peak, Streak and Longest task remain separate metrics. Streak combines the current and best values. Labels and values share the quota text size and muted color. Values use tabular figures without extra size or weight. The daily chart uses a subdued accent, and Reset cards has its own divided area. Missing metrics stay absent. Activity remains bound to the current account revision.
 

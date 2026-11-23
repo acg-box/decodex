@@ -49,8 +49,8 @@ use crate::{
 	PromptInputUpload, PromptInputUploadStatus, ProtocolVersion, QueryEnvelope, QueryId,
 	QueryPayload, QueryResultPayload, ReceiptDisposition, Refusal, RefusalEnvelope,
 	ResetCardDescriptorDto, ResetCardInventoryResult, ResetCardOperationResult, ResultPayload,
-	RetainedSessionConfig, RetainedSessionFailure, ServerId, ServerMessage, TRANSCRIPT_CHUNK_BYTES,
-	TaskRecapStatus, WireText, WorkDetailResult,
+	RetainedSessionConfig, RetainedSessionFailure, ServerId, ServerMessage, Sha256Digest,
+	TRANSCRIPT_CHUNK_BYTES, TaskRecapStatus, WireText, WorkDetailResult,
 	local_transport::{LocalTransportAuthority, LocalTransportRefusal, LocalTransportStream},
 	work::WorkPortfolio,
 };
@@ -3591,7 +3591,22 @@ impl AccountClient {
 		account_id: EntityId,
 		idempotency_key: IdempotencyKey,
 	) -> Result<AccountCommandResponse, ClientFailure> {
-		self.execute(CommandPayload::RouteAccount { account_id }, None, idempotency_key).await
+		self.route_account_with_confirmation(account_id, None, idempotency_key).await
+	}
+
+	/// Route with the confirmation from a previous refusal for this target and sign-in.
+	pub async fn route_account_with_confirmation(
+		&self,
+		account_id: EntityId,
+		replace_shared_login: Option<Sha256Digest>,
+		idempotency_key: IdempotencyKey,
+	) -> Result<AccountCommandResponse, ClientFailure> {
+		self.execute(
+			CommandPayload::RouteAccount { account_id, replace_shared_login },
+			None,
+			idempotency_key,
+		)
+		.await
 	}
 
 	/// Select balanced initial routing under one routing-control revision.

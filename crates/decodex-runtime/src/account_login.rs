@@ -726,6 +726,7 @@ fn map_install_error(error: &CommandError) -> AccountLoginFailure {
 		| CommandError::IdempotencyCapacityExceeded { .. }
 		| CommandError::ApplicationUnavailable { .. }
 		| CommandError::ConversationUnavailable { .. }
+		| CommandError::SharedLoginReplacementRequired { .. }
 		| CommandError::ConversationRecoveryRequired { .. } => AccountLoginFailure::ServiceUnavailable,
 	}
 }

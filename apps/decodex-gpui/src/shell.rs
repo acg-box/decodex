@@ -625,6 +625,7 @@ impl Shell {
 				order: vec![primary.account_id, reserve.account_id, research.account_id],
 			}),
 			rejection: None,
+			replacement: None,
 			can_manage: true,
 			can_route: true,
 			route_success_alias: None,
@@ -1217,11 +1218,17 @@ impl Shell {
 		cx.notify();
 	}
 
-	fn select_fixed_account(&mut self, account_id: &EntityId, cx: &mut Context<Self>) {
+	fn select_fixed_account(
+		&mut self,
+		account_id: &EntityId,
+		replace_shared_login: Option<decodex_protocol::Sha256Digest>,
+		cx: &mut Context<Self>,
+	) {
+		self.pending_account_logout = None;
 		self.account_status_target = Some(account_id.clone());
 		self.account_status = self
 			.accounts_controller
-			.select_fixed(account_id)
+			.select_fixed(account_id, replace_shared_login)
 			.err()
 			.map(account_input_error_label)
 			.map(Into::into);
@@ -1249,7 +1256,7 @@ impl Shell {
 		if self.pending_account_logout.as_ref() != Some(account_id) {
 			self.pending_account_logout = Some(account_id.clone());
 			self.account_status = Some(
-				"Sign out removes this account and its saved sign-in. Click again to confirm."
+				"Remove this account and its saved sign-in from Decodex? Click again to confirm."
 					.into(),
 			);
 
@@ -3547,6 +3554,7 @@ fn account_pool_rows(shell: &Shell, cx: &mut Context<Shell>) -> Vec<AnyElement> 
 				.flex()
 				.flex_col()
 				.child(row)
+				.children(account_login_replacement(shell, account, cx))
 				.child(crate::ui_motion::settings_disclosure(
 					SharedString::from(format!(
 						"account-expansion-{}",
@@ -3573,7 +3581,54 @@ fn account_pool_rows(shell: &Shell, cx: &mut Context<Shell>) -> Vec<AnyElement> 
 		.collect()
 }
 
+fn account_login_replacement(
+	shell: &Shell,
+	account: &AccountDto,
+	cx: &mut Context<Shell>,
+) -> Option<AnyElement> {
+	let prompt =
+		shell.accounts.replacement.as_ref().filter(|prompt| prompt.target == account.account_id)?;
+	let target = prompt.target.clone();
+	let confirmation = prompt.confirmation.clone();
+	let can_replace = shell.accounts.can_route
+		&& account.enabled
+		&& !account_needs_login(account)
+		&& account.lifecycle_readiness != AccountLifecycleReadinessDto::UnsupportedPlan;
+	let replace =
+		account_login_button("replace-shared-login", "Replace sign-in and switch", can_replace)
+			.when(can_replace, |button| {
+				button.on_click(cx.listener(move |shell, _, _, cx| {
+					shell.select_fixed_account(&target, Some(confirmation.clone()), cx);
+				}))
+			});
+	let cancel = ui_theme::settings_button("cancel-shared-login", "Cancel").on_click(cx.listener(
+		|shell, _, _, cx| {
+			shell.accounts_controller.cancel_shared_login_replacement();
+			shell.synchronize_accounts();
+			cx.notify();
+		},
+	));
+	Some(
+		gpui::div()
+			.px_3()
+			.pb_2()
+			.flex()
+			.flex_col()
+			.gap_1()
+			.child(format!(
+				"Codex is signed in as {} outside Decodex. Replace this local sign-in with {}?",
+				prompt.source_label.as_str(),
+				account.alias.as_str()
+			))
+			.child(gpui::div().flex().gap_2().child(replace).child(cancel))
+			.into_any_element(),
+	)
+}
+
 fn account_operation_feedback(shell: &Shell) -> Option<Feedback> {
+	if shell.accounts.replacement.is_some() {
+		return None;
+	}
 	if let Some(message) = &shell.account_status {
 		return Some(if shell.pending_account_logout.is_some() {
 			Feedback::info(message.to_string())
@@ -3875,7 +3930,7 @@ fn account_login_prompt(code: String, url: String) -> AnyElement {
 fn account_login_button(id: &'static str, label: &'static str, enabled: bool) -> Stateful<Div> {
 	let button = if !enabled {
 		ui_theme::settings_button_base(id, label).cursor_default().opacity(0.55)
-	} else if id == "account-login-browser" {
+	} else if matches!(id, "account-login-browser" | "replace-shared-login") {
 		ui_theme::settings_primary_button(id, label)
 	} else {
 		ui_theme::settings_button(id, label)
@@ -4066,7 +4121,7 @@ fn account_pool_summary(
 		&& quota_windows
 			.iter()
 			.any(|(_, quota)| quota.result != AccountQuotaStateDto::NotApplicable);
-	let pin_enabled = can_route && enabled && !fixed && !unsupported_plan;
+	let pin_enabled = can_route && enabled && !unsupported_plan;
 
 	gpui::div()
 		.id(("account-summary", index))
@@ -4134,7 +4189,7 @@ fn account_pool_summary(
 							cx.stop_propagation();
 
 							if pin_enabled {
-								shell.select_fixed_account(&account_id, cx);
+								shell.select_fixed_account(&account_id, None, cx);
 							}
 						}))
 						.when(pin_enabled, |button| {
@@ -4331,9 +4386,9 @@ fn account_management_actions(
 						"account-logout",
 						index,
 						if presentation.logout_pending {
-							"Confirm sign out"
+							"Confirm account removal"
 						} else {
-							"Sign out of this account"
+							"Remove account from Decodex"
 						},
 						if presentation.logout_pending {
 							workspace_symbols::Symbol::Confirm
@@ -4444,7 +4499,7 @@ fn account_readiness_label(readiness: AccountLifecycleReadinessDto) -> &'static 
 		AccountLifecycleReadinessDto::OperationUnsettled => "Update in progress",
 		AccountLifecycleReadinessDto::CallbackCapabilityUnready =>
 			"Conversation routing unavailable",
-		AccountLifecycleReadinessDto::Tombstoned => "Signed out",
+		AccountLifecycleReadinessDto::Tombstoned => "Removed from Decodex",
 	}
 }
 
@@ -4485,9 +4540,9 @@ fn account_rejection_label(rejection: AccountCommandRejectionDto) -> &'static st
 		AccountCommandRejectionDto::CredentialRefreshUnavailable =>
 			"Sign-in refresh unavailable. Try later.",
 		AccountCommandRejectionDto::AuthSourceAccountUnknown =>
-			"Add the current Codex account before switching.",
+			"Import the current Codex sign-in before switching accounts.",
 		AccountCommandRejectionDto::AuthCredentialConflict =>
-			"Codex sign-in mismatch. Sign in again.",
+			"The shared Codex sign-in conflicts with the saved sign-in. Reconnect the current Codex account before switching.",
 		AccountCommandRejectionDto::AuthFileUnreadable => "Could not read Codex sign-in.",
 		AccountCommandRejectionDto::AuthFileChanged => "Codex sign-in changed. Switch again.",
 		AccountCommandRejectionDto::AuthWriteFailed => "Could not save the Codex sign-in.",

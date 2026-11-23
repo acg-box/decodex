@@ -2765,6 +2765,9 @@ pub enum CommandPayload {
 	RouteAccount {
 		/// Canonical routed account identity.
 		account_id: EntityId,
+		/// Confirmation returned for replacing the observed external Codex sign-in.
+		#[serde(default, skip_serializing_if = "Option::is_none")]
+		replace_shared_login: Option<Sha256Digest>,
 	},
 	/// Select balanced initial account routing under the routing-control revision guard.
 	SetBalancedAccountSelection,
@@ -3447,6 +3450,13 @@ pub enum CommandError {
 		/// Closed recovery action safe for direct presentation.
 		action: ConversationRecoveryAction,
 	},
+	/// Route needs consent to replace a local Codex sign-in outside the account pool.
+	SharedLoginReplacementRequired {
+		/// Public display label of the shared sign-in.
+		source_label: WireText,
+		/// Binds the observed source and the requested route.
+		confirmation: Sha256Digest,
+	},
 	/// A stable account-domain guard rejected the logical command before a new effect.
 	AccountCommandRejected {
 		/// Stable account-domain rejection.
@@ -3821,7 +3831,7 @@ fn validate_account_command(command: &CommandEnvelope) -> Result<(), &'static st
 
 			positive_expected.then_some(()).ok_or("account revision is required")
 		},
-		CommandPayload::RouteAccount { account_id } => {
+		CommandPayload::RouteAccount { account_id, .. } => {
 			validate_canonical_account(account_id)?;
 
 			command
@@ -4866,7 +4876,10 @@ mod tests {
 			EntityId::new("01234567-89ab-4def-8123-456789abcdef").expect("canonical account ID");
 		let other_id =
 			EntityId::new("11234567-89ab-4def-8123-456789abcdef").expect("canonical account ID");
-		let route = CommandPayload::RouteAccount { account_id: account_id.clone() };
+		let route = CommandPayload::RouteAccount {
+			account_id: account_id.clone(),
+			replace_shared_login: None,
+		};
 		let balanced = CommandPayload::SetBalancedAccountSelection;
 		let order =
 			CommandPayload::SetAccountOrder { order: vec![other_id.clone(), account_id.clone()] };
@@ -4921,7 +4934,10 @@ mod tests {
 		};
 
 		assert!(is_rejected(
-			CommandPayload::RouteAccount { account_id: account_id.clone() },
+			CommandPayload::RouteAccount {
+				account_id: account_id.clone(),
+				replace_shared_login: None
+			},
 			Some(EntityRevision(1)),
 		));
 		assert!(is_rejected(CommandPayload::SetBalancedAccountSelection, Some(EntityRevision(0)),));

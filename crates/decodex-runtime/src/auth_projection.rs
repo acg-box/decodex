@@ -41,7 +41,7 @@ static PROJECTION_LOCK: Mutex<()> = Mutex::new(());
 static TEMP_SEQUENCE: AtomicU64 = AtomicU64::new(1);
 
 /// Credential-negative metadata used to coalesce stable shared-auth reads.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub(crate) enum SharedCodexAuthFileStamp {
 	Absent,
 	Present {
@@ -117,7 +117,7 @@ enum ProjectionFault {
 }
 
 /// Exact credential-negative source version required by the final Route CAS.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub(crate) struct SharedCodexAuthVersion {
 	pub(crate) stamp: SharedCodexAuthFileStamp,
 	pub(crate) sha256: Option<[u8; 32]>,
@@ -151,8 +151,8 @@ struct IdentityOnlyAuth {
 	_personal_access_token: Option<IgnoredAny>,
 	#[serde(rename = "OPENAI_API_KEY", default)]
 	_api_key: Option<IgnoredAny>,
-	#[serde(default, rename = "tokens")]
-	_tokens: Option<IdentityOnlyTokens>,
+	#[serde(default)]
+	tokens: Option<IdentityOnlyTokens>,
 	#[serde(rename = "last_refresh", default)]
 	_last_refresh: Option<IgnoredAny>,
 }
@@ -696,12 +696,14 @@ fn read_identity_from_directory(
 	let auth = serde_json::from_slice::<IdentityOnlyAuth>(&bytes)
 		.map_err(|_| CodexAuthProjectionError::Unavailable)?;
 
-	if auth.auth_mode.as_deref() != Some("chatgpt") {
+	if auth.auth_mode.as_deref() != Some("chatgpt")
+		&& !(auth.auth_mode.is_none() && auth.tokens.is_some())
+	{
 		return Ok(SharedCodexAuthIdentity::Unmanaged);
 	}
 
 	let account_id = auth
-		._tokens
+		.tokens
 		.map(|tokens| tokens._account_id)
 		.filter(|account_id| {
 			!account_id.is_empty()
@@ -749,7 +751,8 @@ fn read_snapshot_from_directory(
 
 	if auth.auth_mode.as_deref() != Some("chatgpt")
 		&& auth.auth_mode.as_deref() != Some("personalAccessToken")
-		&& !(auth.auth_mode.is_none() && auth._personal_access_token.is_some())
+		&& !(auth.auth_mode.is_none()
+			&& (auth._personal_access_token.is_some() || auth.tokens.is_some()))
 	{
 		return Ok(SharedCodexAuthSnapshot::Unmanaged { version });
 	}

@@ -104,6 +104,27 @@ struct ResetCardAccountRow: View {
 					.onTapGesture { } // Disabled controls and the reorder handle do not toggle details.
 				}
 				.frame(maxWidth: .infinity, alignment: .leading)
+				if let pending = store.pendingLoginReplacement, pending.accountID == state.account.accountID {
+					Text("Codex is signed in as \(pending.replacement.sourceLabel) outside Decodex. Replace this local sign-in with \(state.account.alias)?")
+						.font(.callout)
+						.fixedSize(horizontal: false, vertical: true)
+					HStack {
+						Button("Replace sign-in and switch") {
+							Task {
+								await store.routeAccount(
+									state.account.accountID,
+									replacing: pending.replacement.confirmation
+								)
+							}
+						}
+						.disabled(
+							!store.canPerformDirectAccountControl || store.isAccountControlInProgress
+								|| !store.canRouteAccount(state.account.accountID)
+						)
+						Button("Cancel") { store.cancelLoginReplacement() }
+					}
+					.controlSize(.small)
+				}
 				if !state.requiresLoginRefresh && hasVisibleQuota {
 					quotaWindows
 					.accessibilityLabel("Account usage details")

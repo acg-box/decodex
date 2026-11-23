@@ -1481,6 +1481,34 @@ final class AccountControlStoreTests: XCTestCase {
 		XCTAssertNil(store.message)
 	}
 
+	func testExternalLoginWaitsForExplicitReplacement() async throws {
+		let replacement = SharedLoginReplacement(sourceLabel: "Old", confirmation: String(repeating: "a", count: 64))
+		let client = AccountControlStoreClient(account: accountRecord(), authority: authority,
+			routeAccountError: .sharedLoginReplacementRequired(replacement))
+		let fixture = pendingFixture()
+		defer { fixture.remove() }
+		let store = ResetCardStore(client: client, pendingStore: fixture.store, startupRetryDelays: [])
+		await store.refresh()
+
+		await store.routeAccount(accountID)
+		let initial = await client.routeRequest()
+		XCTAssertNil(initial?.replaceSharedLogin)
+		XCTAssertEqual(store.pendingLoginReplacement?.accountID, accountID)
+		XCTAssertEqual(store.pendingLoginReplacement?.replacement, replacement)
+		store.cancelLoginReplacement()
+		XCTAssertNil(store.pendingLoginReplacement)
+		XCTAssertEqual(store.routing?.mode, .balanced)
+
+		await store.routeAccount(accountID)
+		let prompt = try XCTUnwrap(store.pendingLoginReplacement)
+		await store.routeAccount(prompt.accountID, replacing: prompt.replacement.confirmation)
+		let confirmed = await client.routeRequest()
+		XCTAssertEqual(confirmed?.replaceSharedLogin, replacement.confirmation)
+		XCTAssertNotEqual(confirmed?.idempotencyKey, initial?.idempotencyKey)
+		XCTAssertNil(store.pendingLoginReplacement)
+		XCTAssertEqual(store.routing?.mode, .fixed(accountID: accountID))
+	}
+
 	func testRouteAccountFailureLeavesTheAuthoritativeProjectionUnchanged() async throws {
 		let account = accountRecord()
 		let client = AccountControlStoreClient(
@@ -1948,6 +1976,7 @@ final class AccountControlStoreTests: XCTestCase {
 }
 
 private struct AccountControlStoreRouteRequest: Equatable, Sendable {
+	let replaceSharedLogin: String?
 	let authority: ResetCardAuthority?
 	let accountID: String
 	let idempotencyKey: String
@@ -2221,6 +2250,7 @@ private actor AccountControlStoreClient: AccountControlClient, AccountObservatio
 	func routeAccount(
 		authority: ResetCardAuthority?,
 		accountID: String,
+		replaceSharedLogin: String?,
 		idempotencyKey: String
 	) async throws -> AccountControlResult {
 		guard DecodexNativeClient.isCanonicalUUID(idempotencyKey)
@@ -2228,11 +2258,12 @@ private actor AccountControlStoreClient: AccountControlClient, AccountObservatio
 			throw AccountControlError.invalidInput
 		}
 		lastRouteRequest = AccountControlStoreRouteRequest(
+			replaceSharedLogin: replaceSharedLogin,
 			authority: authority,
 			accountID: accountID,
 			idempotencyKey: idempotencyKey
 		)
-		if let routeAccountError {
+		if let routeAccountError, replaceSharedLogin == nil {
 			throw routeAccountError
 		}
 		await routeGate?.wait()

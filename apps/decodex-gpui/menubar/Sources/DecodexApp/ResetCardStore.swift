@@ -343,6 +343,7 @@ final class ResetCardStore {
 	}
 	private(set) var routing: AccountRoutingControl?
 	private(set) var codexAuthProjection: CodexAuthProjection?
+	private(set) var pendingLoginReplacement: (accountID: String, replacement: SharedLoginReplacement)?
 	private(set) var isRefreshing = false
 	private(set) var refreshSkeletonIsPublished = false
 	private(set) var isRefreshingAccountSkeleton = false
@@ -1416,7 +1417,7 @@ final class ResetCardStore {
 		await performAccountControl(
 			accountID: accountID,
 			activity: .lifecycle,
-			successMessage: "Signed out.",
+			successMessage: "Account removed from Decodex.",
 			operation: {
 				try await accountControlClient.logoutAccount(
 					authority: account.authority ?? establishedAuthority,
@@ -1429,7 +1430,11 @@ final class ResetCardStore {
 		)
 	}
 
-	func routeAccount(_ accountID: String) async {
+	func cancelLoginReplacement() {
+		pendingLoginReplacement = nil
+	}
+
+	func routeAccount(_ accountID: String, replacing confirmation: String? = nil) async {
 		guard let account = accountRecord(accountID),
 			canRouteAccount(accountID),
 			let routing,
@@ -1459,6 +1464,7 @@ final class ResetCardStore {
 				try await accountControlClient.routeAccount(
 					authority: account.authority ?? establishedAuthority,
 					accountID: accountID,
+					replaceSharedLogin: confirmation,
 					idempotencyKey: Self.newCanonicalUUID()
 				)
 			}
@@ -3432,6 +3438,7 @@ final class ResetCardStore {
 				return
 			}
 		}
+		pendingLoginReplacement = nil
 		invalidateAccountSnapshotRequest()
 
 		if let accountID, let activity {
@@ -3459,6 +3466,10 @@ final class ResetCardStore {
 				message = ResetCardStoreMessage(tone: .success, text: successMessage)
 			}
 			scheduleAccountControlFollowUp(followUp)
+		} catch let AccountControlError.sharedLoginReplacementRequired(replacement) where activity == .route {
+			if let accountID {
+				pendingLoginReplacement = (accountID, replacement)
+			}
 		} catch let error as AccountControlError {
 			message = ResetCardStoreMessage(
 				tone: .error,
