@@ -847,10 +847,7 @@ mod tests {
 			self as mascot, Actor, Arc, CATALOG, Cell, Clock, ColorScheme, Drawing, IDLE_INTERVAL,
 			Instant, IntoElement, Rc, Scene, State, Traits, Window,
 		},
-		ui_theme::{
-			ColorTheme,
-			appearance::{self, Theme},
-		},
+		ui_theme::{ColorTheme, appearance},
 	};
 
 	#[test]
@@ -1169,9 +1166,10 @@ mod tests {
 	fn theme_changes_recolor_cached_artwork_without_restarting_motion(
 		cx: &mut gpui::TestAppContext,
 	) {
-		let original = ColorTheme::configured();
+		let original = (appearance::Appearance::current(), ColorTheme::configured());
 
-		appearance::with_theme(Theme::Dark, || {
+		for mode in [appearance::Appearance::Light, appearance::Appearance::Dark] {
+			cx.update(|cx| mode.apply(cx));
 			cx.update(|cx| ColorTheme::Decodex.apply(cx));
 
 			let now = Instant::now();
@@ -1197,9 +1195,12 @@ mod tests {
 				&themed,
 				&actor.frame("Running", now + Duration::from_millis(30)).figure.drawing
 			));
-		});
+		}
 
-		cx.update(|cx| original.apply(cx));
+		cx.update(|cx| {
+			original.0.apply(cx);
+			original.1.apply(cx);
+		});
 
 		assert_eq!(CATALOG.palettes.len(), crate::ui_theme::MASCOT_FAMILIES.len());
 

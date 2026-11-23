@@ -108,8 +108,9 @@ fn theme_change_repaints_cached_diagrams_without_moving_them(cx: &mut TestAppCon
 	for (theme, colors) in [
 		(Theme::Dark, ColorTheme::Decodex),
 		(Theme::Light, ColorTheme::Decodex),
+		(Theme::Light, ColorTheme::TokyoNight),
 		(Theme::Dark, ColorTheme::TokyoNight),
-		(Theme::Dark, ColorTheme::GruvboxDark),
+		(Theme::Dark, ColorTheme::Gruvbox),
 		(Theme::Dark, ColorTheme::TokyoNight),
 	] {
 		visual.update(|_, cx| colors.apply(cx));

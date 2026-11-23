@@ -3,7 +3,7 @@ use std::cell::Cell;
 
 use gpui::{App, Context, Window, WindowAppearance};
 
-use crate::{ui_preferences, ui_theme::ColorTheme};
+use crate::ui_preferences;
 
 // GPUI paints on the app thread. Background jobs receive an explicit Theme,
 // so a theme change cannot alter an image while a worker prepares it.
@@ -25,12 +25,10 @@ impl Appearance {
 		STATE.get().0
 	}
 
-	fn from_preference(value: Option<&str>, colors: ColorTheme) -> Self {
+	fn from_preference(value: Option<&str>) -> Self {
 		match value {
 			Some("light") => Self::Light,
 			Some("dark") => Self::Dark,
-			// Existing dark presets predate the separate appearance preference.
-			None if colors != ColorTheme::Decodex => Self::Dark,
 			_ => Self::System,
 		}
 	}
@@ -90,7 +88,7 @@ impl Theme {
 
 pub(crate) fn initialize(cx: &mut App) {
 	let value = ui_preferences::string(KEY, None);
-	let appearance = Appearance::from_preference(value.as_deref(), ColorTheme::configured());
+	let appearance = Appearance::from_preference(value.as_deref());
 
 	STATE.set((appearance, Theme::current()));
 	cx.set_window_appearance(appearance.native());
@@ -147,7 +145,7 @@ mod tests {
 	use gpui::{AppContext as _, Entity, IntoElement, Render};
 
 	use crate::ui_theme::appearance::{
-		self, Appearance, Cell, ColorTheme, Context, STATE, Theme, Window, WindowAppearance,
+		self, Appearance, Cell, Context, STATE, Theme, Window, WindowAppearance,
 	};
 
 	struct Sample(Rc<Cell<Theme>>);
@@ -168,17 +166,11 @@ mod tests {
 
 	#[test]
 	fn preferences_round_trip_and_unknown_values_follow_system() {
-		for colors in ColorTheme::ALL {
-			for choice in [Appearance::System, Appearance::Light, Appearance::Dark] {
-				assert_eq!(Appearance::from_preference(Some(choice.preference()), colors), choice);
-			}
-
-			let initial =
-				if colors == ColorTheme::Decodex { Appearance::System } else { Appearance::Dark };
-
-			assert_eq!(Appearance::from_preference(None, colors), initial);
-			assert_eq!(Appearance::from_preference(Some("obsolete"), colors), Appearance::System);
+		for choice in [Appearance::System, Appearance::Light, Appearance::Dark] {
+			assert_eq!(Appearance::from_preference(Some(choice.preference())), choice);
 		}
+		assert_eq!(Appearance::from_preference(None), Appearance::System);
+		assert_eq!(Appearance::from_preference(Some("obsolete")), Appearance::System);
 	}
 
 	#[test]

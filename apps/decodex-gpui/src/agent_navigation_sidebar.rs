@@ -1245,6 +1245,7 @@ pub(in crate::shell::agent_surface) fn check_catalog_selection_paint(
 		(Appearance::Dark, ColorTheme::Decodex),
 		(Appearance::Dark, ColorTheme::TokyoNight),
 		(Appearance::Light, ColorTheme::Decodex),
+		(Appearance::Light, ColorTheme::TokyoNight),
 	] {
 		visual.update(|_, cx| {
 			appearance.apply(cx);
