@@ -23,14 +23,13 @@ async fn manage(
 }
 #[tokio::test]
 async fn four_works_in_two_projects_share_an_agent_without_sharing_results() {
-	let (mut agent, _sent, home) = tests::fixture().await;
-
-	agent.config.cwd = home
-		.path()
-		.canonicalize()
-		.expect("Project and Work qualification fixture")
-		.display()
-		.to_string();
+	let home = tempfile::tempdir().unwrap();
+	let cwd = home.path().canonicalize().unwrap();
+	let (mut agent, _sent, service_home) = tests::fixture_with_history(serde_json::json!({
+		"opaque thread/1": {"thread":{"id":"opaque thread/1","cwd":cwd,"turns":[]}}
+	}))
+	.await;
+	agent.config.cwd = cwd.display().to_string();
 
 	agent
 		.start_agent("sage", "Plan the market and trip")
@@ -67,6 +66,8 @@ async fn four_works_in_two_projects_share_an_agent_without_sharing_results() {
 		.find(|e| e.event_kind == "user_message")
 		.expect("Project and Work qualification fixture");
 
+	// A shared service can subsequently route another Agent from a different directory.
+	agent.config.cwd = service_home.path().display().to_string();
 	create_four_works(&mut agent, decision.id).await;
 	qualify_result_isolation(&mut agent, home.path()).await;
 
@@ -90,7 +91,7 @@ async fn four_works_in_two_projects_share_an_agent_without_sharing_results() {
 	}
 
 	assert!(
-		super::super::tools()
+		super::super::tools(false)
 			.as_array()
 			.expect("Project and Work qualification fixture")
 			.iter()
@@ -161,6 +162,15 @@ async fn qualify_result_isolation(agent: &mut AgentCoordinator, home: &Path) {
 		source: ResultSource::Artifact { path: path.display().to_string(), sha256: digest },
 		limits: "Research only; no reservation".into(),
 	};
+
+	let foreign_path = Path::new(&agent.config.cwd).join("foreign-evidence.txt");
+	fs::write(&foreign_path, "Public venue evidence").unwrap();
+	let mut foreign = result.clone();
+	let ResultSource::Artifact { path: reference_path, .. } = &mut foreign.source else {
+		unreachable!()
+	};
+	*reference_path = foreign_path.display().to_string();
+	assert!(agent.verify_work_result("sage", &foreign).await.is_err());
 
 	manage(agent, "record-result", WorkCommand::RecordResult { result: result.clone() })
 		.await

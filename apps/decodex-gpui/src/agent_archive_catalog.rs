@@ -29,11 +29,9 @@ use decodex_protocol::{
 
 const BATCH_BAR_HEIGHT: f32 = 38.;
 const BATCH_BAR_INSET: f32 = 8.;
-const BATCH_BAR_MATERIAL: &str = "archive-selection-material";
 
 #[derive(Default)]
 pub(in crate::shell::agent_surface) struct Catalog {
-	pub open: bool,
 	pub viewed: Option<String>,
 	data: Option<AgentSnapshotDto>,
 	search: Option<Entity<ComposerInput>>,
@@ -81,18 +79,22 @@ impl Catalog {
 			.data
 			.iter()
 			.flat_map(|data| {
-				data.work_items.iter().filter(|item| data.archived_work_ids.contains(&item.id))
+				data.work_items
+					.iter()
+					.filter(|item| data.archived_work_ids.contains(&item.id))
+					.map(move |item| (data, item))
 			})
-			.filter_map(|item| {
+			.filter_map(|(data, item)| {
+				let title = AgentSurface::conversation_label_in(Some(data), item);
 				let project = self.project_name(&item.id).map(str::to_owned);
-				let text = format!("{} {}", item.title, project.as_deref().unwrap_or_default())
-					.to_lowercase();
+				let text =
+					format!("{} {}", title, project.as_deref().unwrap_or_default()).to_lowercase();
 				query.split_whitespace().all(|word| text.contains(word)).then(|| {
 					let (day, clock) = crate::ui_time::local_parts(item.updated_at_micros);
 					let date = format!("{day} {clock}");
 					Row {
 						id: item.id.clone(),
-						title: item.title.clone(),
+						title,
 						metadata: project.as_ref().map_or_else(
 							|| date.clone(),
 							|name| format!("Project: {name}\nArchived: {date}"),
@@ -157,12 +159,18 @@ impl Catalog {
 		seen.len()
 	}
 
+	pub(in crate::shell::agent_surface) fn snapshot_for(
+		&self,
+		id: &str,
+	) -> Option<&AgentSnapshotDto> {
+		self.data.as_ref().filter(|data| data.archived_work_ids.contains(id))
+	}
+
 	pub(in crate::shell::agent_surface) fn archived_work(
 		&self,
 		id: &str,
 	) -> Option<&AgentWorkItemDto> {
-		let data = self.data.as_ref()?;
-		data.work_items.iter().find(|work| work.id == id && data.archived_work_ids.contains(id))
+		self.snapshot_for(id)?.work_items.iter().find(|work| work.id == id)
 	}
 
 	pub(in crate::shell::agent_surface) fn viewed_work(&self) -> Option<&AgentWorkItemDto> {
@@ -180,6 +188,23 @@ impl Catalog {
 }
 
 impl AgentSurface {
+	pub(crate) fn dismiss_catalog_selection(&mut self, cx: &mut Context<Self>) -> bool {
+		if self.workspace.archives.mutation.is_some()
+			|| (self.workspace.archives.confirmation.is_none()
+				&& !self.workspace.archives.selecting)
+		{
+			return false;
+		}
+		self.exit_archive_selection(cx);
+		true
+	}
+
+	pub(in crate::shell::agent_surface) fn clear_archive_selection(&mut self) {
+		self.workspace.archives.cancel_confirmation();
+		self.workspace.archives.selected.clear();
+		self.workspace.archives.selecting = false;
+	}
+
 	pub(in crate::shell::agent_surface) fn open_archived_conversation(
 		&mut self,
 		id: &str,
@@ -191,21 +216,22 @@ impl AgentSurface {
 		self.workspace.archives.viewed = Some(id.into());
 		self.workspace.archives.confirmation = None;
 		self.workspace.archives.confirmation_task = None;
-		self.workspace.archives.open = false;
 		self.open_work_conversation(id, None, cx);
+		cx.emit(crate::shell::agent_surface::CatalogEvent::Close);
 	}
 
 	pub(in crate::shell::agent_surface) fn open_archive_catalog(&mut self, cx: &mut Context<Self>) {
 		self.cancel_dictation(cx);
+		cx.emit(crate::shell::agent_surface::CatalogEvent::Open(
+			crate::shell::agent_surface::Catalog::Archived,
+		));
 		self.workspace.archives.cancel_confirmation();
-		self.workspace.browsing = true;
-		self.workspace.archives.open = true;
 		if self.workspace.archives.search.is_none() {
 			let search = cx.new(|cx| {
 				ComposerInput::with_placeholder(
 					48,
-					"Search by agent or project…",
-					"Search archive",
+					"Search archived conversations…",
+					"Search archived conversations by agent or project",
 					cx,
 				)
 			});
@@ -319,15 +345,10 @@ impl AgentSurface {
 	}
 
 	fn delete_archive_item(&mut self, id: &str, cx: &mut Context<Self>) {
-		self.delete_archive_items(vec![id.into()], false, cx);
+		self.delete_archive_items(vec![id.into()], cx);
 	}
 
-	fn delete_archive_items(
-		&mut self,
-		mut ids: Vec<String>,
-		confirmed: bool,
-		cx: &mut Context<Self>,
-	) {
+	fn delete_archive_items(&mut self, mut ids: Vec<String>, cx: &mut Context<Self>) {
 		if self.workspace.archives.mutation.is_some()
 			|| ids.is_empty()
 			|| ids.iter().any(|id| self.workspace.archives.archived_work(id).is_none())
@@ -337,13 +358,12 @@ impl AgentSurface {
 		// Native deletion includes descendants. Delete selected children first so
 		// their individual receipts do not race an earlier parent deletion.
 		ids.sort_by_cached_key(|id| std::cmp::Reverse(self.workspace.archives.parent_depth(id)));
-		if !confirmed
-			&& !self
-				.workspace
-				.archives
-				.confirmation
-				.as_ref()
-				.is_some_and(|(owners, at)| owners == &ids && at.elapsed() < Duration::from_secs(5))
+		if !self
+			.workspace
+			.archives
+			.confirmation
+			.as_ref()
+			.is_some_and(|(owners, at)| owners == &ids && at.elapsed() < Duration::from_secs(5))
 		{
 			let now = Instant::now();
 			self.workspace.archives.confirmation = Some((ids.clone(), now));
@@ -651,17 +671,10 @@ impl AgentSurface {
 					0.
 				}))
 				.relative()
-				.when(selected, |row| row.bg(ui_theme::rgb(ui_theme::ACCENT).opacity(0.18)))
 				.cursor_pointer()
-				.hover(move |d| {
-					d.bg(if selected {
-						ui_theme::rgb(ui_theme::ACCENT).opacity(0.24)
-					} else {
-						ui_theme::rgb(ui_theme::ACCENT).opacity(0.075)
-					})
+				.map(|row| {
+					super::super::navigation_sidebar::conversation_row_feedback(row, selected)
 				})
-				.active(|d| d.bg(ui_theme::rgb(ui_theme::ACCENT).opacity(0.24)))
-				.focus_visible(|d| d.bg(ui_theme::rgb(ui_theme::ACCENT).opacity(0.075)))
 				.on_click(cx.listener(move |s, _, _, cx| {
 					s.select_archive_row(&row_id, cx);
 				}))
@@ -778,12 +791,7 @@ impl AgentSurface {
 			.p_3()
 			.gap_2()
 			.on_key_down(cx.listener(|s, e: &KeyDownEvent, _, cx| {
-				if !e.is_held
-					&& e.keystroke.key == "escape"
-					&& (s.workspace.archives.confirmation.is_some()
-						|| s.workspace.archives.selecting)
-				{
-					s.exit_archive_selection(cx);
+				if !e.is_held && e.keystroke.key == "escape" && s.dismiss_catalog_selection(cx) {
 					cx.stop_propagation();
 				}
 			}))
@@ -834,11 +842,7 @@ impl AgentSurface {
 	}
 
 	fn delete_selected_archives(&mut self, cx: &mut Context<Self>) {
-		self.delete_archive_items(
-			self.workspace.archives.selected.iter().cloned().collect(),
-			false,
-			cx,
-		);
+		self.delete_archive_items(self.workspace.archives.selected.iter().cloned().collect(), cx);
 	}
 
 	fn select_archive_row(&mut self, id: &str, cx: &mut Context<Self>) {
@@ -857,14 +861,9 @@ impl AgentSurface {
 		}
 	}
 
-	pub(crate) fn hide_archive_selection_material(window: &gpui::Window, cx: &mut gpui::App) {
-		ui_motion::hide_material_surface(BATCH_BAR_MATERIAL, window, cx);
-	}
-
 	fn archive_selection_bar(&self, cx: &mut Context<Self>) -> impl IntoElement {
 		ArchiveSelectionOverlay {
 			visible: self.workspace.archives.selecting,
-			owner: cx.entity().downgrade(),
 			child: self.archive_selection_content(cx),
 		}
 	}
@@ -929,7 +928,6 @@ impl AgentSurface {
 			.h(gpui::px(BATCH_BAR_HEIGHT))
 			.px(gpui::px(10.))
 			.gap(gpui::px(10.))
-			.bg(gpui::transparent_black())
 			.occlude()
 			.text_color(ui_theme::rgb(ui_theme::TEXT))
 			.child(
@@ -966,6 +964,7 @@ impl AgentSurface {
 		gpui::div()
 			.id("archive-toolbar")
 			.debug_selector(|| "archive-toolbar".into())
+			.pr(gpui::px(36.))
 			.flex()
 			.flex_wrap()
 			.items_center()
@@ -1008,43 +1007,12 @@ impl AgentSurface {
 #[derive(gpui::IntoElement)]
 struct ArchiveSelectionOverlay {
 	visible: bool,
-	owner: gpui::WeakEntity<AgentSurface>,
 	child: AnyElement,
 }
 impl gpui::RenderOnce for ArchiveSelectionOverlay {
 	fn render(self, window: &mut gpui::Window, cx: &mut gpui::App) -> impl IntoElement {
 		let progress =
 			ui_motion::value("archive-selection-actions", f32::from(self.visible), window, cx);
-		let material = if self.visible {
-			let mut child = self.child;
-			// Measure the existing controls, so counts and labels keep their natural width.
-			let size = child.layout_as_root(
-				gpui::size(gpui::AvailableSpace::MaxContent, gpui::AvailableSpace::MinContent),
-				window,
-				cx,
-			);
-			let owner = self.owner.clone();
-			Some(
-				gpui::div().w(size.width).h(size.height).child(
-					ui_motion::material_surface(
-						BATCH_BAR_MATERIAL,
-						10.,
-						move |_, cx| {
-							owner
-								.update(cx, |s, cx| s.archive_selection_content(cx))
-								.unwrap_or_else(|_| gpui::div().into_any_element())
-						},
-						|_| {},
-					)
-					.on_escape(move |cx| {
-						let _ = self.owner.update(cx, |s, cx| s.exit_archive_selection(cx));
-					}),
-				),
-			)
-		} else {
-			AgentSurface::hide_archive_selection_material(window, cx);
-			None
-		};
 		gpui::div()
 			.id("archive-batch-overlay")
 			.debug_selector(|| "archive-batch-overlay".into())
@@ -1057,7 +1025,7 @@ impl gpui::RenderOnce for ArchiveSelectionOverlay {
 			.justify_center()
 			.overflow_hidden()
 			.opacity(progress)
-			.children(material)
+			.children(self.visible.then_some(self.child))
 	}
 }
 
@@ -1271,7 +1239,7 @@ impl AgentSurface {
 						|| data.assistant.retired_topic_ids.contains(&w.id);
 					super::super::navigation_sidebar::model::Item {
 						id: w.id.clone(),
-						title: self.conversation_label(w),
+						title: Self::conversation_label_in(Some(data), w),
 						owner: if assistant {
 							"Assistant".into()
 						} else {
@@ -1287,35 +1255,6 @@ impl AgentSurface {
 				})
 			})
 			.collect()
-	}
-
-	pub(in crate::shell::agent_surface) fn navigation_archive_status(&self) -> Option<String> {
-		if self.workspace.archives.read.is_some() {
-			Some("Loading archived conversations…".into())
-		} else if let Some(message) = &self.workspace.archives.feedback {
-			Some(message.clone())
-		} else if self.navigation_archived_items().is_empty() {
-			Some("No archived conversations.".into())
-		} else {
-			None
-		}
-	}
-
-	pub(in crate::shell::agent_surface) fn restore_navigation_archive(
-		&mut self,
-		id: &str,
-		cx: &mut Context<Self>,
-	) {
-		self.unarchive_catalog_item(id, cx);
-	}
-
-	pub(in crate::shell::agent_surface) fn delete_confirmed_navigation_archive(
-		&mut self,
-		id: &str,
-		cx: &mut Context<Self>,
-	) {
-		// The sidebar already confirmed the second click on this exact row.
-		self.delete_archive_items(vec![id.to_owned()], true, cx);
 	}
 }
 
@@ -1646,7 +1585,12 @@ mod tests {
 				] {
 					let mut item = data.work_items[0].clone();
 					item.id = id.into();
-					item.title = title.into();
+					item.title = format!(
+						"First prompt for {id}, saved before the conversation was renamed."
+					);
+					let thread = format!("native-{id}");
+					item.codex_thread_id = Some(thread.clone());
+					data.conversation_titles.insert(thread, title.into());
 					data.work_items.push(item);
 					data.archived_work_ids.insert(id.into());
 				}
@@ -1670,7 +1614,7 @@ mod tests {
 		for (query, expected) in [
 			("READING CORNER", [true, true, false]),
 			("design reading", [true, false, false]),
-			("missing", [false; 3]),
+			("first prompt", [false; 3]),
 		] {
 			surface.update(visual, |s, cx| {
 				s.workspace
@@ -1758,6 +1702,10 @@ mod tests {
 			assert!(s.workspace.archives.viewed.is_none(), "row activation only selects");
 		});
 		visual.update(crate::ui_frame::draw_current_frame);
+		super::super::super::navigation_sidebar::check_catalog_selection_paint(
+			visual,
+			"archived-a",
+		);
 		let open = visual.debug_bounds("open-archive-a").unwrap();
 		visual.simulate_click(open.center(), Default::default());
 		surface.read_with(visual, |s, _| {
@@ -1792,9 +1740,7 @@ mod tests {
 	}
 
 	#[gpui::test]
-	fn sidebar_archive_has_only_restore_delete_and_dispatches_on_second_click(
-		cx: &mut gpui::TestAppContext,
-	) {
+	fn sidebar_archive_opens_catalog_with_confirmed_deletion(cx: &mut gpui::TestAppContext) {
 		check_archive_two_click_deletion(cx, true);
 	}
 
@@ -1803,6 +1749,24 @@ mod tests {
 		let (view, visual) = cx.add_window_view(|_, cx| {
 			let surface = cx.new(single_archive_surface);
 			cx.observe(&surface, |_, _, cx| cx.notify()).detach();
+			cx.subscribe(
+				&surface,
+				|view: &mut ArchiveView,
+				 _,
+				 event: &crate::shell::agent_surface::CatalogEvent,
+				 cx| {
+					if matches!(
+						event,
+						crate::shell::agent_surface::CatalogEvent::Open(
+							crate::shell::agent_surface::Catalog::Archived
+						)
+					) {
+						view.1 = false;
+						cx.notify();
+					}
+				},
+			)
+			.detach();
 			ArchiveView(surface, sidebar)
 		});
 		let surface = view.read_with(visual, |v, _| v.0.clone());
@@ -1816,31 +1780,14 @@ mod tests {
 		}
 		surface.update(visual, |s, _| s.profile = Some(profile));
 		visual.update(crate::ui_frame::draw_current_frame);
-		let delete =
-			if sidebar { "navigation-delete-archive-discard" } else { "delete-archive-discard" };
-		if sidebar {
-			let row = visual.debug_bounds("navigation-archive-discard").unwrap();
-			visual.simulate_mouse_move(row.center(), None, Default::default());
-			visual.update(crate::ui_frame::draw_current_frame);
-			thread::sleep(ui_theme::MOTION_PANEL + Duration::from_millis(30));
-			visual.update(crate::ui_frame::draw_frame);
-			assert!(visual.debug_bounds("navigation-restore-archive-discard").is_some());
-			assert!(visual.debug_bounds("navigation-pin-archive-discard").is_none());
-			assert!(visual.debug_bounds("navigation-row-menu-archive-discard").is_none());
-			assert_eq!(
-				visual.debug_bounds("navigation-actions-archive-discard").unwrap().size.width,
-				gpui::px(48.)
-			);
-		}
+		let delete = "delete-archive-discard";
+		assert!(visual.debug_bounds("unarchive-discard").is_some());
+
 		let button = visual.debug_bounds(delete).unwrap();
 		visual.simulate_click(button.center(), Default::default());
 		surface.read_with(visual, |s, _| {
 			assert!(s.workspace.archives.mutation.is_none());
-			if sidebar {
-				assert!(s.workspace.archives.confirmation.is_none());
-			} else {
-				assert!(s.workspace.archives.confirming("discard"));
-			}
+			assert!(s.workspace.archives.confirming("discard"));
 		});
 		visual.update(crate::ui_frame::draw_current_frame);
 		let confirmed = visual.debug_bounds(delete).unwrap();
@@ -1849,12 +1796,10 @@ mod tests {
 			"confirmation must keep its click target"
 		);
 		surface.read_with(visual, |s, _| {
-			if !sidebar {
-				assert!(
-					s.workspace.archives.confirming("discard"),
-					"confirmation expired during render"
-				);
-			}
+			assert!(
+				s.workspace.archives.confirming("discard"),
+				"confirmation expired during render"
+			);
 		});
 		visual.simulate_click(confirmed.center(), Default::default());
 		surface.read_with(visual, |s, _| {

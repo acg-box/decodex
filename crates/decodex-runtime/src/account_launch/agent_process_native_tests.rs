@@ -40,6 +40,7 @@ mod mcp_socket;
 #[path = "agent_process_native_realtime_tests.rs"] mod realtime;
 #[path = "agent_process_native_reasoning_tests.rs"] mod reasoning;
 #[path = "agent_process_native_recap_service_tests.rs"] mod recap_service;
+#[path = "agent_process_native_registration_tests.rs"] mod registration;
 #[path = "agent_process_native_reviewer_tests.rs"] mod reviewer;
 #[path = "agent_process_native_sample_tests.rs"] mod sample;
 #[path = "agent_process_native_skills_tests.rs"] mod skills;

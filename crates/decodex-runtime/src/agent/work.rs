@@ -23,6 +23,10 @@ impl AgentCoordinator {
 			}
 
 			let work = args["workId"].as_str().map(str::to_owned);
+			let mut agents = self.store.agents().await?;
+			for other in agents.iter_mut().filter(|other| other.id != agent.id) {
+				other.managed_conversation_ids.clear();
+			}
 			let portfolio = self.store.agent_work_portfolio(agent.id.clone(), work).await?;
 			let turn = agent
 				.active_turn_id
@@ -30,8 +34,13 @@ impl AgentCoordinator {
 				.ok_or_else(|| AgentError::Invalid("Agent has no active turn".into()))?;
 
 			return Ok(
-				serde_json::json!({"portfolio":portfolio,"nativeIdentity":{"threadId":agent.codex_thread_id,"turnId":agent.active_turn_id},"publicOutputs":self.store.read_agent_transcript(agent.id.clone(),None,20).await?.1.into_iter().map(|output|serde_json::json!({"turnId":output.turn_id,"itemId":output.item_id,"kind":output.kind,"text":output.text,"truncated":output.truncated})).collect::<Vec<_>>(),"agents":self.store.agents().await?,"projects":self.store.projects().await?.into_iter().map(|p|serde_json::json!({"id":p.id,"name":p.name,"leadAgentId":p.lead_agent_id,"agentIds":p.agent_ids})).collect::<Vec<_>>(),"inbox":self.store.list_agent_events_for_turn(turn,100).await?,"decisionEvents":self.store.read_agent_transcript(agent.id.clone(),None,20).await?.0.into_iter().filter(|e|matches!(e.event_kind.as_str(),"user_message"|"async_question_answer")).map(|e|serde_json::json!({"eventId":e.id,"kind":e.event_kind,"deliveredTurnId":e.delivered_turn_id})).collect::<Vec<_>>(),"nativeExecution":"Use native spawn_agent and native messages for bounded helpers. Do not create a managed executor for a Work. Collaboration Request targets an existing independent Agent."}),
+				serde_json::json!({"commandContract":include_str!("work_manage.md").trim(),"portfolio":portfolio,"nativeIdentity":{"agentId":agent.id,"threadId":agent.codex_thread_id,"turnId":agent.active_turn_id},"publicOutputs":self.store.read_agent_transcript(agent.id.clone(),None,20).await?.1.into_iter().map(|output|serde_json::json!({"turnId":output.turn_id,"itemId":output.item_id,"kind":output.kind,"text":output.text,"truncated":output.truncated})).collect::<Vec<_>>(),"agents":agents,"projects":self.store.projects().await?.into_iter().map(|p|serde_json::json!({"id":p.id,"name":p.name,"leadAgentId":p.lead_agent_id,"agentIds":p.agent_ids})).collect::<Vec<_>>(),"inbox":self.store.list_agent_events_for_turn(turn,100).await?,"decisionEvents":self.store.read_agent_transcript(agent.id.clone(),None,20).await?.0.into_iter().filter(|e|matches!(e.event_kind.as_str(),"user_message"|"async_question_answer")).map(|e|serde_json::json!({"eventId":e.id,"kind":e.event_kind,"deliveredTurnId":e.delivered_turn_id})).collect::<Vec<_>>(),"nativeExecution":"Use native spawn_agent and native messages for bounded helpers. Do not create a managed executor for a Work. Collaboration Request targets an existing independent Agent."}),
 			);
+		}
+
+		if matches!(args["command"]["operation"].as_str(), Some("adopt_thread" | "message_thread"))
+		{
+			return self.thread_command(agent, args).await;
 		}
 
 		let command: WorkCommand = serde_json::from_value(args["command"].clone())
@@ -169,6 +178,20 @@ impl AgentCoordinator {
 				if thread_id != &root
 					&& !self.store.agent_previous_threads(agent.into()).await?.contains(thread_id)
 				{
+					if result.native_contribution_id.is_none()
+						&& self
+							.store
+							.managed_work_turn(
+								agent.into(),
+								thread_id.clone(),
+								turn_id.clone(),
+								result.work_id.clone(),
+								result.requirements_id.clone(),
+							)
+							.await?
+					{
+						return self.verify_native_result_item(thread_id, turn_id, item_id).await;
+					}
 					let id = result.native_contribution_id.as_ref().ok_or_else(|| {
 						AgentError::Rejected(
 							"Native Subagent Results require a bound Work contribution".into(),
@@ -219,11 +242,19 @@ impl AgentCoordinator {
 				self.verify_native_result_item(thread_id, turn_id, item_id).await?;
 			},
 			ResultSource::Artifact { path, sha256 } => {
-				let directory = self
-					.store
-					.work_directory(agent.into())
-					.await?
-					.unwrap_or_else(|| self.config.cwd.clone());
+				let directory = match self.store.work_directory(agent.into()).await? {
+					Some(directory) => directory,
+					None => {
+						let native =
+							self.client.thread_read(serde_json::json!({"threadId":root})).await?;
+						if native["thread"]["id"] != root {
+							return Err(AgentError::Rejected(
+								"The result contributor's conversation changed.".into(),
+							));
+						}
+						agent::exact(&native, "/thread/cwd")?
+					},
+				};
 				let root = Path::new(&directory)
 					.canonicalize()
 					.map_err(|_| AgentError::Rejected("Agent directory is unavailable".into()))?;
@@ -553,8 +584,8 @@ impl AgentCoordinator {
 
 pub(super) fn tools() -> Vec<Value> {
 	vec![
-		serde_json::json!({"type":"function","name":"work_read","description":"Read your current Works, their requirements, Materials, Results and Collaboration Requests, plus the exact current delivered inbox. Before assigning, recovering or assessing, read this current context. Other Agents expose only the bounded contribution and explicitly shared Materials, never their private conversation.","inputSchema":{"type":"object","properties":{"workId":{"type":"string"},"nativeContributionId":{"type":"string"},"cursor":{"type":"string"}},"additionalProperties":false}}),
-		serde_json::json!({"type":"function","name":"work_manage","description":"Manage Work and independent Agent Collaboration. Stable commandId deduplicates exact retries. Use the documented WorkCommand operation with current expected requirements. Create/revise cite source event:<id> from a current delivered user decision. Native Subagents remain native; Work creates no executor. A Result needs exact native item or a file digest; Complete needs related current evidence and handled required requests. Ask Me approval remains human-owned.","inputSchema":{"type":"object","properties":{"commandId":{"type":"string"},"command":{"type":"object"}},"required":["commandId","command"],"additionalProperties":false}}),
+		serde_json::json!({"type":"function","name":"work_read","description":"Read your Agent identity, delivered inbox, current Works, and the commandContract for work_manage. Before assigning, recovering or assessing, read this current context. Other Agents expose only the bounded contribution and explicitly shared Materials, never their private conversation.","inputSchema":{"type":"object","properties":{"workId":{"type":"string"},"nativeContributionId":{"type":"string"},"cursor":{"type":"string"}},"additionalProperties":false}}),
+		serde_json::json!({"type":"function","name":"work_manage","description":"Apply a Work command. Read work_read.commandContract for the operation fields and example, and work_read.nativeIdentity.agentId for your owner identity. Use a stable commandId for retries.","inputSchema":{"type":"object","properties":{"commandId":{"type":"string"},"command":{"type":"object","properties":{"operation":{"type":"string"}},"required":["operation"],"additionalProperties":true}},"required":["commandId","command"],"additionalProperties":false}}),
 	]
 }
 

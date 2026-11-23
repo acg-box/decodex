@@ -18,15 +18,12 @@ pub(crate) enum AgentLocation {
 		detail: Option<String>,
 	},
 	Guardian,
-	Archive,
 }
 
 impl AgentSurface {
 	pub(crate) fn navigation_location(&self) -> AgentLocation {
 		if self.workspace.browsing {
-			return if self.workspace.archives.open {
-				AgentLocation::Archive
-			} else if self.workspace.guardian_open {
+			return if self.workspace.guardian_open {
 				AgentLocation::Guardian
 			} else if self.workspace.portfolio_mode {
 				AgentLocation::Work {
@@ -115,11 +112,9 @@ impl AgentSurface {
 					self.open_work_conversation(&work, thread, cx);
 				}
 			},
-			AgentLocation::Archive => self.open_archive_catalog(cx),
 			AgentLocation::Agents { project } | AgentLocation::Work { project, .. } => {
 				self.cancel_dictation(cx);
 				self.workspace.browsing = true;
-				self.workspace.archives.open = false;
 				self.workspace.guardian_open = false;
 				self.workspace.portfolio_mode = matches!(location, AgentLocation::Work { .. });
 				self.workspace.workspace_filter = project.clone();
@@ -134,7 +129,6 @@ impl AgentSurface {
 			},
 			AgentLocation::Guardian => {
 				self.workspace.browsing = true;
-				self.workspace.archives.open = false;
 				self.workspace.guardian_open = true;
 			},
 		}

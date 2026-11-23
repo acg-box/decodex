@@ -30,6 +30,7 @@ enum Action {
 	NewProject,
 	ChooseProject,
 	NewAgent(String),
+	CodexConversations,
 	Archives,
 	Settings,
 	Work(String, String),
@@ -279,6 +280,7 @@ impl AgentSurface {
 				("New Assistant topic", "Assistant", Action::NewAssistant),
 				("New project Agent", "Choose a project", Action::ChooseProject),
 				("New project", "Choose a project folder", Action::NewProject),
+				("Codex conversations", "Browse and add to Decodex", Action::CodexConversations),
 				("Archived conversations", "Browse and restore", Action::Archives),
 				("Settings", "App preferences", Action::Settings),
 			] {
@@ -331,10 +333,6 @@ impl AgentSurface {
 			Action::Conversation(item) => {
 				if !item.archived {
 					self.reveal_navigation_conversation(&item.id, cx);
-				} else {
-					self.workspace.navigation.archives_open = true;
-					self.workspace.sidebar_visible = true;
-					self.prepare_navigation_reveal(&item.id, "archive");
 				}
 				self.activate_navigation_item(&item, cx);
 			},
@@ -349,11 +347,8 @@ impl AgentSurface {
 				self.reset_command_search(true, cx);
 			},
 			Action::NewAgent(project) => self.new_project_agent(Some(&project), cx),
-			Action::Archives => {
-				self.workspace.sidebar_visible = true;
-				self.workspace.navigation.archives_open = true;
-				self.load_navigation_archives(cx);
-			},
+			Action::CodexConversations => self.open_thread_registration(None, cx),
+			Action::Archives => self.open_archive_catalog(cx),
 			Action::Settings =>
 				window.dispatch_action(Box::new(crate::shell::ActivateSettings), cx),
 			Action::Work(id, owner) => {

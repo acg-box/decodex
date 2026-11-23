@@ -93,7 +93,7 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) {
 		if self.native_agents.selected.is_some()
-			|| !self.selected_is_agent()
+			|| !self.selected_has_conversation_composer()
 			|| self.selected_is_archived()
 		{
 			return;
@@ -162,7 +162,7 @@ impl AgentSurface {
 		self.command_connection_ready()
 			&& self.running_turn().is_none()
 			&& self.native_agents.selected.is_none()
-			&& self.selected_is_agent()
+			&& self.selected_has_conversation_composer()
 			&& !self.selected_is_archived()
 			&& !self.voice_on_current_conversation()
 			&& self.prompt_edit.task.is_none()

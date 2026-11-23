@@ -164,19 +164,24 @@ impl SqliteStore {
 
 			while title.len() > 1_024 { title.pop(); }
 
-			let parent = if attached { &source.id } else { source.parent_goal_id.as_deref().unwrap_or(&source.id) };
+			let source_is_agent = agent::is_agent(&tx, &source.id)?;
+            // Ordinary conversations have no execution parent. The fork receipt keeps
+            // the native history and side-chat relationship independently.
+            let parent = if source.parent_goal_id.is_none() && !source_is_agent {
+                None
+            } else if attached {
+                Some(source.id.as_str())
+            } else {
+                source.parent_goal_id.as_deref().or(Some(source.id.as_str()))
+            };
 			let now=crate::unix_micros()?;
 
 			tx.execute("INSERT INTO agent_work_items(id,parent_goal_id,kind,title,instructions,status,dispatch_state,created_at_micros,updated_at_micros) VALUES(?1,?2,?3,?4,?5,'open','dispatching',?6,?6)", rusqlite::params![attempt.target_work,parent,source.kind.as_str(),title,source.instructions,now]).map_err(error::sqlite_error)?;
 			// Preserve the source tool version; a fork is not a tool-upgrade mechanism.
 			tx.execute("INSERT INTO agent_tool_versions(work_id,version) SELECT ?1,version FROM agent_tool_versions WHERE work_id=?2", rusqlite::params![attempt.target_work,a.work]).map_err(error::sqlite_error)?;
 
-			let manager: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM agent_managers WHERE work_id=?1) OR EXISTS(SELECT 1 FROM agent_work_items WHERE id=?1 AND parent_goal_id IS NULL)", [&a.work], |r|r.get(0)).map_err(error::sqlite_error)?;
-
-			if manager {
-				tx.execute("INSERT INTO agent_managers(work_id) VALUES(?1)", [&attempt.target_work]).map_err(error::sqlite_error)?;
-				tx.execute("INSERT INTO agents(id) VALUES(?1)", [&attempt.target_work]).map_err(error::sqlite_error)?;
-
+			if source_is_agent {
+				agent::insert_agent(&tx, &attempt.target_work, true, false)?;
 			}
 
             tx.execute("INSERT INTO project_agents(agent_id,project_id) SELECT ?1,project_id FROM project_agents WHERE agent_id=?2", rusqlite::params![attempt.target_work,a.work]).map_err(error::sqlite_error)?;

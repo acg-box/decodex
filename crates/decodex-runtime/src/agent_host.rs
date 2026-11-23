@@ -29,7 +29,9 @@ use crate::{
 	AgentConfig, AgentCoordinator, AgentError,
 	account_observation::AccountObservationService,
 	agent::{
-		AgentInputExtras, misalignment, native_subagents,
+		AgentInputExtras,
+		managed_tools::Input,
+		misalignment, native_subagents,
 		research::{self, Events},
 		timeline,
 		timeline::media,
@@ -81,6 +83,7 @@ const RECOVERY_MAX_DELAY: Duration = Duration::from_secs(60);
 
 #[derive(Debug)]
 pub(crate) enum AgentHostError {
+	Registration(String),
 	Rejected(&'static str),
 	Unknown(&'static str),
 }
@@ -88,6 +91,7 @@ impl Display for AgentHostError {
 	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
 		match self {
 			Self::Rejected(message) | Self::Unknown(message) => formatter.write_str(message),
+			Self::Registration(message) => formatter.write_str(message),
 		}
 	}
 }
@@ -291,6 +295,24 @@ impl AgentHost {
 			result
 		} else {
 			unavailable()
+		}
+	}
+
+	pub(crate) async fn native_threads(
+		&self,
+		cursor: Option<&str>,
+	) -> Option<decodex_protocol::NativeThreadPage> {
+		if let Some((generation, client)) = self.runtime.agent_catalog_client() {
+			let raw = client
+				.request("thread/list", crate::agent::registration::list_params(cursor))
+				.await
+				.ok()?;
+			if self.runtime.agent_catalog_client()?.0 != generation {
+				return None;
+			}
+			crate::agent::registration::page(&raw)
+		} else {
+			self.runtime.offline_thread_page(cursor).await
 		}
 	}
 
@@ -1194,6 +1216,7 @@ impl AgentHost {
 		let mut quota_changes = self.runtime.account_quota_changes();
 		// The stop receiver must remain polled while attach, recovery, and RPCs await.
 		let drive = async {
+			let _ = self.store.retire_unstarted_assistant_configuration_notice().await;
 			active = self.restore().await;
 
 			self.research_update(research_directory.as_deref(), None, true, &mut active).await;
@@ -1223,7 +1246,7 @@ impl AgentHost {
 					},
 					request = requests.recv() => {
 						let Some(request) = request else {break;};
-						let defer_dispatch = matches!(&request.action,AgentActionDto::PreparePromptEdit{..}|AgentActionDto::ConfirmPromptEdit{..}|AgentActionDto::ForkPromptEdit{..}|AgentActionDto::RecoverPromptFork{..}|AgentActionDto::RecoverPromptEdit{..}|AgentActionDto::AcknowledgePromptEditDraft{..}|AgentActionDto::UploadPromptInput{..}|AgentActionDto::CompletePromptInputUpload{..}|AgentActionDto::DiscardEmptyWork{..}|AgentActionDto::DeleteProject{..}|AgentActionDto::GenerateSample{..}|AgentActionDto::CancelSample{..});
+						let defer_dispatch = matches!(&request.action,AgentActionDto::CreateAssistant{..}|AgentActionDto::RegisterNativeThread{..}|AgentActionDto::PreparePromptEdit{..}|AgentActionDto::ConfirmPromptEdit{..}|AgentActionDto::ForkPromptEdit{..}|AgentActionDto::RecoverPromptFork{..}|AgentActionDto::RecoverPromptEdit{..}|AgentActionDto::AcknowledgePromptEditDraft{..}|AgentActionDto::UploadPromptInput{..}|AgentActionDto::CompletePromptInputUpload{..}|AgentActionDto::DiscardEmptyWork{..}|AgentActionDto::DeleteProject{..}|AgentActionDto::GenerateSample{..}|AgentActionDto::CancelSample{..});
 
 						if !defer_dispatch && !matches!(&request.action, AgentActionDto::SendPromptInput { .. }) { self.rotate_exhausted(&mut active).await; }
 
@@ -1238,9 +1261,18 @@ impl AgentHost {
 							self.record_delivery(root, agent.wake_pending().await).await;
 						}
 					},
-					event = receive(&mut active) => {
-						let terminal = matches!(&event, Some(ServerEvent::Notification { method, .. }) if method == "turn/completed");
-						self.handle_native_event(event, &mut active, &mut recovery).await;
+					input = receive(&mut active) => {
+						let event = match input {
+							Input::Native(event) => event,
+							Input::Tool(call) => {
+								if let Some((_, agent, _)) = active.as_mut() {
+									agent.finish_managed_tool(call).await;
+								}
+								continue;
+							}
+						};
+						let terminal = matches!(&event, ServerEvent::Notification { method, .. } if method == "turn/completed");
+						self.handle_native_event(Some(event), &mut active, &mut recovery).await;
 						if terminal { self.rotate_exhausted(&mut active).await; }
 						recovery.restore_if_due(&mut active, tokio::time::Instant::now(), self.restore()).await;
 					},
@@ -1286,9 +1318,7 @@ impl AgentHost {
 		// root as well so its admitted process cannot escape the actor lifecycle.
 		let root = match active {
 			Some((root, _, _)) => Some(root),
-			None => self.store.list_agent_work_items().await.ok().and_then(|items| {
-				items.into_iter().find(|item| item.parent_goal_id.is_none()).map(|item| item.id)
-			}),
+			None => self.store.agent_connection_root().await.ok().flatten().map(|item| item.id),
 		};
 
 		if let Some(root) = root {
@@ -1354,7 +1384,13 @@ impl AgentHost {
 					.await
 					.is_err()
 				{
-					self.record_error(root, "event_processing_failed").await;
+					let _ = self
+						.store
+						.record_agent_event_failure(
+							root.clone(),
+							"Native configuration observation could not be saved.".into(),
+						)
+						.await;
 				}
 			}
 
@@ -1560,7 +1596,7 @@ impl AgentHost {
 		let managers =
 			self.store.agent_manager_ids().await.map_err(|_| "Manager state unavailable")?;
 
-		if !managers.contains(&root.id) {
+		if root.parent_goal_id.is_some() && !managers.contains(&root.id) {
 			return Err("Agent identity differs".into());
 		}
 
@@ -2141,7 +2177,8 @@ impl AgentHost {
 			| AgentActionDto::ManageWork { .. }) => self.handle_work_action(key, action, active).await,
 
 			action @ (AgentActionDto::GenerateSample { .. }
-			| AgentActionDto::CancelSample { .. }) => self.handle_sample(&key, action).await,
+			| AgentActionDto::CancelSample { .. }) =>
+				self.handle_sample(&key, action, active.as_mut().map(|(_, agent, _)| agent)).await,
 			action @ (AgentActionDto::CreateAssistant { .. }
 			| AgentActionDto::CreateAssistantTopic { .. }
 			| AgentActionDto::AddProject { .. }
@@ -2176,8 +2213,20 @@ impl AgentHost {
 			| AgentActionDto::SetTaskModel { .. }
 			| AgentActionDto::SelectPermissions { .. }
 			| AgentActionDto::SetLiveModel { .. }) => self.handle_settings(key.as_str(), action).await,
+			AgentActionDto::RegisterNativeThread { thread_id, relation } => {
+				let result = if let Some((_, agent, _)) = active {
+					agent.register_native_thread(thread_id.as_str(), relation).await.map(|_| ())
+				} else {
+					self.register_offline_thread(thread_id.as_str(), relation, active).await
+				};
+				result.map_err(|e| match e {
+                    AgentError::Rejected(reason) | AgentError::Store(reason) => AgentHostError::Registration(reason),
+                    _ => AgentHostError::Rejected("Check the current account and conversation owner. Finish any active turn before changing responsibility."),
+                })?;
+				Ok(thread_id.as_str().into())
+			},
 			AgentActionDto::PrepareNativeAgent { work_id, thread_id } =>
-				self.prepare_native_agent(work_id.as_str(), thread_id.as_str()).await,
+				self.prepare_native_agent(work_id.as_str(), thread_id.as_str(), active).await,
 			AgentActionDto::NativeAgentInput { work_id, thread_id, text, expected_turn } =>
 				self.native_agent_input(
 					(work_id.as_str(), thread_id.as_str()),
@@ -2286,10 +2335,22 @@ impl AgentHost {
 		&self,
 		work_id: &str,
 		thread_id: &str,
+		active: &mut Option<(String, AgentCoordinator, mpsc::Receiver<ServerEvent>)>,
 	) -> Result<String, AgentHostError> {
 		let (generation, client) =
 			self.runtime.agent_catalog_client().ok_or("Agent connection unavailable")?;
 
+		if let Some((_, agent, _)) = active.as_mut()
+			&& self.store.get_agent_work_item(work_id.into()).await.is_ok_and(|w| {
+				w.parent_goal_id.is_none() && w.codex_thread_id.as_deref() == Some(thread_id)
+			}) {
+			agent.hydrate_dispatch_thread(thread_id, &Value::Null).await.map_err(|_| {
+				AgentHostError::Rejected(
+					"Could not restore this conversation on the current connection.",
+				)
+			})?;
+			return Ok(work_id.into());
+		}
 		native_agents::prepare(&self.store, &client, work_id, thread_id, generation.as_str())
 			.await
 			.map_err(AgentHostError::Rejected)?;
@@ -2318,9 +2379,6 @@ impl AgentHost {
 					dispatch_state: decodex_database::AgentDispatchState::Idle, active_turn_id: None,
 					next_check_at_micros: None, created_at_micros: now, updated_at_micros: now,
 				}).await.map_err(|_| "Assistant could not be set up")?;
-				if active.is_none() {
-					*active = self.restore().await;
-				}
 				Ok(agent_id.as_str().into())
 			},
 			AgentActionDto::CreateAssistantTopic { assistant_id, topic_id } => {
@@ -2627,7 +2685,13 @@ impl AgentHost {
 			match self.connect(&root, key.to_owned(), config, account_id, None).await {
 				Ok(connection) => *active = Some(connection),
 				Err(_) => {
-					self.record_error(&root, "reconnection_needs_attention").await;
+					let _ = self
+						.store
+						.record_agent_connection_failure(
+							root.clone(),
+							"Inspect account and process readiness.".into(),
+						)
+						.await;
 				},
 			}
 		}
@@ -2661,42 +2725,6 @@ impl AgentHost {
 					self.store.record_agent_delivery_failure(root.into(), diagnostic(&error)).await;
 			},
 		}
-	}
-
-	async fn record_error(&self, root: &str, kind: &str) {
-		if kind == "event_processing_failed" {
-			let _ = self
-				.store
-				.record_agent_event_failure(
-					root.into(),
-					"Native configuration observation could not be saved.".into(),
-				)
-				.await;
-
-			return;
-		}
-		if kind == "reconnection_needs_attention" {
-			let _ = self
-				.store
-				.record_agent_connection_failure(
-					root.into(),
-					"Inspect account and process readiness.".into(),
-				)
-				.await;
-
-			return;
-		}
-
-		let _ = self
-			.store
-			.enqueue_agent_event(EnqueueAgentEvent {
-				source_event_id: serde_json::json!(["agent_host", root, kind]).to_string(),
-				work_item_id: root.into(),
-				event_kind: kind.into(),
-				payload: serde_json::json!({"recovery":"inspect persisted work before retrying"})
-					.to_string(),
-			})
-			.await;
 	}
 
 	async fn connect(
@@ -2793,7 +2821,7 @@ impl AgentHost {
 			None => self.initial_agent_settings(&root).await,
 		};
 		let Some((config, account)) = settings else {
-			self.record_error(&root.id, "configuration_needs_attention").await;
+			let _ = self.store.record_agent_configuration_failure(root.id.clone()).await;
 
 			return None;
 		};
@@ -3171,10 +3199,9 @@ async fn persist_input(
 
 async fn receive(
 	active: &mut Option<(String, AgentCoordinator, mpsc::Receiver<ServerEvent>)>,
-) -> Option<ServerEvent> {
+) -> Input {
 	match active {
-		Some((_, _, events)) =>
-			Some(events.recv().await.unwrap_or(ServerEvent::Closed(ClientError::Closed))),
+		Some((_, agent, events)) => agent.next_input(events).await,
 		None => future::pending().await,
 	}
 }
@@ -3564,7 +3591,11 @@ mod tests {
 		drop(sender);
 
 		let mut active = Some(("agent".into(), coordinator, events));
-		let event = agent_host::receive(&mut active).await.unwrap();
+		let crate::agent::managed_tools::Input::Native(event) =
+			agent_host::receive(&mut active).await
+		else {
+			panic!("expected closed connection")
+		};
 
 		assert!(matches!(event, ServerEvent::Closed(ClientError::Closed)));
 

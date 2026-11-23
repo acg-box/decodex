@@ -12,11 +12,72 @@ pub struct Agent {
 	pub name: String,
 	/// Current native identity, absent before first execution.
 	pub native_thread_id: Option<String>,
+	/// Additional conversations this Agent manages, by stable local conversation ID.
+	#[serde(default)]
+	pub managed_conversation_ids: Vec<String>,
 	/// Optional personal-assistance responsibility. This grants no other Agent's history.
 	pub assistant: bool,
 	/// Independent continuing duties. These do not select a personal Assistant.
 	#[serde(default)]
 	pub scheduled_wakes: Vec<crate::agent_schedule::AgentWake>,
+}
+
+/// Register an existing native conversation or change its responsibility.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum ThreadRegistration {
+	/// Keep the existing responsibility, including an unassigned conversation.
+	Register,
+	/// Give the selected Agent responsibility for this conversation.
+	Assign {
+		/// Agent that will manage the conversation.
+		agent_id: String,
+		/// Owner observed before the change.
+		expected_owner: Option<String>,
+	},
+	/// Remove the observed Agent's responsibility.
+	Release {
+		/// Current managing Agent.
+		expected_owner: String,
+	},
+	/// Make this conversation the primary conversation of an independent Agent.
+	Promote {
+		/// Owner observed before the change.
+		expected_owner: Option<String>,
+	},
+}
+
+/// Conversation operations available to an Agent through work_manage.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(tag = "operation", rename_all = "snake_case", deny_unknown_fields)]
+pub enum AgentThreadCommand {
+	/// Adopt the exact conversation selected by the user during this turn.
+	AdoptThread {
+		/// Native conversation ID.
+		thread_id: String,
+		/// Delivered user message that identifies this thread.
+		authority_event_id: i64,
+	},
+	/// Queue an Agent-authored instruction for its managed conversation.
+	MessageThread {
+		/// Native conversation ID.
+		thread_id: String,
+		/// Instruction from the managing Agent.
+		text: String,
+		/// Current owned Work and requirements served by this instruction.
+		#[serde(default, skip_serializing_if = "Option::is_none")]
+		work: Option<ThreadInstructionWork>,
+	},
+}
+
+/// The exact Work revision an Agent assigned to its managed conversation.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ThreadInstructionWork {
+	/// Existing business Work.
+	pub work_id: String,
+	/// Requirements revision at the time of assignment.
+	pub requirements_id: String,
 }
 
 /// Business state of an outcome, independent of a native turn.

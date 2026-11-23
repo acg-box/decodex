@@ -108,8 +108,6 @@ pub(crate) const COMPOSER_TOP_GAP: f32 = 8.0;
 pub(crate) const COMPOSER_BOTTOM_GAP: f32 = 12.0;
 // Settings use readable form text and one bounded content width.
 pub(crate) const SETTINGS_WIDTH: f32 = 620.0;
-// Leave room for navigation, page insets, five theme previews and their scrollbar.
-pub(crate) const SETTINGS_WINDOW_MIN_WIDTH: f32 = 920.0;
 pub(crate) const SETTINGS_INSET: f32 = 24.0;
 pub(crate) const SETTINGS_TOP: f32 = 16.0;
 pub(crate) const SETTINGS_GROUP_GAP: f32 = 16.0;
@@ -231,6 +229,16 @@ pub(crate) fn metric_ink() -> Rgba {
 /// Content annotations remain readable without adding a glass layer per Agent.
 pub(crate) fn annotation_surface() -> Rgba {
 	ColorScheme::current().annotation()
+}
+
+/// Dim the parent workspace with its current palette.
+pub(crate) fn workspace_overlay_scrim() -> Rgba {
+	let scheme = ColorScheme::current();
+	if scheme.is_light() {
+		scheme.rgb(TEXT).opacity(0.12)
+	} else {
+		scheme.rgb(CANVAS).opacity(0.32)
+	}
 }
 
 /// Inline menus retain a stable reading surface when native glass is unavailable.
@@ -439,9 +447,9 @@ pub(crate) fn settings_title(title: &'static str) -> impl IntoElement {
 		.role(Role::Heading)
 		.aria_level(1)
 		.aria_label(title)
-		.text_size(gpui::px(16.0))
-		.line_height(gpui::px(22.0))
-		.font_weight(FontWeight::SEMIBOLD)
+		.text_size(gpui::px(14.0))
+		.line_height(gpui::px(20.0))
+		.font_weight(FontWeight::MEDIUM)
 		.text_color(rgb(TEXT))
 		.child(title)
 }

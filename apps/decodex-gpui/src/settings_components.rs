@@ -509,7 +509,7 @@ impl SettingsSurface {
 		.into_any_element()
 	}
 
-	#[cfg(any(test, feature = "visual-capture"))]
+	#[cfg(feature = "visual-capture")]
 	pub(crate) fn visual_managed_components(&mut self) {
 		self.components.preparation = RuntimePreparation::fixture(PreparationState::Ready);
 		self.components.shown = self.components.preparation.snapshot();

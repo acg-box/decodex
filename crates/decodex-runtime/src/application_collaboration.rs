@@ -6,7 +6,7 @@ use decodex_database::{AgentCollaborationQuestion, AgentCollaborationRecord, Age
 use decodex_protocol::{
 	AgentAsyncQuestionDto, AgentExchangeAssessment, AgentExchangeDto, AgentExchangeKind,
 	AgentExchangeQuestionDto, AgentExchangesResult, AgentPeerExchangeDto, AgentQuestionAnswerDto,
-	AgentSnapshotDto, AgentSnapshotResult, AgentWorkKindDto,
+	AgentSnapshotDto, AgentSnapshotResult,
 };
 
 impl ServiceApplication {
@@ -278,7 +278,7 @@ fn manager(snapshot: &AgentSnapshotDto, work: &str) -> Option<String> {
 		current =
 			snapshot.work_items.iter().find(|w| Some(&w.id) == current.parent_goal_id.as_ref())?;
 
-		if current.kind == AgentWorkKindDto::Manager || current.parent_goal_id.is_none() {
+		if snapshot.agents.iter().any(|agent| agent.id == current.id) {
 			return Some(current.id.clone());
 		}
 	}
@@ -304,7 +304,7 @@ mod tests {
 	};
 	use decodex_database::AgentInboxEvent;
 	fn snapshot() -> AgentSnapshotDto {
-		serde_json::from_value(serde_json::json!({"assistant":decodex_core::assistant::AssistantState::default(),"agents":[],"guardian":decodex_core::guardian::GuardianState::default(),"portfolio":decodex_core::work::WorkPortfolio::default(),"agent_slots":{},"conversation_titles":{},"context_references":[],"runtime_source":"test-source","connection_initializing":false,"projects":[],"work_items":[
+		serde_json::from_value(serde_json::json!({"assistant":decodex_core::assistant::AssistantState::default(),"agents":[{"id":"main","name":"Main","native_thread_id":"main-thread","assistant":false},{"id":"lead","name":"Lead","native_thread_id":"lead-thread","assistant":false}],"guardian":decodex_core::guardian::GuardianState::default(),"portfolio":decodex_core::work::WorkPortfolio::default(),"agent_slots":{},"conversation_titles":{},"context_references":[],"runtime_source":"test-source","connection_initializing":false,"projects":[],"work_items":[
    {"id":"main","parent_goal_id":null,"kind":"manager","title":"Main","codex_thread_id":"main-thread","active_turn_id":null,"dispatch_state":"idle","status":"open","next_check_at_micros":null,"created_at_micros":1,"updated_at_micros":1},
    {"id":"lead","parent_goal_id":"main","kind":"manager","title":"Lead","codex_thread_id":"lead-thread","active_turn_id":null,"dispatch_state":"idle","status":"open","next_check_at_micros":null,"created_at_micros":1,"updated_at_micros":1},
    {"id":"goal","parent_goal_id":"lead","kind":"goal","title":"Goal","codex_thread_id":null,"active_turn_id":null,"dispatch_state":"idle","status":"open","next_check_at_micros":null,"created_at_micros":1,"updated_at_micros":1},

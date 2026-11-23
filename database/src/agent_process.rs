@@ -23,6 +23,36 @@ pub struct AgentProcessBinding {
 	pub generation_id: ProcessGenerationId,
 }
 
+pub(crate) fn save_root_settings(
+	tx: &rusqlite::Transaction<'_>,
+	root_id: &str,
+	config_json: &str,
+) -> Result<(), StoreError> {
+	if config_json.len() > 16_384
+		|| !serde_json::from_str::<Value>(config_json).is_ok_and(|value| value.is_object())
+	{
+		return Err(StoreError::InvalidInput("Agent root settings must be a bounded JSON object"));
+	}
+
+	let current: Option<String> = tx
+		.query_row(
+			"SELECT config_json FROM agent_root_settings WHERE root_id=?1",
+			[root_id],
+			|row| row.get(0),
+		)
+		.optional()
+		.map_err(account_lifecycle::sql_error)?;
+	if let Some(current) = current {
+		return if current == config_json { Ok(()) } else { Err(StoreError::IdempotencyConflict) };
+	}
+	tx.execute(
+		"INSERT INTO agent_root_settings(root_id,config_json,created_at_micros) VALUES(?1,?2,?3)",
+		rusqlite::params![root_id, config_json, crate::unix_micros()?],
+	)
+	.map_err(account_lifecycle::sql_error)?;
+	Ok(())
+}
+
 impl SqliteStore {
 	/// Check a user-selected restore within the current host, across conversation roles.
 	/// Agent tool permissions still use `agent_thread_is_owned` and its manager boundary.
@@ -70,27 +100,18 @@ impl SqliteStore {
 		root_id: &str,
 		config_json: &str,
 	) -> Result<(), StoreError> {
-		if config_json.len() > 16_384
-			|| !serde_json::from_str::<Value>(config_json).is_ok_and(|value| value.is_object())
-		{
-			return Err(StoreError::InvalidInput(
-				"Agent root settings must be a bounded JSON object",
-			));
-		}
-
 		let (root_id, config_json) = (root_id.to_owned(), config_json.to_owned());
 
 		self.run(move |connection| {
-			let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(account_lifecycle::sql_error)?;
-			let current: Option<String> = transaction.query_row("SELECT config_json FROM agent_root_settings WHERE root_id = ?1", [&root_id], |row| row.get(0)).optional().map_err(account_lifecycle::sql_error)?;
-
-			if let Some(current) = current { return if current == config_json { Ok(()) } else { Err(StoreError::IdempotencyConflict) }; }
-
-			transaction.execute("INSERT INTO agent_root_settings (root_id, config_json, created_at_micros) VALUES (?1, ?2, ?3)", rusqlite::params![root_id, config_json, crate::unix_micros()?]).map_err(account_lifecycle::sql_error)?;
+			let transaction = connection
+				.transaction_with_behavior(TransactionBehavior::Immediate)
+				.map_err(account_lifecycle::sql_error)?;
+			save_root_settings(&transaction, &root_id, &config_json)?;
 			transaction.commit().map_err(account_lifecycle::sql_error)?;
 
 			Ok(())
-		}).await
+		})
+		.await
 	}
 
 	pub async fn read_agent_root_settings(

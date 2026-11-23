@@ -73,6 +73,7 @@ mod native_menu;
 #[path = "agent_speed.rs"] mod speed;
 #[path = "agent_steer_receipts.rs"] mod steer_receipts;
 #[path = "agent_text_reveal.rs"] mod text_reveal;
+#[path = "agent_thread_registration.rs"] mod thread_registration;
 #[path = "agent_transcript.rs"] mod transcript;
 #[path = "agent_usage_estimates.rs"] mod usage_estimates;
 #[path = "agent_usage_evidence.rs"] mod usage_evidence;
@@ -1422,6 +1423,7 @@ impl AgentSurface {
 		self.workspace.navigation = Default::default();
 		self.assistant_settings = Default::default();
 		self.workspace.archives = Default::default();
+		self.workspace.registration = None;
 		self.work_board.clear(cx);
 		self.clear_activity_detail();
 		self.reset_resources();
@@ -1793,6 +1795,7 @@ impl AgentSurface {
 			self.open_page(&id, cx);
 		}
 		self.continue_memory_setup(cx);
+		self.open_registered_thread(cx);
 	}
 
 	fn apply_result(&mut self, result: Result<AgentSnapshotResult, ()>) {
@@ -2763,10 +2766,45 @@ impl SurfacePresentations {
 	}
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum Catalog {
+	Archived,
+	Codex,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum CatalogEvent {
+	Open(Catalog),
+	Close,
+	OpenSettings(crate::shell::Destination),
+}
+impl gpui::EventEmitter<CatalogEvent> for AgentSurface {}
+
+impl AgentSurface {
+	pub(crate) fn render_catalog(
+		&mut self,
+		catalog: Catalog,
+		window: &mut Window,
+		cx: &mut Context<Self>,
+	) -> AnyElement {
+		match catalog {
+			Catalog::Archived => self.render_archive_catalog(cx),
+			Catalog::Codex => self.render_thread_registration(window, cx),
+		}
+	}
+
+	pub(crate) fn close_catalog(&mut self, cx: &mut Context<Self>) {
+		self.workspace.registration = None;
+		self.clear_archive_selection();
+		cx.notify();
+	}
+}
+
 struct WorkspaceView {
 	navigation: navigation_sidebar::State,
 	attached: attached_branches::Panel,
 	archives: archive::Catalog,
+	registration: Option<thread_registration::Panel>,
 	portfolio_mode: bool,
 	work_detail: Option<String>,
 	work_evidence: Option<WorkPortfolio>,
@@ -2837,6 +2875,7 @@ impl Default for WorkspaceView {
 			archives: Default::default(),
 			arrival: Default::default(),
 			portfolio_mode: false,
+			registration: None,
 			work_detail: None,
 			work_evidence: None,
 			work_read_error: None,

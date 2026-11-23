@@ -870,6 +870,29 @@ impl AttestedProcessChild {
 		(result, events)
 	}
 
+	/// Read native history metadata on an authenticated short-lived catalog connection.
+	pub(crate) fn catalog_request(
+		&mut self,
+		method: &'static str,
+		params: serde_json::Value,
+	) -> Option<serde_json::Value> {
+		self.require_ordinary_turns_initialized().ok()?;
+		let mut events = Vec::new();
+		let frame = self.process.prepare_conversation_request(method, &params).ok()?;
+		let result = self.process.conversation_request_buffered(
+			frame,
+			self.timeout.min(Duration::from_secs(8)),
+			false,
+			&mut events,
+			|bytes| {
+				serde_json::from_slice(bytes)
+					.map_err(|_| decodex_codex::ConversationContractError::MalformedResponse)
+			},
+		);
+		self.retain_ordinary_events(events).ok()?;
+		Some(result.ok()?.value)
+	}
+
 	/// Read one model page on the existing account-bound transport and retain interleaved events.
 	pub(crate) fn read_ordinary_model_page(
 		&mut self,

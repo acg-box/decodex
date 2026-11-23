@@ -28,6 +28,7 @@ repository  = "https://github.com/acg-box/decodex"
 version     = "0.2.0"
 
 [workspace.dependencies]
+axum                  = { version = "~0.8", default-features = false, features = ["http1", "tokio"] }
 decodex-account-login = { path = "crates/decodex-account-login" }
 decodex-codex         = { path = "crates/decodex-codex" }
 decodex-components    = { path = "crates/decodex-components" }
@@ -37,6 +38,7 @@ decodex-pro-bridge    = { path = "crates/decodex-pro-bridge" }
 decodex-protocol      = { path = "crates/decodex-protocol" }
 decodex-runtime       = { path = "crates/decodex-runtime" }
 pulldown-cmark        = { version = "~0.13", default-features = false }
+rmcp                  = { version = "~3.8", default-features = false, features = ["server", "transport-streamable-http-server"] }
 unicode-width         = { version = "~0.2" }
 
 anyhow                 = { version = "~1.0" }

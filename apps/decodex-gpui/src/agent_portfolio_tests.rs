@@ -34,6 +34,21 @@ impl Render for PortfolioView {
 	}
 }
 
+/// Exercise the actual sidebar and browser without starting unrelated runtime reads
+/// on the wire fixture that captures the registration command.
+struct RegistrationView(Entity<AgentSurface>);
+impl Render for RegistrationView {
+	fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+		self.0.update(cx, |s, cx| {
+			if s.workspace.registration.is_some() {
+				s.render_catalog(crate::shell::agent_surface::Catalog::Codex, window, cx)
+			} else {
+				s.workspace_sidebar(window, cx)
+			}
+		})
+	}
+}
+
 fn agent(id: &str) -> AgentWorkItemDto {
 	AgentWorkItemDto {
 		id: id.into(),
@@ -127,6 +142,7 @@ fn snapshot() -> AgentSnapshotDto {
 				name: "Sage".into(),
 				native_thread_id: Some("thread-sage".into()),
 				assistant: false,
+				managed_conversation_ids: Default::default(),
 				scheduled_wakes: Default::default(),
 			},
 			Agent {
@@ -134,6 +150,7 @@ fn snapshot() -> AgentSnapshotDto {
 				name: "Iris".into(),
 				native_thread_id: Some("thread-iris".into()),
 				assistant: false,
+				managed_conversation_ids: Default::default(),
 				scheduled_wakes: Default::default(),
 			},
 		]),
@@ -177,6 +194,228 @@ fn independent_agent_message_never_falls_back_to_another_agent(cx: &mut TestAppC
 			AgentActionDto::Send { root_id, .. } if root_id.as_str() == "iris"
 		));
 	});
+}
+
+#[gpui::test]
+fn thread_registration_routes_to_its_own_work_and_preserves_other_drafts(cx: &mut TestAppContext) {
+	let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+	surface.update(visual, |s, cx| {
+		let mut initial = snapshot();
+		initial.work_items.push(agent("ordinary"));
+		s.apply_result(Ok(AgentSnapshotResult::Available(initial)));
+		assert!(
+			s.project_conversation_pages().iter().any(|(id, _, _)| id == "ordinary"),
+			"a registered conversation stays in the normal directory before its first visit"
+		);
+		s.open_page("sage", cx);
+		s.composer.update(cx, |input, cx| input.set_content("Draft for Sage", cx));
+		s.open_page("ordinary", cx);
+		assert!(s.graph_has_composer());
+		assert_eq!(s.composer.read(cx).content(), "");
+		assert!(matches!(
+			s.build_submission("Continue the existing conversation", cx).unwrap(),
+			AgentActionDto::Send { root_id, .. } if root_id.as_str() == "ordinary"
+		));
+		s.open_page("sage", cx);
+		assert_eq!(s.composer.read(cx).content(), "Draft for Sage");
+	});
+}
+
+#[gpui::test]
+fn thread_registration_reassignment_click_sends_the_displayed_owner(cx: &mut TestAppContext) {
+	let (_home, profile, server) = wire_test_support::fixture(|listener| async move {
+		loop {
+			let mut socket = wire_test_support::accept(&listener).await;
+			let Message::Text(text) = socket.next().await.unwrap().unwrap() else {
+				panic!("text request")
+			};
+			match serde_json::from_str(&text).unwrap() {
+				ClientMessage::Query(query) => {
+					assert!(matches!(query.payload, QueryPayload::ListNativeThreads { .. }));
+					wire_test_support::answer_query(
+						&mut socket,
+						query.query_id,
+						QueryResultPayload::NativeThreads(Some(
+							decodex_protocol::NativeThreadPage {
+								threads: vec![],
+								next_cursor: None,
+							},
+						)),
+					)
+					.await;
+				},
+				ClientMessage::Command(command) => {
+					let CommandPayload::Agent { action } = command.payload else {
+						panic!("Agent command")
+					};
+					socket.close(None).await.unwrap();
+					break *action;
+				},
+				_ => panic!("unexpected request"),
+			}
+		}
+	});
+	let surface = cx.new(AgentSurface::new);
+	let (_, visual) = cx.add_window_view(|_, cx| {
+		cx.observe(&surface, |_, _, cx| cx.notify()).detach();
+		RegistrationView(surface.clone())
+	});
+	surface.update(visual, |s, cx| {
+		let mut initial = snapshot();
+		initial.agents[1].name =
+			"The old launch prompt was a long first message rather than a short title.".repeat(10);
+		initial
+			.conversation_titles
+			.insert("thread-iris".into(), "Amber release gate review".into());
+		initial.conversation_titles.insert(
+			"thread-sage".into(),
+			"An intentionally long fallback conversation title ".repeat(12),
+		);
+		initial.work_items.push(agent("ordinary"));
+		initial.agents[0].managed_conversation_ids.push("ordinary".into());
+		s.apply_result(Ok(AgentSnapshotResult::Available(initial)));
+		s.composer.update(cx, |input, cx| input.set_content("Keep my draft", cx));
+		let target = &s.snapshot.as_ref().unwrap().agents[1];
+		assert_eq!(s.agent_conversation_label(target), "Amber release gate review");
+		assert!(
+			s.project_conversation_pages()
+				.iter()
+				.any(|(id, title, _)| id == &target.id
+					&& title == &s.agent_conversation_label(target))
+		);
+		s.profile = Some(profile);
+		s.open_thread_registration(Some("ordinary"), cx);
+	});
+	visual.update(|window, cx| {
+		window.resize(gpui::size(gpui::px(960.), gpui::px(840.)));
+		window.draw(cx).clear(cx);
+	});
+	assert!(visual.debug_bounds("registration-release").is_some());
+	assert!(visual.debug_bounds("registration-promote").is_some());
+	assert!(visual.debug_bounds("registration-register").is_none());
+	let target = visual.debug_bounds("registration-assign-iris").unwrap();
+	let long = visual.debug_bounds("registration-release").unwrap();
+	assert_eq!(long.size.height, target.size.height, "long names remain on one line");
+	visual.simulate_click(target.center(), Default::default());
+	visual.run_until_parked();
+	assert!(matches!(server.join().unwrap(),
+		AgentActionDto::RegisterNativeThread { thread_id, relation: decodex_protocol::work::ThreadRegistration::Assign { agent_id, expected_owner } }
+			if thread_id.as_str() == "thread-ordinary" && agent_id == "iris" && expected_owner.as_deref() == Some("sage")
+	));
+	surface.read_with(visual, |s, cx| {
+		assert_eq!(s.composer.read(cx).content(), "Keep my draft");
+		assert!(s.workspace.registration.is_some());
+		assert!(!s.uncertain, "An unconfirmed ownership edit must not lock the message composer");
+	});
+}
+
+#[gpui::test]
+fn thread_registration_lists_native_pages_and_promotes_the_selected_thread(
+	cx: &mut TestAppContext,
+) {
+	use decodex_protocol::{NativeThreadCandidate, NativeThreadPage, work::ThreadRegistration};
+	let (_home, profile, server) = wire_test_support::fixture(|listener| async move {
+		for (before, thread, next) in
+			[(None, "native-a", Some("page-b")), (Some("page-b"), "native-b", None)]
+		{
+			let mut socket = wire_test_support::accept(&listener).await;
+			let Message::Text(text) = socket.next().await.unwrap().unwrap() else {
+				panic!("page query")
+			};
+			let ClientMessage::Query(query) = serde_json::from_str(&text).unwrap() else {
+				panic!("query")
+			};
+			assert!(
+				matches!(query.payload, QueryPayload::ListNativeThreads { cursor } if cursor.as_ref().map(|s|s.as_str()) == before)
+			);
+			wire_test_support::answer_query(
+				&mut socket,
+				query.query_id,
+				QueryResultPayload::NativeThreads(Some(NativeThreadPage {
+					threads: vec![NativeThreadCandidate {
+						thread_id: thread.into(),
+						title: thread.into(),
+						preview: Some("Original discussion".into()),
+					}],
+					next_cursor: next.map(str::to_owned),
+				})),
+			)
+			.await;
+		}
+		let mut socket = wire_test_support::accept(&listener).await;
+		let Message::Text(text) = socket.next().await.unwrap().unwrap() else { panic!("command") };
+		let ClientMessage::Command(command) = serde_json::from_str(&text).unwrap() else {
+			panic!("command")
+		};
+		let CommandPayload::Agent { action } = command.payload else { panic!("Agent command") };
+		*action
+	});
+	let surface = cx.new(AgentSurface::new);
+	let (_, visual) = cx.add_window_view(|_, cx| {
+		cx.observe(&surface, |_, _, cx| cx.notify()).detach();
+		RegistrationView(surface.clone())
+	});
+	surface.update(visual, |s, cx| {
+		s.apply_result(Ok(AgentSnapshotResult::Available(snapshot())));
+		s.profile = Some(profile);
+		s.workspace.browsing = true;
+		cx.notify();
+	});
+	visual.update(|window, cx| {
+		window.resize(gpui::size(gpui::px(960.), gpui::px(840.)));
+		window.draw(cx).clear(cx);
+	});
+	for selector in [
+		"codex-conversations",
+		"registration-load",
+		"choose-thread-native-b",
+		"registration-promote",
+	] {
+		visual.run_until_parked();
+		visual.update(crate::ui_frame::draw_current_frame);
+		if selector == "registration-promote" {
+			for width in [960., 360.] {
+				visual.simulate_resize(gpui::size(gpui::px(width), gpui::px(840.)));
+				visual.update(crate::ui_frame::draw_frame);
+				let title = visual.debug_bounds("registration-title").unwrap();
+				let preview = visual.debug_bounds("registration-preview").unwrap();
+				let add = visual.debug_bounds("registration-register").unwrap();
+				let promote = visual.debug_bounds("registration-promote").unwrap();
+				let assign = visual.debug_bounds("registration-assignment").unwrap();
+				let agent = visual.debug_bounds("registration-assign-iris").unwrap();
+				assert!(title.bottom() <= preview.top() && preview.bottom() <= add.top());
+				assert!(
+					add.top() <= promote.top()
+						&& promote.bottom() <= assign.top()
+						&& assign.bottom() <= agent.top()
+				);
+				assert_eq!(add.left(), assign.left(), "align the relationship controls at {width}");
+				for control in [add, promote, agent] {
+					assert!(
+						control.right() <= gpui::px(width) && control.left() >= gpui::px(0.),
+						"action fits at {width}: {control:?}"
+					);
+				}
+				assert_eq!(visual.debug_bounds("registration-back").is_some(), width < 850.);
+				assert!(visual.debug_bounds("registration-release").is_none());
+			}
+			let copy = visual.debug_bounds("registration-copy-id").unwrap();
+			visual.simulate_click(copy.center(), Default::default());
+			visual.update(|_, cx| {
+				assert_eq!(
+					cx.read_from_clipboard().and_then(|item| item.text()).as_deref(),
+					Some("native-b")
+				)
+			});
+		}
+		let target = visual.debug_bounds(selector).expect(selector);
+		visual.simulate_click(target.center(), Default::default());
+	}
+	visual.run_until_parked();
+	assert!(matches!(server.join().unwrap(),
+		AgentActionDto::RegisterNativeThread { thread_id, relation:ThreadRegistration::Promote { expected_owner: None }}
+		if thread_id.as_str() == "native-b"
+	));
 }
 
 #[gpui::test]

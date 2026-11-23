@@ -411,11 +411,18 @@ pub(crate) struct MaterialSurface {
 	radius: f64,
 	opacity: f32,
 	clip: Option<Bounds<Pixels>>,
+	modal_focus: Option<gpui::FocusHandle>,
 	content: std::rc::Rc<PopoverContent>,
 	dismiss: std::rc::Rc<dyn Fn(&mut App)>,
 	escape: std::rc::Rc<dyn Fn(&mut App)>,
 }
 impl MaterialSurface {
+	/// Give the attached modal's content keyboard focus on its first presentation.
+	pub(crate) fn with_modal_focus(mut self, focus: gpui::FocusHandle) -> Self {
+		self.modal_focus = Some(focus);
+		self
+	}
+
 	/// Fade the material and foreground together without adding a second surface.
 	pub(crate) fn opacity(mut self, opacity: f32) -> Self {
 		self.opacity = opacity.clamp(0., 1.);
@@ -434,25 +441,35 @@ impl MaterialSurface {
 		self
 	}
 }
+/// The modal's reading surface belongs to its palette. AppKit supplies the glass beneath it.
+fn modal_backdrop(colors: ColorScheme, material: Option<ui_theme::material::Material>) -> Rgba {
+	use ui_theme::material::Material;
+	match material {
+		Some(Material::LiquidGlass) =>
+			colors.material(ui_theme::SURFACE_OVERLAY_MATERIAL, Material::LiquidGlass),
+		Some(Material::Thin) | None => colors.rgb(ui_theme::SURFACE_OVERLAY_MATERIAL >> 8),
+	}
+}
+
 impl RenderOnce for MaterialSurface {
 	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
 		#[cfg(all(target_os = "macos", not(test)))]
-		if native_popover::available() {
-			return native_popover::render_surface(
-				self.id,
-				MaterialGeometry { radius: self.radius, clip: self.clip, opacity: self.opacity },
-				self.content,
-				self.dismiss,
-				self.escape,
-				window,
-				cx,
-			);
+		{
+			if native_popover::available() {
+				return native_popover::render_surface(self, window, cx);
+			}
+			if self.modal_focus.is_some() {
+				// A material preference can change while the modal is open.
+				hide_material_surface(self.id.clone(), window, cx);
+			}
 		}
 		let _ = (&self.id, &self.dismiss, &self.escape);
-		let backdrop = gpui::div()
-			.absolute()
-			.rounded(gpui::px(self.radius as f32))
-			.bg(ui_theme::popover_surface());
+		let fill = if self.modal_focus.is_some() {
+			modal_backdrop(ColorScheme::current(), None)
+		} else {
+			ui_theme::popover_surface()
+		};
+		let backdrop = gpui::div().absolute().rounded(gpui::px(self.radius as f32)).bg(fill);
 		let backdrop = match self.clip {
 			Some(bounds) => backdrop
 				.left(bounds.origin.x)
@@ -483,6 +500,7 @@ pub(crate) fn material_surface(
 		radius,
 		opacity: 1.,
 		clip: None,
+		modal_focus: None,
 		content: std::rc::Rc::new(content),
 		escape: dismiss.clone(),
 		dismiss,
@@ -962,6 +980,25 @@ mod tests {
 	use std::time::{Duration, Instant};
 
 	use crate::ui_motion::Tween;
+
+	#[test]
+	fn modal_backdrop_uses_the_same_palette_on_glass_thin_and_inline_surfaces() {
+		use crate::ui_theme::{ColorScheme, ColorTheme, appearance::Theme, material::Material};
+		for theme in ColorTheme::ALL {
+			for appearance in [Theme::Light, Theme::Dark] {
+				let colors = ColorScheme::new(appearance, theme);
+				let expected = match appearance {
+					Theme::Light => gpui::rgb(0xffffff),
+					Theme::Dark => gpui::rgb(theme.palette().surface_overlay_material >> 8),
+				};
+				let glass = super::modal_backdrop(colors, Some(Material::LiquidGlass));
+				assert_eq!(glass.alpha(1.), expected);
+				assert!(glass.a > 0. && glass.a < 1.);
+				assert_eq!(super::modal_backdrop(colors, Some(Material::Thin)), expected);
+				assert_eq!(super::modal_backdrop(colors, None), expected);
+			}
+		}
+	}
 
 	#[test]
 	fn hover_placement_prefers_below_then_flips_and_keeps_the_control_clear() {

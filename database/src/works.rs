@@ -25,24 +25,7 @@ impl SqliteStore {
 	) -> Result<bool, StoreError> {
 		let json = encode(&command)?;
 
-		self.run(move |c| {
-			let saved = c
-				.query_row(
-					"SELECT agent_id,command_json FROM work_commands WHERE id=?1",
-					[id],
-					|r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)),
-				)
-				.optional()
-				.map_err(crate::error::sqlite_error)?;
-
-			match saved {
-				None => Ok(false),
-				Some((saved_actor, saved_json)) if saved_actor == actor && saved_json == json =>
-					Ok(true),
-				Some(_) => Err(conflict()),
-			}
-		})
-		.await
+		self.run(move |c| command_applied(c, &actor, &id, &json)).await
 	}
 
 	/// Read current business state without touching native execution or admitting input.
@@ -141,23 +124,20 @@ impl SqliteStore {
 
 			agent(&tx, &actor)?;
 
-			if let Some((saved_actor, saved)) = tx
-				.query_row(
-					"SELECT agent_id,command_json FROM work_commands WHERE id=?1",
-					[&command_id],
-					|r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)),
-				)
-				.optional()
-				.map_err(crate::error::sqlite_error)?
-			{
-				return if saved_actor == actor && saved == json {
-					Ok(())
-				} else {
-					Err(conflict())
-				};
+			if command_applied(&tx, &actor, &command_id, &json)? {
+				return Ok(());
 			}
 
+			let changed_work = match &command {
+				WorkCommand::SetState { work_id, .. }
+				| WorkCommand::Revise { work_id, .. }
+				| WorkCommand::Complete { work_id, .. } => Some(work_id.clone()),
+				_ => None,
+			};
 			commands::apply(&tx, &actor, command, user_authority)?;
+			if let Some(work) = changed_work {
+				crate::agent::retire_stale_instructions(&tx, Some(&work), None)?;
+			}
 
 			tx.execute(
 				"INSERT INTO work_commands VALUES(?1,?2,?3)",
@@ -227,9 +207,42 @@ impl SqliteStore {
 
 impl SqliteStore {
 	pub async fn agents(&self) -> Result<Vec<decodex_core::work::Agent>, StoreError> {
-		self.run(|c| {let mut agents = c.prepare("SELECT a.id,w.title,w.codex_thread_id,a.assistant FROM agents a JOIN agent_work_items w ON w.id=a.id WHERE NOT EXISTS(SELECT 1 FROM agent_inbox_events t WHERE t.work_item_id=a.id AND t.event_kind='assistant_internal_topic') ORDER BY a.id").map_err(crate::error::sqlite_error)?.query_map([],|r|Ok(decodex_core::work::Agent{id:r.get(0)?,name:r.get(1)?,native_thread_id:r.get(2)?,assistant:r.get(3)?,scheduled_wakes:Vec::new()})).map_err(crate::error::sqlite_error)?.collect::<Result<Vec<_>,_>>().map_err(error::sqlite_error)?;
-for agent in &mut agents { agent.scheduled_wakes = crate::agent_schedule::wakes(c, &agent.id)?; }
-Ok(agents) }).await
+		self.run(|c| {
+			let mut query = c
+				.prepare(
+					"SELECT a.id,w.title,w.codex_thread_id,a.assistant,m.conversation_id
+				 FROM agents a JOIN agent_work_items w ON w.id=a.id
+				 LEFT JOIN agent_managed_conversations m ON m.agent_id=a.id
+				 WHERE NOT EXISTS (SELECT 1 FROM agent_inbox_events t WHERE t.work_item_id=a.id AND t.event_kind='assistant_internal_topic')
+				 ORDER BY a.id,m.conversation_id",
+				)
+				.map_err(error::sqlite_error)?;
+			let mut rows = query.query([]).map_err(error::sqlite_error)?;
+			let mut agents: Vec<decodex_core::work::Agent> = Vec::new();
+			while let Some(row) = rows.next().map_err(error::sqlite_error)? {
+				let id: String = row.get(0).map_err(error::sqlite_error)?;
+				if agents.last().is_none_or(|agent| agent.id != id) {
+					let scheduled_wakes = crate::agent_schedule::wakes(c, &id)?;
+					agents.push(decodex_core::work::Agent {
+						scheduled_wakes,
+						id,
+						name: row.get(1).map_err(error::sqlite_error)?,
+						native_thread_id: row.get(2).map_err(error::sqlite_error)?,
+						assistant: row.get(3).map_err(error::sqlite_error)?,
+						managed_conversation_ids: Vec::new(),
+					});
+				}
+				if let Some(id) = row.get::<_, Option<String>>(4).map_err(error::sqlite_error)? {
+					agents
+						.last_mut()
+						.expect("the row has an Agent")
+						.managed_conversation_ids
+						.push(id);
+				}
+			}
+			Ok(agents)
+		})
+		.await
 	}
 
 	pub async fn set_assistant(&self, agent: String, enabled: bool) -> Result<(), StoreError> {
@@ -357,6 +370,25 @@ impl SqliteStore {
 	}
 }
 
+pub(crate) fn command_applied(
+	c: &Connection,
+	actor: &str,
+	id: &str,
+	json: &str,
+) -> Result<bool, StoreError> {
+	let saved = c
+		.query_row("SELECT agent_id,command_json FROM work_commands WHERE id=?1", [id], |r| {
+			Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+		})
+		.optional()
+		.map_err(error::sqlite_error)?;
+	match saved {
+		None => Ok(false),
+		Some((saved_actor, saved_json)) if saved_actor == actor && saved_json == json => Ok(true),
+		Some(_) => Err(conflict()),
+	}
+}
+
 fn invalid(message: &'static str) -> StoreError {
 	StoreError::InvalidInput(message)
 }
@@ -425,7 +457,12 @@ fn read_work(c: &Connection, id: &str) -> Result<Work, StoreError> {
 	})
 }
 
-fn owner(c: &Connection, id: &str, agent: &str, revision: &str) -> Result<Work, StoreError> {
+pub(crate) fn owner(
+	c: &Connection,
+	id: &str,
+	agent: &str,
+	revision: &str,
+) -> Result<Work, StoreError> {
 	let work = read_work(c, id)?;
 
 	if work.owner_agent_id != agent || work.requirements.id != revision {
@@ -435,7 +472,7 @@ fn owner(c: &Connection, id: &str, agent: &str, revision: &str) -> Result<Work, 
 	Ok(work)
 }
 
-fn active(work: &Work) -> Result<(), StoreError> {
+pub(crate) fn active(work: &Work) -> Result<(), StoreError> {
 	if work.state != WorkState::Open {
 		return Err(invalid("Work is not open"));
 	}

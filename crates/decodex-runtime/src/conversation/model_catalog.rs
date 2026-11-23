@@ -7,6 +7,7 @@ use std::{
 use tokio::{runtime::Handle, sync::oneshot, task, time};
 
 use crate::{
+	agent::AgentConfig,
 	agent_capabilities::ModelCatalogPages,
 	conversation::{
 		self, AccountBinding, AccountId, AccountProcessCredential, AccountRefreshCallback,
@@ -23,7 +24,94 @@ use decodex_protocol::{
 	InitialModelDefaults, ModelCatalogPurpose, ServiceTier,
 };
 
+pub(crate) struct StoredThread {
+	pub(crate) account: AccountId,
+	pub(crate) candidate: decodex_protocol::NativeThreadCandidate,
+	pub(crate) row: serde_json::Value,
+	pub(crate) config: Option<AgentConfig>,
+}
+
 impl ConversationRuntime {
+	async fn thread_metadata<T: Send + 'static>(
+		&self,
+		read: impl FnOnce(&mut AttestedProcessChild, &str) -> Option<T> + Send + 'static,
+	) -> Option<(EntityId, T)> {
+		let directory = super::effective_user_home(unsafe { libc::geteuid() }).ok()?;
+		let request = InitialModelCatalogRequest {
+			working_directory: ConversationWorkingDirectory::new(directory.to_str()?).ok()?,
+			purpose: ModelCatalogPurpose::Agent,
+			account_id: None,
+		};
+		let _permit = self.inner.initial_catalog.clone().lock_owned().await;
+		self.discover_initial_metadata("native-threads", request, read)
+			.await
+			.map(|(account, _, _, value)| (account, value))
+	}
+
+	pub(crate) async fn offline_thread_page(
+		&self,
+		cursor: Option<&str>,
+	) -> Option<decodex_protocol::NativeThreadPage> {
+		let params = crate::agent::registration::list_params(cursor);
+		let (_, page) = self
+			.thread_metadata(move |child, _| {
+				crate::agent::registration::page(&child.catalog_request("thread/list", params)?)
+			})
+			.await?;
+		Some(page)
+	}
+
+	pub(crate) async fn visible_stored_thread(
+		&self,
+		thread: &str,
+		need_settings: bool,
+	) -> Result<StoredThread, &'static str> {
+		const UNAVAILABLE: &str = "This conversation is unavailable in the current account.";
+		let thread = thread.to_owned();
+		let (account, (candidate, row, config)) = self
+			.thread_metadata(move |child, _| {
+				let deadline = Instant::now() + Duration::from_secs(12);
+				let mut seen = std::collections::HashSet::new();
+				let mut cursor = None;
+				while Instant::now() < deadline {
+					let raw = child.catalog_request(
+						"thread/list",
+						crate::agent::registration::list_params(cursor.as_deref()),
+					)?;
+					let page = crate::agent::registration::page(&raw)?;
+					if let Some(candidate) =
+						page.threads.into_iter().find(|c| c.thread_id == thread)
+					{
+						let mut raw = child.catalog_request(
+							"thread/read",
+							serde_json::json!({"threadId":thread}),
+						)?;
+						let row = raw.get_mut("thread")?.take();
+						if crate::agent::registration::candidate(&row)?.thread_id != thread {
+							return None;
+						}
+						let config =
+							need_settings.then(|| stored_thread_config(child, &row)).transpose();
+						return Some((candidate, row, config));
+					}
+					let next = page.next_cursor?;
+					if !seen.insert(next.clone()) {
+						break;
+					}
+					cursor = Some(next);
+				}
+				None
+			})
+			.await
+			.ok_or(UNAVAILABLE)?;
+		Ok(StoredThread {
+			account: AccountId::new(account.as_str()).map_err(|_| UNAVAILABLE)?,
+			candidate,
+			row,
+			config: config?,
+		})
+	}
+
 	pub(crate) async fn initial_model_catalog(
 		&self,
 		key: &str,
@@ -216,6 +304,38 @@ impl ConversationRuntime {
 	}
 }
 
+fn stored_thread_config(
+	child: &mut AttestedProcessChild,
+	row: &serde_json::Value,
+) -> Result<AgentConfig, &'static str> {
+	const DIRECTORY: &str =
+		"The first conversation needs an accessible working directory under your home directory.";
+	const MODEL: &str = "The conversation's model settings are unavailable in the current account.";
+	let cwd = ConversationWorkingDirectory::new(row["cwd"].as_str().ok_or(DIRECTORY)?)
+		.map_err(|_| DIRECTORY)?;
+	SelectedWorkingDirectory::acquire(cwd.as_str()).map_err(|()| DIRECTORY)?;
+	let model = match row["model"].as_str() {
+		Some(model) => decodex_protocol::ConversationModel::new(model).map_err(|_| MODEL)?,
+		None => {
+			// Older or newly materialized threads can omit model. Use the account's
+			// native defaults without starting, resuming, or changing the thread.
+			let (_, defaults) =
+				read_initial_defaults(child, cwd.as_str(), || false).ok_or(MODEL)?;
+			defaults
+				.managed
+				.model
+				.or(defaults.configured.model)
+				.or(defaults.catalog_model)
+				.ok_or(MODEL)?
+		},
+	};
+	Ok(AgentConfig::with_optional_effort(
+		model.as_str().into(),
+		row["reasoningEffort"].as_str().map(str::to_owned),
+		cwd.as_str().into(),
+	))
+}
+
 #[cfg(test)]
 fn read_catalog(
 	child: &mut AttestedProcessChild,
@@ -365,6 +485,28 @@ mod tests {
 
 			assert_eq!(encoded["effort"], value);
 		}
+	}
+
+	#[test]
+	fn stored_thread_bootstrap_uses_native_defaults_only_when_the_model_is_absent() {
+		let (_temp, mut child) = tests::ordinary_catalog_child("stored-thread-defaults");
+		let cwd = crate::conversation::effective_user_home(unsafe { libc::geteuid() }).unwrap();
+		let stored = serde_json::json!({"cwd":cwd,"model":"thread-model","reasoningEffort":"low"});
+		let config = super::stored_thread_config(&mut child, &stored).unwrap();
+		assert_eq!(config.model, "thread-model");
+		assert_eq!(config.agent_effort.as_deref(), Some("low"));
+		let config =
+			super::stored_thread_config(&mut child, &serde_json::json!({"cwd":cwd})).unwrap();
+		assert_eq!(config.model, "managed-model");
+		assert_eq!(config.cwd, cwd.to_str().unwrap());
+		assert!(config.agent_effort.is_none());
+		let unavailable = serde_json::json!({"cwd":"/","model":"thread-model"});
+		assert!(
+			super::stored_thread_config(&mut child, &unavailable)
+				.unwrap_err()
+				.contains("working directory")
+		);
+		child.shutdown().unwrap();
 	}
 
 	#[test]

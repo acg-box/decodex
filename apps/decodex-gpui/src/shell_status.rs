@@ -75,11 +75,7 @@ impl Notice {
 }
 impl Shell {
 	fn settings_feedback_visible(&self, destination: Destination) -> bool {
-		if self.settings_window.is_some() {
-			self.settings_selected == destination
-		} else {
-			self.selected == destination
-		}
+		self.settings_open() && self.settings_selected == destination
 	}
 
 	pub(super) fn render_status_center(
@@ -581,9 +577,9 @@ impl Shell {
 					}),
 					Recovery::General => {
 						s.select_settings_section(Destination::Settings, cx);
-						s.open_settings_window(Destination::Settings, cx);
+						s.open_settings(Destination::Settings, cx);
 					},
-					Recovery::Accounts => s.open_settings_window(Destination::Accounts, cx),
+					Recovery::Accounts => s.open_settings(Destination::Accounts, cx),
 					Recovery::None => {},
 				}
 
@@ -806,11 +802,12 @@ mod tests {
 
 			assert!(!s.notifications(&connection, cx).iter().any(|n| n.title == "Accounts"));
 
-			s.selected = shell::Destination::Accounts;
+			s.settings_selected = shell::Destination::Accounts;
+			s.show_overlay(shell::WorkspaceOverlay::Settings, cx);
 
 			s.notifications(&connection, cx);
 
-			s.selected = shell::Destination::Agent;
+			s.close_overlay(cx);
 
 			assert!(
 				!s.notifications(&connection, cx).iter().any(|n| n.detail == "Failed"),

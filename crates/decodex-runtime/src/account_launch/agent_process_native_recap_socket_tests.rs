@@ -133,6 +133,22 @@ pub(super) fn fixture_working_directory() -> PathBuf {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "run alone with isolated HOME, DECODEX_TEST_ACCOUNT_HOME and DECODEX_TEST_CODEX_BINARY"]
 async fn installed_recap_public_socket_preserves_parent_and_exact_request_identity() {
+	let home = isolated_home();
+
+	let seconds = if env::var_os("DECODEX_TEST_DESKTOP_BACKGROUND_RECAP").is_some() {
+		2_520
+	} else if env::var_os("DECODEX_TEST_DESKTOP_APP").is_some() {
+		1_260
+	} else {
+		90
+	};
+
+	time::timeout(Duration::from_secs(seconds), qualify(&home, Scenario::Recap))
+		.await
+		.expect("bounded real service fixture");
+}
+
+fn isolated_home() -> PathBuf {
 	let home = PathBuf::from(env::var_os("DECODEX_TEST_ACCOUNT_HOME").expect("isolated home"))
 		.canonicalize()
 		.expect("fixture home");
@@ -144,17 +160,22 @@ async fn installed_recap_public_socket_preserves_parent_and_exact_request_identi
 	);
 	assert!(!home.join(".codex").exists());
 
-	let seconds = if env::var_os("DECODEX_TEST_DESKTOP_BACKGROUND_RECAP").is_some() {
-		2_520
-	} else if env::var_os("DECODEX_TEST_DESKTOP_APP").is_some() {
-		1_260
-	} else {
-		90
-	};
+	home
+}
 
-	time::timeout(Duration::from_secs(seconds), qualify(&home, false))
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires isolated HOME and the pinned Codex runtime"]
+async fn first_offline_registration_attaches_without_starting_a_turn() {
+	time::timeout(Duration::from_secs(90), qualify(&isolated_home(), Scenario::Registration))
 		.await
-		.expect("bounded real service fixture");
+		.unwrap();
+}
+
+#[derive(Clone, Copy, PartialEq)]
+enum Scenario {
+	Recap,
+	Rotation,
+	Registration,
 }
 
 async fn observe_fixture_quota(accounts: &AccountService, account: &AccountId) {
@@ -186,7 +207,8 @@ fn prepare_native_configuration(native_home: &Path, address: std::net::SocketAdd
 	}
 }
 
-async fn qualify(home: &Path, rotation: bool) {
+async fn qualify(home: &Path, mode: Scenario) {
+	let rotation = mode == Scenario::Rotation;
 	let interactive = env::var_os("DECODEX_TEST_DESKTOP_APP").is_some();
 	let native_home = home.join(".codex");
 
@@ -244,7 +266,7 @@ async fn qualify(home: &Path, rotation: bool) {
 	}
 
 	let profile = task::spawn_blocking(move || {
-		if interactive {
+		if interactive || mode == Scenario::Registration {
 			let binary = env::var_os("DECODEX_TEST_CODEX_BINARY")
 				.expect("explicit desktop rehearsal executable");
 			Ok(crate::account_launch::process::native_control_tests::attested_profile(
@@ -263,7 +285,7 @@ async fn qualify(home: &Path, rotation: bool) {
 		.await
 		.expect("native callback attestation");
 
-	let runtime = cold_settings::runtime(&root, &store, accounts.clone(), profile).await;
+	let runtime = cold_settings::runtime(&root, &store, accounts.clone(), profile.clone()).await;
 	let server_id = ServerId::new("20000000-0000-4000-8000-000000000001").expect("server id");
 	let authority = || {
 		LocalTransportAuthority::new(
@@ -276,14 +298,16 @@ async fn qualify(home: &Path, rotation: bool) {
 	let client = prepare_service_client(&root);
 	let app = submit::application(&runtime, &store, home);
 	let (mut server, outcome) = (
-		ProtocolServer::new(server_id, app, ServerConfig::default())
+		ProtocolServer::new(server_id.clone(), app, ServerConfig::default())
 			.bind(authority())
 			.await
 			.expect("public local server"),
 		AssertUnwindSafe(time::timeout(
 			Duration::from_secs(if rotation { 75 } else { interaction_seconds(interactive) }),
 			async {
-				if rotation {
+				if mode == Scenario::Registration {
+					return Some(check_first_registration(&client, home, &requests).await);
+				} else if rotation {
 					account_rotation::Scenario {
 						client: &client,
 						runtime: &runtime,
@@ -303,6 +327,7 @@ async fn qualify(home: &Path, rotation: bool) {
 				} else {
 					check(&client, &runtime, &store, home, &account, &requests).await;
 				}
+				None
 			},
 		))
 		.catch_unwind()
@@ -311,6 +336,44 @@ async fn qualify(home: &Path, rotation: bool) {
 
 	assert!(server.shutdown().await.expect("service shutdown").is_success());
 
+	if let Ok(Ok(Some((_project, thread)))) = &outcome {
+		// A previous release recorded this diagnostic before the empty Assistant
+		// received input. Reopen the same database with a fresh host and process.
+		store
+			.enqueue_agent_event(decodex_database::EnqueueAgentEvent {
+				source_event_id: serde_json::json!([
+					"agent_host",
+					"idle-assistant",
+					"configuration_needs_attention"
+				])
+				.to_string(),
+				work_item_id: "idle-assistant".into(),
+				event_kind: "configuration_needs_attention".into(),
+				payload: "{}".into(),
+			})
+			.await
+			.unwrap();
+		let restarted_store = SqliteStore::open(&root.paths()).unwrap();
+		let restarted_accounts = Arc::new(AccountService::new(
+			restarted_store.clone(),
+			Arc::new(SqliteCredentialStore::new(restarted_store.clone())),
+			Arc::new(NoRefresh),
+		));
+		restarted_accounts
+			.attest_callback_capability(profile.account_callback_attestation())
+			.await
+			.unwrap();
+		let restarted =
+			cold_settings::runtime(&root, &restarted_store, restarted_accounts, profile).await;
+		let app = submit::application(&restarted, &restarted_store, home);
+		let mut server = ProtocolServer::new(server_id, app, ServerConfig::default())
+			.bind(authority())
+			.await
+			.unwrap();
+		check_registered_ready(&client, thread).await;
+		assert_eq!(requests.load(Ordering::Acquire), 1, "restart cannot dispatch a new turn");
+		assert!(server.shutdown().await.unwrap().is_success());
+	}
 	active_shutdown::verify(home, &requests).await;
 
 	backend.abort();
@@ -320,6 +383,125 @@ async fn qualify(home: &Path, rotation: bool) {
 	}
 
 	outcome.expect("fixture assertions").expect("bounded command checks");
+}
+
+async fn check_first_registration(
+	client: &AgentClient,
+	home: &Path,
+	requests: &std::sync::atomic::AtomicUsize,
+) -> (tempfile::TempDir, String) {
+	let native_home = home.join(".codex");
+	let path = native_home.join("config.toml");
+	let config = fs::read_to_string(&path).unwrap();
+	fs::write(&path, config.replace("requires_openai_auth=true", "requires_openai_auth=false"))
+		.unwrap();
+	let binary = env::var_os("DECODEX_TEST_CODEX_BINARY").unwrap();
+	let project = tempfile::tempdir_in(fixture_working_directory()).unwrap();
+	let directory = project.path().join("working");
+	let moved_directory = project.path().join("moved");
+	fs::create_dir(&directory).unwrap();
+	let thread = cold_settings::seed_native_thread(&binary, &native_home, &directory).await;
+	fs::write(path, config).unwrap();
+	let AgentSnapshotResult::Available(empty) = client.query().await.unwrap() else {
+		panic!("initial workspace unavailable");
+	};
+	assert!(empty.work_items.is_empty());
+	assert!(!empty.connection_initializing);
+	accepted(
+		client,
+		AgentActionDto::CreateAssistant { agent_id: EntityId::new("idle-assistant").unwrap() },
+		"create-idle-assistant",
+	)
+	.await;
+	let AgentSnapshotResult::Available(local) = client.query().await.unwrap() else {
+		panic!("an Assistant is usable before its first turn");
+	};
+	assert_eq!(local.work_items.len(), 1);
+	assert!(!local.connection_initializing);
+	assert!(local.runtime_source.is_none() && local.pending_events.is_empty());
+	let pages = client.native_threads(None).await.unwrap().expect("available native thread page");
+	assert!(
+		pages.threads.iter().any(|row| row.thread_id == thread),
+		"existing session is visible before registration"
+	);
+	let register = AgentActionDto::RegisterNativeThread {
+		thread_id: EntityId::new(&thread).unwrap(),
+		relation: decodex_core::work::ThreadRegistration::Assign {
+			agent_id: "idle-assistant".into(),
+			expected_owner: None,
+		},
+	};
+	fs::rename(&directory, &moved_directory).unwrap();
+	let rejection = client
+		.execute(register.clone(), IdempotencyKey::new("directory-unavailable").unwrap())
+		.await
+		.unwrap();
+	let AgentCommandResponse::Rejected {
+		error: decodex_protocol::CommandError::ApplicationUnavailable { message },
+	} = rejection
+	else {
+		panic!("expected a working-directory rejection: {rejection:?}");
+	};
+	assert!(message.as_str().contains("working directory"));
+	let AgentSnapshotResult::Available(local) = client.query().await.unwrap() else {
+		panic!("workspace unavailable after rejection");
+	};
+	assert_eq!(local.work_items.len(), 1);
+	assert!(local.work_items[0].codex_thread_id.is_none());
+	fs::rename(&moved_directory, &directory).unwrap();
+	accepted(client, register, "first-registration").await;
+	let AgentSnapshotResult::Available(registered) = client.query().await.unwrap() else {
+		panic!("workspace unavailable after registration");
+	};
+	assert!(
+		registered.work_items.iter().any(|item| item.codex_thread_id.as_deref() == Some(&thread))
+	);
+	check_registered_ready(client, &thread).await;
+	assert_eq!(
+		requests.load(Ordering::Acquire),
+		1,
+		"only the external fixture's history can infer"
+	);
+	(project, thread)
+}
+
+async fn check_registered_ready(client: &AgentClient, thread: &str) {
+	let task = time::timeout(Duration::from_secs(5), async {
+		loop {
+			let AgentSnapshotResult::Available(snapshot) = client.query().await.unwrap() else {
+				panic!("registered snapshot unavailable")
+			};
+			if snapshot.runtime_source.is_some() && !snapshot.connection_initializing {
+				let task = snapshot
+					.work_items
+					.iter()
+					.find(|work| work.codex_thread_id.as_deref() == Some(thread))
+					.unwrap();
+				let owner =
+					snapshot.agents.iter().find(|agent| agent.id == "idle-assistant").unwrap();
+				assert_eq!(owner.managed_conversation_ids, vec![task.id.clone()]);
+				assert!(
+					snapshot
+						.pending_events
+						.iter()
+						.all(|event| event.event_kind != "configuration_needs_attention")
+				);
+				break EntityId::new(&task.id).unwrap();
+			}
+			time::sleep(Duration::from_millis(30)).await;
+		}
+	})
+	.await
+	.expect("shared process is ready without backoff");
+	let result = client.timeline(task, EntityId::new(thread).unwrap(), None).await.unwrap();
+	let AgentTimelineResult::Available { page, .. } = result else {
+		panic!("registered history unavailable: {result:?}");
+	};
+	assert_eq!(page.thread_id, thread);
+	assert!(page.entries.iter().any(|entry| matches!(
+		entry.content,
+		AgentTimelineContent::TurnBoundary { completed: true, .. }
+	)));
 }
 
 async fn qualify_recap_cancellation(client: &AgentClient, work: &EntityId) {

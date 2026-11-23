@@ -326,6 +326,17 @@ impl AgentSurface {
 			})
 			.collect();
 
+		snapshot.agents.clear();
+		if let Some(root) = snapshot.work_items.first() {
+			snapshot.agents.push(decodex_protocol::work::Agent {
+				id: root.id.clone(),
+				name: "Research coordinator".into(),
+				native_thread_id: root.codex_thread_id.clone(),
+				managed_conversation_ids: vec![],
+				scheduled_wakes: Default::default(),
+				assistant: false,
+			});
+		}
 		snapshot.agent_slots.clear();
 		snapshot.pending_events.clear();
 		snapshot.dependencies.clear();

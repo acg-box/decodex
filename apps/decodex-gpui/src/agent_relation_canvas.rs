@@ -644,6 +644,16 @@ impl AgentSurface {
 			.text_size(gpui::px(11.))
 			.child(self.relation_layout_picker(cx))
 			.child(self.relation_presentation_picker(cx))
+			.child(self.graph_control(
+				"manage-conversations",
+				workspace_symbols::icon_sized(Symbol::Link, 14.),
+				"Add a Codex conversation or edit its Agent relationship",
+				|s, cx| {
+					let context = s.work_board.view.picked_agent.clone();
+					s.open_thread_registration(context.as_deref(), cx);
+				},
+				cx,
+			))
 			.child(gpui::div().flex_1())
 			.child(
 				cluster()
@@ -1146,13 +1156,21 @@ impl AgentSurface {
 
 	fn add_assigned_relations(&self, graph: &mut Graph, included: &BTreeSet<String>) {
 		let Some(snapshot) = &self.snapshot else { return };
+		let responsible_by_work: BTreeMap<_, _> = snapshot
+			.agents
+			.iter()
+			.flat_map(|agent| {
+				agent.managed_conversation_ids.iter().map(move |work_id| (work_id, &agent.id))
+			})
+			.collect();
 
 		for work in &snapshot.work_items {
 			if snapshot.agents.iter().any(|a| a.id == work.id) {
 				continue;
 			}
 
-			if let Some(parent) = &work.parent_goal_id
+			let responsible = responsible_by_work.get(&work.id).copied();
+			if let Some(parent) = responsible.or(work.parent_goal_id.as_ref())
 				&& included.contains(parent)
 				&& included.contains(&work.id)
 			{
@@ -1163,7 +1181,7 @@ impl AgentSurface {
 					to: work.id.clone(),
 					kind: Kind::Assigned,
 					color: Kind::Assigned.color(),
-					label: "Owner".into(),
+					label: if responsible.is_some() { "Responsible Agent" } else { "Owner" }.into(),
 					excerpt: None,
 					detail: format!(
 						"{}\n\nConversation owner: {}\nState: {}",
@@ -2363,8 +2381,8 @@ impl AgentSurface {
 			return agent.name.clone();
 		}
 
-		if work.is_some_and(|work| work.parent_goal_id.is_none()) {
-			return "Assistant".into();
+		if let Some(work) = work.filter(|work| work.parent_goal_id.is_none()) {
+			return self.conversation_label(work);
 		}
 		if work.is_some_and(|work| work.kind == AgentWorkKindDto::Manager) {
 			"Agent".into()
@@ -2970,6 +2988,72 @@ mod fit_tests {
 				assert!((rect.x + rect.width / 2. - center.0).abs() < 0.01);
 				assert!((rect.y + rect.height / 2. - center.1).abs() < 0.01);
 			}
+		});
+	}
+
+	#[gpui::test]
+	fn thread_registration_from_graph_keeps_the_graph_and_chat_draft(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let (surface, visual) = cx.add_window_view(|_, cx| tests::fixture(cx));
+		surface.update(visual, |s, cx| {
+			s.workspace.graph_expanded = true;
+			s.composer.update(cx, |input, cx| input.set_content("Keep the graph draft", cx));
+			cx.notify();
+		});
+		visual.simulate_resize(gpui::size(gpui::px(1400.), gpui::px(1000.)));
+		visual.update(crate::ui_frame::draw_frame);
+		thread::sleep(std::time::Duration::from_millis(260));
+		visual.run_until_parked();
+		visual.update(crate::ui_frame::draw_frame);
+		let previous = surface.read_with(visual, |s, _| s.navigation_location());
+		let entry = visual.debug_bounds("relations-manage-conversations").unwrap();
+		visual.simulate_mouse_move(entry.center(), None, Default::default());
+		visual.simulate_click(entry.center(), Default::default());
+		visual.run_until_parked();
+		visual.update(crate::ui_frame::draw_frame);
+		assert!(surface.read_with(visual, |s, _| s.workspace.registration.is_some()));
+		assert_eq!(surface.read_with(visual, |s, _| s.navigation_location()), previous);
+		surface.update(visual, |s, cx| s.close_catalog(cx));
+		visual.run_until_parked();
+		surface.read_with(visual, |s, cx| {
+			assert!(s.workspace.registration.is_none());
+			assert!(s.workspace.graph_expanded);
+			assert_eq!(s.composer.read(cx).content(), "Keep the graph draft");
+		});
+	}
+
+	#[gpui::test]
+	fn thread_registration_draws_responsibility_without_a_spawn_edge(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let surface = cx.new(super::super::tests::fixture);
+		surface.update(cx, |s, _| {
+			let snapshot = s.snapshot.as_mut().unwrap();
+			let mut conversation = snapshot.work_items[0].clone();
+			conversation.id = "ordinary".into();
+			conversation.title = "Release checklist".into();
+			conversation.parent_goal_id = None;
+			conversation.codex_thread_id = Some("thread-ordinary".into());
+			snapshot.work_items.push(conversation);
+			snapshot.agents.push(decodex_protocol::work::Agent {
+				id: "agent".into(),
+				name: "Coordinator".into(),
+				native_thread_id: None,
+				managed_conversation_ids: vec!["ordinary".into()],
+				scheduled_wakes: Default::default(),
+				assistant: false,
+			});
+			let graph = s.relation_graph();
+			assert_eq!(
+				graph.nodes.iter().find(|n| n.key == "ordinary").unwrap().title,
+				"Release checklist"
+			);
+			let edges: Vec<_> = graph.edges.iter().filter(|e| e.to == "ordinary").collect();
+			assert_eq!(edges.len(), 1);
+			assert_eq!(edges[0].from, "agent");
+			assert_eq!(edges[0].kind, super::Kind::Assigned);
+			assert_eq!(edges[0].label, "Responsible Agent");
 		});
 	}
 

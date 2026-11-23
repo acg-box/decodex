@@ -2485,6 +2485,11 @@ pub enum QueryPayload {
 	},
 	/// Read the complete bounded Agent work graph and pending result metadata.
 	GetAgentSnapshot,
+	/// List account-visible native conversations without loading them.
+	ListNativeThreads {
+		/// Opaque cursor returned by the native catalog.
+		cursor: Option<WireText>,
+	},
 	/// Read retained agents with their confirmed native archive membership.
 	GetAgentArchiveCatalog,
 	/// Read exact managed collaboration receipts without changing execution.
@@ -3268,6 +3273,8 @@ pub enum QueryResultPayload {
 	AgentRequest(AgentRequestResult),
 	/// Complete bounded Agent work and pending event projection.
 	AgentSnapshot(AgentSnapshotResult),
+	/// None when no account-scoped catalog is available.
+	NativeThreads(Option<crate::NativeThreadPage>),
 	/// Exact managed collaboration receipts.
 	AgentExchanges(AgentExchangesResult),
 	/// Complete daemon-owned desktop settings projection.

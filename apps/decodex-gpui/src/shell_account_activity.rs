@@ -209,9 +209,8 @@ mod tests {
 	) {
 		let (shell, visual) =
 			cx.add_window_view(|window, cx| Shell::new(window, cx, ConnectionView::Stopped));
-		shell.update(visual, |s, cx| s.open_settings_window(Destination::Accounts, cx));
-		let handle = shell.read_with(visual, |s, _| s.settings_window.unwrap());
-		let settings = &mut gpui::VisualTestContext::from_window(handle.into(), visual);
+		shell.update(visual, |s, cx| s.open_settings(Destination::Accounts, cx));
+		let settings = &mut *visual;
 		shell.update(settings, |s, cx| {
 			s.visual_accounts_and_health();
 			cx.notify();
@@ -269,7 +268,8 @@ mod tests {
 		shell.update(visual, |s, cx| {
 			s.visual_accounts_and_health();
 
-			s.selected = Destination::Accounts;
+			s.settings_selected = Destination::Accounts;
+			s.show_overlay(crate::shell::WorkspaceOverlay::Settings, cx);
 
 			let id = s.accounts.accounts[0].account_id.clone();
 

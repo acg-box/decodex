@@ -254,7 +254,7 @@ impl AgentCoordinator {
 			None => self.selected_voice_generation(work_id.as_str(), &thread).await?,
 		};
 		if !self.loaded_threads.contains(&thread) {
-			let mut params = Self::resume_params(&thread);
+			let mut params = self.resume_observer_params(&thread, false).await?;
 
 			params["config"]["features.realtime_conversation"] = serde_json::json!(true);
 
@@ -454,7 +454,7 @@ impl AgentCoordinator {
 	/// Recover observed native work after a lost call without replaying audio or instructions.
 	pub(super) async fn recover_voice_calls(&mut self) -> Result<(), AgentError> {
 		for call in self.store.open_agent_voice_calls().await? {
-			let params = Self::resume_params(&call.thread_id);
+			let params = self.resume_observer_params(&call.thread_id, false).await?;
 			let resumed = self
 				.client
 				.thread_resume(params)

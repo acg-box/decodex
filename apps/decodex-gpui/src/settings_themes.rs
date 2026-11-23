@@ -14,7 +14,7 @@ use crate::{
 	ui_theme::{
 		self, ACCENT, CANVAS, COMPOSER_MATERIAL, CONTENT_MATERIAL, ColorScheme, ColorTheme,
 		HOVER_FILL, MESSAGE_MATERIAL, PRESSED_FILL, PRIMARY_FILL, SELECTED_BORDER, SELECTED_FILL,
-		SIDEBAR_MATERIAL, TEXT, TEXT_MUTED,
+		SELECTED_HOVER_FILL, SIDEBAR_MATERIAL, TEXT, TEXT_MUTED,
 	},
 };
 
@@ -67,12 +67,19 @@ impl SettingsSurface {
 			.rounded(gpui::px(8.))
 			.border_1()
 			.border_color(gpui::transparent_black())
+			.when(selected, |card| {
+				card.bg(ui_theme::rgba(SELECTED_FILL)).border_color(ui_theme::rgba(SELECTED_BORDER))
+			})
 			.text_size(gpui::px(11.5))
 			.line_height(gpui::px(15.))
 			.text_color(ui_theme::rgb(TEXT))
 			.cursor_pointer()
-			.hover(|row| row.bg(ui_theme::rgba(HOVER_FILL)))
-			.active(|row| row.bg(ui_theme::rgba(PRESSED_FILL)))
+			.hover(move |row| {
+				row.bg(ui_theme::rgba(if selected { SELECTED_HOVER_FILL } else { HOVER_FILL }))
+			})
+			.active(move |row| {
+				row.bg(ui_theme::rgba(if selected { SELECTED_HOVER_FILL } else { PRESSED_FILL }))
+			})
 			.focus_visible(|row| row.border_color(ui_theme::rgb(ACCENT)))
 			.child(
 				gpui::div()
@@ -96,6 +103,7 @@ impl SettingsSurface {
 								.top(gpui::px(2.))
 								.right(gpui::px(5.))
 								.text_size(gpui::px(10.))
+								.text_color(ui_theme::rgb(ACCENT))
 								.child("✓"),
 						)
 					}),
@@ -141,7 +149,7 @@ fn preview(theme: ColorTheme) -> impl IntoElement {
 
 			window.paint_quad(gpui::fill(bounds, colors.rgb(CANVAS)).corner_radii(gpui::px(5.)));
 			window.paint_quad(
-				gpui::fill(rect(0., 0., 34., 80.), colors.rgb(SIDEBAR_MATERIAL >> 8)).corner_radii(
+				gpui::fill(rect(0., 0., 34., 80.), colors.rgba(SIDEBAR_MATERIAL)).corner_radii(
 					Corners {
 						top_left: gpui::px(5.),
 						bottom_left: gpui::px(5.),
@@ -167,7 +175,7 @@ fn preview(theme: ColorTheme) -> impl IntoElement {
 					.corner_radii(gpui::px(3.)),
 			);
 			window.paint_quad(
-				gpui::fill(rect(43., 60., 107., 15.), colors.rgb(COMPOSER_MATERIAL >> 8))
+				gpui::fill(rect(43., 60., 107., 15.), colors.rgba(COMPOSER_MATERIAL))
 					.corner_radii(gpui::px(4.)),
 			);
 			window.paint_quad(
@@ -193,4 +201,72 @@ fn preview(theme: ColorTheme) -> impl IntoElement {
 		},
 	)
 	.size_full()
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use crate::{
+		desktop_settings::DesktopSettingsController,
+		settings_surface::SettingsCategory,
+		ui_theme::appearance::{Appearance, Theme},
+	};
+	use gpui::{TestAppContext, VisualTestContext};
+
+	fn assert_painted_card(
+		visual: &mut VisualTestContext,
+		id: &'static str,
+		colors: ColorScheme,
+		selected: bool,
+	) {
+		let bounds = visual.debug_bounds(id).expect("visible theme card");
+		visual.update(|window, cx| {
+			crate::ui_frame::draw_frame(window, cx);
+			let quads = window.painted_quads();
+			let card = bounds.scale(window.scale_factor());
+			let label = gpui::point(bounds.center().x, bounds.bottom() - gpui::px(5.))
+				.scale(window.scale_factor());
+			let highlight = ui_theme::rgba(SELECTED_FILL).into();
+			assert_eq!(
+				quads.iter().any(|q| q.bounds.contains(&label) && q.background == highlight),
+				selected,
+				"{id}"
+			);
+			for role in [SIDEBAR_MATERIAL, COMPOSER_MATERIAL] {
+				let fill = colors.rgba(role).into();
+				assert!(
+					quads.iter().any(|q| card.contains(&q.bounds.center()) && q.background == fill),
+					"{id} must paint material {role:#x} with its palette alpha"
+				);
+			}
+		});
+	}
+
+	#[gpui::test]
+	fn theme_cards_repaint_selection_and_miniature_materials(cx: &mut TestAppContext) {
+		let (_, visual) = cx.add_window_view(|_, cx| {
+			ColorTheme::Decodex.apply(cx);
+			Appearance::Light.apply(cx);
+			let mut settings = SettingsSurface::new(DesktopSettingsController::production(), cx);
+			settings.category = SettingsCategory::Appearance;
+			settings
+		});
+		visual.simulate_resize(gpui::size(gpui::px(820.), gpui::px(900.)));
+		visual.update(crate::ui_frame::draw_frame);
+		let dracula = ColorScheme::new(Theme::Dark, ColorTheme::Dracula);
+		for (appearance, dracula_selected) in [(Theme::Light, false), (Theme::Dark, true)] {
+			if dracula_selected {
+				let button = visual.debug_bounds("color-theme-dracula").unwrap();
+				visual.simulate_click(button.center(), Default::default());
+				visual.simulate_mouse_move(Default::default(), None, Default::default());
+			}
+			assert_painted_card(
+				visual,
+				"color-theme-decodex",
+				ColorScheme::new(appearance, ColorTheme::Decodex),
+				!dracula_selected,
+			);
+			assert_painted_card(visual, "color-theme-dracula", dracula, dracula_selected);
+		}
+	}
 }

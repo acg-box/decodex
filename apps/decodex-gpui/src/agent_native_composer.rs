@@ -269,7 +269,7 @@ impl AgentSurface {
 	}
 
 	/// Find temporarily renders the composer in the main window; retain its real focus first.
-	pub(super) fn active_native_composer_focus(
+	pub(crate) fn active_native_composer_focus(
 		&self,
 		cx: &mut Context<Self>,
 	) -> Option<FocusHandle> {

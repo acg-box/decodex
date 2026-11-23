@@ -28,6 +28,14 @@ fn deletion_plan(
 		.transpose()
 }
 
+pub(super) fn pending(c: &Connection, thread: &str) -> Result<bool, StoreError> {
+	c.query_row("SELECT EXISTS(SELECT 1 FROM agent_inbox_events e,json_each(e.payload,'$.threads') t WHERE e.event_kind='thread_delete_requested' AND t.value=?1)",[thread],|r|r.get(0)).map_err(|e|error::sqlite_error(e).into())
+}
+
+pub(super) fn deleted(c: &Connection, thread: &str) -> Result<bool, StoreError> {
+	c.query_row("SELECT EXISTS(SELECT 1 FROM runtime_command_receipts WHERE operation='native_thread_deleted' AND json_extract(response_json,'$.threadId')=?1)",[thread],|r|r.get(0)).map_err(|e|error::sqlite_error(e).into())
+}
+
 impl SqliteStore {
 	/// Freeze this conversation's current and previous native contexts before deletion.
 	pub async fn request_agent_thread_deletion(
@@ -75,7 +83,7 @@ impl SqliteStore {
 	}
 
 	pub async fn agent_thread_deletion_pending(&self, thread: String) -> Result<bool, StoreError> {
-		self.run(move |c| c.query_row("SELECT EXISTS(SELECT 1 FROM agent_inbox_events e,json_each(e.payload,'$.threads') t WHERE e.event_kind='thread_delete_requested' AND t.value=?1)",[thread],|r|r.get(0)).map_err(|e|error::sqlite_error(e).into())).await
+		self.run(move |c| pending(c, &thread)).await
 	}
 
 	pub async fn agent_thread_delete_requested(
@@ -91,7 +99,7 @@ impl SqliteStore {
 		_work: String,
 		thread: String,
 	) -> Result<bool, StoreError> {
-		self.run(move |c| c.query_row("SELECT EXISTS(SELECT 1 FROM runtime_command_receipts WHERE operation='native_thread_deleted' AND json_extract(response_json,'$.threadId')=?1)",[thread],|r|r.get(0)).map_err(|e|error::sqlite_error(e).into())).await
+		self.run(move |c| deleted(c, &thread)).await
 	}
 
 	pub async fn deleted_agent_thread_ids(&self) -> Result<HashSet<String>, StoreError> {
@@ -113,6 +121,7 @@ impl SqliteStore {
 				let settings = if assistant { Some(crate::assistant::settings(&tx,owner)?) } else {None};
 				let personal_owner = crate::assistant::topic_owner(&tx,owner)?.filter(|identity| identity != owner);
 				if let Some(plan) = deletion_plan(&tx,owner,&threads[0])? { threads=plan; }
+				tx.execute("DELETE FROM agent_managed_conversations WHERE conversation_id=?1 OR agent_id=?1", [owner]).map_err(error::sqlite_error)?;
 				for (table,column) in [
 					("agent_async_answers","work_id"),("agent_async_questions","work_id"),("agent_async_recovery","work_id"),
 					("agent_capacity_retries","work_item_id"),("agent_guardian_reviews","work_id"),("agent_live_output","work_id"),

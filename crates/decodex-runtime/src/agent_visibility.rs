@@ -184,6 +184,9 @@ pub(crate) fn retain_active(snapshot: &mut AgentSnapshotDto, archived: &HashSet<
 		snapshot.work_items.iter().any(|w| w.codex_thread_id.as_ref() == Some(thread))
 	});
 	snapshot.agents.retain(|agent| !inactive.contains(&agent.id));
+	for agent in snapshot.agents.iter_mut() {
+		agent.managed_conversation_ids.retain(|id| !inactive.contains(id));
+	}
 
 	for work in &mut snapshot.work_items {
 		if work.parent_goal_id.as_ref().is_some_and(|id| inactive.contains(id)) {
@@ -380,6 +383,11 @@ mod tests {
 				native_thread_id: Some(format!("thread-{id}")),
 				assistant: id == "main",
 				scheduled_wakes: Default::default(),
+				managed_conversation_ids: if id == "live" {
+					vec!["old".into()]
+				} else {
+					Vec::new()
+				},
 			})
 			.into();
 		let mut visible = original.clone();
@@ -400,6 +408,7 @@ mod tests {
 			visible.agents.iter().map(|agent| agent.id.as_str()).collect::<Vec<_>>(),
 			["live"]
 		);
+		assert!(visible.agents[0].managed_conversation_ids.is_empty());
 		assert!(visible.dependencies.is_empty());
 		assert!(visible.is_valid());
 

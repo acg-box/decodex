@@ -116,7 +116,8 @@ mod tests {
 
 			s.accounts.accounts[0].observed_state = AccountObservedStateDto::AuthFailed;
 			s.accounts.rejection = Some(AccountCommandRejectionDto::CodexIsRunning);
-			s.selected = Destination::Accounts;
+			s.settings_selected = Destination::Accounts;
+			s.show_overlay(crate::shell::WorkspaceOverlay::Settings, cx);
 
 			cx.notify();
 		});
@@ -189,7 +190,8 @@ mod tests {
 
 			s.accounts.accounts[0].lifecycle_readiness =
 				AccountLifecycleReadinessDto::UnsupportedPlan;
-			s.selected = Destination::Accounts;
+			s.settings_selected = Destination::Accounts;
+			s.show_overlay(crate::shell::WorkspaceOverlay::Settings, cx);
 
 			let account = &s.accounts.accounts[0];
 
@@ -224,7 +226,8 @@ mod tests {
 			s.accounts.rejection = None;
 			s.account_status = Some("This account could not be changed.".into());
 			s.account_status_target = Some(s.accounts.accounts[0].account_id.clone());
-			s.selected = Destination::Accounts;
+			s.settings_selected = Destination::Accounts;
+			s.show_overlay(crate::shell::WorkspaceOverlay::Settings, cx);
 
 			cx.notify();
 		});
@@ -247,7 +250,8 @@ mod tests {
 		shell.update(visual, |s, cx| {
 			s.visual_accounts_and_health();
 
-			s.selected = Destination::Accounts;
+			s.settings_selected = Destination::Accounts;
+			s.show_overlay(crate::shell::WorkspaceOverlay::Settings, cx);
 			s.account_login_status = Some(decodex_protocol::AccountLoginStatus {
 				session_id: decodex_protocol::EntityId::new("80000000-0000-4000-8000-000000000001")
 					.unwrap(),

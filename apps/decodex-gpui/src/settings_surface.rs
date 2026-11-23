@@ -317,7 +317,8 @@ impl SettingsSurface {
 		let description = match surface {
 			Surface::Window => "Thin uses a flat tint; Liquid Glass uses macOS glass.",
 			Surface::InputBar => "",
-			Surface::Popover => "Applies to menus, hover previews and activity capsules.",
+			Surface::Popover =>
+				"Sets the material for workspace dialogs, menus, and hover previews.",
 		};
 
 		ui_theme::settings_row()
@@ -1857,6 +1858,8 @@ mod tests {
 	#[gpui::test]
 	fn window_and_input_material_controls_stay_independent(cx: &mut TestAppContext) {
 		let (_, visual) = cx.add_window_view(|_, cx| {
+			Surface::Window.select(Material::LiquidGlass, cx);
+			Surface::InputBar.select(Material::LiquidGlass, cx);
 			let mut settings = SettingsSurface::new(DesktopSettingsController::production(), cx);
 
 			settings.category = SettingsCategory::Appearance;

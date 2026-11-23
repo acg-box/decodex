@@ -32,7 +32,7 @@ async fn installed_account_handover_preserves_thread_and_deduplicates_messages()
 	);
 	assert!(!home.join(".codex").exists());
 
-	time::timeout(Duration::from_secs(100), qualify(&home, true))
+	time::timeout(Duration::from_secs(100), qualify(&home, super::Scenario::Rotation))
 		.await
 		.expect("bounded account handover qualification");
 }

@@ -351,6 +351,8 @@ fn command_icon(command: &Command) -> AnyElement {
 			icons::Icon { glyph: icons::Glyph::Folder, size: 14. }.into_any_element(),
 		Action::NewAssistant =>
 			icons::Icon { glyph: icons::Glyph::Assistant, size: 14. }.into_any_element(),
+		Action::CodexConversations =>
+			icons::Icon { glyph: icons::Glyph::Conversations, size: 14. }.into_any_element(),
 		Action::Archives =>
 			icons::Icon { glyph: icons::Glyph::Archive, size: 14. }.into_any_element(),
 		Action::Settings => workspace_symbols::icon_sized(Symbol::Settings, 14.),

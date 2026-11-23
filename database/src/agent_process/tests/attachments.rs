@@ -40,6 +40,32 @@ async fn independent_native_attachment_requires_exact_thread_and_live_unconteste
 		.unwrap();
 	store.mark_process_generation_ready(&tests::generation_id(1), 2).await.unwrap();
 
+	let ordinary = store
+		.register_native_thread(
+			"ordinary".into(),
+			"Existing conversation".into(),
+			decodex_core::work::ThreadRegistration::Register,
+		)
+		.await
+		.unwrap();
+	assert!(!store.agent_manager_ids().await.unwrap().contains(&ordinary.id));
+	assert!(
+		store
+			.attach_independent_agent_process(
+				ordinary.id.clone(),
+				"ordinary".into(),
+				generation.clone()
+			)
+			.await
+			.unwrap()
+	);
+	assert!(
+		store
+			.agent_thread_is_owned(ordinary.id, "ordinary".into(), Some(generation.clone()))
+			.await
+			.unwrap()
+	);
+
 	assert!(
 		!store
 			.agent_thread_is_owned(
