@@ -11,7 +11,7 @@ use crate::{
 		CONTROL_SELECTED_HOVER, ERROR, INFO, MESSAGE_MATERIAL, ON_PRIMARY, PRIMARY_FILL,
 		SELECTED_BORDER, SELECTED_FILL, SELECTED_HOVER_FILL, SHELL_MATERIAL, SIDEBAR_MATERIAL,
 		SUCCESS, SURFACE_OVERLAY_MATERIAL, SURFACE_RAISED_MATERIAL, TOPBAR_MATERIAL, WARNING,
-		appearance::Appearance,
+		appearance::Theme,
 	},
 };
 
@@ -25,7 +25,7 @@ const PREFERENCE: &str = "DecodexColorTheme";
 // Brighter blues mark actions; nearby blue-gray steps distinguish content and controls.
 // Solid controls have a separate foreground; text accents do not set button brightness.
 // Stable token IDs live in ui_theme; these are the resolved display colors.
-const DECODEX: Palette = Palette {
+const DECODEX_DARK: Palette = Palette {
 	canvas: 0x141a24,
 	shell_material: 0x181e29f8,
 	content_material: 0x202733f0,
@@ -68,87 +68,244 @@ const DECODEX: Palette = Palette {
 		0x98a8bd, 0xd2939b, 0x7e94ba,
 	],
 };
+// The desktop light palette preserves the original ink, surface hierarchy and identity slots.
+const DECODEX_LIGHT: Palette = Palette {
+	canvas: 0xf5f6f9,
+	shell_material: tint(0xeef1f6, SHELL_MATERIAL),
+	content_material: tint(0xfafbfc, CONTENT_MATERIAL),
+	topbar_material: tint(0xf0f2f6, TOPBAR_MATERIAL),
+	agent_sidebar_material: tint(0xf0f2f6, AGENT_SIDEBAR_MATERIAL),
+	agent_chat_overlay: tint(0xf0f2f6, AGENT_CHAT_OVERLAY),
+	sidebar_material: tint(0xeef1f6, SIDEBAR_MATERIAL),
+	surface_raised_material: tint(0xf0f2f6, SURFACE_RAISED_MATERIAL),
+	composer_material: tint(0xffffff, COMPOSER_MATERIAL),
+	message_material: tint(0xf0f2f7, MESSAGE_MATERIAL),
+	surface_overlay_material: tint(0xffffff, SURFACE_OVERLAY_MATERIAL),
+	surface_hover: 0xe0e6f0,
+	selection_fill: tint(0x2e63c2, SELECTED_FILL),
+	selection_hover: tint(0x2e63c2, SELECTED_HOVER_FILL),
+	selection_border: tint(0x2e63c2, SELECTED_BORDER),
+	control_selected_fill: tint(0x252c39, CONTROL_SELECTED_FILL),
+	control_selected_hover: tint(0x252c39, CONTROL_SELECTED_HOVER),
+	control_selected_border: tint(0x252c39, CONTROL_SELECTED_BORDER),
+	line_strong: 0xb7c2d2,
+	text: 0x252c39,
+	text_body: 0x45536a,
+	text_muted: 0x59687e,
+	accent: 0x2e63c2,
+	primary_fill: 0x4766b8,
+	control_active_fill: 0x526ca6,
+	on_primary: 0xffffff,
+	blue: 0x2e63c2,
+	green: 0x42765a,
+	amber: 0x996124,
+	error: 0xb43a46,
+	status_info: 0x2e63a8,
+	status_success: 0x2c7050,
+	status_warning: 0x94611d,
+	status_error: 0xb43a46,
+	navigation_bases: [
+		0x4a6c92, 0x4f7c78, 0x64764b, 0x8c7243, 0x956b57, 0x946b80, 0x776294, 0x626f85,
+	],
+	mascot_bases: [
+		0x617590, 0x736e8e, 0x59729a, 0x866f6b, 0x83796c, 0x808691, 0x856e7e, 0x687190, 0x687d96,
+		0x6a7688, 0x8c6973, 0x5a6a86,
+	],
+};
 // Palette sources; material alpha and semantic role assignment are Decodex-specific.
 // https://github.com/folke/tokyonight.nvim/blob/main/extras/lua/tokyonight_night.lua
-const TOKYO_NIGHT: Palette = Palette::dark(
+const TOKYO_NIGHT: Palette = Palette::from_colors(
 	[0x1a1b26, 0x16161e, 0x292e42],
 	[0xc0caf5, 0xa9b1d6, 0x414868],
 	[0xbb9af7, 0x7aa2f7, 0x9ece6a, 0xe0af68, 0xf7768e],
 );
 // https://github.com/EdenEast/nightfox.nvim/blob/main/lua/nightfox/palette/nightfox.lua
-const NIGHTFOX: Palette = Palette::dark(
+const NIGHTFOX: Palette = Palette::from_colors(
 	[0x192330, 0x131a24, 0x212e3f],
 	[0xcdcecf, 0xaeafb0, 0x39506d],
 	[0x719cd6, 0x719cd6, 0x81b29a, 0xdbc074, 0xc94f6d],
 );
 // https://github.com/catppuccin/palette/blob/main/palette.json (Mocha)
-const CATPPUCCIN_MOCHA: Palette = Palette::dark(
+const CATPPUCCIN_MOCHA: Palette = Palette::from_colors(
 	[0x1e1e2e, 0x181825, 0x313244],
 	[0xcdd6f4, 0xa6adc8, 0x45475a],
 	[0xcba6f7, 0x89b4fa, 0xa6e3a1, 0xf9e2af, 0xf38ba8],
 );
 // https://github.com/dracula/dracula-theme#color-palette-oss
-const DRACULA: Palette = Palette::dark(
+const DRACULA: Palette = Palette::from_colors(
 	[0x282a36, 0x21222c, 0x44475a],
 	[0xf8f8f2, 0xbfc1d6, 0x6272a4],
 	[0xbd93f9, 0x8be9fd, 0x50fa7b, 0xf1fa8c, 0xff5555],
 );
 // https://github.com/nordtheme/nord/blob/develop/src/nord.css
-const NORD: Palette = Palette::dark(
+const NORD: Palette = Palette::from_colors(
 	[0x2e3440, 0x2e3440, 0x3b4252],
 	[0xeceff4, 0xd8dee9, 0x4c566a],
 	[0x88c0d0, 0x81a1c1, 0xa3be8c, 0xebcb8b, 0xbf616a],
 );
 // https://github.com/morhetz/gruvbox/blob/master/colors/gruvbox.vim
-const GRUVBOX_DARK: Palette = Palette::dark(
+const GRUVBOX_DARK: Palette = Palette::from_colors(
 	[0x282828, 0x1d2021, 0x3c3836],
 	[0xebdbb2, 0xbdae93, 0x665c54],
 	[0xfe8019, 0x83a598, 0xb8bb26, 0xfabd2f, 0xfb4934],
 );
 // https://github.com/atom/one-dark-syntax/blob/master/styles/colors.less
-const ONE_DARK: Palette = Palette::dark(
+const ONE_DARK: Palette = Palette::from_colors(
 	[0x282c34, 0x21252b, 0x323842],
 	[0xabb2bf, 0x9da5b4, 0x4b5263],
 	[0xc678dd, 0x61afef, 0x98c379, 0xe5c07b, 0xe06c75],
 );
 // https://github.com/ayu-theme/ayu-colors/blob/master/themes/dark.yaml
 // Secondary text is brighter than the original comments to preserve UI readability.
-const AYU_DARK: Palette = Palette::dark(
+const AYU_DARK: Palette = Palette::from_colors(
 	[0x10141c, 0x0d1017, 0x141821],
 	[0xbfbdb6, 0x8a9199, 0x3e4b59],
 	[0xe6b450, 0x59c2ff, 0xaad94c, 0xffb454, 0xf07178],
 );
 // https://github.com/rose-pine/neovim/blob/main/lua/rose-pine/palette.lua
-const ROSE_PINE: Palette = Palette::dark(
+const ROSE_PINE: Palette = Palette::from_colors(
 	[0x191724, 0x1f1d2e, 0x26233a],
 	[0xe0def4, 0x908caa, 0x524f67],
 	[0xc4a7e7, 0x9ccfd8, 0x95b1ac, 0xf6c177, 0xeb6f92],
 );
 // https://github.com/rebelot/kanagawa.nvim/blob/master/lua/kanagawa/colors.lua (Wave)
-const KANAGAWA: Palette = Palette::dark(
+const KANAGAWA: Palette = Palette::from_colors(
 	[0x1f1f28, 0x16161d, 0x2a2a37],
 	[0xdcd7ba, 0xc8c093, 0x54546d],
 	[0x957fb8, 0x7e9cd8, 0x98bb6c, 0xe6c384, 0xff5d62],
 );
 // https://github.com/sainnhe/everforest/blob/master/autoload/everforest.vim (Dark hard)
-const EVERFOREST: Palette = Palette::dark(
+const EVERFOREST: Palette = Palette::from_colors(
 	[0x272e33, 0x1e2326, 0x2e383c],
 	[0xd3c6aa, 0x9da9a0, 0x4f5b58],
 	[0xa7c080, 0x7fbbb3, 0xa7c080, 0xdbbc7f, 0xe67e80],
 );
 // https://ethanschoonover.com/solarized/#the-values
 // Use the lighter neutral tones for UI text on raised surfaces.
-const SOLARIZED_DARK: Palette = Palette::dark(
+const SOLARIZED_DARK: Palette = Palette::from_colors(
 	[0x002b36, 0x002b36, 0x073642],
 	[0xeee8d5, 0x93a1a1, 0x586e75],
 	[0x2aa198, 0x268bd2, 0x859900, 0xb58900, 0xdc322f],
 );
 // https://github.com/primer/github-vscode-theme/blob/main/src/colors.js
 // Uses @primer/primitives 7.10.0, with the theme's foreground override.
-const GITHUB_DARK: Palette = Palette::dark(
+const GITHUB_DARK: Palette = Palette::from_colors(
 	[0x0d1117, 0x010409, 0x161b22],
 	[0xe6edf3, 0x8b949e, 0x30363d],
 	[0xa371f7, 0x58a6ff, 0x3fb950, 0xd29922, 0xf85149],
+);
+
+// Light variants use the published canvas and color ramps. UI ink is adjusted where an
+// editor's syntax or comment color would be too faint on the corresponding raised surface.
+// https://github.com/folke/tokyonight.nvim/blob/main/extras/lua/tokyonight_day.lua
+const TOKYO_DAY: Palette = Palette::light(
+	[0xe1e2e7, 0xd0d5e3, 0xd0d5e3],
+	[shade(0x3760bf, 30), shade(0x6172b0, 25), 0xb4b5b9],
+	[
+		shade(0x7847bd, 10),
+		shade(0x2e7de9, 30),
+		shade(0x587539, 20),
+		shade(0x8c6c3e, 20),
+		shade(0xc64343, 20),
+	],
+);
+// https://github.com/EdenEast/nightfox.nvim/blob/main/lua/nightfox/palette/dayfox.lua
+const DAYFOX: Palette = Palette::light(
+	[0xf6f2ee, 0xe4dcd4, 0xdbd1dd],
+	[0x3d2b5a, 0x643f61, 0xaab0ad],
+	[0x2848a9, 0x2848a9, shade(0x396847, 5), shade(0xac5402, 20), 0xa5222f],
+);
+// https://catppuccin.com/palette/#flavor-latte
+const CATPPUCCIN_LATTE: Palette = Palette::light(
+	[0xeff1f5, 0xdce0e8, 0xe6e9ef],
+	[0x4c4f69, 0x5c5f77, 0xbcc0cc],
+	[
+		shade(0x8839ef, 10),
+		shade(0x1e66f5, 15),
+		shade(0x40a02b, 35),
+		shade(0xdf8e1d, 40),
+		shade(0xd20f39, 10),
+	],
+);
+// https://draculatheme.com/spec#color-palette (Alucard Classic)
+const ALUCARD: Palette = Palette::light(
+	[0xfffbeb, 0xece9df, 0xefeddc],
+	[0x1f1f1f, 0x6c664b, 0xcfcfde],
+	[0x644ac9, 0x036a96, 0x14710a, shade(0x846e15, 10), shade(0xcb3a2a, 10)],
+);
+// Nord specifies Snow Storm surfaces and Polar Night text for bright designs.
+// https://www.nordtheme.com/docs/colors-and-palettes/
+// https://github.com/nord-light/.github/blob/main/profile/README.md (independent editor ports)
+const NORD_LIGHT: Palette = Palette::light(
+	[0xeceff4, 0xe5e9f0, 0xd8dee9],
+	[0x2e3440, 0x4c566a, 0xc8d0da],
+	[shade(0x0c7482, 10), 0x3b5e85, shade(0x577140, 10), shade(0x7f6614, 10), shade(0xae4750, 10)],
+);
+// https://github.com/morhetz/gruvbox/blob/master/colors/gruvbox.vim (light, medium)
+const GRUVBOX_LIGHT: Palette = Palette::light(
+	[0xfbf1c7, 0xebdbb2, 0xf2e5bc],
+	[0x3c3836, 0x665c54, 0xbdae93],
+	[shade(0xaf3a03, 5), 0x076678, shade(0x79740e, 20), shade(0xb57614, 30), 0x9d0006],
+);
+// https://github.com/atom/one-light-syntax/blob/master/styles/colors.less
+const ONE_LIGHT: Palette = Palette::light(
+	[0xfafafa, 0xe5e5e6, 0xf0f0f1],
+	[0x383a42, shade(0x696c77, 10), 0xa0a1a7],
+	[0xa626a4, shade(0x4078f2, 20), shade(0x50a14f, 30), shade(0x986801, 15), shade(0xe45649, 25)],
+);
+// https://github.com/ayu-theme/ayu-colors/blob/master/themes/light.yaml
+const AYU_LIGHT: Palette = Palette::light(
+	[0xfcfcfc, 0xebeef0, 0xf8f9fa],
+	[shade(mix(0xfcfcfc, 0x020a12, 64), 5), 0x626a73, 0xadaeb1],
+	[
+		shade(0xf29718, 40),
+		shade(0x22a4e6, 35),
+		shade(0x86b300, 40),
+		shade(0xeba400, 45),
+		shade(0xe65050, 20),
+	],
+);
+// https://github.com/rose-pine/neovim/blob/main/lua/rose-pine/palette.lua (Dawn)
+const ROSE_PINE_DAWN: Palette = Palette::light(
+	[0xfaf4ed, 0xfffaf3, 0xf2e9e1],
+	[0x464261, shade(0x797593, 15), 0xcecacd],
+	[shade(0x907aa9, 25), 0x286983, shade(0x6d8f89, 25), shade(0xea9d34, 40), shade(0xb4637a, 20)],
+);
+// https://github.com/rebelot/kanagawa.nvim/blob/master/lua/kanagawa/colors.lua (Lotus)
+const KANAGAWA_LOTUS: Palette = Palette::light(
+	[0xf2ecbc, 0xe5ddb0, 0xe7dba0],
+	[shade(0x545464, 10), shade(0x716e61, 15), 0xd5cea3],
+	[0x624c83, shade(0x4d699b, 10), shade(0x6f894e, 30), shade(0x836f4a, 20), shade(0xc84053, 20)],
+);
+// https://github.com/sainnhe/everforest/blob/master/autoload/everforest.vim (Light hard)
+const EVERFOREST_LIGHT: Palette = Palette::light(
+	[0xfffbef, 0xf2efdf, 0xf8f5e4],
+	[shade(0x5c6a72, 15), shade(0x829181, 25), 0xa6b0a0],
+	[
+		shade(0x8da101, 30),
+		shade(0x3a94c5, 25),
+		shade(0x8da101, 30),
+		shade(0xdfa000, 40),
+		shade(0xf85552, 25),
+	],
+);
+// https://ethanschoonover.com/solarized/#the-values (base3 and base2)
+const SOLARIZED_LIGHT: Palette = Palette::light(
+	[0xfdf6e3, 0xeee8d5, 0xeee8d5],
+	[shade(0x586e75, 20), shade(0x657b83, 15), 0x93a1a1],
+	[
+		shade(0x2aa198, 30),
+		shade(0x268bd2, 25),
+		shade(0x859900, 30),
+		shade(0xb58900, 30),
+		shade(0xdc322f, 15),
+	],
+);
+// https://github.com/primer/github-vscode-theme/blob/main/src/colors.js (Primer Light)
+const GITHUB_LIGHT: Palette = Palette::light(
+	[0xffffff, 0xf6f8fa, 0xf6f8fa],
+	[0x24292f, 0x57606a, 0xd0d7de],
+	[0x8250df, 0x0969da, 0x1a7f37, shade(0x9a6700, 5), 0xcf222e],
 );
 
 #[cfg(not(test))]
@@ -160,34 +317,34 @@ pub(crate) enum ColorTheme {
 	Decodex,
 	TokyoNight,
 	Nightfox,
-	CatppuccinMocha,
+	Catppuccin,
 	Dracula,
 	Nord,
-	GruvboxDark,
-	OneDark,
-	AyuDark,
+	Gruvbox,
+	AtomOne,
+	Ayu,
 	RosePine,
 	Kanagawa,
 	Everforest,
-	SolarizedDark,
-	GithubDark,
+	Solarized,
+	Github,
 }
 impl ColorTheme {
 	// The product theme stays first; presets follow their display names alphabetically.
 	pub(crate) const ALL: [Self; 14] = [
 		Self::Decodex,
-		Self::AyuDark,
-		Self::CatppuccinMocha,
+		Self::AtomOne,
+		Self::Ayu,
+		Self::Catppuccin,
 		Self::Dracula,
 		Self::Everforest,
-		Self::GithubDark,
-		Self::GruvboxDark,
+		Self::Github,
+		Self::Gruvbox,
 		Self::Kanagawa,
 		Self::Nightfox,
 		Self::Nord,
-		Self::OneDark,
 		Self::RosePine,
-		Self::SolarizedDark,
+		Self::Solarized,
 		Self::TokyoNight,
 	];
 
@@ -196,17 +353,17 @@ impl ColorTheme {
 			Self::Decodex => "decodex",
 			Self::TokyoNight => "tokyo-night",
 			Self::Nightfox => "nightfox",
-			Self::CatppuccinMocha => "catppuccin-mocha",
+			Self::Catppuccin => "catppuccin-mocha",
 			Self::Dracula => "dracula",
 			Self::Nord => "nord",
-			Self::GruvboxDark => "gruvbox-dark",
-			Self::OneDark => "one-dark",
-			Self::AyuDark => "ayu-dark",
+			Self::Gruvbox => "gruvbox-dark",
+			Self::AtomOne => "one-dark",
+			Self::Ayu => "ayu-dark",
 			Self::RosePine => "rose-pine",
 			Self::Kanagawa => "kanagawa",
 			Self::Everforest => "everforest",
-			Self::SolarizedDark => "solarized-dark",
-			Self::GithubDark => "github-dark",
+			Self::Solarized => "solarized-dark",
+			Self::Github => "github-dark",
 		}
 	}
 
@@ -215,17 +372,17 @@ impl ColorTheme {
 			Self::Decodex => "Decodex",
 			Self::TokyoNight => "Tokyo Night",
 			Self::Nightfox => "Nightfox",
-			Self::CatppuccinMocha => "Catppuccin Mocha",
+			Self::Catppuccin => "Catppuccin",
 			Self::Dracula => "Dracula",
 			Self::Nord => "Nord",
-			Self::GruvboxDark => "Gruvbox Dark",
-			Self::OneDark => "One Dark",
-			Self::AyuDark => "Ayu Dark",
+			Self::Gruvbox => "Gruvbox",
+			Self::AtomOne => "Atom One",
+			Self::Ayu => "Ayu",
 			Self::RosePine => "Rosé Pine",
 			Self::Kanagawa => "Kanagawa",
 			Self::Everforest => "Everforest",
-			Self::SolarizedDark => "Solarized Dark",
-			Self::GithubDark => "GitHub Dark",
+			Self::Solarized => "Solarized",
+			Self::Github => "GitHub",
 		}
 	}
 
@@ -266,10 +423,6 @@ impl ColorTheme {
 	pub(crate) fn select(self, cx: &mut App) {
 		ui_preferences::string(PREFERENCE, Some(self.id()));
 
-		if self != Self::Decodex {
-			Appearance::Dark.select(cx);
-		}
-
 		self.apply(cx);
 	}
 
@@ -279,22 +432,26 @@ impl ColorTheme {
 		cx.refresh_windows();
 	}
 
-	pub(crate) fn palette(self) -> &'static Palette {
-		match self {
-			Self::Decodex => &DECODEX,
-			Self::TokyoNight => &TOKYO_NIGHT,
-			Self::Nightfox => &NIGHTFOX,
-			Self::CatppuccinMocha => &CATPPUCCIN_MOCHA,
-			Self::Dracula => &DRACULA,
-			Self::Nord => &NORD,
-			Self::GruvboxDark => &GRUVBOX_DARK,
-			Self::OneDark => &ONE_DARK,
-			Self::AyuDark => &AYU_DARK,
-			Self::RosePine => &ROSE_PINE,
-			Self::Kanagawa => &KANAGAWA,
-			Self::Everforest => &EVERFOREST,
-			Self::SolarizedDark => &SOLARIZED_DARK,
-			Self::GithubDark => &GITHUB_DARK,
+	pub(crate) fn palette(self, appearance: Theme) -> &'static Palette {
+		let (dark, light) = match self {
+			Self::Decodex => (&DECODEX_DARK, &DECODEX_LIGHT),
+			Self::TokyoNight => (&TOKYO_NIGHT, &TOKYO_DAY),
+			Self::Nightfox => (&NIGHTFOX, &DAYFOX),
+			Self::Catppuccin => (&CATPPUCCIN_MOCHA, &CATPPUCCIN_LATTE),
+			Self::Dracula => (&DRACULA, &ALUCARD),
+			Self::Nord => (&NORD, &NORD_LIGHT),
+			Self::Gruvbox => (&GRUVBOX_DARK, &GRUVBOX_LIGHT),
+			Self::AtomOne => (&ONE_DARK, &ONE_LIGHT),
+			Self::Ayu => (&AYU_DARK, &AYU_LIGHT),
+			Self::RosePine => (&ROSE_PINE, &ROSE_PINE_DAWN),
+			Self::Kanagawa => (&KANAGAWA, &KANAGAWA_LOTUS),
+			Self::Everforest => (&EVERFOREST, &EVERFOREST_LIGHT),
+			Self::Solarized => (&SOLARIZED_DARK, &SOLARIZED_LIGHT),
+			Self::Github => (&GITHUB_DARK, &GITHUB_LIGHT),
+		};
+		match appearance {
+			Theme::Dark => dark,
+			Theme::Light => light,
 		}
 	}
 }
@@ -363,7 +520,7 @@ impl Palette {
 		})
 	}
 
-	/// Map the shared dark tokens without changing authored content colors.
+	/// Map the shared semantic tokens without changing authored content colors.
 	pub(super) fn resolve(&self, token: u32) -> u32 {
 		match token {
 			PRIMARY_FILL => self.primary_fill,
@@ -405,9 +562,24 @@ impl Palette {
 		}
 	}
 
+	// A light editor accent may be suitable on white but unreadable on panels.
+	// Each entry supplies the light family's own surfaces and inks. Adjust the
+	// semantic colors toward dark ink for readable controls, links and statuses.
+	const fn light(backgrounds: [u32; 3], foregrounds: [u32; 3], accents: [u32; 5]) -> Self {
+		let mut palette = Self::from_colors(backgrounds, foregrounds, accents);
+		palette.text_body = mix(palette.text, palette.text_muted, 25);
+		palette.on_primary = 0xffffff;
+		palette.control_active_fill = mix(palette.accent, palette.text, 18);
+		palette.status_info = palette.blue;
+		palette.status_success = palette.green;
+		palette.status_warning = palette.amber;
+		palette.status_error = palette.error;
+		palette
+	}
+
 	// Backgrounds: canvas, sidebar, raised. Foregrounds: text, muted, border.
 	// Accents: primary, link, success, warning, error. Keep native glass translucent.
-	const fn dark(backgrounds: [u32; 3], foregrounds: [u32; 3], accents: [u32; 5]) -> Self {
+	const fn from_colors(backgrounds: [u32; 3], foregrounds: [u32; 3], accents: [u32; 5]) -> Self {
 		let [canvas, sidebar, raised] = backgrounds;
 		let [text, muted, border] = foregrounds;
 		let [accent, blue, green, amber, error] = accents;
@@ -476,6 +648,15 @@ impl Palette {
 	}
 }
 
+const fn tint(rgb: u32, role: u32) -> u32 {
+	(rgb << 8) | (role & 0xff)
+}
+
+// Preserve the source hue when an editor color needs more contrast for a UI role.
+const fn shade(source: u32, percent: u32) -> u32 {
+	mix(source, 0x000000, percent)
+}
+
 /// Mix authored palette channels once, before character geometry is cached.
 pub(super) const fn mix(a: u32, b: u32, percent: u32) -> u32 {
 	const fn channel(a: u32, b: u32, percent: u32, shift: u32) -> u32 {
@@ -512,6 +693,30 @@ mod tests {
 	}
 
 	#[test]
+	fn saved_dark_variant_ids_select_the_family_in_both_appearances() {
+		for (id, name) in [
+			("ayu-dark", "Ayu"),
+			("catppuccin-mocha", "Catppuccin"),
+			("dracula", "Dracula"),
+			("github-dark", "GitHub"),
+			("gruvbox-dark", "Gruvbox"),
+			("one-dark", "Atom One"),
+			("solarized-dark", "Solarized"),
+		] {
+			assert_eq!(ColorTheme::from_id(id).unwrap().name(), name);
+		}
+		for theme in ColorTheme::ALL {
+			assert_ne!(
+				theme.palette(super::Theme::Dark).canvas,
+				theme.palette(super::Theme::Light).canvas,
+				"{theme:?}"
+			);
+		}
+		assert_eq!(ColorTheme::Dracula.palette(super::Theme::Light).canvas, 0xfffbeb);
+		assert_eq!(ColorTheme::Nord.palette(super::Theme::Light).canvas, 0xeceff4);
+	}
+
+	#[test]
 	fn every_palette_keeps_body_and_secondary_text_readable() {
 		fn luminance(rgb: u32) -> f64 {
 			[16, 8, 0]
@@ -531,23 +736,28 @@ mod tests {
 		}
 
 		for theme in ColorTheme::ALL {
-			let palette = theme.palette();
-
-			for background in [
-				palette.canvas,
-				palette.composer_material >> 8,
-				palette.message_material >> 8,
-				palette.surface_overlay_material >> 8,
-				palette.surface_hover,
-			] {
-				for text in [palette.text, palette.text_body, palette.text_muted] {
-					let contrast = (luminance(text) + 0.05) / (luminance(background) + 0.05);
-
-					assert!(
-						contrast >= 4.5,
-						"{}: {text:06x} on {background:06x}: {contrast}",
-						theme.name()
-					);
+			for appearance in [super::Theme::Light, super::Theme::Dark] {
+				let palette = theme.palette(appearance);
+				for background in [
+					palette.canvas,
+					palette.composer_material >> 8,
+					palette.message_material >> 8,
+					palette.surface_overlay_material >> 8,
+					palette.surface_hover,
+				] {
+					for text in [palette.text, palette.text_body, palette.text_muted] {
+						let ink = luminance(text) + 0.05;
+						let surface = luminance(background) + 0.05;
+						let contrast = match appearance {
+							super::Theme::Light => surface / ink,
+							super::Theme::Dark => ink / surface,
+						};
+						assert!(
+							contrast >= 4.5,
+							"{} {appearance:?}: {text:06x} on {background:06x}: {contrast}",
+							theme.name()
+						);
+					}
 				}
 			}
 		}

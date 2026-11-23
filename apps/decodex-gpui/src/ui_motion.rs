@@ -987,10 +987,7 @@ mod tests {
 		for theme in ColorTheme::ALL {
 			for appearance in [Theme::Light, Theme::Dark] {
 				let colors = ColorScheme::new(appearance, theme);
-				let expected = match appearance {
-					Theme::Light => gpui::rgb(0xffffff),
-					Theme::Dark => gpui::rgb(theme.palette().surface_overlay_material >> 8),
-				};
+				let expected = gpui::rgb(theme.palette(appearance).surface_overlay_material >> 8);
 				let glass = super::modal_backdrop(colors, Some(Material::LiquidGlass));
 				assert_eq!(glass.alpha(1.), expected);
 				assert!(glass.a > 0. && glass.a < 1.);

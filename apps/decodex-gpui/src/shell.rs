@@ -7475,13 +7475,14 @@ mod tests {
 	fn status_colors_follow_theme_changes_across_settings_and_conversations(
 		cx: &mut TestAppContext,
 	) {
-		let original = ui_theme::ColorTheme::configured();
+		let original = (appearance::Appearance::current(), ui_theme::ColorTheme::configured());
 
-		appearance::with_theme(ui_theme::appearance::Theme::Dark, || {
+		for mode in [appearance::Appearance::Light, appearance::Appearance::Dark] {
+			cx.update(|cx| mode.apply(cx));
 			for theme in ui_theme::ColorTheme::ALL {
 				cx.update(|cx| theme.apply(cx));
 
-				let palette = theme.palette();
+				let palette = theme.palette(appearance::Theme::current());
 
 				assert_eq!(
 					crate::ui_theme::rgb(
@@ -7544,9 +7545,12 @@ mod tests {
 					);
 				}
 			}
-		});
+		}
 
-		cx.update(|cx| original.apply(cx));
+		cx.update(|cx| {
+			original.0.apply(cx);
+			original.1.apply(cx);
+		});
 	}
 
 	#[test]
@@ -8245,9 +8249,10 @@ mod tests {
 		assert_eq!((navigation.top(), navigation.bottom()), (content.top(), content.bottom()));
 
 		let gallery = settings.debug_bounds("color-theme-picker").expect("theme gallery");
-		let first = settings.debug_bounds("color-theme-decodex").expect("first preview");
-		let fifth = settings.debug_bounds("color-theme-everforest").expect("fifth preview");
-		let sixth = settings.debug_bounds("color-theme-github-dark").expect("sixth preview");
+		let themes = crate::ui_theme::ColorTheme::ALL;
+		let first = settings.debug_bounds(themes[0].id()).expect("first preview");
+		let fifth = settings.debug_bounds(themes[4].id()).expect("fifth preview");
+		let sixth = settings.debug_bounds(themes[5].id()).expect("sixth preview");
 
 		assert_eq!(first.top(), fifth.top(), "five previews must fit beside settings navigation");
 		assert!(first.left() >= gallery.left());

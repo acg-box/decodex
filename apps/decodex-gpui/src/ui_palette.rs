@@ -5,8 +5,7 @@ use gpui::Rgba;
 
 use crate::ui_theme::{
 	AGENT_CHAT_OVERLAY, AGENT_SIDEBAR_MATERIAL, CANVAS, COMPOSER_MATERIAL, CONTENT_MATERIAL,
-	CONTROL_ACTIVE_FILL, ColorTheme, ERROR, INFO, ON_PRIMARY, PRIMARY_FILL, SHELL_MATERIAL,
-	SIDEBAR_MATERIAL, SUCCESS, SURFACE_OVERLAY_MATERIAL, TEXT, TOPBAR_MATERIAL, WARNING,
+	ColorTheme, SHELL_MATERIAL, SIDEBAR_MATERIAL, SURFACE_OVERLAY_MATERIAL, TEXT, TOPBAR_MATERIAL,
 	WorkspacePalette, appearance::Theme, color_themes, material::Material,
 };
 
@@ -54,14 +53,13 @@ impl ColorScheme {
 	}
 
 	pub(crate) fn current() -> Self {
-		let appearance = Theme::current();
-		let colors =
-			if appearance == Theme::Light { ColorTheme::Decodex } else { ColorTheme::configured() };
-
-		Self::new(appearance, colors)
+		Self::new(Theme::current(), ColorTheme::configured())
 	}
 
-	/// The palette actually displayed, which can differ from the saved dark preset.
+	pub(super) fn palette(self) -> &'static color_themes::Palette {
+		self.colors.palette(self.appearance)
+	}
+
 	pub(crate) fn color_theme(self) -> ColorTheme {
 		self.colors
 	}
@@ -82,15 +80,10 @@ impl ColorScheme {
 			.iter()
 			.position(|name| *name == family)
 			.expect("catalog mascot family has a theme color");
-		let colors =
-			if self.appearance == Theme::Light { ColorTheme::Decodex } else { self.colors };
-		let base = colors.palette().mascot_bases[index];
-		let dark = self.hex(CANVAS);
-		let light = self.hex(TEXT);
+		let palette = self.palette();
+		let base = palette.mascot_bases[index];
 		let (dark, light) =
-			if self.appearance == Theme::Light { (light, 0xffffff) } else { (dark, light) };
-		let base =
-			if self.appearance == Theme::Light { color_themes::mix(base, dark, 40) } else { base };
+			if self.is_light() { (palette.text, 0xffffff) } else { (palette.canvas, palette.text) };
 		let luminance = |color: u32| -> f32 {
 			[16, 8, 0]
 				.into_iter()
@@ -124,10 +117,7 @@ impl ColorScheme {
 	}
 
 	pub(crate) fn rgb(self, token: u32) -> Rgba {
-		gpui::rgb(match self.appearance {
-			Theme::Dark => self.colors.palette().resolve(token),
-			Theme::Light => light(token),
-		})
+		gpui::rgb(self.palette().resolve(token))
 	}
 
 	pub(crate) fn hex(self, token: u32) -> u32 {
@@ -135,9 +125,7 @@ impl ColorScheme {
 	}
 
 	pub(crate) fn rgba(self, token: u32) -> Rgba {
-		if self.appearance == Theme::Dark
-			&& let Some(material) = self.colors.palette().material(token)
-		{
+		if let Some(material) = self.palette().material(token) {
 			return gpui::rgba(material);
 		}
 
@@ -152,11 +140,11 @@ impl ColorScheme {
 	pub(crate) fn material(self, token: u32, material: Material) -> Rgba {
 		let color = self.rgba(token);
 
-		if self.appearance != Theme::Dark || material != Material::LiquidGlass {
+		if material != Material::LiquidGlass {
 			return color;
 		}
 
-		let alpha = match token {
+		let dark_alpha = match token {
 			SHELL_MATERIAL => 0xb0,
 			SIDEBAR_MATERIAL => 0x84,
 			AGENT_SIDEBAR_MATERIAL => 0x90,
@@ -168,6 +156,7 @@ impl ColorScheme {
 			_ => return color,
 		};
 
+		let alpha = if self.is_light() { token & 0xff } else { dark_alpha };
 		color.alpha(alpha as f32 / 255.)
 	}
 
@@ -182,7 +171,7 @@ impl ColorScheme {
 				conversation: self.material(AGENT_CHAT_OVERLAY, material),
 			};
 		}
-		if self.appearance == Theme::Dark && self.colors == ColorTheme::Decodex {
+		if self.appearance == Theme::Dark && self.color_theme() == ColorTheme::Decodex {
 			return WorkspacePalette {
 				graph: self.rgb(CANVAS).opacity(0.86),
 				conversation: self.rgba(CONTENT_MATERIAL),
@@ -190,61 +179,23 @@ impl ColorScheme {
 		}
 
 		// Thin retains its matte reading planes independently of glass opacity.
-		let (graph, conversation) = match self.appearance {
-			Theme::Dark => (0x00000028, 0xffffff06),
-			Theme::Light => (0x00000008, 0xffffffb0),
-		};
-
-		WorkspacePalette { graph: gpui::rgba(graph), conversation: gpui::rgba(conversation) }
+		match self.appearance {
+			Theme::Dark => WorkspacePalette {
+				graph: gpui::rgba(0x00000028),
+				conversation: gpui::rgba(0xffffff06),
+			},
+			Theme::Light => WorkspacePalette {
+				graph: gpui::rgba(0x00000008),
+				conversation: self.rgb(SURFACE_OVERLAY_MATERIAL >> 8).opacity(0xb0 as f32 / 255.),
+			},
+		}
 	}
 }
 
+#[cfg(test)]
 impl From<Theme> for ColorScheme {
 	fn from(appearance: Theme) -> Self {
 		Self::new(appearance, ColorTheme::Decodex)
-	}
-}
-
-fn light(token: u32) -> u32 {
-	match token {
-		PRIMARY_FILL => 0x4766b8,
-		CONTROL_ACTIVE_FILL => 0x526ca6,
-		ON_PRIMARY => 0xffffff,
-		INFO => 0x2e63a8,
-		SUCCESS => 0x2c7050,
-		WARNING => 0x94611d,
-		ERROR => 0xb43a46,
-		// Materials retain their original alpha and glass ownership.
-		0x0b0a0f => 0xf5f6f9,
-		0x101014 | 0x100e15 => 0xeef1f6,
-		0x141419 | 0x141418 | 0x111113 => 0xfafbfc,
-		0x15151b | 0x17171c | 0x17151e | 0x17171a => 0xf0f2f6,
-		0x222228 | 0x1d1a24 | 0x24242a | 0x242427 => 0xffffff,
-		0x222c3a => 0xf0f2f7,
-		0x29292d | 0x29292e | 0x27272b | 0x252830 => 0xe8edf4,
-		0x302d39 | 0x30303a | 0x33333a | 0x35353c | 0x3a3a40 => 0xe0e6f0,
-		0x303030 | 0x373737 | 0x464646 => 0xe2e7ef,
-		0x141822 => 0xe8edf5,
-		// Foreground hierarchy and neutral feedback.
-		0xffffff | 0xf2f1f4 | 0xf4f2f7 | 0xeeeaf0 | 0xe7e7ea => 0x252c39,
-		0xdfdee4 | 0xc5c6ce | 0xc4c4ce | 0xc0c0c5 => 0x45536a,
-		0xbbb8c4 | 0xaaa4af | 0xc2bbc9 | 0xd5d5da => 0x5f6e85,
-		0xb5b2bd | 0x89909c | 0x817789 => 0x657187,
-		0x78818e => 0x657187,
-		0x403b48 | 0x3c3744 | 0x515155 | 0x606064 => 0xb7c2d2,
-		// Accent and state colors need contrast on the light material too.
-		0x8baaf7 | 0x8aaaff | 0x7aa2ff | 0x6b9fff | 0x60a5fa => 0x2e63c2,
-		0x22c55e | 0x77c99a => 0x42765a,
-		0xe0b56f | 0xf59e0b | 0xf5c985 | 0xd4b27c => 0x996124,
-		0xf97316 | 0xe49a70 | 0xffa45d | 0xff8a3d | 0xa5a0ed | 0xaaa0c4 | 0xc4a7e7 | 0xb0a0d8
-		| 0xad9ae8 | 0xcac4f4 | 0xd1c2f4 => 0x2e63c2,
-		0xed8585 | 0xdc2626 => 0xb43a46,
-		0x94a3b8 | 0x64748b => 0x657187,
-		0x9cbacb | 0x7dc4cf | 0xd5e3f1 | 0x9ec8d9 | 0xe8f3f8 | 0xf1fcff | 0x8b9fff | 0x788dff
-		| 0xb0c6f3 | 0x9aafff | 0xdbe5ff | 0xc6cce0 => 0x2e63c2,
-		0xd0c8d9 | 0xaaa6b8 => 0x657187,
-		// Shadows, transparency and explicit content colors keep their values.
-		_ => token,
 	}
 }
 
@@ -284,30 +235,24 @@ mod tests {
 	}
 
 	#[test]
-	fn presets_resolve_shared_roles_and_leave_light_appearance_readable() {
-		for colors in ColorTheme::ALL {
-			let palette = colors.palette();
-			let dark = ColorScheme::new(Theme::Dark, colors);
-
-			for (token, expected) in [
-				(CANVAS, palette.canvas),
-				(TEXT, palette.text),
-				(TEXT_MUTED, palette.text_muted),
-				(BLUE, palette.blue),
-			] {
-				assert_eq!(dark.hex(token), expected, "{colors:?}");
+	fn presets_resolve_their_own_roles_in_both_appearances() {
+		for appearance in [Theme::Light, Theme::Dark] {
+			for theme in ColorTheme::ALL {
+				let palette = theme.palette(appearance);
+				let colors = ColorScheme::new(appearance, theme);
+				for (token, expected) in [
+					(CANVAS, palette.canvas),
+					(TEXT, palette.text),
+					(TEXT_MUTED, palette.text_muted),
+					(BLUE, palette.blue),
+				] {
+					assert_eq!(colors.hex(token), expected, "{appearance:?}/{theme:?}");
+				}
+				assert_eq!(colors.rgba(SHELL_MATERIAL), gpui::rgba(palette.shell_material));
+				assert_eq!(colors.rgba(AGENT_CHAT_OVERLAY), gpui::rgba(palette.agent_chat_overlay));
+				assert_eq!(colors.rgb(0x123456), gpui::rgb(0x123456));
+				assert_eq!(colors.rgba(0x12345678), gpui::rgba(0x12345678));
 			}
-
-			assert_eq!(dark.rgba(SHELL_MATERIAL), gpui::rgba(palette.shell_material));
-			assert_eq!(dark.rgba(AGENT_CHAT_OVERLAY), gpui::rgba(palette.agent_chat_overlay));
-			assert_eq!(dark.rgb(0x123456), gpui::rgb(0x123456));
-			assert_eq!(dark.rgba(0x12345678), gpui::rgba(0x12345678));
-
-			let light = ColorScheme::new(Theme::Light, colors);
-
-			assert_eq!(light.rgb(TEXT), gpui::rgb(0x252c39));
-			assert_eq!(light.rgb(CANVAS), gpui::rgb(0xf5f6f9));
-			assert_eq!(light.rgba(SHELL_MATERIAL).a, gpui::rgba(SHELL_MATERIAL).a);
 		}
 	}
 
@@ -317,16 +262,18 @@ mod tests {
 	) {
 		let original = ColorTheme::configured();
 
-		appearance::with_theme(Theme::Dark, || {
-			cx.update(|cx| ColorTheme::TokyoNight.apply(cx));
+		for theme in [Theme::Light, Theme::Dark] {
+			appearance::with_theme(theme, || {
+				cx.update(|cx| ColorTheme::TokyoNight.apply(cx));
 
-			let captured = ColorScheme::current();
+				let captured = ColorScheme::current();
 
-			cx.update(|cx| ColorTheme::Nord.apply(cx));
+				cx.update(|cx| ColorTheme::Nord.apply(cx));
 
-			assert_ne!(captured, ColorScheme::current());
-			assert_eq!(captured.hex(TEXT), ColorTheme::TokyoNight.palette().text);
-		});
+				assert_ne!(captured, ColorScheme::current());
+				assert_eq!(captured.hex(TEXT), ColorTheme::TokyoNight.palette(theme).text);
+			});
+		}
 
 		cx.update(|cx| original.apply(cx));
 	}
@@ -344,7 +291,7 @@ mod tests {
 	}
 
 	#[test]
-	fn reading_roles_have_contrast_in_both_themes() {
+	fn decodex_reading_hierarchy_and_accents_have_contrast_in_both_appearances() {
 		for theme in [Theme::Light, Theme::Dark] {
 			let colors = ColorScheme::from(theme);
 
@@ -378,6 +325,25 @@ mod tests {
 						contrast(colors.rgb(token), colors.rgb(background)) >= 4.5,
 						"{theme:?} {token:06x} on {background:06x}"
 					);
+				}
+			}
+		}
+	}
+
+	#[test]
+	fn reading_text_has_contrast_in_every_palette() {
+		for appearance in [Theme::Light, Theme::Dark] {
+			for theme in ColorTheme::ALL {
+				let colors = ColorScheme::new(appearance, theme);
+				for token in [TEXT, super::super::foreground::BODY, TEXT_MUTED] {
+					for background in
+						[CANVAS, COMPOSER_MATERIAL >> 8, SURFACE_OVERLAY_MATERIAL >> 8]
+					{
+						assert!(
+							contrast(colors.rgb(token), colors.rgb(background)) >= 4.5,
+							"{appearance:?} {theme:?}: text {token:06x} on {background:06x}"
+						);
+					}
 				}
 			}
 		}
@@ -526,14 +492,15 @@ mod tests {
 				assert!(contrast(colors.rgb(super::super::ON_PRIMARY), colors.rgb(token)) >= 4.5);
 			}
 		}
-		for theme in ColorTheme::ALL {
-			let colors = ColorScheme::new(Theme::Dark, theme);
-
-			for token in [super::super::PRIMARY_FILL, super::super::CONTROL_ACTIVE_FILL] {
-				assert!(
-					contrast(colors.rgb(super::super::ON_PRIMARY), colors.rgb(token)) >= 3.,
-					"{theme:?} control icon"
-				);
+		for appearance in [Theme::Light, Theme::Dark] {
+			for theme in ColorTheme::ALL {
+				let colors = ColorScheme::new(appearance, theme);
+				for token in [super::super::PRIMARY_FILL, super::super::CONTROL_ACTIVE_FILL] {
+					assert!(
+						contrast(colors.rgb(super::super::ON_PRIMARY), colors.rgb(token)) >= 3.,
+						"{appearance:?} {theme:?} control icon"
+					);
+				}
 			}
 		}
 	}
@@ -542,32 +509,36 @@ mod tests {
 	fn glass_transparency_is_independent_of_color_theme_and_preserves_thin() {
 		// Native glass supplies the backdrop. A raw-desktop contrast calculation
 		// must not replace it with an almost opaque foreground reading surface.
-		let reference = ColorScheme::new(Theme::Dark, ColorTheme::TokyoNight);
+		for (appearance, reference) in
+			[(Theme::Dark, ColorTheme::TokyoNight), (Theme::Light, ColorTheme::Decodex)]
+		{
+			let reference = ColorScheme::new(appearance, reference);
 
-		for theme in ColorTheme::ALL {
-			let colors = ColorScheme::new(Theme::Dark, theme);
+			for theme in ColorTheme::ALL {
+				let colors = ColorScheme::new(appearance, theme);
 
-			for token in [
-				SHELL_MATERIAL,
-				SIDEBAR_MATERIAL,
-				AGENT_SIDEBAR_MATERIAL,
-				TOPBAR_MATERIAL,
-				CONTENT_MATERIAL,
-				AGENT_CHAT_OVERLAY,
-				COMPOSER_MATERIAL,
-				SURFACE_OVERLAY_MATERIAL,
-			] {
-				let glass = colors.material(token, Material::LiquidGlass);
+				for token in [
+					SHELL_MATERIAL,
+					SIDEBAR_MATERIAL,
+					AGENT_SIDEBAR_MATERIAL,
+					TOPBAR_MATERIAL,
+					CONTENT_MATERIAL,
+					AGENT_CHAT_OVERLAY,
+					COMPOSER_MATERIAL,
+					SURFACE_OVERLAY_MATERIAL,
+				] {
+					let glass = colors.material(token, Material::LiquidGlass);
 
-				assert_eq!(glass.a, reference.rgba(token).a, "{theme:?} {token:08x}");
-				assert_eq!(glass.alpha(1.), colors.rgba(token).alpha(1.));
-				assert_eq!(colors.material(token, Material::Thin), colors.rgba(token));
+					assert_eq!(glass.a, reference.rgba(token).a, "{theme:?} {token:08x}");
+					assert_eq!(glass.alpha(1.), colors.rgba(token).alpha(1.));
+					assert_eq!(colors.material(token, Material::Thin), colors.rgba(token));
+				}
+
+				let glass = colors.workspace(Material::LiquidGlass);
+
+				assert_eq!(glass.graph.a, 0., "{theme:?} must not cover native glass");
+				assert_eq!(glass.conversation.a, reference.rgba(AGENT_CHAT_OVERLAY).a);
 			}
-
-			let glass = colors.workspace(Material::LiquidGlass);
-
-			assert_eq!(glass.graph.a, 0., "{theme:?} must not cover native glass");
-			assert_eq!(glass.conversation.a, reference.rgba(AGENT_CHAT_OVERLAY).a);
 		}
 	}
 
@@ -583,7 +554,11 @@ mod tests {
 			let light = ColorScheme::new(Theme::Light, theme).workspace(Material::Thin);
 
 			assert_eq!(light.graph, gpui::rgba(0x00000008));
-			assert_eq!(light.conversation, gpui::rgba(0xffffffb0));
+			assert_eq!(
+				light.conversation,
+				gpui::rgb(theme.palette(Theme::Light).surface_overlay_material >> 8)
+					.opacity(0xb0 as f32 / 255.)
+			);
 
 			if theme != ColorTheme::Decodex {
 				let dark = ColorScheme::new(Theme::Dark, theme).workspace(Material::Thin);
@@ -599,11 +574,14 @@ mod tests {
 		appearance::with_theme(Theme::Light, || {
 			assert_eq!(
 				ui_theme::rgba(super::super::SHELL_MATERIAL).a,
-				gpui::rgba(super::super::SHELL_MATERIAL).a
+				gpui::rgba(ColorTheme::configured().palette(Theme::Light).shell_material).a
 			);
 			assert_eq!(ui_theme::rgba(0x00000024), gpui::rgba(0x00000024));
 			assert_eq!(ui_theme::rgb(0x123456), gpui::rgb(0x123456));
-			assert_eq!(ui_theme::rgb(super::super::TEXT), gpui::rgb(0x252c39));
+			assert_eq!(
+				ui_theme::rgb(super::super::TEXT),
+				gpui::rgb(ColorTheme::configured().palette(Theme::Light).text)
+			);
 		});
 	}
 }

@@ -19,18 +19,6 @@ use crate::{
 };
 
 impl SettingsSurface {
-	pub(super) fn theme_description(&self) -> String {
-		let saved = ColorTheme::configured();
-
-		if ui_theme::appearance::Theme::current() == ui_theme::appearance::Theme::Light
-			&& saved != ColorTheme::Decodex
-		{
-			format!("Light mode uses Decodex. {} returns in dark mode.", saved.name())
-		} else {
-			"Other themes support dark mode only.".into()
-		}
-	}
-
 	pub(super) fn theme_controls(&self, cx: &mut Context<Self>) -> impl IntoElement {
 		gpui::div()
 			.id("color-theme-picker")
@@ -46,11 +34,10 @@ impl SettingsSurface {
 
 	fn theme_option(&self, theme: ColorTheme, cx: &mut Context<Self>) -> Stateful<Div> {
 		let selected = theme == ColorScheme::current().color_theme();
-		let id = format!("color-theme-{}", theme.id());
 
 		gpui::div()
-			.id(SharedString::from(id.clone()))
-			.debug_selector(move || id.clone())
+			.id(SharedString::from(format!("color-theme-{}", theme.id())))
+			.debug_selector(move || theme.id().to_owned())
 			.role(Role::RadioButton)
 			.aria_label(format!("{} color theme", theme.name()))
 			.aria_selected(selected)
@@ -127,12 +114,7 @@ impl SettingsSurface {
 }
 
 fn preview(theme: ColorTheme) -> impl IntoElement {
-	let appearance = if theme == ColorTheme::Decodex {
-		crate::ui_theme::appearance::Theme::current()
-	} else {
-		crate::ui_theme::appearance::Theme::Dark
-	};
-	let colors = ColorScheme::new(appearance, theme);
+	let colors = ColorScheme::new(ui_theme::appearance::Theme::current(), theme);
 
 	gpui::canvas(
 		|_, _, _| (),
@@ -232,11 +214,13 @@ mod tests {
 				selected,
 				"{id}"
 			);
-			for role in [SIDEBAR_MATERIAL, COMPOSER_MATERIAL] {
-				let fill = colors.rgba(role).into();
+			for color in
+				[colors.rgb(CANVAS), colors.rgba(SIDEBAR_MATERIAL), colors.rgba(COMPOSER_MATERIAL)]
+			{
+				let fill = color.into();
 				assert!(
 					quads.iter().any(|q| card.contains(&q.bounds.center()) && q.background == fill),
-					"{id} must paint material {role:#x} with its palette alpha"
+					"{id} must paint its own palette color {color:?}"
 				);
 			}
 		});
@@ -253,20 +237,28 @@ mod tests {
 		});
 		visual.simulate_resize(gpui::size(gpui::px(820.), gpui::px(900.)));
 		visual.update(crate::ui_frame::draw_frame);
-		let dracula = ColorScheme::new(Theme::Dark, ColorTheme::Dracula);
-		for (appearance, dracula_selected) in [(Theme::Light, false), (Theme::Dark, true)] {
-			if dracula_selected {
-				let button = visual.debug_bounds("color-theme-dracula").unwrap();
-				visual.simulate_click(button.center(), Default::default());
-				visual.simulate_mouse_move(Default::default(), None, Default::default());
+		let assert_cards = |visual: &mut VisualTestContext, appearance, selected| {
+			for family in [ColorTheme::Decodex, ColorTheme::Dracula] {
+				assert_painted_card(
+					visual,
+					family.id(),
+					ColorScheme::new(appearance, family),
+					family == selected,
+				);
 			}
-			assert_painted_card(
-				visual,
-				"color-theme-decodex",
-				ColorScheme::new(appearance, ColorTheme::Decodex),
-				!dracula_selected,
-			);
-			assert_painted_card(visual, "color-theme-dracula", dracula, dracula_selected);
+		};
+		assert_cards(visual, Theme::Light, ColorTheme::Decodex);
+		let button = visual.debug_bounds(ColorTheme::Dracula.id()).unwrap();
+		visual.simulate_click(button.center(), Default::default());
+		visual.simulate_mouse_move(Default::default(), None, Default::default());
+		assert_cards(visual, Theme::Light, ColorTheme::Dracula);
+
+		// GPUI’s test platform reports a light system appearance.
+		for (appearance, expected) in
+			[(Appearance::Dark, Theme::Dark), (Appearance::System, Theme::Light)]
+		{
+			visual.update(|_, cx| appearance.apply(cx));
+			assert_cards(visual, expected, ColorTheme::Dracula);
 		}
 	}
 }

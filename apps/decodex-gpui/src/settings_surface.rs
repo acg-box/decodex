@@ -569,8 +569,6 @@ impl SettingsSurface {
 				vec![
 					ui_theme::settings_rows()
 						.py(gpui::px(8.))
-						.gap_2()
-						.child(ui_theme::settings_description(self.theme_description()))
 						.child(self.theme_controls(cx))
 						.into_any_element(),
 				],
@@ -1174,7 +1172,8 @@ mod tests {
 
 	use gpui::{self, AppContext as _, TestAppContext};
 	use ui_theme::{
-		appearance::Appearance,
+		ColorTheme,
+		appearance::{Appearance, Theme},
 		material::{GlassScope, GlassStyle, Material, Surface},
 	};
 
@@ -1206,10 +1205,6 @@ mod tests {
 
 			visual.update(crate::ui_frame::draw_current_frame);
 		}
-	}
-
-	fn scroll_to_theme(visual: &mut gpui::VisualTestContext, selector: &'static str) {
-		scroll_to_control(visual, selector);
 	}
 
 	#[gpui::test]
@@ -1405,9 +1400,9 @@ mod tests {
 			window.draw(cx).clear(cx);
 		});
 
-		let first = visual.debug_bounds("color-theme-decodex").unwrap();
-		let fifth = visual.debug_bounds("color-theme-everforest").unwrap();
-		let sixth = visual.debug_bounds("color-theme-github-dark").unwrap();
+		let first = visual.debug_bounds(ColorTheme::ALL[0].id()).unwrap();
+		let fifth = visual.debug_bounds(ColorTheme::ALL[4].id()).unwrap();
+		let sixth = visual.debug_bounds(ColorTheme::ALL[5].id()).unwrap();
 
 		assert_eq!(first.top(), fifth.top(), "five previews fit in the standard settings window");
 		assert!(fifth.right() <= visual.debug_bounds("color-theme-picker").unwrap().right());
@@ -1419,7 +1414,7 @@ mod tests {
 		});
 
 		let before = visual.debug_bounds("color-theme-picker").expect("theme gallery");
-		let last = visual.debug_bounds("color-theme-tokyo-night").expect("last theme");
+		let last = visual.debug_bounds(ColorTheme::ALL.last().unwrap().id()).expect("last theme");
 		assert!(before.contains(&last.center()), "all themes use normal page layout");
 		visual.simulate_event(gpui::ScrollEvent {
 			position: before.center(),
@@ -1452,27 +1447,12 @@ mod tests {
 			window.draw(cx).clear(cx);
 		});
 
-		let option_width = visual.debug_bounds("color-theme-decodex").unwrap().size.width;
+		let option_width = visual.debug_bounds(ColorTheme::ALL[0].id()).unwrap().size.width;
 
-		for (theme, selector) in ui_theme::ColorTheme::ALL.into_iter().zip([
-			"color-theme-decodex",
-			"color-theme-ayu-dark",
-			"color-theme-catppuccin-mocha",
-			"color-theme-dracula",
-			"color-theme-everforest",
-			"color-theme-github-dark",
-			"color-theme-gruvbox-dark",
-			"color-theme-kanagawa",
-			"color-theme-nightfox",
-			"color-theme-nord",
-			"color-theme-one-dark",
-			"color-theme-rose-pine",
-			"color-theme-solarized-dark",
-			"color-theme-tokyo-night",
-		]) {
-			scroll_to_theme(visual, selector);
+		for theme in ColorTheme::ALL {
+			scroll_to_control(visual, theme.id());
 
-			let bounds = visual.debug_bounds(selector).expect("theme card");
+			let bounds = visual.debug_bounds(theme.id()).expect("theme card");
 
 			assert!(
 				(bounds.size.width - option_width).abs() <= gpui::px(1.),
@@ -1484,15 +1464,13 @@ mod tests {
 
 			visual.simulate_click(bounds.center(), Default::default());
 
-			assert_eq!(ui_theme::ColorTheme::configured(), theme);
+			assert_eq!(ColorTheme::configured(), theme);
 
-			if theme != ui_theme::ColorTheme::Decodex {
-				assert_eq!(Appearance::current(), Appearance::Dark);
-				assert_eq!(
-					ui_theme::ColorScheme::current().hex(ui_theme::CANVAS),
-					theme.palette().canvas
-				);
-			}
+			assert_eq!(Appearance::current(), Appearance::Light);
+			assert_eq!(
+				ui_theme::ColorScheme::current().hex(ui_theme::CANVAS),
+				theme.palette(Theme::Light).canvas
+			);
 
 			visual.update(crate::ui_frame::draw_current_frame);
 		}
@@ -1502,35 +1480,21 @@ mod tests {
 		});
 
 		second.update(|window, cx| {
-			assert_eq!(ui_theme::ColorTheme::configured(), ui_theme::ColorTheme::TokyoNight);
+			assert_eq!(ColorTheme::configured(), *ColorTheme::ALL.last().unwrap());
 
 			window.draw(cx).clear(cx);
 		});
-		second.update(|_, cx| ui_theme::ColorTheme::TokyoNight.select(cx));
-		visual.update(|window, cx| {
-			assert_eq!(ui_theme::ColorScheme::current().hex(ui_theme::TEXT), 0xc0caf5);
-
-			window.draw(cx).clear(cx);
+		second.update(|_, cx| {
+			Appearance::System.select(cx);
+			ColorTheme::Nord.select(cx);
 		});
-		visual.update(|_, cx| Appearance::Light.apply(cx));
 		visual.update(|window, cx| {
-			assert_eq!(ui_theme::ColorTheme::configured(), ui_theme::ColorTheme::TokyoNight);
+			assert_eq!(Appearance::current(), Appearance::System);
+			assert_eq!(ui_theme::ColorScheme::current().color_theme(), ColorTheme::Nord);
 			assert_eq!(
-				ui_theme::ColorScheme::current().color_theme(),
-				ui_theme::ColorTheme::Decodex
+				ui_theme::ColorScheme::current().hex(ui_theme::TEXT),
+				ColorTheme::Nord.palette(Theme::current()).text
 			);
-			assert_eq!(ui_theme::ColorScheme::current().hex(ui_theme::TEXT), 0x252c39);
-
-			window.draw(cx).clear(cx);
-		});
-		visual.update(|_, cx| Appearance::Dark.apply(cx));
-		visual.update(|window, cx| {
-			assert_eq!(
-				ui_theme::ColorScheme::current().color_theme(),
-				ui_theme::ColorTheme::TokyoNight
-			);
-			assert_eq!(ui_theme::ColorScheme::current().hex(ui_theme::TEXT), 0xc0caf5);
-
 			window.draw(cx).clear(cx);
 		});
 	}
@@ -1538,7 +1502,7 @@ mod tests {
 	#[gpui::test]
 	fn theme_cards_support_keyboard_selection(cx: &mut TestAppContext) {
 		let (_, visual) = cx.add_window_view(|_, cx| {
-			ui_theme::ColorTheme::Nord.apply(cx);
+			ColorTheme::Nord.apply(cx);
 
 			let mut settings = SettingsSurface::new(DesktopSettingsController::production(), cx);
 
@@ -1557,7 +1521,7 @@ mod tests {
 		});
 		visual.simulate_keystrokes("space");
 
-		assert_eq!(ui_theme::ColorTheme::configured(), ui_theme::ColorTheme::Decodex);
+		assert_eq!(ColorTheme::configured(), ColorTheme::ALL[0]);
 
 		visual.update(|window, cx| {
 			window.draw(cx).clear(cx);
@@ -1565,7 +1529,7 @@ mod tests {
 		});
 		visual.simulate_keystrokes("enter");
 
-		assert_eq!(ui_theme::ColorTheme::configured(), ui_theme::ColorTheme::AyuDark);
+		assert_eq!(ColorTheme::configured(), ColorTheme::ALL[1]);
 	}
 
 	#[gpui::test]
