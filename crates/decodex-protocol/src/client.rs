@@ -62,6 +62,8 @@ use decodex_core::{
 type OneShotSocket = WebSocketStream<LocalTransportStream>;
 
 const CLIENT_TIMEOUT: Duration = Duration::from_secs(5);
+// Account-scoped catalogs may start a short-lived native process on a cold workspace.
+const NATIVE_CATALOG_TIMEOUT: Duration = Duration::from_secs(40);
 // Native file-detail reads have an eight-second budget.
 const REQUEST_CLIENT_TIMEOUT: Duration = Duration::from_secs(10);
 // Doctor revalidates the complete local database and runtime-authority contract.
@@ -1294,6 +1296,32 @@ impl AgentClient {
 		}
 	}
 
+	/// List directly interactive native conversations for the current account.
+	/// A connected service returns `None` when its native catalog is unavailable.
+	pub async fn native_threads(
+		&self,
+		cursor: Option<String>,
+	) -> Result<Option<crate::NativeThreadPage>, ClientFailure> {
+		self.transport.require_local_profile()?;
+		let cursor =
+			cursor.map(WireText::new).transpose().map_err(|_| ClientFailure::ProtocolMalformed)?;
+		let transport = ResetCardClient {
+			profile: self.transport.profile.clone(),
+			timeout: NATIVE_CATALOG_TIMEOUT,
+		};
+		let completed = time::timeout(
+			transport.timeout,
+			transport.query_inner("native-threads", QueryPayload::ListNativeThreads { cursor }),
+		)
+		.await
+		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+		close_one_shot_socket(completed.socket).await;
+		match completed.value {
+			QueryResultPayload::NativeThreads(page) => Ok(page),
+			_ => Err(ClientFailure::ProtocolMalformed),
+		}
+	}
+
 	/// Inspect native descendants without creating local execution records.
 	pub async fn native_agents(
 		&self,
@@ -2316,7 +2344,7 @@ impl AgentClient {
 
 		let transport = ResetCardClient {
 			profile: self.transport.profile.clone(),
-			timeout: Duration::from_secs(40),
+			timeout: NATIVE_CATALOG_TIMEOUT,
 		};
 		let completed = time::timeout(
 			transport.timeout,
@@ -3892,6 +3920,7 @@ fn agent_action_work_id(action: &AgentActionDto) -> &EntityId {
 		AgentActionDto::SetAssistant { agent_id, .. } => agent_id,
 		AgentActionDto::AddProject { project_id, .. }
 		| AgentActionDto::DeleteProject { project_id } => project_id,
+		AgentActionDto::RegisterNativeThread { thread_id, .. } => thread_id,
 		AgentActionDto::NewConversation { work_id, .. }
 		| AgentActionDto::DiscardEmptyWork { work_id } => work_id,
 		AgentActionDto::AcknowledgeAppUiCall { work_id, .. } => work_id,

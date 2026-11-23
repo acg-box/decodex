@@ -11,6 +11,8 @@
 mod native_status;
 #[path = "native_titlebar.rs"] mod native_titlebar;
 #[path = "shell_navigation.rs"] mod navigation;
+#[path = "shell_overlay.rs"] mod overlay;
+use overlay::WorkspaceOverlay;
 #[path = "ordinary_drafts.rs"] mod ordinary_drafts;
 #[path = "quota_meter.rs"] mod quota_meter;
 #[path = "shell_reset_cards.rs"] mod reset_cards;
@@ -37,11 +39,10 @@ use std::{
 };
 
 use gpui::{
-	Animation, AnimationExt, AnyElement, App, AppContext as _, AsyncApp, Bounds, BoxShadow,
-	ClipboardItem, Context, CursorStyle, Div, Entity, FocusHandle, Focusable, FontWeight, Global,
-	Hsla, KeyBinding, KeyDownEvent, Modifiers, MouseButton, Render, Role, SharedString, Stateful,
-	Subscription, Task, TitlebarOptions, WeakEntity, Window, WindowBackgroundAppearance,
-	WindowBounds, WindowControlArea, WindowHandle, WindowOptions,
+	Animation, AnimationExt, AnyElement, App, AppContext as _, AsyncApp, BoxShadow, ClipboardItem,
+	Context, CursorStyle, Div, Entity, FocusHandle, Focusable, FontWeight, Global, Hsla,
+	KeyBinding, KeyDownEvent, Modifiers, MouseButton, Render, Role, SharedString, Stateful,
+	Subscription, Task, WeakEntity, Window, WindowControlArea, WindowHandle,
 	accesskit::Toggled,
 	ease_in_out,
 	prelude::{
@@ -79,9 +80,7 @@ use crate::{
 		CONTROL_ACTIVE_FILL, CONTROL_GROUP_HEIGHT, CONTROL_MARGIN, CONTROL_SELECTED_FILL,
 		CONTROL_SELECTED_HOVER, FONT_FAMILY, HEADING_SIZE, INFO, MOTION_PANEL, PRESSED_FILL,
 		SELECTED_BORDER, SELECTED_FILL, SETTINGS_GROUP_GAP, SETTINGS_HELP_SIZE, SETTINGS_INSET,
-		SETTINGS_LABEL_SIZE, SETTINGS_TOP, SETTINGS_WIDTH, SETTINGS_WINDOW_MIN_WIDTH,
-		SHELL_MATERIAL, SURFACE_RAISED_MATERIAL, TEXT_FAINT, WORKSPACE_RADIUS, appearance,
-		window_material,
+		SETTINGS_LABEL_SIZE, SETTINGS_WIDTH, SHELL_MATERIAL, SURFACE_RAISED_MATERIAL, TEXT_FAINT,
 	},
 };
 use account_feedback::AccountFeedback;
@@ -222,11 +221,16 @@ const SETTINGS_SECTIONS: [(Destination, Option<SettingsCategory>, &str); 6] = [
 
 /// One window-owned production shell. Connection ownership lives at application scope.
 pub(crate) struct Shell {
+	overlay: Option<WorkspaceOverlay>,
+	overlay_focus: FocusHandle,
+	overlay_parent: gpui::AnyWindowHandle,
+	overlay_capture_focus: bool,
+	overlay_return_focus: Option<FocusHandle>,
 	ordinary_last: Option<DesktopOrdinaryDraft>,
 	ordinary_owner: Option<EntityId>,
 	ordinary_syncing: bool,
 	reset_cards: reset_cards::ResetCardsPanel,
-	settings_window: Option<WindowHandle<SettingsWindow>>,
+	settings_navigation: navigation::NavigationHistory,
 	settings_selected: Destination,
 	selected: Destination,
 	inspector_tab: InspectorTab,
@@ -361,6 +365,17 @@ impl Shell {
 		.detach();
 
 		let agent = cx.new(AgentSurface::new);
+		cx.subscribe(&agent, |shell, _, event: &agent_surface::CatalogEvent, cx| match *event {
+			agent_surface::CatalogEvent::Open(catalog) =>
+				shell.show_overlay(WorkspaceOverlay::Catalog(catalog), cx),
+			agent_surface::CatalogEvent::Close
+				if matches!(shell.overlay, Some(WorkspaceOverlay::Catalog(_))) =>
+				shell.close_overlay(cx),
+			agent_surface::CatalogEvent::Close => {},
+			agent_surface::CatalogEvent::OpenSettings(destination) =>
+				shell.open_settings(destination, cx),
+		})
+		.detach();
 		let titlebar = native_titlebar::Titlebar::default();
 		let performance = cx.new(|cx| {
 			crate::ui_performance::PerformanceIsland::new(cx).with_titlebar(titlebar.clone())
@@ -399,7 +414,7 @@ impl Shell {
 		window.focus(&root_focus, cx);
 		Self {
 			performance,
-			settings_window: None,
+			settings_navigation: navigation::NavigationHistory::new(),
 			settings_selected: Destination::Settings,
 			selected: Destination::Agent,
 			inspector_tab: InspectorTab::Context,
@@ -429,6 +444,11 @@ impl Shell {
 			opened_account_login_url: None,
 			pending_account_logout: None,
 			reset_cards: reset_cards::ResetCardsPanel::default(),
+			overlay: None,
+			overlay_parent: window.window_handle(),
+			overlay_focus: cx.focus_handle(),
+			overlay_capture_focus: false,
+			overlay_return_focus: None,
 			account_profile_controller,
 			account_profile,
 			expanded_accounts: Default::default(),
@@ -783,8 +803,12 @@ impl Shell {
 	) -> Self {
 		let mut shell = Self::visual_workbench(window, cx);
 
-		shell.selected = destination;
-		shell.settings_selected = destination;
+		if destination.is_settings() {
+			shell.settings_selected = destination;
+			shell.show_overlay(WorkspaceOverlay::Settings, cx);
+		} else {
+			shell.selected = destination;
+		}
 
 		if destination == Destination::Settings {
 			#[cfg(feature = "visual-capture")]
@@ -880,28 +904,22 @@ impl Shell {
 		if let Some(index) =
 			self.destination_focus.iter().position(|handle| handle.is_focused(window))
 		{
-			if Destination::ALL[index] == Destination::Settings {
-				self.open_settings_window(Destination::Settings, cx);
-			} else {
-				self.select_destination(Destination::ALL[index], cx);
-			}
+			self.select_destination(Destination::ALL[index], cx);
 		}
 	}
 
 	fn select_destination(&mut self, destination: Destination, cx: &mut Context<Self>) {
+		if destination.is_settings() {
+			self.open_settings(destination, cx);
+			return;
+		}
 		if self.selected == destination {
 			return;
 		}
 		self.record_navigation(cx);
 
-		if self.selected == Destination::Health {
-			self.health_query.deactivate();
-		}
 		if self.selected == Destination::Conversations {
 			self.conversations.deactivate();
-		}
-		if self.selected == Destination::Accounts {
-			self.accounts_controller.deactivate();
 		}
 		if self.selected == Destination::Agent {
 			self.agent.update(cx, AgentSurface::stop_voice);
@@ -923,22 +941,11 @@ impl Shell {
 			self.agent.update(cx, |surface, cx| surface.seed_context(cwd, accounts, cx));
 			self.agent.update(cx, AgentSurface::refresh);
 		}
-		if destination == Destination::Health {
-			self.health_query.activate();
-		}
 		if destination == Destination::Conversations {
 			self.conversations.activate();
 
 			self.last_provider_sync = None;
 		}
-		if destination == Destination::Accounts {
-			self.accounts_controller.activate();
-			self.synchronize_accounts();
-		}
-		if destination == Destination::Settings {
-			self.settings.update(cx, SettingsSurface::refresh);
-		}
-
 		self.health = self.health_query.snapshot();
 
 		self.record_navigation(cx);
@@ -960,7 +967,7 @@ impl Shell {
 	}
 
 	fn activate_health(&mut self, _: &ActivateHealth, _: &mut Window, cx: &mut Context<Self>) {
-		self.open_settings_window(Destination::Health, cx);
+		self.open_settings(Destination::Health, cx);
 		cx.stop_propagation();
 	}
 
@@ -1058,6 +1065,11 @@ impl Shell {
 		{
 			return;
 		}
+		if self.overlay.is_some() {
+			self.escape_overlay(cx);
+			cx.stop_propagation();
+			return;
+		}
 		if self.selected == Destination::Agent {
 			if self.agent.update(cx, |agent, cx| agent.dismiss_workspace_overlays(window, cx)) {
 				cx.stop_propagation();
@@ -1100,7 +1112,7 @@ impl Shell {
 	}
 
 	fn activate_settings(&mut self, _: &ActivateSettings, _: &mut Window, cx: &mut Context<Self>) {
-		self.open_settings_window(Destination::Settings, cx);
+		self.open_settings(Destination::Settings, cx);
 	}
 
 	fn refresh_health(&mut self, _: &RefreshHealth, _: &mut Window, cx: &mut Context<Self>) {
@@ -1119,9 +1131,7 @@ impl Shell {
 	fn bind_health_query(&mut self, health_query: HealthQuery, cx: &mut Context<Self>) {
 		self.health_query = health_query;
 
-		if self.selected == Destination::Health
-			|| (self.settings_window.is_some() && self.settings_selected == Destination::Health)
-		{
+		if self.settings_open() && self.settings_selected == Destination::Health {
 			self.health_query.activate();
 		}
 
@@ -1186,9 +1196,7 @@ impl Shell {
 		self.account_status = None;
 		self.account_status_target = None;
 
-		if self.selected == Destination::Accounts
-			|| (self.settings_window.is_some() && self.settings_selected == Destination::Accounts)
-		{
+		if self.settings_open() && self.settings_selected == Destination::Accounts {
 			self.accounts_controller.activate();
 		}
 
@@ -1918,22 +1926,10 @@ impl Shell {
 }
 
 impl Shell {
-	fn select_settings_destination(
-		&mut self,
-		destination: Destination,
-		standalone: bool,
-		cx: &mut Context<Self>,
-	) {
-		if standalone {
-			self.select_settings_section(destination, cx);
-		} else {
-			self.select_destination(destination, cx);
-			self.record_navigation(cx);
-			cx.notify();
-		}
-	}
-
 	fn select_settings_section(&mut self, destination: Destination, cx: &mut Context<Self>) {
+		if self.settings_selected != destination {
+			self.leave_settings_section();
+		}
 		self.settings_selected = destination;
 
 		match destination {
@@ -1945,17 +1941,39 @@ impl Shell {
 			_ => self.settings.update(cx, SettingsSurface::refresh),
 		}
 
+		self.record_settings_navigation(cx);
 		cx.notify();
 	}
 
-	fn open_settings_window(&mut self, section: Destination, cx: &mut Context<Self>) {
-		if section != Destination::Settings || self.settings_window.is_none() {
+	fn leave_settings_section(&self) {
+		match self.settings_selected {
+			Destination::Health => self.health_query.deactivate(),
+			Destination::Accounts => self.accounts_controller.deactivate(),
+			_ => {},
+		}
+	}
+
+	fn settings_open(&self) -> bool {
+		self.overlay == Some(WorkspaceOverlay::Settings)
+	}
+
+	fn open_settings(&mut self, section: Destination, cx: &mut Context<Self>) {
+		let opening = !self.settings_open();
+		if opening || section != Destination::Settings {
 			self.select_settings_section(section, cx);
 		}
+		if opening {
+			self.settings_navigation = navigation::NavigationHistory::for_settings(self, cx);
+		}
+		self.show_overlay(WorkspaceOverlay::Settings, cx);
+	}
 
-		let owner = cx.entity();
-
-		cx.defer(move |cx| open_settings_window(owner, cx));
+	fn render_settings_content(
+		&mut self,
+		window: &mut Window,
+		cx: &mut Context<Self>,
+	) -> AnyElement {
+		settings_workspace_content(self, self.refresh_focus.clone(), window, cx)
 	}
 }
 
@@ -1974,6 +1992,11 @@ impl Shell {
 		window: &mut Window,
 		cx: &mut Context<Self>,
 	) {
+		if self.overlay.is_some() {
+			self.escape_overlay(cx);
+			cx.stop_propagation();
+			return;
+		}
 		self.agent.update(cx, |agent, cx| {
 			agent.dismiss_navigation_confirmation(cx);
 			agent.dismiss_workspace_overlays(window, cx);
@@ -1987,10 +2010,10 @@ impl Shell {
 
 impl Render for Shell {
 	fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-		self.navigation.repair_focus(&self.root_focus, window);
-		if self.selected != Destination::Agent {
-			AgentSurface::hide_archive_selection_material(window, cx);
+		if self.overlay.is_none() {
+			self.navigation.repair_focus(&self.root_focus, window);
 		}
+		self.capture_overlay_focus(window, cx);
 		let presentation = connection_presentation(self.connection);
 		let root = gpui::div()
 			.id("decodex-shell")
@@ -2003,6 +2026,12 @@ impl Render for Shell {
 			.child(navigation::mouse_navigation(cx.entity().downgrade(), Self::navigate_history))
 			.on_action(cx.listener(Self::focus_next))
 			.on_action(cx.listener(Self::focus_previous))
+			.when(self.overlay.is_some(), |root| {
+				root.on_action(cx.listener(|shell, _: &CloseWindow, _, cx| {
+					shell.close_overlay(cx);
+					cx.stop_propagation();
+				}))
+			})
 			.on_action(cx.listener(Self::activate_conversations))
 			.on_action(cx.listener(Self::activate_agent))
 			.on_action(cx.listener(Self::activate_health))
@@ -2080,10 +2109,14 @@ impl Render for Shell {
 
 		#[cfg(all(target_os = "macos", not(test)))]
 		self.agent.update(cx, |agent, cx| {
-			if self.selected != Destination::Agent {
+			if self.selected != Destination::Agent || self.overlay.is_some() {
 				agent.hide_latest_button(window, cx);
 			}
-			agent.prepare_native_composer(self.selected == Destination::Agent, window, cx);
+			agent.prepare_native_composer(
+				self.selected == Destination::Agent && self.overlay.is_none(),
+				window,
+				cx,
+			);
 			agent.prepare_native_menu(window, cx);
 		});
 
@@ -2100,10 +2133,12 @@ impl Render for Shell {
 			_ => ui_motion::arrival(format!("{:?}", self.selected), content).into_any_element(),
 		};
 
+		let overlay = self.render_overlay(window, cx);
 		root.relative()
 			.child(ui_layout::panel(content))
 			.child(controls)
 			.child(gpui::deferred(status).priority(3))
+			.children(overlay.map(|overlay| gpui::deferred(overlay).priority(7)))
 		// Keep global notifications above deferred composer menus throughout dismissal.
 	}
 }
@@ -2170,66 +2205,6 @@ impl LifecycleOwner {
 	#[cfg(test)]
 	pub(crate) fn is_running(&self) -> bool {
 		self.running
-	}
-}
-
-/// Settings render the existing controller-backed surfaces in their own window.
-pub(crate) struct SettingsWindow {
-	owner: Entity<Shell>,
-	focus: FocusHandle,
-	navigation: navigation::NavigationHistory,
-	_observation: Subscription,
-}
-impl SettingsWindow {
-	pub(crate) fn new(owner: Entity<Shell>, window: &mut Window, cx: &mut Context<Self>) -> Self {
-		let focus = cx.focus_handle();
-
-		window.focus(&focus, cx);
-
-		let navigation = navigation::NavigationHistory::for_settings(owner.read(cx), cx);
-		let observation = cx.observe(&owner, |settings, _, cx| {
-			settings.record_navigation(cx);
-			cx.notify();
-		});
-
-		Self { owner, focus, navigation, _observation: observation }
-	}
-}
-
-impl Render for SettingsWindow {
-	fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-		self.navigation.repair_focus(&self.focus, window);
-		let content = self.owner.update(cx, |s, cx| {
-			settings_workspace_content(s, true, s.refresh_focus.clone(), window, cx)
-		});
-
-		gpui::div()
-			.id("settings-window")
-			.size_full()
-			.flex()
-			.font_family(FONT_FAMILY)
-			.text_color(ui_theme::rgb(WB_TEXT))
-			.bg(ui_theme::rgba(SHELL_MATERIAL))
-			.key_context("SettingsWindow")
-			.track_focus(&self.focus)
-			.child(navigation::mouse_navigation(cx.entity().downgrade(), Self::navigate_history))
-			.on_action(cx.listener(|_, _: &CloseWindow, window, cx| {
-				window.remove_window();
-				cx.stop_propagation();
-			}))
-			.on_action(cx.listener(|_, _: &ActivateSettings, _, cx| cx.stop_propagation()))
-			.on_action(cx.listener(|_, _: &FocusNext, window, cx| window.focus_next(cx)))
-			.on_action(cx.listener(|_, _: &FocusPrevious, window, cx| window.focus_prev(cx)))
-			.on_action(cx.listener(|settings, _: &NavigateBack, window, cx| {
-				settings.navigate_history(false, window, cx);
-				cx.stop_propagation();
-			}))
-			.on_action(cx.listener(|settings, _: &NavigateForward, window, cx| {
-				settings.navigate_history(true, window, cx);
-				cx.stop_propagation();
-			}))
-			.relative()
-			.child(content)
 	}
 }
 
@@ -2322,6 +2297,10 @@ impl Destination {
 		Self::Settings,
 	];
 
+	fn is_settings(self) -> bool {
+		matches!(self, Self::Settings | Self::Accounts | Self::Health)
+	}
+
 	pub(crate) const fn label(self) -> &'static str {
 		match self {
 			Self::Agent => "Main",
@@ -2394,8 +2373,9 @@ pub(crate) fn bind_keys(cx: &mut App) {
 	cx.on_action(|_: &ActivateSettings, cx| {
 		cx.defer(|cx| {
 			if let Some(main) = cx.windows().into_iter().find_map(|w| w.downcast::<Shell>()) {
-				let _ = main.update(cx, |shell, _, cx| {
-					shell.open_settings_window(Destination::Settings, cx);
+				let _ = main.update(cx, |shell, window, cx| {
+					window.activate_window();
+					shell.open_settings(Destination::Settings, cx);
 				});
 			}
 		});
@@ -2423,7 +2403,6 @@ pub(crate) fn bind_keys(cx: &mut App) {
 	composer_input::bind_keys(cx);
 	AgentSurface::bind_command_keys(cx);
 
-	cx.bind_keys([KeyBinding::new("cmd-w", CloseWindow, Some("SettingsWindow"))]);
 	crate::session_settings::bind_keys(cx);
 	cx.bind_keys([
 		KeyBinding::new("cmd-shift-r", ReloadWorkspace, None),
@@ -3100,7 +3079,7 @@ fn topbar_controls(
 					cx.stop_propagation();
 				})
 				.on_click(cx.listener(|shell, _, _, cx| {
-					shell.open_settings_window(Destination::Settings, cx);
+					shell.open_settings(Destination::Settings, cx);
 				}))
 				.relative()
 				.child(shell.titlebar.bordered_control(1.))
@@ -5890,9 +5869,6 @@ fn destination_content(
 				.child(conversations_content(shell, cx))
 				.into_any_element();
 		},
-		Destination::Settings | Destination::Accounts | Destination::Health => {
-			return settings_workspace_content(shell, false, refresh_focus, window, cx);
-		},
 		_ => {},
 	}
 
@@ -5916,7 +5892,6 @@ fn destination_content(
 
 fn settings_navigation(
 	shell: &Shell,
-	standalone: bool,
 	selected: Destination,
 	cx: &mut Context<Shell>,
 ) -> AnyElement {
@@ -5958,7 +5933,7 @@ fn settings_navigation(
 						});
 					}
 
-					s.select_settings_destination(destination, standalone, cx);
+					s.select_settings_section(destination, cx);
 				}))
 				.on_action(cx.listener(Shell::focus_next))
 				.on_action(cx.listener(Shell::focus_previous))
@@ -5980,7 +5955,7 @@ fn settings_navigation(
 						});
 					}
 
-					s.select_settings_destination(destination, standalone, cx);
+					s.select_settings_section(destination, cx);
 				}))
 				.gap(gpui::px(8.0))
 				.child(workspace_symbols::icon_sized(symbol, 13.))
@@ -6014,19 +5989,6 @@ fn settings_navigation(
 				)
 				.children(rows),
 		)
-		.child(gpui::div().flex_1())
-		.child(
-			gpui::div()
-				.px_2()
-				.pb_2()
-				.flex()
-				.flex_col()
-				.gap_1()
-				.text_size(gpui::px(10.5))
-				.text_color(ui_theme::rgb(crate::ui_theme::TEXT_MUTED))
-				.child("Decodex")
-				.child(format!("Version {}", env!("CARGO_PKG_VERSION"))),
-		)
 		.into_any_element()
 }
 
@@ -6039,35 +6001,23 @@ fn settings_navigation_surface() -> Div {
 		.min_w(gpui::px(176.0))
 		.h_full()
 		.p_4()
-		.pt(gpui::px(WINDOW_CONTROLS_CLEARANCE))
 		.flex()
 		.flex_col()
 		.gap(gpui::px(3.0))
 		.text_size(gpui::px(SETTINGS_LABEL_SIZE))
 		.line_height(gpui::px(18.0))
-		.pr(gpui::px(16.))
-		.bg(ui_theme::rgba(ui_theme::SIDEBAR_MATERIAL))
-		.child(
-			gpui::div()
-				.px_2()
-				.pt(gpui::px(SETTINGS_TOP))
-				.pb(gpui::px(SETTINGS_GROUP_GAP))
-				.text_size(gpui::px(14.0))
-				.line_height(gpui::px(20.0))
-				.font_weight(FontWeight::SEMIBOLD)
-				.child("Settings"),
-		)
+		.border_r(gpui::px(1.))
+		.border_color(ui_theme::rgba(ui_theme::PANEL_DIVIDER))
 }
 
 fn settings_workspace_content(
 	shell: &Shell,
-	standalone: bool,
 	refresh_focus: FocusHandle,
 	window: &mut Window,
 	cx: &mut Context<Shell>,
 ) -> AnyElement {
-	let selected = if standalone { shell.settings_selected } else { shell.selected };
-	let navigation = settings_navigation(shell, standalone, selected, cx);
+	let selected = shell.settings_selected;
+	let navigation = settings_navigation(shell, selected, cx);
 	let panel = gpui::div()
 		.debug_selector(|| "settings-content-pane".into())
 		.flex_1()
@@ -6075,8 +6025,6 @@ fn settings_workspace_content(
 		.min_h_0()
 		.h_full()
 		.overflow_hidden()
-		.bg(ui_theme::rgba(CONTENT_MATERIAL))
-		.pt(gpui::px(WINDOW_CONTROLS_CLEARANCE))
 		.flex()
 		.flex_col();
 	let content = if selected == Destination::Settings {
@@ -6115,114 +6063,16 @@ fn settings_workspace_content(
 		.id("settings-workspace")
 		.role(Role::Main)
 		.aria_label("Settings")
-		// One outer contour keeps the tonal pane boundary continuous.
-		.rounded(gpui::px(WORKSPACE_RADIUS))
 		.overflow_hidden()
 		.flex_1()
 		.min_w_0()
 		.min_h_0()
 		.flex()
-		.when(standalone || shell.left_sidebar_visible, |layout| layout.child(navigation))
+		.child(navigation)
 		.child(
 			gpui::div().tab_group().tab_index(1).flex_1().min_w_0().min_h_0().flex().child(content),
 		)
 		.into_any_element()
-}
-
-fn open_settings_window(owner: Entity<Shell>, cx: &mut App) {
-	if let Some(handle) = owner.read(cx).settings_window
-		&& handle.update(cx, |_, window, _| window.activate_window()).is_ok()
-	{
-		return;
-	}
-
-	let parent = cx
-		.windows()
-		.into_iter()
-		.filter_map(|w| w.downcast::<Shell>())
-		.find(|w| w.entity(cx).is_ok_and(|entity| entity == owner));
-	let bounds =
-		Bounds::centered(None, gpui::size(gpui::px(SETTINGS_WINDOW_MIN_WIDTH), gpui::px(620.)), cx);
-
-	match cx.open_window(
-		WindowOptions {
-			titlebar: Some(TitlebarOptions {
-				title: Some("Decodex Settings".into()),
-				appears_transparent: true,
-				..Default::default()
-			}),
-			window_background: WindowBackgroundAppearance::Blurred,
-			window_bounds: Some(WindowBounds::Windowed(bounds)),
-			window_min_size: Some(gpui::size(gpui::px(SETTINGS_WINDOW_MIN_WIDTH), gpui::px(480.))),
-			// Install the accessibility adapter before the first key-window notification.
-			focus: false,
-			show: false,
-			..ui_motion::window_options()
-		},
-		{
-			let owner = owner.clone();
-
-			move |window, cx| {
-				cx.new(|cx| {
-					ui_motion::observe_activation(window, cx);
-					appearance::observe(window, cx);
-
-					{
-						// Install the backdrop before showing the first Settings frame.
-						window_material::configure(window);
-						cx.observe_window_appearance(window, |_, window, _| {
-							window_material::configure(window)
-						})
-						.detach();
-					}
-
-					let closing_window = window.window_handle();
-
-					cx.on_release(move |settings: &mut SettingsWindow, cx| {
-						let owner = settings.owner.downgrade();
-
-						// Run after AppKit has removed Settings so it cannot win key focus back.
-						cx.defer(move |cx| {
-							let Some(owner) = owner.upgrade() else {
-								return;
-							};
-
-							owner.update(cx, |s, cx| {
-								if s.settings_window
-									.is_some_and(|w| w.window_id() == closing_window.window_id())
-								{
-									s.settings_window = None;
-								}
-
-								cx.notify();
-							});
-
-							if let Some(parent) = parent {
-								let _ = parent.update(cx, |_, window, _| window.activate_window());
-							}
-						});
-					})
-					.detach();
-
-					SettingsWindow::new(owner, window, cx)
-				})
-			}
-		},
-	) {
-		Ok(handle) => {
-			owner.update(cx, |s, _| s.settings_window = Some(handle));
-
-			let _ = handle.update(cx, |_, window, _| window.activate_window());
-		},
-		Err(error) => {
-			owner.update(cx, |s, cx| {
-				s.account_status_target = None;
-				s.account_status = Some(format!("Could not open Settings: {error}").into());
-
-				cx.notify();
-			});
-		},
-	}
 }
 
 fn composer_send(can_send: bool, cx: &mut Context<Shell>) -> AnyElement {
@@ -7065,7 +6915,8 @@ mod tests {
 				s.accounts.accounts.clear();
 
 				s.accounts.load = load;
-				s.selected = Destination::Accounts;
+				s.settings_selected = Destination::Accounts;
+				s.show_overlay(crate::shell::WorkspaceOverlay::Settings, cx);
 
 				cx.notify();
 			});
@@ -7099,11 +6950,12 @@ mod tests {
 		let (shell, visual) = open_shell(cx);
 
 		for observed in [AccountObservedStateDto::Available, AccountObservedStateDto::AuthFailed] {
-			shell.update(visual, |s, _| {
+			shell.update(visual, |s, cx| {
 				s.visual_accounts_and_health();
 
 				s.accounts.accounts[0].observed_state = observed;
-				s.selected = Destination::Accounts;
+				s.settings_selected = Destination::Accounts;
+				s.show_overlay(crate::shell::WorkspaceOverlay::Settings, cx);
 			});
 
 			visual.update(|window, cx| {
@@ -7145,7 +6997,8 @@ mod tests {
 			shell.update(visual, |s, cx| {
 				s.visual_accounts_and_health();
 
-				s.selected = Destination::Accounts;
+				s.settings_selected = Destination::Accounts;
+				s.show_overlay(crate::shell::WorkspaceOverlay::Settings, cx);
 				s.account_login_task = Some(cx.background_executor().spawn(future::pending()));
 				s.account_login_status = Some(
 					serde_json::from_value(serde_json::json!({
@@ -7160,10 +7013,7 @@ mod tests {
 			});
 
 			visual.update(|window, cx| {
-				window.resize(gpui::size(
-					gpui::px(ui_theme::SETTINGS_WINDOW_MIN_WIDTH),
-					gpui::px(620.),
-				));
+				window.resize(gpui::size(gpui::px(920.), gpui::px(620.)));
 				window.draw(cx).clear(cx);
 			});
 
@@ -7880,13 +7730,12 @@ mod tests {
 		let (shell, visual) = open_shell(cx);
 
 		shell.update(visual, |s, cx| {
-			s.open_settings_window(Destination::Health, cx);
+			s.open_settings(Destination::Health, cx);
 			s.visual_accounts_and_health();
 			cx.notify();
 		});
 
-		let handle = shell.read_with(visual, |s, _| s.settings_window.unwrap());
-		let settings = &mut VisualTestContext::from_window(handle.into(), visual);
+		let settings = &mut *visual;
 
 		settings.simulate_resize(gpui::size(gpui::px(860.), gpui::px(480.)));
 		settings.update(crate::ui_frame::draw_current_frame);
@@ -8261,7 +8110,7 @@ mod tests {
 
 			visual.simulate_keystrokes("enter");
 
-			assert_eq!(shell.read_with(visual, |shell, _| shell.selected), expected);
+			assert_eq!(shell.read_with(visual, |shell, _| shell.settings_selected), expected);
 		}
 	}
 
@@ -8271,8 +8120,7 @@ mod tests {
 
 		visual.simulate_keystrokes("cmd-,");
 
-		let handle = shell.read_with(visual, |s, _| s.settings_window.expect("settings window"));
-		let settings = &mut gpui::VisualTestContext::from_window(handle.into(), visual);
+		let settings = &mut *visual;
 
 		settings.update(crate::ui_frame::draw_current_frame);
 
@@ -8342,8 +8190,7 @@ mod tests {
 		let (shell, visual) = open_shell(cx);
 		shell.update(visual, |shell, _| shell.visual_accounts_and_health());
 		visual.simulate_keystrokes("cmd-,");
-		let handle = shell.read_with(visual, |s, _| s.settings_window.unwrap());
-		let settings = &mut gpui::VisualTestContext::from_window(handle.into(), visual);
+		let settings = &mut *visual;
 
 		for (destination, category, selector) in [
 			(Destination::Settings, Some(super::SettingsCategory::Agents), "default-permissions"),
@@ -8381,17 +8228,13 @@ mod tests {
 
 	#[gpui::test]
 	fn settings_minimum_window_keeps_five_theme_previews_per_row(cx: &mut TestAppContext) {
-		let (shell, visual) = open_shell(cx);
+		let (_, visual) = open_shell(cx);
 
 		visual.simulate_keystrokes("cmd-,");
 
-		let handle = shell.read_with(visual, |s, _| s.settings_window.expect("settings window"));
-		let settings = &mut gpui::VisualTestContext::from_window(handle.into(), visual);
+		let settings = &mut *visual;
 
-		settings.simulate_resize(gpui::size(
-			gpui::px(ui_theme::SETTINGS_WINDOW_MIN_WIDTH),
-			gpui::px(480.),
-		));
+		settings.simulate_resize(gpui::size(gpui::px(920.), gpui::px(480.)));
 		settings.simulate_keystrokes("tab tab tab enter");
 		settings.update(crate::ui_frame::draw_current_frame);
 
@@ -8439,14 +8282,14 @@ mod tests {
 			.unwrap();
 		visual.run_until_parked();
 		shell.read_with(visual, |s, cx| {
-			assert!(s.settings_window.is_some());
+			assert!(s.settings_open());
 			assert_eq!(s.selected, Destination::Agent);
 			assert_eq!(s.agent.read(cx).navigation_location(), conversation);
 		});
 	}
 
 	#[gpui::test]
-	fn settings_window_preserves_workspace_and_reuses_one_window(cx: &mut TestAppContext) {
+	fn settings_overlay_preserves_workspace_and_reuses_main_window(cx: &mut TestAppContext) {
 		let (shell, visual) = open_shell(cx);
 
 		// Match startup ordering: the menu binds its global close action after the shell.
@@ -8458,24 +8301,19 @@ mod tests {
 
 		visual.simulate_keystrokes("cmd-,");
 
-		let handle = shell.read_with(visual, |s, _| {
-			assert_eq!(s.selected, Destination::Agent);
-
-			s.settings_window.expect("settings window")
-		});
-
-		shell.update(visual, |s, cx| s.open_settings_window(Destination::Accounts, cx));
+		visual.update(|_, cx| assert_eq!(cx.windows().len(), 1));
+		shell.update(visual, |s, cx| s.open_settings(Destination::Accounts, cx));
 		shell.read_with(visual, |s, cx| {
 			assert_eq!(s.selected, Destination::Agent);
 			assert_eq!(s.settings_selected, Destination::Accounts);
-			assert_eq!(s.settings_window.unwrap(), handle);
+			assert!(s.settings_open());
 			assert_eq!(s.agent.read(cx).workspace_panels(), before);
 		});
 
-		let settings = &mut gpui::VisualTestContext::from_window(handle.into(), visual);
+		let settings = &mut *visual;
 
 		settings.simulate_keystrokes("cmd-w");
-		shell.read_with(visual, |s, _| assert!(s.settings_window.is_none()));
+		shell.read_with(visual, |s, _| assert!(!s.settings_open()));
 		visual.update(|window, cx| {
 			assert_eq!(
 				cx.active_window(),
@@ -8483,9 +8321,9 @@ mod tests {
 				"closing Settings must reactivate the workspace"
 			);
 		});
-		shell.update(visual, |s, cx| s.open_settings_window(Destination::Settings, cx));
+		shell.update(visual, |s, cx| s.open_settings(Destination::Settings, cx));
 		shell.read_with(visual, |s, _| {
-			assert_ne!(s.settings_window.unwrap(), handle);
+			assert!(s.settings_open());
 			assert_eq!(s.selected, Destination::Agent);
 		});
 		shell.update(visual, |s, cx| {
@@ -8494,8 +8332,7 @@ mod tests {
 				cx.notify();
 			});
 		});
-		let handle = shell.read_with(visual, |s, _| s.settings_window.unwrap());
-		let settings = &mut gpui::VisualTestContext::from_window(handle.into(), visual);
+		let settings = &mut *visual;
 		settings.update(crate::ui_frame::draw_current_frame);
 		let trigger = settings.debug_bounds("default-permissions").unwrap();
 		settings.simulate_click(trigger.center(), Default::default());
@@ -8507,10 +8344,7 @@ mod tests {
 		settings.simulate_keystrokes("escape");
 		settings.update(crate::ui_frame::draw_current_frame);
 		assert!(settings.debug_bounds("permission-choice-0").is_none());
-		shell.read_with(visual, |s, _| assert_eq!(s.settings_window, Some(handle)));
-		settings.simulate_keystrokes("escape");
-		settings.update(crate::ui_frame::draw_current_frame);
-		shell.read_with(visual, |s, _| assert_eq!(s.settings_window, Some(handle)));
+		shell.read_with(settings, |s, _| assert!(s.settings_open()));
 		for key in ["tab", "shift-tab"] {
 			settings.simulate_click(trigger.center(), Default::default());
 			settings.update(crate::ui_frame::draw_current_frame);
@@ -8521,7 +8355,11 @@ mod tests {
 		settings.simulate_click(trigger.center(), Default::default());
 		settings.update(crate::ui_frame::draw_current_frame);
 		settings.simulate_keystrokes("cmd-w");
-		shell.read_with(visual, |s, _| assert!(s.settings_window.is_none()));
+		shell.read_with(settings, |s, _| assert!(!s.settings_open()));
+		settings.simulate_keystrokes("cmd-,");
+		settings.update(crate::ui_frame::draw_current_frame);
+		settings.simulate_keystrokes("escape");
+		shell.read_with(settings, |s, _| assert!(!s.settings_open()));
 	}
 
 	#[gpui::test]
@@ -8550,11 +8388,12 @@ mod tests {
 		visual.simulate_click(appearance.center(), Default::default());
 		visual.simulate_keystrokes("cmd-[");
 		shell.read_with(visual, |s, cx| {
-			assert_eq!(s.selected, Destination::Settings);
+			assert!(s.settings_open());
 			assert_eq!(s.settings.read(cx).category, super::SettingsCategory::General);
 		});
-		visual.simulate_keystrokes("cmd-[");
+		visual.simulate_keystrokes("escape");
 		shell.read_with(visual, |s, cx| {
+			assert!(!s.settings_open());
 			assert_eq!(s.selected, Destination::Agent);
 			assert_eq!(
 				s.agent.read(cx).navigation_location(),
@@ -8582,12 +8421,7 @@ mod tests {
 		);
 
 		visual.simulate_keystrokes("cmd-]");
-
-		assert_eq!(shell.read_with(visual, |s, _| s.selected), Destination::Settings);
-		visual.simulate_keystrokes("cmd-]");
-		shell.read_with(visual, |s, cx| {
-			assert_eq!(s.settings.read(cx).category, super::SettingsCategory::Appearance);
-		});
+		shell.read_with(visual, |s, _| assert!(!s.settings_open()));
 	}
 
 	#[gpui::test]

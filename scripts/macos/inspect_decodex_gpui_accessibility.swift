@@ -8,8 +8,8 @@ import Foundation
 
 let expectedBundleIdentifier = "box.acg.decodex"
 let expectedWindowTitle = "Decodex"
-let expectedSettingsTitle = "Decodex Settings"
-let settingsSections = ["General", "Appearance", "Accounts", "Diagnostics"]
+let materialHostTitles: Set<String> = ["Decodex Popover", "Decodex Composer", "Decodex Session Settings"]
+let settingsSections = ["General", "Agents", "Appearance", "Components", "Accounts", "Diagnostics"]
 let axMessagingTimeout: Float = 1.0
 let phasePollInterval = 0.05
 let maximumTreeNodes = 256
@@ -240,7 +240,11 @@ func label(
 	return nil
 }
 
-func snapshot(_ root: AXUIElement, recorder: AXRecorder) throws -> TreeSnapshot {
+func snapshot(
+	_ root: AXUIElement, recorder: AXRecorder,
+	skipChildrenOf: (ElementFact) -> Bool = { _ in false },
+	until: ([ElementFact]) -> Bool = { _ in false }
+) throws -> TreeSnapshot {
 	var queue = [root]
 	var cursor = 0
 	var visited = Set<CFHashCode>()
@@ -260,14 +264,17 @@ func snapshot(_ root: AXUIElement, recorder: AXRecorder) throws -> TreeSnapshot 
 		let (_, focusedValue) = try recorder.copy(
 			element, kAXFocusedAttribute, operation: "\(prefix).focused"
 		)
-		facts.append(ElementFact(
+		let node = ElementFact(
 			element: element,
 			label: elementLabel,
 			role: role,
 			nativeValue: nativeValue,
 			focused: focusedValue as? Bool == true
-		))
+		)
+		facts.append(node)
 		roles.insert(role)
+		if until(facts) { return TreeSnapshot(visited: visited.count, facts: facts, roles: roles) }
+		if skipChildrenOf(node) { continue }
 		let (_, childrenValue) = try recorder.copy(
 			element, kAXChildrenAttribute, operation: "\(prefix).children"
 		)
@@ -296,14 +303,18 @@ func fact(_ expectedLabel: String, in tree: TreeSnapshot, role: String? = nil) t
 	return match
 }
 
-func waitForTree(_ window: AXUIElement, labels: [String], role: String, recorder: AXRecorder) throws -> TreeSnapshot {
+func waitForTree(_ window: AXUIElement, labels: [String], role: String, recorder: AXRecorder,
+				 stopAfterLabels: Bool = false) throws -> TreeSnapshot {
 	let deadline = Date().addingTimeInterval(4.0)
-	var tree = try snapshot(window, recorder: recorder)
-	while !labels.allSatisfy({ label in
-		tree.facts.filter { labelMatches($0.label, label) && $0.role == role }.count == 1
-	}), Date() < deadline {
+	func containsLabels(_ facts: [ElementFact]) -> Bool {
+		labels.allSatisfy { label in
+			facts.filter { $0.role == role && labelMatches($0.label, label) }.count == 1
+		}
+	}
+	var tree = try snapshot(window, recorder: recorder, until: { stopAfterLabels && containsLabels($0) })
+	while !containsLabels(tree.facts), Date() < deadline {
 		Thread.sleep(forTimeInterval: phasePollInterval)
-		tree = try snapshot(window, recorder: recorder)
+		tree = try snapshot(window, recorder: recorder, until: { stopAfterLabels && containsLabels($0) })
 	}
 	return tree
 }
@@ -351,29 +362,76 @@ func waitForFocused(
 	)
 }
 
-func settingsWindow(root: AXUIElement, recorder: AXRecorder, present: Bool) throws -> AXUIElement? {
+struct WorkspaceWindows {
+	let main: AXUIElement
+	let materialHosts: [AXUIElement]
+}
+
+func workspaceWindows(root: AXUIElement, recorder: AXRecorder) throws -> WorkspaceWindows {
 	let deadline = Date().addingTimeInterval(4.0)
+	var titles: [String] = []
 	repeat {
-		let (error, value) = try recorder.copy(root, kAXWindowsAttribute, operation: "settings.windows")
+		let (error, value) = try recorder.copy(root, kAXWindowsAttribute, operation: "application.windows")
 		let windows = value as? [AXUIElement] ?? []
 		var main: [AXUIElement] = []
-		var settings: [AXUIElement] = []
+		var hosts: [AXUIElement] = []
+		titles.removeAll(keepingCapacity: true)
 		for window in windows {
-			let (_, title) = try recorder.copy(window, kAXTitleAttribute, operation: "settings.window_title")
-			if title as? String == expectedWindowTitle { main.append(window) }
-			if title as? String == expectedSettingsTitle { settings.append(window) }
+			let (_, titleValue) = try recorder.copy(window, kAXTitleAttribute, operation: "window.title")
+			let title = titleValue as? String ?? "(untitled)"
+			titles.append(title)
+			if title == expectedWindowTitle { main.append(window) }
+			if materialHostTitles.contains(title) { hosts.append(window) }
 		}
-		if error == .success && main.count == 1 && settings.count == (present ? 1 : 0)
-			&& windows.count == (present ? 2 : 1) {
-			return settings.first
+		if error == .success, main.count == 1, main.count + hosts.count == windows.count {
+			// AppKit can expose a key child through AXFocusedWindow without listing it in AXWindows.
+			let (_, key) = try recorder.copy(root, kAXFocusedWindowAttribute, operation: "application.focused_window")
+			if let key, CFGetTypeID(key) == AXUIElementGetTypeID() {
+				let focused = unsafeBitCast(key, to: AXUIElement.self)
+				if !windows.contains(where: { CFEqual($0, focused) }) {
+					let (_, title) = try recorder.copy(focused, kAXTitleAttribute, operation: "focused_window.title")
+					if let title = title as? String, materialHostTitles.contains(title) { hosts.append(focused) }
+				}
+			}
+			return WorkspaceWindows(main: main[0], materialHosts: hosts)
 		}
 		Thread.sleep(forTimeInterval: phasePollInterval)
 	} while Date() < deadline
-	throw DiagnosticFailure.message("expected one main window and \(present ? 1 : 0) settings windows")
+	throw DiagnosticFailure.message("expected one Decodex workspace and only attached material hosts, found \(titles)")
 }
 
-func selectedSection(_ expected: String, window: AXUIElement, recorder: AXRecorder) throws -> [String: Any] {
-	let tree = try waitForTree(window, labels: settingsSections, role: kAXRadioButtonRole, recorder: recorder)
+struct SettingsOverlay {
+	let dialog: AXUIElement
+	let host: AXUIElement
+	let presentation: String
+}
+
+func settingsOverlay(root: AXUIElement, workspace: AXUIElement, recorder: AXRecorder,
+					 present: Bool) throws -> SettingsOverlay? {
+	let deadline = Date().addingTimeInterval(4.0)
+	let isSettingsDialogCandidate: (ElementFact) -> Bool = { $0.role == kAXWindowRole && $0.label == "Settings" }
+	repeat {
+		let windows = try workspaceWindows(root: root, recorder: recorder)
+		guard CFEqual(workspace, windows.main) else { throw DiagnosticFailure.message("workspace window changed") }
+		var matches: [SettingsOverlay] = []
+		for host in windows.materialHosts + [windows.main] {
+			let tree = try snapshot(host, recorder: recorder, skipChildrenOf: isSettingsDialogCandidate)
+			for node in tree.facts where isSettingsDialogCandidate(node) {
+				let (_, subrole) = try recorder.copy(node.element, kAXSubroleAttribute, operation: "settings.subrole")
+				if subrole as? String == kAXDialogSubrole, !matches.contains(where: { CFEqual($0.dialog, node.element) }) {
+					matches.append(SettingsOverlay(dialog: node.element, host: host,
+						presentation: CFEqual(host, windows.main) ? "inline" : "attached_material"))
+				}
+			}
+		}
+		if matches.count == (present ? 1 : 0) { return matches.first }
+		Thread.sleep(forTimeInterval: phasePollInterval)
+	} while Date() < deadline
+	throw DiagnosticFailure.message("expected \(present ? 1 : 0) Settings dialogs in the workspace")
+}
+
+func selectedSection(_ expected: String, dialog: AXUIElement, recorder: AXRecorder) throws -> [String: Any] {
+	let tree = try waitForTree(dialog, labels: settingsSections, role: kAXRadioButtonRole, recorder: recorder, stopAfterLabels: true)
 	var values: [String: Any] = [:]
 	for section in settingsSections {
 		let element = try fact(section, in: tree, role: kAXRadioButtonRole)
@@ -645,45 +703,22 @@ do {
 					+ "executable_hash=\(actualExecutableURL.flatMap(sha256) ?? "missing")"
 			)
 		}
-		let deadline = Date().addingTimeInterval(4.0)
-		var windows: [AXUIElement] = []
-		var matches: [AXUIElement] = []
-		var lastError = AXError.success
-		repeat {
-			let (windowsError, windowsValue) = try ax.copy(
-				root, kAXWindowsAttribute, operation: "application.windows"
-			)
-			lastError = windowsError
-			windows = windowsValue as? [AXUIElement] ?? []
-			matches.removeAll(keepingCapacity: true)
-			for (index, candidate) in windows.enumerated() {
-				let (_, titleValue) = try ax.copy(
-					candidate, kAXTitleAttribute, operation: "window.\(index).title"
-				)
-				if titleValue as? String == expectedWindowTitle { matches.append(candidate) }
-			}
-			if windows.count == 1, matches.count == 1 { break }
-			Thread.sleep(forTimeInterval: phasePollInterval)
-		} while Date() < deadline
-		guard windows.count == 1, matches.count == 1, let only = matches.first else {
-			throw DiagnosticFailure.message(
-				"expected one identified window; last AXError \(lastError.rawValue)"
-			)
-		}
-		return (only, [
+		let windows = try workspaceWindows(root: root, recorder: ax)
+		return (windows.main, [
 			"expected_pid": parsed.pid,
 			"actual_pid": app?.processIdentifier ?? -1,
 			"bundle_identifier": app?.bundleIdentifier ?? "missing",
 			"bundle_url": actualBundleURL?.path ?? "missing",
 			"executable_path": actualExecutableURL?.path ?? "missing",
 			"executable_sha256": actualExecutableURL.flatMap(sha256) ?? "missing",
-				"window_count": windows.count,
-				"window_title": expectedWindowTitle,
-				"application_active": app?.isActive == true,
-				"activation_attempts": activationAttempts,
-				"console_session_locked": screenLocked,
-				"console_session_on_console": onConsole,
-				"ax_messaging_timeout_seconds": axMessagingTimeout,
+			"workspace_count": 1,
+			"material_host_count": windows.materialHosts.count,
+			"window_title": expectedWindowTitle,
+			"application_active": app?.isActive == true,
+			"activation_attempts": activationAttempts,
+			"console_session_locked": screenLocked,
+			"console_session_on_console": onConsole,
+			"ax_messaging_timeout_seconds": axMessagingTimeout,
 		])
 	}
 
@@ -700,21 +735,20 @@ do {
 
 	let settings = try phase("open_settings", journal: journal, results: &phaseResults) {
 		try recordedKey(43, flags: .maskCommand, operation: "settings.command_comma", pid: parsed.pid, journal: journal)
-		guard let settings = try settingsWindow(root: root, recorder: ax, present: true) else {
-			throw DiagnosticFailure.message("settings window missing")
+		guard let settings = try settingsOverlay(root: root, workspace: window, recorder: ax, present: true) else {
+			throw DiagnosticFailure.message("Settings dialog missing")
 		}
-		let values = try selectedSection("General", window: settings, recorder: ax)
-		return (settings, ["window_title": expectedSettingsTitle, "window_count": 2,
+		let values = try selectedSection("General", dialog: settings.dialog, recorder: ax)
+		return (settings, ["workspace_count": 1, "presentation": settings.presentation,
 			"section_native_values": values])
 	}
 
-	_ = try phase("settings_window_reuse", journal: journal, results: &phaseResults) {
+	_ = try phase("settings_overlay_reuse", journal: journal, results: &phaseResults) {
 		try recordedKey(43, flags: .maskCommand, operation: "settings.reopen", pid: parsed.pid, journal: journal)
-		guard let reopened = try settingsWindow(root: root, recorder: ax, present: true),
-			  CFEqual(settings, reopened) else {
-			throw DiagnosticFailure.message("settings shortcut replaced the existing window")
-		}
-		return ((), ["same_window": true, "window_count": 2])
+		guard let reopened = try settingsOverlay(root: root, workspace: window, recorder: ax, present: true),
+			CFEqual(settings.host, reopened.host), CFEqual(settings.dialog, reopened.dialog)
+		else { throw DiagnosticFailure.message("settings shortcut replaced the existing dialog") }
+		return ((), ["same_dialog": true, "workspace_count": 1, "presentation": reopened.presentation])
 	}
 
 	_ = try phase("keyboard_forward", journal: journal, results: &phaseResults) {
@@ -727,7 +761,7 @@ do {
 			}
 			try recordedKey(36, operation: "settings.enter.\(section)", pid: parsed.pid, journal: journal)
 			_ = try waitForFocused(section, root: root, recorder: ax, operation: "settings.enter.focus")
-			readback["section_native_values"] = try selectedSection(section, window: settings, recorder: ax)
+			readback["section_native_values"] = try selectedSection(section, dialog: settings.dialog, recorder: ax)
 			readbacks.append(readback)
 		}
 		return ((), ["expected_order": settingsSections, "event_readbacks": readbacks])
@@ -739,7 +773,7 @@ do {
 			var readback = try keyboardStep(operation: "settings.shift_tab.\(section)", expectedLabel: section,
 				keyCode: 48, flags: .maskShift, pid: parsed.pid, root: root, recorder: ax, journal: journal)
 			try recordedKey(36, operation: "settings.reverse_enter.\(section)", pid: parsed.pid, journal: journal)
-			readback["section_native_values"] = try selectedSection(section, window: settings, recorder: ax)
+			readback["section_native_values"] = try selectedSection(section, dialog: settings.dialog, recorder: ax)
 			readbacks.append(readback)
 		}
 		return ((), ["expected_order": Array(settingsSections.dropLast().reversed()), "event_readbacks": readbacks])
@@ -747,10 +781,10 @@ do {
 
 	_ = try phase("close_settings", journal: journal, results: &phaseResults) {
 		try recordedKey(53, operation: "settings.escape", pid: parsed.pid, journal: journal)
-		_ = try settingsWindow(root: root, recorder: ax, present: false)
+		_ = try settingsOverlay(root: root, workspace: window, recorder: ax, present: false)
 		let tree = try snapshot(window, recorder: ax)
 		_ = try fact("Open settings", in: tree, role: kAXButtonRole)
-		return ((), ["window_count": 1, "main_window_retained": true])
+		return ((), ["workspace_count": 1, "main_window_retained": true, "settings_dialog_count": 0])
 	}
 
 } catch {

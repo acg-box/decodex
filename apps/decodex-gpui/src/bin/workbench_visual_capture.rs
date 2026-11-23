@@ -121,7 +121,6 @@ use decodex_protocol::{
 	AgentClient, AgentMediaRequest, AgentSnapshotResult, AgentSteerIdentity, ClientFailure,
 	EntityId,
 };
-use shell::SettingsWindow;
 use ui_theme::{ColorTheme, MOTION_PANEL, appearance::Appearance};
 
 type ServiceProjection = (
@@ -860,16 +859,8 @@ fn capture_shell(
 ) -> Result<AnyWindowHandle> {
 	let size = capture_size()?;
 
-	Ok(if env::var_os("DECODEX_VISUAL_STANDALONE_SETTINGS").is_some() {
-		cx.open_offscreen_window(size, |window, cx| {
-			let owner =
-				cx.new(|cx| Shell::visual_destination(destination, true, false, window, cx));
-
-			cx.new(|cx| SettingsWindow::new(owner, window, cx))
-		})?
-		.into()
-	} else {
-		cx.open_offscreen_window(size, |window, cx| {
+	Ok(cx
+		.open_offscreen_window(size, |window, cx| {
 			cx.new(|cx| {
 				Shell::visual_destination(
 					destination,
@@ -880,8 +871,7 @@ fn capture_shell(
 				)
 			})
 		})?
-		.into()
-	})
+		.into())
 }
 
 fn capture_size() -> Result<Size<Pixels>> {

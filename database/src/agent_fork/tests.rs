@@ -70,6 +70,31 @@ async fn assert_fork_draft(
 }
 
 #[tokio::test]
+async fn fork_of_a_registered_conversation_remains_directly_addressable() {
+	use decodex_core::work::ThreadRegistration;
+	let directory = tempfile::tempdir().unwrap();
+	let store = SqliteStore::open_test(&directory.path().join("fork.sqlite3")).unwrap();
+	let source = store
+		.register_native_thread(
+			"source-native".into(),
+			"Original".into(),
+			ThreadRegistration::Register,
+		)
+		.await
+		.unwrap();
+	let mut fork = attempt(AgentForkBoundary::AttachedAfterTurn);
+	fork.source.work = source.id.clone();
+	store.reserve_agent_fork(fork.clone()).await.unwrap().unwrap();
+	let saved =
+		store.acknowledge_agent_fork(fork, "branch-native".into(), vec![]).await.unwrap().unwrap();
+	let branch = store.get_agent_work_item(saved.attempt.target_work).await.unwrap();
+	assert!(branch.parent_goal_id.is_none());
+	assert_eq!(branch.codex_thread_id.as_deref(), Some("branch-native"));
+	assert!(store.agent_manager_ids().await.unwrap().is_empty());
+	assert_eq!(store.agent_attached_forks(source.id).await.unwrap().0.len(), 1);
+}
+
+#[tokio::test]
 async fn fork_receipt_survives_restart_without_repeating_creation_or_changing_source() {
 	for (boundary, before, expected) in [
 		(AgentForkBoundary::BeforeInput, "first", vec![]),

@@ -4,12 +4,11 @@ use std::time::Duration;
 use tokio::{sync::oneshot::Receiver, time};
 
 use crate::{
+	agent::AgentCoordinator,
 	agent_host::{AgentHost, AgentHostError},
 	agent_usage_estimate::Source,
 };
-use decodex_codex::app_server_client::{
-	AppServerClient, ClientError, NativeThreadGoalStatus, NativeThreadSampleOutcome,
-};
+use decodex_codex::app_server_client::{ClientError, NativeThreadSampleOutcome};
 use decodex_database::AgentVoiceHistoryRevision;
 use decodex_protocol::{
 	AgentActionDto, AgentSampleAnswer, AgentSampleStatus, EntityId, MAX_AGENT_SAMPLE_PROMPT_BYTES,
@@ -21,11 +20,18 @@ impl AgentHost {
 		&self,
 		key: &str,
 		action: AgentActionDto,
+		coordinator: Option<&mut AgentCoordinator>,
 	) -> Result<String, AgentHostError> {
 		match action {
 			AgentActionDto::GenerateSample { work_id, thread_id, prompt } =>
-				self.start_sample(key, work_id.as_str(), thread_id.as_str(), prompt.as_str().into())
-					.await,
+				self.start_sample(
+					key,
+					work_id.as_str(),
+					thread_id.as_str(),
+					prompt.as_str().into(),
+					coordinator.ok_or("Sampling requires a connected root conversation")?,
+				)
+				.await,
 			AgentActionDto::CancelSample { work_id, request_id } => {
 				self.samples.cancel_request(work_id.as_str(), request_id.as_str())?;
 
@@ -79,6 +85,7 @@ impl AgentHost {
 		work: &str,
 		thread: &str,
 		prompt: String,
+		coordinator: &mut AgentCoordinator,
 	) -> Result<String, AgentHostError> {
 		if prompt.trim().is_empty() || prompt.len() > MAX_AGENT_SAMPLE_PROMPT_BYTES {
 			return Err("Enter a question of at most 4000 UTF-8 bytes".into());
@@ -88,7 +95,13 @@ impl AgentHost {
 			.sample_source(work, thread)
 			.await
 			.ok_or("Sampling requires a connected root conversation")?;
-		load_sample_source(&source.client, thread)
+		if coordinator.native_generation().map(|g| g.as_str())
+			!= Some(source.key.generation.as_str())
+		{
+			return Err("Sampling requires the current conversation connection".into());
+		}
+		coordinator
+			.prepare_sample_source(thread)
 			.await
 			.map_err(|_| "The conversation could not be prepared for a suggestion")?;
 		// Loading publishes native settings. Bind the sample to that new revision,
@@ -189,33 +202,3 @@ impl AgentHost {
 		self.samples.finish(&source, &key, result);
 	}
 }
-
-/// Native sampling needs a loaded source even when its history can be read cold.
-async fn load_sample_source(client: &AppServerClient, thread: &str) -> Result<(), ClientError> {
-	let metadata = client.thread_read(serde_json::json!({"threadId":thread})).await?;
-	if metadata["thread"]["id"] != thread {
-		return Err(ClientError::InvalidFrame);
-	}
-	if metadata["thread"]["status"]["type"] != "notLoaded" {
-		return Ok(());
-	}
-	// Resuming an active native goal can start work. Suggestions may load only
-	// dormant conversations and must never continue a goal on the user's behalf.
-	if client
-		.thread_goal(thread)
-		.await?
-		.is_some_and(|goal| goal.status == NativeThreadGoalStatus::Active)
-	{
-		return Err(ClientError::InvalidFrame);
-	}
-	let resumed =
-		client.thread_resume(serde_json::json!({"threadId":thread,"excludeTurns":true})).await?;
-	if resumed["thread"]["id"] != thread {
-		return Err(ClientError::InvalidFrame);
-	}
-	Ok(())
-}
-
-#[cfg(test)]
-#[path = "agent_sample_loading_tests.rs"]
-mod loading_tests;

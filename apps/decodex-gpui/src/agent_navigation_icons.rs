@@ -22,9 +22,9 @@ pub(super) enum Glyph {
 	Sort,
 	Plus,
 	Search,
+	Conversations,
 	Archive,
 	Trash,
-	Restore,
 	Back,
 }
 #[derive(IntoElement)]
@@ -43,8 +43,8 @@ impl RenderOnce for Icon {
 			Glyph::Plus => Symbol::Plus,
 			Glyph::Search => Symbol::ActivitySearch,
 			Glyph::Archive => Symbol::Archive,
+			Glyph::Conversations => Symbol::Document,
 			Glyph::Trash => Symbol::Trash,
-			Glyph::Restore => Symbol::Unarchive,
 			Glyph::Back => Symbol::ChevronLeft,
 		};
 		workspace_symbols::icon_sized(symbol, self.size)

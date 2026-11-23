@@ -5,12 +5,13 @@ use std::{cell::Cell, env, ptr, rc::Rc, time::Instant};
 use block2::RcBlock;
 use gpui::{AnyWindowHandle, Bounds, Pixels, Window, WindowBackgroundAppearance};
 use objc2::{
-	self,
+	self, MainThreadMarker,
 	rc::{Allocated, Retained},
 	runtime::{AnyClass, AnyObject, ClassBuilder, Sel},
 };
 use objc2_app_kit::{
-	NSColor, NSEventMask, NSEventType, NSResponder, NSView, NSWindow, NSWindowCollectionBehavior,
+	NSApplication, NSColor, NSEventMask, NSEventType, NSResponder, NSView, NSWindow,
+	NSWindowCollectionBehavior,
 };
 use objc2_core_foundation::CGAffineTransform;
 use objc2_foundation::{NSArray, NSPoint, NSRect, NSSize, NSString};
@@ -206,7 +207,7 @@ impl MaterialPanel {
 			if material == Material::LiquidGlass {
 				apply_glass_style(&material_view, surface, native.isKeyWindow());
 			}
-			apply_popover_tint(&material_view, surface, material);
+			apply_popover_tint(&material_view, surface, material, true);
 
 			Some(Self {
 				surface,
@@ -234,6 +235,11 @@ impl MaterialPanel {
 
 	/// Replace only the material host; the editor view and its focus stay intact.
 	pub(crate) fn refresh_material(&mut self) {
+		self.refresh_material_with_menu_tint(true);
+	}
+
+	/// A modal paints its palette in GPUI, above the native material.
+	pub(crate) fn refresh_material_with_menu_tint(&mut self, menu_tint: bool) {
 		let surface = self.surface;
 		let material = panel_material(surface);
 
@@ -242,7 +248,7 @@ impl MaterialPanel {
 				self.shadow_dirty |=
 					apply_glass_style(&self.material_view, surface, self.native.isKeyWindow());
 			}
-			apply_popover_tint(&self.material_view, surface, material);
+			apply_popover_tint(&self.material_view, surface, material, menu_tint);
 			return;
 		}
 
@@ -283,7 +289,7 @@ impl MaterialPanel {
 		if material == Material::LiquidGlass {
 			apply_glass_style(&self.material_view, surface, self.native.isKeyWindow());
 		}
-		apply_popover_tint(&self.material_view, surface, material);
+		apply_popover_tint(&self.material_view, surface, material, menu_tint);
 	}
 
 	/// GPUI bounds use a top-left origin; AppKit screen conversion uses bottom-left.
@@ -331,6 +337,23 @@ impl MaterialPanel {
 
 	pub(crate) fn focus_text(&self) {
 		self.native.makeFirstResponder(Some(&self.foreground));
+	}
+
+	/// Return the keyboard only when this modal or one of its nested menus owns it.
+	pub(crate) fn restore_modal_parent_focus(&self) {
+		let Some(main) = MainThreadMarker::new() else { return };
+		let app = NSApplication::sharedApplication(main);
+		if !app.isActive() {
+			return;
+		}
+		let mut key = app.keyWindow();
+		while let Some(window) = key {
+			if ptr::eq(&*window, &*self.native) {
+				self.parent.makeKeyWindow();
+				return;
+			}
+			key = window.parentWindow();
+		}
 	}
 
 	/// Keep the Metal drawable fixed while the material's visible contour changes.
@@ -913,11 +936,11 @@ fn set_glass_style(glass: &NSView, clear: bool, input_bar: bool) -> bool {
 	}
 }
 
-fn apply_popover_tint(view: &NSView, surface: Surface, material: Material) {
+fn apply_popover_tint(view: &NSView, surface: Surface, material: Material, menu_tint: bool) {
 	if surface == Surface::InputBar {
 		return;
 	}
-	let color = (surface == Surface::Popover)
+	let color = (menu_tint && surface == Surface::Popover)
 		.then(|| ui_theme::popover_tint(material, GlassScope::Popover.configured()))
 		.flatten();
 	unsafe {

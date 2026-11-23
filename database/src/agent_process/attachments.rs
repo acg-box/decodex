@@ -16,7 +16,7 @@ impl SqliteStore {
 		self.run(move |connection| {
 			let tx = connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(account_lifecycle::sql_error)?;
 			let bound: bool = tx.query_row(
-				"SELECT EXISTS(SELECT 1 FROM agents a JOIN agent_work_items w ON w.id=a.id WHERE w.id=?1 AND w.codex_thread_id=?2 AND w.parent_goal_id IS NULL)",
+				"SELECT EXISTS(SELECT 1 FROM agent_work_items WHERE id=?1 AND codex_thread_id=?2 AND parent_goal_id IS NULL AND kind='goal')",
 				rusqlite::params![work, thread], |r| r.get(0),
 			).map_err(account_lifecycle::sql_error)?;
 

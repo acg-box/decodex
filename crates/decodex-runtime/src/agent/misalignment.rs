@@ -56,7 +56,7 @@ impl AgentCoordinator {
 			));
 		}
 
-		let resume = Self::resume_params(&review.thread_id);
+		let resume = self.resume_observer_params(&review.thread_id, false).await?;
 		let resumed = self.client.thread_resume(resume).await?;
 
 		if !Self::hydrated_thread_matches(&resumed, &review.thread_id) {

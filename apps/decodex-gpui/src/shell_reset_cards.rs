@@ -385,8 +385,7 @@ impl Shell {
 			return;
 		}
 
-		let visible = self.selected == Destination::Accounts
-			|| (self.settings_window.is_some() && self.settings_selected == Destination::Accounts);
+		let visible = self.settings_open() && self.settings_selected == Destination::Accounts;
 		let Some(profile) = self.reset_cards.profile.clone() else {
 			return;
 		};
@@ -802,7 +801,8 @@ mod render_tests {
 			shell.visual_accounts_and_health();
 			shell.accounts.accounts.truncate(1);
 
-			shell.selected = Destination::Accounts;
+			shell.settings_selected = Destination::Accounts;
+			shell.show_overlay(crate::shell::WorkspaceOverlay::Settings, cx);
 
 			cx.notify();
 		});
@@ -852,7 +852,8 @@ mod render_tests {
 		let last = shell.update(visual, |shell, cx| {
 			shell.visual_accounts_and_health();
 
-			shell.selected = Destination::Accounts;
+			shell.settings_selected = Destination::Accounts;
+			shell.show_overlay(crate::shell::WorkspaceOverlay::Settings, cx);
 
 			cx.notify();
 
@@ -915,10 +916,9 @@ mod render_tests {
 		let (shell, visual) =
 			cx.add_window_view(|window, cx| Shell::new(window, cx, ConnectionView::Stopped));
 		shell.update(visual, |s, cx| {
-			s.open_settings_window(Destination::Accounts, cx);
+			s.open_settings(Destination::Accounts, cx);
 		});
-		let handle = shell.read_with(visual, |s, _| s.settings_window.unwrap());
-		let settings = &mut gpui::VisualTestContext::from_window(handle.into(), visual);
+		let settings = &mut *visual;
 		shell.update(settings, |s, cx| {
 			s.visual_accounts_and_health();
 			for account in s.accounts.accounts.iter().take(2) {
@@ -959,7 +959,8 @@ mod render_tests {
 		let (first, second) = shell.update(visual, |shell, cx| {
 			shell.visual_accounts_and_health();
 
-			shell.selected = Destination::Accounts;
+			shell.settings_selected = Destination::Accounts;
+			shell.show_overlay(crate::shell::WorkspaceOverlay::Settings, cx);
 
 			let first = shell.accounts.accounts[0].account_id.clone();
 			let second = shell.accounts.accounts[1].account_id.clone();

@@ -443,6 +443,14 @@ CREATE TABLE agents (
  assistant INTEGER NOT NULL DEFAULT 0 CHECK(assistant IN(0,1))
 ) STRICT;
 
+CREATE TABLE agent_managed_conversations (
+ conversation_id TEXT PRIMARY KEY REFERENCES agent_work_items(id),
+ agent_id TEXT NOT NULL REFERENCES agents(id),
+ CHECK(conversation_id <> agent_id)
+) STRICT;
+
+CREATE INDEX managed_conversations_by_agent ON agent_managed_conversations(agent_id,conversation_id);
+
 CREATE TABLE codex_account_capability (
   singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
   build_identity TEXT NOT NULL CHECK (

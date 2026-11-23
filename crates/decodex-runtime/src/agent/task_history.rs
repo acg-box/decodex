@@ -32,13 +32,15 @@ impl AgentCoordinator {
 			.iter()
 			.find(|item| item.id == id)
 			.ok_or_else(|| AgentError::Invalid("referenced work is unavailable".into()))?;
+		let managed =
+			self.store.managed_conversation_ids(agent.id.clone()).await?.binary_search(&id).is_ok();
 		let owned = work.id == agent.id || agent::belongs_to(work, &agent.id, &all, &managers);
 		let granted = self
 			.store
 			.agent_has_task_reference(agent.id.clone(), id.clone(), expected.clone())
 			.await?;
 
-		if !owned && !granted {
+		if !owned && !managed && !granted {
 			return Err(AgentError::Invalid("work is outside this manager scope".into()));
 		}
 
@@ -73,7 +75,10 @@ impl AgentCoordinator {
 			let page = self.native_history_search(args, Some(&expected)).await?;
 			let current = self.store.get_agent_work_item(id.clone()).await?;
 
-			if current.codex_thread_id != work.codex_thread_id {
+			if current.codex_thread_id != work.codex_thread_id
+				|| (managed
+					&& !self.store.managed_conversation_ids(agent.id.clone()).await?.contains(&id))
+			{
 				return Err(AgentError::Invalid("work thread changed during search".into()));
 			}
 
@@ -86,7 +91,10 @@ impl AgentCoordinator {
 		let native = self.client.thread_history_page(&expected, cursor, limit).await?;
 		let current = self.store.get_agent_work_item(id.clone()).await?;
 
-		if current.codex_thread_id != work.codex_thread_id {
+		if current.codex_thread_id != work.codex_thread_id
+			|| (managed
+				&& !self.store.managed_conversation_ids(agent.id.clone()).await?.contains(&id))
+		{
 			return Err(AgentError::Invalid("work thread changed during history read".into()));
 		}
 
@@ -119,9 +127,15 @@ impl AgentCoordinator {
 		// access.
 		let all = self.store.list_agent_work_items().await?;
 		let managers = self.store.agent_manager_ids().await?;
+		let managed = self.store.managed_conversation_ids(agent.id.clone()).await?;
 		let mut permitted = HashMap::new();
 
 		for work in &all {
+			if managed.binary_search(&work.id).is_ok()
+				&& let Some(thread) = &work.codex_thread_id
+			{
+				permitted.insert(thread.clone(), work.id.clone());
+			}
 			if work.id == agent.id || agent::belongs_to(work, &agent.id, &all, &managers) {
 				if let Some(thread) = &work.codex_thread_id {
 					permitted.insert(thread.clone(), work.id.clone());

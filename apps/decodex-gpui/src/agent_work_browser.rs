@@ -16,7 +16,7 @@ use crate::{
 		},
 		workspace_symbols::{self, Symbol},
 	},
-	ui_motion::{self, SmoothControl as _},
+	ui_motion::{self, HoverHint as _, SmoothControl as _},
 	ui_theme::{self, BODY_SIZE, CONTROL_SIZE, ERROR, HOVER_FILL, TEXT_MUTED},
 };
 use decodex_protocol::{
@@ -665,29 +665,47 @@ impl AgentSurface {
 		rows
 	}
 
-	fn list_branch_button(&self, branch: String, cx: &mut Context<Self>) -> impl IntoElement {
-		let branch_keyboard = branch.clone();
+	pub(super) fn conversation_action_button(
+		&self,
+		id: String,
+		label: impl Into<SharedString>,
+		description: impl Into<SharedString>,
+		cx: &mut Context<Self>,
+		action: impl Fn(&mut Self, &mut Window, &mut Context<Self>) + 'static,
+	) -> AnyElement {
+		let description = description.into();
+		let action = Rc::new(action);
+		let keyboard = action.clone();
 		gpui::div()
-			.id(SharedString::from(format!("branch-{branch}")))
+			.id(SharedString::from(id.clone()))
+			.debug_selector(move || id)
 			.role(Role::Button)
-			.aria_label("Fork conversation")
+			.aria_label(description.clone())
+			.hover_hint(description)
+			.min_w_0()
+			.flex_none()
 			.tab_index(0)
 			.px_2()
 			.py_1()
 			.rounded(gpui::px(5.))
 			.text_size(gpui::px(11.))
+			.cursor_pointer()
 			.hover(|s| s.bg(ui_theme::rgba(HOVER_FILL)))
-			.child("Fork")
-			.on_click(cx.listener(move |s, _, _, cx| {
+			.focus_visible(|s| s.bg(ui_theme::rgba(HOVER_FILL)))
+			.active(|s| s.bg(ui_theme::rgba(ui_theme::PRESSED_FILL)))
+			.text_color(ui_theme::rgb(ui_theme::TEXT))
+			.child(gpui::div().min_w_0().truncate().child(label.into()))
+			.on_click(cx.listener(move |s, _, window, cx| {
 				cx.stop_propagation();
-				s.review_list_branch(&branch, cx);
+				action(s, window, cx);
 			}))
-			.on_key_down(cx.listener(move |s, e: &KeyDownEvent, _, cx| {
+			.on_key_down(cx.listener(move |s, e: &KeyDownEvent, window, cx| {
 				if !e.is_held && ["enter", "space"].contains(&e.keystroke.key.as_str()) {
 					cx.stop_propagation();
-					s.review_list_branch(&branch_keyboard, cx);
+					keyboard(s, window, cx);
 				}
 			}))
+			.into_any_element()
 	}
 
 	fn work_browser_controls(&self, filters: AnyElement) -> Div {
@@ -707,9 +725,6 @@ impl AgentSurface {
 	}
 
 	pub(super) fn render_work_browser(&mut self, cx: &mut Context<Self>) -> AnyElement {
-		if self.workspace.archives.open {
-			return self.render_archive_catalog(cx);
-		}
 		if self.workspace.guardian_open {
 			return self.render_global_guardian(cx);
 		}
@@ -796,7 +811,23 @@ impl AgentSurface {
 							.text_color(ui_theme::rgb(color))
 							.child(status),
 					)
-					.children(can_branch.then(|| self.list_branch_button(branch, cx)))
+					.children(self.thread_registration_context(&id).map(|label| {
+						self.thread_registration_entry(
+							format!("browse-relationship-{id}"),
+							label,
+							Some(id.clone()),
+							cx,
+						)
+					}))
+					.children(can_branch.then(|| {
+						self.conversation_action_button(
+							format!("branch-{branch}"),
+							"Fork",
+							"Fork conversation",
+							cx,
+							move |s, _, cx| s.review_list_branch(&branch, cx),
+						)
+					}))
 					.on_click(cx.listener(move |s, _, _, cx| {
 						s.open_work_preview(&id, native.as_ref(), cx);
 					}))

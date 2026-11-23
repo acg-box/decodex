@@ -15,16 +15,17 @@ use ui_theme::{
 #[cfg(test)] use crate::shell::agent_surface::ConversationWorkingDirectory;
 #[cfg(any(test, feature = "visual-capture"))]
 use crate::shell::agent_surface::{
-	AgentRequestResult, AgentSnapshotDto, AgentSnapshotResult, ConversationReasoningEffort,
+	AgentRequestResult, AgentSnapshotResult, ConversationReasoningEffort,
 };
 use crate::{
 	frame_trace,
 	shell::{
 		Shell, WINDOW_CONTROLS_CLEARANCE,
 		agent_surface::{
-			AgentDispatchStateDto, AgentHistoryResult, AgentSurface, AgentWorkItemDto, Context,
-			FluentBuilder, InteractiveElement, IntoElement, LoadState, ParentElement, Role,
-			SharedString, StatefulInteractiveElement, Styled, SubmitComposer, Window,
+			AgentDispatchStateDto, AgentHistoryResult, AgentSnapshotDto, AgentSurface,
+			AgentWorkItemDto, Context, FluentBuilder, InteractiveElement, IntoElement, LoadState,
+			ParentElement, Role, SharedString, StatefulInteractiveElement, Styled, SubmitComposer,
+			Window,
 			activity::HistoryScrollAnchor,
 			dock, graph,
 			native_agents::NativeConnection,
@@ -163,17 +164,24 @@ impl AgentSurface {
 	}
 
 	pub(super) fn root_id(&self) -> Option<String> {
-		let snapshot = self.snapshot.as_ref()?;
+		Self::snapshot_root(self.snapshot.as_ref()?).map(str::to_owned)
+	}
 
-		if let Some(agent) = snapshot
+	fn snapshot_root(snapshot: &AgentSnapshotDto) -> Option<&str> {
+		snapshot
 			.agents
 			.iter()
-			.find(|a| a.assistant && snapshot.work_items.iter().any(|work| work.id == a.id))
-		{
-			return Some(agent.id.clone());
-		}
-
-		snapshot.work_items.iter().find(|w| w.parent_goal_id.is_none()).map(|w| w.id.clone())
+			.find(|agent| {
+				agent.assistant && snapshot.work_items.iter().any(|work| work.id == agent.id)
+			})
+			.map(|agent| agent.id.as_str())
+			.or_else(|| {
+				snapshot
+					.work_items
+					.iter()
+					.find(|work| work.parent_goal_id.is_none())
+					.map(|work| work.id.as_str())
+			})
 	}
 
 	pub(super) fn open_page(&mut self, id: &str, cx: &mut Context<Self>) {
@@ -943,6 +951,15 @@ impl AgentSurface {
 			})
 	}
 
+	pub(super) fn selected_has_conversation_composer(&self) -> bool {
+		self.selected_is_agent()
+			|| self
+				.selected
+				.as_deref()
+				.and_then(|id| self.snapshot.as_ref()?.work_items.iter().find(|w| w.id == id))
+				.is_some_and(|w| w.parent_goal_id.is_none() && w.kind == AgentWorkKindDto::Goal)
+	}
+
 	pub(super) fn render_transcript_view(
 		&mut self,
 		window: &mut Window,
@@ -955,7 +972,7 @@ impl AgentSurface {
 		let selected = self.conversation_work();
 		// Archiving changes write access, not the conversation's presentation.
 		let is_agent = self.native_agents.selected.is_some()
-			|| self.selected_is_agent()
+			|| self.selected_has_conversation_composer()
 			|| self.selected_is_archived();
 
 		self.workspace_transcript(selected.as_ref(), is_agent, window, cx)
@@ -1167,13 +1184,6 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) -> AnyElement {
 		self.poll_native_agents(cx);
-		if !self.workspace.browsing
-			|| !self.workspace.archives.open
-			|| self.workspace.graph_expanded
-		{
-			Self::hide_archive_selection_material(window, cx);
-		}
-
 		let connecting = self.workspace_connecting();
 		if connecting || self.workspace.browsing {
 			self.hide_latest_button(window, cx);
@@ -1219,7 +1229,7 @@ impl AgentSurface {
 		self.sync_side_chat_family(cx);
 
 		let is_agent = self.native_agents.selected.is_some()
-			|| self.selected_is_agent()
+			|| self.selected_has_conversation_composer()
 			|| self.selected_is_archived();
 		let selected = self.conversation_work();
 		let wide = f32::from(window.viewport_size().width) > 1_000.0;
@@ -1299,9 +1309,30 @@ impl AgentSurface {
 							.child(self.conversation_tab_bar(cx))
 							.children(self.navigation_work_context()),
 					)
-					.child(gpui::div().flex().items_center().gap_2().child(
-						self.panel_controls(super::panel_controls::Panel::Conversation, cx),
-					)),
+					.child(
+						gpui::div()
+							.flex()
+							.items_center()
+							.gap_2()
+							.children(
+								self.selected
+									.as_deref()
+									.filter(|_| self.native_agents.selected.is_none())
+									.and_then(|id| {
+										self.thread_registration_context(id).map(|label| {
+											self.thread_registration_entry(
+												"conversation-thread-relationship".into(),
+												label,
+												Some(id.to_owned()),
+												cx,
+											)
+										})
+									}),
+							)
+							.child(
+								self.panel_controls(super::panel_controls::Panel::Conversation, cx),
+							),
+					),
 			)
 			.children(self.side_chat_status(cx))
 			.children(self.item_context_navigation(cx))
@@ -1766,16 +1797,34 @@ impl AgentSurface {
 			.into_any_element()
 	}
 
+	pub(super) fn agent_conversation_label(&self, agent: &decodex_protocol::work::Agent) -> String {
+		self.conversation_record(&agent.id)
+			.map(|work| self.conversation_label(work))
+			.unwrap_or_else(|| agent.name.clone())
+	}
+
 	pub(super) fn conversation_label(&self, work: &AgentWorkItemDto) -> String {
+		let snapshot = self.workspace.archives.snapshot_for(&work.id).or(self.snapshot.as_ref());
+		Self::conversation_label_in(snapshot, work)
+	}
+
+	pub(super) fn conversation_label_in(
+		snapshot: Option<&AgentSnapshotDto>,
+		work: &AgentWorkItemDto,
+	) -> String {
 		work.codex_thread_id
 			.as_ref()
-			.and_then(|thread| self.snapshot.as_ref()?.conversation_titles.get(thread).cloned())
-			.unwrap_or_else(|| self.work_label(work))
+			.and_then(|thread| snapshot?.conversation_titles.get(thread).cloned())
+			.unwrap_or_else(|| Self::work_label_in(snapshot, work))
 	}
 
 	pub(super) fn work_label(&self, work: &AgentWorkItemDto) -> String {
-		if Some(&work.id) == self.root_id().as_ref()
-			&& ["Agent", "Main"].contains(&work.title.as_str())
+		Self::work_label_in(self.snapshot.as_ref(), work)
+	}
+
+	fn work_label_in(snapshot: Option<&AgentSnapshotDto>, work: &AgentWorkItemDto) -> String {
+		if ["Agent", "Main"].contains(&work.title.as_str())
+			&& snapshot.and_then(Self::snapshot_root) == Some(work.id.as_str())
 		{
 			return "Assistant".into();
 		}
@@ -2741,7 +2790,7 @@ fn open_connection_settings(
 	cx: &mut App,
 ) {
 	if let Some(shell) = window.root::<Shell>().flatten() {
-		shell.update(cx, |shell, cx| shell.open_settings_window(destination, cx));
+		shell.update(cx, |shell, cx| shell.open_settings(destination, cx));
 	}
 	#[cfg(all(target_os = "macos", not(test)))]
 	if let Some(parent) = super::native_composer::parent_window(window, cx) {
@@ -2769,7 +2818,7 @@ fn connection_recovery_notice(
 	.into_any_element()
 }
 
-fn connection_settings_action(destination: crate::shell::Destination) -> AnyElement {
+pub(super) fn connection_settings_action(destination: crate::shell::Destination) -> AnyElement {
 	let (id, label) = if destination == crate::shell::Destination::Accounts {
 		("connection-open-accounts", "Open Accounts")
 	} else {

@@ -43,13 +43,9 @@ impl AgentSurface {
 			.items_center()
 			.opacity(opacity)
 			.when(opacity == 0., |row| row.invisible());
-		for (action, label, glyph) in row_commands(
-			self.workspace.navigation.preferences.pinned.contains(&item.id),
-			item.archived,
-		) {
-			if item.archived && action == "pin" {
-				continue;
-			}
+		for (action, label, glyph) in
+			row_commands(self.workspace.navigation.preferences.pinned.contains(&item.id))
+		{
 			let target = item.clone();
 			let keyboard = target.clone();
 			let row_key = key.to_owned();
@@ -167,8 +163,6 @@ impl AgentSurface {
 				}
 				self.workspace.navigation.preferences.save();
 			},
-			"restore" => self.restore_navigation_archive(&item.id, cx),
-			"delete" if item.archived => self.delete_confirmed_navigation_archive(&item.id, cx),
 			"archive" | "delete" =>
 				self.mutate_navigation_conversation(&item.id, action == "delete", cx),
 			_ => {},
@@ -452,14 +446,10 @@ impl AgentSurface {
 	}
 }
 
-fn row_commands(pinned: bool, archived: bool) -> [(&'static str, &'static str, super::Glyph); 3] {
+fn row_commands(pinned: bool) -> [(&'static str, &'static str, super::Glyph); 3] {
 	[
 		("pin", if pinned { "Unpin" } else { "Pin" }, super::Glyph::Pin),
-		(
-			if archived { "restore" } else { "archive" },
-			if archived { "Restore" } else { "Archive" },
-			if archived { super::Glyph::Restore } else { super::Glyph::Archive },
-		),
+		("archive", "Archive", super::Glyph::Archive),
 		("delete", "Delete", super::Glyph::Trash),
 	]
 }

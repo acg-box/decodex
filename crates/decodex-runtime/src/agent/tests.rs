@@ -837,6 +837,26 @@ async fn asynchronous_questions_and_usage_are_observed_without_completing_or_wak
 	);
 }
 
+fn assert_agent_resume(params: &Value, thread: &str, summary: bool) {
+	let endpoint = &params["config"]["mcp_servers.decodex"]["url"];
+	assert!(endpoint.as_str().is_some_and(|url| url.starts_with("http://127.0.0.1:")));
+	let mut expected = serde_json::json!({
+		"threadId": thread,
+		"excludeTurns": true,
+		"config": {
+			"features.guardian_recorded_items": false,
+			"tools.update_plan.enabled": true,
+			"features.realtime_conversation": true,
+			"mcp_servers.decodex": {"url":endpoint,"required":true,"default_tools_approval_mode":"approve","disabled_tools":["assistant_read","assistant_manage","assistant_memory"]}
+		}
+	});
+	if summary {
+		expected["initialTurnsPage"] =
+			serde_json::json!({"limit":1,"sortDirection":"desc","itemsView":"summary"});
+	}
+	assert_eq!(params, &expected);
+}
+
 async fn fixture() -> (AgentCoordinator, UnboundedReceiver<Value>, TempDir) {
 	fixture_with_history(serde_json::json!({})).await
 }
@@ -848,19 +868,16 @@ async fn personal_assistant_tools_and_instructions_are_not_given_to_project_agen
 	complete(&mut agent, "project").await;
 	let project = agent.store.get_agent_work_item("project".into()).await.unwrap();
 	let ordinary = agent.work_thread_params(&project).await.unwrap();
-	assert!(
-		ordinary["dynamicTools"]
-			.as_array()
-			.unwrap()
-			.iter()
-			.all(|tool| !tool["name"].as_str().unwrap().starts_with("assistant_"))
-	);
+	let private = serde_json::json!(["assistant_read", "assistant_manage", "assistant_memory"]);
+	assert_eq!(ordinary["config"]["mcp_servers.decodex"]["disabled_tools"], private);
 	assert!(!ordinary["developerInstructions"].as_str().unwrap().contains("RAGFlow"));
 	assert!(!ordinary["developerInstructions"].as_str().unwrap().contains("assistant_memory"));
 	agent.store.set_assistant("project".into(), true).await.unwrap();
 	let personal = agent.work_thread_params(&project).await.unwrap();
+	assert!(personal["config"]["mcp_servers.decodex"]["url"].is_string());
+	assert!(personal["config"]["mcp_servers.decodex"].get("disabled_tools").is_none());
 	assert!(
-		personal["dynamicTools"]
+		super::tools(true)
 			.as_array()
 			.unwrap()
 			.iter()
@@ -885,13 +902,7 @@ async fn personal_assistant_tools_and_instructions_are_not_given_to_project_agen
 	agent.wake_pending().await.unwrap();
 	let request =
 		iter::from_fn(|| sent.try_recv().ok()).find(|r| r["method"] == "thread/start").unwrap();
-	assert!(
-		request["params"]["dynamicTools"]
-			.as_array()
-			.unwrap()
-			.iter()
-			.all(|tool| !tool["name"].as_str().unwrap().starts_with("assistant_"))
-	);
+	assert_eq!(request["params"]["config"]["mcp_servers.decodex"]["disabled_tools"], private);
 	assert!(!request["params"]["developerInstructions"].as_str().unwrap().contains("RAGFlow"));
 	let other = agent.store.get_agent_work_item("other-project".into()).await.unwrap();
 	assert!(
@@ -1126,6 +1137,8 @@ async fn serve_fixture(server_io: DuplexStream, history: Value, sent: UnboundedS
 
 				fixture_thread_read(&request, &history, &settings, turns)
 			},
+			Some("thread/list") if history["_threadCatalog"].is_array() =>
+				serde_json::json!({"data":history["_threadCatalog"],"nextCursor":null}),
 			Some("thread/list") =>
 				serde_json::json!({"data":if !faults.deleted && history["_not_listed"] != true && request["params"]["archived"]==faults.archived {vec![serde_json::json!({"id":"opaque thread/1"})]} else {vec![]},"nextCursor":null}),
 			Some("thread/delete") => {
@@ -1241,24 +1254,7 @@ async fn unloaded_thread_resumes_exact_identity_without_new_thread() {
 	assert_eq!(resumes.len(), 1);
 	assert_eq!(resumes[0]["params"]["threadId"], serde_json::json!(original.codex_thread_id));
 
-	for field in [
-		"approvalPolicy",
-		"sandbox",
-		"cwd",
-		"dynamicTools",
-		"model",
-		"config",
-		"developerInstructions",
-	] {
-		if field == "config" {
-			assert_eq!(
-				resumes[0]["params"]["config"],
-				serde_json::json!({"features.guardian_recorded_items":false})
-			);
-		} else {
-			assert!(resumes[0]["params"].get(field).is_none(), "resume must preserve {field}");
-		}
-	}
+	assert_agent_resume(&resumes[0]["params"], "opaque thread/1", true);
 }
 
 #[tokio::test]
@@ -2394,21 +2390,14 @@ async fn nested_managers_own_their_inbox_tools_and_workspace_directory() {
 	assert_eq!(starts[0]["params"]["threadSource"], "user");
 	assert_eq!(starts[4]["params"]["threadSource"], "user");
 	assert!(starts[1..4].iter().all(|start| start["params"].get("threadSource").is_none()));
-	assert!(
-		starts[1]["params"]["dynamicTools"]
-			.as_array()
-			.unwrap()
-			.iter()
-			.all(|tool| tool["name"] != "agent_create_workspace")
-	);
-	assert!(starts[2]["params"]["dynamicTools"].is_array());
-	assert!(starts[3]["params"].get("dynamicTools").is_none());
-
-	for start in &starts {
-		let instructions =
-			if start["params"]["dynamicTools"].is_array() { INSTRUCTIONS } else { COORDINATION };
-
-		assert_eq!(start["params"]["developerInstructions"], instructions);
+	assert!(starts.iter().all(|start| start["params"].get("dynamicTools").is_none()));
+	for (index, start) in starts.iter().enumerate() {
+		let manager = index != 3;
+		assert_eq!(start["params"]["config"]["mcp_servers.decodex"].is_object(), manager);
+		assert_eq!(
+			start["params"]["developerInstructions"],
+			if manager { INSTRUCTIONS } else { COORDINATION }
+		);
 	}
 
 	assert_eq!(
@@ -4612,14 +4601,7 @@ async fn missed_native_active_turn_recovery_rejects_reverted_readback() {
 			);
 
 			if request["method"] == "thread/resume" {
-				for field in ["cwd", "model", "sandbox", "approvalPolicy"] {
-					assert!(request["params"].get(field).is_none());
-				}
-
-				assert_eq!(
-					request["params"]["config"],
-					serde_json::json!({"features.guardian_recorded_items":false})
-				);
+				assert_agent_resume(&request["params"], "opaque thread/1", false);
 			}
 		}
 	}

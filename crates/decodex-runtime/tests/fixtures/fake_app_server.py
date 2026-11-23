@@ -2,6 +2,7 @@
 import json
 import os
 from pathlib import Path
+import pwd
 import select
 import subprocess
 import sys
@@ -552,7 +553,8 @@ for line in sys.stdin:
         assert message["params"]["searchTerm"].startswith("decodex-capability-probe-")
         result = {"data": [], "nextCursor": None}
     elif method == "config/read":
-        assert message["params"] == {"cwd": "/tmp", "includeLayers": False}
+        cwd = pwd.getpwuid(os.geteuid()).pw_dir if mode == "stored-thread-defaults" else "/tmp"
+        assert message["params"] == {"cwd": cwd, "includeLayers": False}
         if mode == "exact-config-defaults-rejected":
             print(json.dumps({"id": message["id"], "error": {"code": -32603, "message": "configuration unavailable"}}), flush=True)
             continue

@@ -4,12 +4,23 @@ use crate::{
 	agent_models, agent_permissions, agent_plugins,
 };
 
+use decodex_codex::app_server_client::{AppServerClient, ClientError, NativeThreadGoalStatus};
+
 impl AgentCoordinator {
-	pub(super) async fn hydrate_dispatch_thread(
+	/// A prompt suggestion may load a dormant conversation before its first user turn.
+	pub(crate) async fn prepare_sample_source(&mut self, thread: &str) -> Result<(), AgentError> {
+		if sample_needs_resume(&self.client, thread).await? {
+			self.hydrate_dispatch_thread(thread, &Value::Null).await?;
+		}
+		Ok(())
+	}
+
+	pub(crate) async fn hydrate_dispatch_thread(
 		&mut self,
 		thread: &str,
 		turn: &Value,
 	) -> Result<(), AgentError> {
+		self.ensure_role_released(thread).await?;
 		if !self.loaded_threads.contains(thread) {
 			let mut params = self.resume_observer_params(thread, true).await?;
 			for field in ["permissions", "approvalPolicy", "approvalsReviewer"] {
@@ -42,9 +53,11 @@ impl AgentCoordinator {
 
 	pub(super) async fn attach_native_thread_owner(&self, thread: &str) -> Result<(), AgentError> {
 		let Some(generation) = &self.native_generation else { return Ok(()) };
-		let item = self.store.list_agent_work_items().await?.into_iter().find(|item| {
-			item.codex_thread_id.as_deref() == Some(thread) && item.parent_goal_id.is_none()
-		});
+		let item = self
+			.store
+			.agent_work_item_for_thread(thread.to_owned())
+			.await?
+			.filter(|item| item.parent_goal_id.is_none());
 		let Some(item) = item else { return Ok(()) };
 
 		if !self
@@ -99,18 +112,48 @@ impl AgentCoordinator {
 			if summary { Self::resume_usage_params(thread) } else { Self::resume_params(thread) };
 
 		params["config"] = serde_json::json!({"features.guardian_recorded_items":details});
-		for item in self.store.list_agent_work_items().await? {
-			if item.codex_thread_id.as_deref() == Some(thread)
-				&& self.store.assistant_external_memory_context(item.id, thread.into()).await?
-			{
-				params["config"]["memories.generate_memories"] = serde_json::json!(false);
-				params["config"]["memories.use_memories"] = serde_json::json!(false);
-				params["config"]["features.memories"] = serde_json::json!(false);
-				break;
+		if let Some(item) = self.store.agent_work_item_for_thread(thread.to_owned()).await? {
+			if self.store.uses_agent_mcp_tools(item.id.clone()).await? {
+				let assistant = self.store.assistant_settings(item.id.clone()).await?.is_some();
+				self.managed_tools.configure(&mut params, assistant).await?;
+				Self::enable_agent_features(&mut params);
+			} else if item.parent_goal_id.is_none() && !self.is_manager(&item.id).await? {
+				params["config"]["thread_unload_delay_secs"] = serde_json::json!(0);
+			}
+			if self.store.assistant_external_memory_context(item.id, thread.into()).await? {
+				Self::disable_native_memory(&mut params);
 			}
 		}
 
 		Ok(params)
+	}
+
+	/// Apply the service role without replacing the native model, directory, or permissions.
+	pub(super) fn apply_agent_role(
+		params: &mut Value,
+		assistant: Option<&decodex_core::assistant::AssistantSettings>,
+	) {
+		let instructions = super::INSTRUCTIONS;
+		let assistant_instructions = super::ASSISTANT_INSTRUCTIONS;
+		params["developerInstructions"] = match assistant {
+			Some(settings) => serde_json::json!(format!(
+				"{instructions}\n\n{assistant_instructions}\n\nPersonal Assistant mandate (selected by the user):\n{}\nKeep stable Agent and Work identities across context renewal. Do not invent recurring duties. Use assistant_read for current teams and independent wakes.",
+				settings.mandate
+			)),
+			None => serde_json::json!(instructions),
+		};
+		Self::enable_agent_features(params);
+	}
+
+	fn enable_agent_features(params: &mut Value) {
+		params["config"]["tools.update_plan.enabled"] = serde_json::json!(true);
+		params["config"]["features.realtime_conversation"] = serde_json::json!(true);
+	}
+
+	pub(super) fn disable_native_memory(params: &mut Value) {
+		params["config"]["memories.generate_memories"] = serde_json::json!(false);
+		params["config"]["memories.use_memories"] = serde_json::json!(false);
+		params["config"]["features.memories"] = serde_json::json!(false);
 	}
 
 	pub(super) fn resume_usage_params(thread: &str) -> Value {
@@ -140,3 +183,27 @@ impl AgentCoordinator {
 			}
 	}
 }
+
+async fn sample_needs_resume(client: &AppServerClient, thread: &str) -> Result<bool, ClientError> {
+	let metadata = client.thread_read(serde_json::json!({"threadId":thread})).await?;
+	if metadata["thread"]["id"] != thread {
+		return Err(ClientError::InvalidFrame);
+	}
+	if metadata["thread"]["status"]["type"] != "notLoaded" {
+		return Ok(false);
+	}
+	// Resuming an active native goal can start work. Suggestions may load only
+	// dormant conversations and must never continue a goal on the user's behalf.
+	if client
+		.thread_goal(thread)
+		.await?
+		.is_some_and(|goal| goal.status == NativeThreadGoalStatus::Active)
+	{
+		return Err(ClientError::InvalidFrame);
+	}
+	Ok(true)
+}
+
+#[cfg(test)]
+#[path = "../agent_sample_loading_tests.rs"]
+mod sample_tests;

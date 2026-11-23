@@ -17,7 +17,7 @@ import tomllib
 
 ROOT = Path(__file__).resolve().parents[2]
 SCHEMA_PATH = ROOT / "database/schema.sql"
-SCHEMA_VERSION = 61
+SCHEMA_VERSION = 62
 
 DATABASE_RELATIVE_PATH = Path("server/decodex.sqlite3")
 APPLICATION_ID = 0x4443_5831
@@ -80,6 +80,7 @@ REQUIRED_TABLES = frozenset(
         "agent_capacity_retries",
         "agent_live_output",
         "agent_managers",
+        "agent_managed_conversations",
         "projects",
         "project_agents",
         "agents",

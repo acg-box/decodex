@@ -8,11 +8,11 @@ use gpui::{
 	prelude::{FluentBuilder as _, InteractiveElement as _, ParentElement as _, Styled as _},
 };
 
-use super::{MaterialGeometry, Popover, PopoverContent, PopoverPlacement, Tween};
+use super::{MaterialGeometry, MaterialSurface, Popover, PopoverContent, PopoverPlacement, Tween};
 use crate::{
 	ui_frame,
 	ui_theme::{
-		self, appearance,
+		self,
 		material::Surface,
 		native_material_panel::{self, MaterialPanel},
 	},
@@ -49,6 +49,11 @@ struct Content {
 	passive: bool,
 	geometry: MaterialGeometry,
 	focus: Option<FocusHandle>,
+}
+impl Content {
+	fn is_modal(&self) -> bool {
+		self.attached && self.focus.is_some()
+	}
 }
 
 struct Panel {
@@ -117,6 +122,12 @@ impl Render for Panel {
 		let root = gpui::div()
 			.relative()
 			.w_full()
+			.when(content.is_modal(), |root| {
+				root.h(self.height).bg(super::modal_backdrop(
+					ui_theme::ColorScheme::current(),
+					Some(Surface::Popover.material()),
+				))
+			})
 			.when(!content.attached, ui_theme::menu_outline)
 			.font_family(ui_theme::FONT_FAMILY)
 			.text_size(gpui::px(ui_theme::COMPACT_BODY_SIZE))
@@ -124,6 +135,7 @@ impl Render for Panel {
 			.text_color(ui_theme::rgb(ui_theme::TEXT))
 			.track_focus(&self.focus)
 			.on_key_down(cx.listener(|panel, event: &gpui::KeyDownEvent, window, cx| {
+				let modal = panel.content.as_ref().is_some_and(Content::is_modal);
 				match event.keystroke.key.as_str() {
 					"escape" => {
 						if let Some(content) = panel.content.as_ref().filter(|c| c.attached) {
@@ -131,13 +143,15 @@ impl Render for Panel {
 						} else {
 							panel.close(cx);
 						}
-						let parent = panel.parent;
-						cx.defer(move |cx| {
-							let _ = parent.update(cx, |_, window, _| window.activate_window());
-						});
+						if !modal {
+							let parent = panel.parent;
+							cx.defer(move |cx| {
+								let _ = parent.update(cx, |_, window, _| window.activate_window());
+							});
+						}
 					},
-					"down" => window.focus_next(cx),
-					"up" => window.focus_prev(cx),
+					"down" if !modal => window.focus_next(cx),
+					"up" if !modal => window.focus_prev(cx),
 					_ => return,
 				}
 				cx.stop_propagation();
@@ -162,8 +176,9 @@ impl Render for Panel {
 					};
 					panel.place(window, cx);
 				}
+				let modal = panel.content.as_ref().is_some_and(Content::is_modal);
 				if let Some(surface) = &mut panel.surface {
-					surface.refresh_material();
+					surface.refresh_material_with_menu_tint(!modal);
 				}
 				let focus = focus.clone();
 				cx.defer_in(window, move |panel, window, cx| {
@@ -299,7 +314,8 @@ fn present(parent: AnyWindowHandle, request: Content, cx: &mut App) {
 		let changed = panel.content.as_ref().is_none_or(|old| old.id != request.id);
 		if changed {
 			panel.close(cx);
-			panel.focus_pending = !request.preview && !request.attached && !request.passive;
+			panel.focus_pending =
+				request.is_modal() || (!request.preview && !request.attached && !request.passive);
 		}
 		if request.attached
 			&& let Some(bounds) = request.trigger
@@ -323,11 +339,7 @@ fn present(parent: AnyWindowHandle, request: Content, cx: &mut App) {
 }
 
 pub(super) fn render_surface(
-	id: ElementId,
-	geometry: MaterialGeometry,
-	content: Rc<PopoverContent>,
-	dismiss: Rc<dyn Fn(&mut App)>,
-	escape: Rc<dyn Fn(&mut App)>,
+	surface: MaterialSurface,
 	window: &mut Window,
 	cx: &mut App,
 ) -> AnyElement {
@@ -335,7 +347,7 @@ pub(super) fn render_surface(
 	let parent = window.window_handle();
 	let viewport = window.viewport_size();
 	let hover_viewport = super::hover_viewport(window);
-	let outside_id = id.clone();
+	let outside_id = surface.id.clone();
 	gpui::canvas(
 		move |bounds, window, cx| {
 			// Attached native windows bypass GPUI's paint mask. Carry the
@@ -344,10 +356,10 @@ pub(super) fn render_surface(
 			let viewport_clip = (visible != bounds)
 				.then(|| Bounds::new(visible.origin - bounds.origin, visible.size));
 			let request = Content {
-				id,
-				render: content,
-				dismiss,
-				escape,
+				id: surface.id,
+				render: surface.content,
+				dismiss: surface.dismiss,
+				escape: surface.escape,
 				trigger: Some(bounds),
 				origin: bounds.origin,
 				viewport,
@@ -358,8 +370,12 @@ pub(super) fn render_surface(
 				preview: true,
 				attached: true,
 				passive: false,
-				geometry,
-				focus: None,
+				geometry: MaterialGeometry {
+					radius: surface.radius,
+					clip: surface.clip,
+					opacity: surface.opacity,
+				},
+				focus: surface.modal_focus,
 			};
 			cx.defer(move |cx| present(parent, request, cx));
 		},
@@ -383,11 +399,26 @@ pub(super) fn render_surface(
 }
 
 pub(super) fn hide_surface(parent: AnyWindowHandle, id: ElementId, cx: &mut App) {
-	if cx.has_global::<Hosts>()
-		&& let Some(child) =
-			cx.global::<Hosts>().accessories.get(&(parent.window_id(), id)).copied()
-	{
-		let _ = child.update(cx, |panel, _, cx| panel.close(cx));
+	let key = (parent.window_id(), id);
+	if !cx.has_global::<Hosts>() {
+		return;
+	}
+	if let Some(child) = cx.global::<Hosts>().accessories.get(&key).copied() {
+		let modal = child.update(cx, |panel, window, cx| {
+			let modal = panel.content.as_ref().is_some_and(Content::is_modal);
+			if modal && let Some(surface) = &panel.surface {
+				surface.restore_modal_parent_focus();
+			}
+			panel.close(cx);
+			if modal {
+				// Closing the modal host also releases any nested menus and accessories.
+				window.remove_window();
+			}
+			modal
+		});
+		if modal.unwrap_or(false) {
+			cx.global_mut::<Hosts>().accessories.remove(&key);
+		}
 	}
 }
 
@@ -556,7 +587,6 @@ fn create(
 			|window, cx| {
 				cx.new(|cx| {
 					ui_frame::observe_activation(window, cx);
-					appearance::observe(window, cx);
 					cx.observe_window_activation(window, |panel: &mut Panel, window, cx| {
 						if !window.is_window_active()
 							&& !ui_frame::application_active()

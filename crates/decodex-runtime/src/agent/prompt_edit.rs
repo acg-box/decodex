@@ -4,7 +4,7 @@ use std::time::Duration;
 use sha2::{Digest as _, Sha256};
 use tokio::time;
 
-use crate::agent::{AgentCoordinator, AgentError, ClientError, HistoryGuard};
+use crate::agent::{AgentCoordinator, AgentError, ClientError, HistoryGuard, Value};
 use decodex_codex::app_server_client::ThreadForkBoundary;
 use decodex_database::{
 	AgentForkAttempt, AgentForkBoundary, AgentForkReceipt, AgentPromptEditAttempt,
@@ -207,7 +207,7 @@ impl AgentCoordinator {
 	/// Reconnect an idle saved source when needed, then review its visible input without sending.
 	/// The caller owns selection and attachment validation; internal voice handoffs are excluded.
 	pub async fn prepare_prompt_edit(
-		&self,
+		&mut self,
 		work: &str,
 		thread: &str,
 		turn: &str,
@@ -226,7 +226,9 @@ impl AgentCoordinator {
 			.await?
 		{
 			let source = self.store.get_agent_work_item(work.into()).await?;
-			let Some(current_generation) = generation.as_deref() else { return Ok(None) };
+			if generation.is_none() {
+				return Ok(None);
+			}
 			if source.parent_goal_id.is_some()
 				|| source.codex_thread_id.as_deref() != Some(thread)
 				|| source.active_turn_id.is_some()
@@ -234,15 +236,7 @@ impl AgentCoordinator {
 			{
 				return Ok(None);
 			}
-			crate::native_agents::prepare(
-				&self.store,
-				&self.client,
-				work,
-				thread,
-				current_generation,
-			)
-			.await
-			.map_err(|message| AgentError::Rejected(message.into()))?;
+			self.hydrate_dispatch_thread(thread, &Value::Null).await?;
 			if !self
 				.store
 				.agent_thread_is_restorable(work.into(), thread.into(), generation.clone())

@@ -10,7 +10,7 @@ use decodex_protocol::EntityId;
 use crate::{
 	settings_surface::SettingsCategory,
 	shell::{
-		AnyElement, Context, Destination, MouseButton, Role, SettingsWindow, Shell,
+		AnyElement, Context, Destination, MouseButton, Role, Shell,
 		agent_surface::AgentLocation,
 		workspace_symbols::{self, Symbol},
 	},
@@ -169,6 +169,10 @@ impl Shell {
 		window: &mut gpui::Window,
 		cx: &mut Context<Self>,
 	) {
+		if self.settings_open() {
+			self.navigate_settings_history(forward, window, cx);
+			return;
+		}
 		if self.selected == Destination::Agent && self.agent.read(cx).workspace_connecting() {
 			return;
 		}
@@ -237,39 +241,40 @@ impl Shell {
 	}
 }
 
-impl SettingsWindow {
-	pub(super) fn record_navigation(&mut self, cx: &Context<Self>) {
-		self.navigation.record(self.owner.read(cx).settings_location(cx));
+impl Shell {
+	pub(super) fn record_settings_navigation(&mut self, cx: &Context<Self>) {
+		self.settings_navigation.record(self.settings_location(cx));
 	}
 
-	pub(super) fn navigate_history(
+	fn navigate_settings_history(
 		&mut self,
 		forward: bool,
 		window: &mut gpui::Window,
 		cx: &mut Context<Self>,
 	) {
-		self.record_navigation(cx);
-		let Some(index) = self.navigation.neighbor(forward, |_| true) else { return };
-		let location = self.navigation.entries[index].clone();
-
-		self.navigation.cursor = index;
-		self.owner.update(cx, |shell, cx| {
-			let destination = match location {
-				Location::Settings(category) => {
-					shell.settings.update(cx, |settings, cx| {
-						settings.category = category;
-						cx.notify();
-					});
-					Destination::Settings
-				},
-				Location::Destination(destination) => destination,
-				_ => return,
-			};
-			shell.select_settings_section(destination, cx);
+		self.record_settings_navigation(cx);
+		let Some(index) = self.settings_navigation.neighbor(forward, |_| true) else { return };
+		let location = self.settings_navigation.entries[index].clone();
+		self.settings_navigation.cursor = index;
+		let destination = match location {
+			Location::Settings(category) => {
+				self.settings.update(cx, |settings, cx| {
+					settings.category = category;
+					cx.notify();
+				});
+				Destination::Settings
+			},
+			Location::Destination(destination) => destination,
+			_ => return,
+		};
+		self.select_settings_section(destination, cx);
+		let tab = super::SETTINGS_SECTIONS.iter().position(|(section, category, _)| {
+			*section == destination
+				&& category.is_none_or(|value| self.settings.read(cx).category == value)
 		});
-
-		window.focus(&self.focus, cx);
-		cx.notify();
+		if let Some(tab) = tab {
+			window.focus(&self.settings_focus[tab], cx);
+		}
 	}
 }
 
@@ -325,7 +330,7 @@ impl Shell {
 mod tests {
 	use gpui::{
 		AnyWindowHandle, Context, FocusHandle, InteractiveElement as _, MouseButton,
-		NavigationDirection, Render, Styled as _, TestAppContext, VisualTestContext, Window,
+		NavigationDirection, Render, Styled as _, TestAppContext, Window,
 	};
 
 	use crate::shell::{
@@ -413,7 +418,7 @@ mod tests {
 	}
 
 	#[gpui::test]
-	fn sidebar_archive_disclosure_preserves_navigation_history(cx: &mut TestAppContext) {
+	fn sidebar_archive_overlay_preserves_navigation_history(cx: &mut TestAppContext) {
 		let (shell, visual) = open_shell(cx);
 
 		shell.update(visual, |s, cx| {
@@ -426,14 +431,17 @@ mod tests {
 		let archive = visual.debug_bounds("archive-browser").expect("sidebar archive entry");
 		visual.simulate_click(archive.center(), Default::default());
 		visual.update(crate::ui_frame::draw_current_frame);
-		let back = visual.debug_bounds("archive-back").expect("archive remains in the sidebar");
+		let close = visual.debug_bounds("workspace-overlay-close").expect("archive overlay");
+		let sort = visual.debug_bounds("archive-sort-Name").expect("archive sort controls");
+		assert!(!close.intersects(&sort), "the close control must leave the toolbar usable");
+		assert!(visual.debug_bounds("archive-browser-content").is_some());
 		shell.read_with(visual, |s, cx| {
 			assert_eq!(s.agent.read(cx).navigation_location(), AgentLocation::Root);
 			assert_eq!(s.navigation.entries.len(), count);
 		});
-		visual.simulate_click(back.center(), Default::default());
+		visual.simulate_click(close.center(), Default::default());
 		visual.update(crate::ui_frame::draw_current_frame);
-		assert!(visual.debug_bounds("archive-back").is_none());
+		assert!(visual.debug_bounds("archive-browser-content").is_none());
 		shell.read_with(visual, |s, cx| {
 			assert_eq!(s.agent.read(cx).navigation_location(), AgentLocation::Root);
 			assert_eq!(s.navigation.entries.len(), count);
@@ -446,9 +454,8 @@ mod tests {
 	) {
 		let (shell, visual) = open_shell(cx);
 
-		shell.update(visual, |s, cx| s.open_settings_window(Destination::Settings, cx));
-		let window = shell.read_with(visual, |s, _| s.settings_window.unwrap());
-		let settings = &mut VisualTestContext::from_window(window.into(), visual);
+		shell.update(visual, |s, cx| s.open_settings(Destination::Settings, cx));
+		let settings = &mut *visual;
 
 		for section in [
 			"settings-section-Appearance",
@@ -544,7 +551,7 @@ mod tests {
 				visual.simulate_mouse_down(pointer, button, Default::default());
 				visual.simulate_mouse_up(pointer, button, Default::default());
 				visual.update(crate::ui_frame::draw_current_frame);
-				assert!(visual.debug_bounds("archive-back").is_none());
+				assert!(visual.debug_bounds("archive-browser-content").is_none());
 				shell.read_with(visual, |s, cx| {
 					assert_eq!(s.agent.read(cx).navigation_location(), expected);
 					assert_eq!(s.navigation.entries.len(), 3);

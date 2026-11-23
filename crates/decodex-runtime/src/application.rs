@@ -2658,6 +2658,11 @@ impl Application for ServiceApplication {
 					.await
 					.map_err(|error| match error {
 						AgentHostError::Rejected(reason) => application_unavailable(reason),
+						AgentHostError::Registration(reason) => WireText::new(reason)
+							.map(|message| CommandError::ApplicationUnavailable { message })
+							.unwrap_or_else(|_| {
+								application_unavailable("Conversation registration failed.")
+							}),
 						AgentHostError::Unknown(_) => CommandError::AcceptanceUnknown,
 					})?;
 				let work_id = decodex_protocol::EntityId::new(id)
@@ -2845,6 +2850,11 @@ impl Application for ServiceApplication {
 				query_work_evidence(&self.store, &query.payload).await,
 			QueryPayload::GetAgentGuardianReviews { .. }
 			| QueryPayload::GetAgentGuardianDetail { .. } => self.query_guardian(&query.payload).await,
+			QueryPayload::ListNativeThreads { cursor } =>
+				QueryResultPayload::NativeThreads(match &self.agent {
+					Some(host) => host.native_threads(cursor.as_ref().map(|c| c.as_str())).await,
+					None => None,
+				}),
 			QueryPayload::GetAgentSnapshot => self.query_agent_snapshot(false).await,
 			QueryPayload::GetAgentArchiveCatalog => self.query_agent_snapshot(true).await,
 			QueryPayload::GetAgentExchanges { before } => self.query_exchanges(*before).await,

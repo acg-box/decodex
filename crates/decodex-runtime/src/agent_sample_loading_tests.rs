@@ -28,13 +28,6 @@ async fn cold_suggestion_loads_only_a_dormant_source_without_submitting_input() 
 						"createdAt":1, "updatedAt":1
 					}}),
 					"thread/goal/get" => serde_json::json!({"goal":null}),
-					"thread/resume" => {
-						assert_eq!(
-							request["params"],
-							serde_json::json!({"threadId":"source","excludeTurns":true})
-						);
-						serde_json::json!({"thread":{"id":"source"}})
-					},
 					_ => panic!("unexpected operation: {method}"),
 				};
 				write
@@ -44,19 +37,16 @@ async fn cold_suggestion_loads_only_a_dormant_source_without_submitting_input() 
 					)
 					.await
 					.unwrap();
-				if method == "thread/resume"
-					|| case == "loaded"
-					|| case == "wrong_source"
-					|| (case == "active_goal" && method == "thread/goal/get")
-				{
+				if method == "thread/goal/get" || matches!(case, "wrong_source" | "loaded") {
 					break;
 				}
 			}
 			methods
 		});
-		let result = super::load_sample_source(&client, "source").await;
+		let result = super::sample_needs_resume(&client, "source").await;
 		assert_eq!(result.is_ok(), matches!(case, "loaded" | "cold"), "{case}");
 		let methods = server.await.unwrap();
-		assert_eq!(methods.contains(&"thread/resume".to_owned()), case == "cold");
+		assert_eq!(result.unwrap_or(false), case == "cold");
+		assert!(!methods.contains(&"thread/resume".to_owned()));
 	}
 }

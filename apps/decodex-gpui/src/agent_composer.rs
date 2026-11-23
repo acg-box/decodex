@@ -113,7 +113,7 @@ impl AgentSurface {
 			&& !self.workspace.browsing
 			&& self.snapshot.is_some()
 			&& (self.native_agents.selected.is_some()
-				|| self.selected_is_agent()
+				|| self.selected_has_conversation_composer()
 				|| self.selected_is_archived())
 	}
 

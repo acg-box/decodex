@@ -423,6 +423,29 @@ pub struct AgentTaskReferenceDto {
 	pub title: WireText,
 }
 
+/// A user-accessible persistent conversation in the current native catalog.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct NativeThreadCandidate {
+	/// Exact native identity, retained on registration.
+	pub thread_id: String,
+	/// Native name or first message preview.
+	pub title: String,
+	/// Native conversation preview when it adds context to the title.
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub preview: Option<String>,
+}
+
+/// One bounded page from the account-scoped native catalog.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct NativeThreadPage {
+	/// Directly interactive native conversations.
+	pub threads: Vec<NativeThreadCandidate>,
+	/// Opaque cursor for the next native page.
+	pub next_cursor: Option<String>,
+}
+
 /// Explicit Agent operations. Graph judgments remain model-owned.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "action", content = "data", rename_all = "snake_case", deny_unknown_fields)]
@@ -440,6 +463,13 @@ pub enum AgentActionDto {
 		agent_id: EntityId,
 		/// Exact duty identity.
 		wake_id: EntityId,
+	},
+	/// Register or update responsibility for an existing native conversation.
+	RegisterNativeThread {
+		/// Exact native conversation.
+		thread_id: EntityId,
+		/// Requested relationship and expected prior owner.
+		relation: decodex_core::work::ThreadRegistration,
 	},
 	/// Create an idle personal Assistant. Native execution starts with user input.
 	CreateAssistant {

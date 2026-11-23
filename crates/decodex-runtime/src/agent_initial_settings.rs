@@ -4,7 +4,11 @@ use std::{
 	time::{SystemTime, UNIX_EPOCH},
 };
 
-use crate::agent_host::{AccountId, AgentConfig, AgentDispatchState, AgentHost, Value};
+use crate::agent_host::{
+	AccountId, AgentConfig, AgentCoordinator, AgentDispatchState, AgentError, AgentHost,
+	ServerEvent, Value, mpsc,
+};
+use decodex_core::work::ThreadRegistration;
 use decodex_database::{AgentWorkItem, SqliteStore};
 use decodex_protocol::{
 	AgentExecutionOverrides, ConversationWorkingDirectory, InitialModelCatalogRequest,
@@ -14,33 +18,9 @@ use decodex_protocol::{
 pub(super) async fn restore_candidate(
 	store: &SqliteStore,
 ) -> Option<(AgentWorkItem, Option<String>)> {
-	let deleted = store.deleted_agent_thread_ids().await.ok()?;
-	let mut pending = None;
-	for root in store.list_agent_work_items().await.ok()?.into_iter().filter(|work| {
-		work.parent_goal_id.is_none()
-			&& !work.codex_thread_id.as_ref().is_some_and(|id| deleted.contains(id))
-	}) {
-		let saved = store.read_agent_root_settings(&root.id).await.ok()?;
-		// Independent chats (including Live-only threads) share the configured connection.
-		// Their native thread alone does not make them a process configuration owner.
-		if saved.is_some() {
-			return Some((root, saved));
-		}
-		if pending.is_none()
-			&& root.codex_thread_id.is_none()
-			&& (root.dispatch_state != AgentDispatchState::Idle
-				|| store.list_agent_wake_events(root.id.clone(), 100).await.ok()?.iter().any(
-					|event| {
-						matches!(
-							event.event_kind.as_str(),
-							"user_message" | "assistant_instruction"
-						) && event.delivered_turn_id.is_none()
-					},
-				)) {
-			pending = Some((root, None));
-		}
-	}
-	pending
+	let root = store.agent_connection_root().await.ok()??;
+	let saved = store.read_agent_root_settings(&root.id).await.ok()?;
+	Some((root, saved))
 }
 
 /// A removed project must not prevent the shared read connection from starting.
@@ -54,6 +34,71 @@ pub(super) fn restore_process_directory(cwd: &str) -> Option<String> {
 }
 
 impl AgentHost {
+	pub(super) async fn register_offline_thread(
+		&self,
+		thread: &str,
+		relation: ThreadRegistration,
+		active: &mut Option<(String, AgentCoordinator, mpsc::Receiver<ServerEvent>)>,
+	) -> Result<(), AgentError> {
+		let root = self.store.agent_connection_root().await?;
+		let bootstrap = root.as_ref().is_none_or(|item| {
+			item.kind == decodex_database::AgentWorkKind::Goal
+				&& item.dispatch_state == AgentDispatchState::Idle
+				&& item.codex_thread_id.as_deref() == Some(thread)
+		});
+		let saved = match &root {
+			Some(item) if bootstrap => self.store.read_agent_root_settings(&item.id).await?,
+			_ => None,
+		};
+		let need_settings = bootstrap && saved.is_none();
+		let admitted = self
+			.runtime
+			.visible_stored_thread(thread, need_settings)
+			.await
+			.map_err(|reason| AgentError::Rejected(reason.into()))?;
+		// Snapshot reads can run while the actor is attaching the first connection.
+		if bootstrap {
+			self.initializing.send_replace(true);
+		}
+		let result = async {
+			let (connection, settings) = if let Some(config) = admitted.config {
+				let mut encoded = serde_json::to_value(&config)
+					.map_err(|_| AgentError::Invalid("Invalid conversation settings".into()))?;
+				encoded["account_id"] = serde_json::json!(admitted.account.as_str());
+				(Some((config, Some(admitted.account))), Some(encoded.to_string()))
+			} else if let Some(encoded) = saved {
+				let connection = super::decode_settings(&encoded).ok_or_else(|| {
+					AgentError::Invalid("Invalid saved connection settings".into())
+				})?;
+				(Some(connection), None)
+			} else {
+				(None, None)
+			};
+			let item = crate::agent::registration::bind(
+				&self.store,
+				&admitted.row,
+				admitted.candidate,
+				relation,
+				settings,
+			)
+			.await?;
+			if let Some((config, account)) = connection {
+				// Only attach the account process. Recovery resumes active native Goals
+				// and can dispatch pending input, neither of which registration requests.
+				*active = self
+					.connect(&item.id, format!("register-{}", super::now()), config, account, None)
+					.await
+					.ok();
+			}
+			Ok(())
+		}
+		.await;
+		if bootstrap {
+			self.initializing.send_replace(false);
+		}
+		result
+	}
+
 	pub(super) async fn initial_agent_settings(
 		&self,
 		root: &AgentWorkItem,

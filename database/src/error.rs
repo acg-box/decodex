@@ -47,6 +47,7 @@ pub enum StoreError {
 	OwnershipLost(&'static str),
 	CredentialRejected,
 	AgentThreadInUse,
+	AgentInstructionSuperseded,
 	InvalidInput(&'static str),
 	CapacityExhausted(&'static str),
 	Blob(decodex_core::StorageError),
@@ -69,6 +70,8 @@ impl std::fmt::Display for StoreError {
 			Self::CredentialRejected =>
 				formatter.write_str("credential material is forbidden in ordinary database rows"),
 			Self::AgentThreadInUse => formatter.write_str("Agent conversation is in use elsewhere"),
+			Self::AgentInstructionSuperseded =>
+				formatter.write_str("The queued Work instruction is no longer current."),
 			Self::InvalidInput(reason) => write!(formatter, "invalid store input: {reason}"),
 			Self::CapacityExhausted(resource) => {
 				write!(formatter, "{resource} capacity is exhausted")

@@ -164,7 +164,9 @@ impl AgentSurface {
 		if let Some((owner, thread)) = &self.native_agents.selected {
 			owner == &row.work && row.thread.as_ref() == Some(thread)
 		} else {
-			!row.native && self.selected.as_ref() == Some(&row.work) && self.selected_is_agent()
+			!row.native
+				&& self.selected.as_ref() == Some(&row.work)
+				&& self.selected_has_conversation_composer()
 		}
 	}
 
@@ -175,7 +177,7 @@ impl AgentSurface {
 
 	pub(in super::super) fn graph_has_composer(&self) -> bool {
 		(self.native_agents.selected.is_some()
-			|| self.selected_is_agent()
+			|| self.selected_has_conversation_composer()
 			|| self.selected_is_archived())
 			&& (self.conversation_work().is_some() || self.is_new_conversation())
 	}

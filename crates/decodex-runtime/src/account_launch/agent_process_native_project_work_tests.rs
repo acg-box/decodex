@@ -22,6 +22,13 @@ use decodex_database::SqliteStore;
 pub(super) async fn setup(
 	response: impl Fn(usize) -> Value + Send + Sync + 'static,
 ) -> (TempDir, NativeSession, SqliteStore, AgentCoordinator, JoinHandle<()>) {
+	setup_with_requests(None, response).await
+}
+
+pub(super) async fn setup_with_requests(
+	requests: Option<Arc<std::sync::Mutex<Vec<Value>>>>,
+	response: impl Fn(usize) -> Value + Send + Sync + 'static,
+) -> (TempDir, NativeSession, SqliteStore, AgentCoordinator, JoinHandle<()>) {
 	let binary =
 		env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit qualified native binary");
 	let home = tempfile::tempdir().expect("Project and Work qualification fixture");
@@ -32,7 +39,7 @@ pub(super) async fn setup(
 		listener,
 		Arc::new(AtomicUsize::new(0)),
 		None,
-		None,
+		requests,
 		None,
 		response,
 	));
@@ -59,9 +66,8 @@ pub(super) async fn setup(
 
 pub(super) async fn finish(session: &mut NativeSession, agent: &mut AgentCoordinator, root: &str) {
 	loop {
-		let event = time::timeout(Duration::from_secs(30), session.events.recv())
+		let event = time::timeout(Duration::from_secs(30), agent.next_event(&mut session.events))
 			.await
-			.expect("Project and Work qualification fixture")
 			.expect("Project and Work qualification fixture");
 		let done = matches!(&event,ServerEvent::Notification{method,params} if method=="turn/completed" && params["threadId"]==root);
 

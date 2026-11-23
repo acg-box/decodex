@@ -6,6 +6,8 @@ mod collaboration;
 mod delegation;
 mod deletion;
 mod drafts;
+mod registration;
+pub(crate) use registration::retire_stale_instructions;
 mod steer;
 
 pub use self::{
@@ -25,6 +27,19 @@ use crate::{
 	agent_questions, agent_request_payload, agent_task_references, agent_turn_execution, error,
 	projects,
 };
+
+// Only a saved process owner or a real pending first execution can open the shared connection.
+// Independent native conversations and Live-only threads do not each own a process.
+const MCP_TOOL_VERSION: i64 = 5;
+const CONNECTION_ROOTS: &str = "
+	FROM agent_work_items w LEFT JOIN agent_root_settings s ON s.root_id=w.id
+	WHERE w.parent_goal_id IS NULL
+	AND NOT EXISTS (SELECT 1 FROM runtime_command_receipts d WHERE d.operation='native_thread_deleted'
+	                AND json_extract(d.response_json,'$.threadId')=w.codex_thread_id)
+	AND (s.root_id IS NOT NULL OR (w.codex_thread_id IS NULL AND
+		(w.dispatch_state <> 'idle' OR EXISTS (SELECT 1 FROM agent_inbox_events e
+		 WHERE e.work_item_id=w.id AND e.disposition IS NULL AND e.delivered_turn_id IS NULL
+		 AND e.event_kind IN ('user_message','assistant_instruction')))))";
 
 enum CreationRole {
 	Agent,
@@ -257,8 +272,16 @@ impl SqliteStore {
 
 	/// Return executable manager identities, including the original root.
 	pub async fn agent_manager_ids(&self) -> Result<Vec<String>, StoreError> {
-		self.run(|connection| connection.prepare("SELECT id FROM agent_work_items WHERE parent_goal_id IS NULL UNION SELECT work_id FROM agent_managers").map_err(error::sqlite_error)?
-            .query_map([],|row|row.get(0)).map_err(error::sqlite_error)?.collect::<Result<Vec<_>,_>>().map_err(|error|error::sqlite_error(error).into())).await
+		self.run(|connection| {
+			connection
+				.prepare("SELECT id FROM agents ORDER BY id")
+				.map_err(error::sqlite_error)?
+				.query_map([], |row| row.get(0))
+				.map_err(error::sqlite_error)?
+				.collect::<Result<Vec<_>, _>>()
+				.map_err(|error| error::sqlite_error(error).into())
+		})
+		.await
 	}
 
 	/// Read one exact inbox record for a source-bound detail request.
@@ -555,23 +578,8 @@ impl SqliteStore {
 				.map_err(error::sqlite_error)?;
 
 			if manager || item.parent_goal_id.is_none() {
-				transaction
-					.execute(
-						"INSERT INTO agent_tool_versions(work_id,version) VALUES(?1,4)",
-						[&item.id],
-					)
-					.map_err(error::sqlite_error)?;
+				insert_new_agent(&transaction, &item.id, manager, assistant)?;
 			}
-			if manager {
-				transaction
-					.execute("INSERT INTO agent_managers(work_id) VALUES(?1)", [&item.id])
-					.map_err(error::sqlite_error)?;
-
-			}
-			if assistant {
-				transaction.execute("UPDATE agents SET assistant=0 WHERE assistant=1", []).map_err(error::sqlite_error)?;
-			}
-			if manager || item.parent_goal_id.is_none() { transaction.execute("INSERT INTO agents(id,assistant) VALUES(?1,?2)", rusqlite::params![item.id,assistant]).map_err(error::sqlite_error)?; }
 			if let CreationRole::Topic(owner) | CreationRole::VoiceDraft(Some(owner)) = &role {
 				crate::assistant::register_topic(&transaction, &item.id, owner)?;
 			}
@@ -600,6 +608,11 @@ impl SqliteStore {
 		.await
 	}
 
+	/// Whether the bound Agent receives its tools through the current process's MCP catalog.
+	pub async fn uses_agent_mcp_tools(&self, id: String) -> Result<bool, StoreError> {
+		Ok(self.agent_tool_version(id).await? >= MCP_TOOL_VERSION)
+	}
+
 	pub async fn list_agent_work_items(&self) -> Result<Vec<AgentWorkItem>, StoreError> {
 		self.run(|connection| {
 			let mut statement = connection
@@ -610,6 +623,59 @@ impl SqliteStore {
 				.query_map([], work_row)
 				.map_err(error::sqlite_error)?
 				.collect::<Result<Vec<_>, _>>()
+				.map_err(|error| error::sqlite_error(error).into())
+		})
+		.await
+	}
+
+	/// Select the shared process root from durable execution intent. An Assistant
+	/// can exist before its first input and does not require a native connection.
+	pub async fn agent_connection_root(&self) -> Result<Option<AgentWorkItem>, StoreError> {
+		self.run(|connection| {
+			connection.query_row(
+				&format!("SELECT w.* {CONNECTION_ROOTS} ORDER BY (s.root_id IS NOT NULL) DESC, w.created_at_micros, w.id LIMIT 1"),
+				[],
+				work_row,
+			).optional().map_err(|error| error::sqlite_error(error).into())
+		}).await
+	}
+
+	/// Older hosts reported missing settings on an Assistant that had never started.
+	/// Only that legacy host diagnostic on a setup-only Assistant can be retired here.
+	pub async fn retire_unstarted_assistant_configuration_notice(&self) -> Result<(), StoreError> {
+		self.run(|connection| {
+			connection
+				.execute(
+					&format!(
+						"UPDATE agent_inbox_events SET disposition='resolved',
+				          disposition_note='This Assistant is ready for its first input.',
+				          disposed_at_micros=max(created_at_micros,?1)
+				          WHERE disposition IS NULL AND event_kind='configuration_needs_attention'
+				          AND source_event_id=json_array('agent_host',work_item_id,event_kind)
+				          AND work_item_id IN (SELECT id FROM agents WHERE assistant=1)
+				          AND work_item_id NOT IN (SELECT w.id {CONNECTION_ROOTS})"
+					),
+					[crate::unix_micros()?],
+				)
+				.map_err(error::sqlite_error)?;
+			Ok(())
+		})
+		.await
+	}
+
+	/// Read the local conversation bound to this exact native thread.
+	pub async fn agent_work_item_for_thread(
+		&self,
+		thread: String,
+	) -> Result<Option<AgentWorkItem>, StoreError> {
+		self.run(move |connection| {
+			connection
+				.query_row(
+					"SELECT * FROM agent_work_items WHERE codex_thread_id=?1",
+					[thread],
+					work_row,
+				)
+				.optional()
 				.map_err(|error| error::sqlite_error(error).into())
 		})
 		.await
@@ -778,6 +844,10 @@ impl SqliteStore {
 				return Err(DatabaseError::Conflict.into());
 			}
 
+			if registration::batch_contains_stale_instruction(&transaction, &id, &event_ids)? {
+				transaction.commit().map_err(error::sqlite_error)?;
+				return Err(StoreError::AgentInstructionSuperseded);
+			}
 			capacity::cancel_pending(&transaction, &id)?;
 
 			transaction.execute("UPDATE agent_work_items SET dispatch_state = 'dispatching', updated_at_micros = max(updated_at_micros, ?2) WHERE id = ?1", rusqlite::params![id, crate::unix_micros()?]).map_err(error::sqlite_error)?;
@@ -792,7 +862,7 @@ impl SqliteStore {
 					SELECT ?2 UNION SELECT child.id FROM agent_work_items child JOIN owned ON child.parent_goal_id = owned.id WHERE owned.id=?2 OR NOT EXISTS(SELECT 1 FROM agent_managers WHERE work_id=owned.id))
 					UPDATE agent_inbox_events SET delivery_work_item_id = ?2, delivered_turn_id = ''
 					WHERE id = ?1 AND work_item_id IN (SELECT id FROM owned) AND disposition IS NULL
-					AND (event_kind IN ('worker_turn_completed', 'automation_result', 'followup_due', 'assistant_instruction', 'user_message', 'collaboration_request', 'collaboration_result', 'research_completed', 'research_attention') OR (event_kind='async_question_answer' AND work_item_id=?2 AND delivered_turn_id IS NULL)) AND (work_item_id=?2 OR event_kind='worker_turn_completed' OR NOT EXISTS(SELECT 1 FROM agent_managers WHERE work_id=work_item_id)) AND (work_item_id<>?2 OR event_kind<>'worker_turn_completed')
+					AND (event_kind IN ('worker_turn_completed', 'automation_result', 'followup_due', 'assistant_instruction', 'user_message', 'collaboration_request', 'collaboration_result', 'research_completed', 'research_attention') OR (event_kind IN ('work_instruction','async_question_answer') AND work_item_id=?2 AND delivered_turn_id IS NULL)) AND (work_item_id=?2 OR event_kind='worker_turn_completed' OR NOT EXISTS(SELECT 1 FROM agent_managers WHERE work_id=work_item_id)) AND (work_item_id<>?2 OR event_kind<>'worker_turn_completed')
 					AND (delivered_turn_id IS NULL OR (delivery_work_item_id = ?2 AND delivered_turn_id != ''))", rusqlite::params![event_id, id]).map_err(error::sqlite_error)?;
 
 				if changed != 1 { return Err(DatabaseError::Conflict.into()); }
@@ -802,7 +872,7 @@ impl SqliteStore {
                 if event.event_kind == "user_message" { agent_questions::retire_for_prompt(&transaction, &id, &event.payload)?; }
 			}
 
-			if work.kind == AgentWorkKind::Task || transaction.query_row("SELECT EXISTS(SELECT 1 FROM agent_managers WHERE work_id=?1)",[&id],|row|row.get::<_,bool>(0)).map_err(error::sqlite_error)? {
+			if work.kind == AgentWorkKind::Task || (work.parent_goal_id.is_none() && !is_agent(&transaction, &id)?) || transaction.query_row("SELECT EXISTS(SELECT 1 FROM agent_managers WHERE work_id=?1)",[&id],|row|row.get::<_,bool>(0)).map_err(error::sqlite_error)? {
 				transaction.execute("UPDATE agent_work_items SET status = 'open', next_check_at_micros = NULL WHERE id = ?1", [&id]).map_err(error::sqlite_error)?;
 			}
 
@@ -1292,6 +1362,16 @@ impl SqliteStore {
 		}).await
 	}
 
+	/// Keep the current failure until this root admits a configured process.
+	pub async fn record_agent_configuration_failure(&self, root: String) -> Result<(), StoreError> {
+		self.record_agent_processing_notice(
+			root,
+			"Inspect saved Agent settings before retrying.".into(),
+			"configuration_needs_attention",
+		)
+		.await
+	}
+
 	/// Keep one current delivery error, with separate records for later recurrences.
 	pub async fn record_agent_delivery_failure(
 		&self,
@@ -1436,7 +1516,7 @@ impl SqliteStore {
 				[&work], |row| row.get(0),
 			).map_err(error::sqlite_error)?;
 
-			if !manager || owner.codex_thread_id.as_deref() != Some(thread.as_str())
+			if (!manager && owner.parent_goal_id.is_some()) || owner.codex_thread_id.as_deref() != Some(thread.as_str())
 				|| event.work_item_id != work || event.event_kind != "user_message"
 				|| event.disposition != Some(AgentDisposition::UserDecision)
 				|| event.delivered_turn_id.is_some()
@@ -1497,7 +1577,7 @@ impl SqliteStore {
 		let limit = page_limit(limit)?;
 
 		self.run(move |connection| {
-			connection.prepare("SELECT * FROM agent_inbox_events WHERE disposition IS NULL AND delivered_turn_id IS NULL AND event_kind IN ('worker_turn_completed', 'automation_result', 'followup_due', 'assistant_instruction', 'user_message', 'collaboration_request', 'collaboration_result', 'research_completed', 'research_attention') ORDER BY id LIMIT ?1").map_err(error::sqlite_error)?.query_map([limit], event_row).map_err(error::sqlite_error)?.collect::<Result<Vec<_>, _>>().map_err(|error| error::sqlite_error(error).into())
+			connection.prepare("SELECT * FROM agent_inbox_events WHERE disposition IS NULL AND delivered_turn_id IS NULL AND event_kind IN ('worker_turn_completed', 'automation_result', 'followup_due', 'assistant_instruction', 'work_instruction', 'user_message', 'collaboration_request', 'collaboration_result', 'research_completed', 'research_attention') ORDER BY id LIMIT ?1").map_err(error::sqlite_error)?.query_map([limit], event_row).map_err(error::sqlite_error)?.collect::<Result<Vec<_>, _>>().map_err(|error| error::sqlite_error(error).into())
 		}).await
 	}
 
@@ -1514,7 +1594,7 @@ impl SqliteStore {
 			connection.prepare("WITH RECURSIVE owned(id) AS (
 				SELECT ?1 UNION SELECT child.id FROM agent_work_items child JOIN owned ON child.parent_goal_id = owned.id WHERE owned.id = ?1 OR NOT EXISTS(SELECT 1 FROM agent_managers WHERE work_id=owned.id))
 				SELECT * FROM agent_inbox_events WHERE work_item_id IN (SELECT id FROM owned)
-				AND disposition IS NULL AND event_kind IN ('worker_turn_completed', 'automation_result', 'followup_due', 'assistant_instruction', 'user_message', 'collaboration_request', 'collaboration_result', 'research_completed', 'research_attention')
+				AND disposition IS NULL AND (event_kind IN ('worker_turn_completed', 'automation_result', 'followup_due', 'assistant_instruction', 'user_message', 'collaboration_request', 'collaboration_result', 'research_completed', 'research_attention') OR (event_kind='work_instruction' AND work_item_id=?1 AND delivered_turn_id IS NULL))
                 AND (work_item_id <> ?1 OR event_kind <> 'worker_turn_completed') AND (work_item_id=?1 OR event_kind='worker_turn_completed' OR NOT EXISTS(SELECT 1 FROM agent_managers WHERE work_id=work_item_id))
 				AND NOT EXISTS(SELECT 1 FROM collaboration_instructions ci JOIN collaboration_requests cq ON cq.id=ci.request_id JOIN works cw ON cw.id=cq.work_id WHERE ci.event_id=agent_inbox_events.id AND (cw.state<>'open' OR cq.state='closed' OR cq.instruction_id<>ci.id OR cw.requirements_id<>ci.requirements_id))
 				AND (delivered_turn_id IS NULL OR (delivery_work_item_id = ?1 AND delivered_turn_id != ''))
@@ -1634,7 +1714,7 @@ impl SqliteStore {
 		self.run(move |connection| {
 			let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(error::sqlite_error)?;
 			let source = read_event(&transaction, user_event_id)?;
-			let active: bool = transaction.query_row("SELECT EXISTS(SELECT 1 FROM agent_work_items WHERE id = ?1 AND (parent_goal_id IS NULL OR EXISTS(SELECT 1 FROM agent_managers WHERE work_id=?1)) AND active_turn_id = ?2 AND dispatch_state = 'running')",rusqlite::params![agent_id,turn_id],|row|row.get(0)).map_err(error::sqlite_error)?;
+			let active: bool = transaction.query_row("SELECT EXISTS(SELECT 1 FROM agent_work_items WHERE id = ?1 AND EXISTS(SELECT 1 FROM agents WHERE id=?1) AND active_turn_id = ?2 AND dispatch_state = 'running')",rusqlite::params![agent_id,turn_id],|row|row.get(0)).map_err(error::sqlite_error)?;
 			let descendant: bool = transaction.query_row("WITH RECURSIVE lineage(id,parent_goal_id) AS (SELECT id,parent_goal_id FROM agent_work_items WHERE id = ?1 UNION SELECT work.id,work.parent_goal_id FROM agent_work_items work JOIN lineage ON work.id = lineage.parent_goal_id) SELECT EXISTS(SELECT 1 FROM lineage WHERE id = ?2)",rusqlite::params![work_id,agent_id],|row|row.get(0)).map_err(error::sqlite_error)?;
 
 			if !active || !descendant || source.work_item_id != agent_id || !matches!(source.event_kind.as_str(), "user_message" | "async_question_answer") || source.delivered_turn_id.as_deref() != Some(&turn_id) || source.disposition.is_some() {
@@ -1670,7 +1750,7 @@ impl SqliteStore {
 		self.run(move |connection| {
 			let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(error::sqlite_error)?;
 			let event = read_event(&transaction,evidence_event_id)?;
-			let current:bool = transaction.query_row("SELECT EXISTS(SELECT 1 FROM agent_work_items WHERE id = ?1 AND (parent_goal_id IS NULL OR EXISTS(SELECT 1 FROM agent_managers WHERE work_id=?1)) AND active_turn_id = ?2 AND dispatch_state = 'running')",rusqlite::params![agent_id,turn_id],|row|row.get(0)).map_err(error::sqlite_error)?;
+			let current:bool = transaction.query_row("SELECT EXISTS(SELECT 1 FROM agent_work_items WHERE id = ?1 AND EXISTS(SELECT 1 FROM agents WHERE id=?1) AND active_turn_id = ?2 AND dispatch_state = 'running')",rusqlite::params![agent_id,turn_id],|row|row.get(0)).map_err(error::sqlite_error)?;
 			let related:bool = transaction.query_row("WITH RECURSIVE family(id) AS (SELECT id FROM agent_work_items WHERE id = ?1 UNION SELECT work.id FROM agent_work_items work JOIN family ON work.parent_goal_id = family.id) SELECT EXISTS(SELECT 1 FROM family WHERE id = ?2)",rusqlite::params![goal_id,event.work_item_id],|row|row.get(0)).map_err(error::sqlite_error)?;
 			let user_input = matches!(event.event_kind.as_str(), "user_message" | "async_question_answer") && event.work_item_id == agent_id;
 			let result = related && matches!(event.event_kind.as_str(),"worker_turn_completed"|"automation_result"|"followup_due");
@@ -1877,6 +1957,46 @@ fn work_exists(connection: &Connection, id: &str) -> Result<bool, StoreError> {
 		.map_err(|error| error::sqlite_error(error).into())
 }
 
+pub(crate) fn is_agent(connection: &Connection, id: &str) -> Result<bool, StoreError> {
+	connection
+		.query_row("SELECT EXISTS(SELECT 1 FROM agents WHERE id=?1)", [id], |row| row.get(0))
+		.map_err(|error| error::sqlite_error(error).into())
+}
+
+fn insert_new_agent(
+	tx: &Transaction<'_>,
+	id: &str,
+	manager: bool,
+	assistant: bool,
+) -> Result<(), StoreError> {
+	insert_agent(tx, id, manager, assistant)?;
+	tx.execute(
+		"INSERT INTO agent_tool_versions(work_id,version) VALUES(?1,?2)",
+		rusqlite::params![id, MCP_TOOL_VERSION],
+	)
+	.map_err(error::sqlite_error)?;
+	Ok(())
+}
+
+pub(crate) fn insert_agent(
+	tx: &Transaction<'_>,
+	id: &str,
+	manager: bool,
+	assistant: bool,
+) -> Result<(), StoreError> {
+	if assistant {
+		tx.execute("UPDATE agents SET assistant=0 WHERE assistant=1", [])
+			.map_err(error::sqlite_error)?;
+	}
+	tx.execute("INSERT INTO agents(id,assistant) VALUES(?1,?2)", rusqlite::params![id, assistant])
+		.map_err(error::sqlite_error)?;
+	if manager {
+		tx.execute("INSERT INTO agent_managers(work_id) VALUES(?1)", [id])
+			.map_err(error::sqlite_error)?;
+	}
+	Ok(())
+}
+
 fn read_event(connection: &Connection, id: i64) -> Result<AgentInboxEvent, StoreError> {
 	let event = connection
 		.query_row("SELECT * FROM agent_inbox_events WHERE id = ?1", [id], event_row)
@@ -2061,6 +2181,7 @@ mod tests {
 	mod native_turns;
 	mod partial_output;
 	mod reasoning_summary;
+	mod registration;
 	mod request_payloads;
 	mod steer_receipts;
 	mod task_references;
@@ -3199,6 +3320,54 @@ mod tests {
 			store.get_agent_work_item("manager".into()).await.unwrap().status,
 			AgentWorkStatus::Open
 		);
+	}
+
+	#[tokio::test]
+	async fn connection_root_preserves_uncertain_execution_and_scopes_configuration_recovery() {
+		let directory = tempfile::tempdir().unwrap();
+		let store = SqliteStore::open_test(&directory.path().join("agent.sqlite3")).unwrap();
+		let mut local = item("assistant", None);
+		local.status = AgentWorkStatus::Wait;
+		store.create_assistant(local).await.unwrap();
+		store.create_agent_work_item(item("uncertain", None)).await.unwrap();
+		for root in ["assistant", "uncertain"] {
+			store
+				.enqueue_agent_event(EnqueueAgentEvent {
+					source_event_id: serde_json::json!([
+						"agent_host",
+						root,
+						"configuration_needs_attention"
+					])
+					.to_string(),
+					work_item_id: root.into(),
+					event_kind: "configuration_needs_attention".into(),
+					payload: "{}".into(),
+				})
+				.await
+				.unwrap();
+		}
+		assert!(store.agent_connection_root().await.unwrap().is_none());
+		store.begin_agent_thread_creation("uncertain".into()).await.unwrap();
+		store.mark_agent_dispatch_unknown("uncertain".into()).await.unwrap();
+		assert_eq!(store.agent_connection_root().await.unwrap().unwrap().id, "uncertain");
+		store.retire_unstarted_assistant_configuration_notice().await.unwrap();
+		let pending = store.list_pending_agent_events(10).await.unwrap();
+		assert_eq!(pending.len(), 1);
+		assert_eq!(pending[0].work_item_id, "uncertain");
+		store.bind_agent_root_settings("assistant", "{}").await.unwrap();
+		assert_eq!(store.agent_connection_root().await.unwrap().unwrap().id, "assistant");
+		store.record_agent_configuration_failure("assistant".into()).await.unwrap();
+		store
+			.record_agent_event_failure("assistant".into(), "Event recovery failed.".into())
+			.await
+			.unwrap();
+		store.resolve_agent_connection_failure("assistant".into()).await.unwrap();
+		let pending = store.list_pending_agent_events(10).await.unwrap();
+		assert_eq!(pending.len(), 2);
+		assert!(pending.iter().any(|event| event.work_item_id == "uncertain"));
+		assert!(pending.iter().any(|event| event.event_kind == "event_processing_failed"));
+		store.record_agent_configuration_failure("assistant".into()).await.unwrap();
+		assert_eq!(store.list_pending_agent_events(10).await.unwrap().len(), 3);
 	}
 
 	#[tokio::test]

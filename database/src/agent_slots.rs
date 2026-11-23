@@ -39,7 +39,7 @@ impl SqliteStore {
 			}
 
 			let root: Option<String> = tx.query_row(
-				"SELECT id FROM agent_work_items WHERE parent_goal_id IS NULL ORDER BY created_at_micros,id LIMIT 1",
+				"SELECT w.id FROM agents a JOIN agent_work_items w ON w.id=a.id WHERE w.parent_goal_id IS NULL ORDER BY w.created_at_micros,w.id LIMIT 1",
 				[], |row| row.get(0),
 			).optional().map_err(error::sqlite_error)?;
 
@@ -150,6 +150,7 @@ mod tests {
 
 		store.with_connection(|c| {
 			c.execute("INSERT INTO agent_work_items(id,kind,title,instructions,status,created_at_micros,updated_at_micros) VALUES('main','goal','Main','Keep context','open',1,1)", []).map_err(error::sqlite_error)?;
+			c.execute("INSERT INTO agents(id) VALUES('main')", []).map_err(error::sqlite_error)?;
 
 			for id in ["a", "b", "c"] {
 				c.execute("INSERT INTO agent_work_items(id,parent_goal_id,kind,title,instructions,status,created_at_micros,updated_at_micros) VALUES(?1,'main',?2,?1,'Keep context','open',2,2)", rusqlite::params![id, if id=="c" {"task"} else {"goal"}]).map_err(error::sqlite_error)?;
@@ -242,6 +243,7 @@ mod tests {
 		let store = SqliteStore::open_test(&directory.path().join("slots.sqlite3")).unwrap();
 		store.with_connection(|c| {
 			c.execute("INSERT INTO agent_work_items(id,kind,title,instructions,status,created_at_micros,updated_at_micros) VALUES('main','goal','Main','Keep context','open',1,1)", []).map_err(error::sqlite_error)?;
+			c.execute("INSERT INTO agents(id) VALUES('main')", []).map_err(error::sqlite_error)?;
 			Ok(())
 		}).unwrap();
 		let root = ("main".into(), "main".into(), Some("thread-main".into()));

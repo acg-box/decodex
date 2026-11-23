@@ -170,10 +170,7 @@ async fn goal_recovery_hydrates_only_exact_active_unloaded_thread() {
 			if request["method"] == "thread/resume" {
 				resumes += 1;
 
-				assert_eq!(
-					request["params"],
-					serde_json::json!({"threadId":"opaque thread/1","excludeTurns":true,"config":{"features.guardian_recorded_items":false}})
-				);
+				tests::assert_agent_resume(&request["params"], "opaque thread/1", false);
 			}
 		}
 
