@@ -224,10 +224,10 @@ sources:
     resource: repo://scripts/macos/version_codex_source.py
   - id: openwiki-source-e201f60894c32a914dac99ee
     resource: repo://scripts/vnext/run_native_regression.py
-generated: { by: "codex", at: "2026-11-22T20:29:03.056Z" }
+generated: { by: "codex", at: "2026-11-23T20:30:20.676Z" }
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-22T20:29:03.056Z
+    at: 2026-11-23T20:30:20.676Z
 ---
 
 # Upstream integration acceptance boundaries
@@ -264,6 +264,8 @@ The public reasoning fixture projects a summary from a loopback provider through
 Use the [Seatbelt launch fixture](../../crates/decodex-runtime/tests/native_qualification/seatbelt_launch.py) to check local command permissions in a disposable macOS home. It checks denial under read-only permissions and a successful write to the subtree granted by a named command-directory profile. The native command hook fixture checks the working directory and one execution of the approved command.
 
 The `installed_hook_settings_read_inherited_hooks_in_linked_worktree` fixture uses the retained Hook settings client with an exact signed CLI and a temporary Codex home. It creates a linked Git worktree and a regular `.codex` file at the primary checkout root. The native readback must include the inherited nested declaration with its exact source path and untrusted status. See [current qualification](../../automations/upstream/qualification.json#linked_worktree_hook_inventory).
+
+The prompt-edit socket test selects an approvals reviewer, reverts the last turn of a paginated conversation, and checks the reviewer and restored draft. It resolves relative media paths from the conversation’s working directory. The signed CLI runs with a fixed policy. A separate upstream test changes the reviewer allowlist while Codex replaces the thread runtime. See the [prompt-revert qualification](../../automations/upstream/qualification.json#prompt_revert).
 
 The provider-refusal follow-up resolves [the former compatibility blocker](https://github.com/acg-box/decodex/issues/2575) through the supported native fork. The original cohort remains historical evidence; it is not a freshly rerun matrix. The runtime lock selects the fixed reviewed target after fresh affected native consumer and component checks. Earlier cohort results remain historical and are not counted as passes on a newer artifact. The current source-review record covers every commit through its fixed target. HumanCommand support is [user-deferred](https://github.com/acg-box/decodex/issues/2585), unsupported and unadvertised. Earlier worker-permission reload source tests retain their original source and helper limits. Read the current qualification for actual executions. Source tests are separate from signed production-artifact tests; no broad upstream suite is a daily gate.
 
