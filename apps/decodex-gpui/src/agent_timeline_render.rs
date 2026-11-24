@@ -341,21 +341,6 @@ impl AgentSurface {
 		)
 	}
 
-	pub(super) fn native_timeline_row(
-		&self,
-		work: &AgentWorkItemDto,
-		entry: &AgentTimelineEntry,
-		gap_before: f32,
-		cx: &mut Context<Self>,
-	) -> AnyElement {
-		let identity =
-			serde_json::json!([work.id, work.codex_thread_id, native_timeline::key(entry)])
-				.to_string();
-		let content = self.native_timeline_content(work, entry, &identity, false, cx);
-
-		self.native_timeline_row_with_content(work, entry, content, gap_before, cx)
-	}
-
 	pub(super) fn native_timeline_row_with_content(
 		&self,
 		work: &AgentWorkItemDto,
@@ -518,10 +503,13 @@ impl AgentSurface {
 		&self,
 		work: &AgentWorkItemDto,
 		entry: &AgentTimelineEntry,
-		identity: &str,
 		archived: bool,
+		footer: Option<super::TurnFooter>,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
+		let identity =
+			&serde_json::json!([work.id, work.codex_thread_id, native_timeline::key(entry)])
+				.to_string();
 		let mut origin = work.clone();
 		if let Some(thread) = self.timeline.native.source_threads.get(&entry.position) {
 			origin.codex_thread_id = Some(thread.clone());
@@ -547,27 +535,13 @@ impl AgentSurface {
 					"Voice conversation ended"
 				}))
 				.into_any_element(),
-			AgentTimelineContent::TurnBoundary { completed, turn_id, status, error, .. } => {
-				let has_reply = self.timeline.native.entries.iter().any(|entry| {
-					matches!(&entry.content, AgentTimelineContent::Item {
-turn_id: turn, kind, .. } if turn == turn_id && kind == "agentMessage")
-				});
-
-				row.when(*completed && !has_reply, |row| {
+			AgentTimelineContent::TurnBoundary { error, .. } => row
+				.children(footer.and_then(|f| f.outcome).map(agent_surface::muted))
+				.when(footer.is_some_and(|f| f.metrics), |row| {
 					row.child(self.native_turn_metrics(&entry.content, identity, cx))
 				})
-				.when(
-					*completed && matches!(status.as_deref(), Some("interrupted" | "failed")),
-					|row| {
-						row.child(ui_feedback::execution_icon(
-							format!("execution-status-{identity}"),
-							status.as_deref().unwrap_or_default(),
-						))
-					},
-				)
 				.children(error.as_ref().map(|error| gpui::div().child(error.message.clone())))
-				.into_any_element()
-			},
+				.into_any_element(),
 			content @ AgentTimelineContent::Promotion { .. } =>
 				self.native_promotion(work, content, identity, cx),
 		};

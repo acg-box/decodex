@@ -51,6 +51,42 @@ use scroll::{ROW_GAP, Viewport};
 const SUMMARY_NOTICE: &str =
 	"Up to 100 recent prompts and final replies are shown. Intermediate activity is unavailable.";
 
+#[derive(Clone, Copy)]
+struct TurnFooter {
+	outcome: Option<&'static str>,
+	metrics: bool,
+}
+
+impl TurnFooter {
+	fn for_boundary(
+		content: &AgentTimelineContent,
+		has_steps: bool,
+		replied_turns: &BTreeSet<&String>,
+		voice_tail_turns: &BTreeSet<&str>,
+	) -> Option<Self> {
+		let AgentTimelineContent::TurnBoundary {
+			completed: true,
+			turn_id,
+			error,
+			duration_ms,
+			timing,
+			usage,
+			..
+		} = content
+		else {
+			return None;
+		};
+		let outcome = groups::outcome_label(content);
+		let metrics = !replied_turns.contains(turn_id)
+			&& (!voice_tail_turns.contains(turn_id.as_str())
+				|| outcome.is_some()
+				|| error.is_some())
+			&& (outcome.is_none() || duration_ms.is_some() || usage.is_some() || timing.is_some());
+		let outcome = outcome.filter(|_| !has_steps);
+		(outcome.is_some() || metrics || error.is_some()).then_some(Self { outcome, metrics })
+	}
+}
+
 impl AgentSurface {
 	fn is_revealed_history_item(&self, entry: &AgentTimelineEntry) -> bool {
 		self.is_conversation_match(entry) || self.is_located_item(&entry.content)
@@ -836,8 +872,8 @@ impl AgentSurface {
 					let body = self.native_timeline_content(
 						work,
 						entry,
-						&serde_json::json!([work.id, work.codex_thread_id, key(entry)]).to_string(),
 						archived && !self.is_located_item(&entry.content),
+						None,
 						cx,
 					);
 					let body = self.anchored_native_history_entry(work, entry, body);
@@ -924,9 +960,11 @@ impl AgentSurface {
 		}
 		let mut collapsed = BTreeSet::new();
 		let mut headers = std::collections::BTreeMap::new();
+		let mut grouped_finals = BTreeSet::new();
 
 		for group in &groups {
 			headers.insert(group.first_index, group);
+			grouped_finals.insert(group.final_index);
 			collapsed.extend(group.indices.iter().copied());
 		}
 
@@ -1012,15 +1050,18 @@ impl AgentSurface {
 				) {
 				continue;
 			}
-			if matches!(&entry.content,
-				AgentTimelineContent::TurnBoundary { completed: true, turn_id, status, error: None, .. }
-				if (replied_turns.contains(turn_id) || voice_tail_turns.contains(turn_id.as_str()))
-					&& !matches!(status.as_deref(), Some("interrupted" | "failed")))
-			{
+			let header = headers.get(&index);
+			let footer = TurnFooter::for_boundary(
+				&entry.content,
+				grouped_finals.contains(&index),
+				&replied_turns,
+				&voice_tail_turns,
+			);
+			let empty_boundary = matches!(entry.content, AgentTimelineContent::TurnBoundary { .. })
+				&& footer.is_none();
+			if empty_boundary && header.is_none() {
 				continue;
 			}
-
-			let header = headers.get(&index);
 			if header.is_none()
 				&& (collapsed.contains(&index)
 					|| wait_hidden.contains(&index)
@@ -1045,7 +1086,7 @@ impl AgentSurface {
 
 				let body = self.process_history_body(work, group, entry, cx);
 
-				let body = if group.indices.contains(&index) {
+				let body = if group.indices.contains(&index) || empty_boundary {
 					if self.timeline.native.completions.get(group).is_none()
 						&& self
 							.timeline
@@ -1065,13 +1106,7 @@ impl AgentSurface {
 					}
 					body.into_any_element()
 				} else {
-					let answer = self.native_timeline_content(
-						work,
-						entry,
-						&serde_json::json!([work.id, work.codex_thread_id, key(entry)]).to_string(),
-						false,
-						cx,
-					);
+					let answer = self.native_timeline_content(work, entry, false, footer, cx);
 					gpui::div()
 						.w_full()
 						.flex()
@@ -1126,12 +1161,9 @@ impl AgentSurface {
 				panel = panel.child(self.native_history_spacer(work, mem::take(&mut hidden)));
 			}
 
-			let row = if let Some(body) = group_body {
-				self.native_timeline_row_with_content(work, entry, body, gap, cx)
-			} else {
-				self.native_timeline_row(work, entry, gap, cx)
-			};
-			panel = panel.child(row);
+			let body = group_body
+				.unwrap_or_else(|| self.native_timeline_content(work, entry, false, footer, cx));
+			panel = panel.child(self.native_timeline_row_with_content(work, entry, body, gap, cx));
 		}
 
 		let last_process = previous

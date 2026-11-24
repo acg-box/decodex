@@ -138,7 +138,7 @@ impl AgentSurface {
 		self.process_header(
 			work,
 			entry,
-			process_label(group.count),
+			group.label(&self.timeline.native.entries),
 			expanded,
 			move |s| {
 				s.timeline.native.expanded_turns.retain(|id| !turns.contains(id));
@@ -446,8 +446,25 @@ fn response_group(
 		indices,
 	}
 }
-fn process_label(count: usize) -> String {
-	crate::shell::agent_surface::conversation_metric::steps_label(count)
+impl Group {
+	fn label(&self, entries: &[AgentTimelineEntry]) -> String {
+		let steps = crate::shell::agent_surface::conversation_metric::steps_label(self.count);
+		match outcome_label(&entries[self.final_index].content) {
+			Some(outcome) => format!("{outcome} ({steps})"),
+			None => steps,
+		}
+	}
+}
+
+pub(super) fn outcome_label(content: &AgentTimelineContent) -> Option<&'static str> {
+	let AgentTimelineContent::TurnBoundary { completed: true, status, .. } = content else {
+		return None;
+	};
+	match status.as_deref() {
+		Some("interrupted") => Some("Response interrupted"),
+		Some("failed") => Some("Response failed"),
+		_ => None,
+	}
 }
 
 #[cfg(any(test, feature = "visual-capture"))]
@@ -800,6 +817,7 @@ mod tests {
 		let result = groups::groups(&entries, &BTreeSet::new());
 
 		assert_eq!(result[0].indices, vec![1, 2]);
+		assert_eq!(result[0].label(&entries), "2 steps");
 		assert!(!result[0].expanded);
 		assert!(groups::groups(&entries, &BTreeSet::from(["turn".into()]))[0].expanded);
 
@@ -808,13 +826,45 @@ mod tests {
 		let failed = groups::groups(&entries, &BTreeSet::new());
 		assert_eq!(failed[0].indices, [1, 2]);
 		assert_eq!(failed[0].final_index, 4);
+		assert_eq!(failed[0].label(&entries), "Response failed (2 steps)");
 		assert!(!failed[0].indices.contains(&3), "keep the final answer visible");
 		assert!(!failed[0].indices.contains(&4), "keep the failure visible");
 
 		entries[4] = completed("interrupted");
 
-		assert_eq!(groups::groups(&entries, &BTreeSet::new())[0].indices, [1, 2]);
+		let interrupted = groups::groups(&entries, &BTreeSet::new());
+		assert_eq!(interrupted[0].indices, [1, 2]);
+		assert_eq!(interrupted[0].label(&entries), "Response interrupted (2 steps)");
 	}
+	#[test]
+	fn interrupted_response_uses_one_heading_and_retains_terminal_details() {
+		use super::super::TurnFooter;
+
+		let mut boundary = completed("interrupted");
+		let turn = String::from("turn");
+		let replies = BTreeSet::from([&turn]);
+		let voice = BTreeSet::new();
+
+		assert!(TurnFooter::for_boundary(&boundary.content, true, &replies, &voice).is_none());
+		let standalone =
+			TurnFooter::for_boundary(&boundary.content, false, &replies, &voice).unwrap();
+		assert_eq!(standalone.outcome, Some("Response interrupted"));
+		assert!(!standalone.metrics);
+		let timed =
+			TurnFooter::for_boundary(&boundary.content, true, &BTreeSet::new(), &voice).unwrap();
+		assert!(timed.outcome.is_none() && timed.metrics);
+
+		let AgentTimelineContent::TurnBoundary { error, .. } = &mut boundary.content else {
+			unreachable!()
+		};
+		*error = Some(decodex_protocol::AgentTimelineError {
+			message: "Connection closed.".into(),
+			truncated: false,
+		});
+		let details = TurnFooter::for_boundary(&boundary.content, true, &replies, &voice).unwrap();
+		assert!(details.outcome.is_none() && !details.metrics);
+	}
+
 	#[test]
 	fn failed_process_without_a_final_answer_can_be_reopened() {
 		let entries = vec![
