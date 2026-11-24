@@ -30,6 +30,7 @@ use decodex_protocol::{
 
 const BATCH_BAR_HEIGHT: f32 = 38.;
 const BATCH_BAR_INSET: f32 = 8.;
+const ROW_TEXT_INSET: f32 = 8.;
 
 #[derive(Default)]
 pub(in crate::shell::agent_surface) struct Catalog {
@@ -608,7 +609,7 @@ impl AgentSurface {
 			.into_any_element()
 	}
 
-	fn archive_row_content(&self, item: &Row, cx: &mut Context<Self>) -> AnyElement {
+	fn archive_row_content(&self, item: &Row) -> AnyElement {
 		let catalog = &self.workspace.archives;
 		let detail = item.metadata.clone();
 		gpui::div()
@@ -621,6 +622,10 @@ impl AgentSurface {
 			.child(
 				gpui::div()
 					.id(gpui::SharedString::from(format!("archive-time-{}", item.id)))
+					.debug_selector({
+						let id = item.id.clone();
+						move || format!("archive-time-{id}")
+					})
 					.flex_none()
 					.min_w(gpui::px(if catalog.sort == Sort::Name { 78. } else { 36. }))
 					.text_right()
@@ -635,20 +640,6 @@ impl AgentSurface {
 						item.clock.clone()
 					}),
 			)
-			.child(
-				gpui::div()
-					.debug_selector({
-						let id = item.id.clone();
-						move || format!("archive-actions-{id}")
-					})
-					.flex_none()
-					.flex()
-					.items_center()
-					.gap(gpui::px(4.))
-					.children((!catalog.selecting).then(|| self.archive_restore_action(item, cx)))
-					.children((!catalog.selecting).then(|| self.archive_delete_action(item, cx)))
-					.child(self.archive_open_action(item, cx)),
-			)
 			.into_any_element()
 	}
 
@@ -657,14 +648,17 @@ impl AgentSurface {
 		let id = item.id.clone();
 		let row_id = id.clone();
 		let row_key = id.clone();
-		let check_reveal_id: gpui::SharedString = format!("archive-select-{id}").into();
 		let selecting = catalog.selecting;
 		let selected = catalog.selected.contains(&id);
 		ArchiveRow {
-			id: check_reveal_id,
+			id: id.clone(),
 			active: selecting,
 			checkbox: self.archive_row_checkbox(item, cx),
-			content: self.archive_row_content(item, cx),
+			actions: [
+				(!selecting).then(|| self.archive_restore_action(item, cx)),
+				(!selecting).then(|| self.archive_delete_action(item, cx)),
+				Some(self.archive_open_action(item, cx)),
+			],
 			row: gpui::div()
 				.id(gpui::SharedString::from(format!("archived-{id}")))
 				.debug_selector(move || format!("archived-{id}"))
@@ -676,7 +670,7 @@ impl AgentSurface {
 				.flex_none()
 				.min_w_0()
 				.min_h(gpui::px(40.))
-				.px(gpui::px(8.))
+				.px(gpui::px(ROW_TEXT_INSET))
 				.py(gpui::px(7.))
 				.flex()
 				.items_center()
@@ -700,7 +694,8 @@ impl AgentSurface {
 						cx.stop_propagation();
 						s.select_archive_row(&row_key, cx);
 					}
-				})),
+				}))
+				.child(self.archive_row_content(item)),
 		}
 	}
 
@@ -732,9 +727,8 @@ impl AgentSurface {
 						.debug_selector(move || format!("archive-date-{heading_id}"))
 						.role(Role::Heading)
 						.aria_label(first.day.clone())
-						.w_full()
 						.flex_none()
-						.pl(gpui::px(40.))
+						.ml(gpui::px(ROW_TEXT_INSET))
 						.pt(gpui::px(6.))
 						.text_size(gpui::px(ui_theme::CONTROL_LABEL_SIZE))
 						.font_weight(gpui::FontWeight::NORMAL)
@@ -1048,23 +1042,25 @@ impl gpui::RenderOnce for ArchiveSelectionOverlay {
 
 #[derive(gpui::IntoElement)]
 struct ArchiveRow {
-	id: gpui::SharedString,
+	id: String,
 	active: bool,
 	row: gpui::Stateful<gpui::Div>,
 	checkbox: AnyElement,
-	content: AnyElement,
+	actions: [Option<AnyElement>; 3],
 }
 impl gpui::RenderOnce for ArchiveRow {
 	fn render(self, window: &mut gpui::Window, cx: &mut gpui::App) -> impl IntoElement {
-		let state = window.use_keyed_state(self.id.clone(), cx, |_, cx| (false, cx.focus_handle()));
+		let reveal: gpui::SharedString = format!("archive-select-{}", self.id).into();
+		let state = window.use_keyed_state(reveal.clone(), cx, |_, cx| (false, cx.focus_handle()));
 		let (hovered, focus) = {
 			let (hovered, focus) = state.read(cx);
 			(*hovered, focus.clone())
 		};
 		let visible = self.active || hovered || focus.contains_focused(window, cx);
-		let selector = format!("{}-{}", self.id, if visible { "visible" } else { "hidden" });
+		let selector = format!("{reveal}-{}", if visible { "visible" } else { "hidden" });
+		let actions = format!("archive-actions-{}", self.id);
 		let progress = ui_motion::value(
-			gpui::SharedString::from(format!("{}-reveal", self.id)),
+			gpui::SharedString::from(format!("{reveal}-reveal")),
 			f32::from(visible),
 			window,
 			cx,
@@ -1079,14 +1075,22 @@ impl gpui::RenderOnce for ArchiveRow {
 			})
 			.child(
 				gpui::div()
-					.id(self.id)
-					.debug_selector(move || selector.clone())
-					.size(gpui::px(ui_theme::CHROME_CONTROL_SIZE))
+					.debug_selector(move || actions.clone())
 					.flex_none()
-					.opacity(progress)
-					.child(self.checkbox),
+					.flex()
+					.items_center()
+					.gap(gpui::px(4.))
+					.child(
+						gpui::div()
+							.id(reveal)
+							.debug_selector(move || selector.clone())
+							.size(gpui::px(ui_theme::CHROME_CONTROL_SIZE))
+							.flex_none()
+							.opacity(progress)
+							.child(self.checkbox),
+					)
+					.children(self.actions.into_iter().flatten()),
 			)
-			.child(self.content)
 	}
 }
 
@@ -1199,7 +1203,7 @@ fn archive_row_title(item: &Row) -> gpui::Div {
 		.flex_1()
 		.flex()
 		.flex_wrap()
-		.items_baseline()
+		.items_center()
 		.gap_x(gpui::px(8.))
 		.child(
 			gpui::div()
@@ -1224,7 +1228,8 @@ fn archive_row_title(item: &Row) -> gpui::Div {
 					move || format!("archive-project-{id}")
 				})
 				.flex_none()
-				.max_w(gpui::px(100.))
+				.w(gpui::px(100.))
+				.max_w_full()
 				.text_size(gpui::px(ui_theme::CAPTION_SIZE))
 				.line_height(gpui::px(ui_theme::CAPTION_LINE_HEIGHT))
 				.text_color(ui_theme::rgb(ui_theme::TEXT_MUTED))
@@ -1527,19 +1532,25 @@ mod tests {
 				s.visual_workspace_fixture(cx);
 				let mut data = s.snapshot.clone().unwrap();
 				let mut item = data.work_items[0].clone();
-				item.id = "layout".into();
 				item.title =
 					"Review the release plan and check the remaining acceptance work".into();
-				data.work_items.push(item);
-				data.archived_work_ids.insert("layout".into());
-				data.projects = vec![decodex_protocol::ProjectDto {
-					id: "books".into(),
-					name: "Reading corner".into(),
-					native_project_id: None,
-					lead_agent_id: None,
-					directory: "/tmp/books".into(),
-					agent_ids: vec!["layout".into()],
-				}];
+				for id in ["layout", "short-project", "no-project"] {
+					item.id = id.into();
+					data.work_items.push(item.clone());
+					data.archived_work_ids.insert(id.into());
+					item.updated_at_micros -= 1;
+				}
+				data.projects =
+					[("layout", "A project with a long display name"), ("short-project", "AI")]
+						.map(|(id, name)| decodex_protocol::ProjectDto {
+							id: id.into(),
+							name: name.into(),
+							native_project_id: None,
+							lead_agent_id: None,
+							directory: format!("/tmp/{id}"),
+							agent_ids: vec![id.into()],
+						})
+						.into();
 				s.workspace.archives.data = Some(data);
 			});
 			ArchiveView(surface, false)
@@ -1558,6 +1569,7 @@ mod tests {
 			let heading = visual.debug_bounds("archive-date-layout").unwrap();
 			let title = visual.debug_bounds("archive-title-layout").unwrap();
 			let project = visual.debug_bounds("archive-project-layout").unwrap();
+			let time = visual.debug_bounds("archive-time-layout").unwrap();
 			let actions = visual.debug_bounds("archive-actions-layout").unwrap();
 			let restore = visual.debug_bounds("unarchive-layout").unwrap();
 			let delete = visual.debug_bounds("delete-archive-layout").unwrap();
@@ -1568,7 +1580,21 @@ mod tests {
 			assert!(restore.left() >= actions.left() && delete.right() <= actions.right());
 			assert!(delete.left() - restore.right() <= gpui::px(4.));
 			assert!(heading.bottom() <= row.top(), "date labels stay above their group");
-			assert!(title.left() - body.left() <= gpui::px(54.), "no separate left date column");
+			assert_eq!(title.left(), search.left() + gpui::px(8.), "one text column");
+			assert_eq!(heading.left(), title.left());
+			assert_eq!(time.left(), visual.debug_bounds("archive-time-no-project").unwrap().left());
+			assert_eq!(
+				actions.left(),
+				visual.debug_bounds("archive-actions-short-project").unwrap().left()
+			);
+			assert_eq!(
+				project.left(),
+				visual.debug_bounds("archive-project-short-project").unwrap().left()
+			);
+			if width >= 900. {
+				assert_eq!(project.center().y, time.center().y, "metadata shares a centerline");
+				assert_eq!(actions.center().y, time.center().y);
+			}
 			if width == 1600. {
 				assert!((body.left() - gpui::px((width - 960.) / 2.)).abs() < gpui::px(1.));
 			}
