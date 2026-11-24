@@ -332,7 +332,7 @@ fn stored_thread_config(
 	Ok(AgentConfig::with_optional_effort(
 		model.as_str().into(),
 		row["reasoningEffort"].as_str().map(str::to_owned),
-		cwd.as_str().into(),
+		Some(cwd.as_str().into()),
 	))
 }
 
@@ -498,7 +498,7 @@ mod tests {
 		let config =
 			super::stored_thread_config(&mut child, &serde_json::json!({"cwd":cwd})).unwrap();
 		assert_eq!(config.model, "managed-model");
-		assert_eq!(config.cwd, cwd.to_str().unwrap());
+		assert_eq!(config.cwd.as_deref(), cwd.to_str());
 		assert!(config.agent_effort.is_none());
 		let unavailable = serde_json::json!({"cwd":"/","model":"thread-model"});
 		assert!(

@@ -2742,7 +2742,10 @@ impl AgentHost {
 			.open_agent_connection(StartAgentProcess {
 				operation_key,
 				root_id: root.into(),
-				working_directory: process_directory.unwrap_or_else(|| config.cwd.clone()),
+				working_directory: process_directory
+					.or_else(|| config.cwd.clone())
+					.or_else(|| std::env::var("HOME").ok())
+					.ok_or("The account process needs a home directory")?,
 				account_id,
 			})
 			.await
@@ -2852,7 +2855,8 @@ impl AgentHost {
 		} else {
 			false
 		};
-		let process_directory = initial_settings::restore_process_directory(&config.cwd);
+		let process_directory =
+			config.cwd.as_deref().and_then(initial_settings::restore_process_directory);
 		let connected = self
 			.connect(&root.id, format!("restore-{}", now()), config, account, process_directory)
 			.await;
@@ -3085,7 +3089,7 @@ fn config(draft: &AgentStartDto) -> AgentConfig {
 	let mut config = AgentConfig::with_optional_effort(
 		draft.model.as_str().into(),
 		draft.effort.as_ref().map(|effort| effort.as_str().into()),
-		draft.cwd.as_str().into(),
+		Some(draft.cwd.as_str().into()),
 	);
 
 	config.sandbox = draft.permission_mode.sandbox().into();

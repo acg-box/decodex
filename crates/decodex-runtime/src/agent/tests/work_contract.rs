@@ -29,7 +29,7 @@ async fn four_works_in_two_projects_share_an_agent_without_sharing_results() {
 		"opaque thread/1": {"thread":{"id":"opaque thread/1","cwd":cwd,"turns":[]}}
 	}))
 	.await;
-	agent.config.cwd = cwd.display().to_string();
+	agent.config.cwd = Some(cwd.display().to_string());
 
 	agent
 		.start_agent("sage", "Plan the market and trip")
@@ -67,7 +67,7 @@ async fn four_works_in_two_projects_share_an_agent_without_sharing_results() {
 		.expect("Project and Work qualification fixture");
 
 	// A shared service can subsequently route another Agent from a different directory.
-	agent.config.cwd = service_home.path().display().to_string();
+	agent.config.cwd = Some(service_home.path().display().to_string());
 	create_four_works(&mut agent, decision.id).await;
 	qualify_result_isolation(&mut agent, home.path()).await;
 
@@ -163,7 +163,7 @@ async fn qualify_result_isolation(agent: &mut AgentCoordinator, home: &Path) {
 		limits: "Research only; no reservation".into(),
 	};
 
-	let foreign_path = Path::new(&agent.config.cwd).join("foreign-evidence.txt");
+	let foreign_path = Path::new(agent.config.cwd.as_deref().unwrap()).join("foreign-evidence.txt");
 	fs::write(&foreign_path, "Public venue evidence").unwrap();
 	let mut foreign = result.clone();
 	let ResultSource::Artifact { path: reference_path, .. } = &mut foreign.source else {

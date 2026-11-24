@@ -34,6 +34,7 @@ mod turn_execution;
 mod voice;
 mod work;
 mod work_delivery;
+mod workspace;
 
 pub(crate) use self::{reasoning::voice_handoff, result_messages::usage as observed_usage};
 
@@ -84,8 +85,8 @@ pub struct AgentConfig {
 	pub agent_effort: Option<String>,
 	/// Initial reasoning override for independent workers; None inherits native configuration.
 	pub worker_effort: Option<String>,
-	/// Absolute execution directory.
-	pub cwd: String,
+	/// Directory selected for this Agent. An unscoped chat gets its own workspace.
+	pub cwd: Option<String>,
 	/// Provider approval policy selected by the host.
 	pub approval_policy: Value,
 	/// Explicit creation choice. Existing conversations keep native review routing.
@@ -97,12 +98,16 @@ pub struct AgentConfig {
 impl AgentConfig {
 	/// Select a model and directory with approval prompts and workspace edits enabled.
 	pub fn new(model: String, agent_effort: String, cwd: String) -> Self {
-		Self::with_optional_effort(model, Some(agent_effort), cwd)
+		Self::with_optional_effort(model, Some(agent_effort), Some(cwd))
 	}
 
 	/// Select an optional manager effort without inventing a placeholder for native inheritance.
 	/// Independent workers retain their existing Medium creation default.
-	pub fn with_optional_effort(model: String, agent_effort: Option<String>, cwd: String) -> Self {
+	pub fn with_optional_effort(
+		model: String,
+		agent_effort: Option<String>,
+		cwd: Option<String>,
+	) -> Self {
 		Self {
 			model,
 			agent_effort,
@@ -145,7 +150,7 @@ impl AgentCoordinator {
 		config: AgentConfig,
 	) -> Result<Self, AgentError> {
 		if config.model.trim().is_empty()
-			|| config.cwd.is_empty()
+			|| config.cwd.as_deref().is_some_and(str::is_empty)
 			|| config
 				.agent_effort
 				.as_ref()
@@ -529,12 +534,6 @@ impl AgentCoordinator {
 		if let Some(project) = self.native_project(item).await? {
 			params["projectId"] = serde_json::json!(project);
 		}
-		// Upstream c1382380de69521303b416720a52f42d51af6248 verifies cwd in
-		// thread_start_respects_project_config_from_cwd (app-server thread_start tests).
-		// Only folder membership is local. Existing native threads keep their identity.
-		if let Some(directory) = self.store.work_directory(item.id.clone()).await? {
-			params["cwd"] = serde_json::json!(directory);
-		}
 
 		if assistant
 			.as_ref()
@@ -553,6 +552,11 @@ impl AgentCoordinator {
 		{
 			params["threadSource"] = serde_json::json!("decodex_assistant");
 		}
+		params["cwd"] = match item.codex_thread_id.as_deref() {
+			Some(thread) => serde_json::json!(self.native_chat_directory(thread).await?),
+			None => serde_json::json!(self.new_chat_directory(item).await?),
+		};
+
 		Ok(params)
 	}
 
@@ -684,7 +688,7 @@ impl AgentCoordinator {
 
 	fn thread_params(&self, agent: bool) -> Value {
 		let effort = if agent { &self.config.agent_effort } else { &self.config.worker_effort };
-		let mut params = serde_json::json!({"model":self.config.model,"cwd":self.config.cwd,
+		let mut params = serde_json::json!({"model":self.config.model,
             "approvalPolicy":self.config.approval_policy,"sandbox":self.config.sandbox,
             "config":{}});
 
@@ -1002,6 +1006,15 @@ impl AgentCoordinator {
 				depends_on,
 			)
 			.await?;
+
+		if agent {
+			self.store
+				.bind_agent_root_settings(
+					id,
+					&serde_json::to_string(&self.config).expect("serializable Agent configuration"),
+				)
+				.await?;
+		}
 
 		let item = self.store.get_agent_work_item(id.into()).await?;
 

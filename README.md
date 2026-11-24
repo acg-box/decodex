@@ -89,7 +89,9 @@ and evidence. They are not a second speculative execution engine.
 
 Managed Repository orchestration is retired. Decodex does not own repository
 allocation, Git registration, worktree preparation, or commit state machines.
-Agent and ordinary Conversations continue to use explicit working directories.
+A new chat uses its selected directory. For a chat without a directory, Decodex reads
+`desktop.projectlessWorkspaceRoot` from Codex and creates a folder for that chat.
+Existing and adopted threads keep their native working directory.
 Repository revision evidence remains available to context and supervised validation.
 The diagnostic report no longer includes a managed-repository component. This change
 uses exact local protocol version 2.41; update the app and service together.

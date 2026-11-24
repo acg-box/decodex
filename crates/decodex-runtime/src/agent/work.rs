@@ -242,19 +242,7 @@ impl AgentCoordinator {
 				self.verify_native_result_item(thread_id, turn_id, item_id).await?;
 			},
 			ResultSource::Artifact { path, sha256 } => {
-				let directory = match self.store.work_directory(agent.into()).await? {
-					Some(directory) => directory,
-					None => {
-						let native =
-							self.client.thread_read(serde_json::json!({"threadId":root})).await?;
-						if native["thread"]["id"] != root {
-							return Err(AgentError::Rejected(
-								"The result contributor's conversation changed.".into(),
-							));
-						}
-						agent::exact(&native, "/thread/cwd")?
-					},
-				};
+				let directory = self.native_chat_directory(&root).await?;
 				let root = Path::new(&directory)
 					.canonicalize()
 					.map_err(|_| AgentError::Rejected("Agent directory is unavailable".into()))?;

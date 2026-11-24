@@ -1087,6 +1087,7 @@ async fn emit_fixture_review_events(
 }
 
 async fn serve_fixture(server_io: DuplexStream, history: Value, sent: UnboundedSender<Value>) {
+	let chat_root = tempfile::tempdir().unwrap();
 	let (reader, mut writer) = io::split(server_io);
 	let mut lines = BufReader::new(reader).lines();
 	let mut threads = 0;
@@ -1172,6 +1173,8 @@ async fn serve_fixture(server_io: DuplexStream, history: Value, sent: UnboundedS
 
 				serde_json::json!({"thread":{"id":id,"turns":if request["params"]["excludeTurns"] == true { serde_json::json!([]) } else { history[id]["thread"]["turns"].clone() }},"model":configured["model"],"reasoningEffort":configured["reasoningEffort"]})
 			},
+			Some("config/read") =>
+				serde_json::json!({"config":{"desktop":{"projectlessWorkspaceRoot":history.get("_chatRoot").cloned().unwrap_or_else(|| serde_json::json!(chat_root.path()))}}}),
 			Some("thread/start") => {
 				threads += 1;
 
@@ -1228,7 +1231,7 @@ async fn unloaded_thread_resumes_exact_identity_without_new_thread() {
 		if request["method"] == "thread/start" {
 			assert_eq!(request["params"]["approvalPolicy"], coordinator.config.approval_policy);
 			assert_eq!(request["params"]["sandbox"], coordinator.config.sandbox);
-			assert_eq!(request["params"]["cwd"], coordinator.config.cwd);
+			assert_eq!(request["params"]["cwd"].as_str(), coordinator.config.cwd.as_deref());
 		}
 	}
 
@@ -4724,7 +4727,7 @@ async fn failed_thread_preparation_does_not_leave_a_creation_fence() {
 
 #[tokio::test]
 async fn initial_permission_choice_applies_only_to_the_new_native_conversation() {
-	let (agent, _, _home) = fixture().await;
+	let (agent, _sent, _home) = fixture().await;
 	let mut work = AgentCoordinator::create_conversation(
 		&agent.store,
 		"fresh-permissions",
