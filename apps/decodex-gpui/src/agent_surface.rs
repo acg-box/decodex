@@ -2876,6 +2876,7 @@ impl Default for WorkspaceView {
 			archives: Default::default(),
 			arrival: Default::default(),
 			portfolio_mode: false,
+			focused_work: false,
 			registration: None,
 			work_detail: None,
 			work_evidence: None,
