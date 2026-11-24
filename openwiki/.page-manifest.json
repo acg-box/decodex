@@ -9,11 +9,11 @@
       "completedRunId": "dc4ee244-070c-47ed-b00e-7a02f76a8295"
     },
     "/openwiki/architecture/conversation-presentation.md": {
-      "gitHead": "8b8220bc019f9559afc5198b20e35d1f725c01d8",
-      "sourceFingerprint": "sha256:5e22919b64faba06ad70f8256288e259782f92851fd1ccd09e03b805c1f7a849",
-      "pageVersion": "sha256:a7d731a782559ccf927f0b80cb8ec2b0373c4682e2b8a9d77c154c0019f7eecd",
+      "pageVersion": "sha256:64aad6e2233dac568abc0be6930d244dc1a15c4be248ba948cb464d2439919dd",
       "completedBy": "codex",
-      "completedRunId": "74d19a67-3be2-4a79-a96f-2666df02fcfe"
+      "completedRunId": "54536b0f-5af1-4398-afef-ea71644d9457",
+      "gitHead": "b9466ea4598b3220326d702e8474748384af8c5d",
+      "sourceFingerprint": "sha256:da5b27c3efd863b257b2a1a22add18fd7d025bf78a6b0d9dc7b29bbec2a66864"
     },
     "/openwiki/architecture/design-language.md": {
       "gitHead": "f9b989e5ea2ac86428cd67cffeb46cd86604942c",
@@ -30,11 +30,11 @@
       "completedRunId": "c925b9d7-e3d8-4709-b4b8-9c7466811df1"
     },
     "/openwiki/architecture/runtime-architecture.md": {
+      "gitHead": "3b773cf39c78ced10ae73698c1f52a961aa2f91c",
+      "sourceFingerprint": "sha256:d9efdf092d86c2317a9af92002d3d69dbf0295f45f944799bb5e9842d598afff",
       "pageVersion": "sha256:afb276e88fbbdaac34430ac6413990faeee526466dcafd11110fc8b6d2b1ad0c",
       "completedBy": "codex",
-      "completedRunId": "017431c3-809d-4066-a848-ac5ba9d69341",
-      "gitHead": "3b773cf39c78ced10ae73698c1f52a961aa2f91c",
-      "sourceFingerprint": "sha256:d9efdf092d86c2317a9af92002d3d69dbf0295f45f944799bb5e9842d598afff"
+      "completedRunId": "017431c3-809d-4066-a848-ac5ba9d69341"
     },
     "/openwiki/decisions/assistant-lifecycle.md": {
       "gitHead": "c8f860d25e17e29aceeb2d9db00c316b5e851791",
