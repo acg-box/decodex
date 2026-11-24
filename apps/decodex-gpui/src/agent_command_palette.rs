@@ -352,9 +352,7 @@ impl AgentSurface {
 			Action::Settings =>
 				window.dispatch_action(Box::new(crate::shell::ActivateSettings), cx),
 			Action::Work(id, owner) => {
-				self.open_navigation_conversation(&owner, cx);
-				self.workspace.work_detail = Some(id.clone());
-				self.load_work_detail(id, cx);
+				self.open_portfolio_work(id, &owner, cx);
 			},
 		}
 		cx.notify();

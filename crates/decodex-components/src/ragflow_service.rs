@@ -247,16 +247,20 @@ impl ComponentStore {
 		namespace: &str,
 		mut progress: impl FnMut(&str),
 	) -> Result<Option<Installation>> {
-		let docker = [
-			"/usr/local/bin/docker",
-			"/opt/homebrew/bin/docker",
-			"/Applications/Docker.app/Contents/Resources/bin/docker",
-		]
-		.into_iter()
-		.map(PathBuf::from)
-		.find(|p| p.is_file())
-		.ok_or(CONTAINER_REQUIRED)?;
-		self.apply_ragflow_with(&docker, action, namespace, &mut progress)
+		self.apply_ragflow_with(&docker()?, action, namespace, None, &mut progress)
+	}
+
+	/// Apply the platform manifest identified by a previous update review.
+	pub fn apply_reviewed_ragflow(
+		&self,
+		digest: &str,
+		namespace: &str,
+		mut progress: impl FnMut(&str),
+	) -> Result<Option<Installation>> {
+		if !super::update::valid_digest(digest) {
+			return Err("Invalid reviewed image digest.".into());
+		}
+		self.apply_ragflow_with(&docker()?, Action::Update, namespace, Some(digest), &mut progress)
 	}
 
 	fn apply_ragflow_with(
@@ -264,6 +268,7 @@ impl ComponentStore {
 		docker: &Path,
 		action: Action,
 		namespace: &str,
+		digest: Option<&str>,
 		progress: &mut impl FnMut(&str),
 	) -> Result<Option<Installation>> {
 		let directory = self.root.join("ragflow/service");
@@ -325,7 +330,7 @@ impl ComponentStore {
 		fs::create_dir_all(&directory).map_err(|_| "Could not prepare RAGFlow storage.")?;
 		fs::set_permissions(&directory, fs::Permissions::from_mode(0o700))
 			.map_err(|_| "Could not protect RAGFlow storage.")?;
-		prepare(&directory, &config)?;
+		prepare(&directory, &config, digest)?;
 		// Keep the owned identity before effects so retries and Uninstall use the same stack.
 		config.installed = true;
 		write(&directory, &config)?;
@@ -376,6 +381,18 @@ impl ComponentStore {
 		}
 		Ok(Some(config))
 	}
+}
+
+pub(super) fn docker() -> Result<PathBuf> {
+	[
+		"/usr/local/bin/docker",
+		"/opt/homebrew/bin/docker",
+		"/Applications/Docker.app/Contents/Resources/bin/docker",
+	]
+	.into_iter()
+	.map(PathBuf::from)
+	.find(|p| p.is_file())
+	.ok_or_else(|| CONTAINER_REQUIRED.into())
 }
 
 fn read(directory: &Path) -> Result<Option<Installation>> {
@@ -528,7 +545,7 @@ fn api_key(client: &Client, url: &str, token: &str) -> Result<String> {
 		.ok_or("Could not configure the RAGFlow API credential.".into())
 }
 
-fn prepare(directory: &Path, config: &Installation) -> Result<()> {
+fn prepare(directory: &Path, config: &Installation, digest: Option<&str>) -> Result<()> {
 	let runtime = directory.join("infinity-runtime");
 	fs::create_dir_all(&runtime).map_err(|_| "Could not prepare the Infinity runtime.")?;
 	private_file(
@@ -551,18 +568,18 @@ fn prepare(directory: &Path, config: &Installation) -> Result<()> {
 	)?;
 	private_file(
 		&directory.join("compose.json"),
-		&serde_json::to_vec_pretty(&compose(config))
+		&serde_json::to_vec_pretty(&compose(config, digest))
 			.map_err(|_| "Could not prepare RAGFlow services.")?,
 	)
 }
 
-fn compose(config: &Installation) -> Value {
+fn compose(config: &Installation, digest: Option<&str>) -> Value {
 	let secret = &config.password;
 	let port = config.url.rsplit(':').next().expect("generated local URL");
 	let health = |test: Value| json!({"test":test,"interval":"5s","timeout":"5s","retries":120});
 	let mut value = json!({"services":{
 		"ragflow":{
-			"image":"infiniflow/ragflow:nightly", "command":["--disable-syncer"],
+			"image":digest.map(|id| format!("infiniflow/ragflow@{id}")).unwrap_or_else(|| super::update::IMAGE.into()), "command":["--disable-syncer"],
 			"ports":[format!("127.0.0.1:{port}:9380")],
 			"volumes":["./service_conf.yaml.template:/ragflow/conf/service_conf.yaml.template:ro"],
 			"environment":{"DOC_ENGINE":"infinity","DB_TYPE":"mysql","ENABLE_REGISTER":"1","REGISTER_ENABLED":"1","KVROCKS_HOST":"kvrocks","KVROCKS_PORT":"6379"},
@@ -605,7 +622,7 @@ mod tests {
 			.unwrap();
 			fs::set_permissions(&docker, fs::Permissions::from_mode(0o700)).unwrap();
 			let error = store
-				.apply_ragflow_with(&docker, Action::Install, "fixture", &mut |_| {})
+				.apply_ragflow_with(&docker, Action::Install, "fixture", None, &mut |_| {})
 				.err()
 				.expect("unavailable prerequisite");
 			assert_eq!(error, CONTAINER_REQUIRED);
@@ -628,7 +645,7 @@ mod tests {
 			models: None,
 			installed: true,
 		};
-		let services = compose(&config);
+		let services = compose(&config, None);
 		assert_eq!(services["services"].as_object().unwrap().len(), 6);
 		assert!(services["volumes"].get("models").is_none());
 		assert_eq!(services["services"]["ragflow"]["image"], "infiniflow/ragflow:nightly");
@@ -959,7 +976,7 @@ mod tests {
 		let docker = root.path().join("docker");
 		fs::write(&docker, "#!/bin/sh\nprintf '%s\\n' \"$*\" > \"$0.args\"\n").unwrap();
 		fs::set_permissions(&docker, fs::Permissions::from_mode(0o700)).unwrap();
-		store.apply_ragflow_with(&docker, Action::Uninstall, "fixture", &mut |_| {}).unwrap();
+		store.apply_ragflow_with(&docker, Action::Uninstall, "fixture", None, &mut |_| {}).unwrap();
 		assert!(!store.ragflow_installation().unwrap().unwrap().installed);
 		assert!(directory.join("memory-data").is_file());
 		let args = fs::read_to_string(root.path().join("docker.args")).unwrap();

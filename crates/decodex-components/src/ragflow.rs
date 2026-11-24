@@ -14,7 +14,9 @@ use sha2::{Digest as _, Sha256};
 use crate::{ComponentStore, Result};
 
 #[path = "ragflow_service.rs"] mod service;
+#[path = "ragflow_update.rs"] mod update;
 pub use service::{Action, Installation, ModelEndpoint, Models};
+pub use update::Update;
 
 const PERSONAL_MEMORY_PROMPT: &str = r#"Extract durable personal memory for the user's work Assistant.
 

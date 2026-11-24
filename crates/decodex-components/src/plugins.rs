@@ -44,6 +44,8 @@ pub enum PluginAction {
 	Install,
 	/// Refresh the marketplace and replace the installed plugin from that source.
 	Update,
+	/// Update an enabled installation only when the managed Git snapshot has changed.
+	UpdateIfAvailable,
 	/// Reinstall the selected plugin through Codex without upgrading its marketplace.
 	Reinstall,
 	/// Remove the plugin and its dedicated marketplace, preserving user artifacts.
@@ -92,7 +94,17 @@ impl NativePlugins {
 				self.run(&["marketplace", "add", &component.source, "--json"])?;
 				self.run(&["add", &selector, "--json"])?;
 			},
-			PluginAction::Update => {
+			PluginAction::Update | PluginAction::UpdateIfAvailable => {
+				let automatic = action == PluginAction::UpdateIfAvailable;
+				let installed = if automatic {
+					let installed = self.installation(component)?;
+					if !installed.as_ref().is_some_and(|plugin| plugin.enabled) {
+						return Ok(installed);
+					}
+					installed
+				} else {
+					None
+				};
 				let Some(marketplace) = marketplace.as_ref() else {
 					return Err("Install the component before updating it.".into());
 				};
@@ -103,6 +115,13 @@ impl NativePlugins {
 					.is_some_and(|source| source.source_type == "git")
 				{
 					self.run(&["marketplace", "upgrade", &component.marketplace, "--json"])?;
+					if let Some(plugin) = &installed
+						&& self.installed_snapshot_matches(component, marketplace, plugin)
+					{
+						return Ok(installed);
+					}
+				} else if automatic {
+					return Err("Automatic updates require a Git marketplace.".into());
 				}
 
 				self.run(&["add", &selector, "--json"])?;
@@ -130,21 +149,56 @@ impl NativePlugins {
 			},
 		}
 
-		let installation = self
-			.list(component)?
-			.installed
-			.into_iter()
-			.find(|plugin| plugin.plugin_id == selector)
-			.map(|plugin| plugin.installation);
+		let installation = self.installation(component)?;
 
 		match action {
-			PluginAction::Install | PluginAction::Update | PluginAction::Reinstall
+			PluginAction::Install
+			| PluginAction::Update
+			| PluginAction::UpdateIfAvailable
+			| PluginAction::Reinstall
 				if !installation.as_ref().is_some_and(|plugin| plugin.enabled) =>
 				Err("Codex did not enable the component. Refresh to inspect its state.".into()),
 			PluginAction::Remove if installation.is_some() =>
 				Err("Codex still reports the component as installed.".into()),
 			_ => Ok(installation),
 		}
+	}
+
+	// Codex copies the complete EGM marketplace root into the versioned plugin cache.
+	// Compare the installed copy, so a failed plugin add after a marketplace refresh retries.
+	fn installed_snapshot_matches(
+		&self,
+		component: &PluginComponent,
+		marketplace: &Marketplace,
+		plugin: &PluginInstallation,
+	) -> bool {
+		let Some(root) = &marketplace.root else { return false };
+		if Path::new(&plugin.version).file_name().and_then(|name| name.to_str())
+			!= Some(plugin.version.as_str())
+		{
+			return false;
+		}
+		let metadata = ".codex-marketplace-install.json";
+		let cached = self
+			.codex_home
+			.join("plugins/cache")
+			.join(&component.marketplace)
+			.join(&component.name)
+			.join(&plugin.version)
+			.join(metadata);
+		fs::read(root.join(metadata)).is_ok_and(|current| {
+			!current.is_empty() && fs::read(cached).ok().as_ref() == Some(&current)
+		})
+	}
+
+	fn installation(&self, component: &PluginComponent) -> Result<Option<PluginInstallation>> {
+		let selector = component.selector();
+		Ok(self
+			.list(component)?
+			.installed
+			.into_iter()
+			.find(|plugin| plugin.plugin_id == selector)
+			.map(|plugin| plugin.installation))
 	}
 
 	fn list(&self, component: &PluginComponent) -> Result<PluginList> {
@@ -217,6 +271,7 @@ struct Marketplaces {
 #[serde(rename_all = "camelCase")]
 struct Marketplace {
 	name: String,
+	root: Option<PathBuf>,
 	marketplace_source: Option<MarketplaceSource>,
 }
 impl Marketplace {
@@ -295,6 +350,64 @@ mod tests {
 		let native = NativePlugins::new(binary, home.clone());
 
 		(root, native, component)
+	}
+
+	#[test]
+	#[ignore = "requires the qualified runtime in DECODEX_TEST_CODEX_EXECUTABLE"]
+	fn automatic_updates_follow_git_and_preserve_an_unchanged_installation() {
+		use std::os::unix::fs::MetadataExt as _;
+		let (_root, native, mut component) = fixture();
+		let repo = PathBuf::from(&component.source);
+		let git = |args: &[&str]| {
+			let output = std::process::Command::new("git")
+				.arg("-C")
+				.arg(&repo)
+				.args([
+					"-c",
+					"user.name=Fixture",
+					"-c",
+					"user.email=fixture@example.invalid",
+					"-c",
+					"commit.gpgsign=false",
+				])
+				.args(args)
+				.output()
+				.unwrap();
+			assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+		};
+		git(&["init", "-q"]);
+		git(&["add", "."]);
+		git(&["commit", "-qm", "First release"]);
+		component.source = "https://example.invalid/fixture.git".into();
+		fs::write(
+			native.codex_home.parent().unwrap().join(".gitconfig"),
+			format!(
+				"[url \"{}\"]\n\tinsteadOf = {}\n",
+				reqwest::Url::from_directory_path(&repo).unwrap(),
+				component.source
+			),
+		)
+		.unwrap();
+		assert!(native.apply(&component, PluginAction::UpdateIfAvailable).unwrap().is_none());
+		assert_eq!(
+			native.apply(&component, PluginAction::Install).unwrap().unwrap().version,
+			"1.0.0"
+		);
+		fs::write(
+			repo.join(".codex-plugin/plugin.json"),
+			r#"{"name":"fixture","version":"2.0.0","skills":"./skills"}"#,
+		)
+		.unwrap();
+		git(&["commit", "-qam", "Second release"]);
+		assert_eq!(
+			native.apply(&component, PluginAction::UpdateIfAvailable).unwrap().unwrap().version,
+			"2.0.0"
+		);
+		let manifest =
+			native.codex_home.join("plugins/cache/fixture/fixture/2.0.0/.codex-plugin/plugin.json");
+		let before = fs::File::open(&manifest).unwrap();
+		native.apply(&component, PluginAction::UpdateIfAvailable).unwrap();
+		assert_eq!(before.metadata().unwrap().ino(), manifest.metadata().unwrap().ino());
 	}
 
 	#[test]

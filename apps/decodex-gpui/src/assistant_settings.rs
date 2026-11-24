@@ -241,6 +241,20 @@ impl AgentSurface {
 		}
 	}
 
+	pub(crate) fn component_review_host(
+		&self,
+	) -> Option<(decodex_protocol::ClientProfile, String)> {
+		let profile = self.profile.as_ref().filter(|p| p.kind() == ProfileKind::Local)?;
+		Some((profile.clone(), self.assistant_id()?))
+	}
+
+	pub(crate) fn update_reviewed_ragflow(&mut self, digest: String, cx: &mut Context<Self>) {
+		if self.ragflow_component_state().busy || self.component_review_host().is_none() {
+			return;
+		}
+		self.run_memory_component(ComponentAction::Update, Some(digest), cx);
+	}
+
 	pub(crate) fn ragflow_component_action(
 		&mut self,
 		action: ComponentAction,
@@ -666,7 +680,7 @@ impl AgentSurface {
 			return;
 		}
 		if let Some(action) = self.workspace.assistant_memory_action.take() {
-			self.run_memory_component(action, cx);
+			self.run_memory_component(action, None, cx);
 		} else if !configured
 			&& !self.sending
 			&& !self.uncertain
@@ -676,7 +690,12 @@ impl AgentSurface {
 		}
 	}
 
-	fn run_memory_component(&mut self, action: ComponentAction, cx: &mut Context<Self>) {
+	fn run_memory_component(
+		&mut self,
+		action: ComponentAction,
+		digest: Option<String>,
+		cx: &mut Context<Self>,
+	) {
 		let Some(profile) = self.profile.clone() else {
 			return;
 		};
@@ -699,9 +718,14 @@ impl AgentSurface {
 		let progress = self.assistant_settings.progress.clone();
 		*progress.lock().expect("component progress") = "Preparing RAGFlow…".into();
 		let request = cx.background_executor().spawn(async move {
-			ComponentStore::for_user()?.apply_ragflow(operation, &namespace, |message| {
-				*progress.lock().expect("component progress") = message.into()
-			})
+			let store = ComponentStore::for_user()?;
+			let report =
+				|message: &str| *progress.lock().expect("component progress") = message.into();
+			if let Some(digest) = digest.filter(|_| operation == Action::Update) {
+				store.apply_reviewed_ragflow(&digest, &namespace, report)
+			} else {
+				store.apply_ragflow(operation, &namespace, report)
+			}
 		});
 		self.finish_memory_component(request, profile, owner, action, cx);
 	}

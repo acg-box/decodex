@@ -26,6 +26,7 @@ pub(crate) enum Action {
 	Disconnect,
 	Install,
 	Update,
+	SyncBundled,
 	Reinstall,
 	EnableTools,
 	Remove,
@@ -152,11 +153,29 @@ impl ResearchOperations {
 		};
 
 		match action {
-			Action::Install | Action::Update | Action::Reinstall => {
-				shown.installed =
-					Some(install::install(&directory, &registration, &bundled_helper()?)?);
+			Action::Install | Action::Update | Action::Reinstall | Action::SyncBundled => {
+				if action == Action::SyncBundled && shown.installed.is_none() {
+					return Ok(shown);
+				}
+				let helper = bundled_helper()?;
+				let pending = directory.join("bundle-sync-pending");
+				if action == Action::SyncBundled {
+					if !shown.inspected {
+						shown.tools =
+							NativePlugins::for_user()?.apply(&component, PluginAction::Refresh)?;
+					}
+					let installed = directory.join("bin/decodex-pro-bridge");
+					if !pending.exists()
+						&& std::fs::read(installed).ok().is_some_and(|bytes| {
+							std::fs::read(&helper).is_ok_and(|bundle| bundle == bytes)
+						}) {
+						return Ok(shown);
+					}
+					std::fs::write(&pending, []).map_err(|e| e.to_string())?;
+				}
+				shown.installed = Some(install::install(&directory, &registration, &helper)?);
 
-				if shown.tools.is_some() {
+				if shown.tools.as_ref().is_some_and(|plugin| plugin.enabled) {
 					shown.tools = NativePlugins::for_user()?.apply(
 						&component,
 						if action == Action::Reinstall {
@@ -166,7 +185,7 @@ impl ResearchOperations {
 						},
 					)?;
 				}
-				if matches!(action, Action::Update | Action::Reinstall)
+				if matches!(action, Action::Update | Action::Reinstall | Action::SyncBundled)
 					&& directory.join("extension.sock").exists()
 				{
 					let bridge = ProBridge::new(Config::default(), &directory)?;
@@ -174,6 +193,9 @@ impl ResearchOperations {
 					research_runtime()?.block_on(bridge.reload_extension())?;
 				}
 
+				if pending.exists() {
+					std::fs::remove_file(&pending).map_err(|e| e.to_string())?;
+				}
 				shown.connection = None;
 			},
 			Action::EnableTools => {

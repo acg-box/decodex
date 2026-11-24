@@ -448,6 +448,12 @@ impl AgentSurface {
 }
 
 impl AgentSurface {
+	pub(crate) fn open_portfolio_work(&mut self, id: String, owner: &str, cx: &mut Context<Self>) {
+		self.open_navigation_conversation(owner, cx);
+		self.workspace.work_detail = Some(id.clone());
+		self.load_work_detail(id, cx);
+	}
+
 	pub(super) fn load_work_detail(&mut self, id: String, cx: &mut Context<Self>) {
 		let Some(profile) = self.profile.clone() else { return };
 		let captured = profile.clone();

@@ -11,13 +11,16 @@ use crate::{
 	component_plugins::{self, PluginOperations},
 	component_research::{self, ResearchOperations},
 	component_runtime::{self, PreparationState, RuntimePreparation},
+	component_updates::{self, Schedule},
 	settings_surface::{SettingsSurface, switch},
 	shell::{agent_surface::RagflowComponentAction, workspace_symbols},
 	ui_feedback::{self, Feedback, Tone},
 	ui_motion::SmoothControl as _,
 	ui_theme::{self, BLUE, SETTINGS_LABEL_SIZE, TEXT, TEXT_MUTED},
 };
-use decodex_components::{InstallProgress, PluginAction, RuntimeLock};
+use decodex_components::{
+	ComponentStore, InstallProgress, PluginAction, RuntimeLock, ragflow::Update,
+};
 
 #[derive(Clone, Copy)]
 enum Action {
@@ -28,7 +31,25 @@ enum Action {
 	Ragflow(RagflowComponentAction),
 }
 
+#[derive(Clone, Copy)]
+enum Policy {
+	Egm,
+	Research,
+	Ragflow,
+}
+
+struct Review {
+	target: Update,
+	owner: String,
+}
+
 pub(super) struct Components {
+	egm_updates: Schedule,
+	research_updates: Schedule,
+	ragflow_reviews: Schedule,
+	review_check: Option<gpui::Task<()>>,
+	review: Option<Review>,
+	review_message: Option<String>,
 	details: [bool; 4],
 	preparation: RuntimePreparation,
 	shown: component_runtime::Snapshot,
@@ -43,6 +64,12 @@ impl Components {
 
 		Self {
 			details: [false; 4],
+			egm_updates: Schedule::new("DecodexAutomaticEgmUpdates"),
+			research_updates: Schedule::new("DecodexAutomaticResearchUpdates"),
+			ragflow_reviews: Schedule::new("DecodexAutomaticRagflowReviews"),
+			review_check: None,
+			review: None,
+			review_message: None,
 			preparation,
 			shown,
 			optional: PluginOperations::new(decodex_components::egm_component(), None),
@@ -90,7 +117,128 @@ impl Components {
 }
 
 impl SettingsSurface {
+	fn update_policy(&self, policy: Policy, cx: &mut Context<Self>) -> AnyElement {
+		let (id, knob, label, description, enabled) = match policy {
+			Policy::Egm => (
+				"components-egm-auto",
+				"components-egm-auto-knob",
+				"Automatic updates",
+				"Keep the enabled plugin in sync with its Codex marketplace.",
+				self.components.egm_updates.enabled,
+			),
+			Policy::Research => (
+				"components-research-auto",
+				"components-research-auto-knob",
+				"Update with Decodex",
+				"Sync the installed helper and extension when research is idle.",
+				self.components.research_updates.enabled,
+			),
+			Policy::Ragflow => (
+				"components-ragflow-auto",
+				"components-ragflow-auto-knob",
+				"Review updates with Assistant",
+				"Assistant prepares a migration plan for each new image. You choose when to apply it.",
+				self.components.ragflow_reviews.enabled,
+			),
+		};
+		ui_theme::settings_row()
+			.child(ui_theme::settings_label(label, description))
+			.child(switch::settings_switch(id, knob, label, enabled, true).on_change(cx.listener(
+				move |s, enabled: &bool, _, cx| {
+					match policy {
+						Policy::Egm => s.components.egm_updates.set(*enabled),
+						Policy::Research => s.components.research_updates.set(*enabled),
+						Policy::Ragflow => {
+							s.components.ragflow_reviews.set(*enabled);
+							s.components.review_check = None;
+							s.components.review = None;
+							s.components.review_message = None;
+						},
+					}
+					s.poll_components(cx);
+					cx.notify();
+				},
+			)))
+			.into_any_element()
+	}
+
+	fn check_component_updates(&mut self, cx: &mut Context<Self>) {
+		if self.components.egm_updates.due()
+			&& self.components.optional.snapshot().busy.is_none()
+			&& matches!(self.components.shown.state, PreparationState::Ready)
+		{
+			self.components.egm_updates.checked();
+			self.components.optional.start(PluginAction::UpdateIfAvailable);
+		}
+		if self.components.research_updates.due()
+			&& self.components.research.snapshot().busy.is_none()
+		{
+			self.components.research_updates.checked();
+			self.components.research.start(component_research::Action::SyncBundled);
+		}
+		if !self.components.ragflow_reviews.due() || self.components.review_check.is_some() {
+			return;
+		}
+		let Some(host) =
+			self.native_agent.as_ref().and_then(|agent| agent.read(cx).component_review_host())
+		else {
+			return;
+		};
+		self.components.ragflow_reviews.checked();
+		self.components.review_message = Some("Checking for a new image…".into());
+		cx.notify();
+		let check =
+			cx.background_executor().spawn(async { ComponentStore::for_user()?.ragflow_update() });
+		self.components.review_check = Some(cx.spawn(async move |surface, cx| {
+			let candidate = check.await;
+			let current_host = surface
+				.read_with(cx, |s, cx| {
+					s.native_agent.as_ref().and_then(|a| a.read(cx).component_review_host())
+				})
+				.ok()
+				.flatten();
+			let result = match candidate {
+				Ok(Some(target)) if current_host.as_ref() == Some(&host) => {
+					let (profile, owner) = host.clone();
+					cx.background_executor()
+						.spawn(async move {
+							let owner = component_updates::assign_review(profile, &owner, &target)?;
+							Ok(Some(Review { target, owner }))
+						})
+						.await
+				},
+				Ok(_) => Ok(None),
+				Err(error) => Err(error),
+			};
+			let _ = surface.update(cx, |s, cx| {
+				s.components.review_check = None;
+				if s.native_agent.as_ref().and_then(|a| a.read(cx).component_review_host()).as_ref()
+					!= Some(&host)
+				{
+					s.components.review_message = None;
+					return;
+				}
+				match result {
+					Ok(review) => {
+						s.components.review_message = Some(
+							if review.is_some() {
+								"Assistant has the migration review."
+							} else {
+								"No new image found."
+							}
+							.into(),
+						);
+						s.components.review = review;
+					},
+					Err(error) => s.components.review_message = Some(error),
+				}
+				cx.notify();
+			});
+		}));
+	}
+
 	pub(crate) fn poll_components(&mut self, cx: &mut Context<Self>) {
+		self.check_component_updates(cx);
 		#[cfg(not(test))]
 		if self.category == super::SettingsCategory::Components {
 			self.components.research.inspect();
@@ -127,7 +275,15 @@ impl SettingsSurface {
 					_ => self.components.details[3] = true,
 				}
 				if let Some(agent) = &self.native_agent {
-					agent.update(cx, |s, cx| s.ragflow_component_action(action, cx));
+					if action == RagflowComponentAction::Update
+						&& let Some(review) = &self.components.review
+					{
+						agent.update(cx, |s, cx| {
+							s.update_reviewed_ragflow(review.target.digest.clone(), cx)
+						});
+					} else {
+						agent.update(cx, |s, cx| s.ragflow_component_action(action, cx));
+					}
 				}
 			},
 		}
@@ -240,6 +396,12 @@ impl SettingsSurface {
 		let label = match installed {
 			None => "Install",
 			Some(false) => "Enable",
+			Some(true)
+				if matches!(
+					actions[primary].1,
+					Action::Ragflow(RagflowComponentAction::Update)
+				) && self.components.review.is_some() =>
+				"Apply reviewed image",
 			Some(true) => "Update",
 		};
 		let mut controls = gpui::div().flex().items_center().gap_2().child(self.component_button(
@@ -564,6 +726,38 @@ impl SettingsSurface {
 			cx,
 		));
 		let mut body = ui_theme::settings_rows().gap(gpui::px(12.));
+		if installed || self.components.ragflow_reviews.enabled {
+			body = body.child(self.update_policy(Policy::Ragflow, cx));
+			if let Some(message) = &self.components.review_message {
+				let mut row =
+					ui_theme::settings_row().child(ui_theme::settings_description(message.clone()));
+				if let Some(review) = &self.components.review {
+					let work = component_updates::work_id(&review.target);
+					let owner = review.owner.clone();
+					row = row.child(
+						ui_theme::settings_button(
+							"components-open-migration-review",
+							"Open review",
+						)
+						.on_click(cx.listener(move |_, _, _, cx| {
+							cx.emit(super::OpenReview { work: work.clone(), owner: owner.clone() })
+						})),
+					);
+				}
+				if self.components.review_check.is_none() {
+					row = row.child(
+						ui_theme::settings_button("components-review-check", "Check now").on_click(
+							cx.listener(|s, _, _, cx| {
+								s.components.ragflow_reviews.check_now();
+								s.check_component_updates(cx);
+								cx.notify();
+							}),
+						),
+					);
+				}
+				body = body.child(row);
+			}
+		}
 		if let Some(state) = state.as_ref().filter(|s| s.installed) {
 			body = body.child(
 				ui_theme::settings_row()
@@ -768,6 +962,8 @@ impl SettingsSurface {
 		let feedback = state.error.as_ref().map(|e| Feedback::error(e.clone())).or_else(|| {
 			state.busy.and_then(|a| match a {
 				component_research::Action::Inspect => None,
+				component_research::Action::SyncBundled =>
+					Some(Feedback::loading("Checking bundled research update…")),
 				component_research::Action::Install
 				| component_research::Action::Update
 				| component_research::Action::Reinstall =>
@@ -809,6 +1005,10 @@ impl SettingsSurface {
 						.child(ui_theme::settings_description(format!(
 							"Experimental. {explanation}"
 						)))
+						.when(
+							state.installed.is_some() || self.components.research_updates.enabled,
+							|body| body.child(self.update_policy(Policy::Research, cx)),
+						)
 						.when(state.installed.is_some(), |body| body.child(details)),
 				),
 			)
@@ -871,6 +1071,7 @@ impl SettingsSurface {
 				state.busy.and_then(|action| {
 					Some(Feedback::loading(match action {
 						PluginAction::Refresh => return None,
+						PluginAction::UpdateIfAvailable => "Checking for an EGM update…",
 						PluginAction::Install => "Installing EGM…",
 						PluginAction::Update => "Updating EGM…",
 						PluginAction::Reinstall => "Reinstalling EGM…",
@@ -882,7 +1083,7 @@ impl SettingsSurface {
 		gpui::div().debug_selector(|| "components-egm".into()).w_full().flex().flex_col().child(ui_theme::settings_row()
 			.child(self.component_label(1, "components-egm-details", "Elephant–Goldfish (EGM)", state.installed.as_ref().map(|plugin| plugin.version.as_str()), cx))
 			.child(controls))
-			.child(self.component_body(1,"components-egm-body",ui_theme::settings_description("Ask an Agent to use EGM to draft or review a design. Start a new conversation after installation or update.")))
+			.child(self.component_body(1,"components-egm-body",ui_theme::settings_rows().gap_2().child(ui_theme::settings_description("Ask an Agent to use EGM to draft or review a design. Start a new conversation after installation or update.")).when(state.installed.as_ref().is_some_and(|p|p.enabled) || self.components.egm_updates.enabled, |body| body.child(self.update_policy(Policy::Egm,cx)))))
 			.child(ui_feedback::notice("components-egm-feedback", "egm", feedback).inline())
 	}
 }

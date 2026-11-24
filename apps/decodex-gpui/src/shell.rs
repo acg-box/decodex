@@ -397,6 +397,14 @@ impl Shell {
 		let account_profile = account_profile_controller.snapshot();
 		let settings_controller = desktop_settings.clone();
 		let settings = cx.new(|cx| SettingsSurface::new(settings_controller, cx));
+		cx.subscribe(&settings, |shell, _, review: &crate::settings_surface::OpenReview, cx| {
+			shell.close_overlay(cx);
+			shell.select_destination(Destination::Agent, cx);
+			shell.agent.update(cx, |agent, cx| {
+				agent.open_portfolio_work(review.work.clone(), &review.owner, cx)
+			});
+		})
+		.detach();
 		settings.update(cx, |settings, cx| {
 			settings.bind_native_agent(agent.clone(), cx);
 			settings.bind_agent(&agent, cx);
