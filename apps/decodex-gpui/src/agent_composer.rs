@@ -704,13 +704,14 @@ impl AgentSurface {
 			))
 			.child(ui_theme::menu_separator())
 			.child(self.composer_control(
-				"task-recap-item",
-				"Task recap".into(),
-				"Task recap",
+				"conversation-details-item",
+				"Conversation details".into(),
+				"Conversation details",
 				|s, cx| {
 					s.composer_menu = None;
-					s.workspace.details_visible = true;
 					if let Some(work) = s.selected.clone() {
+						s.workspace.details_visible = true;
+						s.workspace.details_focus_requested.set(true);
 						s.open_recap(&work, cx);
 					}
 					cx.notify();
@@ -844,7 +845,11 @@ impl AgentSurface {
 	) -> AnyElement {
 		if matches!(
 			id,
-			"attachment-item" | "audio-item" | "delivery" | "task-sample-item" | "task-recap-item"
+			"attachment-item"
+				| "audio-item"
+				| "delivery"
+				| "task-sample-item"
+				| "conversation-details-item"
 		) {
 			return ui_theme::menu_row(format!("composer-{id}"), true)
 				.debug_selector(move || format!("composer-{id}"))
@@ -1063,7 +1068,7 @@ impl AgentSurface {
 				.child(gpui::div().text_color(crate::ui_theme::rgb(TEXT)).child(label))
 				.child(gpui::div().w(gpui::px(12.)).flex_none())
 				.into_any_element(),
-			"task-sample-item" | "task-recap-item" => gpui::div()
+			"task-sample-item" | "conversation-details-item" => gpui::div()
 				.w_full()
 				.min_w_0()
 				.flex()
@@ -1782,7 +1787,7 @@ mod tests {
 		let mut previous: Option<gpui::Bounds<gpui::Pixels>> = None;
 		for id in [
 			"composer-attachment-item",
-			"composer-task-recap-item",
+			"composer-conversation-details-item",
 			"composer-audio-item",
 			"composer-delivery",
 		] {
@@ -1810,6 +1815,56 @@ mod tests {
 		visual.simulate_click(delivery.center(), Default::default());
 		visual.run_until_parked();
 		assert_ne!(surface.read_with(visual, |s, _| s.steer), steer);
+		let details = visual.debug_bounds("composer-conversation-details-item").unwrap();
+		visual.simulate_click(details.center(), Default::default());
+		visual.update(crate::ui_frame::draw_frame);
+		visual.run_until_parked();
+		visual.update(crate::ui_frame::draw_frame);
+		assert!(visual.debug_bounds("work-inspection-scroll").is_some());
+		assert!(visual.debug_bounds("recap-toggle").is_some());
+	}
+
+	#[gpui::test]
+	fn conversation_details_take_focus_from_the_menu_host_and_escape_to_the_workspace(
+		cx: &mut gpui::TestAppContext,
+	) {
+		struct Menu(gpui::Entity<AgentSurface>);
+		impl gpui::Render for Menu {
+			fn render(
+				&mut self,
+				_: &mut gpui::Window,
+				cx: &mut gpui::Context<Self>,
+			) -> impl gpui::IntoElement {
+				self.0.update(cx, |s, cx| s.attachment_options(cx))
+			}
+		}
+
+		let mut menu_cx = cx.clone();
+		let (shell, main) = crate::shell::tests::open_shell(cx);
+		let surface = shell.read_with(main, |s, _| s.agent.clone());
+		surface.update(main, |s, cx| s.visual_workspace_fixture(cx));
+		main.simulate_resize(gpui::size(gpui::px(1400.), gpui::px(1000.)));
+		main.update(crate::ui_frame::draw_frame);
+
+		let (_, menu) = menu_cx.add_window_view(|_, _| Menu(surface.clone()));
+		menu.update(|window, _| window.activate_window());
+		menu.run_until_parked();
+		menu.update(crate::ui_frame::draw_frame);
+		menu.update(|window, cx| assert_eq!(cx.active_window(), Some(window.window_handle())));
+		let option = menu.debug_bounds("composer-conversation-details-item").unwrap();
+		menu.simulate_click(option.center(), Default::default());
+		main.update(crate::ui_frame::draw_frame);
+		main.run_until_parked();
+		main.update(crate::ui_frame::draw_frame);
+		assert!(main.debug_bounds("work-inspection-scroll").is_some());
+		main.update(|window, cx| {
+			assert_eq!(cx.active_window(), Some(window.window_handle()));
+		});
+		main.simulate_keystrokes("escape");
+		main.update(|window, cx| {
+			assert!(!surface.read(cx).workspace.details_visible);
+			assert!(shell.read(cx).root_focus.is_focused(window));
+		});
 	}
 
 	#[gpui::test]

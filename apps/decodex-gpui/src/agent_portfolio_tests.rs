@@ -224,36 +224,14 @@ fn thread_registration_routes_to_its_own_work_and_preserves_other_drafts(cx: &mu
 #[gpui::test]
 fn thread_registration_reassignment_click_sends_the_displayed_owner(cx: &mut TestAppContext) {
 	let (_home, profile, server) = wire_test_support::fixture(|listener| async move {
-		loop {
-			let mut socket = wire_test_support::accept(&listener).await;
-			let Message::Text(text) = socket.next().await.unwrap().unwrap() else {
-				panic!("text request")
-			};
-			match serde_json::from_str(&text).unwrap() {
-				ClientMessage::Query(query) => {
-					assert!(matches!(query.payload, QueryPayload::ListNativeThreads { .. }));
-					wire_test_support::answer_query(
-						&mut socket,
-						query.query_id,
-						QueryResultPayload::NativeThreads(Some(
-							decodex_protocol::NativeThreadPage {
-								threads: vec![],
-								next_cursor: None,
-							},
-						)),
-					)
-					.await;
-				},
-				ClientMessage::Command(command) => {
-					let CommandPayload::Agent { action } = command.payload else {
-						panic!("Agent command")
-					};
-					socket.close(None).await.unwrap();
-					break *action;
-				},
-				_ => panic!("unexpected request"),
-			}
-		}
+		let mut socket = wire_test_support::accept(&listener).await;
+		let Message::Text(text) = socket.next().await.unwrap().unwrap() else { panic!("command") };
+		let ClientMessage::Command(command) = serde_json::from_str(&text).unwrap() else {
+			panic!("editing a local conversation must not fetch the external catalog")
+		};
+		let CommandPayload::Agent { action } = command.payload else { panic!("Agent command") };
+		socket.close(None).await.unwrap();
+		*action
 	});
 	let surface = cx.new(AgentSurface::new);
 	let (_, visual) = cx.add_window_view(|_, cx| {
@@ -293,6 +271,10 @@ fn thread_registration_reassignment_click_sends_the_displayed_owner(cx: &mut Tes
 	assert!(visual.debug_bounds("registration-release").is_some());
 	assert!(visual.debug_bounds("registration-promote").is_some());
 	assert!(visual.debug_bounds("registration-register").is_none());
+	assert!(visual.debug_bounds("registration-assign-iris").is_none());
+	let choose = visual.debug_bounds("registration-assignment").unwrap();
+	visual.simulate_click(choose.center(), Default::default());
+	visual.update(crate::ui_frame::draw_frame);
 	let target = visual.debug_bounds("registration-assign-iris").unwrap();
 	let long = visual.debug_bounds("registration-release").unwrap();
 	assert_eq!(long.size.height, target.size.height, "long names remain on one line");
@@ -382,15 +364,10 @@ fn thread_registration_lists_native_pages_and_promotes_the_selected_thread(
 				let add = visual.debug_bounds("registration-register").unwrap();
 				let promote = visual.debug_bounds("registration-promote").unwrap();
 				let assign = visual.debug_bounds("registration-assignment").unwrap();
-				let agent = visual.debug_bounds("registration-assign-iris").unwrap();
-				assert!(title.bottom() <= preview.top() && preview.bottom() <= add.top());
-				assert!(
-					add.top() <= promote.top()
-						&& promote.bottom() <= assign.top()
-						&& assign.bottom() <= agent.top()
-				);
-				assert_eq!(add.left(), assign.left(), "align the relationship controls at {width}");
-				for control in [add, promote, agent] {
+				assert!(visual.debug_bounds("registration-assign-iris").is_none());
+				assert!(title.bottom() <= preview.top());
+				for control in [add, promote, assign] {
+					assert!(preview.bottom() <= control.top());
 					assert!(
 						control.right() <= gpui::px(width) && control.left() >= gpui::px(0.),
 						"action fits at {width}: {control:?}"

@@ -12,7 +12,7 @@ use crate::{
 use decodex_protocol::{
 	AccountClient, AccountsResult, AgentActionDto, AgentCommandResponse, ClientFailure,
 	ClientProfile, EntityId, IdempotencyKey, NativeThreadCandidate, NativeThreadPage,
-	work::ThreadRegistration,
+	work::{Agent, ThreadRegistration},
 };
 use gpui::{
 	AnyElement, Context, Entity, Focusable as _, IntoElement as _, KeyDownEvent, Role, Task,
@@ -25,15 +25,26 @@ use super::{
 	ComposerInput,
 };
 
+pub(super) enum RegistrationContext<'a> {
+	Agent,
+	Conversation { owner: Option<&'a Agent> },
+}
+
+enum Source {
+	Codex,
+	Agent(String),
+	Conversation,
+}
+
 pub(super) struct Panel {
+	source: Source,
 	search: Entity<ComposerInput>,
 	threads: Vec<NativeThreadCandidate>,
 	cursor: Option<String>,
 	read: Option<Task<()>>,
 	read_error: Option<CatalogProblem>,
 	selected: Option<NativeThreadCandidate>,
-	preferred_agent: Option<String>,
-	loaded: bool,
+	choosing_agent: bool,
 	mutation: Mutation,
 }
 
@@ -105,58 +116,69 @@ impl AgentSurface {
 		context: Option<&str>,
 		cx: &mut Context<Self>,
 	) {
-		let preferred_agent = context
-			.and_then(|id| self.snapshot.as_ref()?.agents.iter().find(|a| a.id == id))
-			.map(|a| a.id.clone());
-		let selected = context.and_then(|id| {
-			let work = self.conversation_record(id)?;
-			(preferred_agent.is_none() && Self::can_register_relationship(work)).then_some(
-				NativeThreadCandidate {
-					thread_id: work.codex_thread_id.clone()?,
-					title: self.conversation_label(work),
-					preview: None,
+		let (source, selected) = match context {
+			None => (Source::Codex, None),
+			Some(id) => match self.thread_registration_context(id) {
+				Some(RegistrationContext::Agent) => (Source::Agent(id.to_owned()), None),
+				Some(RegistrationContext::Conversation { .. }) => {
+					let Some(work) = self.conversation_record(id) else { return };
+					(Source::Conversation, self.bound_thread_candidate(work))
 				},
-			)
-		});
+				None => return,
+			},
+		};
 		self.cancel_dictation(cx);
-		self.show_thread_registration(selected, preferred_agent, cx);
+		self.start_registration(source, selected, cx);
 		cx.emit(CatalogEvent::Open(Catalog::Codex));
 	}
 
-	pub(super) fn show_thread_registration(
+	fn start_registration(
 		&mut self,
+		source: Source,
 		selected: Option<NativeThreadCandidate>,
-		preferred_agent: Option<String>,
 		cx: &mut Context<Self>,
 	) {
-		let panel = self.workspace.registration.get_or_insert_with(|| {
-			let search = super::resource_field(
-				"Search Codex conversations…",
-				"Search Codex conversations",
-				cx,
-			);
-			cx.observe(&search, |_, _, cx| cx.notify()).detach();
-			Panel {
-				search,
-				threads: Vec::new(),
-				cursor: None,
-				read: None,
-				read_error: None,
-				selected: None,
-				preferred_agent: None,
-				loaded: false,
-				mutation: Mutation::Idle,
-			}
+		let browse = !matches!(source, Source::Conversation);
+		let search = super::resource_field("Search conversations…", "Search conversations", cx);
+		cx.observe(&search, |_, _, cx| cx.notify()).detach();
+		self.workspace.registration = Some(Panel {
+			source,
+			search,
+			selected,
+			choosing_agent: false,
+			threads: Vec::new(),
+			cursor: None,
+			read: None,
+			read_error: None,
+			mutation: Mutation::Idle,
 		});
-		if panel.selected != selected || panel.preferred_agent != preferred_agent {
-			panel.mutation = Mutation::Idle;
-		}
-		panel.selected = selected;
-		panel.preferred_agent = preferred_agent;
-		if !panel.loaded && panel.read_error.is_none() {
+		if browse {
 			self.read_registration_page(cx);
 		}
 		cx.notify();
+	}
+
+	fn select_registration(
+		&mut self,
+		candidate: Option<NativeThreadCandidate>,
+		cx: &mut Context<Self>,
+	) {
+		if let Some(panel) = self.workspace.registration.as_mut()
+			&& !matches!(panel.mutation, Mutation::Saving(_) | Mutation::Saved(_))
+		{
+			panel.selected = candidate;
+			panel.choosing_agent = false;
+			panel.mutation = Mutation::Idle;
+			cx.notify();
+		}
+	}
+
+	fn bound_thread_candidate(&self, work: &AgentWorkItemDto) -> Option<NativeThreadCandidate> {
+		Some(NativeThreadCandidate {
+			thread_id: work.codex_thread_id.clone()?,
+			title: self.conversation_label(work),
+			preview: None,
+		})
 	}
 
 	fn read_registration_page(&mut self, cx: &mut Context<Self>) {
@@ -185,7 +207,6 @@ impl AgentSurface {
 				panel.read = None;
 				match result {
 					Ok(page) => {
-						panel.loaded = true;
 						panel.threads.extend(page.threads);
 						panel.cursor = page.next_cursor;
 					},
@@ -221,16 +242,19 @@ impl AgentSurface {
 	pub(super) fn open_registered_thread(&mut self, cx: &mut Context<Self>) {
 		let Some(panel) = self.workspace.registration.as_ref() else { return };
 		let Mutation::Saved(thread) = &panel.mutation else { return };
+		let open = matches!(panel.source, Source::Codex);
 		let Some(work) = self.snapshot.as_ref().and_then(|s| {
 			s.work_items.iter().find(|w| w.codex_thread_id.as_deref() == Some(thread))
 		}) else {
 			return;
 		};
 		let id = work.id.clone();
-		self.workspace.graph_expanded = false;
 		self.workspace.registration = None;
 		cx.emit(CatalogEvent::Close);
-		self.open_navigation_conversation(&id, cx);
+		if open {
+			self.workspace.graph_expanded = false;
+			self.open_navigation_conversation(&id, cx);
+		}
 		cx.notify();
 	}
 
@@ -242,7 +266,9 @@ impl AgentSurface {
 	) {
 		let profile = self.profile.clone().filter(|_| self.command_connection_ready());
 		let Some(panel) = self.workspace.registration.as_mut() else { return };
-		if matches!(panel.mutation, Mutation::Saving(_) | Mutation::Saved(_)) {
+		if matches!(panel.mutation, Mutation::Saving(_) | Mutation::Saved(_))
+			|| panel.selected.as_ref().is_none_or(|c| c.thread_id != thread)
+		{
 			return;
 		}
 		let Ok(thread_id) = EntityId::new(thread) else {
@@ -283,16 +309,25 @@ impl AgentSurface {
 		cx.notify();
 	}
 
-	pub(super) fn thread_registration_entry(
+	pub(super) fn adopt_conversation_entry(
 		&self,
-		id: String,
-		label: &'static str,
-		work: Option<String>,
+		selector: String,
+		id: &str,
 		cx: &mut Context<Self>,
-	) -> AnyElement {
-		self.conversation_action_button(id, label, label, cx, move |s, _, cx| {
-			s.open_thread_registration(work.as_deref(), cx);
-		})
+	) -> Option<AnyElement> {
+		if !matches!(self.thread_registration_context(id), Some(RegistrationContext::Agent)) {
+			return None;
+		}
+		let work = id.to_owned();
+		Some(self.conversation_action_button(
+			selector,
+			"Adopt conversation…",
+			"Adopt conversation",
+			cx,
+			move |s, _, cx| {
+				s.open_thread_registration(Some(&work), cx);
+			},
+		))
 	}
 
 	pub(super) fn can_register_relationship(work: &AgentWorkItemDto) -> bool {
@@ -301,17 +336,36 @@ impl AgentSurface {
 			&& work.codex_thread_id.is_some()
 	}
 
-	pub(super) fn thread_registration_context(&self, id: &str) -> Option<&'static str> {
+	pub(super) fn thread_registration_context(&self, id: &str) -> Option<RegistrationContext<'_>> {
+		let work = self.snapshot.as_ref()?.work_items.iter().find(|work| work.id == id)?;
+		self.work_registration_context(work)
+	}
+
+	fn work_registration_context(
+		&self,
+		work: &AgentWorkItemDto,
+	) -> Option<RegistrationContext<'_>> {
 		let snapshot = self.snapshot.as_ref()?;
-		if snapshot.archived_work_ids.contains(id) {
+		if !self.registration_id_available(&work.id) {
 			return None;
 		}
-		if snapshot.agents.iter().any(|agent| agent.id == id) {
-			return Some("Adopt conversation");
+		if snapshot.agents.iter().any(|agent| agent.id == work.id) {
+			return Some(RegistrationContext::Agent);
 		}
-		self.conversation_record(id)
-			.filter(|w| Self::can_register_relationship(w))
-			.map(|_| "Manage relationship")
+		Self::can_register_relationship(work).then(|| RegistrationContext::Conversation {
+			owner: snapshot
+				.agents
+				.iter()
+				.find(|agent| agent.managed_conversation_ids.contains(&work.id)),
+		})
+	}
+
+	fn registration_id_available(&self, id: &str) -> bool {
+		self.snapshot.as_ref().is_some_and(|s| {
+			!s.archived_work_ids.contains(id)
+				&& (s.assistant.agent_id.as_deref() == Some(id)
+					|| !self.is_assistant_conversation(id))
+		})
 	}
 
 	pub(super) fn render_thread_registration(
@@ -320,11 +374,12 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) -> AnyElement {
 		if self.workspace.registration.is_none() {
-			self.show_thread_registration(None, None, cx);
+			self.start_registration(Source::Codex, None, cx);
 		}
 		let panel = self.workspace.registration.as_ref().expect("initialized catalog");
 		let selected = panel.selected.as_ref();
-		let wide = f32::from(window.viewport_size().width) >= 850.;
+		let browsing = !matches!(panel.source, Source::Conversation);
+		let wide = browsing && f32::from(window.viewport_size().width) >= 850.;
 		let mut body = gpui::div()
 			.id("thread-registration")
 			.debug_selector(|| "thread-registration".into())
@@ -334,7 +389,7 @@ impl AgentSurface {
 			.flex()
 			.gap_3()
 			.p_3();
-		if wide || selected.is_none() {
+		if browsing && (wide || selected.is_none()) {
 			let list = gpui::div()
 				.h_full()
 				.min_w_0()
@@ -355,7 +410,7 @@ impl AgentSurface {
 				.flex()
 				.flex_col()
 				.gap_2()
-				.when(!wide, |detail| {
+				.when(browsing && !wide, |detail| {
 					detail.child(gpui::div().pr(gpui::px(36.)).flex().child(
 						self.conversation_action_button(
 							"registration-back".into(),
@@ -365,7 +420,7 @@ impl AgentSurface {
 							|s, window, cx| {
 								let Some(panel) = s.workspace.registration.as_ref() else { return };
 								let focus = panel.search.read(cx).focus_handle(cx);
-								s.show_thread_registration(None, panel.preferred_agent.clone(), cx);
+								s.select_registration(None, cx);
 								window.on_next_frame(move |window, cx| window.focus(&focus, cx));
 							},
 						),
@@ -392,26 +447,23 @@ impl AgentSurface {
 		let mut seen = HashSet::new();
 		let mut count = 0;
 		let snapshot = self.snapshot.as_ref();
-		// Bound conversations remain manageable even if this page contains only new candidates.
-		let bound = snapshot
+		// Suppress every bound thread in the upstream list, including ineligible roles.
+		let local = snapshot
 			.into_iter()
 			.flat_map(|s| &s.work_items)
-			.filter_map(|w| {
-				let thread_id = w.codex_thread_id.clone()?;
-				seen.insert(thread_id.clone());
-				(Self::can_register_relationship(w)
-					&& snapshot.is_some_and(|s| {
-						!s.archived_work_ids.contains(&w.id)
-							&& !s.agents.iter().any(|a| a.id == w.id)
-					}))
-				.then(|| NativeThreadCandidate {
-					thread_id,
-					title: self.conversation_label(w),
-					preview: None,
-				})
+			.filter_map(|work| {
+				let thread = work.codex_thread_id.as_ref()?;
+				seen.insert(thread.clone());
+				(matches!(&panel.source, Source::Agent(_))
+					&& matches!(
+						self.work_registration_context(work),
+						Some(RegistrationContext::Conversation { owner: None })
+					))
+				.then(|| self.bound_thread_candidate(work))
+				.flatten()
 			})
 			.collect::<Vec<_>>();
-		let candidates = bound
+		let candidates = local
 			.into_iter()
 			.chain(panel.threads.iter().filter(|c| seen.insert(c.thread_id.clone())).cloned());
 		for candidate in candidates.filter(|c| {
@@ -426,8 +478,6 @@ impl AgentSurface {
 			let selected =
 				panel.selected.as_ref().is_some_and(|c| c.thread_id == candidate.thread_id);
 			let keyboard = candidate.clone();
-			let preferred = panel.preferred_agent.clone();
-			let key_preferred = preferred.clone();
 			rows = rows.child(
 				gpui::div()
 					.id(gpui::SharedString::from(row_id.clone()))
@@ -469,24 +519,20 @@ impl AgentSurface {
 							.child(title),
 					)
 					.on_click(cx.listener(move |s, _, _, cx| {
-						s.show_thread_registration(Some(candidate.clone()), preferred.clone(), cx)
+						s.select_registration(Some(candidate.clone()), cx)
 					}))
 					.on_key_down(cx.listener(move |s, key: &KeyDownEvent, _, cx| {
 						if !key.is_held && ["enter", "space"].contains(&key.keystroke.key.as_str())
 						{
 							cx.stop_propagation();
-							s.show_thread_registration(
-								Some(keyboard.clone()),
-								key_preferred.clone(),
-								cx,
-							);
+							s.select_registration(Some(keyboard.clone()), cx);
 						}
 					})),
 			);
 		}
 		if count == 0 && panel.read.is_none() && panel.read_error.is_none() {
 			rows = rows.child(if query.is_empty() {
-				"No Codex conversations found."
+				"No conversations available."
 			} else {
 				"No conversations match this search."
 			});
@@ -498,10 +544,8 @@ impl AgentSurface {
 				.when(full_width, |search| search.pr(gpui::px(36.)))
 				.child(panel.search.clone()),
 		);
-		if let Some(agent) = panel
-			.preferred_agent
-			.as_ref()
-			.and_then(|id| snapshot?.agents.iter().find(|a| &a.id == id))
+		if let Source::Agent(id) = &panel.source
+			&& let Some(agent) = snapshot.and_then(|s| s.agents.iter().find(|a| &a.id == id))
 		{
 			let label = self.agent_conversation_label(agent);
 			view = view
@@ -554,6 +598,7 @@ impl AgentSurface {
 		};
 		let mut view = gpui::div()
 			.id("registration-actions")
+			.debug_selector(|| "registration-actions".into())
 			.min_h_0()
 			.min_w_0()
 			.flex_1()
@@ -573,7 +618,9 @@ impl AgentSurface {
 					.flex()
 					.items_center()
 					.gap_2()
-					.when(wide, |header| header.pr(gpui::px(36.)))
+					.when(wide || matches!(panel.source, Source::Conversation), |header| {
+						header.pr(gpui::px(36.))
+					})
 					.child(
 						gpui::div()
 							.id("conversation-title")
@@ -619,128 +666,131 @@ impl AgentSurface {
 			.work_items
 			.iter()
 			.find(|work| work.codex_thread_id.as_deref() == Some(&candidate.thread_id));
-		let agents = &snapshot.agents;
-		let owner = local.and_then(|work| {
-			agents.iter().find(|agent| agent.managed_conversation_ids.contains(&work.id))
-		});
+		let owner = match (&panel.source, local) {
+			(Source::Codex, Some(_)) =>
+				return view.child("This conversation is already in Decodex.").into_any_element(),
+			(Source::Conversation, None) =>
+				return view.child("This conversation is no longer available.").into_any_element(),
+			(_, Some(work)) => match self.work_registration_context(work) {
+				Some(RegistrationContext::Conversation { owner }) => owner,
+				_ =>
+					return view
+						.child("This conversation is no longer available.")
+						.into_any_element(),
+			},
+			(_, None) => None,
+		};
 		let expected_owner = owner.map(|a| a.id.clone());
 		let action = |id: String,
 		              label: String,
-		              description: String,
 		              primary: bool,
 		              relation: ThreadRegistration,
 		              cx: &mut Context<Self>| {
 			let thread = candidate.thread_id.clone();
-			registration_button(
-				format!("registration-{id}"),
-				label,
-				description,
+			registration_button(format!("registration-{id}"), label, primary, cx, move |s, cx| {
+				s.submit_registration(&thread, relation.clone(), cx)
+			})
+		};
+		let assign = |agent: &Agent, primary: bool, cx: &mut Context<Self>| {
+			let name = self.agent_conversation_label(agent);
+			action(
+				format!("assign-{}", agent.id),
+				if owner.is_some() {
+					format!("Transfer to {name}")
+				} else {
+					format!("Assign to {name}")
+				},
 				primary,
+				ThreadRegistration::Assign {
+					agent_id: agent.id.clone(),
+					expected_owner: expected_owner.clone(),
+				},
 				cx,
-				move |s, cx| s.submit_registration(&thread, relation.clone(), cx),
 			)
 		};
+		if let Source::Agent(id) = &panel.source {
+			if owner.is_some() {
+				return view
+					.child("Another Agent has adopted this conversation.")
+					.into_any_element();
+			}
+			return match snapshot
+				.agents
+				.iter()
+				.find(|a| &a.id == id && self.registration_id_available(id))
+			{
+				Some(agent) => view.child(assign(agent, true, cx)),
+				None => view.child("This Agent is no longer available."),
+			}
+			.into_any_element();
+		}
+
 		let mut actions =
 			gpui::div().min_w_0().flex_none().flex().flex_wrap().items_center().gap_2();
-		if let Some(work) = local {
-			let id = work.id.clone();
-			actions = actions.child(registration_button(
-				"registration-open".into(),
-				"Open conversation".into(),
-				"Open conversation".into(),
-				true,
-				cx,
-				move |s, cx| {
-					s.workspace.graph_expanded = false;
-					cx.emit(CatalogEvent::Close);
-					s.open_navigation_conversation(&id, cx);
-				},
-			));
-			if agents.iter().any(|agent| agent.id == work.id) {
-				return view.child(actions).into_any_element();
-			}
-		} else {
+		if local.is_none() {
 			actions = actions.child(action(
 				"register".into(),
-				"Add as conversation".into(),
-				"Add as conversation".into(),
+				"Add and open".into(),
 				true,
 				ThreadRegistration::Register,
 				cx,
 			));
 		}
-		view = view.child(actions.child(action(
+		if let Some(owner) = owner {
+			view = view.child(format!("Managed by {}", self.agent_conversation_label(owner)));
+		}
+		let mut targets = snapshot
+			.agents
+			.iter()
+			.filter(|agent| {
+				Some(&agent.id) != expected_owner.as_ref()
+					&& self.registration_id_available(&agent.id)
+			})
+			.peekable();
+		let has_targets = targets.peek().is_some();
+		if has_targets {
+			let label = if owner.is_some() { "Transfer to Agent…" } else { "Assign to Agent…" };
+			actions = actions.child(registration_button(
+				"registration-assignment".into(),
+				label.into(),
+				false,
+				cx,
+				|s, cx| {
+					if let Some(panel) = s.workspace.registration.as_mut() {
+						panel.choosing_agent = !panel.choosing_agent;
+						cx.notify();
+					}
+				},
+			));
+		}
+		actions = actions.child(action(
 			"promote".into(),
-			"Make an independent Agent".into(),
 			"Make an independent Agent".into(),
 			false,
 			ThreadRegistration::Promote { expected_owner: expected_owner.clone() },
 			cx,
-		)));
+		));
 		if let Some(owner) = owner {
-			let name = self.agent_conversation_label(owner);
+			actions = actions.child(action(
+				"release".into(),
+				format!("Unassign from {}", self.agent_conversation_label(owner)),
+				false,
+				ThreadRegistration::Release { expected_owner: owner.id.clone() },
+				cx,
+			));
+		}
+		view = view.child(actions);
+		if has_targets && panel.choosing_agent {
 			view = view.child(
 				gpui::div()
-					.min_w_0()
 					.flex_none()
 					.flex()
-					.items_center()
+					.flex_wrap()
 					.gap_2()
-					.child(gpui::div().min_w_0().truncate().child(format!("Managed by {name}")))
-					.child(action(
-						"release".into(),
-						"Release".into(),
-						format!("Release from {name}"),
-						false,
-						ThreadRegistration::Release { expected_owner: owner.id.clone() },
-						cx,
-					)),
+					.children(targets.map(|a| assign(a, false, cx))),
 			);
 		}
-		let mut targets = agents
-			.iter()
-			.filter(|agent| {
-				Some(&agent.id) != expected_owner.as_ref()
-					&& !snapshot.archived_work_ids.contains(&agent.id)
-			})
-			.collect::<Vec<_>>();
-		targets.sort_by_key(|agent| panel.preferred_agent.as_ref() != Some(&agent.id));
-		if !targets.is_empty() {
-			let mut choices = gpui::div().min_w_0().flex().flex_wrap().items_center().gap_2();
-			for agent in targets {
-				let name = self.agent_conversation_label(agent);
-				choices = choices.child(action(
-					format!("assign-{}", agent.id),
-					name.clone(),
-					format!("Assign to {name}"),
-					false,
-					ThreadRegistration::Assign {
-						agent_id: agent.id.clone(),
-						expected_owner: expected_owner.clone(),
-					},
-					cx,
-				));
-			}
-			view = view.child(
-				gpui::div()
-					.min_w_0()
-					.flex_none()
-					.flex()
-					.flex_col()
-					.gap_2()
-					.child(
-						gpui::div()
-							.id("registration-assignment")
-							.debug_selector(|| "registration-assignment".into())
-							.role(Role::Heading)
-							.aria_label("Assign to an Agent")
-							.text_size(gpui::px(ui_theme::CONTROL_LABEL_SIZE))
-							.text_color(ui_theme::rgb(ui_theme::TEXT_MUTED))
-							.child("Assign to an Agent"),
-					)
-					.child(choices),
-			);
-		}
+
 		view.into_any_element()
 	}
 }
@@ -748,15 +798,14 @@ impl AgentSurface {
 fn registration_button(
 	id: String,
 	label: String,
-	description: String,
 	primary: bool,
 	cx: &mut Context<AgentSurface>,
 	action: impl Fn(&mut AgentSurface, &mut Context<AgentSurface>) + 'static,
 ) -> AnyElement {
 	let button = if primary {
-		ui_theme::settings_primary_button(id, label)
+		ui_theme::settings_primary_button(id, label.clone())
 	} else {
-		ui_theme::settings_button(id, label)
+		ui_theme::settings_button(id, label.clone())
 	};
 	let action = Rc::new(action);
 	let click = action.clone();
@@ -765,8 +814,8 @@ fn registration_button(
 		.min_w_0()
 		.justify_start()
 		.truncate()
-		.aria_label(description.clone())
-		.hover_hint(description)
+		.aria_label(label.clone())
+		.hover_hint(label)
 		.on_click(cx.listener(move |s, _, _, cx| {
 			cx.stop_propagation();
 			click(s, cx);
@@ -785,6 +834,10 @@ mod tests {
 	use super::{AgentSurface, Mutation};
 	use decodex_protocol::{AgentCommandResponse, AgentSnapshotResult, EntityId, IdempotencyKey};
 	use gpui::{AppContext as _, Focusable as _};
+
+	fn candidate(id: &str) -> super::NativeThreadCandidate {
+		super::NativeThreadCandidate { thread_id: id.into(), title: id.into(), preview: None }
+	}
 
 	#[tokio::test]
 	async fn thread_registration_catalog_checks_accounts_only_after_an_unavailable_reply() {
@@ -954,7 +1007,7 @@ mod tests {
 				s.visual_workspace_fixture(cx);
 				s.workspace.graph_visible = false;
 				s.snapshot.as_mut().unwrap().work_items[0].codex_thread_id =
-					Some("release-handoff".into());
+					Some("already-in-decodex".into());
 				cx.notify();
 			})
 		});
@@ -962,9 +1015,18 @@ mod tests {
 		visual.update(crate::ui_frame::draw_frame);
 		let catalog = visual.debug_bounds("codex-conversations").unwrap();
 		visual.simulate_click(catalog.center(), Default::default());
+		shell.update(visual, |shell, cx| {
+			shell.agent.update(cx, |s, cx| {
+				let panel = s.workspace.registration.as_mut().unwrap();
+				panel.threads = ["already-in-decodex", "release-handoff"].map(candidate).to_vec();
+				panel.read_error = None;
+				cx.notify();
+			})
+		});
 		visual.run_until_parked();
 		visual.update(crate::ui_frame::draw_frame);
 
+		assert!(visual.debug_bounds("choose-thread-already-in-decodex").is_none());
 		let conversation = visual
 			.debug_bounds("choose-thread-release-handoff")
 			.expect("conversation in the catalog");
@@ -972,7 +1034,7 @@ mod tests {
 		visual.run_until_parked();
 		visual.update(crate::ui_frame::draw_frame);
 		assert!(
-			visual.debug_bounds("registration-open").is_some(),
+			visual.debug_bounds("registration-register").is_some(),
 			"expected detail at {:?}",
 			shell.read_with(visual, |shell, cx| shell.agent.read(cx).navigation_location())
 		);
@@ -996,7 +1058,7 @@ mod tests {
 		visual.run_until_parked();
 		visual.update(crate::ui_frame::draw_frame);
 		assert!(visual.debug_bounds("choose-thread-release-handoff").is_some());
-		assert!(visual.debug_bounds("registration-open").is_none());
+		assert!(visual.debug_bounds("registration-register").is_none());
 		visual.update(|window, cx| {
 			let agent = shell.read(cx).agent.read(cx);
 			let panel = agent.workspace.registration.as_ref().unwrap();
@@ -1022,6 +1084,151 @@ mod tests {
 	}
 
 	#[gpui::test]
+	fn thread_registration_agent_only_adopts_unassigned_conversations(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let (shell, visual) = crate::shell::tests::open_shell(cx);
+		visual.simulate_resize(gpui::size(gpui::px(1280.), gpui::px(920.)));
+		shell.update(visual, |shell, cx| {
+			shell.agent.update(cx, |s, cx| {
+				s.visual_workspace_fixture(cx);
+				let snapshot = s.snapshot.as_mut().unwrap();
+				let template = snapshot.work_items[0].clone();
+				for id in ["ordinary", "managed", "private", "retired", "archived"] {
+					let mut work = template.clone();
+					work.id = id.into();
+					work.codex_thread_id = Some(id.into());
+					snapshot.work_items.push(work);
+				}
+				snapshot.work_items[0].codex_thread_id = Some("agent".into());
+				snapshot.agents.push(super::Agent {
+					id: "agent".into(),
+					name: "Coordinator".into(),
+					native_thread_id: Some("agent".into()),
+					assistant: true,
+					managed_conversation_ids: vec!["managed".into()],
+					scheduled_wakes: Default::default(),
+				});
+				snapshot.assistant.agent_id = Some("agent".into());
+				snapshot.assistant.topic_ids.push("private".into());
+				snapshot.assistant.retired_topic_ids.push("retired".into());
+				snapshot.archived_work_ids.insert("archived".into());
+				s.open_thread_registration(Some("agent"), cx);
+				let panel = s.workspace.registration.as_mut().unwrap();
+				panel.read_error = None;
+				panel.threads =
+					["external", "ordinary", "managed", "private", "retired", "archived", "agent"]
+						.map(candidate)
+						.to_vec();
+				cx.notify();
+			})
+		});
+		visual.update(crate::ui_frame::draw_current_frame);
+		for selector in [
+			"choose-thread-managed",
+			"choose-thread-private",
+			"choose-thread-retired",
+			"choose-thread-archived",
+			"choose-thread-agent",
+		] {
+			assert!(visual.debug_bounds(selector).is_none(), "{selector}");
+		}
+		for selector in ["choose-thread-external", "choose-thread-ordinary"] {
+			let row = visual.debug_bounds(selector).expect(selector);
+			visual.simulate_click(row.center(), Default::default());
+			visual.update(crate::ui_frame::draw_current_frame);
+			assert!(visual.debug_bounds("registration-assign-agent").is_some());
+			for hidden in [
+				"registration-register",
+				"registration-promote",
+				"registration-assignment",
+				"registration-release",
+			] {
+				assert!(visual.debug_bounds(hidden).is_none(), "{hidden}");
+			}
+		}
+		shell.update(visual, |shell, cx| {
+			shell.agent.update(cx, |s, cx| {
+				s.workspace.graph_expanded = true;
+				s.composer.update(cx, |input, cx| input.set_content("Keep drafting", cx));
+				let location = s.navigation_location();
+				for source in [super::Source::Agent("agent".into()), super::Source::Conversation] {
+					s.start_registration(source, Some(candidate("ordinary")), cx);
+					s.workspace.registration.as_mut().unwrap().mutation =
+						Mutation::Saved("ordinary".into());
+					s.open_registered_thread(cx);
+					assert!(s.workspace.registration.is_none() && s.workspace.graph_expanded);
+					assert_eq!(s.navigation_location(), location);
+					assert_eq!(s.composer.read(cx).content(), "Keep drafting");
+				}
+			})
+		});
+	}
+
+	#[gpui::test]
+	fn thread_registration_agent_picker_scrolls_to_the_last_choice(cx: &mut gpui::TestAppContext) {
+		let (shell, visual) = crate::shell::tests::open_shell(cx);
+		visual.simulate_resize(gpui::size(gpui::px(700.), gpui::px(560.)));
+		shell.update(visual, |shell, cx| {
+			shell.agent.update(cx, |s, cx| {
+				s.visual_workspace_fixture(cx);
+				let snapshot = s.snapshot.as_mut().unwrap();
+				for index in 0..60 {
+					snapshot.agents.push(super::Agent {
+						id: format!("agent-{index}"),
+						name: format!("Work coordinator {index}"),
+						assistant: false,
+						native_thread_id: None,
+						managed_conversation_ids: vec![],
+						scheduled_wakes: Default::default(),
+					});
+				}
+				s.open_thread_registration(None, cx);
+				let panel = s.workspace.registration.as_mut().unwrap();
+				panel.threads = ["first", "second"].map(candidate).to_vec();
+				panel.read_error = None;
+				s.select_registration(Some(candidate("first")), cx);
+			})
+		});
+		visual.update(crate::ui_frame::draw_frame);
+		visual.executor().advance_clock(std::time::Duration::from_millis(250));
+		visual.update(crate::ui_frame::draw_frame);
+		let expand = visual.debug_bounds("registration-assignment").unwrap();
+		visual.simulate_click(expand.center(), Default::default());
+		visual.update(crate::ui_frame::draw_frame);
+		let viewport = visual.debug_bounds("registration-actions").unwrap();
+		let last = "registration-assign-agent-59";
+		assert!(visual.debug_bounds(last).is_none_or(|b| !viewport.contains(&b.center())));
+		visual.simulate_event(gpui::ScrollEvent {
+			position: viewport.center(),
+			delta: gpui::ScrollDelta::Pixels(gpui::point(gpui::px(0.), gpui::px(-6000.))),
+			..Default::default()
+		});
+		visual.update(crate::ui_frame::draw_frame);
+		let choice = visual.debug_bounds(last).expect("last Agent reachable by scrolling");
+		assert!(viewport.contains(&choice.center()));
+		visual.simulate_click(choice.center(), Default::default());
+		shell.update(visual, |shell, cx| {
+			shell.agent.update(cx, |s, cx| {
+				assert!(
+					matches!(
+						s.workspace.registration.as_ref().unwrap().mutation,
+						Mutation::Failed(_)
+					),
+					"the visible Agent received the click"
+				);
+				s.select_registration(Some(candidate("second")), cx);
+				s.submit_registration("first", super::ThreadRegistration::Register, cx);
+				let panel = s.workspace.registration.as_ref().unwrap();
+				assert!(
+					!panel.choosing_agent && matches!(panel.mutation, Mutation::Idle),
+					"changing conversations discards the previous picker and its actions"
+				);
+			})
+		});
+	}
+
+	#[gpui::test]
 	fn thread_registration_opens_the_existing_local_identity_after_receipt(
 		cx: &mut gpui::TestAppContext,
 	) {
@@ -1029,13 +1236,13 @@ mod tests {
 		surface.update(cx, |s, cx| {
 			s.visual_workspace_fixture(cx);
 			s.open_page("agent", cx);
-			s.show_thread_registration(
+			s.start_registration(
+				super::Source::Codex,
 				Some(decodex_protocol::NativeThreadCandidate {
 					thread_id: "native-existing".into(),
 					title: "Existing conversation".into(),
 					preview: None,
 				}),
-				None,
 				cx,
 			);
 			let key = IdempotencyKey::new("adopt").unwrap();

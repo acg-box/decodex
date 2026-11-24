@@ -1319,14 +1319,11 @@ impl AgentSurface {
 									.as_deref()
 									.filter(|_| self.native_agents.selected.is_none())
 									.and_then(|id| {
-										self.thread_registration_context(id).map(|label| {
-											self.thread_registration_entry(
-												"conversation-thread-relationship".into(),
-												label,
-												Some(id.to_owned()),
-												cx,
-											)
-										})
+										self.adopt_conversation_entry(
+											"conversation-thread-relationship".into(),
+											id,
+											cx,
+										)
 									}),
 							)
 							.child(
@@ -1630,7 +1627,7 @@ impl AgentSurface {
 						.w(gpui::px(320.))
 						.max_w_full()
 						.opacity(presence)
-						.child(self.inspection_card(snapshot, work, cx)),
+						.child(self.inspection_card(snapshot, work, window, cx)),
 				)
 				.with_priority(2),
 			);

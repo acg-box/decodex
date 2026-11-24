@@ -2866,6 +2866,7 @@ struct WorkspaceView {
 	panel_drag: Option<(workspace_size::Panel, f32, f32)>,
 	connection_details_expanded: bool,
 	details_visible: bool,
+	details_focus_requested: Cell<bool>,
 	setup_expanded: bool,
 }
 impl Default for WorkspaceView {
@@ -2936,6 +2937,7 @@ impl Default for WorkspaceView {
 			panel_drag: None,
 			connection_details_expanded: false,
 			details_visible: false,
+			details_focus_requested: Cell::new(false),
 			setup_expanded: false,
 		}
 	}

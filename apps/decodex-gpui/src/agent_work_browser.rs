@@ -811,14 +811,11 @@ impl AgentSurface {
 							.text_color(ui_theme::rgb(color))
 							.child(status),
 					)
-					.children(self.thread_registration_context(&id).map(|label| {
-						self.thread_registration_entry(
-							format!("browse-relationship-{id}"),
-							label,
-							Some(id.clone()),
-							cx,
-						)
-					}))
+					.children(self.adopt_conversation_entry(
+						format!("browse-relationship-{id}"),
+						&id,
+						cx,
+					))
 					.children(can_branch.then(|| {
 						self.conversation_action_button(
 							format!("branch-{branch}"),
