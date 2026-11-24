@@ -201,7 +201,10 @@ struct ScrollbarState {
 impl RenderOnce for Scrollbar {
 	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
 		let offset = self.scroll.offset().y;
-		let auto_hide = cx.should_auto_hide_scrollbars();
+		// In automatic mode, an attached mouse can select a persistent AppKit scroller.
+		// Keep this overlay transient unless the user explicitly requests a visible bar.
+		let auto_hide =
+			crate::ui_preferences::string("AppleShowScrollBars", None).as_deref() != Some("Always");
 		let state = window.use_keyed_state(self.id, cx, |_, cx| ScrollbarState {
 			focus: cx.focus_handle(),
 			hovered: false,
