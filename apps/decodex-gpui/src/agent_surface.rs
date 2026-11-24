@@ -1787,6 +1787,36 @@ impl AgentSurface {
 		self.open_registered_thread(cx);
 	}
 
+	fn restore_snapshot_selection(&mut self, snapshot: &AgentSnapshotDto) {
+		let active = |id: &str| {
+			!snapshot.archived_work_ids.contains(id)
+				&& snapshot.work_items.iter().any(|work| work.id == id)
+		};
+		if self.is_new_conversation()
+			|| snapshot.connection_initializing
+			|| self.selected.as_deref().is_some_and(active)
+			|| self
+				.workspace
+				.archives
+				.viewed_work()
+				.is_some_and(|work| self.selected.as_ref() == Some(&work.id))
+		{
+			return;
+		}
+
+		self.selected =
+			self.composer_manager.as_ref().filter(|owner| active(owner)).cloned().or_else(|| {
+				snapshot
+					.work_items
+					.iter()
+					.find(|work| {
+						work.parent_goal_id.is_none()
+							&& !snapshot.archived_work_ids.contains(&work.id)
+					})
+					.map(|work| work.id.clone())
+			});
+	}
+
 	fn apply_result(&mut self, result: Result<AgentSnapshotResult, ()>) {
 		if !matches!(&result, Ok(AgentSnapshotResult::Available(_))) {
 			self.disconnect_panels();
@@ -1835,41 +1865,7 @@ impl AgentSurface {
 
 				self.invalidate_native_timeline(&snapshot);
 
-				if !self.is_new_conversation()
-					&& !snapshot.connection_initializing
-					&& !self.selected.as_ref().is_some_and(|id| {
-						!snapshot.archived_work_ids.contains(id)
-							&& snapshot.work_items.iter().any(|work| &work.id == id)
-					})
-					&& !self
-						.workspace
-						.archives
-						.viewed_work()
-						.is_some_and(|work| self.selected.as_ref() == Some(&work.id))
-				{
-					self.selected = self
-						.composer_manager
-						.as_ref()
-						.and_then(|owner| {
-							snapshot
-								.work_items
-								.iter()
-								.find(|work| {
-									&work.id == owner && !snapshot.archived_work_ids.contains(owner)
-								})
-								.map(|work| work.id.clone())
-						})
-						.or_else(|| {
-							snapshot
-								.work_items
-								.iter()
-								.find(|work| {
-									work.parent_goal_id.is_none()
-										&& !snapshot.archived_work_ids.contains(&work.id)
-								})
-								.map(|work| work.id.clone())
-						});
-				}
+				self.restore_snapshot_selection(&snapshot);
 				self.draft_profiles
 					.chat_folders
 					.retain(|id, _| !snapshot.work_items.iter().any(|item| &item.id == id));

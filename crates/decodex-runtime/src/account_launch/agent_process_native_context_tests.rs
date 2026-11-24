@@ -406,9 +406,17 @@ async fn installed_assistant_renews_fresh_contexts_with_original_dialogue_and_is
 	config.approval_policy = serde_json::json!("never");
 	let mut agent = AgentCoordinator::new(store.clone(), session.client.clone(), config).unwrap();
 	let result = AssertUnwindSafe(time::timeout(Duration::from_secs(90), async {
-		store.create_assistant(AgentCoordinator::new_conversation_work("assistant").unwrap()).await.unwrap();
-		agent.enqueue_user_message("assistant", "first", "Original user decision: inspect sources; do not publish.").await.unwrap();
-		agent.wake_pending().await.unwrap();
+		let work = AgentCoordinator::new_conversation_work("assistant").expect("new Assistant");
+		store.create_assistant(work).await.expect("register the personal Assistant");
+		agent
+			.enqueue_user_message(
+				"assistant",
+				"first",
+				"Original user decision: inspect sources; do not publish.",
+			)
+			.await
+			.expect("queue the first Assistant message");
+		agent.wake_pending().await.expect("start the first Assistant turn");
 		terminal(&mut agent, &mut session.events, &store).await;
 		let original =
 			store.get_agent_work_item("assistant".into()).await.unwrap().codex_thread_id.unwrap();
@@ -493,12 +501,22 @@ async fn qualify_independent_chat(
 	bodies: &Mutex<Vec<Value>>,
 ) {
 	let id = "independent-chat";
-	store.create_agent_manager(AgentCoordinator::new_conversation_work(id).unwrap()).await.unwrap();
-	agent.enqueue_user_message(id, "first", "Start a fresh conversation.").await.unwrap();
-	agent.wake_pending().await.unwrap();
+	let work = AgentCoordinator::new_conversation_work(id).expect("new independent chat");
+	store.create_agent_manager(work).await.expect("register independent chat");
+	agent
+		.enqueue_user_message(id, "first", "Start a fresh conversation.")
+		.await
+		.expect("queue the first independent chat message");
+	agent.wake_pending().await.expect("start the independent chat turn");
 	terminal(agent, &mut session.events, store).await;
-	let thread = store.get_agent_work_item(id.into()).await.unwrap().codex_thread_id.unwrap();
-	let captured = bodies.lock().unwrap();
+
+	let thread = store
+		.get_agent_work_item(id.into())
+		.await
+		.expect("read the independent chat")
+		.codex_thread_id
+		.expect("the independent chat has a native thread");
+	let captured = bodies.lock().expect("read captured model requests");
 	let mut requests =
 		captured.iter().filter(|b| b["client_metadata"]["thread_id"].as_str() == Some(&thread));
 	let body = requests.next().expect("ordinary chat model request").to_string();

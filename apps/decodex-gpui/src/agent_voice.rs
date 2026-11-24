@@ -1856,7 +1856,7 @@ mod tests {
 					let snapshot = s.snapshot.as_mut().unwrap();
 					snapshot.work_items.clear();
 					snapshot.agents.clear();
-					snapshot.assistant = Default::default();
+					*snapshot.assistant = Default::default();
 					s.selected = None;
 					s.composer_manager = None;
 					assert!(s.root_id().is_none());

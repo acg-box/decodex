@@ -413,16 +413,15 @@ async fn check_first_registration(
 		"create-idle-assistant",
 	)
 	.await;
-	let opened = client
-		.execute(
-			AgentActionDto::CreateAssistant { agent_id: EntityId::new("second-proposal").unwrap() },
-			IdempotencyKey::new("open-existing-assistant").unwrap(),
-		)
-		.await
-		.unwrap();
-	assert!(
-		matches!(opened, AgentCommandResponse::Accepted { work_id } if work_id.as_str() == "idle-assistant")
-	);
+	let opened = accepted(
+		client,
+		AgentActionDto::CreateAssistant {
+			agent_id: EntityId::new("second-proposal").expect("second proposed Assistant ID"),
+		},
+		"open-existing-assistant",
+	)
+	.await;
+	assert_eq!(opened.as_str(), "idle-assistant");
 	let AgentSnapshotResult::Available(local) = client.query().await.unwrap() else {
 		panic!("an Assistant is usable before its first turn");
 	};
@@ -850,16 +849,16 @@ async fn qualify_completed_progress(
 	assert_eq!(requests.load(Ordering::Acquire), 9, "progress reads must not infer");
 }
 
-async fn accepted(client: &AgentClient, action: AgentActionDto, key: &str) {
+async fn accepted(client: &AgentClient, action: AgentActionDto, key: &str) -> EntityId {
 	let response = client
 		.execute(action, IdempotencyKey::new(key).expect("command key"))
 		.await
 		.expect("public command response");
 
-	assert!(
-		matches!(response, AgentCommandResponse::Accepted { .. }),
-		"public acceptance: {response:?}"
-	);
+	let AgentCommandResponse::Accepted { work_id } = response else {
+		panic!("expected public command acceptance, received {response:?}");
+	};
+	work_id
 }
 
 async fn settled(client: &AgentClient) -> String {

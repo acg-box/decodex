@@ -216,7 +216,7 @@ async fn voice_start_applies_effective_voice_and_rejects_failed_reads_before_rec
 }
 
 async fn bind_hosted_voice(owned: &OwnedReviewer, work: &str, thread: &str) {
-	let mut item = AgentCoordinator::new_conversation_work(work).unwrap();
+	let mut item = AgentCoordinator::new_conversation_work(work).expect("new voice conversation");
 	item.parent_goal_id = Some("root".into());
 	owned.store.create_agent_manager(item).await.expect("hosted conversation");
 	owned.store.bind_agent_thread(work.into(), thread.into()).await.expect("voice thread");

@@ -804,6 +804,26 @@ impl AgentSurface {
 		None
 	}
 
+	fn missing_folder_notice(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+		let missing = self.missing_chat_folder()?;
+		Some(
+			ui_feedback::status_row(
+				"conversation-unavailable",
+				Tone::Warning,
+				"Working folder is unavailable.",
+				missing.cwd.as_str(),
+				Tone::Warning.icon(),
+			)
+			.child(self.workspace_button(
+				"restore-chat-folder".into(),
+				"Choose folder…".into(),
+				|s, cx| s.choose_chat_folder(cx),
+				cx,
+			))
+			.into_any_element(),
+		)
+	}
+
 	fn waiting_connection_notice(&self, cx: &mut Context<Self>) -> AnyElement {
 		ui_feedback::read_only_row(
 			"conversation-unavailable",
@@ -836,21 +856,8 @@ impl AgentSurface {
 			return notice;
 		}
 
-		if let Some(missing) = self.missing_chat_folder() {
-			return ui_feedback::status_row(
-				"conversation-unavailable",
-				Tone::Warning,
-				"Working folder is unavailable.",
-				missing.cwd.as_str(),
-				Tone::Warning.icon(),
-			)
-			.child(self.workspace_button(
-				"restore-chat-folder".into(),
-				"Choose folder…".into(),
-				|s, cx| s.choose_chat_folder(cx),
-				cx,
-			))
-			.into_any_element();
+		if let Some(notice) = self.missing_folder_notice(cx) {
+			return notice;
 		}
 		if reason == PARENT_MANAGED_MESSAGE {
 			return ui_feedback::read_only_row(
