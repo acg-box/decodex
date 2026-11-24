@@ -1228,7 +1228,7 @@ mod tests {
 				.find(|w| Some(&w.id) == s.selected.as_ref())
 				.unwrap();
 			work.dispatch_state = decodex_protocol::AgentDispatchStateDto::Running;
-			work.active_turn_id = Some("next-turn".into());
+			work.active_turn_id = Some("turn".into());
 
 			let mut empty = s.timeline.native.entries[0].clone();
 			if let decodex_protocol::AgentTimelineContent::Item { item_id, text, phase, .. } =
@@ -1246,8 +1246,9 @@ mod tests {
 				*text = "Read the layout file.\n\n".repeat(45);
 			}
 			empty.position = 1;
-			s.timeline.native.entries[1].position = 2;
-			s.timeline.native.entries.insert(1, empty);
+			// This tool is still visible while its turn is running.
+			s.timeline.native.entries.truncate(1);
+			s.timeline.native.entries.push(empty);
 			cx.notify();
 		});
 		visual.update(crate::ui_frame::draw_frame);
