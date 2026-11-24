@@ -9,11 +9,11 @@
       "completedRunId": "dc4ee244-070c-47ed-b00e-7a02f76a8295"
     },
     "/openwiki/architecture/conversation-presentation.md": {
-      "pageVersion": "sha256:64aad6e2233dac568abc0be6930d244dc1a15c4be248ba948cb464d2439919dd",
+      "pageVersion": "sha256:5d835f8e3ef9d35d7ae2d15024faae9f2603c61847b1a709983666683e26d96b",
       "completedBy": "codex",
-      "completedRunId": "54536b0f-5af1-4398-afef-ea71644d9457",
-      "gitHead": "b9466ea4598b3220326d702e8474748384af8c5d",
-      "sourceFingerprint": "sha256:da5b27c3efd863b257b2a1a22add18fd7d025bf78a6b0d9dc7b29bbec2a66864"
+      "completedRunId": "8fe389da-d908-490b-a6ca-b9701c9f3d63",
+      "gitHead": "d4241c386da7ae1a53abb249a631bc9ec4cfdea5",
+      "sourceFingerprint": "sha256:ff2b17b100f452249ead8f1a789aec14a0476bf11d765c0b5aadb2599da7dae5"
     },
     "/openwiki/architecture/design-language.md": {
       "gitHead": "f9b989e5ea2ac86428cd67cffeb46cd86604942c",

@@ -230,10 +230,10 @@ sources:
     resource: repo://database/src/agent.rs
   - id: openwiki-source-c9f290c212ee80724ccf643a
     resource: repo://database/src/agent/drafts.rs
-generated: { by: "codex", at: "2026-11-24T06:40:28.832Z" }
+generated: { by: "codex", at: "2026-11-24T06:49:08.488Z" }
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-24T06:40:28.832Z
+    at: 2026-11-24T06:49:08.488Z
 ---
 
 
@@ -333,7 +333,7 @@ The composer sits over the bottom of the conversation. Its measured height suppl
 
 Attachment and task-reference chips align with the left text edge and use the shared 28-point height. The toolbar groups attachment, model and permissions controls on the left. Context and cost sit beside the microphone and send controls on the right. Related buttons use a 4-point gap on one row. The usage readouts use an 8-point gap from each other and from the adjacent buttons. The toolbar measures the space that the conversation gives it. It hides Context and cost first and then replaces the model label with a button icon. Compact buttons retain targets of at least 24 points. If the targets cannot fit on one row, model, permissions and dictation wrap above the attachment and primary actions. The attachment and primary actions retain their respective bottom edges on opposite sides when both fit.
 
-The next-message suggestion wraps across the full text width. The **Tab** and refresh buttons share a muted 16-point-high background, 10 points after the last word. A short divider separates their 24-point-high click targets. When space is tight, a trailing part of the suggestion can wrap with the controls. Both controls stay outside the editable draft and disappear when the user types or the suggestion is unavailable. Clicking **Tab** or pressing the Tab key accepts the suggestion as an unsent, undoable draft. Clearing that draft restores the cached suggestion. A new turn or a change to the conversation source invalidates it.
+The next-message suggestion wraps across the full text width. The **Tab** and refresh buttons share a muted 16-point-high background, 6 points after the last word. A short divider separates the two 24-point-square click targets. When space is tight, a trailing part of the suggestion can wrap with the controls. Both controls stay outside the editable draft and disappear when the user types or the suggestion is unavailable. Clicking **Tab** or pressing the Tab key accepts the suggestion as an unsent, undoable draft. Clearing that draft restores the cached suggestion. A new turn or a change to the conversation source invalidates it.
 
 The refresh button makes one native sampling request and asks for a different follow-up from the previous suggestion. The native sample keeps the source conversation's model and reasoning settings. It does not send a chat message. The previous suggestion stays visible while generation runs. Both controls are disabled during generation, and the refresh icon shows progress. A completed sample replaces the preview. If generation fails, the previous suggestion remains available for acceptance or another explicit retry.
 

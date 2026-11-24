@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:64aad6e2233dac568abc0be6930d244dc1a15c4be248ba948cb464d2439919dd",
+  "pageVersion": "sha256:5d835f8e3ef9d35d7ae2d15024faae9f2603c61847b1a709983666683e26d96b",
   "claims": [
     {
       "id": "claim_36b9a49ffa87416e8add8befc7d10efe",
@@ -106,7 +106,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_theme.rs",
-          "version": "repo-file-v1:sha256:ebccc6ed0091ed59fe05ca1c49734e7ebf56e8a73deea9182196187fe50f4ef0"
+          "version": "repo-file-v1:sha256:469142d6d1ac93f929309c252a3bf426d5cf91a4bd90d685a664fec6adf57b70"
         }
       ]
     },
@@ -704,7 +704,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_theme.rs",
-          "version": "repo-file-v1:sha256:ebccc6ed0091ed59fe05ca1c49734e7ebf56e8a73deea9182196187fe50f4ef0"
+          "version": "repo-file-v1:sha256:469142d6d1ac93f929309c252a3bf426d5cf91a4bd90d685a664fec6adf57b70"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_working.rs",
@@ -760,7 +760,7 @@
     },
     {
       "id": "claim_2110425b22af43cc99d9c2f90cf6bbd2",
-      "statement": "The next-message suggestion wraps across the full text width. The Tab and refresh buttons share a muted 16-point-high background, 10 points after the last word. A short divider separates their 24-point-high click targets. When space is tight, a trailing part of the suggestion can wrap with the controls. The controls stay outside editable content and hide while typing. Clicking Tab or pressing Tab creates an unsent, undoable draft. Clearing the draft restores the cached suggestion until a new turn or source change invalidates it. Explicit refresh makes one native sample request that asks for a different follow-up, keeps the previous preview during generation or failure, disables both controls while pending, and does not send a chat message. Generation inherits the source conversation's model and reasoning settings.",
+      "statement": "The next-message suggestion wraps across the full text width. The Tab and refresh buttons share a muted 16-point-high background, 6 points after the last word. A short divider separates their 24-point-square click targets. When space is tight, a trailing part of the suggestion can wrap with the controls. The controls stay outside editable content and hide while typing. Clicking Tab or pressing Tab creates an unsent, undoable draft. Clearing the draft restores the cached suggestion until a new turn or source change invalidates it. Explicit refresh makes one native sample request that asks for a different follow-up, keeps the previous preview during generation or failure, disables both controls while pending, and does not send a chat message. Generation inherits the source conversation's model and reasoning settings.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_composer.rs",
@@ -776,7 +776,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_sample_tests.rs",
-          "version": "repo-file-v1:sha256:aa5f63c556ba1866e66d7438a872a055cf9a07efaa03c8324a937e9ce51ccf0f"
+          "version": "repo-file-v1:sha256:d629cf10a114078a05658411fea073c1539f1ea440776e12741c9ff18b9ed5c2"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_surface.rs",
@@ -784,7 +784,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/composer_hint.rs",
-          "version": "repo-file-v1:sha256:552b7064a4948545bf9f2297fd8907746598efb1bc34e16dfcc597175580b31f"
+          "version": "repo-file-v1:sha256:667e23996f415b4bd4857ce0859f0a4b04d6f5a0d698e27eb1c0420fc8f1a3e3"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/composer_input.rs",
@@ -796,7 +796,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_theme.rs",
-          "version": "repo-file-v1:sha256:ebccc6ed0091ed59fe05ca1c49734e7ebf56e8a73deea9182196187fe50f4ef0"
+          "version": "repo-file-v1:sha256:469142d6d1ac93f929309c252a3bf426d5cf91a4bd90d685a664fec6adf57b70"
         },
         {
           "resource": "repo://crates/decodex-codex/src/app_server_client/sample.rs",
@@ -880,7 +880,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_theme.rs",
-          "version": "repo-file-v1:sha256:ebccc6ed0091ed59fe05ca1c49734e7ebf56e8a73deea9182196187fe50f4ef0"
+          "version": "repo-file-v1:sha256:469142d6d1ac93f929309c252a3bf426d5cf91a4bd90d685a664fec6adf57b70"
         }
       ]
     },
@@ -954,7 +954,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_theme.rs",
-          "version": "repo-file-v1:sha256:ebccc6ed0091ed59fe05ca1c49734e7ebf56e8a73deea9182196187fe50f4ef0"
+          "version": "repo-file-v1:sha256:469142d6d1ac93f929309c252a3bf426d5cf91a4bd90d685a664fec6adf57b70"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_time.rs",
@@ -1024,7 +1024,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_theme.rs",
-          "version": "repo-file-v1:sha256:ebccc6ed0091ed59fe05ca1c49734e7ebf56e8a73deea9182196187fe50f4ef0"
+          "version": "repo-file-v1:sha256:469142d6d1ac93f929309c252a3bf426d5cf91a4bd90d685a664fec6adf57b70"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/voice_history_block.rs",
@@ -1234,7 +1234,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_theme.rs",
-          "version": "repo-file-v1:sha256:ebccc6ed0091ed59fe05ca1c49734e7ebf56e8a73deea9182196187fe50f4ef0"
+          "version": "repo-file-v1:sha256:469142d6d1ac93f929309c252a3bf426d5cf91a4bd90d685a664fec6adf57b70"
         }
       ]
     },
@@ -1261,6 +1261,6 @@
   ],
   "verification": {
     "by": "openwiki/0.9.0",
-    "at": "2026-11-24T06:40:28.832Z"
+    "at": "2026-11-24T06:49:08.488Z"
   }
 }
