@@ -49,7 +49,7 @@ fn suggestion_actions(label: &str, busy: bool, input: &Entity<ComposerInput>) ->
 	let refresh_icon = if busy {
 		ui_loading::progress("Generating another suggestion").into_any_element()
 	} else {
-		workspace_symbols::icon_sized(Symbol::ResetCards, 15.)
+		workspace_symbols::icon_sized(Symbol::ResetCards, 12.)
 	};
 	let refresh = button(
 		"composer-suggestion-refresh",
@@ -64,7 +64,7 @@ fn suggestion_actions(label: &str, busy: bool, input: &Entity<ComposerInput>) ->
 		.flex_none()
 		.flex()
 		.items_center()
-		.text_size(gpui::px(ui_theme::CAPTION_SIZE))
+		.text_size(gpui::px(ui_theme::CONTROL_LABEL_SIZE))
 		.line_height(gpui::px(ui_theme::CAPTION_LINE_HEIGHT))
 		.text_color(ui_theme::rgb(ui_theme::TEXT_MUTED))
 		.child(
