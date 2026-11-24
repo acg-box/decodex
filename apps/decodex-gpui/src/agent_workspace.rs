@@ -644,6 +644,20 @@ impl AgentSurface {
 		self.snapshot.as_ref().is_some_and(|s| s.connection_initializing)
 	}
 
+	pub(super) fn missing_chat_folder(&self) -> Option<&decodex_protocol::MissingChatFolder> {
+		let (owner, AgentHistoryResult::Available { missing_folder: Some(missing), .. }) =
+			self.history.as_ref()?
+		else {
+			return None;
+		};
+		let item = self.conversation_record(owner)?;
+		(self.selected.as_ref() == Some(owner)
+			&& item.codex_thread_id.as_deref() == Some(missing.thread_id.as_str())
+			&& item.dispatch_state == AgentDispatchStateDto::Idle
+			&& item.active_turn_id.is_none())
+		.then_some(missing)
+	}
+
 	pub(super) fn composer_unavailable_reason(&self) -> Option<&'static str> {
 		if self.native_agents.selected.is_some() {
 			return match self.native_agents.connection {
@@ -667,6 +681,9 @@ impl AgentSurface {
 		}
 		if !self.draft_owner_available() {
 			return Some("Draft conversation unavailable. Select another conversation.");
+		}
+		if self.missing_chat_folder().is_some() {
+			return Some("Working folder is unavailable.");
 		}
 		if self.selected_provider_mismatch().is_some() {
 			return Some(PROVIDER_MISMATCH_MESSAGE);
@@ -819,6 +836,22 @@ impl AgentSurface {
 			return notice;
 		}
 
+		if let Some(missing) = self.missing_chat_folder() {
+			return ui_feedback::status_row(
+				"conversation-unavailable",
+				Tone::Warning,
+				"Working folder is unavailable.",
+				missing.cwd.as_str(),
+				Tone::Warning.icon(),
+			)
+			.child(self.workspace_button(
+				"restore-chat-folder".into(),
+				"Choose folder…".into(),
+				|s, cx| s.choose_chat_folder(cx),
+				cx,
+			))
+			.into_any_element();
+		}
 		if reason == PARENT_MANAGED_MESSAGE {
 			return ui_feedback::read_only_row(
 				"conversation-unavailable",
@@ -1160,14 +1193,6 @@ impl AgentSurface {
 					.text_size(gpui::px(20.))
 					.child(heading),
 			)
-			.when(personal, |prompt| {
-				prompt.child(
-					gpui::div()
-						.text_size(gpui::px(12.))
-						.text_color(ui_theme::rgb(TEXT_MUTED))
-						.child("A new topic, with the same Assistant."),
-				)
-			})
 			.when(choose_workspace, |prompt| {
 				prompt.child(
 					gpui::div()
@@ -2512,6 +2537,7 @@ impl AgentSurface {
 		let history = AgentHistoryResult::Available {
 			questions: vec![],
 			expired_question_ids: Vec::new(),
+			missing_folder: None,
 			questions_truncated: false,
 			questions_recovering: false,
 			misalignment: None,
@@ -2546,7 +2572,7 @@ impl AgentSurface {
 		self.workspace.graph_scope = Some("release".into());
 		self.workspace.graph_selected = Some("verify".into());
 
-		self.timeline.cache.insert("verify".into(),AgentHistoryResult::Available{questions:vec![],expired_question_ids:vec![],questions_truncated:false,questions_recovering:false,misalignment:None,usage: None,entries:vec![crate::shell::agent_surface::AgentHistoryEntryDto{native_source:None,receipt: None, turn_id: None, weather:Vec::new(), activity: None,usage: None,duration_ms: None,id:100,kind:"assistant".into(),text:"Checking that existing sessions reopen without another sign-in. Fresh-install verification is still running.".into(),created_at_micros:1_789_481_040_000_000}],has_more:false,next_before:None,live:vec![]});
+		self.timeline.cache.insert("verify".into(),AgentHistoryResult::Available{missing_folder:None,questions:vec![],expired_question_ids:vec![],questions_truncated:false,questions_recovering:false,misalignment:None,usage: None,entries:vec![crate::shell::agent_surface::AgentHistoryEntryDto{native_source:None,receipt: None, turn_id: None, weather:Vec::new(), activity: None,usage: None,duration_ms: None,id:100,kind:"assistant".into(),text:"Checking that existing sessions reopen without another sign-in. Fresh-install verification is still running.".into(),created_at_micros:1_789_481_040_000_000}],has_more:false,next_before:None,live:vec![]});
 		cx.notify();
 	}
 }

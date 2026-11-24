@@ -34,6 +34,7 @@ const BATCH_BAR_INSET: f32 = 8.;
 #[derive(Default)]
 pub(in crate::shell::agent_surface) struct Catalog {
 	pub viewed: Option<String>,
+	open_after_read: Option<String>,
 	data: Option<AgentSnapshotDto>,
 	search: Option<Entity<ComposerInput>>,
 	read: Option<Task<()>>,
@@ -201,6 +202,7 @@ impl AgentSurface {
 	}
 
 	pub(in crate::shell::agent_surface) fn clear_archive_selection(&mut self) {
+		self.workspace.archives.open_after_read = None;
 		self.workspace.archives.cancel_confirmation();
 		self.workspace.archives.selected.clear();
 		self.workspace.archives.selecting = false;
@@ -212,8 +214,11 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) {
 		if self.workspace.archives.archived_work(id).is_none() {
+			self.workspace.archives.open_after_read = Some(id.into());
+			self.open_archive_catalog(cx);
 			return;
 		}
+		self.workspace.work_detail = None;
 		self.workspace.archives.viewed = Some(id.into());
 		self.workspace.archives.confirmation = None;
 		self.workspace.archives.confirmation_task = None;
@@ -253,6 +258,7 @@ impl AgentSurface {
 			return;
 		}
 		let Some(profile) = self.profile.clone() else {
+			self.workspace.archives.open_after_read = None;
 			self.workspace.archives.feedback = Some("Connect to Codex to read the archive.".into());
 			return;
 		};
@@ -270,10 +276,20 @@ impl AgentSurface {
 						s.retire_archived_messages(&data, cx);
 						s.workspace.archives.data = Some(data);
 						s.workspace.archives.revision += 1;
+						if let Some(id) = s.workspace.archives.open_after_read.take() {
+							if s.workspace.archives.archived_work(&id).is_some() {
+								s.open_archived_conversation(&id, cx);
+							} else {
+								s.workspace.archives.feedback =
+									Some("Could not find this conversation in the archive.".into());
+							}
+						}
 					},
-					_ =>
+					_ => {
+						s.workspace.archives.open_after_read = None;
 						s.workspace.archives.feedback =
-							Some("Could not load the archive. Reopen Archive to retry.".into()),
+							Some("Could not load the archive. Reopen Archive to retry.".into());
+					},
 				}
 				cx.notify();
 			});
@@ -1233,9 +1249,7 @@ impl AgentSurface {
 			.flat_map(|data| {
 				data.work_items.iter().filter(|w| data.archived_work_ids.contains(&w.id)).map(|w| {
 					let project = data.projects.iter().find(|p| p.agent_ids.contains(&w.id));
-					let assistant = data.assistant.agent_id.as_ref() == Some(&w.id)
-						|| data.assistant.topic_ids.contains(&w.id)
-						|| data.assistant.retired_topic_ids.contains(&w.id);
+					let assistant = data.assistant.agent_id.as_ref() == Some(&w.id);
 					Item {
 						id: w.id.clone(),
 						title: Self::conversation_label_in(Some(data), w),
@@ -2056,6 +2070,73 @@ mod tests {
 			gap >= gpui::px(16.) && gap <= gpui::px(28.),
 			"archived replies retain the same reading gap as active replies, got {gap:?}"
 		);
+	}
+
+	#[gpui::test]
+	fn assistant_entry_loads_its_archived_conversation_before_first_archive_visit(
+		cx: &mut gpui::TestAppContext,
+	) {
+		for cancelled in [false, true] {
+			check_archived_assistant_open(cx, cancelled);
+		}
+	}
+
+	fn check_archived_assistant_open(cx: &mut gpui::TestAppContext, cancelled: bool) {
+		let surface = cx.new(AgentSurface::new);
+		let catalog = surface.update(cx, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.visual_personal_navigation(cx);
+			s.open_navigation_conversation("research-chat", cx);
+			let snapshot = s.snapshot.as_mut().unwrap();
+			let mut catalog = snapshot.clone();
+			let main = catalog.work_items.iter_mut().find(|work| work.id == "agent").unwrap();
+			main.codex_thread_id = Some("archived-native-main".into());
+			catalog.archived_work_ids.insert("agent".into());
+			snapshot.work_items.retain(|work| work.id != "agent");
+			snapshot.agents.retain(|agent| agent.id != "agent");
+			assert!(snapshot.archived_work_ids.is_empty());
+			catalog
+		});
+		let (_root, profile, server) = wire_test_support::fixture(move |listener| async move {
+			let mut socket = wire_test_support::accept(&listener).await;
+			let Message::Text(request) = socket.next().await.unwrap().unwrap() else {
+				panic!("expected archive query")
+			};
+			let ClientMessage::Query(query) = serde_json::from_str(&request).unwrap() else {
+				panic!("expected archive query")
+			};
+			assert!(matches!(query.payload, QueryPayload::GetAgentArchiveCatalog));
+			wire_test_support::answer_query(
+				&mut socket,
+				query.query_id,
+				QueryResultPayload::AgentSnapshot(AgentSnapshotResult::Available(catalog)),
+			)
+			.await;
+		});
+		surface.update(cx, |s, cx| {
+			s.profile = Some(profile);
+			s.open_assistant(cx);
+			assert_eq!(s.workspace.archives.open_after_read.as_deref(), Some("agent"));
+			assert_eq!(s.selected.as_deref(), Some("research-chat"));
+			if cancelled {
+				s.close_catalog(cx);
+			}
+		});
+		let deadline = Instant::now() + Duration::from_secs(5);
+		while surface.read_with(cx, |s, _| s.workspace.archives.read.is_some()) {
+			cx.run_until_parked();
+			assert!(Instant::now() < deadline);
+			thread::sleep(Duration::from_millis(5));
+		}
+		server.join().unwrap();
+		surface.read_with(cx, |s, _| {
+			assert_eq!(
+				s.selected.as_deref(),
+				Some(if cancelled { "research-chat" } else { "agent" })
+			);
+			assert_eq!(s.selected_is_archived(), !cancelled);
+			assert!(s.workspace.archives.open_after_read.is_none());
+		});
 	}
 
 	#[gpui::test]

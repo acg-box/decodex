@@ -5673,6 +5673,10 @@ async fn query_agent_history_page(
 	let live = query_agent_live(partial);
 
 	decodex_protocol::AgentHistoryResult::Available {
+		missing_folder: match (before, agent) {
+			(None, Some(agent)) => agent.missing_chat_folder(id).await,
+			_ => None,
+		},
 		questions,
 		expired_question_ids,
 		questions_truncated,
@@ -5874,7 +5878,6 @@ async fn project_started_conversations(
 		snapshot.work_items.iter().any(|work| work.codex_thread_id.as_ref() == Some(thread))
 	});
 	snapshot.agents.retain(|agent| !drafts.contains(&agent.id));
-	snapshot.assistant.topic_ids.retain(|id| !drafts.contains(id));
 	for project in &mut snapshot.projects {
 		project.agent_ids.retain(|id| !drafts.contains(id));
 	}
@@ -6715,7 +6718,7 @@ mod tests {
 			.reserve_agent_voice_draft(
 				crate::agent::AgentCoordinator::new_conversation_work("draft").unwrap(),
 				None,
-				Some("assistant".into()),
+				None,
 			)
 			.await
 			.unwrap();
@@ -6726,7 +6729,7 @@ mod tests {
 		};
 		assert!(snapshot.is_valid());
 		assert_eq!(snapshot.assistant.agent_id.as_deref(), Some("assistant"));
-		assert!(snapshot.assistant.topic_ids.is_empty());
+		assert!(!snapshot.agents.iter().any(|agent| agent.id == "draft"));
 		assert_eq!(
 			snapshot.work_items.iter().map(|work| work.id.as_str()).collect::<Vec<_>>(),
 			["assistant"]
@@ -6746,7 +6749,7 @@ mod tests {
 			panic!("saved snapshot")
 		};
 		assert!(snapshot.is_valid());
-		assert_eq!(snapshot.assistant.topic_ids, ["draft"]);
+		assert!(snapshot.agents.iter().any(|agent| agent.id == "draft" && !agent.assistant));
 		assert!(snapshot.work_items.iter().any(|work| work.id == "draft"));
 	}
 

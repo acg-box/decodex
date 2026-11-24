@@ -17,7 +17,7 @@ use decodex_core::{
 	DecodexRoot,
 	work::{ResultSource, ThreadRegistration, WorkAssessment, WorkCommand, WorkResult, WorkState},
 };
-use decodex_database::{AgentDisposition, EnqueueAgentEvent, SqliteStore};
+use decodex_database::{AgentDisposition, SqliteStore};
 use rusqlite::Connection;
 use serde_json::json;
 use tempfile::TempDir;
@@ -153,20 +153,14 @@ async fn registered_and_created_agents_create_work_after_cold_resume() {
 		assert_eq!(native_turn(&original, imported, historical).await, retained);
 		drop(original);
 
-		AgentCoordinator::create_conversation(
-			&store,
-			"created",
-			EnqueueAgentEvent {
-				work_item_id: "created".into(),
-				source_event_id: "first-input".into(),
-				event_kind: "user_message".into(),
-				payload: json!({"source":"user","text":"Start this conversation"}).to_string(),
-			},
-			None,
-		)
-		.await
-		.unwrap();
-		store.set_assistant("created".into(), true).await.unwrap();
+		store
+			.create_assistant(AgentCoordinator::new_conversation_work("created").unwrap())
+			.await
+			.unwrap();
+		agent
+			.enqueue_user_message("created", "first-input", "Start this conversation")
+			.await
+			.unwrap();
 		agent.wake_pending().await.unwrap();
 		let created =
 			store.get_agent_work_item("created".into()).await.unwrap().codex_thread_id.unwrap();

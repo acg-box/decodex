@@ -2544,8 +2544,11 @@ impl AgentClient {
 							Some(_),
 							Some(ResultPayload::AgentAccepted { work_id }),
 							None,
-						) if matches!(action, AgentActionDto::AddProject { .. })
-							|| &work_id == agent_action_work_id(&action) =>
+						) if matches!(
+							action,
+							AgentActionDto::AddProject { .. }
+								| AgentActionDto::CreateAssistant { .. }
+						) || &work_id == agent_action_work_id(&action) =>
 							AgentCommandResponse::Accepted { work_id },
 						(CommandOutcome::Rejected, None, None, Some(error))
 							if !matches!(error, CommandError::AcceptanceUnknown) =>
@@ -3909,7 +3912,6 @@ impl<T> CompletedOneShot<T> {
 
 fn agent_action_work_id(action: &AgentActionDto) -> &EntityId {
 	match action {
-		AgentActionDto::CreateAssistantTopic { topic_id, .. } => topic_id,
 		AgentActionDto::CreateAssistant { agent_id }
 		| AgentActionDto::ManageAssistant { agent_id, .. }
 		| AgentActionDto::ScheduleWake { agent_id, .. }
@@ -3917,11 +3919,11 @@ fn agent_action_work_id(action: &AgentActionDto) -> &EntityId {
 		AgentActionDto::ManageWork { agent_id, .. } => agent_id,
 		AgentActionDto::SetReviewDetails { settings_id, .. } => settings_id,
 		AgentActionDto::SetProjectLead { project_id, .. } => project_id,
-		AgentActionDto::SetAssistant { agent_id, .. } => agent_id,
 		AgentActionDto::AddProject { project_id, .. }
 		| AgentActionDto::DeleteProject { project_id } => project_id,
 		AgentActionDto::RegisterNativeThread { thread_id, .. } => thread_id,
 		AgentActionDto::NewConversation { work_id, .. }
+		| AgentActionDto::RestoreChatFolder { work_id, .. }
 		| AgentActionDto::DiscardEmptyWork { work_id } => work_id,
 		AgentActionDto::AcknowledgeAppUiCall { work_id, .. } => work_id,
 		AgentActionDto::ForkPromptEdit { target_work_id, .. } => target_work_id,

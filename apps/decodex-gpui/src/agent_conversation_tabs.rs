@@ -124,16 +124,7 @@ impl AgentSurface {
 		let Some(selected) = self.conversation_page() else { return Vec::new() };
 		let Some(snapshot) = &self.snapshot else { return Vec::new() };
 		let root = self.workspace.attached.family_root(&selected, snapshot).unwrap_or(&selected);
-		let label = if self.is_assistant_conversation(root) {
-			snapshot
-				.work_items
-				.iter()
-				.find(|work| work.id == root)
-				.map(|work| self.assistant_conversation_label(work))
-				.unwrap_or_else(|| "Conversation".into())
-		} else {
-			"Main".into()
-		};
+		let label = if self.is_assistant_conversation(root) { "Assistant" } else { "Main" }.into();
 		let mut tabs = vec![Tab { id: root.into(), label, closable: false }];
 		if self.workspace.attached.family_root(&selected, snapshot).is_none() {
 			return tabs;
@@ -195,6 +186,7 @@ impl AgentSurface {
 	) -> AnyElement {
 		let selected = self.conversation_page();
 		let tabs = self.conversation_tabs();
+		let personal = tabs.first().is_some_and(|tab| self.is_assistant_conversation(&tab.id));
 		let width = tabs.len() as f32 * (TAB_WIDTH + 6.);
 		let mut strip = gpui::div()
 			.id("conversation-tabs")
@@ -240,7 +232,6 @@ impl AgentSurface {
 			}
 			strip = strip.child(element);
 		}
-		let add = self.new_side_chat_button(cx);
 		gpui::div()
 			.min_w_0()
 			.flex_1()
@@ -249,7 +240,7 @@ impl AgentSurface {
 			.items_center()
 			.gap(gpui::px(5.))
 			.child(strip)
-			.child(add)
+			.when(!personal, |bar| bar.child(self.new_side_chat_button(cx)))
 			.child(gpui::div().flex_1())
 			.into_any_element()
 	}

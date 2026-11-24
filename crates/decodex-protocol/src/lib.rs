@@ -97,7 +97,8 @@ pub use self::{
 		AgentTurnUsageDto, AgentUsageDetailsDto, AgentUsageDto, AgentVoicePresentation,
 		AgentWorkItemDto, AgentWorkKindDto, AgentWorkStatusDto, MAX_AGENT_DEPENDENCIES,
 		MAX_AGENT_PENDING_EVENTS, MAX_AGENT_SNAPSHOT_BYTES, MAX_AGENT_WORK_ITEMS,
-		NATIVE_PARENT_RECONNECT_MESSAGE, NativeThreadCandidate, NativeThreadPage, ProjectDto,
+		MissingChatFolder, NATIVE_PARENT_RECONNECT_MESSAGE, NativeThreadCandidate,
+		NativeThreadPage, ProjectDto,
 	},
 	agent_app_exposure::{AgentAppExposureResult, AgentToolExposureSurface},
 	agent_app_ui::{
@@ -294,7 +295,7 @@ pub use work_portfolio::{MAX_WORK_DETAIL_BYTES, WORK_DETAIL_PAGE_BYTES, WorkDeta
 use serde::{Deserialize, Serialize};
 
 /// The only protocol generation and revision accepted by this build.
-pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 4, minor: 12 };
+pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 4, minor: 13 };
 
 /// A version of the Decodex application protocol.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Deserialize, Serialize)]

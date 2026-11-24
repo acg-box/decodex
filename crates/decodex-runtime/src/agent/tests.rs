@@ -320,6 +320,9 @@ fn fixture_thread_read(
 		}
 	}
 
+	if configured["cwd"].is_string() {
+		result["thread"]["cwd"] = configured["cwd"].clone();
+	}
 	if result["thread"]["cwd"].is_null() {
 		result["thread"]["cwd"] = serde_json::json!("/tmp");
 	}
@@ -872,8 +875,12 @@ async fn personal_assistant_tools_and_instructions_are_not_given_to_project_agen
 	assert_eq!(ordinary["config"]["mcp_servers.decodex"]["disabled_tools"], private);
 	assert!(!ordinary["developerInstructions"].as_str().unwrap().contains("RAGFlow"));
 	assert!(!ordinary["developerInstructions"].as_str().unwrap().contains("assistant_memory"));
-	agent.store.set_assistant("project".into(), true).await.unwrap();
-	let personal = agent.work_thread_params(&project).await.unwrap();
+	let assistant = agent
+		.store
+		.create_assistant(AgentCoordinator::new_conversation_work("assistant").unwrap())
+		.await
+		.unwrap();
+	let personal = agent.work_thread_params(&assistant).await.unwrap();
 	assert!(personal["config"]["mcp_servers.decodex"]["url"].is_string());
 	assert!(personal["config"]["mcp_servers.decodex"].get("disabled_tools").is_none());
 	assert!(
@@ -917,9 +924,14 @@ async fn personal_assistant_tools_and_instructions_are_not_given_to_project_agen
 async fn automatic_personal_recall_is_scoped_and_does_not_block_on_unavailable_memory() {
 	use decodex_core::assistant::{AssistantCommand, AssistantSettings, RagflowConnection};
 	let (mut agent, _sent, _directory) = fixture().await;
-	agent.start_agent("personal", "Start").await.unwrap();
+	agent
+		.store
+		.create_assistant(AgentCoordinator::new_conversation_work("personal").unwrap())
+		.await
+		.unwrap();
+	agent.enqueue_user_message("personal", "start", "Start").await.unwrap();
+	agent.wake_pending().await.unwrap();
 	complete(&mut agent, "personal").await;
-	agent.store.set_assistant("personal".into(), true).await.unwrap();
 	agent
 		.store
 		.apply_assistant_command(
@@ -1167,11 +1179,14 @@ async fn serve_fixture(server_io: DuplexStream, history: Value, sent: UnboundedS
 			Some("thread/items/list") => fixture_items_page(&request, &history),
 			Some("thread/resume") => {
 				let id = request["params"]["threadId"].as_str().unwrap();
-				let configured = settings.get(id).cloned().unwrap_or_else(
+				let configured = settings.entry(id.to_owned()).or_insert_with(
 					|| serde_json::json!({"model":"selected-model","reasoningEffort":"high"}),
 				);
+				if let Some(cwd) = request["params"].get("cwd") {
+					configured["cwd"] = cwd.clone();
+				}
 
-				serde_json::json!({"thread":{"id":id,"turns":if request["params"]["excludeTurns"] == true { serde_json::json!([]) } else { history[id]["thread"]["turns"].clone() }},"model":configured["model"],"reasoningEffort":configured["reasoningEffort"]})
+				serde_json::json!({"cwd":configured["cwd"],"thread":{"id":id,"turns":if request["params"]["excludeTurns"] == true { serde_json::json!([]) } else { history[id]["thread"]["turns"].clone() }},"model":configured["model"],"reasoningEffort":configured["reasoningEffort"]})
 			},
 			Some("config/read") =>
 				serde_json::json!({"config":{"desktop":{"projectlessWorkspaceRoot":history.get("_chatRoot").cloned().unwrap_or_else(|| serde_json::json!(chat_root.path()))}}}),
@@ -1188,6 +1203,12 @@ async fn serve_fixture(server_io: DuplexStream, history: Value, sent: UnboundedS
 			Some("turn/start" | "thread/settings/update") => {
 				let id = request["params"]["threadId"].as_str().unwrap();
 
+				if request["method"] == "thread/settings/update"
+					&& let Some(cwd) = request["params"].get("cwd")
+				{
+					settings.entry(id.to_owned()).or_insert_with(|| serde_json::json!({}))["cwd"] =
+						cwd.clone();
+				}
 				if let Some(configured) = settings.get_mut(id) {
 					for (parameter, field) in [("model", "model"), ("effort", "reasoningEffort")] {
 						if let Some(value) = request["params"].get(parameter) {

@@ -4,7 +4,7 @@
 mod tests;
 #[path = "agent_command_palette_view.rs"] mod view;
 
-use super::{AgentSurface, Context, Item, Section, model};
+use super::{AgentSurface, Context, Item, model};
 use crate::composer_input::{ComposerEvent, ComposerInput};
 use gpui::{App, AppContext as _, Focusable as _, KeyBinding, Window};
 
@@ -26,7 +26,7 @@ enum CommandKey {
 enum Action {
 	Conversation(Item),
 	Project(String),
-	NewAssistant,
+	OpenAssistant,
 	NewChat,
 	NewProject,
 	ChooseProject,
@@ -73,9 +73,9 @@ impl Command {
 
 	fn verb(&self) -> &'static str {
 		match self.action {
-			Action::NewAssistant | Action::NewChat | Action::NewProject => "Create",
+			Action::NewChat | Action::NewProject => "Create",
 			Action::ChooseProject => "Choose project",
-			Action::NewAgent(_) => "Start Agent",
+			Action::NewAgent(_) => "New chat",
 			_ => "Open",
 		}
 	}
@@ -203,7 +203,7 @@ impl AgentSurface {
 			let input = cx.new(|cx| {
 				ComposerInput::search(
 					"Search or jump to…",
-					"Search topics, projects and commands",
+					"Search chats, projects and commands",
 					cx,
 				)
 			});
@@ -278,9 +278,9 @@ impl AgentSurface {
 				});
 			}
 			for (label, detail, action) in [
-				("New Assistant topic", "Assistant", Action::NewAssistant),
+				("Open Assistant", "Personal Assistant", Action::OpenAssistant),
 				("New chat", "Chats", Action::NewChat),
-				("New project Agent", "Choose a project", Action::ChooseProject),
+				("New chat in project", "Choose a project", Action::ChooseProject),
 				("New project", "Choose a project folder", Action::NewProject),
 				("Codex conversations", "Browse and add to Decodex", Action::CodexConversations),
 				("Archived conversations", "Browse and restore", Action::Archives),
@@ -339,10 +339,7 @@ impl AgentSurface {
 				self.activate_navigation_item(&item, cx);
 			},
 			Action::Project(id) => self.reveal_navigation_project(&id, cx),
-			Action::NewAssistant => {
-				self.workspace.navigation.collapsed.remove(Section::Assistant.key());
-				self.new_assistant_conversation(cx);
-			},
+			Action::OpenAssistant => self.open_assistant(cx),
 			Action::NewProject => self.add_navigation_project(cx),
 			Action::NewChat => self.new_project_agent(None, cx),
 			Action::ChooseProject => {

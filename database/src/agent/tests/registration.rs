@@ -17,28 +17,14 @@ fn assign(agent: &str, expected_owner: Option<&str>) -> ThreadRegistration {
 }
 
 #[tokio::test]
-async fn registration_preserves_private_topics_and_permanent_deletions() {
+async fn permanently_deleted_assistant_managed_threads_cannot_be_registered_again() {
 	let dir = tempfile::tempdir().unwrap();
 	let store = SqliteStore::open_test(&dir.path().join("registration.sqlite3")).unwrap();
 	let mut assistant = item("assistant", None);
 	assistant.status = crate::AgentWorkStatus::Wait;
-	store.create_assistant(assistant.clone()).await.unwrap();
-	assistant.id = "private-topic".into();
-	store.create_assistant_topic(assistant, "assistant".into()).await.unwrap();
-	store.bind_agent_thread("private-topic".into(), "topic-native".into()).await.unwrap();
-	assert!(
-		store
-			.register_native_thread(
-				"topic-native".into(),
-				"Topic".into(),
-				Promote { expected_owner: None }
-			)
-			.await
-			.is_err()
-	);
-	assert!(change(&store, assign("private-topic", None)).await.is_err());
-	assert!(store.agent_work_item_for_thread("thread".into()).await.unwrap().is_none());
+	store.create_assistant(assistant).await.unwrap();
 	let registered = change(&store, assign("assistant", None)).await.unwrap();
+	assert!(store.assistant_settings(registered.id.clone()).await.unwrap().is_none());
 	store.request_agent_thread_deletion(registered.id.clone(), "thread".into()).await.unwrap();
 	assert!(change(&store, Register).await.is_err());
 	store.confirm_agent_thread_deletion("thread".into()).await.unwrap();

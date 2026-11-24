@@ -47,15 +47,6 @@ pub enum AgentCommand {
 		#[arg(long)]
 		idempotency_key: Option<String>,
 	},
-	/// Select or remove the personal Assistant responsibility.
-	AssistantRole {
-		#[arg(long)]
-		agent_id: String,
-		#[arg(long)]
-		remove: bool,
-		#[arg(long)]
-		idempotency_key: Option<String>,
-	},
 	/// Apply one typed Assistant command from a JSON file, including optional RAGFlow settings.
 	Assistant {
 		#[arg(long)]
@@ -98,7 +89,7 @@ pub enum AgentCommand {
 		idempotency_key: Option<String>,
 		response_json: String,
 	},
-	/// Start or reconnect the personal Agent with an explicit model and execution directory.
+	/// Start or reconnect an Agent with an explicit model and execution directory.
 	Start {
 		#[arg(long)]
 		model: String,
@@ -310,10 +301,6 @@ fn prepare(command: AgentCommand) -> Result<(AgentActionDto, IdempotencyKey), &'
 		),
 		AgentCommand::AssistantInit { agent_id, idempotency_key } =>
 			(AgentActionDto::CreateAssistant { agent_id: identity(agent_id)? }, idempotency_key),
-		AgentCommand::AssistantRole { agent_id, remove, idempotency_key } => (
-			AgentActionDto::SetAssistant { agent_id: identity(agent_id)?, enabled: !remove },
-			idempotency_key,
-		),
 		AgentCommand::Assistant { agent_id, command_file, idempotency_key } => {
 			let bytes =
 				fs::read(command_file).map_err(|_| "Could not read Assistant command file")?;

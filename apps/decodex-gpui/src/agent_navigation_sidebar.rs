@@ -1,4 +1,4 @@
-//! Search and navigate personal topics, Work and project Agents in one sidebar.
+//! Navigate the personal Assistant, independent chats and projects in one sidebar.
 #[path = "agent_navigation_actions.rs"] mod actions;
 #[path = "agent_navigation_projects.rs"] mod project_actions;
 use crate::{
@@ -111,6 +111,10 @@ impl AgentSurface {
 	}
 
 	pub(super) fn reveal_navigation_conversation(&mut self, id: &str, cx: &Context<Self>) {
+		if self.is_assistant_conversation(id) {
+			self.prepare_navigation_reveal(Section::Assistant.key(), Section::Assistant.key());
+			return;
+		}
 		let Some(item) = self.navigation_items(cx).into_iter().find(|item| item.id == id) else {
 			return;
 		};
@@ -154,47 +158,17 @@ impl AgentSurface {
 	fn navigation_items(&self, cx: &Context<Self>) -> Vec<Item> {
 		let mut items = Vec::new();
 		if let Some(snapshot) = &self.snapshot {
-			let projects = self.project_conversation_pages();
-			let mut ids: Vec<String> = snapshot
-				.assistant
-				.topic_ids
-				.iter()
-				.chain(snapshot.assistant.agent_id.iter())
-				.cloned()
-				.collect();
-			ids.extend(projects.iter().map(|(id, _, _)| id.clone()));
-			ids.sort();
-			ids.dedup();
-			for id in ids {
-				if snapshot.archived_work_ids.contains(&id) {
-					continue;
-				}
+			for (id, title, _) in self.project_conversation_pages() {
 				let work = snapshot.work_items.iter().find(|w| w.id == id);
-				let assistant = self.is_assistant_conversation(&id);
-				if assistant
-					&& work.is_some_and(|w| w.title == "Assistant" && w.codex_thread_id.is_none())
-				{
-					continue;
-				}
 				let project = snapshot.projects.iter().find(|p| p.agent_ids.contains(&id));
-				let title = if assistant {
-					work.map(|w| self.assistant_conversation_label(w))
-						.unwrap_or_else(|| "New topic".into())
-				} else {
-					projects
-						.iter()
-						.find(|(other, _, _)| other == &id)
-						.map(|(_, title, _)| title.clone())
-						.unwrap_or_else(|| "New Agent".into())
-				};
 				items.push(Item {
 					id: id.clone(),
 					title,
-					location: Item::location_label(assistant, project),
+					location: Item::location_label(false, project),
 					project: project.map(|p| p.id.clone()),
 					updated: work.map_or(0, |w| w.updated_at_micros),
 					draft: work.is_some_and(|w| w.codex_thread_id.is_none()),
-					assistant,
+					assistant: false,
 					archived: false,
 					state: self.conversation_status(&id),
 				});
@@ -203,7 +177,9 @@ impl AgentSurface {
 		if let Some(id) = &self.workspace.new_conversation
 			&& self.selected.as_ref() == Some(id)
 			&& !items.iter().any(|i| &i.id == id)
-			&& self.assistant_home_has_draft(id, cx)
+			&& (!self.composer.read(cx).content().is_empty()
+				|| !self.attachments.is_empty()
+				|| !self.task_references.is_empty())
 		{
 			let project = self.workspace.new_conversation_workspace.clone();
 			let directory_project = self
@@ -212,7 +188,7 @@ impl AgentSurface {
 				.and_then(|s| s.projects.iter().find(|p| Some(&p.id) == project.as_ref()));
 			items.push(Item {
 				id: id.clone(),
-				title: "New Agent".into(),
+				title: "New chat".into(),
 				location: Item::location_label(false, directory_project),
 				project,
 				updated: 0,
@@ -326,6 +302,10 @@ impl AgentSurface {
 				directory = directory.child(navigation_divider());
 			}
 			let open = !self.workspace.navigation.collapsed.contains(section.key());
+			directory = directory.child(self.navigation_heading(section, open, reveal, window, cx));
+			if section == Section::Assistant {
+				continue;
+			}
 			let pref = self.workspace.navigation.preferences.section(section);
 			let mut content = gpui::div().flex().flex_col();
 			if section == Section::Projects {
@@ -362,13 +342,11 @@ impl AgentSurface {
 					));
 				}
 			}
-			directory = directory
-				.child(self.navigation_heading(section, open, reveal, window, cx))
-				.child(crate::ui_motion::disclosure(
-					SharedString::from(format!("navigation-disclosure-{}", section.key())),
-					open,
-					content,
-				));
+			directory = directory.child(crate::ui_motion::disclosure(
+				SharedString::from(format!("navigation-disclosure-{}", section.key())),
+				open,
+				content,
+			));
 		}
 		directory
 	}
@@ -555,23 +533,12 @@ impl AgentSurface {
 	) -> AnyElement {
 		let key = format!("heading-{}", section.key());
 		let focus = navigation_focus(&key, window, cx);
-		let shown = reveal.expanded
-			&& (self.workspace.navigation.hovered.as_ref() == Some(&key)
-				|| self.workspace.navigation.options == Some(section)
-				|| (window.last_input_was_keyboard() && focus.contains_focused(window, cx)));
-		let opacity = crate::ui_motion::value(
-			SharedString::from(format!("{key}-actions")),
-			if shown { 1. } else { 0. },
-			window,
-			cx,
-		);
 		let glyph = match section {
 			Section::Pin => Glyph::Pin,
 			Section::Assistant => Glyph::Assistant,
 			Section::Chats => Glyph::Chats,
 			Section::Projects => Glyph::Projects,
 		};
-		let enter = key;
 		let mut row = gpui::div()
 			.id(SharedString::from(format!("navigation-section-{}", section.key())))
 			.debug_selector(move || format!("navigation-section-{}", section.key()))
@@ -579,7 +546,6 @@ impl AgentSurface {
 			.role(Role::Button)
 			.tab_index(0)
 			.aria_label(section.label())
-			.aria_expanded(open)
 			.relative()
 			.h(gpui::px(ui_theme::CONTROL_SIZE))
 			.flex_none()
@@ -588,22 +554,17 @@ impl AgentSurface {
 			.rounded(gpui::px(ui_theme::SMALL_CONTROL_RADIUS))
 			.overflow_hidden()
 			.cursor_pointer()
-			.hover(|row| row.bg(ui_theme::rgba(ui_theme::HOVER_FILL)))
-			.on_hover(
-				cx.listener(move |s, hovered: &bool, _, cx| {
-					s.navigation_hover(&enter, *hovered, cx)
-				}),
-			)
-			.on_click(cx.listener(move |s, _, _, cx| s.toggle_navigation_section(section, cx)))
+			.on_click(cx.listener(move |s, _, _, cx| s.activate_navigation_heading(section, cx)))
 			.on_key_down(cx.listener(move |s, e: &KeyDownEvent, _, cx| {
 				if !e.is_held && ["enter", "space"].contains(&e.keystroke.key.as_str()) {
-					s.toggle_navigation_section(section, cx);
+					s.activate_navigation_heading(section, cx);
 					cx.stop_propagation();
 				}
 			}))
 			.when(!reveal.expanded, |row| row.hover_hint(section.label()))
 			.child(
 				navigation_leading_slot()
+					.debug_selector(move || format!("navigation-heading-icon-{}", section.key()))
 					.text_color(style::section_color(section))
 					.child(Icon { glyph, size: ui_theme::NAVIGATION_ICON_SIZE }),
 			)
@@ -615,23 +576,40 @@ impl AgentSurface {
 					.map(navigation_category_label)
 					.child(navigation_text(reveal, section.label())),
 			);
+		if section == Section::Assistant {
+			let selected = !self.workspace.browsing
+				&& self.workspace.work_detail.is_none()
+				&& self.selected.as_deref().is_some_and(|id| self.is_assistant_conversation(id));
+			let anchor =
+				self.navigation_anchor(section.key(), section.key(), section.key(), window, cx);
+			return conversation_row_feedback(
+				row.aria_selected(selected).anchor_scroll(Some(anchor)),
+				selected,
+			)
+			.into_any_element();
+		}
+		let shown = reveal.expanded
+			&& (self.workspace.navigation.hovered.as_ref() == Some(&key)
+				|| self.workspace.navigation.options == Some(section)
+				|| (window.last_input_was_keyboard() && focus.contains_focused(window, cx)));
+		let opacity = crate::ui_motion::value(
+			SharedString::from(format!("{key}-actions")),
+			if shown { 1. } else { 0. },
+			window,
+			cx,
+		);
+		row = row
+			.aria_expanded(open)
+			.hover(|row| row.bg(ui_theme::rgba(ui_theme::HOVER_FILL)))
+			.on_hover(
+				cx.listener(move |s, hovered: &bool, _, cx| s.navigation_hover(&key, *hovered, cx)),
+			);
 		if reveal.expanded {
 			let mut controls = gpui::div()
 				.flex()
 				.items_center()
 				.child(self.navigation_options(section, 1., window, cx));
 			match section {
-				Section::Assistant => {
-					controls = controls.child(self.navigation_create(
-						"New Assistant topic",
-						"navigation-create-assistant".into(),
-						|s, cx| {
-							s.workspace.navigation.collapsed.remove(Section::Assistant.key());
-							s.new_assistant_conversation(cx);
-						},
-						cx,
-					));
-				},
 				Section::Chats => {
 					controls = controls.child(self.navigation_create(
 						"New chat",
@@ -648,7 +626,7 @@ impl AgentSurface {
 						cx,
 					));
 				},
-				Section::Pin => {},
+				Section::Assistant | Section::Pin => {},
 			}
 			row = row
 				.child(navigation_context_actions(
@@ -666,7 +644,11 @@ impl AgentSurface {
 		row.into_any_element()
 	}
 
-	fn toggle_navigation_section(&mut self, section: Section, cx: &mut Context<Self>) {
+	fn activate_navigation_heading(&mut self, section: Section, cx: &mut Context<Self>) {
+		if section == Section::Assistant {
+			self.open_assistant(cx);
+			return;
+		}
 		if !self.workspace.navigation.collapsed.remove(section.key()) {
 			self.workspace.navigation.collapsed.insert(section.key());
 		}
@@ -853,11 +835,7 @@ impl AgentSurface {
 		};
 		let group = if section.starts_with("project-") { "projects" } else { section };
 		let anchor = self.navigation_anchor(&key, &item.id, group, window, cx);
-		let debug = if section == "assistant" {
-			format!("assistant-topic-{}", item.id)
-		} else {
-			format!("navigation-{key}")
-		};
+		let debug = format!("navigation-{key}");
 		let focus = navigation_focus(&key, window, cx);
 		let hovered = self.workspace.navigation.hovered.as_ref() == Some(&key);
 		let keyboard = window.last_input_was_keyboard() && focus.contains_focused(window, cx);
@@ -1010,18 +988,6 @@ impl AgentSurface {
 			self.workspace.navigation.preferences.save();
 		}
 	}
-
-	pub(super) fn assistant_home_has_draft(&self, id: &str, cx: &Context<Self>) -> bool {
-		if self.composer_manager.as_deref() == Some(id) {
-			!self.composer.read(cx).content().is_empty()
-				|| !self.attachments.is_empty()
-				|| !self.task_references.is_empty()
-		} else {
-			self.draft_profiles.texts.get(id).is_some_and(|text| !text.is_empty())
-				|| self.draft_profiles.files.get(id).is_some_and(|files| !files.is_empty())
-				|| self.draft_profiles.tasks.get(id).is_some_and(|tasks| !tasks.is_empty())
-		}
-	}
 }
 
 #[cfg(any(test, feature = "visual-capture"))]
@@ -1032,22 +998,23 @@ impl AgentSurface {
 		let seed = snapshot.work_items[0].clone();
 		let now = crate::ui_time::now();
 		for index in 0..40 {
-			let mut topic = seed.clone();
-			topic.id = format!("personal-topic-{index}");
-			topic.title = format!(
+			let mut chat = seed.clone();
+			chat.kind = decodex_protocol::AgentWorkKindDto::Goal;
+			chat.parent_goal_id = None;
+			chat.id = format!("chat-{index}");
+			chat.title = format!(
 				"{} {}",
 				["Weekly priorities", "Release planning", "Research notes", "Writing review"]
 					[index % 4],
 				index / 4 + 1
 			);
-			topic.codex_thread_id = Some(format!("personal-thread-{index}"));
-			topic.updated_at_micros = now - index as i64 * 900_000_000;
-			snapshot.assistant.topic_ids.push(topic.id.clone());
-			snapshot.work_items.push(topic);
+			chat.codex_thread_id = Some(format!("chat-thread-{index}"));
+			chat.updated_at_micros = now - index as i64 * 900_000_000;
+			snapshot.work_items.push(chat);
 		}
-		self.workspace.navigation.collapsed.remove(Section::Assistant.key());
+		self.workspace.navigation.collapsed.remove(Section::Chats.key());
 		self.workspace.navigation.preferences.pinned = std::collections::BTreeSet::from([
-			"personal-topic-0".into(),
+			"chat-0".into(),
 			"navigation-project-0-agent-0".into(),
 		]);
 		cx.notify();
@@ -1143,13 +1110,15 @@ impl AgentSurface {
 		personal.status = decodex_protocol::AgentWorkStatusDto::Wait;
 		let seed = personal.clone();
 		for (id, title) in
-			[("topic-research", "Research workflow"), ("topic-preferences", "Working preferences")]
+			[("research-chat", "Research workflow"), ("preferences-chat", "Working preferences")]
 		{
-			let mut topic = seed.clone();
-			topic.id = id.into();
-			topic.title = title.into();
-			snapshot.work_items.push(topic);
-			snapshot.assistant.topic_ids.push(id.into());
+			let mut chat = seed.clone();
+			chat.kind = decodex_protocol::AgentWorkKindDto::Goal;
+			chat.parent_goal_id = None;
+			chat.id = id.into();
+			chat.title = title.into();
+			chat.codex_thread_id = Some(format!("fixture-{id}"));
+			snapshot.work_items.push(chat);
 		}
 		for (id, title) in [("launch", "Launch Decodex"), ("research", "Choose a research stack")] {
 			snapshot.portfolio.works.push(Work {
@@ -1633,54 +1602,3 @@ fn navigation_text(reveal: &PanelReveal, child: impl gpui::IntoElement) -> AnyEl
 #[cfg(test)]
 #[path = "agent_navigation_sidebar_tests.rs"]
 mod interaction_tests;
-#[cfg(test)]
-mod tests {
-	use super::{AgentSurface, Section};
-	use gpui::TestAppContext;
-
-	#[gpui::test]
-	fn personal_topics_are_separate_navigation_and_switches_keep_each_draft(
-		cx: &mut TestAppContext,
-	) {
-		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
-		visual.simulate_resize(gpui::size(gpui::px(1440.), gpui::px(960.)));
-		surface.update(visual, |s, cx| {
-			s.visual_workspace_fixture(cx);
-			let snapshot = s.snapshot.as_mut().unwrap();
-			snapshot.assistant.agent_id = Some("agent".into());
-			snapshot.assistant.topic_ids = vec!["release".into()];
-			snapshot
-				.work_items
-				.iter_mut()
-				.find(|work| work.id == "release")
-				.unwrap()
-				.parent_goal_id = None;
-			snapshot.agents.push(decodex_protocol::work::Agent {
-				id: "agent".into(),
-				name: "My Assistant".into(),
-				native_thread_id: None,
-				assistant: true,
-				managed_conversation_ids: Default::default(),
-				scheduled_wakes: Default::default(),
-			});
-			s.workspace.work_detail = None;
-			s.workspace.navigation.collapsed.remove(Section::Assistant.key());
-			s.composer.update(cx, |input, cx| input.set_content("General draft", cx));
-			cx.notify();
-		});
-		visual.update(crate::ui_frame::draw_current_frame);
-		assert!(visual.debug_bounds("assistant-topic-agent").is_some());
-		assert!(visual.debug_bounds("assistant-topic-release").is_some());
-		assert!(visual.debug_bounds("page-agent").is_none(), "Assistant must not appear twice");
-		let topic = visual.debug_bounds("assistant-topic-release").unwrap();
-		visual.simulate_click(topic.center(), Default::default());
-		surface.update(visual, |s, cx| {
-			assert_eq!(s.selected.as_deref(), Some("release"));
-			s.composer.update(cx, |input, cx| input.set_content("Release draft", cx));
-			s.open_page("agent", cx);
-			assert_eq!(s.composer.read(cx).content(), "General draft");
-			s.open_page("release", cx);
-			assert_eq!(s.composer.read(cx).content(), "Release draft");
-		});
-	}
-}

@@ -66,7 +66,7 @@ impl AgentSurface {
 			}
 			.into_any_element();
 		}
-		list = list.child(self.assistant_role(cx));
+		list = list.child(self.assistant_summary(cx));
 		list = list.child(self.list_status_filters(
 			super::list_status::View::Work,
 			snapshot.portfolio.works.iter().map(state),
@@ -579,54 +579,17 @@ impl AgentSurface {
 }
 
 impl AgentSurface {
-	fn assistant_role(&self, cx: &mut Context<Self>) -> AnyElement {
+	fn assistant_summary(&self, cx: &mut Context<Self>) -> AnyElement {
 		let Some(snapshot) = &self.snapshot else { return gpui::div().into_any_element() };
-		let current = snapshot.agents.iter().find(|a| a.assistant);
-		let mut row = gpui::div().flex().flex_col().gap_1().child(mcp_forms::mcp_button(
-			"assistant-role".into(),
-			format!("Assistant: {}", current.map(|a| a.name.as_str()).unwrap_or("None")),
-			false,
-			cx,
-			|s, cx| {
-				s.workspace.assistant_picker = !s.workspace.assistant_picker;
-
-				cx.notify();
-			},
-		));
-
-		if self.workspace.assistant_picker {
-			for agent in snapshot.agents.iter() {
-				let (id, enabled) = (agent.id.clone(), !agent.assistant);
-
-				row = row.child(mcp_forms::mcp_button(
-					format!("choose-assistant-{id}"),
-					format!("{}{}", if enabled { "Use " } else { "Remove " }, agent.name),
-					false,
-					cx,
-					move |s, cx| {
-						s.execute(
-							AgentActionDto::SetAssistant {
-								agent_id: EntityId::new(id.clone()).expect("saved Agent"),
-								enabled,
-							},
-							None,
-							cx,
-						);
-
-						s.workspace.assistant_picker = false;
-					},
-				));
-			}
-		}
-		if let Some(agent) = current {
-			let id = agent.id.clone();
+		let mut row = gpui::div().flex().flex_col().gap_1();
+		if snapshot.assistant.agent_id.is_some() {
 			row = row
 				.child(mcp_forms::mcp_button(
 					"assistant-open".into(),
 					"Open Assistant".into(),
 					false,
 					cx,
-					move |s, cx| s.open_page(&id, cx),
+					|s, cx| s.open_assistant(cx),
 				))
 				.child(format!(
 					"Teams ({}), active duties ({})",

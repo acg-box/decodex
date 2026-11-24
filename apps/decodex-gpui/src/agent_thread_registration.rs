@@ -128,6 +128,7 @@ impl AgentSurface {
 			},
 		};
 		self.cancel_dictation(cx);
+		self.clear_archive_selection();
 		self.start_registration(source, selected, cx);
 		cx.emit(CatalogEvent::Open(Catalog::Codex));
 	}
@@ -1094,7 +1095,7 @@ mod tests {
 				s.visual_workspace_fixture(cx);
 				let snapshot = s.snapshot.as_mut().unwrap();
 				let template = snapshot.work_items[0].clone();
-				for id in ["ordinary", "managed", "private", "retired", "archived"] {
+				for id in ["ordinary", "managed", "archived"] {
 					let mut work = template.clone();
 					work.id = id.into();
 					work.codex_thread_id = Some(id.into());
@@ -1110,27 +1111,18 @@ mod tests {
 					scheduled_wakes: Default::default(),
 				});
 				snapshot.assistant.agent_id = Some("agent".into());
-				snapshot.assistant.topic_ids.push("private".into());
-				snapshot.assistant.retired_topic_ids.push("retired".into());
 				snapshot.archived_work_ids.insert("archived".into());
 				s.open_thread_registration(Some("agent"), cx);
 				let panel = s.workspace.registration.as_mut().unwrap();
 				panel.read_error = None;
-				panel.threads =
-					["external", "ordinary", "managed", "private", "retired", "archived", "agent"]
-						.map(candidate)
-						.to_vec();
+				panel.threads = ["external", "ordinary", "managed", "archived", "agent"]
+					.map(candidate)
+					.to_vec();
 				cx.notify();
 			})
 		});
 		visual.update(crate::ui_frame::draw_current_frame);
-		for selector in [
-			"choose-thread-managed",
-			"choose-thread-private",
-			"choose-thread-retired",
-			"choose-thread-archived",
-			"choose-thread-agent",
-		] {
+		for selector in ["choose-thread-managed", "choose-thread-archived", "choose-thread-agent"] {
 			assert!(visual.debug_bounds(selector).is_none(), "{selector}");
 		}
 		for selector in ["choose-thread-external", "choose-thread-ordinary"] {

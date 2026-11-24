@@ -55,6 +55,29 @@ fn side_chat_tabs_share_one_header_and_keep_each_draft(cx: &mut TestAppContext) 
 }
 
 #[gpui::test]
+fn assistant_header_keeps_existing_side_chats_without_a_new_topic_action(cx: &mut TestAppContext) {
+	let (view, visual) = cx.add_window_view(|_, cx| {
+		let surface = cx.new(AgentSurface::new);
+		cx.observe(&surface, |_, _, cx| cx.notify()).detach();
+		surface.update(cx, |s, cx| {
+			s.visual_side_chat_tabs("agent", cx);
+			s.snapshot.as_mut().unwrap().assistant.agent_id = Some("agent".into());
+		});
+		View(surface)
+	});
+	visual.simulate_resize(gpui::size(gpui::px(1200.), gpui::px(760.)));
+	visual.update(crate::ui_frame::draw_current_frame);
+	let surface = view.read_with(visual, |v, _| v.0.clone());
+	surface.read_with(visual, |s, _| assert_eq!(s.conversation_tabs()[0].label, "Assistant"));
+	assert!(visual.debug_bounds("new-side-chat").is_none());
+	let side = visual.debug_bounds("conversation-tab-side-one").unwrap();
+	visual.simulate_click(side.center(), Default::default());
+	visual.update(crate::ui_frame::draw_current_frame);
+	surface.read_with(visual, |s, _| assert_eq!(s.selected.as_deref(), Some("side-one")));
+	assert!(visual.debug_bounds("new-side-chat").is_none());
+}
+
+#[gpui::test]
 fn closing_a_side_chat_returns_to_its_source_and_keeps_the_native_record(cx: &mut TestAppContext) {
 	let surface = cx.new(AgentSurface::new);
 	surface.update(cx, |s, cx| {

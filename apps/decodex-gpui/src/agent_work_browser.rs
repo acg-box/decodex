@@ -39,7 +39,7 @@ impl AgentSurface {
 			ComposerInput::with_placeholder(
 				46,
 				"Search…",
-				"Search topics, Work and project Agents",
+				"Search chats, Work and project Agents",
 				cx,
 			)
 		});
@@ -63,12 +63,6 @@ impl AgentSurface {
 		}
 
 		self.workspace.browsing = false;
-
-		if self.root_id().is_none() {
-			cx.notify();
-
-			return;
-		}
 
 		let defaults =
 			self.workspace.new_conversation.is_none().then(crate::session_settings::Defaults::load);
@@ -121,6 +115,62 @@ impl AgentSurface {
 
 		self.save_draft_document(cx);
 		cx.notify();
+	}
+
+	pub(super) fn draft_chat_folder(
+		&self,
+	) -> Option<&decodex_protocol::ConversationWorkingDirectory> {
+		self.draft_profiles.chat_folders.get(self.selected.as_ref()?)
+	}
+
+	/// A working folder belongs to this one draft or exact saved native chat.
+	pub(super) fn choose_chat_folder(&mut self, cx: &mut Context<Self>) {
+		let Some(work) = self.selected.clone() else { return };
+		let missing = self.missing_chat_folder().cloned();
+		if !self.is_new_conversation() && missing.is_none() {
+			return;
+		}
+		let profile = self.profile.clone();
+		self.workspace.workspace_picker = None;
+		let result = cx.prompt_for_paths(PathPromptOptions {
+			files: false,
+			directories: true,
+			multiple: false,
+			prompt: Some("Choose working folder".into()),
+		});
+		cx.spawn(async move |view, cx| {
+			let Ok(Ok(Some(paths))) = result.await else { return };
+			let Some(path) = paths.first() else { return };
+			let _ = view.update(cx, |s, cx| {
+				if s.selected.as_ref() != Some(&work) || s.profile != profile {
+					return;
+				}
+				let Some(cwd) = path.to_str().and_then(|path| {
+					decodex_protocol::ConversationWorkingDirectory::new(path).ok()
+				}) else {
+					s.feedback =
+						crate::ui_feedback::Feedback::error("Choose an available working folder.");
+					cx.notify();
+					return;
+				};
+				if let Some(missing) = missing {
+					if s.missing_chat_folder() == Some(&missing)
+						&& let Ok(work_id) = EntityId::new(work)
+					{
+						s.execute(
+							AgentActionDto::RestoreChatFolder { work_id, missing, cwd },
+							None,
+							cx,
+						);
+					}
+				} else if s.is_new_conversation() {
+					s.draft_profiles.chat_folders.insert(work, cwd);
+					s.save_draft_document(cx);
+					cx.notify();
+				}
+			});
+		})
+		.detach();
 	}
 
 	pub(super) fn add_workspace_folder(&mut self, cx: &mut Context<Self>) {
@@ -226,14 +276,15 @@ impl AgentSurface {
 
 	pub(super) fn workspace_choices(&self, draft: bool, cx: &mut Context<Self>) -> AnyElement {
 		let selected = self.workspace_selection(draft);
-		let fallback = if draft { "No Project" } else { "All Projects" };
+		let fallback = if draft { "Chats" } else { "All Projects" };
 		let projects = self.snapshot.as_ref().map(|s| s.projects.as_slice()).unwrap_or(&[]);
-		let name = projects
-			.iter()
-			.find(|w| Some(&w.id) == selected.as_ref())
-			.map(|w| w.name.as_str())
-			.unwrap_or(fallback)
-			.to_owned();
+		let project = projects.iter().find(|w| Some(&w.id) == selected.as_ref());
+		let name = project.map_or_else(
+			|| fallback.to_owned(),
+			|p| {
+				if draft { format!("Project: {}", p.name) } else { p.name.clone() }
+			},
+		);
 		let open = self.workspace.workspace_picker == Some(draft);
 		let trigger_bounds = Rc::new(Cell::new(None::<Bounds<Pixels>>));
 		let measured_bounds = trigger_bounds.clone();
@@ -279,6 +330,7 @@ impl AgentSurface {
 			.flex_col()
 			.gap_2()
 			.child(anchor)
+			.when(draft, |row| row.child(self.draft_folder_controls(project, cx)))
 			.children(self.workspace.folder_error.as_ref().map(|error| {
 				gpui::div()
 					.text_size(gpui::px(12.))
@@ -286,6 +338,55 @@ impl AgentSurface {
 					.child(error.clone())
 			}))
 			.into_any_element()
+	}
+
+	fn draft_folder_controls(&self, project: Option<&ProjectDto>, cx: &mut Context<Self>) -> Div {
+		let custom = self.draft_chat_folder().map(|cwd| cwd.as_str());
+		let label = match custom {
+			Some(path) => std::path::Path::new(path)
+				.file_name()
+				.and_then(|name| name.to_str())
+				.unwrap_or(path),
+			None if project.is_some() => "Project folder",
+			None => "Codex chat folder",
+		};
+		let folder = custom.or_else(|| project.map(|p| p.directory.as_str())).unwrap_or(label);
+		let picker = ui_theme::menu_row("choose-chat-folder", true)
+			.debug_selector(|| "choose-chat-folder".into())
+			.w_auto()
+			.max_w(gpui::px(180.))
+			.flex()
+			.items_center()
+			.gap_1()
+			.text_color(ui_theme::rgb(TEXT_MUTED))
+			.aria_label(format!("Choose working folder. Current folder: {folder}"))
+			.hover_hint(format!("Choose working folder…\n{folder}"))
+			.child(workspace_symbols::icon_sized(Symbol::NavigationFolder, 13.))
+			.child(gpui::div().min_w_0().text_ellipsis().child(label.to_owned()))
+			.on_click(cx.listener(|s, _, _, cx| s.choose_chat_folder(cx)))
+			.on_key_down(cx.listener(|s, e: &KeyDownEvent, _, cx| {
+				if !e.is_held && ["enter", "space"].contains(&e.keystroke.key.as_str()) {
+					s.choose_chat_folder(cx);
+					cx.stop_propagation();
+				}
+			}));
+		gpui::div().flex().items_center().justify_center().gap_1().child(picker).when(
+			custom.is_some(),
+			|row| {
+				row.child(self.workspace_button(
+					"clear-chat-folder".into(),
+					"Use default".into(),
+					|s, cx| {
+						if let Some(id) = &s.selected {
+							s.draft_profiles.chat_folders.remove(id);
+						}
+						s.save_draft_document(cx);
+						cx.notify();
+					},
+					cx,
+				))
+			},
+		)
 	}
 
 	fn workspace_picker_menu(
@@ -328,7 +429,7 @@ impl AgentSurface {
 					.py_1()
 					.text_size(gpui::px(12.))
 					.text_color(ui_theme::rgb(TEXT_MUTED))
-					.child("No matching Projects")
+					.child("No matching projects")
 			}))
 			.child(ui_theme::menu_separator())
 			.child(self.add_workspace_button(cx))
@@ -355,6 +456,7 @@ impl AgentSurface {
 			)
 			.role(Role::Button)
 			.aria_label(format!("Choose workspace: {name}"))
+			.debug_selector(|| "workspace-picker-trigger".into())
 			.tab_index(0)
 			.w(gpui::px(176.))
 			.when(draft, |d| d.w_auto())
@@ -395,7 +497,7 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) -> (Stateful<Div>, bool) {
 		let selected = self.workspace_selection(draft);
-		let fallback = if draft { "No Project" } else { "All Projects" };
+		let fallback = if draft { "Chats" } else { "All Projects" };
 		let projects = self.snapshot.as_ref().map(|s| s.projects.as_slice()).unwrap_or(&[]);
 		let query = search.read(cx).content().trim().to_lowercase();
 		let mut choices = vec![(None, fallback.to_owned(), String::new())];
@@ -419,53 +521,52 @@ impl AgentSurface {
 			.flex_col();
 
 		for (id, name, path) in choices {
+			let name = if draft && id.is_some() { format!("Project: {name}") } else { name };
 			let active = &id == selected;
 			let keyboard_id = id.clone();
 
+			let key = format!("workspace-choice-{}", id.as_deref().unwrap_or("all"));
 			list = list.child(
-				ui_theme::menu_row(
-					SharedString::from(format!(
-						"workspace-choice-{}",
-						id.as_deref().unwrap_or("all")
-					)),
-					true,
-				)
-				.aria_label(format!("Workspace: {name}"))
-				.flex_none()
-				.flex()
-				.items_center()
-				.gap_2()
-				.child(
-					gpui::div()
-						.min_w_0()
-						.flex_1()
-						.flex()
-						.flex_col()
-						.gap(gpui::px(1.))
-						.child(
-							gpui::div()
-								.text_size(gpui::px(12.))
-								.line_height(gpui::px(16.))
-								.text_ellipsis()
-								.child(name),
-						)
-						.children((!path.is_empty()).then(|| {
-							gpui::div()
-								.text_size(gpui::px(11.))
-								.line_height(gpui::px(14.))
-								.text_color(ui_theme::rgb(TEXT_MUTED))
-								.text_ellipsis()
-								.child(path)
-						})),
-				)
-				.child(workspace_symbols::menu_check(active))
-				.on_click(cx.listener(move |s, _, _, cx| s.choose_workspace(draft, id.clone(), cx)))
-				.on_key_down(cx.listener(move |s, e: &KeyDownEvent, _, cx| {
-					if !e.is_held && ["enter", "space"].contains(&e.keystroke.key.as_str()) {
-						s.choose_workspace(draft, keyboard_id.clone(), cx);
-						cx.stop_propagation();
-					}
-				})),
+				ui_theme::menu_row(SharedString::from(key.clone()), true)
+					.debug_selector(move || key.clone())
+					.aria_label(format!("Workspace: {name}"))
+					.flex_none()
+					.flex()
+					.items_center()
+					.gap_2()
+					.child(
+						gpui::div()
+							.min_w_0()
+							.flex_1()
+							.flex()
+							.flex_col()
+							.gap(gpui::px(1.))
+							.child(
+								gpui::div()
+									.text_size(gpui::px(12.))
+									.line_height(gpui::px(16.))
+									.text_ellipsis()
+									.child(name),
+							)
+							.children((!path.is_empty()).then(|| {
+								gpui::div()
+									.text_size(gpui::px(11.))
+									.line_height(gpui::px(14.))
+									.text_color(ui_theme::rgb(TEXT_MUTED))
+									.text_ellipsis()
+									.child(path)
+							})),
+					)
+					.child(workspace_symbols::menu_check(active))
+					.on_click(
+						cx.listener(move |s, _, _, cx| s.choose_workspace(draft, id.clone(), cx)),
+					)
+					.on_key_down(cx.listener(move |s, e: &KeyDownEvent, _, cx| {
+						if !e.is_held && ["enter", "space"].contains(&e.keystroke.key.as_str()) {
+							s.choose_workspace(draft, keyboard_id.clone(), cx);
+							cx.stop_propagation();
+						}
+					})),
 			);
 		}
 
@@ -474,12 +575,12 @@ impl AgentSurface {
 
 	fn add_workspace_button(&self, cx: &mut Context<Self>) -> impl IntoElement {
 		ui_theme::menu_row("add-workspace-folder", true)
-			.aria_label("Add Project folder")
+			.aria_label("Add project from folder")
 			.flex()
 			.items_center()
 			.gap(gpui::px(8.))
 			.child(workspace_symbols::icon_sized(Symbol::Plus, 16.))
-			.child("Add folder")
+			.child("Add project…")
 			.on_click(cx.listener(|s, _, _, cx| {
 				s.workspace.workspace_picker = None;
 
@@ -508,7 +609,7 @@ impl AgentSurface {
 			self.workspace.workspace_picker = None;
 		} else {
 			let input = cx.new(|cx| {
-				ComposerInput::with_placeholder(47, "Search folders…", "Search projects", cx)
+				ComposerInput::with_placeholder(47, "Search projects…", "Search projects", cx)
 			});
 
 			cx.observe(&input, |_, _, cx| cx.notify()).detach();

@@ -33,7 +33,7 @@ impl AgentSurface {
 			.items_center()
 			.child(self.navigation_project_actions(id, name, cx))
 			.child(self.navigation_create(
-				"New conversation in this project",
+				"New chat in this project",
 				format!("navigation-create-project-{id}"),
 				move |s, cx| {
 					s.new_project_agent(Some(&project), cx);

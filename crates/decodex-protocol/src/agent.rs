@@ -314,12 +314,24 @@ pub struct AgentUsageDto {
 	pub context_window: Option<u64>,
 }
 
+/// A saved Codex execution folder that no longer exists on the service host.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+pub struct MissingChatFolder {
+	/// Exact native chat observed by the service.
+	pub thread_id: EntityId,
+	/// Original execution directory. Codex retains it until the user chooses another.
+	pub cwd: ConversationWorkingDirectory,
+}
+
 /// Latest bounded readable history for one work identity.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "outcome", rename_all = "snake_case")]
 pub enum AgentHistoryResult {
 	/// Verified visible entries; older history or shortened content is explicitly indicated.
 	Available {
+		/// A missing execution folder in the currently bound native chat.
+		#[serde(default, skip_serializing_if = "Option::is_none")]
+		missing_folder: Option<MissingChatFolder>,
 		/// Unanswered asynchronous questions for the current native thread, independent of history
 		/// paging.
 		questions: Vec<AgentAsyncQuestionDto>,
@@ -381,7 +393,7 @@ pub struct AgentMisalignmentDto {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentStartDto {
-	/// Personal Agent work identity.
+	/// Persistent Agent identity.
 	pub root_id: EntityId,
 	/// Initial user request.
 	pub prompt: HistoryText,
@@ -476,26 +488,12 @@ pub enum AgentActionDto {
 		/// Stable identity for this setup attempt and its retries.
 		agent_id: EntityId,
 	},
-	/// Start a fresh personal topic without submitting a model turn.
-	CreateAssistantTopic {
-		/// Canonical personal Assistant identity.
-		assistant_id: EntityId,
-		/// New independent conversation identity.
-		topic_id: EntityId,
-	},
-	/// Manage the selected personal Agent, its teams and independent duties.
+	/// Manage the personal Assistant, its teams and independent duties.
 	ManageAssistant {
 		/// Stable personal Agent identity.
 		agent_id: EntityId,
 		/// Explicit user command. External export is opt-in.
 		command: decodex_core::assistant::AssistantCommand,
-	},
-	/// Select or remove the optional personal-assistance responsibility.
-	SetAssistant {
-		/// Existing persistent Agent.
-		agent_id: EntityId,
-		/// This grants no manager authority over other Agents.
-		enabled: bool,
 	},
 	/// Assign a Project responsibility to an existing user-created Agent.
 	SetProjectLead {
@@ -532,6 +530,15 @@ pub enum AgentActionDto {
 		/// Existing directory selected by the user.
 		directory: WireText,
 	},
+	/// Replace a missing execution folder on the exact saved native chat.
+	RestoreChatFolder {
+		/// Local conversation selected by the user.
+		work_id: EntityId,
+		/// Source presented to the user before opening the folder picker.
+		missing: MissingChatFolder,
+		/// Existing local directory selected by the user.
+		cwd: ConversationWorkingDirectory,
+	},
 	/// Remove a project while retaining its conversations, Work and local files.
 	DeleteProject {
 		/// Exact local project selected after confirmation.
@@ -539,11 +546,11 @@ pub enum AgentActionDto {
 	},
 	/// Create a user conversation with its first submitted message.
 	NewConversation {
-		/// Optional directory scope, independent of parent ownership.
+		/// Optional project membership.
 		project_id: Option<EntityId>,
-		/// Personal topic owner. Omission creates an independent project Agent.
+		/// Folder selected for this chat, independent of its project.
 		#[serde(default, skip_serializing_if = "Option::is_none")]
-		assistant_id: Option<EntityId>,
+		cwd: Option<ConversationWorkingDirectory>,
 		/// Stable local identity supplied by the desktop.
 		work_id: EntityId,
 		/// First submitted input.
@@ -978,11 +985,11 @@ pub enum AgentActionDto {
 		/// Explicit decision selected from the displayed request.
 		decision: AgentRequestedDecision,
 	},
-	/// Start or reconnect the personal Agent and enqueue user input.
+	/// Start or reconnect an Agent and enqueue user input.
 	Start(AgentStartDto),
 	/// Enqueue subsequent input to the existing Agent.
 	Send {
-		/// Personal Agent work identity.
+		/// Persistent Agent identity.
 		root_id: EntityId,
 		/// User input, preserved until processed.
 		text: HistoryText,
@@ -1150,7 +1157,7 @@ pub struct AgentContextReferenceDto {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentSnapshotDto {
-	/// Selected personal Agent's settings, teams, wakes and native context lineage.
+	/// Personal Assistant settings, teams, wakes and native context lineage.
 	pub assistant: Box<decodex_core::assistant::AssistantState>,
 	/// User-created persistent collaborators. Native Subagents have separate execution ownership.
 	pub agents: Box<Vec<Agent>>,

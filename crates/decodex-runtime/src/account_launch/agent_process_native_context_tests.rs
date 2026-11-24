@@ -406,23 +406,13 @@ async fn installed_assistant_renews_fresh_contexts_with_original_dialogue_and_is
 	config.approval_policy = serde_json::json!("never");
 	let mut agent = AgentCoordinator::new(store.clone(), session.client.clone(), config).unwrap();
 	let result = AssertUnwindSafe(time::timeout(Duration::from_secs(90), async {
-		agent
-			.start_agent("assistant", "Original user decision: inspect sources; do not publish.")
-			.await
-			.unwrap();
+		store.create_assistant(AgentCoordinator::new_conversation_work("assistant").unwrap()).await.unwrap();
+		agent.enqueue_user_message("assistant", "first", "Original user decision: inspect sources; do not publish.").await.unwrap();
+		agent.wake_pending().await.unwrap();
 		terminal(&mut agent, &mut session.events, &store).await;
 		let original =
 			store.get_agent_work_item("assistant".into()).await.unwrap().codex_thread_id.unwrap();
-		assert!(
-			session
-				.client
-				.memory_summary(&original)
-				.await
-				.unwrap()
-				.unwrap()
-				.contains("NATIVE_MEMORY_FIXTURE_SENTINEL")
-		);
-		store.set_assistant("assistant".into(), true).await.unwrap();
+		assert!(session.client.memory_summary(&original).await.unwrap().unwrap().contains("NATIVE_MEMORY_FIXTURE_SENTINEL"));
 		agent
 			.manage_assistant(
 				"assistant",
@@ -471,7 +461,7 @@ async fn installed_assistant_renews_fresh_contexts_with_original_dialogue_and_is
 		assert_eq!(store.agent_previous_threads("assistant".into()).await.unwrap().len(), 3);
         let captured=bodies.lock().unwrap().clone();
         let observed=captured.iter().filter(|b|b["client_metadata"]["thread_id"].as_str().is_some_and(|id|seen.contains(id))).collect::<Vec<_>>();
-		assert!(!observed[0].to_string().contains("assistant_memory"), "ordinary Agents do not expose personal Assistant tools");
+		assert!(observed[0].to_string().contains("assistant_memory"), "the first Assistant turn has personal tools");
 		for body in &observed[1..] {
 			assert!(body.to_string().contains("assistant_memory"), "selected Assistant contexts retain their personal memory instructions");
 			assert!(!body.to_string().contains("NATIVE_MEMORY_FIXTURE_SENTINEL"));
@@ -484,7 +474,7 @@ async fn installed_assistant_renews_fresh_contexts_with_original_dialogue_and_is
 
 		let control=session.client.thread_start(serde_json::json!({"cwd":home.path(),"ephemeral":true,"approvalPolicy":"never","sandbox":"read-only","config":{"memories.generate_memories":false}})).await.unwrap();
         assert!(session.client.memory_summary(control["thread"]["id"].as_str().unwrap()).await.unwrap().unwrap().contains("NATIVE_MEMORY_FIXTURE_SENTINEL"),"other contexts keep native memory settings");
-		qualify_personal_topics(&mut agent, &mut session, &store, &bodies).await;
+		qualify_independent_chat(&mut agent, &mut session, &store, &bodies).await;
 	}))
 	.catch_unwind()
 	.await;
@@ -496,78 +486,24 @@ async fn installed_assistant_renews_fresh_contexts_with_original_dialogue_and_is
 		.expect("Assistant native qualification timed out");
 }
 
-async fn qualify_personal_topics(
+async fn qualify_independent_chat(
 	agent: &mut AgentCoordinator,
 	session: &mut NativeSession,
 	store: &SqliteStore,
 	bodies: &Mutex<Vec<Value>>,
 ) {
-	use decodex_database::{AgentWorkItem, AgentWorkKind, AgentWorkStatus};
-	let mut threads = std::collections::BTreeSet::new();
-	for (id, personal) in
-		[("personal-topic-a", true), ("personal-topic-b", true), ("project-control", false)]
-	{
-		let item = AgentWorkItem {
-			id: id.into(),
-			parent_goal_id: None,
-			kind: AgentWorkKind::Goal,
-			title: id.into(),
-			instructions: "Help with the fixture request".into(),
-			codex_thread_id: None,
-			status: AgentWorkStatus::Wait,
-			dispatch_state: AgentDispatchState::Idle,
-			active_turn_id: None,
-			next_check_at_micros: None,
-			created_at_micros: 1,
-			updated_at_micros: 1,
-		};
-		if personal {
-			store
-				.create_assistant_topic(item, "assistant".into())
-				.await
-				.expect("create personal topic");
-		} else {
-			store.create_agent_manager(item).await.expect("create independent project Agent");
-		}
-		agent
-			.enqueue_user_message(id, id, &format!("Fresh topic input for {id}."))
-			.await
-			.expect("submit topic input");
-		agent.wake_pending().await.expect("admit the existing conversation");
-		terminal(agent, &mut session.events, store).await;
-		let thread = store
-			.get_agent_work_item(id.into())
-			.await
-			.expect("topic binding")
-			.codex_thread_id
-			.expect("native thread");
-		assert!(threads.insert(thread.clone()), "each topic has an independent native context");
-		let metadata = session
-			.client
-			.thread_read(serde_json::json!({"threadId":thread}))
-			.await
-			.expect("topic metadata");
-		assert!(metadata["thread"]["forkedFromId"].is_null());
-		let captured = bodies.lock().expect("captured model requests").clone();
-		let requests: Vec<_> = captured
-			.iter()
-			.filter(|body| body["client_metadata"]["thread_id"].as_str() == Some(&thread))
-			.collect();
-		assert_eq!(requests.len(), 1, "topic creation must not make an extra inference call");
-		let body = requests[0].to_string();
-		assert_eq!(
-			body.contains("assistant_memory"),
-			personal,
-			"only personal topics receive Assistant tools"
-		);
-		assert!(
-			!body.contains("Original correction 0"),
-			"fresh topics must not copy previous dialogue"
-		);
-		if personal {
-			assert!(body.contains("do not publish"), "all topics share the Assistant mandate");
-			assert!(!body.contains("NATIVE_MEMORY_FIXTURE_SENTINEL"));
-			assert_eq!(session.client.memory_summary(&thread).await.expect("memory mode"), None);
-		}
-	}
+	let id = "independent-chat";
+	store.create_agent_manager(AgentCoordinator::new_conversation_work(id).unwrap()).await.unwrap();
+	agent.enqueue_user_message(id, "first", "Start a fresh conversation.").await.unwrap();
+	agent.wake_pending().await.unwrap();
+	terminal(agent, &mut session.events, store).await;
+	let thread = store.get_agent_work_item(id.into()).await.unwrap().codex_thread_id.unwrap();
+	let captured = bodies.lock().unwrap();
+	let mut requests =
+		captured.iter().filter(|b| b["client_metadata"]["thread_id"].as_str() == Some(&thread));
+	let body = requests.next().expect("ordinary chat model request").to_string();
+	assert!(requests.next().is_none());
+	assert!(!body.contains("assistant_memory"));
+	assert!(!body.contains("do not publish"));
+	assert!(!body.contains("Original correction 0"));
 }

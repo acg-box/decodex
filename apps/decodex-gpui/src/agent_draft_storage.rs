@@ -743,6 +743,7 @@ impl AgentSurface {
 
 		Some(DesktopProfileDraft {
 			new_conversation_permissions: self.workspace.new_conversation_permissions,
+			chat_folders: self.draft_profiles.chat_folders.clone(),
 			messages: saved.map(|profile| profile.messages.clone()).unwrap_or_default(),
 			new_conversation_workspace: self
 				.workspace
@@ -881,6 +882,7 @@ impl Drafts {
 	fn from_document(saved: DesktopProfileDraft, epoch: u64) -> Self {
 		let mut result = Self {
 			new_conversation_permissions: saved.new_conversation_permissions,
+			chat_folders: saved.chat_folders,
 			new_conversation: saved.new_conversation.map(|id| id.as_str().into()),
 			new_conversation_workspace: saved
 				.new_conversation_workspace

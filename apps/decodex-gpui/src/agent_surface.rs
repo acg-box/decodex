@@ -867,15 +867,7 @@ impl AgentSurface {
 				.execution
 				.choice(self.selected.as_deref().expect("new draft identity"));
 			return Ok(AgentActionDto::NewConversation {
-				assistant_id: self
-					.workspace
-					.new_conversation_workspace
-					.is_none()
-					.then(|| self.assistant_id())
-					.flatten()
-					.map(EntityId::new)
-					.transpose()
-					.map_err(|_| "Invalid Assistant identity")?,
+				cwd: self.draft_chat_folder().cloned(),
 				project_id: self
 					.workspace
 					.new_conversation_workspace
@@ -1788,11 +1780,8 @@ impl AgentSurface {
 			self.remember_draft_document(cx);
 		}
 
-		if let Some(id) = self.workspace.assistant_open.clone().filter(|id| {
-			self.snapshot.as_ref().is_some_and(|s| s.work_items.iter().any(|w| &w.id == id))
-		}) {
-			self.workspace.assistant_open = None;
-			self.open_page(&id, cx);
+		if self.workspace.assistant_open.is_some() && self.assistant_id().is_some() {
+			self.open_assistant(cx);
 		}
 		self.continue_memory_setup(cx);
 		self.open_registered_thread(cx);
@@ -1881,6 +1870,9 @@ impl AgentSurface {
 								.map(|work| work.id.clone())
 						});
 				}
+				self.draft_profiles
+					.chat_folders
+					.retain(|id, _| !snapshot.work_items.iter().any(|item| &item.id == id));
 				// A saved first message promotes the local editor to a real conversation,
 				// including when acceptance was recovered after restarting the app.
 				if self
@@ -2810,8 +2802,7 @@ struct WorkspaceView {
 	work_detail: Option<String>,
 	work_evidence: Option<WorkPortfolio>,
 	work_read_error: Option<String>,
-	assistant_picker: bool,
-	assistant_open: Option<String>,
+	assistant_open: Option<assistant_settings::PendingSetup>,
 	assistant_memory_action: Option<RagflowComponentAction>,
 	private_detail_text: Option<(String, String)>,
 	contribution_detail: Option<String>,
@@ -2882,7 +2873,6 @@ impl Default for WorkspaceView {
 			work_detail: None,
 			work_evidence: None,
 			work_read_error: None,
-			assistant_picker: false,
 			assistant_open: None,
 			assistant_memory_action: None,
 			private_detail_text: None,
@@ -4065,6 +4055,7 @@ mod tests {
 				AgentHistoryResult::Available {
 					questions: vec![],
 					expired_question_ids: Vec::new(),
+					missing_folder: None,
 					questions_truncated: false,
 					questions_recovering: false,
 					misalignment: None,
@@ -4150,6 +4141,7 @@ mod tests {
 				AgentHistoryResult::Available {
 					questions: vec![],
 					expired_question_ids: Vec::new(),
+					missing_folder: None,
 					questions_truncated: false,
 					questions_recovering: false,
 					misalignment: None,
@@ -4467,6 +4459,7 @@ mod tests {
 				AgentHistoryResult::Available {
 					questions: vec![],
 					expired_question_ids: Vec::new(),
+					missing_folder: None,
 					questions_truncated: false,
 					questions_recovering: false,
 					misalignment: None,

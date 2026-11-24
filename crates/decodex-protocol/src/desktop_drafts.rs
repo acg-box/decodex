@@ -105,9 +105,12 @@ pub struct DesktopProfileDraft {
 	/// Local new-conversation editor; no server work exists until the first send.
 	#[serde(default, skip_serializing_if = "Option::is_none")]
 	pub new_conversation: Option<EntityId>,
-	/// Folder selected for the unsent conversation.
+	/// Project selected for the unsent conversation.
 	#[serde(default, skip_serializing_if = "Option::is_none")]
 	pub new_conversation_workspace: Option<EntityId>,
+	/// Working folder selections keyed by their unsent conversation identities.
+	#[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+	pub chat_folders: BTreeMap<String, crate::ConversationWorkingDirectory>,
 	/// Permission choice for the unsent independent Agent, separate from existing chats.
 	#[serde(default, skip_serializing_if = "Option::is_none")]
 	pub new_conversation_permissions: Option<PermissionMode>,
@@ -159,6 +162,7 @@ impl DesktopProfileDraft {
 		self.prompt_edits.retain(|_, draft| draft.work_id.as_str() != work);
 		self.parked.remove(work);
 		self.execution.remove(work);
+		self.chat_folders.remove(work);
 		self.questions.retain(|draft| draft.work_id.as_str() != work);
 		if self.composer.work_id.as_ref().is_some_and(|owner| owner.as_str() == work) {
 			self.composer = Default::default();

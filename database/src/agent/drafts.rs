@@ -5,8 +5,7 @@ use crate::{AgentWorkItem, SqliteStore, StoreError, error};
 
 const CONTENT: &str = "SELECT EXISTS(
  SELECT 1 FROM agent_inbox_events WHERE work_item_id=?1 AND event_kind NOT IN (
- 'assistant_internal_topic','assistant_internal_export_boundary','assistant_internal_refresh',
- 'assistant_internal_memory_health','assistant_internal_bootstrap','voice_conversation_draft',
+ 'voice_conversation_draft',
  'native_task_models','native_task_permissions','native_task_plugins','native_warning','conversation_title',
  'configuration_needs_attention','thread_delete_requested','voice_overview','voice_turn')
  UNION ALL SELECT 1 FROM agent_work_items WHERE parent_goal_id=?1
@@ -21,7 +20,7 @@ fn is_unpublished(c: &Connection, work: &AgentWorkItem) -> Result<bool, StoreErr
 	if work.active_turn_id.is_some() || work.next_check_at_micros.is_some() {
 		return Ok(false);
 	}
-	let reserved: bool = c.query_row("SELECT EXISTS(SELECT 1 FROM agent_inbox_events WHERE work_item_id=?1 AND event_kind IN ('assistant_internal_topic','voice_conversation_draft'))", [&work.id], |r| r.get(0)).map_err(error::sqlite_error)?;
+	let reserved: bool = c.query_row("SELECT EXISTS(SELECT 1 FROM agent_inbox_events WHERE work_item_id=?1 AND event_kind='voice_conversation_draft')", [&work.id], |r| r.get(0)).map_err(error::sqlite_error)?;
 	if !reserved {
 		return Ok(false);
 	}
@@ -96,7 +95,7 @@ impl SqliteStore {
 		.await
 	}
 
-	/// Read unused personal or voice drafts, excluding content and active media or work.
+	/// Read unused voice drafts, excluding content and active media or work.
 	pub async fn empty_agent_conversation_drafts(&self) -> Result<Vec<AgentWorkItem>, StoreError> {
 		self.run(|c| {
 			let work = c
@@ -157,10 +156,7 @@ mod tests {
 		let directory = tempfile::tempdir().unwrap();
 		let store = SqliteStore::open_test(&directory.path().join("creation.sqlite3")).unwrap();
 		store.create_assistant(work("assistant")).await.unwrap();
-		store
-			.reserve_agent_voice_draft(work("draft"), None, Some("assistant".into()))
-			.await
-			.unwrap();
+		store.reserve_agent_voice_draft(work("draft"), None, None).await.unwrap();
 		store.begin_agent_thread_creation("draft".into()).await.unwrap();
 		for uncertain in [false, true] {
 			if uncertain {
@@ -183,27 +179,21 @@ mod tests {
 	}
 
 	#[tokio::test]
-	async fn first_submitted_content_atomically_publishes_a_personal_conversation() {
+	async fn first_submitted_content_atomically_publishes_an_independent_chat() {
 		let directory = tempfile::tempdir().unwrap();
 		let path = directory.path().join("draft.sqlite3");
 		let store = SqliteStore::open_test(&path).unwrap();
 		store.create_assistant(work("assistant")).await.unwrap();
 		let input = EnqueueAgentEvent {
 			source_event_id: "first".into(),
-			work_item_id: "topic".into(),
+			work_item_id: "chat".into(),
 			event_kind: "user_message".into(),
 			payload: "{\"text\":\"First content\"}".into(),
 		};
-		store
-			.create_assistant_conversation(work("topic"), input, "assistant".into())
-			.await
-			.unwrap();
+		store.create_agent_conversation(work("chat"), input, None).await.unwrap();
 		drop(store);
 		let reopened = SqliteStore::open_test(&path).unwrap();
-		assert_eq!(
-			reopened.assistant_owner("topic".into()).await.unwrap().as_deref(),
-			Some("assistant")
-		);
+		assert!(reopened.assistant_settings("chat".into()).await.unwrap().is_none());
 		assert!(reopened.unpublished_agent_conversation_drafts().await.unwrap().is_empty());
 		assert_eq!(reopened.list_pending_agent_events(10).await.unwrap().len(), 1);
 	}
@@ -214,14 +204,8 @@ mod tests {
 		let store = SqliteStore::open_test(&directory.path().join("voice.sqlite3")).unwrap();
 		store.create_assistant(work("assistant")).await.unwrap();
 		store.create_agent_manager(work("project-agent")).await.unwrap();
-		store
-			.reserve_agent_voice_draft(work("empty"), None, Some("assistant".into()))
-			.await
-			.unwrap();
-		store
-			.reserve_agent_voice_draft(work("spoken"), None, Some("assistant".into()))
-			.await
-			.unwrap();
+		store.reserve_agent_voice_draft(work("empty"), None, None).await.unwrap();
+		store.reserve_agent_voice_draft(work("spoken"), None, None).await.unwrap();
 		store
 			.with_connection(|c| {
 				let tx = c.transaction().map_err(error::sqlite_error)?;

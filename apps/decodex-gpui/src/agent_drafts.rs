@@ -43,6 +43,7 @@ pub(super) struct Profiles {
 	threads: BTreeMap<String, String>,
 	pub(super) execution: Intents,
 	pub(super) texts: BTreeMap<String, String>,
+	pub(super) chat_folders: BTreeMap<String, decodex_protocol::ConversationWorkingDirectory>,
 	pub(super) files: BTreeMap<String, Vec<AgentAttachmentDto>>,
 	pub(super) tasks: BTreeMap<String, Vec<AgentTaskReferenceDto>>,
 	active: Option<ClientProfile>,
@@ -53,6 +54,7 @@ pub(super) struct Profiles {
 struct Drafts {
 	new_conversation: Option<String>,
 	new_conversation_workspace: Option<String>,
+	chat_folders: BTreeMap<String, decodex_protocol::ConversationWorkingDirectory>,
 	new_conversation_permissions: Option<decodex_protocol::PermissionMode>,
 	creation: Option<DesktopCreationSetup>,
 	unconfirmed: Vec<IdempotencyKey>,
@@ -167,6 +169,7 @@ impl AgentSurface {
 		Drafts {
 			new_conversation: self.workspace.new_conversation.take(),
 			new_conversation_workspace: self.workspace.new_conversation_workspace.take(),
+			chat_folders: mem::take(&mut self.draft_profiles.chat_folders),
 			new_conversation_permissions: self.workspace.new_conversation_permissions.take(),
 			creation: self.creation_setup(cx),
 			unconfirmed: mem::take(&mut self.submission.unconfirmed),
@@ -195,6 +198,7 @@ impl AgentSurface {
 		self.restored_question_drafts = restored.restored_questions;
 		self.workspace.new_conversation = restored.new_conversation;
 		self.workspace.new_conversation_workspace = restored.new_conversation_workspace;
+		self.draft_profiles.chat_folders = restored.chat_folders;
 		self.workspace.new_conversation_permissions = restored.new_conversation_permissions;
 		self.composer_manager = restored.manager;
 

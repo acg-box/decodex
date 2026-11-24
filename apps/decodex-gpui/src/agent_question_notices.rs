@@ -141,6 +141,7 @@ mod tests {
 		AgentHistoryResult::Available {
 			questions,
 			expired_question_ids: Vec::new(),
+			missing_folder: None,
 			questions_truncated: false,
 			questions_recovering: false,
 			misalignment: None,

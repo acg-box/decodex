@@ -868,6 +868,22 @@ impl AgentHost {
 		})
 	}
 
+	pub(crate) async fn missing_chat_folder(
+		&self,
+		work: &str,
+	) -> Option<decodex_protocol::MissingChatFolder> {
+		let thread = self.store.get_agent_work_item(work.into()).await.ok()?.codex_thread_id?;
+		let (generation, client) = self.runtime.agent_catalog_client()?;
+		let cwd = crate::agent::workspace::missing_folder(&client, &thread, true).await?;
+		if self.runtime.agent_catalog_client()?.0 != generation {
+			return None;
+		}
+		Some(decodex_protocol::MissingChatFolder {
+			thread_id: decodex_protocol::EntityId::new(thread).ok()?,
+			cwd: decodex_protocol::ConversationWorkingDirectory::new(cwd).ok()?,
+		})
+	}
+
 	pub(crate) async fn timeline(
 		&self,
 		work: &str,
@@ -1246,7 +1262,7 @@ impl AgentHost {
 					},
 					request = requests.recv() => {
 						let Some(request) = request else {break;};
-						let defer_dispatch = matches!(&request.action,AgentActionDto::CreateAssistant{..}|AgentActionDto::RegisterNativeThread{..}|AgentActionDto::PreparePromptEdit{..}|AgentActionDto::ConfirmPromptEdit{..}|AgentActionDto::ForkPromptEdit{..}|AgentActionDto::RecoverPromptFork{..}|AgentActionDto::RecoverPromptEdit{..}|AgentActionDto::AcknowledgePromptEditDraft{..}|AgentActionDto::UploadPromptInput{..}|AgentActionDto::CompletePromptInputUpload{..}|AgentActionDto::DiscardEmptyWork{..}|AgentActionDto::DeleteProject{..}|AgentActionDto::GenerateSample{..}|AgentActionDto::CancelSample{..});
+						let defer_dispatch = matches!(&request.action,AgentActionDto::CreateAssistant{..}|AgentActionDto::RestoreChatFolder{..}|AgentActionDto::RegisterNativeThread{..}|AgentActionDto::PreparePromptEdit{..}|AgentActionDto::ConfirmPromptEdit{..}|AgentActionDto::ForkPromptEdit{..}|AgentActionDto::RecoverPromptFork{..}|AgentActionDto::RecoverPromptEdit{..}|AgentActionDto::AcknowledgePromptEditDraft{..}|AgentActionDto::UploadPromptInput{..}|AgentActionDto::CompletePromptInputUpload{..}|AgentActionDto::DiscardEmptyWork{..}|AgentActionDto::DeleteProject{..}|AgentActionDto::GenerateSample{..}|AgentActionDto::CancelSample{..});
 
 						if !defer_dispatch && !matches!(&request.action, AgentActionDto::SendPromptInput { .. }) { self.rotate_exhausted(&mut active).await; }
 
@@ -1448,30 +1464,23 @@ impl AgentHost {
 		let id = request.session_id().as_str().to_owned();
 		let speech = matches!(&request, AgentVoiceRequest::Speak { .. });
 		let result = time::timeout(Duration::from_secs(30), async {
-			let execution = if let AgentVoiceRequest::Start { work_id, options, .. } = &request
+			if let AgentVoiceRequest::Start { work_id, options, .. } = &request
 				&& let Some(draft) = &options.draft
 			{
 				self.store
 					.reserve_agent_voice_draft(
 						AgentCoordinator::new_conversation_work(work_id.as_str())?,
 						draft.project_id.as_ref().map(|id| id.as_str().into()),
-						draft.assistant_id.as_ref().map(|id| id.as_str().into()),
+						draft.cwd.as_ref().map(|cwd| cwd.as_str().to_owned()),
 					)
 					.await?;
-				draft.execution.clone()
-			} else {
-				Default::default()
-			};
+			}
 			if active.is_none() {
 				let AgentVoiceRequest::Start { work_id, options, .. } = &request else {
 					return Err(AgentError::Invalid("Agent is reconnecting".into()));
 				};
-				let owner = options
-					.draft
-					.as_ref()
-					.and_then(|draft| draft.assistant_id.as_ref())
-					.unwrap_or(work_id);
-				let root = self.store.get_agent_work_item(owner.as_str().into()).await?;
+				let root = self.store.get_agent_work_item(work_id.as_str().into()).await?;
+				let execution = options.execution.as_deref().cloned().unwrap_or_default();
 				let saved = self.store.read_agent_root_settings(&root.id).await?;
 				let settings = match saved {
 					Some(saved) => decode_settings(&saved),
@@ -1512,6 +1521,8 @@ impl AgentHost {
 
 					return;
 				},
+				AgentError::MissingChatFolder =>
+					"Choose a working folder for this conversation before starting Live.".into(),
 				AgentError::ThreadArchived =>
 					"This conversation is archived. Restore it before starting Live.".into(),
 				AgentError::Transport(ClientError::Remote(error)) =>
@@ -2019,27 +2030,6 @@ impl AgentHost {
 				}
 				Ok(agent_id.as_str().into())
 			},
-			AgentActionDto::SetAssistant { agent_id, enabled } => {
-				self.store
-					.set_assistant(agent_id.as_str().into(), enabled)
-					.await
-					.map_err(|_| AgentHostError::Rejected("Choose an existing Agent"))?;
-				if enabled {
-					self.store
-						.apply_assistant_command(
-							agent_id.as_str().into(),
-							key,
-							decodex_core::assistant::AssistantCommand::RefreshContext,
-							true,
-						)
-						.await
-						.map_err(|_| {
-							AgentHostError::Rejected("Could not prepare Assistant context")
-						})?;
-				}
-
-				Ok(agent_id.as_str().into())
-			},
 			AgentActionDto::SetProjectLead { project_id, agent_id } => {
 				self.store
 					.set_project_lead(project_id.as_str().into(), agent_id.as_str().into())
@@ -2168,8 +2158,7 @@ impl AgentHost {
 		let (action, input_options) = normalize_input(action)?;
 
 		match action {
-			action @ (AgentActionDto::SetAssistant { .. }
-			| AgentActionDto::ScheduleWake { .. }
+			action @ (AgentActionDto::ScheduleWake { .. }
 			| AgentActionDto::CancelWake { .. }
 			| AgentActionDto::ManageAssistant { .. }
 			| AgentActionDto::SetProjectLead { .. }
@@ -2179,8 +2168,22 @@ impl AgentHost {
 			action @ (AgentActionDto::GenerateSample { .. }
 			| AgentActionDto::CancelSample { .. }) =>
 				self.handle_sample(&key, action, active.as_mut().map(|(_, agent, _)| agent)).await,
+			AgentActionDto::RestoreChatFolder { work_id, missing, cwd } => {
+				let (_, agent, _) =
+					active.as_mut().ok_or("Connect to Codex to restore this folder.")?;
+				agent.restore_chat_folder(work_id.as_str(), &missing, cwd.as_str()).await.map_err(
+					|error| match error {
+						AgentError::Rejected(_) => AgentHostError::Rejected(
+							"The conversation or folder changed. Reopen it and choose an available folder.",
+						),
+						_ => AgentHostError::Unknown(
+							"The folder change could not be confirmed. Refresh this conversation.",
+						),
+					},
+				)?;
+				Ok(work_id.as_str().into())
+			},
 			action @ (AgentActionDto::CreateAssistant { .. }
-			| AgentActionDto::CreateAssistantTopic { .. }
 			| AgentActionDto::AddProject { .. }
 			| AgentActionDto::DeleteProject { .. }
 			| AgentActionDto::DiscardEmptyWork { .. }
@@ -2371,7 +2374,7 @@ impl AgentHost {
 		match action {
 			AgentActionDto::CreateAssistant { agent_id } => {
 				let now = now();
-				self.store.create_assistant(decodex_database::AgentWorkItem {
+				let assistant = self.store.create_assistant(decodex_database::AgentWorkItem {
 					id: agent_id.as_str().into(), parent_goal_id: None,
 					kind: decodex_database::AgentWorkKind::Goal, title: "Assistant".into(),
 					instructions: "Help the user manage their Agents and teams. Keep continuing responsibilities only when the user delegates them.".into(),
@@ -2379,22 +2382,7 @@ impl AgentHost {
 					dispatch_state: decodex_database::AgentDispatchState::Idle, active_turn_id: None,
 					next_check_at_micros: None, created_at_micros: now, updated_at_micros: now,
 				}).await.map_err(|_| "Assistant could not be set up")?;
-				Ok(agent_id.as_str().into())
-			},
-			AgentActionDto::CreateAssistantTopic { assistant_id, topic_id } => {
-				let now = now();
-				self.store.create_assistant_topic(decodex_database::AgentWorkItem {
-					id: topic_id.as_str().into(), parent_goal_id: None,
-					kind: decodex_database::AgentWorkKind::Goal, title: "New conversation".into(),
-					instructions: "Help the user as their personal Assistant. This conversation is a fresh topic; use shared personal Memory for relevant continuity.".into(),
-					codex_thread_id: None, status: decodex_database::AgentWorkStatus::Wait,
-					dispatch_state: decodex_database::AgentDispatchState::Idle, active_turn_id: None,
-					next_check_at_micros: None, created_at_micros: now, updated_at_micros: now,
-				}, assistant_id.as_str().into()).await.map_err(|_| "Assistant conversation could not be created")?;
-				if active.is_none() {
-					*active = self.restore().await;
-				}
-				Ok(topic_id.as_str().into())
+				Ok(assistant.id)
 			},
 			AgentActionDto::DiscardEmptyWork { work_id } => {
 				self.store
@@ -2429,8 +2417,8 @@ impl AgentHost {
 				Ok(project_id.as_str().into())
 			},
 			AgentActionDto::NewConversation {
+				cwd,
 				project_id,
-				assistant_id,
 				work_id,
 				text,
 				execution,
@@ -2440,32 +2428,17 @@ impl AgentHost {
 			} => {
 				validate_attachments(&attachments)?;
 
-				let options = serde_json::json!({"execution":execution,"permissionMode":permission_mode,"attachments":attachments,"taskReferences":task_references});
+				let options = serde_json::json!({"cwd":cwd,"execution":execution,"permissionMode":permission_mode,"attachments":attachments,"taskReferences":task_references});
 
 				let input = user_input(work_id.as_str(), key, text.as_str(), Some(&options));
-				if let Some(owner) = assistant_id {
-					if project_id.is_some() {
-						return Err("A personal topic cannot belong to a Project".into());
-					}
-					self.store
-						.create_assistant_conversation(
-							AgentCoordinator::new_conversation_work(work_id.as_str())
-								.map_err(|_| "Conversation could not be created")?,
-							input,
-							owner.as_str().into(),
-						)
-						.await
-						.map_err(|_| "Conversation could not be created")?;
-				} else {
-					AgentCoordinator::create_conversation(
-						&self.store,
-						work_id.as_str(),
-						input,
-						project_id.map(|id| id.as_str().to_owned()),
-					)
-					.await
-					.map_err(|_| "Conversation could not be created")?;
-				}
+				AgentCoordinator::create_conversation(
+					&self.store,
+					work_id.as_str(),
+					input,
+					project_id.map(|id| id.as_str().to_owned()),
+				)
+				.await
+				.map_err(|_| "Conversation could not be created")?;
 
 				if active.is_none() {
 					*active = self.restore().await;

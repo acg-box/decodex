@@ -20,7 +20,9 @@ follow-up actions.
 ### Agent Coordination
 
 Project, Agent and Work are separate. A user-created Agent has one current native conversation
-and can own several Works. Assistant and Project Lead are responsibilities of existing Agents.
+and can own several Works. Open **Assistant** to return to the personal Agent. Only this
+Agent can use personal RAGFlow Memory. **New chat** creates an independent Agent in
+**Chats** or in the selected Project. A Project can designate one Agent as its lead.
 Agents use native Codex Subagents for bounded execution and scoped Collaboration Requests for
 independent peers. Work retains current requirements, Materials, Results and owner assessment
 across service restarts. Global Guardian controls native action review; execution permissions

@@ -119,7 +119,6 @@ impl SqliteStore {
 			for owner in &owners {
 				let assistant = tx.query_row("SELECT EXISTS(SELECT 1 FROM agents WHERE id=?1 AND assistant=1)",[owner],|r|r.get::<_,bool>(0)).map_err(error::sqlite_error)?;
 				let settings = if assistant { Some(crate::assistant::settings(&tx,owner)?) } else {None};
-				let personal_owner = crate::assistant::topic_owner(&tx,owner)?.filter(|identity| identity != owner);
 				if let Some(plan) = deletion_plan(&tx,owner,&threads[0])? { threads=plan; }
 				tx.execute("DELETE FROM agent_managed_conversations WHERE conversation_id=?1 OR agent_id=?1", [owner]).map_err(error::sqlite_error)?;
 				for (table,column) in [
@@ -154,8 +153,6 @@ impl SqliteStore {
 					tx.execute("DELETE FROM agent_managers WHERE work_id=?1",[owner]).map_err(error::sqlite_error)?;
 					tx.execute("DELETE FROM agents WHERE id=?1",[owner]).map_err(error::sqlite_error)?;
 					tx.execute("DELETE FROM agent_work_items WHERE id=?1",[owner]).map_err(error::sqlite_error)?;
-				} else if let Some(identity) = personal_owner {
-					crate::assistant::retain_topic_identity(&tx,owner,&identity)?;
 				}
 			}
 			for id in threads {
@@ -221,10 +218,9 @@ mod tests {
 		let path = dir.path().join("delete.sqlite3");
 		let store = SqliteStore::open_test(&path).unwrap();
 		store.with_connection(|c| {
-			c.execute_batch("INSERT INTO agent_work_items(id,kind,title,instructions,codex_thread_id,dispatch_state,status,created_at_micros,updated_at_micros) VALUES('chat','goal','private-delete-marker','private-delete-marker','third','idle','open',1,1),('keep','goal','Keep conversation','Keep instructions','other','idle','open',1,1); INSERT INTO agents VALUES('chat',1),('keep',0); INSERT INTO agent_thread_revisions VALUES('chat','first','second',1),('chat','second','third',2); INSERT INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros) VALUES('source','chat','user_message','{\"text\":\"private-delete-marker\"}',1); INSERT INTO agent_live_output(work_id,turn_id,item_id,text) VALUES('chat','turn','item','private-delete-marker');").map_err(error::sqlite_error)?;
+			c.execute_batch("INSERT INTO agent_work_items(id,kind,title,instructions,codex_thread_id,dispatch_state,status,created_at_micros,updated_at_micros) VALUES('chat','goal','private-delete-marker','private-delete-marker','third','idle','open',1,1),('keep','goal','Keep conversation','Keep instructions','other','idle','open',1,1); INSERT INTO agents VALUES('chat',0),('keep',0); INSERT INTO agent_thread_revisions VALUES('chat','first','second',1),('chat','second','third',2); INSERT INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros) VALUES('source','chat','user_message','{\"text\":\"private-delete-marker\"}',1); INSERT INTO agent_live_output(work_id,turn_id,item_id,text) VALUES('chat','turn','item','private-delete-marker');").map_err(error::sqlite_error)?;
 			Ok(())
 		}).unwrap();
-		store.set_assistant("chat".into(), false).await.unwrap();
 		assert_eq!(
 			store.request_agent_thread_deletion("chat".into(), "third".into()).await.unwrap(),
 			["third", "second", "first"]

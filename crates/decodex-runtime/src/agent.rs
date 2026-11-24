@@ -34,7 +34,7 @@ mod turn_execution;
 mod voice;
 mod work;
 mod work_delivery;
-mod workspace;
+pub(crate) mod workspace;
 
 pub(crate) use self::{reasoning::voice_handoff, result_messages::usage as observed_usage};
 
@@ -1230,6 +1230,7 @@ impl AgentCoordinator {
 		// Apply the user's permission choice during cold hydration as well as
 		// turn start, before a resumed native Goal can continue under old settings.
 		self.hydrate_dispatch_thread(thread, &params).await?;
+		self.ensure_loaded_chat_folder(thread).await?;
 		self.sync_native_project(&item).await?;
 
 		let question_guard = history_guard.is_some();
@@ -2653,6 +2654,15 @@ impl AgentCoordinator {
 						self.store.retire_archived_agent_threads(vec![thread.clone()]).await?;
 					},
 				Err(AgentError::ProjectPending(_)) => {},
+				Err(AgentError::MissingChatFolder) => {
+					self.store
+						.hold_agent_unsent_input_with_reason(
+							agent.id.clone(),
+							"Not sent. Choose a working folder for this conversation, then retry."
+								.into(),
+						)
+						.await?;
+				},
 				Err(AgentError::RoleInUse) => {
 					self.store
 						.hold_agent_unsent_input_with_reason(
@@ -2762,6 +2772,8 @@ pub enum AgentError {
 	Busy,
 	/// A prior dispatch has no conclusive acknowledgment.
 	UnknownDispatch,
+	/// The bound thread needs a user-selected replacement before it can run.
+	MissingChatFolder,
 	/// Native Project membership requires inspection; unrelated Agents can continue.
 	ProjectPending(String),
 	/// New task settings superseded an automatic capacity continuation.

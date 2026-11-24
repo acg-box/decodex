@@ -48,14 +48,17 @@ impl SqliteStore {
 		.await
 	}
 
+	/// Resolve an explicit creation folder before the project default. Bound threads use Codex.
 	pub async fn work_directory(&self, id: String) -> Result<Option<String>, StoreError> {
 		self.run(move |c| {
 			c.query_row(
-				"SELECT directory FROM projects JOIN project_agents ON project_id=id WHERE agent_id=?1",
+				"SELECT coalesce(
+				 (SELECT json_extract(payload, '$.options.cwd') FROM agent_inbox_events
+				  WHERE work_item_id=?1 AND event_kind IN ('user_message', 'voice_conversation_draft') ORDER BY id LIMIT 1),
+				 (SELECT directory FROM projects JOIN project_agents ON project_id=id WHERE agent_id=?1))",
 				[id],
 				|r| r.get(0),
 			)
-			.optional()
 			.map_err(|e| error::sqlite_error(e).into())
 		})
 		.await

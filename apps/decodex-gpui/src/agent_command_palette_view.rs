@@ -345,7 +345,7 @@ fn command_icon(command: &Command) -> AnyElement {
 		Action::Project(_) | Action::NewAgent(_) | Action::NewProject =>
 			icons::Icon { glyph: icons::Glyph::Folder, size: 14. }.into_any_element(),
 		Action::NewChat => icons::Icon { glyph: icons::Glyph::Chats, size: 14. }.into_any_element(),
-		Action::NewAssistant =>
+		Action::OpenAssistant =>
 			icons::Icon { glyph: icons::Glyph::Assistant, size: 14. }.into_any_element(),
 		Action::CodexConversations =>
 			icons::Icon { glyph: icons::Glyph::Conversations, size: 14. }.into_any_element(),
