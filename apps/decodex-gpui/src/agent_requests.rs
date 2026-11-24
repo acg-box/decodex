@@ -435,7 +435,7 @@ impl AgentSurface {
 			panel = panel.child(
 				gpui::div()
 					.text_size(gpui::px(12.0))
-					.child(self.request_summary(permission_summary(&value["permissions"]))),
+					.child(self.request_summary(readable_value(&value["permissions"]))),
 			);
 			actions = actions.child(self.request_choice(
 				"decline",
@@ -747,9 +747,61 @@ fn rule_option(decision: &Value) -> Option<(&'static str, String)> {
 	}
 }
 
-fn permission_summary(value: &Value) -> String {
-	// Preserve the exact requested paths and access modes, including newer provider fields.
-	serde_json::to_string_pretty(value).unwrap_or_else(|_| "Access details unavailable".into())
+pub(super) fn parameter_label(s: &str) -> String {
+	if s.contains(' ') {
+		return s.into();
+	}
+	let mut text = String::new();
+	let mut lower = false;
+	for ch in s.chars() {
+		if ch == '_' || ch == '-' {
+			text.push(' ');
+			lower = false;
+			continue;
+		}
+		if lower && ch.is_uppercase() {
+			text.push(' ');
+		}
+		if text.is_empty() {
+			text.extend(ch.to_uppercase());
+		} else {
+			text.push(ch);
+		}
+		lower = ch.is_lowercase();
+	}
+	text.split_whitespace()
+		.map(|w| if w.eq_ignore_ascii_case("id") { "ID" } else { w })
+		.collect::<Vec<_>>()
+		.join(" ")
+}
+
+/// Present provider values as labeled lines. Keep nested entries and their order intact.
+pub(super) fn readable_value(value: &Value) -> String {
+	match value {
+		Value::String(s) => s.clone(),
+		Value::Null => "None".into(),
+		Value::Object(fields) if fields.is_empty() => "No fields".into(),
+		Value::Array(items) if items.is_empty() => "No items".into(),
+		Value::Object(fields) => fields
+			.iter()
+			.map(|(key, value)| {
+				let name = parameter_label(key);
+				let text = readable_value(value);
+				if value.is_object() || value.is_array() {
+					format!("{name}\n  {}", text.replace('\n', "\n  "))
+				} else {
+					format!("{name}  {text}")
+				}
+			})
+			.collect::<Vec<_>>()
+			.join("\n"),
+		Value::Array(items) => items
+			.iter()
+			.map(|v| format!("• {}", readable_value(v).replace('\n', "\n  ")))
+			.collect::<Vec<_>>()
+			.join("\n"),
+		_ => value.to_string(),
+	}
 }
 
 #[cfg(test)]

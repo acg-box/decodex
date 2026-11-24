@@ -1,6 +1,8 @@
 //! Explicit typed replies to live MCP elicitation requests.
 use std::rc::Rc;
 
+use super::requests::{parameter_label, readable_value};
+
 use gpui::{AnyElement, AppContext as _, Div, KeyDownEvent, Stateful};
 use reqwest::Url;
 use serde_json::Value;
@@ -280,7 +282,7 @@ impl AgentSurface {
 				Value::String(s) => s.clone(),
 				Value::Array(a) if !full_fields => format!("{} items", a.len()),
 				Value::Object(o) if !full_fields => format!("{} fields", o.len()),
-				v => serde_json::to_string_pretty(v).unwrap_or_default(),
+				v => readable_value(v),
 			};
 
 			panel = panel.child(
@@ -594,33 +596,6 @@ fn display_params(meta: &Value) -> Vec<(&str, &str, &Value)> {
 fn technical_id(key: &str) -> bool {
 	key == "id" || key.ends_with("Id") || key.ends_with("ID") || key.ends_with("_id")
 }
-fn parameter_label(s: &str) -> String {
-	if s.contains(' ') {
-		return s.into();
-	}
-	let mut text = String::new();
-	let mut lower = false;
-	for ch in s.chars() {
-		if ch == '_' || ch == '-' {
-			text.push(' ');
-			lower = false;
-			continue;
-		}
-		if lower && ch.is_uppercase() {
-			text.push(' ');
-		}
-		if text.is_empty() {
-			text.extend(ch.to_uppercase());
-		} else {
-			text.push(ch);
-		}
-		lower = ch.is_lowercase();
-	}
-	text.split_whitespace()
-		.map(|w| if w.eq_ignore_ascii_case("id") { "ID" } else { w })
-		.collect::<Vec<_>>()
-		.join(" ")
-}
 fn preview_text(text: &str, limit: usize) -> String {
 	let mut chars = text.chars();
 	let mut out = chars.by_ref().take(limit).collect::<String>();
@@ -745,6 +720,11 @@ mod tests {
 			vec![("jobId", "jobId", &serde_json::json!("raw-id"))]
 		);
 		assert_eq!(mcp_forms::parameter_label("conversationId"), "Conversation ID");
+		let grant = serde_json::json!({"fileSystem":{"read":["/tmp/Case Sensitive"]},"network":{"enabled":true}});
+		assert_eq!(
+			mcp_forms::readable_value(&grant),
+			"File System\n  Read\n    • /tmp/Case Sensitive\nNetwork\n  Enabled  true"
+		);
 		assert_eq!(mcp_forms::preview_text("中文摘要", 3), "中文摘…");
 	}
 
