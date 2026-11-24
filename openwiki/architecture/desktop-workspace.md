@@ -5,7 +5,7 @@ description: "Workspace ownership, native menu focus, compositor motion, and con
 tags: [decodex, architecture, desktop, presentation]
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-19T08:47:45.891Z
+    at: 2026-11-24T14:29:01.704Z
 sources:
   - id: openwiki-source-98e7b23c4cc276d20fcb4649
     resource: repo://apps/decodex-gpui/menubar/Sources/DecodexApp/AccountControlViews.swift
@@ -35,24 +35,14 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_collaboration_tests.rs
   - id: openwiki-source-2a6989c7fa25b9681df71f95
     resource: repo://apps/decodex-gpui/src/agent_collaboration.rs
-  - id: openwiki-source-4f748464984e05f0240896f2
-    resource: repo://apps/decodex-gpui/src/agent_command_palette_tests.rs
   - id: openwiki-source-36b7f34eeb55f2eec55e903d
     resource: repo://apps/decodex-gpui/src/agent_command_palette.rs
   - id: openwiki-source-48758ba7d154c82885281d2c
     resource: repo://apps/decodex-gpui/src/agent_composer.rs
-  - id: openwiki-source-0a61b25348131fe1bb6e1d12
-    resource: repo://apps/decodex-gpui/src/agent_context_settings_wire_tests.rs
-  - id: openwiki-source-c76550e85b25876b339f9255
-    resource: repo://apps/decodex-gpui/src/agent_context_settings.rs
-  - id: openwiki-source-d56ea7499f2ed784b1b6c970
-    resource: repo://apps/decodex-gpui/src/agent_conversation_tab_tests.rs
   - id: openwiki-source-1bf529ea3f1649ac9a28334a
     resource: repo://apps/decodex-gpui/src/agent_conversation_tabs.rs
   - id: openwiki-source-1ee22a183019eba898707d3c
     resource: repo://apps/decodex-gpui/src/agent_history_preview_tests.rs
-  - id: openwiki-source-02f8a02cdfa0616877cdad62
-    resource: repo://apps/decodex-gpui/src/agent_list_status.rs
   - id: openwiki-source-2ee1164d01a09b38a208f1ac
     resource: repo://apps/decodex-gpui/src/agent_markdown.rs
   - id: openwiki-source-9c68c30b2ff24ddf9a764d74
@@ -63,14 +53,6 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_native_composer.rs
   - id: openwiki-source-e59b6fade5576eca54cd30f7
     resource: repo://apps/decodex-gpui/src/agent_native_menu.rs
-  - id: openwiki-source-3664c9b8790465805ef686fd
-    resource: repo://apps/decodex-gpui/src/agent_navigation_actions.rs
-  - id: openwiki-source-782cfab091c6439c4ff4dee2
-    resource: repo://apps/decodex-gpui/src/agent_navigation_icons.rs
-  - id: openwiki-source-e0f9712ab121145d154e8324
-    resource: repo://apps/decodex-gpui/src/agent_navigation_model.rs
-  - id: openwiki-source-2ca09fa226c111bf23378654
-    resource: repo://apps/decodex-gpui/src/agent_navigation_projects.rs
   - id: openwiki-source-c2592b96974e70b72f93f72b
     resource: repo://apps/decodex-gpui/src/agent_navigation_sidebar_tests.rs
   - id: openwiki-source-541c96314da57ad5afa1835e
@@ -81,8 +63,6 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_portfolio_tests.rs
   - id: openwiki-source-6a1c55b61be8ac251a493046
     resource: repo://apps/decodex-gpui/src/agent_portfolio.rs
-  - id: openwiki-source-0eea3c2bab20e4a9d8e3d80a
-    resource: repo://apps/decodex-gpui/src/agent_prompt_confirm_wire_tests.rs
   - id: openwiki-source-b2084dffd07b4229957a0f94
     resource: repo://apps/decodex-gpui/src/agent_prompt_edit.rs
   - id: openwiki-source-eaafddc6420cb2e60f559a55
@@ -95,6 +75,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_surface.rs
   - id: openwiki-source-15ee466228bdb01892c9678b
     resource: repo://apps/decodex-gpui/src/agent_text_selection.rs
+  - id: openwiki-source-58bb30382c84dbe606626b36
+    resource: repo://apps/decodex-gpui/src/agent_thread_registration.rs
   - id: openwiki-source-d57edbe5de23ebee985fc88b
     resource: repo://apps/decodex-gpui/src/agent_timeline_inputs.rs
   - id: openwiki-source-691432bb61082c358b6f9c24
@@ -143,14 +125,14 @@ sources:
     resource: repo://apps/decodex-gpui/src/shell_account_activity.rs
   - id: openwiki-source-5afd606185b0f01d8fc4f429
     resource: repo://apps/decodex-gpui/src/shell_diagnostics.rs
+  - id: openwiki-source-fd0cf685c94c2b0b4e780d3d
+    resource: repo://apps/decodex-gpui/src/shell_overlay.rs
   - id: openwiki-source-4b6e253ef76717138b4dd66e
     resource: repo://apps/decodex-gpui/src/shell_reset_cards.rs
   - id: openwiki-source-2986b39185cca5c00a29ad1d
     resource: repo://apps/decodex-gpui/src/shell_status.rs
   - id: openwiki-source-1291f5243fa6c9cb52149bda
     resource: repo://apps/decodex-gpui/src/shell.rs
-  - id: openwiki-source-fe671b38d0336d4630edcd46
-    resource: repo://apps/decodex-gpui/src/ui_disclosure.rs
   - id: openwiki-source-2f256c95c226c1326d164ad3
     resource: repo://apps/decodex-gpui/src/ui_feedback.rs
   - id: openwiki-source-592957b8edd8a689f738c189
@@ -193,15 +175,13 @@ sources:
     resource: repo://database/src/assistant.rs
   - id: openwiki-source-d1279ad243eb550afec4d0e6
     resource: repo://database/src/guardian_settings.rs
-  - id: openwiki-source-2e3c9a4e5d3be13007ea32c3
-    resource: repo://database/src/projects.rs
   - id: openwiki-source-28af4781ad8d9558410630da
     resource: repo://database/src/works.rs
   - id: openwiki-source-c0eb738b42368debe7ef7545
     resource: repo://database/src/works/commands.rs
   - id: openwiki-source-8fe6f1557e5d45d88b34bd0a
     resource: repo://scripts/macos/generate_workspace_symbols.swift
-generated: { by: "codex", at: "2026-11-19T08:47:45.891Z" }
+generated: { by: "codex", at: "2026-11-24T14:29:01.704Z" }
 ---
 
 # Desktop workspace and native glass
@@ -218,13 +198,13 @@ With Graph closed, **Work in progress** provides a compact disclosure above the 
 
 A placement change keeps the same workspace surface. The compact navigation rail remains in the main window. Sidebar reveal geometry comes from that window, and retained sidebar and activity presentation entities use ui_layout::pane to reuse unchanged content there. State, activity animation and hover updates still invalidate the content. Active accessibility uses live semantic geometry. The sidebar owns pointer entry and departure in both expanded and compact states. Entry starts the shared dwell even when the pointer stops without another mouse move. Floating panels exclude covered reading-plane paint and hit targets through the shared Viewport mask. One `PanelFrame` samples the layout slots and visible panel widths for each workspace frame. The sidebar, conversation header and reading-plane mask reuse those positions during opening, closing and reversal. The full-height hover preview sits above the workspace. Its visible edge clips the complete workspace content behind it, including the center fill and composer footer, so the sidebar shows a consistent window backdrop. The native composer clips its material, foreground and pointer region at the same edge during parent prepaint. Attached native surfaces also respect their parent viewport mask. These masks preserve the complete material contours and foreground sizes. Its native content measures at the current parent anchor width; one native material supplies the surface, with no extra GPUI fill or window backdrop. Focused rendering tests cover unchanged content geometry across docked and floating placement, the absence of separate native sidebar glass, interrupted closing, the retained compact rail, and covered controls. Native activity islands still update their glass contour and foreground mask in one Core Animation transaction with implicit actions disabled.
 
-The left sidebar contains **Pin**, **Assistant** and **Projects** in one scrolling directory. Pin adds shortcuts without removing conversations from their source groups. Assistant opens by default and lists personal topics, ordered by last update unless the user chooses another sort. Projects lists registered directories and their independent conversations. Several projects can stay open together. Categories, projects and conversations share one text origin after a 28-point leading slot, without tree lines or increasing indentation. The 40-point compact rail has equal 6-point insets around this slot; only centered category icons and project or conversation initials remain visible, with no partial title suffixes. Categories and Archived use 12.5-point medium text in primary ink. Project names and conversation titles use 12.5-point normal text in body ink. Projects retain neutral folder symbols. Attached Side chats stay with their source tabs. Search remains above the directory and Archived stays fixed below it. The retired Recent preference is ignored without discarding pins, saved project drafts or preferences for the remaining sections.
+The sidebar has a fixed Assistant entry and independent Chats and Projects sections. Pin adds shortcuts to conversations. Chats contains independent Agents without a Project. Projects group Agents by registered Project identity. Project and conversation rows share a text origin. Attached Side chats stay with their source tabs. Search stays above the directory. Codex conversations and Archived stay below it.
 
-Click anywhere on a section header to expand or collapse it. Its secondary hover or keyboard-focus menu selects Last updated, Alphabetical or Always scroll titles. These preferences and pins are local UI state. The **Assistant** hover plus creates a **New Assistant topic** and reopens an existing unstarted personal draft before creating another. Personal topics share Assistant Memory and configuration, while retaining separate messages and drafts. The **Projects** hover plus opens the native folder chooser and existing AddProject path. It registers and reveals the project without rebinding the current draft. Each project's hover plus opens its own **New Agent** draft; repeated clicks and cross-project switches reuse the profile-scoped saved draft identity.
+Select Assistant to open the same personal conversation. Chats offers New chat. A project's New chat uses the same independent Agent creation path with that project selected. A draft retains its text and selected working folder while the user switches sections. The Projects add control opens the folder chooser to register a project.
 
-**Search and commands (Command-K)** stays at the top in both expanded and compact layouts. It opens one global window for topics, projects, archived conversations, commands and Work. Arrow keys select visible results and Return opens the selected destination without submitting the chat composer. Choosing a result reveals its Pin, Assistant or project location and keeps the appropriate draft. The first loaded snapshot also reveals the restored conversation location; later refreshes do not repeatedly reopen manually collapsed sections. New topic, New project, New project Agent, Archived conversations and Settings remain available from this window. Work search opens its existing owner conversation with the existing scoped evidence. There is no separate left-side Work hub or redundant inline search field.
+Search and commands (Command-K) finds chats, projects, archived conversations and Work. Choose Open Assistant, New chat, New chat in project, New project, Codex conversations, Archived conversations or Settings. Return opens the selected result and preserves the composer draft. Selecting a Work opens its owner with scoped evidence.
 
-A 100 ms pointer dwell expands the compact rail temporarily, including when it was collapsed automatically. The temporary preview stays full height. Its moving edge clips only the overlapping part of Collaboration. Uncovered controls stay visible and accept input. Leaving starts a 220 ms close delay, and reentry cancels the pending close. The existing width transition retains the leading command and initial positions. Opening a section during a hover does not make the sidebar permanently visible. The explicit sidebar toggle controls persistent visibility and clears the temporary state. Clicking it on a compact rail opens a pinned full panel, floating above the composer when it cannot fit beside the conversation. Settings commands from a detached native popup route through the global action handler to the main Shell, which owns the reusable Settings window; opening it preserves the selected conversation.
+A 100 ms pointer dwell expands the compact rail temporarily, including when it was collapsed automatically. The temporary preview stays full height. Its moving edge clips only the overlapping part of Collaboration. Uncovered controls stay visible and accept input. Leaving starts a 220 ms close delay, and reentry cancels the pending close. The existing width transition retains the leading command and initial positions. Opening a section during a hover does not make the sidebar permanently visible. The explicit sidebar toggle controls persistent visibility and clears the temporary state. Clicking it on a compact rail opens a pinned full panel, floating above the composer when it cannot fit beside the conversation. Settings commands from a detached native popup route through the global action handler to the main Shell, which owns the centered Settings overlay; opening it preserves the selected conversation.
 
 Sidebar content keeps its complete expanded canvas while the outer width opens, closes or reverses. The panel clips that canvas, so titles and trailing controls keep their final geometry instead of squeezing or disappearing at the first closing frame. The compact presentation mounts only after the rail reaches its settled width. The settled compact layout retains project and conversation initials. Empty explanations and project-group spacing apply only while expanded, so the compact rail has no blank rows for empty groups.
 
@@ -234,9 +214,9 @@ Committed pointer intent and explicit surface toggles permit 400 ms of finite mo
 
 Conversation rows reveal inline Pin or Unpin, Archive, and Delete controls on hover or keyboard focus. Archived rows have only Restore and Delete. Update time uses a short relative value at the far right and fades while actions appear. The owner and full local timestamp are available in a tooltip that stays outside the row and action targets. The compact rail retains category icons and project or conversation initials without time or action space. The first Delete click turns the icon red with the shared confirmation nudge inside its fixed 24-point target; a second click confirms. Leaving the row, pressing Escape or clicking outside cancels. Archive uses native Codex storage and retains history. Conversation deletion uses its exact native source, the existing deletion plan and local draft cleanup; learned personal Memory remains. Deleting an empty canonical Assistant draft clears its input while retaining its identity and configuration. A client-only project draft has no lifecycle symbols before the service records it.
 
-Project headers reveal their delete and new-conversation icons through the same hover and keyboard-focus behavior. **Delete project** uses the same fixed target and two-click nudge confirmation. Its short confirmation hint states that chats and files are kept. It removes the native catalog entry and local directory registration. Active and archived conversation history, independent Work records and local files remain. Active conversations move to **No project**; archived conversations remain in Archived. The selected conversation and current draft are retained. The native client checks the exact project in the bounded catalog before and after deletion, and local cleanup requires the same native identity. A missing project is already deleted; an uncertain native result leaves the local entry available for inspection and retry.
+Project headers reveal their delete and new-conversation icons through the same hover and keyboard-focus behavior. **Delete project** uses the same fixed target and two-click nudge confirmation. Its short confirmation hint states that chats and files are kept. It removes the native catalog entry and local directory registration. Active and archived conversation history, independent Work records and local files remain. Active conversations move to **Chats**; archived conversations remain in Archived. The selected conversation and current draft are retained. The native client checks the exact project in the bounded catalog before and after deletion, and local cleanup requires the same native identity. A missing project is already deleted; an uncertain native result leaves the local entry available for inspection and retry.
 
-The fixed **Archived** footer has a quiet divider. It opens the archive list inside the left sidebar, preserving the center conversation and draft. Its rows use existing native restore and delete operations. A confirmed sidebar deletion dispatches through the archive owner directly, without a third confirmation click. Return to the normal groups with its back control. Settings remains available through Command-K and the native Settings shortcut.
+The Codex conversations and Archived controls open centered overlays in the workspace. The Codex catalog lets a user register an external thread as an independent Agent or give it to an existing Agent. Archived provides Restore and Delete. Both use the existing native catalog and conversation commands. Dismissing an overlay restores focus to the workspace.
 
 Collaboration shows **Needs you** before **Between agents**. Pending native requests, unanswered questions and explicit user decisions need a response; a returned result still needs its original assessment and is not automatically accepted. Opening an exchange's details keeps the active conversation and draft. Explicit **Open request**, **Open question** and **Open review** actions lead to the owning conversation, where its native response controls retain authority. Its fixed-size toolbar icon keeps a pending-count badge when the right panel is closed, with its name in the tooltip. The Graph remains available through its existing control and shortcut, but starts closed.
 
@@ -244,9 +224,9 @@ The six Settings sections are General, Agents, Appearance, Components, Accounts 
 
 Settings reuse the App's normal body and control typography. Section titles, setting names, values and explanations retain their existing sizes. Ordinary setting names, component names and field labels use normal weight; section titles use medium weight and muted text. Related controls share one quiet surface; rows do not each acquire a separate card. Necessary descriptions remain visible. The permission menu shows all four explanations and the native inheritance rule directly. Native options use one flat list under Context defaults, with one shared-scope description. Assistance contains suggestion and Guardian controls. Model fields place each label above its input. Model verification and Add account actions use the shared filled button. Help text explains a choice, scope, cost, data effect, compatibility limit or recovery action. Self-explanatory controls do not repeat their labels in captions.
 
-The permission picker keeps its open state and focus handles in the window. Its visible trailing edge aligns with the trigger, excluding the outer shadow gutter. Arrow keys cycle within its options. Escape closes the menu and restores focus to its trigger. Tab and Shift-Tab dismiss the menu and continue keyboard navigation. Settings remains open after repeated Escape. Command-W or the window close button closes Settings, including while the menu is open. The picker reuses the existing permission rows; it does not own conversation permissions.
+The permission picker shares the existing permission rows. Arrow keys cycle through choices. Escape dismisses the picker first. Escape in the surrounding workspace overlay closes it and returns focus to the workspace.
 
-Settings navigation uses its final layout in the first frame. User-triggered details in Accounts, Components, Diagnostics and Tool catalog cache use the shared 200 ms disclosure animation. The catalog panel uses the same presentation in Agent preferences. Settings destinations bypass the page-arrival fade, and the standalone Settings window configures its material before activation. Button, switch and chevron feedback remain independent of page geometry. Regression tests check stable first entry, intermediate expansion and collapse frames, interruption, clipping, live content changes and the absence of idle frame requests.
+Settings section changes use the shared motion policy. User-triggered disclosures in Accounts, Components, Diagnostics and Tool catalog cache reuse the shared disclosure animation. Closed overlays return focus to the workspace.
 
 Settings and conversation disclosures animate their open proportion. The first opening frame resolves the available width at zero height. During motion, the component measures current content at that width before laying out siblings and clips both prepaint and paint to the revealed bounds. The same flow box includes child margins during measurement and settled layout. It does not reuse a previous frame's content height. Already open details mount at full height. Settled content uses normal layout, so nested size changes do not replay expansion. Completed collapse removes the element from layout, including parent gaps. Measurements do not notify the model. Motion uses the GPUI clock, can reverse from the displayed position and respects reduced motion. Arrival on other workspace destinations changes opacity without moving content or hit targets.
 
@@ -278,7 +258,7 @@ The conversation header groups each source with its open Side chats. Use **+** t
 
 ## Project Work and review details
 
-Work remains available through global command search and its existing detail views. It groups outcomes by Project and can show the same accountable Agent on several rows. Assistant and Project Lead selectors choose existing Agents; they do not create role-specific conversations. Selected Work evidence stays with the existing Work owner. The conversation, global Collaboration panel and Graph remain available. Guardian observation settings and per-conversation evidence retain their existing owners; Guardian is not a permanent section in the new sidebar.
+Work remains available through global command search and its existing detail views. It groups outcomes by Project and can show the same accountable Agent on several rows. The personal Assistant has a fixed identity. Project Lead selection uses an existing Agent. Selected Work evidence stays with the existing Work owner. The conversation, global Collaboration panel and Graph remain available. Guardian observation settings and per-conversation evidence retain their existing owners; Guardian is not a permanent section in the new sidebar.
 
 Expand a Work to read its current requirements, authoritative source, completion criteria, hold reason and resumption condition. Materials open their authorized references. Results show their exact native item or artifact digest. Collaboration Requests show their recipient, issued requirements, scoped Materials, delivery, acceptance, return and assessment. Discuss with owner opens that Agent's conversation. Awaiting Assessment is a derived activity label, not another Work state.
 
@@ -358,15 +338,15 @@ Use **Fork** for conversation actions in lists, locked conversations and provide
 
 Fork, Retry and Unarchive use the same bordered `settings_button` base, including height, padding, radius and interaction feedback. Status text wraps within the conversation rail; an inline title and its explanation flow as one text block. Clicking Fork starts creation after source preparation, with no second confirmation or Cancel control. Conversation progress and recovery use the band above the composer. Creation sends no message.
 
-Reserve `arrow.triangle.branch` for Fork. Account routing uses `point.topleft.down.to.point.bottomright.curvepath` in both GPUI and Menu Bar, with the existing active color and disabled behavior. New local Agent records use `(Fork)` or `(Side chat)` as identity suffixes. Native conversation topics update separately. A project source header stays **Main**; a personal source header uses its current topic. Side chat tabs use the current topic, with numbered names until a title is available.
+Reserve `arrow.triangle.branch` for Fork. Account routing uses `point.topleft.down.to.point.bottomright.curvepath` in both GPUI and Menu Bar, with the existing active color and disabled behavior. New local Agent records use `(Fork)` or `(Side chat)` as identity suffixes. Native conversation topics update separately. A project source header stays **Main**; a personal source header uses its current topic and omits the new Side chat button. Side chat tabs use the current topic, with numbered names until a title is available.
 
 ## Verification
 
-The [Assistant lifecycle](../decisions/assistant-lifecycle.md) keeps a stable personal Agent and renews its native context behind the same conversation. Assistant is built in and always available from the sidebar. First use records an idle Agent and its role atomically without a generated user message. It has no Enable control or optional component row. Work retains its role selector, saved teams and shared pending-context feedback. Continuing instructions, teams and duties are managed in chat. The editor and reading state survive a confirmed context transition; older messages retain their native sources. Side chats remain separate native branches.
+The [Assistant lifecycle](../decisions/assistant-lifecycle.md) keeps one personal Agent. First use records its identity atomically. Personal tools and RAGFlow Memory follow this identity. Work retains saved teams, Project Lead selection and pending-context feedback. Source-linked history survives a context transition.
 
 RAGFlow is an optional component with Install, Update, Uninstall and complete installed version readback. It shares lifecycle buttons, busy state and inline feedback with the other components. Install checks the running Docker-compatible engine and Compose, then prepares RAGFlow, Infinity and the private account. Missing prerequisites use the shared notice; the App does not install or launch a container runtime. Successful installation opens model setup when no models are saved. Expand RAGFlow and select Set up models or Edit to enter one Base URL, an optional API key, an extraction model ID and an embedding model ID. Both models use that shared OpenAI-compatible connection. Save verifies the choices and initializes dedicated Memory without sending chat content. New Memory connections enable automatic learning from completed Assistant dialogue. The Automatic learning switch can stop future learning; existing saved choices remain unchanged on update.
 
-Navigation fixtures cover pinning without changing the active draft, personal and project draft reuse, two-click delete cancellation, fixed 28-point spacing, complete available topic rendering, hover expansion from the 40-point rail, delayed close cancellation and command selection without chat submission. The hover check verifies fixed leading marks and section disclosure without persistent expansion. A detached-window action test verifies that Settings opens through the main Shell without changing the conversation. Use GPUI tests in `agent_navigation_sidebar_tests.rs`, `agent_command_palette.rs`, `shell.rs`, `agent_workspace_size.rs`, `agent_workspace.rs`, `agent_activity.rs`, `agent_markdown.rs`, `agent_archive.rs` and `settings_surface.rs`. Real macOS acceptance must also check focus, typing, scrolling, panel transitions, and transparency in the signed app. A white or missing automation screenshot alone is not evidence that the user sees a blank window.
+Navigation fixtures cover pinning without changing the active draft, independent Chat and Project draft reuse, two-click delete cancellation, fixed 28-point spacing, complete available topic rendering, hover expansion from the 40-point rail, delayed close cancellation and command selection without chat submission. The hover check verifies fixed leading marks and section disclosure without persistent expansion. A detached-window action test verifies that Settings opens through the main Shell without changing the conversation. Use GPUI tests in `agent_navigation_sidebar_tests.rs`, `agent_command_palette.rs`, `shell.rs`, `agent_workspace_size.rs`, `agent_workspace.rs`, `agent_activity.rs`, `agent_markdown.rs`, `agent_archive.rs` and `settings_surface.rs`. Real macOS acceptance must also check focus, typing, scrolling, panel transitions, and transparency in the signed app. A white or missing automation screenshot alone is not evidence that the user sees a blank window.
 
 The sidebar motion fixture checks intermediate closing and reopening frames, a reversal, fixed command bounds and leading marks, and the settled compact layout. The opt-in `DECODEX_FRAME_TRACE` report records the moving sidebar width beside its content-canvas width. Frame construction and submission timing do not prove GPU completion, display scanout or subjective motion quality.
 
@@ -388,7 +368,7 @@ The RAGFlow status light distinguishes service installation from Assistant Memor
 
 Reset Memory first shows an inline confirmation bound to the exact reviewed Memory. Confirming removes only that managed Memory through the native RAGFlow API and initializes an empty replacement with the saved model choices. It retains chat history, model settings, credentials, knowledge selections and service volumes, and preserves the current automatic-learning choice. The replacement starts a new export boundary, so earlier conversations are not replayed. A failed replacement leaves no deleted Memory identity in the private receipt and directs the user to Edit and Save. This is a logical Memory reset, not in-place reindexing or a physical storage-erasure guarantee. The App does not replay old conversations or modify another Memory or an external system.
 
-RAGFlow setup uses the current local service profile and selected Assistant. Profile, runtime or role changes clear its temporary presentation state while preserving the ordinary chat draft. The component's generated credentials and raw scope IDs are not UI fields. Setup progress and failures use shared inline feedback beside the component. See [Runtime architecture](runtime-architecture.md) for process, storage and native-memory ownership.
+RAGFlow setup uses the current local service profile and personal Assistant. Profile or runtime changes clear its temporary presentation state while preserving the ordinary chat draft. The component's generated credentials and raw scope IDs are not UI fields. Setup progress and failures use shared inline feedback beside the component. See [Runtime architecture](runtime-architecture.md) for process, storage and native-memory ownership.
 
 Component status lights use the existing component owners and the theme’s semantic success, warning, information, error and muted tones. Ready means Codex is ready, EGM is enabled, or Research is connected with its tools enabled. RAGFlow requires both a responding service API and configured Memory for Ready. Warning marks disabled or incomplete setup, information marks operations, error marks failures or an unavailable service, and muted marks unchecked or absent components. Tooltips and accessibility labels state the meaning. RAGFlow checks its public version API in the background on initial inspection and Components entry, with a three-second limit; passive reads retain the previous light without adding loading rows.
 
