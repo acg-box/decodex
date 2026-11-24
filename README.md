@@ -215,8 +215,9 @@ Generated pages can lag this refactor; current source, tests and
 - The GPUI product is the sole macOS GUI and is packaged as `Decodex.app`. The bundle
   contains a signed `Contents/Helpers/decodex` for local profiles and the native Swift menu-bar
   presentation as an in-process dynamic library. It contains no second app or UI process.
-- A local app session starts `Contents/Helpers/decodex serve --parent-fd ...` when no
-  service is available. It reuses an exact-version service and reports
+- The desktop client connects to the local service first. When the endpoint is unavailable,
+  it starts `Contents/Helpers/decodex serve` as an independent process. It reuses a
+  compatible service and reports
   `service_version_mismatch` for any other version. The app-user command at
   `~/.local/bin/decodex` is a symlink to the bundled helper, never a copied second binary.
   The standalone local-service installer instead places one regular `decodex` executable at
@@ -226,7 +227,9 @@ Generated pages can lag this refactor; current source, tests and
 - **Show Decodex in the menu bar** is a service-owned product preference. **Launch Decodex
   at login** is an independent macOS `SMAppService.mainApp` preference and is not stored in
   SQLite. Closing the main window hides Decodex and retains the protocol session, native
-  menu bar, and app-owned service. **Quit Decodex** stops the app and only its owned service.
+  menu bar, and desktop client. **Quit Decodex** saves drafts and disconnects the client.
+  The local service continues active turns and retains pending approvals. Reopening the app
+  attaches to the same service and loads current progress.
 
 Normal startup uses the bundled SQLite database.
 

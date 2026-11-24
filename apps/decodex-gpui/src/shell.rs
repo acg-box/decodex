@@ -2751,9 +2751,9 @@ const fn startup_failure(failure: ClientFailure) -> &'static str {
 		ClientFailure::UnsafeLocalEndpoint => "Local daemon endpoint is unsafe",
 		ClientFailure::LocalPeerIdentityUnavailable => "Local daemon identity is unavailable",
 		ClientFailure::LocalPeerUidMismatch => "Local daemon peer UID does not match",
-		ClientFailure::ProtocolDisconnected
-		| ClientFailure::ProtocolTimeout
-		| ClientFailure::ServiceVersionMismatch => "Restart Decodex.",
+		ClientFailure::ProtocolDisconnected | ClientFailure::ProtocolTimeout => "Restart Decodex.",
+		ClientFailure::ServiceVersionMismatch =>
+			"The app and service use different protocol versions.",
 		ClientFailure::ServerIdentityMismatch => "Stable server identity does not match",
 		ClientFailure::ProtocolMalformed => "Daemon response is malformed",
 		ClientFailure::ProtocolViolation => "Daemon protocol ordering was refused",
@@ -7587,7 +7587,7 @@ mod tests {
 
 		assert_eq!(
 			shell::startup_failure(ClientFailure::ServiceVersionMismatch),
-			"Restart Decodex."
+			"The app and service use different protocol versions."
 		);
 	}
 

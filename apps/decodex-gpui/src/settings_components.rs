@@ -94,12 +94,13 @@ impl Components {
 
 	#[cfg(not(test))]
 	pub(super) fn refresh_optional(&mut self) {
+		let state = self.preparation.snapshot().state;
+		if state == PreparationState::Unchecked {
+			self.preparation.prepare();
+		}
 		self.research.inspect();
 
-		if matches!(
-			self.preparation.snapshot().state,
-			PreparationState::Unchecked | PreparationState::Ready
-		) {
+		if matches!(state, PreparationState::Unchecked | PreparationState::Ready) {
 			// Keep the last readback visible during the next entry check.
 			if self.optional.snapshot().inspected {
 				self.optional.start(PluginAction::Refresh);

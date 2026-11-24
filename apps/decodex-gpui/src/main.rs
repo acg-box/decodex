@@ -81,7 +81,7 @@ use ui_theme::{appearance, window_material};
 gpui::actions!(
 	decodex_application,
 	[
-		/// Quit the application and release its owned services.
+		/// Save drafts and quit the desktop client.
 		Quit,
 		/// Minimize the active main window.
 		Minimize,
@@ -124,21 +124,11 @@ fn main() {
 		let profile = ClientProfile::load_default(None);
 		let agent_profile = profile.as_ref().ok().cloned();
 		let preparation = component_runtime::shared(cx);
-		let bundled_daemon = profile.as_ref().ok().and_then(|profile| {
-			bundled_daemon::BundledDaemonSupervisor::launch_for_profile(
-				profile,
-				preparation.clone(),
-			)
-			.ok()
-			.flatten()
+		let launcher = profile.as_ref().ok().and_then(|profile| {
+			bundled_daemon::BundledService::for_profile(profile, preparation.clone())
 		});
 
-		if let Some(supervisor) = bundled_daemon.as_ref() {
-			bundled_daemon::retain(Arc::clone(supervisor), cx);
-		}
-
-		let (initial_connection, lifecycle, account_login) =
-			compose_lifecycle(profile, bundled_daemon);
+		let (initial_connection, lifecycle, account_login) = compose_lifecycle(profile, launcher);
 		let bounds = Bounds::centered(None, gpui::size(gpui::px(1_248.0), gpui::px(840.0)), cx);
 		let window = cx
 			.open_window(main_window_options(bounds), move |window, cx| {
@@ -305,7 +295,7 @@ fn order_out_native_windows(background_only: bool) {
 
 fn compose_lifecycle(
 	profile: Result<ClientProfile, ClientFailure>,
-	bundled_daemon: Option<Arc<bundled_daemon::BundledDaemonSupervisor>>,
+	launcher: Option<bundled_daemon::BundledService>,
 ) -> (ConnectionView, Option<ClientLifecycle>, Option<Arc<AccountLoginController>>) {
 	let profile = match profile {
 		Ok(profile) => profile,
@@ -331,8 +321,8 @@ fn compose_lifecycle(
 
 	match ClientLifecycle::production(config) {
 		Ok(mut lifecycle) => {
-			if let Some(supervisor) = bundled_daemon {
-				lifecycle.supervise_app_owned_daemon(supervisor);
+			if let Some(launcher) = launcher {
+				lifecycle.set_service_launcher(launcher);
 			}
 
 			(lifecycle.view(), Some(lifecycle), Some(account_login))
