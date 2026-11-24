@@ -1929,6 +1929,14 @@ mod tests {
 			after.top() < before.top(),
 			"scrollbar must move overflowing archive rows: bar={bar:?}, before={before:?}, after={after:?}"
 		);
+		// Grab off-center, inside the generous hit target but outside the painted thumb.
+		visual.simulate_click(
+			gpui::point(bar.left() + gpui::px(1.), bar.center().y + gpui::px(5.)),
+			Default::default(),
+		);
+		visual.update(crate::ui_frame::draw_current_frame);
+		let held = visual.debug_bounds("archived-scroll-00").unwrap();
+		assert!((held.top() - after.top()).abs() < gpui::px(1.), "grabbing must not jump");
 		visual.simulate_click(
 			gpui::point(bar.center().x, bar.bottom() - gpui::px(1.)),
 			Default::default(),
