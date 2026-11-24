@@ -84,6 +84,8 @@ sources:
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_discovery_tests.rs
   - id: openwiki-source-4a57fba4bea69171318c6323
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_fork_tests.rs
+  - id: openwiki-source-88639e00ad23210f516d9c07
+    resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_goal_tests.rs
   - id: openwiki-source-053611cb863c8c6865cef2ca
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_hook_settings_tests.rs
   - id: openwiki-source-8d32d49a0bc31600300d9335
@@ -224,10 +226,10 @@ sources:
     resource: repo://scripts/macos/version_codex_source.py
   - id: openwiki-source-e201f60894c32a914dac99ee
     resource: repo://scripts/vnext/run_native_regression.py
-generated: { by: "codex", at: "2026-11-23T20:30:20.676Z" }
+generated: { by: "codex", at: "2026-11-24T20:19:06.413Z" }
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-23T20:30:20.676Z
+    at: 2026-11-24T20:19:06.413Z
 ---
 
 # Upstream integration acceptance boundaries
@@ -259,13 +261,15 @@ Read the development lock, [current source review](../../automations/upstream/cu
 
 The retained MCP fixture reads same-name registrations from two environments through the signed CLI and executor. The voice start fixture checks the unset V3 request, and the native preference fixtures check project and managed settings. The cold history fixture reads native turn boundaries and retained tool context before continuing the conversation. The [current qualification](../../automations/upstream/qualification.json) identifies the executions for the selected artifact.
 
+The compaction failure fixture checks that the accepted prompt appears once after a cold read and that the read sends no new inference request. The Goal fixture reopens the native session, reads the persisted Goal and checks that the provider received no inference request.
+
 The public reasoning fixture projects a summary from a loopback provider through the signed CLI. It reads the same summary after a cold restart and verifies that the provider received one inference request.
 
 Use the [Seatbelt launch fixture](../../crates/decodex-runtime/tests/native_qualification/seatbelt_launch.py) to check local command permissions in a disposable macOS home. It checks denial under read-only permissions and a successful write to the subtree granted by a named command-directory profile. The native command hook fixture checks the working directory and one execution of the approved command.
 
 The `installed_hook_settings_read_inherited_hooks_in_linked_worktree` fixture uses the retained Hook settings client with an exact signed CLI and a temporary Codex home. It creates a linked Git worktree and a regular `.codex` file at the primary checkout root. The native readback must include the inherited nested declaration with its exact source path and untrusted status. See [current qualification](../../automations/upstream/qualification.json#linked_worktree_hook_inventory).
 
-The prompt-edit socket test selects an approvals reviewer, reverts the last turn of a paginated conversation, and checks the reviewer and restored draft. It resolves relative media paths from the conversation’s working directory. The signed CLI runs with a fixed policy. A separate upstream test changes the reviewer allowlist while Codex replaces the thread runtime. See the [prompt-revert qualification](../../automations/upstream/qualification.json#prompt_revert).
+The prompt-edit socket test selects an approvals reviewer, reverts the last turn of a paginated conversation, and checks the reviewer and restored draft. It resolves relative media paths from the conversation’s working directory. The signed CLI runs with a fixed policy. The linked historical source test changed the reviewer allowlist during runtime replacement. Consult its recorded source revision when using that result. See the [prompt-revert qualification](../../automations/upstream/qualification.json#prompt_revert).
 
 The provider-refusal follow-up resolves [the former compatibility blocker](https://github.com/acg-box/decodex/issues/2575) through the supported native fork. The original cohort remains historical evidence; it is not a freshly rerun matrix. The runtime lock selects the fixed reviewed target after fresh affected native consumer and component checks. Earlier cohort results remain historical and are not counted as passes on a newer artifact. The current source-review record covers every commit through its fixed target. HumanCommand support is [user-deferred](https://github.com/acg-box/decodex/issues/2585), unsupported and unadvertised. Earlier worker-permission reload source tests retain their original source and helper limits. Read the current qualification for actual executions. Source tests are separate from signed production-artifact tests; no broad upstream suite is a daily gate.
 
