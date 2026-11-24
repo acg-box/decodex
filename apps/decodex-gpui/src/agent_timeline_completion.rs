@@ -217,7 +217,7 @@ pub(super) struct Closing {
 }
 impl RenderOnce for Closing {
 	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-		let progress = self.motion.progress(Instant::now(), ui_motion::reduced());
+		let progress = self.motion.progress(cx.background_executor().now(), ui_motion::reduced());
 		let height = self.motion.height.get().or(self.motion.height_limit);
 
 		frame_trace::row_arrival(self.position, "fold", progress, height.unwrap_or(0.));

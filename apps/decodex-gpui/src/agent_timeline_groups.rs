@@ -1328,11 +1328,11 @@ mod tests {
 		let initial = visual.debug_bounds("turn-process-finishing").unwrap().size.height;
 		assert!((initial - opened).abs() <= gpui::px(1.), "{opened:?} -> {initial:?}");
 		visual.update(crate::ui_frame::draw_frame);
-		thread::sleep(Duration::from_millis(90));
+		visual.executor().advance_clock(Duration::from_millis(90));
 		visual.update(crate::ui_frame::draw_frame);
 		let middle = visual.debug_bounds("turn-process-finishing").unwrap().size.height;
 		assert!(middle > gpui::px(0.) && middle < initial, "{initial:?} -> {middle:?}");
-		thread::sleep(Duration::from_millis(280));
+		visual.executor().advance_clock(Duration::from_millis(280));
 		visual.update(crate::ui_frame::draw_frame);
 		assert!(visual.debug_bounds("turn-process-finishing").is_none());
 		assert_eq!(
@@ -1424,7 +1424,7 @@ mod tests {
 
 		visual.update(crate::ui_frame::draw_frame);
 
-		thread::sleep(std::time::Duration::from_millis(90));
+		visual.executor().advance_clock(std::time::Duration::from_millis(90));
 
 		visual.update(crate::ui_frame::draw_frame);
 
@@ -1433,7 +1433,7 @@ mod tests {
 		assert!(middle > gpui::px(0.) && middle < initial, "{initial:?} -> {middle:?}");
 		assert!(visual.debug_bounds("archived-process-content").is_none());
 
-		thread::sleep(std::time::Duration::from_millis(300));
+		visual.executor().advance_clock(std::time::Duration::from_millis(300));
 
 		visual.update(crate::ui_frame::draw_frame);
 

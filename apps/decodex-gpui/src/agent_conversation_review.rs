@@ -433,6 +433,7 @@ mod tests {
 			assert!(top >= previous - gpui::px(1.), "reply bounced: {previous:?} -> {top:?}");
 			assert_eq!(visual.debug_bounds("composer-input-region").unwrap(), composer);
 			previous = top;
+			visual.executor().advance_clock(Duration::from_millis(40));
 			thread::sleep(Duration::from_millis(40));
 		}
 		assert!(saw_fold);
