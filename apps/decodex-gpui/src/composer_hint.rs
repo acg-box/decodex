@@ -44,10 +44,7 @@ fn suggestion_actions(label: &str, busy: bool, input: &Entity<ComposerInput>) ->
 		busy,
 		input,
 		ComposerEvent::AcceptSuggestion,
-		gpui::div()
-			.px(gpui::px(ui_theme::CONTROL_INSET))
-			.child(label.to_owned())
-			.into_any_element(),
+		label.to_owned().into_any_element(),
 	);
 	let refresh_icon = if busy {
 		ui_loading::progress("Generating another suggestion").into_any_element()

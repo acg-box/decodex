@@ -98,7 +98,7 @@ pub(crate) const COMPOSER_RADIUS: f32 = 14.0;
 pub(crate) const COMPOSER_TEXT_INSET: f32 = 9.0;
 pub(crate) const COMPOSER_TEXT_TOP_INSET: f32 = 5.0;
 pub(crate) const COMPOSER_TEXT_BOTTOM_INSET: f32 = 3.0;
-pub(crate) const COMPOSER_SUGGESTION_GAP: f32 = 10.0;
+pub(crate) const COMPOSER_SUGGESTION_GAP: f32 = 6.0;
 // A one-line editor and its toolbar keep the same footprint in read-only states.
 pub(crate) const COMPOSER_MIN_HEIGHT: f32 = BODY_LINE_HEIGHT
 	+ COMPOSER_TEXT_TOP_INSET

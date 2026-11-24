@@ -277,6 +277,7 @@ fn tab_accepts_prompt_suggestion_as_an_undoable_unsent_draft(cx: &mut TestAppCon
 		assert!((text.size.width - editor.size.width).abs() < gpui::px(1.));
 		let accept = visual.debug_bounds("composer-suggestion-accept").unwrap();
 		let refresh = visual.debug_bounds("composer-suggestion-refresh").unwrap();
+		assert_eq!(accept.size.width, refresh.size.width);
 		assert_eq!(refresh.center().y, accept.center().y);
 		let group = visual.debug_bounds("composer-suggestion-surface").unwrap();
 		assert_eq!((group.left(), group.right()), (accept.left(), refresh.right()));
