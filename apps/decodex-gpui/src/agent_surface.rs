@@ -1114,7 +1114,7 @@ impl AgentSurface {
 			epoch: self.command_epoch,
 			attachments: draft.as_ref().map(|_| self.attachments.clone()),
 			references: draft.as_ref().map(|_| self.task_references.clone()),
-			owner: self.composer_manager.clone().or_else(|| self.root_id()),
+			owner: self.visible_composer_owner(),
 			draft,
 		};
 		let message = retry.as_ref().map(|(_, message)| message.clone()).or_else(|| {
@@ -1313,7 +1313,7 @@ impl AgentSurface {
 			self.submission.pending = None;
 		}
 
-		let current_owner = self.composer_manager.clone().or_else(|| self.root_id());
+		let current_owner = self.visible_composer_owner();
 		let same_owner = current_owner == pending.owner
 			|| (pending.owner.is_none()
 				&& matches!(&result, Ok(AgentCommandResponse::Accepted { work_id }) if current_owner.as_deref()==Some(work_id.as_str())));
@@ -1713,7 +1713,7 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) {
 		let first_snapshot = self.snapshot.is_none();
-		let owner = self.composer_manager.clone().or_else(|| self.root_id());
+		let owner = self.visible_composer_owner();
 		let previous_selection = self.selected.clone();
 
 		if let Ok(AgentSnapshotResult::Available(snapshot)) = &result

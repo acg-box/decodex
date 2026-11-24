@@ -359,7 +359,7 @@ impl AgentSurface {
 			});
 
 		if is_manager {
-			let previous = self.composer_manager.clone().or_else(|| self.root_id());
+			let previous = self.visible_composer_owner();
 
 			if previous.as_deref() != Some(id) {
 				if let Some(previous) = previous {

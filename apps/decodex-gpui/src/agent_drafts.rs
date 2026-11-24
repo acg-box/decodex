@@ -74,6 +74,14 @@ struct Drafts {
 }
 
 impl AgentSurface {
+	pub(super) fn visible_composer_owner(&self) -> Option<String> {
+		self.composer_manager.clone().or_else(|| {
+			// Before the first explicit binding the visible input can belong to
+			// the root. After deletion its existing parked editor must be restored.
+			self.root_id().filter(|root| !self.draft_profiles.texts.contains_key(root))
+		})
+	}
+
 	pub(super) fn renew_assistant_draft_binding(&mut self, snapshot: &AgentSnapshotDto) {
 		let Some(owner) = &snapshot.assistant.agent_id else {
 			return;
@@ -202,11 +210,6 @@ impl AgentSurface {
 		self.workspace.new_conversation_permissions = restored.new_conversation_permissions;
 		self.composer_manager = restored.manager;
 
-		if self.workspace.new_conversation.is_some()
-			&& self.workspace.new_conversation == self.composer_manager
-		{
-			self.selected = self.composer_manager.clone();
-		}
 		if self.composer_manager.is_none() {
 			self.restore_creation_setup(restored.creation.as_ref(), cx);
 		}
