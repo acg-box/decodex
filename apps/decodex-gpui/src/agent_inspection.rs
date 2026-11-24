@@ -148,12 +148,16 @@ impl AgentSurface {
 				.items_center()
 				.gap_2()
 				.when_some(owner, |row, agent| {
+					let label = format!("Managed by {}", self.agent_conversation_label(agent));
 					row.child(
 						gpui::div()
+							.id("inspection-managed-by")
+							.role(gpui::Role::Label)
+							.aria_label(label.clone())
 							.min_w_0()
 							.flex_1()
 							.truncate()
-							.child(format!("Managed by {}", self.agent_conversation_label(agent))),
+							.child(label),
 					)
 				})
 				.child(action)
