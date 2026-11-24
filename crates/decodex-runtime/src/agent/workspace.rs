@@ -80,15 +80,10 @@ impl AgentCoordinator {
 		}
 		match row.pointer("/status/type").and_then(|s| s.as_str()) {
 			Some("notLoaded") => {
+				self.ensure_role_released(thread).await?;
 				let mut params = self.resume_observer_params(thread, true).await?;
 				params["cwd"] = json!(goal);
-				let response = self.client.thread_resume(params).await?;
-				if response.pointer("/thread/id") != Some(&json!(thread)) || response["cwd"] != goal
-				{
-					return Err(changed());
-				}
-				self.attach_native_thread_owner(thread).await?;
-				self.loaded_threads.insert(thread.to_owned());
+				self.resume_dispatch_thread(thread, params).await?;
 			},
 			Some("idle") => {
 				let guard = self.client.thread_settings_guard(thread).ok_or_else(changed)?;

@@ -28,26 +28,34 @@ impl AgentCoordinator {
 					params[field] = value.clone();
 				}
 			}
-			let revision = self.client.history_revision();
-			let response = self
-				.client
-				.thread_resume(params)
-				.await
-				.map_err(|error| super::resume_error(error, thread))?;
-
-			if !Self::hydrated_thread_matches(&response, thread) {
-				return Err(AgentError::Invalid("resumed thread settings are invalid".into()));
-			}
-
-			self.attach_native_thread_owner(thread).await?;
-
-			let last_turn = self.expect_usage_replay(thread, &response, revision).await;
-
-			self.store.validate_agent_usage_resume(thread.to_owned(), last_turn).await?;
-			self.loaded_threads.insert(thread.to_owned());
-			self.persist_task_settings(thread).await?;
+			self.resume_dispatch_thread(thread, params).await?;
 		}
+		Ok(())
+	}
 
+	/// Admit the same native session and its observed settings after every execution resume.
+	pub(super) async fn resume_dispatch_thread(
+		&mut self,
+		thread: &str,
+		params: Value,
+	) -> Result<(), AgentError> {
+		let expected_cwd = params.get("cwd").cloned();
+		let revision = self.client.history_revision();
+		let response = self
+			.client
+			.thread_resume(params)
+			.await
+			.map_err(|error| super::resume_error(error, thread))?;
+		if !Self::hydrated_thread_matches(&response, thread)
+			|| expected_cwd.is_some_and(|cwd| response["cwd"] != cwd)
+		{
+			return Err(AgentError::Invalid("resumed thread settings are invalid".into()));
+		}
+		self.attach_native_thread_owner(thread).await?;
+		let last_turn = self.expect_usage_replay(thread, &response, revision).await;
+		self.store.validate_agent_usage_resume(thread.to_owned(), last_turn).await?;
+		self.loaded_threads.insert(thread.to_owned());
+		self.persist_task_settings(thread).await?;
 		Ok(())
 	}
 
