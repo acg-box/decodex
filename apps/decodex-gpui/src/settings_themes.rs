@@ -14,7 +14,7 @@ use crate::{
 	ui_theme::{
 		self, ACCENT, CANVAS, COMPOSER_MATERIAL, CONTENT_MATERIAL, ColorScheme, ColorTheme,
 		HOVER_FILL, MESSAGE_MATERIAL, PRESSED_FILL, PRIMARY_FILL, SELECTED_BORDER, SELECTED_FILL,
-		SELECTED_HOVER_FILL, SIDEBAR_MATERIAL, TEXT, TEXT_MUTED,
+		SIDEBAR_MATERIAL, TEXT, TEXT_MUTED,
 	},
 };
 
@@ -46,7 +46,6 @@ impl SettingsSurface {
 			.w_full()
 			.flex_none()
 			.min_w_0()
-			.h(gpui::px(76.))
 			.p(gpui::px(2.))
 			.flex()
 			.flex_col()
@@ -54,23 +53,15 @@ impl SettingsSurface {
 			.rounded(gpui::px(8.))
 			.border_1()
 			.border_color(gpui::transparent_black())
-			.when(selected, |card| {
-				card.bg(ui_theme::rgba(SELECTED_FILL)).border_color(ui_theme::rgba(SELECTED_BORDER))
-			})
 			.text_size(gpui::px(11.5))
 			.line_height(gpui::px(15.))
 			.text_color(ui_theme::rgb(TEXT))
 			.cursor_pointer()
-			.hover(move |row| {
-				row.bg(ui_theme::rgba(if selected { SELECTED_HOVER_FILL } else { HOVER_FILL }))
-			})
-			.active(move |row| {
-				row.bg(ui_theme::rgba(if selected { SELECTED_HOVER_FILL } else { PRESSED_FILL }))
-			})
+			.hover(|row| row.bg(ui_theme::rgba(HOVER_FILL)))
+			.active(|row| row.bg(ui_theme::rgba(PRESSED_FILL)))
 			.focus_visible(|row| row.border_color(ui_theme::rgb(ACCENT)))
 			.child(
 				gpui::div()
-					.relative()
 					.w_full()
 					.h(gpui::px(36.))
 					.flex_none()
@@ -82,26 +73,22 @@ impl SettingsSurface {
 					} else {
 						0xffffff20
 					}))
-					.child(preview(theme))
-					.when(selected, |preview| {
-						preview.child(
-							gpui::div()
-								.absolute()
-								.top(gpui::px(2.))
-								.right(gpui::px(5.))
-								.text_size(gpui::px(10.))
-								.text_color(ui_theme::rgb(ACCENT))
-								.child("✓"),
-						)
-					}),
+					.child(preview(theme)),
 			)
 			.child(
 				gpui::div()
-					.w_full()
+					.flex()
+					.items_center()
+					.gap(gpui::px(4.))
 					.min_w_0()
 					.px(gpui::px(3.))
 					.font_weight(FontWeight::MEDIUM)
-					.child(theme.name()),
+					.child(gpui::div().min_w_0().truncate().child(theme.name()))
+					.when(selected, |label| {
+						label.child(
+							gpui::div().flex_none().text_color(ui_theme::rgb(ACCENT)).child("✓"),
+						)
+					}),
 			)
 			.on_click(cx.listener(move |_, _, _, cx| theme.select(cx)))
 			.on_key_down(cx.listener(move |_, event: &KeyDownEvent, _, cx| {
@@ -208,9 +195,13 @@ mod tests {
 			let card = bounds.scale(window.scale_factor());
 			let label = gpui::point(bounds.center().x, bounds.bottom() - gpui::px(5.))
 				.scale(window.scale_factor());
-			let highlight = ui_theme::rgba(SELECTED_FILL).into();
+			assert!(!quads.iter().any(|q| q.bounds.contains(&label)
+				&& q.background == ui_theme::rgba(SELECTED_FILL).into()));
+			let outline = gpui::Hsla::from(ui_theme::rgba(SELECTED_BORDER));
 			assert_eq!(
-				quads.iter().any(|q| q.bounds.contains(&label) && q.background == highlight),
+				quads
+					.iter()
+					.any(|q| card.contains(&q.bounds.center()) && q.border_color == outline),
 				selected,
 				"{id}"
 			);
