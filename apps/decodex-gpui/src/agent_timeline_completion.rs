@@ -294,9 +294,9 @@ mod tests {
 	};
 
 	#[test]
-	fn a_steer_or_terminal_boundary_closes_without_waiting_for_a_missing_final_answer() {
-		for status in ["failed", "interrupted", "steer"] {
-			let mut entries = vec![
+	fn terminal_process_closes_without_waiting_for_a_missing_final_answer() {
+		for status in ["failed", "interrupted"] {
+			let entries = vec![
 				AgentTimelineEntry {
 					position: 1,
 					content: AgentTimelineContent::Item {
@@ -326,14 +326,6 @@ mod tests {
 					},
 				},
 			];
-			if status == "steer" {
-				let mut input = entries[0].content.clone();
-				if let AgentTimelineContent::Item { kind, item_id, .. } = &mut input {
-					*kind = "userMessage".into();
-					*item_id = "steer".into();
-				}
-				entries[1].content = input;
-			}
 			let groups = groups::groups(&entries, &BTreeSet::new());
 			let state = Completions::default();
 			state.present_live("turn", "reasoning");

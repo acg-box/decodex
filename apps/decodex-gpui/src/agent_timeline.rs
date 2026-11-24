@@ -840,6 +840,7 @@ impl AgentSurface {
 						archived && !self.is_located_item(&entry.content),
 						cx,
 					);
+					let body = self.anchored_native_history_entry(work, entry, body);
 					if self.is_revealed_history_item(entry) {
 						self.native_scroll_row(work, entry, body, cx)
 					} else {
@@ -1081,6 +1082,24 @@ impl AgentSurface {
 						.into_any_element()
 				};
 
+				// A collapsed steer shares the header's scroll position until its
+				// original user bubble is mounted again.
+				let body = if group.expanded {
+					body
+				} else {
+					group
+						.indices
+						.iter()
+						.filter_map(|i| {
+							let entry = &self.timeline.native.entries[*i];
+							matches!(&entry.content, AgentTimelineContent::Item { kind, .. }
+							if matches!(kind.as_str(), "userMessage" | "agentInput"))
+							.then_some(entry)
+						})
+						.fold(body, |body, entry| {
+							self.anchored_native_history_entry(work, entry, body)
+						})
+				};
 				panel = panel.child(
 					gpui::div()
 						.mt(gpui::px(gap - ROW_GAP))
@@ -1589,6 +1608,24 @@ impl Timeline {
 			})
 		})
 		.collect()
+	}
+
+	pub(super) fn reveal_history_mark(&mut self, mark: &super::HistoryKey) {
+		let super::HistoryKey::Native { thread, position, kind, id } = mark else { return };
+		if self.binding.as_ref().is_none_or(|binding| binding.thread != *thread) {
+			return;
+		}
+		let Some(index) =
+			self.entries.iter().position(|entry| key(entry) == (*position, *kind, id.as_str()))
+		else {
+			return;
+		};
+		if let Some(group) = groups::with_observations(&self.entries, &self.expanded_turns, &[])
+			.into_iter()
+			.find(|group| group.indices.contains(&index))
+		{
+			self.expanded_turns.insert(group.turn);
+		}
 	}
 
 	pub(super) fn history_input_for_turn(&self, turn: &str) -> Option<&AgentTimelineEntry> {
