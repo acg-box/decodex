@@ -2806,6 +2806,7 @@ struct WorkspaceView {
 	archives: archive::Catalog,
 	registration: Option<thread_registration::Panel>,
 	portfolio_mode: bool,
+	focused_work: bool,
 	work_detail: Option<String>,
 	work_evidence: Option<WorkPortfolio>,
 	work_read_error: Option<String>,

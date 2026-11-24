@@ -34,13 +34,16 @@ impl AgentSurface {
 			return list.child("Connect to read Work.").into_any_element();
 		};
 
-		if let Some(id) = &self.workspace.work_detail {
+		if self.workspace.focused_work
+			&& let Some(id) = &self.workspace.work_detail
+		{
 			let back = mcp_forms::mcp_button(
 				"all-portfolio-work".into(),
 				"All Work".into(),
 				false,
 				cx,
 				|s, cx| {
+					s.workspace.focused_work = false;
 					s.workspace.work_detail = None;
 					cx.notify();
 				},
@@ -478,10 +481,7 @@ impl AgentSurface {
 
 impl AgentSurface {
 	pub(crate) fn open_portfolio_work(&mut self, id: String, cx: &mut Context<Self>) {
-		self.restore_location(
-			&crate::shell::agent_surface::AgentLocation::Work { project: None, detail: Some(id) },
-			cx,
-		);
+		self.restore_location(&crate::shell::agent_surface::AgentLocation::WorkDetail(id), cx);
 	}
 
 	pub(super) fn load_work_detail(&mut self, id: String, cx: &mut Context<Self>) {
