@@ -22,8 +22,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/bundled_daemon.rs
   - id: openwiki-source-c1d5f763b821a11957a8c33b
     resource: repo://apps/decodex-gpui/src/client_lifecycle.rs
-  - id: openwiki-source-e8596cc5aac62aa16bde932b
-    resource: repo://apps/decodex-gpui/src/component_runtime.rs
+  - id: openwiki-source-37f9a508a2aebf9382d3b23f
+    resource: repo://apps/decodex-gpui/src/main.rs
   - id: openwiki-source-0813b2e35e2133631c0aa4db
     resource: repo://apps/decodex-gpui/src/settings_components.rs
   - id: openwiki-source-37be5bb3dc64279420e57b31
@@ -70,12 +70,12 @@ sources:
     resource: repo://crates/decodex-components/src/ragflow_service.rs
   - id: openwiki-source-9ecfe8c96199e765ca2b4e1b
     resource: repo://crates/decodex-components/src/ragflow.rs
-  - id: openwiki-source-6230c010baca677fa60c32c1
-    resource: repo://crates/decodex-protocol/src/client.rs
   - id: openwiki-source-caeefdea0805519b59a469aa
     resource: repo://crates/decodex-protocol/src/desktop_drafts.rs
   - id: openwiki-source-cc0439b23243c3697ba49199
     resource: repo://crates/decodex-protocol/src/lib.rs
+  - id: openwiki-source-41458db3fd08aac938b4d078
+    resource: repo://crates/decodex-protocol/src/retained_session.rs
   - id: openwiki-source-268229e2b9f21dae93c32513
     resource: repo://crates/decodex-protocol/src/wire.rs
   - id: openwiki-source-1f19769e3cb97a2389e92f82
@@ -140,8 +140,12 @@ sources:
     resource: repo://crates/decodex-runtime/src/application.rs
   - id: openwiki-source-3edc2f094826ee56ddec6b73
     resource: repo://crates/decodex-runtime/src/ragflow.rs
+  - id: openwiki-source-a958837c2596362a3517c745
+    resource: repo://crates/decodex-runtime/src/websocket.rs
   - id: openwiki-source-6085af9603cb7ac0ff3ef1cf
     resource: repo://crates/decodex-runtime/src/work_portfolio.rs
+  - id: openwiki-source-b1a8e98eb39febad19f64bda
+    resource: repo://crates/decodex-runtime/tests/native_qualification/dotenv_startup.py
   - id: openwiki-source-07c9cc033899826079f8efb5
     resource: repo://crates/decodex-runtime/tests/native_qualification/large_catalog.py
   - id: openwiki-source-88b81a215b1bac061dad80ec
@@ -178,10 +182,10 @@ sources:
     resource: repo://scripts/macos/stage_decodex_app.sh
   - id: openwiki-source-76081c1a47ca8cf32593de34
     resource: repo://scripts/macos/test_decodex_app_stage.sh
-generated: { by: "codex", at: "2026-11-19T20:35:23.841Z" }
+generated: { by: "codex", at: "2026-11-24T05:23:02.594Z" }
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-21T20:41:08.948Z
+    at: 2026-11-24T05:23:02.594Z
 ---
 
 # Runtime Architecture
@@ -211,7 +215,7 @@ flowchart LR
 
 `Decodex.app` is the macOS GUI. It contains `decodex-gpui`, signed `Contents/Helpers/decodex`, a native-client FFI library, and `libDecodexMenuBar.dylib`. The menu bar and attached glass controls belong to the same app process. They are not extra apps or state owners.
 
-For local profiles, the app supervises its bundled helper with `serve --parent-fd`. The local service boundary prevents a second owner from replacing an existing service. Typed clients reject incompatible protocol versions instead of opening product storage directly. Closing the main window differs from quitting: the former preserves the running app; quitting retires only its owned service.
+For a local profile, the desktop client connects to the existing service. If the local endpoint is unavailable, it starts the bundled helper with `serve` in its own process group. The service takes the existing endpoint lock before it opens product state, so concurrent launches share one service. A client timeout or disconnection triggers a reconnect. Quit saves drafts and exits the client. The service continues active turns and keeps pending requests. Reopening the app reads current progress through the same protocol. An incompatible client reports the protocol mismatch.
 
 The GUI installer links the user CLI to the bundled helper. The standalone service installer supplies a regular executable instead. These are alternative installation modes.
 
@@ -317,7 +321,7 @@ The per-server cached-catalog switch saves `mcp_servers.<quoted-server>.startup_
 
 ## Components and app updates
 
-`decodex-components` owns one per-user component store, package verification and explicit cache recovery. The GUI and service embed the same runtime requirement. Every local bundled App startup prepares that component on the existing background worker, including when its files are already present. The owned service waits for successful preparation; this wait does not consume connection retry attempts. A damaged existing runtime fails verification and requires an explicit reinstallation. Settings > Components reads the shared preparation state and shows Install for a missing runtime or Reinstall for an existing runtime. These actions stay disabled while preparation is active. Optional EGM installation, update, reinstallation and removal use the native Codex plugin lifecycle. Sparkle owns the Decodex application update flow. The app version and Check for updates action are in Settings > General; component updates remain in Components.
+`decodex-components` owns one per-user component store, package verification and explicit cache recovery. The GUI and service embed the same runtime requirement. The desktop client prepares the pinned component before it starts a missing service. It connects directly to an available service. The worker and Settings share the preparation state. Preparation polling does not consume connection retries. A damaged existing runtime fails verification and requires an explicit reinstallation. Settings > Components reads the shared preparation state and shows Install for a missing runtime or Reinstall for an existing runtime. These actions stay disabled while preparation is active. Optional EGM installation, update, reinstallation and removal use the native Codex plugin lifecycle. Sparkle owns the Decodex application update flow. The app version and Check for updates action are in Settings > General; component updates remain in Components.
 
 Assistant is built in and always available from the sidebar. Its first use publishes an idle Agent and its role in one SQLite transaction. Components has no Assistant Enable control. The optional RAGFlow component shares lifecycle buttons, version metadata, collapsed details and inline feedback with the other components. It exposes Install, Update and Uninstall. Service connection is automatic; model settings use the component details.
 
@@ -357,9 +361,9 @@ Production staging selects a separate official Release requirement. Release pinn
 
 ## Protocol and safety
 
-The development app uses one current state contract: SQLite schema 61, desktop draft format 12 and local protocol 4.9. Execution settings carry one exact `service_tier`; per-turn commands require explicit override intent. There is no old boolean speed mirror or format upgrade chain. Existing personal development data can be converted directly while the app is stopped, after a private backup; this is an operator action outside the application.
+The development app uses one current state contract: SQLite schema 62, desktop draft format 12 and local protocol 4.12. Execution settings carry one exact `service_tier`; per-turn commands require explicit override intent. There is no old boolean speed mirror or format upgrade chain. Existing personal development data can be converted directly after stopping the service and backing up its data; this is an operator action outside the application.
 
-Clients use same-UID local transport and exact protocol/artifact compatibility. Protocol 4.9 exposes current Project, Agent, Work, Guardian and attached-branch operations. An incompatible client fails explicitly; there is no parallel alias rollout. Publication-instance receipts remain enabled for this generation, including reconnect and idempotent command recovery. Credentials do not enter normal product projections. Revisions and stable command identities guard mutations. An unknown outcome requires authoritative readback, not blind retry.
+Clients use same-UID local transport and exact protocol/artifact compatibility. Protocol 4.12 exposes current Project, Agent, Work, Guardian and attached-branch operations. An incompatible client fails explicitly; there is no parallel alias rollout. Publication-instance receipts remain enabled for this generation, including reconnect and idempotent command recovery. Credentials do not enter normal product projections. Revisions and stable command identities guard mutations. An unknown outcome requires authoritative readback, not blind retry.
 
 Diagnostics covers Decodex product storage, local transport and integration failures. The standalone Codex startup-configuration check, its local query and its dedicated qualification helper are retired. Codex owns its app-server self-diagnostics. Ordinary error and warning presentation and user-requested conversation Markdown export remain supported. This retirement does not qualify an installed protocol 4.0 application against the current service.
 
