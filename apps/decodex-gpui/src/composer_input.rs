@@ -1386,6 +1386,8 @@ mod multiline_tests {
 		input.update(visual, |input, cx| input.set_placeholder_hint(Some("Tab".into()), false, cx));
 		visual.update(crate::ui_frame::draw_current_frame);
 		let accept = visual.debug_bounds("composer-suggestion-accept").unwrap();
+		let keycap = visual.debug_bounds("composer-suggestion-keycap").unwrap();
+		let refresh = visual.debug_bounds("composer-suggestion-refresh").unwrap();
 		input.read_with(visual, |input, _| {
 			let bounds = input.last_bounds.unwrap();
 			let lines = input.last_layout.as_ref().unwrap();
@@ -1401,7 +1403,8 @@ mod multiline_tests {
 			);
 			let tail_end = bounds.left() + tail.unwrapped_layout.width;
 			assert!(
-				(accept.left() - tail_end - gpui::px(ui_theme::CONTROL_GAP)).abs() <= gpui::px(1.)
+				keycap.left() - tail_end > refresh.center().x - keycap.right(),
+				"the keycap should sit closer to the refresh icon than to the suggestion text"
 			);
 		});
 	}
