@@ -29,7 +29,10 @@ pub(super) fn process_turn(entry: &AgentTimelineEntry) -> Option<&str> {
 					kind.as_str(),
 					"reasoning" | "plan" | "functionCallOutput" | "sleep"
 				) || (kind == "agentMessage" && phase.as_deref() == Some("commentary"))
-					|| (kind != "agentMessage" && kind != "agentInput" && activity.is_some())) =>
+					|| (!matches!(
+						kind.as_str(),
+						"agentMessage" | "userMessage" | "agentInput"
+					) && activity.is_some())) =>
 			Some(turn_id),
 		_ => None,
 	}
@@ -52,7 +55,7 @@ pub(super) struct Group {
 	pub indices: Vec<usize>,
 	pub expanded: bool,
 	pub first_index: usize,
-	/// Final answer, or the terminal boundary when the turn failed or was interrupted.
+	/// The preserved final answer, terminal boundary, or next input that closed this segment.
 	pub final_index: usize,
 	pub count: usize,
 	pub observations: Vec<decodex_protocol::AgentActivityDto>,
@@ -262,15 +265,21 @@ fn tool_batch_label(count: usize) -> String {
 
 /// Empty finished messages have no content to render. Process records stay visible.
 pub(super) fn hidden_items(entries: &[AgentTimelineEntry]) -> BTreeSet<usize> {
-	let completed: BTreeSet<_> = entries
-		.iter()
-		.filter_map(|entry| match &entry.content {
-			AgentTimelineContent::TurnBoundary { turn_id, completed: true, .. } =>
-				Some(turn_id.as_str()),
-			_ => None,
-		})
-		.collect();
-
+	let mut closed_through = BTreeMap::<&str, usize>::new();
+	for (index, entry) in entries.iter().enumerate() {
+		match &entry.content {
+			AgentTimelineContent::TurnBoundary { turn_id, completed: true, .. } => {
+				closed_through.insert(turn_id, usize::MAX);
+			},
+			AgentTimelineContent::Item { turn_id, kind, .. }
+				if matches!(kind.as_str(), "userMessage" | "agentInput") =>
+			{
+				let through = closed_through.entry(turn_id).or_default();
+				*through = (*through).max(index);
+			},
+			_ => {},
+		}
+	}
 	entries
 		.iter()
 		.enumerate()
@@ -280,13 +289,12 @@ pub(super) fn hidden_items(entries: &[AgentTimelineEntry]) -> BTreeSet<usize> {
 				kind,
 				text,
 				truncated: false,
-
 				attachments,
 				..
 			} if matches!(kind.as_str(), "reasoning" | "agentMessage")
 				&& text.trim().is_empty()
 				&& attachments.is_empty()
-				&& completed.contains(turn_id.as_str()) =>
+				&& closed_through.get(turn_id.as_str()).is_some_and(|through| index < *through) =>
 				Some(index),
 			_ => None,
 		})
@@ -302,16 +310,12 @@ pub(super) fn groups(entries: &[AgentTimelineEntry], expanded: &BTreeSet<String>
 
 fn responses(entries: &[AgentTimelineEntry], expanded: &BTreeSet<String>) -> Vec<Group> {
 	let empty = hidden_items(entries);
-	let finished: BTreeSet<_> = entries
+	let terminal: BTreeMap<_, _> = entries
 		.iter()
 		.filter_map(|entry| match &entry.content {
 			AgentTimelineContent::TurnBoundary {
-				turn_id,
-				completed: true,
-				status,
-				error: None,
-				..
-			} if status.as_deref() == Some("completed") => Some(turn_id.as_str()),
+				turn_id, completed: true, status, error, ..
+			} => Some((turn_id.as_str(), status.as_deref() == Some("completed") && error.is_none())),
 			_ => None,
 		})
 		.collect();
@@ -331,32 +335,20 @@ fn responses(entries: &[AgentTimelineEntry], expanded: &BTreeSet<String>) -> Vec
 	}
 
 	starts.push(entries.len());
-	// A command can complete after later user turns. Its first observed turn
-	// identity owns the row; the append position must not move it to a later reply.
+	// Keep late items with their native turn. A new input in that same turn
+	// starts a separate segment, even when the earlier input was on another page.
 	let mut owners = BTreeMap::new();
-	let mut input_owners = BTreeMap::new();
-	let mut repeated_inputs = BTreeSet::new();
-	for (owner, range) in starts.windows(2).enumerate() {
-		for entry in &entries[range[0]..range[1]] {
-			if let AgentTimelineContent::Item { turn_id, kind, .. } = &entry.content {
-				owners.entry(turn_id).or_insert(owner);
-				if matches!(kind.as_str(), "userMessage" | "agentInput")
-					&& input_owners.insert(turn_id, owner).is_some_and(|old| old != owner)
-				{
-					repeated_inputs.insert(turn_id);
-				}
-			}
-		}
-	}
+	let mut steers = BTreeMap::new();
 	let mut responses = vec![Vec::new(); starts.len() - 1];
 	for (range_owner, range) in starts.windows(2).enumerate() {
 		for (index, entry) in entries.iter().enumerate().take(range[1]).skip(range[0]) {
-			if let AgentTimelineContent::Item { turn_id, .. } = &entry.content
-				&& let Some(&owner) = owners.get(turn_id)
-			{
-				// Several inputs inside one native turn still delimit separate responses.
-				responses[if repeated_inputs.contains(turn_id) { range_owner } else { owner }]
-					.push(index);
+			if let AgentTimelineContent::Item { turn_id, kind, item_id, .. } = &entry.content {
+				let owner = owners.entry(turn_id.as_str()).or_insert(range_owner);
+				if matches!(kind.as_str(), "userMessage" | "agentInput") && *owner != range_owner {
+					steers.insert(*owner, (index, turn_id, item_id));
+					*owner = range_owner;
+				}
+				responses[*owner].push(index);
 			}
 		}
 	}
@@ -364,19 +356,29 @@ fn responses(entries: &[AgentTimelineEntry], expanded: &BTreeSet<String>) -> Vec
 	let mut result = Vec::new();
 
 	for (owner, response) in responses.into_iter().enumerate() {
-		let final_index = response.iter().copied().rev().find(|index| {
-			matches!(&entries[*index].content,
+		let steer = steers.get(&owner);
+		let settled = |turn: &String| {
+			terminal.get(turn.as_str()) == Some(&true)
+				|| steer.is_some_and(|(_, steered_turn, _)| turn == *steered_turn)
+		};
+		let final_index = response
+			.iter()
+			.copied()
+			.rev()
+			.find(|index| {
+				matches!(&entries[*index].content,
 				AgentTimelineContent::Item { turn_id, kind, phase, text, .. }
-				if finished.contains(turn_id.as_str()) && kind == "agentMessage"
+				if settled(turn_id) && kind == "agentMessage"
 					&& matches!(phase.as_deref(), None | Some("final_answer")) && !text.trim().is_empty())
-		});
+			})
+			.or_else(|| steer.map(|(index, _, _)| *index));
 		let Some(final_index) = final_index else { continue };
 		let mut indices = Vec::new();
 		let turns = response
 			.iter()
 			.filter_map(|index| match &entries[*index].content {
 				AgentTimelineContent::Item { turn_id, .. }
-					if finished.contains(turn_id.as_str()) =>
+					if terminal.get(turn_id.as_str()) == Some(&true) =>
 					Some(turn_id.clone()),
 				_ => None,
 			})
@@ -390,12 +392,17 @@ fn responses(entries: &[AgentTimelineEntry], expanded: &BTreeSet<String>) -> Vec
 			if let AgentTimelineContent::Item {
 				turn_id, kind, phase, attachments, activity, ..
 			} = &entries[index].content
-				&& finished.contains(turn_id.as_str())
+				&& settled(turn_id)
+				&& (terminal.contains_key(turn_id.as_str())
+					|| !activity
+						.as_ref()
+						.is_some_and(|a| matches!(a.status.as_str(), "running" | "inProgress")))
 				&& attachments.is_empty()
 				&& (matches!(kind.as_str(), "reasoning" | "plan" | "functionCallOutput" | "sleep")
 					|| (kind == "agentMessage"
 						&& matches!(phase.as_deref(), None | Some("commentary" | "final_answer")))
-					|| (kind != "agentInput" && activity.is_some()))
+					|| (!matches!(kind.as_str(), "userMessage" | "agentInput")
+						&& activity.is_some()))
 			{
 				indices.push(index);
 			}
@@ -405,10 +412,18 @@ fn responses(entries: &[AgentTimelineEntry], expanded: &BTreeSet<String>) -> Vec
 		let AgentTimelineContent::Item { turn_id, .. } = &entries[first_index].content else {
 			unreachable!("process contains items");
 		};
+		let (turn, turns) = if let Some((_, turn, input)) = steer {
+			// A steer closes this segment, not the whole native turn. Its next
+			// input is a stable identity across pagination and live refreshes.
+			let key = format!("before-input:{}", serde_json::json!([turn, input]));
+			(key.clone(), BTreeSet::from([key]))
+		} else {
+			(turn_id.clone(), turns)
+		};
 
 		result.push(Group {
 			input_index: input_at(entries, starts[owner]),
-			turn: turn_id.clone(),
+			turn,
 			expanded: !expanded.is_disjoint(&turns),
 			turns,
 			first_index: first_index.min(final_index),
@@ -419,10 +434,8 @@ fn responses(entries: &[AgentTimelineEntry], expanded: &BTreeSet<String>) -> Vec
 		});
 	}
 
-	let input_owners = owners
-		.iter()
-		.map(|(turn, owner)| (turn.as_str(), input_at(entries, starts[*owner])))
-		.collect();
+	let input_owners =
+		owners.iter().map(|(turn, owner)| (*turn, input_at(entries, starts[*owner]))).collect();
 	result.extend(failed_groups(entries, &empty, expanded, &input_owners));
 	result.sort_by_key(|group| group.first_index);
 	result
@@ -446,36 +459,19 @@ fn failed_groups(
 		if !matches!(status.as_deref(), Some("failed" | "interrupted")) {
 			continue;
 		}
+		let input = input_owners.get(turn_id.as_str()).copied().flatten();
 		let indices: Vec<_> = entries
 			.iter()
 			.enumerate()
-			.filter_map(|(index, entry)| match &entry.content {
-				AgentTimelineContent::Item {
-					turn_id: owner,
-					kind,
-					phase,
-					attachments,
-					activity,
-					..
-				} if owner == turn_id
-					&& attachments.is_empty()
-					&& !empty.contains(&index)
-					&& (matches!(
-						kind.as_str(),
-						"reasoning" | "plan" | "functionCallOutput" | "sleep"
-					) || (kind == "agentMessage"
-						&& phase.as_deref() == Some("commentary"))
-						|| (kind != "agentInput"
-							&& kind != "agentMessage"
-							&& activity.is_some())) =>
-					Some(index),
-				_ => None,
+			.skip(input.unwrap_or(0))
+			.filter_map(|(index, entry)| {
+				(process_turn(entry) == Some(turn_id) && !empty.contains(&index)).then_some(index)
 			})
 			.collect();
-		if !indices.is_empty() || input_owners.get(turn_id.as_str()).copied().flatten().is_some() {
+		if !indices.is_empty() || input.is_some() {
 			let first_index = indices.first().copied().unwrap_or(terminal);
 			result.push(Group {
-				input_index: input_owners.get(turn_id.as_str()).copied().flatten(),
+				input_index: input,
 				turn: turn_id.clone(),
 				turns: BTreeSet::from([turn_id.clone()]),
 				expanded: expanded.contains(turn_id),
@@ -996,27 +992,88 @@ mod tests {
 		assert_eq!(groups::groups(&entries, &BTreeSet::new())[0].indices, vec![1]);
 	}
 	#[test]
-	fn a_new_user_input_does_not_absorb_the_previous_unanswered_input() {
-		for input_kind in ["userMessage", "agentInput"] {
-			let entries = vec![
+	fn a_steer_folds_only_settled_steps_and_keeps_each_segment_independently_expandable() {
+		for input in ["userMessage", "agentInput"] {
+			let mut entries = vec![
 				message(0, "userMessage", None),
 				message(1, "reasoning", None),
-				message(2, input_kind, None),
-				message(3, "reasoning", None),
-				message(4, "agentMessage", Some("final_answer")),
-				completed("completed"),
+				message(2, "agentMessage", Some("commentary")),
+				message(3, "commandExecution", None),
+				message(4, input, None),
+				message(5, "reasoning", None),
 			];
-			let result = groups::groups(&entries, &BTreeSet::new());
-
+			if let AgentTimelineContent::Item { activity, .. } = &mut entries[3].content {
+				*activity = Some(
+					serde_json::from_value(serde_json::json!({
+						"turn_id":"turn", "item_id":"3", "kind":"commandExecution",
+						"status":"inProgress", "label":"Read file", "detail":"", "duration_ms":null
+					}))
+					.unwrap(),
+				);
+			}
+			assert!(groups::groups(&entries[..4], &BTreeSet::new()).is_empty());
+			let live = groups::groups(&entries, &BTreeSet::new());
+			assert_eq!(live.len(), 1);
 			assert_eq!(
-				result.iter().map(|g| g.first_index).collect::<BTreeSet<_>>(),
-				BTreeSet::from([3])
+				live[0].indices,
+				[1, 2],
+				"keep the active command and post-steer tail visible"
 			);
-			assert!(result.iter().all(|g| g.count == 1 && g.turn == "turn"));
-			assert_eq!(groups::process_label(result[0].count), "1 step");
-			assert_eq!(groups::process_label(1), "1 step");
-			assert_eq!(result.iter().map(|g| g.indices.clone()).collect::<Vec<_>>(), vec![vec![3]]);
+			assert_eq!((live[0].input_index, live[0].final_index), (Some(0), 4));
+			let prefix_key = live[0].turn.clone();
+			let cropped = groups::groups(&entries[1..], &BTreeSet::from([prefix_key.clone()]));
+			assert_eq!(
+				cropped[0].turn, prefix_key,
+				"paging in the prompt must preserve disclosure state"
+			);
+			assert!(cropped[0].expanded);
+
+			entries.push(message(6, "agentMessage", Some("final_answer")));
+			for status in ["completed", "failed", "interrupted"] {
+				entries.push(completed(status));
+				let expanded = BTreeSet::from([prefix_key.clone()]);
+				let settled = groups::groups(&entries, &expanded);
+				assert_eq!(settled.len(), 2);
+				assert_eq!(settled[0].indices, [1, 2, 3]);
+				assert_eq!(settled[1].indices, [5]);
+				assert_eq!(settled[0].turn, prefix_key);
+				assert!(settled[0].expanded && !settled[1].expanded);
+				assert_eq!(settled[1].input_index, Some(4));
+				assert_eq!(settled[1].final_index, if status == "completed" { 6 } else { 7 });
+				let last = groups::groups(&entries, &BTreeSet::from([settled[1].turn.clone()]));
+				assert!(!last[0].expanded && last[1].expanded);
+				entries.pop();
+			}
 		}
+	}
+
+	#[test]
+	fn consecutive_steers_do_not_create_empty_headers_or_absorb_later_threads() {
+		let mut blank = message(1, "reasoning", None);
+		if let AgentTimelineContent::Item { text, .. } = &mut blank.content {
+			text.clear();
+		}
+		let entries = [
+			message(0, "userMessage", None),
+			blank,
+			message(2, "userMessage", None),
+			message(3, "agentInput", None),
+			message(4, "reasoning", None),
+			message(5, "userMessage", None),
+			message(6, "reasoning", None),
+			in_turn(message(7, "userMessage", None), "other"),
+			in_turn(message(8, "reasoning", None), "other"),
+			message(9, "functionCallOutput", None),
+			message(10, "agentMessage", Some("final_answer")),
+			completed("completed"),
+		];
+		assert_eq!(groups::hidden_items(&entries[..7]), BTreeSet::from([1]));
+		let groups = groups::groups(&entries, &BTreeSet::new());
+		assert_eq!(
+			groups.iter().map(|g| g.indices.as_slice()).collect::<Vec<_>>(),
+			[&[4][..], &[6, 9][..]]
+		);
+		assert_eq!(groups[1].input_index, Some(5));
 	}
 
 	fn in_turn(mut entry: AgentTimelineEntry, turn: &str) -> AgentTimelineEntry {

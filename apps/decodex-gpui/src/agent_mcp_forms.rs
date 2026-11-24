@@ -158,95 +158,211 @@ impl AgentSurface {
 		&self,
 		event: i64,
 		value: &Value,
+		large_request: Option<&str>,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
 		if value["_meta"]["codex_approval_kind"] == "tool_suggestion" {
-			return self.installation_panel(event, value, cx);
+			let install = self.installation_panel(event, value, cx);
+			return gpui::div()
+				.child(install)
+				.children(large_request.map(|raw| self.large_request_panel(event, raw, cx)))
+				.into_any_element();
 		}
-
-		let mut panel = gpui::div()
-			.id("mcp-form-panel")
-			.flex()
-			.flex_col()
-			.gap_2()
-			.child(format!("Request from {}", value["serverName"].as_str().unwrap_or("MCP server")))
-			.child(agent_surface::selectable_prose(
-				format!("mcp-message-{event}"),
-				self.request_summary(
-					value["message"]
-						.as_str()
-						.or_else(|| value["description"].as_str())
-						.unwrap_or("")
-						.to_owned(),
-				),
-			));
-
-		if let Some(account) = mcp_account_label(value) {
-			panel = panel
-				.child(gpui::div().debug_selector(|| "mcp-account-context".into()).child(account));
-		}
-		if let Some(params) = value
-			.pointer("/_meta/tool_params_display")
-			.or_else(|| value.pointer("/_meta/tool_params"))
-		{
-			panel = panel.child(
-				self.request_summary(serde_json::to_string_pretty(params).unwrap_or_default()),
-			);
-		}
-
-		panel = self.mcp_verification_link(panel, event, value, cx);
-
 		let fields =
 			if matches!(value["mode"].as_str(), Some("form" | "openai/form" | "openaiForm")) {
 				decodex_protocol::mcp_request_fields(value)
 			} else {
 				Err("This request needs another verification method.".into())
 			};
+		let empty = fields.as_ref().is_ok_and(Vec::is_empty);
+		let tool = empty && value["_meta"]["codex_approval_kind"] == "mcp_tool_call";
+		let meta = &value["_meta"];
+		let source = meta["connector_name"]
+			.as_str()
+			.or(value["serverName"].as_str())
+			.unwrap_or("MCP server");
+		let message = value["message"].as_str().or(value["description"].as_str()).unwrap_or("");
+		let title = meta["tool_title"].as_str().filter(|title| !title.trim().is_empty());
+		let standard_prompt = meta["tool_name"]
+			.as_str()
+			.is_some_and(|name| message == format!("Allow {source} to run tool \"{name}\"?"));
+		let mut panel = gpui::div()
+			.id("mcp-form-panel")
+			.debug_selector(|| "mcp-form-panel".into())
+			.w_full()
+			.min_w_0()
+			.flex()
+			.flex_col()
+			.gap_2()
+			.p_3()
+			.rounded_md()
+			.border_1()
+			.border_color(ui_theme::rgba(ui_theme::PANEL_DIVIDER))
+			.child(agent_surface::muted(format!("Request from {source}")));
+		if tool && let Some(title) = title {
+			panel = panel.child(
+				gpui::div()
+					.text_size(gpui::px(13.))
+					.font_weight(gpui::FontWeight::SEMIBOLD)
+					.child(title.to_owned()),
+			);
+		}
+		let explanation = if tool && title.is_some() && standard_prompt {
+			meta["tool_description"].as_str().unwrap_or("")
+		} else {
+			message
+		};
+		if !explanation.is_empty() {
+			let text = if self.request_reader.details_open {
+				self.request_summary(explanation.into())
+			} else if tool && standard_prompt {
+				preview_text(explanation.trim().lines().next().unwrap_or(""), 180)
+			} else {
+				self.request_summary(explanation.into())
+			};
+			panel =
+				panel.child(agent_surface::selectable_prose(format!("mcp-message-{event}"), text));
+		}
 
+		panel = self.mcp_argument_details(panel, event, value, tool, large_request, cx);
+		panel = self.mcp_verification_link(panel, event, value, cx);
+		let mut actions = gpui::div().flex().flex_wrap().items_center().gap_2();
 		match fields {
 			Ok(fields) => {
-				let empty = fields.is_empty();
-
 				for field in fields {
 					panel = panel.child(self.mcp_field_row(event, field, cx));
 				}
-
-				if empty {
-					for (scope, label) in
-						[("session", "Allow for this session"), ("always", "Always allow")]
-					{
-						let response = serde_json::json!({"action":"accept","content":null,"_meta":{"persist":scope}});
-
-						if decodex_protocol::validate_mcp_response(value, &response).is_ok() {
-							panel = panel.child(mcp_button(
-								format!("mcp-persist-{scope}"),
-								label.into(),
-								false,
-								cx,
-								move |s, cx| s.submit_mcp_form_with_scope(event, Some(scope), cx),
-							));
-						}
-					}
-				}
-
-				panel = panel.child(mcp_button(
-					"mcp-submit".into(),
-					"Submit response".into(),
-					false,
+				actions = actions.child(request_button(
+					"mcp-submit",
+					if empty { "Allow once" } else { "Submit response" },
+					true,
 					cx,
 					move |s, cx| s.submit_mcp_form(event, cx),
 				));
 			},
-			Err(message) =>
-				if value["mode"] != "url" {
-					panel = panel.child(agent_surface::muted(message));
-				},
+			Err(message) if value["mode"] != "url" => {
+				panel = panel.child(agent_surface::muted(message));
+			},
+			_ => {},
 		}
+		panel = panel.child(self.mcp_decisions(actions, event, value, tool, empty, cx));
+		panel
+			.on_action(cx.listener(move |s, _: &SubmitComposer, _, cx| {
+				s.submit_mcp_form(event, cx);
+				cx.stop_propagation();
+			}))
+			.into_any_element()
+	}
 
-		for (action, label) in [("decline", "Decline"), ("cancel", "Cancel")] {
-			panel = panel.child(mcp_button(
-				format!("mcp-{action}"),
-				label.into(),
+	fn mcp_argument_details(
+		&self,
+		mut panel: Stateful<Div>,
+		event: i64,
+		value: &Value,
+		tool: bool,
+		large_request: Option<&str>,
+		cx: &mut Context<Self>,
+	) -> Stateful<Div> {
+		let meta = &value["_meta"];
+		let params = display_params(meta);
+		let account = mcp_account_label(value);
+		let expanded = self.request_reader.details_open;
+		let full_fields = expanded && large_request.is_none();
+		let mut rows = params.iter().enumerate().collect::<Vec<_>>();
+		if !full_fields {
+			rows.sort_by_key(|(_, (key, _, _))| technical_id(key));
+			rows.truncate(3);
+		}
+		let shown = rows.len();
+		for (index, (_, label, v)) in rows {
+			let preview = match *v {
+				Value::String(s) if !full_fields => preview_text(s, 180),
+				Value::String(s) => s.clone(),
+				Value::Array(a) if !full_fields => format!("{} items", a.len()),
+				Value::Object(o) if !full_fields => format!("{} fields", o.len()),
+				v => serde_json::to_string_pretty(v).unwrap_or_default(),
+			};
+
+			panel = panel.child(
+				gpui::div()
+					.w_full()
+					.min_w_0()
+					.flex()
+					.gap_2()
+					.items_start()
+					.child(
+						gpui::div()
+							.w(gpui::px(96.))
+							.flex_none()
+							.child(agent_surface::muted(parameter_label(label))),
+					)
+					.child(gpui::div().flex_1().min_w_0().child(agent_surface::selectable_prose(
+						format!("mcp-arg-{event}-{index}"),
+						preview,
+					))),
+			);
+		}
+		let extra = shown < params.len()
+			|| params.iter().any(|(_, _, v)| {
+				v.is_object()
+					|| v.is_array()
+					|| v.as_str().is_some_and(|s| s.char_indices().nth(180).is_some())
+			});
+		let tool_name = tool.then(|| meta["tool_name"].as_str()).flatten();
+		if expanded && let Some(name) = tool_name {
+			panel = panel.child(agent_surface::selectable_prose(
+				format!("mcp-tool-{event}"),
+				format!("Tool: {name}"),
+			));
+		}
+		if let Some(account) = &account
+			&& (!tool || expanded)
+		{
+			panel = panel.child(
+				gpui::div()
+					.debug_selector(|| "mcp-account-context".into())
+					.child(agent_surface::muted(account.clone())),
+			);
+		}
+		if large_request.is_some()
+			|| extra
+			|| tool_name.is_some()
+			|| (tool && account.is_some())
+			|| expanded
+		{
+			let detail = request_disclosure(
+				"mcp-request-details",
+				if expanded { "Hide details" } else { "Show details" },
+				expanded,
+				cx,
+				move |s, cx| {
+					if s.mcp_request_is_current(event) {
+						s.request_reader.details_open = !s.request_reader.details_open;
+						cx.notify();
+					}
+				},
+			);
+			panel = panel.child(gpui::div().flex().child(detail));
+			if expanded && let Some(raw) = large_request {
+				panel = panel.child(self.large_request_panel(event, raw, cx));
+			}
+		}
+		panel
+	}
+
+	fn mcp_decisions(
+		&self,
+		mut actions: Div,
+		event: i64,
+		value: &Value,
+		tool: bool,
+		empty: bool,
+		cx: &mut Context<Self>,
+	) -> Div {
+		let cancel = |action: &'static str, label: &'static str, cx: &mut Context<Self>| {
+			request_button(
+				if action == "cancel" { "mcp-cancel" } else { "mcp-decline" },
+				label,
 				false,
 				cx,
 				move |s, cx| {
@@ -258,15 +374,68 @@ impl AgentSurface {
 						);
 					}
 				},
+			)
+		};
+		actions = actions.child(if tool {
+			cancel("cancel", "Cancel tool call", cx)
+		} else {
+			cancel("decline", "Decline", cx)
+		});
+		let scopes = [("session", "Allow for this session"), ("always", "Always allow")]
+			.into_iter()
+			.filter(|(scope, _)| {
+				empty
+					&& decodex_protocol::validate_mcp_response(
+						value,
+						&serde_json::json!({"action":"accept","content":null,"_meta":{"persist":scope}}),
+					)
+					.is_ok()
+			})
+			.collect::<Vec<_>>();
+		if !scopes.is_empty() {
+			let more = self.request_reader.options_open;
+			actions = actions.child(gpui::div().flex_1()).child(request_disclosure(
+				"mcp-more-options",
+				if more { "Fewer options" } else { "More options" },
+				more,
+				cx,
+				move |s, cx| {
+					if s.mcp_request_is_current(event) {
+						s.request_reader.options_open = !s.request_reader.options_open;
+						cx.notify();
+					}
+				},
 			));
+			let mut group = gpui::div().flex().flex_col().gap_2().child(actions);
+			if more {
+				let mut options = gpui::div()
+					.flex()
+					.flex_wrap()
+					.items_center()
+					.gap_2()
+					.pt_2()
+					.border_t_1()
+					.border_color(ui_theme::rgba(ui_theme::PANEL_DIVIDER));
+				for (scope, label) in scopes {
+					options = options.child(request_button(
+						format!("mcp-persist-{scope}"),
+						label,
+						false,
+						cx,
+						move |s, cx| s.submit_mcp_form_with_scope(event, Some(scope), cx),
+					));
+				}
+				if !tool {
+					options = options.child(cancel("cancel", "Cancel request", cx));
+				}
+				group = group.child(options);
+			}
+			return group;
 		}
-
-		panel
-			.on_action(cx.listener(move |s, _: &SubmitComposer, _, cx| {
-				s.submit_mcp_form(event, cx);
-				cx.stop_propagation();
-			}))
-			.into_any_element()
+		if !tool {
+			actions = actions.child(cancel("cancel", "Cancel request", cx));
+		}
+		actions
 	}
 
 	fn mcp_verification_link(
@@ -393,6 +562,131 @@ impl AgentSurface {
 	}
 }
 
+/// Native display parameters can omit or redact values from the raw arguments.
+fn display_params(meta: &Value) -> Vec<(&str, &str, &Value)> {
+	let display = meta["tool_params_display"]
+		.as_array()
+		.into_iter()
+		.flatten()
+		.filter_map(|row| {
+			let key = row["name"].as_str()?.trim();
+			let label = row["display_name"]
+				.as_str()
+				.map(str::trim)
+				.filter(|s| !s.is_empty())
+				.unwrap_or(key);
+			if key.is_empty() {
+				return None;
+			}
+			Some((key, label, row.get("value")?))
+		})
+		.collect::<Vec<_>>();
+	if !display.is_empty() {
+		return display;
+	}
+	meta["tool_params"]
+		.as_object()
+		.into_iter()
+		.flatten()
+		.map(|(k, v)| (k.as_str(), k.as_str(), v))
+		.collect()
+}
+fn technical_id(key: &str) -> bool {
+	key == "id" || key.ends_with("Id") || key.ends_with("ID") || key.ends_with("_id")
+}
+fn parameter_label(s: &str) -> String {
+	if s.contains(' ') {
+		return s.into();
+	}
+	let mut text = String::new();
+	let mut lower = false;
+	for ch in s.chars() {
+		if ch == '_' || ch == '-' {
+			text.push(' ');
+			lower = false;
+			continue;
+		}
+		if lower && ch.is_uppercase() {
+			text.push(' ');
+		}
+		if text.is_empty() {
+			text.extend(ch.to_uppercase());
+		} else {
+			text.push(ch);
+		}
+		lower = ch.is_lowercase();
+	}
+	text.split_whitespace()
+		.map(|w| if w.eq_ignore_ascii_case("id") { "ID" } else { w })
+		.collect::<Vec<_>>()
+		.join(" ")
+}
+fn preview_text(text: &str, limit: usize) -> String {
+	let mut chars = text.chars();
+	let mut out = chars.by_ref().take(limit).collect::<String>();
+	if chars.next().is_some() {
+		out.push('…');
+	}
+	out
+}
+fn request_button(
+	id: impl Into<SharedString>,
+	label: &'static str,
+	primary: bool,
+	cx: &mut Context<AgentSurface>,
+	action: impl Fn(&mut AgentSurface, &mut Context<AgentSurface>) + 'static,
+) -> AnyElement {
+	let id = id.into();
+	let button = if primary {
+		ui_theme::settings_primary_button(id, label)
+	} else {
+		ui_theme::settings_button(id, label)
+	};
+	on_activate(button, cx, action)
+}
+
+fn request_disclosure(
+	id: &'static str,
+	label: &'static str,
+	expanded: bool,
+	cx: &mut Context<AgentSurface>,
+	action: impl Fn(&mut AgentSurface, &mut Context<AgentSurface>) + 'static,
+) -> AnyElement {
+	let button = ui_theme::settings_button_base(id, label)
+		.cursor_pointer()
+		.gap_1()
+		.border_color(ui_theme::rgba(0))
+		.bg(ui_theme::rgba(0))
+		.text_color(ui_theme::rgb(ui_theme::TEXT_MUTED))
+		.hover(|s| {
+			s.bg(ui_theme::rgba(ui_theme::HOVER_FILL)).text_color(ui_theme::rgb(ui_theme::TEXT))
+		})
+		.focus_visible(|s| s.border_color(ui_theme::rgb(ui_theme::ACCENT)))
+		.child(crate::shell::workspace_symbols::process_chevron(
+			SharedString::from(format!("{id}-chevron")),
+			expanded,
+		));
+	on_activate(button, cx, action)
+}
+
+fn on_activate(
+	button: Stateful<Div>,
+	cx: &mut Context<AgentSurface>,
+	action: impl Fn(&mut AgentSurface, &mut Context<AgentSurface>) + 'static,
+) -> AnyElement {
+	let action = Rc::new(action);
+	let click = action.clone();
+	button
+		.on_click(cx.listener(move |s, _, _, cx| click(s, cx)))
+		.on_key_down(cx.listener(move |s, key: &KeyDownEvent, _, cx| {
+			if !key.is_held && matches!(key.keystroke.key.as_str(), "enter" | "space") {
+				cx.stop_propagation();
+				action(s, cx);
+			}
+		}))
+		.into_any_element()
+}
+
 pub(super) fn mcp_button(
 	id: String,
 	label: String,
@@ -400,10 +694,7 @@ pub(super) fn mcp_button(
 	cx: &mut Context<AgentSurface>,
 	action: impl Fn(&mut AgentSurface, &mut Context<AgentSurface>) + 'static,
 ) -> AnyElement {
-	let action = Rc::new(action);
-	let click = action.clone();
-
-	gpui::div()
+	let button = gpui::div()
 		.id(SharedString::from(id.clone()))
 		.debug_selector(move || id)
 		.role(Role::Button)
@@ -413,16 +704,8 @@ pub(super) fn mcp_button(
 		.rounded(gpui::px(5.0))
 		.bg(ui_theme::rgba(if selected { 0xffffff18 } else { 0xffffff06 }))
 		.cursor_pointer()
-		.on_click(cx.listener(move |s, _, _, cx| click(s, cx)))
-		.on_key_down(cx.listener(move |s, key: &KeyDownEvent, _, cx| {
-			if ["enter", "space"].contains(&key.keystroke.key.as_str()) {
-				cx.stop_propagation();
-
-				action(s, cx);
-			}
-		}))
-		.child(label)
-		.into_any_element()
+		.child(label);
+	on_activate(button, cx, action)
 }
 
 fn mcp_account_label(value: &Value) -> Option<String> {
@@ -448,6 +731,22 @@ mod tests {
 		AgentWorkStatusDto,
 	};
 	use decodex_protocol::{AgentPendingEventDto, AgentWorkKindDto};
+
+	#[test]
+	fn tool_arguments_prefer_native_display_values() {
+		let metadata = serde_json::json!({"tool_params":{"jobId":"raw-id","unlisted":"private"},"tool_params_display":[{"name":"jobId","display_name":"Job ID","value":"masked"}]});
+		assert_eq!(
+			mcp_forms::display_params(&metadata),
+			vec![("jobId", "Job ID", &serde_json::json!("masked"))]
+		);
+		let raw = serde_json::json!({"tool_params":{"jobId":"raw-id"}});
+		assert_eq!(
+			mcp_forms::display_params(&raw),
+			vec![("jobId", "jobId", &serde_json::json!("raw-id"))]
+		);
+		assert_eq!(mcp_forms::parameter_label("conversationId"), "Conversation ID");
+		assert_eq!(mcp_forms::preview_text("中文摘要", 3), "中文摘…");
+	}
 
 	#[test]
 	fn account_label_uses_only_native_apps_metadata() {
@@ -506,7 +805,7 @@ connection_initializing: false,
                 pending_events:vec![AgentPendingEventDto { id:7, source_event_id:"approval".into(), work_item_id:"root".into(),event_kind:"user_input_pending".into(),created_at_micros:1,delivery_claimed:false }]
             })));
 
-            let request=AgentRequestResult::Available {event_id:7,work_id:"root".into(),method:"mcpServer/elicitation/request".into(),request_json:decodex_protocol::AgentRequestText::new(serde_json::json!({"mode":"form","serverName":"codex_apps","message":"Allow this tool?","requestedSchema":{"type":"object","properties":{}},"_meta":{"persist":["session"],"connector_id":"calendar","link_id":"work"}}).to_string()).unwrap()};
+            let request=AgentRequestResult::Available {event_id:7,work_id:"root".into(),method:"mcpServer/elicitation/request".into(),request_json:decodex_protocol::AgentRequestText::new(serde_json::json!({"mode":"form","serverName":"codex_apps","message":"Allow this tool?","requestedSchema":{"type":"object","properties":{}},"_meta":{"persist":["session"],"codex_approval_kind":"mcp_tool_call","tool_name":"calendar.create","connector_name":"Calendar","connector_id":"calendar","link_id":"work","tool_params_display":[{"name":"subject","display_name":"Subject","value":"Design review"}]}}).to_string()).unwrap()};
 
             s.prepare_mcp_inputs(&request,cx);
 
@@ -528,12 +827,19 @@ connection_initializing: false,
 		});
 
 		assert!(visual.debug_bounds("mcp-submit").is_some(), "form submit must render");
-		assert!(
-			visual.debug_bounds("mcp-account-context").is_some(),
-			"show account before settings read"
-		);
+		assert!(visual.debug_bounds("mcp-cancel").is_some());
+		assert!(visual.debug_bounds("mcp-decline").is_none());
+		assert!(visual.debug_bounds("mcp-account-context").is_none());
+		let details = visual.debug_bounds("mcp-request-details").expect("tool details");
+		visual.simulate_click(details.center(), gpui::Modifiers::default());
+		visual.update(|window, cx| window.draw(cx).clear(cx));
+		assert!(visual.debug_bounds("mcp-account-context").is_some());
 		assert!(visual.debug_bounds("mcp-persist-always").is_none());
 
+		assert!(visual.debug_bounds("mcp-persist-session").is_none());
+		let more = visual.debug_bounds("mcp-more-options").expect("permission options");
+		visual.simulate_click(more.center(), gpui::Modifiers::default());
+		visual.update(|window, cx| window.draw(cx).clear(cx));
 		let bounds = visual.debug_bounds("mcp-persist-session").expect("offered session action");
 
 		visual.simulate_click(bounds.center(), gpui::Modifiers::default());

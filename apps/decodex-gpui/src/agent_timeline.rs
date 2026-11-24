@@ -873,6 +873,35 @@ impl AgentSurface {
 			.collect()
 	}
 
+	/// Native text items can exist before their first public text arrives.
+	fn empty_native_text_row(&self, work: &AgentWorkItemDto, entry: &AgentTimelineEntry) -> bool {
+		let AgentTimelineContent::Item {
+			turn_id,
+			item_id,
+			kind,
+			text,
+			attachments,
+			truncated: false,
+			activity: None,
+			..
+		} = &entry.content
+		else {
+			return false;
+		};
+		if !matches!(kind.as_str(), "reasoning" | "agentMessage")
+			|| !text.trim().is_empty()
+			|| !attachments.is_empty()
+		{
+			return false;
+		}
+		let displayed = self.find_retained_text(turn_id, item_id).or_else(|| {
+			self.native_item_draft(work, kind, turn_id, item_id)
+				.map(|draft| (draft.text.as_str(), draft.truncated))
+		});
+		displayed.is_none_or(|(text, truncated)| text.trim().is_empty() && !truncated)
+			&& (kind != "agentMessage" || self.async_question_item_text(work, item_id).is_none())
+	}
+
 	fn append_native_history_rows(
 		&self,
 		mut panel: Div,
@@ -931,7 +960,6 @@ impl AgentSurface {
 		});
 		let (voice_headers, voice_hidden) = Self::voice_group_indices(&voice_groups);
 		let voice_tail_turns = history::tail_flush_turns(&self.timeline.native.entries);
-		let hidden_items = groups::hidden_items(&self.timeline.native.entries);
 		let replied_turns = self.replied_native_turns();
 		let mut hidden = Vec::new();
 		let mut previous = None;
@@ -976,7 +1004,7 @@ impl AgentSurface {
 			}
 
 			if voice_hidden.contains(&index)
-				|| hidden_items.contains(&index)
+				|| self.empty_native_text_row(work, entry)
 				|| matches!(
 					&entry.content,
 					AgentTimelineContent::TurnBoundary { completed: false, .. }

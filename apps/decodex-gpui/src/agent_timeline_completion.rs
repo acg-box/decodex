@@ -15,7 +15,7 @@ use super::super::response_metrics::FooterPresentation;
 use crate::{
 	frame_trace,
 	shell::agent_surface::native_timeline::{
-		AgentTimelineEntry, ItemKey,
+		AgentTimelineContent, AgentTimelineEntry, ItemKey,
 		groups::{Group, HEADER_HEIGHT},
 		motion::ToolBatch,
 	},
@@ -76,7 +76,11 @@ impl Completions {
 				.collect::<BTreeMap<_, _>>();
 
 			if !outgoing.is_empty() {
-				let ready = if let Some(key) = ItemKey::for_entry(&entries[group.final_index]) {
+				let ready = if let AgentTimelineContent::Item { turn_id, item_id, kind, .. } =
+					&entries[group.final_index].content
+					&& kind == "agentMessage"
+				{
+					let key = ItemKey::new(turn_id, item_id);
 					state.outputs.entry(key).or_default().ready.clone()
 				} else {
 					Rc::new(Cell::new(true))
@@ -290,9 +294,9 @@ mod tests {
 	};
 
 	#[test]
-	fn terminal_process_closes_without_waiting_for_a_missing_final_answer() {
-		for status in ["failed", "interrupted"] {
-			let entries = vec![
+	fn a_steer_or_terminal_boundary_closes_without_waiting_for_a_missing_final_answer() {
+		for status in ["failed", "interrupted", "steer"] {
+			let mut entries = vec![
 				AgentTimelineEntry {
 					position: 1,
 					content: AgentTimelineContent::Item {
@@ -322,6 +326,14 @@ mod tests {
 					},
 				},
 			];
+			if status == "steer" {
+				let mut input = entries[0].content.clone();
+				if let AgentTimelineContent::Item { kind, item_id, .. } = &mut input {
+					*kind = "userMessage".into();
+					*item_id = "steer".into();
+				}
+				entries[1].content = input;
+			}
 			let groups = groups::groups(&entries, &BTreeSet::new());
 			let state = Completions::default();
 			state.present_live("turn", "reasoning");

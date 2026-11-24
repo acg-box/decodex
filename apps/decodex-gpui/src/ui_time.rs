@@ -1,5 +1,14 @@
 //! Shared relative ages, elapsed durations and local timestamps for desktop surfaces.
 
+/// Display the observed elapsed time for one native tool or activity.
+pub(crate) fn activity_elapsed(ms: u64) -> String {
+	match ms {
+		0 => "<1ms".into(),
+		1..1_000 => format!("{ms}ms"),
+		_ => format!("{:.1}s", ms as f64 / 1_000.),
+	}
+}
+
 pub(crate) fn duration(ms: u64) -> String {
 	if ms >= 86_400_000 {
 		format!("{}d {}h", ms / 86_400_000, ms % 86_400_000 / 3_600_000)
@@ -72,6 +81,13 @@ pub(crate) fn timestamp(micros: i64) -> String {
 
 #[cfg(test)]
 mod tests {
+	#[test]
+	fn native_activities_share_elapsed_time_precision() {
+		for (ms, expected) in [(0, "<1ms"), (620, "620ms"), (3_012, "3.0s"), (398_397, "398.4s")] {
+			assert_eq!(super::activity_elapsed(ms), expected);
+		}
+	}
+
 	#[test]
 	fn duration_units_stay_compact_and_keep_missing_distinct_from_zero() {
 		for (ms, expected) in [

@@ -30,10 +30,17 @@ pub(super) struct RequestReader {
 	revision: u64,
 	offset: usize,
 	starts: Vec<usize>,
+	pub(super) details_open: bool,
+	pub(super) options_open: bool,
 }
 impl RequestReader {
 	fn reset(&mut self, event: i64) {
-		*self = Self { event, revision: self.revision.wrapping_add(1), offset: 0, starts: vec![0] };
+		*self = Self {
+			event,
+			revision: self.revision.wrapping_add(1),
+			starts: vec![0],
+			..Default::default()
+		};
 	}
 
 	fn navigate(&mut self, event: i64, revision: u64, from: usize, to: usize) {
@@ -164,13 +171,12 @@ impl AgentSurface {
 		let value: Value = serde_json::from_str(request_json.as_str()).unwrap_or_default();
 
 		if method == "mcpServer/elicitation/request" {
-			return if large {
-				self.large_request_panel(*event_id, request_json.as_str(), cx)
-					.child(self.mcp_form_panel(*event_id, &value, cx))
-					.into_any_element()
-			} else {
-				self.mcp_form_panel(*event_id, &value, cx)
-			};
+			return self.mcp_form_panel(
+				*event_id,
+				&value,
+				large.then_some(request_json.as_str()),
+				cx,
+			);
 		}
 
 		let mut panel = gpui::div()
@@ -235,7 +241,12 @@ impl AgentSurface {
 		panel.into_any_element()
 	}
 
-	fn large_request_panel(&self, event: i64, text: &str, cx: &mut Context<Self>) -> Div {
+	pub(super) fn large_request_panel(
+		&self,
+		event: i64,
+		text: &str,
+		cx: &mut Context<Self>,
+	) -> Div {
 		let offset = self.request_reader.offset.min(text.len());
 		let mut end = offset.saturating_add(8_192).min(text.len());
 

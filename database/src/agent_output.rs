@@ -484,9 +484,28 @@ impl SqliteStore {
 		let items = serde_json::to_string(&items).expect("serializable identities");
 
 		self.run(move |connection| {
-			connection.prepare("SELECT json_extract(requested.value,'$[0]'),json_extract(requested.value,'$[1]'),json_extract(e.payload,'$.duration_ms') FROM json_each(?3) requested JOIN agent_inbox_events e ON e.source_event_id=json_array('activity',?1,json_extract(requested.value,'$[0]'),json_extract(requested.value,'$[1]'),'completed') JOIN agent_work_items w ON w.id=e.work_item_id WHERE w.id=?1 AND w.codex_thread_id=?2 AND json_type(e.payload,'$.duration_ms')='integer' AND json_extract(e.payload,'$.duration_ms')>=0")
-				.map_err(error::sqlite_error)?.query_map(rusqlite::params![work,thread,items], |row| Ok((row.get(0)?,row.get(1)?,row.get::<_, i64>(2)? as u64)))
-				.map_err(error::sqlite_error)?.collect::<Result<Vec<_>,_>>().map_err(|error| error::sqlite_error(error).into())
+			let mut statement = connection.prepare(
+				"WITH requested(turn_id,item_id) AS (
+					SELECT json_extract(value,'$[0]'),json_extract(value,'$[1]') FROM json_each(?3)
+				)
+				SELECT r.turn_id,r.item_id,e.payload,s.payload
+				FROM requested r
+				JOIN agent_inbox_events e ON e.source_event_id=json_array('activity',?1,r.turn_id,r.item_id,'completed')
+				JOIN agent_work_items w ON w.id=e.work_item_id AND w.id=?1 AND w.codex_thread_id=?2
+				LEFT JOIN agent_inbox_events s ON s.source_event_id=json_array('activity',?1,r.turn_id,r.item_id,'started')"
+			).map_err(error::sqlite_error)?;
+			let rows = statement.query_map(rusqlite::params![work,thread,items], |row| {
+				Ok((row.get::<_, String>(0)?,row.get::<_, String>(1)?,row.get::<_, String>(2)?,row.get::<_,Option<String>>(3)?))
+			}).map_err(error::sqlite_error)?;
+			let mut result = Vec::new();
+			for row in rows {
+				let (turn,item,payload,start) = row.map_err(error::sqlite_error)?;
+				if let Ok(value) = serde_json::from_str::<Value>(&payload)
+					&& let Some(duration) = elapsed(&value, native_timestamp(start.as_deref())) {
+					result.push((turn,item,duration));
+				}
+			}
+			Ok(result)
 		}).await
 	}
 
@@ -635,8 +654,21 @@ pub(crate) fn retain_partial_output(
 	Ok(())
 }
 
-// Use the native lifecycle clock, never receipt arrival time. Keep the original
-// receipts immutable and leave old or incomplete histories without an estimate.
+fn native_timestamp(payload: Option<&str>) -> Option<u64> {
+	serde_json::from_str::<Value>(payload?).ok()?["native_timestamp_ms"].as_u64()
+}
+
+fn elapsed(value: &Value, start: Option<u64>) -> Option<u64> {
+	decodex_core::activity_elapsed_ms(
+		value["kind"].as_str().unwrap_or_default(),
+		value["status"].as_str().unwrap_or_default(),
+		value["duration_ms"].as_u64(),
+		start,
+		value["native_timestamp_ms"].as_u64(),
+	)
+}
+
+// Match native lifecycle receipts by their complete immutable source identity.
 fn activity_duration(
 	tx: &Transaction<'_>,
 	work: &str,
@@ -644,37 +676,66 @@ fn activity_duration(
 	item: &str,
 	payload: String,
 ) -> Result<String, StoreError> {
-	let Ok(mut value) = serde_json::from_str::<Value>(&payload) else {
-		return Ok(payload);
-	};
-	let Some(end) = value["native_timestamp_ms"].as_u64() else {
-		return Ok(payload);
-	};
-
-	if value["duration_ms"].as_u64().is_some() {
-		return Ok(payload);
+	let Ok(mut value) = serde_json::from_str::<Value>(&payload) else { return Ok(payload) };
+	if repair_duration(tx, work, turn, item, &mut value)? {
+		Ok(value.to_string())
+	} else {
+		Ok(payload)
 	}
+}
 
-	let source = serde_json::json!(["activity", work, turn, item, "started"]).to_string();
-	let start: Option<String> = tx
-		.query_row(
-			"SELECT payload FROM agent_inbox_events WHERE source_event_id=?1",
-			rusqlite::params![source],
-			|row| row.get(0),
-		)
-		.optional()
-		.map_err(error::sqlite_error)?;
-	let start = start
-		.and_then(|payload| serde_json::from_str::<Value>(&payload).ok())
-		.and_then(|value| value["native_timestamp_ms"].as_u64());
-
-	if let Some(duration) = start.and_then(|start| end.checked_sub(start)) {
-		value["duration_ms"] = serde_json::json!(duration);
-
-		return Ok(value.to_string());
+fn repair_duration(
+	tx: &Transaction<'_>,
+	work: &str,
+	turn: &str,
+	item: &str,
+	value: &mut Value,
+) -> Result<bool, StoreError> {
+	let reported = value["duration_ms"].as_u64();
+	if elapsed(value, None).is_some() {
+		return Ok(false);
 	}
+	let start = if value["native_timestamp_ms"].as_u64().is_some() {
+		let source = serde_json::json!(["activity", work, turn, item, "started"]).to_string();
+		let payload: Option<String> = tx
+			.query_row(
+				"SELECT payload FROM agent_inbox_events WHERE source_event_id=?1",
+				rusqlite::params![source],
+				|row| row.get(0),
+			)
+			.optional()
+			.map_err(error::sqlite_error)?;
+		native_timestamp(payload.as_deref())
+	} else {
+		None
+	};
+	let resolved = elapsed(value, start);
+	if resolved == reported {
+		return Ok(false);
+	}
+	value["duration_ms"] = serde_json::json!(resolved);
+	Ok(true)
+}
 
-	Ok(payload)
+pub(super) fn project_transcript_durations(
+	tx: &Transaction<'_>,
+	events: &mut [crate::agent::AgentInboxEvent],
+) -> Result<(), StoreError> {
+	for event in events.iter_mut().filter(|event| event.event_kind == "activity_completed") {
+		let Ok(mut value) = serde_json::from_str::<Value>(&event.payload) else { continue };
+		if elapsed(&value, None).is_some() {
+			continue;
+		}
+		let Some((turn, item)) =
+			event.delivered_turn_id.as_deref().zip(value["item_id"].as_str().map(str::to_owned))
+		else {
+			continue;
+		};
+		if repair_duration(tx, &event.work_item_id, turn, &item, &mut value)? {
+			event.payload = value.to_string();
+		}
+	}
+	Ok(())
 }
 
 fn insert_warning(

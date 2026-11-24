@@ -1131,6 +1131,87 @@ mod tests {
 	}
 
 	#[gpui::test]
+	fn current_turn_commentary_stays_next_to_work_status(cx: &mut gpui::TestAppContext) {
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		visual.simulate_resize(gpui::size(gpui::px(865.), gpui::px(780.)));
+		surface.update(visual, |s, cx| {
+			long_response(s, cx);
+			let work = s
+				.snapshot
+				.as_mut()
+				.unwrap()
+				.work_items
+				.iter_mut()
+				.find(|work| work.id == "agent")
+				.unwrap();
+			work.dispatch_state = decodex_protocol::AgentDispatchStateDto::Running;
+			work.active_turn_id = Some("turn".into());
+			s.timeline.native.entries.pop();
+			let template = s.timeline.native.entries[0].clone();
+			let comment =
+				"正在检查界面更新后的布局，确认文字能够自然换行，并且阅读位置稳定。".repeat(3);
+			for (id, item_kind, body) in [
+				("comment", "agentMessage", comment.as_str()),
+				("reason-1", "reasoning", ""),
+				("empty-message", "agentMessage", ""),
+				("reason-2", "reasoning", ""),
+			] {
+				let mut entry = template.clone();
+				entry.position = s.timeline.native.entries.len() as u64;
+				let decodex_protocol::AgentTimelineContent::Item {
+					item_id, kind, phase, text, ..
+				} = &mut entry.content
+				else {
+					unreachable!()
+				};
+				*item_id = id.into();
+				*kind = item_kind.into();
+				*phase = (item_kind == "agentMessage").then(|| "commentary".into());
+				*text = body.into();
+				s.timeline.native.entries.push(entry);
+			}
+		});
+		visual.update(crate::ui_frame::draw_frame);
+		thread::sleep(std::time::Duration::from_millis(260));
+		for _ in 0..4 {
+			visual.update(crate::ui_frame::draw_frame);
+		}
+		let text = visual
+			.debug_bounds(r#"["output","agent","native-thread","turn","comment"]-0"#)
+			.unwrap();
+		let status = visual.debug_bounds("pixel-work-status").unwrap();
+		let gap = status.top() - text.bottom();
+		assert!(
+			(gap - gpui::px(crate::ui_theme::MESSAGE_GAP + 2.)).abs() <= gpui::px(1.),
+			"status below commentary: {gap:?}"
+		);
+		assert!(visual.debug_bounds("native-reasoning-summary").is_none());
+
+		surface.update(visual, |s, cx| {
+			let Some((_, decodex_protocol::AgentHistoryResult::Available { live, .. })) =
+				&mut s.history
+			else {
+				panic!("fixture history")
+			};
+			live.push(decodex_protocol::AgentLiveMessageDto {
+				kind: decodex_protocol::AgentLiveMessageKind::ReasoningSummary,
+				turn_id: "turn".into(),
+				item_id: "reason-2".into(),
+				text: "First public summary".into(),
+				truncated: false,
+			});
+			cx.notify();
+		});
+		visual.update(crate::ui_frame::draw_frame);
+		let summary = visual.debug_bounds("native-reasoning-summary").unwrap();
+		let status = visual.debug_bounds("pixel-work-status").unwrap();
+		assert!(
+			(status.top() - summary.bottom() - gpui::px(crate::ui_theme::MESSAGE_GAP)).abs()
+				<= gpui::px(1.)
+		);
+	}
+
+	#[gpui::test]
 	fn tool_tail_keeps_the_reading_gap_when_the_next_record_is_hidden(
 		cx: &mut gpui::TestAppContext,
 	) {

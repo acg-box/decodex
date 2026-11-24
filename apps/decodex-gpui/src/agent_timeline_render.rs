@@ -1042,14 +1042,12 @@ turn_id: turn, kind, .. } if turn == turn_id && kind == "agentMessage")
 			.when_some((kind == "sleep").then(|| waits::timing(activity)).flatten(), |d, time| {
 				d.child(time)
 			})
-			.when_some(activity.duration_ms.filter(|ms| *ms > 0 && kind != "sleep"), |d, ms| {
-				d.child(gpui::div().text_size(gpui::px(ui_theme::CAPTION_SIZE)).child(
-					if ms < 1_000 {
-						format!("{ms}ms")
-					} else {
-						format!("{:.1}s", ms as f64 / 1_000.)
-					},
-				))
+			.when_some(activity.duration_ms.filter(|_| kind != "sleep"), |d, ms| {
+				d.child(
+					gpui::div()
+						.text_size(gpui::px(ui_theme::CAPTION_SIZE))
+						.child(crate::ui_time::activity_elapsed(ms)),
+				)
 			})
 			.when_some(
 				(!expanded && kind == "commandExecution")

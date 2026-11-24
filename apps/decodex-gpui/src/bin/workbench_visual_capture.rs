@@ -28,6 +28,9 @@ mod component_research;
 #[path = "../component_runtime.rs"]
 mod component_runtime;
 #[allow(dead_code)]
+#[path = "../component_updates.rs"]
+mod component_updates;
+#[allow(dead_code)]
 #[path = "../composer_input.rs"]
 mod composer_input;
 #[allow(dead_code)]
