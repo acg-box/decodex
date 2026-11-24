@@ -7,7 +7,7 @@ use crate::{
 };
 use decodex_components::{
 	ComponentStore,
-	ragflow::{Action, Installation, MemorySetup, ModelEndpoint, Models},
+	ragflow::{Action, Installation, MemorySetup, ModelEndpoint, Models, Update},
 };
 use decodex_protocol::{AssistantCommand, ProfileKind, RagflowConnection};
 use gpui::{
@@ -248,11 +248,11 @@ impl AgentSurface {
 		Some((profile.clone(), self.assistant_id()?))
 	}
 
-	pub(crate) fn update_reviewed_ragflow(&mut self, digest: String, cx: &mut Context<Self>) {
+	pub(crate) fn update_reviewed_ragflow(&mut self, target: Update, cx: &mut Context<Self>) {
 		if self.ragflow_component_state().busy || self.component_review_host().is_none() {
 			return;
 		}
-		self.run_memory_component(ComponentAction::Update, Some(digest), cx);
+		self.run_memory_component(ComponentAction::Update, Some(target), cx);
 	}
 
 	pub(crate) fn ragflow_component_action(
@@ -693,7 +693,7 @@ impl AgentSurface {
 	fn run_memory_component(
 		&mut self,
 		action: ComponentAction,
-		digest: Option<String>,
+		target: Option<Update>,
 		cx: &mut Context<Self>,
 	) {
 		let Some(profile) = self.profile.clone() else {
@@ -721,8 +721,8 @@ impl AgentSurface {
 			let store = ComponentStore::for_user()?;
 			let report =
 				|message: &str| *progress.lock().expect("component progress") = message.into();
-			if let Some(digest) = digest.filter(|_| operation == Action::Update) {
-				store.apply_reviewed_ragflow(&digest, &namespace, report)
+			if let Some(target) = target {
+				store.apply_reviewed_ragflow(&target, &namespace, report)
 			} else {
 				store.apply_ragflow(operation, &namespace, report)
 			}

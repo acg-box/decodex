@@ -12,7 +12,11 @@ pub(super) const IMAGE: &str = "infiniflow/ragflow:nightly";
 /// Exact platform manifest and the installed version it was compared with.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Update {
+	/// Version reported by the running service at installation.
 	pub version: String,
+	/// Local image identity at discovery.
+	pub installed_image: String,
+	/// Immutable upstream platform manifest.
 	pub digest: String,
 }
 
@@ -45,8 +49,11 @@ impl ComponentStore {
 		let local = std::str::from_utf8(&local).map_err(|_| "Invalid local image identity.")?;
 		let (platform, id) = local.trim().split_once(' ').ok_or("Missing local image platform.")?;
 		let remote = inspect(&["manifest", "inspect", "--verbose", IMAGE])?;
-		Ok(candidate(platform, id, &remote)?
-			.map(|digest| Update { version: installation.version, digest }))
+		Ok(candidate(platform, id, &remote)?.map(|digest| Update {
+			version: installation.version,
+			installed_image: installation.image,
+			digest,
+		}))
 	}
 }
 

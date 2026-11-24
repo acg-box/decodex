@@ -179,9 +179,12 @@ impl SettingsSurface {
 		if !self.components.ragflow_reviews.due() || self.components.review_check.is_some() {
 			return;
 		}
-		let Some(host) =
-			self.native_agent.as_ref().and_then(|agent| agent.read(cx).component_review_host())
-		else {
+		let Some(host) = self.native_agent.as_ref().and_then(|agent| {
+			let agent = agent.read(cx);
+			(!agent.ragflow_component_state().working)
+				.then(|| agent.component_review_host())
+				.flatten()
+		}) else {
 			return;
 		};
 		self.components.ragflow_reviews.checked();
@@ -279,11 +282,22 @@ impl SettingsSurface {
 						&& let Some(review) = &self.components.review
 					{
 						agent.update(cx, |s, cx| {
-							s.update_reviewed_ragflow(review.target.digest.clone(), cx)
+							s.update_reviewed_ragflow(review.target.clone(), cx)
 						});
 					} else {
 						agent.update(cx, |s, cx| s.ragflow_component_action(action, cx));
 					}
+				}
+				if matches!(
+					action,
+					RagflowComponentAction::Install
+						| RagflowComponentAction::Update
+						| RagflowComponentAction::Uninstall
+				) {
+					self.components.review_check = None;
+					self.components.review = None;
+					self.components.review_message = None;
+					self.components.ragflow_reviews.check_now();
 				}
 			},
 		}

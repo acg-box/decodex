@@ -253,14 +253,14 @@ impl ComponentStore {
 	/// Apply the platform manifest identified by a previous update review.
 	pub fn apply_reviewed_ragflow(
 		&self,
-		digest: &str,
+		target: &super::Update,
 		namespace: &str,
 		mut progress: impl FnMut(&str),
 	) -> Result<Option<Installation>> {
-		if !super::update::valid_digest(digest) {
+		if !super::update::valid_digest(&target.digest) {
 			return Err("Invalid reviewed image digest.".into());
 		}
-		self.apply_ragflow_with(&docker()?, Action::Update, namespace, Some(digest), &mut progress)
+		self.apply_ragflow_with(&docker()?, Action::Update, namespace, Some(target), &mut progress)
 	}
 
 	fn apply_ragflow_with(
@@ -268,11 +268,16 @@ impl ComponentStore {
 		docker: &Path,
 		action: Action,
 		namespace: &str,
-		digest: Option<&str>,
+		target: Option<&super::Update>,
 		progress: &mut impl FnMut(&str),
 	) -> Result<Option<Installation>> {
 		let directory = self.root.join("ragflow/service");
 		let saved = read(&directory)?;
+		if let Some(target) = target
+			&& !saved.as_ref().is_some_and(|i| i.installed && i.image == target.installed_image)
+		{
+			return Err("The installed image changed. Check for an update again.".into());
+		}
 		if action == Action::Uninstall && saved.is_none() {
 			return Ok(None);
 		}
@@ -330,7 +335,7 @@ impl ComponentStore {
 		fs::create_dir_all(&directory).map_err(|_| "Could not prepare RAGFlow storage.")?;
 		fs::set_permissions(&directory, fs::Permissions::from_mode(0o700))
 			.map_err(|_| "Could not protect RAGFlow storage.")?;
-		prepare(&directory, &config, digest)?;
+		prepare(&directory, &config, target.map(|t| t.digest.as_str()))?;
 		// Keep the owned identity before effects so retries and Uninstall use the same stack.
 		config.installed = true;
 		write(&directory, &config)?;
@@ -646,6 +651,13 @@ mod tests {
 			installed: true,
 		};
 		let services = compose(&config, None);
+		let digest = format!("sha256:{}", "a".repeat(64));
+		let reviewed = compose(&config, Some(&digest));
+		assert_eq!(
+			reviewed["services"]["ragflow"]["image"],
+			format!("infiniflow/ragflow@{digest}")
+		);
+		assert_eq!(reviewed["volumes"], services["volumes"]);
 		assert_eq!(services["services"].as_object().unwrap().len(), 6);
 		assert!(services["volumes"].get("models").is_none());
 		assert_eq!(services["services"]["ragflow"]["image"], "infiniflow/ragflow:nightly");
