@@ -332,8 +332,15 @@ impl RenderOnce for Control {
 /// A short arrival transition, keyed by route rather than background refreshes.
 #[derive(IntoElement)]
 pub(crate) struct Arrival {
-	route: String,
+	route: SharedString,
+	from_opacity: f32,
 	child: AnyElement,
+}
+impl Arrival {
+	pub(crate) fn from_opacity(mut self, opacity: f32) -> Self {
+		self.from_opacity = opacity;
+		self
+	}
 }
 impl RenderOnce for Arrival {
 	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
@@ -361,7 +368,7 @@ impl RenderOnce for Arrival {
 			.relative()
 			.flex()
 			.flex_col()
-			.opacity(0.85 + 0.15 * progress)
+			.opacity(self.from_opacity + (1. - self.from_opacity) * progress)
 			.child(self.child)
 	}
 }
@@ -938,8 +945,8 @@ pub(crate) fn revealed_value(
 	value
 }
 
-pub(crate) fn arrival(route: String, child: impl IntoElement) -> Arrival {
-	Arrival { route, child: child.into_any_element() }
+pub(crate) fn arrival(route: impl Into<SharedString>, child: impl IntoElement) -> Arrival {
+	Arrival { route: route.into(), from_opacity: 0.85, child: child.into_any_element() }
 }
 
 pub(crate) fn popover(id: impl Into<ElementId>, visible: bool, child: impl IntoElement) -> Popover {

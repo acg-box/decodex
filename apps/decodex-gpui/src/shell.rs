@@ -1926,7 +1926,18 @@ impl Shell {
 }
 
 impl Shell {
+	fn settings_tab_index(&self, cx: &gpui::App) -> usize {
+		let category = self.settings.read(cx).category;
+		SETTINGS_SECTIONS
+			.iter()
+			.position(|(section, tab, _)| {
+				*section == self.settings_selected && tab.is_none_or(|tab| tab == category)
+			})
+			.expect("Settings destination has a navigation tab")
+	}
+
 	fn select_settings_section(&mut self, destination: Destination, cx: &mut Context<Self>) {
+		ui_motion::begin_interaction();
 		if self.settings_selected != destination {
 			self.leave_settings_section();
 		}
@@ -5892,11 +5903,13 @@ fn destination_content(
 
 fn settings_navigation(
 	shell: &Shell,
-	selected: Destination,
+	selected_index: usize,
+	window: &mut Window,
 	cx: &mut Context<Shell>,
 ) -> AnyElement {
 	let mut rows = Vec::with_capacity(SETTINGS_SECTIONS.len());
-	let mut selected_index = 0;
+	let position =
+		ui_motion::value("settings-selection-position", selected_index as f32, window, cx);
 
 	for (section_index, (destination, category, label)) in SETTINGS_SECTIONS.into_iter().enumerate()
 	{
@@ -5908,12 +5921,6 @@ fn settings_navigation(
 			None if destination == Destination::Accounts => workspace_symbols::Symbol::Agents,
 			None => workspace_symbols::Symbol::Waveform,
 		};
-		let active = selected == destination
-			&& category.is_none_or(|category| shell.settings.read(cx).category == category);
-
-		if active {
-			selected_index = section_index;
-		}
 
 		rows.push(
 			gpui::div()
@@ -5921,7 +5928,7 @@ fn settings_navigation(
 				.debug_selector(move || format!("settings-section-{label}"))
 				.role(Role::Tab)
 				.aria_label(label)
-				.aria_selected(active)
+				.aria_selected(section_index == selected_index)
 				.track_focus(&shell.settings_focus[section_index])
 				.key_context("Destination")
 				.on_action(cx.listener(move |s, _: &ActivateDestination, _, cx| {
@@ -5978,10 +5985,7 @@ fn settings_navigation(
 						.debug_selector(|| "settings-navigation-selection".into())
 						.absolute()
 						.left_0()
-						.top(gpui::px(
-							selected_index as f32
-								* (SETTINGS_NAV_ROW_HEIGHT + SETTINGS_NAV_ROW_GAP),
-						))
+						.top(gpui::px(position * (SETTINGS_NAV_ROW_HEIGHT + SETTINGS_NAV_ROW_GAP)))
 						.w_full()
 						.h(gpui::px(SETTINGS_NAV_ROW_HEIGHT))
 						.rounded(gpui::px(6.))
@@ -6017,7 +6021,8 @@ fn settings_workspace_content(
 	cx: &mut Context<Shell>,
 ) -> AnyElement {
 	let selected = shell.settings_selected;
-	let navigation = settings_navigation(shell, selected, cx);
+	let tab = shell.settings_tab_index(cx);
+	let navigation = settings_navigation(shell, tab, window, cx);
 	let panel = gpui::div()
 		.debug_selector(|| "settings-content-pane".into())
 		.flex_1()
@@ -6070,7 +6075,14 @@ fn settings_workspace_content(
 		.flex()
 		.child(navigation)
 		.child(
-			gpui::div().tab_group().tab_index(1).flex_1().min_w_0().min_h_0().flex().child(content),
+			gpui::div()
+				.tab_group()
+				.tab_index(1)
+				.flex_1()
+				.min_w_0()
+				.min_h_0()
+				.flex()
+				.child(ui_motion::arrival(SETTINGS_SECTIONS[tab].2, content).from_opacity(0.40)),
 		)
 		.into_any_element()
 }
@@ -8177,16 +8189,20 @@ mod tests {
 			});
 		}
 
+		std::thread::sleep(Duration::from_millis(220));
+		settings.update(crate::ui_frame::draw_frame);
+		assert_eq!(settings.debug_bounds("settings-navigation-selection").unwrap(), rows[5]);
+
 		settings.simulate_keystrokes("shift-tab enter");
 		shell.read_with(settings, |s, _| assert_eq!(s.settings_selected, Destination::Accounts));
 		settings.update(crate::ui_frame::draw_frame);
 
-		let target = settings.debug_bounds("settings-section-Accounts").unwrap();
-		assert_eq!(
-			settings.debug_bounds("settings-navigation-selection").unwrap(),
-			target,
-			"Settings selection must be in place on the first frame"
-		);
+		let moving = settings.debug_bounds("settings-navigation-selection").unwrap();
+		assert!(moving.top() > rows[4].top() && moving.top() <= rows[5].top());
+
+		std::thread::sleep(Duration::from_millis(220));
+		settings.update(crate::ui_frame::draw_frame);
+		assert_eq!(settings.debug_bounds("settings-navigation-selection").unwrap(), rows[4]);
 	}
 
 	#[gpui::test]

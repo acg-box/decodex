@@ -268,13 +268,7 @@ impl Shell {
 			_ => return,
 		};
 		self.select_settings_section(destination, cx);
-		let tab = super::SETTINGS_SECTIONS.iter().position(|(section, category, _)| {
-			*section == destination
-				&& category.is_none_or(|value| self.settings.read(cx).category == value)
-		});
-		if let Some(tab) = tab {
-			window.focus(&self.settings_focus[tab], cx);
-		}
+		window.focus(&self.settings_focus[self.settings_tab_index(cx)], cx);
 	}
 }
 
