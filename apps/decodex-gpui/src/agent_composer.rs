@@ -2057,7 +2057,8 @@ mod tests {
 		}
 		let [attach, model, _, _, send] = buttons;
 		assert_eq!(editor.bottom(), row.top());
-		assert_eq!(attach.left() - capsule.left(), capsule.bottom() - attach.bottom());
+		// The attach button can wrap above Send when the panels are animating.
+		assert_eq!(attach.left() - capsule.left(), capsule.bottom() - row.bottom());
 		assert_eq!(send.right(), row.right());
 		assert_eq!(send.bottom(), row.bottom());
 		model
