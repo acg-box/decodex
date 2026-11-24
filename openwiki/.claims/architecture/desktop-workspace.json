@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:49f3c59ab64ee3c7add92079ddc5e1fd94437d24ffac06d942a1277d0cc416fa",
+  "pageVersion": "sha256:89ea6a33f9ca134a2938db9ae4c4a64f3f45787abca2a87521301a1887681787",
   "claims": [
     {
       "id": "claim_41c9eba720934771bd6b671a7aeb8b6e",
@@ -20,7 +20,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:bfd3ee8a41cd361026301b7a269d00aa5f34a152f74c2fc151a8cf277b6a9a0b"
+          "version": "repo-file-v1:sha256:2f8e01c86b122356d68fcfb23ae367f17a1c48bfe9ba309dc62006247a5dba54"
         }
       ]
     },
@@ -190,7 +190,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_surface.rs",
-          "version": "repo-file-v1:sha256:f6d3be3c98a1cc3346bc842dcea2c5c8d42a894456ee72715e5ac4244364336a"
+          "version": "repo-file-v1:sha256:1e7ea58edfa14ea59bc361eb9b2e0385e5a96120d18e92b74c63563de3668410"
         }
       ]
     },
@@ -226,11 +226,11 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_composer.rs",
-          "version": "repo-file-v1:sha256:d483bcc23996a1b0dd215767eb91854ce88fcce5025374ba2b73110881fbff61"
+          "version": "repo-file-v1:sha256:8400e7c4424221588cb1f29e6bd40b14aebd11777163ee7d7fa02483a0f26ce4"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:bfd3ee8a41cd361026301b7a269d00aa5f34a152f74c2fc151a8cf277b6a9a0b"
+          "version": "repo-file-v1:sha256:2f8e01c86b122356d68fcfb23ae367f17a1c48bfe9ba309dc62006247a5dba54"
         }
       ]
     },
@@ -258,7 +258,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:bfd3ee8a41cd361026301b7a269d00aa5f34a152f74c2fc151a8cf277b6a9a0b"
+          "version": "repo-file-v1:sha256:2f8e01c86b122356d68fcfb23ae367f17a1c48bfe9ba309dc62006247a5dba54"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace_size.rs",
@@ -280,7 +280,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:bfd3ee8a41cd361026301b7a269d00aa5f34a152f74c2fc151a8cf277b6a9a0b"
+          "version": "repo-file-v1:sha256:2f8e01c86b122356d68fcfb23ae367f17a1c48bfe9ba309dc62006247a5dba54"
         }
       ]
     },
@@ -290,7 +290,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_composer.rs",
-          "version": "repo-file-v1:sha256:d483bcc23996a1b0dd215767eb91854ce88fcce5025374ba2b73110881fbff61"
+          "version": "repo-file-v1:sha256:8400e7c4424221588cb1f29e6bd40b14aebd11777163ee7d7fa02483a0f26ce4"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_prompt_edit.rs",
@@ -304,7 +304,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_voice.rs",
-          "version": "repo-file-v1:sha256:a2438b7b046239964415389c5598755367eaee4e7d70118ca2a305e0f37cd028"
+          "version": "repo-file-v1:sha256:7ba62e31afffeccdd13b81b44919845194db6cc141009145a7a466ceafc25a54"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_work_browser.rs",
@@ -336,7 +336,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_composer.rs",
-          "version": "repo-file-v1:sha256:d483bcc23996a1b0dd215767eb91854ce88fcce5025374ba2b73110881fbff61"
+          "version": "repo-file-v1:sha256:8400e7c4424221588cb1f29e6bd40b14aebd11777163ee7d7fa02483a0f26ce4"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_native_menu.rs",
@@ -390,7 +390,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:bfd3ee8a41cd361026301b7a269d00aa5f34a152f74c2fc151a8cf277b6a9a0b"
+          "version": "repo-file-v1:sha256:2f8e01c86b122356d68fcfb23ae367f17a1c48bfe9ba309dc62006247a5dba54"
         }
       ]
     },
@@ -440,7 +440,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_composer.rs",
-          "version": "repo-file-v1:sha256:d483bcc23996a1b0dd215767eb91854ce88fcce5025374ba2b73110881fbff61"
+          "version": "repo-file-v1:sha256:8400e7c4424221588cb1f29e6bd40b14aebd11777163ee7d7fa02483a0f26ce4"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_timeline.rs",
@@ -740,7 +740,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_surface.rs",
-          "version": "repo-file-v1:sha256:f6d3be3c98a1cc3346bc842dcea2c5c8d42a894456ee72715e5ac4244364336a"
+          "version": "repo-file-v1:sha256:1e7ea58edfa14ea59bc361eb9b2e0385e5a96120d18e92b74c63563de3668410"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/shell.rs",
@@ -798,7 +798,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_archive_catalog.rs",
-          "version": "repo-file-v1:sha256:de7ff31cbfa4b7a5750fa116247da44ba914859e855f03031b2e52ad771896bd"
+          "version": "repo-file-v1:sha256:83c621948a80f933ce54f80ceb1c5709ef0b8b0b22e789ac4e6106b33dd58b97"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/shell_overlay.rs",
@@ -820,7 +820,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:bfd3ee8a41cd361026301b7a269d00aa5f34a152f74c2fc151a8cf277b6a9a0b"
+          "version": "repo-file-v1:sha256:2f8e01c86b122356d68fcfb23ae367f17a1c48bfe9ba309dc62006247a5dba54"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace_size.rs",
@@ -980,7 +980,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:bfd3ee8a41cd361026301b7a269d00aa5f34a152f74c2fc151a8cf277b6a9a0b"
+          "version": "repo-file-v1:sha256:2f8e01c86b122356d68fcfb23ae367f17a1c48bfe9ba309dc62006247a5dba54"
         }
       ]
     },
@@ -1112,7 +1112,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:bfd3ee8a41cd361026301b7a269d00aa5f34a152f74c2fc151a8cf277b6a9a0b"
+          "version": "repo-file-v1:sha256:2f8e01c86b122356d68fcfb23ae367f17a1c48bfe9ba309dc62006247a5dba54"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace_size.rs",
@@ -1130,7 +1130,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_composer.rs",
-          "version": "repo-file-v1:sha256:d483bcc23996a1b0dd215767eb91854ce88fcce5025374ba2b73110881fbff61"
+          "version": "repo-file-v1:sha256:8400e7c4424221588cb1f29e6bd40b14aebd11777163ee7d7fa02483a0f26ce4"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_native_composer.rs",
@@ -1152,7 +1152,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_composer.rs",
-          "version": "repo-file-v1:sha256:d483bcc23996a1b0dd215767eb91854ce88fcce5025374ba2b73110881fbff61"
+          "version": "repo-file-v1:sha256:8400e7c4424221588cb1f29e6bd40b14aebd11777163ee7d7fa02483a0f26ce4"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_native_composer.rs",
@@ -1196,7 +1196,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:bfd3ee8a41cd361026301b7a269d00aa5f34a152f74c2fc151a8cf277b6a9a0b"
+          "version": "repo-file-v1:sha256:2f8e01c86b122356d68fcfb23ae367f17a1c48bfe9ba309dc62006247a5dba54"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace_size.rs",
@@ -1257,10 +1257,38 @@
           "version": "repo-file-v1:sha256:3502919a5160124953f1e3805ca581daf3798e00b0220e8d45b4a29a11d8b229"
         }
       ]
+    },
+    {
+      "id": "claim_1dc70608ad2d4a80ba496a040232b747",
+      "statement": "Archive groups and titles align with the search text. Project metadata and time share the row alignment. The selection control joins the actions. Narrow rows can wrap the project name below the title.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_archive_catalog.rs#L1528-L1620",
+          "version": "repo-lines-v1:sha256:5da7c7422233c2526b97d9c383e6212130e3613613bda3ac73e1fc990503ed0a:eyJzZWxlY3RlZExpbmVDb3VudCI6OTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUwOTdmNjUzYTIzOWM5ZjViYmMwNjk2ZTRjYTJlOWJjNjE3NWY0MzNjZmFkZDZhZTgyMTE4Y2RmMTNiYjg4YmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI2NWRkN2RmYWIzNjg4ZTI3MTM2MGFmY2EzOWYxM2FiZmJmZTRmMDQ4MzUyNzdiYmUxODNhZmRhYzFhNmNmNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYxMjY5YmEwZDUyODQyMzY4Y2EyMjAxYjQ0ZjIxM2E5YzA0YmY5OTM2MWI4MThjOWMyMzUzOGNmMzUxZDYyODEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY4Yjk4M2EyNTVmYzY2YjBhZjMzYjY1MTJlMTIzYjUyYjIwOTY4OTM4OTgyNmIwOTk4OTA2OTYxMGQ2OWViODAifQ"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_archive_catalog.rs#L609-L692",
+          "version": "repo-lines-v1:sha256:de5aeb958ccd79d7f60fe72b7a45f9b69078a0bb2280a7efe607434ada9a9a5f:eyJzZWxlY3RlZExpbmVDb3VudCI6ODQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU1MTRkMjA4Njg4NGY4MTdiMmFjYTFlYTkwOTE3Yjg4YTkxMzhmNzlkMmE5MmYwYzIxNTlkNDE5ZWJhOGZlZWYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFiYjRjNzZlOGI5MThlY2E5YWI5NDNkOTNhMWVkNmU1ODMxZDNhYzhmMTg4M2U4ODkyNDRlMmQ4NWFjMWQyNTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY4OTc3OGNiYjUzZmRmM2I0MDEzMzkzNTlhODQ1MmI2NTM5ZmVhNGVjZDZkYzg5MjAxMzAzNzAyYTJkNzMwMmUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE5MzFmMWQ5NWFjMzE3Y2Q4MzQyMTViZDEwMTYxNmQ5OGEwOGU0YTRlNmNlZTMyYTE5ZmI4NGZjOTI2YWFmNDEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_6e89857623eb41c183d23fb038a60a3f",
+      "statement": "A live desktop window keeps its own selected conversation during shared draft reconciliation. Draft contents stay with their original conversation. A cold start can use the persisted editor selection.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_draft_merge.rs",
+          "version": "repo-file-v1:sha256:509e1b7e557f70fe9a4a1aacbcbb0831e6ba65f22bcd48d13dfdf252227e7000"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_draft_storage.rs#L1693-L1780",
+          "version": "repo-lines-v1:sha256:643b323f21f9b629a0bb2d14fabf88d56e7136be54837d4a950ed8f2baa3fb1b:eyJzZWxlY3RlZExpbmVDb3VudCI6ODgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM5ZjVlNjA4OWJhYjVlN2QzNzE0OWZjOGQwZjQ1MTA5MmVlNGQ3Zjk3MDg1YjgwZWEwMzE0MzYwYmIxZDQyMDUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUwYTliNTliNmVjODQyMzM0Y2U4YjYwNGU4ZGE3MzJiNzNlZTA0OGIxZWNkZTBhZmM3ZWZiY2U0M2FlNDY0MzMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYxMjY5YmEwZDUyODQyMzY4Y2EyMjAxYjQ0ZjIxM2E5YzA0YmY5OTM2MWI4MThjOWMyMzUzOGNmMzUxZDYyODEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijc1MTIxODZiZTI4NjY1NzFkYjc3ZGVhNzkwZWQ5ZTI1YTAxMzQ3YjU0MDQxMjhkMGRiYWI4ZTgyNTdiNWJhMGQifQ"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.9.0",
-    "at": "2026-11-24T14:29:01.704Z"
+    "at": "2026-11-24T15:13:11.054Z"
   }
 }

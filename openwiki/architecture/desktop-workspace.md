@@ -5,7 +5,7 @@ description: "Workspace ownership, native menu focus, compositor motion, and con
 tags: [decodex, architecture, desktop, presentation]
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-24T14:29:01.704Z
+    at: 2026-11-24T15:13:11.054Z
 sources:
   - id: openwiki-source-98e7b23c4cc276d20fcb4649
     resource: repo://apps/decodex-gpui/menubar/Sources/DecodexApp/AccountControlViews.swift
@@ -41,6 +41,10 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_composer.rs
   - id: openwiki-source-1bf529ea3f1649ac9a28334a
     resource: repo://apps/decodex-gpui/src/agent_conversation_tabs.rs
+  - id: openwiki-source-258277a596f7d23ef310055b
+    resource: repo://apps/decodex-gpui/src/agent_draft_merge.rs
+  - id: openwiki-source-5eddd1d872eed61f8ba7e703
+    resource: repo://apps/decodex-gpui/src/agent_draft_storage.rs
   - id: openwiki-source-1ee22a183019eba898707d3c
     resource: repo://apps/decodex-gpui/src/agent_history_preview_tests.rs
   - id: openwiki-source-2ee1164d01a09b38a208f1ac
@@ -181,7 +185,7 @@ sources:
     resource: repo://database/src/works/commands.rs
   - id: openwiki-source-8fe6f1557e5d45d88b34bd0a
     resource: repo://scripts/macos/generate_workspace_symbols.swift
-generated: { by: "codex", at: "2026-11-24T14:29:01.704Z" }
+generated: { by: "codex", at: "2026-11-24T15:13:11.054Z" }
 ---
 
 # Desktop workspace and native glass
@@ -217,6 +221,8 @@ Conversation rows reveal inline Pin or Unpin, Archive, and Delete controls on ho
 Project headers reveal their delete and new-conversation icons through the same hover and keyboard-focus behavior. **Delete project** uses the same fixed target and two-click nudge confirmation. Its short confirmation hint states that chats and files are kept. It removes the native catalog entry and local directory registration. Active and archived conversation history, independent Work records and local files remain. Active conversations move to **Chats**; archived conversations remain in Archived. The selected conversation and current draft are retained. The native client checks the exact project in the bounded catalog before and after deletion, and local cleanup requires the same native identity. A missing project is already deleted; an uncertain native result leaves the local entry available for inspection and retry.
 
 The Codex conversations and Archived controls open centered overlays in the workspace. The Codex catalog lets a user register an external thread as an independent Agent or give it to an existing Agent. Archived provides Restore and Delete. Both use the existing native catalog and conversation commands. Dismissing an overlay restores focus to the workspace.
+
+In Archived, the search text, date groups and conversation titles share a left edge. The project name and time use fixed columns on wide rows and align vertically with the row actions. Narrow rows can put the project below the title. The selection box appears in the action group. Bulk selection keeps the existing archive operations.
 
 Collaboration shows **Needs you** before **Between agents**. Pending native requests, unanswered questions and explicit user decisions need a response; a returned result still needs its original assessment and is not automatically accepted. Opening an exchange's details keeps the active conversation and draft. Explicit **Open request**, **Open question** and **Open review** actions lead to the owning conversation, where its native response controls retain authority. Its fixed-size toolbar icon keeps a pending-count badge when the right panel is closed, with its name in the tooltip. The Graph remains available through its existing control and shortcut, but starts closed.
 
@@ -363,6 +369,8 @@ See [Conversation presentation and motion](conversation-presentation.md), [Agent
 ## Retained presentation and drafts
 
 The composer preserves current editable input. Submitted messages retain their own delivery state and exact retry payload; there is no recovered-copy manager. Rich Markdown retains math, Mermaid, weather and source-copy presentation without replacing native execution. The embedded MCP HTML viewer is retired. Ordinary tools and native form prompts remain available. See [conversations](../workflows/conversations-and-recovery.md), [tools](../integrations/tools-plugins-and-apps.md) and [acceptance boundaries](../testing/upstream-acceptance-boundaries.md).
+
+Each open desktop window keeps the conversation it selected. When another client saves a draft, reconciliation updates the editors under their conversation IDs. It keeps the current window on its conversation and keeps pending command receipts with their original owner. A cold start can use the saved selection. If the selected chat disappears, normal navigation restores the next editor and its own draft.
 
 The RAGFlow status light distinguishes service installation from Assistant Memory configuration even when collapsed. The saved view aligns the Base URL, model IDs and API key status without showing the key. Edit remains available after Save. The four-field editor places the shared connection above the two model IDs. Empty required values disable Save; explicit submission validates complete input. Editing clears the old editor error. A blank key retains the saved extraction connection key only while its Base URL is unchanged. Collapse retains unsaved input. Cancel discards the draft and error and returns to the saved summary while the component stays expanded. API compatibility, model roles and native-memory consequences remain visible.
 
