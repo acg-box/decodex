@@ -470,6 +470,12 @@ fn creation_actions_share_hover_footprints_and_footer_alignment(cx: &mut TestApp
 			48.,
 		),
 		(
+			"navigation-section-chats",
+			"navigation-heading-actions-chats",
+			"navigation-section-label-chats",
+			48.,
+		),
+		(
 			"navigation-section-projects",
 			"navigation-heading-actions-projects",
 			"navigation-section-label-projects",
@@ -546,6 +552,7 @@ fn deleted_project_moves_chats_and_current_draft_without_changing_the_editor(
 	visual.simulate_resize(gpui::size(gpui::px(1440.), gpui::px(1000.)));
 	surface.update(visual, |s, cx| {
 		s.visual_navigation_hierarchy(false, cx);
+		s.workspace.navigation.collapsed.insert(super::Section::Chats.key());
 		s.new_project_agent(Some("navigation-project-0"), cx);
 		s.composer.update(cx, |input, cx| input.set_content("Keep unsent input", cx));
 		let before = s.snapshot.as_ref().unwrap().work_items.clone();
@@ -562,7 +569,7 @@ fn deleted_project_moves_chats_and_current_draft_without_changing_the_editor(
 	});
 	settle(visual);
 	assert!(visual.debug_bounds("project-header-navigation-project-0").is_none());
-	assert!(visual.debug_bounds("project-header-").is_some());
+	assert!(visual.debug_bounds("navigation-chats-navigation-project-0-agent-0").is_some());
 }
 
 #[gpui::test]
@@ -581,6 +588,7 @@ fn compact_sidebar_fully_covers_labels_and_centers_the_shared_icon_column(cx: &m
 	for name in [
 		"navigation-section-label-pin",
 		"navigation-section-label-assistant",
+		"navigation-section-label-chats",
 		"navigation-section-label-projects",
 		"navigation-project-label-navigation-project-0",
 		"navigation-item-label-assistant-topic-research",

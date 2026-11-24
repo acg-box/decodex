@@ -267,12 +267,7 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) -> AnyElement {
 		let detail = match &command.action {
-			Action::Conversation(item) =>
-				if item.archived {
-					format!("{} (Archived)", item.owner)
-				} else {
-					item.owner.clone()
-				},
+			Action::Conversation(_) => command.detail.clone(),
 			_ => String::new(),
 		};
 		gpui::div()
@@ -349,6 +344,7 @@ fn command_icon(command: &Command) -> AnyElement {
 			workspace_symbols::icon_sized(Symbol::TeamMembers, 14.),
 		Action::Project(_) | Action::NewAgent(_) | Action::NewProject =>
 			icons::Icon { glyph: icons::Glyph::Folder, size: 14. }.into_any_element(),
+		Action::NewChat => icons::Icon { glyph: icons::Glyph::Chats, size: 14. }.into_any_element(),
 		Action::NewAssistant =>
 			icons::Icon { glyph: icons::Glyph::Assistant, size: 14. }.into_any_element(),
 		Action::CodexConversations =>

@@ -7,15 +7,17 @@ use std::collections::{BTreeMap, BTreeSet};
 pub(super) enum Section {
 	Pin,
 	Assistant,
+	Chats,
 	Projects,
 }
 impl Section {
-	pub const ALL: [Self; 3] = [Self::Pin, Self::Assistant, Self::Projects];
+	pub const ALL: [Self; 4] = [Self::Pin, Self::Assistant, Self::Chats, Self::Projects];
 
 	pub fn key(self) -> &'static str {
 		match self {
 			Self::Pin => "pin",
 			Self::Assistant => "assistant",
+			Self::Chats => "chats",
 			Self::Projects => "projects",
 		}
 	}
@@ -24,6 +26,7 @@ impl Section {
 		match self {
 			Self::Pin => "Pin",
 			Self::Assistant => "Assistant",
+			Self::Chats => "Chats",
 			Self::Projects => "Projects",
 		}
 	}
@@ -88,13 +91,37 @@ impl Preferences {
 pub(in crate::shell::agent_surface) struct Item {
 	pub id: String,
 	pub title: String,
-	pub owner: String,
+	pub location: String,
 	pub project: Option<String>,
 	pub updated: i64,
 	pub draft: bool,
 	pub assistant: bool,
 	pub archived: bool,
 	pub state: String,
+}
+impl Item {
+	pub(in crate::shell::agent_surface) fn location_label(
+		assistant: bool,
+		project: Option<&decodex_protocol::ProjectDto>,
+	) -> String {
+		if assistant {
+			Section::Assistant.label().into()
+		} else if let Some(project) = project {
+			format!("Project: {}", project.name)
+		} else {
+			Section::Chats.label().into()
+		}
+	}
+
+	pub(super) fn section(&self) -> Section {
+		if self.assistant {
+			Section::Assistant
+		} else if self.project.is_some() {
+			Section::Projects
+		} else {
+			Section::Chats
+		}
+	}
 }
 pub(super) fn sort(items: &mut [Item], by: Sort) {
 	items.sort_by(|a, b| {

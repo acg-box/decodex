@@ -27,6 +27,7 @@ enum Action {
 	Conversation(Item),
 	Project(String),
 	NewAssistant,
+	NewChat,
 	NewProject,
 	ChooseProject,
 	NewAgent(String),
@@ -72,7 +73,7 @@ impl Command {
 
 	fn verb(&self) -> &'static str {
 		match self.action {
-			Action::NewAssistant | Action::NewProject => "Create",
+			Action::NewAssistant | Action::NewChat | Action::NewProject => "Create",
 			Action::ChooseProject => "Choose project",
 			Action::NewAgent(_) => "Start Agent",
 			_ => "Open",
@@ -270,7 +271,7 @@ impl AgentSurface {
 					label: item.title.clone(),
 					detail: format!(
 						"{}{}",
-						item.owner,
+						item.location,
 						if item.archived { " (Archived)" } else { "" }
 					),
 					action: Action::Conversation(item),
@@ -278,6 +279,7 @@ impl AgentSurface {
 			}
 			for (label, detail, action) in [
 				("New Assistant topic", "Assistant", Action::NewAssistant),
+				("New chat", "Chats", Action::NewChat),
 				("New project Agent", "Choose a project", Action::ChooseProject),
 				("New project", "Choose a project folder", Action::NewProject),
 				("Codex conversations", "Browse and add to Decodex", Action::CodexConversations),
@@ -342,6 +344,7 @@ impl AgentSurface {
 				self.new_assistant_conversation(cx);
 			},
 			Action::NewProject => self.add_navigation_project(cx),
+			Action::NewChat => self.new_project_agent(None, cx),
 			Action::ChooseProject => {
 				self.workspace.navigation.command_open = true;
 				self.reset_command_search(true, cx);

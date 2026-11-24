@@ -9,6 +9,7 @@ let symbols = [
     "navigation-pin": "pin",
     "navigation-assistant": "sparkles",
     "navigation-folder": "folder",
+    "navigation-chats": "bubble.left.and.bubble.right",
     "navigation-projects": "folder.fill",
     "navigation-sort": "arrow.up.arrow.down",
     "chevron-left": "chevron.left",

@@ -71,14 +71,6 @@ impl Default for State {
 		}
 	}
 }
-struct ProjectGroup<'a> {
-	id: &'a str,
-	name: &'a str,
-	directory: Option<&'a str>,
-	items: &'a [Item],
-	reveal: &'a PanelReveal,
-	auto_scroll: bool,
-}
 impl AgentSurface {
 	pub(super) fn project_conversation_pages(&self) -> Vec<(String, String, bool)> {
 		let mut pages = self.conversation_pages();
@@ -126,14 +118,14 @@ impl AgentSurface {
 			&& !self.workspace.navigation.collapsed.contains(Section::Pin.key())
 		{
 			Section::Pin
-		} else if item.assistant {
-			Section::Assistant
 		} else {
-			Section::Projects
+			item.section()
 		};
 		self.workspace.navigation.collapsed.remove(section.key());
-		if section == Section::Projects {
-			self.workspace.navigation.projects.insert(item.project.unwrap_or_default());
+		if section == Section::Projects
+			&& let Some(project) = item.project
+		{
+			self.workspace.navigation.projects.insert(project);
 		}
 		self.prepare_navigation_reveal(id, section.key());
 	}
@@ -198,11 +190,7 @@ impl AgentSurface {
 				items.push(Item {
 					id: id.clone(),
 					title,
-					owner: if assistant {
-						"Assistant".into()
-					} else {
-						project.map_or_else(|| "No project".into(), |p| p.name.clone())
-					},
+					location: Item::location_label(assistant, project),
 					project: project.map(|p| p.id.clone()),
 					updated: work.map_or(0, |w| w.updated_at_micros),
 					draft: work.is_some_and(|w| w.codex_thread_id.is_none()),
@@ -218,15 +206,14 @@ impl AgentSurface {
 			&& self.assistant_home_has_draft(id, cx)
 		{
 			let project = self.workspace.new_conversation_workspace.clone();
-			let owner = self
+			let directory_project = self
 				.snapshot
 				.as_ref()
-				.and_then(|s| s.projects.iter().find(|p| Some(&p.id) == project.as_ref()))
-				.map_or_else(|| "No project".into(), |p| p.name.clone());
+				.and_then(|s| s.projects.iter().find(|p| Some(&p.id) == project.as_ref()));
 			items.push(Item {
 				id: id.clone(),
 				title: "New Agent".into(),
-				owner,
+				location: Item::location_label(false, directory_project),
 				project,
 				updated: 0,
 				draft: true,
@@ -349,8 +336,7 @@ impl AgentSurface {
 					.filter(|item| match section {
 						Section::Pin =>
 							self.workspace.navigation.preferences.pinned.contains(&item.id),
-						Section::Assistant => item.assistant,
-						Section::Projects => false,
+						_ => item.section() == section,
 					})
 					.cloned()
 					.collect();
@@ -396,7 +382,7 @@ impl AgentSurface {
 	) -> gpui::Div {
 		let pref = self.workspace.navigation.preferences.section(Section::Projects);
 		let mut content = gpui::div().flex().flex_col();
-		let mut projects = self.snapshot.as_ref().map_or_else(Vec::new, |s| s.projects.clone());
+		let mut projects: Vec<_> = self.snapshot.iter().flat_map(|s| &s.projects).collect();
 		projects.sort_by(|a, b| {
 			if pref.sort == Sort::Alphabetical {
 				a.name.to_lowercase().cmp(&b.name.to_lowercase())
@@ -414,9 +400,7 @@ impl AgentSurface {
 					.then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
 			}
 		});
-		let unassigned: Vec<_> =
-			items.iter().filter(|i| !i.assistant && i.project.is_none()).cloned().collect();
-		if projects.is_empty() && unassigned.is_empty() {
+		if projects.is_empty() {
 			return content.child(navigation_empty(reveal, "No projects yet."));
 		}
 		for project in projects {
@@ -427,30 +411,10 @@ impl AgentSurface {
 				.collect();
 			model::sort(&mut children, pref.sort);
 			content = content.child(self.navigation_project(
-				ProjectGroup {
-					id: &project.id,
-					name: &project.name,
-					directory: Some(&project.directory),
-					items: &children,
-					reveal,
-					auto_scroll: pref.auto_scroll,
-				},
-				window,
-				cx,
-			));
-		}
-		if !unassigned.is_empty() {
-			let mut unassigned = unassigned;
-			model::sort(&mut unassigned, pref.sort);
-			content = content.child(self.navigation_project(
-				ProjectGroup {
-					id: "",
-					name: "No project",
-					directory: None,
-					items: &unassigned,
-					reveal,
-					auto_scroll: pref.auto_scroll,
-				},
+				project,
+				&children,
+				reveal,
+				pref.auto_scroll,
 				window,
 				cx,
 			));
@@ -460,11 +424,14 @@ impl AgentSurface {
 
 	fn navigation_project(
 		&self,
-		group: ProjectGroup<'_>,
+		project: &decodex_protocol::ProjectDto,
+		items: &[Item],
+		reveal: &PanelReveal,
+		auto_scroll: bool,
 		window: &mut Window,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
-		let ProjectGroup { id, name, directory, items, reveal, auto_scroll } = group;
+		let id = project.id.as_str();
 		let open = self.workspace.navigation.projects.contains(id);
 		let key = format!("project-{id}");
 		let mut conversations = gpui::div().flex().flex_col();
@@ -491,7 +458,7 @@ impl AgentSurface {
 			} else {
 				0.
 			}))
-			.child(self.navigation_project_entry(id, name, directory, reveal, window, cx))
+			.child(self.navigation_project_entry(project, reveal, window, cx))
 			.child(crate::ui_motion::disclosure(
 				SharedString::from(format!("navigation-project-disclosure-{id}")),
 				open,
@@ -601,6 +568,7 @@ impl AgentSurface {
 		let glyph = match section {
 			Section::Pin => Glyph::Pin,
 			Section::Assistant => Glyph::Assistant,
+			Section::Chats => Glyph::Chats,
 			Section::Projects => Glyph::Projects,
 		};
 		let enter = key;
@@ -661,6 +629,14 @@ impl AgentSurface {
 							s.workspace.navigation.collapsed.remove(Section::Assistant.key());
 							s.new_assistant_conversation(cx);
 						},
+						cx,
+					));
+				},
+				Section::Chats => {
+					controls = controls.child(self.navigation_create(
+						"New chat",
+						"navigation-create-chat".into(),
+						|s, cx| s.new_project_agent(None, cx),
 						cx,
 					));
 				},
@@ -755,13 +731,14 @@ impl AgentSurface {
 
 	fn navigation_project_entry(
 		&self,
-		id: &str,
-		name: &str,
-		directory: Option<&str>,
+		project: &decodex_protocol::ProjectDto,
 		reveal: &PanelReveal,
 		window: &mut Window,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
+		let id = project.id.as_str();
+		let name = project.name.as_str();
+		let hint = if reveal.expanded { project.directory.clone() } else { name.to_owned() };
 		let project = id.to_owned();
 		let keyboard = project.clone();
 		let debug = project.clone();
@@ -805,10 +782,7 @@ impl AgentSurface {
 			.overflow_hidden()
 			.cursor_pointer()
 			.hover(|row| row.bg(ui_theme::rgba(ui_theme::HOVER_FILL)))
-			.when_some(
-				if reveal.expanded { directory.map(str::to_owned) } else { Some(name.to_owned()) },
-				|row, hint| row.hover_hint(hint),
-			)
+			.hover_hint(hint)
 			.on_hover(
 				cx.listener(move |s, hovered: &bool, _, cx| {
 					s.navigation_hover(&enter, *hovered, cx)
@@ -845,7 +819,7 @@ impl AgentSurface {
 				.child(navigation_context_actions(
 					SharedString::from(format!("navigation-project-actions-{id}")),
 					opacity,
-					if id.is_empty() { 1 } else { 2 },
+					2,
 					self.navigation_project_controls(id, name, cx),
 				))
 				.child(navigation_chevron(
@@ -911,7 +885,7 @@ impl AgentSurface {
 				.track_focus(&focus)
 				.role(Role::Button)
 				.tab_index(0)
-				.aria_label(format!("{} ({}) {}", item.title, item.owner, timestamp))
+				.aria_label(format!("{} ({}) {}", item.title, item.location, timestamp))
 				.aria_selected(selected)
 				.when(expanded && status == AgentStatusStyle::Completed, |row| {
 					row.aria_description(state.to_owned())
@@ -1011,12 +985,17 @@ impl AgentSurface {
 		self.workspace.new_conversation = draft;
 		self.workspace.workspace_filter = project.map(str::to_owned);
 		self.workspace.new_conversation_workspace = project.map(str::to_owned);
-		self.workspace.navigation.collapsed.remove(Section::Projects.key());
-		self.workspace.navigation.projects.insert(project.unwrap_or_default().to_owned());
+		let section = if let Some(id) = project {
+			self.workspace.navigation.projects.insert(id.to_owned());
+			Section::Projects
+		} else {
+			Section::Chats
+		};
+		self.workspace.navigation.collapsed.remove(section.key());
 		self.workspace.work_detail = None;
 		self.new_work_conversation(cx);
 		if let Some(id) = self.workspace.new_conversation.clone() {
-			self.prepare_navigation_reveal(&id, "projects");
+			self.prepare_navigation_reveal(&id, section.key());
 		}
 		if let Some(id) = &self.workspace.new_conversation {
 			self.workspace
@@ -1350,12 +1329,12 @@ fn navigation_item_tooltip(
 	let bounds = std::rc::Rc::new(std::cell::Cell::new(gpui::Bounds::<gpui::Pixels>::default()));
 	let measured = bounds.clone();
 	let title = (!expanded).then(|| item.title.clone());
-	let owner = item.owner.clone();
+	let location = item.location.clone();
 	let time = crate::ui_time::timestamp(item.updated);
 	let state = state.map(str::to_owned);
 	row.tooltip(move |_, cx| {
 		let title = title.clone();
-		let owner = owner.clone();
+		let location = location.clone();
 		let time = time.clone();
 		let state = state.clone();
 		crate::ui_motion::tooltip_at(cx, bounds.clone(), move |_, _| {
@@ -1366,7 +1345,7 @@ fn navigation_item_tooltip(
 				.gap(gpui::px(2.))
 				.children(title.clone())
 				.children(state.clone())
-				.child(format!("Owner: {owner}"))
+				.child(location.clone())
 				.child(
 					gpui::div()
 						.text_color(ui_theme::rgb(TEXT_MUTED))

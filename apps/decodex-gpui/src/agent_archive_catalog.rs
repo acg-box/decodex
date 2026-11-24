@@ -1,4 +1,5 @@
 //! On-demand archive browser. Native identities and retained relations stay authoritative.
+use super::super::navigation_sidebar::model::Item;
 use crate::ui_motion::HoverHint as _;
 use gpui::{
 	AnyElement, AppContext as _, Entity, IntoElement as _, KeyDownEvent, Role, Task, prelude::*,
@@ -1224,9 +1225,7 @@ impl AgentSurface {
 		self.load_archive_catalog(cx);
 	}
 
-	pub(in crate::shell::agent_surface) fn navigation_archived_items(
-		&self,
-	) -> Vec<super::super::navigation_sidebar::model::Item> {
+	pub(in crate::shell::agent_surface) fn navigation_archived_items(&self) -> Vec<Item> {
 		self.workspace
 			.archives
 			.data
@@ -1237,14 +1236,10 @@ impl AgentSurface {
 					let assistant = data.assistant.agent_id.as_ref() == Some(&w.id)
 						|| data.assistant.topic_ids.contains(&w.id)
 						|| data.assistant.retired_topic_ids.contains(&w.id);
-					super::super::navigation_sidebar::model::Item {
+					Item {
 						id: w.id.clone(),
 						title: Self::conversation_label_in(Some(data), w),
-						owner: if assistant {
-							"Assistant".into()
-						} else {
-							project.map_or_else(|| "No project".into(), |p| p.name.clone())
-						},
+						location: Item::location_label(assistant, project),
 						project: project.map(|p| p.id.clone()),
 						updated: w.updated_at_micros,
 						draft: false,
