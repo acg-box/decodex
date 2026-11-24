@@ -402,7 +402,6 @@ pub(super) fn supports_activity_detail(kind: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-	use std::thread;
 
 	use crate::shell::agent_surface::detail::{
 		AgentActivityDetailResult, AgentActivityDto, AgentSurface, AgentWorkItemDto, Context,
@@ -629,7 +628,7 @@ mod tests {
 				break;
 			}
 
-			thread::sleep(std::time::Duration::from_millis(16));
+			visual.executor().advance_clock(std::time::Duration::from_millis(16));
 
 			visual.update(crate::ui_frame::draw_frame);
 		}
