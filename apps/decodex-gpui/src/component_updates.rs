@@ -71,7 +71,7 @@ pub(super) fn assign_review(
 	profile: ClientProfile,
 	owner: &str,
 	target: &Update,
-) -> Result<String, String> {
+) -> Result<(), String> {
 	let work = review_assignment(owner, target);
 	let key = IdempotencyKey::new(work.id.clone()).map_err(|_| "Invalid review identity.")?;
 	let action = AgentActionDto::ManageWork {
@@ -85,12 +85,12 @@ pub(super) fn assign_review(
 	let client = AgentClient::new(profile);
 	let id = EntityId::new(key.as_str()).map_err(|_| "Invalid review identity.")?;
 	if let Ok(portfolio) = runtime.block_on(client.work_detail(id))
-		&& let Some(existing) = portfolio.works.into_iter().find(|w| w.id == key.as_str())
+		&& portfolio.works.iter().any(|w| w.id == key.as_str())
 	{
-		return Ok(existing.owner_agent_id);
+		return Ok(());
 	}
 	match runtime.block_on(client.execute(action, key)) {
-		Ok(AgentCommandResponse::Accepted { .. }) => Ok(owner.into()),
+		Ok(AgentCommandResponse::Accepted { .. }) => Ok(()),
 		Ok(AgentCommandResponse::Rejected { error }) =>
 			Err(format!("Assistant could not accept the review ({error:?}).")),
 		_ => Err("Review delivery is unconfirmed. Check the connection and try again.".into()),

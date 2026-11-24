@@ -34,6 +34,35 @@ impl AgentSurface {
 			return list.child("Connect to read Work.").into_any_element();
 		};
 
+		if let Some(id) = &self.workspace.work_detail {
+			let back = mcp_forms::mcp_button(
+				"all-portfolio-work".into(),
+				"All Work".into(),
+				false,
+				cx,
+				|s, cx| {
+					s.workspace.work_detail = None;
+					cx.notify();
+				},
+			);
+			list = list.child(back);
+			let selected = self
+				.workspace
+				.work_evidence
+				.as_ref()
+				.and_then(|p| p.works.iter().find(|w| &w.id == id))
+				.or_else(|| snapshot.portfolio.works.iter().find(|w| &w.id == id));
+			return match selected {
+				Some(work) => list.child(self.work_row(work, cx)),
+				None => list.child(label(
+					self.workspace
+						.work_read_error
+						.clone()
+						.unwrap_or_else(|| "Reading selected Work…".into()),
+				)),
+			}
+			.into_any_element();
+		}
 		list = list.child(self.assistant_role(cx));
 		list = list.child(self.list_status_filters(
 			super::list_status::View::Work,
@@ -448,10 +477,11 @@ impl AgentSurface {
 }
 
 impl AgentSurface {
-	pub(crate) fn open_portfolio_work(&mut self, id: String, owner: &str, cx: &mut Context<Self>) {
-		self.open_navigation_conversation(owner, cx);
-		self.workspace.work_detail = Some(id.clone());
-		self.load_work_detail(id, cx);
+	pub(crate) fn open_portfolio_work(&mut self, id: String, cx: &mut Context<Self>) {
+		self.restore_location(
+			&crate::shell::agent_surface::AgentLocation::Work { project: None, detail: Some(id) },
+			cx,
+		);
 	}
 
 	pub(super) fn load_work_detail(&mut self, id: String, cx: &mut Context<Self>) {

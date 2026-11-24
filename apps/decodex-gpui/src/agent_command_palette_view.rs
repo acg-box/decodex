@@ -356,7 +356,7 @@ fn command_icon(command: &Command) -> AnyElement {
 		Action::Archives =>
 			icons::Icon { glyph: icons::Glyph::Archive, size: 14. }.into_any_element(),
 		Action::Settings => workspace_symbols::icon_sized(Symbol::Settings, 14.),
-		Action::Work(_, _) => workspace_symbols::icon_sized(Symbol::WorkActivity, 14.),
+		Action::Work(_) => workspace_symbols::icon_sized(Symbol::WorkActivity, 14.),
 	};
 	gpui::div()
 		.size(gpui::px(20.))

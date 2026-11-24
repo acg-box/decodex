@@ -38,17 +38,12 @@ enum Policy {
 	Ragflow,
 }
 
-struct Review {
-	target: Update,
-	owner: String,
-}
-
 pub(super) struct Components {
 	egm_updates: Schedule,
 	research_updates: Schedule,
 	ragflow_reviews: Schedule,
 	review_check: Option<gpui::Task<()>>,
-	review: Option<Review>,
+	review: Option<Update>,
 	review_message: Option<String>,
 	details: [bool; 4],
 	preparation: RuntimePreparation,
@@ -205,8 +200,8 @@ impl SettingsSurface {
 					let (profile, owner) = host.clone();
 					cx.background_executor()
 						.spawn(async move {
-							let owner = component_updates::assign_review(profile, &owner, &target)?;
-							Ok(Some(Review { target, owner }))
+							component_updates::assign_review(profile, &owner, &target)?;
+							Ok(Some(target))
 						})
 						.await
 				},
@@ -223,14 +218,10 @@ impl SettingsSurface {
 				}
 				match result {
 					Ok(review) => {
-						s.components.review_message = Some(
-							if review.is_some() {
-								"Assistant has the migration review."
-							} else {
-								"No new image found."
-							}
-							.into(),
-						);
+						s.components.review_message = Some(match &review {
+							Some(target) => format!("Migration review ({})", &target.digest[7..19]),
+							None => "No new image found.".into(),
+						});
 						s.components.review = review;
 					},
 					Err(error) => s.components.review_message = Some(error),
@@ -281,9 +272,7 @@ impl SettingsSurface {
 					if action == RagflowComponentAction::Update
 						&& let Some(review) = &self.components.review
 					{
-						agent.update(cx, |s, cx| {
-							s.update_reviewed_ragflow(review.target.clone(), cx)
-						});
+						agent.update(cx, |s, cx| s.update_reviewed_ragflow(review.clone(), cx));
 					} else {
 						agent.update(cx, |s, cx| s.ragflow_component_action(action, cx));
 					}
@@ -415,7 +404,7 @@ impl SettingsSurface {
 					actions[primary].1,
 					Action::Ragflow(RagflowComponentAction::Update)
 				) && self.components.review.is_some() =>
-				"Apply reviewed image",
+				"Update to this image",
 			Some(true) => "Update",
 		};
 		let mut controls = gpui::div().flex().items_center().gap_2().child(self.component_button(
@@ -743,20 +732,21 @@ impl SettingsSurface {
 		if installed || self.components.ragflow_reviews.enabled {
 			body = body.child(self.update_policy(Policy::Ragflow, cx));
 			if let Some(message) = &self.components.review_message {
-				let mut row =
-					ui_theme::settings_row().child(ui_theme::settings_description(message.clone()));
+				let mut row = ui_theme::settings_row().child(
+					gpui::div().flex_1().child(ui_theme::settings_description(message.clone())),
+				);
 				if let Some(review) = &self.components.review {
-					let work = component_updates::work_id(&review.target);
-					let owner = review.owner.clone();
-					row = row.child(
-						ui_theme::settings_button(
-							"components-open-migration-review",
-							"Open review",
-						)
-						.on_click(cx.listener(move |_, _, _, cx| {
-							cx.emit(super::OpenReview { work: work.clone(), owner: owner.clone() })
-						})),
-					);
+					let work = component_updates::work_id(review);
+					row =
+						row.child(
+							ui_theme::settings_button(
+								"components-open-migration-review",
+								"Open review",
+							)
+							.on_click(cx.listener(
+								move |_, _, _, cx| cx.emit(super::OpenReview(work.clone())),
+							)),
+						);
 				}
 				if self.components.review_check.is_none() {
 					row = row.child(

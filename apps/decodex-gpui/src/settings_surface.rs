@@ -75,10 +75,7 @@ enum MenuBarRuntimeState {
 	Unavailable,
 }
 
-pub(crate) struct OpenReview {
-	pub work: String,
-	pub owner: String,
-}
+pub(crate) struct OpenReview(pub String);
 impl gpui::EventEmitter<OpenReview> for SettingsSurface {}
 
 pub(crate) struct SettingsSurface {

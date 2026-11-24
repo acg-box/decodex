@@ -33,7 +33,7 @@ enum Action {
 	CodexConversations,
 	Archives,
 	Settings,
-	Work(String, String),
+	Work(String),
 }
 
 #[derive(Clone, Copy, Eq, PartialEq, Ord, PartialOrd)]
@@ -56,7 +56,7 @@ impl Command {
 			Action::Conversation(item) => format!("conversation-{}", item.id),
 			Action::Project(id) => format!("project-{id}"),
 			Action::NewAgent(id) => format!("new-agent-{id}"),
-			Action::Work(id, _) => format!("work-{id}"),
+			Action::Work(id) => format!("work-{id}"),
 			_ => self.label.clone(),
 		}
 	}
@@ -65,7 +65,7 @@ impl Command {
 		match &self.action {
 			Action::Conversation(_) => Group::Conversations,
 			Action::Project(_) | Action::NewAgent(_) => Group::Projects,
-			Action::Work(_, _) => Group::Work,
+			Action::Work(_) => Group::Work,
 			_ => Group::Commands,
 		}
 	}
@@ -293,7 +293,7 @@ impl AgentSurface {
 						commands.push(Command {
 							label: work.title.clone(),
 							detail: "Work".into(),
-							action: Action::Work(work.id.clone(), work.owner_agent_id.clone()),
+							action: Action::Work(work.id.clone()),
 						});
 					}
 				}
@@ -351,8 +351,8 @@ impl AgentSurface {
 			Action::Archives => self.open_archive_catalog(cx),
 			Action::Settings =>
 				window.dispatch_action(Box::new(crate::shell::ActivateSettings), cx),
-			Action::Work(id, owner) => {
-				self.open_portfolio_work(id, &owner, cx);
+			Action::Work(id) => {
+				self.open_portfolio_work(id, cx);
 			},
 		}
 		cx.notify();

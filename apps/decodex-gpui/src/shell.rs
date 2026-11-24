@@ -400,9 +400,7 @@ impl Shell {
 		cx.subscribe(&settings, |shell, _, review: &crate::settings_surface::OpenReview, cx| {
 			shell.close_overlay(cx);
 			shell.select_destination(Destination::Agent, cx);
-			shell.agent.update(cx, |agent, cx| {
-				agent.open_portfolio_work(review.work.clone(), &review.owner, cx)
-			});
+			shell.agent.update(cx, |agent, cx| agent.open_portfolio_work(review.0.clone(), cx));
 		})
 		.detach();
 		settings.update(cx, |settings, cx| {
