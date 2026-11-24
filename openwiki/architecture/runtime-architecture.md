@@ -134,6 +134,8 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent/work_delivery.rs
   - id: openwiki-source-b1dd4c8ab85f342314daa6f1
     resource: repo://crates/decodex-runtime/src/agent/work.rs
+  - id: openwiki-source-eefcc1937d138170352d73d0
+    resource: repo://crates/decodex-runtime/src/agent/workspace.rs
   - id: openwiki-source-3c62f617dc1d15daed2c93e4
     resource: repo://crates/decodex-runtime/src/application_collaboration.rs
   - id: openwiki-source-a09c082db4ad1473c4d1e557
@@ -182,10 +184,10 @@ sources:
     resource: repo://scripts/macos/stage_decodex_app.sh
   - id: openwiki-source-76081c1a47ca8cf32593de34
     resource: repo://scripts/macos/test_decodex_app_stage.sh
-generated: { by: "codex", at: "2026-11-24T05:23:02.594Z" }
+generated: { by: "codex", at: "2026-11-24T06:17:29.361Z" }
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-24T05:23:02.594Z
+    at: 2026-11-24T06:17:29.361Z
 ---
 
 # Runtime Architecture
@@ -258,6 +260,8 @@ Side chats use the existing prompt-fork journal and persistent Agent records. Na
 The read-only `GetAttachedBranches` query returns the newest 100 retained Decodex receipts for one exact source. It does not adopt external native branches. Native archive observation checks hidden attached conversations through `attachedToThreadId` and verifies the source binding before reporting membership. Incomplete metadata or catalog reads remain unknown. [Retained attached-fork evidence](../../automations/upstream/retained-contracts.json) records the exact artifact and executed regressions separately from historical acceptance.
 
 ## Conversation topic ownership
+
+Each new chat uses its selected project directory or its own explicit Agent directory. For a chat without a directory selection, Decodex reads the effective `desktop.projectlessWorkspaceRoot` from the Codex app-server. It creates one folder for the chat under the local date and uses the Codex Desktop default when the setting is empty. A retry for the same chat resolves the same folder. Existing and adopted threads keep their native working directory. Work artifact verification reads the directory from the contributing native thread.
 
 The Agent host schedules automatic title reviews from accepted successful turn completions. The title owner checks for delivered user input and an idle, currently bound conversation. It does not scan saved chats or run inference from snapshot reads. The first eligible exchange gets a title. Later reviews wait for seven more completed user exchanges.
 

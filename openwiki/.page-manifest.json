@@ -30,11 +30,11 @@
       "completedRunId": "c925b9d7-e3d8-4709-b4b8-9c7466811df1"
     },
     "/openwiki/architecture/runtime-architecture.md": {
-      "pageVersion": "sha256:5b108e51435fb0c6151a7e49d3b93586689bbbaf9011d24bd4d2a09ed907cd6e",
+      "pageVersion": "sha256:afb276e88fbbdaac34430ac6413990faeee526466dcafd11110fc8b6d2b1ad0c",
       "completedBy": "codex",
-      "completedRunId": "92a83233-231d-4b20-9be5-3ec3b9ecb0e4",
-      "gitHead": "3e908d0dc61138007ad148d02707ffa8cb74ff78",
-      "sourceFingerprint": "sha256:724e2ae412f195c3c1902e917fa9e7145bba0148ba3a49bec52495e8eee73b7a"
+      "completedRunId": "017431c3-809d-4066-a848-ac5ba9d69341",
+      "gitHead": "3b773cf39c78ced10ae73698c1f52a961aa2f91c",
+      "sourceFingerprint": "sha256:d9efdf092d86c2317a9af92002d3d69dbf0295f45f944799bb5e9842d598afff"
     },
     "/openwiki/decisions/assistant-lifecycle.md": {
       "gitHead": "c8f860d25e17e29aceeb2d9db00c316b5e851791",
