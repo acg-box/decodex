@@ -1408,6 +1408,15 @@ mod tests {
 		assert!(fifth.right() <= visual.debug_bounds("color-theme-picker").unwrap().right());
 		assert!(sixth.top() >= first.bottom());
 
+		visual.simulate_resize(gpui::size(gpui::px(380.), gpui::px(700.)));
+		visual.update(crate::ui_frame::draw_current_frame);
+		let first = visual.debug_bounds(ColorTheme::ALL[0].id()).unwrap();
+		let fifth = visual.debug_bounds(ColorTheme::ALL[4].id()).unwrap();
+		assert!(
+			fifth.top() >= first.bottom(),
+			"narrow galleries wrap before captions are squeezed"
+		);
+
 		visual.update(|window, cx| {
 			window.resize(gpui::size(gpui::px(800.), gpui::px(700.)));
 			window.draw(cx).clear(cx);
