@@ -3,13 +3,13 @@ use crate::ui_motion::HoverHint as _;
 use gpui::{
 	AnyElement, App, AvailableSpace, Div, Entity, InteractiveElement, IntoElement, KeyDownEvent,
 	MouseButton, ParentElement, Pixels, Role, Size, StatefulInteractiveElement, Styled, WeakEntity,
-	Window,
+	Window, prelude::FluentBuilder as _,
 };
 
 use crate::{
 	composer_input::{ComposerEvent, ComposerInput},
 	ui_loading,
-	ui_theme::{self, CHROME_CONTROL_SIZE, CONTROL_GAP, SMALL_CONTROL_RADIUS},
+	ui_theme::{self, CHROME_CONTROL_SIZE, SMALL_CONTROL_RADIUS},
 	workspace_symbols::{self, Symbol},
 };
 
@@ -44,14 +44,15 @@ fn suggestion_actions(label: &str, busy: bool, input: &Entity<ComposerInput>) ->
 		busy,
 		input,
 		ComposerEvent::AcceptSuggestion,
-		ui_theme::shortcut_keycap(label)
-			.debug_selector(|| "composer-suggestion-keycap".into())
+		gpui::div()
+			.px(gpui::px(ui_theme::CONTROL_INSET))
+			.child(label.to_owned())
 			.into_any_element(),
 	);
 	let refresh_icon = if busy {
 		ui_loading::progress("Generating another suggestion").into_any_element()
 	} else {
-		workspace_symbols::icon_sized(Symbol::ResetCards, 12.)
+		workspace_symbols::icon_sized(Symbol::ResetCards, 15.)
 	};
 	let refresh = button(
 		"composer-suggestion-refresh",
@@ -62,11 +63,32 @@ fn suggestion_actions(label: &str, busy: bool, input: &Entity<ComposerInput>) ->
 		refresh_icon,
 	);
 	gpui::div()
+		.relative()
 		.flex_none()
 		.flex()
 		.items_center()
-		.gap(gpui::px(CONTROL_GAP / 2.))
+		.text_size(gpui::px(ui_theme::CAPTION_SIZE))
+		.line_height(gpui::px(ui_theme::CAPTION_LINE_HEIGHT))
+		.text_color(ui_theme::rgb(ui_theme::TEXT_MUTED))
+		.child(
+			gpui::div()
+				.debug_selector(|| "composer-suggestion-surface".into())
+				.absolute()
+				.left_0()
+				.right_0()
+				.top(gpui::px(ui_theme::CONTROL_INSET))
+				.bottom(gpui::px(ui_theme::CONTROL_INSET))
+				.rounded(gpui::px(SMALL_CONTROL_RADIUS))
+				.bg(ui_theme::rgb(ui_theme::TEXT).opacity(0.075)),
+		)
 		.child(accept)
+		.child(
+			gpui::div()
+				.flex_none()
+				.w(gpui::px(0.5))
+				.h(gpui::px(8.))
+				.bg(ui_theme::rgb(ui_theme::TEXT).opacity(0.18)),
+		)
 		.child(refresh)
 }
 
@@ -93,10 +115,13 @@ fn button(
 		.flex()
 		.items_center()
 		.justify_center()
-		.cursor_pointer()
-		.rounded(gpui::px(SMALL_CONTROL_RADIUS))
 		.opacity(if busy { 0.5 } else { 1. })
-		.hover(|style| style.bg(ui_theme::rgb(ui_theme::TEXT).opacity(0.08)))
+		.when(!busy, |button| {
+			button
+				.cursor_pointer()
+				.hover(|style| style.text_color(ui_theme::rgb(ui_theme::TEXT)))
+				.focus_visible(|style| style.text_color(ui_theme::rgb(ui_theme::ACCENT)))
+		})
 		.on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
 		.on_click(move |_, window, cx| {
 			if !busy {

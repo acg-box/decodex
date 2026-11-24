@@ -278,7 +278,12 @@ fn tab_accepts_prompt_suggestion_as_an_undoable_unsent_draft(cx: &mut TestAppCon
 		let accept = visual.debug_bounds("composer-suggestion-accept").unwrap();
 		let refresh = visual.debug_bounds("composer-suggestion-refresh").unwrap();
 		assert_eq!(refresh.center().y, accept.center().y);
-		assert_eq!(refresh.left() - accept.right(), gpui::px(crate::ui_theme::CONTROL_GAP / 2.));
+		let group = visual.debug_bounds("composer-suggestion-surface").unwrap();
+		assert_eq!((group.left(), group.right()), (accept.left(), refresh.right()));
+		assert!(
+			accept.right() <= refresh.left() && refresh.left() - accept.right() <= gpui::px(1.)
+		);
+		assert!(group.top() > accept.top() && group.bottom() < accept.bottom());
 		assert!(accept.left() >= text.left() && refresh.right() <= text.right());
 		assert!(accept.top() >= editor.top() && accept.bottom() <= editor.bottom());
 		let capsule = visual.debug_bounds("agent-composer").unwrap();
@@ -286,9 +291,6 @@ fn tab_accepts_prompt_suggestion_as_an_undoable_unsent_draft(cx: &mut TestAppCon
 		let attach = visual.debug_bounds("composer-attach").unwrap();
 		assert_eq!(editor.bottom(), toolbar.top());
 		assert_eq!(attach.left() - capsule.left(), capsule.bottom() - attach.bottom());
-		let keycap =
-			visual.debug_bounds("composer-suggestion-keycap").expect("separate keyboard cue");
-		assert_eq!(keycap.size.height, gpui::px(18.));
 		assert!(
 			surface
 				.read_with(visual, |s, cx| s.composer.read(cx).placeholder_hint() == Some("Tab"))
@@ -309,7 +311,7 @@ fn tab_accepts_prompt_suggestion_as_an_undoable_unsent_draft(cx: &mut TestAppCon
 	});
 	visual.update(crate::ui_frame::draw_current_frame);
 	assert!(surface.read_with(visual, |s, cx| s.composer.read(cx).placeholder_hint().is_none()));
-	assert!(visual.debug_bounds("composer-suggestion-keycap").is_none());
+	assert!(visual.debug_bounds("composer-suggestion-surface").is_none());
 	assert_eq!(view.read_with(visual, |view, _| view.1), 0, "accept without moving focus");
 	visual.update(|window, cx| window.focus(&surface.read(cx).composer.focus_handle(cx), cx));
 	visual.simulate_keystrokes("cmd-z");
