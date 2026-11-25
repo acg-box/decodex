@@ -618,7 +618,11 @@ impl AgentSurface {
 			.flex()
 			.items_center()
 			.gap(gpui::px(8.))
-			.child(archive_row_title(item))
+			.child(ArchiveRowTitle {
+				id: item.id.clone(),
+				title: item.title.clone(),
+				project: item.project.clone(),
+			})
 			.child(
 				gpui::div()
 					.id(gpui::SharedString::from(format!("archive-time-{}", item.id)))
@@ -1197,45 +1201,48 @@ fn archive_action(
 		})
 }
 
-fn archive_row_title(item: &Row) -> gpui::Div {
-	gpui::div()
-		.min_w_0()
-		.flex_1()
-		.flex()
-		.flex_wrap()
-		.items_center()
-		.gap_x(gpui::px(8.))
-		.child(
-			gpui::div()
-				.debug_selector({
-					let id = item.id.clone();
-					move || format!("archive-title-{id}")
-				})
-				.flex_1()
-				.flex_basis(gpui::px(280.))
-				.min_w_0()
-				.text_size(gpui::px(ui_theme::BODY_SIZE))
-				.line_height(gpui::px(ui_theme::BODY_LINE_HEIGHT))
-				.font_weight(gpui::FontWeight::NORMAL)
-				.text_color(ui_theme::rgb(ui_theme::TEXT))
-				.truncate()
-				.child(item.title.clone()),
-		)
-		.children(item.project.as_ref().map(|project| {
-			gpui::div()
-				.debug_selector({
-					let id = item.id.clone();
-					move || format!("archive-project-{id}")
-				})
-				.flex_none()
-				.w(gpui::px(100.))
-				.max_w_full()
-				.text_size(gpui::px(ui_theme::CAPTION_SIZE))
-				.line_height(gpui::px(ui_theme::CAPTION_LINE_HEIGHT))
-				.text_color(ui_theme::rgb(ui_theme::TEXT_MUTED))
-				.truncate()
-				.child(project.clone())
-		}))
+#[derive(gpui::IntoElement)]
+struct ArchiveRowTitle {
+	id: String,
+	title: String,
+	project: Option<String>,
+}
+
+impl gpui::RenderOnce for ArchiveRowTitle {
+	fn render(self, window: &mut gpui::Window, _: &mut gpui::App) -> impl IntoElement {
+		let stacked = window.viewport_size().width < gpui::px(600.);
+		let title_id = self.id.clone();
+		gpui::div()
+			.min_w_0()
+			.flex_1()
+			.flex()
+			.items_center()
+			.when(stacked, |row| row.flex_col().items_start())
+			.gap_x(gpui::px(8.))
+			.child(
+				gpui::div()
+					.debug_selector(move || format!("archive-title-{title_id}"))
+					.min_w_0()
+					.text_size(gpui::px(ui_theme::BODY_SIZE))
+					.line_height(gpui::px(ui_theme::BODY_LINE_HEIGHT))
+					.font_weight(gpui::FontWeight::NORMAL)
+					.text_color(ui_theme::rgb(ui_theme::TEXT))
+					.when(stacked, |label| label.w_full().line_clamp(2).text_ellipsis())
+					.when(!stacked, |label| label.flex_1().truncate())
+					.child(self.title),
+			)
+			.children(self.project.map(|project| {
+				gpui::div()
+					.debug_selector(move || format!("archive-project-{}", self.id))
+					.flex_none()
+					.when(stacked, |label| label.w_full().line_clamp(2).text_ellipsis())
+					.when(!stacked, |label| label.w(gpui::px(100.)).truncate())
+					.text_size(gpui::px(ui_theme::CAPTION_SIZE))
+					.line_height(gpui::px(ui_theme::CAPTION_LINE_HEIGHT))
+					.text_color(ui_theme::rgb(ui_theme::TEXT_MUTED))
+					.child(project)
+			}))
+	}
 }
 
 impl AgentSurface {
@@ -1598,8 +1605,13 @@ mod tests {
 			if width == 1600. {
 				assert!((body.left() - gpui::px((width - 960.) / 2.)).abs() < gpui::px(1.));
 			}
-			if width == 360. {
+			if width <= 500. {
 				assert!(project.top() >= title.bottom(), "narrow rows wrap project metadata");
+				assert_eq!(
+					project.size.width, title.size.width,
+					"the subtitle uses the text column"
+				);
+				assert!(title.size.height >= gpui::px(2. * ui_theme::BODY_LINE_HEIGHT));
 			}
 		}
 	}
