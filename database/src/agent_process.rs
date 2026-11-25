@@ -69,6 +69,47 @@ impl SqliteStore {
 		self.run(move |connection| hosts_thread(connection, &work, &thread, &generation)).await
 	}
 
+	/// Authorize a user archive action for an exact local conversation visible in the native
+	/// catalog. A dormant conversation keeps its account even after its last host exits.
+	pub async fn can_manage_agent_archive(
+		&self,
+		work: String,
+		thread: String,
+		generation: Option<String>,
+	) -> Result<bool, StoreError> {
+		let Some(generation) = generation else {
+			return self.agent_thread_is_owned(work, thread, None).await;
+		};
+		self.run(move |connection| {
+			connection
+				.query_row(
+					"WITH RECURSIVE lineage(id, parent, depth) AS (
+					SELECT id, parent_goal_id, 0 FROM agent_work_items
+					WHERE id=?1 AND codex_thread_id=?2
+					UNION ALL
+					SELECT w.id, w.parent_goal_id, l.depth+1 FROM lineage l
+					JOIN agent_work_items w ON w.id=l.parent
+				), owner AS (
+					SELECT b.generation_id, b.account_id, g.state FROM lineage l
+					JOIN agent_process_bindings b ON b.root_id=l.id
+					JOIN process_generations g ON g.generation_id=b.generation_id
+					ORDER BY l.depth, b.created_at_micros DESC, b.rowid DESC LIMIT 1
+				)
+				SELECT EXISTS(SELECT 1 FROM process_generations host
+					WHERE host.generation_id=?3 AND host.state='ready'
+					AND EXISTS(SELECT 1 FROM agent_process_bindings WHERE generation_id=host.generation_id)
+					AND EXISTS(SELECT 1 FROM lineage)
+					AND (NOT EXISTS(SELECT 1 FROM owner) OR EXISTS(SELECT 1 FROM owner
+						WHERE generation_id=host.generation_id
+						OR (state='dead' AND account_id=host.account_id))))",
+					rusqlite::params![work, thread, generation],
+					|row| row.get(0),
+				)
+				.map_err(account_lifecycle::sql_error)
+		})
+		.await
+	}
+
 	/// Check the current exact native thread binding and process subtree ownership.
 	pub async fn agent_thread_is_owned(
 		&self,

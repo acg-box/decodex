@@ -1,6 +1,62 @@
 use crate::{AgentVoiceCall, SqliteStore, agent_process::tests};
 
 #[tokio::test]
+async fn archive_management_follows_the_account_after_its_conversation_host_exits() {
+	for account in [1, 2] {
+		let (_directory, store) = hosted_store().await;
+		let first = tests::generation_id(1);
+		let next = tests::generation_id(2);
+		let allowed = |work: &str, thread: &str, generation: &str| {
+			store.can_manage_agent_archive(work.into(), thread.into(), Some(generation.into()))
+		};
+
+		assert!(allowed("second-root", "other-native", first.as_str()).await.unwrap());
+		assert!(!allowed("second-root", "wrong-native", first.as_str()).await.unwrap());
+
+		store
+			.mark_process_generation_death_unknown(
+				&first,
+				3,
+				decodex_core::ProcessAuthorityLossReason::SupervisorRestarted,
+			)
+			.await
+			.unwrap();
+		assert!(!allowed("conversation", "native-chat", first.as_str()).await.unwrap());
+		tests::confirm_original_process_death(&store).await;
+		let admission = store
+			.prepare_agent_bound_process_generation(
+				&tests::intent(account, 2),
+				&tests::binding(account),
+				"second-root",
+				"second",
+			)
+			.await
+			.unwrap();
+		assert!(
+			matches!(admission, crate::PrepareProcessGenerationOutcome::Fresh(_)),
+			"{admission:?}"
+		);
+		store.bind_process_generation_identity(&next, 1, &tests::identity(234)).await.unwrap();
+		store.mark_process_generation_ready(&next, 2).await.unwrap();
+
+		assert_eq!(
+			allowed("conversation", "native-chat", next.as_str()).await.unwrap(),
+			account == 1
+		);
+		assert!(
+			!store
+				.agent_thread_is_restorable(
+					"conversation".into(),
+					"native-chat".into(),
+					Some(next.as_str().into())
+				)
+				.await
+				.unwrap()
+		);
+	}
+}
+
+#[tokio::test]
 async fn selected_conversation_actions_keep_host_and_thread_identity_across_manager_roles() {
 	let (_directory, store) = hosted_store().await;
 	let generation = Some(tests::generation_id(1).as_str().to_owned());

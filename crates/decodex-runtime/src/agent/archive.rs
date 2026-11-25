@@ -31,6 +31,14 @@ impl AgentCoordinator {
 		if item.codex_thread_id.as_deref() != Some(thread)
 			|| item.active_turn_id.is_some()
 			|| item.dispatch_state != super::AgentDispatchState::Idle
+			|| !self
+				.store
+				.can_manage_agent_archive(
+					work.into(),
+					thread.into(),
+					self.native_generation.as_ref().map(|g| g.as_str().into()),
+				)
+				.await?
 		{
 			return Err(AgentError::Rejected(
 				"The conversation changed or is still running.".into(),
@@ -67,7 +75,7 @@ impl AgentCoordinator {
 		let generation = self.native_generation.as_ref().map(|g| g.as_str().to_owned());
 		if !self
 			.store
-			.agent_thread_is_restorable(work.into(), thread.into(), generation.clone())
+			.can_manage_agent_archive(work.into(), thread.into(), generation.clone())
 			.await?
 		{
 			return Err(AgentError::Rejected("The conversation binding changed.".into()));
@@ -78,7 +86,7 @@ impl AgentCoordinator {
 		{
 			return Err(AgentError::Rejected("Only archived conversations can be deleted.".into()));
 		}
-		if !self.store.agent_thread_is_restorable(work.into(), thread.into(), generation).await? {
+		if !self.store.can_manage_agent_archive(work.into(), thread.into(), generation).await? {
 			return Err(AgentError::Rejected("The conversation binding changed.".into()));
 		}
 		let targets = self.store.request_agent_thread_deletion(work.into(), thread.into()).await?;
@@ -116,7 +124,7 @@ impl AgentCoordinator {
 
 		if !self
 			.store
-			.agent_thread_is_restorable(work.into(), thread.into(), generation.clone())
+			.can_manage_agent_archive(work.into(), thread.into(), generation.clone())
 			.await?
 		{
 			return Err(reject());
@@ -129,7 +137,7 @@ impl AgentCoordinator {
 		}
 		if !self
 			.store
-			.agent_thread_is_restorable(work.into(), thread.into(), generation.clone())
+			.can_manage_agent_archive(work.into(), thread.into(), generation.clone())
 			.await?
 		{
 			return Err(reject());
@@ -148,7 +156,7 @@ impl AgentCoordinator {
 		// Only desired-state readback can resolve an uncertain mutation.
 		let observed = self.client.thread_archive_state(thread).await;
 
-		if !self.store.agent_thread_is_restorable(work.into(), thread.into(), generation).await? {
+		if !self.store.can_manage_agent_archive(work.into(), thread.into(), generation).await? {
 			return Err(AgentError::UnknownDispatch);
 		}
 
