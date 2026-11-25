@@ -22,10 +22,24 @@ struct ShutdownSignals;
 #[cfg(unix)]
 impl ShutdownSignals {
 	fn new() -> io::Result<Self> {
-		Ok(Self {
+		let signals = Self {
 			interrupt: unix::signal(SignalKind::interrupt())?,
 			terminate: unix::signal(SignalKind::terminate())?,
-		})
+		};
+		// A macOS dispatch worker can start the daemon with both signals blocked.
+		// Install the handlers before allowing delivery on the service's main thread.
+		let mut mask = std::mem::MaybeUninit::uninit();
+		// SAFETY: sigemptyset initializes mask. Both numbers are valid POSIX signals.
+		let error = unsafe {
+			libc::sigemptyset(mask.as_mut_ptr());
+			libc::sigaddset(mask.as_mut_ptr(), libc::SIGINT);
+			libc::sigaddset(mask.as_mut_ptr(), libc::SIGTERM);
+			libc::pthread_sigmask(libc::SIG_UNBLOCK, mask.as_ptr(), std::ptr::null_mut())
+		};
+		if error != 0 {
+			return Err(io::Error::from_raw_os_error(error));
+		}
+		Ok(signals)
 	}
 
 	async fn recv(&mut self) -> io::Result<()> {
@@ -91,6 +105,7 @@ where
 }
 
 async fn serve_inner(parent_fd: Option<i32>, root: Option<&Path>) -> Result<(), Box<dyn Error>> {
+	let mut signals = ShutdownSignals::new()?;
 	#[cfg(unix)]
 	let mut parent_lifetime =
 		parent_fd.map(parent_lifetime::ParentLifetime::from_inherited_fd).transpose()?;
@@ -105,7 +120,6 @@ async fn serve_inner(parent_fd: Option<i32>, root: Option<&Path>) -> Result<(), 
 		None => ServiceComposition::bootstrap_default().await,
 	};
 	let mut bound = bootstrap.bind(ServerConfig::default()).await?;
-	let mut signals = ShutdownSignals::new()?;
 
 	println!("decodex serving WebSocket /v1/ws over same-UID local transport");
 
