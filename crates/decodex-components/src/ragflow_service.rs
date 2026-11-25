@@ -584,7 +584,7 @@ fn compose(config: &Installation, digest: Option<&str>) -> Value {
 	let health = |test: Value| json!({"test":test,"interval":"5s","timeout":"5s","retries":120});
 	let mut value = json!({"services":{
 		"ragflow":{
-			"image":digest.map(|id| format!("infiniflow/ragflow@{id}")).unwrap_or_else(|| super::update::IMAGE.into()), "command":["--disable-syncer"],
+			"image":digest.map(|id| format!("infiniflow/ragflow@{id}")).unwrap_or_else(|| super::update::IMAGE.into()),
 			"ports":[format!("127.0.0.1:{port}:9380")],
 			"volumes":["./service_conf.yaml.template:/ragflow/conf/service_conf.yaml.template:ro"],
 			"environment":{"DOC_ENGINE":"infinity","DB_TYPE":"mysql","ENABLE_REGISTER":"1","REGISTER_ENABLED":"1","KVROCKS_HOST":"kvrocks","KVROCKS_PORT":"6379"},
@@ -653,6 +653,9 @@ mod tests {
 		let services = compose(&config, None);
 		let digest = format!("sha256:{}", "a".repeat(64));
 		let reviewed = compose(&config, Some(&digest));
+		for stack in [&services, &reviewed] {
+			assert!(stack["services"]["ragflow"].get("command").is_none());
+		}
 		assert_eq!(
 			reviewed["services"]["ragflow"]["image"],
 			format!("infiniflow/ragflow@{digest}")
