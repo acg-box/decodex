@@ -64,6 +64,8 @@ sources:
     resource: repo://crates/decodex-codex/src/app_server_client/temporary_structured_tests.rs
   - id: openwiki-source-787f8ad27b8519fbed2bd039
     resource: repo://crates/decodex-codex/src/app_server_client/thread_fork.rs
+  - id: openwiki-source-23e81f90701c27957ebceff2
+    resource: repo://crates/decodex-codex/src/schema.rs
   - id: openwiki-source-0d4c68456f2e50c6fc7ad5eb
     resource: repo://crates/decodex-components/src/install.rs
   - id: openwiki-source-69e9fd7efd8c3cd616184e27
@@ -158,6 +160,8 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent/timeline.rs
   - id: openwiki-source-74145d84eb83d80ec3062595
     resource: repo://crates/decodex-runtime/src/agent/timeline/metrics.rs
+  - id: openwiki-source-b415683824e98dc4ed730738
+    resource: repo://crates/decodex-runtime/src/agent/voice.rs
   - id: openwiki-source-4f59431f3f6264a65208bdcb
     resource: repo://crates/decodex-runtime/src/agent/work_delivery.rs
   - id: openwiki-source-b1dd4c8ab85f342314daa6f1
@@ -226,10 +230,10 @@ sources:
     resource: repo://scripts/macos/version_codex_source.py
   - id: openwiki-source-e201f60894c32a914dac99ee
     resource: repo://scripts/vnext/run_native_regression.py
-generated: { by: "codex", at: "2026-11-24T20:19:06.413Z" }
+generated: { by: "codex", at: "2026-11-25T20:16:24.596Z" }
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-24T20:19:06.413Z
+    at: 2026-11-25T20:16:24.596Z
 ---
 
 # Upstream integration acceptance boundaries
@@ -263,6 +267,8 @@ The retained MCP fixture reads same-name registrations from two environments thr
 
 The compaction failure fixture checks that the accepted prompt appears once after a cold read and that the read sends no new inference request. The Goal fixture reopens the native session, reads the persisted Goal and checks that the provider received no inference request.
 
+The generated-schema check requires a `voice` property on `ThreadRealtimeStartParams`. Two isolated native checks cover the project override, the refreshed user default and the effective value after a conditional save. Run these checks on both artifacts when upstream changes voice selection. An account-wide preference requires a separate product decision because it changes which calls share the setting. See the [retained voice contract](../integrations/subscription-voice.md#retained-voice-preferences-and-limitations).
+
 The public reasoning fixture projects a summary from a loopback provider through the signed CLI. It reads the same summary after a cold restart and verifies that the provider received one inference request.
 
 Use the [Seatbelt launch fixture](../../crates/decodex-runtime/tests/native_qualification/seatbelt_launch.py) to check local command permissions in a disposable macOS home. It checks denial under read-only permissions and a successful write to the subtree granted by a named command-directory profile. The native command hook fixture checks the working directory and one execution of the approved command.
@@ -271,7 +277,7 @@ The `installed_hook_settings_read_inherited_hooks_in_linked_worktree` fixture us
 
 The prompt-edit socket test selects an approvals reviewer, reverts the last turn of a paginated conversation, and checks the reviewer and restored draft. It resolves relative media paths from the conversation’s working directory. The signed CLI runs with a fixed policy. The linked historical source test changed the reviewer allowlist during runtime replacement. Consult its recorded source revision when using that result. See the [prompt-revert qualification](../../automations/upstream/qualification.json#prompt_revert).
 
-The provider-refusal follow-up resolves [the former compatibility blocker](https://github.com/acg-box/decodex/issues/2575) through the supported native fork. The original cohort remains historical evidence; it is not a freshly rerun matrix. The runtime lock selects the fixed reviewed target after fresh affected native consumer and component checks. Earlier cohort results remain historical and are not counted as passes on a newer artifact. The current source-review record covers every commit through its fixed target. HumanCommand support is [user-deferred](https://github.com/acg-box/decodex/issues/2585), unsupported and unadvertised. Earlier worker-permission reload source tests retain their original source and helper limits. Read the current qualification for actual executions. Source tests are separate from signed production-artifact tests; no broad upstream suite is a daily gate.
+The provider-refusal follow-up resolves [the former compatibility blocker](https://github.com/acg-box/decodex/issues/2575) through the supported native fork. The original cohort remains historical evidence; it is not a freshly rerun matrix. The runtime lock selects the candidate only after the affected native consumer and component checks pass. When a required check fails, the lock keeps the previously qualified runtime and source review can advance independently. Earlier cohort results remain historical and are not counted as passes on a newer artifact. The current source-review record covers every commit through its fixed target. HumanCommand support is [user-deferred](https://github.com/acg-box/decodex/issues/2585), unsupported and unadvertised. Earlier worker-permission reload source tests retain their original source and helper limits. Read the current qualification for actual executions. Source tests are separate from signed production-artifact tests; no broad upstream suite is a daily gate.
 
 The retired Codex startup-configuration diagnostic is absent from the current router. Its earlier execution remains historical proof. Valid named-permission defaults and an owned Recap working directory repair fixture admission without weakening existing behavior assertions. The exact-artifact development cache test also corrupts the required standalone executor, checks that ordinary preparation rejects it, and restores it through explicit reinstallation.
 
