@@ -3,7 +3,7 @@
   "scope": "Current Decodex upstream review, selected development artifact and stable consumer contracts.",
   "retained_contracts": {
     "path": "automations/upstream/retained-contracts.json",
-    "sha256": "9a7e0a1f00f55dc6da2e7c9162ea70ce3b6da10024626d76eabaec03b780d966"
+    "sha256": "02144aa22e16b7e5998a8e901da2bacf26a50eb7386c78bef07f2114f3ad658e"
   },
   "retained_contract_routes": {
     "behavior": "automations/upstream/retained-contracts.json#retained_behavior_contracts",
@@ -20,9 +20,12 @@
   "source_baseline": "7a24022794c8bfb26f73685e5c2f7d957126daee",
   "source_review_evidence": "automations/upstream/current-review.json",
   "source_review_summary": {
-    "previous_cursor": "00696090d65a747848e0a40661e1da8badb1f146",
-    "reviewed_commits": 94,
-    "fixed_target_remaining": 0
+    "previous_cursor": "7a24022794c8bfb26f73685e5c2f7d957126daee",
+    "reviewed_commits": 64,
+    "reviewed_through": "06f334aa4b053023c5b4199dde0ba9c004d64820",
+    "fixed_target_remaining": 0,
+    "selected_source": "7a24022794c8bfb26f73685e5c2f7d957126daee",
+    "candidate_qualification": "automations/upstream/qualification.json#unselected_candidate"
   },
   "qualification": "automations/upstream/qualification.json",
   "artifact": {
@@ -78,7 +81,8 @@
   "validation": "automations/upstream/qualification.json#decodex_validation",
   "current_delivery": {
     "source_commit_references": [
-      "https://github.com/acg-box/decodex/commit/20cc48d86ed80e9ef7e4f625016561f4be81a3b8"
+      "https://github.com/acg-box/decodex/commit/20cc48d86ed80e9ef7e4f625016561f4be81a3b8",
+      "https://github.com/acg-box/decodex/commit/6a042909f36009d4decde3dfa930278f9dcd7c26"
     ],
     "status": "Final-head CI and merge evidence are in native receipts."
   },

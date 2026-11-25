@@ -866,10 +866,17 @@ mod tests {
 	#[ignore = "set DECODEX_REVIEW_SCHEMA to an official experimental JSON schema directory"]
 	fn official_schema_supports_current_consumers() {
 		let directory = env::var_os("DECODEX_REVIEW_SCHEMA").expect("schema directory required");
-		let evidence = super::GeneratedSchemaEvidence::load(std::path::Path::new(&directory))
+		let directory = std::path::Path::new(&directory);
+		let evidence = super::GeneratedSchemaEvidence::load(directory)
 			.expect("official schema must pass bounded loading and account callback validation");
 		let contract = evidence.contract();
+		let realtime_start = super::read_json(directory.join("v2/ThreadRealtimeStartParams.json"))
+			.expect("realtime start schema");
 
+		assert!(
+			realtime_start["properties"].get("voice").is_some(),
+			"thread/realtime/start must accept the voice selected for the thread"
+		);
 		assert!(evidence.supports_standalone_tool_output());
 
 		contract.check_conversation_contract().expect("ordinary conversation contract");
