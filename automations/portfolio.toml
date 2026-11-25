@@ -7,8 +7,8 @@ version               = 1
 [[automations]]
 execution_environment = "worktree"
 id                    = "codex-upstream-maintainer"
-model                 = "gpt-6.2-sol"
+model                 = "gpt-6.2-astra"
 name                  = "Codex Upstream Maintainer"
 prompt_file           = "automations/upstream/prompts/maintainer.md"
-reasoning_effort      = "max"
+reasoning_effort      = "xhigh"
 rrule                 = "DTSTART:20260919T200500Z\nRRULE:FREQ=DAILY;BYHOUR=20;BYMINUTE=5;BYSECOND=0"
