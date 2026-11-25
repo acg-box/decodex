@@ -2410,6 +2410,22 @@
       ],
       "delivery_reference": "https://github.com/acg-box/decodex/pull/2533",
       "delivery_state_source": "Read the public pull request for merge and CI state; qualification is distinct from delivery."
+    },
+    {
+      "id": "thread-scoped-realtime-voice-selection",
+      "contract": "Resolve the effective voice for the exact native thread when starting a new V3 call. The native user-layer save uses an expected configuration version. Project configuration can override the saved preference.",
+      "source_symbols": [
+        "crates/decodex-runtime/src/agent/voice.rs#start_voice",
+        "crates/decodex-codex/src/app_server_client/realtime_settings.rs#realtime_voice_for_thread",
+        "crates/decodex-codex/src/app_server_client/realtime_preferences.rs#write_realtime_voice"
+      ],
+      "qualification_checks": [
+        "crates/decodex-runtime/src/account_launch/agent_process_voice_settings_start_tests.rs#installed_native_voice_reads_project_override_and_refreshed_user_default",
+        "crates/decodex-runtime/src/account_launch/agent_process_voice_settings_start_tests.rs#installed_voice_preference_bridge_saves_absent_file_and_rejects_old_connection",
+        "crates/decodex-codex/src/schema.rs#official_schema_supports_current_consumers"
+      ],
+      "behavior_limits": "The schema check covers the per-call voice field. The native tests cover effective configuration and conditional storage. Audible playback requires separate evidence.",
+      "delivery_reference": "https://github.com/acg-box/decodex/commit/6a042909f36009d4decde3dfa930278f9dcd7c26"
     }
   ],
   "retained_account_scope": {
