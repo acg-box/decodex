@@ -5,8 +5,12 @@ description: "Workspace ownership, native menu focus, compositor motion, and con
 tags: [decodex, architecture, desktop, presentation]
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-24T15:13:11.054Z
+    at: 2026-11-25T00:42:06.307Z
 sources:
+  - id: openwiki-source-33ae8d32cc179d343274671d
+    resource: repo://apps/decodex-cli/src/service.rs
+  - id: openwiki-source-d068f53533c6de1d60fc61fd
+    resource: repo://apps/decodex-cli/tests/signal_shutdown.rs
   - id: openwiki-source-98e7b23c4cc276d20fcb4649
     resource: repo://apps/decodex-gpui/menubar/Sources/DecodexApp/AccountControlViews.swift
   - id: openwiki-source-b469e348e65d4cdbb569fb27
@@ -169,12 +173,18 @@ sources:
     resource: repo://apps/decodex-gpui/src/ui_viewport_clip.rs
   - id: openwiki-source-69e9fd7efd8c3cd616184e27
     resource: repo://crates/decodex-components/src/ragflow_service.rs
+  - id: openwiki-source-052a4071b057633df77b1e21
+    resource: repo://crates/decodex-runtime/src/agent/archive.rs
   - id: openwiki-source-c29d70b5569f29b7122f2f6b
     resource: repo://crates/decodex-runtime/src/native_agents.rs
   - id: openwiki-source-6085af9603cb7ac0ff3ef1cf
     resource: repo://crates/decodex-runtime/src/work_portfolio.rs
   - id: openwiki-source-58c0167d31c3e40dc89591ab
     resource: repo://database/src/agent_fork.rs
+  - id: openwiki-source-e1fc2e0e81623c7dd7ff5417
+    resource: repo://database/src/agent_process.rs
+  - id: openwiki-source-59d8302bab88a9f804d7d4ce
+    resource: repo://database/src/agent_process/tests/restoration.rs
   - id: openwiki-source-3f60f3a3aae45b3e3b355d3e
     resource: repo://database/src/assistant.rs
   - id: openwiki-source-d1279ad243eb550afec4d0e6
@@ -185,7 +195,7 @@ sources:
     resource: repo://database/src/works/commands.rs
   - id: openwiki-source-8fe6f1557e5d45d88b34bd0a
     resource: repo://scripts/macos/generate_workspace_symbols.swift
-generated: { by: "codex", at: "2026-11-24T15:13:11.054Z" }
+generated: { by: "codex", at: "2026-11-25T00:42:06.307Z" }
 ---
 
 # Desktop workspace and native glass
@@ -222,7 +232,9 @@ Project headers reveal their delete and new-conversation icons through the same 
 
 The Codex conversations and Archived controls open centered overlays in the workspace. The Codex catalog lets a user register an external thread as an independent Agent or give it to an existing Agent. Archived provides Restore and Delete. Both use the existing native catalog and conversation commands. Dismissing an overlay restores focus to the workspace.
 
-In Archived, the search text, date groups and conversation titles share a left edge. The project name and time use fixed columns on wide rows and align vertically with the row actions. Narrow rows can put the project below the title. The selection box appears in the action group. Bulk selection keeps the existing archive operations.
+In Archived, the search text, date groups and conversation titles share a left edge. The project name and time use fixed columns on wide rows and align vertically with the row actions. On narrow rows, the title can use two lines. The project name uses the full text column below it. The time and actions remain on the right. The selection box appears in the action group. Bulk selection keeps the existing archive operations.
+
+An idle conversation can be restored or deleted after its original execution process exits. The service verifies the exact local conversation and its native thread. A replacement host can manage a conversation last attached to a dead process from the same account.
 
 Collaboration shows **Needs you** before **Between agents**. Pending native requests, unanswered questions and explicit user decisions need a response; a returned result still needs its original assessment and is not automatically accepted. Opening an exchange's details keeps the active conversation and draft. Explicit **Open request**, **Open question** and **Open review** actions lead to the owning conversation, where its native response controls retain authority. Its fixed-size toolbar icon keeps a pending-count badge when the right panel is closed, with its name in the tooltip. The Graph remains available through its existing control and shortcut, but starts closed.
 
@@ -320,6 +332,8 @@ The history rail follows the reading position. Expanding collaboration exchanges
 
 ## State and errors
 
+Closing a desktop window leaves the local service running. For maintenance, the service handles SIGTERM and SIGINT even when the macOS desktop launcher blocked those signals. The next client can reconnect to the same service identity after restart.
+
 Nonblocking conversation feedback and recovery actions share one band above the composer. A send restriction keeps the normal input bar, locks the editor and centers the shared status inside it. The draft stays saved internally and returns to the editor after recovery; it is not repeated below the error. Errors and quoted passages do not occupy the composer toolbar. Archive status and Unarchive also stay inside the disabled input bar without another notice above it. Parent-managed native chats offer Open parent; Retry is reserved for a failed native connection.
 
 Archive is a normal read-only state. Archived and the short explanation Unarchive to send messages appear inside the disabled input bar, with Unarchive on the right. Read-only notices use a short state followed by one plain sentence about its effect or next action; the explanation wraps when necessary. Background archive-read failures preserve the last confirmed state. A restore failure replaces the ordinary explanation with its actual feedback.
@@ -350,7 +364,7 @@ Reserve `arrow.triangle.branch` for Fork. Account routing uses `point.topleft.do
 
 The [Assistant lifecycle](../decisions/assistant-lifecycle.md) keeps one personal Agent. First use records its identity atomically. Personal tools and RAGFlow Memory follow this identity. Work retains saved teams, Project Lead selection and pending-context feedback. Source-linked history survives a context transition.
 
-RAGFlow is an optional component with Install, Update, Uninstall and complete installed version readback. It shares lifecycle buttons, busy state and inline feedback with the other components. Install checks the running Docker-compatible engine and Compose, then prepares RAGFlow, Infinity and the private account. Missing prerequisites use the shared notice; the App does not install or launch a container runtime. Successful installation opens model setup when no models are saved. Expand RAGFlow and select Set up models or Edit to enter one Base URL, an optional API key, an extraction model ID and an embedding model ID. Both models use that shared OpenAI-compatible connection. Save verifies the choices and initializes dedicated Memory without sending chat content. New Memory connections enable automatic learning from completed Assistant dialogue. The Automatic learning switch can stop future learning; existing saved choices remain unchanged on update.
+RAGFlow is an optional component with Install, Update, Uninstall and complete installed version readback. A reviewed update uses the exact platform image from the migration review. The image runs its own startup and database migrations against the retained volumes. It shares lifecycle buttons, busy state and inline feedback with the other components. Install checks the running Docker-compatible engine and Compose, then prepares RAGFlow, Infinity and the private account. Missing prerequisites use the shared notice; the App does not install or launch a container runtime. Successful installation opens model setup when no models are saved. Expand RAGFlow and select Set up models or Edit to enter one Base URL, an optional API key, an extraction model ID and an embedding model ID. Both models use that shared OpenAI-compatible connection. Save verifies the choices and initializes dedicated Memory without sending chat content. New Memory connections enable automatic learning from completed Assistant dialogue. The Automatic learning switch can stop future learning; existing saved choices remain unchanged on update.
 
 Navigation fixtures cover pinning without changing the active draft, independent Chat and Project draft reuse, two-click delete cancellation, fixed 28-point spacing, complete available topic rendering, hover expansion from the 40-point rail, delayed close cancellation and command selection without chat submission. The hover check verifies fixed leading marks and section disclosure without persistent expansion. A detached-window action test verifies that Settings opens through the main Shell without changing the conversation. Use GPUI tests in `agent_navigation_sidebar_tests.rs`, `agent_command_palette.rs`, `shell.rs`, `agent_workspace_size.rs`, `agent_workspace.rs`, `agent_activity.rs`, `agent_markdown.rs`, `agent_archive.rs` and `settings_surface.rs`. Real macOS acceptance must also check focus, typing, scrolling, panel transitions, and transparency in the signed app. A white or missing automation screenshot alone is not evidence that the user sees a blank window.
 
