@@ -1,1578 +1,2322 @@
 {
-  "start_exclusive": "7a24022794c8bfb26f73685e5c2f7d957126daee",
-  "end_inclusive": "06f334aa4b053023c5b4199dde0ba9c004d64820",
-  "fixed_target_observed_at": "2026-11-25T20:02:17Z",
-  "screened_count": 64,
-  "reviewed_count": 64,
-  "count": 64,
+  "start_exclusive": "06f334aa4b053023c5b4199dde0ba9c004d64820",
+  "end_inclusive": "475e13ab1ace6c63275ee66149c951befc685c96",
+  "fixed_target_observed_at": "2026-11-26T20:05:10Z",
+  "decodex_consumer_baseline": "e379d82e1d521e1453795c8dd283ef31cb92c407",
+  "screened_count": 60,
+  "reviewed_count": 60,
   "fixed_target_remaining": 0,
   "source_review_complete": true,
-  "scope": "Consecutive first-parent commits at the fixed official main target. The records describe the consumer and execution evidence at initial review. The account voice follow-up qualified the selected runtime.",
+  "count": 60,
   "classification_counts": {
-    "native_owned": 27,
-    "not_applicable": 26,
-    "already_covered": 4,
-    "deferred": 6,
-    "necessary_repair": 1
+    "native_owned": 15,
+    "not_applicable": 43,
+    "already_covered": 2
   },
-  "decodex_consumer_baseline": "f42f3e32df7888afd8ee4e13f9c291022dbfc530",
-  "previous_source_review": "https://github.com/acg-box/decodex/blob/f42f3e32df7888afd8ee4e13f9c291022dbfc530/automations/upstream/current-review.json",
-  "selected_runtime_source": "06f334aa4b053023c5b4199dde0ba9c004d64820",
-  "selected_runtime_qualification": "qualification.json",
   "records": [
     {
       "index": 1,
-      "commit": "9a3c131eb437e38e9c9de93f97b04a5bc2530ffd",
+      "commit": "c6bbf8a413d38a8a24b9c6f4fc05d2e90d96a948",
       "classification": "native_owned",
-      "behavior": "Long catalog strings share interned storage after deserialization and cloning. Short strings stay inline and the wire type stays a string.",
-      "decodex_consumer": "The model/list adapter consumes JSON strings in the model catalog. It does not use the Rust storage representation.",
+      "behavior": "The shared crate owns network policy values, serialization and ordered domain entries. The proxy retains validation and configuration conversion.",
+      "decodex_consumer": "Native permission profiles pass through app-server. Decodex does not link the upstream proxy or construct its internal Rust types.",
+      "decodex_source": "crates/decodex-runtime/src/agent_permissions.rs",
       "implementation_symbols": [
-        "codex-rs/utils/cached-str/src/lib.rs#as_cow",
-        "codex-rs/utils/cached-str/src/lib.rs#CodexCachedStr"
+        "codex-rs/network-policy-types/src/lib.rs#effective_entries",
+        "codex-rs/network-proxy/src/environment_policy.rs#environment_policy_from_config",
+        "codex-rs/network-proxy/src/environment_policy.rs#apply_environment_policy"
       ],
       "tests_read": [
         {
-          "source": "codex-rs/utils/cached-str/src/lib.rs",
-          "symbol": "long_strings_share_storage_across_roundtrips_and_clones",
-          "revision": "9a3c131eb437e38e9c9de93f97b04a5bc2530ffd",
-          "body_read": true
-        }
-      ],
-      "tests_executed": [],
-      "source_review_complete": true,
-      "validation_limits": [
-        "Compared the implementation and its retained consumer at source level. No local upstream tests were executed. The selected development artifact predates this commit."
-      ]
-    },
-    {
-      "index": 2,
-      "commit": "32f77f824d9e84e8cc7d16a836225c118c4f6a30",
-      "classification": "not_applicable",
-      "behavior": "A Stop hook prompt restores the Working indicator only for the current running turn, including during terminal replay.",
-      "decodex_consumer": "The macOS desktop launches app-server --stdio (decodex-runtime/src/account_launch/process.rs, APP_SERVER_ARGS). Its GPUI frontend does not render or handle input through the terminal component changed here.",
-      "implementation_symbols": [
-        "codex-rs/tui/src/chatwidget/replay.rs#handle_thread_item"
-      ],
-      "tests_read": [
-        {
-          "source": "codex-rs/tui/src/chatwidget/tests/status_and_layout.rs",
-          "symbol": "stop_hook_retry_restores_working_after_final_answer",
-          "revision": "32f77f824d9e84e8cc7d16a836225c118c4f6a30",
-          "body_read": true
-        }
-      ],
-      "tests_executed": [],
-      "source_review_complete": true,
-      "validation_limits": [
-        "Compared the implementation and its retained consumer at source level. No local upstream tests were executed. The selected development artifact predates this commit."
-      ]
-    },
-    {
-      "index": 3,
-      "commit": "39f38dcfab4ef87f2c142bbda6add3b6f0d3b5f6",
-      "classification": "not_applicable",
-      "behavior": "VS Code dev containers prefer terminal clipboard delivery and can retain a native lease for oversized Wayland copies.",
-      "decodex_consumer": "The macOS desktop launches app-server --stdio (decodex-runtime/src/account_launch/process.rs, APP_SERVER_ARGS). Its GPUI frontend does not render or handle input through the terminal component changed here.",
-      "implementation_symbols": [
-        "codex-rs/terminal-detection/src/lib.rs#is_vscode_dev_container_in",
-        "codex-rs/tui/src/terminal_capabilities.rs#detect"
-      ],
-      "tests_read": [
-        {
-          "source": "codex-rs/terminal-detection/src/terminal_tests.rs",
-          "symbol": "dev_container_requires_vscode_and_an_enabled_container_marker",
-          "revision": "39f38dcfab4ef87f2c142bbda6add3b6f0d3b5f6",
-          "body_read": true
-        }
-      ],
-      "tests_executed": [],
-      "source_review_complete": true,
-      "validation_limits": [
-        "Compared the implementation and its retained consumer at source level. No local upstream tests were executed. The selected development artifact predates this commit."
-      ]
-    },
-    {
-      "index": 4,
-      "commit": "c6b00eacb985a0da05093044e8f6c04599943808",
-      "classification": "not_applicable",
-      "behavior": "The terminal composer draws top and bottom padding borders when the background is unknown and a usable gray color exists.",
-      "decodex_consumer": "The macOS desktop launches app-server --stdio (decodex-runtime/src/account_launch/process.rs, APP_SERVER_ARGS). Its GPUI frontend does not render or handle input through the terminal component changed here.",
-      "implementation_symbols": [
-        "codex-rs/tui/src/bottom_pane/chat_composer.rs#render_with_options"
-      ],
-      "tests_read": [
-        {
-          "source": "codex-rs/tui/src/bottom_pane/chat_composer.rs",
-          "symbol": "composer_with_light_or_missing_palette",
-          "revision": "c6b00eacb985a0da05093044e8f6c04599943808",
-          "body_read": true
-        }
-      ],
-      "tests_executed": [],
-      "source_review_complete": true,
-      "validation_limits": [
-        "Compared the implementation and its retained consumer at source level. No local upstream tests were executed. The selected development artifact predates this commit."
-      ]
-    },
-    {
-      "index": 5,
-      "commit": "20c7f26cd2c00abb0b9ac8ae6bd39fbf25187938",
-      "classification": "native_owned",
-      "behavior": "Hosted Guardian reviews capture ordered evidence on the root thread together with authorization versions and budgets for the reviewer.",
-      "decodex_consumer": "Decodex sends native approval settings and reads Guardian review items. The native host owns evidence capture for workers.",
-      "implementation_symbols": [
-        "codex-rs/core/src/agent/control/guardian_root_evidence.rs#capture_guardian_root_evidence"
-      ],
-      "tests_read": [
-        {
-          "source": "codex-rs/guardian-context/src/preparation/source_tests.rs",
-          "symbol": "elastic_root_preparation_preserves_captured_messages",
-          "revision": "20c7f26cd2c00abb0b9ac8ae6bd39fbf25187938",
-          "body_read": true
-        }
-      ],
-      "tests_executed": [],
-      "source_review_complete": true,
-      "validation_limits": [
-        "Compared the implementation and its retained consumer at source level. No local upstream tests were executed. The selected development artifact predates this commit."
-      ]
-    },
-    {
-      "index": 6,
-      "commit": "f22cc03b043e61a8bfd1f16880adcb19edc459c9",
-      "classification": "native_owned",
-      "behavior": "An explicit exec escalation with denied reads retains filesystem restrictions, even with a saved allow rule. A missing required sandbox rejects the request.",
-      "decodex_consumer": "AppServerClient permission selection uses native profiles. The packaged runtime enforces those profiles when executing commands.",
-      "implementation_symbols": [
-        "codex-rs/core/src/tools/sandboxing.rs#sandbox_permissions_preserving_denied_reads"
-      ],
-      "tests_read": [
-        {
-          "source": "codex-rs/core/src/tools/sandboxing_tests.rs",
-          "symbol": "deny_read_preserves_the_sandbox_for_explicit_escalation_and_blocks_policy_bypass",
-          "revision": "f22cc03b043e61a8bfd1f16880adcb19edc459c9",
-          "body_read": true
-        }
-      ],
-      "tests_executed": [],
-      "source_review_complete": true,
-      "validation_limits": [
-        "Compared the implementation and its retained consumer at source level. No local upstream tests were executed. The selected development artifact predates this commit."
-      ]
-    },
-    {
-      "index": 7,
-      "commit": "d18dddd984247ee852af1d5cc9e7b683b5963205",
-      "classification": "not_applicable",
-      "behavior": "Nested terminal rows paint blank-line backgrounds within their allocated width and retain the height of adjacent content.",
-      "decodex_consumer": "The macOS desktop launches app-server --stdio (decodex-runtime/src/account_launch/process.rs, APP_SERVER_ARGS). Its GPUI frontend does not render or handle input through the terminal component changed here.",
-      "implementation_symbols": [
-        "codex-rs/tui/src/ui_tree/render.rs#layout_band"
-      ],
-      "tests_read": [
-        {
-          "source": "codex-rs/tui/src/ui_tree_tests.rs",
-          "symbol": "nested_row_background_fills_blank_lines_independently_of_siblings",
-          "revision": "d18dddd984247ee852af1d5cc9e7b683b5963205",
-          "body_read": true
-        }
-      ],
-      "tests_executed": [],
-      "source_review_complete": true,
-      "validation_limits": [
-        "Compared the implementation and its retained consumer at source level. No local upstream tests were executed. The selected development artifact predates this commit."
-      ]
-    },
-    {
-      "index": 8,
-      "commit": "38e42cdb210b6cfed3ff89728ae419492c33baf6",
-      "classification": "not_applicable",
-      "behavior": "Custom terminal status lines can stack children in a column and wrap each column inside its assigned width.",
-      "decodex_consumer": "The macOS desktop launches app-server --stdio (decodex-runtime/src/account_launch/process.rs, APP_SERVER_ARGS). Its GPUI frontend does not render or handle input through the terminal component changed here.",
-      "implementation_symbols": [
-        "codex-rs/tui/src/ui_tree/render/prepare.rs#col"
-      ],
-      "tests_read": [
-        {
-          "source": "codex-rs/tui/src/ui_tree_tests.rs",
-          "symbol": "col_inside_a_row_wraps_within_its_assigned_width",
-          "revision": "38e42cdb210b6cfed3ff89728ae419492c33baf6",
-          "body_read": true
-        }
-      ],
-      "tests_executed": [],
-      "source_review_complete": true,
-      "validation_limits": [
-        "Compared the implementation and its retained consumer at source level. No local upstream tests were executed. The selected development artifact predates this commit."
-      ]
-    },
-    {
-      "index": 9,
-      "commit": "15843299be5ad385da2c2a9b3b93d222f1cf1186",
-      "classification": "not_applicable",
-      "behavior": "Inline code nodes in terminal status lines preserve literal spacing, wrap inside the line and use the terminal theme.",
-      "decodex_consumer": "The macOS desktop launches app-server --stdio (decodex-runtime/src/account_launch/process.rs, APP_SERVER_ARGS). Its GPUI frontend does not render or handle input through the terminal component changed here.",
-      "implementation_symbols": [
-        "codex-rs/tui/src/ui_tree/theme.rs#inline_code_style"
-      ],
-      "tests_read": [
-        {
-          "source": "codex-rs/tui/src/ui_tree_tests.rs",
-          "symbol": "inline_code_preserves_literal_spacing_and_wraps_in_the_text_flow",
-          "revision": "15843299be5ad385da2c2a9b3b93d222f1cf1186",
-          "body_read": true
-        }
-      ],
-      "tests_executed": [],
-      "source_review_complete": true,
-      "validation_limits": [
-        "Compared the implementation and its retained consumer at source level. No local upstream tests were executed. The selected development artifact predates this commit."
-      ]
-    },
-    {
-      "index": 10,
-      "commit": "110f065202bc1990aab7c85d56b32be78bb39414",
-      "classification": "not_applicable",
-      "behavior": "The preserveWhitespace text property propagates through styled children and preserves spacing across line wraps.",
-      "decodex_consumer": "The macOS desktop launches app-server --stdio (decodex-runtime/src/account_launch/process.rs, APP_SERVER_ARGS). Its GPUI frontend does not render or handle input through the terminal component changed here.",
-      "implementation_symbols": [
-        "codex-rs/tui/src/ui_tree/render.rs#apply_to"
-      ],
-      "tests_read": [
-        {
-          "source": "codex-rs/tui/src/ui_tree_tests.rs",
-          "symbol": "preserved_text_keeps_spacing_across_inline_styles_and_wraps",
-          "revision": "110f065202bc1990aab7c85d56b32be78bb39414",
-          "body_read": true
-        }
-      ],
-      "tests_executed": [],
-      "source_review_complete": true,
-      "validation_limits": [
-        "Compared the implementation and its retained consumer at source level. No local upstream tests were executed. The selected development artifact predates this commit."
-      ]
-    },
-    {
-      "index": 11,
-      "commit": "9202c7916b434d5312ac580148b7d2460e57fe7e",
-      "classification": "native_owned",
-      "behavior": "Native occurrence search projects inline user links to visible labels before matching and calculating ranges. Code blocks and other source text retain their spacing.",
-      "decodex_consumer": "The Decodex task-history bridge admits thread/searchOccurrences and consumes native occurrence IDs, snippets and ranges.",
-      "implementation_symbols": [
-        "codex-rs/thread-store/src/local/thread_history/search.rs#user_link_labels"
-      ],
-      "tests_read": [
-        {
-          "source": "codex-rs/app-server/tests/suite/v2/thread_read.rs",
-          "symbol": "thread_search_occurrences_reads_paginated_projection",
-          "revision": "9202c7916b434d5312ac580148b7d2460e57fe7e",
-          "body_read": true
-        }
-      ],
-      "tests_executed": [],
-      "source_review_complete": true,
-      "validation_limits": [
-        "Compared the implementation and its retained consumer at source level. No local upstream tests were executed. The selected development artifact predates this commit."
-      ]
-    },
-    {
-      "index": 12,
-      "commit": "0adee0df26c7dcdaf4a19a4013b94f4058d26f33",
-      "classification": "native_owned",
-      "behavior": "The process can own one Statsig evaluator with account-scoped bootstrap, gate/config reads and SDK refresh. Failed refresh retains the last values.",
-      "decodex_consumer": "APP_SERVER_ARGS launches one native stdio server per admitted process. Decodex has no independent Statsig evaluator.",
-      "implementation_symbols": [
-        "codex-rs/statsig/src/evaluations.rs#start_process"
-      ],
-      "tests_read": [
-        {
-          "source": "codex-rs/statsig/src/evaluations_tests.rs",
-          "symbol": "bootstraps_once_and_refreshes_directly_through_the_sdk",
-          "revision": "0adee0df26c7dcdaf4a19a4013b94f4058d26f33",
-          "body_read": true
-        }
-      ],
-      "tests_executed": [],
-      "source_review_complete": true,
-      "validation_limits": [
-        "Compared the implementation and its retained consumer at source level. No local upstream tests were executed. The selected development artifact predates this commit."
-      ]
-    },
-    {
-      "index": 13,
-      "commit": "ff146c344d1f103e47da9722cbe5c456fce73e96",
-      "classification": "already_covered",
-      "behavior": "Dynamic tools can explicitly return structured content or an error message. Existing success and contentItems replies remain valid. Ambiguous branches fail decoding.",
-      "decodex_consumer": "The management-tool reply in decodex-runtime/src/agent.rs sends success with one contentItems array. It does not send both representations.",
-      "implementation_symbols": [
-        "codex-rs/core/src/tools/handlers/dynamic.rs#into_code_mode_result"
-      ],
-      "tests_read": [
-        {
-          "source": "codex-rs/app-server-protocol/src/protocol/v2/tests.rs",
-          "symbol": "dynamic_tool_wire_rejects_ambiguous_results_and_inconsistent_errors",
-          "revision": "ff146c344d1f103e47da9722cbe5c456fce73e96",
-          "body_read": true
-        }
-      ],
-      "tests_executed": [],
-      "source_review_complete": true,
-      "validation_limits": [
-        "Compared the implementation and its retained consumer at source level. No local upstream tests were executed. The selected development artifact predates this commit."
-      ]
-    },
-    {
-      "index": 14,
-      "commit": "bc6728ef6872a8982a0d1f104ae2affceb689493",
-      "classification": "already_covered",
-      "behavior": "Code Mode tests synchronize on the collector starting and assert distinct collection errors and panic events without relying on short deadlines.",
-      "decodex_consumer": "The Decodex package contains the production code-mode host. These upstream edits change test synchronization only.",
-      "implementation_symbols": [
-        "codex-rs/code-mode-host/tests/grpc/process_metrics_tests.rs#metrics_failures_and_deadlines_preserve_sessions_and_keepalive"
-      ],
-      "tests_read": [
-        {
-          "source": "codex-rs/code-mode-runtime/src/runtime/mod.rs",
-          "symbol": "runtime_thread_panic_is_forwarded_without_owner_supervision",
-          "revision": "bc6728ef6872a8982a0d1f104ae2affceb689493",
-          "body_read": true
-        },
-        {
-          "source": "codex-rs/code-mode-host/tests/grpc/process_metrics_tests.rs",
-          "symbol": "metrics_failures_and_deadlines_preserve_sessions_and_keepalive",
-          "revision": "bc6728ef6872a8982a0d1f104ae2affceb689493",
-          "body_read": true
-        }
-      ],
-      "tests_executed": [],
-      "source_review_complete": true,
-      "validation_limits": [
-        "Compared the implementation and its retained consumer at source level. No local upstream tests were executed. The selected development artifact predates this commit."
-      ]
-    },
-    {
-      "index": 15,
-      "commit": "ff2ee6212c05e0e53eb97c47d49f4a9e952816a1",
-      "classification": "native_owned",
-      "behavior": "Submitted additional context becomes a world-state section. The native runtime places it before the input and tracks previously delivered values across resume.",
-      "decodex_consumer": "decodex-runtime/src/agent.rs supplies turn/start and turn/steer additionalContext. Native core retains and projects these values.",
-      "implementation_symbols": [
-        "codex-rs/core/src/session/turn.rs#record_delivered_additional_context"
-      ],
-      "tests_read": [
-        {
-          "source": "codex-rs/core/tests/suite/scenarios.rs",
-          "symbol": "additional_context_tool_outputs",
-          "revision": "ff2ee6212c05e0e53eb97c47d49f4a9e952816a1",
-          "body_read": true
-        }
-      ],
-      "tests_executed": [],
-      "source_review_complete": true,
-      "validation_limits": [
-        "Compared the implementation and its retained consumer at source level. No local upstream tests were executed. The selected development artifact predates this commit."
-      ]
-    },
-    {
-      "index": 16,
-      "commit": "e1492bd86d8f64e851952ab2fb9720b6d34df68d",
-      "classification": "native_owned",
-      "behavior": "A recorded review can receive root evidence on an ephemeral thread. The native reviewer scopes the evidence to that request and preserves the role and missing-context notices.",
-      "decodex_consumer": "Decodex reads Guardian review records. Its retained stdio request list does not submit injected history for thread/guardianReview.",
-      "implementation_symbols": [
-        "codex-rs/core/src/guardian/recorded_tool_call.rs#root_messages"
-      ],
-      "tests_read": [
-        {
-          "source": "codex-rs/app-server/tests/suite/v2/guardian_sync_session_tests.rs",
-          "symbol": "guardian_review_scopes_parent_evidence_to_each_review_of_injected_history",
-          "revision": "e1492bd86d8f64e851952ab2fb9720b6d34df68d",
-          "body_read": true
-        }
-      ],
-      "tests_executed": [],
-      "source_review_complete": true,
-      "validation_limits": [
-        "Compared the implementation and its retained consumer at source level. No local upstream tests were executed. The selected development artifact predates this commit."
-      ]
-    },
-    {
-      "index": 17,
-      "commit": "17b00277cce64211f59110c0f47bbfa162e98621",
-      "classification": "not_applicable",
-      "behavior": "Linux Bazel tests can find a dedicated exec-server helper for musl and use portable test resources.",
-      "decodex_consumer": "Decodex builds the macOS Cargo package and explicitly supplies the exec-server path in its native fixture.",
-      "implementation_symbols": [
-        "codex-rs/exec-server/tests/common/mod.rs#current_test_binary_helper_paths"
-      ],
-      "tests_read": [
-        {
-          "source": "codex-rs/exec-server/tests/initialize.rs",
-          "symbol": "exec_server_accepts_initialize",
-          "revision": "17b00277cce64211f59110c0f47bbfa162e98621",
-          "body_read": true
-        }
-      ],
-      "tests_executed": [],
-      "source_review_complete": true,
-      "validation_limits": [
-        "Compared the implementation and its retained consumer at source level. No local upstream tests were executed. The selected development artifact predates this commit."
-      ]
-    },
-    {
-      "index": 18,
-      "commit": "5505daf3884381939cb9e995fd4fcce6a7850aeb",
-      "classification": "native_owned",
-      "behavior": "The goal continuation captures the originating turn's program only for the matching active turn and respects thread enrollment when continuing.",
-      "decodex_consumer": "Decodex delegates thread/goal/set and continuation execution to Codex. It does not select a separate access program for background turns.",
-      "implementation_symbols": [
-        "codex-rs/core/src/codex_thread.rs#active_turn_continuation_program",
-        "codex-rs/app-server/tests/suite/v2/thread_resume.rs#check_thread_goal_continuation_program"
-      ],
-      "tests_read": [
-        {
-          "source": "codex-rs/app-server/tests/suite/v2/thread_resume.rs",
-          "symbol": "thread_goal_continuation_respects_daybreak_opt_out",
-          "revision": "5505daf3884381939cb9e995fd4fcce6a7850aeb",
-          "body_read": true
-        }
-      ],
-      "tests_executed": [],
-      "source_review_complete": true,
-      "validation_limits": [
-        "Compared the implementation and its retained consumer at source level. No local upstream tests were executed. The selected development artifact predates this commit."
-      ]
-    },
-    {
-      "index": 19,
-      "commit": "b0b0852ee0a9105caa15a93e78287ef78e5f40bd",
-      "classification": "not_applicable",
-      "behavior": "Linux proxy route planning requires a granted loopback port and rejects an ungranted managed endpoint before constructing the route.",
-      "decodex_consumer": "The development package in codex-runtime.lock.json targets aarch64-apple-darwin and does not execute the Linux sandbox bridge.",
-      "implementation_symbols": [
-        "codex-rs/linux-sandbox/src/proxy_routing.rs#plan_proxy_routes"
-      ],
-      "tests_read": [
-        {
-          "source": "codex-rs/linux-sandbox/src/proxy_routing_tests.rs",
-          "symbol": "plan_proxy_routes_only_includes_permitted_loopback_endpoints",
-          "revision": "b0b0852ee0a9105caa15a93e78287ef78e5f40bd",
-          "body_read": true
-        }
-      ],
-      "tests_executed": [],
-      "source_review_complete": true,
-      "validation_limits": [
-        "Compared the implementation and its retained consumer at source level. No local upstream tests were executed. The selected development artifact predates this commit."
-      ]
-    },
-    {
-      "index": 20,
-      "commit": "a5815ebe656246233ad9c3a82f41b288a9ad5ce2",
-      "classification": "native_owned",
-      "behavior": "Core can initialize a shared Statsig evaluator when the native feature and a bundled client key are present. Exposure settings follow the native analytics policy.",
-      "decodex_consumer": "Decodex's explicit source builder does not supply a Statsig client key or enable an experiment.",
-      "implementation_symbols": [
-        "codex-rs/core/src/statsig.rs#start_statsig",
-        "codex-rs/core/src/statsig.rs#statsig_enabled",
-        "codex-rs/core/src/statsig.rs#statsig_key"
-      ],
-      "tests_read": [
-        {
-          "source": "codex-rs/statsig/src/evaluations_tests.rs",
-          "symbol": "bootstraps_once_and_refreshes_directly_through_the_sdk",
-          "revision": "a5815ebe656246233ad9c3a82f41b288a9ad5ce2",
-          "body_read": true
-        }
-      ],
-      "tests_executed": [],
-      "source_review_complete": true,
-      "validation_limits": [
-        "Compared the implementation and its retained consumer at source level. No local upstream tests were executed. The selected development artifact predates this commit."
-      ]
-    },
-    {
-      "index": 21,
-      "commit": "b8e2d0cdef73c60a54b86b7d74f935b4482e8f2e",
-      "classification": "deferred",
-      "behavior": "The native startup-config helper reuses OAuth discovery for the same configuration server while reading startup policy and signing in.",
-      "decodex_consumer": "Native managed requirements remain supported. A Decodex-managed configuration server remains deferred in issue 2564.",
-      "implementation_symbols": [
-        "codex-rs/app-server/src/startup_config/oauth.rs#discover_session",
-        "codex-rs/app-server/src/config_manager.rs#load_managed_startup_config"
-      ],
-      "tests_read": [
-        {
-          "source": "codex-rs/cloud-config/src/config_server_tests.rs",
-          "symbol": "policy_reload_reuses_discovery_only_for_the_same_config_server",
-          "revision": "b8e2d0cdef73c60a54b86b7d74f935b4482e8f2e",
-          "body_read": true
-        }
-      ],
-      "tests_executed": [],
-      "source_review_complete": true,
-      "validation_limits": [
-        "Compared the implementation and its retained consumer at source level. No local upstream tests were executed. The selected development artifact predates this commit."
-      ]
-    },
-    {
-      "index": 22,
-      "commit": "358e3dd088eaf8353a881a0b0cc7b4ec688fe05a",
-      "classification": "native_owned",
-      "behavior": "An expired HTTP MCP session on a reply closes the affected operation and coordinates reinitialization for later calls without replaying the original reply.",
-      "decodex_consumer": "Native MCP transports serve the Decodex Agent process. The Decodex MCP sharing fixture uses stdio and does not establish HTTP recovery.",
-      "implementation_symbols": [
-        "codex-rs/rmcp-client/src/rmcp_client.rs#reinitialize_after_session_expiry",
-        "codex-rs/rmcp-client/src/http_client_adapter_tests.rs#reply_404_recovery"
-      ],
-      "tests_read": [
-        {
-          "source": "codex-rs/rmcp-client/src/http_client_adapter_tests.rs",
-          "symbol": "reply_404_closes_parent_without_replay",
-          "revision": "358e3dd088eaf8353a881a0b0cc7b4ec688fe05a",
-          "body_read": true
-        }
-      ],
-      "tests_executed": [],
-      "source_review_complete": true,
-      "validation_limits": [
-        "Compared the implementation and its retained consumer at source level. No local upstream tests were executed. The selected development artifact predates this commit."
-      ]
-    },
-    {
-      "index": 23,
-      "commit": "a6fadff7a2be56b2681f4784aab9741cfd15ec9d",
-      "classification": "not_applicable",
-      "behavior": "The terminal ignores one interrupt after drawing an acknowledged steer hint. A later explicit interrupt still reaches the running task.",
-      "decodex_consumer": "The macOS desktop launches app-server --stdio (decodex-runtime/src/account_launch/process.rs, APP_SERVER_ARGS). Its GPUI frontend does not render or handle input through the terminal component changed here.",
-      "implementation_symbols": [
-        "codex-rs/tui/src/chatwidget/interaction.rs#interrupts_acknowledged_steer"
-      ],
-      "tests_read": [
-        {
-          "source": "codex-rs/tui/src/app/tests/turn_submission.rs",
-          "symbol": "interrupt_after_steer_commit_follows_the_displayed_preview",
-          "revision": "a6fadff7a2be56b2681f4784aab9741cfd15ec9d",
-          "body_read": true
-        }
-      ],
-      "tests_executed": [],
-      "source_review_complete": true,
-      "validation_limits": [
-        "Compared the implementation and its retained consumer at source level. No local upstream tests were executed. The selected development artifact predates this commit."
-      ]
-    },
-    {
-      "index": 24,
-      "commit": "c7f0d3da0cbfa775f18da2ea96e55de57426c0b6",
-      "classification": "not_applicable",
-      "behavior": "An active terminal paste window can consume Enter as a newline, including during startup handoff after a short Unicode prefix.",
-      "decodex_consumer": "The macOS desktop launches app-server --stdio (decodex-runtime/src/account_launch/process.rs, APP_SERVER_ARGS). Its GPUI frontend does not render or handle input through the terminal component changed here.",
-      "implementation_symbols": [
-        "codex-rs/tui/src/bottom_pane/chat_composer/reconnect.rs#append_paste_newline"
-      ],
-      "tests_read": [
-        {
-          "source": "codex-rs/tui/src/startup_draft_tests.rs",
-          "symbol": "startup_draft_preserves_non_bracketed_multiline_pastes_without_submitting",
-          "revision": "c7f0d3da0cbfa775f18da2ea96e55de57426c0b6",
-          "body_read": true
-        }
-      ],
-      "tests_executed": [],
-      "source_review_complete": true,
-      "validation_limits": [
-        "Compared the implementation and its retained consumer at source level. No local upstream tests were executed. The selected development artifact predates this commit."
-      ]
-    },
-    {
-      "index": 25,
-      "commit": "1ace17a02ecd8331ad3fbc3e57ab14551c2be892",
-      "classification": "not_applicable",
-      "behavior": "The terminal workspace reports a resize pointer only on its visible interactive divider or while dragging it.",
-      "decodex_consumer": "The macOS desktop launches app-server --stdio (decodex-runtime/src/account_launch/process.rs, APP_SERVER_ARGS). Its GPUI frontend does not render or handle input through the terminal component changed here.",
-      "implementation_symbols": [
-        "codex-rs/tui/src/app/conversation_workspace.rs#workspace_divider_at"
-      ],
-      "tests_read": [
-        {
-          "source": "codex-rs/tui/src/app/agent_center_tests.rs",
-          "symbol": "workspace_navigation_preserves_the_draft_and_reading_position",
-          "revision": "1ace17a02ecd8331ad3fbc3e57ab14551c2be892",
-          "body_read": true
-        }
-      ],
-      "tests_executed": [],
-      "source_review_complete": true,
-      "validation_limits": [
-        "Compared the implementation and its retained consumer at source level. No local upstream tests were executed. The selected development artifact predates this commit."
-      ]
-    },
-    {
-      "index": 26,
-      "commit": "da973317bb86ced249eebd16b40b7427767c2cba",
-      "classification": "not_applicable",
-      "behavior": "The full-screen terminal transcript defaults to collapsed turn details and still honors an explicit expansion setting.",
-      "decodex_consumer": "The macOS desktop launches app-server --stdio (decodex-runtime/src/account_launch/process.rs, APP_SERVER_ARGS). Its GPUI frontend does not render or handle input through the terminal component changed here.",
-      "implementation_symbols": [
-        "codex-rs/core/src/config/mod.rs#load_config_with_layer_stack"
-      ],
-      "tests_read": [
-        {
-          "source": "codex-rs/tui/src/app/owned_transcript_tests.rs",
-          "symbol": "find_refreshes_live_details_before_searching_the_first_query",
-          "revision": "da973317bb86ced249eebd16b40b7427767c2cba",
-          "body_read": true
-        }
-      ],
-      "tests_executed": [],
-      "source_review_complete": true,
-      "validation_limits": [
-        "Compared the implementation and its retained consumer at source level. No local upstream tests were executed. The selected development artifact predates this commit."
-      ]
-    },
-    {
-      "index": 27,
-      "commit": "6e32b34f279dc074602194e58394683576f8b68e",
-      "classification": "not_applicable",
-      "behavior": "The TUI centralizes terminal identification and startup probes for cursor position, colors and keyboard enhancement responses.",
-      "decodex_consumer": "The macOS desktop launches app-server --stdio (decodex-runtime/src/account_launch/process.rs, APP_SERVER_ARGS). Its GPUI frontend does not render or handle input through the terminal component changed here.",
-      "implementation_symbols": [
-        "codex-rs/tui/src/terminal_capabilities/terminal_probe.rs#startup_probe_complete"
-      ],
-      "tests_read": [
-        {
-          "source": "codex-rs/tui/src/terminal_capabilities/terminal_probe.rs",
-          "symbol": "startup_probe_parses_batched_terminal_responses",
-          "revision": "6e32b34f279dc074602194e58394683576f8b68e",
-          "body_read": true
-        }
-      ],
-      "tests_executed": [],
-      "source_review_complete": true,
-      "validation_limits": [
-        "Compared the implementation and its retained consumer at source level. No local upstream tests were executed. The selected development artifact predates this commit."
-      ]
-    },
-    {
-      "index": 28,
-      "commit": "ebb1ff0e8b490749b86e79610073876606cc6e25",
-      "classification": "not_applicable",
-      "behavior": "Terminal capability policy now selects link-label rendering and other terminal-specific presentation and transport choices.",
-      "decodex_consumer": "The macOS desktop launches app-server --stdio (decodex-runtime/src/account_launch/process.rs, APP_SERVER_ARGS). Its GPUI frontend does not render or handle input through the terminal component changed here.",
-      "implementation_symbols": [
-        "codex-rs/tui/src/terminal_capabilities.rs#web_link_display"
-      ],
-      "tests_read": [
-        {
-          "source": "codex-rs/tui/src/markdown_render/web_links_tests.rs",
-          "symbol": "supporting_terminals_render_only_the_styled_label_and_keep_its_target",
-          "revision": "ebb1ff0e8b490749b86e79610073876606cc6e25",
-          "body_read": true
-        }
-      ],
-      "tests_executed": [],
-      "source_review_complete": true,
-      "validation_limits": [
-        "Compared the implementation and its retained consumer at source level. No local upstream tests were executed. The selected development artifact predates this commit."
-      ]
-    },
-    {
-      "index": 29,
-      "commit": "8603da0718aafc6c7850f8820452f7e20350cc8b",
-      "classification": "not_applicable",
-      "behavior": "Startup and screen layout consult shared terminal compatibility decisions. Explicit alternate-screen settings still take precedence.",
-      "decodex_consumer": "The macOS desktop launches app-server --stdio (decodex-runtime/src/account_launch/process.rs, APP_SERVER_ARGS). Its GPUI frontend does not render or handle input through the terminal component changed here.",
-      "implementation_symbols": [
-        "codex-rs/tui/src/terminal_capabilities.rs#screen_capabilities"
-      ],
-      "tests_read": [
-        {
-          "source": "codex-rs/tui/src/lib_tests.rs",
-          "symbol": "alternate_screen_respects_terminal_compatibility_and_overrides",
-          "revision": "8603da0718aafc6c7850f8820452f7e20350cc8b",
-          "body_read": true
-        }
-      ],
-      "tests_executed": [],
-      "source_review_complete": true,
-      "validation_limits": [
-        "Compared the implementation and its retained consumer at source level. No local upstream tests were executed. The selected development artifact predates this commit."
-      ]
-    },
-    {
-      "index": 30,
-      "commit": "bede3b5df8dfcdfa4ff74c8d762f1fb72ccaff9e",
-      "classification": "not_applicable",
-      "behavior": "Terminal clipboard selection centralizes native, mux and OSC delivery decisions and preserves the unconfirmed status of oversized dev-container copies.",
-      "decodex_consumer": "The macOS desktop launches app-server --stdio (decodex-runtime/src/account_launch/process.rs, APP_SERVER_ARGS). Its GPUI frontend does not render or handle input through the terminal component changed here.",
-      "implementation_symbols": [
-        "codex-rs/tui/src/clipboard_copy.rs#uses_native"
-      ],
-      "tests_read": [
-        {
-          "source": "codex-rs/tui/src/clipboard_copy/routing_tests.rs",
-          "symbol": "oversized_dev_container_copy_can_keep_native_ownership_without_confirming_delivery",
-          "revision": "bede3b5df8dfcdfa4ff74c8d762f1fb72ccaff9e",
-          "body_read": true
-        }
-      ],
-      "tests_executed": [],
-      "source_review_complete": true,
-      "validation_limits": [
-        "Compared the implementation and its retained consumer at source level. No local upstream tests were executed. The selected development artifact predates this commit."
-      ]
-    },
-    {
-      "index": 31,
-      "commit": "21fdf0f834ae45da60d479b2583f02ed278d7de9",
-      "classification": "not_applicable",
-      "behavior": "Inline-image handling consults shared terminal capabilities and rejects unsafe placement for multiplexed pet graphics.",
-      "decodex_consumer": "The macOS desktop launches app-server --stdio (decodex-runtime/src/account_launch/process.rs, APP_SERVER_ARGS). Its GPUI frontend does not render or handle input through the terminal component changed here.",
-      "implementation_symbols": [
-        "codex-rs/tui/src/terminal_capabilities/images.rs#detect_pet_image_support"
-      ],
-      "tests_read": [
-        {
-          "source": "codex-rs/tui/src/terminal_capabilities/images_tests.rs",
-          "symbol": "pet_image_support_prefers_multiplexer_safety",
-          "revision": "21fdf0f834ae45da60d479b2583f02ed278d7de9",
-          "body_read": true
-        }
-      ],
-      "tests_executed": [],
-      "source_review_complete": true,
-      "validation_limits": [
-        "Compared the implementation and its retained consumer at source level. No local upstream tests were executed. The selected development artifact predates this commit."
-      ]
-    },
-    {
-      "index": 32,
-      "commit": "cb491754f6133b3b74694a3419c15b9e5c4813b4",
-      "classification": "not_applicable",
-      "behavior": "Terminal capability code owns notification protocols and per-terminal OSC9 limits, including Ghostty's bounded body.",
-      "decodex_consumer": "The macOS desktop launches app-server --stdio (decodex-runtime/src/account_launch/process.rs, APP_SERVER_ARGS). Its GPUI frontend does not render or handle input through the terminal component changed here.",
-      "implementation_symbols": [
-        "codex-rs/tui/src/notifications/mod.rs#supports_osc9"
-      ],
-      "tests_read": [
-        {
-          "source": "codex-rs/tui/src/notifications/mod.rs",
-          "symbol": "supports_osc9_for_supported_terminals",
-          "revision": "cb491754f6133b3b74694a3419c15b9e5c4813b4",
-          "body_read": true
-        }
-      ],
-      "tests_executed": [],
-      "source_review_complete": true,
-      "validation_limits": [
-        "Compared the implementation and its retained consumer at source level. No local upstream tests were executed. The selected development artifact predates this commit."
-      ]
-    },
-    {
-      "index": 33,
-      "commit": "e5c2440d5e9a2c39a9c7c989c4cf18a2509fb5ea",
-      "classification": "native_owned",
-      "behavior": "Plugin marketplace host restrictions validate SSH authority and repository syntax before matching the allowed host.",
-      "decodex_consumer": "Decodex imports packaged components and admits native plugin inventory. Codex owns remote marketplace source validation.",
-      "implementation_symbols": [
-        "codex-rs/core-plugins/src/marketplace_policy.rs#git_hostname"
-      ],
-      "tests_read": [
-        {
-          "source": "codex-rs/core-plugins/src/marketplace_policy_tests.rs",
-          "symbol": "git_host_pattern_matches_https_and_ssh_sources",
-          "revision": "e5c2440d5e9a2c39a9c7c989c4cf18a2509fb5ea",
-          "body_read": true
-        }
-      ],
-      "tests_executed": [],
-      "source_review_complete": true,
-      "validation_limits": [
-        "Compared the implementation and its retained consumer at source level. No local upstream tests were executed. The selected development artifact predates this commit."
-      ]
-    },
-    {
-      "index": 34,
-      "commit": "07963a34f282dfa1aec2380e675b9e5204bea7e1",
-      "classification": "native_owned",
-      "behavior": "HTTPS providers can use a suitable same-origin model catalog. A plain models list or forbidden response leaves the bundled picker available.",
-      "decodex_consumer": "Decodex reads model/list from the selected native provider and uses the returned catalog for model choices.",
-      "implementation_symbols": [
-        "codex-rs/model-provider/src/models_endpoint.rs#supports_gateway_catalog"
-      ],
-      "tests_read": [
-        {
-          "source": "codex-rs/app-server/tests/suite/v2/model_list.rs",
-          "symbol": "model_list_discovers_https_gateway_preserves_picker_without_catalog",
-          "revision": "07963a34f282dfa1aec2380e675b9e5204bea7e1",
-          "body_read": true
-        }
-      ],
-      "tests_executed": [],
-      "source_review_complete": true,
-      "validation_limits": [
-        "Compared the implementation and its retained consumer at source level. No local upstream tests were executed. The selected development artifact predates this commit."
-      ]
-    },
-    {
-      "index": 35,
-      "commit": "19e95b9be87c6066d8070f5414dd08c45de7a0d3",
-      "classification": "native_owned",
-      "behavior": "Startup installs external API auth without replacing its network policy. A provider bound to an initial auth owner does not adopt a later owner during refresh.",
-      "decodex_consumer": "The Decodex account launch and refresh bridge binds an admitted native process to one account. External workload identity remains native-owned.",
-      "implementation_symbols": [
-        "codex-rs/login/src/auth/manager.rs#with_initial_external_auth"
-      ],
-      "tests_read": [
-        {
-          "source": "codex-rs/model-provider/src/auth_tests.rs",
-          "symbol": "auth_manager_api_provider_stays_bound_to_its_initial_owner",
-          "revision": "19e95b9be87c6066d8070f5414dd08c45de7a0d3",
-          "body_read": true
-        }
-      ],
-      "tests_executed": [],
-      "source_review_complete": true,
-      "validation_limits": [
-        "Compared the implementation and its retained consumer at source level. No local upstream tests were executed. The selected development artifact predates this commit."
-      ]
-    },
-    {
-      "index": 36,
-      "commit": "986a6b3b115df58ac8fe51dba222fc06ca10048a",
-      "classification": "native_owned",
-      "behavior": "Live goal continuations restore the saved program choice in the originating scope and keep a foreground turn's explicit choice separate.",
-      "decodex_consumer": "Decodex delegates goal continuation to thread/goal/set. It does not synthesize access-program selection.",
-      "implementation_symbols": [
-        "codex-rs/core/src/agent/helper_daybreak/turn.rs#select_program"
-      ],
-      "tests_read": [
-        {
-          "source": "codex-rs/core/src/agent/helper_daybreak/turn.rs",
-          "symbol": "missing_metadata_and_unset_choice_preserve_implicit_selection",
-          "revision": "986a6b3b115df58ac8fe51dba222fc06ca10048a",
-          "body_read": true
-        },
-        {
-          "source": "codex-rs/core/src/thread_manager/helper_daybreak_tests.rs",
-          "symbol": "goal_daybreak_retains_saved_choice_without_leaking_to_foreground",
-          "revision": "986a6b3b115df58ac8fe51dba222fc06ca10048a",
-          "body_read": true
-        }
-      ],
-      "tests_executed": [],
-      "source_review_complete": true,
-      "validation_limits": [
-        "Compared the implementation and its retained consumer at source level. No local upstream tests were executed. The selected development artifact predates this commit."
-      ]
-    },
-    {
-      "index": 37,
-      "commit": "e2c31f625a030f65d4ed9f447a13a5bd0ef61ad5",
-      "classification": "necessary_repair",
-      "behavior": "The native realtime start request loses its voice field, and core ignores the legacy realtime.voice configuration. ChatGPT account voice reads and writes operate on a different scope.",
-      "decodex_consumer": "Decodex resolves a voice from the thread directory, saves the native user preference with expectedVersion and sends the effective voice on a new call. A shared account write cannot preserve this contract.",
-      "implementation_symbols": [
-        "codex-rs/app-server/src/request_processors/account_processor/voice_settings.rs#write_voice_settings",
-        "codex-rs/app-server/src/request_processors/turn_processor.rs#thread_realtime_start_inner",
-        "codex-rs/app-server/src/request_processors/account_processor/voice_settings.rs#read_voice_settings",
-        "codex-rs/app-server-protocol/src/protocol/v2/realtime.rs#ThreadRealtimeStartParams",
-        "codex-rs/config/src/config_toml.rs#RealtimeToml"
-      ],
-      "tests_read": [
-        {
-          "source": "codex-rs/tui/src/chatwidget/realtime_settings_tests.rs",
-          "symbol": "voice_settings_selects_a_voice_without_starting_audio",
-          "revision": "e2c31f625a030f65d4ed9f447a13a5bd0ef61ad5",
-          "body_read": true
-        },
-        {
-          "source": "codex-rs/core/tests/suite/realtime_conversation.rs",
-          "symbol": "conversation_uses_default_realtime_voice",
-          "revision": "e2c31f625a030f65d4ed9f447a13a5bd0ef61ad5",
-          "body_read": true
-        },
-        {
-          "source": "codex-rs/core/src/config/config_tests.rs",
-          "symbol": "realtime_config_with_legacy_voice_uses_realtime_defaults",
-          "revision": "e2c31f625a030f65d4ed9f447a13a5bd0ef61ad5",
+          "source": "codex-rs/core/src/config/network_config_tests.rs",
+          "symbol": "environment_policy_presence_keeps_selected_and_managed_denials",
+          "revision": "c6bbf8a413d38a8a24b9c6f4fc05d2e90d96a948",
           "body_read": true
         }
       ],
       "tests_executed": [
         {
-          "selector": "account_launch::agent_process::native_tests::reviewer::store::voice_settings_start::installed_native_voice_reads_project_override_and_refreshed_user_default",
-          "entrypoint": "direct compiled Decodex libtest --ignored --exact",
-          "baseline_source": "7a24022794c8bfb26f73685e5c2f7d957126daee",
-          "baseline_result": "passed",
-          "candidate_source": "06f334aa4b053023c5b4199dde0ba9c004d64820",
-          "candidate_result": "failed"
-        },
-        {
-          "selector": "account_launch::agent_process::native_tests::reviewer::store::voice_settings_start::installed_voice_preference_bridge_saves_absent_file_and_rejects_old_connection",
-          "entrypoint": "direct compiled Decodex libtest --ignored --exact",
-          "baseline_source": "7a24022794c8bfb26f73685e5c2f7d957126daee",
-          "baseline_result": "passed",
-          "candidate_source": "06f334aa4b053023c5b4199dde0ba9c004d64820",
-          "candidate_result": "failed"
-        },
-        {
-          "selector": "schema::tests::official_schema_supports_current_consumers",
-          "entrypoint": "direct compiled Decodex libtest --ignored --exact",
-          "baseline_source": "7a24022794c8bfb26f73685e5c2f7d957126daee",
-          "baseline_result": "passed",
-          "candidate_source": "06f334aa4b053023c5b4199dde0ba9c004d64820",
-          "candidate_result": "failed"
+          "suite": "Decodex candidate",
+          "selector": "account_launch::agent_process::native_tests::reviewer::store::permission_owner_tests::installed_native_running_builtin_permissions_preserve_pending_tools",
+          "executed": 1,
+          "passed": 1
         }
       ],
       "source_review_complete": true,
-      "validation_limits": [
-        "The two isolated native regressions and the generated schema gate passed on the selected baseline and failed on the signed candidate. The account voice endpoints were reviewed in source only. No live account preference was read or written."
-      ],
-      "decision_reference": "chatgpt-account-voice-preference",
-      "follow_up": {
-        "decision": "Use the native ChatGPT account voice across projects.",
-        "delivery_reference": "https://github.com/acg-box/decodex/commit/8d538a0b366c9b9c08727b66ed030286b67e0ff6",
-        "qualification": "qualification.json#account_voice",
-        "passed_selectors": [
-          "account_launch::agent_process::native_tests::reviewer::store::voice_settings_start::installed_account_voice_is_shared_between_projects_after_explicit_save",
-          "account_launch::agent_process::native_tests::reviewer::store::voice_settings_start::installed_account_voice_requires_chatgpt_even_with_local_preference",
-          "account_launch::agent_process::native_tests::upgrade::installed_runtime_upgrade_preserves_history_and_paused_goal_with_legacy_voice",
-          "schema::tests::official_schema_supports_current_consumers"
-        ]
-      }
-    },
-    {
-      "index": 38,
-      "commit": "87de5e932dd03bb9efece4a6dd3eab4c5de45701",
-      "classification": "native_owned",
-      "behavior": "The package selects ripgrep 16.0.0 with platform-specific source archive digests and executable paths.",
-      "decodex_consumer": "The Decodex build signs and verifies codex-path/rg in the native package. The excluded candidate supplies the new helper.",
-      "implementation_symbols": [
-        "scripts/codex_package/rg#platforms.macos-aarch64"
-      ],
-      "tests_read": [
-        {
-          "source": "scripts/codex_package/smoke_tests/test_codex_package.py",
-          "symbol": "test_app_server_runs_code_mode_through_python_sdk",
-          "revision": "87de5e932dd03bb9efece4a6dd3eab4c5de45701",
-          "body_read": true
+      "upstream_checks": {
+        "source": "https://github.com/openai/codex/pull/63986/checks",
+        "head": "c6bbf8a413d38a8a24b9c6f4fc05d2e90d96a948",
+        "reported_conclusions": {
+          "CANCELLED": 10,
+          "FAILURE": 27,
+          "SKIPPED": 3,
+          "SUCCESS": 40
         }
-      ],
-      "tests_executed": [],
-      "source_review_complete": true,
+      },
       "validation_limits": [
-        "Compared the implementation and its retained consumer at source level. No local upstream tests were executed. The selected development artifact predates this commit.",
-        "Candidate package integrity and ripgrep --version were checked. The candidate was rejected for the voice contract."
+        "Native permission controls were exercised. Proxy transport and remote network attachment were reviewed at source."
       ]
     },
     {
-      "index": 39,
-      "commit": "3f65e9f13165d85d1b1fbe20ce06c55758f927b9",
-      "classification": "native_owned",
-      "behavior": "Fixed launch directories for eligible shared MCP REPL servers are stable and enabled by default. Native config refresh still honors an explicit feature value.",
-      "decodex_consumer": "Decodex uses native stdio MCP connections. Its existing sharing fixtures distinguish client ownership and legacy helpers.",
-      "implementation_symbols": [
-        "codex-rs/features/src/lib.rs#Feature::McpSharedReplCwd"
-      ],
-      "tests_read": [
-        {
-          "source": "codex-rs/core/src/config/config_tests.rs",
-          "symbol": "mcp_launch_cwds_follow_the_runtime_feature",
-          "revision": "3f65e9f13165d85d1b1fbe20ce06c55758f927b9",
-          "body_read": true
-        }
-      ],
-      "tests_executed": [],
-      "source_review_complete": true,
-      "validation_limits": [
-        "Compared the implementation and its retained consumer at source level. No local upstream tests were executed. The selected development artifact predates this commit."
-      ]
-    },
-    {
-      "index": 40,
-      "commit": "62f3c95af441b91dd83ce744c2e503864eb2e278",
-      "classification": "native_owned",
-      "behavior": "The skills contributor skips shadow selection altogether without a metrics client. Other skill inventory and selection remain available.",
-      "decodex_consumer": "Decodex reads skills/list and sends explicit skill selections. It does not run the shadow ranker.",
-      "implementation_symbols": [
-        "codex-rs/ext/skills/src/shadow_selection_experiment/mod.rs#evaluate",
-        "codex-rs/ext/skills/src/extension.rs#contribute",
-        "codex-rs/ext/skills/src/shadow_selection_experiment/experiment_tests.rs#contribute_turns"
-      ],
-      "tests_read": [
-        {
-          "source": "codex-rs/ext/skills/src/shadow_selection_experiment/experiment_tests.rs",
-          "symbol": "turns_without_metrics_skip_shadow_selection",
-          "revision": "62f3c95af441b91dd83ce744c2e503864eb2e278",
-          "body_read": true
-        }
-      ],
-      "tests_executed": [],
-      "source_review_complete": true,
-      "validation_limits": [
-        "Compared the implementation and its retained consumer at source level. No local upstream tests were executed. The selected development artifact predates this commit."
-      ]
-    },
-    {
-      "index": 41,
-      "commit": "c265acf3b138a12629b6f344bd08ee1f2c28c934",
-      "classification": "native_owned",
-      "behavior": "The shadow ranker keeps matching document n-grams while counting nonmatching grams against the same traversal limit.",
-      "decodex_consumer": "Decodex uses the skills/list inventory. Internal ranking allocation has no separate desktop setting.",
-      "implementation_symbols": [
-        "codex-rs/ext/skills/src/dynamic_skill_selector/character_ngram.rs#document_grams"
-      ],
-      "tests_read": [
-        {
-          "source": "codex-rs/ext/skills/src/dynamic_skill_selector/character_ngram_tests.rs",
-          "symbol": "nonmatching_grams_count_toward_the_limit",
-          "revision": "c265acf3b138a12629b6f344bd08ee1f2c28c934",
-          "body_read": true
-        }
-      ],
-      "tests_executed": [],
-      "source_review_complete": true,
-      "validation_limits": [
-        "Compared the implementation and its retained consumer at source level. No local upstream tests were executed. The selected development artifact predates this commit."
-      ]
-    },
-    {
-      "index": 42,
-      "commit": "1ed2a3f22dffab80d74d5ce74abf12a978f8e93f",
-      "classification": "native_owned",
-      "behavior": "Native review analytics attribute an action to its originating root turn when the execution can be identified. Ambiguous attribution stays absent.",
-      "decodex_consumer": "Decodex uses native review-item metadata for its private view. It does not consume the analytics event to associate actions.",
-      "implementation_symbols": [
-        "codex-rs/core/src/tools/network_approval.rs#resolve_request_attribution"
-      ],
-      "tests_read": [
-        {
-          "source": "codex-rs/analytics/src/tests/suite/approvals_tests.rs",
-          "symbol": "guardian_review_event_ingests_custom_fact_with_optional_target_item",
-          "revision": "1ed2a3f22dffab80d74d5ce74abf12a978f8e93f",
-          "body_read": true
-        }
-      ],
-      "tests_executed": [],
-      "source_review_complete": true,
-      "validation_limits": [
-        "Compared the implementation and its retained consumer at source level. No local upstream tests were executed. The selected development artifact predates this commit."
-      ]
-    },
-    {
-      "index": 43,
-      "commit": "1698314bb349be7c113deac3f2f4c33bfe3adb9b",
+      "index": 2,
+      "commit": "1c1e383a7ba3deab78966d648f7f844cf2e307e0",
       "classification": "not_applicable",
-      "behavior": "The terminal prefetches account limits only for a ChatGPT account using an eligible provider. New or resumed sessions refresh that provider's quota state.",
-      "decodex_consumer": "The macOS desktop launches app-server --stdio (decodex-runtime/src/account_launch/process.rs, APP_SERVER_ARGS). Its GPUI frontend does not render or handle input through the terminal component changed here.",
+      "behavior": "The hosted Guardian test waits for worker creation before the delivery signal and disables analytics in its Code Mode fixture.",
+      "decodex_consumer": "Decodex consumes native review results. Both changes are in the upstream test harness.",
+      "decodex_source": "crates/decodex-runtime/src/agent/guardian.rs",
       "implementation_symbols": [
-        "codex-rs/tui/src/chatwidget/rate_limits.rs#should_prefetch_rate_limits"
+        "codex-rs/ext/guardian-v2/src/async_scorer/extension_cached_delivery_tests.rs#confirmed_root_delivery_invalidates_root_and_worker_cached_approvals",
+        "codex-rs/ext/guardian-v2/src/async_scorer/extension_tests.rs#sample_configured_conversation_history_with_delivery"
       ],
       "tests_read": [
         {
-          "source": "codex-rs/tui/src/app/tests/new_session_tests.rs",
-          "symbol": "new_and_resumed_sessions_use_quota_for_the_active_provider",
-          "revision": "1698314bb349be7c113deac3f2f4c33bfe3adb9b",
-          "body_read": true
+          "source": "codex-rs/ext/guardian-v2/src/async_scorer/extension_cached_delivery_tests.rs",
+          "symbol": "confirmed_root_delivery_invalidates_root_and_worker_cached_approvals",
+          "revision": "1c1e383a7ba3deab78966d648f7f844cf2e307e0",
+          "body_read": true,
+          "reviewed_scenario": "Hosted delivery synchronization, approved root and worker cache evidence, and mock-only analytics setup."
         }
       ],
       "tests_executed": [],
       "source_review_complete": true,
-      "validation_limits": [
-        "Compared the implementation and its retained consumer at source level. No local upstream tests were executed. The selected development artifact predates this commit."
-      ]
-    },
-    {
-      "index": 44,
-      "commit": "ba4e278273d3249c7846dec3b0d4dc5da56f9458",
-      "classification": "native_owned",
-      "behavior": "The maximum model-input budget for one additional-context value increases from 1,000 to 10,000 tokens. Truncation and size metrics use the new limit.",
-      "decodex_consumer": "decodex-runtime/src/agent.rs submits additionalContext to native turns. Its application context does not set the native per-value model budget.",
-      "implementation_symbols": [
-        "codex-rs/core/src/context/world_state/additional_context.rs#MAX_ADDITIONAL_CONTEXT_VALUE_TOKENS"
-      ],
-      "tests_read": [
-        {
-          "source": "codex-rs/core/tests/suite/additional_context.rs",
-          "symbol": "additional_context_values_are_truncated_before_model_input",
-          "revision": "ba4e278273d3249c7846dec3b0d4dc5da56f9458",
-          "body_read": true
+      "upstream_checks": {
+        "source": "https://github.com/openai/codex/pull/63987/checks",
+        "head": "1c1e383a7ba3deab78966d648f7f844cf2e307e0",
+        "reported_conclusions": {
+          "CANCELLED": 12,
+          "FAILURE": 25,
+          "SKIPPED": 4,
+          "SUCCESS": 28
         }
-      ],
-      "tests_executed": [],
-      "source_review_complete": true,
+      },
       "validation_limits": [
-        "Compared the implementation and its retained consumer at source level. No local upstream tests were executed. The selected development artifact predates this commit."
+        "Upstream hosted messaging test only."
       ]
     },
     {
-      "index": 45,
-      "commit": "f0c0f0a14ddd9b05b7a85daddc4360ad8a8d2d2b",
+      "index": 3,
+      "commit": "d800b00e886a77181baf03e9e9aa2ea3445d9a4b",
       "classification": "not_applicable",
-      "behavior": "Terminal transcript output applies bidirectional layout on direct terminals that lack native reordering, while retaining source boundaries for commands and links.",
-      "decodex_consumer": "The macOS desktop launches app-server --stdio (decodex-runtime/src/account_launch/process.rs, APP_SERVER_ARGS). Its GPUI frontend does not render or handle input through the terminal component changed here.",
+      "behavior": "Returning a root to Auto Review can start a fresh shadow intake. Its restart boundary excludes earlier messages and cancellation discards a queued restart.",
+      "decodex_consumer": "Guardian V3 shadow review is outside the accepted Guardian controls in the product-scope decision.",
+      "decodex_source": "openwiki/decisions/upstream-product-scope.md",
       "implementation_symbols": [
-        "codex-rs/tui/src/terminal_capabilities.rs#needs_bidi_layout"
-      ],
-      "tests_read": [
-        {
-          "source": "codex-rs/tui/src/transcript_view/text_tests.rs",
-          "symbol": "rtl_transcript_preserves_command_boundaries",
-          "revision": "f0c0f0a14ddd9b05b7a85daddc4360ad8a8d2d2b",
-          "body_read": true
-        }
-      ],
-      "tests_executed": [],
-      "source_review_complete": true,
-      "validation_limits": [
-        "Compared the implementation and its retained consumer at source level. No local upstream tests were executed. The selected development artifact predates this commit."
-      ]
-    },
-    {
-      "index": 46,
-      "commit": "ebd0765aafa255d63ebf690ebdffe0164dc14a0c",
-      "classification": "not_applicable",
-      "behavior": "Full-screen terminal transcripts map visual positions back to logical text for selection, copying and link hit testing after bidirectional reflow.",
-      "decodex_consumer": "The macOS desktop launches app-server --stdio (decodex-runtime/src/account_launch/process.rs, APP_SERVER_ARGS). Its GPUI frontend does not render or handle input through the terminal component changed here.",
-      "implementation_symbols": [
-        "codex-rs/tui/src/transcript_view/text.rs#visual_hit"
-      ],
-      "tests_read": [
-        {
-          "source": "codex-rs/tui/src/transcript_view/selection_tests.rs",
-          "symbol": "rtl_transcript_keyboard_crosses_original_mouse_anchor",
-          "revision": "ebd0765aafa255d63ebf690ebdffe0164dc14a0c",
-          "body_read": true
-        }
-      ],
-      "tests_executed": [],
-      "source_review_complete": true,
-      "validation_limits": [
-        "Compared the implementation and its retained consumer at source level. No local upstream tests were executed. The selected development artifact predates this commit."
-      ]
-    },
-    {
-      "index": 47,
-      "commit": "cec14d27b5aa1a79e9de2e21a6281d308ae1fac3",
-      "classification": "not_applicable",
-      "behavior": "A quota response can update the plan displayed on the terminal status card, including for ChatGPT accounts without an email value.",
-      "decodex_consumer": "The macOS desktop launches app-server --stdio (decodex-runtime/src/account_launch/process.rs, APP_SERVER_ARGS). Its GPUI frontend does not render or handle input through the terminal component changed here.",
-      "implementation_symbols": [
-        "codex-rs/tui/src/status/card.rs#update_quota_plan"
-      ],
-      "tests_read": [
-        {
-          "source": "codex-rs/tui/src/app/tests/thread_usage.rs",
-          "symbol": "quota_reply_corrects_the_first_status_card_in_scrollback",
-          "revision": "cec14d27b5aa1a79e9de2e21a6281d308ae1fac3",
-          "body_read": true
-        },
-        {
-          "source": "codex-rs/tui/src/status/tests.rs",
-          "symbol": "status_snapshot_shows_chatgpt_plan_without_email",
-          "revision": "cec14d27b5aa1a79e9de2e21a6281d308ae1fac3",
-          "body_read": true
-        }
-      ],
-      "tests_executed": [],
-      "source_review_complete": true,
-      "validation_limits": [
-        "Compared the implementation and its retained consumer at source level. No local upstream tests were executed. The selected development artifact predates this commit."
-      ]
-    },
-    {
-      "index": 48,
-      "commit": "16466d9e3aa0351a7fbdab62eabb962557042c5b",
-      "classification": "native_owned",
-      "behavior": "Final-answer moderation preserves prompt wellbeing results on the matching item, with or without a display payload.",
-      "decodex_consumer": "decodex-runtime/src/agent_message_history.rs#assistant_text reads moderation.moderated and moderation.display. The added prompt results do not alter its visibility decision.",
-      "implementation_symbols": [
-        "codex-rs/core/src/stream_events_utils.rs#apply_answer_moderation"
-      ],
-      "tests_read": [
-        {
-          "source": "codex-rs/app-server-protocol/src/protocol/v2/tests.rs",
-          "symbol": "prompt_wellbeing_results_round_trip_with_or_without_display",
-          "revision": "16466d9e3aa0351a7fbdab62eabb962557042c5b",
-          "body_read": true
-        }
-      ],
-      "tests_executed": [],
-      "source_review_complete": true,
-      "validation_limits": [
-        "Compared the implementation and its retained consumer at source level. No local upstream tests were executed. The selected development artifact predates this commit."
-      ]
-    },
-    {
-      "index": 49,
-      "commit": "600595d67c6462ea0a43dc3cc8621f6138200b5f",
-      "classification": "not_applicable",
-      "behavior": "The terminal sidebar enables a subagent row only when its transcript can be opened, and updates selectable rows as discovery completes.",
-      "decodex_consumer": "The macOS desktop launches app-server --stdio (decodex-runtime/src/account_launch/process.rs, APP_SERVER_ARGS). Its GPUI frontend does not render or handle input through the terminal component changed here.",
-      "implementation_symbols": [
-        "codex-rs/tui/src/sidebar_chooser.rs#row_targets",
-        "codex-rs/tui/src/sidebar_chooser.rs#agent_is_disabled"
-      ],
-      "tests_read": [
-        {
-          "source": "codex-rs/tui/src/app/sidebar_agent_status_tests.rs",
-          "symbol": "opens_agent_transcript_beside_parent_and_returns_to_chooser",
-          "revision": "600595d67c6462ea0a43dc3cc8621f6138200b5f",
-          "body_read": true
-        }
-      ],
-      "tests_executed": [],
-      "source_review_complete": true,
-      "validation_limits": [
-        "Compared the implementation and its retained consumer at source level. No local upstream tests were executed. The selected development artifact predates this commit."
-      ]
-    },
-    {
-      "index": 50,
-      "commit": "590be70f75e6785f9028edd530dd45331771275c",
-      "classification": "not_applicable",
-      "behavior": "The Windows TUI can decode packed DIBV5 clipboard images while checking dimensions, allocation limits and pixel offsets.",
-      "decodex_consumer": "The Decodex macOS desktop handles its native clipboard. Its artifact has no Windows clipboard implementation.",
-      "implementation_symbols": [
-        "codex-rs/tui/src/clipboard_paste/windows.rs#decode_bitmap"
-      ],
-      "tests_read": [
-        {
-          "source": "codex-rs/tui/src/clipboard_paste/windows_tests.rs",
-          "symbol": "dibv5_preserves_pixels_and_respects_allocation_limits",
-          "revision": "590be70f75e6785f9028edd530dd45331771275c",
-          "body_read": true
-        }
-      ],
-      "tests_executed": [],
-      "source_review_complete": true,
-      "validation_limits": [
-        "Compared the implementation and its retained consumer at source level. No local upstream tests were executed. The selected development artifact predates this commit."
-      ]
-    },
-    {
-      "index": 51,
-      "commit": "077eab36fd4c43e075fe1f13d50e4d04b2d414ee",
-      "classification": "already_covered",
-      "behavior": "Remote apply_patch turn-diff tests create their own Git boundary so a surrounding repository cannot alter the expected portable paths.",
-      "decodex_consumer": "The change affects upstream test fixtures only. Decodex receives native turn events.",
-      "implementation_symbols": [
-        "codex-rs/core/tests/suite/apply_patch_cli.rs#apply_patch_turn_diff_emits_portable_paths_for_remote_cwd"
-      ],
-      "tests_read": [
-        {
-          "source": "codex-rs/core/tests/suite/apply_patch_cli.rs",
-          "symbol": "apply_patch_turn_diff_emits_portable_paths_for_remote_cwd",
-          "revision": "077eab36fd4c43e075fe1f13d50e4d04b2d414ee",
-          "body_read": true
-        }
-      ],
-      "tests_executed": [],
-      "source_review_complete": true,
-      "validation_limits": [
-        "Compared the implementation and its retained consumer at source level. No local upstream tests were executed. The selected development artifact predates this commit."
-      ]
-    },
-    {
-      "index": 52,
-      "commit": "6cb4fd1d2da032dcdd929292bd2c95066bbb71f6",
-      "classification": "already_covered",
-      "behavior": "The PTY attachment test now collects split output through channel closure alongside process exit before checking the captured environment and status.",
-      "decodex_consumer": "The macOS package uses the production PTY implementation, which this test-only change does not modify.",
-      "implementation_symbols": [
-        "codex-rs/utils/pty/src/tests.rs#pty_attachments_preserve_shell_environment_and_signal_status"
-      ],
-      "tests_read": [
-        {
-          "source": "codex-rs/utils/pty/src/tests.rs",
-          "symbol": "pty_attachments_preserve_shell_environment_and_signal_status",
-          "revision": "6cb4fd1d2da032dcdd929292bd2c95066bbb71f6",
-          "body_read": true
-        }
-      ],
-      "tests_executed": [],
-      "source_review_complete": true,
-      "validation_limits": [
-        "Compared the implementation and its retained consumer at source level. No local upstream tests were executed. The selected development artifact predates this commit."
-      ]
-    },
-    {
-      "index": 53,
-      "commit": "1c69d01451bef4623c2c330deabc41a7faeb53f8",
-      "classification": "native_owned",
-      "behavior": "The process status and exit code share one OnceLock. An exit signal can no longer publish a terminal state before its code, and pending output can still drain.",
-      "decodex_consumer": "Decodex delegates command execution to Codex and its signed exec-server helper.",
-      "implementation_symbols": [
-        "codex-rs/core/src/unified_exec/process_manager.rs#refresh_process_state",
-        "codex-rs/utils/pty/src/process.rs#exit_code"
-      ],
-      "tests_read": [
-        {
-          "source": "codex-rs/utils/pty/src/tests.rs",
-          "symbol": "driver_backed_process_drains_output_that_arrives_after_exit_signal",
-          "revision": "1c69d01451bef4623c2c330deabc41a7faeb53f8",
-          "body_read": true
-        }
-      ],
-      "tests_executed": [],
-      "source_review_complete": true,
-      "validation_limits": [
-        "Compared the implementation and its retained consumer at source level. No local upstream tests were executed. The selected development artifact predates this commit."
-      ]
-    },
-    {
-      "index": 54,
-      "commit": "f0f3d650b0e0fcb5041385d7ef75205e5d509ef3",
-      "classification": "native_owned",
-      "behavior": "The skills loader resolves the namespace from the first discoverable plugin manifest, preserving the configured manifest precedence.",
-      "decodex_consumer": "The Decodex skills/list adapter uses native resource identifiers and does not recompute plugin namespaces.",
-      "implementation_symbols": [
-        "codex-rs/ext/skills/src/loader/namespace.rs#plugin_namespace_for_root_uri"
-      ],
-      "tests_read": [
-        {
-          "source": "codex-rs/utils/plugins/src/plugin_namespace.rs",
-          "symbol": "preserves_codex_claude_cursor_legacy_precedence",
-          "revision": "f0f3d650b0e0fcb5041385d7ef75205e5d509ef3",
-          "body_read": true
-        }
-      ],
-      "tests_executed": [],
-      "source_review_complete": true,
-      "validation_limits": [
-        "Compared the implementation and its retained consumer at source level. No local upstream tests were executed. The selected development artifact predates this commit."
-      ]
-    },
-    {
-      "index": 55,
-      "commit": "9f3cb259535c72de6960cc837ac705a780c62995",
-      "classification": "native_owned",
-      "behavior": "App-server transport uses the home and path utility crates directly. JSON retains arbitrary precision and the core crate remains a development dependency.",
-      "decodex_consumer": "Decodex launches app-server over stdio. The transport dependency change does not introduce a new protocol method.",
-      "implementation_symbols": [
-        "codex-rs/app-server-transport/src/transport/unix_socket_tests.rs#default_control_socket_path",
-        "codex-rs/app-server-transport/Cargo.toml#dependencies",
-        "codex-rs/app-server-transport/src/daemon_recovery.rs#write_atomically"
-      ],
-      "tests_read": [
-        {
-          "source": "codex-rs/app-server-transport/src/transport/unix_socket_tests.rs",
-          "symbol": "listen_unix_socket_parses_as_unix_socket_transport",
-          "revision": "9f3cb259535c72de6960cc837ac705a780c62995",
-          "body_read": true
-        }
-      ],
-      "tests_executed": [],
-      "source_review_complete": true,
-      "validation_limits": [
-        "Compared the implementation and its retained consumer at source level. No local upstream tests were executed. The selected development artifact predates this commit."
-      ]
-    },
-    {
-      "index": 56,
-      "commit": "e8fb104cd6ba34cc3652a12609d59225584cad54",
-      "classification": "native_owned",
-      "behavior": "MCP hooks can specify an additional-context limit. The native loader normalizes the effective limit, warns on invalid values and hashes the normalized setting.",
-      "decodex_consumer": "Decodex reads hooks/list and relies on the native loader for limits and trust. No new limit editor is selected.",
-      "implementation_symbols": [
-        "codex-rs/hooks/src/engine/discovery.rs#normalize_additional_context_limit"
-      ],
-      "tests_read": [
-        {
-          "source": "codex-rs/hooks/src/engine/discovery.rs",
-          "symbol": "mcp_context_limits_are_bounded_and_hashed_by_effective_value",
-          "revision": "e8fb104cd6ba34cc3652a12609d59225584cad54",
-          "body_read": true
-        }
-      ],
-      "tests_executed": [],
-      "source_review_complete": true,
-      "validation_limits": [
-        "Compared the implementation and its retained consumer at source level. No local upstream tests were executed. The selected development artifact predates this commit."
-      ]
-    },
-    {
-      "index": 57,
-      "commit": "d3ca5182df452f8fdd9963e361ad16fe69f85217",
-      "classification": "native_owned",
-      "behavior": "Guardian renders encrypted descendant replies as evidence on review requests and preserves their position through incremental history and compaction.",
-      "decodex_consumer": "Decodex delegates worker execution and approval to native Codex. It reads review records and does not generate encrypted reply evidence.",
-      "implementation_symbols": [
-        "codex-rs/guardian-context/src/subagent_reply.rs#is_encrypted_subagent_reply"
-      ],
-      "tests_read": [
-        {
-          "source": "codex-rs/core/tests/suite/scenarios_guardian_agent_messages_tests.rs",
-          "symbol": "encrypted_parent_reply_survives_incremental_guardian_reviews",
-          "revision": "d3ca5182df452f8fdd9963e361ad16fe69f85217",
-          "body_read": true
-        }
-      ],
-      "tests_executed": [],
-      "source_review_complete": true,
-      "validation_limits": [
-        "Compared the implementation and its retained consumer at source level. No local upstream tests were executed. The selected development artifact predates this commit."
-      ]
-    },
-    {
-      "index": 58,
-      "commit": "ecb223f52533dd692f9e916c4468378218d3c614",
-      "classification": "native_owned",
-      "behavior": "Native connector discovery and install verification move out of codex-tools. Every requested connector must still be accessible before an installation is considered complete.",
-      "decodex_consumer": "The Decodex connector inventory obtains accessibility from the native server. It does not implement the native tool registry.",
-      "implementation_symbols": [
-        "codex-rs/core/src/tools/handlers/request_plugin_install.rs#verified_connector_install_completed"
-      ],
-      "tests_read": [
-        {
-          "source": "codex-rs/core/src/tools/handlers/request_plugin_install_tests.rs",
-          "symbol": "install_requires_every_requested_connector_to_be_accessible",
-          "revision": "ecb223f52533dd692f9e916c4468378218d3c614",
-          "body_read": true
-        }
-      ],
-      "tests_executed": [],
-      "source_review_complete": true,
-      "validation_limits": [
-        "Compared the implementation and its retained consumer at source level. No local upstream tests were executed. The selected development artifact predates this commit."
-      ]
-    },
-    {
-      "index": 59,
-      "commit": "44eb0838df815b9ef45a7da7465edbc88070a61d",
-      "classification": "not_applicable",
-      "behavior": "The Windows sandbox crate now depends on codex-otel only when its target is Windows. Its Windows diagnostics still emit metrics.",
-      "decodex_consumer": "The selected Decodex runtime targets Apple silicon macOS. This manifest change has no Windows execution consumer here.",
-      "implementation_symbols": [
-        "codex-rs/windows-sandbox-rs/src/service_diagnostics.rs#record_stopped",
-        "codex-rs/windows-sandbox-rs/Cargo.toml#target.'cfg(windows)'.dependencies"
-      ],
-      "tests_read": [],
-      "tests_executed": [],
-      "source_review_complete": true,
-      "validation_limits": [
-        "Compared the implementation and its retained consumer at source level. No local upstream tests were executed. The selected development artifact predates this commit.",
-        "The patch moves a target dependency. No dedicated upstream test for the manifest edge was identified. The current target is macOS."
-      ]
-    },
-    {
-      "index": 60,
-      "commit": "34fcbc8caf26e17fd8cea45df8b7047126f965e7",
-      "classification": "deferred",
-      "behavior": "An attached Guardian review checks the root history key after an update and can keep a verdict valid across unrelated context changes.",
-      "decodex_consumer": "The native Guardian V3 experiment is deferred in Decodex issue 2563. The retained native permission and Review Details paths do not enable this experimental reviewer.",
-      "implementation_symbols": [
-        "codex-rs/core/src/guardian/attached_review.rs#attempt"
+        "codex-rs/ext/guardian-v3/src/shadow.rs#start_shadow_if_needed",
+        "codex-rs/ext/guardian-v3/src/shadow.rs#on_config_changed"
       ],
       "tests_read": [
         {
           "source": "codex-rs/app-server/tests/suite/v2/guardian_v3_sync_tests.rs",
-          "symbol": "pending_mcp_action_uses_the_configured_reviewer",
-          "revision": "34fcbc8caf26e17fd8cea45df8b7047126f965e7",
+          "symbol": "returning_to_auto_review_restarts_shadow_intake_without_replaying_history",
+          "revision": "d800b00e886a77181baf03e9e9aa2ea3445d9a4b",
           "body_read": true
         }
       ],
       "tests_executed": [],
       "source_review_complete": true,
+      "upstream_checks": {
+        "source": "https://github.com/openai/codex/pull/63988/checks",
+        "head": "d800b00e886a77181baf03e9e9aa2ea3445d9a4b",
+        "reported_conclusions": {
+          "CANCELLED": 13,
+          "FAILURE": 24,
+          "SKIPPED": 4,
+          "SUCCESS": 28
+        }
+      },
       "validation_limits": [
-        "Compared the implementation and its retained consumer at source level. No local upstream tests were executed. The selected development artifact predates this commit."
+        "Guardian V3 shadow enrollment was reviewed at source."
       ]
     },
     {
-      "index": 61,
-      "commit": "d1e982d7eb9ee5524226dac24dbd1b2c5db723ff",
-      "classification": "deferred",
-      "behavior": "An attached reviewer can reserve its review while evidence routing catches up, subject to its deadline and cancellation.",
-      "decodex_consumer": "The native Guardian V3 experiment is deferred in Decodex issue 2563. The retained native permission and Review Details paths do not enable this experimental reviewer.",
+      "index": 4,
+      "commit": "ceed625df96fe3ca7107fe16d282aef25c57b85e",
+      "classification": "not_applicable",
+      "behavior": "Chronological occurrence IDs keep late tool results from taking an earlier group's focus or expansion across transcript updates.",
+      "decodex_consumer": "GPUI owns tool grouping in agent_timeline_groups.rs. It consumes native items without TUI disclosure IDs.",
+      "decodex_source": "apps/decodex-gpui/src/agent_timeline_groups.rs",
       "implementation_symbols": [
-        "codex-rs/core/src/guardian/attached_review.rs#prepare"
+        "codex-rs/tui/src/transcript_view/turn_details.rs#index_turn",
+        "codex-rs/tui/src/transcript_view/turn_details.rs#sync_turn_details"
       ],
       "tests_read": [
         {
-          "source": "codex-rs/ext/guardian-v3/tests/housekeeping.rs",
-          "symbol": "first_child_review_can_start_while_root_reload_is_still_routing",
-          "revision": "d1e982d7eb9ee5524226dac24dbd1b2c5db723ff",
+          "source": "codex-rs/tui/src/transcript_view_tests.rs",
+          "symbol": "late_tool_result_stays_independent_across_turns",
+          "revision": "ceed625df96fe3ca7107fe16d282aef25c57b85e",
           "body_read": true
         }
       ],
       "tests_executed": [],
       "source_review_complete": true,
+      "upstream_checks": {
+        "source": "https://github.com/openai/codex/pull/63989/checks",
+        "head": "ceed625df96fe3ca7107fe16d282aef25c57b85e",
+        "reported_conclusions": {
+          "CANCELLED": 10,
+          "FAILURE": 27,
+          "SKIPPED": 4,
+          "SUCCESS": 28
+        }
+      },
       "validation_limits": [
-        "Compared the implementation and its retained consumer at source level. No local upstream tests were executed. The selected development artifact predates this commit."
+        "Terminal presentation was reviewed at source. Decodex consumes app-server through its own desktop interface."
       ]
     },
     {
-      "index": 62,
-      "commit": "b144e0e239008baff5216a43e382d08552be22d9",
-      "classification": "deferred",
-      "behavior": "Guardian removes a separate write-acknowledgment channel and tracks changed evidence writes through existing task lifetime and persistence mechanisms.",
-      "decodex_consumer": "The native Guardian V3 experiment is deferred in Decodex issue 2563. The retained native permission and Review Details paths do not enable this experimental reviewer.",
+      "index": 5,
+      "commit": "a089ec6a93dbf6e00fa5f3a66e068e8ce9bacdcd",
+      "classification": "native_owned",
+      "behavior": "Live list enrichment reads model, effort, environment roots and session source from thread settings without constructing an execution profile or resolving model information.",
+      "decodex_consumer": "AgentHost::native_threads requests thread/list and the registration adapter reads its returned fields.",
+      "decodex_source": "crates/decodex-runtime/src/agent_host.rs",
       "implementation_symbols": [
-        "codex-rs/core/src/session/mod.rs#append_rollout_items",
-        "codex-rs/core/src/session/retained_context.rs#record_review_evidence"
+        "codex-rs/core/src/codex_thread.rs#thread_view_settings",
+        "codex-rs/app-server/src/request_processors.rs#apply_thread_view_settings"
       ],
       "tests_read": [
         {
-          "source": "codex-rs/thread-store/src/local/pending_thread_metadata_tests.rs",
-          "symbol": "appended_history_is_readable_after_metadata_failure",
-          "revision": "b144e0e239008baff5216a43e382d08552be22d9",
+          "source": "codex-rs/core/src/session/step_activation_tests.rs",
+          "symbol": "thread_metadata_and_goal_recording_do_not_resolve_the_selected_model",
+          "revision": "a089ec6a93dbf6e00fa5f3a66e068e8ce9bacdcd",
           "body_read": true
         }
       ],
-      "tests_executed": [],
+      "tests_executed": [
+        {
+          "suite": "Decodex baseline",
+          "selector": "account_launch::agent_process::native_tests::archive::installed_native_archive_catalog_pages_every_timestamp_tie",
+          "artifact_sha256": "33e927ea6ea2c1b5e1d76b60716f35059d4d8d370aeada54028c116eea935dcb",
+          "passed": 1,
+          "executed": 1
+        },
+        {
+          "suite": "Decodex candidate",
+          "selector": "account_launch::agent_process::native_tests::archive::installed_native_archive_catalog_pages_every_timestamp_tie",
+          "executed": 1,
+          "passed": 1
+        },
+        {
+          "suite": "Decodex candidate",
+          "selector": "account_launch::agent_process::native_tests::goals::installed_native_goal_reads_preserve_native_state_after_restart",
+          "executed": 1,
+          "passed": 1
+        }
+      ],
       "source_review_complete": true,
+      "upstream_checks": {
+        "source": "https://github.com/openai/codex/pull/63990/checks",
+        "head": "a089ec6a93dbf6e00fa5f3a66e068e8ce9bacdcd",
+        "reported_conclusions": {
+          "CANCELLED": 8,
+          "FAILURE": 29,
+          "SKIPPED": 4,
+          "SUCCESS": 28
+        }
+      },
       "validation_limits": [
-        "Compared the implementation and its retained consumer at source level. No local upstream tests were executed. The selected development artifact predates this commit."
+        "Decodex catalog and Goal consumers were exercised. Model-lookup blocking is covered by the upstream source test."
       ]
     },
     {
-      "index": 63,
-      "commit": "cc6e8a968de32f83552eef9854151782d6db0db6",
-      "classification": "deferred",
-      "behavior": "Attached reviews use the loaded root's reset version, which advances on history replacement and survives ordinary appends.",
-      "decodex_consumer": "The native Guardian V3 experiment is deferred in Decodex issue 2563. The retained native permission and Review Details paths do not enable this experimental reviewer.",
+      "index": 6,
+      "commit": "db360f8b002039b3b54108a1432b724b0bff9c20",
+      "classification": "not_applicable",
+      "behavior": "Kitty continuation and final image chunks also suppress graphics acknowledgements.",
+      "decodex_consumer": "The macOS GPUI surface launches app-server without a Kitty terminal graphics transport.",
+      "decodex_source": "crates/decodex-runtime/src/account_launch/process.rs",
       "implementation_symbols": [
-        "codex-rs/core/src/guardian/attached_review.rs#root_history_version"
+        "codex-rs/tui/src/pets/image_protocol.rs#kitty_transmit_png_with_id"
       ],
       "tests_read": [
         {
-          "source": "codex-rs/core/src/session/guardian_checkpoint_tests.rs",
-          "symbol": "guardian_root_version_changes_on_history_reset_but_not_on_append",
-          "revision": "cc6e8a968de32f83552eef9854151782d6db0db6",
+          "source": "codex-rs/tui/src/pets/image_protocol.rs",
+          "symbol": "kitty_png_transmission_encodes_inline_data",
+          "revision": "db360f8b002039b3b54108a1432b724b0bff9c20",
           "body_read": true
         }
       ],
       "tests_executed": [],
       "source_review_complete": true,
+      "upstream_checks": {
+        "source": "https://github.com/openai/codex/pull/63992/checks",
+        "head": "db360f8b002039b3b54108a1432b724b0bff9c20",
+        "reported_conclusions": {
+          "CANCELLED": 9,
+          "FAILURE": 28,
+          "SKIPPED": 4,
+          "SUCCESS": 28
+        }
+      },
       "validation_limits": [
-        "Compared the implementation and its retained consumer at source level. No local upstream tests were executed. The selected development artifact predates this commit."
+        "Terminal presentation was reviewed at source. Decodex consumes app-server through its own desktop interface."
       ]
     },
     {
-      "index": 64,
-      "commit": "06f334aa4b053023c5b4199dde0ba9c004d64820",
-      "classification": "deferred",
-      "behavior": "An opt-in shadow intake registers lifecycle hooks and in-memory board storage without installing an attached verdict provider.",
-      "decodex_consumer": "The native Guardian V3 experiment is deferred in Decodex issue 2563. The retained native permission and Review Details paths do not enable this experimental reviewer.",
+      "index": 7,
+      "commit": "06c718ae68a305e45ed322d80dd89da24791542f",
+      "classification": "native_owned",
+      "behavior": "Skill discovery drops the shadow search and ranking experiment. Previously accepted boolean skill_search settings are ignored in either config source.",
+      "decodex_consumer": "The native skills picker reads skills/list and sends the selected path. Decodex does not set the retired experiment.",
+      "decodex_source": "crates/decodex-runtime/src/agent_skills.rs",
       "implementation_symbols": [
-        "codex-rs/ext/guardian-v3/src/host.rs#install_shadow"
+        "codex-rs/features/src/lib.rs#apply_map",
+        "codex-rs/ext/skills/src/extension.rs#install_with_providers"
+      ],
+      "tests_read": [
+        {
+          "source": "codex-rs/features/src/tests.rs",
+          "symbol": "from_sources_accepts_and_ignores_removed_boolean_feature_values",
+          "revision": "06c718ae68a305e45ed322d80dd89da24791542f",
+          "body_read": true
+        }
+      ],
+      "tests_executed": [
+        {
+          "suite": "Decodex candidate",
+          "selector": "account_launch::agent_process::native_tests::skills::installed_skill_picker_inventory_and_exact_input_use_native_skill_owner",
+          "executed": 1,
+          "passed": 1
+        }
+      ],
+      "source_review_complete": true,
+      "upstream_checks": {
+        "source": "https://github.com/openai/codex/pull/63993/checks",
+        "head": "06c718ae68a305e45ed322d80dd89da24791542f",
+        "reported_conclusions": {
+          "CANCELLED": 11,
+          "FAILURE": 26,
+          "SKIPPED": 4,
+          "SUCCESS": 28
+        }
+      },
+      "validation_limits": [
+        "The exact skill picker fixture covers published skills and paths. Removed ranking has source evidence."
+      ]
+    },
+    {
+      "index": 8,
+      "commit": "71cf244137e9a8e0dc1c47f9ccd374819106d581",
+      "classification": "native_owned",
+      "behavior": "Rollout repair normalizes cwd and archive timestamps before allocating replacement metadata and skips an unchanged upsert.",
+      "decodex_consumer": "Archive discovery and thread reads share the native rollout catalog. Decodex does not repair the native state database.",
+      "decodex_source": "crates/decodex-codex/src/app_server_client/archive.rs",
+      "implementation_symbols": [
+        "codex-rs/rollout/src/state_db.rs#read_repair_rollout_path"
+      ],
+      "tests_read": [
+        {
+          "source": "codex-rs/rollout/src/state_db_tests.rs",
+          "symbol": "filesystem_repair_preserves_existing_rollout_path",
+          "revision": "71cf244137e9a8e0dc1c47f9ccd374819106d581",
+          "body_read": true
+        }
+      ],
+      "tests_executed": [
+        {
+          "suite": "Decodex baseline",
+          "selector": "account_launch::agent_process::native_tests::archive::installed_native_archive_catalog_pages_every_timestamp_tie",
+          "artifact_sha256": "33e927ea6ea2c1b5e1d76b60716f35059d4d8d370aeada54028c116eea935dcb",
+          "passed": 1,
+          "executed": 1
+        },
+        {
+          "suite": "Decodex candidate",
+          "selector": "account_launch::agent_process::native_tests::archive::installed_native_archive_roundtrip_refreshes_without_restarting_either_process",
+          "executed": 1,
+          "passed": 1
+        },
+        {
+          "suite": "Decodex candidate",
+          "selector": "account_launch::agent_process::native_tests::archive::installed_native_archive_catalog_pages_every_timestamp_tie",
+          "executed": 1,
+          "passed": 1
+        }
+      ],
+      "source_review_complete": true,
+      "upstream_checks": {
+        "source": "https://github.com/openai/codex/pull/63994/checks",
+        "head": "71cf244137e9a8e0dc1c47f9ccd374819106d581",
+        "reported_conclusions": {
+          "CANCELLED": 9,
+          "FAILURE": 29,
+          "SKIPPED": 4,
+          "SUCCESS": 27
+        }
+      },
+      "validation_limits": [
+        "Archive/catalog readback was exercised. Allocation behavior was reviewed at source."
+      ]
+    },
+    {
+      "index": 9,
+      "commit": "9938ffba35f731c08603e1bf60cd0bcb88048388",
+      "classification": "native_owned",
+      "behavior": "A managed reviewer change produces before and after config snapshots and notifies contributors after releasing session locks, including when current model validation fails.",
+      "decodex_consumer": "Conversation permission controls and Guardian review details consume native settings and events. Native contributors own policy refresh.",
+      "decodex_source": "crates/decodex-runtime/src/agent_permissions.rs",
+      "implementation_symbols": [
+        "codex-rs/core/src/session/config_refresh.rs#refresh_guardian_policy"
       ],
       "tests_read": [
         {
           "source": "codex-rs/ext/guardian-v3/src/host_tests.rs",
           "symbol": "shadow_intake_enrolls_only_new_opted_in_roots",
-          "revision": "06f334aa4b053023c5b4199dde0ba9c004d64820",
+          "revision": "9938ffba35f731c08603e1bf60cd0bcb88048388",
+          "body_read": true,
+          "reviewed_scenario": "Config contributor receives effective old and new reviewer on refresh, including the native publication outcome."
+        }
+      ],
+      "tests_executed": [
+        {
+          "suite": "Decodex candidate",
+          "selector": "account_launch::agent_process::native_tests::permissions::installed_permission_selection_publishes_and_survives_native_restart",
+          "executed": 1,
+          "passed": 1
+        },
+        {
+          "suite": "Decodex candidate",
+          "selector": "account_launch::agent_process::native_tests::reviewer::store::permission_owner_tests::installed_native_running_builtin_permissions_preserve_pending_tools",
+          "executed": 1,
+          "passed": 1
+        }
+      ],
+      "source_review_complete": true,
+      "upstream_checks": {
+        "source": "https://github.com/openai/codex/pull/63995/checks",
+        "head": "9938ffba35f731c08603e1bf60cd0bcb88048388",
+        "reported_conclusions": {
+          "CANCELLED": 12,
+          "FAILURE": 25,
+          "SKIPPED": 4,
+          "SUCCESS": 28
+        }
+      },
+      "validation_limits": [
+        "Native permission publication was exercised. No live managed-policy service was used."
+      ]
+    },
+    {
+      "index": 10,
+      "commit": "76696132f04983e6283fdc97d8e7b11a4ca59f9b",
+      "classification": "not_applicable",
+      "behavior": "The transcript overlay tracks the current asynchronous copy notice even after selection ends and ignores older completions.",
+      "decodex_consumer": "GPUI writes the macOS pasteboard through agent_clipboard.rs.",
+      "decodex_source": "apps/decodex-gpui/src/agent_clipboard.rs",
+      "implementation_symbols": [
+        "codex-rs/tui/src/pager_overlay/transcript.rs#show_copy_notice",
+        "codex-rs/tui/src/pager_overlay/transcript.rs#finish_pending_copy"
+      ],
+      "tests_read": [
+        {
+          "source": "codex-rs/tui/src/pager_overlay/transcript_tests.rs",
+          "symbol": "copy_notice_completes_without_a_selection_and_ignores_stale_results",
+          "revision": "76696132f04983e6283fdc97d8e7b11a4ca59f9b",
           "body_read": true
         }
       ],
       "tests_executed": [],
       "source_review_complete": true,
+      "upstream_checks": {
+        "source": "https://github.com/openai/codex/pull/63996/checks",
+        "head": "76696132f04983e6283fdc97d8e7b11a4ca59f9b",
+        "reported_conclusions": {
+          "CANCELLED": 8,
+          "FAILURE": 29,
+          "SKIPPED": 4,
+          "SUCCESS": 28
+        }
+      },
       "validation_limits": [
-        "Compared the implementation and its retained consumer at source level. No local upstream tests were executed. The selected development artifact predates this commit."
+        "Terminal presentation was reviewed at source. Decodex consumes app-server through its own desktop interface."
+      ]
+    },
+    {
+      "index": 11,
+      "commit": "03f4f4e6b75858cb529432fa28d9b44c7151055f",
+      "classification": "not_applicable",
+      "behavior": "Divider capture coalesces consecutive drag events while preserving release, focus and keyboard boundaries. Layout can preview the center width before release.",
+      "decodex_consumer": "Desktop geometry uses GPUI layout and pointer handlers. Native terminal event batching is outside this surface.",
+      "decodex_source": "apps/decodex-gpui/src/agent_timeline_scroll.rs",
+      "implementation_symbols": [
+        "codex-rs/tui/src/app/side_pane.rs#finish_divider_drag",
+        "codex-rs/tui/src/app/side_pane.rs#center_preview"
+      ],
+      "tests_read": [
+        {
+          "source": "codex-rs/tui/src/tui/event_stream.rs",
+          "symbol": "only_captured_divider_motion_is_coalesced_and_stops_at_input_boundaries",
+          "revision": "03f4f4e6b75858cb529432fa28d9b44c7151055f",
+          "body_read": true
+        }
+      ],
+      "tests_executed": [],
+      "source_review_complete": true,
+      "upstream_checks": {
+        "source": "https://github.com/openai/codex/pull/63997/checks",
+        "head": "03f4f4e6b75858cb529432fa28d9b44c7151055f",
+        "reported_conclusions": {
+          "CANCELLED": 9,
+          "FAILURE": 28,
+          "SKIPPED": 4,
+          "SUCCESS": 28
+        }
+      },
+      "validation_limits": [
+        "Terminal presentation was reviewed at source. Decodex consumes app-server through its own desktop interface."
+      ]
+    },
+    {
+      "index": 12,
+      "commit": "fd95d89146661880b8ccb0b70d89658679b2adc5",
+      "classification": "not_applicable",
+      "behavior": "Replayed thread settings establish a reasoning-effort baseline before refreshing the composer, so only live changes animate.",
+      "decodex_consumer": "Decodex reads the native reasoning setting and draws its own GPUI controls.",
+      "decodex_source": "apps/decodex-gpui/src/shell_status.rs",
+      "implementation_symbols": [
+        "codex-rs/tui/src/chatwidget/settings.rs#apply_thread_settings"
+      ],
+      "tests_read": [
+        {
+          "source": "codex-rs/tui/src/chatwidget/tests/app_server.rs",
+          "symbol": "thread_settings_updated_during_replay_restores_effort_without_animating",
+          "revision": "fd95d89146661880b8ccb0b70d89658679b2adc5",
+          "body_read": true
+        }
+      ],
+      "tests_executed": [],
+      "source_review_complete": true,
+      "upstream_checks": {
+        "source": "https://github.com/openai/codex/pull/63998/checks",
+        "head": "fd95d89146661880b8ccb0b70d89658679b2adc5",
+        "reported_conclusions": {
+          "CANCELLED": 9,
+          "FAILURE": 30,
+          "SKIPPED": 4,
+          "SUCCESS": 26
+        }
+      },
+      "validation_limits": [
+        "Terminal presentation was reviewed at source. Decodex consumes app-server through its own desktop interface."
+      ]
+    },
+    {
+      "index": 13,
+      "commit": "b420c7ca54e1caa01ebbba608b95495aaa304f69",
+      "classification": "not_applicable",
+      "behavior": "A focus-gained event between pointer press and release preserves the sidebar click sequence.",
+      "decodex_consumer": "GPUI handles its own application focus and sidebar interaction.",
+      "decodex_source": "apps/decodex-gpui/src/keyboard_shortcuts.rs",
+      "implementation_symbols": [
+        "codex-rs/tui/src/app.rs#handle_tui_event"
+      ],
+      "tests_read": [
+        {
+          "source": "codex-rs/tui/src/app/tests.rs",
+          "symbol": "handle_start_side_seeds_navigation_before_thread_started",
+          "revision": "b420c7ca54e1caa01ebbba608b95495aaa304f69",
+          "body_read": true,
+          "reviewed_scenario": "Press, focus gain, release, then the close confirmation at the painted target."
+        }
+      ],
+      "tests_executed": [],
+      "source_review_complete": true,
+      "upstream_checks": {
+        "source": "https://github.com/openai/codex/pull/63999/checks",
+        "head": "b420c7ca54e1caa01ebbba608b95495aaa304f69",
+        "reported_conclusions": {
+          "CANCELLED": 10,
+          "FAILURE": 29,
+          "SKIPPED": 4,
+          "SUCCESS": 26
+        }
+      },
+      "validation_limits": [
+        "Terminal presentation was reviewed at source. Decodex consumes app-server through its own desktop interface."
+      ]
+    },
+    {
+      "index": 14,
+      "commit": "f3c6076ac262569dfe8e69f0df601759b6d42211",
+      "classification": "native_owned",
+      "behavior": "SessionEnd hooks skip hosted children whose inherited session ID differs from their thread ID. The root flushes the transcript and runs the hook once.",
+      "decodex_consumer": "Native subagents and configured hooks run in Codex. Decodex owns hook inventory presentation.",
+      "decodex_source": "openwiki/decisions/upstream-product-scope.md",
+      "implementation_symbols": [
+        "codex-rs/core/src/hook_runtime.rs#run_session_end_hooks"
+      ],
+      "tests_read": [
+        {
+          "source": "codex-rs/core/tests/suite/hooks.rs",
+          "symbol": "session_end_flushes_transcript_and_ignores_control_output",
+          "revision": "f3c6076ac262569dfe8e69f0df601759b6d42211",
+          "body_read": true
+        }
+      ],
+      "tests_executed": [
+        {
+          "suite": "Decodex candidate",
+          "selector": "account_launch::agent_process::native_tests::hook_settings::installed_hook_settings_read_inherited_hooks_in_linked_worktree",
+          "executed": 1,
+          "passed": 1
+        },
+        {
+          "suite": "Decodex candidate",
+          "selector": "agent::tests::native_agent_wake::native_child_completion_wakes_idle_root_once",
+          "executed": 1,
+          "passed": 1
+        }
+      ],
+      "source_review_complete": true,
+      "upstream_checks": {
+        "source": "https://github.com/openai/codex/pull/64000/checks",
+        "head": "f3c6076ac262569dfe8e69f0df601759b6d42211",
+        "reported_conclusions": {
+          "CANCELLED": 11,
+          "FAILURE": 28,
+          "SKIPPED": 4,
+          "SUCCESS": 26
+        }
+      },
+      "validation_limits": [
+        "Hook inventory and native child completion were exercised. SessionEnd dispatch on a hosted child has upstream source evidence."
+      ]
+    },
+    {
+      "index": 15,
+      "commit": "f39c3c78d732a2650c9a747a47ae084d6ea4eb43",
+      "classification": "native_owned",
+      "behavior": "Configured launch surfaces start and finish the native Statsig runtime with their appropriate serving account, local account or installation identity.",
+      "decodex_consumer": "Decodex starts the native app-server. Its source package does not run the official release-key injection workflow and Decodex adds no gate evaluation client.",
+      "decodex_source": "crates/decodex-runtime/src/account_launch/process.rs",
+      "implementation_symbols": [
+        "codex-rs/app-server/src/lib.rs#run_main_with_transport_options",
+        "codex-rs/app-server/src/in_process.rs#start_uninitialized"
+      ],
+      "tests_read": [
+        {
+          "source": "codex-rs/cli/tests/statsig_startup.rs",
+          "symbol": "harness_startup_requests_statsig_evaluations",
+          "revision": "f39c3c78d732a2650c9a747a47ae084d6ea4eb43",
+          "body_read": true,
+          "reviewed_scenario": "Mode-specific bootstraps, HTTP expectations and child shutdown."
+        }
+      ],
+      "tests_executed": [],
+      "source_review_complete": true,
+      "upstream_checks": {
+        "source": "https://github.com/openai/codex/pull/64001/checks",
+        "head": "f39c3c78d732a2650c9a747a47ae084d6ea4eb43",
+        "reported_conclusions": {
+          "CANCELLED": 10,
+          "FAILURE": 30,
+          "SKIPPED": 4,
+          "SUCCESS": 25
+        }
+      },
+      "validation_limits": [
+        "Default-off Statsig initialization has source evidence. No live Statsig endpoint or bundled official release key was qualified."
+      ]
+    },
+    {
+      "index": 16,
+      "commit": "44d359767fa12b5c75f0b6f57a5c795428c3ec6f",
+      "classification": "native_owned",
+      "behavior": "The turn context retains initial input across blocking startup. Admission and suspension claim it under the active-turn lock so cleanup can record the detached turn once.",
+      "decodex_consumer": "Agent turn submission and recovery use native history and exact turn IDs. The host roster extension is an upstream-specific fixture.",
+      "decodex_source": "crates/decodex-runtime/src/agent.rs",
+      "implementation_symbols": [
+        "codex-rs/core/src/session/turn.rs#preserve_initial_input_during",
+        "codex-rs/core/src/session/turn_context.rs#park_initial_input",
+        "codex-rs/core/src/session/turn_context.rs#take_initial_input"
+      ],
+      "tests_read": [
+        {
+          "source": "codex-rs/core/tests/suite/host_turn_admission.rs",
+          "symbol": "suspending_root_during_roster_read_preserves_the_recoverable_prompt",
+          "revision": "44d359767fa12b5c75f0b6f57a5c795428c3ec6f",
+          "body_read": true
+        }
+      ],
+      "tests_executed": [
+        {
+          "suite": "Decodex candidate",
+          "selector": "account_launch::agent_process::native_tests::context::installed_native_stream_disconnect_recovers_the_same_turn_without_resending",
+          "executed": 1,
+          "passed": 1
+        },
+        {
+          "suite": "Decodex candidate",
+          "selector": "account_launch::agent_process::native_tests::compaction::installed_native_preserves_prompt_before_compaction_error_and_after_restart",
+          "executed": 1,
+          "passed": 1
+        }
+      ],
+      "source_review_complete": true,
+      "upstream_checks": {
+        "source": "https://github.com/openai/codex/pull/64002/checks",
+        "head": "44d359767fa12b5c75f0b6f57a5c795428c3ec6f",
+        "reported_conclusions": {
+          "CANCELLED": 10,
+          "FAILURE": 31,
+          "SKIPPED": 4,
+          "SUCCESS": 24
+        }
+      },
+      "validation_limits": [
+        "Cold history and disconnect recovery were exercised. The host roster suspension race has upstream source evidence."
+      ]
+    },
+    {
+      "index": 17,
+      "commit": "30d71606a18878a05f91538a19f15eedc50ce26d",
+      "classification": "native_owned",
+      "behavior": "An encoded JSON request can suppress diagnostic body output while preserving the wire bytes through enrichment and compression.",
+      "decodex_consumer": "Request transport and trace formatting run inside Codex. The Decodex protocol client exchanges app-server messages.",
+      "decodex_source": "crates/decodex-runtime/src/account_launch/process.rs",
+      "implementation_symbols": [
+        "codex-rs/http-client/src/request.rs#omit_from_logs",
+        "codex-rs/http-client/src/request.rs#into_prepared"
+      ],
+      "tests_read": [
+        {
+          "source": "codex-rs/http-client/src/transport_tests.rs",
+          "symbol": "omitted_body_stays_out_of_logs_after_enrichment_and_compression",
+          "revision": "30d71606a18878a05f91538a19f15eedc50ce26d",
+          "body_read": true
+        }
+      ],
+      "tests_executed": [],
+      "source_review_complete": true,
+      "upstream_checks": {
+        "source": "https://github.com/openai/codex/pull/64003/checks",
+        "head": "30d71606a18878a05f91538a19f15eedc50ce26d",
+        "reported_conclusions": {
+          "CANCELLED": 10,
+          "FAILURE": 29,
+          "SKIPPED": 4,
+          "SUCCESS": 26
+        }
+      },
+      "validation_limits": [
+        "Diagnostic redaction and wire preservation were reviewed in upstream code and tests."
+      ]
+    },
+    {
+      "index": 18,
+      "commit": "9b6a7e3d0ed9297c5829d4ac0aedaaeedaa91969",
+      "classification": "not_applicable",
+      "behavior": "The replay test snapshot now includes the composer borders around the restored reasoning tier.",
+      "decodex_consumer": "An upstream TUI snapshot changes. The desktop renders its own composer.",
+      "decodex_source": "apps/decodex-gpui/src/shell_status.rs",
+      "implementation_symbols": [
+        "codex-rs/tui/src/chatwidget/tests/app_server.rs#thread_settings_updated_during_replay_restores_effort_without_animating"
+      ],
+      "tests_read": [
+        {
+          "source": "codex-rs/tui/src/chatwidget/tests/app_server.rs",
+          "symbol": "thread_settings_updated_during_replay_restores_effort_without_animating",
+          "revision": "9b6a7e3d0ed9297c5829d4ac0aedaaeedaa91969",
+          "body_read": true
+        }
+      ],
+      "tests_executed": [],
+      "source_review_complete": true,
+      "upstream_checks": {
+        "source": "https://github.com/openai/codex/pull/64004/checks",
+        "head": "9b6a7e3d0ed9297c5829d4ac0aedaaeedaa91969",
+        "reported_conclusions": {
+          "CANCELLED": 8,
+          "FAILURE": 31,
+          "SKIPPED": 4,
+          "SUCCESS": 26
+        }
+      },
+      "validation_limits": [
+        "Terminal presentation was reviewed at source. Decodex consumes app-server through its own desktop interface."
+      ]
+    },
+    {
+      "index": 19,
+      "commit": "897d47ac95f0abaf6cb459da6aa0f4e82dd54363",
+      "classification": "not_applicable",
+      "behavior": "Older pages accumulate until refill finishes or a deadline flushes a partial result. An intervening overlay also flushes the deferred replay.",
+      "decodex_consumer": "GPUI scrolls its own timeline. Decodex requests native pages without terminal scrollback reflow.",
+      "decodex_source": "apps/decodex-gpui/src/agent_timeline_scroll.rs",
+      "implementation_symbols": [
+        "codex-rs/tui/src/app/history_pagination.rs#finish_inline_history_page",
+        "codex-rs/tui/src/app/resize_reflow.rs#maybe_run_resize_reflow"
+      ],
+      "tests_read": [
+        {
+          "source": "codex-rs/tui/src/app/tests/session_lifecycle_requests.rs",
+          "symbol": "underfilled_scrollback_fetches_older_pages_without_opening_the_transcript",
+          "revision": "897d47ac95f0abaf6cb459da6aa0f4e82dd54363",
+          "body_read": true,
+          "reviewed_scenario": "Second-page error, retry and delayed refill before terminal history replay."
+        }
+      ],
+      "tests_executed": [],
+      "source_review_complete": true,
+      "upstream_checks": {
+        "source": "https://github.com/openai/codex/pull/64005/checks",
+        "head": "897d47ac95f0abaf6cb459da6aa0f4e82dd54363",
+        "reported_conclusions": {
+          "CANCELLED": 10,
+          "FAILURE": 29,
+          "SKIPPED": 4,
+          "SUCCESS": 26
+        }
+      },
+      "validation_limits": [
+        "Terminal presentation was reviewed at source. Decodex consumes app-server through its own desktop interface."
+      ]
+    },
+    {
+      "index": 20,
+      "commit": "7d0d2ac81adbd8df84af3761704cc41b414135ed",
+      "classification": "not_applicable",
+      "behavior": "The Bazel module and registry lock select zstd 1.6.0.",
+      "decodex_consumer": "The source component builder uses Cargo with the locked Rust dependency graph. It does not invoke Bazel.",
+      "decodex_source": "scripts/macos/build_codex_source.mts",
+      "implementation_symbols": [
+        "MODULE.bazel#bazel_dep(zstd)",
+        "MODULE.bazel.lock#zstd/1.6.0"
+      ],
+      "tests_read": [],
+      "tests_executed": [],
+      "source_review_complete": true,
+      "upstream_checks": {
+        "source": "https://github.com/openai/codex/pull/64006/checks",
+        "head": "7d0d2ac81adbd8df84af3761704cc41b414135ed",
+        "reported_conclusions": {
+          "CANCELLED": 10,
+          "FAILURE": 28,
+          "SKIPPED": 5,
+          "SUCCESS": 37
+        }
+      },
+      "validation_limits": [
+        "The source qualification uses Cargo. No Bazel build was executed."
+      ]
+    },
+    {
+      "index": 21,
+      "commit": "b8498ada1c02f829057e5e171a0db2d6913d9329",
+      "classification": "not_applicable",
+      "behavior": "The terminal statusline text node accepts a line cap, accounts for sibling width and uses an ellipsis when clamped.",
+      "decodex_consumer": "Decodex has a GPUI status surface and does not consume the TUI statusline node schema.",
+      "decodex_source": "apps/decodex-gpui/src/shell_status.rs",
+      "implementation_symbols": [
+        "codex-rs/tui/src/ui_tree/decode.rs#max_lines",
+        "codex-rs/tui/src/ui_tree/render.rs#layout_node"
+      ],
+      "tests_read": [
+        {
+          "source": "codex-rs/tui/src/ui_tree_tests.rs",
+          "symbol": "clamped_word_shrinks_to_keep_its_sibling_visible",
+          "revision": "b8498ada1c02f829057e5e171a0db2d6913d9329",
+          "body_read": true
+        }
+      ],
+      "tests_executed": [],
+      "source_review_complete": true,
+      "upstream_checks": {
+        "source": "https://github.com/openai/codex/pull/64007/checks",
+        "head": "b8498ada1c02f829057e5e171a0db2d6913d9329",
+        "reported_conclusions": {
+          "CANCELLED": 8,
+          "FAILURE": 32,
+          "SKIPPED": 4,
+          "SUCCESS": 25
+        }
+      },
+      "validation_limits": [
+        "Terminal presentation was reviewed at source. Decodex consumes app-server through its own desktop interface."
+      ]
+    },
+    {
+      "index": 22,
+      "commit": "163c555f18b7616b40f7466c039ec5614a787b46",
+      "classification": "not_applicable",
+      "behavior": "A directional statusline box uses a column by default and supports row wrapping and justification when configured as a row.",
+      "decodex_consumer": "The GPUI status surface does not deserialize terminal statusline layout nodes.",
+      "decodex_source": "apps/decodex-gpui/src/shell_status.rs",
+      "implementation_symbols": [
+        "codex-rs/tui/src/ui_tree/render/prepare.rs#flex_item",
+        "codex-rs/tui/src/ui_tree/render/prepare.rs#collect_inline"
+      ],
+      "tests_read": [
+        {
+          "source": "codex-rs/tui/src/ui_tree_tests.rs",
+          "symbol": "box_defaults_to_a_column_and_uses_row_options_in_row_direction",
+          "revision": "163c555f18b7616b40f7466c039ec5614a787b46",
+          "body_read": true
+        }
+      ],
+      "tests_executed": [],
+      "source_review_complete": true,
+      "upstream_checks": {
+        "source": "https://github.com/openai/codex/pull/64008/checks",
+        "head": "163c555f18b7616b40f7466c039ec5614a787b46",
+        "reported_conclusions": {
+          "CANCELLED": 7,
+          "FAILURE": 34,
+          "SKIPPED": 4,
+          "SUCCESS": 24
+        }
+      },
+      "validation_limits": [
+        "Terminal presentation was reviewed at source. Decodex consumes app-server through its own desktop interface."
+      ]
+    },
+    {
+      "index": 23,
+      "commit": "8d8de8f693fbbb494583371cc97248287ef93036",
+      "classification": "not_applicable",
+      "behavior": "Spacer elements divide the remaining cells in each row or stretched column and preserve overflow handling at zero width.",
+      "decodex_consumer": "Desktop status layout uses GPUI allocations.",
+      "decodex_source": "apps/decodex-gpui/src/shell_status.rs",
+      "implementation_symbols": [
+        "codex-rs/tui/src/ui_tree/render/flex.rs#take",
+        "codex-rs/tui/src/ui_tree/render/flex.rs#layout_band"
+      ],
+      "tests_read": [
+        {
+          "source": "codex-rs/tui/src/ui_tree_tests.rs",
+          "symbol": "zero_width_spacer_keeps_vertical_overflow_safe",
+          "revision": "8d8de8f693fbbb494583371cc97248287ef93036",
+          "body_read": true
+        }
+      ],
+      "tests_executed": [],
+      "source_review_complete": true,
+      "upstream_checks": {
+        "source": "https://github.com/openai/codex/pull/64009/checks",
+        "head": "8d8de8f693fbbb494583371cc97248287ef93036",
+        "reported_conclusions": {
+          "CANCELLED": 9,
+          "FAILURE": 32,
+          "SKIPPED": 4,
+          "SUCCESS": 24
+        }
+      },
+      "validation_limits": [
+        "Terminal presentation was reviewed at source. Decodex consumes app-server through its own desktop interface."
+      ]
+    },
+    {
+      "index": 24,
+      "commit": "09b1cfd3371e546dacb290a3fcc56f32a86dccf0",
+      "classification": "not_applicable",
+      "behavior": "A statusline badge sanitizes and lays out its label and gutters as one inline box with a theme-aware fill.",
+      "decodex_consumer": "Desktop status elements use GPUI text and material surfaces.",
+      "decodex_source": "apps/decodex-gpui/src/shell_status.rs",
+      "implementation_symbols": [
+        "codex-rs/tui/src/ui_tree/render/text.rs#push_badge",
+        "codex-rs/tui/src/ui_tree/theme.rs#resolve_badge_style"
+      ],
+      "tests_read": [
+        {
+          "source": "codex-rs/tui/src/ui_tree_tests.rs",
+          "symbol": "clamped_text_reserves_room_for_a_whole_trailing_badge",
+          "revision": "09b1cfd3371e546dacb290a3fcc56f32a86dccf0",
+          "body_read": true
+        }
+      ],
+      "tests_executed": [],
+      "source_review_complete": true,
+      "upstream_checks": {
+        "source": "https://github.com/openai/codex/pull/64010/checks",
+        "head": "09b1cfd3371e546dacb290a3fcc56f32a86dccf0",
+        "reported_conclusions": {
+          "CANCELLED": 11,
+          "FAILURE": 29,
+          "SKIPPED": 4,
+          "SUCCESS": 25
+        }
+      },
+      "validation_limits": [
+        "Terminal presentation was reviewed at source. Decodex consumes app-server through its own desktop interface."
+      ]
+    },
+    {
+      "index": 25,
+      "commit": "3d5a786a205b19b96c640d4eb2e4e8313fae1229",
+      "classification": "native_owned",
+      "behavior": "HTTP MCP recovery cleans up newly allocated sessions when initialization fails or the caller cancels. Cleanup can outlive the original caller's timeout without replaying its old tool request.",
+      "decodex_consumer": "Native MCP client ownership covers HTTP sessions. The Decodex adapter consumes inventory, tool results and requests from app-server.",
+      "decodex_source": "crates/decodex-runtime/src/agent.rs",
+      "implementation_symbols": [
+        "codex-rs/rmcp-client/src/http_client_adapter.rs#cleanup_session",
+        "codex-rs/rmcp-client/src/http_client_adapter.rs#delete_session_inner",
+        "codex-rs/rmcp-client/src/http_client_adapter.rs#recovery_cleanup"
+      ],
+      "tests_read": [
+        {
+          "source": "codex-rs/rmcp-client/src/http_client_adapter_tests.rs",
+          "symbol": "recovery_frees_session_capacity_before_retrying_and_detaches_on_timeout",
+          "revision": "3d5a786a205b19b96c640d4eb2e4e8313fae1229",
+          "body_read": true
+        },
+        {
+          "source": "codex-rs/rmcp-client/src/http_client_adapter_tests.rs",
+          "symbol": "reply_404_closes_parent_without_replay",
+          "revision": "3d5a786a205b19b96c640d4eb2e4e8313fae1229",
+          "body_read": true
+        }
+      ],
+      "tests_executed": [
+        {
+          "suite": "Decodex candidate",
+          "selector": "account_launch::agent_process::native_tests::discovery::installed_native_mcp_capabilities_survive_tool_discovery_failure",
+          "executed": 1,
+          "passed": 1
+        },
+        {
+          "suite": "Decodex candidate",
+          "selector": "account_launch::agent_process::native_tests::mcp_socket::shared_modern_input_returns_to_each_calling_client",
+          "executed": 1,
+          "passed": 1
+        }
+      ],
+      "source_review_complete": true,
+      "upstream_checks": {
+        "source": "https://github.com/openai/codex/pull/64011/checks",
+        "head": "3d5a786a205b19b96c640d4eb2e4e8313fae1229",
+        "reported_conclusions": {
+          "CANCELLED": 11,
+          "FAILURE": 29,
+          "SKIPPED": 4,
+          "SUCCESS": 25
+        }
+      },
+      "validation_limits": [
+        "Decodex MCP coverage uses its packaged helper and isolated fixtures. HTTP recovery cancellation has upstream source evidence."
+      ]
+    },
+    {
+      "index": 26,
+      "commit": "e54baff042954a4462e9f1a522fd1872b32c777b",
+      "classification": "not_applicable",
+      "behavior": "Native tests for default, inherited and remote environment selection move into a dedicated test module.",
+      "decodex_consumer": "Decodex sends working directories and consumes environment metadata through app-server. The rearrangement changes the upstream test target sources.",
+      "decodex_source": "crates/decodex-runtime/src/agent_host.rs",
+      "implementation_symbols": [
+        "codex-rs/core/src/environment_selection_tests.rs#resolve_turn_environments"
+      ],
+      "tests_read": [
+        {
+          "source": "codex-rs/core/src/environment_selection_tests.rs",
+          "symbol": "default_thread_environment_requests_empty_when_default_disabled",
+          "revision": "e54baff042954a4462e9f1a522fd1872b32c777b",
+          "body_read": true
+        }
+      ],
+      "tests_executed": [],
+      "source_review_complete": true,
+      "upstream_checks": {
+        "source": "https://github.com/openai/codex/pull/64012/checks",
+        "head": "e54baff042954a4462e9f1a522fd1872b32c777b",
+        "reported_conclusions": {
+          "CANCELLED": 11,
+          "FAILURE": 28,
+          "SKIPPED": 4,
+          "SUCCESS": 26
+        }
+      },
+      "validation_limits": [
+        "Only the location of upstream test code changes."
+      ]
+    },
+    {
+      "index": 27,
+      "commit": "653def34fbbe123cf06710afcdcd61011eb8cb8f",
+      "classification": "not_applicable",
+      "behavior": "Windows PowerShell command hooks preserve the native program's nonzero exit status, keep successful commands successful and preserve named-block scripts.",
+      "decodex_consumer": "The supported development component is macOS arm64. The changed command wrapper is Windows-only.",
+      "decodex_source": "scripts/macos/build_codex_source.mts",
+      "implementation_symbols": [
+        "codex-rs/hooks/src/engine/command_runner.rs#build_command"
+      ],
+      "tests_read": [
+        {
+          "source": "codex-rs/core/tests/suite/apply_patch_cli.rs",
+          "symbol": "powershell_hook_denies_patch_before_approval",
+          "revision": "653def34fbbe123cf06710afcdcd61011eb8cb8f",
+          "body_read": true
+        }
+      ],
+      "tests_executed": [],
+      "source_review_complete": true,
+      "upstream_checks": {
+        "source": "https://github.com/openai/codex/pull/64013/checks",
+        "head": "653def34fbbe123cf06710afcdcd61011eb8cb8f",
+        "reported_conclusions": {
+          "CANCELLED": 11,
+          "FAILURE": 28,
+          "SKIPPED": 4,
+          "SUCCESS": 26
+        }
+      },
+      "validation_limits": [
+        "The signed macOS component excludes the Windows-only command branch."
+      ]
+    },
+    {
+      "index": 28,
+      "commit": "2f83e4843fddcf15fb451224d973773a387254e9",
+      "classification": "not_applicable",
+      "behavior": "TUI resume and fork lookup propagate underlying read errors separately from a missing session or cloud picker result.",
+      "decodex_consumer": "The desktop uses its native catalog client and GPUI registration surface for lookup.",
+      "decodex_source": "crates/decodex-runtime/src/agent_host.rs",
+      "implementation_symbols": [
+        "codex-rs/tui/src/lib.rs#lookup_session_target_with_app_server"
+      ],
+      "tests_read": [
+        {
+          "source": "codex-rs/tui/src/app/tests/new_session_tests.rs",
+          "symbol": "session_lookup_distinguishes_missing_and_unreadable_rollouts",
+          "revision": "2f83e4843fddcf15fb451224d973773a387254e9",
+          "body_read": true
+        }
+      ],
+      "tests_executed": [],
+      "source_review_complete": true,
+      "upstream_checks": {
+        "source": "https://github.com/openai/codex/pull/64014/checks",
+        "head": "2f83e4843fddcf15fb451224d973773a387254e9",
+        "reported_conclusions": {
+          "CANCELLED": 10,
+          "FAILURE": 29,
+          "SKIPPED": 4,
+          "SUCCESS": 26
+        }
+      },
+      "validation_limits": [
+        "Terminal presentation was reviewed at source. Decodex consumes app-server through its own desktop interface."
+      ]
+    },
+    {
+      "index": 29,
+      "commit": "ad07f04e470afd3ed700d591c58f8ab7ae57b94f",
+      "classification": "not_applicable",
+      "behavior": "The TUI preserves background launch rows and reconciles a late exit against its original command without flushing an unrelated active exploration.",
+      "decodex_consumer": "GPUI associates native execution items with its own timeline rows.",
+      "decodex_source": "apps/decodex-gpui/src/agent_timeline_groups.rs",
+      "implementation_symbols": [
+        "codex-rs/tui/src/app/activity_groups.rs#complete_background_command",
+        "codex-rs/tui/src/app/native_history.rs#defer_command_result"
+      ],
+      "tests_read": [
+        {
+          "source": "codex-rs/tui/src/chatwidget/tests/exec_flow.rs",
+          "symbol": "unified_exec_unknown_end_with_active_exploring_cell_snapshot",
+          "revision": "ad07f04e470afd3ed700d591c58f8ab7ae57b94f",
+          "body_read": true
+        }
+      ],
+      "tests_executed": [],
+      "source_review_complete": true,
+      "upstream_checks": {
+        "source": "https://github.com/openai/codex/pull/64015/checks",
+        "head": "ad07f04e470afd3ed700d591c58f8ab7ae57b94f",
+        "reported_conclusions": {
+          "CANCELLED": 10,
+          "FAILURE": 29,
+          "SKIPPED": 4,
+          "SUCCESS": 26
+        }
+      },
+      "validation_limits": [
+        "Terminal presentation was reviewed at source. Decodex consumes app-server through its own desktop interface."
+      ]
+    },
+    {
+      "index": 30,
+      "commit": "80ea5901ad7f53b1f6478a33f5fd51ffc2676d33",
+      "classification": "not_applicable",
+      "behavior": "Official Bazel and Cargo release jobs supply the Statsig build variable. The local development build does not execute those jobs.",
+      "decodex_consumer": "Decodex explicitly prepares a source package. No release, key injection or live Statsig service is part of this qualification.",
+      "decodex_source": "scripts/macos/build_codex_source.mts",
+      "implementation_symbols": [
+        ".github/actions/build-bazel-release/action.yml#CODEX_BUNDLED_STATSIG_CLIENT_KEY",
+        ".github/workflows/rust-release.yml#CODEX_BUNDLED_STATSIG_CLIENT_KEY"
+      ],
+      "tests_read": [
+        {
+          "source": "codex-rs/cli/tests/statsig_startup.rs",
+          "symbol": "harness_startup_requests_statsig_evaluations",
+          "revision": "80ea5901ad7f53b1f6478a33f5fd51ffc2676d33",
+          "body_read": true,
+          "reviewed_scenario": "Native startup fixture requires a bundled build key. Workflow environment wiring is source evidence only."
+        }
+      ],
+      "tests_executed": [],
+      "source_review_complete": true,
+      "upstream_checks": {
+        "source": "https://github.com/openai/codex/pull/64016/checks",
+        "head": "80ea5901ad7f53b1f6478a33f5fd51ffc2676d33",
+        "reported_conclusions": {
+          "CANCELLED": 12,
+          "FAILURE": 27,
+          "SKIPPED": 4,
+          "SUCCESS": 26
+        }
+      },
+      "validation_limits": [
+        "Official release jobs were inspected. No release was built."
+      ]
+    },
+    {
+      "index": 31,
+      "commit": "58b14699ec8dcd9f6efd27ef776036c2ae1b943b",
+      "classification": "not_applicable",
+      "behavior": "Interrupt guidance remains available as assistant output streams, accounting for draft, width and editor mode until completion.",
+      "decodex_consumer": "Desktop composer actions and active-work feedback use GPUI.",
+      "decodex_source": "apps/decodex-gpui/src/shell_status.rs",
+      "implementation_symbols": [
+        "codex-rs/tui/src/bottom_pane/mod.rs#should_interrupt_running_task",
+        "codex-rs/tui/src/chatwidget/streaming.rs#finalize_completed_assistant_message"
+      ],
+      "tests_read": [
+        {
+          "source": "codex-rs/tui/src/chatwidget/tests/status_and_layout.rs",
+          "symbol": "unphased_stream_keeps_activity_visible_until_turn_completion",
+          "revision": "58b14699ec8dcd9f6efd27ef776036c2ae1b943b",
+          "body_read": true
+        }
+      ],
+      "tests_executed": [],
+      "source_review_complete": true,
+      "upstream_checks": {
+        "source": "https://github.com/openai/codex/pull/64018/checks",
+        "head": "58b14699ec8dcd9f6efd27ef776036c2ae1b943b",
+        "reported_conclusions": {
+          "CANCELLED": 9,
+          "FAILURE": 30,
+          "SKIPPED": 4,
+          "SUCCESS": 26
+        }
+      },
+      "validation_limits": [
+        "Terminal presentation was reviewed at source. Decodex consumes app-server through its own desktop interface."
+      ]
+    },
+    {
+      "index": 32,
+      "commit": "2055a99af459a503509828abd579e34668d345b6",
+      "classification": "already_covered",
+      "behavior": "The terminal MCP form validates number and integer ranges before sending a typed response. Optional empty values can be omitted.",
+      "decodex_consumer": "Decodex already has number and integer form validation, including large integers, in decodex-protocol/src/mcp_elicitation.rs.",
+      "decodex_source": "crates/decodex-protocol/src/mcp_elicitation.rs",
+      "implementation_symbols": [
+        "codex-rs/tui/src/bottom_pane/mcp_server_elicitation.rs#numeric_answer",
+        "codex-rs/tui/src/bottom_pane/mcp_server_elicitation.rs#parse_field"
+      ],
+      "tests_read": [
+        {
+          "source": "codex-rs/tui/src/bottom_pane/mcp_server_elicitation.rs",
+          "symbol": "submit_sends_accept_with_typed_content",
+          "revision": "2055a99af459a503509828abd579e34668d345b6",
+          "body_read": true
+        }
+      ],
+      "tests_executed": [],
+      "source_review_complete": true,
+      "upstream_checks": {
+        "source": "https://github.com/openai/codex/pull/64023/checks",
+        "head": "2055a99af459a503509828abd579e34668d345b6",
+        "reported_conclusions": {
+          "CANCELLED": 10,
+          "FAILURE": 29,
+          "SKIPPED": 4,
+          "SUCCESS": 26
+        }
+      },
+      "validation_limits": [
+        "The Decodex typed form validator and its precision regression were inspected at source."
+      ]
+    },
+    {
+      "index": 33,
+      "commit": "dbb9b2e31ee5dbaac391a422d3f8b25b88fc8d5c",
+      "classification": "not_applicable",
+      "behavior": "Footer hints follow pane focus. Inactive panes keep pointer targets and measure only usable hints.",
+      "decodex_consumer": "GPUI keyboard shortcuts and hit targets are independent of the terminal footer.",
+      "decodex_source": "apps/decodex-gpui/src/keyboard_shortcuts.rs",
+      "implementation_symbols": [
+        "codex-rs/tui/src/app/input.rs#key_chord_contexts",
+        "codex-rs/tui/src/footer_hint.rs#render_hints"
+      ],
+      "tests_read": [
+        {
+          "source": "codex-rs/tui/src/footer_hint_tests.rs",
+          "symbol": "inactive_hints_keep_controls_and_measure_only_visible_items",
+          "revision": "dbb9b2e31ee5dbaac391a422d3f8b25b88fc8d5c",
+          "body_read": true
+        }
+      ],
+      "tests_executed": [],
+      "source_review_complete": true,
+      "upstream_checks": {
+        "source": "https://github.com/openai/codex/pull/64024/checks",
+        "head": "dbb9b2e31ee5dbaac391a422d3f8b25b88fc8d5c",
+        "reported_conclusions": {
+          "CANCELLED": 11,
+          "FAILURE": 29,
+          "SKIPPED": 4,
+          "SUCCESS": 25
+        }
+      },
+      "validation_limits": [
+        "Terminal presentation was reviewed at source. Decodex consumes app-server through its own desktop interface."
+      ]
+    },
+    {
+      "index": 34,
+      "commit": "1d05b9851ca29721fef85f9261ed050706c6b0ca",
+      "classification": "not_applicable",
+      "behavior": "Command Center hints and clickable actions track focus, help, search and the active rename editor's key ownership.",
+      "decodex_consumer": "Decodex uses desktop navigation and keyboard_shortcuts.rs rather than the terminal Command Center.",
+      "decodex_source": "apps/decodex-gpui/src/keyboard_shortcuts.rs",
+      "implementation_symbols": [
+        "codex-rs/tui/src/app/agent_center/input.rs#editing_allows_hint",
+        "codex-rs/tui/src/app/agent_center/hints.rs#center_footer_hints"
+      ],
+      "tests_read": [
+        {
+          "source": "codex-rs/tui/src/app/agent_center_tests.rs",
+          "symbol": "search_sort_tab_respects_configured_list_bindings_and_rename",
+          "revision": "1d05b9851ca29721fef85f9261ed050706c6b0ca",
+          "body_read": true
+        }
+      ],
+      "tests_executed": [],
+      "source_review_complete": true,
+      "upstream_checks": {
+        "source": "https://github.com/openai/codex/pull/64025/checks",
+        "head": "1d05b9851ca29721fef85f9261ed050706c6b0ca",
+        "reported_conclusions": {
+          "CANCELLED": 8,
+          "FAILURE": 31,
+          "SKIPPED": 4,
+          "SUCCESS": 26
+        }
+      },
+      "validation_limits": [
+        "Terminal presentation was reviewed at source. Decodex consumes app-server through its own desktop interface."
+      ]
+    },
+    {
+      "index": 35,
+      "commit": "5148e3d6421c3adb9991b712b85f973ac33b9e50",
+      "classification": "not_applicable",
+      "behavior": "Waits with no recipient or state rows still show their running, completed, failed or interrupted status in TUI history.",
+      "decodex_consumer": "The GPUI wait projection consumes native collaboration items through agent_timeline_waits.rs.",
+      "decodex_source": "apps/decodex-gpui/src/agent_timeline_waits.rs",
+      "implementation_symbols": [
+        "codex-rs/tui/src/multi_agents.rs#render_tool_call"
+      ],
+      "tests_read": [
+        {
+          "source": "codex-rs/tui/src/multi_agents.rs",
+          "symbol": "collab_events_snapshot",
+          "revision": "5148e3d6421c3adb9991b712b85f973ac33b9e50",
+          "body_read": true,
+          "reviewed_scenario": "Rendering of waits with empty thread and state collections for each terminal status."
+        }
+      ],
+      "tests_executed": [],
+      "source_review_complete": true,
+      "upstream_checks": {
+        "source": "https://github.com/openai/codex/pull/64026/checks",
+        "head": "5148e3d6421c3adb9991b712b85f973ac33b9e50",
+        "reported_conclusions": {
+          "CANCELLED": 10,
+          "FAILURE": 29,
+          "SKIPPED": 4,
+          "SUCCESS": 26
+        }
+      },
+      "validation_limits": [
+        "Terminal presentation was reviewed at source. Decodex consumes app-server through its own desktop interface."
+      ]
+    },
+    {
+      "index": 36,
+      "commit": "963d4f57179b579bc24d5270019e857a80a7f0de",
+      "classification": "native_owned",
+      "behavior": "Discovery combines allowed thread plugins with individual executor plugin selections, retaining marketplace restrictions and explicit disablement.",
+      "decodex_consumer": "Native discovery owns EGM and skill availability. Decodex retains native skill and MCP inventory and does not merge executor plugin configs locally.",
+      "decodex_source": "crates/decodex-runtime/src/agent_plugins.rs",
+      "implementation_symbols": [
+        "codex-rs/core-plugins/src/catalog.rs#from_thread_and_executors",
+        "codex-rs/core-plugins/src/catalog.rs#includes",
+        "codex-rs/core-plugins/src/marketplace_policy.rs#retain_plugins"
+      ],
+      "tests_read": [
+        {
+          "source": "codex-rs/ext/mcp/src/plugin/discovery_tests.rs",
+          "symbol": "explicit_thread_disable_without_default_denies_executor_plugin",
+          "revision": "963d4f57179b579bc24d5270019e857a80a7f0de",
+          "body_read": true
+        }
+      ],
+      "tests_executed": [
+        {
+          "suite": "Decodex candidate",
+          "selector": "account_launch::agent_process::native_tests::skills::installed_skill_picker_inventory_and_exact_input_use_native_skill_owner",
+          "executed": 1,
+          "passed": 1
+        },
+        {
+          "suite": "Decodex candidate",
+          "selector": "account_launch::agent_process::native_tests::discovery::installed_native_mcp_inventory_retains_same_name_scopes",
+          "executed": 1,
+          "passed": 1
+        }
+      ],
+      "source_review_complete": true,
+      "upstream_checks": {
+        "source": "https://github.com/openai/codex/pull/64052/checks",
+        "head": "963d4f57179b579bc24d5270019e857a80a7f0de",
+        "reported_conclusions": {
+          "CANCELLED": 9,
+          "FAILURE": 31,
+          "SKIPPED": 4,
+          "SUCCESS": 25
+        }
+      },
+      "validation_limits": [
+        "Local skill and MCP inventory were exercised. Remote executor enablement has upstream source evidence."
+      ]
+    },
+    {
+      "index": 37,
+      "commit": "2a3f7da44529617e4f65d776e985d1e49cf89e4e",
+      "classification": "not_applicable",
+      "behavior": "Keyboard and pointer routing for terminal sidebar tabs, chooser and focus move into the sidebar input module.",
+      "decodex_consumer": "Desktop pointer and keyboard routing execute in GPUI.",
+      "decodex_source": "apps/decodex-gpui/src/keyboard_shortcuts.rs",
+      "implementation_symbols": [
+        "codex-rs/tui/src/app/sidebar_input.rs#handle_sidebar_input",
+        "codex-rs/tui/src/app/sidebar_input.rs#handle_sidebar_pointer"
+      ],
+      "tests_read": [
+        {
+          "source": "codex-rs/tui/src/app/tests/sidebar_file_path_tests.rs",
+          "symbol": "sidebar_file_path_escape_requires_focus_but_mouse_back_does_not",
+          "revision": "2a3f7da44529617e4f65d776e985d1e49cf89e4e",
+          "body_read": true
+        }
+      ],
+      "tests_executed": [],
+      "source_review_complete": true,
+      "upstream_checks": {
+        "source": "https://github.com/openai/codex/pull/64053/checks",
+        "head": "2a3f7da44529617e4f65d776e985d1e49cf89e4e",
+        "reported_conclusions": {
+          "CANCELLED": 12,
+          "FAILURE": 27,
+          "SKIPPED": 4,
+          "SUCCESS": 26
+        }
+      },
+      "validation_limits": [
+        "Terminal presentation was reviewed at source. Decodex consumes app-server through its own desktop interface."
+      ]
+    },
+    {
+      "index": 38,
+      "commit": "57a49fc013732d85fb51ce88d994e4be0e038b38",
+      "classification": "not_applicable",
+      "behavior": "The terminal chooser decodes input into actions before dispatch and guards activation from repeated keys.",
+      "decodex_consumer": "GPUI uses desktop sidebar navigation and does not call the TUI chooser.",
+      "decodex_source": "apps/decodex-gpui/src/keyboard_shortcuts.rs",
+      "implementation_symbols": [
+        "codex-rs/tui/src/app/sidebar_input_chooser.rs#decode_chooser_input",
+        "codex-rs/tui/src/app/sidebar_input_chooser.rs#execute_chooser_action"
+      ],
+      "tests_read": [
+        {
+          "source": "codex-rs/tui/src/app/tests/key_chords.rs",
+          "symbol": "focused_sidebar_chooser_keeps_tab_with_shortcut_guide_open",
+          "revision": "57a49fc013732d85fb51ce88d994e4be0e038b38",
+          "body_read": true
+        }
+      ],
+      "tests_executed": [],
+      "source_review_complete": true,
+      "upstream_checks": {
+        "source": "https://github.com/openai/codex/pull/64054/checks",
+        "head": "57a49fc013732d85fb51ce88d994e4be0e038b38",
+        "reported_conclusions": {
+          "CANCELLED": 10,
+          "FAILURE": 29,
+          "SKIPPED": 4,
+          "SUCCESS": 26
+        }
+      },
+      "validation_limits": [
+        "Terminal presentation was reviewed at source. Decodex consumes app-server through its own desktop interface."
+      ]
+    },
+    {
+      "index": 39,
+      "commit": "06023b038f642a2290a9ab53392342c18c5b4f39",
+      "classification": "not_applicable",
+      "behavior": "Pointer controls hide a pane and reopen its retained content or chooser, restoring focus when the original tab is still available.",
+      "decodex_consumer": "GPUI owns its sidebar, dimensions and focus. Saved native attachment identity does not depend on TUI visibility.",
+      "decodex_source": "apps/decodex-gpui/src/agent_live_side_chat.rs",
+      "implementation_symbols": [
+        "codex-rs/tui/src/app/sidebar_visibility.rs#hide_sidebar",
+        "codex-rs/tui/src/app/sidebar_visibility.rs#restore_sidebar"
+      ],
+      "tests_read": [
+        {
+          "source": "codex-rs/tui/src/app/tests.rs",
+          "symbol": "handle_start_side_seeds_navigation_before_thread_started",
+          "revision": "06023b038f642a2290a9ab53392342c18c5b4f39",
+          "body_read": true,
+          "reviewed_scenario": "Click hide and restore, verify document identity and parent focus."
+        }
+      ],
+      "tests_executed": [],
+      "source_review_complete": true,
+      "upstream_checks": {
+        "source": "https://github.com/openai/codex/pull/64055/checks",
+        "head": "06023b038f642a2290a9ab53392342c18c5b4f39",
+        "reported_conclusions": {
+          "CANCELLED": 10,
+          "FAILURE": 29,
+          "SKIPPED": 4,
+          "SUCCESS": 26
+        }
+      },
+      "validation_limits": [
+        "Terminal presentation was reviewed at source. Decodex consumes app-server through its own desktop interface."
+      ]
+    },
+    {
+      "index": 40,
+      "commit": "f79875c21bd77d23e36e6dbe6505226f2961f270",
+      "classification": "not_applicable",
+      "behavior": "Unicode case folding keeps Greek sigma and long s consistent with fuzzy match indices. Terminal popup matching separates displayed choices from dispatch eligibility.",
+      "decodex_consumer": "The TUI is the only upstream Cargo consumer of codex-utils-fuzzy-match at this target. GPUI owns command and shortcut handling.",
+      "decodex_source": "crates/decodex-runtime/src/agent_skills.rs",
+      "implementation_symbols": [
+        "codex-rs/utils/fuzzy-match/src/lib.rs#fold_char",
+        "codex-rs/tui/src/bottom_pane/slash_commands.rs#commands_for_popup"
+      ],
+      "tests_read": [
+        {
+          "source": "codex-rs/utils/fuzzy-match/src/lib.rs",
+          "symbol": "case_insensitive_matching",
+          "revision": "f79875c21bd77d23e36e6dbe6505226f2961f270",
+          "body_read": true
+        }
+      ],
+      "tests_executed": [],
+      "source_review_complete": true,
+      "upstream_checks": {
+        "source": "https://github.com/openai/codex/pull/64058/checks",
+        "head": "f79875c21bd77d23e36e6dbe6505226f2961f270",
+        "reported_conclusions": {
+          "CANCELLED": 10,
+          "FAILURE": 29,
+          "SKIPPED": 4,
+          "SUCCESS": 26
+        }
+      },
+      "validation_limits": [
+        "Terminal presentation was reviewed at source. Decodex consumes app-server through its own desktop interface."
+      ]
+    },
+    {
+      "index": 41,
+      "commit": "cc6d3e58679dcaa4dd69be5f6d61107814545040",
+      "classification": "not_applicable",
+      "behavior": "Shared fence tracking distinguishes blockquoted markers and resumes streamed prose once the actual fence closes.",
+      "decodex_consumer": "Desktop Markdown uses the GPUI renderer in agent_markdown.rs.",
+      "decodex_source": "apps/decodex-gpui/src/agent_markdown.rs",
+      "implementation_symbols": [
+        "codex-rs/tui/src/table_detect.rs#closes",
+        "codex-rs/tui/src/table_detect.rs#parse_fence_marker"
+      ],
+      "tests_read": [
+        {
+          "source": "codex-rs/tui/src/streaming/controller_preview_tests.rs",
+          "symbol": "prose_preview_resumes_after_fenced_code",
+          "revision": "cc6d3e58679dcaa4dd69be5f6d61107814545040",
+          "body_read": true
+        }
+      ],
+      "tests_executed": [],
+      "source_review_complete": true,
+      "upstream_checks": {
+        "source": "https://github.com/openai/codex/pull/64067/checks",
+        "head": "cc6d3e58679dcaa4dd69be5f6d61107814545040",
+        "reported_conclusions": {
+          "CANCELLED": 13,
+          "FAILURE": 27,
+          "SKIPPED": 4,
+          "SUCCESS": 25
+        }
+      },
+      "validation_limits": [
+        "Terminal presentation was reviewed at source. Decodex consumes app-server through its own desktop interface."
+      ]
+    },
+    {
+      "index": 42,
+      "commit": "9e51c745e2943abf8ab5cc7fc241a907672042f0",
+      "classification": "not_applicable",
+      "behavior": "Kitty pets alternate image slots under tmux, keeping the visible placement alive until the redraw replaces it.",
+      "decodex_consumer": "The macOS desktop does not render terminal graphics or tmux placeholders.",
+      "decodex_source": "crates/decodex-runtime/src/account_launch/process.rs",
+      "implementation_symbols": [
+        "codex-rs/tui/src/pets/mod.rs#render_pet_image",
+        "codex-rs/tui/src/chatwidget/pets.rs#ambient_pet_request"
+      ],
+      "tests_read": [
+        {
+          "source": "codex-rs/tui/src/pets/mod.rs",
+          "symbol": "kitty_pet_image_clear_deletes_without_moving_cursor",
+          "revision": "9e51c745e2943abf8ab5cc7fc241a907672042f0",
+          "body_read": true
+        }
+      ],
+      "tests_executed": [],
+      "source_review_complete": true,
+      "upstream_checks": {
+        "source": "https://github.com/openai/codex/pull/64069/checks",
+        "head": "9e51c745e2943abf8ab5cc7fc241a907672042f0",
+        "reported_conclusions": {
+          "CANCELLED": 11,
+          "FAILURE": 29,
+          "SKIPPED": 4,
+          "SUCCESS": 25
+        }
+      },
+      "validation_limits": [
+        "Terminal presentation was reviewed at source. Decodex consumes app-server through its own desktop interface."
+      ]
+    },
+    {
+      "index": 43,
+      "commit": "af71942309704997f4bdc86c020717646423c080",
+      "classification": "not_applicable",
+      "behavior": "The terminal composer resolves a selected image against the search root and attaches only a regular file. A named pipe remains text.",
+      "decodex_consumer": "The GPUI composer supplies desktop-selected attachment paths independently of the TUI search popup.",
+      "decodex_source": "crates/decodex-runtime/src/account_launch/process.rs",
+      "implementation_symbols": [
+        "codex-rs/tui/src/bottom_pane/chat_composer.rs#complete_file",
+        "codex-rs/tui/src/bottom_pane/file_search_popup.rs#selected_match"
+      ],
+      "tests_read": [
+        {
+          "source": "codex-rs/tui/src/bottom_pane/chat_composer/image_completion_tests.rs",
+          "symbol": "image_completion_submits_the_file_from_the_search_root",
+          "revision": "af71942309704997f4bdc86c020717646423c080",
+          "body_read": true
+        }
+      ],
+      "tests_executed": [],
+      "source_review_complete": true,
+      "upstream_checks": {
+        "source": "https://github.com/openai/codex/pull/64071/checks",
+        "head": "af71942309704997f4bdc86c020717646423c080",
+        "reported_conclusions": {
+          "CANCELLED": 12,
+          "FAILURE": 27,
+          "SKIPPED": 4,
+          "SUCCESS": 26
+        }
+      },
+      "validation_limits": [
+        "Terminal presentation was reviewed at source. Decodex consumes app-server through its own desktop interface."
+      ]
+    },
+    {
+      "index": 44,
+      "commit": "8727186a0a0e097f5e4496ba830f5d59c235b88c",
+      "classification": "not_applicable",
+      "behavior": "The host-admission fixture exercises suspension both before roster preparation and during the roster read, checking the recoverable prompt in each case.",
+      "decodex_consumer": "This adds source-test coverage for native initial input recovery in 44d35976. Decodex does not implement the host-roster test extension.",
+      "decodex_source": "crates/decodex-runtime/src/agent.rs",
+      "implementation_symbols": [
+        "codex-rs/core/tests/suite/host_turn_admission.rs#on_turn_start",
+        "codex-rs/core/tests/suite/host_turn_admission.rs#children"
+      ],
+      "tests_read": [
+        {
+          "source": "codex-rs/core/tests/suite/host_turn_admission.rs",
+          "symbol": "suspending_root_with_host_roster_preserves_the_recoverable_prompt",
+          "revision": "8727186a0a0e097f5e4496ba830f5d59c235b88c",
+          "body_read": true
+        }
+      ],
+      "tests_executed": [],
+      "source_review_complete": true,
+      "upstream_checks": {
+        "source": "https://github.com/openai/codex/pull/64128/checks",
+        "head": "8727186a0a0e097f5e4496ba830f5d59c235b88c",
+        "reported_conclusions": {
+          "CANCELLED": 11,
+          "FAILURE": 28,
+          "SKIPPED": 4,
+          "SUCCESS": 26
+        }
+      },
+      "validation_limits": [
+        "The hosted suspension fixture was read at source."
+      ]
+    },
+    {
+      "index": 45,
+      "commit": "923c098613c492d15464a043ea01a99683336b0f",
+      "classification": "not_applicable",
+      "behavior": "The CLI Statsig startup test drops the child session before awaiting exit and then interrupts any auxiliary daemon.",
+      "decodex_consumer": "Only the upstream integration test changes. Decodex does not run its PTY startup fixture.",
+      "decodex_source": "crates/decodex-runtime/src/account_launch/process.rs",
+      "implementation_symbols": [
+        "codex-rs/cli/tests/statsig_startup.rs#harness_startup_requests_statsig_evaluations"
+      ],
+      "tests_read": [
+        {
+          "source": "codex-rs/cli/tests/statsig_startup.rs",
+          "symbol": "harness_startup_requests_statsig_evaluations",
+          "revision": "923c098613c492d15464a043ea01a99683336b0f",
+          "body_read": true,
+          "reviewed_scenario": "Child session drop before exit receive and auxiliary daemon shutdown."
+        }
+      ],
+      "tests_executed": [],
+      "source_review_complete": true,
+      "upstream_checks": {
+        "source": "https://github.com/openai/codex/pull/64152/checks",
+        "head": "923c098613c492d15464a043ea01a99683336b0f",
+        "reported_conclusions": {
+          "CANCELLED": 10,
+          "FAILURE": 29,
+          "SKIPPED": 4,
+          "SUCCESS": 26
+        }
+      },
+      "validation_limits": [
+        "Only upstream PTY test cleanup changes."
+      ]
+    },
+    {
+      "index": 46,
+      "commit": "ad7176f7878c17d62f92ec201d1e7a3938758565",
+      "classification": "not_applicable",
+      "behavior": "Recorded reviews can await native history routing and use an attached V3 reviewer under a deadline. The transcript path remains available and unsupported histories return errors.",
+      "decodex_consumer": "Decodex observes real native Guardian review details and explicit decisions. It does not request this recorded-call reassessment or enable V3.",
+      "decodex_source": "openwiki/decisions/upstream-product-scope.md",
+      "implementation_symbols": [
+        "codex-rs/core/src/codex_thread.rs#review_recorded_call",
+        "codex-rs/core/src/guardian/recorded_tool_call.rs#prepare_attached_reviewer",
+        "codex-rs/core/src/guardian/recorded_tool_call.rs#assess_with_attached_reviewer"
+      ],
+      "tests_read": [
+        {
+          "source": "codex-rs/app-server/tests/suite/v2/guardian_v3_sync_tests.rs",
+          "symbol": "recorded_v3_review",
+          "revision": "ad7176f7878c17d62f92ec201d1e7a3938758565",
+          "body_read": true,
+          "reviewed_scenario": "Recorded-call routing and transcript alternatives, cold and ephemeral rejection, timeout and cancellation."
+        },
+        {
+          "source": "codex-rs/core/src/guardian/tests.rs",
+          "symbol": "review_returns_assessment_for_prepared_action",
+          "revision": "ad7176f7878c17d62f92ec201d1e7a3938758565",
+          "body_read": true,
+          "reviewed_scenario": "Recorded-call routing and transcript alternatives, cold and ephemeral rejection, timeout and cancellation."
+        }
+      ],
+      "tests_executed": [],
+      "source_review_complete": true,
+      "upstream_checks": {
+        "source": "https://github.com/openai/codex/pull/64157/checks",
+        "head": "ad7176f7878c17d62f92ec201d1e7a3938758565",
+        "reported_conclusions": {
+          "CANCELLED": 12,
+          "FAILURE": 28,
+          "SKIPPED": 4,
+          "SUCCESS": 25
+        }
+      },
+      "validation_limits": [
+        "Recorded-call V3 reassessment is outside the retained Guardian interface."
+      ]
+    },
+    {
+      "index": 47,
+      "commit": "7ca4eada90ca552eb98a2639409364e3130cf1f1",
+      "classification": "native_owned",
+      "behavior": "Extension executors share owned trait objects and borrow calls for the future lifetime, preserving registry exposure and tool policy during plan construction.",
+      "decodex_consumer": "The packaged Code Mode host and app-server run the native executors. Dynamic Work tools and MCP inventory consume their public protocol.",
+      "decodex_source": "crates/decodex-runtime/src/agent.rs",
+      "implementation_symbols": [
+        "codex-rs/core/src/tools/spec_plan.rs#extension_tool_executors",
+        "codex-rs/core/tests/suite/code_mode.rs#tools_for_step"
+      ],
+      "tests_read": [
+        {
+          "source": "codex-rs/core/src/tools/spec_plan_strict_third_party_tests.rs",
+          "symbol": "strict_finalization_cannot_resurrect_hidden_or_policy_denied_tools",
+          "revision": "7ca4eada90ca552eb98a2639409364e3130cf1f1",
+          "body_read": true
+        }
+      ],
+      "tests_executed": [
+        {
+          "suite": "Decodex candidate",
+          "selector": "account_launch::agent_process::native_tests::code_mode::installed_native_code_mode_yielded_cells_keep_their_outputs",
+          "executed": 1,
+          "passed": 1
+        },
+        {
+          "suite": "Decodex candidate",
+          "selector": "account_launch::agent_process::native_tests::registration::promoted_exec_discovers_and_uses_work_in_code_mode",
+          "executed": 1,
+          "passed": 1
+        },
+        {
+          "suite": "Decodex candidate",
+          "selector": "account_launch::agent_process::native_tests::code_mode::installed_native_parallel_dynamic_tools_preserve_ids_and_result_order",
+          "executed": 1,
+          "passed": 1
+        }
+      ],
+      "source_review_complete": true,
+      "upstream_checks": {
+        "source": "https://github.com/openai/codex/pull/64159/checks",
+        "head": "7ca4eada90ca552eb98a2639409364e3130cf1f1",
+        "reported_conclusions": {
+          "CANCELLED": 10,
+          "FAILURE": 29,
+          "SKIPPED": 4,
+          "SUCCESS": 26
+        }
+      },
+      "validation_limits": [
+        "Native Code Mode, dynamic tool ordering and Work discovery were exercised."
+      ]
+    },
+    {
+      "index": 48,
+      "commit": "61369c4e95c37ebd3a8cbe8437e3c060d132bc5d",
+      "classification": "native_owned",
+      "behavior": "Guardian includes an explicit manual approval in reviewer context only when native annotation and origin match the actual harness record.",
+      "decodex_consumer": "Decodex forwards explicit Guardian decisions through the supported native method. Review provenance and transcript construction belong to Codex.",
+      "decodex_source": "crates/decodex-runtime/src/agent/guardian.rs",
+      "implementation_symbols": [
+        "codex-rs/guardian-context/src/transcript.rs#collect_transcript_for_review"
+      ],
+      "tests_read": [
+        {
+          "source": "codex-rs/ext/guardian-v2/src/async_scorer/transcript_tests.rs",
+          "symbol": "transcript_preserves_newest_manual_approval_when_message_budget_overflows",
+          "revision": "61369c4e95c37ebd3a8cbe8437e3c060d132bc5d",
+          "body_read": true
+        }
+      ],
+      "tests_executed": [
+        {
+          "suite": "Decodex candidate",
+          "selector": "account_launch::agent_process::native_tests::reviewer::evidence::installed_guardian_retains_answer_after_compaction_and_restart",
+          "executed": 1,
+          "passed": 1
+        },
+        {
+          "suite": "Decodex candidate",
+          "selector": "account_launch::agent_process::native_tests::reviewer::installed_native_guardian_preserves_large_action",
+          "executed": 1,
+          "passed": 1
+        }
+      ],
+      "source_review_complete": true,
+      "upstream_checks": {
+        "source": "https://github.com/openai/codex/pull/64160/checks",
+        "head": "61369c4e95c37ebd3a8cbe8437e3c060d132bc5d",
+        "reported_conclusions": {
+          "CANCELLED": 10,
+          "FAILURE": 30,
+          "SKIPPED": 4,
+          "SUCCESS": 25
+        }
+      },
+      "validation_limits": [
+        "Native Guardian evidence and action preservation were exercised. Manual approval provenance has upstream source evidence."
+      ]
+    },
+    {
+      "index": 49,
+      "commit": "42c320991eb0b8c8042341eb7dcea4711d31bfa0",
+      "classification": "not_applicable",
+      "behavior": "A default-off experiment can render workspace-write filesystem context compactly, grouping shared metadata reads and preserving exceptional grants explicitly.",
+      "decodex_consumer": "Decodex sends native permission profiles. It does not select the compact prompt experiment or render the native model context itself.",
+      "decodex_source": "crates/decodex-runtime/src/agent_permissions.rs",
+      "implementation_symbols": [
+        "codex-rs/core/src/context/environment_context.rs#render_compact_filesystem",
+        "codex-rs/core/src/context/environment_context.rs#from_permission_profile"
+      ],
+      "tests_read": [
+        {
+          "source": "codex-rs/core/src/context/world_state/environment_render_tests.rs",
+          "symbol": "group_default_metadata_reads_across_literal_write_paths",
+          "revision": "42c320991eb0b8c8042341eb7dcea4711d31bfa0",
+          "body_read": true
+        }
+      ],
+      "tests_executed": [],
+      "source_review_complete": true,
+      "upstream_checks": {
+        "source": "https://github.com/openai/codex/pull/64164/checks",
+        "head": "42c320991eb0b8c8042341eb7dcea4711d31bfa0",
+        "reported_conclusions": {
+          "CANCELLED": 10,
+          "FAILURE": 29,
+          "SKIPPED": 4,
+          "SUCCESS": 26
+        }
+      },
+      "validation_limits": [
+        "The default-off model context experiment was reviewed at source."
+      ]
+    },
+    {
+      "index": 50,
+      "commit": "d0b140efb5d326ae481d77aaf40b925226a74cae",
+      "classification": "not_applicable",
+      "behavior": "Shadow boards account UTF-8 payload bytes once per distinct destination and cap stored evidence per root. Project config cannot raise the limit.",
+      "decodex_consumer": "Guardian V3 shadow storage is outside the selected desktop review contract.",
+      "decodex_source": "openwiki/decisions/upstream-product-scope.md",
+      "implementation_symbols": [
+        "codex-rs/ext/guardian-v3/src/shadow_metrics.rs#with_batch",
+        "codex-rs/ext/guardian-v3/src/shadow_metrics.rs#check_capacity"
+      ],
+      "tests_read": [
+        {
+          "source": "codex-rs/ext/guardian-v3/src/shadow_metrics_tests.rs",
+          "symbol": "budget_counts_utf8_copies_for_distinct_destinations_only",
+          "revision": "d0b140efb5d326ae481d77aaf40b925226a74cae",
+          "body_read": true
+        }
+      ],
+      "tests_executed": [],
+      "source_review_complete": true,
+      "upstream_checks": {
+        "source": "https://github.com/openai/codex/pull/64166/checks",
+        "head": "d0b140efb5d326ae481d77aaf40b925226a74cae",
+        "reported_conclusions": {
+          "CANCELLED": 10,
+          "FAILURE": 29,
+          "SKIPPED": 4,
+          "SUCCESS": 26
+        }
+      },
+      "validation_limits": [
+        "The V3 shadow evidence budget was reviewed at source."
+      ]
+    },
+    {
+      "index": 51,
+      "commit": "dd6d2c3d66fbd04963cb62a16d80213846242b90",
+      "classification": "not_applicable",
+      "behavior": "The upstream fixture checks one notification per post to its intended worker over the app-server connection. The documentation explains in-memory notification delivery.",
+      "decodex_consumer": "Decodex uses native subagents and durable Work records. Its retained contract does not operate a separate message-board MCP launcher.",
+      "decodex_source": "openwiki/decisions/upstream-product-scope.md",
+      "implementation_symbols": [
+        "codex-rs/app-server/tests/suite/v2/agent_message_board.rs#board_tools_share_multi_agent_namespace"
+      ],
+      "tests_read": [
+        {
+          "source": "codex-rs/app-server/tests/suite/v2/agent_message_board.rs",
+          "symbol": "board_tools_share_multi_agent_namespace",
+          "revision": "dd6d2c3d66fbd04963cb62a16d80213846242b90",
+          "body_read": true,
+          "reviewed_scenario": "One app-server notification for each confirmed post to the intended child."
+        }
+      ],
+      "tests_executed": [],
+      "source_review_complete": true,
+      "upstream_checks": {
+        "source": "https://github.com/openai/codex/pull/64179/checks",
+        "head": "dd6d2c3d66fbd04963cb62a16d80213846242b90",
+        "reported_conclusions": {
+          "CANCELLED": 10,
+          "FAILURE": 29,
+          "SKIPPED": 4,
+          "SUCCESS": 26
+        }
+      },
+      "validation_limits": [
+        "Notification scenarios were read in the upstream test. Decodex does not launch this standalone board."
+      ]
+    },
+    {
+      "index": 52,
+      "commit": "a705e0bb699b12996414a17e00b0bb2c625c0bbc",
+      "classification": "native_owned",
+      "behavior": "Native Statsig records bounded reasons for evaluations, update outcome, duration and snapshot counts. Wrapped policy errors retain their category.",
+      "decodex_consumer": "Decodex does not publish Statsig telemetry or set gate values. Native client metrics follow the configured native runtime.",
+      "decodex_source": "crates/decodex-runtime/src/account_launch/process.rs",
+      "implementation_symbols": [
+        "codex-rs/statsig/src/telemetry.rs#evaluation",
+        "codex-rs/statsig/src/telemetry.rs#update",
+        "codex-rs/statsig/src/evaluations.rs#sdk_reason"
+      ],
+      "tests_read": [
+        {
+          "source": "codex-rs/statsig/src/evaluations_tests.rs",
+          "symbol": "wrapped_policy_denials_keep_their_category",
+          "revision": "a705e0bb699b12996414a17e00b0bb2c625c0bbc",
+          "body_read": true
+        }
+      ],
+      "tests_executed": [],
+      "source_review_complete": true,
+      "upstream_checks": {
+        "source": "https://github.com/openai/codex/pull/64184/checks",
+        "head": "a705e0bb699b12996414a17e00b0bb2c625c0bbc",
+        "reported_conclusions": {
+          "CANCELLED": 10,
+          "FAILURE": 29,
+          "SKIPPED": 3,
+          "SUCCESS": 37,
+          "UNKNOWN": 1
+        }
+      },
+      "validation_limits": [
+        "Only native Statsig instrumentation was reviewed. No telemetry service was exercised."
+      ]
+    },
+    {
+      "index": 53,
+      "commit": "58961aa3a29d9ecf0fe73c4530c6d97c0cd4fd31",
+      "classification": "not_applicable",
+      "behavior": "Root configuration supplies shadow review settings, with a separate shadow toggle that does not enable live V3 review. Project config cannot select protected settings.",
+      "decodex_consumer": "Decodex has no V3 shadow switch and keeps its existing native Guardian settings contract.",
+      "decodex_source": "openwiki/decisions/upstream-product-scope.md",
+      "implementation_symbols": [
+        "codex-rs/ext/guardian-v3/src/host.rs#message_board_in_memory",
+        "codex-rs/ext/guardian-v3/src/host.rs#install_shadow",
+        "codex-rs/features/src/lib.rs#entries"
+      ],
+      "tests_read": [
+        {
+          "source": "codex-rs/features/src/tests.rs",
+          "symbol": "guardian_v3_shadow_does_not_enable_live_review",
+          "revision": "58961aa3a29d9ecf0fe73c4530c6d97c0cd4fd31",
+          "body_read": true
+        }
+      ],
+      "tests_executed": [],
+      "source_review_complete": true,
+      "upstream_checks": {
+        "source": "https://github.com/openai/codex/pull/64187/checks",
+        "head": "58961aa3a29d9ecf0fe73c4530c6d97c0cd4fd31",
+        "reported_conclusions": {
+          "CANCELLED": 12,
+          "FAILURE": 27,
+          "SKIPPED": 4,
+          "SUCCESS": 26
+        }
+      },
+      "validation_limits": [
+        "The shadow configuration branch was reviewed at source."
+      ]
+    },
+    {
+      "index": 54,
+      "commit": "1f9549e265e3ed7604710aae4d12eb82557a7a0c",
+      "classification": "not_applicable",
+      "behavior": "Wayland primary selection uses compositor capability and seat information, with a limited same-listener XWayland fallback.",
+      "decodex_consumer": "The selected macOS desktop uses the system pasteboard.",
+      "decodex_source": "apps/decodex-gpui/src/agent_clipboard.rs",
+      "implementation_symbols": [
+        "codex-rs/tui/src/terminal_capabilities/primary.rs#wayland_primary_available",
+        "codex-rs/tui/src/terminal_capabilities.rs#detect_primary_selection"
+      ],
+      "tests_read": [
+        {
+          "source": "codex-rs/tui/src/terminal_capabilities/primary_tests.rs",
+          "symbol": "missing_data_control_requires_the_compositors_own_x11_listener",
+          "revision": "1f9549e265e3ed7604710aae4d12eb82557a7a0c",
+          "body_read": true
+        }
+      ],
+      "tests_executed": [],
+      "source_review_complete": true,
+      "upstream_checks": {
+        "source": "https://github.com/openai/codex/pull/64192/checks",
+        "head": "1f9549e265e3ed7604710aae4d12eb82557a7a0c",
+        "reported_conclusions": {
+          "CANCELLED": 10,
+          "FAILURE": 29,
+          "SKIPPED": 3,
+          "SUCCESS": 36,
+          "UNKNOWN": 2
+        }
+      },
+      "validation_limits": [
+        "The macOS artifact excludes the Wayland desktop path."
+      ]
+    },
+    {
+      "index": 55,
+      "commit": "f22991559734f2d7e0c1306a741fcfe9e08565f4",
+      "classification": "not_applicable",
+      "behavior": "Hidden reasoning detail does not split adjacent tool activity when the terminal transcript builds its disclosure groups.",
+      "decodex_consumer": "GPUI owns visible tool groups and their expansion independently of TUI transcript indexing.",
+      "decodex_source": "apps/decodex-gpui/src/agent_timeline_groups.rs",
+      "implementation_symbols": [
+        "codex-rs/tui/src/transcript_view/turn_details.rs#index_turn"
+      ],
+      "tests_read": [
+        {
+          "source": "codex-rs/tui/src/transcript_view_tests.rs",
+          "symbol": "hidden_reasoning_keeps_the_next_command_in_the_same_tool_group",
+          "revision": "f22991559734f2d7e0c1306a741fcfe9e08565f4",
+          "body_read": true
+        }
+      ],
+      "tests_executed": [],
+      "source_review_complete": true,
+      "upstream_checks": {
+        "source": "https://github.com/openai/codex/pull/64193/checks",
+        "head": "f22991559734f2d7e0c1306a741fcfe9e08565f4",
+        "reported_conclusions": {
+          "CANCELLED": 10,
+          "FAILURE": 31,
+          "SKIPPED": 4,
+          "SUCCESS": 24
+        }
+      },
+      "validation_limits": [
+        "Terminal presentation was reviewed at source. Decodex consumes app-server through its own desktop interface."
+      ]
+    },
+    {
+      "index": 56,
+      "commit": "bdc07646607cd9c30b65655525188e106ae9b343",
+      "classification": "not_applicable",
+      "behavior": "The terminal diff clears trailing cells only for default backgrounds, preserving shaded blanks during subsequent Apple Terminal redraws.",
+      "decodex_consumer": "GPUI paints desktop surfaces without ANSI erase commands.",
+      "decodex_source": "apps/decodex-gpui/src/agent_timeline_scroll.rs",
+      "implementation_symbols": [
+        "codex-rs/tui/src/custom_terminal.rs#diff_buffers"
+      ],
+      "tests_read": [
+        {
+          "source": "codex-rs/tui/src/custom_terminal/tests/shading_tests.rs",
+          "symbol": "shaded_spaces_survive_narrowing_a_shaded_row",
+          "revision": "bdc07646607cd9c30b65655525188e106ae9b343",
+          "body_read": true
+        }
+      ],
+      "tests_executed": [],
+      "source_review_complete": true,
+      "upstream_checks": {
+        "source": "https://github.com/openai/codex/pull/64195/checks",
+        "head": "bdc07646607cd9c30b65655525188e106ae9b343",
+        "reported_conclusions": {
+          "CANCELLED": 8,
+          "FAILURE": 25,
+          "SKIPPED": 4,
+          "SUCCESS": 26,
+          "UNKNOWN": 4
+        }
+      },
+      "validation_limits": [
+        "Terminal presentation was reviewed at source. Decodex consumes app-server through its own desktop interface."
+      ]
+    },
+    {
+      "index": 57,
+      "commit": "d7ebabf7b7bbd2b4b1004ba2fdd908a7c67971d1",
+      "classification": "already_covered",
+      "behavior": "The TUI uses per-turn item boundaries to align a partially loaded transcript with authoritative pages. A mid-turn steer cannot become an independently editable prompt.",
+      "decodex_consumer": "Decodex prepare_prompt_edit and read_edit_history fetch paginated native evidence and confirm a fixed beforeTurnId. They do not infer the revert target from TUI viewport indices.",
+      "decodex_source": "crates/decodex-runtime/src/agent/prompt_edit.rs",
+      "implementation_symbols": [
+        "codex-rs/tui/src/app_backtrack.rs#loaded_prompt_boundaries",
+        "codex-rs/tui/src/app_backtrack.rs#backtrack_revert_before_turn_id"
+      ],
+      "tests_read": [
+        {
+          "source": "codex-rs/tui/src/app_backtrack.rs",
+          "symbol": "backtrack_revert_partial_history_does_not_make_a_steer_editable",
+          "revision": "d7ebabf7b7bbd2b4b1004ba2fdd908a7c67971d1",
+          "body_read": true
+        }
+      ],
+      "tests_executed": [
+        {
+          "suite": "Decodex candidate",
+          "selector": "account_launch::agent_process::native_tests::cold_settings::recap_socket::installed_recap_public_socket_preserves_parent_and_exact_request_identity",
+          "executed": 1,
+          "passed": 1
+        }
+      ],
+      "source_review_complete": true,
+      "upstream_checks": {
+        "source": "https://github.com/openai/codex/pull/64199/checks",
+        "head": "d7ebabf7b7bbd2b4b1004ba2fdd908a7c67971d1",
+        "reported_conclusions": {
+          "CANCELLED": 4,
+          "FAILURE": 25,
+          "SKIPPED": 4,
+          "SUCCESS": 26,
+          "UNKNOWN": 8
+        }
+      },
+      "validation_limits": [
+        "Native prompt revert was exercised through the Decodex socket. The partially loaded TUI viewport is a separate consumer."
+      ]
+    },
+    {
+      "index": 58,
+      "commit": "58cb1ccf8def3b8e93407352f3aa5b46d3e4a3d5",
+      "classification": "not_applicable",
+      "behavior": "Reasoning headings track item and part as fragments arrive, preserving the existing title until a usable new heading can transition.",
+      "decodex_consumer": "Desktop timeline presentation uses GPUI and shared motion contracts.",
+      "decodex_source": "apps/decodex-gpui/src/agent_timeline_groups.rs",
+      "implementation_symbols": [
+        "codex-rs/tui/src/status_indicator_widget.rs#extend_reasoning",
+        "codex-rs/tui/src/chatwidget/streaming.rs#refresh_reasoning_heading"
+      ],
+      "tests_read": [
+        {
+          "source": "codex-rs/tui/src/chatwidget/tests/reasoning_status_tests.rs",
+          "symbol": "a_split_bold_opener_waits_for_the_heading_text",
+          "revision": "58cb1ccf8def3b8e93407352f3aa5b46d3e4a3d5",
+          "body_read": true
+        }
+      ],
+      "tests_executed": [],
+      "source_review_complete": true,
+      "upstream_checks": {
+        "source": "https://github.com/openai/codex/pull/64202/checks",
+        "head": "58cb1ccf8def3b8e93407352f3aa5b46d3e4a3d5",
+        "reported_conclusions": {
+          "CANCELLED": 4,
+          "FAILURE": 22,
+          "SKIPPED": 4,
+          "SUCCESS": 26,
+          "UNKNOWN": 11
+        }
+      },
+      "validation_limits": [
+        "Terminal presentation was reviewed at source. Decodex consumes app-server through its own desktop interface."
+      ]
+    },
+    {
+      "index": 59,
+      "commit": "a9d7206f8fc32593cd4703b13b0cdd3ada180cd2",
+      "classification": "not_applicable",
+      "behavior": "Scrollback batches terminal writes in a bounded buffer, draining on success without a destructive drop-time retry after an error.",
+      "decodex_consumer": "Decodex renders a graphical timeline and does not write ANSI history to a terminal.",
+      "decodex_source": "apps/decodex-gpui/src/agent_timeline_scroll.rs",
+      "implementation_symbols": [
+        "codex-rs/tui/src/insert_history.rs#write_buffered",
+        "codex-rs/tui/src/insert_history.rs#insert_history_hyperlink_lines_with_mode_and_wrap_policy"
+      ],
+      "tests_read": [
+        {
+          "source": "codex-rs/tui/src/insert_history.rs",
+          "symbol": "long_history_batches_newlines_and_restores_the_cursor",
+          "revision": "a9d7206f8fc32593cd4703b13b0cdd3ada180cd2",
+          "body_read": true
+        }
+      ],
+      "tests_executed": [],
+      "source_review_complete": true,
+      "upstream_checks": {
+        "source": "https://github.com/openai/codex/pull/64204/checks",
+        "head": "a9d7206f8fc32593cd4703b13b0cdd3ada180cd2",
+        "reported_conclusions": {
+          "CANCELLED": 4,
+          "FAILURE": 11,
+          "SKIPPED": 4,
+          "SUCCESS": 20,
+          "UNKNOWN": 24
+        }
+      },
+      "validation_limits": [
+        "Terminal presentation was reviewed at source. Decodex consumes app-server through its own desktop interface."
+      ]
+    },
+    {
+      "index": 60,
+      "commit": "475e13ab1ace6c63275ee66149c951befc685c96",
+      "classification": "native_owned",
+      "behavior": "Scrollback mode can save and cycle side chats. An optional delete field names saved TUI side chats, and native preflight checks their parent, fork source and TUI origin before subtree deletion.",
+      "decodex_consumer": "Decodex thread_delete sends only threadId. Its temporary side chats and persistent branches use native fork boundaries and have their own lifecycle. No saved TUI side chat IDs are sent.",
+      "decodex_source": "crates/decodex-codex/src/app_server_client/archive.rs",
+      "implementation_symbols": [
+        "codex-rs/app-server/src/request_processors/thread_delete.rs#thread_delete_response",
+        "codex-rs/thread-store/src/local/delete_thread.rs#check_attached_children",
+        "codex-rs/thread-store/src/local/delete_thread.rs#preflight_delete_threads"
+      ],
+      "tests_read": [
+        {
+          "source": "codex-rs/tui/src/app/tests/side_chat_policy_tests.rs",
+          "symbol": "overview_delete_removes_only_verified_saved_side_chats",
+          "revision": "475e13ab1ace6c63275ee66149c951befc685c96",
+          "body_read": true
+        }
+      ],
+      "tests_executed": [
+        {
+          "suite": "Decodex baseline",
+          "selector": "account_launch::agent_process::native_tests::archive::installed_native_delete_cleans_local_history_and_context_lineage",
+          "artifact_sha256": "33e927ea6ea2c1b5e1d76b60716f35059d4d8d370aeada54028c116eea935dcb",
+          "passed": 1,
+          "executed": 1
+        },
+        {
+          "suite": "Decodex candidate",
+          "selector": "account_launch::agent_process::native_tests::archive::installed_native_delete_cleans_local_history_and_context_lineage",
+          "executed": 1,
+          "passed": 1
+        },
+        {
+          "suite": "Decodex candidate",
+          "selector": "account_launch::agent_process::native_tests::cold_settings::recap_socket::fork::installed_fork_preserves_source_provider_after_default_changes",
+          "executed": 1,
+          "passed": 1
+        },
+        {
+          "suite": "Decodex candidate",
+          "selector": "schema::tests::official_schema_supports_current_consumers",
+          "executed": 1,
+          "passed": 1
+        }
+      ],
+      "source_review_complete": true,
+      "upstream_checks": {
+        "source": "https://github.com/openai/codex/pull/64207/checks",
+        "head": "475e13ab1ace6c63275ee66149c951befc685c96",
+        "reported_conclusions": {
+          "FAILURE": 4,
+          "SKIPPED": 4,
+          "SUCCESS": 17,
+          "UNKNOWN": 36
+        }
+      },
+      "validation_limits": [
+        "The Decodex single-root request and attachment protection were exercised. The optional TUI grouped deletion is source-reviewed only."
       ]
     }
   ],
-  "qualification_decision": "Adopt native account voice settings and select the signed development runtime after consumer qualification."
+  "scope": "Consecutive first-parent review of official upstream main. The selected macOS development component includes this range. Test identities and limits refer to the stated owner.",
+  "previous_source_review": "https://github.com/acg-box/decodex/blob/e379d82e1d521e1453795c8dd283ef31cb92c407/automations/upstream/current-review.json",
+  "selected_runtime_source": "475e13ab1ace6c63275ee66149c951befc685c96",
+  "selected_runtime_qualification": "qualification.json",
+  "qualification_decision": "Use the signed development package with the retained native consumers after their isolated checks passed."
 }

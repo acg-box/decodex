@@ -37,55 +37,60 @@
       "scope": "Earlier direct-protocol probes retain their original artifact identities."
     }
   ],
-  "limits": [
-    "Development on macOS arm64 with isolated test homes and loopback fixtures. The development build retains the previously qualified 0.171.0 compatibility prefix.",
-    "The checks do not qualify live services, NFS, a deployed managed policy, installed desktop behavior, Guardian v3, an official release or every upstream branch."
-  ],
-  "source_commit": "06f334aa4b053023c5b4199dde0ba9c004d64820",
-  "upstream_source_reference": "https://github.com/openai/codex/commit/06f334aa4b053023c5b4199dde0ba9c004d64820",
-  "decodex_main_baseline": "9531ea40080dba0f881c0804670b64fc047cc081",
-  "decodex_source_revision": "8d538a0b366c9b9c08727b66ed030286b67e0ff6",
-  "delivery_reference": "https://github.com/acg-box/decodex/commit/8d538a0b366c9b9c08727b66ed030286b67e0ff6",
-  "development_version": "0.171.0+decodex.06f334aa4b",
-  "runtime_pin_sha256": "8a0236f3a2d3c0998183e938c1e7f5fb94346315bfb7a4431d9f6f4f879b4ffb",
+  "account_voice": {
+    "scope": "The account preference checks use a synthetic account and loopback provider, including an explicit save across projects and signed-out legacy settings. The prior desktop picker evidence remains in the previous qualification. Live audio was outside the fixture.",
+    "passed_selectors": [
+      "account_launch::agent_process::native_tests::reviewer::store::voice_settings_start::installed_account_voice_is_shared_between_projects_after_explicit_save",
+      "account_launch::agent_process::native_tests::reviewer::store::voice_settings_start::installed_account_voice_requires_chatgpt_even_with_local_preference",
+      "account_launch::agent_process::native_tests::upgrade::installed_runtime_upgrade_preserves_history_and_paused_goal_with_legacy_voice",
+      "schema::tests::official_schema_supports_current_consumers"
+    ]
+  },
+  "source_commit": "475e13ab1ace6c63275ee66149c951befc685c96",
+  "upstream_source_reference": "https://github.com/openai/codex/commit/475e13ab1ace6c63275ee66149c951befc685c96",
+  "decodex_main_baseline": "e379d82e1d521e1453795c8dd283ef31cb92c407",
+  "decodex_source_revision": "097385283b63683fb9ec04b0d8b1d35cd6987957",
+  "delivery_reference": "https://github.com/acg-box/decodex/commit/097385283b63683fb9ec04b0d8b1d35cd6987957",
+  "development_version": "0.171.0+decodex.475e13ab1a",
+  "runtime_pin_sha256": "bfd9f4abc4aaf252d50fdb3dcbe90e3d4f1d34b74c6eb93b1f4d9a221f91bfd9",
   "artifact": {
-    "source_commit": "06f334aa4b053023c5b4199dde0ba9c004d64820",
-    "source_archive_sha256": "e6fcd0702e717176d4c565349a90abc348ccefe22c3a0a2238a675b616df6a0e",
-    "schema_sha256": "c3b49b2aa58b417a1fd53bb4a003f1b577ddb7bac415d6e7e622e1aae2343557",
+    "source_commit": "475e13ab1ace6c63275ee66149c951befc685c96",
+    "source_archive_sha256": "4f3b8f66d023811b789eecdc675314be7a601c6a578f2dda7850e45577b09ccd",
+    "schema_sha256": "7dd3d02170f404a817f76952b3f66be457c464c450d2236d96e477a75493e2f0",
     "components": [
       {
         "path": "CodexCLI.app/Contents/MacOS/codex",
-        "sha256": "33e927ea6ea2c1b5e1d76b60716f35059d4d8d370aeada54028c116eea935dcb",
-        "bytes": 274567840,
+        "sha256": "5be4f1140b35f9d1f30f48d19db6a45036d4a0fb5ce37816a123d064199af672",
+        "bytes": 276854032,
         "strict_signature_verified": true,
         "pinned_commit_embedded": true,
         "signature_identifier": "box.acg.decodex.codex-runtime",
-        "cdhash": "59c0a5b7d12076b48bbb92bc4598939256a0e3d3",
+        "cdhash": "3c929b079816f4cf6f533cb584df7aadb132a8b8",
         "matches_prior_signing_team": true
       },
       {
         "path": "bin/codex-code-mode-host",
-        "sha256": "f878438ff1a650055aa7496c5fe977aefb5040de6b2915348cfb08b0d573afc6",
-        "bytes": 59297280,
+        "sha256": "ce24cb788abe03236b5a4bd88665cbcb9911666be6b3b7bee7f7ffdd55ac0876",
+        "bytes": 59295696,
         "strict_signature_verified": true,
         "pinned_commit_embedded": true,
         "signature_identifier": "box.acg.decodex.codex-code-mode-host",
-        "cdhash": "dd087800e46da86b507924d453a65f6d9e769eda",
+        "cdhash": "70c194033f5700a832c1199c6b59c28a585d32c9",
         "matches_prior_signing_team": true
       },
       {
         "path": "bin/codex-exec-server",
-        "sha256": "7bda83c97326e38cfbe1d1f43414c2c2454afb6673715db58a196cc230dcfa31",
-        "bytes": 63676352,
+        "sha256": "23123742d2c024a1fec18ed7077b2a2930b6a49fa2a63ae7d365ac261a218e67",
+        "bytes": 65691456,
         "strict_signature_verified": true,
         "pinned_commit_embedded": true,
         "signature_identifier": "box.acg.decodex.codex-exec-server",
-        "cdhash": "ec1301a28bf3446dca65e66d966839fc6e05b29d",
+        "cdhash": "d726cb52ba2348a7dce07f1306a3a5a8b3f7c0ab",
         "matches_prior_signing_team": true
       },
       {
         "path": "codex-path/rg",
-        "sha256": "37bd843f54f4d42a6000b2f5761b357d98e30877f6097c552becb22b49dcfc2c",
+        "sha256": "12d5560e7f8fc08b223e3a670bc119abb83c67b7ed6d66e32a55f75e9e9021a8",
         "bytes": 3829552,
         "strict_signature_verified": true,
         "pinned_commit_embedded": null,
@@ -99,8 +104,8 @@
   "schema_identity": {
     "source": "exact signed CLI",
     "experimental_files": 487,
-    "fingerprint": "c3b49b2aa58b417a1fd53bb4a003f1b577ddb7bac415d6e7e622e1aae2343557",
-    "cli_version": "codex-cli 0.171.0+decodex.06f334aa4b",
+    "fingerprint": "7dd3d02170f404a817f76952b3f66be457c464c450d2236d96e477a75493e2f0",
+    "cli_version": "codex-cli 0.171.0+decodex.475e13ab1a",
     "schema_document_paths": [
       "ClientRequest.json",
       "ServerRequest.json",
@@ -115,60 +120,43 @@
     ]
   },
   "source_integrity": {
-    "commit": "06f334aa4b053023c5b4199dde0ba9c004d64820",
-    "tree": "7d91d48d72eea8f4813a52b1e6d087303c733eda",
-    "archive_sha256": "e6fcd0702e717176d4c565349a90abc348ccefe22c3a0a2238a675b616df6a0e",
-    "entries": 10604,
+    "commit": "475e13ab1ace6c63275ee66149c951befc685c96",
+    "tree": "b1a704ddce244fd872ec9c27e04cfc713bfbaf61",
+    "archive_sha256": "4f3b8f66d023811b789eecdc675314be7a601c6a578f2dda7850e45577b09ccd",
+    "entries": 10611,
     "differences": 0
   },
   "source_validation": {
-    "official_checks": "https://github.com/openai/codex/commit/06f334aa4b053023c5b4199dde0ba9c004d64820/checks",
+    "official_checks": "https://github.com/openai/codex/commit/475e13ab1ace6c63275ee66149c951befc685c96/checks",
+    "per_pull_request": "current-review.json#records",
     "local_upstream_tests_executed": 0,
-    "scope": "Source review and signed-package Decodex consumer tests."
+    "scope": "Official PR check rollups contain mixed conclusions. Local qualification covers the Decodex consumer boundary."
   },
   "development_preparation": {
-    "method": "cargo +stable make prepare-codex with the verified development runtime and an isolated home",
-    "result": "Ready"
+    "method": "cargo +stable make prepare-codex",
+    "result": "Ready",
+    "scope": "Built from the verified archive with the stable toolchain and locked graph. Used the package entitlements and host signing identity, generated the experimental schema from the signed CLI, then imported the exact package in an isolated home.",
+    "prepared_source": {
+      "codex-rs/Cargo.lock": {
+        "archive_sha256": "d26cf1814cd1cc70fd4fe31586e213e095886e2253432a1e2fde499554442ce2",
+        "prepared_sha256": "337b029a23e384b84aeb186246493e79c4380d0e16d8f42f6f3a4c09abc3e2d0"
+      },
+      "codex-rs/Cargo.toml": {
+        "archive_sha256": "92928a489db7363dec1ef6dfc2a31798346fc096847567acdc7ea3bd337dc7c5",
+        "prepared_sha256": "4b3e0c103c869511be3a59698cfa72f8d0940912d541db6981c89d21cdd0edb7"
+      },
+      "codex-rs/rust-toolchain.toml": {
+        "archive_sha256": "913d7e9d7adcd7abfeb0c4554c39a5a57c3cf84a694bc6a6aeae038a1f6ae33b",
+        "prepared_sha256": "cb358b5f3f066eb6d2c15d537c362ca217d7b963739360b04057c685bd469086"
+      }
+    }
   },
   "retained_source_inclusion": {
-    "previous_selected_source": "7a24022794c8bfb26f73685e5c2f7d957126daee",
+    "previous_selected_source": "06f334aa4b053023c5b4199dde0ba9c004d64820",
     "previous_source_is_ancestor": true,
-    "previous_qualification": "https://github.com/acg-box/decodex/blob/189884659c5ba08f6ba139bf7daa30196633fb32/automations/upstream/qualification.json",
-    "scope": "The prior qualified source and native prompt revert fix are ancestors. Signed-package tests exercised prompt revert, hooks, native project reconciliation, provider continuation, Code Mode, Guardian, skills and MCP. After integrating current main, the signed-package checks also covered native chat registration and Work after cold resume, and archive refresh without restarting either process.",
-    "decodex_integration": "https://github.com/acg-box/decodex/commit/9531ea40080dba0f881c0804670b64fc047cc081"
-  },
-  "baseline_execution": {
-    "source": "7a24022794c8bfb26f73685e5c2f7d957126daee",
-    "cli_sha256": "aa76f213261834a45bc21143fb29fbc2a5e1ec65b93d83a6c911f37dc1cef4a4",
-    "registered": 3,
-    "executed": 3,
-    "passed": 3,
-    "failed": 0,
-    "selectors": [
-      "account_launch::agent_process::native_tests::reviewer::store::voice_settings_start::installed_native_voice_reads_project_override_and_refreshed_user_default",
-      "account_launch::agent_process::native_tests::reviewer::store::voice_settings_start::installed_voice_preference_bridge_saves_absent_file_and_rejects_old_connection",
-      "schema::tests::official_schema_supports_current_consumers"
-    ],
-    "historical_comparison": "https://github.com/acg-box/decodex/blob/189884659c5ba08f6ba139bf7daa30196633fb32/automations/upstream/qualification.json#unselected_candidate"
-  },
-  "account_voice": {
-    "scope": "The signed CLI and retained transport use a synthetic ChatGPT account and loopback backend. The picker confirms the native selection after an explicit write. Signed-out homes with legacy settings cannot read the account preference. Voice start omits the voice parameter. Live listening was outside this check.",
-    "passed_selectors": [
-      "account_launch::agent_process::native_tests::reviewer::store::voice_settings_start::installed_account_voice_is_shared_between_projects_after_explicit_save",
-      "account_launch::agent_process::native_tests::reviewer::store::voice_settings_start::installed_account_voice_requires_chatgpt_even_with_local_preference",
-      "account_launch::agent_process::native_tests::upgrade::installed_runtime_upgrade_preserves_history_and_paused_goal_with_legacy_voice",
-      "schema::tests::official_schema_supports_current_consumers"
-    ]
-  },
-  "component_cache_repair": {
-    "crate": "development",
-    "selector": "fixed_commit_import_explicit_reinstall_and_wrong_commit_rejection",
-    "source": "crates/decodex-components/tests/development.rs",
-    "source_sha256": "0ccbd7b95fb091a8b686f9bb51851a94effa6c3fb66b8d838eb49284723156b5",
-    "executed": 1,
-    "passed": 1,
-    "exit_code": 0,
-    "entrypoint": "compiled libtest --ignored --exact <selector> --test-threads=1 --nocapture"
+    "previous_qualification": "https://github.com/acg-box/decodex/blob/e379d82e1d521e1453795c8dd283ef31cb92c407/automations/upstream/qualification.json",
+    "decodex_integration": "https://github.com/acg-box/decodex/commit/8d538a0b366c9b9c08727b66ed030286b67e0ff6",
+    "scope": "Includes the selected account voice integration, native paginated prompt revert and the previously qualified runtime changes. The Decodex checks exercise registered agents, cold Work, provider forks, permissions, account voice, Code Mode and MCP."
   },
   "retained_consumers": {
     "features": "--all-features",
@@ -189,9 +177,9 @@
       "recap": "Use the isolated account home, marker files and component import from scripts/vnext/run_native_regression.py. Set DECODEX_TEST_PROMPT_REVERT=1. Execute from the owned worktree.",
       "DECODEX_TEST_PREVIOUS_CODEX_BINARY": "Prior qualified CLI for the cross-version upgrade case."
     },
-    "registered": 30,
-    "executed": 30,
-    "passed": 30,
+    "registered": 35,
+    "executed": 35,
+    "passed": 35,
     "failed": 0,
     "unmatched_selectors": [],
     "cases": [
@@ -494,6 +482,56 @@
         "passed": 1,
         "exit_code": 0,
         "entrypoint": "compiled libtest --ignored --exact <selector> --test-threads=1 --nocapture"
+      },
+      {
+        "crate": "decodex_runtime",
+        "selector": "account_launch::agent_process::native_tests::archive::installed_native_delete_cleans_local_history_and_context_lineage",
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_archive_tests.rs",
+        "source_sha256": "961498072d30554009a7d26644978627f5877478b2f7031de20bb2e2e8ab3af4",
+        "executed": 1,
+        "passed": 1,
+        "exit_code": 0,
+        "entrypoint": "compiled libtest --ignored --exact <selector> --test-threads=1 --nocapture"
+      },
+      {
+        "crate": "decodex_runtime",
+        "selector": "account_launch::agent_process::native_tests::archive::installed_native_archive_catalog_pages_every_timestamp_tie",
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_archive_tests.rs",
+        "source_sha256": "961498072d30554009a7d26644978627f5877478b2f7031de20bb2e2e8ab3af4",
+        "executed": 1,
+        "passed": 1,
+        "exit_code": 0,
+        "entrypoint": "compiled libtest --ignored --exact <selector> --test-threads=1 --nocapture"
+      },
+      {
+        "crate": "decodex_runtime",
+        "selector": "account_launch::agent_process::native_tests::permissions::installed_permission_selection_publishes_and_survives_native_restart",
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_permission_tests.rs",
+        "source_sha256": "bdc7b2bcbc94f5258c5390cbb2ec4d5839f1e90000d89db635dd4a743e2e9b60",
+        "executed": 1,
+        "passed": 1,
+        "exit_code": 0,
+        "entrypoint": "compiled libtest --ignored --exact <selector> --test-threads=1 --nocapture"
+      },
+      {
+        "crate": "decodex_runtime",
+        "selector": "account_launch::agent_process::native_tests::context::installed_native_stream_disconnect_recovers_the_same_turn_without_resending",
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_context_tests.rs",
+        "source_sha256": "3f7ca596408560b243e79a333d40fbd39567c92f9635566a4f0c6716c12b0775",
+        "executed": 1,
+        "passed": 1,
+        "exit_code": 0,
+        "entrypoint": "compiled libtest --ignored --exact <selector> --test-threads=1 --nocapture"
+      },
+      {
+        "crate": "decodex_runtime",
+        "selector": "account_launch::agent_process::native_tests::cold_settings::recap_socket::fork::installed_fork_preserves_source_provider_after_default_changes",
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_fork_tests.rs",
+        "source_sha256": "896ee1dc29e494ea12c99ebccd8efba6b572c2689dbea036395e1f90c9f8fbd4",
+        "executed": 1,
+        "passed": 1,
+        "exit_code": 0,
+        "entrypoint": "compiled libtest --ignored --exact <selector> --test-threads=1 --nocapture"
       }
     ]
   },
@@ -521,24 +559,50 @@
     "crates/decodex-runtime/src/account_launch/agent_process_native_guardian_image_tests.rs": "096f5d64d5b4a6c214e1625545ad924da831bdf07ea23c86c3a6b5274750c4ac",
     "crates/decodex-runtime/src/account_launch/agent_process_native_skills_tests.rs": "ff0df22702edfa42a03c0eec1a1b563b116de52ff14204e5a557efed2be687cf",
     "crates/decodex-runtime/src/account_launch/agent_process_native_project_sync_tests.rs": "5b3710373b95c7e0f44c9d0616e5a7e328ec3e7055df03f43b433e86250bb561",
-    "crates/decodex-runtime/src/account_launch/agent_process_native_archive_tests.rs": "961498072d30554009a7d26644978627f5877478b2f7031de20bb2e2e8ab3af4"
+    "crates/decodex-runtime/src/account_launch/agent_process_native_archive_tests.rs": "961498072d30554009a7d26644978627f5877478b2f7031de20bb2e2e8ab3af4",
+    "crates/decodex-runtime/src/account_launch/agent_process_native_permission_tests.rs": "bdc7b2bcbc94f5258c5390cbb2ec4d5839f1e90000d89db635dd4a743e2e9b60",
+    "crates/decodex-runtime/src/account_launch/agent_process_native_context_tests.rs": "3f7ca596408560b243e79a333d40fbd39567c92f9635566a4f0c6716c12b0775"
   },
+  "component_cache_repair": {
+    "crate": "development",
+    "selector": "fixed_commit_import_explicit_reinstall_and_wrong_commit_rejection",
+    "source": "crates/decodex-components/tests/development.rs",
+    "source_sha256": "0ccbd7b95fb091a8b686f9bb51851a94effa6c3fb66b8d838eb49284723156b5",
+    "executed": 1,
+    "passed": 1,
+    "exit_code": 0,
+    "entrypoint": "compiled libtest --ignored --exact <selector> --test-threads=1 --nocapture"
+  },
+  "baseline_execution": {
+    "source": "06f334aa4b053023c5b4199dde0ba9c004d64820",
+    "cli_sha256": "33e927ea6ea2c1b5e1d76b60716f35059d4d8d370aeada54028c116eea935dcb",
+    "registered": 2,
+    "executed": 2,
+    "passed": 2,
+    "failed": 0,
+    "selectors": [
+      "account_launch::agent_process::native_tests::archive::installed_native_delete_cleans_local_history_and_context_lineage",
+      "account_launch::agent_process::native_tests::archive::installed_native_archive_catalog_pages_every_timestamp_tie"
+    ]
+  },
+  "limits": [
+    "Development on macOS arm64 using isolated test homes and loopback fixtures. The version retains the reviewed 0.171.0 compatibility prefix.",
+    "No live account, provider, managed-policy deployment, Statsig service, Guardian V3, installed desktop, official release or other operating system was qualified.",
+    "The native consumer tests for hooks, initial input and MCP cover Decodex-owned behavior. The upstream child SessionEnd, host roster suspension and HTTP session cleanup paths have source evidence."
+  ],
   "decodex_validation": {
     "checks": [
       "cargo +stable make test-automations",
-      "python3 automations/decodex/scripts/config/evaluate_automations.py --repo-only --json",
-      "cargo +stable test --locked -p decodex-gpui voice_settings",
-      "Compiled all-feature decodex-runtime and decodex-codex libtests with the voice filter"
+      "python3 automations/decodex/scripts/config/evaluate_automations.py --repo-only --json"
     ],
-    "units": {
-      "decodex_codex": "ok. 3 passed; 0 failed; 0 ignored; 0 measured; 261 filtered out; finished in 0.04s",
-      "decodex_runtime": "ok. 38 passed; 0 failed; 4 ignored; 0 measured; 1030 filtered out; finished in 2.72s"
+    "checkpoint": {
+      "passed": 8,
+      "failed": 0
     },
-    "desktop_picker_passed": 4,
-    "manifest": {
-      "manifest_errors": [],
-      "status": "pass"
+    "portfolio": {
+      "passed": 7,
+      "failed": 0
     },
-    "automation_prompt_readback": "b2d072d047c3b845f0ec5da06651c7f3eb8fcab8846ce4dea2b46f43b122241e"
+    "manifest": "pass"
   }
 }
