@@ -7,7 +7,7 @@
   "count": 64,
   "fixed_target_remaining": 0,
   "source_review_complete": true,
-  "scope": "Consecutive first-parent commits at the fixed official main. The selected runtime remains the prior qualified build. Native behavior on the candidate is limited to the explicit Decodex cases recorded below.",
+  "scope": "Consecutive first-parent commits at the fixed official main target. The records describe the consumer and execution evidence at initial review. The account voice follow-up qualified the selected runtime.",
   "classification_counts": {
     "native_owned": 27,
     "not_applicable": 26,
@@ -17,7 +17,7 @@
   },
   "decodex_consumer_baseline": "f42f3e32df7888afd8ee4e13f9c291022dbfc530",
   "previous_source_review": "https://github.com/acg-box/decodex/blob/f42f3e32df7888afd8ee4e13f9c291022dbfc530/automations/upstream/current-review.json",
-  "selected_runtime_source": "7a24022794c8bfb26f73685e5c2f7d957126daee",
+  "selected_runtime_source": "06f334aa4b053023c5b4199dde0ba9c004d64820",
   "selected_runtime_qualification": "qualification.json",
   "records": [
     {
@@ -930,7 +930,18 @@
       "validation_limits": [
         "The two isolated native regressions and the generated schema gate passed on the selected baseline and failed on the signed candidate. The account voice endpoints were reviewed in source only. No live account preference was read or written."
       ],
-      "decision_reference": "chatgpt-account-voice-preference"
+      "decision_reference": "chatgpt-account-voice-preference",
+      "follow_up": {
+        "decision": "Use the native ChatGPT account voice across projects.",
+        "delivery_reference": "https://github.com/acg-box/decodex/commit/4898450cd62fa21b4a68fab53fa642087155fede",
+        "qualification": "qualification.json#account_voice",
+        "passed_selectors": [
+          "account_launch::agent_process::native_tests::reviewer::store::voice_settings_start::installed_account_voice_is_shared_between_projects_after_explicit_save",
+          "account_launch::agent_process::native_tests::reviewer::store::voice_settings_start::installed_account_voice_requires_chatgpt_even_with_local_preference",
+          "account_launch::agent_process::native_tests::upgrade::installed_runtime_upgrade_preserves_history_and_paused_goal_with_legacy_voice",
+          "schema::tests::official_schema_supports_current_consumers"
+        ]
+      }
     },
     {
       "index": 38,
@@ -1563,5 +1574,5 @@
       ]
     }
   ],
-  "qualification_decision": "Keep the current development lock. Retained voice behavior failed on the candidate."
+  "qualification_decision": "Adopt native account voice settings and select the signed development runtime after consumer qualification."
 }
