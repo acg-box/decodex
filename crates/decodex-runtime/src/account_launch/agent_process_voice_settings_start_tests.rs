@@ -1,4 +1,4 @@
-//! Effective configuration is read before creating a native voice session.
+//! Live calls use the account voice selected by the native backend.
 use std::{env, fs};
 
 use serde_json::{self, Value};
@@ -21,7 +21,7 @@ use decodex_protocol::{
 	AgentVoiceOptions, AgentVoiceRequest, EntityId, HistoryText, VoiceSdp, WireText,
 };
 
-fn assert_voice_start(start: &Value, thread: &str, voice: Option<&str>) {
+fn assert_voice_start(start: &Value, thread: &str, advanced: bool) {
 	assert_eq!(start["params"]["threadId"], thread);
 	assert_eq!(start["params"]["version"], "v3");
 	assert_eq!(start["params"]["realtimeSessionId"], "voice");
@@ -29,7 +29,7 @@ fn assert_voice_start(start: &Value, thread: &str, voice: Option<&str>) {
 	assert_eq!(start["params"]["outputModality"], "audio");
 	assert_eq!(start["params"]["backendReasoningStatus"], true);
 
-	if voice == Some("juniper") {
+	if advanced {
 		assert_eq!(start["params"]["model"], "realtime-fixture");
 		assert_eq!(start["params"]["realtimeStartInstructions"], "Start fixture");
 		assert_eq!(start["params"]["realtimeEndInstructions"], "");
@@ -39,14 +39,11 @@ fn assert_voice_start(start: &Value, thread: &str, voice: Option<&str>) {
 		}
 	}
 
-	assert_eq!(
-		start["params"]["voice"],
-		serde_json::json!(voice.filter(|voice| *voice != "future_voice"))
-	);
+	assert!(start["params"].get("voice").is_none());
 }
 
-fn voice_options(voice: Option<&str>) -> AgentVoiceOptions {
-	if voice == Some("juniper") {
+fn voice_options(advanced: bool) -> AgentVoiceOptions {
+	if advanced {
 		AgentVoiceOptions {
 			draft: None,
 			model: Some(
@@ -65,8 +62,8 @@ fn voice_options(voice: Option<&str>) -> AgentVoiceOptions {
 	}
 }
 
-fn start_options(voice: Option<&str>, unstarted: bool) -> AgentVoiceOptions {
-	let mut options = voice_options(voice);
+fn start_options(advanced: bool, unstarted: bool) -> AgentVoiceOptions {
+	let mut options = voice_options(advanced);
 	if unstarted {
 		options.draft = Some(Box::new(decodex_protocol::AgentVoiceDraft {
 			execution: decodex_protocol::AgentExecutionOverrides {
@@ -85,22 +82,19 @@ fn start_options(voice: Option<&str>, unstarted: bool) -> AgentVoiceOptions {
 }
 
 #[tokio::test]
-async fn voice_start_applies_effective_voice_and_rejects_failed_reads_before_recording_call() {
-	for (voice, config_fails, policy, hosted, occupied, unstarted) in [
-		(Some("juniper"), false, None, false, false, false),
-		(Some("juniper"), false, None, true, false, false),
-		(Some("juniper"), false, None, true, true, false),
-		(Some("aube"), false, None, false, false, false),
-		(None, false, None, false, false, false),
-		(Some("future_voice"), false, Some(true), false, false, false),
-		(Some("juniper"), true, None, false, false, false),
-		(Some("juniper"), false, Some(false), false, false, false),
-		(Some("juniper"), false, None, true, false, true),
-		(Some("juniper"), false, Some(false), true, false, true),
+async fn voice_start_uses_native_account_selection_and_honors_managed_policy() {
+	for (advanced, policy, hosted, occupied, unstarted) in [
+		(true, None, false, false, false),
+		(false, Some(true), false, false, false),
+		(true, None, true, false, false),
+		(true, None, true, true, false),
+		(true, Some(false), false, false, false),
+		(true, None, true, false, true),
+		(true, Some(false), true, false, true),
 	] {
 		let thread = if hosted { "hosted-voice-thread" } else { "voice-thread" };
 		let work = if hosted { "conversation" } else { "root" };
-		let fails = config_fails || policy == Some(false) || occupied;
+		let fails = policy == Some(false) || occupied;
 		let home = tempfile::tempdir().unwrap();
 		let (local, remote) = io::duplex(8_192);
 		let (read, write) = io::split(local);
@@ -123,14 +117,8 @@ async fn voice_start_applies_effective_voice_and_rejects_failed_reads_before_rec
 						serde_json::json!({"error":{"code":-32_600,"message":format!("thread {thread} already has an active writer")}}),
 					"thread/read" | "thread/resume" =>
 						serde_json::json!({"result":{"thread":{"id":thread,"cwd":"/tmp","historyMode":"legacy","turns":[]}}}),
-					"config/read" if config_fails =>
-						serde_json::json!({"error":{"code":-32_603,"message":"unavailable"}}),
-					"config/read" =>
-						serde_json::json!({"result":{"config":{"realtime":{"voice":voice}}}}),
 					"configRequirements/read" =>
 						serde_json::json!({"result":{"requirements":policy.map(|allowed| serde_json::json!({"featureRequirements":{"in_app_voice":allowed}}))}}),
-					"thread/realtime/listVoices" =>
-						serde_json::json!({"result":{"voices":{"v1":["juniper"],"v3":["juniper","aube"],"defaultV1":"juniper"}}}),
 					"thread/realtime/start" => serde_json::json!({"result":{}}),
 					other => panic!("unexpected native method: {other}"),
 				};
@@ -170,7 +158,7 @@ async fn voice_start_applies_effective_voice_and_rejects_failed_reads_before_rec
 				session_id: EntityId::new("voice").unwrap(),
 				work_id: EntityId::new(work).unwrap(),
 				offer: VoiceSdp::new("offer".into()).unwrap(),
-				options: start_options(voice, unstarted),
+				options: start_options(advanced, unstarted),
 			})
 			.await;
 
@@ -206,7 +194,7 @@ async fn voice_start_applies_effective_voice_and_rejects_failed_reads_before_rec
 		}
 
 		if let Some(start) = starts.first() {
-			assert_voice_start(start, thread, voice);
+			assert_voice_start(start, thread, advanced);
 		}
 
 		server.abort();
@@ -239,95 +227,16 @@ async fn reserve_hosted_voice(owned: &OwnedReviewer, work: &str) {
 }
 
 #[tokio::test]
-#[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated native effective voice configuration"]
-async fn installed_native_voice_reads_project_override_and_refreshed_user_default() {
+#[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated signed-out account"]
+async fn installed_account_voice_requires_chatgpt_even_with_local_preference() {
 	let binary = env::var_os("DECODEX_TEST_CODEX_BINARY").unwrap();
 	let home = tempfile::tempdir().unwrap();
-	let project = home.path().join("project");
-
-	fs::create_dir_all(project.join(".codex")).unwrap();
-
-	let config = |voice: &str| {
-		format!(
-			"model=\"gpt-5.6-sol\"\n[realtime]\nvoice=\"{voice}\"\n[projects.{}]\ntrust_level=\"trusted\"\n",
-			serde_json::to_string(&project).unwrap()
-		)
-	};
-
-	fs::write(home.path().join("config.toml"), config("cove")).unwrap();
-	fs::write(project.join(".codex/config.toml"), "[realtime]\nvoice=\"juniper\"\n").unwrap();
-
+	fs::write(home.path().join("config.toml"), "[realtime]\nvoice=\"juniper\"\n").unwrap();
 	let session = NativeSession::start(&binary, home.path());
-	let started = session
-		.client
-		.thread_start(
-			serde_json::json!({"cwd":project,"ephemeral":true,"approvalPolicy":"never","sandbox":"read-only"}),
-		)
-		.await
-		.unwrap();
-	let thread = started["thread"]["id"].as_str().unwrap();
-
-	assert_eq!(
-		session.client.realtime_voice_for_thread(thread).await.unwrap().as_deref(),
-		Some("juniper")
-	);
-
-	fs::remove_file(project.join(".codex/config.toml")).unwrap();
-	fs::write(home.path().join("config.toml"), config("maple")).unwrap();
-
-	assert_eq!(
-		session.client.realtime_voice_for_thread(thread).await.unwrap().as_deref(),
-		Some("maple")
-	);
-
-	fs::write(home.path().join("config.toml"), config("future_voice")).unwrap();
-
-	// This installed server rejects an unknown configured enum; propagate its read failure.
-	assert!(session.client.realtime_voice_for_thread(thread).await.is_err());
-
-	fs::write(
-		home.path().join("config.toml"),
-		config("cove").replace("[realtime]\nvoice=\"cove\"\n", ""),
-	)
-	.unwrap();
-
-	assert_eq!(session.client.realtime_voice_for_thread(thread).await.unwrap().as_deref(), None);
-	let settings = session.client.realtime_voice_settings(project.to_str().unwrap()).await.unwrap();
-	assert!(settings.effective.is_none());
-	assert!(settings.preference.is_none());
-}
-
-#[tokio::test]
-#[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated native voice preference bridge"]
-async fn installed_voice_preference_bridge_saves_absent_file_and_rejects_old_connection() {
-	let binary = env::var_os("DECODEX_TEST_CODEX_BINARY").unwrap();
-	let home = tempfile::tempdir().unwrap();
-	let session = NativeSession::start(&binary, home.path());
-	let cwd = home.path().to_str().unwrap();
-	let before = session.client.realtime_voice_settings(cwd).await.unwrap();
-
-	assert_eq!(before.preference, None);
-	assert!(before.voices.iter().any(|voice| voice == "juniper"));
-
-	let saved = session.client.write_realtime_voice(&before, "juniper").await.unwrap();
-
-	assert_eq!(saved.preference.as_deref(), Some("juniper"));
-	assert_eq!(saved.effective.as_deref(), Some("juniper"));
 	assert!(matches!(
-		session.client.write_realtime_voice(&before, "maple").await,
+		session.client.realtime_voice_settings().await,
 		Err(decodex_codex::app_server_client::ClientError::Remote(_))
 	));
-
-	drop(session);
-
-	let session = NativeSession::start(&binary, home.path());
-
-	assert!(session.client.write_realtime_voice(&saved, "maple").await.is_err());
-
-	let cold = session.client.realtime_voice_settings(cwd).await.unwrap();
-
-	assert_eq!(cold.preference.as_deref(), Some("juniper"));
-	assert_eq!(cold.effective.as_deref(), Some("juniper"));
 }
 
 #[tokio::test]
@@ -346,4 +255,76 @@ async fn installed_native_voice_policy_read_does_not_use_user_feature_flags() {
 		assert!(agent_voice_settings::voice_allowed(&session.client).await.unwrap());
 		assert_eq!(fs::read_to_string(home.path().join("config.toml")).unwrap(), config);
 	}
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires DECODEX_TEST_CODEX_BINARY; synthetic ChatGPT account on loopback"]
+async fn installed_account_voice_is_shared_between_projects_after_explicit_save() {
+	use crate::account_launch::agent_process::native_tests::account_nudge::write_fixture_credentials;
+	let binary = env::var_os("DECODEX_TEST_CODEX_BINARY").unwrap();
+	let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+	let address = listener.local_addr().unwrap();
+	let (writes, mut received) = mpsc::unbounded_channel();
+	let backend = tokio::spawn(async move {
+		let mut selected = "cove";
+		while let Ok((stream, _)) = listener.accept().await {
+			let mut stream = BufReader::new(stream);
+			let mut request = String::new();
+			stream.read_line(&mut request).await.unwrap();
+			let mut header = String::new();
+			loop {
+				header.clear();
+				if stream.read_line(&mut header).await.unwrap() == 0 || header == "\r\n" {
+					break;
+				}
+			}
+			let (status, body) = match request
+				.split_whitespace()
+				.take(2)
+				.collect::<Vec<_>>()
+				.as_slice()
+			{
+				["GET", "/backend-api/settings/voices?voice_mode=wingman"] => (
+					"200 OK",
+					serde_json::json!({"selected":selected,"voices":[{"voice":"cove","name":"Cove"},{"voice":"account-option","name":"Account display name"}]}),
+				),
+				[
+					"PATCH",
+					"/backend-api/settings/account_user_setting?feature=voice_name&value=account-option",
+				] => {
+					selected = "account-option";
+					writes.send(()).unwrap();
+					("200 OK", serde_json::json!({}))
+				},
+				_ => ("404 Not Found", Value::Null),
+			};
+			let body = body.to_string();
+			let response = format!(
+				"HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+				body.len()
+			);
+			let _ = stream.get_mut().write_all(response.as_bytes()).await;
+		}
+	});
+	// Each project uses its own native home and a different legacy local preference.
+	let homes = [tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap()];
+	for (home, legacy) in homes.iter().zip(["juniper", "maple"]) {
+		write_fixture_credentials(home.path());
+		fs::write(home.path().join("config.toml"), format!("chatgpt_base_url=\"http://{address}\"\ncli_auth_credentials_store=\"file\"\n[realtime]\nvoice=\"{legacy}\"\n")).unwrap();
+	}
+
+	let first = NativeSession::start(&binary, homes[0].path());
+	let second = NativeSession::start(&binary, homes[1].path());
+	let before = first.client.realtime_voice_settings().await.unwrap();
+	assert_eq!(before.selected, "cove");
+	assert_eq!(before.voices[1].name, "Account display name");
+	assert_eq!(second.client.realtime_voice_settings().await.unwrap().selected, "cove");
+	assert!(second.client.write_realtime_voice(&before, "account-option").await.is_err());
+	assert!(received.try_recv().is_err());
+	let saved = first.client.write_realtime_voice(&before, "account-option").await.unwrap();
+	assert_eq!(saved.selected, "account-option");
+	assert_eq!(second.client.realtime_voice_settings().await.unwrap().selected, "account-option");
+	assert!(received.try_recv().is_ok());
+	assert!(received.try_recv().is_err());
+	backend.abort();
 }

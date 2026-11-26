@@ -194,7 +194,7 @@ impl AgentSurface {
 				return;
 			};
 
-			if work_id != &owner || !voices.contains(&voice) {
+			if work_id != &owner || !voices.iter().any(|option| option.voice == voice) {
 				return;
 			}
 
@@ -290,13 +290,13 @@ impl AgentSurface {
 			return panel.into_any_element();
 		}
 
-		panel = panel.child("Applies to your next voice conversation.").children(
-			ui_feedback::inline_feedback(
+		panel = panel
+			.child("Your next voice conversation uses the voice selected for this ChatGPT account.")
+			.children(ui_feedback::inline_feedback(
 				"voice-settings-feedback",
 				"",
 				&self.voice_settings.feedback,
-			),
-		);
+			));
 
 		if self.voice_settings.task.is_some() {
 			return panel.into_any_element();
@@ -312,25 +312,15 @@ impl AgentSurface {
 			move |s, cx| s.update_voice_settings(&owner, None, cx),
 		));
 
-		if let Some(AgentVoiceSettingsResult::Available { voices, effective, preference, .. }) =
+		if let Some(AgentVoiceSettingsResult::Available { voices, selected, .. }) =
 			&self.voice_settings.state
 		{
-			if preference.is_none() && effective.is_none() {
-				panel = panel.child("Voice (server default)");
-			} else if preference != effective {
-				panel = panel.child(format!(
-					"Saved: {}; effective: {}",
-					preference.as_ref().map_or("Server default", WireText::as_str),
-					effective.as_ref().map_or("Server default", WireText::as_str)
-				));
-			}
-
 			for (index, voice) in voices.iter().enumerate() {
 				let owner = work.to_owned();
-				let selected = Some(voice) == effective.as_ref();
+				let selected = &voice.voice == selected;
 				let label =
-					format!("{}{}", voice.as_str(), if selected { " (current)" } else { "" });
-				let voice = voice.clone();
+					format!("{}{}", voice.name.as_str(), if selected { " (current)" } else { "" });
+				let voice = voice.voice.clone();
 				let epoch = self.voice_settings.epoch;
 
 				panel = panel.child(mcp_forms::mcp_button(
@@ -360,13 +350,8 @@ fn feedback(
 		(
 			Some(voice),
 			Some(Ok(AgentCommandResponse::Accepted { .. })),
-			AgentVoiceSettingsResult::Available { effective, preference, .. },
-		) if preference.as_ref() == Some(voice) =>
-			if effective.as_ref() == Some(voice) {
-				Feedback::success("Saved.")
-			} else {
-				Feedback::info("Saved. Project settings select a different voice.")
-			},
+			AgentVoiceSettingsResult::Available { selected, .. },
+		) if selected == voice => Feedback::success("Account voice saved."),
 		(Some(_), Some(Ok(AgentCommandResponse::Rejected { .. })), _) =>
 			Feedback::error("Change rejected. Refresh before retrying."),
 		(Some(_), _, _) => Feedback::warning("Save unconfirmed. Refresh before retrying."),

@@ -756,7 +756,7 @@ impl AgentClient {
 		}
 	}
 
-	/// Read the current task's voice catalog and effective preference.
+	/// Read the connected account's voice catalog and selection.
 	pub async fn voice_settings(
 		&self,
 		work_id: EntityId,

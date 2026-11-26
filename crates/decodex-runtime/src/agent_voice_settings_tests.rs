@@ -53,27 +53,16 @@ fn fixture_with_policy(
 		while let Some(line) = lines.next_line().await.unwrap() {
 			let request: Value = serde_json::from_str(&line).unwrap();
 			let saved = count.load(Ordering::SeqCst) > 0;
-			let version = if saved { "v2" } else { "v1" };
 			let mut response = match request["method"].as_str().unwrap() {
 				"configRequirements/read" => policy.clone(),
-				"thread/read" =>
-					serde_json::json!({"result":{"thread":{"id":"thread","cwd":"/project"}}}),
-				"config/read" if saved && fail_readback =>
+				"account/voiceSettings/read" if saved && fail_readback =>
 					serde_json::json!({"error":{"code":-32_603,"message":"read unavailable"}}),
-				"config/read" =>
-					serde_json::json!({"result":{"config":{"realtime":{"voice":"maple"}},"layers":[{
-						"name":{"type":"user","file":"/home/config.toml"},"version":version,
-						"config":{"realtime":{"voice":if saved {"juniper"} else {"cove"}}}
-					}]}}),
-				"thread/realtime/listVoices" =>
-					serde_json::json!({"result":{"voices":{"v1":["juniper","maple","cove"],"v3":["juniper","maple","cove"],"defaultV1":"cove"}}}),
-				"config/batchWrite" => {
-					assert_eq!(request["params"]["expectedVersion"], version);
-					assert_eq!(request["params"]["reloadUserConfig"], false);
-
+				"account/voiceSettings/read" =>
+					serde_json::json!({"result":{"selected": if saved {"juniper"} else {"cove"}, "voices":[{"name":"Juniper","voice":"juniper"},{"name":"Cove","voice":"cove"}]}}),
+				"account/voiceSettings/write" => {
+					assert_eq!(request["params"], serde_json::json!({"voice":"juniper"}));
 					count.fetch_add(1, Ordering::SeqCst);
-
-					serde_json::json!({"result":{"filePath":"/home/config.toml","version":"v2","status":"okOverridden"}})
+					serde_json::json!({"result":{}})
 				},
 				other => panic!("unexpected native action {other}"),
 			};
@@ -90,7 +79,7 @@ fn fixture_with_policy(
 }
 
 #[tokio::test]
-async fn voice_settings_bind_source_version_and_report_uncertain_readback() {
+async fn voice_settings_bind_account_observation_and_report_uncertain_readback() {
 	for fail_readback in [false, true] {
 		let (client, writes, task) = fixture(fail_readback);
 		let read_source = || future::ready(Some(source(client.clone(), 1)));
@@ -124,14 +113,13 @@ async fn voice_settings_bind_source_version_and_report_uncertain_readback() {
 		assert_eq!(writes.load(Ordering::SeqCst), 1);
 
 		if !fail_readback {
-			let AgentVoiceSettingsResult::Available { effective, preference, .. } =
+			let AgentVoiceSettingsResult::Available { selected, .. } =
 				agent_voice_settings::read(read_source).await
 			else {
 				panic!("readback")
 			};
 
-			assert_eq!(effective.unwrap().as_str(), "maple");
-			assert_eq!(preference.unwrap().as_str(), "juniper");
+			assert_eq!(selected.as_str(), "juniper");
 		}
 
 		task.abort();

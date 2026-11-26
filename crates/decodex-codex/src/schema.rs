@@ -873,10 +873,17 @@ mod tests {
 		let realtime_start = super::read_json(directory.join("v2/ThreadRealtimeStartParams.json"))
 			.expect("realtime start schema");
 
-		assert!(
-			realtime_start["properties"].get("voice").is_some(),
-			"thread/realtime/start must accept the voice selected for the thread"
-		);
+		assert!(realtime_start["properties"].get("voice").is_none());
+		for method in ["account/voiceSettings/read", "account/voiceSettings/write"] {
+			assert!(contract.advertises_request(method), "missing {method}");
+		}
+		let read =
+			super::read_json(directory.join("v2/AccountVoiceSettingsReadResponse.json")).unwrap();
+		assert_eq!(read["properties"]["selected"]["type"], "string");
+		assert_eq!(read["properties"]["voices"]["type"], "array");
+		let write =
+			super::read_json(directory.join("v2/AccountVoiceSettingsWriteParams.json")).unwrap();
+		assert_eq!(write["required"], serde_json::json!(["voice"]));
 		assert!(evidence.supports_standalone_tool_output());
 
 		contract.check_conversation_contract().expect("ordinary conversation contract");

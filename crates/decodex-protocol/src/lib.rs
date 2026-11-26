@@ -174,7 +174,7 @@ pub use self::{
 	agent_usage_estimate::{
 		AgentUsageEstimateResult, ApiCostEstimate, ThreadUsageEstimate, ThreadUsageEstimateGroup,
 	},
-	agent_voice_settings::AgentVoiceSettingsResult,
+	agent_voice_settings::{AgentVoiceOption, AgentVoiceSettingsResult},
 	client::{
 		AccountClient, AccountCommandResponse, AccountLoginClient, AgentClient,
 		AgentCommandResponse, ClientFailure, ClientProfile, DoctorClient, ProfileKind,
@@ -294,7 +294,7 @@ pub use work_portfolio::{MAX_WORK_DETAIL_BYTES, WORK_DETAIL_PAGE_BYTES, WorkDeta
 use serde::{Deserialize, Serialize};
 
 /// The only protocol generation and revision accepted by this build.
-pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 4, minor: 12 };
+pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 4, minor: 13 };
 
 /// A version of the Decodex application protocol.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Deserialize, Serialize)]

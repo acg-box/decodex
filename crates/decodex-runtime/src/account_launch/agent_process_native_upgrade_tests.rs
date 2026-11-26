@@ -9,7 +9,7 @@ use crate::account_launch::agent_process::native_tests::{
 
 #[tokio::test]
 #[ignore = "requires DECODEX_TEST_PREVIOUS_CODEX_BINARY and DECODEX_TEST_CODEX_BINARY"]
-async fn installed_runtime_upgrade_preserves_history_paused_goal_and_voice() {
+async fn installed_runtime_upgrade_preserves_history_and_paused_goal_with_legacy_voice() {
 	time::timeout(Duration::from_secs(45), qualify()).await.expect("native upgrade fixture");
 }
 
@@ -89,14 +89,14 @@ async fn qualify() {
 		serde_json::to_value(goal).expect("native upgrade fixture")
 	);
 
-	let voice = current
-		.client
-		.realtime_voice_settings(home.path().to_str().expect("native upgrade fixture"))
-		.await
-		.expect("native upgrade fixture");
-
-	assert_eq!(voice.preference.as_deref(), Some("juniper"));
-	assert_eq!(voice.effective.as_deref(), Some("juniper"));
+	// Upgrading an isolated signed-out account must not publish its old local voice.
+	assert!(matches!(
+		current.client.realtime_voice_settings().await,
+		Err(decodex_codex::app_server_client::ClientError::Remote(_))
+	));
+	assert!(
+		fs::read_to_string(home.path().join("config.toml")).unwrap().contains("voice=\"juniper\"")
+	);
 	assert_eq!(requests.load(Ordering::Acquire), 1, "Migration must not replay model work");
 
 	drop(current);

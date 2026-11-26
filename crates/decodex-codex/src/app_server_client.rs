@@ -35,7 +35,6 @@ mod provider_recovery;
 mod provider_wait;
 mod read_state;
 mod realtime_preferences;
-mod realtime_settings;
 mod recovery_auth;
 mod resume;
 mod sample;
@@ -89,7 +88,7 @@ pub use self::{
 	prompt_edit::PromptEditCandidate,
 	provider_recovery::NativeProviderMismatch,
 	read_state::{NativeReadState, NativeUnreadPosition, is_thread_read_state_update},
-	realtime_preferences::{NativeVoiceSettings, is_realtime_voice_write},
+	realtime_preferences::{NativeVoiceOption, NativeVoiceSettings},
 	recovery_auth::NativeRecoveryAuth,
 	sample::{
 		MAX_SAMPLE_OUTPUT_BYTES, MAX_SAMPLE_PROMPT_BYTES, NativeThreadSample,

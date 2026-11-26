@@ -2183,7 +2183,7 @@ pub enum QueryPayload {
 		/// Owning task.
 		work_id: EntityId,
 	},
-	/// Read the current native voice catalog and effective project preference.
+	/// Read the connected account's voice catalog and selection.
 	GetAgentVoiceSettings {
 		/// Owning task.
 		work_id: EntityId,

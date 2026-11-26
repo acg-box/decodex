@@ -32,7 +32,7 @@ fn fixture() -> (TempDir, ClientProfile, JoinHandle<Vec<AgentActionDto>>) {
 }
 
 #[gpui::test]
-fn voice_picker_sends_once_then_reads_effective_override_after_lost_reply(cx: &mut TestAppContext) {
+fn voice_picker_sends_once_then_reads_account_selection_after_lost_reply(cx: &mut TestAppContext) {
 	let (_directory, profile, server) = fixture();
 	let (view, visual) = cx.add_window_view(|_, cx| {
 		let surface = cx.new(AgentSurface::new);
@@ -68,7 +68,7 @@ fn voice_picker_sends_once_then_reads_effective_override_after_lost_reply(cx: &m
 	surface.read_with(visual,|s,_| {
         assert!(s.voice_settings.task.is_none());
         assert!(s.voice_settings.feedback.contains("unconfirmed"));
-        assert!(matches!(&s.voice_settings.state,Some(AgentVoiceSettingsResult::Available {effective:Some(e),preference:Some(p),..}) if e.as_str()=="maple"&&p.as_str()=="juniper"));
+        assert!(matches!(&s.voice_settings.state,Some(AgentVoiceSettingsResult::Available {selected,..}) if selected.as_str()=="juniper"));
         assert!(s.voice.is_none());
     });
 }
@@ -207,9 +207,13 @@ async fn serve(listener: UnixListener) -> Vec<AgentActionDto> {
 		let state = AgentVoiceSettingsResult::Available {
 			work_id: EntityId::new("root").unwrap(),
 			review_token: WireText::new(if index == 0 { "a" } else { "b" }.repeat(64)).unwrap(),
-			voices: vec![WireText::new("juniper").unwrap(), WireText::new("maple").unwrap()],
-			effective: Some(WireText::new("maple").unwrap()),
-			preference: Some(WireText::new(if index == 0 { "maple" } else { "juniper" }).unwrap()),
+			voices: [("juniper", "Juniper"), ("maple", "Maple")]
+				.map(|(voice, name)| decodex_protocol::AgentVoiceOption {
+					voice: WireText::new(voice).unwrap(),
+					name: WireText::new(name).unwrap(),
+				})
+				.into(),
+			selected: WireText::new(if index == 0 { "maple" } else { "juniper" }).unwrap(),
 		};
 		let result = ServerMessage::QueryResult(QueryResultEnvelope {
 			version: CURRENT_VERSION,
