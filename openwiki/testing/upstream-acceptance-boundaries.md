@@ -56,6 +56,8 @@ sources:
     resource: repo://codex-runtime.lock.json
   - id: openwiki-source-091210eb4586f0ba4c9d751d
     resource: repo://crates/decodex-account-login/src/system_proxy.rs
+  - id: openwiki-source-d0b9aaf952250307abc4342e
+    resource: repo://crates/decodex-codex/src/app_server_client/archive.rs
   - id: openwiki-source-02bd3cfc9d4db9d1d1d8fd59
     resource: repo://crates/decodex-codex/src/app_server_client/context_preferences_tests.rs
   - id: openwiki-source-3a4ade0e41a5f18ea8eb1bf2
@@ -78,6 +80,8 @@ sources:
     resource: repo://crates/decodex-components/tests/development.rs
   - id: openwiki-source-08dbb31668b58707418687d2
     resource: repo://crates/decodex-components/tests/official_release.rs
+  - id: openwiki-source-95a7168e447de14b4b758f16
+    resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_archive_tests.rs
   - id: openwiki-source-9e21e877b2d7ad96b0a4d637
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_capacity_tests.rs
   - id: openwiki-source-aee901c2feaee74f17637372
@@ -232,10 +236,10 @@ sources:
     resource: repo://scripts/macos/version_codex_source.py
   - id: openwiki-source-e201f60894c32a914dac99ee
     resource: repo://scripts/vnext/run_native_regression.py
-generated: { by: "codex", at: "2026-11-26T05:10:44.400Z" }
+generated: { by: "codex", at: "2026-11-26T20:21:35.384Z" }
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-26T05:10:44.400Z
+    at: 2026-11-26T20:21:35.384Z
 ---
 
 # Upstream integration acceptance boundaries
@@ -266,6 +270,8 @@ Workflow-only maintenance uses the checkpoint and portfolio checks in `cargo +st
 Read the development lock, [current source review](../../automations/upstream/current-review.json) and [current qualification](../../automations/upstream/qualification.json) for the fixed target, exact CLI/helpers/schema, executed identities and limits. Keep source review, source-test execution, exact production-artifact tests, delivery and installed acceptance separate. Current run counts and hashes belong in those records, not repeated across Wiki pages.
 
 The retained MCP fixture reads same-name registrations from two environments through the signed CLI and executor. The voice start fixture checks that V3 calls defer voice selection to the backend and honor managed policy. The cold history fixture reads native turn boundaries and retained tool context before continuing the conversation. The [current qualification](../../automations/upstream/qualification.json) identifies the executions for the selected artifact.
+
+The desktop sends only the root thread ID when it requests native deletion. The [fork fixture](../../crates/decodex-runtime/src/account_launch/agent_process_native_fork_tests.rs) checks that Codex refuses to delete a parent with a retained attachment. The [deletion fixture](../../crates/decodex-runtime/src/account_launch/agent_process_native_archive_tests.rs) checks that deleting an eligible conversation removes its local history and preserves an independent conversation after restart. Both fixtures use disposable native homes.
 
 The compaction failure fixture checks that the accepted prompt appears once after a cold read and that the read sends no new inference request. The Goal fixture reopens the native session, reads the persisted Goal and checks that the provider received no inference request.
 

@@ -107,11 +107,11 @@
       "completedRunId": "957e1b8b-b0a1-456e-be0a-b196c4e1a085"
     },
     "/openwiki/integrations/subscription-voice.md": {
+      "gitHead": "0f8012f62ae057f0332e01eb5c49c811c35fe497",
+      "sourceFingerprint": "sha256:f22c0e928e3d751b69fdf4414d0a3cc2c52e0f70db73b4b41ccb2107e8f3ed14",
       "pageVersion": "sha256:fc60fba5e880cbaeac2d7c9893c3beb67cdf10c76e754755ce6da5e90e8b14d6",
       "completedBy": "codex",
-      "completedRunId": "2e5b2cb6-ae87-4676-a1ab-5dca4210c868",
-      "gitHead": "0f8012f62ae057f0332e01eb5c49c811c35fe497",
-      "sourceFingerprint": "sha256:f22c0e928e3d751b69fdf4414d0a3cc2c52e0f70db73b4b41ccb2107e8f3ed14"
+      "completedRunId": "2e5b2cb6-ae87-4676-a1ab-5dca4210c868"
     },
     "/openwiki/integrations/tools-plugins-and-apps.md": {
       "gitHead": "45e6cf16b5842d572694cbd7f7a373fadbaa4a51",
@@ -128,11 +128,11 @@
       "completedRunId": "f7608b7d-9544-468e-83d0-b3b48ee99e02"
     },
     "/openwiki/operations/codex-upstream-autopilot.md": {
+      "gitHead": "0f8012f62ae057f0332e01eb5c49c811c35fe497",
+      "sourceFingerprint": "sha256:f22c0e928e3d751b69fdf4414d0a3cc2c52e0f70db73b4b41ccb2107e8f3ed14",
       "pageVersion": "sha256:2b2bd1377d5db35c739541d821817006c8e99f1bb897ba93bf95cfbf2d5c42f4",
       "completedBy": "codex",
-      "completedRunId": "2e5b2cb6-ae87-4676-a1ab-5dca4210c868",
-      "gitHead": "0f8012f62ae057f0332e01eb5c49c811c35fe497",
-      "sourceFingerprint": "sha256:f22c0e928e3d751b69fdf4414d0a3cc2c52e0f70db73b4b41ccb2107e8f3ed14"
+      "completedRunId": "2e5b2cb6-ae87-4676-a1ab-5dca4210c868"
     },
     "/openwiki/operations/commands-and-validation.md": {
       "gitHead": "ca565aaf3e5dcd3928d78d057bc556ed132a4ca2",
@@ -219,11 +219,11 @@
       "completedRunId": "446a8a3f-6d00-456b-8817-b4bfbc5a0ae8"
     },
     "/openwiki/testing/upstream-acceptance-boundaries.md": {
-      "pageVersion": "sha256:986e9bf5f0a38da8c58fddb9ff142f47a1ca8908caee6d82591d0b2289e8d75d",
+      "pageVersion": "sha256:5be2d2d73b3b4c100f97530974f60de3db9aec372128db9a68a4a3e7670364da",
       "completedBy": "codex",
-      "completedRunId": "2e5b2cb6-ae87-4676-a1ab-5dca4210c868",
-      "gitHead": "0f8012f62ae057f0332e01eb5c49c811c35fe497",
-      "sourceFingerprint": "sha256:f22c0e928e3d751b69fdf4414d0a3cc2c52e0f70db73b4b41ccb2107e8f3ed14"
+      "completedRunId": "d650767a-5f5b-4fcf-b0d3-208959f5f827",
+      "gitHead": "fd9d99909a41990fa36e00b59f82ee945c7bb75f",
+      "sourceFingerprint": "sha256:0fa85465e1d66415acb6ffcca8d41daa1a2fa9bbc1b6c974034f4174c367d515"
     },
     "/openwiki/workflows/approvals-and-native-ownership.md": {
       "gitHead": "fac5349d14a3f0219d6e1817c3d4737539be5f5e",

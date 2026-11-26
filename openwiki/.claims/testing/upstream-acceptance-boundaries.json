@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:986e9bf5f0a38da8c58fddb9ff142f47a1ca8908caee6d82591d0b2289e8d75d",
+  "pageVersion": "sha256:5be2d2d73b3b4c100f97530974f60de3db9aec372128db9a68a4a3e7670364da",
   "claims": [
     {
       "id": "claim_2dd4ad01dd984b80a22d9cb9c9bfd397",
@@ -116,7 +116,7 @@
       "evidence": [
         {
           "resource": "repo://codex-runtime.lock.json",
-          "version": "repo-file-v1:sha256:8a0236f3a2d3c0998183e938c1e7f5fb94346315bfb7a4431d9f6f4f879b4ffb"
+          "version": "repo-file-v1:sha256:bfd9f4abc4aaf252d50fdb3dcbe90e3d4f1d34b74c6eb93b1f4d9a221f91bfd9"
         },
         {
           "resource": "repo://crates/decodex-components/tests/development.rs",
@@ -258,7 +258,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:7717da451c3861ebc6c16d4e6b6019e8127958032d742379b0098a4a6aecbda4"
+          "version": "repo-file-v1:sha256:0b62e7c62593435054c8869f94a6a0106c826b6f8daf456d7299a458fea67e7b"
         }
       ]
     },
@@ -276,7 +276,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:7717da451c3861ebc6c16d4e6b6019e8127958032d742379b0098a4a6aecbda4"
+          "version": "repo-file-v1:sha256:0b62e7c62593435054c8869f94a6a0106c826b6f8daf456d7299a458fea67e7b"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/process.rs",
@@ -304,7 +304,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:7717da451c3861ebc6c16d4e6b6019e8127958032d742379b0098a4a6aecbda4"
+          "version": "repo-file-v1:sha256:0b62e7c62593435054c8869f94a6a0106c826b6f8daf456d7299a458fea67e7b"
         }
       ]
     },
@@ -338,7 +338,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:7717da451c3861ebc6c16d4e6b6019e8127958032d742379b0098a4a6aecbda4"
+          "version": "repo-file-v1:sha256:0b62e7c62593435054c8869f94a6a0106c826b6f8daf456d7299a458fea67e7b"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/tests/capacity.rs",
@@ -777,14 +777,6 @@
       "statement": "The reusable exact-artifact startup fixture checks prompt CLI exit with either a missing .env or a directory at .env; this does not establish provider, account or installed-app acceptance.",
       "evidence": [
         {
-          "resource": "repo://automations/upstream/retained-contracts.json",
-          "version": "repo-file-v1:sha256:ee4e18904b70ac40f9cc47dbccf770329f1fab7797c9daa79ea3f5d2ad2a800e"
-        },
-        {
-          "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:7717da451c3861ebc6c16d4e6b6019e8127958032d742379b0098a4a6aecbda4"
-        },
-        {
           "resource": "repo://crates/decodex-runtime/tests/native_qualification/dotenv_startup.py",
           "version": "repo-file-v1:sha256:f6a0a6294eff68dece725d15ebc189e23c322ab7166ce76eddc2a7e94f9b6b33"
         }
@@ -864,7 +856,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:7717da451c3861ebc6c16d4e6b6019e8127958032d742379b0098a4a6aecbda4"
+          "version": "repo-file-v1:sha256:0b62e7c62593435054c8869f94a6a0106c826b6f8daf456d7299a458fea67e7b"
         }
       ]
     },
@@ -874,7 +866,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:7717da451c3861ebc6c16d4e6b6019e8127958032d742379b0098a4a6aecbda4"
+          "version": "repo-file-v1:sha256:0b62e7c62593435054c8869f94a6a0106c826b6f8daf456d7299a458fea67e7b"
         }
       ]
     },
@@ -888,7 +880,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:7717da451c3861ebc6c16d4e6b6019e8127958032d742379b0098a4a6aecbda4"
+          "version": "repo-file-v1:sha256:0b62e7c62593435054c8869f94a6a0106c826b6f8daf456d7299a458fea67e7b"
         }
       ]
     },
@@ -898,7 +890,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:7717da451c3861ebc6c16d4e6b6019e8127958032d742379b0098a4a6aecbda4"
+          "version": "repo-file-v1:sha256:0b62e7c62593435054c8869f94a6a0106c826b6f8daf456d7299a458fea67e7b"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_lookup_tests.rs",
@@ -917,10 +909,6 @@
         {
           "resource": "repo://automations/upstream/retained-contracts.json#L5094-L5117",
           "version": "repo-lines-v1:sha256:15a7766fd6b16e9fb20aa3a6f82fc136df3116ea98f78303c0456debf9ad3b52:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRhZWQyYjBmMmI3NDczZjYwMDRjY2RjYTc0M2M0NjgxMmFhODJjN2IwYjZjY2Y4MTc5YmY3NDZhMDdkYmQ4N2IiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFmMGNkYjk3MmE3YmZiN2VkMjQ2ZjlmZjY3MjM4NWU1NWY0OTY4ZmMxMTA0M2RjNWI2ODRkNTFkZmEzMWRiY2IiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImMxNzBlYTdmMTlmMzdmNzdlM2RjYTRiYmJiMmI2NTNjMjQ5M2E3ZDAwNjYzMWQ5NDIxY2Q1NmZlMzNhZmRmMDIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImRiNGMyZjg3Njk1MjAxODQ0ZjE1ZmY1OTkxZTRmZDA0ZWVlOGE3ZjVmNTA5MjRhZjNhY2Y3Y2UxMGFlMTA1YjYifQ"
-        },
-        {
-          "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:7717da451c3861ebc6c16d4e6b6019e8127958032d742379b0098a4a6aecbda4"
         }
       ]
     },
@@ -935,10 +923,6 @@
         {
           "resource": "repo://automations/upstream/retained-contracts.json#L5118-L5143",
           "version": "repo-lines-v1:sha256:d10619149ff00ef05da2959d079e35064a8c22a1cb58c8be58e3f9490d14c10e:eyJzZWxlY3RlZExpbmVDb3VudCI6MjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRkMTVmYjk1ODRiMjg1MTU3ZjFjYzYwYWNhZmJjNDJkZDg0NWJjNzY3YzNmNjExZTI3ZWI5NmE2MDQyNTc5M2QiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE4Y2ZkYTkxYTFmMzNmZjVjOWRmMjhkNDBlMjEyZGE2NWE5OGNlMGE3ZGY0ODM3ZTVhZDk5NTg5ZTU2MWUwNzUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImEwMzkyZjgwNGQwYWE5MzRhNzRiNDcyZjUzNWM3YzAyOGE1Zjg1MWYyN2Y1ZmQ4YmMyNTJjYWUxNDg1ZDQ4MmYifQ"
-        },
-        {
-          "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:7717da451c3861ebc6c16d4e6b6019e8127958032d742379b0098a4a6aecbda4"
         }
       ]
     },
@@ -952,7 +936,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:7717da451c3861ebc6c16d4e6b6019e8127958032d742379b0098a4a6aecbda4"
+          "version": "repo-file-v1:sha256:0b62e7c62593435054c8869f94a6a0106c826b6f8daf456d7299a458fea67e7b"
         }
       ]
     },
@@ -962,7 +946,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:7717da451c3861ebc6c16d4e6b6019e8127958032d742379b0098a4a6aecbda4"
+          "version": "repo-file-v1:sha256:0b62e7c62593435054c8869f94a6a0106c826b6f8daf456d7299a458fea67e7b"
         }
       ]
     },
@@ -980,7 +964,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:7717da451c3861ebc6c16d4e6b6019e8127958032d742379b0098a4a6aecbda4"
+          "version": "repo-file-v1:sha256:0b62e7c62593435054c8869f94a6a0106c826b6f8daf456d7299a458fea67e7b"
         }
       ]
     },
@@ -1007,16 +991,12 @@
       "statement": "A failed retained consumer check keeps the development lock on the previously qualified runtime while source review advances. Earlier worker-permission source checks retain their original limits. HumanCommand remains unsupported and user-deferred.",
       "evidence": [
         {
-          "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:940fdb473d2cd8856a74f76d5a13778ec56ad146782e7b7a7d4dd5d3e8c7e912"
+          "resource": "repo://automations/upstream/prompts/maintainer.md#L49-L55",
+          "version": "repo-lines-v1:sha256:932105c8d56230679988b3f07cf2f52db482e7884ca117180eed86b79bf0831c:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMzE4MWUyYjM5Njg2YjA2NGJlZmNiNzY5NzBjZTI4Y2NiNTA1MDY1NmMwYTc3MzU1NDE5ZGQ3N2ZmMDcyNTEzMiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYmJjZDEzNWI2ZjJmZGVmZjY5NTRkYjUwMGExNDAzMTZkNzAzYzQ2MmMxNTlhMzkzNGViNjJhNjk2OGViOGZhYyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYjEzZDVmYzRiOGI0NzFlYjI5ZDNlMWNmMzNiMWZhOGJlOTUyZTRiMTdjYWYyOGM3MWFlNzU1YzhkODVhYWUwMCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYTU0MjY4N2M2OTYxYTFmYjU1YmU3NzJiYjFlYjZmY2M0NWI4YWJmZGIwZjYwODYzNzY5Njc5YTdmM2I0ZDg5ZCJ9"
         },
         {
           "resource": "repo://automations/upstream/retained-contracts.json",
           "version": "repo-file-v1:sha256:ee4e18904b70ac40f9cc47dbccf770329f1fab7797c9daa79ea3f5d2ad2a800e"
-        },
-        {
-          "resource": "repo://codex-runtime.lock.json",
-          "version": "repo-file-v1:sha256:8a0236f3a2d3c0998183e938c1e7f5fb94346315bfb7a4431d9f6f4f879b4ffb"
         }
       ]
     },
@@ -1096,7 +1076,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:7717da451c3861ebc6c16d4e6b6019e8127958032d742379b0098a4a6aecbda4"
+          "version": "repo-file-v1:sha256:0b62e7c62593435054c8869f94a6a0106c826b6f8daf456d7299a458fea67e7b"
         }
       ]
     },
@@ -1106,7 +1086,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:7717da451c3861ebc6c16d4e6b6019e8127958032d742379b0098a4a6aecbda4"
+          "version": "repo-file-v1:sha256:0b62e7c62593435054c8869f94a6a0106c826b6f8daf456d7299a458fea67e7b"
         },
         {
           "resource": "repo://crates/decodex-codex/src/app_server_client/thread_fork.rs#L78-L118",
@@ -1312,7 +1292,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:940fdb473d2cd8856a74f76d5a13778ec56ad146782e7b7a7d4dd5d3e8c7e912"
+          "version": "repo-file-v1:sha256:8b97ba68b78bacfe33c6a1ed87426af78e0e29d24e0173b2443b4c51937e2254"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_discovery_tests.rs",
@@ -1483,10 +1463,28 @@
           "version": "repo-file-v1:sha256:a0b3d72d748ecc6af2aacb00c472c4cc6f2f2c8631a8db9f067a35385589882f"
         }
       ]
+    },
+    {
+      "id": "claim_547b50b5d18c4063a5f1abe29ebd4e99",
+      "statement": "Decodex requests native deletion with a root thread ID. Isolated fixtures check refusal while a parent has an attached branch and verify that deletion of an eligible conversation preserves independent history after restart.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-codex/src/app_server_client/archive.rs#L368-L378",
+          "version": "repo-lines-v1:sha256:c56e56656fee9d468fe0eebf84b1b453881f50633dce76b6fb011529771ac9a9:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgyNGQ0YmUxZjhjZTRiOWIzYzhjM2M5ODljZDY0NjVhOGZjODFkNzgwMzEzOTBkMGI2MGZlMTIwZjI3YTBjMTMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJmN2JkNTI0MjhlM2EwZTdjMmUwZjU2YWI4ODU1ZmM4Nzk0ZTlhMGM5MjQxMjgxYjAzMzVkNjBlNzRiMGNlYTciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjJkNzE3MDMxZWFmMTRmYTk1YmQ4YmFkZGVkNWMxZDlmMGE4YTNiYmQyMDEzNjJmZjc0YzUwZDk2ODU5MzEyMzYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjYyMmUwZTMzOWFjNWViNzZiN2ViZGI3ZTI2OWNkOTQ0YmMxYTVmYmM5M2FmZDJiZTlhYjU2ZmQ0MDVmNzMzMjgifQ"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_archive_tests.rs#L343-L371",
+          "version": "repo-lines-v1:sha256:022e75bb5f84bf5600ebda823ea90d4f1ce5b90aee3b1f776cffdc9a2fa718fe:eyJzZWxlY3RlZExpbmVDb3VudCI6MjksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNkZTY0ZmIwMzk1MmE4OGYzYjllMGQzZjVjYmEyMjY4N2Y5ZjBmNzUzM2I3MTM1YTkzYTdjY2IwN2Y2N2FhYzQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg1YTNmNzc1ZDFiODMzZTk5ODJkYjY3Yzg3Njg5ZThiMmU1ZTdlNWY0ZTg1ODQ2NWNlMTZiMTBkOTI2MDdkYjUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQ2NDQ3MTY4OGZjZjI3M2EzZjAzYWM3YjZhMzgwODg1NGE4MGE2ZmExODZlYmI0NTlhYTE2NWJhNjg4MDUyOTYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijc3NzJlOTI3NWNiNmEyNGZmYTg5NTJjY2E3N2U2YTRhNWEyYWRlNjNjZWQ0MzUxYzZiYzU4NjBhYWZlNTIyZDEifQ"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_fork_tests.rs#L471-L496",
+          "version": "repo-lines-v1:sha256:72836124faf5b73088fdd7d006cc5a21cee314adb80388e8db36632c888e8c11:eyJzZWxlY3RlZExpbmVDb3VudCI6MjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY0ZWZjNDk0MThkMjZkY2YxMjliMjJhNmFhMjExMDhjZWVjMzc2NzdhMzJkMDhlOWQ1ZmVlMzVkZGE2NmJiOWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImI1MjZkNzYyZDE4ODRmNTMwYzNjY2VkNDhlNTk2MDlkZTMxMjcwYmYzNmZhNDNhNzkxZmRmZDNkYmMxMTJkNDMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZlM2Q0YTdlMWUzN2ZhYzA1MWJhMTRmNzhmMmZmN2EwMmEyODYyNjBlZjczMjRlMjBkZjViM2E5YmYyMjRiZGEifQ"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.9.0",
-    "at": "2026-11-26T05:10:44.400Z"
+    "at": "2026-11-26T20:21:35.384Z"
   }
 }
