@@ -3,7 +3,7 @@
   "scope": "Current Decodex upstream review, selected development artifact and stable consumer contracts.",
   "retained_contracts": {
     "path": "automations/upstream/retained-contracts.json",
-    "sha256": "66a6830ca6507dc3ab5a33aa8465162f58709acf1e4e02cadca3795b07201d7c"
+    "sha256": "02144aa22e16b7e5998a8e901da2bacf26a50eb7386c78bef07f2114f3ad658e"
   },
   "retained_contract_routes": {
     "behavior": "automations/upstream/retained-contracts.json#retained_behavior_contracts",
@@ -17,65 +17,82 @@
     "optional_decisions": "automations/upstream/retained-contracts.json#optional_decisions",
     "answer_display": "automations/upstream/retained-contracts.json#retained_answer_display"
   },
-  "source_baseline": "61cb947f057155b705dda922739663fe2c37cf65",
+  "source_baseline": "7a24022794c8bfb26f73685e5c2f7d957126daee",
   "source_review_evidence": "automations/upstream/current-review.json",
   "source_review_summary": {
-    "previous_cursor": "140815f19c05a24a70ebc273016bd54ff71ced7c",
-    "reviewed_commits": 22,
-    "fixed_target_remaining": 0
+    "previous_cursor": "7a24022794c8bfb26f73685e5c2f7d957126daee",
+    "reviewed_commits": 64,
+    "reviewed_through": "06f334aa4b053023c5b4199dde0ba9c004d64820",
+    "fixed_target_remaining": 0,
+    "selected_source": "7a24022794c8bfb26f73685e5c2f7d957126daee",
+    "candidate_qualification": "automations/upstream/qualification.json#unselected_candidate"
   },
   "qualification": "automations/upstream/qualification.json",
   "artifact": {
-    "source_commit": "61cb947f057155b705dda922739663fe2c37cf65",
-    "source_archive_sha256": "4ed75746cc62baef39e02beb841b6b3b14e932c9f8309c68ae34b353a6af1b10",
-    "schema_sha256": "f391d0fc24d1e37a4389386b3525c974cfaa2ed5ef0ce4cc446126de79d0449e",
+    "source_commit": "7a24022794c8bfb26f73685e5c2f7d957126daee",
+    "source_archive_sha256": "30798614553da4916668bc3d07af6f6309f86f0081fad647e6927cc40408adc9",
+    "schema_sha256": "bc653dcfd4b24d1d5773904e8a36ba6dc33441cb052f5fcb9376aa9e51017909",
     "components": [
       {
         "path": "CodexCLI.app/Contents/MacOS/codex",
-        "sha256": "c106420b07a54d25c4f761a2ca512ccd25982c756ad97f1f7e3a226cbf9c9d09",
-        "bytes": 289991120,
+        "sha256": "aa76f213261834a45bc21143fb29fbc2a5e1ec65b93d83a6c911f37dc1cef4a4",
+        "bytes": 273492848,
         "strict_signature_verified": true,
-        "pinned_commit_embedded": true
+        "pinned_commit_embedded": true,
+        "signature_identifier": "box.acg.decodex.codex-runtime",
+        "cdhash": "eb06f7a6728e6a0b4020e4eafa66ce6d90458fc6",
+        "matches_prior_signing_team": true
       },
       {
         "path": "bin/codex-code-mode-host",
-        "sha256": "1206bcbbc6593ea64125942088e4612174dd9e1fc5c87ed6bd3e48348bfd07f0",
-        "bytes": 62134064,
+        "sha256": "32363c039e2f3e3379bdff6dcd3b9cbeac0b133ba7a443973dab0ba0ca875adf",
+        "bytes": 59315936,
         "strict_signature_verified": true,
-        "pinned_commit_embedded": true
+        "pinned_commit_embedded": true,
+        "signature_identifier": "box.acg.decodex.codex-code-mode-host",
+        "cdhash": "726e863a69a4a99e493c700516db59cfd8605f01",
+        "matches_prior_signing_team": true
       },
       {
         "path": "bin/codex-exec-server",
-        "sha256": "fb491300a2a60320e36cd259a1da172ce1a54c350194b584702c161807867e31",
-        "bytes": 65591856,
+        "sha256": "8dc26503abe10828d1d595b9c027acab9305acda12d55efa73f688a21ddfefa3",
+        "bytes": 63593600,
         "strict_signature_verified": true,
-        "pinned_commit_embedded": true
+        "pinned_commit_embedded": true,
+        "signature_identifier": "box.acg.decodex.codex-exec-server",
+        "cdhash": "ffda2b116ea5293c4c5cccc60209fa058f8b8f5b",
+        "matches_prior_signing_team": true
       },
       {
         "path": "codex-path/rg",
-        "sha256": "8cb251f880c131b3cf2aea28052c9fcab3d9df98cde1157043a8378d91354c82",
+        "sha256": "6195e0823d2d9f51813ab4d7c0f2d9d072e2b83021e0b42a8baa2466a2a1479a",
         "bytes": 4009552,
         "strict_signature_verified": true,
-        "pinned_commit_embedded": null
+        "pinned_commit_embedded": null,
+        "signature_identifier": "box.acg.decodex.rg",
+        "cdhash": "08026e3270012f6a2b682ed4dd39074c0ec5ea96",
+        "matches_prior_signing_team": true
       }
     ],
     "launcher_sha256": "50ab38ba21d0d9f8346f32f41848382f15b556190f3c7a07e885a4fb73e379c8"
   },
   "retained_native_consumers": "automations/upstream/qualification.json#retained_consumers",
-  "direct_protocol_regressions": "automations/upstream/qualification.json#direct_protocol_regressions",
   "component_cache_repair": "automations/upstream/qualification.json#component_cache_repair",
-  "mcp_sharing": "automations/upstream/qualification.json#local_mcp_sharing",
-  "math_presentation": "automations/upstream/qualification.json#math_presentation",
   "validation": "automations/upstream/qualification.json#decodex_validation",
   "current_delivery": {
     "source_commit_references": [
-      "https://github.com/acg-box/decodex/commit/143852077d182d5705ab747c951e488e814de36f"
+      "https://github.com/acg-box/decodex/commit/20cc48d86ed80e9ef7e4f625016561f4be81a3b8",
+      "https://github.com/acg-box/decodex/commit/6a042909f36009d4decde3dfa930278f9dcd7c26"
     ],
     "status": "Final-head CI and merge evidence are in native receipts."
   },
   "historical_evidence": {
-    "reference": "https://github.com/acg-box/decodex/blob/319499e8bcfd4c2d48c4974338031c2d8dfb4112/automations/upstream/retained-evidence.json",
-    "limits": "Git preserves previous runtime identities, executed fixtures and qualification limits."
+    "reference": "https://github.com/acg-box/decodex/blob/f68fc37fef8b67d3e33f3f19651cb58c41ba43f5/automations/upstream/retained-evidence.json",
+    "limits": "Git retains the earlier qualification and its original limits."
   },
-  "linked_worktree_hook_inventory": "automations/upstream/qualification.json#linked_worktree_hook_inventory"
+  "prompt_revert": "automations/upstream/qualification.json#prompt_revert",
+  "mcp_sharing": "automations/upstream/qualification.json#local_mcp_sharing",
+  "math_presentation": "automations/upstream/qualification.json#math_presentation",
+  "linked_worktree_hook_inventory": "automations/upstream/qualification.json#linked_worktree_hook_inventory",
+  "direct_protocol_regressions": "automations/upstream/qualification.json#direct_protocol_regressions"
 }

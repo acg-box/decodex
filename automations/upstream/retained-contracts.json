@@ -2410,6 +2410,22 @@
       ],
       "delivery_reference": "https://github.com/acg-box/decodex/pull/2533",
       "delivery_state_source": "Read the public pull request for merge and CI state; qualification is distinct from delivery."
+    },
+    {
+      "id": "thread-scoped-realtime-voice-selection",
+      "contract": "Resolve the effective voice for the exact native thread when starting a new V3 call. The native user-layer save uses an expected configuration version. Project configuration can override the saved preference.",
+      "source_symbols": [
+        "crates/decodex-runtime/src/agent/voice.rs#start_voice",
+        "crates/decodex-codex/src/app_server_client/realtime_settings.rs#realtime_voice_for_thread",
+        "crates/decodex-codex/src/app_server_client/realtime_preferences.rs#write_realtime_voice"
+      ],
+      "qualification_checks": [
+        "crates/decodex-runtime/src/account_launch/agent_process_voice_settings_start_tests.rs#installed_native_voice_reads_project_override_and_refreshed_user_default",
+        "crates/decodex-runtime/src/account_launch/agent_process_voice_settings_start_tests.rs#installed_voice_preference_bridge_saves_absent_file_and_rejects_old_connection",
+        "crates/decodex-codex/src/schema.rs#official_schema_supports_current_consumers"
+      ],
+      "behavior_limits": "The schema check covers the per-call voice field. The native tests cover effective configuration and conditional storage. Audible playback requires separate evidence.",
+      "delivery_reference": "https://github.com/acg-box/decodex/commit/6a042909f36009d4decde3dfa930278f9dcd7c26"
     }
   ],
   "retained_account_scope": {
@@ -2656,7 +2672,13 @@
     "delivery_references": [
       "https://github.com/acg-box/decodex/commit/10d1181ec3652a429dc69d15525088c97a73fc40",
       "https://github.com/acg-box/decodex/pull/2473"
-    ]
+    ],
+    "source_account_exit": {
+      "contract": "An eligible target can replace a downgraded source login. Replacing a shared login outside the local account catalog requires confirmation of the observed source. The existing account route owns the switch.",
+      "delivery_reference": "https://github.com/acg-box/decodex/commit/fdaf8a51173ed7493d4a2cf2b18808dc58eff349",
+      "evidence": "apps/decodex-cli/tests/account_route_process.rs#route_away_from_a_downgraded_then_removed_shared_login",
+      "scope": "The original process fixture exercised the Decodex account transaction with synthetic accounts. Native token refresh remains a separate boundary."
+    }
   },
   "retained_project_agent_work": {
     "decision": "openwiki/decisions/project-agent-work.md",
@@ -4144,7 +4166,22 @@
       "installation": false,
       "release": false
     },
-    "current_scope": "The historical delivery hashes and counts below refer to PR 2494. The current schema is database/schema.sql. Historical SQL migrations and native tool-context replacement are retired; they are not reusable requirements."
+    "current_scope": "The historical delivery hashes and counts below refer to PR 2494. The current schema is database/schema.sql. Historical SQL migrations and native tool-context replacement are retired; they are not reusable requirements.",
+    "native_conversation_registration": {
+      "contract": "Registration keeps the original visible native thread ID when a conversation joins the workspace, is assigned to an Agent, or becomes an independent Agent. Existing Work authority follows the registered role after cold resume.",
+      "delivery_reference": "https://github.com/acg-box/decodex/commit/59901da43fc11b2203ae9d66a42010aa39b60858",
+      "source": [
+        "crates/decodex-runtime/src/agent/registration.rs#register_native_thread",
+        "crates/decodex-runtime/src/agent/registration.rs#validate",
+        "crates/decodex-runtime/src/agent/registration_commands.rs",
+        "database/src/agent/registration.rs"
+      ],
+      "regressions": [
+        "crates/decodex-runtime/src/account_launch/agent_process_native_registration_tests.rs#registered_and_created_agents_create_work_after_cold_resume",
+        "crates/decodex-runtime/src/account_launch/agent_process_native_registration_tests.rs#promoted_exec_discovers_and_uses_work_in_code_mode"
+      ],
+      "original_limits": "The original delivery reported three registration paths on a signed desktop. A promoted Agent completed Work, and the result survived restart. Subsequent CLI qualification uses isolated accounts and a loopback provider."
+    }
   },
   "selected_read_views": {
     "contracts": [

@@ -976,7 +976,6 @@ async fn qualify_prompt_media_directory(
 	client: &AgentClient,
 	work_id: &EntityId,
 	thread_id: &WireText,
-	home: &Path,
 ) {
 	let relative = PromptDraft::new(vec![
 		serde_json::json!({"type":"localImage","path":"images/photo.png","detail":"original"}),
@@ -989,7 +988,10 @@ async fn qualify_prompt_media_directory(
 
 	assert_eq!(
 		resolved.parts()[0]["path"],
-		home.join("images/photo.png").to_str().expect("native recap fixture")
+		fixture_working_directory()
+			.join("images/photo.png")
+			.to_str()
+			.expect("native recap fixture")
 	);
 	assert!(
 		client
@@ -1012,10 +1014,19 @@ async fn qualify_native_prompt_revert(
 	client: &AgentClient,
 	home: &Path,
 ) {
+	native
+		.request(
+			"thread/settings/update",
+			serde_json::json!({"threadId":thread,"approvalsReviewer":"auto_review"}),
+		)
+		.await
+		.expect("select the native reviewer before revert");
 	let before = native
 		.request("thread/resume", serde_json::json!({"threadId":thread,"excludeTurns":true}))
 		.await
 		.expect("native settings");
+	assert_eq!(before["approvalsReviewer"], "auto_review");
+
 	let headers = native.thread_turns_since(thread, None).await.expect("all native turns");
 	let selected = headers.last().expect("last input")["id"].as_str().expect("turn id");
 	let items = native.thread_read_turn_items(thread, selected).await.expect("native input");
@@ -1116,7 +1127,7 @@ async fn qualify_native_prompt_revert(
 
 	assert_eq!(requests.load(Ordering::Acquire), count, "acknowledgement must not send the draft");
 
-	qualify_prompt_media_directory(client, &work_id, &thread_id, home).await;
+	qualify_prompt_media_directory(client, &work_id, &thread_id).await;
 
 	assert_eq!(requests.load(Ordering::Acquire), count, "media directory queries do not infer");
 

@@ -4,7 +4,7 @@ title: "Codex upstream maintenance"
 openwiki_generated: true
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-18T17:19:36.083Z
+    at: 2026-11-25T00:06:30.155Z
 sources:
   - id: openwiki-source-8037e2358a2c4f9b2c722a11
     resource: repo://AGENTS.md
@@ -68,7 +68,7 @@ sources:
     resource: repo://scripts/macos/stage_decodex_app.sh
   - id: openwiki-source-1295465b51f4c563c25d3f43
     resource: repo://scripts/macos/version_codex_source.py
-generated: { by: "codex", at: "2026-11-18T17:19:36.083Z" }
+generated: { by: "codex", at: "2026-11-25T00:06:30.155Z" }
 ---
 
 
@@ -78,8 +78,8 @@ generated: { by: "codex", at: "2026-11-18T17:19:36.083Z" }
 ## Desired registration and authority
 
 The Codex app's standalone cron automation owns upstream maintenance. The
-`automations/upstream/duty.json` declaration selects `gpt-6.2-sol`, reasoning
-effort `max`, a new chat and assigned managed worktree for each occurrence,
+`automations/upstream/duty.json` declaration selects `gpt-6.2-astra`, reasoning
+effort `xhigh`, a new chat and assigned managed worktree for each occurrence,
 and the daily UTC 20:05 cadence. The workload prompt is
 `automations/upstream/prompts/maintainer.md`; `automations/portfolio.toml`
 declares the app automation. A completed run chat can be archived independently

@@ -3,9 +3,6 @@ type: Reference
 title: "Upstream integration acceptance boundaries"
 description: "Source, native fixture, signed desktop, installation and physical voice evidence boundaries."
 tags: ["decodex", "architecture"]
-verified:
-  - by: openwiki/0.9.0
-    at: 2026-11-24T14:29:01.704Z
 sources:
   - id: openwiki-source-95772fa38252ded838ec3a2f
     resource: repo://.config/nextest.toml
@@ -31,8 +28,6 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_side_chat_question_tests.rs
   - id: openwiki-source-f339a4d1910db63ca305c2df
     resource: repo://apps/decodex-gpui/src/assistant_settings.rs
-  - id: openwiki-source-c1d5f763b821a11957a8c33b
-    resource: repo://apps/decodex-gpui/src/client_lifecycle.rs
   - id: openwiki-source-032278b78f4f6cac0e654ef0
     resource: repo://apps/decodex-gpui/src/native_audio_owner_tests.rs
   - id: openwiki-source-ca95ba5564216bb4898c8392
@@ -69,6 +64,8 @@ sources:
     resource: repo://crates/decodex-codex/src/app_server_client/temporary_structured_tests.rs
   - id: openwiki-source-787f8ad27b8519fbed2bd039
     resource: repo://crates/decodex-codex/src/app_server_client/thread_fork.rs
+  - id: openwiki-source-23e81f90701c27957ebceff2
+    resource: repo://crates/decodex-codex/src/schema.rs
   - id: openwiki-source-0d4c68456f2e50c6fc7ad5eb
     resource: repo://crates/decodex-components/src/install.rs
   - id: openwiki-source-69e9fd7efd8c3cd616184e27
@@ -89,6 +86,8 @@ sources:
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_discovery_tests.rs
   - id: openwiki-source-4a57fba4bea69171318c6323
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_fork_tests.rs
+  - id: openwiki-source-88639e00ad23210f516d9c07
+    resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_goal_tests.rs
   - id: openwiki-source-053611cb863c8c6865cef2ca
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_hook_settings_tests.rs
   - id: openwiki-source-8d32d49a0bc31600300d9335
@@ -161,12 +160,12 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent/timeline.rs
   - id: openwiki-source-74145d84eb83d80ec3062595
     resource: repo://crates/decodex-runtime/src/agent/timeline/metrics.rs
+  - id: openwiki-source-b415683824e98dc4ed730738
+    resource: repo://crates/decodex-runtime/src/agent/voice.rs
   - id: openwiki-source-4f59431f3f6264a65208bdcb
     resource: repo://crates/decodex-runtime/src/agent/work_delivery.rs
   - id: openwiki-source-b1dd4c8ab85f342314daa6f1
     resource: repo://crates/decodex-runtime/src/agent/work.rs
-  - id: openwiki-source-eefcc1937d138170352d73d0
-    resource: repo://crates/decodex-runtime/src/agent/workspace.rs
   - id: openwiki-source-ec5c9f32d2135154f4297a49
     resource: repo://crates/decodex-runtime/src/conversation.rs
   - id: openwiki-source-3edc2f094826ee56ddec6b73
@@ -231,7 +230,10 @@ sources:
     resource: repo://scripts/macos/version_codex_source.py
   - id: openwiki-source-e201f60894c32a914dac99ee
     resource: repo://scripts/vnext/run_native_regression.py
-generated: { by: "codex", at: "2026-11-24T14:29:01.704Z" }
+generated: { by: "codex", at: "2026-11-25T20:16:24.596Z" }
+verified:
+  - by: openwiki/0.9.0
+    at: 2026-11-25T20:16:24.596Z
 ---
 
 # Upstream integration acceptance boundaries
@@ -263,13 +265,19 @@ Read the development lock, [current source review](../../automations/upstream/cu
 
 The retained MCP fixture reads same-name registrations from two environments through the signed CLI and executor. The voice start fixture checks the unset V3 request, and the native preference fixtures check project and managed settings. The cold history fixture reads native turn boundaries and retained tool context before continuing the conversation. The [current qualification](../../automations/upstream/qualification.json) identifies the executions for the selected artifact.
 
+The compaction failure fixture checks that the accepted prompt appears once after a cold read and that the read sends no new inference request. The Goal fixture reopens the native session, reads the persisted Goal and checks that the provider received no inference request.
+
+The generated-schema check requires a `voice` property on `ThreadRealtimeStartParams`. Two isolated native checks cover the project override, the refreshed user default and the effective value after a conditional save. Run these checks on both artifacts when upstream changes voice selection. An account-wide preference requires a separate product decision because it changes which calls share the setting. See the [retained voice contract](../integrations/subscription-voice.md#retained-voice-preferences-and-limitations).
+
 The public reasoning fixture projects a summary from a loopback provider through the signed CLI. It reads the same summary after a cold restart and verifies that the provider received one inference request.
 
 Use the [Seatbelt launch fixture](../../crates/decodex-runtime/tests/native_qualification/seatbelt_launch.py) to check local command permissions in a disposable macOS home. It checks denial under read-only permissions and a successful write to the subtree granted by a named command-directory profile. The native command hook fixture checks the working directory and one execution of the approved command.
 
 The `installed_hook_settings_read_inherited_hooks_in_linked_worktree` fixture uses the retained Hook settings client with an exact signed CLI and a temporary Codex home. It creates a linked Git worktree and a regular `.codex` file at the primary checkout root. The native readback must include the inherited nested declaration with its exact source path and untrusted status. See [current qualification](../../automations/upstream/qualification.json#linked_worktree_hook_inventory).
 
-The provider-refusal follow-up resolves [the former compatibility blocker](https://github.com/acg-box/decodex/issues/2575) through the supported native fork. The original cohort remains historical evidence; it is not a freshly rerun matrix. The runtime lock selects the fixed reviewed target after fresh affected native consumer and component checks. Earlier cohort results remain historical and are not counted as passes on a newer artifact. The current source-review record covers every commit through its fixed target. HumanCommand support is [user-deferred](https://github.com/acg-box/decodex/issues/2585), unsupported and unadvertised. Earlier worker-permission reload source tests retain their original source and helper limits. Read the current qualification for actual executions. Source tests are separate from signed production-artifact tests; no broad upstream suite is a daily gate.
+The prompt-edit socket test selects an approvals reviewer, reverts the last turn of a paginated conversation, and checks the reviewer and restored draft. It resolves relative media paths from the conversation’s working directory. The signed CLI runs with a fixed policy. The linked historical source test changed the reviewer allowlist during runtime replacement. Consult its recorded source revision when using that result. See the [prompt-revert qualification](../../automations/upstream/qualification.json#prompt_revert).
+
+The provider-refusal follow-up resolves [the former compatibility blocker](https://github.com/acg-box/decodex/issues/2575) through the supported native fork. The original cohort remains historical evidence; it is not a freshly rerun matrix. The runtime lock selects the candidate only after the affected native consumer and component checks pass. When a required check fails, the lock keeps the previously qualified runtime and source review can advance independently. Earlier cohort results remain historical and are not counted as passes on a newer artifact. The current source-review record covers every commit through its fixed target. HumanCommand support is [user-deferred](https://github.com/acg-box/decodex/issues/2585), unsupported and unadvertised. Earlier worker-permission reload source tests retain their original source and helper limits. Read the current qualification for actual executions. Source tests are separate from signed production-artifact tests; no broad upstream suite is a daily gate.
 
 The retired Codex startup-configuration diagnostic is absent from the current router. Its earlier execution remains historical proof. Valid named-permission defaults and an owned Recap working directory repair fixture admission without weakening existing behavior assertions. The exact-artifact development cache test also corrupts the required standalone executor, checks that ordinary preparation rejects it, and restores it through explicit reinstallation.
 
@@ -711,14 +719,12 @@ The synthetic cohorts do not establish installed-app, live-account, general mode
 
 The Assistant extension reuses the selected Codex runtime. Its opt-in `installed_assistant_renews_fresh_contexts_with_original_dialogue_and_isolated_memory` fixture uses an explicit binary with an isolated native home and loopback Responses provider. It verifies three successive clean contexts, recent original dialogue across context boundaries, no fork ancestry, one model request per user turn and no native Memory injection in successor contexts. An unrelated control retains native memory settings. The [earlier qualification](https://github.com/acg-box/decodex/blob/562371054960947e2e973c425047a17907aa0577/automations/upstream/qualification.json#retained_consumers) identifies that fixture execution and its artifact separately from the original Assistant delivery. Read the current qualification for the tests selected for each later runtime; a retained fixture is not a claim that it ran in every batch. This test does not qualify a live provider or long-duration conversation quality.
 
-SQLite tests cover independent team membership and wakes, archive cancellation, exact delegated creation and linked authority, pending input, immutable native-context receipts and queued/unknown external imports across reopen. The desktop transition test covers drafts, loaded history, reading state, old native source IDs and pagination cursor rebasing. RAGFlow's loopback HTTP fixture checks explicit Memory/Agent/user scopes and rejects nonzero business codes even with HTTP 200. HTTP Memory setup fixtures cover default-model selection, recovery after a lost creation reply, origin-bound private credentials and missing-model failure without publishing a Memory credential. An idle Assistant setup fixture confirms atomic personal initialization and no fabricated first user message. The first-message fixture checks displayed model and effort, normal permission and speed defaults, and preservation of the previous Agent and draft. Shared component UI fixtures check installed readback, busy controls, disclosure and inline feedback. A queued extraction response is not proof that the memory is searchable.
+SQLite tests cover independent team membership and wakes, archive cancellation, exact delegated creation and linked authority, pending input, immutable native-context receipts and queued/unknown external imports across reopen. The desktop transition test covers drafts, loaded history, reading state, old native source IDs and pagination cursor rebasing. RAGFlow's loopback HTTP fixture checks explicit Memory/Agent/user scopes and rejects nonzero business codes even with HTTP 200. HTTP Memory setup fixtures cover default-model selection, recovery after a lost creation reply, origin-bound private credentials and missing-model failure without publishing a Memory credential. An idle Assistant setup fixture confirms atomic role selection and no fabricated first user message. The first-message fixture checks displayed model and effort, normal permission and speed defaults, and preservation of the previous Agent and draft. Shared component UI fixtures check installed readback, busy controls, disclosure and inline feedback. A queued extraction response is not proof that the memory is searchable.
 
 Managed-service fixtures check unavailable engine or Compose prerequisites without storage changes, image pulls or service startup. They also check loopback-only API exposure, absence of a model runtime and model volume, custom endpoint paths and model names, loopback host translation, private installation receipts and an Uninstall command scoped to the owned project without volume removal. Model fixtures check independent Base URLs and keys even when model IDs match, both verifications before provider updates, failure without receipt replacement, retained embedding instance identity, and rejection of indexed embedding changes. The model editor checks a shared Base URL and key with separate model IDs, blank saved-key fields, endpoint-bound key retention, required-field gating, input-driven updates, explicit URL validation, source invalidation and draft preservation. Status-light fixtures distinguish installed, disabled, ready, working and failed components. The service read checks the public API without credentials or model work. These checks use in-process and command fixtures, not real Docker images. Actual acceptance must separately verify the nightly version, native verification against a controlled compatible API, automatic Memory configuration, rejection of invalid credentials without replacing saved configuration, a synthetic scoped write/search, retained model settings and data across Update, Uninstall and reinstall, and the installed App controls.
 
 Automatic-memory fixtures check that new ordinary Agent contexts receive neither Assistant tools nor RAGFlow instructions, and that another Agent cannot invoke the Assistant back end. Recall fixtures keep current user input unchanged, use native untrusted additionalContext, omit recalled context on capacity retries and credential-bearing input, and continue when the optional service is unavailable. HTTP tests check the exact Memory, Assistant and user scope. Recall projection tests preserve source identifiers, bound Unicode text and exclude vectors and recognized credentials.
 
 Completed-dialogue tests exclude reasoning, tool results and intermediate commentary. Database tests prevent automatic relearning of a forget turn and duplicate learning of an explicit remember turn. The selected-native fixture also checks role-specific context and unavailable recall in the actual model request without an additional inference call. These tests qualify the integration and failure behavior; they do not establish long-term memory quality or a successful live extraction.
-
-For installed acceptance, use the complete signed desktop and the normal local service. Open the fixed Assistant and create independent Chats with and without a selected folder. Check the project case separately. For a newly allocated folder, compare native `thread.cwd` with `pwd -P` from a completed turn. For an adopted thread, compare its exact native ID, original directory and prior history before and after adoption. Start a real Work, attach a second client and close one client. Identify the same native turn at completion and check its command exit status. For folder repair, read the same thread after selecting its replacement directory. A missing or moving path requires a separate observation from a change to the new-chat configuration.
 
 These source and selected-native checks do not establish a real RAGFlow deployment, extraction quality, machine sleep behavior or installed desktop visual acceptance. See [Assistant lifecycle](../decisions/assistant-lifecycle.md) and [commands](../operations/commands-and-validation.md) for owners and repeatable checks. The earlier qualification records above retain their own artifacts and counts.
