@@ -189,19 +189,19 @@ async fn disabled_fallback_and_cancelled_resolution_do_not_send_a_second_post() 
 
 #[tokio::test]
 async fn a_response_timeout_never_replays_the_authorization_code() {
+	const REQUEST_LINE: &[u8] = b"POST /oauth/token HTTP/1.1\r\n";
 	let listener = TcpListener::bind("127.0.0.1:0").await.expect("listener");
 	let mut config = config(&format!("http://{}", listener.local_addr().expect("address")));
 
-	config.http_timeout = Duration::from_millis(100);
+	config.http_timeout = Duration::from_secs(1);
 
 	let initial = system_proxy::client(&config, Some(Route::Direct)).expect("client");
 	let (sent, received) = oneshot::channel();
 	let server = tokio::spawn(async move {
 		let (mut socket, _) = listener.accept().await.expect("request");
-		let mut bytes = [0; 4_096];
-		let count = socket.read(&mut bytes).await.expect("POST received");
-
-		assert!(bytes[..count].starts_with(b"POST /oauth/token HTTP/1.1"));
+		let mut bytes = [0; REQUEST_LINE.len()];
+		socket.read_exact(&mut bytes).await.expect("complete POST request line");
+		assert_eq!(&bytes, REQUEST_LINE);
 
 		sent.send(()).expect("request witness");
 
