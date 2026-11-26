@@ -162,8 +162,6 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent/timeline.rs
   - id: openwiki-source-74145d84eb83d80ec3062595
     resource: repo://crates/decodex-runtime/src/agent/timeline/metrics.rs
-  - id: openwiki-source-b415683824e98dc4ed730738
-    resource: repo://crates/decodex-runtime/src/agent/voice.rs
   - id: openwiki-source-4f59431f3f6264a65208bdcb
     resource: repo://crates/decodex-runtime/src/agent/work_delivery.rs
   - id: openwiki-source-b1dd4c8ab85f342314daa6f1
@@ -234,10 +232,10 @@ sources:
     resource: repo://scripts/macos/version_codex_source.py
   - id: openwiki-source-e201f60894c32a914dac99ee
     resource: repo://scripts/vnext/run_native_regression.py
-generated: { by: "codex", at: "2026-11-26T03:33:26.229Z" }
+generated: { by: "codex", at: "2026-11-26T05:10:44.400Z" }
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-26T03:33:26.229Z
+    at: 2026-11-26T05:10:44.400Z
 ---
 
 # Upstream integration acceptance boundaries
@@ -267,11 +265,11 @@ Workflow-only maintenance uses the checkpoint and portfolio checks in `cargo +st
 
 Read the development lock, [current source review](../../automations/upstream/current-review.json) and [current qualification](../../automations/upstream/qualification.json) for the fixed target, exact CLI/helpers/schema, executed identities and limits. Keep source review, source-test execution, exact production-artifact tests, delivery and installed acceptance separate. Current run counts and hashes belong in those records, not repeated across Wiki pages.
 
-The retained MCP fixture reads same-name registrations from two environments through the signed CLI and executor. The voice start fixture checks the unset V3 request, and the native preference fixtures check project and managed settings. The cold history fixture reads native turn boundaries and retained tool context before continuing the conversation. The [current qualification](../../automations/upstream/qualification.json) identifies the executions for the selected artifact.
+The retained MCP fixture reads same-name registrations from two environments through the signed CLI and executor. The voice start fixture checks that V3 calls defer voice selection to the backend and honor managed policy. The cold history fixture reads native turn boundaries and retained tool context before continuing the conversation. The [current qualification](../../automations/upstream/qualification.json) identifies the executions for the selected artifact.
 
 The compaction failure fixture checks that the accepted prompt appears once after a cold read and that the read sends no new inference request. The Goal fixture reopens the native session, reads the persisted Goal and checks that the provider received no inference request.
 
-The generated-schema check requires a `voice` property on `ThreadRealtimeStartParams`. Two isolated native checks cover the project override, the refreshed user default and the effective value after a conditional save. Run these checks on both artifacts when upstream changes voice selection. An account-wide preference requires a separate product decision because it changes which calls share the setting. See the [retained voice contract](../integrations/subscription-voice.md#retained-voice-preferences-and-limitations).
+Check the signed CLI schema for both account voice methods and the current realtime start shape. The isolated account fixture reads the native catalog, saves an advertised ID once, and checks that another native home connected to that account sees the change. A signed-out fixture with a legacy local voice must report settings as unavailable. The picker test exercises a lost save reply. These checks cover preference routing and confirmation. Audible output requires separate evidence. See the [voice preference contract](../integrations/subscription-voice.md#retained-voice-preferences-and-limitations).
 
 The public reasoning fixture projects a summary from a loopback provider through the signed CLI. It reads the same summary after a cold restart and verifies that the provider received one inference request.
 
