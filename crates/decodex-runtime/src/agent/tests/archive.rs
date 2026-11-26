@@ -40,6 +40,28 @@ async fn sidebar_lifecycle_archives_exact_idle_sources_before_durable_deletion()
 	);
 }
 
+#[tokio::test]
+async fn archive_reports_a_known_writer_conflict_and_delete_keeps_the_binding() {
+	let (mut agent, mut sent, _directory) =
+		tests::fixture_with_history(serde_json::json!({"_archive_writer_busy":true})).await;
+	agent.start_agent("agent", "Initial").await.unwrap();
+	agent.handle_event(ServerEvent::Notification{method:"turn/completed".into(),params:serde_json::json!({"threadId":"opaque thread/1","turn":{"id":"opaque turn/1","status":"completed","items":[]}})}).await.unwrap();
+	let thread = "opaque thread/1";
+	assert!(matches!(agent.archive_conversation("agent", thread).await,
+		Err(AgentError::ThreadOwnedElsewhere { thread_id }) if thread_id == thread));
+	assert!(matches!(agent.delete_conversation("agent", thread).await,
+		Err(AgentError::ThreadOwnedElsewhere { thread_id }) if thread_id == thread));
+	assert!(!std::iter::from_fn(|| sent.try_recv().ok()).any(|r| r["method"] == "thread/delete"));
+	assert!(
+		agent
+			.store
+			.agent_thread_deletion_plan("agent".into(), thread.into())
+			.await
+			.unwrap()
+			.is_none()
+	);
+}
+
 #[test]
 fn archived_resume_diagnostic_is_bound_to_the_exact_thread_and_never_authorizes_restore() {
 	let error = || {

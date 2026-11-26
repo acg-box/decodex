@@ -115,13 +115,11 @@ impl AgentHost {
 		if root.codex_thread_id.is_some() || root.dispatch_state != AgentDispatchState::Idle {
 			return None;
 		}
-		let cwd = self
-			.store
-			.work_directory(root.id.clone())
-			.await
-			.ok()?
+		let selected = self.store.work_directory(root.id.clone()).await.ok()?;
+		let catalog_cwd = selected
+			.clone()
 			.or_else(|| env::var_os("HOME").map(|home| home.to_string_lossy().into_owned()))?;
-		let directory = ConversationWorkingDirectory::new(cwd.clone()).ok()?;
+		let directory = ConversationWorkingDirectory::new(catalog_cwd).ok()?;
 		let mut effort = execution.reasoning_effort.clone();
 		let catalog = self
 			.runtime
@@ -172,7 +170,7 @@ impl AgentHost {
 				execution.model?
 			};
 		let effort = effort.map(|effort| effort.as_str().to_owned());
-		let mut config = AgentConfig::with_optional_effort(model.as_str().into(), effort, cwd);
+		let mut config = AgentConfig::with_optional_effort(model.as_str().into(), effort, selected);
 
 		config.worker_effort.clone_from(&config.agent_effort);
 

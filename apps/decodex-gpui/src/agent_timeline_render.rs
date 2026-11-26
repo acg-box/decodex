@@ -283,7 +283,7 @@ impl AgentSurface {
 			markdown::render_with_selection_action(
 				text,
 				&identity,
-				if kind == "agentMessage" { self.side_chat_selection_action(cx) } else { None },
+				self.side_chat_selection_action(cx),
 			),
 		);
 
@@ -339,21 +339,6 @@ impl AgentSurface {
 				.child(body)
 				.into_any_element(),
 		)
-	}
-
-	pub(super) fn native_timeline_row(
-		&self,
-		work: &AgentWorkItemDto,
-		entry: &AgentTimelineEntry,
-		gap_before: f32,
-		cx: &mut Context<Self>,
-	) -> AnyElement {
-		let identity =
-			serde_json::json!([work.id, work.codex_thread_id, native_timeline::key(entry)])
-				.to_string();
-		let content = self.native_timeline_content(work, entry, &identity, false, cx);
-
-		self.native_timeline_row_with_content(work, entry, content, gap_before, cx)
 	}
 
 	pub(super) fn native_timeline_row_with_content(
@@ -518,10 +503,13 @@ impl AgentSurface {
 		&self,
 		work: &AgentWorkItemDto,
 		entry: &AgentTimelineEntry,
-		identity: &str,
 		archived: bool,
+		footer: Option<super::TurnFooter>,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
+		let identity =
+			&serde_json::json!([work.id, work.codex_thread_id, native_timeline::key(entry)])
+				.to_string();
 		let mut origin = work.clone();
 		if let Some(thread) = self.timeline.native.source_threads.get(&entry.position) {
 			origin.codex_thread_id = Some(thread.clone());
@@ -547,31 +535,20 @@ impl AgentSurface {
 					"Voice conversation ended"
 				}))
 				.into_any_element(),
-			AgentTimelineContent::TurnBoundary { completed, turn_id, status, error, .. } => {
-				let has_reply = self.timeline.native.entries.iter().any(|entry| {
-					matches!(&entry.content, AgentTimelineContent::Item {
-turn_id: turn, kind, .. } if turn == turn_id && kind == "agentMessage")
-				});
-
-				row.when(*completed && !has_reply, |row| {
+			AgentTimelineContent::TurnBoundary { error, .. } => row
+				.children(footer.and_then(|f| f.outcome).map(agent_surface::muted))
+				.when(footer.is_some_and(|f| f.metrics), |row| {
 					row.child(self.native_turn_metrics(&entry.content, identity, cx))
 				})
-				.when(
-					*completed && matches!(status.as_deref(), Some("interrupted" | "failed")),
-					|row| {
-						row.child(ui_feedback::execution_icon(
-							format!("execution-status-{identity}"),
-							status.as_deref().unwrap_or_default(),
-						))
-					},
-				)
 				.children(error.as_ref().map(|error| gpui::div().child(error.message.clone())))
-				.into_any_element()
-			},
+				.into_any_element(),
 			content @ AgentTimelineContent::Promotion { .. } =>
 				self.native_promotion(work, content, identity, cx),
 		};
-		self.find_result_row(entry, self.located_item_row(&entry.content, body))
+		self.find_result_row(
+			entry,
+			self.located_item_row(work.codex_thread_id.as_deref(), &entry.content, body),
+		)
 	}
 
 	fn native_turn_metrics(
@@ -1042,14 +1019,12 @@ turn_id: turn, kind, .. } if turn == turn_id && kind == "agentMessage")
 			.when_some((kind == "sleep").then(|| waits::timing(activity)).flatten(), |d, time| {
 				d.child(time)
 			})
-			.when_some(activity.duration_ms.filter(|ms| *ms > 0 && kind != "sleep"), |d, ms| {
-				d.child(gpui::div().text_size(gpui::px(ui_theme::CAPTION_SIZE)).child(
-					if ms < 1_000 {
-						format!("{ms}ms")
-					} else {
-						format!("{:.1}s", ms as f64 / 1_000.)
-					},
-				))
+			.when_some(activity.duration_ms.filter(|_| kind != "sleep"), |d, ms| {
+				d.child(
+					gpui::div()
+						.text_size(gpui::px(ui_theme::CAPTION_SIZE))
+						.child(crate::ui_time::activity_elapsed(ms)),
+				)
 			})
 			.when_some(
 				(!expanded && kind == "commandExecution")

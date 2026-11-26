@@ -95,7 +95,7 @@ impl NativeUpdater {
 	pub(crate) fn new() -> Self {
 		Self {
 			#[cfg(all(target_os = "macos", not(test)))]
-			bridge: None,
+			bridge: platform::Bridge::load().ok(),
 		}
 	}
 

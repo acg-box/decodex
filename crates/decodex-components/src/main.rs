@@ -16,6 +16,8 @@ fn main() -> Result<(), String> {
 	let args = arguments.iter().map(String::as_str).collect::<Vec<_>>();
 
 	match args.as_slice() {
+        ["ragflow", operation] => ragflow(operation,ComponentStore::for_user()?),
+        ["ragflow", operation, "--store", store] => ragflow(operation,ComponentStore::new(store.into())),
         ["prepare", lock] => prepare(lock, ComponentStore::for_user()?),
         ["prepare", lock, "--store", store] => prepare(lock, ComponentStore::new(store.into())),
         ["import-dev", lock, runtime] => import(lock, runtime, ComponentStore::for_user()?),
@@ -33,7 +35,7 @@ fn main() -> Result<(), String> {
             Ok(())
         }
 
-        _ => Err("Usage: decodex-components prepare LOCK [--store DIR] | import-dev LOCK RUNTIME [--store DIR] | source LOCK ARCHIVE | pin OUTPUT BASELINE | check-release LOCK BASELINE".into()),
+        _ => Err("Usage: decodex-components ragflow update|restore-previous [--store DIR] | prepare LOCK [--store DIR] | import-dev LOCK RUNTIME [--store DIR] | source LOCK ARCHIVE | pin OUTPUT BASELINE | check-release LOCK BASELINE".into()),
     }
 }
 
@@ -52,5 +54,24 @@ fn import(path: &str, runtime: &str, store: ComponentStore) -> Result<(), String
 fn progress(phase: InstallProgress) {
 	if !matches!(phase, InstallProgress::Downloading { .. }) {
 		eprintln!("Codex: {phase:?}");
+	}
+}
+
+fn ragflow(operation: &str, store: ComponentStore) -> Result<(), String> {
+	match operation {
+		"update" => {
+			let result =
+				store.apply_ragflow(decodex_components::ragflow::Action::Update, "", |status| {
+					eprintln!("{status}")
+				})?;
+			if let Some(installed) = result.filter(|i| i.installed) {
+				println!("RAGFlow {}", installed.version);
+			} else {
+				println!("RAGFlow is not installed.");
+			}
+			Ok(())
+		},
+		"restore-previous" => store.restore_previous_ragflow(),
+		_ => Err("Choose update or restore-previous.".into()),
 	}
 }

@@ -441,20 +441,6 @@ impl AgentSurface {
 			crate::frame_trace::voice_event("media_busy");
 			return;
 		}
-		if self.assistant_id().as_ref() == self.composer_manager.as_ref()
-			&& self.snapshot.as_ref().is_some_and(|snapshot| {
-				snapshot.work_items.iter().any(|work| {
-					Some(&work.id) == self.composer_manager.as_ref()
-						&& work.codex_thread_id.is_none()
-						&& !snapshot
-							.pending_events
-							.iter()
-							.any(|event| event.work_item_id == work.id)
-				})
-			}) {
-			self.new_project_agent(None, cx);
-		}
-
 		if self.profile.is_none() {
 			self.feedback = Feedback::warning("Voice requires a service connection.");
 			cx.notify();
@@ -500,6 +486,22 @@ impl AgentSurface {
 			},
 		};
 		if self.is_new_conversation() {
+			options.draft = Some(decodex_protocol::AgentVoiceDraft {
+				cwd: self.draft_chat_folder().cloned(),
+				project_id: self
+					.workspace
+					.new_conversation_workspace
+					.as_deref()
+					.map(EntityId::new)
+					.transpose()
+					.expect("saved Project identity"),
+			});
+		}
+		if options.draft.is_some()
+			|| self
+				.conversation_record(work.as_str())
+				.is_some_and(|item| item.codex_thread_id.is_none())
+		{
 			let mut execution = self.draft_profiles.execution.choice(work.as_str());
 			execution.model = self
 				.composer_model_value(cx)
@@ -508,26 +510,10 @@ impl AgentSurface {
 				.composer_effort_value(cx)
 				.and_then(|value| decodex_protocol::ConversationReasoningEffort::new(value).ok());
 			execution.service_tier = self.composer_speed(cx).map(|speed| speed.effective);
-			execution.permission_mode = Some(self.creation_permission_mode());
-			options.draft = Some(Box::new(decodex_protocol::AgentVoiceDraft {
-				project_id: self
-					.workspace
-					.new_conversation_workspace
-					.as_deref()
-					.map(EntityId::new)
-					.transpose()
-					.expect("saved Project identity"),
-				assistant_id: self
-					.workspace
-					.new_conversation_workspace
-					.is_none()
-					.then(|| self.assistant_id())
-					.flatten()
-					.map(EntityId::new)
-					.transpose()
-					.expect("saved Assistant identity"),
-				execution,
-			}));
+			if options.draft.is_some() {
+				execution.permission_mode = Some(self.creation_permission_mode());
+			}
+			options.execution = Some(Box::new(execution));
 			self.remember_composer_execution(cx);
 		}
 		let mut media = match Media::new(window) {
@@ -1852,31 +1838,58 @@ mod tests {
 	}
 
 	#[gpui::test]
-	fn empty_topic_voice_click_reaches_media_instead_of_returning_silently(
-		cx: &mut gpui::TestAppContext,
-	) {
-		let (_root, profile, server) =
-			crate::shell::agent_surface::wire_test_support::fixture(|_| async {});
-		server.join().unwrap();
-		let (view, visual) =
-			cx.add_window_view(|_, cx| VoiceComposerView(cx.new(AgentSurface::new)));
-		let surface = view.read_with(visual, |view, _| view.0.clone());
-		surface.update(visual, |s, cx| {
-			s.visual_workspace_fixture(cx);
-			s.profile = Some(profile);
-			assert!(s.snapshot.as_ref().unwrap().work_items[0].codex_thread_id.is_none());
-			s.new_project_agent(None, cx);
-			assert!(s.is_new_conversation());
-			cx.notify();
-		});
-		visual.update(crate::ui_frame::draw_current_frame);
-		let button = visual.debug_bounds("composer-send").expect("Live action");
-		visual.simulate_click(button.center(), Default::default());
-		surface.read_with(visual, |s, _| {
-			// Unit tests have no signed platform media host. Reaching this error proves
-			// the first call is no longer gated on an already-created native thread.
-			assert_eq!(s.feedback.message, "Voice requires the current signed Decodex app.");
-		});
+	fn first_voice_click_uses_the_selected_assistant_or_new_chat(cx: &mut gpui::TestAppContext) {
+		for (assistant, project) in [(true, None), (false, None), (false, Some("first-project"))] {
+			let (_root, profile, server) =
+				crate::shell::agent_surface::wire_test_support::fixture(|_| async {});
+			server.join().unwrap();
+			let (view, visual) =
+				cx.add_window_view(|_, cx| VoiceComposerView(cx.new(AgentSurface::new)));
+			let surface = view.read_with(visual, |view, _| view.0.clone());
+			let owner = surface.update(visual, |s, cx| {
+				s.visual_workspace_fixture(cx);
+				s.visual_personal_navigation(cx);
+				s.profile = Some(profile);
+				if assistant {
+					s.open_assistant(cx);
+				} else {
+					let snapshot = s.snapshot.as_mut().unwrap();
+					snapshot.work_items.clear();
+					snapshot.agents.clear();
+					*snapshot.assistant = Default::default();
+					s.selected = None;
+					s.composer_manager = None;
+					assert!(s.root_id().is_none());
+					s.new_project_agent(project, cx);
+					let action = s.build_submission("First input", cx).unwrap();
+					let decodex_protocol::AgentActionDto::NewConversation {
+						project_id,
+						work_id,
+						cwd,
+						..
+					} = action
+					else {
+						panic!("first text uses an ordinary chat draft")
+					};
+					assert_eq!(project_id.as_ref().map(EntityId::as_str), project);
+					assert_eq!(Some(work_id.as_str()), s.selected.as_deref());
+					assert_eq!(s.composer_manager, s.selected);
+					assert!(cwd.is_none());
+				}
+				cx.notify();
+				s.selected.clone().unwrap()
+			});
+			visual.update(crate::ui_frame::draw_current_frame);
+			let button = visual.debug_bounds("composer-send").expect("Live action");
+			visual.simulate_click(button.center(), Default::default());
+			surface.read_with(visual, |s, _| {
+				// The test has no signed media host. Its error proves the click reached Live.
+				assert_eq!(s.feedback.message, "Voice requires the current signed Decodex app.");
+				assert_eq!(s.selected.as_ref(), Some(&owner));
+				assert_eq!(owner == "agent", assistant);
+				assert_eq!(s.is_new_conversation(), !assistant);
+			});
+		}
 	}
 
 	impl Render for VoiceComposerView {
@@ -2988,6 +3001,7 @@ mod tests {
 		AgentHistoryResult::Available {
 			questions: vec![],
 			expired_question_ids: Vec::new(),
+			missing_folder: None,
 			questions_truncated: false,
 			questions_recovering: false,
 			misalignment: None,

@@ -48,8 +48,8 @@ sources:
     resource: repo://crates/decodex-codex/src/app_server_client/archive.rs
   - id: openwiki-source-c990afbb3dfa828de42edbc3
     resource: repo://crates/decodex-codex/src/app_server_client/realtime_preferences.rs
-  - id: openwiki-source-a1e6000f0ad7db6c298cf17c
-    resource: repo://crates/decodex-protocol/src/agent_voice_settings.rs
+  - id: openwiki-source-e577aa8a2c4a08b3ced5f846
+    resource: repo://crates/decodex-codex/src/app_server_client/realtime_settings.rs
   - id: openwiki-source-eccf08613126ff810078b520
     resource: repo://crates/decodex-protocol/src/agent.rs
   - id: openwiki-source-d7ed9b56d246c61c91fd95a4
@@ -98,10 +98,10 @@ sources:
     resource: repo://scripts/macos/run_native_voice_tests.py
   - id: openwiki-source-3b57179b92b257bc3fff51a1
     resource: repo://scripts/macos/stage_decodex_app.sh
-generated: { by: "codex", at: "2026-11-26T02:22:16.427Z" }
+generated: { by: "codex", at: "2026-11-18T19:17:42.865Z" }
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-26T02:22:16.427Z
+    at: 2026-11-18T19:17:42.865Z
 ---
 
 # Subscription dictation and live voice
@@ -133,7 +133,7 @@ The versioned `decodex_dictation_create_v2` symbol binds the Rust session to the
 
 The coordinator uses native `thread/realtime/start` and `thread/realtime/stop` with the owned Agent thread and connection generation. A prior text turn is not required. Starting from a local editor reserves its conversation scope when signaling begins. The editor captures its model, reasoning, speed and permission settings for native thread creation. The host prepares the connection, and the coordinator uses the existing fenced thread-creation path. Realtime then starts without an ordinary text turn. Native transcript deltas and completion events update durable conversation observations; they are not simulated worker steps.
 
-The desktop starts local media preparation immediately instead of requiring a voice-settings read from a thread that does not yet exist. The service checks managed voice policy before native thread creation. The native backend selects the account voice during realtime signaling. Existing threads retain their native context. Connection and media errors use the existing conversation feedback.
+The desktop starts local media preparation immediately instead of requiring a voice-settings read from a thread that does not yet exist. The service checks managed voice policy before native thread creation and reads the effective voice before realtime signaling. Existing threads retain their native context. Connection and media errors use the existing conversation feedback.
 
 Local transcript storage keeps newer received text when a delayed final is a shorter prefix of that text. The saved text remains marked incomplete. An empty final does not erase the received tail; normal closure can save it. Expanded finals and normal transcription corrections still replace provisional text. Saving a transcript never resubmits it as native input.
 
@@ -255,8 +255,8 @@ This is a bounded synthetic sample. Separate playback through the current virtua
 
 ## Retained voice preferences and limitations
 
-Select **Voice settings** to see the voices available to the connected ChatGPT account. Selecting a name saves its native ID to that account. The picker refreshes the selection after a save. A lost reply leaves the save unconfirmed and the picker can refresh without repeating the write.
+The voice preference picker uses the native V3 catalog. Missing, empty or malformed V3 data is an error. The catalog supplies the choices for an explicit voice preference. When the effective voice is unset, the picker shows **Server default** and the V3 call destination selects the voice.
 
-New calls across projects use the account selection. Starting a call does not read or send a separate voice preference. Legacy project and user configuration cannot change the account selection. The V3 request retains startup context, requests transcript-tail flush at session end, and enables `backendReasoningStatus`. Optional model and start and end instructions apply to that call.
+The picker reads effective project settings, then writes one reviewed `realtime.voice` preference with native version checking. It affects the next call. Project settings can override the saved preference. At each call start, the coordinator reads the effective voice for the exact native thread. It passes a supported voice to V3 or sends a null voice to use the destination default. The request retains startup context, requests transcript-tail flush at session end, and enables `backendReasoningStatus`. Codex can relay completed public reasoning summaries as quiet V3 context. Optional model and start and end instructions stay bound to that call.
 
 Configuration and synthetic media tests do not establish real microphone, WebRTC, audible next-call selection or late remote caption identity. See [acceptance boundaries](../testing/upstream-acceptance-boundaries.md). Memory configuration is separate from audio capture; see [Models and settings](../workflows/models-and-settings.md).

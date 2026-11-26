@@ -53,16 +53,13 @@ const PRODUCTION_CACHE_GENERATIONS: usize = 16;
 const CLIENT_CACHE_SCHEMA_GENERATION: u64 = 1;
 const HISTORY_PAGE_CACHE_SCHEMA_GENERATION: u32 = 1;
 
-pub(crate) trait AppOwnedDaemonRecovery: Send + Sync {
-	fn component_preparation_failed(&self) -> bool {
-		false
-	}
-	/// Component acquisition does not consume connection-recovery attempts.
-	fn preparing_components(&self) -> bool {
-		false
-	}
-	/// Attempt recovery and report whether this exact owner retains later restart authority.
-	fn recover_transport(&self) -> bool;
+pub(crate) enum ServiceStartup {
+	Connecting,
+	Preparing { failed: bool },
+}
+
+pub(crate) trait LocalServiceLauncher: Send + Sync {
+	fn start(&mut self) -> ServiceStartup;
 }
 
 /// The single private seam around retained-session operations and retry time.
@@ -251,7 +248,7 @@ pub(crate) struct ClientLifecycle {
 	view: ConnectionView,
 	view_observer: Option<Sender<ConnectionView>>,
 	cancellation: LifecycleCancellation,
-	app_owned_daemon: Option<Arc<dyn AppOwnedDaemonRecovery>>,
+	service_launcher: Option<Box<dyn LocalServiceLauncher>>,
 }
 impl ClientLifecycle {
 	/// Construct the production lifecycle without exposing disposable-cache policy to the shell.
@@ -322,16 +319,12 @@ impl ClientLifecycle {
 			view,
 			view_observer: None,
 			cancellation: LifecycleCancellation::new(),
-			app_owned_daemon: None,
+			service_launcher: None,
 		})
 	}
 
-	/// Permit transport recovery only through the exact bundled child owned by this app process.
-	pub(crate) fn supervise_app_owned_daemon<T>(&mut self, supervisor: Arc<T>)
-	where
-		T: AppOwnedDaemonRecovery + 'static,
-	{
-		self.app_owned_daemon = Some(supervisor);
+	pub(crate) fn set_service_launcher(&mut self, launcher: impl LocalServiceLauncher + 'static) {
+		self.service_launcher = Some(Box::new(launcher));
 	}
 
 	/// Current narrow shell-facing state.
@@ -389,30 +382,15 @@ impl ClientLifecycle {
 		self.run_with_io(&mut TokioIo { session: None }).await
 	}
 
-	async fn wait_for_components<I>(&mut self, io: &mut I) -> bool
-	where
-		I: LifecycleIo,
-	{
-		while self.app_owned_daemon.as_ref().is_some_and(|owner| owner.preparing_components()) {
-			let failed = self
-				.app_owned_daemon
-				.as_ref()
-				.is_some_and(|owner| owner.component_preparation_failed());
-
+	async fn start_local_service<I: LifecycleIo>(&mut self, io: &mut I) -> bool {
+		while let Some(ServiceStartup::Preparing { failed }) =
+			self.service_launcher.as_mut().map(|launcher| launcher.start())
+		{
 			self.set_view(ConnectionView::PreparingComponents { failed });
-			if let Some(owner) = &self.app_owned_daemon {
-				owner.recover_transport();
-
-				if !owner.preparing_components() {
-					break;
-				}
-			}
-
 			if io.backoff(Duration::from_millis(250), &self.cancellation).await.is_err() {
 				return false;
 			}
 		}
-
 		true
 	}
 
@@ -424,9 +402,6 @@ impl ClientLifecycle {
 			return RunResult::Quarantined;
 		}
 		if self.cancellation.is_cancelled() {
-			return self.finish_shutdown().await;
-		}
-		if !self.wait_for_components(io).await {
 			return self.finish_shutdown().await;
 		}
 
@@ -451,7 +426,11 @@ impl ClientLifecycle {
 						return result;
 					}
 
-					self.recover_app_owned_transport(failure);
+					if failure == RetainedSessionFailure::LocalEndpointUnavailable
+						&& !self.start_local_service(io).await
+					{
+						return self.finish_shutdown().await;
+					}
 
 					if !self.retry(io, attempt, generation).await {
 						return self.retry_terminal(attempt);
@@ -496,8 +475,6 @@ impl ClientLifecycle {
 			if let Some(result) = self.closed_failure(failure) {
 				return result;
 			}
-
-			self.recover_app_owned_transport(failure);
 
 			if !self.retry(io, attempt, generation).await {
 				return self.retry_terminal(attempt);
@@ -1145,25 +1122,11 @@ impl ClientLifecycle {
 
 				None
 			},
-			RetainedSessionFailure::OperationTimeout
+			RetainedSessionFailure::LocalEndpointUnavailable
+			| RetainedSessionFailure::OperationTimeout
 			| RetainedSessionFailure::Closed
 			| RetainedSessionFailure::Disconnected
 			| RetainedSessionFailure::Backpressure => None,
-		}
-	}
-
-	fn recover_app_owned_transport(&mut self, failure: RetainedSessionFailure) {
-		if matches!(
-			failure,
-			RetainedSessionFailure::OperationTimeout
-				| RetainedSessionFailure::Closed
-				| RetainedSessionFailure::Disconnected
-		) && self
-			.app_owned_daemon
-			.as_ref()
-			.is_some_and(|supervisor| !supervisor.recover_transport())
-		{
-			self.app_owned_daemon = None;
 		}
 	}
 

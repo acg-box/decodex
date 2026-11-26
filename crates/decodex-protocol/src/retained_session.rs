@@ -565,6 +565,8 @@ pub enum RetainedSessionFailure {
 	RemoteTransportDisabled,
 	/// The platform has no accepted local kernel peer-identity implementation.
 	LocalTransportUnsupported,
+	/// The configured local endpoint could not be opened before the handshake.
+	LocalEndpointUnavailable,
 	/// The local directory, lock, socket, or captured identity is unsafe.
 	UnsafeLocalEndpoint,
 	/// The kernel did not provide an unambiguous local peer identity.
@@ -603,6 +605,7 @@ pub enum RetainedSessionFailure {
 impl Display for RetainedSessionFailure {
 	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
 		formatter.write_str(match self {
+			Self::LocalEndpointUnavailable => "local service endpoint is unavailable",
 			Self::LocalTransportDisabled => "retained session local transport is disabled",
 			Self::RemoteTransportDisabled => "retained session remote transport is disabled",
 			Self::LocalTransportUnsupported => "retained session local transport is unsupported",
@@ -711,8 +714,9 @@ fn map_local_transport_failure(failure: LocalTransportRefusal) -> RetainedSessio
 		| LocalTransportRefusal::EndpointReplaced => RetainedSessionFailure::UnsafeLocalEndpoint,
 		LocalTransportRefusal::PeerCredentialsUnavailable =>
 			RetainedSessionFailure::LocalPeerIdentityUnavailable,
-		LocalTransportRefusal::EndpointUnavailable | LocalTransportRefusal::EndpointInUse =>
-			RetainedSessionFailure::Disconnected,
+		LocalTransportRefusal::EndpointUnavailable =>
+			RetainedSessionFailure::LocalEndpointUnavailable,
+		LocalTransportRefusal::EndpointInUse => RetainedSessionFailure::Disconnected,
 	}
 }
 

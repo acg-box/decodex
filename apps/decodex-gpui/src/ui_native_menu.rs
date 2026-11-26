@@ -13,8 +13,8 @@ use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 
 pub(crate) enum Item<T> {
 	Command {
-		title: &'static str,
-		key: &'static str,
+		title: String,
+		key: String,
 		modifiers: NSEventModifierFlags,
 		enabled: bool,
 		action: T,
@@ -23,12 +23,63 @@ pub(crate) enum Item<T> {
 }
 impl<T> Item<T> {
 	pub(crate) fn command(
-		title: &'static str,
+		title: impl Into<String>,
 		key: &'static str,
 		enabled: bool,
 		action: T,
 	) -> Self {
-		Self::Command { title, key, modifiers: NSEventModifierFlags::Command, enabled, action }
+		Self::Command {
+			title: title.into(),
+			key: key.into(),
+			modifiers: NSEventModifierFlags::Command,
+			enabled,
+			action,
+		}
+	}
+
+	pub(crate) fn bound(
+		title: &'static str,
+		binding: &dyn gpui::Action,
+		cx: &App,
+		enabled: bool,
+		action: T,
+	) -> Self {
+		let mut modifiers = NSEventModifierFlags::empty();
+		let key = crate::keyboard_shortcuts::key(binding, cx).map_or_else(String::new, |stroke| {
+			let m = stroke.modifiers;
+			for (on, flag) in [
+				(m.platform, NSEventModifierFlags::Command),
+				(m.control, NSEventModifierFlags::Control),
+				(m.alt, NSEventModifierFlags::Option),
+				(m.shift, NSEventModifierFlags::Shift),
+				(m.function, NSEventModifierFlags::Function),
+			] {
+				if on {
+					modifiers |= flag;
+				}
+			}
+			match stroke.key.as_str() {
+				"enter" => "\r".into(),
+				"tab" => "\t".into(),
+				"space" => " ".into(),
+				"escape" => "\u{1b}".into(),
+				"backspace" => "\u{8}".into(),
+				"delete" => "\u{f728}".into(),
+				"up" => "\u{f700}".into(),
+				"down" => "\u{f701}".into(),
+				"left" => "\u{f702}".into(),
+				"right" => "\u{f703}".into(),
+				k if k.len() == 1 => k.into(),
+				k => k
+					.strip_prefix('f')
+					.and_then(|n| n.parse::<u32>().ok())
+					.filter(|n| (1..=35).contains(n))
+					.and_then(|n| char::from_u32(0xf703 + n))
+					.map(|c| c.to_string())
+					.unwrap_or_default(),
+			}
+		});
+		Self::Command { title: title.into(), key, modifiers, enabled, action }
 	}
 }
 

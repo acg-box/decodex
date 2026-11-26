@@ -7,6 +7,7 @@ pub(super) fn section_color(section: Section) -> Rgba {
 		Section::Pin => 3,
 		Section::Assistant => 0,
 		Section::Projects => 1,
+		Section::Chats => 2,
 	};
 	ui_theme::ColorScheme::current().navigation_slot(slot)
 }

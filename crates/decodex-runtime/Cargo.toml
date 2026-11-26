@@ -29,8 +29,8 @@ serde                 = { workspace = true }
 serde_json            = { workspace = true }
 sha2                  = { workspace = true }
 tempfile              = { workspace = true }
-time                  = { workspace = true }
-tokio                 = { workspace = true }
+time                  = { workspace = true, features = ["local-offset"] }
+tokio                 = { workspace = true, features = ["fs"] }
 tokio-tungstenite     = { workspace = true }
 zeroize               = { workspace = true, features = ["derive", "serde"] }
 

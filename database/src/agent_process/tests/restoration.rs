@@ -1,6 +1,76 @@
 use crate::{AgentVoiceCall, SqliteStore, agent_process::tests};
 
 #[tokio::test]
+async fn dormant_side_chats_and_archives_follow_the_account_after_its_host_exits() {
+	for account in [1, 2] {
+		let (_directory, store) = hosted_store().await;
+		let first = tests::generation_id(1);
+		let next = tests::generation_id(2);
+		let allowed = |work: &str, thread: &str, generation: &str| {
+			store.can_access_account_thread(work.into(), thread.into(), Some(generation.into()))
+		};
+
+		assert!(allowed("second-root", "other-native", first.as_str()).await.unwrap());
+		assert!(!allowed("second-root", "wrong-native", first.as_str()).await.unwrap());
+
+		store
+			.mark_process_generation_death_unknown(
+				&first,
+				3,
+				decodex_core::ProcessAuthorityLossReason::SupervisorRestarted,
+			)
+			.await
+			.unwrap();
+		assert!(!allowed("conversation", "native-chat", first.as_str()).await.unwrap());
+		tests::confirm_original_process_death(&store).await;
+		let admission = store
+			.prepare_agent_bound_process_generation(
+				&tests::intent(account, 2),
+				&tests::binding(account),
+				"second-root",
+				"second",
+			)
+			.await
+			.unwrap();
+		assert!(
+			matches!(admission, crate::PrepareProcessGenerationOutcome::Fresh(_)),
+			"{admission:?}"
+		);
+		store.bind_process_generation_identity(&next, 1, &tests::identity(234)).await.unwrap();
+		store.mark_process_generation_ready(&next, 2).await.unwrap();
+
+		assert_eq!(
+			allowed("conversation", "native-chat", next.as_str()).await.unwrap(),
+			account == 1
+		);
+		let fork = crate::AgentForkAttempt {
+			source: crate::AgentForkSource {
+				work: "conversation".into(),
+				thread: "native-chat".into(),
+				generation: Some(next.as_str().into()),
+				review_token: "a".repeat(64),
+				review: None,
+			},
+			target_work: "cold-side-chat".into(),
+			boundary: crate::AgentForkBoundary::AttachedAfterTurn,
+			model_provider: None,
+		};
+		assert_eq!(store.reserve_agent_fork(fork).await.unwrap().is_some(), account == 1);
+
+		assert!(
+			!store
+				.agent_thread_is_restorable(
+					"conversation".into(),
+					"native-chat".into(),
+					Some(next.as_str().into())
+				)
+				.await
+				.unwrap()
+		);
+	}
+}
+
+#[tokio::test]
 async fn selected_conversation_actions_keep_host_and_thread_identity_across_manager_roles() {
 	let (_directory, store) = hosted_store().await;
 	let generation = Some(tests::generation_id(1).as_str().to_owned());
@@ -115,7 +185,7 @@ async fn reviewed_history_allows_a_hosted_manager_without_granting_agent_tool_au
 		content: vec![serde_json::json!({"type":"text","text":"Source input"})],
 	};
 	let branch = AgentForkAttempt {
-		source: review.clone(),
+		source: review.clone().into(),
 		target_work: "side-chat".into(),
 		boundary: AgentForkBoundary::AttachedAfterTurn,
 		model_provider: None,
@@ -131,7 +201,7 @@ async fn reviewed_history_allows_a_hosted_manager_without_granting_agent_tool_au
 		invalid.thread = thread.into();
 		invalid.generation = generation;
 		assert!(store.reserve_agent_prompt_edit(invalid.clone()).await.unwrap().is_none());
-		let invalid = AgentForkAttempt { source: invalid, ..branch.clone() };
+		let invalid = AgentForkAttempt { source: invalid.into(), ..branch.clone() };
 		assert!(store.reserve_agent_fork(invalid).await.unwrap().is_none());
 	}
 	let id = store.reserve_agent_prompt_edit(review.clone()).await.unwrap().unwrap();

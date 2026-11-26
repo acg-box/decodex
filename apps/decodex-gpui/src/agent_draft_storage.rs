@@ -45,6 +45,7 @@ pub(super) struct Storage {
 	store: Option<ClientDraftStore>,
 	document: DesktopDraftDocument,
 	saved: DesktopDraftDocument,
+	observed_editor: Option<(String, Option<EntityId>)>,
 	revision: u64,
 	task: Option<Task<()>>,
 	error: Option<String>,
@@ -73,6 +74,7 @@ impl Storage {
 			store: None,
 			document: Default::default(),
 			saved: Default::default(),
+			observed_editor: None,
 			revision: 0,
 			task: None,
 			error: None,
@@ -140,16 +142,11 @@ impl AgentSurface {
 		for profile in self.draft_profiles.storage.document.profiles.values_mut() {
 			profile.forget_conversation(work);
 		}
-		if let Some(profile) = self
-			.draft_profiles
-			.active
-			.as_ref()
-			.and_then(|profile| {
-				self.draft_profiles.storage.document.profiles.get(&profile.draft_scope_key())
-			})
-			.cloned()
+		if self.draft_profiles.active.is_some()
+			&& let Some(mut live) = self.capture_draft_document(cx)
 		{
-			self.apply_drafts(Drafts::from_document(profile, self.command_epoch), cx);
+			live.forget_conversation(work);
+			self.apply_drafts(Drafts::from_document(live, self.command_epoch), cx);
 		}
 		self.history = self.history.take().filter(|(owner, _)| owner != work);
 		self.timeline.older_history.remove(work);
@@ -571,7 +568,18 @@ impl AgentSurface {
 		let scope = profile.draft_scope_key();
 
 		match self.capture_draft_document(cx) {
-			Some(draft) => {
+			Some(mut draft) => {
+				let storage = &mut self.draft_profiles.storage;
+				let editor = (scope.clone(), draft.composer.work_id.clone());
+				if storage.observed_editor.as_ref() == Some(&editor)
+					&& draft.composer.work_id.is_some()
+					&& let Some(saved) = storage.document.profiles.get(&scope)
+					&& saved.composer.work_id != draft.composer.work_id
+				{
+					// Keep the last explicit navigation as the shared cold-start hint.
+					draft = merge::show_editor(draft, saved);
+				}
+				storage.observed_editor = Some(editor);
 				for composer in iter::once(&draft.composer).chain(draft.parked.values()) {
 					if let (Some(work), Some(thread)) = (&composer.work_id, &composer.thread_id) {
 						self.draft_profiles
@@ -743,6 +751,7 @@ impl AgentSurface {
 
 		Some(DesktopProfileDraft {
 			new_conversation_permissions: self.workspace.new_conversation_permissions,
+			chat_folders: self.draft_profiles.chat_folders.clone(),
 			messages: saved.map(|profile| profile.messages.clone()).unwrap_or_default(),
 			new_conversation_workspace: self
 				.workspace
@@ -881,6 +890,7 @@ impl Drafts {
 	fn from_document(saved: DesktopProfileDraft, epoch: u64) -> Self {
 		let mut result = Self {
 			new_conversation_permissions: saved.new_conversation_permissions,
+			chat_folders: saved.chat_folders,
 			new_conversation: saved.new_conversation.map(|id| id.as_str().into()),
 			new_conversation_workspace: saved
 				.new_conversation_workspace
@@ -1036,7 +1046,10 @@ mod tests {
 			s.workspace.new_conversation_permissions = None;
 			s.selected = s.root_id();
 
-			s.apply_drafts(restored, cx);
+			let (_service, profile, _) = tests::profiles();
+			s.composer.update(cx, |input, cx| input.set_content("", cx));
+			s.draft_profiles.saved.push((profile.clone(), restored));
+			s.bind_profile(Some(profile), cx);
 
 			assert!(s.is_new_conversation());
 			assert_eq!(s.workspace.new_conversation_workspace.as_deref(), Some("folder"));
@@ -1673,6 +1686,108 @@ mod tests {
 			assert!(s.uncertain && !s.sending && s.submission.command.is_none());
 			assert_eq!(s.submission.unconfirmed[0].as_str(), "original-command");
 			assert!(!s.draft_owner_available());
+		});
+	}
+
+	#[gpui::test]
+	fn reconciling_two_windows_keeps_the_visible_conversation(cx: &mut gpui::TestAppContext) {
+		let (_service, profile, other_profile) = tests::profiles();
+		let directory = tempfile::tempdir().unwrap();
+		let store =
+			ClientDraftStore::open_at(&directory.path().canonicalize().unwrap().join("desktop"))
+				.unwrap();
+		let mut second_app = cx.new_app();
+		let (first, first_cx) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		first.update(first_cx, |s, cx| {
+			s.draft_profiles.storage = Storage::open(Ok(store.clone()));
+			s.bind_drafts(Some(&profile), cx);
+			s.visual_workspace_fixture(cx);
+			let target = &mut s.snapshot.as_mut().unwrap().work_items[1];
+			target.parent_goal_id = None;
+			target.codex_thread_id = Some("adopted-thread".into());
+			s.open_page("release", cx);
+			s.composer.update(cx, |input, cx| input.set_content("Chat draft", cx));
+			s.save_draft_document(cx);
+		});
+		first_cx.run_until_parked();
+
+		let snapshot = first.read_with(first_cx, |s, _| s.snapshot.clone().unwrap());
+		let (second, second_cx) = second_app.add_window_view(|_, cx| AgentSurface::new(cx));
+		second.update(second_cx, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.draft_profiles.storage = Storage::open(Ok(store.clone()));
+			s.bind_drafts(Some(&profile), cx);
+			s.apply_refreshed_snapshot(
+				Ok(decodex_protocol::AgentSnapshotResult::Available(snapshot)),
+				cx,
+			);
+			s.open_navigation_conversation("release", cx);
+			assert_eq!(s.composer.read(cx).content(), "Chat draft");
+		});
+
+		first.update(first_cx, |s, cx| {
+			s.open_navigation_conversation("agent", cx);
+			s.composer.update(cx, |input, cx| input.set_content("Assistant draft", cx));
+			s.uncertain = true;
+			s.submission.pending = Some(super::PendingCommand {
+				owner: Some("agent".into()),
+				draft: Some("Earlier sent input".into()),
+				epoch: s.command_epoch,
+				key: None,
+				steer: None,
+				execution_intent: None,
+				speed_fallback: None,
+				attachments: None,
+				references: None,
+			});
+			s.save_draft_document(cx);
+		});
+		first_cx.run_until_parked();
+
+		second.update(second_cx, |s, cx| {
+			// Another profile changes in B, leaving its live chat editor untouched.
+			s.draft_profiles
+				.storage
+				.document
+				.profiles
+				.entry(other_profile.draft_scope_key())
+				.or_default()
+				.composer
+				.text = "Other profile".into();
+			s.save_draft_document(cx);
+		});
+		second_cx.run_until_parked();
+		let synced = store.load().unwrap();
+		let synchronized = DesktopDraftDocument::decode(&synced.payload).unwrap();
+		let shared = &synchronized.profiles[&profile.draft_scope_key()];
+		assert_eq!(shared.composer.work_id.as_ref().unwrap().as_str(), "agent");
+		assert_eq!(shared.parked["release"].text, "Chat draft");
+		second.update(second_cx, |s, cx| {
+			assert_eq!(s.selected.as_deref(), Some("release"));
+			assert_eq!(s.composer_manager.as_deref(), Some("release"));
+			assert_eq!(s.composer.read(cx).content(), "Chat draft");
+			assert!(s.uncertain);
+			assert_eq!(s.submission.pending.as_ref().unwrap().owner.as_deref(), Some("agent"));
+			s.save_draft_document(cx);
+		});
+		second_cx.run_until_parked();
+		assert_eq!(store.load().unwrap().revision, synced.revision);
+		second.update(second_cx, |s, cx| {
+			s.forget_deleted_conversation("flow", cx);
+			assert_eq!(s.composer_manager.as_deref(), Some("release"));
+			s.open_navigation_conversation("agent", cx);
+			assert_eq!(s.composer.read(cx).content(), "Assistant draft");
+			s.open_navigation_conversation("release", cx);
+			s.forget_deleted_conversation("release", cx);
+			let mut active = s.snapshot.clone().unwrap();
+			active.work_items.retain(|work| work.id != "release");
+			s.apply_refreshed_snapshot(
+				Ok(decodex_protocol::AgentSnapshotResult::Available(active)),
+				cx,
+			);
+			assert_eq!(s.selected.as_deref(), Some("agent"));
+			assert_eq!(s.composer.read(cx).content(), "Assistant draft");
+			assert!(!s.draft_profiles.texts.contains_key("release"));
 		});
 	}
 

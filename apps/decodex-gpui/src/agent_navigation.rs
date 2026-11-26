@@ -17,6 +17,7 @@ pub(crate) enum AgentLocation {
 		project: Option<String>,
 		detail: Option<String>,
 	},
+	WorkDetail(String),
 	Guardian,
 }
 
@@ -25,6 +26,11 @@ impl AgentSurface {
 		if self.workspace.browsing {
 			return if self.workspace.guardian_open {
 				AgentLocation::Guardian
+			} else if self.workspace.portfolio_mode
+				&& self.workspace.focused_work
+				&& let Some(id) = &self.workspace.work_detail
+			{
+				AgentLocation::WorkDetail(id.clone())
 			} else if self.workspace.portfolio_mode {
 				AgentLocation::Work {
 					project: self.workspace.workspace_filter.clone(),
@@ -83,6 +89,7 @@ impl AgentSurface {
 			return false;
 		}
 
+		self.workspace.focused_work = false;
 		match location {
 			AgentLocation::Root | AgentLocation::Conversation { .. } => {
 				let (work, thread) = match location {
@@ -126,6 +133,15 @@ impl AgentSurface {
 						self.load_work_detail(detail.clone(), cx);
 					}
 				}
+			},
+			AgentLocation::WorkDetail(id) => {
+				self.cancel_dictation(cx);
+				self.workspace.browsing = true;
+				self.workspace.guardian_open = false;
+				self.workspace.portfolio_mode = true;
+				self.workspace.focused_work = true;
+				self.workspace.work_detail = Some(id.clone());
+				self.load_work_detail(id.clone(), cx);
 			},
 			AgentLocation::Guardian => {
 				self.workspace.browsing = true;

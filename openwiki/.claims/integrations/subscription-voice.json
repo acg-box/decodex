@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:673c95d5f5e6424f461ddf9475841c8f3853326d65e7d3deaa1d1c9ef8c9b58d",
+  "pageVersion": "sha256:acedf8387674e67715f7d747fe4247d7d08246d9cd2168a256b6d9daf13959c9",
   "claims": [
     {
       "id": "claim_93b99ffbc7b84692b730b24680f83bd2",
@@ -40,7 +40,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_voice.rs",
-          "version": "repo-file-v1:sha256:d61eebeb7ebce1d41cb99f6abe2a7561b300261b2e9897316d3f7c114b80f1c0"
+          "version": "repo-file-v1:sha256:ac855a6c111d5442eaacae61e1aac8bdaca1b31548dc9a30778522475d555040"
         },
         {
           "resource": "repo://crates/decodex-protocol/src/voice.rs",
@@ -48,25 +48,21 @@
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/voice.rs",
-          "version": "repo-file-v1:sha256:961eb86f0652749ee7ae73b29ec6acf140042a02d1c274dc113c1a2556f37991"
+          "version": "repo-file-v1:sha256:4f6311bf560dfdd060be2bc2b6e2c706df54a906b869e5d1bd229ba5ad02d47f"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent_host.rs",
-          "version": "repo-file-v1:sha256:070a9a4e18582704220891bf51ac28c12089c9aad52073c5b951f72bb9f501dc"
+          "version": "repo-file-v1:sha256:c0a6dfad5c59b82758ec50ac5d08255e85394b06826e1f11d3df9dd8dce74dfa"
         }
       ]
     },
     {
       "id": "claim_6bb4987da1834a8a923bf358416b7db3",
-      "statement": "An explicit selection saves the advertised native ID to the connected ChatGPT account. The picker refreshes after the command and reports an uncertain save after a lost reply.",
+      "statement": "Saving a reviewed native voice preference affects the next call and does not restart active audio.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_voice_settings.rs",
-          "version": "repo-file-v1:sha256:ec0dd7c1ff21d29dc3de64c7c91b871f69072c5a5412733d34d38323fa4f880b"
-        },
-        {
-          "resource": "repo://crates/decodex-codex/src/app_server_client/realtime_preferences.rs",
-          "version": "repo-file-v1:sha256:0462ea289ebaf33d2b2aefa3dad99298c9d21b77a6423710bf09e6ef4fc9e7cf"
+          "resource": "repo://crates/decodex-codex/src/app_server_client/realtime_preferences.rs#L92-L119",
+          "version": "repo-lines-v1:sha256:6780641b229ee2cefaae00ffc529153d77987a79104f9624b41ee13c757cb15e:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJiZjRlNzhjZmNkZDFlM2ZkM2Q2YjU2YjZjMDNmNTIyMTgzN2EwNTE4YWE5OGQ5MzA3ZDkxN2EzNTQwOGFmMzgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI0NTczMmRlZWUxMDQzYWYwM2FlNDRkZmMzOTY4NDA0MzNjMjMxZTFmNjQ5ODg4Njg3OTYyZjc3ODAxNjlkODgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYwMDllOTljNDZjZTA3MmFmMDViYjI3MGVkOGZmZjE5MTc1Y2EzYjA3MjY2NGYxNzQxMmEzODRjNGQ3ODliNTEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFhN2IzM2IxNDZiODRiYzg4YzI5MzgxMmVjNmY5NWRiYTJkZGFmNTMzODk5OTc1NjI3ZjRhYTcyMmZmMGQ2MDEifQ"
         }
       ]
     },
@@ -76,7 +72,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_voice.rs",
-          "version": "repo-file-v1:sha256:d61eebeb7ebce1d41cb99f6abe2a7561b300261b2e9897316d3f7c114b80f1c0"
+          "version": "repo-file-v1:sha256:ac855a6c111d5442eaacae61e1aac8bdaca1b31548dc9a30778522475d555040"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/native_live_audio.rs",
@@ -90,11 +86,19 @@
     },
     {
       "id": "claim_8e6eeb5613c24f06a1a7268d8e65ea2f",
-      "statement": "The V3 start request delegates voice selection to the backend and retains startup context, transcript-tail flush, backendReasoningStatus and optional call instructions.",
+      "statement": "Live startup reads effective voice configuration for the exact native thread. The V3 request carries a supported explicit voice or null for the call destination to choose. It enables startup context, transcript-tail flushing, and backendReasoningStatus. Optional model and start and end instructions stay bound to the call. Codex owns public-summary filtering and quiet context delivery.",
       "evidence": [
         {
+          "resource": "repo://crates/decodex-codex/src/app_server_client/realtime_settings.rs",
+          "version": "repo-file-v1:sha256:e27f5bfe439a79a790b5a72fc689172f86f9a0b14762effe1addc9bf879faada"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_voice_settings_start_tests.rs",
+          "version": "repo-file-v1:sha256:66ce52fdeb7eb394e00b6e709e5a411eccaffceef547a2f45fd5de8947420ea4"
+        },
+        {
           "resource": "repo://crates/decodex-runtime/src/agent/voice.rs",
-          "version": "repo-file-v1:sha256:961eb86f0652749ee7ae73b29ec6acf140042a02d1c274dc113c1a2556f37991"
+          "version": "repo-file-v1:sha256:4f6311bf560dfdd060be2bc2b6e2c706df54a906b869e5d1bd229ba5ad02d47f"
         }
       ]
     },
@@ -104,7 +108,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_voice.rs",
-          "version": "repo-file-v1:sha256:d61eebeb7ebce1d41cb99f6abe2a7561b300261b2e9897316d3f7c114b80f1c0"
+          "version": "repo-file-v1:sha256:ac855a6c111d5442eaacae61e1aac8bdaca1b31548dc9a30778522475d555040"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/native_audio_owner.rs",
@@ -121,7 +125,7 @@
       "statement": "Local live-voice transcript storage preserves newer received text when a final is its shorter prefix, marks that saved text incomplete, and ignores empty finals without replaying transcript input; expanded finals and ordinary corrections remain supported.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/agent/voice.rs#L367-L413",
+          "resource": "repo://crates/decodex-runtime/src/agent/voice.rs#L368-L414",
           "version": "repo-lines-v1:sha256:529dbd63e889b87c68b548df6bfaa3cea689fc956c352608dd7b66d88f16d87f:eyJzZWxlY3RlZExpbmVDb3VudCI6NDcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUxY2FkZTFkNTBjNzY4YjM0YzdmODg3OGYxZjI1ODY3ZTY3N2FmNWNhN2YxMmZlOTYwOTJmMmE5Y2M1NGRmNGYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZjOWI2YTRmMjBiODUwZTcxNjFjNjM1MzQ0MDhhOTJiYTdiZmZlMTc3NjQ1ZDEwYjc2MTgwMDE0MTIzNWVhNmMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAxMWI2MjhkNGJjNDQ0MzI5ZTRmYTU0ZDE5MzZiZjBmMTVmYzdiYzQyODEzOTBiMjYwOWM4YTMwNDUwOGI5ZTcifQ"
         },
         {
@@ -182,7 +186,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_voice.rs",
-          "version": "repo-file-v1:sha256:d61eebeb7ebce1d41cb99f6abe2a7561b300261b2e9897316d3f7c114b80f1c0"
+          "version": "repo-file-v1:sha256:ac855a6c111d5442eaacae61e1aac8bdaca1b31548dc9a30778522475d555040"
         },
         {
           "resource": "repo://scripts/macos/stage_decodex_app.sh",
@@ -238,15 +242,15 @@
     },
     {
       "id": "claim_e25079cbb5dc40dab2c2b03d2ec7f61d",
-      "statement": "The picker displays the connected account’s available voice names and identifies the selected voice by its native ID.",
+      "statement": "The voice picker requires a nonempty native V3 catalog and uses it for all explicit selections. Missing or malformed catalog data is an error. The picker displays Server default for an unset effective voice.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_voice_settings.rs",
-          "version": "repo-file-v1:sha256:ec0dd7c1ff21d29dc3de64c7c91b871f69072c5a5412733d34d38323fa4f880b"
+          "version": "repo-file-v1:sha256:bb3901adb0a4c3c3c97d842ed1a6339221af7f32da821f2183da41ebb3a37017"
         },
         {
-          "resource": "repo://crates/decodex-protocol/src/agent_voice_settings.rs",
-          "version": "repo-file-v1:sha256:7508b26c304c757a38b27a492b22c19e541e107712e849c4ebb338a33ac8373e"
+          "resource": "repo://crates/decodex-codex/src/app_server_client/realtime_preferences.rs",
+          "version": "repo-file-v1:sha256:a37c9d33a043b3d68dc3b057a108dc4f25e36f12c1b21e49b861c68f8a620d13"
         }
       ]
     },
@@ -269,7 +273,7 @@
       "statement": "The media follow-up retains original failures and passing reruns with recovered lock and firewall history: an already-allowed package-only baseline passed while locked, and the workspace binary received its prompt and allow verdict after unlock; a new controlled lock experiment and physical or installed-app acceptance remain unqualified.",
       "evidence": [
         {
-          "resource": "repo://automations/upstream/retained-contracts.json#L2909-L3007",
+          "resource": "repo://automations/upstream/retained-contracts.json#L2882-L2980",
           "version": "repo-lines-v1:sha256:247b9f15b66dcb372d7d7941dbda2774534c8a79d325531a9b2d8a40317366f6:eyJzZWxlY3RlZExpbmVDb3VudCI6OTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjcyNTgxYjg0YjMxYmQ1MTk5ODFiMDk3YzA5MzkwOTViNDg5MmE4MjU2YzczN2QzMmRjZDI0OGQ5ZjM4NWFlY2UiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE4YjAyMjMwYzViMGMzNDU2ZWIwNjU3YjZhMzBmZThiY2UxZWM5OTU3YjNjNmMyNzM2Mjc0Y2QyOTVhYTQwNzYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE4ZTcwMmRiMTg0MzVjZGViNDc1OGU3N2NiOWNmZjhjNTM4M2MwOGE5NmYyOGI2NzU5ZDQ1ODYzODMxNmRkNzUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI3YTA3ZTU1ZGE3NjYzYzExZjVkNGE5NTQyZGMwODRlNzRlMWQzZTZhZDUwNmY2NDJkNWMwMmM1NWU0MjdiNDcifQ"
         }
       ]
@@ -287,7 +291,7 @@
           "version": "repo-file-v1:sha256:622c5171ebfae3e6ff580ff43063b3716d1b6992426e019a3352f10a8fccb78c"
         },
         {
-          "resource": "repo://automations/upstream/retained-contracts.json#L3817-L3915",
+          "resource": "repo://automations/upstream/retained-contracts.json#L3790-L3888",
           "version": "repo-lines-v1:sha256:04aa7cf0b815c5283c4994fd73ecb18fe3b187e85ac823ba2fc08c6d5781617a:eyJzZWxlY3RlZExpbmVDb3VudCI6OTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJkYWE1YzQ5NTUxOWRhMmRhNGRjYzhiZDI0MjU3MjhkNmQwM2Y3Nzg1YWM2YzcwYzc4MzQ5MTM4MDI0Y2VlM2IiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAwYzlhYTVhOGI0MzJjNmRjMjJhNjdmYTI1M2U3YmMzMTZmMmE2ZWJjMWM5MjA1OTA4ZTAyMWNjNjI1NzVhMjkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE2ZTZjYTZiZTFlY2ZiZTU5OTYwYjI4ZGEwYmIzMDMxOGRlYzk3YTUyMGEzOGY0NWI4ZGJkMTBmNDZhMjIyYmUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImEyZTMzNzlmYzM0ZTVlMTZlZmM4NWRlZmExZjdlNjBiYTYwNTliYTEyZmZhM2U3M2U5ODhiZjA0ZDdlYmNhMzEifQ"
         }
       ]
@@ -297,7 +301,7 @@
       "statement": "The current output route was virtual; the hardware follow-up does not qualify physical speaker output, intelligibility, audible quality, controlled lock behavior, a provider voice session or installed-app behavior. The temporary fixture and its exact-owned helpers were removed after receipt preservation.",
       "evidence": [
         {
-          "resource": "repo://automations/upstream/retained-contracts.json#L3817-L3915",
+          "resource": "repo://automations/upstream/retained-contracts.json#L3790-L3888",
           "version": "repo-lines-v1:sha256:04aa7cf0b815c5283c4994fd73ecb18fe3b187e85ac823ba2fc08c6d5781617a:eyJzZWxlY3RlZExpbmVDb3VudCI6OTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJkYWE1YzQ5NTUxOWRhMmRhNGRjYzhiZDI0MjU3MjhkNmQwM2Y3Nzg1YWM2YzcwYzc4MzQ5MTM4MDI0Y2VlM2IiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAwYzlhYTVhOGI0MzJjNmRjMjJhNjdmYTI1M2U3YmMzMTZmMmE2ZWJjMWM5MjA1OTA4ZTAyMWNjNjI1NzVhMjkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE2ZTZjYTZiZTFlY2ZiZTU5OTYwYjI4ZGEwYmIzMDMxOGRlYzk3YTUyMGEzOGY0NWI4ZGJkMTBmNDZhMjIyYmUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImEyZTMzNzlmYzM0ZTVlMTZlZmM4NWRlZmExZjdlNjBiYTYwNTliYTEyZmZhM2U3M2U5ODhiZjA0ZDdlYmNhMzEifQ"
         }
       ]
@@ -311,8 +315,8 @@
           "version": "repo-file-v1:sha256:e690a3df678f8287d60b096ee063256b10d653bbb8ead78b2ff5bd90eae2d306"
         },
         {
-          "resource": "repo://automations/upstream/retained-contracts.json#L4074-L4186",
-          "version": "repo-lines-v1:sha256:01dcf97e81815e54be51e7658f4ed9e78d2d6bf50d1be3a337c8068a3ae718bd:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEzLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIyNzdhNzJhOGVmMTZkOGM2Yjg4N2YxNGY3NmE0MzA2ZTRhNjRmNTIxOWRjOWU4ZjQ5NTA3MzhhNTMzZTM3YzgwIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0ZDVjZDJmYjRmM2RmODg0NTE1MjU1YjM5NTIzZjJmOGI1NDcyYmVlYTlmNTY2ZmZjYTIwNGRiODAyNTYxMDQxIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIwMTQ5Yjc1OTMzZjcxMWJkOGU1OTI5MzUxZTQ1NzAzZjUxM2FiZjc5OThmMzQ1YmYyNzQ2N2QyZmU4YmU4YTQ0IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIzMjJmNzZjMjFmNzQ5NTdkOTI1ZTE4ZDNhNjRhYmI1NjA3ZmYwODBhNzc0NTYyMDhlOGUwNjc4NDQwMmMwY2ExIn0"
+          "resource": "repo://automations/upstream/retained-contracts.json#L4047-L4144",
+          "version": "repo-lines-v1:sha256:6be864a8fb8c50c5a4aa30c99a05a9a9607077f8edde7ba74d0412d79ea5f674:eyJzZWxlY3RlZExpbmVDb3VudCI6OTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3N2E3MmE4ZWYxNmQ4YzZiODg3ZjE0Zjc2YTQzMDZlNGE2NGY1MjE5ZGM5ZThmNDk1MDczOGE1MzNlMzdjODAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRkNWNkMmZiNGYzZGY4ODQ1MTUyNTViMzk1MjNmMmY4YjU0NzJiZWVhOWY1NjZmZmNhMjA0ZGI4MDI1NjEwNDEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjAxNDliNzU5MzNmNzExYmQ4ZTU5MjkzNTFlNDU3MDNmNTEzYWJmNzk5OGYzNDViZjI3NDY3ZDJmZThiZThhNDQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjMyMmY3NmMyMWY3NDk1N2Q5MjVlMThkM2E2NGFiYjU2MDdmZjA4MGE3NzQ1NjIwOGU4ZTA2Nzg0NDAyYzBjYTEifQ"
         },
         {
           "resource": "repo://scripts/macos/prepare_voice_acceptance.py",
@@ -325,7 +329,7 @@
       "statement": "Observed cargo-nextest 0.9.143 can return a zero exit code when a non-final stress iteration failed with fail-fast disabled; the qualification checks individual iterations and the final summary, and upstream fixed the exit behavior in 0.9.148.",
       "evidence": [
         {
-          "resource": "repo://automations/upstream/retained-contracts.json#L876-L887",
+          "resource": "repo://automations/upstream/retained-contracts.json#L873-L884",
           "version": "repo-lines-v1:sha256:b909442046f7c285f6089dfa556da03db8536a6428746e393e02c61a9e59fde6:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYwNzllNGIxZDI3ZWEyMzhhMmViOGMwMzQ2ZTg2ZjI4ZWNmMzI3ZGRhYTRkMWYzMjZlYzMzNTNmMmQ5MzJiNWQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFlNjczYWJkNDU3YTk3ZWVhMTdhNjAwNjJlYjBmYWVhNmJkZjA5NDg2OGNjNmI4ZjhjMGViZGEyZjYxZWQ0MmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU4ZmU4ZmYzMmQ2YjM0OThkYTBiMDQzZDY4OGU1MmEyMTU3MmM3YjExOTI2ZjBiMjUzYjg2YzA1MTM4NzFlOTMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk0NGZjNTVhZmE1ZDE4YTU2YTRiMDJkNmMzY2MwM2U0OTQyMGExNzNiMzkwZDdhNjczOTZkNThjMmYzMTI0MmMifQ"
         }
       ]
@@ -349,8 +353,8 @@
       "statement": "After one user-confirmed firewall allow, the measured original and rebuilt native voice test executables had different code hashes and the same designated requirement; both passed four tests with 28 known allow events each and no queued or prompt events in their test windows. Sixteen post-consent executions passed in total, while first consent, signer/path/host limits and the original timeout remain explicit.",
       "evidence": [
         {
-          "resource": "repo://automations/upstream/retained-contracts.json",
-          "version": "repo-file-v1:sha256:5288fb57615d9a7f5f3fcfe02cdeb978ff15ed01586a4f2ff5d23ff43ea6aba9"
+          "resource": "repo://automations/upstream/retained-contracts.json#L2271-L2410",
+          "version": "repo-lines-v1:sha256:1234c4b473b37de473d4c8826220c2eefebe5396973b815bf50f444d28c6ecb2:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQwLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJmOWNhODkxYmZmN2FjMWY3Y2VhYWU0MGVmMDUxMDY2YmU5ZWZlNDdiNGU0MjgxZTg2YzMxOWJlMmM1NWViY2U0IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI5NjRkOGMwNzM0Mjk4OTMxMDE1NzZkODhkOTkxMjdlODlkNjg5MWQzYjE3ZTg5ZGYwMmVjOWFlNzA3MDVkOGJlIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJmM2UyNGMyYWQwZDhmZDJlZGE2ODdkNjE5YmI3ZjFkOWRiMjU5YmM1NmU3M2M5NTAzYTkwMGQ1YTg4YjYxOWJiIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJhZDU3M2UzM2ZiNzNjYzBkZjZiYzU5YmRjNjVhODE5MmZmNDUxYmIwMTUyYzE0OWNjMDRhMGI3MGE1MmM5NTA4In0"
         }
       ]
     },
@@ -387,15 +391,15 @@
       "statement": "Navigation preserves the call's work and session, exposes background Return, Mute and End controls, and keeps other conversation drafts separate; ending the call or confirmed removal/archive of its owner retires local capture.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_voice.rs#L2863-L2974",
+          "resource": "repo://apps/decodex-gpui/src/agent_voice.rs#L2748-L2859",
           "version": "repo-lines-v1:sha256:8b26039f048a1adc852af223c27270237314ae6720658dedeafc38f1c9f37a9f:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEyLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJkM2Y1MjgxOGNiMGM0NjU3YmFiYzY3MDc0OGIzODYwMjdiYmI0YzZlMDg5ZjRlODk0N2Y5YmEyMGE2YTU4ZTRlIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIwMWJhNDcxOWM4MGI2ZmU5MTFiMDkxYTdjMDUxMjRiNjRlZWVjZTk2NGUwOWMwNThlZjhmOTgwNWRhY2E1NDZiIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJmMTI2OWJhMGQ1Mjg0MjM2OGNhMjIwMWI0NGYyMTNhOWMwNGJmOTkzNjFiODE4YzljMjM1MzhjZjM1MWQ2MjgxIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIyOTllNWVhMmM3NDgxYzM2NTA1MjUxYjQ2NWU3ODRlOWIzZmRmNDRlYzE0YzI3M2I1MTlmMzI3NjEyMmMxNDc4In0"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_voice.rs#L840-L936",
+          "resource": "repo://apps/decodex-gpui/src/agent_voice.rs#L821-L917",
           "version": "repo-lines-v1:sha256:8a05d0aa03c18ba0684cf254012623c130e129e20e95c42ee0f0b6cbb0b83a67:eyJzZWxlY3RlZExpbmVDb3VudCI6OTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlkYTgxMGEzZGU2ZWEwODJjYzMwN2ExMWUxZmZiOGFlNDc5ZWY2OWM2NTI0ZTRiY2VhOTdkMzgxNzYwN2U0NGUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM3M2FjMDMxZjM0Y2RmZDllMWU0YzJjZjhiNmQyODEzOTkwMDVlZDI0OTlkYzhiNDQ3OWYyMmNjZTRiYjU4YjgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhhODA3MTdhZjVkZDFiYWQ1ZTNlNjNkN2RiYjg4Yjc3ZGY4OTU4M2FiYjc1Y2ZjNDBmZjIwNDUyYmFmOThlNTcifQ"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs#L342-L352",
+          "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs#L324-L334",
           "version": "repo-lines-v1:sha256:7d98300818cdea607d56f5a69824fd0de26210869a9d0434ba8e59b1d9b2f18e:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhjZWIzYjgzMjZjNzY5YzMzNmRiMzZmNjgyNGY0OGMwOGQxZDNmNmRiNzU4YWQ0NTdlNjQxYmY2Zjg4NWU2MjgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY0ZWZjNDk0MThkMjZkY2YxMjliMjJhNmFhMjExMDhjZWVjMzc2NzdhMzJkMDhlOWQ1ZmVlMzVkZGE2NmJiOWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU0ZTE5NWVmZmQ0OTgyNmFjMDcyNDY0MDU3MjBlZTljYWNhMGE0MjdkYjFlOTYzZDNmNzY1NGM0ZTI3ZTY5MDciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk0MjVlYWNlNTE0NzJjZTY1NzQxNDdkNmY3YTUwYTcxMGQyNjdmYmQ4ODk3NjE3ODc1N2E3OWZkOThkMTRmZTAifQ"
         }
       ]
@@ -413,11 +417,11 @@
           "version": "repo-lines-v1:sha256:92b077eb61d54c619bd6d07dbd145ce519dc0588c06abe2e2a26d29d644fe370:eyJzZWxlY3RlZExpbmVDb3VudCI6MzQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImMzODI4MzNlNDc1ZjIyMTg3NjNkN2FhZGU3YmE4NjI0ZWIxNTQ4ZDcxNjMwMjgzY2QzODMyZTBlNmU1ODRjMjgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk0NjRhOWI4NWMxOTgwYzJkYWE5YjFjNjdkYmNlMjEzMDQ4ODc3MDQwMzdjNDQwNDg5ODBhNzJjYmIxYWU4NDEifQ"
         },
         {
-          "resource": "repo://database/src/agent_process.rs#L1291-L1386",
+          "resource": "repo://database/src/agent_process.rs#L1270-L1365",
           "version": "repo-lines-v1:sha256:3c7a9fd5b04049699e75cd4db926c705536c8377ef5d51f72cc05f5249b41846:eyJzZWxlY3RlZExpbmVDb3VudCI6OTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjljNzY1NDBjMWVhNTkwOTJkNGUyOTZkNWM4OTY0Y2RkOWUyZjAzNTlkZjM0ZTA0NGFhYjlmMWYwZDVhNDY0MTAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImFkMDJkNjY5ZDgwOWY1ODYzN2M4NDc3N2IwODc2NGE5MTRkYWNmNzgzYWMwZjQ4NjY4ZWQwZGViYzNmZjk5N2UiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM1NzA3YmUwOGUxNjdlNWRkMDA3MWE1NTg1Yjg0NzY5ZDI3MzA1MjhkZDNlMDgwYzY3YzlmMmI0YzYwNDE5YzYifQ"
         },
         {
-          "resource": "repo://database/src/agent_process.rs#L1454-L1495",
+          "resource": "repo://database/src/agent_process.rs#L1433-L1474",
           "version": "repo-lines-v1:sha256:cd8b836a800bccf06d43717933770cf3937ce4cb2d9ce3f937a194e1a6071354:eyJzZWxlY3RlZExpbmVDb3VudCI6NDIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZmOWZiMWI3ZjdlNGEyNTliNDBkMmYyM2EyNDRhZGIzZjFjNGVlYjBjOTJlMzAyNDJiYThkZDMzNjQwMTUzMTciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjAwYzc0ZjZkOTA4YjNmN2FlODgzODU3NWU5YTgzYzI2ZjVkZWVjZGM3YjgzOGNhMDM3MWE5NTUzNGIwZmMwNmQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFiMTdjYzdhMmM5ODgzYzc1ODk2YzZkNGQ4MmRiZWUxNWE2ODZlYjY3NGExNDQ5NzZkMmRmOTkxNGYwYjAwNDQifQ"
         },
         {
@@ -432,7 +436,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_voice.rs",
-          "version": "repo-file-v1:sha256:d61eebeb7ebce1d41cb99f6abe2a7561b300261b2e9897316d3f7c114b80f1c0"
+          "version": "repo-file-v1:sha256:ac855a6c111d5442eaacae61e1aac8bdaca1b31548dc9a30778522475d555040"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/native_dictation_audio.rs",
@@ -450,15 +454,19 @@
     },
     {
       "id": "claim_6c8d083f5a7847459694d6aa451f8ff9",
-      "statement": "The service checks managed policy before native thread creation. Live startup does not perform account voice or project preference reads.",
+      "statement": "Live startup begins local media preparation without a thread-bound voice-settings preflight. The service checks managed policy before creating a native thread and reads the effective voice before realtime signaling. The startup regression covers both allowed and blocked empty topics without turn/start.",
       "evidence": [
         {
+          "resource": "repo://apps/decodex-gpui/src/agent_voice.rs",
+          "version": "repo-file-v1:sha256:ac855a6c111d5442eaacae61e1aac8bdaca1b31548dc9a30778522475d555040"
+        },
+        {
           "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_voice_settings_start_tests.rs",
-          "version": "repo-file-v1:sha256:4184d9b71355044b79a01c23df80c641c7e42996125e5ca165cff228e7cccf50"
+          "version": "repo-file-v1:sha256:66ce52fdeb7eb394e00b6e709e5a411eccaffceef547a2f45fd5de8947420ea4"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/voice.rs",
-          "version": "repo-file-v1:sha256:961eb86f0652749ee7ae73b29ec6acf140042a02d1c274dc113c1a2556f37991"
+          "version": "repo-file-v1:sha256:4f6311bf560dfdd060be2bc2b6e2c706df54a906b869e5d1bd229ba5ad02d47f"
         }
       ]
     },
@@ -476,11 +484,11 @@
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/voice.rs",
-          "version": "repo-file-v1:sha256:961eb86f0652749ee7ae73b29ec6acf140042a02d1c274dc113c1a2556f37991"
+          "version": "repo-file-v1:sha256:4f6311bf560dfdd060be2bc2b6e2c706df54a906b869e5d1bd229ba5ad02d47f"
         },
         {
           "resource": "repo://database/src/agent.rs",
-          "version": "repo-file-v1:sha256:9a1eff41be13a03406abc1560385de9c79d91d181201f28c59c13daf601d199f"
+          "version": "repo-file-v1:sha256:d8939e3ed28ec0c60032f4a5e8cfad7012435231fd57fd624160ae949b8afb73"
         },
         {
           "resource": "repo://database/src/agent/drafts.rs",
@@ -494,11 +502,11 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_surface.rs",
-          "version": "repo-file-v1:sha256:306bb37918bb751f1de9c3cb0196f9d1757217c81bfe0eaccb3d0ae394547815"
+          "version": "repo-file-v1:sha256:5d0de452a9e029f95e309d3636dca508bd88282284ae5643811b9bbb42139875"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_voice.rs",
-          "version": "repo-file-v1:sha256:d61eebeb7ebce1d41cb99f6abe2a7561b300261b2e9897316d3f7c114b80f1c0"
+          "version": "repo-file-v1:sha256:ac855a6c111d5442eaacae61e1aac8bdaca1b31548dc9a30778522475d555040"
         },
         {
           "resource": "repo://database/src/agent/drafts.rs",
@@ -512,7 +520,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_response_metrics.rs",
-          "version": "repo-file-v1:sha256:2673882310ddab57dfea0c19f3c344550bc76e6543ad3cf5f48bd343221ad03c"
+          "version": "repo-file-v1:sha256:21185c248a19ca7f3d7f06769bd0432649a402923d30e5b4a4d302ad46228f85"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/voice_history_block.rs",
@@ -534,7 +542,7 @@
         },
         {
           "resource": "repo://crates/decodex-protocol/src/agent.rs",
-          "version": "repo-file-v1:sha256:29e9b689d3af4f092edbdad33fa1e8209dc37b34fb47e039828f019188f82cec"
+          "version": "repo-file-v1:sha256:82002e49cd8ac5273b7dcf9264fe081e78a2738fce024ac4b18a0b4a56a92fce"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent_voice_presentation.rs",
@@ -542,7 +550,7 @@
         },
         {
           "resource": "repo://database/src/agent.rs",
-          "version": "repo-file-v1:sha256:9a1eff41be13a03406abc1560385de9c79d91d181201f28c59c13daf601d199f"
+          "version": "repo-file-v1:sha256:d8939e3ed28ec0c60032f4a5e8cfad7012435231fd57fd624160ae949b8afb73"
         },
         {
           "resource": "repo://database/src/agent_voice_presentation.rs",
@@ -553,6 +561,6 @@
   ],
   "verification": {
     "by": "openwiki/0.9.0",
-    "at": "2026-11-26T02:22:16.427Z"
+    "at": "2026-11-18T19:17:42.865Z"
   }
 }

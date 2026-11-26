@@ -402,6 +402,7 @@ impl AgentSurface {
 	}
 
 	fn jump_to_history(&mut self, id: HistoryKey, cx: &mut Context<Self>) {
+		self.timeline.native.reveal_history_mark(&id);
 		self.timeline.latest_follow_work = None;
 
 		self.cancel_native_scroll_anchor();
@@ -950,8 +951,10 @@ impl AgentSurface {
 		let keyboard_preview = preview.clone();
 		let preview_key = id.clone();
 
+		let selector = format!("history-tick-{id}");
 		gpui::div()
-			.id(SharedString::from(format!("history-tick-{id}")))
+			.id(SharedString::from(selector.clone()))
+			.debug_selector(move || selector.clone())
 			.role(Role::Button)
 			.tab_index(0)
 			.aria_label(format!("Jump to: {}", mark.question))

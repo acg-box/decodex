@@ -169,8 +169,10 @@ impl Shell {
 		window: &mut gpui::Window,
 		cx: &mut Context<Self>,
 	) {
-		if self.settings_open() {
-			self.navigate_settings_history(forward, window, cx);
+		if let Some(overlay) = self.overlay {
+			if overlay == super::WorkspaceOverlay::Settings {
+				self.navigate_settings_history(forward, window, cx);
+			}
 			return;
 		}
 		if self.selected == Destination::Agent && self.agent.read(cx).workspace_connecting() {
@@ -268,13 +270,7 @@ impl Shell {
 			_ => return,
 		};
 		self.select_settings_section(destination, cx);
-		let tab = super::SETTINGS_SECTIONS.iter().position(|(section, category, _)| {
-			*section == destination
-				&& category.is_none_or(|value| self.settings.read(cx).category == value)
-		});
-		if let Some(tab) = tab {
-			window.focus(&self.settings_focus[tab], cx);
-		}
+		window.focus(&self.settings_focus[self.settings_tab_index(cx)], cx);
 	}
 }
 

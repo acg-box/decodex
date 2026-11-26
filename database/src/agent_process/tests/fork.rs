@@ -39,7 +39,8 @@ async fn acknowledged_fork_keeps_the_live_source_owner_without_adopting_other_ma
 			item_id: "input".into(),
 			turn_ids: vec!["first".into()],
 			content: vec![serde_json::json!({"type":"text","text":"preserve"})],
-		},
+		}
+		.into(),
 		target_work: "branch".into(),
 		boundary: AgentForkBoundary::BeforeInput,
 	};

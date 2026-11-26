@@ -322,6 +322,7 @@ mod tests {
 
 		let text = visual.debug_bounds(selectors("live")[3]).unwrap();
 		let live = visual.debug_bounds("native-live-output").unwrap();
+		let status = visual.debug_bounds("pixel-work-status").unwrap();
 
 		surface.update(visual, |s, cx| {
 			s.timeline.native.entries.extend([
@@ -352,9 +353,24 @@ mod tests {
 		assert_eq!(saved.origin, live.origin);
 		assert_eq!(saved.size.width, live.size.width);
 
+		// Both labels stay on the same line throughout the handoff.
+		for _ in 0..6 {
+			thread::sleep(std::time::Duration::from_millis(36));
+			visual.update(crate::ui_frame::draw_frame);
+			if let Some(outgoing) = visual.debug_bounds("pixel-work-status") {
+				assert!((outgoing.top() - status.top()).abs() <= gpui::px(1.));
+			}
+			let incoming = visual.debug_bounds("turn-metrics-hover").unwrap();
+			assert!((incoming.top() - status.top()).abs() <= gpui::px(1.));
+		}
 		settled(visual);
 
 		assert_eq!(visual.debug_bounds(selectors("native")[3]).unwrap(), text);
+		let metrics = visual.debug_bounds("turn-metrics-hover").unwrap();
+		assert!(
+			metrics.origin == status.origin,
+			"status and finished metrics must use one baseline: {status:?} -> {metrics:?}"
+		);
 		assert_eq!(visual.debug_bounds("response-footer").unwrap().size.height, gpui::px(28.));
 	}
 
@@ -405,7 +421,10 @@ mod tests {
 		let selector = selectors("live")[3];
 		let original = visual.debug_bounds(selector).unwrap().top();
 		let composer = visual.debug_bounds("composer-input-region").unwrap();
-		assert!(visual.debug_bounds("work-status-slot").unwrap().size.height > gpui::px(40.));
+		assert_eq!(
+			visual.debug_bounds("work-status-slot").unwrap().size.height,
+			gpui::px(crate::ui_theme::RESPONSE_FOOTER_EXTENT)
+		);
 
 		surface.update(visual, |s, cx| {
 			s.timeline.native.entries.extend([
@@ -433,6 +452,7 @@ mod tests {
 			assert!(top >= previous - gpui::px(1.), "reply bounced: {previous:?} -> {top:?}");
 			assert_eq!(visual.debug_bounds("composer-input-region").unwrap(), composer);
 			previous = top;
+			visual.executor().advance_clock(Duration::from_millis(40));
 			thread::sleep(Duration::from_millis(40));
 		}
 		assert!(saw_fold);

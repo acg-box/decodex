@@ -54,6 +54,31 @@ thread_local! {
 	static ATTACHED_WINDOWS: std::cell::RefCell<std::collections::HashMap<usize, Attachment>> = Default::default();
 }
 
+#[derive(Default)]
+struct PointerRegion {
+	bounds: Cell<Option<NSRect>>,
+	passive: Cell<bool>,
+}
+impl PointerRegion {
+	fn apply(&self, window: &NSWindow) {
+		let outside = self.bounds.get().is_some_and(|region| {
+			let cursor = unsafe {
+				objc2::msg_send![AnyClass::get(c"NSEvent").expect("AppKit"), mouseLocation]
+			};
+			let cursor: NSPoint = cursor;
+			cursor.x < region.origin.x
+				|| cursor.x >= region.origin.x + region.size.width
+				|| cursor.y < region.origin.y
+				|| cursor.y >= region.origin.y + region.size.height
+		});
+		window.setIgnoresMouseEvents(self.passive.get() || outside);
+	}
+
+	fn move_to(&self, bounds: Option<NSRect>, window: &NSWindow) {
+		self.bounds.set(bounds);
+		self.apply(window);
+	}
+}
 /// Owns composition separately from the editor and its window lifecycle.
 pub(crate) struct MaterialPanel {
 	surface: Surface,
@@ -71,7 +96,7 @@ pub(crate) struct MaterialPanel {
 	opacity: Cell<f32>,
 	window_observer: Retained<AnyObject>,
 	side_buttons: Retained<AnyObject>,
-	hit_region: Rc<Cell<Option<NSRect>>>,
+	hit_region: Rc<PointerRegion>,
 	clip_mask: Option<Retained<AnyObject>>,
 	occlusion_mask: Option<Retained<AnyObject>>,
 	occlusion_frame: Option<NSRect>,
@@ -79,7 +104,8 @@ pub(crate) struct MaterialPanel {
 impl MaterialPanel {
 	/// Hints must not intercept pointer movement or steal focus from their owner.
 	pub(crate) fn set_passive(&mut self, passive: bool) {
-		self.native.setIgnoresMouseEvents(passive);
+		self.hit_region.passive.set(passive);
+		self.hit_region.apply(&self.native);
 	}
 
 	pub(crate) fn install_input_bar(
@@ -194,7 +220,7 @@ impl MaterialPanel {
 			let _: () = objc2::msg_send![&*native, setAlphaValue: 0.0_f64];
 			let _: () = objc2::msg_send![&*parent, addChildWindow: &*native, ordered: 1_isize];
 			let window_observer = observe_panel_window(&native)?;
-			let hit_region = Rc::new(Cell::new(None));
+			let hit_region = Rc::new(PointerRegion::default());
 			let side_buttons = route_side_buttons(&native, &gpu, hit_region.clone())?;
 
 			ATTACHED_WINDOWS.with(|windows| {
@@ -412,8 +438,7 @@ impl MaterialPanel {
 			),
 			frame.size,
 		);
-		self.hit_region.set(Some(region));
-		update_hit_region(&self.native, region);
+		self.hit_region.move_to(Some(region), &self.native);
 	}
 
 	/// Clip the composite behind another surface. This does not resize the glass
@@ -457,8 +482,7 @@ impl MaterialPanel {
 			NSPoint::new(window.origin.x + frame.origin.x, window.origin.y + frame.origin.y),
 			frame.size,
 		);
-		self.hit_region.set(Some(region));
-		update_hit_region(&self.native, region);
+		self.hit_region.move_to(Some(region), &self.native);
 	}
 
 	pub(crate) fn occlude_attached_content(
@@ -485,8 +509,7 @@ impl MaterialPanel {
 			}
 		}
 		self.occlusion_frame = None;
-		self.hit_region.set(None);
-		self.native.setIgnoresMouseEvents(false);
+		self.hit_region.move_to(None, &self.native);
 	}
 
 	pub(crate) fn set_title(&self, title: &str) {
@@ -658,15 +681,15 @@ impl Drop for MaterialPanel {
 fn route_side_buttons(
 	window: &Retained<NSWindow>,
 	foreground: &Retained<NSView>,
-	hit_region: Rc<Cell<Option<NSRect>>>,
+	hit_region: Rc<PointerRegion>,
 ) -> Option<Retained<AnyObject>> {
 	let number = window.windowNumber();
 	let window = window.clone();
 	let foreground = foreground.clone();
 	let handler = RcBlock::new(move |event: *mut AnyObject| -> *mut AnyObject {
 		unsafe {
-			if let Some(region) = hit_region.get() {
-				update_hit_region(&window, region);
+			if hit_region.bounds.get().is_some() {
+				hit_region.apply(&window);
 			}
 			let target: isize = objc2::msg_send![event, windowNumber];
 			let button: isize = objc2::msg_send![event, buttonNumber];
@@ -690,18 +713,6 @@ fn route_side_buttons(
 			addLocalMonitorForEventsMatchingMask: (NSEventMask::OtherMouseDown | NSEventMask::OtherMouseUp | NSEventMask::MouseMoved | NSEventMask::LeftMouseDown),
 			handler: &*handler
 		])
-	}
-}
-
-fn update_hit_region(window: &NSWindow, region: NSRect) {
-	unsafe {
-		let cursor: NSPoint =
-			objc2::msg_send![AnyClass::get(c"NSEvent").expect("AppKit"), mouseLocation];
-		let inside = cursor.x >= region.origin.x
-			&& cursor.x < region.origin.x + region.size.width
-			&& cursor.y >= region.origin.y
-			&& cursor.y < region.origin.y + region.size.height;
-		window.setIgnoresMouseEvents(!inside);
 	}
 }
 

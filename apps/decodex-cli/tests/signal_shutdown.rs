@@ -7,7 +7,7 @@ use std::{
 	fs::{self, Permissions},
 	io::{BufRead as _, BufReader, Error, Write as _},
 	os::{
-		fd::{AsRawFd as _, RawFd},
+		fd::AsRawFd as _,
 		unix::{
 			fs::{MetadataExt as _, PermissionsExt as _},
 			net::UnixStream,
@@ -32,28 +32,14 @@ struct RunningDaemon {
 }
 impl RunningDaemon {
 	fn start(home: &Path) -> Self {
-		Self::start_with_parent(home, None)
+		Self::start_with(home, |_| {})
 	}
 
-	fn start_with_parent(home: &Path, parent_fd: Option<RawFd>) -> Self {
+	fn start_with(home: &Path, configure: impl FnOnce(&mut Command)) -> Self {
 		let mut command = Command::new(env!("CARGO_BIN_EXE_decodex"));
 
 		command.arg("serve").env("HOME", home).env("PATH", home.join("bin")).stdout(Stdio::piped());
-
-		if let Some(fd) = parent_fd {
-			command.args(["--parent-fd", &fd.to_string()]);
-			// SAFETY: only async-signal-safe fcntl runs before exec; the caller retains fd until
-			// spawn.
-			unsafe {
-				command.pre_exec(move || {
-					if libc::fcntl(fd, F_SETFD, 0) < 0 {
-						return Err(Error::last_os_error());
-					}
-
-					Ok(())
-				});
-			}
-		}
+		configure(&mut command);
 
 		let mut child = command.spawn().expect("start daemon test process");
 		let stdout = child.stdout.take().expect("capture daemon stdout");
@@ -153,7 +139,19 @@ fn parent_channel_data_reports_failure_after_transport_cleanup() {
 fn assert_parent_cleanup(send_data: bool) {
 	let (_home, canonical_home, socket) = fixture();
 	let (mut parent, child) = UnixStream::pair().expect("create parent channel");
-	let daemon = RunningDaemon::start_with_parent(&canonical_home, Some(child.as_raw_fd()));
+	let fd = child.as_raw_fd();
+	let daemon = RunningDaemon::start_with(&canonical_home, |command| {
+		command.args(["--parent-fd", &fd.to_string()]);
+		// SAFETY: only async-signal-safe fcntl runs before exec; child retains the fd.
+		unsafe {
+			command.pre_exec(move || {
+				if libc::fcntl(fd, F_SETFD, 0) < 0 {
+					return Err(Error::last_os_error());
+				}
+				Ok(())
+			});
+		}
+	});
 
 	drop(child);
 
@@ -217,7 +215,20 @@ max_entry_bytes = 65536
 
 fn assert_signal_cleanup(signal: c_int) {
 	let (_home, canonical_home, socket) = fixture();
-	let daemon = RunningDaemon::start(&canonical_home);
+	let daemon = RunningDaemon::start_with(&canonical_home, |command| {
+		// A desktop background worker can pass its blocked signal mask through exec.
+		// SAFETY: both operations are async-signal-safe and touch only this child.
+		unsafe {
+			command.pre_exec(|| {
+				let mut mask = std::mem::MaybeUninit::uninit();
+				libc::sigfillset(mask.as_mut_ptr());
+				if libc::sigprocmask(libc::SIG_SETMASK, mask.as_ptr(), std::ptr::null_mut()) != 0 {
+					return Err(Error::last_os_error());
+				}
+				Ok(())
+			});
+		}
+	});
 
 	assert!(socket.exists(), "ready daemon must retain its published socket");
 

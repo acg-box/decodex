@@ -66,6 +66,7 @@ impl AgentSurface {
 
 		Ok(decodex_protocol::AgentVoiceOptions {
 			draft: None,
+			execution: None,
 			model: value(&next.model)
 				.map(WireText::new)
 				.transpose()

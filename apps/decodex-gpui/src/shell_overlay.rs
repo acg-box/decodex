@@ -6,7 +6,9 @@ use super::{
 	ui_motion, ui_theme,
 };
 use gpui::{
-	AnyElement, KeyDownEvent, Modifiers, MouseButton, Pixels, Role, Window, div, prelude::*, px,
+	AnyElement, KeyDownEvent, Modifiers, MouseButton, Pixels, Role, Window, div,
+	prelude::{InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement, Styled},
+	px,
 };
 
 const MATERIAL: &str = "workspace-overlay-material";
@@ -151,6 +153,30 @@ impl Shell {
 		)
 	}
 
+	/// Tab traversal is window-wide in GPUI. Inline dialogs share that window
+	/// with the workspace, so wrap at the dialog's own first and last tab stops.
+	fn focus_overlay_tab(&self, forward: bool, window: &mut Window, cx: &mut Context<Self>) {
+		let mut first_outside = None;
+		loop {
+			if forward {
+				window.focus_next(cx);
+			} else {
+				window.focus_prev(cx);
+			}
+			let focused = window.focused(cx);
+			if self.overlay_focus.contains_focused(window, cx) {
+				return;
+			}
+			if focused == first_outside {
+				window.focus(&self.overlay_focus, cx);
+				return;
+			}
+			if first_outside.is_none() {
+				first_outside = focused;
+			}
+		}
+	}
+
 	fn overlay_content(
 		&mut self,
 		overlay: WorkspaceOverlay,
@@ -161,7 +187,7 @@ impl Shell {
 		// A control can disappear when a narrow catalog changes from its list to the detail view.
 		// Keep keyboard input in the dialog when that removes its focused element.
 		cx.defer_in(window, move |shell, window, cx| {
-			if shell.overlay == Some(overlay) && window.focused(cx).is_none() {
+			if shell.overlay == Some(overlay) && !shell.overlay_focus.contains_focused(window, cx) {
 				window.focus(&shell.overlay_focus, cx);
 			}
 		});
@@ -208,6 +234,7 @@ impl Shell {
 			.overflow_hidden()
 			.rounded(px(18.))
 			.text_color(ui_theme::rgb(ui_theme::TEXT))
+			.child(super::navigation::mouse_navigation(cx.weak_entity(), Self::navigate_history))
 			.on_action(cx.listener(|shell, _: &CloseWindow, _, cx| {
 				shell.close_overlay(cx);
 				cx.stop_propagation();
@@ -224,12 +251,12 @@ impl Shell {
 					cx.stop_propagation();
 				}
 			}))
-			.on_action(cx.listener(|_, _: &FocusNext, window, cx| {
-				window.focus_next(cx);
+			.on_action(cx.listener(|shell, _: &FocusNext, window, cx| {
+				shell.focus_overlay_tab(true, window, cx);
 				cx.stop_propagation();
 			}))
-			.on_action(cx.listener(|_, _: &FocusPrevious, window, cx| {
-				window.focus_prev(cx);
+			.on_action(cx.listener(|shell, _: &FocusPrevious, window, cx| {
+				shell.focus_overlay_tab(false, window, cx);
 				cx.stop_propagation();
 			}))
 			.on_action(cx.listener(|shell, _: &ActivateSettings, _, cx| {
@@ -237,15 +264,11 @@ impl Shell {
 				cx.stop_propagation();
 			}))
 			.on_action(cx.listener(|shell, _: &NavigateBack, window, cx| {
-				if shell.settings_open() {
-					shell.navigate_history(false, window, cx);
-				}
+				shell.navigate_history(false, window, cx);
 				cx.stop_propagation();
 			}))
 			.on_action(cx.listener(|shell, _: &NavigateForward, window, cx| {
-				if shell.settings_open() {
-					shell.navigate_history(true, window, cx);
-				}
+				shell.navigate_history(true, window, cx);
 				cx.stop_propagation();
 			}))
 			.child(div().flex_1().min_h_0().min_w_0().flex().child(content))

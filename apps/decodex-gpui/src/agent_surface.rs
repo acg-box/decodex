@@ -5,7 +5,9 @@
 #[path = "agent_app_exposure.rs"] mod app_exposure;
 #[path = "agent_archive.rs"] mod archive;
 #[path = "assistant_settings.rs"] mod assistant_settings;
-pub(crate) use assistant_settings::ComponentAction as RagflowComponentAction;
+pub(crate) use assistant_settings::{
+	ComponentAction as RagflowComponentAction, Inspection as RagflowInspection,
+};
 #[path = "agent_async_questions.rs"] mod async_questions;
 #[path = "agent_attached_branches.rs"] mod attached_branches;
 #[path = "agent_capabilities.rs"] mod capabilities;
@@ -867,15 +869,7 @@ impl AgentSurface {
 				.execution
 				.choice(self.selected.as_deref().expect("new draft identity"));
 			return Ok(AgentActionDto::NewConversation {
-				assistant_id: self
-					.workspace
-					.new_conversation_workspace
-					.is_none()
-					.then(|| self.assistant_id())
-					.flatten()
-					.map(EntityId::new)
-					.transpose()
-					.map_err(|_| "Invalid Assistant identity")?,
+				cwd: self.draft_chat_folder().cloned(),
 				project_id: self
 					.workspace
 					.new_conversation_workspace
@@ -1122,7 +1116,7 @@ impl AgentSurface {
 			epoch: self.command_epoch,
 			attachments: draft.as_ref().map(|_| self.attachments.clone()),
 			references: draft.as_ref().map(|_| self.task_references.clone()),
-			owner: self.composer_manager.clone().or_else(|| self.root_id()),
+			owner: self.visible_composer_owner(),
 			draft,
 		};
 		let message = retry.as_ref().map(|(_, message)| message.clone()).or_else(|| {
@@ -1321,7 +1315,7 @@ impl AgentSurface {
 			self.submission.pending = None;
 		}
 
-		let current_owner = self.composer_manager.clone().or_else(|| self.root_id());
+		let current_owner = self.visible_composer_owner();
 		let same_owner = current_owner == pending.owner
 			|| (pending.owner.is_none()
 				&& matches!(&result, Ok(AgentCommandResponse::Accepted { work_id }) if current_owner.as_deref()==Some(work_id.as_str())));
@@ -1505,6 +1499,7 @@ impl AgentSurface {
 		self.native_agents.pages.clear();
 		self.native_agents.timelines.clear();
 		self.workspace.closing_pages.clear();
+		self.workspace.ending_side_chats.clear();
 		self.workspace.page_views.clear();
 
 		self.workspace.graph_expanded = false;
@@ -1721,7 +1716,7 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) {
 		let first_snapshot = self.snapshot.is_none();
-		let owner = self.composer_manager.clone().or_else(|| self.root_id());
+		let owner = self.visible_composer_owner();
 		let previous_selection = self.selected.clone();
 
 		if let Ok(AgentSnapshotResult::Available(snapshot)) = &result
@@ -1788,14 +1783,47 @@ impl AgentSurface {
 			self.remember_draft_document(cx);
 		}
 
-		if let Some(id) = self.workspace.assistant_open.clone().filter(|id| {
-			self.snapshot.as_ref().is_some_and(|s| s.work_items.iter().any(|w| &w.id == id))
-		}) {
-			self.workspace.assistant_open = None;
-			self.open_page(&id, cx);
+		if self.workspace.assistant_open.is_some() && self.assistant_id().is_some() {
+			self.open_assistant(cx);
 		}
 		self.continue_memory_setup(cx);
 		self.open_registered_thread(cx);
+	}
+
+	fn restore_snapshot_selection(&mut self, snapshot: &AgentSnapshotDto) {
+		let active = |id: &str| {
+			!snapshot.archived_work_ids.contains(id)
+				&& snapshot.work_items.iter().any(|work| work.id == id)
+		};
+		if self.is_new_conversation()
+			|| snapshot.connection_initializing
+			|| self.selected.as_deref().is_some_and(active)
+			|| self
+				.workspace
+				.archives
+				.viewed_work()
+				.is_some_and(|work| self.selected.as_ref() == Some(&work.id))
+		{
+			return;
+		}
+
+		self.selected = self
+			.selected
+			.as_ref()
+			.and_then(|id| self.snapshot.as_ref()?.side_chat_sources.get(id))
+			.filter(|root| active(root))
+			.cloned()
+			.or_else(|| self.composer_manager.as_ref().filter(|owner| active(owner)).cloned())
+			.or_else(|| {
+				snapshot
+					.work_items
+					.iter()
+					.find(|work| {
+						work.parent_goal_id.is_none()
+							&& !snapshot.archived_work_ids.contains(&work.id)
+					})
+					.map(|work| work.id.clone())
+			});
 	}
 
 	fn apply_result(&mut self, result: Result<AgentSnapshotResult, ()>) {
@@ -1846,41 +1874,10 @@ impl AgentSurface {
 
 				self.invalidate_native_timeline(&snapshot);
 
-				if !self.is_new_conversation()
-					&& !snapshot.connection_initializing
-					&& !self.selected.as_ref().is_some_and(|id| {
-						!snapshot.archived_work_ids.contains(id)
-							&& snapshot.work_items.iter().any(|work| &work.id == id)
-					})
-					&& !self
-						.workspace
-						.archives
-						.viewed_work()
-						.is_some_and(|work| self.selected.as_ref() == Some(&work.id))
-				{
-					self.selected = self
-						.composer_manager
-						.as_ref()
-						.and_then(|owner| {
-							snapshot
-								.work_items
-								.iter()
-								.find(|work| {
-									&work.id == owner && !snapshot.archived_work_ids.contains(owner)
-								})
-								.map(|work| work.id.clone())
-						})
-						.or_else(|| {
-							snapshot
-								.work_items
-								.iter()
-								.find(|work| {
-									work.parent_goal_id.is_none()
-										&& !snapshot.archived_work_ids.contains(&work.id)
-								})
-								.map(|work| work.id.clone())
-						});
-				}
+				self.restore_snapshot_selection(&snapshot);
+				self.draft_profiles
+					.chat_folders
+					.retain(|id, _| !snapshot.work_items.iter().any(|item| &item.id == id));
 				// A saved first message promotes the local editor to a real conversation,
 				// including when acceptance was recovered after restarting the app.
 				if self
@@ -2262,11 +2259,7 @@ impl AgentSurface {
 		let panel = self.saved_history_panel(work, cx);
 
 		if work.codex_thread_id.is_some() {
-			return self.history_activity(
-				panel.child(self.native_receipts_panel(work, cx)),
-				work,
-				cx,
-			);
+			return self.history_activity(panel, work, cx);
 		}
 		let mut panel = panel.debug_selector(|| "saved-local-history".into());
 
@@ -2394,7 +2387,6 @@ impl AgentSurface {
 			panel = panel.children(self.send_previews(&work.id));
 		}
 
-		panel = panel.children(self.local_message_cards(cx));
 		// The composer supplies part of the shared reading gap. Keep the total
 		// spacing the same as between messages, including after a saved input.
 		panel = gpui::div()
@@ -2426,6 +2418,14 @@ impl AgentSurface {
 					.role(Role::Status)
 					.child(muted("Waiting for provider safety checks…")),
 			);
+		}
+
+		// Delivery records describe separate inputs. Keep them outside the response footer.
+		if self.native_agents.selected.is_none() && work.codex_thread_id.is_some() {
+			panel = panel.children(self.native_receipts_panel(work, cx));
+		}
+		for card in self.local_message_cards(cx) {
+			panel = panel.child(gpui::div().mt(gpui::px(MESSAGE_GAP)).child(card));
 		}
 
 		panel.when(self.native_agents.selected.is_none(), |p| {
@@ -2663,6 +2663,7 @@ impl AgentSurface {
 		}
 
 		self.observe_recap_focus(window, cx);
+		self.observe_navigation_pins(window, cx);
 
 		self.render_workspace(window, cx)
 	}
@@ -2806,11 +2807,11 @@ struct WorkspaceView {
 	archives: archive::Catalog,
 	registration: Option<thread_registration::Panel>,
 	portfolio_mode: bool,
+	focused_work: bool,
 	work_detail: Option<String>,
 	work_evidence: Option<WorkPortfolio>,
 	work_read_error: Option<String>,
-	assistant_picker: bool,
-	assistant_open: Option<String>,
+	assistant_open: Option<assistant_settings::PendingSetup>,
 	assistant_memory_action: Option<RagflowComponentAction>,
 	private_detail_text: Option<(String, String)>,
 	contribution_detail: Option<String>,
@@ -2831,6 +2832,7 @@ struct WorkspaceView {
 	pages: Vec<String>,
 	preview_page: Option<String>,
 	closing_pages: HashSet<String>,
+	ending_side_chats: HashSet<String>,
 	graph_visible: bool,
 	graph_expanded: bool,
 	chat_expanded: bool,
@@ -2865,6 +2867,7 @@ struct WorkspaceView {
 	panel_drag: Option<(workspace_size::Panel, f32, f32)>,
 	connection_details_expanded: bool,
 	details_visible: bool,
+	details_focus_requested: Cell<bool>,
 	setup_expanded: bool,
 }
 impl Default for WorkspaceView {
@@ -2875,11 +2878,11 @@ impl Default for WorkspaceView {
 			archives: Default::default(),
 			arrival: Default::default(),
 			portfolio_mode: false,
+			focused_work: false,
 			registration: None,
 			work_detail: None,
 			work_evidence: None,
 			work_read_error: None,
-			assistant_picker: false,
 			assistant_open: None,
 			assistant_memory_action: None,
 			private_detail_text: None,
@@ -2900,6 +2903,7 @@ impl Default for WorkspaceView {
 			pages: vec![],
 			preview_page: None,
 			closing_pages: Default::default(),
+			ending_side_chats: Default::default(),
 			graph_visible: false,
 			graph_expanded: false,
 			chat_expanded: false,
@@ -2934,6 +2938,7 @@ impl Default for WorkspaceView {
 			panel_drag: None,
 			connection_details_expanded: false,
 			details_visible: false,
+			details_focus_requested: Cell::new(false),
 			setup_expanded: false,
 		}
 	}
@@ -3300,7 +3305,7 @@ fn history_entry_presented(
 						.rounded(gpui::px(10.))
 						.bg(ui_theme::rgba(MESSAGE_MATERIAL))
 				})
-				.when(!user, |body| body.w_full().py(gpui::px(2.)))
+				.when(!user, |body| body.w_full().pt(gpui::px(2.)))
 				.when(entry.kind == "instruction", |body| body.child(muted("Task input")))
 				.child(streamed_body.unwrap_or_else(|| {
 					markdown::render(&visible_text, &format!("message-{identity}"))
@@ -3698,6 +3703,7 @@ mod tests {
 					guardian: Default::default(),
 					portfolio: Default::default(),
 					archived_work_ids: Default::default(),
+					side_chat_sources: Default::default(),
 					agent_slots: Default::default(),
 					conversation_titles: Default::default(),
 					context_references: vec![],
@@ -3793,6 +3799,7 @@ mod tests {
 				guardian: Default::default(),
 				portfolio: Default::default(),
 				archived_work_ids: Default::default(),
+				side_chat_sources: Default::default(),
 				agent_slots: Default::default(),
 				conversation_titles: Default::default(),
 				context_references: vec![],
@@ -4033,6 +4040,7 @@ mod tests {
 				guardian: Default::default(),
 				portfolio: Default::default(),
 				archived_work_ids: Default::default(),
+				side_chat_sources: Default::default(),
 				agent_slots: Default::default(),
 				conversation_titles: Default::default(),
 				context_references: vec![],
@@ -4061,6 +4069,7 @@ mod tests {
 				AgentHistoryResult::Available {
 					questions: vec![],
 					expired_question_ids: Vec::new(),
+					missing_folder: None,
 					questions_truncated: false,
 					questions_recovering: false,
 					misalignment: None,
@@ -4111,6 +4120,7 @@ mod tests {
 				guardian: Default::default(),
 				portfolio: Default::default(),
 				archived_work_ids: Default::default(),
+				side_chat_sources: Default::default(),
 				agent_slots: Default::default(),
 				conversation_titles: Default::default(),
 				context_references: vec![],
@@ -4146,6 +4156,7 @@ mod tests {
 				AgentHistoryResult::Available {
 					questions: vec![],
 					expired_question_ids: Vec::new(),
+					missing_folder: None,
 					questions_truncated: false,
 					questions_recovering: false,
 					misalignment: None,
@@ -4256,6 +4267,7 @@ mod tests {
 				guardian: Default::default(),
 				portfolio: Default::default(),
 				archived_work_ids: Default::default(),
+				side_chat_sources: Default::default(),
 				agent_slots: Default::default(),
 				conversation_titles: Default::default(),
 				context_references: vec![],
@@ -4389,6 +4401,7 @@ mod tests {
 				guardian: Default::default(),
 				portfolio: Default::default(),
 				archived_work_ids: Default::default(),
+				side_chat_sources: Default::default(),
 				agent_slots: Default::default(),
 				conversation_titles: Default::default(),
 				context_references: vec![],
@@ -4463,6 +4476,7 @@ mod tests {
 				AgentHistoryResult::Available {
 					questions: vec![],
 					expired_question_ids: Vec::new(),
+					missing_folder: None,
 					questions_truncated: false,
 					questions_recovering: false,
 					misalignment: None,
@@ -4491,6 +4505,7 @@ mod tests {
 				guardian: Default::default(),
 				portfolio: Default::default(),
 				archived_work_ids: Default::default(),
+				side_chat_sources: Default::default(),
 				agent_slots: Default::default(),
 				conversation_titles: Default::default(),
 				context_references: vec![],

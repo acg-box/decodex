@@ -1,5 +1,5 @@
 //! Search navigation retains the current draft and command ownership.
-use super::*;
+use super::{super::Section, *};
 
 fn bind_commands(cx: &mut gpui::TestAppContext) {
 	cx.update(|cx| {
@@ -40,7 +40,7 @@ fn command_search_reaches_work_and_keeps_the_original_input(cx: &mut gpui::TestA
 	});
 }
 #[gpui::test]
-fn command_keyboard_selects_a_topic_without_submitting_chat(cx: &mut gpui::TestAppContext) {
+fn command_keyboard_selects_a_chat_without_submitting_chat(cx: &mut gpui::TestAppContext) {
 	bind_commands(cx);
 	let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 	visual.simulate_resize(gpui::size(gpui::px(1440.), gpui::px(1000.)));
@@ -61,12 +61,68 @@ fn command_keyboard_selects_a_topic_without_submitting_chat(cx: &mut gpui::TestA
 	visual.update(crate::ui_frame::draw_current_frame);
 	visual.simulate_keystrokes("enter");
 	surface.update(visual, |s, cx| {
-		assert_eq!(s.selected.as_deref(), Some("topic-preferences"));
+		assert_eq!(s.selected.as_deref(), Some("preferences-chat"));
 		assert!(!s.sending);
 		assert!(!s.workspace.navigation.command_open);
 		s.open_navigation_conversation("agent", cx);
 		assert_eq!(s.composer.read(cx).content(), "Keep original input");
 	});
+}
+
+#[gpui::test]
+fn search_reveals_standalone_and_project_chats_independently(cx: &mut gpui::TestAppContext) {
+	bind_commands(cx);
+	let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+	visual.simulate_resize(gpui::size(gpui::px(1440.), gpui::px(1000.)));
+	let standalone = "navigation-project-0-agent-0";
+	let in_project = "navigation-project-0-agent-1";
+	surface.update(visual, |s, cx| {
+		s.visual_navigation_hierarchy(false, cx);
+		let data = s.snapshot.as_mut().unwrap();
+		let project = data.projects.iter_mut().find(|p| p.id == "navigation-project-0").unwrap();
+		project.name = "No project".into();
+		project.agent_ids.retain(|id| id != standalone);
+		for (id, title) in [(standalone, "Standalone notes"), (in_project, "Scoped notes")] {
+			data.work_items.iter_mut().find(|w| w.id == id).unwrap().title = title.into();
+		}
+	});
+	for (id, query, destination, label) in [
+		(standalone, "Standalone notes", Section::Chats, "Chats"),
+		(in_project, "Scoped notes", Section::Projects, "Project: No project"),
+	] {
+		surface.update(visual, |s, _| {
+			s.workspace
+				.navigation
+				.collapsed
+				.extend([Section::Chats.key(), Section::Projects.key()]);
+			s.workspace.navigation.projects.clear();
+		});
+		visual.update(|window, cx| surface.update(cx, |s, cx| s.open_global_commands(window, cx)));
+		surface.update(visual, |s, cx| {
+			s.workspace
+				.navigation
+				.search
+				.as_ref()
+				.unwrap()
+				.update(cx, |i, cx| i.set_content(query, cx));
+			assert_eq!(s.global_commands(cx)[0].detail, label);
+		});
+		visual.update(crate::ui_frame::draw_current_frame);
+		visual.simulate_keystrokes("enter");
+		surface.read_with(visual, |s, _| {
+			assert_eq!(s.selected.as_deref(), Some(id));
+			for section in [Section::Chats, Section::Projects] {
+				assert_eq!(
+					s.workspace.navigation.collapsed.contains(section.key()),
+					section != destination
+				);
+			}
+			assert_eq!(
+				s.workspace.navigation.projects.contains("navigation-project-0"),
+				destination == Section::Projects
+			);
+		});
+	}
 }
 
 #[test]
@@ -106,7 +162,7 @@ fn project_picker_returns_to_commands_without_changing_the_draft(cx: &mut gpui::
 			.search
 			.as_ref()
 			.unwrap()
-			.update(cx, |input, cx| input.set_content("New project Agent", cx));
+			.update(cx, |input, cx| input.set_content("New chat in project", cx));
 	});
 	visual.update(crate::ui_frame::draw_current_frame);
 	visual.simulate_keystrokes("enter");
@@ -164,7 +220,7 @@ fn keyboard_selection_accounts_for_group_headers_and_repaint_keeps_scroll(
 }
 
 #[gpui::test]
-fn search_reveals_pinned_topics_and_project_agents_without_losing_drafts(
+fn search_reveals_pinned_chats_and_project_agents_without_losing_drafts(
 	cx: &mut gpui::TestAppContext,
 ) {
 	bind_commands(cx);
@@ -176,7 +232,7 @@ fn search_reveals_pinned_topics_and_project_agents_without_losing_drafts(
 		s.composer.update(cx, |input, cx| input.set_content("Keep the original draft", cx));
 	});
 	for (query, id, section) in [
-		("Weekly priorities 1", "personal-topic-0", "assistant"),
+		("Weekly priorities 1", "chat-0", "chats"),
 		("Review next steps Observability", "navigation-project-11-agent-0", "projects"),
 	] {
 		visual.update(|window, cx| {

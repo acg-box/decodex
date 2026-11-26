@@ -3,6 +3,9 @@ type: Reference
 title: "OpenWiki quickstart"
 description: "Task entrypoints for current native conversations, account routing, product scope and evidence."
 tags: ["decodex", "architecture"]
+verified:
+  - by: openwiki/0.9.0
+    at: 2026-11-24T14:29:01.704Z
 sources:
   - id: openwiki-source-d700ef551f46158044378d8f
     resource: repo://apps/decodex-cli/src/lib.rs
@@ -26,6 +29,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_list_branch.rs
   - id: openwiki-source-02f8a02cdfa0616877cdad62
     resource: repo://apps/decodex-gpui/src/agent_list_status.rs
+  - id: openwiki-source-541c96314da57ad5afa1835e
+    resource: repo://apps/decodex-gpui/src/agent_navigation_sidebar.rs
   - id: openwiki-source-c6ac7d6b2fdeb458faab2c3a
     resource: repo://apps/decodex-gpui/src/agent_permissions.rs
   - id: openwiki-source-6a1c55b61be8ac251a493046
@@ -34,10 +39,6 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_prompt_confirm_wire_tests.rs
   - id: openwiki-source-b2084dffd07b4229957a0f94
     resource: repo://apps/decodex-gpui/src/agent_prompt_edit.rs
-  - id: openwiki-source-5e245e8cc4db92f2dbe2ba47
-    resource: repo://apps/decodex-gpui/src/agent_prompt_fork.rs
-  - id: openwiki-source-012d0a3289dff03dd84a5971
-    resource: repo://apps/decodex-gpui/src/agent_side_chat_question.rs
   - id: openwiki-source-5da2f5dd568514f1f464d177
     resource: repo://apps/decodex-gpui/src/agent_surface.rs
   - id: openwiki-source-2fb9e466c6aafdf4f4950bc1
@@ -100,6 +101,8 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent/assistant.rs
   - id: openwiki-source-acd129fd3a88516b785fc929
     resource: repo://crates/decodex-runtime/src/agent/instructions.md
+  - id: openwiki-source-eefcc1937d138170352d73d0
+    resource: repo://crates/decodex-runtime/src/agent/workspace.rs
   - id: openwiki-source-a67672a943dfe221574b2501
     resource: repo://crates/decodex-runtime/src/shared_auth_coordinator.rs
   - id: openwiki-source-003f00974f49a9f106bbcbea
@@ -114,10 +117,7 @@ sources:
     resource: repo://database/src/schema.rs
   - id: openwiki-source-3b57179b92b257bc3fff51a1
     resource: repo://scripts/macos/stage_decodex_app.sh
-generated: { by: "codex", at: "2026-11-23T03:02:45.946Z" }
-verified:
-  - by: openwiki/0.9.0
-    at: 2026-11-23T03:02:45.946Z
+generated: { by: "codex", at: "2026-11-24T14:29:01.704Z" }
 ---
 
 # OpenWiki quickstart
@@ -128,7 +128,9 @@ Decodex is a local workspace above Codex app-server. The primary Agent can discu
 
 The [canonical contract](decisions/project-agent-work.md) is implemented: Project provides continuing context, each user-created Agent has one current native conversation, and Work records an outcome with one accountable Agent, current requirements and evidence. Assistant is built in and always available. Project Lead is a responsibility of an existing Agent. The same Agent can handle several Works.
 
-The implemented [Assistant lifecycle](decisions/assistant-lifecycle.md) provides a continuing personal Agent for delegated work, teams, duties and optional Memory. It has no built-in project patrol. Open Assistant in the sidebar; first use initializes an idle Agent without sending a message. Give continuing instructions in chat. For optional Memory, use Settings > Components > RAGFlow. Install prepares the managed service and Infinity with a private account and requires a running Docker-compatible engine and Compose. The App does not install that runtime or model weights. Set up models uses four fields: a shared OpenAI-compatible Base URL and optional API key, an extraction model ID and an embedding model ID. Save verifies both models and initializes Memory without sending chat content. The saved summary keeps Edit available. New Memory connections enable automatic learning from completed Assistant conversations; existing connections keep the saved choice. Before ordinary input, the selected Assistant recalls bounded personal-memory evidence automatically. Project Agents receive neither the personal-memory tools nor this context. Reset Memory requires confirmation, starts with an empty managed Memory and preserves the learning choice, chat history and model settings. Older conversations do not refill the reset Memory. See the lifecycle page for reset limits and recovery. Update and Uninstall remain component actions.
+Use **Assistant** for the single continuing personal conversation, **Chats** for independent Agents and **Projects** for independent Agents grouped by project. A user-selected folder takes precedence. A new project chat otherwise uses its project folder. An unscoped chat gets its own directory under the current Codex chat root. Existing and adopted threads keep their native working directory. If that directory was removed, open the conversation and select its replacement.
+
+The implemented [Assistant lifecycle](decisions/assistant-lifecycle.md) provides a continuing personal Agent for delegated work, teams, duties and optional Memory. It has no built-in project patrol. Open Assistant in the sidebar; first use initializes an idle Agent without sending a message. Give continuing instructions in chat. For optional Memory, use Settings > Components > RAGFlow. Install prepares the managed service and Infinity with a private account and requires a running Docker-compatible engine and Compose. The App does not install that runtime or model weights. Set up models uses four fields: a shared OpenAI-compatible Base URL and optional API key, an extraction model ID and an embedding model ID. Save verifies both models and initializes Memory without sending chat content. The saved summary keeps Edit available. New Memory connections enable automatic learning from completed Assistant conversations; existing connections keep the saved choice. Before ordinary input, the personal Assistant recalls bounded personal-memory evidence automatically. Independent Chat and Project Agents receive neither the personal-memory tools nor this context. Reset Memory requires confirmation, starts with an empty managed Memory and preserves the learning choice, chat history and model settings. Older conversations do not refill the reset Memory. See the lifecycle page for reset limits and recovery. Update and Uninstall remain component actions.
 
 Agents use native Subagents for bounded execution and scoped Collaboration Requests for independent peers. Native Codex owns execution, context, permissions and continuation. Decodex owns durable business relationships, evidence, coordination and presentation. The default Work tools do not create another executor, and no part of this contract requires Ultra.
 
@@ -152,7 +154,7 @@ The conversation browser and Work list have independent saved **status filters**
 
 The source tab for a Project Agent is **Main**. Assistant uses its conversation label. Side chat tabs use their conversation topics, with numbered labels until a title becomes available. Topics are summarized automatically after the first eligible completed user exchange and reviewed after seven more exchanges. The sidebar keeps the source title, and Agent identity stays separate. See [automatic titles](workflows/conversations-and-recovery.md#automatic-conversation-titles).
 
-Use **+** in the conversation header to open a Side chat from the selected idle conversation's latest completed turn. Creation needs no second confirmation and sends no message. Each tab keeps its own draft and reading position. Closing a tab retains the native branch; reopen it from **Agent preferences → Side chats**.
+The header of an ordinary chat has a **+** control for a Side chat from the latest completed turn. The personal Assistant omits that control. Each tab keeps its draft and reading position. Closing a tab retains the native branch. Open an existing branch from Agent preferences > Side chats.
 
 Select response text and choose **Ask in side chat**, or click the question action beside a completed response. The Side chat opens with that passage in its unsent draft. Add your question, send it, and continue the discussion there. The source draft stays saved. See [the conversation workflow](workflows/conversations-and-recovery.md#ask-about-a-passage-in-a-side-chat).
 
@@ -204,7 +206,7 @@ The app version and **Check for updates** are in **Settings > General > Updates*
 ## Current boundaries
 
 - `decodex serve` is the service and SQLite product-state owner. GPUI and CLI use typed local clients. The bundled helper is `decodex`, not `decodexd`.
-- The current local formats are protocol 4.11, SQLite schema 61 and desktop draft format 12. New stores start with the current schema. Operators convert retained data outside the application.
+- The current local formats are protocol 4.13, SQLite schema 62 and desktop draft format 12. New stores start with the current schema. Operators convert retained data outside the application.
 - The Agent graph presents work relationships; the right Collaboration panel keeps recorded exchanges and pending response requests visible across chats. Expanding an exchange preserves the active chat and draft. Historical Factory diagrams do not define the current desktop.
 - Account admission accepts native `plus`, `pro`, `prolite`, `promax` and `team` plans. OAuth and PAT use the same plan scope; native identity, quota and entitlement remain authoritative. See [Accounts](operations/accounts-and-routing.md).
 - Account Route is synchronous and service-owned. Shared-auth liveness, exact source identity and readback govern completion. Same-account refresh adopts a valid non-older native winner instead of restoring a losing token.

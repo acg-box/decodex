@@ -7,10 +7,7 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 use tokio::{task, time};
 
-use crate::{
-	agent::timeline::promotions,
-	agent_usage_estimate::{Source, SourceKey},
-};
+use crate::agent_usage_estimate::{Source, SourceKey};
 use decodex_codex::app_server_client::ClientError;
 use decodex_protocol::{
 	AGENT_MEDIA_CHUNK_BYTES, AgentMediaRequest, AgentMediaResult, EntityId, MAX_AGENT_MEDIA_BYTES,
@@ -46,19 +43,17 @@ where
 	}
 
 	let response = time::timeout(Duration::from_secs(25), async {
-		let history = before
+		let item = before
 			.client
-			.thread_read_turn(request.thread_id.as_str(), request.turn_id.as_str())
+			.thread_read_item(
+				request.thread_id.as_str(),
+				request.turn_id.as_str(),
+				request.item_id.as_str(),
+			)
 			.await
-			.map_err(client_error)?;
-		let item = promotions::exact_item(
-			&history,
-			request.thread_id.as_str(),
-			request.turn_id.as_str(),
-			request.item_id.as_str(),
-		)
-		.ok_or(AgentMediaResult::Unavailable)?;
-		let media = locate(item, request.index as usize)?;
+			.map_err(client_error)?
+			.ok_or(AgentMediaResult::Unavailable)?;
+		let media = locate(&item, request.index as usize)?;
 
 		resolve(media, directory(&before.key).as_deref()).await
 	})

@@ -340,8 +340,6 @@ fn progress_key(work: &str, turn: &str, item: &str) -> String {
 #[cfg(test)]
 mod tests {
 
-	use std::thread;
-
 	#[cfg(test)] use crate::shell::agent_surface::progress::AgentDispatchStateDto;
 	use crate::shell::agent_surface::progress::{AgentHistoryResult, AgentSurface};
 
@@ -375,15 +373,19 @@ mod tests {
 
 			assert!(s.has_active_compaction(work), "selected compaction survives render");
 			assert!(s.native_agents.selected.is_none());
+			assert_eq!(
+				s.visible_conversation_feedback().as_ref().map(|f| f.message.as_str()),
+				Some("Compacting context")
+			);
 		});
 
-		assert!(visual.debug_bounds("conversation-activity-status").is_none());
-
-		thread::sleep(std::time::Duration::from_millis(270));
+		// The GPUI window can already have rendered during fixture setup. Presence tests
+		// verify the entry delay with an explicit clock.
+		visual.executor().advance_clock(std::time::Duration::from_millis(270));
 
 		visual.update(crate::ui_frame::draw_frame);
 
-		thread::sleep(std::time::Duration::from_millis(220));
+		visual.executor().advance_clock(std::time::Duration::from_millis(220));
 
 		visual.update(crate::ui_frame::draw_frame);
 
@@ -406,7 +408,7 @@ mod tests {
 			"retain the notice during exit"
 		);
 
-		thread::sleep(std::time::Duration::from_millis(220));
+		visual.executor().advance_clock(std::time::Duration::from_millis(220));
 
 		visual.update(crate::ui_frame::draw_frame);
 

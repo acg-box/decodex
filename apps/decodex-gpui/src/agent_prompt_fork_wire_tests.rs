@@ -303,8 +303,8 @@ fn fork_recovery_opens_verified_target_and_keeps_edited_input(cx: &mut TestAppCo
 	for (boundary, reference) in [
 		(PromptForkBoundary::BeforeInput, None),
 		(PromptForkBoundary::AfterTurn, None),
-		(PromptForkBoundary::AttachedAfterTurn, None),
-		(PromptForkBoundary::AttachedAfterTurn, Some("Uses cursor pagination.")),
+		(PromptForkBoundary::TemporarySideChat, None),
+		(PromptForkBoundary::TemporarySideChat, Some("Uses cursor pagination.")),
 	] {
 		let (service, profile, _) = tests::profiles();
 		let surface = cx.new(AgentSurface::new);

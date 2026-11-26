@@ -36,7 +36,134 @@ pub(super) fn deleted(c: &Connection, thread: &str) -> Result<bool, StoreError> 
 	c.query_row("SELECT EXISTS(SELECT 1 FROM runtime_command_receipts WHERE operation='native_thread_deleted' AND json_extract(response_json,'$.threadId')=?1)",[thread],|r|r.get(0)).map_err(|e|error::sqlite_error(e).into())
 }
 
+fn purge_owner(
+	tx: &rusqlite::Transaction<'_>,
+	owner: &str,
+	thread: &str,
+	now: i64,
+) -> Result<(), StoreError> {
+	let assistant = tx
+		.query_row(
+			"SELECT EXISTS(SELECT 1 FROM agents WHERE id=?1 AND assistant=1)",
+			[owner],
+			|r| r.get::<_, bool>(0),
+		)
+		.map_err(error::sqlite_error)?;
+	let settings = if assistant { Some(crate::assistant::settings(tx, owner)?) } else { None };
+
+	tx.execute(
+		"DELETE FROM agent_managed_conversations WHERE conversation_id=?1 OR agent_id=?1",
+		[owner],
+	)
+	.map_err(error::sqlite_error)?;
+	for (table, column) in [
+		("agent_async_answers", "work_id"),
+		("agent_async_questions", "work_id"),
+		("agent_async_recovery", "work_id"),
+		("agent_capacity_retries", "work_item_id"),
+		("agent_guardian_reviews", "work_id"),
+		("agent_live_output", "work_id"),
+		("agent_misalignment", "work_id"),
+		("agent_process_bindings", "root_id"),
+		("agent_prompt_input_chunks", "work_item_id"),
+		("agent_prompt_inputs", "work_item_id"),
+		("agent_root_settings", "root_id"),
+		("agent_slots", "work_id"),
+		("agent_thread_revisions", "work_id"),
+		("agent_tool_versions", "work_id"),
+		("agent_usage", "work_id"),
+		("agent_voice_calls", "work_id"),
+		("guardian_sources", "agent_id"),
+		("project_agents", "agent_id"),
+		("agent_delegations", "work_id"),
+	] {
+		tx.execute(&format!("DELETE FROM {table} WHERE {column}=?1"), [owner])
+			.map_err(error::sqlite_error)?;
+	}
+	tx.execute("DELETE FROM agent_request_payloads WHERE event_id IN(SELECT id FROM agent_inbox_events WHERE work_item_id=?1)",[owner]).map_err(error::sqlite_error)?;
+	tx.execute("DELETE FROM agent_dependencies WHERE work_item_id=?1 OR depends_on_id=?1", [owner])
+		.map_err(error::sqlite_error)?;
+	tx.execute("UPDATE projects SET lead_agent_id=NULL WHERE lead_agent_id=?1", [owner])
+		.map_err(error::sqlite_error)?;
+	tx.execute("UPDATE agent_inbox_events SET disposition='resolved',disposition_note='Recipient conversation deleted.',disposed_at_micros=max(created_at_micros,?2) WHERE delivery_work_item_id=?1 AND work_item_id<>?1 AND disposition IS NULL",rusqlite::params![owner,now]).map_err(error::sqlite_error)?;
+	// A Work result can reference an instruction receipt. Keep that receipt's
+	// identity, but never its deleted conversation text or source label.
+	let referenced_events = tx.prepare("SELECT id,created_at_micros FROM agent_inbox_events WHERE work_item_id=?1 AND (EXISTS(SELECT 1 FROM collaboration_instructions WHERE event_id=agent_inbox_events.id) OR EXISTS(SELECT 1 FROM agent_delegations WHERE instruction_event_id=agent_inbox_events.id) OR EXISTS(SELECT 1 FROM agent_prompt_inputs WHERE edit_receipt_id=agent_inbox_events.id) OR EXISTS(SELECT 1 FROM agent_prompt_input_chunks WHERE edit_receipt_id=agent_inbox_events.id) OR EXISTS(SELECT 1 FROM agent_capacity_retries WHERE event_id=agent_inbox_events.id))").map_err(error::sqlite_error)?.query_map([owner],|r|Ok((r.get::<_,i64>(0)?,r.get::<_,i64>(1)?))).map_err(error::sqlite_error)?.collect::<Result<Vec<_>,_>>().map_err(error::sqlite_error)?;
+	tx.execute("DELETE FROM agent_inbox_events WHERE work_item_id=?1", [owner])
+		.map_err(error::sqlite_error)?;
+	for (id, created) in referenced_events {
+		tx.execute("INSERT INTO agent_inbox_events(id,source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) VALUES(?1,'deleted-event:'||?1,?2,'deleted_record','{}',?3,'resolved','Conversation deleted.',max(?3,?4))",rusqlite::params![id,owner,created,now]).map_err(error::sqlite_error)?;
+	}
+	tx.execute("UPDATE command_receipts SET request_json=NULL,progress_json=NULL WHERE request_json IS NOT NULL AND EXISTS(SELECT 1 FROM json_tree(request_json) WHERE type='text' AND value=?1)",[owner]).map_err(error::sqlite_error)?;
+	tx.execute("DELETE FROM runtime_command_receipts WHERE entity_id=?1", [owner])
+		.map_err(error::sqlite_error)?;
+	tx.execute("UPDATE agent_work_items SET title='Deleted conversation',instructions='Deleted conversation',active_turn_id=NULL,dispatch_state='idle',status='resolved',next_check_at_micros=NULL WHERE id=?1",[owner]).map_err(error::sqlite_error)?;
+	if let Some(settings) = settings {
+		tx.execute("UPDATE agent_work_items SET title='Assistant',instructions='Help the user manage their Agents and teams.',codex_thread_id=NULL,status='wait' WHERE id=?1",[owner]).map_err(error::sqlite_error)?;
+		crate::assistant::restore_configuration_after_deletion(tx, owner, thread, &settings)?;
+		return Ok(());
+	}
+	let referenced = tx.query_row("SELECT EXISTS(SELECT 1 FROM works WHERE owner_agent_id=?1 UNION ALL SELECT 1 FROM work_results WHERE agent_id=?1 UNION ALL SELECT 1 FROM work_commands WHERE agent_id=?1 UNION ALL SELECT 1 FROM collaboration_requests WHERE recipient_agent_id=?1 UNION ALL SELECT 1 FROM agent_inbox_events WHERE work_item_id=?1 OR delivery_work_item_id=?1 UNION ALL SELECT 1 FROM agent_work_items WHERE parent_goal_id=?1)",[owner],|r|r.get::<_,bool>(0)).map_err(error::sqlite_error)?;
+	if !referenced {
+		tx.execute("DELETE FROM agent_managers WHERE work_id=?1", [owner])
+			.map_err(error::sqlite_error)?;
+		tx.execute("DELETE FROM agents WHERE id=?1", [owner]).map_err(error::sqlite_error)?;
+		tx.execute("DELETE FROM agent_work_items WHERE id=?1", [owner])
+			.map_err(error::sqlite_error)?;
+	}
+	Ok(())
+}
+
 impl SqliteStore {
+	/// None means a previous close already removed this Work. A durable or rebound Work is
+	/// rejected.
+	pub async fn temporary_side_chat_turn(
+		&self,
+		work: String,
+		thread: String,
+	) -> Result<Option<Option<String>>, StoreError> {
+		self.run(move |c| {
+            let row = c.query_row("SELECT codex_thread_id, active_turn_id, EXISTS(SELECT 1 FROM agent_inbox_events WHERE work_item_id=w.id AND event_kind='temporary_side_chat') FROM agent_work_items w WHERE id=?1",[work],|r| Ok((r.get::<_,Option<String>>(0)?,r.get::<_,Option<String>>(1)?,r.get::<_,bool>(2)?))).optional().map_err(error::sqlite_error)?;
+            match row {
+                None => Ok(None),
+                Some((Some(id),turn,true)) if id==thread => Ok(Some(turn)),
+                _ => Err(StoreError::InvalidInput("not the requested temporary side chat")),
+            }
+        }).await
+	}
+
+	/// Only the actor of this native generation can close the bound temporary thread.
+	pub async fn discard_temporary_side_chat(
+		&self,
+		work: String,
+		thread: String,
+	) -> Result<(), StoreError> {
+		self.run(move |c| {
+            let tx=c.transaction_with_behavior(TransactionBehavior::Immediate).map_err(error::sqlite_error)?;
+            tx.execute_batch("PRAGMA defer_foreign_keys=ON;").map_err(error::sqlite_error)?;
+            let matches=tx.query_row("SELECT EXISTS(SELECT 1 FROM agent_work_items w JOIN agent_inbox_events e ON e.work_item_id=w.id WHERE w.id=?1 AND w.codex_thread_id=?2 AND e.event_kind='temporary_side_chat')",[&work,&thread],|r|r.get::<_,bool>(0)).map_err(error::sqlite_error)?;
+            if matches { purge_owner(&tx,&work,&thread,crate::unix_micros()?)?; }
+            tx.commit().map_err(error::sqlite_error)?;
+            Ok(())
+        }).await
+	}
+
+	/// Native in-memory threads end with their owning process, including unconfirmed forks.
+	pub async fn retire_expired_side_chats(
+		&self,
+		generation: Option<String>,
+	) -> Result<(), StoreError> {
+		self.run(move |c| {
+            let tx=c.transaction_with_behavior(TransactionBehavior::Immediate).map_err(error::sqlite_error)?;
+            tx.execute_batch("PRAGMA defer_foreign_keys=ON;").map_err(error::sqlite_error)?;
+            let rows=tx.prepare("SELECT w.id,coalesce(w.codex_thread_id,'') FROM agent_work_items w CROSS JOIN agent_inbox_events e ON e.work_item_id=w.id AND e.event_kind='temporary_side_chat' WHERE ?1 IS NULL OR json_extract(e.payload,'$.source.generation') IS NOT ?1").map_err(error::sqlite_error)?.query_map([generation],|r|Ok((r.get::<_,String>(0)?,r.get::<_,String>(1)?))).map_err(error::sqlite_error)?.collect::<Result<Vec<_>,_>>().map_err(error::sqlite_error)?;
+            let now=crate::unix_micros()?;
+            for (work,thread) in rows { purge_owner(&tx,&work,&thread,now)?; }
+            tx.commit().map_err(error::sqlite_error)?;
+            Ok(())
+        }).await
+	}
+
 	/// Freeze this conversation's current and previous native contexts before deletion.
 	pub async fn request_agent_thread_deletion(
 		&self,
@@ -117,46 +244,8 @@ impl SqliteStore {
 			let owners = tx.prepare("SELECT id FROM agent_work_items WHERE codex_thread_id=?1").map_err(error::sqlite_error)?.query_map([&thread],|r|r.get::<_,String>(0)).map_err(error::sqlite_error)?.collect::<Result<Vec<_>,_>>().map_err(error::sqlite_error)?;
 			let mut threads = vec![thread];
 			for owner in &owners {
-				let assistant = tx.query_row("SELECT EXISTS(SELECT 1 FROM agents WHERE id=?1 AND assistant=1)",[owner],|r|r.get::<_,bool>(0)).map_err(error::sqlite_error)?;
-				let settings = if assistant { Some(crate::assistant::settings(&tx,owner)?) } else {None};
-				let personal_owner = crate::assistant::topic_owner(&tx,owner)?.filter(|identity| identity != owner);
 				if let Some(plan) = deletion_plan(&tx,owner,&threads[0])? { threads=plan; }
-				tx.execute("DELETE FROM agent_managed_conversations WHERE conversation_id=?1 OR agent_id=?1", [owner]).map_err(error::sqlite_error)?;
-				for (table,column) in [
-					("agent_async_answers","work_id"),("agent_async_questions","work_id"),("agent_async_recovery","work_id"),
-					("agent_capacity_retries","work_item_id"),("agent_guardian_reviews","work_id"),("agent_live_output","work_id"),
-					("agent_misalignment","work_id"),("agent_process_bindings","root_id"),("agent_prompt_input_chunks","work_item_id"),
-					("agent_prompt_inputs","work_item_id"),("agent_root_settings","root_id"),("agent_slots","work_id"),
-					("agent_thread_revisions","work_id"),("agent_tool_versions","work_id"),("agent_usage","work_id"),
-					("agent_voice_calls","work_id"),("guardian_sources","agent_id"),("project_agents","agent_id"),("agent_delegations","work_id"),
-				] { tx.execute(&format!("DELETE FROM {table} WHERE {column}=?1"),[owner]).map_err(error::sqlite_error)?; }
-				tx.execute("DELETE FROM agent_request_payloads WHERE event_id IN(SELECT id FROM agent_inbox_events WHERE work_item_id=?1)",[owner]).map_err(error::sqlite_error)?;
-				tx.execute("DELETE FROM agent_dependencies WHERE work_item_id=?1 OR depends_on_id=?1",[owner]).map_err(error::sqlite_error)?;
-				tx.execute("UPDATE projects SET lead_agent_id=NULL WHERE lead_agent_id=?1",[owner]).map_err(error::sqlite_error)?;
-				tx.execute("UPDATE agent_inbox_events SET disposition='resolved',disposition_note='Recipient conversation deleted.',disposed_at_micros=max(created_at_micros,?2) WHERE delivery_work_item_id=?1 AND work_item_id<>?1 AND disposition IS NULL",rusqlite::params![owner,now]).map_err(error::sqlite_error)?;
-				// A Work result can reference an instruction receipt. Keep that receipt's
-				// identity, but never its deleted conversation text or source label.
-				let referenced_events = tx.prepare("SELECT id,created_at_micros FROM agent_inbox_events WHERE work_item_id=?1 AND (EXISTS(SELECT 1 FROM collaboration_instructions WHERE event_id=agent_inbox_events.id) OR EXISTS(SELECT 1 FROM agent_delegations WHERE instruction_event_id=agent_inbox_events.id) OR EXISTS(SELECT 1 FROM agent_prompt_inputs WHERE edit_receipt_id=agent_inbox_events.id) OR EXISTS(SELECT 1 FROM agent_prompt_input_chunks WHERE edit_receipt_id=agent_inbox_events.id) OR EXISTS(SELECT 1 FROM agent_capacity_retries WHERE event_id=agent_inbox_events.id))").map_err(error::sqlite_error)?.query_map([owner],|r|Ok((r.get::<_,i64>(0)?,r.get::<_,i64>(1)?))).map_err(error::sqlite_error)?.collect::<Result<Vec<_>,_>>().map_err(error::sqlite_error)?;
-				tx.execute("DELETE FROM agent_inbox_events WHERE work_item_id=?1",[owner]).map_err(error::sqlite_error)?;
-				for (id,created) in referenced_events {
-					tx.execute("INSERT INTO agent_inbox_events(id,source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) VALUES(?1,'deleted-event:'||?1,?2,'deleted_record','{}',?3,'resolved','Conversation deleted.',max(?3,?4))",rusqlite::params![id,owner,created,now]).map_err(error::sqlite_error)?;
-				}
-				tx.execute("UPDATE command_receipts SET request_json=NULL,progress_json=NULL WHERE request_json IS NOT NULL AND EXISTS(SELECT 1 FROM json_tree(request_json) WHERE type='text' AND value=?1)",[owner]).map_err(error::sqlite_error)?;
-				tx.execute("DELETE FROM runtime_command_receipts WHERE entity_id=?1",[owner]).map_err(error::sqlite_error)?;
-				tx.execute("UPDATE agent_work_items SET title='Deleted conversation',instructions='Deleted conversation',active_turn_id=NULL,dispatch_state='idle',status='resolved',next_check_at_micros=NULL WHERE id=?1",[owner]).map_err(error::sqlite_error)?;
-				if let Some(settings) = settings {
-					tx.execute("UPDATE agent_work_items SET title='Assistant',instructions='Help the user manage their Agents and teams.',codex_thread_id=NULL,status='wait' WHERE id=?1",[owner]).map_err(error::sqlite_error)?;
-					crate::assistant::restore_configuration_after_deletion(&tx,owner,&threads[0],&settings)?;
-					continue;
-				}
-				let referenced = tx.query_row("SELECT EXISTS(SELECT 1 FROM works WHERE owner_agent_id=?1 UNION ALL SELECT 1 FROM work_results WHERE agent_id=?1 UNION ALL SELECT 1 FROM work_commands WHERE agent_id=?1 UNION ALL SELECT 1 FROM collaboration_requests WHERE recipient_agent_id=?1 UNION ALL SELECT 1 FROM agent_inbox_events WHERE work_item_id=?1 OR delivery_work_item_id=?1 UNION ALL SELECT 1 FROM agent_work_items WHERE parent_goal_id=?1)",[owner],|r|r.get::<_,bool>(0)).map_err(error::sqlite_error)?;
-				if !referenced {
-					tx.execute("DELETE FROM agent_managers WHERE work_id=?1",[owner]).map_err(error::sqlite_error)?;
-					tx.execute("DELETE FROM agents WHERE id=?1",[owner]).map_err(error::sqlite_error)?;
-					tx.execute("DELETE FROM agent_work_items WHERE id=?1",[owner]).map_err(error::sqlite_error)?;
-				} else if let Some(identity) = personal_owner {
-					crate::assistant::retain_topic_identity(&tx,owner,&identity)?;
-				}
+                purge_owner(&tx, owner, &threads[0], now)?;
 			}
 			for id in threads {
 				tx.execute("DELETE FROM agent_voice_observed_turns WHERE thread_id=?1",[&id]).map_err(error::sqlite_error)?;
@@ -221,10 +310,9 @@ mod tests {
 		let path = dir.path().join("delete.sqlite3");
 		let store = SqliteStore::open_test(&path).unwrap();
 		store.with_connection(|c| {
-			c.execute_batch("INSERT INTO agent_work_items(id,kind,title,instructions,codex_thread_id,dispatch_state,status,created_at_micros,updated_at_micros) VALUES('chat','goal','private-delete-marker','private-delete-marker','third','idle','open',1,1),('keep','goal','Keep conversation','Keep instructions','other','idle','open',1,1); INSERT INTO agents VALUES('chat',1),('keep',0); INSERT INTO agent_thread_revisions VALUES('chat','first','second',1),('chat','second','third',2); INSERT INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros) VALUES('source','chat','user_message','{\"text\":\"private-delete-marker\"}',1); INSERT INTO agent_live_output(work_id,turn_id,item_id,text) VALUES('chat','turn','item','private-delete-marker');").map_err(error::sqlite_error)?;
+			c.execute_batch("INSERT INTO agent_work_items(id,kind,title,instructions,codex_thread_id,dispatch_state,status,created_at_micros,updated_at_micros) VALUES('chat','goal','private-delete-marker','private-delete-marker','third','idle','open',1,1),('keep','goal','Keep conversation','Keep instructions','other','idle','open',1,1); INSERT INTO agents VALUES('chat',0),('keep',0); INSERT INTO agent_thread_revisions VALUES('chat','first','second',1),('chat','second','third',2); INSERT INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros) VALUES('source','chat','user_message','{\"text\":\"private-delete-marker\"}',1); INSERT INTO agent_live_output(work_id,turn_id,item_id,text) VALUES('chat','turn','item','private-delete-marker');").map_err(error::sqlite_error)?;
 			Ok(())
 		}).unwrap();
-		store.set_assistant("chat".into(), false).await.unwrap();
 		assert_eq!(
 			store.request_agent_thread_deletion("chat".into(), "third".into()).await.unwrap(),
 			["third", "second", "first"]

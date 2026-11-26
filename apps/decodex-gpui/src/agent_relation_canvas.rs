@@ -40,6 +40,7 @@ use crate::{
 		agent_surface::{
 			dock, graph,
 			panel_controls::Panel,
+			thread_registration::RegistrationContext,
 			work_board::{
 				AgentSurface, AnyElement, BTreeMap, BTreeSet, Context, FluentBuilder,
 				InteractiveElement, IntoElement, ParentElement, Row, SUCCESS, Styled, TEXT_MUTED,
@@ -630,6 +631,17 @@ impl AgentSurface {
 		let pan = self.work_board.view.pan;
 		let layout_viewport = self.work_board.view.layout_viewport;
 		let cluster = crate::ui_theme::canvas_control_group;
+		let picked = self.work_board.view.picked_agent.as_deref();
+		let conversation_action = match picked {
+			None => Some("Add a Codex conversation"),
+			Some(id) => self.thread_registration_context(id).map(|context| match context {
+				RegistrationContext::Agent => "Adopt a conversation for this Agent",
+				RegistrationContext::Conversation { owner: None } =>
+					"Assign this conversation or make it an Agent",
+				RegistrationContext::Conversation { owner: Some(_) } =>
+					"View this conversation’s responsible Agent",
+			}),
+		};
 
 		gpui::div()
 			.id("relations-toolbar")
@@ -644,16 +656,18 @@ impl AgentSurface {
 			.text_size(gpui::px(11.))
 			.child(self.relation_layout_picker(cx))
 			.child(self.relation_presentation_picker(cx))
-			.child(self.graph_control(
-				"manage-conversations",
-				workspace_symbols::icon_sized(Symbol::Link, 14.),
-				"Add a Codex conversation or edit its Agent relationship",
-				|s, cx| {
-					let context = s.work_board.view.picked_agent.clone();
-					s.open_thread_registration(context.as_deref(), cx);
-				},
-				cx,
-			))
+			.children(conversation_action.map(|action| {
+				self.graph_control(
+					"manage-conversations",
+					workspace_symbols::icon_sized(Symbol::Link, 14.),
+					action,
+					|s, cx| {
+						let context = s.work_board.view.picked_agent.clone();
+						s.open_thread_registration(context.as_deref(), cx);
+					},
+					cx,
+				)
+			}))
 			.child(gpui::div().flex_1())
 			.child(
 				cluster()

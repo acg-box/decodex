@@ -2326,6 +2326,18 @@ impl ServiceApplication {
 
 	async fn query_native_lookup(&self, query: &QueryPayload) -> QueryResultPayload {
 		match query {
+			QueryPayload::SearchConversation { work_id, thread_id, term, cursor } =>
+				QueryResultPayload::ConversationMatches(match &self.agent {
+					Some(host) =>
+						host.search_conversation(
+							work_id.as_str(),
+							thread_id.as_str(),
+							term.as_str(),
+							cursor.as_ref().map(|c| c.as_str()),
+						)
+						.await,
+					None => None,
+				}),
 			QueryPayload::GetItemContext { request } =>
 				QueryResultPayload::ItemContext(match &self.agent {
 					Some(agent) => agent.item_context(request).await,
@@ -2335,6 +2347,21 @@ impl ServiceApplication {
 				QueryResultPayload::ResourceOwners(match &self.agent {
 					Some(agent) => agent.resource_owners(request).await,
 					None => decodex_protocol::ResourceOwnersResult::Unavailable,
+				}),
+			QueryPayload::ListPinnedThreads { cursor } =>
+				QueryResultPayload::NativeThreads(match &self.agent {
+					Some(host) => host.pinned_threads(cursor.as_ref().map(|c| c.as_str())).await,
+					None => None,
+				}),
+			QueryPayload::ListNativeThreads { cursor, search } =>
+				QueryResultPayload::NativeThreads(match &self.agent {
+					Some(host) =>
+						host.native_threads(
+							cursor.as_ref().map(|c| c.as_str()),
+							search.as_ref().map(|s| s.as_str()),
+						)
+						.await,
+					None => None,
 				}),
 			_ => unreachable!("native lookup routing"),
 		}
@@ -2773,7 +2800,10 @@ impl Application for ServiceApplication {
 			| QueryPayload::GetConversationCapabilities { .. } => self.query_model_catalog(query).await,
 			QueryPayload::ExchangeDictation { request } => self.query_dictation(request).await,
 			QueryPayload::ExchangeAgentVoice { request } => self.query_voice(request),
-			lookup @ (QueryPayload::GetItemContext { .. }
+			lookup @ (QueryPayload::ListPinnedThreads { .. }
+			| QueryPayload::ListNativeThreads { .. }
+			| QueryPayload::SearchConversation { .. }
+			| QueryPayload::GetItemContext { .. }
 			| QueryPayload::GetResourceOwners { .. }) => self.query_native_lookup(lookup).await,
 			QueryPayload::GetAgentResources { work_id } =>
 				self.query_resources(work_id.as_str()).await,
@@ -2850,11 +2880,6 @@ impl Application for ServiceApplication {
 				query_work_evidence(&self.store, &query.payload).await,
 			QueryPayload::GetAgentGuardianReviews { .. }
 			| QueryPayload::GetAgentGuardianDetail { .. } => self.query_guardian(&query.payload).await,
-			QueryPayload::ListNativeThreads { cursor } =>
-				QueryResultPayload::NativeThreads(match &self.agent {
-					Some(host) => host.native_threads(cursor.as_ref().map(|c| c.as_str())).await,
-					None => None,
-				}),
 			QueryPayload::GetAgentSnapshot => self.query_agent_snapshot(false).await,
 			QueryPayload::GetAgentArchiveCatalog => self.query_agent_snapshot(true).await,
 			QueryPayload::GetAgentExchanges { before } => self.query_exchanges(*before).await,
@@ -5673,6 +5698,10 @@ async fn query_agent_history_page(
 	let live = query_agent_live(partial);
 
 	decodex_protocol::AgentHistoryResult::Available {
+		missing_folder: match (before, agent) {
+			(None, Some(agent)) => agent.missing_chat_folder(id).await.map(Box::new),
+			_ => None,
+		},
 		questions,
 		expired_question_ids,
 		questions_truncated,
@@ -5753,24 +5782,40 @@ async fn query_agent_snapshot(store: &ProductStore) -> decodex_protocol::AgentSn
 	else {
 		return decodex_protocol::AgentSnapshotResult::Unavailable;
 	};
-	let (work_items, dependencies, pending_events, managers, projects, conversation_titles) =
-		match records {
-			AgentStoreSnapshot::CapacityExceeded { work_items, dependencies, pending_events } => {
-				return decodex_protocol::AgentSnapshotResult::CapacityExceeded {
-					work_items,
-					dependencies,
-					pending_events,
-				};
-			},
-			AgentStoreSnapshot::Complete {
+	let (
+		work_items,
+		dependencies,
+		pending_events,
+		managers,
+		projects,
+		conversation_titles,
+		side_chat_sources,
+	) = match records {
+		AgentStoreSnapshot::CapacityExceeded { work_items, dependencies, pending_events } => {
+			return decodex_protocol::AgentSnapshotResult::CapacityExceeded {
 				work_items,
 				dependencies,
 				pending_events,
-				managers,
-				projects,
-				conversation_titles,
-			} => (work_items, dependencies, pending_events, managers, projects, conversation_titles),
-		};
+			};
+		},
+		AgentStoreSnapshot::Complete {
+			work_items,
+			dependencies,
+			pending_events,
+			managers,
+			projects,
+			conversation_titles,
+			side_chat_sources,
+		} => (
+			work_items,
+			dependencies,
+			pending_events,
+			managers,
+			projects,
+			conversation_titles,
+			side_chat_sources,
+		),
+	};
 	let counts = (work_items.len() as u64, dependencies.len() as u64, pending_events.len() as u64);
 	let Some(context_references) = query_agent_context_references(store).await else {
 		return decodex_protocol::AgentSnapshotResult::Unavailable;
@@ -5789,6 +5834,7 @@ async fn query_agent_snapshot(store: &ProductStore) -> decodex_protocol::AgentSn
 		guardian: Box::new(guardian),
 		portfolio: Box::new(portfolio),
 		archived_work_ids: Default::default(),
+		side_chat_sources: Box::new(side_chat_sources),
 		agent_slots: Default::default(),
 		conversation_titles: Box::new(conversation_titles),
 		context_references,
@@ -5797,38 +5843,7 @@ async fn query_agent_snapshot(store: &ProductStore) -> decodex_protocol::AgentSn
 		projects: projects.into_iter().map(project_dto).collect(),
 		work_items: work_items
 			.into_iter()
-			.map(|item| AgentWorkItemDto {
-				id: item.id.clone(),
-				parent_goal_id: item.parent_goal_id.clone(),
-				kind: match item.kind {
-					AgentWorkKind::Goal =>
-						if item.parent_goal_id.is_some() && managers.contains(&item.id) {
-							AgentWorkKindDto::Manager
-						} else {
-							AgentWorkKindDto::Goal
-						},
-					AgentWorkKind::Task => AgentWorkKindDto::Task,
-				},
-				title: item.title,
-				codex_thread_id: item.codex_thread_id,
-				active_turn_id: item.active_turn_id,
-				dispatch_state: match item.dispatch_state {
-					AgentDispatchState::Idle => AgentDispatchStateDto::Idle,
-					AgentDispatchState::Dispatching => AgentDispatchStateDto::Dispatching,
-					AgentDispatchState::Running => AgentDispatchStateDto::Running,
-					AgentDispatchState::Unknown => AgentDispatchStateDto::Unknown,
-				},
-				status: match item.status {
-					AgentWorkStatus::Open => AgentWorkStatusDto::Open,
-					AgentWorkStatus::Resolved => AgentWorkStatusDto::Resolved,
-					AgentWorkStatus::FollowUp => AgentWorkStatusDto::FollowUp,
-					AgentWorkStatus::Wait => AgentWorkStatusDto::Wait,
-					AgentWorkStatus::UserDecision => AgentWorkStatusDto::UserDecision,
-				},
-				next_check_at_micros: item.next_check_at_micros,
-				created_at_micros: item.created_at_micros,
-				updated_at_micros: item.updated_at_micros,
-			})
+			.map(|item| snapshot_work_item(item, &managers))
 			.collect(),
 		dependencies: dependencies
 			.into_iter()
@@ -5863,6 +5878,41 @@ async fn query_agent_snapshot(store: &ProductStore) -> decodex_protocol::AgentSn
 	}
 }
 
+fn snapshot_work_item(item: AgentWorkItem, managers: &[String]) -> AgentWorkItemDto {
+	AgentWorkItemDto {
+		id: item.id.clone(),
+		parent_goal_id: item.parent_goal_id.clone(),
+		kind: match item.kind {
+			AgentWorkKind::Goal =>
+				if item.parent_goal_id.is_some() && managers.contains(&item.id) {
+					AgentWorkKindDto::Manager
+				} else {
+					AgentWorkKindDto::Goal
+				},
+			AgentWorkKind::Task => AgentWorkKindDto::Task,
+		},
+		title: item.title,
+		codex_thread_id: item.codex_thread_id,
+		active_turn_id: item.active_turn_id,
+		dispatch_state: match item.dispatch_state {
+			AgentDispatchState::Idle => AgentDispatchStateDto::Idle,
+			AgentDispatchState::Dispatching => AgentDispatchStateDto::Dispatching,
+			AgentDispatchState::Running => AgentDispatchStateDto::Running,
+			AgentDispatchState::Unknown => AgentDispatchStateDto::Unknown,
+		},
+		status: match item.status {
+			AgentWorkStatus::Open => AgentWorkStatusDto::Open,
+			AgentWorkStatus::Resolved => AgentWorkStatusDto::Resolved,
+			AgentWorkStatus::FollowUp => AgentWorkStatusDto::FollowUp,
+			AgentWorkStatus::Wait => AgentWorkStatusDto::Wait,
+			AgentWorkStatus::UserDecision => AgentWorkStatusDto::UserDecision,
+		},
+		next_check_at_micros: item.next_check_at_micros,
+		created_at_micros: item.created_at_micros,
+		updated_at_micros: item.updated_at_micros,
+	}
+}
+
 async fn project_started_conversations(
 	store: &SqliteStore,
 	mut snapshot: AgentSnapshotDto,
@@ -5874,7 +5924,6 @@ async fn project_started_conversations(
 		snapshot.work_items.iter().any(|work| work.codex_thread_id.as_ref() == Some(thread))
 	});
 	snapshot.agents.retain(|agent| !drafts.contains(&agent.id));
-	snapshot.assistant.topic_ids.retain(|id| !drafts.contains(id));
 	for project in &mut snapshot.projects {
 		project.agent_ids.retain(|id| !drafts.contains(id));
 	}
@@ -6715,7 +6764,7 @@ mod tests {
 			.reserve_agent_voice_draft(
 				crate::agent::AgentCoordinator::new_conversation_work("draft").unwrap(),
 				None,
-				Some("assistant".into()),
+				None,
 			)
 			.await
 			.unwrap();
@@ -6726,7 +6775,7 @@ mod tests {
 		};
 		assert!(snapshot.is_valid());
 		assert_eq!(snapshot.assistant.agent_id.as_deref(), Some("assistant"));
-		assert!(snapshot.assistant.topic_ids.is_empty());
+		assert!(!snapshot.agents.iter().any(|agent| agent.id == "draft"));
 		assert_eq!(
 			snapshot.work_items.iter().map(|work| work.id.as_str()).collect::<Vec<_>>(),
 			["assistant"]
@@ -6746,7 +6795,7 @@ mod tests {
 			panic!("saved snapshot")
 		};
 		assert!(snapshot.is_valid());
-		assert_eq!(snapshot.assistant.topic_ids, ["draft"]);
+		assert!(snapshot.agents.iter().any(|agent| agent.id == "draft" && !agent.assistant));
 		assert!(snapshot.work_items.iter().any(|work| work.id == "draft"));
 	}
 

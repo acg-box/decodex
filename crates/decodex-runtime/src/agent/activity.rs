@@ -77,6 +77,12 @@ pub(super) fn project(params: &Value, completed: bool) -> Option<AgentActivityDt
 		"completed"
 	};
 
+	let timestamp =
+		|key: &str| params[key].as_u64().or_else(|| item[key].as_u64()).filter(|&ms| ms > 0);
+	let start = timestamp("startedAtMs");
+	let end = timestamp("completedAtMs");
+	let reported = (kind != "sleep").then(|| item["durationMs"].as_u64()).flatten();
+
 	Some(AgentActivityDto {
 		retained_output_lines: (kind == "commandExecution")
 			.then(|| item["aggregatedOutput"].as_str())
@@ -95,9 +101,10 @@ pub(super) fn project(params: &Value, completed: bool) -> Option<AgentActivityDt
 			.filter(|id| !id.is_empty() && !decodex_core::contains_credential_material(id))
 			.map(|id| id.chars().filter(|c| !c.is_control()).take(160).collect()),
 		read_only_hint: if kind == "mcpToolCall" { item["readOnlyHint"].as_bool() } else { None },
-		native_timestamp_ms: params[if completed { "completedAtMs" } else { "startedAtMs" }]
-			.as_u64(),
-		duration_ms: (kind != "sleep").then(|| item["durationMs"].as_u64()).flatten(),
+		native_timestamp_ms: if completed { end } else { start },
+		duration_ms: completed
+			.then(|| decodex_core::activity_elapsed_ms(kind, status, reported, start, end))
+			.flatten(),
 	})
 }
 

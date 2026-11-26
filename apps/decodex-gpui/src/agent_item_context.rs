@@ -67,7 +67,14 @@ impl AgentSurface {
 			&& self.nearby_history.request.as_ref().is_some_and(|request| {
 				self.conversation_work().is_some_and(|work| {
 					work.id == request.work_id.as_str()
-						&& work.codex_thread_id.as_deref() == Some(request.thread_id.as_str())
+						&& (work.codex_thread_id.as_deref() == Some(request.thread_id.as_str())
+							|| self.snapshot.as_ref().is_some_and(|s| {
+								s.assistant.agent_id.as_deref() == Some(&work.id)
+									&& s.assistant
+										.previous_thread_ids
+										.iter()
+										.any(|t| t == request.thread_id.as_str())
+							}))
 				})
 			})
 	}
@@ -86,19 +93,24 @@ impl AgentSurface {
 			)
 	}
 
-	pub(super) fn is_located_item(&self, content: &AgentTimelineContent) -> bool {
+	pub(super) fn is_located_item(
+		&self,
+		thread: Option<&str>,
+		content: &AgentTimelineContent,
+	) -> bool {
 		self.item_context_matches_source()
 			&& matches!(content, AgentTimelineContent::Item { turn_id, item_id, .. }
 				if self.nearby_history.request.as_ref().is_some_and(|r|
-					r.turn_id.as_str() == turn_id && r.item_id.as_str() == item_id))
+					Some(r.thread_id.as_str()) == thread && r.turn_id.as_str() == turn_id && r.item_id.as_str() == item_id))
 	}
 
 	pub(super) fn located_item_row(
 		&self,
+		thread: Option<&str>,
 		content: &AgentTimelineContent,
 		body: AnyElement,
 	) -> AnyElement {
-		if !self.is_located_item(content) {
+		if !self.is_located_item(thread, content) {
 			return body;
 		}
 		gpui::div()
@@ -108,6 +120,7 @@ impl AgentSurface {
 			.border_l_2()
 			.pl_2()
 			.border_color(crate::ui_theme::rgb(crate::ui_theme::BLUE))
+			.children(self.located_match_excerpt().map(crate::shell::agent_surface::muted))
 			.child(body)
 			.into_any_element()
 	}
@@ -133,14 +146,17 @@ impl AgentSurface {
 			.flex_col()
 			.gap_4();
 		body = body.children(self.item_history_page_action(true, previous_cursor.as_ref(), cx));
+		let source = self.nearby_history.request.as_ref()?.thread_id.as_str();
+		let archived = work.codex_thread_id.as_deref() != Some(source);
+		let mut origin = work.clone();
+		origin.codex_thread_id = Some(source.into());
 		for content in items {
 			let AgentTimelineContent::Item { turn_id, item_id, .. } = content else {
 				continue;
 			};
-			let identity =
-				serde_json::json!([work.id, work.codex_thread_id, turn_id, item_id]).to_string();
-			let row = self.native_item_content(work, content, &identity, false, cx);
-			let row = self.located_item_row(content, row);
+			let identity = serde_json::json!([work.id, source, turn_id, item_id]).to_string();
+			let row = self.native_item_content(&origin, content, &identity, archived, cx);
+			let row = self.located_item_row(Some(source), content, row);
 			body = body.child(self.item_history_scroll_row(work, turn_id, item_id, row, cx));
 		}
 		body = body.children(self.item_history_page_action(false, next_cursor.as_ref(), cx));
@@ -191,7 +207,21 @@ impl AgentSurface {
 	}
 
 	fn locate_item_context(&mut self, request: ItemContextRequest, cx: &mut Context<Self>) {
+		self.dismiss_conversation_search();
+		self.locate_find_match(request, cx);
+	}
+
+	pub(super) fn locate_find_match(
+		&mut self,
+		request: ItemContextRequest,
+		cx: &mut Context<Self>,
+	) {
 		let in_window = self.item_context_window_active()
+			&& self
+				.nearby_history
+				.request
+				.as_ref()
+				.is_some_and(|r| r.thread_id == request.thread_id && r.work_id == request.work_id)
 			&& matches!(&self.nearby_history.result,
 				Some(ItemContextResult::Available { items, .. }) if items.iter().any(|item|
 					matches!(item, AgentTimelineContent::Item { turn_id, item_id, .. }

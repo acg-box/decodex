@@ -1,5 +1,5 @@
 //! Display-paced wheel motion. Precise trackpad deltas retain native momentum.
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use gpui::{
 	App, Bounds, DispatchPhase, Div, ElementId, Hitbox, HitboxBehavior, IntoElement, KeyDownEvent,
@@ -14,6 +14,7 @@ use crate::{
 };
 
 const SCROLL_RESPONSE: f32 = 40.;
+const SCROLLBAR_HIDE_DELAY: Duration = Duration::from_millis(550);
 
 pub(crate) trait SmoothScrollArea {
 	fn smooth_scroll(self, id: impl Into<ElementId>) -> ScrollArea;
@@ -75,10 +76,17 @@ impl Motion {
 pub(crate) struct ScrollArea {
 	id: ElementId,
 	content: Stateful<Div>,
+	handle: Option<ScrollHandle>,
 	scrollbar: Option<(&'static str, &'static str)>,
 	contain: bool,
 }
 impl ScrollArea {
+	/// Retain the reading position when the viewport temporarily leaves the layout.
+	pub(crate) fn with_handle(mut self, handle: &ScrollHandle) -> Self {
+		self.handle = Some(handle.clone());
+		self
+	}
+
 	/// Keep wheel gestures inside an overflowing nested reader, including at its ends.
 	pub(crate) fn contain_scroll(mut self) -> Self {
 		self.contain = true;
@@ -94,7 +102,10 @@ impl ScrollArea {
 
 impl RenderOnce for ScrollArea {
 	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-		let state = window.use_keyed_state(self.id.clone(), cx, |_, _| AreaState::default());
+		let state = window.use_keyed_state(self.id.clone(), cx, |_, _| AreaState {
+			scroll: self.handle.unwrap_or_default(),
+			motion: None,
+		});
 		let owner = window.current_view();
 		let scroll = state.update(cx, |s, cx| {
 			if let Some(motion) = &s.motion {
@@ -189,84 +200,159 @@ impl Scrollbar {
 	}
 }
 
-impl RenderOnce for Scrollbar {
-	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-		let drag =
-			window.use_keyed_state(SharedString::from(format!("{}-drag", self.id)), cx, |_, _| {
-				None::<Pixels>
-			});
-		let owner = window.current_view();
-		let keys = self.scroll.clone();
-		let canvas = gpui::canvas(
-			move |bounds, window, _| scrollbar_thumb_layout(self.scroll, bounds, window),
-			move |bounds, state, window, _| {
-				let Some((scroll, thumb, travel, hitbox)) = state else { return };
+struct ScrollbarState {
+	focus: gpui::FocusHandle,
+	hovered: bool,
+	grab: Option<Pixels>,
+	offset: Pixels,
+	hide: Option<gpui::Task<()>>,
+}
 
+fn scrollbar_canvas(
+	scroll: ScrollHandle,
+	state: gpui::Entity<ScrollbarState>,
+	owner: gpui::EntityId,
+	thumb_width: Pixels,
+	opacity: f32,
+) -> impl IntoElement {
+	gpui::canvas(
+		move |bounds, window, _| scrollbar_thumb_layout(scroll, bounds, thumb_width, window),
+		move |bounds, layout, window, _| {
+			let Some((scroll, thumb, travel, hitbox)) = layout else { return };
+
+			if opacity > 0. {
 				window.paint_quad(
-					gpui::fill(thumb, ui_theme::rgba(0xffffff55)).corner_radii(gpui::px(2.5)),
+					gpui::fill(thumb, ui_theme::rgb(ui_theme::TEXT).opacity(opacity))
+						.corner_radii(thumb_width / 2.),
 				);
+			}
 
-				let down_scroll = scroll.clone();
-				let down_drag = drag.clone();
-				let down_thumb = thumb;
-				let hitbox = hitbox.clone();
+			let down_scroll = scroll.clone();
+			let down_drag = state.clone();
+			let down_thumb = thumb;
+			let hitbox = hitbox.clone();
 
-				window.on_mouse_event(move |event: &MouseDownEvent, phase, window, cx| {
-					if phase == DispatchPhase::Bubble
-						&& event.button == MouseButton::Left
-						&& hitbox.is_hovered(window)
-					{
-						window.prevent_default();
+			window.on_mouse_event(move |event: &MouseDownEvent, phase, window, cx| {
+				if phase == DispatchPhase::Bubble
+					&& event.button == MouseButton::Left
+					&& hitbox.is_hovered(window)
+				{
+					window.prevent_default();
 
-						let grab = if down_thumb.contains(&event.position) {
+					let grab =
+						if (down_thumb.top()..=down_thumb.bottom()).contains(&event.position.y) {
 							event.position.y - down_thumb.top()
 						} else {
 							down_thumb.size.height / 2.
 						};
 
-						down_drag.update(cx, |value, _| *value = Some(grab));
+					down_drag.update(cx, |s, _| s.grab = Some(grab));
 
-						set_scroll(&down_scroll, event.position.y - bounds.top() - grab, travel);
+					set_scroll(&down_scroll, event.position.y - bounds.top() - grab, travel);
 
-						cx.notify(owner);
-						cx.stop_propagation();
-					}
-				});
+					cx.notify(owner);
+					cx.stop_propagation();
+				}
+			});
 
-				let scroll = scroll.clone();
-				let up_drag = drag.clone();
+			let scroll = scroll.clone();
+			let up_drag = state.clone();
 
-				window.on_mouse_event(move |_: &MouseUpEvent, phase, _, cx| {
-					if phase == DispatchPhase::Capture {
-						up_drag.update(cx, |value, _| *value = None);
-					}
-				});
-				window.on_mouse_event(move |event: &MouseMoveEvent, phase, _, cx| {
-					if phase != DispatchPhase::Capture {
-						return;
-					}
+			window.on_mouse_event(move |_: &MouseUpEvent, phase, _, cx| {
+				if phase == DispatchPhase::Capture {
+					up_drag.update(cx, |s, cx| {
+						if s.grab.take().is_some() {
+							cx.notify();
+						}
+					});
+				}
+			});
+			window.on_mouse_event(move |event: &MouseMoveEvent, phase, _, cx| {
+				if phase != DispatchPhase::Capture {
+					return;
+				}
 
-					let Some(grab) = *drag.read(cx) else { return };
+				let Some(grab) = state.read(cx).grab else { return };
 
-					if event.pressed_button == Some(MouseButton::Left) {
-						set_scroll(&scroll, event.position.y - bounds.top() - grab, travel);
+				if event.pressed_button == Some(MouseButton::Left) {
+					set_scroll(&scroll, event.position.y - bounds.top() - grab, travel);
 
-						cx.notify(owner);
-						cx.stop_propagation();
-					} else {
-						drag.update(cx, |value, _| *value = None);
-					}
-				});
-			},
-		)
-		.size_full();
+					cx.notify(owner);
+					cx.stop_propagation();
+				} else {
+					state.update(cx, |s, cx| {
+						s.grab = None;
+						cx.notify();
+					});
+				}
+			});
+		},
+	)
+	.size_full()
+}
+
+impl RenderOnce for Scrollbar {
+	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+		let offset = self.scroll.offset().y;
+		// In automatic mode, an attached mouse can select a persistent AppKit scroller.
+		// Keep this overlay transient unless the user explicitly requests a visible bar.
+		let auto_hide =
+			crate::ui_preferences::string("AppleShowScrollBars", None).as_deref() != Some("Always");
+		let state = window.use_keyed_state(self.id, cx, |_, cx| ScrollbarState {
+			focus: cx.focus_handle(),
+			hovered: false,
+			grab: None,
+			offset,
+			hide: None,
+		});
+		let (focus, engaged, scrolling) = state.update(cx, |s, cx| {
+			if std::mem::replace(&mut s.offset, offset) != offset && auto_hide {
+				s.hide = Some(cx.spawn(async move |bar, cx| {
+					cx.background_executor().timer(SCROLLBAR_HIDE_DELAY).await;
+					let _ = bar.update(cx, |s, cx| {
+						s.hide = None;
+						cx.notify();
+					});
+				}));
+			}
+			let focused = window.last_input_was_keyboard() && s.focus.is_focused(window);
+			(s.focus.clone(), s.hovered || s.grab.is_some() || focused, s.hide.is_some())
+		});
+		let target = if engaged {
+			0.52
+		} else if scrolling {
+			0.36
+		} else if auto_hide {
+			0.
+		} else {
+			0.24
+		};
+		let opacity = ui_motion::direct_value(
+			SharedString::from(format!("{}-opacity", self.id)),
+			target,
+			engaged || scrolling,
+			window,
+			cx,
+		);
+		let thumb_width = gpui::px(if engaged { 5. } else { 3. });
+		let hover_state = state.clone();
+		let owner = window.current_view();
+		let keys = self.scroll.clone();
+		let canvas = scrollbar_canvas(self.scroll, state, owner, thumb_width, opacity);
 
 		gpui::div()
 			.id(self.id)
 			.debug_selector(move || self.id.into())
 			.role(Role::ScrollBar)
 			.aria_label(self.label)
+			.track_focus(&focus)
 			.tab_index(0)
+			.on_hover(move |hovered, _, cx| {
+				hover_state.update(cx, |s, cx| {
+					s.hovered = *hovered;
+					cx.notify();
+				});
+			})
 			.on_key_down(move |event: &KeyDownEvent, _, cx| {
 				let current = keys.offset().y;
 				let page = keys.bounds().size.height;
@@ -286,10 +372,10 @@ impl RenderOnce for Scrollbar {
 				cx.stop_propagation();
 			})
 			.absolute()
-			.top_1()
-			.bottom_1()
-			.right_1()
-			.w(gpui::px(11.))
+			.top(gpui::px(8.))
+			.bottom(gpui::px(8.))
+			.right_0()
+			.w(gpui::px(14.))
 			.child(canvas)
 	}
 }
@@ -302,7 +388,7 @@ struct AreaState {
 
 impl SmoothScrollArea for Stateful<Div> {
 	fn smooth_scroll(self, id: impl Into<ElementId>) -> ScrollArea {
-		ScrollArea { id: id.into(), content: self, scrollbar: None, contain: false }
+		ScrollArea { id: id.into(), content: self, handle: None, scrollbar: None, contain: false }
 	}
 }
 
@@ -323,6 +409,7 @@ pub(crate) fn smooth(delta: ScrollDelta) -> bool {
 fn scrollbar_thumb_layout(
 	scroll: ScrollHandle,
 	bounds: Bounds<Pixels>,
+	thumb_width: Pixels,
 	window: &mut Window,
 ) -> Option<(ScrollHandle, Bounds<Pixels>, Pixels, Hitbox)> {
 	let viewport = scroll.bounds().size.height;
@@ -338,8 +425,8 @@ fn scrollbar_thumb_layout(
 	let travel = bounds.size.height - height;
 	let y = travel * (-scroll.offset().y / maximum);
 	let thumb = Bounds::new(
-		gpui::point(bounds.left() + gpui::px(3.), bounds.top() + y),
-		gpui::size(gpui::px(5.), height),
+		gpui::point(bounds.center().x - thumb_width / 2., bounds.top() + y),
+		gpui::size(thumb_width, height),
 	);
 
 	Some((scroll, thumb, travel, window.insert_hitbox(bounds, HitboxBehavior::Normal)))

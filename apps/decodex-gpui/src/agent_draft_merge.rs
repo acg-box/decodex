@@ -2,6 +2,51 @@
 use crate::shell::agent_surface::drafts::storage::{
 	self, AgentSurface, Context, DesktopDraftDocument, Drafts, SaveFailure,
 };
+use decodex_protocol::{DesktopComposerDraft, DesktopProfileDraft};
+
+// The active slot is a cold-start hint. A live window can show the same saved
+// editors with another one active, without changing their contents or owners.
+pub(super) fn show_editor(
+	mut saved: DesktopProfileDraft,
+	window: &DesktopProfileDraft,
+) -> DesktopProfileDraft {
+	if saved.composer.work_id != window.composer.work_id {
+		let editor = match &window.composer.work_id {
+			Some(id) => saved.parked.remove(id.as_str()).unwrap_or_else(|| {
+				if window.new_conversation.as_ref() == Some(id) {
+					return window.composer.clone();
+				}
+				// A deleted draft must not regain its previous text from this window.
+				DesktopComposerDraft {
+					work_id: Some(id.clone()),
+					thread_id: window.composer.thread_id.clone(),
+					..Default::default()
+				}
+			}),
+			None => window.composer.clone(),
+		};
+		let previous = std::mem::replace(&mut saved.composer, editor);
+		if let Some(id) = previous.work_id.as_ref() {
+			saved.parked.insert(id.as_str().into(), previous);
+		}
+	}
+	if let Some(id) = window.new_conversation.as_ref()
+		&& window.composer.work_id.as_ref() == Some(id)
+		&& saved.new_conversation.as_ref() != Some(id)
+	{
+		saved.new_conversation.clone_from(&window.new_conversation);
+		saved.new_conversation_workspace.clone_from(&window.new_conversation_workspace);
+		saved.new_conversation_permissions = window.new_conversation_permissions;
+		if let Some(folder) = window.chat_folders.get(id.as_str()) {
+			saved.chat_folders.insert(id.as_str().into(), folder.clone());
+		}
+		if let Some(choice) = window.execution.get(id.as_str()) {
+			saved.execution.insert(id.as_str().into(), choice.clone());
+			saved.execution_revision = saved.execution_revision.max(choice.0);
+		}
+	}
+	saved
+}
 
 impl AgentSurface {
 	pub(super) fn merge_current_edits(&mut self, cx: &mut Context<Self>) {
@@ -97,20 +142,11 @@ impl AgentSurface {
 			let scope = profile.draft_scope_key();
 
 			if rebased.profiles.get(&scope) != current.profiles.get(&scope)
-				&& let Some(saved) = rebased.profiles.get(&scope)
+				&& let (Some(saved), Some(window)) =
+					(rebased.profiles.get(&scope), self.capture_draft_document(cx))
 			{
-				let previous_owner = self.composer_manager.clone();
-
-				self.apply_drafts(Drafts::from_document(saved.clone(), self.command_epoch), cx);
-
-				if self.composer_manager != previous_owner {
-					self.selected = self.composer_manager.clone();
-					self.history = None;
-					self.history_task = None;
-					self.history_requested_for = None;
-
-					self.load_history(cx);
-				}
+				let view = show_editor(saved.clone(), &window);
+				self.apply_drafts(Drafts::from_document(view, self.command_epoch), cx);
 			}
 		} else if rebased.unbound != current.unbound {
 			self.restore_unbound_draft(cx);

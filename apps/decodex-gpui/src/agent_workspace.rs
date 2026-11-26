@@ -359,7 +359,7 @@ impl AgentSurface {
 			});
 
 		if is_manager {
-			let previous = self.composer_manager.clone().or_else(|| self.root_id());
+			let previous = self.visible_composer_owner();
 
 			if previous.as_deref() != Some(id) {
 				if let Some(previous) = previous {
@@ -391,6 +391,10 @@ impl AgentSurface {
 	}
 
 	pub(super) fn close_page(&mut self, id: &str, cx: &mut Context<Self>) {
+		if let Some((root, thread)) = self.temporary_tab(id) {
+			self.end_temporary_side_chat(id, root, thread, cx);
+			return;
+		}
 		if self.workspace.preview_page.as_deref() == Some(id) {
 			self.workspace.preview_page = None;
 		}
@@ -644,6 +648,20 @@ impl AgentSurface {
 		self.snapshot.as_ref().is_some_and(|s| s.connection_initializing)
 	}
 
+	pub(super) fn missing_chat_folder(&self) -> Option<&decodex_protocol::MissingChatFolder> {
+		let (owner, AgentHistoryResult::Available { missing_folder: Some(missing), .. }) =
+			self.history.as_ref()?
+		else {
+			return None;
+		};
+		let item = self.conversation_record(owner)?;
+		(self.selected.as_ref() == Some(owner)
+			&& item.codex_thread_id.as_deref() == Some(missing.thread_id.as_str())
+			&& item.dispatch_state == AgentDispatchStateDto::Idle
+			&& item.active_turn_id.is_none())
+		.then_some(missing)
+	}
+
 	pub(super) fn composer_unavailable_reason(&self) -> Option<&'static str> {
 		if self.native_agents.selected.is_some() {
 			return match self.native_agents.connection {
@@ -667,6 +685,9 @@ impl AgentSurface {
 		}
 		if !self.draft_owner_available() {
 			return Some("Draft conversation unavailable. Select another conversation.");
+		}
+		if self.missing_chat_folder().is_some() {
+			return Some("Working folder is unavailable.");
 		}
 		if self.selected_provider_mismatch().is_some() {
 			return Some(PROVIDER_MISMATCH_MESSAGE);
@@ -787,6 +808,26 @@ impl AgentSurface {
 		None
 	}
 
+	fn missing_folder_notice(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+		let missing = self.missing_chat_folder()?;
+		Some(
+			ui_feedback::status_row(
+				"conversation-unavailable",
+				Tone::Warning,
+				"Working folder is unavailable.",
+				missing.cwd.as_str(),
+				Tone::Warning.icon(),
+			)
+			.child(self.workspace_button(
+				"restore-chat-folder".into(),
+				"Choose folder…".into(),
+				|s, cx| s.choose_chat_folder(cx),
+				cx,
+			))
+			.into_any_element(),
+		)
+	}
+
 	fn waiting_connection_notice(&self, cx: &mut Context<Self>) -> AnyElement {
 		ui_feedback::read_only_row(
 			"conversation-unavailable",
@@ -819,6 +860,9 @@ impl AgentSurface {
 			return notice;
 		}
 
+		if let Some(notice) = self.missing_folder_notice(cx) {
+			return notice;
+		}
 		if reason == PARENT_MANAGED_MESSAGE {
 			return ui_feedback::read_only_row(
 				"conversation-unavailable",
@@ -1160,14 +1204,6 @@ impl AgentSurface {
 					.text_size(gpui::px(20.))
 					.child(heading),
 			)
-			.when(personal, |prompt| {
-				prompt.child(
-					gpui::div()
-						.text_size(gpui::px(12.))
-						.text_color(ui_theme::rgb(TEXT_MUTED))
-						.child("A new topic, with the same Assistant."),
-				)
-			})
 			.when(choose_workspace, |prompt| {
 				prompt.child(
 					gpui::div()
@@ -1319,14 +1355,11 @@ impl AgentSurface {
 									.as_deref()
 									.filter(|_| self.native_agents.selected.is_none())
 									.and_then(|id| {
-										self.thread_registration_context(id).map(|label| {
-											self.thread_registration_entry(
-												"conversation-thread-relationship".into(),
-												label,
-												Some(id.to_owned()),
-												cx,
-											)
-										})
+										self.adopt_conversation_entry(
+											"conversation-thread-relationship".into(),
+											id,
+											cx,
+										)
 									}),
 							)
 							.child(
@@ -1630,7 +1663,7 @@ impl AgentSurface {
 						.w(gpui::px(320.))
 						.max_w_full()
 						.opacity(presence)
-						.child(self.inspection_card(snapshot, work, cx)),
+						.child(self.inspection_card(snapshot, work, window, cx)),
 				)
 				.with_priority(2),
 			);
@@ -2349,6 +2382,7 @@ impl AgentSurface {
 			guardian: Default::default(),
 			portfolio: Default::default(),
 			archived_work_ids: Default::default(),
+			side_chat_sources: Default::default(),
 			agent_slots: Default::default(),
 			conversation_titles: Default::default(),
 			context_references: vec![],
@@ -2467,6 +2501,7 @@ impl AgentSurface {
 			guardian: Default::default(),
 			portfolio: Default::default(),
 			archived_work_ids: Default::default(),
+			side_chat_sources: Default::default(),
 			agent_slots: Default::default(),
 			conversation_titles: Default::default(),
 			context_references: vec![],
@@ -2515,6 +2550,7 @@ impl AgentSurface {
 		let history = AgentHistoryResult::Available {
 			questions: vec![],
 			expired_question_ids: Vec::new(),
+			missing_folder: None,
 			questions_truncated: false,
 			questions_recovering: false,
 			misalignment: None,
@@ -2549,7 +2585,7 @@ impl AgentSurface {
 		self.workspace.graph_scope = Some("release".into());
 		self.workspace.graph_selected = Some("verify".into());
 
-		self.timeline.cache.insert("verify".into(),AgentHistoryResult::Available{questions:vec![],expired_question_ids:vec![],questions_truncated:false,questions_recovering:false,misalignment:None,usage: None,entries:vec![crate::shell::agent_surface::AgentHistoryEntryDto{native_source:None,receipt: None, turn_id: None, weather:Vec::new(), activity: None,usage: None,duration_ms: None,id:100,kind:"assistant".into(),text:"Checking that existing sessions reopen without another sign-in. Fresh-install verification is still running.".into(),created_at_micros:1_789_481_040_000_000}],has_more:false,next_before:None,live:vec![]});
+		self.timeline.cache.insert("verify".into(),AgentHistoryResult::Available{missing_folder:None,questions:vec![],expired_question_ids:vec![],questions_truncated:false,questions_recovering:false,misalignment:None,usage: None,entries:vec![crate::shell::agent_surface::AgentHistoryEntryDto{native_source:None,receipt: None, turn_id: None, weather:Vec::new(), activity: None,usage: None,duration_ms: None,id:100,kind:"assistant".into(),text:"Checking that existing sessions reopen without another sign-in. Fresh-install verification is still running.".into(),created_at_micros:1_789_481_040_000_000}],has_more:false,next_before:None,live:vec![]});
 		cx.notify();
 	}
 }

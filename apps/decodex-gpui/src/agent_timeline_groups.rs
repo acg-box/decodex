@@ -29,7 +29,10 @@ pub(super) fn process_turn(entry: &AgentTimelineEntry) -> Option<&str> {
 					kind.as_str(),
 					"reasoning" | "plan" | "functionCallOutput" | "sleep"
 				) || (kind == "agentMessage" && phase.as_deref() == Some("commentary"))
-					|| (kind != "agentMessage" && kind != "agentInput" && activity.is_some())) =>
+					|| (!matches!(
+						kind.as_str(),
+						"agentMessage" | "userMessage" | "agentInput"
+					) && activity.is_some())) =>
 			Some(turn_id),
 		_ => None,
 	}
@@ -52,7 +55,7 @@ pub(super) struct Group {
 	pub indices: Vec<usize>,
 	pub expanded: bool,
 	pub first_index: usize,
-	/// Final answer, or the terminal boundary when the turn failed or was interrupted.
+	/// The preserved final answer or terminal boundary.
 	pub final_index: usize,
 	pub count: usize,
 	pub observations: Vec<decodex_protocol::AgentActivityDto>,
@@ -100,7 +103,9 @@ pub(super) fn responses_with_observations(
 				if turn_id == &activity.turn_id && kind == "agentMessage" && phase.as_deref() != Some("commentary")))
 				.unwrap_or(terminal);
 			result.push(Group {
-				input_index: input_for_turn(entries, final_index, &activity.turn_id),
+				input_index: opening_inputs(entries).into_iter().find(|&index| matches!(
+					&entries[index].content, AgentTimelineContent::Item { turn_id, .. } if turn_id == &activity.turn_id
+				)),
 				turn: activity.turn_id.clone(),
 				turns: BTreeSet::from([activity.turn_id.clone()]),
 				indices: vec![],
@@ -133,7 +138,7 @@ impl AgentSurface {
 		self.process_header(
 			work,
 			entry,
-			process_label(group.count),
+			group.label(&self.timeline.native.entries),
 			expanded,
 			move |s| {
 				s.timeline.native.expanded_turns.retain(|id| !turns.contains(id));
@@ -300,212 +305,166 @@ pub(super) fn groups(entries: &[AgentTimelineEntry], expanded: &BTreeSet<String>
 	responses(entries, expanded).into_iter().filter(|group| group.count > 0).collect()
 }
 
+/// Only the opening input of a native turn starts a response. A page can start
+/// in the middle of a turn: a user item after observed work is then a steer.
+fn opening_inputs(entries: &[AgentTimelineEntry]) -> BTreeSet<usize> {
+	let mut seen = BTreeSet::new();
+	let mut started = BTreeSet::new();
+	let mut inputs = BTreeSet::new();
+	for (index, entry) in entries.iter().enumerate() {
+		match &entry.content {
+			AgentTimelineContent::TurnBoundary { turn_id, completed: false, .. } => {
+				started.insert(turn_id);
+			},
+			AgentTimelineContent::Item { turn_id, kind, .. } => {
+				let first_item = seen.insert(turn_id);
+				if matches!(kind.as_str(), "userMessage" | "agentInput") {
+					let has_start = started.remove(turn_id);
+					if first_item || has_start {
+						inputs.insert(index);
+					}
+				}
+			},
+			_ => {},
+		}
+	}
+	inputs
+}
+
 fn responses(entries: &[AgentTimelineEntry], expanded: &BTreeSet<String>) -> Vec<Group> {
 	let empty = hidden_items(entries);
-	let finished: BTreeSet<_> = entries
+	let inputs = opening_inputs(entries);
+	let mut owners = BTreeMap::new();
+	for &index in &inputs {
+		if let AgentTimelineContent::Item { turn_id, .. } = &entries[index].content {
+			owners.insert(turn_id.as_str(), index);
+		}
+	}
+	let terminal: BTreeMap<_, _> = entries
 		.iter()
-		.filter_map(|entry| match &entry.content {
-			AgentTimelineContent::TurnBoundary {
-				turn_id,
-				completed: true,
-				status,
-				error: None,
-				..
-			} if status.as_deref() == Some("completed") => Some(turn_id.as_str()),
-			_ => None,
+		.enumerate()
+		.filter_map(|(index, entry)| {
+			let AgentTimelineContent::TurnBoundary {
+				turn_id, completed: true, status, error, ..
+			} = &entry.content
+			else {
+				return None;
+			};
+			match status.as_deref() {
+				Some("completed") if error.is_none() => Some((turn_id.as_str(), (index, false))),
+				Some("failed" | "interrupted") => Some((turn_id.as_str(), (index, true))),
+				_ => None,
+			}
 		})
 		.collect();
-	let mut starts = vec![0];
-
-	for (index, entry) in entries.iter().enumerate().skip(1) {
-		if matches!(&entry.content, AgentTimelineContent::Item { kind, .. }
-			if matches!(kind.as_str(), "userMessage" | "agentInput"))
-			|| matches!(
-				&entry.content,
-				AgentTimelineContent::Speech { .. }
-					| AgentTimelineContent::VoiceBoundary { .. }
-					| AgentTimelineContent::Promotion { .. }
-			) {
-			starts.push(index);
-		}
-	}
-
-	starts.push(entries.len());
-	// A command can complete after later user turns. Its first observed turn
-	// identity owns the row; the append position must not move it to a later reply.
-	let mut owners = BTreeMap::new();
-	let mut input_owners = BTreeMap::new();
-	let mut repeated_inputs = BTreeSet::new();
-	for (owner, range) in starts.windows(2).enumerate() {
-		for entry in &entries[range[0]..range[1]] {
-			if let AgentTimelineContent::Item { turn_id, kind, .. } = &entry.content {
-				owners.entry(turn_id).or_insert(owner);
-				if matches!(kind.as_str(), "userMessage" | "agentInput")
-					&& input_owners.insert(turn_id, owner).is_some_and(|old| old != owner)
-				{
-					repeated_inputs.insert(turn_id);
+	let mut responses = BTreeMap::<(usize, Option<usize>), (usize, Vec<usize>)>::new();
+	let mut range = 0;
+	for (index, entry) in entries.iter().enumerate() {
+		match &entry.content {
+			AgentTimelineContent::Item { turn_id, .. } => {
+				if inputs.contains(&index) {
+					range = index;
 				}
-			}
+				if let Some(&(end, failed)) = terminal.get(turn_id.as_str()) {
+					// Late items follow their native turn. An input-free worker wake
+					// continues the response in which its work began.
+					let owner = owners.entry(turn_id.as_str()).or_insert(range);
+					let (terminal, items) =
+						responses.entry((*owner, failed.then_some(end))).or_default();
+					*terminal = (*terminal).max(end);
+					items.push(index);
+				}
+			},
+			AgentTimelineContent::Speech { .. }
+			| AgentTimelineContent::VoiceBoundary { .. }
+			| AgentTimelineContent::Promotion { .. } => range = index,
+			_ => {},
 		}
 	}
-	let mut responses = vec![Vec::new(); starts.len() - 1];
-	for (range_owner, range) in starts.windows(2).enumerate() {
-		for (index, entry) in entries.iter().enumerate().take(range[1]).skip(range[0]) {
-			if let AgentTimelineContent::Item { turn_id, .. } = &entry.content
-				&& let Some(&owner) = owners.get(turn_id)
-			{
-				// Several inputs inside one native turn still delimit separate responses.
-				responses[if repeated_inputs.contains(turn_id) { range_owner } else { owner }]
-					.push(index);
-			}
-		}
-	}
-
-	let mut result = Vec::new();
-
-	for (owner, response) in responses.into_iter().enumerate() {
-		let final_index = response.iter().copied().rev().find(|index| {
-			matches!(&entries[*index].content,
-				AgentTimelineContent::Item { turn_id, kind, phase, text, .. }
-				if finished.contains(turn_id.as_str()) && kind == "agentMessage"
-					&& matches!(phase.as_deref(), None | Some("final_answer")) && !text.trim().is_empty())
-		});
-		let Some(final_index) = final_index else { continue };
-		let mut indices = Vec::new();
-		let turns = response
-			.iter()
-			.filter_map(|index| match &entries[*index].content {
-				AgentTimelineContent::Item { turn_id, .. }
-					if finished.contains(turn_id.as_str()) =>
-					Some(turn_id.clone()),
-				_ => None,
-			})
-			.collect::<BTreeSet<_>>();
-
-		for index in response {
-			if empty.contains(&index) || index == final_index {
-				continue;
-			}
-
-			if let AgentTimelineContent::Item {
-				turn_id, kind, phase, attachments, activity, ..
-			} = &entries[index].content
-				&& finished.contains(turn_id.as_str())
-				&& attachments.is_empty()
-				&& (matches!(kind.as_str(), "reasoning" | "plan" | "functionCallOutput" | "sleep")
-					|| (kind == "agentMessage"
-						&& matches!(phase.as_deref(), None | Some("commentary" | "final_answer")))
-					|| (kind != "agentInput" && activity.is_some()))
-			{
-				indices.push(index);
-			}
-		}
-
-		let first_index = indices.first().copied().unwrap_or(final_index);
-		let AgentTimelineContent::Item { turn_id, .. } = &entries[first_index].content else {
-			unreachable!("process contains items");
-		};
-
-		result.push(Group {
-			input_index: input_at(entries, starts[owner]),
-			turn: turn_id.clone(),
-			expanded: !expanded.is_disjoint(&turns),
-			turns,
-			first_index: first_index.min(final_index),
-			final_index,
-			count: indices.len(),
-			observations: vec![],
-			indices,
-		});
-	}
-
-	let input_owners = owners
-		.iter()
-		.map(|(turn, owner)| (turn.as_str(), input_at(entries, starts[*owner])))
+	let mut result: Vec<_> = responses
+		.into_iter()
+		.map(|((range, failure), (end, items))| {
+			response_group(
+				entries,
+				inputs.get(&range).copied(),
+				&items,
+				(end, failure.is_some()),
+				&empty,
+				expanded,
+			)
+		})
 		.collect();
-	result.extend(failed_groups(entries, &empty, expanded, &input_owners));
 	result.sort_by_key(|group| group.first_index);
 	result
 }
 
-fn failed_groups(
+fn response_group(
 	entries: &[AgentTimelineEntry],
+	input: Option<usize>,
+	items: &[usize],
+	(end, failed): (usize, bool),
 	empty: &BTreeSet<usize>,
 	expanded: &BTreeSet<String>,
-	input_owners: &BTreeMap<&str, Option<usize>>,
-) -> Vec<Group> {
-	let mut result = Vec::new();
-	// Failed and interrupted turns have finished too. Keep their final message and
-	// failure boundary visible, but let the user collapse the preceding process.
-	for (terminal, entry) in entries.iter().enumerate() {
-		let AgentTimelineContent::TurnBoundary { turn_id, completed: true, status, .. } =
-			&entry.content
-		else {
-			continue;
-		};
-		if !matches!(status.as_deref(), Some("failed" | "interrupted")) {
-			continue;
-		}
-		let indices: Vec<_> = entries
-			.iter()
-			.enumerate()
-			.filter_map(|(index, entry)| match &entry.content {
-				AgentTimelineContent::Item {
-					turn_id: owner,
-					kind,
-					phase,
-					attachments,
-					activity,
-					..
-				} if owner == turn_id
-					&& attachments.is_empty()
-					&& !empty.contains(&index)
-					&& (matches!(
-						kind.as_str(),
-						"reasoning" | "plan" | "functionCallOutput" | "sleep"
-					) || (kind == "agentMessage"
-						&& phase.as_deref() == Some("commentary"))
-						|| (kind != "agentInput"
-							&& kind != "agentMessage"
-							&& activity.is_some())) =>
-					Some(index),
-				_ => None,
-			})
-			.collect();
-		if !indices.is_empty() || input_owners.get(turn_id.as_str()).copied().flatten().is_some() {
-			let first_index = indices.first().copied().unwrap_or(terminal);
-			result.push(Group {
-				input_index: input_owners.get(turn_id.as_str()).copied().flatten(),
-				turn: turn_id.clone(),
-				turns: BTreeSet::from([turn_id.clone()]),
-				expanded: expanded.contains(turn_id),
-				first_index: first_index.min(terminal),
-				final_index: terminal,
-				count: indices.len(),
-				observations: vec![],
-				indices,
-			});
+) -> Group {
+	let answer = items.iter().copied().rev().find(|i| {
+		matches!(&entries[*i].content, AgentTimelineContent::Item {
+			kind, phase, text, attachments, truncated, ..
+		} if kind == "agentMessage" && matches!(phase.as_deref(), None | Some("final_answer"))
+			&& (!text.trim().is_empty() || !attachments.is_empty() || *truncated))
+	});
+	let final_index = if failed { end } else { answer.unwrap_or(end) };
+	let indices: Vec<_> = items
+		.iter()
+		.copied()
+		.filter(|i| Some(*i) != input && Some(*i) != answer && !empty.contains(i))
+		.collect();
+	let first_index = indices
+		.iter()
+		.copied()
+		.find(|i| input.is_none_or(|prompt| *i > prompt))
+		.unwrap_or(final_index);
+	let turns: BTreeSet<_> = items
+		.iter()
+		.filter_map(|i| match &entries[*i].content {
+			AgentTimelineContent::Item { turn_id, .. } => Some(turn_id.clone()),
+			_ => None,
+		})
+		.collect();
+	let anchor = input.filter(|i| items.contains(i)).unwrap_or(items[0]);
+	let AgentTimelineContent::Item { turn_id, .. } = &entries[anchor].content else {
+		unreachable!("native item")
+	};
+	Group {
+		input_index: input,
+		turn: turn_id.clone(),
+		expanded: !expanded.is_disjoint(&turns),
+		turns,
+		first_index: first_index.min(final_index),
+		final_index,
+		count: indices.len(),
+		observations: Vec::new(),
+		indices,
+	}
+}
+impl Group {
+	fn label(&self, entries: &[AgentTimelineEntry]) -> String {
+		let steps = crate::shell::agent_surface::conversation_metric::steps_label(self.count);
+		match outcome_label(&entries[self.final_index].content) {
+			Some(outcome) => format!("{outcome} ({steps})"),
+			None => steps,
 		}
 	}
-	result
 }
 
-fn input_at(entries: &[AgentTimelineEntry], index: usize) -> Option<usize> {
-	matches!(&entries[index].content, AgentTimelineContent::Item { kind, .. }
-		if matches!(kind.as_str(), "userMessage" | "agentInput"))
-	.then_some(index)
-}
-
-fn input_for_turn(entries: &[AgentTimelineEntry], through: usize, turn: &str) -> Option<usize> {
-	entries[..=through].iter().rposition(|entry| {
-		matches!(&entry.content,
-		AgentTimelineContent::Item { turn_id, kind, .. }
-		if turn_id == turn && matches!(kind.as_str(), "userMessage" | "agentInput"))
-	})
-}
-
-fn process_label(count: usize) -> String {
-	crate::shell::agent_surface::conversation_metric::steps_label(count)
+pub(super) fn outcome_label(content: &AgentTimelineContent) -> Option<&'static str> {
+	let AgentTimelineContent::TurnBoundary { completed: true, status, .. } = content else {
+		return None;
+	};
+	match status.as_deref() {
+		Some("interrupted") => Some("Response interrupted"),
+		Some("failed") => Some("Response failed"),
+		_ => None,
+	}
 }
 
 #[cfg(any(test, feature = "visual-capture"))]
@@ -829,8 +788,8 @@ mod tests {
 		let groups = groups::groups(&entries, &BTreeSet::new());
 
 		assert_eq!(groups.len(), 1);
-		assert_eq!(groups[0].indices, [2, 3, 4]);
-		assert_eq!(groups[0].final_index, 1);
+		assert_eq!(groups[0].indices, [1, 2, 3, 4, 5]);
+		assert_eq!(groups[0].final_index, 6);
 
 		if let AgentTimelineContent::Item { text, .. } = &mut entries[2].content {
 			*text = "Could not wait for input".into();
@@ -858,6 +817,7 @@ mod tests {
 		let result = groups::groups(&entries, &BTreeSet::new());
 
 		assert_eq!(result[0].indices, vec![1, 2]);
+		assert_eq!(result[0].label(&entries), "2 steps");
 		assert!(!result[0].expanded);
 		assert!(groups::groups(&entries, &BTreeSet::from(["turn".into()]))[0].expanded);
 
@@ -866,13 +826,45 @@ mod tests {
 		let failed = groups::groups(&entries, &BTreeSet::new());
 		assert_eq!(failed[0].indices, [1, 2]);
 		assert_eq!(failed[0].final_index, 4);
+		assert_eq!(failed[0].label(&entries), "Response failed (2 steps)");
 		assert!(!failed[0].indices.contains(&3), "keep the final answer visible");
 		assert!(!failed[0].indices.contains(&4), "keep the failure visible");
 
 		entries[4] = completed("interrupted");
 
-		assert_eq!(groups::groups(&entries, &BTreeSet::new())[0].indices, [1, 2]);
+		let interrupted = groups::groups(&entries, &BTreeSet::new());
+		assert_eq!(interrupted[0].indices, [1, 2]);
+		assert_eq!(interrupted[0].label(&entries), "Response interrupted (2 steps)");
 	}
+	#[test]
+	fn interrupted_response_uses_one_heading_and_retains_terminal_details() {
+		use super::super::TurnFooter;
+
+		let mut boundary = completed("interrupted");
+		let turn = String::from("turn");
+		let replies = BTreeSet::from([&turn]);
+		let voice = BTreeSet::new();
+
+		assert!(TurnFooter::for_boundary(&boundary.content, true, &replies, &voice).is_none());
+		let standalone =
+			TurnFooter::for_boundary(&boundary.content, false, &replies, &voice).unwrap();
+		assert_eq!(standalone.outcome, Some("Response interrupted"));
+		assert!(!standalone.metrics);
+		let timed =
+			TurnFooter::for_boundary(&boundary.content, true, &BTreeSet::new(), &voice).unwrap();
+		assert!(timed.outcome.is_none() && timed.metrics);
+
+		let AgentTimelineContent::TurnBoundary { error, .. } = &mut boundary.content else {
+			unreachable!()
+		};
+		*error = Some(decodex_protocol::AgentTimelineError {
+			message: "Connection closed.".into(),
+			truncated: false,
+		});
+		let details = TurnFooter::for_boundary(&boundary.content, true, &replies, &voice).unwrap();
+		assert!(details.outcome.is_none() && !details.metrics);
+	}
+
 	#[test]
 	fn failed_process_without_a_final_answer_can_be_reopened() {
 		let entries = vec![
@@ -981,7 +973,7 @@ mod tests {
 		);
 	}
 	#[test]
-	fn unknown_phases_remain_visible() {
+	fn an_unknown_phase_never_replaces_the_native_final_answer() {
 		let mut entries = vec![
 			message(0, "agentMessage", Some("future_phase")),
 			message(1, "reasoning", None),
@@ -989,34 +981,95 @@ mod tests {
 			completed("completed"),
 		];
 
-		assert!(groups::groups(&entries, &BTreeSet::new()).is_empty());
+		let without_answer = groups::groups(&entries, &BTreeSet::new());
+		assert_eq!(without_answer[0].indices, [0, 1, 2]);
+		assert_eq!(
+			without_answer[0].final_index, 3,
+			"a completed turn can end without a final answer"
+		);
 
 		entries[2] = message(2, "agentMessage", Some("final_answer"));
 
-		assert_eq!(groups::groups(&entries, &BTreeSet::new())[0].indices, vec![1]);
+		assert_eq!(groups::groups(&entries, &BTreeSet::new())[0].indices, vec![0, 1]);
 	}
 	#[test]
-	fn a_new_user_input_does_not_absorb_the_previous_unanswered_input() {
-		for input_kind in ["userMessage", "agentInput"] {
-			let entries = vec![
-				message(0, "userMessage", None),
-				message(1, "reasoning", None),
-				message(2, input_kind, None),
-				message(3, "reasoning", None),
-				message(4, "agentMessage", Some("final_answer")),
-				completed("completed"),
-			];
-			let result = groups::groups(&entries, &BTreeSet::new());
-
-			assert_eq!(
-				result.iter().map(|g| g.first_index).collect::<BTreeSet<_>>(),
-				BTreeSet::from([3])
-			);
-			assert!(result.iter().all(|g| g.count == 1 && g.turn == "turn"));
-			assert_eq!(groups::process_label(result[0].count), "1 step");
-			assert_eq!(groups::process_label(1), "1 step");
-			assert_eq!(result.iter().map(|g| g.indices.clone()).collect::<Vec<_>>(), vec![vec![3]]);
+	fn one_native_turn_keeps_steers_live_and_folds_all_intermediate_items_on_completion() {
+		// The captured turn had commentary and fifteen reasoning items before
+		// a user steer, then eight reasoning items and one final answer.
+		let mut entries = vec![message(0, "userMessage", None)];
+		for i in 1..=15 {
+			entries.push(message(i, "reasoning", None));
 		}
+		entries.push(message(16, "agentMessage", Some("commentary")));
+		entries.push(message(17, "functionCallOutput", None));
+		entries.push(steer_with_attachment(18));
+		for i in 19..27 {
+			entries.push(message(i, "reasoning", None));
+		}
+		entries.push(message(27, "agentInput", None));
+		entries.push(message(28, "agentMessage", Some("commentary")));
+		entries.push(message(29, "agentMessage", Some("final_answer")));
+		assert!(groups::groups(&entries, &BTreeSet::new()).is_empty());
+		let original = entries.clone();
+		for status in ["completed", "interrupted", "failed"] {
+			entries.push(completed(status));
+			let groups = groups::groups(&entries, &BTreeSet::new());
+			assert_eq!(groups.len(), 1);
+			let group = &groups[0];
+			assert_eq!(group.input_index, Some(0));
+			assert_eq!(group.indices, (1..29).collect::<Vec<_>>());
+			assert_eq!(group.count, 28);
+			assert!(!group.expanded);
+			assert_eq!(
+				entries[group.indices[17]], original[18],
+				"preserve the exact steer and attachment"
+			);
+			assert!(groups::groups(&entries, &BTreeSet::from(["turn".into()]))[0].expanded);
+			let page = groups::groups(&entries[15..], &BTreeSet::from(["turn".into()]));
+			assert!(page[0].expanded && page[0].input_index.is_none());
+			assert!(
+				page[0].indices.contains(&(18 - 15)),
+				"a steer on a partial page stays inside its turn"
+			);
+			entries.pop();
+		}
+	}
+
+	fn steer_with_attachment(index: u64) -> AgentTimelineEntry {
+		let mut entry = message(index, "userMessage", None);
+		if let AgentTimelineContent::Item { text, attachments, .. } = &mut entry.content {
+			*text = "Please keep this exact line.".into();
+			attachments.push(decodex_protocol::AgentTimelineAttachment {
+				index: 0,
+				kind: "image".into(),
+				label: "example.png".into(),
+				source: decodex_protocol::AgentTimelineAttachmentSource::Stored,
+			});
+		}
+		entry
+	}
+
+	#[test]
+	fn original_prompts_stay_in_separate_turns_with_late_tool_results_and_steers() {
+		let entries = [
+			message(0, "userMessage", None),
+			message(1, "userMessage", None),
+			message(2, "agentMessage", Some("final_answer")),
+			completed("completed"),
+			in_turn(message(4, "userMessage", None), "next"),
+			in_turn(message(5, "userMessage", None), "next"),
+			message(6, "functionCallOutput", None),
+			in_turn(message(7, "agentMessage", Some("final_answer")), "next"),
+			in_turn(completed("completed"), "next"),
+		];
+		assert_eq!(groups::opening_inputs(&entries), [0, 4].into());
+		let groups = groups::groups(&entries, &BTreeSet::from(["next".into()]));
+		assert_eq!(groups.len(), 2);
+		assert_eq!((groups[0].input_index, groups[0].final_index), (Some(0), 2));
+		assert_eq!((groups[1].input_index, groups[1].final_index), (Some(4), 7));
+		assert_eq!(groups[0].indices, [1, 6]);
+		assert_eq!(groups[1].indices, [5]);
+		assert!(!groups[0].expanded && groups[1].expanded);
 	}
 
 	fn in_turn(mut entry: AgentTimelineEntry, turn: &str) -> AgentTimelineEntry {
@@ -1275,11 +1328,11 @@ mod tests {
 		let initial = visual.debug_bounds("turn-process-finishing").unwrap().size.height;
 		assert!((initial - opened).abs() <= gpui::px(1.), "{opened:?} -> {initial:?}");
 		visual.update(crate::ui_frame::draw_frame);
-		thread::sleep(Duration::from_millis(90));
+		visual.executor().advance_clock(Duration::from_millis(90));
 		visual.update(crate::ui_frame::draw_frame);
 		let middle = visual.debug_bounds("turn-process-finishing").unwrap().size.height;
 		assert!(middle > gpui::px(0.) && middle < initial, "{initial:?} -> {middle:?}");
-		thread::sleep(Duration::from_millis(280));
+		visual.executor().advance_clock(Duration::from_millis(280));
 		visual.update(crate::ui_frame::draw_frame);
 		assert!(visual.debug_bounds("turn-process-finishing").is_none());
 		assert_eq!(
@@ -1371,7 +1424,7 @@ mod tests {
 
 		visual.update(crate::ui_frame::draw_frame);
 
-		thread::sleep(std::time::Duration::from_millis(90));
+		visual.executor().advance_clock(std::time::Duration::from_millis(90));
 
 		visual.update(crate::ui_frame::draw_frame);
 
@@ -1380,7 +1433,7 @@ mod tests {
 		assert!(middle > gpui::px(0.) && middle < initial, "{initial:?} -> {middle:?}");
 		assert!(visual.debug_bounds("archived-process-content").is_none());
 
-		thread::sleep(std::time::Duration::from_millis(300));
+		visual.executor().advance_clock(std::time::Duration::from_millis(300));
 
 		visual.update(crate::ui_frame::draw_frame);
 
@@ -1445,7 +1498,8 @@ mod tests {
 					entries: vec![
 						message(0, "userMessage", None),
 						message(1, "reasoning", None),
-						message(2, "agentMessage", Some("final_answer")),
+						steer_with_attachment(2),
+						message(3, "agentMessage", Some("final_answer")),
 						completed("completed")
 					],
 					next_cursor: None,
@@ -1473,6 +1527,12 @@ mod tests {
 		assert!(visual.debug_bounds("native-reasoning-summary").is_none());
 		assert!(visual.debug_bounds("native-promotion-content").is_some());
 
+		let prompt = r#"message-["agent","thread",[0,1,"0"]]-0"#;
+		let steer = r#"message-["agent","thread",[2,1,"2"]]-0"#;
+		assert!(visual.debug_bounds(prompt).is_some());
+		assert!(visual.debug_bounds(steer).is_none());
+		assert!(visual.debug_bounds("native-media-action").is_none());
+
 		let toggle = visual.debug_bounds("turn-process-toggle").unwrap();
 
 		visual.simulate_click(toggle.center(), Default::default());
@@ -1493,6 +1553,12 @@ mod tests {
 
 		visual.update(crate::ui_frame::draw_frame);
 
+		let original = visual.debug_bounds(prompt).unwrap();
+		let intermediate = visual
+			.debug_bounds(steer)
+			.expect("the exact steer uses the native user message renderer");
+		assert!((original.right() - intermediate.right()).abs() < gpui::px(2.));
+		assert!(visual.debug_bounds("native-media-action").is_some());
 		let process = visual.debug_bounds("native-reasoning-summary").unwrap();
 		let header = visual.debug_bounds("turn-process-toggle").unwrap();
 
@@ -1526,5 +1592,13 @@ mod tests {
 		visual.update(crate::ui_frame::draw_frame);
 
 		assert!(visual.debug_bounds("native-reasoning-summary").is_none());
+		assert!(visual.debug_bounds(steer).is_none());
+		assert!(visual.debug_bounds(prompt).is_some());
+		let mark = visual
+			.debug_bounds(r#"history-tick-native-["thread",2,1,"2"]"#)
+			.expect("steer navigation target");
+		visual.simulate_click(mark.center(), Default::default());
+		visual.update(crate::ui_frame::draw_frame);
+		assert!(visual.debug_bounds(steer).is_some(), "navigation reveals the original steer");
 	}
 }

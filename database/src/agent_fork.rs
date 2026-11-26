@@ -15,23 +15,104 @@ pub enum AgentForkBoundary {
 	BeforeInput,
 	AfterTurn,
 	AttachedAfterTurn,
+	/// Native in-memory fork owned by the open side chat.
+	TemporarySideChat,
+}
+
+impl AgentForkBoundary {
+	/// A side question shares its source's tab strip.
+	pub fn is_side_chat(self) -> bool {
+		matches!(self, Self::AttachedAfterTurn | Self::TemporarySideChat)
+	}
+}
+
+/// Thread identity is sufficient to open a live attachment. Historical forks retain their exact
+/// review.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+pub struct AgentForkSource {
+	pub work: String,
+	pub thread: String,
+	pub generation: Option<String>,
+	pub review_token: String,
+	#[serde(flatten)]
+	pub review: Option<ForkHistory>,
+}
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+pub struct ForkHistory {
+	pub attempt_id: String,
+	pub before_turn_id: String,
+	item_id: String,
+	pub turn_ids: Vec<String>,
+	pub content: Vec<Value>,
+}
+impl From<AgentPromptEditAttempt> for AgentForkSource {
+	fn from(a: AgentPromptEditAttempt) -> Self {
+		Self {
+			work: a.work,
+			thread: a.thread,
+			generation: a.generation,
+			review_token: a.review_token,
+			review: Some(ForkHistory {
+				attempt_id: a.attempt_id,
+				before_turn_id: a.before_turn_id,
+				item_id: a.item_id,
+				turn_ids: a.turn_ids,
+				content: a.content,
+			}),
+		}
+	}
+}
+impl AgentForkSource {
+	fn prompt(&self) -> Option<AgentPromptEditAttempt> {
+		let r = self.review.as_ref()?;
+		Some(AgentPromptEditAttempt {
+			work: self.work.clone(),
+			thread: self.thread.clone(),
+			generation: self.generation.clone(),
+			review_token: self.review_token.clone(),
+			attempt_id: r.attempt_id.clone(),
+			before_turn_id: r.before_turn_id.clone(),
+			item_id: r.item_id.clone(),
+			turn_ids: r.turn_ids.clone(),
+			content: r.content.clone(),
+		})
+	}
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct AgentForkAttempt {
-	pub source: AgentPromptEditAttempt,
+	pub source: AgentForkSource,
 	pub target_work: String,
 	pub boundary: AgentForkBoundary,
 	#[serde(default, skip_serializing_if = "Option::is_none")]
 	pub model_provider: Option<String>,
 }
 impl AgentForkAttempt {
+	fn receipt_owner(&self) -> &str {
+		if self.boundary == AgentForkBoundary::TemporarySideChat {
+			&self.target_work
+		} else {
+			&self.source.work
+		}
+	}
+
 	fn key(&self) -> String {
 		format!("thread-fork:{}:{}", self.source.work, self.source.review_token)
 	}
 
 	fn validate(&self) -> Result<(), StoreError> {
-		self.source.validate()?;
+		if let Some(review) = self.source.prompt() {
+			review.validate()?;
+		} else if !self.boundary.is_side_chat()
+			|| self.source.review_token.len() != 64
+			|| !self.source.review_token.bytes().all(|c| c.is_ascii_hexdigit())
+			|| [&self.source.work, &self.source.thread]
+				.into_iter()
+				.chain(self.source.generation.iter())
+				.any(|v| v.is_empty() || v.len() > 512 || v.chars().any(char::is_control))
+		{
+			return Err(StoreError::InvalidInput("invalid side chat source"));
+		}
 		if self.model_provider.as_ref().is_some_and(|provider| {
 			self.boundary != AgentForkBoundary::AfterTurn
 				|| provider.is_empty()
@@ -53,15 +134,13 @@ impl AgentForkAttempt {
 	}
 
 	pub fn expected_turns(&self) -> Option<&[String]> {
-		let boundary =
-			self.source.turn_ids.iter().position(|turn| turn == &self.source.before_turn_id)?;
-		// Attached branches retain the parent context natively but expose only their own turns.
-		if self.boundary == AgentForkBoundary::AttachedAfterTurn {
-			return Some(&self.source.turn_ids[..0]);
+		if self.boundary.is_side_chat() {
+			return Some(&[]);
 		}
+		let review = self.source.review.as_ref()?;
+		let boundary = review.turn_ids.iter().position(|t| t == &review.before_turn_id)?;
 		let end = boundary + usize::from(self.boundary != AgentForkBoundary::BeforeInput);
-
-		Some(&self.source.turn_ids[..end])
+		Some(&review.turn_ids[..end])
 	}
 }
 
@@ -104,7 +183,7 @@ impl SqliteStore {
 
 			let now=crate::unix_micros()?;
 
-			tx.execute("INSERT INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) VALUES(?1,?2,'thread_fork_identity',?3,?4,'resolved','acknowledged',?4)",rusqlite::params![format!("{}:acknowledgement",attempt.key()),attempt.source.work,serde_json::json!({"thread":target_thread}).to_string(),now]).map_err(error::sqlite_error)?;
+			tx.execute("INSERT INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) VALUES(?1,?2,'thread_fork_identity',?3,?4,'resolved','acknowledged',?4)",rusqlite::params![format!("{}:acknowledgement",attempt.key()),attempt.receipt_owner(),serde_json::json!({"thread":target_thread}).to_string(),now]).map_err(error::sqlite_error)?;
 
 			let saved=receipt(&tx,&attempt.key())?;
 
@@ -129,7 +208,7 @@ impl SqliteStore {
 
 			if changed!=1 { return Ok(false); }
 
-			tx.execute("INSERT INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) VALUES(?1,?2,'thread_fork_observation','{}',?3,'resolved','rejected',?3)",rusqlite::params![format!("{}:observation",attempt.key()),attempt.source.work,now]).map_err(error::sqlite_error)?;
+			tx.execute("INSERT INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) VALUES(?1,?2,'thread_fork_observation','{}',?3,'resolved','rejected',?3)",rusqlite::params![format!("{}:observation",attempt.key()),attempt.receipt_owner(),now]).map_err(error::sqlite_error)?;
 			tx.commit().map_err(error::sqlite_error)?;
 
 			Ok(true)
@@ -152,14 +231,19 @@ impl SqliteStore {
 			let a=&attempt.source;
 			let source = agent::read_work(&tx, &a.work)?;
 
-			if !agent_prompt_edit::owned(&tx, a, a.generation.as_deref())?
+			// A live side question reads its source. A history edit retains its writer guard.
+			let may_fork = if a.review.is_none() {
+				crate::agent_process::account_thread(&tx, &a.work, &a.thread, a.generation.as_deref())?
+			} else {
+				agent_prompt_edit::owns_thread(&tx, &a.work, &a.thread, a.generation.as_deref())?
+			};
+			if !may_fork
 				|| source.codex_thread_id.as_deref() != Some(a.thread.as_str())
-				|| source.dispatch_state != AgentDispatchState::Idle
-				|| source.active_turn_id.is_some() || source.status == AgentWorkStatus::Resolved
+				|| (a.review.is_some() && (source.dispatch_state != AgentDispatchState::Idle || source.active_turn_id.is_some() || source.status == AgentWorkStatus::Resolved))
 				|| agent_prompt_edit::pending(&tx, &a.work)?
 			{ return Ok(None); }
 
-			let attached = attempt.boundary == AgentForkBoundary::AttachedAfterTurn;
+			let attached = attempt.boundary.is_side_chat();
 			let mut title = format!("{} ({})", source.title, if attached { "Side chat" } else { "Fork" });
 
 			while title.len() > 1_024 { title.pop(); }
@@ -185,7 +269,7 @@ impl SqliteStore {
 			}
 
             tx.execute("INSERT INTO project_agents(agent_id,project_id) SELECT ?1,project_id FROM project_agents WHERE agent_id=?2", rusqlite::params![attempt.target_work,a.work]).map_err(error::sqlite_error)?;
-			tx.execute("INSERT INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) VALUES(?1,?2,'thread_fork_attempt',?3,?4,'resolved','reserved',?4)", rusqlite::params![attempt.key(),a.work,serde_json::json!(attempt).to_string(),now]).map_err(error::sqlite_error)?;
+			tx.execute("INSERT INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) VALUES(?1,?2,?5,?3,?4,'resolved','reserved',?4)", rusqlite::params![attempt.key(),attempt.receipt_owner(),serde_json::json!(attempt).to_string(),now,if attempt.boundary==AgentForkBoundary::TemporarySideChat {"temporary_side_chat"} else {"thread_fork_attempt"}]).map_err(error::sqlite_error)?;
 
 			let saved=receipt(&tx,&attempt.key())?;
 
@@ -213,7 +297,10 @@ impl SqliteStore {
 			agent::read_work(c, &source_work)?;
 
 			let keys = {
-				let mut query=c.prepare("SELECT source_event_id FROM agent_inbox_events WHERE work_item_id=?1 AND event_kind='thread_fork_attempt' AND json_extract(payload,'$.boundary')='attached_after_turn' ORDER BY id DESC LIMIT 101").map_err(error::sqlite_error)?;
+				let mut query=c.prepare("SELECT source_event_id FROM (
+                    SELECT id,source_event_id FROM agent_inbox_events WHERE work_item_id=?1 AND event_kind='thread_fork_attempt' AND json_extract(payload,'$.boundary')='attached_after_turn'
+                    UNION ALL SELECT e.id,e.source_event_id FROM agent_work_items w CROSS JOIN agent_inbox_events e ON e.work_item_id=w.id AND e.event_kind='temporary_side_chat' WHERE json_extract(e.payload,'$.source.work')=?1
+                ) ORDER BY id DESC LIMIT 101").map_err(error::sqlite_error)?;
 
 				query.query_map([source_work],|r|r.get::<_,String>(0)).map_err(error::sqlite_error)?.collect::<Result<Vec<_>,_>>().map_err(error::sqlite_error)?
 			};
@@ -264,7 +351,7 @@ impl SqliteStore {
 			tx.execute("UPDATE agent_work_items SET codex_thread_id=?2,dispatch_state='idle',updated_at_micros=max(updated_at_micros,?3) WHERE id=?1",rusqlite::params![attempt.target_work,target_thread,now]).map_err(error::sqlite_error)?;
 
 			let edit_receipt_id=if attempt.boundary == AgentForkBoundary::BeforeInput {
-				let mut edit=attempt.source.clone();
+				let mut edit=attempt.source.prompt().ok_or(StoreError::InvalidInput("missing fork history"))?;
 
 				edit.work=attempt.target_work.clone(); edit.thread=target_thread.clone();
 				tx.execute("INSERT INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) VALUES(?1,?2,'prompt_edit_attempt',?3,?4,'resolved','reserved',?4)",rusqlite::params![edit.key(),edit.work,serde_json::json!(edit).to_string(),now]).map_err(error::sqlite_error)?;
@@ -276,7 +363,7 @@ impl SqliteStore {
 				Some(id)
 			} else { None };
 
-			tx.execute("INSERT INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) VALUES(?1,?2,'thread_fork_observation',?3,?4,'resolved','forked',?4)",rusqlite::params![format!("{}:observation",attempt.key()),attempt.source.work,serde_json::json!({"thread":target_thread,"edit_receipt_id":edit_receipt_id}).to_string(),now]).map_err(error::sqlite_error)?;
+			tx.execute("INSERT INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) VALUES(?1,?2,'thread_fork_observation',?3,?4,'resolved','forked',?4)",rusqlite::params![format!("{}:observation",attempt.key()),attempt.receipt_owner(),serde_json::json!({"thread":target_thread,"edit_receipt_id":edit_receipt_id}).to_string(),now]).map_err(error::sqlite_error)?;
 
 			let saved=receipt(&tx,&attempt.key())?;
 
@@ -287,9 +374,20 @@ impl SqliteStore {
 	}
 }
 
+/// Use the reservation so navigation never publishes a pending child as an independent chat.
+pub(crate) fn side_chat_sources(
+	c: &Connection,
+) -> Result<std::collections::BTreeMap<String, String>, StoreError> {
+	let mut q=c.prepare("SELECT child.id, parent.id FROM agent_work_items parent CROSS JOIN agent_inbox_events f ON f.work_item_id=parent.id AND f.event_kind='thread_fork_attempt' JOIN agent_work_items child ON child.id=json_extract(f.payload,'$.target_work') WHERE json_extract(f.payload,'$.boundary')='attached_after_turn'
+        UNION ALL SELECT w.id,json_extract(e.payload,'$.source.work') FROM agent_work_items w CROSS JOIN agent_inbox_events e ON e.work_item_id=w.id AND e.event_kind='temporary_side_chat'").map_err(error::sqlite_error)?;
+	Ok(q.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+		.map_err(error::sqlite_error)?
+		.collect::<Result<_, _>>()
+		.map_err(error::sqlite_error)?)
+}
 fn receipt(c: &Connection, key: &str) -> Result<Option<AgentForkReceipt>, StoreError> {
 	let saved: Option<(i64,String,String,Option<String>)> = c.query_row(
-		"SELECT a.id,a.payload,coalesce(o.disposition_note,k.disposition_note,'reserved'),coalesce(o.payload,k.payload) FROM agent_inbox_events a LEFT JOIN agent_inbox_events k ON k.source_event_id=a.source_event_id||':acknowledgement' AND k.event_kind='thread_fork_identity' LEFT JOIN agent_inbox_events o ON o.source_event_id=a.source_event_id||':observation' AND o.event_kind='thread_fork_observation' WHERE a.source_event_id=?1 AND a.event_kind='thread_fork_attempt'",
+		"SELECT a.id,a.payload,coalesce(o.disposition_note,k.disposition_note,'reserved'),coalesce(o.payload,k.payload) FROM agent_inbox_events a LEFT JOIN agent_inbox_events k ON k.source_event_id=a.source_event_id||':acknowledgement' AND k.event_kind='thread_fork_identity' LEFT JOIN agent_inbox_events o ON o.source_event_id=a.source_event_id||':observation' AND o.event_kind='thread_fork_observation' WHERE a.source_event_id=?1 AND a.event_kind IN ('thread_fork_attempt','temporary_side_chat')",
 		[key], |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?)),
 	).optional().map_err(error::sqlite_error)?;
 

@@ -42,23 +42,9 @@ impl TemporaryStructuredThread {
 		&self.id
 	}
 
-	async fn detach(&self) -> Result<(), ClientError> {
-		let response = time::timeout(
-			DEADLINE,
-			self.client.request("thread/unsubscribe", serde_json::json!({"threadId":self.id})),
-		)
-		.await
-		.map_err(|_| ClientError::Io)??;
-
-		match response["status"].as_str() {
-			Some("unsubscribed" | "notSubscribed" | "notLoaded") => Ok(()),
-			_ => Err(ClientError::InvalidFrame),
-		}
-	}
-
 	/// Cancel a late thread start before submitting inference.
 	pub async fn cancel(self) -> Result<(), ClientError> {
-		self.detach().await
+		self.client.unsubscribe_thread(&self.id).await
 	}
 
 	/// Run an isolated request with connection-owned event routing and cleanup.
@@ -141,7 +127,7 @@ impl TemporaryStructuredThread {
 			.await;
 		}
 
-		let detached = self.detach().await;
+		let detached = self.client.unsubscribe_thread(&self.id).await;
 
 		match result {
 			Ok(value) => detached.map(|()| value),
@@ -205,7 +191,7 @@ impl AppServerClient {
 		};
 
 		if !permission_matches || response["thread"]["ephemeral"] != true {
-			let _ = thread.detach().await;
+			let _ = thread.cancel().await;
 
 			return Err(ClientError::InvalidFrame);
 		}
@@ -307,3 +293,20 @@ async fn collect(
 #[cfg(test)]
 #[path = "temporary_structured_tests.rs"]
 mod tests;
+
+impl AppServerClient {
+	/// Release this connection's subscription to one exact thread.
+	pub async fn unsubscribe_thread(&self, thread: &str) -> Result<(), ClientError> {
+		let response = time::timeout(
+			DEADLINE,
+			self.request("thread/unsubscribe", serde_json::json!({"threadId":thread})),
+		)
+		.await
+		.map_err(|_| ClientError::Io)??;
+
+		match response["status"].as_str() {
+			Some("unsubscribed" | "notSubscribed" | "notLoaded") => Ok(()),
+			_ => Err(ClientError::InvalidFrame),
+		}
+	}
+}

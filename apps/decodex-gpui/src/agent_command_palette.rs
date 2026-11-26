@@ -4,7 +4,7 @@
 mod tests;
 #[path = "agent_command_palette_view.rs"] mod view;
 
-use super::{AgentSurface, Context, Item, Section, model};
+use super::{AgentSurface, Context, Item, model};
 use crate::composer_input::{ComposerEvent, ComposerInput};
 use gpui::{App, AppContext as _, Focusable as _, KeyBinding, Window};
 
@@ -26,14 +26,15 @@ enum CommandKey {
 enum Action {
 	Conversation(Item),
 	Project(String),
-	NewAssistant,
+	OpenAssistant,
+	NewChat,
 	NewProject,
 	ChooseProject,
 	NewAgent(String),
 	CodexConversations,
 	Archives,
 	Settings,
-	Work(String, String),
+	Work(String),
 }
 
 #[derive(Clone, Copy, Eq, PartialEq, Ord, PartialOrd)]
@@ -56,7 +57,7 @@ impl Command {
 			Action::Conversation(item) => format!("conversation-{}", item.id),
 			Action::Project(id) => format!("project-{id}"),
 			Action::NewAgent(id) => format!("new-agent-{id}"),
-			Action::Work(id, _) => format!("work-{id}"),
+			Action::Work(id) => format!("work-{id}"),
 			_ => self.label.clone(),
 		}
 	}
@@ -65,16 +66,16 @@ impl Command {
 		match &self.action {
 			Action::Conversation(_) => Group::Conversations,
 			Action::Project(_) | Action::NewAgent(_) => Group::Projects,
-			Action::Work(_, _) => Group::Work,
+			Action::Work(_) => Group::Work,
 			_ => Group::Commands,
 		}
 	}
 
 	fn verb(&self) -> &'static str {
 		match self.action {
-			Action::NewAssistant | Action::NewProject => "Create",
+			Action::NewChat | Action::NewProject => "Create",
 			Action::ChooseProject => "Choose project",
-			Action::NewAgent(_) => "Start Agent",
+			Action::NewAgent(_) => "New chat",
 			_ => "Open",
 		}
 	}
@@ -202,7 +203,7 @@ impl AgentSurface {
 			let input = cx.new(|cx| {
 				ComposerInput::search(
 					"Search or jump to…",
-					"Search topics, projects and commands",
+					"Search chats, projects and commands",
 					cx,
 				)
 			});
@@ -270,15 +271,16 @@ impl AgentSurface {
 					label: item.title.clone(),
 					detail: format!(
 						"{}{}",
-						item.owner,
+						item.location,
 						if item.archived { " (Archived)" } else { "" }
 					),
 					action: Action::Conversation(item),
 				});
 			}
 			for (label, detail, action) in [
-				("New Assistant topic", "Assistant", Action::NewAssistant),
-				("New project Agent", "Choose a project", Action::ChooseProject),
+				("Open Assistant", "Personal Assistant", Action::OpenAssistant),
+				("New chat", "Chats", Action::NewChat),
+				("New chat in project", "Choose a project", Action::ChooseProject),
 				("New project", "Choose a project folder", Action::NewProject),
 				("Codex conversations", "Browse and add to Decodex", Action::CodexConversations),
 				("Archived conversations", "Browse and restore", Action::Archives),
@@ -293,7 +295,7 @@ impl AgentSurface {
 						commands.push(Command {
 							label: work.title.clone(),
 							detail: "Work".into(),
-							action: Action::Work(work.id.clone(), work.owner_agent_id.clone()),
+							action: Action::Work(work.id.clone()),
 						});
 					}
 				}
@@ -337,11 +339,9 @@ impl AgentSurface {
 				self.activate_navigation_item(&item, cx);
 			},
 			Action::Project(id) => self.reveal_navigation_project(&id, cx),
-			Action::NewAssistant => {
-				self.workspace.navigation.collapsed.remove(Section::Assistant.key());
-				self.new_assistant_conversation(cx);
-			},
+			Action::OpenAssistant => self.open_assistant(cx),
 			Action::NewProject => self.add_navigation_project(cx),
+			Action::NewChat => self.new_project_agent(None, cx),
 			Action::ChooseProject => {
 				self.workspace.navigation.command_open = true;
 				self.reset_command_search(true, cx);
@@ -351,10 +351,8 @@ impl AgentSurface {
 			Action::Archives => self.open_archive_catalog(cx),
 			Action::Settings =>
 				window.dispatch_action(Box::new(crate::shell::ActivateSettings), cx),
-			Action::Work(id, owner) => {
-				self.open_navigation_conversation(&owner, cx);
-				self.workspace.work_detail = Some(id.clone());
-				self.load_work_detail(id, cx);
+			Action::Work(id) => {
+				self.open_portfolio_work(id, cx);
 			},
 		}
 		cx.notify();

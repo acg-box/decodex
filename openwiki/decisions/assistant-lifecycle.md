@@ -3,14 +3,14 @@ type: "Reference"
 title: "Assistant delegation, memory and context lifecycle"
 description: "Personal Assistant ownership, context renewal, Memory boundaries and independent Agent duties."
 tags: [assistant, agents, lifecycle, scheduling]
-openwiki_generated: true
+verified:
+  - by: openwiki/0.9.0
+    at: 2026-11-24T14:29:01.704Z
 sources:
   - id: openwiki-source-586227b5591e5f24cdfe6427
     resource: repo://apps/decodex-cli/src/agent.rs
   - id: openwiki-source-48758ba7d154c82885281d2c
     resource: repo://apps/decodex-gpui/src/agent_composer.rs
-  - id: openwiki-source-5eddd1d872eed61f8ba7e703
-    resource: repo://apps/decodex-gpui/src/agent_draft_storage.rs
   - id: openwiki-source-9e6b2fcb5c2b3d17fcfda57b
     resource: repo://apps/decodex-gpui/src/agent_drafts.rs
   - id: openwiki-source-bc52712de094b4e96e7db7d5
@@ -25,6 +25,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_timeline.rs
   - id: openwiki-source-f339a4d1910db63ca305c2df
     resource: repo://apps/decodex-gpui/src/assistant_settings.rs
+  - id: openwiki-source-b7aa6f2e702d707c115cb7ba
+    resource: repo://apps/decodex-gpui/src/ordinary_drafts.rs
   - id: openwiki-source-0813b2e35e2133631c0aa4db
     resource: repo://apps/decodex-gpui/src/settings_components.rs
   - id: openwiki-source-f580b10e16f1d25ebfea3bf8
@@ -47,8 +49,6 @@ sources:
     resource: repo://crates/decodex-runtime/examples/clear_development_data.rs
   - id: openwiki-source-95a7168e447de14b4b758f16
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_archive_tests.rs
-  - id: openwiki-source-a490ea3fbcddb9c007caf196
-    resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_context_tests.rs
   - id: openwiki-source-e5be8be8499e6ccee0cf7ad0
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_memory_tests.rs
   - id: openwiki-source-c75093d19a3bc72db5836102
@@ -79,6 +79,8 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent/tests.rs
   - id: openwiki-source-efd01c181e05be3cb110ec94
     resource: repo://crates/decodex-runtime/src/agent/tests/archive.rs
+  - id: openwiki-source-eefcc1937d138170352d73d0
+    resource: repo://crates/decodex-runtime/src/agent/workspace.rs
   - id: openwiki-source-a09c082db4ad1473c4d1e557
     resource: repo://crates/decodex-runtime/src/application.rs
   - id: openwiki-source-3edc2f094826ee56ddec6b73
@@ -89,20 +91,13 @@ sources:
     resource: repo://database/src/agent.rs
   - id: openwiki-source-dd880acfb699314e78cc9985
     resource: repo://database/src/agent/archive.rs
-  - id: openwiki-source-86596187dc9df4e756031ef3
-    resource: repo://database/src/agent/deletion.rs
-  - id: openwiki-source-3d79d1ceaca9e4cef2b65e8e
-    resource: repo://database/src/assistant_topics.rs
   - id: openwiki-source-3f60f3a3aae45b3e3b355d3e
     resource: repo://database/src/assistant.rs
   - id: openwiki-source-7c3b932da49e58b50b150e50
     resource: repo://database/src/development_reset.rs
   - id: openwiki-source-28af4781ad8d9558410630da
     resource: repo://database/src/works.rs
-generated: { by: "codex", at: "2026-11-10T08:10:56.086Z" }
-verified:
-  - by: openwiki/0.9.0
-    at: 2026-11-10T08:10:56.086Z
+generated: { by: "codex", at: "2026-11-24T14:29:01.704Z" }
 ---
 
 
@@ -111,17 +106,17 @@ verified:
 
 ## Status and purpose
 
-The Assistant lifecycle is implemented in the current source. Assistant is built in and available by default. The sidebar opens its persistent personal identity and initializes it on first use. The same Assistant can have several independent conversation topics. The user can also select an existing Agent in Work. It accepts continuing instructions, manages lightweight teams and delegated Agents, registers independent duties, connects to optional RAGFlow Memory and renews native context within each topic. It has no built-in project patrol or monitoring assignment. The user can work directly with any other Agent or Project Lead.
+The sidebar opens one personal Assistant and initializes it on first use. This Agent accepts continuing instructions, coordinates Work, manages teams and uses optional RAGFlow Memory. Native context renewal keeps the same user-visible conversation. Independent chats and project Agents have their own histories and Work.
 
-Native Codex remains the executor. Decodex retains identity, relationships, Work and delivery records. The implementation adds no second executor, mandatory management hierarchy, parallel task ledger, memory framework or database migration. Local protocol is 4.9 and the current SQLite schema is 61. The application accepts one current state format; it has no automatic upgrade chain.
+Codex executes native threads, turns, tools and approvals. Decodex stores Agent identity, relationships, Work and delivery records. First use atomically creates or returns the personal Assistant. Concurrent clients resolve the same Agent. The service and desktop use local protocol 4.13 and SQLite schema 62.
 
 ```mermaid
 flowchart LR
     U[User] --> A[Stable Assistant Agent]
     A --> W[Work and scoped Collaboration]
     W --> T[Independent team Agents]
-    A --> P[Independent personal topics]
-    P --> C[One current native Codex thread per topic]
+    U --> O[Independent chats and project Agents]
+    A --> C[Current native Codex thread]
     C --> H[Retired native history]
     A -. optional .-> R[RAGFlow knowledge and Memory]
     S[Existing service and SQLite Inbox] --> A
@@ -138,36 +133,36 @@ flowchart LR
 | Decodex service and SQLite | Retain Agent identity, mandate, teams, wakes, current native binding and exact operation receipts. |
 | Codex | Execute threads, tools, native Subagents, Goals, permissions, approvals and compaction. |
 | Optional RAGFlow component | Install and configure the local service, retrieve selected knowledge and extract or retrieve authorized long-term Memory. |
-| Desktop | Keep each personal topic's chat, draft, reading state and source-linked history. |
+| Desktop | Keep the selected conversation, its draft, reading state and source-linked history. |
 
 Team membership does not grant private-chat access, approval authority or a shared execution sandbox. RAGFlow results are evidence and cannot authorize execution.
 
 ## Select and configure the Assistant
 
-Use the hover plus beside **Assistant** in the sidebar, or choose **New Assistant topic** from **Search and commands (Command-K)**. The personal Assistant is always available and has no Enable control or optional component row. First use saves an idle personal Agent and its role in one transaction. It does not manufacture a first user message or submit model work. Give continuing instructions and team or duty requests in chat; defaults handle context renewal. RAGFlow is the optional component in Settings > Components.
+Select **Assistant** in the sidebar or choose **Open Assistant** in Search and commands. First use saves the idle personal identity and its initial settings. The first message starts native work. Configure optional RAGFlow in Settings > Components.
 
 First setup seeds the existing per-Agent next-message choices from the displayed model and effort when available, the new-conversation permission default and the shared speed preference. The first actual message carries those choices through the configured-input path. Existing Agent settings and saved drafts remain independent.
 
 The CLI uses the same typed service commands:
 
 ```sh
-decodex agent assistant-role --agent-id personal
+decodex agent assistant-init --agent-id personal
 decodex agent assistant --agent-id personal --command-file /absolute/path/command.json --idempotency-key exact-command-key
 ```
 
-Assistant tools are `assistant_read`, `assistant_manage` and `assistant_memory`. New native contexts receive these declarations and Assistant-specific instructions only for the canonical Assistant and its explicitly recorded personal topics. Ordinary project Agents keep the common Work and coordination surfaces. Back-end checks reject calls by other Agents. Existing native contexts retain their original declarations; this update does not replace project conversations or discard history.
+Only the personal Assistant receives `assistant_read`, `assistant_manage` and `assistant_memory`. The service checks the invoking Agent's identity. Independent Agents in Chats and Projects use the common Work and coordination tools. Adopting a thread gives its Agent the existing conversation history and working directory.
 
-## Independent personal topics
+## Independent chats and projects
 
-**New Assistant topic** first reopens an unstarted personal draft, preserving its input. Repeated clicks do not add empty topics. If no eligible draft exists, the control creates an idle topic through the existing action described below. A local topic record is not a native conversation. Unstarted topics use their ordinary topic label without a Draft suffix. An empty canonical identity stays hidden from conversation lists unless it is currently selected, has retained input or has a native binding.
+Use **New chat** in Chats for an independent Agent. Use **New chat** inside a registered Project to start the same kind of Agent in that Project. Both use the same submission and Work lifecycle, including voice. The draft retains its own text and directory selection.
 
-Creating another topic uses `CreateAssistantTopic` to record a local idle topic. Creation records membership with the topic in one database transaction. It sends no message and makes no model request. The first submitted input starts a fresh native conversation through normal admission. It does not fork another topic or copy its dialogue.
+An explicit working folder wins at creation. A project draft otherwise starts in its project directory. For an unscoped draft, Decodex reads the native Codex configuration when it allocates the chat directory. It creates a distinct folder for the chat under the configured root. Changing the default affects future allocations. Existing and adopted conversations retain their native working directory.
 
-One canonical Assistant owns the mandate, configuration, teams, wakes and RAGFlow agent scope. Each topic resolves that owner through explicit recorded membership. Prefixes, titles and project membership do not establish this role. Personal topic aliases are excluded from the public Agent catalog and cannot be promoted into independent Assistants or used as team members. Project Agents therefore receive neither personal tool declarations nor automatic personal recall.
+The fixed personal identity owns its configuration, teams, duties and RAGFlow Memory scope. Project membership, folder paths, chat titles and registration never confer personal tools. Use the existing registration actions to create an independent Agent from an external thread or let an existing Agent adopt it.
 
-Each topic retains its actual conversation identity for delivered user decisions, command receipts, drafts, native contexts and history. A user receipt from another topic cannot authorize a local action. Configuration changes request safe context refresh for recorded personal topics. Automatic Memory export selects at most one eligible exchange across the canonical conversation and active topics per job, retains its actual native session and turn, and writes under the shared canonical Memory agent scope.
+If an existing conversation's directory disappears, select a replacement folder. Decodex checks the native thread and its original missing path before updating the same idle thread. The history and the conversation's Work stay with that Agent.
 
-`assistant_read` includes global Work headers so the personal Assistant can locate ongoing outcomes. Detailed evidence, contributions, assessment and mutation remain with the original Work conversation and its existing scoped commands. Shared personal identity does not grant another Agent's private-chat access or transfer delivery authority.
+`assistant_read` includes global Work headers. The original Work owner retains detailed evidence, assessment and mutation authority. A Work header gives the Assistant no access to private chat content.
 
 ## Delegate Agents and teams
 
@@ -245,9 +240,9 @@ Retired-context rows are read-only. Native source IDs remain exact for detail, m
 
 Archive preserves conversation history and cancels its unsent interactions. Delete removes the current native conversation and its recorded earlier contexts, then purges local conversation text and desktop drafts. Partial native deletion remains visible in Archive until a retry completes.
 
-Conversation rows expose fixed trailing archive and delete symbols. The first delete click arms the same symbol with a red nudge; the second confirms. Escape or an outside click cancels. Archive requires the exact current idle binding and verifies the native archived state before local retirement. Active-conversation deletion archives that source first, then uses the existing durable deletion plan. A retry with a recorded deletion plan resumes that plan instead of repeating native creation or model work. An unused local topic uses the existing discard operation. Clearing the unstarted canonical draft keeps its personal identity and configuration.
+Archive requires the exact idle native binding. The service verifies native archival before local retirement. Confirmed deletion then uses the durable deletion plan and can resume after interruption.
 
-The personal Assistant identity, saved configuration and learned RAGFlow Memory survive conversation deletion. Deleting the canonical conversation returns it to an empty idle conversation with no native binding. Deleting a separate topic removes its active membership. If independent Work still references that topic's owner identity, retain only the content-free canonical membership marked retired. It remains absent from active topic and public Agent lists; its old title, instructions and chat content are purged. Work references keep their original identity. An unused empty topic can be discarded completely.
+Deleting the personal conversation's recorded content keeps the fixed Agent identity, saved configuration and learned RAGFlow Memory. The next user input can start another native context.
 
 The next user input can start a fresh context. Conversation deletion neither clears Memory nor reimports the deleted conversation. Use the separate scoped Memory controls to remove learned content.
 
@@ -297,13 +292,13 @@ See the [official HTTP API](https://ragflow.io/docs/v1.0.0-rc3/http_api_referenc
 
 ## Verification and limits
 
-Database fixtures cover team reuse, independent wakes and archive cancellation, exact delegated creation and authority, pending-input preservation, immutable context receipts and unknown/queued imports across restart. The loopback HTTP fixture checks exact retrieval scopes and rejects an HTTP-success response with a failing business code. HTTP Memory setup fixtures cover default models, recovery after a lost creation reply, origin-bound private credential files and missing-model failure without publishing a Memory credential. Managed-service fixtures check that unavailable container prerequisites leave storage unchanged and do not pull images or start services. They also check loopback-only API exposure, absence of a model runtime and model volume, custom endpoint paths and names, loopback translation, private receipts and an Uninstall command scoped to the owned project without volume removal. The model editor fixtures check blank saved-key fields, same-endpoint key retention, source invalidation, draft preservation, empty-submit blocking, explicit URL validation and input-driven form updates. Shared component UI tests cover installed readback, busy controls, disclosure and feedback. The idle setup fixture verifies role selection and retry without creating a first user event.
+Database fixtures cover team reuse, independent wakes and archive cancellation, exact delegated creation and authority, pending-input preservation, immutable context receipts and unknown/queued imports across restart. The loopback HTTP fixture checks exact retrieval scopes and rejects an HTTP-success response with a failing business code. HTTP Memory setup fixtures cover default models, recovery after a lost creation reply, origin-bound private credential files and missing-model failure without publishing a Memory credential. Managed-service fixtures check that unavailable container prerequisites leave storage unchanged and do not pull images or start services. They also check loopback-only API exposure, absence of a model runtime and model volume, custom endpoint paths and names, loopback translation, private receipts and an Uninstall command scoped to the owned project without volume removal. The model editor fixtures check blank saved-key fields, same-endpoint key retention, source invalidation, draft preservation, empty-submit blocking, explicit URL validation and input-driven form updates. Shared component UI tests cover installed readback, busy controls, disclosure and feedback. The idle setup fixture verifies initialization and retry without creating a first user event.
 
 Reset fixtures cover exact-target deletion, namespace rejection, retained credentials and model choices, failed replacement without a stale Memory ID, and missing-resource handling. Desktop interaction fixtures cover Edit after Save, Cancel to the saved summary, disclosure without implicit editing, reset confirmation and cancellation, and rejection of a changed confirmation target. Database fixtures clear stale health and reject a late import result from the previous Memory. These fixtures do not clear a live user Memory.
 
-The isolated native test `installed_assistant_renews_fresh_contexts_with_original_dialogue_and_isolated_memory` uses the explicit `DECODEX_TEST_CODEX_BINARY`. The [current qualification](../../automations/upstream/qualification.json) identifies the selected development runtime and exact artifact. It checks three successive fresh contexts, original dialogue across their boundaries, no fork ancestry, one model request per user turn, Assistant-specific context and absent native-memory injection. It also checks that unavailable automatic recall reaches the model as bounded untrusted context. Two separate personal topics then start independent fresh contexts with personal tools and no copied earlier dialogue; a project control context has no personal tools. An unrelated control context retains native memory settings. Native schemas were generated from the selected binary; upstream main is not a substitute for installed capability.
+The isolated native test `installed_assistant_renews_fresh_contexts_with_original_dialogue_and_isolated_memory` uses the explicit `DECODEX_TEST_CODEX_BINARY`. The [current qualification](../../automations/upstream/qualification.json) identifies the selected development runtime and exact artifact. It checks three successive fresh contexts, original dialogue across their boundaries, no fork ancestry, one model request per user turn, Assistant-specific context and absent native-memory injection. It also checks that unavailable automatic recall reaches the model as bounded untrusted context. Independent chat and project controls have no personal tools. An unrelated control context retains native memory settings. Native schemas were generated from the selected binary; upstream main is not a substitute for installed capability.
 
-Database fixtures check topic creation retries, shared settings, project and team exclusion, actual-topic user authority, complete empty-topic discard and deletion with retained independent Work. The desktop fixture checks separate topic rows and draft preservation during switching.
+SQLite tests verify concurrent personal initialization and immutable identity. Desktop fixtures cover direct navigation, scoped drafts and independent conversation creation. Runtime fixtures verify native directory use and folder recovery.
 
 Desktop tests cover usable drafts across renewal and restart, loaded history, reading state, old source threads and rebased pagination cursors. The wire regression round-trips a nonempty native source map through the tagged timeline response. Locked-input tests keep the shared status centered and retain the draft internally without a second text block. These are source/fixture results, not installed-app visual acceptance or a live RAGFlow server qualification. No real RAGFlow account or credential is required for these checks. Long-duration quality, external extraction quality and machine sleep behavior still need representative operational measurement.
 

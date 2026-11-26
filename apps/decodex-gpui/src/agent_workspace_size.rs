@@ -1285,7 +1285,7 @@ mod tests {
 		});
 		visual.update(crate::ui_frame::draw_current_frame);
 		let collapsed = visual.debug_bounds("left-panel-slot").unwrap();
-		let mark = visual.debug_bounds("navigation-leading-assistant-agent").unwrap();
+		let mark = visual.debug_bounds("navigation-heading-icon-assistant").unwrap();
 		let command = visual.debug_bounds("navigation-command-entry").unwrap().origin;
 		assert_eq!(f32::from(collapsed.size.width), 40.);
 		visual.simulate_mouse_move(collapsed.center(), None, Default::default());
@@ -1311,7 +1311,7 @@ mod tests {
 			visual.debug_bounds("workspace-navigation-pane").unwrap().size.width
 				> collapsed.size.width
 		);
-		assert_eq!(visual.debug_bounds("navigation-leading-assistant-agent").unwrap(), mark);
+		assert_eq!(visual.debug_bounds("navigation-heading-icon-assistant").unwrap(), mark);
 		assert_eq!(visual.debug_bounds("navigation-command-entry").unwrap().origin, command);
 		surface.read_with(visual, |s, _| {
 			assert!(s.workspace.sidebar_peek);
@@ -1356,7 +1356,7 @@ mod tests {
 		let open = visual.debug_bounds("left-panel-slot").unwrap();
 		let command = visual.debug_bounds("navigation-command-entry").unwrap();
 		let label = visual.debug_bounds("navigation-section-label-assistant").unwrap();
-		let mark = visual.debug_bounds("navigation-leading-assistant-agent").unwrap();
+		let mark = visual.debug_bounds("navigation-heading-icon-assistant").unwrap();
 		visual.update(|window, cx| {
 			surface.update(cx, |s, cx| s.toggle_workspace_sidebar(window, cx))
 		});
@@ -1368,7 +1368,7 @@ mod tests {
 		let closing = visual.debug_bounds("left-panel-slot").unwrap();
 		assert!(closing.size.width < open.size.width && closing.size.width > gpui::px(40.));
 		assert_eq!(visual.debug_bounds("navigation-command-entry").unwrap(), command);
-		assert_eq!(visual.debug_bounds("navigation-leading-assistant-agent").unwrap(), mark);
+		assert_eq!(visual.debug_bounds("navigation-heading-icon-assistant").unwrap(), mark);
 		visual.update(|window, cx| {
 			surface.update(cx, |s, cx| s.toggle_workspace_sidebar(window, cx))
 		});
@@ -1401,7 +1401,7 @@ mod tests {
 				>= visual.debug_bounds("workspace-navigation-pane").unwrap().right()
 					- gpui::px(crate::ui_theme::SIDEBAR_INSET)
 		);
-		assert_eq!(visual.debug_bounds("navigation-leading-assistant-agent").unwrap(), mark);
+		assert_eq!(visual.debug_bounds("navigation-heading-icon-assistant").unwrap(), mark);
 	}
 
 	#[gpui::test]
@@ -2001,9 +2001,11 @@ mod tests {
 		let input = visual.debug_bounds("agent-composer").unwrap();
 		assert!(first <= before, "floating retracts the existing lower edge");
 		assert!(first > input.top() + gpui::px(20.), "an exposed panel must animate");
-		thread::sleep(crate::ui_theme::MOTION_PANEL + std::time::Duration::from_millis(40));
-		visual.update(crate::ui_frame::draw_current_frame);
-		assert!(visual.debug_bounds("workspace-activity-pane").unwrap().bottom() <= input.top());
+		visual.executor().advance_clock(crate::ui_theme::MOTION_PANEL);
+		visual.update(crate::ui_frame::draw_frame);
+		let settled = visual.debug_bounds("workspace-activity-pane").unwrap().bottom();
+		let composer = visual.debug_bounds("agent-composer").unwrap().top();
+		assert!(settled <= composer, "panel {settled:?}, composer {composer:?}, first {first:?}");
 	}
 
 	#[gpui::test]

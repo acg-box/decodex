@@ -390,6 +390,11 @@ pub enum WorkCommand {
 		/// New open outcome and its requirements.
 		work: Work,
 	},
+	/// Create a user-assigned outcome and wake its owner to deliver it.
+	Assign {
+		/// New open outcome and the action authorized by its requirements.
+		work: Work,
+	},
 	/// Change only this Work's requirements and retain all prior instructions and Results.
 	Revise {
 		/// Exact existing Work identity.

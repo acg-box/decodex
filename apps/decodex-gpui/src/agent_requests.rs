@@ -20,7 +20,7 @@ use crate::{
 	},
 	ui_feedback::Feedback,
 	ui_scroll::SmoothScrollArea as _,
-	ui_theme::{self, HOVER_FILL},
+	ui_theme,
 };
 use decodex_protocol::MAX_HISTORY_INLINE_BYTES;
 
@@ -30,10 +30,17 @@ pub(super) struct RequestReader {
 	revision: u64,
 	offset: usize,
 	starts: Vec<usize>,
+	pub(super) details_open: bool,
+	pub(super) options_open: bool,
 }
 impl RequestReader {
 	fn reset(&mut self, event: i64) {
-		*self = Self { event, revision: self.revision.wrapping_add(1), offset: 0, starts: vec![0] };
+		*self = Self {
+			event,
+			revision: self.revision.wrapping_add(1),
+			starts: vec![0],
+			..Default::default()
+		};
 	}
 
 	fn navigate(&mut self, event: i64, revision: u64, from: usize, to: usize) {
@@ -164,13 +171,12 @@ impl AgentSurface {
 		let value: Value = serde_json::from_str(request_json.as_str()).unwrap_or_default();
 
 		if method == "mcpServer/elicitation/request" {
-			return if large {
-				self.large_request_panel(*event_id, request_json.as_str(), cx)
-					.child(self.mcp_form_panel(*event_id, &value, cx))
-					.into_any_element()
-			} else {
-				self.mcp_form_panel(*event_id, &value, cx)
-			};
+			return self.mcp_form_panel(
+				*event_id,
+				&value,
+				large.then_some(request_json.as_str()),
+				cx,
+			);
 		}
 
 		let mut panel = gpui::div()
@@ -189,7 +195,7 @@ impl AgentSurface {
 			.p_3()
 			.rounded(gpui::px(8.0))
 			.border_1()
-			.border_color(ui_theme::rgba(0xffffff18))
+			.border_color(ui_theme::rgba(ui_theme::PANEL_DIVIDER))
 			.flex()
 			.flex_col()
 			.gap_2();
@@ -235,7 +241,12 @@ impl AgentSurface {
 		panel.into_any_element()
 	}
 
-	fn large_request_panel(&self, event: i64, text: &str, cx: &mut Context<Self>) -> Div {
+	pub(super) fn large_request_panel(
+		&self,
+		event: i64,
+		text: &str,
+		cx: &mut Context<Self>,
+	) -> Div {
 		let offset = self.request_reader.offset.min(text.len());
 		let mut end = offset.saturating_add(8_192).min(text.len());
 
@@ -332,14 +343,7 @@ impl AgentSurface {
 		panel
 	}
 
-	fn approval_request_panel(
-		&self,
-		mut panel: Div,
-		method: &str,
-		request_json: &str,
-		value: &Value,
-		cx: &mut Context<Self>,
-	) -> Div {
+	fn approval_description(&self, mut panel: Div, method: &str, value: &Value) -> Div {
 		let (heading, selector) = if method == "item/fileChange/requestApproval" {
 			("Allow file changes?", "approval-kind-file-change")
 		} else if method == "item/permissions/requestApproval" {
@@ -351,52 +355,106 @@ impl AgentSurface {
 			("Allow this command?", "approval-kind-command")
 		};
 
-		panel = panel.child(gpui::div().debug_selector(move || selector.into()).child(heading));
-
-		for key in ["reason", "command", "cwd", "grantRoot"] {
-			if let Some(text) = value[key].as_str() {
-				panel = panel.child(gpui::div().text_size(gpui::px(12.0)).child(
-					agent_surface::selectable_prose(
-						format!("approval-{key}"),
-						self.request_summary(text.to_owned()),
-					),
-				));
+		panel = panel.child(
+			gpui::div()
+				.debug_selector(move || selector.into())
+				.text_size(gpui::px(13.))
+				.font_weight(gpui::FontWeight::SEMIBOLD)
+				.child(heading),
+		);
+		if let Some(reason) = value["reason"].as_str() {
+			panel = panel.child(agent_surface::selectable_prose(
+				"approval-reason".into(),
+				self.request_summary(reason.to_owned()),
+			));
+		}
+		if let Some(command) = value["command"].as_str() {
+			panel = panel.child(
+				gpui::div()
+					.w_full()
+					.min_w_0()
+					.rounded_md()
+					.bg(ui_theme::rgba(ui_theme::PANEL_HEADER_TINT))
+					.border_1()
+					.border_color(ui_theme::rgba(ui_theme::PANEL_DIVIDER))
+					.px_2()
+					.py_1p5()
+					.font_family("Menlo")
+					.text_size(gpui::px(11.5))
+					.child(agent_surface::selectable_prose(
+						"approval-command".into(),
+						self.request_summary(command.into()),
+					)),
+			);
+		}
+		let mut context = Vec::new();
+		for (key, label) in
+			[("cwd", "Directory"), ("grantRoot", "Access root"), ("environmentId", "Environment")]
+		{
+			if key == "environmentId"
+				&& !matches!(
+					method,
+					"item/permissions/requestApproval" | "item/commandExecution/requestApproval"
+				) {
+				continue;
+			}
+			if let Some(text) = value[key].as_str().filter(|text| !text.is_empty()) {
+				context.push(
+					gpui::div()
+						.flex()
+						.gap_1p5()
+						.items_center()
+						.when(key == "environmentId", |d| {
+							d.debug_selector(|| "approval-executor-environment".into())
+						})
+						.text_size(gpui::px(11.))
+						.child(agent_surface::muted(label))
+						.child(agent_surface::selectable_prose(
+							format!("approval-{key}"),
+							self.request_summary(text.into()),
+						)),
+				);
 			}
 		}
-
+		if !context.is_empty() {
+			panel =
+				panel.child(gpui::div().flex().flex_wrap().gap_x_4().gap_y_1().children(context));
+		}
 		if method == "item/fileChange/requestApproval" {
 			panel = self.file_approval_details(panel, value);
 		}
-		if matches!(
-			method,
-			"item/permissions/requestApproval" | "item/commandExecution/requestApproval"
-		) && let Some(environment) = value["environmentId"].as_str().filter(|id| !id.is_empty())
-		{
-			panel = panel.child(
-				gpui::div()
-					.debug_selector(|| "approval-executor-environment".into())
-					.text_size(gpui::px(12.0))
-					.child(self.request_summary(format!("Execution environment: {environment}"))),
-			);
-		}
+		panel
+	}
+
+	fn approval_request_panel(
+		&self,
+		mut panel: Div,
+		method: &str,
+		request_json: &str,
+		value: &Value,
+		cx: &mut Context<Self>,
+	) -> Div {
+		panel = self.approval_description(panel, method, value);
+		let mut actions = gpui::div().flex().flex_wrap().items_center().gap_2();
 		if method == "item/permissions/requestApproval" {
 			panel = panel.child(
 				gpui::div()
 					.text_size(gpui::px(12.0))
-					.child(self.request_summary(permission_summary(&value["permissions"]))),
+					.child(self.request_summary(readable_value(&value["permissions"]))),
 			);
-			panel = panel.child(self.request_choice(
+			actions = actions.child(self.request_choice(
 				"decline",
 				"Decline",
 				serde_json::json!({"permissions":{},"scope":"turn"}),
 				cx,
 			));
-			panel = panel.child(self.request_choice(
+			actions = actions.child(self.request_choice(
 				"allow",
 				"Allow for this turn",
 				serde_json::json!({"permissions":value["permissions"],"scope":"turn"}),
 				cx,
 			));
+			panel = panel.child(actions);
 		} else {
 			let decisions = if method == "item/fileChange/requestApproval" {
 				vec!["decline".into(), "accept".into()]
@@ -413,13 +471,14 @@ impl AgentSurface {
 					_ => continue,
 				};
 
-				panel = panel.child(self.request_choice(
+				actions = actions.child(self.request_choice(
 					&decision,
 					label,
 					serde_json::json!({"decision":decision}),
 					cx,
 				));
 			}
+			panel = panel.child(actions);
 			for (index, decision) in value["availableDecisions"]
 				.as_array()
 				.into_iter()
@@ -427,24 +486,34 @@ impl AgentSurface {
 				.filter(|decision| decision.is_object())
 				.enumerate()
 			{
-				let label = if decision.get("acceptWithExecpolicyAmendment").is_some() {
-					"Allow with the proposed command rule"
-				} else if decision.get("applyNetworkPolicyAmendment").is_some() {
-					"Apply the proposed network rule"
-				} else {
-					continue;
-				};
-
-				panel =
-					panel.child(gpui::div().text_size(gpui::px(11.0)).child(self.request_summary(
-						serde_json::to_string_pretty(decision).unwrap_or_default(),
-					)));
-				panel = panel.child(self.request_choice(
-					&format!("policy-{index}"),
-					label,
-					serde_json::json!({"decision":decision}),
-					cx,
-				));
+				let Some((label, scope)) = rule_option(decision) else { continue };
+				let rule = gpui::div()
+					.flex()
+					.flex_wrap()
+					.items_center()
+					.gap_2()
+					.pt_2()
+					.border_t_1()
+					.border_color(ui_theme::rgba(ui_theme::PANEL_DIVIDER))
+					.child(agent_surface::muted("Future requests"))
+					.child(
+						gpui::div()
+							.flex_1()
+							.min_w(gpui::px(100.))
+							.font_family("Menlo")
+							.text_size(gpui::px(11.5))
+							.child(agent_surface::selectable_prose(
+								format!("approval-rule-{index}"),
+								self.request_summary(scope),
+							)),
+					)
+					.child(self.request_choice(
+						&format!("policy-{index}"),
+						label,
+						serde_json::json!({"decision":decision}),
+						cx,
+					));
+				panel = panel.child(rule);
 			}
 		}
 
@@ -629,35 +698,115 @@ impl AgentSurface {
 		let response = response.to_string();
 		let selector = format!("request-{id}");
 
-		gpui::div()
-			.id(SharedString::from(format!("request-{id}")))
-			.debug_selector(move || selector)
-			.role(Role::Button)
-			.tab_index(0)
-			.aria_label(label)
-			.px_2()
-			.h(gpui::px(28.0))
-			.flex()
-			.items_center()
-			.rounded(gpui::px(5.0))
-			.cursor_pointer()
-			.hover(|s| s.bg(ui_theme::rgba(HOVER_FILL)))
-			.text_color(ui_theme::rgb(BLUE))
+		let button = if matches!(id, "accept" | "allow") {
+			ui_theme::settings_primary_button(selector.clone(), label)
+		} else {
+			ui_theme::settings_button(selector.clone(), label)
+		};
+		button
 			.on_click(cx.listener(move |s, _, _, cx| {
 				if s.generation == generation && s.request_reader.revision == revision
 					&& matches!(&s.request, Some(AgentRequestResult::Available { event_id, .. }) if *event_id == event) {
 					s.respond(response.clone(), cx);
 				}
 			}))
-			.child(label)
 			.smooth()
 			.into_any_element()
 	}
 }
 
-fn permission_summary(value: &Value) -> String {
-	// Preserve the exact requested paths and access modes, including newer provider fields.
-	serde_json::to_string_pretty(value).unwrap_or_else(|_| "Access details unavailable".into())
+fn rule_option(decision: &Value) -> Option<(&'static str, String)> {
+	if let Some(rule) = decision.get("acceptWithExecpolicyAmendment") {
+		let args = rule["execpolicy_amendment"].as_array()?;
+		let tokens = args
+			.iter()
+			.map(|v| {
+				let arg = v.as_str()?;
+				Some(
+					if !arg.is_empty()
+						&& arg
+							.bytes()
+							.all(|b| b.is_ascii_alphanumeric() || b"-_./+:=@".contains(&b))
+					{
+						arg.to_owned()
+					} else {
+						serde_json::to_string(arg).ok()?
+					},
+				)
+			})
+			.collect::<Option<Vec<_>>>()?;
+		if tokens.is_empty() {
+			return None;
+		}
+		return Some((
+			"Allow and save rule",
+			format!("Commands starting with {}", tokens.join(" ")),
+		));
+	}
+	let rule = decision.pointer("/applyNetworkPolicyAmendment/network_policy_amendment")?;
+	let host = rule["host"].as_str()?;
+	match rule["action"].as_str()? {
+		"allow" => Some(("Save allow rule", format!("Allow connections to {host}"))),
+		"deny" => Some(("Save deny rule", format!("Deny connections to {host}"))),
+		_ => None,
+	}
+}
+
+pub(super) fn parameter_label(s: &str) -> String {
+	if s.contains(' ') {
+		return s.into();
+	}
+	let mut text = String::new();
+	let mut lower = false;
+	for ch in s.chars() {
+		if ch == '_' || ch == '-' {
+			text.push(' ');
+			lower = false;
+			continue;
+		}
+		if lower && ch.is_uppercase() {
+			text.push(' ');
+		}
+		if text.is_empty() {
+			text.extend(ch.to_uppercase());
+		} else {
+			text.push(ch);
+		}
+		lower = ch.is_lowercase();
+	}
+	text.split_whitespace()
+		.map(|w| if w.eq_ignore_ascii_case("id") { "ID" } else { w })
+		.collect::<Vec<_>>()
+		.join(" ")
+}
+
+/// Present provider values as labeled lines. Keep nested entries and their order intact.
+pub(super) fn readable_value(value: &Value) -> String {
+	match value {
+		Value::String(s) => s.clone(),
+		Value::Null => "None".into(),
+		Value::Object(fields) if fields.is_empty() => "No fields".into(),
+		Value::Array(items) if items.is_empty() => "No items".into(),
+		Value::Object(fields) => fields
+			.iter()
+			.map(|(key, value)| {
+				let name = parameter_label(key);
+				let text = readable_value(value);
+				if value.is_object() || value.is_array() {
+					format!("{name}\n  {}", text.replace('\n', "\n  "))
+				} else {
+					format!("{name}  {text}")
+				}
+			})
+			.collect::<Vec<_>>()
+			.join("\n"),
+		Value::Array(items) => items
+			.iter()
+			.map(|v| format!("• {}", readable_value(v).replace('\n', "\n  ")))
+			.collect::<Vec<_>>()
+			.join("\n"),
+		_ => value.to_string(),
+	}
 }
 
 #[cfg(test)]
@@ -679,6 +828,25 @@ mod timing_tests {
 		shell::agent_surface::requests::{self, AgentRequestResult, AgentSurface, QuestionTimer},
 		ui_frame,
 	};
+
+	#[test]
+	fn rule_labels_keep_the_exact_offered_scope_readable() {
+		let rule = |args: serde_json::Value| serde_json::json!({"acceptWithExecpolicyAmendment":{"execpolicy_amendment":args}});
+		assert_eq!(
+			requests::rule_option(&rule(serde_json::json!(["docker", "ps"]))),
+			Some(("Allow and save rule", "Commands starting with docker ps".into()))
+		);
+		assert_eq!(
+			requests::rule_option(&rule(serde_json::json!(["tool", "two words", ""]))),
+			Some(("Allow and save rule", r#"Commands starting with tool "two words" """#.into()))
+		);
+		assert!(requests::rule_option(&rule(serde_json::json!([]))).is_none());
+		let deny = serde_json::json!({"applyNetworkPolicyAmendment":{"network_policy_amendment":{"action":"deny","host":"example.org"}}});
+		assert_eq!(
+			requests::rule_option(&deny),
+			Some(("Save deny rule", "Deny connections to example.org".into()))
+		);
+	}
 
 	#[test]
 	fn nonblocking_timeout_has_grace_countdown_and_single_empty_response_claim() {
@@ -942,6 +1110,7 @@ mod timing_tests {
 		guardian: Default::default(),
 		portfolio: Default::default(),
                 archived_work_ids: Default::default(),
+                side_chat_sources: Default::default(),
                 agent_slots: Default::default(),
                 conversation_titles: Default::default(),
                 context_references: vec![],

@@ -44,9 +44,9 @@ fn projects_expand_independently_and_all_labels_share_one_origin(cx: &mut TestAp
 	assert_eq!(heading.left(), label.left());
 	for (title, slot, icon, visible) in [
 		(
-			"navigation-item-label-assistant-topic-research",
-			"navigation-leading-assistant-topic-research",
-			"navigation-assistant-topic-research-mark",
+			"navigation-item-label-chats-research-chat",
+			"navigation-leading-chats-research-chat",
+			"navigation-chats-research-chat-mark",
 			false,
 		),
 		(
@@ -129,23 +129,23 @@ fn sidebar_result_dot_clears_after_opening_and_loading_the_conversation(cx: &mut
 			.unwrap()
 			.work_items
 			.iter_mut()
-			.find(|work| work.id == "topic-research")
+			.find(|work| work.id == "research-chat")
 			.unwrap()
 			.status = AgentWorkStatusDto::Resolved;
 	});
 	settle(visual);
-	let mark = "navigation-assistant-topic-research-mark";
-	let title = "navigation-item-label-assistant-topic-research";
+	let mark = "navigation-chats-research-chat-mark";
+	let title = "navigation-item-label-chats-research-chat";
 	let origin = visual.debug_bounds(title).unwrap().left();
 	assert!(visual.debug_bounds(mark).is_some());
 
-	let row = visual.debug_bounds("assistant-topic-topic-research").unwrap();
+	let row = visual.debug_bounds("navigation-chats-research-chat").unwrap();
 	visual.simulate_click(row.center(), Default::default());
 	settle(visual);
 	assert!(visual.debug_bounds(mark).is_some());
 	surface.update(visual, |s, cx| {
-		assert_eq!(s.selected.as_deref(), Some("topic-research"));
-		assert!(s.acknowledge_open_handoff("topic-research"));
+		assert_eq!(s.selected.as_deref(), Some("research-chat"));
+		assert!(s.acknowledge_open_handoff("research-chat"));
 		cx.notify();
 	});
 	settle(visual);
@@ -183,7 +183,7 @@ fn folding_categories_preserves_open_projects_and_the_current_editor(cx: &mut Te
 	visual.simulate_click(heading.center(), Default::default());
 	settle(visual);
 	assert!(visual.debug_bounds("project-header-navigation-project-0").is_none());
-	assert!(visual.debug_bounds("assistant-topic-topic-research").is_some());
+	assert!(visual.debug_bounds("navigation-chats-research-chat").is_some());
 	let heading = visual.debug_bounds("navigation-section-projects").unwrap();
 	visual.simulate_click(heading.center(), Default::default());
 	settle(visual);
@@ -251,8 +251,8 @@ fn metadata_tooltip_stays_beside_the_row_and_cannot_cover_its_actions(cx: &mut T
 		cx.notify();
 	});
 	visual.update(crate::ui_frame::draw_current_frame);
-	let row = visual.debug_bounds("assistant-topic-topic-research").unwrap();
-	let actions = visual.debug_bounds("navigation-actions-assistant-topic-research").unwrap();
+	let row = visual.debug_bounds("navigation-chats-research-chat").unwrap();
+	let actions = visual.debug_bounds("navigation-actions-chats-research-chat").unwrap();
 	visual.simulate_mouse_move(
 		gpui::point(row.left() + gpui::px(24.), row.center().y),
 		None,
@@ -269,30 +269,40 @@ fn metadata_tooltip_stays_beside_the_row_and_cannot_cover_its_actions(cx: &mut T
 }
 
 #[gpui::test]
-fn new_assistant_topic_reuses_an_unsent_draft_after_navigation(cx: &mut TestAppContext) {
+fn assistant_entry_opens_the_same_conversation_and_preserves_each_draft(cx: &mut TestAppContext) {
 	let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+	visual.simulate_resize(gpui::size(gpui::px(1440.), gpui::px(1000.)));
 	surface.update(visual, |s, cx| {
 		s.visual_workspace_fixture(cx);
 		s.visual_personal_navigation(cx);
-		let snapshot = s.snapshot.as_mut().unwrap();
-		snapshot.work_items.iter_mut().find(|w| w.id == "agent").unwrap().codex_thread_id =
-			Some("started-general".into());
-		s.open_navigation_conversation("topic-research", cx);
-		s.composer.update(cx, |i, cx| i.set_content("Unsent research request", cx));
 		s.open_navigation_conversation("agent", cx);
-		let count = s.snapshot.as_ref().unwrap().work_items.len();
-		for _ in 0..3 {
-			s.new_assistant_conversation(cx);
-		}
-		assert_eq!(s.selected.as_deref(), Some("topic-research"));
-		assert_eq!(s.composer.read(cx).content(), "Unsent research request");
-		assert_eq!(s.snapshot.as_ref().unwrap().work_items.len(), count);
+		s.composer.update(cx, |i, cx| i.set_content("Assistant draft", cx));
+		s.open_navigation_conversation("research-chat", cx);
+		s.composer.update(cx, |i, cx| i.set_content("Research draft", cx));
+	});
+	settle(visual);
+	let home = visual.debug_bounds("navigation-section-assistant").unwrap();
+	visual.simulate_mouse_move(home.center(), None, Default::default());
+	settle(visual);
+	assert!(visual.debug_bounds("navigation-heading-actions-assistant").is_none());
+	assert!(visual.debug_bounds("navigation-chevron-assistant").is_none());
+	assert!(visual.debug_bounds("navigation-chats-agent").is_none());
+	visual.simulate_click(home.center(), Default::default());
+	surface.update(visual, |s, cx| {
+		assert_eq!(s.selected.as_deref(), Some("agent"));
+		assert_eq!(s.composer.read(cx).content(), "Assistant draft");
+		s.open_assistant(cx);
+		assert_eq!(s.selected.as_deref(), Some("agent"));
+		s.open_navigation_conversation("research-chat", cx);
+		assert_eq!(s.composer.read(cx).content(), "Research draft");
 		assert!(!s.sending);
 	});
 }
 
 #[gpui::test]
-fn pin_adds_a_shortcut_without_changing_scope_conversation_or_draft(cx: &mut TestAppContext) {
+fn native_pins_route_registered_and_external_threads_without_changing_scope(
+	cx: &mut TestAppContext,
+) {
 	let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 	visual.simulate_resize(gpui::size(gpui::px(1440.), gpui::px(1000.)));
 	surface.update(visual, |s, cx| {
@@ -300,52 +310,103 @@ fn pin_adds_a_shortcut_without_changing_scope_conversation_or_draft(cx: &mut Tes
 		s.visual_personal_navigation(cx);
 		s.workspace.work_detail = None;
 		s.composer.update(cx, |i, cx| i.set_content("Keep the selected draft", cx));
+		s.workspace.navigation.pins.rows = Some(
+			["fixture-research-chat", "external"]
+				.map(|id| decodex_protocol::NativeThreadCandidate {
+					thread_id: id.into(),
+					title: id.into(),
+					preview: None,
+					updated_at_micros: 0,
+				})
+				.to_vec(),
+		);
 		cx.notify();
 	});
-	visual.update(crate::ui_frame::draw_current_frame);
-	show_actions(visual, "assistant-topic-topic-research");
-	assert_eq!(
-		visual.debug_bounds("navigation-actions-assistant-topic-research").unwrap().size.width,
-		gpui::px(72.)
-	);
-	let pin = visual.debug_bounds("navigation-pin-assistant-topic-research").unwrap();
-	visual.simulate_click(pin.center(), Default::default());
-	visual.update(crate::ui_frame::draw_current_frame);
+	settle(visual);
+	let heading = visual.debug_bounds("navigation-section-pin").unwrap();
+	visual.simulate_click(heading.center(), Default::default());
+	settle(visual);
+	assert!(visual.debug_bounds("navigation-chats-research-chat").is_some());
+	let external = visual.debug_bounds("navigation-pin-external").unwrap();
+	let count = surface.read_with(visual, |s, _| s.snapshot.as_ref().unwrap().work_items.len());
+	visual.simulate_click(external.center(), Default::default());
 	surface.read_with(visual, |s, cx| {
+		assert!(s.workspace.registration.is_some());
+		assert_eq!(s.snapshot.as_ref().unwrap().work_items.len(), count);
 		assert_eq!(s.selected.as_deref(), Some("agent"));
 		assert_eq!(s.composer.read(cx).content(), "Keep the selected draft");
-		assert!(s.workspace.navigation.preferences.pinned.contains("topic-research"));
 	});
-	assert!(visual.debug_bounds("assistant-topic-topic-research").is_some());
-	let pin = visual.debug_bounds("navigation-section-pin").unwrap();
-	visual.simulate_click(pin.center(), Default::default());
-	visual.update(crate::ui_frame::draw_current_frame);
-	assert!(visual.debug_bounds("navigation-pin-topic-research").is_some());
-	assert!(visual.debug_bounds("assistant-topic-topic-research").is_some());
+	let registered = visual.debug_bounds("navigation-pin-research-chat").unwrap();
+	visual.simulate_click(registered.center(), Default::default());
+	surface.read_with(visual, |s, _| assert_eq!(s.selected.as_deref(), Some("research-chat")));
 }
 
 #[gpui::test]
-fn opening_an_empty_personal_editor_does_not_publish_or_create_a_conversation(
-	cx: &mut TestAppContext,
-) {
+fn opening_an_empty_chat_editor_does_not_publish_or_create_a_conversation(cx: &mut TestAppContext) {
 	let surface = cx.new(AgentSurface::new);
 	surface.update(cx, |s, cx| {
 		s.visual_workspace_fixture(cx);
 		s.visual_personal_navigation(cx);
 		let count = s.snapshot.as_ref().unwrap().work_items.len();
-		s.new_assistant_conversation(cx);
+		s.new_project_agent(None, cx);
 		let draft = s.selected.clone().unwrap();
 		assert!(s.is_new_conversation());
 		assert!(!s.navigation_items(cx).iter().any(|item| item.id == draft));
-		s.new_assistant_conversation(cx);
+		s.new_project_agent(None, cx);
 		assert_eq!(s.selected.as_ref(), Some(&draft));
 		assert_eq!(s.snapshot.as_ref().unwrap().work_items.len(), count);
 		assert!(!s.sending);
 		let action = s.build_submission("First submitted content", cx).unwrap();
 		assert!(matches!(action, decodex_protocol::AgentActionDto::NewConversation {
-			assistant_id: Some(owner), project_id: None, work_id, ..
-		} if owner.as_str() == "agent" && work_id.as_str() == draft));
+			project_id: None, work_id, ..
+		} if work_id.as_str() == draft));
 	});
+}
+
+#[gpui::test]
+fn chats_add_opens_a_folder_picker_and_fits_long_paths_within_the_chat(cx: &mut TestAppContext) {
+	let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+	visual.simulate_resize(gpui::size(gpui::px(1000.), gpui::px(760.)));
+	surface.update(visual, |s, cx| s.visual_navigation_hierarchy(false, cx));
+	show_actions(visual, "navigation-section-chats");
+	let add = visual.debug_bounds("navigation-create-chat").unwrap();
+	visual.simulate_click(add.center(), Default::default());
+	settle(visual);
+	let folder = visual.debug_bounds("choose-chat-folder").unwrap();
+	let project = visual.debug_bounds("workspace-picker-trigger").unwrap();
+	assert!(project.bottom() <= folder.top());
+	assert!(visual.debug_bounds("clear-chat-folder").is_none());
+
+	let long = format!("/workspace/{}{}", "parent/".repeat(18), "longname".repeat(20));
+	visual.simulate_click(folder.center(), Default::default());
+	visual.simulate_path_prompt_response(|options| {
+		assert!(options.directories && !options.files && !options.multiple);
+		Some(vec![std::path::PathBuf::from(&long)])
+	});
+	visual.run_until_parked();
+	settle(visual);
+	let chat = visual.debug_bounds("conversation-start").unwrap();
+	let folder = visual.debug_bounds("choose-chat-folder").unwrap();
+	let reset = visual.debug_bounds("clear-chat-folder").unwrap();
+	assert!(folder.left() >= chat.left() && reset.right() <= chat.right());
+	assert!(folder.right() <= reset.left() && folder.size.width <= gpui::px(180.));
+	surface.update(visual, |s, cx| {
+		assert!(matches!(s.build_submission("Hello", cx).unwrap(), decodex_protocol::AgentActionDto::NewConversation { project_id: None, cwd: Some(cwd), .. } if cwd.as_str() == long));
+	});
+	let scope = visual.debug_bounds("workspace-picker-trigger").unwrap();
+	visual.simulate_click(scope.center(), Default::default());
+	settle(visual);
+	let project = visual.debug_bounds("workspace-choice-navigation-project-0").unwrap();
+	visual.simulate_click(project.center(), Default::default());
+	settle(visual);
+	surface.update(visual, |s, cx| {
+		assert!(matches!(s.build_submission("Hello", cx).unwrap(), decodex_protocol::AgentActionDto::NewConversation { project_id: Some(project), cwd: Some(cwd), .. } if project.as_str() == "navigation-project-0" && cwd.as_str() == long));
+	});
+	let reset = visual.debug_bounds("clear-chat-folder").unwrap();
+	visual.simulate_click(reset.center(), Default::default());
+	settle(visual);
+	assert!(visual.debug_bounds("clear-chat-folder").is_none());
+	surface.read_with(visual, |s, _| assert!(s.draft_chat_folder().is_none()));
 }
 
 #[gpui::test]
@@ -356,19 +417,24 @@ fn project_creation_controls_reuse_a_distinct_draft_for_each_project(cx: &mut Te
 		let count = s.snapshot.as_ref().unwrap().work_items.len();
 		s.new_project_agent(Some("alpha"), cx);
 		let alpha = s.selected.clone();
+		let folder = decodex_protocol::ConversationWorkingDirectory::new("/chosen/alpha").unwrap();
+		s.draft_profiles.chat_folders.insert(alpha.clone().unwrap(), folder.clone());
 		s.composer.update(cx, |i, cx| i.set_content("Alpha draft", cx));
 		s.new_project_agent(Some("beta"), cx);
 		let beta = s.selected.clone();
 		assert_ne!(alpha, beta);
+		assert!(s.draft_chat_folder().is_none());
 		assert!(s.composer.read(cx).content().is_empty());
 		s.composer.update(cx, |i, cx| i.set_content("Beta draft", cx));
 		s.new_project_agent(Some("alpha"), cx);
 		s.new_project_agent(Some("alpha"), cx);
 		assert_eq!(s.selected, alpha);
+		assert!(matches!(s.build_submission("Continue", cx).unwrap(), decodex_protocol::AgentActionDto::NewConversation { project_id: Some(project), cwd: Some(cwd), .. } if project.as_str() == "alpha" && cwd == folder));
 		assert_eq!(s.composer.read(cx).content(), "Alpha draft");
 		assert_eq!(s.workspace.new_conversation_workspace.as_deref(), Some("alpha"));
 		s.new_project_agent(Some("beta"), cx);
 		assert_eq!(s.selected, beta);
+		assert!(s.draft_chat_folder().is_none());
 		assert_eq!(s.composer.read(cx).content(), "Beta draft");
 		assert_eq!(s.snapshot.as_ref().unwrap().work_items.len(), count);
 		assert!(!s.sending);
@@ -389,15 +455,15 @@ fn delete_requires_confirmation_and_outside_click_keeps_the_original_draft(
 		cx.notify();
 	});
 	visual.update(crate::ui_frame::draw_current_frame);
-	show_actions(visual, "assistant-topic-topic-research");
-	let row = visual.debug_bounds("assistant-topic-topic-research").unwrap();
-	let before = visual.debug_bounds("navigation-delete-assistant-topic-research").unwrap();
+	show_actions(visual, "navigation-chats-research-chat");
+	let row = visual.debug_bounds("navigation-chats-research-chat").unwrap();
+	let before = visual.debug_bounds("navigation-delete-chats-research-chat").unwrap();
 	visual.simulate_click(before.center(), Default::default());
 	visual.update(crate::ui_frame::draw_current_frame);
-	assert_eq!(visual.debug_bounds("assistant-topic-topic-research").unwrap(), row);
+	assert_eq!(visual.debug_bounds("navigation-chats-research-chat").unwrap(), row);
 	surface.read_with(visual, |s, cx| {
 		assert!(s.workspace.navigation.confirm_delete);
-		assert_eq!(s.workspace.navigation.menu.as_deref(), Some("assistant-topic-research"));
+		assert_eq!(s.workspace.navigation.menu.as_deref(), Some("chats-research-chat"));
 		assert!(s.workspace.navigation.mutation.is_none());
 		assert_eq!(s.composer.read(cx).content(), "Keep my draft");
 	});
@@ -414,27 +480,14 @@ fn long_sections_scroll_together_while_search_and_archived_stay_fixed(cx: &mut T
 	let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 	visual.simulate_resize(gpui::size(gpui::px(1440.), gpui::px(500.)));
 	surface.update(visual, |s, cx| {
-		s.visual_workspace_fixture(cx);
-		s.visual_personal_navigation(cx);
-		let snapshot = s.snapshot.as_mut().unwrap();
-		let seed = snapshot.work_items[0].clone();
-		for index in 0..20 {
-			let mut topic = seed.clone();
-			topic.id = format!("topic-{index}");
-			topic.title = format!("Topic {index}");
-			topic.codex_thread_id = Some(format!("thread-{index}"));
-			topic.updated_at_micros = (index + 1) * 60_000_000;
-			snapshot.assistant.topic_ids.push(topic.id.clone());
-			snapshot.work_items.push(topic);
-		}
-		s.workspace.navigation.collapsed.remove(super::Section::Assistant.key());
+		s.visual_navigation_overview(false, cx);
 		cx.notify();
 	});
 	settle(visual);
 	assert!(visual.debug_bounds("navigation-section-recent").is_none());
-	assert!(visual.debug_bounds("assistant-topic-topic-19").is_some());
-	let latest = visual.debug_bounds("assistant-topic-topic-19").unwrap();
-	let older = visual.debug_bounds("assistant-topic-topic-18").unwrap();
+	assert!(visual.debug_bounds("navigation-chats-chat-0").is_some());
+	let latest = visual.debug_bounds("navigation-chats-chat-0").unwrap();
+	let older = visual.debug_bounds("navigation-chats-chat-1").unwrap();
 	assert_eq!(latest.size.height, gpui::px(28.));
 	assert_eq!(older.top() - latest.top(), gpui::px(28.));
 	let search = visual.debug_bounds("navigation-command-entry").unwrap();
@@ -446,7 +499,7 @@ fn long_sections_scroll_together_while_search_and_archived_stay_fixed(cx: &mut T
 		..Default::default()
 	});
 	visual.update(crate::ui_frame::draw_current_frame);
-	assert!(visual.debug_bounds("assistant-topic-topic-19").unwrap().top() < latest.top());
+	assert!(visual.debug_bounds("navigation-chats-chat-0").unwrap().top() < latest.top());
 	assert!(visual.debug_bounds("navigation-section-assistant").unwrap().top() < assistant.top());
 	assert_eq!(visual.debug_bounds("navigation-command-entry"), Some(search));
 	assert_eq!(visual.debug_bounds("archive-browser"), Some(archived));
@@ -464,9 +517,9 @@ fn creation_actions_share_hover_footprints_and_footer_alignment(cx: &mut TestApp
 	assert_eq!(category.size.height, footer.size.height);
 	for (row_id, actions_id, label_id, width) in [
 		(
-			"navigation-section-assistant",
-			"navigation-heading-actions-assistant",
-			"navigation-section-label-assistant",
+			"navigation-section-chats",
+			"navigation-heading-actions-chats",
+			"navigation-section-label-chats",
 			48.,
 		),
 		(
@@ -546,6 +599,7 @@ fn deleted_project_moves_chats_and_current_draft_without_changing_the_editor(
 	visual.simulate_resize(gpui::size(gpui::px(1440.), gpui::px(1000.)));
 	surface.update(visual, |s, cx| {
 		s.visual_navigation_hierarchy(false, cx);
+		s.workspace.navigation.collapsed.insert(super::Section::Chats.key());
 		s.new_project_agent(Some("navigation-project-0"), cx);
 		s.composer.update(cx, |input, cx| input.set_content("Keep unsent input", cx));
 		let before = s.snapshot.as_ref().unwrap().work_items.clone();
@@ -562,7 +616,7 @@ fn deleted_project_moves_chats_and_current_draft_without_changing_the_editor(
 	});
 	settle(visual);
 	assert!(visual.debug_bounds("project-header-navigation-project-0").is_none());
-	assert!(visual.debug_bounds("project-header-").is_some());
+	assert!(visual.debug_bounds("navigation-chats-navigation-project-0-agent-0").is_some());
 }
 
 #[gpui::test]
@@ -581,9 +635,10 @@ fn compact_sidebar_fully_covers_labels_and_centers_the_shared_icon_column(cx: &m
 	for name in [
 		"navigation-section-label-pin",
 		"navigation-section-label-assistant",
+		"navigation-section-label-chats",
 		"navigation-section-label-projects",
 		"navigation-project-label-navigation-project-0",
-		"navigation-item-label-assistant-topic-research",
+		"navigation-item-label-chats-research-chat",
 	] {
 		let label = visual.debug_bounds(name).unwrap();
 		assert!(label.left() >= right, "{name} leaks into the compact rail: {label:?}, {rail:?}");
@@ -592,7 +647,7 @@ fn compact_sidebar_fully_covers_labels_and_centers_the_shared_icon_column(cx: &m
 	assert_eq!(command.center().x, rail.center().x);
 	assert_eq!(command.size.width, gpui::px(crate::ui_theme::NAVIGATION_LEADING_SIZE));
 	for initial in
-		["initial-project-navigation-project-0", "initial-navigation-assistant-topic-research"]
+		["initial-project-navigation-project-0", "initial-navigation-chats-research-chat"]
 	{
 		let mark = visual.debug_bounds(initial).unwrap();
 		assert_eq!(mark.center().x, rail.center().x);
@@ -604,7 +659,7 @@ fn compact_sidebar_fully_covers_labels_and_centers_the_shared_icon_column(cx: &m
 	});
 	settle(visual);
 	assert!(visual.debug_bounds("initial-project-navigation-project-0").is_none());
-	assert!(visual.debug_bounds("initial-navigation-assistant-topic-research").is_none());
+	assert!(visual.debug_bounds("initial-navigation-chats-research-chat").is_none());
 }
 
 #[gpui::test]

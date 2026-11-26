@@ -136,6 +136,34 @@ async fn apply(store: &SqliteStore, actor: &str, id: &str, command: WorkCommand)
 }
 
 #[tokio::test]
+async fn assigning_the_same_work_after_restart_wakes_its_owner_only_once() {
+	let root = tempfile::tempdir().unwrap();
+	let path = root.path().join("assign.db");
+	let store = SqliteStore::open_test(&path).unwrap();
+	agents(&store).await;
+	let command = WorkCommand::Assign { work: work("update-digest", "sage") };
+	assert!(
+		store
+			.apply_work_command("sage".into(), "review".into(), command.clone(), false)
+			.await
+			.is_err()
+	);
+	apply(&store, "sage", "review", command.clone()).await;
+	drop(store);
+	let store = SqliteStore::open_test(&path).unwrap();
+	apply(&store, "sage", "review", command).await;
+	assert_eq!(store.work_portfolio(None).await.unwrap().works.len(), 1);
+	let events = store.list_agent_wake_events("sage".into(), 10).await.unwrap();
+	assert_eq!(
+		events
+			.iter()
+			.filter(|e| e.event_kind == "followup_due" && e.payload.contains("update-digest"))
+			.count(),
+		1
+	);
+}
+
+#[tokio::test]
 async fn agent_scope_precedes_work_and_material_page_limits() {
 	let home = tempfile::tempdir().unwrap();
 	let store = SqliteStore::open_test(&home.path().join("scope.db")).unwrap();

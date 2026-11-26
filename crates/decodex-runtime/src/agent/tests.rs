@@ -93,20 +93,6 @@ impl FixtureFaults {
 			return Some(true);
 		}
 
-		if request["method"] == "thread/items/read" {
-			writer
-				.write_all(
-					format!(
-						"{}\n",
-						serde_json::json!({"id":request["id"],"error":{"code":-32_601,"message":"legacy fixture"}})
-					)
-					.as_bytes(),
-				)
-				.await
-				.unwrap();
-
-			return Some(true);
-		}
 		if request["method"] == "turn/start"
 			&& (history["_turn_draining"] == true
 				|| (history["_capacity_draining"] == true
@@ -125,6 +111,13 @@ impl FixtureFaults {
 		if request["method"] == "thread/realtime/stop" && history["_voice_stop_disconnect"] == true
 		{
 			return Some(false);
+		}
+		if request["method"] == "thread/archive" && history["_archive_writer_busy"] == true {
+			let id = request["id"].clone();
+			let reply = serde_json::json!({"id":id,"error":{"code":-32600,
+				"message":"thread opaque thread/1 already has an active writer"}});
+			writer.write_all(format!("{reply}\n").as_bytes()).await.unwrap();
+			return Some(true);
 		}
 		if request["method"] == "thread/delete" {
 			if history["_delete_disconnect"] == true {
@@ -320,6 +313,9 @@ fn fixture_thread_read(
 		}
 	}
 
+	if configured["cwd"].is_string() {
+		result["thread"]["cwd"] = configured["cwd"].clone();
+	}
 	if result["thread"]["cwd"].is_null() {
 		result["thread"]["cwd"] = serde_json::json!("/tmp");
 	}
@@ -872,8 +868,12 @@ async fn personal_assistant_tools_and_instructions_are_not_given_to_project_agen
 	assert_eq!(ordinary["config"]["mcp_servers.decodex"]["disabled_tools"], private);
 	assert!(!ordinary["developerInstructions"].as_str().unwrap().contains("RAGFlow"));
 	assert!(!ordinary["developerInstructions"].as_str().unwrap().contains("assistant_memory"));
-	agent.store.set_assistant("project".into(), true).await.unwrap();
-	let personal = agent.work_thread_params(&project).await.unwrap();
+	let assistant = agent
+		.store
+		.create_assistant(AgentCoordinator::new_conversation_work("assistant").unwrap())
+		.await
+		.unwrap();
+	let personal = agent.work_thread_params(&assistant).await.unwrap();
 	assert!(personal["config"]["mcp_servers.decodex"]["url"].is_string());
 	assert!(personal["config"]["mcp_servers.decodex"].get("disabled_tools").is_none());
 	assert!(
@@ -917,9 +917,14 @@ async fn personal_assistant_tools_and_instructions_are_not_given_to_project_agen
 async fn automatic_personal_recall_is_scoped_and_does_not_block_on_unavailable_memory() {
 	use decodex_core::assistant::{AssistantCommand, AssistantSettings, RagflowConnection};
 	let (mut agent, _sent, _directory) = fixture().await;
-	agent.start_agent("personal", "Start").await.unwrap();
+	agent
+		.store
+		.create_assistant(AgentCoordinator::new_conversation_work("personal").unwrap())
+		.await
+		.unwrap();
+	agent.enqueue_user_message("personal", "start", "Start").await.unwrap();
+	agent.wake_pending().await.unwrap();
 	complete(&mut agent, "personal").await;
-	agent.store.set_assistant("personal".into(), true).await.unwrap();
 	agent
 		.store
 		.apply_assistant_command(
@@ -1086,7 +1091,22 @@ async fn emit_fixture_review_events(
 	}
 }
 
+fn fixture_read_items(request: &Value, history: &Value) -> Value {
+	let p = &request["params"];
+	let rows: Vec<_> = history[p["threadId"].as_str().unwrap()]["thread"]["turns"]
+		.as_array()
+		.into_iter()
+		.flatten()
+		.filter(|t| t["id"] == p["turnId"])
+		.flat_map(|t| t["items"].as_array().into_iter().flatten())
+		.filter(|i| p["itemIds"].as_array().unwrap().contains(&i["id"]))
+		.map(|i| serde_json::json!({"turnId":p["turnId"], "item":i}))
+		.collect();
+	serde_json::json!({"data":rows})
+}
+
 async fn serve_fixture(server_io: DuplexStream, history: Value, sent: UnboundedSender<Value>) {
+	let chat_root = tempfile::tempdir().unwrap();
 	let (reader, mut writer) = io::split(server_io);
 	let mut lines = BufReader::new(reader).lines();
 	let mut threads = 0;
@@ -1162,16 +1182,22 @@ async fn serve_fixture(server_io: DuplexStream, history: Value, sent: UnboundedS
 			Some("thread/searchOccurrences") => history["_occurrences"].clone(),
 			Some("thread/goal/get") => serde_json::json!({"goal":history["_goal"]}),
 			Some("thread/read") => fixture_thread_read(&request, &history, &settings, turns),
+			Some("thread/items/read") => fixture_read_items(&request, &history),
 			Some("thread/turns/list") => fixture_turns_page(&request, &history),
 			Some("thread/items/list") => fixture_items_page(&request, &history),
 			Some("thread/resume") => {
 				let id = request["params"]["threadId"].as_str().unwrap();
-				let configured = settings.get(id).cloned().unwrap_or_else(
+				let configured = settings.entry(id.to_owned()).or_insert_with(
 					|| serde_json::json!({"model":"selected-model","reasoningEffort":"high"}),
 				);
+				if let Some(cwd) = request["params"].get("cwd") {
+					configured["cwd"] = cwd.clone();
+				}
 
-				serde_json::json!({"thread":{"id":id,"turns":if request["params"]["excludeTurns"] == true { serde_json::json!([]) } else { history[id]["thread"]["turns"].clone() }},"model":configured["model"],"reasoningEffort":configured["reasoningEffort"]})
+				serde_json::json!({"cwd":configured["cwd"],"thread":{"id":id,"turns":if request["params"]["excludeTurns"] == true { serde_json::json!([]) } else { history[id]["thread"]["turns"].clone() }},"model":configured["model"],"reasoningEffort":configured["reasoningEffort"]})
 			},
+			Some("config/read") =>
+				serde_json::json!({"config":{"desktop":{"projectlessWorkspaceRoot":history.get("_chatRoot").cloned().unwrap_or_else(|| serde_json::json!(chat_root.path()))}}}),
 			Some("thread/start") => {
 				threads += 1;
 
@@ -1185,6 +1211,12 @@ async fn serve_fixture(server_io: DuplexStream, history: Value, sent: UnboundedS
 			Some("turn/start" | "thread/settings/update") => {
 				let id = request["params"]["threadId"].as_str().unwrap();
 
+				if request["method"] == "thread/settings/update"
+					&& let Some(cwd) = request["params"].get("cwd")
+				{
+					settings.entry(id.to_owned()).or_insert_with(|| serde_json::json!({}))["cwd"] =
+						cwd.clone();
+				}
 				if let Some(configured) = settings.get_mut(id) {
 					for (parameter, field) in [("model", "model"), ("effort", "reasoningEffort")] {
 						if let Some(value) = request["params"].get(parameter) {
@@ -1228,7 +1260,7 @@ async fn unloaded_thread_resumes_exact_identity_without_new_thread() {
 		if request["method"] == "thread/start" {
 			assert_eq!(request["params"]["approvalPolicy"], coordinator.config.approval_policy);
 			assert_eq!(request["params"]["sandbox"], coordinator.config.sandbox);
-			assert_eq!(request["params"]["cwd"], coordinator.config.cwd);
+			assert_eq!(request["params"]["cwd"].as_str(), coordinator.config.cwd.as_deref());
 		}
 	}
 
@@ -4724,7 +4756,7 @@ async fn failed_thread_preparation_does_not_leave_a_creation_fence() {
 
 #[tokio::test]
 async fn initial_permission_choice_applies_only_to_the_new_native_conversation() {
-	let (agent, _, _home) = fixture().await;
+	let (agent, _sent, _home) = fixture().await;
 	let mut work = AgentCoordinator::create_conversation(
 		&agent.store,
 		"fresh-permissions",

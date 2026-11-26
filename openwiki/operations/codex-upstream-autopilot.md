@@ -4,7 +4,7 @@ title: "Codex upstream maintenance"
 openwiki_generated: true
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-26T02:22:16.427Z
+    at: 2026-11-25T00:06:30.155Z
 sources:
   - id: openwiki-source-8037e2358a2c4f9b2c722a11
     resource: repo://AGENTS.md
@@ -68,7 +68,7 @@ sources:
     resource: repo://scripts/macos/stage_decodex_app.sh
   - id: openwiki-source-1295465b51f4c563c25d3f43
     resource: repo://scripts/macos/version_codex_source.py
-generated: { by: "codex", at: "2026-11-26T02:22:16.427Z" }
+generated: { by: "codex", at: "2026-11-25T00:06:30.155Z" }
 ---
 
 
@@ -123,8 +123,6 @@ remain available for other continuing duties. Do not restore this maintenance
 wake without a new user-selected ownership change.
 
 ## Review the delta against real consumers
-
-Use the upstream capability when it meets the product need. Keep one owner for each decision and trace the core path from the caller to that owner. Fix the cause where it belongs. Rewrite or remove existing code when that makes the path simpler, more reliable or more efficient. Check the relevant failure cases before delivery.
 
 Start from current Decodex main and inspect merged changes, open PRs and related active work. Record the official upstream revision, the installed Codex binary and its actual supported schema separately. Development can follow a fixed, reviewed official upstream commit before a Release exists. Formal Decodex releases use official Codex Releases that preserve the current merged baseline. Freeze the exact main commit for each review and qualification batch, and qualify the matching runtime artifact, helpers, provenance and schema before updating the lock. A prerelease label alone is not a reason to wait or ask again. Read consecutive incremental batches from a verified cursor. An upstream commit is discovery evidence, not automatic permission to add a product feature.
 

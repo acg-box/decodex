@@ -242,12 +242,7 @@ impl AgentCoordinator {
 
 		// Live can be the first input in a topic. Reuse native thread creation and
 		// its durable ownership/readback without submitting an ordinary model turn.
-		let item = self
-			.ensure_thread_for_execution(
-				&item,
-				options.draft.as_ref().map(|draft| &draft.execution),
-			)
-			.await?;
+		let item = self.ensure_thread_for_execution(&item, options.execution.as_deref()).await?;
 		let thread = item.codex_thread_id.expect("prepared native thread");
 		let generation = match generation {
 			Some(generation) => generation,
@@ -280,6 +275,7 @@ impl AgentCoordinator {
 			self.loaded_threads.insert(thread.clone());
 		}
 
+		self.ensure_loaded_chat_folder(&thread).await?;
 		let baseline = self.client.thread_latest_turn_id(&thread).await?;
 
 		self.store

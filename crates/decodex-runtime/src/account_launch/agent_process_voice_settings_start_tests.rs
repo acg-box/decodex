@@ -16,7 +16,6 @@ use crate::{
 	agent_voice::VoiceGateway,
 	agent_voice_settings,
 };
-use decodex_database::AgentDispatchState;
 use decodex_protocol::{
 	AgentVoiceOptions, AgentVoiceRequest, EntityId, HistoryText, VoiceSdp, WireText,
 };
@@ -46,6 +45,7 @@ fn voice_options(advanced: bool) -> AgentVoiceOptions {
 	if advanced {
 		AgentVoiceOptions {
 			draft: None,
+			execution: None,
 			model: Some(
 				WireText::new("realtime-fixture").expect("Use the bounded fixture model name."),
 			),
@@ -65,17 +65,14 @@ fn voice_options(advanced: bool) -> AgentVoiceOptions {
 fn start_options(advanced: bool, unstarted: bool) -> AgentVoiceOptions {
 	let mut options = voice_options(advanced);
 	if unstarted {
-		options.draft = Some(Box::new(decodex_protocol::AgentVoiceDraft {
-			execution: decodex_protocol::AgentExecutionOverrides {
-				model: Some(
-					decodex_protocol::ConversationModel::new("selected-voice-agent-model")
-						.expect("fixture model"),
-				),
-				reasoning_effort: Some(decodex_protocol::ConversationReasoningEffort::Medium),
-				service_tier: Some(decodex_protocol::ServiceTier::priority()),
-				permission_mode: Some(decodex_protocol::PermissionMode::ReadOnly),
-			},
-			..Default::default()
+		options.execution = Some(Box::new(decodex_protocol::AgentExecutionOverrides {
+			model: Some(
+				decodex_protocol::ConversationModel::new("selected-voice-agent-model")
+					.expect("fixture model"),
+			),
+			reasoning_effort: Some(decodex_protocol::ConversationReasoningEffort::Medium),
+			service_tier: Some(decodex_protocol::ServiceTier::priority()),
+			permission_mode: Some(decodex_protocol::PermissionMode::ReadOnly),
 		}));
 	}
 	options
@@ -135,7 +132,11 @@ async fn voice_start_uses_native_account_selection_and_honors_managed_policy() {
 		let owned = OwnedReviewer::new(home.path(), &client, "voice-thread", "turn").await;
 
 		if unstarted {
-			reserve_hosted_voice(&owned, work).await;
+			owned
+				.store
+				.create_assistant(AgentCoordinator::new_conversation_work(work).unwrap())
+				.await
+				.unwrap();
 		} else if hosted {
 			bind_hosted_voice(&owned, work, thread).await;
 		}
@@ -151,6 +152,7 @@ async fn voice_start_uses_native_account_selection_and_honors_managed_policy() {
 		)
 		.unwrap();
 
+		agent.bind_native_generation(owned.key.generation.clone());
 		agent.attach_voice_host(GENERATION.into(), VoiceGateway::new());
 
 		let result = agent
@@ -202,7 +204,9 @@ async fn voice_start_uses_native_account_selection_and_honors_managed_policy() {
 }
 
 async fn bind_hosted_voice(owned: &OwnedReviewer, work: &str, thread: &str) {
-	reserve_hosted_voice(owned, work).await;
+	let mut item = AgentCoordinator::new_conversation_work(work).expect("new voice conversation");
+	item.parent_goal_id = Some("root".into());
+	owned.store.create_agent_manager(item).await.expect("hosted conversation");
 	owned.store.bind_agent_thread(work.into(), thread.into()).await.expect("voice thread");
 
 	assert!(
@@ -212,18 +216,6 @@ async fn bind_hosted_voice(owned: &OwnedReviewer, work: &str, thread: &str) {
 			.await
 			.expect("voice ownership")
 	);
-}
-
-async fn reserve_hosted_voice(owned: &OwnedReviewer, work: &str) {
-	let mut conversation = owned.store.get_agent_work_item("root".into()).await.expect("root");
-
-	conversation.id = work.into();
-	conversation.parent_goal_id = Some("root".into());
-	conversation.codex_thread_id = None;
-	conversation.active_turn_id = None;
-	conversation.dispatch_state = AgentDispatchState::Idle;
-
-	owned.store.create_agent_manager(conversation).await.expect("hosted conversation");
 }
 
 #[tokio::test]

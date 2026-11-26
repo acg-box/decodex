@@ -1,5 +1,5 @@
 //! Exact native item lookup for detail views.
-use std::time::Duration;
+use std::{collections::BTreeMap, time::Duration};
 
 use serde_json::Value;
 use tokio::time;
@@ -14,31 +14,44 @@ impl AppServerClient {
 		turn: &str,
 		item: &str,
 	) -> Result<Option<Value>, ClientError> {
-		if [thread, turn, item]
-			.iter()
-			.any(|id| id.is_empty() || id.len() > 512 || id.chars().any(char::is_control))
+		Ok(self.thread_read_items(thread, turn, &[item]).await?.remove(item))
+	}
+
+	/// Read the requested items from one turn in a single native call.
+	pub async fn thread_read_items(
+		&self,
+		thread: &str,
+		turn: &str,
+		items: &[&str],
+	) -> Result<BTreeMap<String, Value>, ClientError> {
+		if !(1..=100).contains(&items.len())
+			|| [thread, turn]
+				.into_iter()
+				.chain(items.iter().copied())
+				.any(|id| id.is_empty() || id.len() > 512 || id.chars().any(char::is_control))
 		{
 			return Err(ClientError::InvalidFrame);
 		}
-
-		time::timeout(Duration::from_secs(20), async {
-			let value = self
-				.request(
-					"thread/items/read",
-					serde_json::json!({"threadId":thread,"turnId":turn,"itemIds":[item]}),
-				)
-				.await?;
-			let data = value["data"].as_array().ok_or(ClientError::InvalidFrame)?;
-
-			match data.as_slice() {
-				[] => Ok(None),
-				[entry] if entry["turnId"] == turn && entry["item"]["id"] == item =>
-					Ok(Some(entry["item"].clone())),
-				_ => Err(ClientError::InvalidFrame),
-			}
-		})
+		let mut response = time::timeout(
+			Duration::from_secs(20),
+			self.request(
+				"thread/items/read",
+				serde_json::json!({"threadId":thread, "turnId":turn, "itemIds":items}),
+			),
+		)
 		.await
-		.map_err(|_| ClientError::Io)?
+		.map_err(|_| ClientError::Io)??;
+		let mut found = BTreeMap::new();
+		for entry in response["data"].as_array_mut().ok_or(ClientError::InvalidFrame)? {
+			let id = entry["item"]["id"].as_str().ok_or(ClientError::InvalidFrame)?;
+			if entry["turnId"] != turn
+				|| !items.contains(&id)
+				|| found.insert(id.to_owned(), entry["item"].take()).is_some()
+			{
+				return Err(ClientError::InvalidFrame);
+			}
+		}
+		Ok(found)
 	}
 }
 

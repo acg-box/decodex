@@ -223,8 +223,8 @@ fn new_and_inherited_messages_use_fallback_without_changing_another_agent(
 	surface.update(cx, |s, cx| {
 		setup(s, cx);
 		let mut action = AgentActionDto::NewConversation {
+			cwd: None,
 			project_id: None,
-			assistant_id: None,
 			work_id: EntityId::new("agent").unwrap(),
 			text: HistoryText::new("hello").unwrap(),
 			execution: s.draft_profiles.execution.choice("agent"),

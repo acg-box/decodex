@@ -15,7 +15,7 @@ use super::super::response_metrics::FooterPresentation;
 use crate::{
 	frame_trace,
 	shell::agent_surface::native_timeline::{
-		AgentTimelineEntry, ItemKey,
+		AgentTimelineContent, AgentTimelineEntry, ItemKey,
 		groups::{Group, HEADER_HEIGHT},
 		motion::ToolBatch,
 	},
@@ -76,7 +76,11 @@ impl Completions {
 				.collect::<BTreeMap<_, _>>();
 
 			if !outgoing.is_empty() {
-				let ready = if let Some(key) = ItemKey::for_entry(&entries[group.final_index]) {
+				let ready = if let AgentTimelineContent::Item { turn_id, item_id, kind, .. } =
+					&entries[group.final_index].content
+					&& kind == "agentMessage"
+				{
+					let key = ItemKey::new(turn_id, item_id);
 					state.outputs.entry(key).or_default().ready.clone()
 				} else {
 					Rc::new(Cell::new(true))
@@ -213,7 +217,7 @@ pub(super) struct Closing {
 }
 impl RenderOnce for Closing {
 	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-		let progress = self.motion.progress(Instant::now(), ui_motion::reduced());
+		let progress = self.motion.progress(cx.background_executor().now(), ui_motion::reduced());
 		let height = self.motion.height.get().or(self.motion.height_limit);
 
 		frame_trace::row_arrival(self.position, "fold", progress, height.unwrap_or(0.));

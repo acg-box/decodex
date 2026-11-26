@@ -87,9 +87,9 @@ do
 done
 if [ -n "${DECODEX_SPARKLE_PUBLIC_KEY:-}" ]; then
 	plutil -insert SUPublicEDKey -string "$DECODEX_SPARKLE_PUBLIC_KEY" "$CONTENTS/Info.plist"
+	plutil -insert SUEnableAutomaticChecks -bool true "$CONTENTS/Info.plist"
+	plutil -insert SUAutomaticallyUpdate -bool true "$CONTENTS/Info.plist"
 fi
-plutil -insert SUEnableAutomaticChecks -bool false "$CONTENTS/Info.plist"
-plutil -insert SUAutomaticallyUpdate -bool false "$CONTENTS/Info.plist"
 mkdir -p "$RESOURCES/ThirdPartyNotices"
 cp "$MENU_BAR_PACKAGE/.build/checkouts/Sparkle/LICENSE" "$RESOURCES/ThirdPartyNotices/Sparkle-LICENSE.txt"
 cp "$ROOT/assets/licenses/libwebrtc.txt" "$RESOURCES/ThirdPartyNotices/libwebrtc.txt"

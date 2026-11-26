@@ -3,7 +3,7 @@ use core::panic::Location;
 use std::{mem, ops::Range};
 
 use gpui::{AvailableSpace, DispatchPhase, MouseMoveEvent, Size, TextAlign, TextStyle};
-use ui_theme::{BODY_LINE_HEIGHT, BODY_SIZE, CONTROL_GAP};
+use ui_theme::{BODY_LINE_HEIGHT, BODY_SIZE, COMPOSER_SUGGESTION_GAP};
 
 use crate::{
 	composer_input::{
@@ -354,7 +354,7 @@ fn layout_text(
 	let mut lines = shape_text(input, text, width, window, style);
 	let mut text_height = height(&lines);
 	let action_origin = action_size.map(|actions| {
-		let gap = gpui::px(CONTROL_GAP);
+		let gap = gpui::px(COMPOSER_SUGGESTION_GAP);
 		let available = width - actions.width - gap;
 		let mut end = end_of_last_row(&lines);
 

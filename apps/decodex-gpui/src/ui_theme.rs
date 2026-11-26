@@ -66,10 +66,13 @@ pub(crate) const PROCESS_STEP_GAP: f32 = 6.;
 pub(crate) const PROCESS_ROW_HEIGHT: f32 = 24.;
 pub(crate) const PROCESS_ICON_SIZE: f32 = 12.;
 pub(crate) const PROCESS_ICON_SLOT: f32 = 16.;
-pub(crate) const WORK_INDICATOR_SIZE: f32 = 24.;
+pub(crate) const WORK_INDICATOR_SIZE: f32 = 18.;
 pub(crate) const USER_MESSAGE_INSET: f32 = 12.0;
 pub(crate) const USER_MESSAGE_ACTION_SIZE: f32 = 24.0;
 pub(crate) const METADATA_GAP: f32 = 4.0;
+/// Running status and finished turn metrics share this row below the response.
+pub(crate) const RESPONSE_FOOTER_HEIGHT: f32 = 24.;
+pub(crate) const RESPONSE_FOOTER_EXTENT: f32 = METADATA_GAP + RESPONSE_FOOTER_HEIGHT;
 pub(crate) const METRIC_GROUP_GAP: f32 = 8.0;
 pub(crate) const CONTROL_SIZE: f32 = 28.0;
 pub(crate) const CHROME_CONTROL_SIZE: f32 = 24.0;
@@ -98,6 +101,7 @@ pub(crate) const COMPOSER_RADIUS: f32 = 14.0;
 pub(crate) const COMPOSER_TEXT_INSET: f32 = 9.0;
 pub(crate) const COMPOSER_TEXT_TOP_INSET: f32 = 5.0;
 pub(crate) const COMPOSER_TEXT_BOTTOM_INSET: f32 = 3.0;
+pub(crate) const COMPOSER_SUGGESTION_GAP: f32 = 6.0;
 // A one-line editor and its toolbar keep the same footprint in read-only states.
 pub(crate) const COMPOSER_MIN_HEIGHT: f32 = BODY_LINE_HEIGHT
 	+ COMPOSER_TEXT_TOP_INSET

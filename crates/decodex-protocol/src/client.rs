@@ -45,12 +45,12 @@ use crate::{
 	InitialModelCatalogResult, MAX_AGENT_APP_UI_BYTES, MAX_AGENT_APP_UI_RECEIPT_BYTES,
 	MAX_AGENT_MEDIA_BYTES, MAX_TRANSCRIPT_BYTES, McpLoginRequest, McpLoginStatus,
 	NativeAgentsResult, PrivateReviewDetailsResult, PromptDraft, PromptEditStatus,
-	PromptForkBoundary, PromptForkResult, PromptInputSendIdentity, PromptInputSendStatus,
-	PromptInputUpload, PromptInputUploadStatus, ProtocolVersion, QueryEnvelope, QueryId,
-	QueryPayload, QueryResultPayload, ReceiptDisposition, Refusal, RefusalEnvelope,
-	ResetCardDescriptorDto, ResetCardInventoryResult, ResetCardOperationResult, ResultPayload,
-	RetainedSessionConfig, RetainedSessionFailure, ServerId, ServerMessage, Sha256Digest,
-	TRANSCRIPT_CHUNK_BYTES, TaskRecapStatus, WireText, WorkDetailResult,
+	PromptForkResult, PromptInputSendIdentity, PromptInputSendStatus, PromptInputUpload,
+	PromptInputUploadStatus, ProtocolVersion, QueryEnvelope, QueryId, QueryPayload,
+	QueryResultPayload, ReceiptDisposition, Refusal, RefusalEnvelope, ResetCardDescriptorDto,
+	ResetCardInventoryResult, ResetCardOperationResult, ResultPayload, RetainedSessionConfig,
+	RetainedSessionFailure, ServerId, ServerMessage, Sha256Digest, TRANSCRIPT_CHUNK_BYTES,
+	TaskRecapStatus, WireText, WorkDetailResult,
 	local_transport::{LocalTransportAuthority, LocalTransportRefusal, LocalTransportStream},
 	work::WorkPortfolio,
 };
@@ -696,9 +696,8 @@ impl AgentClient {
 			QueryResultPayload::AttachedBranches(result) => {
 				if let crate::AttachedBranchesResult::Available { branches, .. } = &result
 					&& (branches.len() > 100
-						|| branches.iter().any(|b| {
-							b.work_id != work || b.boundary != PromptForkBoundary::AttachedAfterTurn
-						})) {
+						|| branches.iter().any(|b| b.work_id != work || !b.boundary.is_side_chat()))
+				{
 					return Err(ClientFailure::ProtocolMalformed);
 				}
 
@@ -1301,20 +1300,50 @@ impl AgentClient {
 	pub async fn native_threads(
 		&self,
 		cursor: Option<String>,
+		search: Option<String>,
 	) -> Result<Option<crate::NativeThreadPage>, ClientFailure> {
 		self.transport.require_local_profile()?;
 		let cursor =
 			cursor.map(WireText::new).transpose().map_err(|_| ClientFailure::ProtocolMalformed)?;
+		let search =
+			search.map(WireText::new).transpose().map_err(|_| ClientFailure::ProtocolMalformed)?;
+		self.native_catalog_page(QueryPayload::ListNativeThreads { cursor, search }).await
+	}
+
+	/// Read all pages before publishing the new sidebar membership.
+	pub async fn pinned_threads(&self) -> Result<Vec<crate::NativeThreadCandidate>, ClientFailure> {
+		self.transport.require_local_profile()?;
+		let mut threads = Vec::new();
+		let mut seen = std::collections::HashSet::new();
+		let mut cursor = None;
+		loop {
+			let page = self
+				.native_catalog_page(QueryPayload::ListPinnedThreads { cursor })
+				.await?
+				.ok_or(ClientFailure::ProtocolDisconnected)?;
+			threads.extend(page.threads);
+			let Some(next) = page.next_cursor else {
+				return Ok(threads);
+			};
+			if !seen.insert(next.clone()) {
+				return Err(ClientFailure::ProtocolMalformed);
+			}
+			cursor = Some(WireText::new(next).map_err(|_| ClientFailure::ProtocolMalformed)?);
+		}
+	}
+
+	async fn native_catalog_page(
+		&self,
+		query: QueryPayload,
+	) -> Result<Option<crate::NativeThreadPage>, ClientFailure> {
 		let transport = ResetCardClient {
 			profile: self.transport.profile.clone(),
 			timeout: NATIVE_CATALOG_TIMEOUT,
 		};
-		let completed = time::timeout(
-			transport.timeout,
-			transport.query_inner("native-threads", QueryPayload::ListNativeThreads { cursor }),
-		)
-		.await
-		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+		let completed =
+			time::timeout(transport.timeout, transport.query_inner("native-threads", query))
+				.await
+				.map_err(|_| ClientFailure::ProtocolTimeout)??;
 		close_one_shot_socket(completed.socket).await;
 		match completed.value {
 			QueryResultPayload::NativeThreads(page) => Ok(page),
@@ -1683,6 +1712,31 @@ impl AgentClient {
 
 		match completed.value {
 			QueryResultPayload::AgentResources(result) => Ok(result),
+			_ => Err(ClientFailure::ProtocolMalformed),
+		}
+	}
+
+	/// Search visible native messages without resuming the conversation.
+	pub async fn search_conversation(
+		&self,
+		work_id: EntityId,
+		thread_id: EntityId,
+		term: WireText,
+		cursor: Option<WireText>,
+	) -> Result<Option<crate::ConversationMatches>, ClientFailure> {
+		self.transport.require_local_profile()?;
+		let completed = time::timeout(
+			Duration::from_secs(30),
+			self.transport.query_inner(
+				"conversation-search",
+				QueryPayload::SearchConversation { work_id, thread_id, term, cursor },
+			),
+		)
+		.await
+		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+		close_one_shot_socket(completed.socket).await;
+		match completed.value {
+			QueryResultPayload::ConversationMatches(page) => Ok(page),
 			_ => Err(ClientFailure::ProtocolMalformed),
 		}
 	}
@@ -2436,7 +2490,9 @@ impl AgentClient {
 
 		let attempted = AtomicBool::new(false);
 		let extended_timeout = match &action {
-			AgentActionDto::ConfirmAppUiTool { .. } => Some(Duration::from_secs(100)),
+			AgentActionDto::OpenSideChat { .. }
+			| AgentActionDto::CloseSideChat { .. }
+			| AgentActionDto::ConfirmAppUiTool { .. } => Some(Duration::from_secs(100)),
 			AgentActionDto::SetAppToolExposure { .. }
 			| AgentActionDto::SetThreadReadState { .. }
 			| AgentActionDto::EditNativeGoal { .. }
@@ -2544,8 +2600,11 @@ impl AgentClient {
 							Some(_),
 							Some(ResultPayload::AgentAccepted { work_id }),
 							None,
-						) if matches!(action, AgentActionDto::AddProject { .. })
-							|| &work_id == agent_action_work_id(&action) =>
+						) if matches!(
+							action,
+							AgentActionDto::AddProject { .. }
+								| AgentActionDto::CreateAssistant { .. }
+						) || &work_id == agent_action_work_id(&action) =>
 							AgentCommandResponse::Accepted { work_id },
 						(CommandOutcome::Rejected, None, None, Some(error))
 							if !matches!(error, CommandError::AcceptanceUnknown) =>
@@ -3909,7 +3968,6 @@ impl<T> CompletedOneShot<T> {
 
 fn agent_action_work_id(action: &AgentActionDto) -> &EntityId {
 	match action {
-		AgentActionDto::CreateAssistantTopic { topic_id, .. } => topic_id,
 		AgentActionDto::CreateAssistant { agent_id }
 		| AgentActionDto::ManageAssistant { agent_id, .. }
 		| AgentActionDto::ScheduleWake { agent_id, .. }
@@ -3917,14 +3975,17 @@ fn agent_action_work_id(action: &AgentActionDto) -> &EntityId {
 		AgentActionDto::ManageWork { agent_id, .. } => agent_id,
 		AgentActionDto::SetReviewDetails { settings_id, .. } => settings_id,
 		AgentActionDto::SetProjectLead { project_id, .. } => project_id,
-		AgentActionDto::SetAssistant { agent_id, .. } => agent_id,
 		AgentActionDto::AddProject { project_id, .. }
 		| AgentActionDto::DeleteProject { project_id } => project_id,
-		AgentActionDto::RegisterNativeThread { thread_id, .. } => thread_id,
+		AgentActionDto::RegisterNativeThread { thread_id, .. }
+		| AgentActionDto::SetThreadPinned { thread_id, .. } => thread_id,
 		AgentActionDto::NewConversation { work_id, .. }
+		| AgentActionDto::RestoreChatFolder { work_id, .. }
+		| AgentActionDto::CloseSideChat { work_id, .. }
 		| AgentActionDto::DiscardEmptyWork { work_id } => work_id,
 		AgentActionDto::AcknowledgeAppUiCall { work_id, .. } => work_id,
-		AgentActionDto::ForkPromptEdit { target_work_id, .. } => target_work_id,
+		AgentActionDto::OpenSideChat { target_work_id, .. }
+		| AgentActionDto::ForkPromptEdit { target_work_id, .. } => target_work_id,
 		AgentActionDto::ConfirmAppUiTool { request, .. } => &request.work_id,
 		AgentActionDto::UploadPromptInput { upload, .. }
 		| AgentActionDto::CompletePromptInputUpload { upload } => &upload.work_id,
