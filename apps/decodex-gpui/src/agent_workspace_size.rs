@@ -2002,8 +2002,10 @@ mod tests {
 		assert!(first <= before, "floating retracts the existing lower edge");
 		assert!(first > input.top() + gpui::px(20.), "an exposed panel must animate");
 		visual.executor().advance_clock(crate::ui_theme::MOTION_PANEL);
-		visual.update(crate::ui_frame::draw_current_frame);
-		assert!(visual.debug_bounds("workspace-activity-pane").unwrap().bottom() <= input.top());
+		visual.update(crate::ui_frame::draw_frame);
+		let settled = visual.debug_bounds("workspace-activity-pane").unwrap().bottom();
+		let composer = visual.debug_bounds("agent-composer").unwrap().top();
+		assert!(settled <= composer, "panel {settled:?}, composer {composer:?}, first {first:?}");
 	}
 
 	#[gpui::test]
