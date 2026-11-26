@@ -933,7 +933,7 @@
       "decision_reference": "chatgpt-account-voice-preference",
       "follow_up": {
         "decision": "Use the native ChatGPT account voice across projects.",
-        "delivery_reference": "https://github.com/acg-box/decodex/commit/4898450cd62fa21b4a68fab53fa642087155fede",
+        "delivery_reference": "https://github.com/acg-box/decodex/commit/8d538a0b366c9b9c08727b66ed030286b67e0ff6",
         "qualification": "qualification.json#account_voice",
         "passed_selectors": [
           "account_launch::agent_process::native_tests::reviewer::store::voice_settings_start::installed_account_voice_is_shared_between_projects_after_explicit_save",

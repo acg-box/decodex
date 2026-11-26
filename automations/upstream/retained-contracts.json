@@ -2426,7 +2426,7 @@
         "crates/decodex-codex/src/schema.rs#official_schema_supports_current_consumers"
       ],
       "behavior_limits": "Legacy project and local preferences are ignored. The backend owns account-wide persistence. Playback quality requires separate evidence.",
-      "delivery_reference": "https://github.com/acg-box/decodex/commit/4898450cd62fa21b4a68fab53fa642087155fede"
+      "delivery_reference": "https://github.com/acg-box/decodex/commit/8d538a0b366c9b9c08727b66ed030286b67e0ff6"
     }
   ],
   "retained_account_scope": {

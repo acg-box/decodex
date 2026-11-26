@@ -3,7 +3,7 @@
   "scope": "Current Decodex upstream review, selected development artifact and stable consumer contracts.",
   "retained_contracts": {
     "path": "automations/upstream/retained-contracts.json",
-    "sha256": "5288fb57615d9a7f5f3fcfe02cdeb978ff15ed01586a4f2ff5d23ff43ea6aba9"
+    "sha256": "ee4e18904b70ac40f9cc47dbccf770329f1fab7797c9daa79ea3f5d2ad2a800e"
   },
   "retained_contract_routes": {
     "behavior": "automations/upstream/retained-contracts.json#retained_behavior_contracts",
@@ -81,7 +81,7 @@
   "validation": "automations/upstream/qualification.json#decodex_validation",
   "current_delivery": {
     "source_commit_references": [
-      "https://github.com/acg-box/decodex/commit/4898450cd62fa21b4a68fab53fa642087155fede"
+      "https://github.com/acg-box/decodex/commit/8d538a0b366c9b9c08727b66ed030286b67e0ff6"
     ],
     "status": "Final-head CI and merge evidence are in native receipts."
   },

@@ -43,9 +43,9 @@
   ],
   "source_commit": "06f334aa4b053023c5b4199dde0ba9c004d64820",
   "upstream_source_reference": "https://github.com/openai/codex/commit/06f334aa4b053023c5b4199dde0ba9c004d64820",
-  "decodex_main_baseline": "189884659c5ba08f6ba139bf7daa30196633fb32",
-  "decodex_source_revision": "4898450cd62fa21b4a68fab53fa642087155fede",
-  "delivery_reference": "https://github.com/acg-box/decodex/commit/4898450cd62fa21b4a68fab53fa642087155fede",
+  "decodex_main_baseline": "9531ea40080dba0f881c0804670b64fc047cc081",
+  "decodex_source_revision": "8d538a0b366c9b9c08727b66ed030286b67e0ff6",
+  "delivery_reference": "https://github.com/acg-box/decodex/commit/8d538a0b366c9b9c08727b66ed030286b67e0ff6",
   "development_version": "0.171.0+decodex.06f334aa4b",
   "runtime_pin_sha256": "8a0236f3a2d3c0998183e938c1e7f5fb94346315bfb7a4431d9f6f4f879b4ffb",
   "artifact": {
@@ -134,7 +134,8 @@
     "previous_selected_source": "7a24022794c8bfb26f73685e5c2f7d957126daee",
     "previous_source_is_ancestor": true,
     "previous_qualification": "https://github.com/acg-box/decodex/blob/189884659c5ba08f6ba139bf7daa30196633fb32/automations/upstream/qualification.json",
-    "scope": "The prior qualified source and native prompt revert fix are ancestors. Signed-package tests exercised prompt revert, hooks, native project reconciliation, provider continuation, Code Mode, Guardian, skills and MCP."
+    "scope": "The prior qualified source and native prompt revert fix are ancestors. Signed-package tests exercised prompt revert, hooks, native project reconciliation, provider continuation, Code Mode, Guardian, skills and MCP. After integrating current main, the signed-package checks also covered native chat registration and Work after cold resume, and archive refresh without restarting either process.",
+    "decodex_integration": "https://github.com/acg-box/decodex/commit/9531ea40080dba0f881c0804670b64fc047cc081"
   },
   "baseline_execution": {
     "source": "7a24022794c8bfb26f73685e5c2f7d957126daee",
@@ -188,9 +189,9 @@
       "recap": "Use the isolated account home, marker files and component import from scripts/vnext/run_native_regression.py. Set DECODEX_TEST_PROMPT_REVERT=1. Execute from the owned worktree.",
       "DECODEX_TEST_PREVIOUS_CODEX_BINARY": "Prior qualified CLI for the cross-version upgrade case."
     },
-    "registered": 28,
-    "executed": 28,
-    "passed": 28,
+    "registered": 30,
+    "executed": 30,
+    "passed": 30,
     "failed": 0,
     "unmatched_selectors": [],
     "cases": [
@@ -198,7 +199,7 @@
         "crate": "decodex_runtime",
         "selector": "account_launch::agent_process::native_tests::cold_settings::recap_socket::installed_recap_public_socket_preserves_parent_and_exact_request_identity",
         "source": "crates/decodex-runtime/src/account_launch/agent_process_native_recap_socket_tests.rs",
-        "source_sha256": "77484342d1ccfec00107e3395f91c37bc6b0193426f96ffe0067a0d0a2047bbc",
+        "source_sha256": "3a13a8284b4694a8f74581741cda46a2260e118fb676c25bb50751b373259d3f",
         "executed": 1,
         "passed": 1,
         "exit_code": 0,
@@ -248,7 +249,7 @@
         "crate": "decodex_runtime",
         "selector": "account_launch::agent_process::native_tests::registration::promoted_exec_discovers_and_uses_work_in_code_mode",
         "source": "crates/decodex-runtime/src/account_launch/agent_process_native_registration_tests.rs",
-        "source_sha256": "52b060ecfb2eee5f9bdbc78b40e5d4b8e9477452afd109ec93a1cf5cf59b0308",
+        "source_sha256": "67201723eacec3ac35ccfac6ab5a510c15818bb06d0009021af8021cb1e7f7d3",
         "executed": 1,
         "passed": 1,
         "exit_code": 0,
@@ -388,7 +389,7 @@
         "crate": "decodex_runtime",
         "selector": "account_launch::agent_process::native_tests::reviewer::store::voice_settings_start::installed_account_voice_is_shared_between_projects_after_explicit_save",
         "source": "crates/decodex-runtime/src/account_launch/agent_process_voice_settings_start_tests.rs",
-        "source_sha256": "4184d9b71355044b79a01c23df80c641c7e42996125e5ca165cff228e7cccf50",
+        "source_sha256": "3483313e21ec8ce74480c147d1f1bb8fc6a943d88fcb6eff35f2a90d3cde7b7a",
         "executed": 1,
         "passed": 1,
         "exit_code": 0,
@@ -398,7 +399,7 @@
         "crate": "decodex_runtime",
         "selector": "account_launch::agent_process::native_tests::reviewer::store::voice_settings_start::installed_account_voice_requires_chatgpt_even_with_local_preference",
         "source": "crates/decodex-runtime/src/account_launch/agent_process_voice_settings_start_tests.rs",
-        "source_sha256": "4184d9b71355044b79a01c23df80c641c7e42996125e5ca165cff228e7cccf50",
+        "source_sha256": "3483313e21ec8ce74480c147d1f1bb8fc6a943d88fcb6eff35f2a90d3cde7b7a",
         "executed": 1,
         "passed": 1,
         "exit_code": 0,
@@ -408,7 +409,7 @@
         "crate": "decodex_runtime",
         "selector": "account_launch::agent_process::native_tests::reviewer::store::voice_settings_start::installed_native_voice_policy_read_does_not_use_user_feature_flags",
         "source": "crates/decodex-runtime/src/account_launch/agent_process_voice_settings_start_tests.rs",
-        "source_sha256": "4184d9b71355044b79a01c23df80c641c7e42996125e5ca165cff228e7cccf50",
+        "source_sha256": "3483313e21ec8ce74480c147d1f1bb8fc6a943d88fcb6eff35f2a90d3cde7b7a",
         "executed": 1,
         "passed": 1,
         "exit_code": 0,
@@ -473,16 +474,36 @@
         "passed": 1,
         "exit_code": 0,
         "entrypoint": "compiled libtest --ignored --exact <selector> --test-threads=1 --nocapture"
+      },
+      {
+        "crate": "decodex_runtime",
+        "selector": "account_launch::agent_process::native_tests::registration::registered_and_created_agents_create_work_after_cold_resume",
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_registration_tests.rs",
+        "source_sha256": "67201723eacec3ac35ccfac6ab5a510c15818bb06d0009021af8021cb1e7f7d3",
+        "executed": 1,
+        "passed": 1,
+        "exit_code": 0,
+        "entrypoint": "compiled libtest --ignored --exact <selector> --test-threads=1 --nocapture"
+      },
+      {
+        "crate": "decodex_runtime",
+        "selector": "account_launch::agent_process::native_tests::archive::installed_native_archive_roundtrip_refreshes_without_restarting_either_process",
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_archive_tests.rs",
+        "source_sha256": "961498072d30554009a7d26644978627f5877478b2f7031de20bb2e2e8ab3af4",
+        "executed": 1,
+        "passed": 1,
+        "exit_code": 0,
+        "entrypoint": "compiled libtest --ignored --exact <selector> --test-threads=1 --nocapture"
       }
     ]
   },
   "fixture_source_sha256": {
-    "crates/decodex-runtime/src/account_launch/agent_process_native_recap_socket_tests.rs": "77484342d1ccfec00107e3395f91c37bc6b0193426f96ffe0067a0d0a2047bbc",
+    "crates/decodex-runtime/src/account_launch/agent_process_native_recap_socket_tests.rs": "3a13a8284b4694a8f74581741cda46a2260e118fb676c25bb50751b373259d3f",
     "crates/decodex-runtime/src/account_launch/agent_process_native_compaction_tests.rs": "51f3685a98c8ebfc3c3d4a20b198a3dfb8c60782a193246a8dea66a4af690b10",
     "crates/decodex-runtime/src/account_launch/agent_process_native_steer_tests.rs": "3895e9f866335c15c27e92c563d367224e7b1887b4a85ad941efa92827663b77",
     "crates/decodex-runtime/src/account_launch/agent_process_native_goal_tests.rs": "1452e604875a374cef96a3cdbf74c36584820743824b7d22e570c71ed9cd621e",
     "crates/decodex-runtime/src/account_launch/agent_process_native_code_mode_tests.rs": "9ee4e9dd6b4867a2c57c4f775549f397352303f478a118d98d55841ba8afd539",
-    "crates/decodex-runtime/src/account_launch/agent_process_native_registration_tests.rs": "52b060ecfb2eee5f9bdbc78b40e5d4b8e9477452afd109ec93a1cf5cf59b0308",
+    "crates/decodex-runtime/src/account_launch/agent_process_native_registration_tests.rs": "67201723eacec3ac35ccfac6ab5a510c15818bb06d0009021af8021cb1e7f7d3",
     "crates/decodex-runtime/src/account_launch/agent_process_permission_tests.rs": "3db2edfab0716c167894f8989a38912c6c75a23e534bb80e30f05e650b51564a",
     "crates/decodex-runtime/src/account_launch/agent_process_native_guardian_evidence_tests.rs": "81b238444dbc248a22dd6ade2f7eed0d5a415c0bfbf98225d3a0f538562e136a",
     "crates/decodex-runtime/src/account_launch/agent_process_native_reviewer_tests.rs": "011b286e5735db892a9f2a5265a3a00c484f762d6eed52b36566f9dd13b823b0",
@@ -495,11 +516,12 @@
     "crates/decodex-runtime/src/account_launch/agent_process_native_audio_tests.rs": "a0e17741f906073abbf6fa513fa9b38638e44f6e4366407a62f8fb59737a148a",
     "crates/decodex-codex/src/schema.rs": "8ca8865cf9afc453da637f02c2dae03ce40bdf399272de72edce6b8e6bda1035",
     "crates/decodex-components/tests/development.rs": "0ccbd7b95fb091a8b686f9bb51851a94effa6c3fb66b8d838eb49284723156b5",
-    "crates/decodex-runtime/src/account_launch/agent_process_voice_settings_start_tests.rs": "4184d9b71355044b79a01c23df80c641c7e42996125e5ca165cff228e7cccf50",
+    "crates/decodex-runtime/src/account_launch/agent_process_voice_settings_start_tests.rs": "3483313e21ec8ce74480c147d1f1bb8fc6a943d88fcb6eff35f2a90d3cde7b7a",
     "crates/decodex-runtime/src/account_launch/agent_process_native_upgrade_tests.rs": "d2745bc9831af1a3dded65ffa40c256c40e9f03b3ff2b17a127b6a3bde273c94",
     "crates/decodex-runtime/src/account_launch/agent_process_native_guardian_image_tests.rs": "096f5d64d5b4a6c214e1625545ad924da831bdf07ea23c86c3a6b5274750c4ac",
     "crates/decodex-runtime/src/account_launch/agent_process_native_skills_tests.rs": "ff0df22702edfa42a03c0eec1a1b563b116de52ff14204e5a557efed2be687cf",
-    "crates/decodex-runtime/src/account_launch/agent_process_native_project_sync_tests.rs": "5b3710373b95c7e0f44c9d0616e5a7e328ec3e7055df03f43b433e86250bb561"
+    "crates/decodex-runtime/src/account_launch/agent_process_native_project_sync_tests.rs": "5b3710373b95c7e0f44c9d0616e5a7e328ec3e7055df03f43b433e86250bb561",
+    "crates/decodex-runtime/src/account_launch/agent_process_native_archive_tests.rs": "961498072d30554009a7d26644978627f5877478b2f7031de20bb2e2e8ab3af4"
   },
   "decodex_validation": {
     "checks": [
@@ -509,8 +531,8 @@
       "Compiled all-feature decodex-runtime and decodex-codex libtests with the voice filter"
     ],
     "units": {
-      "decodex_codex": "ok. 3 passed; 0 failed; 0 ignored; 0 measured; 261 filtered out; finished in 0.02s",
-      "decodex_runtime": "ok. 38 passed; 0 failed; 4 ignored; 0 measured; 1026 filtered out; finished in 2.47s"
+      "decodex_codex": "ok. 3 passed; 0 failed; 0 ignored; 0 measured; 261 filtered out; finished in 0.04s",
+      "decodex_runtime": "ok. 38 passed; 0 failed; 4 ignored; 0 measured; 1030 filtered out; finished in 2.72s"
     },
     "desktop_picker_passed": 4,
     "manifest": {
