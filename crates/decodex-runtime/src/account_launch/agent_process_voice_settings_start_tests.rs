@@ -114,6 +114,7 @@ async fn voice_start_uses_native_account_selection_and_honors_managed_policy() {
 						serde_json::json!({"error":{"code":-32_600,"message":format!("thread {thread} already has an active writer")}}),
 					"thread/read" | "thread/resume" =>
 						serde_json::json!({"result":{"thread":{"id":thread,"cwd":"/tmp","historyMode":"legacy","turns":[]}}}),
+					"config/read" => serde_json::json!({"result":{"config":{}}}),
 					"configRequirements/read" =>
 						serde_json::json!({"result":{"requirements":policy.map(|allowed| serde_json::json!({"featureRequirements":{"in_app_voice":allowed}}))}}),
 					"thread/realtime/start" => serde_json::json!({"result":{}}),
