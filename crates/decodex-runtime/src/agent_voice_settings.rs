@@ -57,15 +57,16 @@ where
 		return Err(Rejected("Voice settings changed. Refresh the voice list."));
 	}
 
-	let saved = before.client.write_realtime_voice(&settings, voice).await.map_err(|_| {
-		Unknown("Voice save or readback is unconfirmed. Refresh settings before trying again.")
-	})?;
+	before
+		.client
+		.write_realtime_voice(&settings, voice)
+		.await
+		.map_err(|_| Unknown("Voice save is unconfirmed. Refresh settings before trying again."))?;
 
 	if source().await.is_none_or(|after| {
 		after.key != before.key
 			|| after.client.connection_identity() != before.client.connection_identity()
-	}) || saved.selected != voice
-	{
+	}) {
 		return Err(Unknown("Voice save is unconfirmed for this task. Refresh settings."));
 	}
 

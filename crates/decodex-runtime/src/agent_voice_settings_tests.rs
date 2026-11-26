@@ -103,7 +103,7 @@ async fn voice_settings_bind_account_observation_and_report_uncertain_readback()
 		let result =
 			agent_voice_settings::write(read_source, review_token.as_str(), "juniper").await;
 
-		assert_eq!(result.is_ok(), !fail_readback);
+		result.expect("native account accepted the write");
 		assert_eq!(writes.load(Ordering::SeqCst), 1);
 		assert!(
 			agent_voice_settings::write(read_source, review_token.as_str(), "juniper")
@@ -112,7 +112,12 @@ async fn voice_settings_bind_account_observation_and_report_uncertain_readback()
 		);
 		assert_eq!(writes.load(Ordering::SeqCst), 1);
 
-		if !fail_readback {
+		if fail_readback {
+			assert_eq!(
+				agent_voice_settings::read(read_source).await,
+				AgentVoiceSettingsResult::Unavailable
+			);
+		} else {
 			let AgentVoiceSettingsResult::Available { selected, .. } =
 				agent_voice_settings::read(read_source).await
 			else {

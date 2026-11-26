@@ -49,12 +49,12 @@ impl AppServerClient {
 		})
 	}
 
-	/// Save an ID from this connection's catalog once and read the account selection back.
+	/// Save an ID from this connection's catalog once. The caller can refresh the selection.
 	pub async fn write_realtime_voice(
 		&self,
 		observed: &NativeVoiceSettings,
 		voice: &str,
-	) -> Result<NativeVoiceSettings, ClientError> {
+	) -> Result<(), ClientError> {
 		if !self.outbound.same_channel(&observed.connection)
 			|| !observed.voices.iter().any(|option| option.voice == voice)
 		{
@@ -66,7 +66,7 @@ impl AppServerClient {
 		)
 		.await
 		.map_err(|_| ClientError::Io)??;
-		self.realtime_voice_settings().await
+		Ok(())
 	}
 }
 

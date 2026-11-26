@@ -3173,7 +3173,7 @@ pub enum QueryResultPayload {
 	AgentPromptFork(PromptForkResult),
 	/// Bounded source-specific attachment receipts.
 	AttachedBranches(AttachedBranchesResult),
-	/// Task-scoped native voice preferences.
+	/// Native voice settings for the task's connected account.
 	AgentVoiceSettings(AgentVoiceSettingsResult),
 	/// Native web-search defaults and permitted modes.
 	AgentSearchSettings(AgentSearchSettingsResult),

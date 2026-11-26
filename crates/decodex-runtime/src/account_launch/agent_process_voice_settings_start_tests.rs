@@ -321,8 +321,7 @@ async fn installed_account_voice_is_shared_between_projects_after_explicit_save(
 	assert_eq!(second.client.realtime_voice_settings().await.unwrap().selected, "cove");
 	assert!(second.client.write_realtime_voice(&before, "account-option").await.is_err());
 	assert!(received.try_recv().is_err());
-	let saved = first.client.write_realtime_voice(&before, "account-option").await.unwrap();
-	assert_eq!(saved.selected, "account-option");
+	first.client.write_realtime_voice(&before, "account-option").await.unwrap();
 	assert_eq!(second.client.realtime_voice_settings().await.unwrap().selected, "account-option");
 	assert!(received.try_recv().is_ok());
 	assert!(received.try_recv().is_err());
