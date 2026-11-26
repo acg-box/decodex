@@ -7,7 +7,7 @@ use tokio::time;
 
 use crate::{agent_host::AgentHostError, agent_usage_estimate::Source};
 use decodex_codex::app_server_client::{AppServerClient, ClientError, NativeVoiceSettings};
-use decodex_protocol::{AgentVoiceSettingsResult, EntityId, WireText};
+use decodex_protocol::{AgentVoiceOption, AgentVoiceSettingsResult, EntityId, WireText};
 
 pub(crate) async fn read<F, Fut>(source: F) -> AgentVoiceSettingsResult
 where
@@ -52,24 +52,24 @@ where
 			after.key != before.key
 				|| after.client.connection_identity() != before.client.connection_identity()
 		})
-		|| !settings.voices.iter().any(|v| v == voice)
+		|| !settings.voices.iter().any(|v| v.voice == voice)
 	{
 		return Err(Rejected("Voice settings changed. Refresh the voice list."));
 	}
 
-	let saved = before.client.write_realtime_voice(&settings, voice).await.map_err(|_| {
-		Unknown("Voice save or readback is unconfirmed. Refresh settings before trying again.")
-	})?;
+	before
+		.client
+		.write_realtime_voice(&settings, voice)
+		.await
+		.map_err(|_| Unknown("Voice save is unconfirmed. Refresh settings before trying again."))?;
 
 	if source().await.is_none_or(|after| {
 		after.key != before.key
 			|| after.client.connection_identity() != before.client.connection_identity()
-	}) || saved.preference.as_deref() != Some(voice)
-	{
+	}) {
 		return Err(Unknown("Voice save is unconfirmed for this task. Refresh settings."));
 	}
 
-	// A project override is a valid saved preference; the fresh query explains the effective value.
 	Ok(())
 }
 
@@ -106,9 +106,17 @@ fn project(
 	let result = AgentVoiceSettingsResult::Available {
 		work_id: EntityId::new(work).ok()?,
 		review_token: WireText::new(token).ok()?,
-		voices: settings.voices.into_iter().map(WireText::new).collect::<Result<_, _>>().ok()?,
-		effective: settings.effective.map(WireText::new).transpose().ok()?,
-		preference: settings.preference.map(WireText::new).transpose().ok()?,
+		voices: settings
+			.voices
+			.into_iter()
+			.map(|v| {
+				Some(AgentVoiceOption {
+					voice: WireText::new(v.voice).ok()?,
+					name: WireText::new(v.name).ok()?,
+				})
+			})
+			.collect::<Option<_>>()?,
+		selected: WireText::new(settings.selected).ok()?,
 	};
 
 	(serde_json::to_vec(&result).ok()?.len() <= 32 * 1_024).then_some(result)
@@ -119,15 +127,7 @@ async fn inspect(source: &Source) -> Option<(NativeVoiceSettings, String)> {
 		return None;
 	}
 
-	let native =
-		source.client.thread_read(serde_json::json!({"threadId":source.key.thread})).await.ok()?;
-
-	if native["thread"]["id"] != source.key.thread {
-		return None;
-	}
-
-	let settings =
-		source.client.realtime_voice_settings(native["thread"]["cwd"].as_str()?).await.ok()?;
+	let settings = source.client.realtime_voice_settings().await.ok()?;
 	let key = &source.key;
 	let identity = serde_json::json!([
 		key.work,
@@ -137,7 +137,8 @@ async fn inspect(source: &Source) -> Option<(NativeVoiceSettings, String)> {
 		key.revision,
 		key.history_revision,
 		source.client.connection_identity(),
-		settings.fingerprint()
+		settings.selected,
+		settings.voices
 	]);
 	let token = Sha256::digest(identity.to_string().as_bytes())
 		.iter()

@@ -2183,7 +2183,7 @@ pub enum QueryPayload {
 		/// Owning task.
 		work_id: EntityId,
 	},
-	/// Read the current native voice catalog and effective project preference.
+	/// Read the connected account's voice catalog and selection.
 	GetAgentVoiceSettings {
 		/// Owning task.
 		work_id: EntityId,
@@ -3192,7 +3192,7 @@ pub enum QueryResultPayload {
 	AgentPromptFork(PromptForkResult),
 	/// Bounded source-specific attachment receipts.
 	AttachedBranches(AttachedBranchesResult),
-	/// Task-scoped native voice preferences.
+	/// Native voice settings for the task's connected account.
 	AgentVoiceSettings(AgentVoiceSettingsResult),
 	/// Native web-search defaults and permitted modes.
 	AgentSearchSettings(AgentSearchSettingsResult),

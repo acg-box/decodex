@@ -262,12 +262,12 @@
           "upstream_commits": [
             "90e653014ab56215362f065be0cb4698bd75a15e"
           ],
-          "behavior": "Native V3 voice starts opt into backendReasoningStatus. Check explicit voice values against the native V3 catalog. Leave an unset voice to the call destination. Codex owns public-summary filtering and quiet context delivery; Decodex does not copy private reasoning.",
+          "behavior": "Native V3 voice starts opt into backendReasoningStatus. The call destination applies the connected account voice. Codex owns public-summary filtering and quiet context delivery.",
           "source_symbols": [
             "crates/decodex-runtime/src/agent/voice.rs#start_voice"
           ],
           "test_identities_or_selectors": [
-            "voice_start_applies_effective_voice_and_rejects_failed_reads_before_recording_call"
+            "voice_start_uses_native_account_selection_and_honors_managed_policy"
           ],
           "limits": "Exact selected artifact components and freshly generated start schema verified. Wire fixture executed; no new live provider or hardware voice qualification."
         },
@@ -2412,20 +2412,21 @@
       "delivery_state_source": "Read the public pull request for merge and CI state; qualification is distinct from delivery."
     },
     {
-      "id": "thread-scoped-realtime-voice-selection",
-      "contract": "Resolve the effective voice for the exact native thread when starting a new V3 call. The native user-layer save uses an expected configuration version. Project configuration can override the saved preference.",
+      "id": "native-account-voice-selection",
+      "contract": "Use the connected ChatGPT account's selected voice for new calls across projects. The picker reads available IDs and display names. An explicit selection sends one account write and refreshes the picker. Starting a call leaves voice selection to the server.",
       "source_symbols": [
         "crates/decodex-runtime/src/agent/voice.rs#start_voice",
-        "crates/decodex-codex/src/app_server_client/realtime_settings.rs#realtime_voice_for_thread",
+        "crates/decodex-codex/src/app_server_client/realtime_preferences.rs#realtime_voice_settings",
         "crates/decodex-codex/src/app_server_client/realtime_preferences.rs#write_realtime_voice"
       ],
       "qualification_checks": [
-        "crates/decodex-runtime/src/account_launch/agent_process_voice_settings_start_tests.rs#installed_native_voice_reads_project_override_and_refreshed_user_default",
-        "crates/decodex-runtime/src/account_launch/agent_process_voice_settings_start_tests.rs#installed_voice_preference_bridge_saves_absent_file_and_rejects_old_connection",
+        "crates/decodex-runtime/src/account_launch/agent_process_voice_settings_start_tests.rs#installed_account_voice_is_shared_between_projects_after_explicit_save",
+        "crates/decodex-runtime/src/account_launch/agent_process_voice_settings_start_tests.rs#installed_account_voice_requires_chatgpt_even_with_local_preference",
+        "crates/decodex-runtime/src/account_launch/agent_process_native_upgrade_tests.rs#installed_runtime_upgrade_preserves_history_and_paused_goal_with_legacy_voice",
         "crates/decodex-codex/src/schema.rs#official_schema_supports_current_consumers"
       ],
-      "behavior_limits": "The schema check covers the per-call voice field. The native tests cover effective configuration and conditional storage. Audible playback requires separate evidence.",
-      "delivery_reference": "https://github.com/acg-box/decodex/commit/6a042909f36009d4decde3dfa930278f9dcd7c26"
+      "behavior_limits": "Legacy project and local preferences are ignored. The backend owns account-wide persistence. Playback quality requires separate evidence.",
+      "delivery_reference": "https://github.com/acg-box/decodex/commit/8d538a0b366c9b9c08727b66ed030286b67e0ff6"
     }
   ],
   "retained_account_scope": {

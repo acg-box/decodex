@@ -1,25 +1,32 @@
-//! Voice preferences for the next native conversation.
+//! Voice settings for the connected ChatGPT account.
 use serde::{Deserialize, Serialize};
 
 use crate::{EntityId, WireText};
 
-/// Current task-scoped voice selection and configuration identity.
+/// An available account voice.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+pub struct AgentVoiceOption {
+	/// ID sent to the account when selected.
+	pub voice: WireText,
+	/// Name displayed in the voice picker.
+	pub name: WireText,
+}
+
+/// Voice selection for the account connected to the current task.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "status", rename_all = "snake_case", deny_unknown_fields)]
 pub enum AgentVoiceSettingsResult {
 	/// The owning native source could not be read.
 	Unavailable,
-	/// Native catalog and effective project selection.
+	/// The connected account supplied the voice selection and catalog.
 	Available {
-		/// Task that owns these settings.
+		/// Task used to route the account request.
 		work_id: EntityId,
-		/// Source and native configuration version identity.
+		/// Identity of the source and reviewed selection.
 		review_token: WireText,
-		/// Native catalog or upstream fallback choices for V3 voice conversations.
-		voices: Vec<WireText>,
-		/// Effective selection for this project.
-		effective: Option<WireText>,
-		/// Saved user preference, which a project can override.
-		preference: Option<WireText>,
+		/// Available account voices.
+		voices: Vec<AgentVoiceOption>,
+		/// Current account voice ID.
+		selected: WireText,
 	},
 }

@@ -1,161 +1,73 @@
-//! Native voice preferences. Saving affects the next call and never restarts audio.
-use std::{path::Path, time::Duration};
+//! Read and save the connected ChatGPT account's voice.
+use std::time::Duration;
 
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use sha2::{Digest as _, Sha256};
 use tokio::{sync::mpsc::Sender, time};
 
 use crate::app_server_client::{AppServerClient, ClientError, Outbound};
 
-/// Reviewed native configuration, including the version needed for a conditional write.
+/// Voice ID and display name supplied by the account.
+#[derive(Clone, Deserialize, Serialize)]
+pub struct NativeVoiceOption {
+	/// ID used when saving a preference.
+	pub voice: String,
+	/// Human-readable name.
+	pub name: String,
+}
+
+/// The account selection observed on one native connection.
 #[derive(Clone)]
 pub struct NativeVoiceSettings {
 	connection: Sender<Outbound>,
-	cwd: String,
-	file: String,
-	version: String,
-	/// Native V3 voice catalog.
-	pub voices: Vec<String>,
-	/// Effective configured voice. None leaves the choice to the call destination.
-	pub effective: Option<String>,
-	/// The user preference can be overridden by project or managed configuration.
-	pub preference: Option<String>,
-}
-impl NativeVoiceSettings {
-	/// Bind a displayed selection to its native directory, version and effective settings.
-	pub fn fingerprint(&self) -> String {
-		let value = serde_json::json!([
-			self.cwd,
-			self.file,
-			self.version,
-			self.voices,
-			self.effective,
-			self.preference
-		]);
-
-		Sha256::digest(value.to_string().as_bytes())
-			.iter()
-			.map(|byte| format!("{byte:02x}"))
-			.collect()
-	}
+	/// Currently selected voice ID.
+	pub selected: String,
+	/// Choices available to this account.
+	pub voices: Vec<NativeVoiceOption>,
 }
 
 impl AppServerClient {
-	/// Read only voice-related fields from the effective and writable native layers.
-	pub async fn realtime_voice_settings(
-		&self,
-		cwd: &str,
-	) -> Result<NativeVoiceSettings, ClientError> {
-		if !Path::new(cwd).is_absolute() {
-			return Err(ClientError::InvalidFrame);
+	/// Read the selected voice and available choices together.
+	pub async fn realtime_voice_settings(&self) -> Result<NativeVoiceSettings, ClientError> {
+		#[derive(Deserialize)]
+		struct Response {
+			selected: String,
+			voices: Vec<NativeVoiceOption>,
 		}
-
-		time::timeout(Duration::from_secs(15), async {
-			let config = self
-				.request("config/read", serde_json::json!({"cwd":cwd,"includeLayers":true}))
-				.await?;
-			let layers = config["layers"].as_array().ok_or(ClientError::InvalidFrame)?;
-			let user = layers
-				.iter()
-				.find(|layer| layer["name"]["type"] == "user")
-				.ok_or(ClientError::InvalidFrame)?;
-
-			if !user["disabledReason"].is_null() || !config["config"].is_object() {
-				return Err(ClientError::InvalidFrame);
-			}
-
-			let file = string(&user["name"]["file"])?;
-
-			if !Path::new(&file).is_absolute() {
-				return Err(ClientError::InvalidFrame);
-			}
-
-			let version = string(&user["version"])?;
-			let voices = self.realtime_voice_catalog().await?;
-			let effective = optional_voice(&config["config"]["realtime"]["voice"])?;
-			let preference = optional_voice(&user["config"]["realtime"]["voice"])?;
-
-			Ok(NativeVoiceSettings {
-				connection: self.outbound.clone(),
-				cwd: cwd.into(),
-				file,
-				version,
-				voices,
-				effective,
-				preference,
-			})
-		})
+		let value = time::timeout(
+			Duration::from_secs(15),
+			self.request("account/voiceSettings/read", Value::Null),
+		)
 		.await
-		.map_err(|_| ClientError::Io)?
+		.map_err(|_| ClientError::Io)??;
+		let response: Response =
+			serde_json::from_value(value).map_err(|_| ClientError::InvalidFrame)?;
+		Ok(NativeVoiceSettings {
+			connection: self.outbound.clone(),
+			selected: response.selected,
+			voices: response.voices,
+		})
 	}
 
-	/// Save one reviewed voice with native compare-and-swap, then read effective settings.
-	/// An error after dispatch is unconfirmed; this method never retries a write.
+	/// Save an ID from this connection's catalog once. The caller can refresh the selection.
 	pub async fn write_realtime_voice(
 		&self,
 		observed: &NativeVoiceSettings,
 		voice: &str,
-	) -> Result<NativeVoiceSettings, ClientError> {
+	) -> Result<(), ClientError> {
 		if !self.outbound.same_channel(&observed.connection)
-			|| !observed.voices.iter().any(|v| v == voice)
+			|| !observed.voices.iter().any(|option| option.voice == voice)
 		{
 			return Err(ClientError::InvalidFrame);
 		}
-
-		let params = serde_json::json!({"filePath":observed.file,"expectedVersion":observed.version,
-			"reloadUserConfig":false,"edits":[{"keyPath":"realtime.voice","value":voice,"mergeStrategy":"replace"}]});
-		let receipt =
-			time::timeout(Duration::from_secs(15), self.request("config/batchWrite", params))
-				.await
-				.map_err(|_| ClientError::Io)??;
-
-		if !matches!(receipt["status"].as_str(), Some("ok" | "okOverridden"))
-			|| receipt["filePath"] != observed.file
-			|| string(&receipt["version"]).is_err()
-		{
-			return Err(ClientError::InvalidFrame);
-		}
-
-		self.realtime_voice_settings(&observed.cwd).await
+		time::timeout(
+			Duration::from_secs(15),
+			self.request("account/voiceSettings/write", serde_json::json!({"voice":voice})),
+		)
+		.await
+		.map_err(|_| ClientError::Io)??;
+		Ok(())
 	}
-
-	pub(super) async fn realtime_voice_catalog(&self) -> Result<Vec<String>, ClientError> {
-		let value = self.request("thread/realtime/listVoices", serde_json::json!({})).await?;
-		let catalog = value["voices"]["v3"].as_array().ok_or(ClientError::InvalidFrame)?;
-
-		if catalog.is_empty() || catalog.len() > 64 {
-			return Err(ClientError::InvalidFrame);
-		}
-
-		catalog.iter().map(string).collect()
-	}
-}
-
-/// Accept only a conditional voice edit through the retained native transport.
-pub fn is_realtime_voice_write(params: &Value) -> bool {
-	params.as_object().is_some_and(|v| v.len() == 4)
-		&& params["reloadUserConfig"] == false
-		&& params["filePath"].as_str().is_some_and(|p| Path::new(p).is_absolute())
-		&& string(&params["expectedVersion"]).is_ok()
-		&& params["edits"].as_array().is_some_and(|edits| {
-			edits.len() == 1
-				&& edits[0].as_object().is_some_and(|v| v.len() == 3)
-				&& edits[0]["keyPath"] == "realtime.voice"
-				&& edits[0]["mergeStrategy"] == "replace"
-				&& string(&edits[0]["value"]).is_ok()
-		})
-}
-
-fn string(value: &Value) -> Result<String, ClientError> {
-	value
-		.as_str()
-		.filter(|v| !v.is_empty() && v.len() <= 4_096 && !v.chars().any(char::is_control))
-		.map(str::to_owned)
-		.ok_or(ClientError::InvalidFrame)
-}
-
-fn optional_voice(value: &Value) -> Result<Option<String>, ClientError> {
-	if value.is_null() { Ok(None) } else { string(value).map(Some) }
 }
 
 #[cfg(test)]

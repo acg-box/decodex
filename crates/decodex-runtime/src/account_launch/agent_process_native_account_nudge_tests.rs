@@ -51,7 +51,7 @@ pub(crate) async fn serve_notification_with_gate(
 	}
 }
 
-fn write_fixture_credentials(home: &Path) {
+pub(crate) fn write_fixture_credentials(home: &Path) {
 	let claims = serde_json::json!({"email":"fixture@example.test","exp":4102444800_u64,
 		"https://api.openai.com/auth":{"chatgpt_account_id":"workspace-fixture",
 		"chatgpt_user_id":"user-fixture","chatgpt_plan_type":"team"}});

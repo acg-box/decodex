@@ -107,11 +107,11 @@
       "completedRunId": "957e1b8b-b0a1-456e-be0a-b196c4e1a085"
     },
     "/openwiki/integrations/subscription-voice.md": {
-      "gitHead": "ab080d55832c3217086a34e767f1854c8e6d335f",
-      "sourceFingerprint": "sha256:8336ef5a731fa68ff03e01d1baccf43d6eca10a1819e982eb115149d4065a874",
-      "pageVersion": "sha256:acedf8387674e67715f7d747fe4247d7d08246d9cd2168a256b6d9daf13959c9",
+      "pageVersion": "sha256:fc60fba5e880cbaeac2d7c9893c3beb67cdf10c76e754755ce6da5e90e8b14d6",
       "completedBy": "codex",
-      "completedRunId": "b2d04fc2-ab86-4fc2-98d8-b1ea023deedb"
+      "completedRunId": "2e5b2cb6-ae87-4676-a1ab-5dca4210c868",
+      "gitHead": "0f8012f62ae057f0332e01eb5c49c811c35fe497",
+      "sourceFingerprint": "sha256:f22c0e928e3d751b69fdf4414d0a3cc2c52e0f70db73b4b41ccb2107e8f3ed14"
     },
     "/openwiki/integrations/tools-plugins-and-apps.md": {
       "gitHead": "45e6cf16b5842d572694cbd7f7a373fadbaa4a51",
@@ -128,11 +128,11 @@
       "completedRunId": "f7608b7d-9544-468e-83d0-b3b48ee99e02"
     },
     "/openwiki/operations/codex-upstream-autopilot.md": {
-      "gitHead": "2a405510bbcccace63f201b6a7e6a5d963547d0b",
-      "sourceFingerprint": "sha256:da6ec465eafa663d2021be0532a8c08dca549937bb1d2eb338f291b900939d44",
-      "pageVersion": "sha256:d3670b9fbf8b2d077cc017fa8e2665dfbbef9436c7f6636dd2bb331f947f9c30",
+      "pageVersion": "sha256:2b2bd1377d5db35c739541d821817006c8e99f1bb897ba93bf95cfbf2d5c42f4",
       "completedBy": "codex",
-      "completedRunId": "70fb2543-a006-49fc-bde6-fa1fb4ff6e5a"
+      "completedRunId": "2e5b2cb6-ae87-4676-a1ab-5dca4210c868",
+      "gitHead": "0f8012f62ae057f0332e01eb5c49c811c35fe497",
+      "sourceFingerprint": "sha256:f22c0e928e3d751b69fdf4414d0a3cc2c52e0f70db73b4b41ccb2107e8f3ed14"
     },
     "/openwiki/operations/commands-and-validation.md": {
       "gitHead": "ca565aaf3e5dcd3928d78d057bc556ed132a4ca2",
@@ -219,11 +219,11 @@
       "completedRunId": "446a8a3f-6d00-456b-8817-b4bfbc5a0ae8"
     },
     "/openwiki/testing/upstream-acceptance-boundaries.md": {
-      "pageVersion": "sha256:b9a55dfbc79945d938312f859c35a1c0dd0ed574d7838c08faf32d0c5cfb9e74",
+      "pageVersion": "sha256:986e9bf5f0a38da8c58fddb9ff142f47a1ca8908caee6d82591d0b2289e8d75d",
       "completedBy": "codex",
-      "completedRunId": "f067a592-ef89-4957-ad12-7cfc45eef9f9",
-      "gitHead": "f0c4c5e68f103d1b1cf9a4fc7cac3702f8247693",
-      "sourceFingerprint": "sha256:70a7512678778fe8a44034ed4954a985e6adf2916ef8e4941d0ccd68a494d2d0"
+      "completedRunId": "2e5b2cb6-ae87-4676-a1ab-5dca4210c868",
+      "gitHead": "0f8012f62ae057f0332e01eb5c49c811c35fe497",
+      "sourceFingerprint": "sha256:f22c0e928e3d751b69fdf4414d0a3cc2c52e0f70db73b4b41ccb2107e8f3ed14"
     },
     "/openwiki/workflows/approvals-and-native-ownership.md": {
       "gitHead": "fac5349d14a3f0219d6e1817c3d4737539be5f5e",

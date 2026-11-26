@@ -276,7 +276,6 @@ impl AgentCoordinator {
 		}
 
 		self.ensure_loaded_chat_folder(&thread).await?;
-		let selected_voice = self.client.realtime_voice_for_thread(&thread).await?;
 		let baseline = self.client.thread_latest_turn_id(&thread).await?;
 
 		self.store
@@ -297,7 +296,7 @@ impl AgentCoordinator {
 			Some((session_id.as_str().into(), thread.clone()));
 
 		let mut params = serde_json::json!({
-			"threadId":thread,"realtimeSessionId":session_id.as_str(),"version":"v3","outputModality":"audio","voice":selected_voice,
+			"threadId":thread,"realtimeSessionId":session_id.as_str(),"version":"v3","outputModality":"audio",
 			"includeStartupContext":true,"flushTranscriptTailOnSessionEnd":true,
 			"backendReasoningStatus":true,
 			"prompt":"Continue this Agent conversation by voice. Wait for the user's new spoken request before starting new work. Use the existing conversation and its tools when the user asks for work.",

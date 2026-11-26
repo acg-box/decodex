@@ -323,6 +323,12 @@ fn validate_inherited_request(method: &Value, params: &Value) -> Option<Result<(
 
 fn validate_catalog_method(method: &Value, params: &Value) -> Option<Result<(), ClientError>> {
 	let valid = match method.as_str()? {
+		"account/voiceSettings/read" => params.is_null(),
+		"account/voiceSettings/write" =>
+			params.as_object().is_some_and(|fields| fields.len() == 1)
+				&& params["voice"]
+					.as_str()
+					.is_some_and(|voice| !voice.is_empty() && voice.len() <= 4_096),
 		"project/create" => app_server_client::is_project_create(params),
 		"project/read" => app_server_client::is_project_read(params),
 		"project/delete" => app_server_client::is_project_read(params),
@@ -338,7 +344,6 @@ fn validate_catalog_method(method: &Value, params: &Value) -> Option<Result<(), 
 fn validate_config_write(params: &Value) -> Result<(), ClientError> {
 	if app_server_client::is_hook_settings_write(params)
 		|| app_server_client::is_app_tool_exposure_write(params)
-		|| app_server_client::is_realtime_voice_write(params)
 		|| app_server_client::is_search_mode_write(params)
 		|| app_server_client::is_context_preference_write(params)
 	{
@@ -428,7 +433,6 @@ fn validate_outbound_method(method: &Value, params: &Value) -> Result<(), Client
 				| "thread/realtime/start"
 				| "thread/realtime/appendSpeech"
 				| "thread/realtime/stop"
-				| "thread/realtime/listVoices"
 				| "model/list"
 				| "experimentalFeature/list"
 				| "skills/extraRoots/set"
