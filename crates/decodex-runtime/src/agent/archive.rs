@@ -21,7 +21,8 @@ impl AgentCoordinator {
 		self.delete_archived_thread(work, thread).await
 	}
 
-	/// Archive only the exact idle conversation selected by the user.
+	/// Archive only the exact idle conversation selected by the user. Native
+	/// readback confirms storage. A separate desktop process owns its sidebar cache.
 	pub async fn archive_conversation(
 		&mut self,
 		work: &str,
@@ -33,7 +34,7 @@ impl AgentCoordinator {
 			|| item.dispatch_state != super::AgentDispatchState::Idle
 			|| !self
 				.store
-				.can_manage_agent_archive(
+				.can_access_account_thread(
 					work.into(),
 					thread.into(),
 					self.native_generation.as_ref().map(|g| g.as_str().into()),
@@ -47,13 +48,17 @@ impl AgentCoordinator {
 		match self.client.thread_archive_state(thread).await? {
 			ThreadArchiveState::Archived => {},
 			ThreadArchiveState::Active => {
-				let _ = time::timeout(
+				let submitted = time::timeout(
 					Duration::from_secs(8),
 					self.client.request("thread/archive", serde_json::json!({"threadId":thread})),
 				)
 				.await;
-				if self.client.thread_archive_state(thread).await? != ThreadArchiveState::Archived {
-					return Err(AgentError::UnknownDispatch);
+				match self.client.thread_archive_state(thread).await? {
+					ThreadArchiveState::Archived => {},
+					ThreadArchiveState::Active
+						if let Ok(Err(error @ ClientError::Remote(_))) = submitted =>
+						return Err(super::thread_mutation_error(error, thread)),
+					_ => return Err(AgentError::UnknownDispatch),
 				}
 			},
 			_ => return Err(AgentError::Rejected("The conversation is unavailable.".into())),
@@ -75,7 +80,7 @@ impl AgentCoordinator {
 		let generation = self.native_generation.as_ref().map(|g| g.as_str().to_owned());
 		if !self
 			.store
-			.can_manage_agent_archive(work.into(), thread.into(), generation.clone())
+			.can_access_account_thread(work.into(), thread.into(), generation.clone())
 			.await?
 		{
 			return Err(AgentError::Rejected("The conversation binding changed.".into()));
@@ -86,7 +91,7 @@ impl AgentCoordinator {
 		{
 			return Err(AgentError::Rejected("Only archived conversations can be deleted.".into()));
 		}
-		if !self.store.can_manage_agent_archive(work.into(), thread.into(), generation).await? {
+		if !self.store.can_access_account_thread(work.into(), thread.into(), generation).await? {
 			return Err(AgentError::Rejected("The conversation binding changed.".into()));
 		}
 		let targets = self.store.request_agent_thread_deletion(work.into(), thread.into()).await?;
@@ -99,7 +104,7 @@ impl AgentCoordinator {
 				&& !self.client.archived_thread_absent(&target).await.unwrap_or(false)
 			{
 				if matches!(error, ClientError::Remote(_)) {
-					return Err(error.into());
+					return Err(super::thread_mutation_error(error, &target));
 				}
 				return Err(AgentError::UnknownDispatch);
 			}
@@ -124,7 +129,7 @@ impl AgentCoordinator {
 
 		if !self
 			.store
-			.can_manage_agent_archive(work.into(), thread.into(), generation.clone())
+			.can_access_account_thread(work.into(), thread.into(), generation.clone())
 			.await?
 		{
 			return Err(reject());
@@ -137,7 +142,7 @@ impl AgentCoordinator {
 		}
 		if !self
 			.store
-			.can_manage_agent_archive(work.into(), thread.into(), generation.clone())
+			.can_access_account_thread(work.into(), thread.into(), generation.clone())
 			.await?
 		{
 			return Err(reject());
@@ -156,7 +161,7 @@ impl AgentCoordinator {
 		// Only desired-state readback can resolve an uncertain mutation.
 		let observed = self.client.thread_archive_state(thread).await;
 
-		if !self.store.can_manage_agent_archive(work.into(), thread.into(), generation).await? {
+		if !self.store.can_access_account_thread(work.into(), thread.into(), generation).await? {
 			return Err(AgentError::UnknownDispatch);
 		}
 
@@ -167,8 +172,11 @@ impl AgentCoordinator {
 				Ok(())
 			},
 			Ok(ThreadArchiveState::Archived)
-				if matches!(submitted, Err(ClientError::Remote(_))) =>
-				Err(reject()),
+				if let Err(error @ ClientError::Remote(_)) = submitted =>
+				match super::thread_mutation_error(error, thread) {
+					owned @ AgentError::ThreadOwnedElsewhere { .. } => Err(owned),
+					_ => Err(reject()),
+				},
 			_ => Err(AgentError::UnknownDispatch),
 		}
 	}

@@ -22,8 +22,6 @@ use crate::{
 };
 use decodex_protocol::{AgentHistoryEntryDto, AgentTurnTimingDto, AgentTurnUsageDto};
 
-const METRICS_HEIGHT: f32 = 24.;
-
 #[derive(Clone, Default)]
 pub(super) struct FooterPresentation {
 	pub ready: Rc<Cell<bool>>,
@@ -52,7 +50,7 @@ impl RenderOnce for FinishedFooter {
 
 			(motion.sample(now), motion.moving(now))
 		});
-		if let Some(state) = self.presentation {
+		if let Some(state) = &self.presentation {
 			state.progress.set(progress);
 		}
 
@@ -62,10 +60,14 @@ impl RenderOnce for FinishedFooter {
 
 		gpui::div()
 			.debug_selector(|| "response-footer".into())
+			.flex()
+			.flex_col()
 			.w_full()
 			.flex_none()
-			.h(gpui::px((METRICS_HEIGHT + METADATA_GAP) * progress))
-			.when(progress < 1., |row| row.overflow_hidden())
+			.h(gpui::px(ui_theme::RESPONSE_FOOTER_EXTENT * progress))
+			.when(progress == 0. || (self.presentation.is_none() && moving), |row| {
+				row.overflow_hidden()
+			})
 			.opacity(progress)
 			.children(self.child)
 	}
@@ -111,7 +113,7 @@ impl RenderOnce for ResponseMetrics {
 			.cursor_pointer()
 			.flex_none()
 			.whitespace_nowrap()
-			.h(gpui::px(METRICS_HEIGHT))
+			.h(gpui::px(ui_theme::RESPONSE_FOOTER_HEIGHT))
 			.flex()
 			.items_center()
 			.gap(gpui::px(6.))

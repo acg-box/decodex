@@ -6,7 +6,7 @@ mod account_recovery;
 mod agent;
 pub use decodex_core::assistant::{
 	AgentTeam, AssistantCommand, AssistantSettings, AssistantState, AssistantWake,
-	RagflowConnection, TeamMember,
+	MemoryImportStatus, RagflowConnection, TeamMember,
 };
 mod agent_app_exposure;
 mod agent_app_ui;
@@ -69,7 +69,9 @@ mod wire;
 mod work_portfolio;
 
 pub use decodex_core::PermissionMode;
-pub use item_context::{ItemContextRequest, ItemContextResult};
+pub use item_context::{
+	ConversationMatch, ConversationMatches, ItemContextRequest, ItemContextResult,
+};
 pub use resource_owners::{ResourceOwner, ResourceOwnersRequest, ResourceOwnersResult};
 
 pub use self::{
@@ -295,7 +297,7 @@ pub use work_portfolio::{MAX_WORK_DETAIL_BYTES, WORK_DETAIL_PAGE_BYTES, WorkDeta
 use serde::{Deserialize, Serialize};
 
 /// The only protocol generation and revision accepted by this build.
-pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 4, minor: 13 };
+pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 4, minor: 15 };
 
 /// A version of the Decodex application protocol.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Deserialize, Serialize)]

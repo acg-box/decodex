@@ -116,6 +116,25 @@ pub enum AssistantCommand {
 	RefreshContext,
 }
 
+/// The last result of sending a completed exchange to external memory.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MemoryImportStatus {
+	/// RAGFlow accepted the exchange for processing.
+	#[serde(
+		alias = "Import queued for asynchronous extraction; searchable completion is not yet confirmed."
+	)]
+	Queued,
+	/// The import could not be confirmed.
+	#[serde(
+		alias = "Import unavailable. Check the connection and credential; unknown imports are not repeated."
+	)]
+	Unavailable,
+	/// A newer service supplied a status this client does not recognize.
+	#[serde(other)]
+	Unknown,
+}
+
 /// Readable state. Original source records retain their execution authority.
 #[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]
 pub struct AssistantState {
@@ -133,5 +152,5 @@ pub struct AssistantState {
 	pub context_pending: bool,
 	/// Last external import failure or asynchronous acceptance, without credential details.
 	#[serde(default)]
-	pub memory_status: Option<String>,
+	pub memory_status: Option<MemoryImportStatus>,
 }

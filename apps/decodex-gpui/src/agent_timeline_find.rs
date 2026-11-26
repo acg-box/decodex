@@ -1,11 +1,10 @@
-//! Find in retained conversation pages without a second history store.
+//! Search native messages and retained local activity in the current conversation.
 use gpui::{
-	AnyElement, AnyWindowHandle, AppContext as _, Entity, FocusHandle, Focusable as _,
-	KeyDownEvent, SharedString,
+	AnyElement, AnyWindowHandle, AppContext as _, Entity, FocusHandle, Focusable as _, SharedString,
 };
 
 use crate::{
-	composer_input::{ComposerEvent, ComposerInput, SubmitComposer},
+	composer_input::{ComposerEvent, ComposerInput},
 	shell::agent_surface::native_timeline::{
 		self, AgentSurface, AgentTimelineContent, AgentTimelineEntry, Context, FluentBuilder,
 		InteractiveElement, IntoElement, ParentElement, Styled,
@@ -13,13 +12,31 @@ use crate::{
 	ui_theme,
 };
 
+use decodex_protocol::{AgentClient, ConversationMatch, EntityId, ItemContextRequest, WireText};
+
 type Key = (u64, u8, String);
+
+#[derive(Clone, Eq, PartialEq)]
+enum Target {
+	Loaded(Key),
+	Message(usize),
+}
+
+#[derive(Default)]
+struct Search {
+	hits: Vec<ConversationMatch>,
+	cursor: Option<WireText>,
+	selected: Option<usize>,
+	task: Option<gpui::Task<()>>,
+	failed: bool,
+}
 
 #[derive(Default)]
 pub(super) struct Panel {
 	pub open: bool,
 	input: Option<Entity<ComposerInput>>,
 	query: String,
+	search: Search,
 	pub current: Option<Key>,
 	pub searching_earlier: bool,
 	retained: Option<Retained>,
@@ -83,9 +100,12 @@ impl AgentSurface {
 						.as_ref()
 						.map(|input| input.read(cx).content().to_owned())
 						.unwrap_or_default();
+					s.reset_item_context();
 					s.timeline.native.find.current = None;
 					s.timeline.native.find.retained = None;
+					s.timeline.native.find.search = Search::default();
 					s.select_conversation_match(false, cx);
+					s.read_conversation_matches(cx);
 				}
 			})
 			.detach();
@@ -103,6 +123,11 @@ impl AgentSurface {
 			});
 		}
 		self.timeline.native.find.open = true;
+		if self.timeline.native.find.search.hits.is_empty()
+			&& self.timeline.native.find.search.task.is_none()
+		{
+			self.read_conversation_matches(cx);
+		}
 		if let Some(input) = &self.timeline.native.find.input {
 			window.activate_window();
 			window.focus(&input.focus_handle(cx), cx);
@@ -110,9 +135,14 @@ impl AgentSurface {
 		cx.notify();
 	}
 
+	pub(in super::super) fn dismiss_conversation_search(&mut self) {
+		self.timeline.native.find = Panel::default();
+	}
+
 	fn close_conversation_find(&mut self, cx: &mut Context<Self>) {
 		let find = &mut self.timeline.native.find;
 		find.open = false;
+		find.search = Search::default();
 		find.current = None;
 		find.retained = None;
 		find.searching_earlier = false;
@@ -146,13 +176,22 @@ impl AgentSurface {
 		}
 		let find = &self.timeline.native.find;
 		let input = find.input.as_ref().filter(|_| find.open)?;
-		let matches = self.conversation_find_matches();
-		let index =
-			find.current.as_ref().and_then(|key| matches.iter().position(|value| value == key));
+		let matches = self.conversation_targets();
+		let selected = self.selected_find_target();
+		let index = matches.iter().position(|value| Some(value) == selected.as_ref());
 		let count = if find.query.trim().is_empty() {
-			"Search loaded history".into()
+			String::new()
+		} else if matches.is_empty() && find.search.task.is_some() {
+			"Searching…".into()
+		} else if matches.is_empty() && find.search.failed {
+			"No loaded matches".into()
 		} else {
-			format!("{} / {} records", index.map_or(0, |index| index + 1), matches.len())
+			format!(
+				"{} / {}{}",
+				index.map_or(0, |i| i + 1),
+				matches.len(),
+				if find.search.cursor.is_some() { "+" } else { "" }
+			)
 		};
 		Some(
 			gpui::div()
@@ -163,23 +202,15 @@ impl AgentSurface {
 				.flex()
 				.flex_col()
 				.gap_1()
-				.capture_key_down(cx.listener(|s, event: &KeyDownEvent, _, cx| {
-					if event.keystroke.key == "escape" {
-						if !event.is_held {
-							s.close_conversation_find(cx);
-						}
-						cx.stop_propagation();
-					} else if event.keystroke.key == "enter" {
-						if !event.is_held {
-							s.select_conversation_match(event.keystroke.modifiers.shift, cx);
-						}
-						cx.stop_propagation();
-					}
+				.key_context("ConversationFind")
+				.on_action(cx.listener(|s, _: &crate::shell::NextMatch, _, cx| {
+					s.select_conversation_match(false, cx)
 				}))
-				// The editor's Enter action must never reach the message composer.
-				.on_action(cx.listener(|s, _: &SubmitComposer, _, cx| {
-					s.select_conversation_match(false, cx);
-					cx.stop_propagation();
+				.on_action(cx.listener(|s, _: &crate::shell::PreviousMatch, _, cx| {
+					s.select_conversation_match(true, cx)
+				}))
+				.on_action(cx.listener(|s, _: &crate::shell::CloseFind, _, cx| {
+					s.close_conversation_find(cx)
 				}))
 				.child(
 					gpui::div()
@@ -212,13 +243,30 @@ impl AgentSurface {
 						.flex()
 						.items_center()
 						.gap_2()
-						.child(crate::shell::agent_surface::muted(
-							if self.timeline.native.browsing_window {
-								"Earlier history window. Shortened output is not fully searched."
-							} else {
-								"Loaded history, including folded activity. Shortened output is not fully searched."
+						.when(find.search.failed, |row| {
+							row.child(crate::shell::agent_surface::muted(
+								"Message search unavailable.",
+							))
+							.child(self.workspace_action(
+								"find-retry".into(),
+								"Retry".into(),
+								Self::read_conversation_matches,
+								cx,
+							))
+						})
+						.when(
+							find.search.cursor.is_some()
+								&& find.search.task.is_none()
+								&& !find.search.failed,
+							|row| {
+								row.child(self.workspace_action(
+									"find-more".into(),
+									"More matches".into(),
+									Self::read_conversation_matches,
+									cx,
+								))
 							},
-						))
+						)
 						.when(self.timeline.native.older_cursor.is_some(), |row| {
 							row.child(if self.timeline.native.task.is_some() {
 								crate::ui_loading::loading("Loading earlier history")
@@ -226,7 +274,7 @@ impl AgentSurface {
 							} else {
 								self.workspace_action(
 									"find-earlier".into(),
-									"Load earlier and search".into(),
+									"Search earlier activity".into(),
 									|s, cx| {
 										if let Some(binding) = s.timeline.native.binding.clone() {
 											s.timeline.native.find.searching_earlier = true;
@@ -247,7 +295,101 @@ impl AgentSurface {
 		)
 	}
 
-	fn conversation_find_matches(&self) -> Vec<Key> {
+	fn read_conversation_matches(&mut self, cx: &mut Context<Self>) {
+		let Some(binding) = self.timeline.native.binding.clone() else { return };
+		let Some(profile) = self.profile.clone() else { return };
+		let source = self.snapshot.as_ref().and_then(|s| s.runtime_source.clone());
+		let find = &mut self.timeline.native.find;
+		let query = find.query.trim().to_owned();
+		if query.is_empty() || find.search.task.is_some() {
+			return;
+		}
+		let cursor = find.search.cursor.clone();
+		find.search.failed = false;
+		find.search.task = Some(cx.spawn(async move |surface, cx| {
+			let executor = cx.background_executor().clone();
+			if cursor.is_none() {
+				executor.timer(std::time::Duration::from_millis(180)).await;
+			}
+			let expected = binding.clone();
+			let term = query.clone();
+			let page = executor
+				.spawn(async move {
+					let runtime =
+						tokio::runtime::Builder::new_current_thread().enable_all().build().ok()?;
+					runtime
+						.block_on(AgentClient::new(profile).search_conversation(
+							EntityId::new(binding.work).ok()?,
+							EntityId::new(binding.thread).ok()?,
+							WireText::new(term).ok()?,
+							cursor,
+						))
+						.ok()
+						.flatten()
+				})
+				.await;
+			let _ = surface.update(cx, |s, cx| {
+				s.timeline.native.find.search.task = None;
+				if !s.conversation_find_open()
+					|| s.timeline.native.binding.as_ref() != Some(&expected)
+					|| s.snapshot.as_ref().and_then(|s| s.runtime_source.as_ref())
+						!= source.as_ref()
+					|| s.timeline.native.find.query.trim() != query
+				{
+					return;
+				}
+				let search = &mut s.timeline.native.find.search;
+				if let Some(page) = page {
+					search.hits.extend(page.data);
+					search.cursor = page.next_cursor;
+					if s.selected_find_target().is_none() {
+						s.select_conversation_match(false, cx);
+					}
+				} else {
+					search.failed = true;
+				}
+				cx.notify();
+			});
+		}));
+	}
+
+	fn selected_find_target(&self) -> Option<Target> {
+		let find = &self.timeline.native.find;
+		find.search
+			.selected
+			.map(Target::Message)
+			.or_else(|| find.current.clone().map(Target::Loaded))
+	}
+
+	fn conversation_targets(&self) -> Vec<Target> {
+		let loaded = self.matching_entries();
+		let mut seen: std::collections::HashSet<_> = loaded
+			.iter()
+			.filter_map(|entry| match &entry.content {
+				AgentTimelineContent::Item { turn_id, item_id, .. } =>
+					Some((self.entry_thread(entry)?, turn_id.as_str(), item_id.as_str())),
+				_ => None,
+			})
+			.collect();
+		let mut targets: Vec<_> =
+			loaded.into_iter().map(|entry| Target::Loaded(entry_key(entry))).collect();
+		targets.extend(
+			self.timeline
+				.native
+				.find
+				.search
+				.hits
+				.iter()
+				.enumerate()
+				.filter(|(_, h)| {
+					seen.insert((h.thread_id.as_str(), h.turn_id.as_str(), h.item_id.as_str()))
+				})
+				.map(|(i, _)| Target::Message(i)),
+		);
+		targets
+	}
+
+	fn matching_entries(&self) -> Vec<&AgentTimelineEntry> {
 		let query = self.timeline.native.find.query.trim().to_lowercase();
 		if query.is_empty() {
 			return Vec::new();
@@ -271,7 +413,7 @@ impl AgentSurface {
 				let text = self.find_entry_text(entry, work.as_ref());
 				text.to_lowercase().contains(&query)
 			})
-			.map(|(_, entry)| entry_key(entry))
+			.map(|(_, entry)| entry)
 			.collect()
 	}
 
@@ -295,14 +437,9 @@ impl AgentSurface {
 	}
 
 	pub(super) fn select_conversation_match(&mut self, previous: bool, cx: &mut Context<Self>) {
-		let matches = self.conversation_find_matches();
-		let index = self
-			.timeline
-			.native
-			.find
-			.current
-			.as_ref()
-			.and_then(|current| matches.iter().position(|key| key == current));
+		let matches = self.conversation_targets();
+		let selected = self.selected_find_target();
+		let index = matches.iter().position(|target| Some(target) == selected.as_ref());
 		let next = match (index, previous, matches.len()) {
 			(_, _, 0) => None,
 			(Some(index), true, count) => Some((index + count - 1) % count),
@@ -310,8 +447,34 @@ impl AgentSurface {
 			(None, true, count) => Some(count - 1),
 			(None, false, _) => Some(0),
 		};
-		self.timeline.native.find.current = next.map(|index| matches[index].clone());
 		self.timeline.native.find.retained = None;
+		self.timeline.native.find.current = None;
+		self.timeline.native.find.search.selected = None;
+		match next.map(|index| &matches[index]) {
+			Some(Target::Message(index)) => {
+				let Some(binding) = self.timeline.native.binding.as_ref() else { return };
+				let Ok(work_id) = EntityId::new(&binding.work) else { return };
+				self.timeline.native.find.search.selected = Some(*index);
+				let hit = &self.timeline.native.find.search.hits[*index];
+				self.locate_find_match(
+					ItemContextRequest {
+						work_id,
+						thread_id: hit.thread_id.clone(),
+						turn_id: hit.turn_id.clone(),
+						item_id: hit.item_id.clone(),
+						cursor: None,
+						before: false,
+					},
+					cx,
+				);
+				return;
+			},
+			Some(Target::Loaded(key)) => {
+				self.reset_item_context();
+				self.timeline.native.find.current = Some(key.clone());
+			},
+			None => {},
+		}
 		if let Some(entry) =
 			self.timeline.native.entries.iter().find(|entry| self.is_conversation_match(entry))
 			&& let AgentTimelineContent::Item { turn_id, item_id, kind, text, truncated, .. } =
@@ -336,6 +499,11 @@ impl AgentSurface {
 			self.timeline.native.viewport.find(key.clone());
 		}
 		cx.notify();
+	}
+
+	pub(in super::super) fn located_match_excerpt(&self) -> Option<String> {
+		let find = &self.timeline.native.find;
+		find.search.hits.get(find.search.selected?).map(|hit| hit.snippet.clone())
 	}
 
 	pub(super) fn is_conversation_match(&self, entry: &AgentTimelineEntry) -> bool {
@@ -577,6 +745,36 @@ mod tests {
 		s.timeline.native = state;
 	}
 
+	#[gpui::test]
+	fn native_matches_keep_the_source_context_and_merge_with_loaded_activity(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		surface.update(visual, prepare);
+		surface.update(visual, |s, cx| {
+			let snapshot = s.snapshot.as_mut().unwrap();
+			snapshot.assistant.agent_id = Some("agent".into());
+			snapshot.assistant.previous_thread_ids = vec!["previous".into()];
+			snapshot.runtime_source = Some(super::EntityId::new("runtime").unwrap());
+			let find = &mut s.timeline.native.find;
+			find.open = true;
+			find.query = "needle".into();
+			find.search.hits = ["thread", "previous"]
+				.map(|thread| super::ConversationMatch {
+					thread_id: super::EntityId::new(thread).unwrap(),
+					turn_id: super::WireText::new("turn").unwrap(),
+					item_id: super::WireText::new("item-12").unwrap(),
+					snippet: "Earlier needle".into(),
+				})
+				.to_vec();
+			assert_eq!(s.conversation_targets().len(), 3);
+			s.select_conversation_match(true, cx);
+			assert_eq!(s.located_match_excerpt().as_deref(), Some("Earlier needle"));
+			assert!(s.is_located_item(Some("previous"), &s.timeline.native.entries[2].content));
+			assert!(!s.is_located_item(Some("thread"), &s.timeline.native.entries[2].content));
+		});
+	}
+
 	#[test]
 	fn find_excerpt_keeps_a_late_unicode_match_on_original_boundaries() {
 		let text = format!("İ{}目标 ABC{}", "长".repeat(500), "尾".repeat(500));
@@ -607,7 +805,7 @@ mod tests {
 		visual.run_until_parked();
 		visual.update(crate::ui_frame::draw_current_frame);
 		surface.read_with(visual, |s, _| {
-			assert_eq!(s.conversation_find_matches().len(), 2);
+			assert_eq!(s.matching_entries().len(), 2);
 			assert_eq!(
 				s.timeline.native.find.current,
 				Some(entry_key(&s.timeline.native.entries[1]))
@@ -676,7 +874,7 @@ mod tests {
 				s.find_retained_text("turn", "item-12"),
 				Some(("Original live needle", false))
 			);
-			assert_eq!(s.conversation_find_matches().len(), 2);
+			assert_eq!(s.matching_entries().len(), 2);
 		});
 		surface.update(visual, |s, _| {
 			s.timeline.native.find.open = false;
@@ -694,7 +892,7 @@ mod tests {
 			.update(|window, cx| surface.update(cx, |s, cx| s.open_conversation_find(window, cx)));
 		surface.update(visual, |s, cx| {
 			s.timeline.native.find.query = "earlier needle".into();
-			assert!(s.conversation_find_matches().is_empty());
+			assert!(s.matching_entries().is_empty());
 			s.timeline.native.find.searching_earlier = true;
 			s.finish_native_timeline_read(
 				Some(decodex_protocol::AgentTimelineResult::Available {
@@ -707,7 +905,7 @@ mod tests {
 				false,
 				cx,
 			);
-			assert_eq!(s.conversation_find_matches().len(), 1);
+			assert_eq!(s.matching_entries().len(), 1);
 			assert_eq!(
 				s.timeline.native.find.current,
 				Some(entry_key(&s.timeline.native.entries[0]))

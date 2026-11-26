@@ -6,7 +6,8 @@ use crate::{
 		Destination,
 		workspace_symbols::{self, Symbol},
 	},
-	ui_motion::HoverHint as _,
+	ui_motion::{self, HoverHint as _},
+	ui_scroll::SmoothScrollArea as _,
 	ui_theme,
 };
 use decodex_protocol::{
@@ -40,6 +41,9 @@ pub(super) struct Panel {
 	source: Source,
 	search: Entity<ComposerInput>,
 	threads: Vec<NativeThreadCandidate>,
+	search_hits: Vec<NativeThreadCandidate>,
+	term: String,
+	list_scroll: gpui::ScrollHandle,
 	cursor: Option<String>,
 	read: Option<Task<()>>,
 	read_error: Option<CatalogProblem>,
@@ -87,9 +91,10 @@ impl CatalogProblem {
 async fn load_catalog(
 	profile: ClientProfile,
 	cursor: Option<String>,
+	search: Option<String>,
 ) -> Result<NativeThreadPage, CatalogProblem> {
 	if let Some(page) = AgentClient::new(profile.clone())
-		.native_threads(cursor)
+		.native_threads(cursor, search)
 		.await
 		.map_err(CatalogProblem::Service)?
 	{
@@ -133,6 +138,21 @@ impl AgentSurface {
 		cx.emit(CatalogEvent::Open(Catalog::Codex));
 	}
 
+	pub(super) fn open_pinned_conversation(
+		&mut self,
+		candidate: &NativeThreadCandidate,
+		cx: &mut Context<Self>,
+	) {
+		if let Some(work) = self.snapshot.as_ref().and_then(|s| {
+			s.work_items.iter().find(|w| w.codex_thread_id.as_ref() == Some(&candidate.thread_id))
+		}) {
+			self.open_navigation_conversation(&work.id.clone(), cx);
+			return;
+		}
+		self.open_thread_registration(None, cx);
+		self.select_registration(Some(candidate.clone()), cx);
+	}
+
 	fn start_registration(
 		&mut self,
 		source: Source,
@@ -140,14 +160,33 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) {
 		let browse = !matches!(source, Source::Conversation);
-		let search = super::resource_field("Search conversations…", "Search conversations", cx);
-		cx.observe(&search, |_, _, cx| cx.notify()).detach();
+		let search = super::resource_field("Search conversations", "Search conversations", cx);
+		cx.subscribe(&search, |s, input, event, cx| {
+			if !matches!(event, crate::composer_input::ComposerEvent::Changed) {
+				return;
+			}
+			let Some(panel) = s.workspace.registration.as_mut() else { return };
+			let term = input.read(cx).content().trim();
+			if panel.search != input || term == panel.term {
+				return;
+			}
+			panel.term = term.to_owned();
+			panel.list_scroll = Default::default();
+			panel.search_hits.clear();
+			panel.cursor = None;
+			panel.read = None;
+			s.read_registration_page(cx);
+		})
+		.detach();
 		self.workspace.registration = Some(Panel {
 			source,
 			search,
 			selected,
 			choosing_agent: false,
 			threads: Vec::new(),
+			search_hits: Vec::new(),
+			term: String::new(),
+			list_scroll: Default::default(),
 			cursor: None,
 			read: None,
 			read_error: None,
@@ -176,6 +215,7 @@ impl AgentSurface {
 
 	fn bound_thread_candidate(&self, work: &AgentWorkItemDto) -> Option<NativeThreadCandidate> {
 		Some(NativeThreadCandidate {
+			updated_at_micros: work.updated_at_micros,
 			thread_id: work.codex_thread_id.clone()?,
 			title: self.conversation_label(work),
 			preview: None,
@@ -194,21 +234,42 @@ impl AgentSurface {
 		};
 		panel.read_error = None;
 		let cursor = panel.cursor.clone();
-		let request = cx.background_executor().spawn(async move {
-			let runtime = Builder::new_current_thread()
-				.enable_all()
-				.build()
-				.map_err(|_| CatalogProblem::ClientStart)?;
-			runtime.block_on(load_catalog(profile, cursor))
-		});
+		let term = panel.term.clone();
+		let input = panel.search.clone();
 		panel.read = Some(cx.spawn(async move |surface, cx| {
-			let result = request.await;
+			let executor = cx.background_executor().clone();
+			let search = (!term.is_empty()).then(|| term.clone());
+			if search.is_some() && cursor.is_none() {
+				executor.timer(std::time::Duration::from_millis(180)).await;
+			}
+			let result = executor
+				.spawn(async move {
+					let runtime = Builder::new_current_thread()
+						.enable_all()
+						.build()
+						.map_err(|_| CatalogProblem::ClientStart)?;
+					runtime.block_on(load_catalog(profile, cursor, search))
+				})
+				.await;
 			let _ = surface.update(cx, |s, cx| {
 				let Some(panel) = s.workspace.registration.as_mut() else { return };
+				if panel.search != input || panel.term != term {
+					return;
+				}
 				panel.read = None;
 				match result {
+					Ok(page) if page.next_cursor.is_some() && page.next_cursor == panel.cursor => {
+						panel.read_error = Some(CatalogProblem::Unavailable);
+					},
 					Ok(page) => {
-						panel.threads.extend(page.threads);
+						if term.is_empty() {
+							if panel.cursor.is_none() {
+								panel.threads.clear();
+							}
+							panel.threads.extend(page.threads);
+						} else {
+							panel.search_hits.extend(page.threads);
+						}
 						panel.cursor = page.next_cursor;
 					},
 					Err(message) => panel.read_error = Some(message),
@@ -322,8 +383,8 @@ impl AgentSurface {
 		let work = id.to_owned();
 		Some(self.conversation_action_button(
 			selector,
-			"Adopt conversation…",
-			"Adopt conversation",
+			"Adopt",
+			"Choose a conversation for this Agent to manage",
 			cx,
 			move |s, _, cx| {
 				s.open_thread_registration(Some(&work), cx);
@@ -347,7 +408,7 @@ impl AgentSurface {
 		work: &AgentWorkItemDto,
 	) -> Option<RegistrationContext<'_>> {
 		let snapshot = self.snapshot.as_ref()?;
-		if !self.registration_id_available(&work.id) {
+		if self.is_assistant_conversation(&work.id) || !self.registration_id_available(&work.id) {
 			return None;
 		}
 		if snapshot.agents.iter().any(|agent| agent.id == work.id) {
@@ -362,16 +423,12 @@ impl AgentSurface {
 	}
 
 	fn registration_id_available(&self, id: &str) -> bool {
-		self.snapshot.as_ref().is_some_and(|s| {
-			!s.archived_work_ids.contains(id)
-				&& (s.assistant.agent_id.as_deref() == Some(id)
-					|| !self.is_assistant_conversation(id))
-		})
+		self.snapshot.as_ref().is_some_and(|s| !s.archived_work_ids.contains(id))
 	}
 
 	pub(super) fn render_thread_registration(
 		&mut self,
-		window: &gpui::Window,
+		window: &mut gpui::Window,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
 		if self.workspace.registration.is_none() {
@@ -381,6 +438,13 @@ impl AgentSurface {
 		let selected = panel.selected.as_ref();
 		let browsing = !matches!(panel.source, Source::Conversation);
 		let wide = browsing && f32::from(window.viewport_size().width) >= 850.;
+		let list_fraction = ui_motion::revealed_value(
+			"registration-split",
+			if selected.is_some() { 0.42 } else { 1. },
+			wide,
+			window,
+			cx,
+		);
 		let mut body = gpui::div()
 			.id("thread-registration")
 			.debug_selector(|| "thread-registration".into())
@@ -388,7 +452,7 @@ impl AgentSurface {
 			.min_w_0()
 			.min_h_0()
 			.flex()
-			.gap_3()
+			.overflow_hidden()
 			.p_3();
 		if browsing && (wide || selected.is_none()) {
 			let list = gpui::div()
@@ -397,8 +461,8 @@ impl AgentSurface {
 				.min_h_0()
 				.flex()
 				.flex_col()
-				.when(wide && selected.is_some(), |list| list.w(gpui::relative(0.42)))
-				.when(selected.is_none(), |list| list.flex_1())
+				.when(wide, |list| list.flex_none().w(gpui::relative(list_fraction)))
+				.when(!wide, |list| list.flex_1())
 				.child(self.registration_choices(selected.is_none(), cx));
 			body = body.child(list);
 		}
@@ -407,7 +471,8 @@ impl AgentSurface {
 				.h_full()
 				.min_w_0()
 				.min_h_0()
-				.flex_1()
+				.when(wide, |detail| detail.w(gpui::relative(0.58)).flex_none().pl_3())
+				.when(!wide, |detail| detail.flex_1())
 				.flex()
 				.flex_col()
 				.gap_2()
@@ -427,10 +492,11 @@ impl AgentSurface {
 						),
 					))
 				})
-				.child(self.registration_actions(selected, wide, cx));
+				.child(self.registration_preview(selected, wide, cx));
 			body = body.child(detail);
 		}
-		body.into_any_element()
+		let route = if !wide && selected.is_some() { "preview" } else { "conversations" };
+		ui_motion::arrival(route, body).from_opacity(0.55).into_any_element()
 	}
 
 	fn registration_choices(&self, full_width: bool, cx: &mut Context<Self>) -> AnyElement {
@@ -439,10 +505,10 @@ impl AgentSurface {
 		let mut rows = gpui::div()
 			.id("registration-candidates")
 			.debug_selector(|| "registration-candidates".into())
+			.size_full()
 			.min_h_0()
-			.flex_1()
-			.overflow_y_scroll()
 			.min_w_0()
+			.pr_1()
 			.flex()
 			.flex_col();
 		let mut seen = HashSet::new();
@@ -464,15 +530,18 @@ impl AgentSurface {
 				.flatten()
 			})
 			.collect::<Vec<_>>();
-		let candidates = local
-			.into_iter()
-			.chain(panel.threads.iter().filter(|c| seen.insert(c.thread_id.clone())).cloned());
-		for candidate in candidates.filter(|c| {
+		let matches_loaded = |c: &&NativeThreadCandidate| {
 			query.is_empty()
 				|| c.title.to_lowercase().contains(&query)
 				|| c.thread_id.to_lowercase().contains(&query)
 				|| c.preview.as_ref().is_some_and(|p| p.to_lowercase().contains(&query))
-		}) {
+		};
+		let native = panel
+			.search_hits
+			.iter()
+			.chain(panel.threads.iter().filter(matches_loaded))
+			.filter(|c| seen.insert(c.thread_id.clone()));
+		for candidate in local.iter().filter(matches_loaded).chain(native).cloned() {
 			count += 1;
 			let row_id = format!("choose-thread-{}", candidate.thread_id);
 			let title = candidate.title.clone();
@@ -531,7 +600,40 @@ impl AgentSurface {
 					})),
 			);
 		}
-		if count == 0 && panel.read.is_none() && panel.read_error.is_none() {
+		if let Some(cursor) =
+			panel.cursor.clone().filter(|_| panel.read.is_none() && panel.read_error.is_none())
+		{
+			let owner = cx.weak_entity();
+			let search = panel.search.clone();
+			let term = panel.term.clone();
+			rows = rows.child(
+				gpui::canvas(
+					move |bounds, window, cx| {
+						if !bounds.intersect(&window.content_mask().bounds).is_empty() {
+							cx.defer(move |cx| {
+								let _ = owner.update(cx, |s, cx| {
+									if s.workspace.registration.as_ref().is_some_and(|current| {
+										current.search == search
+											&& current.term == term
+											&& current.cursor.as_ref() == Some(&cursor)
+											&& current.read_error.is_none()
+									}) {
+										s.read_registration_page(cx);
+									}
+								});
+							});
+						}
+					},
+					|_, _, _, _| {},
+				)
+				.h(gpui::px(1.))
+				.w_full()
+				.flex_none(),
+			);
+		}
+		if panel.read.is_some() {
+			rows = rows.child(crate::ui_loading::loading("Loading conversations"));
+		} else if count == 0 && panel.cursor.is_none() && panel.read_error.is_none() {
 			rows = rows.child(if query.is_empty() {
 				"No conversations available."
 			} else {
@@ -552,7 +654,14 @@ impl AgentSurface {
 			view = view
 				.child(gpui::div().truncate().child(format!("Choose a conversation for {label}.")));
 		}
-		view = view.child(rows);
+		view = view.child(
+			gpui::div().flex_1().min_h_0().w_full().overflow_hidden().child(
+				rows.smooth_scroll(format!("registration-list-{}", panel.term))
+					.with_handle(&panel.list_scroll)
+					.contain_scroll()
+					.with_scrollbar("registration-list-scrollbar", "Scroll conversations"),
+			),
+		);
 		if let Some(error) = panel.read_error {
 			view = view.child(error.message());
 			if let Some(destination) = error.destination() {
@@ -569,20 +678,43 @@ impl AgentSurface {
 					move |_, _, cx| cx.emit(CatalogEvent::OpenSettings(destination)),
 				));
 			}
-		}
-		if panel.read.is_some() {
-			view = view.child("Loading Codex conversations…");
-		} else if panel.read_error.is_some() || panel.cursor.is_some() {
-			let label = if panel.read_error.is_some() { "Retry" } else { "Load more" };
+
 			view = view.child(self.conversation_action_button(
-				"registration-load".into(),
-				label,
-				label,
+				"registration-retry".into(),
+				"Retry",
+				"Retry",
 				cx,
 				|s, _, cx| s.read_registration_page(cx),
 			));
 		}
 		view.into_any_element()
+	}
+
+	fn registration_preview(
+		&self,
+		candidate: &NativeThreadCandidate,
+		wide: bool,
+		cx: &mut Context<Self>,
+	) -> AnyElement {
+		let reader = gpui::div()
+			.id("registration-actions")
+			.debug_selector(|| "registration-actions".into())
+			.size_full()
+			.pr_1()
+			.child(self.registration_actions(candidate, wide, cx))
+			.smooth_scroll(format!("registration-detail-{}", candidate.thread_id))
+			.contain_scroll()
+			.with_scrollbar("registration-detail-scrollbar", "Scroll conversation details");
+		gpui::div()
+			.flex_1()
+			.min_h_0()
+			.w_full()
+			.overflow_hidden()
+			.when(wide, |pane| {
+				pane.border_l_1().border_color(ui_theme::rgba(ui_theme::PANEL_DIVIDER)).pl_3()
+			})
+			.child(ui_motion::arrival(candidate.thread_id.clone(), reader).from_opacity(0.40))
+			.into_any_element()
 	}
 
 	fn registration_actions(
@@ -597,19 +729,24 @@ impl AgentSurface {
 		} else {
 			candidate.title.trim()
 		};
+		let can_pin = matches!(panel.source, Source::Codex | Source::Agent(_));
+		let pin =
+			can_pin.then(|| self.native_pin_state(&candidate.thread_id)).flatten().map(|pinned| {
+				let thread = candidate.thread_id.clone();
+				registration_button(
+					"registration-pin".into(),
+					if pinned { "Unpin" } else { "Pin" }.into(),
+					false,
+					cx,
+					move |s, cx| s.change_native_pin(&thread, !pinned, cx),
+				)
+			});
 		let mut view = gpui::div()
-			.id("registration-actions")
-			.debug_selector(|| "registration-actions".into())
-			.min_h_0()
+			.w_full()
 			.min_w_0()
-			.flex_1()
-			.overflow_y_scroll()
 			.flex()
 			.flex_col()
 			.gap_3()
-			.when(wide, |detail| {
-				detail.border_l_1().border_color(ui_theme::rgba(ui_theme::PANEL_DIVIDER)).pl_3()
-			})
 			.child(
 				gpui::div()
 					.w_full()
@@ -635,6 +772,7 @@ impl AgentSurface {
 							.font_weight(gpui::FontWeight::SEMIBOLD)
 							.child(title.to_owned()),
 					)
+					.children(pin)
 					.child(super::markdown::copy_button(
 						"registration-copy-id",
 						"Copy thread ID",
@@ -652,11 +790,14 @@ impl AgentSurface {
 						.child(preview.clone())
 				},
 			));
+		if can_pin && let Some(error) = self.pin_error() {
+			view = view.child(error.to_owned());
+		}
 		match &panel.mutation {
 			Mutation::Idle => {},
 			Mutation::Failed(message) => view = view.child(message.clone()),
 			Mutation::Saving(_) | Mutation::Saved(_) =>
-				return view.child("Updating conversation…").into_any_element(),
+				return view.child("Updating conversation").into_any_element(),
 		}
 		let Some(snapshot) = self.snapshot.as_ref() else {
 			return view
@@ -750,7 +891,7 @@ impl AgentSurface {
 			.peekable();
 		let has_targets = targets.peek().is_some();
 		if has_targets {
-			let label = if owner.is_some() { "Transfer to Agent…" } else { "Assign to Agent…" };
+			let label = if owner.is_some() { "Transfer to Agent" } else { "Assign to Agent" };
 			actions = actions.child(registration_button(
 				"registration-assignment".into(),
 				label.into(),
@@ -781,15 +922,17 @@ impl AgentSurface {
 			));
 		}
 		view = view.child(actions);
-		if has_targets && panel.choosing_agent {
-			view = view.child(
+		if has_targets {
+			view = view.child(ui_motion::disclosure(
+				format!("registration-picker-{}", candidate.thread_id),
+				panel.choosing_agent,
 				gpui::div()
 					.flex_none()
 					.flex()
 					.flex_wrap()
 					.gap_2()
 					.children(targets.map(|a| assign(a, false, cx))),
-			);
+			));
 		}
 
 		view.into_any_element()
@@ -837,7 +980,12 @@ mod tests {
 	use gpui::{AppContext as _, Focusable as _};
 
 	fn candidate(id: &str) -> super::NativeThreadCandidate {
-		super::NativeThreadCandidate { thread_id: id.into(), title: id.into(), preview: None }
+		super::NativeThreadCandidate {
+			updated_at_micros: 0,
+			thread_id: id.into(),
+			title: id.into(),
+			preview: None,
+		}
 	}
 
 	#[tokio::test]
@@ -887,7 +1035,7 @@ mod tests {
 		] {
 			let (_home, profile, server) = wire_test_support::fixture(|listener| async move {
 				let mut replies = vec![(
-					QueryPayload::ListNativeThreads { cursor: None },
+					QueryPayload::ListNativeThreads { cursor: None, search: None },
 					QueryResultPayload::NativeThreads(page),
 				)];
 				if let Some(accounts) = accounts {
@@ -906,12 +1054,12 @@ mod tests {
 					wire_test_support::answer_query(&mut socket, query.query_id, reply).await;
 				}
 			});
-			assert_eq!(load_catalog(profile, None).await, expected);
+			assert_eq!(load_catalog(profile, None, None).await, expected);
 			server.join().unwrap();
 		}
 		let (_home, profile, stopped) = wire_test_support::fixture(|_| async {});
 		stopped.join().unwrap();
-		let error = load_catalog(profile, None).await.unwrap_err();
+		let error = load_catalog(profile, None, None).await.unwrap_err();
 		assert_eq!(error, CatalogProblem::Service(ClientFailure::ProtocolDisconnected));
 		assert_eq!(error.destination(), Some(super::Destination::Health));
 	}
@@ -1095,7 +1243,7 @@ mod tests {
 				s.visual_workspace_fixture(cx);
 				let snapshot = s.snapshot.as_mut().unwrap();
 				let template = snapshot.work_items[0].clone();
-				for id in ["ordinary", "managed", "archived"] {
+				for id in ["ordinary", "managed", "archived", "personal"] {
 					let mut work = template.clone();
 					work.id = id.into();
 					work.codex_thread_id = Some(id.into());
@@ -1106,12 +1254,22 @@ mod tests {
 					id: "agent".into(),
 					name: "Coordinator".into(),
 					native_thread_id: Some("agent".into()),
-					assistant: true,
+					assistant: false,
 					managed_conversation_ids: vec!["managed".into()],
 					scheduled_wakes: Default::default(),
 				});
-				snapshot.assistant.agent_id = Some("agent".into());
+				snapshot.agents.push(super::Agent {
+					id: "personal".into(),
+					name: "Personal Assistant".into(),
+					native_thread_id: Some("personal".into()),
+					assistant: true,
+					managed_conversation_ids: vec![],
+					scheduled_wakes: Default::default(),
+				});
+				snapshot.assistant.agent_id = Some("personal".into());
 				snapshot.archived_work_ids.insert("archived".into());
+				assert!(s.adopt_conversation_entry("adopt".into(), "personal", cx).is_none());
+				assert!(s.adopt_conversation_entry("adopt".into(), "agent", cx).is_some());
 				s.open_thread_registration(Some("agent"), cx);
 				let panel = s.workspace.registration.as_mut().unwrap();
 				panel.read_error = None;
@@ -1188,6 +1346,8 @@ mod tests {
 		let expand = visual.debug_bounds("registration-assignment").unwrap();
 		visual.simulate_click(expand.center(), Default::default());
 		visual.update(crate::ui_frame::draw_frame);
+		visual.executor().advance_clock(std::time::Duration::from_millis(250));
+		visual.update(crate::ui_frame::draw_frame);
 		let viewport = visual.debug_bounds("registration-actions").unwrap();
 		let last = "registration-assign-agent-59";
 		assert!(visual.debug_bounds(last).is_none_or(|b| !viewport.contains(&b.center())));
@@ -1231,6 +1391,7 @@ mod tests {
 			s.start_registration(
 				super::Source::Codex,
 				Some(decodex_protocol::NativeThreadCandidate {
+					updated_at_micros: 0,
 					thread_id: "native-existing".into(),
 					title: "Existing conversation".into(),
 					preview: None,

@@ -19,7 +19,7 @@ pub(crate) use crate::ui_frame::{
 pub(crate) use disclosure::{disclosure, disclosure_lazy, settings_disclosure};
 pub(crate) use hover_intent::HoverIntent;
 pub(crate) use overflow_label::{HoverOverflowLabel, OverflowLabel};
-pub(crate) use rail_label::{RailInitial, RailLabel};
+pub(crate) use rail_label::RailInitial;
 pub(crate) use segmented::{Choice, Segmented};
 pub(crate) use text_reveal::TextReveal;
 pub(crate) use tooltip::{HoverHint, tooltip_at};
@@ -31,18 +31,15 @@ use std::{
 };
 
 use gpui::{
-	AnyElement, App, Bounds, Div, Element, ElementId, FontWeight, IntoElement, MouseButton, Pixels,
-	RenderOnce, Rgba, SharedString, Stateful, Window,
+	AnyElement, App, Bounds, Div, Element, ElementId, IntoElement, MouseButton, Pixels, RenderOnce,
+	Rgba, SharedString, Stateful, Window,
 	prelude::{
 		FluentBuilder as _, InteractiveElement as _, ParentElement as _,
 		StatefulInteractiveElement as _, Styled,
 	},
 };
 
-use crate::ui_theme::{
-	self, CONVERSATION_TAB_GAP, CONVERSATION_TAB_SIZE, ColorScheme, ERROR, INFO, SUCCESS, TEXT,
-	WARNING,
-};
+use crate::ui_theme::{self, ColorScheme, ERROR, INFO, SUCCESS, TEXT, WARNING};
 
 pub(crate) const HOVER_OPEN_DELAY: Duration = Duration::from_millis(100);
 pub(crate) const HOVER_CLOSE_DELAY: Duration = Duration::from_millis(220);
@@ -173,12 +170,12 @@ impl RenderOnce for ConfirmationNudge {
 	}
 }
 
-/// Collapse the whole tab footprint, including its gutter, without squeezing its label.
+/// Clip the tab during its reveal. Settled tabs keep their intrinsic width.
 #[derive(IntoElement)]
 pub(crate) struct TabReveal {
 	pub id: ElementId,
 	pub visible: bool,
-	pub width: Option<f32>,
+	pub max_width: f32,
 	pub child: AnyElement,
 	pub closed: Box<dyn FnOnce(&mut App)>,
 }
@@ -186,15 +183,8 @@ impl RenderOnce for TabReveal {
 	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
 		let state = window.use_keyed_state(self.id, cx, |_, _| Tween::new(0.));
 		let now = Instant::now();
-		let (height, moving) = state.update(cx, |s, _| {
-			s.target(
-				if self.visible {
-					self.width.unwrap_or(CONVERSATION_TAB_SIZE + CONVERSATION_TAB_GAP)
-				} else {
-					0.
-				},
-				now,
-			);
+		let (width, moving) = state.update(cx, |s, _| {
+			s.target(if self.visible { self.max_width } else { 0. }, now);
 
 			(s.sample(now), s.moving(now))
 		});
@@ -207,8 +197,10 @@ impl RenderOnce for TabReveal {
 		}
 
 		gpui::div()
-			.when(self.width.is_some(), |d| d.w(gpui::px(height)).h_full().flex().items_center())
-			.when(self.width.is_none(), |d| d.w_full().h(gpui::px(height)))
+			.max_w(gpui::px(width))
+			.h_full()
+			.flex()
+			.items_center()
 			.flex_none()
 			.overflow_hidden()
 			.child(self.child)
@@ -810,32 +802,51 @@ pub(crate) fn agent_state_ink(
 	}
 }
 
-/// The title's first grapheme carries state without adding a badge or changing layout.
+/// Reserve room for status only while a tab needs attention or has an active turn.
 #[derive(IntoElement)]
-pub(crate) struct AgentRailStatus {
-	pub compact: bool,
-	pub viewport: Option<Viewport>,
-	pub scroll: bool,
+pub(crate) struct ConversationTabLabel {
 	pub id: String,
 	pub state: String,
-	pub label: String,
+	pub title: String,
 }
-impl RenderOnce for AgentRailStatus {
+impl RenderOnce for ConversationTabLabel {
 	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
 		let (style, status) = AgentStatusStyle::presentation(&self.state);
-		let ink = agent_state_ink(&self.id, style, window, cx);
-		RailLabel {
-			compact: self.compact,
-			viewport: self.viewport,
-			scroll: self.scroll,
-			id: self.id,
-			label: self.label,
-			size: ui_theme::NAVIGATION_TITLE_SIZE,
-			initial_color: ink,
-			initial_weight: FontWeight::SEMIBOLD,
-			badge: None,
-			status: Some(status.to_owned()),
-		}
+		gpui::div()
+			.id(SharedString::from(self.id.clone()))
+			.flex_initial()
+			.min_w_0()
+			.flex()
+			.items_center()
+			.gap_1()
+			.aria_label(format!("{} ({status})", self.title))
+			.when(
+				matches!(
+					style,
+					AgentStatusStyle::Running
+						| AgentStatusStyle::Attention
+						| AgentStatusStyle::Failed
+				),
+				|row| {
+					row.child(
+						gpui::div()
+							.flex_none()
+							.size(gpui::px(5.))
+							.rounded_full()
+							.bg(agent_state_ink(&self.id, style, window, cx)),
+					)
+				},
+			)
+			.child(
+				gpui::div()
+					.debug_selector({
+						let id = self.id;
+						move || format!("tab-title-{id}")
+					})
+					.min_w_0()
+					.truncate()
+					.child(self.title),
+			)
 	}
 }
 

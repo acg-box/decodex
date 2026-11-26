@@ -182,6 +182,12 @@ impl Render for ComposerPanel {
 			.on_action(move |action: &ToggleContentFullscreen, _, cx| forward(parent, action, cx))
 			.on_action(move |action: &NavigateBack, _, cx| forward(parent, action, cx))
 			.on_action(move |action: &NavigateForward, _, cx| forward(parent, action, cx))
+			.on_action({
+				let owner = self.owner.clone();
+				move |_: &crate::shell::OpenSideChat, window, cx| {
+					owner.update(cx, |s, cx| s.open_side_chat_from_keyboard(window, cx));
+				}
+			})
 			.on_action(move |action: &FindConversation, _, cx| forward(parent, action, cx))
 			.on_action(move |action: &OpenGlobalCommands, _, cx| forward(parent, action, cx))
 			.child(capsule);
@@ -347,7 +353,7 @@ impl AgentSurface {
 			owner.update(cx, |s, cx| {
 				s.native_controls.composer.creating = false;
 				s.native_controls.composer.child = result.ok().flatten();
-				s.native_controls.composer.enabled = s.native_controls.composer.child.is_some();
+				s.native_controls.composer.enabled &= s.native_controls.composer.child.is_some();
 				s.native_controls.composer.failed = s.native_controls.composer.child.is_none();
 
 				if s.native_controls.composer.failed {

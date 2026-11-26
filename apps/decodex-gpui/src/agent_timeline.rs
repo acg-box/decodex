@@ -88,8 +88,18 @@ impl TurnFooter {
 }
 
 impl AgentSurface {
+	pub(super) fn entry_thread(&self, entry: &AgentTimelineEntry) -> Option<&str> {
+		self.timeline
+			.native
+			.source_threads
+			.get(&entry.position)
+			.or_else(|| self.timeline.native.binding.as_ref().map(|b| &b.thread))
+			.map(String::as_str)
+	}
+
 	fn is_revealed_history_item(&self, entry: &AgentTimelineEntry) -> bool {
-		self.is_conversation_match(entry) || self.is_located_item(&entry.content)
+		self.is_conversation_match(entry)
+			|| self.is_located_item(self.entry_thread(entry), &entry.content)
 	}
 
 	pub(super) fn pause_item_history_navigation(&mut self) {
@@ -97,8 +107,6 @@ impl AgentSurface {
 		self.timeline.latest_follow_work = None;
 		self.timeline.navigation = None;
 		self.timeline.wheel_scroll = None;
-		self.timeline.native.find.open = false;
-		self.timeline.native.find.current = None;
 		self.timeline.native.find.searching_earlier = false;
 		if let Some(work) = &self.selected {
 			self.timeline.follow_paused.insert(work.clone());
@@ -110,13 +118,15 @@ impl AgentSurface {
 		&mut self,
 		request: &decodex_protocol::ItemContextRequest,
 	) -> bool {
-		if !self.timeline.native.binding.as_ref().is_some_and(|binding| {
-			binding.work == request.work_id.as_str() && binding.thread == request.thread_id.as_str()
-		}) {
+		let Some(binding) =
+			self.timeline.native.binding.as_ref().filter(|b| b.work == request.work_id.as_str())
+		else {
 			return false;
-		}
+		};
 		let Some(entry) = self.timeline.native.entries.iter().find(|entry| {
-			matches!(&entry.content, AgentTimelineContent::Item { turn_id, item_id, .. }
+			self.timeline.native.source_threads.get(&entry.position).unwrap_or(&binding.thread)
+				== request.thread_id.as_str()
+				&& matches!(&entry.content, AgentTimelineContent::Item { turn_id, item_id, .. }
 				if turn_id == request.turn_id.as_str() && item_id == request.item_id.as_str())
 		}) else {
 			return false;
@@ -872,7 +882,7 @@ impl AgentSurface {
 					let body = self.native_timeline_content(
 						work,
 						entry,
-						archived && !self.is_located_item(&entry.content),
+						archived && !self.is_located_item(self.entry_thread(entry), &entry.content),
 						None,
 						cx,
 					);
@@ -1830,9 +1840,9 @@ impl Timeline {
 
 		self.retry_at = Some(now + Duration::from_secs(delay));
 		self.notice = Some(if self.unsupported {
-			"This Codex version cannot show full history. Saved local records are shown."
+			"Earlier conversation history is unavailable."
 		} else {
-			"Full history is temporarily unavailable. Saved records are shown while Decodex retries."
+			"Could not load the full conversation. Retrying…"
 		});
 	}
 

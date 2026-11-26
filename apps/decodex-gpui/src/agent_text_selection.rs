@@ -107,6 +107,7 @@ pub(super) struct Scope {
 	pub text: SharedString,
 	pub layouts: RefCell<Vec<(Range<usize>, TextLayout)>>,
 	source: source::Source,
+	ask: Option<AskSelection>,
 }
 impl Scope {
 	pub(super) fn context_menu(&self, _window: &Window, cx: &mut App) {
@@ -117,20 +118,44 @@ impl Scope {
 			{
 				use crate::ui_native_menu::{self as menu, Item};
 
-				menu::show(
-					_window,
-					cx,
-					vec![
-						Item::command(
-							"Copy Markdown",
-							"c",
-							true,
-							self.source.copy(&self.text, range.clone()),
-						),
-						Item::command("Copy Text", "", true, self.text[range].into()),
-					],
-					|text, cx| cx.write_to_clipboard(ClipboardItem::new_string(text)),
-				);
+				enum Choice {
+					Copy(String),
+					Ask(String),
+				}
+				let mut items = vec![
+					Item::bound(
+						"Copy Markdown",
+						&crate::composer_input::Copy,
+						cx,
+						true,
+						Choice::Copy(self.source.copy(&self.text, range.clone())),
+					),
+					Item::command(
+						"Copy Text",
+						"",
+						true,
+						Choice::Copy(self.text[range.clone()].into()),
+					),
+				];
+				let ask = self.ask.clone();
+				if ask.is_some() {
+					items.push(Item::Separator);
+					items.push(Item::bound(
+						"Ask in side chat",
+						&crate::shell::OpenSideChat,
+						cx,
+						true,
+						Choice::Ask(self.text[range].into()),
+					));
+				}
+				let parent = _window.window_handle();
+				menu::show(_window, cx, items, move |choice, cx| match choice {
+					Choice::Copy(text) => cx.write_to_clipboard(ClipboardItem::new_string(text)),
+					Choice::Ask(text) =>
+						if let Some(ask) = ask {
+							let _ = parent.update(cx, |_, w, cx| ask(text, w, cx));
+						},
+				});
 			}
 		}
 	}
@@ -208,7 +233,7 @@ impl RenderOnce for DocumentView {
 		let focus = state.read(cx).focus.clone();
 		let range = state.read(cx).range(&self.document.text);
 		let has_ask = self.document.ask.is_some();
-		let action = self.document.ask.and_then(|ask| {
+		let action = self.document.ask.clone().and_then(|ask| {
 			if range.is_empty() || state.read(cx).dragging {
 				return None;
 			}
@@ -224,10 +249,12 @@ impl RenderOnce for DocumentView {
 			text: text.clone(),
 			layouts: RefCell::new(Vec::new()),
 			source: self.document.source,
+			ask: self.document.ask,
 		});
 		let up = state.clone();
 		let outside = state.clone();
 		let keys = scope.clone();
+		let ask_scope = scope.clone();
 		let menu = scope.clone();
 
 		self.child
@@ -260,23 +287,37 @@ impl RenderOnce for DocumentView {
 				menu.get().expect("selection scope").context_menu(window, cx);
 				cx.stop_propagation();
 			})
+			.key_context("MessageSelection")
 			.on_key_down(move |event: &KeyDownEvent, _, cx| {
-				if !event.keystroke.modifiers.platform {
+				let k = &event.keystroke;
+				if !k.modifiers.platform
+					|| k.modifiers.shift
+					|| k.modifiers.alt
+					|| k.modifiers.control
+				{
 					return;
 				}
-
-				match event.keystroke.key.as_str() {
+				match k.key.as_str() {
 					"c" => keys.get().expect("selection scope").copy(cx),
 					"a" => state.update(cx, |s, cx| {
 						s.anchor = 0;
 						s.head = text.len();
-
 						cx.notify();
 					}),
 					_ => return,
 				}
-
 				cx.stop_propagation();
+			})
+			.on_action(move |_: &crate::shell::OpenSideChat, w, cx| {
+				let scope = ask_scope.get().expect("selection scope");
+				let range = scope.state.read(cx).range(&scope.text);
+				if let Some(ask) = &scope.ask
+					&& !range.is_empty()
+				{
+					ask(scope.text[range].to_owned(), w, cx);
+				} else {
+					cx.propagate();
+				}
 			})
 			.child(drag(scope))
 			.child(action)

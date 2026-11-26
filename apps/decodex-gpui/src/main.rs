@@ -442,6 +442,10 @@ fn install_application_menu(cx: &mut App) {
 		}
 	});
 
+	shell::shortcuts::initialize(cx, refresh_application_menu);
+}
+
+fn refresh_application_menu(cx: &App) {
 	cx.set_menus([
 		Menu::new("Decodex").items([
 			MenuItem::os_submenu("Services", SystemMenuType::Services),
@@ -463,6 +467,7 @@ fn install_application_menu(cx: &mut App) {
 			MenuItem::action("Select All", SelectAll),
 		]),
 		Menu::new("Conversation").items([
+			MenuItem::action("New Side Chat", shell::OpenSideChat),
 			MenuItem::action("Use Skill…", shell::ConversationCommand::UseSkill),
 			MenuItem::action("Reference Conversation…", shell::ConversationCommand::Reference),
 			MenuItem::separator(),

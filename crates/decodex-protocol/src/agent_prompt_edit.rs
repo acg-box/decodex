@@ -99,6 +99,15 @@ pub enum PromptForkBoundary {
 	AfterTurn,
 	/// Copy the completed prefix into a persistent branch attached to this source.
 	AttachedAfterTurn,
+	/// Native in-memory fork owned by the open side chat.
+	TemporarySideChat,
+}
+
+impl PromptForkBoundary {
+	/// A side question shares its source's tab strip.
+	pub fn is_side_chat(self) -> bool {
+		matches!(self, Self::AttachedAfterTurn | Self::TemporarySideChat)
+	}
 }
 
 /// Durable branch progress. Reading it never creates another branch.

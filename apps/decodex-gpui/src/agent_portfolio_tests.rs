@@ -157,6 +157,7 @@ fn snapshot() -> AgentSnapshotDto {
 		guardian: Default::default(),
 		portfolio: Box::new(portfolio),
 		archived_work_ids: Default::default(),
+		side_chat_sources: Default::default(),
 		agent_slots: Default::default(),
 		conversation_titles: Default::default(),
 		context_references: vec![],
@@ -275,6 +276,8 @@ fn thread_registration_reassignment_click_sends_the_displayed_owner(cx: &mut Tes
 	let choose = visual.debug_bounds("registration-assignment").unwrap();
 	visual.simulate_click(choose.center(), Default::default());
 	visual.update(crate::ui_frame::draw_frame);
+	visual.executor().advance_clock(std::time::Duration::from_millis(250));
+	visual.update(crate::ui_frame::draw_frame);
 	let target = visual.debug_bounds("registration-assign-iris").unwrap();
 	let long = visual.debug_bounds("registration-release").unwrap();
 	assert_eq!(long.size.height, target.size.height, "long names remain on one line");
@@ -308,17 +311,26 @@ fn thread_registration_lists_native_pages_and_promotes_the_selected_thread(
 				panic!("query")
 			};
 			assert!(
-				matches!(query.payload, QueryPayload::ListNativeThreads { cursor } if cursor.as_ref().map(|s|s.as_str()) == before)
+				matches!(query.payload, QueryPayload::ListNativeThreads { cursor, search: None } if cursor.as_ref().map(|s|s.as_str()) == before)
 			);
+			let threads = if before.is_none() {
+				(0..24).map(|index| format!("thread-{index}")).chain([thread.to_owned()]).collect()
+			} else {
+				vec![thread.to_owned()]
+			};
 			wire_test_support::answer_query(
 				&mut socket,
 				query.query_id,
 				QueryResultPayload::NativeThreads(Some(NativeThreadPage {
-					threads: vec![NativeThreadCandidate {
-						thread_id: thread.into(),
-						title: thread.into(),
-						preview: Some("Original discussion".into()),
-					}],
+					threads: threads
+						.into_iter()
+						.map(|title| NativeThreadCandidate {
+							updated_at_micros: 0,
+							thread_id: title.clone(),
+							title,
+							preview: Some("Original discussion".into()),
+						})
+						.collect(),
 					next_cursor: next.map(str::to_owned),
 				})),
 			)
@@ -343,19 +355,33 @@ fn thread_registration_lists_native_pages_and_promotes_the_selected_thread(
 		s.workspace.browsing = true;
 		cx.notify();
 	});
-	visual.update(|window, cx| {
-		window.resize(gpui::size(gpui::px(960.), gpui::px(840.)));
-		window.draw(cx).clear(cx);
-	});
-	for selector in [
-		"codex-conversations",
-		"registration-load",
-		"choose-thread-native-b",
-		"registration-promote",
-	] {
+	visual.simulate_resize(gpui::size(gpui::px(960.), gpui::px(450.)));
+	visual.update(crate::ui_frame::draw_frame);
+	for selector in ["codex-conversations", "choose-thread-native-b", "registration-promote"] {
 		visual.run_until_parked();
 		visual.update(crate::ui_frame::draw_current_frame);
+		if selector == "choose-thread-native-b" {
+			let viewport = visual.debug_bounds("registration-candidates").unwrap();
+			assert!(
+				visual.debug_bounds(selector).is_none(),
+				"second page requested before scrolling in {viewport:?}, last first-page row {:?}",
+				visual.debug_bounds("choose-thread-native-a")
+			);
+			let scroll_to_end = gpui::ScrollEvent {
+				position: viewport.center(),
+				delta: gpui::ScrollDelta::Pixels(gpui::point(gpui::px(0.), gpui::px(-2000.))),
+				..Default::default()
+			};
+			visual.simulate_event(scroll_to_end.clone());
+			visual.update(crate::ui_frame::draw_frame);
+			visual.run_until_parked();
+			visual.update(crate::ui_frame::draw_frame);
+			visual.simulate_event(scroll_to_end);
+			visual.update(crate::ui_frame::draw_frame);
+			assert!(viewport.contains(&visual.debug_bounds(selector).expect("next page").center()));
+		}
 		if selector == "registration-promote" {
+			std::thread::sleep(std::time::Duration::from_millis(220));
 			for width in [960., 360.] {
 				visual.simulate_resize(gpui::size(gpui::px(width), gpui::px(840.)));
 				visual.update(crate::ui_frame::draw_frame);

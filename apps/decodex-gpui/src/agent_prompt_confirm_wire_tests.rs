@@ -57,7 +57,7 @@ fn branch_after_turn_needs_no_input_preflight(cx: &mut TestAppContext) {
 }
 #[gpui::test]
 fn attached_branch_confirmation_is_saved_and_skips_unsent_input_preflight(cx: &mut TestAppContext) {
-	run_confirmation(cx, Some(PromptForkBoundary::AttachedAfterTurn), false);
+	run_confirmation(cx, Some(PromptForkBoundary::TemporarySideChat), false);
 }
 
 #[gpui::test]
@@ -67,14 +67,14 @@ fn list_branch_confirmation_uses_native_after_turn_without_sending(cx: &mut Test
 
 #[gpui::test]
 fn side_chat_confirmation_keeps_the_attached_boundary(cx: &mut TestAppContext) {
-	run_confirmation(cx, Some(PromptForkBoundary::AttachedAfterTurn), true);
+	run_confirmation(cx, Some(PromptForkBoundary::TemporarySideChat), true);
 }
 
 #[gpui::test]
 fn side_chat_submits_after_preparation_without_a_second_confirmation(cx: &mut TestAppContext) {
 	run_confirmation_with_provider(
 		cx,
-		Some(PromptForkBoundary::AttachedAfterTurn),
+		Some(PromptForkBoundary::TemporarySideChat),
 		true,
 		None,
 		true,
@@ -155,7 +155,9 @@ fn run_confirmation_with_provider(
 				None => "prompt-confirm-apply",
 				Some(PromptForkBoundary::BeforeInput) => "prompt-confirm-branch",
 				Some(PromptForkBoundary::AfterTurn) => "prompt-confirm-after",
-				Some(PromptForkBoundary::AttachedAfterTurn) => "prompt-confirm-attached",
+				Some(
+					PromptForkBoundary::TemporarySideChat | PromptForkBoundary::AttachedAfterTurn,
+				) => "prompt-confirm-attached",
 			},
 		]
 	};

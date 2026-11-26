@@ -13,7 +13,6 @@ use crate::{
 	agent::timeline::{
 		attachments,
 		media::{self, Media},
-		promotions,
 	},
 	agent_usage_estimate::{Source, SourceKey},
 };
@@ -101,31 +100,10 @@ fn continuation_rejects_changed_bytes_binding_and_out_of_range_offsets() {
 
 #[test]
 fn exact_item_indices_and_supported_payloads_are_required() {
-	let history = serde_json::json!({"thread":{"id":"thread","turns":[{"id":"turn","items":[{"id":"item","type":"userMessage","content":[{"type":"text","text":"literal"},{"type":"image","url":"data:image/png;base64,AQID"}]}]}]}});
-	let mut req = request();
-	let item = promotions::exact_item(
-		&history,
-		req.thread_id.as_str(),
-		req.turn_id.as_str(),
-		req.item_id.as_str(),
-	)
-	.unwrap();
-
-	assert!(matches!(media::locate(item, 1), Ok(Media::Uri("data:image/png;base64,AQID"))));
-	assert!(matches!(media::locate(item, 0), Err(AgentMediaResult::Unsupported)));
-	assert!(matches!(media::locate(item, 2), Err(AgentMediaResult::Unavailable)));
-
-	req.thread_id = EntityId::new("another").unwrap();
-
-	assert!(
-		promotions::exact_item(
-			&history,
-			req.thread_id.as_str(),
-			req.turn_id.as_str(),
-			req.item_id.as_str()
-		)
-		.is_none()
-	);
+	let item = serde_json::json!({"id":"item","type":"userMessage","content":[{"type":"text","text":"literal"},{"type":"image","url":"data:image/png;base64,AQID"}]});
+	assert!(matches!(media::locate(&item, 1), Ok(Media::Uri("data:image/png;base64,AQID"))));
+	assert!(matches!(media::locate(&item, 0), Err(AgentMediaResult::Unsupported)));
+	assert!(matches!(media::locate(&item, 2), Err(AgentMediaResult::Unavailable)));
 	assert_eq!(media::decode("image/svg+xml", "AQID"), Err(AgentMediaResult::Unsupported));
 	assert_eq!(media::decode("image/png", "INVALID"), Err(AgentMediaResult::Unavailable));
 	assert_eq!(media::decode("image/png", ""), Err(AgentMediaResult::Unavailable));
@@ -214,14 +192,10 @@ async fn server(remote: DuplexStream, path: Option<String>) {
 	} else {
 		serde_json::json!({"type":"image","url":"data:image/png;base64,AQID"})
 	};
-	let replies = vec![
-		("thread/read", serde_json::json!({"thread":{"id":"thread","historyMode":"paginated"}})),
-		("thread/turns/list", serde_json::json!({"data":[{"id":"turn"}],"nextCursor":null})),
-		(
-			"thread/items/list",
-			serde_json::json!({"data":[{"turnId":"turn","item":{"id":"item","type":"userMessage","content":[{"type":"text","text":"image"},content]}}],"nextCursor":null}),
-		),
-	];
+	let replies = [(
+		"thread/items/read",
+		serde_json::json!({"data":[{"turnId":"turn","item":{"id":"item","type":"userMessage","content":[{"type":"text","text":"image"},content]}}]}),
+	)];
 	let (reader, mut writer) = io::split(remote);
 	let mut lines = BufReader::new(reader).lines();
 
@@ -321,19 +295,14 @@ async fn oversized_local_attachment_does_not_send_file_bytes_through_native_tran
 	let (reader, writer) = io::split(io);
 	let (client, _events) = AppServerClient::from_io(reader, writer);
 	let path = file.path().to_str().unwrap().to_owned();
-	// Keep the same native connection after the three history reads.
+	// Keep the same native connection after the exact read.
 	let server = tokio::spawn(async move {
 		let (reader, mut writer) = io::split(remote);
 		let mut lines = BufReader::new(reader).lines();
 
 		for (method, result) in [
 			(
-				"thread/read",
-				serde_json::json!({"thread":{"id":"thread","historyMode":"paginated"}}),
-			),
-			("thread/turns/list", serde_json::json!({"data":[{"id":"turn"}],"nextCursor":null})),
-			(
-				"thread/items/list",
+				"thread/items/read",
 				serde_json::json!({"data":[{"turnId":"turn","item":{"id":"item","type":"userMessage","content":[{"type":"text","text":"image"},{"type":"localImage","path":path}]}}],"nextCursor":null}),
 			),
 			("thread/read", serde_json::json!({"thread":{"id":"peer","historyMode":"paginated"}})),

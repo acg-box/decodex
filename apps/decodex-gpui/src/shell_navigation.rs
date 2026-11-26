@@ -169,8 +169,10 @@ impl Shell {
 		window: &mut gpui::Window,
 		cx: &mut Context<Self>,
 	) {
-		if self.settings_open() {
-			self.navigate_settings_history(forward, window, cx);
+		if let Some(overlay) = self.overlay {
+			if overlay == super::WorkspaceOverlay::Settings {
+				self.navigate_settings_history(forward, window, cx);
+			}
 			return;
 		}
 		if self.selected == Destination::Agent && self.agent.read(cx).workspace_connecting() {

@@ -5,7 +5,7 @@ description: "Workspace ownership, native menu focus, compositor motion, and con
 tags: [decodex, architecture, desktop, presentation]
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-25T00:42:06.307Z
+    at: 2026-11-25T03:55:56.434Z
 sources:
   - id: openwiki-source-33ae8d32cc179d343274671d
     resource: repo://apps/decodex-cli/src/service.rs
@@ -51,6 +51,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_draft_storage.rs
   - id: openwiki-source-1ee22a183019eba898707d3c
     resource: repo://apps/decodex-gpui/src/agent_history_preview_tests.rs
+  - id: openwiki-source-7aecb0d94903aac848b2cdfd
+    resource: repo://apps/decodex-gpui/src/agent_item_context.rs
   - id: openwiki-source-2ee1164d01a09b38a208f1ac
     resource: repo://apps/decodex-gpui/src/agent_markdown.rs
   - id: openwiki-source-9c68c30b2ff24ddf9a764d74
@@ -61,6 +63,10 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_native_composer.rs
   - id: openwiki-source-e59b6fade5576eca54cd30f7
     resource: repo://apps/decodex-gpui/src/agent_native_menu.rs
+  - id: openwiki-source-3664c9b8790465805ef686fd
+    resource: repo://apps/decodex-gpui/src/agent_navigation_actions.rs
+  - id: openwiki-source-e1560c230faaa162b9617943
+    resource: repo://apps/decodex-gpui/src/agent_navigation_pins.rs
   - id: openwiki-source-c2592b96974e70b72f93f72b
     resource: repo://apps/decodex-gpui/src/agent_navigation_sidebar_tests.rs
   - id: openwiki-source-541c96314da57ad5afa1835e
@@ -85,6 +91,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_text_selection.rs
   - id: openwiki-source-58bb30382c84dbe606626b36
     resource: repo://apps/decodex-gpui/src/agent_thread_registration.rs
+  - id: openwiki-source-2fb9e466c6aafdf4f4950bc1
+    resource: repo://apps/decodex-gpui/src/agent_timeline_find.rs
   - id: openwiki-source-d57edbe5de23ebee985fc88b
     resource: repo://apps/decodex-gpui/src/agent_timeline_inputs.rs
   - id: openwiki-source-691432bb61082c358b6f9c24
@@ -167,14 +175,30 @@ sources:
     resource: repo://apps/decodex-gpui/src/ui_preferences.rs
   - id: openwiki-source-41bad78d71f1e6614f8d340d
     resource: repo://apps/decodex-gpui/src/ui_rail_label.rs
+  - id: openwiki-source-1177513e653d081017cef66d
+    resource: repo://apps/decodex-gpui/src/ui_scroll.rs
   - id: openwiki-source-570564020f98df7a4d6d0b61
     resource: repo://apps/decodex-gpui/src/ui_theme.rs
   - id: openwiki-source-fa218a67bba67197ecf88d7b
     resource: repo://apps/decodex-gpui/src/ui_viewport_clip.rs
+  - id: openwiki-source-e3a073e3cde9638037d0df75
+    resource: repo://crates/decodex-codex/src/app_server_client/projects.rs
   - id: openwiki-source-69e9fd7efd8c3cd616184e27
     resource: repo://crates/decodex-components/src/ragflow_service.rs
+  - id: openwiki-source-c75093d19a3bc72db5836102
+    resource: repo://crates/decodex-runtime/src/agent_host.rs
   - id: openwiki-source-052a4071b057633df77b1e21
     resource: repo://crates/decodex-runtime/src/agent/archive.rs
+  - id: openwiki-source-70011510ef70701879e5bebb
+    resource: repo://crates/decodex-runtime/src/agent/registration.rs
+  - id: openwiki-source-efd01c181e05be3cb110ec94
+    resource: repo://crates/decodex-runtime/src/agent/tests/archive.rs
+  - id: openwiki-source-8d3e8e016f038e821f68dd0c
+    resource: repo://crates/decodex-runtime/src/agent/timeline/media.rs
+  - id: openwiki-source-45a6d809f92892872ece99c0
+    resource: repo://crates/decodex-runtime/src/agent/timeline/promotions.rs
+  - id: openwiki-source-b1dd4c8ab85f342314daa6f1
+    resource: repo://crates/decodex-runtime/src/agent/work.rs
   - id: openwiki-source-c29d70b5569f29b7122f2f6b
     resource: repo://crates/decodex-runtime/src/native_agents.rs
   - id: openwiki-source-6085af9603cb7ac0ff3ef1cf
@@ -195,7 +219,7 @@ sources:
     resource: repo://database/src/works/commands.rs
   - id: openwiki-source-8fe6f1557e5d45d88b34bd0a
     resource: repo://scripts/macos/generate_workspace_symbols.swift
-generated: { by: "codex", at: "2026-11-25T00:42:06.307Z" }
+generated: { by: "codex", at: "2026-11-25T03:55:56.434Z" }
 ---
 
 # Desktop workspace and native glass
@@ -212,9 +236,13 @@ With Graph closed, **Work in progress** provides a compact disclosure above the 
 
 A placement change keeps the same workspace surface. The compact navigation rail remains in the main window. Sidebar reveal geometry comes from that window, and retained sidebar and activity presentation entities use ui_layout::pane to reuse unchanged content there. State, activity animation and hover updates still invalidate the content. Active accessibility uses live semantic geometry. The sidebar owns pointer entry and departure in both expanded and compact states. Entry starts the shared dwell even when the pointer stops without another mouse move. Floating panels exclude covered reading-plane paint and hit targets through the shared Viewport mask. One `PanelFrame` samples the layout slots and visible panel widths for each workspace frame. The sidebar, conversation header and reading-plane mask reuse those positions during opening, closing and reversal. The full-height hover preview sits above the workspace. Its visible edge clips the complete workspace content behind it, including the center fill and composer footer, so the sidebar shows a consistent window backdrop. The native composer clips its material, foreground and pointer region at the same edge during parent prepaint. Attached native surfaces also respect their parent viewport mask. These masks preserve the complete material contours and foreground sizes. Its native content measures at the current parent anchor width; one native material supplies the surface, with no extra GPUI fill or window backdrop. Focused rendering tests cover unchanged content geometry across docked and floating placement, the absence of separate native sidebar glass, interrupted closing, the retained compact rail, and covered controls. Native activity islands still update their glass contour and foreground mask in one Core Animation transaction with implicit actions disabled.
 
-The sidebar has a fixed Assistant entry and independent Chats and Projects sections. Pin adds shortcuts to conversations. Chats contains independent Agents without a Project. Projects group Agents by registered Project identity. Project and conversation rows share a text origin. Attached Side chats stay with their source tabs. Search stays above the directory. Codex conversations and Archived stay below it.
+The sidebar has a fixed Assistant entry and independent Chats and Projects sections. Chats contains independent Agents without a Project. Projects group Agents by registered Project identity. Project and conversation rows share a text origin. Attached Side chats stay with their source tabs. Search stays above the directory. Codex conversations and Archived stay below it.
+
+Pin shows the local Codex Pinned section. Both clients use the same native thread IDs and section membership. Decodex reads the section when its window becomes active or the user expands Pin. It reads the list again after a change. Selecting a registered thread opens its Work. Selecting an unregistered thread opens its preview in Codex conversations. Registration requires a separate user action. The fixed Assistant entry and the external preview both offer Pin or Unpin for an existing native thread. A draft can be pinned after it receives a native thread ID.
 
 Select Assistant to open the same personal conversation. Chats offers New chat. A project's New chat uses the same independent Agent creation path with that project selected. A draft retains its text and selected working folder while the user switches sections. The Projects add control opens the folder chooser to register a project.
+
+Archive and Delete use the native Codex thread operations. If another Codex client holds the writer, Decodex reports the refusal and keeps the conversation. After a successful archive, check the native archive and the other client's active list separately. A separate Codex Desktop process can retain a sidebar entry after the native state changes. Its own archive action can remove that entry while the thread still exists.
 
 Search and commands (Command-K) finds chats, projects, archived conversations and Work. Choose Open Assistant, New chat, New chat in project, New project, Codex conversations, Archived conversations or Settings. Return opens the selected result and preserves the composer draft. Selecting a Work opens its owner with scoped evidence.
 
@@ -228,9 +256,15 @@ Committed pointer intent and explicit surface toggles permit 400 ms of finite mo
 
 Conversation rows reveal inline Pin or Unpin, Archive, and Delete controls on hover or keyboard focus. Archived rows have only Restore and Delete. Update time uses a short relative value at the far right and fades while actions appear. The owner and full local timestamp are available in a tooltip that stays outside the row and action targets. The compact rail retains category icons and project or conversation initials without time or action space. The first Delete click turns the icon red with the shared confirmation nudge inside its fixed 24-point target; a second click confirms. Leaving the row, pressing Escape or clicking outside cancels. Archive uses native Codex storage and retains history. Conversation deletion uses its exact native source, the existing deletion plan and local draft cleanup; learned personal Memory remains. Deleting an empty canonical Assistant draft clears its input while retaining its identity and configuration. A client-only project draft has no lifecycle symbols before the service records it.
 
-Project headers reveal their delete and new-conversation icons through the same hover and keyboard-focus behavior. **Delete project** uses the same fixed target and two-click nudge confirmation. Its short confirmation hint states that chats and files are kept. It removes the native catalog entry and local directory registration. Active and archived conversation history, independent Work records and local files remain. Active conversations move to **Chats**; archived conversations remain in Archived. The selected conversation and current draft are retained. The native client checks the exact project in the bounded catalog before and after deletion, and local cleanup requires the same native identity. A missing project is already deleted; an uncertain native result leaves the local entry available for inspection and retry.
+Project headers reveal their delete and new-conversation icons through the same hover and keyboard-focus behavior. **Delete project** uses the same fixed target and two-click nudge confirmation. Its short confirmation hint states that chats and files are kept. It removes the native catalog entry and local directory registration. Active and archived conversation history, independent Work records and local files remain. Active conversations move to **Chats**; archived conversations remain in Archived. The selected conversation and current draft are retained. After a delete request, the native client calls `project/read` with the same Project ID. Local cleanup proceeds when Codex confirms that this ID is absent. Other read errors leave the local registration available for retry.
 
-The Codex conversations and Archived controls open centered overlays in the workspace. The Codex catalog lets a user register an external thread as an independent Agent or give it to an existing Agent. Archived provides Restore and Delete. Both use the existing native catalog and conversation commands. Dismissing an overlay restores focus to the workspace.
+The Codex conversations and Archived controls open centered overlays in the workspace. The Codex catalog lets a user register an external thread as an independent Agent or give it to an existing Agent. Select **Adopt** on an ordinary Agent to choose a conversation for it to manage. For the personal Assistant, select the conversation first and use **Assign to Agent**. Archived provides Restore and Delete. Both use the existing native catalog and conversation commands. Dismissing an overlay restores focus to the workspace.
+
+Scroll to the end of the Codex conversation list to load the next page. On a wide window, the preview opens beside the list. On a narrow window, select **Conversations** to return to the same list position. Select **Assign to Agent** or **Transfer to Agent** to expand the available choices. The list and preview use the desktop scroll and motion preferences.
+
+Search in **Codex conversations** filters the current account's native catalog by title across pages. Loaded titles, previews and IDs can also match. In an open conversation, press **Command-F** to search native messages and loaded activity. A match in an earlier Assistant context opens the original message with its surrounding items. Use **Return to conversation** to leave this history view.
+
+When a Work Result cites a native item, Decodex verifies its thread, turn and item ID with `thread/items/read` and checks the item type. Media reads use the same operation. Voice references to items outside the current page share one request per turn.
 
 In Archived, the search text, date groups and conversation titles share a left edge. The project name and time use fixed columns on wide rows and align vertically with the row actions. On narrow rows, the title can use two lines. The project name uses the full text column below it. The time and actions remain on the right. The selection box appears in the action group. Bulk selection keeps the existing archive operations.
 

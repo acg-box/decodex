@@ -5,7 +5,9 @@
 #[path = "agent_app_exposure.rs"] mod app_exposure;
 #[path = "agent_archive.rs"] mod archive;
 #[path = "assistant_settings.rs"] mod assistant_settings;
-pub(crate) use assistant_settings::ComponentAction as RagflowComponentAction;
+pub(crate) use assistant_settings::{
+	ComponentAction as RagflowComponentAction, Inspection as RagflowInspection,
+};
 #[path = "agent_async_questions.rs"] mod async_questions;
 #[path = "agent_attached_branches.rs"] mod attached_branches;
 #[path = "agent_capabilities.rs"] mod capabilities;
@@ -1497,6 +1499,7 @@ impl AgentSurface {
 		self.native_agents.pages.clear();
 		self.native_agents.timelines.clear();
 		self.workspace.closing_pages.clear();
+		self.workspace.ending_side_chats.clear();
 		self.workspace.page_views.clear();
 
 		self.workspace.graph_expanded = false;
@@ -1804,8 +1807,14 @@ impl AgentSurface {
 			return;
 		}
 
-		self.selected =
-			self.composer_manager.as_ref().filter(|owner| active(owner)).cloned().or_else(|| {
+		self.selected = self
+			.selected
+			.as_ref()
+			.and_then(|id| self.snapshot.as_ref()?.side_chat_sources.get(id))
+			.filter(|root| active(root))
+			.cloned()
+			.or_else(|| self.composer_manager.as_ref().filter(|owner| active(owner)).cloned())
+			.or_else(|| {
 				snapshot
 					.work_items
 					.iter()
@@ -2250,11 +2259,7 @@ impl AgentSurface {
 		let panel = self.saved_history_panel(work, cx);
 
 		if work.codex_thread_id.is_some() {
-			return self.history_activity(
-				panel.child(self.native_receipts_panel(work, cx)),
-				work,
-				cx,
-			);
+			return self.history_activity(panel, work, cx);
 		}
 		let mut panel = panel.debug_selector(|| "saved-local-history".into());
 
@@ -2382,7 +2387,6 @@ impl AgentSurface {
 			panel = panel.children(self.send_previews(&work.id));
 		}
 
-		panel = panel.children(self.local_message_cards(cx));
 		// The composer supplies part of the shared reading gap. Keep the total
 		// spacing the same as between messages, including after a saved input.
 		panel = gpui::div()
@@ -2414,6 +2418,14 @@ impl AgentSurface {
 					.role(Role::Status)
 					.child(muted("Waiting for provider safety checks…")),
 			);
+		}
+
+		// Delivery records describe separate inputs. Keep them outside the response footer.
+		if self.native_agents.selected.is_none() && work.codex_thread_id.is_some() {
+			panel = panel.children(self.native_receipts_panel(work, cx));
+		}
+		for card in self.local_message_cards(cx) {
+			panel = panel.child(gpui::div().mt(gpui::px(MESSAGE_GAP)).child(card));
 		}
 
 		panel.when(self.native_agents.selected.is_none(), |p| {
@@ -2651,6 +2663,7 @@ impl AgentSurface {
 		}
 
 		self.observe_recap_focus(window, cx);
+		self.observe_navigation_pins(window, cx);
 
 		self.render_workspace(window, cx)
 	}
@@ -2819,6 +2832,7 @@ struct WorkspaceView {
 	pages: Vec<String>,
 	preview_page: Option<String>,
 	closing_pages: HashSet<String>,
+	ending_side_chats: HashSet<String>,
 	graph_visible: bool,
 	graph_expanded: bool,
 	chat_expanded: bool,
@@ -2889,6 +2903,7 @@ impl Default for WorkspaceView {
 			pages: vec![],
 			preview_page: None,
 			closing_pages: Default::default(),
+			ending_side_chats: Default::default(),
 			graph_visible: false,
 			graph_expanded: false,
 			chat_expanded: false,
@@ -3290,7 +3305,7 @@ fn history_entry_presented(
 						.rounded(gpui::px(10.))
 						.bg(ui_theme::rgba(MESSAGE_MATERIAL))
 				})
-				.when(!user, |body| body.w_full().py(gpui::px(2.)))
+				.when(!user, |body| body.w_full().pt(gpui::px(2.)))
 				.when(entry.kind == "instruction", |body| body.child(muted("Task input")))
 				.child(streamed_body.unwrap_or_else(|| {
 					markdown::render(&visible_text, &format!("message-{identity}"))
@@ -3688,6 +3703,7 @@ mod tests {
 					guardian: Default::default(),
 					portfolio: Default::default(),
 					archived_work_ids: Default::default(),
+					side_chat_sources: Default::default(),
 					agent_slots: Default::default(),
 					conversation_titles: Default::default(),
 					context_references: vec![],
@@ -3783,6 +3799,7 @@ mod tests {
 				guardian: Default::default(),
 				portfolio: Default::default(),
 				archived_work_ids: Default::default(),
+				side_chat_sources: Default::default(),
 				agent_slots: Default::default(),
 				conversation_titles: Default::default(),
 				context_references: vec![],
@@ -4023,6 +4040,7 @@ mod tests {
 				guardian: Default::default(),
 				portfolio: Default::default(),
 				archived_work_ids: Default::default(),
+				side_chat_sources: Default::default(),
 				agent_slots: Default::default(),
 				conversation_titles: Default::default(),
 				context_references: vec![],
@@ -4102,6 +4120,7 @@ mod tests {
 				guardian: Default::default(),
 				portfolio: Default::default(),
 				archived_work_ids: Default::default(),
+				side_chat_sources: Default::default(),
 				agent_slots: Default::default(),
 				conversation_titles: Default::default(),
 				context_references: vec![],
@@ -4248,6 +4267,7 @@ mod tests {
 				guardian: Default::default(),
 				portfolio: Default::default(),
 				archived_work_ids: Default::default(),
+				side_chat_sources: Default::default(),
 				agent_slots: Default::default(),
 				conversation_titles: Default::default(),
 				context_references: vec![],
@@ -4381,6 +4401,7 @@ mod tests {
 				guardian: Default::default(),
 				portfolio: Default::default(),
 				archived_work_ids: Default::default(),
+				side_chat_sources: Default::default(),
 				agent_slots: Default::default(),
 				conversation_titles: Default::default(),
 				context_references: vec![],
@@ -4484,6 +4505,7 @@ mod tests {
 				guardian: Default::default(),
 				portfolio: Default::default(),
 				archived_work_ids: Default::default(),
+				side_chat_sources: Default::default(),
 				agent_slots: Default::default(),
 				conversation_titles: Default::default(),
 				context_references: vec![],

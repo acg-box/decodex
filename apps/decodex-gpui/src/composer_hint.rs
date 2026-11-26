@@ -40,7 +40,7 @@ impl SuggestionActions {
 fn suggestion_actions(label: &str, busy: bool, input: &Entity<ComposerInput>) -> Div {
 	let accept = button(
 		"composer-suggestion-accept",
-		"Use suggestion (Tab)",
+		&format!("Use suggestion ({label})"),
 		busy,
 		input,
 		ComposerEvent::AcceptSuggestion,
@@ -91,7 +91,7 @@ fn suggestion_actions(label: &str, busy: bool, input: &Entity<ComposerInput>) ->
 
 fn button(
 	id: &'static str,
-	label: &'static str,
+	label: &str,
 	busy: bool,
 	input: &Entity<ComposerInput>,
 	action: ComposerEvent,
@@ -104,7 +104,7 @@ fn button(
 		.id(id)
 		.debug_selector(move || id.into())
 		.role(Role::Button)
-		.aria_label(label)
+		.aria_label(label.to_owned())
 		.tab_index(if busy { -1 } else { 0 })
 		.flex_none()
 		.h(gpui::px(CHROME_CONTROL_SIZE))
@@ -134,7 +134,7 @@ fn button(
 				cx.stop_propagation();
 			}
 		})
-		.hover_hint(label)
+		.hover_hint(label.to_owned())
 		.child(child)
 		.into_any_element()
 }

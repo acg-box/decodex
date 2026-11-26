@@ -1,6 +1,8 @@
 //! Assistant records reuse the indexed Inbox journal. Native actions have separate receipts.
 use crate::{DatabaseError, EnqueueAgentEvent, SqliteStore, StoreError, agent, error};
-use decodex_core::assistant::{AssistantCommand, AssistantSettings, AssistantState, AssistantWake};
+use decodex_core::assistant::{
+	AssistantCommand, AssistantSettings, AssistantState, AssistantWake, MemoryImportStatus,
+};
 use rusqlite::{Connection, OptionalExtension as _, Transaction, TransactionBehavior};
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
@@ -166,6 +168,14 @@ pub(crate) fn restore_configuration_after_deletion(
 	record(tx, owner, &key, "assistant_internal_settings", json!({"id":"settings","value":saved}))
 }
 
+fn memory_import_status(
+	c: &Connection,
+	owner: &str,
+) -> Result<Option<MemoryImportStatus>, StoreError> {
+	let record = current(c, owner, "assistant_internal_memory_health", "health")?;
+	Ok(record.and_then(|v| serde_json::from_value(v["value"].clone()).ok()))
+}
+
 impl SqliteStore {
 	pub async fn assistant_state(&self) -> Result<AssistantState, StoreError> {
 		self.run(|c| {
@@ -173,7 +183,7 @@ impl SqliteStore {
 			let Some(owner)=owner else {return Ok(AssistantState::default());};
 			let previous=c.prepare("SELECT old_thread_id FROM agent_thread_revisions WHERE work_id=?1 ORDER BY created_at_micros DESC,rowid DESC").map_err(error::sqlite_error)?.query_map([&owner],|r|r.get(0)).map_err(error::sqlite_error)?.collect::<Result<_,_>>().map_err(error::sqlite_error)?;
 			let pending=c.query_row("SELECT EXISTS(SELECT 1 FROM agent_inbox_events e JOIN agent_work_items w ON w.id=e.work_item_id WHERE w.id=?1 AND e.source_event_id=json_array('assistant_internal_context',w.id,w.codex_thread_id))",[&owner],|r|r.get(0)).map_err(error::sqlite_error)?;
-			let memory_status=current(c,&owner,"assistant_internal_memory_health","health")?.and_then(|v|v["value"].as_str().map(str::to_owned));
+			let memory_status=memory_import_status(c,&owner)?;
 			Ok(AssistantState {settings:settings(c,&owner)?,teams:records(c,&owner,"assistant_internal_team")?,wakes:records(c,&owner,"assistant_internal_wake")?,previous_thread_ids:previous,context_pending:pending,memory_status,agent_id:Some(owner)})
 		}).await
 	}
@@ -573,16 +583,14 @@ impl SqliteStore {
 		&self,
 		owner: String,
 		source: decodex_core::assistant::RagflowConnection,
-		status: String,
+		status: MemoryImportStatus,
 	) -> Result<(), StoreError> {
 		self.run(move |c| {
 			let tx = c.transaction().map_err(error::sqlite_error)?;
 			if settings(&tx, &owner)?.ragflow.as_ref() != Some(&source) {
 				return Ok(());
 			}
-			if current(&tx, &owner, "assistant_internal_memory_health", "health")?
-				.is_some_and(|v| v["value"] == status)
-			{
+			if memory_import_status(&tx, &owner)? == Some(status) {
 				return Ok(());
 			}
 			let previous: i64 = tx.query_row(
@@ -1233,13 +1241,13 @@ mod tests {
 			.assistant_memory_health(
 				"assistant".into(),
 				connection.clone(),
-				"Old import failed".into(),
+				MemoryImportStatus::Unavailable,
 			)
 			.await
 			.unwrap();
 		assert_eq!(
-			store.assistant_state().await.unwrap().memory_status.as_deref(),
-			Some("Old import failed")
+			store.assistant_state().await.unwrap().memory_status,
+			Some(MemoryImportStatus::Unavailable)
 		);
 
 		let reset = settings.ragflow.as_mut().unwrap();
@@ -1256,11 +1264,7 @@ mod tests {
 			.unwrap();
 		assert!(store.assistant_state().await.unwrap().memory_status.is_none());
 		store
-			.assistant_memory_health(
-				"assistant".into(),
-				connection,
-				"Late old import result".into(),
-			)
+			.assistant_memory_health("assistant".into(), connection, MemoryImportStatus::Queued)
 			.await
 			.unwrap();
 		let observed = store.assistant_state().await.unwrap();

@@ -7,10 +7,22 @@ use super::{AgentCoordinator, AgentError, AgentWorkItem};
 use decodex_core::work::ThreadRegistration;
 use decodex_protocol::{NativeThreadCandidate, NativeThreadPage};
 
-pub(crate) fn list_params(cursor: Option<&str>) -> Value {
-	json!({"cursor":cursor,"limit":100,"currentAccountOnly":true,"archived":false,
+// codex-state PINNED_THREAD_SECTION_ID at the revision in codex-runtime.lock.json.
+pub(crate) const PINNED_SECTION: &str = "01984de2-8f74-7c91-a3b2-5c5e937cf318";
+
+pub(crate) fn pinned_params(cursor: Option<&str>) -> Value {
+	json!({"sectionId": PINNED_SECTION, "sortKey":"section_position", "sortDirection":"asc",
+		"cursor":cursor, "limit":25, "archived":false, "modelProviders":[], "useStateDbOnly":true})
+}
+
+pub(crate) fn list_params(cursor: Option<&str>, search: Option<&str>, limit: u32) -> Value {
+	let mut params = json!({"cursor":cursor,"limit":limit,"currentAccountOnly":true,"archived":false,
         "sourceKinds":["cli","vscode","appServer","exec"],"modelProviders":[],
-        "sortKey":"recency_at","sortDirection":"desc","useStateDbOnly":true})
+        "sortKey":"recency_at","sortDirection":"desc","useStateDbOnly":true});
+	if let Some(term) = search.filter(|s| !s.is_empty()) {
+		params["searchTerm"] = json!(term);
+	}
+	params
 }
 
 pub(crate) fn candidate(row: &Value) -> Option<NativeThreadCandidate> {
@@ -18,10 +30,15 @@ pub(crate) fn candidate(row: &Value) -> Option<NativeThreadCandidate> {
 		|| !row["parentThreadId"].is_null()
 		|| row["canAcceptDirectInput"] == false
 		|| !matches!(row["source"].as_str(), Some("cli" | "vscode" | "appServer" | "exec"))
-		|| !matches!(row["threadSource"].as_str(), None | Some("user"))
+		// Codex Desktop also creates standalone, user-visible chats via create_thread.
+		|| !matches!(row["threadSource"].as_str(), None | Some("user" | "agent_created_thread"))
 	{
 		return None;
 	}
+	thread_summary(row)
+}
+
+pub(crate) fn thread_summary(row: &Value) -> Option<NativeThreadCandidate> {
 	let thread_id = row["id"].as_str()?;
 	if thread_id.trim().is_empty()
 		|| thread_id.len() > 512
@@ -35,6 +52,7 @@ pub(crate) fn candidate(row: &Value) -> Option<NativeThreadCandidate> {
 		.unwrap_or_else(|| thread_id.to_owned());
 	Some(NativeThreadCandidate {
 		thread_id: thread_id.into(),
+		updated_at_micros: row["updatedAt"].as_i64().unwrap_or_default().saturating_mul(1_000_000),
 		preview: preview.filter(|text| text != &title),
 		title,
 	})
@@ -57,6 +75,13 @@ fn catalog_text(field: &Value) -> Option<String> {
 }
 
 pub(crate) fn page(raw: &Value) -> Option<NativeThreadPage> {
+	catalog_page(raw, candidate)
+}
+
+pub(crate) fn catalog_page(
+	raw: &Value,
+	project: fn(&Value) -> Option<NativeThreadCandidate>,
+) -> Option<NativeThreadPage> {
 	let rows = raw["data"].as_array()?;
 	if rows.len() > 100 {
 		return None;
@@ -66,7 +91,7 @@ pub(crate) fn page(raw: &Value) -> Option<NativeThreadPage> {
 		Value::String(s) if !s.is_empty() && s.len() <= 4096 => Some(s.clone()),
 		_ => return None,
 	};
-	Some(NativeThreadPage { threads: rows.iter().filter_map(candidate).collect(), next_cursor })
+	Some(NativeThreadPage { threads: rows.iter().filter_map(project).collect(), next_cursor })
 }
 
 pub(crate) async fn find_visible<F, Fut>(
@@ -100,7 +125,12 @@ impl AgentCoordinator {
 	) -> Result<NativeThreadCandidate, AgentError> {
 		let client = &self.client;
 		let candidate = find_visible(thread, |cursor| async move {
-			page(&client.request("thread/list", list_params(cursor.as_deref())).await.ok()?)
+			page(
+				&client
+					.request("thread/list", list_params(cursor.as_deref(), None, 100))
+					.await
+					.ok()?,
+			)
 		})
 		.await
 		.ok_or_else(|| {
@@ -180,10 +210,11 @@ mod tests {
 
 	#[test]
 	fn discovery_uses_account_visibility_and_only_lists_interactive_persisted_threads() {
-		let query = list_params(Some("next"));
+		let query = list_params(Some("next"), Some("release"), 25);
 		assert_eq!(query["currentAccountOnly"], true);
 		assert_eq!(query["archived"], false);
 		assert_eq!(query["cursor"], "next");
+		assert_eq!(query["searchTerm"], "release");
 
 		let direct = json!({"id":"top","source":"appServer","threadSource":"user",
             "ephemeral":false, "preview":"Review the design"});
@@ -195,6 +226,12 @@ mod tests {
 			("threadSource", json!("decodex_assistant")),
 		];
 		let mut rows = vec![direct.clone()];
+		let desktop = json!({"id":"desktop","source":"vscode","threadSource":"agent_created_thread",
+			"ephemeral":false,"parentThreadId":null,"name":"Desktop chat"});
+		assert!(candidate(&desktop).is_some());
+		let mut child = desktop;
+		child["parentThreadId"] = json!("parent");
+		assert!(candidate(&child).is_none());
 		for (field, value) in hidden {
 			let mut row = direct.clone();
 			row[field] = value;
@@ -204,6 +241,7 @@ mod tests {
 		assert_eq!(
 			page.threads,
 			[NativeThreadCandidate {
+				updated_at_micros: 0,
 				thread_id: "top".into(),
 				title: "Review the design".into(),
 				preview: None

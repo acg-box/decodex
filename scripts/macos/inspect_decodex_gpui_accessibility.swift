@@ -9,7 +9,7 @@ import Foundation
 let expectedBundleIdentifier = "box.acg.decodex"
 let expectedWindowTitle = "Decodex"
 let materialHostTitles: Set<String> = ["Decodex Popover", "Decodex Composer", "Decodex Session Settings"]
-let settingsSections = ["General", "Agents", "Appearance", "Components", "Accounts", "Diagnostics"]
+let settingsSections = ["General", "Agents", "Appearance", "Shortcuts", "Components", "Accounts", "Diagnostics"]
 let axMessagingTimeout: Float = 1.0
 let phasePollInterval = 0.05
 let maximumTreeNodes = 256

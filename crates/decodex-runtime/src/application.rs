@@ -2326,6 +2326,18 @@ impl ServiceApplication {
 
 	async fn query_native_lookup(&self, query: &QueryPayload) -> QueryResultPayload {
 		match query {
+			QueryPayload::SearchConversation { work_id, thread_id, term, cursor } =>
+				QueryResultPayload::ConversationMatches(match &self.agent {
+					Some(host) =>
+						host.search_conversation(
+							work_id.as_str(),
+							thread_id.as_str(),
+							term.as_str(),
+							cursor.as_ref().map(|c| c.as_str()),
+						)
+						.await,
+					None => None,
+				}),
 			QueryPayload::GetItemContext { request } =>
 				QueryResultPayload::ItemContext(match &self.agent {
 					Some(agent) => agent.item_context(request).await,
@@ -2773,7 +2785,8 @@ impl Application for ServiceApplication {
 			| QueryPayload::GetConversationCapabilities { .. } => self.query_model_catalog(query).await,
 			QueryPayload::ExchangeDictation { request } => self.query_dictation(request).await,
 			QueryPayload::ExchangeAgentVoice { request } => self.query_voice(request),
-			lookup @ (QueryPayload::GetItemContext { .. }
+			lookup @ (QueryPayload::SearchConversation { .. }
+			| QueryPayload::GetItemContext { .. }
 			| QueryPayload::GetResourceOwners { .. }) => self.query_native_lookup(lookup).await,
 			QueryPayload::GetAgentResources { work_id } =>
 				self.query_resources(work_id.as_str()).await,
@@ -2850,9 +2863,19 @@ impl Application for ServiceApplication {
 				query_work_evidence(&self.store, &query.payload).await,
 			QueryPayload::GetAgentGuardianReviews { .. }
 			| QueryPayload::GetAgentGuardianDetail { .. } => self.query_guardian(&query.payload).await,
-			QueryPayload::ListNativeThreads { cursor } =>
+			QueryPayload::ListPinnedThreads { cursor } =>
 				QueryResultPayload::NativeThreads(match &self.agent {
-					Some(host) => host.native_threads(cursor.as_ref().map(|c| c.as_str())).await,
+					Some(host) => host.pinned_threads(cursor.as_ref().map(|c| c.as_str())).await,
+					None => None,
+				}),
+			QueryPayload::ListNativeThreads { cursor, search } =>
+				QueryResultPayload::NativeThreads(match &self.agent {
+					Some(host) =>
+						host.native_threads(
+							cursor.as_ref().map(|c| c.as_str()),
+							search.as_ref().map(|s| s.as_str()),
+						)
+						.await,
 					None => None,
 				}),
 			QueryPayload::GetAgentSnapshot => self.query_agent_snapshot(false).await,
@@ -5757,24 +5780,40 @@ async fn query_agent_snapshot(store: &ProductStore) -> decodex_protocol::AgentSn
 	else {
 		return decodex_protocol::AgentSnapshotResult::Unavailable;
 	};
-	let (work_items, dependencies, pending_events, managers, projects, conversation_titles) =
-		match records {
-			AgentStoreSnapshot::CapacityExceeded { work_items, dependencies, pending_events } => {
-				return decodex_protocol::AgentSnapshotResult::CapacityExceeded {
-					work_items,
-					dependencies,
-					pending_events,
-				};
-			},
-			AgentStoreSnapshot::Complete {
+	let (
+		work_items,
+		dependencies,
+		pending_events,
+		managers,
+		projects,
+		conversation_titles,
+		side_chat_sources,
+	) = match records {
+		AgentStoreSnapshot::CapacityExceeded { work_items, dependencies, pending_events } => {
+			return decodex_protocol::AgentSnapshotResult::CapacityExceeded {
 				work_items,
 				dependencies,
 				pending_events,
-				managers,
-				projects,
-				conversation_titles,
-			} => (work_items, dependencies, pending_events, managers, projects, conversation_titles),
-		};
+			};
+		},
+		AgentStoreSnapshot::Complete {
+			work_items,
+			dependencies,
+			pending_events,
+			managers,
+			projects,
+			conversation_titles,
+			side_chat_sources,
+		} => (
+			work_items,
+			dependencies,
+			pending_events,
+			managers,
+			projects,
+			conversation_titles,
+			side_chat_sources,
+		),
+	};
 	let counts = (work_items.len() as u64, dependencies.len() as u64, pending_events.len() as u64);
 	let Some(context_references) = query_agent_context_references(store).await else {
 		return decodex_protocol::AgentSnapshotResult::Unavailable;
@@ -5793,6 +5832,7 @@ async fn query_agent_snapshot(store: &ProductStore) -> decodex_protocol::AgentSn
 		guardian: Box::new(guardian),
 		portfolio: Box::new(portfolio),
 		archived_work_ids: Default::default(),
+		side_chat_sources,
 		agent_slots: Default::default(),
 		conversation_titles: Box::new(conversation_titles),
 		context_references,

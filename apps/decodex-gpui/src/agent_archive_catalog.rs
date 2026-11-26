@@ -327,14 +327,17 @@ impl AgentSurface {
 			let client = AgentClient::new(profile);
 			let key =
 				IdempotencyKey::new(super::super::unique_command()).expect("bounded identity");
-			let _ = runtime.block_on(client.execute(
+			let response = runtime.block_on(client.execute(
 				AgentActionDto::RestoreArchivedThread { work_id: work_id.clone(), thread_id },
 				key,
 			));
 			let state = runtime.block_on(client.archive_state(work_id)).ok();
 			if matches!(state, Some(AgentArchiveResult::Active { thread_id }) if thread_id == thread)
 			{
-				Some(runtime.block_on(client.query()).ok())
+				Some(Ok(runtime.block_on(client.query()).ok()))
+			} else if let Ok(decodex_protocol::AgentCommandResponse::Rejected { error }) = response
+			{
+				Some(Err(super::super::command_rejection_message(&error)))
 			} else {
 				None
 			}
@@ -344,7 +347,7 @@ impl AgentSurface {
 			let _ = surface.update(cx, |s, cx| {
 				s.workspace.archives.mutation = None;
 				s.workspace.archives.busy = None;
-				if let Some(snapshot) = result {
+				if let Some(Ok(snapshot)) = result {
 					if let Some(data) = &mut s.workspace.archives.data {
 						data.archived_work_ids.remove(&id);
 					}
@@ -354,7 +357,9 @@ impl AgentSurface {
 					}
 				} else {
 					s.workspace.archives.feedback =
-						Some("Unarchive not confirmed. Reopen Archive to check.".into());
+						Some(result.and_then(Result::err).unwrap_or_else(|| {
+							"Unarchive not confirmed. Reopen Archive to check.".into()
+						}));
 				}
 				cx.notify();
 			});
@@ -419,6 +424,7 @@ impl AgentSurface {
 			let runtime = Builder::new_current_thread().enable_all().build().ok()?;
 			let client = AgentClient::new(profile);
 			let mut deleted = Vec::new();
+			let mut refusal = None;
 			for (id, work_id, thread_id) in targets {
 				let key = IdempotencyKey::new(super::super::unique_command()).ok()?;
 				let response = runtime.block_on(
@@ -427,12 +433,17 @@ impl AgentSurface {
 				);
 				match response {
 					Ok(decodex_protocol::AgentCommandResponse::Accepted { .. }) => deleted.push(id),
+					Ok(decodex_protocol::AgentCommandResponse::Rejected { error }) => {
+						refusal
+							.get_or_insert_with(|| super::super::command_rejection_message(&error));
+					},
 					Ok(_) => {},
 					Err(_) => break,
 				}
 			}
 			Some((
 				deleted,
+				refusal,
 				runtime.block_on(client.archive_catalog()).ok(),
 				runtime.block_on(client.query()).ok(),
 			))
@@ -442,7 +453,7 @@ impl AgentSurface {
 			let _ = surface.update(cx, |s, cx| {
 				s.workspace.archives.mutation = None;
 				s.workspace.archives.busy = None;
-				if let Some((deleted, catalog, active)) = result {
+				if let Some((deleted, refusal, catalog, active)) = result {
 					for work in &deleted {
 						s.forget_deleted_conversation(work, cx);
 					}
@@ -460,7 +471,8 @@ impl AgentSurface {
 					let remaining = ids.len() - deleted.len();
 					if remaining > 0 {
 						s.workspace.archives.feedback = Some(format!(
-							"{remaining} not deleted. Check the selection before retrying."
+							"{remaining} not deleted. {}",
+							refusal.as_deref().unwrap_or("Check the selection before retrying.")
 						));
 					}
 					if let Some(active) = active {
@@ -1263,6 +1275,7 @@ impl AgentSurface {
 					let project = data.projects.iter().find(|p| p.agent_ids.contains(&w.id));
 					let assistant = data.assistant.agent_id.as_ref() == Some(&w.id);
 					Item {
+						external: None,
 						id: w.id.clone(),
 						title: Self::conversation_label_in(Some(data), w),
 						location: Item::location_label(assistant, project),

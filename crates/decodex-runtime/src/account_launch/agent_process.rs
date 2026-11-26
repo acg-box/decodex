@@ -459,6 +459,7 @@ fn validate_outbound_method(method: &Value, params: &Value) -> Result<(), Client
 				| "thread/read"
 				| "thread/memory/read"
 				| "thread/list"
+				| "thread/section/move"
 				| "thread/loaded/list"
 				| "thread/backgroundTerminals/list"
 				| "thread/backgroundTerminals/terminate"
@@ -498,8 +499,14 @@ fn validate_fork_request(params: &Value) -> Result<(), ClientError> {
 	};
 	let identity = |value: &Value| text(value, 512);
 
+	let boundary_valid = match (params.get("beforeTurnId"), params.get("lastTurnId")) {
+		(None, None) => params["attachToSource"] == true || params["ephemeral"] == true,
+		(Some(id), None) | (None, Some(id)) => identity(id),
+		_ => false,
+	};
+
 	if params.as_object().is_some_and(|p| {
-		(5..=8).contains(&p.len())
+		(4..=8).contains(&p.len())
 			&& p.keys().all(|key| {
 				matches!(
 					key.as_str(),
@@ -508,6 +515,7 @@ fn validate_fork_request(params: &Value) -> Result<(), ClientError> {
 						| "lastTurnId"
 						| "deferGoalContinuation"
 						| "attachToSource"
+						| "ephemeral"
 						| "excludeTurns"
 						| "modelProvider"
 						| "model"
@@ -517,8 +525,7 @@ fn validate_fork_request(params: &Value) -> Result<(), ClientError> {
 			})
 	}) && identity(&params["threadId"])
 		&& identity(&params["modelProvider"])
-		&& ((identity(&params["beforeTurnId"]) && params.get("lastTurnId").is_none())
-			|| (identity(&params["lastTurnId"]) && params.get("beforeTurnId").is_none()))
+		&& boundary_valid
 		&& params.get("model").is_none_or(identity)
 		&& params.get("serviceTier").is_none_or(|tier| tier.is_null() || text(tier, 128))
 		&& params.get("config").is_none_or(|config| {
@@ -527,10 +534,16 @@ fn validate_fork_request(params: &Value) -> Result<(), ClientError> {
 					&& config.get("model_reasoning_effort").is_some_and(|effort| text(effort, 128))
 			})
 		})
-		&& ((params["deferGoalContinuation"] == true && params.get("attachToSource").is_none())
-			|| (params["attachToSource"] == true
-				&& params.get("deferGoalContinuation").is_none()
-				&& identity(&params["lastTurnId"])))
+		&& match (
+			params.get("deferGoalContinuation"),
+			params.get("attachToSource"),
+			params.get("ephemeral"),
+		) {
+			(Some(flag), None, None) => flag == true,
+			(None, Some(flag), None) | (None, None, Some(flag)) =>
+				flag == true && params.get("beforeTurnId").is_none(),
+			_ => false,
+		}
 		&& params["excludeTurns"] == true
 	{
 		Ok(())
@@ -613,7 +626,7 @@ mod tests {
 	}
 
 	#[test]
-	fn attached_fork_bridge_admits_only_the_explicit_completed_boundary() {
+	fn attached_fork_bridge_accepts_live_or_completed_sources() {
 		let exact = serde_json::json!({"threadId":"source","lastTurnId":"selected","attachToSource":true,"excludeTurns":true,"modelProvider":"source-provider","model":"current-model","config":{"model_reasoning_effort":"low"},"serviceTier":null});
 
 		assert!(agent_process::validate_fork_request(&exact).is_ok());
@@ -636,6 +649,7 @@ mod tests {
 
 		before.as_object_mut().unwrap().remove("lastTurnId");
 
+		assert!(agent_process::validate_fork_request(&before).is_ok());
 		before["beforeTurnId"] = serde_json::json!("selected");
 
 		assert!(agent_process::validate_fork_request(&before).is_err());

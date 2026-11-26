@@ -1,5 +1,6 @@
 //! Navigate the personal Assistant, independent chats and projects in one sidebar.
 #[path = "agent_navigation_actions.rs"] mod actions;
+#[path = "agent_navigation_pins.rs"] mod pins;
 #[path = "agent_navigation_projects.rs"] mod project_actions;
 use crate::{
 	shell::{
@@ -31,6 +32,7 @@ pub(super) struct State {
 	collapsed: HashSet<&'static str>,
 	projects: HashSet<String>,
 	preferences: model::Preferences,
+	pins: pins::Pins,
 	menu: Option<String>,
 	confirm_delete: bool,
 	confirm_started: Option<Instant>,
@@ -53,6 +55,7 @@ impl Default for State {
 			collapsed: HashSet::from([Section::Pin.key()]),
 			projects: HashSet::new(),
 			preferences: model::Preferences::load(),
+			pins: Default::default(),
 			menu: None,
 			confirm_delete: false,
 			confirm_started: None,
@@ -98,8 +101,7 @@ impl AgentSurface {
 					&& !self
 						.snapshot
 						.as_ref()
-						.and_then(|snapshot| self.workspace.attached.family_root(id, snapshot))
-						.is_some_and(|root| root != id)
+						.is_some_and(|snapshot| snapshot.side_chat_sources.contains_key(id))
 			})
 			.collect()
 	}
@@ -118,7 +120,8 @@ impl AgentSurface {
 		let Some(item) = self.navigation_items(cx).into_iter().find(|item| item.id == id) else {
 			return;
 		};
-		let section = if self.workspace.navigation.preferences.pinned.contains(id)
+		let section = if self.item_thread(&item).and_then(|t| self.native_pin_state(t))
+			== Some(true)
 			&& !self.workspace.navigation.collapsed.contains(Section::Pin.key())
 		{
 			Section::Pin
@@ -155,23 +158,36 @@ impl AgentSurface {
 		)
 	}
 
+	fn local_navigation_item(
+		&self,
+		snapshot: &decodex_protocol::AgentSnapshotDto,
+		id: &str,
+		title: String,
+		work: Option<&decodex_protocol::AgentWorkItemDto>,
+	) -> Item {
+		let project =
+			snapshot.projects.iter().find(|p| p.agent_ids.iter().any(|agent| agent == id));
+		let assistant = self.is_assistant_conversation(id);
+		Item {
+			external: None,
+			id: id.into(),
+			title,
+			location: Item::location_label(assistant, project),
+			project: project.map(|p| p.id.clone()),
+			updated: work.map_or(0, |w| w.updated_at_micros),
+			draft: work.is_some_and(|w| w.codex_thread_id.is_none()),
+			assistant,
+			archived: false,
+			state: self.conversation_status(id),
+		}
+	}
+
 	fn navigation_items(&self, cx: &Context<Self>) -> Vec<Item> {
 		let mut items = Vec::new();
 		if let Some(snapshot) = &self.snapshot {
 			for (id, title, _) in self.project_conversation_pages() {
 				let work = snapshot.work_items.iter().find(|w| w.id == id);
-				let project = snapshot.projects.iter().find(|p| p.agent_ids.contains(&id));
-				items.push(Item {
-					id: id.clone(),
-					title,
-					location: Item::location_label(false, project),
-					project: project.map(|p| p.id.clone()),
-					updated: work.map_or(0, |w| w.updated_at_micros),
-					draft: work.is_some_and(|w| w.codex_thread_id.is_none()),
-					assistant: false,
-					archived: false,
-					state: self.conversation_status(&id),
-				});
+				items.push(self.local_navigation_item(snapshot, &id, title, work));
 			}
 		}
 		if let Some(id) = &self.workspace.new_conversation
@@ -187,6 +203,7 @@ impl AgentSurface {
 				.as_ref()
 				.and_then(|s| s.projects.iter().find(|p| Some(&p.id) == project.as_ref()));
 			items.push(Item {
+				external: None,
 				id: id.clone(),
 				title: "New chat".into(),
 				location: Item::location_label(false, directory_project),
@@ -311,21 +328,25 @@ impl AgentSurface {
 			if section == Section::Projects {
 				content = self.navigation_projects(items, reveal, window, cx);
 			} else {
-				let mut selected: Vec<_> = items
-					.iter()
-					.filter(|item| match section {
-						Section::Pin =>
-							self.workspace.navigation.preferences.pinned.contains(&item.id),
-						_ => item.section() == section,
-					})
-					.cloned()
-					.collect();
+				let mut selected = if section == Section::Pin {
+					self.pinned_items()
+				} else {
+					items.iter().filter(|item| item.section() == section).cloned().collect()
+				};
 				model::sort(&mut selected, pref.sort);
-				if selected.is_empty() {
+				if section == Section::Pin
+					&& let Some(error) = self.pin_error()
+				{
+					content = content.child(navigation_empty(reveal, error.to_owned()));
+				} else if selected.is_empty() {
 					content = content.child(navigation_empty(
 						reveal,
 						if section == Section::Pin {
-							"No pinned conversations."
+							if self.workspace.navigation.pins.rows.is_some() {
+								"No pinned conversations."
+							} else {
+								"Loading pinned conversations…"
+							}
 						} else {
 							"No conversations yet."
 						},
@@ -457,16 +478,20 @@ impl AgentSurface {
 		let action = std::rc::Rc::new(action);
 		let keyboard = action.clone();
 		let catalog = matches!(id, "archive-browser" | "codex-conversations");
+		let shortcut = crate::shell::shortcuts::key(&crate::shell::OpenGlobalCommands, cx)
+			.map(|k| k.display(gpui::OperatingSystem::Mac).to_string())
+			.unwrap_or_default();
+		let hint = if id == "navigation-command-entry" && !shortcut.is_empty() {
+			format!("{label} ({shortcut})")
+		} else {
+			label.to_owned()
+		};
 		gpui::div()
 			.id(id)
 			.debug_selector(move || id.into())
 			.role(Role::Button)
 			.tab_index(0)
-			.aria_label(if id == "navigation-command-entry" {
-				"Search and commands (⌘K)"
-			} else {
-				label
-			})
+			.aria_label(hint.clone())
 			.h(gpui::px(ui_theme::CONTROL_SIZE))
 			.w_full()
 			.min_w(gpui::px(ui_theme::CONTROL_SIZE))
@@ -477,13 +502,7 @@ impl AgentSurface {
 			.rounded(gpui::px(ui_theme::SMALL_CONTROL_RADIUS))
 			.cursor_pointer()
 			.hover(|s| s.bg(ui_theme::rgba(ui_theme::HOVER_FILL)))
-			.when(!reveal.expanded, |row| {
-				row.hover_hint(if id == "navigation-command-entry" {
-					"Search and commands (⌘K)"
-				} else {
-					label
-				})
-			})
+			.when(!reveal.expanded, |row| row.hover_hint(hint))
 			.child(
 				navigation_leading_slot()
 					.text_color(ui_theme::rgb(TEXT_MUTED))
@@ -508,7 +527,7 @@ impl AgentSurface {
 							.pr_1()
 							.text_size(gpui::px(NAVIGATION_DETAIL_SIZE))
 							.text_color(ui_theme::rgb(TEXT_MUTED))
-							.child(navigation_text(reveal, "⌘K")),
+							.child(navigation_text(reveal, shortcut)),
 					)
 				})
 			})
@@ -576,18 +595,6 @@ impl AgentSurface {
 					.map(navigation_category_label)
 					.child(navigation_text(reveal, section.label())),
 			);
-		if section == Section::Assistant {
-			let selected = !self.workspace.browsing
-				&& self.workspace.work_detail.is_none()
-				&& self.selected.as_deref().is_some_and(|id| self.is_assistant_conversation(id));
-			let anchor =
-				self.navigation_anchor(section.key(), section.key(), section.key(), window, cx);
-			return conversation_row_feedback(
-				row.aria_selected(selected).anchor_scroll(Some(anchor)),
-				selected,
-			)
-			.into_any_element();
-		}
 		let shown = reveal.expanded
 			&& (self.workspace.navigation.hovered.as_ref() == Some(&key)
 				|| self.workspace.navigation.options == Some(section)
@@ -598,12 +605,41 @@ impl AgentSurface {
 			window,
 			cx,
 		);
-		row = row
-			.aria_expanded(open)
-			.hover(|row| row.bg(ui_theme::rgba(ui_theme::HOVER_FILL)))
-			.on_hover(
-				cx.listener(move |s, hovered: &bool, _, cx| s.navigation_hover(&key, *hovered, cx)),
-			);
+		let hover = key.clone();
+		row =
+			row.on_hover(cx.listener(move |s, hovered: &bool, _, cx| {
+				s.navigation_hover(&hover, *hovered, cx)
+			}));
+		if section == Section::Assistant {
+			let selected = !self.workspace.browsing
+				&& self.workspace.work_detail.is_none()
+				&& self.selected.as_deref().is_some_and(|id| self.is_assistant_conversation(id));
+			let anchor =
+				self.navigation_anchor(section.key(), section.key(), section.key(), window, cx);
+			if reveal.expanded
+				&& let Some(snapshot) = &self.snapshot
+				&& let Some(work) = snapshot
+					.assistant
+					.agent_id
+					.as_deref()
+					.and_then(|id| self.conversation_record(id))
+				&& work.codex_thread_id.is_some()
+			{
+				let item = self.local_navigation_item(
+					snapshot,
+					&work.id,
+					section.label().into(),
+					Some(work),
+				);
+				row = row.child(self.navigation_row_actions(&item, &key, opacity, cx));
+			}
+			return conversation_row_feedback(
+				row.aria_selected(selected).anchor_scroll(Some(anchor)),
+				selected,
+			)
+			.into_any_element();
+		}
+		row = row.aria_expanded(open).hover(|row| row.bg(ui_theme::rgba(ui_theme::HOVER_FILL)));
 		if reveal.expanded {
 			let mut controls = gpui::div()
 				.flex()
@@ -651,6 +687,8 @@ impl AgentSurface {
 		}
 		if !self.workspace.navigation.collapsed.remove(section.key()) {
 			self.workspace.navigation.collapsed.insert(section.key());
+		} else if section == Section::Pin {
+			self.refresh_navigation_pins(cx);
 		}
 		self.workspace.navigation.menu = None;
 		self.workspace.navigation.confirm_delete = false;
@@ -840,7 +878,7 @@ impl AgentSurface {
 		let hovered = self.workspace.navigation.hovered.as_ref() == Some(&key);
 		let keyboard = window.last_input_was_keyboard() && focus.contains_focused(window, cx);
 		let menu_open = self.workspace.navigation.menu.as_deref() == Some(&key);
-		let manageable = work.is_some();
+		let manageable = work.is_some() || item.external.is_some();
 		let shown = expanded && manageable && (hovered || keyboard || menu_open);
 		let actions = crate::ui_motion::value(
 			SharedString::from(format!("row-actions-{key}")),
@@ -849,7 +887,11 @@ impl AgentSurface {
 			cx,
 		);
 		let selected = !self.workspace.browsing
-			&& self.selected.as_deref() == Some(&item.id)
+			&& self.selected.as_ref().is_some_and(|id| {
+				id == &item.id
+					|| self.snapshot.as_ref().and_then(|s| s.side_chat_sources.get(id))
+						== Some(&item.id)
+			})
 			&& self.workspace.work_detail.is_none();
 		let target = item.clone();
 		let key_target = target.clone();
@@ -902,7 +944,8 @@ impl AgentSurface {
 			(status != AgentStatusStyle::Quiet).then_some(state),
 		);
 		let base = if !expanded || item.draft { 0. } else { 44. };
-		let inset = base + (76. - base) * actions;
+		let action_width = if item.external.is_some() || item.assistant { 28. } else { 76. };
+		let inset = base + (action_width - base) * actions;
 		let label = navigation_item_label(
 			item,
 			&key,
@@ -936,7 +979,9 @@ impl AgentSurface {
 	fn activate_navigation_item(&mut self, item: &Item, cx: &mut Context<Self>) {
 		self.workspace.navigation.confirm_delete = false;
 		self.workspace.navigation.menu = None;
-		if item.archived {
+		if let Some(candidate) = &item.external {
+			self.open_pinned_conversation(candidate, cx);
+		} else if item.archived {
 			self.open_archived_conversation(&item.id, cx);
 		} else if self.workspace.new_conversation.as_ref() == Some(&item.id) {
 			self.new_project_agent(item.project.as_deref(), cx);
@@ -1013,10 +1058,16 @@ impl AgentSurface {
 			snapshot.work_items.push(chat);
 		}
 		self.workspace.navigation.collapsed.remove(Section::Chats.key());
-		self.workspace.navigation.preferences.pinned = std::collections::BTreeSet::from([
-			"chat-0".into(),
-			"navigation-project-0-agent-0".into(),
-		]);
+		self.workspace.navigation.pins.rows = Some(
+			["chat-thread-0", "navigation-project-0-agent-0"]
+				.map(|id| decodex_protocol::NativeThreadCandidate {
+					thread_id: id.into(),
+					title: id.into(),
+					preview: None,
+					updated_at_micros: now,
+				})
+				.to_vec(),
+		);
 		cx.notify();
 	}
 
@@ -1349,7 +1400,6 @@ impl AgentSurface {
 	}
 
 	pub(super) fn forget_navigation_conversation(&mut self, id: &str) {
-		self.workspace.navigation.preferences.pinned.remove(id);
 		for drafts in self.workspace.navigation.preferences.project_drafts.values_mut() {
 			drafts.retain(|_, value| value != id);
 		}
@@ -1464,6 +1514,9 @@ impl AgentSurface {
 				cx.background_executor().timer(std::time::Duration::from_secs(60)).await;
 				if owner
 					.update(cx, |s, cx| {
+						if !s.workspace.navigation.collapsed.contains(Section::Pin.key()) {
+							s.refresh_navigation_pins(cx);
+						}
 						s.presentations.sidebar.update(cx, |_, cx| cx.notify());
 						// Conversation previews observe this owner and share the same clock.
 						cx.notify();

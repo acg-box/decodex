@@ -283,7 +283,7 @@ impl AgentSurface {
 			markdown::render_with_selection_action(
 				text,
 				&identity,
-				if kind == "agentMessage" { self.side_chat_selection_action(cx) } else { None },
+				self.side_chat_selection_action(cx),
 			),
 		);
 
@@ -545,7 +545,10 @@ impl AgentSurface {
 			content @ AgentTimelineContent::Promotion { .. } =>
 				self.native_promotion(work, content, identity, cx),
 		};
-		self.find_result_row(entry, self.located_item_row(&entry.content, body))
+		self.find_result_row(
+			entry,
+			self.located_item_row(work.codex_thread_id.as_deref(), &entry.content, body),
+		)
 	}
 
 	fn native_turn_metrics(

@@ -101,6 +101,7 @@ fn rendered_detail_continuation_reads_exact_cursor_without_accumulating_pages(
 					guardian: Default::default(),
 					portfolio: Default::default(),
 					archived_work_ids: Default::default(),
+					side_chat_sources: Default::default(),
 					agent_slots: Default::default(),
 					conversation_titles: Default::default(),
 					context_references: vec![],

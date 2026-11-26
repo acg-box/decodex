@@ -23,11 +23,11 @@
       "completedRunId": "99cf9f7f-e822-4b37-89ec-a87234a29fcb"
     },
     "/openwiki/architecture/desktop-workspace.md": {
-      "pageVersion": "sha256:e63dcac75407f119e721ccb5d9ca182b50f96e5216b4a32eb44c2a2499050622",
+      "pageVersion": "sha256:7cfbc6e593d12c623e72a925cf8936c80385195859ed9965d1576b86fa46eb7d",
       "completedBy": "codex",
-      "completedRunId": "bca2a5aa-9f23-44b9-b66f-4e651fc64a9d",
-      "gitHead": "3cd35d9684f491121d4d917f1a23108a92e64a9d",
-      "sourceFingerprint": "sha256:de3dfa2abf39882b296ded451a71f12efa96e43854aa6c8aeb07a0f178edee5f"
+      "completedRunId": "57e94c61-dda7-4221-962a-da6635cee872",
+      "gitHead": "870e62e0a4a3424c81db77b5eb39a207e5317853",
+      "sourceFingerprint": "sha256:762fca86acc9bea72e6dfab814b7fb730f5dfb8fce31c445ced2df60a2ba8586"
     },
     "/openwiki/architecture/runtime-architecture.md": {
       "gitHead": "3b773cf39c78ced10ae73698c1f52a961aa2f91c",

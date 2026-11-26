@@ -127,10 +127,10 @@ impl AgentSurface {
 		};
 		let id = work.id.clone();
 		let (label, description) = if owner.is_some() {
-			("Change…", "Change the responsible Agent")
+			("Change Agent", "Change the responsible Agent")
 		} else {
 			(
-				"Assign to an Agent or make independent…",
+				"Assign to an Agent or make independent",
 				"Assign to an Agent or make this conversation an independent Agent",
 			)
 		};

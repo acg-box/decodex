@@ -26,6 +26,10 @@ impl AgentSurface {
 	pub(super) fn invalidate_attached_branches(&mut self, next: &AgentSnapshotDto) {
 		if self.workspace.attached.owner.as_ref().is_some_and(|(work, source)| {
 			next.runtime_source.as_ref() != Some(source)
+				|| self
+					.snapshot
+					.as_ref()
+					.is_some_and(|s| s.side_chat_sources != next.side_chat_sources)
 				|| !next.work_items.iter().any(|w| {
 					&w.id == work
 						&& self

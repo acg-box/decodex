@@ -391,6 +391,10 @@ impl AgentSurface {
 	}
 
 	pub(super) fn close_page(&mut self, id: &str, cx: &mut Context<Self>) {
+		if let Some((root, thread)) = self.temporary_tab(id) {
+			self.end_temporary_side_chat(id, root, thread, cx);
+			return;
+		}
 		if self.workspace.preview_page.as_deref() == Some(id) {
 			self.workspace.preview_page = None;
 		}
@@ -2378,6 +2382,7 @@ impl AgentSurface {
 			guardian: Default::default(),
 			portfolio: Default::default(),
 			archived_work_ids: Default::default(),
+			side_chat_sources: Default::default(),
 			agent_slots: Default::default(),
 			conversation_titles: Default::default(),
 			context_references: vec![],
@@ -2496,6 +2501,7 @@ impl AgentSurface {
 			guardian: Default::default(),
 			portfolio: Default::default(),
 			archived_work_ids: Default::default(),
+			side_chat_sources: Default::default(),
 			agent_slots: Default::default(),
 			conversation_titles: Default::default(),
 			context_references: vec![],

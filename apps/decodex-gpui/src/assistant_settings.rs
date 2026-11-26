@@ -9,7 +9,7 @@ use decodex_components::{
 	ComponentStore,
 	ragflow::{Action, Installation, MemorySetup, ModelEndpoint, Models, Update},
 };
-use decodex_protocol::{AssistantCommand, ProfileKind, RagflowConnection};
+use decodex_protocol::{AssistantCommand, MemoryImportStatus, ProfileKind, RagflowConnection};
 use gpui::{
 	AnyElement, AppContext as _, Context, Entity, InteractiveElement as _, IntoElement as _,
 	ParentElement as _, Styled as _, Task, prelude::FluentBuilder as _,
@@ -21,6 +21,7 @@ use std::{
 
 #[derive(Clone, Copy, Eq, PartialEq)]
 pub(crate) enum ComponentAction {
+	CheckInstallation,
 	Install,
 	Update,
 	Uninstall,
@@ -32,8 +33,16 @@ pub(crate) enum ComponentAction {
 	CancelReset,
 	ResetMemory,
 }
+#[derive(Clone, Copy, Default, Eq, PartialEq)]
+pub(crate) enum Inspection {
+	#[default]
+	Unchecked,
+	Confirmed,
+	Failed,
+}
+
 pub(crate) struct ComponentState {
-	pub inspected: bool,
+	pub inspection: Inspection,
 	pub running: Option<bool>,
 	pub working: bool,
 	pub installed: bool,
@@ -44,6 +53,7 @@ pub(crate) struct ComponentState {
 	pub reset_confirming: bool,
 	pub editing: bool,
 	pub import: bool,
+	pub import_status: Option<MemoryImportStatus>,
 	pub busy: bool,
 }
 #[derive(Default)]
@@ -53,7 +63,7 @@ pub(super) struct Panel {
 	running: Option<bool>,
 	fields: BTreeMap<&'static str, Entity<ComposerInput>>,
 	installation: Option<Installation>,
-	inspected: bool,
+	inspection: Inspection,
 	progress: Arc<Mutex<String>>,
 	error: String,
 	completion: Option<String>,
@@ -134,6 +144,7 @@ impl AgentSurface {
 				&& connection.user_id == memory.user_id
 				&& connection.memory_id.as_deref() == Some(memory.memory_id.as_str())
 		});
+		let import = connection.is_some_and(|c| c.ingest_chats);
 		let feedback = if !self.assistant_settings.error.is_empty() {
 			Some(Feedback::error(self.assistant_settings.error.clone()))
 		} else if self.assistant_settings.setup.is_some() && !progress.is_empty() {
@@ -144,23 +155,16 @@ impl AgentSurface {
 			.assistant_settings
 			.installation
 			.as_ref()
-			.is_some_and(|i| i.installed && i.memory.is_none())
+			.is_some_and(|i| i.installed && i.memory.is_none() && i.models.is_some())
 		{
-			if self.assistant_settings.installation.as_ref().is_some_and(|i| i.models.is_some()) {
-				Some(Feedback::warning(
-					"Memory setup did not finish. Save the model settings to retry.",
-				))
-			} else {
-				None
-			}
+			Some(Feedback::warning(
+				"Memory setup did not finish. Save the model settings to retry.",
+			))
 		} else {
-			self.snapshot
-				.as_ref()
-				.and_then(|s| s.assistant.memory_status.as_ref())
-				.map(Feedback::neutral)
+			None
 		};
 		ComponentState {
-			inspected: self.assistant_settings.inspected,
+			inspection: self.assistant_settings.inspection,
 			running: self.assistant_settings.running,
 			working: self.assistant_settings.setup.is_some(),
 			editing: !self.assistant_settings.fields.is_empty(),
@@ -185,11 +189,12 @@ impl AgentSurface {
 				.as_ref()
 				.filter(|i| i.installed)
 				.map(|i| i.version.clone()),
-			import: self
+			import,
+			import_status: self
 				.snapshot
 				.as_ref()
-				.and_then(|s| s.assistant.settings.ragflow.as_ref())
-				.is_some_and(|c| c.ingest_chats),
+				.filter(|_| memory_ready && import)
+				.and_then(|s| s.assistant.memory_status),
 			busy: self.assistant_settings.setup.is_some() || self.sending || self.uncertain,
 		}
 	}
@@ -199,6 +204,23 @@ impl AgentSurface {
 	) -> Option<(decodex_protocol::ClientProfile, String)> {
 		let profile = self.profile.as_ref().filter(|p| p.kind() == ProfileKind::Local)?;
 		Some((profile.clone(), self.assistant_id()?))
+	}
+
+	pub(crate) fn can_update_stack(&self) -> bool {
+		self.component_review_host().is_some()
+			&& !self.sending
+			&& !self.uncertain
+			&& self.assistant_settings.setup.is_none()
+			&& self.assistant_settings.fields.is_empty()
+			&& self.assistant_settings.reset_target.is_none()
+			&& self
+				.snapshot
+				.as_ref()
+				.is_some_and(|s| s.work_items.iter().all(|w| w.active_turn_id.is_none()))
+	}
+
+	pub(crate) fn update_bundled_ragflow(&mut self, cx: &mut Context<Self>) {
+		self.run_memory_component(ComponentAction::Update, None, cx);
 	}
 
 	pub(crate) fn update_reviewed_ragflow(&mut self, target: Update, cx: &mut Context<Self>) {
@@ -221,6 +243,13 @@ impl AgentSurface {
 			return;
 		}
 		match action {
+			ComponentAction::CheckInstallation => {
+				self.assistant_settings.inspection = Inspection::Unchecked;
+				self.assistant_settings.error.clear();
+				self.continue_memory_setup(cx);
+				cx.notify();
+				return;
+			},
 			ComponentAction::CancelModels => {
 				self.assistant_settings.fields.clear();
 				self.assistant_settings.error.clear();
@@ -391,7 +420,7 @@ impl AgentSurface {
 			}))
 			.expect("RAGFlow fixture"),
 		);
-		self.assistant_settings.inspected = true;
+		self.assistant_settings.inspection = Inspection::Confirmed;
 		self.assistant_settings.running = Some(true);
 		self.edit_memory_models(cx);
 	}
@@ -576,7 +605,10 @@ impl AgentSurface {
 		{
 			return;
 		}
-		if !self.assistant_settings.inspected {
+		if self.assistant_settings.inspection == Inspection::Failed {
+			return;
+		}
+		if self.assistant_settings.inspection == Inspection::Unchecked {
 			let profile = self.profile.clone();
 			let request = cx.background_executor().spawn(async {
 				let installation = ComponentStore::for_user()?.ragflow_installation()?;
@@ -591,13 +623,16 @@ impl AgentSurface {
 						return;
 					}
 					s.assistant_settings.setup = None;
-					s.assistant_settings.inspected = true;
 					match result {
 						Ok((installation, running)) => {
+							s.assistant_settings.inspection = Inspection::Confirmed;
 							s.assistant_settings.installation = installation;
 							s.assistant_settings.running = running;
 						},
-						Err(error) => s.assistant_settings.error = error,
+						Err(error) => {
+							s.assistant_settings.inspection = Inspection::Failed;
+							s.assistant_settings.error = error;
+						},
 					}
 					s.continue_memory_setup(cx);
 					cx.notify();
@@ -660,7 +695,8 @@ impl AgentSurface {
 			ComponentAction::Install => Action::Install,
 			ComponentAction::Update => Action::Update,
 			ComponentAction::Uninstall => Action::Uninstall,
-			ComponentAction::ToggleImport
+			ComponentAction::CheckInstallation
+			| ComponentAction::ToggleImport
 			| ComponentAction::ConfigureModels
 			| ComponentAction::SaveModels
 			| ComponentAction::CancelModels
@@ -704,6 +740,7 @@ impl AgentSurface {
 				s.assistant_settings.setup = None;
 				match result {
 					Ok(installation) => {
+						s.assistant_settings.inspection = Inspection::Confirmed;
 						s.assistant_settings.fields.clear();
 						let mut connection = installation
 							.as_ref()
@@ -729,20 +766,21 @@ impl AgentSurface {
 						}
 						s.assistant_settings.running = installation.as_ref().map(|i| i.installed);
 						s.assistant_settings.installation = installation;
-						if s.assistant_settings
-							.installation
-							.as_ref()
-							.is_some_and(|i| i.installed && i.models.is_none())
+						if action != ComponentAction::Update
+							&& s.assistant_settings
+								.installation
+								.as_ref()
+								.is_some_and(|i| i.installed && i.models.is_none())
 						{
 							s.edit_memory_models(cx);
 						}
-						if !s.sending && !s.uncertain {
+						if action != ComponentAction::Update && !s.sending && !s.uncertain {
 							s.configure_memory(connection, cx);
 						}
 					},
 					Err(error) => {
 						s.assistant_settings.error = error;
-						s.assistant_settings.inspected = false;
+						s.assistant_settings.inspection = Inspection::Unchecked;
 					},
 				}
 				cx.notify();
@@ -786,6 +824,52 @@ fn memory_connection(memory: decodex_components::ragflow::MemorySetup) -> Ragflo
 #[cfg(test)]
 mod tests {
 	use super::*;
+	#[gpui::test]
+	fn automatic_learning_displays_the_last_import_only_while_enabled(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let agent = cx.new(AgentSurface::new);
+		agent.update(cx, |s, cx| {
+			s.visual_ragflow_saved(cx);
+			// An already running service may still send the original receipt text.
+			let queued = "Import queued for asynchronous extraction; searchable completion is not yet confirmed.";
+			s.snapshot.as_mut().unwrap().assistant.memory_status =
+				Some(serde_json::from_value(serde_json::json!(queued)).unwrap());
+			let state = s.ragflow_component_state();
+			assert_eq!(state.import_status, Some(MemoryImportStatus::Queued));
+			assert!(state.feedback.is_none());
+			s.snapshot.as_mut().unwrap().assistant.settings.ragflow.as_mut().unwrap().ingest_chats = false;
+			assert!(s.ragflow_component_state().import_status.is_none());
+		});
+	}
+
+	#[gpui::test]
+	fn ragflow_install_requires_a_successful_inspection(cx: &mut gpui::TestAppContext) {
+		let agent = cx.new(AgentSurface::new);
+		let (_, visual) = cx.add_window_view(|_, cx| {
+			let mut s = crate::settings_surface::SettingsSurface::new(
+				crate::desktop_settings::DesktopSettingsController::production(),
+				cx,
+			);
+			s.bind_native_agent(agent.clone(), cx);
+			s.category = crate::settings_surface::SettingsCategory::Components;
+			s
+		});
+		for (inspection, install, retry) in [
+			(Inspection::Unchecked, false, false),
+			(Inspection::Failed, false, true),
+			(Inspection::Confirmed, true, false),
+		] {
+			agent.update(visual, |s, cx| {
+				s.assistant_settings.inspection = inspection;
+				cx.notify();
+			});
+			visual.update(crate::ui_frame::draw_current_frame);
+			assert_eq!(visual.debug_bounds("components-ragflow-install").is_some(), install);
+			assert_eq!(visual.debug_bounds("components-ragflow-inspection-retry").is_some(), retry);
+		}
+	}
+
 	#[gpui::test]
 	fn ragflow_preserves_the_complete_reported_version(cx: &mut gpui::TestAppContext) {
 		let agent = cx.new(AgentSurface::new);

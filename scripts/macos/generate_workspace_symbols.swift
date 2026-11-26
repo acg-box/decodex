@@ -6,6 +6,7 @@ let output = URL(fileURLWithPath: CommandLine.arguments.dropFirst().first ?? "as
 try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
 let light = CommandLine.arguments.contains("--light")
 let symbols = [
+    "keyboard": "keyboard",
     "navigation-pin": "pin",
     "navigation-assistant": "sparkles",
     "navigation-folder": "folder",

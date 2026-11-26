@@ -31,6 +31,11 @@ When working in this repository, read the OpenWiki quickstart first, then follow
 
 ## UI design language
 
+- In component settings, use the header action for setup, enablement, status
+  checks, or opening the component. Place status feedback directly below the
+  header. Put update policies after component settings. Use the shared Installation row at the end
+  of expanded details for maintenance. Show supported actions in this order:
+  Update, Reinstall, Uninstall.
 - Follow [Interface geometry and motion](openwiki/architecture/design-language.md)
   for desktop layout, spacing, type, color, and motion.
 - Every activity island must use the shared sizing, allocation, transition, and

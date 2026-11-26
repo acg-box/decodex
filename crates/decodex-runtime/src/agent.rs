@@ -29,7 +29,7 @@ pub(crate) mod registration;
 mod registration_commands;
 mod result_messages;
 mod resume_recovery;
-mod task_history;
+pub(crate) mod task_history;
 mod turn_execution;
 mod voice;
 mod work;
@@ -128,6 +128,7 @@ pub struct AgentCoordinator {
 	client: AppServerClient,
 	config: AgentConfig,
 	loaded_threads: std::collections::HashSet<String>,
+	pub(crate) side_chats: timeline::side_chat::SideChatHistory,
 	closing_resumes: std::collections::HashMap<String, ClosingResume>,
 	usage_replays: std::collections::HashSet<String>,
 	pending_requests: std::collections::HashMap<RequestId, i64>,
@@ -188,6 +189,7 @@ impl AgentCoordinator {
 			client,
 			config,
 			loaded_threads: std::collections::HashSet::new(),
+			side_chats: Default::default(),
 			closing_resumes: Default::default(),
 			usage_replays: Default::default(),
 			pending_requests: std::collections::HashMap::new(),
@@ -1921,6 +1923,9 @@ impl AgentCoordinator {
 	/// Consume notifications and requests serially. Transport reads and RPC reply
 	/// correlation continue independently while this method awaits a response.
 	pub async fn handle_event(&mut self, event: ServerEvent) -> Result<(), AgentError> {
+		if let ServerEvent::Notification { method, params } = &event {
+			self.side_chats.observe(method, params);
+		}
 		self.voice_event(&event).await?;
 
 		if let ServerEvent::Notification { method, params } = &event
@@ -2504,7 +2509,13 @@ impl AgentCoordinator {
 					&& let Some(owner) = state.agent_id
 					&& let Some(connection) = state.settings.ragflow
 				{
-					let _=store.assistant_memory_health(owner,connection,"Import unavailable. Check the connection and credential; unknown imports are not repeated.".into()).await;
+					let _ = store
+						.assistant_memory_health(
+							owner,
+							connection,
+							decodex_protocol::MemoryImportStatus::Unavailable,
+						)
+						.await;
 				}
 			}));
 		}
@@ -2917,6 +2928,10 @@ fn resume_error(error: ClientError, thread: &str) -> AgentError {
 			) {
 		return AgentError::ThreadArchived;
 	}
+	thread_mutation_error(error, thread)
+}
+
+fn thread_mutation_error(error: ClientError, thread: &str) -> AgentError {
 	if let ClientError::Remote(remote) = &error
 		&& remote.code == -32_600
 		&& remote.message.contains("already has an active writer")

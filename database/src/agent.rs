@@ -125,6 +125,7 @@ pub enum AgentDispatchState {
 pub enum AgentStoreSnapshot {
 	Complete {
 		managers: Vec<String>,
+		side_chat_sources: std::collections::BTreeMap<String, String>,
 		projects: Vec<Project>,
 		conversation_titles: std::collections::BTreeMap<String, String>,
 		work_items: Vec<AgentWorkItem>,
@@ -319,10 +320,11 @@ impl SqliteStore {
             let managers=transaction.prepare("SELECT work_id FROM agent_managers").map_err(error::sqlite_error)?.query_map([],|row|row.get(0)).map_err(error::sqlite_error)?.collect::<Result<Vec<String>,_>>().map_err(error::sqlite_error)?;
             let projects=projects::read_projects(&transaction)?;
             let conversation_titles=crate::agent_titles::titles(&transaction)?;
+            let side_chat_sources=crate::agent_fork::side_chat_sources(&transaction)?;
 
             transaction.commit().map_err(error::sqlite_error)?;
 
-            Ok(AgentStoreSnapshot::Complete { managers,projects,conversation_titles,work_items, dependencies, pending_events })
+            Ok(AgentStoreSnapshot::Complete { managers,side_chat_sources,projects,conversation_titles,work_items, dependencies, pending_events })
 		}).await
 	}
 

@@ -31,6 +31,43 @@ impl AgentHost {
 		let agent = agent.ok_or("Task connection is unavailable")?;
 
 		match action {
+			decodex_protocol::AgentActionDto::CloseSideChat { work_id, thread_id } => {
+				agent.close_side_chat(work_id.as_str(), thread_id.as_str()).await.map_err(
+					|error| match error {
+						crate::agent::AgentError::Rejected(_) => AgentHostError::Rejected(
+							"Only the selected temporary side chat can be closed.",
+						),
+						_ => AgentHostError::Unknown("Could not confirm the side chat was closed"),
+					},
+				)?;
+				Ok(work_id.as_str().into())
+			},
+			decodex_protocol::AgentActionDto::OpenSideChat {
+				work_id,
+				thread_id,
+				target_work_id,
+			} => {
+				let saved = agent
+					.open_side_chat(
+						work_id.as_str().into(),
+						thread_id.as_str().into(),
+						target_work_id.as_str().into(),
+					)
+					.await
+					.map_err(|error| match error {
+						crate::agent::AgentError::Rejected(_) => AgentHostError::Rejected(
+							"The source conversation is unavailable on this connection.",
+						),
+						_ => AgentHostError::Unknown("Side chat creation is unconfirmed"),
+					})?;
+				if saved.state == "rejected" {
+					return Err("Could not create the side chat.".into());
+				}
+				if saved.state != "forked" {
+					return Err(AgentHostError::Unknown("Side chat creation is unconfirmed"));
+				}
+				Ok(saved.attempt.target_work)
+			},
 			decodex_protocol::AgentActionDto::PreparePromptEdit {
 				work_id,
 				thread_id,
@@ -69,6 +106,7 @@ impl AgentHost {
 				model_provider,
 			} => {
 				let boundary = match boundary {
+					PromptForkBoundary::TemporarySideChat => AgentForkBoundary::TemporarySideChat,
 					PromptForkBoundary::BeforeInput => AgentForkBoundary::BeforeInput,
 					PromptForkBoundary::AfterTurn => AgentForkBoundary::AfterTurn,
 					PromptForkBoundary::AttachedAfterTurn => AgentForkBoundary::AttachedAfterTurn,
@@ -413,6 +451,7 @@ fn fork_status(saved: AgentForkReceipt) -> Option<decodex_protocol::PromptForkSt
 		target_work_id: EntityId::new(saved.attempt.target_work).ok()?,
 		target_thread_id: saved.target_thread.map(WireText::new).transpose().ok()?,
 		boundary: match saved.attempt.boundary {
+			AgentForkBoundary::TemporarySideChat => PromptForkBoundary::TemporarySideChat,
 			AgentForkBoundary::BeforeInput => PromptForkBoundary::BeforeInput,
 			AgentForkBoundary::AfterTurn => PromptForkBoundary::AfterTurn,
 			AgentForkBoundary::AttachedAfterTurn => PromptForkBoundary::AttachedAfterTurn,

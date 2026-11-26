@@ -228,13 +228,21 @@ pub(crate) fn owned(
 	a: &AgentPromptEditAttempt,
 	generation: Option<&str>,
 ) -> Result<bool, StoreError> {
+	owns_thread(c, &a.work, &a.thread, generation)
+}
+pub(crate) fn owns_thread(
+	c: &Connection,
+	work: &str,
+	thread: &str,
+	generation: Option<&str>,
+) -> Result<bool, StoreError> {
 	if let Some(generation) = generation {
-		return agent_process::hosts_thread(c, &a.work, &a.thread, generation);
+		return agent_process::hosts_thread(c, work, thread, generation);
 	}
-	Ok(agent_process::owns_work(c, &a.work, generation)?
+	Ok(agent_process::owns_work(c, work, generation)?
 		&& c.query_row(
 			"SELECT EXISTS(SELECT 1 FROM agent_work_items WHERE id=?1 AND codex_thread_id=?2)",
-			rusqlite::params![a.work, a.thread],
+			rusqlite::params![work, thread],
 			|r| r.get::<_, bool>(0),
 		)
 		.map_err(error::sqlite_error)?)

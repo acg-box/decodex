@@ -439,6 +439,9 @@ pub struct AgentTaskReferenceDto {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct NativeThreadCandidate {
+	/// Native update time, in microseconds since the Unix epoch.
+	#[serde(default)]
+	pub updated_at_micros: i64,
 	/// Exact native identity, retained on registration.
 	pub thread_id: String,
 	/// Native name or first message preview.
@@ -475,6 +478,13 @@ pub enum AgentActionDto {
 		agent_id: EntityId,
 		/// Exact duty identity.
 		wake_id: EntityId,
+	},
+	/// Change the native sidebar section without registering or starting the conversation.
+	SetThreadPinned {
+		/// Exact native conversation.
+		thread_id: EntityId,
+		/// Requested membership in the built-in Pinned section.
+		pinned: bool,
 	},
 	/// Register or update responsibility for an existing native conversation.
 	RegisterNativeThread {
@@ -612,6 +622,22 @@ pub enum AgentActionDto {
 		thread_id: WireText,
 		/// Token returned by the complete review query.
 		review_token: WireText,
+	},
+	/// Open a temporary side chat from the current native thread, including a running turn.
+	OpenSideChat {
+		/// Current local owner.
+		work_id: EntityId,
+		/// Expected native parent.
+		thread_id: WireText,
+		/// Stable identity for the new side chat.
+		target_work_id: EntityId,
+	},
+	/// Release the selected temporary conversation and its local content.
+	CloseSideChat {
+		/// Exact local side conversation.
+		work_id: EntityId,
+		/// Exact native ephemeral thread.
+		thread_id: WireText,
 	},
 	/// Create a source-preserving branch from one retained review. Never replay native creation.
 	ForkPromptEdit {
@@ -1168,6 +1194,9 @@ pub struct AgentSnapshotDto {
 	/// Confirmed native archives included in an explicit archive catalog.
 	#[serde(default, skip_serializing_if = "std::collections::BTreeSet::is_empty")]
 	pub archived_work_ids: BTreeSet<String>,
+	/// Attached conversations indexed by child Work ID, including pending native creation.
+	#[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+	pub side_chat_sources: BTreeMap<String, String>,
 	/// Runtime-owned reusable display slots. Never use these numbers for message routing.
 	pub agent_slots: Box<BTreeMap<String, u32>>,
 	/// Confirmed native conversation topics keyed by thread ID; separate from Agent identity.

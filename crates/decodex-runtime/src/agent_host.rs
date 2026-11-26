@@ -87,6 +87,11 @@ pub(crate) enum AgentHostError {
 	Rejected(&'static str),
 	Unknown(&'static str),
 }
+fn lifecycle_writer_conflict() -> AgentHostError {
+	AgentHostError::Rejected(
+		"Another Codex client has this conversation open. Close it there and try again.",
+	)
+}
 impl Display for AgentHostError {
 	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
 		match self {
@@ -109,6 +114,7 @@ pub(crate) struct AgentHost {
 	observations: Option<AccountObservationService>,
 	recovery_cursor: Arc<Mutex<Option<String>>>,
 	prompt_edits: Reviews,
+	side_chats: timeline::side_chat::SideChatHistory,
 	recaps: Recaps,
 	titles: crate::agent_titles::Titles,
 	samples: Samples,
@@ -124,6 +130,10 @@ pub(crate) struct AgentHost {
 	sender: mpsc::Sender<Request>,
 	receiver: Arc<Mutex<Option<mpsc::Receiver<Request>>>>,
 }
+fn context_cursor(root: &str, thread: &str, cursor: Option<&str>) -> String {
+	format!("assistant:{}", serde_json::json!([root, thread, cursor]))
+}
+
 impl AgentHost {
 	pub(crate) fn new(store: SqliteStore, runtime: ConversationRuntime) -> Self {
 		let (sender, receiver) = mpsc::channel(32);
@@ -142,6 +152,7 @@ impl AgentHost {
 			samples: Default::default(),
 			transcripts: Default::default(),
 			prompt_edits: Default::default(),
+			side_chats: Default::default(),
 			weather_cache: Arc::new(Mutex::new(None)),
 			archive_visibility: Default::default(),
 			dictation: Default::default(),
@@ -298,21 +309,76 @@ impl AgentHost {
 		}
 	}
 
+	async fn native_catalog_request(&self, method: &'static str, params: Value) -> Option<Value> {
+		if let Some((generation, client)) = self.runtime.agent_catalog_client() {
+			let raw = client.request(method, params).await.ok()?;
+			(self.runtime.agent_catalog_client()?.0 == generation).then_some(raw)
+		} else {
+			self.runtime.offline_catalog_request(method, params).await
+		}
+	}
+
 	pub(crate) async fn native_threads(
 		&self,
 		cursor: Option<&str>,
+		search: Option<&str>,
 	) -> Option<decodex_protocol::NativeThreadPage> {
-		if let Some((generation, client)) = self.runtime.agent_catalog_client() {
-			let raw = client
-				.request("thread/list", crate::agent::registration::list_params(cursor))
-				.await
-				.ok()?;
-			if self.runtime.agent_catalog_client()?.0 != generation {
+		let params = crate::agent::registration::list_params(cursor, search, 25);
+		crate::agent::registration::page(&self.native_catalog_request("thread/list", params).await?)
+	}
+
+	pub(crate) async fn pinned_threads(
+		&self,
+		cursor: Option<&str>,
+	) -> Option<decodex_protocol::NativeThreadPage> {
+		use crate::agent::registration::{catalog_page, pinned_params, thread_summary};
+		let raw = self.native_catalog_request("thread/list", pinned_params(cursor)).await?;
+		catalog_page(&raw, thread_summary)
+	}
+
+	pub(crate) async fn search_conversation(
+		&self,
+		work: &str,
+		thread: &str,
+		term: &str,
+		cursor: Option<&str>,
+	) -> Option<decodex_protocol::ConversationMatches> {
+		let (mut native, mut native_cursor) = self.history_context(work, thread, cursor).await?;
+		loop {
+			let source = self.timeline_source(work, &native).await?;
+			let args = serde_json::json!({"searchTerm":term, "cursor":native_cursor});
+			let value = crate::agent::task_history::native_history_search(
+				&source.client,
+				&args,
+				Some(&native),
+			)
+			.await
+			.ok()?;
+			let after = self.timeline_source(work, &native).await?;
+			if !crate::agent_usage_estimate::same_owner(&source, &after) {
 				return None;
 			}
-			crate::agent::registration::page(&raw)
-		} else {
-			self.runtime.offline_thread_page(cursor).await
+			let mut page: decodex_protocol::ConversationMatches =
+				serde_json::from_value(value).ok()?;
+			let next = match page.next_cursor.take() {
+				Some(cursor) => Some((native.clone(), Some(cursor.as_str().to_owned()))),
+				None => self
+					.store
+					.previous_agent_context(work.into(), native.clone())
+					.await
+					.ok()?
+					.map(|id| (id, None)),
+			};
+			if !page.data.is_empty() || next.is_none() {
+				page.next_cursor = next
+					.map(|(n, c)| {
+						decodex_protocol::WireText::new(context_cursor(thread, &n, c.as_deref()))
+					})
+					.transpose()
+					.ok()?;
+				return Some(page);
+			}
+			(native, native_cursor) = next?;
 		}
 	}
 
@@ -890,7 +956,30 @@ impl AgentHost {
 		thread: &str,
 		cursor: Option<&str>,
 	) -> decodex_protocol::AgentTimelineResult {
-		let mut result = self.assistant_timeline(work, thread, cursor).await;
+		use decodex_protocol::AgentTimelineResult;
+		let mut result = if let Some(page) = self.side_chats.page(thread, cursor) {
+			let (Ok(mut page), Some(source)) = (page, self.timeline_source(work, thread).await)
+			else {
+				return AgentTimelineResult::Unavailable;
+			};
+			if timeline::metrics::enrich_contents(&self.store, work, thread, page.items.iter_mut())
+				.await
+				.is_err()
+			{
+				return AgentTimelineResult::Unavailable;
+			}
+			AgentTimelineResult::Saved {
+				work_id: decodex_protocol::EntityId::new(work).expect("validated Work identity"),
+				account_id: decodex_protocol::EntityId::new(source.key.account.as_str())
+					.expect("validated account identity"),
+				thread_id: thread.into(),
+				items: page.items,
+				observed_activities: vec![],
+				next_cursor: page.next,
+			}
+		} else {
+			self.assistant_timeline(work, thread, cursor).await
+		};
 
 		if let decodex_protocol::AgentTimelineResult::Available { page, .. } = &mut result {
 			self.enrich_timeline_weather(page).await;
@@ -898,6 +987,27 @@ impl AgentHost {
 		self.enrich_timeline_spend(work, &mut result).await;
 
 		result
+	}
+
+	/// Decode a native continuation for the same conversation, including retired contexts.
+	async fn history_context(
+		&self,
+		work: &str,
+		thread: &str,
+		cursor: Option<&str>,
+	) -> Option<(String, Option<String>)> {
+		let Some(encoded) = cursor.and_then(|c| c.strip_prefix("assistant:")) else {
+			return Some((thread.to_owned(), cursor.map(str::to_owned)));
+		};
+		let (root, native, cursor): (String, String, Option<String>) =
+			serde_json::from_str(encoded).ok()?;
+		if root != thread
+			|| (native != thread
+				&& !self.store.agent_previous_threads(work.into()).await.ok()?.contains(&native))
+		{
+			return None;
+		}
+		Some((native, cursor))
 	}
 
 	/// Read native pages across retired contexts without copying their history into a new model.
@@ -924,30 +1034,11 @@ impl AgentHost {
 			)
 			.await;
 		}
-		let decode = || -> Option<(String, Option<String>)> {
-			let value: Value = serde_json::from_str(cursor?.strip_prefix("assistant:")?).ok()?;
-			(value[0] == thread).then(|| {
-				(value[1].as_str().unwrap_or("").to_owned(), value[2].as_str().map(str::to_owned))
-			})
-		};
-		let (mut native, mut native_cursor) = if cursor.is_some_and(|c| c.starts_with("assistant:"))
-		{
-			let Some((native, cursor)) = decode() else {
-				return AgentTimelineResult::Unavailable;
-			};
-			(native, cursor)
-		} else {
-			(thread.to_owned(), cursor.map(str::to_owned))
-		};
-		if native != thread
-			&& !self
-				.store
-				.agent_previous_threads(work.into())
-				.await
-				.is_ok_and(|ids| ids.contains(&native))
-		{
+		let Some((mut native, mut native_cursor)) =
+			self.history_context(work, thread, cursor).await
+		else {
 			return AgentTimelineResult::Unavailable;
-		}
+		};
 		let mut combined: Option<decodex_protocol::AgentTimelinePage> = None;
 		loop {
 			let result = timeline::read(
@@ -983,9 +1074,7 @@ impl AgentHost {
 				.as_ref()
 				.map(|c| (native.clone(), Some(c.clone())))
 				.or_else(|| previous.map(|p| (p, None)));
-			page.next_cursor = next
-				.as_ref()
-				.map(|(n, c)| format!("assistant:{}", serde_json::json!([thread, n, c])));
+			page.next_cursor = next.as_ref().map(|(n, c)| context_cursor(thread, n, c.as_deref()));
 			if let Some(newer) = combined.as_mut() {
 				page.entries.append(&mut newer.entries);
 				page.observed_activities.append(&mut newer.observed_activities);
@@ -1232,6 +1321,9 @@ impl AgentHost {
 		let mut quota_changes = self.runtime.account_quota_changes();
 		// The stop receiver must remain polled while attach, recovery, and RPCs await.
 		let drive = async {
+			if let Err(error) = self.store.retire_expired_side_chats(None).await {
+				eprintln!("Could not retire expired side chats: {error}");
+			}
 			let _ = self.store.retire_unstarted_assistant_configuration_notice().await;
 			active = self.restore().await;
 
@@ -1262,7 +1354,7 @@ impl AgentHost {
 					},
 					request = requests.recv() => {
 						let Some(request) = request else {break;};
-						let defer_dispatch = matches!(&request.action,AgentActionDto::CreateAssistant{..}|AgentActionDto::RestoreChatFolder{..}|AgentActionDto::RegisterNativeThread{..}|AgentActionDto::PreparePromptEdit{..}|AgentActionDto::ConfirmPromptEdit{..}|AgentActionDto::ForkPromptEdit{..}|AgentActionDto::RecoverPromptFork{..}|AgentActionDto::RecoverPromptEdit{..}|AgentActionDto::AcknowledgePromptEditDraft{..}|AgentActionDto::UploadPromptInput{..}|AgentActionDto::CompletePromptInputUpload{..}|AgentActionDto::DiscardEmptyWork{..}|AgentActionDto::DeleteProject{..}|AgentActionDto::GenerateSample{..}|AgentActionDto::CancelSample{..});
+						let defer_dispatch = matches!(&request.action,AgentActionDto::CreateAssistant{..}|AgentActionDto::RestoreChatFolder{..}|AgentActionDto::RegisterNativeThread{..}|AgentActionDto::SetThreadPinned{..}|AgentActionDto::PreparePromptEdit{..}|AgentActionDto::ConfirmPromptEdit{..}|AgentActionDto::CloseSideChat{..}|AgentActionDto::OpenSideChat{..}|AgentActionDto::ForkPromptEdit{..}|AgentActionDto::RecoverPromptFork{..}|AgentActionDto::RecoverPromptEdit{..}|AgentActionDto::AcknowledgePromptEditDraft{..}|AgentActionDto::UploadPromptInput{..}|AgentActionDto::CompletePromptInputUpload{..}|AgentActionDto::DiscardEmptyWork{..}|AgentActionDto::DeleteProject{..}|AgentActionDto::GenerateSample{..}|AgentActionDto::CancelSample{..});
 
 						if !defer_dispatch && !matches!(&request.action, AgentActionDto::SendPromptInput { .. }) { self.rotate_exhausted(&mut active).await; }
 
@@ -2094,10 +2186,15 @@ impl AgentHost {
 			AgentActionDto::ArchiveConversation { work_id, thread_id } => {
 				let (_, agent, _) = active.as_mut().ok_or("Agent is not connected")?;
 				agent.archive_conversation(work_id.as_str(), thread_id.as_str()).await.map_err(
-					|_| {
-						AgentHostError::Unknown(
+					|error| match error {
+						AgentError::ThreadOwnedElsewhere { .. } => lifecycle_writer_conflict(),
+						AgentError::Rejected(_) | AgentError::Transport(ClientError::Remote(_)) =>
+							AgentHostError::Rejected(
+								"Archive was declined. Refresh the conversation before retrying.",
+							),
+						_ => AgentHostError::Unknown(
 							"Archive is not confirmed. Refresh the conversation before retrying.",
-						)
+						),
 					},
 				)?;
 				Ok(work_id.as_str().into())
@@ -2108,6 +2205,7 @@ impl AgentHost {
 				let (_, agent, _) = active.as_mut().ok_or("Agent is not connected")?;
 
 				agent.restore_archived_thread(work_id.as_str(),thread_id.as_str()).await.map_err(|error|match error {
+                    AgentError::ThreadOwnedElsewhere{..}=>lifecycle_writer_conflict(),
                     AgentError::Rejected(_)=>AgentHostError::Rejected("Restoration was not accepted. Refresh the task archive state before trying again."),
                     _=>AgentHostError::Unknown("Restoration is not confirmed. Refresh archive state; the restore request will not be repeated automatically."),
                 })?;
@@ -2138,6 +2236,7 @@ impl AgentHost {
 			agent.delete_archived_thread(work, thread).await
 		};
 		result.map_err(|error| match error {
+			AgentError::ThreadOwnedElsewhere { .. } => lifecycle_writer_conflict(),
 			AgentError::Rejected(_) => AgentHostError::Rejected(
 				"This conversation is no longer available for deletion. Refresh the archive.",
 			),
@@ -2195,6 +2294,8 @@ impl AgentHost {
 			| AgentActionDto::CompletePromptInputUpload { .. }) => self.handle_prompt_upload(action).await,
 			action @ (AgentActionDto::PreparePromptEdit { .. }
 			| AgentActionDto::ConfirmPromptEdit { .. }
+			| AgentActionDto::CloseSideChat { .. }
+			| AgentActionDto::OpenSideChat { .. }
 			| AgentActionDto::ForkPromptEdit { .. }
 			| AgentActionDto::RecoverPromptFork { .. }
 			| AgentActionDto::RecoverPromptEdit { .. }
@@ -2216,6 +2317,16 @@ impl AgentHost {
 			| AgentActionDto::SetTaskModel { .. }
 			| AgentActionDto::SelectPermissions { .. }
 			| AgentActionDto::SetLiveModel { .. }) => self.handle_settings(key.as_str(), action).await,
+			AgentActionDto::SetThreadPinned { thread_id, pinned } => {
+				let params = serde_json::json!({"threadId":thread_id.as_str(),
+					"sectionId":pinned.then_some(crate::agent::registration::PINNED_SECTION)});
+				self.native_catalog_request("thread/section/move", params).await.ok_or(
+					AgentHostError::Unknown(
+						"Could not confirm the change to the pinned conversation.",
+					),
+				)?;
+				Ok(thread_id.as_str().into())
+			},
 			AgentActionDto::RegisterNativeThread { thread_id, relation } => {
 				let result = if let Some((_, agent, _)) = active {
 					agent.register_native_thread(thread_id.as_str(), relation).await.map(|_| ())
@@ -2774,6 +2885,17 @@ impl AgentHost {
 				},
 			};
 
+		if self
+			.store
+			.retire_expired_side_chats(Some(connection.process_generation_id.as_str().into()))
+			.await
+			.is_err()
+		{
+			let _ = self.runtime.close_agent_connection(root).await;
+			return Err("Could not retire expired side chats");
+		}
+		self.side_chats.clear();
+		coordinator.side_chats = self.side_chats.clone();
 		coordinator.bind_native_generation(connection.process_generation_id.clone());
 		coordinator.attach_voice_host(
 			connection.process_generation_id.as_str().into(),

@@ -88,7 +88,7 @@ pub use self::{
 	agent_config_journal::AgentConfigOwner,
 	agent_cost_observations::AgentCostObservation,
 	agent_dispatch_rejection::AgentDispatchRefusal,
-	agent_fork::{AgentForkAttempt, AgentForkBoundary, AgentForkReceipt},
+	agent_fork::{AgentForkAttempt, AgentForkBoundary, AgentForkReceipt, AgentForkSource},
 	agent_guardian::{AgentGuardianObservation, AgentGuardianReview},
 	agent_hooks::{AgentHookAttempt, AgentHookObservation, AgentHookReceipt},
 	agent_live_settings::{

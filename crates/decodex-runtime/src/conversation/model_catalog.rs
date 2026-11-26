@@ -48,17 +48,14 @@ impl ConversationRuntime {
 			.map(|(account, _, _, value)| (account, value))
 	}
 
-	pub(crate) async fn offline_thread_page(
+	pub(crate) async fn offline_catalog_request(
 		&self,
-		cursor: Option<&str>,
-	) -> Option<decodex_protocol::NativeThreadPage> {
-		let params = crate::agent::registration::list_params(cursor);
-		let (_, page) = self
-			.thread_metadata(move |child, _| {
-				crate::agent::registration::page(&child.catalog_request("thread/list", params)?)
-			})
-			.await?;
-		Some(page)
+		method: &'static str,
+		params: serde_json::Value,
+	) -> Option<serde_json::Value> {
+		self.thread_metadata(move |child, _| child.catalog_request(method, params))
+			.await
+			.map(|(_, value)| value)
 	}
 
 	pub(crate) async fn visible_stored_thread(
@@ -76,7 +73,7 @@ impl ConversationRuntime {
 				while Instant::now() < deadline {
 					let raw = child.catalog_request(
 						"thread/list",
-						crate::agent::registration::list_params(cursor.as_deref()),
+						crate::agent::registration::list_params(cursor.as_deref(), None, 100),
 					)?;
 					let page = crate::agent::registration::page(&raw)?;
 					if let Some(candidate) =

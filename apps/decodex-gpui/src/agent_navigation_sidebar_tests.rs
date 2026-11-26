@@ -300,7 +300,9 @@ fn assistant_entry_opens_the_same_conversation_and_preserves_each_draft(cx: &mut
 }
 
 #[gpui::test]
-fn pin_adds_a_shortcut_without_changing_scope_conversation_or_draft(cx: &mut TestAppContext) {
+fn native_pins_route_registered_and_external_threads_without_changing_scope(
+	cx: &mut TestAppContext,
+) {
 	let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 	visual.simulate_resize(gpui::size(gpui::px(1440.), gpui::px(1000.)));
 	surface.update(visual, |s, cx| {
@@ -308,28 +310,35 @@ fn pin_adds_a_shortcut_without_changing_scope_conversation_or_draft(cx: &mut Tes
 		s.visual_personal_navigation(cx);
 		s.workspace.work_detail = None;
 		s.composer.update(cx, |i, cx| i.set_content("Keep the selected draft", cx));
+		s.workspace.navigation.pins.rows = Some(
+			["fixture-research-chat", "external"]
+				.map(|id| decodex_protocol::NativeThreadCandidate {
+					thread_id: id.into(),
+					title: id.into(),
+					preview: None,
+					updated_at_micros: 0,
+				})
+				.to_vec(),
+		);
 		cx.notify();
 	});
-	visual.update(crate::ui_frame::draw_current_frame);
-	show_actions(visual, "navigation-chats-research-chat");
-	assert_eq!(
-		visual.debug_bounds("navigation-actions-chats-research-chat").unwrap().size.width,
-		gpui::px(72.)
-	);
-	let pin = visual.debug_bounds("navigation-pin-chats-research-chat").unwrap();
-	visual.simulate_click(pin.center(), Default::default());
-	visual.update(crate::ui_frame::draw_current_frame);
+	settle(visual);
+	let heading = visual.debug_bounds("navigation-section-pin").unwrap();
+	visual.simulate_click(heading.center(), Default::default());
+	settle(visual);
+	assert!(visual.debug_bounds("navigation-chats-research-chat").is_some());
+	let external = visual.debug_bounds("navigation-pin-external").unwrap();
+	let count = surface.read_with(visual, |s, _| s.snapshot.as_ref().unwrap().work_items.len());
+	visual.simulate_click(external.center(), Default::default());
 	surface.read_with(visual, |s, cx| {
+		assert!(s.workspace.registration.is_some());
+		assert_eq!(s.snapshot.as_ref().unwrap().work_items.len(), count);
 		assert_eq!(s.selected.as_deref(), Some("agent"));
 		assert_eq!(s.composer.read(cx).content(), "Keep the selected draft");
-		assert!(s.workspace.navigation.preferences.pinned.contains("research-chat"));
 	});
-	assert!(visual.debug_bounds("navigation-chats-research-chat").is_some());
-	let pin = visual.debug_bounds("navigation-section-pin").unwrap();
-	visual.simulate_click(pin.center(), Default::default());
-	visual.update(crate::ui_frame::draw_current_frame);
-	assert!(visual.debug_bounds("navigation-pin-research-chat").is_some());
-	assert!(visual.debug_bounds("navigation-chats-research-chat").is_some());
+	let registered = visual.debug_bounds("navigation-pin-research-chat").unwrap();
+	visual.simulate_click(registered.center(), Default::default());
+	surface.read_with(visual, |s, _| assert_eq!(s.selected.as_deref(), Some("research-chat")));
 }
 
 #[gpui::test]

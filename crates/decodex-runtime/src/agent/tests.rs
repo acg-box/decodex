@@ -93,20 +93,6 @@ impl FixtureFaults {
 			return Some(true);
 		}
 
-		if request["method"] == "thread/items/read" {
-			writer
-				.write_all(
-					format!(
-						"{}\n",
-						serde_json::json!({"id":request["id"],"error":{"code":-32_601,"message":"legacy fixture"}})
-					)
-					.as_bytes(),
-				)
-				.await
-				.unwrap();
-
-			return Some(true);
-		}
 		if request["method"] == "turn/start"
 			&& (history["_turn_draining"] == true
 				|| (history["_capacity_draining"] == true
@@ -125,6 +111,13 @@ impl FixtureFaults {
 		if request["method"] == "thread/realtime/stop" && history["_voice_stop_disconnect"] == true
 		{
 			return Some(false);
+		}
+		if request["method"] == "thread/archive" && history["_archive_writer_busy"] == true {
+			let id = request["id"].clone();
+			let reply = serde_json::json!({"id":id,"error":{"code":-32600,
+				"message":"thread opaque thread/1 already has an active writer"}});
+			writer.write_all(format!("{reply}\n").as_bytes()).await.unwrap();
+			return Some(true);
 		}
 		if request["method"] == "thread/delete" {
 			if history["_delete_disconnect"] == true {
@@ -1175,6 +1168,19 @@ async fn serve_fixture(server_io: DuplexStream, history: Value, sent: UnboundedS
 			Some("thread/searchOccurrences") => history["_occurrences"].clone(),
 			Some("thread/goal/get") => serde_json::json!({"goal":history["_goal"]}),
 			Some("thread/read") => fixture_thread_read(&request, &history, &settings, turns),
+			Some("thread/items/read") => {
+				let p = &request["params"];
+				let rows: Vec<_> = history[p["threadId"].as_str().unwrap()]["thread"]["turns"]
+					.as_array()
+					.into_iter()
+					.flatten()
+					.filter(|t| t["id"] == p["turnId"])
+					.flat_map(|t| t["items"].as_array().into_iter().flatten())
+					.filter(|i| p["itemIds"].as_array().unwrap().contains(&i["id"]))
+					.map(|i| serde_json::json!({"turnId":p["turnId"], "item":i}))
+					.collect();
+				serde_json::json!({"data":rows})
+			},
 			Some("thread/turns/list") => fixture_turns_page(&request, &history),
 			Some("thread/items/list") => fixture_items_page(&request, &history),
 			Some("thread/resume") => {

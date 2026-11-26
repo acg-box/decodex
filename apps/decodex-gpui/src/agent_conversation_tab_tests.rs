@@ -55,7 +55,7 @@ fn side_chat_tabs_share_one_header_and_keep_each_draft(cx: &mut TestAppContext) 
 }
 
 #[gpui::test]
-fn assistant_header_keeps_existing_side_chats_without_a_new_topic_action(cx: &mut TestAppContext) {
+fn assistant_header_opens_side_chats_in_its_existing_tab_strip(cx: &mut TestAppContext) {
 	let (view, visual) = cx.add_window_view(|_, cx| {
 		let surface = cx.new(AgentSurface::new);
 		cx.observe(&surface, |_, _, cx| cx.notify()).detach();
@@ -69,12 +69,16 @@ fn assistant_header_keeps_existing_side_chats_without_a_new_topic_action(cx: &mu
 	visual.update(crate::ui_frame::draw_current_frame);
 	let surface = view.read_with(visual, |v, _| v.0.clone());
 	surface.read_with(visual, |s, _| assert_eq!(s.conversation_tabs()[0].label, "Assistant"));
-	assert!(visual.debug_bounds("new-side-chat").is_none());
+	assert!(visual.debug_bounds("new-side-chat").is_some());
+	let tab = visual.debug_bounds("conversation-tab-agent").unwrap();
+	let title = visual.debug_bounds("tab-title-header-agent").unwrap();
+	assert_eq!(title.left() - tab.left(), gpui::px(8.));
+	assert!((tab.right() - title.right() - gpui::px(8.)).abs() <= gpui::px(1.));
 	let side = visual.debug_bounds("conversation-tab-side-one").unwrap();
 	visual.simulate_click(side.center(), Default::default());
 	visual.update(crate::ui_frame::draw_current_frame);
 	surface.read_with(visual, |s, _| assert_eq!(s.selected.as_deref(), Some("side-one")));
-	assert!(visual.debug_bounds("new-side-chat").is_none());
+	assert!(visual.debug_bounds("new-side-chat").is_some());
 }
 
 #[gpui::test]
@@ -236,5 +240,20 @@ fn native_topics_label_side_tabs_and_sidebar_while_main_and_agent_identity_stay_
 		titles.insert(side.codex_thread_id.clone().unwrap(), "Summarize ongoing topics".into());
 		assert_eq!(s.conversation_tabs()[1].label, "Summarize ongoing topics");
 		assert_eq!(s.conversation_label(&side), "Summarize ongoing topics");
+	});
+}
+
+#[gpui::test]
+fn cold_sidebar_never_promotes_a_side_chat_to_an_independent_chat(cx: &mut TestAppContext) {
+	let surface = cx.new(AgentSurface::new);
+	surface.update(cx, |s, cx| {
+		s.visual_side_chat_tabs("agent", cx);
+		s.reset_attached_branches();
+		let snapshot = s.snapshot.as_ref().unwrap();
+		let mut side = s.conversation_record("side-one").unwrap().clone();
+		side.parent_goal_id = None;
+		assert_eq!(s.workspace.attached.lookup_root(&side, snapshot), "agent");
+		let pages = s.project_conversation_pages();
+		assert!(pages.iter().all(|(work, _, _)| work != "side-one" && work != "side-two"));
 	});
 }

@@ -1,6 +1,6 @@
 //! Local navigation preferences. Service and native conversation identities remain authoritative.
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -48,7 +48,6 @@ pub(super) struct Preference {
 pub(super) struct Preferences {
 	#[serde(deserialize_with = "read_sections")]
 	pub sections: BTreeMap<Section, Preference>,
-	pub pinned: BTreeSet<String>,
 	pub project_drafts: BTreeMap<String, BTreeMap<String, String>>,
 }
 
@@ -90,6 +89,7 @@ impl Preferences {
 #[derive(Clone)]
 pub(in crate::shell::agent_surface) struct Item {
 	pub id: String,
+	pub external: Option<decodex_protocol::NativeThreadCandidate>,
 	pub title: String,
 	pub location: String,
 	pub project: Option<String>,
@@ -147,29 +147,27 @@ pub(super) fn matches(query: &str, text: &str) -> bool {
 #[cfg(test)]
 mod tests {
 	#[test]
-	fn preferences_round_trip_each_section_without_changing_pins() {
+	fn preferences_round_trip_each_section() {
 		let mut value = super::Preferences::default();
-		value.pinned.insert("topic".into());
 		value.sections.insert(
 			super::Section::Pin,
 			super::Preference { sort: super::Sort::Alphabetical, auto_scroll: true },
 		);
 		let saved = serde_json::to_string(&value).unwrap();
 		let loaded: super::Preferences = serde_json::from_str(&saved).unwrap();
-		assert!(loaded.pinned.contains("topic"));
 		assert!(loaded.section(super::Section::Pin).auto_scroll);
 		assert!(!loaded.section(super::Section::Assistant).auto_scroll);
 	}
 
 	#[test]
-	fn retired_recent_preferences_do_not_erase_pins_or_other_sections() {
+	fn legacy_pin_preferences_are_discarded_without_erasing_other_sections() {
 		let saved = r#"{"sections":{"recent":{"sort":"alphabetical","auto_scroll":true},"pin":{"sort":"alphabetical","auto_scroll":true},"projects":{"sort":"updated","auto_scroll":false}},"pinned":["topic"],"project_drafts":{"profile":{"project":"draft"}}}"#;
 		let loaded: super::Preferences = serde_json::from_str(saved).unwrap();
-		assert!(loaded.pinned.contains("topic"));
 		assert!(loaded.section(super::Section::Pin).auto_scroll);
 		assert!(matches!(loaded.section(super::Section::Projects).sort, super::Sort::Updated));
 		assert!(matches!(loaded.section(super::Section::Assistant).sort, super::Sort::Updated));
 		assert_eq!(loaded.project_drafts["profile"]["project"], "draft");
-		assert!(!serde_json::to_string(&loaded).unwrap().contains("recent"));
+		let saved = serde_json::to_string(&loaded).unwrap();
+		assert!(!saved.contains("pinned") && !saved.contains("recent"));
 	}
 }

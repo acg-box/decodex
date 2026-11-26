@@ -29,7 +29,7 @@ use ui_theme::{
 #[cfg(test)] use crate::shell::agent_surface::ConversationModel;
 use crate::{
 	shell::{
-		FocusNext,
+		AcceptSuggestion,
 		agent_surface::{
 			self, AgentActionDto, AgentClient, AgentCommandResponse, AgentDispatchStateDto,
 			AgentHistoryResult, AgentSnapshotResult, AgentSurface, ClipboardItem, ComposerInput,
@@ -415,7 +415,7 @@ impl AgentSurface {
 	fn update_message_placeholder(&self, cx: &mut Context<Self>) {
 		let suggestion = self.prompt_suggestion(cx);
 		let hint = suggestion.is_some().then(|| "Tab".into());
-		let placeholder = if let Some(suggestion) = suggestion {
+        let placeholder = if let Some(suggestion) = suggestion {
 			suggestion.to_owned()
 		} else if self.native_agents.selected.is_none()
 			&& (self.is_new_conversation()
@@ -471,7 +471,8 @@ impl AgentSurface {
 
 		capsule
 			.on_key_down(cx.listener(|s, e: &KeyDownEvent, _, cx| {
-				if e.keystroke.key == "escape" && !e.keystroke.modifiers.shift {
+				if crate::shell::shortcuts::matches(&crate::shell::InterruptReply, &e.keystroke, cx)
+				{
 					if !e.is_held {
 						s.escape_interrupt(cx);
 					}
@@ -524,6 +525,9 @@ impl AgentSurface {
 	) -> Stateful<Div> {
 		gpui::div()
 			.id("composer-editor-area")
+			.when(self.prompt_suggestion(cx).is_some() && !self.prompt_suggestion_busy(), |d| {
+				d.key_context("PromptSuggestion")
+			})
 			.debug_selector(|| "composer-editor-area".into())
 			.flex()
 			.flex_col()
@@ -544,7 +548,7 @@ impl AgentSurface {
 				s.submit(cx);
 				cx.stop_propagation();
 			}))
-			.on_action(cx.listener(|s, _: &FocusNext, window, cx| {
+			.on_action(cx.listener(|s, _: &AcceptSuggestion, window, cx| {
 				if s.composer.focus_handle(cx).is_focused(window)
 					&& s.prompt_suggestion(cx).is_some()
 					&& !s.prompt_suggestion_busy()

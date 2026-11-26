@@ -1099,7 +1099,9 @@ mod tests {
 	}
 
 	#[gpui::test]
-	fn active_status_has_equal_reading_space_above_and_below(cx: &mut gpui::TestAppContext) {
+	fn active_status_groups_with_the_response_and_keeps_composer_clearance(
+		cx: &mut gpui::TestAppContext,
+	) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 		visual.simulate_resize(gpui::size(gpui::px(1_000.), gpui::px(700.)));
 		surface.update(visual, |s, cx| {
@@ -1126,8 +1128,11 @@ mod tests {
 		let editor = visual.debug_bounds("floating-composer").unwrap();
 		let above = status.top() - answer.bottom();
 		let below = editor.top() - status.bottom() + gpui::px(crate::ui_theme::COMPOSER_TOP_GAP);
-		assert!((above - below).abs() <= gpui::px(1.), "uneven status gaps: {above:?} / {below:?}");
-		assert!((above - gpui::px(crate::ui_theme::MESSAGE_GAP)).abs() <= gpui::px(1.));
+		assert!(
+			(below - gpui::px(crate::ui_theme::MESSAGE_GAP)).abs() <= gpui::px(1.),
+			"composer clearance: {below:?}"
+		);
+		assert!((above - gpui::px(crate::ui_theme::METADATA_GAP)).abs() <= gpui::px(1.));
 	}
 
 	#[gpui::test]
@@ -1182,7 +1187,7 @@ mod tests {
 		let status = visual.debug_bounds("pixel-work-status").unwrap();
 		let gap = status.top() - text.bottom();
 		assert!(
-			(gap - gpui::px(crate::ui_theme::MESSAGE_GAP + 2.)).abs() <= gpui::px(1.),
+			(gap - gpui::px(crate::ui_theme::METADATA_GAP)).abs() <= gpui::px(1.),
 			"status below commentary: {gap:?}"
 		);
 		assert!(visual.debug_bounds("native-reasoning-summary").is_none());
@@ -1206,7 +1211,7 @@ mod tests {
 		let summary = visual.debug_bounds("native-reasoning-summary").unwrap();
 		let status = visual.debug_bounds("pixel-work-status").unwrap();
 		assert!(
-			(status.top() - summary.bottom() - gpui::px(crate::ui_theme::MESSAGE_GAP)).abs()
+			(status.top() - summary.bottom() - gpui::px(crate::ui_theme::METADATA_GAP)).abs()
 				<= gpui::px(1.)
 		);
 	}
@@ -1262,7 +1267,10 @@ mod tests {
 		let status = visual.debug_bounds("pixel-work-status").unwrap();
 		let editor = visual.debug_bounds("floating-composer").unwrap();
 		let gap = gpui::px(crate::ui_theme::MESSAGE_GAP);
-		assert!((status.top() - tool.bottom() - gap).abs() <= gpui::px(1.));
+		assert!(
+			(status.top() - tool.bottom() - gpui::px(crate::ui_theme::METADATA_GAP)).abs()
+				<= gpui::px(1.)
+		);
 		let below = editor.top() - status.bottom() + gpui::px(crate::ui_theme::COMPOSER_TOP_GAP);
 		assert!((below - gap).abs() <= gpui::px(1.), "gap below status: {below:?}");
 	}

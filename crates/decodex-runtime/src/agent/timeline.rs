@@ -7,6 +7,7 @@ mod attachments;
 mod observed;
 mod promotions;
 mod saved;
+pub(crate) mod side_chat;
 mod statistics;
 mod summary;
 

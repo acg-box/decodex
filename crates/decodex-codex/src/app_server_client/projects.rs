@@ -13,18 +13,6 @@ impl AppServerClient {
 		&self,
 		directory: &str,
 	) -> Result<Option<Value>, ClientError> {
-		self.find_project(|project| {
-			project["roots"]
-				.as_array()
-				.is_some_and(|roots| roots.iter().any(|root| root["path"] == directory))
-		})
-		.await
-	}
-
-	async fn find_project(
-		&self,
-		matches: impl Fn(&Value) -> bool,
-	) -> Result<Option<Value>, ClientError> {
 		let mut cursor = Value::Null;
 		let mut seen = HashSet::new();
 		let mut selected = None;
@@ -40,7 +28,10 @@ impl AppServerClient {
 				.ok_or(ClientError::InvalidFrame)?;
 
 			for project in rows {
-				if matches(project) {
+				if project["roots"]
+					.as_array()
+					.is_some_and(|roots| roots.iter().any(|root| root["path"] == directory))
+				{
 					if selected.is_some() {
 						return Err(ClientError::InvalidFrame);
 					}
@@ -72,18 +63,19 @@ impl AppServerClient {
 		if !is_project_read(&params) {
 			return Err(ClientError::InvalidFrame);
 		}
-		if self.find_project(|project| project["id"] == id).await?.is_none() {
-			return Ok(());
-		}
 		let result = time::timeout(Duration::from_secs(8), self.request("project/delete", params))
 			.await
 			.map_err(|_| ClientError::Io)
 			.and_then(|r| r);
-		if self.find_project(|project| project["id"] == id).await?.is_none() {
-			return Ok(());
+		match self.read_project(id).await {
+			Err(ClientError::Remote(error))
+				if error.code == -32602 && error.message == format!("project not found: {id}") =>
+				Ok(()),
+			Ok(project) if project["project"]["id"] == id =>
+				result.and(Err(ClientError::InvalidFrame)),
+			Ok(_) => Err(ClientError::InvalidFrame),
+			Err(error) => Err(error),
 		}
-		result?;
-		Err(ClientError::InvalidFrame)
 	}
 
 	/// Publish a title only while its originating native task settings remain current.

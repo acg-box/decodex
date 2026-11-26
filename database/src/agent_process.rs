@@ -69,45 +69,15 @@ impl SqliteStore {
 		self.run(move |connection| hosts_thread(connection, &work, &thread, &generation)).await
 	}
 
-	/// Authorize a user archive action for an exact local conversation visible in the native
-	/// catalog. A dormant conversation keeps its account even after its last host exits.
-	pub async fn can_manage_agent_archive(
+	/// Check an exact conversation for a user action on the same account. A dormant
+	/// conversation keeps its account after its last host exits.
+	pub async fn can_access_account_thread(
 		&self,
 		work: String,
 		thread: String,
 		generation: Option<String>,
 	) -> Result<bool, StoreError> {
-		let Some(generation) = generation else {
-			return self.agent_thread_is_owned(work, thread, None).await;
-		};
-		self.run(move |connection| {
-			connection
-				.query_row(
-					"WITH RECURSIVE lineage(id, parent, depth) AS (
-					SELECT id, parent_goal_id, 0 FROM agent_work_items
-					WHERE id=?1 AND codex_thread_id=?2
-					UNION ALL
-					SELECT w.id, w.parent_goal_id, l.depth+1 FROM lineage l
-					JOIN agent_work_items w ON w.id=l.parent
-				), owner AS (
-					SELECT b.generation_id, b.account_id, g.state FROM lineage l
-					JOIN agent_process_bindings b ON b.root_id=l.id
-					JOIN process_generations g ON g.generation_id=b.generation_id
-					ORDER BY l.depth, b.created_at_micros DESC, b.rowid DESC LIMIT 1
-				)
-				SELECT EXISTS(SELECT 1 FROM process_generations host
-					WHERE host.generation_id=?3 AND host.state='ready'
-					AND EXISTS(SELECT 1 FROM agent_process_bindings WHERE generation_id=host.generation_id)
-					AND EXISTS(SELECT 1 FROM lineage)
-					AND (NOT EXISTS(SELECT 1 FROM owner) OR EXISTS(SELECT 1 FROM owner
-						WHERE generation_id=host.generation_id
-						OR (state='dead' AND account_id=host.account_id))))",
-					rusqlite::params![work, thread, generation],
-					|row| row.get(0),
-				)
-				.map_err(account_lifecycle::sql_error)
-		})
-		.await
+		self.run(move |c| account_thread(c, &work, &thread, generation.as_deref())).await
 	}
 
 	/// Check the current exact native thread binding and process subtree ownership.
@@ -251,6 +221,43 @@ impl SqliteStore {
 	}
 }
 
+/// Match a selected native thread to its current host or its dormant account.
+pub(crate) fn account_thread(
+	connection: &Connection,
+	work: &str,
+	thread: &str,
+	generation: Option<&str>,
+) -> Result<bool, StoreError> {
+	let Some(generation) = generation else {
+		return crate::agent_prompt_edit::owns_thread(connection, work, thread, None);
+	};
+	connection
+		.query_row(
+			"WITH RECURSIVE lineage(id, parent, depth) AS (
+					SELECT id, parent_goal_id, 0 FROM agent_work_items
+					WHERE id=?1 AND codex_thread_id=?2
+					UNION ALL
+					SELECT w.id, w.parent_goal_id, l.depth+1 FROM lineage l
+					JOIN agent_work_items w ON w.id=l.parent
+				), owner AS (
+					SELECT b.generation_id, b.account_id, g.state FROM lineage l
+					JOIN agent_process_bindings b ON b.root_id=l.id
+					JOIN process_generations g ON g.generation_id=b.generation_id
+					ORDER BY l.depth, b.created_at_micros DESC, b.rowid DESC LIMIT 1
+				)
+				SELECT EXISTS(SELECT 1 FROM process_generations host
+					WHERE host.generation_id=?3 AND host.state='ready'
+					AND EXISTS(SELECT 1 FROM agent_process_bindings WHERE generation_id=host.generation_id)
+					AND EXISTS(SELECT 1 FROM lineage)
+					AND (NOT EXISTS(SELECT 1 FROM owner) OR EXISTS(SELECT 1 FROM owner
+						WHERE generation_id=host.generation_id
+						OR (state='dead' AND account_id=host.account_id))))",
+			rusqlite::params![work, thread, generation],
+			|row| row.get(0),
+		)
+		.map_err(account_lifecycle::sql_error)
+}
+
 /// User actions may select any exact conversation hosted by the current process.
 /// This does not grant an agent tool permission to act across manager boundaries.
 pub(crate) fn hosts_thread(
@@ -280,7 +287,7 @@ pub(crate) fn owns_work(
 		connection.query_row("WITH RECURSIVE acknowledged_forks(work_id,thread_id) AS MATERIALIZED (
 			SELECT json_extract(a.payload,'$.target_work'),json_extract(o.payload,'$.thread')
 			FROM agent_inbox_events a JOIN agent_inbox_events o ON o.source_event_id=a.source_event_id||':observation'
-			WHERE a.event_kind='thread_fork_attempt' AND o.event_kind='thread_fork_observation' AND o.disposition_note='forked'
+			WHERE a.event_kind IN ('thread_fork_attempt','temporary_side_chat') AND o.event_kind='thread_fork_observation' AND o.disposition_note='forked'
 		), owned(id,root_id) AS (
 			SELECT b.root_id,b.root_id FROM agent_process_bindings b JOIN process_generations g ON g.generation_id=b.generation_id
 			WHERE b.generation_id=?1 AND g.state='ready' AND b.rowid=(SELECT rowid FROM agent_process_bindings WHERE root_id=b.root_id ORDER BY created_at_micros DESC,rowid DESC LIMIT 1)

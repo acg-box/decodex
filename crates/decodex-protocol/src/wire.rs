@@ -2388,6 +2388,17 @@ pub enum QueryPayload {
 		/// Source identity and continuation.
 		request: AgentMediaRequest,
 	},
+	/// Search persisted visible messages in the bound conversation.
+	SearchConversation {
+		/// Local Work owner.
+		work_id: EntityId,
+		/// Expected native thread.
+		thread_id: EntityId,
+		/// Literal message text.
+		term: WireText,
+		/// Native continuation for this search.
+		cursor: Option<WireText>,
+	},
 	/// Read one exact native timeline page without resuming the task.
 	GetAgentTimeline {
 		/// Current local task identity.
@@ -2487,6 +2498,14 @@ pub enum QueryPayload {
 	GetAgentSnapshot,
 	/// List account-visible native conversations without loading them.
 	ListNativeThreads {
+		/// Optional native catalog title search.
+		#[serde(default, skip_serializing_if = "Option::is_none")]
+		search: Option<WireText>,
+		/// Opaque cursor returned by the native catalog.
+		cursor: Option<WireText>,
+	},
+	/// Read the local Codex user's pinned threads in native section order.
+	ListPinnedThreads {
 		/// Opaque cursor returned by the native catalog.
 		cursor: Option<WireText>,
 	},
@@ -3221,6 +3240,8 @@ pub enum QueryResultPayload {
 	AgentResources(AgentResourcesResult),
 	/// Exact resource-associated conversations.
 	ResourceOwners(crate::ResourceOwnersResult),
+	/// Native conversation search results or an unavailable source.
+	ConversationMatches(Option<crate::ConversationMatches>),
 	/// Nearby visible native items.
 	ItemContext(crate::ItemContextResult),
 	/// Saved Guardian assessments and explicit user approval receipts.

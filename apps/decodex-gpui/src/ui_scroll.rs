@@ -76,10 +76,17 @@ impl Motion {
 pub(crate) struct ScrollArea {
 	id: ElementId,
 	content: Stateful<Div>,
+	handle: Option<ScrollHandle>,
 	scrollbar: Option<(&'static str, &'static str)>,
 	contain: bool,
 }
 impl ScrollArea {
+	/// Retain the reading position when the viewport temporarily leaves the layout.
+	pub(crate) fn with_handle(mut self, handle: &ScrollHandle) -> Self {
+		self.handle = Some(handle.clone());
+		self
+	}
+
 	/// Keep wheel gestures inside an overflowing nested reader, including at its ends.
 	pub(crate) fn contain_scroll(mut self) -> Self {
 		self.contain = true;
@@ -95,7 +102,10 @@ impl ScrollArea {
 
 impl RenderOnce for ScrollArea {
 	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-		let state = window.use_keyed_state(self.id.clone(), cx, |_, _| AreaState::default());
+		let state = window.use_keyed_state(self.id.clone(), cx, |_, _| AreaState {
+			scroll: self.handle.unwrap_or_default(),
+			motion: None,
+		});
 		let owner = window.current_view();
 		let scroll = state.update(cx, |s, cx| {
 			if let Some(motion) = &s.motion {
@@ -371,7 +381,7 @@ struct AreaState {
 
 impl SmoothScrollArea for Stateful<Div> {
 	fn smooth_scroll(self, id: impl Into<ElementId>) -> ScrollArea {
-		ScrollArea { id: id.into(), content: self, scrollbar: None, contain: false }
+		ScrollArea { id: id.into(), content: self, handle: None, scrollbar: None, contain: false }
 	}
 }
 

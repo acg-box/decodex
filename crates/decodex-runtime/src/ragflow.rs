@@ -1,6 +1,6 @@
 //! Optional RAGFlow 1.0 Memory and retrieval API. Native Codex remains the Agent runtime.
 use crate::agent::AgentError;
-use decodex_core::assistant::RagflowConnection;
+use decodex_core::assistant::{MemoryImportStatus, RagflowConnection};
 use decodex_database::SqliteStore;
 use reqwest::{Client, Method, Url, redirect::Policy};
 use serde_json::{Value, json};
@@ -357,7 +357,7 @@ pub(crate) async fn export_next(
 	}
 	api.request(Method::POST,"api/v1/messages",&[],Some(json!({"memory_id":[memory],"agent_id":identity,"session_id":thread,"user_id":c.user_id,"user_input":input,"agent_response":output}))).await?;
 	store.acknowledge_assistant_memory(identity.clone(), key, "queued".into()).await?;
-	store.assistant_memory_health(identity.clone(), c.clone(), "Import queued for asynchronous extraction; searchable completion is not yet confirmed.".into()).await?;
+	store.assistant_memory_health(identity.clone(), c.clone(), MemoryImportStatus::Queued).await?;
 	Ok(())
 }
 

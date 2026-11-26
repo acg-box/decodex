@@ -428,7 +428,8 @@ async fn check_first_registration(
 	assert_eq!(local.work_items.len(), 1);
 	assert!(!local.connection_initializing);
 	assert!(local.runtime_source.is_none() && local.pending_events.is_empty());
-	let pages = client.native_threads(None).await.unwrap().expect("available native thread page");
+	let pages =
+		client.native_threads(None, None).await.unwrap().expect("available native thread page");
 	assert!(
 		pages.threads.iter().any(|row| row.thread_id == thread),
 		"existing session is visible before registration"
