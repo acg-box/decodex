@@ -413,13 +413,26 @@ async fn check_first_registration(
 		"create-idle-assistant",
 	)
 	.await;
+	let opened = accepted(
+		client,
+		AgentActionDto::CreateAssistant {
+			agent_id: EntityId::new("second-proposal").expect("second proposed Assistant ID"),
+		},
+		"open-existing-assistant",
+	)
+	.await;
+	assert_eq!(opened.as_str(), "idle-assistant");
 	let AgentSnapshotResult::Available(local) = client.query().await.unwrap() else {
 		panic!("an Assistant is usable before its first turn");
 	};
 	assert_eq!(local.work_items.len(), 1);
 	assert!(!local.connection_initializing);
 	assert!(local.runtime_source.is_none() && local.pending_events.is_empty());
-	let pages = client.native_threads(None).await.unwrap().expect("available native thread page");
+	let pages = client
+		.native_threads(None, None)
+		.await
+		.expect("list native threads")
+		.expect("available native thread page");
 	assert!(
 		pages.threads.iter().any(|row| row.thread_id == thread),
 		"existing session is visible before registration"
@@ -840,16 +853,16 @@ async fn qualify_completed_progress(
 	assert_eq!(requests.load(Ordering::Acquire), 9, "progress reads must not infer");
 }
 
-async fn accepted(client: &AgentClient, action: AgentActionDto, key: &str) {
+async fn accepted(client: &AgentClient, action: AgentActionDto, key: &str) -> EntityId {
 	let response = client
 		.execute(action, IdempotencyKey::new(key).expect("command key"))
 		.await
 		.expect("public command response");
 
-	assert!(
-		matches!(response, AgentCommandResponse::Accepted { .. }),
-		"public acceptance: {response:?}"
-	);
+	let AgentCommandResponse::Accepted { work_id } = response else {
+		panic!("expected public command acceptance, received {response:?}");
+	};
+	work_id
 }
 
 async fn settled(client: &AgentClient) -> String {

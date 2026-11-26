@@ -34,7 +34,39 @@ impl AgentSurface {
 			return list.child("Connect to read Work.").into_any_element();
 		};
 
-		list = list.child(self.assistant_role(cx));
+		if self.workspace.focused_work
+			&& let Some(id) = &self.workspace.work_detail
+		{
+			let back = mcp_forms::mcp_button(
+				"all-portfolio-work".into(),
+				"All Work".into(),
+				false,
+				cx,
+				|s, cx| {
+					s.workspace.focused_work = false;
+					s.workspace.work_detail = None;
+					cx.notify();
+				},
+			);
+			list = list.child(back);
+			let selected = self
+				.workspace
+				.work_evidence
+				.as_ref()
+				.and_then(|p| p.works.iter().find(|w| &w.id == id))
+				.or_else(|| snapshot.portfolio.works.iter().find(|w| &w.id == id));
+			return match selected {
+				Some(work) => list.child(self.work_row(work, cx)),
+				None => list.child(label(
+					self.workspace
+						.work_read_error
+						.clone()
+						.unwrap_or_else(|| "Reading selected Work…".into()),
+				)),
+			}
+			.into_any_element();
+		}
+		list = list.child(self.assistant_summary(cx));
 		list = list.child(self.list_status_filters(
 			super::list_status::View::Work,
 			snapshot.portfolio.works.iter().map(state),
@@ -448,6 +480,10 @@ impl AgentSurface {
 }
 
 impl AgentSurface {
+	pub(crate) fn open_portfolio_work(&mut self, id: String, cx: &mut Context<Self>) {
+		self.restore_location(&crate::shell::agent_surface::AgentLocation::WorkDetail(id), cx);
+	}
+
 	pub(super) fn load_work_detail(&mut self, id: String, cx: &mut Context<Self>) {
 		let Some(profile) = self.profile.clone() else { return };
 		let captured = profile.clone();
@@ -543,54 +579,17 @@ impl AgentSurface {
 }
 
 impl AgentSurface {
-	fn assistant_role(&self, cx: &mut Context<Self>) -> AnyElement {
+	fn assistant_summary(&self, cx: &mut Context<Self>) -> AnyElement {
 		let Some(snapshot) = &self.snapshot else { return gpui::div().into_any_element() };
-		let current = snapshot.agents.iter().find(|a| a.assistant);
-		let mut row = gpui::div().flex().flex_col().gap_1().child(mcp_forms::mcp_button(
-			"assistant-role".into(),
-			format!("Assistant: {}", current.map(|a| a.name.as_str()).unwrap_or("None")),
-			false,
-			cx,
-			|s, cx| {
-				s.workspace.assistant_picker = !s.workspace.assistant_picker;
-
-				cx.notify();
-			},
-		));
-
-		if self.workspace.assistant_picker {
-			for agent in snapshot.agents.iter() {
-				let (id, enabled) = (agent.id.clone(), !agent.assistant);
-
-				row = row.child(mcp_forms::mcp_button(
-					format!("choose-assistant-{id}"),
-					format!("{}{}", if enabled { "Use " } else { "Remove " }, agent.name),
-					false,
-					cx,
-					move |s, cx| {
-						s.execute(
-							AgentActionDto::SetAssistant {
-								agent_id: EntityId::new(id.clone()).expect("saved Agent"),
-								enabled,
-							},
-							None,
-							cx,
-						);
-
-						s.workspace.assistant_picker = false;
-					},
-				));
-			}
-		}
-		if let Some(agent) = current {
-			let id = agent.id.clone();
+		let mut row = gpui::div().flex().flex_col().gap_1();
+		if snapshot.assistant.agent_id.is_some() {
 			row = row
 				.child(mcp_forms::mcp_button(
 					"assistant-open".into(),
 					"Open Assistant".into(),
 					false,
 					cx,
-					move |s, cx| s.open_page(&id, cx),
+					|s, cx| s.open_assistant(cx),
 				))
 				.child(format!(
 					"Teams ({}), active duties ({})",

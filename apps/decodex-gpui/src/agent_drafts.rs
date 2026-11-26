@@ -43,6 +43,7 @@ pub(super) struct Profiles {
 	threads: BTreeMap<String, String>,
 	pub(super) execution: Intents,
 	pub(super) texts: BTreeMap<String, String>,
+	pub(super) chat_folders: BTreeMap<String, decodex_protocol::ConversationWorkingDirectory>,
 	pub(super) files: BTreeMap<String, Vec<AgentAttachmentDto>>,
 	pub(super) tasks: BTreeMap<String, Vec<AgentTaskReferenceDto>>,
 	active: Option<ClientProfile>,
@@ -53,6 +54,7 @@ pub(super) struct Profiles {
 struct Drafts {
 	new_conversation: Option<String>,
 	new_conversation_workspace: Option<String>,
+	chat_folders: BTreeMap<String, decodex_protocol::ConversationWorkingDirectory>,
 	new_conversation_permissions: Option<decodex_protocol::PermissionMode>,
 	creation: Option<DesktopCreationSetup>,
 	unconfirmed: Vec<IdempotencyKey>,
@@ -72,6 +74,14 @@ struct Drafts {
 }
 
 impl AgentSurface {
+	pub(super) fn visible_composer_owner(&self) -> Option<String> {
+		self.composer_manager.clone().or_else(|| {
+			// Before the first explicit binding the visible input can belong to
+			// the root. After deletion its existing parked editor must be restored.
+			self.root_id().filter(|root| !self.draft_profiles.texts.contains_key(root))
+		})
+	}
+
 	pub(super) fn renew_assistant_draft_binding(&mut self, snapshot: &AgentSnapshotDto) {
 		let Some(owner) = &snapshot.assistant.agent_id else {
 			return;
@@ -167,6 +177,7 @@ impl AgentSurface {
 		Drafts {
 			new_conversation: self.workspace.new_conversation.take(),
 			new_conversation_workspace: self.workspace.new_conversation_workspace.take(),
+			chat_folders: mem::take(&mut self.draft_profiles.chat_folders),
 			new_conversation_permissions: self.workspace.new_conversation_permissions.take(),
 			creation: self.creation_setup(cx),
 			unconfirmed: mem::take(&mut self.submission.unconfirmed),
@@ -195,14 +206,10 @@ impl AgentSurface {
 		self.restored_question_drafts = restored.restored_questions;
 		self.workspace.new_conversation = restored.new_conversation;
 		self.workspace.new_conversation_workspace = restored.new_conversation_workspace;
+		self.draft_profiles.chat_folders = restored.chat_folders;
 		self.workspace.new_conversation_permissions = restored.new_conversation_permissions;
 		self.composer_manager = restored.manager;
 
-		if self.workspace.new_conversation.is_some()
-			&& self.workspace.new_conversation == self.composer_manager
-		{
-			self.selected = self.composer_manager.clone();
-		}
 		if self.composer_manager.is_none() {
 			self.restore_creation_setup(restored.creation.as_ref(), cx);
 		}

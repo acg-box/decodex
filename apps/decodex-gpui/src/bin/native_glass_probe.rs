@@ -8,6 +8,7 @@ mod frame_trace;
 #[cfg(target_os = "macos")]
 #[path = "probes/native_graph.rs"]
 mod graph_probe;
+#[path = "../keyboard_shortcuts.rs"] mod keyboard_shortcuts;
 #[cfg(target_os = "macos")]
 #[path = "../native_quit.rs"]
 mod native_quit;

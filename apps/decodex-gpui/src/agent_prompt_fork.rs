@@ -113,8 +113,8 @@ impl AgentSurface {
 									)
 								});
 
-								let side_reference = (boundary
-									== PromptForkBoundary::AttachedAfterTurn)
+								let side_reference = boundary
+									.is_side_chat()
 									.then(|| s.prompt_edit.side_chat_reference.clone())
 									.flatten();
 								s.apply_result(Ok(snapshot));

@@ -39,12 +39,9 @@ impl AgentCoordinator {
 			return Ok(None);
 		}
 		let query: String = query.chars().take(2_048).collect();
-		let Some(memory_owner) = self.store.assistant_owner(item.id.clone()).await? else {
-			return Ok(None);
-		};
 		let recall = tokio::time::timeout(
 			std::time::Duration::from_secs(5),
-			crate::ragflow::recall(&memory_owner, &connection, &query),
+			crate::ragflow::recall(&item.id, &connection, &query),
 		)
 		.await;
 		let evidence = match recall {
@@ -67,7 +64,9 @@ impl AgentCoordinator {
 		user: bool,
 	) -> Result<(), AgentError> {
 		if self.store.assistant_settings(owner.into()).await?.is_none() {
-			return Err(AgentError::Rejected("Select an Assistant first".into()));
+			return Err(AgentError::Rejected(
+				"This command belongs to the personal Assistant".into(),
+			));
 		}
 		if let AssistantCommand::CreateAgent {
 			agent_id,
@@ -101,9 +100,9 @@ impl AgentCoordinator {
 		name: &str,
 		args: &Value,
 	) -> Result<Value, AgentError> {
-		if self.store.assistant_settings(owner.id.clone()).await?.is_none() {
-			return Err(AgentError::Rejected("This tool belongs to the selected Assistant".into()));
-		}
+		let Some(settings) = self.store.assistant_settings(owner.id.clone()).await? else {
+			return Err(AgentError::Rejected("This tool belongs to the personal Assistant".into()));
+		};
 		match name {
 			"assistant_read" => Ok(
 				json!({"assistant":self.store.assistant_state().await?,"agents":self.store.agents().await?,"work":self.store.work_overview().await?,"authority":"Team membership is a responsibility, not access to another Agent's private history. Use existing Work and scoped Collaboration for assignments and results."}),
@@ -118,11 +117,6 @@ impl AgentCoordinator {
 				)
 			},
 			"assistant_memory" => {
-				let settings = self
-					.store
-					.assistant_settings(owner.id.clone())
-					.await?
-					.expect("selected Assistant");
 				let connection = settings
 					.ragflow
 					.ok_or_else(|| AgentError::Rejected("RAGFlow is not configured".into()))?;

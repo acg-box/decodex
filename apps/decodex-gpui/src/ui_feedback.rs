@@ -174,7 +174,7 @@ impl RenderOnce for Notice {
 			measured: 0.,
 			height: Tween::new(0.),
 		});
-		let now = Instant::now();
+		let now = cx.background_executor().now();
 		let reduced = ui_motion::reduced();
 		let inline = self.inline;
 		let target = self.feedback.filter(|feedback| !feedback.is_empty());
@@ -616,7 +616,6 @@ fn state_copy(title: &str, detail: &str, inline: bool) -> Div {
 
 #[cfg(test)]
 mod tests {
-	use std::thread;
 
 	use gpui::{InteractiveElement as _, ParentElement as _, Render, Styled as _};
 
@@ -842,11 +841,11 @@ mod tests {
 
 		visual.update(crate::ui_frame::draw_frame);
 
-		thread::sleep(SETTLE);
+		visual.executor().advance_clock(SETTLE);
 
 		visual.update(crate::ui_frame::draw_frame);
 
-		thread::sleep(SETTLE);
+		visual.executor().advance_clock(SETTLE);
 
 		visual.update(crate::ui_frame::draw_frame);
 
@@ -864,7 +863,7 @@ mod tests {
 
 		assert!(visual.debug_bounds("conversation-activity-status").is_some());
 
-		thread::sleep(Duration::from_millis(50));
+		visual.executor().advance_clock(Duration::from_millis(50));
 
 		visual.update(crate::ui_frame::draw_frame);
 
@@ -872,7 +871,7 @@ mod tests {
 
 		assert!(f32::from(closing) > 0. && closing < open);
 
-		thread::sleep(SETTLE);
+		visual.executor().advance_clock(SETTLE);
 
 		visual.update(crate::ui_frame::draw_frame);
 

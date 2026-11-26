@@ -7,7 +7,7 @@ use crate::{
 	shell::agent_surface::{
 		self, AgentSnapshotDto, AgentSurface, AgentWorkItemDto, Context, FluentBuilder, FontWeight,
 		InteractiveElement, IntoElement, ParentElement, SharedString, StatefulInteractiveElement,
-		Styled, graph, markdown, ui_theme::TEXT,
+		Styled, graph, markdown, thread_registration::RegistrationContext, ui_theme::TEXT,
 	},
 	ui_loading,
 	ui_theme::{self, HOVER_FILL},
@@ -19,10 +19,33 @@ impl AgentSurface {
 		&self,
 		snapshot: &AgentSnapshotDto,
 		work: &AgentWorkItemDto,
+		window: &mut gpui::Window,
 		cx: &mut Context<Self>,
 	) -> impl IntoElement {
+		let focus = window
+			.use_keyed_state("conversation-details-focus", cx, |_, cx| cx.focus_handle())
+			.read(cx)
+			.clone();
+		// The composer menu can be a separate native window. This card is in the workspace.
+		if self.workspace.details_focus_requested.replace(false) && self.workspace.details_visible {
+			window.activate_window();
+			window.focus(&focus, cx);
+		}
 		gpui::div()
 			.id("work-inspection-scroll")
+			.role(agent_surface::Role::Group)
+			.aria_label("Conversation details")
+			.track_focus(&focus)
+			.on_key_down(cx.listener(|s, event: &gpui::KeyDownEvent, window, cx| {
+				if event.keystroke.key == "escape"
+					&& event.keystroke.modifiers == Default::default()
+				{
+					s.workspace.details_visible = false;
+					agent_surface::workspace::restore_shell_focus(window, cx);
+					cx.stop_propagation();
+					cx.notify();
+				}
+			}))
 			.debug_selector(|| "work-inspection-scroll".into())
 			.occlude()
 			.max_h(gpui::px(380.))
@@ -49,6 +72,7 @@ impl AgentSurface {
 					.child(gpui::div().font_weight(FontWeight::MEDIUM).child(self.work_label(work)))
 					.child(agent_surface::muted(graph::state_in(snapshot, work).0)),
 			)
+			.children(self.inspection_agent_responsibility(work, cx))
 			.child(self.native_history_controls(work, cx))
 			.when(!self.saved_prompt_editors(&work.id).is_empty(), |panel| {
 				panel.child(
@@ -86,6 +110,59 @@ impl AgentSurface {
 						)),
 				)
 			})
+	}
+
+	fn inspection_agent_responsibility(
+		&self,
+		work: &AgentWorkItemDto,
+		cx: &mut Context<Self>,
+	) -> Option<AnyElement> {
+		if self.native_agents.selected.is_some() {
+			return None;
+		}
+		let RegistrationContext::Conversation { owner } =
+			self.thread_registration_context(&work.id)?
+		else {
+			return None;
+		};
+		let id = work.id.clone();
+		let (label, description) = if owner.is_some() {
+			("Change Agent", "Change the responsible Agent")
+		} else {
+			(
+				"Assign to an Agent or make independent",
+				"Assign to an Agent or make this conversation an independent Agent",
+			)
+		};
+		let action = self.conversation_action_button(
+			"inspection-agent-options".into(),
+			label,
+			description,
+			cx,
+			move |s, _, cx| s.open_thread_registration(Some(&id), cx),
+		);
+		Some(
+			gpui::div()
+				.min_w_0()
+				.flex()
+				.items_center()
+				.gap_2()
+				.when_some(owner, |row, agent| {
+					let label = format!("Managed by {}", self.agent_conversation_label(agent));
+					row.child(
+						gpui::div()
+							.id("inspection-managed-by")
+							.role(gpui::Role::Label)
+							.aria_label(label.clone())
+							.min_w_0()
+							.flex_1()
+							.truncate()
+							.child(label),
+					)
+				})
+				.child(action)
+				.into_any_element(),
+		)
 	}
 
 	fn inspection_relations(

@@ -70,19 +70,19 @@ impl AgentSurface {
 						"chat-expand",
 						"chat-expansion",
 						self.workspace.chat_expanded,
-						"Expand conversation (Shift-Esc)",
+						"Expand conversation",
 					),
 					Panel::Dock => (
 						"graph-expand",
 						"dock-expansion",
 						self.workspace.graph_expanded,
-						"Expand Dock (Shift-Esc)",
+						"Expand Dock",
 					),
 				};
 
 				(
 					id,
-					if expanded { "Restore layout (Shift-Esc)" } else { label },
+					if expanded { "Restore layout" } else { label },
 					Some(expanded),
 					workspace_symbols::panel_expansion(key, expanded).into_any_element(),
 				)
@@ -91,12 +91,18 @@ impl AgentSurface {
 				("graph-close", "Close Dock", None, workspace_symbols::icon(Symbol::Close)),
 		};
 
+		let label = match action {
+			Action::Toggle(_) =>
+				crate::shell::shortcuts::hint(label, &crate::shell::ToggleContentFullscreen, cx),
+			_ => label.to_owned(),
+		};
+
 		gpui::div()
 			.id(id)
 			.debug_selector(move || id.into())
 			.role(Role::Button)
 			.tab_index(0)
-			.aria_label(label)
+			.aria_label(label.clone())
 			.when_some(expanded, |button, value| button.aria_expanded(value))
 			.hover_hint(label)
 			.size(gpui::px(CHROME_CONTROL_SIZE))

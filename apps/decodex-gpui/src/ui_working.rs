@@ -53,21 +53,17 @@ impl RenderOnce for Working {
 				reduced,
 			)
 		});
-		let (presence, moving, elapsed) = (frame.opacity, frame.moving, frame.elapsed);
-		// The footer and the completed status share one slot below the reply.
-		let handoff = if frame.pose == State::Done {
-			self.footer_progress.as_ref().map_or(0., |progress| progress.get())
-		} else {
-			0.
-		};
-		let height =
-			(ui_theme::MESSAGE_GAP + ui_theme::WORK_INDICATOR_SIZE) * presence * (1. - handoff);
-		// Fade the complete status row before closing the space it needs.
-		let opacity = ((height - ui_theme::WORK_INDICATOR_SIZE) / ui_theme::MESSAGE_GAP).max(0.);
-		let label =
-			if frame.pose == State::Still { frame.action.label() } else { frame.pose.label() };
+		let (moving, elapsed) = (frame.moving, frame.elapsed);
+		// Both rows use the same baseline as the metrics gain their share of the space.
+		let footer = self.footer_progress.filter(|_| frame.pose == State::Done);
+		let progress = footer.as_ref().map_or(0., |progress| progress.get());
+		let presence = if footer.is_some() { 1. } else { frame.opacity };
+		let opacity = presence * (1. - progress);
+		let height = ui_theme::RESPONSE_FOOTER_EXTENT * opacity;
+		let pose = if footer.is_some() { frame.action } else { frame.pose };
+		let label = if pose == State::Still { frame.action.label() } else { pose.label() };
 
-		if (moving && handoff < 1.) || (self.turn.is_some() && !reduced) {
+		if (moving && progress < 1.) || (self.turn.is_some() && !reduced) {
 			ui_motion::request_frame(window, cx);
 		}
 
@@ -77,28 +73,30 @@ impl RenderOnce for Working {
 			.relative()
 			.h(gpui::px(height))
 			.flex_none()
-			.overflow_hidden()
+			.when(footer.is_none(), |slot| slot.overflow_hidden())
 			.when(opacity > 0., |slot| {
 				slot.child(
 					gpui::div()
 						.id("pixel-work-status")
 						.debug_selector(|| "pixel-work-status".into())
 						.absolute()
-						.bottom_0()
+						.top(gpui::px(
+							ui_theme::METADATA_GAP - ui_theme::RESPONSE_FOOTER_EXTENT * progress,
+						))
 						.left_0()
 						.role(Role::Status)
 						.aria_label(label)
 						.flex()
 						.items_center()
-						.gap(gpui::px(8.))
-						.h(gpui::px(ui_theme::WORK_INDICATOR_SIZE))
+						.gap(gpui::px(5.))
+						.h(gpui::px(ui_theme::RESPONSE_FOOTER_HEIGHT))
 						.opacity(opacity)
 						.text_size(gpui::px(12.))
 						.line_height(gpui::px(18.))
 						.text_color(ui_theme::rgb(TEXT_MUTED))
 						.child(Indicator {
 							action: frame.action,
-							pose: frame.pose,
+							pose,
 							elapsed,
 							edge: ui_theme::WORK_INDICATOR_SIZE,
 							reduced,
@@ -456,7 +454,9 @@ mod tests {
 	fn finished_work_releases_its_slot(cx: &mut gpui::TestAppContext) {
 		let (signal, visual) = cx.add_window_view(|_, _| Signal(false));
 
-		for (active, height) in [(false, 0.), (true, 44.), (false, 0.)] {
+		for (active, height) in
+			[(false, 0.), (true, crate::ui_theme::RESPONSE_FOOTER_EXTENT), (false, 0.)]
+		{
 			signal.update(visual, |s, cx| {
 				s.0 = active;
 

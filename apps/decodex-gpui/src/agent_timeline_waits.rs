@@ -122,14 +122,8 @@ impl AgentSurface {
 							.gap_2()
 							.children(indices.iter().map(|&index| {
 								let entry = &s.timeline.native.entries[index];
-								let identity = serde_json::json!([
-									work.id,
-									work.codex_thread_id,
-									super::key(entry)
-								])
-								.to_string();
-								let body = s
-									.native_timeline_content(&work, entry, &identity, archived, cx);
+								let body =
+									s.native_timeline_content(&work, entry, archived, None, cx);
 
 								if archived {
 									body

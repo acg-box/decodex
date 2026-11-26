@@ -1,4 +1,5 @@
 //! On-demand archive browser. Native identities and retained relations stay authoritative.
+use super::super::navigation_sidebar::model::Item;
 use crate::ui_motion::HoverHint as _;
 use gpui::{
 	AnyElement, AppContext as _, Entity, IntoElement as _, KeyDownEvent, Role, Task, prelude::*,
@@ -29,10 +30,12 @@ use decodex_protocol::{
 
 const BATCH_BAR_HEIGHT: f32 = 38.;
 const BATCH_BAR_INSET: f32 = 8.;
+const ROW_TEXT_INSET: f32 = 8.;
 
 #[derive(Default)]
 pub(in crate::shell::agent_surface) struct Catalog {
 	pub viewed: Option<String>,
+	open_after_read: Option<String>,
 	data: Option<AgentSnapshotDto>,
 	search: Option<Entity<ComposerInput>>,
 	read: Option<Task<()>>,
@@ -200,6 +203,7 @@ impl AgentSurface {
 	}
 
 	pub(in crate::shell::agent_surface) fn clear_archive_selection(&mut self) {
+		self.workspace.archives.open_after_read = None;
 		self.workspace.archives.cancel_confirmation();
 		self.workspace.archives.selected.clear();
 		self.workspace.archives.selecting = false;
@@ -211,8 +215,11 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) {
 		if self.workspace.archives.archived_work(id).is_none() {
+			self.workspace.archives.open_after_read = Some(id.into());
+			self.open_archive_catalog(cx);
 			return;
 		}
+		self.workspace.work_detail = None;
 		self.workspace.archives.viewed = Some(id.into());
 		self.workspace.archives.confirmation = None;
 		self.workspace.archives.confirmation_task = None;
@@ -252,6 +259,7 @@ impl AgentSurface {
 			return;
 		}
 		let Some(profile) = self.profile.clone() else {
+			self.workspace.archives.open_after_read = None;
 			self.workspace.archives.feedback = Some("Connect to Codex to read the archive.".into());
 			return;
 		};
@@ -269,10 +277,20 @@ impl AgentSurface {
 						s.retire_archived_messages(&data, cx);
 						s.workspace.archives.data = Some(data);
 						s.workspace.archives.revision += 1;
+						if let Some(id) = s.workspace.archives.open_after_read.take() {
+							if s.workspace.archives.archived_work(&id).is_some() {
+								s.open_archived_conversation(&id, cx);
+							} else {
+								s.workspace.archives.feedback =
+									Some("Could not find this conversation in the archive.".into());
+							}
+						}
 					},
-					_ =>
+					_ => {
+						s.workspace.archives.open_after_read = None;
 						s.workspace.archives.feedback =
-							Some("Could not load the archive. Reopen Archive to retry.".into()),
+							Some("Could not load the archive. Reopen Archive to retry.".into());
+					},
 				}
 				cx.notify();
 			});
@@ -309,14 +327,17 @@ impl AgentSurface {
 			let client = AgentClient::new(profile);
 			let key =
 				IdempotencyKey::new(super::super::unique_command()).expect("bounded identity");
-			let _ = runtime.block_on(client.execute(
+			let response = runtime.block_on(client.execute(
 				AgentActionDto::RestoreArchivedThread { work_id: work_id.clone(), thread_id },
 				key,
 			));
 			let state = runtime.block_on(client.archive_state(work_id)).ok();
 			if matches!(state, Some(AgentArchiveResult::Active { thread_id }) if thread_id == thread)
 			{
-				Some(runtime.block_on(client.query()).ok())
+				Some(Ok(runtime.block_on(client.query()).ok()))
+			} else if let Ok(decodex_protocol::AgentCommandResponse::Rejected { error }) = response
+			{
+				Some(Err(super::super::command_rejection_message(&error)))
 			} else {
 				None
 			}
@@ -326,7 +347,7 @@ impl AgentSurface {
 			let _ = surface.update(cx, |s, cx| {
 				s.workspace.archives.mutation = None;
 				s.workspace.archives.busy = None;
-				if let Some(snapshot) = result {
+				if let Some(Ok(snapshot)) = result {
 					if let Some(data) = &mut s.workspace.archives.data {
 						data.archived_work_ids.remove(&id);
 					}
@@ -336,7 +357,9 @@ impl AgentSurface {
 					}
 				} else {
 					s.workspace.archives.feedback =
-						Some("Unarchive not confirmed. Reopen Archive to check.".into());
+						Some(result.and_then(Result::err).unwrap_or_else(|| {
+							"Unarchive not confirmed. Reopen Archive to check.".into()
+						}));
 				}
 				cx.notify();
 			});
@@ -401,6 +424,7 @@ impl AgentSurface {
 			let runtime = Builder::new_current_thread().enable_all().build().ok()?;
 			let client = AgentClient::new(profile);
 			let mut deleted = Vec::new();
+			let mut refusal = None;
 			for (id, work_id, thread_id) in targets {
 				let key = IdempotencyKey::new(super::super::unique_command()).ok()?;
 				let response = runtime.block_on(
@@ -409,12 +433,17 @@ impl AgentSurface {
 				);
 				match response {
 					Ok(decodex_protocol::AgentCommandResponse::Accepted { .. }) => deleted.push(id),
+					Ok(decodex_protocol::AgentCommandResponse::Rejected { error }) => {
+						refusal
+							.get_or_insert_with(|| super::super::command_rejection_message(&error));
+					},
 					Ok(_) => {},
 					Err(_) => break,
 				}
 			}
 			Some((
 				deleted,
+				refusal,
 				runtime.block_on(client.archive_catalog()).ok(),
 				runtime.block_on(client.query()).ok(),
 			))
@@ -424,7 +453,7 @@ impl AgentSurface {
 			let _ = surface.update(cx, |s, cx| {
 				s.workspace.archives.mutation = None;
 				s.workspace.archives.busy = None;
-				if let Some((deleted, catalog, active)) = result {
+				if let Some((deleted, refusal, catalog, active)) = result {
 					for work in &deleted {
 						s.forget_deleted_conversation(work, cx);
 					}
@@ -442,7 +471,8 @@ impl AgentSurface {
 					let remaining = ids.len() - deleted.len();
 					if remaining > 0 {
 						s.workspace.archives.feedback = Some(format!(
-							"{remaining} not deleted. Check the selection before retrying."
+							"{remaining} not deleted. {}",
+							refusal.as_deref().unwrap_or("Check the selection before retrying.")
 						));
 					}
 					if let Some(active) = active {
@@ -591,7 +621,7 @@ impl AgentSurface {
 			.into_any_element()
 	}
 
-	fn archive_row_content(&self, item: &Row, cx: &mut Context<Self>) -> AnyElement {
+	fn archive_row_content(&self, item: &Row) -> AnyElement {
 		let catalog = &self.workspace.archives;
 		let detail = item.metadata.clone();
 		gpui::div()
@@ -600,10 +630,18 @@ impl AgentSurface {
 			.flex()
 			.items_center()
 			.gap(gpui::px(8.))
-			.child(archive_row_title(item))
+			.child(ArchiveRowTitle {
+				id: item.id.clone(),
+				title: item.title.clone(),
+				project: item.project.clone(),
+			})
 			.child(
 				gpui::div()
 					.id(gpui::SharedString::from(format!("archive-time-{}", item.id)))
+					.debug_selector({
+						let id = item.id.clone();
+						move || format!("archive-time-{id}")
+					})
 					.flex_none()
 					.min_w(gpui::px(if catalog.sort == Sort::Name { 78. } else { 36. }))
 					.text_right()
@@ -618,20 +656,6 @@ impl AgentSurface {
 						item.clock.clone()
 					}),
 			)
-			.child(
-				gpui::div()
-					.debug_selector({
-						let id = item.id.clone();
-						move || format!("archive-actions-{id}")
-					})
-					.flex_none()
-					.flex()
-					.items_center()
-					.gap(gpui::px(4.))
-					.children((!catalog.selecting).then(|| self.archive_restore_action(item, cx)))
-					.children((!catalog.selecting).then(|| self.archive_delete_action(item, cx)))
-					.child(self.archive_open_action(item, cx)),
-			)
 			.into_any_element()
 	}
 
@@ -640,14 +664,17 @@ impl AgentSurface {
 		let id = item.id.clone();
 		let row_id = id.clone();
 		let row_key = id.clone();
-		let check_reveal_id: gpui::SharedString = format!("archive-select-{id}").into();
 		let selecting = catalog.selecting;
 		let selected = catalog.selected.contains(&id);
 		ArchiveRow {
-			id: check_reveal_id,
+			id: id.clone(),
 			active: selecting,
 			checkbox: self.archive_row_checkbox(item, cx),
-			content: self.archive_row_content(item, cx),
+			actions: [
+				(!selecting).then(|| self.archive_restore_action(item, cx)),
+				(!selecting).then(|| self.archive_delete_action(item, cx)),
+				Some(self.archive_open_action(item, cx)),
+			],
 			row: gpui::div()
 				.id(gpui::SharedString::from(format!("archived-{id}")))
 				.debug_selector(move || format!("archived-{id}"))
@@ -659,7 +686,7 @@ impl AgentSurface {
 				.flex_none()
 				.min_w_0()
 				.min_h(gpui::px(40.))
-				.px(gpui::px(8.))
+				.px(gpui::px(ROW_TEXT_INSET))
 				.py(gpui::px(7.))
 				.flex()
 				.items_center()
@@ -683,7 +710,8 @@ impl AgentSurface {
 						cx.stop_propagation();
 						s.select_archive_row(&row_key, cx);
 					}
-				})),
+				}))
+				.child(self.archive_row_content(item)),
 		}
 	}
 
@@ -715,9 +743,8 @@ impl AgentSurface {
 						.debug_selector(move || format!("archive-date-{heading_id}"))
 						.role(Role::Heading)
 						.aria_label(first.day.clone())
-						.w_full()
 						.flex_none()
-						.pl(gpui::px(40.))
+						.ml(gpui::px(ROW_TEXT_INSET))
 						.pt(gpui::px(6.))
 						.text_size(gpui::px(ui_theme::CONTROL_LABEL_SIZE))
 						.font_weight(gpui::FontWeight::NORMAL)
@@ -1031,23 +1058,25 @@ impl gpui::RenderOnce for ArchiveSelectionOverlay {
 
 #[derive(gpui::IntoElement)]
 struct ArchiveRow {
-	id: gpui::SharedString,
+	id: String,
 	active: bool,
 	row: gpui::Stateful<gpui::Div>,
 	checkbox: AnyElement,
-	content: AnyElement,
+	actions: [Option<AnyElement>; 3],
 }
 impl gpui::RenderOnce for ArchiveRow {
 	fn render(self, window: &mut gpui::Window, cx: &mut gpui::App) -> impl IntoElement {
-		let state = window.use_keyed_state(self.id.clone(), cx, |_, cx| (false, cx.focus_handle()));
+		let reveal: gpui::SharedString = format!("archive-select-{}", self.id).into();
+		let state = window.use_keyed_state(reveal.clone(), cx, |_, cx| (false, cx.focus_handle()));
 		let (hovered, focus) = {
 			let (hovered, focus) = state.read(cx);
 			(*hovered, focus.clone())
 		};
 		let visible = self.active || hovered || focus.contains_focused(window, cx);
-		let selector = format!("{}-{}", self.id, if visible { "visible" } else { "hidden" });
+		let selector = format!("{reveal}-{}", if visible { "visible" } else { "hidden" });
+		let actions = format!("archive-actions-{}", self.id);
 		let progress = ui_motion::value(
-			gpui::SharedString::from(format!("{}-reveal", self.id)),
+			gpui::SharedString::from(format!("{reveal}-reveal")),
 			f32::from(visible),
 			window,
 			cx,
@@ -1062,14 +1091,22 @@ impl gpui::RenderOnce for ArchiveRow {
 			})
 			.child(
 				gpui::div()
-					.id(self.id)
-					.debug_selector(move || selector.clone())
-					.size(gpui::px(ui_theme::CHROME_CONTROL_SIZE))
+					.debug_selector(move || actions.clone())
 					.flex_none()
-					.opacity(progress)
-					.child(self.checkbox),
+					.flex()
+					.items_center()
+					.gap(gpui::px(4.))
+					.child(
+						gpui::div()
+							.id(reveal)
+							.debug_selector(move || selector.clone())
+							.size(gpui::px(ui_theme::CHROME_CONTROL_SIZE))
+							.flex_none()
+							.opacity(progress)
+							.child(self.checkbox),
+					)
+					.children(self.actions.into_iter().flatten()),
 			)
-			.child(self.content)
 	}
 }
 
@@ -1176,44 +1213,48 @@ fn archive_action(
 		})
 }
 
-fn archive_row_title(item: &Row) -> gpui::Div {
-	gpui::div()
-		.min_w_0()
-		.flex_1()
-		.flex()
-		.flex_wrap()
-		.items_baseline()
-		.gap_x(gpui::px(8.))
-		.child(
-			gpui::div()
-				.debug_selector({
-					let id = item.id.clone();
-					move || format!("archive-title-{id}")
-				})
-				.flex_1()
-				.flex_basis(gpui::px(280.))
-				.min_w_0()
-				.text_size(gpui::px(ui_theme::BODY_SIZE))
-				.line_height(gpui::px(ui_theme::BODY_LINE_HEIGHT))
-				.font_weight(gpui::FontWeight::NORMAL)
-				.text_color(ui_theme::rgb(ui_theme::TEXT))
-				.truncate()
-				.child(item.title.clone()),
-		)
-		.children(item.project.as_ref().map(|project| {
-			gpui::div()
-				.debug_selector({
-					let id = item.id.clone();
-					move || format!("archive-project-{id}")
-				})
-				.flex_none()
-				.max_w(gpui::px(100.))
-				.text_size(gpui::px(ui_theme::CAPTION_SIZE))
-				.line_height(gpui::px(ui_theme::CAPTION_LINE_HEIGHT))
-				.text_color(ui_theme::rgb(ui_theme::TEXT_MUTED))
-				.truncate()
-				.child(project.clone())
-		}))
+#[derive(gpui::IntoElement)]
+struct ArchiveRowTitle {
+	id: String,
+	title: String,
+	project: Option<String>,
+}
+
+impl gpui::RenderOnce for ArchiveRowTitle {
+	fn render(self, window: &mut gpui::Window, _: &mut gpui::App) -> impl IntoElement {
+		let stacked = window.viewport_size().width < gpui::px(600.);
+		let title_id = self.id.clone();
+		gpui::div()
+			.min_w_0()
+			.flex_1()
+			.flex()
+			.items_center()
+			.when(stacked, |row| row.flex_col().items_start())
+			.gap_x(gpui::px(8.))
+			.child(
+				gpui::div()
+					.debug_selector(move || format!("archive-title-{title_id}"))
+					.min_w_0()
+					.text_size(gpui::px(ui_theme::BODY_SIZE))
+					.line_height(gpui::px(ui_theme::BODY_LINE_HEIGHT))
+					.font_weight(gpui::FontWeight::NORMAL)
+					.text_color(ui_theme::rgb(ui_theme::TEXT))
+					.when(stacked, |label| label.w_full().line_clamp(2).text_ellipsis())
+					.when(!stacked, |label| label.flex_1().truncate())
+					.child(self.title),
+			)
+			.children(self.project.map(|project| {
+				gpui::div()
+					.debug_selector(move || format!("archive-project-{}", self.id))
+					.flex_none()
+					.when(stacked, |label| label.w_full().line_clamp(2).text_ellipsis())
+					.when(!stacked, |label| label.w(gpui::px(100.)).truncate())
+					.text_size(gpui::px(ui_theme::CAPTION_SIZE))
+					.line_height(gpui::px(ui_theme::CAPTION_LINE_HEIGHT))
+					.text_color(ui_theme::rgb(ui_theme::TEXT_MUTED))
+					.child(project)
+			}))
+	}
 }
 
 impl AgentSurface {
@@ -1224,9 +1265,7 @@ impl AgentSurface {
 		self.load_archive_catalog(cx);
 	}
 
-	pub(in crate::shell::agent_surface) fn navigation_archived_items(
-		&self,
-	) -> Vec<super::super::navigation_sidebar::model::Item> {
+	pub(in crate::shell::agent_surface) fn navigation_archived_items(&self) -> Vec<Item> {
 		self.workspace
 			.archives
 			.data
@@ -1234,17 +1273,12 @@ impl AgentSurface {
 			.flat_map(|data| {
 				data.work_items.iter().filter(|w| data.archived_work_ids.contains(&w.id)).map(|w| {
 					let project = data.projects.iter().find(|p| p.agent_ids.contains(&w.id));
-					let assistant = data.assistant.agent_id.as_ref() == Some(&w.id)
-						|| data.assistant.topic_ids.contains(&w.id)
-						|| data.assistant.retired_topic_ids.contains(&w.id);
-					super::super::navigation_sidebar::model::Item {
+					let assistant = data.assistant.agent_id.as_ref() == Some(&w.id);
+					Item {
+						external: None,
 						id: w.id.clone(),
 						title: Self::conversation_label_in(Some(data), w),
-						owner: if assistant {
-							"Assistant".into()
-						} else {
-							project.map_or_else(|| "No project".into(), |p| p.name.clone())
-						},
+						location: Item::location_label(assistant, project),
 						project: project.map(|p| p.id.clone()),
 						updated: w.updated_at_micros,
 						draft: false,
@@ -1518,19 +1552,25 @@ mod tests {
 				s.visual_workspace_fixture(cx);
 				let mut data = s.snapshot.clone().unwrap();
 				let mut item = data.work_items[0].clone();
-				item.id = "layout".into();
 				item.title =
 					"Review the release plan and check the remaining acceptance work".into();
-				data.work_items.push(item);
-				data.archived_work_ids.insert("layout".into());
-				data.projects = vec![decodex_protocol::ProjectDto {
-					id: "books".into(),
-					name: "Reading corner".into(),
-					native_project_id: None,
-					lead_agent_id: None,
-					directory: "/tmp/books".into(),
-					agent_ids: vec!["layout".into()],
-				}];
+				for id in ["layout", "short-project", "no-project"] {
+					item.id = id.into();
+					data.work_items.push(item.clone());
+					data.archived_work_ids.insert(id.into());
+					item.updated_at_micros -= 1;
+				}
+				data.projects =
+					[("layout", "A project with a long display name"), ("short-project", "AI")]
+						.map(|(id, name)| decodex_protocol::ProjectDto {
+							id: id.into(),
+							name: name.into(),
+							native_project_id: None,
+							lead_agent_id: None,
+							directory: format!("/tmp/{id}"),
+							agent_ids: vec![id.into()],
+						})
+						.into();
 				s.workspace.archives.data = Some(data);
 			});
 			ArchiveView(surface, false)
@@ -1549,6 +1589,7 @@ mod tests {
 			let heading = visual.debug_bounds("archive-date-layout").unwrap();
 			let title = visual.debug_bounds("archive-title-layout").unwrap();
 			let project = visual.debug_bounds("archive-project-layout").unwrap();
+			let time = visual.debug_bounds("archive-time-layout").unwrap();
 			let actions = visual.debug_bounds("archive-actions-layout").unwrap();
 			let restore = visual.debug_bounds("unarchive-layout").unwrap();
 			let delete = visual.debug_bounds("delete-archive-layout").unwrap();
@@ -1559,12 +1600,31 @@ mod tests {
 			assert!(restore.left() >= actions.left() && delete.right() <= actions.right());
 			assert!(delete.left() - restore.right() <= gpui::px(4.));
 			assert!(heading.bottom() <= row.top(), "date labels stay above their group");
-			assert!(title.left() - body.left() <= gpui::px(54.), "no separate left date column");
+			assert_eq!(title.left(), search.left() + gpui::px(8.), "one text column");
+			assert_eq!(heading.left(), title.left());
+			assert_eq!(time.left(), visual.debug_bounds("archive-time-no-project").unwrap().left());
+			assert_eq!(
+				actions.left(),
+				visual.debug_bounds("archive-actions-short-project").unwrap().left()
+			);
+			assert_eq!(
+				project.left(),
+				visual.debug_bounds("archive-project-short-project").unwrap().left()
+			);
+			if width >= 900. {
+				assert_eq!(project.center().y, time.center().y, "metadata shares a centerline");
+				assert_eq!(actions.center().y, time.center().y);
+			}
 			if width == 1600. {
 				assert!((body.left() - gpui::px((width - 960.) / 2.)).abs() < gpui::px(1.));
 			}
-			if width == 360. {
+			if width <= 500. {
 				assert!(project.top() >= title.bottom(), "narrow rows wrap project metadata");
+				assert_eq!(
+					project.size.width, title.size.width,
+					"the subtitle uses the text column"
+				);
+				assert!(title.size.height >= gpui::px(2. * ui_theme::BODY_LINE_HEIGHT));
 			}
 		}
 	}
@@ -1929,6 +1989,14 @@ mod tests {
 			after.top() < before.top(),
 			"scrollbar must move overflowing archive rows: bar={bar:?}, before={before:?}, after={after:?}"
 		);
+		// Grab off-center, inside the generous hit target but outside the painted thumb.
+		visual.simulate_click(
+			gpui::point(bar.left() + gpui::px(1.), bar.center().y + gpui::px(5.)),
+			Default::default(),
+		);
+		visual.update(crate::ui_frame::draw_current_frame);
+		let held = visual.debug_bounds("archived-scroll-00").unwrap();
+		assert!((held.top() - after.top()).abs() < gpui::px(1.), "grabbing must not jump");
 		visual.simulate_click(
 			gpui::point(bar.center().x, bar.bottom() - gpui::px(1.)),
 			Default::default(),
@@ -2053,6 +2121,73 @@ mod tests {
 			gap >= gpui::px(16.) && gap <= gpui::px(28.),
 			"archived replies retain the same reading gap as active replies, got {gap:?}"
 		);
+	}
+
+	#[gpui::test]
+	fn assistant_entry_loads_its_archived_conversation_before_first_archive_visit(
+		cx: &mut gpui::TestAppContext,
+	) {
+		for cancelled in [false, true] {
+			check_archived_assistant_open(cx, cancelled);
+		}
+	}
+
+	fn check_archived_assistant_open(cx: &mut gpui::TestAppContext, cancelled: bool) {
+		let surface = cx.new(AgentSurface::new);
+		let catalog = surface.update(cx, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.visual_personal_navigation(cx);
+			s.open_navigation_conversation("research-chat", cx);
+			let snapshot = s.snapshot.as_mut().unwrap();
+			let mut catalog = snapshot.clone();
+			let main = catalog.work_items.iter_mut().find(|work| work.id == "agent").unwrap();
+			main.codex_thread_id = Some("archived-native-main".into());
+			catalog.archived_work_ids.insert("agent".into());
+			snapshot.work_items.retain(|work| work.id != "agent");
+			snapshot.agents.retain(|agent| agent.id != "agent");
+			assert!(snapshot.archived_work_ids.is_empty());
+			catalog
+		});
+		let (_root, profile, server) = wire_test_support::fixture(move |listener| async move {
+			let mut socket = wire_test_support::accept(&listener).await;
+			let Message::Text(request) = socket.next().await.unwrap().unwrap() else {
+				panic!("expected archive query")
+			};
+			let ClientMessage::Query(query) = serde_json::from_str(&request).unwrap() else {
+				panic!("expected archive query")
+			};
+			assert!(matches!(query.payload, QueryPayload::GetAgentArchiveCatalog));
+			wire_test_support::answer_query(
+				&mut socket,
+				query.query_id,
+				QueryResultPayload::AgentSnapshot(AgentSnapshotResult::Available(catalog)),
+			)
+			.await;
+		});
+		surface.update(cx, |s, cx| {
+			s.profile = Some(profile);
+			s.open_assistant(cx);
+			assert_eq!(s.workspace.archives.open_after_read.as_deref(), Some("agent"));
+			assert_eq!(s.selected.as_deref(), Some("research-chat"));
+			if cancelled {
+				s.close_catalog(cx);
+			}
+		});
+		let deadline = Instant::now() + Duration::from_secs(5);
+		while surface.read_with(cx, |s, _| s.workspace.archives.read.is_some()) {
+			cx.run_until_parked();
+			assert!(Instant::now() < deadline);
+			thread::sleep(Duration::from_millis(5));
+		}
+		server.join().unwrap();
+		surface.read_with(cx, |s, _| {
+			assert_eq!(
+				s.selected.as_deref(),
+				Some(if cancelled { "research-chat" } else { "agent" })
+			);
+			assert_eq!(s.selected_is_archived(), !cancelled);
+			assert!(s.workspace.archives.open_after_read.is_none());
+		});
 	}
 
 	#[gpui::test]

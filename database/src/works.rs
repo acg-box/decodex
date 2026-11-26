@@ -184,7 +184,7 @@ impl SqliteStore {
 	pub async fn persistent_agents(&self) -> Result<Vec<(String, String)>, StoreError> {
 		self.run(|c| {
 			c.prepare(
-				"SELECT a.id,w.title FROM agents a JOIN agent_work_items w ON w.id=a.id WHERE NOT EXISTS(SELECT 1 FROM agent_inbox_events t WHERE t.work_item_id=a.id AND t.event_kind='assistant_internal_topic') ORDER BY a.id",
+				"SELECT a.id,w.title FROM agents a JOIN agent_work_items w ON w.id=a.id ORDER BY a.id",
 			)
 			.map_err(crate::error::sqlite_error)?
 			.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
@@ -213,7 +213,6 @@ impl SqliteStore {
 					"SELECT a.id,w.title,w.codex_thread_id,a.assistant,m.conversation_id
 				 FROM agents a JOIN agent_work_items w ON w.id=a.id
 				 LEFT JOIN agent_managed_conversations m ON m.agent_id=a.id
-				 WHERE NOT EXISTS (SELECT 1 FROM agent_inbox_events t WHERE t.work_item_id=a.id AND t.event_kind='assistant_internal_topic')
 				 ORDER BY a.id,m.conversation_id",
 				)
 				.map_err(error::sqlite_error)?;
@@ -241,36 +240,6 @@ impl SqliteStore {
 				}
 			}
 			Ok(agents)
-		})
-		.await
-	}
-
-	pub async fn set_assistant(&self, agent: String, enabled: bool) -> Result<(), StoreError> {
-		self.run(move |c| {
-			let tx = c.transaction().map_err(crate::error::sqlite_error)?;
-
-			if enabled {
-				if tx.query_row("SELECT EXISTS(SELECT 1 FROM agent_inbox_events WHERE work_item_id=?1 AND event_kind='assistant_internal_topic')",[&agent],|r|r.get::<_,bool>(0)).map_err(error::sqlite_error)? {
-					return Err(invalid("personal topics are not independent Agent identities"));
-				}
-				tx.execute("UPDATE agents SET assistant=0 WHERE assistant=1", [])
-					.map_err(crate::error::sqlite_error)?;
-			}
-
-			let n = tx
-				.execute(
-					"UPDATE agents SET assistant=?2 WHERE id=?1",
-					rusqlite::params![agent, enabled],
-				)
-				.map_err(crate::error::sqlite_error)?;
-
-			if n != 1 {
-				return Err(conflict());
-			}
-
-			tx.commit().map_err(crate::error::sqlite_error)?;
-
-			Ok(())
 		})
 		.await
 	}

@@ -7,7 +7,7 @@ use crate::shell::{
 	agent_surface,
 	agent_surface::native_timeline::{
 		self, AgentHistoryResult, AgentSurface, AgentTimelineContent, AgentWorkItemDto, Context,
-		FluentBuilder, IntoElement, ParentElement, Styled, inputs, markdown,
+		IntoElement, ParentElement, Styled, inputs, markdown,
 	},
 };
 use decodex_protocol::{AgentHistoryEntryDto, AgentHistorySourceDto, AgentTimelineEntry};
@@ -68,19 +68,16 @@ impl AgentSurface {
 		&self,
 		work: &AgentWorkItemDto,
 		cx: &mut Context<Self>,
-	) -> AnyElement {
+	) -> Option<AnyElement> {
 		let mut rows = self.saved_input_rows(work, cx);
 
 		let Some((_, AgentHistoryResult::Available { .. })) =
 			self.history.as_ref().filter(|(id, _)| id == &work.id)
 		else {
-			return gpui::div()
-				.flex()
-				.flex_col()
-				.gap_2()
-				.children(rows)
-				.child(agent_surface::muted("Delivery records unavailable. Retrying…"))
-				.into_any_element();
+			rows.push(
+				agent_surface::muted("Delivery records unavailable. Retrying…").into_any_element(),
+			);
+			return Some(receipt_group(rows));
 		};
 		let saved = self.saved_delivery_entries(&work.id);
 
@@ -132,15 +129,7 @@ impl AgentSurface {
 			rows.push((row).into_any_element());
 		}
 
-		let empty = rows.is_empty();
-
-		gpui::div()
-			.flex()
-			.flex_col()
-			.gap_2()
-			.when(empty, |panel| panel.hidden())
-			.children(rows)
-			.into_any_element()
+		(!rows.is_empty()).then(|| receipt_group(rows))
 	}
 
 	fn local_receipt_row(
@@ -196,6 +185,16 @@ fn partial_replaced(
 		&entry.content, AgentTimelineContent::Item { turn_id, item_id, kind, text, truncated: false, .. }
 		if turn_id == &source.turn_id && item_id == &source.item_id && kind == expected_kind && !text.is_empty()
 	))
+}
+
+fn receipt_group(rows: Vec<AnyElement>) -> AnyElement {
+	gpui::div()
+		.mt(gpui::px(crate::ui_theme::MESSAGE_GAP))
+		.flex()
+		.flex_col()
+		.gap_2()
+		.children(rows)
+		.into_any_element()
 }
 
 fn receipt_label(entry: &AgentHistoryEntryDto) -> Option<&'static str> {
@@ -530,7 +529,7 @@ unsent_reason: None, voice_session_id: None, event_kind:"plan_updated".into(),de
 
 			work.codex_thread_id = Some("native-thread".into());
 			s.history = Some((work.id.clone(), AgentHistoryResult::Available {
-				questions: vec![], expired_question_ids: Vec::new(), questions_truncated: false, questions_recovering: false, misalignment: None, usage: None, has_more: false, next_before: None, live: vec![],
+				questions: vec![], expired_question_ids: Vec::new(), missing_folder: None, questions_truncated: false, questions_recovering: false, misalignment: None, usage: None, has_more: false, next_before: None, live: vec![],
 				entries: vec![AgentHistoryEntryDto {
 					native_source: None, turn_id: None, weather: vec![], id: 91,kind:"auth_recovery".into(),text:"Codex reported that provider sign-in recovery started.\n\nAWS: [Sign in](https://example.invalid)\n\nSaved event; current sign-in status is not confirmed by this record.".into(),created_at_micros:1,receipt:None,activity:None,usage:None,duration_ms:None,
 				}],

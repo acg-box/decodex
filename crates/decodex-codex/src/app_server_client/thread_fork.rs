@@ -12,6 +12,10 @@ pub enum ThreadForkBoundary<'a> {
 	AfterTurn(&'a str),
 	/// Keep the reviewed completed prefix attached to its native source.
 	AttachedAfterTurn(&'a str),
+	/// Snapshot the source at the time of the request, including an active turn.
+	AttachedCurrent,
+	/// An in-memory copy of the source, optionally up to a completed turn.
+	TemporarySideChat(Option<&'a str>),
 }
 
 impl AppServerClient {
@@ -35,14 +39,21 @@ impl AppServerClient {
 		guard: HistoryGuard,
 		current_provider: Option<&str>,
 	) -> Result<Value, ClientError> {
-		let (field, turn, attached) = match boundary {
-			ThreadForkBoundary::BeforeInput(turn) => ("beforeTurnId", turn, false),
-			ThreadForkBoundary::AfterTurn(turn) => ("lastTurnId", turn, false),
-			ThreadForkBoundary::AttachedAfterTurn(turn) => ("lastTurnId", turn, true),
+		let attached = matches!(
+			boundary,
+			ThreadForkBoundary::AttachedAfterTurn(_) | ThreadForkBoundary::AttachedCurrent
+		);
+		let cutoff = match boundary {
+			ThreadForkBoundary::AttachedCurrent | ThreadForkBoundary::TemporarySideChat(None) =>
+				None,
+			ThreadForkBoundary::TemporarySideChat(Some(turn)) => Some(("lastTurnId", turn)),
+			ThreadForkBoundary::BeforeInput(turn) => Some(("beforeTurnId", turn)),
+			ThreadForkBoundary::AfterTurn(turn) => Some(("lastTurnId", turn)),
+			ThreadForkBoundary::AttachedAfterTurn(turn) => Some(("lastTurnId", turn)),
 		};
 
-		if [source, turn]
-			.iter()
+		if std::iter::once(source)
+			.chain(cutoff.map(|(_, turn)| turn))
 			.any(|id| id.is_empty() || id.len() > 512 || id.chars().any(char::is_control))
 		{
 			return Err(ClientError::InvalidFrame);
@@ -51,9 +62,17 @@ impl AppServerClient {
 		let mut params = serde_json::json!({"threadId":source,"excludeTurns":true});
 
 		// Native attached forks neither inherit the Goal snapshot nor admit deferred continuation.
-		params[if attached { "attachToSource" } else { "deferGoalContinuation" }] =
-			Value::Bool(true);
-		params[field] = serde_json::json!(turn);
+		let temporary = matches!(boundary, ThreadForkBoundary::TemporarySideChat(_));
+		if temporary {
+			params["ephemeral"] = true.into();
+		} else if attached {
+			params["attachToSource"] = true.into();
+		} else {
+			params["deferGoalContinuation"] = true.into();
+		}
+		if let Some((field, turn)) = cutoff {
+			params[field] = serde_json::json!(turn);
+		}
 
 		let guard =
 			self.with_thread_settings_guard(source, guard).ok_or(ClientError::StaleHistory)?;
@@ -98,7 +117,8 @@ impl AppServerClient {
 		let response = self.request_with_history("thread/fork", params, guard).await?;
 		let thread = &response["thread"];
 
-		if thread["forkedFromId"] != source
+		if (temporary && thread["ephemeral"] != true)
+			|| thread["forkedFromId"] != source
 			|| thread["id"].as_str().is_none_or(|id| {
 				id.is_empty() || id.len() > 512 || id == source || id.chars().any(char::is_control)
 			}) {
@@ -227,7 +247,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn fork_selects_one_boundary_and_never_sends_a_turn_or_revert() {
-		for mode in 0..3 {
+		for mode in 0..6 {
 			let before = mode == 0;
 			let (local, remote) = io::duplex(65_536);
 			let (read, write) = io::split(local);
@@ -258,6 +278,13 @@ mod tests {
 				} else {
 					serde_json::json!({"threadId":"source","lastTurnId":"first","attachToSource":true,"excludeTurns":true,"modelProvider":"source-provider"})
 				};
+				if mode >= 4 {
+					expected.as_object_mut().unwrap().remove("attachToSource");
+					expected["ephemeral"] = true.into();
+				}
+				if mode == 3 || mode == 4 {
+					expected.as_object_mut().unwrap().remove("lastTurnId");
+				}
 				expected["model"] = serde_json::json!("current-source-model");
 				expected["config"] = serde_json::json!({"model_reasoning_effort":"low"});
 				expected["serviceTier"] = tier;
@@ -267,7 +294,7 @@ mod tests {
 					.write_all(
 						format!(
 							"{}\n",
-							serde_json::json!({"id":request["id"],"result":{"thread":{"id":"branch","forkedFromId":"source"}}})
+							serde_json::json!({"id":request["id"],"result":{"thread":{"id":"branch","forkedFromId":"source","ephemeral":mode>=4}}})
 						)
 						.as_bytes(),
 					)
@@ -281,6 +308,10 @@ mod tests {
 				ThreadForkBoundary::BeforeInput("first")
 			} else if mode == 1 {
 				ThreadForkBoundary::AfterTurn("first")
+			} else if mode >= 4 {
+				ThreadForkBoundary::TemporarySideChat((mode == 5).then_some("first"))
+			} else if mode == 3 {
+				ThreadForkBoundary::AttachedCurrent
 			} else {
 				ThreadForkBoundary::AttachedAfterTurn("first")
 			};

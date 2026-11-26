@@ -25,10 +25,10 @@ use tokio::{
 #[cfg(test)] use crate::conversations::ConversationRefreshState;
 use crate::{
 	client_lifecycle::{
-		self, AppOwnedDaemonRecovery, AppliedEntity, CLIENT_CACHE_SCHEMA_GENERATION,
-		CacheAuthority, CacheError, CacheLimits, ClientCache, ClientLifecycle, CompatibilityReason,
-		ConnectionView, Delivery, LifecycleBuildError, LifecycleCancellation, LifecycleIo,
-		QuarantineReason, QuarantineRecovery, RunResult,
+		self, AppliedEntity, CLIENT_CACHE_SCHEMA_GENERATION, CacheAuthority, CacheError,
+		CacheLimits, ClientCache, ClientLifecycle, CompatibilityReason, ConnectionView, Delivery,
+		LifecycleBuildError, LifecycleCancellation, LifecycleIo, LocalServiceLauncher,
+		QuarantineReason, QuarantineRecovery, RunResult, ServiceStartup,
 	},
 	conversations::{ConversationCommandState, Conversations, ConversationsLoadState},
 	history_pager::{
@@ -51,27 +51,17 @@ const SERVER: &str = "018f0f9e-7b6e-4a31-8f4c-1d2e3f405162";
 const OTHER_SERVER: &str = "028f0f9e-7b6e-4a31-8f4c-1d2e3f405162";
 const INSTANCE: &str = "publication-a";
 
-struct BoundedRecoveryProbe {
-	attempts: AtomicUsize,
+struct StartupProbe {
+	polls: Arc<AtomicUsize>,
+	preparing: usize,
 }
-impl AppOwnedDaemonRecovery for BoundedRecoveryProbe {
-	fn recover_transport(&self) -> bool {
-		self.attempts.fetch_add(1, Ordering::SeqCst) < 2
-	}
-}
-
-struct PreparingRecoveryProbe {
-	polls: AtomicUsize,
-}
-impl AppOwnedDaemonRecovery for PreparingRecoveryProbe {
-	fn preparing_components(&self) -> bool {
-		self.polls.load(Ordering::SeqCst) < 8
-	}
-
-	fn recover_transport(&self) -> bool {
-		self.polls.fetch_add(1, Ordering::SeqCst);
-
-		true
+impl LocalServiceLauncher for StartupProbe {
+	fn start(&mut self) -> ServiceStartup {
+		if self.polls.fetch_add(1, Ordering::SeqCst) < self.preparing {
+			ServiceStartup::Preparing { failed: false }
+		} else {
+			ServiceStartup::Connecting
+		}
 	}
 }
 
@@ -1045,13 +1035,14 @@ fn inject_history_cache_failure(
 async fn component_preparation_keeps_all_connection_attempts_available() {
 	let temporary = TempDir::new().expect("temporary directory");
 	let root = cache_parent(&temporary);
-	let owner = Arc::new(PreparingRecoveryProbe { polls: AtomicUsize::new(0) });
+	let launcher = StartupProbe { polls: Arc::default(), preparing: 7 };
 	let mut lifecycle = lifecycle(&root);
 
-	lifecycle.supervise_app_owned_daemon(owner);
+	lifecycle.set_service_launcher(launcher);
 
-	let failures =
-		(0..5).map(|_| ConnectAction::Fail(RetainedSessionFailure::Disconnected)).collect();
+	let failures = (0..5)
+		.map(|_| ConnectAction::Fail(RetainedSessionFailure::LocalEndpointUnavailable))
+		.collect();
 	let mut io = FakeIo::new(root, failures);
 
 	assert_eq!(lifecycle.run_with_io(&mut io).await, RunResult::RetryExhausted);
@@ -1060,21 +1051,22 @@ async fn component_preparation_keeps_all_connection_attempts_available() {
 }
 
 #[tokio::test]
-async fn component_preparation_remains_cancellable_before_any_connection() {
+async fn component_preparation_after_the_first_connect_is_cancellable() {
 	let temporary = TempDir::new().expect("temporary directory");
 	let root = cache_parent(&temporary);
 	let mut lifecycle = lifecycle(&root);
 
-	lifecycle.supervise_app_owned_daemon(Arc::new(PreparingRecoveryProbe {
-		polls: AtomicUsize::new(0),
-	}));
+	lifecycle.set_service_launcher(StartupProbe { polls: Arc::default(), preparing: 8 });
 
-	let mut io = FakeIo::new(root, vec![]);
+	let mut io = FakeIo::new(
+		root,
+		vec![ConnectAction::Fail(RetainedSessionFailure::LocalEndpointUnavailable)],
+	);
 
 	io.cancel_backoff = true;
 
 	assert_eq!(lifecycle.run_with_io(&mut io).await, RunResult::Stopped);
-	assert_eq!(io.attempts, 0);
+	assert_eq!(io.attempts, 1);
 }
 
 #[tokio::test]
@@ -1937,35 +1929,23 @@ async fn observer_receives_the_complete_bounded_retry_progression() {
 }
 
 #[tokio::test]
-async fn app_owned_transport_recovery_is_bounded_and_protocol_failure_never_restarts() {
-	let temporary = TempDir::new().expect("temporary directory is available");
-	let root = cache_parent(&temporary);
-	let recovery = Arc::new(BoundedRecoveryProbe { attempts: AtomicUsize::new(0) });
-	let mut disconnected_lifecycle = lifecycle(&root);
-
-	disconnected_lifecycle.supervise_app_owned_daemon(Arc::clone(&recovery));
-
-	let failures =
-		(0..5).map(|_| ConnectAction::Fail(RetainedSessionFailure::Disconnected)).collect();
-	let mut io = FakeIo::new(root, failures);
-
-	assert_eq!(disconnected_lifecycle.run_with_io(&mut io).await, RunResult::RetryExhausted);
-	assert_eq!(recovery.attempts.load(Ordering::SeqCst), 3);
-
-	let protocol_temporary = TempDir::new().expect("temporary directory is available");
-	let protocol_root = cache_parent(&protocol_temporary);
-	let protocol_recovery = Arc::new(BoundedRecoveryProbe { attempts: AtomicUsize::new(0) });
-	let mut protocol_lifecycle = lifecycle(&protocol_root);
-
-	protocol_lifecycle.supervise_app_owned_daemon(Arc::clone(&protocol_recovery));
-
-	let mut protocol_io = FakeIo::new(
-		protocol_root,
-		vec![ConnectAction::Fail(RetainedSessionFailure::ServiceVersionMismatch)],
-	);
-
-	assert_eq!(protocol_lifecycle.run_with_io(&mut protocol_io).await, RunResult::Incompatible);
-	assert_eq!(protocol_recovery.attempts.load(Ordering::SeqCst), 0);
+async fn only_an_unavailable_endpoint_starts_a_local_service() {
+	for (failure, expected) in [
+		(RetainedSessionFailure::LocalEndpointUnavailable, 1),
+		(RetainedSessionFailure::OperationTimeout, 0),
+		(RetainedSessionFailure::Disconnected, 0),
+		(RetainedSessionFailure::ServiceVersionMismatch, 0),
+	] {
+		let temporary = TempDir::new().unwrap();
+		let root = cache_parent(&temporary);
+		let polls = Arc::new(AtomicUsize::new(0));
+		let mut lifecycle = lifecycle(&root);
+		lifecycle.set_service_launcher(StartupProbe { polls: polls.clone(), preparing: 0 });
+		let mut io = FakeIo::new(root, vec![ConnectAction::Fail(failure)]);
+		io.cancel_backoff = true;
+		lifecycle.run_with_io(&mut io).await;
+		assert_eq!(polls.load(Ordering::SeqCst), expected, "{failure:?}");
+	}
 }
 
 #[tokio::test]

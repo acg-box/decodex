@@ -141,7 +141,9 @@ async fn serve(listener: UnixListener, mode: &str) -> Vec<AgentMediaRequest> {
 
 		if matches!(
 			query.payload,
-			QueryPayload::WaitForAgentOutput { .. } | QueryPayload::GetNativeAgents { .. }
+			QueryPayload::WaitForAgentOutput { .. }
+				| QueryPayload::GetNativeAgents { .. }
+				| QueryPayload::ListPinnedThreads { .. }
 		) {
 			// The workspace also opens an independent live-output and agent observations.
 			socket.close(None).await.unwrap();

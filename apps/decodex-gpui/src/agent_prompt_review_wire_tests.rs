@@ -68,7 +68,7 @@ fn side_chat_rejection_keeps_the_reason_at_the_tabs_and_can_be_dismissed(cx: &mu
 			s.request_prompt_review(
 				("agent", "source-agent", "turn", "item"),
 				None,
-				Some(PromptForkBoundary::AttachedAfterTurn),
+				Some(PromptForkBoundary::TemporarySideChat),
 				cx,
 			);
 		});

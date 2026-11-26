@@ -157,6 +157,7 @@ fn snapshot() -> AgentSnapshotDto {
 		guardian: Default::default(),
 		portfolio: Box::new(portfolio),
 		archived_work_ids: Default::default(),
+		side_chat_sources: Default::default(),
 		agent_slots: Default::default(),
 		conversation_titles: Default::default(),
 		context_references: vec![],
@@ -224,36 +225,14 @@ fn thread_registration_routes_to_its_own_work_and_preserves_other_drafts(cx: &mu
 #[gpui::test]
 fn thread_registration_reassignment_click_sends_the_displayed_owner(cx: &mut TestAppContext) {
 	let (_home, profile, server) = wire_test_support::fixture(|listener| async move {
-		loop {
-			let mut socket = wire_test_support::accept(&listener).await;
-			let Message::Text(text) = socket.next().await.unwrap().unwrap() else {
-				panic!("text request")
-			};
-			match serde_json::from_str(&text).unwrap() {
-				ClientMessage::Query(query) => {
-					assert!(matches!(query.payload, QueryPayload::ListNativeThreads { .. }));
-					wire_test_support::answer_query(
-						&mut socket,
-						query.query_id,
-						QueryResultPayload::NativeThreads(Some(
-							decodex_protocol::NativeThreadPage {
-								threads: vec![],
-								next_cursor: None,
-							},
-						)),
-					)
-					.await;
-				},
-				ClientMessage::Command(command) => {
-					let CommandPayload::Agent { action } = command.payload else {
-						panic!("Agent command")
-					};
-					socket.close(None).await.unwrap();
-					break *action;
-				},
-				_ => panic!("unexpected request"),
-			}
-		}
+		let mut socket = wire_test_support::accept(&listener).await;
+		let Message::Text(text) = socket.next().await.unwrap().unwrap() else { panic!("command") };
+		let ClientMessage::Command(command) = serde_json::from_str(&text).unwrap() else {
+			panic!("editing a local conversation must not fetch the external catalog")
+		};
+		let CommandPayload::Agent { action } = command.payload else { panic!("Agent command") };
+		socket.close(None).await.unwrap();
+		*action
 	});
 	let surface = cx.new(AgentSurface::new);
 	let (_, visual) = cx.add_window_view(|_, cx| {
@@ -293,6 +272,12 @@ fn thread_registration_reassignment_click_sends_the_displayed_owner(cx: &mut Tes
 	assert!(visual.debug_bounds("registration-release").is_some());
 	assert!(visual.debug_bounds("registration-promote").is_some());
 	assert!(visual.debug_bounds("registration-register").is_none());
+	assert!(visual.debug_bounds("registration-assign-iris").is_none());
+	let choose = visual.debug_bounds("registration-assignment").unwrap();
+	visual.simulate_click(choose.center(), Default::default());
+	visual.update(crate::ui_frame::draw_frame);
+	visual.executor().advance_clock(std::time::Duration::from_millis(250));
+	visual.update(crate::ui_frame::draw_frame);
 	let target = visual.debug_bounds("registration-assign-iris").unwrap();
 	let long = visual.debug_bounds("registration-release").unwrap();
 	assert_eq!(long.size.height, target.size.height, "long names remain on one line");
@@ -309,11 +294,20 @@ fn thread_registration_reassignment_click_sends_the_displayed_owner(cx: &mut Tes
 	});
 }
 
+fn native_thread_candidate(title: String) -> decodex_protocol::NativeThreadCandidate {
+	decodex_protocol::NativeThreadCandidate {
+		updated_at_micros: 0,
+		thread_id: title.clone(),
+		title,
+		preview: Some("Original discussion".into()),
+	}
+}
+
 #[gpui::test]
 fn thread_registration_lists_native_pages_and_promotes_the_selected_thread(
 	cx: &mut TestAppContext,
 ) {
-	use decodex_protocol::{NativeThreadCandidate, NativeThreadPage, work::ThreadRegistration};
+	use decodex_protocol::{NativeThreadPage, work::ThreadRegistration};
 	let (_home, profile, server) = wire_test_support::fixture(|listener| async move {
 		for (before, thread, next) in
 			[(None, "native-a", Some("page-b")), (Some("page-b"), "native-b", None)]
@@ -326,17 +320,18 @@ fn thread_registration_lists_native_pages_and_promotes_the_selected_thread(
 				panic!("query")
 			};
 			assert!(
-				matches!(query.payload, QueryPayload::ListNativeThreads { cursor } if cursor.as_ref().map(|s|s.as_str()) == before)
+				matches!(query.payload, QueryPayload::ListNativeThreads { cursor, search: None } if cursor.as_ref().map(|s|s.as_str()) == before)
 			);
+			let threads = if before.is_none() {
+				(0..24).map(|index| format!("thread-{index}")).chain([thread.to_owned()]).collect()
+			} else {
+				vec![thread.to_owned()]
+			};
 			wire_test_support::answer_query(
 				&mut socket,
 				query.query_id,
 				QueryResultPayload::NativeThreads(Some(NativeThreadPage {
-					threads: vec![NativeThreadCandidate {
-						thread_id: thread.into(),
-						title: thread.into(),
-						preview: Some("Original discussion".into()),
-					}],
+					threads: threads.into_iter().map(native_thread_candidate).collect(),
 					next_cursor: next.map(str::to_owned),
 				})),
 			)
@@ -361,19 +356,33 @@ fn thread_registration_lists_native_pages_and_promotes_the_selected_thread(
 		s.workspace.browsing = true;
 		cx.notify();
 	});
-	visual.update(|window, cx| {
-		window.resize(gpui::size(gpui::px(960.), gpui::px(840.)));
-		window.draw(cx).clear(cx);
-	});
-	for selector in [
-		"codex-conversations",
-		"registration-load",
-		"choose-thread-native-b",
-		"registration-promote",
-	] {
+	visual.simulate_resize(gpui::size(gpui::px(960.), gpui::px(450.)));
+	visual.update(crate::ui_frame::draw_frame);
+	for selector in ["codex-conversations", "choose-thread-native-b", "registration-promote"] {
 		visual.run_until_parked();
 		visual.update(crate::ui_frame::draw_current_frame);
+		if selector == "choose-thread-native-b" {
+			let viewport = visual.debug_bounds("registration-candidates").unwrap();
+			assert!(
+				visual.debug_bounds(selector).is_none(),
+				"second page requested before scrolling in {viewport:?}, last first-page row {:?}",
+				visual.debug_bounds("choose-thread-native-a")
+			);
+			let scroll_to_end = gpui::ScrollEvent {
+				position: viewport.center(),
+				delta: gpui::ScrollDelta::Pixels(gpui::point(gpui::px(0.), gpui::px(-2000.))),
+				..Default::default()
+			};
+			visual.simulate_event(scroll_to_end.clone());
+			visual.update(crate::ui_frame::draw_frame);
+			visual.run_until_parked();
+			visual.update(crate::ui_frame::draw_frame);
+			visual.simulate_event(scroll_to_end);
+			visual.update(crate::ui_frame::draw_frame);
+			assert!(viewport.contains(&visual.debug_bounds(selector).expect("next page").center()));
+		}
 		if selector == "registration-promote" {
+			visual.executor().advance_clock(crate::ui_theme::MOTION_PANEL);
 			for width in [960., 360.] {
 				visual.simulate_resize(gpui::size(gpui::px(width), gpui::px(840.)));
 				visual.update(crate::ui_frame::draw_frame);
@@ -382,15 +391,10 @@ fn thread_registration_lists_native_pages_and_promotes_the_selected_thread(
 				let add = visual.debug_bounds("registration-register").unwrap();
 				let promote = visual.debug_bounds("registration-promote").unwrap();
 				let assign = visual.debug_bounds("registration-assignment").unwrap();
-				let agent = visual.debug_bounds("registration-assign-iris").unwrap();
-				assert!(title.bottom() <= preview.top() && preview.bottom() <= add.top());
-				assert!(
-					add.top() <= promote.top()
-						&& promote.bottom() <= assign.top()
-						&& assign.bottom() <= agent.top()
-				);
-				assert_eq!(add.left(), assign.left(), "align the relationship controls at {width}");
-				for control in [add, promote, agent] {
+				assert!(visual.debug_bounds("registration-assign-iris").is_none());
+				assert!(title.bottom() <= preview.top());
+				for control in [add, promote, assign] {
+					assert!(preview.bottom() <= control.top());
 					assert!(
 						control.right() <= gpui::px(width) && control.left() >= gpui::px(0.),
 						"action fits at {width}: {control:?}"

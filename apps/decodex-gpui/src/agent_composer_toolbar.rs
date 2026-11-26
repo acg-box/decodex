@@ -218,7 +218,7 @@ impl AgentSurface {
 			self.toolbar_icon(
 				"attach",
 				"+",
-				"Attachments and microphone",
+				"Conversation actions",
 				icon_size,
 				|s, _, cx| s.toggle_composer_menu("attachments", cx),
 				cx,

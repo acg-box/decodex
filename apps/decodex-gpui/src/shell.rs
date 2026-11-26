@@ -41,8 +41,8 @@ use std::{
 use gpui::{
 	Animation, AnimationExt, AnyElement, App, AppContext as _, AsyncApp, BoxShadow, ClipboardItem,
 	Context, CursorStyle, Div, Entity, FocusHandle, Focusable, FontWeight, Global, Hsla,
-	KeyBinding, KeyDownEvent, Modifiers, MouseButton, Render, Role, SharedString, Stateful,
-	Subscription, Task, WeakEntity, Window, WindowControlArea, WindowHandle,
+	KeyBinding, KeyDownEvent, MouseButton, Render, Role, SharedString, Stateful, Subscription,
+	Task, WeakEntity, Window, WindowControlArea, WindowHandle,
 	accesskit::Toggled,
 	ease_in_out,
 	prelude::{
@@ -128,6 +128,8 @@ fn forward_shell_action(parent: gpui::AnyWindowHandle, action: &dyn gpui::Action
 	cx.stop_propagation();
 }
 
+pub(crate) use crate::keyboard_shortcuts::{self as shortcuts, OpenSideChat};
+
 gpui::actions!(
 	decodex_shell,
 	[
@@ -156,6 +158,13 @@ gpui::actions!(
 		DismissStatus,
 		NavigateBack,
 		NavigateForward,
+		InterruptReply,
+		AcceptSuggestion,
+		NextMatch,
+		PreviousMatch,
+		CloseFind,
+		MoveAccountUp,
+		MoveAccountDown,
 		FindConversation,
 		OpenGlobalCommands,
 		SelectPreviousConversation,
@@ -210,10 +219,11 @@ const WB_BLUE: u32 = BLUE;
 const WB_WARNING: u32 = crate::ui_theme::WARNING;
 const SETTINGS_NAV_ROW_HEIGHT: f32 = 30.;
 const SETTINGS_NAV_ROW_GAP: f32 = 3.;
-const SETTINGS_SECTIONS: [(Destination, Option<SettingsCategory>, &str); 6] = [
+const SETTINGS_SECTIONS: [(Destination, Option<SettingsCategory>, &str); 7] = [
 	(Destination::Settings, Some(SettingsCategory::General), "General"),
 	(Destination::Settings, Some(SettingsCategory::Agents), "Agents"),
 	(Destination::Settings, Some(SettingsCategory::Appearance), "Appearance"),
+	(Destination::Settings, Some(SettingsCategory::Shortcuts), "Shortcuts"),
 	(Destination::Settings, Some(SettingsCategory::Components), "Components"),
 	(Destination::Accounts, None, "Accounts"),
 	(Destination::Health, None, "Diagnostics"),
@@ -291,7 +301,7 @@ pub(crate) struct Shell {
 }
 impl Shell {
 	pub(crate) fn debug_reload(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-		if self.agent.update(cx, |surface, cx| surface.debug_reload(cx)) {
+		if self.overlay.is_none() && self.agent.update(cx, |surface, cx| surface.debug_reload(cx)) {
 			let agent = self.agent.clone();
 
 			window.on_next_frame(move |_, cx| agent.update(cx, |surface, cx| surface.refresh(cx)));
@@ -397,6 +407,12 @@ impl Shell {
 		let account_profile = account_profile_controller.snapshot();
 		let settings_controller = desktop_settings.clone();
 		let settings = cx.new(|cx| SettingsSurface::new(settings_controller, cx));
+		cx.subscribe(&settings, |shell, _, review: &crate::settings_surface::OpenReview, cx| {
+			shell.close_overlay(cx);
+			shell.select_destination(Destination::Agent, cx);
+			shell.agent.update(cx, |agent, cx| agent.open_portfolio_work(review.0.clone(), cx));
+		})
+		.detach();
 		settings.update(cx, |settings, cx| {
 			settings.bind_native_agent(agent.clone(), cx);
 			settings.bind_agent(&agent, cx);
@@ -821,6 +837,7 @@ impl Shell {
 			shell.settings.update(cx, |settings, _| {
 				settings.category =
 					match std::env::var("DECODEX_VISUAL_SETTINGS_CATEGORY").as_deref() {
+						Ok("shortcuts") => SettingsCategory::Shortcuts,
 						Ok("appearance") => SettingsCategory::Appearance,
 						Ok("agents") => SettingsCategory::Agents,
 						Ok("components") => SettingsCategory::Components,
@@ -1059,10 +1076,7 @@ impl Shell {
 		window: &mut Window,
 		cx: &mut Context<Self>,
 	) {
-		if event.keystroke.key != "escape"
-			|| event.keystroke.modifiers != Modifiers::default()
-			|| event.is_held
-		{
+		if !shortcuts::matches(&InterruptReply, &event.keystroke, cx) || event.is_held {
 			return;
 		}
 		if self.overlay.is_some() {
@@ -1926,7 +1940,18 @@ impl Shell {
 }
 
 impl Shell {
+	fn settings_tab_index(&self, cx: &gpui::App) -> usize {
+		let category = self.settings.read(cx).category;
+		SETTINGS_SECTIONS
+			.iter()
+			.position(|(section, tab, _)| {
+				*section == self.settings_selected && tab.is_none_or(|tab| tab == category)
+			})
+			.expect("Settings destination has a navigation tab")
+	}
+
 	fn select_settings_section(&mut self, destination: Destination, cx: &mut Context<Self>) {
+		ui_motion::begin_interaction();
 		if self.settings_selected != destination {
 			self.leave_settings_section();
 		}
@@ -2021,9 +2046,7 @@ impl Render for Shell {
 			.aria_label("Decodex")
 			.font_family(FONT_FAMILY)
 			.text_size(gpui::px(13.0))
-			.key_context("Conversations")
 			.track_focus(&self.root_focus)
-			.child(navigation::mouse_navigation(cx.entity().downgrade(), Self::navigate_history))
 			.on_action(cx.listener(Self::focus_next))
 			.on_action(cx.listener(Self::focus_previous))
 			.when(self.overlay.is_some(), |root| {
@@ -2032,50 +2055,6 @@ impl Render for Shell {
 					cx.stop_propagation();
 				}))
 			})
-			.on_action(cx.listener(Self::activate_conversations))
-			.on_action(cx.listener(Self::activate_agent))
-			.on_action(cx.listener(Self::activate_health))
-			.on_action(cx.listener(Self::activate_settings))
-			.on_action(cx.listener(Self::toggle_sidebar))
-			.on_action(cx.listener(|s, _: &ShrinkPanel, window, cx| {
-				if s.selected == Destination::Agent {
-					s.agent.update(cx, |a, cx| a.resize_panel(-24.0, false, false, window, cx));
-					cx.stop_propagation();
-				}
-			}))
-			.on_action(cx.listener(|s, _: &GrowPanel, window, cx| {
-				if s.selected == Destination::Agent {
-					s.agent.update(cx, |a, cx| a.resize_panel(24.0, false, false, window, cx));
-					cx.stop_propagation();
-				}
-			}))
-			.on_action(cx.listener(|s, _: &ResetPanel, window, cx| {
-				if s.selected == Destination::Agent {
-					s.agent.update(cx, |a, cx| a.resize_panel(0.0, true, false, window, cx));
-					cx.stop_propagation();
-				}
-			}))
-			.on_action(cx.listener(|s, _: &ShrinkPanels, window, cx| {
-				if s.selected == Destination::Agent {
-					s.agent.update(cx, |a, cx| a.resize_panel(-24.0, false, true, window, cx));
-					cx.stop_propagation();
-				}
-			}))
-			.on_action(cx.listener(|s, _: &GrowPanels, window, cx| {
-				if s.selected == Destination::Agent {
-					s.agent.update(cx, |a, cx| a.resize_panel(24.0, false, true, window, cx));
-					cx.stop_propagation();
-				}
-			}))
-			.on_action(cx.listener(|s, _: &ResetPanels, window, cx| {
-				if s.selected == Destination::Agent {
-					s.agent.update(cx, |a, cx| a.resize_panel(0.0, true, true, window, cx));
-					cx.stop_propagation();
-				}
-			}))
-			.on_action(cx.listener(Self::toggle_inspector))
-			.on_action(cx.listener(Self::toggle_graph))
-			.on_action(cx.listener(Self::toggle_content_fullscreen))
 			.on_action(cx.listener(Self::dismiss_workspace_status))
 			.on_key_down(cx.listener(Self::interrupt_reply))
 			.on_action(
@@ -2086,14 +2065,79 @@ impl Render for Shell {
 			.on_action(cx.listener(|s, _: &NavigateForward, window, cx| {
 				s.navigate_history(true, window, cx)
 			}))
-			.on_action(cx.listener(Self::select_previous_conversation))
-			.on_action(cx.listener(Self::select_next_conversation))
-			.on_action(cx.listener(Self::submit_composer))
-			.on_action(cx.listener(|s, _: &FindConversation, window, cx| {
-				if s.selected == Destination::Agent {
-					s.agent.update(cx, |agent, cx| agent.open_conversation_find(window, cx));
-				}
-			}))
+			.on_action(cx.listener(Self::activate_health))
+			.on_action(cx.listener(Self::activate_settings))
+			.when(self.overlay.is_none(), |root| {
+				root.key_context("Conversations")
+					.child(navigation::mouse_navigation(
+						cx.entity().downgrade(),
+						Self::navigate_history,
+					))
+					.on_action(cx.listener(Self::activate_conversations))
+					.on_action(cx.listener(Self::activate_agent))
+					.on_action(cx.listener(Self::toggle_sidebar))
+					.on_action(cx.listener(|s, _: &ShrinkPanel, window, cx| {
+						if s.selected == Destination::Agent {
+							s.agent.update(cx, |a, cx| {
+								a.resize_panel(-24.0, false, false, window, cx)
+							});
+							cx.stop_propagation();
+						}
+					}))
+					.on_action(cx.listener(|s, _: &GrowPanel, window, cx| {
+						if s.selected == Destination::Agent {
+							s.agent
+								.update(cx, |a, cx| a.resize_panel(24.0, false, false, window, cx));
+							cx.stop_propagation();
+						}
+					}))
+					.on_action(cx.listener(|s, _: &ResetPanel, window, cx| {
+						if s.selected == Destination::Agent {
+							s.agent
+								.update(cx, |a, cx| a.resize_panel(0.0, true, false, window, cx));
+							cx.stop_propagation();
+						}
+					}))
+					.on_action(cx.listener(|s, _: &ShrinkPanels, window, cx| {
+						if s.selected == Destination::Agent {
+							s.agent
+								.update(cx, |a, cx| a.resize_panel(-24.0, false, true, window, cx));
+							cx.stop_propagation();
+						}
+					}))
+					.on_action(cx.listener(|s, _: &GrowPanels, window, cx| {
+						if s.selected == Destination::Agent {
+							s.agent
+								.update(cx, |a, cx| a.resize_panel(24.0, false, true, window, cx));
+							cx.stop_propagation();
+						}
+					}))
+					.on_action(cx.listener(|s, _: &ResetPanels, window, cx| {
+						if s.selected == Destination::Agent {
+							s.agent.update(cx, |a, cx| a.resize_panel(0.0, true, true, window, cx));
+							cx.stop_propagation();
+						}
+					}))
+					.on_action(cx.listener(Self::toggle_inspector))
+					.on_action(cx.listener(Self::toggle_graph))
+					.on_action(cx.listener(Self::toggle_content_fullscreen))
+					.on_action(cx.listener(Self::select_previous_conversation))
+					.on_action(cx.listener(Self::select_next_conversation))
+					.on_action(cx.listener(Self::submit_composer))
+					.on_action(cx.listener(|s, _: &OpenSideChat, window, cx| {
+						if s.selected == Destination::Agent {
+							s.agent.update(cx, |agent, cx| {
+								agent.open_side_chat_from_keyboard(window, cx)
+							});
+						}
+					}))
+					.on_action(cx.listener(|s, _: &FindConversation, window, cx| {
+						if s.selected == Destination::Agent {
+							s.agent
+								.update(cx, |agent, cx| agent.open_conversation_find(window, cx));
+						}
+					}))
+			})
 			.size_full()
 			.min_w(gpui::px(ui_theme::MAIN_WINDOW_MIN_WIDTH))
 			.min_h(gpui::px(ui_theme::MAIN_WINDOW_MIN_HEIGHT))
@@ -2109,7 +2153,7 @@ impl Render for Shell {
 
 		#[cfg(all(target_os = "macos", not(test)))]
 		self.agent.update(cx, |agent, cx| {
-			if self.selected != Destination::Agent || self.overlay.is_some() {
+			if self.selected != Destination::Agent {
 				agent.hide_latest_button(window, cx);
 			}
 			agent.prepare_native_composer(
@@ -2362,6 +2406,9 @@ pub(crate) fn bind_keys(cx: &mut App) {
 		cx.defer(|cx| {
 			if let Some(main) = cx.windows().into_iter().find_map(|w| w.downcast::<Shell>()) {
 				let _ = main.update(cx, |shell, window, cx| {
+					if shell.overlay.is_some() {
+						return;
+					}
 					shell.select_destination(Destination::Agent, cx);
 					shell.agent.update(cx, |agent, cx| agent.open_global_commands(window, cx));
 					window.activate_window();
@@ -2374,8 +2421,10 @@ pub(crate) fn bind_keys(cx: &mut App) {
 		cx.defer(|cx| {
 			if let Some(main) = cx.windows().into_iter().find_map(|w| w.downcast::<Shell>()) {
 				let _ = main.update(cx, |shell, window, cx| {
-					window.activate_window();
-					shell.open_settings(Destination::Settings, cx);
+					if !shell.settings_open() {
+						window.activate_window();
+						shell.open_settings(Destination::Settings, cx);
+					}
 				});
 			}
 		});
@@ -2386,7 +2435,9 @@ pub(crate) fn bind_keys(cx: &mut App) {
 		cx.defer(move |cx| {
 			if let Some(main) = cx.windows().into_iter().find_map(|w| w.downcast::<Shell>()) {
 				let _ = main.update(cx, |shell, _, cx| {
-					shell.agent.update(cx, |agent, cx| agent.conversation_command(command, cx));
+					if shell.overlay.is_none() {
+						shell.agent.update(cx, |agent, cx| agent.conversation_command(command, cx));
+					}
 				});
 			}
 		});
@@ -2427,6 +2478,14 @@ pub(crate) fn bind_keys(cx: &mut App) {
 		KeyBinding::new("cmd-j", ToggleGraph, None),
 		KeyBinding::new("shift-escape", ToggleContentFullscreen, None),
 		KeyBinding::new("cmd-[", NavigateBack, None),
+		KeyBinding::new("alt-cmd-s", OpenSideChat, None),
+		KeyBinding::new("escape", InterruptReply, None),
+		KeyBinding::new("tab", AcceptSuggestion, Some("PromptSuggestion > ComposerInput")),
+		KeyBinding::new("enter", NextMatch, Some("ConversationFind > ComposerInput")),
+		KeyBinding::new("shift-enter", PreviousMatch, Some("ConversationFind > ComposerInput")),
+		KeyBinding::new("escape", CloseFind, Some("ConversationFind > ComposerInput")),
+		KeyBinding::new("alt-up", MoveAccountUp, Some("AccountOrder")),
+		KeyBinding::new("alt-down", MoveAccountDown, Some("AccountOrder")),
 		KeyBinding::new("cmd-f", FindConversation, None),
 		KeyBinding::new("cmd-k", OpenGlobalCommands, None),
 		KeyBinding::new("cmd-]", NavigateForward, None),
@@ -2734,9 +2793,9 @@ const fn startup_failure(failure: ClientFailure) -> &'static str {
 		ClientFailure::UnsafeLocalEndpoint => "Local daemon endpoint is unsafe",
 		ClientFailure::LocalPeerIdentityUnavailable => "Local daemon identity is unavailable",
 		ClientFailure::LocalPeerUidMismatch => "Local daemon peer UID does not match",
-		ClientFailure::ProtocolDisconnected
-		| ClientFailure::ProtocolTimeout
-		| ClientFailure::ServiceVersionMismatch => "Restart Decodex.",
+		ClientFailure::ProtocolDisconnected | ClientFailure::ProtocolTimeout => "Restart Decodex.",
+		ClientFailure::ServiceVersionMismatch =>
+			"The app and service use different protocol versions.",
 		ClientFailure::ServerIdentityMismatch => "Stable server identity does not match",
 		ClientFailure::ProtocolMalformed => "Daemon response is malformed",
 		ClientFailure::ProtocolViolation => "Daemon protocol ordering was refused",
@@ -3098,11 +3157,11 @@ fn agent_panel_control(shell: &Shell, index: usize, cx: &Context<Shell>) -> AnyE
 		shell.agent.read(cx).workspace_panels()[index]
 	};
 	let label = match (index, enabled) {
-		(0, _) => "Toggle sidebar (Command-E)",
-		(1, true) => "Toggle Dock (Command-J)",
-		(2, _) => "Toggle collaboration (Command-B)",
-		(1, false) => "Dock unavailable",
-		_ => "Panel unavailable",
+		(0, _) => shortcuts::hint("Toggle sidebar", &ToggleSidebar, cx),
+		(1, true) => shortcuts::hint("Toggle Dock", &ToggleGraph, cx),
+		(2, _) => shortcuts::hint("Toggle collaboration", &ToggleInspector, cx),
+		(1, false) => "Dock unavailable".into(),
+		_ => "Panel unavailable".into(),
 	};
 
 	ui_theme::titlebar_button()
@@ -3110,7 +3169,7 @@ fn agent_panel_control(shell: &Shell, index: usize, cx: &Context<Shell>) -> AnyE
 		.debug_selector(move || format!("agent-panel-control-{index}"))
 		.role(Role::Button)
 		.when(enabled, |el| el.tab_index(0))
-		.aria_label(label)
+		.aria_label(label.clone())
 		.aria_expanded(active)
 		.hover_hint(label)
 		.when(active && index == 0, |el| el.bg(ui_theme::rgba(0xffffff0c)))
@@ -4210,6 +4269,7 @@ fn account_reorder_handle(
 	cx: &mut Context<Shell>,
 ) -> AnyElement {
 	let keyboard = account.account_id.clone();
+	let keyboard_down = keyboard.clone();
 
 	account_icon_action(
 		"account-reorder",
@@ -4234,12 +4294,11 @@ fn account_reorder_handle(
 		},
 		|drag, _, _, cx| cx.new(|_| drag.clone()),
 	)
-	.on_key_down(cx.listener(move |s, event: &KeyDownEvent, _, cx| {
-		if event.keystroke.modifiers.alt && ["up", "down"].contains(&event.keystroke.key.as_str()) {
-			s.move_account(&keyboard, if event.keystroke.key == "up" { -1 } else { 1 }, cx);
-			cx.stop_propagation();
-		}
-	}))
+	.key_context("AccountOrder")
+	.on_action(cx.listener(move |s, _: &MoveAccountUp, _, cx| s.move_account(&keyboard, -1, cx)))
+	.on_action(
+		cx.listener(move |s, _: &MoveAccountDown, _, cx| s.move_account(&keyboard_down, 1, cx)),
+	)
 	.into_any_element()
 }
 
@@ -5892,11 +5951,13 @@ fn destination_content(
 
 fn settings_navigation(
 	shell: &Shell,
-	selected: Destination,
+	selected_index: usize,
+	window: &mut Window,
 	cx: &mut Context<Shell>,
 ) -> AnyElement {
 	let mut rows = Vec::with_capacity(SETTINGS_SECTIONS.len());
-	let mut selected_index = 0;
+	let position =
+		ui_motion::value("settings-selection-position", selected_index as f32, window, cx);
 
 	for (section_index, (destination, category, label)) in SETTINGS_SECTIONS.into_iter().enumerate()
 	{
@@ -5904,16 +5965,11 @@ fn settings_navigation(
 			Some(SettingsCategory::General) => workspace_symbols::Symbol::Settings,
 			Some(SettingsCategory::Agents) => workspace_symbols::Symbol::Agents,
 			Some(SettingsCategory::Appearance) => workspace_symbols::Symbol::Eye,
+			Some(SettingsCategory::Shortcuts) => workspace_symbols::Symbol::Keyboard,
 			Some(SettingsCategory::Components) => workspace_symbols::Symbol::Graph,
 			None if destination == Destination::Accounts => workspace_symbols::Symbol::Agents,
 			None => workspace_symbols::Symbol::Waveform,
 		};
-		let active = selected == destination
-			&& category.is_none_or(|category| shell.settings.read(cx).category == category);
-
-		if active {
-			selected_index = section_index;
-		}
 
 		rows.push(
 			gpui::div()
@@ -5921,7 +5977,7 @@ fn settings_navigation(
 				.debug_selector(move || format!("settings-section-{label}"))
 				.role(Role::Tab)
 				.aria_label(label)
-				.aria_selected(active)
+				.aria_selected(section_index == selected_index)
 				.track_focus(&shell.settings_focus[section_index])
 				.key_context("Destination")
 				.on_action(cx.listener(move |s, _: &ActivateDestination, _, cx| {
@@ -5978,10 +6034,7 @@ fn settings_navigation(
 						.debug_selector(|| "settings-navigation-selection".into())
 						.absolute()
 						.left_0()
-						.top(gpui::px(
-							selected_index as f32
-								* (SETTINGS_NAV_ROW_HEIGHT + SETTINGS_NAV_ROW_GAP),
-						))
+						.top(gpui::px(position * (SETTINGS_NAV_ROW_HEIGHT + SETTINGS_NAV_ROW_GAP)))
 						.w_full()
 						.h(gpui::px(SETTINGS_NAV_ROW_HEIGHT))
 						.rounded(gpui::px(6.))
@@ -6017,7 +6070,8 @@ fn settings_workspace_content(
 	cx: &mut Context<Shell>,
 ) -> AnyElement {
 	let selected = shell.settings_selected;
-	let navigation = settings_navigation(shell, selected, cx);
+	let tab = shell.settings_tab_index(cx);
+	let navigation = settings_navigation(shell, tab, window, cx);
 	let panel = gpui::div()
 		.debug_selector(|| "settings-content-pane".into())
 		.flex_1()
@@ -6070,7 +6124,9 @@ fn settings_workspace_content(
 		.flex()
 		.child(navigation)
 		.child(
-			gpui::div().tab_group().tab_index(1).flex_1().min_w_0().min_h_0().flex().child(content),
+			gpui::div().tab_group().tab_index(1).flex_1().min_w_0().min_h_0().flex().child(
+				ui_motion::arrival(SETTINGS_SECTIONS[tab].2, content).starting_opacity(0.40),
+			),
 		)
 		.into_any_element()
 }
@@ -6298,7 +6354,7 @@ fn topbar_sessions_toggle(
 		.role(Role::Button)
 		.aria_label("Toggle conversation sidebar")
 		.aria_expanded(left_sidebar_visible)
-		.hover_hint("Toggle sessions (Command-E)")
+		.hover_hint(shortcuts::hint("Toggle sessions", &ToggleSidebar, cx))
 		.w_auto()
 		.px_3()
 		.border_1()
@@ -6347,7 +6403,7 @@ fn topbar_inspector_toggle(
 		.role(Role::Button)
 		.aria_label("Toggle conversation context")
 		.aria_expanded(inspector_visible)
-		.hover_hint("Toggle context (Command-B)")
+		.hover_hint(shortcuts::hint("Toggle context", &ToggleInspector, cx))
 		.w_auto()
 		.px_3()
 		.border_1()
@@ -7569,7 +7625,7 @@ mod tests {
 
 		assert_eq!(
 			shell::startup_failure(ClientFailure::ServiceVersionMismatch),
-			"Restart Decodex."
+			"The app and service use different protocol versions."
 		);
 	}
 
@@ -8103,7 +8159,7 @@ mod tests {
 		let (shell, visual) = open_shell(cx);
 
 		for (index, expected) in
-			[(0, Destination::Settings), (4, Destination::Accounts), (5, Destination::Health)]
+			[(0, Destination::Settings), (5, Destination::Accounts), (6, Destination::Health)]
 		{
 			let focused = shell.read_with(visual, |shell, _| shell.settings_focus[index].clone());
 
@@ -8132,6 +8188,7 @@ mod tests {
 			"settings-section-General",
 			"settings-section-Agents",
 			"settings-section-Appearance",
+			"settings-section-Shortcuts",
 			"settings-section-Components",
 			"settings-section-Accounts",
 			"settings-section-Diagnostics",
@@ -8149,6 +8206,7 @@ mod tests {
 			(Destination::Settings, Some(crate::settings_surface::SettingsCategory::General)),
 			(Destination::Settings, Some(crate::settings_surface::SettingsCategory::Agents)),
 			(Destination::Settings, Some(crate::settings_surface::SettingsCategory::Appearance)),
+			(Destination::Settings, Some(crate::settings_surface::SettingsCategory::Shortcuts)),
 			(Destination::Settings, Some(crate::settings_surface::SettingsCategory::Components)),
 			(Destination::Accounts, None),
 			(Destination::Health, None),
@@ -8177,16 +8235,20 @@ mod tests {
 			});
 		}
 
+		std::thread::sleep(Duration::from_millis(220));
+		settings.update(crate::ui_frame::draw_frame);
+		assert_eq!(settings.debug_bounds("settings-navigation-selection").unwrap(), rows[6]);
+
 		settings.simulate_keystrokes("shift-tab enter");
 		shell.read_with(settings, |s, _| assert_eq!(s.settings_selected, Destination::Accounts));
 		settings.update(crate::ui_frame::draw_frame);
 
-		let target = settings.debug_bounds("settings-section-Accounts").unwrap();
-		assert_eq!(
-			settings.debug_bounds("settings-navigation-selection").unwrap(),
-			target,
-			"Settings selection must be in place on the first frame"
-		);
+		let moving = settings.debug_bounds("settings-navigation-selection").unwrap();
+		assert!(moving.top() > rows[5].top() && moving.top() <= rows[6].top());
+
+		std::thread::sleep(Duration::from_millis(220));
+		settings.update(crate::ui_frame::draw_frame);
+		assert_eq!(settings.debug_bounds("settings-navigation-selection").unwrap(), rows[5]);
 	}
 
 	#[gpui::test]
@@ -8365,6 +8427,36 @@ mod tests {
 		settings.update(crate::ui_frame::draw_current_frame);
 		settings.simulate_keystrokes("escape");
 		shell.read_with(settings, |s, _| assert!(!s.settings_open()));
+	}
+
+	#[gpui::test]
+	fn workspace_overlay_keeps_keyboard_navigation_and_commands_inside(cx: &mut TestAppContext) {
+		let (shell, visual) = open_shell(cx);
+		shell.update(visual, |s, cx| s.agent.update(cx, |a, cx| a.visual_workspace_fixture(cx)));
+		let panels = shell.read_with(visual, |s, cx| s.agent.read(cx).workspace_panels());
+		visual.simulate_keystrokes("cmd-,");
+		visual.update(crate::ui_frame::draw_frame);
+		for key in ["tab", "shift-tab"] {
+			for _ in 0..24 {
+				visual.simulate_keystrokes(key);
+				visual.update(|window, cx| {
+					assert!(
+						shell.read(cx).overlay_focus.contains_focused(window, cx),
+						"{key} escaped the dialog"
+					);
+				});
+			}
+		}
+		for key in ["cmd-j", "cmd-e", "cmd-b", "cmd-f", "cmd-k", "cmd-,"] {
+			visual.simulate_keystrokes(key);
+			visual.run_until_parked();
+			shell.read_with(visual, |s, cx| {
+				assert!(s.settings_open(), "{key} dismissed settings");
+				assert_eq!(s.agent.read(cx).workspace_panels(), panels);
+			});
+		}
+		visual.simulate_keystrokes("escape");
+		shell.read_with(visual, |s, _| assert!(!s.settings_open()));
 	}
 
 	#[gpui::test]

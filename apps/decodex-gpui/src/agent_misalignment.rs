@@ -168,6 +168,7 @@ mod tests {
 				AgentHistoryResult::Available {
 					questions: vec![],
 					expired_question_ids: Vec::new(),
+					missing_folder: None,
 					questions_truncated: false,
 					questions_recovering: false,
 					misalignment: Some(Box::new(decodex_protocol::AgentMisalignmentDto {
@@ -262,6 +263,7 @@ mod tests {
 			guardian: Default::default(),
 			portfolio: Default::default(),
 			archived_work_ids: Default::default(),
+			side_chat_sources: Default::default(),
 			agent_slots: Default::default(),
 			conversation_titles: Default::default(),
 			context_references: vec![],

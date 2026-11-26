@@ -242,19 +242,20 @@ impl AgentSurface {
 
 				let (feedback, state) = match completed {
 					Some((_, AgentArchiveResult::Active { thread_id })) =>
-						("Unarchived.", AgentArchiveResult::Active { thread_id }),
-					Some((Err(_), state)) => ("Not sent. Check the service connection.", state),
-					Some((Ok(AgentCommandResponse::Rejected { .. }), state)) =>
-						("Could not unarchive. Try again.", state),
+						("Unarchived.".into(), AgentArchiveResult::Active { thread_id }),
+					Some((Err(_), state)) =>
+						("Not sent. Check the service connection.".into(), state),
+					Some((Ok(AgentCommandResponse::Rejected { error }), state)) =>
+						(agent_surface::command_rejection_message(&error), state),
 					Some((_, state)) =>
-						("Unarchive not confirmed. Reconnect before retrying.", state),
+						("Unarchive not confirmed. Reconnect before retrying.".into(), state),
 					None => (
-						"Unarchive not confirmed. Reconnect before retrying.",
+						"Unarchive not confirmed. Reconnect before retrying.".into(),
 						AgentArchiveResult::Unavailable,
 					),
 				};
 
-				s.archive.feedback = feedback.into();
+				s.archive.feedback = feedback;
 				let restored = matches!(state, AgentArchiveResult::Active { .. });
 				s.archive.result = Some(state);
 				if restored {
@@ -661,6 +662,7 @@ mod tests {
 				guardian: Default::default(),
 				portfolio: Default::default(),
 				archived_work_ids: Default::default(),
+				side_chat_sources: Default::default(),
 				agent_slots: Default::default(),
 				conversation_titles: Default::default(),
 				context_references: vec![],

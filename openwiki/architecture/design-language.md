@@ -196,11 +196,11 @@ When Graph is hidden, an existing conversation with unfinished scoped work can s
 | --- | --- |
 | Separate conversation messages | 20 points. |
 | Completed process header and its answer | 6 points. |
-| Previous content and working indicator | 20 points. |
+| Reply content and working indicator | 4 points. |
 | Working indicator and composer | 20 points in total. |
 | Working indicator | 24-point status row. |
 
-The composer contributes 8 points to the lower reading gap. Count that contribution when you position a status row. When work ends, release the status row and keep the ordinary reading gap. Folding process details must preserve the final answer and its navigation identity.
+The composer contributes 8 points to the lower reading gap. Count that contribution when you position a status row. When a reply finishes, crossfade from the working indicator to the response metrics on the same 24-point line. Show delivery records below that line. Keep the ordinary gap before the composer. Folding process details must preserve the final answer and its navigation identity.
 
 Use `conversation_divider` for both process disclosures and complete Live sections. Its Process variant keeps the shared 11-point normal muted metric caption in a 20-point row. Its Section variant uses the shared 12.5-point body size, semibold primary ink and a 24-point row. Both variants share the leading chevron, full-height hit target and short fading hairline. A Live section uses the shared 6-point process-content gap below its divider for either the folded source preview or the first expanded speaker turn. Expansion replaces the preview with the transcript. Speaker turns keep the 20-point reading gap. The shared 4-point metadata gap separates the last visible text from the response footer.
 

@@ -1,4 +1,4 @@
-//! Own one local RAGFlow nightly stack. Docker owns its process lifecycle.
+//! Own one compatible local RAGFlow stack. Docker owns its process lifecycle.
 //!
 //! Configuration follows infiniflow/ragflow at 2c4bbbc720fe24bd7ac509ab989325d4c1e8e532.
 //! Only the API is published, on loopback. Uninstall retains the data volumes.
@@ -20,6 +20,11 @@ use sha2::{Digest as _, Sha256};
 
 use super::{MemorySetup, optional_response, origin, response};
 use crate::{ComponentStore, Result};
+
+#[path = "ragflow_backup.rs"] mod backup;
+
+const RAGFLOW_RELEASE: &str =
+	"sha256:ed8dff41a7530ed8fb037fe7479a7c535429d42fa8d00aec28b54bcbc056934d";
 
 const PROVIDER: &str = "OpenAI-API-Compatible";
 
@@ -104,6 +109,8 @@ pub struct Installation {
 	pub version: String,
 	/// Identity of the owned RAGFlow image.
 	pub image: String,
+	#[serde(default)]
+	bundle: String,
 	/// Dedicated Memory setup, when configuration is complete.
 	pub memory: Option<MemorySetup>,
 	/// Saved private model configuration, when supplied.
@@ -116,6 +123,35 @@ pub struct Installation {
 }
 
 impl Installation {
+	fn new(root: &Path) -> Result<Self> {
+		let port = TcpListener::bind("127.0.0.1:0")
+			.and_then(|listener| listener.local_addr())
+			.map_err(|_| "Could not select a local RAGFlow port.")?
+			.port();
+		let hash = Sha256::digest(root.to_string_lossy().as_bytes())
+			.iter()
+			.map(|b| format!("{b:02x}"))
+			.collect::<String>();
+		let mut bytes = [0; 32];
+		fs::File::open("/dev/urandom")
+			.and_then(|mut f| f.read_exact(&mut bytes))
+			.map_err(|_| "Could not create the private RAGFlow credentials.")?;
+		Ok(Self {
+			url: format!("http://127.0.0.1:{port}"),
+			project: format!("decodex-ragflow-{}", &hash[..12]),
+			password: format!(
+				"dcx-{}",
+				bytes.iter().map(|b| format!("{b:02x}")).collect::<String>()
+			),
+			image: String::new(),
+			bundle: String::new(),
+			version: String::new(),
+			memory: None,
+			models: None,
+			installed: false,
+		})
+	}
+
 	/// Check the installed service's public API without sending credentials or model work.
 	pub fn is_running(&self) -> bool {
 		self.installed
@@ -138,6 +174,7 @@ impl ComponentStore {
 		namespace: &str,
 	) -> Result<Installation> {
 		let directory = self.root.join("ragflow/service");
+		let _lock = backup::lock_configuration(&directory)?;
 		let mut config = read(&directory)?
 			.filter(|i| i.installed)
 			.ok_or("Install RAGFlow before resetting Memory.")?;
@@ -194,7 +231,17 @@ impl ComponentStore {
 	) -> Result<Installation> {
 		models.validate()?;
 		let directory = self.root.join("ragflow/service");
-		let mut config = read(&directory)?
+		let _lock = backup::lock_configuration(&directory)?;
+		self.finish_model_setup(&directory, models, namespace)
+	}
+
+	fn finish_model_setup(
+		&self,
+		directory: &Path,
+		models: Models,
+		namespace: &str,
+	) -> Result<Installation> {
+		let mut config = read(directory)?
 			.filter(|i| i.installed)
 			.ok_or("Install RAGFlow before configuring its models.")?;
 		let client = service_client()?;
@@ -231,13 +278,32 @@ impl ComponentStore {
 		)?;
 		config.memory = Some(memory);
 		config.models = Some(models);
-		write(&directory, &config)?;
+		write(directory, &config)?;
 		Ok(config)
 	}
 
 	/// Read the private receipt for the owned service.
 	pub fn ragflow_installation(&self) -> Result<Option<Installation>> {
 		read(&self.root.join("ragflow/service"))
+	}
+
+	/// Restore the last compatible bundle and its saved data.
+	pub fn restore_previous_ragflow(&self) -> Result<()> {
+		let dir = self.root.join("ragflow/service");
+		let docker = docker()?;
+		let _lock = backup::lock(&dir)?;
+		backup::Snapshot::new(&dir, &docker).restore_previous()
+	}
+
+	/// Check for a pending transaction or a changed service bundle for an existing installation.
+	pub fn ragflow_bundle_pending(&self) -> Result<bool> {
+		let dir = self.root.join("ragflow/service");
+		if backup::recovery_pending(&dir) {
+			return Ok(true);
+		}
+		Ok(read(&dir)?.is_some_and(|i| {
+			i.installed && !i.image.is_empty() && i.bundle != bundle_id(&i) && i.is_running()
+		}))
 	}
 
 	/// Install or update the owned service and reuse its saved model configuration.
@@ -247,16 +313,33 @@ impl ComponentStore {
 		namespace: &str,
 		mut progress: impl FnMut(&str),
 	) -> Result<Option<Installation>> {
-		let docker = [
-			"/usr/local/bin/docker",
-			"/opt/homebrew/bin/docker",
-			"/Applications/Docker.app/Contents/Resources/bin/docker",
-		]
-		.into_iter()
-		.map(PathBuf::from)
-		.find(|p| p.is_file())
-		.ok_or(CONTAINER_REQUIRED)?;
-		self.apply_ragflow_with(&docker, action, namespace, &mut progress)
+		self.apply_ragflow_with(&docker()?, action, namespace, None, &mut progress)
+	}
+
+	/// Apply the platform manifest identified by a previous update review.
+	pub fn apply_reviewed_ragflow(
+		&self,
+		target: &super::Update,
+		namespace: &str,
+		mut progress: impl FnMut(&str),
+	) -> Result<Option<Installation>> {
+		if !super::update::valid_digest(&target.digest) {
+			return Err("Invalid reviewed image digest.".into());
+		}
+		self.apply_ragflow_with(&docker()?, Action::Update, namespace, Some(target), &mut progress)
+	}
+
+	fn saved_memory_count(&self, config: &Installation) -> Result<u64> {
+		let Some(memory) = &config.memory else { return Ok(0) };
+		let key = self.ragflow_key(&memory.credential_id, &memory.url)?;
+		let value = response(
+			service_client()?
+				.get(format!("{}/api/v1/memories/{}?page_size=1", config.url, memory.memory_id))
+				.bearer_auth(key),
+		)?;
+		value["messages"]["total_count"]
+			.as_u64()
+			.ok_or_else(|| "Could not verify the saved Memory.".into())
 	}
 
 	fn apply_ragflow_with(
@@ -264,59 +347,40 @@ impl ComponentStore {
 		docker: &Path,
 		action: Action,
 		namespace: &str,
+		target: Option<&super::Update>,
 		progress: &mut impl FnMut(&str),
 	) -> Result<Option<Installation>> {
 		let directory = self.root.join("ragflow/service");
-		let saved = read(&directory)?;
-		if action == Action::Uninstall && saved.is_none() {
-			return Ok(None);
-		}
 		progress("Checking the container environment…");
 		for args in [&["info", "--format", "{{.ServerVersion}}"][..], &["compose", "version"][..]] {
 			if !Command::new(docker).args(args).output().is_ok_and(|o| o.status.success()) {
 				return Err(CONTAINER_REQUIRED.into());
 			}
 		}
-		let mut config = if let Some(saved) = saved {
-			saved
-		} else {
-			let port = TcpListener::bind("127.0.0.1:0")
-				.and_then(|listener| listener.local_addr())
-				.map_err(|_| "Could not select a local RAGFlow port.")?
-				.port();
-			let hash = Sha256::digest(self.root.to_string_lossy().as_bytes())
-				.iter()
-				.map(|b| format!("{b:02x}"))
-				.collect::<String>();
-			let mut bytes = [0; 32];
-			fs::File::open("/dev/urandom")
-				.and_then(|mut f| f.read_exact(&mut bytes))
-				.map_err(|_| "Could not create the private RAGFlow credentials.")?;
-			Installation {
-				url: format!("http://127.0.0.1:{port}"),
-				project: format!("decodex-ragflow-{}", &hash[..12]),
-				password: format!(
-					"dcx-{}",
-					bytes.iter().map(|b| format!("{b:02x}")).collect::<String>()
-				),
-				image: String::new(),
-				version: "nightly".into(),
-				memory: None,
-				models: None,
-				installed: false,
-			}
+		let _lock = backup::lock(&directory)?;
+		let backup = backup::Snapshot::new(&directory, docker);
+		backup.recover()?;
+		let saved = read(&directory)?;
+		if let Some(target) = target
+			&& !saved.as_ref().is_some_and(|i| i.installed && i.image == target.installed_image)
+		{
+			return Err("The installed image changed. Check for an update again.".into());
+		}
+		if action == Action::Uninstall && saved.is_none() {
+			return Ok(None);
+		}
+		if action == Action::Update && saved.as_ref().is_none_or(|i| !i.installed) {
+			return Ok(saved);
+		}
+		let mut config = match saved {
+			Some(config) => config,
+			None => Installation::new(&self.root)?,
 		};
-		let run = |args: &[&str]| {
-			let mut command = Command::new(docker);
-			command
-				.args(["compose", "--project-name", &config.project, "--file"])
-				.arg(directory.join("compose.json"))
-				.args(args);
-			run_command(&mut command, &config.password)
-		};
+		let manifest = directory.join("compose.json");
+
 		if action == Action::Uninstall {
 			progress("Uninstalling RAGFlow…");
-			run(&["down", "--remove-orphans"])?;
+			backup.compose(&config, &manifest, &["down", "--remove-orphans"])?;
 			config.installed = false;
 			write(&directory, &config)?;
 			return Ok(Some(config));
@@ -325,57 +389,164 @@ impl ComponentStore {
 		fs::create_dir_all(&directory).map_err(|_| "Could not prepare RAGFlow storage.")?;
 		fs::set_permissions(&directory, fs::Permissions::from_mode(0o700))
 			.map_err(|_| "Could not protect RAGFlow storage.")?;
-		prepare(&directory, &config)?;
-		// Keep the owned identity before effects so retries and Uninstall use the same stack.
-		config.installed = true;
-		write(&directory, &config)?;
-		progress("Downloading RAGFlow nightly…");
-		run(&["pull", "--ignore-buildable"])?;
-		progress("Starting RAGFlow and Infinity…");
-		run(&[
-			"up",
-			"--detach",
-			"--build",
-			"--force-recreate",
-			"--remove-orphans",
-			"--wait",
-			"--wait-timeout",
-			"600",
-		])?;
-
-		progress("Configuring Assistant Memory…");
-		let client = service_client()?;
-		let deadline = Instant::now() + Duration::from_secs(600);
-		loop {
-			if client
-				.get(format!("{}/api/v1/system/healthz", config.url))
-				.send()
-				.is_ok_and(|r| r.status().is_success())
-			{
-				break;
+		let wanted = bundle_id(&config);
+		let protect_data = !config.image.is_empty();
+		if action == Action::Update
+			&& target.is_none()
+			&& config.installed
+			&& config.bundle == wanted
+		{
+			if !config.is_running() {
+				progress("Starting the installed services…");
+				start_services(&backup, &config, &manifest, false)?;
+				wait_ready(&config)?;
 			}
-			if Instant::now() >= deadline {
-				return Err("RAGFlow did not become ready. Check Docker, then retry Update.".into());
-			}
-			thread::sleep(Duration::from_secs(1));
+			return Ok(Some(config));
 		}
-
-		let version = response(client.get(format!("{}/api/v1/system/version", config.url)))?;
-		let reported_version = version
-			.as_str()
-			.or_else(|| version["version"].as_str())
-			.filter(|s| !s.is_empty())
-			.ok_or("RAGFlow did not report its installed version.")?
-			.to_owned();
-		config.version = reported_version;
-		config.image = run(&["images", "--quiet", "ragflow"])?.trim().into();
-		write(&directory, &config)?;
-		account_token(&client, &config)?;
-		if let Some(models) = config.models.clone() {
-			return self.configure_ragflow_models(models, namespace).map(Some);
+		let digest = target.map(|t| t.digest.as_str());
+		prepare_service_images(&directory, &backup, &config, digest, progress)?;
+		let before = if config.installed && config.memory.is_some() && config.is_running() {
+			self.saved_memory_count(&config)?
+		} else {
+			0
+		};
+		let upgrade = (|| {
+			if protect_data {
+				progress("Backing up the installed services and their data…");
+				backup.create(&config)?;
+			}
+			prepare(&directory, &config, digest)?;
+			config.installed = true;
+			write(&directory, &config)?;
+			progress("Starting the compatible services…");
+			start_services(&backup, &config, &manifest, true)?;
+			let client = wait_ready(&config)?;
+			let version = response(client.get(format!("{}/api/v1/system/version", config.url)))?;
+			config.version = version
+				.as_str()
+				.or_else(|| version["version"].as_str())
+				.filter(|v| !v.is_empty())
+				.ok_or("RAGFlow did not report its installed version.")?
+				.into();
+			let container = backup.compose(&config, &manifest, &["ps", "--quiet", "ragflow"])?;
+			config.image = run_command(
+				Command::new(docker).args(["inspect", "--format", "{{.Image}}", container.trim()]),
+				&config.password,
+			)?
+			.trim()
+			.into();
+			progress("Verifying Assistant Memory…");
+			let token = account_token(&client, &config)?;
+			if self.saved_memory_count(&config)? < before {
+				return Err("The updated service did not return all saved memories.".into());
+			}
+			if let Some(models) = config.models.clone() {
+				if config.memory.is_none() && !namespace.is_empty() {
+					write(&directory, &config)?;
+					config = self.finish_model_setup(&directory, models, namespace)?;
+				} else {
+					verify_models(&client, &config, &token, &models)?;
+				}
+			}
+			config.bundle = wanted;
+			write(&directory, &config)
+		})();
+		if let Err(error) = upgrade {
+			if protect_data {
+				progress("Recovering the previous services…");
+				backup
+					.recover()
+					.map_err(|recovery| format!("{error} Recovery pending: {recovery}"))?;
+			}
+			return Err(error);
+		}
+		if protect_data {
+			backup.commit()?;
 		}
 		Ok(Some(config))
 	}
+}
+
+fn prepare_service_images(
+	directory: &Path,
+	backup: &backup::Snapshot<'_>,
+	config: &Installation,
+	digest: Option<&str>,
+	progress: &mut impl FnMut(&str),
+) -> Result<()> {
+	let candidate = directory.with_file_name("candidate");
+	fs::create_dir_all(&candidate).map_err(|e| e.to_string())?;
+	fs::set_permissions(&candidate, fs::Permissions::from_mode(0o700))
+		.map_err(|e| e.to_string())?;
+	let prepare_images = (|| {
+		prepare(&candidate, config, digest)?;
+		let next = candidate.join("compose.json");
+		progress("Preparing the compatible service images…");
+		backup.compose(config, &next, &["pull", "--ignore-buildable", "--policy", "missing"])?;
+		if cfg!(target_arch = "aarch64") {
+			backup.compose(config, &next, &["build", "infinity"])?;
+		}
+		Ok::<_, String>(())
+	})();
+	fs::remove_dir_all(&candidate).map_err(|e| e.to_string())?;
+	prepare_images
+}
+
+fn start_services(
+	backup: &backup::Snapshot<'_>,
+	config: &Installation,
+	manifest: &Path,
+	remove_orphans: bool,
+) -> Result<()> {
+	let mut args = vec!["up", "--detach", "--no-build", "--pull", "never"];
+	if remove_orphans {
+		args.push("--remove-orphans");
+	}
+	args.extend(["--wait", "--wait-timeout", "600"]);
+	backup.compose(config, manifest, &args)?;
+	Ok(())
+}
+
+fn wait_ready(config: &Installation) -> Result<Client> {
+	let client = service_client()?;
+	let deadline = Instant::now() + Duration::from_secs(600);
+	loop {
+		if client
+			.get(format!("{}/api/v1/system/healthz", config.url))
+			.send()
+			.is_ok_and(|r| r.status().is_success())
+		{
+			break;
+		}
+		if Instant::now() >= deadline {
+			return Err("RAGFlow did not become ready. Check Docker, then retry Update.".into());
+		}
+		thread::sleep(Duration::from_secs(1));
+	}
+
+	Ok(client)
+}
+
+fn bundle_id(config: &Installation) -> String {
+	let mut hash = Sha256::new();
+	hash.update(compose(config, None).to_string());
+	hash.update(include_bytes!("../resources/ragflow-infinity.Dockerfile"));
+	hash.update(include_bytes!("../resources/ragflow-infinity.toml"));
+	// Increment when the generated service configuration changes independently of Compose.
+	hash.update(b"service-config-v1");
+	hash.finalize().iter().map(|b| format!("{b:02x}")).collect()
+}
+
+pub(super) fn docker() -> Result<PathBuf> {
+	[
+		"/usr/local/bin/docker",
+		"/opt/homebrew/bin/docker",
+		"/Applications/Docker.app/Contents/Resources/bin/docker",
+	]
+	.into_iter()
+	.map(PathBuf::from)
+	.find(|p| p.is_file())
+	.ok_or_else(|| CONTAINER_REQUIRED.into())
 }
 
 fn read(directory: &Path) -> Result<Option<Installation>> {
@@ -458,6 +629,33 @@ fn model_id(name: &str, instance: &str) -> String {
 	format!("{name}@{instance}@{PROVIDER}")
 }
 
+fn verify_models(
+	client: &Client,
+	config: &Installation,
+	token: &str,
+	models: &Models,
+) -> Result<()> {
+	let url = &config.url;
+	let endpoints =
+		[("chat", "extraction", &models.extraction), ("embedding", "embedding", &models.embedding)];
+	// Verify both choices before changing either saved provider instance.
+	for (kind, role, model) in endpoints {
+		response(
+			client
+				.post(format!("{url}/api/v1/providers/{PROVIDER}/connection"))
+				.header("Authorization", token)
+				.json(&json!({"api_key":model.api_key,"base_url":model.service_url(),
+			 "model_info":[{"model_name":model.model,"model_type":[kind]}]})),
+		)
+		.map_err(|_| {
+			format!(
+				"Could not verify the {role} model. Check its Base URL, API key and model name."
+			)
+		})?;
+	}
+	Ok(())
+}
+
 fn configure_models(
 	client: &Client,
 	config: &Installation,
@@ -478,19 +676,7 @@ fn configure_models(
 		("decodex-extraction", "chat", "extraction", &models.extraction),
 		("decodex-embedding", "embedding", "embedding", &models.embedding),
 	];
-	// Verify both choices before changing either saved provider instance.
-	for (_, kind, role, model) in endpoints {
-		response(
-			auth(client.post(format!("{url}/api/v1/providers/{PROVIDER}/connection")))
-				.json(&json!({"api_key":model.api_key,"base_url":model.service_url(),
-			 "model_info":[{"model_name":model.model,"model_type":[kind]}]})),
-		)
-		.map_err(|_| {
-			format!(
-				"Could not verify the {role} model. Check its Base URL, API key and model name."
-			)
-		})?;
-	}
+	verify_models(client, config, token, models)?;
 	for (instance, kind, _, model) in endpoints {
 		let exists = instances.iter().any(|i| i["instance_name"] == instance);
 		let path = format!("{url}/api/v1/providers/{PROVIDER}/instances");
@@ -528,7 +714,7 @@ fn api_key(client: &Client, url: &str, token: &str) -> Result<String> {
 		.ok_or("Could not configure the RAGFlow API credential.".into())
 }
 
-fn prepare(directory: &Path, config: &Installation) -> Result<()> {
+fn prepare(directory: &Path, config: &Installation, digest: Option<&str>) -> Result<()> {
 	let runtime = directory.join("infinity-runtime");
 	fs::create_dir_all(&runtime).map_err(|_| "Could not prepare the Infinity runtime.")?;
 	private_file(
@@ -551,28 +737,28 @@ fn prepare(directory: &Path, config: &Installation) -> Result<()> {
 	)?;
 	private_file(
 		&directory.join("compose.json"),
-		&serde_json::to_vec_pretty(&compose(config))
+		&serde_json::to_vec_pretty(&compose(config, digest))
 			.map_err(|_| "Could not prepare RAGFlow services.")?,
 	)
 }
 
-fn compose(config: &Installation) -> Value {
+fn compose(config: &Installation, digest: Option<&str>) -> Value {
 	let secret = &config.password;
 	let port = config.url.rsplit(':').next().expect("generated local URL");
 	let health = |test: Value| json!({"test":test,"interval":"5s","timeout":"5s","retries":120});
 	let mut value = json!({"services":{
 		"ragflow":{
-			"image":"infiniflow/ragflow:nightly", "command":["--disable-syncer"],
+			"image":format!("infiniflow/ragflow@{}",digest.unwrap_or(RAGFLOW_RELEASE)),
 			"ports":[format!("127.0.0.1:{port}:9380")],
 			"volumes":["./service_conf.yaml.template:/ragflow/conf/service_conf.yaml.template:ro"],
 			"environment":{"DOC_ENGINE":"infinity","DB_TYPE":"mysql","ENABLE_REGISTER":"1","REGISTER_ENABLED":"1","KVROCKS_HOST":"kvrocks","KVROCKS_PORT":"6379"},
 			"depends_on":{"mysql":{"condition":"service_healthy"},"infinity":{"condition":"service_healthy"},"kvrocks":{"condition":"service_healthy"},"nats":{"condition":"service_healthy"},"minio":{"condition":"service_healthy"}}
 		},
-		"mysql":{"image":"mysql:8.0.40","environment":{"MYSQL_ROOT_PASSWORD":secret},"command":["--max-allowed-packet=1073741824","--character-set-server=utf8mb4","--collation-server=utf8mb4_unicode_ci","--init-file=/data/init.sql"],"volumes":["mysql:/var/lib/mysql","./init.sql:/data/init.sql:ro"],"healthcheck":health(json!(["CMD","mysqladmin","ping","-uroot",format!("-p{secret}")]))},
-		"infinity":{"image":if cfg!(target_arch="aarch64"){"infiniflow/infinity:v0.7.4-arm64"}else{"infiniflow/infinity:v0.7.4-x64-v3"},"command":["-f","/infinity.toml"],"volumes":["infinity:/var/infinity","./infinity.toml:/infinity.toml:ro"],"healthcheck":health(json!(["CMD","curl","--fail","http://localhost:23820/admin/node/current"]))},
-		"minio":{"image":"pgsty/silo:RELEASE.2026-08-06T00-00-00Z","command":["server","/data"],"environment":{"MINIO_ROOT_USER":"decodex","MINIO_ROOT_PASSWORD":secret},"volumes":["minio:/data"],"healthcheck":health(json!(["CMD","curl","--fail","http://localhost:9000/minio/health/live"]))},
-		"kvrocks":{"image":"apache/kvrocks:2.16.0","user":"0:0","entrypoint":["kvrocks","-c","/etc/kvrocks/decodex.conf"],"volumes":["kvrocks:/var/lib/kvrocks","./kvrocks.conf:/etc/kvrocks/decodex.conf:ro"],"healthcheck":health(json!(["CMD","redis-cli","-a",secret,"ping"]))},
-		"nats":{"image":"nats:2.14.2","command":["-js","-sd","/data"],"volumes":["nats:/data"],"healthcheck":health(json!(["CMD","nats-server","--health-check"]))}
+		"mysql":{"image":"mysql:8.0.40@sha256:d58ac93387f644e4e040c636b8f50494e78e5afc27ca0a87348b2f577da2b7ff","environment":{"MYSQL_ROOT_PASSWORD":secret},"command":["--max-allowed-packet=1073741824","--character-set-server=utf8mb4","--collation-server=utf8mb4_unicode_ci","--init-file=/data/init.sql"],"volumes":["mysql:/var/lib/mysql","./init.sql:/data/init.sql:ro"],"healthcheck":health(json!(["CMD","mysqladmin","ping","-uroot",format!("-p{secret}")]))},
+		"infinity":{"image":if cfg!(target_arch="aarch64"){"infiniflow/infinity:v0.7.4-arm64"}else{"infiniflow/infinity:v0.7.4-x64-v3@sha256:53866c63220c5b1d42029ae646adc1d03f94692e0b3593db0097a86e2d49cba7"},"command":["-f","/infinity.toml"],"volumes":["infinity:/var/infinity","./infinity.toml:/infinity.toml:ro"],"healthcheck":health(json!(["CMD","curl","--fail","http://localhost:23820/admin/node/current"]))},
+		"minio":{"image":"pgsty/silo:RELEASE.2026-08-06T00-00-00Z@sha256:29a498b24669cae1fed11c1a2fb2b3d73c68829a0a9c0b14e71b386671d38fac","command":["server","/data"],"environment":{"MINIO_ROOT_USER":"decodex","MINIO_ROOT_PASSWORD":secret},"volumes":["minio:/data"],"healthcheck":health(json!(["CMD","curl","--fail","http://localhost:9000/minio/health/live"]))},
+		"kvrocks":{"image":"apache/kvrocks:2.16.0@sha256:9e632c317c83c80d92f1c9d22ac6aa9f64d149e1f04ff2af5f15a5768a01c4b7","user":"0:0","entrypoint":["kvrocks","-c","/etc/kvrocks/decodex.conf"],"volumes":["kvrocks:/var/lib/kvrocks","./kvrocks.conf:/etc/kvrocks/decodex.conf:ro"],"healthcheck":health(json!(["CMD","redis-cli","-a",secret,"ping"]))},
+		"nats":{"image":"nats:2.14.2@sha256:bbfbb6c4cdaeb8a2e3ca57d3de30463a66a6c5181f324f3b680bcf858833d377","command":["-js","-sd","/data"],"volumes":["nats:/data"],"healthcheck":health(json!(["CMD","nats-server","--health-check"]))}
 	},"volumes":{"mysql":{},"infinity":{},"minio":{},"kvrocks":{},"nats":{}}});
 	for service in value["services"].as_object_mut().expect("service template").values_mut() {
 		service["restart"] = json!("unless-stopped");
@@ -580,7 +766,7 @@ fn compose(config: &Installation) -> Value {
 			json!({"driver":"json-file","options":{"max-size":"10m","max-file":"2"}});
 	}
 	if cfg!(target_arch = "aarch64") {
-		value["services"]["infinity"]["image"] = json!("decodex-ragflow-infinity:0.7.4-arm64");
+		value["services"]["infinity"]["image"] = json!("decodex-ragflow-infinity:0.7.4-arm64-r1");
 		value["services"]["infinity"]["build"] = json!({"context":"./infinity-runtime"});
 	}
 	value
@@ -605,7 +791,7 @@ mod tests {
 			.unwrap();
 			fs::set_permissions(&docker, fs::Permissions::from_mode(0o700)).unwrap();
 			let error = store
-				.apply_ragflow_with(&docker, Action::Install, "fixture", &mut |_| {})
+				.apply_ragflow_with(&docker, Action::Install, "fixture", None, &mut |_| {})
 				.err()
 				.expect("unavailable prerequisite");
 			assert_eq!(error, CONTAINER_REQUIRED);
@@ -617,21 +803,35 @@ mod tests {
 	}
 
 	#[test]
-	fn managed_stack_uses_ragflow_nightly_with_infinity_and_only_publishes_its_loopback_api() {
+	fn managed_stack_uses_an_immutable_release_with_infinity_and_only_publishes_its_loopback_api() {
 		let config = Installation {
 			url: "http://127.0.0.1:12345".into(),
 			project: "decodex-ragflow-fixture".into(),
 			password: "private-fixture".into(),
 			image: String::new(),
+			bundle: String::new(),
 			version: "nightly".into(),
 			memory: None,
 			models: None,
 			installed: true,
 		};
-		let services = compose(&config);
+		let services = compose(&config, None);
+		let digest = format!("sha256:{}", "a".repeat(64));
+		let reviewed = compose(&config, Some(&digest));
+		for stack in [&services, &reviewed] {
+			assert!(stack["services"]["ragflow"].get("command").is_none());
+		}
+		assert_eq!(
+			reviewed["services"]["ragflow"]["image"],
+			format!("infiniflow/ragflow@{digest}")
+		);
+		assert_eq!(reviewed["volumes"], services["volumes"]);
 		assert_eq!(services["services"].as_object().unwrap().len(), 6);
 		assert!(services["volumes"].get("models").is_none());
-		assert_eq!(services["services"]["ragflow"]["image"], "infiniflow/ragflow:nightly");
+		assert_eq!(
+			services["services"]["ragflow"]["image"],
+			format!("infiniflow/ragflow@{RAGFLOW_RELEASE}")
+		);
 		assert_eq!(services["services"]["ragflow"]["environment"]["DOC_ENGINE"], "infinity");
 		for (name, service) in services["services"].as_object().unwrap() {
 			if name == "ragflow" {
@@ -678,6 +878,7 @@ mod tests {
 			password: "fixture-password".into(),
 			version: "fixture".into(),
 			image: "fixture".into(),
+			bundle: String::new(),
 			installed: true,
 			memory: Some(MemorySetup {
 				url,
@@ -949,6 +1150,7 @@ mod tests {
 			project: "decodex-ragflow-fixture".into(),
 			password: "private-fixture".into(),
 			image: String::new(),
+			bundle: String::new(),
 			version: "nightly".into(),
 			memory: None,
 			models: None,
@@ -959,7 +1161,7 @@ mod tests {
 		let docker = root.path().join("docker");
 		fs::write(&docker, "#!/bin/sh\nprintf '%s\\n' \"$*\" > \"$0.args\"\n").unwrap();
 		fs::set_permissions(&docker, fs::Permissions::from_mode(0o700)).unwrap();
-		store.apply_ragflow_with(&docker, Action::Uninstall, "fixture", &mut |_| {}).unwrap();
+		store.apply_ragflow_with(&docker, Action::Uninstall, "fixture", None, &mut |_| {}).unwrap();
 		assert!(!store.ragflow_installation().unwrap().unwrap().installed);
 		assert!(directory.join("memory-data").is_file());
 		let args = fs::read_to_string(root.path().join("docker.args")).unwrap();

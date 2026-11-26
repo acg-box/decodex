@@ -40,3 +40,27 @@ pub enum ItemContextResult {
 	/// The item, its source or the requested page is unavailable.
 	Unavailable,
 }
+
+/// A visible message matched by the native conversation search.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConversationMatch {
+	/// Native source, including a retired Assistant context.
+	pub thread_id: EntityId,
+	/// Native turn containing the message.
+	pub turn_id: WireText,
+	/// Exact item to reveal in the conversation.
+	pub item_id: WireText,
+	/// Excerpt around the matching text.
+	pub snippet: String,
+}
+
+/// A bounded native search page in message order.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConversationMatches {
+	/// Visible matching messages.
+	pub data: Vec<ConversationMatch>,
+	/// Continuation for this thread and query.
+	pub next_cursor: Option<WireText>,
+}

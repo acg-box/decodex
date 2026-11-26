@@ -96,6 +96,82 @@ async fn activity_is_idempotent_turn_bound_and_never_wakes_work() {
 }
 
 #[tokio::test]
+async fn failed_mcp_durations_survive_reopen_and_repair_legacy_reads() {
+	let directory = tempfile::tempdir().unwrap();
+	let path = directory.path().join("activity.sqlite3");
+	let store = SqliteStore::open_test(&path).unwrap();
+	store.create_agent_work_item(tests::item("agent", None)).await.unwrap();
+	store.bind_agent_thread("agent".into(), "thread".into()).await.unwrap();
+	store.begin_agent_dispatch("agent".into()).await.unwrap();
+	store.acknowledge_agent_dispatch("agent".into(), "turn".into()).await.unwrap();
+	for (item, measured, expected) in [("firecrawl", 0, 3_012), ("github", 620, 620)] {
+		for completed in [false, true] {
+			let value = serde_json::json!({
+				"kind":"mcpToolCall", "status": if completed { "failed" } else { "running" },
+				"turn_id":"turn", "item_id":item, "duration_ms":completed.then_some(measured),
+				"native_timestamp_ms":if completed { 4_012 } else { 1_000 }
+			});
+			store
+				.record_agent_activity(
+					"thread".into(),
+					"turn".into(),
+					item.into(),
+					completed,
+					value.to_string(),
+				)
+				.await
+				.unwrap();
+		}
+		let durations = store
+			.read_agent_activity_durations(
+				"agent".into(),
+				"thread".into(),
+				vec![("turn".into(), item.into())],
+			)
+			.await
+			.unwrap();
+		assert_eq!(durations, vec![("turn".into(), item.into(), expected)]);
+	}
+	drop(store);
+	// Recreate an immutable receipt written by a previous version.
+	let legacy = rusqlite::Connection::open(&path).unwrap();
+	let source =
+		serde_json::json!(["activity", "agent", "turn", "legacy", "completed"]).to_string();
+	for (stage, duration) in [("started", None), ("completed", Some(0))] {
+		let old = serde_json::json!(["activity", "agent", "turn", "firecrawl", stage]).to_string();
+		let new = serde_json::json!(["activity", "agent", "turn", "legacy", stage]).to_string();
+		assert_eq!(legacy.execute(
+			"INSERT INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros,delivery_work_item_id,delivered_turn_id)
+			 SELECT ?2,work_item_id,event_kind,json_set(payload,'$.item_id','legacy','$.duration_ms',?3),created_at_micros,disposition,disposition_note,disposed_at_micros,delivery_work_item_id,delivered_turn_id
+			 FROM agent_inbox_events WHERE source_event_id=?1",rusqlite::params![old,new,duration]).unwrap(),1);
+	}
+	let store = SqliteStore::open_test(&path).unwrap();
+	let (events, _) = store.read_agent_transcript("agent".into(), None, 32).await.unwrap();
+	let done = events.iter().find(|event| event.source_event_id == source).unwrap();
+	assert_eq!(serde_json::from_str::<Value>(&done.payload).unwrap()["duration_ms"], 3_012);
+	let items = vec![("turn".into(), "legacy".into()), ("other-turn".into(), "legacy".into())];
+	assert!(
+		store
+			.read_agent_activity_durations("agent".into(), "other-thread".into(), items.clone())
+			.await
+			.unwrap()
+			.is_empty()
+	);
+	assert_eq!(
+		store.read_agent_activity_durations("agent".into(), "thread".into(), items).await.unwrap(),
+		vec![("turn".into(), "legacy".into(), 3_012)]
+	);
+	let raw: i64 = legacy
+		.query_row(
+			"SELECT json_extract(payload,'$.duration_ms') FROM agent_inbox_events WHERE source_event_id=?1",
+			[source],
+			|row| row.get(0),
+		)
+		.unwrap();
+	assert_eq!(raw, 0);
+}
+
+#[tokio::test]
 async fn checklist_observations_keep_latest_aba_and_survive_restart_without_wake() {
 	let directory = tempfile::tempdir().unwrap();
 	let path = directory.path().join("checklist.sqlite3");
@@ -236,7 +312,7 @@ async fn check_delayed_activity(kind: &str) {
 
 	assert_eq!(payload["status"], "failed");
 	assert_eq!(payload["detail"], "Exit code -1");
-	assert_eq!(payload["duration_ms"], 0);
+	assert_eq!(payload["duration_ms"].as_u64(), (kind != "mcpToolCall").then_some(0));
 
 	let work = store.get_agent_work_item("agent".into()).await.unwrap();
 

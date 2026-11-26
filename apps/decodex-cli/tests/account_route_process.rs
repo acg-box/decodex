@@ -484,6 +484,8 @@ impl Drop for RunningDaemon {
 }
 
 fn serve_refresh(mut stream: TcpStream, script: &mut VecDeque<(String, TokenFixture)>) {
+	// macOS can inherit the listener's nonblocking flag on the accepted socket.
+	stream.set_nonblocking(false).expect("read complete refresh requests");
 	let clone = stream.try_clone().expect("clone refresh fixture stream");
 	let mut reader = BufReader::new(clone);
 	let mut content_length = None;

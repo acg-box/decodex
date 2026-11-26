@@ -18,21 +18,6 @@ fn page() -> AgentTimelinePage {
 	],"nextCursor":"older","activeRealtimeSessionAtPageStart":"voice"})).unwrap()
 }
 
-#[test]
-fn exact_reference_rejects_ambiguous_turns_items_and_wrong_thread() {
-	let item = serde_json::json!({"id":"message","type":"agentMessage","text":"Exact"});
-	let turn = serde_json::json!({"id":"old-turn","items":[item]});
-
-	for history in [
-		serde_json::json!({"thread":{"id":"other","turns":[turn]}}),
-		serde_json::json!({"thread":{"id":"thread","historyMode":"legacy","turns":[turn,turn]}}),
-		serde_json::json!({"thread":{"id":"thread","historyMode":"legacy","turns":[{"id":"old-turn","items":[item,item]}]}}),
-		serde_json::json!({"thread":{"id":"thread","historyMode":"legacy","turns":[{"id":"other-turn","items":[item]}]}}),
-	] {
-		assert!(promotions::exact_item(&history, "thread", "old-turn", "message").is_none());
-	}
-}
-
 #[tokio::test]
 async fn off_page_references_share_one_native_read_and_keep_exact_media_indices() {
 	let (local, remote) = io::duplex(65_536);
@@ -42,18 +27,18 @@ async fn off_page_references_share_one_native_read_and_keep_exact_media_indices(
 		let (reader, mut writer) = io::split(remote);
 		let mut lines = BufReader::new(reader).lines();
 
-		for include in [false, true] {
+		{
 			let request: Value =
 				serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
-
-			assert_eq!(request["method"], "thread/read");
-			assert_eq!(request["params"]["threadId"], "thread");
-			assert_eq!(request["params"]["includeTurns"].as_bool().unwrap_or(false), include);
-
-			let result = serde_json::json!({"thread":{"id":"thread","historyMode":"legacy","turns":[{"id":"old-turn","items":[
-				{"type":"agentMessage","id":"message","text":"An older exact result"},
-				{"type":"dynamicToolCall","id":"image","tool":"image","status":"completed","success":true,"contentItems":[{"type":"inputText","text":"private raw tool output"},{"type":"inputImage","imageUrl":"data:image/png;base64,PRIVATE"}]}
-			]}]}});
+			assert_eq!(request["method"], "thread/items/read");
+			assert_eq!(
+				request["params"],
+				serde_json::json!({"threadId":"thread","turnId":"old-turn","itemIds":["image","message"]})
+			);
+			let result = serde_json::json!({"data":[
+				{"turnId":"old-turn","item":{"type":"agentMessage","id":"message","text":"An older exact result"}},
+				{"turnId":"old-turn","item":{"type":"dynamicToolCall","id":"image","tool":"image","status":"completed","success":true,"contentItems":[{"type":"inputText","text":"private raw tool output"},{"type":"inputImage","imageUrl":"data:image/png;base64,PRIVATE"}]}}
+			]});
 
 			writer
 				.write_all(
@@ -162,7 +147,7 @@ async fn enriched_pages_shrink_on_same_cursor_and_recheck_source_after_reference
 			let mut lines = BufReader::new(reader).lines();
 
 			for limit in if changed { vec![15] } else { vec![15, 7] } {
-				for step in 0..4 {
+				for step in 0..3 {
 					let request: Value =
 						serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
 					let result = if step == 1 {
@@ -173,15 +158,13 @@ async fn enriched_pages_shrink_on_same_cursor_and_recheck_source_after_reference
 						let data = (0..limit).map(|n| serde_json::json!({"type":"realtime","position":n,"item":{"type":"bemItemPromoted","id":format!("p{n}"),"realtimeSessionId":"voice","turnId":"old-turn","itemId":"message","presentation":{"type":"inlineMarkdown"}}})).collect::<Vec<_>>();
 
 						serde_json::json!({"data":data,"nextCursor":"older","activeRealtimeSessionAtPageStart":"voice"})
-					} else {
+					} else if step == 0 {
 						assert_eq!(request["method"], "thread/read");
-						assert_eq!(request["params"]["threadId"], "thread");
-						assert_eq!(
-							request["params"]["includeTurns"].as_bool().unwrap_or(false),
-							step == 3
-						);
-
-						serde_json::json!({"thread":{"id":"thread","historyMode":"legacy","turns":[{"id":"old-turn","items":[{"id":"message","type":"agentMessage","text":"x".repeat(8_192)}]}]}})
+						serde_json::json!({"thread":{"id":"thread","historyMode":"legacy"}})
+					} else {
+						assert_eq!(request["method"], "thread/items/read");
+						assert_eq!(request["params"]["itemIds"], serde_json::json!(["message"]));
+						serde_json::json!({"data":[{"turnId":"old-turn","item":{"id":"message","type":"agentMessage","text":"x".repeat(8192)}}]})
 					};
 
 					writer

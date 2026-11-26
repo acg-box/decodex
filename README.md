@@ -20,7 +20,9 @@ follow-up actions.
 ### Agent Coordination
 
 Project, Agent and Work are separate. A user-created Agent has one current native conversation
-and can own several Works. Assistant and Project Lead are responsibilities of existing Agents.
+and can own several Works. Open **Assistant** to return to the personal Agent. Only this
+Agent can use personal RAGFlow Memory. **New chat** creates an independent Agent in
+**Chats** or in the selected Project. A Project can designate one Agent as its lead.
 Agents use native Codex Subagents for bounded execution and scoped Collaboration Requests for
 independent peers. Work retains current requirements, Materials, Results and owner assessment
 across service restarts. Global Guardian controls native action review; execution permissions
@@ -89,7 +91,9 @@ and evidence. They are not a second speculative execution engine.
 
 Managed Repository orchestration is retired. Decodex does not own repository
 allocation, Git registration, worktree preparation, or commit state machines.
-Agent and ordinary Conversations continue to use explicit working directories.
+A new chat uses its selected directory. For a chat without a directory, Decodex reads
+`desktop.projectlessWorkspaceRoot` from Codex and creates a folder for that chat.
+Existing and adopted threads keep their native working directory.
 Repository revision evidence remains available to context and supervised validation.
 The diagnostic report no longer includes a managed-repository component. This change
 uses exact local protocol version 2.41; update the app and service together.
@@ -215,8 +219,9 @@ Generated pages can lag this refactor; current source, tests and
 - The GPUI product is the sole macOS GUI and is packaged as `Decodex.app`. The bundle
   contains a signed `Contents/Helpers/decodex` for local profiles and the native Swift menu-bar
   presentation as an in-process dynamic library. It contains no second app or UI process.
-- A local app session starts `Contents/Helpers/decodex serve --parent-fd ...` when no
-  service is available. It reuses an exact-version service and reports
+- The desktop client connects to the local service first. When the endpoint is unavailable,
+  it starts `Contents/Helpers/decodex serve` as an independent process. It reuses a
+  compatible service and reports
   `service_version_mismatch` for any other version. The app-user command at
   `~/.local/bin/decodex` is a symlink to the bundled helper, never a copied second binary.
   The standalone local-service installer instead places one regular `decodex` executable at
@@ -226,7 +231,9 @@ Generated pages can lag this refactor; current source, tests and
 - **Show Decodex in the menu bar** is a service-owned product preference. **Launch Decodex
   at login** is an independent macOS `SMAppService.mainApp` preference and is not stored in
   SQLite. Closing the main window hides Decodex and retains the protocol session, native
-  menu bar, and app-owned service. **Quit Decodex** stops the app and only its owned service.
+  menu bar, and desktop client. **Quit Decodex** saves drafts and disconnects the client.
+  The local service continues active turns and retains pending approvals. Reopening the app
+  attaches to the same service and loads current progress.
 
 Normal startup uses the bundled SQLite database.
 

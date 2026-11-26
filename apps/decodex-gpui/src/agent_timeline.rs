@@ -51,9 +51,55 @@ use scroll::{ROW_GAP, Viewport};
 const SUMMARY_NOTICE: &str =
 	"Up to 100 recent prompts and final replies are shown. Intermediate activity is unavailable.";
 
+#[derive(Clone, Copy)]
+struct TurnFooter {
+	outcome: Option<&'static str>,
+	metrics: bool,
+}
+
+impl TurnFooter {
+	fn for_boundary(
+		content: &AgentTimelineContent,
+		has_steps: bool,
+		replied_turns: &BTreeSet<&String>,
+		voice_tail_turns: &BTreeSet<&str>,
+	) -> Option<Self> {
+		let AgentTimelineContent::TurnBoundary {
+			completed: true,
+			turn_id,
+			error,
+			duration_ms,
+			timing,
+			usage,
+			..
+		} = content
+		else {
+			return None;
+		};
+		let outcome = groups::outcome_label(content);
+		let metrics = !replied_turns.contains(turn_id)
+			&& (!voice_tail_turns.contains(turn_id.as_str())
+				|| outcome.is_some()
+				|| error.is_some())
+			&& (outcome.is_none() || duration_ms.is_some() || usage.is_some() || timing.is_some());
+		let outcome = outcome.filter(|_| !has_steps);
+		(outcome.is_some() || metrics || error.is_some()).then_some(Self { outcome, metrics })
+	}
+}
+
 impl AgentSurface {
+	pub(super) fn entry_thread(&self, entry: &AgentTimelineEntry) -> Option<&str> {
+		self.timeline
+			.native
+			.source_threads
+			.get(&entry.position)
+			.or_else(|| self.timeline.native.binding.as_ref().map(|b| &b.thread))
+			.map(String::as_str)
+	}
+
 	fn is_revealed_history_item(&self, entry: &AgentTimelineEntry) -> bool {
-		self.is_conversation_match(entry) || self.is_located_item(&entry.content)
+		self.is_conversation_match(entry)
+			|| self.is_located_item(self.entry_thread(entry), &entry.content)
 	}
 
 	pub(super) fn pause_item_history_navigation(&mut self) {
@@ -61,8 +107,6 @@ impl AgentSurface {
 		self.timeline.latest_follow_work = None;
 		self.timeline.navigation = None;
 		self.timeline.wheel_scroll = None;
-		self.timeline.native.find.open = false;
-		self.timeline.native.find.current = None;
 		self.timeline.native.find.searching_earlier = false;
 		if let Some(work) = &self.selected {
 			self.timeline.follow_paused.insert(work.clone());
@@ -74,13 +118,15 @@ impl AgentSurface {
 		&mut self,
 		request: &decodex_protocol::ItemContextRequest,
 	) -> bool {
-		if !self.timeline.native.binding.as_ref().is_some_and(|binding| {
-			binding.work == request.work_id.as_str() && binding.thread == request.thread_id.as_str()
-		}) {
+		let Some(binding) =
+			self.timeline.native.binding.as_ref().filter(|b| b.work == request.work_id.as_str())
+		else {
 			return false;
-		}
+		};
 		let Some(entry) = self.timeline.native.entries.iter().find(|entry| {
-			matches!(&entry.content, AgentTimelineContent::Item { turn_id, item_id, .. }
+			self.timeline.native.source_threads.get(&entry.position).unwrap_or(&binding.thread)
+				== request.thread_id.as_str()
+				&& matches!(&entry.content, AgentTimelineContent::Item { turn_id, item_id, .. }
 				if turn_id == request.turn_id.as_str() && item_id == request.item_id.as_str())
 		}) else {
 			return false;
@@ -836,10 +882,11 @@ impl AgentSurface {
 					let body = self.native_timeline_content(
 						work,
 						entry,
-						&serde_json::json!([work.id, work.codex_thread_id, key(entry)]).to_string(),
-						archived && !self.is_located_item(&entry.content),
+						archived && !self.is_located_item(self.entry_thread(entry), &entry.content),
+						None,
 						cx,
 					);
+					let body = self.anchored_native_history_entry(work, entry, body);
 					if self.is_revealed_history_item(entry) {
 						self.native_scroll_row(work, entry, body, cx)
 					} else {
@@ -873,6 +920,35 @@ impl AgentSurface {
 			.collect()
 	}
 
+	/// Native text items can exist before their first public text arrives.
+	fn empty_native_text_row(&self, work: &AgentWorkItemDto, entry: &AgentTimelineEntry) -> bool {
+		let AgentTimelineContent::Item {
+			turn_id,
+			item_id,
+			kind,
+			text,
+			attachments,
+			truncated: false,
+			activity: None,
+			..
+		} = &entry.content
+		else {
+			return false;
+		};
+		if !matches!(kind.as_str(), "reasoning" | "agentMessage")
+			|| !text.trim().is_empty()
+			|| !attachments.is_empty()
+		{
+			return false;
+		}
+		let displayed = self.find_retained_text(turn_id, item_id).or_else(|| {
+			self.native_item_draft(work, kind, turn_id, item_id)
+				.map(|draft| (draft.text.as_str(), draft.truncated))
+		});
+		displayed.is_none_or(|(text, truncated)| text.trim().is_empty() && !truncated)
+			&& (kind != "agentMessage" || self.async_question_item_text(work, item_id).is_none())
+	}
+
 	fn append_native_history_rows(
 		&self,
 		mut panel: Div,
@@ -894,9 +970,11 @@ impl AgentSurface {
 		}
 		let mut collapsed = BTreeSet::new();
 		let mut headers = std::collections::BTreeMap::new();
+		let mut grouped_finals = BTreeSet::new();
 
 		for group in &groups {
 			headers.insert(group.first_index, group);
+			grouped_finals.insert(group.final_index);
 			collapsed.extend(group.indices.iter().copied());
 		}
 
@@ -931,7 +1009,6 @@ impl AgentSurface {
 		});
 		let (voice_headers, voice_hidden) = Self::voice_group_indices(&voice_groups);
 		let voice_tail_turns = history::tail_flush_turns(&self.timeline.native.entries);
-		let hidden_items = groups::hidden_items(&self.timeline.native.entries);
 		let replied_turns = self.replied_native_turns();
 		let mut hidden = Vec::new();
 		let mut previous = None;
@@ -976,22 +1053,25 @@ impl AgentSurface {
 			}
 
 			if voice_hidden.contains(&index)
-				|| hidden_items.contains(&index)
+				|| self.empty_native_text_row(work, entry)
 				|| matches!(
 					&entry.content,
 					AgentTimelineContent::TurnBoundary { completed: false, .. }
 				) {
 				continue;
 			}
-			if matches!(&entry.content,
-				AgentTimelineContent::TurnBoundary { completed: true, turn_id, status, error: None, .. }
-				if (replied_turns.contains(turn_id) || voice_tail_turns.contains(turn_id.as_str()))
-					&& !matches!(status.as_deref(), Some("interrupted" | "failed")))
-			{
+			let header = headers.get(&index);
+			let footer = TurnFooter::for_boundary(
+				&entry.content,
+				grouped_finals.contains(&index),
+				&replied_turns,
+				&voice_tail_turns,
+			);
+			let empty_boundary = matches!(entry.content, AgentTimelineContent::TurnBoundary { .. })
+				&& footer.is_none();
+			if empty_boundary && header.is_none() {
 				continue;
 			}
-
-			let header = headers.get(&index);
 			if header.is_none()
 				&& (collapsed.contains(&index)
 					|| wait_hidden.contains(&index)
@@ -1016,7 +1096,7 @@ impl AgentSurface {
 
 				let body = self.process_history_body(work, group, entry, cx);
 
-				let body = if group.indices.contains(&index) {
+				let body = if group.indices.contains(&index) || empty_boundary {
 					if self.timeline.native.completions.get(group).is_none()
 						&& self
 							.timeline
@@ -1036,13 +1116,7 @@ impl AgentSurface {
 					}
 					body.into_any_element()
 				} else {
-					let answer = self.native_timeline_content(
-						work,
-						entry,
-						&serde_json::json!([work.id, work.codex_thread_id, key(entry)]).to_string(),
-						false,
-						cx,
-					);
+					let answer = self.native_timeline_content(work, entry, false, footer, cx);
 					gpui::div()
 						.w_full()
 						.flex()
@@ -1053,6 +1127,24 @@ impl AgentSurface {
 						.into_any_element()
 				};
 
+				// A collapsed steer shares the header's scroll position until its
+				// original user bubble is mounted again.
+				let body = if group.expanded {
+					body
+				} else {
+					group
+						.indices
+						.iter()
+						.filter_map(|i| {
+							let entry = &self.timeline.native.entries[*i];
+							matches!(&entry.content, AgentTimelineContent::Item { kind, .. }
+							if matches!(kind.as_str(), "userMessage" | "agentInput"))
+							.then_some(entry)
+						})
+						.fold(body, |body, entry| {
+							self.anchored_native_history_entry(work, entry, body)
+						})
+				};
 				panel = panel.child(
 					gpui::div()
 						.mt(gpui::px(gap - ROW_GAP))
@@ -1079,12 +1171,9 @@ impl AgentSurface {
 				panel = panel.child(self.native_history_spacer(work, mem::take(&mut hidden)));
 			}
 
-			let row = if let Some(body) = group_body {
-				self.native_timeline_row_with_content(work, entry, body, gap, cx)
-			} else {
-				self.native_timeline_row(work, entry, gap, cx)
-			};
-			panel = panel.child(row);
+			let body = group_body
+				.unwrap_or_else(|| self.native_timeline_content(work, entry, false, footer, cx));
+			panel = panel.child(self.native_timeline_row_with_content(work, entry, body, gap, cx));
 		}
 
 		let last_process = previous
@@ -1563,6 +1652,24 @@ impl Timeline {
 		.collect()
 	}
 
+	pub(super) fn reveal_history_mark(&mut self, mark: &super::HistoryKey) {
+		let super::HistoryKey::Native { thread, position, kind, id } = mark else { return };
+		if self.binding.as_ref().is_none_or(|binding| binding.thread != *thread) {
+			return;
+		}
+		let Some(index) =
+			self.entries.iter().position(|entry| key(entry) == (*position, *kind, id.as_str()))
+		else {
+			return;
+		};
+		if let Some(group) = groups::with_observations(&self.entries, &self.expanded_turns, &[])
+			.into_iter()
+			.find(|group| group.indices.contains(&index))
+		{
+			self.expanded_turns.insert(group.turn);
+		}
+	}
+
 	pub(super) fn history_input_for_turn(&self, turn: &str) -> Option<&AgentTimelineEntry> {
 		let input = |entry: &&AgentTimelineEntry| {
 			matches!(&entry.content,
@@ -1733,9 +1840,9 @@ impl Timeline {
 
 		self.retry_at = Some(now + Duration::from_secs(delay));
 		self.notice = Some(if self.unsupported {
-			"This Codex version cannot show full history. Saved local records are shown."
+			"Earlier conversation history is unavailable."
 		} else {
-			"Full history is temporarily unavailable. Saved records are shown while Decodex retries."
+			"Could not load the full conversation. Retrying…"
 		});
 	}
 
@@ -2622,6 +2729,7 @@ mod tests {
 			let history = AgentHistoryResult::Available {
 				questions: vec![],
 				expired_question_ids: Vec::new(),
+				missing_folder: None,
 				questions_truncated: false,
 				questions_recovering: false,
 				misalignment: None,

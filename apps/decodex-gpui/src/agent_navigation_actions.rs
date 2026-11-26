@@ -43,9 +43,14 @@ impl AgentSurface {
 			.items_center()
 			.opacity(opacity)
 			.when(opacity == 0., |row| row.invisible());
-		for (action, label, glyph) in
-			row_commands(self.workspace.navigation.preferences.pinned.contains(&item.id))
-		{
+		let thread = self.item_thread(item);
+		let pinned = thread.and_then(|t| self.native_pin_state(t)) == Some(true);
+		for (action, label, glyph) in row_commands(pinned) {
+			if ((item.external.is_some() || item.assistant) && action != "pin")
+				|| (thread.is_none() && action == "pin")
+			{
+				continue;
+			}
 			let target = item.clone();
 			let keyboard = target.clone();
 			let row_key = key.to_owned();
@@ -62,10 +67,13 @@ impl AgentSurface {
 					w.active_turn_id.is_none()
 						&& w.dispatch_state == decodex_protocol::AgentDispatchStateDto::Idle
 				});
-			let enabled = action == "pin"
-				|| (self.workspace.navigation.mutation.is_none()
+			let enabled = if action == "pin" {
+				self.pins_ready()
+			} else {
+				self.workspace.navigation.mutation.is_none()
 					&& idle
-					&& (action != "archive" || !item.draft));
+					&& (action != "archive" || !item.draft)
+			};
 			let tip = if !enabled {
 				if action == "archive" && item.draft {
 					"This conversation has no messages to archive."
@@ -97,9 +105,7 @@ impl AgentSurface {
 					.when(enabled, |button| button.cursor_pointer())
 					.text_color(if confirming {
 						ui_theme::rgb(ui_theme::ERROR)
-					} else if action == "pin"
-						&& self.workspace.navigation.preferences.pinned.contains(&item.id)
-					{
+					} else if action == "pin" && pinned {
 						super::style::section_color(super::Section::Pin)
 					} else {
 						ui_theme::rgb(ui_theme::TEXT_MUTED)
@@ -158,10 +164,11 @@ impl AgentSurface {
 		self.workspace.navigation.menu = None;
 		match action {
 			"pin" => {
-				if !self.workspace.navigation.preferences.pinned.remove(&item.id) {
-					self.workspace.navigation.preferences.pinned.insert(item.id.clone());
+				if let Some(thread) = self.item_thread(item).map(str::to_owned)
+					&& let Some(pinned) = self.native_pin_state(&thread)
+				{
+					self.change_native_pin(&thread, !pinned, cx);
 				}
-				self.workspace.navigation.preferences.save();
 			},
 			"archive" | "delete" =>
 				self.mutate_navigation_conversation(&item.id, action == "delete", cx),
@@ -432,7 +439,11 @@ impl AgentSurface {
 							s.open_navigation_conversation(&other, cx);
 						}
 					}
+					s.refresh_navigation_pins(cx);
 					s.refresh(cx);
+				} else if let Ok(AgentCommandResponse::Rejected { error }) = result {
+					s.workspace.navigation.feedback =
+						Some(super::super::command_rejection_message(&error));
 				} else {
 					s.workspace.navigation.feedback = Some(
 						"The change was not confirmed. Refresh the conversation before retrying."

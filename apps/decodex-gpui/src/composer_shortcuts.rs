@@ -68,6 +68,20 @@ impl ComposerInput {
 	}
 }
 
+pub(crate) fn shortcut_motion(action: &dyn gpui::Action) -> Option<String> {
+	let motion = action.as_any().downcast_ref::<Navigation>()?;
+	Some(match motion {
+		Navigation::Move(b) => format!("MoveTo{b:?}"),
+		Navigation::Select(b) => format!("SelectTo{b:?}"),
+		Navigation::Delete(b) => format!("DeleteTo{b:?}"),
+		Navigation::Vertical(d, select) => format!(
+			"{}{}",
+			if *select { "Select" } else { "Move" },
+			if *d < 0. { "Up" } else { "Down" }
+		),
+	})
+}
+
 pub(super) fn bind_keys(cx: &mut App) {
 	use Boundary::*;
 	use Navigation::*;

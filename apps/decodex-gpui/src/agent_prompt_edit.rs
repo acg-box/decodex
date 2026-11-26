@@ -23,12 +23,14 @@ use crate::shell::agent_surface::{
 };
 use decodex_protocol::{DesktopPromptEditDraft, PromptDraft, PromptEditPhase, PromptForkBoundary};
 use removal::Removal;
+#[path = "agent_live_side_chat.rs"] mod live_side_chat;
 
 #[derive(Default)]
 pub(super) struct Panel {
 	pub(super) branch_choice: Option<PromptForkBoundary>,
 	pub(super) branch_provider: Option<(WireText, WireText)>,
 	pub(super) fork_requested: bool,
+	pub(in crate::shell::agent_surface) live_side_target: Option<String>,
 	pub(in crate::shell::agent_surface) side_chat_reference: Option<String>,
 	pub(in crate::shell::agent_surface) list_branch_pending: bool,
 	key: String,
@@ -425,7 +427,7 @@ impl AgentSurface {
 			.snapshot
 			.as_ref()
 			.is_none_or(|snapshot| snapshot.runtime_source != next.runtime_source)
-			|| !matches!((before, after), (Some(before), Some(after)) if before.codex_thread_id == after.codex_thread_id && before.active_turn_id == after.active_turn_id)
+			|| !matches!((before, after), (Some(before), Some(after)) if before.codex_thread_id == after.codex_thread_id && (self.prompt_edit.live_side_target.is_some() || before.active_turn_id == after.active_turn_id))
 		{
 			self.reset_prompt_edit();
 		}
@@ -638,7 +640,7 @@ impl AgentSurface {
 		self.profile = Some(profile.clone());
 		self.visual_side_chat_tabs("agent", cx);
 		self.begin_prompt_review(&profile, "agent", "source-agent");
-		self.prompt_edit.branch_choice = Some(PromptForkBoundary::AttachedAfterTurn);
+		self.prompt_edit.branch_choice = Some(PromptForkBoundary::TemporarySideChat);
 		self.prompt_edit.fork_requested = true;
 		self.prompt_edit.feedback = "Codex unavailable. Check Diagnostics.".into();
 		self.composer.update(cx, |input, cx| input.set_content("Keep this unsent input.", cx));
@@ -665,9 +667,13 @@ impl AgentSurface {
 			return;
 		}
 		self.prompt_edit.feedback = match self.prompt_edit.branch_choice {
-			Some(PromptForkBoundary::AttachedAfterTurn) => "Open a side chat from this completed turn. Its replies stay separate; the original conversation and draft stay saved.".into(),
-			Some(_) => "Continue from this turn in a new chat. The original and draft stay saved.".into(),
-			None => format!("Removes {turns} turns, including this one. File changes remain. Confirmation required."),
+			Some(choice) if choice.is_side_chat() =>
+				"Open a temporary side chat from this turn.".into(),
+			Some(_) =>
+				"Continue from this turn in a new chat. The original and draft stay saved.".into(),
+			None => format!(
+				"Removes {turns} turns, including this one. File changes remain. Confirmation required."
+			),
 		};
 	}
 
@@ -844,7 +850,7 @@ impl AgentSurface {
 	}
 
 	pub(super) fn side_chat_status_visible(&self) -> bool {
-		self.prompt_edit.branch_choice == Some(PromptForkBoundary::AttachedAfterTurn)
+		self.prompt_edit.branch_choice.is_some_and(PromptForkBoundary::is_side_chat)
 			&& self.prompt_edit.fork_requested
 			&& self.prompt_editor_source_current()
 	}
@@ -934,7 +940,7 @@ impl AgentSurface {
 	fn requested_fork_status(&self, cx: &mut Context<Self>) -> AnyElement {
 		let busy = self.prompt_edit.task.is_some() || self.prompt_edit.list_branch_pending;
 		let side_chat =
-			self.prompt_edit.branch_choice == Some(PromptForkBoundary::AttachedAfterTurn);
+			self.prompt_edit.branch_choice.is_some_and(PromptForkBoundary::is_side_chat);
 		let row = ui_feedback::status_row(
 			"prompt-fork-progress",
 			if busy { ui_feedback::Tone::Neutral } else { ui_feedback::Tone::Warning },
@@ -962,7 +968,7 @@ impl AgentSurface {
 			"fork-retry".into(),
 			"Retry".into(),
 			|s, cx| {
-				if s.prompt_edit.branch_choice == Some(PromptForkBoundary::AttachedAfterTurn) {
+				if s.prompt_edit.branch_choice.is_some_and(PromptForkBoundary::is_side_chat) {
 					let reference = s.prompt_edit.side_chat_reference.clone();
 					s.start_side_chat(reference, cx);
 				} else if s.selected_provider_mismatch().is_some() {
@@ -1010,7 +1016,7 @@ impl AgentSurface {
 		let Some(boundary) = self.prompt_edit.branch_choice else { return panel };
 		let expected = draft.clone();
 		let pending = draft.fork.is_some();
-		let side_chat = boundary == PromptForkBoundary::AttachedAfterTurn;
+		let side_chat = boundary.is_side_chat();
 		panel.child(
 			self.workspace_button(
 				"locked-branch-confirm".into(),
@@ -1175,7 +1181,9 @@ impl AgentSurface {
 
 			if expected.confirmation_key.is_none() {
 				panel = panel
-					.child(agent_surface::muted("Fork before this prompt to edit it in a new conversation."))
+					.child(agent_surface::muted(
+						"Fork before this prompt to edit it in a new conversation.",
+					))
 					.child(self.workspace_button(
 						"prompt-confirm-branch".into(),
 						"Fork".into(),
@@ -1208,13 +1216,13 @@ impl AgentSurface {
 						move |s, cx| {
 							s.confirm_prompt_branch(
 								attached.clone(),
-								PromptForkBoundary::AttachedAfterTurn,
+								PromptForkBoundary::TemporarySideChat,
 								cx,
 							)
 						},
 						cx,
 					))
-					.child("A side chat stays linked to this conversation. It starts without a Goal; the original keeps its Goal.");
+					.child("Closing this side chat discards it.");
 			}
 
 			panel = panel

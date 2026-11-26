@@ -1,15 +1,11 @@
 //! Assistant records reuse the indexed Inbox journal. Native actions have separate receipts.
-#[path = "assistant_topics.rs"] mod topics;
-use decodex_core::assistant::{AssistantCommand, AssistantSettings, AssistantState, AssistantWake};
+use crate::{DatabaseError, EnqueueAgentEvent, SqliteStore, StoreError, agent, error};
+use decodex_core::assistant::{
+	AssistantCommand, AssistantSettings, AssistantState, AssistantWake, MemoryImportStatus,
+};
 use rusqlite::{Connection, OptionalExtension as _, Transaction, TransactionBehavior};
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
-pub(crate) use topics::{
-	owner as topic_owner, register as register_topic,
-	retain_deleted_identity as retain_topic_identity,
-};
-
-use crate::{DatabaseError, EnqueueAgentEvent, SqliteStore, StoreError, agent, error};
 
 fn invalid() -> StoreError {
 	StoreError::InvalidInput("invalid Assistant command or authority")
@@ -60,8 +56,15 @@ pub(crate) fn record(
 	)?;
 	Ok(())
 }
+fn is_assistant(c: &Connection, id: &str) -> Result<bool, StoreError> {
+	c.query_row("SELECT EXISTS(SELECT 1 FROM agents WHERE id=?1 AND assistant=1)", [id], |row| {
+		row.get(0)
+	})
+	.map_err(|error| error::sqlite_error(error).into())
+}
+
 pub(crate) fn require_assistant(c: &Connection, owner: &str) -> Result<(), StoreError> {
-	if topics::owner(c, owner)?.is_none() {
+	if !is_assistant(c, owner)? {
 		return Err(invalid());
 	}
 	Ok(())
@@ -94,8 +97,7 @@ pub(crate) fn authority(c: &Connection, owner: &str, event: i64) -> Result<(), S
 	Ok(())
 }
 pub(crate) fn settings(c: &Connection, owner: &str) -> Result<AssistantSettings, StoreError> {
-	let owner = topics::owner(c, owner)?.unwrap_or_else(|| owner.into());
-	current(c, &owner, "assistant_internal_settings", "settings")?
+	current(c, owner, "assistant_internal_settings", "settings")?
 		.map(|v| serde_json::from_value(v["value"].clone()).map_err(|_| invalid()))
 		.transpose()
 		.map(|s| s.unwrap_or_default())
@@ -124,35 +126,33 @@ fn configure(
 		}
 	}
 	let before = settings(tx, owner)?;
-	for topic in std::iter::once(owner.to_owned()).chain(topics::ids(tx, owner, None)?) {
-		if before.ragflow.as_ref().map(|r| (&r.url, &r.memory_id, &r.user_id))
-			!= s.ragflow.as_ref().map(|r| (&r.url, &r.memory_id, &r.user_id))
-		{
-			record(
-				tx,
-				&topic,
-				&format!("{receipt}:memory-health:{topic}"),
-				"assistant_internal_memory_health",
-				json!({"id":"health","value":null}),
-			)?;
-		}
-		let export = s.ragflow.as_ref().filter(|r| r.ingest_chats);
-		if export.is_some()
-			&& before
-				.ragflow
-				.as_ref()
-				.filter(|r| r.ingest_chats)
-				.map(|r| (&r.url, &r.memory_id, &r.user_id))
-				!= export.map(|r| (&r.url, &r.memory_id, &r.user_id))
-		{
-			record(
-				tx,
-				&topic,
-				&format!("{receipt}:export:{topic}"),
-				"assistant_internal_export_boundary",
-				json!({"enabled":true}),
-			)?;
-		}
+	if before.ragflow.as_ref().map(|r| (&r.url, &r.memory_id, &r.user_id))
+		!= s.ragflow.as_ref().map(|r| (&r.url, &r.memory_id, &r.user_id))
+	{
+		record(
+			tx,
+			owner,
+			&format!("{receipt}:memory-health:{owner}"),
+			"assistant_internal_memory_health",
+			json!({"id":"health","value":null}),
+		)?;
+	}
+	let export = s.ragflow.as_ref().filter(|r| r.ingest_chats);
+	if export.is_some()
+		&& before
+			.ragflow
+			.as_ref()
+			.filter(|r| r.ingest_chats)
+			.map(|r| (&r.url, &r.memory_id, &r.user_id))
+			!= export.map(|r| (&r.url, &r.memory_id, &r.user_id))
+	{
+		record(
+			tx,
+			owner,
+			&format!("{receipt}:export:{owner}"),
+			"assistant_internal_export_boundary",
+			json!({"enabled":true}),
+		)?;
 	}
 	Ok(())
 }
@@ -168,6 +168,14 @@ pub(crate) fn restore_configuration_after_deletion(
 	record(tx, owner, &key, "assistant_internal_settings", json!({"id":"settings","value":saved}))
 }
 
+fn memory_import_status(
+	c: &Connection,
+	owner: &str,
+) -> Result<Option<MemoryImportStatus>, StoreError> {
+	let record = current(c, owner, "assistant_internal_memory_health", "health")?;
+	Ok(record.and_then(|v| serde_json::from_value(v["value"].clone()).ok()))
+}
+
 impl SqliteStore {
 	pub async fn assistant_state(&self) -> Result<AssistantState, StoreError> {
 		self.run(|c| {
@@ -175,8 +183,8 @@ impl SqliteStore {
 			let Some(owner)=owner else {return Ok(AssistantState::default());};
 			let previous=c.prepare("SELECT old_thread_id FROM agent_thread_revisions WHERE work_id=?1 ORDER BY created_at_micros DESC,rowid DESC").map_err(error::sqlite_error)?.query_map([&owner],|r|r.get(0)).map_err(error::sqlite_error)?.collect::<Result<_,_>>().map_err(error::sqlite_error)?;
 			let pending=c.query_row("SELECT EXISTS(SELECT 1 FROM agent_inbox_events e JOIN agent_work_items w ON w.id=e.work_item_id WHERE w.id=?1 AND e.source_event_id=json_array('assistant_internal_context',w.id,w.codex_thread_id))",[&owner],|r|r.get(0)).map_err(error::sqlite_error)?;
-			let memory_status=current(c,&owner,"assistant_internal_memory_health","health")?.and_then(|v|v["value"].as_str().map(str::to_owned));
-			Ok(AssistantState {topic_ids:topics::ids(c,&owner,Some(false))?,retired_topic_ids:topics::ids(c,&owner,Some(true))?,settings:settings(c,&owner)?,teams:records(c,&owner,"assistant_internal_team")?,wakes:records(c,&owner,"assistant_internal_wake")?,previous_thread_ids:previous,context_pending:pending,memory_status,agent_id:Some(owner)})
+			let memory_status=memory_import_status(c,&owner)?;
+			Ok(AssistantState {settings:settings(c,&owner)?,teams:records(c,&owner,"assistant_internal_team")?,wakes:records(c,&owner,"assistant_internal_wake")?,previous_thread_ids:previous,context_pending:pending,memory_status,agent_id:Some(owner)})
 		}).await
 	}
 
@@ -185,7 +193,7 @@ impl SqliteStore {
 		owner: String,
 	) -> Result<Option<AssistantSettings>, StoreError> {
 		self.run(move |c| {
-			if require_assistant(c, &owner).is_err() {
+			if !is_assistant(c, &owner)? {
 				return Ok(None);
 			}
 			settings(c, &owner).map(Some)
@@ -207,11 +215,6 @@ impl SqliteStore {
 				.transaction_with_behavior(TransactionBehavior::Immediate)
 				.map_err(error::sqlite_error)?;
 			require_assistant(&tx, &owner)?;
-			let state_owner = if matches!(command, AssistantCommand::RefreshContext) {
-				owner.clone()
-			} else {
-				topics::owner(&tx, &owner)?.ok_or_else(invalid)?
-			};
 			let receipt = json!(["assistant_internal_command", owner, key]).to_string();
 			let encoded = json!({"id":key,"command":command});
 			let prior = tx
@@ -231,7 +234,7 @@ impl SqliteStore {
 			}
 			let (kind, id, value) = match &command {
 				AssistantCommand::Configure { settings: s } => {
-					configure(&tx, &state_owner, &receipt, s, user)?;
+					configure(&tx, &owner, &receipt, s, user)?;
 					("assistant_internal_settings", "settings".to_owned(), json!(s))
 				},
 				AssistantCommand::SetMandate { text, authority_event_id } => {
@@ -255,7 +258,7 @@ impl SqliteStore {
 						if !seen.insert(&m.agent_id)
 							|| !tx
 								.query_row(
-									"SELECT EXISTS(SELECT 1 FROM agents a WHERE a.id=?1 AND NOT EXISTS(SELECT 1 FROM agent_inbox_events t WHERE t.work_item_id=a.id AND t.event_kind='assistant_internal_topic'))",
+									"SELECT EXISTS(SELECT 1 FROM agents WHERE id=?1)",
 									[&m.agent_id],
 									|r| r.get::<_, bool>(0),
 								)
@@ -304,15 +307,15 @@ impl SqliteStore {
 				&command,
 				AssistantCommand::Configure { .. } | AssistantCommand::SetMandate { .. }
 			) {
-				topics::refresh(&tx, &state_owner, &receipt)?;
+				record(
+					&tx,
+					&owner,
+					&format!("{receipt}:refresh:{owner}"),
+					"assistant_internal_refresh",
+					json!({"id":"refresh","value":true}),
+				)?;
 			}
-			record(
-				&tx,
-				&state_owner,
-				&format!("{receipt}:state"),
-				kind,
-				json!({"id":id,"value":value}),
-			)?;
+			record(&tx, &owner, &format!("{receipt}:state"), kind, json!({"id":id,"value":value}))?;
 			record(&tx, &owner, &receipt, "assistant_internal_command", encoded)?;
 			tx.commit().map_err(error::sqlite_error)?;
 			Ok(())
@@ -580,16 +583,14 @@ impl SqliteStore {
 		&self,
 		owner: String,
 		source: decodex_core::assistant::RagflowConnection,
-		status: String,
+		status: MemoryImportStatus,
 	) -> Result<(), StoreError> {
 		self.run(move |c| {
 			let tx = c.transaction().map_err(error::sqlite_error)?;
 			if settings(&tx, &owner)?.ragflow.as_ref() != Some(&source) {
 				return Ok(());
 			}
-			if current(&tx, &owner, "assistant_internal_memory_health", "health")?
-				.is_some_and(|v| v["value"] == status)
-			{
+			if memory_import_status(&tx, &owner)? == Some(status) {
 				return Ok(());
 			}
 			let previous: i64 = tx.query_row(
@@ -610,44 +611,43 @@ mod tests {
 	use crate::{AgentDispatchState, AgentWorkItem, AgentWorkKind, AgentWorkStatus};
 	use decodex_core::assistant::{AgentTeam, TeamMember};
 
-	async fn agent(store: &SqliteStore, id: &str) -> AgentWorkItem {
-		let item = AgentWorkItem {
+	fn idle_agent(id: &str) -> AgentWorkItem {
+		AgentWorkItem {
 			id: id.into(),
 			parent_goal_id: None,
 			kind: AgentWorkKind::Goal,
 			title: id.into(),
 			instructions: "Help with authorized work".into(),
 			codex_thread_id: None,
-			status: AgentWorkStatus::Open,
+			status: AgentWorkStatus::Wait,
 			dispatch_state: AgentDispatchState::Idle,
 			active_turn_id: None,
 			next_check_at_micros: None,
 			created_at_micros: 1,
 			updated_at_micros: 1,
-		};
-		store.create_agent_manager(item.clone()).await.unwrap();
-		item
+		}
 	}
 	#[tokio::test]
 	async fn assistant_setup_is_idle_atomic_and_safe_to_repeat() {
 		let dir = tempfile::tempdir().unwrap();
-		let store = SqliteStore::open_test(&dir.path().join("setup.sqlite3")).unwrap();
-		let mut item = agent(&store, "existing").await;
-		store.set_assistant(item.id.clone(), true).await.unwrap();
-		item.id = "new-assistant".into();
-		item.status = AgentWorkStatus::Wait;
-		let first = store.create_assistant(item.clone()).await.unwrap();
-		let repeated = store.create_assistant(item).await.unwrap();
+		let path = dir.path().join("setup.sqlite3");
+		let store = SqliteStore::open_test(&path).unwrap();
+		let other = SqliteStore::open_test(&path).unwrap();
+		let (first, repeated) = tokio::join!(
+			store.create_assistant(idle_agent("first")),
+			other.create_assistant(idle_agent("second")),
+		);
+		let (first, repeated) = (first.unwrap(), repeated.unwrap());
 		assert_eq!(first, repeated);
 		assert!(repeated.codex_thread_id.is_none());
 		assert!(repeated.active_turn_id.is_none());
 		assert_eq!(repeated.dispatch_state, AgentDispatchState::Idle);
-		assert_eq!(store.list_agent_work_items().await.unwrap().len(), 2);
+		assert_eq!(store.list_agent_work_items().await.unwrap().len(), 1);
 		let agents = store.agents().await.unwrap();
 		assert_eq!(agents.iter().filter(|a| a.assistant).count(), 1);
 		assert_eq!(
 			store.assistant_state().await.unwrap().agent_id.as_deref(),
-			Some("new-assistant")
+			Some(first.id.as_str())
 		);
 		let events = store
 			.run(|c| {
@@ -662,8 +662,7 @@ mod tests {
 	async fn setup() -> (tempfile::TempDir, SqliteStore, i64) {
 		let dir = tempfile::tempdir().unwrap();
 		let store = SqliteStore::open_test(&dir.path().join("assistant.sqlite3")).unwrap();
-		agent(&store, "assistant").await;
-		store.set_assistant("assistant".into(), true).await.unwrap();
+		store.create_assistant(idle_agent("assistant")).await.unwrap();
 		store.begin_agent_thread_creation("assistant".into()).await.unwrap();
 		store.acknowledge_agent_thread_creation("assistant".into(), "old".into()).await.unwrap();
 		let event = store
@@ -685,7 +684,7 @@ mod tests {
 	#[tokio::test]
 	async fn assistant_teams_share_members_and_removal_does_not_cancel_agents() {
 		let (_dir, store, _) = setup().await;
-		agent(&store, "member").await;
+		store.create_agent_manager(idle_agent("member")).await.unwrap();
 		let team = |id: &str| AssistantCommand::PutTeam {
 			team: AgentTeam {
 				id: id.into(),
@@ -760,7 +759,7 @@ mod tests {
 	#[tokio::test]
 	async fn project_wakes_keep_their_owner_cadence_and_receipts_across_restart() {
 		let (dir, store, _) = setup().await;
-		agent(&store, "maintenance").await;
+		store.create_agent_manager(idle_agent("maintenance")).await.unwrap();
 		let day = 86_400_000_000;
 		let due = crate::unix_micros().unwrap() + 1_000_000;
 		let wake = AssistantWake {
@@ -840,7 +839,7 @@ mod tests {
 	#[tokio::test]
 	async fn archiving_project_agent_cancels_its_duties_and_keeps_assistant_duties() {
 		let (_dir, store, event) = setup().await;
-		agent(&store, "maintenance").await;
+		store.create_agent_manager(idle_agent("maintenance")).await.unwrap();
 		store.begin_agent_thread_creation("maintenance".into()).await.unwrap();
 		store
 			.acknowledge_agent_thread_creation("maintenance".into(), "maintenance-thread".into())
@@ -1242,13 +1241,13 @@ mod tests {
 			.assistant_memory_health(
 				"assistant".into(),
 				connection.clone(),
-				"Old import failed".into(),
+				MemoryImportStatus::Unavailable,
 			)
 			.await
 			.unwrap();
 		assert_eq!(
-			store.assistant_state().await.unwrap().memory_status.as_deref(),
-			Some("Old import failed")
+			store.assistant_state().await.unwrap().memory_status,
+			Some(MemoryImportStatus::Unavailable)
 		);
 
 		let reset = settings.ragflow.as_mut().unwrap();
@@ -1265,11 +1264,7 @@ mod tests {
 			.unwrap();
 		assert!(store.assistant_state().await.unwrap().memory_status.is_none());
 		store
-			.assistant_memory_health(
-				"assistant".into(),
-				connection,
-				"Late old import result".into(),
-			)
+			.assistant_memory_health("assistant".into(), connection, MemoryImportStatus::Queued)
 			.await
 			.unwrap();
 		let observed = store.assistant_state().await.unwrap();

@@ -242,19 +242,7 @@ impl AgentCoordinator {
 				self.verify_native_result_item(thread_id, turn_id, item_id).await?;
 			},
 			ResultSource::Artifact { path, sha256 } => {
-				let directory = match self.store.work_directory(agent.into()).await? {
-					Some(directory) => directory,
-					None => {
-						let native =
-							self.client.thread_read(serde_json::json!({"threadId":root})).await?;
-						if native["thread"]["id"] != root {
-							return Err(AgentError::Rejected(
-								"The result contributor's conversation changed.".into(),
-							));
-						}
-						agent::exact(&native, "/thread/cwd")?
-					},
-				};
+				let directory = self.native_chat_directory(&root).await?;
 				let root = Path::new(&directory)
 					.canonicalize()
 					.map_err(|_| AgentError::Rejected("Agent directory is unavailable".into()))?;
@@ -395,31 +383,20 @@ impl AgentCoordinator {
 		turn_id: &str,
 		item_id: &str,
 	) -> Result<(), AgentError> {
-		let history = self.client.thread_read_turn(thread_id, turn_id).await?;
-		let exact = history.pointer("/thread/id").and_then(Value::as_str) == Some(thread_id)
-			&& history.pointer("/thread/turns").and_then(Value::as_array).is_some_and(|turns| {
-				turns.iter().any(|t| {
-					t["id"] == turn_id
-						&& t["items"].as_array().is_some_and(|items| {
-							items.iter().any(|i| {
-								i["id"] == item_id
-									&& matches!(
-										i["type"].as_str(),
-										Some(
-											"agentMessage"
-												| "plan"
-												| "fileChange"
-												| "commandExecution"
-												| "mcpToolCall"
-												| "webSearch"
-										)
-									)
-							})
-						})
-				})
-			});
-
-		if !exact {
+		let item = self.client.thread_read_item(thread_id, turn_id, item_id).await?;
+		if !item.is_some_and(|value| {
+			matches!(
+				value["type"].as_str(),
+				Some(
+					"agentMessage"
+						| "plan"
+						| "fileChange"
+						| "commandExecution"
+						| "mcpToolCall"
+						| "webSearch"
+				)
+			)
+		}) {
 			return Err(AgentError::Rejected("Exact native Result item was not available".into()));
 		}
 

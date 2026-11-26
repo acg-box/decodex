@@ -11,7 +11,7 @@ use decodex_core::work::{
 };
 
 pub(super) fn apply(
-	c: &Connection,
+	c: &rusqlite::Transaction<'_>,
 	actor: &str,
 	command: WorkCommand,
 	user: bool,
@@ -32,6 +32,25 @@ pub(super) fn apply(
 			child_thread_id,
 		),
 		WorkCommand::Create { work } => create(c, actor, work, user),
+		WorkCommand::Assign { work } => {
+			if !user {
+				return Err(works::invalid("assigning Work requires a user decision"));
+			}
+			let event = crate::EnqueueAgentEvent {
+				source_event_id: serde_json::json!(["work_assigned", work.id]).to_string(),
+				work_item_id: actor.into(),
+				event_kind: "followup_due".into(),
+				payload: serde_json::json!({
+					"workId": work.id, "requirementsId": work.requirements.id,
+					"instruction": work.requirements.goal, "criteria": work.requirements.criteria,
+					"source": work.requirements.source,
+				})
+				.to_string(),
+			};
+			create(c, actor, work, user)?;
+			crate::agent::insert_event(c, event, false)?;
+			Ok(())
+		},
 		WorkCommand::Revise { work_id, expected_requirements, requirements: r } =>
 			revise(c, actor, work_id, expected_requirements, r, user),
 		command @ WorkCommand::SetState { .. } => set_state(c, actor, command, user),

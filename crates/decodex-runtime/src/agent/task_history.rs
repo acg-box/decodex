@@ -72,7 +72,7 @@ impl AgentCoordinator {
 		};
 
 		if args.get("searchTerm").is_some() {
-			let page = self.native_history_search(args, Some(&expected)).await?;
+			let page = native_history_search(&self.client, args, Some(&expected)).await?;
 			let current = self.store.get_agent_work_item(id.clone()).await?;
 
 			if current.codex_thread_id != work.codex_thread_id
@@ -122,7 +122,7 @@ impl AgentCoordinator {
 		agent: &AgentWorkItem,
 		args: &Value,
 	) -> Result<Value, AgentError> {
-		let page = self.native_history_search(args, None).await?;
+		let page = native_history_search(&self.client, args, None).await?;
 		// Filter after the native read against current ownership. A native match never grants
 		// access.
 		let all = self.store.list_agent_work_items().await?;
@@ -170,93 +170,92 @@ impl AgentCoordinator {
 			"pageMayBeEmptyAfterScopeFilter":true}),
 		)
 	}
+}
 
-	async fn native_history_search(
-		&self,
-		args: &Value,
-		thread: Option<&str>,
-	) -> Result<Value, AgentError> {
-		let query = args["searchTerm"]
-			.as_str()
-			.filter(|s| !s.trim().is_empty() && s.len() <= 512)
-			.ok_or_else(|| AgentError::Invalid("searchTerm must contain 1 to 512 bytes".into()))?;
-		let cursor = match args.get("cursor") {
-			None | Some(Value::Null) => Value::Null,
-			Some(Value::String(s)) if !s.is_empty() && s.len() <= 4_096 => serde_json::json!(s),
-			_ => return Err(AgentError::Invalid("invalid search cursor".into())),
+pub(crate) async fn native_history_search(
+	client: &decodex_codex::app_server_client::AppServerClient,
+	args: &Value,
+	thread: Option<&str>,
+) -> Result<Value, AgentError> {
+	let query = args["searchTerm"]
+		.as_str()
+		.filter(|s| !s.trim().is_empty() && s.len() <= 512)
+		.ok_or_else(|| AgentError::Invalid("searchTerm must contain 1 to 512 bytes".into()))?;
+	let cursor = match args.get("cursor") {
+		None | Some(Value::Null) => Value::Null,
+		Some(Value::String(s)) if !s.is_empty() && s.len() <= 4_096 => serde_json::json!(s),
+		_ => return Err(AgentError::Invalid("invalid search cursor".into())),
+	};
+	let mut params = serde_json::json!({"searchTerm":query,"cursor":cursor,"limit":20});
+	let method = if let Some(thread) = thread {
+		params["threadId"] = serde_json::json!(thread);
+		"thread/searchOccurrences"
+	} else {
+		let archived = match args.get("archived") {
+			None => false,
+			Some(Value::Bool(value)) => *value,
+			_ => return Err(AgentError::Invalid("archived must be boolean".into())),
 		};
-		let mut params = serde_json::json!({"searchTerm":query,"cursor":cursor,"limit":20});
-		let method = if let Some(thread) = thread {
-			params["threadId"] = serde_json::json!(thread);
-			"thread/searchOccurrences"
-		} else {
-			let archived = match args.get("archived") {
-				None => false,
-				Some(Value::Bool(value)) => *value,
-				_ => return Err(AgentError::Invalid("archived must be boolean".into())),
-			};
 
-			params["archived"] = serde_json::json!(archived);
-			params["sortKey"] = serde_json::json!("recency_at");
-			params["sourceKinds"] = serde_json::json!([
-				"cli",
-				"vscode",
-				"exec",
-				"appServer",
-				"subAgent",
-				"subAgentReview",
-				"subAgentCompact",
-				"subAgentThreadSpawn",
-				"subAgentOther",
-				"unknown"
-			]);
-			"thread/search"
-		};
-		let page = time::timeout(Duration::from_secs(20), self.client.request(method, params))
-			.await
-			.map_err(|_| AgentError::Invalid("native search timed out".into()))??;
-		let invalid = || AgentError::Invalid("invalid or oversized native search page".into());
-		let rows = page["data"].as_array().filter(|rows| rows.len() <= 20).ok_or_else(invalid)?;
-		let next = match page.get("nextCursor").ok_or_else(invalid)? {
-			Value::Null => Value::Null,
-			Value::String(next)
-				if !next.is_empty() && next.len() <= 4_096 && page["nextCursor"] != cursor =>
-				serde_json::json!(next),
-			_ => return Err(invalid()),
-		};
-		let mut data = Vec::new();
+		params["archived"] = serde_json::json!(archived);
+		params["sortKey"] = serde_json::json!("recency_at");
+		params["sourceKinds"] = serde_json::json!([
+			"cli",
+			"vscode",
+			"exec",
+			"appServer",
+			"subAgent",
+			"subAgentReview",
+			"subAgentCompact",
+			"subAgentThreadSpawn",
+			"subAgentOther",
+			"unknown"
+		]);
+		"thread/search"
+	};
+	let page = time::timeout(Duration::from_secs(20), client.request(method, params))
+		.await
+		.map_err(|_| AgentError::Invalid("native search timed out".into()))??;
+	let invalid = || AgentError::Invalid("invalid or oversized native search page".into());
+	let rows = page["data"].as_array().filter(|rows| rows.len() <= 20).ok_or_else(invalid)?;
+	let next = match page.get("nextCursor").ok_or_else(invalid)? {
+		Value::Null => Value::Null,
+		Value::String(next)
+			if !next.is_empty() && next.len() <= 4_096 && page["nextCursor"] != cursor =>
+			serde_json::json!(next),
+		_ => return Err(invalid()),
+	};
+	let mut data = Vec::new();
 
-		for row in rows {
-			let snippet =
-				row["snippet"].as_str().filter(|s| s.len() <= 8_192).ok_or_else(invalid)?;
-			let projected = if thread.is_some() {
-				let turn = agent::exact(row, "/turnId")?;
-				let item = agent::exact(row, "/itemId")?;
-				let turn_cursor = row["turnCursor"]
-					.as_str()
-					.filter(|s| !s.is_empty() && s.len() <= 4_096)
-					.ok_or_else(invalid)?;
+	for row in rows {
+		let snippet = row["snippet"].as_str().filter(|s| s.len() <= 8_192).ok_or_else(invalid)?;
+		let projected = if let Some(thread) = thread {
+			let turn = agent::exact(row, "/turnId")?;
+			let item = agent::exact(row, "/itemId")?;
+			let turn_cursor = row["turnCursor"]
+				.as_str()
+				.filter(|s| !s.is_empty() && s.len() <= 4_096)
+				.ok_or_else(invalid)?;
 
-				serde_json::json!({"turnId":turn,"itemId":item,"turnCursor":turn_cursor,"snippet":snippet,
+			serde_json::json!({"threadId":thread,"turnId":turn,"itemId":item,"turnCursor":turn_cursor,"snippet":snippet,
 					"snippetMatchRange":row["snippetMatchRange"],"rangeEncoding":"utf16"})
-			} else {
-				let id = agent::exact(row, "/thread/id")?;
-				let title = row["thread"]["name"].as_str().filter(|s| s.len() <= 4_096);
+		} else {
+			let id = agent::exact(row, "/thread/id")?;
+			let title = row["thread"]["name"].as_str().filter(|s| s.len() <= 4_096);
 
-				serde_json::json!({"threadId":id,"title":title,"snippet":snippet})
-			};
+			serde_json::json!({"threadId":id,"title":title,"snippet":snippet})
+		};
 
-			data.push(projected);
-		}
-
-		let result = serde_json::json!({"data":data,"nextCursor":next});
-
-		if result.to_string().len() > 64 * 1_024 {
-			return Err(invalid());
-		}
-
-		Ok(result)
+		data.push(projected);
 	}
+
+	let result = serde_json::json!({"data":data,"nextCursor":next});
+
+	if result.to_string().len() > 64 * 1_024 {
+		return Err(invalid());
+	}
+
+	Ok(result)
 }
 
 fn source_url(thread: &str) -> String {

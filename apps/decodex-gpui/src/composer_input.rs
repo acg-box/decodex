@@ -8,6 +8,7 @@
 mod menu;
 #[path = "composer_native.rs"] mod native;
 #[path = "composer_shortcuts.rs"] mod shortcuts;
+pub(crate) use shortcuts::shortcut_motion;
 #[path = "composer_text.rs"] mod text;
 
 use std::{ops::Range, time::Instant};
@@ -442,6 +443,11 @@ impl ComposerInput {
 		} else if let Some(text) = item.text() {
 			self.replace_bytes(self.replacement_range(None), &text, Edit::Replace, cx);
 		}
+	}
+
+	pub(crate) fn selected_passage(&self) -> Option<String> {
+		(!self.secret && !self.selected_range.is_empty())
+			.then(|| self.content[self.selected_range.clone()].to_owned())
 	}
 
 	fn copy(&mut self, _: &Copy, _: &mut Window, cx: &mut Context<Self>) {
@@ -1386,6 +1392,7 @@ mod multiline_tests {
 		input.update(visual, |input, cx| input.set_placeholder_hint(Some("Tab".into()), false, cx));
 		visual.update(crate::ui_frame::draw_current_frame);
 		let accept = visual.debug_bounds("composer-suggestion-accept").unwrap();
+		let actions = visual.debug_bounds("composer-suggestion-surface").unwrap();
 		input.read_with(visual, |input, _| {
 			let bounds = input.last_bounds.unwrap();
 			let lines = input.last_layout.as_ref().unwrap();
@@ -1401,7 +1408,8 @@ mod multiline_tests {
 			);
 			let tail_end = bounds.left() + tail.unwrapped_layout.width;
 			assert!(
-				(accept.left() - tail_end - gpui::px(ui_theme::CONTROL_GAP)).abs() <= gpui::px(1.)
+				(actions.left() - tail_end - gpui::px(ui_theme::COMPOSER_SUGGESTION_GAP)).abs()
+					<= gpui::px(1.)
 			);
 		});
 	}

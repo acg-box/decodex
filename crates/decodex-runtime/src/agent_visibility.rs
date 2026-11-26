@@ -46,7 +46,7 @@ impl ArchiveVisibility {
 		snapshot.connection_initializing |= (self.generation.is_none()
 			&& snapshot.work_items.iter().any(|work| work.codex_thread_id.is_some()))
 			|| self.initial_pending.is_some();
-		snapshot.archived_work_ids = snapshot
+		*snapshot.archived_work_ids = snapshot
 			.work_items
 			.iter()
 			.filter(|work| {
@@ -251,6 +251,7 @@ mod tests {
 			guardian: Default::default(),
 			portfolio: Default::default(),
 			archived_work_ids: Default::default(),
+			side_chat_sources: Default::default(),
 			agent_slots: Default::default(),
 			conversation_titles: Default::default(),
 			context_references: vec![],
@@ -357,7 +358,7 @@ mod tests {
 		assert_eq!(catalog.work_items, original.work_items);
 		assert_eq!(catalog.projects, original.projects);
 		assert_eq!(catalog.dependencies, original.dependencies);
-		assert_eq!(catalog.archived_work_ids, std::collections::BTreeSet::from(["old".into()]));
+		assert_eq!(*catalog.archived_work_ids, std::collections::BTreeSet::from(["old".into()]));
 		assert!(catalog.is_valid());
 
 		let previous = cache.observation;

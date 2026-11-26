@@ -1,39 +1,9 @@
-//! Resolve native voice references through the existing bounded exact-turn history adapter.
+//! Resolve native voice references by native item ID.
 use std::collections::BTreeMap;
-
-use serde_json::Value;
 
 use crate::agent::timeline::{self, AgentTimelineContent};
 use decodex_codex::app_server_client::AppServerClient;
 use decodex_protocol::{AgentTimelinePage, AgentTimelinePromotedContent};
-
-pub(super) fn exact_item<'a>(
-	history: &'a Value,
-	thread: &str,
-	turn: &str,
-	item: &str,
-) -> Option<&'a Value> {
-	if history.pointer("/thread/id")?.as_str()? != thread {
-		return None;
-	}
-
-	let mut turns = history
-		.pointer("/thread/turns")?
-		.as_array()?
-		.iter()
-		.filter(|value| value["id"].as_str() == Some(turn));
-	let found = turns.next()?;
-
-	if turns.next().is_some() {
-		return None;
-	}
-
-	let mut items =
-		found["items"].as_array()?.iter().filter(|value| value["id"].as_str() == Some(item));
-	let found = items.next()?;
-
-	items.next().is_none().then_some(found)
-}
 
 pub(super) async fn enrich(client: &AppServerClient, page: &mut AgentTimelinePage) {
 	let mut missing = BTreeMap::<String, Vec<(usize, String)>>::new();
@@ -58,13 +28,17 @@ pub(super) async fn enrich(client: &AppServerClient, page: &mut AgentTimelinePag
 			}
 		}
 	}
-	// At most one exact read per referenced turn per bounded page. Raw history is
-	// released between turns; the caller bounds the complete operation and output.
+	// The timeline page is bounded to 30 entries, below the native 100-ID limit.
 	for (turn, references) in missing {
-		let Ok(history) = client.thread_read_turn(&page.thread_id, &turn).await else { continue };
-
+		let mut ids: Vec<_> = references.iter().map(|(_, id)| id.as_str()).collect();
+		ids.sort_unstable();
+		ids.dedup();
+		let Ok(items) = client.thread_read_items(&page.thread_id, &turn, &ids).await else {
+			continue;
+		};
 		for (index, item) in references {
-			let resolved = exact_item(&history, &page.thread_id, &turn, &item)
+			let resolved = items
+				.get(&item)
 				.and_then(|item| {
 					timeline::ordinary(&serde_json::json!({"turnId":turn,"item":item}))
 				})

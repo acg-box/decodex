@@ -4,6 +4,7 @@
 //! run in the desktop and must not wait for service startup or queries.
 
 #[path = "settings_components.rs"] mod components;
+#[path = "settings_shortcuts.rs"] mod keyboard;
 #[path = "settings_native.rs"] mod native;
 #[path = "settings_power.rs"] mod power;
 #[path = "ui_switch.rs"] mod switch;
@@ -11,8 +12,8 @@
 #[path = "settings_updates.rs"] mod updates;
 
 use gpui::{
-	AnyElement, ClickEvent, Context, Div, Entity, KeyDownEvent, Render, Role, SharedString,
-	Stateful, Window,
+	AnyElement, AppContext as _, ClickEvent, Context, Div, Entity, KeyDownEvent, Render, Role,
+	SharedString, Stateful, Window,
 	prelude::{
 		FluentBuilder, InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement,
 		Styled,
@@ -54,6 +55,7 @@ pub(crate) enum SettingsCategory {
 	General,
 	Agents,
 	Appearance,
+	Shortcuts,
 	Components,
 }
 impl SettingsCategory {
@@ -63,6 +65,7 @@ impl SettingsCategory {
 			Self::Agents => "Agents",
 			Self::Appearance => "Appearance",
 			Self::Components => "Components",
+			Self::Shortcuts => "Shortcuts",
 		}
 	}
 }
@@ -75,7 +78,11 @@ enum MenuBarRuntimeState {
 	Unavailable,
 }
 
+pub(crate) struct OpenReview(pub String);
+impl gpui::EventEmitter<OpenReview> for SettingsSurface {}
+
 pub(crate) struct SettingsSurface {
+	keyboard: Entity<keyboard::ShortcutEditor>,
 	components: components::Components,
 	updates: updates::Updates,
 	pub(crate) category: SettingsCategory,
@@ -438,6 +445,7 @@ impl SettingsSurface {
 				.into_any_element(),
 			SettingsCategory::Appearance => self.appearance_content(cx),
 			SettingsCategory::Components => self.components_content(cx),
+			SettingsCategory::Shortcuts => self.keyboard.clone().into_any_element(),
 		}
 	}
 
@@ -651,6 +659,7 @@ impl SettingsSurface {
 		let launch_at_login =
 			menu_bar.launch_at_login_state().unwrap_or(LaunchAtLoginState::OperationFailed);
 		let mut surface = Self {
+			keyboard: cx.new(keyboard::ShortcutEditor::new),
 			updates: updates::Updates::new(),
 			components: components::Components::new(crate::component_runtime::shared(cx)),
 			power: Default::default(),
@@ -1049,6 +1058,9 @@ impl SettingsSurface {
 
 impl Render for SettingsSurface {
 	fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+		if self.category == SettingsCategory::Shortcuts {
+			return self.keyboard.clone().into_any_element();
+		}
 		gpui::div()
 			.id("settings-surface")
 			.role(Role::Main)
@@ -1081,6 +1093,7 @@ impl Render for SettingsSurface {
 					.smooth_scroll(("settings-smooth-scroll", self.category as usize))
 					.with_scrollbar("settings-scrollbar", "Scroll settings"),
 			)
+			.into_any_element()
 	}
 }
 
@@ -1407,6 +1420,15 @@ mod tests {
 		assert_eq!(first.top(), fifth.top(), "five previews fit in the standard settings window");
 		assert!(fifth.right() <= visual.debug_bounds("color-theme-picker").unwrap().right());
 		assert!(sixth.top() >= first.bottom());
+
+		visual.simulate_resize(gpui::size(gpui::px(380.), gpui::px(700.)));
+		visual.update(crate::ui_frame::draw_current_frame);
+		let first = visual.debug_bounds(ColorTheme::ALL[0].id()).unwrap();
+		let fifth = visual.debug_bounds(ColorTheme::ALL[4].id()).unwrap();
+		assert!(
+			fifth.top() >= first.bottom(),
+			"narrow galleries wrap before captions are squeezed"
+		);
 
 		visual.update(|window, cx| {
 			window.resize(gpui::size(gpui::px(800.), gpui::px(700.)));

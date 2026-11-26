@@ -29,11 +29,12 @@ pub(crate) mod registration;
 mod registration_commands;
 mod result_messages;
 mod resume_recovery;
-mod task_history;
+pub(crate) mod task_history;
 mod turn_execution;
 mod voice;
 mod work;
 mod work_delivery;
+pub(crate) mod workspace;
 
 pub(crate) use self::{reasoning::voice_handoff, result_messages::usage as observed_usage};
 
@@ -84,8 +85,8 @@ pub struct AgentConfig {
 	pub agent_effort: Option<String>,
 	/// Initial reasoning override for independent workers; None inherits native configuration.
 	pub worker_effort: Option<String>,
-	/// Absolute execution directory.
-	pub cwd: String,
+	/// Directory selected for this Agent. An unscoped chat gets its own workspace.
+	pub cwd: Option<String>,
 	/// Provider approval policy selected by the host.
 	pub approval_policy: Value,
 	/// Explicit creation choice. Existing conversations keep native review routing.
@@ -97,12 +98,16 @@ pub struct AgentConfig {
 impl AgentConfig {
 	/// Select a model and directory with approval prompts and workspace edits enabled.
 	pub fn new(model: String, agent_effort: String, cwd: String) -> Self {
-		Self::with_optional_effort(model, Some(agent_effort), cwd)
+		Self::with_optional_effort(model, Some(agent_effort), Some(cwd))
 	}
 
 	/// Select an optional manager effort without inventing a placeholder for native inheritance.
 	/// Independent workers retain their existing Medium creation default.
-	pub fn with_optional_effort(model: String, agent_effort: Option<String>, cwd: String) -> Self {
+	pub fn with_optional_effort(
+		model: String,
+		agent_effort: Option<String>,
+		cwd: Option<String>,
+	) -> Self {
 		Self {
 			model,
 			agent_effort,
@@ -123,6 +128,7 @@ pub struct AgentCoordinator {
 	client: AppServerClient,
 	config: AgentConfig,
 	loaded_threads: std::collections::HashSet<String>,
+	pub(crate) side_chats: timeline::side_chat::SideChatHistory,
 	closing_resumes: std::collections::HashMap<String, ClosingResume>,
 	usage_replays: std::collections::HashSet<String>,
 	pending_requests: std::collections::HashMap<RequestId, i64>,
@@ -145,7 +151,7 @@ impl AgentCoordinator {
 		config: AgentConfig,
 	) -> Result<Self, AgentError> {
 		if config.model.trim().is_empty()
-			|| config.cwd.is_empty()
+			|| config.cwd.as_deref().is_some_and(str::is_empty)
 			|| config
 				.agent_effort
 				.as_ref()
@@ -183,6 +189,7 @@ impl AgentCoordinator {
 			client,
 			config,
 			loaded_threads: std::collections::HashSet::new(),
+			side_chats: Default::default(),
 			closing_resumes: Default::default(),
 			usage_replays: Default::default(),
 			pending_requests: std::collections::HashMap::new(),
@@ -529,12 +536,6 @@ impl AgentCoordinator {
 		if let Some(project) = self.native_project(item).await? {
 			params["projectId"] = serde_json::json!(project);
 		}
-		// Upstream c1382380de69521303b416720a52f42d51af6248 verifies cwd in
-		// thread_start_respects_project_config_from_cwd (app-server thread_start tests).
-		// Only folder membership is local. Existing native threads keep their identity.
-		if let Some(directory) = self.store.work_directory(item.id.clone()).await? {
-			params["cwd"] = serde_json::json!(directory);
-		}
 
 		if assistant
 			.as_ref()
@@ -553,6 +554,11 @@ impl AgentCoordinator {
 		{
 			params["threadSource"] = serde_json::json!("decodex_assistant");
 		}
+		params["cwd"] = match item.codex_thread_id.as_deref() {
+			Some(thread) => serde_json::json!(self.native_chat_directory(thread).await?),
+			None => serde_json::json!(self.new_chat_directory(item).await?),
+		};
+
 		Ok(params)
 	}
 
@@ -684,7 +690,7 @@ impl AgentCoordinator {
 
 	fn thread_params(&self, agent: bool) -> Value {
 		let effort = if agent { &self.config.agent_effort } else { &self.config.worker_effort };
-		let mut params = serde_json::json!({"model":self.config.model,"cwd":self.config.cwd,
+		let mut params = serde_json::json!({"model":self.config.model,
             "approvalPolicy":self.config.approval_policy,"sandbox":self.config.sandbox,
             "config":{}});
 
@@ -1003,6 +1009,15 @@ impl AgentCoordinator {
 			)
 			.await?;
 
+		if agent {
+			self.store
+				.bind_agent_root_settings(
+					id,
+					&serde_json::to_string(&self.config).expect("serializable Agent configuration"),
+				)
+				.await?;
+		}
+
 		let item = self.store.get_agent_work_item(id.into()).await?;
 
 		match self.dispatch(&item, prompt).await {
@@ -1217,6 +1232,7 @@ impl AgentCoordinator {
 		// Apply the user's permission choice during cold hydration as well as
 		// turn start, before a resumed native Goal can continue under old settings.
 		self.hydrate_dispatch_thread(thread, &params).await?;
+		self.ensure_loaded_chat_folder(thread).await?;
 		self.sync_native_project(&item).await?;
 
 		let question_guard = history_guard.is_some();
@@ -1907,6 +1923,9 @@ impl AgentCoordinator {
 	/// Consume notifications and requests serially. Transport reads and RPC reply
 	/// correlation continue independently while this method awaits a response.
 	pub async fn handle_event(&mut self, event: ServerEvent) -> Result<(), AgentError> {
+		if let ServerEvent::Notification { method, params } = &event {
+			self.side_chats.observe(method, params);
+		}
 		self.voice_event(&event).await?;
 
 		if let ServerEvent::Notification { method, params } = &event
@@ -2490,7 +2509,13 @@ impl AgentCoordinator {
 					&& let Some(owner) = state.agent_id
 					&& let Some(connection) = state.settings.ragflow
 				{
-					let _=store.assistant_memory_health(owner,connection,"Import unavailable. Check the connection and credential; unknown imports are not repeated.".into()).await;
+					let _ = store
+						.assistant_memory_health(
+							owner,
+							connection,
+							decodex_protocol::MemoryImportStatus::Unavailable,
+						)
+						.await;
 				}
 			}));
 		}
@@ -2640,6 +2665,15 @@ impl AgentCoordinator {
 						self.store.retire_archived_agent_threads(vec![thread.clone()]).await?;
 					},
 				Err(AgentError::ProjectPending(_)) => {},
+				Err(AgentError::MissingChatFolder) => {
+					self.store
+						.hold_agent_unsent_input_with_reason(
+							agent.id.clone(),
+							"Not sent. Choose a working folder for this conversation, then retry."
+								.into(),
+						)
+						.await?;
+				},
 				Err(AgentError::RoleInUse) => {
 					self.store
 						.hold_agent_unsent_input_with_reason(
@@ -2749,6 +2783,8 @@ pub enum AgentError {
 	Busy,
 	/// A prior dispatch has no conclusive acknowledgment.
 	UnknownDispatch,
+	/// The bound thread needs a user-selected replacement before it can run.
+	MissingChatFolder,
 	/// Native Project membership requires inspection; unrelated Agents can continue.
 	ProjectPending(String),
 	/// New task settings superseded an automatic capacity continuation.
@@ -2892,6 +2928,10 @@ fn resume_error(error: ClientError, thread: &str) -> AgentError {
 			) {
 		return AgentError::ThreadArchived;
 	}
+	thread_mutation_error(error, thread)
+}
+
+fn thread_mutation_error(error: ClientError, thread: &str) -> AgentError {
 	if let ClientError::Remote(remote) = &error
 		&& remote.code == -32_600
 		&& remote.message.contains("already has an active writer")

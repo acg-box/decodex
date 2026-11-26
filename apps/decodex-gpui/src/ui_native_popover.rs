@@ -21,6 +21,7 @@ use crate::{
 #[derive(Default)]
 struct Hosts {
 	children: HashMap<WindowId, WindowHandle<Panel>>,
+	modals: HashMap<WindowId, ElementId>,
 	hints: HashMap<WindowId, WindowHandle<Panel>>,
 	accessories: HashMap<(WindowId, ElementId), WindowHandle<Panel>>,
 	active: HashMap<WindowId, ActivePopup>,
@@ -283,8 +284,36 @@ pub(super) fn render(mut popover: Popover, window: &mut Window, cx: &mut App) ->
 	.into_any_element()
 }
 
+/// A native dialog owns its parent's overlay plane until dismissal. Its own child
+/// menus and hints have a different parent, so they keep their usual behavior.
+fn enter_modal(parent: WindowId, id: &ElementId, cx: &mut App) {
+	let hosts = cx.global_mut::<Hosts>();
+	if hosts.modals.get(&parent) == Some(id) {
+		return;
+	}
+	hosts.modals.insert(parent, id.clone());
+	let popup = hosts.active.remove(&parent);
+	let siblings: Vec<_> = hosts
+		.accessories
+		.iter()
+		.filter(|((owner, key), _)| *owner == parent && key != id)
+		.map(|(_, child)| *child)
+		.chain(hosts.hints.get(&parent).copied())
+		.collect();
+	if let Some(popup) = popup {
+		(popup.dismiss)(cx);
+	}
+	for child in siblings {
+		let _ = child.update(cx, |panel, _, cx| panel.close(cx));
+	}
+}
+
 fn present(parent: AnyWindowHandle, request: Content, cx: &mut App) {
-	let key = (parent.window_id(), request.id.clone());
+	let owner = parent.window_id();
+	if !request.is_modal() && cx.global::<Hosts>().modals.contains_key(&owner) {
+		return;
+	}
+	let key = (owner, request.id.clone());
 	let existing = if request.passive {
 		cx.global::<Hosts>().hints.get(&parent.window_id()).copied()
 	} else if request.attached {
@@ -295,6 +324,9 @@ fn present(parent: AnyWindowHandle, request: Content, cx: &mut App) {
 	let child = existing
 		.or_else(|| parent.update(cx, |_, window, cx| create(parent, window, cx)).ok().flatten());
 	let Some(child) = child else { return };
+	if request.is_modal() {
+		enter_modal(owner, &request.id, cx);
+	}
 	if request.passive {
 		cx.global_mut::<Hosts>().hints.insert(parent.window_id(), child);
 	} else if request.attached {
@@ -417,7 +449,11 @@ pub(super) fn hide_surface(parent: AnyWindowHandle, id: ElementId, cx: &mut App)
 			modal
 		});
 		if modal.unwrap_or(false) {
-			cx.global_mut::<Hosts>().accessories.remove(&key);
+			let hosts = cx.global_mut::<Hosts>();
+			hosts.accessories.remove(&key);
+			if hosts.modals.get(&key.0) == Some(&key.1) {
+				hosts.modals.remove(&key.0);
+			}
 		}
 	}
 }
@@ -535,6 +571,7 @@ fn initialize(cx: &mut App) {
 	cx.set_global(Hosts::default());
 	cx.on_window_closed(|cx, id| {
 		cx.global_mut::<Hosts>().active.remove(&id);
+		cx.global_mut::<Hosts>().modals.remove(&id);
 		let keys: Vec<_> = cx
 			.global::<Hosts>()
 			.accessories

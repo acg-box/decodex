@@ -31,14 +31,12 @@ impl AgentSurface {
 		gpui::div()
 			.flex()
 			.items_center()
-			.when(!id.is_empty(), |controls| {
-				controls.child(self.navigation_project_actions(id, name, cx))
-			})
+			.child(self.navigation_project_actions(id, name, cx))
 			.child(self.navigation_create(
-				"New conversation in this project",
+				"New chat in this project",
 				format!("navigation-create-project-{id}"),
 				move |s, cx| {
-					s.new_project_agent((!project.is_empty()).then_some(project.as_str()), cx);
+					s.new_project_agent(Some(&project), cx);
 				},
 				cx,
 			))
@@ -168,7 +166,7 @@ impl AgentSurface {
 			snapshot.projects.retain(|p| p.id != id);
 		}
 		self.workspace.navigation.projects.remove(id);
-		self.workspace.navigation.projects.insert(String::new());
+		self.workspace.navigation.collapsed.remove(super::Section::Chats.key());
 		if self.workspace.workspace_filter.as_deref() == Some(id) {
 			self.workspace.workspace_filter = None;
 		}

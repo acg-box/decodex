@@ -88,7 +88,7 @@ fn response_question_requests_a_side_chat_without_sending_or_replacing_the_main_
 			s.prompt_edit.side_chat_reference.as_deref(),
 			Some("Uses **cursor pagination**.")
 		);
-		assert_eq!(s.prompt_edit.branch_choice, Some(PromptForkBoundary::AttachedAfterTurn));
+		assert_eq!(s.prompt_edit.branch_choice, Some(PromptForkBoundary::TemporarySideChat));
 		assert!(s.prompt_edit.fork_requested);
 		assert!(!s.workspace.details_visible);
 		assert!(!s.sending);
@@ -111,6 +111,29 @@ fn selected_text_starts_the_same_side_chat_flow_with_the_displayed_selection(
 	draw(visual);
 	let ask = visual.debug_bounds("ask-selected-text").expect("selection question action");
 	visual.simulate_click(ask.center(), Default::default());
+	let owner = view.read_with(visual, |view, _| view.surface.clone());
+	owner.update(visual, |s, cx| {
+		let reference = s.prompt_edit.side_chat_reference.as_deref().unwrap();
+		assert!(reference.contains("cursor pagination"));
+		assert!(!reference.contains("**"));
+		assert!(s.prompt_edit.fork_requested);
+		assert_eq!(s.composer.read(cx).content(), "Keep my draft.");
+	});
+}
+
+#[gpui::test]
+fn side_shortcut_quotes_the_focused_selection(cx: &mut TestAppContext) {
+	cx.update(crate::shell::bind_keys);
+	let (view, visual) = preview(cx);
+	draw(visual);
+	let text = visual.debug_bounds("quick-ask-text-0").expect("selectable response");
+	let start = gpui::point(text.left() + gpui::px(1.), text.top() + gpui::px(8.));
+	let end = gpui::point(text.right() - gpui::px(1.), text.top() + gpui::px(8.));
+	visual.simulate_mouse_down(start, MouseButton::Left, Default::default());
+	visual.simulate_mouse_move(end, MouseButton::Left, Default::default());
+	visual.simulate_mouse_up(end, MouseButton::Left, Default::default());
+	draw(visual);
+	visual.simulate_keystrokes("alt-cmd-s");
 	let owner = view.read_with(visual, |view, _| view.surface.clone());
 	owner.update(visual, |s, cx| {
 		let reference = s.prompt_edit.side_chat_reference.as_deref().unwrap();

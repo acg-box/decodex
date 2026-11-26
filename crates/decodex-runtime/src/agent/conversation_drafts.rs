@@ -108,7 +108,7 @@ mod tests {
 				.reserve_agent_voice_draft(
 					AgentCoordinator::new_conversation_work("cold-draft").unwrap(),
 					None,
-					Some("assistant".into()),
+					None,
 				)
 				.await
 				.unwrap();
@@ -179,7 +179,7 @@ mod tests {
 				.reserve_agent_voice_draft(
 					AgentCoordinator::new_conversation_work("voice-draft").unwrap(),
 					None,
-					Some("assistant".into()),
+					None,
 				)
 				.await
 				.unwrap();

@@ -665,9 +665,18 @@ impl Metrics {
 }
 
 pub(crate) fn preference(value: Option<bool>) -> bool {
-	static CACHE: AtomicU8 = AtomicU8::new(u8::MAX);
-
-	ui_preferences::boolean("debugMode", &CACHE, value, false)
+	let read_or_write =
+		|cache: &AtomicU8| ui_preferences::boolean("debugMode", cache, value, false);
+	#[cfg(not(test))]
+	{
+		static CACHE: AtomicU8 = AtomicU8::new(u8::MAX);
+		read_or_write(&CACHE)
+	}
+	#[cfg(test)]
+	{
+		thread_local! { static CACHE: AtomicU8 = const { AtomicU8::new(u8::MAX) }; }
+		CACHE.with(read_or_write)
+	}
 }
 
 fn bytes(value: Option<f64>) -> String {

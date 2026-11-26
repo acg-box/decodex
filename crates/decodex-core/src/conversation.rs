@@ -10,6 +10,22 @@ use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::{BlobHash, MAX_BLOB_BYTES};
 
+/// Resolve elapsed time for one native activity from its reported duration and lifecycle clock.
+pub fn activity_elapsed_ms(
+	kind: &str,
+	status: &str,
+	reported: Option<u64>,
+	started_at: Option<u64>,
+	completed_at: Option<u64>,
+) -> Option<u64> {
+	// Codex emits zero for MCP errors before backend execution, including time spent in admission.
+	let reported = reported.filter(|&ms| !(ms == 0 && kind == "mcpToolCall" && status == "failed"));
+	reported.or_else(|| {
+		let start = started_at.filter(|&ms| ms > 0)?;
+		completed_at?.checked_sub(start)
+	})
+}
+
 macro_rules! domain_id {
 	($name:ident, $label:literal) => {
 		#[doc = concat!("Stable logical ", $label, " identity.")]

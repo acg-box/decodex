@@ -11,10 +11,9 @@ use crate::{AgentExecutionOverrides, EntityId, HistoryText, WireScalarTooLong, W
 pub struct AgentVoiceDraft {
 	/// Optional Project for this new conversation.
 	pub project_id: Option<EntityId>,
-	/// Personal Assistant owner when this is a personal topic.
-	pub assistant_id: Option<EntityId>,
-	/// The editor's model, reasoning, speed and permissions for native creation.
-	pub execution: AgentExecutionOverrides,
+	/// Folder explicitly chosen in the same editor used for text.
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub cwd: Option<crate::ConversationWorkingDirectory>,
 }
 
 /// Bounded private WebRTC session description, redacted from diagnostics.
@@ -56,7 +55,10 @@ impl<'de> Deserialize<'de> for VoiceSdp {
 pub struct AgentVoiceOptions {
 	/// First Live call from a local editor. Existing conversations omit this field.
 	#[serde(default, skip_serializing_if = "Option::is_none")]
-	pub draft: Option<Box<AgentVoiceDraft>>,
+	pub draft: Option<AgentVoiceDraft>,
+	/// Initial settings when Live creates the first native thread.
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub execution: Option<Box<AgentExecutionOverrides>>,
 	/// Native realtime model name for this call only.
 	#[serde(skip_serializing_if = "Option::is_none")]
 	pub model: Option<WireText>,

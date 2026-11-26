@@ -189,6 +189,7 @@ impl AgentSurface {
 		step: &AgentActivityDto,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
+		let elapsed = step.duration_ms.map(crate::ui_time::activity_elapsed).unwrap_or_default();
 		let row = gpui::div()
 			.debug_selector({
 				let id = format!("dock-step-{}-{}", step.turn_id, step.item_id);
@@ -222,11 +223,7 @@ impl AgentSurface {
 					}),
 			)
 			.child(
-				gpui::div().w(gpui::px(44.)).text_color(ui_theme::rgb(TEXT_MUTED)).child(
-					step.duration_ms
-						.map(|ms| format!("{:.1}s", ms as f64 / 1_000.))
-						.unwrap_or_default(),
-				),
+				gpui::div().w(gpui::px(44.)).text_color(ui_theme::rgb(TEXT_MUTED)).child(elapsed),
 			);
 
 		self.detail_row(work, step, None, row, cx)

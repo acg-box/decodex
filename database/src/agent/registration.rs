@@ -180,11 +180,6 @@ pub(super) fn batch_contains_stale_instruction(
 	tx.query_row("SELECT EXISTS(SELECT 1 FROM agent_inbox_events WHERE id IN (SELECT value FROM json_each(?1)) AND work_item_id=?2 AND disposition_note=?3 AND delivered_turn_id IS NULL)", params![ids,conversation,STALE_INSTRUCTION], |r| r.get(0)).map_err(|e|sqlite_error(e).into())
 }
 
-fn is_private_topic(c: &rusqlite::Connection, id: &str) -> Result<bool, StoreError> {
-	c.query_row("SELECT EXISTS(SELECT 1 FROM agent_inbox_events WHERE work_item_id=?1 AND event_kind='assistant_internal_topic')", [id], |row| row.get(0))
-		.map_err(|error| sqlite_error(error).into())
-}
-
 fn checked_command_applied(
 	db: &rusqlite::Connection,
 	agent: &str,
@@ -198,7 +193,7 @@ fn checked_command_applied(
 		return Ok(true);
 	}
 	let live: bool = db.query_row("SELECT EXISTS(SELECT 1 FROM agents a JOIN agent_work_items w ON w.id=a.id WHERE a.id=?1 AND w.dispatch_state='running' AND w.active_turn_id=?2)",params![agent,turn],|r|r.get(0)).map_err(sqlite_error)?;
-	if !live || is_private_topic(db, agent)? {
+	if !live {
 		return Err(DatabaseError::Conflict.into());
 	}
 	if let AgentThreadCommand::AdoptThread { thread_id, authority_event_id } = command {
@@ -272,9 +267,6 @@ fn register(
 		},
 	};
 	let item = read_work(tx, &id)?;
-	if is_private_topic(tx, &id)? {
-		return Err(StoreError::InvalidInput("An Assistant topic stays with its Assistant."));
-	}
 	let promoted = matches!(relation, ThreadRegistration::Promote { .. }) && !is_agent(tx, &id)?;
 	if !matches!(relation, ThreadRegistration::Register) {
 		update_responsibility(tx, &item, relation)?;
@@ -311,7 +303,7 @@ fn update_responsibility(
 			if owner.as_ref() == Some(agent_id) {
 				return Ok(());
 			}
-			if !is_agent(tx, agent_id)? || is_private_topic(tx, agent_id)? {
+			if !is_agent(tx, agent_id)? {
 				return Err(DatabaseError::NotFound.into());
 			}
 			expected_owner.as_ref()

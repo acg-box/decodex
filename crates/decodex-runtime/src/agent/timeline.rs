@@ -7,6 +7,7 @@ mod attachments;
 mod observed;
 mod promotions;
 mod saved;
+pub(crate) mod side_chat;
 mod statistics;
 mod summary;
 
@@ -366,18 +367,7 @@ pub(crate) fn ordinary(row: &Value) -> Option<AgentTimelineContent> {
 	let completed = !matches!(item["status"].as_str(), Some("inProgress" | "in_progress"));
 	let activity = (kind != "reasoning")
 		.then(|| activity::project(&serde_json::json!({"turnId":turn_id,"item":item}), completed))
-		.flatten()
-		.map(|mut activity| {
-			let start = item["startedAtMs"].as_u64().filter(|time| *time > 0);
-			let end = item["completedAtMs"].as_u64().filter(|time| *time > 0);
-
-			if completed && activity.duration_ms.is_none() {
-				activity.duration_ms =
-					start.zip(end).and_then(|(start, end)| end.checked_sub(start));
-			}
-			activity.native_timestamp_ms = if completed { end } else { start };
-			activity
-		});
+		.flatten();
 
 	Some(AgentTimelineContent::Item {
 		collaboration: collaboration(item),
@@ -763,6 +753,36 @@ mod tests {
 				panic!("expected native activity")
 			};
 			assert_eq!(activity.duration_ms, expected);
+		}
+	}
+
+	#[test]
+	fn mcp_failures_prefer_measured_execution_then_exact_call_lifecycle() {
+		for (status, reported, start, end, expected) in [
+			("failed", 620, Some(1_000), Some(1_622), Some(620)),
+			("failed", 0, Some(1_000), Some(4_012), Some(3_012)),
+			("failed", 0, Some(1_000), Some(1_000), Some(0)),
+			("failed", 0, None, Some(4_012), None),
+			("failed", 0, Some(4_012), Some(1_000), None),
+			("completed", 0, None, None, Some(0)),
+		] {
+			let item = serde_json::json!({"id":"call","type":"mcpToolCall","tool":"search",
+				"status":status,"durationMs":reported});
+			let live = super::activity::project(
+				&serde_json::json!({"turnId":"turn", "item":item,"startedAtMs":start,"completedAtMs":end}),
+				true,
+			)
+			.unwrap();
+			let mut saved = item;
+			saved["startedAtMs"] = serde_json::json!(start);
+			saved["completedAtMs"] = serde_json::json!(end);
+			let AgentTimelineContent::Item { activity: Some(history), .. } =
+				timeline::ordinary(&serde_json::json!({"turnId":"turn","item":saved})).unwrap()
+			else {
+				panic!("native activity")
+			};
+			assert_eq!(live.duration_ms, expected);
+			assert_eq!(history.duration_ms, expected);
 		}
 	}
 
