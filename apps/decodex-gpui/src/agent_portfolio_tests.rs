@@ -382,7 +382,7 @@ fn thread_registration_lists_native_pages_and_promotes_the_selected_thread(
 			assert!(viewport.contains(&visual.debug_bounds(selector).expect("next page").center()));
 		}
 		if selector == "registration-promote" {
-			std::thread::sleep(std::time::Duration::from_millis(220));
+			visual.executor().advance_clock(crate::ui_theme::MOTION_PANEL);
 			for width in [960., 360.] {
 				visual.simulate_resize(gpui::size(gpui::px(width), gpui::px(840.)));
 				visual.update(crate::ui_frame::draw_frame);

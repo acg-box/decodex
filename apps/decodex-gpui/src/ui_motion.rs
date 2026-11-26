@@ -940,7 +940,7 @@ pub(crate) fn revealed_value(
 	cx: &mut App,
 ) -> f32 {
 	let state = window.use_keyed_state(id.into(), cx, |_, _| (false, Tween::new(target)));
-	let now = Instant::now();
+	let now = cx.background_executor().now();
 	let (value, moving) = state.update(cx, |(was_visible, tween), _| {
 		if !visible || !*was_visible {
 			*tween = Tween::new(target);

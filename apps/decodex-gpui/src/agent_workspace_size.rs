@@ -2001,7 +2001,7 @@ mod tests {
 		let input = visual.debug_bounds("agent-composer").unwrap();
 		assert!(first <= before, "floating retracts the existing lower edge");
 		assert!(first > input.top() + gpui::px(20.), "an exposed panel must animate");
-		thread::sleep(crate::ui_theme::MOTION_PANEL + std::time::Duration::from_millis(40));
+		visual.executor().advance_clock(crate::ui_theme::MOTION_PANEL);
 		visual.update(crate::ui_frame::draw_current_frame);
 		assert!(visual.debug_bounds("workspace-activity-pane").unwrap().bottom() <= input.top());
 	}
