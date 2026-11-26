@@ -415,7 +415,7 @@ impl AgentSurface {
 	fn update_message_placeholder(&self, cx: &mut Context<Self>) {
 		let suggestion = self.prompt_suggestion(cx);
 		let hint = suggestion.is_some().then(|| "Tab".into());
-        let placeholder = if let Some(suggestion) = suggestion {
+		let placeholder = if let Some(suggestion) = suggestion {
 			suggestion.to_owned()
 		} else if self.native_agents.selected.is_none()
 			&& (self.is_new_conversation()
