@@ -49,6 +49,7 @@ mod health_query;
 #[allow(dead_code)]
 #[path = "../history_pager.rs"]
 mod history_pager;
+#[path = "../keyboard_shortcuts.rs"] mod keyboard_shortcuts;
 #[cfg(target_os = "macos")]
 #[path = "probes/native_island.rs"]
 mod native_island;

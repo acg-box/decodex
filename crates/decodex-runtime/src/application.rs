@@ -2348,6 +2348,21 @@ impl ServiceApplication {
 					Some(agent) => agent.resource_owners(request).await,
 					None => decodex_protocol::ResourceOwnersResult::Unavailable,
 				}),
+			QueryPayload::ListPinnedThreads { cursor } =>
+				QueryResultPayload::NativeThreads(match &self.agent {
+					Some(host) => host.pinned_threads(cursor.as_ref().map(|c| c.as_str())).await,
+					None => None,
+				}),
+			QueryPayload::ListNativeThreads { cursor, search } =>
+				QueryResultPayload::NativeThreads(match &self.agent {
+					Some(host) =>
+						host.native_threads(
+							cursor.as_ref().map(|c| c.as_str()),
+							search.as_ref().map(|s| s.as_str()),
+						)
+						.await,
+					None => None,
+				}),
 			_ => unreachable!("native lookup routing"),
 		}
 	}
@@ -2785,7 +2800,9 @@ impl Application for ServiceApplication {
 			| QueryPayload::GetConversationCapabilities { .. } => self.query_model_catalog(query).await,
 			QueryPayload::ExchangeDictation { request } => self.query_dictation(request).await,
 			QueryPayload::ExchangeAgentVoice { request } => self.query_voice(request),
-			lookup @ (QueryPayload::SearchConversation { .. }
+			lookup @ (QueryPayload::ListPinnedThreads { .. }
+			| QueryPayload::ListNativeThreads { .. }
+			| QueryPayload::SearchConversation { .. }
 			| QueryPayload::GetItemContext { .. }
 			| QueryPayload::GetResourceOwners { .. }) => self.query_native_lookup(lookup).await,
 			QueryPayload::GetAgentResources { work_id } =>
@@ -2863,21 +2880,6 @@ impl Application for ServiceApplication {
 				query_work_evidence(&self.store, &query.payload).await,
 			QueryPayload::GetAgentGuardianReviews { .. }
 			| QueryPayload::GetAgentGuardianDetail { .. } => self.query_guardian(&query.payload).await,
-			QueryPayload::ListPinnedThreads { cursor } =>
-				QueryResultPayload::NativeThreads(match &self.agent {
-					Some(host) => host.pinned_threads(cursor.as_ref().map(|c| c.as_str())).await,
-					None => None,
-				}),
-			QueryPayload::ListNativeThreads { cursor, search } =>
-				QueryResultPayload::NativeThreads(match &self.agent {
-					Some(host) =>
-						host.native_threads(
-							cursor.as_ref().map(|c| c.as_str()),
-							search.as_ref().map(|s| s.as_str()),
-						)
-						.await,
-					None => None,
-				}),
 			QueryPayload::GetAgentSnapshot => self.query_agent_snapshot(false).await,
 			QueryPayload::GetAgentArchiveCatalog => self.query_agent_snapshot(true).await,
 			QueryPayload::GetAgentExchanges { before } => self.query_exchanges(*before).await,
@@ -5697,7 +5699,7 @@ async fn query_agent_history_page(
 
 	decodex_protocol::AgentHistoryResult::Available {
 		missing_folder: match (before, agent) {
-			(None, Some(agent)) => agent.missing_chat_folder(id).await,
+			(None, Some(agent)) => agent.missing_chat_folder(id).await.map(Box::new),
 			_ => None,
 		},
 		questions,
@@ -5832,7 +5834,7 @@ async fn query_agent_snapshot(store: &ProductStore) -> decodex_protocol::AgentSn
 		guardian: Box::new(guardian),
 		portfolio: Box::new(portfolio),
 		archived_work_ids: Default::default(),
-		side_chat_sources,
+		side_chat_sources: Box::new(side_chat_sources),
 		agent_slots: Default::default(),
 		conversation_titles: Box::new(conversation_titles),
 		context_references,
@@ -5841,38 +5843,7 @@ async fn query_agent_snapshot(store: &ProductStore) -> decodex_protocol::AgentSn
 		projects: projects.into_iter().map(project_dto).collect(),
 		work_items: work_items
 			.into_iter()
-			.map(|item| AgentWorkItemDto {
-				id: item.id.clone(),
-				parent_goal_id: item.parent_goal_id.clone(),
-				kind: match item.kind {
-					AgentWorkKind::Goal =>
-						if item.parent_goal_id.is_some() && managers.contains(&item.id) {
-							AgentWorkKindDto::Manager
-						} else {
-							AgentWorkKindDto::Goal
-						},
-					AgentWorkKind::Task => AgentWorkKindDto::Task,
-				},
-				title: item.title,
-				codex_thread_id: item.codex_thread_id,
-				active_turn_id: item.active_turn_id,
-				dispatch_state: match item.dispatch_state {
-					AgentDispatchState::Idle => AgentDispatchStateDto::Idle,
-					AgentDispatchState::Dispatching => AgentDispatchStateDto::Dispatching,
-					AgentDispatchState::Running => AgentDispatchStateDto::Running,
-					AgentDispatchState::Unknown => AgentDispatchStateDto::Unknown,
-				},
-				status: match item.status {
-					AgentWorkStatus::Open => AgentWorkStatusDto::Open,
-					AgentWorkStatus::Resolved => AgentWorkStatusDto::Resolved,
-					AgentWorkStatus::FollowUp => AgentWorkStatusDto::FollowUp,
-					AgentWorkStatus::Wait => AgentWorkStatusDto::Wait,
-					AgentWorkStatus::UserDecision => AgentWorkStatusDto::UserDecision,
-				},
-				next_check_at_micros: item.next_check_at_micros,
-				created_at_micros: item.created_at_micros,
-				updated_at_micros: item.updated_at_micros,
-			})
+			.map(|item| snapshot_work_item(item, &managers))
 			.collect(),
 		dependencies: dependencies
 			.into_iter()
@@ -5904,6 +5875,41 @@ async fn query_agent_snapshot(store: &ProductStore) -> decodex_protocol::AgentSn
 	match project_started_conversations(store, snapshot).await {
 		Some(snapshot) => decodex_protocol::AgentSnapshotResult::Available(snapshot),
 		None => decodex_protocol::AgentSnapshotResult::Unavailable,
+	}
+}
+
+fn snapshot_work_item(item: AgentWorkItem, managers: &[String]) -> AgentWorkItemDto {
+	AgentWorkItemDto {
+		id: item.id.clone(),
+		parent_goal_id: item.parent_goal_id.clone(),
+		kind: match item.kind {
+			AgentWorkKind::Goal =>
+				if item.parent_goal_id.is_some() && managers.contains(&item.id) {
+					AgentWorkKindDto::Manager
+				} else {
+					AgentWorkKindDto::Goal
+				},
+			AgentWorkKind::Task => AgentWorkKindDto::Task,
+		},
+		title: item.title,
+		codex_thread_id: item.codex_thread_id,
+		active_turn_id: item.active_turn_id,
+		dispatch_state: match item.dispatch_state {
+			AgentDispatchState::Idle => AgentDispatchStateDto::Idle,
+			AgentDispatchState::Dispatching => AgentDispatchStateDto::Dispatching,
+			AgentDispatchState::Running => AgentDispatchStateDto::Running,
+			AgentDispatchState::Unknown => AgentDispatchStateDto::Unknown,
+		},
+		status: match item.status {
+			AgentWorkStatus::Open => AgentWorkStatusDto::Open,
+			AgentWorkStatus::Resolved => AgentWorkStatusDto::Resolved,
+			AgentWorkStatus::FollowUp => AgentWorkStatusDto::FollowUp,
+			AgentWorkStatus::Wait => AgentWorkStatusDto::Wait,
+			AgentWorkStatus::UserDecision => AgentWorkStatusDto::UserDecision,
+		},
+		next_check_at_micros: item.next_check_at_micros,
+		created_at_micros: item.created_at_micros,
+		updated_at_micros: item.updated_at_micros,
 	}
 }
 

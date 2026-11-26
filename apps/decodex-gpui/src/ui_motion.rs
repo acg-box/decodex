@@ -329,7 +329,7 @@ pub(crate) struct Arrival {
 	child: AnyElement,
 }
 impl Arrival {
-	pub(crate) fn from_opacity(mut self, opacity: f32) -> Self {
+	pub(crate) fn starting_opacity(mut self, opacity: f32) -> Self {
 		self.from_opacity = opacity;
 		self
 	}

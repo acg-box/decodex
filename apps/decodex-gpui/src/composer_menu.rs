@@ -21,14 +21,14 @@ pub(super) fn show(input: &ComposerInput, window: &Window, cx: &Context<Composer
 	add("Paste as Plain Text", true, Box::new(PastePlainText));
 	add("Delete", selected, Box::new(Delete));
 	add("Select All", !input.content.is_empty(), Box::new(SelectAll));
-	if can_copy && window.is_action_available(&crate::shell::OpenSideChat, cx) {
+	if can_copy && window.is_action_available(&crate::keyboard_shortcuts::OpenSideChat, cx) {
 		items.push(Item::Separator);
 		items.push(Item::bound(
 			"Ask in side chat",
-			&crate::shell::OpenSideChat,
+			&crate::keyboard_shortcuts::OpenSideChat,
 			cx,
 			true,
-			Box::new(crate::shell::OpenSideChat),
+			Box::new(crate::keyboard_shortcuts::OpenSideChat),
 		));
 	}
 	let owner = cx.entity().downgrade();

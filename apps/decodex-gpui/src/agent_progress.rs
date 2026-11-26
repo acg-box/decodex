@@ -340,8 +340,6 @@ fn progress_key(work: &str, turn: &str, item: &str) -> String {
 #[cfg(test)]
 mod tests {
 
-	use std::thread;
-
 	#[cfg(test)] use crate::shell::agent_surface::progress::AgentDispatchStateDto;
 	use crate::shell::agent_surface::progress::{AgentHistoryResult, AgentSurface};
 
@@ -383,11 +381,11 @@ mod tests {
 
 		// The GPUI window can already have rendered during fixture setup. Presence tests
 		// verify the entry delay with an explicit clock.
-		thread::sleep(std::time::Duration::from_millis(270));
+		visual.executor().advance_clock(std::time::Duration::from_millis(270));
 
 		visual.update(crate::ui_frame::draw_frame);
 
-		thread::sleep(std::time::Duration::from_millis(220));
+		visual.executor().advance_clock(std::time::Duration::from_millis(220));
 
 		visual.update(crate::ui_frame::draw_frame);
 
@@ -410,7 +408,7 @@ mod tests {
 			"retain the notice during exit"
 		);
 
-		thread::sleep(std::time::Duration::from_millis(220));
+		visual.executor().advance_clock(std::time::Duration::from_millis(220));
 
 		visual.update(crate::ui_frame::draw_frame);
 

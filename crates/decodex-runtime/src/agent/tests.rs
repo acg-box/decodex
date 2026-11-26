@@ -1091,6 +1091,20 @@ async fn emit_fixture_review_events(
 	}
 }
 
+fn fixture_read_items(request: &Value, history: &Value) -> Value {
+	let p = &request["params"];
+	let rows: Vec<_> = history[p["threadId"].as_str().unwrap()]["thread"]["turns"]
+		.as_array()
+		.into_iter()
+		.flatten()
+		.filter(|t| t["id"] == p["turnId"])
+		.flat_map(|t| t["items"].as_array().into_iter().flatten())
+		.filter(|i| p["itemIds"].as_array().unwrap().contains(&i["id"]))
+		.map(|i| serde_json::json!({"turnId":p["turnId"], "item":i}))
+		.collect();
+	serde_json::json!({"data":rows})
+}
+
 async fn serve_fixture(server_io: DuplexStream, history: Value, sent: UnboundedSender<Value>) {
 	let chat_root = tempfile::tempdir().unwrap();
 	let (reader, mut writer) = io::split(server_io);
@@ -1168,19 +1182,7 @@ async fn serve_fixture(server_io: DuplexStream, history: Value, sent: UnboundedS
 			Some("thread/searchOccurrences") => history["_occurrences"].clone(),
 			Some("thread/goal/get") => serde_json::json!({"goal":history["_goal"]}),
 			Some("thread/read") => fixture_thread_read(&request, &history, &settings, turns),
-			Some("thread/items/read") => {
-				let p = &request["params"];
-				let rows: Vec<_> = history[p["threadId"].as_str().unwrap()]["thread"]["turns"]
-					.as_array()
-					.into_iter()
-					.flatten()
-					.filter(|t| t["id"] == p["turnId"])
-					.flat_map(|t| t["items"].as_array().into_iter().flatten())
-					.filter(|i| p["itemIds"].as_array().unwrap().contains(&i["id"]))
-					.map(|i| serde_json::json!({"turnId":p["turnId"], "item":i}))
-					.collect();
-				serde_json::json!({"data":rows})
-			},
+			Some("thread/items/read") => fixture_read_items(&request, &history),
 			Some("thread/turns/list") => fixture_turns_page(&request, &history),
 			Some("thread/items/list") => fixture_items_page(&request, &history),
 			Some("thread/resume") => {

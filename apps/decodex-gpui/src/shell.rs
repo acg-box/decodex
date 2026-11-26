@@ -128,7 +128,7 @@ fn forward_shell_action(parent: gpui::AnyWindowHandle, action: &dyn gpui::Action
 	cx.stop_propagation();
 }
 
-#[path = "keyboard_shortcuts.rs"] pub(crate) mod shortcuts;
+pub(crate) use crate::keyboard_shortcuts::{self as shortcuts, OpenSideChat};
 
 gpui::actions!(
 	decodex_shell,
@@ -158,7 +158,6 @@ gpui::actions!(
 		DismissStatus,
 		NavigateBack,
 		NavigateForward,
-		OpenSideChat,
 		InterruptReply,
 		AcceptSuggestion,
 		NextMatch,
@@ -6125,14 +6124,9 @@ fn settings_workspace_content(
 		.flex()
 		.child(navigation)
 		.child(
-			gpui::div()
-				.tab_group()
-				.tab_index(1)
-				.flex_1()
-				.min_w_0()
-				.min_h_0()
-				.flex()
-				.child(ui_motion::arrival(SETTINGS_SECTIONS[tab].2, content).from_opacity(0.40)),
+			gpui::div().tab_group().tab_index(1).flex_1().min_w_0().min_h_0().flex().child(
+				ui_motion::arrival(SETTINGS_SECTIONS[tab].2, content).starting_opacity(0.40),
+			),
 		)
 		.into_any_element()
 }

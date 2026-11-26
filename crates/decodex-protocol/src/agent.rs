@@ -331,7 +331,7 @@ pub enum AgentHistoryResult {
 	Available {
 		/// A missing execution folder in the currently bound native chat.
 		#[serde(default, skip_serializing_if = "Option::is_none")]
-		missing_folder: Option<MissingChatFolder>,
+		missing_folder: Option<Box<MissingChatFolder>>,
 		/// Unanswered asynchronous questions for the current native thread, independent of history
 		/// paging.
 		questions: Vec<AgentAsyncQuestionDto>,
@@ -1193,10 +1193,10 @@ pub struct AgentSnapshotDto {
 	pub portfolio: Box<WorkPortfolio>,
 	/// Confirmed native archives included in an explicit archive catalog.
 	#[serde(default, skip_serializing_if = "std::collections::BTreeSet::is_empty")]
-	pub archived_work_ids: BTreeSet<String>,
+	pub archived_work_ids: Box<BTreeSet<String>>,
 	/// Attached conversations indexed by child Work ID, including pending native creation.
 	#[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-	pub side_chat_sources: BTreeMap<String, String>,
+	pub side_chat_sources: Box<BTreeMap<String, String>>,
 	/// Runtime-owned reusable display slots. Never use these numbers for message routing.
 	pub agent_slots: Box<BTreeMap<String, u32>>,
 	/// Confirmed native conversation topics keyed by thread ID; separate from Agent identity.

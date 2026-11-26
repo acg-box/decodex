@@ -21,6 +21,34 @@ pub(super) type Reviews = Arc<Mutex<BTreeMap<String, (Instant, PromptEditReview)
 
 const REVIEW_LIFETIME: Duration = Duration::from_secs(600);
 
+async fn open_side_chat(
+	agent: &mut AgentCoordinator,
+	work_id: EntityId,
+	thread_id: WireText,
+	target_work_id: EntityId,
+) -> Result<String, AgentHostError> {
+	let saved = agent
+		.open_side_chat(
+			work_id.as_str().into(),
+			thread_id.as_str().into(),
+			target_work_id.as_str().into(),
+		)
+		.await
+		.map_err(|error| match error {
+			crate::agent::AgentError::Rejected(_) => AgentHostError::Rejected(
+				"The source conversation is unavailable on this connection.",
+			),
+			_ => AgentHostError::Unknown("Side chat creation is unconfirmed"),
+		})?;
+	if saved.state == "rejected" {
+		return Err("Could not create the side chat.".into());
+	}
+	if saved.state != "forked" {
+		return Err(AgentHostError::Unknown("Side chat creation is unconfirmed"));
+	}
+	Ok(saved.attempt.target_work)
+}
+
 impl AgentHost {
 	pub(super) async fn handle_prompt_edit(
 		&self,
@@ -46,28 +74,7 @@ impl AgentHost {
 				work_id,
 				thread_id,
 				target_work_id,
-			} => {
-				let saved = agent
-					.open_side_chat(
-						work_id.as_str().into(),
-						thread_id.as_str().into(),
-						target_work_id.as_str().into(),
-					)
-					.await
-					.map_err(|error| match error {
-						crate::agent::AgentError::Rejected(_) => AgentHostError::Rejected(
-							"The source conversation is unavailable on this connection.",
-						),
-						_ => AgentHostError::Unknown("Side chat creation is unconfirmed"),
-					})?;
-				if saved.state == "rejected" {
-					return Err("Could not create the side chat.".into());
-				}
-				if saved.state != "forked" {
-					return Err(AgentHostError::Unknown("Side chat creation is unconfirmed"));
-				}
-				Ok(saved.attempt.target_work)
-			},
+			} => open_side_chat(agent, work_id, thread_id, target_work_id).await,
 			decodex_protocol::AgentActionDto::PreparePromptEdit {
 				work_id,
 				thread_id,

@@ -641,29 +641,7 @@ impl AgentSurface {
 		}
 		row = row.aria_expanded(open).hover(|row| row.bg(ui_theme::rgba(ui_theme::HOVER_FILL)));
 		if reveal.expanded {
-			let mut controls = gpui::div()
-				.flex()
-				.items_center()
-				.child(self.navigation_options(section, 1., window, cx));
-			match section {
-				Section::Chats => {
-					controls = controls.child(self.navigation_create(
-						"New chat",
-						"navigation-create-chat".into(),
-						|s, cx| s.new_project_agent(None, cx),
-						cx,
-					));
-				},
-				Section::Projects => {
-					controls = controls.child(self.navigation_create(
-						"New project",
-						"navigation-create-projects".into(),
-						|s, cx| s.add_navigation_project(cx),
-						cx,
-					));
-				},
-				Section::Assistant | Section::Pin => {},
-			}
+			let controls = self.navigation_heading_controls(section, window, cx);
 			row = row
 				.child(navigation_context_actions(
 					SharedString::from(format!("navigation-heading-actions-{}", section.key())),
@@ -678,6 +656,38 @@ impl AgentSurface {
 		}
 
 		row.into_any_element()
+	}
+
+	fn navigation_heading_controls(
+		&self,
+		section: Section,
+		window: &mut Window,
+		cx: &mut Context<Self>,
+	) -> gpui::Div {
+		let mut controls = gpui::div()
+			.flex()
+			.items_center()
+			.child(self.navigation_options(section, 1., window, cx));
+		match section {
+			Section::Chats => {
+				controls = controls.child(self.navigation_create(
+					"New chat",
+					"navigation-create-chat".into(),
+					|s, cx| s.new_project_agent(None, cx),
+					cx,
+				));
+			},
+			Section::Projects => {
+				controls = controls.child(self.navigation_create(
+					"New project",
+					"navigation-create-projects".into(),
+					|s, cx| s.add_navigation_project(cx),
+					cx,
+				));
+			},
+			Section::Assistant | Section::Pin => {},
+		}
+		controls
 	}
 
 	fn activate_navigation_heading(&mut self, section: Section, cx: &mut Context<Self>) {

@@ -45,7 +45,7 @@ impl<T> Item<T> {
 		action: T,
 	) -> Self {
 		let mut modifiers = NSEventModifierFlags::empty();
-		let key = crate::shell::shortcuts::key(binding, cx).map_or_else(String::new, |stroke| {
+		let key = crate::keyboard_shortcuts::key(binding, cx).map_or_else(String::new, |stroke| {
 			let m = stroke.modifiers;
 			for (on, flag) in [
 				(m.platform, NSEventModifierFlags::Command),

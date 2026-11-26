@@ -201,8 +201,14 @@ max_entry_bytes = 65536
 			if let Ok(profile) = ClientProfile::load(&fixture.root, None)
 				&& DoctorClient::new(profile).query().await.is_ok()
 			{
-				let stream = tokio::net::UnixStream::connect(&fixture.socket).await.unwrap();
-				return stream.peer_cred().unwrap().pid().unwrap();
+				let stream = tokio::net::UnixStream::connect(&fixture.socket)
+					.await
+					.expect("connect to the test service");
+				return stream
+					.peer_cred()
+					.expect("test service credentials")
+					.pid()
+					.expect("test service process ID");
 			}
 			assert!(Instant::now() < deadline, "service did not accept a fresh client");
 			tokio::time::sleep(Duration::from_millis(25)).await;

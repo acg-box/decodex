@@ -1378,7 +1378,6 @@ fn progress_text(progress: &InstallProgress) -> String {
 #[cfg(test)]
 mod tests {
 	use gpui::AppContext as _;
-	use std::thread;
 
 	use crate::{
 		component_runtime::PreparationState,
@@ -1599,7 +1598,7 @@ mod tests {
 			gpui::px(0.)
 		);
 
-		thread::sleep(std::time::Duration::from_millis(600));
+		visual.executor().advance_clock(std::time::Duration::from_millis(600));
 
 		visual.update(crate::ui_frame::draw_current_frame);
 
@@ -1641,11 +1640,11 @@ mod tests {
 			"busy controls must not dispatch a second operation"
 		);
 
-		thread::sleep(std::time::Duration::from_millis(300));
+		visual.executor().advance_clock(std::time::Duration::from_millis(300));
 
 		visual.update(crate::ui_frame::draw_current_frame);
 
-		thread::sleep(std::time::Duration::from_millis(250));
+		visual.executor().advance_clock(std::time::Duration::from_millis(250));
 
 		visual.update(crate::ui_frame::draw_current_frame);
 

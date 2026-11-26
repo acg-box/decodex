@@ -6,7 +6,9 @@ use super::{
 	ui_motion, ui_theme,
 };
 use gpui::{
-	AnyElement, KeyDownEvent, Modifiers, MouseButton, Pixels, Role, Window, div, prelude::*, px,
+	AnyElement, KeyDownEvent, Modifiers, MouseButton, Pixels, Role, Window, div,
+	prelude::{InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement, Styled},
+	px,
 };
 
 const MATERIAL: &str = "workspace-overlay-material";

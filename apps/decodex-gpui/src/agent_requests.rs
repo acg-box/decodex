@@ -343,14 +343,7 @@ impl AgentSurface {
 		panel
 	}
 
-	fn approval_request_panel(
-		&self,
-		mut panel: Div,
-		method: &str,
-		request_json: &str,
-		value: &Value,
-		cx: &mut Context<Self>,
-	) -> Div {
+	fn approval_description(&self, mut panel: Div, method: &str, value: &Value) -> Div {
 		let (heading, selector) = if method == "item/fileChange/requestApproval" {
 			("Allow file changes?", "approval-kind-file-change")
 		} else if method == "item/permissions/requestApproval" {
@@ -430,6 +423,18 @@ impl AgentSurface {
 		if method == "item/fileChange/requestApproval" {
 			panel = self.file_approval_details(panel, value);
 		}
+		panel
+	}
+
+	fn approval_request_panel(
+		&self,
+		mut panel: Div,
+		method: &str,
+		request_json: &str,
+		value: &Value,
+		cx: &mut Context<Self>,
+	) -> Div {
+		panel = self.approval_description(panel, method, value);
 		let mut actions = gpui::div().flex().flex_wrap().items_center().gap_2();
 		if method == "item/permissions/requestApproval" {
 			panel = panel.child(

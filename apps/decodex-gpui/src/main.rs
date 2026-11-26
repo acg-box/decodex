@@ -24,6 +24,7 @@ mod desktop_settings;
 mod frame_trace;
 mod health_query;
 mod history_pager;
+mod keyboard_shortcuts;
 mod native_menu_bar;
 #[cfg(target_os = "macos")] mod native_quit;
 #[cfg(target_os = "macos")] mod native_reopen;

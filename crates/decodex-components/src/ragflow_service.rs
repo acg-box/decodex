@@ -123,6 +123,35 @@ pub struct Installation {
 }
 
 impl Installation {
+	fn new(root: &Path) -> Result<Self> {
+		let port = TcpListener::bind("127.0.0.1:0")
+			.and_then(|listener| listener.local_addr())
+			.map_err(|_| "Could not select a local RAGFlow port.")?
+			.port();
+		let hash = Sha256::digest(root.to_string_lossy().as_bytes())
+			.iter()
+			.map(|b| format!("{b:02x}"))
+			.collect::<String>();
+		let mut bytes = [0; 32];
+		fs::File::open("/dev/urandom")
+			.and_then(|mut f| f.read_exact(&mut bytes))
+			.map_err(|_| "Could not create the private RAGFlow credentials.")?;
+		Ok(Self {
+			url: format!("http://127.0.0.1:{port}"),
+			project: format!("decodex-ragflow-{}", &hash[..12]),
+			password: format!(
+				"dcx-{}",
+				bytes.iter().map(|b| format!("{b:02x}")).collect::<String>()
+			),
+			image: String::new(),
+			bundle: String::new(),
+			version: String::new(),
+			memory: None,
+			models: None,
+			installed: false,
+		})
+	}
+
 	/// Check the installed service's public API without sending credentials or model work.
 	pub fn is_running(&self) -> bool {
 		self.installed
@@ -300,6 +329,19 @@ impl ComponentStore {
 		self.apply_ragflow_with(&docker()?, Action::Update, namespace, Some(target), &mut progress)
 	}
 
+	fn saved_memory_count(&self, config: &Installation) -> Result<u64> {
+		let Some(memory) = &config.memory else { return Ok(0) };
+		let key = self.ragflow_key(&memory.credential_id, &memory.url)?;
+		let value = response(
+			service_client()?
+				.get(format!("{}/api/v1/memories/{}?page_size=1", config.url, memory.memory_id))
+				.bearer_auth(key),
+		)?;
+		value["messages"]["total_count"]
+			.as_u64()
+			.ok_or_else(|| "Could not verify the saved Memory.".into())
+	}
+
 	fn apply_ragflow_with(
 		&self,
 		docker: &Path,
@@ -330,35 +372,9 @@ impl ComponentStore {
 		if action == Action::Update && saved.as_ref().is_none_or(|i| !i.installed) {
 			return Ok(saved);
 		}
-		let mut config = if let Some(saved) = saved {
-			saved
-		} else {
-			let port = TcpListener::bind("127.0.0.1:0")
-				.and_then(|listener| listener.local_addr())
-				.map_err(|_| "Could not select a local RAGFlow port.")?
-				.port();
-			let hash = Sha256::digest(self.root.to_string_lossy().as_bytes())
-				.iter()
-				.map(|b| format!("{b:02x}"))
-				.collect::<String>();
-			let mut bytes = [0; 32];
-			fs::File::open("/dev/urandom")
-				.and_then(|mut f| f.read_exact(&mut bytes))
-				.map_err(|_| "Could not create the private RAGFlow credentials.")?;
-			Installation {
-				url: format!("http://127.0.0.1:{port}"),
-				project: format!("decodex-ragflow-{}", &hash[..12]),
-				password: format!(
-					"dcx-{}",
-					bytes.iter().map(|b| format!("{b:02x}")).collect::<String>()
-				),
-				image: String::new(),
-				bundle: String::new(),
-				version: String::new(),
-				memory: None,
-				models: None,
-				installed: false,
-			}
+		let mut config = match saved {
+			Some(config) => config,
+			None => Installation::new(&self.root)?,
 		};
 		let manifest = directory.join("compose.json");
 
@@ -382,60 +398,15 @@ impl ComponentStore {
 		{
 			if !config.is_running() {
 				progress("Starting the installed services…");
-				backup.compose(
-					&config,
-					&manifest,
-					&[
-						"up",
-						"--detach",
-						"--no-build",
-						"--pull",
-						"never",
-						"--wait",
-						"--wait-timeout",
-						"600",
-					],
-				)?;
+				start_services(&backup, &config, &manifest, false)?;
 				wait_ready(&config)?;
 			}
 			return Ok(Some(config));
 		}
 		let digest = target.map(|t| t.digest.as_str());
-		let candidate = directory.with_file_name("candidate");
-		fs::create_dir_all(&candidate).map_err(|e| e.to_string())?;
-		fs::set_permissions(&candidate, fs::Permissions::from_mode(0o700))
-			.map_err(|e| e.to_string())?;
-		let prepare_images = (|| {
-			prepare(&candidate, &config, digest)?;
-			let next = candidate.join("compose.json");
-			progress("Preparing the compatible service images…");
-			backup.compose(
-				&config,
-				&next,
-				&["pull", "--ignore-buildable", "--policy", "missing"],
-			)?;
-			if cfg!(target_arch = "aarch64") {
-				backup.compose(&config, &next, &["build", "infinity"])?;
-			}
-			Ok::<_, String>(())
-		})();
-		fs::remove_dir_all(&candidate).map_err(|e| e.to_string())?;
-		prepare_images?;
-		let original_memory = config.memory.clone();
-		let memory_count = |config: &Installation| -> Result<u64> {
-			let Some(memory) = &original_memory else { return Ok(0) };
-			let key = self.ragflow_key(&memory.credential_id, &memory.url)?;
-			let value = response(
-				service_client()?
-					.get(format!("{}/api/v1/memories/{}?page_size=1", config.url, memory.memory_id))
-					.bearer_auth(key),
-			)?;
-			value["messages"]["total_count"]
-				.as_u64()
-				.ok_or_else(|| "Could not verify the saved Memory.".into())
-		};
-		let before = if config.installed && original_memory.is_some() && config.is_running() {
-			memory_count(&config)?
+		prepare_service_images(&directory, &backup, &config, digest, progress)?;
+		let before = if config.installed && config.memory.is_some() && config.is_running() {
+			self.saved_memory_count(&config)?
 		} else {
 			0
 		};
@@ -448,21 +419,7 @@ impl ComponentStore {
 			config.installed = true;
 			write(&directory, &config)?;
 			progress("Starting the compatible services…");
-			backup.compose(
-				&config,
-				&manifest,
-				&[
-					"up",
-					"--detach",
-					"--no-build",
-					"--pull",
-					"never",
-					"--remove-orphans",
-					"--wait",
-					"--wait-timeout",
-					"600",
-				],
-			)?;
+			start_services(&backup, &config, &manifest, true)?;
 			let client = wait_ready(&config)?;
 			let version = response(client.get(format!("{}/api/v1/system/version", config.url)))?;
 			config.version = version
@@ -480,7 +437,7 @@ impl ComponentStore {
 			.into();
 			progress("Verifying Assistant Memory…");
 			let token = account_token(&client, &config)?;
-			if memory_count(&config)? < before {
+			if self.saved_memory_count(&config)? < before {
 				return Err("The updated service did not return all saved memories.".into());
 			}
 			if let Some(models) = config.models.clone() {
@@ -508,6 +465,46 @@ impl ComponentStore {
 		}
 		Ok(Some(config))
 	}
+}
+
+fn prepare_service_images(
+	directory: &Path,
+	backup: &backup::Snapshot<'_>,
+	config: &Installation,
+	digest: Option<&str>,
+	progress: &mut impl FnMut(&str),
+) -> Result<()> {
+	let candidate = directory.with_file_name("candidate");
+	fs::create_dir_all(&candidate).map_err(|e| e.to_string())?;
+	fs::set_permissions(&candidate, fs::Permissions::from_mode(0o700))
+		.map_err(|e| e.to_string())?;
+	let prepare_images = (|| {
+		prepare(&candidate, config, digest)?;
+		let next = candidate.join("compose.json");
+		progress("Preparing the compatible service images…");
+		backup.compose(config, &next, &["pull", "--ignore-buildable", "--policy", "missing"])?;
+		if cfg!(target_arch = "aarch64") {
+			backup.compose(config, &next, &["build", "infinity"])?;
+		}
+		Ok::<_, String>(())
+	})();
+	fs::remove_dir_all(&candidate).map_err(|e| e.to_string())?;
+	prepare_images
+}
+
+fn start_services(
+	backup: &backup::Snapshot<'_>,
+	config: &Installation,
+	manifest: &Path,
+	remove_orphans: bool,
+) -> Result<()> {
+	let mut args = vec!["up", "--detach", "--no-build", "--pull", "never"];
+	if remove_orphans {
+		args.push("--remove-orphans");
+	}
+	args.extend(["--wait", "--wait-timeout", "600"]);
+	backup.compose(config, manifest, &args)?;
+	Ok(())
 }
 
 fn wait_ready(config: &Installation) -> Result<Client> {

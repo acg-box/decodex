@@ -208,6 +208,89 @@ struct ScrollbarState {
 	hide: Option<gpui::Task<()>>,
 }
 
+fn scrollbar_canvas(
+	scroll: ScrollHandle,
+	state: gpui::Entity<ScrollbarState>,
+	owner: gpui::EntityId,
+	thumb_width: Pixels,
+	opacity: f32,
+) -> impl IntoElement {
+	gpui::canvas(
+		move |bounds, window, _| scrollbar_thumb_layout(scroll, bounds, thumb_width, window),
+		move |bounds, layout, window, _| {
+			let Some((scroll, thumb, travel, hitbox)) = layout else { return };
+
+			if opacity > 0. {
+				window.paint_quad(
+					gpui::fill(thumb, ui_theme::rgb(ui_theme::TEXT).opacity(opacity))
+						.corner_radii(thumb_width / 2.),
+				);
+			}
+
+			let down_scroll = scroll.clone();
+			let down_drag = state.clone();
+			let down_thumb = thumb;
+			let hitbox = hitbox.clone();
+
+			window.on_mouse_event(move |event: &MouseDownEvent, phase, window, cx| {
+				if phase == DispatchPhase::Bubble
+					&& event.button == MouseButton::Left
+					&& hitbox.is_hovered(window)
+				{
+					window.prevent_default();
+
+					let grab =
+						if (down_thumb.top()..=down_thumb.bottom()).contains(&event.position.y) {
+							event.position.y - down_thumb.top()
+						} else {
+							down_thumb.size.height / 2.
+						};
+
+					down_drag.update(cx, |s, _| s.grab = Some(grab));
+
+					set_scroll(&down_scroll, event.position.y - bounds.top() - grab, travel);
+
+					cx.notify(owner);
+					cx.stop_propagation();
+				}
+			});
+
+			let scroll = scroll.clone();
+			let up_drag = state.clone();
+
+			window.on_mouse_event(move |_: &MouseUpEvent, phase, _, cx| {
+				if phase == DispatchPhase::Capture {
+					up_drag.update(cx, |s, cx| {
+						if s.grab.take().is_some() {
+							cx.notify();
+						}
+					});
+				}
+			});
+			window.on_mouse_event(move |event: &MouseMoveEvent, phase, _, cx| {
+				if phase != DispatchPhase::Capture {
+					return;
+				}
+
+				let Some(grab) = state.read(cx).grab else { return };
+
+				if event.pressed_button == Some(MouseButton::Left) {
+					set_scroll(&scroll, event.position.y - bounds.top() - grab, travel);
+
+					cx.notify(owner);
+					cx.stop_propagation();
+				} else {
+					state.update(cx, |s, cx| {
+						s.grab = None;
+						cx.notify();
+					});
+				}
+			});
+		},
+	)
+	.size_full()
+}
+
 impl RenderOnce for Scrollbar {
 	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
 		let offset = self.scroll.offset().y;
@@ -255,83 +338,7 @@ impl RenderOnce for Scrollbar {
 		let hover_state = state.clone();
 		let owner = window.current_view();
 		let keys = self.scroll.clone();
-		let canvas = gpui::canvas(
-			move |bounds, window, _| {
-				scrollbar_thumb_layout(self.scroll, bounds, thumb_width, window)
-			},
-			move |bounds, layout, window, _| {
-				let Some((scroll, thumb, travel, hitbox)) = layout else { return };
-
-				if opacity > 0. {
-					window.paint_quad(
-						gpui::fill(thumb, ui_theme::rgb(ui_theme::TEXT).opacity(opacity))
-							.corner_radii(thumb_width / 2.),
-					);
-				}
-
-				let down_scroll = scroll.clone();
-				let down_drag = state.clone();
-				let down_thumb = thumb;
-				let hitbox = hitbox.clone();
-
-				window.on_mouse_event(move |event: &MouseDownEvent, phase, window, cx| {
-					if phase == DispatchPhase::Bubble
-						&& event.button == MouseButton::Left
-						&& hitbox.is_hovered(window)
-					{
-						window.prevent_default();
-
-						let grab = if (down_thumb.top()..=down_thumb.bottom())
-							.contains(&event.position.y)
-						{
-							event.position.y - down_thumb.top()
-						} else {
-							down_thumb.size.height / 2.
-						};
-
-						down_drag.update(cx, |s, _| s.grab = Some(grab));
-
-						set_scroll(&down_scroll, event.position.y - bounds.top() - grab, travel);
-
-						cx.notify(owner);
-						cx.stop_propagation();
-					}
-				});
-
-				let scroll = scroll.clone();
-				let up_drag = state.clone();
-
-				window.on_mouse_event(move |_: &MouseUpEvent, phase, _, cx| {
-					if phase == DispatchPhase::Capture {
-						up_drag.update(cx, |s, cx| {
-							if s.grab.take().is_some() {
-								cx.notify();
-							}
-						});
-					}
-				});
-				window.on_mouse_event(move |event: &MouseMoveEvent, phase, _, cx| {
-					if phase != DispatchPhase::Capture {
-						return;
-					}
-
-					let Some(grab) = state.read(cx).grab else { return };
-
-					if event.pressed_button == Some(MouseButton::Left) {
-						set_scroll(&scroll, event.position.y - bounds.top() - grab, travel);
-
-						cx.notify(owner);
-						cx.stop_propagation();
-					} else {
-						state.update(cx, |s, cx| {
-							s.grab = None;
-							cx.notify();
-						});
-					}
-				});
-			},
-		)
-		.size_full();
+		let canvas = scrollbar_canvas(self.scroll, state, owner, thumb_width, opacity);
 
 		gpui::div()
 			.id(self.id)

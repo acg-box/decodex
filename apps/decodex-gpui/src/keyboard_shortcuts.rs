@@ -3,6 +3,8 @@ use std::collections::BTreeMap;
 
 use gpui::{Action, App, Global, KeyBinding, Keystroke, OperatingSystem};
 
+gpui::actions!(decodex_shell, [OpenSideChat]);
+
 type Overrides = BTreeMap<String, Vec<String>>;
 const PREFERENCE: &str = "DecodexKeyboardShortcuts";
 

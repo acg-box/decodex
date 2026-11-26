@@ -23,15 +23,15 @@ pub(crate) struct Page {
 
 impl SideChatHistory {
 	pub fn open(&self, thread: &str) {
-		self.0.lock().unwrap().entry(thread.into()).or_default();
+		self.0.lock().expect("side chat history lock").entry(thread.into()).or_default();
 	}
 
 	pub fn close(&self, thread: &str) {
-		self.0.lock().unwrap().remove(thread);
+		self.0.lock().expect("side chat history lock").remove(thread);
 	}
 
 	pub fn clear(&self) {
-		self.0.lock().unwrap().clear();
+		self.0.lock().expect("side chat history lock").clear();
 	}
 
 	pub fn observe(&self, method: &str, params: &Value) {
@@ -40,7 +40,7 @@ impl SideChatHistory {
 			return;
 		}
 		let Some(thread) = params["threadId"].as_str() else { return };
-		let mut open = self.0.lock().unwrap();
+		let mut open = self.0.lock().expect("side chat history lock");
 		let Some(chat) = open.get_mut(thread) else { return };
 		if method.starts_with("turn/") {
 			let turn = &params["turn"];
@@ -54,11 +54,10 @@ impl SideChatHistory {
 			if method == "turn/completed" {
 				chat.pending.clear();
 			}
-		} else if let Some(item @ AgentTimelineContent::Item { .. }) = super::ordinary(params) {
-			let key = (
-				params["turnId"].as_str().unwrap().into(),
-				params["item"]["id"].as_str().unwrap().into(),
-			);
+		} else if let Some(item) = super::ordinary(params)
+			&& let AgentTimelineContent::Item { turn_id, item_id, .. } = &item
+		{
+			let key = (turn_id.clone(), item_id.clone());
 			if let Some(position) = chat.pending.remove(&key) {
 				chat.items[position] = item;
 				if method == "item/started" {
@@ -75,7 +74,7 @@ impl SideChatHistory {
 
 	/// Stable offsets address only this in-memory conversation, never a native rollout.
 	pub fn page(&self, thread: &str, cursor: Option<&str>) -> Option<Result<Page, ()>> {
-		let open = self.0.lock().unwrap();
+		let open = self.0.lock().expect("side chat history lock");
 		let items = &open.get(thread)?.items;
 		let prefix = format!("side:{thread}:");
 		let end = match cursor {

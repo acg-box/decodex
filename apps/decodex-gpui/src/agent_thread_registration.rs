@@ -496,7 +496,7 @@ impl AgentSurface {
 			body = body.child(detail);
 		}
 		let route = if !wide && selected.is_some() { "preview" } else { "conversations" };
-		ui_motion::arrival(route, body).from_opacity(0.55).into_any_element()
+		ui_motion::arrival(route, body).starting_opacity(0.55).into_any_element()
 	}
 
 	fn registration_choices(&self, full_width: bool, cx: &mut Context<Self>) -> AnyElement {
@@ -713,7 +713,7 @@ impl AgentSurface {
 			.when(wide, |pane| {
 				pane.border_l_1().border_color(ui_theme::rgba(ui_theme::PANEL_DIVIDER)).pl_3()
 			})
-			.child(ui_motion::arrival(candidate.thread_id.clone(), reader).from_opacity(0.40))
+			.child(ui_motion::arrival(candidate.thread_id.clone(), reader).starting_opacity(0.40))
 			.into_any_element()
 	}
 

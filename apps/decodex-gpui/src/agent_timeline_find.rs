@@ -167,19 +167,12 @@ impl AgentSurface {
 			&& self.conversation_work().is_some_and(|work| self.native_history_active(&work))
 	}
 
-	pub(in super::super) fn conversation_find_bar(
-		&self,
-		cx: &mut Context<Self>,
-	) -> Option<AnyElement> {
-		if !self.conversation_find_open() {
-			return None;
-		}
+	fn find_match_count(&self) -> String {
 		let find = &self.timeline.native.find;
-		let input = find.input.as_ref().filter(|_| find.open)?;
 		let matches = self.conversation_targets();
 		let selected = self.selected_find_target();
 		let index = matches.iter().position(|value| Some(value) == selected.as_ref());
-		let count = if find.query.trim().is_empty() {
+		if find.query.trim().is_empty() {
 			String::new()
 		} else if matches.is_empty() && find.search.task.is_some() {
 			"Searching…".into()
@@ -192,7 +185,19 @@ impl AgentSurface {
 				matches.len(),
 				if find.search.cursor.is_some() { "+" } else { "" }
 			)
-		};
+		}
+	}
+
+	pub(in super::super) fn conversation_find_bar(
+		&self,
+		cx: &mut Context<Self>,
+	) -> Option<AnyElement> {
+		if !self.conversation_find_open() {
+			return None;
+		}
+		let find = &self.timeline.native.find;
+		let input = find.input.as_ref().filter(|_| find.open)?;
+		let count = self.find_match_count();
 		Some(
 			gpui::div()
 				.debug_selector(|| "conversation-find".into())

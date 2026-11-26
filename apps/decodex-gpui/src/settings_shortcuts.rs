@@ -329,19 +329,13 @@ fn search_accessory(
 		.hover_hint(label)
 		.child(workspace_symbols::icon_sized(icon, size))
 }
-impl Render for ShortcutEditor {
-	fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-		if !cx.has_global::<Shortcuts>() {
-			shortcuts::initialize(cx, |_| {});
-		}
-		if self.focus_search {
-			self.focus_search = false;
-			if !window.last_input_was_keyboard() {
-				window.focus(&self.search.focus_handle(cx), cx);
-			}
-		}
-		let lookup = self.target == Some(Target::Lookup);
-		let query = self.search.read(cx).content().to_owned();
+impl ShortcutEditor {
+	fn search_bar(
+		&self,
+		lookup: bool,
+		query: &str,
+		cx: &mut Context<Self>,
+	) -> gpui::Stateful<gpui::Div> {
 		let mut bar = div()
 			.id("shortcuts-search-bar")
 			.w_full()
@@ -393,6 +387,23 @@ impl Render for ShortcutEditor {
 				}
 			})),
 		);
+		bar
+	}
+}
+impl Render for ShortcutEditor {
+	fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+		if !cx.has_global::<Shortcuts>() {
+			shortcuts::initialize(cx, |_| {});
+		}
+		if self.focus_search {
+			self.focus_search = false;
+			if !window.last_input_was_keyboard() {
+				window.focus(&self.search.focus_handle(cx), cx);
+			}
+		}
+		let lookup = self.target == Some(Target::Lookup);
+		let query = self.search.read(cx).content().to_owned();
+		let bar = self.search_bar(lookup, &query, cx);
 		let map = cx.global::<Shortcuts>();
 		let mut visible =
 			self.recorded.as_ref().map_or_else(|| map.search(&query), |k| map.owners(k));

@@ -294,11 +294,20 @@ fn thread_registration_reassignment_click_sends_the_displayed_owner(cx: &mut Tes
 	});
 }
 
+fn native_thread_candidate(title: String) -> decodex_protocol::NativeThreadCandidate {
+	decodex_protocol::NativeThreadCandidate {
+		updated_at_micros: 0,
+		thread_id: title.clone(),
+		title,
+		preview: Some("Original discussion".into()),
+	}
+}
+
 #[gpui::test]
 fn thread_registration_lists_native_pages_and_promotes_the_selected_thread(
 	cx: &mut TestAppContext,
 ) {
-	use decodex_protocol::{NativeThreadCandidate, NativeThreadPage, work::ThreadRegistration};
+	use decodex_protocol::{NativeThreadPage, work::ThreadRegistration};
 	let (_home, profile, server) = wire_test_support::fixture(|listener| async move {
 		for (before, thread, next) in
 			[(None, "native-a", Some("page-b")), (Some("page-b"), "native-b", None)]
@@ -322,15 +331,7 @@ fn thread_registration_lists_native_pages_and_promotes_the_selected_thread(
 				&mut socket,
 				query.query_id,
 				QueryResultPayload::NativeThreads(Some(NativeThreadPage {
-					threads: threads
-						.into_iter()
-						.map(|title| NativeThreadCandidate {
-							updated_at_micros: 0,
-							thread_id: title.clone(),
-							title,
-							preview: Some("Original discussion".into()),
-						})
-						.collect(),
+					threads: threads.into_iter().map(native_thread_candidate).collect(),
 					next_cursor: next.map(str::to_owned),
 				})),
 			)
