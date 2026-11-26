@@ -6,6 +6,8 @@ Use the existing maintenance state directory at ~/.decodex/maintenance/codex-ups
 
 ## Responsibility and verification scope
 
+Apply this design standard to every update. Reuse the supported upstream behavior when it meets the product need. Give each setting or decision one owner and keep the core path simple, reliable and efficient. Fix the cause at that owner. When the existing design gets in the way, rewrite or remove as much as the change needs. A smaller diff does not justify keeping duplicate state, redundant work or obsolete abstractions. Before delivery, trace the normal path and its relevant failure cases, and remove complexity that serves no current requirement.
+
 Upstream owns generic Codex correctness. Decodex owns compatibility at its retained consumer boundary and qualification of the actual CLI and helpers it builds or imports. Read relevant upstream implementation and test bodies to understand changes. Reuse official upstream CI and source-test evidence for generic behavior. Do not inherit a previous upstream test cohort, expand execution from diff paths or function-name patterns, or rerun broad upstream suites as a daily gate.
 
 Default execution covers affected Decodex-owned regressions against the exact prepared artifact, component/helper integrity and required repository checks. Run a small upstream test selection only to diagnose a concrete compatibility defect or establish specific missing proof for a retained fix. State the consumer and missing proof before that execution. An unconsumed upstream failure is a diagnostic limit, not a Decodex repair backlog item. Leave its cause unknown when unresolved; never count it as passed. Missing source review still blocks that commit's review cursor.
