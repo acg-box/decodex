@@ -219,11 +219,11 @@
       "completedRunId": "446a8a3f-6d00-456b-8817-b4bfbc5a0ae8"
     },
     "/openwiki/testing/upstream-acceptance-boundaries.md": {
-      "pageVersion": "sha256:5be2d2d73b3b4c100f97530974f60de3db9aec372128db9a68a4a3e7670364da",
+      "pageVersion": "sha256:a9b47f5346c11bbdd1775306a9332df59cb2200c517d6e1dca6ca64081a52395",
       "completedBy": "codex",
-      "completedRunId": "d650767a-5f5b-4fcf-b0d3-208959f5f827",
-      "gitHead": "fd9d99909a41990fa36e00b59f82ee945c7bb75f",
-      "sourceFingerprint": "sha256:0fa85465e1d66415acb6ffcca8d41daa1a2fa9bbc1b6c974034f4174c367d515"
+      "completedRunId": "8f19c3ba-fc84-45a4-8ad6-52219640c053",
+      "gitHead": "6afc6c974c31d3cbaf7bd0fbbd9c85b393707920",
+      "sourceFingerprint": "sha256:717e8f09058003bea87731528fef9d0f25feae5b29dc552d7d86f2268399085c"
     },
     "/openwiki/workflows/approvals-and-native-ownership.md": {
       "gitHead": "fac5349d14a3f0219d6e1817c3d4737539be5f5e",
