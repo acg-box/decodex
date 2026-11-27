@@ -163,14 +163,14 @@ async fn goal_recovery_hydrates_only_exact_active_unloaded_thread() {
 
 		while let Ok(request) = sent.try_recv() {
 			assert!(
-				["thread/goal/get", "thread/read", "thread/resume"]
+				["thread/goal/get", "thread/read", "thread/resume", "config/read"]
 					.contains(&request["method"].as_str().unwrap())
 			);
 
 			if request["method"] == "thread/resume" {
 				resumes += 1;
 
-				tests::assert_agent_resume(&request["params"], "opaque thread/1", false);
+				tests::assert_agent_resume(&request["params"], "opaque thread/1", false, true);
 			}
 		}
 

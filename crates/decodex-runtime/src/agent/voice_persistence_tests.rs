@@ -467,7 +467,13 @@ async fn cold_voice_recovery_keeps_original_generation_and_never_replays_input()
 		assert!(requests.iter().any(|r| r["method"] == "thread/resume"));
 		assert!(requests.iter().all(|r| matches!(
 			r["method"].as_str(),
-			Some("thread/resume" | "thread/read" | "thread/turns/list" | "thread/items/list")
+			Some(
+				"thread/resume"
+					| "thread/read"
+					| "config/read"
+					| "thread/turns/list"
+					| "thread/items/list"
+			)
 		)));
 
 		cold.recover_voice_calls().await.unwrap();
