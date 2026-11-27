@@ -210,6 +210,13 @@ impl AgentSurface {
 				// follow-up it can still contain the reply to the previous dispatch.
 				match call.tool.as_str() {
 					"spawnAgent" | "subAgentActivity/started" => member.spawned_here = true,
+					// Codex also emits an interaction when the lead steers a child before
+					// its first report. The child is still completing the original assignment.
+					"subAgentActivity/interacted"
+						if matches!(
+							member.state,
+							ParticipantState::Working | ParticipantState::Assigned
+						) => {},
 					"followupTask"
 					| "sendInput"
 					| "sendMessage"
@@ -612,6 +619,17 @@ mod tests {
 				"24 cartons"
 			);
 			assert!(s.turn_participants("ref-sage", "next", &rows)["ref-iris"].reply.is_empty());
+			// A message to a running child can be interleaved between its compact
+			// spawn and completion in the same native turn.
+			s.timeline
+				.native
+				.entries
+				.insert(1, event(10, "first", "subAgentActivity/interacted", "ref-iris", ""));
+			assert_eq!(
+				s.turn_participants("ref-sage", "first", &rows)["ref-iris"].reply,
+				"24 cartons"
+			);
+			s.timeline.native.entries.remove(1);
 			s.timeline.native.entries.push(event(
 				5,
 				"first",
