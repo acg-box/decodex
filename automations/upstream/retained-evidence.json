@@ -3,7 +3,7 @@
   "scope": "Current Decodex upstream review, selected development artifact and stable consumer contracts.",
   "retained_contracts": {
     "path": "automations/upstream/retained-contracts.json",
-    "sha256": "ee4e18904b70ac40f9cc47dbccf770329f1fab7797c9daa79ea3f5d2ad2a800e"
+    "sha256": "3f63fe2fe815d48cddf31b6fbbdc68f990f460471bfca11daa1beeddc99ba286"
   },
   "retained_contract_routes": {
     "behavior": "automations/upstream/retained-contracts.json#retained_behavior_contracts",
@@ -17,54 +17,54 @@
     "optional_decisions": "automations/upstream/retained-contracts.json#optional_decisions",
     "answer_display": "automations/upstream/retained-contracts.json#retained_answer_display"
   },
-  "source_baseline": "475e13ab1ace6c63275ee66149c951befc685c96",
+  "source_baseline": "045a11fe2c701df09dd31d55e8c3f05e79cc4a77",
   "source_review_evidence": "automations/upstream/current-review.json",
   "source_review_summary": {
-    "previous_cursor": "06f334aa4b053023c5b4199dde0ba9c004d64820",
-    "reviewed_commits": 60,
-    "reviewed_through": "475e13ab1ace6c63275ee66149c951befc685c96",
+    "previous_cursor": "475e13ab1ace6c63275ee66149c951befc685c96",
+    "reviewed_commits": 23,
+    "reviewed_through": "045a11fe2c701df09dd31d55e8c3f05e79cc4a77",
     "fixed_target_remaining": 0,
-    "selected_source": "475e13ab1ace6c63275ee66149c951befc685c96"
+    "selected_source": "045a11fe2c701df09dd31d55e8c3f05e79cc4a77"
   },
   "qualification": "automations/upstream/qualification.json",
   "artifact": {
-    "source_commit": "475e13ab1ace6c63275ee66149c951befc685c96",
-    "source_archive_sha256": "4f3b8f66d023811b789eecdc675314be7a601c6a578f2dda7850e45577b09ccd",
+    "source_commit": "045a11fe2c701df09dd31d55e8c3f05e79cc4a77",
+    "source_archive_sha256": "1aaf1b142921073393dad59eb4623a607cffdb2afffd77f7a87340efcfae32c1",
     "schema_sha256": "7dd3d02170f404a817f76952b3f66be457c464c450d2236d96e477a75493e2f0",
     "components": [
       {
         "path": "CodexCLI.app/Contents/MacOS/codex",
-        "sha256": "5be4f1140b35f9d1f30f48d19db6a45036d4a0fb5ce37816a123d064199af672",
-        "bytes": 276854032,
+        "sha256": "93046465f19eace8dd41a4f04ca0a30e82af85e3eb748a02d9ba488a26723d25",
+        "bytes": 277154128,
         "strict_signature_verified": true,
         "pinned_commit_embedded": true,
         "signature_identifier": "box.acg.decodex.codex-runtime",
-        "cdhash": "3c929b079816f4cf6f533cb584df7aadb132a8b8",
+        "cdhash": "4078433fa8abc37ebdba2270c7962e991c18bb45",
         "matches_prior_signing_team": true
       },
       {
         "path": "bin/codex-code-mode-host",
-        "sha256": "ce24cb788abe03236b5a4bd88665cbcb9911666be6b3b7bee7f7ffdd55ac0876",
-        "bytes": 59295696,
+        "sha256": "dd4670980983920f4f361fdf522e688baaa369b896948c288afeb7cddd444435",
+        "bytes": 59295328,
         "strict_signature_verified": true,
         "pinned_commit_embedded": true,
         "signature_identifier": "box.acg.decodex.codex-code-mode-host",
-        "cdhash": "70c194033f5700a832c1199c6b59c28a585d32c9",
+        "cdhash": "0cfe1ba88807bdf5b77bbabb6318bdb7ef5689b2",
         "matches_prior_signing_team": true
       },
       {
         "path": "bin/codex-exec-server",
-        "sha256": "23123742d2c024a1fec18ed7077b2a2930b6a49fa2a63ae7d365ac261a218e67",
-        "bytes": 65691456,
+        "sha256": "33ae9772fcea8b1b83804aa90e9eb0a85bc4abba8bd4c5ee7127e8837197ace9",
+        "bytes": 65656864,
         "strict_signature_verified": true,
         "pinned_commit_embedded": true,
         "signature_identifier": "box.acg.decodex.codex-exec-server",
-        "cdhash": "d726cb52ba2348a7dce07f1306a3a5a8b3f7c0ab",
+        "cdhash": "740df52707a20a560fefb3808aafa8f9d36896a4",
         "matches_prior_signing_team": true
       },
       {
         "path": "codex-path/rg",
-        "sha256": "12d5560e7f8fc08b223e3a670bc119abb83c67b7ed6d66e32a55f75e9e9021a8",
+        "sha256": "ca1c672821f4d30e2f645a89502503805a99aaa2aa7709588580d1163f5c3bed",
         "bytes": 3829552,
         "strict_signature_verified": true,
         "pinned_commit_embedded": null,
@@ -80,12 +80,12 @@
   "validation": "automations/upstream/qualification.json#decodex_validation",
   "current_delivery": {
     "source_commit_references": [
-      "https://github.com/acg-box/decodex/commit/097385283b63683fb9ec04b0d8b1d35cd6987957"
+      "https://github.com/acg-box/decodex/commit/1ac7a38701b92b62be6e88b848c8029311415197"
     ],
     "status": "Final-head CI and merge evidence are in native receipts."
   },
   "historical_evidence": {
-    "reference": "https://github.com/acg-box/decodex/blob/f68fc37fef8b67d3e33f3f19651cb58c41ba43f5/automations/upstream/retained-evidence.json",
+    "reference": "https://github.com/acg-box/decodex/blob/fef60f2e92bf4fc2c091e3307f4413f3edb75d62/automations/upstream/retained-evidence.json",
     "limits": "Git retains the earlier qualification and its original limits."
   },
   "prompt_revert": "automations/upstream/qualification.json#prompt_revert",

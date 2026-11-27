@@ -22,10 +22,9 @@
   "local_mcp_sharing": {
     "selectors": [
       "account_launch::agent_process::native_tests::mcp_socket::shared_modern_input_returns_to_each_calling_client",
-      "account_launch::agent_process::native_tests::mcp_socket::separate_clients_keep_unmarked_legacy_helpers_private",
-      "account_launch::agent_process::native_tests::discovery::installed_native_mcp_capabilities_survive_tool_discovery_failure"
+      "account_launch::agent_process::native_tests::mcp_socket::separate_clients_keep_unmarked_legacy_helpers_private"
     ],
-    "scope": "Shared modern requests, private legacy helper isolation, and capability discovery failure."
+    "scope": "Shared modern input returns to its client. Unmarked legacy helpers stay private."
   },
   "math_presentation": {
     "historical_qualification": "https://github.com/acg-box/decodex/blob/f68fc37fef8b67d3e33f3f19651cb58c41ba43f5/automations/upstream/qualification.json#math_presentation",
@@ -46,51 +45,51 @@
       "schema::tests::official_schema_supports_current_consumers"
     ]
   },
-  "source_commit": "475e13ab1ace6c63275ee66149c951befc685c96",
-  "upstream_source_reference": "https://github.com/openai/codex/commit/475e13ab1ace6c63275ee66149c951befc685c96",
-  "decodex_main_baseline": "e379d82e1d521e1453795c8dd283ef31cb92c407",
-  "decodex_source_revision": "097385283b63683fb9ec04b0d8b1d35cd6987957",
-  "delivery_reference": "https://github.com/acg-box/decodex/commit/097385283b63683fb9ec04b0d8b1d35cd6987957",
-  "development_version": "0.171.0+decodex.475e13ab1a",
-  "runtime_pin_sha256": "bfd9f4abc4aaf252d50fdb3dcbe90e3d4f1d34b74c6eb93b1f4d9a221f91bfd9",
+  "source_commit": "045a11fe2c701df09dd31d55e8c3f05e79cc4a77",
+  "upstream_source_reference": "https://github.com/openai/codex/commit/045a11fe2c701df09dd31d55e8c3f05e79cc4a77",
+  "decodex_main_baseline": "fef60f2e92bf4fc2c091e3307f4413f3edb75d62",
+  "decodex_source_revision": "1ac7a38701b92b62be6e88b848c8029311415197",
+  "delivery_reference": "https://github.com/acg-box/decodex/commit/1ac7a38701b92b62be6e88b848c8029311415197",
+  "development_version": "0.171.0+decodex.045a11fe2c",
+  "runtime_pin_sha256": "c2e5d026cf398e5718b7dbdbe039bb24d2e956614c7bdb58866587b3b0ac4016",
   "artifact": {
-    "source_commit": "475e13ab1ace6c63275ee66149c951befc685c96",
-    "source_archive_sha256": "4f3b8f66d023811b789eecdc675314be7a601c6a578f2dda7850e45577b09ccd",
+    "source_commit": "045a11fe2c701df09dd31d55e8c3f05e79cc4a77",
+    "source_archive_sha256": "1aaf1b142921073393dad59eb4623a607cffdb2afffd77f7a87340efcfae32c1",
     "schema_sha256": "7dd3d02170f404a817f76952b3f66be457c464c450d2236d96e477a75493e2f0",
     "components": [
       {
         "path": "CodexCLI.app/Contents/MacOS/codex",
-        "sha256": "5be4f1140b35f9d1f30f48d19db6a45036d4a0fb5ce37816a123d064199af672",
-        "bytes": 276854032,
+        "sha256": "93046465f19eace8dd41a4f04ca0a30e82af85e3eb748a02d9ba488a26723d25",
+        "bytes": 277154128,
         "strict_signature_verified": true,
         "pinned_commit_embedded": true,
         "signature_identifier": "box.acg.decodex.codex-runtime",
-        "cdhash": "3c929b079816f4cf6f533cb584df7aadb132a8b8",
+        "cdhash": "4078433fa8abc37ebdba2270c7962e991c18bb45",
         "matches_prior_signing_team": true
       },
       {
         "path": "bin/codex-code-mode-host",
-        "sha256": "ce24cb788abe03236b5a4bd88665cbcb9911666be6b3b7bee7f7ffdd55ac0876",
-        "bytes": 59295696,
+        "sha256": "dd4670980983920f4f361fdf522e688baaa369b896948c288afeb7cddd444435",
+        "bytes": 59295328,
         "strict_signature_verified": true,
         "pinned_commit_embedded": true,
         "signature_identifier": "box.acg.decodex.codex-code-mode-host",
-        "cdhash": "70c194033f5700a832c1199c6b59c28a585d32c9",
+        "cdhash": "0cfe1ba88807bdf5b77bbabb6318bdb7ef5689b2",
         "matches_prior_signing_team": true
       },
       {
         "path": "bin/codex-exec-server",
-        "sha256": "23123742d2c024a1fec18ed7077b2a2930b6a49fa2a63ae7d365ac261a218e67",
-        "bytes": 65691456,
+        "sha256": "33ae9772fcea8b1b83804aa90e9eb0a85bc4abba8bd4c5ee7127e8837197ace9",
+        "bytes": 65656864,
         "strict_signature_verified": true,
         "pinned_commit_embedded": true,
         "signature_identifier": "box.acg.decodex.codex-exec-server",
-        "cdhash": "d726cb52ba2348a7dce07f1306a3a5a8b3f7c0ab",
+        "cdhash": "740df52707a20a560fefb3808aafa8f9d36896a4",
         "matches_prior_signing_team": true
       },
       {
         "path": "codex-path/rg",
-        "sha256": "12d5560e7f8fc08b223e3a670bc119abb83c67b7ed6d66e32a55f75e9e9021a8",
+        "sha256": "ca1c672821f4d30e2f645a89502503805a99aaa2aa7709588580d1163f5c3bed",
         "bytes": 3829552,
         "strict_signature_verified": true,
         "pinned_commit_embedded": null,
@@ -105,7 +104,7 @@
     "source": "exact signed CLI",
     "experimental_files": 487,
     "fingerprint": "7dd3d02170f404a817f76952b3f66be457c464c450d2236d96e477a75493e2f0",
-    "cli_version": "codex-cli 0.171.0+decodex.475e13ab1a",
+    "cli_version": "codex-cli 0.171.0+decodex.045a11fe2c",
     "schema_document_paths": [
       "ClientRequest.json",
       "ServerRequest.json",
@@ -120,30 +119,30 @@
     ]
   },
   "source_integrity": {
-    "commit": "475e13ab1ace6c63275ee66149c951befc685c96",
-    "tree": "b1a704ddce244fd872ec9c27e04cfc713bfbaf61",
-    "archive_sha256": "4f3b8f66d023811b789eecdc675314be7a601c6a578f2dda7850e45577b09ccd",
-    "entries": 10611,
+    "commit": "045a11fe2c701df09dd31d55e8c3f05e79cc4a77",
+    "tree": "4b80a9e7f77da2377b2553da44846fbd34410877",
+    "archive_sha256": "1aaf1b142921073393dad59eb4623a607cffdb2afffd77f7a87340efcfae32c1",
+    "entries": 10607,
     "differences": 0
   },
   "source_validation": {
-    "official_checks": "https://github.com/openai/codex/commit/475e13ab1ace6c63275ee66149c951befc685c96/checks",
+    "official_checks": "https://github.com/openai/codex/commit/045a11fe2c701df09dd31d55e8c3f05e79cc4a77/checks",
     "per_pull_request": "current-review.json#records",
     "local_upstream_tests_executed": 0,
-    "scope": "Official PR check rollups contain mixed conclusions. Local qualification covers the Decodex consumer boundary."
+    "scope": "Official pull request check rollups retain their reported conclusions. Decodex executed its own consumer regressions."
   },
   "development_preparation": {
     "method": "cargo +stable make prepare-codex",
     "result": "Ready",
-    "scope": "Built from the verified archive with the stable toolchain and locked graph. Used the package entitlements and host signing identity, generated the experimental schema from the signed CLI, then imported the exact package in an isolated home.",
+    "scope": "The locked package build completed in an isolated home. Host Keychain signing completed the staged package with the builder entitlements. Exact signed schema generation and isolated import reached Ready.",
     "prepared_source": {
       "codex-rs/Cargo.lock": {
-        "archive_sha256": "d26cf1814cd1cc70fd4fe31586e213e095886e2253432a1e2fde499554442ce2",
-        "prepared_sha256": "337b029a23e384b84aeb186246493e79c4380d0e16d8f42f6f3a4c09abc3e2d0"
+        "archive_sha256": "24aac5859200c99d1db7c34e93ac3148d9f9b882b05052bb1f6956cafbdc7e2e",
+        "prepared_sha256": "567e57a9c5ad6d4224a8a72acae3f651af52ddb9395cf266693453a51d89f07a"
       },
       "codex-rs/Cargo.toml": {
         "archive_sha256": "92928a489db7363dec1ef6dfc2a31798346fc096847567acdc7ea3bd337dc7c5",
-        "prepared_sha256": "4b3e0c103c869511be3a59698cfa72f8d0940912d541db6981c89d21cdd0edb7"
+        "prepared_sha256": "8b86235394c3803dc4d2fccf3ba2874333e1e1379c01f7fff6ef023798254c30"
       },
       "codex-rs/rust-toolchain.toml": {
         "archive_sha256": "913d7e9d7adcd7abfeb0c4554c39a5a57c3cf84a694bc6a6aeae038a1f6ae33b",
@@ -152,11 +151,14 @@
     }
   },
   "retained_source_inclusion": {
-    "previous_selected_source": "06f334aa4b053023c5b4199dde0ba9c004d64820",
+    "previous_selected_source": "475e13ab1ace6c63275ee66149c951befc685c96",
     "previous_source_is_ancestor": true,
-    "previous_qualification": "https://github.com/acg-box/decodex/blob/e379d82e1d521e1453795c8dd283ef31cb92c407/automations/upstream/qualification.json",
-    "decodex_integration": "https://github.com/acg-box/decodex/commit/8d538a0b366c9b9c08727b66ed030286b67e0ff6",
-    "scope": "Includes the selected account voice integration, native paginated prompt revert and the previously qualified runtime changes. The Decodex checks exercise registered agents, cold Work, provider forks, permissions, account voice, Code Mode and MCP."
+    "previous_qualification": "https://github.com/acg-box/decodex/blob/fef60f2e92bf4fc2c091e3307f4413f3edb75d62/automations/upstream/qualification.json",
+    "decodex_integration": [
+      "https://github.com/acg-box/decodex/commit/1e572481743ad84c8c18d3ce07ca810e94d0277c",
+      "https://github.com/acg-box/decodex/commit/fef60f2e92bf4fc2c091e3307f4413f3edb75d62"
+    ],
+    "scope": "The source includes the previous qualified Codex revision. The message-board crate is identical across these two revisions. Exact-artifact checks cover cold Board replies, retained history, native coordination, voice, hooks, routing and component integrity."
   },
   "retained_consumers": {
     "features": "--all-features",
@@ -177,17 +179,17 @@
       "recap": "Use the isolated account home, marker files and component import from scripts/vnext/run_native_regression.py. Set DECODEX_TEST_PROMPT_REVERT=1. Execute from the owned worktree.",
       "DECODEX_TEST_PREVIOUS_CODEX_BINARY": "Prior qualified CLI for the cross-version upgrade case."
     },
-    "registered": 35,
-    "executed": 35,
-    "passed": 35,
+    "registered": 30,
+    "executed": 30,
+    "passed": 30,
     "failed": 0,
     "unmatched_selectors": [],
     "cases": [
       {
         "crate": "decodex_runtime",
-        "selector": "account_launch::agent_process::native_tests::cold_settings::recap_socket::installed_recap_public_socket_preserves_parent_and_exact_request_identity",
-        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_recap_socket_tests.rs",
-        "source_sha256": "3a13a8284b4694a8f74581741cda46a2260e118fb676c25bb50751b373259d3f",
+        "selector": "account_launch::agent_process::native_tests::reviewer::installed_native_live_reviewer_changes_only_the_selected_turn",
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_reviewer_tests.rs",
+        "source_sha256": "92ca3f45f7a5b9ee9df7b4e9d306e07638526a965a72a88644aa78466055f6f1",
         "executed": 1,
         "passed": 1,
         "exit_code": 0,
@@ -195,9 +197,9 @@
       },
       {
         "crate": "decodex_runtime",
-        "selector": "account_launch::agent_process::native_tests::compaction::installed_native_preserves_prompt_before_compaction_error_and_after_restart",
-        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_compaction_tests.rs",
-        "source_sha256": "51f3685a98c8ebfc3c3d4a20b198a3dfb8c60782a193246a8dea66a4af690b10",
+        "selector": "agent::tests::native_subagent_live::native_child_approval_round_trip",
+        "source": "crates/decodex-runtime/src/agent/tests/native_subagent_live.rs",
+        "source_sha256": "3f6974ac86eeda8b9b1b225eae0fab3de258910aff25ab6e77dcccafe1a79eb8",
         "executed": 1,
         "passed": 1,
         "exit_code": 0,
@@ -205,9 +207,9 @@
       },
       {
         "crate": "decodex_runtime",
-        "selector": "account_launch::agent_process::native_tests::steer::installed_native_steer_receipt_confirms_live_and_cold_without_replay",
-        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_steer_tests.rs",
-        "source_sha256": "3895e9f866335c15c27e92c563d367224e7b1887b4a85ad941efa92827663b77",
+        "selector": "account_launch::agent_process::native_tests::reviewer::installed_native_live_reviewer_preserves_both_default_directions",
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_reviewer_tests.rs",
+        "source_sha256": "92ca3f45f7a5b9ee9df7b4e9d306e07638526a965a72a88644aa78466055f6f1",
         "executed": 1,
         "passed": 1,
         "exit_code": 0,
@@ -215,9 +217,89 @@
       },
       {
         "crate": "decodex_runtime",
-        "selector": "account_launch::agent_process::native_tests::goals::installed_native_goal_reads_preserve_native_state_after_restart",
-        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_goal_tests.rs",
-        "source_sha256": "1452e604875a374cef96a3cdbf74c36584820743824b7d22e570c71ed9cd621e",
+        "selector": "account_launch::agent_process::native_tests::reviewer::store::permission_owner_tests::installed_native_running_builtin_permissions_preserve_pending_tools",
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_permission_tests.rs",
+        "source_sha256": "3db2edfab0716c167894f8989a38912c6c75a23e534bb80e30f05e650b51564a",
+        "executed": 1,
+        "passed": 1,
+        "exit_code": 0,
+        "entrypoint": "compiled libtest --ignored --exact <selector> --test-threads=1 --nocapture"
+      },
+      {
+        "crate": "decodex_runtime",
+        "selector": "account_launch::agent_process::native_tests::file_approval::installed_native_file_approval_saves_live_diff_before_history_and_declines_once",
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_file_approval_tests.rs",
+        "source_sha256": "82e164ef1f001147cfddda18bc4c98a0873bb73f04439f5da355eb650edd21ed",
+        "executed": 1,
+        "passed": 1,
+        "exit_code": 0,
+        "entrypoint": "compiled libtest --ignored --exact <selector> --test-threads=1 --nocapture"
+      },
+      {
+        "crate": "decodex_runtime",
+        "selector": "account_launch::agent_process::native_tests::reviewer::installed_native_guardian_preserves_large_action",
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_reviewer_tests.rs",
+        "source_sha256": "92ca3f45f7a5b9ee9df7b4e9d306e07638526a965a72a88644aa78466055f6f1",
+        "executed": 1,
+        "passed": 1,
+        "exit_code": 0,
+        "entrypoint": "compiled libtest --ignored --exact <selector> --test-threads=1 --nocapture"
+      },
+      {
+        "crate": "decodex_runtime",
+        "selector": "account_launch::agent_process::native_tests::reviewer::evidence::installed_guardian_retains_answer_after_compaction_and_restart",
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_guardian_evidence_tests.rs",
+        "source_sha256": "81b238444dbc248a22dd6ade2f7eed0d5a415c0bfbf98225d3a0f538562e136a",
+        "executed": 1,
+        "passed": 1,
+        "exit_code": 0,
+        "entrypoint": "compiled libtest --ignored --exact <selector> --test-threads=1 --nocapture"
+      },
+      {
+        "crate": "decodex_runtime",
+        "selector": "account_launch::agent_process::native_tests::reviewer::image_evidence::installed_guardian_preserves_native_image_profile_after_restart",
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_guardian_image_tests.rs",
+        "source_sha256": "096f5d64d5b4a6c214e1625545ad924da831bdf07ea23c86c3a6b5274750c4ac",
+        "executed": 1,
+        "passed": 1,
+        "exit_code": 0,
+        "entrypoint": "compiled libtest --ignored --exact <selector> --test-threads=1 --nocapture"
+      },
+      {
+        "crate": "decodex_runtime",
+        "selector": "account_launch::agent_process::native_tests::hook_settings::installed_hook_settings_read_inherited_hooks_in_linked_worktree",
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_hook_settings_tests.rs",
+        "source_sha256": "60fdcb5169f577c54052a828e186727bb35cefcfdc7f6dc5e611173badd46789",
+        "executed": 1,
+        "passed": 1,
+        "exit_code": 0,
+        "entrypoint": "compiled libtest --ignored --exact <selector> --test-threads=1 --nocapture"
+      },
+      {
+        "crate": "decodex_runtime",
+        "selector": "agent::tests::native_agent_wake::native_child_completion_wakes_idle_root_once",
+        "source": "crates/decodex-runtime/src/agent/tests/native_agent_wake.rs",
+        "source_sha256": "da4710d8af187859caaf64bc714b19a393a484c297294bdb0dc83c519a1ff4d3",
+        "executed": 1,
+        "passed": 1,
+        "exit_code": 0,
+        "entrypoint": "compiled libtest --ignored --exact <selector> --test-threads=1 --nocapture"
+      },
+      {
+        "crate": "decodex_runtime",
+        "selector": "account_launch::agent_process::native_tests::context::installed_native_stream_disconnect_recovers_the_same_turn_without_resending",
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_context_tests.rs",
+        "source_sha256": "3f7ca596408560b243e79a333d40fbd39567c92f9635566a4f0c6716c12b0775",
+        "executed": 1,
+        "passed": 1,
+        "exit_code": 0,
+        "entrypoint": "compiled libtest --ignored --exact <selector> --test-threads=1 --nocapture"
+      },
+      {
+        "crate": "decodex_runtime",
+        "selector": "account_launch::agent_process::native_tests::code_mode::installed_native_parallel_dynamic_tools_preserve_ids_and_result_order",
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_code_mode_tests.rs",
+        "source_sha256": "9ee4e9dd6b4867a2c57c4f775549f397352303f478a118d98d55841ba8afd539",
         "executed": 1,
         "passed": 1,
         "exit_code": 0,
@@ -245,9 +327,9 @@
       },
       {
         "crate": "decodex_runtime",
-        "selector": "account_launch::agent_process::native_tests::reviewer::store::permission_owner_tests::installed_native_running_builtin_permissions_preserve_pending_tools",
-        "source": "crates/decodex-runtime/src/account_launch/agent_process_permission_tests.rs",
-        "source_sha256": "3db2edfab0716c167894f8989a38912c6c75a23e534bb80e30f05e650b51564a",
+        "selector": "account_launch::agent_process::native_tests::upgrade::installed_runtime_upgrade_preserves_history_and_paused_goal_with_legacy_voice",
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_upgrade_tests.rs",
+        "source_sha256": "d2745bc9831af1a3dded65ffa40c256c40e9f03b3ff2b17a127b6a3bde273c94",
         "executed": 1,
         "passed": 1,
         "exit_code": 0,
@@ -255,9 +337,9 @@
       },
       {
         "crate": "decodex_runtime",
-        "selector": "account_launch::agent_process::native_tests::reviewer::evidence::installed_guardian_retains_answer_after_compaction_and_restart",
-        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_guardian_evidence_tests.rs",
-        "source_sha256": "81b238444dbc248a22dd6ade2f7eed0d5a415c0bfbf98225d3a0f538562e136a",
+        "selector": "account_launch::agent_process::native_tests::cold_settings::recap_socket::installed_recap_public_socket_preserves_parent_and_exact_request_identity",
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_recap_socket_tests.rs",
+        "source_sha256": "3a13a8284b4694a8f74581741cda46a2260e118fb676c25bb50751b373259d3f",
         "executed": 1,
         "passed": 1,
         "exit_code": 0,
@@ -265,19 +347,9 @@
       },
       {
         "crate": "decodex_runtime",
-        "selector": "account_launch::agent_process::native_tests::reviewer::installed_native_guardian_preserves_large_action",
-        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_reviewer_tests.rs",
-        "source_sha256": "011b286e5735db892a9f2a5265a3a00c484f762d6eed52b36566f9dd13b823b0",
-        "executed": 1,
-        "passed": 1,
-        "exit_code": 0,
-        "entrypoint": "compiled libtest --ignored --exact <selector> --test-threads=1 --nocapture"
-      },
-      {
-        "crate": "decodex_runtime",
-        "selector": "agent::tests::native_agent_wake::native_child_completion_wakes_idle_root_once",
-        "source": "crates/decodex-runtime/src/agent/tests/native_agent_wake.rs",
-        "source_sha256": "da4710d8af187859caaf64bc714b19a393a484c297294bdb0dc83c519a1ff4d3",
+        "selector": "account_launch::agent_process::native_tests::compaction::installed_native_preserves_prompt_before_compaction_error_and_after_restart",
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_compaction_tests.rs",
+        "source_sha256": "51f3685a98c8ebfc3c3d4a20b198a3dfb8c60782a193246a8dea66a4af690b10",
         "executed": 1,
         "passed": 1,
         "exit_code": 0,
@@ -295,9 +367,9 @@
       },
       {
         "crate": "decodex_runtime",
-        "selector": "account_launch::agent_process::native_tests::models::installed_model_selection_changes_next_inference_and_survives_restart",
-        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_model_tests.rs",
-        "source_sha256": "2ff55ec73f029f6516db1149e125e56e77eceea3e8b44b8ca1cd8c9c3bf38372",
+        "selector": "account_launch::agent_process::native_tests::registration::registered_and_created_agents_create_work_after_cold_resume",
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_registration_tests.rs",
+        "source_sha256": "67201723eacec3ac35ccfac6ab5a510c15818bb06d0009021af8021cb1e7f7d3",
         "executed": 1,
         "passed": 1,
         "exit_code": 0,
@@ -305,9 +377,9 @@
       },
       {
         "crate": "decodex_runtime",
-        "selector": "account_launch::agent_process::native_tests::hook_settings::installed_hook_settings_read_inherited_hooks_in_linked_worktree",
-        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_hook_settings_tests.rs",
-        "source_sha256": "60fdcb5169f577c54052a828e186727bb35cefcfdc7f6dc5e611173badd46789",
+        "selector": "account_launch::agent_process::native_tests::project_sync::native_project_reconciles_retained_conversation_and_survives_restart",
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_project_sync_tests.rs",
+        "source_sha256": "5b3710373b95c7e0f44c9d0616e5a7e328ec3e7055df03f43b433e86250bb561",
         "executed": 1,
         "passed": 1,
         "exit_code": 0,
@@ -328,46 +400,6 @@
         "selector": "account_launch::agent_process::native_tests::mcp_socket::separate_clients_keep_unmarked_legacy_helpers_private",
         "source": "crates/decodex-runtime/src/account_launch/agent_process_native_mcp_socket_tests.rs",
         "source_sha256": "afb9f3033336af7b6b0ef291bb8ec0c9392caec1f4bafe034cc4ebf1c4bebdc1",
-        "executed": 1,
-        "passed": 1,
-        "exit_code": 0,
-        "entrypoint": "compiled libtest --ignored --exact <selector> --test-threads=1 --nocapture"
-      },
-      {
-        "crate": "decodex_runtime",
-        "selector": "account_launch::agent_process::native_tests::discovery::installed_native_mcp_capabilities_survive_tool_discovery_failure",
-        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_discovery_tests.rs",
-        "source_sha256": "e90c8c6714b30209979f81fafd8d9263f8ff163bf9b9554625810bfa2b5149f3",
-        "executed": 1,
-        "passed": 1,
-        "exit_code": 0,
-        "entrypoint": "compiled libtest --ignored --exact <selector> --test-threads=1 --nocapture"
-      },
-      {
-        "crate": "decodex_runtime",
-        "selector": "account_launch::agent_process::native_tests::audio::installed_native_replaces_empty_tool_audio_without_losing_other_output",
-        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_audio_tests.rs",
-        "source_sha256": "a0e17741f906073abbf6fa513fa9b38638e44f6e4366407a62f8fb59737a148a",
-        "executed": 1,
-        "passed": 1,
-        "exit_code": 0,
-        "entrypoint": "compiled libtest --ignored --exact <selector> --test-threads=1 --nocapture"
-      },
-      {
-        "crate": "decodex_codex",
-        "selector": "schema::tests::official_schema_supports_current_consumers",
-        "source": "crates/decodex-codex/src/schema.rs",
-        "source_sha256": "8ca8865cf9afc453da637f02c2dae03ce40bdf399272de72edce6b8e6bda1035",
-        "executed": 1,
-        "passed": 1,
-        "exit_code": 0,
-        "entrypoint": "compiled libtest --ignored --exact <selector> --test-threads=1 --nocapture"
-      },
-      {
-        "crate": "development",
-        "selector": "fixed_commit_import_explicit_reinstall_and_wrong_commit_rejection",
-        "source": "crates/decodex-components/tests/development.rs",
-        "source_sha256": "0ccbd7b95fb091a8b686f9bb51851a94effa6c3fb66b8d838eb49284723156b5",
         "executed": 1,
         "passed": 1,
         "exit_code": 0,
@@ -405,36 +437,6 @@
       },
       {
         "crate": "decodex_runtime",
-        "selector": "account_launch::agent_process::native_tests::upgrade::installed_runtime_upgrade_preserves_history_and_paused_goal_with_legacy_voice",
-        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_upgrade_tests.rs",
-        "source_sha256": "d2745bc9831af1a3dded65ffa40c256c40e9f03b3ff2b17a127b6a3bde273c94",
-        "executed": 1,
-        "passed": 1,
-        "exit_code": 0,
-        "entrypoint": "compiled libtest --ignored --exact <selector> --test-threads=1 --nocapture"
-      },
-      {
-        "crate": "decodex_runtime",
-        "selector": "account_launch::agent_process::native_tests::code_mode::installed_native_parallel_dynamic_tools_preserve_ids_and_result_order",
-        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_code_mode_tests.rs",
-        "source_sha256": "9ee4e9dd6b4867a2c57c4f775549f397352303f478a118d98d55841ba8afd539",
-        "executed": 1,
-        "passed": 1,
-        "exit_code": 0,
-        "entrypoint": "compiled libtest --ignored --exact <selector> --test-threads=1 --nocapture"
-      },
-      {
-        "crate": "decodex_runtime",
-        "selector": "account_launch::agent_process::native_tests::reviewer::image_evidence::installed_guardian_preserves_native_image_profile_after_restart",
-        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_guardian_image_tests.rs",
-        "source_sha256": "096f5d64d5b4a6c214e1625545ad924da831bdf07ea23c86c3a6b5274750c4ac",
-        "executed": 1,
-        "passed": 1,
-        "exit_code": 0,
-        "entrypoint": "compiled libtest --ignored --exact <selector> --test-threads=1 --nocapture"
-      },
-      {
-        "crate": "decodex_runtime",
         "selector": "account_launch::agent_process::native_tests::skills::installed_skill_picker_inventory_and_exact_input_use_native_skill_owner",
         "source": "crates/decodex-runtime/src/account_launch/agent_process_native_skills_tests.rs",
         "source_sha256": "ff0df22702edfa42a03c0eec1a1b563b116de52ff14204e5a557efed2be687cf",
@@ -444,10 +446,20 @@
         "entrypoint": "compiled libtest --ignored --exact <selector> --test-threads=1 --nocapture"
       },
       {
-        "crate": "decodex_runtime",
-        "selector": "account_launch::agent_process::native_tests::discovery::installed_native_mcp_inventory_retains_same_name_scopes",
-        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_discovery_tests.rs",
-        "source_sha256": "e90c8c6714b30209979f81fafd8d9263f8ff163bf9b9554625810bfa2b5149f3",
+        "crate": "decodex_codex",
+        "selector": "schema::tests::official_schema_supports_current_consumers",
+        "source": "crates/decodex-codex/src/schema.rs",
+        "source_sha256": "8ca8865cf9afc453da637f02c2dae03ce40bdf399272de72edce6b8e6bda1035",
+        "executed": 1,
+        "passed": 1,
+        "exit_code": 0,
+        "entrypoint": "compiled libtest --ignored --exact <selector> --test-threads=1 --nocapture"
+      },
+      {
+        "crate": "development",
+        "selector": "fixed_commit_import_explicit_reinstall_and_wrong_commit_rejection",
+        "source": "crates/decodex-components/tests/development.rs",
+        "source_sha256": "0ccbd7b95fb091a8b686f9bb51851a94effa6c3fb66b8d838eb49284723156b5",
         "executed": 1,
         "passed": 1,
         "exit_code": 0,
@@ -455,9 +467,9 @@
       },
       {
         "crate": "decodex_runtime",
-        "selector": "account_launch::agent_process::native_tests::project_sync::native_project_reconciles_retained_conversation_and_survives_restart",
-        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_project_sync_tests.rs",
-        "source_sha256": "5b3710373b95c7e0f44c9d0616e5a7e328ec3e7055df03f43b433e86250bb561",
+        "selector": "account_launch::agent_process::native_tests::project_work::installed_board_reply_uses_original_topic_after_restart",
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_project_work_tests.rs",
+        "source_sha256": "075ad18cb65ffc2d655babe1bed7032bb79fb76e396bd1fc206307def16e35c2",
         "executed": 1,
         "passed": 1,
         "exit_code": 0,
@@ -465,69 +477,9 @@
       },
       {
         "crate": "decodex_runtime",
-        "selector": "account_launch::agent_process::native_tests::registration::registered_and_created_agents_create_work_after_cold_resume",
-        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_registration_tests.rs",
-        "source_sha256": "67201723eacec3ac35ccfac6ab5a510c15818bb06d0009021af8021cb1e7f7d3",
-        "executed": 1,
-        "passed": 1,
-        "exit_code": 0,
-        "entrypoint": "compiled libtest --ignored --exact <selector> --test-threads=1 --nocapture"
-      },
-      {
-        "crate": "decodex_runtime",
-        "selector": "account_launch::agent_process::native_tests::archive::installed_native_archive_roundtrip_refreshes_without_restarting_either_process",
-        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_archive_tests.rs",
-        "source_sha256": "961498072d30554009a7d26644978627f5877478b2f7031de20bb2e2e8ab3af4",
-        "executed": 1,
-        "passed": 1,
-        "exit_code": 0,
-        "entrypoint": "compiled libtest --ignored --exact <selector> --test-threads=1 --nocapture"
-      },
-      {
-        "crate": "decodex_runtime",
-        "selector": "account_launch::agent_process::native_tests::archive::installed_native_delete_cleans_local_history_and_context_lineage",
-        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_archive_tests.rs",
-        "source_sha256": "961498072d30554009a7d26644978627f5877478b2f7031de20bb2e2e8ab3af4",
-        "executed": 1,
-        "passed": 1,
-        "exit_code": 0,
-        "entrypoint": "compiled libtest --ignored --exact <selector> --test-threads=1 --nocapture"
-      },
-      {
-        "crate": "decodex_runtime",
-        "selector": "account_launch::agent_process::native_tests::archive::installed_native_archive_catalog_pages_every_timestamp_tie",
-        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_archive_tests.rs",
-        "source_sha256": "961498072d30554009a7d26644978627f5877478b2f7031de20bb2e2e8ab3af4",
-        "executed": 1,
-        "passed": 1,
-        "exit_code": 0,
-        "entrypoint": "compiled libtest --ignored --exact <selector> --test-threads=1 --nocapture"
-      },
-      {
-        "crate": "decodex_runtime",
-        "selector": "account_launch::agent_process::native_tests::permissions::installed_permission_selection_publishes_and_survives_native_restart",
-        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_permission_tests.rs",
-        "source_sha256": "bdc7b2bcbc94f5258c5390cbb2ec4d5839f1e90000d89db635dd4a743e2e9b60",
-        "executed": 1,
-        "passed": 1,
-        "exit_code": 0,
-        "entrypoint": "compiled libtest --ignored --exact <selector> --test-threads=1 --nocapture"
-      },
-      {
-        "crate": "decodex_runtime",
-        "selector": "account_launch::agent_process::native_tests::context::installed_native_stream_disconnect_recovers_the_same_turn_without_resending",
-        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_context_tests.rs",
-        "source_sha256": "3f7ca596408560b243e79a333d40fbd39567c92f9635566a4f0c6716c12b0775",
-        "executed": 1,
-        "passed": 1,
-        "exit_code": 0,
-        "entrypoint": "compiled libtest --ignored --exact <selector> --test-threads=1 --nocapture"
-      },
-      {
-        "crate": "decodex_runtime",
-        "selector": "account_launch::agent_process::native_tests::cold_settings::recap_socket::fork::installed_fork_preserves_source_provider_after_default_changes",
-        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_fork_tests.rs",
-        "source_sha256": "896ee1dc29e494ea12c99ebccd8efba6b572c2689dbea036395e1f90c9f8fbd4",
+        "selector": "account_launch::process::native_control_tests::installed_native_qualified_defaults_preserve_multi_agent_selection",
+        "source": "crates/decodex-runtime/src/account_launch/process_native_control_tests.rs",
+        "source_sha256": "62a7b8ce0fd31aac25ac1223577293d76d31a9b8741724b38e53141a2d179ec9",
         "executed": 1,
         "passed": 1,
         "exit_code": 0,
@@ -536,32 +488,39 @@
     ]
   },
   "fixture_source_sha256": {
-    "crates/decodex-runtime/src/account_launch/agent_process_native_recap_socket_tests.rs": "3a13a8284b4694a8f74581741cda46a2260e118fb676c25bb50751b373259d3f",
-    "crates/decodex-runtime/src/account_launch/agent_process_native_compaction_tests.rs": "51f3685a98c8ebfc3c3d4a20b198a3dfb8c60782a193246a8dea66a4af690b10",
-    "crates/decodex-runtime/src/account_launch/agent_process_native_steer_tests.rs": "3895e9f866335c15c27e92c563d367224e7b1887b4a85ad941efa92827663b77",
-    "crates/decodex-runtime/src/account_launch/agent_process_native_goal_tests.rs": "1452e604875a374cef96a3cdbf74c36584820743824b7d22e570c71ed9cd621e",
+    "crates/decodex-runtime/src/account_launch/agent_process_native_reviewer_tests.rs": "92ca3f45f7a5b9ee9df7b4e9d306e07638526a965a72a88644aa78466055f6f1",
+    "crates/decodex-runtime/src/agent/tests/native_subagent_live.rs": "3f6974ac86eeda8b9b1b225eae0fab3de258910aff25ab6e77dcccafe1a79eb8",
+    "crates/decodex-runtime/src/account_launch/agent_process_permission_tests.rs": "3db2edfab0716c167894f8989a38912c6c75a23e534bb80e30f05e650b51564a",
+    "crates/decodex-runtime/src/account_launch/agent_process_native_file_approval_tests.rs": "82e164ef1f001147cfddda18bc4c98a0873bb73f04439f5da355eb650edd21ed",
+    "crates/decodex-runtime/src/account_launch/agent_process_native_guardian_evidence_tests.rs": "81b238444dbc248a22dd6ade2f7eed0d5a415c0bfbf98225d3a0f538562e136a",
+    "crates/decodex-runtime/src/account_launch/agent_process_native_guardian_image_tests.rs": "096f5d64d5b4a6c214e1625545ad924da831bdf07ea23c86c3a6b5274750c4ac",
+    "crates/decodex-runtime/src/account_launch/agent_process_native_hook_settings_tests.rs": "60fdcb5169f577c54052a828e186727bb35cefcfdc7f6dc5e611173badd46789",
+    "crates/decodex-runtime/src/agent/tests/native_agent_wake.rs": "da4710d8af187859caaf64bc714b19a393a484c297294bdb0dc83c519a1ff4d3",
+    "crates/decodex-runtime/src/account_launch/agent_process_native_context_tests.rs": "3f7ca596408560b243e79a333d40fbd39567c92f9635566a4f0c6716c12b0775",
     "crates/decodex-runtime/src/account_launch/agent_process_native_code_mode_tests.rs": "9ee4e9dd6b4867a2c57c4f775549f397352303f478a118d98d55841ba8afd539",
     "crates/decodex-runtime/src/account_launch/agent_process_native_registration_tests.rs": "67201723eacec3ac35ccfac6ab5a510c15818bb06d0009021af8021cb1e7f7d3",
-    "crates/decodex-runtime/src/account_launch/agent_process_permission_tests.rs": "3db2edfab0716c167894f8989a38912c6c75a23e534bb80e30f05e650b51564a",
-    "crates/decodex-runtime/src/account_launch/agent_process_native_guardian_evidence_tests.rs": "81b238444dbc248a22dd6ade2f7eed0d5a415c0bfbf98225d3a0f538562e136a",
-    "crates/decodex-runtime/src/account_launch/agent_process_native_reviewer_tests.rs": "011b286e5735db892a9f2a5265a3a00c484f762d6eed52b36566f9dd13b823b0",
-    "crates/decodex-runtime/src/agent/tests/native_agent_wake.rs": "da4710d8af187859caaf64bc714b19a393a484c297294bdb0dc83c519a1ff4d3",
+    "crates/decodex-runtime/src/account_launch/agent_process_native_upgrade_tests.rs": "d2745bc9831af1a3dded65ffa40c256c40e9f03b3ff2b17a127b6a3bde273c94",
+    "crates/decodex-runtime/src/account_launch/agent_process_native_recap_socket_tests.rs": "3a13a8284b4694a8f74581741cda46a2260e118fb676c25bb50751b373259d3f",
+    "crates/decodex-runtime/src/account_launch/agent_process_native_compaction_tests.rs": "51f3685a98c8ebfc3c3d4a20b198a3dfb8c60782a193246a8dea66a4af690b10",
     "crates/decodex-runtime/src/account_launch/agent_process_native_fork_tests.rs": "896ee1dc29e494ea12c99ebccd8efba6b572c2689dbea036395e1f90c9f8fbd4",
-    "crates/decodex-runtime/src/account_launch/agent_process_native_model_tests.rs": "2ff55ec73f029f6516db1149e125e56e77eceea3e8b44b8ca1cd8c9c3bf38372",
-    "crates/decodex-runtime/src/account_launch/agent_process_native_hook_settings_tests.rs": "60fdcb5169f577c54052a828e186727bb35cefcfdc7f6dc5e611173badd46789",
+    "crates/decodex-runtime/src/account_launch/agent_process_native_project_sync_tests.rs": "5b3710373b95c7e0f44c9d0616e5a7e328ec3e7055df03f43b433e86250bb561",
     "crates/decodex-runtime/src/account_launch/agent_process_native_mcp_socket_tests.rs": "afb9f3033336af7b6b0ef291bb8ec0c9392caec1f4bafe034cc4ebf1c4bebdc1",
-    "crates/decodex-runtime/src/account_launch/agent_process_native_discovery_tests.rs": "e90c8c6714b30209979f81fafd8d9263f8ff163bf9b9554625810bfa2b5149f3",
-    "crates/decodex-runtime/src/account_launch/agent_process_native_audio_tests.rs": "a0e17741f906073abbf6fa513fa9b38638e44f6e4366407a62f8fb59737a148a",
+    "crates/decodex-runtime/src/account_launch/agent_process_voice_settings_start_tests.rs": "3483313e21ec8ce74480c147d1f1bb8fc6a943d88fcb6eff35f2a90d3cde7b7a",
+    "crates/decodex-runtime/src/account_launch/agent_process_native_skills_tests.rs": "ff0df22702edfa42a03c0eec1a1b563b116de52ff14204e5a557efed2be687cf",
     "crates/decodex-codex/src/schema.rs": "8ca8865cf9afc453da637f02c2dae03ce40bdf399272de72edce6b8e6bda1035",
     "crates/decodex-components/tests/development.rs": "0ccbd7b95fb091a8b686f9bb51851a94effa6c3fb66b8d838eb49284723156b5",
-    "crates/decodex-runtime/src/account_launch/agent_process_voice_settings_start_tests.rs": "3483313e21ec8ce74480c147d1f1bb8fc6a943d88fcb6eff35f2a90d3cde7b7a",
-    "crates/decodex-runtime/src/account_launch/agent_process_native_upgrade_tests.rs": "d2745bc9831af1a3dded65ffa40c256c40e9f03b3ff2b17a127b6a3bde273c94",
-    "crates/decodex-runtime/src/account_launch/agent_process_native_guardian_image_tests.rs": "096f5d64d5b4a6c214e1625545ad924da831bdf07ea23c86c3a6b5274750c4ac",
-    "crates/decodex-runtime/src/account_launch/agent_process_native_skills_tests.rs": "ff0df22702edfa42a03c0eec1a1b563b116de52ff14204e5a557efed2be687cf",
-    "crates/decodex-runtime/src/account_launch/agent_process_native_project_sync_tests.rs": "5b3710373b95c7e0f44c9d0616e5a7e328ec3e7055df03f43b433e86250bb561",
-    "crates/decodex-runtime/src/account_launch/agent_process_native_archive_tests.rs": "961498072d30554009a7d26644978627f5877478b2f7031de20bb2e2e8ab3af4",
-    "crates/decodex-runtime/src/account_launch/agent_process_native_permission_tests.rs": "bdc7b2bcbc94f5258c5390cbb2ec4d5839f1e90000d89db635dd4a743e2e9b60",
-    "crates/decodex-runtime/src/account_launch/agent_process_native_context_tests.rs": "3f7ca596408560b243e79a333d40fbd39567c92f9635566a4f0c6716c12b0775"
+    "crates/decodex-runtime/src/account_launch/agent_process_native_project_work_tests.rs": "075ad18cb65ffc2d655babe1bed7032bb79fb76e396bd1fc206307def16e35c2",
+    "crates/decodex-runtime/src/account_launch/process_native_control_tests.rs": "62a7b8ce0fd31aac25ac1223577293d76d31a9b8741724b38e53141a2d179ec9",
+    "crates/decodex-runtime/src/agent/tests/native_settings.rs": "20ccb5f07ca1b7b3adba53acf207b0e6e1fb1b02570546387887786e40c10692",
+    "crates/decodex-runtime/src/native_board.rs": "78de245f4bbb63972a3ae8413872452ee7be7a557900444960ea4c33d20e552b",
+    "crates/decodex-runtime/src/agent/activity.rs": "c93613c40daa6cc309239f446e0c1a08e1f0b2c6e142589f13c637235276fcad",
+    "crates/decodex-runtime/src/account_launch/agent_process_native_tests.rs": "7cc2a3aa16cdf21bf03e7a662d931198092b7706a9101bdcebdeb92d0268406a",
+    "crates/decodex-runtime/src/account_launch/process.rs": "5fed76994eadfddfed9b5bae5ad18eae83c8daaccba562a7e600f01ea85fb1f9",
+    "crates/decodex-codex/src/app_server_client/history.rs": "ed4827ff25eaf90f60ad039fb1d1ba491c7e984e79eef496c9c234307806904f",
+    "scripts/vnext/run_native_regression.py": "1bf890dd4133e4450fbb5b2c272170fdc7e68fb0788421ba51e3ae238f4a602a",
+    "scripts/macos/build_codex_source.mts": "44225ba7067b143f2613cc02f0482c7875982919edf4af3720fb273db1d4459c",
+    "scripts/macos/prepare_codex.mts": "4d85b6503324c5e81366b10eeaa7f6e41e2c92a9864bb7d61bb90fe34afc4f4b",
+    "scripts/macos/version_codex_source.py": "4b140d89c39cd1021c19033cd30e944486acdb19f5ffd40bc27bcf720aa4964d"
   },
   "component_cache_repair": {
     "crate": "development",
@@ -574,26 +533,36 @@
     "entrypoint": "compiled libtest --ignored --exact <selector> --test-threads=1 --nocapture"
   },
   "baseline_execution": {
-    "source": "06f334aa4b053023c5b4199dde0ba9c004d64820",
-    "cli_sha256": "33e927ea6ea2c1b5e1d76b60716f35059d4d8d370aeada54028c116eea935dcb",
+    "source": "475e13ab1ace6c63275ee66149c951befc685c96",
+    "cli_sha256": "5be4f1140b35f9d1f30f48d19db6a45036d4a0fb5ce37816a123d064199af672",
     "registered": 2,
     "executed": 2,
-    "passed": 2,
-    "failed": 0,
-    "selectors": [
-      "account_launch::agent_process::native_tests::archive::installed_native_delete_cleans_local_history_and_context_lineage",
-      "account_launch::agent_process::native_tests::archive::installed_native_archive_catalog_pages_every_timestamp_tie"
-    ]
+    "passed": 1,
+    "failed": 1,
+    "cases": [
+      {
+        "selector": "account_launch::agent_process::native_tests::reviewer::installed_native_live_reviewer_changes_only_the_selected_turn",
+        "executed": 1,
+        "passed": 0
+      },
+      {
+        "selector": "account_launch::agent_process::native_tests::project_work::installed_board_reply_uses_original_topic_after_restart",
+        "executed": 1,
+        "passed": 1
+      }
+    ],
+    "result": "The Board control passed. The exact declined command was missing from reopened history. The candidate passed both checks."
   },
   "limits": [
-    "Development on macOS arm64 using isolated test homes and loopback fixtures. The version retains the reviewed 0.171.0 compatibility prefix.",
-    "No live account, provider, managed-policy deployment, Statsig service, Guardian V3, installed desktop, official release or other operating system was qualified.",
-    "The native consumer tests for hooks, initial input and MCP cover Decodex-owned behavior. The upstream child SessionEnd, host roster suspension and HTTP session cleanup paths have source evidence."
+    "Development qualification on macOS arm64 with isolated native homes and loopback providers. The Board fixture used one author, a native cold resume and a reply to the original topic.",
+    "Hosted Rust extensions, remote executors, provider WebSocket privacy and forced interruption races have upstream source-test evidence. No live provider, account, desktop installation, other platform or official release was qualified."
   ],
   "decodex_validation": {
     "checks": [
       "cargo +stable make test-automations",
-      "python3 automations/decodex/scripts/config/evaluate_automations.py --repo-only --json"
+      "python3 automations/decodex/scripts/config/evaluate_automations.py --repo-only --json",
+      "rustfmt +nightly --config skip_children=true --check <changed Rust sources>",
+      "git diff --check"
     ],
     "checkpoint": {
       "passed": 8,
@@ -604,5 +573,38 @@
       "failed": 0
     },
     "manifest": "pass"
+  },
+  "local_source_checks": {
+    "entrypoint": "Compiled decodex-runtime libtest, --list --exact then --exact <selector> --test-threads=1.",
+    "registered": 4,
+    "executed": 4,
+    "passed": 4,
+    "unmatched": [],
+    "cases": [
+      {
+        "selector": "agent::tests::native_settings::board_default_respects_native_selection_at_start_and_cold_resume",
+        "source": "crates/decodex-runtime/src/agent/tests/native_settings.rs",
+        "executed": 1,
+        "passed": 1
+      },
+      {
+        "selector": "native_board::tests::board_cursor_survives_a_reopen_and_excludes_other_trees",
+        "source": "crates/decodex-runtime/src/native_board.rs",
+        "executed": 1,
+        "passed": 1
+      },
+      {
+        "selector": "agent::activity::tests::search_exit_one_keeps_the_code_without_marking_activity_failed",
+        "source": "crates/decodex-runtime/src/agent/activity.rs",
+        "executed": 1,
+        "passed": 1
+      },
+      {
+        "selector": "agent::activity::tests::compaction_and_command_failure_use_native_evidence",
+        "source": "crates/decodex-runtime/src/agent/activity.rs",
+        "executed": 1,
+        "passed": 1
+      }
+    ]
   }
 }
