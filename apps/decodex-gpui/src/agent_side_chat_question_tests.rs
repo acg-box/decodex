@@ -110,6 +110,23 @@ fn selected_text_starts_the_same_side_chat_flow_with_the_displayed_selection(
 	visual.simulate_mouse_up(end, MouseButton::Left, Default::default());
 	draw(visual);
 	let ask = visual.debug_bounds("ask-selected-text").expect("selection question action");
+	let label = visual.update(|window, _| {
+		window
+			.text_system()
+			.shape_line(
+				"Ask in side chat".into(),
+				gpui::px(crate::ui_theme::COMPACT_BODY_SIZE),
+				&[gpui::TextRun {
+					len: "Ask in side chat".len(),
+					font: gpui::font(crate::ui_theme::FONT_FAMILY),
+					..Default::default()
+				}],
+				None,
+			)
+			.width
+	});
+	let inset = f32::from(ask.size.width - label);
+	assert!((15.0..=19.0).contains(&inset), "selection action has {inset} points around its label");
 	visual.simulate_click(ask.center(), Default::default());
 	let owner = view.read_with(visual, |view, _| view.surface.clone());
 	owner.update(visual, |s, cx| {
