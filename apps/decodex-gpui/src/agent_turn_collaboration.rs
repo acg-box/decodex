@@ -58,7 +58,7 @@ impl AgentSurface {
 					.and_then(|a| a.detail.rsplit('/').next())
 					.map(|n| self.participant_task_label(n))
 					.unwrap_or_else(|| activity::wording::purpose(&call.prompt))
-			} else if let Some(post) = board_topics::Post::from_entry(&entry.content, thread) {
+			} else if let Some(post) = board_topics::from_entry(&entry.content, thread) {
 				format!("#{}", post.channel_name)
 			} else {
 				continue;
@@ -307,7 +307,7 @@ impl AgentSurface {
 				}
 				if let AgentTimelineContent::Item { turn_id, .. } = &entry.content
 					&& historical_turn.is_none_or(|turn| turn == turn_id)
-					&& let Some(post) = board_topics::Post::from_entry(&entry.content, thread)
+					&& let Some(post) = board_topics::from_entry(&entry.content, thread)
 				{
 					board_topics::merge(&mut posts, post);
 				}
@@ -320,11 +320,13 @@ impl AgentSurface {
 		let mut topics: Vec<_> = topics.into_values().collect();
 		for topic in &mut topics {
 			topic.sort_by(|a, b| {
-				(a.message_id != a.thread_id, a.order())
-					.cmp(&(b.message_id != b.thread_id, b.order()))
+				(a.message_id != a.thread_id, board_topics::order(a))
+					.cmp(&(b.message_id != b.thread_id, board_topics::order(b)))
 			});
 		}
-		topics.sort_by(|a, b| b.last().map(|p| p.order()).cmp(&a.last().map(|p| p.order())));
+		topics.sort_by(|a, b| {
+			b.last().map(board_topics::order).cmp(&a.last().map(board_topics::order))
+		});
 		topics
 	}
 }
@@ -619,24 +621,25 @@ mod tests {
 			// Registered rows can belong to a different work, while the native roster is
 			// authoritative.
 			let rows = s.factory_rows();
-			let mut add = |source: &str, id: &str, topic: &str| {
-				let row = rows.iter().find(|row| row.thread.as_deref() == Some(source)).unwrap();
-				// Fixture rows can be owned by either tree when the native child is registered
-				// twice.
-				let brief = s.work_board.briefs.get_mut(&row.key).unwrap();
-				brief.source_thread = row.thread.clone();
-				let history = brief.board.get_or_insert_with(Default::default);
-				let post = serde_json::from_value(
-					json!({"message_id":id, "thread_id":topic, "channel_name":"team",
-                    "author":source, "created_at":"2026-11-26T12:00:00Z","text":id}),
-				)
-				.unwrap();
-				board_topics::merge(&mut history.posts, post);
-			};
-			add("ref-iris", "topic", "topic");
-			add("ref-lin", "answer", "topic");
-			add("ref-lin", "another", "another");
-			add("ref-mira", "unrelated", "topic");
+            let post = |source: &str, id: &str, topic: &str| -> board_topics::Post {
+                serde_json::from_value(json!({"message_id":id, "thread_id":topic, "channel_name":"team",
+                    "author":source, "created_at":"2026-11-26T12:00:00Z","text":id,"posted_by_thread":source})).unwrap()
+            };
+            // Durable posts arrive together on the root, even when its transcript is empty.
+            let root = rows.iter().find(|r| r.thread.as_deref() == Some("ref-sage")).unwrap();
+            let brief = s.work_board.briefs.get_mut(&root.key).unwrap();
+            brief.source_thread = root.thread.clone();
+            brief.board.get_or_insert_with(Default::default).observe_native(decodex_protocol::NativeBoardPage {
+                root: "ref-sage".into(), after: 2, more: false,
+                posts: vec![post("ref-iris","topic","topic"),post("ref-lin","answer","topic")],
+            });
+            // Existing child receipts can overlap the Board or belong to another tree.
+            for entry in [post("ref-lin","answer","topic"), post("ref-lin","another","another"), post("ref-mira","unrelated","topic")] {
+                let row = rows.iter().find(|r| r.thread == entry.posted_by_thread).unwrap();
+                let brief = s.work_board.briefs.get_mut(&row.key).unwrap();
+                brief.source_thread = row.thread.clone();
+                board_topics::merge(&mut brief.board.get_or_insert_with(Default::default).posts, entry);
+            }
 			let topics = s.board_topics("sage", "ref-sage", None, &rows);
 			assert_eq!(topics.len(), 2);
 			let joined = topics.iter().find(|group| group[0].thread_id == "topic").unwrap();

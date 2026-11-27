@@ -124,6 +124,7 @@ pub(super) struct Brief {
 	read_at: std::time::Instant,
 }
 struct BriefRead {
+	read_native_board: bool,
 	row: Row,
 	stamp: String,
 	previous_turn: Option<(String, bool)>,
@@ -296,17 +297,16 @@ impl AgentSurface {
 	// Codex supplies the ancestor-filtered roster, including children that also own a work row.
 	fn board_sources(&self, work: &str) -> BTreeSet<&str> {
 		let mut threads = BTreeSet::new();
-		if let Some(agents) = self.native_agents.lists.get(work).filter(|agents| !agents.is_empty())
-		{
+		if let Some(agents) = self.native_agents.lists.get(work) {
 			threads.extend(agents.iter().map(|agent| agent.thread_id.as_str()));
-			if let Some(root) = self
-				.snapshot
-				.as_ref()
-				.and_then(|s| s.work_items.iter().find(|item| item.id == work))
-				.and_then(|item| item.codex_thread_id.as_deref())
-			{
-				threads.insert(root);
-			}
+		}
+		if let Some(root) = self
+			.snapshot
+			.as_ref()
+			.and_then(|s| s.work_items.iter().find(|item| item.id == work))
+			.and_then(|item| item.codex_thread_id.as_deref())
+		{
+			threads.insert(root);
 		}
 		threads
 	}
@@ -792,7 +792,9 @@ impl AgentSurface {
 				let client = AgentClient::new(profile);
 				let mut results = Vec::new();
 
-				for BriefRead { row, stamp, previous_turn, mut board } in requests {
+				for BriefRead { row, stamp, previous_turn, mut board, read_native_board } in
+					requests
+				{
 					let (Ok(owner), Some(thread)) = (
 						EntityId::new(&row.work),
 						row.thread.as_deref().and_then(|t| EntityId::new(t).ok()),
@@ -815,7 +817,9 @@ impl AgentSurface {
 					{
 						available = true;
 						if let Some(history) = &mut board {
-							history.refresh(&client, &owner, &thread, page).await;
+							history
+								.refresh(&client, &owner, &thread, page, read_native_board)
+								.await;
 						}
 						metrics = crate::ui_work_metrics::Sample::from_page(page);
 						outcome = latest_outcome(&page.entries);
@@ -926,46 +930,53 @@ impl AgentSurface {
 		rows.retain(|r| r.thread.is_some());
 		rows.sort_by_key(|r| (r.group != 1, self.work_board.briefs.get(&r.key).map(|b| b.read_at)));
 
-		let requests: Vec<_> =
-			rows.into_iter()
-				.filter(|r| {
-					self.work_board.reload_pending.contains(&r.key)
-						|| self.work_board.briefs.get(&r.key).is_none_or(|b| {
-							b.stamp != self.brief_stamp(r)
-								|| (r
-									.thread
-									.as_ref()
-									.is_some_and(|id| board_scope.contains(id.as_str()))
-									&& !b.board.as_ref().is_some_and(|h| h.complete)
-									&& b.read_at.elapsed().as_secs() >= 2)
-								|| ((r.group == 1 || b.question.is_some())
-									&& b.read_at.elapsed().as_secs() >= 1)
-								|| b.read_at.elapsed().as_secs() >= 30
-						})
-				})
-				.take(4)
-				.map(|row| {
-					let stamp = self.brief_stamp(&row);
-					let previous_turn = self
-						.work_board
-						.briefs
-						.get(&row.key)
-						.filter(|b| b.source_thread == row.thread)
-						.and_then(|b| b.output.as_ref())
-						.and_then(|o| o.only_turn.map(|single| (o.turn.clone(), single)));
-					let board =
-						(row.thread.as_ref().is_some_and(|id| board_scope.contains(id.as_str())))
-							.then(|| {
-								self.work_board
-									.briefs
-									.get(&row.key)
-									.filter(|b| b.source_thread == row.thread)
-									.and_then(|b| b.board.clone())
-									.unwrap_or_default()
-							});
-					BriefRead { row, stamp, previous_turn, board }
-				})
-				.collect();
+		let requests: Vec<_> = rows
+			.into_iter()
+			.filter(|r| {
+				self.work_board.reload_pending.contains(&r.key)
+					|| self.work_board.briefs.get(&r.key).is_none_or(|b| {
+						b.stamp != self.brief_stamp(r)
+							|| (r
+								.thread
+								.as_ref()
+								.is_some_and(|id| board_scope.contains(id.as_str()))
+								&& !b.board.as_ref().is_some_and(|h| h.complete)
+								&& b.read_at.elapsed().as_secs() >= 2)
+							|| ((r.group == 1 || b.question.is_some())
+								&& b.read_at.elapsed().as_secs() >= 1)
+							|| b.read_at.elapsed().as_secs() >= 30
+					})
+			})
+			.take(4)
+			.map(|row| {
+				let stamp = self.brief_stamp(&row);
+				let previous_turn = self
+					.work_board
+					.briefs
+					.get(&row.key)
+					.filter(|b| b.source_thread == row.thread)
+					.and_then(|b| b.output.as_ref())
+					.and_then(|o| o.only_turn.map(|single| (o.turn.clone(), single)));
+				let board =
+					(row.thread.as_ref().is_some_and(|id| board_scope.contains(id.as_str()))).then(
+						|| {
+							self.work_board
+								.briefs
+								.get(&row.key)
+								.filter(|b| b.source_thread == row.thread)
+								.and_then(|b| b.board.clone())
+								.unwrap_or_default()
+						},
+					);
+				BriefRead {
+					read_native_board: !row.native && self.selected.as_deref() == Some(&row.work),
+					row,
+					stamp,
+					previous_turn,
+					board,
+				}
+			})
+			.collect();
 
 		if requests.is_empty() {
 			if self.publish_usage() {

@@ -31,7 +31,7 @@ use crate::{
 	ui_motion::{self, SmoothControl},
 	ui_scroll::SmoothScrollArea,
 	ui_theme::{
-		self, BLUE, BODY_LINE_HEIGHT, CONTROL_SELECTED_FILL, HOVER_FILL, INFO, PRESSED_FILL,
+		self, BLUE, BODY_LINE_HEIGHT, CONTROL_SELECTED_FILL, HOVER_FILL, PRESSED_FILL,
 		foreground::{BODY, CAPTION_SIZE, METRIC_SIZE, PRIMARY, SECONDARY},
 	},
 };
@@ -45,9 +45,6 @@ pub(in super::super) struct State {
 	entries: BTreeMap<i64, AgentExchangeDto>,
 	questions: Vec<AgentExchangeQuestionDto>,
 	source: Option<EntityId>,
-	next_before: Option<i64>,
-	page: Option<i64>,
-	questions_truncated: bool,
 	task: Option<Task<()>>,
 	read_at: Option<Instant>,
 	earlier: bool,
@@ -65,7 +62,6 @@ struct Exchange {
 	title: String,
 	summary: String,
 	state: &'static str,
-	color: u32,
 	request: Option<String>,
 	steps: Vec<(&'static str, String)>,
 	source: String,
@@ -83,10 +79,6 @@ struct Exchange {
 
 impl AgentSurface {
 	pub(in super::super) fn refresh_collaboration(&mut self, cx: &mut Context<Self>) {
-		self.read_collaboration(self.work_board.collaboration.page, false, cx);
-	}
-
-	fn read_collaboration(&mut self, before: Option<i64>, explicit: bool, cx: &mut Context<Self>) {
 		if !self.command_connection_ready() {
 			return;
 		}
@@ -110,19 +102,12 @@ impl AgentSurface {
 
 		let state = &self.work_board.collaboration;
 
-		if state.task.is_some()
-			|| (!explicit && state.read_at.is_some_and(|at| at.elapsed().as_secs() < 2))
-		{
+		if state.task.is_some() || state.read_at.is_some_and(|at| at.elapsed().as_secs() < 2) {
 			return;
 		}
 
 		let (unresolved, work_ids) = self.missing_task_labels();
-		let state = &mut self.work_board.collaboration;
-		state.read_at = Some(Instant::now());
-
-		if explicit {
-			state.page = before;
-		}
+		self.work_board.collaboration.read_at = Some(Instant::now());
 
 		let epoch = self.command_epoch;
 		let read = cx.background_executor().spawn(async move {
@@ -130,7 +115,7 @@ impl AgentSurface {
 
 			Ok(runtime.block_on(async move {
 				let client = AgentClient::new(profile);
-				let exchanges = client.exchanges(before).await;
+				let exchanges = client.exchanges(None).await;
 				let labels = read_task_labels(&client, unresolved, work_ids).await;
 				(exchanges, labels)
 			}))
@@ -161,25 +146,17 @@ impl AgentSurface {
 						source: observed,
 						entries,
 						questions,
-						questions_truncated,
-						next_before,
+						..
 					}) if observed == source => {
 						let entries =
 							entries.into_iter().map(|entry| (entry.event_id, entry)).collect();
 						let changed = state.failed
 							|| state.entries != entries
-							|| state.questions != questions
-							|| state.questions_truncated != questions_truncated
-							|| state.next_before != next_before
-							|| explicit;
+							|| state.questions != questions;
 
 						state.failed = false;
-						// Refresh the selected page; an old assessment must not stay cached as
-						// current.
 						state.entries = entries;
 						state.questions = questions;
-						state.questions_truncated = questions_truncated;
-						state.next_before = next_before;
 
 						changed
 					},
@@ -312,7 +289,6 @@ impl AgentSurface {
 					.unwrap_or_else(|| "Reported output".into()),
 				summary: activity::text(&output.text).chars().take(180).collect(),
 				state: "Reported",
-				color: INFO,
 				request: None,
 				steps: vec![("Review", "Acceptance and reply linkage are unknown.".into())],
 				source: "Native report".into(),
@@ -422,7 +398,6 @@ impl AgentSurface {
 				title,
 				summary,
 				state: phase,
-				color: if row.group == 1 || role.is_some() { INFO } else { ui_theme::WARNING },
 				request: None,
 				steps: vec![
 					(

@@ -54,6 +54,7 @@ mod dictation;
 mod host_credentials;
 mod mcp_login;
 mod native_agents;
+mod native_board;
 mod native_config_warning;
 mod native_diagnostics;
 mod native_preparation;

@@ -50,3 +50,40 @@ pub enum NativeAgentsResult {
 	/// Current native state could not be verified.
 	Unavailable,
 }
+
+/// A native Board post for the conversation inspector.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+pub struct NativeBoardPost {
+	/// Native identity of this message.
+	pub message_id: String,
+	/// Native identity of its opening post.
+	pub thread_id: String,
+	/// Channel within the agent tree.
+	pub channel_name: String,
+	/// Native agent path at publication.
+	pub author: String,
+	/// Native UTC timestamp.
+	pub created_at: String,
+	/// Bounded prefix of the original post.
+	#[serde(default)]
+	pub text: String,
+	/// Whether the post has more text.
+	#[serde(default)]
+	pub truncated: bool,
+	/// Native thread that performed the post, when known.
+	#[serde(default)]
+	pub posted_by_thread: Option<String>,
+}
+
+/// One append-ordered slice of the selected tree's native Board.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+pub struct NativeBoardPage {
+	/// Exact native root that owns these posts.
+	pub root: String,
+	/// Last included native sequence, or the requested position on an empty page.
+	pub after: i64,
+	/// More posts are available after this page.
+	pub more: bool,
+	/// Posts in publication order.
+	pub posts: Vec<NativeBoardPost>,
+}

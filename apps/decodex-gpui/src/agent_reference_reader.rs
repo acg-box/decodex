@@ -395,7 +395,7 @@ impl AgentSurface {
 			})
 			.collect();
 		let mut populated = false;
-		if scope.is_none() {
+		if scope.is_none() && self.workspace.graph_expanded {
 			let entries = self.workbench_entries();
 			for entry in entries.iter().filter(|e| {
 				e.needs_user && belongs(&e.row) && self.collaboration_entry_visible(e, &cases)
