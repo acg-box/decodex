@@ -1,7 +1,7 @@
 //! The right sidebar reads a selected source without navigating the main conversation.
 #[path = "agent_turn_collaboration.rs"] mod turn_collaboration;
 use super::*;
-use crate::shell::agent_surface::work_board::board_topics::Post;
+use crate::{shell::agent_surface::work_board::board_topics::Post, ui_motion::HoverHint as _};
 use turn_collaboration::ParticipantState;
 #[path = "agent_report_reader.rs"] mod report_reader;
 use decodex_protocol::{
@@ -489,7 +489,7 @@ impl AgentSurface {
 		if let Some(outcome) = thread.zip(turn).and_then(|(thread, turn)| {
 			self.outcome_row(&work.id, thread, turn, scope.is_none(), cx)
 		}) {
-			body = body.child(index_section("Result", populated)).child(outcome);
+			body = body.child(outcome);
 			populated = true;
 		}
 		let topics = thread
@@ -600,7 +600,7 @@ impl AgentSurface {
 							format!("earlier-turn-{turn}"),
 							title.clone(),
 							String::new(),
-							None,
+							Some(Symbol::NavigationChats),
 							move |s, cx| s.show_reference(page.clone(), cx),
 							cx,
 						));
@@ -728,7 +728,7 @@ impl AgentSurface {
 		turn: &str,
 		overview: bool,
 		cx: &mut Context<Self>,
-	) -> Option<Div> {
+	) -> Option<AnyElement> {
 		let (item, _, ended_at) = self.collaboration_outcome(thread, turn)?;
 		let request = ItemContextRequest {
 			work_id: EntityId::new(work).ok()?,
@@ -743,14 +743,21 @@ impl AgentSurface {
 		} else {
 			"Show outcome in chat"
 		};
-		Some(reading_body().child(self.reference_row(
+		let action = self.reference_link(
 			"locate-collaboration-outcome".into(),
-			title.into(),
-			ended_at.map(crate::ui_time::timestamp).unwrap_or_default(),
-			Some(Symbol::NavigationChats),
+			title,
+			Symbol::Forward,
 			move |s, cx| s.locate_find_match(request.clone(), cx),
 			cx,
-		)))
+		);
+		Some(match ended_at {
+			Some(time) => gpui::div()
+				.id("collaboration-outcome-date")
+				.child(action)
+				.hover_hint(crate::ui_time::timestamp(time))
+				.into_any_element(),
+			None => action,
+		})
 	}
 
 	fn conversation_reader(&self, row: &Row, rows: &[Row], message: Option<&str>) -> Div {
