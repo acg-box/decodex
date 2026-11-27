@@ -291,7 +291,7 @@ impl AgentSurface {
 			Some(ReferencePage::Discussion { .. }) => "Back to earlier discussion",
 			Some(ReferencePage::Exchange(_)) => "Back to exchange",
 			Some(ReferencePage::Topic { .. }) => "Back to topic",
-			Some(ReferencePage::Conversation { .. }) => "Back to agent activity",
+			Some(ReferencePage::Conversation { .. }) => "Back to agent context",
 			_ => "Back to collaboration",
 		};
 		let scroll_key = match page {

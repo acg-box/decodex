@@ -66,7 +66,12 @@ impl AgentSurface {
 						status: "Idle",
 						edge: 15.,
 					})
-					.child(member.name.clone())
+					.child(gpui::div().text_color(ui_theme::rgb(BLUE)).child(member.name.clone()))
+					.child(
+						gpui::div()
+							.text_color(ui_theme::rgb(BLUE))
+							.child(workspace_symbols::icon_sized(Symbol::Forward, 11.)),
+					)
 					.hover_hint(format!("Read {}’s report", member.name))
 					.smooth(),
 				);
@@ -114,7 +119,7 @@ impl AgentSurface {
 		if other.is_empty() {
 			return evidence.then_some(body);
 		}
-		body = body.child(index_section("Returned to this conversation", evidence));
+		body = body.child(index_section("Agent reports", evidence));
 		for (id, member) in other {
 			let page = ReferencePage::Participant {
 				thread: thread.into(),
