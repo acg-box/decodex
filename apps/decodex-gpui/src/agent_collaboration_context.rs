@@ -1,6 +1,6 @@
 //! Shared sources and discussions for the inspected conversation or graph agent.
 use super::*;
-use crate::ui_cloudlet::Portrait;
+use crate::{shell::agent_surface::compact_tokens, ui_cloudlet::Portrait};
 use std::path::PathBuf;
 
 impl AgentSurface {
@@ -263,7 +263,7 @@ impl AgentSurface {
 								gpui::div()
 									.h_full()
 									.w(gpui::relative(fraction as f32))
-									.bg(ui_theme::rgb(GREEN).opacity(0.8)),
+									.bg(ui_theme::rgb(ui_theme::GREEN).opacity(0.8)),
 							),
 					)
 					.child(
