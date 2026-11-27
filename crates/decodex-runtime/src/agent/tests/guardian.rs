@@ -453,7 +453,7 @@ async fn guardian_unloaded_approval_preserves_native_settings_without_starting_a
 	let resumes: Vec<_> = requests.iter().filter(|r| r["method"] == "thread/resume").collect();
 
 	assert_eq!(resumes.len(), 1);
-	tests::assert_agent_resume(&resumes[0]["params"], "opaque thread/1", false);
+	tests::assert_agent_resume(&resumes[0]["params"], "opaque thread/1", false, true);
 
 	let approvals: Vec<_> =
 		requests.iter().filter(|r| r["method"] == "thread/approveGuardianDeniedAction").collect();

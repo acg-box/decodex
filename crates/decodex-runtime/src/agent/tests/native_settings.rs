@@ -7,6 +7,35 @@ use crate::agent::tests::{
 use decodex_core::DecodexRoot;
 
 #[tokio::test]
+async fn board_default_respects_native_selection_at_start_and_cold_resume() {
+	for (selection, supply_default) in [
+		(serde_json::json!({}), true),
+		(serde_json::json!({"message_board_in_memory":false}), true),
+		(serde_json::json!(false), false),
+		(serde_json::json!({"enabled":false}), false),
+		(serde_json::json!(true), false),
+	] {
+		let (mut agent, mut sent, _directory) = tests::fixture_with_history(
+			serde_json::json!({"_features":{"multi_agent_v2":selection}}),
+		)
+		.await;
+		let thread = "opaque thread/1";
+		agent.start_agent("agent", "Start").await.unwrap();
+		tests::complete(&mut agent, "agent").await;
+		agent.loaded_threads.clear();
+		let resume = agent.resume_observer_params(thread, true).await.unwrap();
+		let start =
+			iter::from_fn(|| sent.try_recv().ok()).find(|r| r["method"] == "thread/start").unwrap();
+		for params in [&start["params"], &resume] {
+			assert_eq!(
+				params["config"]["features.multi_agent_v2.enabled"].as_bool(),
+				supply_default.then_some(true)
+			);
+		}
+	}
+}
+
+#[tokio::test]
 async fn cold_resume_preserves_task_selection_and_partial_user_changes() {
 	let (mut agent, mut sent, _directory) = tests::fixture().await;
 
@@ -33,7 +62,7 @@ async fn cold_resume_preserves_task_selection_and_partial_user_changes() {
 	let requests: Vec<_> = iter::from_fn(|| sent.try_recv().ok()).collect();
 	let resume = requests.iter().find(|r| r["method"] == "thread/resume").unwrap();
 
-	tests::assert_agent_resume(&resume["params"], "opaque thread/1", true);
+	tests::assert_agent_resume(&resume["params"], "opaque thread/1", true, true);
 
 	let turn = requests.iter().find(|r| r["method"] == "turn/start").unwrap();
 

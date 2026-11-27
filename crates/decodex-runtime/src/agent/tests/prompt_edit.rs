@@ -78,7 +78,7 @@ fn transport(
 			}
 			let result = match method {
 				"thread/resume" if mode == "cold-source" => {
-					tests::assert_agent_resume(&request["params"], "opaque thread/1", true);
+					tests::assert_agent_resume(&request["params"], "opaque thread/1", true, true);
 					serde_json::json!({"thread":{"id":"opaque thread/1"},"cwd":"/fixture","model":"fixture-model","modelProvider":"fixture-provider","reasoningEffort":"low","approvalPolicy":"on-request","approvalsReviewer":"user","sandbox":{"type":"readOnly"},"activePermissionProfile":{"id":":read-only"}})
 				},
 				"config/read" =>
@@ -278,6 +278,7 @@ async fn review_saved_source(parent: Option<&str>, create_side_chat: bool) {
 			"thread/items/list",
 			"thread/fork",
 			"thread/list",
+			"config/read",
 		]
 		.contains(&r["method"].as_str().unwrap())
 	}));
