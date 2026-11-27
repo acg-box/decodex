@@ -29,6 +29,14 @@ pub(super) async fn setup_with_requests(
 	requests: Option<Arc<std::sync::Mutex<Vec<Value>>>>,
 	response: impl Fn(usize) -> Value + Send + Sync + 'static,
 ) -> (TempDir, NativeSession, SqliteStore, AgentCoordinator, JoinHandle<()>) {
+	setup_with_arguments(requests, response, &["app-server"]).await
+}
+
+async fn setup_with_arguments(
+	requests: Option<Arc<std::sync::Mutex<Vec<Value>>>>,
+	response: impl Fn(usize) -> Value + Send + Sync + 'static,
+	arguments: &[&str],
+) -> (TempDir, NativeSession, SqliteStore, AgentCoordinator, JoinHandle<()>) {
 	let binary =
 		env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit qualified native binary");
 	let home = tempfile::tempdir().expect("Project and Work qualification fixture");
@@ -46,8 +54,12 @@ pub(super) async fn setup_with_requests(
 
 	fs::write(home.path().join("config.toml"),format!("model=\"gpt-5.6-sol\"\nmodel_provider=\"fixture\"\n[features]\ngoals=true\nguardian_approval=true\ncontent_item_kinds=true\nenable_request_compression=false\n[model_providers.fixture]\nname=\"OpenAI\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n")).expect("Project and Work qualification fixture");
 
-	let session =
-		NativeSession::with_capabilities(&binary, home.path(), InitializeCapabilities::for_agent());
+	let session = NativeSession::with_arguments(
+		&binary,
+		home.path(),
+		InitializeCapabilities::for_agent(),
+		arguments,
+	);
 	let root = DecodexRoot::new(
 		home.path().canonicalize().expect("Project and Work qualification fixture").join("data"),
 	)
@@ -88,6 +100,58 @@ fn output(serial: usize) -> Value {
 		_ =>
 			serde_json::json!({"type":"message","role":"assistant","id":format!("answer-{serial}"),"content":[{"type":"output_text","text":"Synthetic result"}]}),
 	}
+}
+
+#[tokio::test]
+#[ignore = "requires the signed native runtime and its local message Board"]
+async fn installed_board_reply_uses_original_topic_after_restart() {
+	use crate::account_launch::process::APP_SERVER_ARGS;
+	use serde_json::json;
+
+	let topic = Arc::new(std::sync::OnceLock::<String>::new());
+	let target = topic.clone();
+	let response = move |serial| {
+		let (name, args) = match serial {
+			0 => ("create_channel", json!({"channel_name":"review","description":"Review notes"})),
+			1 => ("post", json!({"channel_name":"review","text":"Question"})),
+			3 =>
+				("post", json!({"thread_id":target.get().expect("original topic"),"text":"Reply"})),
+			_ =>
+				return json!({"type":"message","role":"assistant","id":format!("done-{serial}"),"content":[{"type":"output_text","text":"Done"}]}),
+		};
+		json!({"type":"function_call","namespace":"collaboration","name":name,"call_id":format!("board-{serial}"),"arguments":args.to_string()})
+	};
+	let (home, mut session, store, mut agent, backend) =
+		setup_with_arguments(None, response, &APP_SERVER_ARGS).await;
+	agent.start_agent("author", "Open a Board topic").await.unwrap();
+	let root = store.get_agent_work_item("author".into()).await.unwrap().codex_thread_id.unwrap();
+	finish(&mut session, &mut agent, &root).await;
+	let first = crate::native_board::read(&session.client, &root, 0).await.unwrap();
+	let [question] = first.posts.as_slice() else { panic!("expected the native topic") };
+	assert_eq!(question.text, "Question");
+	topic.set(question.message_id.clone()).unwrap();
+	drop(agent);
+	drop(session);
+
+	let binary = env::var_os("DECODEX_TEST_CODEX_BINARY").unwrap();
+	let mut session = NativeSession::with_arguments(
+		&binary,
+		home.path(),
+		InitializeCapabilities::for_agent(),
+		&APP_SERVER_ARGS,
+	);
+	let mut config =
+		AgentConfig::new("gpt-5.6-sol".into(), "medium".into(), home.path().display().to_string());
+	config.sandbox = "read-only".into();
+	let mut agent = AgentCoordinator::new(store, session.client.clone(), config).unwrap();
+	agent.continue_worker("author", "Reply on the original topic").await.unwrap();
+	finish(&mut session, &mut agent, &root).await;
+	let next = crate::native_board::read(&session.client, &root, first.after).await.unwrap();
+	let [reply] = next.posts.as_slice() else { panic!("expected the native reply") };
+	assert_eq!(reply.thread_id, question.message_id);
+	assert_eq!(reply.text, "Reply");
+	assert_eq!(reply.posted_by_thread.as_deref(), Some(root.as_str()));
+	backend.abort();
 }
 
 #[tokio::test]
