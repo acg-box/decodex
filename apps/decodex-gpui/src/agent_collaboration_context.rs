@@ -221,6 +221,61 @@ impl AgentSurface {
 			}
 			populated = true;
 		}
+		let usage = self
+			.work_board
+			.briefs
+			.get(&row.key)
+			.filter(|brief| brief.source_thread.as_deref() == Some(agent))
+			.and_then(|brief| brief.metrics.breakdown);
+		if let Some(usage) =
+			usage.filter(|u| u.input_tokens > 0 && u.cached_input_tokens <= u.input_tokens)
+		{
+			let fraction = usage.cached_input_tokens as f64 / usage.input_tokens as f64;
+			let label = format!("{:.0}% cached", fraction * 100.);
+			let fresh = usage.input_tokens - usage.cached_input_tokens;
+			let values = format!(
+				"{} new input, {} output",
+				compact_tokens(fresh),
+				compact_tokens(usage.output_tokens)
+			);
+			let totals = format!(
+				"{} cached input of {} total input tokens. {} output tokens. Totals cover this agent’s conversation.",
+				usage.cached_input_tokens, usage.input_tokens, usage.output_tokens
+			);
+			body = body.child(index_section("Token usage (agent total)", populated)).child(
+				gpui::div()
+					.id("agent-cache-share")
+					.role(Role::Label)
+					.aria_label(format!("{label}. {values}"))
+					.w_full()
+					.flex()
+					.flex_col()
+					.gap(gpui::px(4.))
+					.child(gpui::div().font_weight(FontWeight::MEDIUM).child(label))
+					.child(
+						gpui::div()
+							.w_full()
+							.h(gpui::px(4.))
+							.rounded_full()
+							.overflow_hidden()
+							.bg(ui_theme::rgb(SECONDARY).opacity(0.18))
+							.child(
+								gpui::div()
+									.h_full()
+									.w(gpui::relative(fraction as f32))
+									.bg(ui_theme::rgb(GREEN).opacity(0.8)),
+							),
+					)
+					.child(
+						gpui::div()
+							.text_size(gpui::px(ui_theme::NAVIGATION_DETAIL_SIZE))
+							.text_color(ui_theme::rgb(SECONDARY))
+							.child(values),
+					)
+					.hover_hint(totals),
+			);
+			populated = true;
+		}
 		if !populated {
 			body = body.child(note("No cited files or shared discussions yet."));
 		}
