@@ -163,41 +163,45 @@ impl AgentSurface {
 			if turn_id != turn || call.sender_thread_id != thread {
 				continue;
 			}
+			let task_label = activity
+				.as_ref()
+				.filter(|a| a.kind == "subAgentActivity")
+				.and_then(|a| a.detail.rsplit('/').next())
+				.filter(|name| !name.is_empty())
+				.map(|name| self.participant_task_label(name))
+				.unwrap_or_default();
 			for id in call.receiver_thread_ids.iter().filter(|id| id.as_str() != thread) {
 				let member = members.entry(id.clone()).or_insert_with(|| {
 					let row = rows
 						.iter()
 						.find(|r| r.work == binding.work && r.thread.as_ref() == Some(id));
-					let path_name = activity
-						.as_ref()
-						.filter(|a| a.kind == "subAgentActivity")
-						.and_then(|a| a.detail.rsplit('/').next())
-						.filter(|name| !name.is_empty());
-					let task_name =
-						path_name.map(|n| self.participant_task_label(n)).unwrap_or_default();
 					let name = row
 						.map(participant_name)
 						.filter(|s| !s.is_empty())
 						.map(str::to_owned)
 						.unwrap_or_else(|| {
-							if task_name.is_empty() { "Agent".into() } else { task_name.clone() }
+							if task_label.is_empty() { "Agent".into() } else { task_label.clone() }
 						});
-					let task = if task_name.is_empty() {
+					let task = if task_label.is_empty() {
 						row.filter(|r| r.native && r.title != r.owner)
 							.map(|r| r.title.clone())
 							.unwrap_or_default()
 					} else {
-						task_name
+						task_label.clone()
 					};
 
 					Participant {
 						spawned_here: false,
+						label: String::new(),
 						name,
 						task,
 						state: ParticipantState::Assigned,
 						reply: String::new(),
 					}
 				});
+				if !task_label.is_empty() {
+					member.label.clone_from(&task_label);
+				}
 				if !call.prompt.trim().is_empty()
 					&& (member.task.is_empty()
 						|| matches!(
@@ -388,6 +392,7 @@ impl AgentSurface {
 #[derive(Clone)]
 pub(super) struct Participant {
 	spawned_here: bool,
+	label: String,
 	pub(super) name: String,
 	pub(super) task: String,
 	pub(super) state: ParticipantState,
@@ -395,6 +400,19 @@ pub(super) struct Participant {
 }
 
 impl Participant {
+	pub(super) fn report_labels(&self) -> (String, String) {
+		let title = if self.spawned_here && !self.label.is_empty() {
+			self.label.clone()
+		} else {
+			activity::wording::message(&self.reply)
+		};
+		if title.is_empty() || title == self.name {
+			(self.name.clone(), String::new())
+		} else {
+			(title, self.name.clone())
+		}
+	}
+
 	pub(super) fn row_labels(&self) -> (String, String) {
 		let task = activity::wording::purpose(&self.task);
 		let status = self.state.short_label();
@@ -519,24 +537,33 @@ mod tests {
 			assert!(s.earlier_discussions("other", "next").is_empty());
 		});
 		visual.update(crate::ui_frame::draw_frame);
-		assert!(visual.debug_bounds("earlier-turn-first").is_none());
-		let toggle = visual.debug_bounds("collaboration-earlier").unwrap();
-		visual.simulate_click(toggle.center(), Default::default());
-		visual.update(crate::ui_frame::draw_current_frame);
-		visual.executor().advance_clock(std::time::Duration::from_millis(240));
-		visual.update(crate::ui_frame::draw_frame);
 		let earlier = visual.debug_bounds("earlier-turn-first").unwrap();
 		visual.simulate_click(earlier.center(), Default::default());
 		visual.update(crate::ui_frame::draw_frame);
 		surface.read_with(visual, |s, _| {
 			assert!(matches!(&s.work_board.reference,
-				ReferencePage::Discussion { turn, thread } if turn == "first" && thread == "ref-sage"
+				ReferencePage::Discussion { turn, thread, title } if turn == "first" && thread == "ref-sage" && title == "Can five guests attend?"
 			))
 		});
+		let report = visual.debug_bounds("report-first-child-a").unwrap();
+		visual.simulate_click(report.center(), Default::default());
+		visual.update(crate::ui_frame::draw_frame);
+		surface.read_with(visual, |s, _| {
+			assert!(
+				matches!(&s.work_board.reference, ReferencePage::Report { turn, thread, agent }
+				if turn == "first" && thread == "ref-sage" && agent == "child-a")
+			);
+			assert_eq!(s.selected.as_deref(), Some("sage"));
+		});
+		assert!(visual.debug_bounds("earlier-turn-first").is_none());
 		let back = visual.debug_bounds("reference-back").unwrap();
 		visual.simulate_click(back.center(), Default::default());
 		visual.update(crate::ui_frame::draw_frame);
-		assert!(visual.debug_bounds("collaboration-earlier").is_some());
+		assert!(visual.debug_bounds("report-first-child-a").is_some());
+		let back = visual.debug_bounds("reference-back").unwrap();
+		visual.simulate_click(back.center(), Default::default());
+		visual.update(crate::ui_frame::draw_frame);
+		assert!(visual.debug_bounds("earlier-turn-first").is_some());
 	}
 
 	#[gpui::test]
@@ -720,13 +747,14 @@ mod tests {
 
 	#[gpui::test]
 	fn unread_parent_groups_sibling_posts_by_native_topic(cx: &mut TestAppContext) {
-		let surface = cx.new(|cx| {
-			let mut s = AgentSurface::new(cx);
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		visual.simulate_resize(gpui::size(gpui::px(1536.), gpui::px(1024.)));
+		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
 			s.visual_workbench_page("workbench", cx);
-			s
-		});
-		surface.update(cx, |s, _| {
+			s.workspace.graph_expanded = false;
+			s.open_work_conversation("sage", None, cx);
+			s.toggle_agent_tree(cx);
 			let second = s.native_agents.lists["mira"]
 				.iter()
 				.find(|a| a.thread_id == "ref-lin")
@@ -743,11 +771,12 @@ mod tests {
 				let brief = s.work_board.briefs.get_mut(&row.key).unwrap();
 				brief.source_thread = row.thread.clone();
 				let history = brief.board.get_or_insert_with(Default::default);
-				let post = serde_json::from_value(
+				let mut post: board_topics::Post = serde_json::from_value(
 					json!({"message_id":id, "thread_id":topic, "channel_name":"team",
                     "author":source, "created_at":"2026-11-26T12:00:00Z","text":id}),
 				)
 				.unwrap();
+				post.posted_by_thread = Some(source.into());
 				board_topics::merge(&mut history.posts, post);
 			};
 			add("ref-iris", "topic", "topic");
@@ -763,6 +792,27 @@ mod tests {
 			);
 			assert!(s.board_topics("sage", "ref-sage", Some("different-turn"), &rows).is_empty());
 		});
+		visual.update(crate::ui_frame::draw_frame);
+		assert!(visual.debug_bounds("inspect-post-answer").is_none());
+		let topic = visual.debug_bounds("topic-topic").unwrap();
+		visual.simulate_click(topic.center(), Default::default());
+		visual.update(crate::ui_frame::draw_frame);
+		assert!(visual.debug_bounds("inspect-post-topic").is_some());
+		assert!(visual.debug_bounds("inspect-post-another").is_none());
+		let answer = visual.debug_bounds("inspect-post-answer").unwrap();
+		visual.simulate_click(answer.center(), Default::default());
+		visual.update(crate::ui_frame::draw_frame);
+		surface.read_with(visual, |s, _| {
+			assert_eq!(s.selected.as_deref(), Some("sage"));
+			assert!(
+				matches!(&s.work_board.reference, ReferencePage::Conversation { thread, message: Some(id), .. }
+				if thread == "ref-lin" && id == "answer")
+			);
+		});
+		let back = visual.debug_bounds("reference-back").unwrap();
+		visual.simulate_click(back.center(), Default::default());
+		visual.update(crate::ui_frame::draw_frame);
+		assert!(visual.debug_bounds("inspect-post-answer").is_some());
 	}
 
 	#[gpui::test]

@@ -35,6 +35,16 @@ pub(super) enum ReferencePage {
 	#[default]
 	Overview,
 	Exchange(String),
+	Report {
+		thread: String,
+		turn: String,
+		agent: String,
+	},
+	Topic {
+		thread: String,
+		historical_turn: Option<String>,
+		topic: String,
+	},
 	Conversation {
 		key: String,
 		thread: String,
@@ -43,6 +53,7 @@ pub(super) enum ReferencePage {
 	Discussion {
 		turn: String,
 		thread: String,
+		title: String,
 	},
 }
 

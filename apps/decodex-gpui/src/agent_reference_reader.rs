@@ -2,7 +2,7 @@
 #[path = "agent_turn_collaboration.rs"] mod turn_collaboration;
 use super::*;
 use crate::shell::agent_surface::work_board::board_topics::Post;
-use turn_collaboration::{Participant, ParticipantState};
+use turn_collaboration::ParticipantState;
 #[path = "agent_report_reader.rs"] mod report_reader;
 use decodex_protocol::{
 	AgentCollaborationDto, AgentTimelineContent, ItemContextRequest, ItemContextResult, WireText,
@@ -19,7 +19,6 @@ impl AgentSurface {
 		self.work_board.reference = ReferencePage::Overview;
 		self.work_board.reference_scroll = Default::default();
 		self.work_board.reference_history.clear();
-		self.work_board.collaboration.expanded_items.clear();
 		self.clear_reference_source();
 	}
 
@@ -192,6 +191,31 @@ impl AgentSurface {
 		let page = &self.work_board.reference;
 		let (title, (body, state)) = match page {
 			ReferencePage::Overview => ("Collaboration", self.reference_index(None, cx)),
+			ReferencePage::Report { thread, turn, agent } => {
+				let rows = self.factory_rows();
+				let participants = self.turn_participants(thread, turn, &rows);
+				let body = match participants.get(agent).filter(|p| !p.reply.is_empty()) {
+					Some(p) => reading_body()
+						.child(reader_title(&p.name))
+						.child(markdown::render(&p.reply, &format!("report-{turn}-{agent}"))),
+					None => reading_body().child(note("This report is no longer available.")),
+				};
+				("Agent report", (body, "detail"))
+			},
+			ReferencePage::Topic { thread, historical_turn, topic } => {
+				let rows = self.factory_rows();
+				let posts = self.selected.as_deref().and_then(|work| {
+					self.board_topics(work, thread, historical_turn.as_deref(), &rows)
+						.into_iter()
+						.find(|posts| posts.first().is_some_and(|p| &p.thread_id == topic))
+				});
+				let body = match posts {
+					Some(posts) =>
+						reading_body().children(posts.iter().map(|p| self.board_post(p, &rows, cx))),
+					None => reading_body().child(note("This topic is no longer available.")),
+				};
+				("Board topic", (body, "detail"))
+			},
 			ReferencePage::Exchange(id) => {
 				let cases =
 					self.collaboration_cases(&self.relation_graph().edges, &self.factory_rows());
@@ -219,13 +243,19 @@ impl AgentSurface {
 					),
 				)
 			},
-			ReferencePage::Discussion { turn, thread } =>
-				("Earlier discussion", self.reference_index(Some((thread, turn)), cx)),
+			ReferencePage::Discussion { turn, thread, title } => {
+				let (body, state) = self.reference_index(Some((thread, turn)), cx);
+				(
+					"Earlier discussion",
+					(reading_body().child(reader_title(title)).child(body), state),
+				)
+			},
 		};
 		let overview = matches!(page, ReferencePage::Overview);
 		let back_label = match self.work_board.reference_history.last().map(|(page, _)| page) {
 			Some(ReferencePage::Discussion { .. }) => "Back to earlier discussion",
 			Some(ReferencePage::Exchange(_)) => "Back to exchange",
+			Some(ReferencePage::Topic { .. }) => "Back to topic",
 			Some(ReferencePage::Conversation { .. }) => "Back to agent activity",
 			_ => "Back to collaboration",
 		};
@@ -241,6 +271,9 @@ impl AgentSurface {
 					.unwrap_or("none")
 			),
 			ReferencePage::Exchange(id) => format!("reference-exchange-{id}"),
+			ReferencePage::Report { turn, agent, .. } => format!("reference-report-{turn}-{agent}"),
+			ReferencePage::Topic { thread, topic, .. } =>
+				format!("reference-topic-{thread}-{topic}"),
 			ReferencePage::Conversation { thread, message, .. } => format!(
 				"reference-conversation-{thread}-{}",
 				message.as_deref().unwrap_or("activity")
@@ -407,14 +440,14 @@ impl AgentSurface {
 				e.needs_user && belongs(&e.row) && self.collaboration_entry_visible(e, &cases)
 			}) {
 				if !populated {
-					body = body.child(section("Needs your input"));
+					body = body.child(index_section("Needs your input", populated));
 				}
 				body = body.child(self.workbench_entry(entry, cx));
 				populated = true;
 			}
 			for case in cases.iter().filter(|case| pending_here(case)) {
 				if !populated {
-					body = body.child(section("Needs your input"));
+					body = body.child(index_section("Needs your input", populated));
 				}
 				body = body.child(self.exchange_row(case, belongs(&case.from), cx));
 				populated = true;
@@ -429,8 +462,8 @@ impl AgentSurface {
 				if tasks.peek().is_none() {
 					continue;
 				}
+				body = body.child(index_section(heading, populated));
 				populated = true;
-				body = body.child(section(heading));
 				for (id, member) in tasks {
 					let key = format!("collaborator-{turn}-{id}");
 					let (title, detail) = member.row_labels();
@@ -456,17 +489,43 @@ impl AgentSurface {
 		if let Some(outcome) = thread.zip(turn).and_then(|(thread, turn)| {
 			self.outcome_row(&work.id, thread, turn, scope.is_none(), cx)
 		}) {
-			body = body.child(outcome);
+			body = body.child(index_section("Result", populated)).child(outcome);
 			populated = true;
 		}
 		let topics = thread
 			.map(|t| self.board_topics(&work.id, t, scope.map(|(_, turn)| turn), &rows))
 			.unwrap_or_default();
-		if !topics.is_empty() {
+		if let Some(thread) = thread.filter(|_| !topics.is_empty()) {
+			body = body.child(index_section("Board topics", populated));
 			populated = true;
-			body = body.child(section("Discussion"));
-			for (index, topic) in topics.iter().enumerate() {
-				body = body.child(self.topic_group(topic, &rows, index > 0, cx));
+			for posts in &topics {
+				let Some(first) = posts.first() else { continue };
+				let opener = first.message_id == first.thread_id;
+				let replies = posts.len() - usize::from(opener);
+				let reply_count =
+					if replies == 1 { "1 reply".to_owned() } else { format!("{replies} replies") };
+				let page = ReferencePage::Topic {
+					thread: thread.into(),
+					historical_turn: scope.map(|(_, t)| t.into()),
+					topic: first.thread_id.clone(),
+				};
+				let title = if opener && !first.text.trim().is_empty() {
+					activity::wording::message(&first.text)
+				} else {
+					format!("#{}", first.channel_name)
+				};
+				body = body.child(self.reference_row(
+					format!("topic-{}", first.thread_id),
+					title,
+					if opener {
+						format!("#{} ({reply_count})", first.channel_name)
+					} else {
+						reply_count
+					},
+					Some(Symbol::TeamMembers),
+					move |s, cx| s.show_reference(page.clone(), cx),
+					cx,
+				));
 			}
 		}
 		let mut reports = roster
@@ -481,13 +540,22 @@ impl AgentSurface {
 					})
 			})
 			.peekable();
-		if reports.peek().is_some() {
+		if let Some((thread, turn)) = thread.zip(turn).filter(|_| reports.peek().is_some()) {
+			body = body.child(index_section("Agent reports", populated));
 			populated = true;
-			body = body.child(section("Agent reports"));
 			for (id, member) in reports {
-				body = body.child(self.report_row(
-					format!("report-{}-{id}", turn.unwrap_or_default()),
-					member,
+				let page = ReferencePage::Report {
+					thread: thread.into(),
+					turn: turn.into(),
+					agent: id.clone(),
+				};
+				let (title, author) = member.report_labels();
+				body = body.child(self.reference_row(
+					format!("report-{turn}-{id}"),
+					title,
+					author,
+					Some(Symbol::Document),
+					move |s, cx| s.show_reference(page.clone(), cx),
 					cx,
 				));
 			}
@@ -509,7 +577,6 @@ impl AgentSurface {
 		} else {
 			Vec::new()
 		};
-		let earlier = self.work_board.collaboration.earlier;
 		for historical in [false, true] {
 			let mut exchanges = cases
 				.iter()
@@ -518,41 +585,18 @@ impl AgentSurface {
 			if exchanges.peek().is_none() && (!historical || previous.is_empty()) {
 				continue;
 			}
+			let heading = if historical { "Earlier discussions" } else { "Exchanges" };
+			body = body.child(index_section(heading, populated));
 			populated = true;
-			let mut list = reading_body();
 			if historical {
-				body = body.child(
-					self.reference_control(
-						"collaboration-earlier".into(),
-						"Earlier discussions".into(),
-						|s, cx| {
-							s.work_board.collaboration.earlier =
-								!s.work_board.collaboration.earlier;
-							cx.notify();
-						},
-						cx,
-					)
-					.w_full()
-					.mt(gpui::px(6.))
-					.aria_expanded(earlier)
-					.px(gpui::px(0.))
-					.bg(gpui::transparent_black())
-					.justify_start()
-					.child(
-						ui_theme::navigation_category_label(gpui::div().flex_1())
-							.child("Earlier discussions"),
-					)
-					.child(workspace_symbols::process_chevron(
-						"earlier-discussions-chevron",
-						earlier,
-					))
-					.smooth(),
-				);
 				if let Some(thread) = thread {
 					for (turn, title) in &previous {
-						let page =
-							ReferencePage::Discussion { thread: thread.into(), turn: turn.clone() };
-						list = list.child(self.reference_row(
+						let page = ReferencePage::Discussion {
+							thread: thread.into(),
+							turn: turn.clone(),
+							title: title.clone(),
+						};
+						body = body.child(self.reference_row(
 							format!("earlier-turn-{turn}"),
 							title.clone(),
 							String::new(),
@@ -562,17 +606,10 @@ impl AgentSurface {
 						));
 					}
 				}
-			} else {
-				body = body.child(section("Exchanges"));
 			}
 			for case in exchanges {
-				list = list.child(self.exchange_row(case, belongs(&case.from), cx));
+				body = body.child(self.exchange_row(case, belongs(&case.from), cx));
 			}
-			body = if historical {
-				body.child(ui_motion::disclosure("earlier-discussions-content", earlier, list))
-			} else {
-				body.child(list)
-			};
 		}
 		if self.work_board.collaboration.failed {
 			body = body.child(note("Could not refresh project exchanges."));
@@ -604,67 +641,6 @@ impl AgentSurface {
 			};
 		}
 		(body, "content")
-	}
-
-	fn topic_group(
-		&self,
-		posts: &[Post],
-		rows: &[Row],
-		divider: bool,
-		cx: &mut Context<Self>,
-	) -> Div {
-		let mut group = reading_body().pb(gpui::px(5.)).when(divider, |group| {
-			group
-				.pt(gpui::px(5.))
-				.border_t_1()
-				.border_color(ui_theme::rgba(ui_theme::PANEL_DIVIDER))
-		});
-		if let [opener, earlier @ .., latest] = posts
-			&& opener.message_id == opener.thread_id
-			&& earlier.len() >= 2
-		{
-			let id = opener.thread_id.clone();
-			let expanded = self.work_board.collaboration.expanded_items.contains(&id);
-			let label = format!(
-				"{} earlier replies ({})",
-				if expanded { "Hide" } else { "Show" },
-				earlier.len()
-			);
-			let toggle = id.clone();
-			let control = self
-				.reference_control(
-					format!("topic-replies-{id}"),
-					label.clone(),
-					move |s, cx| {
-						s.work_board.collaboration.toggle_item(&toggle);
-						cx.notify();
-					},
-					cx,
-				)
-				.aria_expanded(expanded)
-				.px(gpui::px(0.))
-				.justify_start()
-				.bg(gpui::transparent_black())
-				.child(workspace_symbols::process_chevron(
-					format!("topic-replies-arrow-{id}"),
-					expanded,
-				))
-				.child(label)
-				.smooth();
-			group = group
-				.child(self.board_post(opener, rows, cx))
-				.child(control)
-				.child(ui_motion::disclosure(
-					format!("topic-replies-body-{id}"),
-					expanded,
-					reading_body()
-						.children(earlier.iter().map(|post| self.board_post(post, rows, cx))),
-				))
-				.child(self.board_post(latest, rows, cx));
-		} else {
-			group = group.children(posts.iter().map(|post| self.board_post(post, rows, cx)));
-		}
-		group
 	}
 
 	fn board_post(&self, post: &Post, rows: &[Row], cx: &mut Context<Self>) -> AnyElement {
@@ -753,7 +729,7 @@ impl AgentSurface {
 		overview: bool,
 		cx: &mut Context<Self>,
 	) -> Option<Div> {
-		let (item, answer, ended_at) = self.collaboration_outcome(thread, turn)?;
+		let (item, _, ended_at) = self.collaboration_outcome(thread, turn)?;
 		let request = ItemContextRequest {
 			work_id: EntityId::new(work).ok()?,
 			thread_id: EntityId::new(thread).ok()?,
@@ -763,86 +739,18 @@ impl AgentSurface {
 			before: false,
 		};
 		let title = if overview && self.latest_thread_turn(thread) != Some(turn) {
-			"Last outcome"
+			"Show last outcome in chat"
 		} else {
-			"Outcome"
+			"Show outcome in chat"
 		};
-		let heading = ended_at.map_or_else(
-			|| title.to_owned(),
-			|micros| format!("{title} ({})", crate::ui_time::timestamp(micros)),
-		);
-		// A short final often puts the action the user must take in its last paragraph.
-		let content = if markdown::plain_text(answer).chars().nth(240).is_none() {
-			markdown::render(answer, &format!("outcome-{turn}-{item}"))
-		} else {
-			let excerpt = markdown::report_excerpt(answer);
-			crate::shell::agent_surface::selectable_text::SelectableText::plain(
-				format!("outcome-excerpt-{turn}-{item}"),
-				format!("{}…", excerpt.trim_end_matches('…')),
-			)
-			.into_any_element()
-		};
-		Some(reading_body().child(section(&heading)).child(content).child(self.reference_link(
+		Some(reading_body().child(self.reference_row(
 			"locate-collaboration-outcome".into(),
-			"Show in chat",
-			Symbol::Forward,
+			title.into(),
+			ended_at.map(crate::ui_time::timestamp).unwrap_or_default(),
+			Some(Symbol::NavigationChats),
 			move |s, cx| s.locate_find_match(request.clone(), cx),
 			cx,
 		)))
-	}
-
-	fn report_row(&self, key: String, member: &Participant, cx: &mut Context<Self>) -> Div {
-		let summary = activity::wording::message(&member.reply);
-		let name = &member.name;
-		let row = reading_body().gap(gpui::px(0.));
-		// Show brief, self-contained reports directly, including their native Markdown links.
-		if summary.chars().nth(80).is_none()
-			&& same_excerpt(&summary, &markdown::plain_text(&member.reply))
-		{
-			return row
-				.child(named_heading(&key, name))
-				.child(markdown::render(&member.reply, &key));
-		}
-		let expanded = self.work_board.collaboration.expanded_items.contains(&key);
-		let toggle = key.clone();
-		let control = self
-			.reference_control(
-				key.clone(),
-				format!("{name}. {} report", if expanded { "Collapse" } else { "Read full" }),
-				move |s, cx| {
-					s.work_board.collaboration.toggle_item(&toggle);
-					cx.notify();
-				},
-				cx,
-			)
-			.w_full()
-			.px(gpui::px(0.))
-			.py(gpui::px(4.))
-			.bg(gpui::transparent_black())
-			.justify_start()
-			.aria_expanded(expanded)
-			.child(
-				gpui::div().flex_1().min_w_0().flex().flex_col().child(name.clone()).child(
-					ui_motion::disclosure(
-						format!("{key}-summary"),
-						!expanded,
-						gpui::div()
-							.w_full()
-							.truncate()
-							.font_weight(FontWeight::NORMAL)
-							.text_color(ui_theme::rgb(SECONDARY))
-							.child(summary),
-					),
-				),
-			)
-			.child(workspace_symbols::process_chevron(format!("{key}-disclosure"), expanded))
-			.smooth();
-		let reply = member.reply.clone();
-		row.child(control).child(ui_motion::disclosure_lazy(
-			format!("{key}-details"),
-			expanded,
-			move |_| markdown::render(&reply, &key),
-		))
 	}
 
 	fn conversation_reader(&self, row: &Row, rows: &[Row], message: Option<&str>) -> Div {
@@ -1176,7 +1084,16 @@ fn discussion_message(
 	block
 }
 
-fn section(title: &str) -> impl IntoElement {
+fn index_section(title: &str, follows_content: bool) -> Stateful<Div> {
+	section(title).when(follows_content, |heading| {
+		heading
+			.mt(gpui::px(ui_theme::WORKSPACE_GUTTER))
+			.border_t_1()
+			.border_color(ui_theme::rgb(SECONDARY).opacity(0.25))
+	})
+}
+
+fn section(title: &str) -> Stateful<Div> {
 	gpui::div()
 		.id(SharedString::from(format!("reference-heading-{title}")))
 		.role(Role::Heading)
