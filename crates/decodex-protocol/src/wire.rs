@@ -2528,6 +2528,15 @@ pub enum QueryPayload {
 		/// Last wakeup revision on this connection; absent for immediate initial state.
 		after_revision: Option<u64>,
 	},
+	/// Read the next posts from the selected native tree.
+	GetNativeBoard {
+		/// Managed conversation that owns the tree.
+		work_id: EntityId,
+		/// Expected native root, to bind the cursor across reconnects.
+		root: EntityId,
+		/// Last observed native post sequence.
+		after: i64,
+	},
 	/// Inspect exact native descendants or one descendant conversation.
 	GetNativeAgents {
 		/// Exact managed work owner.
@@ -3236,6 +3245,8 @@ pub enum QueryResultPayload {
 	AgentOutput(AgentOutputResult),
 	/// Native agent inspection result.
 	NativeAgents(NativeAgentsResult),
+	/// A read-only page from the native Board, when available.
+	NativeBoard(Option<crate::NativeBoardPage>),
 	/// Native resource associations for an exact work thread.
 	AgentResources(AgentResourcesResult),
 	/// Exact resource-associated conversations.

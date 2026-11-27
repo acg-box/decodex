@@ -1,54 +1,38 @@
-//! Read-only topics reconstructed from Codex's own Board receipts.
+//! Topics from the native Board and receipts preserved in older conversations.
 use super::*;
 use decodex_protocol::{AgentTimelineContent, AgentTimelinePage, WireText};
 
-#[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize)]
-pub(super) struct Post {
-	pub(super) message_id: String,
-	pub(super) thread_id: String,
-	pub(super) channel_name: String,
-	pub(super) author: String,
-	pub(super) created_at: String,
-	#[serde(default)]
-	pub(super) text: String,
-	#[serde(default)]
-	pub(super) truncated: bool,
-	#[serde(skip)]
-	pub(super) posted_by_thread: Option<String>,
+pub(super) use decodex_protocol::NativeBoardPost as Post;
+
+// Native UTC timestamps have optional fractional seconds. Sort the unpadded UTC value.
+pub(super) fn order(post: &Post) -> (&str, &str) {
+	(post.created_at.trim_end_matches('Z'), &post.message_id)
 }
 
-impl Post {
-	// Native UTC timestamps have optional fractional seconds. Sort the unpadded UTC value.
-	pub(super) fn order(&self) -> (&str, &str) {
-		(self.created_at.trim_end_matches('Z'), &self.message_id)
+pub(super) fn from_entry(entry: &AgentTimelineContent, source: &str) -> Option<Post> {
+	let AgentTimelineContent::Item { activity: Some(activity), text, .. } = entry else {
+		return None;
+	};
+	if activity.status != "completed"
+		|| !matches!(
+			(activity.kind.as_str(), activity.detail.as_str()),
+			("functionCallOutput", "collaboration/post" | "collaboration/read_post")
+				| ("mcpToolCall", "codex_message_board/post" | "codex_message_board/read_post")
+		) {
+		return None;
 	}
-
-	pub(super) fn from_entry(entry: &AgentTimelineContent, source: &str) -> Option<Self> {
-		let AgentTimelineContent::Item { activity: Some(activity), text, .. } = entry else {
-			return None;
-		};
-		if activity.status != "completed"
-			|| !matches!(
-				(activity.kind.as_str(), activity.detail.as_str()),
-				("functionCallOutput", "collaboration/post" | "collaboration/read_post")
-					| ("mcpToolCall", "codex_message_board/post" | "codex_message_board/read_post")
-			) {
-			return None;
-		}
-		let mut post: Self = serde_json::from_str(text).ok()?;
-		if activity.detail.ends_with("/post") {
-			post.posted_by_thread = Some(source.to_owned());
-		}
-		(!post.message_id.is_empty()
-			&& !post.thread_id.is_empty()
-			&& !post.channel_name.is_empty()
-			&& !post.author.is_empty())
-		.then_some(post)
-	}
+	let mut post: Post = serde_json::from_str(text).ok()?;
+	post.posted_by_thread = activity.detail.ends_with("/post").then(|| source.to_owned());
+	(!post.message_id.is_empty()
+		&& !post.thread_id.is_empty()
+		&& !post.channel_name.is_empty()
+		&& !post.author.is_empty())
+	.then_some(post)
 }
 
 #[derive(Default, Clone)]
 pub(super) struct History {
+	native_after: i64,
 	pub(super) posts: BTreeMap<String, Post>,
 	// Latest native item in a successfully scanned range. Positions can be page-relative.
 	head: Option<(String, String)>,
@@ -110,7 +94,7 @@ impl History {
 				.head
 				.as_ref()
 				.is_some_and(|(turn, id)| identity(entry) == Some((turn.as_str(), id.as_str())));
-			if let Some(post) = Post::from_entry(&entry.content, &page.thread_id) {
+			if let Some(post) = from_entry(&entry.content, &page.thread_id) {
 				merge(&mut self.posts, post);
 			}
 		}
@@ -118,6 +102,31 @@ impl History {
 	}
 
 	pub(super) async fn refresh(
+		&mut self,
+		client: &AgentClient,
+		owner: &EntityId,
+		thread: &EntityId,
+		first: &AgentTimelinePage,
+		read_native: bool,
+	) {
+		self.refresh_receipts(client, owner, thread, first).await;
+		if read_native
+			&& let Ok(Some(page)) =
+				client.native_board(owner.clone(), thread.clone(), self.native_after).await
+		{
+			self.observe_native(page);
+		}
+	}
+
+	pub(super) fn observe_native(&mut self, page: decodex_protocol::NativeBoardPage) {
+		for post in page.posts {
+			merge(&mut self.posts, post);
+		}
+		self.native_after = page.after;
+		self.complete &= !page.more;
+	}
+
+	async fn refresh_receipts(
 		&mut self,
 		client: &AgentClient,
 		owner: &EntityId,

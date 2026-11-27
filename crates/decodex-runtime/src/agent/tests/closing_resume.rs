@@ -194,7 +194,8 @@ async fn recovery_retries_closing_thread_and_reconciles_without_replaying_input(
 
 		while let Ok(request) = sent.try_recv() {
 			assert!(
-				["thread/resume", "thread/read"].contains(&request["method"].as_str().unwrap())
+				["thread/resume", "thread/read", "config/read"]
+					.contains(&request["method"].as_str().unwrap())
 			);
 
 			if request["method"] == "thread/resume" {
@@ -206,7 +207,7 @@ async fn recovery_retries_closing_thread_and_reconciles_without_replaying_input(
 		assert_eq!(resumes[0], resumes[1]);
 		assert_eq!(resumes[0]["threadId"], "opaque thread/1");
 		assert_eq!(resumes[0]["excludeTurns"], true);
-		tests::assert_agent_resume(&resumes[0], "opaque thread/1", true);
+		tests::assert_agent_resume(&resumes[0], "opaque thread/1", true, true);
 	}
 }
 
@@ -369,11 +370,21 @@ async fn closing_recovery_confirms_exact_steer_history_without_resubmitting_inpu
 
 		while let Ok(request) = sent.try_recv() {
 			assert!(
-				["thread/resume", "thread/read", "thread/turns/list", "thread/items/list"]
-					.contains(&request["method"].as_str().unwrap()),
+				[
+					"thread/resume",
+					"thread/read",
+					"config/read",
+					"thread/turns/list",
+					"thread/items/list"
+				]
+				.contains(&request["method"].as_str().unwrap()),
 				"unexpected request: {request}"
 			);
-			assert_eq!(request["params"]["threadId"], "opaque thread/1");
+			if request["method"] == "config/read" {
+				assert_eq!(request["params"]["cwd"], "/tmp");
+			} else {
+				assert_eq!(request["params"]["threadId"], "opaque thread/1");
+			}
 
 			resumes += usize::from(request["method"] == "thread/resume");
 		}

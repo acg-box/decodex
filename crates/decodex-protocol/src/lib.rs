@@ -230,7 +230,7 @@ pub use self::{
 		InitialModelCatalogRequest, InitialModelCatalogResult, InitialModelDefaults,
 		InitialModelSource, ModelCatalogPurpose,
 	},
-	native_agents::{NativeAgentDto, NativeAgentsResult},
+	native_agents::{NativeAgentDto, NativeAgentsResult, NativeBoardPage, NativeBoardPost},
 	reset_card_recovery::{AccountResetCardOperationResult, ResetCardOperationView},
 	retained_session::{
 		ApplicationConfirmation, RetainedSession, RetainedSessionConfig, RetainedSessionFailure,

@@ -373,6 +373,11 @@ impl AppServerClient {
 		Ok(())
 	}
 
+	/// Native host home reported by this connection.
+	pub fn native_home(&self) -> Option<&std::path::Path> {
+		self.native_home.get().map(PathBuf::as_path)
+	}
+
 	/// Opaque identity of this transport, shared by clones and distinct after reconnect.
 	pub fn connection_identity(&self) -> &str {
 		&self.connection_identity

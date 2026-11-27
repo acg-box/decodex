@@ -134,7 +134,7 @@ pub const MAX_PROCESS_QUARANTINE: usize = 64;
 // Native defaults qualified against the locked runtime. Keep transport selection
 // native-owned; shared gRPC Code Mode hosting has no measured local benefit yet.
 // The dotted feature option preserves the user's multi_agent_v2 enable/disable value.
-pub(crate) const APP_SERVER_ARGS: [&str; 10] = [
+pub(crate) const APP_SERVER_ARGS: [&str; 16] = [
 	"app-server",
 	"--stdio",
 	// The live Responses endpoint rejects this pin's content_item_metadata field.
@@ -146,6 +146,14 @@ pub(crate) const APP_SERVER_ARGS: [&str; 10] = [
 	"features.wake_on_agent_messages=true",
 	"-c",
 	"features.multi_agent_v2.preserve_fork_prefix=true",
+	// Native V2 reopens the disk-backed board by tree ID after a cold resume.
+	// The bundled MCP board uses process-local memory even for persistent threads.
+	"--enable",
+	"agent_message_board",
+	"--disable",
+	"agent_message_board_mcp",
+	"-c",
+	"features.multi_agent_v2.message_board_in_memory=false",
 ];
 
 const CHILD_PATH: &str = "/usr/bin:/bin:/usr/sbin:/sbin";
@@ -6542,7 +6550,13 @@ pub(crate) mod tests {
 				"-c",
 				"features.wake_on_agent_messages=true",
 				"-c",
-				"features.multi_agent_v2.preserve_fork_prefix=true"
+				"features.multi_agent_v2.preserve_fork_prefix=true",
+				"--enable",
+				"agent_message_board",
+				"--disable",
+				"agent_message_board_mcp",
+				"-c",
+				"features.multi_agent_v2.message_board_in_memory=false",
 			]
 		);
 

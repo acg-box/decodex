@@ -121,6 +121,12 @@ impl AgentCoordinator {
 
 		params["config"] = serde_json::json!({"features.guardian_recorded_items":details});
 		if let Some(item) = self.store.agent_work_item_for_thread(thread.to_owned()).await? {
+			if !self.loaded_threads.contains(thread)
+				&& let Ok(cwd) = self.native_chat_directory(thread).await
+				&& self.use_board_default(&cwd).await
+			{
+				params["config"]["features.multi_agent_v2.enabled"] = true.into();
+			}
 			if self.store.uses_agent_mcp_tools(item.id.clone()).await? {
 				let assistant = self.store.assistant_settings(item.id.clone()).await?.is_some();
 				self.managed_tools.configure(&mut params, assistant).await?;
@@ -134,6 +140,25 @@ impl AgentCoordinator {
 		}
 
 		Ok(params)
+	}
+
+	/// The native Board binds at thread startup. Preserve explicit user and project selections.
+	pub(super) async fn use_board_default(&self, cwd: &str) -> bool {
+		let Ok(result) = self
+			.client
+			.request(
+				"config/read",
+				serde_json::json!({
+					"cwd":cwd, "includeLayers":false
+				}),
+			)
+			.await
+		else {
+			return false;
+		};
+		let mode = &result["config"]["features"]["multi_agent_v2"];
+		result["config"].is_object()
+			&& (mode.is_null() || (mode.is_object() && mode.get("enabled").is_none()))
 	}
 
 	/// Apply the service role without replacing the native model, directory, or permissions.

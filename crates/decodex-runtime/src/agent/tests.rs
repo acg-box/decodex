@@ -833,7 +833,7 @@ async fn asynchronous_questions_and_usage_are_observed_without_completing_or_wak
 	);
 }
 
-fn assert_agent_resume(params: &Value, thread: &str, summary: bool) {
+fn assert_agent_resume(params: &Value, thread: &str, summary: bool, board_default: bool) {
 	let endpoint = &params["config"]["mcp_servers.decodex"]["url"];
 	assert!(endpoint.as_str().is_some_and(|url| url.starts_with("http://127.0.0.1:")));
 	let mut expected = serde_json::json!({
@@ -846,6 +846,9 @@ fn assert_agent_resume(params: &Value, thread: &str, summary: bool) {
 			"mcp_servers.decodex": {"url":endpoint,"required":true,"default_tools_approval_mode":"approve","disabled_tools":["assistant_read","assistant_manage","assistant_memory"]}
 		}
 	});
+	if board_default {
+		expected["config"]["features.multi_agent_v2.enabled"] = true.into();
+	}
 	if summary {
 		expected["initialTurnsPage"] =
 			serde_json::json!({"limit":1,"sortDirection":"desc","itemsView":"summary"});
@@ -1197,7 +1200,7 @@ async fn serve_fixture(server_io: DuplexStream, history: Value, sent: UnboundedS
 				serde_json::json!({"cwd":configured["cwd"],"thread":{"id":id,"turns":if request["params"]["excludeTurns"] == true { serde_json::json!([]) } else { history[id]["thread"]["turns"].clone() }},"model":configured["model"],"reasoningEffort":configured["reasoningEffort"]})
 			},
 			Some("config/read") =>
-				serde_json::json!({"config":{"desktop":{"projectlessWorkspaceRoot":history.get("_chatRoot").cloned().unwrap_or_else(|| serde_json::json!(chat_root.path()))}}}),
+				serde_json::json!({"config":{"features": history.get("_features"),"desktop":{"projectlessWorkspaceRoot":history.get("_chatRoot").cloned().unwrap_or_else(|| serde_json::json!(chat_root.path()))}}}),
 			Some("thread/start") => {
 				threads += 1;
 
@@ -1286,7 +1289,7 @@ async fn unloaded_thread_resumes_exact_identity_without_new_thread() {
 	assert_eq!(resumes.len(), 1);
 	assert_eq!(resumes[0]["params"]["threadId"], serde_json::json!(original.codex_thread_id));
 
-	assert_agent_resume(&resumes[0]["params"], "opaque thread/1", true);
+	assert_agent_resume(&resumes[0]["params"], "opaque thread/1", true, true);
 }
 
 #[tokio::test]
@@ -1747,7 +1750,10 @@ async fn recovery_records_only_exact_terminal_evidence_without_dispatching() {
 	assert!(events[0].payload.contains("failed"));
 
 	while let Ok(request) = sent.try_recv() {
-		assert!(["thread/resume", "thread/read"].contains(&request["method"].as_str().unwrap()));
+		assert!(
+			["thread/resume", "thread/read", "config/read"]
+				.contains(&request["method"].as_str().unwrap())
+		);
 	}
 
 	recovered.recover_persisted().await.unwrap();
@@ -4633,7 +4639,7 @@ async fn missed_native_active_turn_recovery_rejects_reverted_readback() {
 			);
 
 			if request["method"] == "thread/resume" {
-				assert_agent_resume(&request["params"], "opaque thread/1", false);
+				assert_agent_resume(&request["params"], "opaque thread/1", false, false);
 			}
 		}
 	}

@@ -558,6 +558,11 @@ impl AgentCoordinator {
 			Some(thread) => serde_json::json!(self.native_chat_directory(thread).await?),
 			None => serde_json::json!(self.new_chat_directory(item).await?),
 		};
+		if let Some(cwd) = params["cwd"].as_str()
+			&& self.use_board_default(cwd).await
+		{
+			params["config"]["features.multi_agent_v2.enabled"] = true.into();
+		}
 
 		Ok(params)
 	}
