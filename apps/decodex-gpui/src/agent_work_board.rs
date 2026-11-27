@@ -1,5 +1,6 @@
 //! Source-backed agent relationships and execution previews.
 #[path = "agent_relation_activity.rs"] mod activity;
+#[path = "agent_board_topics.rs"] mod board_topics;
 #[path = "agent_work_progress.rs"] mod progress;
 #[path = "agent_relation_canvas.rs"] mod relations;
 #[path = "agent_review.rs"] mod review;
@@ -29,10 +30,28 @@ use decodex_protocol::{
 use relations::View;
 use workbench::Collaboration;
 
+#[derive(Clone, Default, Debug, Eq, PartialEq)]
+pub(super) enum ReferencePage {
+	#[default]
+	Overview,
+	Exchange(String),
+	Conversation {
+		key: String,
+		thread: String,
+		message: Option<String>,
+	},
+	Discussion {
+		turn: String,
+		thread: String,
+	},
+}
+
 pub(super) struct Board {
 	text_system: Arc<TextSystem>,
 	pub(super) graph: bool,
-	collaboration_expanded: Option<String>,
+	pub(super) reference: ReferencePage,
+	reference_scroll: gpui::ScrollHandle,
+	reference_history: Vec<(ReferencePage, gpui::ScrollHandle)>,
 	collaboration: Collaboration,
 	focus: Option<String>,
 	view: View,
@@ -55,7 +74,9 @@ impl Board {
 		Self {
 			text_system: cx.text_system().clone(),
 			graph: false,
-			collaboration_expanded: None,
+			reference: ReferencePage::Overview,
+			reference_scroll: Default::default(),
+			reference_history: Vec::new(),
 			collaboration: Default::default(),
 			focus: None,
 			view: Default::default(),
@@ -88,6 +109,7 @@ pub(super) struct Row {
 }
 
 pub(super) struct Brief {
+	board: Option<board_topics::History>,
 	review: Option<review::Evidence>,
 	source_thread: Option<String>,
 	output: Option<activity::Output>,
@@ -100,6 +122,12 @@ pub(super) struct Brief {
 	metrics: crate::ui_work_metrics::Sample,
 	stamp: String,
 	read_at: std::time::Instant,
+}
+struct BriefRead {
+	row: Row,
+	stamp: String,
+	previous_turn: Option<(String, bool)>,
+	board: Option<board_topics::History>,
 }
 impl Brief {
 	fn retain_relations(&mut self, previous: &Self) {
@@ -126,6 +154,38 @@ impl Brief {
 
 		self.relations = records;
 	}
+}
+
+// Read older native pages only for a terminal child whose latest page cannot establish
+// attribution. The brief retains the answer for this exact thread and turn.
+async fn single_turn_history(
+	client: &AgentClient,
+	owner: &EntityId,
+	thread: &EntityId,
+	turn: &str,
+	mut cursor: Option<String>,
+) -> Option<bool> {
+	while let Some(before) = cursor.take() {
+		let request = decodex_protocol::WireText::new(&before).ok()?;
+		let AgentTimelineResult::Available { work_id, page, .. } =
+			client.timeline(owner.clone(), thread.clone(), Some(request)).await.ok()?
+		else {
+			return None;
+		};
+		if work_id.as_str() != owner.as_str()
+			|| page.thread_id != thread.as_str()
+			|| page.next_cursor.as_ref() == Some(&before)
+		{
+			return None;
+		}
+		if let Some(single) =
+			activity::single_turn_page(&page.entries, turn, page.next_cursor.is_none())
+		{
+			return Some(single);
+		}
+		cursor = page.next_cursor;
+	}
+	None
 }
 
 impl AgentSurface {
@@ -231,6 +291,24 @@ impl AgentSurface {
 		self.work_board.brief_task = None;
 		// Keep visible values while forcing every brief to be read again.
 		self.work_board.reload_pending = self.work_board.briefs.keys().cloned().collect();
+	}
+
+	// Codex supplies the ancestor-filtered roster, including children that also own a work row.
+	fn board_sources(&self, work: &str) -> BTreeSet<&str> {
+		let mut threads = BTreeSet::new();
+		if let Some(agents) = self.native_agents.lists.get(work).filter(|agents| !agents.is_empty())
+		{
+			threads.extend(agents.iter().map(|agent| agent.thread_id.as_str()));
+			if let Some(root) = self
+				.snapshot
+				.as_ref()
+				.and_then(|s| s.work_items.iter().find(|item| item.id == work))
+				.and_then(|item| item.codex_thread_id.as_deref())
+			{
+				threads.insert(root);
+			}
+		}
+		threads
 	}
 
 	fn board_rows(&self) -> Vec<Row> {
@@ -702,7 +780,7 @@ impl AgentSurface {
 
 	fn read_factory_briefs(
 		profile: ClientProfile,
-		requests: Vec<(Row, String)>,
+		requests: Vec<BriefRead>,
 		cx: &Context<Self>,
 	) -> Task<Vec<(String, Brief)>> {
 		cx.background_executor().spawn(async move {
@@ -714,7 +792,7 @@ impl AgentSurface {
 				let client = AgentClient::new(profile);
 				let mut results = Vec::new();
 
-				for (row, stamp) in requests {
+				for BriefRead { row, stamp, previous_turn, mut board } in requests {
 					let (Ok(owner), Some(thread)) = (
 						EntityId::new(&row.work),
 						row.thread.as_deref().and_then(|t| EntityId::new(t).ok()),
@@ -736,11 +814,35 @@ impl AgentSurface {
 						&& page.thread_id == thread.as_str()
 					{
 						available = true;
+						if let Some(history) = &mut board {
+							history.refresh(&client, &owner, &thread, page).await;
+						}
 						metrics = crate::ui_work_metrics::Sample::from_page(page);
 						outcome = latest_outcome(&page.entries);
 						preview = activity::latest(&page.entries, None);
 						review = review::latest(&page.entries);
-						output = activity::output(&page.entries);
+						output = activity::output(&page.entries, page.next_cursor.is_none());
+						if row.native
+							&& let Some(answer) = &mut output
+							&& answer.only_turn.is_none()
+							&& outcome.as_ref().is_some_and(|(turn, status)| {
+								turn == &answer.turn && status == "completed"
+							}) {
+							answer.only_turn = if let Some((_, single)) =
+								previous_turn.filter(|(turn, _)| turn == &answer.turn)
+							{
+								Some(single)
+							} else {
+								single_turn_history(
+									&client,
+									&owner,
+									&thread,
+									&answer.turn,
+									page.next_cursor.clone(),
+								)
+								.await
+							};
+						}
 						assignments = activity::assignments(&page.entries, &page.thread_id);
 						relations = page
 							.entries
@@ -783,6 +885,7 @@ impl AgentSurface {
 					results.push((
 						row.key,
 						Brief {
+							board,
 							review,
 							output,
 							source_thread: row.thread.clone(),
@@ -813,28 +916,56 @@ impl AgentSurface {
 
 		let Some(profile) = self.profile.clone() else { return };
 		let mut rows = self.factory_rows();
+		let board_scope = self
+			.selected
+			.as_deref()
+			.filter(|_| self.workspace.agent_tree_visible)
+			.map(|work| self.board_sources(work))
+			.unwrap_or_default();
 
 		rows.retain(|r| r.thread.is_some());
 		rows.sort_by_key(|r| (r.group != 1, self.work_board.briefs.get(&r.key).map(|b| b.read_at)));
 
-		let requests: Vec<_> = rows
-			.into_iter()
-			.filter(|r| {
-				self.work_board.reload_pending.contains(&r.key)
-					|| self.work_board.briefs.get(&r.key).is_none_or(|b| {
-						b.stamp != self.brief_stamp(r)
-							|| ((r.group == 1 || b.question.is_some())
-								&& b.read_at.elapsed().as_secs() >= 1)
-							|| b.read_at.elapsed().as_secs() >= 30
-					})
-			})
-			.take(4)
-			.map(|row| {
-				let stamp = self.brief_stamp(&row);
-
-				(row, stamp)
-			})
-			.collect();
+		let requests: Vec<_> =
+			rows.into_iter()
+				.filter(|r| {
+					self.work_board.reload_pending.contains(&r.key)
+						|| self.work_board.briefs.get(&r.key).is_none_or(|b| {
+							b.stamp != self.brief_stamp(r)
+								|| (r
+									.thread
+									.as_ref()
+									.is_some_and(|id| board_scope.contains(id.as_str()))
+									&& !b.board.as_ref().is_some_and(|h| h.complete)
+									&& b.read_at.elapsed().as_secs() >= 2)
+								|| ((r.group == 1 || b.question.is_some())
+									&& b.read_at.elapsed().as_secs() >= 1)
+								|| b.read_at.elapsed().as_secs() >= 30
+						})
+				})
+				.take(4)
+				.map(|row| {
+					let stamp = self.brief_stamp(&row);
+					let previous_turn = self
+						.work_board
+						.briefs
+						.get(&row.key)
+						.filter(|b| b.source_thread == row.thread)
+						.and_then(|b| b.output.as_ref())
+						.and_then(|o| o.only_turn.map(|single| (o.turn.clone(), single)));
+					let board =
+						(row.thread.as_ref().is_some_and(|id| board_scope.contains(id.as_str())))
+							.then(|| {
+								self.work_board
+									.briefs
+									.get(&row.key)
+									.filter(|b| b.source_thread == row.thread)
+									.and_then(|b| b.board.clone())
+									.unwrap_or_default()
+							});
+					BriefRead { row, stamp, previous_turn, board }
+				})
+				.collect();
 
 		if requests.is_empty() {
 			if self.publish_usage() {
@@ -861,6 +992,9 @@ impl AgentSurface {
 									previous.source_thread == brief.source_thread
 								}) {
 								brief.retain_relations(previous);
+								if brief.board.is_none() {
+									brief.board = previous.board.clone();
+								}
 
 								// Keep an observed role when its source scrolls out of the native
 								// page. Retain only threads still represented by visible agents.

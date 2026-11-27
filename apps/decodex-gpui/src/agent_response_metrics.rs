@@ -95,11 +95,11 @@ impl RenderOnce for ResponseMetrics {
 			cx,
 			|_, _| MetricsPopover::default(),
 		);
-		let (open, anchor) = state.read_with(cx, |state, _| (state.open, state.anchor));
+		let (open, pinned, anchor) =
+			state.read_with(cx, |state, _| (state.open, state.pinned, state.anchor));
 		let hover = state.clone();
 		let click = state.clone();
 		let measure = state.clone();
-		let panel_hover = state.clone();
 		let outside = state.clone();
 		let dismiss = state.clone();
 		let key = SharedString::from(format!("turn-metrics-popover-{}", self.key));
@@ -125,9 +125,7 @@ impl RenderOnce for ResponseMetrics {
 			.child(Metric::Spend(self.spend.clone()).element())
 			.hover(|d| d.text_color(ui_theme::rgb(TEXT)))
 			.active(|d| d.text_color(ui_theme::rgb(TEXT).opacity(0.8)))
-			.on_hover(move |inside, _, cx| {
-				hover.update(cx, |state, cx| state.hover(HoverTarget::Trigger, *inside, cx))
-			})
+			.on_hover(move |inside, _, cx| hover.update(cx, |state, cx| state.hover(*inside, cx)))
 			.on_click(move |_, _, cx| {
 				cx.stop_propagation();
 				click.update(cx, |state, cx| {
@@ -153,14 +151,8 @@ impl RenderOnce for ResponseMetrics {
 						.child(
 							gpui::div().w(gpui::px(260.)).child(
 								ui_motion::popover_lazy(key, open, move |_, _| {
-									let panel_hover = panel_hover.clone();
 									let outside = outside.clone();
 									details_panel(&details)
-										.on_hover(move |inside, _, cx| {
-											panel_hover.update(cx, |state, cx| {
-												state.hover(HoverTarget::Panel, *inside, cx)
-											})
-										})
 										.on_mouse_down_out(move |event, _, cx| {
 											outside.update(cx, |state, cx| {
 												if !state.anchor.contains(&event.position) {
@@ -170,8 +162,7 @@ impl RenderOnce for ResponseMetrics {
 										})
 										.into_any_element()
 								})
-								.preview()
-								.hover_preview(260.)
+								.hover_preview(260., !pinned)
 								.trigger(Rc::new(Cell::new(Some(anchor))))
 								.on_dismiss(move |cx| {
 									dismiss
@@ -218,8 +209,6 @@ impl MetricsDetails {
 struct MetricsPopover {
 	open: bool,
 	pinned: bool,
-	trigger_hovered: bool,
-	panel_hovered: bool,
 	hover_intent: ui_motion::HoverIntent<()>,
 	anchor: Bounds<Pixels>,
 }
@@ -234,27 +223,16 @@ impl MetricsPopover {
 		cx.notify();
 	}
 
-	fn hover(&mut self, target: HoverTarget, inside: bool, cx: &mut Context<Self>) {
-		match target {
-			HoverTarget::Trigger => self.trigger_hovered = inside,
-			HoverTarget::Panel => self.panel_hovered = inside,
-		}
-		let inside = self.trigger_hovered || self.panel_hovered;
-		if self.pinned {
-			self.hover_intent.cancel();
+	fn hover(&mut self, inside: bool, cx: &mut Context<Self>) {
+		if self.open {
 			return;
 		}
-		self.hover_intent.update((), inside, self.open.then_some(()), cx, |state, next, cx| {
+		self.hover_intent.update((), inside, None, cx, |state, next, cx| {
 			state.hover_intent.settled();
 			state.open = next.is_some();
 			cx.notify();
 		});
 	}
-}
-
-enum HoverTarget {
-	Trigger,
-	Panel,
 }
 
 pub(super) fn footer(
@@ -469,32 +447,6 @@ fn details_panel(details: &MetricsDetails) -> Stateful<Div> {
 #[cfg(test)]
 mod tests {
 	use super::{AgentTurnTimingDto, AgentTurnUsageDto, timing_rows, usage_rows};
-	use gpui::AppContext as _;
-
-	#[gpui::test]
-	fn entering_details_keeps_the_preview_open_in_either_hover_callback_order(
-		cx: &mut gpui::TestAppContext,
-	) {
-		for panel_first in [true, false] {
-			let popover = cx.new(|_| super::MetricsPopover::default());
-			popover.update(cx, |state, cx| {
-				state.set_open(true, false, cx);
-				state.hover(super::HoverTarget::Trigger, true, cx);
-				if panel_first {
-					state.hover(super::HoverTarget::Panel, true, cx);
-					state.hover(super::HoverTarget::Trigger, false, cx);
-				} else {
-					state.hover(super::HoverTarget::Trigger, false, cx);
-					state.hover(super::HoverTarget::Panel, true, cx);
-				}
-			});
-			cx.run_until_parked();
-			cx.executor().advance_clock(std::time::Duration::from_millis(300));
-			cx.run_until_parked();
-			popover.read_with(cx, |state, _| assert!(state.open));
-		}
-	}
-
 	#[test]
 	fn details_omit_unobserved_and_zero_duration_activity() {
 		let rows = timing_rows(&AgentTurnTimingDto {

@@ -2,7 +2,7 @@
 use std::{cmp::Reverse, collections::BTreeMap};
 
 use crate::shell::agent_surface::work_board::workbench::collaboration::{
-	AgentExchangeDto, AgentExchangeQuestionDto, Edge, Exchange, Graph, Kind, Row,
+	AgentExchangeDto, AgentExchangeQuestionDto, Edge, Exchange, Kind, Row,
 	ui_theme::{INFO, SUCCESS, TEXT_MUTED, WARNING},
 };
 use decodex_protocol::{
@@ -10,7 +10,7 @@ use decodex_protocol::{
 };
 
 pub(super) fn exchanges(
-	graph: &Graph,
+	edges: &[Edge],
 	rows: &[Row],
 	records: &[AgentExchangeDto],
 	questions: &[AgentExchangeQuestionDto],
@@ -19,7 +19,7 @@ pub(super) fn exchanges(
 
 	cases.extend(peers(records, rows));
 
-	for (order, edge) in graph.edges.iter().enumerate() {
+	for (order, edge) in edges.iter().enumerate() {
 		if matches!(edge.kind, Kind::Assigned | Kind::Resource | Kind::Spawned)
 			|| (edge.source.is_none() && edge.kind != Kind::Dependency)
 		{

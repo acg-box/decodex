@@ -70,7 +70,7 @@ pub(crate) fn initialize(cx: &mut App, refresh_menu: fn(&App)) {
 			"SubmitComposer" => "Send message".into(),
 			"InterruptReply" => "Dismiss or interrupt reply".into(),
 			"AcceptSuggestion" => "Use prompt suggestion".into(),
-			"ToggleInspector" => "Toggle collaboration panel".into(),
+			"ToggleInspector" => "Toggle collaboration".into(),
 			_ => words(name),
 		});
 		let editable = matches!(

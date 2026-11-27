@@ -87,7 +87,7 @@ impl AgentSurface {
 	pub(super) fn begin_panel_frame(&self, window: &Window, cx: &mut Context<Self>) {
 		let layout = self.workspace_panel_layout(window);
 		let now = Instant::now();
-		let frame = PanelFrame {
+		let mut frame = PanelFrame {
 			left_slot: self.panel_motion_width(
 				&self.workspace.sidebar_motion,
 				layout.left_slot,
@@ -113,6 +113,15 @@ impl AgentSurface {
 				now,
 			),
 		};
+		// A window resize can remove more space in one frame than a closing sidebar releases.
+		// Keep the chat usable during that transition, including its composer controls.
+		let slot_budget =
+			(f32::from(window.viewport_size().width) - MAIN_MIN_WIDTH - 2. * WORKSPACE_GUTTER)
+				.max(0.);
+		frame.left_slot = frame.left_slot.min((slot_budget - WORKSPACE_GUTTER).max(0.));
+		let left_cost = frame.left_slot + frame.left_slot.min(WORKSPACE_GUTTER);
+		frame.right_slot =
+			frame.right_slot.min((slot_budget - left_cost - WORKSPACE_GUTTER).max(0.));
 		self.workspace.panel_frame.set(Some(frame));
 		if [
 			&self.workspace.sidebar_motion,
@@ -598,57 +607,91 @@ impl AgentSurface {
 			.into_any_element()
 	}
 
-	pub(super) fn sidebar_pane(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
-		let width = self.workspace_sidebar_display_width(window);
+	pub(super) fn sidebar_pane(
+		&self,
+		side: Panel,
+		window: &mut Window,
+		cx: &mut Context<Self>,
+	) -> AnyElement {
+		let right = side == Panel::Right;
 		let layout = self.workspace_panel_layout(window);
-		let floating = self.workspace_panel_floating(Panel::Left, layout, width);
-		let preview = self.sidebar_preview_presentation(layout, width);
+		let (width, id, bottom_id) = if right {
+			(
+				self.workspace_right_display_width(window),
+				"workspace-activity-pane",
+				"activity-panel-bottom",
+			)
+		} else {
+			(
+				self.workspace_sidebar_display_width(window),
+				"workspace-navigation-pane",
+				"navigation-panel-bottom",
+			)
+		};
+		let floating = self.workspace_panel_floating(side, layout, width);
+		let preview = !right && self.sidebar_preview_presentation(layout, width);
+		let rail = if right { 0. } else { CONVERSATION_TAB_SIZE + 2. * SIDEBAR_INSET };
 		let bottom = ui_motion::revealed_value(
-			"navigation-panel-bottom",
+			bottom_id,
 			self.workspace_panel_bottom(floating && !preview),
-			width > CONVERSATION_TAB_SIZE + 2. * SIDEBAR_INSET + 0.1,
+			width > rail + 0.1,
 			window,
 			cx,
 		);
-		if self
-			.workspace
-			.sidebar_content_motion
-			.borrow()
-			.as_ref()
-			.is_some_and(|t| t.moving(Instant::now()))
-		{
-			ui_motion::request_frame(window, cx);
-		}
-		ui_theme::workspace_surface()
-			.id("workspace-navigation-pane")
-			.debug_selector(|| "workspace-navigation-pane".into())
+		let mut frame = ui_theme::workspace_surface()
+			.id(id)
+			.debug_selector(move || id.into())
 			.absolute()
-			.left(gpui::px(WORKSPACE_GUTTER))
+			.when(right, |p| p.right(gpui::px(WORKSPACE_GUTTER)))
+			.when(!right, |p| p.left(gpui::px(WORKSPACE_GUTTER)))
 			.top(gpui::px(WINDOW_CONTROLS_CLEARANCE))
 			.bottom(gpui::px(bottom))
 			.w(gpui::px(width))
 			.occlude()
 			.overflow_hidden()
 			.opacity(self.workspace.arrival.progress(0.))
-			.on_hover(cx.listener(|s, hovered: &bool, window, cx| {
-				s.sidebar_hover(*hovered, window, cx);
-			}))
-			.capture_any_mouse_down(
-				cx.listener(|s, _, _, _| s.workspace.focused_panel = Some(Panel::Left)),
-			)
-			.when(width > 0.1, |panel| {
-				panel.child(ui_layout::pane(self.presentations.sidebar.clone(), window))
-			})
-			.when(width > 0.1 && self.workspace.sidebar_visible, |panel| {
-				panel.child(self.sidebar_resize_handle(Panel::Left, cx))
-			})
-			.when(floating, |panel| {
-				panel.on_mouse_down_out(cx.listener(|s, event: &MouseDownEvent, window, cx| {
-					let right = s.workspace_right_display_width(window);
-					if event.position.y >= gpui::px(WINDOW_CONTROLS_CLEARANCE)
-						&& f32::from(event.position.x)
-							< f32::from(window.viewport_size().width) - right - WORKSPACE_GUTTER
-					{
+			.child(self.workspace_focus_region(Some(side), cx));
+		if !right {
+			frame =
+				frame.on_hover(cx.listener(|s, hovered: &bool, window, cx| {
+					s.sidebar_hover(*hovered, window, cx)
+				}));
+		}
+		if width > 0.1 {
+			if right {
+				// Reveal the final page by clipping its edge so paragraphs do not reflow during the
+				// slide.
+				let content_width = sidebar_width(
+					self.workspace.agent_panel_width,
+					f32::from(window.viewport_size().width),
+				);
+				self.deliveries.update(cx, |p, cx| p.set_width(content_width, cx));
+				frame = frame.child(
+					gpui::div()
+						.absolute()
+						.right_0()
+						.top_0()
+						.bottom_0()
+						.w(gpui::px(content_width))
+						.child(ui_layout::pane(self.presentations.activity.clone(), window)),
+				);
+			} else {
+				frame = frame.child(ui_layout::pane(self.presentations.sidebar.clone(), window));
+			}
+			if right || self.workspace.sidebar_visible {
+				frame = frame.child(self.sidebar_resize_handle(side, cx));
+			}
+		}
+		frame
+			.when(floating, |p| {
+				p.on_mouse_down_out(cx.listener(|s, event: &MouseDownEvent, window, cx| {
+					let x = f32::from(event.position.x);
+					let in_center = x > s.workspace_sidebar_display_width(window)
+						+ WORKSPACE_GUTTER
+						&& x < f32::from(window.viewport_size().width)
+							- s.workspace_right_display_width(window)
+							- WORKSPACE_GUTTER;
+					if event.position.y >= gpui::px(WINDOW_CONTROLS_CLEARANCE) && in_center {
 						s.dismiss_workspace_overlays(window, cx);
 					}
 				}))
@@ -722,7 +765,7 @@ impl AgentSurface {
 			.tab_index(0)
 			.role(Role::Slider)
 			.aria_label(if right {
-				"Activity panel width. Drag or use Left and Right. Double-click to reset."
+				"Collaboration sidebar width. Drag or use Left and Right. Double-click to reset."
 			} else {
 				"Sidebar width. Drag or use Left and Right. Double-click to reset."
 			})
@@ -1266,7 +1309,7 @@ mod tests {
 	}
 
 	#[gpui::test]
-	fn sidebar_hover_expands_and_reentry_cancels_close_without_moving_the_rail_marks(
+	fn sidebar_hover_expands_and_closes_on_departure_without_moving_the_rail_marks(
 		cx: &mut gpui::TestAppContext,
 	) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
@@ -1290,7 +1333,7 @@ mod tests {
 		assert_eq!(f32::from(collapsed.size.width), 40.);
 		visual.simulate_mouse_move(collapsed.center(), None, Default::default());
 		visual.run_until_parked();
-		visual.executor().advance_clock(std::time::Duration::from_millis(90));
+		visual.executor().advance_clock(crate::ui_motion::HOVER_OPEN_DELAY / 2);
 		visual.run_until_parked();
 		surface.read_with(visual, |s, _| assert!(!s.workspace.sidebar_peek));
 		let outside = gpui::point(gpui::px(1000.), gpui::px(800.));
@@ -1323,14 +1366,14 @@ mod tests {
 			assert!(!s.workspace.sidebar_visible, "a section disclosure must not pin a peek");
 		});
 		visual.simulate_mouse_move(outside, None, Default::default());
-		visual.executor().advance_clock(std::time::Duration::from_millis(100));
 		visual.run_until_parked();
+		surface.read_with(visual, |s, _| assert!(!s.workspace.sidebar_peek));
 		visual.simulate_mouse_move(collapsed.center(), None, Default::default());
-		visual.executor().advance_clock(std::time::Duration::from_millis(200));
+		visual.run_until_parked();
+		visual.executor().advance_clock(crate::ui_motion::HOVER_OPEN_DELAY);
 		visual.run_until_parked();
 		surface.read_with(visual, |s, _| assert!(s.workspace.sidebar_peek));
 		visual.simulate_mouse_move(outside, None, Default::default());
-		visual.executor().advance_clock(crate::ui_motion::HOVER_CLOSE_DELAY);
 		visual.run_until_parked();
 		visual.update(crate::ui_frame::draw_current_frame);
 		thread::sleep(std::time::Duration::from_millis(250));
@@ -1842,6 +1885,7 @@ mod tests {
 		});
 		visual.update(crate::ui_frame::draw_frame);
 		let composer = visual.debug_bounds("agent-composer").unwrap();
+		let rail_edge = visual.debug_bounds("workspace-navigation-pane").unwrap().right();
 		for open in [true, false, true, false] {
 			surface.update(visual, |s, cx| {
 				s.workspace.sidebar_peek = open;
@@ -1868,7 +1912,12 @@ mod tests {
 							),
 							window,
 						);
-						assert!((clip.left() - pane.right()).abs() <= gpui::px(0.5));
+						if !open && clip.left() == gpui::px(0.) {
+							// A delayed frame can reach the docked rail before the next reversal.
+							assert!((pane.right() - rail_edge).abs() <= gpui::px(0.5));
+						} else {
+							assert!((clip.left() - pane.right()).abs() <= gpui::px(0.5));
+						}
 						if pane.right() > center.left() {
 							let scale = window.scale_factor();
 							let conversation = gpui::Background::from(

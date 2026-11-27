@@ -1,4 +1,5 @@
 //! Bounded public projection of native timeline facts; never enqueue history as input.
+mod board;
 pub(crate) mod media;
 pub(crate) mod metrics;
 pub(crate) mod tool_output;
@@ -347,7 +348,8 @@ pub(crate) fn ordinary(row: &Value) -> Option<AgentTimelineContent> {
 			.join("\n\n"),
 		"functionCallOutput" if delegated_input =>
 			tool_output::parts(item)?.into_iter().skip(1).collect::<Vec<_>>().join("\n"),
-		"functionCallOutput" => tool_output::text(item)?,
+		"functionCallOutput" => board::receipt(item).or_else(|| tool_output::text(item))?,
+		"mcpToolCall" => board::receipt(item).unwrap_or_default(),
 		"userMessage" => {
 			let parts = item["content"].as_array()?;
 			let mut text = Vec::new();
@@ -610,6 +612,48 @@ mod tests {
 	};
 	use decodex_codex::app_server_client::AppServerClient;
 	use decodex_protocol::AgentTimelineResult;
+
+	#[test]
+	fn board_post_requires_a_completed_native_receipt() {
+		let mut row = serde_json::json!({"turnId":"turn","item":{
+			"id":"post","type":"mcpToolCall","server":"codex_message_board","tool":"post",
+			"status":"completed","arguments":{"text":"Checked the packing list."},
+			"result":{"structuredContent":{"message_id":"receipt","thread_id":"original-topic","created_at":"2026-11-26T12:00:01Z","channel_name":"packing","author":"/root/checker"}}
+		}});
+		let text = |row: &Value| match timeline::ordinary(row).unwrap() {
+			AgentTimelineContent::Item { text, .. } => text,
+			_ => panic!("expected tool item"),
+		};
+		assert_eq!(
+			serde_json::from_str::<Value>(&text(&row)).unwrap()["text"],
+			"Checked the packing list."
+		);
+		assert_eq!(
+			serde_json::from_str::<Value>(&text(&row)).unwrap()["thread_id"],
+			"original-topic"
+		);
+		row["item"]["status"] = "failed".into();
+		assert!(text(&row).is_empty());
+		row["item"]["status"] = "completed".into();
+		row["item"]["result"] = Value::Null;
+		assert!(text(&row).is_empty());
+	}
+
+	#[test]
+	fn native_board_read_keeps_the_topic_and_does_not_replace_the_prefix_with_a_tail() {
+		let mut result = serde_json::json!({"message_id":"reply","thread_id":"topic","channel_name":"team","author":"/root/reviewer",
+            "created_at":"2026-11-26T13:00:00Z","text":"回复","n_chars":6,"next_offset_chars":2});
+		let read = |payload: &Value| {
+			let native = serde_json::json!({"type":"functionCallOutput","name":"read_post","namespace":"collaboration",
+                "success":true,"output":[{"type":"input_text","text":payload.to_string()}]});
+			serde_json::from_str::<Value>(&super::board::receipt(&native).unwrap()).unwrap()
+		};
+		assert_eq!(read(&result)["thread_id"], "topic");
+		assert_eq!(read(&result)["text"], "回复");
+		assert_eq!(read(&result)["truncated"], true);
+		result["next_offset_chars"] = 6.into();
+		assert_eq!(read(&result)["text"], "");
+	}
 
 	#[test]
 	fn native_subagent_activity_keeps_thread_identity_without_inventing_message_body() {

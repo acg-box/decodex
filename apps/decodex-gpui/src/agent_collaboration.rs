@@ -1,7 +1,11 @@
 //! Source-backed collaboration across chats, with the existing conversation owners.
 #[path = "agent_collaboration_cases.rs"] mod cases;
 
-use std::{collections::BTreeMap, rc::Rc, time::Instant};
+use std::{
+	collections::{BTreeMap, BTreeSet},
+	rc::Rc,
+	time::Instant,
+};
 
 use gpui::{
 	AnyElement, Div, FontWeight, KeyDownEvent, Role, SharedString, Stateful, Task,
@@ -17,8 +21,8 @@ use crate::{
 		agent_surface::{
 			AgentClient, AgentSurface, Context, markdown,
 			work_board::{
-				Row, activity,
-				relations::{Edge, Graph, Kind},
+				ReferencePage, Row, activity,
+				relations::{Edge, Kind},
 			},
 			workspace,
 		},
@@ -27,13 +31,13 @@ use crate::{
 	ui_motion::{self, SmoothControl},
 	ui_scroll::SmoothScrollArea,
 	ui_theme::{
-		self, BLUE, BODY_LINE_HEIGHT, CONTROL_SELECTED_FILL, FIELD_MATERIAL, HOVER_FILL, INFO,
-		PRESSED_FILL,
+		self, BLUE, BODY_LINE_HEIGHT, CONTROL_SELECTED_FILL, HOVER_FILL, INFO, PRESSED_FILL,
 		foreground::{BODY, CAPTION_SIZE, METRIC_SIZE, PRIMARY, SECONDARY},
 	},
 };
 use decodex_protocol::{
-	AgentExchangeDto, AgentExchangeQuestionDto, AgentExchangesResult, EntityId,
+	AgentExchangeDto, AgentExchangeQuestionDto, AgentExchangesResult, AgentTimelineContent,
+	EntityId,
 };
 
 #[derive(Default)]
@@ -48,6 +52,9 @@ pub(in super::super) struct State {
 	read_at: Option<Instant>,
 	earlier: bool,
 	source_open: Option<String>,
+	original_text: Option<String>,
+	original_read: Option<Task<()>>,
+	task_labels: BTreeMap<String, String>,
 	failed: bool,
 }
 
@@ -94,11 +101,14 @@ impl AgentSurface {
 		};
 
 		if self.work_board.collaboration.source.as_ref() != Some(&source) {
+			if self.work_board.collaboration.source.is_some() {
+				self.reset_reference();
+			}
 			self.work_board.collaboration =
 				State { source: Some(source.clone()), ..Default::default() };
 		}
 
-		let state = &mut self.work_board.collaboration;
+		let state = &self.work_board.collaboration;
 
 		if state.task.is_some()
 			|| (!explicit && state.read_at.is_some_and(|at| at.elapsed().as_secs() < 2))
@@ -106,6 +116,8 @@ impl AgentSurface {
 			return;
 		}
 
+		let (unresolved, work_ids) = self.missing_task_labels();
+		let state = &mut self.work_board.collaboration;
 		state.read_at = Some(Instant::now());
 
 		if explicit {
@@ -116,7 +128,12 @@ impl AgentSurface {
 		let read = cx.background_executor().spawn(async move {
 			let runtime = Builder::new_current_thread().enable_all().build().map_err(|_| ())?;
 
-			runtime.block_on(AgentClient::new(profile).exchanges(before)).map_err(|_| ())
+			Ok(runtime.block_on(async move {
+				let client = AgentClient::new(profile);
+				let exchanges = client.exchanges(before).await;
+				let labels = read_task_labels(&client, unresolved, work_ids).await;
+				(exchanges, labels)
+			}))
 		});
 
 		self.work_board.collaboration.task = Some(cx.spawn(async move |surface, cx| {
@@ -133,8 +150,14 @@ impl AgentSurface {
 
 				state.task = None;
 
+				let (result, labels) = match result {
+					Ok(pair) => (pair.0.ok(), pair.1),
+					Err(()) => (None, BTreeMap::new()),
+				};
+				let labels_changed = !labels.is_empty();
+				state.task_labels.extend(labels);
 				let changed = match result {
-					Ok(AgentExchangesResult::Available {
+					Some(AgentExchangesResult::Available {
 						source: observed,
 						entries,
 						questions,
@@ -169,14 +192,47 @@ impl AgentSurface {
 					},
 				};
 
-				if changed {
+				if changed || labels_changed {
 					cx.notify();
 				}
 			});
 		}));
 	}
 
-	fn collaboration_cases(&self, graph: &Graph, rows: &[Row]) -> Vec<Exchange> {
+	fn missing_task_labels(&self) -> (BTreeSet<String>, Vec<EntityId>) {
+		let mut unresolved = BTreeSet::new();
+		if !self.workspace.agent_tree_visible {
+			return (unresolved, Vec::new());
+		}
+		let Some(binding) = &self.timeline.native.binding else {
+			return (unresolved, Vec::new());
+		};
+		for entry in &self.timeline.native.entries {
+			if let AgentTimelineContent::Item {
+				activity: Some(activity),
+				collaboration: Some(call),
+				..
+			} = &entry.content
+				&& call.sender_thread_id == binding.thread
+				&& activity.kind == "subAgentActivity"
+				&& let Some(name) = activity.detail.rsplit('/').next()
+				&& managed_task_name(name)
+				&& !self.work_board.collaboration.task_labels.contains_key(name)
+			{
+				unresolved.insert(name.to_owned());
+			}
+		}
+		let work_ids = self
+			.snapshot
+			.iter()
+			.flat_map(|snapshot| &snapshot.portfolio.works)
+			.filter(|work| !unresolved.is_empty() && work.owner_agent_id == binding.work)
+			.filter_map(|work| EntityId::new(&work.id).ok())
+			.collect();
+		(unresolved, work_ids)
+	}
+
+	fn collaboration_cases(&self, edges: &[Edge], rows: &[Row]) -> Vec<Exchange> {
 		let state = &self.work_board.collaboration;
 		let rebound = self
 			.snapshot
@@ -186,7 +242,7 @@ impl AgentSurface {
 		let records: Vec<_> =
 			if rebound { vec![] } else { state.entries.values().cloned().collect() };
 		let questions = if rebound { &[][..] } else { state.questions.as_slice() };
-		let mut cases = cases::exchanges(graph, rows, &records, questions);
+		let mut cases = cases::exchanges(edges, rows, &records, questions);
 		self.append_review_cases(&mut cases, rows);
 
 		for row in rows
@@ -413,7 +469,7 @@ impl AgentSurface {
 		rows.iter().find(|parent| parent.thread.as_ref() == Some(&agent.parent_thread_id))
 	}
 
-	fn collaboration_action(
+	fn reference_control(
 		&self,
 		id: String,
 		label: String,
@@ -450,12 +506,14 @@ impl AgentSurface {
 				style.bg(ui_theme::rgba(CONTROL_SELECTED_FILL)).text_color(ui_theme::rgb(BLUE))
 			})
 			.on_click(cx.listener(move |s, _, window, cx| {
+				ui_motion::begin_interaction();
 				action(s, cx);
 
 				workspace::restore_shell_focus(window, cx);
 			}))
 			.on_key_down(cx.listener(move |s, event: &KeyDownEvent, window, cx| {
 				if !event.is_held && ["enter", "space"].contains(&event.keystroke.key.as_str()) {
+					ui_motion::begin_interaction();
 					keyboard(s, cx);
 
 					workspace::restore_shell_focus(window, cx);
@@ -463,51 +521,6 @@ impl AgentSurface {
 					cx.stop_propagation();
 				}
 			}))
-			.child(label)
-	}
-
-	fn collaboration_participant(
-		&self,
-		row: &Row,
-		case: &str,
-		cx: &mut Context<Self>,
-	) -> AnyElement {
-		let number = self.relation_agent_number(row);
-		let label = format!("{number} {}", self.relation_agent_name(row));
-		let key = row.key.clone();
-		let keyboard = key.clone();
-		let id = format!("collaboration-participant-{case}-{}", row.key);
-
-		gpui::div()
-			.id(SharedString::from(id.clone()))
-			.debug_selector(move || id.clone())
-			.role(Role::Button)
-			.aria_label(format!("Locate {label} in Graph"))
-			.tab_index(0)
-			.min_w_0()
-			.max_w(gpui::relative(0.6))
-			.whitespace_nowrap()
-			.text_ellipsis()
-			.overflow_hidden()
-			.cursor_pointer()
-			.hover(|link| link.text_color(ui_theme::rgb(BLUE)))
-			.on_click(cx.listener(move |s, _, window, cx| {
-				s.locate_relation_agent(&key, cx);
-
-				workspace::restore_shell_focus(window, cx);
-			}))
-			.on_key_down(cx.listener(move |s, event: &KeyDownEvent, window, cx| {
-				if !event.is_held && ["enter", "space"].contains(&event.keystroke.key.as_str()) {
-					s.locate_relation_agent(&keyboard, cx);
-
-					workspace::restore_shell_focus(window, cx);
-
-					cx.stop_propagation();
-				}
-			}))
-			.child(number)
-			.smooth()
-			.into_any_element()
 	}
 
 	fn collaboration_source_field(
@@ -553,441 +566,6 @@ impl AgentSurface {
 			.into_any_element()
 	}
 
-	fn toggle_collaboration_exchange(
-		&mut self,
-		key: &str,
-		edge: Option<&Edge>,
-		cx: &mut Context<Self>,
-	) {
-		let close = self.work_board.collaboration_expanded.as_deref() == Some(key);
-
-		self.work_board.collaboration_expanded = (!close).then(|| key.to_owned());
-		self.work_board.view.edge = if close { None } else { edge.cloned() };
-
-		self.work_board.view.keep_camera();
-		cx.notify();
-	}
-
-	fn collaboration_exchange_header(&self, case: &Exchange, cx: &mut Context<Self>) -> AnyElement {
-		let expanded = self.work_board.collaboration_expanded.as_ref() == Some(&case.id);
-		let source_open =
-			expanded && self.work_board.collaboration.source_open.as_ref() == Some(&case.id);
-		let key = case.id.clone();
-		let edge = case.edge.clone();
-		let keyboard_key = key.clone();
-		let keyboard_edge = edge.clone();
-		let selector = format!("collaboration-{}", case.id);
-		let route = self.collaboration_route(case, cx);
-		let title = gpui::div()
-			.id(SharedString::from(selector.clone()))
-			.debug_selector(move || selector.clone())
-			.role(Role::Button)
-			.aria_expanded(expanded)
-			.aria_label(format!("{} {}", if expanded { "Collapse" } else { "Expand" }, case.title))
-			.tab_index(0)
-			.w_full()
-			.min_w_0()
-			.cursor_pointer()
-			.py(gpui::px(3.))
-			.child(
-				gpui::div()
-					.w_full()
-					.min_w_0()
-					.flex()
-					.items_start()
-					.gap(gpui::px(5.))
-					.child(
-						gpui::div()
-							.flex_1()
-							.min_w_0()
-							.text_size(gpui::px(12.))
-							.line_height(gpui::px(19.))
-							.font_weight(FontWeight::NORMAL)
-							.text_color(ui_theme::rgb(PRIMARY))
-							.line_clamp(if expanded { 2 } else { 1 })
-							.text_ellipsis()
-							.child(case.title.clone()),
-					)
-					.child(workspace_symbols::disclosure_chevron(
-						SharedString::from(format!("collaboration-chevron-{}", case.id)),
-						expanded,
-					)),
-			)
-			.when(!source_open || !same_excerpt(&case.summary, &case.source_text), |header| {
-				header.child(
-					gpui::div()
-						.text_size(gpui::px(11.5))
-						.line_height(gpui::px(BODY_LINE_HEIGHT))
-						.text_color(ui_theme::rgb(BODY))
-						.line_clamp(
-							if expanded
-								|| !matches!(
-									case.state,
-									"Reported" | "Recorded" | "Shared" | "Accepted"
-								) {
-								2
-							} else {
-								1
-							},
-						)
-						.text_ellipsis()
-						.child(case.summary.clone()),
-				)
-			})
-			.on_click(cx.listener(move |s, _, window, cx| {
-				s.toggle_collaboration_exchange(&key, edge.as_ref(), cx);
-
-				workspace::restore_shell_focus(window, cx);
-			}))
-			.on_key_down(cx.listener(move |s, event: &KeyDownEvent, window, cx| {
-				if !event.is_held && ["enter", "space"].contains(&event.keystroke.key.as_str()) {
-					s.toggle_collaboration_exchange(&keyboard_key, keyboard_edge.as_ref(), cx);
-
-					workspace::restore_shell_focus(window, cx);
-
-					cx.stop_propagation();
-				}
-			}))
-			.smooth();
-
-		gpui::div().w_full().min_w_0().child(route).child(title).into_any_element()
-	}
-
-	fn collaboration_route(&self, case: &Exchange, cx: &mut Context<Self>) -> Div {
-		let mut route = gpui::div()
-			.w_full()
-			.min_w_0()
-			.flex()
-			.items_center()
-			.gap(gpui::px(5.))
-			.text_size(gpui::px(CAPTION_SIZE))
-			.line_height(gpui::px(19.))
-			.font_weight(FontWeight::MEDIUM)
-			.text_color(ui_theme::rgb(SECONDARY))
-			.child(
-				gpui::div()
-					.flex_none()
-					.size(gpui::px(4.))
-					.rounded_full()
-					.bg(ui_theme::rgb(case.color)),
-			)
-			.child(self.collaboration_participant(&case.from, &case.id, cx));
-
-		route = if case.source == "EGM activity" && case.to.is_none() {
-			route.child("Lead")
-		} else {
-			route = route
-				.child(gpui::div().flex_none().text_color(ui_theme::rgb(SECONDARY)).child("→"));
-			if let Some(to) = &case.to {
-				route.child(self.collaboration_participant(to, &case.id, cx))
-			} else {
-				route.child(if case.question.is_some() { "You" } else { "Unknown" })
-			}
-		};
-		route = route.when(case.title != case.state, |route| {
-			route.child(gpui::div().flex_1()).child(
-				gpui::div()
-					.flex_none()
-					.text_color(ui_theme::rgb(if matches!(case.state, "Reported" | "Recorded") {
-						SECONDARY
-					} else {
-						case.color
-					}))
-					.child(case.state),
-			)
-		});
-
-		route
-	}
-
-	fn collaboration_exchange_actions(&self, case: &Exchange, cx: &mut Context<Self>) -> Div {
-		let key = case.id.clone();
-		let source_key = key.clone();
-		let source_open = self.work_board.collaboration.source_open.as_ref() == Some(&case.id);
-		let recipient = if case.state == "Not sent" {
-			Some(&case.from)
-		} else if case.state == "To review"
-			|| case.state == "Check result"
-			|| case.state == "Decision"
-			|| case.state == "Changes asked"
-		{
-			case.to.as_ref()
-		} else {
-			Some(&case.source_row)
-		};
-		let mut actions =
-			gpui::div().w_full().flex().flex_wrap().items_center().gap(gpui::px(8.)).child(
-				self.collaboration_action(
-					format!("collaboration-source-{key}"),
-					"Source".into(),
-					move |s, cx| {
-						let state = &mut s.work_board.collaboration;
-
-						state.source_open = if state.source_open.as_ref() == Some(&source_key) {
-							None
-						} else {
-							Some(source_key.clone())
-						};
-
-						cx.notify();
-					},
-					cx,
-				)
-				.aria_expanded(source_open)
-				.when(source_open, |button| button.bg(ui_theme::rgba(CONTROL_SELECTED_FILL)))
-				.child(workspace_symbols::disclosure_chevron(
-					SharedString::from(format!("collaboration-source-chevron-{key}")),
-					source_open,
-				))
-				.smooth(),
-			);
-
-		if let Some(row) = recipient {
-			let row = row.clone();
-			let label = if case.question.as_ref().is_some_and(|question| question.pending) {
-				"Open question".into()
-			} else if case.state == "Decision" {
-				"Open review".into()
-			} else if case.source == "EGM activity" {
-				if case.to.is_some() { "Open report" } else { "Open Lead" }.into()
-			} else {
-				format!("Open {}", self.relation_agent_number(&row))
-			};
-
-			actions = actions.child(
-				self.collaboration_action(
-					format!("collaboration-open-{key}"),
-					label,
-					move |s, cx| {
-						s.open_graph_agent(&row, cx);
-					},
-					cx,
-				)
-				.child(workspace_symbols::icon_sized(Symbol::Forward, 12.))
-				.smooth(),
-			);
-		}
-		if case.source == "EGM activity"
-			&& let Some(lead) = &case.to
-		{
-			let lead = lead.clone();
-			actions = actions.child(
-				self.collaboration_action(
-					format!("collaboration-lead-{key}"),
-					"Open Lead".into(),
-					move |s, cx| s.open_graph_agent(&lead, cx),
-					cx,
-				)
-				.child(workspace_symbols::icon_sized(Symbol::Forward, 12.))
-				.smooth(),
-			);
-		}
-
-		actions
-	}
-
-	fn collaboration_exchange_source(
-		&self,
-		case: &Exchange,
-		source_notes: Vec<AnyElement>,
-		cx: &mut Context<Self>,
-	) -> Div {
-		let mut source = gpui::div()
-			.w_full()
-			.min_w_0()
-			.flex()
-			.flex_col()
-			.gap(gpui::px(4.))
-			.text_size(gpui::px(CAPTION_SIZE))
-			.line_height(gpui::px(17.))
-			.text_color(ui_theme::rgb(SECONDARY))
-			.children(source_notes);
-
-		source =
-			if matches!(case.source.as_str(), "Native report" | "Native question" | "EGM activity")
-			{
-				source.child(gpui::div().child(case.source.clone()))
-			} else {
-				source.child(self.collaboration_source_field(case, "Source", &case.source))
-			};
-
-		if let Some(event) = case.source_event {
-			source =
-				source.child(self.collaboration_source_field(case, "Event", &event.to_string()));
-		}
-		if let Some(thread) = &case.source_thread {
-			source = source.child(self.collaboration_source_field(case, "Thread", thread));
-		}
-		if let Some(turn) = &case.source_turn {
-			source = source.child(self.collaboration_source_field(case, "Turn", turn));
-		}
-		if let Some(item) = &case.source_item {
-			source = source.child(self.collaboration_source_field(case, "Item", item));
-		}
-
-		source = source
-			.child(gpui::div().text_color(ui_theme::rgb(BODY)).child(case.source_text.clone()));
-
-		if case.source_thread.is_some() && case.source_thread == case.source_row.thread {
-			let row = case.source_row.clone();
-
-			source = source.child(
-				self.collaboration_action(
-					format!("collaboration-original-{}", case.id),
-					"Open original conversation".into(),
-					move |s, cx| s.open_graph_agent(&row, cx),
-					cx,
-				)
-				.child(workspace_symbols::icon_sized(Symbol::Forward, 12.))
-				.smooth(),
-			);
-		}
-
-		source
-	}
-
-	fn collaboration_exchange_context(
-		&self,
-		case: &Exchange,
-		source_open: bool,
-	) -> (Div, Vec<AnyElement>) {
-		let mut context =
-			gpui::div().w_full().min_w_0().flex().flex_col().gap(gpui::px(7.)).pt(gpui::px(4.));
-
-		if let Some(request) = case.request.as_ref().filter(|request| {
-			!same_excerpt(request, &case.summary)
-				&& !(source_open && same_excerpt(request, &case.source_text))
-		}) {
-			context = context.child(
-				gpui::div()
-					.w_full()
-					.min_w_0()
-					.border_l_1()
-					.border_color(ui_theme::rgba(0xaaa0c450))
-					.pl(gpui::px(8.))
-					.child(
-						gpui::div()
-							.text_size(gpui::px(CAPTION_SIZE))
-							.line_height(gpui::px(15.))
-							.font_weight(FontWeight::MEDIUM)
-							.text_color(ui_theme::rgb(SECONDARY))
-							.child("Request"),
-					)
-					.child(
-						gpui::div()
-							.text_size(gpui::px(11.5))
-							.line_height(gpui::px(17.))
-							.text_color(ui_theme::rgb(BODY))
-							.line_clamp(3)
-							.text_ellipsis()
-							.child(request.clone()),
-					),
-			);
-		}
-		if let Some(question) = &case.question {
-			context = context.child(ui_motion::disclosure(
-				SharedString::from(format!("collaboration-question-{}", case.id)),
-				question.pending,
-				gpui::div()
-					.text_size(gpui::px(11.5))
-					.line_height(gpui::px(17.))
-					.border_l_1()
-					.border_color(ui_theme::rgba(0xd4b27c60))
-					.pl(gpui::px(8.))
-					.child(question.question.title.clone()),
-			));
-		}
-
-		let mut source_notes = Vec::new();
-
-		for (label, fact) in &case.steps {
-			let note = gpui::div()
-				.w_full()
-				.min_w_0()
-				.flex()
-				.items_start()
-				.gap(gpui::px(8.))
-				.child(
-					gpui::div()
-						.w(gpui::px(46.))
-						.flex_none()
-						.text_size(gpui::px(CAPTION_SIZE))
-						.line_height(gpui::px(18.))
-						.font_weight(FontWeight::MEDIUM)
-						.text_color(ui_theme::rgb(SECONDARY))
-						.child(*label),
-				)
-				.child(
-					gpui::div()
-						.flex_1()
-						.min_w_0()
-						.text_size(gpui::px(11.5))
-						.line_height(gpui::px(18.))
-						.text_color(ui_theme::rgb(BODY))
-						.line_clamp(3)
-						.text_ellipsis()
-						.child(fact.clone()),
-				);
-
-			if matches!(case.state, "Reported" | "Recorded" | "Shared") {
-				source_notes.push(note.into_any_element());
-			} else {
-				context = context.child(note);
-			}
-		}
-
-		(context, source_notes)
-	}
-
-	fn collaboration_exchange(&self, case: &Exchange, cx: &mut Context<Self>) -> AnyElement {
-		let expanded = self.work_board.collaboration_expanded.as_ref() == Some(&case.id);
-		let source_open = self.work_board.collaboration.source_open.as_ref() == Some(&case.id);
-		let related = self.work_board.view.picked_agent.as_ref().is_some_and(|key| {
-			case.from.key == *key || case.to.as_ref().is_some_and(|row| row.key == *key)
-		});
-		let (mut context, source_notes) = self.collaboration_exchange_context(case, source_open);
-		let actions = self.collaboration_exchange_actions(case, cx);
-
-		context = context.child(actions);
-
-		let source = self.collaboration_exchange_source(case, source_notes, cx);
-
-		context = context.child(ui_motion::disclosure(
-			SharedString::from(format!("collaboration-source-reveal-{}", case.id)),
-			source_open,
-			source,
-		));
-
-		let selector = format!("collaboration-row-{}", case.id);
-
-		gpui::div()
-			.id(SharedString::from(selector.clone()))
-			.debug_selector(move || selector.clone())
-			.w_full()
-			.min_w_0()
-			.flex_none()
-			.relative()
-			.p(gpui::px(10.))
-			.rounded(gpui::px(12.))
-			.bg(ui_theme::rgba(FIELD_MATERIAL))
-			.hover(|row| row.bg(ui_theme::rgba(HOVER_FILL)))
-			.when(related, |row| row.bg(ui_theme::rgba(HOVER_FILL)))
-			.when(needs_user(case), |card| {
-				card.rounded(gpui::px(ui_theme::NAVIGATION_ROW_RADIUS))
-					.px_2()
-					.bg(ui_theme::rgba(FIELD_MATERIAL))
-					.border_1()
-					.border_color(ui_theme::rgb(ui_theme::WARNING).opacity(0.25))
-			})
-			.child(self.collaboration_exchange_header(case, cx))
-			.child(ui_motion::disclosure(
-				SharedString::from(format!("collaboration-context-reveal-{}", case.id)),
-				expanded,
-				context,
-			))
-			.into_any_element()
-	}
-
 	fn collaboration_entry_visible(&self, entry: &super::Entry, cases: &[Exchange]) -> bool {
 		!entry.result
 			&& (entry.request.is_some() || self.review_phase(&entry.row).is_none())
@@ -998,170 +576,9 @@ impl AgentSurface {
 					})
 				}))
 	}
-
-	pub(crate) fn collaboration_attention_count(&self) -> usize {
-		let cases = self.collaboration_cases(&self.relation_graph(), &self.factory_rows());
-		self.workbench_entries()
-			.iter()
-			.filter(|entry| self.collaboration_entry_visible(entry, &cases) && entry.needs_user)
-			.count()
-			+ cases.iter().filter(|case| needs_user(case)).count()
-	}
-
-	pub(in super::super::super) fn render_agent_workbench(
-		&self,
-		cx: &mut Context<Self>,
-	) -> AnyElement {
-		let graph = self.relation_graph();
-		let rows = self.factory_rows();
-		let cases = self.collaboration_cases(&graph, &rows);
-		let entries = self.workbench_entries();
-		let mut body = gpui::div()
-			.w_full()
-			.min_w_0()
-			.flex()
-			.flex_col()
-			.gap(gpui::px(8.))
-			.text_size(gpui::px(11.))
-			.line_height(gpui::px(17.))
-			.text_color(ui_theme::rgb(SECONDARY));
-
-		let visible: Vec<_> = entries
-			.iter()
-			.filter(|entry| self.collaboration_entry_visible(entry, &cases))
-			.collect();
-		let count = visible.iter().filter(|entry| entry.needs_user).count()
-			+ cases.iter().filter(|case| needs_user(case)).count();
-		body = body.child(collaboration_section_heading(
-			if count > 0 { format!("Needs you ({count})") } else { "Needs you".into() },
-			count > 0,
-		));
-		for entry in visible.iter().filter(|entry| entry.needs_user) {
-			body = body.child(self.workbench_entry(entry, cx));
-		}
-		for case in cases.iter().filter(|case| needs_user(case)) {
-			body = body.child(self.collaboration_exchange(case, cx));
-		}
-		if count == 0 {
-			body = body.child(super::note("Nothing needs your attention."));
-		}
-		body = body.child(
-			collaboration_section_heading("Between agents".into(), false)
-				.mt(gpui::px(ui_theme::NAVIGATION_SECTION_GAP)),
-		);
-		for entry in visible.iter().filter(|entry| !entry.needs_user) {
-			body = body.child(self.workbench_entry(entry, cx));
-		}
-		for case in cases.iter().filter(|case| {
-			!needs_user(case)
-				&& (!case.earlier
-					|| self.work_board.collaboration_expanded.as_ref() == Some(&case.id))
-		}) {
-			body = body.child(self.collaboration_exchange(case, cx));
-		}
-
-		body = self.collaboration_earlier(body, &cases, cx);
-
-		if self.work_board.collaboration.page.is_some() {
-			body = body.child(
-				self.collaboration_action(
-					"collaboration-latest".into(),
-					"Back to latest".into(),
-					|s, cx| s.read_collaboration(None, true, cx),
-					cx,
-				)
-				.child(workspace_symbols::icon_sized(Symbol::Back, 12.))
-				.smooth(),
-			);
-		}
-
-		if let Some(before) = self.work_board.collaboration.next_before {
-			body = body.child(
-				self.collaboration_action(
-					"collaboration-older".into(),
-					"Earlier sources".into(),
-					move |s, cx| s.read_collaboration(Some(before), true, cx),
-					cx,
-				)
-				.child(workspace_symbols::icon_sized(Symbol::Back, 12.))
-				.smooth(),
-			);
-		}
-
-		if self.work_board.collaboration.questions_truncated {
-			body = body
-				.child(super::note("Older questions are in their original conversations.").mt_2());
-		}
-		if self.work_board.collaboration.failed {
-			body = body.child(super::note("Could not refresh. Showing saved exchanges.").mt_2());
-		} else if cases.is_empty() && entries.iter().all(|entry| entry.result) {
-			body = body.child(super::note("No exchanges recorded.").mt_2());
-		}
-
-		gpui::div()
-			.id("workbench-body")
-			.debug_selector(|| "workbench-body".into())
-			.role(Role::Group)
-			.aria_label("Collaboration across chats")
-			.size_full()
-			.font_weight(FontWeight::NORMAL)
-			.min_h_0()
-			.min_w_0()
-			.overflow_y_scroll()
-			.p(gpui::px(8.))
-			.child(collaboration_heading())
-			.child(body)
-			.smooth_scroll("workbench-scroll")
-			.into_any_element()
-	}
-
-	fn collaboration_earlier(
-		&self,
-		mut body: Div,
-		cases: &[Exchange],
-		cx: &mut Context<Self>,
-	) -> Div {
-		let earlier: Vec<_> = cases
-			.iter()
-			.filter(|case| {
-				case.earlier && self.work_board.collaboration_expanded.as_ref() != Some(&case.id)
-			})
-			.collect();
-
-		if !earlier.is_empty() {
-			let open = self.work_board.collaboration.earlier;
-
-			body = body.child(
-				self.collaboration_action(
-					"collaboration-earlier".into(),
-					format!("Earlier ({})", earlier.len()),
-					|s, cx| {
-						s.work_board.collaboration.earlier = !s.work_board.collaboration.earlier;
-
-						cx.notify();
-					},
-					cx,
-				)
-				.aria_expanded(open)
-				.justify_start()
-				.px(gpui::px(4.))
-				.bg(gpui::transparent_black())
-				.child(workspace_symbols::disclosure_chevron("collaboration-earlier-chevron", open))
-				.smooth(),
-			);
-
-			let mut history = gpui::div().w_full().min_w_0().flex().flex_col().gap(gpui::px(8.));
-
-			for case in earlier {
-				history = history.child(self.collaboration_exchange(case, cx));
-			}
-
-			body = body.child(ui_motion::disclosure("collaboration-earlier-reveal", open, history));
-		}
-
-		body
-	}
 }
+
+#[path = "agent_reference_reader.rs"] mod reader;
 
 fn same_excerpt(a: &str, b: &str) -> bool {
 	a.split_whitespace().eq(b.split_whitespace())
@@ -1191,38 +608,43 @@ fn needs_user(case: &Exchange) -> bool {
 			|| case.state == "Decision")
 }
 
-fn collaboration_section_heading(label: String, attention: bool) -> Div {
-	gpui::div()
-		.text_size(gpui::px(ui_theme::NAVIGATION_TITLE_SIZE))
-		.font_weight(FontWeight::MEDIUM)
-		.text_color(ui_theme::rgb(if attention { ui_theme::WARNING } else { PRIMARY }))
-		.child(label)
+// Decodex uses this deterministic name when preparing a managed native contribution.
+fn managed_task_name(name: &str) -> bool {
+	name.strip_prefix("work_").is_some_and(|hash| {
+		hash.len() == 32 && hash.bytes().all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(&c))
+	})
 }
 
-fn collaboration_heading() -> impl IntoElement {
-	gpui::div()
-		.id("workbench-heading")
-		.flex()
-		.flex_col()
-		.gap(gpui::px(3.))
-		.role(Role::Heading)
-		.aria_level(2)
-		.aria_label("Collaboration across chats")
-		.px(gpui::px(4.))
-		.pt(gpui::px(3.))
-		.pb(gpui::px(9.))
-		.text_size(gpui::px(11.5))
-		.font_weight(FontWeight::MEDIUM)
-		.child(
-			gpui::div()
-				.text_size(gpui::px(13.))
-				.text_color(ui_theme::rgb(PRIMARY))
-				.child("Collaboration"),
-		)
-		.child(
-			gpui::div()
-				.text_size(gpui::px(10.5))
-				.text_color(ui_theme::rgb(SECONDARY))
-				.child("Across chats"),
-		)
+async fn read_task_labels(
+	client: &AgentClient,
+	mut missing: BTreeSet<String>,
+	works: Vec<EntityId>,
+) -> BTreeMap<String, String> {
+	let mut labels = BTreeMap::new();
+	let mut complete = !works.is_empty();
+	for id in works {
+		let Ok(detail) = client.work_detail(id).await else {
+			complete = false;
+			continue;
+		};
+		complete &= !detail.has_more;
+		for contribution in detail.native_contributions {
+			let name = contribution.native_task_name();
+			missing.remove(&name);
+			labels.insert(
+				name,
+				activity::wording::purpose(&contribution.id.replace(['_', '-'], " ")),
+			);
+		}
+		if missing.is_empty() {
+			break;
+		}
+	}
+	if complete {
+		// An unregistered path can look like a managed task. Keep its number off the screen.
+		for name in missing {
+			labels.insert(name, String::new());
+		}
+	}
+	labels
 }

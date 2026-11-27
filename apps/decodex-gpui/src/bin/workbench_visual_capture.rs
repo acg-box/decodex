@@ -179,7 +179,7 @@ impl Render for HistoryPreviewComponent {
 						),
 					)
 					.preview()
-					.when(centered, |popup| popup.hover_preview(320.).trigger(trigger)),
+					.when(centered, |popup| popup.hover_preview(320., false).trigger(trigger)),
 				),
 			)
 	}

@@ -216,8 +216,7 @@ impl AgentSurface {
 		self.workspace.graph_visible = true;
 		self.workspace.graph_expanded = true;
 		self.work_board.view.picked_agent = Some("native:mira:ref-nora".into());
-		self.work_board.collaboration_expanded =
-			Some("call:ref-mira:request-mira-nora:ref-nora".into());
+		self.work_board.reference = Default::default();
 
 		self.publish_usage();
 		cx.notify();
@@ -236,6 +235,7 @@ impl AgentSurface {
 			self.work_board.briefs.insert(
 				row.key.clone(),
 				Brief {
+					board: Default::default(),
 					review: None,
 					source_thread: row.thread.clone(),
 					output: None,
@@ -350,7 +350,7 @@ impl AgentSurface {
 		self.work_board.briefs.clear();
 
 		self.work_board.view = Default::default();
-		self.work_board.collaboration_expanded = None;
+		self.work_board.reference = Default::default();
 
 		self.visual_workbench_metrics();
 		self.publish_usage();

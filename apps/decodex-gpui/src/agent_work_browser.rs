@@ -67,6 +67,7 @@ impl AgentSurface {
 		let defaults =
 			self.workspace.new_conversation.is_none().then(crate::session_settings::Defaults::load);
 
+		let previous_page = self.conversation_page();
 		self.close_native_agent(cx);
 		self.cancel_dictation(cx);
 
@@ -100,6 +101,7 @@ impl AgentSurface {
 		self.restore_manager_composer(&id, cx);
 
 		self.selected = Some(id);
+		self.restore_collaboration_sidebar(previous_page);
 
 		self.composer.update(cx, |input, cx| {
 			input.set_placeholder("Describe your goal, or explore an idea…", cx)

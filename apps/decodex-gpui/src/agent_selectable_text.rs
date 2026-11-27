@@ -158,7 +158,7 @@ impl RenderOnce for TextBlock {
 
 				cx.stop_propagation();
 			})
-			.on_mouse_up(MouseButton::Left, move |event, _, cx| {
+			.on_mouse_up(MouseButton::Left, move |event, window, cx| {
 				let s = up_state.read(cx);
 
 				if s.dragging
@@ -168,7 +168,7 @@ impl RenderOnce for TextBlock {
 					&& let Some((_, url)) =
 						click_links.iter().find(|(range, _)| range.contains(&ix))
 				{
-					open_selection_link(url, cx);
+					open_selection_link(url, window, cx);
 					cx.stop_propagation();
 				}
 			})
@@ -295,13 +295,21 @@ fn is_selection_url(url: &str) -> bool {
 	url.starts_with("https://") || url.starts_with("http://") || url.starts_with("codex://threads/")
 }
 
-fn open_selection_link(url: &str, cx: &mut App) {
+fn open_selection_link(url: &str, window: &mut Window, cx: &mut App) {
 	if is_selection_url(url) {
 		cx.open_url(url);
 	} else if url.starts_with('/') {
 		let path = markdown::without_line_column(url);
 
-		cx.reveal_path(Path::new(path));
+		let path = Path::new(path);
+		if super::AgentSurface::is_readable_report(path)
+			&& let Some(shell) = window.root::<crate::shell::Shell>().flatten()
+		{
+			let agent = shell.read(cx).agent.clone();
+			agent.update(cx, |s, cx| s.open_reference_report(path.to_owned(), cx));
+		} else {
+			cx.reveal_path(path);
+		}
 	}
 }
 

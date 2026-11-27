@@ -1,10 +1,8 @@
+use crate::shell::agent_surface::work_board::ReferencePage;
 use std::{thread, time::Duration};
 
 use futures_util::{SinkExt as _, StreamExt as _};
-use gpui::{
-	AppContext as _, Entity, Render, ScrollDelta, ScrollEvent, TestAppContext, VisualTestContext,
-	Window,
-};
+use gpui::{AppContext as _, Entity, Render, ScrollDelta, ScrollEvent, TestAppContext, Window};
 use tokio_tungstenite::tungstenite::Message;
 
 use crate::shell::agent_surface::{
@@ -31,56 +29,25 @@ impl Render for WireView {
 }
 
 #[gpui::test]
-fn attention_counts_only_live_user_requests_and_survives_panel_collapse(cx: &mut TestAppContext) {
+fn reference_sidebar_starts_closed_and_peeking_leaves_the_active_chat_alone(
+	cx: &mut TestAppContext,
+) {
 	let surface = cx.new(AgentSurface::new);
 	surface.update(cx, |s, cx| {
+		assert!(!s.workspace.agent_tree_visible);
+		assert_eq!(s.workspace.agent_panel_width, s.workspace.sidebar_width);
 		s.visual_workspace_fixture(cx);
 		s.visual_workbench_page("workbench", cx);
-		for work in &mut s.snapshot.as_mut().unwrap().work_items {
-			work.status = decodex_protocol::AgentWorkStatusDto::Open;
-		}
-		s.snapshot.as_mut().unwrap().pending_events.clear();
-		for brief in s.work_board.briefs.values_mut() {
-			brief.question = None;
-		}
-		s.work_board.collaboration = Default::default();
-		assert_eq!(
-			s.collaboration_attention_count(),
-			0,
-			"returned results and dependencies belong to Agents"
-		);
-		s.snapshot.as_mut().unwrap().pending_events.push(decodex_protocol::AgentPendingEventDto {
-			id: 999,
-			source_event_id: "permission-999".into(),
-			work_item_id: "agent".into(),
-			event_kind: "permission_pending".into(),
-			created_at_micros: 1,
-			delivery_claimed: false,
-		});
-		assert_eq!(s.collaboration_attention_count(), 1);
-		s.work_board.collaboration.questions.push(AgentExchangeQuestionDto {
-			work_id: "sage".into(),
-			thread_id: "ref-sage".into(),
-			turn_id: "turn".into(),
-			item_id: "item".into(),
-			question: AgentAsyncQuestionDto {
-				id: "question".into(),
-				title: "Which criteria?".into(),
-				options: vec![],
-				arrived_live: false,
-			},
-			pending: true,
-			answer: None,
-		});
-		assert_eq!(s.collaboration_attention_count(), 2);
-		s.toggle_agent_tree(cx);
-		assert_eq!(
-			s.collaboration_attention_count(),
-			2,
-			"collapsing the panel does not hide pending work"
-		);
-		s.work_board.collaboration.questions[0].pending = false;
-		assert_eq!(s.collaboration_attention_count(), 1);
+		let selected = s.selected.clone();
+		s.composer.update(cx, |input, cx| input.set_content("Keep this draft", cx));
+		s.workspace.chat_expanded = true;
+		s.peek_conversation("sage", cx);
+		assert!(!s.workspace.chat_expanded);
+		assert!(matches!(&s.work_board.reference,
+			ReferencePage::Conversation { key, thread, message: None } if key == "sage" && thread == "ref-sage"
+		));
+		assert_eq!(s.selected, selected);
+		assert_eq!(s.composer.read(cx).content(), "Keep this draft");
 	});
 }
 
@@ -115,7 +82,7 @@ fn review_events_share_graph_and_sidebar_without_claiming_acceptance(cx: &mut Te
 		let reviewer = rows.iter().find(|row| row.native).unwrap();
 		assert_eq!(s.reviewer_role(reviewer).as_deref(), Some("implementation readiness"));
 		assert_eq!(s.review_phase(reviewer), Some("Reviewing"));
-		let cases = s.collaboration_cases(&s.relation_graph(), &rows);
+		let cases = s.collaboration_cases(&s.relation_graph().edges, &rows);
 		assert!(
 			cases.iter().any(|case| case.state == "Reviewing" && case.from.key == reviewer.key)
 		);
@@ -127,14 +94,14 @@ fn review_events_share_graph_and_sidebar_without_claiming_acceptance(cx: &mut Te
 		s.apply_review_capture(review_capture(true), cx);
 		s.composer.update(cx, |input, cx| input.set_content("Keep this draft", cx));
 		let rows = s.factory_rows();
-		let cases = s.collaboration_cases(&s.relation_graph(), &rows);
+		let cases = s.collaboration_cases(&s.relation_graph().edges, &rows);
 		let report = cases.iter().find(|case| case.state == "Report ready").unwrap();
 		assert!(report.summary.contains("blocker"));
 		assert!(!report.summary.contains("Read the original"));
 		assert_eq!(report.source_thread.as_deref(), Some("reviewer-thread"));
 		assert_eq!(report.source_turn.as_deref(), Some("review-turn"));
 		assert!(!cases.iter().any(|case| case.state == "Accepted"));
-		s.toggle_collaboration_exchange(&report.id, None, cx);
+		s.show_reference(ReferencePage::Exchange(report.id.clone()), cx);
 		assert_eq!(s.composer.read(cx).content(), "Keep this draft");
 		assert_ne!(
 			s.native_agents.selected.as_ref().map(|(_, thread)| thread.as_str()),
@@ -173,7 +140,7 @@ fn ordinary_followup_and_rebound_threads_do_not_inherit_review_state(cx: &mut Te
 }
 
 #[gpui::test]
-fn collaboration_stays_global_and_expands_without_switching_chat_or_draft(cx: &mut TestAppContext) {
+fn collaboration_lists_only_current_participants_and_preserves_the_draft(cx: &mut TestAppContext) {
 	let (surface, visual) = cx.add_window_view(|_, cx| {
 		let mut surface = AgentSurface::new(cx);
 
@@ -187,50 +154,76 @@ fn collaboration_stays_global_and_expands_without_switching_chat_or_draft(cx: &m
 
 	visual.simulate_resize(gpui::size(gpui::px(1_536.), gpui::px(1_024.)));
 	surface.update(visual, |s, cx| {
+		s.open_work_conversation("sage", None, cx);
+		assert!(!s.workspace.agent_tree_visible);
+		s.toggle_agent_tree(cx);
+		s.new_work_conversation(cx);
+		assert!(!s.workspace.agent_tree_visible);
+		s.open_work_conversation("ravi", None, cx);
+		assert!(!s.workspace.agent_tree_visible);
+		s.open_work_conversation("sage", None, cx);
+		assert!(s.workspace.agent_tree_visible);
 		s.composer.update(cx, |input, cx| input.set_content("Keep the current draft", cx));
 	});
 	visual.update(crate::ui_frame::draw_frame);
 
 	let header = visual
 		.debug_bounds("collaboration-call:ref-sage:request-sage-iris:ref-iris")
-		.expect("recorded exchange is visible without selecting its owner");
+		.expect("selected conversation shows its recorded exchange");
 
 	visual.simulate_click(header.center(), Default::default());
 	visual.update(crate::ui_frame::draw_frame);
 
 	surface.read_with(visual, |s, cx| {
-		assert_eq!(s.selected.as_deref(), Some("agent"));
+		assert_eq!(s.selected.as_deref(), Some("sage"));
 		assert_eq!(s.composer.read(cx).content(), "Keep the current draft");
-		assert!(s.work_board.collaboration_expanded.is_some());
+		assert!(matches!(&s.work_board.reference, ReferencePage::Exchange(_)));
 
-		let before: Vec<_> = cases::exchanges(&s.relation_graph(), &s.factory_rows(), &[], &[])
-			.into_iter()
-			.map(|case| case.id)
-			.collect();
+		let before: Vec<_> =
+			cases::exchanges(&s.relation_graph().edges, &s.factory_rows(), &[], &[])
+				.into_iter()
+				.map(|case| case.id)
+				.collect();
 
 		assert!(before.contains(&"call:ref-mira:request-mira-nora:ref-nora".into()));
 		assert!(before.contains(&"call:ref-sage:request-sage-iris:ref-iris".into()));
 	});
 
-	let participant = visual
-		.debug_bounds(
-			"collaboration-participant-call:ref-sage:request-sage-iris:ref-iris-native:sage:ref-iris",
-		)
-		.unwrap();
-
-	visual.simulate_click(participant.center(), Default::default());
+	let exchange = surface.read_with(visual, |s, _| s.work_board.reference.clone());
+	surface.update(visual, |s, cx| {
+		let iris = s
+			.factory_rows()
+			.into_iter()
+			.find(|row| row.thread.as_deref() == Some("ref-iris"))
+			.unwrap();
+		s.peek_conversation(&iris.key, cx);
+	});
+	visual.update(crate::ui_frame::draw_frame);
+	surface.read_with(visual, |s, _| {
+		assert!(
+			matches!(&s.work_board.reference, ReferencePage::Conversation { thread, .. } if thread == "ref-iris")
+		);
+		assert_eq!(s.selected.as_deref(), Some("sage"));
+	});
+	let back = visual.debug_bounds("reference-back").expect("agent activity offers a way back");
+	visual.simulate_click(back.center(), Default::default());
 	visual.update(crate::ui_frame::draw_frame);
 	surface.read_with(visual, |s, cx| {
-		assert_eq!(s.work_board.view.picked_agent.as_deref(), Some("native:sage:ref-iris"));
-		assert_eq!(s.selected.as_deref(), Some("agent"));
+		assert_eq!(s.work_board.reference, exchange);
+		assert_eq!(s.selected.as_deref(), Some("sage"));
 		assert_eq!(s.composer.read(cx).content(), "Keep the current draft");
-		assert!(s.work_board.collaboration_expanded.is_some());
 	});
-	surface.update(visual, |s, cx| s.select_workbench_agent("ravi", cx));
-	visual.update(crate::ui_frame::draw_frame);
 
+	let back =
+		visual.debug_bounds("reference-back").expect("source reader exposes return navigation");
+	visual.simulate_click(back.center(), Default::default());
+	visual.update(crate::ui_frame::draw_frame);
+	surface.read_with(visual, |s, cx| {
+		assert_eq!(s.work_board.reference, ReferencePage::Overview);
+		assert_eq!(s.composer.read(cx).content(), "Keep the current draft");
+	});
 	assert!(
-		visual.debug_bounds("collaboration-call:ref-mira:request-mira-nora:ref-nora").is_some()
+		visual.debug_bounds("collaboration-call:ref-mira:request-mira-nora:ref-nora").is_none()
 	);
 	assert!(visual.debug_bounds("workbench-history").is_none());
 	assert!(visual.debug_bounds("workbench-composer").is_none());
@@ -250,7 +243,7 @@ fn native_calls_keep_exact_sources_and_never_join_unrelated_snapshots(cx: &mut T
 	surface.read_with(cx, |s, _| {
 		let mut graph = s.relation_graph();
 		let rows = s.factory_rows();
-		let original = cases::exchanges(&graph, &rows, &[], &[])
+		let original = cases::exchanges(&graph.edges, &rows, &[], &[])
 			.into_iter()
 			.find(|case| {
 				case.from.key == "mira"
@@ -277,7 +270,7 @@ fn native_calls_keep_exact_sources_and_never_join_unrelated_snapshots(cx: &mut T
 		graph.edges.push(opaque);
 		graph.edges.push(snapshot.clone());
 
-		let cases = cases::exchanges(&graph, &rows, &[], &[]);
+		let cases = cases::exchanges(&graph.edges, &rows, &[], &[]);
 
 		assert!(cases.iter().find(|case| case.id == "opaque-interaction").unwrap().earlier);
 		assert_eq!(cases.iter().find(|case| case.id == original.id).unwrap().state, "Recorded");
@@ -290,106 +283,30 @@ fn native_calls_keep_exact_sources_and_never_join_unrelated_snapshots(cx: &mut T
 		snapshot.source = None;
 		graph.edges = vec![snapshot];
 
-		assert!(cases::exchanges(&graph, &rows, &[], &[]).is_empty());
+		assert!(cases::exchanges(&graph.edges, &rows, &[], &[]).is_empty());
 	});
 }
 
 #[gpui::test]
-fn exchange_disclosure_animates_in_both_directions_without_changing_the_draft(
-	cx: &mut TestAppContext,
-) {
-	let (surface, visual) = cx.add_window_view(|_, cx| {
-		let mut s = AgentSurface::new(cx);
-
-		s.visual_workspace_fixture(cx);
-		s.visual_workbench_page("workbench", cx);
-
-		s.work_board.collaboration_expanded = None;
-		s.workspace.graph_expanded = false;
-		s.workspace.agent_panel_width = 240.;
-
-		s.composer.update(cx, |input, cx| input.set_content("Preserve this draft", cx));
-
-		s
+fn document_reader_switches_to_the_newest_selection_and_keeps_the_draft(cx: &mut TestAppContext) {
+	let tmp = tempfile::tempdir().unwrap();
+	let old = tmp.path().join("old.md");
+	let current = tmp.path().join("new.md");
+	std::fs::write(&old, "Outdated").unwrap();
+	std::fs::write(&current, "# Current report").unwrap();
+	let surface = cx.new(AgentSurface::new);
+	surface.update(cx, |s, cx| {
+		s.composer.update(cx, |input, cx| input.set_content("Continue writing", cx));
+		s.open_reference_report(old, cx);
+		s.open_reference_report(current.clone(), cx);
 	});
-
-	visual.simulate_resize(gpui::size(gpui::px(1_536.), gpui::px(1_024.)));
-	visual.update(crate::ui_frame::draw_frame);
-	visual.update(crate::ui_frame::draw_frame);
-
-	visual.executor().advance_clock(Duration::from_millis(240));
-
-	visual.update(crate::ui_frame::draw_frame);
-
-	let row_id = "collaboration-row-call:ref-sage:request-sage-iris:ref-iris";
-	let control_id = "collaboration-call:ref-sage:request-sage-iris:ref-iris";
-	let height = |visual: &mut VisualTestContext| {
-		f32::from(visual.debug_bounds(row_id).unwrap().size.height)
-	};
-	let closed = height(visual);
-	let header = visual.debug_bounds(control_id).unwrap();
-
-	visual.simulate_click(header.center(), Default::default());
-
-	// Inspect every presented frame. A later sample can miss the middle when
-	// native layout takes longer; the contract is visible interpolation.
-	let mut opening = Vec::new();
-
-	for _ in 0..2 {
-		visual.update(crate::ui_frame::draw_frame);
-		opening.push(height(visual));
-	}
-
-	visual.executor().advance_clock(Duration::from_millis(55));
-
-	visual.update(crate::ui_frame::draw_frame);
-	opening.push(height(visual));
-
-	visual.executor().advance_clock(Duration::from_millis(240));
-
-	visual.update(crate::ui_frame::draw_frame);
-
-	let open = height(visual);
-
-	assert!(open > closed + 5., "recorded exchange must open: {closed}, {open}");
-	assert!(
-		opening.iter().any(|height| *height > closed && *height < open),
-		"opening must interpolate: {opening:?}"
-	);
-
-	let row = visual.debug_bounds(row_id).unwrap();
-	let panel = visual.debug_bounds("workbench-body").unwrap();
-
-	assert!(row.left() >= panel.left() && row.right() <= panel.right());
-
-	let header = visual.debug_bounds(control_id).unwrap();
-
-	visual.simulate_click(header.center(), Default::default());
-	visual.update(crate::ui_frame::draw_frame);
-
-	let first_closing = height(visual);
-
-	visual.executor().advance_clock(Duration::from_millis(55));
-
-	visual.update(crate::ui_frame::draw_frame);
-
-	let closing = [first_closing, height(visual)];
-
-	assert!(
-		closing.iter().any(|height| *height > closed && *height < open),
-		"closing must interpolate: {closing:?}"
-	);
-
-	visual.executor().advance_clock(Duration::from_millis(240));
-
-	visual.update(crate::ui_frame::draw_frame);
-
-	assert!((height(visual) - closed).abs() <= 1.);
-
-	surface.read_with(visual, |s, cx| {
-		assert_eq!(s.selected.as_deref(), Some("agent"));
-		assert_eq!(s.composer.read(cx).content(), "Preserve this draft");
-		assert!(s.work_board.collaboration_expanded.is_none());
+	cx.run_until_parked();
+	surface.read_with(cx, |s, cx| {
+		let report = s.report.as_ref().unwrap();
+		assert_eq!(report.path, current);
+		assert_eq!(&**report.content.as_ref().unwrap().as_ref().unwrap(), "# Current report");
+		assert!(!s.workspace.agent_tree_visible);
+		assert_eq!(s.composer.read(cx).content(), "Continue writing");
 	});
 }
 
@@ -417,6 +334,37 @@ fn receipt(id: i64, kind: decodex_protocol::AgentExchangeKind) -> AgentExchangeD
 }
 
 #[gpui::test]
+fn long_report_scrolls_to_its_last_line_under_a_fixed_header(cx: &mut TestAppContext) {
+	let (shell, visual) = crate::shell::tests::open_shell(cx);
+	let reader = shell.read_with(visual, |s, _| s.agent.clone());
+	visual.simulate_resize(gpui::size(gpui::px(1280.), gpui::px(720.)));
+	let tmp = tempfile::tempdir().unwrap();
+	let path = tmp.path().join("report.md");
+	std::fs::write(
+		&path,
+		format!("# Report\n\n{}", "One paragraph from the report.\n\n".repeat(80)),
+	)
+	.unwrap();
+	reader.update(visual, |s, cx| s.open_reference_report(path, cx));
+	visual.run_until_parked();
+	visual.update(crate::ui_frame::draw_frame);
+	visual.update(crate::ui_frame::draw_frame);
+	let viewport = visual.debug_bounds("document-viewport").expect("scrolling viewport");
+	let initial = visual.debug_bounds("document-content").expect("report content");
+	assert!(viewport.size.width > gpui::px(700.));
+	assert!(initial.bottom() > viewport.bottom() + gpui::px(400.));
+	visual.simulate_event(ScrollEvent {
+		position: viewport.center(),
+		delta: ScrollDelta::Pixels(gpui::point(gpui::px(0.), -initial.size.height)),
+		..Default::default()
+	});
+	visual.update(crate::ui_frame::draw_frame);
+	let end = visual.debug_bounds("document-content").expect("report at end");
+	assert_eq!(visual.debug_bounds("document-viewport"), Some(viewport));
+	assert!(end.bottom() <= viewport.bottom(), "report end {end:?} exceeds {viewport:?}");
+}
+
+#[gpui::test]
 fn source_reference_fits_one_line_and_copies_its_exact_value(cx: &mut TestAppContext) {
 	const THREAD: &str = "01a15360-31f5-7523-be26-3f961aa42d19";
 
@@ -437,8 +385,7 @@ fn source_reference_fits_one_line_and_copies_its_exact_value(cx: &mut TestAppCon
 
 		s.work_board.collaboration.entries.insert(70, record);
 
-		s.work_board.collaboration_expanded = Some("unsent:70".into());
-		s.work_board.collaboration.source_open = Some("unsent:70".into());
+		s.work_board.reference = ReferencePage::Exchange("unsent:70".into());
 
 		s.composer.update(cx, |input, cx| input.set_content("Preserve this draft", cx));
 
@@ -447,12 +394,24 @@ fn source_reference_fits_one_line_and_copies_its_exact_value(cx: &mut TestAppCon
 
 	visual.simulate_resize(gpui::size(gpui::px(1_536.), gpui::px(1_024.)));
 	visual.update(crate::ui_frame::draw_frame);
-	// Hit-test the presented disclosure, independently of asynchronous image loads.
 	visual.update(crate::ui_frame::draw_frame);
-
+	let height = |visual: &mut gpui::VisualTestContext| {
+		visual.debug_bounds("reference-reading-content").unwrap().size.height
+	};
+	let closed = height(visual);
+	assert!(visual.debug_bounds("collaboration-reference-unsent:70-Thread").is_none());
+	let toggle = visual.debug_bounds("collaboration-source-unsent:70").unwrap();
+	visual.simulate_click(toggle.center(), Default::default());
+	visual.update(crate::ui_frame::draw_current_frame);
+	visual.executor().advance_clock(Duration::from_millis(50));
+	visual.update(crate::ui_frame::draw_frame);
+	let opening = height(visual);
 	visual.executor().advance_clock(Duration::from_millis(240));
-
 	visual.update(crate::ui_frame::draw_frame);
+	assert!(
+		closed < opening && opening < height(visual),
+		"source details expand through an intermediate height"
+	);
 
 	let value = visual.debug_bounds("collaboration-reference-unsent:70-Thread").unwrap();
 	let panel = visual.debug_bounds("workbench-body").unwrap();
@@ -513,7 +472,8 @@ fn managed_receipts_keep_busy_delivery_and_assessment_separate(cx: &mut TestAppC
 		busy.other_work_id = Some("sage".into());
 
 		let mut instruction = receipt(11, decodex_protocol::AgentExchangeKind::Instruction);
-		let cases = cases::exchanges(&graph, &rows, &[busy.clone(), instruction.clone()], &[]);
+		let cases =
+			cases::exchanges(&graph.edges, &rows, &[busy.clone(), instruction.clone()], &[]);
 
 		assert_eq!(
 			cases.iter().find(|case| case.state == "Not sent").unwrap().summary,
@@ -526,7 +486,7 @@ fn managed_receipts_keep_busy_delivery_and_assessment_separate(cx: &mut TestAppC
 
 		instruction.delivered_turn_id = Some("next-turn".into());
 
-		let cases = cases::exchanges(&graph, &rows, &[instruction.clone()], &[]);
+		let cases = cases::exchanges(&graph.edges, &rows, &[instruction.clone()], &[]);
 
 		assert_eq!(cases[0].state, "Continuing");
 
@@ -536,7 +496,8 @@ fn managed_receipts_keep_busy_delivery_and_assessment_separate(cx: &mut TestAppC
 		result.outcome = Some("completed".into());
 		result.delivered_turn_id = Some("manager-review".into());
 
-		let cases = cases::exchanges(&graph, &rows, &[instruction.clone(), result.clone()], &[]);
+		let cases =
+			cases::exchanges(&graph.edges, &rows, &[instruction.clone(), result.clone()], &[]);
 
 		assert_eq!(cases.len(), 1);
 		assert_eq!(cases[0].id, "managed:sage:11");
@@ -552,7 +513,7 @@ fn managed_receipts_keep_busy_delivery_and_assessment_separate(cx: &mut TestAppC
 			result.assessment = Some(assessment);
 
 			let cases =
-				cases::exchanges(&graph, &rows, &[instruction.clone(), result.clone()], &[]);
+				cases::exchanges(&graph.edges, &rows, &[instruction.clone(), result.clone()], &[]);
 
 			assert_eq!(cases[0].state, state);
 			assert_eq!(cases[0].earlier, earlier);
@@ -562,7 +523,7 @@ fn managed_receipts_keep_busy_delivery_and_assessment_separate(cx: &mut TestAppC
 		result.instruction_event_id = None;
 
 		assert_eq!(
-			cases::exchanges(&graph, &rows, &[instruction, result], &[]).len(),
+			cases::exchanges(&graph.edges, &rows, &[instruction, result], &[]).len(),
 			2,
 			"missing linkage must not be guessed from participants or text"
 		);
@@ -602,7 +563,7 @@ fn question_retirement_keeps_later_questions_and_rejects_rebound_sources(cx: &mu
 		};
 		let mut old = question("old", false);
 		let later = question("later", true);
-		let cases = cases::exchanges(&graph, &rows, &[], &[old.clone(), later]);
+		let cases = cases::exchanges(&graph.edges, &rows, &[], &[old.clone(), later]);
 
 		assert_eq!(cases.iter().filter(|case| case.state == "Question").count(), 1);
 		assert_eq!(cases.iter().filter(|case| case.earlier).count(), 1);
@@ -610,7 +571,7 @@ fn question_retirement_keeps_later_questions_and_rejects_rebound_sources(cx: &mu
 
 		old.thread_id = "another-native-thread".into();
 
-		assert!(cases::exchanges(&graph, &rows, &[], &[old]).is_empty());
+		assert!(cases::exchanges(&graph.edges, &rows, &[], &[old]).is_empty());
 	});
 }
 
@@ -681,7 +642,7 @@ fn source_receipts_cross_the_local_wire_without_switching_the_active_chat(cx: &m
 		assert_eq!(s.selected.as_deref(), Some("agent"));
 		assert_eq!(s.composer.read(cx).content(), "Keep the Main draft");
 		assert_eq!(
-			s.collaboration_cases(&s.relation_graph(), &s.factory_rows())[0].state,
+			s.collaboration_cases(&s.relation_graph().edges, &s.factory_rows())[0].state,
 			"Not sent"
 		);
 	});
@@ -721,12 +682,13 @@ fn native_final_reports_keep_their_own_turn_and_do_not_invent_acceptance(cx: &mu
 		brief.preview.as_mut().unwrap().turn = "report-turn".into();
 		brief.preview.as_mut().unwrap().task = "Check compact spacing".into();
 		brief.output = Some(Output {
+			only_turn: Some(false),
 			turn: "report-turn".into(),
 			text: "The compact layout fits 24 agents.".into(),
 			truncated: false,
 		});
 
-		let cases = s.collaboration_cases(&s.relation_graph(), &s.factory_rows());
+		let cases = s.collaboration_cases(&s.relation_graph().edges, &s.factory_rows());
 		let report =
 			cases.iter().find(|case| case.id == "native-report:ref-iris:report-turn").unwrap();
 
@@ -742,7 +704,7 @@ fn native_final_reports_keep_their_own_turn_and_do_not_invent_acceptance(cx: &mu
 			"unrelated-turn".into();
 
 		assert!(
-			!s.collaboration_cases(&s.relation_graph(), &s.factory_rows())
+			!s.collaboration_cases(&s.relation_graph().edges, &s.factory_rows())
 				.iter()
 				.any(|case| case.id.starts_with("native-report:"))
 		);
@@ -782,7 +744,7 @@ fn answered_question_retains_reply_sources_without_claiming_resolution(cx: &mut 
 				turn_outcome: Some("completed".into()),
 			}),
 		};
-		let cases = cases::exchanges(&graph, &s.factory_rows(), &[], &[q]);
+		let cases = cases::exchanges(&graph.edges, &s.factory_rows(), &[], &[q]);
 		let case = cases.iter().find(|c| c.id.starts_with("question:")).unwrap();
 
 		assert_eq!(case.state, "Answered");
@@ -834,7 +796,7 @@ fn independent_repair_cycles_never_borrow_the_current_assessment(cx: &mut TestAp
 			note: Some("Checked returned source".into()),
 		});
 
-		let cases = cases::exchanges(&graph, &s.factory_rows(), &[old, latest], &[]);
+		let cases = cases::exchanges(&graph.edges, &s.factory_rows(), &[old, latest], &[]);
 		let old = cases.iter().find(|c| c.id == "peer:transport:first").unwrap();
 		let latest = cases.iter().find(|c| c.id == "peer:transport:repair").unwrap();
 

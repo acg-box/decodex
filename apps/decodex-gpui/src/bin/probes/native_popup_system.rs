@@ -82,7 +82,7 @@ impl Render for Fixture {
 							},
 						)
 						.when_some(center_y, |popup, y| {
-							popup.preview().hover_preview(320.).trigger(Rc::new(Cell::new(Some(
+							popup.hover_preview(320., false).trigger(Rc::new(Cell::new(Some(
 								Bounds::new(
 									gpui::point(gpui::px(600.), gpui::px(y - 22.)),
 									gpui::size(gpui::px(12.), gpui::px(44.)),

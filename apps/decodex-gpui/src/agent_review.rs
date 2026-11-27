@@ -213,9 +213,10 @@ impl AgentSurface {
 			self.work_board.briefs.insert(
 				row.key.clone(),
 				super::Brief {
+					board: Default::default(),
 					review: latest(&page.entries),
 					source_thread: row.thread.clone(),
-					output: super::activity::output(&page.entries),
+					output: super::activity::output(&page.entries, page.next_cursor.is_none()),
 					assignments: super::activity::assignments(&page.entries, &page.thread_id),
 					outcome: super::latest_outcome(&page.entries),
 					preview: super::activity::latest(&page.entries, None),
@@ -248,8 +249,8 @@ impl AgentSurface {
 				.find(|brief| brief.source_thread.as_ref() == Some(&thread))
 				.and_then(|brief| brief.review.as_ref())
 		{
-			self.work_board.collaboration_expanded =
-				Some(format!("review:{thread}:{}", evidence.turn));
+			self.work_board.reference =
+				super::ReferencePage::Exchange(format!("review:{thread}:{}", evidence.turn));
 		}
 		self.workspace.graph_expanded = false;
 		self.workspace.agent_tree_visible = true;

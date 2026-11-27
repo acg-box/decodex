@@ -579,8 +579,6 @@ fn scrubbing_ticks_updates_one_preview_without_dwell_gaps_or_transcript_movement
 		Default::default(),
 	);
 	visual.run_until_parked();
-	visual.executor().advance_clock(crate::ui_motion::HOVER_CLOSE_DELAY);
-	visual.run_until_parked();
 	visual.update(crate::ui_frame::draw_current_frame);
 	assert!(visual.debug_bounds("history-hover-preview").is_none());
 }

@@ -2192,10 +2192,23 @@ phase: None,
 			visual.debug_bounds("observed-timing-details").is_none(),
 			"missing activity does not add filler rows"
 		);
+		let card = visual.debug_bounds("popover-surface").unwrap();
+		let gap = gpui::point(
+			(details.left().max(card.left()) + details.right().min(card.right())) / 2.,
+			if card.top() >= details.bottom() {
+				(card.top() + details.bottom()) / 2.
+			} else {
+				(card.bottom() + details.top()) / 2.
+			},
+		);
+		assert!(!card.contains(&gap) && !details.contains(&gap));
+		visual.simulate_mouse_move(gap, gpui::MouseButton::Left, Default::default());
+		advance_metrics_hover(visual, dwell * 4);
 		let panel = visual.debug_bounds("native-turn-usage").unwrap();
 		visual.simulate_mouse_move(panel.center(), gpui::MouseButton::Left, Default::default());
 		visual.update(crate::ui_frame::draw_current_frame);
-		advance_metrics_hover(visual, crate::ui_motion::HOVER_CLOSE_DELAY);
+		visual.run_until_parked();
+		visual.update(crate::ui_frame::draw_current_frame);
 		assert!(
 			visual.debug_bounds("native-turn-usage").is_some(),
 			"the pointer can enter details"
@@ -2203,10 +2216,9 @@ phase: None,
 
 		visual.simulate_mouse_move(away, gpui::MouseButton::Left, Default::default());
 		visual.update(crate::ui_frame::draw_current_frame);
-		advance_metrics_hover(visual, crate::ui_motion::HOVER_CLOSE_DELAY);
+		visual.run_until_parked();
+		visual.update(crate::ui_frame::draw_current_frame);
 
-		thread::sleep(std::time::Duration::from_millis(180));
-		visual.update(crate::ui_frame::draw_frame);
 		assert!(visual.debug_bounds("native-turn-usage").is_none(), "moving away closes details");
 		visual.simulate_click(details.center(), Default::default());
 		visual.update(crate::ui_frame::draw_current_frame);

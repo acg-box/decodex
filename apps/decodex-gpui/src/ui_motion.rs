@@ -41,8 +41,7 @@ use gpui::{
 
 use crate::ui_theme::{self, ColorScheme, ERROR, INFO, SUCCESS, TEXT, WARNING};
 
-pub(crate) const HOVER_OPEN_DELAY: Duration = Duration::from_millis(100);
-pub(crate) const HOVER_CLOSE_DELAY: Duration = Duration::from_millis(220);
+pub(crate) const HOVER_OPEN_DELAY: Duration = Duration::from_millis(80);
 
 /// Place every hover surface outside its complete trigger, with one shared gap.
 pub(crate) fn hover_origin(
@@ -68,6 +67,40 @@ pub(crate) fn hover_origin(
 			surface_origin(candidates[0] - viewport.origin, size, viewport.size, false)
 				+ viewport.origin
 		})
+}
+
+/// The visible gap is part of the path between a preview and its trigger.
+fn inside_hover_preview(
+	trigger: Bounds<Pixels>,
+	panel: Bounds<Pixels>,
+	point: gpui::Point<Pixels>,
+) -> bool {
+	let gap = gpui::px(ui_theme::POPOVER_GAP);
+	trigger.contains(&point)
+		|| panel.contains(&point)
+		|| (trigger.union(&panel).contains(&point)
+			&& trigger.dilate(gap).contains(&point)
+			&& panel.dilate(gap).contains(&point))
+}
+
+fn observe_preview_pointer(
+	window: &mut Window,
+	moved: impl Fn(gpui::Point<Pixels>, &mut App) + Clone + 'static,
+) {
+	let exited = moved.clone();
+	window.on_mouse_event(move |event: &gpui::MouseExitEvent, phase, _, cx| {
+		if phase.capture() {
+			exited(event.position, cx);
+		}
+	});
+	window.on_mouse_event(move |event: &gpui::MouseMoveEvent, phase, window, cx| {
+		// Native exits also dispatch a synthetic off-window move to clear GPUI hover state.
+		if phase.capture()
+			&& Bounds::new(Default::default(), window.viewport_size()).contains(&event.position)
+		{
+			moved(event.position, cx);
+		}
+	});
 }
 
 /// Native child controls can place hints in the screen area outside their drawable.
@@ -370,7 +403,10 @@ impl RenderOnce for Arrival {
 enum PopoverPlacement {
 	#[default]
 	Below,
-	Hover(Pixels),
+	Hover {
+		width: Pixels,
+		dismiss_on_exit: bool,
+	},
 }
 /// First presentation uses the measured height; subsequent changes retain one curve.
 fn popover_height(
@@ -561,10 +597,9 @@ impl Popover {
 	}
 
 	/// Give hover previews a fixed content width and the shared control anchor.
-	pub(crate) fn hover_preview(mut self, width: f32) -> Self {
-		self.preview = true;
-		self.placement = PopoverPlacement::Hover(gpui::px(width));
-		self
+	pub(crate) fn hover_preview(mut self, width: f32, dismiss_on_exit: bool) -> Self {
+		self.placement = PopoverPlacement::Hover { width: gpui::px(width), dismiss_on_exit };
+		self.preview()
 	}
 
 	pub(crate) fn preview(mut self) -> Self {
@@ -604,7 +639,7 @@ impl RenderOnce for Popover {
 		if moving {
 			request_frame(window, cx);
 		}
-		if let PopoverPlacement::Hover(width) = self.placement {
+		if let PopoverPlacement::Hover { width, dismiss_on_exit } = self.placement {
 			let motion = window.use_keyed_state(
 				SharedString::from(format!("popover-height-{:?}", self.id)),
 				cx,
@@ -619,6 +654,7 @@ impl RenderOnce for Popover {
 					motion.update(cx, |motion, cx| popover_height(motion, size.height, window, cx));
 				size
 			});
+			let trigger = self.trigger.get().unwrap_or_default();
 			let surface = gpui::div()
 				.w(width)
 				.relative()
@@ -626,12 +662,23 @@ impl RenderOnce for Popover {
 				.debug_selector(|| "popover-surface".into())
 				.map(menu_surface)
 				.child(content)
-				.into_any_element();
-			return crate::ui_layout::hover_surface(
-				self.trigger.get().unwrap_or_default(),
-				surface,
-			)
-			.into_any_element();
+				.when(dismiss_on_exit, |surface| {
+					surface.child(
+						gpui::canvas(
+							|_, _, _| (),
+							move |panel, _, window, _| {
+								observe_preview_pointer(window, move |position, cx| {
+									if !inside_hover_preview(trigger, panel, position) {
+										(self.dismiss)(cx);
+									}
+								});
+							},
+						)
+						.absolute()
+						.inset_0(),
+					)
+				});
+			return crate::ui_layout::hover_surface(trigger, surface).into_any_element();
 		}
 		// The complete surface arrives together; its size and text scale stay fixed.
 		gpui::div()
@@ -1105,8 +1152,7 @@ mod tests {
 						self.open,
 						gpui::div().h(gpui::px(self.height)),
 					)
-					.preview()
-					.hover_preview(320.)
+					.hover_preview(320., false)
 					.trigger(self.trigger.clone()),
 				)
 			}

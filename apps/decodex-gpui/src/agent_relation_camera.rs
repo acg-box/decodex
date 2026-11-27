@@ -134,6 +134,7 @@ impl AgentSurface {
 			.reduce(union)
 	}
 
+	#[cfg(any(test, feature = "visual-capture"))]
 	pub(in super::super) fn locate_relation_agent(&mut self, key: &str, cx: &mut Context<Self>) {
 		self.select_workbench_agent(key, cx);
 
@@ -255,9 +256,11 @@ mod tests {
 			s.work_board.briefs.insert(
 				row.key.clone(),
 				Brief {
+					board: Default::default(),
 					review: None,
 					source_thread: row.thread.clone(),
 					output: Some(super::super::super::activity::Output {
+						only_turn: Some(false),
 						turn: "camera-check".into(),
 						text: text.into(),
 						truncated: false,

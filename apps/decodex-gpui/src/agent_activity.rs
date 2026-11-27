@@ -893,7 +893,7 @@ impl AgentSurface {
 			.flex()
 			.flex_col()
 			.on_hover(move |inside, _, cx| {
-				group_hover.update(cx, |preview, cx| preview.hover(false, *inside, cx));
+				group_hover.update(cx, |preview, cx| preview.hover(*inside, cx));
 			})
 			.child(
 				gpui::canvas(move |area, _, _| bounds.set(Some(area)), |_, _, _, _| {})
@@ -971,7 +971,7 @@ impl AgentSurface {
 					s.timeline.hover = Some(index);
 					hover_preview.update(cx, |preview, cx| {
 						preview.key = Some(preview_key.clone());
-						preview.hover(false, true, cx);
+						preview.hover(true, cx);
 						cx.notify();
 					});
 				} else if s.timeline.hover == Some(index) {
@@ -1141,8 +1141,6 @@ struct HistoryPreview {
 	bounds: Rc<Cell<Option<gpui::Bounds<Pixels>>>>,
 	key: Option<HistoryKey>,
 	open: bool,
-	trigger_hovered: bool,
-	panel_hovered: bool,
 	intent: ui_motion::HoverIntent<()>,
 }
 impl HistoryPreview {
@@ -1167,8 +1165,6 @@ impl HistoryPreview {
 			bounds: Default::default(),
 			key: None,
 			open: false,
-			trigger_hovered: false,
-			panel_hovered: false,
 			intent: Default::default(),
 		}
 	}
@@ -1176,28 +1172,18 @@ impl HistoryPreview {
 	fn dismiss(&mut self, cx: &mut Context<Self>) {
 		self.intent.cancel();
 		self.open = false;
-		self.trigger_hovered = false;
-		self.panel_hovered = false;
 		cx.notify();
 	}
 
-	fn hover(&mut self, panel: bool, inside: bool, cx: &mut Context<Self>) {
-		if panel {
-			self.panel_hovered = inside;
-		} else {
-			self.trigger_hovered = inside;
+	fn hover(&mut self, inside: bool, cx: &mut Context<Self>) {
+		if self.open {
+			return;
 		}
-		self.intent.update(
-			(),
-			self.trigger_hovered || self.panel_hovered,
-			self.open.then_some(()),
-			cx,
-			|preview, next, cx| {
-				preview.intent.settled();
-				preview.open = next.is_some();
-				cx.notify();
-			},
-		);
+		self.intent.update((), inside, None, cx, |preview, next, cx| {
+			preview.intent.settled();
+			preview.open = next.is_some();
+			cx.notify();
+		});
 	}
 }
 impl Render for HistoryPreview {
@@ -1207,25 +1193,14 @@ impl Render for HistoryPreview {
 			.upgrade()
 			.and_then(|source| source.read(cx).history_preview_mark(self.key.as_ref()?));
 		let owner = cx.entity().downgrade();
-		let hover = owner.clone();
 		let trigger = self.bounds.clone();
 		ui_motion::popover_lazy(self.id.clone(), self.open && mark.is_some(), move |_, _| {
 			mark.as_ref().map_or_else(
 				|| gpui::div().into_any_element(),
-				|mark| {
-					let hover = hover.clone();
-					history_preview_content(mark)
-						.id("history-preview-panel")
-						.on_hover(move |inside, _, cx| {
-							let _ =
-								hover.update(cx, |preview, cx| preview.hover(true, *inside, cx));
-						})
-						.into_any_element()
-				},
+				|mark| history_preview_content(mark).into_any_element(),
 			)
 		})
-		.preview()
-		.hover_preview(320.)
+		.hover_preview(320., true)
 		.trigger(trigger)
 		.on_dismiss(move |cx| {
 			let _ = owner.update(cx, |preview, cx| {
@@ -1649,7 +1624,7 @@ mod tests {
 			Default::default(),
 		);
 		visual.run_until_parked();
-		visual.executor().advance_clock(crate::ui_motion::HOVER_CLOSE_DELAY);
+		visual.executor().advance_clock(crate::ui_motion::HOVER_OPEN_DELAY);
 		visual.run_until_parked();
 		visual.update(crate::ui_frame::draw_current_frame);
 		assert!(visual.debug_bounds("history-hover-preview").is_none());
@@ -1669,32 +1644,12 @@ mod tests {
 
 		assert!(visual.debug_bounds("history-hover-preview").is_some());
 
-		// A brief departure and return must keep the same surface open.
+		// A departure starts closing before any hover timer advances.
 		visual.simulate_mouse_move(
 			gpui::point(gpui::px(1.), gpui::px(1.)),
 			gpui::MouseButton::Left,
 			Default::default(),
 		);
-		visual.run_until_parked();
-		visual.executor().advance_clock(crate::ui_motion::HOVER_CLOSE_DELAY / 2);
-		visual.run_until_parked();
-		visual.simulate_mouse_move(bounds.center(), gpui::MouseButton::Left, Default::default());
-		visual.run_until_parked();
-		visual.executor().advance_clock(crate::ui_motion::HOVER_CLOSE_DELAY);
-		visual.run_until_parked();
-		visual.update(crate::ui_frame::draw_current_frame);
-		assert!(visual.debug_bounds("history-hover-preview").is_some());
-
-		visual.simulate_mouse_move(
-			gpui::point(gpui::px(1.), gpui::px(1.)),
-			gpui::MouseButton::Left,
-			Default::default(),
-		);
-		visual.run_until_parked();
-		visual.update(crate::ui_frame::draw_current_frame);
-
-		assert!(visual.debug_bounds("history-hover-preview").is_some());
-		visual.executor().advance_clock(crate::ui_motion::HOVER_CLOSE_DELAY);
 		visual.run_until_parked();
 		visual.update(crate::ui_frame::draw_current_frame);
 		assert!(visual.debug_bounds("history-hover-preview").is_none());

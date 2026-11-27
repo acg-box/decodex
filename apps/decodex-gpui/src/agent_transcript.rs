@@ -65,7 +65,7 @@ impl AgentSurface {
 			.as_ref()
 			.is_some_and(|b| (&b.work, &b.thread) == (&target.0, &target.1))
 		{
-			for item in self.timeline.native.visible_export_items() {
+			for item in self.timeline.native.visible_items() {
 				if let AgentTimelineContent::Item { kind, text: body, truncated, .. } = item {
 					if body.is_empty() {
 						continue;

@@ -16,6 +16,7 @@ const MATERIAL: &str = "workspace-overlay-material";
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum WorkspaceOverlay {
 	Settings,
+	Report,
 	Catalog(Catalog),
 }
 
@@ -23,6 +24,7 @@ impl WorkspaceOverlay {
 	fn title(self) -> &'static str {
 		match self {
 			Self::Settings => "Settings",
+			Self::Report => "Document",
 			Self::Catalog(Catalog::Archived) => "Archived",
 			Self::Catalog(Catalog::Codex) => "Codex conversations",
 		}
@@ -35,9 +37,12 @@ impl Shell {
 			return;
 		}
 		if matches!(self.overlay, Some(WorkspaceOverlay::Catalog(_)))
-			&& overlay == WorkspaceOverlay::Settings
+			&& !matches!(overlay, WorkspaceOverlay::Catalog(_))
 		{
 			self.agent.update(cx, AgentSurface::close_catalog);
+		}
+		if self.overlay == Some(WorkspaceOverlay::Report) {
+			self.agent.update(cx, AgentSurface::close_report);
 		}
 		if self.overlay == Some(WorkspaceOverlay::Settings) {
 			self.leave_settings_section();
@@ -56,6 +61,7 @@ impl Shell {
 		let Some(previous) = self.overlay.take() else { return };
 		match previous {
 			WorkspaceOverlay::Settings => self.leave_settings_section(),
+			WorkspaceOverlay::Report => self.agent.update(cx, AgentSurface::close_report),
 			WorkspaceOverlay::Catalog(_) => self.agent.update(cx, AgentSurface::close_catalog),
 		}
 		self.overlay_capture_focus = false;
@@ -193,6 +199,7 @@ impl Shell {
 		});
 		let content = match overlay {
 			WorkspaceOverlay::Settings => self.render_settings_content(window, cx),
+			WorkspaceOverlay::Report => self.agent.update(cx, |agent, cx| agent.render_report(cx)),
 			WorkspaceOverlay::Catalog(catalog) =>
 				self.agent.update(cx, |agent, cx| agent.render_catalog(catalog, window, cx)),
 		};

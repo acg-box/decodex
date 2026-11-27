@@ -515,7 +515,7 @@ impl AgentSurface {
 						.whitespace_nowrap()
 						.text_size(gpui::px(ui_theme::NAVIGATION_TITLE_SIZE))
 						.debug_selector(move || format!("{id}-label"))
-						.when(catalog, navigation_category_label)
+						.when(catalog, ui_theme::navigation_category_label)
 						.when(id == "navigation-command-entry", |label| {
 							label.text_color(ui_theme::rgb(TEXT_MUTED))
 						})
@@ -592,7 +592,7 @@ impl AgentSurface {
 					.debug_selector(move || format!("navigation-section-label-{}", section.key()))
 					.flex_1()
 					.min_w_0()
-					.map(navigation_category_label)
+					.map(ui_theme::navigation_category_label)
 					.child(navigation_text(reveal, section.label())),
 			);
 		let shown = reveal.expanded
@@ -954,7 +954,9 @@ impl AgentSurface {
 			(status != AgentStatusStyle::Quiet).then_some(state),
 		);
 		let base = if !expanded || item.draft { 0. } else { 44. };
-		let action_width = if item.external.is_some() || item.assistant { 28. } else { 76. };
+		let action_width = 4.
+			+ ui_theme::CHROME_CONTROL_SIZE
+				* self.visible_navigation_actions(item, false).count() as f32;
 		let inset = base + (action_width - base) * actions;
 		let label = navigation_item_label(
 			item,
@@ -1287,13 +1289,6 @@ pub(in crate::shell::agent_surface) fn check_catalog_selection_paint(
 	});
 }
 
-fn navigation_category_label(label: gpui::Div) -> gpui::Div {
-	label
-		.text_size(gpui::px(ui_theme::NAVIGATION_SECTION_SIZE))
-		.font_weight(FontWeight::MEDIUM)
-		.text_color(ui_theme::ColorScheme::current().navigation_heading())
-}
-
 fn navigation_context_actions(
 	id: SharedString,
 	opacity: f32,
@@ -1410,6 +1405,7 @@ impl AgentSurface {
 	}
 
 	pub(super) fn forget_navigation_conversation(&mut self, id: &str) {
+		self.workspace.collaboration_open_pages.remove(id);
 		for drafts in self.workspace.navigation.preferences.project_drafts.values_mut() {
 			drafts.retain(|_, value| value != id);
 		}

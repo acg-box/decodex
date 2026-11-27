@@ -39,6 +39,10 @@ pub(super) fn project(params: &Value, completed: bool) -> Option<AgentActivityDt
 				path.to_owned()
 			}
 		},
+		"functionCallOutput"
+			if item["namespace"] == "collaboration"
+				&& matches!(item["name"].as_str(), Some("post" | "read_post")) =>
+			format!("collaboration/{}", item["name"].as_str()?),
 		"mcpToolCall" | "dynamicToolCall" => {
 			let tool = item["tool"].as_str().unwrap_or("Tool");
 			let server = item["server"].as_str().or(item["namespace"].as_str());
