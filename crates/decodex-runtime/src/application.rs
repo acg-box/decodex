@@ -2870,6 +2870,14 @@ impl Application for ServiceApplication {
 				self.query_request(*event_id, Some((digest.as_str(), *offset))).await,
 			QueryPayload::WaitForAgentOutput { work_id, after_revision } =>
 				self.query_output(work_id, *after_revision).await,
+			QueryPayload::GetNativeBoard { work_id, root, after } => {
+				let page = match &self.agent {
+					Some(agent) =>
+						agent.native_board(work_id.as_str(), root.as_str(), *after).await,
+					None => None,
+				};
+				QueryResultPayload::NativeBoard(page)
+			},
 			QueryPayload::GetNativeAgents { work_id, thread_id, cursor } =>
 				self.query_native_agents(work_id, thread_id.as_ref(), cursor.as_ref()).await,
 			QueryPayload::GetAgentHistory { work_id, before } =>

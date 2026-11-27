@@ -1,7 +1,10 @@
 //! The right sidebar reads a selected source without navigating the main conversation.
 #[path = "agent_turn_collaboration.rs"] mod turn_collaboration;
 use super::*;
-use crate::{shell::agent_surface::work_board::board_topics::Post, ui_motion::HoverHint as _};
+use crate::{
+	shell::agent_surface::work_board::board_topics::{self, Post},
+	ui_motion::HoverHint as _,
+};
 use turn_collaboration::{Participant, ParticipantState};
 #[path = "agent_collaboration_context.rs"] mod context;
 #[path = "agent_report_reader.rs"] mod report_reader;
@@ -471,13 +474,10 @@ impl AgentSurface {
 				})
 		};
 		let mut populated = false;
-		if scope.is_none() {
+		if scope.is_none() && self.workspace.graph_expanded {
 			let entries = self.workbench_entries();
 			for entry in entries.iter().filter(|e| {
-				self.workspace.graph_expanded
-					&& e.needs_user
-					&& belongs(&e.row)
-					&& self.collaboration_entry_visible(e, &cases)
+				e.needs_user && belongs(&e.row) && self.collaboration_entry_visible(e, &cases)
 			}) {
 				if !populated {
 					body = body.child(index_section("Needs your input", populated));
@@ -485,6 +485,8 @@ impl AgentSurface {
 				body = body.child(self.workbench_entry(entry, cx));
 				populated = true;
 			}
+		}
+		if scope.is_none() {
 			for case in cases.iter().filter(|case| pending_here(case)) {
 				if !populated {
 					body = body.child(index_section("Needs your input", populated));
@@ -508,7 +510,7 @@ impl AgentSurface {
 				populated = true;
 			}
 			if scope.is_some()
-				&& let Some(outcome) = self.outcome_row(&work.id, thread, turn, false, cx)
+				&& let Some(outcome) = self.outcome_row(&work.id, thread, turn, cx)
 			{
 				body = body.child(outcome);
 				populated = true;
@@ -657,7 +659,7 @@ impl AgentSurface {
 				.filter(|name| !name.is_empty())
 				.unwrap_or_else(|| post.author.strip_prefix("/root/").unwrap_or(&post.author))
 		};
-		let heading = if let Some(ms) = post.time_since_topic(opener) {
+		let heading = if let Some(ms) = board_topics::time_since_topic(post, opener) {
 			format!("{author} replied after {}", crate::ui_time::duration(ms))
 		} else if reply {
 			format!("{author} replied")
@@ -728,7 +730,6 @@ impl AgentSurface {
 		work: &str,
 		thread: &str,
 		turn: &str,
-		overview: bool,
 		cx: &mut Context<Self>,
 	) -> Option<AnyElement> {
 		let (item, _, ended_at) = self.collaboration_outcome(thread, turn)?;
@@ -740,14 +741,9 @@ impl AgentSurface {
 			cursor: None,
 			before: false,
 		};
-		let title = if overview && self.latest_thread_turn(thread) != Some(turn) {
-			"Last outcome"
-		} else {
-			"Outcome"
-		};
 		let action = self.reference_link(
 			"locate-collaboration-outcome".into(),
-			title,
+			"Outcome",
 			Symbol::Forward,
 			move |s, cx| s.locate_find_match(request.clone(), cx),
 			cx,

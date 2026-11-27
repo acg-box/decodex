@@ -3,7 +3,6 @@ use std::{cmp::Reverse, collections::BTreeMap};
 
 use crate::shell::agent_surface::work_board::workbench::collaboration::{
 	AgentExchangeDto, AgentExchangeQuestionDto, Edge, Exchange, Kind, Row,
-	ui_theme::{INFO, SUCCESS, TEXT_MUTED, WARNING},
 };
 use decodex_protocol::{
 	AgentDispatchStateDto, AgentExchangeAssessment, AgentExchangeKind, AgentPeerExchangeDto,
@@ -55,7 +54,7 @@ pub(super) fn exchanges(
 			continue;
 		}
 
-		let (state, color, summary) = native_state(edge);
+		let (state, summary) = native_state(edge);
 
 		cases.push(Exchange {
 			id,
@@ -75,7 +74,6 @@ pub(super) fn exchanges(
 				}),
 			summary: summary.into(),
 			state,
-			color,
 			request: edge.excerpt.clone(),
 			steps: vec![(
 				"Source",
@@ -140,7 +138,6 @@ fn managed_state(case: &mut Exchange, record: &AgentExchangeDto, work: &Row, oth
 	match record.kind {
 		AgentExchangeKind::NotSent => {
 			case.state = "Not sent";
-			case.color = WARNING;
 			case.title = "Continue the same worker".into();
 			case.request = Some(record.excerpt.clone());
 			case.summary = match record.target_dispatch_state {
@@ -177,13 +174,11 @@ fn managed_state(case: &mut Exchange, record: &AgentExchangeDto, work: &Row, oth
 
 				if record.thread_id.is_none() {
 					case.state = "Delivered";
-					case.color = TEXT_MUTED;
 					case.earlier = true;
 					case.summary = "Earlier instruction; result linkage unavailable".into();
 				}
 			} else {
 				case.state = "Unconfirmed";
-				case.color = WARNING;
 				case.summary = "Delivery has not been confirmed".into();
 
 				case.steps
@@ -199,7 +194,6 @@ fn managed_result(case: &mut Exchange, record: &AgentExchangeDto) {
 	let completed = record.outcome.as_deref() == Some("completed");
 
 	case.state = if completed { "To review" } else { "Check result" };
-	case.color = if completed { SUCCESS } else { WARNING };
 	case.summary = if completed {
 		"Result received; assessment not recorded"
 	} else {
@@ -228,23 +222,19 @@ fn managed_result(case: &mut Exchange, record: &AgentExchangeDto) {
 	match record.assessment {
 		Some(AgentExchangeAssessment::Accepted) => {
 			case.state = "Accepted";
-			case.color = SUCCESS;
 			case.earlier = true;
 			case.summary = "The manager accepted this exact result".into();
 		},
 		Some(AgentExchangeAssessment::FollowUp) => {
 			case.state = "Changes asked";
-			case.color = WARNING;
 			case.summary = "Follow-up requested; new result pending".into();
 		},
 		Some(AgentExchangeAssessment::Wait) => {
 			case.state = "Waiting";
-			case.color = WARNING;
 			case.summary = "The manager deferred this assessment".into();
 		},
 		Some(AgentExchangeAssessment::UserDecision) => {
 			case.state = "Decision";
-			case.color = WARNING;
 			case.summary = "The manager needs your decision".into();
 		},
 		None => {},
@@ -294,7 +284,6 @@ fn managed(records: &[AgentExchangeDto], rows: &[Row]) -> Vec<Exchange> {
 			title: work.title.clone(),
 			summary: String::new(),
 			state: "Continuing",
-			color: SUCCESS,
 			request,
 			steps: vec![],
 			source: record.source_event_id.clone(),
@@ -314,7 +303,6 @@ fn managed(records: &[AgentExchangeDto], rows: &[Row]) -> Vec<Exchange> {
 
 		if record.thread_id.is_some() && record.thread_id != work.thread {
 			case.state = "Earlier";
-			case.color = TEXT_MUTED;
 			case.earlier = true;
 			case.summary = "Earlier conversation binding; source retained".into();
 		}
@@ -425,7 +413,6 @@ fn append_questions(
 			} else {
 				"Withdrawn"
 			},
-			color: if question.pending { WARNING } else { TEXT_MUTED },
 			request: None,
 			steps,
 			source: question.question.id.clone(),
@@ -443,23 +430,22 @@ fn append_questions(
 	}
 }
 
-fn peer_state(peer: &AgentPeerExchangeDto) -> (&'static str, &'static str, u32) {
+fn peer_state(peer: &AgentPeerExchangeDto) -> (&'static str, &'static str) {
 	if !peer.current {
-		("Earlier", "Earlier instruction; no current assessment borrowed", TEXT_MUTED)
+		("Earlier", "Earlier instruction; no current assessment borrowed")
 	} else if let Some(outcome) = &peer.outcome {
 		match outcome.as_str() {
-			"used" => ("Used", "The Work owner used this contribution", SUCCESS),
-			"not_used" => ("Not used", "The Work owner did not use this contribution", TEXT_MUTED),
-			"declined" => ("Declined", "The recipient declined this instruction", WARNING),
-			"cancelled" => ("Cancelled", "The Work owner cancelled this request", TEXT_MUTED),
-			_ => ("Failed", "The Work owner recorded a failed contribution", WARNING),
+			"used" => ("Used", "The Work owner used this contribution"),
+			"not_used" => ("Not used", "The Work owner did not use this contribution"),
+			"declined" => ("Declined", "The recipient declined this instruction"),
+			"cancelled" => ("Cancelled", "The Work owner cancelled this request"),
+			_ => ("Failed", "The Work owner recorded a failed contribution"),
 		}
 	} else {
 		match peer.state.as_deref() {
-			Some("returned") =>
-				("To review", "Contribution returned; owner assessment pending", INFO),
-			Some("accepted") => ("Accepted", "Recipient accepted; result pending", SUCCESS),
-			_ => ("Requested", "Independent contribution; acceptance unconfirmed", WARNING),
+			Some("returned") => ("To review", "Contribution returned; owner assessment pending"),
+			Some("accepted") => ("Accepted", "Recipient accepted; result pending"),
+			_ => ("Requested", "Independent contribution; acceptance unconfirmed"),
 		}
 	}
 }
@@ -514,7 +500,7 @@ fn peers(records: &[AgentExchangeDto], rows: &[Row]) -> Vec<Exchange> {
 			steps.push(("Source", "Excerpt shortened. Read the original for full content.".into()));
 		}
 
-		let (state, summary, color) = peer_state(peer);
+		let (state, summary) = peer_state(peer);
 		let source_row = if instruction { owner.clone() } else { other.unwrap_or(owner).clone() };
 
 		cases.insert(
@@ -526,7 +512,6 @@ fn peers(records: &[AgentExchangeDto], rows: &[Row]) -> Vec<Exchange> {
 				title: format!("Contribution: {}", peer.work_id),
 				summary: summary.into(),
 				state,
-				color,
 				request,
 				steps,
 				source: record.source_event_id.clone(),
@@ -547,17 +532,17 @@ fn peers(records: &[AgentExchangeDto], rows: &[Row]) -> Vec<Exchange> {
 	cases.into_values().collect()
 }
 
-fn native_state(edge: &Edge) -> (&'static str, u32, &'static str) {
+fn native_state(edge: &Edge) -> (&'static str, &'static str) {
 	match edge.kind {
 		Kind::Dependency if edge.label == "Prerequisite met" =>
-			("Ready", TEXT_MUTED, "Prerequisite resolved; downstream execution not confirmed"),
-		Kind::Dependency => ("Waiting", WARNING, "An explicit work dependency is outstanding"),
-		Kind::Wait if edge.in_progress => ("Waiting", WARNING, "Waiting for the named agent"),
-		Kind::Returned => ("Reported", INFO, "A native event was recorded; acceptance unknown"),
-		Kind::Context => ("Shared", TEXT_MUTED, "Context made available; reading is not confirmed"),
+			("Ready", "Prerequisite resolved; downstream execution not confirmed"),
+		Kind::Dependency => ("Waiting", "An explicit work dependency is outstanding"),
+		Kind::Wait if edge.in_progress => ("Waiting", "Waiting for the named agent"),
+		Kind::Returned => ("Reported", "A native event was recorded; acceptance unknown"),
+		Kind::Context => ("Shared", "Context made available; reading is not confirmed"),
 		_ if edge.label.contains("failed") || edge.label.contains("interrupted") =>
-			("Unconfirmed", WARNING, "Check the source before continuing"),
-		_ if edge.in_progress => ("Working", INFO, "The native call is in progress"),
-		_ => ("Recorded", TEXT_MUTED, "Native route recorded; outcome not confirmed"),
+			("Unconfirmed", "Check the source before continuing"),
+		_ if edge.in_progress => ("Working", "The native call is in progress"),
+		_ => ("Recorded", "Native route recorded; outcome not confirmed"),
 	}
 }

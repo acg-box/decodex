@@ -632,7 +632,7 @@ fn source_receipts_cross_the_local_wire_without_switching_the_active_chat(cx: &m
 	});
 	let surface = view.read_with(visual, |view, _| view.0.clone());
 
-	surface.update(visual, |s, cx| s.read_collaboration(None, true, cx));
+	surface.update(visual, |s, cx| s.refresh_collaboration(cx));
 	visual.run_until_parked();
 	server.join().unwrap();
 	visual.run_until_parked();

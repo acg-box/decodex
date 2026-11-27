@@ -19,13 +19,12 @@ members = [
 resolver = "3"
 
 [workspace.package]
-authors     = ["Xavier Lau <x@acg.box>"]
-description = "Decodex runtime, static site, and local operator tooling."
-edition     = "2024"
-homepage    = "https://decodex.space"
-license     = "GPL-3.0"
-repository  = "https://github.com/acg-box/decodex"
-version     = "0.2.0"
+authors    = ["Xavier Lau <x@acg.box>"]
+edition    = "2024"
+homepage   = "https://decodex.space"
+license    = "GPL-3.0"
+repository = "https://github.com/acg-box/decodex"
+version    = "0.2.0"
 
 [workspace.dependencies]
 axum                  = { version = "~0.8", default-features = false, features = ["http1", "tokio"] }
@@ -50,7 +49,6 @@ core-foundation        = { version = "~0.10" }
 fs2                    = { version = "~0.4" }
 futures-util           = { version = "~0.3" }
 getrandom              = { version = "~0.4" }
-globset                = { version = "~0.4" }
 gpui                   = { git = "https://github.com/zed-industries/zed.git", rev = "d4014230735e4265d98066420b9271df2324ccab", default-features = false, features = ["profiler"] }
 gpui_platform          = { git = "https://github.com/zed-industries/zed.git", rev = "d4014230735e4265d98066420b9271df2324ccab", default-features = false, features = ["font-kit"] }
 httparse               = { version = "~1.10" }
@@ -72,7 +70,6 @@ security-framework     = { version = "~3.7", default-features = false, features 
 semver                 = { version = "~1.0" }
 serde                  = { version = "~1.0", features = ["derive"] }
 serde_json             = { version = "~1.0" }
-sha1                   = { version = "~0.11" }
 sha2                   = { version = "~0.11" }
 tempfile               = { version = "~3.27" }
 time                   = { version = "~0.3", features = ["formatting"] }
@@ -80,11 +77,7 @@ tokio                  = { version = "~1.54", features = ["macros", "net", "rt-m
 tokio-tungstenite      = { version = "~0.30" }
 toml                   = { version = "~1.1" }
 toml_edit              = { version = "~0.25" }
-tracing                = { version = "~0.1" }
-tracing-appender       = { version = "~0.2" }
-tracing-subscriber     = { version = "~0.3", features = ["env-filter"] }
 url                    = { version = "~2.5" }
-vergen-gitcl           = { version = "~10.0", features = ["cargo"] }
 wait-timeout           = { version = "~0.2" }
 walkdir                = { version = "~2.5" }
 webrtc-upstream        = { package = "webrtc-sys-build", git = "https://github.com/livekit/rust-sdks.git", rev = "71219b95e402b720b5c2682496c50b6cc80b0888" }

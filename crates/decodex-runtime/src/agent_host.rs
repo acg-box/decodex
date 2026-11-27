@@ -1202,6 +1202,26 @@ impl AgentHost {
 		}
 	}
 
+	pub(crate) async fn native_board(
+		&self,
+		work: &str,
+		root: &str,
+		after: i64,
+	) -> Option<decodex_protocol::NativeBoardPage> {
+		let (generation, client) = self.runtime.agent_catalog_client()?;
+		let owns_tree = async || {
+			self.store
+				.get_agent_work_item(work.into())
+				.await
+				.is_ok_and(|item| item.codex_thread_id.as_deref() == Some(root))
+		};
+		if after < 0 || !owns_tree().await {
+			return None;
+		}
+		let page = crate::native_board::read(&client, root, after).await?;
+		(owns_tree().await && self.runtime.agent_catalog_client()?.0 == generation).then_some(page)
+	}
+
 	pub(crate) async fn native_agents(
 		&self,
 		work: &str,

@@ -1351,6 +1351,32 @@ impl AgentClient {
 		}
 	}
 
+	/// Read published posts for one registered native tree without loading its agents.
+	pub async fn native_board(
+		&self,
+		work_id: EntityId,
+		root: EntityId,
+		after: i64,
+	) -> Result<Option<crate::NativeBoardPage>, ClientFailure> {
+		self.transport.require_local_profile()?;
+		let response = time::timeout(
+			CLIENT_TIMEOUT,
+			self.transport.query_inner(
+				"native-board",
+				QueryPayload::GetNativeBoard { work_id, root: root.clone(), after },
+			),
+		)
+		.await
+		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+		close_one_shot_socket(response.socket).await;
+		match response.value {
+			QueryResultPayload::NativeBoard(page)
+				if page.as_ref().is_none_or(|p| p.root == root.as_str() && p.after >= after) =>
+				Ok(page),
+			_ => Err(ClientFailure::ProtocolMalformed),
+		}
+	}
+
 	/// Inspect native descendants without creating local execution records.
 	pub async fn native_agents(
 		&self,
