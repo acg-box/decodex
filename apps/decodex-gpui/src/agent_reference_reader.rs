@@ -130,7 +130,13 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) -> AnyElement {
 		let arrow = format!("reference-arrow-{id}");
-		let label = if detail.is_empty() { title.clone() } else { format!("{title}. {detail}") };
+		let label = if detail.is_empty() {
+			title.clone()
+		} else if title.ends_with(['.', '?', '!', '。', '？', '！']) {
+			format!("{title} {detail}")
+		} else {
+			format!("{title}. {detail}")
+		};
 		self.reference_control(id, label, action, cx)
 			.w_full()
 			.rounded(gpui::px(ui_theme::NAVIGATION_ROW_RADIUS))
@@ -157,6 +163,7 @@ impl AgentSurface {
 					.child(
 						gpui::div()
 							.line_clamp(2)
+							.text_ellipsis()
 							.text_size(gpui::px(ui_theme::NAVIGATION_TITLE_SIZE))
 							.line_height(gpui::px(19.))
 							.text_color(ui_theme::rgb(PRIMARY))
@@ -166,6 +173,7 @@ impl AgentSurface {
 						col.child(
 							gpui::div()
 								.line_clamp(1)
+								.text_ellipsis()
 								.text_size(gpui::px(ui_theme::NAVIGATION_DETAIL_SIZE))
 								.font_weight(FontWeight::NORMAL)
 								.text_color(ui_theme::rgb(SECONDARY))
