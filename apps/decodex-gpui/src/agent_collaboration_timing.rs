@@ -87,9 +87,17 @@ impl AgentSurface {
 		let end = agents.iter().map(|a| a.2.1).max()?;
 		let intervals: Vec<_> = agents.iter().map(|a| a.2).collect();
 		let span = (end - start).max(1) as f64;
+		let mut peers = Vec::new();
 		let bounds = if let Some(id) = selected {
+			let (_, _, bounds) = *agents.iter().find(|a| a.0 == id)?;
+			peers.extend(
+				agents
+					.iter()
+					.filter(|a| a.0 != id && a.2.0 < bounds.1 && bounds.0 < a.2.1)
+					.map(|a| a.1.name.as_str()),
+			);
 			agents.retain(|a| a.0 == id);
-			agents.first()?.2
+			bounds
 		} else {
 			(start, end)
 		};
@@ -192,7 +200,12 @@ impl AgentSurface {
 		if intervals.len() > 1 {
 			let parallel = overlap(&intervals, bounds);
 			let summary = if parallel > 0 {
-				format!("{} in parallel", ui_time::duration(parallel))
+				let time = ui_time::duration(parallel);
+				match peers.as_slice() {
+					[] => format!("{time} in parallel"),
+					[other] => format!("{time} alongside {other}"),
+					others => format!("{time} alongside {} agents", others.len()),
+				}
 			} else if intervals.len() == members.len()
 				&& members.values().all(|m| m.timing.finish.is_some())
 			{
@@ -208,7 +221,11 @@ impl AgentSurface {
 					.text_size(gpui::px(ui_theme::NAVIGATION_DETAIL_SIZE))
 					.text_color(ui_theme::rgb(SECONDARY))
 					.child(summary)
-					.hover_hint("Elapsed time when at least two recorded agent runs were open."),
+					.hover_hint(if peers.is_empty() {
+						"Elapsed time when at least two recorded agent runs were open.".to_owned()
+					} else {
+						format!("Overlapping agents: {}", peers.join(", "))
+					}),
 			);
 		}
 		Some(body)
