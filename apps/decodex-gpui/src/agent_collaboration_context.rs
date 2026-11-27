@@ -112,8 +112,8 @@ impl AgentSurface {
 			outcome.is_none_or(|text| !same_excerpt(text, &member.reply))
 				&& !topics.iter().flatten().any(|post| {
 					post.posted_by_thread.as_ref() == Some(*id)
-						&& !post.truncated
-						&& same_excerpt(&post.text, &member.reply)
+						&& (member.reply.trim().trim_matches('`') == post.message_id
+							|| (!post.truncated && same_excerpt(&post.text, &member.reply)))
 				})
 		});
 		if other.is_empty() {
