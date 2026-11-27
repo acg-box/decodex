@@ -3,8 +3,8 @@
 use super::*;
 use crate::{shell::agent_surface::work_board::board_topics::Post, ui_motion::HoverHint as _};
 use turn_collaboration::{Participant, ParticipantState};
+#[path = "agent_collaboration_context.rs"] mod context;
 #[path = "agent_report_reader.rs"] mod report_reader;
-#[path = "agent_collaboration_team.rs"] mod team;
 use decodex_protocol::{
 	AgentCollaborationDto, AgentTimelineContent, ItemContextRequest, ItemContextResult, WireText,
 };
@@ -53,6 +53,9 @@ impl AgentSurface {
 		let board = &mut self.work_board;
 		(board.reference, board.reference_scroll) =
 			board.reference_history.pop().unwrap_or_default();
+		if board.reference == ReferencePage::Overview && board.view.picked_agent.take().is_some() {
+			board.focus = None;
+		}
 		self.clear_reference_source();
 		ui_motion::begin_interaction();
 		cx.notify();
@@ -199,7 +202,27 @@ impl AgentSurface {
 	) -> AnyElement {
 		let page = &self.work_board.reference;
 		let (title, (body, state)) = match page {
-			ReferencePage::Overview => ("Collaboration", self.reference_index(None, cx)),
+			ReferencePage::Overview => {
+				let child = self.native_agents.selected.as_ref().filter(|(owner, thread)| {
+					self.selected.as_ref() == Some(owner)
+						&& self
+							.conversation_record(owner)
+							.is_some_and(|work| work.codex_thread_id.as_ref() != Some(thread))
+				});
+				let rows = self.factory_rows();
+				if let Some(row) = child.and_then(|(work, thread)| {
+					rows.iter().find(|row| &row.work == work && row.thread.as_ref() == Some(thread))
+				}) {
+					("Agent context", (self.agent_context(row, &rows, cx), "content"))
+				} else if child.is_some() {
+					(
+						"Agent context",
+						(empty_collaboration("Loading agent context", None), "loading"),
+					)
+				} else {
+					("Collaboration", self.reference_index(None, cx))
+				}
+			},
 			ReferencePage::Participant { thread, turn, agent } => {
 				let rows = self.factory_rows();
 				let members = self.turn_participants(thread, turn, &rows);
@@ -213,13 +236,12 @@ impl AgentSurface {
 				};
 				(title, (body, "detail"))
 			},
-			ReferencePage::Topic { thread, historical_turn, topic } => {
+			ReferencePage::Topic { work, thread, historical_turn, topic } => {
 				let rows = self.factory_rows();
-				let posts = self.selected.as_deref().and_then(|work| {
-					self.board_topics(work, thread, historical_turn.as_deref(), &rows)
-						.into_iter()
-						.find(|posts| posts.first().is_some_and(|p| &p.thread_id == topic))
-				});
+				let posts = self
+					.board_topics(work, thread, historical_turn.as_deref(), &rows)
+					.into_iter()
+					.find(|posts| posts.first().is_some_and(|p| &p.thread_id == topic));
 				let body = match posts {
 					Some(posts) =>
 						reading_body().children(posts.iter().map(|p| self.board_post(p, &rows, cx))),
@@ -243,13 +265,15 @@ impl AgentSurface {
 				let rows = self.factory_rows();
 				let row = rows.iter().find(|r| &r.key == key && r.thread.as_ref() == Some(thread));
 				(
-					if message.is_some() { "Board message" } else { "Agent activity" },
+					if message.is_some() { "Board message" } else { "Agent context" },
 					(
-						row.map(|r| self.conversation_reader(r, &rows, message.as_deref()))
-							.unwrap_or_else(|| {
-								reading_body()
-									.child(note("This conversation is no longer available."))
-							}),
+						row.map(|r| match message {
+							Some(message) => self.conversation_reader(r, &rows, message),
+							None => self.agent_context(r, &rows, cx),
+						})
+						.unwrap_or_else(|| {
+							reading_body().child(note("This conversation is no longer available."))
+						}),
 						"detail",
 					),
 				)
@@ -449,7 +473,10 @@ impl AgentSurface {
 		if scope.is_none() {
 			let entries = self.workbench_entries();
 			for entry in entries.iter().filter(|e| {
-				e.needs_user && belongs(&e.row) && self.collaboration_entry_visible(e, &cases)
+				self.workspace.graph_expanded
+					&& e.needs_user
+					&& belongs(&e.row)
+					&& self.collaboration_entry_visible(e, &cases)
 			}) {
 				if !populated {
 					body = body.child(index_section("Needs your input", populated));
@@ -465,80 +492,33 @@ impl AgentSurface {
 				populated = true;
 			}
 		}
-		let outcome = thread.zip(turn).and_then(|(thread, turn)| {
-			self.outcome_row(&work.id, thread, turn, scope.is_none(), cx)
-		});
-		if let Some((thread, turn)) = thread.zip(turn).filter(|_| !roster.is_empty()) {
-			let heading = format!("Team ({})", roster.len());
-			body = body
-				.child(
-					index_section(&heading, populated)
-						.flex()
-						.items_center()
-						.justify_between()
-						.children(outcome),
-				)
-				.child(self.team_grid(&work.id, thread, turn, &roster, cx));
-			populated = true;
-		} else if let Some(outcome) = outcome {
-			body = body.child(outcome);
-			populated = true;
-		}
-		let mut files = BTreeMap::new();
-		for member in roster.values().filter(|member| member.state == ParticipantState::Replied) {
-			for path in markdown::referenced_files(&member.reply) {
-				files.entry(path).or_insert_with(BTreeSet::new).insert(member.name.clone());
-			}
-		}
-		if let Some((_, text, _)) =
-			thread.zip(turn).and_then(|(t, turn)| self.collaboration_outcome(t, turn))
-		{
-			for path in markdown::referenced_files(text) {
-				files.entry(path).or_insert_with(BTreeSet::new).insert("Lead".to_string());
-			}
-		}
-		if !files.is_empty() {
-			body = body.child(index_section("Referenced files", populated));
-			populated = true;
-			for (path, authors) in files {
-				body = body.child(self.referenced_file(path, &authors, cx));
-			}
-		}
 		let topics = thread
 			.map(|t| self.board_topics(&work.id, t, scope.map(|(_, turn)| turn), &rows))
 			.unwrap_or_default();
+		if let Some((thread, turn)) = thread.zip(turn) {
+			if let Some(evidence) =
+				self.round_evidence(&work.id, (thread, turn), &topics, &roster, None, cx)
+			{
+				body = body.child(evidence);
+				populated = true;
+			}
+			if scope.is_some()
+				&& let Some(outcome) = self.outcome_row(&work.id, thread, turn, false, cx)
+			{
+				body = body.child(outcome);
+				populated = true;
+			}
+		}
 		if let Some(thread) = thread.filter(|_| !topics.is_empty()) {
 			body = body.child(index_section("Board topics", populated));
 			populated = true;
-			for posts in &topics {
-				let Some(first) = posts.first() else { continue };
-				let opener = first.message_id == first.thread_id;
-				let replies = posts.len() - usize::from(opener);
-				let reply_count =
-					if replies == 1 { "1 reply".to_owned() } else { format!("{replies} replies") };
-				let page = ReferencePage::Topic {
-					thread: thread.into(),
-					historical_turn: scope.map(|(_, t)| t.into()),
-					topic: first.thread_id.clone(),
-				};
-				let title = if opener && !first.text.trim().is_empty() {
-					activity::wording::message(&first.text)
-				} else {
-					format!("#{}", first.channel_name)
-				};
-				body = body.child(self.reference_row(
-					format!("topic-{}", first.thread_id),
-					title,
-					if opener {
-						format!("#{} ({reply_count})", first.channel_name)
-					} else {
-						reply_count
-					},
-					Some(Symbol::TeamMembers),
-					move |s, cx| s.show_reference(page.clone(), cx),
-					cx,
-				));
-			}
+			body = body.child(self.topic_rows(
+				&work.id,
+				thread,
+				scope.map(|(_, turn)| turn),
+				&topics,
+				cx,
+			));
 		}
 		let is_earlier = |case: &Exchange| {
 			scope.is_none()
@@ -599,27 +579,57 @@ impl AgentSurface {
 			{
 				return (empty_collaboration("Loading collaborators", None), "loading");
 			}
-			return if roster.is_empty() {
-				(
-					empty_collaboration(
-						"No collaborators yet",
-						Some("Discussions and open tasks will appear here."),
-					),
-					"empty",
-				)
-			} else if roster.values().all(|member| member.state == ParticipantState::Finished) {
-				(
-					empty_collaboration(
-						"Agents finished",
-						Some("No report text is available for this turn."),
-					),
-					"empty",
-				)
-			} else {
-				(empty_collaboration("Awaiting a report", None), "empty")
-			};
+			return (
+				empty_collaboration(
+					"No shared context yet",
+					Some("Files cited by collaborators and Board discussions appear here."),
+				),
+				"empty",
+			);
 		}
 		(body, "content")
+	}
+
+	fn topic_rows(
+		&self,
+		work: &str,
+		thread: &str,
+		historical: Option<&str>,
+		topics: &[Vec<Post>],
+		cx: &mut Context<Self>,
+	) -> Div {
+		let mut body = reading_body();
+		for posts in topics {
+			let Some(first) = posts.first() else { continue };
+			let opener = first.message_id == first.thread_id;
+			let replies = posts.len() - usize::from(opener);
+			let reply_count =
+				if replies == 1 { "1 reply".to_owned() } else { format!("{replies} replies") };
+			let page = ReferencePage::Topic {
+				work: work.into(),
+				thread: thread.into(),
+				historical_turn: historical.map(str::to_owned),
+				topic: first.thread_id.clone(),
+			};
+			let title = if opener && !first.text.trim().is_empty() {
+				activity::wording::message(&first.text)
+			} else {
+				format!("#{}", first.channel_name)
+			};
+			body = body.child(self.reference_row(
+				format!("topic-{}", first.thread_id),
+				title,
+				if opener {
+					format!("#{} ({reply_count})", first.channel_name)
+				} else {
+					reply_count
+				},
+				Some(Symbol::TeamMembers),
+				move |s, cx| s.show_reference(page.clone(), cx),
+				cx,
+			));
+		}
+		body
 	}
 
 	fn board_post(&self, post: &Post, rows: &[Row], cx: &mut Context<Self>) -> AnyElement {
@@ -739,7 +749,7 @@ impl AgentSurface {
 		})
 	}
 
-	fn conversation_reader(&self, row: &Row, rows: &[Row], message: Option<&str>) -> Div {
+	fn conversation_reader(&self, row: &Row, rows: &[Row], message: &str) -> Div {
 		let name = participant_name(row);
 		let mut body = reading_body().child(reader_title(name));
 		if let Some(agent) = self.native_agents.lists.get(&row.work).and_then(|agents| {
@@ -762,53 +772,41 @@ impl AgentSurface {
 				);
 			}
 		}
-		if let Some(message) = message {
-			let Some((work, thread)) =
-				self.conversation_work().and_then(|w| Some((w.id, w.codex_thread_id?)))
-			else {
-				return body.child(note("This message is unavailable."));
-			};
-			let topics = self.board_topics(&work, &thread, None, rows);
-			for topic in &topics {
-				let Some(post) = topic
-					.iter()
-					.find(|p| p.message_id == message && p.posted_by_thread == row.thread)
-				else {
-					continue;
-				};
-				let mut heading = format!("Topic in #{}", post.channel_name);
-				if post.thread_id != post.message_id {
-					let author = topic
-						.iter()
-						.find(|p| p.message_id == post.thread_id)
-						.and_then(|p| p.posted_by_thread.as_ref())
-						.and_then(|id| rows.iter().find(|r| r.thread.as_ref() == Some(id)));
-					heading = match author {
-						Some(author) => format!(
-							"Reply to {} in #{}",
-							participant_name(author),
-							post.channel_name
-						),
-						None => format!("Reply in #{}", post.channel_name),
-					};
-				}
-				return body.child(discussion_message(
-					&post.message_id,
-					named_heading(&post.message_id, &heading).into_any_element(),
-					&post.text,
-					post.truncated,
-					false,
-					None,
-				));
-			}
+		let Some((ReferencePage::Topic { work, thread, historical_turn, .. }, _)) =
+			self.work_board.reference_history.last()
+		else {
 			return body.child(note("This message is unavailable."));
+		};
+		let topics = self.board_topics(work, thread, historical_turn.as_deref(), rows);
+		for topic in &topics {
+			let Some(post) =
+				topic.iter().find(|p| p.message_id == message && p.posted_by_thread == row.thread)
+			else {
+				continue;
+			};
+			let mut heading = format!("Topic in #{}", post.channel_name);
+			if post.thread_id != post.message_id {
+				let author = topic
+					.iter()
+					.find(|p| p.message_id == post.thread_id)
+					.and_then(|p| p.posted_by_thread.as_ref())
+					.and_then(|id| rows.iter().find(|r| r.thread.as_ref() == Some(id)));
+				heading = match author {
+					Some(author) =>
+						format!("Reply to {} in #{}", participant_name(author), post.channel_name),
+					None => format!("Reply in #{}", post.channel_name),
+				};
+			}
+			return body.child(discussion_message(
+				&post.message_id,
+				named_heading(&post.message_id, &heading).into_any_element(),
+				&post.text,
+				post.truncated,
+				false,
+				None,
+			));
 		}
-		let (state, summary) = self.work_activity_summary(row);
-		body = body.child(section(&state));
-		if !summary.is_empty() && summary != state {
-			body = body.child(markdown::render(&summary, &format!("agent-preview-{}", row.key)));
-		}
-		body
+		body.child(note("This message is unavailable."))
 	}
 
 	fn read_sidebar_source(&mut self, req: ItemContextRequest, cx: &mut Context<Self>) {

@@ -7,7 +7,7 @@ mod reference_fixture;
 pub(super) use collaboration::State as Collaboration;
 #[cfg(any(test, feature = "visual-capture"))] use gpui::IntoElement;
 
-use crate::shell::agent_surface::work_board::{AgentSurface, Context, Row};
+use crate::shell::agent_surface::work_board::{AgentSurface, Context, ReferencePage, Row};
 use gpui::AnyElement;
 
 struct Entry {
@@ -188,6 +188,14 @@ impl AgentSurface {
 		// Inspection alone is not a read receipt. Open conversation owns that transition.
 		self.handoffs.read_on_open = None;
 		self.workspace.agent_tree_visible = true;
+		// A new graph selection replaces the previous inspection. Back returns to the chat scope.
+		if !matches!(self.work_board.reference, ReferencePage::Overview) {
+			let board = &mut self.work_board;
+			if let Some((_, scroll)) = board.reference_history.drain(..).next() {
+				board.reference_scroll = scroll;
+			}
+			board.reference = ReferencePage::Overview;
+		}
 		self.peek_conversation(key, cx);
 		self.work_board.view.picked_agent = Some(key.into());
 		self.work_board.view.picked_project = None;

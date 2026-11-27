@@ -163,17 +163,18 @@ impl AgentSurface {
 			if turn_id != turn || call.sender_thread_id != thread {
 				continue;
 			}
-			let path_name = activity
-				.as_ref()
-				.filter(|a| a.kind == "subAgentActivity")
-				.and_then(|a| a.detail.rsplit('/').next())
-				.filter(|name| !name.is_empty());
-			let task_name = path_name.map(|n| self.participant_task_label(n)).unwrap_or_default();
 			for id in call.receiver_thread_ids.iter().filter(|id| id.as_str() != thread) {
 				let member = members.entry(id.clone()).or_insert_with(|| {
 					let row = rows
 						.iter()
 						.find(|r| r.work == binding.work && r.thread.as_ref() == Some(id));
+					let path_name = activity
+						.as_ref()
+						.filter(|a| a.kind == "subAgentActivity")
+						.and_then(|a| a.detail.rsplit('/').next())
+						.filter(|name| !name.is_empty());
+					let task_name =
+						path_name.map(|n| self.participant_task_label(n)).unwrap_or_default();
 					let name = row
 						.map(participant_name)
 						.filter(|s| !s.is_empty())
@@ -186,21 +187,17 @@ impl AgentSurface {
 							.map(|r| r.title.clone())
 							.unwrap_or_default()
 					} else {
-						task_name.clone()
+						task_name
 					};
 
 					Participant {
 						spawned_here: false,
-						assignment: String::new(),
 						name,
 						task,
 						state: ParticipantState::Assigned,
 						reply: String::new(),
 					}
 				});
-				if !task_name.is_empty() {
-					member.assignment.clone_from(&task_name);
-				}
 				if !call.prompt.trim().is_empty()
 					&& (member.task.is_empty()
 						|| matches!(
@@ -315,9 +312,6 @@ impl AgentSurface {
 				member.reply.clone_from(&output.text);
 			}
 		}
-		for member in members.values_mut().filter(|member| !member.spawned_here) {
-			member.assignment.clear();
-		}
 		members
 	}
 
@@ -394,7 +388,6 @@ impl AgentSurface {
 #[derive(Clone)]
 pub(super) struct Participant {
 	spawned_here: bool,
-	pub(super) assignment: String,
 	pub(super) name: String,
 	pub(super) task: String,
 	pub(super) state: ParticipantState,
@@ -712,6 +705,69 @@ mod tests {
 			let participants = s.turn_participants("ref-sage", "now", &rows);
 			assert_eq!(participants["ref-iris"].reply, "Ready for review.");
 			assert_eq!(participants["ref-iris"].state.short_label(), "Replied");
+		});
+	}
+
+	#[gpui::test]
+	fn graph_inspection_filters_citations_and_replaces_the_previous_agent(cx: &mut TestAppContext) {
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		visual.simulate_resize(gpui::size(gpui::px(1536.), gpui::px(1024.)));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.visual_workbench_page("workbench", cx);
+			s.workspace.graph_expanded = false;
+			s.open_work_conversation("sage", None, cx);
+			s.timeline.native.binding = Some(Binding {
+				work: "sage".into(),
+				thread: "ref-sage".into(),
+				account: "test".into(),
+			});
+			s.timeline.native.entries = vec![
+				event(1, "first", "spawnAgent", "ref-iris", ""),
+				event(
+					2,
+					"first",
+					"wait",
+					"ref-iris",
+					"[Iris file](/tmp/iris.txt:4) and [shared](/tmp/common.txt:8)",
+				),
+				event(3, "first", "spawnAgent", "child-b", ""),
+				event(
+					4,
+					"first",
+					"wait",
+					"child-b",
+					"[Different file](/tmp/sibling.txt) and [shared](/tmp/common.txt:12)",
+				),
+			];
+			let iris = s
+				.factory_rows()
+				.into_iter()
+				.find(|r| r.thread.as_deref() == Some("ref-iris"))
+				.unwrap();
+			s.select_workbench_agent(&iris.key, cx);
+		});
+		visual.update(crate::ui_frame::draw_frame);
+		assert!(visual.debug_bounds("cited-file-/tmp/common.txt").is_some());
+		assert!(visual.debug_bounds("cited-file-/tmp/iris.txt").is_some());
+		assert!(visual.debug_bounds("cited-file-/tmp/sibling.txt").is_none());
+		assert!(visual.debug_bounds("citation-/tmp/common.txt-child-b").is_some());
+		surface.update(visual, |s, cx| {
+			let peer = s
+				.factory_rows()
+				.into_iter()
+				.find(|r| r.thread.as_deref() == Some("ref-lin"))
+				.unwrap();
+			s.select_workbench_agent(&peer.key, cx);
+		});
+		visual.update(crate::ui_frame::draw_frame);
+		assert!(visual.debug_bounds("cited-file-/tmp/iris.txt").is_none());
+		let back = visual.debug_bounds("reference-back").unwrap();
+		visual.simulate_click(back.center(), Default::default());
+		surface.read_with(visual, |s, _| {
+			assert_eq!(s.selected.as_deref(), Some("sage"));
+			assert_eq!(s.work_board.reference, ReferencePage::Overview);
+			assert!(s.work_board.view.picked_agent.is_none());
 		});
 	}
 

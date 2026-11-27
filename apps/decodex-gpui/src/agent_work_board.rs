@@ -41,6 +41,7 @@ pub(super) enum ReferencePage {
 		agent: String,
 	},
 	Topic {
+		work: String,
 		thread: String,
 		historical_turn: Option<String>,
 		topic: String,
