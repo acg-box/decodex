@@ -16,13 +16,69 @@ impl AgentSurface {
 		activity::wording::purpose(&name.replace('_', " "))
 	}
 
-	pub(super) fn latest_discussion_turn(&self, thread: &str) -> Option<&str> {
-		self.timeline.native.binding.as_ref().filter(|b| b.thread == thread)?;
-		self.timeline.native.visible_items().rev().find_map(|entry| match entry {
+	pub(super) fn latest_thread_turn(&self, thread: &str) -> Option<&str> {
+		self.timeline.native.thread_items(thread).rev().find_map(|entry| match entry {
 			AgentTimelineContent::Item { turn_id, .. }
 			| AgentTimelineContent::TurnBoundary { turn_id, .. } => Some(turn_id.as_str()),
 			_ => None,
 		})
+	}
+
+	/// A later solo follow-up must not displace the last collaboration.
+	pub(super) fn latest_discussion_turn(&self, thread: &str) -> Option<&str> {
+		self.timeline.native.thread_items(thread).rev().find_map(|entry| {
+			let AgentTimelineContent::Item { turn_id, collaboration, .. } = entry else {
+				return None;
+			};
+			(collaboration.as_ref().is_some_and(|call| {
+				call.sender_thread_id == thread && !call.receiver_thread_ids.is_empty()
+			}) || board_topics::Post::from_entry(entry, thread).is_some())
+			.then_some(turn_id.as_str())
+		})
+	}
+
+	/// Only the owning conversation can state the outcome of this particular turn.
+	pub(super) fn collaboration_outcome(
+		&self,
+		thread: &str,
+		turn: &str,
+	) -> Option<(&str, &str, Option<i64>)> {
+		let mut completed = false;
+		let mut ended_at = None;
+		for content in self.timeline.native.thread_items(thread).rev() {
+			match content {
+				AgentTimelineContent::TurnBoundary {
+					turn_id,
+					completed: true,
+					status,
+					started_at_micros,
+					duration_ms,
+					..
+				} if turn_id == turn => {
+					if matches!(
+						status.as_deref(),
+						Some("failed" | "interrupted" | "cancelled" | "canceled")
+					) {
+						return None;
+					}
+					completed = true;
+					ended_at = started_at_micros
+						.zip(*duration_ms)
+						.and_then(|(start, ms)| start.checked_add_unsigned(ms.checked_mul(1_000)?));
+				},
+				AgentTimelineContent::Item { turn_id, item_id, kind, phase, text, .. }
+					if turn_id == turn
+						&& kind == "agentMessage"
+						&& !text.trim().is_empty()
+						&& (phase.as_deref() == Some("final_answer")
+							|| (completed && phase.is_none())) =>
+				{
+					return Some((item_id, text, ended_at));
+				},
+				_ => {},
+			}
+		}
+		None
 	}
 
 	/// Build the history menu from named collaboration on this thread. No global agent list.
@@ -225,7 +281,7 @@ impl AgentSurface {
 			// Use a live child state only for the current dispatch. A reused child's state
 			// cannot be applied to an older turn.
 			if matches!(member.state, ParticipantState::Working | ParticipantState::Assigned)
-				&& (live || self.latest_discussion_turn(thread) == Some(turn))
+				&& (live || self.latest_thread_turn(thread) == Some(turn))
 				&& let Some(agent) = self
 					.native_agents
 					.lists
@@ -471,6 +527,57 @@ mod tests {
 		visual.simulate_click(back.center(), Default::default());
 		visual.update(crate::ui_frame::draw_frame);
 		assert!(visual.debug_bounds("collaboration-earlier").is_some());
+	}
+
+	#[gpui::test]
+	fn returning_after_a_solo_turn_keeps_the_same_lead_reply(cx: &mut TestAppContext) {
+		let surface = cx.new(AgentSurface::new);
+		surface.update(cx, |s, _| {
+			s.timeline.native.binding = Some(Binding {
+				work: "sage".into(),
+				thread: "ref-sage".into(),
+				account: "test".into(),
+			});
+			let reply = |position, turn, phase, text| {
+				serde_json::from_value(json!({
+					"position": position,
+					"content": {
+						"type": "item", "turn_id": turn, "item_id": format!("item-{position}"),
+						"kind": "agentMessage", "phase": phase, "text": text,
+						"truncated": false, "attachments": []
+					}
+				}))
+				.unwrap()
+			};
+			let boundary = |position, status| {
+				serde_json::from_value(json!({
+					"position": position,
+					"content": {
+						"type": "turn_boundary", "turn_id": "workshop", "completed": true,
+						"status": status, "started_at_micros": 1_000_000, "duration_ms": 42
+					}
+				}))
+				.unwrap()
+			};
+			s.timeline.native.entries = vec![
+				event(1, "workshop", "spawnAgent", "catering", ""),
+				reply(2, "workshop", "commentary", "Checking lunch capacity."),
+				reply(3, "workshop", "final_answer", "Invite three today."),
+				boundary(4, "completed"),
+				reply(5, "email", "final_answer", "Workshop reminder"),
+				reply(6, "workshop", "final_answer", "A different conversation"),
+			];
+			s.timeline.native.source_threads.insert(6, "other".into());
+			assert_eq!(s.latest_thread_turn("ref-sage"), Some("email"));
+			assert_eq!(s.latest_discussion_turn("ref-sage"), Some("workshop"));
+			assert_eq!(
+				s.collaboration_outcome("ref-sage", "workshop"),
+				Some(("item-3", "Invite three today.", Some(1_042_000)))
+			);
+			s.timeline.native.entries[3] = boundary(4, "interrupted");
+			assert!(s.collaboration_outcome("ref-sage", "workshop").is_none());
+			assert!(s.collaboration_outcome("other", "workshop").is_none());
+		});
 	}
 
 	#[gpui::test]

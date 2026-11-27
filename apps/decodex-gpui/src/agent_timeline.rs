@@ -1780,6 +1780,22 @@ impl Timeline {
 		self.entries.iter().map(|entry| &entry.content).chain(self.summary.iter())
 	}
 
+	/// Exclude stitched history from a different native conversation.
+	pub(super) fn thread_items<'a>(
+		&'a self,
+		thread: &str,
+	) -> impl DoubleEndedIterator<Item = &'a AgentTimelineContent> {
+		self.binding.as_ref().filter(|b| b.thread == thread).into_iter().flat_map(move |binding| {
+			self.entries
+				.iter()
+				.filter(move |entry| {
+					self.source_threads.get(&entry.position).is_none_or(|id| id == &binding.thread)
+				})
+				.map(|entry| &entry.content)
+				.chain(self.summary.iter())
+		})
+	}
+
 	pub(super) fn summary_only(&self) -> bool {
 		!self.summary.is_empty()
 	}

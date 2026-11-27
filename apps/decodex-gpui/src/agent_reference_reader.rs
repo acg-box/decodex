@@ -1,7 +1,8 @@
 //! The right sidebar reads a selected source without navigating the main conversation.
 #[path = "agent_turn_collaboration.rs"] mod turn_collaboration;
 use super::*;
-use turn_collaboration::ParticipantState;
+use crate::shell::agent_surface::work_board::board_topics::Post;
+use turn_collaboration::{Participant, ParticipantState};
 #[path = "agent_report_reader.rs"] mod report_reader;
 use decodex_protocol::{
 	AgentCollaborationDto, AgentTimelineContent, ItemContextRequest, ItemContextResult, WireText,
@@ -18,6 +19,7 @@ impl AgentSurface {
 		self.work_board.reference = ReferencePage::Overview;
 		self.work_board.reference_scroll = Default::default();
 		self.work_board.reference_history.clear();
+		self.work_board.collaboration.expanded_topics.clear();
 		self.clear_reference_source();
 	}
 
@@ -205,7 +207,7 @@ impl AgentSurface {
 				let rows = self.factory_rows();
 				let row = rows.iter().find(|r| &r.key == key && r.thread.as_ref() == Some(thread));
 				(
-					"Agent activity",
+					if message.is_some() { "Board message" } else { "Agent activity" },
 					(
 						row.map(|r| self.conversation_reader(r, &rows, message.as_deref()))
 							.unwrap_or_else(|| {
@@ -343,12 +345,7 @@ impl AgentSurface {
 			.map(|(_, thread)| thread.as_str())
 			.or(work.codex_thread_id.as_deref());
 		let latest = thread.and_then(|thread| self.latest_discussion_turn(thread));
-		let turn = scope.map(|(_, turn)| turn).or_else(|| {
-			(thread == work.codex_thread_id.as_deref())
-				.then_some(work.active_turn_id.as_deref())
-				.flatten()
-				.or(latest)
-		});
+		let turn = scope.map(|(_, turn)| turn).or(latest);
 		let thread = scope.map(|(thread, _)| thread).or(thread);
 		let rows = self.factory_rows();
 		let roster = thread
@@ -394,6 +391,14 @@ impl AgentSurface {
 						&& case.source_turn.as_deref() == turn)
 			})
 			.collect();
+		let pending_here = |case: &Exchange| {
+			scope.is_none()
+				&& case.question.as_ref().is_some_and(|question| {
+					question.pending
+						&& question.work_id == work.id
+						&& Some(question.thread_id.as_str()) == thread
+				})
+		};
 		let mut populated = false;
 		if scope.is_none() {
 			let entries = self.workbench_entries();
@@ -406,93 +411,12 @@ impl AgentSurface {
 				body = body.child(self.workbench_entry(entry, cx));
 				populated = true;
 			}
-		}
-		let topics = thread
-			.map(|t| self.board_topics(&work.id, t, scope.map(|(_, turn)| turn), &rows))
-			.unwrap_or_default();
-		let authors: BTreeSet<_> =
-			topics.iter().flatten().filter_map(|post| post.posted_by_thread.as_deref()).collect();
-		// A native child can also report directly to its parent without using the Board.
-		let mut direct_replies = roster
-			.iter()
-			.filter(|(id, member)| {
-				member.state == ParticipantState::Replied
-					&& !member.reply.is_empty()
-					&& !authors.contains(id.as_str())
-			})
-			.peekable();
-		if !topics.is_empty() || direct_replies.peek().is_some() {
-			populated = true;
-			body = body.child(section("Discussion"));
-			for (index, topic) in topics.iter().enumerate() {
-				let mut group =
-					reading_body().px(gpui::px(8.)).pb(gpui::px(5.)).when(index > 0, |group| {
-						group
-							.pt(gpui::px(5.))
-							.border_t_1()
-							.border_color(ui_theme::rgba(ui_theme::PANEL_DIVIDER))
-					});
-				for post in topic {
-					let reply = post.message_id != post.thread_id;
-					let source = post.posted_by_thread.as_deref().and_then(|thread| {
-						rows.iter().find(|row| row.thread.as_deref() == Some(thread))
-					});
-					let author = source
-						.map(participant_name)
-						.filter(|name| !name.is_empty())
-						.unwrap_or_else(|| match post.author.as_str() {
-							"/root" => "Lead",
-							path => path.strip_prefix("/root/").unwrap_or(path),
-						});
-					let heading = if reply {
-						format!("{author} replied")
-					} else if post.text.trim_end().ends_with(['?', '？']) {
-						format!("{author} asked")
-					} else {
-						author.to_owned()
-					};
-					let byline =
-						if let Some((row, thread)) = source.zip(post.posted_by_thread.as_ref()) {
-							let page = ReferencePage::Conversation {
-								key: row.key.clone(),
-								thread: thread.clone(),
-								message: Some(post.message_id.clone()),
-							};
-							self.reference_control(
-								format!("inspect-post-{}", post.message_id),
-								format!("{heading}. View agent activity"),
-								move |s, cx| s.show_reference(page.clone(), cx),
-								cx,
-							)
-							.bg(gpui::transparent_black())
-							.justify_start()
-							.px(gpui::px(0.))
-							.min_h(gpui::px(24.))
-							.child(named_heading(&post.message_id, &heading))
-							.child(workspace_symbols::icon_sized(Symbol::Forward, 11.))
-							.smooth()
-							.into_any_element()
-						} else {
-							named_heading(&post.message_id, &heading).into_any_element()
-						};
-					group = group.child(discussion_message(
-						&post.message_id,
-						byline,
-						&post.text,
-						post.truncated,
-						reply,
-					));
+			for case in cases.iter().filter(|case| pending_here(case)) {
+				if !populated {
+					body = body.child(section("Needs your input"));
 				}
-				body = body.child(group);
-			}
-			for (id, member) in direct_replies {
-				body = body.child(reading_body().px(gpui::px(8.)).child(discussion_message(
-					&format!("direct-{}-{id}", turn.unwrap_or_default()),
-					named_heading(id, &format!("{} replied", member.name)).into_any_element(),
-					&member.reply,
-					false,
-					false,
-				)));
+				body = body.child(self.exchange_row(case, belongs(&case.from), cx));
+				populated = true;
 			}
 		}
 		if let Some(turn) = turn {
@@ -528,6 +452,45 @@ impl AgentSurface {
 				}
 			}
 		}
+		if let Some(outcome) = thread.zip(turn).and_then(|(thread, turn)| {
+			self.outcome_row(&work.id, thread, turn, scope.is_none(), cx)
+		}) {
+			body = body.child(outcome);
+			populated = true;
+		}
+		let topics = thread
+			.map(|t| self.board_topics(&work.id, t, scope.map(|(_, turn)| turn), &rows))
+			.unwrap_or_default();
+		if !topics.is_empty() {
+			populated = true;
+			body = body.child(section("Discussion"));
+			for (index, topic) in topics.iter().enumerate() {
+				body = body.child(self.topic_group(topic, &rows, index > 0, cx));
+			}
+		}
+		let mut reports = roster
+			.iter()
+			.filter(|(id, member)| {
+				member.state == ParticipantState::Replied
+					&& !member.reply.is_empty()
+					&& !topics.iter().flatten().any(|post| {
+						post.posted_by_thread.as_ref() == Some(*id)
+							&& !post.truncated
+							&& same_excerpt(&post.text, &member.reply)
+					})
+			})
+			.peekable();
+		if reports.peek().is_some() {
+			populated = true;
+			body = body.child(section("Agent reports"));
+			for (id, member) in reports {
+				body = body.child(self.report_row(
+					format!("report-{}-{id}", turn.unwrap_or_default()),
+					member,
+					cx,
+				));
+			}
+		}
 
 		let is_earlier = |case: &Exchange| {
 			scope.is_none()
@@ -547,8 +510,10 @@ impl AgentSurface {
 		};
 		let earlier = self.work_board.collaboration.earlier;
 		for historical in [false, true] {
-			let mut exchanges =
-				cases.iter().filter(|case| is_earlier(case) == historical).peekable();
+			let mut exchanges = cases
+				.iter()
+				.filter(|case| !pending_here(case) && is_earlier(case) == historical)
+				.peekable();
 			if exchanges.peek().is_none() && (!historical || previous.is_empty()) {
 				continue;
 			}
@@ -599,21 +564,7 @@ impl AgentSurface {
 				body = body.child(section("Exchanges"));
 			}
 			for case in exchanges {
-				let key = case.id.clone();
-				let peer = case.to.as_ref().filter(|_| belongs(&case.from)).unwrap_or(&case.from);
-				list = list.child(
-					self.reference_row(
-						format!("collaboration-{key}"),
-						case.question
-							.as_ref()
-							.filter(|_| needs_user(case))
-							.map_or_else(|| case.title.clone(), |q| q.question.title.clone()),
-						format!("{} ({})", participant_name(peer), case.state),
-						Some(Symbol::TeamMembers),
-						move |s, cx| s.show_reference(ReferencePage::Exchange(key.clone()), cx),
-						cx,
-					),
-				);
+				list = list.child(self.exchange_row(case, belongs(&case.from), cx));
 			}
 			body = if historical {
 				body.child(ui_motion::disclosure("earlier-discussions-content", earlier, list))
@@ -638,11 +589,245 @@ impl AgentSurface {
 					),
 					"empty",
 				)
+			} else if roster.values().all(|member| member.state == ParticipantState::Finished) {
+				(
+					empty_collaboration(
+						"Agents finished",
+						Some("No report text is available for this turn."),
+					),
+					"empty",
+				)
 			} else {
-				(empty_collaboration("No open tasks", None), "empty")
+				(empty_collaboration("Awaiting a report", None), "empty")
 			};
 		}
 		(body, "content")
+	}
+
+	fn topic_group(
+		&self,
+		posts: &[Post],
+		rows: &[Row],
+		divider: bool,
+		cx: &mut Context<Self>,
+	) -> Div {
+		let mut group = reading_body().px(gpui::px(8.)).pb(gpui::px(5.)).when(divider, |group| {
+			group
+				.pt(gpui::px(5.))
+				.border_t_1()
+				.border_color(ui_theme::rgba(ui_theme::PANEL_DIVIDER))
+		});
+		if let [opener, earlier @ .., latest] = posts
+			&& opener.message_id == opener.thread_id
+			&& earlier.len() >= 2
+		{
+			let id = opener.thread_id.clone();
+			let expanded = self.work_board.collaboration.expanded_topics.contains(&id);
+			let label = format!(
+				"{} earlier replies ({})",
+				if expanded { "Hide" } else { "Show" },
+				earlier.len()
+			);
+			let toggle = id.clone();
+			let control = self
+				.reference_control(
+					format!("topic-replies-{id}"),
+					label.clone(),
+					move |s, cx| {
+						let topics = &mut s.work_board.collaboration.expanded_topics;
+						if !topics.remove(&toggle) {
+							topics.insert(toggle.clone());
+						}
+						cx.notify();
+					},
+					cx,
+				)
+				.aria_expanded(expanded)
+				.justify_start()
+				.bg(gpui::transparent_black())
+				.child(workspace_symbols::process_chevron(
+					format!("topic-replies-arrow-{id}"),
+					expanded,
+				))
+				.child(label)
+				.smooth();
+			group = group
+				.child(self.board_post(opener, rows, cx))
+				.child(control)
+				.child(ui_motion::disclosure(
+					format!("topic-replies-body-{id}"),
+					expanded,
+					reading_body()
+						.children(earlier.iter().map(|post| self.board_post(post, rows, cx))),
+				))
+				.child(self.board_post(latest, rows, cx));
+		} else {
+			group = group.children(posts.iter().map(|post| self.board_post(post, rows, cx)));
+		}
+		group
+	}
+
+	fn board_post(&self, post: &Post, rows: &[Row], cx: &mut Context<Self>) -> AnyElement {
+		let reply = post.message_id != post.thread_id;
+		let source = post
+			.posted_by_thread
+			.as_deref()
+			.and_then(|thread| rows.iter().find(|row| row.thread.as_deref() == Some(thread)));
+		let author = if post.author == "/root" {
+			"Lead"
+		} else {
+			source
+				.map(participant_name)
+				.filter(|name| !name.is_empty())
+				.unwrap_or_else(|| post.author.strip_prefix("/root/").unwrap_or(&post.author))
+		};
+		let heading = if reply {
+			format!("{author} replied")
+		} else if post.text.trim_end().ends_with(['?', '？']) {
+			format!("{author} asked")
+		} else {
+			author.to_owned()
+		};
+		let byline = if let Some((row, thread)) = source.zip(post.posted_by_thread.as_ref()) {
+			let page = ReferencePage::Conversation {
+				key: row.key.clone(),
+				thread: thread.clone(),
+				message: Some(post.message_id.clone()),
+			};
+			self.reference_control(
+				format!("inspect-post-{}", post.message_id),
+				format!(
+					"{heading}. View board message: {}",
+					crate::shell::agent_surface::execution_dock::preview(&post.text, 72)
+				),
+				move |s, cx| s.show_reference(page.clone(), cx),
+				cx,
+			)
+			.bg(gpui::transparent_black())
+			.justify_start()
+			.px(gpui::px(0.))
+			.min_h(gpui::px(24.))
+			.child(named_heading(&post.message_id, &heading))
+			.child(
+				gpui::div()
+					.text_size(gpui::px(CAPTION_SIZE))
+					.text_color(ui_theme::rgb(SECONDARY))
+					.child("Source"),
+			)
+			.smooth()
+			.into_any_element()
+		} else {
+			named_heading(&post.message_id, &heading).into_any_element()
+		};
+
+		// Preserve native Markdown and its links when the entire message fits.
+		let excerpt = source
+			.filter(|_| post.text.chars().nth(240).is_some() || post.text.contains("\n\n"))
+			.map(|_| markdown::report_excerpt(&post.text))
+			.filter(|preview| !same_excerpt(preview, &markdown::plain_text(&post.text)));
+		discussion_message(&post.message_id, byline, &post.text, post.truncated, reply, excerpt)
+			.into_any_element()
+	}
+
+	fn exchange_row(&self, case: &Exchange, outgoing: bool, cx: &mut Context<Self>) -> AnyElement {
+		let key = case.id.clone();
+		let peer = case.to.as_ref().filter(|_| outgoing).unwrap_or(&case.from);
+		self.reference_row(
+			format!("collaboration-{key}"),
+			case.question
+				.as_ref()
+				.filter(|_| needs_user(case))
+				.map_or_else(|| case.title.clone(), |q| q.question.title.clone()),
+			format!("{} ({})", participant_name(peer), case.state),
+			Some(Symbol::TeamMembers),
+			move |s, cx| s.show_reference(ReferencePage::Exchange(key.clone()), cx),
+			cx,
+		)
+	}
+
+	fn outcome_row(
+		&self,
+		work: &str,
+		thread: &str,
+		turn: &str,
+		overview: bool,
+		cx: &mut Context<Self>,
+	) -> Option<Div> {
+		let (item, answer, ended_at) = self.collaboration_outcome(thread, turn)?;
+		let request = ItemContextRequest {
+			work_id: EntityId::new(work).ok()?,
+			thread_id: EntityId::new(thread).ok()?,
+			turn_id: WireText::new(turn).ok()?,
+			item_id: WireText::new(item).ok()?,
+			cursor: None,
+			before: false,
+		};
+		let title = if overview && self.latest_thread_turn(thread) != Some(turn) {
+			"Last outcome"
+		} else {
+			"Outcome"
+		};
+		let heading = ended_at.map_or_else(
+			|| title.to_owned(),
+			|micros| format!("{title} ({})", crate::ui_time::timestamp(micros)),
+		);
+		Some(
+			reading_body().child(section(&heading)).child(
+				reading_body()
+					.px(gpui::px(8.))
+					.child(
+						gpui::div()
+							.text_color(ui_theme::rgb(PRIMARY))
+							.child(markdown::report_excerpt(answer)),
+					)
+					.child(self.reference_link(
+						"locate-collaboration-outcome".into(),
+						"Show in chat",
+						Symbol::Forward,
+						move |s, cx| s.locate_find_match(request.clone(), cx),
+						cx,
+					)),
+			),
+		)
+	}
+
+	fn report_row(&self, key: String, member: &Participant, cx: &mut Context<Self>) -> Div {
+		let summary = activity::wording::message(&member.reply);
+		let row = reading_body().px(gpui::px(8.)).gap(gpui::px(1.));
+		let name = &member.name;
+		if same_excerpt(&summary, &member.reply) {
+			return row.child(named_heading(&key, name)).child(summary);
+		}
+		let expanded = self.work_board.collaboration.source_open.as_ref() == Some(&key);
+		let toggle = key.clone();
+		let control = self
+			.reference_control(
+				key.clone(),
+				format!("{name}. {} report", if expanded { "Collapse" } else { "Read full" }),
+				move |s, cx| {
+					s.work_board.collaboration.source_open = (!expanded).then(|| toggle.clone());
+					cx.notify();
+				},
+				cx,
+			)
+			.w_full()
+			.px(gpui::px(0.))
+			.bg(gpui::transparent_black())
+			.justify_start()
+			.aria_expanded(expanded)
+			.child(gpui::div().flex_1().child(name.clone()))
+			.child(workspace_symbols::process_chevron(format!("{key}-disclosure"), expanded))
+			.smooth();
+		let reply = member.reply.clone();
+		row.child(control)
+			.child(ui_motion::disclosure(
+				format!("{key}-summary"),
+				!expanded,
+				gpui::div().child(summary),
+			))
+			.child(ui_motion::disclosure_lazy(format!("{key}-details"), expanded, move |_| {
+				markdown::render(&reply, &key)
+			}))
 	}
 
 	fn conversation_reader(&self, row: &Row, rows: &[Row], message: Option<&str>) -> Div {
@@ -704,6 +889,7 @@ impl AgentSurface {
 					&post.text,
 					post.truncated,
 					false,
+					None,
 				));
 			}
 			return body.child(note("This message is unavailable."));
@@ -805,6 +991,19 @@ impl AgentSurface {
 					before: false,
 				})
 			});
+		if let Some(request) = anchor.as_ref().filter(|request| {
+			case.question.as_ref().is_some_and(|q| q.pending)
+				&& self.conversation_matches(request.work_id.as_str(), request.thread_id.as_str())
+		}) {
+			let request = request.clone();
+			body = body.child(self.reference_link(
+				"locate-collaboration-question".into(),
+				"Show question in chat",
+				Symbol::Forward,
+				move |s, cx| s.locate_find_match(request.clone(), cx),
+				cx,
+			));
+		}
 		let key = case.id.clone();
 		let open = self.work_board.collaboration.source_open.as_deref() == Some(&key);
 		body = body.child(
@@ -933,6 +1132,7 @@ fn discussion_message(
 	text: &str,
 	truncated: bool,
 	reply: bool,
+	excerpt: Option<String>,
 ) -> impl IntoElement + use<> {
 	let mut block = reading_body()
 		.gap(gpui::px(2.))
@@ -944,7 +1144,10 @@ fn discussion_message(
 				.border_color(ui_theme::rgba(ui_theme::PANEL_DIVIDER))
 		})
 		.child(byline);
-	if text.is_empty() {
+	if let Some(preview) = excerpt {
+		let preview = if preview.ends_with('…') { preview } else { format!("{preview}…") };
+		block = block.child(gpui::div().child(preview));
+	} else if text.is_empty() {
 		block = block.child(note("The post text is unavailable."));
 	} else {
 		block = block.child(markdown::render(text, &format!("discussion-text-{id}")));

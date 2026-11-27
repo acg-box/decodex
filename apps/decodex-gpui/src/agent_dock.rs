@@ -7,7 +7,7 @@ use crate::{
 	shell::agent_surface::{
 		AgentClient, AgentHistoryEntryDto, AgentHistoryResult, AgentSnapshotDto, AgentSurface,
 		AgentWorkItemDto, AgentWorkStatusDto, Context, EntityId, InteractiveElement, ParentElement,
-		Styled, execution_dock, graph, markdown, ui_theme::TEXT_MUTED,
+		Styled, execution_dock, graph, markdown::report_excerpt, ui_theme::TEXT_MUTED,
 	},
 	ui_theme::{self, INFO, SUCCESS, WARNING},
 };
@@ -682,15 +682,6 @@ pub(super) fn request_excerpt(json: &str) -> Option<String> {
 		.or_else(|| value["reason"].as_str())
 		.or_else(|| value["command"].as_str())
 		.map(report_excerpt)
-}
-
-fn report_excerpt(text: &str) -> String {
-	let paragraph = text.split("\n\n").find(|part| !part.trim().is_empty()).unwrap_or("");
-	let plain = markdown::plain_text(paragraph).replace(" 。", "。").replace(" .", ".");
-	let mut chars = plain.chars();
-	let excerpt: String = chars.by_ref().take(240).collect();
-
-	if chars.next().is_some() { format!("{excerpt}…") } else { excerpt }
 }
 
 fn source_matches(work: &AgentWorkItemDto, entry: &AgentHistoryEntryDto) -> bool {

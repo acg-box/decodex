@@ -51,6 +51,7 @@ pub(in super::super) struct State {
 	task: Option<Task<()>>,
 	read_at: Option<Instant>,
 	earlier: bool,
+	expanded_topics: BTreeSet<String>,
 	source_open: Option<String>,
 	original_text: Option<String>,
 	original_read: Option<Task<()>>,
