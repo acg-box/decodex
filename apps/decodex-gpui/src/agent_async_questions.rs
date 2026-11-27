@@ -1285,6 +1285,7 @@ mod tests {
 	}
 	#[gpui::test]
 	fn question_title_can_be_selected_and_copied_without_submitting(cx: &mut gpui::TestAppContext) {
+		cx.update(crate::composer_input::bind_keys);
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 
 		surface.update(visual, |s, cx| {

@@ -1136,6 +1136,7 @@ mod tests {
 
 	#[gpui::test]
 	fn message_text_can_be_selected_and_copied_without_editing(cx: &mut gpui::TestAppContext) {
+		cx.update(crate::composer_input::bind_keys);
 		let (_, visual) =
 			cx.add_window_view(|_, _| CopyPreview { text: "Read **中文** text".into() });
 

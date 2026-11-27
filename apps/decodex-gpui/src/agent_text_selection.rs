@@ -234,7 +234,7 @@ impl RenderOnce for DocumentView {
 		let range = state.read(cx).range(&self.document.text);
 		let has_ask = self.document.ask.is_some();
 		let action = self.document.ask.clone().and_then(|ask| {
-			if range.is_empty() || state.read(cx).dragging {
+			if range.is_empty() || state.read(cx).dragging || !focus.is_focused(window) {
 				return None;
 			}
 			let position = state.read(cx).action_position?;
@@ -288,25 +288,15 @@ impl RenderOnce for DocumentView {
 				cx.stop_propagation();
 			})
 			.key_context("MessageSelection")
-			.on_key_down(move |event: &KeyDownEvent, _, cx| {
-				let k = &event.keystroke;
-				if !k.modifiers.platform
-					|| k.modifiers.shift
-					|| k.modifiers.alt
-					|| k.modifiers.control
-				{
-					return;
-				}
-				match k.key.as_str() {
-					"c" => keys.get().expect("selection scope").copy(cx),
-					"a" => state.update(cx, |s, cx| {
-						s.anchor = 0;
-						s.head = text.len();
-						cx.notify();
-					}),
-					_ => return,
-				}
-				cx.stop_propagation();
+			.on_action(move |_: &crate::composer_input::Copy, _, cx| {
+				keys.get().expect("selection scope").copy(cx);
+			})
+			.on_action(move |_: &crate::composer_input::SelectAll, _, cx| {
+				state.update(cx, |s, cx| {
+					s.anchor = 0;
+					s.head = text.len();
+					cx.notify();
+				});
 			})
 			.on_action(move |_: &crate::shell::OpenSideChat, w, cx| {
 				let scope = ask_scope.get().expect("selection scope");
@@ -364,6 +354,8 @@ fn selection_action(
 							})
 							.into_any_element()
 					})
+					// The selection keeps keyboard focus while the pointer action is visible.
+					.preview()
 					.on_dismiss(move |cx| {
 						let _ = dismiss.update(cx, |state, cx| {
 							state.action_position = None;

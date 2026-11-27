@@ -20,6 +20,7 @@ impl Render for Preview {
 
 #[gpui::test]
 fn whole_blocks_keep_markers_after_another_paragraph(cx: &mut TestAppContext) {
+	cx.update(crate::composer_input::bind_keys);
 	for (source, selector, expected) in [
 		("Before.\n\n## Heading\n\nAfter.", "selection-preview-1", "## Heading"),
 		("Before.\n\n- Book\n\nAfter.", "selection-preview-1-0-text-0", "- Book"),
@@ -101,6 +102,7 @@ fn copy_drag(
 
 #[gpui::test]
 fn one_drag_selects_multiple_paragraphs_in_both_directions(cx: &mut TestAppContext) {
+	cx.update(crate::composer_input::bind_keys);
 	let (preview, visual) = cx.add_window_view(|_, _| Preview {
 		text: "First **paragraph**.\n\nSecond 中文 paragraph.\n\nThird paragraph.".into(),
 		process: false,
@@ -126,6 +128,7 @@ fn one_drag_selects_multiple_paragraphs_in_both_directions(cx: &mut TestAppConte
 
 #[gpui::test]
 fn selection_crosses_lists_and_code_without_copying_controls(cx: &mut TestAppContext) {
+	cx.update(crate::composer_input::bind_keys);
 	let (_, visual) = cx.add_window_view(|_, _| Preview {
 		text: "Before.\n\n- First item\n- Second item\n\n```rs\nlet book = \"茶\";\n```\n\nAfter."
 			.into(),
@@ -142,6 +145,7 @@ fn selection_crosses_lists_and_code_without_copying_controls(cx: &mut TestAppCon
 
 #[gpui::test]
 fn selection_preserves_table_cells_and_quote_paragraphs(cx: &mut TestAppContext) {
+	cx.update(crate::composer_input::bind_keys);
 	let (_, visual) = cx.add_window_view(|_, _| Preview {
 		text: "> First quote.\n>\n> Second quote.\n\n| Book | Pages |\n|---|---|\n| Dune | 100 |\n\nDone.".into(),
 		process: false,
@@ -157,6 +161,7 @@ fn selection_preserves_table_cells_and_quote_paragraphs(cx: &mut TestAppContext)
 
 #[gpui::test]
 fn shared_selection_survives_appends_and_stops_at_mouse_up(cx: &mut TestAppContext) {
+	cx.update(crate::composer_input::bind_keys);
 	let (preview, visual) =
 		cx.add_window_view(|_, _| Preview { text: "First.\n\nSecond.".into(), process: false });
 
@@ -211,6 +216,7 @@ fn shared_selection_survives_appends_and_stops_at_mouse_up(cx: &mut TestAppConte
 
 #[gpui::test]
 fn links_still_open_on_click_but_never_during_cross_paragraph_selection(cx: &mut TestAppContext) {
+	cx.update(crate::composer_input::bind_keys);
 	let (_, visual) = cx.add_window_view(|_, _| Preview {
 		text: "[Read more](https://example.com/books).\n\nContinue reading.".into(),
 		process: false,
@@ -236,6 +242,7 @@ fn links_still_open_on_click_but_never_during_cross_paragraph_selection(cx: &mut
 
 #[gpui::test]
 fn bare_urls_open_from_their_visible_text_without_changing_copy(cx: &mut TestAppContext) {
+	cx.update(crate::composer_input::bind_keys);
 	let (_, visual) = cx.add_window_view(|_, _| Preview {
 		text: "https://example.com/文档_(one).".into(),
 		process: false,
@@ -251,6 +258,7 @@ fn bare_urls_open_from_their_visible_text_without_changing_copy(cx: &mut TestApp
 
 #[gpui::test]
 fn clicking_blank_space_clears_the_whole_selection(cx: &mut TestAppContext) {
+	cx.update(crate::composer_input::bind_keys);
 	let (_, visual) =
 		cx.add_window_view(|_, _| Preview { text: "First.\n\nSecond.".into(), process: false });
 
@@ -274,6 +282,7 @@ fn clicking_blank_space_clears_the_whole_selection(cx: &mut TestAppContext) {
 
 #[gpui::test]
 fn a_diagram_shares_selection_with_the_surrounding_paragraphs(cx: &mut TestAppContext) {
+	cx.update(crate::composer_input::bind_keys);
 	let (_, visual) = cx.add_window_view(|_, _| Preview {
 		text: "Before.\n\n```mermaid\nflowchart LR; A --> B\n```\n\nAfter.".into(),
 		process: false,
@@ -299,6 +308,7 @@ fn a_diagram_shares_selection_with_the_surrounding_paragraphs(cx: &mut TestAppCo
 fn selected_words_copy_their_original_markdown_and_right_click_keeps_selection(
 	cx: &mut TestAppContext,
 ) {
+	cx.update(crate::composer_input::bind_keys);
 	for (source, expected) in [
 		("**Bold**\n\nAfter.", "**Bold**"),
 		("[Read](https://example.com/books)\n\nAfter.", "[Read](https://example.com/books)"),
@@ -316,7 +326,8 @@ fn selected_words_copy_their_original_markdown_and_right_click_keeps_selection(
 
 		visual.simulate_mouse_down(at, MouseButton::Right, Default::default());
 		visual.simulate_mouse_up(at, MouseButton::Right, Default::default());
-		visual.simulate_keystrokes("cmd-c");
+		// The native Edit menu dispatches this action directly to the focused view.
+		visual.dispatch_action(crate::composer_input::Copy);
 		visual.update(|_, cx| {
 			assert_eq!(
 				cx.read_from_clipboard().and_then(|item| item.text()).as_deref(),

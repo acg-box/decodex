@@ -396,6 +396,7 @@ mod tests {
 
 	#[gpui::test]
 	fn dragging_past_the_text_keeps_extending_the_selection(cx: &mut gpui::TestAppContext) {
+		cx.update(crate::composer_input::bind_keys);
 		let (_, visual) = cx.add_window_view(|_, _| Preview { text: "A calm reading day.".into() });
 
 		visual.update(crate::ui_frame::draw_current_frame);
@@ -418,6 +419,7 @@ mod tests {
 
 	#[gpui::test]
 	fn copy_uses_the_visible_selection_after_unicode_text_changes(cx: &mut gpui::TestAppContext) {
+		cx.update(crate::composer_input::bind_keys);
 		let (preview, visual) = cx.add_window_view(|_, _| Preview { text: "abcd".into() });
 
 		visual.update(crate::ui_frame::draw_current_frame);

@@ -19,7 +19,7 @@ impl AgentSurface {
 		self.work_board.reference = ReferencePage::Overview;
 		self.work_board.reference_scroll = Default::default();
 		self.work_board.reference_history.clear();
-		self.work_board.collaboration.expanded_topics.clear();
+		self.work_board.collaboration.expanded_items.clear();
 		self.clear_reference_source();
 	}
 
@@ -112,6 +112,7 @@ impl AgentSurface {
 	) -> AnyElement {
 		self.reference_control(id, label.into(), action, cx)
 			.justify_start()
+			.px(gpui::px(0.))
 			.bg(gpui::transparent_black())
 			.text_color(ui_theme::rgb(BLUE))
 			.child(workspace_symbols::icon_sized(icon, 13.))
@@ -138,7 +139,7 @@ impl AgentSurface {
 			.items_center()
 			.bg(gpui::transparent_black())
 			.min_h(gpui::px(ui_theme::CONTROL_SIZE))
-			.pl(gpui::px(ui_theme::NAVIGATION_LEADING_SIZE))
+			.px(gpui::px(0.))
 			.py(gpui::px(3.))
 			.gap(gpui::px(8.))
 			.when_some(icon, |row, icon| {
@@ -254,7 +255,7 @@ impl AgentSurface {
 			.flex()
 			.items_center()
 			.gap(gpui::px(4.))
-			.px(gpui::px(8.))
+			.px(gpui::px(ui_theme::CONVERSATION_INSET))
 			.py(gpui::px(5.))
 			.when(!overview, |header| {
 				header.child(
@@ -305,7 +306,7 @@ impl AgentSurface {
 							.min_w_0()
 							.min_h_0()
 							.overflow_y_scroll()
-							.px(gpui::px(8.))
+							.px(gpui::px(ui_theme::CONVERSATION_INSET))
 							.pb(gpui::px(10.))
 							.child(
 								body.flex_none()
@@ -534,6 +535,7 @@ impl AgentSurface {
 					.w_full()
 					.mt(gpui::px(6.))
 					.aria_expanded(earlier)
+					.px(gpui::px(0.))
 					.bg(gpui::transparent_black())
 					.justify_start()
 					.child(
@@ -611,7 +613,7 @@ impl AgentSurface {
 		divider: bool,
 		cx: &mut Context<Self>,
 	) -> Div {
-		let mut group = reading_body().px(gpui::px(8.)).pb(gpui::px(5.)).when(divider, |group| {
+		let mut group = reading_body().pb(gpui::px(5.)).when(divider, |group| {
 			group
 				.pt(gpui::px(5.))
 				.border_t_1()
@@ -622,7 +624,7 @@ impl AgentSurface {
 			&& earlier.len() >= 2
 		{
 			let id = opener.thread_id.clone();
-			let expanded = self.work_board.collaboration.expanded_topics.contains(&id);
+			let expanded = self.work_board.collaboration.expanded_items.contains(&id);
 			let label = format!(
 				"{} earlier replies ({})",
 				if expanded { "Hide" } else { "Show" },
@@ -634,15 +636,13 @@ impl AgentSurface {
 					format!("topic-replies-{id}"),
 					label.clone(),
 					move |s, cx| {
-						let topics = &mut s.work_board.collaboration.expanded_topics;
-						if !topics.remove(&toggle) {
-							topics.insert(toggle.clone());
-						}
+						s.work_board.collaboration.toggle_item(&toggle);
 						cx.notify();
 					},
 					cx,
 				)
 				.aria_expanded(expanded)
+				.px(gpui::px(0.))
 				.justify_start()
 				.bg(gpui::transparent_black())
 				.child(workspace_symbols::process_chevron(
@@ -771,68 +771,83 @@ impl AgentSurface {
 			|| title.to_owned(),
 			|micros| format!("{title} ({})", crate::ui_time::timestamp(micros)),
 		);
-		Some(
-			reading_body().child(section(&heading)).child(
-				reading_body()
-					.px(gpui::px(8.))
-					.child(
-						gpui::div()
-							.text_color(ui_theme::rgb(PRIMARY))
-							.child(markdown::report_excerpt(answer)),
-					)
-					.child(self.reference_link(
-						"locate-collaboration-outcome".into(),
-						"Show in chat",
-						Symbol::Forward,
-						move |s, cx| s.locate_find_match(request.clone(), cx),
-						cx,
-					)),
-			),
-		)
+		// A short final often puts the action the user must take in its last paragraph.
+		let content = if markdown::plain_text(answer).chars().nth(240).is_none() {
+			markdown::render(answer, &format!("outcome-{turn}-{item}"))
+		} else {
+			let excerpt = markdown::report_excerpt(answer);
+			crate::shell::agent_surface::selectable_text::SelectableText::plain(
+				format!("outcome-excerpt-{turn}-{item}"),
+				format!("{}…", excerpt.trim_end_matches('…')),
+			)
+			.into_any_element()
+		};
+		Some(reading_body().child(section(&heading)).child(content).child(self.reference_link(
+			"locate-collaboration-outcome".into(),
+			"Show in chat",
+			Symbol::Forward,
+			move |s, cx| s.locate_find_match(request.clone(), cx),
+			cx,
+		)))
 	}
 
 	fn report_row(&self, key: String, member: &Participant, cx: &mut Context<Self>) -> Div {
 		let summary = activity::wording::message(&member.reply);
-		let row = reading_body().px(gpui::px(8.)).gap(gpui::px(1.));
 		let name = &member.name;
-		if same_excerpt(&summary, &member.reply) {
-			return row.child(named_heading(&key, name)).child(summary);
+		let row = reading_body().gap(gpui::px(0.));
+		// Show brief, self-contained reports directly, including their native Markdown links.
+		if summary.chars().nth(80).is_none()
+			&& same_excerpt(&summary, &markdown::plain_text(&member.reply))
+		{
+			return row
+				.child(named_heading(&key, name))
+				.child(markdown::render(&member.reply, &key));
 		}
-		let expanded = self.work_board.collaboration.source_open.as_ref() == Some(&key);
+		let expanded = self.work_board.collaboration.expanded_items.contains(&key);
 		let toggle = key.clone();
 		let control = self
 			.reference_control(
 				key.clone(),
 				format!("{name}. {} report", if expanded { "Collapse" } else { "Read full" }),
 				move |s, cx| {
-					s.work_board.collaboration.source_open = (!expanded).then(|| toggle.clone());
+					s.work_board.collaboration.toggle_item(&toggle);
 					cx.notify();
 				},
 				cx,
 			)
 			.w_full()
 			.px(gpui::px(0.))
+			.py(gpui::px(4.))
 			.bg(gpui::transparent_black())
 			.justify_start()
 			.aria_expanded(expanded)
-			.child(gpui::div().flex_1().child(name.clone()))
+			.child(
+				gpui::div().flex_1().min_w_0().flex().flex_col().child(name.clone()).child(
+					ui_motion::disclosure(
+						format!("{key}-summary"),
+						!expanded,
+						gpui::div()
+							.w_full()
+							.truncate()
+							.font_weight(FontWeight::NORMAL)
+							.text_color(ui_theme::rgb(SECONDARY))
+							.child(summary),
+					),
+				),
+			)
 			.child(workspace_symbols::process_chevron(format!("{key}-disclosure"), expanded))
 			.smooth();
 		let reply = member.reply.clone();
-		row.child(control)
-			.child(ui_motion::disclosure(
-				format!("{key}-summary"),
-				!expanded,
-				gpui::div().child(summary),
-			))
-			.child(ui_motion::disclosure_lazy(format!("{key}-details"), expanded, move |_| {
-				markdown::render(&reply, &key)
-			}))
+		row.child(control).child(ui_motion::disclosure_lazy(
+			format!("{key}-details"),
+			expanded,
+			move |_| markdown::render(&reply, &key),
+		))
 	}
 
 	fn conversation_reader(&self, row: &Row, rows: &[Row], message: Option<&str>) -> Div {
 		let name = participant_name(row);
-		let mut body = reading_body().px(gpui::px(8.)).child(reader_title(name));
+		let mut body = reading_body().child(reader_title(name));
 		if let Some(agent) = self.native_agents.lists.get(&row.work).and_then(|agents| {
 			agents.iter().find(|agent| Some(&agent.thread_id) == row.thread.as_ref())
 		}) {
@@ -1146,7 +1161,10 @@ fn discussion_message(
 		.child(byline);
 	if let Some(preview) = excerpt {
 		let preview = if preview.ends_with('…') { preview } else { format!("{preview}…") };
-		block = block.child(gpui::div().child(preview));
+		block = block.child(crate::shell::agent_surface::selectable_text::SelectableText::plain(
+			format!("discussion-excerpt-{id}"),
+			preview,
+		));
 	} else if text.is_empty() {
 		block = block.child(note("The post text is unavailable."));
 	} else {
@@ -1165,7 +1183,6 @@ fn section(title: &str) -> impl IntoElement {
 		.aria_level(3)
 		.aria_label(title.to_owned())
 		.pt(gpui::px(ui_theme::NAVIGATION_SECTION_GAP / 2.))
-		.px(gpui::px(3.))
 		.font_weight(FontWeight::MEDIUM)
 		.text_size(gpui::px(CAPTION_SIZE))
 		.text_color(ui_theme::rgb(SECONDARY))

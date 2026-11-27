@@ -51,12 +51,20 @@ pub(in super::super) struct State {
 	task: Option<Task<()>>,
 	read_at: Option<Instant>,
 	earlier: bool,
-	expanded_topics: BTreeSet<String>,
+	expanded_items: BTreeSet<String>,
 	source_open: Option<String>,
 	original_text: Option<String>,
 	original_read: Option<Task<()>>,
 	task_labels: BTreeMap<String, String>,
 	failed: bool,
+}
+
+impl State {
+	fn toggle_item(&mut self, key: &str) {
+		if !self.expanded_items.remove(key) {
+			self.expanded_items.insert(key.to_owned());
+		}
+	}
 }
 
 struct Exchange {

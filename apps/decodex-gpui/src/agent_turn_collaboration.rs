@@ -83,25 +83,20 @@ impl AgentSurface {
 
 	/// Build the history menu from named collaboration on this thread. No global agent list.
 	pub(super) fn earlier_discussions(&self, thread: &str, current: &str) -> Vec<(String, String)> {
-		if !self.timeline.native.binding.as_ref().is_some_and(|binding| binding.thread == thread) {
-			return Vec::new();
-		}
 		let mut turns = BTreeMap::<&str, Vec<String>>::new();
+		let mut prompts = BTreeMap::new();
 		let mut order = Vec::new();
-		for entry in &self.timeline.native.entries {
-			let AgentTimelineContent::Item { turn_id, collaboration, activity, .. } =
-				&entry.content
+		for entry in self.timeline.native.thread_items(thread) {
+			let AgentTimelineContent::Item { turn_id, kind, text, collaboration, activity, .. } =
+				entry
 			else {
 				continue;
 			};
-			if turn_id == current
-				|| self
-					.timeline
-					.native
-					.source_threads
-					.get(&entry.position)
-					.is_some_and(|source| source != thread)
-			{
+			if turn_id == current {
+				continue;
+			}
+			if kind == "userMessage" && !text.trim().is_empty() {
+				prompts.entry(turn_id.as_str()).or_insert(text.as_str());
 				continue;
 			}
 			let title = if let Some(call) = collaboration
@@ -114,7 +109,7 @@ impl AgentSurface {
 					.and_then(|a| a.detail.rsplit('/').next())
 					.map(|n| self.participant_task_label(n))
 					.unwrap_or_else(|| activity::wording::purpose(&call.prompt))
-			} else if let Some(post) = board_topics::Post::from_entry(&entry.content, thread) {
+			} else if let Some(post) = board_topics::Post::from_entry(entry, thread) {
 				format!("#{}", post.channel_name)
 			} else {
 				continue;
@@ -132,8 +127,13 @@ impl AgentSurface {
 			.rev()
 			.map(|turn| {
 				let names = &turns[turn];
-				let title =
-					if names.is_empty() { "Agent discussion".into() } else { names.join(", ") };
+				let title = if let Some(prompt) = prompts.get(turn) {
+					activity::wording::message(prompt)
+				} else if names.is_empty() {
+					"Agent discussion".into()
+				} else {
+					names.join(", ")
+				};
 				(turn.to_owned(), title)
 			})
 			.collect()
@@ -506,6 +506,16 @@ mod tests {
 				s.earlier_discussions("ref-sage", "next"),
 				vec![("first".into(), "Check the totals".into())]
 			);
+			s.timeline.native.entries.insert(
+				0,
+				serde_json::from_value(json!({
+					"position": 0,
+					"content": {"type":"item","turn_id":"first","item_id":"ask","kind":"userMessage",
+						"text":"Can five guests attend? Check the venue.","truncated":false,"attachments":[]}
+				}))
+				.unwrap(),
+			);
+			assert_eq!(s.earlier_discussions("ref-sage", "next")[0].1, "Can five guests attend?");
 			assert!(s.earlier_discussions("other", "next").is_empty());
 		});
 		visual.update(crate::ui_frame::draw_frame);
