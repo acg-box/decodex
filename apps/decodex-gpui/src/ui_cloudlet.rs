@@ -30,6 +30,37 @@ static CATALOG: LazyLock<Catalog> = LazyLock::new(|| {
 	.expect("checked-in Cloudlets catalog")
 });
 
+/// An individually selectable portrait uses the same seeded artwork as the graph.
+#[derive(IntoElement)]
+pub(crate) struct Portrait {
+	pub seed: String,
+	pub status: &'static str,
+	pub edge: f32,
+}
+
+impl RenderOnce for Portrait {
+	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+		use gpui::prelude::ParentElement as _;
+		let now = Instant::now();
+		let actor = window.use_keyed_state(
+			SharedString::from(format!("sidebar-portrait-{}", self.seed)),
+			cx,
+			|_, _| Actor::new(&self.seed, self.status, now, Scene::default()),
+		);
+		let frame = actor.update(cx, |actor, _| actor.frame(self.status, now));
+		let scene = frame.scene.clone();
+		scene.placements.borrow_mut().clear();
+		let width = self.edge * 1.25;
+		gpui::div()
+			.relative()
+			.flex_none()
+			.w(gpui::px(width))
+			.h(gpui::px(self.edge))
+			.child(frame.element(width, self.edge, 1.))
+			.child(gpui::div().absolute().inset_0().child(scene.element()))
+	}
+}
+
 /// A fixed-time view of the shared artwork. Its caller owns the animation clock.
 #[derive(IntoElement)]
 pub(crate) struct Indicator {

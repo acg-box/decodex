@@ -35,7 +35,7 @@ pub(super) enum ReferencePage {
 	#[default]
 	Overview,
 	Exchange(String),
-	Report {
+	Participant {
 		thread: String,
 		turn: String,
 		agent: String,

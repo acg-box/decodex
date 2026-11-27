@@ -167,6 +167,15 @@ impl RenderOnce for CopyButton {
 	}
 }
 
+/// Explicit local Markdown links are the same file references the reader can open.
+pub(super) fn referenced_files(source: &str) -> impl Iterator<Item = std::path::PathBuf> + '_ {
+	Parser::new_ext(source, Options::ENABLE_TABLES).filter_map(|event| match event {
+		Event::Start(Tag::Link { dest_url, .. }) if dest_url.starts_with('/') =>
+			Some(std::path::PathBuf::from(without_line_column(&dest_url))),
+		_ => None,
+	})
+}
+
 pub(super) fn without_line_column(path: &str) -> &str {
 	let mut path = path;
 

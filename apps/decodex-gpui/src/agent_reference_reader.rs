@@ -2,8 +2,9 @@
 #[path = "agent_turn_collaboration.rs"] mod turn_collaboration;
 use super::*;
 use crate::{shell::agent_surface::work_board::board_topics::Post, ui_motion::HoverHint as _};
-use turn_collaboration::ParticipantState;
+use turn_collaboration::{Participant, ParticipantState};
 #[path = "agent_report_reader.rs"] mod report_reader;
+#[path = "agent_collaboration_team.rs"] mod team;
 use decodex_protocol::{
 	AgentCollaborationDto, AgentTimelineContent, ItemContextRequest, ItemContextResult, WireText,
 };
@@ -199,16 +200,18 @@ impl AgentSurface {
 		let page = &self.work_board.reference;
 		let (title, (body, state)) = match page {
 			ReferencePage::Overview => ("Collaboration", self.reference_index(None, cx)),
-			ReferencePage::Report { thread, turn, agent } => {
+			ReferencePage::Participant { thread, turn, agent } => {
 				let rows = self.factory_rows();
-				let participants = self.turn_participants(thread, turn, &rows);
-				let body = match participants.get(agent).filter(|p| !p.reply.is_empty()) {
-					Some(p) => reading_body()
-						.child(reader_title(&p.name))
-						.child(markdown::render(&p.reply, &format!("report-{turn}-{agent}"))),
-					None => reading_body().child(note("This report is no longer available.")),
+				let members = self.turn_participants(thread, turn, &rows);
+				let source = rows.iter().find(|row| row.thread.as_ref() == Some(agent));
+				let (title, body) = match members.get(agent) {
+					Some(member) => self.participant_reader(turn, agent, member, source),
+					None => (
+						"Agent activity",
+						reading_body().child(note("This contribution is unavailable.")),
+					),
 				};
-				("Agent report", (body, "detail"))
+				(title, (body, "detail"))
 			},
 			ReferencePage::Topic { thread, historical_turn, topic } => {
 				let rows = self.factory_rows();
@@ -279,7 +282,8 @@ impl AgentSurface {
 					.unwrap_or("none")
 			),
 			ReferencePage::Exchange(id) => format!("reference-exchange-{id}"),
-			ReferencePage::Report { turn, agent, .. } => format!("reference-report-{turn}-{agent}"),
+			ReferencePage::Participant { turn, agent, .. } =>
+				format!("reference-report-{turn}-{agent}"),
 			ReferencePage::Topic { thread, topic, .. } =>
 				format!("reference-topic-{thread}-{topic}"),
 			ReferencePage::Conversation { thread, message, .. } => format!(
@@ -461,44 +465,44 @@ impl AgentSurface {
 				populated = true;
 			}
 		}
-		if let Some(turn) = turn {
-			for heading in ["Needs attention", "In progress"] {
-				let mut tasks = roster
-					.iter()
-					.filter(|(_, m)| m.state.task_section() == Some(heading))
-					.peekable();
-				if tasks.peek().is_none() {
-					continue;
-				}
-				body = body.child(index_section(heading, populated));
-				populated = true;
-				for (id, member) in tasks {
-					let key = format!("collaborator-{turn}-{id}");
-					let (title, detail) = member.row_labels();
-					let source = rows.iter().find(|row| row.thread.as_ref() == Some(id));
-					let target = ReferencePage::Conversation {
-						key: source
-							.map(|row| row.key.clone())
-							.unwrap_or_else(|| format!("native:{}:{id}", work.id)),
-						thread: id.clone(),
-						message: None,
-					};
-					body = body.child(self.reference_row(
-						key,
-						title,
-						detail,
-						None,
-						move |s, cx| s.show_reference(target.clone(), cx),
-						cx,
-					));
-				}
-			}
-		}
-		if let Some(outcome) = thread.zip(turn).and_then(|(thread, turn)| {
+		let outcome = thread.zip(turn).and_then(|(thread, turn)| {
 			self.outcome_row(&work.id, thread, turn, scope.is_none(), cx)
-		}) {
+		});
+		if let Some((thread, turn)) = thread.zip(turn).filter(|_| !roster.is_empty()) {
+			let heading = format!("Team ({})", roster.len());
+			body = body
+				.child(
+					index_section(&heading, populated)
+						.flex()
+						.items_center()
+						.justify_between()
+						.children(outcome),
+				)
+				.child(self.team_grid(&work.id, thread, turn, &roster, cx));
+			populated = true;
+		} else if let Some(outcome) = outcome {
 			body = body.child(outcome);
 			populated = true;
+		}
+		let mut files = BTreeMap::new();
+		for member in roster.values().filter(|member| member.state == ParticipantState::Replied) {
+			for path in markdown::referenced_files(&member.reply) {
+				files.entry(path).or_insert_with(BTreeSet::new).insert(member.name.clone());
+			}
+		}
+		if let Some((_, text, _)) =
+			thread.zip(turn).and_then(|(t, turn)| self.collaboration_outcome(t, turn))
+		{
+			for path in markdown::referenced_files(text) {
+				files.entry(path).or_insert_with(BTreeSet::new).insert("Lead".to_string());
+			}
+		}
+		if !files.is_empty() {
+			body = body.child(index_section("Referenced files", populated));
+			populated = true;
+			for (path, authors) in files {
+				body = body.child(self.referenced_file(path, &authors, cx));
+			}
 		}
 		let topics = thread
 			.map(|t| self.board_topics(&work.id, t, scope.map(|(_, turn)| turn), &rows))
@@ -536,39 +540,6 @@ impl AgentSurface {
 				));
 			}
 		}
-		let mut reports = roster
-			.iter()
-			.filter(|(id, member)| {
-				member.state == ParticipantState::Replied
-					&& !member.reply.is_empty()
-					&& !topics.iter().flatten().any(|post| {
-						post.posted_by_thread.as_ref() == Some(*id)
-							&& !post.truncated
-							&& same_excerpt(&post.text, &member.reply)
-					})
-			})
-			.peekable();
-		if let Some((thread, turn)) = thread.zip(turn).filter(|_| reports.peek().is_some()) {
-			body = body.child(index_section("Agent reports", populated));
-			populated = true;
-			for (id, member) in reports {
-				let page = ReferencePage::Report {
-					thread: thread.into(),
-					turn: turn.into(),
-					agent: id.clone(),
-				};
-				let (title, author) = member.report_labels();
-				body = body.child(self.reference_row(
-					format!("report-{turn}-{id}"),
-					title,
-					author,
-					Some(Symbol::Document),
-					move |s, cx| s.show_reference(page.clone(), cx),
-					cx,
-				));
-			}
-		}
-
 		let is_earlier = |case: &Exchange| {
 			scope.is_none()
 				&& (case.earlier
@@ -747,9 +718,9 @@ impl AgentSurface {
 			before: false,
 		};
 		let title = if overview && self.latest_thread_turn(thread) != Some(turn) {
-			"Show last outcome in chat"
+			"Last outcome"
 		} else {
-			"Show outcome in chat"
+			"Outcome"
 		};
 		let action = self.reference_link(
 			"locate-collaboration-outcome".into(),

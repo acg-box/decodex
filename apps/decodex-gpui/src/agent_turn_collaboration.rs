@@ -163,18 +163,17 @@ impl AgentSurface {
 			if turn_id != turn || call.sender_thread_id != thread {
 				continue;
 			}
+			let path_name = activity
+				.as_ref()
+				.filter(|a| a.kind == "subAgentActivity")
+				.and_then(|a| a.detail.rsplit('/').next())
+				.filter(|name| !name.is_empty());
+			let task_name = path_name.map(|n| self.participant_task_label(n)).unwrap_or_default();
 			for id in call.receiver_thread_ids.iter().filter(|id| id.as_str() != thread) {
 				let member = members.entry(id.clone()).or_insert_with(|| {
 					let row = rows
 						.iter()
 						.find(|r| r.work == binding.work && r.thread.as_ref() == Some(id));
-					let path_name = activity
-						.as_ref()
-						.filter(|a| a.kind == "subAgentActivity")
-						.and_then(|a| a.detail.rsplit('/').next())
-						.filter(|name| !name.is_empty());
-					let task_name =
-						path_name.map(|n| self.participant_task_label(n)).unwrap_or_default();
 					let name = row
 						.map(participant_name)
 						.filter(|s| !s.is_empty())
@@ -187,17 +186,21 @@ impl AgentSurface {
 							.map(|r| r.title.clone())
 							.unwrap_or_default()
 					} else {
-						task_name
+						task_name.clone()
 					};
 
 					Participant {
 						spawned_here: false,
+						assignment: String::new(),
 						name,
 						task,
 						state: ParticipantState::Assigned,
 						reply: String::new(),
 					}
 				});
+				if !task_name.is_empty() {
+					member.assignment.clone_from(&task_name);
+				}
 				if !call.prompt.trim().is_empty()
 					&& (member.task.is_empty()
 						|| matches!(
@@ -312,6 +315,9 @@ impl AgentSurface {
 				member.reply.clone_from(&output.text);
 			}
 		}
+		for member in members.values_mut().filter(|member| !member.spawned_here) {
+			member.assignment.clear();
+		}
 		members
 	}
 
@@ -388,31 +394,11 @@ impl AgentSurface {
 #[derive(Clone)]
 pub(super) struct Participant {
 	spawned_here: bool,
+	pub(super) assignment: String,
 	pub(super) name: String,
 	pub(super) task: String,
 	pub(super) state: ParticipantState,
 	pub(super) reply: String,
-}
-
-impl Participant {
-	pub(super) fn report_labels(&self) -> (String, String) {
-		let title = activity::wording::message(&self.reply);
-		if title.is_empty() || title == self.name {
-			(self.name.clone(), String::new())
-		} else {
-			(title, self.name.clone())
-		}
-	}
-
-	pub(super) fn row_labels(&self) -> (String, String) {
-		let task = activity::wording::purpose(&self.task);
-		let status = self.state.short_label();
-		if task.is_empty() || task == self.name {
-			(self.name.clone(), status.into())
-		} else {
-			(task, format!("{} ({status})", self.name))
-		}
-	}
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -427,16 +413,7 @@ pub(super) enum ParticipantState {
 	Assigned,
 }
 impl ParticipantState {
-	pub(super) fn task_section(self) -> Option<&'static str> {
-		match self {
-			Self::NeedsInput | Self::NeedsApproval | Self::Failed | Self::Stopped =>
-				Some("Needs attention"),
-			Self::Working => Some("In progress"),
-			Self::Assigned | Self::Replied | Self::Finished => None,
-		}
-	}
-
-	fn short_label(self) -> &'static str {
+	pub(super) fn short_label(self) -> &'static str {
 		match self {
 			Self::NeedsApproval => "Approval needed",
 			Self::NeedsInput => "Input needed",
@@ -536,12 +513,12 @@ mod tests {
 				ReferencePage::Discussion { turn, thread, title } if turn == "first" && thread == "ref-sage" && title == "Can five guests attend?"
 			))
 		});
-		let report = visual.debug_bounds("report-first-child-a").unwrap();
+		let report = visual.debug_bounds("contributor-first-child-a").unwrap();
 		visual.simulate_click(report.center(), Default::default());
 		visual.update(crate::ui_frame::draw_frame);
 		surface.read_with(visual, |s, _| {
 			assert!(
-				matches!(&s.work_board.reference, ReferencePage::Report { turn, thread, agent }
+				matches!(&s.work_board.reference, ReferencePage::Participant { turn, thread, agent }
 				if turn == "first" && thread == "ref-sage" && agent == "child-a")
 			);
 			assert_eq!(s.selected.as_deref(), Some("sage"));
@@ -550,7 +527,7 @@ mod tests {
 		let back = visual.debug_bounds("reference-back").unwrap();
 		visual.simulate_click(back.center(), Default::default());
 		visual.update(crate::ui_frame::draw_frame);
-		assert!(visual.debug_bounds("report-first-child-a").is_some());
+		assert!(visual.debug_bounds("contributor-first-child-a").is_some());
 		let back = visual.debug_bounds("reference-back").unwrap();
 		visual.simulate_click(back.center(), Default::default());
 		visual.update(crate::ui_frame::draw_frame);
@@ -683,7 +660,9 @@ mod tests {
 	}
 
 	#[gpui::test]
-	fn only_unfinished_or_blocked_participants_keep_task_rows(cx: &mut TestAppContext) {
+	fn participant_status_tracks_the_native_agent_until_its_report_arrives(
+		cx: &mut TestAppContext,
+	) {
 		let surface = cx.new(|cx| {
 			let mut s = AgentSurface::new(cx);
 			s.visual_workspace_fixture(cx);
@@ -708,10 +687,10 @@ mod tests {
 				vec![event(1, "now", "subAgentActivity/started", "ref-iris", "")];
 			let rows = s.factory_rows();
 			for (status, section) in [
-				("active", "In progress"),
-				("waitingOnUserInput", "Needs attention"),
-				("waitingOnApproval", "Needs attention"),
-				("systemError", "Needs attention"),
+				("active", "Working"),
+				("waitingOnUserInput", "Input needed"),
+				("waitingOnApproval", "Approval needed"),
+				("systemError", "Failed"),
 			] {
 				s.native_agents
 					.lists
@@ -722,8 +701,8 @@ mod tests {
 					.unwrap()
 					.status = status.into();
 				assert_eq!(
-					s.turn_participants("ref-sage", "now", &rows)["ref-iris"].state.task_section(),
-					Some(section)
+					s.turn_participants("ref-sage", "now", &rows)["ref-iris"].state.short_label(),
+					section
 				);
 			}
 			s.timeline.native.entries.extend([
@@ -732,7 +711,7 @@ mod tests {
 			]);
 			let participants = s.turn_participants("ref-sage", "now", &rows);
 			assert_eq!(participants["ref-iris"].reply, "Ready for review.");
-			assert_eq!(participants["ref-iris"].state.task_section(), None);
+			assert_eq!(participants["ref-iris"].state.short_label(), "Replied");
 		});
 	}
 
